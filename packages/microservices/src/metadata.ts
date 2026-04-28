@@ -1,9 +1,7 @@
 import { type MetadataPropertyKey } from '@fluojs/core';
-import { ensureSymbolMetadataPolyfill, metadataSymbol } from '@fluojs/core/internal';
+import { ensureSymbolMetadataPolyfill, getStandardConstructorMetadataBag } from '@fluojs/core/internal';
 
 import type { HandlerMetadata } from './types.js';
-
-type StandardMetadataBag = Record<PropertyKey, unknown>;
 
 void ensureSymbolMetadataPolyfill();
 
@@ -17,16 +15,10 @@ function cloneHandlerMetadata(metadata: HandlerMetadata): HandlerMetadata {
   };
 }
 
-function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
-  return (target as Record<symbol, StandardMetadataBag | undefined>)[metadataSymbol];
-}
-
 function getStandardHandlerMap(target: object): Map<MetadataPropertyKey, HandlerMetadata[]> | undefined {
-  const constructor = (target as { constructor?: object }).constructor;
-
-  return constructor
-    ? (getStandardMetadataBag(constructor)?.[standardMicroserviceMetadataKey] as Map<MetadataPropertyKey, HandlerMetadata[]> | undefined)
-    : undefined;
+  return getStandardConstructorMetadataBag(target)?.[standardMicroserviceMetadataKey] as
+    | Map<MetadataPropertyKey, HandlerMetadata[]>
+    | undefined;
 }
 
 function getOrCreateHandlerMap(target: object): Map<MetadataPropertyKey, HandlerMetadata[]> {

@@ -123,6 +123,12 @@ class UsersModule {}
 ## 동작 계약
 
 - 요청 바디 파싱은 Web 표준 요청과 Node 기반 요청 모두에서 바이트가 스트리밍되는 동안 `maxBodySize`를 강제합니다.
+- Node 기반 쿠키/쿼리 값과 Web 표준 헤더는 요청 wrapper가 생성되는 시점에 snapshot으로 고정된 뒤 요청별로 lazy하게 normalize되고 memoize됩니다. 이후 upstream 객체가 변경되어도 `FrameworkRequest` view는 바뀌지 않습니다.
+- `ApplicationContext.get()`과 `Application.get()`은 bootstrap 시점에 알려진 직접 root singleton class/factory provider 조회만 memoize하며, alias, request, transient, 종료 이후, multi-provider, `container.override()` 해석 의미는 그대로 유지합니다.
+- `multi: true` provider token은 context cache에 memoize되지 않습니다. 각 `get()` 호출은 DI로 위임되어 컨테이너가 새로운 contribution 배열을 조립하며, 각 contribution 자체는 해당 provider scope에 따라 재사용됩니다.
+- `duplicateProviderPolicy`가 `warn` 또는 `ignore`일 때 context cache 적격성과 lifecycle hook 실행은 bootstrap이 선택한 effective winning provider를 기준으로 결정됩니다. stale losing provider는 cache entry나 lifecycle hook을 만들지 않습니다.
+- 애플리케이션 또는 컨텍스트 bootstrap이 런타임 리소스나 lifecycle instance 생성 이후 실패하면 fluo는 readiness를 초기화하고, 등록된 runtime cleanup callback을 실행하며, 그 시점까지 해석된 instance의 shutdown hook을 `bootstrap-failed`로 호출하고, 컨테이너를 dispose하고, cleanup 실패를 로그로 남긴 뒤 원래 bootstrap error를 다시 던집니다.
+- Bootstrap은 독립적인 singleton lifecycle provider를 병렬로 해석한 뒤 lifecycle hook은 결정적인 provider 순서대로 실행합니다.
 - 멀티파트 파싱은 누적 바디 크기가 설정된 `multipart.maxTotalSize`를 넘으면 즉시 거부되며, 런타임 어댑터는 별도 재정의가 없으면 이 한도를 `maxBodySize`와 동일하게 맞춥니다.
 - 응답 스트림 백프레셔 헬퍼는 `drain`, `close`, `error` 중 어느 경우에도 `waitForDrain()`을 완료시켜 끊어진 연결에서 스트리밍 작성기가 멈추지 않도록 합니다.
 - 런타임 health 모듈은 bootstrap이 ready로 표시하기 전까지 `/ready`를 HTTP 503과 `starting`으로 보고하며, 애플리케이션/컨텍스트 종료가 시작되는 즉시, 종료 시도가 실패하더라도 다시 `starting`으로 내려갑니다.

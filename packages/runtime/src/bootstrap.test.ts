@@ -9,6 +9,17 @@ import type { PlatformComponent, PlatformState } from './platform-contract.js';
 import { HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL } from './tokens.js';
 import type { MicroserviceRuntime } from './types.js';
 
+function createDeferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, reject, resolve };
+}
+
 describe('bootstrapModule', () => {
   it('boots a simple module graph deterministically', () => {
     class Logger {}
@@ -540,6 +551,305 @@ describe('FluoFactory.createApplicationContext', () => {
     await context.close();
   });
 
+  it('memoizes ApplicationContext.get() for singleton tokens', async () => {
+    class AppService {}
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [AppService],
+    });
+
+    const context = await FluoFactory.createApplicationContext(AppModule, {
+    });
+    const resolve = vi.spyOn(context.container, 'resolve');
+
+    const first = await context.get(AppService);
+    const second = await context.get(AppService);
+
+    expect(first).toBe(second);
+    expect(resolve).toHaveBeenCalledTimes(1);
+
+    await context.close();
+  });
+
+  it('recomputes ApplicationContext.get() cacheability after singleton provider overrides', async () => {
+    class AppService {}
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [AppService],
+    });
+
+    const context = await FluoFactory.createApplicationContext(AppModule, {
+    });
+
+    const singleton = await context.get(AppService);
+    expect(await context.get(AppService)).toBe(singleton);
+
+    context.container.override({
+      provide: AppService,
+      scope: 'transient',
+      useFactory: () => ({ marker: Symbol('app-service') }) as AppService,
+    });
+
+    const firstOverride = await context.get(AppService);
+    const secondOverride = await context.get(AppService);
+
+    expect(firstOverride).not.toBe(singleton);
+    expect(secondOverride).not.toBe(singleton);
+    expect(firstOverride).not.toBe(secondOverride);
+
+    await context.close();
+  });
+
+  it.each(['warn', 'ignore'] as const)(
+    'does not cache losing duplicate root singleton providers when policy is %s',
+    async (duplicateProviderPolicy) => {
+      const CACHE_TOKEN = Symbol('cache-token');
+      let resolutionCount = 0;
+
+      class AppModule {}
+      defineModuleMetadata(AppModule, {
+        providers: [
+          {
+            provide: CACHE_TOKEN,
+            useFactory: () => ({ id: 0 }),
+          },
+          {
+            provide: CACHE_TOKEN,
+            scope: 'transient',
+            useFactory: () => ({ id: ++resolutionCount }),
+          },
+        ],
+      });
+
+      const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
+      const context = await FluoFactory.createApplicationContext(AppModule, {
+        duplicateProviderPolicy,
+        logger,
+      });
+
+      const first = await context.get<{ id: number }>(CACHE_TOKEN);
+      const second = await context.get<{ id: number }>(CACHE_TOKEN);
+
+      expect(first).toEqual({ id: 1 });
+      expect(second).toEqual({ id: 2 });
+      expect(first).not.toBe(second);
+
+      await context.close();
+    },
+  );
+
+  it.each(['warn', 'ignore'] as const)(
+    'does not cache losing duplicate runtime singleton providers when policy is %s',
+    async (duplicateProviderPolicy) => {
+      const CACHE_TOKEN = Symbol('runtime-cache-token');
+      let resolutionCount = 0;
+
+      class AppModule {}
+      defineModuleMetadata(AppModule, {});
+
+      const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
+      const context = await FluoFactory.createApplicationContext(AppModule, {
+        duplicateProviderPolicy,
+        logger,
+        providers: [
+          {
+            provide: CACHE_TOKEN,
+            useFactory: () => ({ id: 0 }),
+          },
+          {
+            provide: CACHE_TOKEN,
+            scope: 'transient',
+            useFactory: () => ({ id: ++resolutionCount }),
+          },
+        ],
+      });
+
+      const first = await context.get<{ id: number }>(CACHE_TOKEN);
+      const second = await context.get<{ id: number }>(CACHE_TOKEN);
+
+      expect(first).toEqual({ id: 1 });
+      expect(second).toEqual({ id: 2 });
+      expect(first).not.toBe(second);
+
+      await context.close();
+    },
+  );
+
+  it('does not memoize multi-provider tokens through ApplicationContext.get()', async () => {
+    const MULTI_TOKEN = Symbol('context-multi-token');
+    const firstContribution = { id: 'first' };
+    const secondContribution = { id: 'second' };
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [
+        {
+          multi: true,
+          provide: MULTI_TOKEN,
+          useFactory: () => firstContribution,
+        },
+        {
+          multi: true,
+          provide: MULTI_TOKEN,
+          useFactory: () => secondContribution,
+        },
+      ],
+    });
+
+    const context = await FluoFactory.createApplicationContext(AppModule, {
+    });
+    const resolve = vi.spyOn(context.container, 'resolve');
+
+    const first = await context.get<Array<{ id: string }>>(MULTI_TOKEN);
+    const second = await context.get<Array<{ id: string }>>(MULTI_TOKEN);
+
+    expect(first).toEqual([firstContribution, secondContribution]);
+    expect(second).toEqual([firstContribution, secondContribution]);
+    expect(first).not.toBe(second);
+    expect(first[0]).toBe(second[0]);
+    expect(first[1]).toBe(second[1]);
+    expect(resolve).toHaveBeenCalledTimes(2);
+
+    await context.close();
+  });
+
+  it('does not memoize multi-provider tokens through Application.get()', async () => {
+    const MULTI_TOKEN = Symbol('application-multi-token');
+    const moduleContribution = { id: 'module' };
+    const runtimeContribution = { id: 'runtime' };
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [
+        {
+          multi: true,
+          provide: MULTI_TOKEN,
+          useFactory: () => moduleContribution,
+        },
+      ],
+    });
+
+    const app = await FluoFactory.create(AppModule, {
+      providers: [
+        {
+          multi: true,
+          provide: MULTI_TOKEN,
+          useFactory: () => runtimeContribution,
+        },
+      ],
+    });
+    const resolve = vi.spyOn(app.container, 'resolve');
+
+    const first = await app.get<Array<{ id: string }>>(MULTI_TOKEN);
+    const second = await app.get<Array<{ id: string }>>(MULTI_TOKEN);
+
+    expect(first).toEqual([runtimeContribution, moduleContribution]);
+    expect(second).toEqual([runtimeContribution, moduleContribution]);
+    expect(first).not.toBe(second);
+    expect(first[0]).toBe(second[0]);
+    expect(first[1]).toBe(second[1]);
+    expect(resolve).toHaveBeenCalledTimes(2);
+
+    await app.close();
+  });
+
+  it('resolves independent singleton lifecycle providers concurrently before ordered hooks', async () => {
+    const events: string[] = [];
+    const FIRST = Symbol('first');
+    const SECOND = Symbol('second');
+    const firstCanResolve = createDeferred<void>();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [
+        {
+          provide: FIRST,
+          async useFactory() {
+            events.push('first:resolve:start');
+            await firstCanResolve.promise;
+            events.push('first:resolve:end');
+            return {
+              onModuleInit() {
+                events.push('first:init');
+              },
+            };
+          },
+        },
+        {
+          provide: SECOND,
+          useFactory() {
+            events.push('second:resolve');
+            firstCanResolve.resolve();
+            return {
+              onModuleInit() {
+                events.push('second:init');
+              },
+            };
+          },
+        },
+      ],
+    });
+
+    const context = await FluoFactory.createApplicationContext(AppModule, {
+    });
+
+    expect(events).toEqual([
+      'first:resolve:start',
+      'second:resolve',
+      'first:resolve:end',
+      'first:init',
+      'second:init',
+    ]);
+
+    await context.close();
+  });
+
+  it('cleans up lifecycle instances resolved before parallel provider resolution failure', async () => {
+    const events: string[] = [];
+    const SUCCESS = Symbol('success');
+    const FAILING = Symbol('failing');
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [
+        {
+          provide: SUCCESS,
+          async useFactory() {
+            events.push('success:resolve');
+
+            return {
+              onApplicationShutdown(signal?: string) {
+                events.push(`success:shutdown:${signal ?? 'none'}`);
+              },
+              onModuleDestroy() {
+                events.push('success:destroy');
+              },
+            };
+          },
+        },
+        {
+          provide: FAILING,
+          async useFactory() {
+            events.push('failing:resolve');
+            throw new Error('lifecycle provider failed');
+          },
+        },
+      ],
+    });
+
+    await expect(FluoFactory.createApplicationContext(AppModule, {
+    })).rejects.toThrow('lifecycle provider failed');
+
+    expect(events).toEqual([
+      'success:resolve',
+      'failing:resolve',
+      'success:destroy',
+      'success:shutdown:bootstrap-failed',
+    ]);
+  });
+
   it('runs startup and shutdown lifecycle hooks around close()', async () => {
     const events: string[] = [];
 
@@ -580,6 +890,270 @@ describe('FluoFactory.createApplicationContext', () => {
       'app:shutdown:SIGTERM',
     ]);
   });
+
+  it('runs lifecycle hooks exposed by singleton useValue providers', async () => {
+    const events: string[] = [];
+    const LIFECYCLE_VALUE = Symbol('lifecycle-value');
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [
+        {
+          provide: LIFECYCLE_VALUE,
+          useValue: {
+            onApplicationBootstrap() {
+              events.push('value:bootstrap');
+            },
+            onApplicationShutdown(signal?: string) {
+              events.push(`value:shutdown:${signal ?? 'none'}`);
+            },
+            onModuleDestroy() {
+              events.push('value:destroy');
+            },
+            onModuleInit() {
+              events.push('value:init');
+            },
+          },
+        },
+      ],
+    });
+
+    const context = await FluoFactory.createApplicationContext(AppModule, {
+    });
+
+    expect(events).toEqual(['value:init', 'value:bootstrap']);
+
+    await context.close('SIGTERM');
+
+    expect(events).toEqual([
+      'value:init',
+      'value:bootstrap',
+      'value:destroy',
+      'value:shutdown:SIGTERM',
+    ]);
+  });
+
+  it.each(['warn', 'ignore'] as const)(
+    'runs lifecycle hooks only on winning duplicate useValue providers when policy is %s',
+    async (duplicateProviderPolicy) => {
+      const events: string[] = [];
+      const LIFECYCLE_VALUE = Symbol('lifecycle-value');
+
+      class AppModule {}
+      defineModuleMetadata(AppModule, {
+        providers: [
+          {
+            provide: LIFECYCLE_VALUE,
+            useValue: {
+              onApplicationBootstrap() {
+                events.push('losing:bootstrap');
+              },
+              onApplicationShutdown(signal?: string) {
+                events.push(`losing:shutdown:${signal ?? 'none'}`);
+              },
+              onModuleDestroy() {
+                events.push('losing:destroy');
+              },
+              onModuleInit() {
+                events.push('losing:init');
+              },
+            },
+          },
+          {
+            provide: LIFECYCLE_VALUE,
+            useValue: {
+              onApplicationBootstrap() {
+                events.push('winning:bootstrap');
+              },
+              onApplicationShutdown(signal?: string) {
+                events.push(`winning:shutdown:${signal ?? 'none'}`);
+              },
+              onModuleDestroy() {
+                events.push('winning:destroy');
+              },
+              onModuleInit() {
+                events.push('winning:init');
+              },
+            },
+          },
+        ],
+      });
+
+      const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
+      const context = await FluoFactory.createApplicationContext(AppModule, {
+        duplicateProviderPolicy,
+        logger,
+      });
+
+      expect(events).toEqual(['winning:init', 'winning:bootstrap']);
+
+      await context.close('SIGTERM');
+
+      expect(events).toEqual([
+        'winning:init',
+        'winning:bootstrap',
+        'winning:destroy',
+        'winning:shutdown:SIGTERM',
+      ]);
+    },
+  );
+
+  it.each(['warn', 'ignore'] as const)(
+    'runs lifecycle hooks only on winning duplicate runtime useValue providers when policy is %s',
+    async (duplicateProviderPolicy) => {
+      const events: string[] = [];
+      const LIFECYCLE_VALUE = Symbol('runtime-lifecycle-value');
+
+      class AppModule {}
+      defineModuleMetadata(AppModule, {});
+
+      const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
+      const context = await FluoFactory.createApplicationContext(AppModule, {
+        duplicateProviderPolicy,
+        logger,
+        providers: [
+          {
+            provide: LIFECYCLE_VALUE,
+            useValue: {
+              onApplicationBootstrap() {
+                events.push('losing:bootstrap');
+              },
+              onApplicationShutdown(signal?: string) {
+                events.push(`losing:shutdown:${signal ?? 'none'}`);
+              },
+              onModuleDestroy() {
+                events.push('losing:destroy');
+              },
+              onModuleInit() {
+                events.push('losing:init');
+              },
+            },
+          },
+          {
+            provide: LIFECYCLE_VALUE,
+            useValue: {
+              onApplicationBootstrap() {
+                events.push('winning:bootstrap');
+              },
+              onApplicationShutdown(signal?: string) {
+                events.push(`winning:shutdown:${signal ?? 'none'}`);
+              },
+              onModuleDestroy() {
+                events.push('winning:destroy');
+              },
+              onModuleInit() {
+                events.push('winning:init');
+              },
+            },
+          },
+        ],
+      });
+
+      expect(events).toEqual(['winning:init', 'winning:bootstrap']);
+
+      await context.close('SIGTERM');
+
+      expect(events).toEqual([
+        'winning:init',
+        'winning:bootstrap',
+        'winning:destroy',
+        'winning:shutdown:SIGTERM',
+      ]);
+    },
+  );
+
+  it.each(['warn', 'ignore'] as const)(
+    'ignores stale losing lifecycle hooks when the duplicate winner has no hooks and policy is %s',
+    async (duplicateProviderPolicy) => {
+      const events: string[] = [];
+      const LIFECYCLE_VALUE = Symbol('lifecycle-value');
+
+      class AppModule {}
+      defineModuleMetadata(AppModule, {
+        providers: [
+          {
+            provide: LIFECYCLE_VALUE,
+            useValue: {
+              onApplicationBootstrap() {
+                events.push('losing:bootstrap');
+              },
+              onApplicationShutdown(signal?: string) {
+                events.push(`losing:shutdown:${signal ?? 'none'}`);
+              },
+              onModuleDestroy() {
+                events.push('losing:destroy');
+              },
+              onModuleInit() {
+                events.push('losing:init');
+              },
+            },
+          },
+          {
+            provide: LIFECYCLE_VALUE,
+            useValue: { marker: 'winning-without-hooks' },
+          },
+        ],
+      });
+
+      const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
+      const context = await FluoFactory.createApplicationContext(AppModule, {
+        duplicateProviderPolicy,
+        logger,
+      });
+
+      expect(events).toEqual([]);
+
+      await context.close('SIGTERM');
+
+      expect(events).toEqual([]);
+    },
+  );
+
+  it.each(['warn', 'ignore'] as const)(
+    'ignores stale losing runtime lifecycle hooks when the duplicate winner has no hooks and policy is %s',
+    async (duplicateProviderPolicy) => {
+      const events: string[] = [];
+      const LIFECYCLE_VALUE = Symbol('runtime-lifecycle-value-without-hooks');
+
+      class AppModule {}
+      defineModuleMetadata(AppModule, {});
+
+      const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
+      const context = await FluoFactory.createApplicationContext(AppModule, {
+        duplicateProviderPolicy,
+        logger,
+        providers: [
+          {
+            provide: LIFECYCLE_VALUE,
+            useValue: {
+              onApplicationBootstrap() {
+                events.push('losing:bootstrap');
+              },
+              onApplicationShutdown(signal?: string) {
+                events.push(`losing:shutdown:${signal ?? 'none'}`);
+              },
+              onModuleDestroy() {
+                events.push('losing:destroy');
+              },
+              onModuleInit() {
+                events.push('losing:init');
+              },
+            },
+          },
+          {
+            provide: LIFECYCLE_VALUE,
+            useValue: { marker: 'winning-without-hooks' },
+          },
+        ],
+      });
+
+      expect(events).toEqual([]);
+
+      await context.close('SIGTERM');
+
+      expect(events).toEqual([]);
+    },
+  );
 
   it('does not collect bootstrap timing diagnostics by default', async () => {
     class AppModule {}

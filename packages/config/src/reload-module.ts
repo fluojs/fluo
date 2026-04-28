@@ -3,7 +3,10 @@ import { defineModuleMetadata } from '@fluojs/core/internal';
 
 import { cloneConfigDictionary } from './clone.js';
 import { createConfigReloader } from './load.js';
-import { ConfigService, replaceConfigServiceSnapshot } from './service.js';
+import {
+  ConfigService,
+  replaceConfigServiceSnapshotUnchecked,
+} from './service.js';
 import type {
   ConfigDictionary,
   ConfigLoadOptions,
@@ -100,13 +103,13 @@ export class ConfigReloadManager implements ConfigReloader {
       const previousConfig = this.config.snapshot();
 
       try {
-        replaceConfigServiceSnapshot(this.config, nextConfig);
+        replaceConfigServiceSnapshotUnchecked(this.config, nextConfig);
 
         for (const listener of this.reloadListeners) {
           listener(cloneConfigDictionary(nextConfig), reason);
         }
       } catch (error: unknown) {
-        replaceConfigServiceSnapshot(this.config, previousConfig);
+        replaceConfigServiceSnapshotUnchecked(this.config, previousConfig);
         throw error;
       }
     });

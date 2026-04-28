@@ -1,4 +1,5 @@
 import type { MetadataPropertyKey } from '@fluojs/core';
+import { ensureSymbolMetadataPolyfill, getStandardConstructorMetadataBag, getStandardMetadataBag } from '@fluojs/core/internal';
 
 import type {
   WebSocketGatewayHandlerMetadata,
@@ -7,15 +8,7 @@ import type {
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 
-const symbolWithMetadata = Symbol as typeof Symbol & { metadata?: symbol };
-const metadataSymbol = symbolWithMetadata.metadata ?? Symbol.for('fluo.symbol.metadata');
-
-if (!symbolWithMetadata.metadata) {
-  Object.defineProperty(Symbol, 'metadata', {
-    configurable: true,
-    value: metadataSymbol,
-  });
-}
+void ensureSymbolMetadataPolyfill();
 
 const standardWebSocketGatewayMetadataKey = Symbol.for('fluo.websocket.standard.gateway');
 const standardWebSocketHandlerMetadataKey = Symbol.for('fluo.websocket.standard.handler');
@@ -41,10 +34,6 @@ function cloneHandlerMetadata(metadata: WebSocketGatewayHandlerMetadata): WebSoc
   };
 }
 
-function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
-  return (target as Record<symbol, StandardMetadataBag | undefined>)[metadataSymbol];
-}
-
 function getStandardGatewayMetadata(target: object): WebSocketGatewayMetadata | undefined {
   const metadata = getStandardMetadataBag(target)?.[standardWebSocketGatewayMetadataKey] as
     | WebSocketGatewayMetadata
@@ -58,13 +47,9 @@ function getStandardGatewayMetadata(target: object): WebSocketGatewayMetadata | 
 }
 
 function getStandardHandlerMap(target: object): Map<MetadataPropertyKey, WebSocketGatewayHandlerMetadata> | undefined {
-  const constructor = (target as { constructor?: object }).constructor;
-
-  return constructor
-    ? (getStandardMetadataBag(constructor)?.[standardWebSocketHandlerMetadataKey] as
-        | Map<MetadataPropertyKey, WebSocketGatewayHandlerMetadata>
-        | undefined)
-    : undefined;
+  return getStandardConstructorMetadataBag(target)?.[standardWebSocketHandlerMetadataKey] as
+    | Map<MetadataPropertyKey, WebSocketGatewayHandlerMetadata>
+    | undefined;
 }
 
 function getOrCreateHandlerMetadataMap(target: object): Map<MetadataPropertyKey, WebSocketGatewayHandlerMetadata> {

@@ -80,6 +80,12 @@ class MyService {
 
 `validate` 함수는 모든 소스가 합쳐진 뒤 실행되며, 에러를 던지면 부트스트랩이 즉시 중단됩니다.
 
+### 런타임 접근과 리로드 비용 모델
+
+`ConfigService.get('a.b.c')`는 dot-path 세그먼트를 순서대로 탐색하므로 조회 비용은 path 깊이에 비례합니다. `get()`, `getOrThrow()`, `snapshot()`이 객체 형태의 값을 반환할 때는 분리된 clone을 반환합니다. 따라서 clone 비용은 반환되는 subtree 크기에 비례하며, 호출자 mutation은 활성 config snapshot에 영향을 주지 않습니다.
+
+`ConfigReloadManager.reload()`는 리로드 작업을 직렬화합니다. 현재 리로드가 listener 알림을 수행하는 동안 다른 리로드가 요청되면 후속 리로드는 큐에 들어가 활성 알림이 끝난 뒤 적용됩니다. 활성 알림이 실패하면 이전 snapshot을 복구하고 큐에 있던 리로드는 폐기합니다. 동일한 직렬화와 rollback 계약은 `createConfigReloader(...).reload()`에도 적용되며, watch로 시작된 알림 중 큐에 들어간 manual reload도 이 계약을 따릅니다.
+
 ## 공개 API
 
 | 클래스/헬퍼 | 설명 |
@@ -92,7 +98,7 @@ class MyService {
 | `loadConfig(options)` | 설정을 수동으로 로드하기 위한 함수형 엔트리 포인트입니다. |
 | `createConfigReloader(options)` | 동적 설정 업데이트를 위한 리로더를 생성합니다. |
 
-`ConfigReloadManager.reload()`는 기존 `ConfigService` 인스턴스를 갱신하므로 소비자는 주입받은 서비스 identity를 유지하면서 새 스냅샷을 관찰합니다. 리로드 listener가 에러를 던지면 매니저는 이전 스냅샷을 복구하고 listener 에러를 다시 던집니다.
+`ConfigReloadManager.reload()`는 기존 `ConfigService` 인스턴스를 갱신하므로 소비자는 주입받은 서비스 identity를 유지하면서 새 스냅샷을 관찰합니다. 리로드 listener가 에러를 던지면 매니저는 이전 스냅샷을 복구하고 listener 에러를 다시 던집니다. `createConfigReloader(...).reload()`도 standalone reloader snapshot에 대해 동일한 listener 직렬화와 rollback 동작을 따릅니다.
 
 ## 관련 패키지
 

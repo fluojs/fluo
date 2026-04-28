@@ -1,5 +1,5 @@
 import { Inject } from '@fluojs/core';
-import { metadataSymbol } from '@fluojs/core/internal';
+import { getStandardMetadataBag } from '@fluojs/core/internal';
 import { TooManyRequestsException, type Guard, type GuardContext, type MiddlewareContext } from '@fluojs/http';
 import { resolveClientIdentity } from '@fluojs/http/internal';
 
@@ -18,7 +18,7 @@ import { validateThrottleOptions, validateThrottlerModuleOptions, validateThrott
 type MetadataBag = Record<PropertyKey, unknown>;
 
 function getClassMetadataBag(target: object): MetadataBag | undefined {
-  return (target as Record<symbol, MetadataBag | undefined>)[metadataSymbol];
+  return getStandardMetadataBag(target);
 }
 
 function getMethodMetadataBag(controllerToken: Function, methodName: string): MetadataBag | undefined {

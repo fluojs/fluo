@@ -1,9 +1,7 @@
 import { type MetadataPropertyKey } from '@fluojs/core';
-import { ensureSymbolMetadataPolyfill, metadataSymbol } from '@fluojs/core/internal';
+import { ensureSymbolMetadataPolyfill, getStandardConstructorMetadataBag } from '@fluojs/core/internal';
 
 import type { EventHandlerMetadata } from './types.js';
-
-type StandardMetadataBag = Record<PropertyKey, unknown>;
 
 void ensureSymbolMetadataPolyfill();
 
@@ -16,16 +14,10 @@ function cloneEventHandlerMetadata(metadata: EventHandlerMetadata): EventHandler
   };
 }
 
-function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
-  return (target as Record<symbol, StandardMetadataBag | undefined>)[metadataSymbol];
-}
-
 function getStandardEventHandlerMap(target: object): Map<MetadataPropertyKey, EventHandlerMetadata> | undefined {
-  const constructor = (target as { constructor?: object }).constructor;
-
-  return constructor
-    ? (getStandardMetadataBag(constructor)?.[standardEventHandlerMetadataKey] as Map<MetadataPropertyKey, EventHandlerMetadata> | undefined)
-    : undefined;
+  return getStandardConstructorMetadataBag(target)?.[standardEventHandlerMetadataKey] as
+    | Map<MetadataPropertyKey, EventHandlerMetadata>
+    | undefined;
 }
 
 function getOrCreateEventHandlerMap(target: object): Map<MetadataPropertyKey, EventHandlerMetadata> {

@@ -255,9 +255,15 @@ function resolveImportedModules(
 }
 
 function createImportedExportedTokenSet(importedModules: CompiledModule[]): Set<Token> {
-  return new Set<Token>(
-    importedModules.flatMap((imported) => Array.from(imported.exportedTokens)),
-  );
+  const importedExportedTokens = new Set<Token>();
+
+  for (const importedModule of importedModules) {
+    for (const token of importedModule.exportedTokens) {
+      importedExportedTokens.add(token);
+    }
+  }
+
+  return importedExportedTokens;
 }
 
 function createAccessibleTokenSet(
@@ -381,8 +387,7 @@ function validateCompiledModules(
 
   for (const compiledModule of modules) {
     const scope = `module ${compiledModule.type.name}`;
-    const importedModules = resolveImportedModules(compiledModule, compiledByType);
-    const importedExportedTokens = createImportedExportedTokenSet(importedModules);
+    const importedExportedTokens = createImportedExportedTokenSet(resolveImportedModules(compiledModule, compiledByType));
     const accessibleTokens = createAccessibleTokenSet(
       runtimeProviderTokens,
       compiledModule.providerTokens,

@@ -1,13 +1,14 @@
-import { createClonedWeakMapStore } from './store.js';
 import type { ClassDiMetadata } from './types.js';
 
-const classDiMetadataStore = createClonedWeakMapStore<Function, ClassDiMetadata>(cloneClassDiMetadata);
+const classDiMetadataStore = new WeakMap<Function, ClassDiMetadata>();
+const inheritedClassDiMetadataCache = new WeakMap<Function, { metadata: ClassDiMetadata | null; version: number }>();
+let classDiMetadataVersion = 0;
 
-function cloneClassDiMetadata(metadata: ClassDiMetadata): ClassDiMetadata {
-  return {
-    inject: metadata.inject ? [...metadata.inject] : undefined,
+function freezeClassDiMetadata(metadata: ClassDiMetadata): ClassDiMetadata {
+  return Object.freeze({
+    inject: metadata.inject ? Object.freeze([...metadata.inject]) as ClassDiMetadata['inject'] : undefined,
     scope: metadata.scope,
-  };
+  }) as ClassDiMetadata;
 }
 
 function getClassMetadataLineage(target: Function): Function[] {
@@ -31,20 +32,23 @@ function getClassMetadataLineage(target: Function): Function[] {
  * @param metadata Partial or complete DI metadata payload.
  */
 export function defineClassDiMetadata(target: Function, metadata: ClassDiMetadata): void {
-  classDiMetadataStore.update(target, (existing) => ({
+  const existing = classDiMetadataStore.get(target);
+
+  classDiMetadataStore.set(target, freezeClassDiMetadata({
     inject: metadata.inject !== undefined ? metadata.inject : existing?.inject,
     scope: metadata.scope ?? existing?.scope,
   }));
+  classDiMetadataVersion += 1;
 }
 
 /**
  * Reads only the DI metadata defined directly on a class.
  *
  * @param target Class being inspected.
- * @returns A defensive clone of the class's own DI metadata, or `undefined` when absent.
+ * @returns A frozen class DI metadata snapshot, or `undefined` when absent.
  */
 export function getOwnClassDiMetadata(target: Function): ClassDiMetadata | undefined {
-  return classDiMetadataStore.read(target);
+  return classDiMetadataStore.get(target);
 }
 
 /**
@@ -54,22 +58,33 @@ export function getOwnClassDiMetadata(target: Function): ClassDiMetadata | undef
  * @returns The effective inherited DI metadata, or `undefined` when no lineage metadata exists.
  */
 export function getInheritedClassDiMetadata(target: Function): ClassDiMetadata | undefined {
+  const cached = inheritedClassDiMetadataCache.get(target);
+
+  if (cached?.version === classDiMetadataVersion) {
+    return cached.metadata ?? undefined;
+  }
+
   let effective: ClassDiMetadata | undefined;
 
   for (const constructor of getClassMetadataLineage(target)) {
-    const metadata = classDiMetadataStore.read(constructor);
+    const metadata = classDiMetadataStore.get(constructor);
 
     if (!metadata) {
       continue;
     }
 
-    effective = {
+    effective = freezeClassDiMetadata({
       inject: metadata.inject ?? effective?.inject,
       scope: metadata.scope ?? effective?.scope,
-    };
+    });
   }
 
-  return effective ? cloneClassDiMetadata(effective) : undefined;
+  inheritedClassDiMetadataCache.set(target, {
+    metadata: effective ?? null,
+    version: classDiMetadataVersion,
+  });
+
+  return effective;
 }
 
 /**

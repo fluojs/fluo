@@ -2,11 +2,41 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getModuleMetadata } from '@fluojs/core/internal';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createConfigReloader, loadConfig } from './load.js';
 import { ConfigModule } from './module.js';
 import { ConfigService, replaceConfigServiceSnapshot } from './service.js';
+
+const watchCallbacks = vi.hoisted(() => new Set<() => void>());
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+
+  return {
+    ...actual,
+    watch: vi.fn((_filename, _options, listener) => {
+      const callback = () => listener('change', null);
+      watchCallbacks.add(callback);
+
+      return {
+        close: vi.fn(() => {
+          watchCallbacks.delete(callback);
+        }),
+      };
+    }),
+  };
+});
+
+function emitWatchChange(): void {
+  for (const callback of [...watchCallbacks]) {
+    callback();
+  }
+}
+
+beforeEach(() => {
+  watchCallbacks.clear();
+});
 
 async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
   const startedAt = Date.now();
@@ -20,10 +50,6 @@ async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Pr
   }
 
   throw new Error('Timed out waiting for condition.');
-}
-
-async function delay(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 describe('loadConfig', () => {
@@ -362,13 +388,13 @@ describe('loadConfig', () => {
         errors.push(message);
       });
 
-      await delay(100);
       writeFileSync(envPath, 'PORT=oops\n');
+      emitWatchChange();
       await waitForCondition(() => errors.length > 0);
       expect(reloader.current()['PORT']).toBe('4000');
 
-      await delay(100);
       writeFileSync(envPath, 'PORT=4300\n');
+      emitWatchChange();
       await waitForCondition(() => updates.includes('4300'));
       expect(reloader.current()['PORT']).toBe('4300');
 
@@ -407,6 +433,125 @@ describe('loadConfig', () => {
     }
   });
 
+  it('serializes reentrant reload calls until the active notification finishes', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-reload-serialized-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const reloader = createConfigReloader({
+      cwd,
+      envFile: envPath,
+      processEnv: {},
+    });
+
+    try {
+      const updates: string[] = [];
+      let requestedNestedReload = false;
+
+      reloader.subscribe((snapshot, reason) => {
+        if (reason !== 'manual') {
+          return;
+        }
+
+        const port = snapshot['PORT'];
+        if (typeof port === 'string') {
+          updates.push(port);
+        }
+
+        if (!requestedNestedReload) {
+          requestedNestedReload = true;
+          writeFileSync(envPath, 'PORT=4200\n');
+          reloader.reload();
+        }
+      });
+
+      writeFileSync(envPath, 'PORT=4100\n');
+      const reloaded = reloader.reload();
+
+      expect(reloaded['PORT']).toBe('4200');
+      expect(reloader.current()['PORT']).toBe('4200');
+      expect(updates).toEqual(['4100', '4200']);
+    } finally {
+      reloader.close();
+    }
+  });
+
+  it('drops queued reentrant reloads when the active notification rolls back', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-reload-serialized-rollback-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const reloader = createConfigReloader({
+      cwd,
+      envFile: envPath,
+      processEnv: {},
+    });
+
+    try {
+      reloader.subscribe((_snapshot, reason) => {
+        if (reason !== 'manual') {
+          return;
+        }
+
+        writeFileSync(envPath, 'PORT=4300\n');
+        reloader.reload();
+        throw new Error('listener failed after nested reload');
+      });
+
+      writeFileSync(envPath, 'PORT=4100\n');
+
+      expect(() => reloader.reload()).toThrow('listener failed after nested reload');
+      expect(reloader.current()['PORT']).toBe('4000');
+    } finally {
+      reloader.close();
+    }
+  });
+
+  it('reports queued manual reload failures with the manual reason during watch reloads', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-watch-manual-error-reason-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const reloader = createConfigReloader({
+      cwd,
+      envFile: envPath,
+      processEnv: {},
+      watch: true,
+    });
+
+    try {
+      const errorReasons: string[] = [];
+      let queuedManualReload = false;
+
+      reloader.subscribe((_snapshot, reason) => {
+        if (reason === 'watch' && !queuedManualReload) {
+          queuedManualReload = true;
+          writeFileSync(envPath, 'PORT=4200\n');
+          reloader.reload();
+          return;
+        }
+
+        if (reason === 'manual') {
+          throw new Error('queued manual listener failed');
+        }
+      });
+      reloader.subscribeError((_error, reason) => {
+        errorReasons.push(reason);
+      });
+
+      writeFileSync(envPath, 'PORT=4100\n');
+      emitWatchChange();
+
+      expect(errorReasons).toEqual(['manual']);
+      expect(reloader.current()['PORT']).toBe('4100');
+    } finally {
+      reloader.close();
+    }
+  });
+
   it('stops watch notifications after close', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-watch-close-'));
     const envPath = join(cwd, '.env.dev');
@@ -435,7 +580,7 @@ describe('loadConfig', () => {
     reloader.close();
 
     writeFileSync(envPath, 'PORT=4400\n');
-    await delay(150);
+    emitWatchChange();
 
     expect(updates).toHaveLength(0);
   });
@@ -475,8 +620,8 @@ describe('loadConfig', () => {
         }
       });
 
-      await delay(100);
       writeFileSync(envPath, 'PORT=4500\n');
+      emitWatchChange();
       await waitForCondition(() => observedBySecondListener !== undefined);
 
       expect(observedBySecondListener).toBe('4500');
@@ -591,6 +736,42 @@ describe('ConfigService', () => {
 });
 
 describe('ConfigModule', () => {
+  it('loads configuration once during provider creation and reuses the service snapshot', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-module-bootstrap-once-'));
+    const envPath = join(cwd, '.env.dev');
+    let parseCalls = 0;
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const moduleRef = ConfigModule.forRoot({
+      envFile: envPath,
+      parse: (content) => {
+        parseCalls += 1;
+        const result: Record<string, string> = {};
+
+        for (const line of content.trim().split('\n')) {
+          const [key, value] = line.split('=');
+          if (key && value) {
+            result[key] = value;
+          }
+        }
+
+        return result;
+      },
+      processEnv: {},
+    });
+    const providers = getModuleMetadata(moduleRef)?.providers as
+      | Array<{ provide?: unknown; useFactory?: () => unknown }>
+      | undefined;
+    const configProvider = providers?.find((provider) => provider.provide === ConfigService);
+    const service = configProvider?.useFactory?.() as ConfigService | undefined;
+
+    expect(service?.get('PORT')).toBe('4000');
+    expect(service?.getOrThrow('PORT')).toBe('4000');
+    expect(service?.snapshot()['PORT']).toBe('4000');
+    expect(parseCalls).toBe(1);
+  });
+
   it('uses the provided processEnv snapshot through ConfigService registration', () => {
     const previousValue = process.env.FLUO_CONFIG_MODULE_TEST_ONLY;
     process.env.FLUO_CONFIG_MODULE_TEST_ONLY = 'from-module-process-env';

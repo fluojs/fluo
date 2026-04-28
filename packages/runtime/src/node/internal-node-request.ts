@@ -23,6 +23,11 @@ type NodeFrameworkRequest = FrameworkRequest & {
   rawBody?: Uint8Array;
 };
 
+type MemoizedValue<T> = () => T;
+
+/**
+ * HTTP payload-size error that closes the underlying Node request stream after the response commits.
+ */
 export class NodeRequestPayloadTooLargeException extends PayloadTooLargeException {
   constructor(private readonly request: IncomingMessage) {
     super('Request body exceeds the size limit.');
@@ -62,6 +67,10 @@ export async function createFrameworkRequest(
 ): Promise<FrameworkRequest> {
   const url = new URL(request.url ?? '/', 'http://localhost');
   const headers = cloneRequestHeaders(request.headers);
+  const cookieHeader = cloneHeaderValue(headers.cookie);
+  const searchParams = new URLSearchParams(url.searchParams);
+  const cookies = createMemoizedValue(() => parseCookieHeader(cookieHeader));
+  const query = createMemoizedValue(() => parseQueryParams(searchParams));
   const contentType = readPrimaryHeaderValue(headers['content-type']);
   const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
 
@@ -92,12 +101,16 @@ export async function createFrameworkRequest(
 
   const frameworkRequest: NodeFrameworkRequest = {
     body,
-    cookies: parseCookieHeader(headers.cookie),
+    get cookies() {
+      return cookies();
+    },
     headers,
     method: request.method ?? 'GET',
     params: {},
     path: url.pathname,
-    query: parseQueryParams(url.searchParams),
+    get query() {
+      return query();
+    },
     raw: request,
     signal,
     url: url.pathname + url.search,
@@ -112,6 +125,20 @@ export async function createFrameworkRequest(
   }
 
   return frameworkRequest;
+}
+
+function createMemoizedValue<T>(factory: () => T): MemoizedValue<T> {
+  let initialized = false;
+  let value: T;
+
+  return () => {
+    if (!initialized) {
+      value = factory();
+      initialized = true;
+    }
+
+    return value;
+  };
 }
 
 /**
@@ -171,9 +198,13 @@ function parseQueryParams(searchParams: URLSearchParams): Record<string, string 
 }
 
 function cloneRequestHeaders(headers: IncomingHttpHeaders): FrameworkRequest['headers'] {
-  const clonedEntries = Object.entries(headers).map(([name, value]) => [name, Array.isArray(value) ? [...value] : value]);
+  const clonedEntries = Object.entries(headers).map(([name, value]) => [name, cloneHeaderValue(value)]);
 
   return Object.fromEntries(clonedEntries);
+}
+
+function cloneHeaderValue<T extends string | string[] | undefined>(value: T): T {
+  return (Array.isArray(value) ? [...value] : value) as T;
 }
 
 function readPrimaryHeaderValue(headerValue: string | string[] | undefined): string | undefined {

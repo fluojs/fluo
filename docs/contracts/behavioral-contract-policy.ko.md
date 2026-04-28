@@ -17,6 +17,7 @@ Behavioral contract의 예시는 다음과 같습니다.
 - 데코레이터가 모듈 초기화 전에 실행된다.
 - provider가 필수 입력이 없을 때 configuration error를 던진다.
 - platform adapter가 종료 중 idle keep alive connection을 닫는다.
+- config reload manager가 겹치는 reload 요청을 직렬화하고 reload listener 실패 시 이전 snapshot으로 롤백한다.
 
 ## Rule 2: Breaking Change Policy
 

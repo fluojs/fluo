@@ -15,7 +15,7 @@ import {
 import { DuplicateProviderError } from './errors.js';
 import { createBootstrapTimingDiagnostics, type BootstrapTimingPhase } from './health/diagnostics.js';
 import { createConsoleApplicationLogger } from './logging/logger.js';
-import { compileModuleGraph, createRuntimeTokenSet, providerToken } from './module-graph.js';
+import { compileModuleGraph, providerToken } from './module-graph.js';
 import { createRuntimePlatformShell, type RuntimePlatformShell } from './platform-shell.js';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CONTAINER } from './tokens.js';
 import type {
@@ -28,6 +28,7 @@ import type {
   BootstrapApplicationOptions,
   BootstrapModuleOptions,
   BootstrapResult,
+  BootstrapEffectiveProviders,
   CompiledModule,
   CreateApplicationOptions,
   CreateApplicationContextOptions,
@@ -43,6 +44,11 @@ import type {
 
 const DEFAULT_MICROSERVICE_TOKEN = Symbol.for('fluo.microservices.service') as Token<MicroserviceRuntime>;
 const runtimePerformance = globalThis.performance;
+
+type ContextResolutionCache = Map<Token, Promise<unknown>>;
+type ContextCacheableTokens = Set<Token>;
+
+type CacheInvalidatingContainer = Container & { override(...providers: Provider[]): Container };
 
 async function runExceptionFilters(
   filters: readonly ExceptionFilterHandler[],
@@ -255,6 +261,7 @@ type DuplicateProviderPolicy = Exclude<BootstrapModuleOptions['duplicateProvider
 
 interface SelectedProviderEntry {
   moduleName: string;
+  moduleType?: ModuleType;
   provider: Provider;
   source: 'module' | 'runtime';
   token: Token;
@@ -265,56 +272,163 @@ function createDuplicateProviderMessage(token: Token, moduleName: string, existi
   return `Duplicate provider token "${tokenLabel}" registered in module "${moduleName}". Previously registered in module "${existingModuleName}".`;
 }
 
-function collectProvidersForContainer(
-  modules: CompiledModule[],
-  runtimeProviders: Provider[] | undefined,
+function createDuplicateRuntimeProviderMessage(token: Token): string {
+  const tokenLabel = typeof token === 'function' ? token.name || '<anonymous>' : String(token);
+  return `Duplicate runtime provider token "${tokenLabel}" registered.`;
+}
+
+function handleDuplicateProvider(
+  token: Token,
+  moduleName: string,
+  existingModuleName: string,
   policy: DuplicateProviderPolicy,
   logger?: ApplicationLogger,
-): Provider[] {
-  const selectedProviders = new Map<Token, SelectedProviderEntry>();
+): void {
+  const message = createDuplicateProviderMessage(token, moduleName, existingModuleName);
+
+  if (policy === 'throw') {
+    throw new DuplicateProviderError(message, {
+      module: moduleName,
+      token,
+      phase: 'provider registration',
+      hint: `Remove the duplicate registration from one of the modules, use container.override() for intentional replacements, or set duplicateProviderPolicy to 'warn' or 'ignore'.`,
+    });
+  }
+
+  if (policy === 'warn') {
+    logger?.warn(message, 'BootstrapModule');
+  }
+}
+
+function handleDuplicateRuntimeProvider(
+  token: Token,
+  policy: DuplicateProviderPolicy,
+  logger?: ApplicationLogger,
+): void {
+  const message = createDuplicateRuntimeProviderMessage(token);
+
+  if (policy === 'throw') {
+    throw new DuplicateProviderError(message, {
+      module: '<runtime>',
+      token,
+      phase: 'provider registration',
+      hint: `Remove the duplicate runtime provider registration, use container.override() after bootstrap for intentional replacements, or set duplicateProviderPolicy to 'warn' or 'ignore'.`,
+    });
+  }
+
+  if (policy === 'warn') {
+    logger?.warn(message, 'BootstrapModule');
+  }
+}
+
+function selectEffectiveBootstrapProviders(
+  modules: CompiledModule[],
+  runtimeProviders: Provider[] | undefined,
+  rootModule: ModuleType,
+  policy: DuplicateProviderPolicy,
+  logger?: ApplicationLogger,
+): BootstrapEffectiveProviders {
+  const selectedRuntimeProviderIndexes = new Map<Token, number>();
+  const selectedModuleProviderIndexes = new Map<Token, number>();
+  const runtimeMultiTokens = new Set<Token>();
+  const runtimeSingleTokens = new Set<Token>();
+  const runtimeProviderEntries: SelectedProviderEntry[] = [];
+  const moduleProviderEntries: SelectedProviderEntry[] = [];
 
   for (const runtimeProvider of runtimeProviders ?? []) {
     const token = providerToken(runtimeProvider);
-    selectedProviders.set(token, {
+    const multi = isMultiProvider(runtimeProvider);
+    const existingRuntimeProviderIndex = selectedRuntimeProviderIndexes.get(token);
+
+    if (multi) {
+      runtimeMultiTokens.add(token);
+    } else {
+      runtimeSingleTokens.add(token);
+    }
+
+    if (!multi && existingRuntimeProviderIndex !== undefined) {
+      handleDuplicateRuntimeProvider(token, policy, logger);
+    }
+
+    runtimeProviderEntries.push({
       moduleName: '<runtime>',
       provider: runtimeProvider,
       source: 'runtime',
       token,
     });
+
+    if (!multi) {
+      selectedRuntimeProviderIndexes.set(token, runtimeProviderEntries.length - 1);
+    }
   }
 
   for (const compiledModule of modules) {
     for (const provider of compiledModule.definition.providers ?? []) {
       const token = providerToken(provider);
-      const existing = selectedProviders.get(token);
+      const multi = isMultiProvider(provider);
+      const existingModuleProviderIndex = selectedModuleProviderIndexes.get(token);
+      const existing = existingModuleProviderIndex === undefined
+        ? undefined
+        : moduleProviderEntries[existingModuleProviderIndex];
 
-      if (existing && existing.source === 'module') {
-        const message = createDuplicateProviderMessage(token, compiledModule.type.name, existing.moduleName);
-
-        if (policy === 'throw') {
-          throw new DuplicateProviderError(message, {
-            module: compiledModule.type.name,
-            token,
-            phase: 'provider registration',
-            hint: `Remove the duplicate registration from one of the modules, use container.override() for intentional replacements, or set duplicateProviderPolicy to 'warn' or 'ignore'.`,
-          });
-        }
-
-        if (policy === 'warn') {
-          logger?.warn(message, 'BootstrapModule');
-        }
+      if (!multi && existing && existing.source === 'module') {
+        handleDuplicateProvider(token, compiledModule.type.name, existing.moduleName, policy, logger);
       }
 
-      selectedProviders.set(token, {
+      const entry: SelectedProviderEntry = {
         moduleName: compiledModule.type.name,
+        moduleType: compiledModule.type,
         provider,
         source: 'module',
         token,
-      });
+      };
+
+      moduleProviderEntries.push(entry);
+
+      if (!multi) {
+        selectedModuleProviderIndexes.set(token, moduleProviderEntries.length - 1);
+      }
     }
   }
 
-  return [...selectedProviders.values()].map((entry) => entry.provider);
+  const selectedModuleProviderIndexesSet = new Set(selectedModuleProviderIndexes.values());
+  const selectedRuntimeProviderIndexesSet = new Set(selectedRuntimeProviderIndexes.values());
+  const moduleProviders: Provider[] = [];
+  const rootModuleProviders: Provider[] = [];
+  const effectiveRuntimeProviders = runtimeProviderEntries
+    .filter((entry, index) => isMultiProvider(entry.provider) || selectedRuntimeProviderIndexesSet.has(index))
+    .map((entry) => entry.provider);
+
+  moduleProviderEntries.forEach((entry, index) => {
+    const multi = isMultiProvider(entry.provider);
+
+    if (entry.source !== 'module' || (!multi && !selectedModuleProviderIndexesSet.has(index))) {
+      return;
+    }
+
+    if (runtimeSingleTokens.has(entry.token) || (runtimeMultiTokens.has(entry.token) && !multi)) {
+      return;
+    }
+
+    moduleProviders.push(entry.provider);
+
+    if (entry.moduleType === rootModule) {
+      rootModuleProviders.push(entry.provider);
+    }
+  });
+
+  return {
+    moduleProviders,
+    rootModuleProviders,
+    runtimeProviders: effectiveRuntimeProviders,
+  };
+}
+
+function isMultiProvider(provider: Provider): boolean {
+  return typeof provider === 'object'
+    && provider !== null
+    && 'multi' in provider
+    && provider.multi === true;
 }
 
 function registerControllers(container: Container, modules: CompiledModule[]): void {
@@ -381,16 +495,20 @@ export function bootstrapModule(rootModule: ModuleType, options: BootstrapModule
   const policy: DuplicateProviderPolicy = options.duplicateProviderPolicy ?? 'warn';
 
   const runtimeProviders = options.providers ?? [];
-  const runtimeProviderTokens = createRuntimeTokenSet(runtimeProviders);
-  const moduleProviders = collectProvidersForContainer(modules, runtimeProviders, policy, options.logger)
-    .filter((provider) => !runtimeProviderTokens.has(providerToken(provider)));
+  const effectiveProviders = selectEffectiveBootstrapProviders(
+    modules,
+    runtimeProviders,
+    rootModule,
+    policy,
+    options.logger,
+  );
 
-  if (runtimeProviders.length > 0) {
-    container.register(...runtimeProviders);
+  if (effectiveProviders.runtimeProviders.length > 0) {
+    container.register(...effectiveProviders.runtimeProviders);
   }
 
-  if (moduleProviders.length > 0) {
-    container.register(...moduleProviders);
+  if (effectiveProviders.moduleProviders.length > 0) {
+    container.register(...effectiveProviders.moduleProviders);
   }
 
   registerControllers(container, modules);
@@ -398,6 +516,7 @@ export function bootstrapModule(rootModule: ModuleType, options: BootstrapModule
 
   return {
     container,
+    effectiveProviders,
     modules,
     rootModule,
   };
@@ -410,6 +529,7 @@ class FluoApplication implements Application {
   private applicationState: ApplicationState = 'bootstrapped';
   private closed = false;
   private closingPromise: Promise<void> | undefined;
+  private readonly contextResolutionCache: ContextResolutionCache = new Map();
   private readonly lifecycleInstances: unknown[];
   private readonly connectedMicroservices: MicroserviceApplication[] = [];
 
@@ -425,8 +545,10 @@ class FluoApplication implements Application {
     lifecycleInstances: unknown[],
     private readonly logger: ApplicationLogger,
     private readonly runtimeCleanup: Array<() => void>,
+    private readonly contextCacheableTokens: ContextCacheableTokens,
   ) {
     this.lifecycleInstances = lifecycleInstances;
+    installContextCacheInvalidation(this.container, this.contextResolutionCache, this.contextCacheableTokens);
   }
 
   get state(): ApplicationState {
@@ -434,7 +556,11 @@ class FluoApplication implements Application {
   }
 
   async get<T>(token: Token<T>): Promise<T> {
-    return this.container.resolve(token);
+    if (this.closed) {
+      return this.container.resolve(token);
+    }
+
+    return resolveContextToken(this.container, token, this.contextCacheableTokens, this.contextResolutionCache);
   }
 
   /**
@@ -538,6 +664,7 @@ class FluoApplication implements Application {
 class FluoApplicationContext implements ApplicationContext {
   private closed = false;
   private closingPromise: Promise<void> | undefined;
+  private readonly contextResolutionCache: ContextResolutionCache = new Map();
 
   constructor(
     readonly container: Container,
@@ -546,10 +673,17 @@ class FluoApplicationContext implements ApplicationContext {
     readonly bootstrapTiming: ApplicationContext['bootstrapTiming'],
     private readonly lifecycleInstances: unknown[],
     private readonly runtimeCleanup: Array<() => void>,
-  ) {}
+    private readonly contextCacheableTokens: ContextCacheableTokens,
+  ) {
+    installContextCacheInvalidation(this.container, this.contextResolutionCache, this.contextCacheableTokens);
+  }
 
   async get<T>(token: Token<T>): Promise<T> {
-    return this.container.resolve(token);
+    if (this.closed) {
+      return this.container.resolve(token);
+    }
+
+    return resolveContextToken(this.container, token, this.contextCacheableTokens, this.contextResolutionCache);
   }
 
   async close(signal?: string): Promise<void> {
@@ -671,28 +805,165 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
 /**
  * lifecycle hook이 있는 singleton provider 인스턴스를 미리 해석해 둔다.
  */
-async function resolveLifecycleInstances(container: Container, providers: Provider[]): Promise<unknown[]> {
-  const instances: unknown[] = [];
+async function resolveLifecycleInstances(
+  container: Container,
+  providers: Provider[],
+  resolvedInstances: unknown[] = [],
+): Promise<unknown[]> {
+  const lifecycleEntries: Array<{ token: Token; useValue?: unknown }> = [];
   const seen = new Set<Token>();
 
   for (const provider of providers) {
-    const scope = providerScope(provider);
-
-    if (scope === 'request' || scope === 'transient') {
-      continue;
-    }
-
     const token = providerToken(provider);
 
     if (seen.has(token)) {
       continue;
     }
 
+    if (isHookBearingValueProvider(provider)) {
+      seen.add(token);
+      lifecycleEntries.push({ token, useValue: provider.useValue });
+      continue;
+    }
+
+    if (!isDirectSingletonContextProvider(provider)) {
+      continue;
+    }
+
     seen.add(token);
-    instances.push(await container.resolve(token));
+    lifecycleEntries.push({ token });
   }
 
-  return instances;
+  const resolutionResults = await Promise.allSettled(
+    lifecycleEntries.map((entry) => entry.useValue ?? container.resolve(entry.token)),
+  );
+
+  let resolutionError: unknown;
+  let hasResolutionError = false;
+
+  for (const result of resolutionResults) {
+    if (result.status === 'fulfilled') {
+      resolvedInstances.push(result.value);
+      continue;
+    }
+
+    if (!hasResolutionError) {
+      resolutionError = result.reason;
+      hasResolutionError = true;
+    }
+  }
+
+  if (hasResolutionError) {
+    throw resolutionError;
+  }
+
+  return resolvedInstances;
+}
+
+function createContextCacheableTokenSet(
+  effectiveProviders: BootstrapEffectiveProviders,
+  runtimeTokens: readonly Token[],
+): Set<Token> {
+  const cacheableTokens = new Set<Token>(runtimeTokens);
+
+  for (const provider of effectiveProviders.runtimeProviders) {
+    if (!isDirectSingletonContextProvider(provider)) {
+      continue;
+    }
+
+    cacheableTokens.add(providerToken(provider));
+  }
+
+  for (const provider of effectiveProviders.rootModuleProviders) {
+    if (!isDirectSingletonContextProvider(provider)) {
+      continue;
+    }
+
+    cacheableTokens.add(providerToken(provider));
+  }
+
+  return cacheableTokens;
+}
+
+function isDirectSingletonContextProvider(provider: Provider): boolean {
+  if (isMultiProvider(provider)) {
+    return false;
+  }
+
+  if (typeof provider === 'function') {
+    return providerScope(provider) === 'singleton';
+  }
+
+  if ('useExisting' in provider || 'useValue' in provider) {
+    return false;
+  }
+
+  return providerScope(provider) === 'singleton';
+}
+
+function isHookBearingValueProvider(provider: Provider): provider is Provider & { useValue: unknown } {
+  return typeof provider === 'object'
+    && provider !== null
+    && 'useValue' in provider
+    && hasLifecycleHook(provider.useValue);
+}
+
+function hasLifecycleHook(value: unknown): boolean {
+  return isOnModuleInit(value)
+    || isOnApplicationBootstrap(value)
+    || isOnModuleDestroy(value)
+    || isOnApplicationShutdown(value);
+}
+
+function installContextCacheInvalidation(
+  container: Container,
+  cache: ContextResolutionCache,
+  cacheableTokens: ContextCacheableTokens,
+): void {
+  const cacheInvalidatingContainer = container as CacheInvalidatingContainer;
+  const override = cacheInvalidatingContainer.override.bind(container);
+
+  cacheInvalidatingContainer.override = (...providers: Provider[]): Container => {
+    const result = override(...providers);
+    cache.clear();
+
+    for (const provider of providers) {
+      const token = providerToken(provider);
+
+      if (isDirectSingletonContextProvider(provider)) {
+        cacheableTokens.add(token);
+      } else {
+        cacheableTokens.delete(token);
+      }
+    }
+
+    return result;
+  };
+}
+
+async function resolveContextToken<T>(
+  container: Container,
+  token: Token<T>,
+  cacheableTokens: ReadonlySet<Token>,
+  cache: ContextResolutionCache,
+): Promise<T> {
+  if (!cacheableTokens.has(token)) {
+    return container.resolve(token);
+  }
+
+  const cached = cache.get(token);
+
+  if (cached) {
+    return cached as Promise<T>;
+  }
+
+  const resolution = container.resolve(token).catch((error: unknown) => {
+    cache.delete(token);
+    throw error;
+  });
+  cache.set(token, resolution);
+
+  return resolution;
 }
 
 /**
@@ -825,14 +1096,14 @@ function registerRuntimeApplicationContextTokens(bootstrapped: BootstrapResult, 
 
 async function resolveBootstrapLifecycleInstances(
   bootstrapped: BootstrapResult,
-  runtimeProviders: Provider[],
+  resolvedInstances?: unknown[],
 ): Promise<unknown[]> {
   const lifecycleProviders = [
-    ...runtimeProviders,
-    ...bootstrapped.modules.flatMap((compiledModule) => compiledModule.definition.providers ?? []),
+    ...bootstrapped.effectiveProviders.runtimeProviders,
+    ...bootstrapped.effectiveProviders.moduleProviders,
   ];
 
-  return resolveLifecycleInstances(bootstrapped.container, lifecycleProviders);
+  return resolveLifecycleInstances(bootstrapped.container, lifecycleProviders, resolvedInstances);
 }
 
 async function runBootstrapLifecycle(
@@ -972,7 +1243,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     bootstrappedModules = bootstrapped.modules;
 
     const resolveLifecycleStart = timingEnabled ? runtimePerformance.now() : 0;
-    lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, runtimeProviders);
+    lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, lifecycleInstances);
     lifecycleInstances.push({
       onModuleDestroy() {
         return platformShell.stop();
@@ -1019,6 +1290,10 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       lifecycleInstances,
       logger,
       runtimeCleanup,
+      createContextCacheableTokenSet(
+        bootstrapped.effectiveProviders,
+        [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL],
+      ),
     );
   } catch (error: unknown) {
     logger.error(
@@ -1112,7 +1387,7 @@ export class FluoFactory {
       bootstrappedModules = bootstrapped.modules;
 
       const resolveLifecycleStart = timingEnabled ? runtimePerformance.now() : 0;
-      lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, runtimeProviders);
+      lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, lifecycleInstances);
       lifecycleInstances.push({
         onModuleDestroy() {
           return platformShell.stop();
@@ -1145,6 +1420,10 @@ export class FluoFactory {
         bootstrapTiming,
         lifecycleInstances,
         runtimeCleanup,
+        createContextCacheableTokenSet(
+          bootstrapped.effectiveProviders,
+          [RUNTIME_CONTAINER, COMPILED_MODULES, PLATFORM_SHELL],
+        ),
       );
     } catch (error: unknown) {
       logger.error(

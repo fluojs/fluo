@@ -168,6 +168,7 @@ export class Container {
   private readonly staleDisposalTasks = new Set<Promise<void>>();
   private readonly staleDisposalErrors: unknown[] = [];
   private readonly singletonCache: Map<Token, Promise<unknown>>;
+  private readonly forwardRefTokenCache = new WeakMap<ForwardRefFn, Token>();
   private readonly childScopes = new Set<Container>();
   private disposePromise: Promise<void> | undefined;
   private disposed = false;
@@ -468,6 +469,12 @@ export class Container {
       return (await this.withTokenInChain(token, chain, activeTokens, async (c, at) => this.instantiate(provider, c, at))) as T;
     }
 
+    const cachedInstance = this.getCachedScopedOrSingletonInstance(provider);
+
+    if (cachedInstance) {
+      return (await cachedInstance) as T;
+    }
+
     return (await this.withTokenInChain(token, chain, activeTokens, async (c, at) =>
       this.resolveScopedOrSingletonInstance(provider, c, at),
     )) as T;
@@ -588,6 +595,18 @@ export class Container {
     return cache.get(provider.provide);
   }
 
+  private getCachedScopedOrSingletonInstance(provider: NormalizedProvider): Promise<unknown> | undefined {
+    if (provider.scope !== Scope.DEFAULT) {
+      return undefined;
+    }
+
+    if (this.shouldResolveFromRoot(provider)) {
+      return this.root().getCachedScopedOrSingletonInstance(provider);
+    }
+
+    return this.cacheFor(provider).get(provider.provide);
+  }
+
   private shouldResolveFromRoot(provider: NormalizedProvider): boolean {
     return provider.scope === Scope.DEFAULT && this.requestScopeEnabled && !this.registrations.has(provider.provide);
   }
@@ -612,7 +631,7 @@ export class Container {
     }
 
     if (isForwardRef(depEntry)) {
-      const resolvedToken = depEntry.forwardRef();
+      const resolvedToken = this.resolveForwardRefToken(depEntry);
 
       return this.resolveWithChain(resolvedToken, chain, activeTokens, /* allowForwardRef */ true);
     }
@@ -918,7 +937,7 @@ export class Container {
 
   private resolveProviderDependencyToken(depEntry: Token | ForwardRefFn | OptionalToken): Token {
     if (isForwardRef(depEntry)) {
-      return depEntry.forwardRef();
+      return this.resolveForwardRefToken(depEntry);
     }
 
     if (isOptionalToken(depEntry)) {
@@ -926,6 +945,16 @@ export class Container {
     }
 
     return depEntry as Token;
+  }
+
+  private resolveForwardRefToken(forwardRefEntry: ForwardRefFn): Token {
+    if (this.forwardRefTokenCache.has(forwardRefEntry)) {
+      return this.forwardRefTokenCache.get(forwardRefEntry)!;
+    }
+
+    const resolvedToken = forwardRefEntry.forwardRef();
+    this.forwardRefTokenCache.set(forwardRefEntry, resolvedToken);
+    return resolvedToken;
   }
 
   private async resolveProviderDeps(provider: NormalizedProvider, chain: Token[], activeTokens: Set<Token>): Promise<unknown[]> {

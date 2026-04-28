@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import { EventEmitter } from 'node:events';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createFrameworkRequest } from './node-request.js';
 import { NodeRequestPayloadTooLargeException } from './internal-node-request.js';
@@ -70,6 +70,55 @@ describe('node request adapter', () => {
       session: 'abc',
       theme: 'dark',
     });
+  });
+
+  it('captures cookies at creation, then materializes and memoizes the parsed object lazily', async () => {
+    const request = createIncomingMessage({
+      headers: {
+        cookie: 'session=before',
+      },
+      url: '/cookies',
+    });
+
+    const frameworkRequest = await createFrameworkRequest(request, new AbortController().signal);
+    const mutableHeaders = frameworkRequest.headers as Record<string, string | string[] | undefined>;
+
+    request.headers.cookie = 'session=after';
+    mutableHeaders.cookie = 'session=ignored';
+    const firstCookies = frameworkRequest.cookies;
+    request.headers.cookie = 'session=after-second-access';
+    mutableHeaders.cookie = 'session=ignored-second-access';
+    const secondCookies = frameworkRequest.cookies;
+
+    expect(firstCookies).toEqual({ session: 'before' });
+    expect(secondCookies).toBe(firstCookies);
+    expect(secondCookies).toEqual({ session: 'before' });
+  });
+
+  it('captures query parameters at creation, then materializes and memoizes the parsed object lazily', async () => {
+    const entries = vi.spyOn(URLSearchParams.prototype, 'entries');
+    const request = createIncomingMessage({
+      headers: {},
+      url: '/search?tag=one&tag=two',
+    });
+
+    try {
+      const frameworkRequest = await createFrameworkRequest(request, new AbortController().signal);
+
+      request.url = '/search?tag=after';
+      expect(entries).not.toHaveBeenCalled();
+
+      const firstQuery = frameworkRequest.query;
+      request.url = '/search?tag=ignored';
+      const secondQuery = frameworkRequest.query;
+
+      expect(firstQuery).toEqual({ tag: ['one', 'two'] });
+      expect(secondQuery).toBe(firstQuery);
+      expect(secondQuery).toEqual({ tag: ['one', 'two'] });
+      expect(entries).toHaveBeenCalledTimes(1);
+    } finally {
+      entries.mockRestore();
+    }
   });
 
   it('uses the primary content-type value when duplicate content-type headers are present', async () => {

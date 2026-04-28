@@ -76,4 +76,50 @@ describe('ConfigReloadManager', () => {
       manager.close();
     }
   });
+
+  it('serializes nested manager reloads without corrupting the shared service snapshot', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-manager-serialized-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const service = new ConfigService<ConfigDictionary>({ PORT: '4000' });
+    const manager = new ConfigReloadManager(service, {
+      cwd,
+      envFile: envPath,
+      processEnv: {},
+    });
+
+    try {
+      const updates: string[] = [];
+      let requestedNestedReload = false;
+
+      manager.subscribe((snapshot, reason) => {
+        if (reason !== 'manual') {
+          return;
+        }
+
+        const port = snapshot['PORT'];
+        if (typeof port === 'string') {
+          updates.push(port);
+        }
+
+        if (!requestedNestedReload) {
+          requestedNestedReload = true;
+          writeFileSync(envPath, 'PORT=4300\n');
+          manager.reload();
+        }
+      });
+
+      writeFileSync(envPath, 'PORT=4200\n');
+      const reloaded = manager.reload();
+
+      expect(reloaded['PORT']).toBe('4300');
+      expect(service.get('PORT')).toBe('4300');
+      expect(manager.current()['PORT']).toBe('4300');
+      expect(updates).toEqual(['4200', '4300']);
+    } finally {
+      manager.close();
+    }
+  });
 });

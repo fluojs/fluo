@@ -1,10 +1,8 @@
 import { type MetadataPropertyKey } from '@fluojs/core';
-import { metadataSymbol } from '@fluojs/core/internal';
+import { getStandardConstructorMetadataBag, getStandardMetadataBag } from '@fluojs/core/internal';
 
 import { mergeAuthRequirements, normalizeDeclaredScopes } from './scope.js';
 import type { AuthRequirement } from './types.js';
-
-type StandardMetadataBag = Record<PropertyKey, unknown>;
 
 const standardClassRequirementKey = Symbol.for('fluo.passport.standard.class-auth');
 const standardMethodRequirementKey = Symbol.for('fluo.passport.standard.method-auth');
@@ -57,19 +55,14 @@ function invalidateRequirementCache(controllerType: Function, propertyKey?: Meta
   }
 }
 
-function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
-  return (target as Record<symbol, StandardMetadataBag | undefined>)[metadataSymbol];
-}
-
 function getStandardClassRequirement(target: Function): AuthRequirement | undefined {
   return normalizeRequirement(getStandardMetadataBag(target)?.[standardClassRequirementKey] as AuthRequirement | undefined);
 }
 
 function getStandardMethodRequirement(target: object, propertyKey: MetadataPropertyKey): AuthRequirement | undefined {
-  const constructor = (target as { constructor?: Function }).constructor;
-  const map = constructor
-    ? (getStandardMetadataBag(constructor)?.[standardMethodRequirementKey] as Map<MetadataPropertyKey, AuthRequirement> | undefined)
-    : undefined;
+  const map = getStandardConstructorMetadataBag(target)?.[standardMethodRequirementKey] as
+    | Map<MetadataPropertyKey, AuthRequirement>
+    | undefined;
 
   return normalizeRequirement(map?.get(propertyKey));
 }

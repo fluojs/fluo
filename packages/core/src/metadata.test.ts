@@ -21,10 +21,12 @@ import {
   getRouteMetadata,
 } from './metadata.js';
 import {
+  getOwnStandardConstructorMetadataBag,
   getStandardConstructorMetadataBag,
   getStandardConstructorMetadataMap,
   getStandardConstructorMetadataRecord,
   getStandardMetadataBag,
+  metadataSymbol,
   standardMetadataKeys,
   type StandardMetadataBag,
 } from './metadata/shared.js';
@@ -51,7 +53,7 @@ describe('metadata helpers', () => {
     });
   });
 
-  it('preserves prior module collections across partial writes and returns clones', () => {
+  it('preserves prior module collections across partial writes and returns a frozen stable snapshot', () => {
     class ExampleModule {}
 
     defineModuleMetadata(ExampleModule, {
@@ -74,9 +76,10 @@ describe('metadata helpers', () => {
       providers: ['LoggerProvider'],
     });
 
-    if (metadata?.imports) {
-      (metadata.imports as unknown as unknown[]).push('MutatedModule');
-    }
+    expect(Object.isFrozen(metadata)).toBe(true);
+    expect(Object.isFrozen(metadata?.imports)).toBe(true);
+    expect(getModuleMetadata(ExampleModule)).toBe(metadata);
+    expect(() => (metadata?.imports as unknown as unknown[]).push('MutatedModule')).toThrow(TypeError);
 
     expect(getModuleMetadata(ExampleModule)).toEqual({
       controllers: undefined,
@@ -182,7 +185,7 @@ describe('metadata helpers', () => {
     });
   });
 
-  it('preserves custom middleware instances while still cloning the module middleware array', () => {
+  it('preserves custom middleware instances while freezing and reusing the module middleware array', () => {
     class ExampleMiddleware {
       calls = 0;
 
@@ -203,8 +206,191 @@ describe('metadata helpers', () => {
     const returnedMiddleware = metadata?.middleware?.[0] as typeof middleware | undefined;
 
     expect(returnedMiddleware).toBe(middleware);
+    expect(Object.isFrozen(returnedMiddleware)).toBe(false);
     expect(metadata?.middleware).not.toBeUndefined();
-    expect(metadata?.middleware).not.toBe((getModuleMetadata(ExampleModule)?.middleware as unknown[] | undefined));
+    expect(metadata?.middleware).toBe((getModuleMetadata(ExampleModule)?.middleware as unknown[] | undefined));
+    returnedMiddleware?.handle();
+    expect(middleware.calls).toBe(1);
+  });
+
+  it('freezes middleware route-config wrappers while preserving runtime middleware references', () => {
+    class ExampleMiddleware {
+      calls = 0;
+
+      handle() {
+        this.calls += 1;
+      }
+    }
+
+    const middleware = new ExampleMiddleware();
+    const routes = ['/users'];
+    const routeConfig = { middleware, routes };
+
+    class ExampleModule {}
+
+    defineModuleMetadata(ExampleModule, {
+      middleware: [routeConfig],
+    });
+
+    routes.push('/mutated');
+    routeConfig.routes = ['/replaced'];
+
+    const metadata = getModuleMetadata(ExampleModule);
+    const returnedConfig = metadata?.middleware?.[0] as { middleware: ExampleMiddleware; routes: string[] } | undefined;
+
+    expect(Object.isFrozen(returnedConfig)).toBe(true);
+    expect(Object.isFrozen(returnedConfig?.routes)).toBe(true);
+    expect(returnedConfig?.routes).toEqual(['/users']);
+    expect(returnedConfig?.routes).not.toBe(routes);
+    expect(returnedConfig?.middleware).toBe(middleware);
+    expect(Object.isFrozen(returnedConfig?.middleware)).toBe(false);
+
+    returnedConfig?.middleware.handle();
+    expect(middleware.calls).toBe(1);
+  });
+
+  it('preserves useValue payload identity and mutability in frozen module snapshots', () => {
+    const value = { count: 0 };
+
+    class ExampleModule {}
+
+    defineModuleMetadata(ExampleModule, {
+      providers: [{ provide: 'COUNTER', useValue: value }],
+    });
+
+    const metadata = getModuleMetadata(ExampleModule);
+    const provider = metadata?.providers?.[0] as { useValue: typeof value } | undefined;
+
+    expect(Object.isFrozen(metadata)).toBe(true);
+    expect(Object.isFrozen(metadata?.providers)).toBe(true);
+    expect(provider?.useValue).toBe(value);
+    expect(Object.isFrozen(provider?.useValue)).toBe(false);
+
+    value.count += 1;
+    expect(provider?.useValue.count).toBe(1);
+  });
+
+  it('freezes provider descriptor wrappers without freezing useValue payloads', () => {
+    const value = { count: 0 };
+
+    class ExampleModule {}
+
+    defineModuleMetadata(ExampleModule, {
+      providers: [{ provide: 'COUNTER', useValue: value }],
+    });
+
+    const metadata = getModuleMetadata(ExampleModule);
+    const provider = metadata?.providers?.[0] as { provide: string; useValue: typeof value } | undefined;
+
+    expect(Object.isFrozen(metadata?.providers)).toBe(true);
+    expect(Object.isFrozen(provider)).toBe(true);
+    expect(Object.isFrozen(provider?.useValue)).toBe(false);
+    expect(() => {
+      if (provider) {
+        provider.provide = 'MUTATED';
+      }
+    }).toThrow(TypeError);
+
+    value.count += 1;
+    defineModuleMetadata(ExampleModule, {
+      global: true,
+    });
+
+    expect(getModuleMetadata(ExampleModule)).toEqual({
+      controllers: undefined,
+      exports: undefined,
+      global: true,
+      imports: undefined,
+      middleware: undefined,
+      providers: [{ provide: 'COUNTER', useValue: value }],
+    });
+    expect((getModuleMetadata(ExampleModule)?.providers?.[0] as { useValue: typeof value } | undefined)?.useValue.count).toBe(1);
+  });
+
+  it('freezes and detaches factory provider inject arrays in stable module snapshots', () => {
+    const inject = ['CONFIG'];
+
+    class ExampleModule {}
+
+    defineModuleMetadata(ExampleModule, {
+      providers: [{ provide: 'SERVICE', useFactory: () => 'service', inject }],
+    });
+
+    const metadata = getModuleMetadata(ExampleModule);
+    const provider = metadata?.providers?.[0] as { inject: string[] } | undefined;
+
+    expect(Object.isFrozen(provider)).toBe(true);
+    expect(Object.isFrozen(provider?.inject)).toBe(true);
+    expect(provider?.inject).not.toBe(inject);
+    expect(() => provider?.inject.push('MUTATED')).toThrow(TypeError);
+
+    inject.push('ORIGINAL_MUTATED');
+    defineModuleMetadata(ExampleModule, {
+      global: true,
+    });
+
+    expect(getModuleMetadata(ExampleModule)).toEqual({
+      controllers: undefined,
+      exports: undefined,
+      global: true,
+      imports: undefined,
+      middleware: undefined,
+      providers: [{ provide: 'SERVICE', useFactory: expect.any(Function), inject: ['CONFIG'] }],
+    });
+  });
+
+  it('does not freeze runtime guard or interceptor instances read from controller and route metadata', () => {
+    class RuntimeGuard {
+      calls = 0;
+
+      canActivate() {
+        return true;
+      }
+    }
+
+    class RuntimeInterceptor {
+      calls = 0;
+
+      intercept() {
+        return undefined;
+      }
+    }
+
+    const guard = new RuntimeGuard();
+    const interceptor = new RuntimeInterceptor();
+
+    class ExampleController {
+      getUser() {
+        return { ok: true };
+      }
+    }
+
+    defineControllerMetadata(ExampleController, {
+      basePath: '/users',
+      guards: [guard],
+      interceptors: [interceptor],
+    });
+    defineRouteMetadata(ExampleController.prototype, 'getUser', {
+      guards: [guard],
+      interceptors: [interceptor],
+      method: 'GET',
+      path: '/:id',
+    });
+
+    const controllerMetadata = getControllerMetadata(ExampleController);
+    const routeMetadata = getRouteMetadata(ExampleController.prototype, 'getUser');
+
+    expect(controllerMetadata?.guards?.[0]).toBe(guard);
+    expect(controllerMetadata?.interceptors?.[0]).toBe(interceptor);
+    expect(routeMetadata?.guards?.[0]).toBe(guard);
+    expect(routeMetadata?.interceptors?.[0]).toBe(interceptor);
+    expect(Object.isFrozen(guard)).toBe(false);
+    expect(Object.isFrozen(interceptor)).toBe(false);
+
+    guard.calls += 1;
+    interceptor.calls += 1;
+    expect(guard.calls).toBe(1);
+    expect(interceptor.calls).toBe(1);
   });
 
   it('builds DTO binding schema from field metadata', () => {
@@ -384,6 +570,26 @@ describe('metadata helpers', () => {
     });
   });
 
+  it('returns a frozen stable own class DI metadata snapshot', () => {
+    class ExampleService {}
+
+    defineClassDiMetadata(ExampleService, {
+      inject: ['LOGGER'],
+      scope: 'request',
+    });
+
+    const metadata = getOwnClassDiMetadata(ExampleService);
+
+    expect(metadata).toEqual({
+      inject: ['LOGGER'],
+      scope: 'request',
+    });
+    expect(Object.isFrozen(metadata)).toBe(true);
+    expect(Object.isFrozen(metadata?.inject)).toBe(true);
+    expect(getOwnClassDiMetadata(ExampleService)).toBe(metadata);
+    expect(() => (metadata?.inject as unknown as unknown[]).push('MUTATED')).toThrow(TypeError);
+  });
+
   it('does not retain caller-owned inject arrays across partial class DI writes', () => {
     class ExampleService {}
 
@@ -424,7 +630,7 @@ describe('metadata helpers', () => {
     });
   });
 
-  it('merges child DI metadata with inherited fallback and clones returned arrays', () => {
+  it('merges child DI metadata with inherited fallback and freezes the cached effective snapshot', () => {
     class BaseService {}
 
     defineClassDiMetadata(BaseService, {
@@ -448,10 +654,11 @@ describe('metadata helpers', () => {
       inject: ['CACHE'],
       scope: 'request',
     });
+    expect(Object.isFrozen(metadata)).toBe(true);
+    expect(Object.isFrozen(metadata?.inject)).toBe(true);
+    expect(getInheritedClassDiMetadata(ChildService)).toBe(metadata);
 
-    if (metadata?.inject) {
-      (metadata.inject as unknown as unknown[]).push('MUTATED');
-    }
+    expect(() => (metadata?.inject as unknown as unknown[]).push('MUTATED')).toThrow(TypeError);
 
     expect(getInheritedClassDiMetadata(ChildService)).toEqual({
       inject: ['CACHE'],
@@ -485,8 +692,238 @@ describe('metadata helpers', () => {
     });
   });
 
+  it('invalidates cached inherited DI metadata after later metadata writes', () => {
+    class BaseService {}
+
+    defineClassDiMetadata(BaseService, {
+      inject: ['LOGGER'],
+    });
+
+    class ChildService extends BaseService {}
+
+    const cached = getInheritedClassDiMetadata(ChildService);
+
+    expect(cached).toEqual({
+      inject: ['LOGGER'],
+      scope: undefined,
+    });
+    expect(getInheritedClassDiMetadata(ChildService)).toBe(cached);
+
+    defineClassDiMetadata(BaseService, {
+      scope: 'request',
+    });
+
+    const refreshed = getInheritedClassDiMetadata(ChildService);
+
+    expect(refreshed).toEqual({
+      inject: ['LOGGER'],
+      scope: 'request',
+    });
+    expect(refreshed).not.toBe(cached);
+  });
+
   it('ensures Symbol.metadata is available through the exported initializer', () => {
     expect(ensureMetadataSymbol()).toBe((Symbol as typeof Symbol & { metadata?: symbol }).metadata);
+  });
+
+  it('tracks a native Symbol.metadata replacement after the fallback was installed', () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+    const fallbackSymbol = ensureMetadataSymbol();
+    const nativeSymbol = Symbol('native.metadata');
+
+    class ExampleController {}
+
+    Object.defineProperty(Symbol, 'metadata', {
+      configurable: true,
+      value: nativeSymbol,
+    });
+    Object.defineProperty(ExampleController, nativeSymbol, {
+      configurable: true,
+      value: {
+        [standardMetadataKeys.controller]: { basePath: '/native' },
+      },
+    });
+
+    try {
+      expect(fallbackSymbol).not.toBe(nativeSymbol);
+      expect(getStandardMetadataBag(ExampleController)).toEqual({
+        [standardMetadataKeys.controller]: { basePath: '/native' },
+      });
+      expect(metadataSymbol).toBe(nativeSymbol);
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(Symbol, 'metadata', originalDescriptor);
+      } else {
+        delete (Symbol as typeof Symbol & { metadata?: symbol }).metadata;
+      }
+      ensureMetadataSymbol();
+    }
+  });
+
+  it('reads standard metadata written before and after Symbol.metadata replacement in one process', () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+    const fallbackSymbol = ensureMetadataSymbol();
+    const nativeSymbol = Symbol('native.metadata');
+    const fallbackInjectionMetadata = new Map([['fallbackService', { optional: true, token: 'FALLBACK_LOGGER' }]]);
+    const nativeInjectionMetadata = new Map([['nativeService', { optional: false, token: 'NATIVE_LOGGER' }]]);
+
+    class FallbackEraController {
+      fallbackService!: string;
+    }
+
+    Object.defineProperty(FallbackEraController, fallbackSymbol, {
+      configurable: true,
+      value: {
+        [standardMetadataKeys.controller]: { basePath: '/fallback-era' },
+        [standardMetadataKeys.injection]: fallbackInjectionMetadata,
+      },
+    });
+
+    Object.defineProperty(Symbol, 'metadata', {
+      configurable: true,
+      value: nativeSymbol,
+    });
+
+    class NativeEraController {
+      nativeService!: string;
+    }
+
+    Object.defineProperty(NativeEraController, nativeSymbol, {
+      configurable: true,
+      value: {
+        [standardMetadataKeys.controller]: { basePath: '/native-era' },
+        [standardMetadataKeys.injection]: nativeInjectionMetadata,
+      },
+    });
+
+    try {
+      expect(fallbackSymbol).not.toBe(nativeSymbol);
+      expect(getStandardConstructorMetadataRecord<{ basePath: string }>(
+        FallbackEraController.prototype,
+        standardMetadataKeys.controller,
+      )).toEqual({ basePath: '/fallback-era' });
+      expect(getStandardConstructorMetadataMap(FallbackEraController.prototype, standardMetadataKeys.injection)).toBe(
+        fallbackInjectionMetadata,
+      );
+      expect(getStandardConstructorMetadataRecord<{ basePath: string }>(
+        NativeEraController.prototype,
+        standardMetadataKeys.controller,
+      )).toEqual({ basePath: '/native-era' });
+      expect(getStandardConstructorMetadataMap(NativeEraController.prototype, standardMetadataKeys.injection)).toBe(
+        nativeInjectionMetadata,
+      );
+      expect(metadataSymbol).toBe(nativeSymbol);
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(Symbol, 'metadata', originalDescriptor);
+      } else {
+        delete (Symbol as typeof Symbol & { metadata?: symbol }).metadata;
+      }
+      ensureMetadataSymbol();
+    }
+  });
+
+  it('overlays own fallback-era standard metadata over inherited active metadata', () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+    const fallbackSymbol = ensureMetadataSymbol();
+    const nativeSymbol = Symbol('native.metadata');
+    const inheritedNativeInjectionMetadata = new Map([['service', { optional: true, token: 'NATIVE_LOGGER' }]]);
+    const inheritedNativeBag: StandardMetadataBag = {
+      [standardMetadataKeys.controller]: { basePath: '/base-native' },
+      [standardMetadataKeys.injection]: inheritedNativeInjectionMetadata,
+    };
+    const ownFallbackBag: StandardMetadataBag = {
+      [standardMetadataKeys.controller]: { basePath: '/child-fallback' },
+    };
+
+    class BaseController {}
+    class ChildController extends BaseController {}
+
+    Object.defineProperty(Symbol, 'metadata', {
+      configurable: true,
+      value: nativeSymbol,
+    });
+    Object.defineProperty(BaseController, nativeSymbol, {
+      configurable: true,
+      value: inheritedNativeBag,
+    });
+    Object.defineProperty(ChildController, fallbackSymbol, {
+      configurable: true,
+      value: ownFallbackBag,
+    });
+
+    try {
+      const metadataBag = getStandardMetadataBag(ChildController);
+
+      expect(metadataBag?.[standardMetadataKeys.controller]).toEqual({ basePath: '/child-fallback' });
+      expect(metadataBag?.[standardMetadataKeys.injection]).toBe(inheritedNativeInjectionMetadata);
+      expect(getStandardConstructorMetadataRecord<{ basePath: string }>(
+        ChildController.prototype,
+        standardMetadataKeys.controller,
+      )).toEqual({ basePath: '/child-fallback' });
+      expect(getStandardConstructorMetadataMap(ChildController.prototype, standardMetadataKeys.injection)).toBe(
+        inheritedNativeInjectionMetadata,
+      );
+      expect(getOwnStandardConstructorMetadataBag(ChildController)).toBe(ownFallbackBag);
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(Symbol, 'metadata', originalDescriptor);
+      } else {
+        delete (Symbol as typeof Symbol & { metadata?: symbol }).metadata;
+      }
+      ensureMetadataSymbol();
+    }
+  });
+
+  it('reads inherited fallback-era metadata when the child owns native metadata', () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+    const fallbackSymbol = ensureMetadataSymbol();
+    const nativeSymbol = Symbol('native.metadata');
+    const inheritedFallbackInjectionMetadata = new Map([['service', { optional: true, token: 'FALLBACK_LOGGER' }]]);
+    const inheritedFallbackBag: StandardMetadataBag = {
+      [standardMetadataKeys.injection]: inheritedFallbackInjectionMetadata,
+    };
+    const ownNativeBag: StandardMetadataBag = {
+      [standardMetadataKeys.controller]: { basePath: '/child-native' },
+    };
+
+    class BaseController {}
+    class ChildController extends BaseController {}
+
+    Object.defineProperty(BaseController, fallbackSymbol, {
+      configurable: true,
+      value: inheritedFallbackBag,
+    });
+    Object.defineProperty(Symbol, 'metadata', {
+      configurable: true,
+      value: nativeSymbol,
+    });
+    Object.defineProperty(ChildController, nativeSymbol, {
+      configurable: true,
+      value: ownNativeBag,
+    });
+
+    try {
+      const metadataBag = getStandardMetadataBag(ChildController);
+
+      expect(metadataBag?.[standardMetadataKeys.controller]).toEqual({ basePath: '/child-native' });
+      expect(metadataBag?.[standardMetadataKeys.injection]).toBe(inheritedFallbackInjectionMetadata);
+      expect(getStandardConstructorMetadataRecord<{ basePath: string }>(
+        ChildController.prototype,
+        standardMetadataKeys.controller,
+      )).toEqual({ basePath: '/child-native' });
+      expect(getStandardConstructorMetadataMap(ChildController.prototype, standardMetadataKeys.injection)).toBe(
+        inheritedFallbackInjectionMetadata,
+      );
+      expect(getOwnStandardConstructorMetadataBag(ChildController)).toBe(ownNativeBag);
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(Symbol, 'metadata', originalDescriptor);
+      } else {
+        delete (Symbol as typeof Symbol & { metadata?: symbol }).metadata;
+      }
+      ensureMetadataSymbol();
+    }
   });
 
   it('reads standard metadata bags and constructor-level records through Symbol.metadata', () => {

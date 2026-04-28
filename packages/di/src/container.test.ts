@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Inject, Scope as ScopeDecorator } from '@fluojs/core';
 
@@ -315,6 +315,50 @@ describe('Container', () => {
       expect(a).toBeInstanceOf(ServiceA);
       expect(a.b).toBeInstanceOf(ServiceB);
       expect(a.b.value).toBe('b');
+    });
+
+    it('memoizes forwardRef token lookup across repeated singleton resolutions', async () => {
+      class ServiceA {
+        constructor(public b: ServiceB) {}
+      }
+
+      class ServiceB {}
+
+      const resolveServiceB = vi.fn(() => ServiceB);
+      const container = new Container().register(
+        { provide: ServiceA, useClass: ServiceA, inject: [forwardRef(resolveServiceB)] },
+        { provide: ServiceB, useClass: ServiceB, inject: [] },
+      );
+
+      const first = await container.resolve(ServiceA);
+      const second = await container.resolve(ServiceA);
+
+      expect(first).toBe(second);
+      expect(resolveServiceB).toHaveBeenCalledTimes(1);
+    });
+
+    it('memoizes forwardRef token lookup when the resolved token is an empty string', async () => {
+      const emptyToken = '';
+
+      class ServiceA {
+        constructor(readonly value: string) {}
+      }
+
+      const resolveEmptyToken = vi.fn(() => emptyToken);
+      const container = new Container().register(
+        { provide: emptyToken, useValue: 'empty-token-value' },
+        { provide: ServiceA, scope: Scope.TRANSIENT, useClass: ServiceA, inject: [forwardRef(resolveEmptyToken)] },
+      );
+
+      expect(container.has(emptyToken)).toBe(true);
+
+      const first = await container.resolve(ServiceA);
+      const second = await container.resolve(ServiceA);
+
+      expect(first).not.toBe(second);
+      expect(first.value).toBe('empty-token-value');
+      expect(second.value).toBe('empty-token-value');
+      expect(resolveEmptyToken).toHaveBeenCalledTimes(1);
     });
 
     it('fails fast for a true circular dependency even when both sides use forwardRef', async () => {
@@ -682,6 +726,60 @@ describe('Container', () => {
       expect(error).toBeInstanceOf(ScopeMismatchError);
       expect(error).not.toBeInstanceOf(CircularDependencyError);
     });
+
+    it('resolves a large alias graph without repeating factory construction after cache warmup', async () => {
+      const target = Symbol('LargeGraphTarget');
+      const aliases = Array.from({ length: 12 }, (_, index) => Symbol(`LargeGraphAlias${index}`));
+      const createTarget = vi.fn(() => ({ value: 'target' }));
+
+      const container = new Container().register(
+        { provide: target, useFactory: createTarget },
+        ...aliases.map((alias, index) => ({
+          provide: alias,
+          useExisting: index === 0 ? target : aliases[index - 1],
+        })),
+      );
+
+      const first = await container.resolve(aliases.at(-1)!);
+      const second = await container.resolve(aliases.at(-1)!);
+
+      expect(first).toBe(second);
+      expect(createTarget).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('has()', () => {
+    it('checks local, parent, shadowed, and missing single providers through the scope chain', () => {
+      const ROOT = Symbol('RootToken');
+      const SHADOWED = Symbol('ShadowedToken');
+      const CHILD_ONLY = Symbol('ChildOnlyToken');
+      const MISSING = Symbol('MissingToken');
+
+      const root = new Container().register(
+        { provide: ROOT, useValue: 'root' },
+        { provide: SHADOWED, useValue: 'root-shadowed' },
+      );
+      const child = root.createRequestScope().override({ provide: SHADOWED, useValue: 'child-shadowed' });
+      const grandchild = child.createRequestScope().register({ provide: CHILD_ONLY, useFactory: () => 'grandchild-only', scope: Scope.REQUEST });
+
+      expect(grandchild.has(ROOT)).toBe(true);
+      expect(grandchild.has(SHADOWED)).toBe(true);
+      expect(grandchild.has(CHILD_ONLY)).toBe(true);
+      expect(root.has(CHILD_ONLY)).toBe(false);
+      expect(grandchild.has(MISSING)).toBe(false);
+    });
+
+    it('checks parent-chain multi providers without leaking child registrations to parents', () => {
+      const PLUGINS = Symbol('Plugins');
+      const CHILD_PLUGINS = Symbol('ChildPlugins');
+
+      const root = new Container().register({ provide: PLUGINS, useValue: 'root-plugin', multi: true });
+      const child = root.createRequestScope().register({ provide: CHILD_PLUGINS, useFactory: () => 'child-plugin', multi: true, scope: Scope.REQUEST });
+
+      expect(child.has(PLUGINS)).toBe(true);
+      expect(child.has(CHILD_PLUGINS)).toBe(true);
+      expect(root.has(CHILD_PLUGINS)).toBe(false);
+    });
   });
 
   describe('multi-provider', () => {
@@ -796,6 +894,19 @@ describe('Container', () => {
       expect(rootResolved[0]).toBe(secondRequestResolved[0]);
       expect(rootResolved[0]?.config.value).toBe('root-config');
       expect(requestResolved[0]?.config.value).not.toBe('request-config');
+    });
+
+    it('keeps child-owned request providers out of parent lookup and caches', async () => {
+      const token = Symbol('ChildRequestProvider');
+      const root = new Container();
+      const child = root.createRequestScope().register({ provide: token, useFactory: () => ({ value: 'child' }), scope: Scope.REQUEST });
+
+      const first = await child.resolve<{ value: string }>(token);
+      const second = await child.resolve<{ value: string }>(token);
+
+      expect(first).toBe(second);
+      expect(root.has(token)).toBe(false);
+      await expect(root.resolve(token)).rejects.toThrow(ContainerResolutionError);
     });
   });
 

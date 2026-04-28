@@ -17,6 +17,7 @@ Examples of behavioral contracts include:
 - A decorator runs before module initialization.
 - A provider throws a configuration error when required input is missing.
 - A platform adapter closes idle keep alive connections during shutdown.
+- A config reload manager serializes overlapping reload requests and rolls back to the previous snapshot when a reload listener fails.
 
 ## Rule 2: Breaking Change Policy
 
