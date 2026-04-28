@@ -63,10 +63,22 @@ function getOrCreateHandlerMetadataMap(target: object): Map<MetadataPropertyKey,
   return map;
 }
 
+/**
+ * Define web socket gateway metadata.
+ *
+ * @param target The target.
+ * @param metadata The metadata.
+ */
 export function defineWebSocketGatewayMetadata(target: object, metadata: WebSocketGatewayMetadata): void {
   gatewayMetadataStore.set(target, cloneGatewayMetadata(metadata));
 }
 
+/**
+ * Get web socket gateway metadata.
+ *
+ * @param target The target.
+ * @returns The get web socket gateway metadata result.
+ */
 export function getWebSocketGatewayMetadata(target: object): WebSocketGatewayMetadata | undefined {
   const stored = gatewayMetadataStore.get(target);
   const standard = getStandardGatewayMetadata(target);
@@ -78,6 +90,13 @@ export function getWebSocketGatewayMetadata(target: object): WebSocketGatewayMet
   return cloneGatewayMetadata(stored ?? standard!);
 }
 
+/**
+ * Define web socket handler metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @param metadata The metadata.
+ */
 export function defineWebSocketHandlerMetadata(
   target: object,
   propertyKey: MetadataPropertyKey,
@@ -86,6 +105,13 @@ export function defineWebSocketHandlerMetadata(
   getOrCreateHandlerMetadataMap(target).set(propertyKey, cloneHandlerMetadata(metadata));
 }
 
+/**
+ * Get web socket handler metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @returns The get web socket handler metadata result.
+ */
 export function getWebSocketHandlerMetadata(
   target: object,
   propertyKey: MetadataPropertyKey,
@@ -100,6 +126,12 @@ export function getWebSocketHandlerMetadata(
   return cloneHandlerMetadata(stored ?? standard!);
 }
 
+/**
+ * Get web socket handler metadata entries.
+ *
+ * @param target The target.
+ * @returns The get web socket handler metadata entries result.
+ */
 export function getWebSocketHandlerMetadataEntries(
   target: object,
 ): Array<{ metadata: WebSocketGatewayHandlerMetadata; propertyKey: MetadataPropertyKey }> {
@@ -118,5 +150,11 @@ export function getWebSocketHandlerMetadataEntries(
     );
 }
 
+/**
+ * Provides the web socket gateway metadata symbol value.
+ */
 export const webSocketGatewayMetadataSymbol = standardWebSocketGatewayMetadataKey;
+/**
+ * Provides the web socket handler metadata symbol value.
+ */
 export const webSocketHandlerMetadataSymbol = standardWebSocketHandlerMetadataKey;

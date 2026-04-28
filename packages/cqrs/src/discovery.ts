@@ -3,6 +3,9 @@ import { getClassDiMetadata } from '@fluojs/core/internal';
 import type { Container, Provider } from '@fluojs/di';
 import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
 
+/**
+ * Describes the discovery candidate contract.
+ */
 export interface DiscoveryCandidate {
   moduleName: string;
   scope: 'request' | 'singleton' | 'transient';
@@ -26,6 +29,15 @@ function isClassProvider(provider: Provider): provider is Extract<Provider, { pr
   return typeof provider === 'object' && provider !== null && 'useClass' in provider;
 }
 
+/**
+ * Create duplicate handler message.
+ *
+ * @param kind The kind.
+ * @param messageType The message type.
+ * @param first The first.
+ * @param second The second.
+ * @returns The create duplicate handler message result.
+ */
 export function createDuplicateHandlerMessage(
   kind: 'command' | 'query' | 'event',
   messageType: Function,
@@ -35,6 +47,9 @@ export function createDuplicateHandlerMessage(
   return `Duplicate ${kind} handler for ${messageType.name} was discovered in ${first.moduleName}.${first.targetType.name} and ${second.moduleName}.${second.targetType.name}.`;
 }
 
+/**
+ * Represents the cqrs bus base.
+ */
 export abstract class CqrsBusBase {
   protected readonly handlerInstances = new Map<Token, Promise<unknown>>();
 

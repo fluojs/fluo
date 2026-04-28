@@ -49,6 +49,13 @@ function getOrCreateSchedulingMap(target: object): Map<MetadataPropertyKey, Sche
   return map;
 }
 
+/**
+ * Define scheduling task metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @param metadata The metadata.
+ */
 export function defineSchedulingTaskMetadata(
   target: object,
   propertyKey: MetadataPropertyKey,
@@ -57,10 +64,24 @@ export function defineSchedulingTaskMetadata(
   getOrCreateSchedulingMap(target).set(propertyKey, cloneTaskMetadata(metadata));
 }
 
+/**
+ * Define cron task metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @param metadata The metadata.
+ */
 export function defineCronTaskMetadata(target: object, propertyKey: MetadataPropertyKey, metadata: CronTaskMetadata): void {
   defineSchedulingTaskMetadata(target, propertyKey, metadata);
 }
 
+/**
+ * Get scheduling task metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @returns The get scheduling task metadata result.
+ */
 export function getSchedulingTaskMetadata(target: object, propertyKey: MetadataPropertyKey): SchedulingTaskMetadata | undefined {
   const stored = schedulingMetadataStore.get(target)?.get(propertyKey);
   const standard = getStandardSchedulingMap(target)?.get(propertyKey);
@@ -72,12 +93,25 @@ export function getSchedulingTaskMetadata(target: object, propertyKey: MetadataP
   return cloneTaskMetadata(stored ?? standard!);
 }
 
+/**
+ * Get cron task metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @returns The get cron task metadata result.
+ */
 export function getCronTaskMetadata(target: object, propertyKey: MetadataPropertyKey): CronTaskMetadata | undefined {
   const metadata = getSchedulingTaskMetadata(target, propertyKey);
 
   return metadata?.kind === 'cron' ? metadata : undefined;
 }
 
+/**
+ * Get scheduling task metadata entries.
+ *
+ * @param target The target.
+ * @returns The get scheduling task metadata entries result.
+ */
 export function getSchedulingTaskMetadataEntries(
   target: object,
 ): Array<{ metadata: SchedulingTaskMetadata; propertyKey: MetadataPropertyKey }> {
@@ -93,11 +127,23 @@ export function getSchedulingTaskMetadataEntries(
     .filter((entry): entry is { metadata: SchedulingTaskMetadata; propertyKey: MetadataPropertyKey } => entry.metadata !== undefined);
 }
 
+/**
+ * Get cron task metadata entries.
+ *
+ * @param target The target.
+ * @returns The get cron task metadata entries result.
+ */
 export function getCronTaskMetadataEntries(target: object): Array<{ metadata: CronTaskMetadata; propertyKey: MetadataPropertyKey }> {
   return getSchedulingTaskMetadataEntries(target).filter(
     (entry): entry is { metadata: CronTaskMetadata; propertyKey: MetadataPropertyKey } => entry.metadata.kind === 'cron',
   );
 }
 
+/**
+ * Provides the scheduling metadata symbol value.
+ */
 export const schedulingMetadataSymbol = standardSchedulingMetadataKey;
+/**
+ * Provides the cron metadata symbol value.
+ */
 export const cronMetadataSymbol = standardSchedulingMetadataKey;

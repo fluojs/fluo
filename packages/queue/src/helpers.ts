@@ -5,8 +5,14 @@ import type { CompiledModule } from '@fluojs/runtime';
 
 import type { QueueRateLimiterOptions } from './types.js';
 
+/**
+ * Defines the scope type.
+ */
 export type Scope = 'request' | 'singleton' | 'transient';
 
+/**
+ * Describes the discovery candidate contract.
+ */
 export interface DiscoveryCandidate {
   moduleName: string;
   scope: Scope;
@@ -14,6 +20,12 @@ export interface DiscoveryCandidate {
   token: Token;
 }
 
+/**
+ * Scope from provider.
+ *
+ * @param provider The provider.
+ * @returns The scope from provider result.
+ */
 export function scopeFromProvider(provider: Provider): Scope {
   if (typeof provider === 'function') {
     return getClassDiMetadata(provider)?.scope ?? 'singleton';
@@ -26,10 +38,22 @@ export function scopeFromProvider(provider: Provider): Scope {
   return 'scope' in provider ? provider.scope ?? 'singleton' : 'singleton';
 }
 
+/**
+ * Is class provider.
+ *
+ * @param provider The provider.
+ * @returns The is class provider result.
+ */
 export function isClassProvider(provider: Provider): provider is Extract<Provider, { provide: Token; useClass: Function }> {
   return typeof provider === 'object' && provider !== null && 'useClass' in provider;
 }
 
+/**
+ * Collect discovery candidates.
+ *
+ * @param compiledModules The compiled modules.
+ * @returns The collect discovery candidates result.
+ */
 export function collectDiscoveryCandidates(compiledModules: readonly CompiledModule[]): DiscoveryCandidate[] {
   const candidates: DiscoveryCandidate[] = [];
 
@@ -68,6 +92,13 @@ export function collectDiscoveryCandidates(compiledModules: readonly CompiledMod
   return candidates;
 }
 
+/**
+ * Normalize positive integer.
+ *
+ * @param value The value.
+ * @param fallback The fallback.
+ * @returns The normalize positive integer result.
+ */
 export function normalizePositiveInteger(value: number | undefined, fallback: number): number {
   if (value === undefined || !Number.isFinite(value)) {
     return fallback;
@@ -82,6 +113,13 @@ export function normalizePositiveInteger(value: number | undefined, fallback: nu
   return normalized;
 }
 
+/**
+ * Normalize positive integer or false.
+ *
+ * @param value The value.
+ * @param fallback The fallback.
+ * @returns The normalize positive integer or false result.
+ */
 export function normalizePositiveIntegerOrFalse(
   value: number | false | undefined,
   fallback: number | false,
@@ -103,6 +141,12 @@ export function normalizePositiveIntegerOrFalse(
   return normalized;
 }
 
+/**
+ * Normalize rate limiter.
+ *
+ * @param rateLimiter The rate limiter.
+ * @returns The normalize rate limiter result.
+ */
 export function normalizeRateLimiter(rateLimiter: QueueRateLimiterOptions | undefined): QueueRateLimiterOptions | undefined {
   if (!rateLimiter) {
     return undefined;
@@ -114,6 +158,14 @@ export function normalizeRateLimiter(rateLimiter: QueueRateLimiterOptions | unde
   };
 }
 
+/**
+ * With timeout.
+ *
+ * @param promise The promise.
+ * @param timeoutMs The timeout ms.
+ * @param timeoutErrorFactory The timeout error factory.
+ * @returns The with timeout result.
+ */
 export async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,

@@ -18,10 +18,22 @@ function getStandardQueueWorkerMetadata(target: Function): QueueWorkerMetadata |
   return getStandardMetadataBag(target)?.[standardQueueWorkerMetadataKey] as QueueWorkerMetadata | undefined;
 }
 
+/**
+ * Define queue worker metadata.
+ *
+ * @param target The target.
+ * @param metadata The metadata.
+ */
 export function defineQueueWorkerMetadata(target: Function, metadata: QueueWorkerMetadata): void {
   queueWorkerMetadataStore.set(target, cloneQueueWorkerMetadata(metadata));
 }
 
+/**
+ * Get queue worker metadata.
+ *
+ * @param target The target.
+ * @returns The get queue worker metadata result.
+ */
 export function getQueueWorkerMetadata(target: Function): QueueWorkerMetadata | undefined {
   const stored = queueWorkerMetadataStore.get(target);
   const standard = getStandardQueueWorkerMetadata(target);
@@ -33,4 +45,7 @@ export function getQueueWorkerMetadata(target: Function): QueueWorkerMetadata | 
   return cloneQueueWorkerMetadata(stored ?? standard!);
 }
 
+/**
+ * Provides the queue worker metadata symbol value.
+ */
 export const queueWorkerMetadataSymbol = standardQueueWorkerMetadataKey;

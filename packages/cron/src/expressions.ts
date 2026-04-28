@@ -1,3 +1,6 @@
+/**
+ * Provides the cron expression value.
+ */
 export const CronExpression = {
   EVERY_SECOND: '* * * * * *',
   EVERY_5_SECONDS: '*/5 * * * * *',

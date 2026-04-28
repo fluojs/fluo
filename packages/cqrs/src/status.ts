@@ -1,7 +1,13 @@
 import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
 
+/**
+ * Defines the cqrs lifecycle state type.
+ */
 export type CqrsLifecycleState = 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed';
 
+/**
+ * Describes the cqrs status adapter input contract.
+ */
 export interface CqrsStatusAdapterInput {
   eventHandlersDiscovered: number;
   inFlightSagaExecutions: number;
@@ -10,6 +16,9 @@ export interface CqrsStatusAdapterInput {
   sagasDiscovered: number;
 }
 
+/**
+ * Describes the cqrs platform status snapshot contract.
+ */
 export interface CqrsPlatformStatusSnapshot {
   readiness: PlatformReadinessReport;
   health: PlatformHealthReport;
@@ -91,6 +100,12 @@ function createHealth(input: CqrsStatusAdapterInput): PlatformHealthReport {
   };
 }
 
+/**
+ * Create cqrs platform status snapshot.
+ *
+ * @param input The input.
+ * @returns The create cqrs platform status snapshot result.
+ */
 export function createCqrsPlatformStatusSnapshot(input: CqrsStatusAdapterInput): CqrsPlatformStatusSnapshot {
   return {
     details: {

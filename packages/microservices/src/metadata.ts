@@ -32,6 +32,13 @@ function getOrCreateHandlerMap(target: object): Map<MetadataPropertyKey, Handler
   return map;
 }
 
+/**
+ * Define handler metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @param metadata The metadata.
+ */
 export function defineHandlerMetadata(target: object, propertyKey: MetadataPropertyKey, metadata: HandlerMetadata): void {
   const map = getOrCreateHandlerMap(target);
   const current = map.get(propertyKey) ?? [];
@@ -39,6 +46,12 @@ export function defineHandlerMetadata(target: object, propertyKey: MetadataPrope
   map.set(propertyKey, current);
 }
 
+/**
+ * Get handler metadata entries.
+ *
+ * @param target The target.
+ * @returns The get handler metadata entries result.
+ */
 export function getHandlerMetadataEntries(
   target: object,
 ): Array<{ metadata: HandlerMetadata; propertyKey: MetadataPropertyKey }> {
@@ -61,4 +74,7 @@ export function getHandlerMetadataEntries(
   return entries;
 }
 
+/**
+ * Provides the microservice metadata symbol value.
+ */
 export const microserviceMetadataSymbol = standardMicroserviceMetadataKey;

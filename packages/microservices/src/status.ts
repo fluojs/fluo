@@ -1,7 +1,13 @@
 import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
 
+/**
+ * Defines the microservice lifecycle state type.
+ */
 export type MicroserviceLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';
 
+/**
+ * Describes the microservice handler counts contract.
+ */
 export interface MicroserviceHandlerCounts {
   'bidi-stream': number;
   'client-stream': number;
@@ -10,6 +16,9 @@ export interface MicroserviceHandlerCounts {
   'server-stream': number;
 }
 
+/**
+ * Describes the microservice transport capabilities contract.
+ */
 export interface MicroserviceTransportCapabilities {
   bidiStream: boolean;
   clientStream: boolean;
@@ -18,6 +27,9 @@ export interface MicroserviceTransportCapabilities {
   serverStream: boolean;
 }
 
+/**
+ * Describes the microservice status adapter input contract.
+ */
 export interface MicroserviceStatusAdapterInput {
   handlerCounts: MicroserviceHandlerCounts;
   lastListenError?: string;
@@ -25,6 +37,9 @@ export interface MicroserviceStatusAdapterInput {
   transportCapabilities: MicroserviceTransportCapabilities;
 }
 
+/**
+ * Describes the microservice platform status snapshot contract.
+ */
 export interface MicroservicePlatformStatusSnapshot {
   readiness: PlatformReadinessReport;
   health: PlatformHealthReport;
@@ -99,6 +114,12 @@ function createHealth(input: MicroserviceStatusAdapterInput): PlatformHealthRepo
   };
 }
 
+/**
+ * Create microservice platform status snapshot.
+ *
+ * @param input The input.
+ * @returns The create microservice platform status snapshot result.
+ */
 export function createMicroservicePlatformStatusSnapshot(
   input: MicroserviceStatusAdapterInput,
 ): MicroservicePlatformStatusSnapshot {
