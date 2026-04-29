@@ -1,6 +1,6 @@
 ---
-'@fluojs/http': patch
-'@fluojs/platform-bun': patch
+'@fluojs/http': minor
+'@fluojs/platform-bun': minor
 ---
 
-Preserve fluo dispatcher semantics while letting the Bun adapter pre-register safe `Bun.serve({ routes })` entries for static and parameter routes. Same-shape parameter routes and unsupported handler shapes now fall back to fetch-only dispatch instead of changing path-param behavior.
+Expose `Dispatcher.describeRoutes?.()` for adapter-side route introspection and let the Bun adapter pre-register semver-safe `Bun.serve({ routes })` entries for compatible static and parameter routes. Same-shape parameter routes, `ALL` handlers, older Bun runtimes, and other unsupported shapes continue to fall back to fetch-only dispatch so fluo path, error, and request-body semantics stay unchanged.

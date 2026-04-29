@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { Controller, Get, Post, SseResponse, type FrameworkRequest, type FrameworkResponse, type RequestContext } from '@fluojs/http';
+import { All, Controller, Get, Post, SseResponse, type FrameworkRequest, type FrameworkResponse, type RequestContext } from '@fluojs/http';
 import { defineModule, type ApplicationLogger } from '@fluojs/runtime';
 
 import {
@@ -583,6 +583,141 @@ describe('@fluojs/platform-bun', () => {
 
       expect(response?.status).toBe(200);
       await expect(response?.json()).resolves.toEqual({ firstId: '123', route: 'first' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps ALL handlers on fetch-only dispatch without native route registration', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/catch-all')
+    class CatchAllController {
+      @All('/:slug')
+      handle(_input: undefined, context: RequestContext) {
+        return {
+          method: context.request.method,
+          slug: context.request.params.slug,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [CatchAllController] });
+
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      port: 4316,
+    });
+
+    try {
+      expect(mockBun.lastOptions?.routes).toBeUndefined();
+
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4316/catch-all/fallback-check', {
+        method: 'POST',
+      }));
+
+      expect(response?.status).toBe(200);
+      await expect(response?.json()).resolves.toEqual({
+        method: 'POST',
+        slug: 'fallback-check',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('falls back to fetch-only dispatch on Bun versions below 1.2.3', async () => {
+    const mockBun = installMockBun({ version: '1.2.2' });
+
+    @Controller('/version-gate')
+    class VersionGateController {
+      @Get('/:itemId')
+      getItem(_input: undefined, context: RequestContext) {
+        return { itemId: context.request.params.itemId };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [VersionGateController] });
+
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      port: 4317,
+    });
+
+    try {
+      expect(mockBun.lastOptions?.routes).toBeUndefined();
+
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4317/version-gate/legacy-runtime'));
+
+      expect(response?.status).toBe(200);
+      await expect(response?.json()).resolves.toEqual({ itemId: 'legacy-runtime' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('preserves shared dispatcher error responses for both native-route and fetch-only fallback requests', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/errors')
+    class ErrorController {
+      @Get('/native')
+      nativeRoute() {
+        throw new Error('native boom');
+      }
+
+      @All('/fallback')
+      fallbackRoute() {
+        throw new Error('fallback boom');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [ErrorController] });
+
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      port: 4318,
+    });
+
+    try {
+      expect(mockBun.lastOptions?.routes).toMatchObject({
+        '/errors/native': {
+          GET: expect.any(Function),
+        },
+      });
+      expect(mockBun.lastOptions?.routes?.['/errors/fallback']).toBeUndefined();
+
+      const [nativeResponse, fallbackResponse] = await Promise.all([
+        mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4318/errors/native', {
+          headers: { 'x-request-id': 'req-bun-native-error' },
+        })),
+        mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4318/errors/fallback', {
+          headers: { 'x-request-id': 'req-bun-fallback-error' },
+          method: 'POST',
+        })),
+      ]);
+
+      expect(nativeResponse?.status).toBe(500);
+      expect(fallbackResponse?.status).toBe(500);
+      await expect(nativeResponse?.json()).resolves.toMatchObject({
+        error: {
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Internal server error.',
+          requestId: 'req-bun-native-error',
+          status: 500,
+        },
+      });
+      await expect(fallbackResponse?.json()).resolves.toMatchObject({
+        error: {
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Internal server error.',
+          requestId: 'req-bun-fallback-error',
+          status: 500,
+        },
+      });
     } finally {
       await app.close();
     }
