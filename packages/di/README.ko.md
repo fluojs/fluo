@@ -145,6 +145,7 @@ const service = await container.resolve(DataService);
 | `resolve<T>(token)` | 토큰을 인스턴스로 비동기 해석합니다. |
 | `createRequestScope()` | 요청 스코프 의존성을 위한 자식 컨테이너를 생성합니다. |
 | `has(token)` | 컨테이너나 부모에 토큰이 등록되어 있는지 확인합니다. |
+| `hasRequestScopedDependency(token)` | 토큰 해석 시 provider 그래프에 request-scoped 의존성이나 순환이 있어 request-scope 컨테이너가 필요할 수 있는지 확인합니다. |
 
 ## 관련 패키지
 

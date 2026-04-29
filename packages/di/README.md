@@ -145,6 +145,7 @@ Ensure all required providers are registered in the container. If you use `creat
 | `resolve<T>(token)` | Asynchronously resolves a token to an instance. |
 | `createRequestScope()` | Creates a child container for request-scoped dependencies. |
 | `has(token)` | Checks if a token is registered in the container or its parents. |
+| `hasRequestScopedDependency(token)` | Checks whether resolving a token may require a request-scope container because its provider graph contains request-scoped dependencies or is cyclic. |
 
 ## Related Packages
 
