@@ -70,7 +70,7 @@ export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
-const RAW_BODY_BUFFER_CONTENT_TYPES = ['application/x-www-form-urlencoded', 'text/plain'] as const;
+const RAW_BODY_BUFFER_CONTENT_TYPES = ['text/plain'] as const;
 
 /**
  * Bootstrap options for creating a Fastify-backed application without
@@ -403,21 +403,13 @@ function registerRawBodyBufferParsers(app: ReturnType<typeof fastify>): void {
   app.addContentTypeParser(
     RAW_BODY_BUFFER_CONTENT_TYPES,
     { parseAs: 'buffer' },
-    (request: FastifyRequest, body: Buffer, done: (error: Error | null, body?: unknown) => void) => {
+    (_request: FastifyRequest, body: Buffer, done: (error: Error | null, body?: unknown) => void) => {
     if (body.length === 0) {
       done(null, undefined);
       return;
     }
 
-    const bodyText = body.toString('utf8');
-    const primaryContentType = readPrimaryHeaderValue(request.headers['content-type']);
-
-    if (typeof primaryContentType === 'string' && primaryContentType.includes('application/x-www-form-urlencoded')) {
-      done(null, parseUrlEncodedBody(bodyText));
-      return;
-    }
-
-    done(null, bodyText);
+    done(null, body.toString('utf8'));
     },
   );
 }
@@ -605,37 +597,6 @@ async function parseMultipartRequest(
   }
 
   return { fields, files };
-}
-
-function parseUrlEncodedBody(bodyText: string): Record<string, string | string[]> {
-  const fields: Record<string, string | string[]> = {};
-  const searchParams = new URLSearchParams(bodyText);
-
-  for (const [key, value] of searchParams.entries()) {
-    const existing = fields[key];
-
-    if (existing === undefined) {
-      fields[key] = value;
-      continue;
-    }
-
-    if (Array.isArray(existing)) {
-      existing.push(value);
-      continue;
-    }
-
-    fields[key] = [existing, value];
-  }
-
-  return fields;
-}
-
-function readPrimaryHeaderValue(headerValue: string | string[] | undefined): string | undefined {
-  if (Array.isArray(headerValue)) {
-    return headerValue[0];
-  }
-
-  return headerValue;
 }
 
 /**

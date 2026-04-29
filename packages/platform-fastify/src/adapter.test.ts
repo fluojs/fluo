@@ -276,6 +276,43 @@ describe('@fluojs/platform-fastify', () => {
     await app.close();
   });
 
+  it('does not add urlencoded parsing support when rawBody preservation is enabled', async () => {
+    @Controller('/webhooks')
+    class WebhookController {
+      @Post('/form')
+      handleForm(_input: undefined, context: RequestContext) {
+        return {
+          parsed: context.request.body,
+          raw: Buffer.from(context.request.rawBody ?? new Uint8Array()).toString('utf8'),
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [WebhookController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      port,
+      rawBody: true,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/webhooks/form`, {
+      body: 'ping=1',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(415);
+
+    await app.close();
+  });
+
   it('supports SSE streaming', async () => {
     @Controller('/events')
     class EventsController {
