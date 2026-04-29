@@ -59,6 +59,7 @@ class TestBunAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost 
 }
 
 class TestBunServer implements BunServerLike {
+  closeDeliveryPromise?: Promise<void>;
   lastSocket?: MockSocket;
 
   constructor(private readonly binding?: BunWebSocketBinding<unknown>) {}
@@ -96,7 +97,12 @@ class TestBunServer implements BunServerLike {
 
     let socket!: MockSocket;
     socket = createMockSocket(options?.data, (code, reason) => {
-      void Promise.resolve(this.binding?.websocket.close?.(socket, code ?? 1000, reason ?? ''));
+      const deliver = () => Promise.resolve(this.binding?.websocket.close?.(socket, code ?? 1000, reason ?? ''));
+      if (this.closeDeliveryPromise) {
+        return this.closeDeliveryPromise.then(deliver);
+      }
+
+      return deliver();
     });
     this.lastSocket = socket;
     void Promise.resolve(this.binding.websocket.open?.(socket));
@@ -474,6 +480,130 @@ describe('@fluojs/websockets/bun', () => {
     expect(state.connectCount).toBe(1);
     expect(state.disconnectCount).toBe(1);
     expect((Reflect.get(service, 'socketRegistry') as Map<string, MockSocket>).size).toBe(0);
+  });
+
+  it('waits for asynchronously delivered Bun close events during shutdown', async () => {
+    const adapter = new TestBunAdapter();
+    const connected = createDeferred<void>();
+    const closeGate = createDeferred<void>();
+
+    class GatewayState {
+      disconnectCount = 0;
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/shutdown-async-close' })
+    class ShutdownGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      onConnect() {
+        connected.resolve();
+      }
+
+      @OnDisconnect()
+      onDisconnect() {
+        this.state.disconnectCount += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({ shutdown: { timeoutMs: 200 } })],
+      providers: [GatewayState, ShutdownGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+    await app.listen();
+
+    const server = adapter.getServer();
+    await server?.fetch(new Request('http://127.0.0.1:3000/shutdown-async-close', {
+      headers: { upgrade: 'websocket' },
+    }));
+    await flushAsyncWork();
+
+    if (!server) {
+      throw new Error('Expected Bun test server to be available after websocket upgrade.');
+    }
+
+    await connected.promise;
+    server.closeDeliveryPromise = closeGate.promise;
+
+    let closed = false;
+    const closePromise = app.close().then(() => {
+      closed = true;
+    });
+
+    await flushAsyncWork();
+
+    expect(closed).toBe(false);
+    expect(state.disconnectCount).toBe(0);
+
+    closeGate.resolve();
+    await closePromise;
+
+    expect(state.disconnectCount).toBe(1);
+  });
+
+  it('waits for in-flight Bun connect handlers to replay buffered disconnects during shutdown', async () => {
+    const adapter = new TestBunAdapter();
+    const connectGate = createDeferred<void>();
+
+    class GatewayState {
+      connectCount = 0;
+      disconnectCount = 0;
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/shutdown-connect-in-flight' })
+    class ShutdownGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      async onConnect() {
+        await connectGate.promise;
+        this.state.connectCount += 1;
+      }
+
+      @OnDisconnect()
+      onDisconnect() {
+        this.state.disconnectCount += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({ shutdown: { timeoutMs: 200 } })],
+      providers: [GatewayState, ShutdownGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+    await app.listen();
+
+    const server = adapter.getServer();
+    await server?.fetch(new Request('http://127.0.0.1:3000/shutdown-connect-in-flight', {
+      headers: { upgrade: 'websocket' },
+    }));
+    await flushAsyncWork();
+
+    let closed = false;
+    const closePromise = app.close().then(() => {
+      closed = true;
+    });
+
+    await flushAsyncWork();
+
+    expect(closed).toBe(false);
+    expect(state.connectCount).toBe(0);
+    expect(state.disconnectCount).toBe(0);
+
+    connectGate.resolve();
+    await closePromise;
+
+    expect(state.connectCount).toBe(1);
+    expect(state.disconnectCount).toBe(1);
   });
 
   it('closes Bun sockets when inbound payloads exceed the configured limit', async () => {
