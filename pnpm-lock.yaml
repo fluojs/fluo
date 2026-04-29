@@ -614,6 +614,9 @@ importers:
         specifier: ^5.1.0
         version: 5.2.1
     devDependencies:
+      '@fluojs/di':
+        specifier: workspace:^
+        version: link:../di
       '@types/express':
         specifier: ^5.0.3
         version: 5.0.6
