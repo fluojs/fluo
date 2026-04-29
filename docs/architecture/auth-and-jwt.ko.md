@@ -30,7 +30,7 @@
 | `kid` requirements | 다중 키 HMAC 검증, 다중 키 공개키 검증, JWKS 검증은 모두 인식 가능한 `kid`를 요구합니다. 누락되었거나 알 수 없는 `kid`는 검증 실패입니다. | `packages/jwt/src/signing/verifier.ts` |
 | Expiration | `requireExp`의 기본값은 활성화입니다. verifier가 명시적으로 `requireExp: false`를 설정하지 않으면 `exp`가 없는 토큰은 실패합니다. 만료된 토큰은 `JwtExpiredTokenError`를 발생시킵니다. | `packages/jwt/src/signing/verifier.ts` |
 | Activation time | `nbf`가 미래인 토큰은 clock skew 보정 후 `JWT is not active yet.`로 실패합니다. | `packages/jwt/src/signing/verifier.ts` |
-| Issuer and audience | `issuer` 또는 `audience`가 구성된 경우 verifier는 `iss` 또는 `aud`가 일치하지 않는 토큰을 거부해야 합니다. `JwtService.verify(token, options)`는 호출 단위로 이 클레임 검사를 더 좁힐 수 있지만, 공유 JWKS 상태나 key-resolution 상태를 다시 만들지는 않습니다. | `packages/jwt/src/signing/verifier.ts`, `packages/jwt/src/service.ts` |
+| Issuer and audience | `issuer` 또는 `audience`가 구성된 경우 verifier는 `iss` 또는 `aud`가 일치하지 않는 토큰을 거부해야 합니다. `JwtService.verify(token, options)`는 호출 단위로 알고리즘/클레임 정책 필드(`algorithms`, `issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`)만 재정의할 수 있으며, 공유 JWKS 상태나 key-resolution 상태를 다시 만들지는 않습니다. | `packages/jwt/src/signing/verifier.ts`, `packages/jwt/src/service.ts` |
 | Maximum age | `maxAge`가 구성된 경우 토큰에는 유한한 `iat` 클레임이 있어야 합니다. 미래 `iat` 또는 `maxAge + clockSkewSeconds`를 초과한 토큰은 검증 실패입니다. | `packages/jwt/src/signing/verifier.ts` |
 | Refresh-token verification | 리프레시 토큰 검증은 액세스 토큰 verifier에서 파생되지만, HMAC 전용 알고리즘, `requireExp: true`, 리프레시 secret, 선택적 `verifyMaxAgeSeconds`를 강제합니다. | `packages/jwt/src/signing/verifier.ts` |
 | Route enforcement | `AuthGuard`는 활성 전략을 해석하고, 해석된 principal을 `requestContext.principal`에 기록하며, 인증 실패를 `401 Unauthorized`로, 필수 scope 누락을 `403 Forbidden`으로 변환합니다. | `packages/passport/src/guard.ts` |

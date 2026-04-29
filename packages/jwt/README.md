@@ -148,7 +148,7 @@ const verifier = new DefaultJwtVerifier({
 
 `jwksRequestTimeoutMs` defaults to `5_000` and aborts the outbound JWKS fetch once that budget is exceeded.
 
-`JwtService.verify(token, options)` applies per-call issuer/audience/age policy overrides without rebuilding the underlying JWKS client or static key-resolution cache.
+`JwtService.verify(token, options)` applies per-call algorithm and claim-policy overrides (`issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`) without rebuilding the underlying JWKS client or static key-resolution cache. Per-call verification does not replace configured key sources such as `jwksUri`, `keys[]`, `publicKey`, `secret`, or `secretOrKeyProvider`.
 
 ## Configuration Guardrails
 

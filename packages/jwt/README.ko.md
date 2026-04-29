@@ -148,7 +148,7 @@ const verifier = new DefaultJwtVerifier({
 
 `jwksRequestTimeoutMs`의 기본값은 `5_000`이며, 예산을 넘기면 진행 중인 JWKS fetch를 abort합니다.
 
-`JwtService.verify(token, options)`는 호출 단위의 issuer/audience/age 정책 재정의를 적용하더라도, 내부 JWKS client나 정적 key-resolution cache를 다시 만들지 않습니다.
+`JwtService.verify(token, options)`는 호출 단위의 알고리즘/클레임 정책 재정의(`issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`)를 적용하더라도, 내부 JWKS client나 정적 key-resolution cache를 다시 만들지 않습니다. 호출 단위 검증은 `jwksUri`, `keys[]`, `publicKey`, `secret`, `secretOrKeyProvider` 같은 구성된 key source 자체를 교체하지는 않습니다.
 
 ## 설정 가드레일
 
