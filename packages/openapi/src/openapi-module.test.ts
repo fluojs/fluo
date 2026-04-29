@@ -1,9 +1,12 @@
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import * as corePublicApi from '@fluojs/core';
 import { IsArray, IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from '@fluojs/validation';
 import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation';
+import * as httpPublicApi from '@fluojs/http';
 import { Controller, Get, Post, Produces, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
 import { FromBody, FromCookie, FromHeader, FromPath, FromQuery, RequestDto } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
@@ -22,6 +25,7 @@ import {
   ApiSecurity,
   ApiTag,
 } from './decorators.js';
+import * as openApiPublicApi from './index.js';
 import { OpenApiModule } from './openapi-module.js';
 
 type TestFrameworkResponse = FrameworkResponse & { body?: unknown };
@@ -36,7 +40,9 @@ function registerAppForCleanup<T extends TestCloseable>(app: T): T {
   teardownCallbacks.push(async () => {
     try {
       await app.close();
-    } catch {}
+    } catch {
+      // Cleanup is best-effort because some tests may already close the app while asserting error paths.
+    }
   });
 
   return app;
@@ -46,7 +52,9 @@ function registerResponseForCleanup<T extends Response>(response: T): T {
   teardownCallbacks.push(async () => {
     try {
       await response.body?.cancel();
-    } catch {}
+    } catch {
+      // Cleanup is best-effort because some response bodies are already consumed by assertions.
+    }
   });
 
   return response;
@@ -99,6 +107,55 @@ function createResponse(): TestFrameworkResponse {
     statusCode: undefined,
     statusSet: false,
   };
+}
+
+function readRepoTextFile(pathFromRepoRoot: string): string {
+  return readFileSync(new URL(`../../../${pathFromRepoRoot}`, import.meta.url), 'utf8');
+}
+
+function extractTypeScriptExamples(markdown: string): string[] {
+  return [...markdown.matchAll(/```(?:typescript|ts)\n([\s\S]*?)```/g)].map((match) => match[1] ?? '');
+}
+
+function extractNamedImports(source: string, packageName: string): string[] {
+  const importPattern = new RegExp(`^import\\s*{([^}]*)}\\s*from\\s*['"]${packageName}['"];?$`, 'gm');
+  const imports: string[] = [];
+
+  for (const match of source.matchAll(importPattern)) {
+    const importList = match[1] ?? '';
+
+    for (const specifier of importList.split(',')) {
+      const importedName = specifier.trim().split(/\s+as\s+/u)[0]?.trim();
+
+      if (importedName) {
+        imports.push(importedName);
+      }
+    }
+  }
+
+  return imports;
+}
+
+function expectExamplesToUsePublicExports(markdownPath: string): void {
+  const examples = extractTypeScriptExamples(readRepoTextFile(markdownPath));
+
+  expect(examples.length).toBeGreaterThan(0);
+
+  for (const example of examples) {
+    expect(example).not.toContain('ApiProperty');
+
+    for (const exportedName of extractNamedImports(example, '@fluojs/openapi')) {
+      expect(openApiPublicApi).toHaveProperty(exportedName);
+    }
+
+    for (const exportedName of extractNamedImports(example, '@fluojs/http')) {
+      expect(httpPublicApi).toHaveProperty(exportedName);
+    }
+
+    for (const exportedName of extractNamedImports(example, '@fluojs/core')) {
+      expect(corePublicApi).toHaveProperty(exportedName);
+    }
+  }
 }
 
 async function findAvailablePort(): Promise<number> {
@@ -311,6 +368,9 @@ describe('OpenApiModule', () => {
   });
 
   it('keeps Chapter 10 supported OpenAPI examples aligned with the shipped API surface', async () => {
+    expectExamplesToUsePublicExports('book/beginner/ch10-openapi.md');
+    expectExamplesToUsePublicExports('book/beginner/ch10-openapi.ko.md');
+
     class UserListResponse {
       @IsString()
       id = '';

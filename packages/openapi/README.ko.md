@@ -74,6 +74,9 @@ await app.listen(3000);
 ### 자동 명세 생성
 fluo는 컨트롤러와 메서드를 조사하여 전체 OpenAPI 3.1.0 문서를 작성합니다. 여기에는 경로, 메서드, 파라미터 및 요청 바디가 포함됩니다.
 
+### 응답 미디어 타입
+HTTP 핸들러가 `@fluojs/http`의 `@Produces(...)`를 선언하면, 생성된 OpenAPI 응답은 해당 미디어 타입을 response `content` 키로 사용합니다. 예를 들어 `@ApiResponse(...)` 스키마가 있는 핸들러에 `@Produces('application/json', 'application/problem+json')`를 붙이면, `application/json`만으로 되돌아가지 않고 두 미디어 타입 모두 같은 응답 스키마로 방출합니다.
+
 ### 통합 DTO 스키마
 `@fluojs/validation`과 원활하게 작동합니다. DTO 클래스는 자동으로 OpenAPI 컴포넌트로 변환되어 적절한 오퍼레이션에서 참조됩니다.
 
@@ -82,6 +85,8 @@ fluo는 컨트롤러와 메서드를 조사하여 전체 OpenAPI 3.1.0 문서를
 
 ### 보안 문서화
 `@ApiBearerAuth()` 및 `@ApiSecurity()`를 사용하여 Bearer 토큰이나 API 키와 같은 보안 요구사항을 쉽게 문서화할 수 있습니다.
+
+같은 scheme에 대해 여러 `@ApiSecurity()` 데코레이터를 쌓으면, 해당 scheme의 scope가 하나의 누적 OpenAPI security requirement로 병합됩니다. 따라서 라우트가 `['reports:read']`와 `['reports:write', 'reports:read']`처럼 겹치는 scope를 선언해도 OAuth 스타일 요구사항은 결정적으로 유지되며, 서로 다른 scheme은 별도 requirement로 남습니다.
 
 ### 결정적인 Swagger UI 자산
 `ui: true`를 활성화하면 생성되는 `/docs` 페이지는 정확한 `swagger-ui-dist` 버전의 자산을 참조하여 패키지 릴리스마다 동일한 동작을 유지합니다.

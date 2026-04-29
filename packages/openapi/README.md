@@ -74,6 +74,9 @@ If you need to bypass controller discovery, pass `descriptors: createHandlerMapp
 ### Automated Specification Generation
 fluo inspects your controllers and methods to build a complete OpenAPI 3.1.0 document. This includes paths, methods, parameters, and request bodies.
 
+### Response Media Types
+When an HTTP handler declares `@Produces(...)` from `@fluojs/http`, generated OpenAPI responses use those media types as the response `content` keys. For example, `@Produces('application/json', 'application/problem+json')` on a handler with an `@ApiResponse(...)` schema emits both media types with the same response schema instead of silently falling back to only `application/json`.
+
 ### Integrated DTO Schemas
 Works seamlessly with `@fluojs/validation`. Your DTO classes are automatically converted to OpenAPI components and referenced in the appropriate operations.
 
@@ -82,6 +85,8 @@ Handles URI-based versioning from `@fluojs/http` automatically. Your OpenAPI pat
 
 ### Security Documentation
 Easily document authentication requirements like Bearer tokens or API keys using `@ApiBearerAuth()` and `@ApiSecurity()`.
+
+Stacking multiple `@ApiSecurity()` decorators for the same scheme merges scopes into one cumulative OpenAPI security requirement for that scheme. This keeps OAuth-style requirements deterministic when a route declares overlapping scopes such as `['reports:read']` and `['reports:write', 'reports:read']`, while different schemes remain separate requirements.
 
 ### Deterministic Swagger UI Assets
 When `ui: true` is enabled, the generated `/docs` page references an exact `swagger-ui-dist` asset version so release behavior stays deterministic across package updates.
