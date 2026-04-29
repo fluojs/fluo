@@ -76,6 +76,18 @@ function onceClosed(socket: WebSocket): Promise<void> {
   });
 }
 
+function createDeferred<T = void>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+
+  return { promise, resolve };
+}
+
 describe('@fluojs/websockets/node', () => {
   it('exposes the explicit Node-only websocket seam', () => {
     expect(nodePublicApi).toHaveProperty('NodeWebSocketModule');
@@ -98,6 +110,8 @@ describe('@fluojs/websockets/node', () => {
   });
 
   it('preserves Node-backed websocket behavior through the explicit node seam', async () => {
+    const disconnected = createDeferred<void>();
+
     class GatewayState {
       connectCount = 0;
       disconnectCount = 0;
@@ -123,6 +137,7 @@ describe('@fluojs/websockets/node', () => {
       @OnDisconnect()
       onDisconnect() {
         this.state.disconnectCount += 1;
+        disconnected.resolve();
       }
     }
 
@@ -149,8 +164,7 @@ describe('@fluojs/websockets/node', () => {
     expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: 'hello' } });
 
     socket.close();
-    await onceClosed(socket);
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await Promise.all([onceClosed(socket), disconnected.promise]);
 
     expect(state.connectCount).toBe(1);
     expect(state.messages).toEqual([{ value: 'hello' }]);
