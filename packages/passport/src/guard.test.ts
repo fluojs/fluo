@@ -258,6 +258,49 @@ describe('AuthGuard', () => {
     expect(response.body).toEqual({ subject: null });
   });
 
+  it('rejects missing cookie auth when a protected method overrides class-level optional auth', async () => {
+    class MissingCookieStrategy implements AuthStrategy {
+      async authenticate() {
+        return { authenticated: false } as const;
+      }
+    }
+
+    @Controller('/session')
+    @UseOptionalAuth('mock')
+    class MixedAuthController {
+      @Get('/me')
+      @UseAuth('mock')
+      getProfile() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      MixedAuthController,
+      MissingCookieStrategy,
+      ...createPassportModuleProviders({ defaultStrategy: 'mock' }, [{ name: 'mock', token: MissingCookieStrategy }]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: MixedAuthController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/session/me', { 'x-request-id': 'req-auth-cookie-method-override' }), response);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({
+      error: {
+        code: 'UNAUTHORIZED',
+        details: undefined,
+        message: 'Authentication required.',
+        meta: undefined,
+        requestId: 'req-auth-cookie-method-override',
+        status: 401,
+      },
+    });
+  });
+
   it('still rejects optional auth routes when scopes are required but no principal is available', async () => {
     class MissingCookieStrategy implements AuthStrategy {
       async authenticate() {
