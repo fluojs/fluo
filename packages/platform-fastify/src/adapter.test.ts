@@ -6,10 +6,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   Controller,
+  type Dispatcher,
   Get,
   Post,
   SseResponse,
-  type Dispatcher,
   type FrameworkRequest,
   type RequestContext,
 } from '@fluojs/http';
@@ -287,6 +287,72 @@ describe('@fluojs/platform-fastify', () => {
     });
 
     await adapter.close();
+  });
+
+  it('bypasses raw-body capture for multipart requests at the Fastify hook layer', async () => {
+    @Controller('/uploads')
+    class UploadController {
+      @Post('/')
+      upload() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UploadController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      port,
+      rawBody: true,
+    });
+    const adapter = Reflect.get(app, 'adapter') as FastifyHttpApplicationAdapter;
+    const fastifyApp = Reflect.get(adapter, 'app') as {
+      addHook: (name: 'preHandler', hook: (request: { rawBody?: Buffer; headers: Record<string, string | string[] | undefined> }) => void) => void;
+    };
+    const observedMultipartRawBodyStates: boolean[] = [];
+    const observedMultipartRequest = createDeferred<void>();
+
+    fastifyApp.addHook('preHandler', (request) => {
+      const contentType = request.headers['content-type'];
+      const primaryValue = Array.isArray(contentType) ? contentType[0] : contentType;
+
+      if (typeof primaryValue === 'string' && primaryValue.includes('multipart/form-data')) {
+        observedMultipartRawBodyStates.push(request.rawBody !== undefined);
+        observedMultipartRequest.resolve();
+      }
+    });
+
+    await app.listen();
+
+    const form = new FormData();
+    form.set('name', 'Ada');
+    form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
+
+    const abortController = new AbortController();
+    const multipartRequest = fetch(`http://127.0.0.1:${String(port)}/uploads`, {
+      body: form,
+      method: 'POST',
+      signal: abortController.signal,
+    });
+
+    await expect(Promise.race([
+      observedMultipartRequest.promise,
+      new Promise<void>((_resolve, reject) => {
+        setTimeout(() => {
+          reject(new Error('Multipart request never reached Fastify preHandler hook.'));
+        }, 2_000);
+      }),
+    ])).resolves.toBeUndefined();
+
+    abortController.abort();
+    await multipartRequest.catch(() => undefined);
+    expect(observedMultipartRawBodyStates).toEqual([false]);
+
+    await app.close();
   });
 
   it('supports SSE streaming', async () => {

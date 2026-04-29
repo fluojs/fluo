@@ -737,6 +737,11 @@ function captureRawBodyPreParsingHook(
   payload: NodeJS.ReadableStream,
   done: (error: Error | null, payload: NodeJS.ReadableStream) => void,
 ): void {
+  if (isMultipartRequestContentType(request.headers['content-type'])) {
+    done(null, payload);
+    return;
+  }
+
   const chunks: Buffer[] = [];
   const capture = new Transform({
     transform(chunk, _encoding, callback) {
@@ -764,6 +769,11 @@ function captureRawBodyPreParsingHook(
 
   payload.pipe(capture);
   done(null, capture);
+}
+
+function isMultipartRequestContentType(contentType: string | string[] | undefined): boolean {
+  const primaryValue = Array.isArray(contentType) ? contentType[0] : contentType;
+  return typeof primaryValue === 'string' && primaryValue.includes('multipart/form-data');
 }
 
 function resolveListenTarget(
