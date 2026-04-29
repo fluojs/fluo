@@ -259,6 +259,23 @@ function onceDisconnected(socket: ClientSocket): Promise<string> {
   });
 }
 
+async function waitForExpectation(assertion: () => void, timeoutMs = 250): Promise<void> {
+  const startedAt = Date.now();
+
+  while (true) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      if (Date.now() - startedAt >= timeoutMs) {
+        throw error;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+}
+
 interface SupportedSocketIoAdapterScenario {
   createAdapter: (options: { port: number; shutdownTimeoutMs?: number }) => ReturnType<typeof createNodejsAdapter>;
   name: string;
@@ -469,10 +486,10 @@ describe('@fluojs/socket.io', () => {
     socket.disconnect();
 
     expect(await disconnected).toBe('io client disconnect');
-    await new Promise((resolve) => setTimeout(resolve, 25));
-
-    expect(state.disconnectCount).toBe(1);
-    expect(state.disconnectReason).toBe('client namespace disconnect');
+    await waitForExpectation(() => {
+      expect(state.disconnectCount).toBe(1);
+      expect(state.disconnectReason).toBe('client namespace disconnect');
+    });
 
     await app.close();
   });
