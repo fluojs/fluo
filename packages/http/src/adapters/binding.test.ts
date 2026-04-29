@@ -483,6 +483,51 @@ describe('HttpDtoValidationAdapter', () => {
     });
   });
 
+  it('preserves symbol-backed bound fields while filtering unbound validation properties', async () => {
+    const sessionToken = Symbol('sessionToken');
+
+    class SymbolBackedRequest {
+      @FromBody('session')
+      @MinLength(4, { code: 'SESSION_REQUIRED', message: 'session token is required' })
+      [sessionToken] = '';
+
+      @MinLength(1, { code: 'UNBOUND_REQUIRED', message: 'unbound hint is required' })
+      unboundHint = '';
+    }
+
+    const validator = new HttpDtoValidationAdapter();
+
+    await expect(
+      validator.validate(
+        Object.assign(new SymbolBackedRequest(), {
+          [sessionToken]: 'abcd',
+          unboundHint: '',
+        }),
+        SymbolBackedRequest,
+      ),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      validator.validate(
+        Object.assign(new SymbolBackedRequest(), {
+          [sessionToken]: '',
+          unboundHint: '',
+        }),
+        SymbolBackedRequest,
+      ),
+    ).rejects.toMatchObject({
+      details: [
+        {
+          code: 'SESSION_REQUIRED',
+          field: String(sessionToken),
+          message: 'session token is required',
+          source: 'body',
+        },
+      ],
+      status: 400,
+    });
+  });
+
   it('supports nested DTO validation, each semantics, and nested field paths', async () => {
     class AddressDto {
       @MinLength(1, { code: 'REQUIRED_CITY', message: 'city is required' })
