@@ -54,21 +54,9 @@ function routePaths(count: number): string[] {
 
 const SCENARIOS = [
   {
-    name: 'baseline',
-    description: 'Pure routing — no DI',
-    path: '/baseline',
-    expectedBodies: [JSON.stringify({ ok: true })],
-  },
-  {
-    name: 'di-chain',
-    description: 'Path DTO + 3-level DI chain  (Controller → Service → Repository)',
-    path: '/di-chain/1',
-    expectedBodies: [USER_RESPONSE],
-  },
-  {
-    name: 'di-chain-random-10',
-    description: 'Random 10-route path DTO + 3-level DI chain',
-    paths: routePaths(10),
+    name: 'di-chain-random-20',
+    description: 'Random 20-route path DTO + 3-level DI chain',
+    paths: routePaths(20),
     expectedBodies: [USER_RESPONSE],
   },
 ] as const;

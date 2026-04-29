@@ -8,9 +8,7 @@ Runs a small HTTP throughput/latency comparison between published fluo beta pack
 
 ## Scenarios
 
-- `baseline`: pure controller routing with an identical `{ "ok": true }` JSON response.
-- `di-chain`: controller → service → repository constructor injection with an identical user JSON response.
-- `di-chain-random-10`: the same DI path across randomly selected 10-route families, used to expose route matching overhead.
+- `di-chain-random-20`: the same DI path (Controller → Service → Repository) across randomly selected 20-route families, used to expose route matching overhead.
 
 ## Run
 
