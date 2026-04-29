@@ -287,6 +287,16 @@ export class Container {
   }
 
   /**
+   * Returns whether resolving a token may require a request-scope container.
+   *
+   * @param token Provider token to inspect through aliases, multi providers, and dependencies.
+   * @returns `true` when the provider graph contains request-scoped dependencies or is cyclic.
+   */
+  hasRequestScopedDependency(token: Token): boolean {
+    return this.providerGraphRequiresRequestScope(token, new Set<Token>());
+  }
+
+  /**
    * Creates a child request-scope container that shares root singleton cache.
    *
    * @returns A request-scope child container bound to this container hierarchy.
@@ -434,6 +444,70 @@ export class Container {
     }
 
     return fromParent;
+  }
+
+  private providerGraphRequiresRequestScope(token: Token, visited: Set<Token>): boolean {
+    if (visited.has(token)) {
+      return true;
+    }
+
+    visited.add(token);
+
+    try {
+      const provider = this.lookupProvider(token);
+      const multiProviders = this.collectMultiProviders(token);
+
+      if (!provider && multiProviders.length === 0) {
+        return this.unregisteredClassRequiresRequestScope(token, visited);
+      }
+
+      if (provider && this.normalizedProviderRequiresRequestScope(provider, visited)) {
+        return true;
+      }
+
+      return multiProviders.some((multiProvider) => this.normalizedProviderRequiresRequestScope(multiProvider, visited));
+    } finally {
+      visited.delete(token);
+    }
+  }
+
+  private unregisteredClassRequiresRequestScope(token: Token, visited: Set<Token>): boolean {
+    if (typeof token !== 'function') {
+      return false;
+    }
+
+    const metadata = getClassDiMetadata(token);
+
+    if (metadata?.scope === Scope.REQUEST) {
+      return true;
+    }
+
+    return (metadata?.inject ?? []).some((depEntry) => this.dependencyEntryRequiresRequestScope(depEntry, visited));
+  }
+
+  private normalizedProviderRequiresRequestScope(provider: NormalizedProvider, visited: Set<Token>): boolean {
+    if (provider.scope === Scope.REQUEST) {
+      return true;
+    }
+
+    if (provider.type === 'existing' && provider.useExisting !== undefined) {
+      return this.providerGraphRequiresRequestScope(provider.useExisting, visited);
+    }
+
+    return provider.inject.some((depEntry) => this.dependencyEntryRequiresRequestScope(depEntry, visited));
+  }
+
+  private dependencyEntryRequiresRequestScope(
+    depEntry: Token | ForwardRefFn | OptionalToken,
+    visited: Set<Token>,
+  ): boolean {
+    const depToken = this.resolveProviderDependencyToken(depEntry);
+
+    if (isOptionalToken(depEntry) && !this.has(depToken)) {
+      return false;
+    }
+
+    return this.providerGraphRequiresRequestScope(depToken, visited);
   }
 
   private async resolveWithChain<T>(

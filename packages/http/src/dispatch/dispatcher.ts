@@ -1,19 +1,21 @@
 import type { Token } from '@fluojs/core';
-import type { Container } from '@fluojs/di';
+import type { Container, RequestScopeContainer } from '@fluojs/di';
 
 import { readFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
 import { invokeControllerHandler } from './dispatch-handler-policy.js';
 import { resolveContentNegotiation, writeErrorResponse, writeSuccessResponse, type ResolvedContentNegotiation } from './dispatch-response-policy.js';
 import { matchHandlerOrThrow, updateRequestParams } from './dispatch-routing-policy.js';
+import { getCompiledDtoBindingPlan } from '../adapters/dto-binding-plan.js';
 import { RequestAbortedError } from '../errors.js';
 import { runGuardChain } from '../guards.js';
 import { runInterceptorChain } from '../interceptors.js';
-import { runMiddlewareChain } from '../middleware/middleware.js';
+import { isMiddlewareRouteConfig, matchRoutePattern, runMiddlewareChain } from '../middleware/middleware.js';
 import { createRequestContext, runWithRequestContext } from '../context/request-context.js';
 import { SseResponse } from '../context/sse.js';
 import type {
   Binder,
   ContentNegotiationOptions,
+  ConverterLike,
   Dispatcher,
   DispatcherLogger,
   FrameworkRequest,
@@ -53,9 +55,19 @@ export interface CreateDispatcherOptions {
   observers?: RequestObserverLike[];
   /** Optional global error handler. */
   onError?: ErrorHandler;
+  /** Request-scope optimization hints supplied by runtime bootstrap. */
+  requestScope?: {
+    /** Global DTO converters used by the default binder. */
+    converterDefinitions?: readonly ConverterLike[];
+  };
   logger?: DispatcherLogger;
   /** Root DI container for creating request scopes. */
   rootContainer: Container;
+}
+
+interface DispatchScope {
+  container: RequestScopeContainer;
+  requestScoped: boolean;
 }
 
 function logDispatchFailure(
@@ -108,15 +120,111 @@ function readRequestId(request: FrameworkRequest): string | undefined {
 function createDispatchContext(
   request: FrameworkRequest,
   response: FrameworkResponse,
-  rootContainer: Container,
+  container: RequestScopeContainer,
 ): RequestContext {
   return createRequestContext({
-    container: rootContainer.createRequestScope(),
+    container,
     metadata: {},
     request,
     requestId: readRequestId(request),
     response,
   });
+}
+
+function createRootDispatchScope(rootContainer: Container): DispatchScope {
+  return {
+    container: rootContainer,
+    requestScoped: false,
+  };
+}
+
+function createRequestDispatchScope(rootContainer: Container): DispatchScope {
+  return {
+    container: rootContainer.createRequestScope(),
+    requestScoped: true,
+  };
+}
+
+function activeMiddlewareMayRequireRequestScope(
+  definitions: readonly MiddlewareLike[],
+  request: FrameworkRequest,
+): boolean {
+  return definitions.some((definition) => {
+    if (!isMiddlewareRouteConfig(definition)) {
+      return true;
+    }
+
+    return definition.routes.length === 0 || definition.routes.some((route) => matchRoutePattern(route, request.path));
+  });
+}
+
+function requestDtoMayRequireRequestScope(handler: HandlerDescriptor, options: CreateDispatcherOptions): boolean {
+  if (!handler.route.request) {
+    return false;
+  }
+
+  if ((options.requestScope?.converterDefinitions ?? []).length > 0) {
+    return true;
+  }
+
+  if (options.binder) {
+    return true;
+  }
+
+  const plan = getCompiledDtoBindingPlan(handler.route.request);
+
+  return plan.entries.some((entry) => entry.converter !== undefined);
+}
+
+function handlerMethodMayUseRequestContext(handler: HandlerDescriptor): boolean {
+  const method = handler.controllerToken.prototype[handler.methodName] as unknown;
+
+  return typeof method === 'function' && method.length >= 2;
+}
+
+function handlerMayRequireRequestScope(
+  handler: HandlerDescriptor,
+  request: FrameworkRequest,
+  options: CreateDispatcherOptions,
+): boolean {
+  if (handler.route.guards && handler.route.guards.length > 0) {
+    return true;
+  }
+
+  if ((options.interceptors ?? []).length > 0 || (handler.route.interceptors ?? []).length > 0) {
+    return true;
+  }
+
+  if (activeMiddlewareMayRequireRequestScope(handler.metadata.moduleMiddleware, request)) {
+    return true;
+  }
+
+  if (requestDtoMayRequireRequestScope(handler, options)) {
+    return true;
+  }
+
+  if (handlerMethodMayUseRequestContext(handler)) {
+    return true;
+  }
+
+  return options.rootContainer.hasRequestScopedDependency(handler.controllerToken);
+}
+
+function dispatchStartMayRequireRequestScope(
+  request: FrameworkRequest,
+  observers: readonly RequestObserverLike[],
+  options: CreateDispatcherOptions,
+): boolean {
+  return observers.length > 0 || activeMiddlewareMayRequireRequestScope(options.appMiddleware ?? [], request);
+}
+
+function ensureRequestScope(context: DispatchPhaseContext): void {
+  if (context.dispatchScope.requestScoped) {
+    return;
+  }
+
+  context.dispatchScope = createRequestDispatchScope(context.options.rootContainer);
+  context.requestContext.container = context.dispatchScope.container;
 }
 
 function ensureRequestNotAborted(request: FrameworkRequest): void {
@@ -244,6 +352,7 @@ async function dispatchMatchedHandler(
 
 interface DispatchPhaseContext {
   contentNegotiation: ResolvedContentNegotiation | undefined;
+  dispatchScope: DispatchScope;
   matchedHandler?: HandlerDescriptor;
   observers: RequestObserverLike[];
   options: CreateDispatcherOptions;
@@ -316,6 +425,11 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
       readFrameworkRequestNativeRouteHandoff(appMiddlewareContext.request)
       ?? matchHandlerOrThrow(context.options.handlerMapping, appMiddlewareContext.request);
     context.matchedHandler = match.descriptor;
+
+    if (handlerMayRequireRequestScope(match.descriptor, appMiddlewareContext.request, context.options)) {
+      ensureRequestScope(context);
+    }
+
     updateRequestParams(context.requestContext, match.params);
     await notifyHandlerMatched(context, match.descriptor);
 
@@ -375,11 +489,16 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
       return options.handlerMapping.descriptors.map((descriptor) => cloneHandlerDescriptor(descriptor));
     },
     async dispatch(request: FrameworkRequest, response: FrameworkResponse): Promise<void> {
+      const dispatchRequest = createDispatchRequest(request);
+      const dispatchScope = dispatchStartMayRequireRequestScope(dispatchRequest, observers, options)
+        ? createRequestDispatchScope(options.rootContainer)
+        : createRootDispatchScope(options.rootContainer);
       const phaseContext: DispatchPhaseContext = {
         contentNegotiation,
+        dispatchScope,
         observers,
         options,
-        requestContext: createDispatchContext(createDispatchRequest(request), response, options.rootContainer),
+        requestContext: createDispatchContext(dispatchRequest, response, dispatchScope.container),
         response,
       };
 
@@ -391,10 +510,12 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
           await handleDispatchError(phaseContext, error);
         } finally {
           await notifyRequestFinish(phaseContext);
-          try {
-            await phaseContext.requestContext.container.dispose();
-          } catch (error) {
-            logDispatchFailure(options.logger, 'Request-scoped container dispose threw an error.', error);
+          if (phaseContext.dispatchScope.requestScoped) {
+            try {
+              await phaseContext.dispatchScope.container.dispose();
+            } catch (error) {
+              logDispatchFailure(options.logger, 'Request-scoped container dispose threw an error.', error);
+            }
           }
         }
       });

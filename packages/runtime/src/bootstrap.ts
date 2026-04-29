@@ -1149,15 +1149,22 @@ function createRuntimeDispatcherOptions(
   errorHandler: ErrorHandler | undefined,
   logger: ApplicationLogger,
 ): ErrorAwareDispatcherOptions {
+  const converters = options.converters ?? [];
   const dispatcherOptions: ErrorAwareDispatcherOptions = {
     appMiddleware: options.middleware ?? [],
-    binder: new DefaultBinder(options.converters ?? []),
     handlerMapping,
     interceptors: options.interceptors ?? [],
     logger,
     observers: options.observers ?? [],
+    requestScope: {
+      converterDefinitions: converters,
+    },
     rootContainer: bootstrapped.container,
   };
+
+  if (converters.length > 0) {
+    dispatcherOptions.binder = new DefaultBinder(converters);
+  }
 
   if (errorHandler) {
     dispatcherOptions.onError = errorHandler;
