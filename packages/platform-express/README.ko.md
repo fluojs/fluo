@@ -44,6 +44,8 @@ await app.listen();
 ### 스트리밍 응답 처리 (SSE)
 Express 어댑터는 공유 `SseResponse` 유틸리티를 통해 Server-Sent Events(SSE)를 지원하며, Express 전용 스트림 처리를 추상화합니다.
 
+Express 기반 응답 스트림은 공유 fluo 백프레셔 계약도 따릅니다. `response.stream.waitForDrain()`은 `drain`, `close`, `error` 중 어느 쪽이 먼저 와도 완료되므로, 백프레셔가 풀리기 전에 클라이언트가 연결을 끊어도 스트리밍 작성기가 멈추지 않습니다.
+
 ```typescript
 @Get('events')
 async streamEvents(@Res() res: FrameworkResponse) {

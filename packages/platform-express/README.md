@@ -44,6 +44,8 @@ await app.listen();
 ### Handling Streaming Responses (SSE)
 The Express adapter supports Server-Sent Events (SSE) via the shared `SseResponse` utility, abstracting away the Express-specific stream handling.
 
+Express-backed response streams also honor the shared fluo backpressure contract: `response.stream.waitForDrain()` settles on `drain`, `close`, or `error`, so streaming writers do not hang when clients disconnect before backpressure clears.
+
 ```typescript
 @Get('events')
 async streamEvents(@Res() res: FrameworkResponse) {

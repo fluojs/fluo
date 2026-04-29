@@ -541,12 +541,21 @@ function createFrameworkResponseStream(response: ExpressResponse): FrameworkResp
       };
     },
     waitForDrain() {
-      if (response.writableEnded) {
+      if (response.writableEnded || response.destroyed) {
         return Promise.resolve();
       }
 
       return new Promise<void>((resolve) => {
-        response.once('drain', () => resolve());
+        const settle = () => {
+          response.removeListener('drain', settle);
+          response.removeListener('close', settle);
+          response.removeListener('error', settle);
+          resolve();
+        };
+
+        response.once('drain', settle);
+        response.once('close', settle);
+        response.once('error', settle);
       });
     },
     write(chunk: string | Uint8Array) {

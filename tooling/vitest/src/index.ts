@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { extname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defineConfig, mergeConfig, type UserConfig } from 'vitest/config';
+import { defineConfig, mergeConfig } from 'vitest/config';
 
 import { fluoBabelDecoratorsPlugin } from '../../vite/src';
 import {
@@ -12,6 +12,27 @@ import {
 function collectWorkspaceAliasesFromRoot(repoRoot: string): Record<string, string> {
   const packagesRoot = join(repoRoot, 'packages');
   const aliases: Record<string, string> = {};
+
+  const collectSourceEntries = (sourceRoot: string): string[] => {
+    const entries: string[] = [];
+
+    for (const directoryEntry of readdirSync(sourceRoot, { withFileTypes: true })) {
+      const entryPath = join(sourceRoot, directoryEntry.name);
+
+      if (directoryEntry.isDirectory()) {
+        entries.push(...collectSourceEntries(entryPath));
+        continue;
+      }
+
+      if (!directoryEntry.isFile()) {
+        continue;
+      }
+
+      entries.push(entryPath);
+    }
+
+    return entries;
+  };
 
   for (const packageDirectoryName of readdirSync(packagesRoot)) {
     const packageRoot = join(packagesRoot, packageDirectoryName);
@@ -25,13 +46,19 @@ function collectWorkspaceAliasesFromRoot(repoRoot: string): Record<string, strin
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { name?: string };
     const scopeName = manifest.name ?? `@fluojs/${packageDirectoryName}`;
 
-    for (const sourceEntry of readdirSync(sourceRoot)) {
-      if (extname(sourceEntry) !== '.ts' || sourceEntry.endsWith('.test.ts') || sourceEntry === 'index.ts') {
+    for (const sourceEntryPath of collectSourceEntries(sourceRoot)) {
+      const relativeSourceEntry = relative(sourceRoot, sourceEntryPath);
+
+      if (
+        extname(sourceEntryPath) !== '.ts' ||
+        relativeSourceEntry.endsWith('.test.ts') ||
+        relativeSourceEntry === 'index.ts'
+      ) {
         continue;
       }
 
-      const subpath = sourceEntry.slice(0, -3);
-      aliases[`${scopeName}/${subpath}`] = join(sourceRoot, sourceEntry);
+      const subpath = relativeSourceEntry.slice(0, -3).split(sep).join('/');
+      aliases[`${scopeName}/${subpath}`] = sourceEntryPath;
     }
 
     const indexPath = join(sourceRoot, 'index.ts');
@@ -56,7 +83,7 @@ export function collectWorkspaceAliases(repoRootUrl: string | URL): Record<strin
   return collectWorkspaceAliasesFromRoot(fileURLToPath(repoRootUrl));
 }
 
-export function createFluoVitestWorkspaceConfig(repoRootUrl: string | URL, overrides: UserConfig = {}) {
+export function createFluoVitestWorkspaceConfig(repoRootUrl: string | URL, overrides = {}) {
   const repoRoot = fileURLToPath(repoRootUrl);
   const shutdownDebugEnabled = isFluoVitestShutdownDebugEnabled();
   const shutdownDebugConfig = shutdownDebugEnabled
