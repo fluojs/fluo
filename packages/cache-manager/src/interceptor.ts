@@ -81,7 +81,7 @@ function defaultCacheKey(
     return strategy(context);
   }
 
-  const path = context.handler.metadata.effectivePath;
+  const path = context.requestContext.request.path;
   const query = context.requestContext.request.query;
 
   if (strategy === 'route') {

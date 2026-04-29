@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
-import { Controller, Get, Post, UseInterceptors, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
+import { Controller, Get, Post, UseInterceptors, getCurrentRequestContext, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 
@@ -346,6 +346,55 @@ describe('CacheModule.forRoot', () => {
     await app.dispatch(createRequest('/products', 'GET', '/products?page=1'), thirdGetResponse);
 
     expect(listHandler).toHaveBeenCalledTimes(2);
+
+    await app.close();
+  });
+
+  it('keeps path-param GET routes in separate cache entries across the real dispatch pipeline', async () => {
+    let sequence = 0;
+    const getUser = vi.fn((id: string) => ({ id, sequence: ++sequence }));
+
+    @Controller('/users')
+    class UserController {
+      @Get('/:id')
+      @UseInterceptors(CacheInterceptor)
+      getById() {
+        const id = getCurrentRequestContext()?.request.params.id;
+        if (!id) {
+          throw new Error('expected path param id');
+        }
+
+        return getUser(id);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UserController],
+      imports: [CacheModule.forRoot({ store: 'memory' })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    const firstUserResponse = createResponse();
+    await app.dispatch(createRequest('/users/1', 'GET'), firstUserResponse);
+
+    const secondUserResponse = createResponse();
+    await app.dispatch(createRequest('/users/2', 'GET'), secondUserResponse);
+
+    const repeatFirstUserResponse = createResponse();
+    await app.dispatch(createRequest('/users/1', 'GET'), repeatFirstUserResponse);
+
+    const repeatSecondUserResponse = createResponse();
+    await app.dispatch(createRequest('/users/2', 'GET'), repeatSecondUserResponse);
+
+    expect(firstUserResponse.body).toEqual({ id: '1', sequence: 1 });
+    expect(secondUserResponse.body).toEqual({ id: '2', sequence: 2 });
+    expect(repeatFirstUserResponse.body).toEqual(firstUserResponse.body);
+    expect(repeatSecondUserResponse.body).toEqual(secondUserResponse.body);
+    expect(getUser).toHaveBeenCalledTimes(2);
+    expect(getUser).toHaveBeenNthCalledWith(1, '1');
+    expect(getUser).toHaveBeenNthCalledWith(2, '2');
 
     await app.close();
   });
