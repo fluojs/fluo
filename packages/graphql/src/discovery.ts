@@ -178,7 +178,6 @@ export function discoverResolverDescriptors(
           methodKey: entry.propertyKey,
           methodName: methodKeyToName(entry.propertyKey),
           outputType: entry.metadata.outputType,
-          topics: entry.metadata.topics,
           type: entry.metadata.type,
         };
       }),

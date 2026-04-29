@@ -25,7 +25,7 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 ## When to Use
 
 - When building type-safe GraphQL APIs using TypeScript decorators (**Code-first**).
-- When integrating existing GraphQL schemas into a fluo application (**Schema-first**).
+- When integrating an existing executable `GraphQLSchema` object into a fluo application.
 - When you need seamless dependency injection within GraphQL resolvers, including request-scoped providers.
 - When performing efficient data fetching using request-scoped **DataLoader** patterns.
 
@@ -72,6 +72,8 @@ await app.listen(3000);
 
 ### Code-first Resolvers
 fluo uses standard decorators to define your GraphQL schema. Use `@Resolver`, `@Query`, `@Mutation`, and `@Subscription` to map class methods to GraphQL operations. GraphQL arguments are declared on input DTO fields with `@Arg(...)`, then passed to the resolver method through the operation `input` option.
+
+`@fluojs/graphql` currently supports root operation resolvers only. Object field-resolver patterns such as `author(book, context)` remain design-only and are documented in `packages/graphql/field-resolver-rfc.md`, not in the runtime contract.
 
 ### Request-Scoped DataLoaders
 Efficiently solve the N+1 problem with built-in DataLoader integration. Loaders are automatically isolated per GraphQL operation.

@@ -18,7 +18,6 @@ type StandardFieldDecoratorFn = <This, Value>(value: undefined, context: ClassFi
 export interface ResolverMethodOptions {
   fieldName?: string;
   input?: Function;
-  topics?: string | string[];
   argTypes?: Record<string, GraphqlArgType>;
   outputType?: GraphqlRootOutputType;
 }
@@ -57,12 +56,17 @@ function normalizeMethodMetadata(
     return { type };
   }
 
+  if ('topics' in fieldNameOrOptions) {
+    throw new Error(
+      'Resolver method option "topics" is not supported. GraphQL subscriptions must return an AsyncIterable directly until topic routing becomes a documented runtime feature.',
+    );
+  }
+
   return {
     argTypes: fieldNameOrOptions.argTypes,
     fieldName: fieldNameOrOptions.fieldName?.trim() || undefined,
     inputClass: fieldNameOrOptions.input,
     outputType: fieldNameOrOptions.outputType,
-    topics: fieldNameOrOptions.topics,
     type,
   };
 }
@@ -84,7 +88,6 @@ function defineStandardHandlerMetadata(metadata: unknown, propertyKey: string | 
     fieldName: handlerMetadata.fieldName,
     inputClass: handlerMetadata.inputClass,
     outputType: handlerMetadata.outputType,
-    topics: handlerMetadata.topics,
     type: handlerMetadata.type,
   });
   bag[handlerMetadataSymbol] = map;

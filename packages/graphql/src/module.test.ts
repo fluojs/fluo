@@ -1343,7 +1343,7 @@ describe('@fluojs/graphql', () => {
     await app.close();
   });
 
-  it('supports schema-first mode with raw GraphQLSchema', async () => {
+  it('supports an executable GraphQLSchema instance', async () => {
     const schema = new GraphQLSchema({
       query: new GraphQLObjectType({
         fields: {
@@ -1380,6 +1380,18 @@ describe('@fluojs/graphql', () => {
     });
 
     await app.close();
+  });
+
+  it('rejects unsupported subscription topic metadata instead of ignoring it', () => {
+    expect(() => {
+      Reflect.apply(
+        Subscription as unknown as (options: unknown) => unknown,
+        undefined,
+        [{ topics: 'NEW_NOTIFICATION' }],
+      );
+    }).toThrowError(
+      'Resolver method option "topics" is not supported. GraphQL subscriptions must return an AsyncIterable directly until topic routing becomes a documented runtime feature.',
+    );
   });
 
   it('boots the same GraphQL module repeatedly without leaking middleware registration across app instances', async () => {

@@ -25,7 +25,7 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 ## 사용 시점
 
 - TypeScript 데코레이터를 사용하여 타입 안전한 GraphQL API를 구축할 때 (**Code-first**).
-- 기존 GraphQL 스키마를 fluo 애플리케이션에 통합할 때 (**Schema-first**).
+- 기존의 executable `GraphQLSchema` 객체를 fluo 애플리케이션에 통합할 때.
 - GraphQL resolver 내에서 request-scoped provider를 포함한 원활한 의존성 주입이 필요할 때.
 - Request-scoped **DataLoader** 패턴을 사용하여 효율적인 데이터 페칭을 수행할 때.
 
@@ -72,6 +72,8 @@ await app.listen(3000);
 
 ### Code-first Resolvers
 fluo는 표준 데코레이터를 사용하여 GraphQL 스키마를 정의합니다. `@Resolver`, `@Query`, `@Mutation`, `@Subscription`을 사용하여 클래스 메서드를 GraphQL 작업에 매핑합니다. GraphQL 인자는 input DTO 필드에 `@Arg(...)`로 선언하고, resolver 메서드는 작업의 `input` 옵션을 통해 해당 DTO를 받습니다.
+
+현재 `@fluojs/graphql` 런타임은 root operation resolver만 지원합니다. `author(book, context)` 같은 object field resolver 패턴은 아직 런타임 계약이 아니라 `packages/graphql/field-resolver-rfc.md`에 정리된 설계 초안입니다.
 
 ### Request-Scoped DataLoaders
 내장된 DataLoader 통합을 통해 N+1 문제를 효율적으로 해결합니다. Loader는 각 GraphQL 작업마다 자동으로 격리됩니다.
