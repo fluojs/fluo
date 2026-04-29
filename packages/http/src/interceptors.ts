@@ -36,11 +36,16 @@ export async function runInterceptorChain(
   context: InterceptorContext,
   terminal: () => Promise<unknown>,
 ): Promise<unknown> {
+  if (definitions.length === 0) {
+    return terminal();
+  }
+
   let next: CallHandler = {
     handle: terminal,
   };
 
-  for (const definition of [...definitions].reverse()) {
+  for (let index = definitions.length - 1; index >= 0; index -= 1) {
+    const definition = definitions[index];
     const interceptor = await resolveInterceptor(definition, context.requestContext);
     const previous = next;
 

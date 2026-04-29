@@ -21,7 +21,6 @@ import type {
   HandlerDescriptor,
   HandlerMapping,
   InterceptorLike,
-  InterceptorContext,
   MiddlewareContext,
   MiddlewareLike,
   RequestContext,
@@ -145,11 +144,30 @@ async function notifyObserversSafely(
   logger: DispatcherLogger | undefined,
   handler?: HandlerDescriptor,
 ): Promise<void> {
+  if (observers.length === 0) {
+    return;
+  }
+
   try {
     await notifyObservers(observers, requestContext, callback, handler);
   } catch (error) {
     logDispatchFailure(logger, 'Request observer threw an unhandled error.', error);
   }
+}
+
+function mergeInterceptors(
+  globalInterceptors: readonly InterceptorLike[],
+  routeInterceptors: readonly InterceptorLike[],
+): InterceptorLike[] {
+  if (globalInterceptors.length === 0) {
+    return routeInterceptors as InterceptorLike[];
+  }
+
+  if (routeInterceptors.length === 0) {
+    return globalInterceptors as InterceptorLike[];
+  }
+
+  return [...globalInterceptors, ...routeInterceptors];
 }
 
 async function dispatchMatchedHandler(
@@ -158,29 +176,34 @@ async function dispatchMatchedHandler(
   observers: RequestObserverLike[],
   contentNegotiation: ResolvedContentNegotiation | undefined,
   binder: Binder | undefined,
-  globalInterceptors: InterceptorLike[] | undefined,
+  globalInterceptors: readonly InterceptorLike[],
   logger: DispatcherLogger | undefined,
 ): Promise<void> {
-  const guardContext: GuardContext = {
-    handler,
-    requestContext,
-  };
-  const interceptorContext: InterceptorContext = {
-    handler,
-    requestContext,
-  };
+  const routeGuards = handler.route.guards ?? [];
+  if (routeGuards.length > 0) {
+    const guardContext: GuardContext = {
+      handler,
+      requestContext,
+    };
 
-  await runGuardChain(handler.route.guards ?? [], guardContext);
+    await runGuardChain(routeGuards, guardContext);
+  }
 
   if (requestContext.response.committed) {
     return;
   }
 
-  const interceptors = [...(globalInterceptors ?? []), ...(handler.route.interceptors ?? [])];
-
-  const result = await runInterceptorChain(interceptors, interceptorContext, async () => {
-    return invokeControllerHandler(handler, requestContext, binder);
-  });
+  const routeInterceptors = handler.route.interceptors ?? [];
+  const result = globalInterceptors.length === 0 && routeInterceptors.length === 0
+    ? await invokeControllerHandler(handler, requestContext, binder)
+    : await runInterceptorChain(
+        mergeInterceptors(globalInterceptors, routeInterceptors),
+        {
+          handler,
+          requestContext,
+        },
+        async () => invokeControllerHandler(handler, requestContext, binder),
+      );
 
   ensureRequestNotAborted(requestContext.request);
 
@@ -287,7 +310,7 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
         context.observers,
         context.contentNegotiation,
         context.options.binder,
-        context.options.interceptors,
+        context.options.interceptors ?? [],
         context.options.logger,
       );
     });
@@ -323,12 +346,13 @@ async function handleDispatchError(context: DispatchPhaseContext, error: unknown
  */
 export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
   const contentNegotiation = resolveContentNegotiation(options.contentNegotiation);
+  const observers = options.observers ?? [];
 
   return {
     async dispatch(request: FrameworkRequest, response: FrameworkResponse): Promise<void> {
       const phaseContext: DispatchPhaseContext = {
         contentNegotiation,
-        observers: options.observers ?? [],
+        observers,
         options,
         requestContext: createDispatchContext(createDispatchRequest(request), response, options.rootContainer),
         response,

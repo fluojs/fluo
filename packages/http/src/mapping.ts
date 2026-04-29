@@ -3,7 +3,7 @@ import { getControllerMetadata, getRouteMetadata } from '@fluojs/core/internal';
 
 import { getRouteProducesMetadata } from './decorators.js';
 import { RouteConflictError } from './errors.js';
-import { extractRoutePathParams, matchRoutePath, normalizeRoutePath, parseRoutePath, type RoutePathSegment } from './route-path.js';
+import { extractRoutePathParams, normalizeRoutePath, parseRoutePath, type RoutePathSegment } from './route-path.js';
 import { VersioningType } from './types.js';
 import type {
   FrameworkRequest,
@@ -32,7 +32,13 @@ type IndexedDescriptor = {
   segments: readonly RoutePathSegment[];
 };
 
-type DescriptorIndex = Map<HttpMethod, Map<number, IndexedDescriptor[]>>;
+type StaticDescriptorIndex = Map<HttpMethod, Map<string, HandlerDescriptor[]>>;
+type ParamDescriptorIndex = Map<HttpMethod, Map<number, IndexedDescriptor[]>>;
+
+interface CompiledDescriptorIndex {
+  param: ParamDescriptorIndex;
+  static: StaticDescriptorIndex;
+}
 
 function joinPaths(basePath: string, routePath: string): string {
   return normalizeRoutePath(`${basePath}/${routePath}`);
@@ -186,22 +192,38 @@ function getControllerMethodNames(controllerToken: Constructor): MetadataPropert
   return Object.getOwnPropertyNames(controllerToken.prototype).filter((propertyKey) => propertyKey !== 'constructor');
 }
 
-function splitIncomingPathSegments(path: string): string[] {
-  return normalizeRoutePath(path).split('/').filter(Boolean);
-}
-
-function buildDescriptorIndex(descriptors: HandlerDescriptor[]): DescriptorIndex {
-  const index: DescriptorIndex = new Map();
+function buildDescriptorIndex(descriptors: HandlerDescriptor[]): CompiledDescriptorIndex {
+  const staticIndex: StaticDescriptorIndex = new Map();
+  const paramIndex: ParamDescriptorIndex = new Map();
 
   for (const descriptor of descriptors) {
     const method = descriptor.route.method;
     const segments = parseRoutePath(descriptor.route.path, `Registered ${descriptor.route.method} route path`);
-    const segmentCount = segments.length;
 
-    let methodMap = index.get(method);
+    if (segments.every((segment) => segment.kind === 'literal')) {
+      let methodMap = staticIndex.get(method);
+      if (!methodMap) {
+        methodMap = new Map();
+        staticIndex.set(method, methodMap);
+      }
+
+      const path = descriptor.route.path;
+      const bucket = methodMap.get(path);
+
+      if (bucket) {
+        bucket.push(descriptor);
+      } else {
+        methodMap.set(path, [descriptor]);
+      }
+
+      continue;
+    }
+
+    const segmentCount = segments.length;
+    let methodMap = paramIndex.get(method);
     if (!methodMap) {
       methodMap = new Map();
-      index.set(method, methodMap);
+      paramIndex.set(method, methodMap);
     }
 
     let bucket = methodMap.get(segmentCount);
@@ -210,13 +232,81 @@ function buildDescriptorIndex(descriptors: HandlerDescriptor[]): DescriptorIndex
       methodMap.set(segmentCount, bucket);
     }
 
-    bucket.push({
-      descriptor,
-      segments,
-    });
+    bucket.push({ descriptor, segments });
   }
 
-  return index;
+  return {
+    param: paramIndex,
+    static: staticIndex,
+  };
+}
+
+function findStaticMatch(
+  descriptorBuckets: readonly (readonly HandlerDescriptor[] | undefined)[],
+  requestVersion: string | undefined,
+  versioning: ResolvedVersioning,
+): HandlerMatch | undefined {
+  let firstUnversionedMatch: HandlerMatch | undefined;
+
+  for (const descriptors of descriptorBuckets) {
+    if (!descriptors || descriptors.length === 0) {
+      continue;
+    }
+
+    for (const descriptor of descriptors) {
+      if (versioning.type === VersioningType.URI) {
+        return {
+          descriptor,
+          params: {},
+        };
+      }
+
+      if (matchesRouteVersion(descriptor, requestVersion)) {
+        return {
+          descriptor,
+          params: {},
+        };
+      }
+
+      if (descriptor.route.version === undefined && !firstUnversionedMatch) {
+        firstUnversionedMatch = {
+          descriptor,
+          params: {},
+        };
+      }
+    }
+  }
+
+  return firstUnversionedMatch;
+}
+
+function matchParameterizedRoute(
+  candidate: IndexedDescriptor,
+  incomingSegments: readonly string[],
+): Readonly<Record<string, string>> | undefined {
+  const { segments } = candidate;
+
+  if (segments.length !== incomingSegments.length) {
+    return undefined;
+  }
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    if (segment.kind === 'literal' && segment.value !== incomingSegments[index]) {
+      return undefined;
+    }
+  }
+
+  const params: Record<string, string> = {};
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    if (segment.kind === 'param') {
+      params[segment.name] = incomingSegments[index];
+    }
+  }
+
+  return params;
 }
 
 function createHandlerDescriptors(source: HandlerSource, versioning: ResolvedVersioning): HandlerDescriptor[] {
@@ -301,15 +391,28 @@ export function createHandlerMapping(sources: HandlerSource[], options?: CreateH
     match(request: FrameworkRequest): HandlerMatch | undefined {
       const method = request.method.toUpperCase() as HttpMethod;
       const requestVersion = versioning.type === VersioningType.URI ? undefined : resolveRequestVersion(request, versioning);
-      const incomingSegments = splitIncomingPathSegments(request.path);
+      const normalizedPath = normalizeRoutePath(request.path);
+      const methodStaticDescriptors = descriptorIndex.static.get(method)?.get(normalizedPath);
+      const allStaticDescriptors = descriptorIndex.static.get('ALL' as HttpMethod)?.get(normalizedPath);
+      const directStaticMatch = findStaticMatch(
+        [methodStaticDescriptors, allStaticDescriptors],
+        requestVersion,
+        versioning,
+      );
+
+      if (directStaticMatch) {
+        return directStaticMatch;
+      }
+
+      const incomingSegments = normalizedPath.split('/').filter(Boolean);
       const candidates = [
-        ...(descriptorIndex.get(method)?.get(incomingSegments.length) ?? []),
-        ...(descriptorIndex.get('ALL' as HttpMethod)?.get(incomingSegments.length) ?? []),
+        ...(descriptorIndex.param.get(method)?.get(incomingSegments.length) ?? []),
+        ...(descriptorIndex.param.get('ALL' as HttpMethod)?.get(incomingSegments.length) ?? []),
       ];
       let firstUnversionedMatch: HandlerMatch | undefined;
 
       for (const candidate of candidates) {
-        const params = matchRoutePath(candidate.segments, incomingSegments);
+        const params = matchParameterizedRoute(candidate, incomingSegments);
 
         if (!params) {
           continue;
