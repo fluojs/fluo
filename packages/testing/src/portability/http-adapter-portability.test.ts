@@ -1,14 +1,10 @@
-import { createServer } from 'node:net';
-
 import { describe, it } from 'vitest';
 
 import {
   bootstrapFastifyApplication,
-  createFastifyAdapter,
   FastifyHttpApplicationAdapter,
   runFastifyApplication,
 } from '@fluojs/platform-fastify';
-import { type Dispatcher } from '@fluojs/http';
 import {
   bootstrapExpressApplication,
   runExpressApplication,
@@ -82,31 +78,6 @@ interface PortabilityAssertions {
   assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void>;
   assertSettlesStreamDrainWaitOnClose(): Promise<void>;
   assertSupportsSseStreaming(): Promise<void>;
-}
-
-async function findAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
-
-    server.once('error', reject);
-    server.listen(0, () => {
-      const address = server.address();
-
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to resolve an available port.'));
-        return;
-      }
-
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve(address.port);
-      });
-    });
-  });
 }
 
 function registerPortabilitySuite(
@@ -193,19 +164,10 @@ registerPortabilitySuite(
 
 const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness({
   bootstrap: bootstrapFastifyApplication,
+  exactRawBodyByteContentType: 'application/octet-stream',
   name: 'fastify',
-  run: runFastifyApplication,
-});
-
-registerPortabilitySuite('fastify', fastifyPortabilityHarness, {
-  exactByteCoverage: false,
-  streamDrainCloseEdge: true,
-});
-
-describe('fastify adapter portability', () => {
-  it('preserves exact raw body bytes for byte-sensitive payloads', async () => {
-    const port = await findAvailablePort();
-    const adapter = createFastifyAdapter({ port, rawBody: true }) as FastifyHttpApplicationAdapter;
+  prepareExactRawBodyByteTest(app) {
+    const adapter = Reflect.get(app, 'adapter') as FastifyHttpApplicationAdapter;
     const fastifyApp = Reflect.get(adapter, 'app') as {
       addContentTypeParser: (
         contentType: string,
@@ -221,32 +183,10 @@ describe('fastify adapter portability', () => {
     fastifyApp.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_request, body, done) => {
       done(null, body);
     });
+  },
+  run: runFastifyApplication,
+});
 
-    const dispatcher: Dispatcher = {
-      async dispatch(request, response) {
-        response.setStatus(201);
-        await response.send({
-          rawBytes: Array.from(request.rawBody ?? new Uint8Array()),
-        });
-      },
-    };
-
-    await adapter.listen(dispatcher);
-
-    try {
-      const payload = Uint8Array.from([0xff, 0x41, 0x00, 0x42]);
-      const response = await fetch(`http://127.0.0.1:${String(port)}/webhooks/bytes`, {
-        body: payload,
-        headers: { 'content-type': 'application/octet-stream' },
-        method: 'POST',
-      });
-      const body = await response.json();
-
-      if (response.status !== 201 || JSON.stringify(body) !== JSON.stringify({ rawBytes: Array.from(payload) })) {
-        throw new Error('fastify adapter changed exact-byte rawBody portability semantics.');
-      }
-    } finally {
-      await adapter.close();
-    }
-  });
+registerPortabilitySuite('fastify', fastifyPortabilityHarness, {
+  streamDrainCloseEdge: true,
 });

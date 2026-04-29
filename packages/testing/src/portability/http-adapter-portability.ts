@@ -49,6 +49,11 @@ export interface HttpAdapterPortabilityHarnessOptions<
   bootstrap: (rootModule: ModuleType, options: TBootstrapOptions) => Promise<TApp>;
 
   /**
+   * Optional adapter-specific content type used by the exact-byte raw-body portability assertion.
+   */
+  exactRawBodyByteContentType?: string;
+
+  /**
    * Optional adapter-specific preparation used before the exact-byte raw-body portability assertion.
    */
   prepareExactRawBodyByteTest?: (app: TApp) => void | Promise<void>;
@@ -220,8 +225,6 @@ export class HttpAdapterPortabilityHarness<
     const port = await findAvailablePort();
     const app = await this.options.bootstrap(AppModule, { cors: false, port, rawBody: true } as TBootstrapOptions);
 
-    await this.options.prepareExactRawBodyByteTest?.(app);
-
     await app.listen();
 
     try {
@@ -275,13 +278,16 @@ export class HttpAdapterPortabilityHarness<
     const port = await findAvailablePort();
     const app = await this.options.bootstrap(AppModule, { cors: false, port, rawBody: true } as TBootstrapOptions);
 
+    await this.options.prepareExactRawBodyByteTest?.(app);
+
     await app.listen();
 
     try {
       const payload = Uint8Array.from([0xe9, 0x41]);
+      const contentType = this.options.exactRawBodyByteContentType ?? 'text/plain; charset=latin1';
       const response = await fetch(`http://127.0.0.1:${String(port)}/webhooks/bytes`, {
         body: payload,
-        headers: { 'content-type': 'text/plain; charset=latin1' },
+        headers: { 'content-type': contentType },
         method: 'POST',
       });
 
