@@ -9,5 +9,8 @@
     "vitest.config.ts",
     "tooling/**/*.ts",
     "tooling/**/*.d.mts"
+  ],
+  "exclude": [
+    "tooling/benchmarks/http-comparison/**/*.ts"
   ]
 }

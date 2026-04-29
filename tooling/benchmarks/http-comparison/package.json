@@ -11,7 +11,8 @@
     "bench:fluo": "tsx src/fluo/server.ts",
     "bench:fluo:express": "tsx src/fluo-express/server.ts",
     "bench:nestjs": "ts-node --transpile-only --project nestjs/tsconfig.json src/nestjs/server.ts",
-    "bench:nestjs:express": "ts-node --transpile-only --project nestjs/tsconfig.json src/nestjs-express/server.ts"
+    "bench:nestjs:express": "ts-node --transpile-only --project nestjs/tsconfig.json src/nestjs-express/server.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p nestjs/tsconfig.json"
   },
   "dependencies": {
     "@fluojs/core": "1.0.0-beta.2",

@@ -272,7 +272,11 @@ async function main(): Promise<void> {
     return child;
   });
 
-  const cleanup = (): void => { processes.forEach((child) => child.kill()); };
+  const cleanup = (): void => {
+    for (const child of processes) {
+      child.kill();
+    }
+  };
   process.on('exit', cleanup);
   process.on('SIGINT', () => { cleanup(); process.exit(130); });
 

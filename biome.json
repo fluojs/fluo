@@ -45,7 +45,9 @@
     "includes": [
       "packages/*/src/**/*.ts",
       "tooling/**/*.ts",
-      "tooling/**/*.mjs"
+      "tooling/**/*.mjs",
+      "!tooling/benchmarks/http-comparison/src/nestjs/**/*.ts",
+      "!tooling/benchmarks/http-comparison/src/nestjs-express/**/*.ts"
     ]
   }
 }
