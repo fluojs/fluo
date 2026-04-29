@@ -197,6 +197,42 @@ describe('dispatcher runtime', () => {
     expect(root.requestScopeDisposeCount).toBe(2);
   });
 
+  it('does not create a late request scope when captured RequestContext.container is read after dispatch', async () => {
+    let capturedContext: RequestContext | undefined;
+
+    @ScopeDecorator('request')
+    class RequestStore {}
+
+    @Controller('/captured-context')
+    class CapturedContextController {
+      @Get('/')
+      getValue() {
+        capturedContext = getCurrentRequestContext();
+        return { ok: true };
+      }
+    }
+
+    const root = new CountingContainer().register(RequestStore, CapturedContextController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: CapturedContextController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/captured-context', 'GET'), response);
+
+    expect(response.body).toEqual({ ok: true });
+    expect(capturedContext).toBeDefined();
+    expect(root.requestScopeCreateCount).toBe(0);
+
+    const lateContainer = capturedContext!.container;
+
+    expect(lateContainer).toBe(root);
+    expect(root.requestScopeCreateCount).toBe(0);
+    expect(root.requestScopeDisposeCount).toBe(0);
+    await expect(lateContainer.resolve(RequestStore)).rejects.toThrow('outside request scope');
+  });
+
   it('creates and disposes isolated request scopes for request-scoped controllers', async () => {
     const instanceIds: number[] = [];
     let nextId = 0;

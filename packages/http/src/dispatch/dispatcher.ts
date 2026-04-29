@@ -516,7 +516,12 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
         ? createRequestDispatchScope(options.rootContainer)
         : createRootDispatchScope(options.rootContainer);
       let phaseContext: DispatchPhaseContext;
+      let containerPromotionOpen = true;
       const requestContext = createDispatchContext(dispatchRequest, response, dispatchScope.container, () => {
+        if (!containerPromotionOpen) {
+          return phaseContext.dispatchScope.container;
+        }
+
         ensureRequestScope(phaseContext);
         return phaseContext.dispatchScope.container;
       });
@@ -538,6 +543,7 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
           await handleDispatchError(phaseContext, error);
         } finally {
           await notifyRequestFinish(phaseContext);
+          containerPromotionOpen = false;
           if (phaseContext.dispatchScope.requestScoped) {
             try {
               await phaseContext.dispatchScope.container.dispose();
