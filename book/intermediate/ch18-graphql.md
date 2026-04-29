@@ -107,7 +107,7 @@ const authorLoader = createDataLoader(async (ids: string[]) => {
 });
 ```
 
-### Using the Loader in a Resolver
+### Using the Loader in a Supported Root Resolver
 
 ```typescript
 class BookInput {
@@ -119,17 +119,18 @@ class BookInput {
 export class BookResolver {
   @Query({ input: BookInput })
   async book(input: BookInput) {
-    return bookService.findById(input.id);
-  }
+    const book = await bookService.findById(input.id);
+    const author = await authorLoader(context).load(book.authorId);
 
-  // Field resolver for the 'author' field on Book
-  async author(book: Book, context: GraphQLContext) {
-    return authorLoader(context).load(book.authorId);
+    return {
+      ...book,
+      author,
+    };
   }
 }
 ```
 
-`authorLoader(context)` returns a loader instance bound to a specific GraphQL execution context. Therefore, batching and caching are shared only within a single request. Keeping this scope prevents one user's lookup results from leaking into another request while still reducing the N+1 problem.
+`authorLoader(context)` returns a loader instance bound to a specific GraphQL execution context. Therefore, batching and caching are shared only within a single request. Keeping this scope prevents one user's lookup results from leaking into another request while still reducing the N+1 problem. At the moment, `@fluojs/graphql` documents DataLoader usage through root operations rather than runtime field-resolver attachment.
 
 ## 18.5 Real-time with Subscriptions
 

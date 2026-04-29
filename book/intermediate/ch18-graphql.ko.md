@@ -107,7 +107,7 @@ const authorLoader = createDataLoader(async (ids: string[]) => {
 });
 ```
 
-### Using the Loader in a Resolver
+### 지원되는 Root Resolver에서 Loader 사용하기
 
 ```typescript
 class BookInput {
@@ -119,17 +119,18 @@ class BookInput {
 export class BookResolver {
   @Query({ input: BookInput })
   async book(input: BookInput) {
-    return bookService.findById(input.id);
-  }
+    const book = await bookService.findById(input.id);
+    const author = await authorLoader(context).load(book.authorId);
 
-  // Book의 'author' 필드에 대한 필드 리졸버
-  async author(book: Book, context: GraphQLContext) {
-    return authorLoader(context).load(book.authorId);
+    return {
+      ...book,
+      author,
+    };
   }
 }
 ```
 
-`authorLoader(context)`는 특정 GraphQL 실행 컨텍스트에 묶인 로더 인스턴스를 반환합니다. 따라서 배치와 캐시는 단일 요청 안에서만 공유됩니다. 이 범위를 지키면 한 사용자의 조회 결과가 다른 요청으로 새어 나가지 않으면서도 N+1 문제를 줄일 수 있습니다.
+`authorLoader(context)`는 특정 GraphQL 실행 컨텍스트에 묶인 로더 인스턴스를 반환합니다. 따라서 배치와 캐시는 단일 요청 안에서만 공유됩니다. 이 범위를 지키면 한 사용자의 조회 결과가 다른 요청으로 새어 나가지 않으면서도 N+1 문제를 줄일 수 있습니다. 현재 `@fluojs/graphql`은 런타임 field resolver 부착 대신 root operation 안에서 DataLoader를 사용하는 패턴만 문서화합니다.
 
 ## 18.5 Real-time with Subscriptions
 
