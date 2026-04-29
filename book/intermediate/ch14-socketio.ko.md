@@ -144,25 +144,68 @@ export class ScalingService {
 
 fluo는 Bun의 고성능 WebSocket 구현을 우선 지원합니다. Socket.IO는 보통 Node.js에서 `ws` 패키지를 사용하지만, Bun에서는 `@socket.io/bun-engine`을 사용할 수 있습니다. FluoShop을 Bun에서 실행하면 `@fluojs/socket.io` adapter는 자동으로 환경을 감지하고, 사용 가능한 경우 Bun engine으로 전환합니다. 이 선택은 FluoShop이 표준 Node.js 프로세스보다 낮은 메모리 오버헤드로 많은 동시 지원 채팅을 처리할 수 있게 합니다.
 
-## 14.7 Broadcasting to multiple rooms
+## 14.7 여러 room으로 브로드캐스트하기
 
-FluoShop 지원 포털에서 상담원은 활성화된 모든 티켓에 글로벌 공지사항을 브로드캐스트해야 할 수 있습니다. 이때 room 목록을 직접 순회하기보다 서비스 메서드가 여러 room을 받도록 두면 호출부가 단순해집니다.
+FluoShop 지원 포털에서 상담원은 활성화된 여러 티켓에 글로벌 공지사항을 보내야 할 수 있습니다. `SocketIoRoomService.broadcastToRoom(...)`는 공유 room-service 계약을 단순하게 유지하기 위해 한 번에 하나의 room만 받으므로, room 이름이 여러 개라면 호출부에서 명시적으로 순회해야 합니다.
 
 ```typescript
 @OnMessage('global_announcement')
 handleAnnouncement(payload: { message: string }) {
-  // 여러 room에 동시에 브로드캐스트
-  this.rooms.broadcastToRoom(['ticket:active', 'staff:updates'], 'announcement', {
-    text: payload.message
-  });
+  const targetRooms = ['ticket:active', 'staff:updates'];
+
+  for (const roomName of targetRooms) {
+    this.rooms.broadcastToRoom(roomName, 'announcement', {
+      text: payload.message,
+    });
+  }
 }
 ```
 
-`broadcastToRoom` 메서드는 단일 문자열과 문자열 배열을 모두 수용합니다. 이는 기본 Socket.IO 동작과 일치하지만, 주입 가능한 서비스 인터페이스를 통해 제공됩니다. 덕분에 gateway 밖의 도메인 서비스도 같은 방식으로 여러 대화방에 메시지를 보낼 수 있습니다.
+이처럼 명시적으로 순회하면 주입 가능한 서비스가 공유 websocket room 계약과 정렬된 상태를 유지하면서도, 애플리케이션 코드에서는 여러 room으로 fan-out 하는 흐름을 충분히 표현할 수 있습니다.
 
-## 14.8 Handling volatile messages
+정말로 Socket.IO의 native 다중 room emit 동작이 필요하다면, 해당 로직은 `SOCKETIO_SERVER`를 직접 주입하는 서비스로 좁혀 두는 편이 좋습니다.
 
-가끔은 *지금 이 순간*에만 유용한 메시지를 보내야 할 때가 있습니다. 클라이언트 연결이 일시적으로 끊겼을 때, 재연결 시 해당 메시지를 받게 하고 싶지 않은 경우입니다. 이는 Socket.IO의 기본 buffering 동작과 반대입니다. FluoShop의 예로는 "사용자가 입력 중입니다" 표시나 대시보드의 실시간 커서 위치가 있습니다. `SocketIoRoomService`를 사용하면 client에 도달할 수 없는 경우 폐기되는 volatile 메시지를 보낼 수 있습니다.
+```typescript
+import { Inject } from '@fluojs/core';
+import { SOCKETIO_SERVER } from '@fluojs/socket.io';
+import type { Server } from 'socket.io';
+
+@Inject(SOCKETIO_SERVER)
+export class SupportAnnouncementService {
+  constructor(private readonly io: Server) {}
+
+  broadcastUrgent(message: string) {
+    this.io.of('/support').to(['ticket:active', 'staff:updates']).emit('announcement', {
+      text: message,
+    });
+  }
+}
+```
+
+## 14.8 로우 서버로 volatile 메시지 다루기
+
+가끔은 *지금 이 순간*에만 유용한 메시지를 보내야 할 때가 있습니다. 클라이언트 연결이 일시적으로 끊겼을 때, 재연결 시 해당 메시지를 받게 하고 싶지 않은 경우입니다. 이는 Socket.IO의 기본 buffering 동작과 반대입니다. FluoShop의 예로는 "사용자가 입력 중입니다" 표시나 대시보드의 실시간 커서 위치가 있습니다.
+
+`SocketIoRoomService`는 전용 volatile-send helper를 노출하지 않습니다. `.volatile` 같은 Socket.IO 전용 전달 의미론이 필요하다면 `SOCKETIO_SERVER`를 주입하고, 그 로직을 raw server 경계에 두어야 합니다.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { SOCKETIO_SERVER } from '@fluojs/socket.io';
+import type { Server } from 'socket.io';
+
+@Inject(SOCKETIO_SERVER)
+export class PresenceHintsService {
+  constructor(private readonly io: Server) {}
+
+  sendTyping(ticketId: string, userId: string) {
+    this.io.of('/support').volatile.to(`ticket:${ticketId}`).emit('typing', {
+      userId,
+    });
+  }
+}
+```
+
+이렇게 하면 portable room-service 계약은 room 참여와 일반적인 room broadcast에 집중하고, Socket.IO 전용 고급 의미론은 인프라 지향 서비스에 명시적으로 남겨둘 수 있습니다.
 
 ## 14.9 Testing Socket.IO gateways
 
