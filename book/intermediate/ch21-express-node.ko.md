@@ -93,7 +93,7 @@ async function bootstrap() {
       key: fs.readFileSync('key.pem'),
       cert: fs.readFileSync('cert.pem'),
     },
-    maxBodySize: '2mb'
+    maxBodySize: 2_097_152,
   });
 
   const app = await fluoFactory.create(AppModule, { adapter });
