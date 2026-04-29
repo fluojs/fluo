@@ -209,6 +209,11 @@ export type VersioningOptions =
 /** Runtime dispatcher that executes the full HTTP request lifecycle. */
 export interface Dispatcher {
   dispatch(request: FrameworkRequest, response: FrameworkResponse): Promise<void>;
+  /**
+   * Returns the mapped route descriptors known to this dispatcher when the
+   * implementation can expose them without changing dispatch behavior.
+   */
+  describeRoutes?(): readonly HandlerDescriptor[];
 }
 
 /** Logger seam used by the dispatcher for non-fatal internal failure reporting. */

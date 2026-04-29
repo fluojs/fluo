@@ -77,6 +77,25 @@ function createDispatchRequest(request: FrameworkRequest): FrameworkRequest {
   };
 }
 
+function cloneHandlerDescriptor(descriptor: HandlerDescriptor): HandlerDescriptor {
+  return {
+    ...descriptor,
+    metadata: {
+      ...descriptor.metadata,
+      moduleMiddleware: [...descriptor.metadata.moduleMiddleware],
+      pathParams: [...descriptor.metadata.pathParams],
+    },
+    route: {
+      ...descriptor.route,
+      guards: descriptor.route.guards ? [...descriptor.route.guards] : undefined,
+      headers: descriptor.route.headers?.map((header) => ({ ...header })),
+      interceptors: descriptor.route.interceptors ? [...descriptor.route.interceptors] : undefined,
+      produces: descriptor.route.produces ? [...descriptor.route.produces] : undefined,
+      redirect: descriptor.route.redirect ? { ...descriptor.route.redirect } : undefined,
+    },
+  };
+}
+
 function readRequestId(request: FrameworkRequest): string | undefined {
   const raw = request.headers['x-request-id'] ?? request.headers['X-Request-Id'];
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -350,7 +369,7 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
 
   const dispatcher = {
     describeRoutes() {
-      return options.handlerMapping.descriptors;
+      return options.handlerMapping.descriptors.map((descriptor) => cloneHandlerDescriptor(descriptor));
     },
     async dispatch(request: FrameworkRequest, response: FrameworkResponse): Promise<void> {
       const phaseContext: DispatchPhaseContext = {
