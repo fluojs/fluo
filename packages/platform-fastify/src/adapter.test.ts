@@ -5,9 +5,12 @@ import { request as httpsRequest } from 'node:https';
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { Container } from '@fluojs/di';
 import {
   All,
   Controller,
+  createDispatcher,
+  createHandlerMapping,
   Get,
   Post,
   SseResponse,
@@ -567,8 +570,8 @@ describe('@fluojs/platform-fastify', () => {
       }>).app;
 
       expect(fastifyApp.hasRoute({ method: 'GET', url: '/users/:id' })).toBe(true);
-      expect(fastifyApp.hasRoute({ method: 'PATCH', url: '/fallback' })).toBe(true);
-      expect(fastifyApp.hasRoute({ method: 'GET', url: '/versions' })).toBe(true);
+      expect(fastifyApp.hasRoute({ method: 'PATCH', url: '/fallback' })).toBe(false);
+      expect(fastifyApp.hasRoute({ method: 'GET', url: '/versions' })).toBe(false);
       expect(fastifyApp.printRoutes()).toContain('*');
 
       lifecycle.length = 0;
@@ -1146,6 +1149,45 @@ describe('@fluojs/platform-fastify', () => {
     expect(health.status).toBe(404);
 
     await app.close();
+  });
+
+  it('hands safe native Fastify routes to the dispatcher without rematching', async () => {
+    @Controller('/native')
+    class NativeController {
+      @Get('/:id')
+      getById(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id };
+      }
+    }
+
+    const root = new Container().register(NativeController);
+    const baseMapping = createHandlerMapping([{ controllerToken: NativeController }]);
+    const dispatcher = createDispatcher({
+      handlerMapping: {
+        descriptors: baseMapping.descriptors,
+        match: vi.fn(() => {
+          throw new Error('Fastify native handoff should bypass handlerMapping.match');
+        }),
+      },
+      rootContainer: root,
+    });
+    const port = await findAvailablePort();
+    const adapter = createFastifyAdapter({ port }) as FastifyHttpApplicationAdapter;
+
+    await adapter.listen(dispatcher);
+
+    try {
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/native/123',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ id: '123' });
+    } finally {
+      await adapter.close();
+    }
   });
 
   it('supports https startup and reports the https listen URL', async () => {

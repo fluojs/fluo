@@ -23,6 +23,12 @@ import {
   type SecurityHeadersOptions,
 } from '@fluojs/http';
 import {
+  attachFrameworkRequestNativeRouteHandoff,
+  bindRawRequestNativeRouteHandoff,
+  consumeRawRequestNativeRouteHandoff,
+  isRoutePathNormalizationSensitive,
+} from '@fluojs/http/internal';
+import {
   type Application,
   type ApplicationLogger,
   type CreateApplicationOptions,
@@ -71,7 +77,7 @@ export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
-const FASTIFY_NATIVE_ROUTE_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
+const FASTIFY_NATIVE_ROUTE_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'] as const;
 
 type FastifyNativeRouteMethod = (typeof FASTIFY_NATIVE_ROUTE_METHODS)[number];
 
@@ -224,6 +230,16 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     for (const route of createFastifyNativeRoutes(descriptors)) {
       this.app.route({
         handler: async (request: FastifyRequest, reply: FastifyReply) => {
+          const requestPath = readRequestPathFromRawUrl(request.raw.url);
+          const params = normalizeNativeRouteParams(request.params);
+
+          if (!isRoutePathNormalizationSensitive(requestPath) && !hasNativeRouteParamSeparators(params)) {
+            bindRawRequestNativeRouteHandoff(request.raw, {
+              descriptor: route.descriptor,
+              params,
+            });
+          }
+
           await this.handleRequest(request, reply);
         },
         method: route.method,
@@ -294,6 +310,7 @@ function createFastifyRequestResponseFactory(
 }
 
 interface FastifyNativeRouteDefinition {
+  descriptor: HandlerDescriptor;
   method: FastifyNativeRouteMethod;
   path: string;
 }
@@ -309,37 +326,45 @@ function resolveDispatcherRouteDescriptors(dispatcher: Dispatcher): readonly Han
 function createFastifyNativeRoutes(descriptors: readonly HandlerDescriptor[]): FastifyNativeRouteDefinition[] {
   const candidates = new Map<string, FastifyNativeRouteCandidate>();
   const shapePaths = new Map<string, Set<string>>();
+  const versionSensitiveRouteKeys = collectVersionSensitiveRouteKeys(descriptors);
 
   for (const descriptor of descriptors) {
-    const path = descriptor.route.path;
-
-    if (descriptor.route.method === 'ALL') {
-      for (const method of FASTIFY_NATIVE_ROUTE_METHODS) {
-        registerFastifyNativeRouteCandidate(candidates, shapePaths, method, path);
-      }
-
+    if (!isFastifyNativeRouteDescriptor(descriptor)
+      || versionSensitiveRouteKeys.has(`${descriptor.route.method}:${descriptor.route.path}`)) {
       continue;
     }
 
-    registerFastifyNativeRouteCandidate(candidates, shapePaths, descriptor.route.method, path);
+    registerFastifyNativeRouteCandidate(candidates, shapePaths, descriptor);
   }
 
   return [...candidates.values()]
     .filter((candidate) => shapePaths.get(candidate.shapeKey)?.size === 1)
-    .map(({ method, path }) => ({ method, path }));
+    .map(({ descriptor, method, path }) => ({ descriptor, method, path }));
+}
+
+function isFastifyNativeRouteDescriptor(descriptor: HandlerDescriptor): descriptor is HandlerDescriptor & {
+  route: HandlerDescriptor['route'] & { method: FastifyNativeRouteMethod };
+} {
+  return descriptor.route.method !== 'ALL'
+    && FASTIFY_NATIVE_ROUTE_METHODS.includes(descriptor.route.method as FastifyNativeRouteMethod)
+    && descriptor.route.version === undefined;
 }
 
 function registerFastifyNativeRouteCandidate(
   candidates: Map<string, FastifyNativeRouteCandidate>,
   shapePaths: Map<string, Set<string>>,
-  method: FastifyNativeRouteMethod,
-  path: string,
+  descriptor: HandlerDescriptor & {
+    route: HandlerDescriptor['route'] & { method: FastifyNativeRouteMethod };
+  },
 ): void {
+  const method = descriptor.route.method;
+  const path = descriptor.route.path;
   const routeKey = `${method}:${path}`;
   const shapeKey = `${method}:${canonicalizeFastifyRouteShape(path)}`;
 
   if (!candidates.has(routeKey)) {
     candidates.set(routeKey, {
+      descriptor,
       method,
       path,
       shapeKey,
@@ -604,7 +629,56 @@ async function createFrameworkRequest(
     }
   }
 
-  return frameworkRequest;
+  const nativeRouteHandoff = consumeRawRequestNativeRouteHandoff(request.raw);
+
+  return nativeRouteHandoff
+    ? attachFrameworkRequestNativeRouteHandoff(frameworkRequest, nativeRouteHandoff)
+    : frameworkRequest;
+}
+
+function normalizeNativeRouteParams(params: unknown): Record<string, string> {
+  if (typeof params !== 'object' || params === null) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(params).flatMap(([key, value]) =>
+      typeof value === 'string'
+        ? [[key, value] as const]
+        : value === undefined
+          ? []
+          : [[key, String(value)] as const]),
+  );
+}
+
+function hasNativeRouteParamSeparators(params: Readonly<Record<string, string>>): boolean {
+  return Object.values(params).some((value) => value.includes('/'));
+}
+
+function collectVersionSensitiveRouteKeys(descriptors: readonly HandlerDescriptor[]): Set<string> {
+  const grouped = new Map<string, { count: number; hasVersioned: boolean }>();
+
+  for (const descriptor of descriptors) {
+    if (!FASTIFY_NATIVE_ROUTE_METHODS.includes(descriptor.route.method as FastifyNativeRouteMethod)) {
+      continue;
+    }
+
+    const routeKey = `${descriptor.route.method}:${descriptor.route.path}`;
+    const current = grouped.get(routeKey) ?? { count: 0, hasVersioned: false };
+    current.count += 1;
+    current.hasVersioned ||= descriptor.route.version !== undefined;
+    grouped.set(routeKey, current);
+  }
+
+  return new Set(
+    [...grouped.entries()]
+      .filter(([, current]) => current.count > 1 || current.hasVersioned)
+      .map(([routeKey]) => routeKey),
+  );
+}
+
+function readRequestPathFromRawUrl(rawUrl: string | undefined): string {
+  return new URL(rawUrl ?? '/', 'http://localhost').pathname;
 }
 
 async function parseMultipartRequest(
