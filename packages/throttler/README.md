@@ -69,7 +69,7 @@ class AuthController {
 
 ### Redis Storage
 
-For multi-instance deployments, use `RedisThrottlerStore` to share the rate limit state across all instances.
+For multi-instance deployments, use `RedisThrottlerStore` to share the rate limit state across all instances. Redis-backed windows are anchored to Redis server time, so distributed app nodes with clock skew still enforce one shared reset boundary.
 
 ```typescript
 import { ThrottlerModule, RedisThrottlerStore } from '@fluojs/throttler';
