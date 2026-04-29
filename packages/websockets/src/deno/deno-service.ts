@@ -33,7 +33,11 @@ interface ConnectionHandlerState {
   bufferedDisconnect: BufferedDisconnectEvent | undefined;
   bufferedMessages: DenoWebSocketMessage[];
   bufferedMessagesStartIndex: number;
+  connectLifecycleSettled: boolean;
+  connectLifecyclePromise: Promise<void>;
   descriptors: readonly WebSocketGatewayDescriptor[];
+  disconnectLifecycleSettled: boolean;
+  disconnectLifecyclePromise: Promise<void>;
   enqueuedMessageCount: number;
   handlerQueue: Promise<void>;
   handlersReady: boolean;
@@ -41,6 +45,8 @@ interface ConnectionHandlerState {
   queuedMessages: DenoWebSocketMessage[];
   queuedMessagesStartIndex: number;
   request: Request;
+  resolveConnectLifecycle: () => void;
+  resolveDisconnectLifecycle: () => void;
   resolved: ResolvedGatewayInstance[];
   socketId: string;
 }
@@ -123,6 +129,15 @@ function resolveMessageByteLength(message: DenoWebSocketMessage): number {
   }
 
   return message.size;
+}
+
+function createCompletionSignal(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((res) => {
+    resolve = res;
+  });
+
+  return { promise, resolve };
 }
 
 /**
@@ -272,20 +287,35 @@ export class DenoWebSocketGatewayLifecycleService
     this.socketStates.set(state.socketId, state);
     this.attachConnectionListeners(state, socket, request);
 
-    await this.resolveConnectionGateways(state);
-    await this.runConnectHandlers(state, socket);
-    await this.finalizeConnectionBinding(state, socket, request);
+    try {
+      await this.resolveConnectionGateways(state);
+      await this.runConnectHandlers(state, socket);
+      await this.finalizeConnectionBinding(state, socket, request);
+    } finally {
+      if (!state.handlersReady && state.bufferedDisconnect) {
+        this.settleDisconnectLifecycle(state);
+      }
+
+      this.settleConnectLifecycle(state);
+    }
   }
 
   private createConnectionHandlerState(
     request: Request,
     descriptors: readonly WebSocketGatewayDescriptor[],
   ): ConnectionHandlerState {
+    const connectLifecycle = createCompletionSignal();
+    const disconnectLifecycle = createCompletionSignal();
+
     return {
       bufferedDisconnect: undefined,
       bufferedMessages: [],
       bufferedMessagesStartIndex: 0,
+      connectLifecycleSettled: false,
+      connectLifecyclePromise: connectLifecycle.promise,
       descriptors,
+      disconnectLifecycleSettled: false,
+      disconnectLifecyclePromise: disconnectLifecycle.promise,
       enqueuedMessageCount: 0,
       handlerQueue: Promise.resolve(),
       handlersReady: false,
@@ -293,9 +323,29 @@ export class DenoWebSocketGatewayLifecycleService
       queuedMessages: [],
       queuedMessagesStartIndex: 0,
       request,
+      resolveConnectLifecycle: connectLifecycle.resolve,
+      resolveDisconnectLifecycle: disconnectLifecycle.resolve,
       resolved: [],
       socketId: crypto.randomUUID(),
     };
+  }
+
+  private settleConnectLifecycle(state: ConnectionHandlerState): void {
+    if (state.connectLifecycleSettled) {
+      return;
+    }
+
+    state.connectLifecycleSettled = true;
+    state.resolveConnectLifecycle();
+  }
+
+  private settleDisconnectLifecycle(state: ConnectionHandlerState): void {
+    if (state.disconnectLifecycleSettled) {
+      return;
+    }
+
+    state.disconnectLifecycleSettled = true;
+    state.resolveDisconnectLifecycle();
   }
 
   private attachConnectionListeners(
@@ -522,6 +572,9 @@ export class DenoWebSocketGatewayLifecycleService
       })
       .catch((error) => {
         this.logger.error('WebSocket gateway disconnect dispatch failed.', error, LIFECYCLE_LOG_CONTEXT);
+      })
+      .finally(() => {
+        this.settleDisconnectLifecycle(state);
       });
   }
 
@@ -780,7 +833,10 @@ export class DenoWebSocketGatewayLifecycleService
         reject(new Error(`Timed out while closing Deno websocket connections after ${String(timeoutMs)}ms.`));
       }, timeoutMs);
 
-      Promise.all(states.map(async (state) => await state.handlerQueue))
+      Promise.all(states.map(async (state) => {
+        await state.connectLifecyclePromise;
+        await state.disconnectLifecyclePromise;
+      }))
         .then(() => {
           if (settled) {
             return;
