@@ -1,5 +1,6 @@
 import type Redis from 'ioredis';
 
+import { throttlerRetryAfterMsSymbol } from './store-internals.js';
 import type { ThrottlerConsumeInput, ThrottlerStore, ThrottlerStoreEntry } from './types.js';
 import { validateThrottlerStoreEntry } from './validation.js';
 
@@ -29,22 +30,37 @@ const CONSUME_LUA = [
   'end',
   'local ttlMsLeft = math.max(resetAt - now, 1)',
   "redis.call('SET', key, cjson.encode({ count = count, resetAt = resetAt }), 'PX', ttlMsLeft)",
-  'return {count, resetAt}',
+  'return {count, resetAt, ttlMsLeft}',
 ].join('\n');
 
-function parseConsumeResult(result: unknown): ThrottlerStoreEntry {
+function parseConsumeResult(result: unknown, observedNow: number): ThrottlerStoreEntry {
   if (!Array.isArray(result) || result.length < 2) {
     throw new Error('Redis throttler consume script returned an invalid response.');
   }
 
   const count = Number(result[0]);
   const resetAt = Number(result[1]);
+  const retryAfterMs = result.length >= 3 ? Number(result[2]) : Number.NaN;
 
   if (!Number.isFinite(count) || !Number.isFinite(resetAt)) {
     throw new Error('Redis throttler consume script returned non-numeric counters.');
   }
 
-  return validateThrottlerStoreEntry({ count, resetAt });
+  const entry = validateThrottlerStoreEntry({
+    count,
+    resetAt: Number.isFinite(retryAfterMs) ? observedNow + retryAfterMs : resetAt,
+  });
+
+  if (Number.isFinite(retryAfterMs)) {
+    Object.defineProperty(entry, throttlerRetryAfterMsSymbol, {
+      configurable: false,
+      enumerable: false,
+      value: retryAfterMs,
+      writable: false,
+    });
+  }
+
+  return entry;
 }
 
 /**
@@ -72,6 +88,6 @@ export class RedisThrottlerStore implements ThrottlerStore {
       String(input.ttlSeconds * 1000),
     );
 
-    return parseConsumeResult(result);
+    return parseConsumeResult(result, input.now);
   }
 }

@@ -25,7 +25,7 @@ function createRedisTimeAnchoredClient(baseNow: number) {
             resetAt: redisNow + ttlMs,
           };
 
-          return [entry.count, entry.resetAt];
+          return [entry.count, entry.resetAt, entry.resetAt - redisNow];
         }
 
         entry = {
@@ -33,7 +33,7 @@ function createRedisTimeAnchoredClient(baseNow: number) {
           resetAt: entry.resetAt,
         };
 
-        return [entry.count, entry.resetAt];
+        return [entry.count, entry.resetAt, entry.resetAt - redisNow];
       }),
     } as unknown as Pick<Redis, 'eval'>,
     setRedisNow(nextNow: number) {
@@ -45,7 +45,7 @@ function createRedisTimeAnchoredClient(baseNow: number) {
 describe('RedisThrottlerStore', () => {
   it('persists the reset window at the TTL boundary with millisecond precision', async () => {
     const now = 1_710_000_000_000;
-    const client = createRedisClientMock([1, now + 60_000]);
+    const client = createRedisClientMock([1, now + 60_000, 60_000]);
     const store = new RedisThrottlerStore(client as Redis);
 
     const entry = await store.consume('throttle:auth:127.0.0.1', {
@@ -92,9 +92,9 @@ describe('RedisThrottlerStore', () => {
       ttlSeconds: 60,
     });
 
-    expect(first).toEqual({ count: 1, resetAt: baseNow + 60_000 });
-    expect(second).toEqual({ count: 2, resetAt: baseNow + 60_000 });
-    expect(third).toEqual({ count: 1, resetAt: baseNow + 120_001 });
+    expect(first).toEqual({ count: 1, resetAt: baseNow + 30_000 });
+    expect(second).toEqual({ count: 2, resetAt: baseNow + 31_000 });
+    expect(third).toEqual({ count: 1, resetAt: baseNow + 15_000 });
     expect(client.eval).toHaveBeenCalledTimes(3);
   });
 
