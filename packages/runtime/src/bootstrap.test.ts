@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Global, Inject, Module } from '@fluojs/core';
+import { Global, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
 import { defineModuleMetadata } from '@fluojs/core/internal';
+import { Controller, Convert, FromQuery, Get, RequestDto, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
 
 import { bootstrapModule, FluoFactory } from './bootstrap.js';
 import { DuplicateProviderError, ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
@@ -18,6 +19,43 @@ function createDeferred<T = void>() {
   });
 
   return { promise, reject, resolve };
+}
+
+function createRequest(path: string, query: FrameworkRequest['query'] = {}): FrameworkRequest {
+  return {
+    body: undefined,
+    cookies: {},
+    headers: {},
+    method: 'GET',
+    params: {},
+    path,
+    query,
+    raw: {},
+    url: path,
+  };
+}
+
+function createResponse(): FrameworkResponse & { body?: unknown } {
+  return {
+    committed: false,
+    headers: {},
+    redirect(status, location) {
+      this.setStatus(status);
+      this.setHeader('Location', location);
+      this.committed = true;
+    },
+    send(body) {
+      this.body = body;
+      this.committed = true;
+    },
+    setHeader(name, value) {
+      this.headers[name] = value;
+    },
+    setStatus(code) {
+      this.statusCode = code;
+    },
+    statusCode: undefined,
+  };
 }
 
 describe('bootstrapModule', () => {
@@ -1235,6 +1273,61 @@ describe('FluoFactory.createApplicationContext', () => {
     });
 
     await expect(context.close('SIGTERM')).rejects.toThrow('context shutdown failed');
+  });
+});
+
+describe('FluoFactory.create HTTP dispatch request scopes', () => {
+  it('keeps request-scoped DTO converters isolated when bootstrap has no global converters', async () => {
+    let created = 0;
+
+    @ScopeDecorator('request')
+    class RequestStore {
+      readonly id = ++created;
+    }
+
+    @Inject(RequestStore)
+    @ScopeDecorator('request')
+    class RequestScopedConverter {
+      constructor(private readonly store: RequestStore) {}
+
+      convert(value: unknown) {
+        return `${String(value)}:${this.store.id}`;
+      }
+    }
+
+    class QueryDto {
+      @Convert(RequestScopedConverter)
+      @FromQuery('id')
+      id!: string;
+    }
+
+    @Controller('/bootstrap-binding')
+    class BindingController {
+      @Get('/')
+      @RequestDto(QueryDto)
+      getValue(input: QueryDto) {
+        return { id: input.id };
+      }
+    }
+
+    @Module({
+      controllers: [BindingController],
+      providers: [RequestStore, RequestScopedConverter],
+    })
+    class AppModule {}
+
+    const app = await FluoFactory.create(AppModule);
+
+    const firstResponse = createResponse();
+    await app.dispatch(createRequest('/bootstrap-binding', { id: 'first' }), firstResponse);
+
+    const secondResponse = createResponse();
+    await app.dispatch(createRequest('/bootstrap-binding', { id: 'second' }), secondResponse);
+
+    expect(firstResponse.body).toEqual({ id: 'first:1' });
+    expect(secondResponse.body).toEqual({ id: 'second:2' });
+
+    await app.close();
   });
 });
 
