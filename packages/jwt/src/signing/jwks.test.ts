@@ -25,6 +25,7 @@ describe('JwksClient', () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it('fetches keys from jwks uri and finds key by kid', async () => {
@@ -71,6 +72,9 @@ describe('JwksClient', () => {
   });
 
   it('refetches after ttl expires', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+
     const { publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
     const jwk = publicKey.export({ format: 'jwk' });
     const fetchMock = vi.fn(async () =>
@@ -83,7 +87,7 @@ describe('JwksClient', () => {
 
     const client = new JwksClient('https://example.test/.well-known/jwks.json', 1);
     await client.getSigningKey('key-1');
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.002Z'));
     await client.getSigningKey('key-1');
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -114,6 +118,7 @@ describe('DefaultJwtVerifier with jwksUri', () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it('verifies RS256 token using jwksUri option', async () => {
