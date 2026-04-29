@@ -162,16 +162,17 @@ export class Container {
   private readonly registrations = new Map<Token, NormalizedProvider>();
   private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
   private readonly multiOverriddenTokens = new Set<Token>();
-  private readonly requestCache = new Map<Token, Promise<unknown>>();
-  private readonly multiRequestCache = new Map<NormalizedProvider, Promise<unknown>>();
+  private requestCache: Map<Token, Promise<unknown>> | undefined;
+  private multiRequestCache: Map<NormalizedProvider, Promise<unknown>> | undefined;
   private readonly multiSingletonCache = new Map<NormalizedProvider, Promise<unknown>>();
   private readonly staleDisposalTasks = new Set<Promise<void>>();
   private readonly staleDisposalErrors: unknown[] = [];
   private readonly singletonCache: Map<Token, Promise<unknown>>;
   private readonly forwardRefTokenCache = new WeakMap<ForwardRefFn, Token>();
-  private readonly childScopes = new Set<Container>();
+  private childScopes: Set<Container> | undefined;
   private disposePromise: Promise<void> | undefined;
   private disposed = false;
+  private trackedByRoot = false;
 
   constructor(
     private readonly parent?: Container,
@@ -192,7 +193,7 @@ export class Container {
    * @throws {InvalidProviderError} When a provider definition is structurally invalid.
    */
   register(...providers: Provider[]): this {
-    if (this.disposed) {
+    if (this.isDisposedInHierarchy()) {
       throw new ContainerResolutionError(
         'Container has been disposed and can no longer register providers.',
         { hint: 'Ensure providers are registered before calling container.dispose().' },
@@ -247,7 +248,7 @@ export class Container {
    * @throws {InvalidProviderError} When a provider definition is structurally invalid.
    */
   override(...providers: Provider[]): this {
-    if (this.disposed) {
+    if (this.isDisposedInHierarchy()) {
       throw new ContainerResolutionError(
         'Container has been disposed and can no longer override providers.',
         { hint: 'Ensure overrides are applied before calling container.dispose().' },
@@ -292,16 +293,14 @@ export class Container {
    * @throws {ContainerResolutionError} When called after the container was disposed.
    */
   createRequestScope(): Container {
-    if (this.disposed) {
+    if (this.isDisposedInHierarchy()) {
       throw new ContainerResolutionError(
         'Container has been disposed and can no longer create request scopes.',
         { hint: 'Create request scopes before calling container.dispose().' },
       );
     }
 
-    const child = new Container(this, true, this.root().singletonCache);
-    this.root().childScopes.add(child);
-    return child;
+    return new Container(this, true, this.root().singletonCache);
   }
 
   /**
@@ -315,7 +314,7 @@ export class Container {
    * @throws {CircularDependencyError} When provider dependency resolution detects a cycle.
    */
   async resolve<T>(token: Token<T>): Promise<T> {
-    if (this.disposed) {
+    if (this.isDisposedInHierarchy()) {
       throw new ContainerResolutionError(
         'Container has been disposed and can no longer resolve providers.',
         { token, hint: 'Ensure all resolves complete before calling container.dispose().' },
@@ -351,17 +350,26 @@ export class Container {
   private async disposeAll(): Promise<void> {
     try {
       // Dispose all live request-scope children first (root only)
-      if (!this.parent && this.childScopes.size > 0) {
+      if (!this.parent && this.childScopes && this.childScopes.size > 0) {
         await Promise.all(Array.from(this.childScopes).map((child) => child.dispose()));
         this.childScopes.clear();
       }
 
       await this.disposeCache(this.disposalCacheEntries());
     } finally {
-      if (this.parent) {
-        this.root().childScopes.delete(this);
+      if (this.parent && this.trackedByRoot) {
+        this.root().childScopes?.delete(this);
+        this.trackedByRoot = false;
       }
     }
+  }
+
+  private isDisposedInHierarchy(): boolean {
+    if (this.disposed) {
+      return true;
+    }
+
+    return this.parent?.isDisposedInHierarchy() ?? false;
   }
 
   private hasMulti(token: Token): boolean {
@@ -660,6 +668,29 @@ export class Container {
     return this.parent ? this.parent.root() : this;
   }
 
+  private ensureTrackedRequestScope(): void {
+    if (!this.requestScopeEnabled || !this.parent || this.trackedByRoot) {
+      return;
+    }
+
+    const root = this.root();
+    root.childScopes ??= new Set<Container>();
+    root.childScopes.add(this);
+    this.trackedByRoot = true;
+  }
+
+  private requestCacheForWrite(): Map<Token, Promise<unknown>> {
+    this.ensureTrackedRequestScope();
+    this.requestCache ??= new Map<Token, Promise<unknown>>();
+    return this.requestCache;
+  }
+
+  private multiRequestCacheForWrite(): Map<NormalizedProvider, Promise<unknown>> {
+    this.ensureTrackedRequestScope();
+    this.multiRequestCache ??= new Map<NormalizedProvider, Promise<unknown>>();
+    return this.multiRequestCache;
+  }
+
   private lookupProvider(token: Token): NormalizedProvider | undefined {
     const local = this.registrations.get(token);
 
@@ -684,7 +715,7 @@ export class Container {
   private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
     if (provider.scope === Scope.DEFAULT) {
       if (this.requestScopeEnabled && this.registrations.has(provider.provide)) {
-        return this.requestCache;
+        return this.requestCacheForWrite();
       }
 
       return this.root().singletonCache;
@@ -701,13 +732,13 @@ export class Container {
       );
     }
 
-    return this.requestCache;
+    return this.requestCacheForWrite();
   }
 
   private multiCacheFor(provider: NormalizedProvider): Map<NormalizedProvider, Promise<unknown>> {
     if (provider.scope === Scope.DEFAULT) {
       if (this.requestScopeEnabled && this.hasLocalMultiProvider(provider)) {
-        return this.multiRequestCache;
+        return this.multiRequestCacheForWrite();
       }
 
       return this.root().multiSingletonCache;
@@ -724,7 +755,7 @@ export class Container {
       );
     }
 
-    return this.multiRequestCache;
+    return this.multiRequestCacheForWrite();
   }
 
   private hasLocalMultiProvider(provider: NormalizedProvider): boolean {
@@ -733,9 +764,9 @@ export class Container {
 
   private disposalCacheEntries(): Array<[NormalizedProvider | Token, Promise<unknown>]> {
     if (this.parent) {
-      const entries: Array<[NormalizedProvider | Token, Promise<unknown>]> = Array.from(this.requestCache.entries());
+      const entries: Array<[NormalizedProvider | Token, Promise<unknown>]> = Array.from(this.requestCache?.entries() ?? []);
 
-      for (const [provider, promise] of this.multiRequestCache.entries()) {
+      for (const [provider, promise] of this.multiRequestCache?.entries() ?? []) {
         entries.push([provider, promise]);
       }
 
@@ -804,8 +835,8 @@ export class Container {
 
   private clearDisposalCaches(): void {
     if (this.parent) {
-      this.requestCache.clear();
-      this.multiRequestCache.clear();
+      this.requestCache?.clear();
+      this.multiRequestCache?.clear();
       return;
     }
 
@@ -968,7 +999,7 @@ export class Container {
   }
 
   private invalidateCachedEntry(token: Token, scope: Scope): void {
-    if (this.requestCache.has(token)) {
+    if (this.requestCache?.has(token)) {
       const cached = this.requestCache.get(token);
 
       if (cached) {
@@ -1003,13 +1034,19 @@ export class Container {
       }
     }
 
-    for (const [provider, cached] of this.multiRequestCache.entries()) {
+    const multiRequestCache = this.multiRequestCache;
+
+    if (!multiRequestCache) {
+      return;
+    }
+
+    for (const [provider, cached] of multiRequestCache.entries()) {
       if (provider.provide !== token) {
         continue;
       }
 
       this.scheduleStaleDisposal(cached);
-      this.multiRequestCache.delete(provider);
+      multiRequestCache.delete(provider);
     }
   }
 }
