@@ -7,7 +7,7 @@ This chapter explains rate limiting strategies that protect the FluoBlog API fro
 
 ## Learning Objectives
 - Understand why rate limiting matters for API security and availability.
-- Configure `ThrottlerModule` for global and route-level protection.
+- Configure `ThrottlerModule` defaults and activate `ThrottlerGuard` on the routes that need protection.
 - Compare in-memory and Redis storage strategies.
 - Adjust limiting rules based on user ID or IP address.
 - Learn how to handle `429 Too Many Requests` responses.
@@ -83,13 +83,33 @@ export class AppModule {}
 ```
 
 ### 16.3.1 Global Throttling
-Configuring the Module at the root level establishes a default layer of protection for the entire application. This is your first line of defense. Every incoming request is tracked against the global limit unless a separate override exists. This "secure by default" posture reflects Fluo's philosophy, because even routes you forgot to protect explicitly still receive some protection from abuse.
+Configuring the Module at the root level establishes the default policy that `ThrottlerGuard` will enforce when you attach that Guard to Controllers or handlers. In other words, `ThrottlerModule.forRoot(...)` does **not** automatically throttle every route by itself. The shipped contract is: register the Module once, then activate `ThrottlerGuard` explicitly through Fluo guard metadata such as `@UseGuards(ThrottlerGuard)`.
 
 This setup defines a default limit of 10 requests every 60 seconds for routes that wire `ThrottlerGuard`. It gives FluoBlog a baseline defense before you add stricter rules to sensitive endpoints.
 
-Global throttling is especially effective when combined with **load balancer integration**. If your application runs behind a proxy such as Nginx, HAProxy, or a cloud-native load balancer such as AWS ALB, you must ensure the `X-Forwarded-For` header is parsed correctly to identify the real client IP. Without this setup, the global throttler may treat all traffic as coming from the proxy itself and accidentally put every user on a "global blacklist." In Fluo, enabling `trustProxyHeaders: true` in platform settings lets `ThrottlerGuard` receive the correct IP address for tracking logic.
+Global throttling is especially effective when combined with **load balancer integration**. If your application runs behind a proxy such as Nginx, HAProxy, or a cloud-native load balancer such as AWS ALB, you must ensure the forwarded client IP is trusted only when your proxy overwrites those headers correctly. In Fluo, that opt-in lives on `ThrottlerModule.forRoot(...)` itself through `trustProxyHeaders: true`, not through separate platform settings.
 
-Beyond simple IP tracking, global throttling can enforce **aggregate system limits**. For example, you can set a global limit of 10,000 requests per minute across the entire API cluster, regardless of which user sends the request, to prevent database exhaustion. This higher-level resource management is essential for keeping infrastructure stable during unexpected traffic spikes or explosive growth. Setting these guardrails helps ensure the system fails gracefully under pressure instead of collapsing.
+```typescript
+import { Controller, Post, UseGuards } from '@fluojs/http';
+import { ThrottlerGuard, ThrottlerModule } from '@fluojs/throttler';
+
+ThrottlerModule.forRoot({
+  limit: 10,
+  ttl: 60,
+  trustProxyHeaders: true,
+});
+
+@Controller('/auth')
+@UseGuards(ThrottlerGuard)
+export class AuthController {
+  @Post('/login')
+  login() {
+    return { ok: true };
+  }
+}
+```
+
+If you need aggregate cluster-wide quotas or other higher-level protection, model that explicitly with application middleware, a custom store, or a custom guard wrapper instead of assuming one built-in app-wide quota layer.
 
 Once you have global rules, you can tune them for each route's character. You can override global settings or skip rate limiting for specific Controllers or methods.
 

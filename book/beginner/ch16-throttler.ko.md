@@ -7,7 +7,7 @@
 
 ## Learning Objectives
 - API 보안과 가용성을 위한 속도 제한(Rate Limiting)의 중요성을 이해합니다.
-- 전역 및 라우트별 보호를 위해 `ThrottlerModule`을 설정합니다.
+- `ThrottlerModule`의 기본 정책을 설정하고, 보호가 필요한 라우트에 `ThrottlerGuard`를 활성화합니다.
 - 인메모리와 Redis 저장소 전략을 비교합니다.
 - 사용자 ID나 IP 주소를 기준으로 제한 규칙을 조정합니다.
 - `429 Too Many Requests` 응답을 처리하는 방법을 익힙니다.
@@ -83,13 +83,33 @@ export class AppModule {}
 ```
 
 ### 16.3.1 Global Throttling
-루트 수준에서 모듈을 설정하면 애플리케이션 전체에 대한 기본 보호 수준이 수립됩니다. 이것이 첫 번째 방어선입니다. 모든 들어오는 요청은 별도의 오버라이드가 없는 한 전역 제한을 기준으로 추적됩니다. 이러한 "기본 보안 적용(secure by default)" 태세는 Fluo의 철학이 반영된 것으로, 명시적으로 보호하는 것을 잊은 라우트도 일정 수준의 남용으로부터 보호합니다.
+루트 수준에서 모듈을 설정하면, 이후 `ThrottlerGuard`를 연결했을 때 그 가드가 사용할 기본 정책이 정해집니다. 즉 `ThrottlerModule.forRoot(...)`만 등록한다고 해서 애플리케이션의 모든 라우트가 자동으로 스로틀링되는 것은 아닙니다. 현재 배포된 계약은 Module은 한 번 등록하고, 실제 보호는 `@UseGuards(ThrottlerGuard)` 같은 Fluo guard metadata를 통해 명시적으로 활성화하는 방식입니다.
 
 이 설정은 `ThrottlerGuard`를 연결한 라우트에 대해 60초마다 10회 요청이라는 기본 제한을 정의합니다. 이후 민감한 엔드포인트에 더 엄격한 규칙을 얹기 전에, FluoBlog 전체에 기본 방어선을 세우는 셈입니다.
 
-전역 스로틀링은 **로드 밸런서 통합**과 결합될 때 특히 효과적입니다. 애플리케이션이 Nginx, HAProxy 또는 클라우드 네이티브 로드 밸런서(예: AWS ALB)와 같은 프록시 뒤에서 실행되는 경우, 실제 클라이언트 IP를 식별하기 위해 `X-Forwarded-For` 헤더가 올바르게 파싱되도록 해야 합니다. 이 설정이 없으면 전역 스로틀러가 모든 트래픽이 프록시 자체에서 발생하는 것으로 간주하여 모든 사용자를 실수로 "전역 블랙리스트"에 추가하는 결과를 초래할 수 있습니다. Fluo에서는 플랫폼 설정에서 `trustProxyHeaders: true`를 활성화하면 `ThrottlerGuard`가 추적 로직에 필요한 정확한 IP 주소를 전달받을 수 있습니다.
+전역 스로틀링은 **로드 밸런서 통합**과 결합될 때 특히 효과적입니다. 애플리케이션이 Nginx, HAProxy 또는 클라우드 네이티브 로드 밸런서(예: AWS ALB)와 같은 프록시 뒤에서 실행되는 경우, 프록시가 해당 헤더를 올바르게 덮어쓴다는 전제에서만 전달된 클라이언트 IP를 신뢰해야 합니다. Fluo에서는 이 opt-in이 별도의 플랫폼 설정이 아니라 `ThrottlerModule.forRoot(...)`의 `trustProxyHeaders: true` 옵션에 위치합니다.
 
-단순한 IP 추적을 넘어, 전역 스로틀링은 **시스템 총계 제한(Aggregate System Limits)**을 강제하는 데 사용될 수 있습니다. 예를 들어, 어떤 사용자가 요청을 보내든 상관없이 전체 API 클러스터에 대해 분당 10,000개의 글로벌 제한을 설정하여 데이터베이스 고갈을 방지할 수 있습니다. 이러한 상위 수준의 리소스 관리는 예상치 못한 트래픽 급증이나 폭발적인 성장에 직면했을 때 인프라 안정성을 유지하는 데 필수적입니다. 이러한 "가드레일(Guardrails)"을 설정함으로써 시스템이 압박 속에서 무너지지 않고 우아하게 실패하도록 보장할 수 있습니다.
+```typescript
+import { Controller, Post, UseGuards } from '@fluojs/http';
+import { ThrottlerGuard, ThrottlerModule } from '@fluojs/throttler';
+
+ThrottlerModule.forRoot({
+  limit: 10,
+  ttl: 60,
+  trustProxyHeaders: true,
+});
+
+@Controller('/auth')
+@UseGuards(ThrottlerGuard)
+export class AuthController {
+  @Post('/login')
+  login() {
+    return { ok: true };
+  }
+}
+```
+
+클러스터 전체 총량 제한처럼 더 높은 수준의 보호가 필요하다면, 내장된 앱 전체 quota 레이어가 있다고 가정하지 말고 애플리케이션 middleware, 커스텀 store, 또는 커스텀 guard wrapper로 명시적으로 모델링하십시오.
 
 전역 규칙이 생기면 이제 경로 성격에 맞게 조정할 수 있습니다. 글로벌 설정을 재정의하거나 특정 컨트롤러나 메서드에 대해 속도 제한을 건너뛸 수 있습니다.
 
