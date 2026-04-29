@@ -125,7 +125,9 @@ Redis reset ownership is scoped by `keyPrefix`, which defaults to `fluo:cache:`.
 
 ### Query-Sensitive Caching
 
-By default, the cache key ignores query parameters. Enable `httpKeyStrategy: 'route+query'` to cache different responses for different search parameters.
+Built-in HTTP cache key strategies derive their path segment from the concrete request path (`requestContext.request.path`), not the route template metadata. That means requests such as `/users/1` and `/users/2` always resolve to different cache keys even when they hit the same `@Get('/:id')` handler.
+
+By default, the cache key ignores query parameters and uses only the concrete request path. Enable `httpKeyStrategy: 'route+query'` (or `full`, which is equivalent for the built-in strategy set) to cache different responses for different search parameters.
 
 ```typescript
 CacheModule.forRoot({
