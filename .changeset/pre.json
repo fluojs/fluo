@@ -48,8 +48,7 @@
     "@fluojs-internal/tooling-babel": "0.0.0",
     "@fluojs-internal/tooling-tsconfig": "0.0.0",
     "@fluojs-internal/tooling-vite": "0.0.0",
-    "@fluojs-internal/tooling-vitest": "0.0.0",
-    "@fluojs-internal/tooling-benchmarks-http": "0.0.0"
+    "@fluojs-internal/tooling-vitest": "0.0.0"
   },
   "changesets": [
     "beta-2-release",
