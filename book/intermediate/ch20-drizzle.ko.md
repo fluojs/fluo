@@ -145,14 +145,21 @@ export const orders = pgTable('orders', {
 
 ## 20.7 Observability and Health
 
-제공된 스냅샷 헬퍼를 사용하면 SQL 연결 상태를 헬스 체크와 운영 지표에 연결할 수 있습니다. 데이터베이스 풀이 끊기거나 지연이 커지는 상황을 애플리케이션 상태와 함께 확인할 수 있어 운영 판단이 빨라집니다.
+`DrizzleDatabase.createPlatformStatusSnapshot()`를 사용하면 SQL 연결 상태를 헬스 체크와 운영 지표에 연결할 수 있습니다. 데이터베이스 풀이 끊기거나 지연이 커지는 상황을 애플리케이션 상태와 함께 확인할 수 있어 운영 판단이 빨라집니다.
 
 ```typescript
-import { createDrizzlePlatformStatusSnapshot } from '@fluojs/drizzle';
+import { DrizzleDatabase } from '@fluojs/drizzle';
 
-const status = await createDrizzlePlatformStatusSnapshot(drizzleDatabase);
-if (status.isReady) {
-  // 데이터베이스 연결이 정상입니다.
+export class DrizzleHealthReporter {
+  constructor(private readonly drizzleDatabase: DrizzleDatabase) {}
+
+  logSnapshot() {
+    const status = this.drizzleDatabase.createPlatformStatusSnapshot();
+
+    if (status.readiness.status === 'ready' && status.health.status === 'healthy') {
+      // 데이터베이스 연결이 정상입니다.
+    }
+  }
 }
 ```
 

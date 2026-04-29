@@ -147,14 +147,21 @@ Using `DrizzleDatabase` lets services coordinate complex multi-table insert oper
 
 ## 20.7 Observability and Health
 
-The provided snapshot helper lets you connect SQL connection status to health checks and operational metrics.
+`DrizzleDatabase.createPlatformStatusSnapshot()` lets you connect SQL connection status to health checks and operational metrics.
 
 ```typescript
-import { createDrizzlePlatformStatusSnapshot } from '@fluojs/drizzle';
+import { DrizzleDatabase } from '@fluojs/drizzle';
 
-const status = await createDrizzlePlatformStatusSnapshot(drizzleDatabase);
-if (status.isReady) {
-  // The database connection is healthy.
+export class DrizzleHealthReporter {
+  constructor(private readonly drizzleDatabase: DrizzleDatabase) {}
+
+  logSnapshot() {
+    const status = this.drizzleDatabase.createPlatformStatusSnapshot();
+
+    if (status.readiness.status === 'ready' && status.health.status === 'healthy') {
+      // The database connection is healthy.
+    }
+  }
 }
 ```
 
