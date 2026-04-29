@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { All, Controller, createDispatcher, createHandlerMapping, Get, Post, SseResponse, Version, VersioningType, type FrameworkRequest, type FrameworkResponse, type RequestContext } from '@fluojs/http';
+import { All, Controller, createDispatcher, createHandlerMapping, Get, Header, HttpCode, Post, Redirect, SseResponse, Version, VersioningType, type FrameworkRequest, type FrameworkResponse, type RequestContext } from '@fluojs/http';
 import { defineModule, type ApplicationLogger } from '@fluojs/runtime';
 
 import {
@@ -479,6 +479,105 @@ describe('@fluojs/platform-bun', () => {
     expect(response.status).toBe(202);
     expect(response.headers.get('x-runtime')).toBe('bun');
     await expect(response.text()).resolves.toBe('');
+  });
+
+  it('preserves response parity for simple JSON and non-fast-path responses', async () => {
+    @Controller('/responses')
+    class ResponsesController {
+      @Get('/object')
+      getObject() {
+        return { ok: true };
+      }
+
+      @Get('/array')
+      getArray() {
+        return [{ ok: true }];
+      }
+
+      @Get('/string')
+      getString() {
+        return 'plain';
+      }
+
+      @Get('/bytes')
+      getBytes() {
+        return Uint8Array.from([65, 66]);
+      }
+
+      @Get('/buffer')
+      getBuffer() {
+        return Uint8Array.from([67, 68]).buffer;
+      }
+
+      @Header('X-Contract', 'preserved')
+      @HttpCode(202)
+      @Get('/headers')
+      getHeaders() {
+        return { ok: true };
+      }
+
+      @Redirect('/responses/object', 302)
+      @Get('/redirect')
+      getRedirect() {
+        return { ignored: true };
+      }
+
+      @Get('/error')
+      getError() {
+        throw new Error('bun response parity error');
+      }
+    }
+
+    const fetch = createBunFetchHandler({
+      dispatcher: createDispatcher({
+        handlerMapping: createHandlerMapping([{ controllerToken: ResponsesController }]),
+        rootContainer: {
+          createRequestScope() {
+            return {
+              async dispose() {},
+              resolve() {
+                return new ResponsesController();
+              },
+            };
+          },
+        } as never,
+      }),
+    });
+    const responseFor = (path: string) => fetch(new Request(`https://runtime.test${path}`));
+
+    const objectResponse = await responseFor('/responses/object');
+    const arrayResponse = await responseFor('/responses/array');
+    const stringResponse = await responseFor('/responses/string');
+    const bytesResponse = await responseFor('/responses/bytes');
+    const bufferResponse = await responseFor('/responses/buffer');
+    const headerResponse = await responseFor('/responses/headers');
+    const redirectResponse = await responseFor('/responses/redirect');
+    const errorResponse = await responseFor('/responses/error');
+
+    expect(objectResponse.status).toBe(200);
+    expect(objectResponse.headers.get('content-type')).toContain('application/json');
+    await expect(objectResponse.json()).resolves.toEqual({ ok: true });
+    expect(arrayResponse.status).toBe(200);
+    expect(arrayResponse.headers.get('content-type')).toContain('application/json');
+    await expect(arrayResponse.json()).resolves.toEqual([{ ok: true }]);
+    expect(stringResponse.headers.get('content-type')).toContain('text/plain');
+    await expect(stringResponse.text()).resolves.toBe('plain');
+    expect(bytesResponse.headers.get('content-type')).toContain('application/octet-stream');
+    await expect(bytesResponse.text()).resolves.toBe('AB');
+    expect(bufferResponse.headers.get('content-type')).toContain('application/octet-stream');
+    await expect(bufferResponse.text()).resolves.toBe('CD');
+    expect(headerResponse.status).toBe(202);
+    expect(headerResponse.headers.get('x-contract')).toBe('preserved');
+    await expect(headerResponse.json()).resolves.toEqual({ ok: true });
+    expect(redirectResponse.status).toBe(302);
+    expect(redirectResponse.headers.get('location')).toBe('/responses/object');
+    expect(errorResponse.status).toBe(500);
+    await expect(errorResponse.json()).resolves.toMatchObject({
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        status: 500,
+      },
+    });
   });
 
   it('bridges rawBody-preserving app requests through Bun.serve()', async () => {

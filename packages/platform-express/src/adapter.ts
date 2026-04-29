@@ -32,7 +32,6 @@ import {
   type FrameworkResponseStream,
   type HandlerDescriptor,
   type HttpApplicationAdapter,
-  type HttpMethod,
   type MiddlewareLike,
   type SecurityHeadersOptions,
 } from '@fluojs/http';
@@ -155,6 +154,7 @@ interface ExpressNativeRouteCandidate {
 
 type ExpressFrameworkResponse = FrameworkResponse & {
   raw: ExpressResponse;
+  sendSimpleJson(body: Record<string, unknown> | unknown[]): ReturnType<FrameworkResponse['send']>;
   statusSet?: boolean;
 };
 
@@ -527,6 +527,21 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
 
       const existingContentType = response.getHeader('content-type');
       const serialized = serializeResponseBody(body, typeof existingContentType === 'string' ? existingContentType : undefined);
+
+      if (!response.hasHeader('content-type') && serialized.defaultContentType) {
+        response.setHeader('content-type', serialized.defaultContentType);
+      }
+
+      this.committed = true;
+      response.send(serialized.payload);
+    },
+    async sendSimpleJson(body: Record<string, unknown> | unknown[]) {
+      if (response.writableEnded) {
+        this.committed = true;
+        return;
+      }
+
+      const serialized = serializeResponseBody(body);
 
       if (!response.hasHeader('content-type') && serialized.defaultContentType) {
         response.setHeader('content-type', serialized.defaultContentType);

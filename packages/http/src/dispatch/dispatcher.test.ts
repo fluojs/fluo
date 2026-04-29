@@ -66,6 +66,20 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
   };
 }
 
+function createFastPathResponse(): FrameworkResponse & {
+  body?: unknown;
+  simpleJsonBody?: Record<string, unknown> | unknown[];
+  sendSimpleJson(body: Record<string, unknown> | unknown[]): void;
+} {
+  return {
+    ...createResponse(),
+    sendSimpleJson(body) {
+      this.simpleJsonBody = body;
+      this.committed = true;
+    },
+  };
+}
+
 function createRequest(
   path: string,
   method = 'GET',
@@ -106,6 +120,127 @@ describe('dispatcher runtime', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ ok: true });
     expect(response.headers['Content-Type']).toBeUndefined();
+  });
+
+  it('uses the simple JSON fast writer for successful object and array responses', async () => {
+    @Controller('/fast-json')
+    class FastJsonController {
+      @Get('/object')
+      getObject() {
+        return { ok: true };
+      }
+
+      @Get('/array')
+      getArray() {
+        return [{ ok: true }];
+      }
+    }
+
+    const root = new Container().register(FastJsonController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: FastJsonController }]),
+      rootContainer: root,
+    });
+    const objectResponse = createFastPathResponse();
+    const arrayResponse = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/fast-json/object'), objectResponse);
+    await dispatcher.dispatch(createRequest('/fast-json/array'), arrayResponse);
+
+    expect(objectResponse.statusCode).toBe(200);
+    expect(objectResponse.simpleJsonBody).toEqual({ ok: true });
+    expect(objectResponse.body).toBeUndefined();
+    expect(arrayResponse.statusCode).toBe(200);
+    expect(arrayResponse.simpleJsonBody).toEqual([{ ok: true }]);
+    expect(arrayResponse.body).toBeUndefined();
+  });
+
+  it('keeps strings and binary values on the generic success writer', async () => {
+    @Controller('/generic-values')
+    class GenericValuesController {
+      @Get('/string')
+      getString() {
+        return 'plain';
+      }
+
+      @Get('/bytes')
+      getBytes() {
+        return Uint8Array.from([1, 2, 3]);
+      }
+
+      @Get('/buffer')
+      getBuffer() {
+        return Uint8Array.from([4, 5, 6]).buffer;
+      }
+    }
+
+    const root = new Container().register(GenericValuesController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: GenericValuesController }]),
+      rootContainer: root,
+    });
+    const stringResponse = createFastPathResponse();
+    const bytesResponse = createFastPathResponse();
+    const bufferResponse = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/generic-values/string'), stringResponse);
+    await dispatcher.dispatch(createRequest('/generic-values/bytes'), bytesResponse);
+    await dispatcher.dispatch(createRequest('/generic-values/buffer'), bufferResponse);
+
+    expect(stringResponse.simpleJsonBody).toBeUndefined();
+    expect(stringResponse.body).toBe('plain');
+    expect(bytesResponse.simpleJsonBody).toBeUndefined();
+    expect(bytesResponse.body).toEqual(Uint8Array.from([1, 2, 3]));
+    expect(bufferResponse.simpleJsonBody).toBeUndefined();
+    expect(bufferResponse.body).toBeInstanceOf(ArrayBuffer);
+  });
+
+  it('preserves explicit success headers and status on the simple JSON fast path', async () => {
+    @Controller('/fast-json-contract')
+    class FastJsonContractController {
+      @Header('X-Contract', 'preserved')
+      @HttpCode(202)
+      @Get('/headers')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(FastJsonContractController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: FastJsonContractController }]),
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/fast-json-contract/headers'), response);
+
+    expect(response.statusCode).toBe(202);
+    expect(response.headers['X-Contract']).toBe('preserved');
+    expect(response.simpleJsonBody).toEqual({ ok: true });
+  });
+
+  it('skips the simple JSON fast path for explicit non-JSON content types', async () => {
+    @Controller('/fast-json-contract')
+    class FastJsonContractController {
+      @Header('Content-Type', 'application/vnd.custom')
+      @Get('/custom-type')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(FastJsonContractController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: FastJsonContractController }]),
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/fast-json-contract/custom-type'), response);
+
+    expect(response.simpleJsonBody).toBeUndefined();
+    expect(response.body).toEqual({ ok: true });
   });
 
   it('selects formatter by Accept header when content negotiation is configured', async () => {

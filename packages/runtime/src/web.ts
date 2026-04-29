@@ -207,6 +207,20 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
     this.committed = true;
   }
 
+  async sendSimpleJson(body: Record<string, unknown> | unknown[]): Promise<void> {
+    if (this.finalizedResponse) {
+      this.committed = true;
+      return;
+    }
+
+    if (!hasHeader(this.headers, 'content-type')) {
+      this.setHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    this.responseBody = JSON.stringify(body);
+    this.committed = true;
+  }
+
   setHeader(name: string, value: string | string[]): void {
     const existingHeaderName = findHeaderName(this.headers, name) ?? name;
 

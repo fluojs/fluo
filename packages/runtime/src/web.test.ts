@@ -9,6 +9,67 @@ import {
 } from './web.js';
 
 describe('dispatchWebRequest', () => {
+  it('serializes simple JSON responses while preserving non-JSON response semantics', async () => {
+    const responseFor = (path: string) => dispatchWebRequest({
+      dispatcher: {
+        async dispatch(_request: FrameworkRequest, frameworkResponse: FrameworkResponse) {
+          switch (path) {
+            case '/object':
+              await frameworkResponse.send({ ok: true });
+              return;
+            case '/array':
+              await frameworkResponse.send([{ ok: true }]);
+              return;
+            case '/string':
+              await frameworkResponse.send('plain');
+              return;
+            case '/bytes':
+              await frameworkResponse.send(Uint8Array.from([65, 66]));
+              return;
+            case '/buffer':
+              await frameworkResponse.send(Uint8Array.from([67, 68]).buffer);
+              return;
+            case '/headers':
+              frameworkResponse.setStatus(202);
+              frameworkResponse.setHeader('x-contract', 'preserved');
+              await frameworkResponse.send({ ok: true });
+              return;
+            case '/redirect':
+              frameworkResponse.redirect(302, '/next');
+              return;
+            default:
+              throw new Error(`Unhandled path ${path}`);
+          }
+        },
+      },
+      request: new Request(`https://runtime.test${path}`),
+    });
+
+    const objectResponse = await responseFor('/object');
+    const arrayResponse = await responseFor('/array');
+    const stringResponse = await responseFor('/string');
+    const bytesResponse = await responseFor('/bytes');
+    const bufferResponse = await responseFor('/buffer');
+    const headerResponse = await responseFor('/headers');
+    const redirectResponse = await responseFor('/redirect');
+
+    expect(objectResponse.headers.get('content-type')).toContain('application/json');
+    await expect(objectResponse.json()).resolves.toEqual({ ok: true });
+    expect(arrayResponse.headers.get('content-type')).toContain('application/json');
+    await expect(arrayResponse.json()).resolves.toEqual([{ ok: true }]);
+    expect(stringResponse.headers.get('content-type')).toContain('text/plain');
+    await expect(stringResponse.text()).resolves.toBe('plain');
+    expect(bytesResponse.headers.get('content-type')).toContain('application/octet-stream');
+    await expect(bytesResponse.text()).resolves.toBe('AB');
+    expect(bufferResponse.headers.get('content-type')).toContain('application/octet-stream');
+    await expect(bufferResponse.text()).resolves.toBe('CD');
+    expect(headerResponse.status).toBe(202);
+    expect(headerResponse.headers.get('x-contract')).toBe('preserved');
+    await expect(headerResponse.json()).resolves.toEqual({ ok: true });
+    expect(redirectResponse.status).toBe(302);
+    expect(redirectResponse.headers.get('location')).toBe('/next');
+  });
+
   it('translates Web Request semantics into the framework request contract', async () => {
     const response = await dispatchWebRequest({
       dispatcher: {

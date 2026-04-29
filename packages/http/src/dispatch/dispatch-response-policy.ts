@@ -10,6 +10,12 @@ import type {
   HandlerDescriptor,
 } from '../types.js';
 
+type SimpleJsonResponseBody = Record<string, unknown> | unknown[];
+
+type SimpleJsonFrameworkResponse = FrameworkResponse & {
+  sendSimpleJson(body: SimpleJsonResponseBody): ReturnType<FrameworkResponse['send']>;
+};
+
 function resolveDefaultSuccessStatus(handler: HandlerDescriptor, value: unknown): number {
   switch (handler.route.method) {
     case 'POST':
@@ -20,6 +26,50 @@ function resolveDefaultSuccessStatus(handler: HandlerDescriptor, value: unknown)
     default:
       return 200;
   }
+}
+
+function canUseSimpleJsonFastPath(
+  response: FrameworkResponse,
+  value: unknown,
+): value is SimpleJsonResponseBody {
+  return isSimpleJsonResponseBody(value)
+    && !isResponseBodyForbidden(response.statusCode)
+    && hasJsonCompatibleContentType(response);
+}
+
+function hasSimpleJsonResponseWriter(response: FrameworkResponse): response is SimpleJsonFrameworkResponse {
+  return typeof (response as { sendSimpleJson?: unknown }).sendSimpleJson === 'function';
+}
+
+function isSimpleJsonResponseBody(value: unknown): value is SimpleJsonResponseBody {
+  if (Array.isArray(value)) {
+    return true;
+  }
+
+  return typeof value === 'object'
+    && value !== null
+    && Object.getPrototypeOf(value) === Object.prototype;
+}
+
+function isResponseBodyForbidden(status: number | undefined): boolean {
+  return status === 204 || status === 205 || status === 304;
+}
+
+function hasJsonCompatibleContentType(response: FrameworkResponse): boolean {
+  const contentType = readHeader(response.headers, 'content-type');
+  return contentType === undefined || isJsonContentType(contentType);
+}
+
+function readHeader(headers: FrameworkResponse['headers'], name: string): string | undefined {
+  const lowerName = name.toLowerCase();
+  const entry = Object.entries(headers).find(([headerName]) => headerName.toLowerCase() === lowerName);
+  const value = entry?.[1];
+
+  return typeof value === 'string' ? value : undefined;
+}
+
+function isJsonContentType(contentType: string): boolean {
+  return contentType.toLowerCase().includes('application/json') || contentType.toLowerCase().endsWith('+json');
 }
 
 /**
@@ -68,6 +118,11 @@ export async function writeSuccessResponse(
     response.setStatus(handler.route.successStatus);
   } else if (response.statusSet !== true) {
     response.setStatus(resolveDefaultSuccessStatus(handler, value));
+  }
+
+  if (!formatter && hasSimpleJsonResponseWriter(response) && canUseSimpleJsonFastPath(response, value)) {
+    await response.sendSimpleJson(value);
+    return;
   }
 
   const responseBody = formatter

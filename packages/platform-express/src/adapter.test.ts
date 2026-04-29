@@ -17,7 +17,10 @@ import {
   createDispatcher,
   createHandlerMapping,
   Get,
+  Header,
+  HttpCode,
   Post,
+  Redirect,
   SseResponse,
   UseGuards,
   UseInterceptors,
@@ -154,6 +157,10 @@ function isExpressResponse(value: unknown): value is ExpressResponse {
   return typeof value === 'object' && value !== null && 'emit' in value;
 }
 
+interface ExpressJsonSettingsHost {
+  set(name: 'json replacer', value: (key: string, value: unknown) => unknown): void;
+}
+
 const TEST_TLS_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDBbj6DdMPNvDMr
 yNUM0dreceSBINfH+VDV750R3X57mdoqebUgjKOXjbjR7JRkloJ4PEgAic+840rq
@@ -251,6 +258,140 @@ describe('@fluojs/platform-express', () => {
     it('removes registered shutdown signal listeners after close', async () => {
       await expressPortabilityHarness.assertRemovesShutdownSignalListenersAfterClose();
     });
+  });
+
+  it('preserves response parity for simple JSON and non-fast-path responses', async () => {
+    @Controller('/responses')
+    class ResponsesController {
+      @Get('/object')
+      getObject() {
+        return { ok: true };
+      }
+
+      @Get('/array')
+      getArray() {
+        return [{ ok: true }];
+      }
+
+      @Get('/string')
+      getString() {
+        return 'plain';
+      }
+
+      @Get('/bytes')
+      getBytes() {
+        return Uint8Array.from([65, 66]);
+      }
+
+      @Get('/buffer')
+      getBuffer() {
+        return Uint8Array.from([67, 68]).buffer;
+      }
+
+      @Header('X-Contract', 'preserved')
+      @HttpCode(202)
+      @Get('/headers')
+      getHeaders() {
+        return { ok: true };
+      }
+
+      @Redirect('/responses/object', 302)
+      @Get('/redirect')
+      getRedirect() {
+        return { ignored: true };
+      }
+
+      @Get('/error')
+      getError() {
+        throw new Error('express response parity error');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [ResponsesController] });
+
+    const port = await findAvailablePort();
+    const app = await fluoFactory.create(AppModule, {
+      adapter: createExpressAdapter({ port }),
+    });
+
+    await app.listen();
+
+    try {
+      const objectResponse = await requestHttp({ path: '/responses/object', port });
+      const arrayResponse = await requestHttp({ path: '/responses/array', port });
+      const stringResponse = await requestHttp({ path: '/responses/string', port });
+      const bytesResponse = await requestHttp({ path: '/responses/bytes', port });
+      const bufferResponse = await requestHttp({ path: '/responses/buffer', port });
+      const headerResponse = await requestHttp({ path: '/responses/headers', port });
+      const redirectResponse = await requestHttp({ path: '/responses/redirect', port });
+      const errorResponse = await requestHttp({ path: '/responses/error', port });
+
+      expect(objectResponse.statusCode).toBe(200);
+      expect(objectResponse.headers.get('content-type')).toContain('application/json');
+      expect(JSON.parse(objectResponse.body)).toEqual({ ok: true });
+      expect(arrayResponse.statusCode).toBe(200);
+      expect(arrayResponse.headers.get('content-type')).toContain('application/json');
+      expect(JSON.parse(arrayResponse.body)).toEqual([{ ok: true }]);
+      expect(stringResponse.headers.get('content-type')).toContain('text/plain');
+      expect(stringResponse.body).toBe('plain');
+      expect(bytesResponse.headers.get('content-type')).toContain('application/octet-stream');
+      expect(bytesResponse.body).toBe('AB');
+      expect(bufferResponse.headers.get('content-type')).toContain('application/octet-stream');
+      expect(bufferResponse.body).toBe('CD');
+      expect(headerResponse.statusCode).toBe(202);
+      expect(headerResponse.headers.get('x-contract')).toBe('preserved');
+      expect(JSON.parse(headerResponse.body)).toEqual({ ok: true });
+      expect(redirectResponse.statusCode).toBe(302);
+      expect(redirectResponse.headers.get('location')).toBe('/responses/object');
+      expect(errorResponse.statusCode).toBe(500);
+      expect(JSON.parse(errorResponse.body)).toMatchObject({
+        error: {
+          code: 'INTERNAL_SERVER_ERROR',
+          status: 500,
+        },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps the simple JSON fast path off Express json replacer serialization', async () => {
+    @Controller('/serializer')
+    class SerializerController {
+      @Get('/object')
+      getObject() {
+        return { keep: 'generic-json-stringify' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [SerializerController] });
+
+    const port = await findAvailablePort();
+    const adapter = createExpressAdapter({ port });
+    const expressApp = Reflect.get(adapter, 'app') as ExpressJsonSettingsHost;
+    let replacerCalls = 0;
+
+    expressApp.set('json replacer', () => {
+      replacerCalls += 1;
+      return 'express-native-serializer';
+    });
+
+    const app = await fluoFactory.create(AppModule, { adapter });
+
+    await app.listen();
+
+    try {
+      const response = await requestHttp({ path: '/serializer/object', port });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers.get('content-type')).toContain('application/json');
+      expect(response.body).toBe(JSON.stringify({ keep: 'generic-json-stringify' }));
+      expect(replacerCalls).toBe(0);
+    } finally {
+      await app.close();
+    }
   });
 
   it('uses the runtime default port instead of process.env.PORT', async () => {
