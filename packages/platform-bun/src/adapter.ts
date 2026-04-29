@@ -554,10 +554,10 @@ function createBunNativeRoutes(
 
     const routeHandlers = routes.get(descriptor.route.path) ?? {};
 
+    routeHandlers[method] = createBunNativeRouteHandoffHandler(descriptor, handleRequest);
+
     for (const bunRouteMethod of bunRouteMethods) {
-      routeHandlers[bunRouteMethod] ??= bunRouteMethod === method
-        ? createBunNativeRouteHandoffHandler(descriptor, handleRequest)
-        : handleRequest;
+      routeHandlers[bunRouteMethod] ??= handleRequest;
     }
 
     routes.set(descriptor.route.path, routeHandlers);
