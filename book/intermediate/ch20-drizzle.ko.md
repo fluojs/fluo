@@ -77,11 +77,14 @@ Fluo에서는 리포지토리에 `DrizzleDatabase` 서비스를 주입합니다.
 import { DrizzleDatabase } from '@fluojs/drizzle';
 import { Inject } from '@fluojs/core';
 import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import { products } from './schema';
+
+type AppDatabase = ReturnType<typeof drizzle>;
 
 @Inject(DrizzleDatabase)
 export class ProductRepository {
-  constructor(private readonly db: DrizzleDatabase) {}
+  constructor(private readonly db: DrizzleDatabase<AppDatabase>) {}
 
   async findById(id: string) {
     return this.db.current()
@@ -114,12 +117,12 @@ await this.db.transaction(async () => {
 `DrizzleTransactionInterceptor`를 사용하면 컨트롤러 액션 전체를 트랜잭션으로 묶을 수 있습니다. 여러 리포지토리 호출이 하나의 비즈니스 작업을 이루는 경우 원자성(atomicity)을 보장하는 데 적합합니다. 요청이 실패하면 같은 경계 안의 변경 사항을 함께 되돌릴 수 있어 주문 처리 같은 흐름을 더 안전하게 다룰 수 있습니다.
 
 ```typescript
-import { UseInterceptors } from '@fluojs/http';
+import { Post, UseInterceptors } from '@fluojs/http';
 import { DrizzleTransactionInterceptor } from '@fluojs/drizzle';
 
 @UseInterceptors(DrizzleTransactionInterceptor)
 export class OrderController {
-  @Post()
+  @Post('/checkout')
   async checkout() {
     // 이 메서드 안의 모든 리포지토리 호출은 단일 트랜잭션을 공유합니다.
   }
@@ -145,14 +148,28 @@ export const orders = pgTable('orders', {
 
 ## 20.7 Observability and Health
 
-제공된 스냅샷 헬퍼를 사용하면 SQL 연결 상태를 헬스 체크와 운영 지표에 연결할 수 있습니다. 데이터베이스 풀이 끊기거나 지연이 커지는 상황을 애플리케이션 상태와 함께 확인할 수 있어 운영 판단이 빨라집니다.
+주입된 `DrizzleDatabase` 래퍼는 진단 surface와 같은 공개 상태 계약을 따르는 스냅샷 메서드를 제공합니다. 데이터베이스 풀이 끊기거나 지연이 커지는 상황을 애플리케이션 상태와 함께 확인할 수 있어 운영 판단이 빨라집니다.
 
 ```typescript
-import { createDrizzlePlatformStatusSnapshot } from '@fluojs/drizzle';
+import { Inject } from '@fluojs/core';
+import { DrizzleDatabase } from '@fluojs/drizzle';
+import { drizzle } from 'drizzle-orm/node-postgres';
 
-const status = await createDrizzlePlatformStatusSnapshot(drizzleDatabase);
-if (status.isReady) {
-  // 데이터베이스 연결이 정상입니다.
+type AppDatabase = ReturnType<typeof drizzle>;
+
+@Inject(DrizzleDatabase)
+export class DrizzleHealthReporter {
+  constructor(private readonly drizzleDatabase: DrizzleDatabase<AppDatabase>) {}
+
+  logSnapshot() {
+    const status = this.drizzleDatabase.createPlatformStatusSnapshot();
+
+    if (status.readiness.status === 'ready' && status.health.status === 'healthy') {
+      // 데이터베이스 연결이 정상입니다.
+    }
+
+    return status;
+  }
 }
 ```
 

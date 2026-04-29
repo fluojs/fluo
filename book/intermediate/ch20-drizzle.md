@@ -77,11 +77,14 @@ In Fluo, repositories receive the `DrizzleDatabase` service through injection. I
 import { DrizzleDatabase } from '@fluojs/drizzle';
 import { Inject } from '@fluojs/core';
 import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import { products } from './schema';
+
+type AppDatabase = ReturnType<typeof drizzle>;
 
 @Inject(DrizzleDatabase)
 export class ProductRepository {
-  constructor(private readonly db: DrizzleDatabase) {}
+  constructor(private readonly db: DrizzleDatabase<AppDatabase>) {}
 
   async findById(id: string) {
     return this.db.current()
@@ -114,12 +117,12 @@ await this.db.transaction(async () => {
 With `DrizzleTransactionInterceptor`, you can wrap an entire Controller action in a transaction. This is a good fit for guaranteeing atomicity when multiple repository calls make up one business operation. If the request fails, changes inside the same boundary can roll back together, which is safer for flows such as checkout.
 
 ```typescript
-import { UseInterceptors } from '@fluojs/http';
+import { Post, UseInterceptors } from '@fluojs/http';
 import { DrizzleTransactionInterceptor } from '@fluojs/drizzle';
 
 @UseInterceptors(DrizzleTransactionInterceptor)
 export class OrderController {
-  @Post()
+  @Post('/checkout')
   async checkout() {
     // Every repository call inside this method shares a single transaction.
   }
@@ -147,14 +150,28 @@ Using `DrizzleDatabase` lets services coordinate complex multi-table insert oper
 
 ## 20.7 Observability and Health
 
-The provided snapshot helper lets you connect SQL connection status to health checks and operational metrics.
+The injected `DrizzleDatabase` wrapper exposes a snapshot method that matches the same public status contract used by diagnostics surfaces.
 
 ```typescript
-import { createDrizzlePlatformStatusSnapshot } from '@fluojs/drizzle';
+import { Inject } from '@fluojs/core';
+import { DrizzleDatabase } from '@fluojs/drizzle';
+import { drizzle } from 'drizzle-orm/node-postgres';
 
-const status = await createDrizzlePlatformStatusSnapshot(drizzleDatabase);
-if (status.isReady) {
-  // The database connection is healthy.
+type AppDatabase = ReturnType<typeof drizzle>;
+
+@Inject(DrizzleDatabase)
+export class DrizzleHealthReporter {
+  constructor(private readonly drizzleDatabase: DrizzleDatabase<AppDatabase>) {}
+
+  logSnapshot() {
+    const status = this.drizzleDatabase.createPlatformStatusSnapshot();
+
+    if (status.readiness.status === 'ready' && status.health.status === 'healthy') {
+      // The database connection is healthy.
+    }
+
+    return status;
+  }
 }
 ```
 

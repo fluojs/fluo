@@ -22,7 +22,7 @@ This chapter covers how to integrate FluoShop's document-oriented data model int
 
 Mongoose is a widely used modeling layer for working with MongoDB in the Node.js ecosystem. Using the fluo-specific integration package gives you these benefits.
 
-- **Lifecycle Management**: It establishes the connection during the `onApplicationBootstrap` stage and closes it safely during the `beforeApplicationShutdown` stage.
+- **Lifecycle Management**: It registers the provided connection in the application lifecycle and, when you supply `dispose(connection)`, runs that cleanup only after request-scoped transactions have drained during shutdown.
 - **Session Awareness**: The `MongooseConnection` service tracks MongoDB sessions across the call stack to preserve transaction boundaries.
 - **Request-Scoped Transactions**: `MongooseTransactionInterceptor` can wrap an entire HTTP request in a MongoDB transaction.
 
@@ -79,7 +79,7 @@ export class ProductRepository {
 }
 ```
 
-The `conn.current()` method returns the currently active Mongoose connection. If a transaction is active, session information is also preserved within the same call flow.
+The `conn.current()` method always returns the registered Mongoose connection. Transaction state is tracked separately through `conn.currentSession()`, so repository methods that participate in a transaction still need to pass that session into Mongoose model operations explicitly.
 
 ## 19.5 Transaction Management
 
@@ -100,18 +100,18 @@ await this.conn.transaction(async () => {
 
 ### Request-Scoped Transactions
 
-At the Controller level, you can use `MongooseTransactionInterceptor`. This Interceptor opens a session and transaction when an HTTP request starts, then commits it when the request finishes successfully. When several repository calls make up one request-level responsibility, this removes repeated manual session passing from the caller.
+At the Controller level, you can use `MongooseTransactionInterceptor`. This Interceptor opens a session and transaction when an HTTP request starts, then commits it when the request finishes successfully. It does **not** automatically attach the session to every Mongoose model call for you, so repositories still need to read `conn.currentSession()` and forward it to writes that should participate in the transaction.
 
 ```typescript
-import { UseInterceptors } from '@fluojs/http';
+import { Controller, Post, UseInterceptors } from '@fluojs/http';
 import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
 
 @UseInterceptors(MongooseTransactionInterceptor)
 @Controller('orders')
 export class OrderController {
-  @Post()
+  @Post('/')
   async createOrder() {
-    // Every operation inside this method is automatically wrapped in a MongoDB transaction.
+    // Repository writes still pass conn.currentSession() into Mongoose operations explicitly.
   }
 }
 ```
@@ -134,14 +134,23 @@ Using `MongooseConnection` keeps repository code from being tied to global state
 
 ## 19.7 Health and Observability
 
-Database connection status is a core signal that backend operations need to check quickly. Fluo provides a snapshot helper so Mongoose connection status can be connected to health checks.
+Database connection status is a core signal that backend operations need to check quickly. `MongooseConnection.createPlatformStatusSnapshot()` lets you connect Mongoose connection status to health checks.
 
 ```typescript
-import { createMongoosePlatformStatusSnapshot } from '@fluojs/mongoose';
+import { Inject } from '@fluojs/core';
+import { MongooseConnection } from '@fluojs/mongoose';
 
-const status = await createMongoosePlatformStatusSnapshot(mongooseConnection);
-if (!status.isReady) {
-  // Send an alert or enter failover mode.
+@Inject(MongooseConnection)
+export class MongoHealthReporter {
+  constructor(private readonly mongooseConnection: MongooseConnection) {}
+
+  logSnapshot() {
+    const status = this.mongooseConnection.createPlatformStatusSnapshot();
+
+    if (status.readiness.status !== 'ready' || status.health.status !== 'healthy') {
+      // Send an alert or enter failover mode.
+    }
+  }
 }
 ```
 

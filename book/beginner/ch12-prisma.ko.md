@@ -174,10 +174,10 @@ export class AppModule {}
 이렇게 등록하면 Fluo는 애플리케이션이 시작될 때 데이터베이스에 자동으로 연결하고, 애플리케이션이 정상적으로 종료될 때 연결을 해제합니다.
 
 ### Advanced Lifecycle Management
-Fluo의 `PrismaModule`은 단순히 연결을 관리하는 도구 그 이상입니다. 프레임워크의 내부 이벤트 시스템과 통합되어 연결 전(pre-connection) 및 연결 해제 후(post-disconnection) 로직을 위한 훅을 제공합니다. 예를 들어, 이러한 훅을 사용하여 시작 시 데이터베이스 연결 상태를 점검하거나 연결이 닫힐 때 텔레메트리 데이터를 내보낼 수 있습니다. 이러한 수준의 제어는 운영 가시성이 애플리케이션 로직만큼이나 중요한 프로덕션 환경에서 필수적입니다.
+`PrismaModule`은 공개 수명 주기 계약을 의도적으로 작게 유지합니다. 제공된 클라이언트에 Prisma의 기본 `$connect()`와 `$disconnect()` 메서드가 있으면 시작 시 연결하고 정상 종료 시 연결을 해제하지만, 그 외의 연결 전(pre-connection)·연결 해제 후(post-disconnection) 훅을 별도로 노출하지는 않습니다. 시작 시 헬스 체크나 종료 시 텔레메트리 전송이 필요하다면 문서화되지 않은 모듈 콜백을 기대하기보다 Prisma 클라이언트 주변에 자체 provider 로직을 조합해 처리하세요.
 
 ### Configuring Connection Pooling
-트래픽이 많은 환경에서는 데이터베이스 연결을 효율적으로 관리하는 것이 중요합니다. Prisma는 대부분의 작업을 자동으로 처리하지만, 대규모 애플리케이션의 경우 커넥션 풀 설정을 세부적으로 조정하고 싶을 수 있습니다. `PrismaModule.forRoot`를 사용하면 이러한 설정을 한곳에서 관리할 수 있어, 부하가 많은 상황에서도 애플리케이션의 성능을 유지할 수 있습니다. 동시 연결의 최대 수나 유휴 타임아웃 값을 조정하여 데이터베이스의 리소스 사용을 최적화할 수 있습니다.
+트래픽이 많은 환경에서는 데이터베이스 연결을 효율적으로 관리하는 것이 중요합니다. Prisma는 대부분의 작업을 자동으로 처리하지만, 대규모 애플리케이션에서는 `new PrismaClient(...)`를 만들 때 연결 동작을 세밀하게 조정하고 싶을 수 있습니다. `PrismaModule.forRoot(...)`는 그렇게 구성된 클라이언트를 받아 fluo 안에서 수명 주기만 관리하며, 세부적인 풀·datasource 튜닝 자체는 Prisma Client 구성에 속합니다.
 
 ### Global vs. Scoped Registration
 `AppModule`에서 기본 애플리케이션 전역 Prisma Client를 등록할 때는 여전히 `forRoot`를 사용합니다. 하지만 하나의 컨테이너에서 여러 Prisma Client가 필요할 때는 추가 클라이언트마다 명시적인 이름을 부여해야 합니다. `PrismaModule.forName('analytics', { client })` 또는 `PrismaModule.forRoot({ name: 'analytics', client })`로 등록한 뒤 `@Inject(getPrismaServiceToken('analytics'))`로 대응되는 서비스를 주입하세요. 이렇게 하면 하나의 애플리케이션이 기본 트랜잭션 데이터베이스와 보조 분석 웨어하우스를 함께 사용하더라도 토큰 해석이 명시적으로 유지됩니다.

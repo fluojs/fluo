@@ -22,7 +22,7 @@
 
 Mongoose는 Node.js 생태계에서 MongoDB를 다룰 때 널리 쓰이는 모델링 계층입니다. fluo 전용 통합 패키지를 사용하면 다음과 같은 이점을 얻을 수 있습니다.
 
-- **수명 주기 관리**: `onApplicationBootstrap` 단계에서 연결을 설정하고, `beforeApplicationShutdown` 단계에서 안전하게 닫습니다.
+- **수명 주기 관리**: 제공된 연결을 애플리케이션 수명 주기에 등록하고, `dispose(connection)`를 제공한 경우 종료 시 요청 스코프 트랜잭션이 모두 정리된 뒤에만 그 정리 로직을 실행합니다.
 - **세션 인지(Session Awareness)**: `MongooseConnection` 서비스가 콜 스택 전체에서 MongoDB 세션을 추적해 트랜잭션 경계를 유지합니다.
 - **요청 스코프 트랜잭션**: `MongooseTransactionInterceptor`로 전체 HTTP 요청을 MongoDB 트랜잭션으로 묶을 수 있습니다.
 
@@ -79,7 +79,7 @@ export class ProductRepository {
 }
 ```
 
-`conn.current()` 메서드는 현재 활성화된 Mongoose 연결을 반환합니다. 트랜잭션이 활성 상태라면 같은 호출 흐름 안에서 세션 정보도 함께 유지됩니다.
+`conn.current()` 메서드는 등록된 Mongoose 연결 자체를 반환합니다. 트랜잭션 상태는 `conn.currentSession()`으로 별도로 추적되므로, 트랜잭션에 참여해야 하는 리포지토리 메서드는 그 세션을 Mongoose 모델 작업에 명시적으로 전달해야 합니다.
 
 ## 19.5 Transaction Management
 
@@ -100,18 +100,18 @@ await this.conn.transaction(async () => {
 
 ### Request-Scoped Transactions
 
-컨트롤러 단위에서는 `MongooseTransactionInterceptor`를 사용할 수 있습니다. 이 인터셉터는 HTTP 요청 시작 시 세션과 트랜잭션을 열고, 요청이 성공적으로 끝나면 커밋합니다. 컨트롤러 안의 여러 저장소 호출이 하나의 요청 책임을 이룰 때, 호출부마다 세션을 넘기는 반복을 줄여줍니다.
+컨트롤러 단위에서는 `MongooseTransactionInterceptor`를 사용할 수 있습니다. 이 인터셉터는 HTTP 요청 시작 시 세션과 트랜잭션을 열고, 요청이 성공적으로 끝나면 커밋합니다. 다만 모든 Mongoose 모델 호출에 세션을 자동으로 붙여 주지는 않으므로, 저장소는 여전히 `conn.currentSession()`을 읽어 트랜잭션에 참여해야 하는 쓰기 작업에 전달해야 합니다.
 
 ```typescript
-import { UseInterceptors } from '@fluojs/http';
+import { Controller, Post, UseInterceptors } from '@fluojs/http';
 import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
 
 @UseInterceptors(MongooseTransactionInterceptor)
 @Controller('orders')
 export class OrderController {
-  @Post()
+  @Post('/')
   async createOrder() {
-    // 이 안의 모든 작업은 자동으로 MongoDB 트랜잭션으로 묶입니다.
+    // 저장소의 쓰기 작업은 여전히 conn.currentSession()을 명시적으로 전달해야 합니다.
   }
 }
 ```
@@ -134,14 +134,23 @@ const Apparel = Product.discriminator('Apparel', new mongoose.Schema({ size: Str
 
 ## 19.7 Health and Observability
 
-데이터베이스 연결 상태는 백엔드 운영에서 빠르게 확인해야 하는 핵심 지표입니다. Fluo는 Mongoose 연결 상태를 헬스 체크에 연결할 수 있도록 스냅샷 생성 헬퍼를 제공합니다.
+데이터베이스 연결 상태는 백엔드 운영에서 빠르게 확인해야 하는 핵심 지표입니다. `MongooseConnection.createPlatformStatusSnapshot()`을 사용하면 Mongoose 연결 상태를 헬스 체크에 연결할 수 있습니다.
 
 ```typescript
-import { createMongoosePlatformStatusSnapshot } from '@fluojs/mongoose';
+import { Inject } from '@fluojs/core';
+import { MongooseConnection } from '@fluojs/mongoose';
 
-const status = await createMongoosePlatformStatusSnapshot(mongooseConnection);
-if (!status.isReady) {
-  // 알림을 보내거나 장애 복구(failover) 모드로 진입합니다.
+@Inject(MongooseConnection)
+export class MongoHealthReporter {
+  constructor(private readonly mongooseConnection: MongooseConnection) {}
+
+  logSnapshot() {
+    const status = this.mongooseConnection.createPlatformStatusSnapshot();
+
+    if (status.readiness.status !== 'ready' || status.health.status !== 'healthy') {
+      // 알림을 보내거나 장애 복구(failover) 모드로 진입합니다.
+    }
+  }
 }
 ```
 
