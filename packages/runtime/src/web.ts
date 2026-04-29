@@ -8,6 +8,10 @@ import {
   type FrameworkRequest,
   type FrameworkResponse,
 } from '@fluojs/http';
+import {
+  attachFrameworkRequestNativeRouteHandoff,
+  consumeRawRequestNativeRouteHandoff,
+} from '@fluojs/http/internal';
 
 import {
   parseMultipart,
@@ -417,7 +421,11 @@ function createDeferredWebFrameworkRequest(
     materializeBody,
   };
 
-  return frameworkRequest;
+  const nativeRouteHandoff = consumeRawRequestNativeRouteHandoff(request);
+
+  return nativeRouteHandoff
+    ? attachFrameworkRequestNativeRouteHandoff(frameworkRequest, nativeRouteHandoff)
+    : frameworkRequest;
 }
 
 function validateWebRequestContentLength(request: Request, maxBodySize: number): void {

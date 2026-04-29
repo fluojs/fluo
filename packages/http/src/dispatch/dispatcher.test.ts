@@ -3,12 +3,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { Container } from '@fluojs/di';
 
 import type {
+  CallHandler,
+  GuardContext,
   FrameworkRequest,
   FrameworkResponse,
   InterceptorContext,
   Middleware,
   MiddlewareContext,
   Next,
+  RequestContext,
   RequestObservationContext,
 } from '@fluojs/http';
 import {
@@ -35,6 +38,7 @@ import {
 import { IsNumber, IsString, MinLength, ValidateNested } from '@fluojs/validation';
 
 import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation';
+import { attachFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
 import { forRoutes, runMiddlewareChain } from '../middleware/middleware.js';
 
 function createResponse(): FrameworkResponse & { body?: unknown } {
@@ -893,6 +897,164 @@ describe('dispatcher runtime', () => {
 
     expect(response.statusCode).toBe(500);
     expect(events).toEqual(['error:fail']);
+  });
+
+  it('reuses adapter-native route handoff without rematching while preserving params, lifecycle, observers, and response policy', async () => {
+    const events: string[] = [];
+    const appMiddleware = {
+      async handle(context: MiddlewareContext, next: Next) {
+        events.push(`middleware:before:${context.request.path}`);
+        await next();
+        events.push(`middleware:after:${context.request.path}`);
+      },
+    };
+    const guard = {
+      canActivate(context: GuardContext) {
+        events.push(`guard:${context.requestContext.request.params.id ?? 'missing'}`);
+        return true;
+      },
+    };
+    const interceptor = {
+      async intercept(context: InterceptorContext, next: CallHandler) {
+        events.push(`interceptor:before:${context.handler.route.path}`);
+        const result = await next.handle();
+        events.push(`interceptor:after:${context.handler.route.path}`);
+        return result;
+      },
+    };
+    const observer = {
+      onHandlerMatched(context: RequestObservationContext) {
+        events.push(`observer:matched:${context.handler?.route.path ?? 'none'}`);
+      },
+      onRequestFinish(context: RequestObservationContext) {
+        events.push(`observer:finish:${context.requestContext.request.params.id ?? 'missing'}`);
+      },
+      onRequestStart(context: RequestObservationContext) {
+        events.push(`observer:start:${context.requestContext.request.path}`);
+      },
+      onRequestSuccess(_context: RequestObservationContext, value: unknown) {
+        events.push(`observer:success:${typeof value === 'object' && value && 'id' in value ? String((value as { id: string }).id) : 'none'}`);
+      },
+    };
+
+    @Controller('/native')
+    class NativeController {
+      @Get('/:id')
+      @Header('X-Native-Handoff', 'enabled')
+      @HttpCode(201)
+      @UseGuards(guard)
+      @UseInterceptors(interceptor)
+      getById(_input: undefined, context: RequestContext) {
+        events.push(`handler:${context.request.params.id}`);
+        return { id: context.request.params.id };
+      }
+    }
+
+    const root = new Container().register(NativeController);
+    const baseMapping = createHandlerMapping([{ controllerToken: NativeController }]);
+    const handlerMapping = {
+      descriptors: baseMapping.descriptors,
+      match: vi.fn(() => {
+        throw new Error('native route handoff should bypass handlerMapping.match');
+      }),
+    };
+    const dispatcher = createDispatcher({
+      appMiddleware: [appMiddleware],
+      handlerMapping,
+      observers: [observer],
+      rootContainer: root,
+    });
+    const descriptor = baseMapping.descriptors[0];
+
+    if (!descriptor) {
+      throw new Error('Expected one native route descriptor.');
+    }
+
+    const request = attachFrameworkRequestNativeRouteHandoff(createRequest('/native/123'), {
+      descriptor,
+      params: { id: '123' },
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(request, response);
+
+    expect(handlerMapping.match).not.toHaveBeenCalled();
+    expect(response.statusCode).toBe(201);
+    expect(response.headers['X-Native-Handoff']).toBe('enabled');
+    expect(response.body).toEqual({ id: '123' });
+    expect(events).toEqual([
+      'observer:start:/native/123',
+      'middleware:before:/native/123',
+      'observer:matched:/native/:id',
+      'guard:123',
+      'interceptor:before:/native/:id',
+      'handler:123',
+      'interceptor:after:/native/:id',
+      'observer:success:123',
+      'middleware:after:/native/123',
+      'observer:finish:123',
+    ]);
+  });
+
+  it('reuses adapter-native route handoff on error paths without rematching', async () => {
+    const events: string[] = [];
+    const observer = {
+      onRequestError(_context: RequestObservationContext, error: unknown) {
+        events.push(`error:${error instanceof Error ? error.message : String(error)}`);
+      },
+      onRequestFinish(context: RequestObservationContext) {
+        events.push(`finish:${context.requestContext.request.params.id ?? 'missing'}`);
+      },
+    };
+
+    @Controller('/native-errors')
+    class NativeErrorController {
+      @Get('/:id')
+      explode(_input: undefined, context: RequestContext) {
+        throw new Error(`boom:${context.request.params.id}`);
+      }
+    }
+
+    const root = new Container().register(NativeErrorController);
+    const baseMapping = createHandlerMapping([{ controllerToken: NativeErrorController }]);
+    const handlerMapping = {
+      descriptors: baseMapping.descriptors,
+      match: vi.fn(() => {
+        throw new Error('native route handoff should bypass handlerMapping.match');
+      }),
+    };
+    const dispatcher = createDispatcher({
+      handlerMapping,
+      observers: [observer],
+      rootContainer: root,
+    });
+    const descriptor = baseMapping.descriptors[0];
+
+    if (!descriptor) {
+      throw new Error('Expected one native error route descriptor.');
+    }
+
+    const request = attachFrameworkRequestNativeRouteHandoff(createRequest('/native-errors/7'), {
+      descriptor,
+      params: { id: '7' },
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(request, response);
+
+    expect(handlerMapping.match).not.toHaveBeenCalled();
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toEqual({
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        details: undefined,
+        message: 'Internal server error.',
+        meta: undefined,
+        requestId: undefined,
+        status: 500,
+      },
+    });
+    expect(events).toEqual(['error:boom:7', 'finish:7']);
   });
 
   it('returns a canonical 403 response when a guard denies the request', async () => {

@@ -1,6 +1,7 @@
 import type { Token } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 
+import { readFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
 import { invokeControllerHandler } from './dispatch-handler-policy.js';
 import { resolveContentNegotiation, writeErrorResponse, writeSuccessResponse, type ResolvedContentNegotiation } from './dispatch-response-policy.js';
 import { matchHandlerOrThrow, updateRequestParams } from './dispatch-routing-policy.js';
@@ -311,7 +312,9 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
       return;
     }
 
-    const match = matchHandlerOrThrow(context.options.handlerMapping, appMiddlewareContext.request);
+    const match =
+      readFrameworkRequestNativeRouteHandoff(appMiddlewareContext.request)
+      ?? matchHandlerOrThrow(context.options.handlerMapping, appMiddlewareContext.request);
     context.matchedHandler = match.descriptor;
     updateRequestParams(context.requestContext, match.params);
     await notifyHandlerMatched(context, match.descriptor);
