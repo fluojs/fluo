@@ -5,6 +5,8 @@ import {
 import { request as httpsRequest } from 'node:https';
 import { createServer as createNetServer } from 'node:net';
 
+import type { Response as ExpressResponse } from 'express';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -145,6 +147,10 @@ async function requestHttp(options: {
   });
 }
 
+function isExpressResponse(value: unknown): value is ExpressResponse {
+  return typeof value === 'object' && value !== null && 'emit' in value;
+}
+
 const TEST_TLS_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDBbj6DdMPNvDMr
 yNUM0dreceSBINfH+VDV750R3X57mdoqebUgjKOXjbjR7JRkloJ4PEgAic+840rq
@@ -277,6 +283,73 @@ describe('@fluojs/platform-express', () => {
       } else {
         process.env.PORT = previousPort;
       }
+    }
+  });
+
+  it('settles stream drain waits when the response stream errors before drain', async () => {
+    const drainSettled = createDeferred<void>();
+
+    @Controller('/events')
+    class EventsController {
+      @Get('/')
+      async stream(_input: undefined, context: RequestContext) {
+        const stream = new SseResponse(context);
+        const responseStream = context.response.stream;
+
+        if (!responseStream?.waitForDrain) {
+          throw new Error('Express response stream did not expose waitForDrain().');
+        }
+
+        const rawResponse = context.response.raw;
+
+        if (!isExpressResponse(rawResponse)) {
+          throw new Error('Express response stream did not expose the raw response object.');
+        }
+
+        const drainWait = responseStream.waitForDrain();
+
+        queueMicrotask(() => {
+          rawResponse.emit('error', new Error('synthetic stream failure'));
+        });
+
+        await drainWait;
+        drainSettled.resolve();
+        stream.close();
+
+        return stream;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [EventsController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapExpressApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${String(port)}/events`, {
+        headers: { accept: 'text/event-stream' },
+      });
+
+      expect(response.status).toBe(200);
+      await response.text();
+      await expect(Promise.race([
+        drainSettled.promise,
+        new Promise<void>((_resolve, reject) => {
+          setTimeout(() => {
+            reject(new Error('Express response stream waitForDrain() did not settle after error.'));
+          }, 2_000);
+        }),
+      ])).resolves.toBeUndefined();
+    } finally {
+      await app.close();
     }
   });
 
