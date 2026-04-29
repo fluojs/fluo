@@ -7,7 +7,7 @@ import type { FrameworkRequest, FrameworkResponse, GuardContext } from '@fluojs/
 import { Container } from '@fluojs/di';
 import { DefaultJwtVerifier } from '@fluojs/jwt';
 
-import { RequireScopes, UseAuth } from './decorators.js';
+import { RequireScopes, UseAuth, UseOptionalAuth } from './decorators.js';
 import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from './errors.js';
 import { AuthGuard } from './guard.js';
 import { PassportModule } from './module.js';
@@ -179,6 +179,123 @@ describe('AuthGuard', () => {
         message: 'Authentication required.',
         meta: undefined,
         requestId: 'req-auth-401',
+        status: 401,
+      },
+    });
+  });
+
+  it('rejects a missing cookie principal on protected routes even when the cookie strategy is optional', async () => {
+    class MissingCookieStrategy implements AuthStrategy {
+      async authenticate() {
+        return { authenticated: false } as const;
+      }
+    }
+
+    @Controller('/profile')
+    class ProtectedController {
+      @Get('/')
+      @UseAuth('mock')
+      getProfile() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      MissingCookieStrategy,
+      ...createPassportModuleProviders({ defaultStrategy: 'mock' }, [{ name: 'mock', token: MissingCookieStrategy }]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/profile', { 'x-request-id': 'req-auth-cookie-protected' }), response);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({
+      error: {
+        code: 'UNAUTHORIZED',
+        details: undefined,
+        message: 'Authentication required.',
+        meta: undefined,
+        requestId: 'req-auth-cookie-protected',
+        status: 401,
+      },
+    });
+  });
+
+  it('allows a missing cookie principal on routes that explicitly opt into optional auth', async () => {
+    class MissingCookieStrategy implements AuthStrategy {
+      async authenticate() {
+        return { authenticated: false } as const;
+      }
+    }
+
+    @Controller('/session')
+    class OptionalController {
+      @Get('/')
+      @UseOptionalAuth('mock')
+      getSession(_input: unknown, ctx: { principal?: { subject: string } }) {
+        return { subject: ctx.principal?.subject ?? null };
+      }
+    }
+
+    const root = new Container().register(
+      OptionalController,
+      MissingCookieStrategy,
+      ...createPassportModuleProviders({ defaultStrategy: 'mock' }, [{ name: 'mock', token: MissingCookieStrategy }]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: OptionalController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/session'), response);
+
+    expect(response.body).toEqual({ subject: null });
+  });
+
+  it('still rejects optional auth routes when scopes are required but no principal is available', async () => {
+    class MissingCookieStrategy implements AuthStrategy {
+      async authenticate() {
+        return { authenticated: false } as const;
+      }
+    }
+
+    @Controller('/session')
+    class OptionalScopedController {
+      @Get('/')
+      @UseOptionalAuth('mock')
+      @RequireScopes('profile:read')
+      getSession() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      OptionalScopedController,
+      MissingCookieStrategy,
+      ...createPassportModuleProviders({ defaultStrategy: 'mock' }, [{ name: 'mock', token: MissingCookieStrategy }]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: OptionalScopedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/session', { 'x-request-id': 'req-auth-cookie-optional-scoped' }), response);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({
+      error: {
+        code: 'UNAUTHORIZED',
+        details: undefined,
+        message: 'Authentication required.',
+        meta: undefined,
+        requestId: 'req-auth-cookie-optional-scoped',
         status: 401,
       },
     });
