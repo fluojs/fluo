@@ -1,4 +1,5 @@
 import { InvariantError, type Token } from '@fluojs/core';
+import type { RequestScopeContainer } from '@fluojs/di';
 
 import { DefaultBinder } from '../adapters/binding.js';
 import { HttpDtoValidationAdapter } from '../adapters/dto-validation-adapter.js';
@@ -13,14 +14,16 @@ const defaultValidator = new HttpDtoValidationAdapter();
  * @param handler The handler.
  * @param requestContext The request context.
  * @param binder The binder.
+ * @param controllerContainer Container used for resolving the controller instance before handler invocation.
  * @returns The invoke controller handler result.
  */
 export async function invokeControllerHandler(
   handler: HandlerDescriptor,
   requestContext: RequestContext,
   binder: Binder = defaultBinder,
+  controllerContainer: RequestScopeContainer = requestContext.container,
 ): Promise<unknown> {
-  const controller = await requestContext.container.resolve(handler.controllerToken as Token<object>);
+  const controller = await controllerContainer.resolve(handler.controllerToken as Token<object>);
   const method = (controller as Record<string, unknown>)[handler.methodName];
 
   if (typeof method !== 'function') {

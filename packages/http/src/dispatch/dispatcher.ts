@@ -121,14 +121,34 @@ function createDispatchContext(
   request: FrameworkRequest,
   response: FrameworkResponse,
   container: RequestScopeContainer,
+  promoteOnContainerAccess?: () => RequestScopeContainer,
 ): RequestContext {
-  return createRequestContext({
+  const context = createRequestContext({
     container,
     metadata: {},
     request,
     requestId: readRequestId(request),
     response,
   });
+
+  if (!promoteOnContainerAccess) {
+    return context;
+  }
+
+  let activeContainer = container;
+  Object.defineProperty(context, 'container', {
+    configurable: true,
+    enumerable: true,
+    get() {
+      activeContainer = promoteOnContainerAccess();
+      return activeContainer;
+    },
+    set(value: RequestScopeContainer) {
+      activeContainer = value;
+    },
+  });
+
+  return context;
 }
 
 function createRootDispatchScope(rootContainer: Container): DispatchScope {
@@ -301,6 +321,7 @@ function mergeInterceptors(
 async function dispatchMatchedHandler(
   handler: HandlerDescriptor,
   requestContext: RequestContext,
+  controllerContainer: RequestScopeContainer,
   observers: RequestObserverLike[],
   contentNegotiation: ResolvedContentNegotiation | undefined,
   binder: Binder | undefined,
@@ -323,14 +344,14 @@ async function dispatchMatchedHandler(
 
   const routeInterceptors = handler.route.interceptors ?? [];
   const result = globalInterceptors.length === 0 && routeInterceptors.length === 0
-    ? await invokeControllerHandler(handler, requestContext, binder)
+    ? await invokeControllerHandler(handler, requestContext, binder, controllerContainer)
     : await runInterceptorChain(
         mergeInterceptors(globalInterceptors, routeInterceptors),
         {
           handler,
           requestContext,
         },
-        async () => invokeControllerHandler(handler, requestContext, binder),
+        async () => invokeControllerHandler(handler, requestContext, binder, controllerContainer),
       );
 
   ensureRequestNotAborted(requestContext.request);
@@ -443,6 +464,7 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
       await dispatchMatchedHandler(
         match.descriptor,
         context.requestContext,
+        context.dispatchScope.container,
         context.observers,
         context.contentNegotiation,
         context.options.binder,
@@ -493,12 +515,18 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
       const dispatchScope = dispatchStartMayRequireRequestScope(dispatchRequest, observers, options)
         ? createRequestDispatchScope(options.rootContainer)
         : createRootDispatchScope(options.rootContainer);
-      const phaseContext: DispatchPhaseContext = {
+      let phaseContext: DispatchPhaseContext;
+      const requestContext = createDispatchContext(dispatchRequest, response, dispatchScope.container, () => {
+        ensureRequestScope(phaseContext);
+        return phaseContext.dispatchScope.container;
+      });
+
+      phaseContext = {
         contentNegotiation,
         dispatchScope,
         observers,
         options,
-        requestContext: createDispatchContext(dispatchRequest, response, dispatchScope.container),
+        requestContext,
         response,
       };
 

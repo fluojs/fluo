@@ -155,6 +155,48 @@ describe('dispatcher runtime', () => {
     expect(root.requestScopeDisposeCount).toBe(1);
   });
 
+  it('lazily promotes manual RequestContext container access to a request scope', async () => {
+    let created = 0;
+
+    @ScopeDecorator('request')
+    class RequestStore {
+      readonly id = ++created;
+    }
+
+    @Controller('/manual-context')
+    class ManualContextController {
+      @Get('/')
+      async getValue() {
+        const context = getCurrentRequestContext();
+
+        if (!context) {
+          throw new Error('Expected an active request context.');
+        }
+
+        const store = await context.container.resolve(RequestStore);
+
+        return { store: store.id };
+      }
+    }
+
+    const root = new CountingContainer().register(RequestStore, ManualContextController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManualContextController }]),
+      rootContainer: root,
+    });
+
+    const firstResponse = createResponse();
+    await dispatcher.dispatch(createRequest('/manual-context', 'GET'), firstResponse);
+
+    const secondResponse = createResponse();
+    await dispatcher.dispatch(createRequest('/manual-context', 'GET'), secondResponse);
+
+    expect(firstResponse.body).toEqual({ store: 1 });
+    expect(secondResponse.body).toEqual({ store: 2 });
+    expect(root.requestScopeCreateCount).toBe(2);
+    expect(root.requestScopeDisposeCount).toBe(2);
+  });
+
   it('creates and disposes isolated request scopes for request-scoped controllers', async () => {
     const instanceIds: number[] = [];
     let nextId = 0;
@@ -186,6 +228,49 @@ describe('dispatcher runtime', () => {
     expect(firstResponse.body).toEqual({ id: 1 });
     expect(secondResponse.body).toEqual({ id: 2 });
     expect(instanceIds).toEqual([1, 2]);
+    expect(root.requestScopeCreateCount).toBe(2);
+    expect(root.requestScopeDisposeCount).toBe(2);
+  });
+
+  it('uses request scope for custom binders before they resolve request-scoped providers', async () => {
+    let created = 0;
+
+    @ScopeDecorator('request')
+    class RequestStore {
+      readonly id = ++created;
+    }
+
+    class CustomDto {}
+
+    @Controller('/custom-binder')
+    class CustomBinderController {
+      @Get('/')
+      @RequestDto(CustomDto)
+      getValue(input: CustomDto) {
+        return input;
+      }
+    }
+
+    const root = new CountingContainer().register(RequestStore, CustomBinderController);
+    const dispatcher = createDispatcher({
+      binder: {
+        async bind(_dto, context) {
+          const store = await context.requestContext.container.resolve(RequestStore);
+          return { store: store.id };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: CustomBinderController }]),
+      rootContainer: root,
+    });
+
+    const firstResponse = createResponse();
+    await dispatcher.dispatch(createRequest('/custom-binder', 'GET'), firstResponse);
+
+    const secondResponse = createResponse();
+    await dispatcher.dispatch(createRequest('/custom-binder', 'GET'), secondResponse);
+
+    expect(firstResponse.body).toEqual({ store: 1 });
+    expect(secondResponse.body).toEqual({ store: 2 });
     expect(root.requestScopeCreateCount).toBe(2);
     expect(root.requestScopeDisposeCount).toBe(2);
   });
