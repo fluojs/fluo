@@ -82,8 +82,8 @@ import { ThrottlerModule } from '@fluojs/throttler';
 export class AppModule {}
 ```
 
-### 16.3.1 Global Throttling
-Configuring the Module at the root level establishes the default policy that `ThrottlerGuard` will enforce when you attach that Guard to Controllers or handlers. In other words, `ThrottlerModule.forRoot(...)` does **not** automatically throttle every route by itself. The shipped contract is: register the Module once, then activate `ThrottlerGuard` explicitly through Fluo guard metadata such as `@UseGuards(ThrottlerGuard)`.
+### 16.3.1 Module Defaults and Explicit Guard Activation
+Configuring the Module at the root level establishes the default policy that `ThrottlerGuard` will enforce when you attach that Guard to controllers or handlers. In other words, `ThrottlerModule.forRoot(...)` does **not** automatically throttle every route by itself. The shipped contract is: register the Module once, then activate `ThrottlerGuard` explicitly through Fluo guard metadata such as `@UseGuards(ThrottlerGuard)`.
 
 This setup defines a default limit of 10 requests every 60 seconds for routes that wire `ThrottlerGuard`. It gives FluoBlog a baseline defense before you add stricter rules to sensitive endpoints.
 
@@ -337,7 +337,7 @@ Rate limiting is not only for REST APIs. In modern Fluo applications, you may ne
 ### 16.13.1 WebSockets and Real-Time Data
 For WebSocket connections, you can apply throttling to incoming messages to prevent malicious clients from flooding the message bus. Because WebSocket connections are long-lived, you can track message rate by socket ID. This keeps real-time features responsive even when one connection misbehaves.
 
-When throttling WebSockets, it is also good practice to monitor **inbound byte rates**. An attacker may send a few very large messages instead of many small ones to exhaust server memory. Combining message count limits with byte-rate limits in `WebSocketGuard` gives you a more comprehensive defense. When a client exceeds these limits, you can silently drop messages or forcibly close the connection to reclaim system resources.
+When throttling WebSockets, it is also good practice to monitor **inbound byte rates**. An attacker may send a few very large messages instead of many small ones to exhaust server memory. Combining message count limits with byte-rate limits in your own WebSocket handler or gateway pipeline gives you a more comprehensive defense. When a client exceeds these limits, you can silently drop messages or forcibly close the connection to reclaim system resources.
 
 Also consider **dynamic WebSocket limits** based on connection age. Newly established connections can have stricter limits until they prove "trustworthy" over time. This helps reduce automated connection-flood attacks. In Fluo, you can intercept each socket event, which gives you the fine-grained control needed to implement these sophisticated real-time security policies without complicating the main business logic.
 

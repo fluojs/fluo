@@ -158,7 +158,7 @@ export class WeatherService {
     
     // 1. Check the cache first
     const cached = await this.cache.get(cacheKey);
-    if (cached) return cached;
+    if (cached !== undefined) return cached;
 
     // 2. If it is not in the cache, call the external API
     const forecast = await this.fetchFromExternalApi(city);
@@ -249,7 +249,7 @@ This is a larger Redis cluster shared by all server instances. Most cache data l
 ### 17.7.3 Orchestrating the Layers: The Sidecar Pattern
 When requesting data, check L1 first. If it is missing, check L2. If it is missing there too, go to the database. When updating data, you must invalidate both L1, on every instance, and L2. Fluo's modular design makes it easy to build this kind of sophisticated architecture by connecting multiple cache managers.
 
-You can also use the Sidecar pattern or a service mesh, such as Istio or Linkerd, to handle synchronization between L1 caches. When node A invalidates an item in local memory, it broadcasts a signal telling every other node to do the same. This ensures "global consistency" for the L1 layer without giving up the speed of local access. In the Fluo ecosystem, the `@fluojs/redis-pubsub` module often handles this by providing a lightweight event bus for communication between instances.
+You can also use the Sidecar pattern or a service mesh, such as Istio or Linkerd, to handle synchronization between L1 caches. When node A invalidates an item in local memory, it broadcasts a signal telling every other node to do the same. This ensures "global consistency" for the L1 layer without giving up the speed of local access. In Fluo, treat that fan-out channel as application-owned infrastructure: for example, you might wire Redis pub/sub directly, or use another messaging system your deployment already supports.
 
 ### 17.7.4 Cache Warming and Pre-fetching
 High-performance systems do not wait until users request data before caching it. **Cache warming** is the process of preloading the most likely requested data into the cache at application startup or through scheduled jobs. For FluoBlog, this might mean loading the top 100 most popular posts into Redis as soon as the server boots. This ensures the first user who visits a popular page receives a sub-millisecond response instead of paying the "latency tax" of a cache miss.

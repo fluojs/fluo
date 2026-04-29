@@ -158,7 +158,7 @@ export class WeatherService {
     
     // 1. 캐시에서 먼저 조회
     const cached = await this.cache.get(cacheKey);
-    if (cached) return cached;
+    if (cached !== undefined) return cached;
 
     // 2. 캐시에 없으면 외부 API 호출
     const forecast = await this.fetchFromExternalApi(city);
@@ -249,7 +249,7 @@ export class WeatherService {
 ### 17.7.3 Orchestrating the Layers: The Sidecar Pattern
 데이터를 요청할 때 L1을 먼저 확인합니다. 없으면 L2를 확인하고, L2에도 없으면 데이터베이스로 갑니다. 데이터를 업데이트할 때는 L1(모든 인스턴스!)과 L2를 모두 무효화해야 합니다. Fluo의 모듈식 설계 덕분에 여러 캐시 매니저를 연결하여 이러한 정교한 아키텍처를 쉽게 구축할 수 있습니다.
 
-또한 사이드카(Sidecar) 패턴이나 서비스 메쉬(Istio, Linkerd 등)를 활용하여 L1 캐시 간의 동기화를 처리할 수 있습니다. 노드 A가 로컬 메모리의 항목을 무효화하면 다른 모든 노드에 동일한 작업을 수행하도록 브로드캐스트 신호를 보냅니다. 이를 통해 로컬 액세스의 속도를 희생하지 않고도 L1 계층에 대한 "전역적 일관성"을 보장할 수 있습니다. Fluo 생태계에서는 `@fluojs/redis-pubsub` 모듈이 인스턴스 간 통신을 위한 가벼운 이벤트 버스를 제공하여 이 작업을 처리하는 경우가 많습니다.
+또한 사이드카(Sidecar) 패턴이나 서비스 메쉬(Istio, Linkerd 등)를 활용하여 L1 캐시 간의 동기화를 처리할 수 있습니다. 노드 A가 로컬 메모리의 항목을 무효화하면 다른 모든 노드에 동일한 작업을 수행하도록 브로드캐스트 신호를 보냅니다. 이를 통해 로컬 액세스의 속도를 희생하지 않고도 L1 계층에 대한 "전역적 일관성"을 보장할 수 있습니다. Fluo에서는 이 fan-out 채널을 애플리케이션이 소유하는 인프라로 취급하십시오. 예를 들어 Redis pub/sub을 직접 연결하거나, 이미 배포 환경이 지원하는 다른 메시징 시스템을 사용할 수 있습니다.
 
 ### 17.7.4 Cache Warming and Pre-fetching
 고성능 시스템은 사용자가 데이터를 요청할 때까지 기다렸다가 캐싱하지 않습니다. **캐시 워밍(Cache Warming)**은 애플리케이션 시작 시점이나 예약된 작업을 통해 가장 요청될 가능성이 높은 데이터를 캐시에 미리 채워두는 프로세스입니다. FluoBlog의 경우, 서버가 부팅되자마자 가장 인기 있는 게시물 100개를 Redis에 로드하는 것을 의미할 수 있습니다. 이를 통해 인기 있는 페이지를 방문하는 첫 번째 사용자가 캐시 미스로 인한 "지연 시간 세금"을 내지 않고 밀리초 미만의 응답을 받을 수 있도록 보장합니다.
