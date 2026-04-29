@@ -1,5 +1,11 @@
 # @fluojs/di
 
+## 1.0.0-beta.5
+
+### Patch Changes
+
+- [#1458](https://github.com/fluojs/fluo/pull/1458) [`35f60fd`](https://github.com/fluojs/fluo/commit/35f60fd7dff3c1271e839f3a046b6c66fccbb08f) Thanks [@ayden94](https://github.com/ayden94)! - Skip HTTP request-scope container creation for singleton-only routes while preserving isolated request-scoped DI whenever a controller graph, middleware, guard, interceptor, observer, DTO converter, or custom binder may require it.
+
 ## 1.0.0-beta.4
 
 ### Patch Changes
