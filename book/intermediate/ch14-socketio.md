@@ -144,25 +144,68 @@ This boundary lets fluo provide a decorator based surface without blocking the e
 
 fluo prioritizes support for Bun's high performance WebSocket implementation. Socket.IO usually uses the `ws` package on Node.js, but on Bun it can use `@socket.io/bun-engine`. When FluoShop runs on Bun, the `@fluojs/socket.io` adapter automatically detects the environment and switches to the Bun engine when available. This choice lets FluoShop handle many concurrent support chats with lower memory overhead than a standard Node.js process.
 
-## 14.7 Broadcasting to multiple rooms
+## 14.7 Broadcasting across many rooms
 
-In the FluoShop support portal, an agent may need to broadcast a global announcement to every active ticket. Letting the service method accept multiple rooms keeps the caller simpler than manually looping through room names.
+In the FluoShop support portal, an agent may need to broadcast a global announcement to every active ticket. `SocketIoRoomService.broadcastToRoom(...)` keeps the shared room-service contract simple by accepting one room at a time, so callers with many room names should iterate explicitly.
 
 ```typescript
 @OnMessage('global_announcement')
 handleAnnouncement(payload: { message: string }) {
-  // Broadcast to multiple rooms at once
-  this.rooms.broadcastToRoom(['ticket:active', 'staff:updates'], 'announcement', {
-    text: payload.message
-  });
+  const targetRooms = ['ticket:active', 'staff:updates'];
+
+  for (const roomName of targetRooms) {
+    this.rooms.broadcastToRoom(roomName, 'announcement', {
+      text: payload.message,
+    });
+  }
 }
 ```
 
-The `broadcastToRoom` method accepts both a single string and an array of strings. This matches the underlying Socket.IO behavior, but exposes it through an injectable service interface. Domain services outside the gateway can therefore send messages to multiple conversations through the same pattern.
+This explicit loop keeps the injectable service aligned with the shared websocket room contract while still making multi-room fan-out straightforward in application code.
 
-## 14.8 Handling volatile messages
+When you truly need Socket.IO's native multi-room emit behavior, narrow that logic to a service that injects `SOCKETIO_SERVER` directly.
 
-Sometimes you need to send messages that are useful only *right now*. For example, when a client is temporarily disconnected, you may not want that client to receive the message after reconnecting. This is the opposite of Socket.IO's default buffering behavior. FluoShop examples include "user is typing" indicators or live cursor positions in dashboards. With `SocketIoRoomService`, you can send volatile messages that are discarded if they cannot reach the client.
+```typescript
+import { Inject } from '@fluojs/core';
+import { SOCKETIO_SERVER } from '@fluojs/socket.io';
+import type { Server } from 'socket.io';
+
+@Inject(SOCKETIO_SERVER)
+export class SupportAnnouncementService {
+  constructor(private readonly io: Server) {}
+
+  broadcastUrgent(message: string) {
+    this.io.of('/support').to(['ticket:active', 'staff:updates']).emit('announcement', {
+      text: message,
+    });
+  }
+}
+```
+
+## 14.8 Using the raw server for volatile messages
+
+Sometimes you need to send messages that are useful only *right now*. For example, when a client is temporarily disconnected, you may not want that client to receive the message after reconnecting. This is the opposite of Socket.IO's default buffering behavior. FluoShop examples include "user is typing" indicators or live cursor positions in dashboards.
+
+`SocketIoRoomService` does not expose a dedicated volatile-send helper. For Socket.IO-specific delivery semantics like `.volatile`, inject `SOCKETIO_SERVER` and keep that logic at the raw server boundary.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { SOCKETIO_SERVER } from '@fluojs/socket.io';
+import type { Server } from 'socket.io';
+
+@Inject(SOCKETIO_SERVER)
+export class PresenceHintsService {
+  constructor(private readonly io: Server) {}
+
+  sendTyping(ticketId: string, userId: string) {
+    this.io.of('/support').volatile.to(`ticket:${ticketId}`).emit('typing', {
+      userId,
+    });
+  }
+}
+```
+
+This keeps the portable room-service contract focused on room membership and ordinary room broadcasts, while advanced Socket.IO-only semantics stay explicit in infrastructure-facing services.
 
 ## 14.9 Testing Socket.IO gateways
 
