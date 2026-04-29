@@ -51,11 +51,11 @@ const adapter = createNodejsAdapter({
     key: fs.readFileSync('key.pem'),
     cert: fs.readFileSync('cert.pem'),
   },
-  maxBodySize: '1mb',
+  maxBodySize: 1_048_576,
 });
 ```
 
-`maxBodySize` is enforced while the raw Node request body is still streaming, and the same limit becomes the default total multipart payload cap unless you override `multipart.maxTotalSize` during bootstrap.
+`maxBodySize` accepts a byte count number. It is enforced while the raw Node request body is still streaming, and the same limit becomes the default total multipart payload cap unless you override `multipart.maxTotalSize` during bootstrap.
 
 ### Direct Application Execution
 You can use `runNodejsApplication` for a zero-boilerplate startup that includes graceful shutdown and logging.
@@ -76,7 +76,7 @@ await runNodejsApplication(AppModule, {
 ## Behavioral Contracts
 
 - `createNodejsAdapter(options)` is the adapter-first entrypoint for running fluo directly on Node's built-in `http` or `https` server primitives.
-- `maxBodySize` is enforced while raw Node request bytes are still streaming, and it becomes the default multipart total-size cap unless `multipart.maxTotalSize` is explicitly provided through the bootstrap/run helpers.
+- `maxBodySize` accepts a byte count number, is enforced while raw Node request bytes are still streaming, and becomes the default multipart total-size cap unless `multipart.maxTotalSize` is explicitly provided through the bootstrap/run helpers.
 - `bootstrapNodejsApplication(module, options)` creates an application with the raw Node adapter but does not start listening, so the caller owns the subsequent `app.listen()` and `app.close()` lifecycle.
 - `runNodejsApplication(module, options)` bootstraps, starts, and wires graceful shutdown. When signal-driven shutdown times out or fails, it logs the condition and sets `process.exitCode`; final process termination remains owned by the host process.
 - Advanced compression and shutdown utility functions remain on `@fluojs/runtime/node` or internal runtime seams rather than this primary platform startup surface.
