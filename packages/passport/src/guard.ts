@@ -14,6 +14,7 @@ import { getAuthRequirement } from './metadata.js';
 import type {
   AuthGuardContract,
   AuthHandledResult,
+  AuthOptionalResult,
   AuthStrategy,
   AuthStrategyResult,
   AuthStrategyRegistry,
@@ -24,9 +25,17 @@ function isAuthHandledResult(result: AuthStrategyResult): result is AuthHandledR
   return typeof result === 'object' && result !== null && 'handled' in result && result.handled === true;
 }
 
+function isAuthOptionalResult(result: AuthStrategyResult): result is AuthOptionalResult {
+  return typeof result === 'object' && result !== null && 'authenticated' in result && result.authenticated === false;
+}
+
 function resolvePrincipal(result: AuthStrategyResult): Principal | undefined {
   if (isAuthHandledResult(result)) {
     return result.principal;
+  }
+
+  if (isAuthOptionalResult(result)) {
+    return undefined;
   }
 
   return result;
@@ -170,10 +179,14 @@ export class AuthGuard implements AuthGuardContract {
           );
         }
 
-        return true;
+       return true;
       }
 
       if (!principal) {
+        if (isAuthOptionalResult(result) && requirement?.optional && !requirement.scopes?.length) {
+          return true;
+        }
+
         throw new AuthenticationFailedError('Authentication strategy did not return a principal.');
       }
 

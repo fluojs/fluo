@@ -3,7 +3,11 @@ import type { GuardContext } from '@fluojs/http';
 import { DefaultJwtVerifier } from '@fluojs/jwt';
 
 import { AuthenticationRequiredError } from '../errors.js';
-import type { AuthStrategy, AuthStrategyResult } from '../types.js';
+import type { AuthOptionalResult, AuthStrategy, AuthStrategyResult } from '../types.js';
+
+const unauthenticatedCookieAuthResult: AuthOptionalResult = {
+  authenticated: false,
+};
 
 /**
  * Provides cookie-auth strategy options through dependency injection.
@@ -11,7 +15,7 @@ import type { AuthStrategy, AuthStrategyResult } from '../types.js';
 export const COOKIE_AUTH_OPTIONS = Symbol.for('fluo.passport.cookie-auth-options');
 
 /**
- * Configures cookie names and fallback behavior for cookie-based authentication.
+ * Configures cookie names and missing-cookie behavior for cookie-based authentication.
  */
 export interface CookieAuthOptions {
   accessTokenCookieName?: string;
@@ -44,6 +48,11 @@ export function normalizeCookieAuthOptions(options?: CookieAuthOptions): Require
 
 /**
  * Authenticates requests by reading and verifying JWTs from HTTP cookies.
+ *
+ * @remarks
+ * When `requireAccessToken` is `false`, missing cookies now resolve to an explicit
+ * unauthenticated result. Protected routes still reject that result unless they opt in
+ * with `@UseOptionalAuth(...)`.
  */
 @Inject(DefaultJwtVerifier, COOKIE_AUTH_OPTIONS)
 export class CookieAuthStrategy implements AuthStrategy {
@@ -65,10 +74,7 @@ export class CookieAuthStrategy implements AuthStrategy {
         throw new AuthenticationRequiredError('Access token cookie is required.');
       }
 
-      return {
-        claims: {},
-        subject: 'anonymous',
-      };
+      return unauthenticatedCookieAuthResult;
     }
 
     const accessToken = cookies[this.options.accessTokenCookieName];
@@ -78,10 +84,7 @@ export class CookieAuthStrategy implements AuthStrategy {
         throw new AuthenticationRequiredError('Access token cookie is required.');
       }
 
-      return {
-        claims: {},
-        subject: 'anonymous',
-      };
+      return unauthenticatedCookieAuthResult;
     }
 
     try {
