@@ -123,6 +123,7 @@ class UsersModule {}
 ## Behavioral Contracts
 
 - Request body parsing enforces `maxBodySize` while bytes are still streaming for both Web-standard and Node-backed requests.
+- On `@fluojs/runtime/node`, Node request body parsing normalizes the primary `content-type` media type before JSON and multipart detection, so mixed-case JSON and multipart headers preserve the documented parser behavior.
 - Node-backed and Web-standard request wrappers snapshot cheap request metadata before body parsing, then materialize `body`/`rawBody` once at the dispatch boundary so userland continues to observe synchronous parsed values.
 - Node-backed cookies/query values and Web-standard headers are snapshotted when the request wrapper is created, then lazily normalized and memoized per request; later upstream object mutations do not change the `FrameworkRequest` view.
 - `ApplicationContext.get()` and `Application.get()` memoize only direct root singleton class/factory provider lookups known at bootstrap, while preserving alias, request, transient, post-close, multi-provider, and `container.override()` resolution semantics.
@@ -131,6 +132,7 @@ class UsersModule {}
 - If application or context bootstrap fails after runtime resources or lifecycle instances have been created, fluo resets readiness, runs registered runtime cleanup callbacks, invokes shutdown hooks for instances resolved so far with `bootstrap-failed`, disposes the container, logs cleanup failures, and rethrows the original bootstrap error.
 - Bootstrap resolves independent singleton lifecycle providers concurrently, then runs lifecycle hooks in deterministic provider order.
 - Multipart parsing rejects payloads when the cumulative body size exceeds the configured `multipart.maxTotalSize`; runtime adapters default that limit to `maxBodySize` unless you override it.
+- `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, and `runNodeApplication(...)` accept `maxBodySize` only as a non-negative integer byte count and fail fast during adapter creation/bootstrap when the value is invalid.
 - Response stream backpressure helpers settle `waitForDrain()` on `drain`, `close`, or `error` so streaming writers do not hang on dead connections.
 - Runtime health modules report `/ready` as `starting` with HTTP 503 until bootstrap marks them ready, and they return to `starting` as soon as application/context shutdown begins, including failed shutdown attempts.
 - Signal-driven shutdown helpers preserve bounded drain semantics, log timeout/failure conditions, and set `process.exitCode` when shutdown does not finish cleanly, but they leave final process termination ownership to the surrounding host runtime.
@@ -170,9 +172,18 @@ import {
 } from '@fluojs/runtime/node';
 ```
 
+```typescript
+const adapter = createNodeHttpAdapter({
+  port: 3000,
+  maxBodySize: 1_048_576,
+});
+```
+
+For the public Node runtime surface, `maxBodySize` is a byte-count number only. Values such as `'1mb'` are rejected immediately during adapter creation instead of being coerced later.
+
 - `createConsoleApplicationLogger()`: Colorized console logger using `process.stdout`/`process.stderr`.
 - `createJsonApplicationLogger()`: Structured JSON logger using `process.stdout`/`process.stderr`.
-- `createNodeHttpAdapter()`: Raw Node `http`/`https` adapter factory for adapter-first runtime setup.
+- `createNodeHttpAdapter()`: Raw Node `http`/`https` adapter factory for adapter-first runtime setup. The helper normalizes the primary Node request `content-type` before JSON/multipart detection and accepts `maxBodySize` only as numeric bytes.
 - `bootstrapNodeApplication()` / `runNodeApplication()`: Node-specific bootstrap helpers used by compatibility packages and direct Node runtime flows.
 - `createNodeShutdownSignalRegistration()`, `defaultNodeShutdownSignals()`, `registerShutdownSignals()`: Shutdown registration helpers for hosts that need explicit signal wiring.
 
