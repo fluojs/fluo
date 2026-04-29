@@ -546,6 +546,122 @@ describe('@fluojs/websockets/bun', () => {
     expect(state.disconnectCount).toBe(1);
   });
 
+  it('waits for asynchronous Bun disconnect cleanup before finishing shutdown', async () => {
+    const adapter = new TestBunAdapter();
+    const connected = createDeferred<void>();
+    const disconnectGate = createDeferred<void>();
+
+    class GatewayState {
+      disconnectCount = 0;
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/shutdown-async-disconnect' })
+    class ShutdownGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      onConnect() {
+        connected.resolve();
+      }
+
+      @OnDisconnect()
+      async onDisconnect() {
+        await disconnectGate.promise;
+        this.state.disconnectCount += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({ shutdown: { timeoutMs: 200 } })],
+      providers: [GatewayState, ShutdownGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+    await app.listen();
+
+    const server = adapter.getServer();
+    await server?.fetch(new Request('http://127.0.0.1:3000/shutdown-async-disconnect', {
+      headers: { upgrade: 'websocket' },
+    }));
+    await flushAsyncWork();
+
+    await connected.promise;
+
+    let closed = false;
+    const closePromise = app.close().then(() => {
+      closed = true;
+    });
+
+    await flushAsyncWork();
+
+    expect(closed).toBe(false);
+    expect(state.disconnectCount).toBe(0);
+
+    disconnectGate.resolve();
+    await closePromise;
+
+    expect(state.disconnectCount).toBe(1);
+  });
+
+  it('bounds Bun disconnect cleanup waits by shutdown.timeoutMs', async () => {
+    const adapter = new TestBunAdapter();
+    const connected = createDeferred<void>();
+    const disconnectGate = createDeferred<void>();
+
+    class GatewayState {
+      disconnectCount = 0;
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/shutdown-disconnect-timeout' })
+    class ShutdownGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      onConnect() {
+        connected.resolve();
+      }
+
+      @OnDisconnect()
+      async onDisconnect() {
+        await disconnectGate.promise;
+        this.state.disconnectCount += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({ shutdown: { timeoutMs: 1 } })],
+      providers: [GatewayState, ShutdownGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+    await app.listen();
+
+    const server = adapter.getServer();
+    await server?.fetch(new Request('http://127.0.0.1:3000/shutdown-disconnect-timeout', {
+      headers: { upgrade: 'websocket' },
+    }));
+    await flushAsyncWork();
+
+    await connected.promise;
+
+    let closed = false;
+    const closePromise = app.close().then(() => {
+      closed = true;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await closePromise;
+
+    expect(closed).toBe(true);
+    expect(state.disconnectCount).toBe(0);
+  });
+
   it('waits for in-flight Bun connect handlers to replay buffered disconnects during shutdown', async () => {
     const adapter = new TestBunAdapter();
     const connectGate = createDeferred<void>();
