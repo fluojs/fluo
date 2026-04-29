@@ -2,4 +2,4 @@
 '@fluojs/websockets': patch
 ---
 
-Close active Bun, Deno, and Cloudflare Workers websocket clients during application shutdown so `@OnDisconnect()` cleanup runs consistently before teardown completes.
+Close active Bun, Deno, and Cloudflare Workers websocket clients during application shutdown and wait up to `shutdown.timeoutMs` for `@OnDisconnect()` cleanup to drain before teardown completes.
