@@ -70,6 +70,10 @@ interface DispatchScope {
   requestScoped: boolean;
 }
 
+interface RequestScopeInspector {
+  hasRequestScopedDependency(token: Token): boolean;
+}
+
 function logDispatchFailure(
   logger: DispatcherLogger | undefined,
   message: string,
@@ -202,6 +206,13 @@ function handlerMethodMayUseRequestContext(handler: HandlerDescriptor): boolean 
   return typeof method === 'function' && method.length >= 2;
 }
 
+function hasRequestScopeInspector(container: unknown): container is RequestScopeInspector {
+  return typeof container === 'object'
+    && container !== null
+    && 'hasRequestScopedDependency' in container
+    && typeof container.hasRequestScopedDependency === 'function';
+}
+
 function handlerMayRequireRequestScope(
   handler: HandlerDescriptor,
   request: FrameworkRequest,
@@ -227,7 +238,9 @@ function handlerMayRequireRequestScope(
     return true;
   }
 
-  return options.rootContainer.hasRequestScopedDependency(handler.controllerToken);
+  return hasRequestScopeInspector(options.rootContainer)
+    ? options.rootContainer.hasRequestScopedDependency(handler.controllerToken)
+    : true;
 }
 
 function dispatchStartMayRequireRequestScope(
