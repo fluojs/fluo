@@ -242,7 +242,7 @@ function createNodeRequestResponseFactory(
       return createFrameworkResponse(
         response,
         compression
-          ? createNodeResponseCompression(response, request.headers['accept-encoding'] as string | undefined)
+          ? () => createNodeResponseCompression(response, request.headers['accept-encoding'] as string | undefined)
           : undefined,
       );
     },

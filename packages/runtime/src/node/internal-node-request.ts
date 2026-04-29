@@ -122,6 +122,11 @@ export function createDeferredFrameworkRequest(
       return;
     }
 
+    if (!hasNodeRequestBody(request)) {
+      frameworkRequest.body = undefined;
+      return;
+    }
+
     const bodyResult = await readRequestBody(request, headers['content-type'], maxBodySize, preserveRawBody);
     frameworkRequest.body = bodyResult.body;
 
@@ -148,6 +153,24 @@ export function createDeferredFrameworkRequest(
   };
 
   return frameworkRequest;
+}
+
+function hasNodeRequestBody(request: IncomingMessage): boolean {
+  const contentLength = request.headers['content-length'];
+  const transferEncoding = request.headers['transfer-encoding'];
+  const primaryContentLength = Array.isArray(contentLength) ? contentLength[0] : contentLength;
+
+  if (transferEncoding !== undefined) {
+    return true;
+  }
+
+  if (primaryContentLength === undefined) {
+    return true;
+  }
+
+  const parsedContentLength = Number(primaryContentLength);
+
+  return !Number.isFinite(parsedContentLength) || parsedContentLength !== 0;
 }
 
 /**
