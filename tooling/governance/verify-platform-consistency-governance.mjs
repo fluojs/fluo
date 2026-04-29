@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
 const directProcessEnvPattern = /\bprocess\s*(?:\?\.|\.)\s*env\b/g;
+const nodeGlobalBufferPattern = /\bBuffer\b/g;
 
 const ssotPairs = [
   ['docs/architecture/platform-consistency-design.md', 'docs/architecture/platform-consistency-design.ko.md'],
@@ -58,6 +59,11 @@ const packageSourceExtensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs', '
 const directProcessEnvAllowedPackageSourcePaths = new Set([
   'packages/cli/src/cli.ts',
   'packages/cli/src/new/scaffold.ts',
+]);
+
+const denoAndCloudflareWorkerServiceSourcePaths = new Set([
+  'packages/websockets/src/deno/deno-service.ts',
+  'packages/websockets/src/cloudflare-workers/cloudflare-workers-service.ts',
 ]);
 
 function run(command, args, options = {}) {
@@ -390,6 +396,49 @@ export function enforceNoDirectProcessEnvInOrdinaryPackageSource(
   );
 }
 
+export function collectNodeGlobalBufferViolations(relativePaths, readSource) {
+  const violations = [];
+
+  for (const relativePath of relativePaths) {
+    if (!denoAndCloudflareWorkerServiceSourcePaths.has(relativePath)) {
+      continue;
+    }
+
+    const source = readSource(relativePath);
+    nodeGlobalBufferPattern.lastIndex = 0;
+
+    for (const match of source.matchAll(nodeGlobalBufferPattern)) {
+      const matchIndex = match.index ?? 0;
+      const lineNumber = findLineNumberFromIndex(source, matchIndex);
+      const excerpt = source.split('\n')[lineNumber - 1]?.trim() ?? 'Buffer';
+
+      violations.push({
+        excerpt,
+        line: lineNumber,
+        path: relativePath,
+      });
+    }
+  }
+
+  return violations;
+}
+
+export function enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices(
+  relativePaths = [...denoAndCloudflareWorkerServiceSourcePaths],
+  readSource = read,
+) {
+  const violations = collectNodeGlobalBufferViolations(relativePaths, readSource);
+  assert(
+    violations.length === 0,
+    [
+      'Deno and Cloudflare Workers service source files must not use the Node.js global Buffer.',
+      'Use TextEncoder / TextDecoder or other Web-standard API equivalents instead.',
+      `Governed paths: ${[...denoAndCloudflareWorkerServiceSourcePaths].join(', ')}.`,
+      ...violations.map((violation) => `${violation.path}:${violation.line} ${violation.excerpt}`),
+    ].join('\n'),
+  );
+}
+
 function packageHasConformanceHarness(packageName) {
   const packageSource = join(repoRoot, 'packages', packageName, 'src');
   if (!existsSync(packageSource)) {
@@ -664,6 +713,7 @@ export function main() {
   enforceCanonicalRuntimeMatrixReferences();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
   enforceNoDirectProcessEnvInOrdinaryPackageSource();
+  enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceContractCompanionUpdates(changedFiles);
   enforceAlignmentClaimsBackedByHarness(changedFiles);
 

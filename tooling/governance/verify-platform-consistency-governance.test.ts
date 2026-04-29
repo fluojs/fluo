@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   collectDirectProcessEnvViolations,
+  collectNodeGlobalBufferViolations,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
+  enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   isGovernedPackageSourcePath,
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
@@ -79,6 +81,61 @@ describe('enforceNoDirectProcessEnvInOrdinaryPackageSource', () => {
 
           return 'process.env.PORT = "4321";\n';
         },
+      ),
+    ).not.toThrow();
+  });
+});
+
+describe('collectNodeGlobalBufferViolations', () => {
+  it('reports Buffer usage only in deno and cloudflare-workers service source files', () => {
+    const files = [
+      'packages/websockets/src/deno/deno-service.ts',
+      'packages/websockets/src/cloudflare-workers/cloudflare-workers-service.ts',
+      'packages/core/src/module.ts',
+    ];
+
+    const sources = new Map([
+      ['packages/websockets/src/deno/deno-service.ts', 'const data = Buffer.from("hello");\n'],
+      [
+        'packages/websockets/src/cloudflare-workers/cloudflare-workers-service.ts',
+        'export const size = Buffer.byteLength(payload);\n',
+      ],
+      ['packages/core/src/module.ts', 'const buf = Buffer.from("ignored");\n'],
+    ]);
+
+    expect(collectNodeGlobalBufferViolations(files, (path: string) => sources.get(path) ?? '')).toEqual([
+      {
+        excerpt: 'const data = Buffer.from("hello");',
+        line: 1,
+        path: 'packages/websockets/src/deno/deno-service.ts',
+      },
+      {
+        excerpt: 'export const size = Buffer.byteLength(payload);',
+        line: 1,
+        path: 'packages/websockets/src/cloudflare-workers/cloudflare-workers-service.ts',
+      },
+    ]);
+  });
+});
+
+describe('enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices', () => {
+  it('throws with actionable context when Buffer is used in a service file', () => {
+    expect(() =>
+      enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices(
+        ['packages/websockets/src/deno/deno-service.ts'],
+        () => 'const data = Buffer.from(payload);\n',
+      ),
+    ).toThrowError(/packages\/websockets\/src\/deno\/deno-service\.ts:1/);
+  });
+
+  it('passes when service files use Web-standard alternatives instead of Buffer', () => {
+    expect(() =>
+      enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices(
+        [
+          'packages/websockets/src/deno/deno-service.ts',
+          'packages/websockets/src/cloudflare-workers/cloudflare-workers-service.ts',
+        ],
+        () => 'const encoded = new TextEncoder().encode(payload);\n',
       ),
     ).not.toThrow();
   });
