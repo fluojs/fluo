@@ -166,13 +166,13 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
   statusSet?: boolean;
 
   private finalizedResponse?: Response;
-  private readonly responseStream = new WebResponseStream(() => {
-    this.streamActive = true;
-  });
+  private responseStream?: WebResponseStream;
   private responseBody?: string | Uint8Array;
   private streamActive = false;
 
-  stream: WebFrameworkResponseStream = this.responseStream;
+  get stream(): WebFrameworkResponseStream {
+    return this.getOrCreateResponseStream();
+  }
 
   redirect(status: number, location: string): void {
     this.setStatus(status);
@@ -230,13 +230,21 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
         : this.responseBody;
 
       this.finalizedResponse = this.streamActive
-        ? new Response(this.responseStream.readable, init)
+        ? new Response(this.getOrCreateResponseStream().readable, init)
         : new Response(responseBody ?? '', init);
       this.raw = this.finalizedResponse;
       this.committed = true;
     }
 
     return this.finalizedResponse;
+  }
+
+  private getOrCreateResponseStream(): WebResponseStream {
+    this.responseStream ??= new WebResponseStream(() => {
+      this.streamActive = true;
+    });
+
+    return this.responseStream;
   }
 }
 
@@ -375,6 +383,13 @@ function createDeferredWebFrameworkRequest(
       return;
     }
 
+    validateWebRequestContentLength(request, maxBodySize);
+
+    if (!request.body) {
+      frameworkRequest.body = undefined;
+      return;
+    }
+
     const bodyResult = await readWebRequestBody(request.clone(), contentType, maxBodySize, preserveRawBody);
     frameworkRequest.body = bodyResult.body;
 
@@ -403,6 +418,20 @@ function createDeferredWebFrameworkRequest(
   };
 
   return frameworkRequest;
+}
+
+function validateWebRequestContentLength(request: Request, maxBodySize: number): void {
+  const contentLength = request.headers.get('content-length');
+
+  if (contentLength === null) {
+    return;
+  }
+
+  const parsedContentLength = Number(contentLength);
+
+  if (Number.isFinite(parsedContentLength) && parsedContentLength > maxBodySize) {
+    throw new PayloadTooLargeException(REQUEST_BODY_LIMIT_MESSAGE);
+  }
 }
 
 /**
@@ -507,15 +536,7 @@ async function readWebRequestBody(
   maxBodySize = DEFAULT_MAX_BODY_SIZE,
   preserveRawBody = false,
 ): Promise<{ body: unknown; rawBody?: Uint8Array }> {
-  const contentLength = request.headers.get('content-length');
-
-  if (contentLength !== null) {
-    const parsedContentLength = Number(contentLength);
-
-    if (Number.isFinite(parsedContentLength) && parsedContentLength > maxBodySize) {
-      throw new PayloadTooLargeException(REQUEST_BODY_LIMIT_MESSAGE);
-    }
-  }
+  validateWebRequestContentLength(request, maxBodySize);
 
   if (!request.body) {
     return { body: undefined };

@@ -211,6 +211,28 @@ describe('createWebFrameworkRequest', () => {
     expect(Buffer.from(frameworkRequest.rawBody ?? new Uint8Array()).toString('utf8')).toBe('{"ok":true}');
   });
 
+  it('skips clone-based body materialization for bodyless requests', async () => {
+    const request = new Request('https://runtime.test/empty?tag=one');
+    const originalClone = request.clone.bind(request);
+    let cloneCalls = 0;
+
+    Object.defineProperty(request, 'clone', {
+      value: () => {
+        cloneCalls += 1;
+        return originalClone();
+      },
+    });
+
+    const factory = createWebRequestResponseFactory();
+    const frameworkRequest = await factory.createRequest(request, new AbortController().signal);
+
+    await factory.materializeRequest?.(frameworkRequest);
+    await factory.materializeRequest?.(frameworkRequest);
+
+    expect(cloneCalls).toBe(0);
+    expect(frameworkRequest.body).toBeUndefined();
+  });
+
   it('uses creation-time metadata when materializing deferred multipart bodies', async () => {
     const formData = new FormData();
     formData.set('title', 'before');
