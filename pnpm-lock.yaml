@@ -992,17 +992,17 @@ importers:
         specifier: 1.0.0-beta.2
         version: 1.0.0-beta.2
       '@fluojs/http':
-        specifier: 1.0.0-beta.3
-        version: 1.0.0-beta.3
+        specifier: 1.0.0-beta.4
+        version: 1.0.0-beta.4
       '@fluojs/platform-bun':
-        specifier: 1.0.0-beta.3
-        version: 1.0.0-beta.3
+        specifier: 1.0.0-beta.4
+        version: 1.0.0-beta.4
       '@fluojs/platform-fastify':
-        specifier: 1.0.0-beta.4
-        version: 1.0.0-beta.4
+        specifier: 1.0.0-beta.5
+        version: 1.0.0-beta.5
       '@fluojs/runtime':
-        specifier: 1.0.0-beta.4
-        version: 1.0.0-beta.4
+        specifier: 1.0.0-beta.5
+        version: 1.0.0-beta.5
       '@nestjs/common':
         specifier: ^11.0.0
         version: 11.1.19(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -1703,23 +1703,23 @@ packages:
     resolution: {integrity: sha512-wesWvWH4P3vAug8bwaK3XAwVPREFRmCJPIDDshRNzPRDPdGxPEql78hnq/B4SNRsVxBGnnCcgjWYQWJtGosGZg==}
     engines: {node: '>=20.0.0'}
 
-  '@fluojs/di@1.0.0-beta.4':
-    resolution: {integrity: sha512-LKh/rmcrAIvdIAaPhF0+ke4ACo2piKsV58eiZs9S0D2IDcqL3QXg3UN8id2GpsxmJ54cFRGid+GaGaJGpQl3ew==}
+  '@fluojs/di@1.0.0-beta.5':
+    resolution: {integrity: sha512-2tzNQ9M+MBIkAuEB47aHnd0g9D3r9kvHZR8689LRDW3YowhlpcBzJ4BbG4lbYSmvaz9GhfCvU9Tw+4x3oqI9BA==}
     engines: {node: '>=20.0.0'}
 
-  '@fluojs/http@1.0.0-beta.3':
-    resolution: {integrity: sha512-qRhfbg6Z782/WY9lMvApl9BBXcW8Vm+NsSKx/M0guy8Md5TFKgvz/6A2ipYD2TdSAN9mTMEycQ2OBmLZMenA/w==}
+  '@fluojs/http@1.0.0-beta.4':
+    resolution: {integrity: sha512-7GpmvpFzwho8pCFJ2OZQBti9a+6WJyy4jLusHyTvseXzKNY8N368wG3pWh1nY6TvBWj4mgCBe8jeOuVL9+RqDw==}
     engines: {node: '>=20.0.0'}
 
-  '@fluojs/platform-bun@1.0.0-beta.3':
-    resolution: {integrity: sha512-eOSL5kAYnlsgBVbkNNcAjwowSoPa8M2SrqWMJLGAqvyWj2ynOvEGlPwugM8UaLDv9ZpnWlyTOa3X4n1VBnb/OQ==}
+  '@fluojs/platform-bun@1.0.0-beta.4':
+    resolution: {integrity: sha512-5g9EfZ03m+Kvd6brVhtAhsKIXK6r1tUSXunNVdaJ1tU3UMx6Kh9MOfHPiD2y7+sHRdK9D8Gl/41RZ1cyw55/GQ==}
 
-  '@fluojs/platform-fastify@1.0.0-beta.4':
-    resolution: {integrity: sha512-lTm7T+L5AujKXEk8fqlJEnmOtcimRVsEU99by6nkLthUJihBQxAmuYchYHCe/xyDq+UGe4PmVuR2FB0Vu45wwQ==}
+  '@fluojs/platform-fastify@1.0.0-beta.5':
+    resolution: {integrity: sha512-n7l4qlg6KMjVi6fyyDO7QsGgT8q/3LmOtxhX5CutInv5ds1zB+KLU0f+4MCwVJnZOCncGZe57nECa1e6h5mInA==}
     engines: {node: '>=20.0.0'}
 
-  '@fluojs/runtime@1.0.0-beta.4':
-    resolution: {integrity: sha512-dLOedEWGYs0qBLa5xBiYQbvOe0tBYwWGZp9/O0a5Cp1uwH8hWhMkgPgVZqPcRg53TSgZuSqmGQItTEMhxRTvaA==}
+  '@fluojs/runtime@1.0.0-beta.5':
+    resolution: {integrity: sha512-J3/k1qo22WjlGiugIblhOPntPH7PGeH1TfHyeotbhW4x32ScfiIzYhtx54wSKE3nXrG+Quiig/zPGIKlZqE1yA==}
     engines: {node: '>=20.0.0'}
 
   '@fluojs/validation@1.0.0-beta.1':
@@ -4825,35 +4825,35 @@ snapshots:
 
   '@fluojs/core@1.0.0-beta.2': {}
 
-  '@fluojs/di@1.0.0-beta.4':
+  '@fluojs/di@1.0.0-beta.5':
     dependencies:
       '@fluojs/core': 1.0.0-beta.2
 
-  '@fluojs/http@1.0.0-beta.3':
+  '@fluojs/http@1.0.0-beta.4':
     dependencies:
       '@fluojs/core': 1.0.0-beta.2
-      '@fluojs/di': 1.0.0-beta.4
+      '@fluojs/di': 1.0.0-beta.5
       '@fluojs/validation': 1.0.0-beta.1
 
-  '@fluojs/platform-bun@1.0.0-beta.3':
+  '@fluojs/platform-bun@1.0.0-beta.4':
     dependencies:
-      '@fluojs/http': 1.0.0-beta.3
-      '@fluojs/runtime': 1.0.0-beta.4
+      '@fluojs/http': 1.0.0-beta.4
+      '@fluojs/runtime': 1.0.0-beta.5
 
-  '@fluojs/platform-fastify@1.0.0-beta.4':
+  '@fluojs/platform-fastify@1.0.0-beta.5':
     dependencies:
       '@fastify/multipart': 9.4.0
-      '@fluojs/http': 1.0.0-beta.3
-      '@fluojs/runtime': 1.0.0-beta.4
+      '@fluojs/http': 1.0.0-beta.4
+      '@fluojs/runtime': 1.0.0-beta.5
       fastify: 5.8.5
       fastify-raw-body: 5.0.0
 
-  '@fluojs/runtime@1.0.0-beta.4':
+  '@fluojs/runtime@1.0.0-beta.5':
     dependencies:
       '@fluojs/config': 1.0.0-beta.3
       '@fluojs/core': 1.0.0-beta.2
-      '@fluojs/di': 1.0.0-beta.4
-      '@fluojs/http': 1.0.0-beta.3
+      '@fluojs/di': 1.0.0-beta.5
+      '@fluojs/http': 1.0.0-beta.4
 
   '@fluojs/validation@1.0.0-beta.1':
     dependencies:
