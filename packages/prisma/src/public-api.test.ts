@@ -10,6 +10,9 @@ describe('@fluojs/prisma public API surface', () => {
     expect(prismaPublicApi).toHaveProperty('createPrismaPlatformStatusSnapshot');
     expect(prismaPublicApi).toHaveProperty('PRISMA_CLIENT');
     expect(prismaPublicApi).toHaveProperty('PRISMA_OPTIONS');
+    expect(prismaPublicApi).toHaveProperty('getPrismaClientToken');
+    expect(prismaPublicApi).toHaveProperty('getPrismaOptionsToken');
+    expect(prismaPublicApi).toHaveProperty('getPrismaServiceToken');
   });
 
   it('does not expose internal module wiring values from the root barrel', () => {

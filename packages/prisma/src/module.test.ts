@@ -9,6 +9,9 @@ import {
   createPrismaPlatformStatusSnapshot,
   PRISMA_CLIENT,
   PRISMA_OPTIONS,
+  getPrismaClientToken,
+  getPrismaOptionsToken,
+  getPrismaServiceToken,
   type PrismaTransactionClient,
   PrismaService,
   PrismaTransactionInterceptor,
@@ -179,10 +182,12 @@ describe('@fluojs/prisma', () => {
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const prisma = await app.container.resolve(PrismaService<typeof client>);
+    const prismaByToken = await app.container.resolve(getPrismaServiceToken());
     const rawClient = await app.container.resolve(PRISMA_CLIENT);
     const moduleOptions = await app.container.resolve(PRISMA_OPTIONS);
 
     expect(prisma).toBeInstanceOf(PrismaService);
+    expect(prismaByToken).toBe(prisma);
     expect(rawClient).toBe(client);
     expect(moduleOptions).toEqual({ strictTransactions: false });
     expect(events).toEqual(['connect']);
@@ -190,6 +195,155 @@ describe('@fluojs/prisma', () => {
     await app.close();
 
     expect(events).toEqual(['connect', 'disconnect']);
+  });
+
+  it('resolves distinct named Prisma clients from the same container', async () => {
+    const usersClient = {
+      async $connect() {},
+      async $disconnect() {},
+      user: { async findUnique() { return { id: 'user-1' }; } },
+    };
+    const analyticsClient = {
+      async $connect() {},
+      async $disconnect() {},
+      report: { async findUnique() { return { id: 'report-1' }; } },
+    };
+
+    @Inject(getPrismaServiceToken('users'), getPrismaServiceToken('analytics'))
+    class MultiClientProbe {
+      constructor(
+        readonly users: PrismaService<typeof usersClient>,
+        readonly analytics: PrismaService<typeof analyticsClient>,
+      ) {}
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        PrismaModule.forName('users', { client: usersClient }),
+        PrismaModule.forRoot({ name: 'analytics', client: analyticsClient }),
+      ],
+      providers: [MultiClientProbe],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const probe = await app.container.resolve(MultiClientProbe);
+
+    expect(probe.users).not.toBe(probe.analytics);
+    expect(await app.container.resolve(getPrismaClientToken('users'))).toBe(usersClient);
+    expect(await app.container.resolve(getPrismaClientToken('analytics'))).toBe(analyticsClient);
+    expect(await app.container.resolve(getPrismaOptionsToken('users'))).toEqual({ strictTransactions: false });
+    expect(await app.container.resolve(getPrismaOptionsToken('analytics'))).toEqual({ strictTransactions: false });
+
+    await app.close();
+  });
+
+  it('keeps named client lifecycle hooks isolated per registration', async () => {
+    const events: string[] = [];
+    const usersClient = {
+      async $connect() {
+        events.push('users:connect');
+      },
+      async $disconnect() {
+        events.push('users:disconnect');
+      },
+    };
+    const analyticsClient = {
+      async $connect() {
+        events.push('analytics:connect');
+      },
+      async $disconnect() {
+        events.push('analytics:disconnect');
+      },
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        PrismaModule.forName('users', { client: usersClient }),
+        PrismaModule.forName('analytics', { client: analyticsClient }),
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    expect(events).toEqual(['users:connect', 'analytics:connect']);
+
+    await app.close();
+
+    expect(events.slice(0, 2)).toEqual(['users:connect', 'analytics:connect']);
+    expect(events.slice(2).sort()).toEqual(['analytics:disconnect', 'users:disconnect']);
+  });
+
+  it('isolates transaction contexts between named Prisma services', async () => {
+    const events: string[] = [];
+    const usersTransactionClient = { kind: 'users-transaction' as const };
+    const analyticsTransactionClient = { kind: 'analytics-transaction' as const };
+    const usersClient = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof usersTransactionClient) => Promise<T>) {
+        events.push('users:transaction:start');
+        const result = await callback(usersTransactionClient);
+        events.push('users:transaction:end');
+        return result;
+      },
+    };
+    const analyticsClient = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof analyticsTransactionClient) => Promise<T>) {
+        events.push('analytics:transaction:start');
+        const result = await callback(analyticsTransactionClient);
+        events.push('analytics:transaction:end');
+        return result;
+      },
+    };
+
+    @Inject(getPrismaServiceToken('users'), getPrismaServiceToken('analytics'))
+    class MultiClientTransactions {
+      constructor(
+        readonly users: PrismaService<typeof usersClient, typeof usersTransactionClient>,
+        readonly analytics: PrismaService<typeof analyticsClient, typeof analyticsTransactionClient>,
+      ) {}
+
+      async run() {
+        return Promise.all([
+          this.users.transaction(async () => this.users.current()),
+          this.analytics.transaction(async () => this.analytics.current()),
+        ]);
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        PrismaModule.forName('users', { client: usersClient }),
+        PrismaModule.forNameAsync('analytics', {
+          useFactory: () => ({ client: analyticsClient }),
+        }),
+      ],
+      providers: [MultiClientTransactions],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const transactions = await app.container.resolve(MultiClientTransactions);
+    const [usersCurrent, analyticsCurrent] = await transactions.run();
+
+    expect(usersCurrent).toBe(usersTransactionClient);
+    expect(analyticsCurrent).toBe(analyticsTransactionClient);
+    expect(usersCurrent).not.toBe(analyticsCurrent);
+    expect(events).toEqual([
+      'users:transaction:start',
+      'analytics:transaction:start',
+      'users:transaction:end',
+      'analytics:transaction:end',
+    ]);
+
+    await app.close();
   });
 
   it('rolls back open request transactions before disconnect on shutdown', async () => {

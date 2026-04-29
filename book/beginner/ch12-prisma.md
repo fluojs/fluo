@@ -180,7 +180,7 @@ Fluo's `PrismaModule` is more than a simple connection manager. It integrates wi
 In high-traffic environments, managing database connections efficiently is important. Prisma handles most of the work automatically, but for large applications you may want to tune connection pool settings in detail. `PrismaModule.forRoot` lets you manage these settings in one place, helping the application maintain performance under heavy load. You can adjust values such as the maximum number of concurrent connections or idle timeouts to optimize database resource usage.
 
 ### Global vs. Scoped Registration
-You use `forRoot` for global registration in `AppModule`, but Fluo also supports scoped registration of `PrismaModule` for specific feature sets. This lets you use multiple Prisma Clients in a single application. For example, it is useful when you need to connect to both a primary transactional database and a secondary analytics warehouse. This flexibility is a key advantage of fluo's modular design, and it lets your application grow from a simple blog into a complex multi-database system.
+You still use `forRoot` for the default application-wide Prisma client in `AppModule`, but when one container needs multiple Prisma clients you must register each additional client with an explicit name. Use `PrismaModule.forName('analytics', { client })` or `PrismaModule.forRoot({ name: 'analytics', client })`, then inject the matching service with `@Inject(getPrismaServiceToken('analytics'))`. That keeps token resolution explicit when a single application talks to both a primary transactional database and a secondary analytics warehouse.
 
 ## 12.6 Using PrismaService
 
