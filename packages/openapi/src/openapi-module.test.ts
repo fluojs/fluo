@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { createServer } from 'node:net';
+import type { AddressInfo } from 'node:net';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -10,7 +10,8 @@ import * as httpPublicApi from '@fluojs/http';
 import { Controller, Get, Post, Produces, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
 import { FromBody, FromCookie, FromHeader, FromPath, FromQuery, RequestDto } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
-import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { bootstrapHttpAdapterApplication } from '@fluojs/runtime/internal/http-adapter';
+import { createNodeHttpAdapter } from '@fluojs/runtime/node';
 
 import {
   ApiBearerAuth,
@@ -158,29 +159,24 @@ function expectExamplesToUsePublicExports(markdownPath: string): void {
   }
 }
 
-async function findAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
+function hasAddressMethod(value: unknown): value is { address(): AddressInfo | string | null } {
+  return typeof value === 'object' && value !== null && 'address' in value && typeof value.address === 'function';
+}
 
-    server.once('error', reject);
-    server.listen(0, () => {
-      const address = server.address();
+function resolveAssignedPort(adapter: { getServer?: () => unknown }): number {
+  const server = adapter.getServer?.();
 
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to resolve an available port.'));
-        return;
-      }
+  if (!hasAddressMethod(server)) {
+    throw new Error('Expected the OpenAPI test adapter to expose an addressable server.');
+  }
 
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
+  const address = server.address();
 
-        resolve(address.port);
-      });
-    });
-  });
+  if (!address || typeof address === 'string') {
+    throw new Error('Expected the OpenAPI test adapter to expose an assigned TCP port.');
+  }
+
+  return address.port;
 }
 
 describe('OpenApiModule', () => {
@@ -502,14 +498,14 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const port = await findAvailablePort();
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const adapter = createNodeHttpAdapter({ port: 0 });
+    const app = registerAppForCleanup(await bootstrapHttpAdapterApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
-      port,
-    }));
+    }, adapter));
 
     await app.listen();
+    const port = resolveAssignedPort(adapter);
 
     const [docsResponse, docsTrailingSlashResponse, specResponse, unprefixedSpecResponse] = await Promise.all([
       fetchForTest(`http://127.0.0.1:${String(port)}/api/docs`),
