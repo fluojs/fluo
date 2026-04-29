@@ -101,8 +101,8 @@ export function createDeferredFrameworkRequest(
   const searchParams = new URLSearchParams(url.searchParams);
   const cookies = createMemoizedValue(() => parseCookieHeader(cookieHeader));
   const query = createMemoizedValue(() => parseQueryParams(searchParams));
-  const contentType = readPrimaryHeaderValue(headers['content-type']);
-  const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
+  const contentType = normalizePrimaryContentType(headers['content-type']);
+  const isMultipart = contentType === 'multipart/form-data';
   const materializeBody = createMemoizedAsyncValue(async () => {
     if (isMultipart) {
       const result = await parseMultipart(
@@ -281,6 +281,19 @@ function readPrimaryHeaderValue(headerValue: string | string[] | undefined): str
   return headerValue;
 }
 
+function normalizePrimaryContentType(headerValue: string | string[] | undefined): string | undefined {
+  const primaryHeaderValue = readPrimaryHeaderValue(headerValue);
+
+  if (typeof primaryHeaderValue !== 'string') {
+    return undefined;
+  }
+
+  const [mediaType] = primaryHeaderValue.split(';', 1);
+  const normalizedMediaType = mediaType?.trim().toLowerCase();
+
+  return normalizedMediaType && normalizedMediaType.length > 0 ? normalizedMediaType : undefined;
+}
+
 function decodeCookieValue(raw: string): string {
   try {
     return decodeURIComponent(raw);
@@ -344,9 +357,9 @@ async function readRequestBody(
     return { body: undefined, rawBody: preserveRawBody ? rawBody : undefined };
   }
 
-  const primaryContentType = Array.isArray(contentType) ? contentType[0] : contentType;
+  const primaryContentType = normalizePrimaryContentType(contentType);
 
-  if (typeof primaryContentType === 'string' && primaryContentType.includes('application/json')) {
+  if (primaryContentType === 'application/json') {
     try {
       return {
         body: JSON.parse(bodyText) as unknown,

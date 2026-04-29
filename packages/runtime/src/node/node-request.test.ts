@@ -1,5 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import { EventEmitter } from 'node:events';
+import { Readable } from 'node:stream';
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -29,18 +30,23 @@ function createIncomingMessage(options: {
     chunks.push(typeof options.body === 'string' ? Buffer.from(options.body, 'utf8') : options.body);
   }
 
-  return {
-    destroy: options.destroy,
-    headers: options.headers,
-    method: options.method ?? 'GET',
-    pause: options.pause,
-    async *[Symbol.asyncIterator]() {
-      for (const chunk of chunks) {
-        yield chunk;
-      }
-    },
-    url: options.url ?? '/',
-  } as unknown as IncomingMessage;
+  const stream = Readable.from(chunks) as Readable & IncomingMessage;
+  const originalDestroy = stream.destroy.bind(stream);
+  const originalPause = stream.pause.bind(stream);
+
+  stream.destroy = (...args) => {
+    options.destroy?.();
+    return originalDestroy(...args);
+  };
+  stream.pause = () => {
+    options.pause?.();
+    return originalPause();
+  };
+  stream.headers = options.headers;
+  stream.method = options.method ?? 'GET';
+  stream.url = options.url ?? '/';
+
+  return stream;
 }
 
 describe('node request adapter', () => {
@@ -138,6 +144,55 @@ describe('node request adapter', () => {
     const frameworkRequest = await createFrameworkRequest(request, new AbortController().signal);
 
     expect(frameworkRequest.body).toEqual({ ok: true });
+  });
+
+  it('parses JSON bodies when the primary content-type uses mixed-case media types', async () => {
+    const request = createIncomingMessage({
+      body: '{"ok":true}',
+      headers: {
+        'content-type': 'Application/Json; Charset=UTF-8',
+      },
+      method: 'POST',
+      url: '/body',
+    });
+
+    const frameworkRequest = await createFrameworkRequest(request, new AbortController().signal);
+
+    expect(frameworkRequest.body).toEqual({ ok: true });
+  });
+
+  it('parses multipart bodies when the primary content-type uses mixed-case media types', async () => {
+    const form = new FormData();
+    form.append('name', 'Ada');
+    form.append('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
+
+    const multipartRequest = new Request('http://localhost/uploads', {
+      body: form,
+      method: 'POST',
+    });
+    const requestBody = Buffer.from(await multipartRequest.arrayBuffer());
+
+    const request = createIncomingMessage({
+      body: requestBody,
+      headers: {
+        'content-type': multipartRequest.headers.get('content-type')?.replace('multipart/form-data', 'Multipart/Form-Data'),
+      },
+      method: 'POST',
+      url: '/uploads',
+    });
+
+    const frameworkRequest = await createFrameworkRequest(request, new AbortController().signal);
+
+    expect(frameworkRequest.body).toEqual({ name: 'Ada' });
+    expect(frameworkRequest.files).toEqual([
+      {
+        buffer: Buffer.from('hello'),
+        fieldname: 'payload',
+        mimetype: 'text/plain',
+        originalname: 'payload.txt',
+        size: 5,
+      },
+    ]);
   });
 
   it('creates the request shell before materializing body and rawBody', async () => {

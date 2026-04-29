@@ -52,4 +52,10 @@ describe('createNodeHttpAdapter', () => {
     expect(publicNodeApi).not.toHaveProperty('compressNodeResponse');
     expect(publicNodeApi).not.toHaveProperty('createNodeResponseCompression');
   });
+
+  it('fails fast when maxBodySize is not provided as numeric bytes', () => {
+    expect(() => Function.prototype.call.call(publicNodeApi.createNodeHttpAdapter, undefined, { maxBodySize: '1mb' })).toThrow(
+      'Invalid maxBodySize value: 1mb. Expected a non-negative integer number of bytes.',
+    );
+  });
 });

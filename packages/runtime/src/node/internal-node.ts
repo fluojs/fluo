@@ -139,11 +139,11 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly host: string | undefined,
     private readonly retryDelayMs = 150,
     private readonly retryLimit = 20,
-    private readonly compression = false,
+    compression = false,
     private readonly httpsOptions: HttpsServerOptions | undefined,
-    private readonly multipartOptions?: MultipartOptions,
-    private readonly maxBodySize = 1 * 1024 * 1024,
-    private readonly preserveRawBody = false,
+    multipartOptions?: MultipartOptions,
+    maxBodySize = 1 * 1024 * 1024,
+    preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
   ) {
     this.requestResponseFactory = createNodeRequestResponseFactory(
@@ -276,7 +276,7 @@ export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, comp
     compression,
     options.https,
     multipartOptions,
-    options.maxBodySize,
+    resolveNodeMaxBodySize(options.maxBodySize),
     options.rawBody,
     options.shutdownTimeoutMs,
   );
@@ -462,4 +462,16 @@ function resolveNodePort(value: number | undefined): number {
   }
 
   return port;
+}
+
+function resolveNodeMaxBodySize(value: number | undefined): number {
+  const maxBodySize = value ?? 1 * 1024 * 1024;
+
+  if (!Number.isInteger(maxBodySize) || maxBodySize < 0) {
+    throw new Error(
+      `Invalid maxBodySize value: ${String(value ?? 1 * 1024 * 1024)}. Expected a non-negative integer number of bytes.`,
+    );
+  }
+
+  return maxBodySize;
 }
