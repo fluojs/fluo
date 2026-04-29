@@ -545,6 +545,64 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
+  it('falls back to wildcard dispatch for overlapping same-shape param routes without changing fluo route order semantics', async () => {
+    @Controller('/matches')
+    class MatchesController {
+      @Get('/:id')
+      firstMatch(_input: undefined, context: RequestContext) {
+        return {
+          paramName: 'id',
+          route: 'first',
+          value: context.request.params.id,
+        };
+      }
+
+      @Get('/:slug')
+      secondMatch(_input: undefined, context: RequestContext) {
+        return {
+          paramName: 'slug',
+          route: 'second',
+          value: context.request.params.slug,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [MatchesController],
+    });
+
+    const port = await findAvailablePort();
+    const adapter = createFastifyAdapter({ port }) as FastifyHttpApplicationAdapter;
+    const app = await fluoFactory.create(AppModule, { adapter });
+
+    await app.listen();
+
+    try {
+      const fastifyApp = (adapter as unknown as Record<'app', {
+        hasRoute: (options: { method: string; url: string }) => boolean;
+      }>).app;
+
+      expect(fastifyApp.hasRoute({ method: 'GET', url: '/matches/:id' })).toBe(false);
+      expect(fastifyApp.hasRoute({ method: 'GET', url: '/matches/:slug' })).toBe(false);
+
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/matches/42',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({
+        paramName: 'id',
+        route: 'first',
+        value: '42',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('settles stream drain waits when the response stream closes before drain', async () => {
     const drainSettled = createDeferred<void>();
 

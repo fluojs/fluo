@@ -303,42 +303,71 @@ interface FastifyNativeRouteDefinition {
   path: string;
 }
 
+interface FastifyNativeRouteCandidate extends FastifyNativeRouteDefinition {
+  shapeKey: string;
+}
+
 function resolveDispatcherRouteDescriptors(dispatcher: Dispatcher): readonly HandlerDescriptor[] {
   return (dispatcher as RouteDescribingDispatcher).describeRoutes?.() ?? [];
 }
 
 function createFastifyNativeRoutes(descriptors: readonly HandlerDescriptor[]): FastifyNativeRouteDefinition[] {
-  const registrations = new Map<string, FastifyNativeRouteDefinition>();
+  const candidates = new Map<string, FastifyNativeRouteCandidate>();
+  const shapePaths = new Map<string, Set<string>>();
 
   for (const descriptor of descriptors) {
     const path = descriptor.route.path;
 
     if (descriptor.route.method === 'ALL') {
       for (const method of FASTIFY_NATIVE_ROUTE_METHODS) {
-        const key = `${method}:${path}`;
-
-        if (!registrations.has(key)) {
-          registrations.set(key, {
-            method,
-            path,
-          });
-        }
+        registerFastifyNativeRouteCandidate(candidates, shapePaths, method, path);
       }
 
       continue;
     }
 
-    const key = `${descriptor.route.method}:${path}`;
-
-    if (!registrations.has(key)) {
-      registrations.set(key, {
-        method: descriptor.route.method,
-        path,
-      });
-    }
+    registerFastifyNativeRouteCandidate(candidates, shapePaths, descriptor.route.method, path);
   }
 
-  return [...registrations.values()];
+  return [...candidates.values()]
+    .filter((candidate) => shapePaths.get(candidate.shapeKey)?.size === 1)
+    .map(({ method, path }) => ({ method, path }));
+}
+
+function registerFastifyNativeRouteCandidate(
+  candidates: Map<string, FastifyNativeRouteCandidate>,
+  shapePaths: Map<string, Set<string>>,
+  method: FastifyNativeRouteMethod,
+  path: string,
+): void {
+  const routeKey = `${method}:${path}`;
+  const shapeKey = `${method}:${canonicalizeFastifyRouteShape(path)}`;
+
+  if (!candidates.has(routeKey)) {
+    candidates.set(routeKey, {
+      method,
+      path,
+      shapeKey,
+    });
+  }
+
+  let paths = shapePaths.get(shapeKey);
+
+  if (!paths) {
+    paths = new Set<string>();
+    shapePaths.set(shapeKey, paths);
+  }
+
+  paths.add(path);
+}
+
+function canonicalizeFastifyRouteShape(path: string): string {
+  const segments = path
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => segment.startsWith(':') ? ':' : segment);
+
+  return segments.length === 0 ? '/' : `/${segments.join('/')}`;
 }
 
 /**
