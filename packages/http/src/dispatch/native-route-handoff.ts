@@ -4,8 +4,14 @@ import type { FrameworkRequest, HandlerMatch } from '../types.js';
 const FRAMEWORK_REQUEST_NATIVE_ROUTE_HANDOFF = Symbol('fluo.http.nativeRouteHandoff');
 const RAW_REQUEST_NATIVE_ROUTE_HANDOFFS = new WeakMap<object, HandlerMatch>();
 
+interface FrameworkRequestNativeRouteHandoffRecord {
+  handoff: HandlerMatch;
+  method: string;
+  path: string;
+}
+
 type FrameworkRequestWithNativeRouteHandoff = FrameworkRequest & {
-  [FRAMEWORK_REQUEST_NATIVE_ROUTE_HANDOFF]?: HandlerMatch;
+  [FRAMEWORK_REQUEST_NATIVE_ROUTE_HANDOFF]?: FrameworkRequestNativeRouteHandoffRecord;
 };
 
 function cloneNativeRouteHandoff(handoff: HandlerMatch): HandlerMatch {
@@ -71,7 +77,11 @@ export function attachFrameworkRequestNativeRouteHandoff(
   Reflect.set(
     request as FrameworkRequestWithNativeRouteHandoff,
     FRAMEWORK_REQUEST_NATIVE_ROUTE_HANDOFF,
-    cloneNativeRouteHandoff(handoff),
+    {
+      handoff: cloneNativeRouteHandoff(handoff),
+      method: request.method,
+      path: request.path,
+    },
   );
 
   return request;
@@ -86,12 +96,16 @@ export function attachFrameworkRequestNativeRouteHandoff(
 export function readFrameworkRequestNativeRouteHandoff(
   request: FrameworkRequest,
 ): NativeRouteHandoff | undefined {
-  const handoff = Reflect.get(
+  const record = Reflect.get(
     request as FrameworkRequestWithNativeRouteHandoff,
     FRAMEWORK_REQUEST_NATIVE_ROUTE_HANDOFF,
-  ) as NativeRouteHandoff | undefined;
+  ) as FrameworkRequestNativeRouteHandoffRecord | undefined;
 
-  return handoff ? cloneNativeRouteHandoff(handoff) : undefined;
+  if (!record || record.method !== request.method || record.path !== request.path) {
+    return undefined;
+  }
+
+  return cloneNativeRouteHandoff(record.handoff);
 }
 
 /**

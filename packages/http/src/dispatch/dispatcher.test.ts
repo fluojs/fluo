@@ -1057,6 +1057,65 @@ describe('dispatcher runtime', () => {
     expect(events).toEqual(['error:boom:7', 'finish:7']);
   });
 
+  it('rematches when app middleware rewrites a request carrying adapter-native route handoff', async () => {
+    @Controller('/native')
+    class NativeController {
+      @Get('/:id')
+      getNative(_input: undefined, context: RequestContext) {
+        return { route: 'native', id: context.request.params.id };
+      }
+    }
+
+    @Controller('/rewritten')
+    class RewrittenController {
+      @Get('/:id')
+      getRewritten(_input: undefined, context: RequestContext) {
+        return { route: 'rewritten', id: context.request.params.id };
+      }
+    }
+
+    const root = new Container().register(NativeController, RewrittenController);
+    const baseMapping = createHandlerMapping([
+      { controllerToken: NativeController },
+      { controllerToken: RewrittenController },
+    ]);
+    const handlerMapping = {
+      descriptors: baseMapping.descriptors,
+      match: vi.fn(baseMapping.match),
+    };
+    const dispatcher = createDispatcher({
+      appMiddleware: [
+        {
+          async handle(context, next) {
+            context.request.path = '/rewritten/456';
+            context.request.url = '/rewritten/456';
+            await next();
+          },
+        },
+      ],
+      handlerMapping,
+      rootContainer: root,
+    });
+    const nativeDescriptor = baseMapping.descriptors.find(
+      (descriptor) => descriptor.controllerToken === NativeController,
+    );
+
+    if (!nativeDescriptor) {
+      throw new Error('Expected native route descriptor.');
+    }
+
+    const request = attachFrameworkRequestNativeRouteHandoff(createRequest('/native/123'), {
+      descriptor: nativeDescriptor,
+      params: { id: '123' },
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(request, response);
+
+    expect(handlerMapping.match).toHaveBeenCalledTimes(1);
+    expect(response.body).toEqual({ route: 'rewritten', id: '456' });
+  });
+
   it('returns a canonical 403 response when a guard denies the request', async () => {
     class DenyGuard {
       canActivate() {
