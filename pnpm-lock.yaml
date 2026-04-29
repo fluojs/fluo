@@ -642,6 +642,9 @@ importers:
         specifier: ^5.0.0
         version: 5.0.0
     devDependencies:
+      '@fluojs/di':
+        specifier: workspace:^
+        version: link:../di
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)

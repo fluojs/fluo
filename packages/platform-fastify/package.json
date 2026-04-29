@@ -49,6 +49,7 @@
     "fastify-raw-body": "^5.0.0"
   },
   "devDependencies": {
+    "@fluojs/di": "workspace:^",
     "vitest": "^3.2.4"
   }
 }
