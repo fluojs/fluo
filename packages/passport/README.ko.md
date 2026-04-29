@@ -114,6 +114,24 @@ export class AuthModule {}
 
 `CookieAuthStrategy`는 `@fluojs/jwt`가 정규화한 JWT principal 계약을 보존하며, `subject`, `claims`, `issuer`, `audience`, `roles`, `scopes`를 그대로 전달합니다.
 
+보호된 라우트는 계속 `@UseAuth(...)`를 사용해야 합니다. `requireAccessToken: false`를 설정해도 쿠키가 없을 때는 이제 익명 principal이 아니라 명시적인 미인증 결과를 반환하므로, 보호된 라우트는 요청을 계속 거부합니다.
+
+로그인 사용자와 게스트 호출자를 모두 허용하려는 라우트에서만 `@UseOptionalAuth(...)`를 사용하세요.
+
+```typescript
+import { Controller, Get, type RequestContext } from '@fluojs/http';
+import { UseOptionalAuth } from '@fluojs/passport';
+
+@Controller('/session')
+export class SessionController {
+  @Get('/')
+  @UseOptionalAuth('cookie')
+  getSession(_input: never, ctx: RequestContext) {
+    return { subject: ctx.principal?.subject ?? null };
+  }
+}
+```
+
 ### 리프레시 토큰 수명 주기
 
 패키지에서 제공하는 `RefreshTokenStrategy`와 `RefreshTokenService`를 사용하여 안전한 토큰 로테이션 및 폐기 기능을 구현할 수 있습니다.
@@ -157,6 +175,7 @@ export class AuthController {
 
 ### 데코레이터
 - `@UseAuth(strategyName)`: `AuthGuard`를 부착하고 사용할 전략을 설정합니다.
+- `@UseOptionalAuth(strategyName)`: `AuthGuard`를 부착하지만 전략이 자격 증명 누락을 보고하면 스코프가 없는 라우트는 계속 진행할 수 있게 합니다.
 - `@RequireScopes(...scopes)`: 특정 권한(스코프) 요구 사항을 강제합니다.
 
 ### 주요 클래스

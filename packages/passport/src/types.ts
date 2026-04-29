@@ -5,8 +5,15 @@ import type { Guard, GuardContext, Principal } from '@fluojs/http';
 export interface AuthRequirement {
   /** Named strategy to resolve from the strategy registry. */
   strategy?: string;
+  /** Allows the request to continue without a resolved principal. */
+  optional?: boolean;
   /** Required scopes that must be present on the resolved principal. */
   scopes?: string[];
+}
+
+/** Authentication result variant used when a route explicitly allows missing credentials. */
+export interface AuthOptionalResult {
+  authenticated: false;
 }
 
 /** Authentication result variant used when a strategy fully handled the response. */
@@ -16,7 +23,7 @@ export interface AuthHandledResult {
 }
 
 /** Return type of an `AuthStrategy.authenticate(...)` call. */
-export type AuthStrategyResult = Principal | AuthHandledResult;
+export type AuthStrategyResult = Principal | AuthHandledResult | AuthOptionalResult;
 
 /** Strategy contract implemented by authentication adapters. */
 export interface AuthStrategy {

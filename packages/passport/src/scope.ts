@@ -68,13 +68,20 @@ export function mergeAuthRequirements(
   }
 
   const scopes = normalizeDeclaredScopes([...(base?.scopes ?? []), ...(extra?.scopes ?? [])]);
+  const optional =
+    extra && Object.hasOwn(extra, 'optional')
+      ? extra.optional
+      : base?.optional === true && extra?.strategy
+        ? false
+        : base?.optional;
   const strategy = extra?.strategy ?? base?.strategy;
 
-  if (!strategy && !scopes) {
+  if (!strategy && !scopes && optional !== true) {
     return undefined;
   }
 
   return {
+    optional,
     scopes,
     strategy,
   };

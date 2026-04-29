@@ -18,13 +18,15 @@ function normalizeRequirement(requirement: AuthRequirement | undefined): AuthReq
   }
 
   const strategy = requirement.strategy;
+  const optional = requirement.optional;
   const scopes = normalizeDeclaredScopes(requirement.scopes);
 
-  if (!strategy && !scopes) {
+  if (!strategy && !scopes && optional !== true) {
     return undefined;
   }
 
   return {
+    optional,
     scopes,
     strategy,
   };

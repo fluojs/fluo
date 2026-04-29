@@ -100,30 +100,24 @@ describe('CookieAuthStrategy', () => {
       await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationRequiredError);
     });
 
-    it('allows anonymous access when requireAccessToken is false', async () => {
+    it('returns an explicit unauthenticated result when requireAccessToken is false', async () => {
       const verifier = createMockVerifier();
       const strategy = new CookieAuthStrategy(verifier, { requireAccessToken: false });
       const context = createGuardContext({});
 
       const result = await strategy.authenticate(context);
 
-      expect(result).toMatchObject({
-        subject: 'anonymous',
-        claims: {},
-      });
+      expect(result).toEqual({ authenticated: false });
     });
 
-    it('allows anonymous access when cookies bag is undefined and requireAccessToken is false', async () => {
+    it('returns an explicit unauthenticated result when cookies bag is undefined and requireAccessToken is false', async () => {
       const verifier = createMockVerifier();
       const strategy = new CookieAuthStrategy(verifier, { requireAccessToken: false });
       const context = createGuardContext(undefined);
 
       const result = await strategy.authenticate(context);
 
-      expect(result).toMatchObject({
-        subject: 'anonymous',
-        claims: {},
-      });
+      expect(result).toEqual({ authenticated: false });
     });
 
     it('throws AuthenticationRequiredError when token verification fails', async () => {

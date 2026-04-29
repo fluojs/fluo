@@ -101,6 +101,29 @@ export function UseAuth(strategy: string): ClassOrMethodDecoratorLike {
 }
 
 /**
+ * Declares a strategy that may leave `requestContext.principal` unset when credentials are absent.
+ *
+ * @remarks
+ * Use this decorator only for routes that intentionally accept both authenticated and
+ * unauthenticated callers. Scope requirements still require a resolved principal.
+ *
+ * @example
+ * ```ts
+ * @UseOptionalAuth('cookie')
+ * @Get('/session')
+ * getSession(_input: unknown, ctx: RequestContext) {
+ *   return { subject: ctx.principal?.subject ?? null };
+ * }
+ * ```
+ *
+ * @param strategy Strategy name previously registered through `PassportModule.forRoot(...)`.
+ * @returns A class-or-method decorator that stores the optional auth requirement metadata.
+ */
+export function UseOptionalAuth(strategy: string): ClassOrMethodDecoratorLike {
+  return createAuthRequirementDecorator({ optional: true, strategy });
+}
+
+/**
  * Declares scope requirements that `AuthGuard` must enforce after authentication succeeds.
  *
  * @remarks
