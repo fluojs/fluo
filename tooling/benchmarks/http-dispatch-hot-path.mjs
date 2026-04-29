@@ -23,6 +23,8 @@ function resetResponse(response) {
   response.body = undefined;
   response.committed = false;
   response.headers = {};
+  response.payload = undefined;
+  response.simpleJsonBody = undefined;
   response.statusCode = undefined;
   response.statusSet = false;
 }
@@ -39,6 +41,70 @@ function createResponse() {
     },
     send(body) {
       this.body = body;
+      this.committed = true;
+    },
+    setHeader(name, value) {
+      this.headers[name] = value;
+    },
+    setStatus(code) {
+      this.statusCode = code;
+      this.statusSet = true;
+    },
+    statusCode: undefined,
+    statusSet: false,
+  };
+}
+
+function createJsonStringifyResponse() {
+  return {
+    committed: false,
+    headers: {},
+    payload: undefined,
+    redirect(status, location) {
+      this.setStatus(status);
+      this.setHeader('Location', location);
+      this.committed = true;
+    },
+    send(body) {
+      if (typeof body === 'object' && body !== null) {
+        this.headers['Content-Type'] = 'application/json; charset=utf-8';
+        this.payload = JSON.stringify(body);
+      } else {
+        this.payload = body;
+      }
+      this.committed = true;
+    },
+    setHeader(name, value) {
+      this.headers[name] = value;
+    },
+    setStatus(code) {
+      this.statusCode = code;
+      this.statusSet = true;
+    },
+    statusCode: undefined,
+    statusSet: false,
+  };
+}
+
+function createSimpleJsonFastResponse() {
+  return {
+    committed: false,
+    headers: {},
+    payload: undefined,
+    redirect(status, location) {
+      this.setStatus(status);
+      this.setHeader('Location', location);
+      this.committed = true;
+    },
+    send(body) {
+      this.payload = typeof body === 'object' && body !== null
+        ? JSON.stringify(body)
+        : body;
+      this.committed = true;
+    },
+    sendSimpleJson(body) {
+      this.headers['Content-Type'] = 'application/json; charset=utf-8';
+      this.payload = JSON.stringify(body);
       this.committed = true;
     },
     setHeader(name, value) {
@@ -175,6 +241,8 @@ function buildDispatchBenchmarks() {
 
   const emptyPipelineRequest = createRequest('/health');
   const emptyPipelineResponse = createResponse();
+  const genericJsonPipelineResponse = createJsonStringifyResponse();
+  const simpleJsonFastPipelineResponse = createSimpleJsonFastResponse();
   const preMatchedPipelineRequest = createRequest('/health');
   const preMatchedPipelineResponse = createResponse();
 
@@ -221,6 +289,8 @@ function buildDispatchBenchmarks() {
 
   const chainRequest = createRequest('/chain');
   const chainResponse = createResponse();
+  const genericJsonChainResponse = createJsonStringifyResponse();
+  const simpleJsonFastChainResponse = createSimpleJsonFastResponse();
 
   class AllowGuard {
     canActivate() {
@@ -302,6 +372,22 @@ function buildDispatchBenchmarks() {
     },
     {
       iterations: 20000,
+      name: 'dispatch static GET /health (generic JSON.stringify writer baseline)',
+      async run() {
+        resetResponse(genericJsonPipelineResponse);
+        await emptyPipelineDispatcher.dispatch(emptyPipelineRequest, genericJsonPipelineResponse);
+      },
+    },
+    {
+      iterations: 20000,
+      name: 'dispatch static GET /health (simple JSON fast writer)',
+      async run() {
+        resetResponse(simpleJsonFastPipelineResponse);
+        await emptyPipelineDispatcher.dispatch(emptyPipelineRequest, simpleJsonFastPipelineResponse);
+      },
+    },
+    {
+      iterations: 20000,
       name: 'dispatch pre-matched native handoff GET /health (empty pipeline)',
       async run() {
         resetResponse(preMatchedPipelineResponse);
@@ -318,6 +404,22 @@ function buildDispatchBenchmarks() {
       async run() {
         resetResponse(chainResponse);
         await chainDispatcher.dispatch(chainRequest, chainResponse);
+      },
+    },
+    {
+      iterations: 20000,
+      name: 'dispatch singleton chain GET /chain (generic JSON.stringify writer baseline)',
+      async run() {
+        resetResponse(genericJsonChainResponse);
+        await chainDispatcher.dispatch(chainRequest, genericJsonChainResponse);
+      },
+    },
+    {
+      iterations: 20000,
+      name: 'dispatch singleton chain GET /chain (simple JSON fast writer)',
+      async run() {
+        resetResponse(simpleJsonFastChainResponse);
+        await chainDispatcher.dispatch(chainRequest, simpleJsonFastChainResponse);
       },
     },
     {
@@ -364,7 +466,7 @@ async function main() {
 
   process.stdout.write(`${JSON.stringify({
     benchmark: 'http-dispatch-hot-path',
-    note: 'Route matching and dispatcher hot-path scenarios measured against built dist artifacts on the current branch.',
+    note: 'Route matching, generic JSON.stringify response baseline, and simple JSON fast-writer dispatcher scenarios measured against built dist artifacts on the current branch.',
     results,
   }, null, 2)}\n`);
 }
