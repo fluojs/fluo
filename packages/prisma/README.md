@@ -11,6 +11,7 @@ Prisma lifecycle and ALS-backed transaction context for fluo applications. Conne
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
   - [PrismaService and current()](#prismaservice-and-current)
+  - [Named Registrations for Multiple Clients](#named-registrations-for-multiple-clients)
   - [Manual Transactions](#manual-transactions)
   - [Automatic Request Transactions](#automatic-request-transactions)
   - [Async Configuration and Isolation](#async-configuration-and-isolation)
@@ -74,6 +75,34 @@ export class UserRepository {
 }
 ```
 
+### Named Registrations for Multiple Clients
+
+When one application container needs more than one Prisma client, register each client with an explicit `name` and inject the matching token with `getPrismaServiceToken(name)`.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { PrismaModule, PrismaService, getPrismaServiceToken } from '@fluojs/prisma';
+
+const usersPrismaModule = PrismaModule.forName('users', { client: usersPrisma });
+const analyticsPrismaModule = PrismaModule.forRoot({ name: 'analytics', client: analyticsPrisma });
+
+@Inject(getPrismaServiceToken('users'), getPrismaServiceToken('analytics'))
+export class MultiDatabaseService {
+  constructor(
+    private readonly users: PrismaService<typeof usersPrisma>,
+    private readonly analytics: PrismaService<typeof analyticsPrisma>,
+  ) {}
+
+  async loadDashboard(userId: string) {
+    const user = await this.users.current().user.findUnique({ where: { id: userId } });
+    const summary = await this.analytics.current().report.findMany();
+    return { summary, user };
+  }
+}
+```
+
+Unnamed registration remains the default single-client path for `PrismaService`, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, and `PrismaTransactionInterceptor`. When you register multiple Prisma clients in the same container, use names for every additional client so token resolution stays explicit.
+
 ### Manual Transactions
 
 Use `prisma.transaction()` to create an interactive transaction block. Any calls to `current()` inside the block will use the transaction-scoped client.
@@ -101,6 +130,8 @@ class UserController {
   }
 }
 ```
+
+`PrismaTransactionInterceptor` targets the default unnamed `PrismaService`. For named multi-client registrations, inject the corresponding named `PrismaService` and open explicit `transaction()` / `requestTransaction()` boundaries where needed.
 
 ### Async Configuration and Isolation
 
@@ -145,6 +176,8 @@ defineModule(ManualPrismaModule, {
 ### `PrismaModule`
 
 - `PrismaModule.forRoot(options)` / `PrismaModule.forRootAsync(options)`
+- `PrismaModule.forName(name, options)` / `PrismaModule.forNameAsync(name, options)`
+- `forRoot(...)` and `forRootAsync(...)` also accept `name` for named/scoped registrations.
 - `forRootAsync(...)` accepts `AsyncModuleOptions<PrismaModuleOptions<...>>`.
 - `forRootAsync(...)` resolves options once per application container, preserving client lifecycle and request transaction isolation across separate bootstraps.
 - Supports `strictTransactions: true` to throw if transaction support is missing.
@@ -161,6 +194,14 @@ defineModule(ManualPrismaModule, {
 ### `PRISMA_CLIENT` (Token)
 
 Injectable token for the raw `PrismaClient` instance.
+
+### Named Prisma token helpers
+
+- `getPrismaClientToken(name?)`
+- `getPrismaOptionsToken(name?)`
+- `getPrismaServiceToken(name?)`
+
+These helpers return the default unnamed token when `name` is omitted and a registration-specific token when `name` is provided.
 
 ### Related exported types
 
