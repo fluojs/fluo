@@ -947,6 +947,87 @@ describe('Container', () => {
     });
   });
 
+  describe('hasRequestScopedDependency', () => {
+    it('detects request-scoped dependencies behind transient providers', () => {
+      class RequestStore {}
+      class TransientService {
+        constructor(readonly store: RequestStore) {}
+      }
+
+      const container = new Container().register(
+        { provide: RequestStore, scope: Scope.REQUEST, useClass: RequestStore },
+        { provide: TransientService, scope: Scope.TRANSIENT, useClass: TransientService, inject: [RequestStore] },
+      );
+
+      expect(container.hasRequestScopedDependency(TransientService)).toBe(true);
+    });
+
+    it('checks every multi-provider contribution conservatively', () => {
+      const PLUGINS = Symbol('RequestScopedPlugins');
+
+      class SingletonPlugin {}
+      class RequestPlugin {}
+
+      const container = new Container().register(
+        { provide: PLUGINS, useClass: SingletonPlugin, multi: true },
+        { provide: PLUGINS, scope: Scope.REQUEST, useClass: RequestPlugin, multi: true },
+      );
+
+      expect(container.hasRequestScopedDependency(PLUGINS)).toBe(true);
+    });
+
+    it('follows alias and forwardRef edges to request-scoped providers', () => {
+      const REQUEST_STORE = Symbol('RequestStore');
+      const STORE_ALIAS = Symbol('StoreAlias');
+
+      class RequestStore {}
+      class Consumer {
+        constructor(readonly store: RequestStore) {}
+      }
+
+      const container = new Container().register(
+        { provide: REQUEST_STORE, scope: Scope.REQUEST, useClass: RequestStore },
+        { provide: STORE_ALIAS, useExisting: REQUEST_STORE },
+        { provide: Consumer, useClass: Consumer, inject: [forwardRef(() => STORE_ALIAS)] },
+      );
+
+      expect(container.hasRequestScopedDependency(Consumer)).toBe(true);
+    });
+
+    it('treats provider graph cycles as requiring request scope', () => {
+      class ServiceA {
+        constructor(readonly serviceB: ServiceB) {}
+      }
+
+      class ServiceB {
+        constructor(readonly serviceA: ServiceA) {}
+      }
+
+      const container = new Container().register(
+        { provide: ServiceA, useClass: ServiceA, inject: [ServiceB] },
+        { provide: ServiceB, useClass: ServiceB, inject: [ServiceA] },
+      );
+
+      expect(container.hasRequestScopedDependency(ServiceA)).toBe(true);
+    });
+
+    it('does not promote missing optional dependencies without a registered request-scoped target', () => {
+      const OPTIONAL_STORE = Symbol('OptionalStore');
+
+      class Consumer {
+        constructor(readonly store: unknown) {}
+      }
+
+      const container = new Container().register({
+        provide: Consumer,
+        useClass: Consumer,
+        inject: [optional(OPTIONAL_STORE)],
+      });
+
+      expect(container.hasRequestScopedDependency(Consumer)).toBe(false);
+    });
+  });
+
   describe('dispose', () => {
     it('calls onDestroy for resolved singleton instances in reverse creation order', async () => {
       const events: string[] = [];
