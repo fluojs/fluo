@@ -71,9 +71,9 @@ const adapter = createExpressAdapter(
 ### Native Route Registration with Safe Fallback
 The adapter now pre-registers semantically safe Express Router handlers for explicit HTTP methods and still dispatches those requests through the shared fluo dispatcher.
 
-This keeps guards, interceptors, observers, body parsing, raw body capture, SSE, and error responses on the same framework-owned execution path while allowing Express to short-circuit some path matching work first.
+For semantically safe unversioned routes, Express hands the pre-matched descriptor and params to the shared dispatcher so duplicate route matching is skipped while guards, interceptors, observers, body parsing, raw body capture, SSE, and error responses stay on the same framework-owned execution path.
 
-To avoid changing documented fluo semantics, overlapping same-shape param routes such as `/:id` and `/:slug`, `@All(...)` handlers, `OPTIONS` ownership, and requests that rely on fluo's duplicate-slash/trailing-slash normalization stay on the catch-all fallback path.
+To avoid changing documented fluo semantics, overlapping same-shape param routes such as `/:id` and `/:slug`, `@All(...)` handlers, `OPTIONS` ownership, non-URI versioning, and requests that rely on fluo's duplicate-slash/trailing-slash normalization stay on the catch-all fallback path.
 
 ## Adapter Contract
 

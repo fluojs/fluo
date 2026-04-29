@@ -7,10 +7,13 @@ import { createServer as createNetServer } from 'node:net';
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { Container } from '@fluojs/di';
 import {
   All,
   type CallHandler,
   Controller,
+  createDispatcher,
+  createHandlerMapping,
   Get,
   Post,
   SseResponse,
@@ -750,7 +753,7 @@ describe('@fluojs/platform-express', () => {
         .flatMap((route) => route.methods.map((method) => `${method}:${route.path}`));
 
       expect(nativeRoutes).toContain('GET:/users/:id');
-      expect(nativeRoutes).toContain('GET:/versions');
+      expect(nativeRoutes).not.toContain('GET:/versions');
       expect(nativeRoutes).toContain('GET:/errors');
       expect(nativeRoutes).not.toContain('PATCH:/fallback');
 
@@ -959,6 +962,45 @@ describe('@fluojs/platform-express', () => {
       });
     } finally {
       await app.close();
+    }
+  });
+
+  it('hands safe native Express routes to the dispatcher without rematching', async () => {
+    @Controller('/native')
+    class NativeController {
+      @Get('/:id')
+      getById(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id };
+      }
+    }
+
+    const root = new Container().register(NativeController);
+    const baseMapping = createHandlerMapping([{ controllerToken: NativeController }]);
+    const dispatcher = createDispatcher({
+      handlerMapping: {
+        descriptors: baseMapping.descriptors,
+        match: vi.fn(() => {
+          throw new Error('Express native handoff should bypass handlerMapping.match');
+        }),
+      },
+      rootContainer: root,
+    });
+    const port = await findAvailablePort();
+    const adapter = createExpressAdapter({ port }) as ExpressHttpApplicationAdapter;
+
+    await adapter.listen(dispatcher);
+
+    try {
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/native/123',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ id: '123' });
+    } finally {
+      await adapter.close();
     }
   });
 
