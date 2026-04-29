@@ -618,7 +618,7 @@ describe('@fluojs/platform-express', () => {
     });
 
     const signal = 'SIGTERM' as const;
-    const listenersBefore = process.listeners(signal).length;
+    const listenersBefore = new Set(process.listeners(signal));
     const port = await findAvailablePort();
     const app = await runExpressApplication(AppModule, {
       cors: false,
@@ -627,11 +627,14 @@ describe('@fluojs/platform-express', () => {
       shutdownSignals: [signal],
     });
 
-    expect(process.listeners(signal).length).toBe(listenersBefore + 1);
+    const registeredListeners = process.listeners(signal).filter((listener) => !listenersBefore.has(listener));
+    expect(registeredListeners.length).toBeGreaterThan(0);
 
     await app.close();
 
-    expect(process.listeners(signal).length).toBe(listenersBefore);
+    for (const listener of registeredListeners) {
+      expect(process.listeners(signal)).not.toContain(listener);
+    }
   });
 
   it('does not leak global-prefix path rewrites to request observers', async () => {
@@ -1242,7 +1245,7 @@ describe('@fluojs/platform-express', () => {
       });
     };
 
-    const adapter = new ExpressHttpApplicationAdapter(3000, '127.0.0.1', 20, 20, undefined, undefined, 1024, false, 1_000);
+    const adapter = new ExpressHttpApplicationAdapter(port, '127.0.0.1', 20, 20, undefined, undefined, 1024, false, 1_000);
     const dispatcher = {
       async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
         response.setStatus(200);
@@ -1259,13 +1262,12 @@ describe('@fluojs/platform-express', () => {
 
       await listenPromise;
 
-      const response = await fetch('http://127.0.0.1:3000/retry-check');
+      const response = await fetch(`http://127.0.0.1:${String(port)}/retry-check`);
 
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({ ok: true });
-
-      await adapter.close();
     } finally {
+      await adapter.close();
       await closeBlocker();
     }
   });

@@ -645,7 +645,7 @@ export class HttpAdapterPortabilityHarness<
     });
 
     const signal = 'SIGTERM' as const;
-    const listenersBefore = process.listeners(signal).length;
+    const listenersBefore = new Set(process.listeners(signal));
     const port = await findAvailablePort();
     const app = await this.options.run(AppModule, {
       cors: false,
@@ -655,14 +655,17 @@ export class HttpAdapterPortabilityHarness<
     } as TRunOptions);
 
     try {
-      if (process.listeners(signal).length !== listenersBefore + 1) {
+      const registeredListeners = process.listeners(signal).filter((listener) => !listenersBefore.has(listener));
+
+      if (registeredListeners.length === 0) {
         throw new Error(`${this.options.name} adapter did not register the expected shutdown listener.`);
       }
     } finally {
       await closeSilently(app);
     }
 
-    if (process.listeners(signal).length !== listenersBefore) {
+    const leakedListeners = process.listeners(signal).filter((listener) => !listenersBefore.has(listener));
+    if (leakedListeners.length > 0) {
       throw new Error(`${this.options.name} adapter leaked shutdown signal listeners after close().`);
     }
   }

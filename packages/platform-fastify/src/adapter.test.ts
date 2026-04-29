@@ -1050,7 +1050,7 @@ describe('@fluojs/platform-fastify', () => {
     });
 
     const signal = 'SIGTERM' as const;
-    const listenersBefore = process.listeners(signal).length;
+    const listenersBefore = new Set(process.listeners(signal));
     const port = await findAvailablePort();
     const app = await runFastifyApplication(AppModule, {
       cors: false,
@@ -1059,11 +1059,14 @@ describe('@fluojs/platform-fastify', () => {
       shutdownSignals: [signal],
     });
 
-    expect(process.listeners(signal).length).toBe(listenersBefore + 1);
+    const registeredListeners = process.listeners(signal).filter((listener) => !listenersBefore.has(listener));
+    expect(registeredListeners.length).toBeGreaterThan(0);
 
     await app.close();
 
-    expect(process.listeners(signal).length).toBe(listenersBefore);
+    for (const listener of registeredListeners) {
+      expect(process.listeners(signal)).not.toContain(listener);
+    }
   });
 
   it('does not leak global-prefix path rewrites to request observers', async () => {
