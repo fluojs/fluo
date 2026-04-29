@@ -12,6 +12,9 @@ interface AcceptToken {
   specificity: number;
 }
 
+/**
+ * Describes the resolved content negotiation contract.
+ */
 export interface ResolvedContentNegotiation {
   defaultFormatter: ResponseFormatter;
   formatters: ResponseFormatter[];
@@ -123,6 +126,12 @@ function matchesMediaRange(mediaRange: string, mediaType: string): boolean {
   return rangeSubtype === '*' || rangeSubtype === mediaTypeSubtype;
 }
 
+/**
+ * Resolve content negotiation.
+ *
+ * @param options The options.
+ * @returns The resolve content negotiation result.
+ */
 export function resolveContentNegotiation(options: ContentNegotiationOptions | undefined): ResolvedContentNegotiation | undefined {
   if (!options?.formatters?.length) {
     return undefined;
@@ -191,6 +200,14 @@ function resolveDefaultFormatter(
   return idx >= 0 ? allowedFormatters[idx]! : (allowedFormatters[0] ?? contentNegotiation.defaultFormatter);
 }
 
+/**
+ * Select response formatter.
+ *
+ * @param handler The handler.
+ * @param request The request.
+ * @param contentNegotiation The content negotiation.
+ * @returns The select response formatter result.
+ */
 export function selectResponseFormatter(
   handler: HandlerDescriptor,
   request: FrameworkRequest,

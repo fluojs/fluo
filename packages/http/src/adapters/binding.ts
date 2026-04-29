@@ -95,6 +95,9 @@ function validateBodyKeys(
   }
 }
 
+/**
+ * Represents the default converter.
+ */
 export class DefaultConverter implements Converter {
   convert(value: unknown, _target: ConverterTarget): unknown {
     return value;
@@ -156,6 +159,9 @@ async function resolveConverter(
   }
 }
 
+/**
+ * Represents the default binder.
+ */
 export class DefaultBinder implements Binder {
   constructor(private readonly converters: readonly ConverterLike[] = []) {}
 

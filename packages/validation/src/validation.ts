@@ -793,6 +793,9 @@ async function collectValidationIssuesInternal<T>(
   }
 }
 
+/**
+ * Represents the default validator.
+ */
 export class DefaultValidator implements Validator {
   async validate(value: unknown, target: Constructor): Promise<void> {
     const issues = await collectValidationIssues(target, value);

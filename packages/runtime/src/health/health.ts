@@ -3,19 +3,31 @@ import { Controller, Get } from '@fluojs/http';
 import { defineModule } from '../bootstrap.js';
 import type { ModuleType } from '../types.js';
 
+/**
+ * Describes the health status contract.
+ */
 export interface HealthStatus {
   status: 'ok' | 'unavailable';
 }
 
+/**
+ * Describes the health check response contract.
+ */
 export interface HealthCheckResponse {
   body: unknown;
   statusCode?: number;
 }
 
+/**
+ * Describes the readiness status contract.
+ */
 export interface ReadinessStatus {
   status: 'ready' | 'starting' | 'unavailable';
 }
 
+/**
+ * Describes the health module options contract.
+ */
 export interface HealthModuleOptions {
   healthCheck?: (ctx: import('@fluojs/http').RequestContext) =>
     | HealthStatus
@@ -24,8 +36,17 @@ export interface HealthModuleOptions {
   path?: string;
 }
 
+/**
+ * Defines the readiness check type.
+ */
 export type ReadinessCheck = () => boolean | Promise<boolean>;
 
+/**
+ * Create health module.
+ *
+ * @param options The options.
+ * @returns The create health module result.
+ */
 export function createHealthModule(options: HealthModuleOptions = {}): ModuleType {
   const basePath = options.path ?? '';
   const readinessChecks: ReadinessCheck[] = [];

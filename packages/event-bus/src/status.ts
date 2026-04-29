@@ -1,7 +1,13 @@
 import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
 
+/**
+ * Defines the event bus lifecycle state type.
+ */
 export type EventBusLifecycleState = 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed';
 
+/**
+ * Describes the event bus status adapter input contract.
+ */
 export interface EventBusStatusAdapterInput {
   handlersDiscovered: number;
   lifecycleState: EventBusLifecycleState;
@@ -13,6 +19,9 @@ export interface EventBusStatusAdapterInput {
   waitForHandlersDefault: boolean;
 }
 
+/**
+ * Describes the event bus platform status snapshot contract.
+ */
 export interface EventBusPlatformStatusSnapshot {
   readiness: PlatformReadinessReport;
   health: PlatformHealthReport;
@@ -106,6 +115,12 @@ function resolveOperationMode(input: EventBusStatusAdapterInput): 'local-only' |
   return input.transportConfigured ? 'transport-backed' : 'local-only';
 }
 
+/**
+ * Create event bus platform status snapshot.
+ *
+ * @param input The input.
+ * @returns The create event bus platform status snapshot result.
+ */
 export function createEventBusPlatformStatusSnapshot(input: EventBusStatusAdapterInput): EventBusPlatformStatusSnapshot {
   return {
     details: {

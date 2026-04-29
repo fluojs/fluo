@@ -2,8 +2,14 @@ import type { KeyObject } from 'node:crypto';
 
 import type { RefreshTokenOptions } from './refresh/refresh-token.js';
 
+/**
+ * Defines the jwt algorithm type.
+ */
 export type JwtAlgorithm = 'HS256' | 'HS384' | 'HS512' | 'RS256' | 'RS384' | 'RS512' | 'ES256' | 'ES384' | 'ES512';
 
+/**
+ * Describes the jwt key entry contract.
+ */
 export interface JwtKeyEntry {
   kid: string;
   secret?: string;
@@ -11,6 +17,9 @@ export interface JwtKeyEntry {
   publicKey?: string | KeyObject;
 }
 
+/**
+ * Describes the jwt verifier options contract.
+ */
 export interface JwtVerifierOptions {
   algorithms: JwtAlgorithm[];
   accessTokenTtlSeconds?: number;
@@ -30,6 +39,9 @@ export interface JwtVerifierOptions {
   refreshToken?: RefreshTokenOptions;
 }
 
+/**
+ * Describes the jwt claims contract.
+ */
 export interface JwtClaims extends Record<string, unknown> {
   aud?: string | string[];
   exp?: number;
@@ -41,6 +53,9 @@ export interface JwtClaims extends Record<string, unknown> {
   sub?: string;
 }
 
+/**
+ * Describes the jwt principal contract.
+ */
 export interface JwtPrincipal {
   subject: string;
   issuer?: string;
@@ -50,10 +65,16 @@ export interface JwtPrincipal {
   claims: Record<string, unknown>;
 }
 
+/**
+ * Describes the jwt verifier contract.
+ */
 export interface JwtVerifier {
   verifyAccessToken(token: string): Promise<JwtPrincipal>;
 }
 
+/**
+ * Describes the jwt signer contract.
+ */
 export interface JwtSigner {
   signAccessToken(claims: JwtClaims): Promise<string>;
 }

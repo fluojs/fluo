@@ -8,6 +8,9 @@ const DEAD_LETTER_DRAIN_TIMEOUT_MS = 5_000;
 
 type QueuePayload = Record<string, unknown>;
 
+/**
+ * Describes the queue dead letter job contract.
+ */
 export interface QueueDeadLetterJob {
   attemptsMade: number;
   data: unknown;
@@ -18,11 +21,17 @@ export interface QueueDeadLetterJob {
   };
 }
 
+/**
+ * Describes the queue redis dead letter client contract.
+ */
 export interface QueueRedisDeadLetterClient {
   ltrim(key: string, start: number, stop: number): Promise<unknown>;
   rpush(key: string, value: string): Promise<unknown>;
 }
 
+/**
+ * Represents the queue dead letter manager.
+ */
 export class QueueDeadLetterManager {
   private readonly pendingWrites = new Set<Promise<void>>();
 

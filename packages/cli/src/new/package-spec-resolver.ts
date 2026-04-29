@@ -535,6 +535,13 @@ function rewriteWorkspaceProtocolDependencies(
   }
 }
 
+/**
+ * Resolve package specs.
+ *
+ * @param options The options.
+ * @param bootstrapPlan The bootstrap plan.
+ * @returns The resolve package specs result.
+ */
 export async function resolvePackageSpecs(
   options: BootstrapOptions,
   bootstrapPlan: ResolvedBootstrapPlan,

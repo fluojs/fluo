@@ -5,6 +5,9 @@ import type {
   PlatformSnapshot,
 } from '@fluojs/runtime';
 
+/**
+ * Describes the jwt platform status snapshot contract.
+ */
 export interface JwtPlatformStatusSnapshot {
   readiness: PlatformReadinessReport;
   health: PlatformHealthReport;
@@ -12,6 +15,9 @@ export interface JwtPlatformStatusSnapshot {
   details: Record<string, unknown>;
 }
 
+/**
+ * Describes the jwt status adapter input contract.
+ */
 export interface JwtStatusAdapterInput {
   componentId?: string;
   readinessCritical?: boolean;
@@ -60,6 +66,12 @@ function createHealth(input: JwtStatusAdapterInput): PlatformHealthReport {
   };
 }
 
+/**
+ * Create jwt platform status snapshot.
+ *
+ * @param input The input.
+ * @returns The create jwt platform status snapshot result.
+ */
 export function createJwtPlatformStatusSnapshot(input: JwtStatusAdapterInput): JwtPlatformStatusSnapshot {
   const componentId = input.componentId ?? 'jwt.default';
   const refreshStoreReady = isRefreshTokenStoreReady(input);
@@ -106,6 +118,12 @@ export function createJwtPlatformStatusSnapshot(input: JwtStatusAdapterInput): J
   };
 }
 
+/**
+ * Create jwt platform diagnostic issues.
+ *
+ * @param input The input.
+ * @returns The create jwt platform diagnostic issues result.
+ */
 export function createJwtPlatformDiagnosticIssues(input: JwtStatusAdapterInput): PlatformDiagnosticIssue[] {
   if (isRefreshTokenStoreReady(input)) {
     return [];

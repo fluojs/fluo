@@ -6,6 +6,13 @@ import ejs from 'ejs';
 const templatesDir = join(dirname(fileURLToPath(import.meta.url)), 'templates');
 const templateCache = new Map<string, string>();
 
+/**
+ * Render template.
+ *
+ * @param templateName The template name.
+ * @param vars The vars.
+ * @returns The render template result.
+ */
 export function renderTemplate(templateName: string, vars: Record<string, unknown>): string {
   const templatePath = join(templatesDir, templateName);
   let template = templateCache.get(templatePath);

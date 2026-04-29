@@ -7,6 +7,9 @@ import type {
   PlatformValidationResult,
 } from '@fluojs/runtime';
 
+/**
+ * Describes the platform conformance scenario contract.
+ */
 export interface PlatformConformanceScenario {
   createComponent: () => PlatformComponent;
   enterState: (component: PlatformComponent) => MaybePromise<void>;
@@ -14,6 +17,9 @@ export interface PlatformConformanceScenario {
   expectedState?: PlatformState;
 }
 
+/**
+ * Describes the platform conformance diagnostics options contract.
+ */
 export interface PlatformConformanceDiagnosticsOptions {
   collect?: (
     component: PlatformComponent,
@@ -23,6 +29,9 @@ export interface PlatformConformanceDiagnosticsOptions {
   requireFixHintForSeverities?: ReadonlyArray<PlatformDiagnosticIssue['severity']>;
 }
 
+/**
+ * Describes the platform conformance snapshot options contract.
+ */
 export interface PlatformConformanceSnapshotOptions {
   allowKeyPatterns?: readonly RegExp[];
   compare?: (left: unknown, right: unknown) => boolean;
@@ -30,6 +39,9 @@ export interface PlatformConformanceSnapshotOptions {
   sanitize?: (snapshot: PlatformSnapshot) => PlatformSnapshot;
 }
 
+/**
+ * Describes the platform conformance harness options contract.
+ */
 export interface PlatformConformanceHarnessOptions {
   captureValidationSideEffects?: (component: PlatformComponent) => MaybePromise<unknown>;
   createComponent: () => PlatformComponent;
@@ -115,6 +127,9 @@ function collectForbiddenKeyPaths(
   }
 }
 
+/**
+ * Represents the platform conformance harness.
+ */
 export class PlatformConformanceHarness {
   constructor(private readonly options: PlatformConformanceHarnessOptions) {}
 
@@ -296,6 +311,12 @@ export class PlatformConformanceHarness {
   }
 }
 
+/**
+ * Create platform conformance harness.
+ *
+ * @param options The options.
+ * @returns The create platform conformance harness result.
+ */
 export function createPlatformConformanceHarness(
   options: PlatformConformanceHarnessOptions,
 ): PlatformConformanceHarness {

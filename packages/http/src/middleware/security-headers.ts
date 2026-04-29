@@ -1,5 +1,8 @@
 import type { Middleware } from '../types.js';
 
+/**
+ * Describes the security headers options contract.
+ */
 export interface SecurityHeadersOptions {
   contentSecurityPolicy?: string | false;
   crossOriginOpenerPolicy?: string | false;
@@ -20,6 +23,12 @@ const DEFAULTS = {
   xXssProtection: '0',
 } as const;
 
+/**
+ * Create security headers middleware.
+ *
+ * @param options The options.
+ * @returns The create security headers middleware result.
+ */
 export function createSecurityHeadersMiddleware(options: SecurityHeadersOptions = {}): Middleware {
   const csp = 'contentSecurityPolicy' in options ? options.contentSecurityPolicy : DEFAULTS.contentSecurityPolicy;
   const coop = 'crossOriginOpenerPolicy' in options ? options.crossOriginOpenerPolicy : DEFAULTS.crossOriginOpenerPolicy;

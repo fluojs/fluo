@@ -15,6 +15,13 @@ async function resolveGuard(definition: GuardLike, requestContext: RequestContex
   return requestContext.container.resolve(definition as Token<Guard>);
 }
 
+/**
+ * Run guard chain.
+ *
+ * @param definitions The definitions.
+ * @param context The context.
+ * @returns The run guard chain result.
+ */
 export async function runGuardChain(definitions: GuardLike[], context: GuardContext): Promise<void> {
   for (const definition of definitions) {
     const guard = await resolveGuard(definition, context.requestContext);

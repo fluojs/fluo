@@ -22,6 +22,14 @@ function toHttpException(error: unknown): HttpException {
   });
 }
 
+/**
+ * Write error response.
+ *
+ * @param error The error.
+ * @param response The response.
+ * @param requestId The request id.
+ * @returns The write error response result.
+ */
 export async function writeErrorResponse(error: unknown, response: FrameworkResponse, requestId?: string): Promise<void> {
   if (response.committed) {
     return;

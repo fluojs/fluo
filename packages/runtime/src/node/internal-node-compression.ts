@@ -23,6 +23,13 @@ const SKIP_CONTENT_TYPES = new Set([
 
 type Encoding = 'br' | 'gzip' | 'identity';
 
+/**
+ * Create node response compression.
+ *
+ * @param response The response.
+ * @param acceptEncoding The accept encoding.
+ * @returns The create node response compression result.
+ */
 export function createNodeResponseCompression(
   response: ServerResponse,
   acceptEncoding: string | undefined,
@@ -49,6 +56,14 @@ export function createNodeResponseCompression(
   };
 }
 
+/**
+ * Compress node response.
+ *
+ * @param response The response.
+ * @param body The body.
+ * @param encoding The encoding.
+ * @returns The compress node response result.
+ */
 export function compressNodeResponse(
   response: ServerResponse,
   body: Uint8Array,

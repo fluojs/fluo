@@ -284,6 +284,13 @@ function buildDescriptorList(sources: HandlerSource[], versioning: ResolvedVersi
   return descriptors;
 }
 
+/**
+ * Create handler mapping.
+ *
+ * @param sources The sources.
+ * @param options The options.
+ * @returns The create handler mapping result.
+ */
 export function createHandlerMapping(sources: HandlerSource[], options?: CreateHandlerMappingOptions): HandlerMapping {
   const versioning = resolveVersioning(options);
   const descriptors = buildDescriptorList(sources, versioning);

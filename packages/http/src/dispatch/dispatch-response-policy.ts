@@ -22,6 +22,16 @@ function resolveDefaultSuccessStatus(handler: HandlerDescriptor, value: unknown)
   }
 }
 
+/**
+ * Write success response.
+ *
+ * @param handler The handler.
+ * @param request The request.
+ * @param response The response.
+ * @param value The value.
+ * @param contentNegotiation The content negotiation.
+ * @returns The write success response result.
+ */
 export async function writeSuccessResponse(
   handler: HandlerDescriptor,
   request: FrameworkRequest,

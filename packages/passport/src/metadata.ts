@@ -67,6 +67,13 @@ function getStandardMethodRequirement(target: object, propertyKey: MetadataPrope
   return normalizeRequirement(map?.get(propertyKey));
 }
 
+/**
+ * Define auth requirement.
+ *
+ * @param target The target.
+ * @param requirement The requirement.
+ * @param propertyKey The property key.
+ */
 export function defineAuthRequirement(target: Function | object, requirement: AuthRequirement, propertyKey?: MetadataPropertyKey): void {
   const normalizedRequirement = normalizeRequirement(requirement);
 
@@ -103,6 +110,13 @@ export function defineAuthRequirement(target: Function | object, requirement: Au
   }
 }
 
+/**
+ * Get own auth requirement.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @returns The get own auth requirement result.
+ */
 export function getOwnAuthRequirement(target: Function | object, propertyKey?: MetadataPropertyKey): AuthRequirement | undefined {
   if (propertyKey === undefined) {
     return mergeAuthRequirements(classRequirementStore.get(target as Function), getStandardClassRequirement(target as Function));
@@ -111,6 +125,13 @@ export function getOwnAuthRequirement(target: Function | object, propertyKey?: M
   return mergeAuthRequirements(methodRequirementStore.get(target)?.get(propertyKey), getStandardMethodRequirement(target, propertyKey));
 }
 
+/**
+ * Get auth requirement.
+ *
+ * @param controllerType The controller type.
+ * @param propertyKey The property key.
+ * @returns The get auth requirement result.
+ */
 export function getAuthRequirement(controllerType: Function, propertyKey?: MetadataPropertyKey): AuthRequirement | undefined {
   if (propertyKey === undefined) {
     if (mergedClassRequirementCache.has(controllerType)) {

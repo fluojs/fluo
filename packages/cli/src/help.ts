@@ -11,10 +11,23 @@ function renderRow(values: string[], widths: number[]): string {
   return `| ${values.map((value, index) => value.padEnd(widths[index] ?? 0)).join(' | ')} |`;
 }
 
+/**
+ * Render alias list.
+ *
+ * @param aliases The aliases.
+ * @returns The render alias list result.
+ */
 export function renderAliasList(aliases: string[]): string {
   return aliases.length === 0 ? '-' : aliases.join(', ');
 }
 
+/**
+ * Render help table.
+ *
+ * @param rows The rows.
+ * @param columns The columns.
+ * @returns The render help table result.
+ */
 export function renderHelpTable<Row>(rows: Row[], columns: HelpTableColumn<Row>[]): string {
   const widths = columns.map((column) => {
     const values = rows.map((row) => column.render(row));

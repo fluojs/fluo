@@ -39,6 +39,9 @@ function enforceEntryLimit(entries: Map<string, MemoryCacheEntry>): void {
   }
 }
 
+/**
+ * Represents the memory store.
+ */
 export class MemoryStore implements CacheStore {
   private readonly entries = new Map<string, MemoryCacheEntry>();
   private nextSweepAt = 0;

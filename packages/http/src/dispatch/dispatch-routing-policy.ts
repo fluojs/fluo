@@ -1,6 +1,13 @@
 import { HandlerNotFoundError } from '../errors.js';
 import type { FrameworkRequest, HandlerMapping, HandlerMatch, RequestContext } from '../types.js';
 
+/**
+ * Match handler or throw.
+ *
+ * @param handlerMapping The handler mapping.
+ * @param request The request.
+ * @returns The match handler or throw result.
+ */
 export function matchHandlerOrThrow(handlerMapping: HandlerMapping, request: FrameworkRequest): HandlerMatch {
   const match = handlerMapping.match(request);
 
@@ -11,6 +18,12 @@ export function matchHandlerOrThrow(handlerMapping: HandlerMapping, request: Fra
   return match;
 }
 
+/**
+ * Update request params.
+ *
+ * @param requestContext The request context.
+ * @param params The params.
+ */
 export function updateRequestParams(requestContext: RequestContext, params: Readonly<Record<string, string>>): void {
   requestContext.request = {
     ...requestContext.request,

@@ -1,5 +1,8 @@
 import type { Middleware } from '../types.js';
 
+/**
+ * Describes the cors options contract.
+ */
 export interface CorsOptions {
   allowCredentials?: boolean;
   allowHeaders?: string[];
@@ -35,6 +38,12 @@ function setHeaderIfValue(
   }
 }
 
+/**
+ * Create cors middleware.
+ *
+ * @param options The options.
+ * @returns The create cors middleware result.
+ */
 export function createCorsMiddleware(options: CorsOptions = {}): Middleware {
   if (options.allowCredentials === true) {
     if (options.allowOrigin === '*' || options.allowOrigin === undefined) {

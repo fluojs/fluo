@@ -7,10 +7,22 @@ function isMiddleware(value: MiddlewareLike): value is Middleware {
   return typeof value === 'object' && value !== null && 'handle' in value;
 }
 
+/**
+ * Is middleware route config.
+ *
+ * @param value The value.
+ * @returns The is middleware route config result.
+ */
 export function isMiddlewareRouteConfig(value: MiddlewareLike): value is MiddlewareRouteConfig {
   return typeof value === 'object' && value !== null && 'middleware' in value && 'routes' in value;
 }
 
+/**
+ * Normalize route pattern.
+ *
+ * @param path The path.
+ * @returns The normalize route pattern result.
+ */
 export function normalizeRoutePattern(path: string): string {
   if (path.endsWith('/*')) {
     return `${normalizeRoutePattern(path.slice(0, -2))}/*`;
@@ -19,6 +31,13 @@ export function normalizeRoutePattern(path: string): string {
   return normalizeRoutePath(path);
 }
 
+/**
+ * Match route pattern.
+ *
+ * @param pattern The pattern.
+ * @param path The path.
+ * @returns The match route pattern result.
+ */
 export function matchRoutePattern(pattern: string, path: string): boolean {
   const normalizedPath = normalizeRoutePattern(path);
   const normalizedPattern = normalizeRoutePattern(pattern);
@@ -31,6 +50,13 @@ export function matchRoutePattern(pattern: string, path: string): boolean {
   return normalizedPath === normalizedPattern;
 }
 
+/**
+ * For routes.
+ *
+ * @param middlewareClass The middleware class.
+ * @param routes The routes.
+ * @returns The for routes result.
+ */
 export function forRoutes<T extends Constructor<Middleware>>(
   middlewareClass: T,
   ...routes: string[]
@@ -79,6 +105,14 @@ function deferNext(next: Next): Next {
   };
 }
 
+/**
+ * Run middleware chain.
+ *
+ * @param definitions The definitions.
+ * @param context The context.
+ * @param terminal The terminal.
+ * @returns The run middleware chain result.
+ */
 export async function runMiddlewareChain(
   definitions: MiddlewareLike[],
   context: MiddlewareContext,

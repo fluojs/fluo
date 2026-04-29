@@ -23,6 +23,14 @@ async function resolveInterceptor(
   return requestContext.container.resolve(definition as Token<Interceptor>);
 }
 
+/**
+ * Run interceptor chain.
+ *
+ * @param definitions The definitions.
+ * @param context The context.
+ * @param terminal The terminal.
+ * @returns The run interceptor chain result.
+ */
 export async function runInterceptorChain(
   definitions: InterceptorLike[],
   context: InterceptorContext,

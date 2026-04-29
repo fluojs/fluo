@@ -3,12 +3,21 @@ import { getOwnStandardConstructorMetadataBag, metadataSymbol } from '@fluojs/co
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 
+/**
+ * Defines the transform function type.
+ */
 export type TransformFunction = (value: unknown) => unknown;
 
+/**
+ * Describes the class serialization options contract.
+ */
 export interface ClassSerializationOptions {
   excludeExtraneous?: boolean;
 }
 
+/**
+ * Describes the serialization field metadata contract.
+ */
 export interface SerializationFieldMetadata {
   excluded?: boolean;
   exposed?: boolean;
@@ -74,10 +83,23 @@ function getConstructorMetadataBags(constructor: Function): StandardMetadataBag[
   return bags;
 }
 
+/**
+ * Update class serialization options.
+ *
+ * @param metadata The metadata.
+ * @param partial The partial.
+ */
 export function updateClassSerializationOptions(metadata: unknown, partial: ClassSerializationOptions): void {
   Object.assign(getClassMetadataObject(metadata), partial);
 }
 
+/**
+ * Update field serialization metadata.
+ *
+ * @param metadata The metadata.
+ * @param propertyKey The property key.
+ * @param update The update.
+ */
 export function updateFieldSerializationMetadata(
   metadata: unknown,
   propertyKey: MetadataPropertyKey,
@@ -87,6 +109,12 @@ export function updateFieldSerializationMetadata(
   map.set(propertyKey, update(map.get(propertyKey)));
 }
 
+/**
+ * Get class serialization options.
+ *
+ * @param constructor The constructor.
+ * @returns The get class serialization options result.
+ */
 export function getClassSerializationOptions(constructor: Function): ClassSerializationOptions {
   return getConstructorMetadataBags(constructor).reduce<ClassSerializationOptions>((options, bag) => ({
     ...options,
@@ -94,6 +122,12 @@ export function getClassSerializationOptions(constructor: Function): ClassSerial
   }), {});
 }
 
+/**
+ * Get field serialization metadata.
+ *
+ * @param constructor The constructor.
+ * @returns The get field serialization metadata result.
+ */
 export function getFieldSerializationMetadata(constructor: Function): Map<MetadataPropertyKey, SerializationFieldMetadata> {
   const merged = new Map<MetadataPropertyKey, SerializationFieldMetadata>();
 

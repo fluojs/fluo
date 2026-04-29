@@ -4,6 +4,14 @@ import { getQueueWorkerMetadata } from './metadata.js';
 import { collectDiscoveryCandidates, normalizePositiveInteger, normalizeRateLimiter } from './helpers.js';
 import type { NormalizedQueueModuleOptions, QueueJobType, QueueWorkerDescriptor, QueueWorkerMetadata } from './types.js';
 
+/**
+ * Discover queue worker descriptors.
+ *
+ * @param compiledModules The compiled modules.
+ * @param options The options.
+ * @param logger The logger.
+ * @returns The discover queue worker descriptors result.
+ */
 export function discoverQueueWorkerDescriptors(
   compiledModules: readonly CompiledModule[],
   options: NormalizedQueueModuleOptions,

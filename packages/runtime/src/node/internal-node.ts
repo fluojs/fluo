@@ -50,6 +50,9 @@ declare module '@fluojs/http' {
   }
 }
 
+/**
+ * Describes the node http adapter options contract.
+ */
 export interface NodeHttpAdapterOptions {
   host?: string;
   https?: HttpsServerOptions;
@@ -61,12 +64,21 @@ export interface NodeHttpAdapterOptions {
   shutdownTimeoutMs?: number;
 }
 
+/**
+ * Defines the node application signal type.
+ */
 export type NodeApplicationSignal = 'SIGINT' | 'SIGTERM';
 
+/**
+ * Defines the cors input type.
+ */
 export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
+/**
+ * Describes the bootstrap node application options contract.
+ */
 export interface BootstrapNodeApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
   compression?: boolean;
   cors?: CorsInput;
@@ -86,6 +98,9 @@ export interface BootstrapNodeApplicationOptions extends Omit<CreateApplicationO
   shutdownTimeoutMs?: number;
 }
 
+/**
+ * Describes the run node application options contract.
+ */
 export interface RunNodeApplicationOptions extends BootstrapNodeApplicationOptions {
   forceExitTimeoutMs?: number;
   shutdownSignals?: false | readonly NodeApplicationSignal[];
@@ -106,6 +121,9 @@ interface NodeListenRetryOptions {
 type NodeServer = ReturnType<typeof createHttpServer> | ReturnType<typeof createHttpsServer>;
 type NodeRequestListener = RequestListener;
 
+/**
+ * Represents the node http application adapter.
+ */
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   private readonly server: NodeServer;
   private dispatcher?: Dispatcher;
@@ -241,6 +259,14 @@ function createNodeRequestResponseFactory(
   };
 }
 
+/**
+ * Create node http adapter.
+ *
+ * @param options The options.
+ * @param compression The compression.
+ * @param multipartOptions The multipart options.
+ * @returns The create node http adapter result.
+ */
 export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, compression = false, multipartOptions?: MultipartOptions): HttpApplicationAdapter {
   return new NodeHttpApplicationAdapter(
     resolveNodePort(options.port),
@@ -256,6 +282,13 @@ export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, comp
   );
 }
 
+/**
+ * Bootstrap node application.
+ *
+ * @param rootModule The root module.
+ * @param options The options.
+ * @returns The bootstrap node application result.
+ */
 export async function bootstrapNodeApplication(
   rootModule: ModuleType,
   options: BootstrapNodeApplicationOptions,
@@ -267,6 +300,13 @@ export async function bootstrapNodeApplication(
   );
 }
 
+/**
+ * Run node application.
+ *
+ * @param rootModule The root module.
+ * @param options The options.
+ * @returns The run node application result.
+ */
 export async function runNodeApplication(
   rootModule: ModuleType,
   options: RunNodeApplicationOptions,

@@ -8,6 +8,13 @@ function getStandardInjectionMap(target: object): Map<MetadataPropertyKey, Stand
   return getStandardConstructorMetadataMap<StandardInjectionRecord>(target, standardMetadataKeys.injection);
 }
 
+/**
+ * Define injection metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @param metadata The metadata.
+ */
 export function defineInjectionMetadata(
   target: object,
   propertyKey: MetadataPropertyKey,
@@ -16,6 +23,12 @@ export function defineInjectionMetadata(
   getOrCreatePropertyMap(injectionMetadataStore, target).set(propertyKey, { ...metadata });
 }
 
+/**
+ * Get injection schema.
+ *
+ * @param target The target.
+ * @returns The get injection schema result.
+ */
 export function getInjectionSchema(target: object): InjectionSchemaEntry[] {
   const stored = injectionMetadataStore.get(target) ?? new Map<MetadataPropertyKey, InjectionMetadata>();
   const standard = getStandardInjectionMap(target) ?? new Map<MetadataPropertyKey, StandardInjectionRecord>();

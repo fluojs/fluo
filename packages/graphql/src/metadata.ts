@@ -104,10 +104,22 @@ function getMergedMetadataEntries<T>(
     );
 }
 
+/**
+ * Define resolver metadata.
+ *
+ * @param target The target.
+ * @param metadata The metadata.
+ */
 export function defineResolverMetadata(target: object, metadata: ResolverMetadata): void {
   resolverMetadataStore.set(target, cloneResolverMetadata(metadata));
 }
 
+/**
+ * Get resolver metadata.
+ *
+ * @param target The target.
+ * @returns The get resolver metadata result.
+ */
 export function getResolverMetadata(target: object): ResolverMetadata | undefined {
   const stored = resolverMetadataStore.get(target);
   const standard = getStandardResolverMetadata(target);
@@ -119,6 +131,13 @@ export function getResolverMetadata(target: object): ResolverMetadata | undefine
   return cloneResolverMetadata(stored ?? standard!);
 }
 
+/**
+ * Define resolver handler metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @param metadata The metadata.
+ */
 export function defineResolverHandlerMetadata(
   target: object,
   propertyKey: MetadataPropertyKey,
@@ -127,6 +146,13 @@ export function defineResolverHandlerMetadata(
   getOrCreateHandlerMetadataMap(target).set(propertyKey, cloneHandlerMetadata(metadata));
 }
 
+/**
+ * Get resolver handler metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @returns The get resolver handler metadata result.
+ */
 export function getResolverHandlerMetadata(
   target: object,
   propertyKey: MetadataPropertyKey,
@@ -141,6 +167,12 @@ export function getResolverHandlerMetadata(
   return cloneHandlerMetadata(stored ?? standard!);
 }
 
+/**
+ * Get resolver handler metadata entries.
+ *
+ * @param target The target.
+ * @returns The get resolver handler metadata entries result.
+ */
 export function getResolverHandlerMetadataEntries(
   target: object,
 ): Array<{ metadata: ResolverHandlerMetadata; propertyKey: MetadataPropertyKey }> {
@@ -152,10 +184,24 @@ export function getResolverHandlerMetadataEntries(
   );
 }
 
+/**
+ * Define arg field metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @param metadata The metadata.
+ */
 export function defineArgFieldMetadata(target: object, propertyKey: MetadataPropertyKey, metadata: ArgFieldMetadata): void {
   getOrCreateArgFieldMetadataMap(target).set(propertyKey, cloneArgFieldMetadata(metadata));
 }
 
+/**
+ * Get arg field metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @returns The get arg field metadata result.
+ */
 export function getArgFieldMetadata(target: object, propertyKey: MetadataPropertyKey): ArgFieldMetadata | undefined {
   const stored = argFieldMetadataStore.get(target)?.get(propertyKey);
   const standard = getStandardArgFieldMap(target)?.get(propertyKey);
@@ -167,12 +213,27 @@ export function getArgFieldMetadata(target: object, propertyKey: MetadataPropert
   return cloneArgFieldMetadata(stored ?? standard!);
 }
 
+/**
+ * Get arg field metadata entries.
+ *
+ * @param target The target.
+ * @returns The get arg field metadata entries result.
+ */
 export function getArgFieldMetadataEntries(
   target: object,
 ): Array<{ metadata: ArgFieldMetadata; propertyKey: MetadataPropertyKey }> {
   return getMergedMetadataEntries(target, argFieldMetadataStore.get(target), getStandardArgFieldMap(target), getArgFieldMetadata);
 }
 
+/**
+ * Provides the resolver metadata symbol value.
+ */
 export const resolverMetadataSymbol = standardResolverMetadataKey;
+/**
+ * Provides the handler metadata symbol value.
+ */
 export const handlerMetadataSymbol = standardHandlerMetadataKey;
+/**
+ * Provides the arg metadata symbol value.
+ */
 export const argMetadataSymbol = standardArgFieldMetadataKey;

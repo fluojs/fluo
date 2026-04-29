@@ -3,8 +3,14 @@ import { basename, extname, posix, resolve } from 'node:path';
 
 import ts from 'typescript';
 
+/**
+ * Provides the migration transforms value.
+ */
 export const MIGRATION_TRANSFORMS = ['imports', 'injectable', 'scope', 'bootstrap', 'testing', 'tsconfig'] as const;
 
+/**
+ * Defines the migration transform kind type.
+ */
 export type MigrationTransformKind = typeof MIGRATION_TRANSFORMS[number];
 
 type ImportBinding = {
@@ -12,6 +18,9 @@ type ImportBinding = {
   local: string;
 };
 
+/**
+ * Provides the warning categories value.
+ */
 export const WARNING_CATEGORIES = [
   'inject-token',
   'request-dto',
@@ -24,8 +33,14 @@ export const WARNING_CATEGORIES = [
   'bootstrap-port',
 ] as const;
 
+/**
+ * Defines the warning category type.
+ */
 export type WarningCategory = typeof WARNING_CATEGORIES[number];
 
+/**
+ * Defines the migration warning type.
+ */
 export type MigrationWarning = {
   category: WarningCategory;
   filePath: string;
@@ -45,10 +60,22 @@ const WARNING_CATEGORY_LABEL: Record<WarningCategory, string> = {
   'bootstrap-port': 'Bootstrap port folding issue',
 };
 
+/**
+ * Get warning category label.
+ *
+ * @param category The category.
+ * @returns The get warning category label result.
+ */
 export function getWarningCategoryLabel(category: WarningCategory): string {
   return WARNING_CATEGORY_LABEL[category];
 }
 
+/**
+ * Group warnings by category.
+ *
+ * @param warnings The warnings.
+ * @returns The group warnings by category result.
+ */
 export function groupWarningsByCategory(warnings: MigrationWarning[]): Map<WarningCategory, MigrationWarning[]> {
   const groups = new Map<WarningCategory, MigrationWarning[]>();
   for (const warning of warnings) {
@@ -60,6 +87,9 @@ export function groupWarningsByCategory(warnings: MigrationWarning[]): Map<Warni
   return groups;
 }
 
+/**
+ * Defines the file migration result type.
+ */
 export type FileMigrationResult = {
   appliedTransforms: MigrationTransformKind[];
   changed: boolean;
@@ -67,6 +97,9 @@ export type FileMigrationResult = {
   warnings: MigrationWarning[];
 };
 
+/**
+ * Defines the migration report type.
+ */
 export type MigrationReport = {
   apply: boolean;
   changedFiles: number;
@@ -75,6 +108,9 @@ export type MigrationReport = {
   fileResults: FileMigrationResult[];
 };
 
+/**
+ * Defines the run nest js migration options type.
+ */
 export type RunNestJsMigrationOptions = {
   apply: boolean;
   enabledTransforms: ReadonlySet<MigrationTransformKind>;
@@ -1180,6 +1216,12 @@ function runTypeScriptTransforms(
   };
 }
 
+/**
+ * Run nest js migration.
+ *
+ * @param options The options.
+ * @returns The run nest js migration result.
+ */
 export function runNestJsMigration(options: RunNestJsMigrationOptions): MigrationReport {
   const resolvedTargetPath = resolve(options.targetPath);
   if (!existsSync(resolvedTargetPath)) {
@@ -1235,6 +1277,12 @@ export function runNestJsMigration(options: RunNestJsMigrationOptions): Migratio
   };
 }
 
+/**
+ * Render transform list.
+ *
+ * @param kinds The kinds.
+ * @returns The render transform list result.
+ */
 export function renderTransformList(kinds: readonly MigrationTransformKind[]): string {
   return kinds.map((kind) => `${kind} (${TRANSFORM_KIND_LABEL[kind]})`).join(', ');
 }

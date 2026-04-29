@@ -457,6 +457,15 @@ function createOptionalRootType(
   });
 }
 
+/**
+ * Resolve schema.
+ *
+ * @param deps The deps.
+ * @param optionsSchema The options schema.
+ * @param createCodeFirstSchema The create code first schema.
+ * @param markAllowedCrossRealmGraphqlObjects The mark allowed cross realm graphql objects.
+ * @returns The resolve schema result.
+ */
 export function resolveSchema(
   deps: YogaGraphqlDeps,
   optionsSchema: GraphQLSchemaType | string | undefined,
@@ -475,6 +484,15 @@ export function resolveSchema(
   return createCodeFirstSchema();
 }
 
+/**
+ * Create code first schema.
+ *
+ * @param deps The deps.
+ * @param runtimeContainer The runtime container.
+ * @param resolverDescriptors The resolver descriptors.
+ * @param markAllowedCrossRealmGraphqlObjects The mark allowed cross realm graphql objects.
+ * @returns The create code first schema result.
+ */
 export function createCodeFirstSchema(
   deps: YogaGraphqlDeps,
   runtimeContainer: Container,

@@ -1,15 +1,24 @@
 import { InvalidRoutePathError } from './errors.js';
 
+/**
+ * Describes the route path literal segment contract.
+ */
 export interface RoutePathLiteralSegment {
   kind: 'literal';
   value: string;
 }
 
+/**
+ * Describes the route path param segment contract.
+ */
 export interface RoutePathParamSegment {
   kind: 'param';
   name: string;
 }
 
+/**
+ * Defines the route path segment type.
+ */
 export type RoutePathSegment = RoutePathLiteralSegment | RoutePathParamSegment;
 
 const routeParamNamePattern = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -64,6 +73,12 @@ function parseRoutePathSegment(segment: string, path: string, label?: string): R
   };
 }
 
+/**
+ * Normalize route path.
+ *
+ * @param path The path.
+ * @returns The normalize route path result.
+ */
 export function normalizeRoutePath(path: string): string {
   const segments = path.split('/').filter(Boolean);
   const normalized = `/${segments.join('/')}`;
@@ -71,6 +86,13 @@ export function normalizeRoutePath(path: string): string {
   return normalized === '' ? '/' : normalized;
 }
 
+/**
+ * Parse route path.
+ *
+ * @param path The path.
+ * @param label The label.
+ * @returns The parse route path result.
+ */
 export function parseRoutePath(path: string, label?: string): RoutePathSegment[] {
   const normalizedPath = normalizeRoutePath(path);
   const segments = normalizedPath.split('/').filter(Boolean);
@@ -78,14 +100,33 @@ export function parseRoutePath(path: string, label?: string): RoutePathSegment[]
   return segments.map((segment) => parseRoutePathSegment(segment, path, label));
 }
 
+/**
+ * Validate route path.
+ *
+ * @param path The path.
+ * @param label The label.
+ */
 export function validateRoutePath(path: string, label?: string): void {
   void parseRoutePath(path, label);
 }
 
+/**
+ * Extract route path params.
+ *
+ * @param path The path.
+ * @returns The extract route path params result.
+ */
 export function extractRoutePathParams(path: string): string[] {
   return parseRoutePath(path).flatMap((segment) => segment.kind === 'param' ? [segment.name] : []);
 }
 
+/**
+ * Match route path.
+ *
+ * @param registeredSegments The registered segments.
+ * @param incomingSegments The incoming segments.
+ * @returns The match route path result.
+ */
 export function matchRoutePath(
   registeredSegments: readonly RoutePathSegment[],
   incomingSegments: readonly string[],

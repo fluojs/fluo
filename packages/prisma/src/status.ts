@@ -67,6 +67,12 @@ function createHealth(input: PrismaPlatformStatusSnapshotInput): PlatformHealthR
   };
 }
 
+/**
+ * Create prisma platform status snapshot.
+ *
+ * @param input The input.
+ * @returns The create prisma platform status snapshot result.
+ */
 export function createPrismaPlatformStatusSnapshot(
   input: PrismaPlatformStatusSnapshotInput,
 ): PersistencePlatformStatusSnapshot {

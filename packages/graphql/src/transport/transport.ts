@@ -1,5 +1,11 @@
 import type { FrameworkRequest, FrameworkResponse, FrameworkResponseStream } from '@fluojs/http';
 
+/**
+ * Is graphql path.
+ *
+ * @param path The path.
+ * @returns The is graphql path result.
+ */
 export function isGraphqlPath(path: string): boolean {
   return path === '/graphql' || path === '/graphql/';
 }
@@ -72,6 +78,12 @@ function createFetchBody(request: FrameworkRequest, headers: Headers): BodyInit 
   return JSON.stringify(request.body);
 }
 
+/**
+ * To fetch request.
+ *
+ * @param request The request.
+ * @returns The to fetch request result.
+ */
 export function toFetchRequest(request: FrameworkRequest): Request {
   const headers = createFetchHeaders(request);
   const body = createFetchBody(request, headers);
@@ -104,6 +116,13 @@ function readSetCookieValues(headers: Headers): string[] {
   return values;
 }
 
+/**
+ * Write fetch response.
+ *
+ * @param fetchResponse The fetch response.
+ * @param frameworkResponse The framework response.
+ * @returns The write fetch response result.
+ */
 export async function writeFetchResponse(fetchResponse: Response, frameworkResponse: FrameworkResponse): Promise<void> {
   frameworkResponse.setStatus(fetchResponse.status);
 

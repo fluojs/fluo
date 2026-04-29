@@ -5,6 +5,9 @@ import type { DefaultJwtSigner } from '../signing/signer.js';
 import type { JwtClaims } from '../types.js';
 import type { DefaultJwtVerifier } from '../signing/verifier.js';
 
+/**
+ * Describes the refresh token store contract.
+ */
 export interface RefreshTokenStore {
   save(token: RefreshTokenRecord): Promise<void>;
   find(tokenId: string): Promise<RefreshTokenRecord | undefined>;
@@ -13,6 +16,9 @@ export interface RefreshTokenStore {
   consume?(input: RefreshTokenConsumeInput): Promise<RefreshTokenConsumeResult>;
 }
 
+/**
+ * Describes the refresh token consume input contract.
+ */
 export interface RefreshTokenConsumeInput {
   tokenId: string;
   subject: string;
@@ -20,8 +26,14 @@ export interface RefreshTokenConsumeInput {
   now: Date;
 }
 
+/**
+ * Defines the refresh token consume result type.
+ */
 export type RefreshTokenConsumeResult = 'consumed' | 'already_used' | 'expired' | 'not_found' | 'mismatch' | 'invalid';
 
+/**
+ * Describes the refresh token record contract.
+ */
 export interface RefreshTokenRecord {
   id: string;
   subject: string;
@@ -31,6 +43,9 @@ export interface RefreshTokenRecord {
   createdAt: Date;
 }
 
+/**
+ * Describes the refresh token options contract.
+ */
 export interface RefreshTokenOptions {
   secret: string;
   expiresInSeconds: number;
@@ -39,6 +54,12 @@ export interface RefreshTokenOptions {
   store: RefreshTokenStore;
 }
 
+/**
+ * Normalize refresh token options.
+ *
+ * @param options The options.
+ * @returns The normalize refresh token options result.
+ */
 export function normalizeRefreshTokenOptions(options: RefreshTokenOptions | undefined): RefreshTokenOptions {
   if (!options) {
     throw new JwtConfigurationError('JWT refresh token options are not configured.');
@@ -74,6 +95,9 @@ interface RefreshTokenClaims extends JwtClaims {
   type: 'refresh';
 }
 
+/**
+ * Represents the refresh token service.
+ */
 export class RefreshTokenService {
   private readonly options: RefreshTokenOptions;
 

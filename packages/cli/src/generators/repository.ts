@@ -3,6 +3,13 @@ import type { GenerateOptions, GeneratedFile } from '../types.js';
 import { renderTemplate } from './render.js';
 import { toKebabCase, toPascalCase } from './utils.js';
 
+/**
+ * Generate repo files.
+ *
+ * @param name The name.
+ * @param _options The options.
+ * @returns The generate repo files result.
+ */
 export function generateRepoFiles(name: string, _options: GenerateOptions = {}): GeneratedFile[] {
   const kebab = toKebabCase(name);
   const resource = toPascalCase(name);

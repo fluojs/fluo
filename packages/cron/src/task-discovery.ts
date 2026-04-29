@@ -13,18 +13,46 @@ interface DiscoveryCandidate {
   token: Token;
 }
 
+/**
+ * Build default task name.
+ *
+ * @param targetName The target name.
+ * @param methodName The method name.
+ * @returns The build default task name result.
+ */
 export function buildDefaultTaskName(targetName: string, methodName: string): string {
   return `${targetName}.${methodName}`;
 }
 
+/**
+ * Create lock key.
+ *
+ * @param prefix The prefix.
+ * @param taskName The task name.
+ * @returns The create lock key result.
+ */
 export function createLockKey(prefix: string, taskName: string): string {
   return `${prefix}:${taskName}`;
 }
 
+/**
+ * Method key to name.
+ *
+ * @param methodKey The method key.
+ * @returns The method key to name result.
+ */
 export function methodKeyToName(methodKey: MetadataPropertyKey): string {
   return typeof methodKey === 'symbol' ? methodKey.toString() : methodKey;
 }
 
+/**
+ * Discover cron task descriptors.
+ *
+ * @param compiledModules The compiled modules.
+ * @param options The options.
+ * @param logger The logger.
+ * @returns The discover cron task descriptors result.
+ */
 export function discoverCronTaskDescriptors(
   compiledModules: readonly CompiledModule[],
   options: NormalizedCronModuleOptions,

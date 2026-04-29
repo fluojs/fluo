@@ -11,6 +11,9 @@ interface JwksResponse {
   keys?: Jwk[];
 }
 
+/**
+ * Represents the jwks client.
+ */
 export class JwksClient {
   private readonly cache = new Map<string, { expiresAt: number; key: KeyObject }>();
 

@@ -31,6 +31,13 @@ function getOrCreateEventHandlerMap(target: object): Map<MetadataPropertyKey, Ev
   return map;
 }
 
+/**
+ * Define event handler metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @param metadata The metadata.
+ */
 export function defineEventHandlerMetadata(
   target: object,
   propertyKey: MetadataPropertyKey,
@@ -39,6 +46,13 @@ export function defineEventHandlerMetadata(
   getOrCreateEventHandlerMap(target).set(propertyKey, cloneEventHandlerMetadata(metadata));
 }
 
+/**
+ * Get event handler metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @returns The get event handler metadata result.
+ */
 export function getEventHandlerMetadata(target: object, propertyKey: MetadataPropertyKey): EventHandlerMetadata | undefined {
   const stored = eventHandlerMetadataStore.get(target)?.get(propertyKey);
   const standard = getStandardEventHandlerMap(target)?.get(propertyKey);
@@ -50,6 +64,12 @@ export function getEventHandlerMetadata(target: object, propertyKey: MetadataPro
   return cloneEventHandlerMetadata(stored ?? standard!);
 }
 
+/**
+ * Get event handler metadata entries.
+ *
+ * @param target The target.
+ * @returns The get event handler metadata entries result.
+ */
 export function getEventHandlerMetadataEntries(
   target: object,
 ): Array<{ metadata: EventHandlerMetadata; propertyKey: MetadataPropertyKey }> {
@@ -65,4 +85,7 @@ export function getEventHandlerMetadataEntries(
     .filter((entry): entry is { metadata: EventHandlerMetadata; propertyKey: MetadataPropertyKey } => entry.metadata !== undefined);
 }
 
+/**
+ * Provides the event bus metadata symbol value.
+ */
 export const eventBusMetadataSymbol = standardEventHandlerMetadataKey;

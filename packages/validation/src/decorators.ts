@@ -164,19 +164,61 @@ export const ValidateIf = (
   options?: ValidationDecoratorOptions,
 ) => createValidationDecorator(() => ({ kind: 'validateIf', validateIf, ...options }));
 
+/**
+ * Provides the is defined value.
+ */
 export const IsDefined = createFlagValidationDecorator((options) => ({ kind: 'defined', ...options }));
+/**
+ * Provides the is optional value.
+ */
 export const IsOptional = createFlagValidationDecorator((options) => ({ kind: 'optional', ...options }));
+/**
+ * Provides the equals value.
+ */
 export const Equals = createValidationOptionsWithConfigDecorator<unknown>((value, options) => ({ kind: 'equals', value, ...options }));
+/**
+ * Provides the not equals value.
+ */
 export const NotEquals = createValidationOptionsWithConfigDecorator<unknown>((value, options) => ({ kind: 'notEquals', value, ...options }));
+/**
+ * Provides the is empty value.
+ */
 export const IsEmpty = createFlagValidationDecorator((options) => ({ kind: 'empty', ...options }));
+/**
+ * Provides the is not empty value.
+ */
 export const IsNotEmpty = createFlagValidationDecorator((options) => ({ kind: 'notEmpty', ...options }));
+/**
+ * Provides the is in value.
+ */
 export const IsIn = createArrayValidationDecorator<unknown>((values, options) => ({ kind: 'in', values, ...options }));
+/**
+ * Provides the is not in value.
+ */
 export const IsNotIn = createArrayValidationDecorator<unknown>((values, options) => ({ kind: 'notIn', values, ...options }));
+/**
+ * Provides the is date value.
+ */
 export const IsDate = createFlagValidationDecorator((options) => ({ kind: 'date', ...options }));
+/**
+ * Provides the is array value.
+ */
 export const IsArray = createFlagValidationDecorator((options) => ({ kind: 'array', ...options }));
+/**
+ * Provides the is object value.
+ */
 export const IsObject = createFlagValidationDecorator((options) => ({ kind: 'object', ...options }));
+/**
+ * Provides the is int value.
+ */
 export const IsInt = createFlagValidationDecorator((options) => ({ kind: 'int', ...options }));
+/**
+ * Provides the is positive value.
+ */
 export const IsPositive = createFlagValidationDecorator((options) => ({ kind: 'positive', ...options }));
+/**
+ * Provides the is negative value.
+ */
 export const IsNegative = createFlagValidationDecorator((options) => ({ kind: 'negative', ...options }));
 
 /**
@@ -191,12 +233,33 @@ export function IsEnum(values: Record<string, unknown> | readonly unknown[], opt
   return createValidationDecorator(() => ({ kind: 'enum', values: normalized, ...options }));
 }
 
+/**
+ * Provides the is divisible by value.
+ */
 export const IsDivisibleBy = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'divisibleBy', value, ...options }));
+/**
+ * Provides the min value.
+ */
 export const Min = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'min', value, ...options }));
+/**
+ * Provides the max value.
+ */
 export const Max = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'max', value, ...options }));
+/**
+ * Provides the min date value.
+ */
 export const MinDate = createValidationOptionsWithConfigDecorator<Date>((value, options) => ({ kind: 'minDate', value, ...options }));
+/**
+ * Provides the max date value.
+ */
 export const MaxDate = createValidationOptionsWithConfigDecorator<Date>((value, options) => ({ kind: 'maxDate', value, ...options }));
+/**
+ * Provides the contains value.
+ */
 export const Contains = createValidationOptionsWithConfigDecorator<string>((value, options) => ({ kind: 'contains', value, ...options }));
+/**
+ * Provides the not contains value.
+ */
 export const NotContains = createValidationOptionsWithConfigDecorator<string>((value, options) => ({ kind: 'notContains', value, ...options }));
 
 /**
@@ -226,7 +289,13 @@ export function ValidateNested(dto: Constructor | (() => Constructor), options?:
   }));
 }
 
+/**
+ * Provides the min length value.
+ */
 export const MinLength = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'minLength', value, ...options }));
+/**
+ * Provides the max length value.
+ */
 export const MaxLength = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'maxLength', value, ...options }));
 
 /**
@@ -261,77 +330,290 @@ export function Matches(
   } as DtoFieldValidationRule));
 }
 
+/**
+ * Provides the is alpha value.
+ *
+ * @param options The options.
+ */
 export const IsAlpha = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('alpha')(undefined, options);
+/**
+ * Provides the is alphanumeric value.
+ *
+ * @param options The options.
+ */
 export const IsAlphanumeric = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('alphanumeric')(undefined, options);
+/**
+ * Provides the is ascii value.
+ *
+ * @param options The options.
+ */
 export const IsAscii = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('ascii')(undefined, options);
+/**
+ * Provides the is base64 value.
+ *
+ * @param options The options.
+ */
 export const IsBase64 = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('base64')(undefined, options);
+/**
+ * Provides the is boolean string value.
+ *
+ * @param options The options.
+ */
 export const IsBooleanString = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('booleanString')(undefined, options);
+/**
+ * Provides the is data uri value.
+ *
+ * @param options The options.
+ */
 export const IsDataURI = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('dataURI')(undefined, options);
+/**
+ * Provides the is date string value.
+ *
+ * @param options The options.
+ */
 export const IsDateString = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('dateString')(undefined, options);
+/**
+ * Provides the is decimal value.
+ *
+ * @param options The options.
+ */
 export const IsDecimal = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('decimal')(undefined, options);
+/**
+ * Provides the is email value.
+ *
+ * @param options The options.
+ */
 export const IsEmail = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('email')(undefined, options);
+/**
+ * Provides the is fqdn value.
+ *
+ * @param options The options.
+ */
 export const IsFQDN = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('fqdn')(undefined, options);
+/**
+ * Provides the is hex color value.
+ *
+ * @param options The options.
+ */
 export const IsHexColor = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('hexColor')(undefined, options);
+/**
+ * Provides the is hexadecimal value.
+ *
+ * @param options The options.
+ */
 export const IsHexadecimal = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('hexadecimal')(undefined, options);
+/**
+ * Provides the is json value.
+ *
+ * @param options The options.
+ */
 export const IsJSON = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('json')(undefined, options);
+/**
+ * Provides the is jwt value.
+ *
+ * @param options The options.
+ */
 export const IsJWT = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('jwt')(undefined, options);
+/**
+ * Provides the is locale value.
+ *
+ * @param options The options.
+ */
 export const IsLocale = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('locale')(undefined, options);
+/**
+ * Provides the is lowercase value.
+ *
+ * @param options The options.
+ */
 export const IsLowercase = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('lowercase')(undefined, options);
+/**
+ * Provides the is magnet uri value.
+ *
+ * @param options The options.
+ */
 export const IsMagnetURI = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('magnetURI')(undefined, options);
+/**
+ * Provides the is mime type value.
+ *
+ * @param options The options.
+ */
 export const IsMimeType = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('mimeType')(undefined, options);
+/**
+ * Provides the is mongo id value.
+ *
+ * @param options The options.
+ */
 export const IsMongoId = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('mongoId')(undefined, options);
+/**
+ * Provides the is number string value.
+ *
+ * @param options The options.
+ */
 export const IsNumberString = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('numberString')(undefined, options);
+/**
+ * Provides the is port value.
+ *
+ * @param options The options.
+ */
 export const IsPort = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('port')(undefined, options);
+/**
+ * Provides the is rfc3339 value.
+ *
+ * @param options The options.
+ */
 export const IsRFC3339 = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('rfc3339')(undefined, options);
+/**
+ * Provides the is sem ver value.
+ *
+ * @param options The options.
+ */
 export const IsSemVer = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('semVer')(undefined, options);
+/**
+ * Provides the is uppercase value.
+ *
+ * @param options The options.
+ */
 export const IsUppercase = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('uppercase')(undefined, options);
+/**
+ * Provides the is iso8601 value.
+ *
+ * @param options The options.
+ */
 export const IsISO8601 = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('iso8601')(undefined, options);
+/**
+ * Provides the is latitude value.
+ *
+ * @param options The options.
+ */
 export const IsLatitude = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('latitude')(undefined, options);
+/**
+ * Provides the is longitude value.
+ *
+ * @param options The options.
+ */
 export const IsLongitude = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('longitude')(undefined, options);
+/**
+ * Provides the is lat long value.
+ *
+ * @param options The options.
+ */
 export const IsLatLong = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('latLong')(undefined, options);
 
-/** Validates that a value is an IPv4/IPv6 address. */
+/**
+ *  Validates that a value is an IPv4/IPv6 address.
+ *
+ * @param version The version.
+ * @param options The options.
+ * @returns The is ip result.
+ */
 export function IsIP(version?: '4' | '6' | '4_or_6', options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('ip')(version ? [version] : undefined, options);
 }
 
-/** Validates that a value is an ISBN string. */
+/**
+ *  Validates that a value is an ISBN string.
+ *
+ * @param version The version.
+ * @param options The options.
+ * @returns The is isbn result.
+ */
 export function IsISBN(version?: 10 | 13, options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('isbn')(version ? [String(version)] : undefined, options);
 }
 
+/**
+ * Is issn.
+ *
+ * @param options The options.
+ * @returns The is issn result.
+ */
 export function IsISSN(options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('issn')(undefined, options);
 }
 
+/**
+ * Is mobile phone.
+ *
+ * @param locale The locale.
+ * @param options The options.
+ * @returns The is mobile phone result.
+ */
 export function IsMobilePhone(locale?: string | readonly string[], options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('mobilePhone')(locale ? [locale] : undefined, options);
 }
 
+/**
+ * Is postal code.
+ *
+ * @param locale The locale.
+ * @param options The options.
+ * @returns The is postal code result.
+ */
 export function IsPostalCode(locale?: string, options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('postalCode')(locale ? [locale] : undefined, options);
 }
 
+/**
+ * Is rgb color.
+ *
+ * @param includePercentValues The include percent values.
+ * @param options The options.
+ * @returns The is rgb color result.
+ */
 export function IsRgbColor(includePercentValues?: boolean, options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('rgbColor')(includePercentValues === undefined ? undefined : [includePercentValues], options);
 }
 
+/**
+ * Is url.
+ *
+ * @param options The options.
+ * @returns The is url result.
+ */
 export function IsUrl(options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('url')(undefined, options);
 }
 
+/**
+ * Is uuid.
+ *
+ * @param version The version.
+ * @param options The options.
+ * @returns The is uuid result.
+ */
 export function IsUUID(version?: '3' | '4' | '5' | 'all', options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('uuid')(version ? [version] : undefined, options);
 }
 
+/**
+ * Is currency.
+ *
+ * @param options The options.
+ * @returns The is currency result.
+ */
 export function IsCurrency(options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('currency')(undefined, options);
 }
 
+/**
+ * Provides the array contains value.
+ */
 export const ArrayContains = createArrayValidationDecorator<unknown>((values, options) => ({ kind: 'arrayContains', values, ...options }));
+/**
+ * Provides the array not contains value.
+ */
 export const ArrayNotContains = createArrayValidationDecorator<unknown>((values, options) => ({ kind: 'arrayNotContains', values, ...options }));
+/**
+ * Provides the array not empty value.
+ */
 export const ArrayNotEmpty = createFlagValidationDecorator((options) => ({ kind: 'arrayNotEmpty', ...options }));
+/**
+ * Provides the array min size value.
+ */
 export const ArrayMinSize = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'arrayMinSize', value, ...options }));
+/**
+ * Provides the array max size value.
+ */
 export const ArrayMaxSize = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'arrayMaxSize', value, ...options }));
 
 /**

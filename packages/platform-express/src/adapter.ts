@@ -63,6 +63,9 @@ declare module '@fluojs/http' {
   }
 }
 
+/**
+ * Describes the express adapter options contract.
+ */
 export interface ExpressAdapterOptions {
   host?: string;
   https?: HttpsServerOptions;
@@ -74,12 +77,21 @@ export interface ExpressAdapterOptions {
   shutdownTimeoutMs?: number;
 }
 
+/**
+ * Defines the express application signal type.
+ */
 export type ExpressApplicationSignal = 'SIGINT' | 'SIGTERM';
+/**
+ * Defines the cors input type.
+ */
 export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
+/**
+ * Describes the bootstrap express application options contract.
+ */
 export interface BootstrapExpressApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
   cors?: CorsInput;
   globalPrefix?: string;
@@ -98,6 +110,9 @@ export interface BootstrapExpressApplicationOptions extends Omit<CreateApplicati
   shutdownTimeoutMs?: number;
 }
 
+/**
+ * Describes the run express application options contract.
+ */
 export interface RunExpressApplicationOptions extends BootstrapExpressApplicationOptions {
   forceExitTimeoutMs?: number;
   shutdownSignals?: false | readonly ExpressApplicationSignal[];
@@ -122,6 +137,9 @@ type ExpressMultipartLikeError = Error & {
   type?: unknown;
 };
 
+/**
+ * Represents the express http application adapter.
+ */
 export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
   private closeInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
@@ -264,6 +282,13 @@ function createExpressRequestResponseFactory(
   };
 }
 
+/**
+ * Create express adapter.
+ *
+ * @param options The options.
+ * @param multipartOptions The multipart options.
+ * @returns The create express adapter result.
+ */
 export function createExpressAdapter(
   options: ExpressAdapterOptions = {},
   multipartOptions?: MultipartOptions,
@@ -281,6 +306,13 @@ export function createExpressAdapter(
   );
 }
 
+/**
+ * Bootstrap express application.
+ *
+ * @param rootModule The root module.
+ * @param options The options.
+ * @returns The bootstrap express application result.
+ */
 export async function bootstrapExpressApplication(
   rootModule: ModuleType,
   options: BootstrapExpressApplicationOptions,
@@ -292,6 +324,13 @@ export async function bootstrapExpressApplication(
   );
 }
 
+/**
+ * Run express application.
+ *
+ * @param rootModule The root module.
+ * @param options The options.
+ * @returns The run express application result.
+ */
 export async function runExpressApplication(
   rootModule: ModuleType,
   options: RunExpressApplicationOptions,
@@ -471,6 +510,12 @@ async function parseMultipartRequest(
   }
 }
 
+/**
+ * Is express multipart too large error.
+ *
+ * @param error The error.
+ * @returns The is express multipart too large error result.
+ */
 export function isExpressMultipartTooLargeError(error: unknown): boolean {
   if (error instanceof PayloadTooLargeException) {
     return true;

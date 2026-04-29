@@ -6,6 +6,9 @@ import { BadRequestException } from '../exceptions.js';
 import { toInputErrorDetail } from '../input-error-detail.js';
 import type { ValidationIssue, Validator } from '../types.js';
 
+/**
+ * Represents the http dto validation adapter.
+ */
 export class HttpDtoValidationAdapter implements Validator {
   private readonly validator = new BaseDefaultValidator();
 

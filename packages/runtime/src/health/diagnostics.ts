@@ -4,6 +4,9 @@ import type { Provider, Scope } from '@fluojs/di';
 
 import type { CompiledModule, ModuleType } from '../types.js';
 
+/**
+ * Describes the runtime diagnostics graph contract.
+ */
 export interface RuntimeDiagnosticsGraph {
   version: 1;
   rootModule: string;
@@ -11,6 +14,9 @@ export interface RuntimeDiagnosticsGraph {
   relationships: RuntimeDiagnosticsRelationships;
 }
 
+/**
+ * Describes the runtime diagnostics module contract.
+ */
 export interface RuntimeDiagnosticsModule {
   name: string;
   global: boolean;
@@ -20,6 +26,9 @@ export interface RuntimeDiagnosticsModule {
   exports: string[];
 }
 
+/**
+ * Describes the runtime diagnostics provider contract.
+ */
 export interface RuntimeDiagnosticsProvider {
   token: string;
   type: 'class' | 'factory' | 'value' | 'existing';
@@ -27,6 +36,9 @@ export interface RuntimeDiagnosticsProvider {
   multi: boolean;
 }
 
+/**
+ * Describes the runtime diagnostics relationships contract.
+ */
 export interface RuntimeDiagnosticsRelationships {
   moduleImports: Array<{
     from: string;
@@ -49,6 +61,9 @@ export interface RuntimeDiagnosticsRelationships {
   }>;
 }
 
+/**
+ * Describes the bootstrap timing phase contract.
+ */
 export interface BootstrapTimingPhase {
   durationMs: number;
   name:
@@ -59,6 +74,9 @@ export interface BootstrapTimingPhase {
     | 'create_dispatcher';
 }
 
+/**
+ * Describes the bootstrap timing diagnostics contract.
+ */
 export interface BootstrapTimingDiagnostics {
   phases: BootstrapTimingPhase[];
   totalMs: number;
@@ -144,6 +162,13 @@ function normalizeProvider(provider: Provider): RuntimeDiagnosticsProvider {
   };
 }
 
+/**
+ * Create runtime diagnostics graph.
+ *
+ * @param modules The modules.
+ * @param rootModule The root module.
+ * @returns The create runtime diagnostics graph result.
+ */
 export function createRuntimeDiagnosticsGraph(modules: readonly CompiledModule[], rootModule: ModuleType): RuntimeDiagnosticsGraph {
   const moduleDiagnostics: RuntimeDiagnosticsModule[] = [];
   const moduleImports: RuntimeDiagnosticsRelationships['moduleImports'] = [];
@@ -212,6 +237,12 @@ export function createRuntimeDiagnosticsGraph(modules: readonly CompiledModule[]
   };
 }
 
+/**
+ * Render runtime diagnostics mermaid.
+ *
+ * @param graph The graph.
+ * @returns The render runtime diagnostics mermaid result.
+ */
 export function renderRuntimeDiagnosticsMermaid(graph: RuntimeDiagnosticsGraph): string {
   const lines: string[] = ['graph TD'];
   const nodeByModule = new Map<string, string>();
@@ -250,6 +281,13 @@ export function renderRuntimeDiagnosticsMermaid(graph: RuntimeDiagnosticsGraph):
   return lines.join('\n');
 }
 
+/**
+ * Create bootstrap timing diagnostics.
+ *
+ * @param phases The phases.
+ * @param totalMs The total ms.
+ * @returns The create bootstrap timing diagnostics result.
+ */
 export function createBootstrapTimingDiagnostics(
   phases: BootstrapTimingPhase[],
   totalMs: number,

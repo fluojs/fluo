@@ -26,6 +26,9 @@ type ParsedSemver = {
   prerelease: string[];
 };
 
+/**
+ * Defines the cli update check result type.
+ */
 export type CliUpdateCheckResult =
   | {
       action: 'continue';
@@ -35,21 +38,33 @@ export type CliUpdateCheckResult =
       exitCode: number;
     };
 
+/**
+ * Defines the update install command type.
+ */
 export type UpdateInstallCommand = {
   args: string[];
   command: string;
   display: string;
 };
 
+/**
+ * Defines the update command runtime type.
+ */
 export type UpdateCommandRuntime = {
   env: NodeJS.ProcessEnv;
   stderr: CliStream;
 };
 
+/**
+ * Defines the update prompter type.
+ */
 export type UpdatePrompter = {
   confirm(message: string, defaultValue: boolean): Promise<boolean>;
 };
 
+/**
+ * Describes the cli update check runtime options contract.
+ */
 export interface CliUpdateCheckRuntimeOptions {
   cacheFile?: string;
   cacheTtlMs?: number;
@@ -413,6 +428,12 @@ function shouldRunInteractiveUpdateCheck(options: CliUpdateCheckRuntimeOptions, 
     && Boolean(options.stdout?.isTTY ?? process.stdout.isTTY);
 }
 
+/**
+ * Remove update check flags.
+ *
+ * @param argv The argv.
+ * @returns The remove update check flags result.
+ */
 export function removeUpdateCheckFlags(argv: string[]): { argv: string[]; skipUpdateCheck: boolean } {
   const filteredArgv: string[] = [];
   let skipUpdateCheck = false;
@@ -429,6 +450,13 @@ export function removeUpdateCheckFlags(argv: string[]): { argv: string[]; skipUp
   return { argv: filteredArgv, skipUpdateCheck };
 }
 
+/**
+ * Run cli update check.
+ *
+ * @param argv The argv.
+ * @param options The options.
+ * @returns The run cli update check result.
+ */
 export async function runCliUpdateCheck(argv: string[], options: CliUpdateCheckRuntimeOptions = {}): Promise<CliUpdateCheckResult> {
   const env = options.env ?? {};
   const stderr = options.stderr ?? process.stderr;

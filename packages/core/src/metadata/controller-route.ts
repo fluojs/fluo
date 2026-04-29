@@ -71,10 +71,22 @@ function getStandardRouteMetadata(target: object, propertyKey: MetadataPropertyK
   });
 }
 
+/**
+ * Define controller metadata.
+ *
+ * @param target The target.
+ * @param metadata The metadata.
+ */
 export function defineControllerMetadata(target: Function, metadata: ControllerMetadata): void {
   controllerMetadataStore.write(target, metadata);
 }
 
+/**
+ * Get controller metadata.
+ *
+ * @param target The target.
+ * @returns The get controller metadata result.
+ */
 export function getControllerMetadata(target: Function): ControllerMetadata | undefined {
   const stored = controllerMetadataStore.read(target);
   const standard = getStandardControllerMetadata(target);
@@ -91,6 +103,13 @@ export function getControllerMetadata(target: Function): ControllerMetadata | un
   };
 }
 
+/**
+ * Define route metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @param metadata The metadata.
+ */
 export function defineRouteMetadata(
   target: object,
   propertyKey: MetadataPropertyKey,
@@ -135,6 +154,13 @@ function mergeRouteMetadata(
   };
 }
 
+/**
+ * Get route metadata.
+ *
+ * @param target The target.
+ * @param propertyKey The property key.
+ * @returns The get route metadata result.
+ */
 export function getRouteMetadata(target: object, propertyKey: MetadataPropertyKey): RouteMetadata | undefined {
   const stored = routeMetadataStore.get(target)?.get(propertyKey);
   const standard = getStandardRouteMetadata(target, propertyKey);

@@ -1,3 +1,9 @@
+/**
+ * To kebab case.
+ *
+ * @param value The value.
+ * @returns The to kebab case result.
+ */
 export function toKebabCase(value: string): string {
   return value
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
@@ -6,6 +12,12 @@ export function toKebabCase(value: string): string {
     .toLowerCase();
 }
 
+/**
+ * To pascal case.
+ *
+ * @param value The value.
+ * @returns The to pascal case result.
+ */
 export function toPascalCase(value: string): string {
   return toKebabCase(value)
     .split('-')
@@ -14,6 +26,12 @@ export function toPascalCase(value: string): string {
     .join('');
 }
 
+/**
+ * To plural.
+ *
+ * @param value The value.
+ * @returns The to plural result.
+ */
 export function toPlural(value: string): string {
   if (value.endsWith('s') || value.endsWith('x') || value.endsWith('z') || value.endsWith('ch') || value.endsWith('sh')) {
     return `${value}es`;

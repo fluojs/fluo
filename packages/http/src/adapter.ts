@@ -2,17 +2,26 @@ import type { MaybePromise } from '@fluojs/core';
 
 import type { Dispatcher } from './types.js';
 
+/**
+ * Describes the server backed http adapter realtime capability contract.
+ */
 export interface ServerBackedHttpAdapterRealtimeCapability {
   kind: 'server-backed';
   server: unknown;
 }
 
+/**
+ * Describes the unsupported http adapter realtime capability contract.
+ */
 export interface UnsupportedHttpAdapterRealtimeCapability {
   kind: 'unsupported';
   mode: 'no-op';
   reason: string;
 }
 
+/**
+ * Describes the fetch style http adapter realtime capability contract.
+ */
 export interface FetchStyleHttpAdapterRealtimeCapability {
   contract: 'raw-websocket-expansion';
   kind: 'fetch-style';
@@ -22,11 +31,20 @@ export interface FetchStyleHttpAdapterRealtimeCapability {
   version: 1;
 }
 
+/**
+ * Defines the http adapter realtime capability type.
+ */
 export type HttpAdapterRealtimeCapability =
   | ServerBackedHttpAdapterRealtimeCapability
   | FetchStyleHttpAdapterRealtimeCapability
   | UnsupportedHttpAdapterRealtimeCapability;
 
+/**
+ * Create server backed http adapter realtime capability.
+ *
+ * @param server The server.
+ * @returns The create server backed http adapter realtime capability result.
+ */
 export function createServerBackedHttpAdapterRealtimeCapability(
   server: unknown,
 ): ServerBackedHttpAdapterRealtimeCapability {
@@ -36,6 +54,12 @@ export function createServerBackedHttpAdapterRealtimeCapability(
   };
 }
 
+/**
+ * Create unsupported http adapter realtime capability.
+ *
+ * @param reason The reason.
+ * @returns The create unsupported http adapter realtime capability result.
+ */
 export function createUnsupportedHttpAdapterRealtimeCapability(
   reason: string,
 ): UnsupportedHttpAdapterRealtimeCapability {
@@ -46,6 +70,13 @@ export function createUnsupportedHttpAdapterRealtimeCapability(
   };
 }
 
+/**
+ * Create fetch style http adapter realtime capability.
+ *
+ * @param reason The reason.
+ * @param options The options.
+ * @returns The create fetch style http adapter realtime capability result.
+ */
 export function createFetchStyleHttpAdapterRealtimeCapability(
   reason: string,
   options: {

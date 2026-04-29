@@ -462,9 +462,20 @@ function normalizeApiResponseOptions(
   return statusOrOptions;
 }
 
-/** Declare an expected HTTP response for a controller method. */
+/**
+ *  Declare an expected HTTP response for a controller method.
+ *
+ * @param status The status.
+ * @param options The options.
+ * @returns The api response result.
+ */
 export function ApiResponse(status: number, options?: Omit<ApiResponseOptions, 'status'>): MethodDecoratorFn;
-/** Declare an expected HTTP response for a controller method. */
+/**
+ *  Declare an expected HTTP response for a controller method.
+ *
+ * @param options The options.
+ * @returns The api response result.
+ */
 export function ApiResponse(options: ApiResponseOptions): MethodDecoratorFn;
 /**
  * Declare an expected HTTP response for a controller method.

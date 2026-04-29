@@ -9,6 +9,9 @@ export class RouteConflictError extends FluoError {
   }
 }
 
+/**
+ * Represents the invalid route path error.
+ */
 export class InvalidRoutePathError extends FluoError {
   constructor(message: string) {
     super(message, { code: 'INVALID_ROUTE_PATH' });

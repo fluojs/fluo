@@ -22,6 +22,9 @@ export function createGraphqlProviders(options: GraphqlModuleOptions): Provider[
   ];
 }
 
+/**
+ * Represents the graphql module.
+ */
 export class GraphqlModule {
   /**
    * Registers the GraphQL endpoint controller together with lifecycle providers.

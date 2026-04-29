@@ -21,6 +21,11 @@ function formatLog(level: 'DEBUG' | 'ERROR' | 'LOG' | 'WARN', context: string, m
   return `${prefix} ${pid} - ${timestamp} ${levelLabel} ${contextLabel} ${message}`;
 }
 
+/**
+ * Create console application logger.
+ *
+ * @returns The create console application logger result.
+ */
 export function createConsoleApplicationLogger(): ApplicationLogger {
   return {
     debug(message, context = 'fluo') {

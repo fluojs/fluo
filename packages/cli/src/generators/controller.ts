@@ -3,6 +3,13 @@ import type { GenerateOptions, GeneratedFile } from '../types.js';
 import { renderTemplate } from './render.js';
 import { toKebabCase, toPascalCase } from './utils.js';
 
+/**
+ * Generate controller files.
+ *
+ * @param name The name.
+ * @param options The options.
+ * @returns The generate controller files result.
+ */
 export function generateControllerFiles(name: string, options: GenerateOptions = {}): GeneratedFile[] {
   const kebab = toKebabCase(name);
   const resource = toPascalCase(name);

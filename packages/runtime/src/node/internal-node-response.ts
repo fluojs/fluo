@@ -9,6 +9,9 @@ import {
   type FrameworkResponseStream,
 } from '@fluojs/http';
 
+/**
+ * Defines the mutable framework response type.
+ */
 export type MutableFrameworkResponse = FrameworkResponse & { statusSet?: boolean };
 
 function createFrameworkResponseStream(response: ServerResponse): FrameworkResponseStream {
@@ -54,6 +57,13 @@ function createFrameworkResponseStream(response: ServerResponse): FrameworkRespo
   };
 }
 
+/**
+ * Create framework response.
+ *
+ * @param response The response.
+ * @param compression The compression.
+ * @returns The create framework response result.
+ */
 export function createFrameworkResponse(
   response: ServerResponse,
   compression?: FrameworkResponseCompression,
@@ -154,6 +164,14 @@ export function createFrameworkResponse(
   return frameworkResponse;
 }
 
+/**
+ * Write node adapter error response.
+ *
+ * @param error The error.
+ * @param response The response.
+ * @param requestId The request id.
+ * @returns The write node adapter error response result.
+ */
 export async function writeNodeAdapterErrorResponse(
   error: unknown,
   response: FrameworkResponse,

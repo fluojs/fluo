@@ -12,6 +12,11 @@ function resolveInboundRequestId(headers: Readonly<Record<string, string | strin
   return value ?? randomUUID();
 }
 
+/**
+ * Create correlation middleware.
+ *
+ * @returns The create correlation middleware result.
+ */
 export function createCorrelationMiddleware(): Middleware {
   return {
     async handle(context, next) {

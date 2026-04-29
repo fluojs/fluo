@@ -1,7 +1,13 @@
 import type { WebSocketModuleOptions as SharedWebSocketModuleOptions } from '../types.js';
 
+/**
+ * Defines the bun web socket message type.
+ */
 export type BunWebSocketMessage = string | ArrayBuffer | Uint8Array;
 
+/**
+ * Describes the bun server web socket contract.
+ */
 export interface BunServerWebSocket<TData = unknown> {
   readonly data: TData;
   readonly readyState: number;
@@ -16,6 +22,9 @@ export interface BunServerWebSocket<TData = unknown> {
   unsubscribe(topic: string): void;
 }
 
+/**
+ * Describes the bun server like contract.
+ */
 export interface BunServerLike {
   fetch?(request: Request): Response | Promise<Response> | undefined | Promise<Response | undefined>;
   hostname?: string;
@@ -31,6 +40,9 @@ export interface BunServerLike {
   url?: URL;
 }
 
+/**
+ * Describes the bun web socket handler contract.
+ */
 export interface BunWebSocketHandler<TData = unknown> {
   backpressureLimit?: number;
   close?(socket: BunServerWebSocket<TData>, code: number, reason: string): void | Promise<void>;
@@ -52,24 +64,39 @@ export interface BunWebSocketHandler<TData = unknown> {
   sendPings?: boolean;
 }
 
+/**
+ * Describes the bun web socket binding contract.
+ */
 export interface BunWebSocketBinding<TData = unknown> {
   fetch(request: Request, server: BunServerLike): Response | Promise<Response> | undefined | Promise<Response | undefined>;
   websocket: BunWebSocketHandler<TData>;
 }
 
+/**
+ * Describes the bun web socket binding host contract.
+ */
 export interface BunWebSocketBindingHost {
   configureWebSocketBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void;
 }
 
+/**
+ * Defines the typed on message handler type.
+ */
 export type TypedOnMessageHandler<TEvents extends Record<string, unknown>, K extends keyof TEvents> = (
   payload: TEvents[K],
   socket: BunServerWebSocket,
   request: Request,
 ) => void | Promise<void>;
 
+/**
+ * Describes the web socket gateway context contract.
+ */
 export interface WebSocketGatewayContext {
   request: Request;
   socket: BunServerWebSocket;
 }
 
+/**
+ * Defines the web socket module options type.
+ */
 export type WebSocketModuleOptions = SharedWebSocketModuleOptions;

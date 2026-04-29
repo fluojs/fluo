@@ -11,6 +11,9 @@ import type {
 
 const textDecoder = new TextDecoder();
 
+/**
+ * Describes the discovery candidate contract.
+ */
 export interface DiscoveryCandidate {
   moduleName: string;
   scope: 'request' | 'singleton' | 'transient';
@@ -24,26 +27,47 @@ interface ClassProviderLike {
   useClass: new (...args: unknown[]) => unknown;
 }
 
+/**
+ * Describes the resolved gateway instance contract.
+ */
 export interface ResolvedGatewayInstance {
   descriptor: WebSocketGatewayDescriptor;
   instance: unknown;
 }
 
+/**
+ * Defines the parsed web socket message type.
+ */
 export type ParsedWebSocketMessage = {
   event?: string;
   payload: unknown;
 };
 
+/**
+ * Defines the shared web socket incoming message type.
+ */
 export type SharedWebSocketIncomingMessage =
   | ArrayBuffer
   | ArrayBufferView
   | Uint8Array[]
   | string;
 
+/**
+ * Is finite positive integer.
+ *
+ * @param value The value.
+ * @returns The is finite positive integer result.
+ */
 export function isFinitePositiveInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 && Number.isInteger(value);
 }
 
+/**
+ * Normalize gateway path.
+ *
+ * @param path The path.
+ * @returns The normalize gateway path result.
+ */
 export function normalizeGatewayPath(path: string): string {
   if (path === '/') {
     return '/';
@@ -54,6 +78,12 @@ export function normalizeGatewayPath(path: string): string {
   return normalized === '' ? '/' : normalized;
 }
 
+/**
+ * Parse incoming message.
+ *
+ * @param data The data.
+ * @returns The parse incoming message result.
+ */
 export function parseIncomingMessage(data: SharedWebSocketIncomingMessage): ParsedWebSocketMessage {
   let text: string;
 
@@ -100,6 +130,14 @@ export function parseIncomingMessage(data: SharedWebSocketIncomingMessage): Pars
   };
 }
 
+/**
+ * Discover gateway descriptors.
+ *
+ * @param compiledModules The compiled modules.
+ * @param logger The logger.
+ * @param loggerContext The logger context.
+ * @returns The discover gateway descriptors result.
+ */
 export function discoverGatewayDescriptors(
   compiledModules: readonly CompiledModule[],
   logger: ApplicationLogger,
@@ -134,6 +172,15 @@ export function discoverGatewayDescriptors(
   return descriptors;
 }
 
+/**
+ * Resolve gateway instance.
+ *
+ * @param runtimeContainer The runtime container.
+ * @param descriptor The descriptor.
+ * @param logger The logger.
+ * @param loggerContext The logger context.
+ * @returns The resolve gateway instance result.
+ */
 export async function resolveGatewayInstance(
   runtimeContainer: Container,
   descriptor: WebSocketGatewayDescriptor,
@@ -152,6 +199,17 @@ export async function resolveGatewayInstance(
   }
 }
 
+/**
+ * Dispatch gateway message.
+ *
+ * @param resolved The resolved.
+ * @param socket The socket.
+ * @param request The request.
+ * @param data The data.
+ * @param logger The logger.
+ * @param loggerContext The logger context.
+ * @returns The dispatch gateway message result.
+ */
 export async function dispatchGatewayMessage<TSocket, TRequest>(
   resolved: readonly ResolvedGatewayInstance[],
   socket: TSocket,
@@ -175,6 +233,18 @@ export async function dispatchGatewayMessage<TSocket, TRequest>(
   }
 }
 
+/**
+ * Dispatch gateway disconnect.
+ *
+ * @param resolved The resolved.
+ * @param socket The socket.
+ * @param code The code.
+ * @param reason The reason.
+ * @param socketId The socket id.
+ * @param logger The logger.
+ * @param loggerContext The logger context.
+ * @returns The dispatch gateway disconnect result.
+ */
 export async function dispatchGatewayDisconnect<TSocket>(
   resolved: readonly ResolvedGatewayInstance[],
   socket: TSocket,
@@ -189,6 +259,17 @@ export async function dispatchGatewayDisconnect<TSocket>(
   }
 }
 
+/**
+ * Run gateway handlers.
+ *
+ * @param instance The instance.
+ * @param descriptor The descriptor.
+ * @param type The type.
+ * @param args The args.
+ * @param logger The logger.
+ * @param loggerContext The logger context.
+ * @returns The run gateway handlers result.
+ */
 export async function runGatewayHandlers(
   instance: unknown,
   descriptor: WebSocketGatewayDescriptor,

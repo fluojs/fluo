@@ -9,6 +9,9 @@ interface ResolvedTaskInvocation {
   instance: unknown;
 }
 
+/**
+ * Represents the cron task runner.
+ */
 export class CronTaskRunner {
   constructor(
     private readonly runtimeContainer: Container,

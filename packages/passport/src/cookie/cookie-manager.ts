@@ -2,6 +2,9 @@ import type { FrameworkResponse } from '@fluojs/http';
 
 import { DEFAULT_COOKIE_AUTH_OPTIONS, type CookieAuthOptions, normalizeCookieAuthOptions } from './cookie-auth.js';
 
+/**
+ * Describes the cookie options contract.
+ */
 export interface CookieOptions {
   httpOnly?: boolean;
   secure?: boolean;
@@ -11,11 +14,17 @@ export interface CookieOptions {
   maxAge?: number;
 }
 
+/**
+ * Describes the set cookie options contract.
+ */
 export interface SetCookieOptions extends CookieOptions {
   accessTokenTtlSeconds?: number;
   refreshTokenTtlSeconds?: number;
 }
 
+/**
+ * Describes the cookie manager config contract.
+ */
 export interface CookieManagerConfig extends CookieAuthOptions {
   cookieOptions?: CookieOptions;
 }
@@ -23,6 +32,9 @@ export interface CookieManagerConfig extends CookieAuthOptions {
 type NormalizedCookieOptions = Omit<Required<CookieOptions>, 'domain' | 'maxAge'> &
   Pick<CookieOptions, 'domain' | 'maxAge'>;
 
+/**
+ * Provides the default cookie options value.
+ */
 export const DEFAULT_COOKIE_OPTIONS: NormalizedCookieOptions = {
   httpOnly: true,
   secure: true,
@@ -69,6 +81,9 @@ function buildClearCookieHeader(name: string, options: NormalizedCookieOptions):
   });
 }
 
+/**
+ * Represents the cookie manager.
+ */
 export class CookieManager {
   private readonly options: Required<CookieAuthOptions>;
   private readonly cookieOptions: NormalizedCookieOptions;
@@ -161,6 +176,12 @@ export class CookieManager {
   }
 }
 
+/**
+ * Create cookie manager.
+ *
+ * @param config The config.
+ * @returns The create cookie manager result.
+ */
 export function createCookieManager(config?: CookieManagerConfig): CookieManager {
   return new CookieManager(config);
 }

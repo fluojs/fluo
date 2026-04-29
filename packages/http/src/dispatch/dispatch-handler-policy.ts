@@ -7,6 +7,14 @@ import type { ArgumentResolverContext, Binder, HandlerDescriptor, RequestContext
 const defaultBinder = new DefaultBinder();
 const defaultValidator = new HttpDtoValidationAdapter();
 
+/**
+ * Invoke controller handler.
+ *
+ * @param handler The handler.
+ * @param requestContext The request context.
+ * @param binder The binder.
+ * @returns The invoke controller handler result.
+ */
 export async function invokeControllerHandler(
   handler: HandlerDescriptor,
   requestContext: RequestContext,

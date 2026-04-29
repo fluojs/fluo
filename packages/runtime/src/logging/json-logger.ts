@@ -37,6 +37,11 @@ function buildEntry(level: LogLevel, message: string, context?: string, error?: 
   return entry;
 }
 
+/**
+ * Create json application logger.
+ *
+ * @returns The create json application logger result.
+ */
 export function createJsonApplicationLogger(): ApplicationLogger {
   return {
     debug(message, context) {

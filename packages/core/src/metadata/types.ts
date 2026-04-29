@@ -1,7 +1,13 @@
 import type { Constructor, MaybePromise, MetadataPropertyKey, MetadataSource, Token } from '../types.js';
 
+/**
+ * Defines the metadata collection type.
+ */
 export type MetadataCollection<T = unknown> = T[];
 
+/**
+ * Describes the module metadata contract.
+ */
 export interface ModuleMetadata {
   imports?: MetadataCollection;
   providers?: MetadataCollection;
@@ -11,6 +17,9 @@ export interface ModuleMetadata {
   global?: boolean;
 }
 
+/**
+ * Describes the controller metadata contract.
+ */
 export interface ControllerMetadata {
   basePath: string;
   guards?: MetadataCollection;
@@ -18,16 +27,25 @@ export interface ControllerMetadata {
   version?: string;
 }
 
+/**
+ * Describes the route header contract.
+ */
 export interface RouteHeader {
   name: string;
   value: string;
 }
 
+/**
+ * Describes the route redirect contract.
+ */
 export interface RouteRedirect {
   url: string;
   statusCode?: number;
 }
 
+/**
+ * Describes the route metadata contract.
+ */
 export interface RouteMetadata {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
   path: string;
@@ -40,6 +58,9 @@ export interface RouteMetadata {
   version?: string;
 }
 
+/**
+ * Describes the dto field binding metadata contract.
+ */
 export interface DtoFieldBindingMetadata {
   source: MetadataSource;
   key?: string;
@@ -47,6 +68,9 @@ export interface DtoFieldBindingMetadata {
   converter?: Token | { convert(value: unknown, target: unknown): MaybePromise<unknown> };
 }
 
+/**
+ * Describes the validation issue metadata contract.
+ */
 export interface ValidationIssueMetadata {
   code: string;
   field?: string;
@@ -54,35 +78,59 @@ export interface ValidationIssueMetadata {
   source?: MetadataSource;
 }
 
+/**
+ * Defines the validation rule result type.
+ */
 export type ValidationRuleResult = boolean | void | ValidationIssueMetadata | readonly ValidationIssueMetadata[];
 
+/**
+ * Describes the validation decorator options contract.
+ */
 export interface ValidationDecoratorOptions {
   code?: string;
   each?: boolean;
   message?: string;
 }
 
+/**
+ * Describes the custom validation decorator options contract.
+ */
 export interface CustomValidationDecoratorOptions extends ValidationDecoratorOptions {
   source?: MetadataSource;
 }
 
+/**
+ * Describes the custom field validation context contract.
+ */
 export interface CustomFieldValidationContext<T = unknown> {
   dto: T;
   propertyKey: MetadataPropertyKey;
 }
 
+/**
+ * Defines the custom field validator type.
+ */
 export type CustomFieldValidator<T = unknown> = (
   value: unknown,
   context: CustomFieldValidationContext<T>,
 ) => MaybePromise<ValidationRuleResult>;
 
+/**
+ * Defines the custom class validator type.
+ */
 export type CustomClassValidator<T = unknown> = (value: T) => MaybePromise<ValidationRuleResult>;
 
+/**
+ * Defines the conditional field validator type.
+ */
 export type ConditionalFieldValidator<T = unknown> = (
   dto: T,
   value: unknown,
 ) => MaybePromise<boolean>;
 
+/**
+ * Defines the dto field validation rule type.
+ */
 export type DtoFieldValidationRule =
   | ({ kind: 'validateIf'; validateIf: ConditionalFieldValidator } & ValidationDecoratorOptions)
   | ({ kind: 'defined' } & ValidationDecoratorOptions)
@@ -165,37 +213,58 @@ export type DtoFieldValidationRule =
   | ({ kind: 'arrayUnique'; selector?: (value: unknown) => unknown } & ValidationDecoratorOptions)
   | ({ kind: 'custom'; validate: CustomFieldValidator; source?: MetadataSource } & ValidationDecoratorOptions);
 
+/**
+ * Describes the class validation rule contract.
+ */
 export interface ClassValidationRule {
   code?: string;
   message?: string;
   validate: CustomClassValidator;
 }
 
+/**
+ * Describes the injection metadata contract.
+ */
 export interface InjectionMetadata {
   token: unknown;
   optional?: boolean;
 }
 
+/**
+ * Describes the class di metadata contract.
+ */
 export interface ClassDiMetadata {
   inject?: Token[];
   scope?: 'singleton' | 'request' | 'transient';
 }
 
+/**
+ * Describes the dto binding schema entry contract.
+ */
 export interface DtoBindingSchemaEntry {
   propertyKey: MetadataPropertyKey;
   metadata: DtoFieldBindingMetadata;
 }
 
+/**
+ * Describes the dto validation schema entry contract.
+ */
 export interface DtoValidationSchemaEntry {
   propertyKey: MetadataPropertyKey;
   rules: readonly DtoFieldValidationRule[];
 }
 
+/**
+ * Describes the injection schema entry contract.
+ */
 export interface InjectionSchemaEntry {
   propertyKey: MetadataPropertyKey;
   metadata: InjectionMetadata;
 }
 
+/**
+ * Describes the standard route metadata record contract.
+ */
 export interface StandardRouteMetadataRecord {
   guards?: MetadataCollection;
   headers?: RouteHeader[];
@@ -208,6 +277,15 @@ export interface StandardRouteMetadataRecord {
   version?: string;
 }
 
+/**
+ * Defines the standard dto binding record type.
+ */
 export type StandardDtoBindingRecord = Partial<DtoFieldBindingMetadata>;
+/**
+ * Defines the standard dto validation record type.
+ */
 export type StandardDtoValidationRecord = DtoFieldValidationRule[];
+/**
+ * Defines the standard injection record type.
+ */
 export type StandardInjectionRecord = Partial<InjectionMetadata>;

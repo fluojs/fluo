@@ -134,6 +134,13 @@ function discoveryCandidates(compiledModules: readonly CompiledModule[]): Discov
   return candidates;
 }
 
+/**
+ * Discover resolver descriptors.
+ *
+ * @param compiledModules The compiled modules.
+ * @param options The options.
+ * @returns The discover resolver descriptors result.
+ */
 export function discoverResolverDescriptors(
   compiledModules: readonly CompiledModule[],
   options: GraphqlModuleOptions,

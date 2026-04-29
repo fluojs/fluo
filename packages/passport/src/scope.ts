@@ -18,6 +18,12 @@ function normalizeScopeItems(items: Iterable<string>): string[] | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+/**
+ * Normalize declared scopes.
+ *
+ * @param scopes The scopes.
+ * @returns The normalize declared scopes result.
+ */
 export function normalizeDeclaredScopes(scopes: unknown): string[] | undefined {
   if (!Array.isArray(scopes)) {
     return undefined;
@@ -27,6 +33,12 @@ export function normalizeDeclaredScopes(scopes: unknown): string[] | undefined {
   return normalizeScopeItems(scopeItems);
 }
 
+/**
+ * Normalize principal scopes.
+ *
+ * @param claims The claims.
+ * @returns The normalize principal scopes result.
+ */
 export function normalizePrincipalScopes(claims: Record<string, unknown>): string[] | undefined {
   if (Array.isArray(claims.scopes)) {
     const scopes = claims.scopes.filter((scope): scope is string => typeof scope === 'string');
@@ -40,6 +52,13 @@ export function normalizePrincipalScopes(claims: Record<string, unknown>): strin
   return undefined;
 }
 
+/**
+ * Merge auth requirements.
+ *
+ * @param base The base.
+ * @param extra The extra.
+ * @returns The merge auth requirements result.
+ */
 export function mergeAuthRequirements(
   base: AuthRequirement | undefined,
   extra: AuthRequirement | undefined,

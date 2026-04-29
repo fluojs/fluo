@@ -94,6 +94,14 @@ function buildImportDeclaration(className: string, importPath: string): ts.Impor
   );
 }
 
+/**
+ * Ensure module import.
+ *
+ * @param source The source.
+ * @param className The class name.
+ * @param importPath The import path.
+ * @returns The ensure module import result.
+ */
 export function ensureModuleImport(source: string, className: string, importPath: string): string {
   const sourceFile = parseSource(source);
   const moduleSpecifier = `./${importPath}`;
@@ -153,6 +161,12 @@ export function ensureModuleImport(source: string, className: string, importPath
   return `${newImportLine}\n${source}`;
 }
 
+/**
+ * Generate module files.
+ *
+ * @param name The name.
+ * @returns The generate module files result.
+ */
 export function generateModuleFiles(name: string): GeneratedFile[] {
   const kebab = toKebabCase(name);
   const pascal = `${toPascalCase(name)}Module`;
@@ -219,6 +233,14 @@ function insertIntoModuleArray(source: string, arrayKey: 'controllers' | 'provid
   return replaceNodeText(source, sourceFile, moduleMetadata, printer.printNode(ts.EmitHint.Unspecified, updatedModuleMetadata, sourceFile));
 }
 
+/**
+ * Register in module.
+ *
+ * @param source The source.
+ * @param arrayKey The array key.
+ * @param className The class name.
+ * @returns The register in module result.
+ */
 export function registerInModule(source: string, arrayKey: ModuleArrayKey, className: string): string {
   return insertIntoModuleArray(source, arrayKey, className);
 }

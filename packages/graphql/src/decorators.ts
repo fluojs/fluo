@@ -12,6 +12,9 @@ type StandardClassDecoratorFn = (value: Function, context: ClassDecoratorContext
 type StandardMethodDecoratorFn = (value: Function, context: ClassMethodDecoratorContext) => void;
 type StandardFieldDecoratorFn = <This, Value>(value: undefined, context: ClassFieldDecoratorContext<This, Value>) => void;
 
+/**
+ * Describes the resolver method options contract.
+ */
 export interface ResolverMethodOptions {
   fieldName?: string;
   input?: Function;
@@ -122,6 +125,12 @@ function createMethodDecorator(
   return decorator as MethodDecoratorLike;
 }
 
+/**
+ * Resolver.
+ *
+ * @param typeName The type name.
+ * @returns The resolver result.
+ */
 export function Resolver(typeName?: string): ClassDecoratorLike {
   const decorator = (value: Function, context: ClassDecoratorContext) => {
     defineStandardResolverMetadata(context.metadata, {
@@ -132,18 +141,42 @@ export function Resolver(typeName?: string): ClassDecoratorLike {
   return decorator as ClassDecoratorLike;
 }
 
+/**
+ * Query.
+ *
+ * @param fieldNameOrOptions The field name or options.
+ * @returns The query result.
+ */
 export function Query(fieldNameOrOptions?: string | ResolverMethodOptions): MethodDecoratorLike {
   return createMethodDecorator('query', fieldNameOrOptions);
 }
 
+/**
+ * Mutation.
+ *
+ * @param fieldNameOrOptions The field name or options.
+ * @returns The mutation result.
+ */
 export function Mutation(fieldNameOrOptions?: string | ResolverMethodOptions): MethodDecoratorLike {
   return createMethodDecorator('mutation', fieldNameOrOptions);
 }
 
+/**
+ * Subscription.
+ *
+ * @param fieldNameOrOptions The field name or options.
+ * @returns The subscription result.
+ */
 export function Subscription(fieldNameOrOptions?: string | ResolverMethodOptions): MethodDecoratorLike {
   return createMethodDecorator('subscription', fieldNameOrOptions);
 }
 
+/**
+ * Arg.
+ *
+ * @param argName The arg name.
+ * @returns The arg result.
+ */
 export function Arg(argName?: string): FieldDecoratorLike {
   const decorator = <This, Value>(_value: undefined, context: ClassFieldDecoratorContext<This, Value>) => {
     if (context.private) {
