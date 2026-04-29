@@ -1,7 +1,9 @@
 import type {
   CorsOptions,
   Dispatcher,
+  HandlerDescriptor,
   HttpApplicationAdapter,
+  HttpMethod,
   MiddlewareLike,
   SecurityHeadersOptions,
 } from '@fluojs/http';
@@ -34,9 +36,20 @@ declare module '@fluojs/http' {
 
 type BunGlobal = {
   serve(options: BunServeOptions): BunServerLike;
+  version?: string;
 };
 
 type BunHostname = string;
+type BunRequestLike = Request & {
+  params?: Readonly<Record<string, string>>;
+};
+type BunRouteHandler = (
+  request: BunRequestLike,
+  server: BunServerLike,
+) => Response | Promise<Response> | undefined | Promise<Response | undefined>;
+type BunRouteMethod = Exclude<HttpMethod, 'ALL'>;
+type BunRouteMethodMap = Partial<Record<BunRouteMethod, BunRouteHandler | Response>>;
+type BunRouteValue = BunRouteHandler | Response | BunRouteMethodMap;
 
 /** Shutdown signal names that `runBunApplication()` can register. */
 export type BunApplicationSignal = 'SIGINT' | 'SIGTERM';
@@ -114,6 +127,7 @@ export interface BunServeOptions {
   idleTimeout?: number;
   maxRequestBodySize?: number;
   port?: number;
+  routes?: Record<string, BunRouteValue>;
   tls?: BunTlsOptions;
   websocket?: BunWebSocketHandler;
 }
@@ -215,6 +229,7 @@ export interface RunBunApplicationOptions extends BootstrapBunApplicationOptions
 const DEFAULT_PORT = 3000;
 const DEFAULT_DISPATCHER_NOT_READY_MESSAGE = 'Bun adapter received a request before dispatcher binding completed.';
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const MINIMUM_BUN_NATIVE_ROUTES_VERSION = '1.2.3';
 const BUN_WEBSOCKET_SUPPORT_REASON =
   'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.';
 
@@ -280,28 +295,30 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
 
     const bun = requireBunGlobal();
     const realtimeBinding = this.realtimeBinding;
+    const handleRequest: BunRouteHandler = async (request, server) => {
+      if (this.server === undefined) {
+        this.server = server;
+      }
+
+      if (realtimeBinding) {
+        const handled = await realtimeBinding.fetch(request, server);
+
+        if (handled !== undefined || isWebSocketUpgradeRequest(request)) {
+          return handled;
+        }
+      }
+
+      return await this.dispatchHttpRequest(request);
+    };
 
     this.server = bun.serve({
       development: this.options.development,
-      fetch: async (request, server) => {
-        if (this.server === undefined) {
-          this.server = server;
-        }
-
-        if (realtimeBinding) {
-          const handled = await realtimeBinding.fetch(request, server);
-
-          if (handled !== undefined || isWebSocketUpgradeRequest(request)) {
-            return handled;
-          }
-        }
-
-        return await this.dispatchHttpRequest(request);
-      },
+      fetch: handleRequest,
       hostname: this.options.hostname,
       idleTimeout: realtimeBinding?.idleTimeout ?? this.options.idleTimeout,
       maxRequestBodySize: realtimeBinding?.maxRequestBodySize ?? this.options.maxBodySize,
       port: resolvePort(this.options.port),
+      routes: createBunNativeRoutes(dispatcher, handleRequest, bun),
       tls: this.options.tls,
       websocket: realtimeBinding?.websocket,
     });
@@ -499,6 +516,117 @@ function resolvePort(port: number | undefined): number {
   return typeof port === 'number' && Number.isFinite(port) ? port : DEFAULT_PORT;
 }
 
+function createBunNativeRoutes(
+  dispatcher: Dispatcher,
+  handleRequest: BunRouteHandler,
+  bun: BunGlobal,
+): Record<string, BunRouteValue> | undefined {
+  if (!supportsBunNativeRoutes(bun)) {
+    return undefined;
+  }
+
+  const descriptors = dispatcher.describeRoutes?.();
+
+  if (!descriptors || descriptors.length === 0) {
+    return undefined;
+  }
+
+  const unsafeShapes = collectUnsafeNativeRouteShapes(descriptors);
+  const routes = new Map<string, BunRouteMethodMap>();
+
+  for (const descriptor of descriptors) {
+    const method = toBunRouteMethod(descriptor.route.method);
+
+    if (!method) {
+      continue;
+    }
+
+    if (unsafeShapes.has(`${method}:${createBunRouteShapeKey(descriptor.route.path)}`)) {
+      continue;
+    }
+
+    const routeHandlers = routes.get(descriptor.route.path) ?? {};
+    routeHandlers[method] ??= handleRequest;
+    routes.set(descriptor.route.path, routeHandlers);
+  }
+
+  return routes.size > 0 ? Object.fromEntries(routes) : undefined;
+}
+
+function supportsBunNativeRoutes(bun: BunGlobal): boolean {
+  return compareBunVersions(bun.version, MINIMUM_BUN_NATIVE_ROUTES_VERSION) >= 0;
+}
+
+function compareBunVersions(left: string | undefined, right: string): number {
+  if (typeof left !== 'string') {
+    return -1;
+  }
+
+  const leftSegments = parseBunVersionSegments(left);
+  const rightSegments = parseBunVersionSegments(right);
+  const length = Math.max(leftSegments.length, rightSegments.length);
+
+  for (let index = 0; index < length; index += 1) {
+    const leftValue = leftSegments[index] ?? 0;
+    const rightValue = rightSegments[index] ?? 0;
+
+    if (leftValue === rightValue) {
+      continue;
+    }
+
+    return leftValue > rightValue ? 1 : -1;
+  }
+
+  return 0;
+}
+
+function parseBunVersionSegments(version: string): number[] {
+  return version.match(/\d+/g)?.map((segment) => Number.parseInt(segment, 10)) ?? [];
+}
+
+function collectUnsafeNativeRouteShapes(descriptors: readonly HandlerDescriptor[]): Set<string> {
+  const signatures = new Map<string, Set<string>>();
+  const unsafe = new Set<string>();
+
+  for (const descriptor of descriptors) {
+    const shapeKey = createBunRouteShapeKey(descriptor.route.path);
+    const paramSignature = descriptor.metadata.pathParams.join(',');
+
+    if (descriptor.route.method === 'ALL') {
+      for (const method of bunRouteMethods) {
+        unsafe.add(`${method}:${shapeKey}`);
+      }
+
+      continue;
+    }
+
+    const key = `${descriptor.route.method}:${shapeKey}`;
+    const current = signatures.get(key) ?? new Set<string>();
+    current.add(paramSignature);
+    signatures.set(key, current);
+
+    if (current.size > 1) {
+      unsafe.add(key);
+    }
+  }
+
+  return unsafe;
+}
+
+function createBunRouteShapeKey(path: string): string {
+  const segments = path.split('/').filter(Boolean);
+
+  if (segments.length === 0) {
+    return '/';
+  }
+
+  return `/${segments.map((segment) => segment.startsWith(':') ? ':' : segment).join('/')}`;
+}
+
+function toBunRouteMethod(method: HttpMethod): BunRouteMethod | undefined {
+  return method === 'ALL' ? undefined : method;
+}
+
 function closeBunServerWithDrain(
   server: BunServerLike,
   stopActiveConnections: boolean | undefined,
@@ -558,6 +686,8 @@ function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number)
 function isWebSocketUpgradeRequest(request: Request): boolean {
   return request.headers.get('upgrade')?.toLowerCase() === 'websocket';
 }
+
+const bunRouteMethods: readonly BunRouteMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'];
 
 interface Deferred<T> {
   promise: Promise<T>;

@@ -26,6 +26,7 @@ type MockBun = {
   lastOptions?: BunServeOptions;
   lastServer?: MockBunServer;
   serve: ReturnType<typeof vi.fn<(options: BunServeOptions) => MockBunServer>>;
+  version: string;
 };
 
 const originalBun = (globalThis as typeof globalThis & { Bun?: MockBun }).Bun;
@@ -51,8 +52,9 @@ function createDeferred<T>() {
   return { promise, reject, resolve };
 }
 
-function installMockBun(): MockBun {
+function installMockBun(options: { version?: string } = {}): MockBun {
   const mockBun = {} as MockBun;
+  mockBun.version = options.version ?? '1.2.3';
 
   mockBun.serve = vi.fn((options: BunServeOptions) => {
     const protocol = options.tls ? 'https' : 'http';
@@ -61,7 +63,15 @@ function installMockBun(): MockBun {
     let server!: MockBunServer;
 
     server = {
-      fetch: async (request: Request): Promise<Response | undefined> => await options.fetch(request, server),
+      fetch: async (request: Request): Promise<Response | undefined> => {
+        const routed = await dispatchMockBunNativeRoute(options, request, server);
+
+        if (routed.matched) {
+          return routed.response;
+        }
+
+        return await options.fetch(request, server);
+      },
       hostname,
       port,
       stop: vi.fn<(closeActiveConnections?: boolean) => void>(),
@@ -116,6 +126,139 @@ function createMockServerWebSocket(data: unknown): BunServerWebSocket<unknown> {
       subscriptions.delete(topic);
     },
   };
+}
+
+function createMockDispatcherRoute(path: string, method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD' = 'GET') {
+  return {
+    controllerToken: class TestController {},
+    metadata: {
+      controllerPath: '',
+      effectivePath: path,
+      moduleMiddleware: [],
+      pathParams: path.split('/').filter((segment) => segment.startsWith(':')).map((segment) => segment.slice(1)),
+    },
+    methodName: 'handle',
+    route: {
+      method,
+      path,
+    },
+  };
+}
+
+async function dispatchMockBunNativeRoute(
+  options: BunServeOptions,
+  request: Request,
+  server: MockBunServer,
+): Promise<{ matched: boolean; response?: Response }> {
+  const matched = matchMockBunRoute(options.routes, new URL(request.url).pathname);
+
+  if (!matched) {
+    return { matched: false };
+  }
+
+  const routeValue = resolveMockBunRouteValue(matched.value, request.method.toUpperCase());
+
+  if (!routeValue) {
+    return { matched: false };
+  }
+
+  if (routeValue instanceof Response) {
+    return {
+      matched: true,
+      response: routeValue.clone(),
+    };
+  }
+
+  Object.defineProperty(request, 'params', {
+    configurable: true,
+    enumerable: true,
+    value: matched.params,
+  });
+
+  return {
+    matched: true,
+    response: await routeValue(request as Request & { params: Record<string, string> }, server),
+  };
+}
+
+function matchMockBunRoute(
+  routes: BunServeOptions['routes'],
+  path: string,
+): { params: Record<string, string>; value: NonNullable<BunServeOptions['routes']>[string] } | undefined {
+  if (!routes) {
+    return undefined;
+  }
+
+  const entries = Object.entries(routes);
+
+  for (const [pattern, value] of entries) {
+    if (pattern === path) {
+      return { params: {}, value };
+    }
+  }
+
+  for (const [pattern, value] of entries) {
+    if (!pattern.includes(':')) {
+      continue;
+    }
+
+    const params = matchMockBunParamRoute(pattern, path);
+
+    if (params) {
+      return { params, value };
+    }
+  }
+
+  for (const [pattern, value] of entries) {
+    if (pattern === '/*') {
+      return { params: {}, value };
+    }
+
+    if (pattern.endsWith('/*')) {
+      const prefix = pattern.slice(0, -1);
+
+      if (path.startsWith(prefix)) {
+        return { params: {}, value };
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function matchMockBunParamRoute(pattern: string, path: string): Record<string, string> | undefined {
+  const patternSegments = pattern.split('/').filter(Boolean);
+  const pathSegments = path.split('/').filter(Boolean);
+
+  if (patternSegments.length !== pathSegments.length) {
+    return undefined;
+  }
+
+  const params: Record<string, string> = {};
+
+  for (let index = 0; index < patternSegments.length; index += 1) {
+    const patternSegment = patternSegments[index];
+    const pathSegment = pathSegments[index];
+
+    if (patternSegment.startsWith(':')) {
+      params[patternSegment.slice(1)] = decodeURIComponent(pathSegment);
+      continue;
+    }
+
+    if (patternSegment !== pathSegment) {
+      return undefined;
+    }
+  }
+
+  return params;
+}
+
+function resolveMockBunRouteValue(value: NonNullable<BunServeOptions['routes']>[string], method: string) {
+  if (value instanceof Response || typeof value === 'function') {
+    return value;
+  }
+
+  return value[method as keyof typeof value];
 }
 
 function registerBunWebRuntimePortabilitySuite(): void {
@@ -349,6 +492,12 @@ describe('@fluojs/platform-bun', () => {
     });
 
     try {
+      expect(mockBun.lastOptions?.routes).toMatchObject({
+        '/webhooks/json': {
+          POST: expect.any(Function),
+        },
+      });
+
       const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4310/webhooks/json', {
         body: JSON.stringify({ provider: 'stripe' }),
         headers: { 'content-type': 'application/json' },
@@ -360,6 +509,80 @@ describe('@fluojs/platform-bun', () => {
         parsed: { provider: 'stripe' },
         raw: '{"provider":"stripe"}',
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('registers Bun native param routes without changing fluo path-param semantics', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/users')
+    class UsersController {
+      @Get('/:userId')
+      getById(_input: undefined, context: RequestContext) {
+        return { userId: context.request.params.userId };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [UsersController] });
+
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      port: 4314,
+    });
+
+    try {
+      expect(mockBun.lastOptions?.routes).toMatchObject({
+        '/users/:userId': {
+          GET: expect.any(Function),
+        },
+      });
+
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4314/users/a%2Fb'));
+
+      expect(response?.status).toBe(200);
+      await expect(response?.json()).resolves.toEqual({ userId: 'a%2Fb' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('falls back to fetch-only dispatch for same-shape parameter routes that would change fluo matching semantics', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/items')
+    class FirstController {
+      @Get('/:firstId')
+      first(_input: undefined, context: RequestContext) {
+        return { firstId: context.request.params.firstId, route: 'first' };
+      }
+    }
+
+    @Controller('/items')
+    class SecondController {
+      @Get('/:secondId')
+      second(_input: undefined, context: RequestContext) {
+        return { route: 'second', secondId: context.request.params.secondId };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [FirstController, SecondController] });
+
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      port: 4315,
+    });
+
+    try {
+      expect(mockBun.lastOptions?.routes).toBeUndefined();
+
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4315/items/123'));
+
+      expect(response?.status).toBe(200);
+      await expect(response?.json()).resolves.toEqual({ firstId: '123', route: 'first' });
     } finally {
       await app.close();
     }
@@ -593,6 +816,7 @@ describe('@fluojs/platform-bun', () => {
       await adapter.listen(dispatcher);
 
       const responsePromise = mockBun.lastServer!.fetch(new Request('http://127.0.0.1:3000/timeout-check'));
+      await Promise.resolve();
       const closeResultPromise = adapter.close().catch((error: unknown) => error);
 
       await vi.advanceTimersByTimeAsync(10_001);
@@ -644,6 +868,7 @@ describe('@fluojs/platform-bun', () => {
       dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
         response.setStatus(200);
       }),
+      describeRoutes: () => [createMockDispatcherRoute('/chat')],
     };
     const bindingFetch = vi.fn<BunWebSocketBinding['fetch']>(async (request, server) => {
       if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
@@ -661,10 +886,16 @@ describe('@fluojs/platform-bun', () => {
 
     await adapter.listen(dispatcher);
 
+    expect(mockBun.lastOptions?.routes).toMatchObject({
+      '/chat': {
+        GET: expect.any(Function),
+      },
+    });
+
     const upgradeResponse = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/chat', {
       headers: { upgrade: 'websocket' },
     }));
-    const httpResponse = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/http'));
+    const httpResponse = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/chat'));
 
     expect(mockBun.lastOptions?.websocket).toBeDefined();
     expect(upgradeResponse).toBeUndefined();
