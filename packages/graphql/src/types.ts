@@ -184,7 +184,6 @@ export type GraphqlRootOutputType = GraphqlRootOutputNamedType | GraphqlListType
 export interface ResolverHandlerMetadata {
   type: ResolverHandlerType;
   fieldName?: string;
-  topics?: string | string[];
   inputClass?: Function;
   argTypes?: Record<string, GraphqlArgType>;
   outputType?: GraphqlRootOutputType;
@@ -206,7 +205,6 @@ export interface ResolverHandlerDescriptor {
   methodKey: MetadataPropertyKey;
   methodName: string;
   fieldName: string;
-  topics?: string | string[];
   inputClass?: Function;
   argFields: ArgFieldMetadata[];
   argTypes?: Record<string, GraphqlArgType>;
@@ -226,14 +224,17 @@ export interface ResolverDescriptor {
 }
 
 /**
- * Public options for `GraphqlModule.forRoot(...)` and `forRootAsync(...)`.
+ * Public options for `GraphqlModule.forRoot(...)`.
  *
  * @remarks
  * Keep README examples for end-to-end module wiring. Source hover docs here are
  * meant to clarify how each option shapes the per-request execution pipeline.
  */
 export interface GraphqlModuleOptions {
-  schema?: GraphQLSchema | string;
+  /**
+   * Provide a prebuilt executable `GraphQLSchema` when you want to own schema assembly yourself.
+   */
+  schema?: GraphQLSchema;
   resolvers?: Function[];
   context?: (ctx: GraphqlRequestContext) => Record<string, unknown>;
   graphiql?: boolean;

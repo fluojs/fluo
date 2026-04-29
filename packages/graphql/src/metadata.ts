@@ -3,8 +3,6 @@ import { ensureSymbolMetadataPolyfill, getStandardConstructorMetadataBag, getSta
 
 import type { ArgFieldMetadata, ResolverHandlerMetadata, ResolverMetadata } from './types.js';
 
-type StandardMetadataBag = Record<PropertyKey, unknown>;
-
 void ensureSymbolMetadataPolyfill();
 
 const standardResolverMetadataKey = Symbol.for('fluo.graphql.standard.resolver');
@@ -27,7 +25,6 @@ function cloneHandlerMetadata(metadata: ResolverHandlerMetadata): ResolverHandle
     fieldName: metadata.fieldName,
     inputClass: metadata.inputClass,
     outputType: metadata.outputType,
-    topics: metadata.topics,
     type: metadata.type,
   };
 }
