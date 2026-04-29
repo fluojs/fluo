@@ -61,24 +61,24 @@ import { PostsModule } from './posts/posts.module';
 @Module({
   imports: [
     PostsModule,
-    OpenApiModule.forRoot({
-      // Explicitly tell the builder which Controller to document.
-      sources: [{ controllerToken: PostsController }],
-      title: 'FluoBlog API',
-      description: 'Official API documentation for the FluoBlog engine.',
-      version: '1.0.0',
-      ui: true, // Enable the built-in Swagger UI.
-    }),
+     OpenApiModule.forRoot({
+       // Explicitly tell the builder which Controller to document.
+       sources: [{ controllerToken: PostsController }],
+       title: 'FluoBlog API',
+       version: '1.0.0',
+       ui: true, // Enable the built-in Swagger UI.
+     }),
   ],
 })
 export class AppModule {}
 ```
 
 The `OpenApiModule.forRoot()` method is the main entrypoint. It receives a configuration object with the following fields, and those values decide the generated document's scope and public surface.
-- `title` and `description`: The human-friendly name and description of the API.
+- `title`: The human-friendly name of the API.
 - `version`: The semantic version of the API, for example `1.0.0`.
 - `sources`: The most important part. fluo values explicitness. You directly define the Controllers the OpenAPI builder should inspect. You can pass `controllerToken` directly or pass a preconfigured descriptor list.
 - `ui: true`: This setting makes fluo serve a polished Swagger UI at a specific endpoint.
+- For advanced composition, the module also accepts `descriptors`, `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, and `documentTransform`.
 
 The generated JSON document and UI are available at standardized paths. These two paths serve automation tools and human readers respectively.
 - `/openapi.json`: The machine-readable source document.
@@ -104,7 +104,6 @@ import {
   ApiResponse,
   ApiTag,
   ApiBearerAuth,
-  ApiProperty,
 } from '@fluojs/openapi';
 import { Controller, Get, Post, RequestDto } from '@fluojs/http';
 import { CreatePostDto } from './dto/create-post.dto';
@@ -119,21 +118,21 @@ export class PostsController {
   @ApiResponse(200, { description: 'The post list was loaded successfully.' })
   @Get('/')
   findAll() {
-    return this.postsService.findAllPublic();
+    return [];
   }
 
   @ApiOperation({ 
     summary: 'Create a new post',
     description: 'Allows an authenticated author to create a new blog post.' 
   })
-  @ApiResponse(210, { description: 'The post was created successfully.' })
+  @ApiResponse(201, { description: 'The post was created successfully.' })
   @ApiResponse(400, { description: 'Invalid input data.' })
   @ApiResponse(401, { description: 'Unauthorized. Login is required.' })
   @ApiBearerAuth() // Indicates that this route requires a JWT token.
   @Post('/')
   @RequestDto(CreatePostDto)
   create(input: CreatePostDto) {
-    return this.postsService.create(input);
+    return { id: 'post-1', ...input };
   }
 }
 ```
@@ -188,24 +187,34 @@ For example, `CreatePostDto` becomes a component named `CreatePostDto` in the `c
 
 Using more specific names such as `PostCreateDto` or `UserCreateDto` is a good habit because it avoids these problems and keeps the documentation clear and unambiguous.
 
-### Customizing Schema Properties
+### Customizing Explicit Schema Surfaces
 
-The default mapping from TypeScript properties to OpenAPI properties is not always enough. You may want to provide example values or mark certain fields as read-only. The `@ApiProperty()` Decorator lets you override these details and add human-facing explanation on top of type information the code already knows.
+The default mapping from TypeScript properties to OpenAPI properties is not always enough. When you need example values, read-only fields, or fully explicit schema composition, fluo exposes those controls through `@ApiBody()` and `@ApiResponse()` schema objects.
 
 ```typescript
-export class PostResponseDto {
-  @ApiProperty({ 
-    example: 'uuid-123-456',
-    description: 'Unique identifier for the post',
-    readOnly: true 
-  })
-  id: string;
-
-  @ApiProperty({ 
-    example: 'My first blog post',
-    maxLength: 100 
-  })
-  title: string;
+@ApiResponse(200, {
+  description: 'Post response',
+  schema: {
+    properties: {
+      id: {
+        description: 'Unique identifier for the post',
+        example: 'uuid-123-456',
+        readOnly: true,
+        type: 'string',
+      },
+      title: {
+        example: 'My first blog post',
+        maxLength: 100,
+        type: 'string',
+      },
+    },
+    required: ['id', 'title'],
+    type: 'object',
+  },
+})
+@Get('/:id')
+findOne() {
+  return { id: 'uuid-123-456', title: 'My first blog post' };
 }
 ```
 
@@ -234,13 +243,13 @@ When you enable the documentation UI with `ui: true` and attach `@ApiBearerAuth(
 
 ### Global vs. Local API Tags
 
-`@ApiTag('Posts')` at the Controller level is common, but if one Controller handles several logical subdomains, you can also apply tags to individual methods.
+`@ApiTag('Posts')` is designed for the Controller level. The shipped decorator records controller-wide grouping metadata, so the simplest and most reliable pattern is still one controller tag per controller.
 
-Early on, it is better to keep the "one Controller, one tag" pattern. This keeps Swagger UI organized and reflects the application's modular structure well. As the project grows, a single route may need to belong to multiple tags, for example both "Posts" and "Search." fluo supports assigning tags in array form, such as `@ApiTag('Posts', 'Search')`.
+Early on, it is better to keep the "one Controller, one tag" pattern. This keeps Swagger UI organized and reflects the application's modular structure well. If one controller starts to cover several distinct domains, that is usually a sign that the routes should be split into separate controllers or grouped under a broader single tag.
 
 ### Advanced UI Customization
 
-`ui: true` provides a good default experience, but you can customize Swagger UI to match your brand. `OpenApiModule` lets you pass custom CSS or point to a different asset path. This can make developer documentation feel like a polished part of the product. The defaults are enough for most early projects, but the fact that fluo can grow with your project is one of the long-term benefits of choosing a standards-centered framework.
+`ui: true` provides a good default experience and serves the built-in Swagger UI at `/docs`. For beginner projects, that default is the important part to remember. The main customization hooks in the current package focus on the generated document itself through options such as `documentTransform`, `securitySchemes`, and `extraModels`.
 
 ## 10.5 Versioning and Deterministic Docs Output
 
@@ -285,7 +294,7 @@ Following this pattern gives users a clean and organized documentation experienc
 
 ## Summary
 
-- `OpenApiModule` converts Controller and DTO metadata into a standard OpenAPI 3.0 spec.
+- `OpenApiModule` converts Controller and DTO metadata into a standard OpenAPI 3.1.0 spec.
 - Documentation Decorators such as `@ApiTag` and `@ApiOperation` provide human context that code alone cannot convey.
 - FluoBlog now exposes machine-readable `/openapi.json` and a human-readable `/docs` interactive UI.
 - Metadata reuse keeps validation rules and DTO shapes synchronized automatically with the documentation.
