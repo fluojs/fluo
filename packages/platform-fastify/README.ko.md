@@ -125,6 +125,11 @@ await bootstrapFastifyApplication(AppModule, {
 });
 ```
 
+### 네이티브 라우트 등록과 안전한 폴백
+fluo 라우트 메타데이터를 Fastify 경로로 그대로 옮길 수 있는 경우, 어댑터는 모든 요청을 단일 와일드카드 라우트로 보내는 대신 Fastify 네이티브 per-route 핸들러를 등록합니다. 이 네이티브 핸들러도 최종적으로는 공통 fluo dispatcher로 위임하므로 params, versioning, middleware, guards, interceptors, observers, SSE, multipart, raw body, streaming, error handling 의미론은 그대로 유지됩니다.
+
+어댑터는 매칭되지 않은 경로와 이식성에 민감한 경우를 위해 와일드카드 fallback 라우트를 계속 유지하며, Fastify의 trailing slash / duplicate slash 정규화를 켜서 네이티브 선택 경로도 fluo의 문서화된 route path 계약과 맞추어 동작하도록 합니다.
+
 ## 성능
 
 fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어댑터보다 훨씬 뛰어난 성능을 발휘합니다.

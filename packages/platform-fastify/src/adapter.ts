@@ -10,6 +10,7 @@ import {
   createServerBackedHttpAdapterRealtimeCapability,
   createErrorResponse,
   HttpException,
+  type HandlerDescriptor,
   InternalServerErrorException,
   PayloadTooLargeException,
   type CorsOptions,
@@ -70,6 +71,13 @@ export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const FASTIFY_NATIVE_ROUTE_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
+
+type FastifyNativeRouteMethod = (typeof FASTIFY_NATIVE_ROUTE_METHODS)[number];
+
+type RouteDescribingDispatcher = Dispatcher & {
+  describeRoutes?: () => readonly HandlerDescriptor[];
+};
 
 /**
  * Bootstrap options for creating a Fastify-backed application without
@@ -166,7 +174,7 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
 
   async listen(dispatcher: Dispatcher): Promise<void> {
     this.dispatcher = dispatcher;
-    await this.registerPluginsAndRoute();
+    await this.registerPluginsAndRoutes(dispatcher);
     await this.listenWithRetry();
   }
 
@@ -195,7 +203,7 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     await waitForCloseWithTimeout(closeInFlight, this.shutdownTimeoutMs);
   }
 
-  private async registerPluginsAndRoute(): Promise<void> {
+  private async registerPluginsAndRoutes(dispatcher: Dispatcher): Promise<void> {
     if (this.pluginsReady) {
       return;
     }
@@ -211,11 +219,28 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
       });
     }
 
+    this.registerNativeRoutes(resolveDispatcherRouteDescriptors(dispatcher));
+    this.registerWildcardFallbackRoute();
+
+    this.pluginsReady = true;
+  }
+
+  private registerNativeRoutes(descriptors: readonly HandlerDescriptor[]): void {
+    for (const route of createFastifyNativeRoutes(descriptors)) {
+      this.app.route({
+        handler: async (request: FastifyRequest, reply: FastifyReply) => {
+          await this.handleRequest(request, reply);
+        },
+        method: route.method,
+        url: route.path,
+      });
+    }
+  }
+
+  private registerWildcardFallbackRoute(): void {
     this.app.all('*', async (request: FastifyRequest, reply: FastifyReply) => {
       await this.handleRequest(request, reply);
     });
-
-    this.pluginsReady = true;
   }
 
   private async listenWithRetry(): Promise<void> {
@@ -271,6 +296,49 @@ function createFastifyRequestResponseFactory(
       await response.send(createErrorResponse(httpError, requestId));
     },
   };
+}
+
+interface FastifyNativeRouteDefinition {
+  method: FastifyNativeRouteMethod;
+  path: string;
+}
+
+function resolveDispatcherRouteDescriptors(dispatcher: Dispatcher): readonly HandlerDescriptor[] {
+  return (dispatcher as RouteDescribingDispatcher).describeRoutes?.() ?? [];
+}
+
+function createFastifyNativeRoutes(descriptors: readonly HandlerDescriptor[]): FastifyNativeRouteDefinition[] {
+  const registrations = new Map<string, FastifyNativeRouteDefinition>();
+
+  for (const descriptor of descriptors) {
+    const path = descriptor.route.path;
+
+    if (descriptor.route.method === 'ALL') {
+      for (const method of FASTIFY_NATIVE_ROUTE_METHODS) {
+        const key = `${method}:${path}`;
+
+        if (!registrations.has(key)) {
+          registrations.set(key, {
+            method,
+            path,
+          });
+        }
+      }
+
+      continue;
+    }
+
+    const key = `${descriptor.route.method}:${path}`;
+
+    if (!registrations.has(key)) {
+      registrations.set(key, {
+        method: descriptor.route.method,
+        path,
+      });
+    }
+  }
+
+  return [...registrations.values()];
 }
 
 /**
@@ -725,14 +793,24 @@ function createFastifyApp(
   if (httpsOptions) {
     return fastify({
       bodyLimit: maxBodySize,
+      exposeHeadRoutes: false,
       https: httpsOptions,
       logger: false,
+      routerOptions: {
+        ignoreDuplicateSlashes: true,
+        ignoreTrailingSlash: true,
+      },
     } as Parameters<typeof fastify>[0]);
   }
 
   return fastify({
     bodyLimit: maxBodySize,
+    exposeHeadRoutes: false,
     logger: false,
+    routerOptions: {
+      ignoreDuplicateSlashes: true,
+      ignoreTrailingSlash: true,
+    },
   });
 }
 

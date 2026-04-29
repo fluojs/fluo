@@ -125,6 +125,11 @@ await bootstrapFastifyApplication(AppModule, {
 });
 ```
 
+### Native Route Registration with Safe Fallback
+When fluo route metadata can be translated directly, the adapter registers Fastify-native per-route handlers instead of sending every request through a single wildcard route. Those native handlers still hand off to the shared fluo dispatcher, so params, versioning, middleware, guards, interceptors, observers, SSE, multipart, raw body, streaming, and error handling keep the same framework-level semantics.
+
+The adapter keeps a wildcard fallback route for unmatched paths and portability-sensitive cases, and enables Fastify trailing-slash / duplicate-slash normalization so native selection stays aligned with fluo's documented route path contract.
+
 ## Performance
 
 fluo's Fastify adapter significantly outperforms the raw Node.js adapter in high-concurrency scenarios.
