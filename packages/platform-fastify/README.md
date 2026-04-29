@@ -126,11 +126,11 @@ await bootstrapFastifyApplication(AppModule, {
 ```
 
 ### Native Route Registration with Safe Fallback
-When fluo route metadata can be translated directly, the adapter registers Fastify-native per-route handlers instead of sending every request through a single wildcard route. Those native handlers still hand off to the shared fluo dispatcher, so params, versioning, middleware, guards, interceptors, observers, SSE, multipart, raw body, streaming, and error handling keep the same framework-level semantics.
+When fluo route metadata can be translated directly, the adapter registers Fastify-native per-route handlers instead of sending every request through a single wildcard route. For semantically safe unversioned routes, those native handlers hand a pre-matched descriptor and params to the shared fluo dispatcher so duplicate route matching is skipped without changing framework-owned guards, interceptors, observers, SSE, multipart, raw body, streaming, or error handling.
 
-When multiple routes share the same method and normalized param shape (for example `/:id` and `/:slug`), the adapter intentionally leaves that shape on the wildcard fallback path so Fastify registration cannot boot-fail or narrow fluo's registration-order matching semantics.
+When multiple routes share the same method and normalized param shape (for example `/:id` and `/:slug`), use `@All(...)`, depend on non-URI versioning, or arrive through duplicate-slash / trailing-slash variants, the adapter intentionally leaves those requests on the wildcard fallback path so Fastify registration cannot boot-fail or narrow fluo's matching semantics. If app middleware rewrites the framework request method or path after a native handoff was attached, the dispatcher ignores that stale handoff and rematches the rewritten request.
 
-The adapter keeps a wildcard fallback route for unmatched paths and portability-sensitive cases, and enables Fastify trailing-slash / duplicate-slash normalization so native selection stays aligned with fluo's documented route path contract.
+The adapter keeps a wildcard fallback route for unmatched paths and portability-sensitive cases, and enables Fastify trailing-slash / duplicate-slash normalization so native selection stays aligned with fluo's documented route path contract. CORS handling remains owned by fluo's shared middleware path rather than Fastify plugins, and unsupported methods such as `OPTIONS` continue through the fallback dispatcher path unless a fluo route explicitly owns them.
 
 ## Performance
 

@@ -36,6 +36,12 @@ import {
   type MiddlewareLike,
   type SecurityHeadersOptions,
 } from '@fluojs/http';
+import {
+  attachFrameworkRequestNativeRouteHandoff,
+  bindRawRequestNativeRouteHandoff,
+  consumeRawRequestNativeRouteHandoff,
+  isRoutePathNormalizationSensitive,
+} from '@fluojs/http/internal';
 import type {
   Application,
   ApplicationLogger,
@@ -135,11 +141,13 @@ interface ExpressListenTarget {
 type ExpressServer = ReturnType<typeof createHttpServer> | ReturnType<typeof createHttpsServer>;
 
 interface ExpressNativeRouteDefinition {
+  descriptorsByMethod: Readonly<Partial<Record<ExpressNativeRouteMethod, HandlerDescriptor>>>;
   methods: readonly ExpressNativeRouteMethod[];
   path: string;
 }
 
 interface ExpressNativeRouteCandidate {
+  descriptor: HandlerDescriptor;
   method: ExpressNativeRouteMethod;
   path: string;
   shapeKey: string;
@@ -272,10 +280,22 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
     Reflect.set(this.router, '__fluoNativeRoutes', nativeRoutes);
 
     for (const route of nativeRoutes) {
-      this.router.all(route.path, (request, response, next) => {
+      this.router.all(route.path, (request: ExpressRequest, response: ExpressResponse, next: () => void) => {
         if (!route.methods.includes(request.method.toUpperCase() as ExpressNativeRouteMethod)) {
           next();
           return;
+        }
+
+        const nativeMethod = request.method.toUpperCase() as ExpressNativeRouteMethod;
+        const requestPath = new URL(request.originalUrl || request.url || '/', 'http://localhost').pathname;
+        const descriptor = route.descriptorsByMethod[nativeMethod];
+        const params = normalizeNativeRouteParams(request.params);
+
+        if (descriptor && !isRoutePathNormalizationSensitive(requestPath) && !hasNativeRouteParamSeparators(params)) {
+          bindRawRequestNativeRouteHandoff(request, {
+            descriptor,
+            params,
+          });
         }
 
         void this.handleRequest(request, response);
@@ -303,54 +323,71 @@ function resolveDispatcherRouteDescriptors(dispatcher: Dispatcher): readonly Han
 function createExpressNativeRoutes(descriptors: readonly HandlerDescriptor[]): ExpressNativeRouteDefinition[] {
   const candidates = new Map<string, ExpressNativeRouteCandidate>();
   const shapePaths = new Map<string, Set<string>>();
+  const versionSensitiveRouteKeys = collectVersionSensitiveRouteKeys(descriptors);
 
   for (const descriptor of descriptors) {
-    if (descriptor.route.method === 'ALL') {
+    if (!isExpressNativeRouteDescriptor(descriptor)
+      || versionSensitiveRouteKeys.has(`${descriptor.route.method}:${descriptor.route.path}`)) {
       continue;
     }
 
-    registerExpressNativeRouteCandidate(candidates, shapePaths, descriptor.route.method, descriptor.route.path);
+    registerExpressNativeRouteCandidate(candidates, shapePaths, descriptor);
   }
 
-  const routesByPath = new Map<string, Set<ExpressNativeRouteMethod>>();
+  const routesByPath = new Map<string, {
+    descriptorsByMethod: Partial<Record<ExpressNativeRouteMethod, HandlerDescriptor>>;
+    methods: Set<ExpressNativeRouteMethod>;
+  }>();
 
   for (const candidate of candidates.values()) {
     if (shapePaths.get(candidate.shapeKey)?.size !== 1) {
       continue;
     }
 
-    let methods = routesByPath.get(candidate.path);
+    let route = routesByPath.get(candidate.path);
 
-    if (!methods) {
-      methods = new Set<ExpressNativeRouteMethod>();
-      routesByPath.set(candidate.path, methods);
+    if (!route) {
+      route = {
+        descriptorsByMethod: {},
+        methods: new Set<ExpressNativeRouteMethod>(),
+      };
+      routesByPath.set(candidate.path, route);
     }
 
-    methods.add(candidate.method);
+    route.methods.add(candidate.method);
+    route.descriptorsByMethod[candidate.method] = candidate.descriptor;
   }
 
-  return [...routesByPath.entries()].map(([path, methods]) => ({
-    methods: [...methods],
+  return [...routesByPath.entries()].map(([path, route]) => ({
+    descriptorsByMethod: route.descriptorsByMethod,
+    methods: [...route.methods],
     path,
   }));
+}
+
+function isExpressNativeRouteDescriptor(descriptor: HandlerDescriptor): descriptor is HandlerDescriptor & {
+  route: HandlerDescriptor['route'] & { method: ExpressNativeRouteMethod };
+} {
+  return descriptor.route.method !== 'ALL'
+    && EXPRESS_NATIVE_ROUTE_METHODS.includes(descriptor.route.method as ExpressNativeRouteMethod)
+    && descriptor.route.version === undefined;
 }
 
 function registerExpressNativeRouteCandidate(
   candidates: Map<string, ExpressNativeRouteCandidate>,
   shapePaths: Map<string, Set<string>>,
-  method: HttpMethod,
-  path: string,
+  descriptor: HandlerDescriptor & {
+    route: HandlerDescriptor['route'] & { method: ExpressNativeRouteMethod };
+  },
 ): void {
-  if (!EXPRESS_NATIVE_ROUTE_METHODS.includes(method as ExpressNativeRouteMethod)) {
-    return;
-  }
-
-  const nativeMethod = method as ExpressNativeRouteMethod;
+  const nativeMethod = descriptor.route.method;
+  const path = descriptor.route.path;
   const routeKey = `${nativeMethod}:${path}`;
   const shapeKey = `${nativeMethod}:${canonicalizeExpressRouteShape(path)}`;
 
   if (!candidates.has(routeKey)) {
     candidates.set(routeKey, {
+      descriptor,
       method: nativeMethod,
       path,
       shapeKey,
@@ -615,7 +652,52 @@ async function createFrameworkRequest(
     frameworkRequest.rawBody = rawBody;
   }
 
-  return frameworkRequest;
+  const nativeRouteHandoff = consumeRawRequestNativeRouteHandoff(request);
+
+  return nativeRouteHandoff
+    ? attachFrameworkRequestNativeRouteHandoff(frameworkRequest, nativeRouteHandoff)
+    : frameworkRequest;
+}
+
+function normalizeNativeRouteParams(params: unknown): Record<string, string> {
+  if (typeof params !== 'object' || params === null) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(params).flatMap(([key, value]) =>
+      typeof value === 'string'
+        ? [[key, value] as const]
+        : value === undefined
+          ? []
+          : [[key, String(value)] as const]),
+  );
+}
+
+function hasNativeRouteParamSeparators(params: Readonly<Record<string, string>>): boolean {
+  return Object.values(params).some((value) => value.includes('/'));
+}
+
+function collectVersionSensitiveRouteKeys(descriptors: readonly HandlerDescriptor[]): Set<string> {
+  const grouped = new Map<string, { count: number; hasVersioned: boolean }>();
+
+  for (const descriptor of descriptors) {
+    if (!EXPRESS_NATIVE_ROUTE_METHODS.includes(descriptor.route.method as ExpressNativeRouteMethod)) {
+      continue;
+    }
+
+    const routeKey = `${descriptor.route.method}:${descriptor.route.path}`;
+    const current = grouped.get(routeKey) ?? { count: 0, hasVersioned: false };
+    current.count += 1;
+    current.hasVersioned ||= descriptor.route.version !== undefined;
+    grouped.set(routeKey, current);
+  }
+
+  return new Set(
+    [...grouped.entries()]
+      .filter(([, current]) => current.count > 1 || current.hasVersioned)
+      .map(([routeKey]) => routeKey),
+  );
 }
 
 async function parseMultipartRequest(

@@ -126,11 +126,11 @@ await bootstrapFastifyApplication(AppModule, {
 ```
 
 ### 네이티브 라우트 등록과 안전한 폴백
-fluo 라우트 메타데이터를 Fastify 경로로 그대로 옮길 수 있는 경우, 어댑터는 모든 요청을 단일 와일드카드 라우트로 보내는 대신 Fastify 네이티브 per-route 핸들러를 등록합니다. 이 네이티브 핸들러도 최종적으로는 공통 fluo dispatcher로 위임하므로 params, versioning, middleware, guards, interceptors, observers, SSE, multipart, raw body, streaming, error handling 의미론은 그대로 유지됩니다.
+fluo 라우트 메타데이터를 Fastify 경로로 그대로 옮길 수 있는 경우, 어댑터는 모든 요청을 단일 와일드카드 라우트로 보내는 대신 Fastify 네이티브 per-route 핸들러를 등록합니다. 의미 보존이 가능한 unversioned route에서는 Fastify가 미리 고른 descriptor와 params를 공유 fluo dispatcher에 전달하므로 duplicate route matching을 건너뛰면서도 middleware, guards, interceptors, observers, SSE, multipart, raw body, streaming, error handling 의미론은 그대로 유지됩니다.
 
-여러 라우트가 같은 method와 정규화된 param shape를 공유하는 경우(예: `/:id` 와 `/:slug`), 어댑터는 해당 shape를 의도적으로 와일드카드 fallback 경로에 남겨 둡니다. 이렇게 해서 Fastify 등록 단계에서 부팅 실패가 나거나 fluo의 등록 순서 기반 매칭 의미론이 좁아지지 않도록 보장합니다.
+여러 라우트가 같은 method와 정규화된 param shape를 공유하는 경우(예: `/:id` 와 `/:slug`), `@All(...)`을 사용하는 경우, non-URI versioning에 의존하는 경우, 또는 duplicate slash / trailing slash 변형으로 들어온 경우에는 어댑터가 해당 요청을 의도적으로 와일드카드 fallback 경로에 남겨 둡니다. 이렇게 해서 Fastify 등록 단계에서 부팅 실패가 나거나 fluo의 등록 순서 기반 매칭 의미론이 좁아지지 않도록 보장합니다. app middleware가 native handoff 이후 framework request의 method 또는 path를 rewrite하면 dispatcher는 stale handoff를 무시하고 rewrite된 요청을 다시 매칭합니다.
 
-어댑터는 매칭되지 않은 경로와 이식성에 민감한 경우를 위해 와일드카드 fallback 라우트를 계속 유지하며, Fastify의 trailing slash / duplicate slash 정규화를 켜서 네이티브 선택 경로도 fluo의 문서화된 route path 계약과 맞추어 동작하도록 합니다.
+어댑터는 매칭되지 않은 경로와 이식성에 민감한 경우를 위해 와일드카드 fallback 라우트를 계속 유지하며, Fastify의 trailing slash / duplicate slash 정규화를 켜서 네이티브 선택 경로도 fluo의 문서화된 route path 계약과 맞추어 동작하도록 합니다. CORS 처리는 Fastify 플러그인이 아니라 fluo의 공유 middleware 경로가 계속 소유하고, `OPTIONS` 같은 미지원 메서드는 fluo route가 명시적으로 소유하지 않는 한 fallback dispatcher 경로로 흐릅니다.
 
 ## 성능
 

@@ -8,6 +8,10 @@ import type {
   SecurityHeadersOptions,
 } from '@fluojs/http';
 import { createFetchStyleHttpAdapterRealtimeCapability } from '@fluojs/http';
+import {
+  bindRawRequestNativeRouteHandoff,
+  isRoutePathNormalizationSensitive,
+} from '@fluojs/http/internal';
 import type {
   Application,
   ApplicationLogger,
@@ -532,12 +536,15 @@ function createBunNativeRoutes(
   }
 
   const unsafeShapes = collectUnsafeNativeRouteShapes(descriptors);
+  const versionSensitiveRouteKeys = collectVersionSensitiveRouteKeys(descriptors);
   const routes = new Map<string, BunRouteMethodMap>();
 
   for (const descriptor of descriptors) {
     const method = toBunRouteMethod(descriptor.route.method);
 
-    if (!method) {
+    if (!method
+      || !isSafeBunNativeRouteDescriptor(descriptor, method)
+      || versionSensitiveRouteKeys.has(`${method}:${descriptor.route.path}`)) {
       continue;
     }
 
@@ -547,6 +554,8 @@ function createBunNativeRoutes(
 
     const routeHandlers = routes.get(descriptor.route.path) ?? {};
 
+    routeHandlers[method] = createBunNativeRouteHandoffHandler(descriptor, handleRequest);
+
     for (const bunRouteMethod of bunRouteMethods) {
       routeHandlers[bunRouteMethod] ??= handleRequest;
     }
@@ -555,6 +564,32 @@ function createBunNativeRoutes(
   }
 
   return routes.size > 0 ? Object.fromEntries(routes) : undefined;
+}
+
+function isSafeBunNativeRouteDescriptor(
+  descriptor: HandlerDescriptor,
+  method: BunRouteMethod,
+): boolean {
+  return method !== 'OPTIONS' && descriptor.route.version === undefined;
+}
+
+function createBunNativeRouteHandoffHandler(
+  descriptor: HandlerDescriptor,
+  handleRequest: BunRouteHandler,
+): BunRouteHandler {
+  return async (request, server) => {
+    const requestPath = new URL(request.url).pathname;
+    const params = normalizeNativeRouteParams(request.params);
+
+    if (!isRoutePathNormalizationSensitive(requestPath) && !hasNativeRouteParamSeparators(params)) {
+      bindRawRequestNativeRouteHandoff(request, {
+        descriptor,
+        params,
+      });
+    }
+
+    return await handleRequest(request, server);
+  };
 }
 
 function supportsBunNativeRoutes(bun: BunGlobal): boolean {
@@ -625,6 +660,38 @@ function createBunRouteShapeKey(path: string): string {
   }
 
   return `/${segments.map((segment) => segment.startsWith(':') ? ':' : segment).join('/')}`;
+}
+
+function normalizeNativeRouteParams(params: Readonly<Record<string, string>> | undefined): Record<string, string> {
+  return params ? { ...params } : {};
+}
+
+function hasNativeRouteParamSeparators(params: Readonly<Record<string, string>>): boolean {
+  return Object.values(params).some((value) => value.includes('/'));
+}
+
+function collectVersionSensitiveRouteKeys(descriptors: readonly HandlerDescriptor[]): Set<string> {
+  const grouped = new Map<string, { count: number; hasVersioned: boolean }>();
+
+  for (const descriptor of descriptors) {
+    const method = toBunRouteMethod(descriptor.route.method);
+
+    if (!method) {
+      continue;
+    }
+
+    const routeKey = `${method}:${descriptor.route.path}`;
+    const current = grouped.get(routeKey) ?? { count: 0, hasVersioned: false };
+    current.count += 1;
+    current.hasVersioned ||= descriptor.route.version !== undefined;
+    grouped.set(routeKey, current);
+  }
+
+  return new Set(
+    [...grouped.entries()]
+      .filter(([, current]) => current.count > 1 || current.hasVersioned)
+      .map(([routeKey]) => routeKey),
+  );
 }
 
 function toBunRouteMethod(method: HttpMethod): BunRouteMethod | undefined {

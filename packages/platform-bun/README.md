@@ -74,7 +74,9 @@ export class MyGateway {}
 ### Native `routes` Object Acceleration
 On Bun `>=1.2.3`, the adapter opportunistically registers safe static and parameterized fluo routes through `Bun.serve({ routes })` while still routing matched requests back through the shared fluo dispatcher.
 
-This keeps raw body, multipart, SSE, error responses, shutdown drain behavior, and websocket upgrade delegation on the same shared execution path. If route shape parity is unsafe, such as same-shape parameter routes with different param names or `ALL`-method handlers, the adapter falls back to fetch-only dispatch for those routes instead of changing fluo semantics.
+For semantically safe unversioned routes, Bun hands the pre-matched descriptor and params to the shared dispatcher so duplicate route matching is skipped while raw body, multipart, SSE, error responses, shutdown drain behavior, and websocket upgrade delegation stay on the same shared execution path. If route shape parity is unsafe, such as same-shape parameter routes with different param names, `ALL`-method handlers, normalization-sensitive paths, or non-URI versioning, the adapter falls back to fetch-only dispatch for those routes instead of changing fluo semantics.
+
+If app middleware rewrites the framework request method or path after a Bun native handoff is attached, the dispatcher discards that stale handoff and rematches the rewritten request. Unsupported methods such as `OPTIONS` and CORS preflight behavior remain owned by the shared dispatcher/middleware path unless a fluo route explicitly owns them.
 
 ## Public API Overview
 
@@ -94,7 +96,7 @@ The adapter also exports the typed Bun integration seams used by realtime packag
 
 - **Runtime host**: This package requires `globalThis.Bun.serve()` at listen time. Tests may provide a Bun-compatible test double, but production use is Bun-only.
 - **Request portability**: Fetch requests are translated through the shared web dispatcher, preserving malformed cookie values, query arrays, JSON/text raw bodies when `rawBody: true`, and SSE framing.
-- **Native route acceleration**: When Bun's `routes` object is available and a fluo route shape is semantically safe to pre-register, the adapter lets Bun short-circuit path matching before handing the request back to the shared dispatcher. Unsupported or ambiguous route shapes fall back to the regular `fetch` path.
+- **Native route acceleration**: When Bun's `routes` object is available and a fluo route shape is semantically safe to pre-register, the adapter lets Bun short-circuit path matching before handing the request back to the shared dispatcher. Unsupported or ambiguous route shapes fall back to the regular `fetch` path, and stale handoffs are ignored if middleware rewrites method/path before handler matching.
 - **Multipart behavior**: Multipart requests never expose `rawBody`, and multipart limits continue to flow through the shared runtime parser.
 - **Startup target**: `hostname`, `port`, and `tls` are forwarded to `Bun.serve()`. Startup logs report the configured HTTP or HTTPS listen URL.
 - **Shutdown ownership**: `close()` stops new ingress, waits for in-flight HTTP handlers, clears adapter state after drain settles, and removes signal listeners registered by `runBunApplication()`.
@@ -102,7 +104,7 @@ The adapter also exports the typed Bun integration seams used by realtime packag
 
 ## Conformance Coverage
 
-`packages/platform-bun/src/adapter.test.ts` is the package-local regression target for the documented contract. It includes Bun fetch-style portability assertions for malformed cookies, JSON/text raw-body preservation, multipart raw-body exclusion, SSE framing, native-route param parity, and same-shape route fallback, plus focused tests for startup logging, shutdown listener cleanup, in-flight drain behavior, timeout reporting, and websocket binding delegation.
+`packages/platform-bun/src/adapter.test.ts` is the package-local regression target for the documented contract. It includes Bun fetch-style portability assertions for malformed cookies, JSON/text raw-body preservation, multipart raw-body exclusion, SSE framing, native-route param parity, same-path multi-method handoff, versioning fallback, normalization-sensitive fallback, OPTIONS/CORS ownership, and same-shape route fallback, plus focused tests for startup logging, shutdown listener cleanup, in-flight drain behavior, timeout reporting, and websocket binding delegation.
 
 The broader repository suite also exercises Bun through `createWebRuntimeHttpAdapterPortabilityHarness(...)` alongside Deno and Cloudflare Workers in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`, keeping the shared web-runtime portability baseline aligned across fetch-style platforms.
 

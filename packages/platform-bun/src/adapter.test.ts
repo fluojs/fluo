@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { All, Controller, Get, Post, SseResponse, type FrameworkRequest, type FrameworkResponse, type RequestContext } from '@fluojs/http';
+import { All, Controller, createDispatcher, createHandlerMapping, Get, Post, SseResponse, Version, VersioningType, type FrameworkRequest, type FrameworkResponse, type RequestContext } from '@fluojs/http';
 import { defineModule, type ApplicationLogger } from '@fluojs/runtime';
 
 import {
@@ -608,6 +608,125 @@ describe('@fluojs/platform-bun', () => {
     }
   });
 
+  it('hands safe Bun native routes to the dispatcher without rematching', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/native')
+    class NativeController {
+      @Get('/:id')
+      getById(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id };
+      }
+    }
+
+    const baseMapping = createHandlerMapping([{ controllerToken: NativeController }]);
+    const dispatcher = createDispatcher({
+      handlerMapping: {
+        descriptors: baseMapping.descriptors,
+        match: vi.fn(() => {
+          throw new Error('Bun native handoff should bypass handlerMapping.match');
+        }),
+      },
+      rootContainer: {
+        createRequestScope() {
+          return {
+            async dispose() {},
+            resolve() {
+              return new NativeController();
+            },
+          };
+        },
+      } as never,
+    });
+    const adapter = createBunAdapter({
+      hostname: '127.0.0.1',
+      port: 4320,
+    }) as BunHttpApplicationAdapter;
+
+    await adapter.listen(dispatcher);
+
+    try {
+      expect(mockBun.lastOptions?.routes).toMatchObject({
+        '/native/:id': {
+          GET: expect.any(Function),
+        },
+      });
+
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4320/native/123'));
+
+      expect(response?.status).toBe(200);
+      await expect(response?.json()).resolves.toEqual({ id: '123' });
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('hands every safe explicit method for the same Bun native path to the dispatcher without rematching', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/native-multi')
+    class NativeMultiController {
+      @Get('/:id')
+      getById(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, method: 'GET' };
+      }
+
+      @Post('/:id')
+      postById(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, method: 'POST' };
+      }
+    }
+
+    const baseMapping = createHandlerMapping([{ controllerToken: NativeMultiController }]);
+    const dispatcher = createDispatcher({
+      handlerMapping: {
+        descriptors: baseMapping.descriptors,
+        match: vi.fn(() => {
+          throw new Error('Bun native handoff should bypass handlerMapping.match for every explicit method');
+        }),
+      },
+      rootContainer: {
+        createRequestScope() {
+          return {
+            async dispose() {},
+            resolve() {
+              return new NativeMultiController();
+            },
+          };
+        },
+      } as never,
+    });
+    const adapter = createBunAdapter({
+      hostname: '127.0.0.1',
+      port: 4322,
+    }) as BunHttpApplicationAdapter;
+
+    await adapter.listen(dispatcher);
+
+    try {
+      expect(mockBun.lastOptions?.routes).toMatchObject({
+        '/native-multi/:id': {
+          GET: expect.any(Function),
+          POST: expect.any(Function),
+        },
+      });
+
+      const [getResponse, postResponse] = await Promise.all([
+        mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4322/native-multi/read')),
+        mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4322/native-multi/write', {
+          method: 'POST',
+        })),
+      ]);
+
+      expect(getResponse?.status).toBe(200);
+      expect(postResponse?.status).toBe(201);
+      await expect(getResponse?.json()).resolves.toEqual({ id: 'read', method: 'GET' });
+      await expect(postResponse?.json()).resolves.toEqual({ id: 'write', method: 'POST' });
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it('falls back to fetch-only dispatch for same-shape parameter routes that would change fluo matching semantics', async () => {
     const mockBun = installMockBun();
 
@@ -681,6 +800,130 @@ describe('@fluojs/platform-bun', () => {
         method: 'POST',
         slug: 'fallback-check',
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps version-sensitive Bun routes on fetch-only dispatch', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/versions')
+    class VersionedController {
+      @Get('/')
+      @Version('1')
+      v1() {
+        return { route: 'version', version: '1' };
+      }
+
+      @Get('/')
+      latest() {
+        return { route: 'version', version: 'latest' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [VersionedController] });
+
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      port: 4323,
+      versioning: {
+        header: 'x-api-version',
+        type: VersioningType.HEADER,
+      },
+    });
+
+    try {
+      expect(mockBun.lastOptions?.routes).toBeUndefined();
+
+      const [versionedResponse, latestResponse] = await Promise.all([
+        mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4323/versions', {
+          headers: { 'x-api-version': '1' },
+        })),
+        mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4323/versions')),
+      ]);
+
+      expect(versionedResponse?.status).toBe(200);
+      expect(latestResponse?.status).toBe(200);
+      await expect(versionedResponse?.json()).resolves.toEqual({ route: 'version', version: '1' });
+      await expect(latestResponse?.json()).resolves.toEqual({ route: 'version', version: 'latest' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('falls back to generic dispatch for normalization-sensitive Bun native requests', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/normalize')
+    class NormalizeController {
+      @Get('/:itemId')
+      getItem(_input: undefined, context: RequestContext) {
+        return { itemId: context.request.params.itemId };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [NormalizeController] });
+
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      port: 4324,
+    });
+
+    try {
+      expect(mockBun.lastOptions?.routes).toMatchObject({
+        '/normalize/:itemId': {
+          GET: expect.any(Function),
+        },
+      });
+
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4324/normalize//abc/'));
+
+      expect(response?.status).toBe(200);
+      await expect(response?.json()).resolves.toEqual({ itemId: 'abc' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps OPTIONS CORS preflight on shared middleware for Bun native routes', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/cors')
+    class CorsController {
+      @Get('/')
+      getCors() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [CorsController] });
+
+    const app = await runBunApplication(AppModule, {
+      cors: 'https://client.test',
+      hostname: '127.0.0.1',
+      port: 4325,
+    });
+
+    try {
+      expect(mockBun.lastOptions?.routes).toMatchObject({
+        '/cors': {
+          GET: expect.any(Function),
+          OPTIONS: expect.any(Function),
+        },
+      });
+
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4325/cors', {
+        headers: { origin: 'https://client.test' },
+        method: 'OPTIONS',
+      }));
+
+      expect(response?.status).toBe(204);
+      expect(response?.headers.get('access-control-allow-origin')).toBe('https://client.test');
+      expect(response?.headers.get('access-control-allow-methods')).toContain('OPTIONS');
     } finally {
       await app.close();
     }

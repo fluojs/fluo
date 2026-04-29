@@ -8,6 +8,10 @@ import {
   type FrameworkRequest,
   type FrameworkResponse,
 } from '@fluojs/http';
+import {
+  attachFrameworkRequestNativeRouteHandoff,
+  consumeRawRequestNativeRouteHandoff,
+} from '@fluojs/http/internal';
 
 import {
   parseMultipart,
@@ -228,10 +232,13 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
       const responseBody = this.responseBody instanceof Uint8Array
         ? this.responseBody.slice().buffer as ArrayBuffer
         : this.responseBody;
+      const nativeResponseBody = isResponseBodyForbidden(init.status)
+        ? undefined
+        : responseBody ?? '';
 
       this.finalizedResponse = this.streamActive
         ? new Response(this.getOrCreateResponseStream().readable, init)
-        : new Response(responseBody ?? '', init);
+        : new Response(nativeResponseBody, init);
       this.raw = this.finalizedResponse;
       this.committed = true;
     }
@@ -417,7 +424,11 @@ function createDeferredWebFrameworkRequest(
     materializeBody,
   };
 
-  return frameworkRequest;
+  const nativeRouteHandoff = consumeRawRequestNativeRouteHandoff(request);
+
+  return nativeRouteHandoff
+    ? attachFrameworkRequestNativeRouteHandoff(frameworkRequest, nativeRouteHandoff)
+    : frameworkRequest;
 }
 
 function validateWebRequestContentLength(request: Request, maxBodySize: number): void {
@@ -638,6 +649,10 @@ function findHeaderName(headers: Record<string, string | string[]>, name: string
 
 function hasHeader(headers: Record<string, string | string[]>, name: string): boolean {
   return findHeaderName(headers, name) !== undefined;
+}
+
+function isResponseBodyForbidden(status: number | undefined): boolean {
+  return status === 204 || status === 205 || status === 304;
 }
 
 function toResponseHeaders(headers: Record<string, string | string[]>): Headers {

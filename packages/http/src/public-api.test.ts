@@ -55,6 +55,14 @@ describe('@fluojs/http public API surface', () => {
   it('keeps the internal subpath limited to the documented exported helpers', () => {
     expect(httpInternalApi).toHaveProperty('DefaultBinder');
     expect(httpInternalApi).toHaveProperty('resolveClientIdentity');
-    expect(Object.keys(httpInternalApi).sort()).toEqual(['DefaultBinder', 'resolveClientIdentity']);
+    expect(Object.keys(httpInternalApi).sort()).toEqual([
+      'DefaultBinder',
+      'attachFrameworkRequestNativeRouteHandoff',
+      'bindRawRequestNativeRouteHandoff',
+      'consumeRawRequestNativeRouteHandoff',
+      'isRoutePathNormalizationSensitive',
+      'readFrameworkRequestNativeRouteHandoff',
+      'resolveClientIdentity',
+    ]);
   });
 });

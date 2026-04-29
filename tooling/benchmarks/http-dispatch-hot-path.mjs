@@ -3,6 +3,7 @@ import { performance } from 'node:perf_hooks';
 import { defineClassDiMetadata, defineControllerMetadata, defineRouteMetadata } from '../../packages/core/dist/internal.js';
 import { Container } from '../../packages/di/dist/index.js';
 import { createDispatcher, createHandlerMapping } from '../../packages/http/dist/index.js';
+import { attachFrameworkRequestNativeRouteHandoff } from '../../packages/http/dist/internal.js';
 
 function createRequest(path, method = 'GET', headers = {}) {
   return {
@@ -165,13 +166,17 @@ function buildDispatchBenchmarks() {
   });
 
   const emptyPipelineRoot = new Container().register(HealthController);
+  const emptyPipelineMapping = createHandlerMapping([{ controllerToken: HealthController }]);
+  const emptyPipelineDescriptor = emptyPipelineMapping.descriptors[0];
   const emptyPipelineDispatcher = createDispatcher({
-    handlerMapping: createHandlerMapping([{ controllerToken: HealthController }]),
+    handlerMapping: emptyPipelineMapping,
     rootContainer: emptyPipelineRoot,
   });
 
   const emptyPipelineRequest = createRequest('/health');
   const emptyPipelineResponse = createResponse();
+  const preMatchedPipelineRequest = createRequest('/health');
+  const preMatchedPipelineResponse = createResponse();
 
   class Repository {
     read() {
@@ -293,6 +298,18 @@ function buildDispatchBenchmarks() {
       async run() {
         resetResponse(emptyPipelineResponse);
         await emptyPipelineDispatcher.dispatch(emptyPipelineRequest, emptyPipelineResponse);
+      },
+    },
+    {
+      iterations: 20000,
+      name: 'dispatch pre-matched native handoff GET /health (empty pipeline)',
+      async run() {
+        resetResponse(preMatchedPipelineResponse);
+        attachFrameworkRequestNativeRouteHandoff(preMatchedPipelineRequest, {
+          descriptor: emptyPipelineDescriptor,
+          params: {},
+        });
+        await emptyPipelineDispatcher.dispatch(preMatchedPipelineRequest, preMatchedPipelineResponse);
       },
     },
     {
