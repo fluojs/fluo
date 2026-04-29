@@ -1,5 +1,11 @@
 # @fluojs/di
 
+## 1.0.0-beta.4
+
+### Patch Changes
+
+- [#1436](https://github.com/fluojs/fluo/pull/1436) [`1911e11`](https://github.com/fluojs/fluo/commit/1911e110e7dbb5296238ccc0a2e167ed6f34df86) Thanks [@ayden94](https://github.com/ayden94)! - Lazily materialize request-scope container tracking and caches so singleton-only request paths avoid the fixed request-scope lifecycle overhead while preserving request-local isolation and disposal behavior.
+
 ## 1.0.0-beta.3
 
 ### Patch Changes

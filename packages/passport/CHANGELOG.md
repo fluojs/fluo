@@ -1,5 +1,21 @@
 # @fluojs/passport
 
+## 1.0.0-beta.4
+
+### Minor Changes
+
+- [#1422](https://github.com/fluojs/fluo/pull/1422) [`3718eae`](https://github.com/fluojs/fluo/commit/3718eae97bd6de407142270bfc35e989b218b129) Thanks [@ayden94](https://github.com/ayden94)! - Make cookie-auth guest access explicit by requiring `@UseOptionalAuth(...)` when routes intentionally allow missing credentials.
+
+  Protected routes now reject missing cookie credentials even when `requireAccessToken: false`, so applications that previously relied on anonymous cookie principals should switch those guest-capable handlers to `@UseOptionalAuth('cookie')`.
+
+### Patch Changes
+
+- Updated dependencies [[`01d5e65`](https://github.com/fluojs/fluo/commit/01d5e65f053db99704d9cb30585c75b94dd38367), [`72b1efe`](https://github.com/fluojs/fluo/commit/72b1efe5452bc209168ffc65c8be37e10b1bc381), [`1911e11`](https://github.com/fluojs/fluo/commit/1911e110e7dbb5296238ccc0a2e167ed6f34df86), [`16420f9`](https://github.com/fluojs/fluo/commit/16420f9055ca885a459522625f8ff605f0b109b6), [`89f6379`](https://github.com/fluojs/fluo/commit/89f637935736c0fe9c52668a5b714c5c0e394af1), [`28ca2ef`](https://github.com/fluojs/fluo/commit/28ca2efb3d3464cc3573da5143924908146b459d)]:
+  - @fluojs/http@1.0.0-beta.3
+  - @fluojs/jwt@1.0.0-beta.2
+  - @fluojs/di@1.0.0-beta.4
+  - @fluojs/runtime@1.0.0-beta.4
+
 ## 1.0.0-beta.3
 
 ### Patch Changes
