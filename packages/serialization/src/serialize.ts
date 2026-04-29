@@ -240,14 +240,15 @@ function serializeInternal<T = unknown>(value: T, context: SerializationContext)
 }
 
 /**
- * Serializes class instances and object graphs into JSON-safe plain values.
+ * Serializes class instances and object graphs into plain response-shaped values.
  *
  * Serialization honors `@Expose()`, `@Exclude()`, and `@Transform()` metadata.
  * Cycles and repeated references are handled without unbounded recursion.
+ * Non-JSON leaf values such as `Date`, `bigint`, functions, and symbols pass through unchanged unless you normalize them before or during serialization.
  *
  * @typeParam T Input value type.
  * @param value Value or object graph to serialize.
- * @returns A plain JSON-safe structure ready for HTTP response writing.
+ * @returns A plain recursively serialized structure whose non-JSON leaf values are preserved unless transformed.
  *
  * @example
  * ```ts

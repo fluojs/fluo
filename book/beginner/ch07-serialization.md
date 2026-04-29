@@ -124,14 +124,41 @@ In FluoBlog's `PostsController`, you usually want consistent serialization for a
 Sometimes you may need to serialize data manually outside an HTTP request, such as in a background job or CLI command. In that case, use the `serialize()` function directly.
 
 ```typescript
-import { serialize } from '@fluojs/serialization';
+import { Expose, serialize } from '@fluojs/serialization';
 
-const publicData = serialize(internalRecord, { 
-  type: PublicPostDto 
+@Expose({ excludeExtraneous: true })
+class PublicPostDto {
+  @Expose()
+  id = '';
+
+  @Expose()
+  title = '';
+
+  @Expose()
+  body = '';
+
+  @Expose()
+  published = false;
+}
+
+const internalRecord = {
+  id: 'post-1',
+  title: 'Serialization Basics',
+  body: 'Boundary-focused DTO example',
+  published: true,
+};
+
+const dto = Object.assign(new PublicPostDto(), {
+  id: internalRecord.id,
+  title: internalRecord.title,
+  body: internalRecord.body,
+  published: internalRecord.published,
 });
+
+const publicData = serialize(dto);
 ```
 
-This keeps the same power and consistency as the Interceptor while giving you direct control over when and how transformation happens.
+This keeps the same power and consistency as the Interceptor while giving you direct control over when and how transformation happens. The important idea is that `serialize()` shapes the DTO instance you provide, so you populate the public DTO first and then serialize that value.
 
 ## 7.4 Updating FluoBlog to Return Public Output
 
@@ -179,21 +206,21 @@ This structure gives FluoBlog a better separation of concerns. The internal reco
 
 ### Where `@Transform()` Helps
 
-Sometimes public responses need a light finishing transformation. You may need to trim a summary value, show a user name in uppercase, or format a derived display value. These are presentation concerns at the transfer boundary, so it is natural to keep them near the DTO rather than inside domain logic.
+Sometimes public responses need a light finishing transformation. You may need to trim a summary value, show a user name in uppercase, or normalize a display-only string. These are presentation concerns at the transfer boundary, so it is natural to keep them near the DTO rather than inside domain logic.
 
-`@Transform()` exists for these synchronous boundary transformations. It can take a property value and return a different value based on the logic you provide. For example, in the `PublicPostDto` above, it is useful when showing a long body as a short summary.
+`@Transform()` exists for these synchronous boundary transformations. It can take a property value and return a different value based on the logic you provide. For example, in the `PublicPostDto` above, it is useful when trimming or formatting a field before it leaves the response boundary.
 
 ### Advanced Transformations
 
-You can also access the whole object inside a transform function.
+`@Transform()` currently receives the field value and returns the transformed result. If you need to combine several internal fields into one public field, compute that value before you populate the DTO, then let the serializer apply field-level transforms to the resulting DTO value.
 
 ```typescript
 @Expose()
-@Transform(({ obj }) => `${obj.firstName} ${obj.lastName}`)
-fullName = '';
+@Transform((value) => String(value).trim())
+summary = '';
 ```
 
-This is very useful when combining several internal fields into one public field. It helps keep the service layer clean instead of filling it with display-only formatting logic.
+This is very useful for lightweight display formatting at the response boundary. It helps keep the service layer clean instead of filling it with repetitive presentation-only cleanup logic.
 
 ## 7.5 Safe Serialization Details Worth Knowing
 

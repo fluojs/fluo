@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Exclude } from './decorators/exclude.js';
 import { Expose } from './decorators/expose.js';
 import { Transform } from './decorators/transform.js';
+import { Expose as PublicExpose, Transform as PublicTransform, serialize as publicSerialize } from './index.js';
 import { serialize } from './serialize.js';
 
 describe('serialize', () => {
@@ -50,6 +51,52 @@ describe('serialize', () => {
     }
 
     expect(serialize(new UserView('fluo'))).toEqual({ displayName: 'FLUO' });
+  });
+
+  it('supports the documented public DTO population and value-only transform pattern', () => {
+    type InternalPostRecord = {
+      id: string;
+      title: string;
+      body: string;
+      published: boolean;
+    };
+
+    @PublicExpose({ excludeExtraneous: true })
+    class PublicPostDto {
+      @PublicExpose()
+      id = '';
+
+      @PublicExpose()
+      title = '';
+
+      @PublicExpose()
+      @PublicTransform((value) => String(value).trim())
+      body = '';
+
+      @PublicExpose()
+      published = false;
+    }
+
+    const internalRecord: InternalPostRecord = {
+      id: 'post-1',
+      title: 'Intro',
+      body: '  Hello fluo  ',
+      published: true,
+    };
+
+    const dto = Object.assign(new PublicPostDto(), {
+      id: internalRecord.id,
+      title: internalRecord.title,
+      body: internalRecord.body,
+      published: internalRecord.published,
+    });
+
+    expect(publicSerialize(dto)).toEqual({
+      id: 'post-1',
+      title: 'Intro',
+      body: 'Hello fluo',
+      published: true,
+    });
   });
 
   it('serializes nested metadata-bearing objects and arrays recursively', () => {
