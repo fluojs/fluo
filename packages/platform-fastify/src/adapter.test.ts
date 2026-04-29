@@ -4,7 +4,15 @@ import { request as httpsRequest } from 'node:https';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { Controller, Get, Post, SseResponse, type FrameworkRequest, type RequestContext } from '@fluojs/http';
+import {
+  Controller,
+  Get,
+  Post,
+  SseResponse,
+  type Dispatcher,
+  type FrameworkRequest,
+  type RequestContext,
+} from '@fluojs/http';
 import { createHealthModule, defineModule, type ApplicationLogger } from '@fluojs/runtime';
 
 import {
@@ -234,6 +242,51 @@ describe('@fluojs/platform-fastify', () => {
     });
 
     await app.close();
+  });
+
+  it('preserves raw body as exact bytes for byte-sensitive payloads when enabled', async () => {
+    const port = await findAvailablePort();
+    const adapter = createFastifyAdapter({ port, rawBody: true }) as FastifyHttpApplicationAdapter;
+    const app = Reflect.get(adapter, 'app') as {
+      addContentTypeParser: (
+        contentType: string,
+        options: { parseAs: 'buffer' },
+        parser: (
+          request: unknown,
+          body: Buffer,
+          done: (error: Error | null, body: Buffer) => void,
+        ) => void,
+      ) => void;
+    };
+
+    app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_request, body, done) => {
+      done(null, body);
+    });
+
+    const dispatcher: Dispatcher = {
+      async dispatch(request, response) {
+        response.setStatus(201);
+        await response.send({
+          rawBytes: Array.from(request.rawBody ?? new Uint8Array()),
+        });
+      },
+    };
+
+    await adapter.listen(dispatcher);
+
+    const bytes = Uint8Array.from([0x00, 0xff, 0x80, 0x41, 0x42]);
+    const response = await fetch(`http://127.0.0.1:${String(port)}/webhooks/bytes`, {
+      body: bytes,
+      headers: { 'content-type': 'application/octet-stream' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      rawBytes: Array.from(bytes),
+    });
+
+    await adapter.close();
   });
 
   it('supports SSE streaming', async () => {

@@ -1,10 +1,10 @@
 import type { IncomingHttpHeaders } from 'node:http';
 import type { ServerOptions as HttpsServerOptions } from 'node:https';
 import type { AddressInfo } from 'node:net';
+import { Transform } from 'node:stream';
 
 import multipart from '@fastify/multipart';
 import fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
-import fastifyRawBody from 'fastify-raw-body';
 
 import {
   createServerBackedHttpAdapterRealtimeCapability,
@@ -203,12 +203,7 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     await this.app.register(multipart);
 
     if (this.preserveRawBody) {
-      await this.app.register(fastifyRawBody, {
-        encoding: 'utf8',
-        field: 'rawBody',
-        global: true,
-        runFirst: true,
-      });
+      this.app.addHook('preParsing', captureRawBodyPreParsingHook);
     }
 
     this.app.all('*', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -505,10 +500,10 @@ async function createFrameworkRequest(
   }
 
   if (preserveRawBody && !isMultipart) {
-    const rawBodyValue = (request as FastifyRequest & { rawBody?: Buffer | string }).rawBody;
+    const rawBodyValue = (request as FastifyRequest & { rawBody?: Buffer }).rawBody;
 
     if (rawBodyValue !== undefined) {
-      frameworkRequest.rawBody = typeof rawBodyValue === 'string' ? Buffer.from(rawBodyValue, 'utf8') : rawBodyValue;
+      frameworkRequest.rawBody = rawBodyValue;
     }
   }
 
@@ -734,6 +729,41 @@ function createFastifyApp(
     bodyLimit: maxBodySize,
     logger: false,
   });
+}
+
+function captureRawBodyPreParsingHook(
+  request: FastifyRequest & { rawBody?: Buffer },
+  _reply: FastifyReply,
+  payload: NodeJS.ReadableStream,
+  done: (error: Error | null, payload: NodeJS.ReadableStream) => void,
+): void {
+  const chunks: Buffer[] = [];
+  const capture = new Transform({
+    transform(chunk, _encoding, callback) {
+      const bufferChunk = Buffer.isBuffer(chunk)
+        ? chunk
+        : chunk instanceof Uint8Array
+          ? Buffer.from(chunk)
+          : Buffer.from(String(chunk), 'utf8');
+
+      chunks.push(bufferChunk);
+      callback(null, chunk);
+    },
+    flush(callback) {
+      if (chunks.length > 0) {
+        request.rawBody = Buffer.concat(chunks);
+      }
+
+      callback();
+    },
+  });
+
+  payload.on('error', (error) => {
+    capture.destroy(error);
+  });
+
+  payload.pipe(capture);
+  done(null, capture);
 }
 
 function resolveListenTarget(
