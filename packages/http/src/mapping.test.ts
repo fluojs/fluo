@@ -443,4 +443,90 @@ describe('handler mapping', () => {
     expect(match?.descriptor.methodName).toBe('getHealth');
     expect(match?.descriptor.route.method).toBe('GET');
   });
+
+  it('prefers ALL exact-version static routes before method-specific unversioned fallback', () => {
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { route: 'get' };
+      }
+    }
+
+    class AnyMethodController {
+      any() {
+        return { route: 'all-versioned' };
+      }
+    }
+
+    defineControllerMetadata(AnyMethodController, { basePath: '/health' });
+    defineRouteMetadata(AnyMethodController.prototype, 'any', {
+      method: 'ALL',
+      path: '/',
+      version: '2',
+    } as any);
+
+    const mapping = createHandlerMapping(
+      [
+        { controllerToken: HealthController },
+        { controllerToken: AnyMethodController },
+      ],
+      { versioning: { header: 'x-api-version', type: VersioningType.HEADER } },
+    );
+
+    const versionedMatch = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: { 'x-api-version': '2' },
+      method: 'GET',
+      params: {},
+      path: '/health',
+      query: {},
+      raw: {},
+      url: '/health',
+    });
+
+    const fallbackMatch = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: {},
+      method: 'GET',
+      params: {},
+      path: '/health',
+      query: {},
+      raw: {},
+      url: '/health',
+    });
+
+    expect(versionedMatch?.descriptor.methodName).toBe('any');
+    expect(versionedMatch?.descriptor.route.method).toBe('ALL');
+    expect(fallbackMatch?.descriptor.methodName).toBe('getHealth');
+    expect(fallbackMatch?.descriptor.route.method).toBe('GET');
+  });
+
+  it('normalizes incoming static paths before direct lookup', () => {
+    @Controller('//health//')
+    class HealthController {
+      @Get('///')
+      getHealth() {
+        return { route: 'get' };
+      }
+    }
+
+    const mapping = createHandlerMapping([{ controllerToken: HealthController }]);
+    const match = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: {},
+      method: 'GET',
+      params: {},
+      path: '///health///',
+      query: {},
+      raw: {},
+      url: '///health///',
+    });
+
+    expect(match?.descriptor.methodName).toBe('getHealth');
+    expect(match?.descriptor.route.path).toBe('/health');
+  });
 });

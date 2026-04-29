@@ -242,36 +242,38 @@ function buildDescriptorIndex(descriptors: HandlerDescriptor[]): CompiledDescrip
 }
 
 function findStaticMatch(
-  descriptors: readonly HandlerDescriptor[] | undefined,
+  descriptorBuckets: readonly (readonly HandlerDescriptor[] | undefined)[],
   requestVersion: string | undefined,
   versioning: ResolvedVersioning,
 ): HandlerMatch | undefined {
-  if (!descriptors) {
-    return undefined;
-  }
-
   let firstUnversionedMatch: HandlerMatch | undefined;
 
-  for (const descriptor of descriptors) {
-    if (versioning.type === VersioningType.URI) {
-      return {
-        descriptor,
-        params: {},
-      };
+  for (const descriptors of descriptorBuckets) {
+    if (!descriptors || descriptors.length === 0) {
+      continue;
     }
 
-    if (matchesRouteVersion(descriptor, requestVersion)) {
-      return {
-        descriptor,
-        params: {},
-      };
-    }
+    for (const descriptor of descriptors) {
+      if (versioning.type === VersioningType.URI) {
+        return {
+          descriptor,
+          params: {},
+        };
+      }
 
-    if (descriptor.route.version === undefined && !firstUnversionedMatch) {
-      firstUnversionedMatch = {
-        descriptor,
-        params: {},
-      };
+      if (matchesRouteVersion(descriptor, requestVersion)) {
+        return {
+          descriptor,
+          params: {},
+        };
+      }
+
+      if (descriptor.route.version === undefined && !firstUnversionedMatch) {
+        firstUnversionedMatch = {
+          descriptor,
+          params: {},
+        };
+      }
     }
   }
 
@@ -392,9 +394,11 @@ export function createHandlerMapping(sources: HandlerSource[], options?: CreateH
       const normalizedPath = normalizeRoutePath(request.path);
       const methodStaticDescriptors = descriptorIndex.static.get(method)?.get(normalizedPath);
       const allStaticDescriptors = descriptorIndex.static.get('ALL' as HttpMethod)?.get(normalizedPath);
-      const directStaticMatch =
-        findStaticMatch(methodStaticDescriptors, requestVersion, versioning)
-        ?? findStaticMatch(allStaticDescriptors, requestVersion, versioning);
+      const directStaticMatch = findStaticMatch(
+        [methodStaticDescriptors, allStaticDescriptors],
+        requestVersion,
+        versioning,
+      );
 
       if (directStaticMatch) {
         return directStaticMatch;
