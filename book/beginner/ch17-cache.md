@@ -12,7 +12,7 @@ This chapter explains how to design and operate a cache layer to improve FluoBlo
 - Apply automatic response caching with `CacheInterceptor`.
 - Implement manual cache management with `CacheService`.
 - Understand cache invalidation strategies for data freshness.
-- Explore cache stampede prevention and multi-layer caching patterns.
+- Evaluate cache stampede mitigation and multi-layer caching patterns.
 - Design caching architectures for global scale.
 
 ## Prerequisites
@@ -52,12 +52,12 @@ Fluo provides the `@fluojs/cache-manager` package, which offers a unified interf
 Keeping these concepts separate helps you build a caching strategy that balances performance and data freshness. For example, the TTL for a list of popular posts might be one hour, while the TTL for a user's personal settings data might be shortened to five minutes. Fluo's cache module keeps data serialization and connection management complexity behind the store boundary, so application code can focus on business decisions.
 
 ### 17.2.2 The Pluggable Architecture: Extensibility by Design
-The `@fluojs/cache-manager` module is built on a Provider-based architecture. This means you can easily create a custom store engine when the built-in engines do not meet your requirements. For example, you might want a "tiered store" that checks a local in-memory cache first and falls back to a global Redis cluster. Fluo's clean interfaces make this kind of implementation straightforward.
+The `@fluojs/cache-manager` module is built on a Provider-based architecture. This means you can create a custom store engine when the built-in engines do not meet your requirements. For example, you might want a "tiered store" that checks a local in-memory cache first and falls back to a global Redis cluster. Fluo's clean `CacheStore` contract is the extension seam for that kind of implementation.
 
-This pluggable structure also applies to **serialization protocols**. JSON is the default, but in data-intensive scenarios you can swap it for a more efficient binary format such as Protocol Buffers, or Protobuf, or MessagePack for better performance. This flexibility ensures the caching layer can evolve as the application's requirements grow.
+That extensibility boundary matters for **serialization protocols** too. The shipped `RedisStore` uses `JSON.stringify(...)`/`JSON.parse(...)` internally, so alternative formats such as Protocol Buffers or MessagePack are not a built-in toggle on `CacheModule`. If your application needs a different serialization strategy, implement it through a custom store that still satisfies the public cache contract.
 
 ### 17.2.3 Serialization and Type Safety in Fluo
-One common pain point in caching is ensuring that retrieved data has the same type as the data that was stored. Fluo's `CacheService` provides a TypeScript-friendly read and write API and keeps serialization details for complex objects behind the store boundary. This reduces the burden of manually parsing strings back into dates or nested objects. As a result, service code can focus on what the data means instead of how the cache stores it, and adding a cache layer does not blur the type flow.
+One common pain point in caching is ensuring that retrieved data has the same type as the data that was stored. Fluo's `CacheService` provides a TypeScript-friendly API surface, but the built-in stores do not perform rich type revival for you. In practice, JSON-compatible values round-trip cleanly, while values such as `Date` return in their serialized JSON form unless your application rehydrates them explicitly. As a result, service code should treat cache values as application-owned data contracts rather than assuming the cache layer restores every original runtime type automatically.
 
 ## 17.3 Basic Configuration and Setup
 Register `CacheModule` in `AppModule`. The default configuration uses an in-memory store, which is suitable for local development.
@@ -158,7 +158,7 @@ export class WeatherService {
     
     // 1. Check the cache first
     const cached = await this.cache.get(cacheKey);
-    if (cached) return cached;
+    if (cached !== undefined) return cached;
 
     // 2. If it is not in the cache, call the external API
     const forecast = await this.fetchFromExternalApi(city);
@@ -175,7 +175,7 @@ export class WeatherService {
 This is a classic implementation of the **Cache-Aside** pattern. The application code checks the cache first, queries the real source, such as a database or API, only when the data is missing, then fills the cache. This approach optimizes memory use by ensuring only data that is actually requested enters the cache. It also improves system resilience. If the cache server goes down, the application can fall back to the primary database and keep functioning, although more slowly.
 
 ### 17.5.2 Atomic Operations and Concurrency
-When using manual cache management in high-traffic environments, watch for race conditions. If two requests for a missing key arrive at the same time, both may run the expensive database query. In these cases, review atomic operations provided by the store or add a separate locking strategy so costly work is not duplicated excessively.
+When using manual cache management in high-traffic environments, watch for race conditions. If two requests for a missing key arrive at the same time, both may run the expensive database query. The built-in `CacheService.remember(...)` helps only within the current `CacheService` instance by de-duplicating concurrent misses for the same key in that one process. It is useful for single-process overlap, but it is not a distributed lock or a cross-instance stampede shield. For multi-node deployments, review atomic operations provided by the selected store or add a separate coordination strategy.
 
 Consider a scenario where inventory for a flash sale product is cached. Without atomic operations, several server nodes could try to decrement inventory at the same time and cause an oversell error. In this case, you should combine atomic capabilities from a store such as Redis with distributed locks so cache modifications stay consistent across the infrastructure. This level of reliability is what separates a simple hobby app from a real commercial system.
 
@@ -206,9 +206,9 @@ As the application grows, managing many cache keys can become complex. Establish
 Consistent naming also helps with **cache observability**. When you inspect a Redis instance, well-named keys tell you exactly which modules consume the most memory. Tools such as `redis-insight` can visualize key distribution and help identify "hot keys" that need further optimization or should move to an L1 local cache.
 
 ### 17.6.2 The "Thundering Herd" (Cache Stampede)
-When a very popular cache key expires, thousands of requests may hit the database at the same time trying to refresh it. This can overwhelm the database and is known as the "Thundering Herd" or "Cache Stampede" phenomenon. To prevent this, you can use probabilistic early recomputation or a lease-based locking system. Fluo's cache manager includes protection for these scenarios, ensuring even the most popular keys can be refreshed safely and efficiently.
+When a very popular cache key expires, thousands of requests may hit the database at the same time trying to refresh it. This can overwhelm the database and is known as the "Thundering Herd" or "Cache Stampede" phenomenon. The shipped cache contract does **not** include built-in lease locking, probabilistic early recomputation, or automatic multi-node stampede prevention. What you do get today is per-process overlap reduction through `CacheService.remember(...)`, which can de-duplicate concurrent misses inside one `CacheService` instance.
 
-A common mitigation technique is **jittering**. Instead of giving every key exactly a 3600-second TTL, add a small random "jitter," such as 3600 plus or minus 60 seconds. This ensures keys created at the same time do not expire at exactly the same moment, spreading database refresh load more evenly over time. Fluo's `CacheModule` can be configured to apply jitter automatically to every stored item.
+A common mitigation technique is **jittering**. Instead of giving every key exactly a 3600-second TTL, add a small random "jitter," such as 3600 plus or minus 60 seconds. This ensures keys created at the same time do not expire at exactly the same moment, spreading database refresh load more evenly over time. In Fluo, jitter must currently be applied by your own application logic or by a custom store wrapper; `CacheModule` does not expose an automatic jitter toggle.
 
 ### 17.6.3 Write-Through vs. Write-Back Caching: Choosing the Right Trade-off
 In "Write-Through" caching, the application writes to the cache and database at the same time. This ensures the cache is always up to date. In "Write-Back" caching, the application writes only to the cache, and a background process periodically flushes changes to the database. "Write-Back" is very fast under write-heavy load, but it carries a risk of data loss if the cache server goes down. Fluo lets you implement either strategy depending on the application's reliability requirements.
@@ -228,9 +228,9 @@ Finally, consider an **idempotent invalidation** strategy. When performing cache
 In mission-critical systems, you can also implement **soft invalidation**. Instead of deleting a key immediately, mark it as "expired" but keep it in the cache for a few seconds. If the database is overloaded, the application can continue serving "slightly stale" data while a new value is computed in the background. This "serve stale while revalidate," or SWR, pattern increases the chance that users still receive a response when the underlying system is under stress.
 
 ### 17.6.6 Negative Caching: Protecting against Ghost Requests
-One important but often overlooked pattern is **negative caching**. This means caching the fact that data *does not exist*. If a user requests a blog post that does not exist, such as ID 99999, the database will return null. If thousands of users, or bots, request the same nonexistent ID, the database takes thousands of hits. By caching the "Not Found" result for a short time, you protect the database from these "ghost requests" and greatly improve API resilience against certain types of denial-of-service, or DoS, attacks.
+One important but often overlooked pattern is **negative caching**. This means caching the fact that data *does not exist*. If a user requests a blog post that does not exist, such as ID 99999, the database will return null. If thousands of users, or bots, request the same nonexistent ID, the database takes thousands of hits. Caching a short-lived "not found" sentinel can protect the database from these "ghost requests" and improve resilience against certain types of denial-of-service, or DoS, attacks.
 
-Always use a **short TTL** when implementing negative caching. Data may be created shortly after the request, so you should not block users from seeing new content for too long. A TTL of about 30 to 60 seconds can provide enough protection while keeping data freshness acceptable. Fluo's `CacheInterceptor` can be configured to apply negative caching automatically for `404 Not Found` responses, giving the whole application immediate protection.
+Always use a **short TTL** when implementing negative caching. Data may be created shortly after the request, so you should not block users from seeing new content for too long. A TTL of about 30 to 60 seconds can provide enough protection while keeping data freshness acceptable. In the current Fluo contract, neither `CacheService` nor `CacheInterceptor` automatically applies `404 Not Found` negative caching for you. If you need that behavior, model it explicitly in application code or a custom interceptor/store strategy.
 
 ### 17.6.7 Built-in Eviction Behavior and When to Go Custom
 When the cache is full, the store engine must decide which entries to remove to make room for new ones. Fluo's current default memory store cleans up the oldest keys first when the number of live entries reaches its limit.
@@ -249,7 +249,7 @@ This is a larger Redis cluster shared by all server instances. Most cache data l
 ### 17.7.3 Orchestrating the Layers: The Sidecar Pattern
 When requesting data, check L1 first. If it is missing, check L2. If it is missing there too, go to the database. When updating data, you must invalidate both L1, on every instance, and L2. Fluo's modular design makes it easy to build this kind of sophisticated architecture by connecting multiple cache managers.
 
-You can also use the Sidecar pattern or a service mesh, such as Istio or Linkerd, to handle synchronization between L1 caches. When node A invalidates an item in local memory, it broadcasts a signal telling every other node to do the same. This ensures "global consistency" for the L1 layer without giving up the speed of local access. In the Fluo ecosystem, the `@fluojs/redis-pubsub` module often handles this by providing a lightweight event bus for communication between instances.
+You can also use the Sidecar pattern or a service mesh, such as Istio or Linkerd, to handle synchronization between L1 caches. When node A invalidates an item in local memory, it broadcasts a signal telling every other node to do the same. This ensures "global consistency" for the L1 layer without giving up the speed of local access. In Fluo, treat that fan-out channel as application-owned infrastructure: for example, you might wire Redis pub/sub directly, or use another messaging system your deployment already supports.
 
 ### 17.7.4 Cache Warming and Pre-fetching
 High-performance systems do not wait until users request data before caching it. **Cache warming** is the process of preloading the most likely requested data into the cache at application startup or through scheduled jobs. For FluoBlog, this might mean loading the top 100 most popular posts into Redis as soon as the server boots. This ensures the first user who visits a popular page receives a sub-millisecond response instead of paying the "latency tax" of a cache miss.
@@ -269,7 +269,7 @@ For example, if analytics show that users who read "Chapter 1" almost always mov
 ### 17.7.7 Monitoring Cache Health: Hit Rates and Latency
 Finally, a caching strategy is only effective when you can measure its performance. You must monitor **cache hit rate**, the percentage of requests handled from the cache, and **cache latency**, the time it takes to retrieve data from the cache. A low hit rate may indicate that TTLs are too short or eviction policy is not tuned well. High latency may suggest that the cache store is overloaded or the network connection is slow.
 
-Fluo's `@fluojs/metrics` module provides built-in support for tracking these cache-specific metrics. By visualizing this data in a dashboard, such as Grafana, you can see the real-time effect of your caching strategy and identify areas that need optimization. Remember that caching is not a set-and-forget feature. As the application and traffic patterns change, continuous monitoring and tuning are required to keep efficiency high.
+Fluo's `@fluojs/metrics` module can still be part of the broader observability stack, but cache-specific metrics such as hit rate and latency remain application-owned instrumentation unless you wire them up yourself. By visualizing that data in a dashboard, such as Grafana, you can see the real-time effect of your caching strategy and identify areas that need optimization. Remember that caching is not a set-and-forget feature. As the application and traffic patterns change, continuous monitoring and tuning are required to keep efficiency high.
 
 ## 17.8 Summary
 Caching is a cornerstone of high-performance backend systems. By moving frequently accessed data from the database into a fast storage layer, it ensures FluoBlog remains highly responsive even under heavy load.

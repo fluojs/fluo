@@ -65,6 +65,11 @@ function isFiniteNumericDate(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+type AccessTokenVerificationOverrides = Pick<
+  JwtVerifierOptions,
+  'algorithms' | 'audience' | 'clockSkewSeconds' | 'issuer' | 'maxAge' | 'requireExp'
+>;
+
 interface KeyResolutionState {
   defaultHmacSecret?: string;
   defaultPublicKey?: string | KeyObject;
@@ -279,6 +284,41 @@ export class DefaultJwtVerifier {
 
   async verifyAccessToken(token: string): Promise<JwtPrincipal> {
     return this.verifyToken(token, this.options, this.keyResolutionState, this.jwksClient);
+  }
+
+  /**
+   * Verifies a JWT access token with per-call claim-policy overrides while reusing configured key sources.
+   *
+   * @remarks
+   * This override path is intentionally limited to algorithm and claim-validation policy.
+   * It does not replace configured JWKS/static keys or the shared `secretOrKeyProvider`.
+   *
+   * @param token Compact JWT string to verify.
+   * @param overrides Per-call algorithm and claim-policy overrides layered on top of module defaults.
+   * @returns The normalized principal for the verified access token.
+   */
+  async verifyAccessTokenWithOverrides(
+    token: string,
+    overrides: Partial<AccessTokenVerificationOverrides>,
+  ): Promise<JwtPrincipal> {
+    const algorithms = overrides.algorithms ?? this.options.algorithms;
+
+    assertJwtAlgorithms(algorithms, 'JWT verifier');
+
+    return this.verifyToken(
+      token,
+      {
+        ...this.options,
+        algorithms,
+        audience: overrides.audience ?? this.options.audience,
+        clockSkewSeconds: overrides.clockSkewSeconds ?? this.options.clockSkewSeconds,
+        issuer: overrides.issuer ?? this.options.issuer,
+        maxAge: overrides.maxAge ?? this.options.maxAge,
+        requireExp: overrides.requireExp ?? this.options.requireExp,
+      },
+      this.keyResolutionState,
+      this.jwksClient,
+    );
   }
 
   async verifyRefreshToken(token: string): Promise<JwtPrincipal> {

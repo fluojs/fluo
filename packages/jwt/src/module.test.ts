@@ -215,7 +215,7 @@ describe('JwtModule', () => {
     await expect(container.resolve(DefaultJwtSigner)).rejects.toThrow('jwt async options failed');
   });
 
-  it('does not register refresh token service when async options omit refreshToken', async () => {
+  it('rejects async refresh token service resolution when async options omit refreshToken', async () => {
     const app = await createJwtApplicationContext(JwtModule.forRootAsync({
       useFactory: async () => ({
         algorithms: ['HS256'],
@@ -225,7 +225,9 @@ describe('JwtModule', () => {
     }));
 
     try {
-      expect(app.container.has(RefreshTokenService)).toBe(false);
+      await expect(app.container.resolve(RefreshTokenService)).rejects.toThrow(
+        'JWT refresh token options are not configured.',
+      );
     } finally {
       await app.close();
     }
@@ -253,7 +255,7 @@ describe('JwtModule', () => {
     }
   });
 
-  it('does not statically register refresh token service from async registration metadata', () => {
+  it('exports refresh token service from async registration metadata to match sync registration parity', () => {
     const moduleType = JwtModule.forRootAsync({
       useFactory: async () => ({
         algorithms: ['HS256'],
@@ -262,8 +264,8 @@ describe('JwtModule', () => {
       }),
     });
 
-    expect(moduleExports(moduleType)).not.toContain(RefreshTokenService);
-    expect(moduleProviders(moduleType).map((provider) => providerToken(provider))).not.toContain(RefreshTokenService);
+    expect(moduleExports(moduleType)).toContain(RefreshTokenService);
+    expect(moduleProviders(moduleType).map((provider) => providerToken(provider))).toContain(RefreshTokenService);
   });
 
   it('fails async bootstrap when refreshToken is configured without any HMAC algorithms', async () => {

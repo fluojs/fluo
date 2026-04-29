@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type Redis from 'ioredis';
+
 import { metadataSymbol } from '@fluojs/core/internal';
 import type { GuardContext, HandlerDescriptor, RequestContext } from '@fluojs/http';
 
@@ -7,6 +9,7 @@ import * as throttlerExports from './index.js';
 import { SkipThrottle, Throttle, getThrottleMetadata } from './decorators.js';
 import { ThrottlerGuard } from './guard.js';
 import { ThrottlerModule } from './module.js';
+import { RedisThrottlerStore } from './redis-store.js';
 import { createMemoryThrottlerStore } from './store.js';
 import type {
   ThrottlerConsumeInput,
@@ -591,6 +594,36 @@ describe('ThrottlerGuard — Redis store mock', () => {
 
     await expect(guard.canActivate(createGuardContext(TestController, 'action', ctx))).rejects.toThrow(storeFailure);
     expect(ctx.response.headers['Retry-After']).toBeUndefined();
+  });
+
+  it('keeps Retry-After consistent across skewed app clocks when Redis provides the shared window', async () => {
+    const client = {
+      eval: vi.fn(async () => [2, 1_710_000_090_000, 45_000]),
+    } as unknown as Pick<Redis, 'eval'>;
+    const store = new RedisThrottlerStore(client as Redis);
+
+    class TestController {
+      action() {}
+    }
+
+    const fastNodeGuard = new ThrottlerGuard({ limit: 1, store, ttl: 60 });
+    const slowNodeGuard = new ThrottlerGuard({ limit: 1, store, ttl: 60 });
+    const fastNodeContext = createRequestContext('10.0.0.1');
+    const slowNodeContext = createRequestContext('10.0.0.2');
+    const dateNowSpy = vi.spyOn(Date, 'now');
+
+    dateNowSpy.mockReturnValueOnce(1_710_000_045_000);
+    await expect(
+      fastNodeGuard.canActivate(createGuardContext(TestController, 'action', fastNodeContext)),
+    ).rejects.toThrow('Too Many Requests');
+
+    dateNowSpy.mockReturnValueOnce(1_710_000_000_000);
+    await expect(
+      slowNodeGuard.canActivate(createGuardContext(TestController, 'action', slowNodeContext)),
+    ).rejects.toThrow('Too Many Requests');
+
+    expect(fastNodeContext.response.headers['Retry-After']).toBe('45');
+    expect(slowNodeContext.response.headers['Retry-After']).toBe('45');
   });
 
   it('builds store keys from route and token identity context', async () => {

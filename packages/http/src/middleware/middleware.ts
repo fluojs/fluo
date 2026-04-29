@@ -118,7 +118,18 @@ export async function runMiddlewareChain(
   context: MiddlewareContext,
   terminal: Next,
 ): Promise<void> {
+  if (definitions.length === 0) {
+    await terminal();
+    return;
+  }
+
   const middlewareChain = await resolveActiveMiddlewareDefinitions(definitions, context);
+
+  if (middlewareChain.length === 0) {
+    await terminal();
+    return;
+  }
+
   const composed = middlewareChain.reduceRight<Next>(
     (next, middleware) => deferNext(async () => {
       await middleware.handle(context, next);

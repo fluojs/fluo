@@ -14,6 +14,8 @@ import {
  */
 export type MutableFrameworkResponse = FrameworkResponse & { statusSet?: boolean };
 
+type FrameworkResponseCompressionFactory = () => FrameworkResponseCompression | undefined;
+
 function createFrameworkResponseStream(response: ServerResponse): FrameworkResponseStream {
   return {
     close() {
@@ -66,8 +68,26 @@ function createFrameworkResponseStream(response: ServerResponse): FrameworkRespo
  */
 export function createFrameworkResponse(
   response: ServerResponse,
-  compression?: FrameworkResponseCompression,
+  compression?: FrameworkResponseCompression | FrameworkResponseCompressionFactory,
 ): MutableFrameworkResponse {
+  let activeStream: FrameworkResponseStream | undefined;
+  const resolveCompression = (() => {
+    const factory = typeof compression === 'function'
+      ? compression as FrameworkResponseCompressionFactory
+      : () => compression;
+    let resolved = false;
+    let value: FrameworkResponseCompression | undefined;
+
+    return () => {
+      if (!resolved) {
+        value = factory();
+        resolved = true;
+      }
+
+      return value;
+    };
+  })();
+
   const mergeSetCookieHeader = (
     current: string | string[] | number | undefined,
     incoming: string | string[],
@@ -92,7 +112,10 @@ export function createFrameworkResponse(
     committed: response.headersSent || response.writableEnded,
     headers: {},
     raw: response,
-    stream: createFrameworkResponseStream(response),
+    get stream() {
+      activeStream ??= createFrameworkResponseStream(response);
+      return activeStream;
+    },
     redirect(status: number, location: string) {
       this.setStatus(status);
       this.setHeader('Location', location);
@@ -118,11 +141,12 @@ export function createFrameworkResponse(
       const payload = typeof serialized.payload === 'string'
         ? Buffer.from(serialized.payload, 'utf8')
         : serialized.payload;
+      const activeCompression = resolveCompression();
 
-      if (compression) {
+      if (activeCompression) {
         this.committed = true;
 
-        return Promise.resolve(compression.write(payload, { contentType }))
+        return Promise.resolve(activeCompression.write(payload, { contentType }))
           .then((handled) => {
             if (!handled && !response.writableEnded) {
               response.end(payload);

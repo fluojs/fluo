@@ -174,6 +174,29 @@ describe('node request adapter', () => {
     expect(Buffer.from(frameworkRequest.rawBody ?? new Uint8Array()).toString('utf8')).toBe('{"ok":true}');
   });
 
+  it('skips request stream reads when headers indicate no request body', async () => {
+    let chunksRead = 0;
+    const request = {
+      headers: {
+        'content-length': '0',
+      },
+      method: 'GET',
+      async *[Symbol.asyncIterator]() {
+        chunksRead += 1;
+        yield Buffer.from('unexpected', 'utf8');
+      },
+      url: '/empty',
+    } as unknown as IncomingMessage;
+
+    const frameworkRequest = createDeferredFrameworkRequest(request, new AbortController().signal);
+
+    await materializeFrameworkRequestBody(frameworkRequest);
+    await materializeFrameworkRequestBody(frameworkRequest);
+
+    expect(chunksRead).toBe(0);
+    expect(frameworkRequest.body).toBeUndefined();
+  });
+
   it('destroys the raw Node request stream when maxBodySize is exceeded', async () => {
     let destroyed = false;
     let paused = false;

@@ -7,7 +7,7 @@ This chapter explains rate limiting strategies that protect the FluoBlog API fro
 
 ## Learning Objectives
 - Understand why rate limiting matters for API security and availability.
-- Configure `ThrottlerModule` for global and route-level protection.
+- Configure `ThrottlerModule` defaults and activate `ThrottlerGuard` on the routes that need protection.
 - Compare in-memory and Redis storage strategies.
 - Adjust limiting rules based on user ID or IP address.
 - Learn how to handle `429 Too Many Requests` responses.
@@ -48,7 +48,7 @@ Fluo provides the `@fluojs/throttler` package, which integrates with the `fluo` 
 By combining these three concepts, you can build precise traffic control policies for each part of your application. For example, you might allow 100 public data lookups per minute but only five sensitive operations, such as password changes, per minute.
 
 ### 16.2.2 The Throttler Guard
-The `@fluojs/throttler` package provides `ThrottlerGuard`, which can be applied globally, to a Controller, or to an individual route. This Guard manages the logic for checking storage, incrementing request counts, and deciding whether a limit has been exceeded. Because it integrates with Fluo's DI system, you can extend the Guard and inject other services needed for complex tracking logic. The Guard enforces policy at the actual request boundary and intercepts requests at the front of application logic.
+The `@fluojs/throttler` package provides `ThrottlerGuard`, which you activate explicitly on a Controller or individual route with guard metadata such as `@UseGuards(ThrottlerGuard)`. This Guard manages the logic for checking storage, incrementing request counts, and deciding whether a limit has been exceeded. Because it integrates with Fluo's DI system, you can extend the Guard and inject other services needed for complex tracking logic. The Guard enforces policy at the actual request boundary and intercepts requests at the front of application logic.
 
 In Fluo, Guards run before the Interceptor chain, followed by Pipes and the handler. This means that when a request is throttled, it consumes no resources for data validation or business logic processing. This "fail fast" approach is essential for maintaining high availability during DDoS attacks. By rejecting malicious traffic at the entrance, you ensure that valuable CPU cycles and memory are reserved for legitimate users.
 
@@ -82,14 +82,34 @@ import { ThrottlerModule } from '@fluojs/throttler';
 export class AppModule {}
 ```
 
-### 16.3.1 Global Throttling
-Configuring the Module at the root level establishes a default layer of protection for the entire application. This is your first line of defense. Every incoming request is tracked against the global limit unless a separate override exists. This "secure by default" posture reflects Fluo's philosophy, because even routes you forgot to protect explicitly still receive some protection from abuse.
+### 16.3.1 Module Defaults and Explicit Guard Activation
+Configuring the Module at the root level establishes the default policy that `ThrottlerGuard` will enforce when you attach that Guard to controllers or handlers. In other words, `ThrottlerModule.forRoot(...)` does **not** automatically throttle every route by itself. The shipped contract is: register the Module once, then activate `ThrottlerGuard` explicitly through Fluo guard metadata such as `@UseGuards(ThrottlerGuard)`.
 
 This setup defines a default limit of 10 requests every 60 seconds for routes that wire `ThrottlerGuard`. It gives FluoBlog a baseline defense before you add stricter rules to sensitive endpoints.
 
-Global throttling is especially effective when combined with **load balancer integration**. If your application runs behind a proxy such as Nginx, HAProxy, or a cloud-native load balancer such as AWS ALB, you must ensure the `X-Forwarded-For` header is parsed correctly to identify the real client IP. Without this setup, the global throttler may treat all traffic as coming from the proxy itself and accidentally put every user on a "global blacklist." In Fluo, enabling `trustProxyHeaders: true` in platform settings lets `ThrottlerGuard` receive the correct IP address for tracking logic.
+Global throttling is especially effective when combined with **load balancer integration**. If your application runs behind a proxy such as Nginx, HAProxy, or a cloud-native load balancer such as AWS ALB, you must ensure the forwarded client IP is trusted only when your proxy overwrites those headers correctly. In Fluo, that opt-in lives on `ThrottlerModule.forRoot(...)` itself through `trustProxyHeaders: true`, not through separate platform settings.
 
-Beyond simple IP tracking, global throttling can enforce **aggregate system limits**. For example, you can set a global limit of 10,000 requests per minute across the entire API cluster, regardless of which user sends the request, to prevent database exhaustion. This higher-level resource management is essential for keeping infrastructure stable during unexpected traffic spikes or explosive growth. Setting these guardrails helps ensure the system fails gracefully under pressure instead of collapsing.
+```typescript
+import { Controller, Post, UseGuards } from '@fluojs/http';
+import { ThrottlerGuard, ThrottlerModule } from '@fluojs/throttler';
+
+ThrottlerModule.forRoot({
+  limit: 10,
+  ttl: 60,
+  trustProxyHeaders: true,
+});
+
+@Controller('/auth')
+@UseGuards(ThrottlerGuard)
+export class AuthController {
+  @Post('/login')
+  login() {
+    return { ok: true };
+  }
+}
+```
+
+If you need aggregate cluster-wide quotas or other higher-level protection, model that explicitly with application middleware, a custom store, or a custom guard wrapper instead of assuming one built-in app-wide quota layer.
 
 Once you have global rules, you can tune them for each route's character. You can override global settings or skip rate limiting for specific Controllers or methods.
 
@@ -317,14 +337,14 @@ Rate limiting is not only for REST APIs. In modern Fluo applications, you may ne
 ### 16.13.1 WebSockets and Real-Time Data
 For WebSocket connections, you can apply throttling to incoming messages to prevent malicious clients from flooding the message bus. Because WebSocket connections are long-lived, you can track message rate by socket ID. This keeps real-time features responsive even when one connection misbehaves.
 
-When throttling WebSockets, it is also good practice to monitor **inbound byte rates**. An attacker may send a few very large messages instead of many small ones to exhaust server memory. Combining message count limits with byte-rate limits in `WebSocketGuard` gives you a more comprehensive defense. When a client exceeds these limits, you can silently drop messages or forcibly close the connection to reclaim system resources.
+When throttling WebSockets, it is also good practice to monitor **inbound byte rates**. An attacker may send a few very large messages instead of many small ones to exhaust server memory. Combining message count limits with byte-rate limits in your own WebSocket handler or gateway pipeline gives you a more comprehensive defense. When a client exceeds these limits, you can silently drop messages or forcibly close the connection to reclaim system resources.
 
 Also consider **dynamic WebSocket limits** based on connection age. Newly established connections can have stricter limits until they prove "trustworthy" over time. This helps reduce automated connection-flood attacks. In Fluo, you can intercept each socket event, which gives you the fine-grained control needed to implement these sophisticated real-time security policies without complicating the main business logic.
 
 ### 16.13.2 Message Queues and Background Jobs
-When processing jobs from a queue (`@fluojs/queue`), you may need to control processing speed so you don't overwhelm third-party services such as email providers or payment gateways. Using `ThrottlerGuard` logic inside a job processor ensures workers respect external system limits and automatically retry jobs later when the limit is reached.
+When processing jobs from a queue (`@fluojs/queue`), you may need to control processing speed so you don't overwhelm third-party services such as email providers or payment gateways. In practice, keep that policy in queue-owned settings such as worker concurrency, queue rate-limiting options, and retry or backoff choices rather than assuming HTTP `ThrottlerGuard` logic runs inside a job processor.
 
-Implementing **backpressure for queue consumers** is the key to this strategy. Instead of fetching as many jobs as possible and then failing them because of rate limits, a consumer can monitor throttler state and proactively slow its polling rate. This prevents the queue from filling with jobs that failed but are retryable, avoiding high latency and database bloat. In Fluo, you can easily integrate queue processors with `ThrottlerModule` to achieve this balanced throughput.
+Implementing **backpressure for queue consumers** is the key to this strategy. Instead of fetching as many jobs as possible and then failing them because of downstream limits, a consumer can lower concurrency, tune queue rate-limiting settings, or pause intake based on application-owned signals from the downstream system. This prevents the queue from filling with jobs that failed but are retryable, avoiding high latency and database bloat. In Fluo, `@fluojs/queue` exposes queue and rate-limiting surfaces for this throughput policy, while any service-specific throttling rules beyond that remain application-owned.
 
 You should also consider **per-job rate limiting**. Not every background job is equal. An "urgent notification" job may have higher priority and looser rate limits than a "monthly report generation" job. By defining specific throttlers for different job categories, you can ensure lower-priority background tasks don't delay your most important business processes. This intelligent prioritization is the difference between a simple task runner and a production-grade job processing system.
 

@@ -88,6 +88,23 @@ describe('createFrameworkResponse', () => {
     expect(frameworkResponse.committed).toBe(true);
   });
 
+  it('defers compression helper creation until send is called', async () => {
+    const rawResponse = createMockServerResponse();
+    const endSpy = vi.fn();
+    rawResponse.end = endSpy as typeof rawResponse.end;
+    const compression = { write: vi.fn().mockResolvedValue(false) };
+    const compressionFactory = vi.fn(() => compression);
+    const frameworkResponse = createFrameworkResponse(rawResponse, compressionFactory);
+
+    expect(compressionFactory).not.toHaveBeenCalled();
+
+    await frameworkResponse.send('hello');
+
+    expect(compressionFactory).toHaveBeenCalledOnce();
+    expect(compression.write).toHaveBeenCalledOnce();
+    expect(endSpy).toHaveBeenCalledWith(Buffer.from('hello', 'utf8'));
+  });
+
   it('settles waitForDrain when the response closes before drain', async () => {
     const rawResponse = createMockServerResponse();
     const frameworkResponse = createFrameworkResponse(rawResponse);

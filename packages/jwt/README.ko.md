@@ -57,6 +57,8 @@ export class AuthModule {}
 
 JWT 설정이 다른 provider에서 와야 한다면, `JwtModule.forRootAsync(...)`를 사용해도 표준 module contract 안에서 안전하게 등록할 수 있습니다.
 
+비동기 등록도 동기 경로와 동일한 JWT provider surface를 export하며, 여기에는 `RefreshTokenService`가 포함됩니다. 단, 이 서비스를 실제로 resolve하려면 `refreshToken` 옵션이 구성되어 있어야 합니다.
+
 ```typescript
 import { Module, type Token } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
@@ -145,6 +147,8 @@ const verifier = new DefaultJwtVerifier({
 ```
 
 `jwksRequestTimeoutMs`의 기본값은 `5_000`이며, 예산을 넘기면 진행 중인 JWKS fetch를 abort합니다.
+
+`JwtService.verify(token, options)`는 호출 단위의 알고리즘/클레임 정책 재정의(`issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`)를 적용하더라도, 내부 JWKS client나 정적 key-resolution cache를 다시 만들지 않습니다. 호출 단위 검증은 `jwksUri`, `keys[]`, `publicKey`, `secret`, `secretOrKeyProvider` 같은 구성된 key source 자체를 교체하지는 않습니다.
 
 ## 설정 가드레일
 

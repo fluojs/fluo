@@ -23,6 +23,10 @@ async function resolveGuard(definition: GuardLike, requestContext: RequestContex
  * @returns The run guard chain result.
  */
 export async function runGuardChain(definitions: GuardLike[], context: GuardContext): Promise<void> {
+  if (definitions.length === 0) {
+    return;
+  }
+
   for (const definition of definitions) {
     const guard = await resolveGuard(definition, context.requestContext);
     const result = await guard.canActivate(context);

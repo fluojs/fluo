@@ -10,9 +10,10 @@ import {
   getThrottleMetadata,
   throttleRouteMetadataKey,
 } from './decorators.js';
+import { throttlerRetryAfterMsSymbol } from './store-internals.js';
 import { createMemoryThrottlerStore } from './store.js';
 import { THROTTLER_OPTIONS } from './tokens.js';
-import type { ThrottlerModuleOptions, ThrottlerStore } from './types.js';
+import type { ThrottlerModuleOptions, ThrottlerStore, ThrottlerStoreEntry } from './types.js';
 import { validateThrottleOptions, validateThrottlerModuleOptions, validateThrottlerStoreEntry } from './validation.js';
 
 type MetadataBag = Record<PropertyKey, unknown>;
@@ -53,6 +54,18 @@ function buildHandlerKey(handler: GuardContext['handler']): string {
     `version:${encodeURIComponent(version)}`,
     `handler:${encodeURIComponent(handler.methodName)}`,
   ].join('|');
+}
+
+function resolveRetryAfterSeconds(entry: ThrottlerStoreEntry, now: number): number {
+  const retryAfterMs = (entry as ThrottlerStoreEntry & { [throttlerRetryAfterMsSymbol]?: number })[
+    throttlerRetryAfterMsSymbol
+  ];
+
+  if (typeof retryAfterMs === 'number' && Number.isFinite(retryAfterMs)) {
+    return Math.max(1, Math.ceil(retryAfterMs / 1000));
+  }
+
+  return Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
 }
 
 /**
@@ -110,13 +123,14 @@ export class ThrottlerGuard implements Guard {
     const handlerKey = buildHandlerKey(handler);
     const storeKey = buildStoreKey(handlerKey, clientKey);
     const now = Date.now();
-    const entry = validateThrottlerStoreEntry(await this.store.consume(storeKey, {
+    const rawEntry = await this.store.consume(storeKey, {
       now,
       ttlSeconds,
-    }));
+    });
+    const entry = validateThrottlerStoreEntry(rawEntry);
 
     if (entry.count > limit) {
-      const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+      const retryAfter = resolveRetryAfterSeconds(rawEntry, now);
       requestContext.response.setHeader('Retry-After', String(retryAfter));
       throw new TooManyRequestsException('Too Many Requests', { meta: { retryAfter } });
     }

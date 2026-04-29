@@ -57,6 +57,8 @@ export class AuthModule {}
 
 Use `JwtModule.forRootAsync(...)` when your JWT settings must come from another provider and still need to resolve into the standard module contract.
 
+Async registration exports the same JWT provider surface as the synchronous path, including `RefreshTokenService`; resolving that service still requires `refreshToken` options to be configured.
+
 ```typescript
 import { Module, type Token } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
@@ -145,6 +147,8 @@ const verifier = new DefaultJwtVerifier({
 ```
 
 `jwksRequestTimeoutMs` defaults to `5_000` and aborts the outbound JWKS fetch once that budget is exceeded.
+
+`JwtService.verify(token, options)` applies per-call algorithm and claim-policy overrides (`issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`) without rebuilding the underlying JWKS client or static key-resolution cache. Per-call verification does not replace configured key sources such as `jwksUri`, `keys[]`, `publicKey`, `secret`, or `secretOrKeyProvider`.
 
 ## Configuration Guardrails
 

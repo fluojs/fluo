@@ -65,6 +65,43 @@ describe('Container', () => {
     expect(a1).not.toBe(b1);
   });
 
+  it('tracks request scopes only after request-local state is actually materialized', async () => {
+    class RootSingleton {}
+    class RequestStore {}
+
+    const root = new Container().register(
+      RootSingleton,
+      { provide: RequestStore, scope: Scope.REQUEST, useClass: RequestStore },
+    );
+    const rootInternals = root as unknown as { childScopes?: Set<Container> };
+    const requestScope = root.createRequestScope();
+
+    expect(rootInternals.childScopes).toBeUndefined();
+
+    await requestScope.resolve(RootSingleton);
+
+    expect(rootInternals.childScopes).toBeUndefined();
+
+    await requestScope.resolve(RequestStore);
+
+    expect(rootInternals.childScopes?.size).toBe(1);
+
+    await requestScope.dispose();
+
+    expect(rootInternals.childScopes?.size ?? 0).toBe(0);
+  });
+
+  it('rejects untouched request scopes once the root container is disposed', async () => {
+    class RootSingleton {}
+
+    const root = new Container().register(RootSingleton);
+    const requestScope = root.createRequestScope();
+
+    await root.dispose();
+
+    await expect(requestScope.resolve(RootSingleton)).rejects.toThrow('Container has been disposed');
+  });
+
   it('supports @Inject and @Scope metadata for dependency tokens and scope', async () => {
     class Logger {}
 
@@ -968,10 +1005,18 @@ describe('Container', () => {
       expect(events).toEqual(['request', 'singleton']);
     });
 
-    it('removes disposed request scopes from the root child scope registry', async () => {
-      const root = new Container();
+    it('removes materialized request scopes from the root child scope registry on dispose', async () => {
+      class RequestStore {}
+
+      const root = new Container().register({
+        provide: RequestStore,
+        scope: Scope.REQUEST,
+        useClass: RequestStore,
+      });
       const rootInternals = root as unknown as { childScopes: Set<Container> };
       const requestScope = root.createRequestScope();
+
+      await requestScope.resolve(RequestStore);
 
       expect(rootInternals.childScopes.size).toBe(1);
 

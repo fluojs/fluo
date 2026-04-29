@@ -69,7 +69,7 @@ class AuthController {
 
 ### Redis 저장소 사용
 
-다중 인스턴스 배포 환경에서는 `RedisThrottlerStore`를 사용하여 모든 인스턴스 간에 속도 제한 상태를 공유하세요.
+다중 인스턴스 배포 환경에서는 `RedisThrottlerStore`를 사용하여 모든 인스턴스 간에 속도 제한 상태를 공유하세요. Redis 기반 윈도우는 Redis 서버 시간을 기준으로 고정되므로, 애플리케이션 노드 간 시계 오차가 있어도 하나의 공통 reset 경계를 강제합니다.
 
 ```typescript
 import { ThrottlerModule, RedisThrottlerStore } from '@fluojs/throttler';

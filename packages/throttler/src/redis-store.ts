@@ -1,12 +1,16 @@
 import type Redis from 'ioredis';
 
+import { throttlerRetryAfterMsSymbol } from './store-internals.js';
 import type { ThrottlerConsumeInput, ThrottlerStore, ThrottlerStoreEntry } from './types.js';
 import { validateThrottlerStoreEntry } from './validation.js';
 
 const CONSUME_LUA = [
   "local key = KEYS[1]",
-  "local now = tonumber(ARGV[1])",
-  "local ttlMs = tonumber(ARGV[2])",
+  "local ttlMs = tonumber(ARGV[1])",
+  "local time = redis.call('TIME')",
+  "local nowSeconds = tonumber(time[1])",
+  "local nowMicros = tonumber(time[2])",
+  'local now = math.floor((nowSeconds * 1000) + (nowMicros / 1000))',
   "local raw = redis.call('GET', key)",
   "local count",
   "local resetAt",
@@ -26,7 +30,7 @@ const CONSUME_LUA = [
   'end',
   'local ttlMsLeft = math.max(resetAt - now, 1)',
   "redis.call('SET', key, cjson.encode({ count = count, resetAt = resetAt }), 'PX', ttlMsLeft)",
-  'return {count, resetAt}',
+  'return {count, resetAt, ttlMsLeft}',
 ].join('\n');
 
 function parseConsumeResult(result: unknown): ThrottlerStoreEntry {
@@ -36,12 +40,27 @@ function parseConsumeResult(result: unknown): ThrottlerStoreEntry {
 
   const count = Number(result[0]);
   const resetAt = Number(result[1]);
+  const retryAfterMs = result.length >= 3 ? Number(result[2]) : Number.NaN;
 
   if (!Number.isFinite(count) || !Number.isFinite(resetAt)) {
     throw new Error('Redis throttler consume script returned non-numeric counters.');
   }
 
-  return validateThrottlerStoreEntry({ count, resetAt });
+  const entry = validateThrottlerStoreEntry({
+    count,
+    resetAt,
+  });
+
+  if (Number.isFinite(retryAfterMs)) {
+    Object.defineProperty(entry, throttlerRetryAfterMsSymbol, {
+      configurable: false,
+      enumerable: false,
+      value: retryAfterMs,
+      writable: false,
+    });
+  }
+
+  return entry;
 }
 
 /**
@@ -66,7 +85,6 @@ export class RedisThrottlerStore implements ThrottlerStore {
       CONSUME_LUA,
       1,
       key,
-      String(input.now),
       String(input.ttlSeconds * 1000),
     );
 
