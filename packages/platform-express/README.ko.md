@@ -73,12 +73,13 @@ const adapter = createExpressAdapter(
 
 덕분에 guards, interceptors, observers, body parsing, raw body 캡처, SSE, 오류 응답은 기존과 같은 framework-owned 실행 경로를 유지하면서, Express가 먼저 일부 경로 매칭 비용을 줄일 수 있습니다.
 
-문서화된 fluo semantics를 바꾸지 않기 위해 `/:id` 와 `/:slug`처럼 shape가 겹치는 파라미터 라우트, `@All(...)` 핸들러, 그리고 duplicate slash/trailing slash 정규화에 의존하는 요청은 catch-all fallback 경로에 남겨둡니다.
+문서화된 fluo semantics를 바꾸지 않기 위해 `/:id` 와 `/:slug`처럼 shape가 겹치는 파라미터 라우트, `@All(...)` 핸들러, `OPTIONS` 소유권, 그리고 duplicate slash/trailing slash 정규화에 의존하는 요청은 catch-all fallback 경로에 남겨둡니다.
 
 ## 어댑터 계약
 
 - **공유 dispatcher 소유권 유지**: Native Express Router 매치 이후에도 실제 요청은 공유 fluo dispatcher가 처리하므로 middleware, guards, interceptors, observers, params, error envelope 계약은 그대로 유지됩니다.
 - **안전한 fallback 범위**: `@All(...)` 핸들러와 shape가 겹치는 파라미터 라우트는 Express Router에 강제 등록하지 않고 의도적으로 catch-all fallback 경로에 둡니다.
+- **OPTIONS 소유권 parity**: 어댑터는 native route에 대해 Express Router가 `OPTIONS`를 자동 응답하지 못하게 막아, 미지원 메서드도 계속 fluo dispatcher semantics로 흘러가고 `@All(...)` 핸들러가 정의된 경우 `OPTIONS`도 그대로 소유할 수 있게 합니다.
 - **경로 정규화 parity**: duplicate slash 변형처럼 Express Router와 fluo의 정규화 방식이 다를 수 있는 요청도 fallback dispatch를 통해 fluo의 normalized route contract를 유지합니다.
 - **버저닝 parity**: Express Router가 최초 path match를 하더라도 header/media-type/custom version 선택은 계속 dispatcher가 최종 결정합니다.
 

@@ -73,12 +73,13 @@ The adapter now pre-registers semantically safe Express Router handlers for expl
 
 This keeps guards, interceptors, observers, body parsing, raw body capture, SSE, and error responses on the same framework-owned execution path while allowing Express to short-circuit some path matching work first.
 
-To avoid changing documented fluo semantics, overlapping same-shape param routes such as `/:id` and `/:slug`, `@All(...)` handlers, and requests that rely on fluo's duplicate-slash/trailing-slash normalization stay on the catch-all fallback path.
+To avoid changing documented fluo semantics, overlapping same-shape param routes such as `/:id` and `/:slug`, `@All(...)` handlers, `OPTIONS` ownership, and requests that rely on fluo's duplicate-slash/trailing-slash normalization stay on the catch-all fallback path.
 
 ## Adapter Contract
 
 - **Shared dispatcher ownership**: Native Express Router matches still hand off to the shared fluo dispatcher, so middleware, guards, interceptors, observers, params, and error envelopes remain framework-defined.
 - **Safe fallback scope**: `@All(...)` handlers and overlapping same-shape param routes intentionally stay on the catch-all fallback path instead of being force-registered through Express Router.
+- **OPTIONS ownership parity**: The adapter prevents Express Router from auto-answering `OPTIONS` for native routes, so unsupported methods still fall through to fluo dispatcher semantics and `@All(...)` handlers can continue to own `OPTIONS` when defined.
 - **Path normalization parity**: Requests that Express Router does not normalize the same way as fluo, such as duplicate-slash variants, still resolve through fallback dispatch so fluo's normalized route contract is preserved.
 - **Versioning parity**: Header/media-type/custom version selection remains dispatcher-owned even when Express Router handles the initial path match.
 
