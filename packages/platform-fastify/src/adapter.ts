@@ -497,12 +497,14 @@ function createFrameworkResponse(reply: FastifyReply): FastifyFrameworkResponse 
         return;
       }
 
-      if (!reply.hasHeader('content-type')) {
-        reply.header('content-type', 'application/json; charset=utf-8');
+      const serialized = serializeResponseBody(body);
+
+      if (!reply.hasHeader('content-type') && serialized.defaultContentType) {
+        reply.header('content-type', serialized.defaultContentType);
       }
 
       this.committed = true;
-      await reply.send(body);
+      await reply.send(serialized.payload);
     },
     setHeader(name: string, value: string | string[]) {
       const lowerName = name.toLowerCase();

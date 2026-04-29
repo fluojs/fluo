@@ -190,6 +190,10 @@ fHFvqyh6pXZV7XKcPxCTNuIw2rpw2WqY5/H+lTmUFmSXieFZAAMRueGH8Y5trCHU
 JNCDpGwh8us=
 -----END CERTIFICATE-----`;
 
+interface FastifyReplySerializerHost {
+  setReplySerializer(serializer: (payload: unknown, statusCode: number) => string): void;
+}
+
 describe('@fluojs/platform-fastify', () => {
   it('uses the runtime default port instead of process.env.PORT', async () => {
     const previousPort = process.env.PORT;
@@ -331,6 +335,44 @@ describe('@fluojs/platform-fastify', () => {
           status: 500,
         },
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps the simple JSON fast path off Fastify reply serialization overrides', async () => {
+    @Controller('/serializer')
+    class SerializerController {
+      @Get('/object')
+      getObject() {
+        return { keep: 'generic-json-stringify' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [SerializerController] });
+
+    const port = await findAvailablePort();
+    const adapter = createFastifyAdapter({ port });
+    const fastifyApp = Reflect.get(adapter, 'app') as FastifyReplySerializerHost;
+    let serializerCalls = 0;
+
+    fastifyApp.setReplySerializer(() => {
+      serializerCalls += 1;
+      return JSON.stringify({ keep: 'fastify-native-serializer' });
+    });
+
+    const app = await fluoFactory.create(AppModule, { adapter });
+
+    await app.listen();
+
+    try {
+      const response = await requestHttp({ path: '/serializer/object', port });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers['content-type']).toContain('application/json');
+      expect(response.body).toBe(JSON.stringify({ keep: 'generic-json-stringify' }));
+      expect(serializerCalls).toBe(0);
     } finally {
       await app.close();
     }

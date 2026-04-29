@@ -157,6 +157,10 @@ function isExpressResponse(value: unknown): value is ExpressResponse {
   return typeof value === 'object' && value !== null && 'emit' in value;
 }
 
+interface ExpressJsonSettingsHost {
+  set(name: 'json replacer', value: (key: string, value: unknown) => unknown): void;
+}
+
 const TEST_TLS_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDBbj6DdMPNvDMr
 yNUM0dreceSBINfH+VDV750R3X57mdoqebUgjKOXjbjR7JRkloJ4PEgAic+840rq
@@ -347,6 +351,44 @@ describe('@fluojs/platform-express', () => {
           status: 500,
         },
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps the simple JSON fast path off Express json replacer serialization', async () => {
+    @Controller('/serializer')
+    class SerializerController {
+      @Get('/object')
+      getObject() {
+        return { keep: 'generic-json-stringify' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [SerializerController] });
+
+    const port = await findAvailablePort();
+    const adapter = createExpressAdapter({ port });
+    const expressApp = Reflect.get(adapter, 'app') as ExpressJsonSettingsHost;
+    let replacerCalls = 0;
+
+    expressApp.set('json replacer', () => {
+      replacerCalls += 1;
+      return 'express-native-serializer';
+    });
+
+    const app = await fluoFactory.create(AppModule, { adapter });
+
+    await app.listen();
+
+    try {
+      const response = await requestHttp({ path: '/serializer/object', port });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers.get('content-type')).toContain('application/json');
+      expect(response.body).toBe(JSON.stringify({ keep: 'generic-json-stringify' }));
+      expect(replacerCalls).toBe(0);
     } finally {
       await app.close();
     }

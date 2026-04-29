@@ -541,8 +541,14 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
         return;
       }
 
+      const serialized = serializeResponseBody(body);
+
+      if (!response.hasHeader('content-type') && serialized.defaultContentType) {
+        response.setHeader('content-type', serialized.defaultContentType);
+      }
+
       this.committed = true;
-      response.json(body);
+      response.send(serialized.payload);
     },
     setHeader(name: string, value: string | string[]) {
       const lowerName = name.toLowerCase();
