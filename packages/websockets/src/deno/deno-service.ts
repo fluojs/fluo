@@ -118,7 +118,7 @@ function isHttpExceptionLike(error: unknown): error is { message: string; status
 
 function resolveMessageByteLength(message: DenoWebSocketMessage): number {
   if (typeof message === 'string') {
-    return Buffer.byteLength(message);
+    return new TextEncoder().encode(message).byteLength;
   }
 
   return message.size;
