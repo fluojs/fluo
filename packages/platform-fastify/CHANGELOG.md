@@ -1,5 +1,15 @@
 # @fluojs/platform-fastify
 
+## 1.0.0-beta.8
+
+### Patch Changes
+
+- [#1480](https://github.com/fluojs/fluo/pull/1480) [`37ae1c5`](https://github.com/fluojs/fluo/commit/37ae1c594e0a2330cae10faddb350cd2a039643c) Thanks [@ayden94](https://github.com/ayden94)! - Add conservative HTTP fast-path execution and native route handoff optimizations for singleton-safe routes while preserving middleware, guards, pipes, interceptors, error handling, adapter fallback, raw-body, multipart, streaming, abort, and request-scope behavior.
+
+- Updated dependencies [[`37ae1c5`](https://github.com/fluojs/fluo/commit/37ae1c594e0a2330cae10faddb350cd2a039643c)]:
+  - @fluojs/http@1.0.0-beta.6
+  - @fluojs/runtime@1.0.0-beta.8
+
 ## 1.0.0-beta.7
 
 ### Patch Changes
