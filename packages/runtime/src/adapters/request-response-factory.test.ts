@@ -10,7 +10,7 @@ import {
 describe('dispatchWithRequestResponseFactory', () => {
   it('dispatches through the extracted factory seam and finalizes uncommitted responses', async () => {
     const events: string[] = [];
-    const response = {
+    const response: FrameworkResponse = {
       committed: false,
       headers: {},
       redirect() {},
@@ -137,5 +137,66 @@ describe('dispatchWithRequestResponseFactory', () => {
     expect(frameworkResponse).toMatchObject({ committed: false });
     expect(writeErrorResponse).toHaveBeenCalledOnce();
     expect(writeErrorResponse).toHaveBeenCalledWith(error, expect.objectContaining({ committed: false }), 'req-2');
+  });
+
+  it('skips request materialization when the factory does not provide a materializer', async () => {
+    const events: string[] = [];
+    const response = {
+      committed: false,
+      headers: {},
+      redirect() {},
+      async send() {
+        events.push('send');
+        response.committed = true;
+      },
+      setHeader() {},
+      setStatus() {},
+      statusSet: false,
+    };
+
+    const frameworkResponse = await dispatchWithRequestResponseFactory({
+      dispatcher: {
+        async dispatch(request: FrameworkRequest, response: FrameworkResponse) {
+          events.push(`dispatch:${request.path}`);
+          await response.send({ ok: true });
+        },
+      },
+      dispatcherNotReadyMessage: 'dispatcher missing',
+      factory: {
+        async createRequest(rawRequest, signal) {
+          events.push('request');
+          return {
+            cookies: {},
+            headers: {},
+            method: 'GET',
+            params: {},
+            path: rawRequest.path,
+            query: {},
+            raw: rawRequest,
+            signal,
+            url: rawRequest.path,
+          };
+        },
+        createRequestSignal() {
+          events.push('signal');
+          return new AbortController().signal;
+        },
+        createResponse() {
+          events.push('response');
+          return response;
+        },
+        resolveRequestId(rawRequest) {
+          return rawRequest.path;
+        },
+        async writeErrorResponse() {
+          events.push('error');
+        },
+      },
+      rawRequest: { path: '/fast-path' },
+      rawResponse: undefined,
+    });
+
+    expect(frameworkResponse.committed).toBe(true);
+    expect(events).toEqual(['response', 'signal', 'request', 'dispatch:/fast-path', 'send']);
   });
 });

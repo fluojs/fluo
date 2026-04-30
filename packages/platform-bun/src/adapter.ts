@@ -24,7 +24,7 @@ import {
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
 } from '@fluojs/runtime/node';
-import { dispatchWebRequest } from '@fluojs/runtime/web';
+import { createWebRequestResponseFactory, dispatchWebRequest } from '@fluojs/runtime/web';
 import {
   bootstrapHttpAdapterApplication,
   runHttpAdapterApplication,
@@ -245,8 +245,17 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
   private inFlightRequestCount = 0;
   private server?: BunServerLike;
   private realtimeBinding?: BunWebSocketBinding<unknown>;
+  private readonly options: BunAdapterOptions;
+  private readonly webRequestResponseFactory;
 
-  constructor(private readonly options: BunAdapterOptions = {}) {}
+  constructor(options: BunAdapterOptions = {}) {
+    this.options = options;
+    this.webRequestResponseFactory = createWebRequestResponseFactory({
+      maxBodySize: options.maxBodySize,
+      multipart: options.multipart,
+      rawBody: options.rawBody,
+    });
+  }
 
   /** Returns the active Bun server handle after `listen()` starts. */
   getServer(): BunServerLike | undefined {
@@ -372,9 +381,7 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
       return await dispatchWebRequest({
         dispatcher: this.dispatcher,
         dispatcherNotReadyMessage: DEFAULT_DISPATCHER_NOT_READY_MESSAGE,
-        maxBodySize: this.options.maxBodySize,
-        multipart: this.options.multipart,
-        rawBody: this.options.rawBody,
+        factory: this.webRequestResponseFactory,
         request,
       });
     } finally {
@@ -425,13 +432,17 @@ export function createBunFetchHandler({
   multipart,
   rawBody,
 }: CreateBunFetchHandlerOptions): (request: Request) => Promise<Response> {
+  const factory = createWebRequestResponseFactory({
+    maxBodySize,
+    multipart,
+    rawBody,
+  });
+
   return async function bunFetchHandler(request: Request): Promise<Response> {
     return await dispatchWebRequest({
       dispatcher,
       dispatcherNotReadyMessage,
-      maxBodySize,
-      multipart,
-      rawBody,
+      factory,
       request,
     });
   };

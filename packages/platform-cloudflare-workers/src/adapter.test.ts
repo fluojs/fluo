@@ -119,7 +119,9 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     expect(dispatchSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         dispatcher,
-        rawBody: true,
+        factory: expect.objectContaining({
+          materializeRequest: expect.any(Function),
+        }),
         request,
       }),
     );

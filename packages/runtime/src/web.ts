@@ -50,6 +50,12 @@ export interface CreateWebRequestResponseFactoryOptions {
 export interface DispatchWebRequestOptions extends CreateWebRequestResponseFactoryOptions {
   dispatcher?: Dispatcher;
   dispatcherNotReadyMessage?: string;
+  /**
+   * Factory reused by adapters that share one stable Web parsing configuration across requests.
+   *
+   * When provided, the factory owns parsing configuration and `maxBodySize`, `multipart`, and `rawBody` are ignored.
+   */
+  factory?: RequestResponseFactory<Request, AbortSignal | undefined, WebFrameworkResponse>;
   request: Request;
 }
 
@@ -317,13 +323,14 @@ export function createWebRequestResponseFactory(
 export async function dispatchWebRequest({
   dispatcher,
   dispatcherNotReadyMessage = 'Web adapter received a request before dispatcher binding completed.',
+  factory,
   request,
   ...options
 }: DispatchWebRequestOptions): Promise<Response> {
   const frameworkResponse = await dispatchWithRequestResponseFactory({
     dispatcher,
     dispatcherNotReadyMessage,
-    factory: createWebRequestResponseFactory(options),
+    factory: factory ?? createWebRequestResponseFactory(options),
     rawRequest: request,
     rawResponse: request.signal,
   });
