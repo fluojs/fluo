@@ -5,7 +5,7 @@ import {
 import { request as httpsRequest } from 'node:https';
 import { createServer as createNetServer } from 'node:net';
 
-import type { Response as ExpressResponse } from 'express';
+import type { Request as ExpressRequest, Response as ExpressResponse } from 'express';
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -412,6 +412,70 @@ describe('@fluojs/platform-express', () => {
       expect(JSON.parse(bodyResponse.body)).toEqual({
         body: { ok: true, source: 'express' },
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('falls back to raw URL parsing when Express host query values are unsafe or non-simple', async () => {
+    @Controller('/query-fallback')
+    class QueryFallbackController {
+      @Get('/undefined')
+      readUndefined(_input: undefined, context: RequestContext) {
+        return context.request.query;
+      }
+
+      @Get('/object')
+      readObject(_input: undefined, context: RequestContext) {
+        return context.request.query;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [QueryFallbackController] });
+
+    const port = await findAvailablePort();
+    const adapter = createExpressAdapter({ port }) as ExpressHttpApplicationAdapter;
+    const router = (adapter as unknown as {
+      router: {
+        use: (handler: (request: ExpressRequest, response: ExpressResponse, next: () => void) => void) => void;
+      };
+    }).router;
+
+    router.use((request, _response, next) => {
+      const mutableQuery = request.query as Record<string, unknown>;
+
+      if (request.originalUrl.startsWith('/query-fallback/undefined')) {
+        mutableQuery.flag = undefined;
+      } else if (request.originalUrl.startsWith('/query-fallback/object')) {
+        mutableQuery.nested = { unsafe: 'true' };
+      }
+
+      next();
+    });
+
+    const app = await fluoFactory.create(AppModule, { adapter });
+
+    await app.listen();
+
+    try {
+      const undefinedResponse = await requestHttp({
+        method: 'GET',
+        path: '/query-fallback/undefined?flag',
+        port,
+      });
+
+      expect(undefinedResponse.statusCode).toBe(200);
+      expect(JSON.parse(undefinedResponse.body)).toEqual({ flag: '' });
+
+      const objectResponse = await requestHttp({
+        method: 'GET',
+        path: '/query-fallback/object?nested=1',
+        port,
+      });
+
+      expect(objectResponse.statusCode).toBe(200);
+      expect(JSON.parse(objectResponse.body)).toEqual({ nested: '1' });
     } finally {
       await app.close();
     }
