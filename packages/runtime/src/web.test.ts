@@ -240,6 +240,31 @@ describe('dispatchWebRequest', () => {
     expect(seenBodies).toEqual([{ name: 'first' }, { name: 'second' }]);
     expect(seenRawBodies).toEqual(['{"name":"first"}', '{"name":"second"}']);
   });
+
+  it('lets an injected web factory own parsing options over dispatch options', async () => {
+    const factory = createWebRequestResponseFactory({ rawBody: true });
+    let rawBody: Uint8Array | undefined;
+
+    await dispatchWebRequest({
+      dispatcher: {
+        async dispatch(request: FrameworkRequest, frameworkResponse: FrameworkResponse) {
+          rawBody = request.rawBody;
+          await frameworkResponse.send({ ok: true });
+        },
+      },
+      factory,
+      rawBody: false,
+      request: new Request('https://runtime.test/factory-options', {
+        body: JSON.stringify({ ok: true }),
+        headers: {
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+      }),
+    });
+
+    expect(Buffer.from(rawBody ?? new Uint8Array()).toString('utf8')).toBe('{"ok":true}');
+  });
 });
 
 describe('createWebFrameworkRequest', () => {

@@ -50,7 +50,11 @@ export interface CreateWebRequestResponseFactoryOptions {
 export interface DispatchWebRequestOptions extends CreateWebRequestResponseFactoryOptions {
   dispatcher?: Dispatcher;
   dispatcherNotReadyMessage?: string;
-  /** Factory reused by adapters that share one stable Web parsing configuration across requests. */
+  /**
+   * Factory reused by adapters that share one stable Web parsing configuration across requests.
+   *
+   * When provided, the factory owns parsing configuration and `maxBodySize`, `multipart`, and `rawBody` are ignored.
+   */
   factory?: RequestResponseFactory<Request, AbortSignal | undefined, WebFrameworkResponse>;
   request: Request;
 }
