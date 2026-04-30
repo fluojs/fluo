@@ -93,12 +93,17 @@ function registerWebRuntimePortabilitySuite(
   name: string,
   harness: {
     assertExcludesRawBodyForMultipart(): Promise<void>;
+    assertPreservesQueryArraysAndDecoding(): Promise<void>;
     assertPreservesMalformedCookieValues(): Promise<void>;
     assertPreservesRawBodyForJsonAndText(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;
   },
 ): void {
   describe(`${name} web runtime adapter portability`, () => {
+    it('preserves query arrays and decoding semantics', async () => {
+      await harness.assertPreservesQueryArraysAndDecoding();
+    });
+
     it('preserves malformed cookie values', async () => {
       await harness.assertPreservesMalformedCookieValues();
     });

@@ -45,6 +45,44 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
 > {
   constructor(private readonly options: WebRuntimeHttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TApp>) {}
 
+  async assertPreservesQueryArraysAndDecoding(): Promise<void> {
+    @Controller('/query')
+    class QueryController {
+      @Get('/')
+      readQuery(_input: undefined, context: RequestContext) {
+        return context.request.query;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [QueryController],
+    });
+
+    const app = await this.options.bootstrap(AppModule, { cors: false } as TBootstrapOptions);
+
+    try {
+      const response = await app.dispatch(new Request('https://runtime.test/query?tag=one&tag=two&encoded=hello+world&flag'));
+
+      if (response.status !== 200) {
+        throw new Error(`${this.options.name} adapter changed query response status semantics.`);
+      }
+
+      const body = await response.json();
+      if (
+        typeof body !== 'object'
+        || body === null
+        || (body as Record<string, unknown>).encoded !== 'hello world'
+        || !Array.isArray((body as Record<string, unknown>).tag)
+        || JSON.stringify((body as Record<string, unknown>).tag) !== JSON.stringify(['one', 'two'])
+      ) {
+        throw new Error(`${this.options.name} adapter changed query decoding semantics.`);
+      }
+    } finally {
+      await closeSilently(app);
+    }
+  }
+
   async assertPreservesMalformedCookieValues(): Promise<void> {
     @Controller('/cookies')
     class CookieController {
