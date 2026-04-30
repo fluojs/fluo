@@ -103,6 +103,26 @@ describe('dispatchWebRequest', () => {
     expect(await response.text()).toBe('');
   });
 
+  it('preserves query decoding semantics for repeated, empty, and plus-separated values', async () => {
+    const response = await dispatchWebRequest({
+      dispatcher: {
+        async dispatch(request: FrameworkRequest, frameworkResponse: FrameworkResponse) {
+          expect(request.query).toEqual({
+            empty: '',
+            encoded: 'hello world',
+            flag: '',
+            plain: 'ok',
+            tag: ['one', 'two'],
+          });
+          await frameworkResponse.send({ ok: true });
+        },
+      },
+      request: new Request('https://runtime.test/query?tag=one&tag=two&empty=&flag&encoded=hello+world&plain=ok'),
+    });
+
+    await expect(response.json()).resolves.toEqual({ ok: true });
+  });
+
   it('serializes framework errors into a Web Response', async () => {
     const response = await dispatchWebRequest({
       dispatcher: {
@@ -287,7 +307,7 @@ describe('createWebFrameworkRequest', () => {
     expect(secondHeaders['x-runtime']).toBe('before');
   });
 
-  it('creates the request shell before materializing body and rawBody', async () => {
+  it('creates the request shell before materializing body and rawBody without cloning the request', async () => {
     let pulls = 0;
     const request = new Request('https://runtime.test/body?tag=one', {
       body: new ReadableStream<Uint8Array>({
@@ -323,7 +343,7 @@ describe('createWebFrameworkRequest', () => {
     await factory.materializeRequest?.(frameworkRequest);
     await factory.materializeRequest?.(frameworkRequest);
 
-    expect(cloneCalls).toBe(1);
+    expect(cloneCalls).toBe(0);
     expect(pulls).toBe(1);
     expect(frameworkRequest.body).toEqual({ ok: true });
     expect(Buffer.from(frameworkRequest.rawBody ?? new Uint8Array()).toString('utf8')).toBe('{"ok":true}');
@@ -369,5 +389,31 @@ describe('createWebFrameworkRequest', () => {
     expect(frameworkRequest.body).toEqual({ title: 'before' });
     expect(frameworkRequest.headers['content-type']).toContain('multipart/form-data');
     expect(frameworkRequest.headers['x-runtime']).toBeUndefined();
+  });
+
+  it('materializes deferred multipart bodies without cloning the request stream', async () => {
+    const formData = new FormData();
+    formData.set('title', 'before');
+    const request = new Request('https://runtime.test/upload', {
+      body: formData,
+      method: 'POST',
+    });
+    const originalClone = request.clone.bind(request);
+    let cloneCalls = 0;
+
+    Object.defineProperty(request, 'clone', {
+      value: () => {
+        cloneCalls += 1;
+        return originalClone();
+      },
+    });
+
+    const factory = createWebRequestResponseFactory();
+    const frameworkRequest = await factory.createRequest(request, new AbortController().signal);
+
+    await factory.materializeRequest?.(frameworkRequest);
+
+    expect(cloneCalls).toBe(0);
+    expect(frameworkRequest.body).toEqual({ title: 'before' });
   });
 });

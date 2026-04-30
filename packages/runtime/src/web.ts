@@ -249,12 +249,11 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
         headers: toResponseHeaders(this.headers),
         status: this.statusCode ?? 200,
       };
-      const responseBody = this.responseBody instanceof Uint8Array
-        ? this.responseBody.slice().buffer as ArrayBuffer
-        : this.responseBody;
       const nativeResponseBody = isResponseBodyForbidden(init.status)
         ? undefined
-        : responseBody ?? '';
+        : this.responseBody === undefined
+          ? ''
+          : this.responseBody as unknown as BodyInit;
 
       this.finalizedResponse = this.streamActive
         ? new Response(this.getOrCreateResponseStream().readable, init)
@@ -385,23 +384,20 @@ function createDeferredWebFrameworkRequest(
   preserveRawBody = false,
 ): FrameworkRequest {
   const url = new URL(request.url);
-  const headerEntries = Array.from(request.headers.entries());
+  const requestHeaders = new Headers(request.headers);
   const method = request.method;
-  const cookieHeader = request.headers.get('cookie') ?? undefined;
-  const searchParams = new URLSearchParams(url.searchParams);
-  const headers = createMemoizedValue(() => cloneWebHeaders(headerEntries));
-  const cookies = createMemoizedValue(() => parseCookieHeader(cookieHeader));
-  const query = createMemoizedValue(() => parseQueryParams(searchParams));
-  const contentType = request.headers.get('content-type') ?? undefined;
+  const headers = createMemoizedValue(() => cloneWebHeaders(requestHeaders));
+  const cookies = createMemoizedValue(() => parseCookieHeader(requestHeaders.get('cookie') ?? undefined));
+  const query = createMemoizedValue(() => parseQueryString(url.search));
+  const contentType = requestHeaders.get('content-type') ?? undefined;
   const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
   const materializeBody = createMemoizedAsyncValue(async () => {
     if (isMultipart) {
-      const materializedRequest = request.clone();
       const result = await parseMultipart({
-        body: materializedRequest.body,
-        headers: new Headers(headerEntries),
+        body: request.body,
+        headers: requestHeaders,
         method,
-        url: url.toString(),
+        url: request.url,
       }, {
         ...multipartOptions,
         maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
@@ -418,7 +414,7 @@ function createDeferredWebFrameworkRequest(
       return;
     }
 
-    const bodyResult = await readWebRequestBody(request.clone(), contentType, maxBodySize, preserveRawBody);
+    const bodyResult = await readWebRequestBody(request, contentType, maxBodySize, preserveRawBody);
     frameworkRequest.body = bodyResult.body;
 
     if (bodyResult.rawBody) {
@@ -500,32 +496,61 @@ function createMemoizedAsyncValue(factory: () => Promise<void>): () => Promise<v
   };
 }
 
-function parseQueryParams(searchParams: URLSearchParams): Record<string, string | string[]> {
+function parseQueryString(search: string): Record<string, string | string[]> {
   const query: Record<string, string | string[]> = {};
 
-  for (const [key, value] of searchParams.entries()) {
-    const current = query[key];
+  if (search.length <= 1) {
+    return query;
+  }
 
-    if (current === undefined) {
-      query[key] = value;
-      continue;
+  let index = search.charCodeAt(0) === 63 ? 1 : 0;
+
+  while (index <= search.length) {
+    let nextDelimiter = search.indexOf('&', index);
+
+    if (nextDelimiter === -1) {
+      nextDelimiter = search.length;
     }
 
-    if (Array.isArray(current)) {
-      current.push(value);
-      continue;
+    const entry = search.slice(index, nextDelimiter);
+
+    if (entry.length > 0) {
+      const separatorIndex = entry.indexOf('=');
+      const rawKey = separatorIndex === -1 ? entry : entry.slice(0, separatorIndex);
+      const rawValue = separatorIndex === -1 ? '' : entry.slice(separatorIndex + 1);
+      const key = decodeQueryComponent(rawKey);
+      const value = decodeQueryComponent(rawValue);
+      const current = query[key];
+
+      if (current === undefined) {
+        query[key] = value;
+      } else if (Array.isArray(current)) {
+        current.push(value);
+      } else {
+        query[key] = [current, value];
+      }
     }
 
-    query[key] = [current, value];
+    index = nextDelimiter + 1;
   }
 
   return query;
 }
 
-function cloneWebHeaders(headers: Array<[string, string]>): FrameworkRequest['headers'] {
+function decodeQueryComponent(value: string): string {
+  const normalizedValue = value.includes('+') ? value.replaceAll('+', ' ') : value;
+
+  try {
+    return decodeURIComponent(normalizedValue);
+  } catch {
+    return normalizedValue;
+  }
+}
+
+function cloneWebHeaders(headers: Headers): FrameworkRequest['headers'] {
   const clonedHeaders: Record<string, string | string[] | undefined> = {};
 
-  for (const [name, value] of headers) {
+  for (const [name, value] of headers.entries()) {
     clonedHeaders[name] = value;
   }
 
