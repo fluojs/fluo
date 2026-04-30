@@ -1449,6 +1449,48 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
+  it('preserves raw handoff fallback when dispatchers do not expose native route dispatch', async () => {
+    @Controller('/native-legacy')
+    class NativeLegacyController {
+      @Get('/:id')
+      getById(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'legacy' };
+      }
+    }
+
+    const root = new Container().register(NativeLegacyController);
+    const baseMapping = createHandlerMapping([{ controllerToken: NativeLegacyController }]);
+    const dispatcher = createDispatcher({
+      handlerMapping: {
+        descriptors: baseMapping.descriptors,
+        match: vi.fn(() => {
+          throw new Error('Express legacy native fallback should reuse raw handoff before rematching.');
+        }),
+      },
+      rootContainer: root,
+    });
+    dispatcher.dispatchNativeRoute = undefined;
+    const fullDispatch = vi.spyOn(dispatcher, 'dispatch');
+    const port = await findAvailablePort();
+    const adapter = createExpressAdapter({ port }) as ExpressHttpApplicationAdapter;
+
+    await adapter.listen(dispatcher);
+
+    try {
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/native-legacy/xyz',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ id: 'xyz', route: 'legacy' });
+      expect(fullDispatch).toHaveBeenCalledTimes(1);
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it('supports https startup and reports the https listen URL', async () => {
     const loggerEvents: string[] = [];
     const logger: ApplicationLogger = {
