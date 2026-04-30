@@ -73,7 +73,7 @@ const adapter = createExpressAdapter(
 ### 안전한 fallback을 포함한 Native Route Registration
 이제 어댑터는 의미 보존이 가능한 명시적 HTTP 메서드 라우트를 Express Router에 사전 등록하면서도, 실제 요청 처리는 계속 공유 fluo dispatcher를 통해 수행합니다.
 
-의미 보존이 가능한 unversioned route에서는 Express가 미리 고른 descriptor와 params를 공유 dispatcher에 전달하므로 duplicate route matching을 건너뛰면서도 guards, interceptors, observers, body parsing, raw body 캡처, SSE, 오류 응답은 기존과 같은 framework-owned 실행 경로를 유지합니다.
+의미 보존이 가능한 unversioned route에서는 Express가 미리 고른 descriptor와 params를 공유 dispatcher에 전달하므로 singleton-safe handler는 dispatcher fast path에서 완료될 수 있고 그 밖의 handler는 duplicate route matching 없이 fallback되며, guards, interceptors, observers, body parsing, raw body 캡처, SSE, 오류 응답은 기존과 같은 framework-owned 실행 경로를 유지합니다.
 
 어댑터가 native handoff를 붙인 뒤 app middleware가 framework request의 method 또는 path를 rewrite하면 dispatcher는 그 handoff를 stale로 보고 원래 Express match를 재사용하지 않고 rewrite된 요청을 다시 매칭합니다.
 
