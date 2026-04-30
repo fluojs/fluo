@@ -28,6 +28,9 @@ type MemoizedValue<T> = () => T;
 
 type QueryRecord = Record<string, string | string[] | undefined>;
 
+/**
+ * Options for creating a deferred framework request shell from a Node-backed adapter.
+ */
 export interface DeferredFrameworkRequestShellOptions<RawRequest> {
   cookieHeader?: string | string[] | undefined;
   headers?: FrameworkRequest['headers'];
@@ -164,6 +167,12 @@ export function createDeferredFrameworkRequest(
   return frameworkRequest;
 }
 
+/**
+ * Creates a framework request shell from already-snapshotted Node adapter metadata.
+ *
+ * @param options - Raw request, metadata factories, and deferred body materialization hooks.
+ * @returns A framework request with lazy headers, cookies, query values, and optional body materialization.
+ */
 export function createDeferredFrameworkRequestShell<RawRequest>({
   cookieHeader,
   headers,
@@ -235,6 +244,12 @@ export async function materializeFrameworkRequestBody(request: FrameworkRequest)
   delete (request as NodeFrameworkRequest).materializeBody;
 }
 
+/**
+ * Creates a synchronous memoized value resolver.
+ *
+ * @param factory - Function that computes the value on first access.
+ * @returns A stable resolver that returns the cached value after the first call.
+ */
 export function createMemoizedValue<T>(factory: () => T): MemoizedValue<T> {
   let initialized = false;
   let value: T;
@@ -249,6 +264,12 @@ export function createMemoizedValue<T>(factory: () => T): MemoizedValue<T> {
   };
 }
 
+/**
+ * Creates an async memoized side-effect resolver.
+ *
+ * @param factory - Async function to run at most once.
+ * @returns A resolver that returns the same in-flight or completed promise for every call.
+ */
 export function createMemoizedAsyncValue(factory: () => Promise<void>): () => Promise<void> {
   let promise: Promise<void> | undefined;
 
@@ -292,6 +313,12 @@ export function resolveRequestIdFromHeaders(headers: IncomingHttpHeaders): strin
   return Array.isArray(requestId) ? requestId[0] : requestId;
 }
 
+/**
+ * Parses a raw URL search string into the framework query shape.
+ *
+ * @param search - Raw search string, with or without a leading question mark.
+ * @returns Query values where repeated keys become string arrays.
+ */
 export function parseQueryParamsFromSearch(search: string): Record<string, string | string[]> {
   return parseQueryParams(new URLSearchParams(search));
 }
@@ -318,6 +345,12 @@ function parseQueryParams(searchParams: URLSearchParams): Record<string, string 
   return query;
 }
 
+/**
+ * Snapshots host-parsed query values when they already match framework semantics.
+ *
+ * @param query - Host query object exposed by a Node-backed adapter.
+ * @returns A cloned query record when all values are strings or string arrays; otherwise `undefined` for raw URL fallback.
+ */
 export function snapshotSimpleQueryRecord(query: unknown): QueryRecord | undefined {
   if (typeof query !== 'object' || query === null) {
     return undefined;
@@ -342,16 +375,34 @@ export function snapshotSimpleQueryRecord(query: unknown): QueryRecord | undefin
   return snapshot;
 }
 
+/**
+ * Clones Node request headers into the framework header record shape.
+ *
+ * @param headers - Raw Node incoming headers.
+ * @returns A shallow header snapshot with array values cloned.
+ */
 export function cloneRequestHeaders(headers: IncomingHttpHeaders): FrameworkRequest['headers'] {
   const clonedEntries = Object.entries(headers).map(([name, value]) => [name, cloneHeaderValue(value)]);
 
   return Object.fromEntries(clonedEntries);
 }
 
+/**
+ * Clones a single Node header value when it is array-backed.
+ *
+ * @param value - Header value to snapshot.
+ * @returns The original scalar value or a cloned array value.
+ */
 export function cloneHeaderValue<T extends string | string[] | undefined>(value: T): T {
   return (Array.isArray(value) ? [...value] : value) as T;
 }
 
+/**
+ * Reads the primary value from a Node header value.
+ *
+ * @param headerValue - Header value that may contain multiple entries.
+ * @returns The first header value when present.
+ */
 export function readPrimaryHeaderValue(headerValue: string | string[] | undefined): string | undefined {
   if (Array.isArray(headerValue)) {
     return headerValue[0];
@@ -360,6 +411,12 @@ export function readPrimaryHeaderValue(headerValue: string | string[] | undefine
   return headerValue;
 }
 
+/**
+ * Normalizes a Node content-type header to its primary media type.
+ *
+ * @param headerValue - Raw content-type header value.
+ * @returns Lowercase primary media type without parameters, or `undefined` when absent.
+ */
 export function normalizePrimaryContentType(headerValue: string | string[] | undefined): string | undefined {
   const primaryHeaderValue = readPrimaryHeaderValue(headerValue);
 
@@ -381,6 +438,12 @@ function decodeCookieValue(raw: string): string {
   }
 }
 
+/**
+ * Parses a Node cookie header into framework cookie values.
+ *
+ * @param cookieHeader - Raw cookie header value or values.
+ * @returns Cookie name/value pairs with percent-decoded values when possible.
+ */
 export function parseCookieHeader(cookieHeader: string | string[] | undefined): Record<string, string> {
   const normalizedCookieHeader = Array.isArray(cookieHeader) ? cookieHeader.join('; ') : cookieHeader;
 
@@ -455,6 +518,12 @@ async function readRequestBody(
   };
 }
 
+/**
+ * Splits a raw Node request URL into path and search components.
+ *
+ * @param rawUrl - Raw request URL, absolute URL, or undefined value from Node.
+ * @returns The pathname and search string used by framework request matching and query parsing.
+ */
 export function splitRawRequestUrl(rawUrl: string | undefined): { path: string; search: string } {
   const resolvedRawUrl = rawUrl ?? '/';
 
@@ -480,6 +549,12 @@ export function splitRawRequestUrl(rawUrl: string | undefined): { path: string; 
   };
 }
 
+/**
+ * Resolves a raw Node request URL into an absolute URL string.
+ *
+ * @param rawUrl - Raw request URL, absolute URL, or undefined value from Node.
+ * @returns An absolute URL suitable for Web-standard parsers.
+ */
 export function resolveAbsoluteRequestUrl(rawUrl: string | undefined): string {
   const resolvedRawUrl = rawUrl ?? '/';
 
