@@ -96,6 +96,10 @@ type FrameworkRequestWithFiles = FrameworkRequest & {
   files?: unknown;
 };
 
+type FrameworkRequestWithPrincipal = FrameworkRequest & {
+  principal?: unknown;
+};
+
 interface CompiledMiddlewareScopePlan {
   alwaysRequiresRequestScope: boolean;
   conditionalDefinitions: MiddlewareLike[];
@@ -160,9 +164,14 @@ function createDispatchRequest(request: FrameworkRequest): FrameworkRequest {
   const nativeRouteHandoff = readFrameworkRequestNativeRouteHandoff(request);
 
   const files = (request as FrameworkRequestWithFiles).files;
+  const principal = (request as FrameworkRequestWithPrincipal).principal;
 
   if (files !== undefined) {
     (dispatchRequest as FrameworkRequestWithFiles).files = files;
+  }
+
+  if (principal !== undefined) {
+    (dispatchRequest as FrameworkRequestWithPrincipal).principal = principal;
   }
 
   return nativeRouteHandoff

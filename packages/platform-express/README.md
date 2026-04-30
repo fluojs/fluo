@@ -73,7 +73,7 @@ const adapter = createExpressAdapter(
 ### Native Route Registration with Safe Fallback
 The adapter now pre-registers semantically safe Express Router handlers for explicit HTTP methods and still dispatches those requests through the shared fluo dispatcher.
 
-For semantically safe unversioned routes, Express hands the pre-matched descriptor and params to the shared dispatcher so duplicate route matching is skipped while guards, interceptors, observers, body parsing, raw body capture, SSE, and error responses stay on the same framework-owned execution path.
+For semantically safe unversioned routes, Express hands the pre-matched descriptor and params to the shared dispatcher so eligible singleton-safe handlers can complete on the dispatcher fast path and other handlers can fall back without duplicate route matching, while guards, interceptors, observers, body parsing, raw body capture, SSE, and error responses stay on the same framework-owned execution path.
 
 If app middleware rewrites the framework request method or path after the adapter attaches a native handoff, the dispatcher treats that handoff as stale and rematches the rewritten request instead of reusing the original Express match.
 
