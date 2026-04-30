@@ -302,10 +302,8 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
         const params = normalizeNativeRouteParams(request.params);
 
         if (descriptor && !isRoutePathNormalizationSensitive(requestPath) && !hasNativeRouteParamSeparators(params)) {
-          bindRawRequestNativeRouteHandoff(request, {
-            descriptor,
-            params,
-          });
+          void this.handleNativeRouteRequest(descriptor, params, request, response);
+          return;
         }
 
         void this.handleRequest(request, response);
@@ -323,6 +321,50 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
       rawRequest: request,
       rawResponse: response,
     });
+  }
+
+  private async handleNativeRouteRequest(
+    descriptor: HandlerDescriptor,
+    params: Readonly<Record<string, string>>,
+    request: ExpressRequest,
+    response: ExpressResponse,
+  ): Promise<void> {
+    const dispatcher = this.dispatcher;
+
+    if (!dispatcher?.dispatchNativeRoute) {
+      bindRawRequestNativeRouteHandoff(request, { descriptor, params });
+      await this.handleRequest(request, response);
+      return;
+    }
+
+    const factory = this.requestResponseFactory;
+    const frameworkResponse = factory.createResponse(response, request);
+    const signal = factory.createRequestSignal(response);
+
+    try {
+      const frameworkRequest = attachFrameworkRequestNativeRouteHandoff(
+        await factory.createRequest(request, signal),
+        { descriptor, params },
+      );
+
+      await factory.materializeRequest?.(frameworkRequest);
+
+      const handled = await dispatcher.dispatchNativeRoute({ descriptor, params }, frameworkRequest, frameworkResponse);
+
+      if (!handled && !frameworkResponse.committed) {
+        await dispatcher.dispatch(frameworkRequest, frameworkResponse);
+      }
+
+      if (!frameworkResponse.committed) {
+        await frameworkResponse.send(undefined);
+      }
+    } catch (error: unknown) {
+      if (signal.aborted || frameworkResponse.committed) {
+        return;
+      }
+
+      await factory.writeErrorResponse(error, frameworkResponse, factory.resolveRequestId(request));
+    }
   }
 }
 

@@ -1379,6 +1379,7 @@ describe('@fluojs/platform-express', () => {
       },
       rootContainer: root,
     });
+    const nativeDispatch = vi.spyOn(dispatcher, 'dispatchNativeRoute');
     const port = await findAvailablePort();
     const adapter = createExpressAdapter({ port }) as ExpressHttpApplicationAdapter;
 
@@ -1393,6 +1394,56 @@ describe('@fluojs/platform-express', () => {
 
       expect(response.statusCode).toBe(200);
       expect(JSON.parse(response.body)).toEqual({ id: '123' });
+      expect(nativeDispatch).toHaveBeenCalledTimes(1);
+      expect(nativeDispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ params: { id: '123' } }),
+        expect.objectContaining({ path: '/native/123' }),
+        expect.any(Object),
+      );
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('falls back to full dispatch when native Express routes are not fast-path executable', async () => {
+    @Controller('/native-fallback')
+    class NativeFallbackController {
+      @Get('/:id')
+      getById(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'fallback' };
+      }
+    }
+
+    const root = new Container().register(NativeFallbackController);
+    const baseMapping = createHandlerMapping([{ controllerToken: NativeFallbackController }]);
+    const dispatcher = createDispatcher({
+      handlerMapping: {
+        descriptors: baseMapping.descriptors,
+        match: vi.fn(() => {
+          throw new Error('Express native fallback should reuse framework handoff before rematching.');
+        }),
+      },
+      rootContainer: root,
+    });
+    const nativeDispatch = vi.fn(async () => false);
+    dispatcher.dispatchNativeRoute = nativeDispatch;
+    const fullDispatch = vi.spyOn(dispatcher, 'dispatch');
+    const port = await findAvailablePort();
+    const adapter = createExpressAdapter({ port }) as ExpressHttpApplicationAdapter;
+
+    await adapter.listen(dispatcher);
+
+    try {
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/native-fallback/abc',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ id: 'abc', route: 'fallback' });
+      expect(nativeDispatch).toHaveBeenCalledTimes(1);
+      expect(fullDispatch).toHaveBeenCalledTimes(1);
     } finally {
       await adapter.close();
     }
