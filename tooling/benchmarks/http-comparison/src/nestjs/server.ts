@@ -1,10 +1,10 @@
 import 'reflect-metadata';
 
-import { Controller, Get, Injectable, Module, Param } from '@nestjs/common';
+import { Body, Controller, Get, Injectable, Module, Param, Post, Query } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 
-type AppShape = 'baseline' | 'dto-1' | 'dto-20' | 'direct-1' | 'direct-20';
+type AppShape = 'baseline' | 'dto-1' | 'dto-20' | 'direct-1' | 'direct-20' | 'query-1' | 'body-1';
 
 @Injectable()
 class UsersRepository {
@@ -20,10 +20,50 @@ class UsersService {
   getUser(id: string): { id: string; name: string; email: string } {
     return this.repo.findOne(id);
   }
+
+  searchUsers(input: SearchUsersRequest) {
+    return {
+      limit: input.limit,
+      page: input.page,
+      region: input.region,
+      role: input.role,
+      sort: input.sort,
+      term: input.term,
+    };
+  }
+
+  createUser(input: CreateUserRequest) {
+    return {
+      email: input.email,
+      name: input.name,
+      role: input.role,
+      status: input.status,
+      team: input.team,
+      title: input.title,
+    };
+  }
 }
 
 class GetUserRequest {
   id = '';
+}
+
+class SearchUsersRequest {
+  term = '';
+  role = '';
+  region = '';
+  sort = '';
+  page = '';
+  limit = '';
+}
+
+class CreateUserRequest {
+  name = '';
+  email = '';
+  role = '';
+  team = '';
+  title = '';
+  status = '';
 }
 
 @Controller('baseline')
@@ -146,6 +186,26 @@ class DirectParamTwentyController {
   getR20(@Param('id') id: string): { id: string; name: string; email: string } { return this.service.getUser(id); }
 }
 
+@Controller('query-dto-one')
+class QueryDtoOneController {
+  constructor(private readonly service: UsersService) {}
+
+  @Get('r01')
+  getR01(@Query() input: SearchUsersRequest) {
+    return this.service.searchUsers(input);
+  }
+}
+
+@Controller('body-dto-one')
+class BodyDtoOneController {
+  constructor(private readonly service: UsersService) {}
+
+  @Post('r01')
+  createR01(@Body() input: CreateUserRequest) {
+    return this.service.createUser(input);
+  }
+}
+
 @Module({ controllers: [BaselineController] })
 class BaselineModule {}
 
@@ -161,6 +221,12 @@ class DirectOneModule {}
 @Module({ controllers: [DirectParamTwentyController], providers: [UsersRepository, UsersService] })
 class DirectTwentyModule {}
 
+@Module({ controllers: [QueryDtoOneController], providers: [UsersRepository, UsersService] })
+class QueryOneModule {}
+
+@Module({ controllers: [BodyDtoOneController], providers: [UsersRepository, UsersService] })
+class BodyOneModule {}
+
 function resolveAppModule(shape: AppShape) {
   switch (shape) {
     case 'baseline': return BaselineModule;
@@ -168,12 +234,14 @@ function resolveAppModule(shape: AppShape) {
     case 'dto-20': return DtoTwentyModule;
     case 'direct-1': return DirectOneModule;
     case 'direct-20': return DirectTwentyModule;
+    case 'query-1': return QueryOneModule;
+    case 'body-1': return BodyOneModule;
   }
 }
 
 function readAppShape(): AppShape {
   const raw = process.env['BENCH_APP_SHAPE'] ?? 'dto-20';
-  if (raw === 'baseline' || raw === 'dto-1' || raw === 'dto-20' || raw === 'direct-1' || raw === 'direct-20') {
+  if (raw === 'baseline' || raw === 'dto-1' || raw === 'dto-20' || raw === 'direct-1' || raw === 'direct-20' || raw === 'query-1' || raw === 'body-1') {
     return raw;
   }
   throw new Error(`Unsupported BENCH_APP_SHAPE: ${raw}`);
