@@ -82,13 +82,13 @@ function isJsonContentType(contentType: string): boolean {
  * @param contentNegotiation The content negotiation.
  * @returns The write success response result.
  */
-export async function writeSuccessResponse(
+export function writeSuccessResponse(
   handler: HandlerDescriptor,
   request: FrameworkRequest,
   response: FrameworkResponse,
   value: unknown,
   contentNegotiation: ResolvedContentNegotiation | undefined,
-): Promise<void> {
+): ReturnType<FrameworkResponse['send']> | void {
   if (response.committed) {
     return;
   }
@@ -121,14 +121,13 @@ export async function writeSuccessResponse(
   }
 
   if (!formatter && hasSimpleJsonResponseWriter(response) && canUseSimpleJsonFastPath(response, value)) {
-    await response.sendSimpleJson(value);
-    return;
+    return response.sendSimpleJson(value);
   }
 
   const responseBody = formatter
     ? formatter.format(value)
     : value;
-  await response.send(responseBody);
+  return response.send(responseBody);
 }
 
 export { resolveContentNegotiation, writeErrorResponse };

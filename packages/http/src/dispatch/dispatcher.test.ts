@@ -21,10 +21,12 @@ import {
   createCorrelationMiddleware,
   createDispatcher,
   createHandlerMapping,
+  formatFastPathStats,
   FromBody,
   FromPath,
   FromQuery,
   Get,
+  getDispatcherFastPathStats,
   getCurrentRequestContext,
   Header,
   HttpCode,
@@ -142,12 +144,12 @@ describe('dispatcher runtime', () => {
     expect(root.requestScopeDisposeCount).toBe(0);
   });
 
-  it('uses request scope when a handler declares RequestContext access', async () => {
+  it('uses fast path for handlers with RequestContext when no request-scoped dependencies exist', async () => {
     @Controller('/context-aware')
     class ContextAwareController {
       @Get('/')
       getValue(_input: undefined, ctx: RequestContext) {
-        return { hasContainer: Boolean(ctx.container) };
+        return { method: ctx.request.method };
       }
     }
 
@@ -160,9 +162,9 @@ describe('dispatcher runtime', () => {
 
     await dispatcher.dispatch(createRequest('/context-aware', 'GET'), response);
 
-    expect(response.body).toEqual({ hasContainer: true });
-    expect(root.requestScopeCreateCount).toBe(1);
-    expect(root.requestScopeDisposeCount).toBe(1);
+    expect(response.body).toEqual({ method: 'GET' });
+    expect(root.requestScopeCreateCount).toBe(0);
+    expect(root.requestScopeDisposeCount).toBe(0);
   });
 
   it('lazily promotes manual RequestContext container access to a request scope', async () => {
@@ -667,6 +669,268 @@ describe('dispatcher runtime', () => {
     expect(arrayResponse.statusCode).toBe(200);
     expect(arrayResponse.simpleJsonBody).toEqual([{ ok: true }]);
     expect(arrayResponse.body).toBeUndefined();
+  });
+
+  it('exposes automatic fast-path stats without emitting debug headers by default', async () => {
+    @Controller('/fast-path-visibility')
+    class FastPathVisibilityController {
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(FastPathVisibilityController);
+    const dispatcher = createDispatcher({
+      adapter: 'fastify',
+      handlerMapping: createHandlerMapping([{ controllerToken: FastPathVisibilityController }]),
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/fast-path-visibility'), response);
+
+    const stats = getDispatcherFastPathStats(dispatcher);
+    expect(stats?.totalRoutes).toBe(1);
+    expect(stats?.fastPathRoutes).toBe(1);
+    expect(stats?.fullPathRoutes).toBe(0);
+    expect(stats?.routes[0]?.adapter).toBe('fastify');
+    expect(stats?.routes[0]?.executionPath).toBe('fast');
+    expect(response.headers['X-Fluo-Path']).toBeUndefined();
+    expect(response.simpleJsonBody).toEqual({ ok: true });
+  });
+
+  it('emits fast-path debug headers when explicitly enabled', async () => {
+    @Controller('/fast-path-debug-header')
+    class FastPathDebugHeaderController {
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(FastPathDebugHeaderController);
+    const dispatcher = createDispatcher({
+      fastPathDebugHeaders: true,
+      handlerMapping: createHandlerMapping([{ controllerToken: FastPathDebugHeaderController }]),
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/fast-path-debug-header'), response);
+
+    expect(response.headers['X-Fluo-Path']).toBe('fast; route=GET:/fast-path-debug-header');
+    expect(response.simpleJsonBody).toEqual({ ok: true });
+  });
+
+  it('falls back to full path when route capabilities are not fast-path safe', async () => {
+    class VisibilityGuard {
+      canActivate() {
+        return true;
+      }
+    }
+
+    @Controller('/full-path-visibility')
+    class FullPathVisibilityController {
+      @UseGuards(VisibilityGuard)
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container()
+      .register(FullPathVisibilityController)
+      .register(VisibilityGuard);
+    const dispatcher = createDispatcher({
+      fastPathDebugHeaders: true,
+      handlerMapping: createHandlerMapping([{ controllerToken: FullPathVisibilityController }]),
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/full-path-visibility'), response);
+
+    const stats = getDispatcherFastPathStats(dispatcher);
+    expect(stats?.totalRoutes).toBe(1);
+    expect(stats?.fastPathRoutes).toBe(0);
+    expect(stats?.fullPathRoutes).toBe(1);
+    expect(stats?.routes[0]?.executionPath).toBe('full');
+    expect(stats?.routes[0]?.fallbackReason).toContain('guards');
+    expect(response.headers['X-Fluo-Path']).toContain('full; route=GET:/');
+    expect(response.headers['X-Fluo-Path']).toContain('guards');
+    expect(response.simpleJsonBody).toEqual({ ok: true });
+  });
+
+  it('falls back to full path when global interceptors are registered', async () => {
+    const events: string[] = [];
+
+    class VisibilityInterceptor {
+      async intercept(_context: InterceptorContext, next: { handle(): Promise<unknown> }) {
+        events.push('interceptor:before');
+        const value = await next.handle();
+        events.push('interceptor:after');
+        return value;
+      }
+    }
+
+    @Controller('/global-interceptor-visibility')
+    class GlobalInterceptorVisibilityController {
+      @Get('/')
+      getValue() {
+        events.push('handler');
+        return { ok: true };
+      }
+    }
+
+    const root = new Container()
+      .register(GlobalInterceptorVisibilityController)
+      .register(VisibilityInterceptor);
+    const dispatcher = createDispatcher({
+      fastPathDebugHeaders: true,
+      handlerMapping: createHandlerMapping([{ controllerToken: GlobalInterceptorVisibilityController }]),
+      interceptors: [VisibilityInterceptor],
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/global-interceptor-visibility'), response);
+
+    const stats = getDispatcherFastPathStats(dispatcher);
+    expect(stats?.fastPathRoutes).toBe(0);
+    expect(stats?.fullPathRoutes).toBe(1);
+    expect(stats?.routes[0]?.executionPath).toBe('full');
+    expect(stats?.routes[0]?.fallbackReason).toContain('interceptors');
+    expect(response.headers['X-Fluo-Path']).toContain('interceptors');
+    expect(response.simpleJsonBody).toEqual({ ok: true });
+    expect(events).toEqual(['interceptor:before', 'handler', 'interceptor:after']);
+  });
+
+  it('preserves matched route params on the fast path', async () => {
+    @Controller('/fast-path-params')
+    class FastPathParamsController {
+      @Get('/:id')
+      getValue() {
+        return { id: getCurrentRequestContext()?.request.params.id };
+      }
+    }
+
+    const root = new Container().register(FastPathParamsController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: FastPathParamsController }]),
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/fast-path-params/u-1'), response);
+
+    const stats = getDispatcherFastPathStats(dispatcher);
+    expect(stats?.routes[0]?.executionPath).toBe('fast');
+    expect(response.simpleJsonBody).toEqual({ id: 'u-1' });
+  });
+
+  it('allows fast-path handlers to read request context data without forcing full path', async () => {
+    @Controller('/fast-path-context')
+    class FastPathContextController {
+      @Get('/')
+      getValue(_input: undefined, context: RequestContext) {
+        return {
+          encoded: context.request.query['encoded'],
+          requestId: context.requestId,
+        };
+      }
+    }
+
+    const root = new Container().register(FastPathContextController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: FastPathContextController }]),
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+
+    const request = createRequest('/fast-path-context', 'GET', { 'x-request-id': 'req-1' });
+    request.query = { encoded: 'hello world' };
+
+    await dispatcher.dispatch(request, response);
+
+    const stats = getDispatcherFastPathStats(dispatcher);
+    expect(stats?.routes[0]?.executionPath).toBe('fast');
+    expect(response.simpleJsonBody).toEqual({ encoded: 'hello world', requestId: 'req-1' });
+  });
+
+  it('uses adapter-snapshotted request ids without materializing headers on the fast path', async () => {
+    @Controller('/fast-path-request-id-snapshot')
+    class FastPathRequestIdSnapshotController {
+      @Get('/')
+      getValue(_input: undefined, context: RequestContext) {
+        return { requestId: context.requestId };
+      }
+    }
+
+    const root = new Container().register(FastPathRequestIdSnapshotController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: FastPathRequestIdSnapshotController }]),
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+    const request = createRequest('/fast-path-request-id-snapshot');
+    let headerReads = 0;
+
+    request.requestId = 'req-snapshot-1';
+    Object.defineProperty(request, 'headers', {
+      configurable: true,
+      get() {
+        headerReads += 1;
+        return { 'x-request-id': 'req-header-1' };
+      },
+    });
+
+    await dispatcher.dispatch(request, response);
+
+    expect(headerReads).toBe(0);
+    expect(response.simpleJsonBody).toEqual({ requestId: 'req-snapshot-1' });
+  });
+
+  it('does not commit a fast-path success response after request aborts during handler execution', async () => {
+    const controller = new AbortController();
+
+    @Controller('/fast-path-abort')
+    class FastPathAbortController {
+      @Get('/')
+      async getValue() {
+        controller.abort();
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(FastPathAbortController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: FastPathAbortController }]),
+      rootContainer: root,
+    });
+    const request = createRequest('/fast-path-abort');
+    request.signal = controller.signal;
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(request, response);
+
+    const stats = getDispatcherFastPathStats(dispatcher);
+    expect(stats?.routes[0]?.executionPath).toBe('fast');
+    expect(response.committed).toBe(false);
+    expect(response.simpleJsonBody).toBeUndefined();
+  });
+
+  it('formats empty fast-path statistics without NaN output', () => {
+    const output = formatFastPathStats({
+      fastPathRoutes: 0,
+      fullPathRoutes: 0,
+      routes: [],
+      totalRoutes: 0,
+    });
+
+    expect(output).toContain('Fast path: 0 (0.0%)');
+    expect(output).toContain('Full path: 0 (0.0%)');
+    expect(output).not.toContain('NaN');
   });
 
   it('keeps strings and binary values on the generic success writer', async () => {
@@ -1643,6 +1907,47 @@ describe('dispatcher runtime', () => {
       'middleware:after:/native/123',
       'observer:finish:123',
     ]);
+  });
+
+  it('preserves fast-path eligibility on cloned native route descriptors', async () => {
+    @Controller('/native-fast')
+    class NativeFastController {
+      @Get('/:id')
+      getById(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id };
+      }
+    }
+
+    const root = new CountingContainer().register(NativeFastController);
+    const baseMapping = createHandlerMapping([{ controllerToken: NativeFastController }]);
+    const handlerMapping = {
+      descriptors: baseMapping.descriptors,
+      match: vi.fn(() => {
+        throw new Error('native route handoff should bypass handlerMapping.match');
+      }),
+    };
+    const dispatcher = createDispatcher({
+      handlerMapping,
+      rootContainer: root,
+    });
+    const descriptor = dispatcher.describeRoutes?.()[0];
+
+    if (!descriptor) {
+      throw new Error('Expected one cloned native route descriptor.');
+    }
+
+    const request = attachFrameworkRequestNativeRouteHandoff(createRequest('/native-fast/123'), {
+      descriptor,
+      params: { id: '123' },
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(request, response);
+
+    expect(handlerMapping.match).not.toHaveBeenCalled();
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ id: '123' });
+    expect(root.requestScopeCreateCount).toBe(0);
   });
 
   it('reuses adapter-native route handoff on error paths without rematching', async () => {

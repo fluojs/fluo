@@ -29,6 +29,10 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).toHaveProperty('UseGuards');
     expect(httpPublicApi).toHaveProperty('UseInterceptors');
     expect(httpPublicApi).toHaveProperty('createDispatcher');
+    expect(httpPublicApi).toHaveProperty('FAST_PATH_ELIGIBILITY_SYMBOL');
+    expect(httpPublicApi).toHaveProperty('FAST_PATH_STATS_SYMBOL');
+    expect(httpPublicApi).toHaveProperty('formatFastPathStats');
+    expect(httpPublicApi).toHaveProperty('getDispatcherFastPathStats');
     expect(httpPublicApi).toHaveProperty('createHandlerMapping');
     expect(httpPublicApi).toHaveProperty('forRoutes');
     expect(httpPublicApi).toHaveProperty('normalizeRoutePattern');

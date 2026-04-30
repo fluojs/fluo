@@ -19,6 +19,7 @@ import type {
   GuardLike,
   HandlerDescriptor,
   HandlerMapping,
+  HandlerMatch,
   InterceptorLike,
   MiddlewareContext,
   MiddlewareLike,
@@ -30,16 +31,28 @@ import type {
 import { invokeControllerHandler } from './dispatch-handler-policy.js';
 import { type ResolvedContentNegotiation, resolveContentNegotiation, writeErrorResponse, writeSuccessResponse } from './dispatch-response-policy.js';
 import { matchHandlerOrThrow, updateRequestParams } from './dispatch-routing-policy.js';
-import { readFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
+import { attachFrameworkRequestNativeRouteHandoff, readFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
+import {
+  compileFastPathEligibility,
+  getHandlerFastPathEligibility,
+  setHandlerFastPathEligibility,
+  type FastPathEligibility,
+  type FastPathStats,
+  FAST_PATH_STATS_SYMBOL,
+  addPathDebugHeader,
+  createFastPathStats,
+  createPathDebugInfo,
+  executeFastPath,
+  shouldUseFastPathForRequest,
+} from './fast-path/index.js';
 
-/**
- * Type definition for a global HTTP error handler function.
- */
+export type { FastPathEligibility, FastPathStats } from './fast-path/index.js';
+export { FAST_PATH_ELIGIBILITY_SYMBOL, FAST_PATH_STATS_SYMBOL } from './fast-path/index.js';
+
+/** Type definition for a global HTTP error handler function. */
 export type ErrorHandler = (error: unknown, request: FrameworkRequest, response: FrameworkResponse, requestId?: string) => Promise<boolean | void> | boolean | void;
 
-/**
- * Options for creating an HTTP {@link Dispatcher}.
- */
+/** Options for creating an HTTP {@link Dispatcher}. */
 export interface CreateDispatcherOptions {
   /** Global middleware applied to all requests. */
   appMiddleware?: MiddlewareLike[];
@@ -53,6 +66,8 @@ export interface CreateDispatcherOptions {
   interceptors?: InterceptorLike[];
   /** Global request observers for telemetry and logging. */
   observers?: RequestObserverLike[];
+  /** Emits per-response fast-path debug headers when enabled. */
+  fastPathDebugHeaders?: boolean;
   /** Optional global error handler. */
   onError?: ErrorHandler;
   /** Request-scope optimization hints supplied by runtime bootstrap. */
@@ -60,9 +75,12 @@ export interface CreateDispatcherOptions {
     /** Global DTO converters used by the default binder. */
     converterDefinitions?: readonly ConverterLike[];
   };
+  /** Logger used for non-fatal dispatcher failures. */
   logger?: DispatcherLogger;
   /** Root DI container for creating request scopes. */
   rootContainer: Container;
+  /** Human-readable adapter label included in fast-path observability output. */
+  adapter?: string;
 }
 
 interface DispatchScope {
@@ -73,6 +91,10 @@ interface DispatchScope {
 interface RequestScopeInspector {
   hasRequestScopedDependency(token: Token): boolean;
 }
+
+type FrameworkRequestWithFiles = FrameworkRequest & {
+  files?: unknown;
+};
 
 interface CompiledMiddlewareScopePlan {
   alwaysRequiresRequestScope: boolean;
@@ -91,6 +113,15 @@ interface CompiledHandlerExecutionPlan {
   routeGuards: GuardLike[];
 }
 
+interface FastPathHandlerRuntimeCache {
+  controller?: object;
+  controllerPromise?: Promise<object>;
+  method?: (this: object, input: unknown, requestContext: RequestContext) => unknown;
+}
+
+const EMPTY_NATIVE_FAST_PATH_HANDLER_EXECUTION_PLANS = new WeakMap<HandlerDescriptor, CompiledHandlerExecutionPlan>();
+const EMPTY_NATIVE_FAST_PATH_OBSERVERS: RequestObserverLike[] = [];
+
 function logDispatchFailure(
   logger: DispatcherLogger | undefined,
   message: string,
@@ -105,14 +136,42 @@ function logDispatchFailure(
 }
 
 function createDispatchRequest(request: FrameworkRequest): FrameworkRequest {
-  return {
-    ...request,
+  const dispatchRequest: FrameworkRequest = {
+    get cookies() {
+      return request.cookies;
+    },
+    get headers() {
+      return request.headers;
+    },
+    get query() {
+      return request.query;
+    },
+    body: request.body,
+    method: request.method,
     params: { ...request.params },
+    path: request.path,
+    raw: request.raw,
+    rawBody: request.rawBody,
+    requestId: request.requestId,
+    signal: request.signal,
+    url: request.url,
   };
+
+  const nativeRouteHandoff = readFrameworkRequestNativeRouteHandoff(request);
+
+  const files = (request as FrameworkRequestWithFiles).files;
+
+  if (files !== undefined) {
+    (dispatchRequest as FrameworkRequestWithFiles).files = files;
+  }
+
+  return nativeRouteHandoff
+    ? attachFrameworkRequestNativeRouteHandoff(dispatchRequest, nativeRouteHandoff)
+    : dispatchRequest;
 }
 
 function cloneHandlerDescriptor(descriptor: HandlerDescriptor): HandlerDescriptor {
-  return {
+  const cloned = {
     ...descriptor,
     metadata: {
       ...descriptor.metadata,
@@ -128,9 +187,21 @@ function cloneHandlerDescriptor(descriptor: HandlerDescriptor): HandlerDescripto
       redirect: descriptor.route.redirect ? { ...descriptor.route.redirect } : undefined,
     },
   };
+
+  const eligibility = getHandlerFastPathEligibility(descriptor);
+
+  if (eligibility) {
+    setHandlerFastPathEligibility(cloned, eligibility);
+  }
+
+  return cloned;
 }
 
 function readRequestId(request: FrameworkRequest): string | undefined {
+  if (request.requestId) {
+    return request.requestId;
+  }
+
   const raw = request.headers['x-request-id'] ?? request.headers['X-Request-Id'];
   const value = Array.isArray(raw) ? raw[0] : raw;
   const normalized = value?.trim();
@@ -156,16 +227,55 @@ function createDispatchContext(
     return context;
   }
 
-  let activeContainer = container;
+  // Wrap the container to only promote to request scope when resolve() is actually called.
+  // This allows fast-path handlers to check ctx.container without triggering scope creation.
+  let activeContainer: RequestScopeContainer = container;
+  let wrappedContainer: RequestScopeContainer | undefined;
+  let promoted = false;
+
+  const ensurePromoted = (): RequestScopeContainer => {
+    if (!promoted) {
+      activeContainer = promoteOnContainerAccess();
+      promoted = true;
+    }
+    return activeContainer;
+  };
+
+  const getWrappedContainer = (): RequestScopeContainer => {
+    if (!wrappedContainer) {
+      wrappedContainer = {
+        async resolve<T>(token: Token<T>): Promise<T> {
+          const targetContainer = ensurePromoted();
+          return targetContainer.resolve(token);
+        },
+        async dispose(): Promise<void> {
+          // If promotion never happened, this is a no-op.
+          // This prevents accidentally disposing the root container when a
+          // captured container reference is used after a singleton-only request.
+          if (!promoted) {
+            return;
+          }
+          return activeContainer.dispose();
+        },
+      };
+    }
+    return wrappedContainer;
+  };
+
   Object.defineProperty(context, 'container', {
     configurable: true,
     enumerable: true,
     get() {
-      activeContainer = promoteOnContainerAccess();
-      return activeContainer;
+      // If promotion has already occurred, return the actual container.
+      if (promoted) {
+        return activeContainer;
+      }
+      // Return the wrapped container that will promote on resolve().
+      return getWrappedContainer();
     },
     set(value: RequestScopeContainer) {
       activeContainer = value;
+      promoted = true;
     },
   });
 
@@ -317,9 +427,54 @@ function ensureRequestScope(context: DispatchPhaseContext): void {
 }
 
 function ensureRequestNotAborted(request: FrameworkRequest): void {
-  if (request.signal?.aborted) {
+  if (isRequestAborted(request)) {
     throw new RequestAbortedError();
   }
+}
+
+function isRequestAborted(request: FrameworkRequest): boolean {
+  return request.isAborted?.() ?? request.signal?.aborted === true;
+}
+
+function resolveFastPathHandlerRuntimeCache(
+  handler: HandlerDescriptor,
+  cache: WeakMap<HandlerDescriptor, FastPathHandlerRuntimeCache>,
+): FastPathHandlerRuntimeCache {
+  const cached = cache.get(handler);
+
+  if (cached) {
+    return cached;
+  }
+
+  const method = handler.controllerToken.prototype[handler.methodName] as unknown;
+
+  const compiled = {
+    method: typeof method === 'function'
+      ? method as (this: object, input: unknown, requestContext: RequestContext) => unknown
+      : undefined,
+  };
+  cache.set(handler, compiled);
+  return compiled;
+}
+
+function resolveFastPathController(
+  handler: HandlerDescriptor,
+  controllerContainer: RequestScopeContainer,
+  runtimeCache: FastPathHandlerRuntimeCache,
+): object | Promise<object> {
+  if (runtimeCache.controller) {
+    return runtimeCache.controller;
+  }
+
+  runtimeCache.controllerPromise ??= controllerContainer.resolve(handler.controllerToken as Token<object>).then((controller) => {
+    runtimeCache.controller = controller;
+    return controller;
+  });
+  return runtimeCache.controllerPromise;
+}
+
+function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
+  return typeof value === 'object' && value !== null && 'then' in value && typeof value.then === 'function';
 }
 
 function isRequestObserver(value: RequestObserverLike): value is RequestObserver {
@@ -455,9 +610,79 @@ function resolveHandlerExecutionPlan(
   return compiled;
 }
 
+async function dispatchNativeFastRoute(
+  match: HandlerMatch,
+  request: FrameworkRequest,
+  response: FrameworkResponse,
+  options: CreateDispatcherOptions,
+  contentNegotiation: ResolvedContentNegotiation | undefined,
+  fastPathRuntimeCache: WeakMap<HandlerDescriptor, FastPathHandlerRuntimeCache>,
+): Promise<boolean> {
+  const eligibility = getHandlerFastPathEligibility(match.descriptor);
+
+  if (!shouldUseFastPathForRequest(eligibility, request)) {
+    return false;
+  }
+
+  const dispatchRequest = request;
+  const dispatchScope = createRootDispatchScope(options.rootContainer);
+  let phaseContext: DispatchPhaseContext;
+  let containerPromotionOpen = true;
+  const requestContext = createDispatchContext(dispatchRequest, response, dispatchScope.container, () => {
+    if (!containerPromotionOpen) {
+      return phaseContext.dispatchScope.container;
+    }
+
+    ensureRequestScope(phaseContext);
+    return phaseContext.dispatchScope.container;
+  });
+
+  phaseContext = {
+    contentNegotiation,
+    dispatchScope,
+    fastPathRuntimeCache,
+    handlerExecutionPlans: EMPTY_NATIVE_FAST_PATH_HANDLER_EXECUTION_PLANS,
+    observers: EMPTY_NATIVE_FAST_PATH_OBSERVERS,
+    options,
+    requestContext,
+    response,
+  };
+  phaseContext.matchedHandler = match.descriptor;
+  updateRequestParams(phaseContext.requestContext, match.params);
+
+  await runWithRequestContext(phaseContext.requestContext, async () => {
+    try {
+      ensureRequestNotAborted(phaseContext.requestContext.request);
+      const fastPathSuccess = await tryFastPathExecution(match.descriptor, phaseContext);
+
+      if (!fastPathSuccess) {
+        throw new Error(`Native route ${match.descriptor.route.method}:${match.descriptor.route.path} was not fast-path executable.`);
+      }
+    } catch (error: unknown) {
+      await handleDispatchError(phaseContext, error);
+    } finally {
+      if (!phaseContext.dispatchScope.requestScoped) {
+        phaseContext.requestContext.container = phaseContext.dispatchScope.container;
+      }
+
+      containerPromotionOpen = false;
+      if (phaseContext.dispatchScope.requestScoped) {
+        try {
+          await phaseContext.dispatchScope.container.dispose();
+        } catch (error) {
+          logDispatchFailure(options.logger, 'Request-scoped container dispose threw an error.', error);
+        }
+      }
+    }
+  });
+
+  return true;
+}
+
 interface DispatchPhaseContext {
   contentNegotiation: ResolvedContentNegotiation | undefined;
   dispatchScope: DispatchScope;
+  fastPathRuntimeCache: WeakMap<HandlerDescriptor, FastPathHandlerRuntimeCache>;
   handlerExecutionPlans: WeakMap<HandlerDescriptor, CompiledHandlerExecutionPlan>;
   matchedHandler?: HandlerDescriptor;
   observers: RequestObserverLike[];
@@ -513,6 +738,50 @@ async function notifyRequestFinish(context: DispatchPhaseContext): Promise<void>
   );
 }
 
+async function tryFastPathExecution(
+  handler: HandlerDescriptor,
+  context: DispatchPhaseContext,
+): Promise<boolean> {
+  const eligibility = getHandlerFastPathEligibility(handler);
+
+  if (!eligibility || eligibility.executionPath !== 'fast') {
+    return false;
+  }
+
+  if (typeof context.dispatchScope.container.resolve !== 'function') {
+    ensureRequestScope(context);
+  }
+
+  const runtimeCache = resolveFastPathHandlerRuntimeCache(
+    handler,
+    context.fastPathRuntimeCache,
+  );
+  const controllerOrPromise = resolveFastPathController(handler, context.dispatchScope.container, runtimeCache);
+  const controller = isPromiseLike(controllerOrPromise) ? await controllerOrPromise : controllerOrPromise;
+
+  const fastPathResult = await executeFastPath({
+    binder: context.options.binder,
+    contentNegotiation: context.contentNegotiation,
+    controller,
+    controllerContainer: context.dispatchScope.container,
+    handler,
+    method: runtimeCache.method,
+    request: context.requestContext.request,
+    requestContext: context.requestContext,
+    response: context.response,
+  });
+
+  if (fastPathResult.executed) {
+    return true;
+  }
+
+  if (fastPathResult.error) {
+    throw fastPathResult.error;
+  }
+
+  return false;
+}
+
 async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void> {
   ensureRequestNotAborted(context.requestContext.request);
 
@@ -522,7 +791,7 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
     response: context.response,
   };
 
-  await runMiddlewareChain(context.options.appMiddleware ?? [], appMiddlewareContext, async () => {
+  const dispatchMatchedRoute = async (): Promise<void> => {
     if (context.response.committed) {
       return;
     }
@@ -531,13 +800,29 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
       readFrameworkRequestNativeRouteHandoff(appMiddlewareContext.request)
       ?? matchHandlerOrThrow(context.options.handlerMapping, appMiddlewareContext.request);
     context.matchedHandler = match.descriptor;
+    updateRequestParams(context.requestContext, match.params);
+
+    const eligibility = getHandlerFastPathEligibility(match.descriptor);
+
+    if (context.options.fastPathDebugHeaders === true && eligibility && !context.response.committed) {
+      const debugInfo = createPathDebugInfo(eligibility);
+      addPathDebugHeader(context.response.setHeader.bind(context.response), debugInfo);
+    }
+
+    if (shouldUseFastPathForRequest(eligibility, appMiddlewareContext.request)) {
+      const fastPathSuccess = await tryFastPathExecution(match.descriptor, context);
+
+      if (fastPathSuccess) {
+        return;
+      }
+    }
+
     const executionPlan = resolveHandlerExecutionPlan(match.descriptor, context.handlerExecutionPlans, context.options);
 
     if (handlerMayRequireRequestScope(executionPlan, appMiddlewareContext.request)) {
       ensureRequestScope(context);
     }
 
-    updateRequestParams(context.requestContext, match.params);
     await notifyHandlerMatched(context, match.descriptor);
 
     const moduleMiddlewareContext: MiddlewareContext = {
@@ -558,11 +843,20 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
         context.options.logger,
       );
     });
-  });
+  };
+
+  const appMiddleware = context.options.appMiddleware ?? [];
+
+  if (appMiddleware.length === 0) {
+    await dispatchMatchedRoute();
+    return;
+  }
+
+  await runMiddlewareChain(appMiddleware, appMiddlewareContext, dispatchMatchedRoute);
 }
 
 async function handleDispatchError(context: DispatchPhaseContext, error: unknown): Promise<void> {
-  if (error instanceof RequestAbortedError || context.requestContext.request.signal?.aborted) {
+      if (error instanceof RequestAbortedError || isRequestAborted(context.requestContext.request)) {
     return;
   }
 
@@ -593,15 +887,27 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
   const observers = options.observers ?? [];
   const appMiddleware = options.appMiddleware ?? [];
   const dispatchStartPlan = compileDispatchStartPlan(observers, appMiddleware);
+  const fastPathRuntimeCache = new WeakMap<HandlerDescriptor, FastPathHandlerRuntimeCache>();
   const handlerExecutionPlans = new WeakMap<HandlerDescriptor, CompiledHandlerExecutionPlan>();
+  const adapter = options.adapter ?? 'default';
+  const fastPathEligibilities: FastPathEligibility[] = [];
 
   for (const descriptor of options.handlerMapping.descriptors) {
     handlerExecutionPlans.set(descriptor, compileHandlerExecutionPlan(descriptor, options));
+
+    const { eligibility } = compileFastPathEligibility(descriptor, options, adapter);
+    setHandlerFastPathEligibility(descriptor, eligibility);
+    fastPathEligibilities.push(eligibility);
   }
+
+  const fastPathStats = createFastPathStats(fastPathEligibilities);
 
   const dispatcher = {
     describeRoutes() {
       return options.handlerMapping.descriptors.map((descriptor) => cloneHandlerDescriptor(descriptor));
+    },
+    async dispatchNativeRoute(match: HandlerMatch, request: FrameworkRequest, response: FrameworkResponse): Promise<boolean> {
+      return dispatchNativeFastRoute(match, request, response, options, contentNegotiation, fastPathRuntimeCache);
     },
     async dispatch(request: FrameworkRequest, response: FrameworkResponse): Promise<void> {
       const dispatchRequest = createDispatchRequest(request);
@@ -622,6 +928,7 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
       phaseContext = {
         contentNegotiation,
         dispatchScope,
+        fastPathRuntimeCache,
         handlerExecutionPlans,
         observers,
         options,
@@ -631,12 +938,21 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
 
       await runWithRequestContext(phaseContext.requestContext, async () => {
         try {
-          await notifyRequestStart(phaseContext);
+          if (observers.length > 0) {
+            await notifyRequestStart(phaseContext);
+          }
           await runDispatchPipeline(phaseContext);
         } catch (error: unknown) {
           await handleDispatchError(phaseContext, error);
         } finally {
-          await notifyRequestFinish(phaseContext);
+          if (observers.length > 0) {
+            await notifyRequestFinish(phaseContext);
+          }
+
+          if (!phaseContext.dispatchScope.requestScoped) {
+            phaseContext.requestContext.container = phaseContext.dispatchScope.container;
+          }
+
           containerPromotionOpen = false;
           if (phaseContext.dispatchScope.requestScoped) {
             try {
@@ -650,5 +966,19 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
     },
   };
 
+  (dispatcher as unknown as Record<symbol, FastPathStats>)[FAST_PATH_STATS_SYMBOL] = fastPathStats;
+
   return dispatcher as Dispatcher;
 }
+
+/**
+ * Reads automatic fast-path eligibility statistics attached to a dispatcher.
+ *
+ * @param dispatcher Dispatcher returned by {@link createDispatcher}.
+ * @returns Fast-path statistics when available.
+ */
+export function getDispatcherFastPathStats(dispatcher: Dispatcher): FastPathStats | undefined {
+  return (dispatcher as unknown as Record<symbol, FastPathStats | undefined>)[FAST_PATH_STATS_SYMBOL];
+}
+
+export { formatFastPathStats } from './fast-path/index.js';

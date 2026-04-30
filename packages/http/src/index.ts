@@ -28,6 +28,13 @@ export {
   Version,
 } from './decorators.js';
 export * from './dispatch/dispatcher.js';
+export type { FastPathEligibility, FastPathStats } from './dispatch/fast-path/index.js';
+export {
+  FAST_PATH_ELIGIBILITY_SYMBOL,
+  FAST_PATH_STATS_SYMBOL,
+  formatFastPathStats,
+  getDispatcherFastPathStats,
+} from './dispatch/dispatcher.js';
 export * from './errors.js';
 export * from './exceptions.js';
 export * from './mapping.js';

@@ -29,8 +29,12 @@ export interface FrameworkRequest {
   cookies: Readonly<Record<string, string | undefined>>;
   params: Readonly<Record<string, string>>;
   body?: unknown;
+  /** Adapter-snapshotted inbound request id used without forcing header normalization. */
+  requestId?: string;
   rawBody?: Uint8Array;
   raw: unknown;
+  /** Adapter-owned abort probe used by internal fast paths without forcing AbortSignal allocation. */
+  isAborted?: () => boolean;
   signal?: AbortSignal;
 }
 
@@ -209,6 +213,14 @@ export type VersioningOptions =
 /** Runtime dispatcher that executes the full HTTP request lifecycle. */
 export interface Dispatcher {
   dispatch(request: FrameworkRequest, response: FrameworkResponse): Promise<void>;
+  /**
+   * Executes a pre-matched native route through the fast path when safe.
+   *
+   * @internal Platform adapters may use this to avoid duplicate dispatcher
+   * scaffolding for routes already selected by their native router. It returns
+   * `false` when the route must fall back to the normal dispatch lifecycle.
+   */
+  dispatchNativeRoute?(match: HandlerMatch, request: FrameworkRequest, response: FrameworkResponse): Promise<boolean>;
   /**
    * Returns the mapped route descriptors known to this dispatcher when the
    * implementation can expose them without changing dispatch behavior.
