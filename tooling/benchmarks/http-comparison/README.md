@@ -13,6 +13,9 @@ Runs a small HTTP throughput/latency comparison between published fluo beta pack
 - `di-chain-dto-deterministic-20`: the same DTO-bound DI path across a deterministic 20-route cycle.
 - `di-chain-direct-param-deterministic-1`: one direct path-param route through Controller → Service → Repository.
 - `di-chain-direct-param-deterministic-20`: the same direct-param DI path across a deterministic 20-route cycle.
+<<<<<<< HEAD
+- `query-deterministic-1`: one query-focused route that reads repeated query parameters.
+- `json-body-deterministic-1`: one JSON body route that exercises request body materialization.
 - `query-dto-deterministic-1`: one query-heavy DTO route with six bound query fields.
 - `body-dto-deterministic-1`: one body-heavy DTO route with six bound body fields.
 
