@@ -1,8 +1,8 @@
-import { normalizeRoutePath } from '../route-path.js';
 import type { FrameworkRequest, HandlerMatch } from '../types.js';
 
 const FRAMEWORK_REQUEST_NATIVE_ROUTE_HANDOFF = Symbol('fluo.http.nativeRouteHandoff');
 const RAW_REQUEST_NATIVE_ROUTE_HANDOFFS = new WeakMap<object, HandlerMatch>();
+const EMPTY_ROUTE_PARAMS: Readonly<Record<string, string>> = Object.freeze({});
 
 interface FrameworkRequestNativeRouteHandoffRecord {
   handoff: HandlerMatch;
@@ -17,8 +17,12 @@ type FrameworkRequestWithNativeRouteHandoff = FrameworkRequest & {
 function cloneNativeRouteHandoff(handoff: HandlerMatch): HandlerMatch {
   return {
     descriptor: handoff.descriptor,
-    params: { ...handoff.params },
+    params: cloneRouteParams(handoff.params),
   };
+}
+
+function cloneRouteParams(params: Readonly<Record<string, string>>): Readonly<Record<string, string>> {
+  return Object.keys(params).length === 0 ? EMPTY_ROUTE_PARAMS : { ...params };
 }
 
 /** Internal handoff payload that lets adapters skip duplicate route matching safely. */
@@ -120,5 +124,5 @@ export function readFrameworkRequestNativeRouteHandoff(
  * @returns `true` when normalization would change the incoming path.
  */
 export function isRoutePathNormalizationSensitive(path: string): boolean {
-  return normalizeRoutePath(path) !== path;
+  return (path.length > 1 && path.endsWith('/')) || path.includes('//');
 }

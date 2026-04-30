@@ -72,6 +72,7 @@ describe('dispatch routing policy', () => {
   });
 
   it('updates request params in request context without mutating unrelated fields', () => {
+    let queryReads = 0;
     const context: RequestContext = {
       container: {
         async dispose() {
@@ -82,7 +83,16 @@ describe('dispatch routing policy', () => {
         },
       },
       metadata: {},
-      request: createRequest('/users/1', 'GET'),
+      request: Object.defineProperties(createRequest('/users/1', 'GET'), {
+        query: {
+          configurable: true,
+          enumerable: true,
+          get() {
+            queryReads += 1;
+            return {};
+          },
+        },
+      }),
       response: {
         committed: false,
         headers: {},
@@ -97,5 +107,6 @@ describe('dispatch routing policy', () => {
 
     expect(context.request.path).toBe('/users/1');
     expect(context.request.params).toEqual({ id: '1' });
+    expect(queryReads).toBe(0);
   });
 });

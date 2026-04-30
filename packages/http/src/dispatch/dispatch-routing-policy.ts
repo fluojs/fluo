@@ -25,8 +25,10 @@ export function matchHandlerOrThrow(handlerMapping: HandlerMapping, request: Fra
  * @param params The params.
  */
 export function updateRequestParams(requestContext: RequestContext, params: Readonly<Record<string, string>>): void {
-  requestContext.request = {
-    ...requestContext.request,
-    params,
-  };
+  Object.defineProperty(requestContext.request, 'params', {
+    configurable: true,
+    enumerable: true,
+    value: params,
+    writable: true,
+  });
 }
