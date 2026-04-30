@@ -1,13 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import { Inject, Scope as ScopeDecorator } from '@fluojs/core';
 import { Container } from '@fluojs/di';
-
+import { IntersectionType, IsNumber, IsString, MinLength, OmitType, PartialType, PickType, ValidateNested } from '@fluojs/validation';
+import { describe, expect, it, vi } from 'vitest';
 import type {
   CallHandler,
-  GuardContext,
   FrameworkRequest,
   FrameworkResponse,
+  GuardContext,
   InterceptorContext,
   Middleware,
   MiddlewareContext,
@@ -16,32 +15,29 @@ import type {
   RequestObservationContext,
 } from '../index.js';
 import {
+  type assertRequestContext,
+  Controller,
   Convert,
-  FromBody,
-  FromPath,
-  FromQuery,
   createCorrelationMiddleware,
   createDispatcher,
   createHandlerMapping,
-  Controller,
+  FromBody,
+  FromPath,
+  FromQuery,
   Get,
+  getCurrentRequestContext,
+  Header,
+  HttpCode,
   Post,
   Produces,
+  Redirect,
   RequestDto,
   SseResponse,
-  HttpCode,
-  Header,
-  Redirect,
   UseGuards,
   UseInterceptors,
-  type assertRequestContext,
-  getCurrentRequestContext,
 } from '../index.js';
-import { IsNumber, IsString, MinLength, ValidateNested } from '@fluojs/validation';
-
-import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation';
-import { attachFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
 import { forRoutes, runMiddlewareChain } from '../middleware/middleware.js';
+import { attachFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
 
 function createResponse(): FrameworkResponse & { body?: unknown } {
   return {
@@ -321,6 +317,161 @@ describe('dispatcher runtime', () => {
 
     expect(firstResponse.body).toEqual({ store: 1 });
     expect(secondResponse.body).toEqual({ store: 2 });
+    expect(root.requestScopeCreateCount).toBe(2);
+    expect(root.requestScopeDisposeCount).toBe(2);
+  });
+
+  it('uses request scope when DTO converters resolve request-scoped providers', async () => {
+    let created = 0;
+
+    @ScopeDecorator('request')
+    class RequestStore {
+      readonly id = ++created;
+    }
+
+    @Inject(RequestStore)
+    @ScopeDecorator('request')
+    class ScopedConverter {
+      constructor(private readonly store: RequestStore) {}
+
+      convert(value: unknown) {
+        return `${String(value)}:${this.store.id}`;
+      }
+    }
+
+    class ScopedDto {
+      @Convert(ScopedConverter)
+      @FromPath('id')
+      id!: string;
+    }
+
+    @Controller('/converter-scope')
+    class ConverterScopeController {
+      @Get('/:id')
+      @RequestDto(ScopedDto)
+      getValue(input: ScopedDto) {
+        return { id: input.id };
+      }
+    }
+
+    const root = new CountingContainer().register(RequestStore, ScopedConverter, ConverterScopeController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ConverterScopeController }]),
+      rootContainer: root,
+    });
+
+    const firstResponse = createResponse();
+    await dispatcher.dispatch(createRequest('/converter-scope/one', 'GET'), firstResponse);
+
+    const secondResponse = createResponse();
+    await dispatcher.dispatch(createRequest('/converter-scope/two', 'GET'), secondResponse);
+
+    expect(firstResponse.body).toEqual({ id: 'one:1' });
+    expect(secondResponse.body).toEqual({ id: 'two:2' });
+    expect(root.requestScopeCreateCount).toBe(2);
+    expect(root.requestScopeDisposeCount).toBe(2);
+  });
+
+  it('promotes to request scope only when route-matched middleware is active', async () => {
+    const events: string[] = [];
+    let created = 0;
+
+    @ScopeDecorator('request')
+    class RequestStore {
+      readonly id = ++created;
+    }
+
+    @Inject(RequestStore)
+    @ScopeDecorator('request')
+    class ScopedMiddleware implements Middleware {
+      constructor(private readonly store: RequestStore) {}
+
+      async handle(context: MiddlewareContext, next: Next) {
+        events.push(`middleware:${context.request.path}:${this.store.id}`);
+        await next();
+      }
+    }
+
+    @Controller('/middleware-scope')
+    class MiddlewareScopeController {
+      @Get('/active')
+      getActive() {
+        return { ok: 'active' };
+      }
+
+      @Get('/inactive')
+      getInactive() {
+        return { ok: 'inactive' };
+      }
+    }
+
+    const root = new CountingContainer().register(RequestStore, ScopedMiddleware, MiddlewareScopeController);
+    const dispatcher = createDispatcher({
+      appMiddleware: [forRoutes(ScopedMiddleware, '/middleware-scope/active')],
+      handlerMapping: createHandlerMapping([{ controllerToken: MiddlewareScopeController }]),
+      rootContainer: root,
+    });
+
+    const inactiveResponse = createResponse();
+    await dispatcher.dispatch(createRequest('/middleware-scope/inactive', 'GET'), inactiveResponse);
+
+    const activeResponse = createResponse();
+    await dispatcher.dispatch(createRequest('/middleware-scope/active', 'GET'), activeResponse);
+
+    expect(inactiveResponse.body).toEqual({ ok: 'inactive' });
+    expect(activeResponse.body).toEqual({ ok: 'active' });
+    expect(events).toEqual(['middleware:/middleware-scope/active:1']);
+    expect(root.requestScopeCreateCount).toBe(1);
+    expect(root.requestScopeDisposeCount).toBe(1);
+  });
+
+  it('uses isolated request scopes for observer callbacks on singleton routes', async () => {
+    const events: string[] = [];
+    let created = 0;
+
+    @ScopeDecorator('request')
+    class RequestStore {
+      readonly id = ++created;
+    }
+
+    @Inject(RequestStore)
+    @ScopeDecorator('request')
+    class ScopedObserver {
+      constructor(private readonly store: RequestStore) {}
+
+      onRequestFinish() {
+        events.push(`finish:${this.store.id}`);
+      }
+
+      onRequestStart() {
+        events.push(`start:${this.store.id}`);
+      }
+    }
+
+    @Controller('/observer-scope')
+    class ObserverScopeController {
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new CountingContainer().register(RequestStore, ScopedObserver, ObserverScopeController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ObserverScopeController }]),
+      observers: [ScopedObserver],
+      rootContainer: root,
+    });
+
+    const firstResponse = createResponse();
+    await dispatcher.dispatch(createRequest('/observer-scope', 'GET'), firstResponse);
+
+    const secondResponse = createResponse();
+    await dispatcher.dispatch(createRequest('/observer-scope', 'GET'), secondResponse);
+
+    expect(firstResponse.body).toEqual({ ok: true });
+    expect(secondResponse.body).toEqual({ ok: true });
+    expect(events).toEqual(['start:1', 'finish:1', 'start:2', 'finish:2']);
     expect(root.requestScopeCreateCount).toBe(2);
     expect(root.requestScopeDisposeCount).toBe(2);
   });
