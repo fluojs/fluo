@@ -356,6 +356,67 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
+  it('preserves benchmark-style simple query and JSON body routes on the native request path', async () => {
+    @Controller('/')
+    class BenchmarkController {
+      @Get('/query-one')
+      readQuery(_input: undefined, context: RequestContext) {
+        return {
+          encoded: context.request.query.encoded,
+          tag: context.request.query.tag,
+        };
+      }
+
+      @Post('/body-one')
+      readBody(_input: undefined, context: RequestContext) {
+        return {
+          body: context.request.body,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [BenchmarkController] });
+
+    const port = await findAvailablePort();
+    const app = await fluoFactory.create(AppModule, {
+      adapter: createExpressAdapter({ port }),
+    });
+
+    await app.listen();
+
+    try {
+      const queryResponse = await requestHttp({
+        method: 'GET',
+        path: '/query-one?tag=one&tag=two&encoded=hello+world',
+        port,
+      });
+
+      expect(queryResponse.statusCode).toBe(200);
+      expect(JSON.parse(queryResponse.body)).toEqual({
+        encoded: 'hello world',
+        tag: ['one', 'two'],
+      });
+
+      const bodyResponse = await requestHttp({
+        body: JSON.stringify({ ok: true, source: 'express' }),
+        headers: {
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+        path: '/body-one',
+        port,
+      });
+
+      expect(bodyResponse.statusCode).toBe(201);
+      expect(JSON.parse(bodyResponse.body)).toEqual({
+        body: { ok: true, source: 'express' },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('keeps the simple JSON fast path off Express json replacer serialization', async () => {
     @Controller('/serializer')
     class SerializerController {

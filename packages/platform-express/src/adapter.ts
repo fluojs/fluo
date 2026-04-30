@@ -1,7 +1,6 @@
 import type {
   IncomingHttpHeaders,
   IncomingMessage,
-  ServerResponse,
 } from 'node:http';
 import { createServer as createHttpServer } from 'node:http';
 import {
@@ -10,7 +9,6 @@ import {
 } from 'node:https';
 import type { AddressInfo, Socket } from 'node:net';
 import { Readable } from 'node:stream';
-import { URL } from 'node:url';
 
 import express, {
   type Express,
@@ -53,6 +51,18 @@ import {
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
 } from '@fluojs/runtime/node';
+import {
+  cloneRequestHeaders,
+  createDeferredFrameworkRequestShell,
+  createMemoizedAsyncValue,
+  createRequestSignal,
+  normalizePrimaryContentType,
+  parseQueryParamsFromSearch,
+  resolveAbsoluteRequestUrl,
+  resolveRequestIdFromHeaders,
+  snapshotSimpleQueryRecord,
+  splitRawRequestUrl,
+} from '@fluojs/runtime/internal-node';
 import { parseMultipart } from '@fluojs/runtime/web';
 import {
   bootstrapHttpAdapterApplication,
@@ -287,7 +297,7 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
         }
 
         const nativeMethod = request.method.toUpperCase() as ExpressNativeRouteMethod;
-        const requestPath = new URL(request.originalUrl || request.url || '/', 'http://localhost').pathname;
+        const requestPath = splitRawRequestUrl(request.originalUrl || request.url || '/').path;
         const descriptor = route.descriptorsByMethod[nativeMethod];
         const params = normalizeNativeRouteParams(request.params);
 
@@ -433,6 +443,9 @@ function createExpressRequestResponseFactory(
     },
     createResponse(response: ExpressResponse) {
       return createFrameworkResponse(response);
+    },
+    async materializeRequest(request: FrameworkRequest) {
+      await materializeFrameworkRequestBody(request);
     },
     resolveRequestId(request: ExpressRequest) {
       return resolveRequestIdFromHeaders(request.headers);
@@ -624,48 +637,51 @@ async function createFrameworkRequest(
   preserveRawBody = false,
 ): Promise<FrameworkRequest> {
   const rawUrl = request.originalUrl || request.url || '/';
-  const url = new URL(rawUrl, 'http://localhost');
-  const headers = normalizeHeaders(request.headers);
-  const contentType = readPrimaryHeaderValue(headers['content-type']);
-  const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
+  const urlParts = splitRawRequestUrl(rawUrl);
+  const headers = normalizeHeaders(cloneRequestHeaders(request.headers));
+  const querySnapshot = snapshotSimpleQueryRecord(request.query);
+  const contentType = normalizePrimaryContentType(headers['content-type']);
+  const isMultipart = contentType === 'multipart/form-data';
+  let frameworkRequest!: FrameworkRequest & {
+    files?: UploadedFile[];
+    materializeBody?: () => Promise<void>;
+    rawBody?: Uint8Array;
+  };
+  const materializeBody = createMemoizedAsyncValue(async () => {
+    if (isMultipart) {
+      const parsed = await parseMultipartRequest(request, {
+        ...multipartOptions,
+        maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+      });
+      frameworkRequest.body = parsed.fields;
+      frameworkRequest.files = parsed.files;
+      return;
+    }
 
-  let body: unknown;
-  let files: UploadedFile[] | undefined;
-  let rawBody: Uint8Array | undefined;
-
-  if (isMultipart) {
-    const parsed = await parseMultipartRequest(request, {
-      ...multipartOptions,
-      maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
-    });
-    body = parsed.fields;
-    files = parsed.files;
-  } else {
     const bodyResult = await readRequestBody(request, headers['content-type'], maxBodySize, preserveRawBody);
-    body = bodyResult.body;
-    rawBody = bodyResult.rawBody;
-  }
+    frameworkRequest.body = bodyResult.body;
 
-  const frameworkRequest: FrameworkRequest & { files?: UploadedFile[]; rawBody?: Uint8Array } = {
-    body,
-    cookies: parseCookieHeader(Array.isArray(headers.cookie) ? headers.cookie[0] : headers.cookie),
+    if (bodyResult.rawBody) {
+      frameworkRequest.rawBody = bodyResult.rawBody;
+    }
+  });
+
+  frameworkRequest = createDeferredFrameworkRequestShell({
+    cookieHeader: headers.cookie,
     headers,
+    materializeBody,
     method: request.method,
-    params: {},
-    path: url.pathname,
-    query: parseQueryParams(url.searchParams),
+    path: urlParts.path,
+    query: querySnapshot,
+    queryFactory: () => parseQueryParamsFromSearch(urlParts.search),
     raw: request,
     signal,
-    url: url.pathname + url.search,
+    url: urlParts.path + urlParts.search,
+  }) as FrameworkRequest & {
+    files?: UploadedFile[];
+    materializeBody?: () => Promise<void>;
+    rawBody?: Uint8Array;
   };
-
-  if (files) {
-    frameworkRequest.files = files;
-  }
-
-  if (rawBody) {
-    frameworkRequest.rawBody = rawBody;
-  }
 
   const nativeRouteHandoff = consumeRawRequestNativeRouteHandoff(request);
 
@@ -725,7 +741,7 @@ async function parseMultipartRequest(
         body: Readable.toWeb(request),
         headers: normalizeHeaders(request.headers),
         method: request.method,
-        url: new URL(request.url ?? '/', 'http://localhost').toString(),
+        url: resolveAbsoluteRequestUrl(request.url),
       },
       options,
     );
@@ -797,78 +813,6 @@ function normalizeHeaders(headers: IncomingHttpHeaders): Record<string, string |
   }
 
   return normalized;
-}
-
-function parseQueryParams(searchParams: URLSearchParams): Record<string, string | string[]> {
-  const query: Record<string, string | string[]> = {};
-
-  for (const [key, value] of searchParams.entries()) {
-    const current = query[key];
-
-    if (current === undefined) {
-      query[key] = value;
-      continue;
-    }
-
-    if (Array.isArray(current)) {
-      current.push(value);
-      continue;
-    }
-
-    query[key] = [current, value];
-  }
-
-  return query;
-}
-
-function parseCookieHeader(cookieHeader: string | undefined): Record<string, string> {
-  if (!cookieHeader) {
-    return {};
-  }
-
-  return Object.fromEntries(
-    cookieHeader
-      .split(';')
-      .map((pair) => pair.trim())
-      .filter(Boolean)
-      .map((pair) => {
-        const index = pair.indexOf('=');
-
-        if (index === -1) {
-          return [pair.trim(), ''] as [string, string];
-        }
-
-        const rawValue = pair.slice(index + 1).trim();
-
-        try {
-          return [pair.slice(0, index).trim(), decodeURIComponent(rawValue)] as [string, string];
-        } catch {
-          return [pair.slice(0, index).trim(), rawValue] as [string, string];
-        }
-      }),
-  );
-}
-
-function createRequestSignal(response: ServerResponse): AbortSignal {
-  const controller = new AbortController();
-  const abort = (reason: string) => {
-    if (!controller.signal.aborted) {
-      controller.abort(new Error(reason));
-    }
-  };
-
-  response.once('close', () => {
-    if (!response.writableEnded) {
-      abort('Response closed before response commit.');
-    }
-  });
-
-  return controller.signal;
-}
-
-function resolveRequestIdFromHeaders(headers: IncomingHttpHeaders): string | undefined {
-  const requestId = headers['x-request-id'] ?? headers['x-correlation-id'];
-  return Array.isArray(requestId) ? requestId[0] : requestId;
 }
 
 function createExpressServer(httpsOptions: HttpsServerOptions | undefined, app: Express): ExpressServer {
@@ -1094,9 +1038,9 @@ async function readRequestBody(
     return { body: undefined, rawBody: preserveRawBody ? rawBody : undefined };
   }
 
-  const primaryContentType = readPrimaryHeaderValue(contentType);
+  const primaryContentType = normalizePrimaryContentType(contentType);
 
-  if (typeof primaryContentType === 'string' && primaryContentType.includes('application/json')) {
+  if (primaryContentType === 'application/json') {
     try {
       return {
         body: JSON.parse(bodyText) as unknown,
@@ -1107,7 +1051,7 @@ async function readRequestBody(
     }
   }
 
-  if (typeof primaryContentType === 'string' && primaryContentType.includes('application/x-www-form-urlencoded')) {
+  if (primaryContentType === 'application/x-www-form-urlencoded') {
     return {
       body: parseUrlEncodedBody(bodyText),
       rawBody: preserveRawBody ? rawBody : undefined,
@@ -1131,12 +1075,9 @@ function parseUrlEncodedBody(bodyText: string): Record<string, string | string[]
   return fields;
 }
 
-function readPrimaryHeaderValue(headerValue: string | string[] | undefined): string | undefined {
-  if (Array.isArray(headerValue)) {
-    return headerValue[0];
-  }
-
-  return headerValue;
+async function materializeFrameworkRequestBody(request: FrameworkRequest): Promise<void> {
+  await (request as { materializeBody?: () => Promise<void> }).materializeBody?.();
+  delete (request as { materializeBody?: () => Promise<void> }).materializeBody;
 }
 
 function setMultiValue(target: Record<string, string | string[]>, key: string, value: string): void {
