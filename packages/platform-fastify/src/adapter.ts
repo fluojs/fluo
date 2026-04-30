@@ -41,6 +41,15 @@ import {
   defaultNodeShutdownSignals,
 } from '@fluojs/runtime/node';
 import {
+  cloneHeaderValue,
+  createDeferredFrameworkRequestShell,
+  createMemoizedAsyncValue,
+  createMemoizedValue,
+  parseQueryParamsFromSearch,
+  snapshotSimpleQueryRecord,
+  splitRawRequestUrl,
+} from '@fluojs/runtime/internal-node';
+import {
   bootstrapHttpAdapterApplication,
   runHttpAdapterApplication,
 } from '@fluojs/runtime/internal/http-adapter';
@@ -131,8 +140,6 @@ type FastifyFrameworkRequest = FrameworkRequest & {
   materializeBody?: () => Promise<void>;
   rawBody?: Uint8Array;
 };
-
-type MemoizedValue<T> = () => T;
 
 type FastifyMultipartLikeError = Error & {
   code?: unknown;
@@ -630,10 +637,9 @@ function createDeferredFrameworkRequest(
   const urlParts = splitRawRequestUrl(rawUrl);
   const headerSnapshot = cloneRequestHeaders(request.headers);
   const headers = createMemoizedValue(() => normalizeHeaders(headerSnapshot));
-  const cookieHeader = cloneHeaderValue(headerSnapshot.cookie);
-  const cookies = createMemoizedValue(() => parseCookieHeader(cookieHeader));
-  const query = createMemoizedValue(() => parseQueryParamsFromSearch(urlParts.search));
+  const querySnapshot = snapshotSimpleQueryRecord(request.query);
   const isMultipart = isMultipartRequestContentType(headerSnapshot['content-type']);
+  let frameworkRequest!: FastifyFrameworkRequest;
   const materializeBody = createMemoizedAsyncValue(async () => {
     let body = request.body;
     let files: UploadedFile[] | undefined;
@@ -662,24 +668,18 @@ function createDeferredFrameworkRequest(
     }
   });
 
-  const frameworkRequest: FastifyFrameworkRequest = {
-    get cookies() {
-      return cookies();
-    },
-    get headers() {
-      return headers();
-    },
+  frameworkRequest = createDeferredFrameworkRequestShell({
+    cookieHeader: cloneHeaderValue(headerSnapshot.cookie),
+    headersFactory: headers,
+    materializeBody,
     method: request.method,
-    params: {},
     path: urlParts.path,
-    get query() {
-      return query();
-    },
+    query: querySnapshot,
+    queryFactory: () => parseQueryParamsFromSearch(urlParts.search),
     raw: request.raw,
     signal,
     url: urlParts.path + urlParts.search,
-    materializeBody,
-  };
+  }) as FastifyFrameworkRequest;
 
   const nativeRouteHandoff = consumeRawRequestNativeRouteHandoff(request.raw);
 
@@ -853,116 +853,10 @@ function normalizeHeaders(headers: IncomingHttpHeaders): Record<string, string |
   return normalized;
 }
 
-function parseQueryParamsFromSearch(search: string): Record<string, string | string[]> {
-  return parseQueryParams(new URLSearchParams(search));
-}
-
-function parseQueryParams(searchParams: URLSearchParams): Record<string, string | string[]> {
-  const query: Record<string, string | string[]> = {};
-
-  for (const [key, value] of searchParams.entries()) {
-    const current = query[key];
-
-    if (current === undefined) {
-      query[key] = value;
-      continue;
-    }
-
-    if (Array.isArray(current)) {
-      current.push(value);
-      continue;
-    }
-
-    query[key] = [current, value];
-  }
-
-  return query;
-}
-
-function parseCookieHeader(cookieHeader: string | string[] | undefined): Record<string, string> {
-  const normalizedCookieHeader = Array.isArray(cookieHeader) ? cookieHeader.join('; ') : cookieHeader;
-
-  if (!normalizedCookieHeader) {
-    return {};
-  }
-
-  return Object.fromEntries(
-    normalizedCookieHeader
-      .split(';')
-      .map((pair) => pair.trim())
-      .filter(Boolean)
-      .map((pair) => {
-        const index = pair.indexOf('=');
-
-        if (index === -1) {
-          return [pair.trim(), ''] as [string, string];
-        }
-
-        const rawValue = pair.slice(index + 1).trim();
-
-        try {
-          return [pair.slice(0, index).trim(), decodeURIComponent(rawValue)] as [string, string];
-        } catch {
-          return [pair.slice(0, index).trim(), rawValue] as [string, string];
-        }
-      }),
-  );
-}
-
-function createMemoizedValue<T>(factory: () => T): MemoizedValue<T> {
-  let initialized = false;
-  let value: T;
-
-  return () => {
-    if (!initialized) {
-      value = factory();
-      initialized = true;
-    }
-
-    return value;
-  };
-}
-
-function createMemoizedAsyncValue(factory: () => Promise<void>): () => Promise<void> {
-  let promise: Promise<void> | undefined;
-
-  return () => {
-    promise ??= factory();
-    return promise;
-  };
-}
-
-function cloneHeaderValue<T extends string | string[] | undefined>(value: T): T {
-  return (Array.isArray(value) ? [...value] : value) as T;
-}
-
 function cloneRequestHeaders(headers: FastifyRequest['headers']): IncomingHttpHeaders {
   return Object.fromEntries(
     Object.entries(headers).map(([name, value]) => [name, cloneHeaderValue(value)]),
   );
-}
-
-function splitRawRequestUrl(rawUrl: string): { path: string; search: string } {
-  if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
-    const url = new URL(rawUrl);
-    return { path: url.pathname, search: url.search };
-  }
-
-  const queryStart = rawUrl.indexOf('?');
-  const hashStart = rawUrl.indexOf('#');
-  const pathEndCandidates = [queryStart, hashStart].filter((index) => index >= 0);
-  const pathEnd = pathEndCandidates.length > 0 ? Math.min(...pathEndCandidates) : rawUrl.length;
-  const path = rawUrl.slice(0, pathEnd) || '/';
-
-  if (queryStart === -1) {
-    return { path, search: '' };
-  }
-
-  const searchEnd = hashStart >= 0 && hashStart > queryStart ? hashStart : rawUrl.length;
-  return {
-    path,
-    search: rawUrl.slice(queryStart, searchEnd),
-  };
 }
 
 function setMultiValue(target: Record<string, string | string[]>, key: string, value: string): void {
