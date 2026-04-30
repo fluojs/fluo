@@ -5,6 +5,7 @@ import {
   getDtoValidationSchema,
   type DtoBindingSchemaEntry,
   type DtoFieldBindingMetadata,
+  type DtoFieldValidationRule,
 } from '@fluojs/core/internal';
 
 import type { FrameworkRequest } from '../types.js';
@@ -84,6 +85,10 @@ function createValidationValueFilter(
   };
 }
 
+function isDtoAwareValidationRule(rule: DtoFieldValidationRule): boolean {
+  return rule.kind === 'custom' || rule.kind === 'validateIf';
+}
+
 export function getCompiledDtoBindingPlan(dto: Constructor): CompiledDtoBindingPlan {
   const cached = dtoBindingPlanCache.get(dto);
 
@@ -106,10 +111,15 @@ export function getCompiledDtoBindingPlan(dto: Constructor): CompiledDtoBindingP
   });
   const propertyKeys = entries.map((entry: CompiledDtoBindingPlanEntry) => entry.propertyKey);
   const boundPropertyKeys = new Set(propertyKeys);
-  const validationPropertyKeys = getDtoValidationSchema(dto).map((entry: { propertyKey: MetadataPropertyKey }) => entry.propertyKey);
+  const validationSchema = getDtoValidationSchema(dto);
+  const validationPropertyKeys = validationSchema.map((entry: { propertyKey: MetadataPropertyKey }) => entry.propertyKey);
   const hasClassValidationRules = getClassValidationRules(dto).length > 0;
+  const hasDtoAwareValidationRules = validationSchema.some((entry: { rules: readonly DtoFieldValidationRule[] }) =>
+    entry.rules.some((rule: DtoFieldValidationRule) => isDtoAwareValidationRule(rule))
+  );
   const needsValidation = hasClassValidationRules || validationPropertyKeys.length > 0;
   const requiresValidationFilter = hasClassValidationRules
+    || hasDtoAwareValidationRules
     || validationPropertyKeys.some((propertyKey: MetadataPropertyKey) => !boundPropertyKeys.has(propertyKey));
 
   const next: CompiledDtoBindingPlan = {

@@ -509,7 +509,7 @@ describe('HttpDtoValidationAdapter', () => {
     expect(validateSpy).not.toHaveBeenCalled();
   });
 
-  it('reuses the bound DTO instance when every validated property is request-bound', async () => {
+  it('reuses the bound DTO instance for simple bound-field validation rules', async () => {
     class SearchRequest {
       @FromQuery('q')
       @IsString()
@@ -528,6 +528,29 @@ describe('HttpDtoValidationAdapter', () => {
     expect(validateSpy).toHaveBeenCalledOnce();
     expect(validateSpy.mock.calls[0]?.[0]).toBe(input);
     expect(validateSpy.mock.calls[0]?.[1]).toBe(SearchRequest);
+  });
+
+  it('filters unbound DTO state before running ValidateIf rules', async () => {
+    class SearchRequest {
+      @FromQuery('q')
+      @ValidateIf((dto: unknown) => Boolean((dto as SearchRequest).enabled))
+      @MinLength(2, { code: 'QUERY_TOO_SHORT', message: 'q must have length at least 2' })
+      query = '';
+
+      enabled = false;
+    }
+
+    const validateSpy = vi.spyOn(BaseDefaultValidator.prototype, 'validate');
+    const validator = new HttpDtoValidationAdapter();
+    const input = Object.assign(new SearchRequest(), {
+      enabled: true,
+      query: '',
+    });
+
+    await expect(validator.validate(input, SearchRequest)).resolves.toBeUndefined();
+
+    expect(validateSpy).toHaveBeenCalledOnce();
+    expect(validateSpy.mock.calls[0]?.[0]).not.toBe(input);
   });
 
   it('preserves symbol-backed bound fields while filtering unbound validation properties', async () => {
