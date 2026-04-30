@@ -13,6 +13,7 @@ import type {
   UploadedFile,
 } from '@fluojs/runtime';
 import {
+  createWebRequestResponseFactory,
   dispatchWebRequest,
   type CreateWebRequestResponseFactoryOptions,
 } from '@fluojs/runtime/web';
@@ -119,8 +120,13 @@ export class CloudflareWorkerHttpApplicationAdapter
   private inFlightDrain?: Deferred<void>;
   private inFlightRequestCount = 0;
   private websocketBinding?: CloudflareWorkerWebSocketBinding;
+  private readonly options: CloudflareWorkerAdapterOptions;
+  private readonly webRequestResponseFactory;
 
-  constructor(private readonly options: CloudflareWorkerAdapterOptions = {}) {}
+  constructor(options: CloudflareWorkerAdapterOptions = {}) {
+    this.options = options;
+    this.webRequestResponseFactory = createWebRequestResponseFactory(options);
+  }
 
   async close(): Promise<void> {
     if (this.closeInFlight) {
@@ -173,9 +179,9 @@ export class CloudflareWorkerHttpApplicationAdapter
         }
 
         return await dispatchWebRequest({
-          ...this.options,
           dispatcher: this.dispatcher,
           dispatcherNotReadyMessage: WORKER_DISPATCHER_NOT_READY_MESSAGE,
+          factory: this.webRequestResponseFactory,
           request,
         });
       } finally {

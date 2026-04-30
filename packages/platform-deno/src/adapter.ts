@@ -7,7 +7,7 @@ import {
   type HttpAdapterListenTarget,
   type RunHttpAdapterApplicationOptions,
 } from '@fluojs/runtime/internal/http-adapter';
-import { dispatchWebRequest } from '@fluojs/runtime/web';
+import { createWebRequestResponseFactory, dispatchWebRequest } from '@fluojs/runtime/web';
 
 /** Listen target metadata reported by `Deno.serve(...)` callbacks. */
 export interface DenoServeOnListenInfo {
@@ -133,8 +133,17 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
   private inFlightRequestCount = 0;
   private server?: DenoServeController;
   private websocketBinding?: DenoWebSocketBinding<DenoServerWebSocket>;
+  private readonly options: Required<Pick<DenoAdapterOptions, 'hostname' | 'port'>> & DenoAdapterOptions;
+  private readonly webRequestResponseFactory;
 
-  constructor(private readonly options: Required<Pick<DenoAdapterOptions, 'hostname' | 'port'>> & DenoAdapterOptions) {}
+  constructor(options: Required<Pick<DenoAdapterOptions, 'hostname' | 'port'>> & DenoAdapterOptions) {
+    this.options = options;
+    this.webRequestResponseFactory = createWebRequestResponseFactory({
+      maxBodySize: options.maxBodySize,
+      multipart: options.multipart,
+      rawBody: options.rawBody,
+    });
+  }
 
   getServer(): DenoServeController | undefined {
     return this.server;
@@ -180,9 +189,7 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
       return await dispatchWebRequest({
         dispatcher: this.dispatcher,
         dispatcherNotReadyMessage: 'Deno adapter received a request before dispatcher binding completed.',
-        maxBodySize: this.options.maxBodySize,
-        multipart: this.options.multipart,
-        rawBody: this.options.rawBody,
+        factory: this.webRequestResponseFactory,
         request,
       });
     } finally {

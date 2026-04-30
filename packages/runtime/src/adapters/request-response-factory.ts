@@ -49,7 +49,11 @@ export async function dispatchWithRequestResponseFactory<
 
   try {
     const frameworkRequest = await factory.createRequest(rawRequest, signal);
-    await factory.materializeRequest?.(frameworkRequest);
+    const materializeRequest = factory.materializeRequest;
+
+    if (materializeRequest) {
+      await materializeRequest(frameworkRequest);
+    }
 
     if (!dispatcher) {
       throw new Error(dispatcherNotReadyMessage);

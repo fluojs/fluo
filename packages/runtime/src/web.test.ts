@@ -208,6 +208,38 @@ describe('dispatchWebRequest', () => {
     });
     expect(producedChunks).toBeLessThanOrEqual(3);
   });
+
+  it('reuses an injected web factory without sharing request-specific state', async () => {
+    const factory = createWebRequestResponseFactory({ rawBody: true });
+    const seenBodies: unknown[] = [];
+    const seenRawBodies: string[] = [];
+
+    const dispatch = (name: string) => dispatchWebRequest({
+      dispatcher: {
+        async dispatch(request: FrameworkRequest, frameworkResponse: FrameworkResponse) {
+          seenBodies.push(request.body);
+          seenRawBodies.push(Buffer.from(request.rawBody ?? new Uint8Array()).toString('utf8'));
+          await frameworkResponse.send({ name });
+        },
+      },
+      factory,
+      request: new Request('https://runtime.test/reused-factory', {
+        body: JSON.stringify({ name }),
+        headers: {
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+      }),
+    });
+
+    const firstResponse = await dispatch('first');
+    const secondResponse = await dispatch('second');
+
+    await expect(firstResponse.json()).resolves.toEqual({ name: 'first' });
+    await expect(secondResponse.json()).resolves.toEqual({ name: 'second' });
+    expect(seenBodies).toEqual([{ name: 'first' }, { name: 'second' }]);
+    expect(seenRawBodies).toEqual(['{"name":"first"}', '{"name":"second"}']);
+  });
 });
 
 describe('createWebFrameworkRequest', () => {
