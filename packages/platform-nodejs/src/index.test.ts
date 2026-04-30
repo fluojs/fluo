@@ -115,6 +115,61 @@ describe('@fluojs/platform-nodejs', () => {
     }
   });
 
+  it('preserves benchmark-style simple query and JSON body routes through the public Node adapter path', async () => {
+    @Controller('/')
+    class BenchmarkController {
+      @Get('/query-one')
+      readQuery(_input: undefined, context: RequestContext) {
+        return {
+          encoded: context.request.query.encoded,
+          tag: context.request.query.tag,
+        };
+      }
+
+      @Post('/body-one')
+      readBody(_input: undefined, context: RequestContext) {
+        return {
+          body: context.request.body,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [BenchmarkController] });
+
+    const port = await findAvailablePort();
+    const app = await FluoFactory.create(AppModule, {
+      adapter: createNodejsAdapter({ port }),
+    });
+
+    try {
+      await app.listen();
+
+      const queryResponse = await fetch(`http://127.0.0.1:${String(port)}/query-one?tag=one&tag=two&encoded=hello+world`);
+
+      expect(queryResponse.status).toBe(200);
+      await expect(queryResponse.json()).resolves.toEqual({
+        encoded: 'hello world',
+        tag: ['one', 'two'],
+      });
+
+      const bodyResponse = await fetch(`http://127.0.0.1:${String(port)}/body-one`, {
+        body: JSON.stringify({ ok: true, source: 'node' }),
+        headers: {
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+      });
+
+      expect(bodyResponse.status).toBe(201);
+      await expect(bodyResponse.json()).resolves.toEqual({
+        body: { ok: true, source: 'node' },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('exposes a server-backed realtime capability on the raw Node adapter', async () => {
     const adapter = createNodejsAdapter();
 
