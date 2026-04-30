@@ -13,7 +13,6 @@
     "@fluojs/example-ops-metrics-terminus",
     "@fluojs/example-realworld-api",
     "@fluojs-internal/tooling-babel",
-    "@fluojs-internal/tooling-benchmarks-http",
     "@fluojs-internal/tooling-tsconfig",
     "@fluojs-internal/tooling-vite",
     "@fluojs-internal/tooling-vitest"
