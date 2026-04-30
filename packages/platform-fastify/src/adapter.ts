@@ -126,6 +126,14 @@ type FastifyFrameworkResponse = FrameworkResponse & {
   statusSet?: boolean;
 };
 
+type FastifyFrameworkRequest = FrameworkRequest & {
+  files?: UploadedFile[];
+  materializeBody?: () => Promise<void>;
+  rawBody?: Uint8Array;
+};
+
+type MemoizedValue<T> = () => T;
+
 type FastifyMultipartLikeError = Error & {
   code?: unknown;
   statusCode?: unknown;
@@ -299,6 +307,9 @@ function createFastifyRequestResponseFactory(
     createResponse(reply: FastifyReply) {
       return createFrameworkResponse(reply);
     },
+    async materializeRequest(request: FrameworkRequest) {
+      await materializeFrameworkRequestBody(request);
+    },
     resolveRequestId(request: FastifyRequest) {
       return resolveRequestIdFromHeaders(request.raw.headers);
     },
@@ -464,11 +475,16 @@ export async function runFastifyApplication(
 }
 
 function createFrameworkResponse(reply: FastifyReply): FastifyFrameworkResponse {
+  let activeStream: FrameworkResponseStream | undefined;
+
   return {
     committed: reply.sent,
     headers: {},
     raw: reply,
-    stream: createFrameworkResponseStream(reply),
+    get stream() {
+      activeStream ??= createFrameworkResponseStream(reply);
+      return activeStream;
+    },
     redirect(status: number, location: string) {
       this.setStatus(status);
       this.setHeader('Location', location);
@@ -497,14 +513,12 @@ function createFrameworkResponse(reply: FastifyReply): FastifyFrameworkResponse 
         return;
       }
 
-      const serialized = serializeResponseBody(body);
-
-      if (!reply.hasHeader('content-type') && serialized.defaultContentType) {
-        reply.header('content-type', serialized.defaultContentType);
+      if (!reply.hasHeader('content-type')) {
+        reply.header('content-type', 'application/json; charset=utf-8');
       }
 
       this.committed = true;
-      await reply.send(serialized.payload);
+      await reply.send(JSON.stringify(body));
     },
     setHeader(name: string, value: string | string[]) {
       const lowerName = name.toLowerCase();
@@ -602,54 +616,80 @@ async function createFrameworkRequest(
   maxBodySize = DEFAULT_MAX_BODY_SIZE,
   preserveRawBody = false,
 ): Promise<FrameworkRequest> {
+  return createDeferredFrameworkRequest(request, signal, multipartOptions, maxBodySize, preserveRawBody);
+}
+
+function createDeferredFrameworkRequest(
+  request: FastifyRequest,
+  signal: AbortSignal,
+  multipartOptions?: MultipartOptions,
+  maxBodySize = DEFAULT_MAX_BODY_SIZE,
+  preserveRawBody = false,
+): FrameworkRequest {
   const rawUrl = request.raw.url ?? '/';
-  const url = new URL(rawUrl, 'http://localhost');
-  const headers = normalizeHeaders(request.headers);
-  const contentType = headers['content-type'];
-  const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
+  const urlParts = splitRawRequestUrl(rawUrl);
+  const headers = createMemoizedValue(() => normalizeHeaders(request.raw.headers));
+  const cookieHeader = cloneHeaderValue(request.raw.headers.cookie);
+  const cookies = createMemoizedValue(() => parseCookieHeader(cookieHeader));
+  const query = createMemoizedValue(() => parseQueryParamsFromSearch(urlParts.search));
+  const isMultipart = isMultipartRequestContentType(request.raw.headers['content-type']);
+  const materializeBody = createMemoizedAsyncValue(async () => {
+    let body = request.body;
+    let files: UploadedFile[] | undefined;
 
-  let body = request.body;
-  let files: UploadedFile[] | undefined;
+    if (isMultipart) {
+      const parsed = await parseMultipartRequest(request, {
+        ...multipartOptions,
+        maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+      });
+      body = parsed.fields;
+      files = parsed.files;
+    }
 
-  if (isMultipart) {
-    const parsed = await parseMultipartRequest(request, {
-      ...multipartOptions,
-      maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
-    });
-    body = parsed.fields;
-    files = parsed.files;
-  }
+    frameworkRequest.body = body;
 
-  const frameworkRequest: FrameworkRequest = {
-    body,
-    cookies: parseCookieHeader(Array.isArray(headers.cookie) ? headers.cookie[0] : headers.cookie),
-    headers,
+    if (files) {
+      frameworkRequest.files = files;
+    }
+
+    if (preserveRawBody && !isMultipart) {
+      const rawBodyValue = (request as FastifyRequest & { rawBody?: Buffer }).rawBody;
+
+      if (rawBodyValue !== undefined) {
+        frameworkRequest.rawBody = rawBodyValue;
+      }
+    }
+  });
+
+  const frameworkRequest: FastifyFrameworkRequest = {
+    get cookies() {
+      return cookies();
+    },
+    get headers() {
+      return headers();
+    },
     method: request.method,
     params: {},
-    path: url.pathname,
-    query: parseQueryParams(url.searchParams),
+    path: urlParts.path,
+    get query() {
+      return query();
+    },
     raw: request.raw,
     signal,
-    url: url.pathname + url.search,
+    url: urlParts.path + urlParts.search,
+    materializeBody,
   };
-
-  if (files) {
-    frameworkRequest.files = files;
-  }
-
-  if (preserveRawBody && !isMultipart) {
-    const rawBodyValue = (request as FastifyRequest & { rawBody?: Buffer }).rawBody;
-
-    if (rawBodyValue !== undefined) {
-      frameworkRequest.rawBody = rawBodyValue;
-    }
-  }
 
   const nativeRouteHandoff = consumeRawRequestNativeRouteHandoff(request.raw);
 
   return nativeRouteHandoff
     ? attachFrameworkRequestNativeRouteHandoff(frameworkRequest, nativeRouteHandoff)
     : frameworkRequest;
+}
+
+async function materializeFrameworkRequestBody(request: FrameworkRequest): Promise<void> {
+  await (request as FastifyFrameworkRequest).materializeBody?.();
+  delete (request as FastifyFrameworkRequest).materializeBody;
 }
 
 function normalizeNativeRouteParams(params: unknown): Record<string, string> {
@@ -694,7 +734,7 @@ function collectVersionSensitiveRouteKeys(descriptors: readonly HandlerDescripto
 }
 
 function readRequestPathFromRawUrl(rawUrl: string | undefined): string {
-  return new URL(rawUrl ?? '/', 'http://localhost').pathname;
+  return splitRawRequestUrl(rawUrl ?? '/').path;
 }
 
 async function parseMultipartRequest(
@@ -787,7 +827,7 @@ export function isFastifyMultipartTooLargeError(error: unknown): boolean {
   return error.message.includes('toobig') || error.message.includes('File too large');
 }
 
-function normalizeHeaders(headers: FastifyRequest['headers']): Record<string, string | string[] | undefined> {
+function normalizeHeaders(headers: IncomingHttpHeaders): Record<string, string | string[] | undefined> {
   const normalized: Record<string, string | string[] | undefined> = {};
 
   for (const [name, value] of Object.entries(headers)) {
@@ -812,6 +852,10 @@ function normalizeHeaders(headers: FastifyRequest['headers']): Record<string, st
   return normalized;
 }
 
+function parseQueryParamsFromSearch(search: string): Record<string, string | string[]> {
+  return parseQueryParams(new URLSearchParams(search));
+}
+
 function parseQueryParams(searchParams: URLSearchParams): Record<string, string | string[]> {
   const query: Record<string, string | string[]> = {};
 
@@ -834,13 +878,15 @@ function parseQueryParams(searchParams: URLSearchParams): Record<string, string 
   return query;
 }
 
-function parseCookieHeader(cookieHeader: string | undefined): Record<string, string> {
-  if (!cookieHeader) {
+function parseCookieHeader(cookieHeader: string | string[] | undefined): Record<string, string> {
+  const normalizedCookieHeader = Array.isArray(cookieHeader) ? cookieHeader.join('; ') : cookieHeader;
+
+  if (!normalizedCookieHeader) {
     return {};
   }
 
   return Object.fromEntries(
-    cookieHeader
+    normalizedCookieHeader
       .split(';')
       .map((pair) => pair.trim())
       .filter(Boolean)
@@ -860,6 +906,56 @@ function parseCookieHeader(cookieHeader: string | undefined): Record<string, str
         }
       }),
   );
+}
+
+function createMemoizedValue<T>(factory: () => T): MemoizedValue<T> {
+  let initialized = false;
+  let value: T;
+
+  return () => {
+    if (!initialized) {
+      value = factory();
+      initialized = true;
+    }
+
+    return value;
+  };
+}
+
+function createMemoizedAsyncValue(factory: () => Promise<void>): () => Promise<void> {
+  let promise: Promise<void> | undefined;
+
+  return () => {
+    promise ??= factory();
+    return promise;
+  };
+}
+
+function cloneHeaderValue<T extends string | string[] | undefined>(value: T): T {
+  return (Array.isArray(value) ? [...value] : value) as T;
+}
+
+function splitRawRequestUrl(rawUrl: string): { path: string; search: string } {
+  if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+    const url = new URL(rawUrl);
+    return { path: url.pathname, search: url.search };
+  }
+
+  const queryStart = rawUrl.indexOf('?');
+  const hashStart = rawUrl.indexOf('#');
+  const pathEndCandidates = [queryStart, hashStart].filter((index) => index >= 0);
+  const pathEnd = pathEndCandidates.length > 0 ? Math.min(...pathEndCandidates) : rawUrl.length;
+  const path = rawUrl.slice(0, pathEnd) || '/';
+
+  if (queryStart === -1) {
+    return { path, search: '' };
+  }
+
+  const searchEnd = hashStart >= 0 && hashStart > queryStart ? hashStart : rawUrl.length;
+  return {
+    path,
+    search: rawUrl.slice(queryStart, searchEnd),
+  };
 }
 
 function setMultiValue(target: Record<string, string | string[]>, key: string, value: string): void {

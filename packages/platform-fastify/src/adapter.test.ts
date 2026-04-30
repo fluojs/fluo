@@ -1334,6 +1334,60 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
+  it('preserves request header passthrough on native and fallback dispatch paths', async () => {
+    @Controller('/headers')
+    class HeaderController {
+      @Get('/native')
+      getNative(_input: undefined, context: RequestContext) {
+        return {
+          requestId: context.request.headers['x-request-id'],
+        };
+      }
+
+      @All('/fallback')
+      getFallback(_input: undefined, context: RequestContext) {
+        return {
+          requestId: context.request.headers['x-request-id'],
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [HeaderController] });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    try {
+      const [nativeResponse, fallbackResponse] = await Promise.all([
+        requestHttp({
+          headers: { 'x-request-id': 'native-req' },
+          method: 'GET',
+          path: '/headers/native',
+          port,
+        }),
+        requestHttp({
+          headers: { 'x-request-id': 'fallback-req' },
+          method: 'PATCH',
+          path: '/headers/fallback',
+          port,
+        }),
+      ]);
+
+      expect(nativeResponse.statusCode).toBe(200);
+      expect(JSON.parse(nativeResponse.body)).toEqual({ requestId: 'native-req' });
+      expect(fallbackResponse.statusCode).toBe(200);
+      expect(JSON.parse(fallbackResponse.body)).toEqual({ requestId: 'fallback-req' });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('supports https startup and reports the https listen URL', async () => {
     const loggerEvents: string[] = [];
     const logger: ApplicationLogger = {
