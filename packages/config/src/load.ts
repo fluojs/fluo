@@ -32,6 +32,10 @@ type ConfigSchemaIssue = {
   readonly path?: readonly unknown[];
 };
 
+type ConfigSchemaPathKeySegment = {
+  readonly key: string | number | symbol;
+};
+
 type ConfigSchemaFailureResult = {
   readonly issues: readonly ConfigSchemaIssue[];
 };
@@ -185,10 +189,30 @@ function isConfigSchemaSuccessResult(value: unknown): value is ConfigSchemaSucce
   return typeof value === 'object' && value !== null && 'value' in value && isPlainObject(value.value);
 }
 
+function isConfigSchemaPathKeySegment(value: unknown): value is ConfigSchemaPathKeySegment {
+  if (typeof value !== 'object' || value === null || !('key' in value)) {
+    return false;
+  }
+
+  return typeof value.key === 'string' || typeof value.key === 'number' || typeof value.key === 'symbol';
+}
+
+function formatConfigSchemaPathSegment(segment: unknown): string | undefined {
+  if (typeof segment === 'string' || typeof segment === 'number') {
+    return String(segment);
+  }
+
+  if (isConfigSchemaPathKeySegment(segment)) {
+    return String(segment.key);
+  }
+
+  return undefined;
+}
+
 function formatConfigSchemaIssue(issue: ConfigSchemaIssue): string {
   const path = issue.path
-    ?.filter((segment): segment is string | number => typeof segment === 'string' || typeof segment === 'number')
-    .map((segment) => String(segment))
+    ?.map(formatConfigSchemaPathSegment)
+    .filter((segment): segment is string => segment !== undefined)
     .join('.');
 
   return path && path.length > 0 ? `${path}: ${issue.message}` : issue.message;

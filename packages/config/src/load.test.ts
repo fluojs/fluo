@@ -246,14 +246,36 @@ describe('loadConfig', () => {
     expect(error).toMatchObject({ meta: { issues: ['PORT: PORT must be numeric'] } });
   });
 
-  it('rejects malformed Standard Schema config results', () => {
-    const malformedSchema: ConfigSchema = {
+  it('preserves Standard Schema object path key segments in INVALID_CONFIG issues', () => {
+    const schema: ConfigSchema = {
       '~standard': {
-        validate: () => ({ issues: 'bad-result' }) as never,
+        validate: () => ({
+          issues: [
+            {
+              message: 'DATABASE_URL must be a URL',
+              path: [{ key: 'database' }, { key: 'url' }],
+            },
+          ],
+        }),
         vendor: 'test',
         version: 1,
       },
     };
+
+    const error = expectInvalidConfigFailure(() =>
+      loadConfig({
+        schema,
+      }),
+    );
+
+    expect(error).toMatchObject({ meta: { issues: ['database.url: DATABASE_URL must be a URL'] } });
+  });
+
+  it('rejects malformed Standard Schema config results', () => {
+    const malformedSchema = createPortSchema();
+    Object.defineProperty(malformedSchema['~standard'], 'validate', {
+      value: () => ({ issues: 'bad-result' }),
+    });
 
     const error = expectInvalidConfigFailure(() =>
       loadConfig({
