@@ -167,6 +167,37 @@ describe('dispatcher runtime', () => {
     expect(root.requestScopeDisposeCount).toBe(0);
   });
 
+  it('uses fast path for simple RequestDto handlers without request-scoped dependencies', async () => {
+    class FastPathDtoRequest {
+      @FromPath('id')
+      id = '';
+    }
+
+    @Controller('/fast-path-dto')
+    class FastPathDtoController {
+      @RequestDto(FastPathDtoRequest)
+      @Get('/:id')
+      getValue(input: FastPathDtoRequest) {
+        return { id: input.id };
+      }
+    }
+
+    const root = new CountingContainer().register(FastPathDtoController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: FastPathDtoController }]),
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/fast-path-dto/u-1'), response);
+
+    const stats = getDispatcherFastPathStats(dispatcher);
+    expect(stats?.routes[0]?.executionPath).toBe('fast');
+    expect(response.simpleJsonBody).toEqual({ id: 'u-1' });
+    expect(root.requestScopeCreateCount).toBe(0);
+    expect(root.requestScopeDisposeCount).toBe(0);
+  });
+
   it('lazily promotes manual RequestContext container access to a request scope', async () => {
     let created = 0;
 

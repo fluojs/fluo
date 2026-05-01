@@ -18,10 +18,6 @@ export class HttpDtoValidationAdapter implements Validator {
     });
   }
 
-  private getValidationValue(value: unknown, target: Constructor): unknown {
-    return getCompiledDtoBindingPlan(target).toValidationValue(value);
-  }
-
   async validate(value: unknown, target: Constructor): Promise<void> {
     try {
       const plan = getCompiledDtoBindingPlan(target);
@@ -30,7 +26,7 @@ export class HttpDtoValidationAdapter implements Validator {
         return;
       }
 
-      await this.validator.validate(this.getValidationValue(value, target), target);
+      await this.validator.validate(plan.toValidationValue(value), target);
     } catch (error: unknown) {
       if (error instanceof DtoValidationError) {
         this.throwBadRequestForValidationError(error);

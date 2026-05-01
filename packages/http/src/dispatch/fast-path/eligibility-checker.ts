@@ -111,9 +111,6 @@ export function compileFastPathEligibility(
   if (eligibility.hasInterceptor) {
     blockingReasons.push('interceptors');
   }
-  if (eligibility.hasPipe) {
-    blockingReasons.push('pipes/DTO binding');
-  }
   if (eligibility.hasRequestScopedDI) {
     blockingReasons.push('request-scoped DI');
   }
