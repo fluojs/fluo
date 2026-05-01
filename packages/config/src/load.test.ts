@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfigReloader, loadConfig } from './load.js';
 import { ConfigModule } from './module.js';
 import { ConfigService, replaceConfigServiceSnapshot } from './service.js';
-import type { ConfigDictionary, ConfigSchema } from './types.js';
+import type { ConfigDictionary, ConfigLoadOptions, ConfigSchema } from './types.js';
 
 const watchCallbacks = vi.hoisted(() => new Set<() => void>());
 
@@ -283,6 +283,18 @@ describe('loadConfig', () => {
 
     expect(getErrorCause(error)).toMatchObject({
       message: 'Config schemas must validate synchronously. Async Standard Schema validation is not supported by the synchronous config API.',
+    });
+  });
+
+  it('rejects legacy function-based validate options instead of silently ignoring them', () => {
+    const legacyOptions: ConfigLoadOptions & { validate: (raw: ConfigDictionary) => ConfigDictionary } = {
+      validate: (raw) => raw,
+    };
+
+    const error = expectInvalidConfigFailure(() => loadConfig(legacyOptions));
+
+    expect(getErrorCause(error)).toMatchObject({
+      message: 'The legacy `validate` option was removed. Use `schema` with a synchronous Standard Schema validator instead.',
     });
   });
 

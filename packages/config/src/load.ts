@@ -71,7 +71,18 @@ function sanitizeProcessEnv(processEnv: NodeJS.ProcessEnv): Record<string, strin
   );
 }
 
+function rejectLegacyValidateOption(options: ConfigLoadOptions): void {
+  if ('validate' in options) {
+    throw new FluoError('Invalid configuration.', {
+      code: 'INVALID_CONFIG',
+      cause: new Error('The legacy `validate` option was removed. Use `schema` with a synchronous Standard Schema validator instead.'),
+    });
+  }
+}
+
 function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions {
+  rejectLegacyValidateOption(options);
+
   const cwd = options.cwd ?? process.cwd();
   const envFile = options.envFilePath ?? options.envFile ?? join(cwd, '.env');
   const defaults = options.defaults ?? {};
