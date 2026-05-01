@@ -1,5 +1,11 @@
 # @fluojs/http
 
+## 1.0.0-beta.8
+
+### Patch Changes
+
+- [#1485](https://github.com/fluojs/fluo/pull/1485) [`a625716`](https://github.com/fluojs/fluo/commit/a625716f023ad18b3a6d0c6beb1fe8325612048c) Thanks [@ayden94](https://github.com/ayden94)! - Allow simple `@RequestDto` routes to use the shared dispatcher fast path while preserving binding, validation, request-scope, middleware, guard, and interceptor behavior.
+
 ## 1.0.0-beta.7
 
 ### Patch Changes
