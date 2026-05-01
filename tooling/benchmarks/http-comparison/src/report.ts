@@ -3,12 +3,26 @@ import type { Result } from 'autocannon';
 export interface TargetResult {
   label: string;
   result: Result;
+  samples?: readonly MetricSnapshot[];
 }
 
 export interface ScenarioResult {
   name: string;
   description: string;
   targets: TargetResult[];
+}
+
+export interface MetricSnapshot {
+  errors: number;
+  latencyAverage: number;
+  latencyP50: number;
+  latencyP97_5: number;
+  latencyP99: number;
+  mismatches: number;
+  non2xx: number;
+  requestsAverage: number;
+  throughputAverage: number;
+  timeouts: number;
 }
 
 function throughputDelta(value: number, baseline: number): string {
@@ -45,6 +59,13 @@ function n(v: number, d = 0): string {
   return v.toLocaleString('en-US', { maximumFractionDigits: d });
 }
 
+function standardDeviation(values: readonly number[]): number {
+  if (values.length <= 1) return 0;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1);
+  return Math.sqrt(variance);
+}
+
 function row(cols: string[], widths: number[]): string {
   return '  ' + cols.map((c, i) => c.padEnd(widths[i])).join('  ');
 }
@@ -52,6 +73,18 @@ function row(cols: string[], widths: number[]): string {
 export interface ReportOptions {
   connections: number;
   duration: number;
+  environment: EnvironmentSummary;
+  outputJson: string;
+  runs: number;
+  warmup: number;
+}
+
+export interface EnvironmentSummary {
+  arch: string;
+  cpuModel: string;
+  cpuCount: number;
+  node: string;
+  platform: string;
 }
 
 export function printReport(results: ScenarioResult[], options: ReportOptions): void {
@@ -60,7 +93,9 @@ export function printReport(results: ScenarioResult[], options: ReportOptions): 
   const W = [22, 16, 14, 14, 18, 18];
 
   console.log('\n\n' + bar);
-  console.log(`  HTTP runtime benchmark  —  NestJS vs fluo across Fastify and Bun  —  c=${options.connections} d=${options.duration}s`);
+  console.log(`  HTTP runtime benchmark  —  NestJS vs fluo across Fastify and Bun  —  c=${options.connections} warmup=${options.warmup}s d=${options.duration}s runs=${options.runs}`);
+  console.log(`  Environment  —  node=${options.environment.node} platform=${options.environment.platform}/${options.environment.arch} cpu=${options.environment.cpuModel} x${options.environment.cpuCount}`);
+  console.log(`  JSON summary  —  ${options.outputJson}`);
   console.log(bar);
 
   for (const r of results) {
@@ -82,16 +117,31 @@ export function printReport(results: ScenarioResult[], options: ReportOptions): 
     }
 
     console.log('  ' + sep);
-    console.log(row(['Target', 'p99 ms', 'errors', 'timeouts', 'non-2xx', 'mismatches'], W));
+    console.log(row(['Target', 'samples', 'req/s σ', 'p99 ms', 'errors', 'timeouts'], W));
+    console.log('  ' + sep);
+    for (const target of r.targets) {
+      const samples = target.samples ?? [];
+      console.log(row([
+        target.label,
+        String(samples.length || 1),
+        n(standardDeviation(samples.map((sample) => sample.requestsAverage)), 2),
+        `${n(target.result.latency.p99, 2)} (${latencyDelta(target.result.latency.p99, baseline.result.latency.p99)})`,
+        `${target.result.errors} (${countDelta(target.result.errors, baseline.result.errors)})`,
+        String(target.result.timeouts),
+      ], W));
+    }
+
+    console.log('  ' + sep);
+    console.log(row(['Target', 'non-2xx', 'mismatches', '', '', ''], W));
     console.log('  ' + sep);
     for (const target of r.targets) {
       console.log(row([
         target.label,
-        `${n(target.result.latency.p99, 2)} (${latencyDelta(target.result.latency.p99, baseline.result.latency.p99)})`,
-        `${target.result.errors} (${countDelta(target.result.errors, baseline.result.errors)})`,
-        String(target.result.timeouts),
         String(target.result.non2xx),
         String(target.result.mismatches),
+        '',
+        '',
+        '',
       ], W));
     }
   }

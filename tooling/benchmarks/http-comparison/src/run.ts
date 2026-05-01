@@ -1,10 +1,20 @@
 import autocannon, { type Request as AutocannonRequest, type Result } from 'autocannon';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { rm } from 'node:fs/promises';
+import { rm, writeFile } from 'node:fs/promises';
 import { createConnection } from 'node:net';
+import { arch, cpus, platform } from 'node:os';
 import { join } from 'node:path';
 
-import { printReport, type ScenarioResult, type TargetResult } from './report';
+import { printReport, type EnvironmentSummary, type MetricSnapshot, type ScenarioResult, type TargetResult } from './report';
+import {
+  QUOTE_REQUEST_BODY,
+  QUOTE_RESPONSE,
+  READ_SEARCH_PATH,
+  READ_SEARCH_RESPONSE,
+  ROUTE_MIX_PATHS,
+  ROUTE_MIX_REQUEST_BODY,
+  ROUTE_MIX_RESPONSES,
+} from './shared/workloads';
 
 const FLUO_FASTIFY_PORT = 3001;
 const NESTJS_PORT = 3002;
@@ -12,6 +22,7 @@ const FLUO_BUN_PORT = 3003;
 const WDIR = process.cwd();
 const REPO_ROOT = join(WDIR, '../../..');
 const FLUO_BUN_BUILD_DIR = join(WDIR, 'dist/fluo-bun');
+const NESTJS_BUILD_DIR = join(WDIR, 'dist/nestjs');
 const LOCAL_FLUO_PACKAGES = [
   '@fluojs/core',
   '@fluojs/di',
@@ -22,21 +33,13 @@ const LOCAL_FLUO_PACKAGES = [
 ] as const;
 
 type TargetName = 'nestjs-fastify' | 'fluo-fastify' | 'fluo-bun';
-type AppShape =
-  | 'baseline'
-  | 'dto-1'
-  | 'dto-20'
-  | 'direct-1'
-  | 'direct-20'
-  | 'query-1'
-  | 'body-1'
-  | 'query-web-1'
-  | 'json-1';
+type AppShape = 'read-search-local' | 'json-command-local' | 'rest-route-mix-local';
 
 interface ScenarioRequestTemplate {
   readonly body?: string;
   readonly headers?: Readonly<Record<string, string>>;
   readonly method?: 'GET' | 'POST';
+  readonly path?: string;
 }
 
 interface TargetConfig {
@@ -55,6 +58,7 @@ interface ScenarioConfig {
   readonly path?: string;
   readonly paths?: readonly string[];
   readonly request?: ScenarioRequestTemplate;
+  readonly requestSequence?: readonly ScenarioRequestTemplate[];
 }
 
 const TARGETS: TargetConfig[] = [
@@ -62,8 +66,8 @@ const TARGETS: TargetConfig[] = [
     name: 'nestjs-fastify',
     label: 'Nest+Fastify',
     port: NESTJS_PORT,
-    command: 'ts-node',
-    args: ['--transpile-only', '--project', 'nestjs/tsconfig.json', 'src/nestjs/server.ts'],
+    command: 'node',
+    args: ['dist/nestjs/nestjs/server.js'],
   },
   {
     name: 'fluo-fastify',
@@ -77,99 +81,26 @@ const TARGETS: TargetConfig[] = [
     label: 'fluo+Bun',
     port: FLUO_BUN_PORT,
     command: 'bun',
-    args: ['run', 'dist/fluo-bun/server.js'],
+    args: ['run', 'dist/fluo-bun/fluo-bun/server.js'],
   },
 ];
 
-const USER_RESPONSE = JSON.stringify({ id: '1', name: 'Alice', email: 'alice@example.com' });
-const BASELINE_RESPONSE = JSON.stringify({ ok: true });
-const QUERY_DTO_RESPONSE = JSON.stringify({
-  limit: '25',
-  page: '2',
-  region: 'west',
-  role: 'admin',
-  sort: 'createdAt',
-  term: 'alice',
-});
-const BODY_DTO_REQUEST = JSON.stringify({
-  email: 'alice@example.com',
-  name: 'Alice',
-  role: 'admin',
-  status: 'active',
-  team: 'platform',
-  title: 'maintainer',
-});
-const BODY_DTO_RESPONSE = JSON.stringify({
-  email: 'alice@example.com',
-  name: 'Alice',
-  role: 'admin',
-  status: 'active',
-  team: 'platform',
-  title: 'maintainer',
-});
-const QUERY_WEB_RESPONSE = JSON.stringify({ encoded: 'hello world', tag: ['one', 'two'] });
-const JSON_BODY_REQUEST = JSON.stringify({ count: 3, title: 'runtime-web' });
-const JSON_BODY_RESPONSE = JSON.stringify({ count: 3, title: 'runtime-web' });
-
-function routePaths(count: number): string[] {
-  return Array.from({ length: count }, (_, index) => `/di-chain/r${String(index + 1).padStart(2, '0')}/1`);
-}
-
-function directRoutePaths(count: number): string[] {
-  return Array.from({ length: count }, (_, index) => `/di-chain-direct/r${String(index + 1).padStart(2, '0')}/1`);
-}
-
 const SCENARIOS: readonly ScenarioConfig[] = [
   {
-    name: 'baseline',
-    description: 'Single baseline route without DI-chain path param binding',
-    appShape: 'baseline',
-    path: '/baseline',
-    expectedBodies: [BASELINE_RESPONSE],
+    name: 'read-search-local',
+    description: 'Read-heavy tenant user search: path param + query parsing + DI service + deterministic in-memory filtering',
+    appShape: 'read-search-local',
+    path: READ_SEARCH_PATH,
+    expectedBodies: [READ_SEARCH_RESPONSE],
   },
   {
-    name: 'di-chain-dto-deterministic-1',
-    description: 'Deterministic 1-route path DTO + 3-level DI chain',
-    appShape: 'dto-1',
-    paths: ['/di-chain-one/r01/1'],
-    expectedBodies: [USER_RESPONSE],
-  },
-  {
-    name: 'di-chain-dto-deterministic-20',
-    description: 'Deterministic 20-route path DTO + 3-level DI chain',
-    appShape: 'dto-20',
-    paths: routePaths(20),
-    expectedBodies: [USER_RESPONSE],
-  },
-  {
-    name: 'di-chain-direct-param-deterministic-1',
-    description: 'Deterministic 1-route direct param + 3-level DI chain',
-    appShape: 'direct-1',
-    paths: ['/di-chain-direct-one/r01/1'],
-    expectedBodies: [USER_RESPONSE],
-  },
-  {
-    name: 'di-chain-direct-param-deterministic-20',
-    description: 'Deterministic 20-route direct param + 3-level DI chain',
-    appShape: 'direct-20',
-    paths: directRoutePaths(20),
-    expectedBodies: [USER_RESPONSE],
-  },
-  {
-    name: 'query-dto-deterministic-1',
-    description: 'Single-route query DTO with six bound fields',
-    appShape: 'query-1',
-    path: '/query-dto-one/r01?term=alice&role=admin&region=west&sort=createdAt&page=2&limit=25',
-    expectedBodies: [QUERY_DTO_RESPONSE],
-  },
-  {
-    name: 'body-dto-deterministic-1',
-    description: 'Single-route body DTO with six bound fields',
-    appShape: 'body-1',
-    path: '/body-dto-one/r01',
-    expectedBodies: [BODY_DTO_RESPONSE],
+    name: 'json-command-local',
+    description: 'JSON command endpoint: body materialization + quote calculation + deterministic response serialization',
+    appShape: 'json-command-local',
+    path: '/orders/quote',
+    expectedBodies: [QUOTE_RESPONSE],
     request: {
-      body: BODY_DTO_REQUEST,
+      body: QUOTE_REQUEST_BODY,
       headers: {
         'content-type': 'application/json',
       },
@@ -177,33 +108,22 @@ const SCENARIOS: readonly ScenarioConfig[] = [
     },
   },
   {
-    name: 'query-deterministic-1',
-    description: 'Single query-focused route that reads repeated query parameters',
-    appShape: 'query-web-1',
-    path: '/query-one?tag=one&tag=two&encoded=hello+world',
-    expectedBodies: [QUERY_WEB_RESPONSE],
-  },
-  {
-    name: 'json-body-deterministic-1',
-    description: 'Single JSON body route that exercises request body materialization',
-    appShape: 'json-1',
-    path: '/body-one',
-    expectedBodies: [JSON_BODY_RESPONSE],
-    request: {
-      body: JSON_BODY_REQUEST,
-      headers: {
-        'content-type': 'application/json',
-      },
-      method: 'POST',
-    },
+    name: 'rest-route-mix-local',
+    description: 'Mixed REST surface: project detail, task list/detail, POST preview, and comment summary over one deterministic route cycle',
+    appShape: 'rest-route-mix-local',
+    expectedBodies: ROUTE_MIX_RESPONSES,
+    requestSequence: ROUTE_MIX_PATHS.map((path) => (path.endsWith('/preview')
+      ? { body: ROUTE_MIX_REQUEST_BODY, headers: { 'content-type': 'application/json' }, method: 'POST', path }
+      : { method: 'GET', path })),
   },
 ];
 
 const WARMUP_SEC = readPositiveIntegerEnv('BENCH_WARMUP_SEC', 10);
 const MEASURE_SEC = readPositiveIntegerEnv('BENCH_MEASURE_SEC', 40);
 const CONNECTIONS = readPositiveIntegerEnv('BENCH_CONNECTIONS', 100);
-const RUNS = readPositiveIntegerEnv('BENCH_RUNS', 1);
-const BUILD_LOCAL_FLUO_PACKAGES = process.env.BENCH_BUILD_LOCAL_FLUO_PACKAGES !== '0';
+const RUNS = readPositiveIntegerEnv('BENCH_RUNS', 5);
+const OUTPUT_JSON = process.env.BENCH_OUTPUT_JSON ?? join(WDIR, 'benchmark-results.json');
+const BUILD_LOCAL_FLUO_PACKAGES = process.env.BENCH_BUILD_LOCAL_FLUO_PACKAGES === '1';
 
 function readScenarioFilter(): Set<string> | undefined {
   const raw = process.env.BENCH_SCENARIOS;
@@ -289,6 +209,15 @@ function createDeterministicPathSequence(paths: readonly string[]): () => string
   };
 }
 
+function createDeterministicRequestSequence(requests: readonly ScenarioRequestTemplate[]): () => ScenarioRequestTemplate {
+  let index = 0;
+  return () => {
+    const request = requests[index % requests.length] ?? requests[0] ?? {};
+    index += 1;
+    return request;
+  };
+}
+
 function shoot(
   url: string,
   duration: number,
@@ -296,10 +225,13 @@ function shoot(
   label: string,
   requestTemplate: ScenarioRequestTemplate = {},
   paths?: readonly string[],
+  requestSequence?: readonly ScenarioRequestTemplate[],
 ): Promise<Result> {
   return new Promise((resolve, reject) => {
     const nextPath = paths ? createDeterministicPathSequence(paths) : undefined;
+    const nextRequest = requestSequence ? createDeterministicRequestSequence(requestSequence) : undefined;
     const hasCustomRequest = nextPath !== undefined
+      || nextRequest !== undefined
       || requestTemplate.method !== undefined
       || requestTemplate.body !== undefined
       || requestTemplate.headers !== undefined;
@@ -314,11 +246,13 @@ function shoot(
         ? {
             requests: [{
               setupRequest(request: AutocannonRequest, _context: object) {
-                request.path = nextPath?.() ?? request.path;
-                request.method = requestTemplate.method ?? request.method;
-                request.body = requestTemplate.body ?? request.body;
-                request.headers = requestTemplate.headers
-                  ? { ...(request.headers ?? {}), ...requestTemplate.headers }
+                const sequenceRequest = nextRequest?.();
+                const template = sequenceRequest ?? requestTemplate;
+                request.path = template.path ?? nextPath?.() ?? request.path;
+                request.method = template.method ?? request.method;
+                request.body = template.body ?? request.body;
+                request.headers = template.headers
+                  ? { ...(request.headers ?? {}), ...template.headers }
                   : request.headers;
                 return request;
               },
@@ -343,9 +277,10 @@ async function measure(
   expectedBodies: readonly string[],
   requestTemplate: ScenarioRequestTemplate = {},
   paths?: readonly string[],
+  requestSequence?: readonly ScenarioRequestTemplate[],
 ): Promise<Result> {
   process.stdout.write(`  measuring ${label.padEnd(6)} (${MEASURE_SEC}s)...`);
-  const result = await shoot(url, MEASURE_SEC, expectedBodies, label, requestTemplate, paths);
+  const result = await shoot(url, MEASURE_SEC, expectedBodies, label, requestTemplate, paths, requestSequence);
   process.stdout.write(' done\n');
   return result;
 }
@@ -363,7 +298,7 @@ async function runScenario(s: ScenarioConfig, index: number): Promise<ScenarioRe
   try {
     process.stdout.write(`  [${s.name}] warm-up (${WARMUP_SEC}s)...`);
     await Promise.all(scenarioTargets.map(({ target, url }) => (
-      shoot(url, WARMUP_SEC, s.expectedBodies, `${s.name}/${target.label} warm-up`, s.request, s.paths)
+      shoot(url, WARMUP_SEC, s.expectedBodies, `${s.name}/${target.label} warm-up`, s.request, s.paths, s.requestSequence)
     )));
     process.stdout.write(' done\n');
 
@@ -371,7 +306,7 @@ async function runScenario(s: ScenarioConfig, index: number): Promise<ScenarioRe
     for (const { target, url } of scenarioTargets) {
       measured.push({
         label: target.label,
-        result: await measure(target.label, url, s.expectedBodies, s.request, s.paths),
+        result: await measure(target.label, url, s.expectedBodies, s.request, s.paths, s.requestSequence),
       });
     }
 
@@ -476,15 +411,27 @@ async function stopTargets(processes: readonly ChildProcess[]): Promise<void> {
 
 async function buildBunTarget(): Promise<void> {
   await rm(FLUO_BUN_BUILD_DIR, { force: true, recursive: true });
-  await runCommand('tsc', [
+  await runCommand('pnpm', [
+    'exec',
+    'tsc',
     'src/fluo-bun/server.ts',
-    '--target', 'ES2022',
-    '--module', 'ESNext',
-    '--moduleResolution', 'Bundler',
+    '--target',
+    'ES2022',
+    '--module',
+    'ESNext',
+    '--moduleResolution',
+    'Bundler',
     '--strict',
     '--skipLibCheck',
-    '--outDir', 'dist/fluo-bun',
+    '--outDir',
+    'dist/fluo-bun',
   ]);
+}
+
+async function buildNestTarget(): Promise<void> {
+  await rm(NESTJS_BUILD_DIR, { force: true, recursive: true });
+  await runCommand('pnpm', ['exec', 'tsc', '-p', 'nestjs/tsconfig.json', '--outDir', 'dist/nestjs']);
+  await writeFile(join(NESTJS_BUILD_DIR, 'package.json'), '{"type":"commonjs"}\n');
 }
 
 async function buildLocalFluoPackages(): Promise<void> {
@@ -501,6 +448,21 @@ async function buildLocalFluoPackages(): Promise<void> {
 
 function average(values: readonly number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function metricSnapshot(result: Result): MetricSnapshot {
+  return {
+    errors: result.errors,
+    latencyAverage: result.latency.average,
+    latencyP50: result.latency.p50,
+    latencyP97_5: result.latency.p97_5,
+    latencyP99: result.latency.p99,
+    mismatches: result.mismatches,
+    non2xx: result.non2xx,
+    requestsAverage: result.requests.average,
+    throughputAverage: result.throughput.average,
+    timeouts: result.timeouts,
+  };
 }
 
 function averageResult(results: readonly Result[]): Result {
@@ -542,15 +504,74 @@ function averageScenarioResults(runs: readonly ScenarioResult[][]): ScenarioResu
   return firstRun.map((scenario, scenarioIndex) => ({
     description: scenario.description,
     name: `${scenario.name} (${String(runs.length)}-run avg)`,
-    targets: scenario.targets.map((target, targetIndex) => ({
-      label: target.label,
-      result: averageResult(runs.map((run) => run[scenarioIndex]?.targets[targetIndex]?.result).filter((result): result is Result => result !== undefined)),
+    targets: scenario.targets.map((target) => {
+      const targetResults = runs.map((run) => {
+        const matchingScenario = run[scenarioIndex];
+        return matchingScenario?.targets.find((candidate) => candidate.label === target.label)?.result;
+      }).filter((result): result is Result => result !== undefined);
+
+      if (targetResults.length !== runs.length) {
+        throw new Error(`Missing ${target.label} samples for ${scenario.name}: got ${String(targetResults.length)} of ${String(runs.length)}`);
+      }
+
+      return {
+        label: target.label,
+        result: averageResult(targetResults),
+        samples: targetResults.map(metricSnapshot),
+      };
+    }),
+  }));
+}
+
+function environmentSummary(): EnvironmentSummary {
+  const cpu = cpus()[0];
+  return {
+    arch: arch(),
+    cpuCount: cpus().length,
+    cpuModel: cpu?.model ?? 'unknown',
+    node: process.version,
+    platform: platform(),
+  };
+}
+
+async function writeBenchmarkOutput(rawRuns: readonly ScenarioResult[][], averaged: readonly ScenarioResult[], environment: EnvironmentSummary): Promise<void> {
+  const compactRuns = rawRuns.map((run, runIndex) => ({
+    run: runIndex + 1,
+    scenarios: run.map((scenario) => ({
+      description: scenario.description,
+      name: scenario.name,
+      targets: scenario.targets.map((target) => ({
+        label: target.label,
+        metrics: metricSnapshot(target.result),
+      })),
     })),
   }));
+
+  const compactAverage = averaged.map((scenario) => ({
+    description: scenario.description,
+    name: scenario.name,
+    targets: scenario.targets.map((target) => ({
+      label: target.label,
+      metrics: metricSnapshot(target.result),
+      samples: target.samples ?? [metricSnapshot(target.result)],
+    })),
+  }));
+
+  await writeFile(OUTPUT_JSON, `${JSON.stringify({
+    benchmark: 'http-comparison',
+    connections: CONNECTIONS,
+    durationSeconds: MEASURE_SEC,
+    environment,
+    runs: RUNS,
+    rawRuns: compactRuns,
+    scenarios: compactAverage,
+    warmupSeconds: WARMUP_SEC,
+  }, null, 2)}\n`);
 }
 
 async function main(): Promise<void> {
   await buildLocalFluoPackages();
+  await buildNestTarget();
   await buildBunTarget();
 
   const scenarios = selectedScenarios();
@@ -568,7 +589,17 @@ async function main(): Promise<void> {
     runs.push(results);
   }
 
-  printReport(RUNS === 1 ? runs[0] ?? [] : averageScenarioResults(runs), { connections: CONNECTIONS, duration: MEASURE_SEC });
+  const averagedResults = RUNS === 1 ? runs[0] ?? [] : averageScenarioResults(runs);
+  const environment = environmentSummary();
+  await writeBenchmarkOutput(runs, averagedResults, environment);
+  printReport(averagedResults, {
+    connections: CONNECTIONS,
+    duration: MEASURE_SEC,
+    environment,
+    outputJson: OUTPUT_JSON,
+    runs: RUNS,
+    warmup: WARMUP_SEC,
+  });
 }
 
 main().catch((err) => {
