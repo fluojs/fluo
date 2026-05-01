@@ -1,6 +1,6 @@
 # HTTP runtime benchmark
 
-Runs a small HTTP throughput/latency comparison between the local fluo worktree packages and NestJS v11 across three targets:
+Runs a small HTTP throughput/latency comparison between the latest published fluo npm beta packages and NestJS v11 across three targets:
 
 - `Nest+Fastify`
 - `fluo+Fastify`
@@ -8,15 +8,11 @@ Runs a small HTTP throughput/latency comparison between the local fluo worktree 
 
 ## Scenarios
 
-- `baseline`: a single no-param baseline route used to measure the adapter/framework response floor.
-- `di-chain-dto-deterministic-1`: one DTO-bound path route through Controller → Service → Repository.
-- `di-chain-dto-deterministic-20`: the same DTO-bound DI path across a deterministic 20-route cycle.
-- `di-chain-direct-param-deterministic-1`: one direct path-param route through Controller → Service → Repository.
-- `di-chain-direct-param-deterministic-20`: the same direct-param DI path across a deterministic 20-route cycle.
-- `query-deterministic-1`: one query-focused route that reads repeated query parameters.
-- `json-body-deterministic-1`: one JSON body route that exercises request body materialization.
-- `query-dto-deterministic-1`: one query-heavy DTO route with six bound query fields.
-- `body-dto-deterministic-1`: one body-heavy DTO route with six bound body fields.
+The default suite is intentionally limited to three practical local API workloads rather than isolated framework-floor microbenchmarks:
+
+- `read-search-local`: a read-heavy tenant user search endpoint with a path param, six query fields, DI service dispatch, deterministic in-memory filtering, pagination, and JSON serialization.
+- `json-command-local`: a POST quote-calculation command with JSON body materialization, nested line items, deterministic tax/discount/shipping computation, and response serialization.
+- `rest-route-mix-local`: a small REST surface that cycles through project detail, task list, task detail, POST preview, and comment summary routes to exercise mixed route matching, path/query extraction, GET/POST dispatch, and DI.
 
 ## Run
 
@@ -25,22 +21,22 @@ pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace install --froze
 pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
 ```
 
-This benchmark has its own lockfile and is intentionally excluded from the root pnpm workspace. The fluo dependencies are linked to `../../../packages/*`, so build the local packages before measuring if you want benchmark results to include unpublished worktree changes.
+This benchmark has its own lockfile and is intentionally excluded from the root pnpm workspace. The fluo dependencies intentionally resolve from the published npm beta surface instead of `../../../packages/*`, so the suite measures the package versions users can install from npm.
 
-The runner starts an isolated server set for each scenario, so 1-route and 20-route scenarios register different app shapes instead of merely sending different request paths through the same route table. It warms every target for each scenario, then measures with `autocannon` at 100 connections for 40 seconds. Measurement order rotates by scenario to avoid always giving one framework the same position. Multi-route scenarios use a deterministic path cycle so every target sees the same request sequence.
+The runner starts an isolated server set for each scenario, so each workload registers only the routes it needs. It warms every target for each scenario, then measures with `autocannon` at 100 connections for 40 seconds over five runs by default. Measurement order rotates by scenario/run to avoid always giving one framework the same position. The mixed REST scenario uses a deterministic request cycle so every target sees the same GET/POST sequence.
 
 For quick directional runs, override the defaults with environment variables:
 
 ```bash
-BENCH_WARMUP_SEC=3 BENCH_MEASURE_SEC=10 pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
+BENCH_RUNS=1 BENCH_WARMUP_SEC=1 BENCH_MEASURE_SEC=3 BENCH_CONNECTIONS=8 BENCH_OUTPUT_JSON=benchmark-results-smoke.json pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
 ```
 
-By default, the runner rebuilds the linked local fluo packages before measuring so uncommitted source changes are reflected in `dist/`. Set `BENCH_BUILD_LOCAL_FLUO_PACKAGES=0` to skip that rebuild when you have already built the packages.
+The runner does not rebuild local fluo workspace packages by default because this benchmark targets npm beta packages. Set `BENCH_BUILD_LOCAL_FLUO_PACKAGES=1` only when temporarily switching dependencies back to local links for unpublished worktree experiments.
 
-To collect a repeat-average for specific scenarios, set `BENCH_RUNS` and a comma-separated `BENCH_SCENARIOS` list:
+To collect a repeat-average for specific scenarios, set `BENCH_RUNS` and a comma-separated `BENCH_SCENARIOS` list. The console report includes the sample count and req/s standard deviation, and `BENCH_OUTPUT_JSON` controls where raw per-run metrics plus averages are written:
 
 ```bash
-BENCH_RUNS=5 BENCH_SCENARIOS=query-deterministic-1,json-body-deterministic-1 pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
+BENCH_RUNS=5 BENCH_OUTPUT_JSON=benchmark-results.json BENCH_SCENARIOS=read-search-local,json-command-local,rest-route-mix-local pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
 ```
 
 The `fluo+Bun` target requires the `bun` CLI because `@fluojs/platform-bun` uses `globalThis.Bun.serve()` at listen time.
@@ -54,11 +50,11 @@ Each warm-up and measured run validates the expected response body and fails on:
 - non-2xx responses
 - body mismatches
 
-The report prints those counters with throughput and latency metrics.
+The report prints those counters with throughput, latency, sample count, and req/s variability metrics. The JSON output keeps raw run samples so later reports can recompute means or compare releases without scraping terminal tables.
 
 ## Scope and caveats
 
-- This measures the linked local worktree package builds, not the released npm beta surface.
+- This measures the released npm beta surface, not uncommitted local worktree package builds.
 - fluo uses TC39 standard decorators without `emitDecoratorMetadata`; NestJS uses legacy decorators with `emitDecoratorMetadata` through `nestjs/tsconfig.json`.
 - `fluo+Bun` is a runtime comparison, not a same-adapter comparison. Treat it as “same fluo app graph on Bun’s native server” versus the Node.js adapter targets.
-- The suite covers routing plus DTO binding on path, query, and body inputs. It does not measure validation plugins, serialization plugins, guards, pipes, database access, or production middleware.
+- The suite covers routing, request binding, local deterministic service work, and JSON serialization. It does not measure validation plugins, serialization plugins, guards, pipes, database access, or production middleware.
