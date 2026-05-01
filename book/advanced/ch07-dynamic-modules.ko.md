@@ -281,7 +281,7 @@ provider 생성을 `createQueueProviders()` (`path:packages/queue/src/module.ts:
 
 이 패턴은 module registration 과정을 감사 가능하게 만듭니다. 여러 파일에 흩어진 decorator를 추적하는 대신, 단일 helper 파일에서 전체 registration surface를 확인할 수 있습니다.
 
-이 과정을 실제로 보려면 `ConfigModule.forRoot()`가 구성 로딩 결과를 `ConfigService` provider로 감싸는 방식을 보면 됩니다. 동적 모듈은 환경 파일, 기본값, 검증 함수를 직접 전역 상태로 흘리지 않고, 제어된 factory function 안에서 service provider로 묶습니다.
+이 과정을 실제로 보려면 `ConfigModule.forRoot()`가 구성 로딩 결과를 `ConfigService` provider로 감싸는 방식을 보면 됩니다. 동적 모듈은 환경 파일, 기본값, schema validator를 직접 전역 상태로 흘리지 않고, 제어된 factory function 안에서 service provider로 묶습니다.
 
 `path:packages/config/src/module.ts:30-45`
 ```typescript
