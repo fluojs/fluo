@@ -29,8 +29,8 @@
 
 | Rule | Statement | Source anchor |
 | --- | --- | --- |
-| Merge before validate | `validate` hook은 모든 설정 source가 병합된 뒤 실행됩니다. | `packages/config/src/load.ts`, `packages/config/README.md` |
-| Fail-fast startup | 초기 load 중 `validate`가 throw 하면 config load는 code `INVALID_CONFIG`를 가진 `FluoError`를 발생시킵니다. | `packages/config/src/load.ts` |
+| Merge before schema validation | `schema` validator는 모든 설정 source가 병합된 뒤 실행됩니다. | `packages/config/src/load.ts`, `packages/config/README.md` |
+| Fail-fast startup | 초기 load 중 `schema`가 issue를 보고하면 config load는 code `INVALID_CONFIG`를 가진 `FluoError`를 발생시킵니다. | `packages/config/src/load.ts` |
 | No partial snapshot | 유효하지 않은 설정은 전체가 거부됩니다. load 경로는 부분 병합 결과를 반환하지 않습니다. | `packages/config/src/load.ts` |
 | Reload keeps previous snapshot on listener failure | reload 중 listener가 실패하면 이전 스냅샷이 복원됩니다. | `packages/config/src/load.ts`, `packages/config/src/reload-module.ts` |
 | Watch reload keeps last valid snapshot on validation failure | watch 모드에서 validation이 실패하면 오류를 보고하고 현재 스냅샷은 그대로 유지됩니다. | `packages/config/src/load.ts`, `packages/config/src/load.test.ts`, `docs/architecture/dev-reload-architecture.md` |
@@ -39,20 +39,24 @@
 최소 schema 계약:
 
 ```ts
+import { z } from 'zod';
+
+const EnvSchema = z.object({
+  DATABASE_URL: z.string().url(),
+  PORT: z.coerce.number().default(3000),
+});
+
 ConfigModule.forRoot({
   envFile: '.env',
   processEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
   },
   defaults: { PORT: '3000' },
-  validate: (raw) => {
-    if (!raw.DATABASE_URL) {
-      throw new Error('DATABASE_URL is required');
-    }
-    return raw;
-  },
+  schema: EnvSchema,
 });
 ```
+
+Config schema는 동기식으로 검증되어야 합니다. Standard Schema validator가 `Promise`를 반환하면 config loader는 이를 await하지 않고 `INVALID_CONFIG`로 실패합니다.
 
 ## Access Constraints
 

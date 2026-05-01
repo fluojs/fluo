@@ -29,8 +29,8 @@ Current merge behavior:
 
 | Rule | Statement | Source anchor |
 | --- | --- | --- |
-| Merge before validate | The `validate` hook runs after all configured sources are merged. | `packages/config/src/load.ts`, `packages/config/README.md` |
-| Fail-fast startup | If `validate` throws during initial load, config loading throws `FluoError` with code `INVALID_CONFIG`. | `packages/config/src/load.ts` |
+| Merge before schema validation | The `schema` validator runs after all configured sources are merged. | `packages/config/src/load.ts`, `packages/config/README.md` |
+| Fail-fast startup | If `schema` reports issues during initial load, config loading throws `FluoError` with code `INVALID_CONFIG`. | `packages/config/src/load.ts` |
 | No partial snapshot | Invalid configuration is rejected as a whole. The load path returns no partial merged result. | `packages/config/src/load.ts` |
 | Reload keeps previous snapshot on listener failure | During reload, listener failure restores the previous snapshot. | `packages/config/src/load.ts`, `packages/config/src/reload-module.ts` |
 | Watch reload keeps last valid snapshot on validation failure | Watch-mode validation failure reports the error and keeps the current snapshot unchanged. | `packages/config/src/load.ts`, `packages/config/src/load.test.ts`, `docs/architecture/dev-reload-architecture.md` |
@@ -39,20 +39,24 @@ Current merge behavior:
 Minimal schema contract:
 
 ```ts
+import { z } from 'zod';
+
+const EnvSchema = z.object({
+  DATABASE_URL: z.string().url(),
+  PORT: z.coerce.number().default(3000),
+});
+
 ConfigModule.forRoot({
   envFile: '.env',
   processEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
   },
   defaults: { PORT: '3000' },
-  validate: (raw) => {
-    if (!raw.DATABASE_URL) {
-      throw new Error('DATABASE_URL is required');
-    }
-    return raw;
-  },
+  schema: EnvSchema,
 });
 ```
+
+Config schemas must validate synchronously. If a Standard Schema validator returns a `Promise`, config loading fails with `INVALID_CONFIG` instead of awaiting it.
 
 ## Access Constraints
 
