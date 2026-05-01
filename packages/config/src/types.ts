@@ -1,7 +1,17 @@
+import type { StandardSchemaV1 } from '@standard-schema/spec';
+
 /**
  * Plain JSON-like object used as the normalized configuration snapshot shape.
  */
 export type ConfigDictionary = Record<string, unknown>;
+
+/**
+ * Standard Schema v1-compatible config validator accepted by `@fluojs/config` loaders.
+ *
+ * @typeParam Input Raw merged config shape consumed by the schema validator.
+ * @typeParam Output Normalized config shape produced by the schema validator.
+ */
+export type ConfigSchema<Input = unknown, Output extends ConfigDictionary = ConfigDictionary> = StandardSchemaV1<Input, Output>;
 
 /**
  * Nested dot-path key helper.
@@ -33,7 +43,7 @@ export interface ConfigModuleOptions {
   envFile?: string;
   envFilePath?: string;
   processEnv?: NodeJS.ProcessEnv;
-  validate?: (raw: ConfigDictionary) => ConfigDictionary;
+  schema?: ConfigSchema;
   defaults?: ConfigDictionary;
   /** Supply a custom file parser (e.g. for YAML or TOML). Receives raw file content,
    *  returns a flat key-value record. Defaults to dotenv parsing. */

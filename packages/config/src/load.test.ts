@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfigReloader, loadConfig } from './load.js';
 import { ConfigModule } from './module.js';
 import { ConfigService, replaceConfigServiceSnapshot } from './service.js';
+import type { ConfigDictionary, ConfigSchema } from './types.js';
 
 const watchCallbacks = vi.hoisted(() => new Set<() => void>());
 
@@ -32,6 +33,54 @@ function emitWatchChange(): void {
   for (const callback of [...watchCallbacks]) {
     callback();
   }
+}
+
+function isConfigDictionary(value: unknown): value is ConfigDictionary {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function createPortSchema(): ConfigSchema {
+  return {
+    '~standard': {
+      validate: (value) => {
+        if (!isConfigDictionary(value)) {
+          return { issues: [{ message: 'config must be an object' }] };
+        }
+
+        const port = value.PORT;
+
+        if (typeof port !== 'string' || !/^\d+$/.test(port)) {
+          return { issues: [{ message: 'PORT must be numeric', path: ['PORT'] }] };
+        }
+
+        return { value: { ...value, PORT: Number(port) } };
+      },
+      vendor: 'test',
+      version: 1,
+    },
+  };
+}
+
+function expectInvalidConfigFailure(action: () => void): unknown {
+  try {
+    action();
+  } catch (error: unknown) {
+    expect(error).toMatchObject({
+      code: 'INVALID_CONFIG',
+      message: 'Invalid configuration.',
+    });
+    return error;
+  }
+
+  throw new Error('Expected action to fail with INVALID_CONFIG.');
+}
+
+function getErrorCause(error: unknown): unknown {
+  if (typeof error === 'object' && error !== null && 'cause' in error) {
+    return error.cause;
+  }
+
+  return undefined;
 }
 
 beforeEach(() => {
@@ -177,14 +226,64 @@ describe('loadConfig', () => {
     });
   });
 
-  it('fails when validation rejects the merged config', () => {
-    expect(() =>
+  it('uses a Standard Schema value as the final config snapshot', () => {
+    const loaded = loadConfig({
+      defaults: { PORT: '3000' },
+      schema: createPortSchema(),
+    });
+
+    expect(loaded.PORT).toBe(3000);
+  });
+
+  it('fails with INVALID_CONFIG when Standard Schema reports issues', () => {
+    const error = expectInvalidConfigFailure(() =>
       loadConfig({
-        validate: () => {
-          throw new Error('PORT is required');
-        },
+        defaults: { PORT: 'not-a-number' },
+        schema: createPortSchema(),
       }),
-    ).toThrow('Invalid configuration.');
+    );
+
+    expect(error).toMatchObject({ meta: { issues: ['PORT: PORT must be numeric'] } });
+  });
+
+  it('rejects malformed Standard Schema config results', () => {
+    const malformedSchema: ConfigSchema = {
+      '~standard': {
+        validate: () => ({ issues: 'bad-result' }) as never,
+        vendor: 'test',
+        version: 1,
+      },
+    };
+
+    const error = expectInvalidConfigFailure(() =>
+      loadConfig({
+        schema: malformedSchema,
+      }),
+    );
+
+    expect(getErrorCause(error)).toMatchObject({
+      message: 'Standard Schema config validator returned a malformed result.',
+    });
+  });
+
+  it('rejects async Standard Schema config results', () => {
+    const asyncSchema: ConfigSchema = {
+      '~standard': {
+        validate: async () => ({ value: { PORT: 3000 } }),
+        vendor: 'test',
+        version: 1,
+      },
+    };
+
+    const error = expectInvalidConfigFailure(() =>
+      loadConfig({
+        schema: asyncSchema,
+      }),
+    );
+
+    expect(getErrorCause(error)).toMatchObject({
+      message: 'Config schemas must validate synchronously. Async Standard Schema validation is not supported by the synchronous config API.',
+    });
   });
 
   it('parses multiline values from env files using dotenv', () => {
@@ -250,7 +349,7 @@ describe('loadConfig', () => {
     try {
       const updates: Array<{ port: string; reason: string }> = [];
       const subscription = reloader.subscribe((snapshot, reason) => {
-        const port = snapshot['PORT'];
+        const port = snapshot.PORT;
         if (typeof port === 'string') {
           updates.push({ port, reason });
         }
@@ -354,20 +453,12 @@ describe('loadConfig', () => {
       cwd,
       envFile: envPath,
       processEnv: {},
-      validate: (raw) => {
-        const port = raw['PORT'];
-
-        if (typeof port !== 'string' || !/^\d+$/.test(port)) {
-          throw new Error('PORT must be numeric');
-        }
-
-        return raw;
-      },
+      schema: createPortSchema(),
       watch: true,
     });
 
     try {
-      const updates: string[] = [];
+      const updates: number[] = [];
       const errors: string[] = [];
       const updateSubscription = reloader.subscribe((snapshot, reason) => {
         if (reason !== 'watch') {
@@ -375,7 +466,7 @@ describe('loadConfig', () => {
         }
 
         const port = snapshot['PORT'];
-        if (typeof port === 'string') {
+        if (typeof port === 'number') {
           updates.push(port);
         }
       });
@@ -391,12 +482,12 @@ describe('loadConfig', () => {
       writeFileSync(envPath, 'PORT=oops\n');
       emitWatchChange();
       await waitForCondition(() => errors.length > 0);
-      expect(reloader.current()['PORT']).toBe('4000');
+      expect(reloader.current().PORT).toBe(4000);
 
       writeFileSync(envPath, 'PORT=4300\n');
       emitWatchChange();
-      await waitForCondition(() => updates.includes('4300'));
-      expect(reloader.current()['PORT']).toBe('4300');
+      await waitForCondition(() => updates.includes(4300));
+      expect(reloader.current().PORT).toBe(4300);
 
       updateSubscription.unsubscribe();
       errorSubscription.unsubscribe();
@@ -770,6 +861,20 @@ describe('ConfigModule', () => {
     expect(service?.getOrThrow('PORT')).toBe('4000');
     expect(service?.snapshot()['PORT']).toBe('4000');
     expect(parseCalls).toBe(1);
+  });
+
+  it('uses Standard Schema validation through ConfigModule.forRoot', () => {
+    const moduleRef = ConfigModule.forRoot({
+      defaults: { PORT: '4000' },
+      schema: createPortSchema(),
+    });
+    const providers = getModuleMetadata(moduleRef)?.providers as
+      | Array<{ provide?: unknown; useFactory?: () => unknown }>
+      | undefined;
+    const configProvider = providers?.find((provider) => provider.provide === ConfigService);
+    const service = configProvider?.useFactory?.() as ConfigService | undefined;
+
+    expect(service?.get('PORT')).toBe(4000);
   });
 
   it('uses the provided processEnv snapshot through ConfigService registration', () => {

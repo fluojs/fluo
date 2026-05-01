@@ -15,6 +15,7 @@ import type {
   ConfigReloadListener,
   ConfigReloadReason,
   ConfigReloadSubscription,
+  ConfigSchema,
 } from './types.js';
 
 interface NormalizedLoadOptions {
@@ -23,8 +24,21 @@ interface NormalizedLoadOptions {
   safeProcessEnv: Record<string, string>;
   runtimeOverrides: ConfigDictionary;
   parse?: (content: string) => Record<string, string>;
-  validate?: (raw: ConfigDictionary) => ConfigDictionary;
+  schema?: ConfigSchema;
 }
+
+type ConfigSchemaIssue = {
+  readonly message: string;
+  readonly path?: readonly unknown[];
+};
+
+type ConfigSchemaFailureResult = {
+  readonly issues: readonly ConfigSchemaIssue[];
+};
+
+type ConfigSchemaSuccessResult = {
+  readonly value: ConfigDictionary;
+};
 
 const reloadFailureReasons = new WeakMap<object, ConfigReloadReason>();
 
@@ -71,7 +85,7 @@ function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions
     parse: options.parse,
     runtimeOverrides,
     safeProcessEnv,
-    validate: options.validate,
+    schema: options.schema,
   };
 }
 
@@ -135,14 +149,83 @@ function buildMergedConfig(options: NormalizedLoadOptions): ConfigDictionary {
   );
 }
 
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    (typeof value === 'object' || typeof value === 'function')
+    && value !== null
+    && 'then' in value
+    && typeof value.then === 'function'
+  );
+}
+
+function isConfigSchemaIssue(value: unknown): value is ConfigSchemaIssue {
+  return typeof value === 'object' && value !== null && 'message' in value && typeof value.message === 'string';
+}
+
+function isConfigSchemaFailureResult(value: unknown): value is ConfigSchemaFailureResult {
+  if (typeof value !== 'object' || value === null || !('issues' in value)) {
+    return false;
+  }
+
+  return Array.isArray(value.issues) && value.issues.every(isConfigSchemaIssue);
+}
+
+function isConfigSchemaSuccessResult(value: unknown): value is ConfigSchemaSuccessResult {
+  return typeof value === 'object' && value !== null && 'value' in value && isPlainObject(value.value);
+}
+
+function formatConfigSchemaIssue(issue: ConfigSchemaIssue): string {
+  const path = issue.path
+    ?.filter((segment): segment is string | number => typeof segment === 'string' || typeof segment === 'number')
+    .map((segment) => String(segment))
+    .join('.');
+
+  return path && path.length > 0 ? `${path}: ${issue.message}` : issue.message;
+}
+
+function createInvalidConfigError(cause: unknown, issues?: readonly ConfigSchemaIssue[]): FluoError {
+  return new FluoError('Invalid configuration.', {
+    code: 'INVALID_CONFIG',
+    cause,
+    meta: issues ? { issues: issues.map(formatConfigSchemaIssue) } : undefined,
+  });
+}
+
+function isInvalidConfigError(error: unknown): error is FluoError {
+  return error instanceof FluoError && error.code === 'INVALID_CONFIG';
+}
+
+function readConfigSchemaResult(result: unknown): ConfigDictionary {
+  if (isConfigSchemaFailureResult(result)) {
+    throw createInvalidConfigError(new Error('Standard Schema config validation failed.'), result.issues);
+  }
+
+  if (!isConfigSchemaSuccessResult(result)) {
+    throw createInvalidConfigError(new Error('Standard Schema config validator returned a malformed result.'));
+  }
+
+  return result.value;
+}
+
 function validateConfig(options: NormalizedLoadOptions, merged: ConfigDictionary): ConfigDictionary {
+  if (!options.schema) {
+    return merged;
+  }
+
   try {
-    return options.validate ? options.validate(merged) : merged;
+    const result = options.schema['~standard'].validate(merged);
+
+    if (isPromiseLike(result)) {
+      throw new Error('Config schemas must validate synchronously. Async Standard Schema validation is not supported by the synchronous config API.');
+    }
+
+    return readConfigSchemaResult(result);
   } catch (error: unknown) {
-    throw new FluoError('Invalid configuration.', {
-      code: 'INVALID_CONFIG',
-      cause: error,
-    });
+    if (isInvalidConfigError(error)) {
+      throw error;
+    }
+
+    throw createInvalidConfigError(error);
   }
 }
 
@@ -279,7 +362,7 @@ function closeReloader(
 /**
  * Creates a stateful config reloader that mirrors `loadConfig(...)` semantics and optionally watches the env file.
  *
- * @param options Configuration loading options, including optional watch mode and validation hooks.
+ * @param options Configuration loading options, including optional watch mode and a synchronous Standard Schema validator.
  * @returns A reloader that exposes the current snapshot, manual reload, subscriptions, and cleanup.
  * @throws {FluoError} When the initial config load or validation fails.
  *
@@ -333,7 +416,7 @@ export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader
  *
  * Merge precedence stays aligned with the package README contract: `defaults` < env file < `processEnv` < `runtimeOverrides`.
  *
- * @param options Configuration loading options for source precedence, parsing, and validation.
+ * @param options Configuration loading options for source precedence, parsing, and synchronous schema validation.
  * @returns A detached normalized configuration dictionary for the current load.
  * @throws {FluoError} When validation throws or the config cannot be normalized.
  */
