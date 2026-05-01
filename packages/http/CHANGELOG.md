@@ -1,5 +1,11 @@
 # @fluojs/http
 
+## 1.0.0-beta.7
+
+### Patch Changes
+
+- [#1483](https://github.com/fluojs/fluo/pull/1483) [`3f70169`](https://github.com/fluojs/fluo/commit/3f70169c25e9cc04db6d01e7d4b17572d9174102) Thanks [@ayden94](https://github.com/ayden94)! - Route semantically safe Express native matches through the shared dispatcher native fast path when eligible while preserving full dispatcher fallback, body materialization, error handling, and documented route fallback semantics. Synthetic dispatch requests also preserve request extension data so testing helpers can continue injecting principals into `RequestContext`.
+
 ## 1.0.0-beta.6
 
 ### Patch Changes
