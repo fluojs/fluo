@@ -89,7 +89,10 @@ HTTP 핸들러가 `@fluojs/http`의 `@Produces(...)`를 선언하면, 생성된 
 같은 scheme에 대해 여러 `@ApiSecurity()` 데코레이터를 쌓으면, 해당 scheme의 scope가 하나의 누적 OpenAPI security requirement로 병합됩니다. 따라서 라우트가 `['reports:read']`와 `['reports:write', 'reports:read']`처럼 겹치는 scope를 선언해도 OAuth 스타일 요구사항은 결정적으로 유지되며, 서로 다른 scheme은 별도 requirement로 남습니다.
 
 ### 결정적인 Swagger UI 자산
-`ui: true`를 활성화하면 생성되는 `/docs` 페이지는 정확한 `swagger-ui-dist` 버전의 자산을 참조하여 패키지 릴리스마다 동일한 동작을 유지합니다.
+`ui: true`를 활성화하면 생성되는 `/docs` 페이지는 정확한 `swagger-ui-dist` 버전의 자산을 참조하여 패키지 릴리스마다 동일한 동작을 유지합니다. 오프라인 또는 CSP 제어 환경에서 자체 호스팅 자산이 필요하면 `swaggerUiAssets.cssUrl`과 `swaggerUiAssets.jsBundleUrl`을 설정하세요. 생성된 HTML은 해당 URL을 이스케이프하며 Swagger UI 인스턴스를 `window.ui`에 노출하지 않습니다.
+
+### 모듈 옵션 결정성
+`OpenApiModule.forRoot(...)`는 등록 시점에 옵션을 스냅샷하고 freeze합니다. 등록 후 원본 options 객체, `sources`, `descriptors`, `securitySchemes`, `extraModels`, `swaggerUiAssets`를 변경해도 제공되는 OpenAPI 문서나 `/docs` HTML은 바뀌지 않습니다. `OpenApiModule.forRootAsync(...)`도 async factory가 resolve된 뒤 같은 스냅샷을 적용하며, factory 실패는 bootstrap 중 전파됩니다.
 
 ## 공개 API
 
@@ -99,6 +102,8 @@ HTTP 핸들러가 `@fluojs/http`의 `@Produces(...)`를 선언하면, 생성된 
 - `ApiBearerAuth`, `ApiSecurity`: 보안 요구사항 데코레이터.
 - `ApiExcludeEndpoint`: 특정 핸들러를 문서화에서 제외.
 - `buildOpenApiDocument`: 프로그래밍 방식의 문서 빌더 (저수준).
+- `OpenApiHandlerRegistry`: 고급 통합에서 문서 생성 전에 handler descriptor를 스냅샷하는 mutable descriptor registry.
+- `getControllerTags`, `getMethodApiMetadata`: 고급 테스트와 통합 tooling을 위한 metadata reader.
 - `OpenApiSchemaObject`: 명시적 `@ApiBody(...)` 및 `@ApiResponse(...)` 스키마를 위한 타입화된 스키마 표면입니다. OpenAPI 3.1 조합(`allOf`, `oneOf`, `anyOf`), 객체/배열 제약, examples/defaults, 읽기/쓰기/Deprecated 주석을 포함합니다.
 
 ## 관련 패키지

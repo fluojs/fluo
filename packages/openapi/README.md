@@ -89,7 +89,10 @@ Easily document authentication requirements like Bearer tokens or API keys using
 Stacking multiple `@ApiSecurity()` decorators for the same scheme merges scopes into one cumulative OpenAPI security requirement for that scheme. This keeps OAuth-style requirements deterministic when a route declares overlapping scopes such as `['reports:read']` and `['reports:write', 'reports:read']`, while different schemes remain separate requirements.
 
 ### Deterministic Swagger UI Assets
-When `ui: true` is enabled, the generated `/docs` page references an exact `swagger-ui-dist` asset version so release behavior stays deterministic across package updates.
+When `ui: true` is enabled, the generated `/docs` page references an exact `swagger-ui-dist` asset version so release behavior stays deterministic across package updates. If your deployment requires self-hosted assets for offline or CSP-controlled environments, set `swaggerUiAssets.cssUrl` and `swaggerUiAssets.jsBundleUrl`; the generated HTML escapes those URLs and does not expose the Swagger UI instance on `window.ui`.
+
+### Module Option Determinism
+`OpenApiModule.forRoot(...)` snapshots and freezes its options at registration time. Mutating the original options object, `sources`, `descriptors`, `securitySchemes`, `extraModels`, or `swaggerUiAssets` after registration does not alter the served OpenAPI document or `/docs` HTML. `OpenApiModule.forRootAsync(...)` applies the same snapshot once the async factory resolves, and factory failures propagate during bootstrap.
 
 ## Public API
 
@@ -99,6 +102,8 @@ When `ui: true` is enabled, the generated `/docs` page references an exact `swag
 - `ApiBearerAuth`, `ApiSecurity`: Security requirement decorators.
 - `ApiExcludeEndpoint`: Omit specific handlers from documentation.
 - `buildOpenApiDocument`: Programmatic document builder (low-level).
+- `OpenApiHandlerRegistry`: Mutable descriptor registry used by advanced integrations to snapshot handler descriptors before document generation.
+- `getControllerTags`, `getMethodApiMetadata`: Metadata readers for advanced tests and integration tooling.
 - `OpenApiSchemaObject`: Typed schema surface for explicit `@ApiBody(...)` and `@ApiResponse(...)` schemas, including OpenAPI 3.1 composition (`allOf`, `oneOf`, `anyOf`), object/array constraints, examples/defaults, and read/write/deprecated annotations.
 
 ## Related Packages
