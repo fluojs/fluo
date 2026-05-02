@@ -28,7 +28,7 @@ pnpm add @fluojs/metrics
 
 ## 빠른 시작
 
-루트 모듈에 `MetricsModule.forRoot()`를 추가하여 기본 `/metrics` 엔드포인트를 활성화합니다.
+루트 모듈에 `MetricsModule.forRoot()`를 추가하여 기본 `/metrics` 엔드포인트를 활성화합니다. HTTP 요청 수와 지연 시간까지 계측하려면 `http: true` 또는 `http` 옵션 객체를 함께 전달합니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -36,7 +36,7 @@ import { MetricsModule } from '@fluojs/metrics';
 
 @Module({
   imports: [
-    MetricsModule.forRoot(),
+        MetricsModule.forRoot({ http: true }),
   ],
 })
 class AppModule {}
@@ -44,7 +44,7 @@ class AppModule {}
 // GET /metrics → Prometheus 텍스트 형식
 ```
 
-`MetricsModule.forRoot()`는 기본적으로 `GET /metrics`를 노출합니다. 운영 환경에서는 이 경계를 명시적으로 다루세요. 플랫폼 프록시/네트워크 제어를 붙이기 전까지 `path: false`로 비활성화하거나, 전용 endpoint middleware를 연결하는 방식을 권장합니다.
+`MetricsModule.forRoot()`는 기본적으로 `GET /metrics`를 노출합니다. `http: true`를 전달한 경우에만 HTTP 요청 계측 미들웨어가 설치됩니다. 운영 환경에서는 이 경계를 명시적으로 다루세요. 플랫폼 프록시/네트워크 제어를 붙이기 전까지 `path: false`로 비활성화하거나, 전용 endpoint middleware를 연결하는 방식을 권장합니다.
 
 ## 공통 패턴
 
@@ -116,11 +116,17 @@ const ordersTotal = new Counter({
 
 @Module({
   imports: [
-    MetricsModule.forRoot({ registry: sharedRegistry }),
+     MetricsModule.forRoot({ http: true, registry: sharedRegistry }),
   ],
 })
 class AppModule {}
 ```
+
+여러 `MetricsModule` 인스턴스가 같은 Registry를 의도적으로 공유하는 경우, 내장 HTTP 메트릭은 기존 `http_requests_total`, `http_errors_total`, `http_request_duration_seconds` collector를 재사용합니다. 애플리케이션이 직접 등록한 중복 메트릭 이름은 Prometheus Registry 규칙대로 계속 빠르게 실패합니다.
+
+### 중복 메트릭 이름은 계속 빠르게 실패합니다
+
+Prometheus 메트릭 이름은 하나의 Registry 안에서 고유해야 합니다. 공유 Registry 모드는 애플리케이션 메트릭의 중복 이름을 조용히 덮어쓰지 않고 이 동작을 유지합니다.
 
 ### 런타임 플랫폼 텔레메트리
 
@@ -172,7 +178,8 @@ MetricsModule.forRoot({
 - `path`의 기본값은 `'/metrics'`이며, `path: false`로 스크레이프 엔드포인트를 완전히 비활성화할 수 있습니다.
 - `defaultMetrics`의 기본값은 `true`이며, `defaultMetrics: false`로 해당 Registry의 Prometheus 기본 프로세스/Node.js collector를 끌 수 있습니다.
 - `endpointMiddleware`는 스크레이프 엔드포인트에만 route-scoped middleware를 바인딩합니다.
-- HTTP 메트릭은 기본적으로 템플릿 기반 경로 라벨 정규화를 사용합니다.
+- HTTP 메트릭은 `http: true` 또는 `http` 옵션 객체를 전달한 경우에만 설치되며, 설치된 뒤에는 기본적으로 템플릿 기반 경로 라벨 정규화를 사용합니다.
+- 내장 HTTP collector는 같은 Registry를 공유하는 모듈 인스턴스 사이에서 재사용되며, 커스텀 애플리케이션 메트릭 이름 충돌은 Prometheus의 중복 이름 실패 동작을 유지합니다.
 - raw path 라벨은 `allowUnsafeRawPathLabelMode: true`를 명시한 bounded internal route에서만 사용해야 합니다.
 - 플랫폼 텔레메트리는 `PLATFORM_SHELL`이 실제로 누락된 경우에만 생략되며, 그 외 resolve 실패는 스크레이프를 실패시킵니다.
 - 이전에 노출된 플랫폼 텔레메트리 시리즈는 `PLATFORM_SHELL`을 사용할 수 없게 된 스크레이프에서 제거됩니다.

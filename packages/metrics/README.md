@@ -33,12 +33,12 @@ import { MetricsModule } from '@fluojs/metrics';
 import { Module } from '@fluojs/core';
 
 @Module({
-  imports: [MetricsModule.forRoot()],
+  imports: [MetricsModule.forRoot({ http: true })],
 })
 class AppModule {}
 ```
 
-`MetricsModule.forRoot()` still exposes `GET /metrics` by default. For production deployments, make that endpoint boundary explicit: either disable it with `path: false` until a platform-level proxy is in place, or attach dedicated endpoint middleware.
+`MetricsModule.forRoot()` still exposes `GET /metrics` by default. Pass `http: true` (or an `http` options object) when you want the module to install HTTP request instrumentation middleware. For production deployments, make the scrape endpoint boundary explicit: either disable it with `path: false` until a platform-level proxy is in place, or attach dedicated endpoint middleware.
 
 ## Common Patterns
 
@@ -94,10 +94,12 @@ new Counter({
 });
 
 @Module({
-  imports: [MetricsModule.forRoot({ registry })],
+  imports: [MetricsModule.forRoot({ http: true, registry })],
 })
 class AppModule {}
 ```
+
+When multiple metrics module instances intentionally share the same registry, built-in HTTP metrics reuse the existing `http_requests_total`, `http_errors_total`, and `http_request_duration_seconds` collectors instead of registering duplicate framework metrics. Application-defined duplicate names still fail fast.
 
 ### Duplicate metric names still fail fast
 
@@ -153,7 +155,8 @@ MetricsModule.forRoot({
 - `path` defaults to `'/metrics'`, and `path: false` disables the scrape endpoint entirely.
 - `defaultMetrics` defaults to `true`, and `defaultMetrics: false` disables Prometheus default process and Node.js collectors for that registry.
 - `endpointMiddleware` binds route-scoped middleware only to the scrape endpoint.
-- HTTP metrics default to template-normalized path labels.
+- HTTP metrics are installed only when `http: true` or an `http` options object is provided, and then default to template-normalized path labels.
+- Built-in HTTP collectors are reused when module instances share one registry; custom application metric name collisions keep Prometheus' duplicate-name failure behavior.
 - Raw path labels require `allowUnsafeRawPathLabelMode: true` and should stay limited to bounded internal routes.
 - Platform telemetry is omitted only when `PLATFORM_SHELL` is genuinely missing; other resolution failures fail the scrape.
 - Stale platform telemetry series are removed when `PLATFORM_SHELL` becomes unavailable after a prior successful scrape.

@@ -73,6 +73,8 @@ import { MetricsModule } from '@fluojs/metrics';
     MetricsModule.forRoot({
       // 선택 사항: 기본값인 /metrics 경로를 변경할 수 있습니다.
       path: '/internal/prometheus',
+      // HTTP 요청 메트릭을 자동 계측하려면 필요합니다.
+      http: true,
     }),
   ],
 })
@@ -102,7 +104,7 @@ Istio나 Linkerd와 같은 서비스 메쉬(Service Mesh) 환경에서 애플리
 Fluo는 기본적으로 여러 메트릭을 제공하지만, 제3자 **Prometheus Exporters**와 통합하여 모니터링 범위를 넓힐 수 있습니다. 예를 들어 Node.js 이벤트 루프에 대해 더 깊은 가시성을 얻기 위해 `process-exporter`를 사용하거나, 외부에서 API를 모니터링하기 위해 `blackbox-exporter`를 사용할 수 있습니다. Fluo의 메트릭 시스템은 이러한 외부 도구를 보완하며, 애플리케이션 스택을 여러 계층에서 관찰할 수 있게 합니다.
 
 ## 19.4 Automatic HTTP Instrumentation
-`fluo`는 별도의 코드 작성 없이도 애플리케이션에서 처리되는 모든 HTTP 요청을 자동으로 측정합니다. 모듈을 활성화하는 즉시 API 성능에 대한 기본 가시성을 확보할 수 있다는 점이 중요합니다.
+`fluo`는 HTTP 계측을 활성화한 경우 애플리케이션에서 처리되는 모든 HTTP 요청을 자동으로 측정할 수 있습니다. 스크레이프 엔드포인트에 더해 API 성능 가시성이 필요하다면 `MetricsModule.forRoot(...)`에 `http: true` 또는 `http` 옵션 객체를 전달하세요.
 
 - `http_request_duration_seconds`: 메서드, 경로, 상태 코드별로 세분화된 요청 지연 시간의 **히스토그램(Histogram)**.
 - `http_requests_total`: 전체 요청 횟수의 **카운터(Counter)**로, RPS와 에러율 계산을 가능하게 합니다.
@@ -227,7 +229,7 @@ MetricsModule.forRoot({
 IP 화이트리스팅, API 키, 그리고 감사 로깅을 결합하면 메트릭에 대한 "심층 방어(Defense in Depth)" 전략을 구축할 수 있습니다. 운영 데이터가 승인된 시스템과 개인에게만 노출되도록 제한하고, 애플리케이션 생체 신호의 기밀성과 무결성을 관리하는 방식입니다.
 
 ### 19.6.4 Managing Metric Scraping Load
-메트릭 수가 매우 많거나 스크랩 빈도가 매우 높은 경우, 메트릭 응답을 생성하는 행위 자체가 성능 병목 현상이 될 수 있습니다. 이를 완화하기 위해 **메트릭 캐싱(Metrics Caching)**을 구현할 수 있습니다. Fluo의 `MetricsModule`은 메트릭 응답을 짧은 시간(예: 5초) 동안 캐싱하도록 설정할 수 있어, 모니터링 데이터의 최신성에 큰 영향을 주지 않으면서 서버의 CPU 사용량을 줄일 수 있습니다.
+메트릭 수가 매우 많거나 스크랩 빈도가 매우 높은 경우, 메트릭 응답을 생성하는 행위 자체가 성능 병목 현상이 될 수 있습니다. 이를 완화하기 위해 **메트릭 캐싱(Metrics Caching)**을 구현할 수 있습니다. 현재 `@fluojs/metrics` 모듈은 내장 응답 캐시 옵션을 제공하지 않으므로, 이 동작이 필요하다면 reverse proxy, platform middleware, 또는 별도 애플리케이션 middleware 경계에서 추가하세요.
 
 이는 서버가 이미 부하를 받고 있는 트래픽 급증 시에 특히 유용합니다. 모니터링 시스템을 가볍게 유지하면 중요한 성능 이벤트 중에도 관측 데이터 수집이 애플리케이션 부하를 더 키우지 않습니다.
 
@@ -276,7 +278,7 @@ Fluo는 공통적인 사용 사례(예: "API 개요", "데이터베이스 성능
 
 - **관측성**: Prometheus는 시계열 데이터를 통해 시스템 동작의 "무엇(What)"과 "언제(When)"를 제공합니다.
 - **커스텀 추적**: 비즈니스에 중요한 KPI와 시스템 상태를 측정하기 위해 `Counter`, `Gauge`, `Histogram`을 사용하세요.
-- **자동 인스트루먼테이션**: Fluo는 별도 설정 없이도 기준 가시성을 위한 기본 HTTP 요청, 에러, 지연 시간 메트릭을 제공합니다.
+- **HTTP 인스트루먼테이션**: Fluo는 `MetricsModule.forRoot({ http: true })` 또는 동등한 HTTP 옵션을 활성화한 경우 기준 가시성을 위한 기본 HTTP 요청, 에러, 지연 시간 메트릭을 제공합니다.
 - **알림**: 성능이 저하되거나 에러율이 급증할 때 팀에 알리도록 Grafana를 활용하여 선제적인 사고 대응을 준비하세요.
 - **표준화**: OpenMetrics 표준을 따름으로써 Fluo는 현대적인 모니터링 생태계와의 호환성을 확보합니다.
 
