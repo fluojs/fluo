@@ -7,7 +7,7 @@ import * as corePublicApi from '@fluojs/core';
 import { IsArray, IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from '@fluojs/validation';
 import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation';
 import * as httpPublicApi from '@fluojs/http';
-import { Controller, Get, Post, Produces, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
+import { Controller, Get, Post, Produces, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse, type HandlerSource } from '@fluojs/http';
 import { FromBody, FromCookie, FromHeader, FromPath, FromQuery, RequestDto } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { bootstrapHttpAdapterApplication } from '@fluojs/runtime/internal/http-adapter';
@@ -472,6 +472,90 @@ describe('OpenApiModule', () => {
     expect(response.body).toEqual(expect.stringContaining('const specUrl = window.location.pathname.replace('));
     expect(response.body).toEqual(expect.stringContaining("url: specUrl"));
     expect(response.body).toEqual(expect.stringContaining('SwaggerUIBundle'));
+    expect(response.body).not.toEqual(expect.stringContaining('window.ui'));
+  });
+
+  it('does not serve /docs when ui is disabled', async () => {
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      sources: [{ controllerToken: HealthController }],
+      title: 'Docs Disabled API',
+      ui: false,
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [HealthController],
+      imports: [openApiModule],
+    });
+
+    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/docs'), response);
+
+    expect(response.statusCode).toBe(404);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        error: expect.objectContaining({
+          code: 'NOT_FOUND',
+          message: 'Swagger UI is disabled.',
+          status: 404,
+        }),
+      }),
+    );
+  });
+
+  it('escapes Swagger UI HTML title and asset URLs', async () => {
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      sources: [{ controllerToken: HealthController }],
+      swaggerUiAssets: {
+        cssUrl: 'https://cdn.example.test/swagger-ui.css?theme="dark"&mode=<safe>',
+        jsBundleUrl: 'https://cdn.example.test/swagger-ui-bundle.js?asset="bundle"&mode=<safe>',
+      },
+      title: '<Docs & "API">',
+      ui: true,
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [HealthController],
+      imports: [openApiModule],
+    });
+
+    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/docs'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(expect.stringContaining('&lt;Docs &amp; &quot;API&quot;&gt;'));
+    expect(response.body).toEqual(
+      expect.stringContaining('https://cdn.example.test/swagger-ui.css?theme=&quot;dark&quot;&amp;mode=&lt;safe&gt;'),
+    );
+    expect(response.body).toEqual(
+      expect.stringContaining('https://cdn.example.test/swagger-ui-bundle.js?asset=&quot;bundle&quot;&amp;mode=&lt;safe&gt;'),
+    );
+    expect(response.body).not.toEqual(expect.stringContaining('<Docs & "API">'));
   });
 
   it('serves prefix-aware Swagger UI when globalPrefix is configured', async () => {
@@ -521,11 +605,13 @@ describe('OpenApiModule', () => {
     expect(docsHtml).toContain('https://unpkg.com/swagger-ui-dist@5.32.2/swagger-ui-bundle.js');
     expect(docsHtml).toContain('const specUrl = window.location.pathname.replace(');
     expect(docsHtml).toContain('url: specUrl');
+    expect(docsHtml).not.toContain('window.ui');
     expect(docsTrailingSlashResponse.status).toBe(200);
     expect(docsTrailingHtml).toContain('https://unpkg.com/swagger-ui-dist@5.32.2/swagger-ui.css');
     expect(docsTrailingHtml).toContain('https://unpkg.com/swagger-ui-dist@5.32.2/swagger-ui-bundle.js');
     expect(docsTrailingHtml).toContain('const specUrl = window.location.pathname.replace(');
     expect(docsTrailingHtml).toContain('url: specUrl');
+    expect(docsTrailingHtml).not.toContain('window.ui');
     expect(specResponse.status).toBe(200);
     expect(unprefixedSpecResponse.status).toBe(404);
 
@@ -1943,6 +2029,141 @@ describe('OpenApiModule', () => {
         }),
       }),
     );
+  });
+
+  it('keeps descriptor-only registration bounded to explicit descriptors', async () => {
+    @Controller('/documented')
+    class DocumentedController {
+      @Get('/')
+      getDocumented() {
+        return { ok: true };
+      }
+    }
+
+    @Controller('/module-only')
+    class ModuleOnlyController {
+      @Get('/')
+      getModuleOnly() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      descriptors: createHandlerMapping([{ controllerToken: DocumentedController }]).descriptors,
+      title: 'Descriptor Boundary API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [DocumentedController, ModuleOnlyController],
+      imports: [openApiModule],
+    });
+
+    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        paths: expect.objectContaining({
+          '/documented': expect.objectContaining({
+            get: expect.any(Object),
+          }),
+        }),
+      }),
+    );
+    expect((response.body as { paths: Record<string, unknown> }).paths['/module-only']).toBeUndefined();
+  });
+
+  it('snapshots and freezes forRoot options before bootstrap', async () => {
+    @Controller('/stable')
+    class StableController {
+      @ApiSecurity('apiKeyAuth')
+      @Get('/')
+      getStable() {
+        return { ok: true };
+      }
+    }
+
+    @Controller('/mutated')
+    class MutatedController {
+      @Get('/')
+      getMutated() {
+        return { ok: true };
+      }
+    }
+
+    const sources: HandlerSource[] = [{ controllerToken: StableController }];
+    const securitySchemes = {
+      apiKeyAuth: {
+        in: 'header' as const,
+        name: 'x-api-key',
+        type: 'apiKey' as const,
+      },
+    };
+    const options = {
+      securitySchemes,
+      sources,
+      swaggerUiAssets: {
+        cssUrl: 'https://assets.example.test/original.css',
+        jsBundleUrl: 'https://assets.example.test/original.js',
+      },
+      title: 'Snapshot API',
+      ui: true,
+      version: '1.0.0',
+    };
+
+    const openApiModule = OpenApiModule.forRoot(options);
+
+    sources.push({ controllerToken: MutatedController });
+    securitySchemes.apiKeyAuth.name = 'mutated-api-key';
+    options.swaggerUiAssets.cssUrl = 'https://assets.example.test/mutated.css';
+    options.title = 'Mutated API';
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [StableController, MutatedController],
+      imports: [openApiModule],
+    });
+
+    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const documentResponse = createResponse();
+    const docsResponse = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), documentResponse);
+    await app.dispatch(createRequest('GET', '/docs'), docsResponse);
+
+    expect(documentResponse.statusCode).toBe(200);
+    expect(documentResponse.body).toEqual(
+      expect.objectContaining({
+        components: expect.objectContaining({
+          securitySchemes: {
+            apiKeyAuth: {
+              in: 'header',
+              name: 'x-api-key',
+              type: 'apiKey',
+            },
+          },
+        }),
+        info: {
+          title: 'Snapshot API',
+          version: '1.0.0',
+        },
+        paths: expect.objectContaining({
+          '/stable': expect.objectContaining({
+            get: expect.any(Object),
+          }),
+        }),
+      }),
+    );
+    expect((documentResponse.body as { paths: Record<string, unknown> }).paths['/mutated']).toBeUndefined();
+    expect(docsResponse.body).toEqual(expect.stringContaining('https://assets.example.test/original.css'));
+    expect(docsResponse.body).not.toEqual(expect.stringContaining('https://assets.example.test/mutated.css'));
   });
 
   it('README quick start stays executable when sources are provided explicitly', async () => {

@@ -305,6 +305,27 @@ describe('buildOpenApiDocument', () => {
     });
   });
 
+  it('uses controller names as default tags when @ApiTag is absent', () => {
+    @Controller('/untagged')
+    class UntaggedController {
+      @Get('/')
+      getUntagged() {
+        return { ok: true };
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: UntaggedController }]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      title: 'Default Tags API',
+      version: '1.0.0',
+    });
+
+    expect(document.paths['/untagged']?.get?.tags).toEqual(['UntaggedController']);
+    expect(document.paths['/untagged']?.get?.operationId).toBe('UntaggedController_getUntagged_get_untagged');
+  });
+
   it('merges stacked same-scheme ApiSecurity scopes into a cumulative requirement', () => {
     @Controller('/reports')
     class ReportsController {

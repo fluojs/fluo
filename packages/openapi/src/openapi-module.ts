@@ -24,6 +24,14 @@ const SWAGGER_UI_CSS_URL = `${SWAGGER_UI_DIST_BASE_URL}/swagger-ui.css`;
 const SWAGGER_UI_BUNDLE_JS_URL = `${SWAGGER_UI_DIST_BASE_URL}/swagger-ui-bundle.js`;
 
 /**
+ * Asset URLs used by the generated Swagger UI HTML page.
+ */
+export interface OpenApiSwaggerUiAssetsOptions {
+  cssUrl?: string;
+  jsBundleUrl?: string;
+}
+
+/**
  * Public options for `OpenApiModule.forRoot(...)` and `OpenApiModule.forRootAsync(...)`.
  *
  * @remarks
@@ -38,6 +46,7 @@ export interface OpenApiModuleOptions {
   descriptors?: readonly HandlerDescriptor[];
   sources?: readonly HandlerSource[];
   securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
+  swaggerUiAssets?: OpenApiSwaggerUiAssetsOptions;
   extraModels?: Constructor[];
   documentTransform?: (document: OpenApiDocument) => OpenApiDocument;
 }
@@ -62,24 +71,95 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#x27;');
 }
 
-function createSwaggerUiHtml(title: string): string {
+function cloneRecord<T>(record: Record<string, T> | undefined): Record<string, T> | undefined {
+  if (!record) {
+    return undefined;
+  }
+
+  const clone: Record<string, T> = {};
+
+  for (const [key, value] of Object.entries(record)) {
+    clone[key] = cloneSnapshotValue(value);
+  }
+
+  return clone;
+}
+
+function cloneSnapshotValue<T>(value: T): T {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => cloneSnapshotValue(entry)) as T;
+  }
+
+  if (typeof value !== 'object') {
+    return value;
+  }
+
+  const clone: Record<PropertyKey, unknown> = {};
+
+  for (const key of Reflect.ownKeys(value)) {
+    clone[key] = cloneSnapshotValue((value as Record<PropertyKey, unknown>)[key]);
+  }
+
+  return clone as T;
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+
+  for (const key of Reflect.ownKeys(value)) {
+    deepFreeze((value as Record<PropertyKey, unknown>)[key]);
+  }
+
+  return Object.freeze(value);
+}
+
+function snapshotOpenApiModuleOptions(options: OpenApiModuleOptions): OpenApiModuleOptions {
+  return deepFreeze({
+    defaultErrorResponsesPolicy: options.defaultErrorResponsesPolicy,
+    descriptors: options.descriptors ? cloneSnapshotValue(options.descriptors) : undefined,
+    documentTransform: options.documentTransform,
+    extraModels: options.extraModels ? [...options.extraModels] : undefined,
+    securitySchemes: cloneRecord(options.securitySchemes),
+    sources: options.sources ? cloneSnapshotValue(options.sources) : undefined,
+    swaggerUiAssets: options.swaggerUiAssets ? { ...options.swaggerUiAssets } : undefined,
+    title: options.title,
+    ui: options.ui,
+    version: options.version,
+  });
+}
+
+function resolveSwaggerUiAssets(options: OpenApiModuleOptions): Required<OpenApiSwaggerUiAssetsOptions> {
+  return {
+    cssUrl: options.swaggerUiAssets?.cssUrl ?? SWAGGER_UI_CSS_URL,
+    jsBundleUrl: options.swaggerUiAssets?.jsBundleUrl ?? SWAGGER_UI_BUNDLE_JS_URL,
+  };
+}
+
+function createSwaggerUiHtml(title: string, assets: Required<OpenApiSwaggerUiAssetsOptions>): string {
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(title)}</title>
-    <link rel="stylesheet" href="${SWAGGER_UI_CSS_URL}" />
+    <link rel="stylesheet" href="${escapeHtml(assets.cssUrl)}" />
   </head>
   <body>
     <div id="swagger-ui"></div>
-    <script src="${SWAGGER_UI_BUNDLE_JS_URL}" crossorigin></script>
+    <script src="${escapeHtml(assets.jsBundleUrl)}" crossorigin></script>
     <script>
       const specUrl = window.location.pathname.replace(/\/docs\/?$/, '/openapi.json');
-      window.ui = SwaggerUIBundle({
+      const swaggerUi = SwaggerUIBundle({
         url: specUrl,
         dom_id: '#swagger-ui'
       });
+      void swaggerUi;
     </script>
   </body>
 </html>`;
@@ -132,7 +212,7 @@ export class OpenApiModule {
   static forRoot(options: OpenApiModuleOptions): ModuleType {
     return this.createModule({
       scope: 'singleton',
-      useValue: options,
+      useValue: snapshotOpenApiModuleOptions(options),
     });
   }
 
@@ -157,7 +237,7 @@ export class OpenApiModule {
     return this.createModule({
       inject: options.inject,
       scope: 'singleton',
-      useFactory: options.useFactory,
+      useFactory: async (...deps: unknown[]) => snapshotOpenApiModuleOptions(await options.useFactory(...deps)),
     });
   }
 
@@ -186,7 +266,7 @@ export class OpenApiModule {
 
         context.response.setHeader('content-type', 'text/html; charset=utf-8');
 
-        return createSwaggerUiHtml(this.options.title);
+        return createSwaggerUiHtml(this.options.title, resolveSwaggerUiAssets(this.options));
       }
     }
 
