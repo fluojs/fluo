@@ -145,7 +145,7 @@ Once registration is complete, the Module handles configuration loading, while a
 In the bootstrap logic, `main.ts`, you can use the service configuration to decide which port to listen on.
 
 ```typescript
-import { FluoFactory } from '@fluojs/core';
+import { FluoFactory } from '@fluojs/runtime';
 import { ConfigService } from '@fluojs/config';
 import { AppModule } from './app.module';
 

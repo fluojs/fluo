@@ -33,8 +33,6 @@ export function ensureMetadataSymbol(): symbol {
   return metadataSymbol;
 }
 
-void ensureMetadataSymbol();
-
 function getActiveMetadataSymbol(): symbol {
   const nativeMetadataSymbol = symbolWithMetadata.metadata;
 
@@ -46,7 +44,7 @@ function getActiveMetadataSymbol(): symbol {
 }
 
 function getOwnStandardMetadataBagFromSymbol(target: object, symbol: symbol): StandardMetadataBag | undefined {
-  if (!Object.prototype.hasOwnProperty.call(target, symbol)) {
+  if (!Object.hasOwn(target, symbol)) {
     return undefined;
   }
 

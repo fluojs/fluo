@@ -166,11 +166,8 @@ import { fluoFactory } from '@fluojs/runtime';
 import { createExpressAdapter } from '@fluojs/platform-express';
 import { AppModule } from './app/app.module';
 import { ValidationPipe } from '@fluojs/validation';
-import { Logger } from '@fluojs/core';
 
 async function bootstrap() {
-  const logger = new Logger('Bootstrap');
-  
   const adapter = createExpressAdapter({
     port: process.env.PORT ? parseInt(process.env.PORT) : 3000,
     cors: true,
@@ -182,7 +179,7 @@ async function bootstrap() {
   app.setGlobalPrefix('v1');
 
   await app.listen();
-  logger.log(`FluoShop API is running on: ${await app.getUrl()}`);
+  console.log(`FluoShop API is running on: ${await app.getUrl()}`);
 }
 
 bootstrap().catch(err => {

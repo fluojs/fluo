@@ -67,7 +67,7 @@ describe('createFluoVitestWorkspaceConfig', () => {
     const config = createFluoVitestWorkspaceConfig(new URL('../../../', import.meta.url));
 
     expect(config.test?.reporters).toBeUndefined();
-    expect(config.test?.setupFiles).toBeUndefined();
+    expect(config.test?.setupFiles).toEqual([expect.stringContaining('symbol-metadata.setup.ts')]);
   });
 
   it('enables shutdown debug hooks when the CI attribution path is requested', () => {
@@ -77,6 +77,7 @@ describe('createFluoVitestWorkspaceConfig', () => {
 
     expect(config.test?.reporters).toBeDefined();
     expect(config.test?.reporters).toMatchObject(['default', { onProcessTimeout: expect.any(Function) }]);
+    expect(config.test?.setupFiles).toEqual(expect.arrayContaining([expect.stringContaining('symbol-metadata.setup.ts')]));
     expect(config.test?.setupFiles).toEqual(expect.arrayContaining([expect.stringContaining('shutdown-debug.setup.ts')]));
   });
 });

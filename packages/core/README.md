@@ -62,7 +62,7 @@ class UserService {
 
 fluo uses TC39 standard decorators. You do not need `experimentalDecorators: true` or `emitDecoratorMetadata: true` to use `@Module`, `@Inject`, `@Global`, or `@Scope`.
 
-Core metadata is written through fluo-owned stores and TC39 `Symbol.metadata` integration points, never through `reflect-metadata` or compiler-emitted design types. Call `ensureMetadataSymbol()` at test or bootstrap boundaries when a runtime needs the `Symbol.metadata` polyfill installed before evaluating custom standard decorators.
+Core metadata is written through fluo-owned stores and TC39 `Symbol.metadata` integration points, never through `reflect-metadata` or compiler-emitted design types. Importing `@fluojs/core` does not install a global `Symbol.metadata` polyfill. Call `ensureMetadataSymbol()` at test or bootstrap boundaries when a runtime needs the polyfill installed before evaluating custom standard decorators.
 
 ```ts
 import { ensureMetadataSymbol } from '@fluojs/core';

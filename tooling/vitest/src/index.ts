@@ -86,12 +86,15 @@ export function collectWorkspaceAliases(repoRootUrl: string | URL): Record<strin
 export function createFluoVitestWorkspaceConfig(repoRootUrl: string | URL, overrides = {}) {
   const repoRoot = fileURLToPath(repoRootUrl);
   const shutdownDebugEnabled = isFluoVitestShutdownDebugEnabled();
+  const symbolMetadataSetupFile = fileURLToPath(new URL('./symbol-metadata.setup.ts', import.meta.url));
   const shutdownDebugConfig = shutdownDebugEnabled
     ? {
         reporters: ['default', createFluoVitestShutdownDebugReporter(repoRoot)],
-        setupFiles: [fileURLToPath(new URL('./shutdown-debug.setup.ts', import.meta.url))],
+        setupFiles: [symbolMetadataSetupFile, fileURLToPath(new URL('./shutdown-debug.setup.ts', import.meta.url))],
       }
-    : {};
+    : {
+        setupFiles: [symbolMetadataSetupFile],
+      };
 
   return mergeConfig(
     defineConfig({

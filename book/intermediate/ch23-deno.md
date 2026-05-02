@@ -153,7 +153,7 @@ When running Deno, database driver choices need to account for the security mode
 If you need Deno-native storage, you can review Deno's built-in KV store. Deno KV is a key-value store included in the runtime and can be a suitable option for small state or cache-like data. For core order data where relationships and transaction policy matter, compare it carefully with the existing database choices.
 
 ```typescript
-import { OnModuleInit } from '@fluojs/core';
+import { OnModuleInit } from '@fluojs/runtime';
 
 declare const Deno: {
   openKv(): Promise<{
@@ -169,7 +169,7 @@ export class CacheService implements OnModuleInit {
     this.kv = await Deno.openKv();
   }
 
-  async set(key: string, value: any) {
+  async set(key: string, value: unknown) {
     await this.kv.set([key], value);
   }
 

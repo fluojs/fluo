@@ -145,7 +145,7 @@ export class AppModule {}
 부트스트랩 로직(`main.ts`)에서 서비스의 설정을 사용하여 어떤 포트로 리스닝할지 결정할 수 있습니다.
 
 ```typescript
-import { FluoFactory } from '@fluojs/core';
+import { FluoFactory } from '@fluojs/runtime';
 import { ConfigService } from '@fluojs/config';
 import { AppModule } from './app.module';
 

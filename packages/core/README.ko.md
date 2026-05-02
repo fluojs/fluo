@@ -60,7 +60,7 @@ class UserService {
 
 fluo는 TC39 표준 데코레이터를 사용하므로 `experimentalDecorators: true`나 `emitDecoratorMetadata: true`에 의존하지 않습니다.
 
-core 메타데이터는 fluo가 소유한 저장소와 TC39 `Symbol.metadata` 통합 지점을 통해 기록되며, `reflect-metadata`나 컴파일러가 생성하는 design type 메타데이터를 사용하지 않습니다. 런타임이 사용자 정의 표준 데코레이터를 평가하기 전에 `Symbol.metadata` 폴리필을 설치해야 한다면 테스트나 부트스트랩 경계에서 `ensureMetadataSymbol()`을 호출하세요.
+core 메타데이터는 fluo가 소유한 저장소와 TC39 `Symbol.metadata` 통합 지점을 통해 기록되며, `reflect-metadata`나 컴파일러가 생성하는 design type 메타데이터를 사용하지 않습니다. `@fluojs/core`를 import하는 것만으로는 전역 `Symbol.metadata` 폴리필을 설치하지 않습니다. 런타임이 사용자 정의 표준 데코레이터를 평가하기 전에 폴리필을 설치해야 한다면 테스트나 부트스트랩 경계에서 `ensureMetadataSymbol()`을 호출하세요.
 
 ```ts
 import { ensureMetadataSymbol } from '@fluojs/core';

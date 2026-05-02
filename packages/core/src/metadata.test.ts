@@ -147,6 +147,71 @@ describe('metadata helpers', () => {
     });
   });
 
+  it('merges explicit controller and route metadata before standard metadata while preserving order', () => {
+    const explicitGuard = Symbol('explicitGuard');
+    const standardGuard = Symbol('standardGuard');
+    const explicitInterceptor = Symbol('explicitInterceptor');
+    const standardInterceptor = Symbol('standardInterceptor');
+
+    class ExampleController {
+      getUser() {
+        return { ok: true };
+      }
+    }
+
+    Object.defineProperty(ExampleController, ensureMetadataSymbol(), {
+      configurable: true,
+      value: {
+        [standardMetadataKeys.controller]: {
+          basePath: '/standard',
+          guards: [standardGuard],
+          interceptors: [standardInterceptor],
+          version: 'standard-v1',
+        },
+        [standardMetadataKeys.route]: new Map([
+          ['getUser', {
+            guards: [standardGuard],
+            interceptors: [standardInterceptor],
+            method: 'GET',
+            path: '/standard/:id',
+            successStatus: 200,
+            version: 'standard-v2',
+          }],
+        ]),
+      },
+    });
+
+    defineControllerMetadata(ExampleController, {
+      basePath: '/explicit',
+      guards: [explicitGuard, standardGuard],
+      interceptors: [explicitInterceptor, standardInterceptor],
+      version: 'explicit-v1',
+    });
+    defineRouteMetadata(ExampleController.prototype, 'getUser', {
+      guards: [explicitGuard, standardGuard],
+      interceptors: [explicitInterceptor, standardInterceptor],
+      method: 'POST',
+      path: '/explicit/:id',
+      successStatus: 201,
+      version: 'explicit-v2',
+    });
+
+    expect(getControllerMetadata(ExampleController)).toEqual({
+      basePath: '/explicit',
+      guards: [explicitGuard, standardGuard],
+      interceptors: [explicitInterceptor, standardInterceptor],
+      version: 'explicit-v1',
+    });
+    expect(getRouteMetadata(ExampleController.prototype, 'getUser')).toEqual({
+      guards: [explicitGuard, standardGuard],
+      interceptors: [explicitInterceptor, standardInterceptor],
+      method: 'POST',
+      path: '/explicit/:id',
+      successStatus: 201,
+      version: 'explicit-v2',
+    });
+  });
+
   it('returns cloned nested route metadata objects', () => {
     class ExampleController {
       getUser() {
@@ -339,6 +404,45 @@ describe('metadata helpers', () => {
     });
   });
 
+  it('freezes module controllers and exports snapshots across caller mutations', () => {
+    class ExampleController {}
+    class ExportedProvider {}
+
+    const controllers = [ExampleController];
+    const exports = [ExportedProvider];
+
+    class ExampleModule {}
+
+    defineModuleMetadata(ExampleModule, {
+      controllers,
+      exports,
+    });
+
+    const metadata = getModuleMetadata(ExampleModule);
+
+    expect(Object.isFrozen(metadata?.controllers)).toBe(true);
+    expect(Object.isFrozen(metadata?.exports)).toBe(true);
+    expect(metadata?.controllers).toEqual([ExampleController]);
+    expect(metadata?.exports).toEqual([ExportedProvider]);
+    expect(() => metadata?.controllers?.push(class MutatedController {})).toThrow(TypeError);
+    expect(() => metadata?.exports?.push(class MutatedExport {})).toThrow(TypeError);
+
+    controllers.push(class CallerMutatedController {});
+    exports.push(class CallerMutatedExport {});
+    defineModuleMetadata(ExampleModule, {
+      global: true,
+    });
+
+    expect(getModuleMetadata(ExampleModule)).toEqual({
+      controllers: [ExampleController],
+      exports: [ExportedProvider],
+      global: true,
+      imports: undefined,
+      middleware: undefined,
+      providers: undefined,
+    });
+  });
+
   it('does not freeze runtime guard or interceptor instances read from controller and route metadata', () => {
     class RuntimeGuard {
       calls = 0;
@@ -448,6 +552,57 @@ describe('metadata helpers', () => {
         metadata: {
           optional: true,
           token: 'LOGGER',
+        },
+      },
+    ]);
+  });
+
+  it('merges explicit injection metadata before standard metadata while preserving schema order', () => {
+    class ExampleController {
+      service!: string;
+      audit!: string;
+      metrics!: string;
+    }
+
+    Object.defineProperty(ExampleController, ensureMetadataSymbol(), {
+      configurable: true,
+      value: {
+        [standardMetadataKeys.injection]: new Map([
+          ['service', { optional: false, token: 'STANDARD_SERVICE' }],
+          ['metrics', { optional: true, token: 'METRICS' }],
+        ]),
+      },
+    });
+
+    defineInjectionMetadata(ExampleController.prototype, 'service', {
+      optional: true,
+      token: 'EXPLICIT_SERVICE',
+    });
+    defineInjectionMetadata(ExampleController.prototype, 'audit', {
+      optional: false,
+      token: 'AUDIT',
+    });
+
+    expect(getInjectionSchema(ExampleController.prototype)).toEqual([
+      {
+        propertyKey: 'service',
+        metadata: {
+          optional: true,
+          token: 'EXPLICIT_SERVICE',
+        },
+      },
+      {
+        propertyKey: 'audit',
+        metadata: {
+          optional: false,
+          token: 'AUDIT',
+        },
+      },
+      {
+        propertyKey: 'metrics',
+        metadata: {
+          optional: true,
+          token: 'METRICS',
         },
       },
     ]);
@@ -724,6 +879,27 @@ describe('metadata helpers', () => {
 
   it('ensures Symbol.metadata is available through the exported initializer', () => {
     expect(ensureMetadataSymbol()).toBe((Symbol as typeof Symbol & { metadata?: symbol }).metadata);
+  });
+
+  it('does not install the Symbol.metadata polyfill when the shared metadata module is imported', async () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+
+    delete (Symbol as typeof Symbol & { metadata?: symbol }).metadata;
+
+    try {
+      const sharedSpecifier = './metadata/shared.js?without-polyfill';
+      const sharedMetadata = await import(/* @vite-ignore */ sharedSpecifier);
+
+      expect((Symbol as typeof Symbol & { metadata?: symbol }).metadata).toBeUndefined();
+      expect(sharedMetadata.metadataSymbol).toBe(Symbol.for('fluo.symbol.metadata'));
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(Symbol, 'metadata', originalDescriptor);
+      } else {
+        delete (Symbol as typeof Symbol & { metadata?: symbol }).metadata;
+      }
+      ensureMetadataSymbol();
+    }
   });
 
   it('tracks a native Symbol.metadata replacement after the fallback was installed', () => {
