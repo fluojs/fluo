@@ -3,30 +3,50 @@ import { Inject } from '@fluojs/core';
 import { CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
 import type { CacheStore, NormalizedCacheModuleOptions } from './types.js';
 
+interface InflightLoad<T = unknown> {
+  generation: number;
+  invalidated: boolean;
+  promise: Promise<T>;
+}
+
 /**
  * Application-level cache facade used for direct cache reads, writes, and read-through loading.
  */
 @Inject(CACHE_STORE, CACHE_OPTIONS)
 export class CacheService {
-  private readonly inflight = new Map<string, Promise<unknown>>();
-  private readonly pendingLoads = new Map<string, number>();
+  private readonly inflight = new Map<string, InflightLoad>();
+  private readonly pendingLoads = new Map<string, Map<number, number>>();
+  private readonly pendingInvalidations = new Map<string, number>();
   private readonly invalidatedInflight = new Set<string>();
   private closed = false;
   private resetVersion = 0;
 
-  private beginPendingLoad(key: string): void {
-    this.pendingLoads.set(key, (this.pendingLoads.get(key) ?? 0) + 1);
+  private beginPendingLoad(key: string, generation: number): void {
+    const generations = this.pendingLoads.get(key) ?? new Map<number, number>();
+
+    generations.set(generation, (generations.get(generation) ?? 0) + 1);
+    this.pendingLoads.set(key, generations);
   }
 
-  private endPendingLoad(key: string): void {
-    const remaining = (this.pendingLoads.get(key) ?? 0) - 1;
+  private endPendingLoad(key: string, generation: number): void {
+    const generations = this.pendingLoads.get(key);
 
-    if (remaining > 0) {
-      this.pendingLoads.set(key, remaining);
+    if (!generations) {
       return;
     }
 
-    this.pendingLoads.delete(key);
+    const remaining = (generations.get(generation) ?? 0) - 1;
+
+    if (remaining > 0) {
+      generations.set(generation, remaining);
+      return;
+    }
+
+    generations.delete(generation);
+
+    if (generations.size === 0) {
+      this.pendingLoads.delete(key);
+    }
   }
 
   constructor(
@@ -75,43 +95,56 @@ export class CacheService {
     loader: () => Promise<T>,
     ttlSeconds?: number,
   ): Promise<T> {
-    this.beginPendingLoad(key);
+    const resetVersion = this.resetVersion;
+    this.beginPendingLoad(key, resetVersion);
 
     try {
-      const resetVersion = this.resetVersion;
       const cached = await this.get<T>(key);
 
       if (cached !== undefined) {
         return cached;
       }
 
-      const existing = this.inflight.get(key) as Promise<T> | undefined;
+      const existing = this.inflight.get(key) as InflightLoad<T> | undefined;
 
       if (existing) {
-        return existing;
+        return existing.promise;
       }
 
+      const entry: InflightLoad<T> = {
+        generation: resetVersion,
+        invalidated: this.pendingInvalidations.get(key) === resetVersion,
+        promise: Promise.resolve(undefined as T),
+      };
+
       const promise = loader().then(async (value) => {
-        if (this.invalidatedInflight.has(key) || this.resetVersion !== resetVersion) {
+        if (entry.invalidated || this.resetVersion !== resetVersion) {
           return value;
         }
 
         await this.set(key, value, ttlSeconds);
 
-        if (this.invalidatedInflight.has(key) || this.resetVersion !== resetVersion) {
+        if (entry.invalidated || this.resetVersion !== resetVersion) {
           await this.store.del(key);
         }
 
         return value;
       }).finally(() => {
-        this.inflight.delete(key);
-        this.invalidatedInflight.delete(key);
+        if (this.inflight.get(key) === entry) {
+          this.inflight.delete(key);
+          this.invalidatedInflight.delete(key);
+        }
+
+        if (this.pendingInvalidations.get(key) === entry.generation) {
+          this.pendingInvalidations.delete(key);
+        }
       });
 
-      this.inflight.set(key, promise);
+      entry.promise = promise;
+      this.inflight.set(key, entry);
       return promise;
     } finally {
-      this.endPendingLoad(key);
+      this.endPendingLoad(key, resetVersion);
     }
   }
 
@@ -122,7 +155,13 @@ export class CacheService {
    * @returns A promise that resolves after the entry is removed.
    */
   async del(key: string): Promise<void> {
-    if (this.pendingLoads.has(key) || this.inflight.has(key)) {
+    const entry = this.inflight.get(key);
+
+    if (entry) {
+      entry.invalidated = true;
+      this.invalidatedInflight.add(key);
+    } else if (this.pendingLoads.has(key)) {
+      this.pendingInvalidations.set(key, this.resetVersion);
       this.invalidatedInflight.add(key);
     }
 
@@ -138,6 +177,7 @@ export class CacheService {
     this.resetVersion += 1;
     this.inflight.clear();
     this.pendingLoads.clear();
+    this.pendingInvalidations.clear();
     this.invalidatedInflight.clear();
     await this.store.reset();
   }
@@ -155,6 +195,7 @@ export class CacheService {
     this.closed = true;
     this.inflight.clear();
     this.pendingLoads.clear();
+    this.pendingInvalidations.clear();
     this.invalidatedInflight.clear();
 
     if (this.store.close) {

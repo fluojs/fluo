@@ -75,6 +75,32 @@ class MockRedisClient {
   }
 }
 
+class PaginatedRedisClient extends MockRedisClient {
+  readonly scanCursors: string[] = [];
+  private scanSnapshot: string[] = [];
+
+  override async scan(cursor: string, ...args: Array<string | number>): Promise<[string, string[]]> {
+    this.scanCursors.push(cursor);
+
+    const matchIndex = args.indexOf('MATCH');
+    const rawPattern = matchIndex >= 0 ? args[matchIndex + 1] : '*';
+    const pattern = typeof rawPattern === 'string' ? rawPattern : '*';
+    const prefix = pattern.endsWith('*') ? pattern.slice(0, -1) : pattern;
+
+    if (cursor === '0') {
+      this.scanSnapshot = Array.from(this.storage.keys())
+        .filter((key) => key.startsWith(prefix))
+        .sort((a, b) => a.localeCompare(b));
+
+      return ['1', this.scanSnapshot.slice(0, 2)];
+    }
+
+    const page = this.scanSnapshot.slice(2);
+    this.scanSnapshot = [];
+    return ['0', page];
+  }
+}
+
 function createCacheService(store: CacheStore, options: Partial<NormalizedCacheModuleOptions> = {}) {
   const mergedOptions: NormalizedCacheModuleOptions = {
     ...baseOptions,
@@ -262,6 +288,45 @@ describe('CacheService — general cache contract (outside HTTP interceptor)', (
       await expect(cache.get('key')).resolves.toBeUndefined();
     });
 
+    it('does not let a pre-reset loader delete replacement loader bookkeeping for the same key', async () => {
+      let resolveOldLoader: ((value: { source: 'old' }) => void) | undefined;
+      let resolveNewLoader: ((value: { source: 'new' }) => void) | undefined;
+      const cache = createCacheService(createStore());
+      const oldLoader = vi.fn(
+        () =>
+          new Promise<{ source: 'old' }>((resolve) => {
+            resolveOldLoader = resolve;
+          }),
+      );
+      const newLoader = vi.fn(
+        () =>
+          new Promise<{ source: 'new' }>((resolve) => {
+            resolveNewLoader = resolve;
+          }),
+      );
+
+      const oldPending = cache.remember('key', oldLoader);
+      await vi.waitFor(() => {
+        expect(oldLoader).toHaveBeenCalledTimes(1);
+      });
+
+      await cache.reset();
+
+      const newPending = cache.remember('key', newLoader);
+      await vi.waitFor(() => {
+        expect(newLoader).toHaveBeenCalledTimes(1);
+      });
+
+      resolveOldLoader?.({ source: 'old' });
+      await expect(oldPending).resolves.toEqual({ source: 'old' });
+
+      await cache.del('key');
+      resolveNewLoader?.({ source: 'new' });
+
+      await expect(newPending).resolves.toEqual({ source: 'new' });
+      await expect(cache.get('key')).resolves.toBeUndefined();
+    });
+
     it('set uses module default TTL when not specified', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-03-24T00:00:00.000Z'));
@@ -386,6 +451,25 @@ describe('CacheService — general cache contract (outside HTTP interceptor)', (
       await expect(cache.get('order:1')).resolves.toEqual({ id: 1 });
       await expect(cache.get('product:1')).resolves.toEqual({ id: 1 });
     });
+  });
+
+  it('resets all prefixed Redis keys returned across SCAN pages', async () => {
+    const client = new PaginatedRedisClient();
+    const store = new RedisStore(client, { keyPrefix: 'test:', scanCount: 2 });
+    const cache = createCacheService(store, { store: 'redis', keyPrefix: 'test:' });
+
+    await cache.set('a', 1);
+    await cache.set('b', 2);
+    await cache.set('c', 3);
+    client.storage.set('other:a', JSON.stringify({ value: 'keep' }));
+
+    await cache.reset();
+
+    expect(client.scanCursors).toEqual(['0', '1']);
+    await expect(cache.get('a')).resolves.toBeUndefined();
+    await expect(cache.get('b')).resolves.toBeUndefined();
+    await expect(cache.get('c')).resolves.toBeUndefined();
+    expect(client.storage.get('other:a')).toBe(JSON.stringify({ value: 'keep' }));
   });
 
   it('closes a resource-owning store once through the cache service lifecycle hook', async () => {
