@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfigReloader, loadConfig } from './load.js';
 import { ConfigModule } from './module.js';
 import { ConfigService, replaceConfigServiceSnapshot } from './service.js';
-import type { ConfigDictionary, ConfigLoadOptions, ConfigSchema } from './types.js';
+import type { ConfigDictionary, ConfigLoadOptions, ConfigModuleOptions, ConfigSchema } from './types.js';
 
 const watchCallbacks = vi.hoisted(() => new Set<() => void>());
 
@@ -530,6 +530,45 @@ describe('loadConfig', () => {
     }
   });
 
+  it('starts watch mode even when the env file is created after startup', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-watch-missing-startup-'));
+    const envPath = join(cwd, '.env.dev');
+
+    const reloader = createConfigReloader({
+      cwd,
+      defaults: { PORT: '4000' },
+      envFile: envPath,
+      processEnv: {},
+      watch: true,
+    });
+
+    try {
+      const updates: string[] = [];
+
+      reloader.subscribe((snapshot, reason) => {
+        if (reason !== 'watch') {
+          return;
+        }
+
+        const port = snapshot['PORT'];
+        if (typeof port === 'string') {
+          updates.push(port);
+        }
+      });
+
+      expect(reloader.current()['PORT']).toBe('4000');
+      expect(watchCallbacks.size).toBe(1);
+
+      writeFileSync(envPath, 'PORT=4100\n');
+      emitWatchChange();
+
+      await waitForCondition(() => updates.includes('4100'));
+      expect(reloader.current()['PORT']).toBe('4100');
+    } finally {
+      reloader.close();
+    }
+  });
+
   it('keeps the previous snapshot when manual reload listeners throw', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-reload-ordering-'));
     const envPath = join(cwd, '.env.dev');
@@ -895,6 +934,26 @@ describe('ConfigModule', () => {
     expect(service?.getOrThrow('PORT')).toBe('4000');
     expect(service?.snapshot()['PORT']).toBe('4000');
     expect(parseCalls).toBe(1);
+  });
+
+  it('snapshots caller-owned options during ConfigModule registration', () => {
+    const options: ConfigModuleOptions = {
+      defaults: { nested: { value: 'registered' }, PORT: '4000' },
+      processEnv: { PORT: '4100' },
+    };
+    const moduleRef = ConfigModule.forRoot(options);
+
+    options.defaults = { nested: { value: 'mutated' }, PORT: '5000' };
+    options.processEnv = { PORT: '5100' };
+
+    const providers = getModuleMetadata(moduleRef)?.providers as
+      | Array<{ provide?: unknown; useFactory?: () => unknown }>
+      | undefined;
+    const configProvider = providers?.find((provider) => provider.provide === ConfigService);
+    const service = configProvider?.useFactory?.() as ConfigService | undefined;
+
+    expect(service?.get('PORT')).toBe('4100');
+    expect(service?.get('nested.value' as never)).toBe('registered');
   });
 
   it('uses Standard Schema validation through ConfigModule.forRoot', () => {

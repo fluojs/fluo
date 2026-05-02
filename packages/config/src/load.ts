@@ -1,12 +1,13 @@
 import type { FSWatcher } from 'node:fs';
 import { existsSync, readFileSync, watch } from 'node:fs';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import { FluoError } from '@fluojs/core';
 import { parse as dotenvParse } from 'dotenv';
 import { expand as dotenvExpand } from 'dotenv-expand';
 
 import { cloneConfigDictionary } from './clone.js';
+import { snapshotConfigLoadOptions } from './options.js';
 import type {
   ConfigDictionary,
   ConfigLoadOptions,
@@ -367,11 +368,22 @@ function startReloaderWatcher(
   listeners: ReadonlySet<ConfigReloadListener>,
   errorListeners: ReadonlySet<ConfigReloadErrorListener>,
 ): FSWatcher | undefined {
-  if (!options.watch || !existsSync(normalized.envFile)) {
+  if (!options.watch) {
     return undefined;
   }
 
-  return watch(normalized.envFile, { persistent: false }, () => {
+  const watchTarget = existsSync(normalized.envFile) ? normalized.envFile : dirname(normalized.envFile);
+  const watchedEnvFileName = basename(normalized.envFile);
+
+  if (!existsSync(watchTarget)) {
+    return undefined;
+  }
+
+  return watch(watchTarget, { persistent: false }, (_eventType, filename) => {
+    if (watchTarget !== normalized.envFile && filename !== null && filename.toString() !== watchedEnvFileName) {
+      return;
+    }
+
     try {
       applyReload(normalized, state, listeners, 'watch');
     } catch (error: unknown) {
@@ -415,7 +427,8 @@ function closeReloader(
  * ```
  */
 export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader {
-  const normalized = normalizeLoadOptions(options);
+  const loadOptions = snapshotConfigLoadOptions(options);
+  const normalized = normalizeLoadOptions(loadOptions);
   const state: ReloaderState = {
     current: resolveConfig(normalized),
     pendingReloadReason: undefined,
@@ -425,7 +438,7 @@ export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader
   const listeners = new Set<ConfigReloadListener>();
   const errorListeners = new Set<ConfigReloadErrorListener>();
 
-  state.watcher = startReloaderWatcher(normalized, options, state, listeners, errorListeners);
+  state.watcher = startReloaderWatcher(normalized, loadOptions, state, listeners, errorListeners);
 
   return {
     close(): void {
