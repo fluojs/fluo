@@ -229,9 +229,9 @@ In highly secure environments, you may want to log every access to the `/metrics
 Combining IP whitelisting, API keys, and audit logging lets you build a defense-in-depth strategy for metrics. It limits operational data exposure to approved systems and people, and it helps manage the confidentiality and integrity of the application's vital signs.
 
 ### 19.6.4 Managing Metric Scraping Load
-If the metric count is very high or the scrape frequency is very high, generating the metrics response can become a performance bottleneck by itself. You can reduce this by implementing **metrics caching**. Fluo's `MetricsModule` can be configured to cache metrics responses for a short time, such as 5 seconds, reducing server CPU usage without significantly affecting monitoring data freshness.
+If the metric count is very high or the scrape frequency is very high, generating the metrics response can become a performance bottleneck by itself. The current `@fluojs/metrics` module does not expose a built-in response-cache option, so add short-lived caching at a reverse proxy, platform middleware, or dedicated application middleware boundary when you need it.
 
-This is especially useful during traffic spikes when the server is already under load. The current `@fluojs/metrics` module does not expose a built-in response-cache option, so add this behavior at a reverse proxy, platform middleware, or dedicated application middleware boundary when you need it. Keeping the monitoring system lightweight ensures that collecting observability data does not add more application load during important performance events.
+This is especially useful during traffic spikes when the server is already under load. Keeping that cache outside `MetricsModule` makes ownership explicit while still reducing server CPU usage without significantly affecting monitoring data freshness. Keeping the monitoring system lightweight ensures that collecting observability data does not add more application load during important performance events.
 
 ## 19.7 Platform Telemetry
 `fluo` also exposes its internal state as metrics. This lets monitoring tools directly check which components have initialized and are healthy. This "self-monitoring" feature is a useful starting point when debugging problems related to application structure.
