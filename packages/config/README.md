@@ -95,6 +95,8 @@ The `schema` option accepts a synchronous [Standard Schema](https://standardsche
 
 `ConfigReloadManager.reload()` serializes reload work. If another reload is requested while the current reload is notifying listeners, the follow-up reload is queued and applied after the active notification finishes; if the active notification fails, the previous snapshot is restored and the queued reload is discarded. The same serialization and rollback contract applies to `createConfigReloader(...).reload()`, including manual reloads queued during watch-triggered notifications.
 
+Module registration and reloader creation snapshot caller-owned options before storing them. Later mutations to objects passed to `ConfigModule.forRoot(...)`, `ConfigReloadModule.forRoot(...)`, or `createConfigReloader(...)` do not affect bootstrap, manual reloads, or watch reloads. In watch mode, a missing env file at startup is treated as an empty file snapshot while the parent directory is watched so creating the env file later can still trigger reload.
+
 ## Public API
 
 | Class/Helper | Description |

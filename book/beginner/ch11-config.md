@@ -68,12 +68,12 @@ Let's update `AppModule` so FluoBlog centralizes its configuration logic.
 ### Why getOrThrow is your Best Friend
 In many legacy Node.js apps, developers use patterns like `process.env.DB_URL || 'default_url'`. This looks safe on the surface, but it often hides configuration mistakes in production. If a default value is applied, the application may start even though it's already in an invalid state, leading to subtle bugs and failures that are hard to trace.
 
-The `ConfigService.getOrThrow()` method is designed to prevent this kind of silent failure. If the requested key is missing, fluo raises an `InternalServerError` during startup and stops the deployment. This lets you catch misconfiguration early, before the system runs with invalid settings.
+The `ConfigService.getOrThrow()` method is designed to prevent this kind of silent failure. If the requested key is missing, fluo raises a `FluoError` with code `CONFIG_KEY_MISSING`, allowing startup or the caller's bootstrap path to fail fast. This lets you catch misconfiguration early, before the system runs with invalid settings.
 
 Using `getOrThrow()` confirms that every dependency has been explicitly satisfied. The application starts only from a well-defined state, and missing configuration is treated as a deployment-time error rather than a runtime failure. This transparency is the practical effect of fluo's emphasis on explicitness.
 
 ### Understanding the Internal Registry
-Behind the scenes, `ConfigService` keeps an internal registry of all loaded variables. This registry is more than simple key-value pairs. It includes metadata about where a variable came from, such as whether it came from a `.env` file or a runtime override, along with the original format before transformation. These details become extremely valuable in complex microservice environments where a single configuration mistake can cascade across many systems.
+Behind the scenes, `ConfigService` keeps a normalized in-memory snapshot of the merged configuration values. Reads through `get()`, `getOrThrow()`, and `snapshot()` return detached clones for object-like values, so caller mutations cannot modify the active configuration snapshot. The service does not expose a source-metadata registry; if you need provenance for a value, keep that information in your own bootstrap code alongside the options passed to `ConfigModule.forRoot(...)`.
 
 ### Registration in AppModule
 Open `src/app.module.ts` and add `ConfigModule` to the `imports` array.

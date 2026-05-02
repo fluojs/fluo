@@ -91,6 +91,8 @@ class MyService {
 
 `ConfigReloadManager.reload()`는 리로드 작업을 직렬화합니다. 현재 리로드가 listener 알림을 수행하는 동안 다른 리로드가 요청되면 후속 리로드는 큐에 들어가 활성 알림이 끝난 뒤 적용됩니다. 활성 알림이 실패하면 이전 snapshot을 복구하고 큐에 있던 리로드는 폐기합니다. 동일한 직렬화와 rollback 계약은 `createConfigReloader(...).reload()`에도 적용되며, watch로 시작된 알림 중 큐에 들어간 manual reload도 이 계약을 따릅니다.
 
+Module registration과 reloader 생성은 caller-owned options를 저장하기 전에 snapshot으로 분리합니다. `ConfigModule.forRoot(...)`, `ConfigReloadModule.forRoot(...)`, `createConfigReloader(...)`에 넘긴 객체를 나중에 변경해도 bootstrap, manual reload, watch reload 입력은 바뀌지 않습니다. Watch mode에서 시작 시점에 env file이 없으면 빈 file snapshot처럼 취급하고 parent directory를 watch하므로, 나중에 env file을 생성해도 reload가 트리거될 수 있습니다.
+
 ## 공개 API
 
 | 클래스/헬퍼 | 설명 |
