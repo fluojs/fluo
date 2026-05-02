@@ -20,20 +20,9 @@ const FLUO_FASTIFY_PORT = 3001;
 const NESTJS_PORT = 3002;
 const FLUO_BUN_PORT = 3003;
 const WDIR = process.cwd();
-const REPO_ROOT = join(WDIR, '../../..');
 const FLUO_FASTIFY_BUILD_DIR = join(WDIR, 'dist/fluo-fastify');
 const FLUO_BUN_BUILD_DIR = join(WDIR, 'dist/fluo-bun');
 const NESTJS_BUILD_DIR = join(WDIR, 'dist/nestjs');
-const LOCAL_FLUO_PACKAGES = [
-  '@fluojs/core',
-  '@fluojs/di',
-  '@fluojs/validation',
-  '@fluojs/config',
-  '@fluojs/http',
-  '@fluojs/runtime',
-  '@fluojs/platform-fastify',
-  '@fluojs/platform-bun',
-] as const;
 
 type TargetName = 'nestjs-fastify' | 'fluo-fastify' | 'fluo-bun';
 type AppShape = 'read-search-local' | 'json-command-local' | 'rest-route-mix-local';
@@ -126,7 +115,6 @@ const MEASURE_SEC = readPositiveIntegerEnv('BENCH_MEASURE_SEC', 40);
 const CONNECTIONS = readPositiveIntegerEnv('BENCH_CONNECTIONS', 100);
 const RUNS = readPositiveIntegerEnv('BENCH_RUNS', 5);
 const OUTPUT_JSON = process.env.BENCH_OUTPUT_JSON ?? join(WDIR, 'benchmark-results.json');
-const BUILD_LOCAL_FLUO_PACKAGES = process.env.BENCH_BUILD_LOCAL_FLUO_PACKAGES === '1';
 
 function readScenarioFilter(): Set<string> | undefined {
   const raw = process.env.BENCH_SCENARIOS;
@@ -456,32 +444,6 @@ async function buildNestTarget(): Promise<void> {
   await writeFile(join(NESTJS_BUILD_DIR, 'package.json'), '{"type":"commonjs"}\n');
 }
 
-async function buildLocalFluoPackages(): Promise<void> {
-  if (!BUILD_LOCAL_FLUO_PACKAGES) {
-    return;
-  }
-
-  for (const packageName of LOCAL_FLUO_PACKAGES) {
-    process.stdout.write(`Building local ${packageName}...`);
-    await runCommand('pnpm', ['--dir', REPO_ROOT, '--filter', packageName, 'run', 'build']);
-    process.stdout.write(' done\n');
-  }
-
-  await assertLocalFluoPackageResolution();
-}
-
-async function assertLocalFluoPackageResolution(): Promise<void> {
-  const expectedRoot = `${REPO_ROOT}/packages/`;
-
-  for (const packageName of LOCAL_FLUO_PACKAGES) {
-    const resolved = import.meta.resolve(packageName);
-
-    if (!resolved.startsWith('file://') || !resolved.includes(expectedRoot)) {
-      throw new Error(`${packageName} resolved outside the local workspace: ${resolved}`);
-    }
-  }
-}
-
 function average(values: readonly number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
@@ -606,7 +568,6 @@ async function writeBenchmarkOutput(rawRuns: readonly ScenarioResult[][], averag
 }
 
 async function main(): Promise<void> {
-  await buildLocalFluoPackages();
   await buildNestTarget();
   await buildFluoFastifyTarget();
   await buildBunTarget();
