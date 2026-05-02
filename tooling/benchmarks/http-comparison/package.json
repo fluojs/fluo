@@ -18,7 +18,7 @@
     "@fluojs/core": "1.0.0-beta.2",
     "@fluojs/config": "1.0.0-beta.3",
     "@fluojs/di": "1.0.0-beta.5",
-    "@fluojs/http": "1.0.0-beta.7",
+    "@fluojs/http": "1.0.0-beta.8",
     "@fluojs/platform-bun": "1.0.0-beta.6",
     "@fluojs/platform-fastify": "1.0.0-beta.8",
     "@fluojs/runtime": "1.0.0-beta.8",

@@ -18,8 +18,8 @@ importers:
         specifier: 1.0.0-beta.5
         version: 1.0.0-beta.5
       '@fluojs/http':
-        specifier: 1.0.0-beta.7
-        version: 1.0.0-beta.7
+        specifier: 1.0.0-beta.8
+        version: 1.0.0-beta.8
       '@fluojs/platform-bun':
         specifier: 1.0.0-beta.6
         version: 1.0.0-beta.6
@@ -284,8 +284,8 @@ packages:
     resolution: {integrity: sha512-2tzNQ9M+MBIkAuEB47aHnd0g9D3r9kvHZR8689LRDW3YowhlpcBzJ4BbG4lbYSmvaz9GhfCvU9Tw+4x3oqI9BA==}
     engines: {node: '>=20.0.0'}
 
-  '@fluojs/http@1.0.0-beta.7':
-    resolution: {integrity: sha512-RmHdlDFLXRgPtCAF6BG86MrcPRrx//54Iq/8cKTaV45lNoFr3sWTTRWBtqkLamJTpVWKqORM9csvIGwpxaz3Pg==}
+  '@fluojs/http@1.0.0-beta.8':
+    resolution: {integrity: sha512-/xMSvEKgEJcFFtH8u2rfg3UPfvQ9GjM547SUbfRcLbkiTQ6E2MW3YtJ2S+S5kzAUT1P3TgQ0GosGf6mMwOd8ig==}
     engines: {node: '>=20.0.0'}
 
   '@fluojs/platform-bun@1.0.0-beta.6':
@@ -1099,7 +1099,7 @@ snapshots:
     dependencies:
       '@fluojs/core': 1.0.0-beta.2
 
-  '@fluojs/http@1.0.0-beta.7':
+  '@fluojs/http@1.0.0-beta.8':
     dependencies:
       '@fluojs/core': 1.0.0-beta.2
       '@fluojs/di': 1.0.0-beta.5
@@ -1107,13 +1107,13 @@ snapshots:
 
   '@fluojs/platform-bun@1.0.0-beta.6':
     dependencies:
-      '@fluojs/http': 1.0.0-beta.7
+      '@fluojs/http': 1.0.0-beta.8
       '@fluojs/runtime': 1.0.0-beta.8
 
   '@fluojs/platform-fastify@1.0.0-beta.8':
     dependencies:
       '@fastify/multipart': 9.4.0
-      '@fluojs/http': 1.0.0-beta.7
+      '@fluojs/http': 1.0.0-beta.8
       '@fluojs/runtime': 1.0.0-beta.8
       fastify: 5.8.5
       fastify-raw-body: 5.0.0
@@ -1123,7 +1123,7 @@ snapshots:
       '@fluojs/config': 1.0.0-beta.3
       '@fluojs/core': 1.0.0-beta.2
       '@fluojs/di': 1.0.0-beta.5
-      '@fluojs/http': 1.0.0-beta.7
+      '@fluojs/http': 1.0.0-beta.8
 
   '@fluojs/validation@1.0.0-beta.1':
     dependencies:
