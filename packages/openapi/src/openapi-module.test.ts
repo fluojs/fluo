@@ -2080,11 +2080,37 @@ describe('OpenApiModule', () => {
   });
 
   it('snapshots and freezes forRoot options before bootstrap', async () => {
+    class StableExtraModel {
+      @IsString()
+      name = '';
+    }
+
+    class MutatedExtraModel {
+      @IsString()
+      name = '';
+    }
+
     @Controller('/stable')
     class StableController {
       @ApiSecurity('apiKeyAuth')
       @Get('/')
       getStable() {
+        return { ok: true };
+      }
+    }
+
+    @Controller('/descriptor-stable')
+    class DescriptorStableController {
+      @Get('/')
+      getDescriptorStable() {
+        return { ok: true };
+      }
+    }
+
+    @Controller('/descriptor-mutated')
+    class DescriptorMutatedController {
+      @Get('/')
+      getDescriptorMutated() {
         return { ok: true };
       }
     }
@@ -2097,6 +2123,8 @@ describe('OpenApiModule', () => {
       }
     }
 
+    const descriptors = createHandlerMapping([{ controllerToken: DescriptorStableController }]).descriptors;
+    const extraModels = [StableExtraModel];
     const sources: HandlerSource[] = [{ controllerToken: StableController }];
     const securitySchemes = {
       apiKeyAuth: {
@@ -2106,6 +2134,8 @@ describe('OpenApiModule', () => {
       },
     };
     const options = {
+      descriptors,
+      extraModels,
       securitySchemes,
       sources,
       swaggerUiAssets: {
@@ -2119,6 +2149,8 @@ describe('OpenApiModule', () => {
 
     const openApiModule = OpenApiModule.forRoot(options);
 
+    descriptors.push(...createHandlerMapping([{ controllerToken: DescriptorMutatedController }]).descriptors);
+    extraModels.push(MutatedExtraModel);
     sources.push({ controllerToken: MutatedController });
     securitySchemes.apiKeyAuth.name = 'mutated-api-key';
     options.swaggerUiAssets.cssUrl = 'https://assets.example.test/mutated.css';
@@ -2127,7 +2159,7 @@ describe('OpenApiModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      controllers: [StableController, MutatedController],
+      controllers: [StableController, MutatedController, DescriptorStableController, DescriptorMutatedController],
       imports: [openApiModule],
     });
 
@@ -2142,6 +2174,18 @@ describe('OpenApiModule', () => {
     expect(documentResponse.body).toEqual(
       expect.objectContaining({
         components: expect.objectContaining({
+          schemas: expect.objectContaining({
+            StableExtraModel: {
+              additionalProperties: false,
+              properties: {
+                name: {
+                  type: 'string',
+                },
+              },
+              required: ['name'],
+              type: 'object',
+            },
+          }),
           securitySchemes: {
             apiKeyAuth: {
               in: 'header',
@@ -2158,12 +2202,83 @@ describe('OpenApiModule', () => {
           '/stable': expect.objectContaining({
             get: expect.any(Object),
           }),
+          '/descriptor-stable': expect.objectContaining({
+            get: expect.any(Object),
+          }),
         }),
       }),
     );
-    expect((documentResponse.body as { paths: Record<string, unknown> }).paths['/mutated']).toBeUndefined();
+    const document = documentResponse.body as {
+      components?: { schemas?: Record<string, unknown> };
+      paths: Record<string, unknown>;
+    };
+    expect(document.paths['/descriptor-mutated']).toBeUndefined();
+    expect(document.paths['/mutated']).toBeUndefined();
+    expect(document.components?.schemas?.MutatedExtraModel).toBeUndefined();
     expect(docsResponse.body).toEqual(expect.stringContaining('https://assets.example.test/original.css'));
     expect(docsResponse.body).not.toEqual(expect.stringContaining('https://assets.example.test/mutated.css'));
+  });
+
+  it('snapshots resolved forRootAsync options before serving docs', async () => {
+    @Controller('/async-stable')
+    class AsyncStableController {
+      @Get('/')
+      getStable() {
+        return { ok: true };
+      }
+    }
+
+    const resolvedOptions = {
+      sources: [{ controllerToken: AsyncStableController }],
+      swaggerUiAssets: {
+        cssUrl: 'https://assets.example.test/async-original.css',
+        jsBundleUrl: 'https://assets.example.test/async-original.js',
+      },
+      title: 'Async Snapshot API',
+      ui: true,
+      version: '1.0.0',
+    };
+    const openApiModule = OpenApiModule.forRootAsync({
+      useFactory: async () => resolvedOptions,
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [AsyncStableController],
+      imports: [openApiModule],
+    });
+
+    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+
+    resolvedOptions.title = 'Async Mutated API';
+    resolvedOptions.swaggerUiAssets.cssUrl = 'https://assets.example.test/async-mutated.css';
+
+    const documentResponse = createResponse();
+    const docsResponse = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), documentResponse);
+    await app.dispatch(createRequest('GET', '/docs'), docsResponse);
+
+    expect(documentResponse.statusCode).toBe(200);
+    expect(documentResponse.body).toEqual(
+      expect.objectContaining({
+        info: {
+          title: 'Async Snapshot API',
+          version: '1.0.0',
+        },
+        paths: expect.objectContaining({
+          '/async-stable': expect.objectContaining({
+            get: expect.any(Object),
+          }),
+        }),
+      }),
+    );
+    expect(docsResponse.statusCode).toBe(200);
+    expect(docsResponse.body).toEqual(expect.stringContaining('Async Snapshot API'));
+    expect(docsResponse.body).toEqual(expect.stringContaining('https://assets.example.test/async-original.css'));
+    expect(docsResponse.body).not.toEqual(expect.stringContaining('Async Mutated API'));
+    expect(docsResponse.body).not.toEqual(expect.stringContaining('https://assets.example.test/async-mutated.css'));
   });
 
   it('README quick start stays executable when sources are provided explicitly', async () => {
