@@ -41,7 +41,11 @@ function buildSortedQueryString(query: Record<string, unknown>): string {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => {
       if (Array.isArray(value)) {
-        return value.map((v) => `${encodeURIComponent(key)}=${encodeURIComponent(String(v))}`).join('&');
+        return [...value]
+          .map((v) => String(v))
+          .sort((a, b) => a.localeCompare(b))
+          .map((v) => `${encodeURIComponent(key)}=${encodeURIComponent(v)}`)
+          .join('&');
       }
 
       return `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`;

@@ -25,14 +25,24 @@ function createRequestContext(
   principal?: Principal,
 ): RequestContext {
   const queryStart = url.indexOf('?');
-  const query: Record<string, string> = {};
+  const query: Record<string, string | string[]> = {};
 
   if (queryStart !== -1) {
     const queryString = url.slice(queryStart + 1);
     for (const pair of queryString.split('&')) {
       const [key, value] = pair.split('=');
       if (key) {
-        query[decodeURIComponent(key)] = value ? decodeURIComponent(value) : '';
+        const decodedKey = decodeURIComponent(key);
+        const decodedValue = value ? decodeURIComponent(value) : '';
+        const existingValue = query[decodedKey];
+
+        if (Array.isArray(existingValue)) {
+          existingValue.push(decodedValue);
+        } else if (existingValue !== undefined) {
+          query[decodedKey] = [existingValue, decodedValue];
+        } else {
+          query[decodedKey] = decodedValue;
+        }
       }
     }
   }
@@ -554,6 +564,29 @@ describe('CacheInterceptor', () => {
       await interceptor.intercept(secondContext, next);
 
       expect(next.handle).toHaveBeenCalledTimes(1);
+    });
+
+    it('strategy "route+query" canonicalizes repeated query values', async () => {
+      class ProductController {
+        @CacheTTL(120)
+        list() {}
+      }
+
+      const { interceptor, cacheService } = createInterceptor({ httpKeyStrategy: 'route+query' });
+      const firstContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?tag=b&tag=a&page=1', '/products'));
+      const secondContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=1&tag=a&tag=b', '/products'));
+      const thirdContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=1&tag=a&tag=c', '/products'));
+      const next: CallHandler = {
+        handle: vi.fn(async () => ({ data: 'tags' })),
+      };
+
+      await interceptor.intercept(firstContext, next);
+      await interceptor.intercept(secondContext, next);
+      await interceptor.intercept(thirdContext, next);
+
+      expect(next.handle).toHaveBeenCalledTimes(2);
+      expect(await cacheService.get('/products?page=1&tag=a&tag=b')).toEqual({ data: 'tags' });
+      expect(await cacheService.get('/products?page=1&tag=a&tag=c')).toEqual({ data: 'tags' });
     });
 
     it('strategy "route+query" treats no-query and empty-query differently from route-only', async () => {
