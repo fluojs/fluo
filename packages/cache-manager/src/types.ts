@@ -10,6 +10,14 @@ export interface CacheStore {
   set<T>(key: string, value: T, ttlSeconds?: number): Promise<void>;
   del(key: string): Promise<void>;
   reset(): Promise<void>;
+  /**
+   * Optional lifecycle hook for stores that own sockets, pools, timers, or other resources.
+   */
+  close?(): Awaitable<void>;
+  /**
+   * Optional lifecycle hook accepted as an alias for resource-owning stores that expose dispose semantics.
+   */
+  dispose?(): Awaitable<void>;
 }
 
 /**

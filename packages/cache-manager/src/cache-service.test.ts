@@ -232,6 +232,36 @@ describe('CacheService — general cache contract (outside HTTP interceptor)', (
       expect((invalidatedInflight as Set<string>).size).toBe(0);
     });
 
+    it('reset clears in-flight and pending load bookkeeping without repopulating stale values', async () => {
+      let resolveLoader: ((value: { computed: boolean }) => void) | undefined;
+      const cache = createCacheService(createStore());
+      const loader = vi.fn(
+        () =>
+          new Promise<{ computed: boolean }>((resolve) => {
+            resolveLoader = resolve;
+          }),
+      );
+
+      const pending = cache.remember('key', loader);
+      await vi.waitFor(() => {
+        expect(loader).toHaveBeenCalledTimes(1);
+      });
+
+      await cache.reset();
+
+      const inflight = Reflect.get(cache as object, 'inflight');
+      const pendingLoads = Reflect.get(cache as object, 'pendingLoads');
+      expect(inflight).toBeInstanceOf(Map);
+      expect(pendingLoads).toBeInstanceOf(Map);
+      expect((inflight as Map<string, Promise<unknown>>).size).toBe(0);
+      expect((pendingLoads as Map<string, number>).size).toBe(0);
+
+      resolveLoader?.({ computed: true });
+
+      await expect(pending).resolves.toEqual({ computed: true });
+      await expect(cache.get('key')).resolves.toBeUndefined();
+    });
+
     it('set uses module default TTL when not specified', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-03-24T00:00:00.000Z'));
@@ -356,5 +386,32 @@ describe('CacheService — general cache contract (outside HTTP interceptor)', (
       await expect(cache.get('order:1')).resolves.toEqual({ id: 1 });
       await expect(cache.get('product:1')).resolves.toEqual({ id: 1 });
     });
+  });
+
+  it('closes a resource-owning store once through the cache service lifecycle hook', async () => {
+    class ResourceStore extends MemoryStore {
+      close = vi.fn(async () => undefined);
+    }
+
+    const store = new ResourceStore();
+    const cache = createCacheService(store);
+
+    await cache.onModuleDestroy();
+    await cache.close();
+
+    expect(store.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts dispose as a store teardown alias when close is absent', async () => {
+    class DisposableStore extends MemoryStore {
+      dispose = vi.fn(async () => undefined);
+    }
+
+    const store = new DisposableStore();
+    const cache = createCacheService(store);
+
+    await cache.close();
+
+    expect(store.dispose).toHaveBeenCalledTimes(1);
   });
 });

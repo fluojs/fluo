@@ -11,7 +11,7 @@ import { CacheInterceptor } from './interceptor.js';
 import { CacheService } from './service.js';
 import { CacheModule } from './module.js';
 import { CACHE_OPTIONS } from './tokens.js';
-import type { RedisCompatibleClient } from './types.js';
+import type { CacheStore, RedisCompatibleClient } from './types.js';
 
 class MockRedisClient implements RedisCompatibleClient {
   readonly storage = new Map<string, string>();
@@ -166,6 +166,50 @@ describe('CacheModule.forRoot', () => {
     await expect(consumer.cache.get('/health')).resolves.toEqual({ ok: true });
 
     await app.close();
+  });
+
+  it('runs custom store teardown when the application closes', async () => {
+    class ResourceStore implements CacheStore {
+      readonly close = vi.fn(async () => undefined);
+      private readonly entries = new Map<string, unknown>();
+
+      async get<T>(key: string): Promise<T | undefined> {
+        return this.entries.get(key) as T | undefined;
+      }
+
+      async set<T>(key: string, value: T): Promise<void> {
+        this.entries.set(key, value);
+      }
+
+      async del(key: string): Promise<void> {
+        this.entries.delete(key);
+      }
+
+      async reset(): Promise<void> {
+        this.entries.clear();
+      }
+    }
+
+    @Inject(CacheService)
+    class Consumer {
+      constructor(readonly cache: CacheService) {}
+    }
+
+    const store = new ResourceStore();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CacheModule.forRoot({ store })],
+      providers: [Consumer],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const consumer = await app.container.resolve(Consumer);
+
+    await consumer.cache.set('/resource', { ok: true });
+    await app.close();
+
+    expect(store.close).toHaveBeenCalledTimes(1);
   });
 
   it('fails fast at bootstrap when redis store is selected but redis client is unavailable', async () => {

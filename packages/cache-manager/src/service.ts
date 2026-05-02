@@ -11,6 +11,7 @@ export class CacheService {
   private readonly inflight = new Map<string, Promise<unknown>>();
   private readonly pendingLoads = new Map<string, number>();
   private readonly invalidatedInflight = new Set<string>();
+  private closed = false;
   private resetVersion = 0;
 
   private beginPendingLoad(key: string): void {
@@ -135,7 +136,43 @@ export class CacheService {
    */
   async reset(): Promise<void> {
     this.resetVersion += 1;
+    this.inflight.clear();
+    this.pendingLoads.clear();
     this.invalidatedInflight.clear();
     await this.store.reset();
+  }
+
+  /**
+   * Close the configured store when it exposes an optional teardown hook.
+   *
+   * @returns A promise that resolves after store teardown completes.
+   */
+  async close(): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+
+    this.closed = true;
+    this.inflight.clear();
+    this.pendingLoads.clear();
+    this.invalidatedInflight.clear();
+
+    if (this.store.close) {
+      await this.store.close();
+      return;
+    }
+
+    if (this.store.dispose) {
+      await this.store.dispose();
+    }
+  }
+
+  /**
+   * Runtime shutdown hook that releases resource-owning stores during application close.
+   *
+   * @returns A promise that resolves after store teardown completes.
+   */
+  onModuleDestroy(): Promise<void> {
+    return this.close();
   }
 }
