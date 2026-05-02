@@ -129,6 +129,28 @@ describe('HttpMetricsMiddleware', () => {
     expect(metricsText).toContain('http_requests_total{method="GET",path="/users/123/orders/88",status="200"} 1');
   });
 
+  it('records non-throwing 4xx and 5xx responses as request errors', async () => {
+    const registry = new Registry();
+    const middleware = new HttpMetricsMiddleware(registry);
+
+    const notFoundContext = createContext('/status/not-found');
+    await middleware.handle(notFoundContext, async () => {
+      notFoundContext.response.setStatus(404);
+    });
+
+    const unavailableContext = createContext('/status/unavailable');
+    await middleware.handle(unavailableContext, async () => {
+      unavailableContext.response.setStatus(503);
+    });
+
+    const metricsText = await registry.metrics();
+
+    expect(metricsText).toContain('http_requests_total{method="GET",path="/status/not-found",status="404"} 1');
+    expect(metricsText).toContain('http_requests_total{method="GET",path="/status/unavailable",status="503"} 1');
+    expect(metricsText).toContain('http_errors_total{method="GET",path="/status/not-found",status="404"} 1');
+    expect(metricsText).toContain('http_errors_total{method="GET",path="/status/unavailable",status="503"} 1');
+  });
+
   it('does not reuse a param key when multiple params share the same value', async () => {
     const registry = new Registry();
     const middleware = new HttpMetricsMiddleware(registry);

@@ -1,5 +1,5 @@
 import type { FrameworkRequest, Middleware, MiddlewareContext, Next } from '@fluojs/http';
-import type { Registry } from 'prom-client';
+import { Counter, Histogram, type Registry } from 'prom-client';
 
 import { createPrometheusCounter, createPrometheusHistogram } from './providers/prometheus-metrics-factory.js';
 
@@ -80,17 +80,17 @@ export class HttpMetricsMiddleware implements Middleware {
     this.pathLabelMode = options.pathLabelMode ?? 'template';
     this.pathLabelNormalizer = options.pathLabelNormalizer;
     this.unknownPathLabel = options.unknownPathLabel ?? 'UNKNOWN';
-    this.requestsTotal = createPrometheusCounter(registry, {
+    this.requestsTotal = getOrCreateHttpCounter(registry, {
       help: 'Total number of HTTP requests',
       labelNames: ['method', 'path', 'status'],
       name: 'http_requests_total',
     });
-    this.errorsTotal = createPrometheusCounter(registry, {
+    this.errorsTotal = getOrCreateHttpCounter(registry, {
       help: 'Total number of HTTP error responses (4xx/5xx)',
       labelNames: ['method', 'path', 'status'],
       name: 'http_errors_total',
     });
-    this.requestDuration = createPrometheusHistogram(registry, {
+    this.requestDuration = getOrCreateHttpHistogram(registry, {
       help: 'HTTP request duration in seconds',
       labelNames: ['method', 'path', 'status'],
       name: 'http_request_duration_seconds',
@@ -168,6 +168,48 @@ export class HttpMetricsMiddleware implements Middleware {
       this.errorsTotal.inc(errorLabels);
     }
   }
+}
+
+function getOrCreateHttpCounter(
+  registry: Registry,
+  config: {
+    help: string;
+    labelNames: readonly string[];
+    name: string;
+  },
+): Counter<string> {
+  const existing = registry.getSingleMetric(config.name);
+
+  if (existing instanceof Counter) {
+    return existing;
+  }
+
+  return createPrometheusCounter(registry, {
+    help: config.help,
+    labelNames: [...config.labelNames],
+    name: config.name,
+  });
+}
+
+function getOrCreateHttpHistogram(
+  registry: Registry,
+  config: {
+    help: string;
+    labelNames: readonly string[];
+    name: string;
+  },
+): Histogram<string> {
+  const existing = registry.getSingleMetric(config.name);
+
+  if (existing instanceof Histogram) {
+    return existing;
+  }
+
+  return createPrometheusHistogram(registry, {
+    help: config.help,
+    labelNames: [...config.labelNames],
+    name: config.name,
+  });
 }
 
 function normalizePathToTemplate(path: string, params: Readonly<Record<string, string>>): string {
