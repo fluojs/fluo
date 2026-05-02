@@ -127,7 +127,7 @@ Once this decorator is attached, the HTTP layer no longer passes the raw body th
 
 ### `materialize()` vs Plain Assignment
 
-The validation package distinguishes between creating a typed instance and validating an existing value. HTTP binding usually needs the first path because it must take unknown input and turn it into a DTO instance. That is why the documentation emphasizes `materialize()`, which handles hydration and validation together. The key point you need now is simple: incoming payloads should first be converted into a known DTO shape before business logic runs.
+The validation package distinguishes between creating a typed instance and validating an existing value. HTTP binding usually needs the first path because it must take unknown input and turn it into a DTO instance. That is why the documentation emphasizes `materialize()`, which handles hydration and validation together. The root payload must be a plain object or an instance of the target DTO; malformed roots such as strings, arrays, and `null` are rejected before the DTO constructor or field defaults run. The key point you need now is simple: incoming payloads should first be checked as a valid object boundary, then converted into a known DTO shape before business logic runs.
 
 ### The Role of Metadata
 

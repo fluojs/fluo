@@ -62,12 +62,17 @@ try {
 ### `materialize()` vs `validate()`
 
 - `materialize(value, Target)` builds a typed instance and validates it recursively
-- `validate(instance, Target)` only validates an already-created value
+- `validate(instance, Target)` validates an already-created root value and may
+  temporarily materialize plain nested `@ValidateNested(...)` values to run their
+  nested DTO rules without replacing the caller's properties
 
 `materialize()` copies safe own enumerable properties from plain input objects,
 applies DTO binding metadata, and recursively hydrates `@ValidateNested(...)`
 fields. It preserves the request-pipeline contract that transports or binders own
 source selection and scalar conversion before validation runs.
+The root value passed to `materialize()` must already be a plain object or an
+instance of the target DTO; malformed roots such as strings, arrays, and `null`
+are rejected before the target DTO constructor or field initializers run.
 
 ### Validation issue shape
 

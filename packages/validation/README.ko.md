@@ -60,12 +60,15 @@ console.log(user.name); // "Ko"
 ### 실체화 vs 검증 (Materialization vs Validation)
 
 - **`materialize<T>(value, target)`**: **입력 처리**에 가장 적합합니다. plain 객체를 받아 대상 클래스의 인스턴스를 생성하고, 값을 복사하며, 중첩된 DTO를 재귀적으로 처리한 후 모든 검증 규칙을 실행합니다.
-- **`validate(instance, target)`**: **기존 객체 확인**에 적합합니다. 이미 생성된 인스턴스에 대해 검증 규칙만 실행합니다. 타입 변환이나 중첩된 객체의 실체화는 수행하지 않습니다.
+- **`validate(instance, target)`**: **기존 루트 객체 확인**에 적합합니다. 이미 생성된 루트 값에 대해 검증 규칙을 실행하며, plain 객체인 `@ValidateNested(...)` 값은 중첩 DTO 규칙을 실행하기 위해 임시로 실체화할 수 있습니다. 이 임시 실체화는 호출자가 넘긴 속성 값을 대체하지 않습니다.
 
 `materialize()`는 plain 입력 객체의 안전한 own enumerable 속성을 복사하고,
 DTO 바인딩 메타데이터를 적용한 뒤 `@ValidateNested(...)` 필드를 재귀적으로
 실체화합니다. 어떤 요청 소스를 선택하고 스칼라 값을 변환할지는 transport 또는
 binder가 검증 전에 담당한다는 request-pipeline 계약을 유지합니다.
+`materialize()`에 넘기는 루트 값은 plain 객체이거나 대상 DTO 인스턴스여야 합니다.
+문자열, 배열, `null` 같은 잘못된 루트 값은 대상 DTO 생성자나 필드 initializer가
+실행되기 전에 거부됩니다.
 
 ### 검증 이슈 형태
 
