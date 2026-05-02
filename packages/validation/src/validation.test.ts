@@ -5,7 +5,7 @@ import { z } from 'zod';
 
 import { DefaultValidator } from './validation.js';
 import { DtoValidationError } from './errors.js';
-import { ArrayUnique, IsDateString, IsEmail, IsNotEmpty, MinLength, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
+import { ArrayUnique, IsDateString, IsEmail, IsNotEmpty, IsNumber, IsString, MinLength, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
 import type { StandardSchemaV1Like } from './index.js';
 
 describe('DefaultValidator', () => {
@@ -94,6 +94,37 @@ describe('DefaultValidator', () => {
 
     expect(result).toBeInstanceOf(CreateUserDto);
     expect(result.email).toBe('hello@example.com');
+  });
+
+  it('rejects malformed materialize roots before constructor and initializer side effects run', async () => {
+    let constructorRuns = 0;
+    let initializerRuns = 0;
+
+    function markInitialized(): string {
+      initializerRuns += 1;
+      return '';
+    }
+
+    class SideEffectDto {
+      @IsString()
+      name = markInitialized();
+
+      constructor() {
+        constructorRuns += 1;
+      }
+    }
+
+    const validator = new DefaultValidator();
+    const malformedRoots: unknown[] = ['unsafe-string-input', null, ['unsafe-array-input']];
+
+    for (const malformedRoot of malformedRoots) {
+      await expect(validator.materialize(malformedRoot, SideEffectDto)).rejects.toMatchObject({
+        issues: [{ code: 'INVALID_DTO', message: 'DTO root value must be a plain object.' }],
+      });
+    }
+
+    expect(constructorRuns).toBe(0);
+    expect(initializerRuns).toBe(0);
   });
 
   it('materialize recursively hydrates nested DTOs', async () => {
@@ -201,6 +232,29 @@ describe('DefaultValidator', () => {
     });
   });
 
+  it('validates plain nested payloads through temporary DTO materialization without replacing source values', async () => {
+    class ChildDto {
+      @MinLength(2, { message: 'child name must have length at least 2' })
+      name = '';
+    }
+
+    class ParentDto {
+      @ValidateNested(() => ChildDto)
+      child: ChildDto | { name: string } = new ChildDto();
+    }
+
+    const nestedPayload = { name: 'x' };
+    const parent = Object.assign(new ParentDto(), { child: nestedPayload });
+    const validator = new DefaultValidator();
+
+    await expect(validator.validate(parent, ParentDto)).rejects.toMatchObject({
+      issues: [{ field: 'child.name', message: 'child name must have length at least 2' }],
+    });
+
+    expect(parent.child).toBe(nestedPayload);
+    expect(parent.child).not.toBeInstanceOf(ChildDto);
+  });
+
   it('rejects non-plain nested entries across array, set, and map collections', async () => {
     class ChildDto {}
 
@@ -272,6 +326,19 @@ describe('DefaultValidator', () => {
     const validator = new DefaultValidator();
 
     await expect(validator.materialize({ email: 'not-an-email' }, CreateUserDto)).rejects.toBeInstanceOf(DtoValidationError);
+  });
+
+  it('does not coerce scalar payload values during materialize', async () => {
+    class PaginationDto {
+      @IsNumber()
+      page = 1;
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(validator.materialize({ page: '2' }, PaginationDto)).rejects.toMatchObject({
+      issues: [{ code: 'INVALID_NUMBER', field: 'page', message: 'page must be a number.' }],
+    });
   });
 
   it('preserves DtoValidationError prototype identity', () => {

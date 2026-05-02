@@ -1,8 +1,8 @@
 import validator from 'validator';
 
-import {
-  type Constructor,
-  type MetadataPropertyKey,
+import type {
+  Constructor,
+  MetadataPropertyKey,
 } from '@fluojs/core';
 import {
   getClassValidationRules,
@@ -430,11 +430,11 @@ function createNestedDtoInstance<T>(target: Constructor<T>, rawValue: unknown, c
     return rawValue as T;
   }
 
-  const instance = new target() as Record<PropertyKey, unknown>;
-
   if (!isPlainObject(rawValue)) {
-    return instance as T;
+    return rawValue as T;
   }
+
+  const instance = new target() as Record<PropertyKey, unknown>;
 
   if (!enterTraversal(rawValue, context)) {
     return rawValue as T;
@@ -573,6 +573,13 @@ function buildIssue(fallback: { code: string; message: string }, field: string, 
     field,
     message: fallback.message,
     source,
+  };
+}
+
+function buildInvalidRootIssue(): ValidationIssue {
+  return {
+    code: 'INVALID_DTO',
+    message: 'DTO root value must be a plain object.',
   };
 }
 
@@ -804,6 +811,10 @@ export class DefaultValidator implements Validator {
   }
 
   async materialize<T>(value: unknown, target: Constructor<T>): Promise<T> {
+    if (!(value instanceof target) && !isPlainObject(value)) {
+      throw new DtoValidationError('Validation failed.', [buildInvalidRootIssue()]);
+    }
+
     const instance = createNestedDtoInstance(target, value, { active: new WeakSet<object>() });
     const issues = await collectValidationIssues(target, instance);
 
