@@ -96,4 +96,106 @@ describe('writeFetchResponse', () => {
     expect(frameworkResponse.stream?.close).toHaveBeenCalledOnce();
     expect(frameworkResponse.writes.map((chunk: Uint8Array) => Buffer.from(chunk).toString('utf8'))).toEqual(['chunk-1', 'chunk-2']);
   });
+
+  it('cancels the upstream fetch body when the downstream stream closes during a write', async () => {
+    const cancel = vi.fn();
+    const fetchResponse = new Response(new ReadableStream<Uint8Array>({
+      cancel,
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('chunk-1'));
+        controller.enqueue(new TextEncoder().encode('chunk-2'));
+      },
+    }), {
+      headers: { 'content-type': 'text/event-stream' },
+      status: 200,
+    });
+    const frameworkResponse = createFrameworkResponseMock();
+    const stream = frameworkResponse.stream;
+
+    if (!stream) {
+      throw new Error('Expected stream mock to exist.');
+    }
+
+    vi.mocked(stream.write).mockImplementationOnce((chunk: string | Uint8Array) => {
+      frameworkResponse.writes.push(typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk);
+      Reflect.set(stream, 'closed', true);
+      return true;
+    });
+
+    await writeFetchResponse(fetchResponse, frameworkResponse);
+
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(stream.close).not.toHaveBeenCalled();
+    expect(frameworkResponse.writes.map((chunk: Uint8Array) => Buffer.from(chunk).toString('utf8'))).toEqual(['chunk-1']);
+  });
+
+  it('cancels the upstream fetch body when downstream backpressure errors', async () => {
+    const cancel = vi.fn();
+    const fetchResponse = new Response(new ReadableStream<Uint8Array>({
+      cancel,
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('chunk-1'));
+        controller.enqueue(new TextEncoder().encode('chunk-2'));
+      },
+    }), {
+      headers: { 'content-type': 'text/event-stream' },
+      status: 200,
+    });
+    const frameworkResponse = createFrameworkResponseMock();
+    const stream = frameworkResponse.stream;
+    const downstreamError = new Error('downstream closed with error');
+
+    if (!stream) {
+      throw new Error('Expected stream mock to exist.');
+    }
+    const waitForDrain = stream.waitForDrain;
+
+    if (!waitForDrain) {
+      throw new Error('Expected waitForDrain mock to exist.');
+    }
+
+    vi.mocked(stream.write).mockReturnValueOnce(false);
+    vi.mocked(waitForDrain).mockRejectedValueOnce(downstreamError);
+
+    await expect(writeFetchResponse(fetchResponse, frameworkResponse)).rejects.toBe(downstreamError);
+
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('cancels and settles a pending upstream read when the downstream stream closes', async () => {
+    const cancel = vi.fn(async () => {});
+    const fetchResponse = new Response(new ReadableStream<Uint8Array>({
+      cancel,
+    }), {
+      headers: { 'content-type': 'text/event-stream' },
+      status: 200,
+    });
+    const frameworkResponse = createFrameworkResponseMock();
+    const stream = frameworkResponse.stream;
+    let closeListener: (() => void) | undefined;
+    const removeCloseListener = vi.fn();
+
+    if (!stream) {
+      throw new Error('Expected stream mock to exist.');
+    }
+
+    stream.onClose = vi.fn((listener: () => void) => {
+      closeListener = listener;
+      return removeCloseListener;
+    });
+
+    const writePromise = writeFetchResponse(fetchResponse, frameworkResponse);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    Reflect.set(stream, 'closed', true);
+    closeListener?.();
+
+    await expect(writePromise).resolves.toBeUndefined();
+
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(removeCloseListener).toHaveBeenCalledOnce();
+    expect(stream.close).not.toHaveBeenCalled();
+    expect(frameworkResponse.writes).toEqual([]);
+  });
 });

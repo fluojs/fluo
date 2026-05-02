@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
@@ -12,6 +13,10 @@ import { GraphQLObjectType, GraphQLSchema, GraphQLString, GraphQLUnionType } fro
 import { Arg, Mutation, Query, Resolver, Subscription } from './decorators.js';
 import { GraphqlModule } from './module.js';
 import { GRAPHQL_OPERATION_CONTAINER, listOf } from './types.js';
+
+type GraphqlInstanceOf = (value: unknown, constructor: { prototype?: { [Symbol.toStringTag]?: string } }) => boolean;
+
+const runtimeRequire = createRequire(import.meta.url);
 
 async function findAvailablePort(): Promise<number> {
   return await new Promise<number>((resolve, reject) => {
@@ -1432,6 +1437,37 @@ describe('@fluojs/graphql', () => {
       },
     });
     await secondApp.close();
+  });
+
+  it('restores the GraphQL instanceOf helper when the application shuts down', async () => {
+    const instanceOfModule = runtimeRequire('graphql/jsutils/instanceOf.js') as {
+      instanceOf: GraphqlInstanceOf;
+    };
+    const originalInstanceOf = instanceOfModule.instanceOf;
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        GraphqlModule.forRoot({
+          resolvers: [GraphqlResolver],
+        }),
+      ],
+      providers: [ResolverState, GraphqlResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    expect(instanceOfModule.instanceOf).not.toBe(originalInstanceOf);
+
+    await app.close();
+
+    expect(instanceOfModule.instanceOf).toBe(originalInstanceOf);
   });
 
   it('keeps internal operation container when custom context includes reserved symbol key', async () => {

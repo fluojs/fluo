@@ -152,7 +152,7 @@ export class NotificationResolver {
 
 ### Enabling WebSockets
 
-Enable the WebSocket transport when you need bidirectional realtime communication or when the client environment is WebSocket-centered. Check whether the default SSE path is enough first, then choose WebSockets only when bidirectional messaging is actually needed so the operational boundary stays simpler.
+Enable the WebSocket transport when you need bidirectional realtime communication or when the client environment is WebSocket-centered. Check whether the default SSE path is enough first, then choose WebSockets only when bidirectional messaging is actually needed so the operational boundary stays simpler. The WebSocket transport requires an adapter that exposes a Node HTTP/S server with upgrade listeners, such as the Node HTTP adapter; runtimes without that server surface should keep the default SSE subscription path.
 
 ```typescript
 GraphqlModule.forRoot({

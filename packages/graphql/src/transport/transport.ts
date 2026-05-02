@@ -116,6 +116,80 @@ function readSetCookieValues(headers: Headers): string[] {
   return values;
 }
 
+async function writeFetchResponseStream(body: ReadableStream<Uint8Array>, stream: FrameworkResponseStream): Promise<void> {
+  const reader = body.getReader();
+  let readerDone = false;
+  let cancelPromise: Promise<void> | undefined;
+  let notifyCancellation: (() => void) | undefined;
+  const cancellationStarted = new Promise<void>((resolve) => {
+    notifyCancellation = resolve;
+  });
+  const removeCloseListener = stream.onClose?.(() => {
+    if (!readerDone) {
+      void cancelUnreadBody().catch(() => {});
+    }
+  });
+
+  const cancelUnreadBody = (): Promise<void> => {
+    if (!cancelPromise) {
+      readerDone = true;
+      notifyCancellation?.();
+      cancelPromise = reader.cancel();
+    }
+
+    return cancelPromise;
+  };
+
+  const readNextChunk = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
+    const readPromise = reader.read();
+    readPromise.catch(() => {});
+
+    return await Promise.race([
+      readPromise,
+      cancellationStarted.then(async () => {
+        await cancelPromise;
+        return { done: true, value: undefined } as ReadableStreamReadDoneResult<Uint8Array>;
+      }),
+    ]);
+  };
+
+  try {
+    while (true) {
+      if (stream.closed) {
+        await cancelUnreadBody();
+        break;
+      }
+
+      const { done, value } = await readNextChunk();
+
+      if (done) {
+        readerDone = true;
+        break;
+      }
+
+      if (stream.closed) {
+        await cancelUnreadBody();
+        break;
+      }
+
+      const canContinue = stream.write(value);
+
+      if (!canContinue && !stream.closed) {
+        await stream.waitForDrain?.();
+      }
+    }
+  } catch (error) {
+    await cancelUnreadBody();
+    throw error;
+  } finally {
+    removeCloseListener?.();
+  }
+
+  if (!stream.closed) {
+    stream.close();
+  }
+}
+
 /**
  * Write fetch response.
  *
@@ -146,29 +220,7 @@ export async function writeFetchResponse(fetchResponse: Response, frameworkRespo
     frameworkResponse.committed = true;
     stream.flush?.();
 
-    const reader = fetchResponse.body.getReader();
-
-    while (true) {
-      const { done, value } = await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      if (stream.closed) {
-        break;
-      }
-
-      const canContinue = stream.write(value);
-
-      if (!canContinue && !stream.closed) {
-        await stream.waitForDrain?.();
-      }
-    }
-
-    if (!stream.closed) {
-      stream.close();
-    }
+    await writeFetchResponseStream(fetchResponse.body, stream);
 
     return;
   }

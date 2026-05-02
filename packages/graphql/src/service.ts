@@ -170,7 +170,8 @@ interface GraphqlDeps {
 
 const graphqlRequestContextStorage = new AsyncLocalStorage<GraphqlRequestContext>();
 const runtimeRequire = createRequire(import.meta.url);
-let graphqlInstanceOfPatched = false;
+let graphqlInstanceOfPatchRefCount = 0;
+let restoreGraphqlInstanceOfPatch: (() => void) | undefined;
 const allowedCrossRealmGraphqlObjects = new WeakSet<object>();
 
 /**
@@ -252,19 +253,21 @@ function isAllowedCrossRealmGraphqlObject(
   return allowedCrossRealmGraphqlObjects.has(value) && getCrossRealmGraphqlTag(value, constructor) !== undefined;
 }
 
-function patchGraphqlInstanceOf(): void {
-  if (graphqlInstanceOfPatched) {
-    return;
-  }
-
+function installGraphqlInstanceOfPatch(): () => void {
   const instanceOfModule = runtimeRequire('graphql/jsutils/instanceOf.js') as {
     instanceOf: GraphqlInstanceOf;
   };
-  const originalInstanceOf = instanceOfModule.instanceOf;
 
-  instanceOfModule.instanceOf = (value, constructor) => {
+  if (restoreGraphqlInstanceOfPatch) {
+    graphqlInstanceOfPatchRefCount += 1;
+    return releaseGraphqlInstanceOfPatch;
+  }
+
+  const patchedFrom = instanceOfModule.instanceOf;
+
+  const patchedInstanceOf: GraphqlInstanceOf = (value, constructor) => {
     try {
-      if (originalInstanceOf(value, constructor)) {
+      if (patchedFrom(value, constructor)) {
         return true;
       }
     } catch (error) {
@@ -277,8 +280,33 @@ function patchGraphqlInstanceOf(): void {
 
     return isAllowedCrossRealmGraphqlObject(value, constructor);
   };
+  instanceOfModule.instanceOf = patchedInstanceOf;
 
-  graphqlInstanceOfPatched = true;
+  graphqlInstanceOfPatchRefCount = 1;
+  restoreGraphqlInstanceOfPatch = () => {
+    if (instanceOfModule.instanceOf !== patchedInstanceOf) {
+      return;
+    }
+
+    instanceOfModule.instanceOf = patchedFrom;
+  };
+
+  return releaseGraphqlInstanceOfPatch;
+}
+
+function releaseGraphqlInstanceOfPatch(): void {
+  if (graphqlInstanceOfPatchRefCount === 0) {
+    return;
+  }
+
+  graphqlInstanceOfPatchRefCount -= 1;
+
+  if (graphqlInstanceOfPatchRefCount > 0) {
+    return;
+  }
+
+  restoreGraphqlInstanceOfPatch?.();
+  restoreGraphqlInstanceOfPatch = undefined;
 }
 
 async function loadGraphqlDeps(): Promise<GraphqlDeps> {
@@ -317,6 +345,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
   private websocketUpgradeListener: NodeUpgradeListener | undefined;
   private websocketUpgradeServer: NodeUpgradeServer | undefined;
   private executeGraphqlOperation: ((args: ExecutionArgs) => OperationResult) | undefined;
+  private releaseGraphqlInstanceOfPatch: (() => void) | undefined;
   private subscribeGraphqlOperation: ((args: ExecutionArgs) => OperationResult) | undefined;
   private yoga: YogaLike | undefined;
 
@@ -418,6 +447,8 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
     this.middlewareRegistered = false;
     this.executeGraphqlOperation = undefined;
     this.graphQLErrorConstructor = undefined;
+    this.releaseGraphqlInstanceOfPatch?.();
+    this.releaseGraphqlInstanceOfPatch = undefined;
     this.subscribeGraphqlOperation = undefined;
     this.yoga = undefined;
   }
@@ -446,7 +477,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
   }
 
   private resolveSchema(deps: GraphqlDeps): GraphQLSchemaType {
-    patchGraphqlInstanceOf();
+    this.releaseGraphqlInstanceOfPatch ??= installGraphqlInstanceOfPatch();
 
     return resolveSchema(deps, this.options.schema, () => this.createCodeFirstSchema(deps), markAllowedCrossRealmGraphqlObjects);
   }

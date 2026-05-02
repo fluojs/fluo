@@ -152,7 +152,7 @@ export class NotificationResolver {
 
 ### Enabling WebSockets
 
-양방향 실시간 통신이 필요하거나 클라이언트 환경이 WebSocket 중심일 때는 WebSocket 트랜스포트를 활성화합니다. 기본 SSE 경로로 충분한지 먼저 판단하고, 실제로 양방향 메시징이 필요한 경우에만 WebSocket을 선택하는 편이 운영 경계를 단순하게 유지합니다.
+양방향 실시간 통신이 필요하거나 클라이언트 환경이 WebSocket 중심일 때는 WebSocket 트랜스포트를 활성화합니다. 기본 SSE 경로로 충분한지 먼저 판단하고, 실제로 양방향 메시징이 필요한 경우에만 WebSocket을 선택하는 편이 운영 경계를 단순하게 유지합니다. WebSocket 트랜스포트는 Node HTTP adapter처럼 upgrade listener를 지원하는 Node HTTP/S 서버를 노출하는 adapter가 필요합니다. 해당 서버 표면이 없는 런타임에서는 기본 SSE 구독 경로를 유지해야 합니다.
 
 ```typescript
 GraphqlModule.forRoot({
