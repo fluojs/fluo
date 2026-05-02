@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Inject, Module } from '@fluojs/core';
+import { Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
 import { Controller, Get, Post, type RequestContext } from '@fluojs/http';
 import type { Dispatcher } from '@fluojs/http';
 
@@ -268,6 +268,90 @@ describe('@fluojs/testing', () => {
     const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
     expect(consumer.value).toBe('fake');
     expect(factoryCallCount).toBe(0);
+  });
+
+  it('applies overrides through aliases across repeated transient resolutions', async () => {
+    const REAL_CONFIG = Symbol('real-config');
+    const CONFIG_ALIAS = Symbol('config-alias');
+
+    class ConsumerService {
+      constructor(readonly value: string) {}
+    }
+
+    @Module({
+      providers: [
+        { provide: REAL_CONFIG, useValue: 'real' },
+        { provide: CONFIG_ALIAS, useExisting: REAL_CONFIG },
+        { provide: ConsumerService, scope: 'transient', useClass: ConsumerService, inject: [CONFIG_ALIAS] },
+      ],
+    })
+    class ServiceModule {}
+
+    const testingModule = await createTestingModule({ rootModule: ServiceModule })
+      .overrideProvider(REAL_CONFIG, 'fake')
+      .compile();
+
+    const first = await testingModule.resolve<ConsumerService>(ConsumerService);
+    const second = await testingModule.resolve<ConsumerService>(ConsumerService);
+
+    expect(first).not.toBe(second);
+    expect(first.value).toBe('fake');
+    expect(second.value).toBe('fake');
+  });
+
+  it('keeps testing-module overrides from materializing replaced request-scoped factories', async () => {
+    const REQUEST_TOKEN = Symbol('request-token');
+    let realFactoryCallCount = 0;
+
+    class ConsumerService {
+      constructor(readonly value: string) {}
+    }
+
+    @Module({
+      providers: [
+        {
+          provide: REQUEST_TOKEN,
+          scope: 'request',
+          useFactory: () => {
+            realFactoryCallCount += 1;
+            return 'real-request';
+          },
+        },
+        { provide: ConsumerService, useClass: ConsumerService, inject: [REQUEST_TOKEN] },
+      ],
+    })
+    class ServiceModule {}
+
+    const testingModule = await createTestingModule({ rootModule: ServiceModule })
+      .overrideProvider(REQUEST_TOKEN, 'fake-request')
+      .compile();
+
+    const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
+
+    expect(consumer.value).toBe('fake-request');
+    expect(realFactoryCallCount).toBe(0);
+  });
+
+  it('preserves request-scoped testing module provider isolation when no override is applied', async () => {
+    let created = 0;
+
+    @ScopeDecorator('request')
+    class RequestStore {
+      readonly id = ++created;
+    }
+
+    @Inject(RequestStore)
+    @ScopeDecorator('request')
+    class ConsumerService {
+      constructor(readonly store: RequestStore) {}
+    }
+
+    @Module({ providers: [RequestStore, ConsumerService] })
+    class ServiceModule {}
+
+    const testingModule = await createTestingModule({ rootModule: ServiceModule }).compile();
+
+    await expect(testingModule.resolve<ConsumerService>(ConsumerService)).rejects.toThrow('outside request scope');
   });
 });
 

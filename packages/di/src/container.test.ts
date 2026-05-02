@@ -516,6 +516,28 @@ describe('Container', () => {
       expect(first).not.toBe(second);
     });
 
+    it('resolves transient dependency graphs against the latest override', async () => {
+      const CONFIG = Symbol('Config');
+
+      class Consumer {
+        constructor(readonly config: string) {}
+      }
+
+      const container = new Container().register(
+        { provide: CONFIG, useValue: 'before-override' },
+        { provide: Consumer, scope: Scope.TRANSIENT, useClass: Consumer, inject: [CONFIG] },
+      );
+
+      const beforeOverride = await container.resolve<Consumer>(Consumer);
+
+      container.override({ provide: CONFIG, useValue: 'after-override' });
+
+      const afterOverride = await container.resolve<Consumer>(Consumer);
+
+      expect(beforeOverride.config).toBe('before-override');
+      expect(afterOverride.config).toBe('after-override');
+    });
+
     it('replaces existing multi providers when overriding a token', async () => {
       const token = Symbol('plugins');
       const container = new Container().register(
@@ -698,6 +720,35 @@ describe('Container', () => {
 
       expect(instance.logger).toBeInstanceOf(Logger);
     });
+
+    it('rechecks optional dependencies for transient providers after register()', async () => {
+      const LOGGER = Symbol('Logger');
+
+      class Logger {
+        readonly name = 'registered-later';
+      }
+
+      class MyService {
+        constructor(public logger: Logger | undefined) {}
+      }
+
+      const container = new Container().register({
+        provide: MyService,
+        scope: Scope.TRANSIENT,
+        useClass: MyService,
+        inject: [optional(LOGGER)],
+      });
+
+      const beforeRegister = await container.resolve<MyService>(MyService);
+
+      container.register({ provide: LOGGER, useClass: Logger });
+
+      const afterRegister = await container.resolve<MyService>(MyService);
+
+      expect(beforeRegister.logger).toBeUndefined();
+      expect(afterRegister.logger).toBeInstanceOf(Logger);
+      expect(afterRegister.logger?.name).toBe('registered-later');
+    });
   });
 
   describe('useExisting provider (alias)', () => {
@@ -821,6 +872,30 @@ describe('Container', () => {
       expect(first).toBe(second);
       expect(createTarget).toHaveBeenCalledTimes(1);
     });
+
+    it('keeps alias chains pointed at the latest overridden target for transient consumers', async () => {
+      const CONFIG = Symbol('Config');
+      const CONFIG_ALIAS = Symbol('ConfigAlias');
+
+      class Consumer {
+        constructor(readonly config: string) {}
+      }
+
+      const container = new Container().register(
+        { provide: CONFIG, useValue: 'initial' },
+        { provide: CONFIG_ALIAS, useExisting: CONFIG },
+        { provide: Consumer, scope: Scope.TRANSIENT, useClass: Consumer, inject: [CONFIG_ALIAS] },
+      );
+
+      const initial = await container.resolve<Consumer>(Consumer);
+
+      container.override({ provide: CONFIG, useValue: 'overridden' });
+
+      const overridden = await container.resolve<Consumer>(Consumer);
+
+      expect(initial.config).toBe('initial');
+      expect(overridden.config).toBe('overridden');
+    });
   });
 
   describe('has()', () => {
@@ -874,6 +949,22 @@ describe('Container', () => {
       expect(plugins).toHaveLength(2);
       expect(plugins[0]).toBeInstanceOf(PluginA);
       expect(plugins[1]).toBeInstanceOf(PluginB);
+    });
+
+    it('preserves multi-provider order across repeated resolutions and replacement', async () => {
+      const PLUGINS = Symbol('Plugins');
+      const container = new Container().register(
+        { provide: PLUGINS, useValue: 'a', multi: true },
+        { provide: PLUGINS, useValue: 'b', multi: true },
+        { provide: PLUGINS, useValue: 'c', multi: true },
+      );
+
+      await expect(container.resolve<string[]>(PLUGINS)).resolves.toEqual(['a', 'b', 'c']);
+      await expect(container.resolve<string[]>(PLUGINS)).resolves.toEqual(['a', 'b', 'c']);
+
+      container.override({ provide: PLUGINS, useValue: 'replacement', multi: true });
+
+      await expect(container.resolve<string[]>(PLUGINS)).resolves.toEqual(['replacement']);
     });
 
     it('collects parent and child multi providers without overriding parent registrations', async () => {
@@ -1061,6 +1152,32 @@ describe('Container', () => {
         useClass: Consumer,
         inject: [optional(OPTIONAL_STORE)],
       });
+
+      expect(container.hasRequestScopedDependency(Consumer)).toBe(false);
+    });
+
+    it('reflects register() and override() changes across repeated inspections', () => {
+      const OPTIONAL_STORE = Symbol('OptionalStore');
+
+      class RequestStore {}
+      class SingletonStore {}
+      class Consumer {
+        constructor(readonly store: RequestStore | SingletonStore | undefined) {}
+      }
+
+      const container = new Container().register({
+        provide: Consumer,
+        useClass: Consumer,
+        inject: [optional(OPTIONAL_STORE)],
+      });
+
+      expect(container.hasRequestScopedDependency(Consumer)).toBe(false);
+
+      container.register({ provide: OPTIONAL_STORE, scope: Scope.REQUEST, useClass: RequestStore });
+
+      expect(container.hasRequestScopedDependency(Consumer)).toBe(true);
+
+      container.override({ provide: OPTIONAL_STORE, useClass: SingletonStore });
 
       expect(container.hasRequestScopedDependency(Consumer)).toBe(false);
     });

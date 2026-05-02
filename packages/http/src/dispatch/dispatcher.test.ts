@@ -198,6 +198,81 @@ describe('dispatcher runtime', () => {
     expect(root.requestScopeDisposeCount).toBe(0);
   });
 
+  it('keeps singleton-only routes on the fast path across repeated dispatches with unrelated request providers', async () => {
+    @ScopeDecorator('request')
+    class UnusedRequestStore {}
+
+    @Controller('/cached-singleton-only')
+    class CachedSingletonOnlyController {
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new CountingContainer().register(UnusedRequestStore, CachedSingletonOnlyController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: CachedSingletonOnlyController }]),
+      rootContainer: root,
+    });
+
+    const firstResponse = createFastPathResponse();
+    await dispatcher.dispatch(createRequest('/cached-singleton-only', 'GET'), firstResponse);
+
+    const secondResponse = createFastPathResponse();
+    await dispatcher.dispatch(createRequest('/cached-singleton-only', 'GET'), secondResponse);
+
+    const stats = getDispatcherFastPathStats(dispatcher);
+    expect(stats?.routes[0]?.executionPath).toBe('fast');
+    expect(firstResponse.simpleJsonBody).toEqual({ ok: true });
+    expect(secondResponse.simpleJsonBody).toEqual({ ok: true });
+    expect(root.requestScopeCreateCount).toBe(0);
+    expect(root.requestScopeDisposeCount).toBe(0);
+  });
+
+  it('promotes alias-based request-scoped controller dependencies before dispatch plan reuse', async () => {
+    const STORE_ALIAS = Symbol('StoreAlias');
+    let created = 0;
+
+    @ScopeDecorator('request')
+    class RequestStore {
+      readonly id = ++created;
+    }
+
+    @Inject(STORE_ALIAS)
+    @ScopeDecorator('request')
+    @Controller('/alias-request-scope')
+    class AliasRequestScopeController {
+      constructor(private readonly store: RequestStore) {}
+
+      @Get('/')
+      getValue() {
+        return { store: this.store.id };
+      }
+    }
+
+    const root = new CountingContainer().register(
+      RequestStore,
+      { provide: STORE_ALIAS, useExisting: RequestStore },
+      AliasRequestScopeController,
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: AliasRequestScopeController }]),
+      rootContainer: root,
+    });
+
+    const firstResponse = createResponse();
+    await dispatcher.dispatch(createRequest('/alias-request-scope', 'GET'), firstResponse);
+
+    const secondResponse = createResponse();
+    await dispatcher.dispatch(createRequest('/alias-request-scope', 'GET'), secondResponse);
+
+    expect(firstResponse.body).toEqual({ store: 1 });
+    expect(secondResponse.body).toEqual({ store: 2 });
+    expect(root.requestScopeCreateCount).toBe(2);
+    expect(root.requestScopeDisposeCount).toBe(2);
+  });
+
   it('lazily promotes manual RequestContext container access to a request scope', async () => {
     let created = 0;
 
