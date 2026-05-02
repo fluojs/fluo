@@ -1,5 +1,11 @@
 # @fluojs/config
 
+## 1.0.0-beta.4
+
+### Minor Changes
+
+- [#1489](https://github.com/fluojs/fluo/pull/1489) [`d4b7d48`](https://github.com/fluojs/fluo/commit/d4b7d48a2843ee424261bb14e871c8df69e6d877) Thanks [@ayden94](https://github.com/ayden94)! - Replace function-based config validation with a synchronous Standard Schema `schema` option so applications can validate and normalize config through vendor-neutral schema libraries such as Zod, Valibot, and ArkType.
+
 ## 1.0.0-beta.3
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @fluojs/http
 
+## 1.0.0-beta.9
+
+### Patch Changes
+
+- [#1491](https://github.com/fluojs/fluo/pull/1491) [`b82b28f`](https://github.com/fluojs/fluo/commit/b82b28fbba8cd8bae631384757737db1bae2ff7f) Thanks [@ayden94](https://github.com/ayden94)! - Reduce dispatcher route-param update overhead by using direct assignment for standard writable request objects while preserving descriptor-based fallback behavior for custom request shapes.
+
 ## 1.0.0-beta.8
 
 ### Patch Changes
