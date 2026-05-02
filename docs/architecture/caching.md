@@ -20,7 +20,7 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 | --- | --- | --- |
 | Default key source | When `@CacheKey(...)` is absent, `CacheInterceptor` derives the key from `httpKeyStrategy`. | `packages/cache-manager/src/interceptor.ts`, `packages/cache-manager/src/types.ts` |
 | Built-in strategies | Supported strategy values are `'route'`, `'route+query'`, `'full'`, or a custom function. The interceptor code handles `'route'` as path-only and treats non-`'route'` built-ins as path plus sorted query string. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/interceptor.ts` |
-| Query normalization | For query-sensitive keys, query entries are sorted by key before serialization so reordered query strings map to the same key. | `packages/cache-manager/src/interceptor.ts` |
+| Query normalization | For query-sensitive keys, query entries are sorted by key and repeated values are sorted before serialization so reordered query strings map to the same key. | `packages/cache-manager/src/interceptor.ts` |
 | Principal isolation | Built-in key strategies append `|principal:<scope>` when `principalScopeResolver` returns a value. Without a custom resolver, authenticated requests append `issuer` and `subject` from `requestContext.principal`. | `packages/cache-manager/src/interceptor.ts` |
 | Explicit override | `@CacheKey(...)` may store a static string or a resolver function and overrides the computed GET key for that handler. | `packages/cache-manager/src/decorators.ts` |
 
@@ -43,7 +43,8 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 | Eviction timing | For non-GET handlers, eviction runs only after the downstream handler succeeds. If the HTTP response is not yet committed, eviction is deferred until `response.send(...)` or a fallback timer fires. | `packages/cache-manager/src/interceptor.ts` |
 | Failure containment | `safeGet`, `safeSet`, and `safeDel` swallow store errors. Cache failures do not fail otherwise successful handlers. | `packages/cache-manager/src/interceptor.ts` |
 | In-flight invalidation | `CacheService.del(...)` marks keys that are still loading so `remember(...)` does not repopulate a key that was invalidated during the same load cycle. | `packages/cache-manager/src/service.ts` |
-| Full reset | `CacheService.reset()` increments an internal reset version, clears in-flight invalidation markers, and resets the underlying store. | `packages/cache-manager/src/service.ts` |
+| Full reset | `CacheService.reset()` increments an internal reset version, clears in-flight and pending load bookkeeping, clears in-flight invalidation markers, and resets the underlying store. | `packages/cache-manager/src/service.ts` |
+| Store teardown | During application shutdown, `CacheService` calls a custom store `close()` hook, or `dispose()` when `close()` is absent, so resource-owning stores can release sockets, pools, timers, or other external handles. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/service.ts` |
 
 ## Constraints
 
@@ -51,4 +52,4 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 - Redis-backed values must be JSON-compatible because `RedisStore` persists entries with `JSON.stringify(...)` and reconstructs them with `JSON.parse(...)`.
 - Cache invalidation is key-based only. The built-in contract does not provide tag-based or wildcard invalidation at the interceptor layer.
 - Cache TTL enforcement in the memory store is lazy and access-driven, not timer-driven.
-- The cache package defines extensibility through the `CacheStore` interface. Custom stores must implement `get`, `set`, `del`, and `reset`.
+- The cache package defines extensibility through the `CacheStore` interface. Custom stores must implement `get`, `set`, `del`, and `reset`; resource-owning stores should also implement optional `close()` or `dispose()` teardown.

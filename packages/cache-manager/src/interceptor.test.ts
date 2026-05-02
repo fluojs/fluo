@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { CallHandler, HttpMethod, InterceptorContext, Principal, RequestContext } from '@fluojs/http';
+import { SseResponse, type CallHandler, type HttpMethod, type InterceptorContext, type Principal, type RequestContext } from '@fluojs/http';
 
 import { CacheEvict, CacheKey, CacheTTL } from './decorators.js';
 import { CacheInterceptor } from './interceptor.js';
@@ -25,14 +25,24 @@ function createRequestContext(
   principal?: Principal,
 ): RequestContext {
   const queryStart = url.indexOf('?');
-  const query: Record<string, string> = {};
+  const query: Record<string, string | string[]> = {};
 
   if (queryStart !== -1) {
     const queryString = url.slice(queryStart + 1);
     for (const pair of queryString.split('&')) {
       const [key, value] = pair.split('=');
       if (key) {
-        query[decodeURIComponent(key)] = value ? decodeURIComponent(value) : '';
+        const decodedKey = decodeURIComponent(key);
+        const decodedValue = value ? decodeURIComponent(value) : '';
+        const existingValue = query[decodedKey];
+
+        if (Array.isArray(existingValue)) {
+          existingValue.push(decodedValue);
+        } else if (existingValue !== undefined) {
+          query[decodedKey] = [existingValue, decodedValue];
+        } else {
+          query[decodedKey] = decodedValue;
+        }
       }
     }
   }
@@ -113,6 +123,24 @@ function createInterceptor(overrides: Partial<NormalizedCacheModuleOptions> = {}
     cacheService,
     interceptor: new CacheInterceptor(cacheService, options),
   };
+}
+
+function installSseStream(requestContext: RequestContext) {
+  const stream = {
+    closed: false,
+    close: vi.fn(() => {
+      stream.closed = true;
+    }),
+    end: vi.fn(() => {
+      stream.closed = true;
+    }),
+    flush: vi.fn(),
+    onClose: vi.fn(() => undefined),
+    write: vi.fn(() => true),
+  };
+
+  requestContext.response.stream = stream;
+  return stream;
 }
 
 describe('CacheInterceptor', () => {
@@ -251,6 +279,35 @@ describe('CacheInterceptor', () => {
 
     await expect(interceptor.intercept(context, next)).resolves.toEqual({ count: 1 });
     expect(next.handle).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache SseResponse values returned by GET handlers', async () => {
+    class EventsController {
+      @CacheTTL(120)
+      stream() {}
+    }
+
+    const { interceptor, cacheService } = createInterceptor({ ttl: 120 });
+    const firstRequestContext = createRequestContext('GET', '/events', '/events');
+    const secondRequestContext = createRequestContext('GET', '/events', '/events');
+    installSseStream(firstRequestContext);
+    installSseStream(secondRequestContext);
+    const firstContext = createContext(EventsController, 'stream', firstRequestContext);
+    const secondContext = createContext(EventsController, 'stream', secondRequestContext);
+    const next: CallHandler = {
+      handle: vi
+        .fn<CallHandler['handle']>()
+        .mockImplementationOnce(async () => new SseResponse(firstRequestContext))
+        .mockImplementationOnce(async () => new SseResponse(secondRequestContext)),
+    };
+
+    const first = await interceptor.intercept(firstContext, next);
+    const second = await interceptor.intercept(secondContext, next);
+
+    expect(first).toBeInstanceOf(SseResponse);
+    expect(second).toBeInstanceOf(SseResponse);
+    expect(next.handle).toHaveBeenCalledTimes(2);
+    await expect(cacheService.get('/events')).resolves.toBeUndefined();
   });
 
   it('does not fail successful non-GET handlers when cache eviction fails', async () => {
@@ -554,6 +611,29 @@ describe('CacheInterceptor', () => {
       await interceptor.intercept(secondContext, next);
 
       expect(next.handle).toHaveBeenCalledTimes(1);
+    });
+
+    it('strategy "route+query" canonicalizes repeated query values', async () => {
+      class ProductController {
+        @CacheTTL(120)
+        list() {}
+      }
+
+      const { interceptor, cacheService } = createInterceptor({ httpKeyStrategy: 'route+query' });
+      const firstContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?tag=b&tag=a&page=1', '/products'));
+      const secondContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=1&tag=a&tag=b', '/products'));
+      const thirdContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=1&tag=a&tag=c', '/products'));
+      const next: CallHandler = {
+        handle: vi.fn(async () => ({ data: 'tags' })),
+      };
+
+      await interceptor.intercept(firstContext, next);
+      await interceptor.intercept(secondContext, next);
+      await interceptor.intercept(thirdContext, next);
+
+      expect(next.handle).toHaveBeenCalledTimes(2);
+      expect(await cacheService.get('/products?page=1&tag=a&tag=b')).toEqual({ data: 'tags' });
+      expect(await cacheService.get('/products?page=1&tag=a&tag=c')).toEqual({ data: 'tags' });
     });
 
     it('strategy "route+query" treats no-query and empty-query differently from route-only', async () => {
