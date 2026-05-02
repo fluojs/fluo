@@ -368,6 +368,75 @@ describe('loadConfig', () => {
     expect(loaded['KEY']).toBe('value');
   });
 
+  it('snapshots standalone reloader options for current, manual reload, and watch reload inputs', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-reloader-option-snapshot-'));
+    const envPath = join(cwd, '.env.dev');
+    const schema = createPortSchema();
+    const parse = (content: string): Record<string, string> => {
+      const result: Record<string, string> = {};
+
+      for (const line of content.trim().split('\n')) {
+        const [key, value] = line.split(':');
+        if (key && value) {
+          result[key] = value;
+        }
+      }
+
+      return result;
+    };
+    const options: ConfigLoadOptions = {
+      cwd,
+      defaults: { PORT: '3000' },
+      envFile: envPath,
+      parse,
+      processEnv: { PORT: '4100' },
+      runtimeOverrides: { FEATURE: 'registered' },
+      schema,
+      watch: true,
+    };
+
+    writeFileSync(envPath, 'PORT:4000\n');
+
+    const reloader = createConfigReloader(options);
+
+    options.defaults = { PORT: '9000' };
+    options.parse = () => ({ PORT: '9100' });
+    options.processEnv = { PORT: '9200' };
+    options.runtimeOverrides = { FEATURE: 'mutated' };
+    options.schema = {
+      '~standard': {
+        validate: () => ({ value: { PORT: 9300, FEATURE: 'schema-mutated' } }),
+        vendor: 'test',
+        version: 1,
+      },
+    };
+
+    try {
+      const updates: Array<{ feature: unknown; port: unknown; reason: string }> = [];
+
+      reloader.subscribe((snapshot, reason) => {
+        updates.push({ feature: snapshot['FEATURE'], port: snapshot['PORT'], reason });
+      });
+
+      expect(Object.isFrozen(schema)).toBe(false);
+      expect(Object.isFrozen(parse)).toBe(false);
+      expect(reloader.current()).toMatchObject({ FEATURE: 'registered', PORT: 4100 });
+
+      writeFileSync(envPath, 'PORT:4200\n');
+      expect(reloader.reload()).toMatchObject({ FEATURE: 'registered', PORT: 4100 });
+
+      writeFileSync(envPath, 'PORT:4300\n');
+      emitWatchChange();
+      await waitForCondition(() => updates.some((update) => update.reason === 'watch'));
+
+      expect(updates).toContainEqual({ feature: 'registered', port: 4100, reason: 'manual' });
+      expect(updates).toContainEqual({ feature: 'registered', port: 4100, reason: 'watch' });
+      expect(reloader.current()).toMatchObject({ FEATURE: 'registered', PORT: 4100 });
+    } finally {
+      reloader.close();
+    }
+  });
+
   it('emits reload notifications through explicit subscriptions', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-reload-subscribe-'));
     const envPath = join(cwd, '.env.dev');

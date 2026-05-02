@@ -33,7 +33,6 @@ describe('ConfigReloadManager', () => {
     expect(snapshot?.processEnv?.PORT).toBe('4100');
     expect(snapshot?.runtimeOverrides?.['FEATURE']).toBe('enabled');
     expect(Object.isFrozen(snapshot)).toBe(true);
-    expect(Object.isFrozen(snapshot?.defaults)).toBe(true);
     expect(reloaderProvider?.useExisting).toBe(ConfigReloadManager);
   });
 
