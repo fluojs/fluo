@@ -161,4 +161,41 @@ describe('writeFetchResponse', () => {
 
     expect(cancel).toHaveBeenCalledOnce();
   });
+
+  it('cancels and settles a pending upstream read when the downstream stream closes', async () => {
+    const cancel = vi.fn(async () => {});
+    const fetchResponse = new Response(new ReadableStream<Uint8Array>({
+      cancel,
+    }), {
+      headers: { 'content-type': 'text/event-stream' },
+      status: 200,
+    });
+    const frameworkResponse = createFrameworkResponseMock();
+    const stream = frameworkResponse.stream;
+    let closeListener: (() => void) | undefined;
+    const removeCloseListener = vi.fn();
+
+    if (!stream) {
+      throw new Error('Expected stream mock to exist.');
+    }
+
+    stream.onClose = vi.fn((listener: () => void) => {
+      closeListener = listener;
+      return removeCloseListener;
+    });
+
+    const writePromise = writeFetchResponse(fetchResponse, frameworkResponse);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    Reflect.set(stream, 'closed', true);
+    closeListener?.();
+
+    await expect(writePromise).resolves.toBeUndefined();
+
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(removeCloseListener).toHaveBeenCalledOnce();
+    expect(stream.close).not.toHaveBeenCalled();
+    expect(frameworkResponse.writes).toEqual([]);
+  });
 });

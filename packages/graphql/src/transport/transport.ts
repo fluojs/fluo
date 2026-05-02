@@ -119,24 +119,38 @@ function readSetCookieValues(headers: Headers): string[] {
 async function writeFetchResponseStream(body: ReadableStream<Uint8Array>, stream: FrameworkResponseStream): Promise<void> {
   const reader = body.getReader();
   let readerDone = false;
-  let cancelReader: (() => void) | undefined;
+  let cancelPromise: Promise<void> | undefined;
+  let notifyCancellation: (() => void) | undefined;
+  const cancellationStarted = new Promise<void>((resolve) => {
+    notifyCancellation = resolve;
+  });
   const removeCloseListener = stream.onClose?.(() => {
     if (!readerDone) {
-      cancelReader?.();
+      void cancelUnreadBody().catch(() => {});
     }
   });
 
-  const cancelUnreadBody = async (): Promise<void> => {
-    if (readerDone) {
-      return;
+  const cancelUnreadBody = (): Promise<void> => {
+    if (!cancelPromise) {
+      readerDone = true;
+      notifyCancellation?.();
+      cancelPromise = reader.cancel();
     }
 
-    readerDone = true;
-    await reader.cancel();
+    return cancelPromise;
   };
 
-  cancelReader = () => {
-    void cancelUnreadBody();
+  const readNextChunk = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
+    const readPromise = reader.read();
+    readPromise.catch(() => {});
+
+    return await Promise.race([
+      readPromise,
+      cancellationStarted.then(async () => {
+        await cancelPromise;
+        return { done: true, value: undefined } as ReadableStreamReadDoneResult<Uint8Array>;
+      }),
+    ]);
   };
 
   try {
@@ -146,7 +160,7 @@ async function writeFetchResponseStream(body: ReadableStream<Uint8Array>, stream
         break;
       }
 
-      const { done, value } = await reader.read();
+      const { done, value } = await readNextChunk();
 
       if (done) {
         readerDone = true;
