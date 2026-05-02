@@ -73,6 +73,8 @@ import { MetricsModule } from '@fluojs/metrics';
     MetricsModule.forRoot({
       // Optional: you can change the default /metrics path.
       path: '/internal/prometheus',
+      // Required when you want automatic HTTP request metrics.
+      http: true,
     }),
   ],
 })
@@ -102,7 +104,7 @@ This "aggregate first, drill down second" approach is key to managing complexity
 Fluo provides several metrics by default, but you can expand monitoring coverage by integrating with third-party **Prometheus Exporters**. For example, you might use `process-exporter` for deeper visibility into the Node.js event loop, or `blackbox-exporter` to monitor APIs externally. Fluo's metrics system complements these external tools and lets you observe the application stack across multiple layers.
 
 ## 19.4 Automatic HTTP Instrumentation
-`fluo` automatically measures every HTTP request handled by the application without any extra code. The important point is that as soon as you enable the Module, you gain baseline visibility into API performance.
+`fluo` can automatically measure every HTTP request handled by the application when HTTP instrumentation is enabled. Pass `http: true` (or an `http` options object) to `MetricsModule.forRoot(...)` when you want baseline API performance visibility in addition to the scrape endpoint.
 
 - `http_request_duration_seconds`: A **Histogram** of request latency broken down by method, path, and status code.
 - `http_requests_total`: A **Counter** for total request count, which enables RPS and error rate calculations.
@@ -227,9 +229,9 @@ In highly secure environments, you may want to log every access to the `/metrics
 Combining IP whitelisting, API keys, and audit logging lets you build a defense-in-depth strategy for metrics. It limits operational data exposure to approved systems and people, and it helps manage the confidentiality and integrity of the application's vital signs.
 
 ### 19.6.4 Managing Metric Scraping Load
-If the metric count is very high or the scrape frequency is very high, generating the metrics response can become a performance bottleneck by itself. You can reduce this by implementing **metrics caching**. Fluo's `MetricsModule` can be configured to cache metrics responses for a short time, such as 5 seconds, reducing server CPU usage without significantly affecting monitoring data freshness.
+If the metric count is very high or the scrape frequency is very high, generating the metrics response can become a performance bottleneck by itself. The current `@fluojs/metrics` module does not expose a built-in response-cache option, so add short-lived caching at a reverse proxy, platform middleware, or dedicated application middleware boundary when you need it.
 
-This is especially useful during traffic spikes when the server is already under load. Keeping the monitoring system lightweight ensures that collecting observability data does not add more application load during important performance events.
+This is especially useful during traffic spikes when the server is already under load. Keeping that cache outside `MetricsModule` makes ownership explicit while still reducing server CPU usage without significantly affecting monitoring data freshness. Keeping the monitoring system lightweight ensures that collecting observability data does not add more application load during important performance events.
 
 ## 19.7 Platform Telemetry
 `fluo` also exposes its internal state as metrics. This lets monitoring tools directly check which components have initialized and are healthy. This "self-monitoring" feature is a useful starting point when debugging problems related to application structure.
@@ -276,7 +278,7 @@ Metrics turn FluoBlog from a "black box" into an observable system. Collecting d
 
 - **Observability**: Prometheus provides the "what" and "when" of system behavior through time-series data.
 - **Custom tracking**: Use `Counter`, `Gauge`, and `Histogram` to measure business-critical KPIs and system state.
-- **Automatic instrumentation**: Fluo provides baseline HTTP request, error, and latency metrics for visibility without extra configuration.
+- **HTTP instrumentation**: Fluo provides baseline HTTP request, error, and latency metrics when `MetricsModule.forRoot({ http: true })` or equivalent HTTP options are enabled.
 - **Alerting**: Use Grafana to prepare proactive incident response by notifying the team when performance degrades or error rates spike.
 - **Standardization**: By following the OpenMetrics standard, Fluo remains compatible with the modern monitoring ecosystem.
 

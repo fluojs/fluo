@@ -1,7 +1,13 @@
 import { ContainerResolutionError } from '@fluojs/di';
-import { ForbiddenException, type FrameworkRequest, type FrameworkResponse, type MiddlewareContext, type Next } from '@fluojs/http';
+import {
+  ForbiddenException,
+  type FrameworkRequest,
+  type FrameworkResponse,
+  type MiddlewareContext,
+  type Next,
+} from '@fluojs/http';
 import { bootstrapApplication, defineModule, PLATFORM_SHELL, type PlatformComponent } from '@fluojs/runtime';
-import { Counter, Registry } from 'prom-client';
+import { Counter, Histogram, Registry } from 'prom-client';
 import { describe, expect, it } from 'vitest';
 import { METER_PROVIDER } from './providers/meter-provider.js';
 import { MetricsModule } from './metrics-module.js';
@@ -124,12 +130,38 @@ describe('MetricsModule', () => {
     await app.dispatch(createRequest('/metrics'), response);
 
     expect(response.statusCode).toBe(200);
-    expect(response.headers['content-type']).toContain('text/plain');
+    expect(response.headers['content-type']).toBe(Registry.PROMETHEUS_CONTENT_TYPE);
     expect(response.body).toEqual(expect.stringContaining('fluo_metrics_registry_mode{mode="isolated"} 1'));
     expect(response.body).toEqual(expect.stringContaining('fluo_component_ready{component_id="runtime.shell",component_kind="runtime",operation="readiness",result="ready",env="unknown",instance="local"} 1'));
     expect(response.body).toEqual(expect.stringContaining('fluo_component_health{component_id="runtime.shell",component_kind="runtime",operation="health",result="healthy",env="unknown",instance="local"} 1'));
     expect(response.body).toEqual(expect.stringContaining('process_cpu_seconds_total'));
     expect(response.body).toEqual(expect.stringContaining('nodejs_heap_size_total_bytes'));
+
+    await app.close();
+  });
+
+  it('keeps default metrics registration once per shared registry', async () => {
+    const sharedRegistry = new Registry();
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        MetricsModule.forRoot({ registry: sharedRegistry, path: '/metrics-a' }),
+        MetricsModule.forRoot({ registry: sharedRegistry, path: '/metrics-b' }),
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    const response = createResponse();
+    await app.dispatch(createRequest('/metrics-b'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(String(response.body)).toContain('process_cpu_seconds_total');
+    expect(String(response.body)).toContain('fluo_metrics_registry_mode{mode="shared"} 1');
 
     await app.close();
   });
@@ -304,7 +336,7 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const metricsService = await app.container.resolve(MetricsService);
+    const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
     const meterProvider = await app.container.resolve(METER_PROVIDER) as PrometheusMeterProvider;
 
     metricsService.counter({
@@ -359,7 +391,7 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const metricsService = await app.container.resolve(MetricsService);
+    const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
     const resolvedRegistry = metricsService.getRegistry();
 
     expect(resolvedRegistry).toBe(sharedRegistry);
@@ -370,6 +402,38 @@ describe('MetricsModule', () => {
     expect(response.statusCode).toBe(200);
     expect(String(response.body)).toContain('app_custom_requests_total{endpoint="/api"} 1');
     expect(String(response.body)).toContain('fluo_metrics_registry_mode{mode="shared"} 1');
+
+    await app.close();
+  });
+
+  it('reuses built-in HTTP metrics when multiple module instances share one registry', async () => {
+    const sharedRegistry = new Registry();
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a', registry: sharedRegistry }),
+        MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b', registry: sharedRegistry }),
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    const firstResponse = createResponse();
+    await app.dispatch(createRequest('/metrics-a'), firstResponse);
+    expect(firstResponse.statusCode).toBe(200);
+
+    const secondResponse = createResponse();
+    await app.dispatch(createRequest('/metrics-b'), secondResponse);
+    expect(secondResponse.statusCode).toBe(200);
+
+    const metricsText = await sharedRegistry.metrics();
+    expect(metricsText).toContain('http_requests_total{method="GET",path="/metrics-a",status="200"} 1');
+    expect(metricsText).toContain('http_requests_total{method="GET",path="/metrics-b",status="200"} 1');
+    expect(metricsText).toContain('fluo_metrics_registry_mode{mode="shared"} 1');
 
     await app.close();
   });
@@ -740,7 +804,7 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const metricsService = await app.container.resolve(MetricsService);
+    const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
 
     expect(() => {
       metricsService.counter({
@@ -750,6 +814,48 @@ describe('MetricsModule', () => {
     }).toThrow('A metric with the name shared_duplicate_counter has already been registered.');
 
     await app.close();
+  });
+
+  it('throws when an app predefines a built-in HTTP counter name', () => {
+    const sharedRegistry = new Registry();
+
+    new Counter({
+      help: 'Application-defined HTTP requests',
+      name: 'http_requests_total',
+      registers: [sharedRegistry],
+    });
+
+    expect(() => MetricsModule.forRoot({ defaultMetrics: false, http: true, registry: sharedRegistry })).toThrow(
+      'Metric name "http_requests_total" is already registered by the application. Built-in HTTP metrics require framework-owned collectors.',
+    );
+  });
+
+  it('throws when an app predefines a built-in HTTP error counter name', () => {
+    const sharedRegistry = new Registry();
+
+    new Counter({
+      help: 'Application-defined HTTP errors',
+      name: 'http_errors_total',
+      registers: [sharedRegistry],
+    });
+
+    expect(() => MetricsModule.forRoot({ defaultMetrics: false, http: true, registry: sharedRegistry })).toThrow(
+      'Metric name "http_errors_total" is already registered by the application. Built-in HTTP metrics require framework-owned collectors.',
+    );
+  });
+
+  it('throws when an app predefines the built-in HTTP duration histogram name', () => {
+    const sharedRegistry = new Registry();
+
+    new Histogram({
+      help: 'Application-defined HTTP durations',
+      name: 'http_request_duration_seconds',
+      registers: [sharedRegistry],
+    });
+
+    expect(() => MetricsModule.forRoot({ defaultMetrics: false, http: true, registry: sharedRegistry })).toThrow(
+      'Metric name "http_request_duration_seconds" is already registered by the application. Built-in HTTP metrics require framework-owned collectors.',
+    );
   });
 
   it('creates isolated registry by default when registry option is omitted', async () => {
@@ -763,7 +869,7 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const metricsService = await app.container.resolve(MetricsService);
+    const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
     const registry = metricsService.getRegistry();
 
     metricsService.counter({

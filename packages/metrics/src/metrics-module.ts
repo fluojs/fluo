@@ -388,13 +388,14 @@ function isMissingPlatformShellResolutionError(error: unknown): error is Contain
   }
 
   const containerError = error as ContainerResolutionError & { meta?: Record<string, unknown> };
+  const message = String((containerError as { message?: unknown }).message ?? '');
   const token = typeof containerError.meta?.['token'] === 'string' ? containerError.meta['token'] : undefined;
   if (token && PLATFORM_SHELL_TOKEN_NAMES.has(token)) {
-    return containerError.message.startsWith(`No provider registered for token ${token}.`);
+    return message.startsWith(`No provider registered for token ${token}.`);
   }
 
   for (const tokenName of PLATFORM_SHELL_TOKEN_NAMES) {
-    if (containerError.message.startsWith(`No provider registered for token ${tokenName}.`)) {
+    if (message.startsWith(`No provider registered for token ${tokenName}.`)) {
       return true;
     }
   }
