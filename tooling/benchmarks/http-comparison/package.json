@@ -7,18 +7,22 @@
   "scripts": {
     "bench": "tsx src/run.ts",
     "build:nestjs": "tsc -p nestjs/tsconfig.json --outDir dist/nestjs && node -e \"require('fs').writeFileSync('dist/nestjs/package.json', '{\\\"type\\\":\\\"commonjs\\\"}\\n')\"",
+    "build:fluo": "tsc src/fluo/server.ts --target ES2022 --module ESNext --moduleResolution Bundler --strict --skipLibCheck --outDir dist/fluo-fastify",
     "build:fluo:bun": "tsc src/fluo-bun/server.ts --target ES2022 --module ESNext --moduleResolution Bundler --strict --skipLibCheck --outDir dist/fluo-bun",
     "bench:fluo:bun": "pnpm run build:fluo:bun && bun run dist/fluo-bun/fluo-bun/server.js",
-    "bench:fluo": "tsx src/fluo/server.ts",
+    "bench:fluo": "pnpm run build:fluo && node dist/fluo-fastify/fluo/server.js",
     "bench:nestjs": "pnpm run build:nestjs && node dist/nestjs/nestjs/server.js",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p nestjs/tsconfig.json"
   },
   "dependencies": {
     "@fluojs/core": "1.0.0-beta.2",
+    "@fluojs/config": "1.0.0-beta.3",
+    "@fluojs/di": "1.0.0-beta.5",
     "@fluojs/http": "1.0.0-beta.8",
     "@fluojs/platform-bun": "1.0.0-beta.6",
     "@fluojs/platform-fastify": "1.0.0-beta.8",
     "@fluojs/runtime": "1.0.0-beta.8",
+    "@fluojs/validation": "1.0.0-beta.1",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-fastify": "^11.0.0",

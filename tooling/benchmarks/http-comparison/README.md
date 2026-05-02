@@ -31,7 +31,7 @@ For quick directional runs, override the defaults with environment variables:
 BENCH_RUNS=1 BENCH_WARMUP_SEC=1 BENCH_MEASURE_SEC=3 BENCH_CONNECTIONS=8 BENCH_OUTPUT_JSON=benchmark-results-smoke.json pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
 ```
 
-The runner does not rebuild local fluo workspace packages by default because this benchmark targets npm beta packages. Set `BENCH_BUILD_LOCAL_FLUO_PACKAGES=1` only when temporarily switching dependencies back to local links for unpublished worktree experiments.
+Local worktree experiments should use an explicit local dependency setup and label their output as local-worktree results. The default commands above are reserved for published npm beta measurements so lockfile installs include the same external dependency graph consumers receive.
 
 To collect a repeat-average for specific scenarios, set `BENCH_RUNS` and a comma-separated `BENCH_SCENARIOS` list. The console report includes the sample count and req/s standard deviation, and `BENCH_OUTPUT_JSON` controls where raw per-run metrics plus averages are written:
 

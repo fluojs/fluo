@@ -3,7 +3,7 @@ import { Controller, Get, Post, type RequestContext } from '@fluojs/http';
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 
-import { jsonCommandLocal, QUOTE_REQUEST, readSearchLocal, restRouteMixLocal, type QuoteInput, type QuoteItem } from '../shared/workloads';
+import { jsonCommandLocal, QUOTE_REQUEST, readSearchLocal, restRouteMixLocal, type QuoteInput, type QuoteItem } from '../shared/workloads.js';
 
 ensureMetadataSymbol();
 

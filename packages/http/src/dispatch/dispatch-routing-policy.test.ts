@@ -41,6 +41,29 @@ function createDescriptor(): HandlerDescriptor {
   };
 }
 
+function createRequestContext(request: FrameworkRequest): RequestContext {
+  return {
+    container: {
+      async dispose() {
+        return undefined;
+      },
+      resolve() {
+        throw new Error('not used');
+      },
+    },
+    metadata: {},
+    request,
+    response: {
+      committed: false,
+      headers: {},
+      redirect() {},
+      send() {},
+      setHeader() {},
+      setStatus() {},
+    },
+  };
+}
+
 describe('dispatch routing policy', () => {
   it('returns the matched handler descriptor and params', () => {
     const descriptor = createDescriptor();
@@ -73,17 +96,8 @@ describe('dispatch routing policy', () => {
 
   it('updates request params in request context without mutating unrelated fields', () => {
     let queryReads = 0;
-    const context: RequestContext = {
-      container: {
-        async dispose() {
-          return undefined;
-        },
-        resolve() {
-          throw new Error('not used');
-        },
-      },
-      metadata: {},
-      request: Object.defineProperties(createRequest('/users/1', 'GET'), {
+    const context = createRequestContext(
+      Object.defineProperties(createRequest('/users/1', 'GET'), {
         query: {
           configurable: true,
           enumerable: true,
@@ -93,20 +107,73 @@ describe('dispatch routing policy', () => {
           },
         },
       }),
-      response: {
-        committed: false,
-        headers: {},
-        redirect() {},
-        send() {},
-        setHeader() {},
-        setStatus() {},
-      },
-    };
+    );
 
     updateRequestParams(context, { id: '1' });
 
     expect(context.request.path).toBe('/users/1');
     expect(context.request.params).toEqual({ id: '1' });
     expect(queryReads).toBe(0);
+  });
+
+  it('shadows inherited getter-only params descriptors without reading them', () => {
+    let paramsReads = 0;
+    const prototype = createRequest('/users/1', 'GET');
+    Object.defineProperty(prototype, 'params', {
+      configurable: true,
+      enumerable: true,
+      get() {
+        paramsReads += 1;
+        return { stale: 'true' };
+      },
+    });
+    const request = Object.create(prototype) as FrameworkRequest;
+    const context = createRequestContext(request);
+
+    updateRequestParams(context, { id: '1' });
+
+    expect(Object.hasOwn(context.request, 'params')).toBe(true);
+    expect(context.request.params).toEqual({ id: '1' });
+    expect(paramsReads).toBe(0);
+  });
+
+  it('shadows inherited accessor params without invoking inherited setters', () => {
+    let setterCalls = 0;
+    const prototype = createRequest('/users/1', 'GET');
+    Object.defineProperty(prototype, 'params', {
+      configurable: true,
+      enumerable: true,
+      get() {
+        return { stale: 'true' };
+      },
+      set() {
+        setterCalls += 1;
+      },
+    });
+    const request = Object.create(prototype) as FrameworkRequest;
+    const context = createRequestContext(request);
+
+    updateRequestParams(context, { id: '1' });
+
+    expect(setterCalls).toBe(0);
+    expect(Object.hasOwn(context.request, 'params')).toBe(true);
+    expect(context.request.params).toEqual({ id: '1' });
+  });
+
+  it('shadows inherited non-writable params descriptors', () => {
+    const prototype = createRequest('/users/1', 'GET');
+    Object.defineProperty(prototype, 'params', {
+      configurable: true,
+      enumerable: true,
+      value: { stale: 'true' },
+      writable: false,
+    });
+    const request = Object.create(prototype) as FrameworkRequest;
+    const context = createRequestContext(request);
+
+    updateRequestParams(context, { id: '1' });
+
+    expect(Object.hasOwn(context.request, 'params')).toBe(true);
+    expect(context.request.params).toEqual({ id: '1' });
   });
 });
