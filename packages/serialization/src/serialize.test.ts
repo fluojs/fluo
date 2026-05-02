@@ -284,6 +284,41 @@ describe('serialize', () => {
     });
   });
 
+  it('merges base and derived transforms for the same field in declaration order', () => {
+    class BaseView {
+      @Transform((value) => String(value).trim())
+      label: string;
+
+      constructor(label: string) {
+        this.label = label;
+      }
+    }
+
+    class DerivedView extends BaseView {
+      @Transform((value) => String(value).toUpperCase())
+      override label: string;
+
+      constructor(label: string) {
+        super(label);
+        this.label = label;
+      }
+    }
+
+    expect(serialize(new DerivedView('  fluo  '))).toEqual({ label: 'FLUO' });
+  });
+
+  it('does not emit undecorated undefined fields when excludeExtraneous is enabled', () => {
+    @Expose({ excludeExtraneous: true })
+    class UserView {
+      @Expose()
+      id = 'u-1';
+
+      optional?: string;
+    }
+
+    expect(serialize(new UserView())).toEqual({ id: 'u-1' });
+  });
+
   it('serializes enumerable symbol-keyed properties in plain objects', () => {
     const token = Symbol('token');
     const input: Record<string | symbol, unknown> = {
@@ -419,5 +454,38 @@ describe('serialize', () => {
     expect(serialized.nested.handler).toBe(onSerialize);
     expect(serialized.nested.marker).toBe(marker);
     expect(serialized.total).toBe(1n);
+  });
+
+  it('preserves opaque built-in objects instead of flattening them as DTO-like instances', () => {
+    const roles = new Map([['admin', true]]);
+    const tags = new Set(['framework']);
+    const profileUrl = new URL('https://fluo.dev/users/u-1');
+    const failure = new Error('not serialized as an empty object');
+
+    class UserView {
+      @Expose()
+      roles = roles;
+
+      @Expose()
+      tags = tags;
+
+      @Expose()
+      profileUrl = profileUrl;
+
+      @Expose()
+      failure = failure;
+    }
+
+    const serialized = serialize(new UserView()) as {
+      roles: Map<string, boolean>;
+      tags: Set<string>;
+      profileUrl: URL;
+      failure: Error;
+    };
+
+    expect(serialized.roles).toBe(roles);
+    expect(serialized.tags).toBe(tags);
+    expect(serialized.profileUrl).toBe(profileUrl);
+    expect(serialized.failure).toBe(failure);
   });
 });

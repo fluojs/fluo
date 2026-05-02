@@ -20,6 +20,23 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
+function isOpaqueObject(value: object): boolean {
+  return (
+    value instanceof Date
+    || value instanceof Map
+    || value instanceof Set
+    || value instanceof WeakMap
+    || value instanceof WeakSet
+    || value instanceof URL
+    || value instanceof URLSearchParams
+    || value instanceof RegExp
+    || value instanceof Error
+    || value instanceof ArrayBuffer
+    || ArrayBuffer.isView(value)
+    || value instanceof Promise
+  );
+}
+
 function getSerializableConstructor(value: Record<string | symbol, unknown>): Function | undefined {
   const prototype = Object.getPrototypeOf(value);
 
@@ -224,11 +241,11 @@ function serializeInternal<T = unknown>(value: T, context: SerializationContext)
     });
   }
 
-  if (value instanceof Date) {
-    return value;
-  }
-
   if (isObjectLike(value)) {
+    if (isOpaqueObject(value)) {
+      return value;
+    }
+
     if (isPlainObject(value)) {
       return serializeRecord(value, context);
     }
@@ -244,11 +261,11 @@ function serializeInternal<T = unknown>(value: T, context: SerializationContext)
  *
  * Serialization honors `@Expose()`, `@Exclude()`, and `@Transform()` metadata.
  * Cycles and repeated references are handled without unbounded recursion.
- * Non-JSON leaf values such as `Date`, `bigint`, functions, and symbols pass through unchanged unless you normalize them before or during serialization.
+ * Opaque built-ins and non-JSON leaf values such as `Date`, `Map`, `Set`, `URL`, `Error`, `bigint`, functions, and symbols pass through unchanged unless you normalize them before or during serialization.
  *
  * @typeParam T Input value type.
  * @param value Value or object graph to serialize.
- * @returns A plain recursively serialized structure whose non-JSON leaf values are preserved unless transformed.
+ * @returns A plain recursively serialized structure whose opaque objects and non-JSON leaf values are preserved unless transformed.
  *
  * @example
  * ```ts

@@ -46,6 +46,30 @@ describe('SerializerInterceptor', () => {
     await expect(interceptor.intercept(context, next)).resolves.toEqual({ id: 'u-1' });
   });
 
+  it('serializes array responses recursively', async () => {
+    class UserView {
+      id: string;
+
+      @Exclude()
+      password: string;
+
+      constructor(id: string, password: string) {
+        this.id = id;
+        this.password = password;
+      }
+    }
+
+    const interceptor = new SerializerInterceptor();
+    const context = createInterceptorContext();
+    const next: CallHandler = {
+      async handle() {
+        return [new UserView('u-1', 'secret-1'), new UserView('u-2', 'secret-2')];
+      },
+    };
+
+    await expect(interceptor.intercept(context, next)).resolves.toEqual([{ id: 'u-1' }, { id: 'u-2' }]);
+  });
+
   it('preserves handler-owned responses once the response is committed', async () => {
     class StreamOwner {
       id = 'stream-1';

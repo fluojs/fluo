@@ -101,7 +101,7 @@ class UsersController {
 
 ### Cycle-safe serialization
 
-The serializer cuts cyclic references safely instead of recursing forever, so complex object graphs can still be turned into plain response-shaped objects without unbounded recursion.
+The serializer cuts active cyclic references safely instead of recursing forever, so complex object graphs can still be turned into plain response-shaped objects without unbounded recursion. Completed shared references are reused in the serialized graph rather than dropped: if two sibling fields point at the same source object, both serialized fields point at the same serialized object. Only an object that is encountered again while it is already being serialized is cut to `undefined`.
 
 ### Inherited decorator contracts
 
@@ -113,7 +113,7 @@ Serialization metadata declared on a base class is inherited by derived DTOs. `@
 
 ### Non-JSON leaf values
 
-`serialize()` applies decorator metadata and recursively walks arrays/plain objects, but it does not coerce every leaf into strict JSON types. Values such as `Date`, `bigint`, functions, and symbols can pass through unchanged unless you normalize them with `@Transform(...)` or before writing the final HTTP response.
+`serialize()` applies decorator metadata and recursively walks arrays/plain objects, but it does not coerce every leaf into strict JSON types. Opaque built-ins such as `Date`, `Map`, `Set`, `URL`, `URLSearchParams`, `RegExp`, `Error`, `ArrayBuffer`, typed arrays, `WeakMap`, `WeakSet`, and `Promise` pass through unchanged instead of being flattened as DTO-like class instances. Values such as `bigint`, functions, and symbols can also pass through unchanged unless you normalize them with `@Transform(...)` or before writing the final HTTP response.
 
 ## Public API Overview
 
