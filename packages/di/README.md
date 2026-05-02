@@ -75,6 +75,8 @@ fluo DI supports three main provider shapes:
 - **Request**: Instance is created once per `createRequestScope()` call.
 - **Transient**: A new instance is created every time it is resolved.
 
+During disposal, the root container first tears down live request-scope children and then continues with root-owned singleton cleanup even if one or more child disposals fail. When multiple child/root disposals fail, `dispose()` reports an `AggregateError` so callers can inspect every shutdown failure without losing cleanup progress.
+
 ### Request Scoping
 Isolated containers can be created to handle per-request state without polluting the root container.
 
@@ -91,7 +93,7 @@ Provider objects are validated at registration time: every object provider must 
 
 The container automatically detects circular dependencies and throws a `CircularDependencyError` to prevent infinite loops. This includes direct (A→A), two-node (A→B→A), and deep (A→B→C→A) cycles.
 
-To resolve a circular dependency, use `forwardRef()` to defer the resolution of the dependent token.
+Use `forwardRef()` when a token is referenced before its declaration. It defers token lookup for declaration-order issues, but it does not make true constructor cycles resolvable; those cycles are still rejected with `CircularDependencyError`.
 
 ```typescript
 import { forwardRef } from '@fluojs/di';

@@ -250,6 +250,44 @@ describe('Container', () => {
 
       await expect(container.resolve(SingletonService)).rejects.toThrow(ScopeMismatchError);
     });
+
+    it('throws ScopeMismatchError when a singleton depends on a transient chain that reaches request scope', async () => {
+      class RequestDep {}
+
+      class TransientDep {
+        constructor(readonly dep: RequestDep) {}
+      }
+
+      class SingletonService {
+        constructor(readonly dep: TransientDep) {}
+      }
+
+      const container = new Container().register(
+        { provide: RequestDep, scope: Scope.REQUEST, useClass: RequestDep },
+        { provide: TransientDep, scope: Scope.TRANSIENT, useClass: TransientDep, inject: [RequestDep] },
+        { provide: SingletonService, useClass: SingletonService, inject: [TransientDep] },
+      );
+
+      await expect(container.resolve(SingletonService)).rejects.toThrow(ScopeMismatchError);
+    });
+
+    it('throws ScopeMismatchError when a singleton depends on a factory chain that reaches request scope', async () => {
+      const FACTORY_TOKEN = Symbol('FactoryDep');
+
+      class RequestDep {}
+
+      class SingletonService {
+        constructor(readonly dep: unknown) {}
+      }
+
+      const container = new Container().register(
+        { provide: RequestDep, scope: Scope.REQUEST, useClass: RequestDep },
+        { provide: FACTORY_TOKEN, scope: Scope.TRANSIENT, useFactory: (dep: unknown) => dep, inject: [RequestDep] },
+        { provide: SingletonService, useClass: SingletonService, inject: [FACTORY_TOKEN] },
+      );
+
+      await expect(container.resolve(SingletonService)).rejects.toThrow(ScopeMismatchError);
+    });
   });
 
   describe('circular dependency detection', () => {
@@ -1186,6 +1224,72 @@ describe('Container', () => {
 
       await expect(container.dispose()).rejects.toThrow('first failed');
       expect(events).toEqual(['second', 'first']);
+    });
+
+    it('continues root disposal after request-scope child disposal fails', async () => {
+      const events: string[] = [];
+
+      class RootService {
+        onDestroy() {
+          events.push('root');
+        }
+      }
+
+      class RequestService {
+        onDestroy() {
+          events.push('request');
+          throw new Error('request failed');
+        }
+      }
+
+      const root = new Container().register(
+        RootService,
+        { provide: RequestService, scope: Scope.REQUEST, useClass: RequestService },
+      );
+      const requestScope = root.createRequestScope();
+
+      await root.resolve(RootService);
+      await requestScope.resolve(RequestService);
+
+      await expect(root.dispose()).rejects.toThrow('request failed');
+      expect(events).toEqual(['request', 'root']);
+    });
+
+    it('aggregates request-scope child and root disposal failures', async () => {
+      const events: string[] = [];
+
+      class RootService {
+        onDestroy() {
+          events.push('root');
+          throw new Error('root failed');
+        }
+      }
+
+      class RequestService {
+        onDestroy() {
+          events.push('request');
+          throw new Error('request failed');
+        }
+      }
+
+      const root = new Container().register(
+        RootService,
+        { provide: RequestService, scope: Scope.REQUEST, useClass: RequestService },
+      );
+      const requestScope = root.createRequestScope();
+
+      await root.resolve(RootService);
+      await requestScope.resolve(RequestService);
+
+      const error = await root.dispose().catch((value: unknown) => value);
+
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors).toHaveLength(2);
+      expect((error as AggregateError).errors.map((failure) => (failure as Error).message)).toEqual([
+        'request failed',
+        'root failed',
+      ]);
+      expect(events).toEqual(['request', 'root']);
     });
 
     it('disposes stale overridden singleton instances immediately and exactly once', async () => {

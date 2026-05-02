@@ -76,6 +76,8 @@ const service = await container.resolve(UserService);
 - **request**: `createRequestScope()`마다 새로 생성됩니다.
 - **transient**: resolve할 때마다 새 인스턴스를 만듭니다.
 
+dispose 중에는 루트 컨테이너가 먼저 살아 있는 request scope 자식을 정리한 뒤, 자식 dispose 중 하나 이상이 실패하더라도 루트가 소유한 singleton 정리를 계속 수행합니다. 자식/루트 dispose 실패가 여러 개 발생하면 `dispose()`는 모든 shutdown 실패를 확인할 수 있도록 `AggregateError`로 보고합니다.
+
 ### request scope 분리
 
 ```ts
@@ -91,7 +93,7 @@ provider 객체는 등록 시점에 검증됩니다. 모든 객체 provider는 n
 
 컨테이너는 순환 의존성을 자동으로 감지하고 `CircularDependencyError`를 발생시켜 무한 루프를 방지합니다. 여기에는 직접 참조(A→A), 이중 노드(A→B→A), 깊은 순환(A→B→C→A)이 모두 포함됩니다.
 
-순환 의존성을 해결하려면 `forwardRef()`를 사용하여 의존성 토큰의 해석을 지연시키세요.
+선언 순서 때문에 아직 정의되지 않은 토큰을 참조해야 한다면 `forwardRef()`를 사용하세요. `forwardRef()`는 선언 순서 문제를 위해 토큰 조회를 지연할 뿐이며, 실제 생성자 순환을 해소하지는 않습니다. 그런 순환은 여전히 `CircularDependencyError`로 거부됩니다.
 
 ```typescript
 import { forwardRef } from '@fluojs/di';

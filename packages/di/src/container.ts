@@ -358,14 +358,29 @@ export class Container {
   }
 
   private async disposeAll(): Promise<void> {
+    const errors: unknown[] = [];
+
     try {
       // Dispose all live request-scope children first (root only)
       if (!this.parent && this.childScopes && this.childScopes.size > 0) {
-        await Promise.all(Array.from(this.childScopes).map((child) => child.dispose()));
+        const childResults = await Promise.allSettled(Array.from(this.childScopes).map((child) => child.dispose()));
+
+        for (const result of childResults) {
+          if (result.status === 'rejected') {
+            this.collectDisposalError(result.reason, errors);
+          }
+        }
+
         this.childScopes.clear();
       }
 
-      await this.disposeCache(this.disposalCacheEntries());
+      try {
+        await this.disposeCache(this.disposalCacheEntries());
+      } catch (error) {
+        this.collectDisposalError(error, errors);
+      }
+
+      this.throwDisposalErrors(errors);
     } finally {
       if (this.parent && this.trackedByRoot) {
         this.root().childScopes?.delete(this);
@@ -954,6 +969,15 @@ export class Container {
     }
   }
 
+  private collectDisposalError(error: unknown, errors: unknown[]): void {
+    if (error instanceof AggregateError) {
+      errors.push(...error.errors);
+      return;
+    }
+
+    errors.push(error);
+  }
+
   private isDisposable(value: unknown): value is Disposable {
     return typeof value === 'object' && value !== null && 'onDestroy' in value && typeof value.onDestroy === 'function';
   }
@@ -994,20 +1018,72 @@ export class Container {
       return;
     }
 
-    for (const depEntry of provider.inject) {
-      const depToken = this.resolveProviderDependencyToken(depEntry);
-      const effectiveProvider = this.resolveEffectiveProvider(depToken);
+    const requestScopedDependency = this.findRequestScopedDependency(provider.inject, new Set<Token>([provider.provide]));
 
-      if (effectiveProvider?.scope === 'request') {
-        throw new ScopeMismatchError(
-          `Singleton provider ${formatTokenName(provider.provide)} depends on request-scoped provider ${formatTokenName(depToken)}.`,
-          {
-            token: provider.provide,
-            scope: 'singleton',
-            hint: `Singleton providers cannot depend on request-scoped providers. Either change ${formatTokenName(depToken)} to singleton/transient scope, or change ${formatTokenName(provider.provide)} to request scope.`,
-          },
-        );
+    if (requestScopedDependency) {
+      throw new ScopeMismatchError(
+        `Singleton provider ${formatTokenName(provider.provide)} depends on request-scoped provider ${formatTokenName(requestScopedDependency)}.`,
+        {
+          token: provider.provide,
+          scope: 'singleton',
+          hint: `Singleton providers cannot depend on request-scoped providers. Either change ${formatTokenName(requestScopedDependency)} to singleton/transient scope, or change ${formatTokenName(provider.provide)} to request scope.`,
+        },
+      );
+    }
+  }
+
+  private findRequestScopedDependency(
+    depEntries: readonly (Token | ForwardRefFn | OptionalToken)[],
+    visited: Set<Token>,
+  ): Token | undefined {
+    for (const depEntry of depEntries) {
+      const depToken = this.resolveProviderDependencyToken(depEntry);
+
+      if (isOptionalToken(depEntry) && !this.has(depToken)) {
+        continue;
       }
+
+      const requestScopedToken = this.findRequestScopedDependencyToken(depToken, visited);
+
+      if (requestScopedToken) {
+        return requestScopedToken;
+      }
+    }
+
+    return undefined;
+  }
+
+  private findRequestScopedDependencyToken(token: Token, visited: Set<Token>): Token | undefined {
+    if (visited.has(token)) {
+      return undefined;
+    }
+
+    visited.add(token);
+
+    try {
+      const provider = this.resolveEffectiveProvider(token);
+
+      if (provider) {
+        if (provider.scope === Scope.REQUEST) {
+          return provider.provide;
+        }
+
+        return this.findRequestScopedDependency(provider.inject, visited);
+      }
+
+      if (typeof token !== 'function') {
+        return undefined;
+      }
+
+      const metadata = getClassDiMetadata(token);
+
+      if (metadata?.scope === Scope.REQUEST) {
+        return token;
+      }
+
+      return this.findRequestScopedDependency(metadata?.inject ?? [], visited);
+    } finally {
+      visited.delete(token);
     }
   }
 
