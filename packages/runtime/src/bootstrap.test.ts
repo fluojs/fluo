@@ -1494,6 +1494,59 @@ describe('FluoFactory.createMicroservice', () => {
     await microservice.close();
   });
 
+  it('attempts standalone runtime and context close before surfacing close failures', async () => {
+    const events: string[] = [];
+    const MICROSERVICE_TOKEN = Symbol.for('fluo.microservices.service');
+    const runtimeCloseFailure = new Error('runtime close failed');
+    const contextCloseFailure = new Error('context close failed');
+
+    class StubMicroserviceRuntime implements MicroserviceRuntime {
+      async close(signal?: string): Promise<void> {
+        events.push(`runtime:close:${signal ?? 'none'}`);
+        throw runtimeCloseFailure;
+      }
+
+      async listen(): Promise<void> {
+        events.push('runtime:listen');
+      }
+    }
+
+    class CleanupHook {
+      onModuleDestroy() {
+        events.push('context:destroy');
+        throw contextCloseFailure;
+      }
+    }
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [
+        CleanupHook,
+        {
+          provide: MICROSERVICE_TOKEN,
+          useClass: StubMicroserviceRuntime,
+        },
+      ],
+    });
+
+    const microservice = await FluoFactory.createMicroservice(AppModule);
+
+    try {
+      await microservice.close('SIGTERM');
+      expect.unreachable('microservice close should throw aggregated close failures');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      if (error instanceof AggregateError) {
+        expect(error.errors).toEqual([runtimeCloseFailure, contextCloseFailure]);
+      }
+    }
+
+    expect(events).toEqual([
+      'runtime:close:SIGTERM',
+      'context:destroy',
+    ]);
+  });
+
   it('throws if resolved token does not implement listen()', async () => {
     const MICROSERVICE_TOKEN = Symbol.for('fluo.microservices.service');
 

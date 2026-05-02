@@ -859,8 +859,23 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
 
     this.closingPromise = (async () => {
       if (this.closeContextOnClose) {
-        await closeMicroserviceRuntime(this.runtime, signal);
-        await this.context.close(signal);
+        const errors: unknown[] = [];
+
+        try {
+          await closeMicroserviceRuntime(this.runtime, signal);
+        } catch (error) {
+          errors.push(error);
+        }
+
+        try {
+          await this.context.close(signal);
+        } catch (error) {
+          errors.push(error);
+        }
+
+        if (errors.length > 0) {
+          throw createLifecycleCloseError(errors);
+        }
       } else {
         await closeMicroserviceRuntime(this.runtime, signal);
       }
