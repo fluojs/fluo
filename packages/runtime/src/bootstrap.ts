@@ -1318,6 +1318,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     const bootstrapped = bootstrapModule(options.rootModule, {
       duplicateProviderPolicy: options.duplicateProviderPolicy,
       logger,
+      moduleGraphCache: options.moduleGraphCache,
       providers: runtimeProviders,
       validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER],
     });
@@ -1462,6 +1463,7 @@ export class FluoFactory {
       const bootstrapped = bootstrapModule(rootModule, {
         duplicateProviderPolicy: options.duplicateProviderPolicy,
         logger,
+        moduleGraphCache: options.moduleGraphCache,
         providers: runtimeProviders,
         validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES],
       });

@@ -4,8 +4,9 @@ import { Global, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
 import { defineModuleMetadata } from '@fluojs/core/internal';
 import { Controller, Convert, FromQuery, Get, RequestDto, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
 
-import { bootstrapModule, FluoFactory } from './bootstrap.js';
+import { bootstrapApplication, bootstrapModule, FluoFactory } from './bootstrap.js';
 import { DuplicateProviderError, ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
+import { clearModuleGraphCompileCacheForTesting, getModuleGraphCompileCacheSizeForTesting } from './module-graph.js';
 import type { PlatformComponent, PlatformState } from './platform-contract.js';
 import { HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL } from './tokens.js';
 import type { MicroserviceRuntime } from './types.js';
@@ -1773,6 +1774,95 @@ describe('FluoFactory.createMicroservice', () => {
     ]);
 
     await app.close();
+  });
+});
+
+describe('moduleGraphCache bootstrap wiring', () => {
+  it('keeps high-level application bootstrap cache usage default-off', async () => {
+    clearModuleGraphCompileCacheForTesting();
+
+    class AppService {}
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [AppService],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+
+    expect(getModuleGraphCompileCacheSizeForTesting()).toBe(0);
+
+    await app.close();
+  });
+
+  it('passes moduleGraphCache opt-in through bootstrapApplication and FluoFactory.create', async () => {
+    clearModuleGraphCompileCacheForTesting();
+
+    class AppService {}
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [AppService],
+    });
+
+    const directApp = await bootstrapApplication({
+      moduleGraphCache: true,
+      rootModule: AppModule,
+    });
+
+    expect(getModuleGraphCompileCacheSizeForTesting()).toBe(1);
+
+    const factoryApp = await FluoFactory.create(AppModule, {
+      moduleGraphCache: true,
+    });
+
+    expect(getModuleGraphCompileCacheSizeForTesting()).toBe(1);
+
+    await factoryApp.close();
+    await directApp.close();
+  });
+
+  it('passes moduleGraphCache opt-in through createApplicationContext', async () => {
+    clearModuleGraphCompileCacheForTesting();
+
+    class AppService {}
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [AppService],
+    });
+
+    const context = await FluoFactory.createApplicationContext(AppModule, {
+      moduleGraphCache: true,
+    });
+
+    expect(getModuleGraphCompileCacheSizeForTesting()).toBe(1);
+
+    await context.close();
+  });
+
+  it('passes moduleGraphCache opt-in through createMicroservice context bootstrap', async () => {
+    clearModuleGraphCompileCacheForTesting();
+
+    const MICROSERVICE_TOKEN = Symbol.for('fluo.microservices.service');
+    class StubMicroserviceRuntime implements MicroserviceRuntime {
+      async listen(): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [
+        {
+          provide: MICROSERVICE_TOKEN,
+          useClass: StubMicroserviceRuntime,
+        },
+      ],
+    });
+
+    const microservice = await FluoFactory.createMicroservice(AppModule, {
+      moduleGraphCache: true,
+    });
+
+    expect(getModuleGraphCompileCacheSizeForTesting()).toBe(1);
+
+    await microservice.close();
   });
 });
 

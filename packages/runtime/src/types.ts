@@ -34,6 +34,15 @@ export interface ModuleDefinition {
 export interface BootstrapModuleOptions {
   duplicateProviderPolicy?: 'warn' | 'throw' | 'ignore';
   logger?: ApplicationLogger;
+  /**
+   * Opts this bootstrap into the process-local module graph compile result cache.
+   *
+   * The cache is disabled by default. When enabled, successful graph compiles are
+   * keyed by root module identity, runtime provider inputs, validation tokens,
+   * core metadata write versions, and the runtime compile algorithm version.
+   * Failed compilations are never cached.
+   */
+  moduleGraphCache?: boolean;
   providers?: Provider[];
   validationTokens?: Token[];
 }
@@ -120,6 +129,12 @@ export interface ExceptionFilterHandler {
 /** High-level bootstrap options for creating an HTTP application shell. */
 export interface BootstrapApplicationOptions {
   adapter?: HttpApplicationAdapter;
+  /**
+   * Enables the opt-in process-local module graph compile result cache for this
+   * bootstrap. The default is `false`, so each bootstrap compiles a fresh graph
+   * unless callers explicitly request cache reuse.
+   */
+  moduleGraphCache?: boolean;
   /**
    * Policy for duplicate provider tokens across modules.
    *

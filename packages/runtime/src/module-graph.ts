@@ -38,6 +38,22 @@ type ClassDiMetadataView = {
 const objectTokenIds = new WeakMap<Function, number>();
 const symbolTokenIds = new Map<symbol, number>();
 let nextTokenId = 0;
+const MODULE_GRAPH_COMPILE_ALGORITHM_VERSION = 1;
+const moduleGraphCompileCache = new Map<string, readonly CompiledModule[]>();
+
+/** Clears the process-local module graph compile cache for isolated regression tests. */
+export function clearModuleGraphCompileCacheForTesting(): void {
+  moduleGraphCompileCache.clear();
+}
+
+/**
+ * Reads the current process-local module graph compile cache size for tests.
+ *
+ * @returns Number of successful compile snapshots currently retained in the cache.
+ */
+export function getModuleGraphCompileCacheSizeForTesting(): number {
+  return moduleGraphCompileCache.size;
+}
 
 function getFunctionTokenId(token: Function): number {
   const existing = objectTokenIds.get(token);
@@ -118,7 +134,7 @@ function describeProviderForCacheKey(provider: Provider): string {
 }
 
 /**
- * Builds the prerequisite key for future module graph compile caching.
+ * Builds the key used for opt-in module graph compile caching.
  *
  * @param rootModule Root module that would be compiled.
  * @param options Bootstrap options that influence graph validation.
@@ -132,9 +148,235 @@ export function createModuleGraphCacheKey(rootModule: ModuleType, options: Boots
     `root:${describeTokenForCacheKey(rootModule)}`,
     `module:${getModuleMetadataVersion()}`,
     `class-di:${getClassDiMetadataVersion()}`,
+    `algorithm:${MODULE_GRAPH_COMPILE_ALGORITHM_VERSION}`,
     `runtime:${runtimeProviders}`,
     `validation:${validationTokens}`,
   ].join(';');
+}
+
+function cloneModuleDefinition(definition: ModuleDefinition): ModuleDefinition {
+  return {
+    global: definition.global,
+    imports: definition.imports ? [...definition.imports] : undefined,
+    providers: definition.providers ? definition.providers.map((provider) => cloneProvider(provider)) : undefined,
+    controllers: definition.controllers ? [...definition.controllers] : undefined,
+    exports: definition.exports ? [...definition.exports] : undefined,
+    middleware: definition.middleware ? definition.middleware.map((middleware) => cloneMutableValue(middleware)) : undefined,
+  };
+}
+
+function cloneMutableValue<T>(value: T, clones = new WeakMap<object, unknown>()): T {
+  if (typeof value !== 'object' || value === null) {
+    return value;
+  }
+
+  const existing = clones.get(value);
+  if (existing !== undefined) {
+    return existing as T;
+  }
+
+  if (value instanceof Date) {
+    return new Date(value) as T;
+  }
+
+  if (value instanceof RegExp) {
+    return new RegExp(value) as T;
+  }
+
+  if (Array.isArray(value)) {
+    const clonedArray: unknown[] = [];
+    clones.set(value, clonedArray);
+
+    for (const item of value) {
+      clonedArray.push(cloneMutableValue(item, clones));
+    }
+
+    return clonedArray as T;
+  }
+
+  if (value instanceof Map) {
+    const clonedMap = new Map<unknown, unknown>();
+    clones.set(value, clonedMap);
+
+    for (const [key, entryValue] of value) {
+      clonedMap.set(cloneMutableValue(key, clones), cloneMutableValue(entryValue, clones));
+    }
+
+    return clonedMap as T;
+  }
+
+  if (value instanceof Set) {
+    const clonedSet = new Set<unknown>();
+    clones.set(value, clonedSet);
+
+    for (const entryValue of value) {
+      clonedSet.add(cloneMutableValue(entryValue, clones));
+    }
+
+    return clonedSet as T;
+  }
+
+  const source = value as Record<PropertyKey, unknown>;
+  const prototype = Object.getPrototypeOf(value) as object | null;
+  const clonedObject = Object.create(prototype) as Record<PropertyKey, unknown>;
+  clones.set(value, clonedObject);
+
+  for (const key of Reflect.ownKeys(source)) {
+    clonedObject[key] = cloneMutableValue(source[key], clones);
+  }
+
+  return clonedObject as T;
+}
+
+function cloneInjectionToken(token: InjectionToken): InjectionToken {
+  if (isForwardRef(token)) {
+    return {
+      __forwardRef__: true,
+      forwardRef: token.forwardRef,
+    };
+  }
+
+  if (isOptionalToken(token)) {
+    return {
+      __optional__: true,
+      token: token.token,
+    };
+  }
+
+  return token;
+}
+
+function cloneProvider(provider: Provider): Provider {
+  if (typeof provider === 'function') {
+    return provider;
+  }
+
+  if ('useClass' in provider) {
+    return {
+      ...provider,
+      ...(provider.inject ? { inject: provider.inject.map((token) => cloneInjectionToken(token)) } : {}),
+    };
+  }
+
+  if ('useFactory' in provider) {
+    return {
+      ...provider,
+      ...(provider.inject ? { inject: provider.inject.map((token) => cloneInjectionToken(token)) } : {}),
+    };
+  }
+
+  if ('useValue' in provider) {
+    return {
+      ...provider,
+      useValue: cloneMutableValue(provider.useValue),
+    };
+  }
+
+  return { ...provider };
+}
+
+function cloneCompiledModule(compiledModule: CompiledModule): CompiledModule {
+  return {
+    type: compiledModule.type,
+    definition: cloneModuleDefinition(compiledModule.definition),
+    accessibleTokens: new Set(compiledModule.accessibleTokens),
+    exportedTokens: new Set(compiledModule.exportedTokens),
+    importedExportedTokens: new Set(compiledModule.importedExportedTokens),
+    providerTokens: new Set(compiledModule.providerTokens),
+  };
+}
+
+function cloneCompiledModules(modules: readonly CompiledModule[]): CompiledModule[] {
+  return modules.map((compiledModule) => cloneCompiledModule(compiledModule));
+}
+
+function freezeInjectionToken(token: InjectionToken): InjectionToken {
+  if (isForwardRef(token) || isOptionalToken(token)) {
+    Object.freeze(token);
+  }
+
+  return token;
+}
+
+function freezeMutableValue<T>(value: T, frozen = new WeakSet<object>()): T {
+  if (typeof value !== 'object' || value === null || frozen.has(value)) {
+    return value;
+  }
+
+  frozen.add(value);
+
+  if (value instanceof Map) {
+    for (const [key, entryValue] of value) {
+      freezeMutableValue(key, frozen);
+      freezeMutableValue(entryValue, frozen);
+    }
+  } else if (value instanceof Set) {
+    for (const entryValue of value) {
+      freezeMutableValue(entryValue, frozen);
+    }
+  } else {
+    const source = value as Record<PropertyKey, unknown>;
+    for (const key of Reflect.ownKeys(source)) {
+      freezeMutableValue(source[key], frozen);
+    }
+  }
+
+  Object.freeze(value);
+
+  return value;
+}
+
+function freezeProvider(provider: Provider): Provider {
+  if (typeof provider === 'function') {
+    return provider;
+  }
+
+  if ('inject' in provider && provider.inject) {
+    for (const token of provider.inject) {
+      freezeInjectionToken(token);
+    }
+    Object.freeze(provider.inject);
+  }
+
+  if ('useValue' in provider) {
+    freezeMutableValue(provider.useValue);
+  }
+
+  return Object.freeze(provider);
+}
+
+function freezeMiddleware(middleware: MiddlewareLike): MiddlewareLike {
+  if (typeof middleware === 'object' && middleware !== null) {
+    freezeMutableValue(middleware);
+  }
+
+  return middleware;
+}
+
+function freezeModuleDefinition(definition: ModuleDefinition): ModuleDefinition {
+  definition.imports && Object.freeze(definition.imports);
+  for (const provider of definition.providers ?? []) {
+    freezeProvider(provider);
+  }
+  definition.providers && Object.freeze(definition.providers);
+  definition.controllers && Object.freeze(definition.controllers);
+  definition.exports && Object.freeze(definition.exports);
+  for (const middleware of definition.middleware ?? []) {
+    freezeMiddleware(middleware);
+  }
+  definition.middleware && Object.freeze(definition.middleware);
+
+  return Object.freeze(definition);
+}
+
+function freezeCompiledModule(compiledModule: CompiledModule): CompiledModule {
+  freezeModuleDefinition(compiledModule.definition);
+
+  return Object.freeze(compiledModule);
+}
+
+function createModuleGraphCacheSnapshot(modules: readonly CompiledModule[]): readonly CompiledModule[] {
+  return Object.freeze(cloneCompiledModules(modules).map((compiledModule) => freezeCompiledModule(compiledModule)));
 }
 
 function getEffectiveClassDiMetadata(target: Function): ClassDiMetadataView | undefined {
@@ -533,12 +775,31 @@ function validateCompiledModules(
  * @returns Compiled modules in dependency order after visibility and injection validation succeed.
  */
 export function compileModuleGraph(rootModule: ModuleType, options: BootstrapModuleOptions = {}): CompiledModule[] {
+  const cacheKey = options.moduleGraphCache === true
+    ? createModuleGraphCacheKey(rootModule, options)
+    : undefined;
+
+  if (cacheKey !== undefined) {
+    const cachedModules = moduleGraphCompileCache.get(cacheKey);
+
+    if (cachedModules !== undefined) {
+      return cloneCompiledModules(cachedModules);
+    }
+  }
+
   const ordered: CompiledModule[] = [];
   const runtimeProviders = options.providers ?? [];
   const runtimeProviderTokens = mergeRuntimeTokenSets(runtimeProviders, options.validationTokens ?? []);
 
   compileModule(rootModule, runtimeProviderTokens, new Map(), new Set(), ordered);
   validateCompiledModules(ordered, runtimeProviders, runtimeProviderTokens);
+
+  if (cacheKey !== undefined) {
+    const cacheSnapshot = createModuleGraphCacheSnapshot(ordered);
+    moduleGraphCompileCache.set(cacheKey, cacheSnapshot);
+
+    return cloneCompiledModules(cacheSnapshot);
+  }
 
   return ordered;
 }
