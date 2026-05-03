@@ -30,12 +30,12 @@ pnpm dlx @fluojs/cli new my-app
 ## Release Contract
 
 - `@fluojs/cli` is a public package in the intended publish surface.
-- The supported install paths are the global package (`pnpm add -g @fluojs/cli`) and the no-install runner (`pnpm dlx @fluojs/cli ...`).
+- The supported install paths are the global package (`npm install -g @fluojs/cli`, `pnpm add -g @fluojs/cli`, `bun add -g @fluojs/cli`, or `yarn global add @fluojs/cli`) and the no-install runner (`pnpm dlx @fluojs/cli ...`).
 - The published `fluo` bin is backed by the dist-built CLI entrypoint declared in `package.json`.
 
 ## Update Checks
 
-When `fluo` runs in an interactive TTY, it checks the public npm `latest` dist-tag for `@fluojs/cli` using a local cache so every invocation does not hit the registry. If a newer version is available, the CLI asks whether to install it. Declining continues the current command with the installed version; accepting runs `pnpm add -g @fluojs/cli@<latest>` and then restarts `fluo` with the same arguments under the updated binary.
+When `fluo` runs in an interactive TTY, it checks the public npm `latest` dist-tag for `@fluojs/cli` using a local cache so every invocation does not hit the registry. If a newer version is available, the CLI asks whether to install it. Declining continues the current command with the installed version; accepting updates the global CLI with the package manager that appears to own the current installation (`npm install -g`, `pnpm add -g`, `bun add -g`, or `yarn global add`) and then restarts `fluo` with the same arguments under the updated binary. If the installer cannot be inferred, the CLI falls back to `npm install -g @fluojs/cli@<latest>` because npm owns the default Node.js global installation path.
 
 The update check is skipped in CI, non-TTY output, npm-script contexts, rerun-after-update contexts, registry/network failures, and explicit opt-out paths. Use `--no-update-check` (or the compatibility alias `--no-update-notifier`) for one invocation, or set `FLUO_NO_UPDATE_CHECK=1` when automation must never prompt.
 
