@@ -38,22 +38,6 @@ function colorize(value: string, color: string, enabled: boolean): string {
   return enabled ? `${color}${value}${RESET}` : value;
 }
 
-function isEnabledColorEnvironmentFlag(value: string | undefined): boolean {
-  return value !== undefined && value !== '' && value !== '0' && value !== 'false';
-}
-
-function shouldUseConsoleColor(stream: NodeJS.WriteStream): boolean {
-  if (process.env.NO_COLOR !== undefined) {
-    return false;
-  }
-
-  if (isEnabledColorEnvironmentFlag(process.env.FORCE_COLOR) || isEnabledColorEnvironmentFlag(process.env.CLICOLOR_FORCE)) {
-    return true;
-  }
-
-  return Boolean(stream.isTTY);
-}
-
 function formatLog(level: 'DEBUG' | 'ERROR' | 'LOG' | 'WARN', context: string, message: string, color: boolean): string {
   const prefix = colorize('[fluo]', BRIGHT_GREEN, color);
   const pid = colorize(String(process.pid), BRIGHT_YELLOW, color);
@@ -101,7 +85,7 @@ export function createConsoleApplicationLogger(options: ConsoleApplicationLogger
   return {
     debug(message, context = 'fluo') {
       if (shouldLog('debug', level)) {
-        console.debug(format('DEBUG', context, message, options.color ?? shouldUseConsoleColor(process.stdout)));
+        console.debug(format('DEBUG', context, message, options.color ?? Boolean(process.stdout.isTTY)));
       }
     },
     error(message, error, context = 'fluo') {
@@ -109,7 +93,7 @@ export function createConsoleApplicationLogger(options: ConsoleApplicationLogger
         return;
       }
 
-      console.error(format('ERROR', context, message, options.color ?? shouldUseConsoleColor(process.stderr)));
+      console.error(format('ERROR', context, message, options.color ?? Boolean(process.stderr.isTTY)));
 
       if (error) {
         console.error(error);
@@ -117,12 +101,12 @@ export function createConsoleApplicationLogger(options: ConsoleApplicationLogger
     },
     log(message, context = 'fluo') {
       if (shouldLog('log', level)) {
-        console.log(format('LOG', context, message, options.color ?? shouldUseConsoleColor(process.stdout)));
+        console.log(format('LOG', context, message, options.color ?? Boolean(process.stdout.isTTY)));
       }
     },
     warn(message, context = 'fluo') {
       if (shouldLog('warn', level)) {
-        console.warn(format('WARN', context, message, options.color ?? shouldUseConsoleColor(process.stderr)));
+        console.warn(format('WARN', context, message, options.color ?? Boolean(process.stderr.isTTY)));
       }
     },
   };
