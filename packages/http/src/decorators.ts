@@ -4,8 +4,8 @@ import {
   type MetadataSource,
 } from '@fluojs/core';
 import {
+  ensureMetadataSymbol,
   getStandardMetadataBag as readStandardMetadataBag,
-  metadataSymbol,
   type ControllerMetadata,
   type DtoFieldBindingMetadata,
 } from '@fluojs/core/internal';
@@ -25,6 +25,8 @@ type FieldDecoratorLike = StandardFieldDecoratorFn;
 const standardControllerMetadataKey = Symbol.for('fluo.standard.controller');
 const standardRouteMetadataKey = Symbol.for('fluo.standard.route');
 const standardDtoBindingMetadataKey = Symbol.for('fluo.standard.dto-binding');
+
+ensureMetadataSymbol();
 
 interface StandardRouteMetadataRecord {
   guards?: GuardLike[];
@@ -68,7 +70,6 @@ function mergeUnique<T>(existing: T[] | undefined, values: T[]): T[] {
 }
 
 function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
-  void metadataSymbol;
   return metadata as StandardMetadataBag;
 }
 

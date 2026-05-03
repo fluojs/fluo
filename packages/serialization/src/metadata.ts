@@ -1,5 +1,5 @@
 import { type MetadataPropertyKey } from '@fluojs/core';
-import { getOwnStandardConstructorMetadataBag, metadataSymbol } from '@fluojs/core/internal';
+import { ensureMetadataSymbol, getOwnStandardConstructorMetadataBag } from '@fluojs/core/internal';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 
@@ -27,12 +27,13 @@ export interface SerializationFieldMetadata {
 const standardSerializationClassMetadataKey = Symbol.for('fluo.standard.serialization.class');
 const standardSerializationFieldMetadataKey = Symbol.for('fluo.standard.serialization.field');
 
+ensureMetadataSymbol();
+
 function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
   if (metadata === null || metadata === undefined) {
     throw new Error('Decorator metadata is not available. Ensure your environment supports TC39 decorator metadata (Stage 3).');
   }
 
-  void metadataSymbol;
   return metadata as StandardMetadataBag;
 }
 

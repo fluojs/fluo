@@ -1,3 +1,5 @@
+import { ensureMetadataSymbol } from '@fluojs/core/internal';
+
 import type { CacheEvictDecoratorValue, CacheKeyDecoratorValue } from './types.js';
 
 /** Shared controller metadata key used to store per-route cache metadata records. */
@@ -8,6 +10,8 @@ const cacheEvictMetadataKey = Symbol.for('fluo.cache.evict');
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 type StandardMethodDecoratorFn = (value: Function, context: ClassMethodDecoratorContext) => void;
+
+ensureMetadataSymbol();
 
 function getMetadataBag(metadata: unknown): StandardMetadataBag {
   return metadata as StandardMetadataBag;

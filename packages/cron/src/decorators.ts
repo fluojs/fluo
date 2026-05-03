@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@fluojs/core/internal';
+import { ensureMetadataSymbol } from '@fluojs/core/internal';
 import { Cron as CronValidator } from 'croner';
 
 import { schedulingMetadataSymbol } from './metadata.js';
@@ -15,8 +15,9 @@ type StandardMetadataBag = Record<PropertyKey, unknown>;
 type StandardMethodDecoratorFn = (value: Function, context: ClassMethodDecoratorContext) => void;
 type MethodDecoratorLike = StandardMethodDecoratorFn;
 
+ensureMetadataSymbol();
+
 function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
-  void metadataSymbol;
   return metadata as StandardMetadataBag;
 }
 

@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@fluojs/core/internal';
+import { ensureMetadataSymbol } from '@fluojs/core/internal';
 
 import { webSocketGatewayMetadataSymbol, webSocketHandlerMetadataSymbol } from './metadata.js';
 import type { WebSocketEventMap, WebSocketGatewayHandlerMetadata, WebSocketGatewayOptions } from './types.js';
@@ -9,8 +9,9 @@ type StandardMethodDecoratorFn = (value: Function, context: ClassMethodDecorator
 type ClassDecoratorLike = StandardClassDecoratorFn;
 type MethodDecoratorLike = StandardMethodDecoratorFn;
 
+ensureMetadataSymbol();
+
 function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
-  void metadataSymbol;
   return metadata as StandardMetadataBag;
 }
 

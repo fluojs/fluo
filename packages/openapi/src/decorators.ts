@@ -1,5 +1,5 @@
 import { type Constructor, type MetadataPropertyKey } from '@fluojs/core';
-import { getStandardMetadataBag } from '@fluojs/core/internal';
+import { ensureMetadataSymbol, getStandardMetadataBag } from '@fluojs/core/internal';
 import type { OpenApiSchemaObject } from './schema-builder.js';
 
 /**
@@ -110,6 +110,8 @@ const openApiMethodSecurityRequirementsKey = Symbol.for('fluo.openapi.method-sec
 const openApiMethodExcludeEndpointKey = Symbol.for('fluo.openapi.method-exclude-endpoint');
 
 type MetadataBag = Record<PropertyKey, unknown>;
+
+ensureMetadataSymbol();
 
 function getMetadataBag(target: object): MetadataBag | undefined {
   return getStandardMetadataBag(target);

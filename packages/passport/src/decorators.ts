@@ -1,3 +1,4 @@
+import { ensureMetadataSymbol } from '@fluojs/core/internal';
 import { UseGuards } from '@fluojs/http';
 
 import { AuthGuard } from './guard.js';
@@ -13,6 +14,8 @@ type RequirementPatch = AuthRequirement;
 
 const standardClassRequirementKey = Symbol.for('fluo.passport.standard.class-auth');
 const standardMethodRequirementKey = Symbol.for('fluo.passport.standard.method-auth');
+
+ensureMetadataSymbol();
 
 function isStandardClassContext(context: unknown): context is ClassDecoratorContext {
   return typeof context === 'object' && context !== null && 'kind' in context && context.kind === 'class';

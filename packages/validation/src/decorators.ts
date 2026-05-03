@@ -3,7 +3,7 @@ import {
   type MetadataPropertyKey,
 } from '@fluojs/core';
 import {
-  metadataSymbol,
+  ensureMetadataSymbol,
   type ClassValidationRule,
   type CustomClassValidator,
   type CustomFieldValidator,
@@ -23,12 +23,13 @@ type ValidateClassInput = CustomClassValidator | StandardSchemaV1Like;
 const standardDtoValidationMetadataKey = Symbol.for('fluo.standard.dto-validation');
 const standardClassValidationMetadataKey = Symbol.for('fluo.standard.class-validation');
 
+ensureMetadataSymbol();
+
 function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
   if (metadata === null || metadata === undefined) {
     throw new Error('Decorator metadata is not available. Ensure your environment supports TC39 decorator metadata (Stage 3).');
   }
 
-  void metadataSymbol;
   return metadata as StandardMetadataBag;
 }
 
