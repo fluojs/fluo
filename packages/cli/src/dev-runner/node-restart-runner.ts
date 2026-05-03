@@ -188,6 +188,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   const watchTargets = getWatchTargets(projectDirectory);
   let child: ChildProcess | undefined;
   const pendingRestartPaths = new Set<string>();
+  const restartAfterClosePaths = new Set<string>();
   let restartTimer: NodeJS.Timeout | undefined;
   let restarting = false;
   let stopping = false;
@@ -228,18 +229,40 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
         return;
       }
 
-      gate.commitBaseline(restartPaths);
       stdout.write(`[fluo] restarting after content change: ${relative(projectDirectory, restartPaths[restartPaths.length - 1] ?? projectDirectory)}\n`);
       const previousChild = child;
-      restarting = true;
-      previousChild?.once('close', () => {
-        restarting = false;
+      const startReplacementChild = () => {
         startChild(resolveExitCode, cleanup);
-      });
-      stopChild(previousChild);
-      if (!previousChild) {
+        gate.commitBaseline(restartPaths);
+      };
+
+      if (previousChild) {
+        for (const restartPath of restartPaths) {
+          restartAfterClosePaths.add(restartPath);
+        }
+        if (restarting) {
+          return;
+        }
+
+        restarting = true;
+        previousChild.once('close', () => {
+          const committedRestartPaths = [...restartAfterClosePaths];
+          restartAfterClosePaths.clear();
+          restarting = false;
+          if (stopping) {
+            return;
+          }
+          startChild(resolveExitCode, cleanup);
+          gate.commitBaseline(committedRestartPaths);
+        });
+        stopChild(previousChild);
+        return;
+      }
+
+      try {
+        startReplacementChild();
+      } finally {
         restarting = false;
-        startChild(resolveExitCode, cleanup);
       }
     }, debounceMs);
   };
@@ -266,6 +289,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
         restartTimer = undefined;
       }
       pendingRestartPaths.clear();
+      restartAfterClosePaths.clear();
       for (const watcher of watchers.splice(0)) {
         watcher.close();
       }

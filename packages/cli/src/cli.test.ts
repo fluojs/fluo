@@ -1784,6 +1784,70 @@ void bootstrap();
     await expect(runPromise).resolves.toBe(0);
   });
 
+  it('does not advance the restart content baseline while the previous child is still closing', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    mkdirSync(sourceDirectory, { recursive: true });
+    const sourceFile = join(sourceDirectory, 'main.ts');
+    writeFileSync(sourceFile, 'console.log("one");\n');
+    const signalTarget = createSignalTarget();
+    const children: ChildProcess[] = [];
+    const stdoutBuffer: string[] = [];
+    const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+
+    const runPromise = runNodeRestartRunner({
+      debounceMs: 1,
+      env: {},
+      projectDirectory: workspaceDirectory,
+      signalTarget: signalTarget.target,
+      spawnChild: () => {
+        const child = createMockChild();
+        if (children.length === 0) {
+          child.kill = () => {
+            Object.defineProperty(child, 'killed', { configurable: true, value: true, writable: true });
+            return true;
+          };
+        }
+        children.push(child);
+        return child;
+      },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+      watchTarget: (_target, optionsOrListener, listener) => {
+        watchListeners.push(typeof optionsOrListener === 'function' ? optionsOrListener : listener ?? (() => undefined));
+        return { close: () => undefined } as never;
+      },
+    });
+
+    writeFileSync(sourceFile, 'console.log("two");\n');
+    for (const listener of watchListeners) {
+      listener('change', 'main.ts');
+    }
+
+    await waitForCondition(() => children[0]?.killed === true && stdoutBuffer.length === 1);
+    expect(children).toHaveLength(1);
+
+    for (const listener of watchListeners) {
+      listener('change', 'main.ts');
+    }
+
+    await waitForCondition(() => stdoutBuffer.length === 2);
+    expect(children).toHaveLength(1);
+
+    children[0]?.emit('close', 0);
+    await waitForCondition(() => children.length === 2);
+
+    for (const listener of watchListeners) {
+      listener('change', 'main.ts');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(stdoutBuffer).toHaveLength(2);
+
+    children[1]?.emit('close', 0);
+    await expect(runPromise).resolves.toBe(0);
+  });
+
   it('closes watchers and unregisters signals when the app child exits terminally', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
