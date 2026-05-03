@@ -353,9 +353,9 @@ pnpm dev
 
 If you intentionally generated the project with a different package manager, use that project's matching script command. The book's documented path stays on `pnpm`.
 
-The generated `dev` script delegates to `fluo dev`. In Node.js starters, the CLI owns a restart-on-watch boundary: it watches source and common config inputs, debounces save bursts, compares file content before restarting, and ignores noisy output or cache paths. Saving a file without changing its content, such as pressing Ctrl+S again, should not restart the app. This is still a full process restart, not true module-level HMR. Runtime-native watcher behavior remains available for debugging with `fluo dev --raw-watch` or `FLUO_DEV_RAW_WATCH=1`.
+The generated `dev` script delegates to `fluo dev`. In generated application starters, the CLI owns a restart-on-watch boundary across Node, Bun, Deno, and Cloudflare Workers: it watches source and common config inputs, debounces save bursts, compares file content before restarting, and ignores noisy output or cache paths. Saving a file without changing its content, such as pressing Ctrl+S again, should not restart the app. This is still a full process restart, not true module-level HMR. Runtime-native Node watcher behavior remains available for debugging with `fluo dev --raw-watch` or `FLUO_DEV_RAW_WATCH=1`.
 
-In an interactive terminal, the CLI prints concise fluo lifecycle status and keeps child-process errors visible. In CI or other non-interactive output, it falls back to raw stream passthrough so logs remain automation-friendly. If you need to debug every line from the underlying toolchain, run `fluo dev --verbose`, `fluo dev --reporter stream`, or set `FLUO_VERBOSE=1`.
+By default, `fluo dev` shows the same kind of terminal output as `fluo start`: application stdout and stderr only. fluo lifecycle UI is opt-in with `fluo dev --reporter pretty`, and raw runtime or watcher output is opt-in with `fluo dev --verbose`, `fluo dev --reporter stream`, or `FLUO_VERBOSE=1`.
 
 That CLI reporter is different from application/runtime logging. To tune logs emitted by your app after bootstrap, configure `ApplicationLogger` in code, for example with `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })` or `createJsonApplicationLogger()` from `@fluojs/runtime/node`.
 

@@ -353,9 +353,11 @@ pnpm dev
 
 의도적으로 다른 package manager로 프로젝트를 생성했다면 그 프로젝트에 맞는 script 명령을 사용하세요. 이 책의 문서화된 경로는 `pnpm`에 둡니다.
 
-생성된 `dev` script는 `fluo dev`로 위임합니다. Node.js 스타터에서 CLI는 restart-on-watch boundary를 직접 소유합니다. source와 주요 config 입력을 watch하고, 저장 event burst를 debounce하며, restart 전에 파일 content를 비교하고, noisy output/cache 경로를 무시합니다. 파일 내용을 바꾸지 않고 Ctrl+S를 다시 누르는 저장은 앱을 재시작하지 않아야 합니다. 이 동작은 true module-level HMR이 아니라 여전히 full process restart입니다. 디버깅을 위해 런타임 native watcher가 필요하면 `fluo dev --raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`을 사용할 수 있습니다.
+생성된 `dev` script는 `fluo dev`로 위임합니다. 생성된 애플리케이션 스타터에서 CLI는 Node, Bun, Deno, Cloudflare Workers 전반의 restart-on-watch boundary를 직접 소유합니다. source와 주요 config 입력을 watch하고, 저장 event burst를 debounce하며, restart 전에 파일 content를 비교하고, noisy output/cache 경로를 무시합니다. 파일 내용을 바꾸지 않고 Ctrl+S를 다시 누르는 저장은 앱을 재시작하지 않아야 합니다. 이 동작은 true module-level HMR이 아니라 여전히 full process restart입니다. 디버깅을 위해 runtime-native Node watcher가 필요하면 `fluo dev --raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`을 사용할 수 있습니다.
 
-Interactive terminal에서는 CLI가 짧은 fluo lifecycle status를 출력하고 child-process error를 계속 보여 줍니다. CI나 non-interactive 출력에서는 automation-friendly log를 위해 raw stream passthrough로 돌아갑니다. 내부 toolchain의 모든 줄을 디버깅해야 한다면 `fluo dev --verbose`, `fluo dev --reporter stream`을 실행하거나 `FLUO_VERBOSE=1`을 설정하세요.
+기본적으로 `fluo dev`는 `fluo start`와 같은 형태의 터미널 출력, 즉 애플리케이션 stdout/stderr만 보여 줍니다. fluo lifecycle UI가 필요하면 `fluo dev --reporter pretty`로 opt-in하고, 런타임 또는 watcher 원본 출력까지 디버깅해야 한다면 `fluo dev --verbose`, `fluo dev --reporter stream`을 실행하거나 `FLUO_VERBOSE=1`을 설정하세요.
+
+이 CLI reporter는 애플리케이션/런타임 로깅과 별개입니다. 부트스트랩 이후 앱이 내보내는 로그를 조정하려면 코드에서 `ApplicationLogger`를 설정하세요. 예를 들어 `@fluojs/runtime/node`의 `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })` 또는 `createJsonApplicationLogger()`를 사용할 수 있습니다.
 
 처음 실행하면 이런 흐름으로 보입니다. 다음과 비슷한 시작 로그를 기대할 수 있습니다.
 
