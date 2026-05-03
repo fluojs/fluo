@@ -125,6 +125,12 @@ Framework integration이 명시적인 request context boundary나 typed per-requ
 
 Dispatcher는 adapter와 diagnostics를 위해 `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`, `formatFastPathStats(...)`, `getDispatcherFastPathStats(...)`로 fast-path observability를 노출합니다.
 
+### Bun decorator bundling compatibility
+
+Fluo의 HTTP 데코레이터는 TC39 표준 데코레이터이며, runtime 또는 compiler가 표준 decorator context를 제공하면 계속 `context.metadata`를 통해 metadata를 기록합니다. Bun이 legacy TypeScript decorator transform으로 애플리케이션을 번들링하는 경우에도 controller, route, DTO binding, guard/interceptor, header, redirect, versioning, status, request DTO, `@Produces(...)` metadata를 Fluo 내부 metadata store에 기록하여 생성된 Bun bundle의 route mapping 동작을 보존합니다.
+
+이 호환 경로는 Bun bundle output을 위한 실행 fallback입니다. 애플리케이션 소스는 계속 Fluo 표준 데코레이터를 사용해야 하며, `emitDecoratorMetadata`를 켜거나 `reflect-metadata`에 의존해서는 안 됩니다.
+
 ## 요청 정리와 런타임 이식성
 
 디스패처는 활성 dispatch 동안에만 `AsyncLocalStorage`로 `RequestContext`를 바인딩합니다. 요청이 controller graph, middleware, guard, interceptor, observer, DTO converter, custom binder 또는 수동 `getCurrentRequestContext()` / `assertRequestContext()` container 접근을 통해 request-scoped DI를 사용할 수 있으면, 디스패처는 요청 observer가 끝난 뒤 `finally` 경로에서 isolated request-scoped DI 컨테이너를 생성하고 dispose합니다. Singleton-only route는 `RequestContext.container`가 접근되기 전까지 이 컨테이너 lifecycle을 건너뛰어 baseline 경로의 불필요한 per-request allocation을 피하면서도, graph가 모호하거나 request-scoped이면 request-scoped provider isolation을 유지합니다. 따라서 공개 `RequestContext.container` 읽기는 request-scoped provider resolve에 항상 안전합니다. singleton-only fast path는 내부 dispatcher 최적화일 뿐, 공개 context가 root container를 노출한다는 약속이 아닙니다.

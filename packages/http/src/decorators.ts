@@ -4,10 +4,17 @@ import {
   type MetadataSource,
 } from '@fluojs/core';
 import {
+  defineControllerMetadata,
+  defineDtoFieldBindingMetadata,
+  defineRouteMetadata,
   ensureMetadataSymbol,
+  getControllerMetadata,
+  getDtoFieldBindingMetadata,
+  getRouteMetadata,
   getStandardMetadataBag as readStandardMetadataBag,
   type ControllerMetadata,
   type DtoFieldBindingMetadata,
+  type RouteMetadata,
 } from '@fluojs/core/internal';
 
 import { validateRoutePath } from './route-path.js';
@@ -17,6 +24,9 @@ type StandardMetadataBag = Record<PropertyKey, unknown>;
 type StandardClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
 type StandardMethodDecoratorFn = (value: Function, context: ClassMethodDecoratorContext) => void;
 type StandardFieldDecoratorFn = <This, Value>(value: undefined, context: ClassFieldDecoratorContext<This, Value>) => void;
+type LegacyClassDecoratorFn = (target: Function) => void;
+type LegacyMethodDecoratorFn = (target: object, propertyKey: MetadataPropertyKey, descriptor?: PropertyDescriptor) => void;
+type LegacyFieldDecoratorFn = (target: object, propertyKey: MetadataPropertyKey) => void;
 type ClassDecoratorLike = StandardClassDecoratorFn;
 type MethodDecoratorLike = StandardMethodDecoratorFn;
 type ClassOrMethodDecoratorLike = StandardClassDecoratorFn & StandardMethodDecoratorFn;
@@ -25,6 +35,9 @@ type FieldDecoratorLike = StandardFieldDecoratorFn;
 const standardControllerMetadataKey = Symbol.for('fluo.standard.controller');
 const standardRouteMetadataKey = Symbol.for('fluo.standard.route');
 const standardDtoBindingMetadataKey = Symbol.for('fluo.standard.dto-binding');
+
+const legacyRouteMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, StandardRouteMetadataRecord>>();
+const legacyDtoBindingMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, Partial<DtoFieldBindingMetadata>>>();
 
 ensureMetadataSymbol();
 
@@ -70,7 +83,149 @@ function mergeUnique<T>(existing: T[] | undefined, values: T[]): T[] {
 }
 
 function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
-  return metadata as StandardMetadataBag;
+  return typeof metadata === 'object' && metadata !== null ? metadata as StandardMetadataBag : {};
+}
+
+function isStandardDecoratorContext(value: unknown): value is ClassDecoratorContext | ClassMethodDecoratorContext | ClassFieldDecoratorContext {
+  return typeof value === 'object' && value !== null && 'kind' in value && 'name' in value;
+}
+
+function isMetadataPropertyKey(value: unknown): value is MetadataPropertyKey {
+  return typeof value === 'string' || typeof value === 'symbol';
+}
+
+function getLegacyRouteRecord(target: object, propertyKey: MetadataPropertyKey): StandardRouteMetadataRecord {
+  let routeMap = legacyRouteMetadataStore.get(target);
+
+  if (!routeMap) {
+    routeMap = new Map<MetadataPropertyKey, StandardRouteMetadataRecord>();
+    legacyRouteMetadataStore.set(target, routeMap);
+  }
+
+  let record = routeMap.get(propertyKey);
+
+  if (!record) {
+    record = {};
+    routeMap.set(propertyKey, record);
+  }
+
+  return record;
+}
+
+function flushLegacyRouteMetadata(target: object, propertyKey: MetadataPropertyKey, record: StandardRouteMetadataRecord): void {
+  if (!record.method || record.path === undefined) {
+    return;
+  }
+
+  const existing = getRouteMetadata(target, propertyKey);
+  const metadata: RouteMetadata = {
+    guards: mergeUnique(existing?.guards as GuardLike[] | undefined, record.guards ?? []),
+    headers: record.headers ?? existing?.headers,
+    interceptors: mergeUnique(existing?.interceptors as InterceptorLike[] | undefined, record.interceptors ?? []),
+    method: record.method as RouteMetadata['method'],
+    path: record.path,
+    redirect: record.redirect ?? existing?.redirect,
+    request: record.request ?? existing?.request,
+    successStatus: record.successStatus ?? existing?.successStatus,
+    version: record.version ?? existing?.version,
+  };
+
+  defineRouteMetadata(target, propertyKey, metadata);
+}
+
+function mergeLegacyRouteMetadata(
+  target: object,
+  propertyKey: MetadataPropertyKey,
+  partial: Partial<StandardRouteMetadataRecord>,
+): void {
+  const record = getLegacyRouteRecord(target, propertyKey);
+  Object.assign(record, partial);
+  flushLegacyRouteMetadata(target, propertyKey, record);
+}
+
+function defineLegacyControllerMetadata(target: Function, partial: Partial<ControllerMetadata>): void {
+  const existing = getControllerMetadata(target);
+
+  defineControllerMetadata(target, {
+    basePath: partial.basePath ?? existing?.basePath ?? '',
+    guards: partial.guards ?? existing?.guards,
+    interceptors: partial.interceptors ?? existing?.interceptors,
+    version: partial.version ?? existing?.version,
+  });
+}
+
+function getLegacyDtoBindingRecord(target: object, propertyKey: MetadataPropertyKey): Partial<DtoFieldBindingMetadata> {
+  let bindingMap = legacyDtoBindingMetadataStore.get(target);
+
+  if (!bindingMap) {
+    bindingMap = new Map<MetadataPropertyKey, Partial<DtoFieldBindingMetadata>>();
+    legacyDtoBindingMetadataStore.set(target, bindingMap);
+  }
+
+  let record = bindingMap.get(propertyKey);
+
+  if (!record) {
+    record = {};
+    bindingMap.set(propertyKey, record);
+  }
+
+  return record;
+}
+
+function mergeLegacyDtoBinding(
+  target: object,
+  propertyKey: MetadataPropertyKey,
+  partial: Partial<DtoFieldBindingMetadata>,
+): void {
+  const record = getLegacyDtoBindingRecord(target, propertyKey);
+  Object.assign(record, partial);
+
+  const source = record.source ?? getDtoFieldBindingMetadata(target, propertyKey)?.source;
+
+  if (!source) {
+    return;
+  }
+
+  defineDtoFieldBindingMetadata(target, propertyKey, {
+    converter: record.converter,
+    key: record.key,
+    optional: record.optional,
+    source,
+  });
+}
+
+function appendLegacyRouteHeader(target: object, propertyKey: MetadataPropertyKey, name: string, value: string): void {
+  const record = getLegacyRouteRecord(target, propertyKey);
+  record.headers = [...(record.headers ?? []), { name, value }];
+  flushLegacyRouteMetadata(target, propertyKey, record);
+}
+
+function appendLegacyControllerGuards(target: Function, guards: GuardLike[]): void {
+  const existing = getControllerMetadata(target);
+
+  defineLegacyControllerMetadata(target, {
+    guards: mergeUnique(existing?.guards as GuardLike[] | undefined, guards),
+  });
+}
+
+function appendLegacyControllerInterceptors(target: Function, interceptors: InterceptorLike[]): void {
+  const existing = getControllerMetadata(target);
+
+  defineLegacyControllerMetadata(target, {
+    interceptors: mergeUnique(existing?.interceptors as InterceptorLike[] | undefined, interceptors),
+  });
+}
+
+function appendLegacyRouteGuards(target: object, propertyKey: MetadataPropertyKey, guards: GuardLike[]): void {
+  const record = getLegacyRouteRecord(target, propertyKey);
+  record.guards = mergeUnique(record.guards, guards);
+  flushLegacyRouteMetadata(target, propertyKey, record);
+}
+
+function appendLegacyRouteInterceptors(target: object, propertyKey: MetadataPropertyKey, interceptors: InterceptorLike[]): void {
+  const record = getLegacyRouteRecord(target, propertyKey);
+  record.interceptors = mergeUnique(record.interceptors, interceptors);
+  flushLegacyRouteMetadata(target, propertyKey, record);
 }
 
 function getStandardControllerRecord(metadata: unknown): Partial<ControllerMetadata> {
@@ -141,36 +296,62 @@ function createRouteDecorator(method: HttpMethod) {
   return (path: string): MethodDecoratorLike => {
     validateRoutePath(path, `@${method}() path`);
 
-    const decorator = (_value: Function, context: ClassMethodDecoratorContext) => {
-      const route = getStandardRouteRecord(context.metadata, context.name);
-      route.method = method;
-      route.path = path;
+    const decorator = (valueOrTarget: Function | object, contextOrPropertyKey: ClassMethodDecoratorContext | MetadataPropertyKey) => {
+      if (isStandardDecoratorContext(contextOrPropertyKey)) {
+        const route = getStandardRouteRecord(contextOrPropertyKey.metadata, contextOrPropertyKey.name);
+        route.method = method;
+        route.path = path;
+        return;
+      }
+
+      if (isMetadataPropertyKey(contextOrPropertyKey)) {
+        mergeLegacyRouteMetadata(valueOrTarget, contextOrPropertyKey, { method, path });
+      }
     };
 
-    return decorator as MethodDecoratorLike;
+    return decorator as MethodDecoratorLike & LegacyMethodDecoratorFn;
   };
 }
 
 function createRouteValueDecorator<T>(apply: (record: StandardRouteMetadataRecord, value: T) => void) {
   return (value: T): MethodDecoratorLike => {
-    const decorator = (_target: Function, context: ClassMethodDecoratorContext) => {
-      apply(getStandardRouteRecord(context.metadata, context.name), value);
+    const decorator = (valueOrTarget: Function | object, contextOrPropertyKey: ClassMethodDecoratorContext | MetadataPropertyKey) => {
+      if (isStandardDecoratorContext(contextOrPropertyKey)) {
+        apply(getStandardRouteRecord(contextOrPropertyKey.metadata, contextOrPropertyKey.name), value);
+        return;
+      }
+
+      if (isMetadataPropertyKey(contextOrPropertyKey)) {
+        const record = getLegacyRouteRecord(valueOrTarget, contextOrPropertyKey);
+        apply(record, value);
+        flushLegacyRouteMetadata(valueOrTarget, contextOrPropertyKey, record);
+      }
     };
 
-    return decorator as MethodDecoratorLike;
+    return decorator as MethodDecoratorLike & LegacyMethodDecoratorFn;
   };
 }
 
 function createDtoFieldDecorator(source: MetadataSource) {
   return (key?: string): FieldDecoratorLike => {
-    const decorator = <This, Value>(_value: undefined, context: ClassFieldDecoratorContext<This, Value>) => {
-      mergeStandardDtoBinding(context.metadata, context.name, {
-        key,
-        source,
-      });
+    const decorator = <This, Value>(valueOrTarget: undefined | object, contextOrPropertyKey: ClassFieldDecoratorContext<This, Value> | MetadataPropertyKey) => {
+      if (isStandardDecoratorContext(contextOrPropertyKey)) {
+        mergeStandardDtoBinding(contextOrPropertyKey.metadata, contextOrPropertyKey.name, {
+          key,
+          source,
+        });
+        return;
+      }
+
+      if (isMetadataPropertyKey(contextOrPropertyKey) && valueOrTarget && typeof valueOrTarget === 'object') {
+        mergeLegacyDtoBinding(valueOrTarget, contextOrPropertyKey, {
+          key,
+          source,
+        });
+      }
     };
 
-    return decorator as FieldDecoratorLike;
+    return decorator as FieldDecoratorLike & LegacyFieldDecoratorFn;
   };
 }
 
@@ -183,11 +364,16 @@ function createDtoFieldDecorator(source: MetadataSource) {
 export function Controller(basePath = ''): ClassDecoratorLike {
   validateRoutePath(basePath, '@Controller() base path');
 
-  const decorator = (_target: Function, context: ClassDecoratorContext) => {
-    getStandardControllerRecord(context.metadata).basePath = basePath;
+  const decorator = (target: Function, context?: ClassDecoratorContext) => {
+    if (isStandardDecoratorContext(context)) {
+      getStandardControllerRecord(context.metadata).basePath = basePath;
+      return;
+    }
+
+    defineLegacyControllerMetadata(target, { basePath });
   };
 
-  return decorator as ClassDecoratorLike;
+  return decorator as ClassDecoratorLike & LegacyClassDecoratorFn;
 }
 
 /**
@@ -197,16 +383,28 @@ export function Controller(basePath = ''): ClassDecoratorLike {
  * @returns A decorator that applies version metadata at class or method scope.
  */
 export function Version(version: string): ClassOrMethodDecoratorLike {
-  const decorator = (_target: Function, context: ClassDecoratorContext | ClassMethodDecoratorContext) => {
-    if (context.kind === 'class') {
-      getStandardControllerRecord(context.metadata).version = version;
+  const decorator = (target: Function | object, contextOrPropertyKey?: ClassDecoratorContext | ClassMethodDecoratorContext | MetadataPropertyKey) => {
+    if (isStandardDecoratorContext(contextOrPropertyKey)) {
+      if (contextOrPropertyKey.kind === 'class') {
+        getStandardControllerRecord(contextOrPropertyKey.metadata).version = version;
+        return;
+      }
+
+      getStandardRouteRecord(contextOrPropertyKey.metadata, contextOrPropertyKey.name).version = version;
       return;
     }
 
-    getStandardRouteRecord(context.metadata, context.name).version = version;
+    if (isMetadataPropertyKey(contextOrPropertyKey)) {
+      mergeLegacyRouteMetadata(target, contextOrPropertyKey, { version });
+      return;
+    }
+
+    if (typeof target === 'function') {
+      defineLegacyControllerMetadata(target, { version });
+    }
   };
 
-  return decorator as ClassOrMethodDecoratorLike;
+  return decorator as ClassOrMethodDecoratorLike & LegacyClassDecoratorFn & LegacyMethodDecoratorFn;
 }
 
 /**
@@ -308,7 +506,7 @@ export const HttpCode = createRouteValueDecorator<number>((record, status) => {
 export function getRouteProducesMetadata(controllerToken: Constructor, propertyKey: MetadataPropertyKey): string[] | undefined {
   const bag = readStandardMetadataBag(controllerToken);
   const routeMap = bag?.[standardRouteMetadataKey] as Map<MetadataPropertyKey, StandardRouteMetadataRecord> | undefined;
-  const produces = routeMap?.get(propertyKey)?.produces;
+  const produces = routeMap?.get(propertyKey)?.produces ?? legacyRouteMetadataStore.get(controllerToken.prototype)?.get(propertyKey)?.produces;
 
   return produces ? [...produces] : undefined;
 }
@@ -355,11 +553,18 @@ export const FromBody = createDtoFieldDecorator('body');
  * @returns A field decorator that marks the DTO binding as optional.
  */
 export function Optional(): FieldDecoratorLike {
-  const decorator = <This, Value>(_value: undefined, context: ClassFieldDecoratorContext<This, Value>) => {
-    mergeStandardDtoBinding(context.metadata, context.name, { optional: true });
+  const decorator = <This, Value>(valueOrTarget: undefined | object, contextOrPropertyKey: ClassFieldDecoratorContext<This, Value> | MetadataPropertyKey) => {
+    if (isStandardDecoratorContext(contextOrPropertyKey)) {
+      mergeStandardDtoBinding(contextOrPropertyKey.metadata, contextOrPropertyKey.name, { optional: true });
+      return;
+    }
+
+    if (isMetadataPropertyKey(contextOrPropertyKey) && valueOrTarget && typeof valueOrTarget === 'object') {
+      mergeLegacyDtoBinding(valueOrTarget, contextOrPropertyKey, { optional: true });
+    }
   };
 
-  return decorator as FieldDecoratorLike;
+  return decorator as FieldDecoratorLike & LegacyFieldDecoratorFn;
 }
 
 /**
@@ -369,11 +574,18 @@ export function Optional(): FieldDecoratorLike {
  * @returns A field decorator that stores converter metadata for the DTO field.
  */
 export function Convert(converter: ConverterLike): FieldDecoratorLike {
-  const decorator = <This, Value>(_value: undefined, context: ClassFieldDecoratorContext<This, Value>) => {
-    mergeStandardDtoBinding(context.metadata, context.name, { converter });
+  const decorator = <This, Value>(valueOrTarget: undefined | object, contextOrPropertyKey: ClassFieldDecoratorContext<This, Value> | MetadataPropertyKey) => {
+    if (isStandardDecoratorContext(contextOrPropertyKey)) {
+      mergeStandardDtoBinding(contextOrPropertyKey.metadata, contextOrPropertyKey.name, { converter });
+      return;
+    }
+
+    if (isMetadataPropertyKey(contextOrPropertyKey) && valueOrTarget && typeof valueOrTarget === 'object') {
+      mergeLegacyDtoBinding(valueOrTarget, contextOrPropertyKey, { converter });
+    }
   };
 
-  return decorator as FieldDecoratorLike;
+  return decorator as FieldDecoratorLike & LegacyFieldDecoratorFn;
 }
 
 /**
@@ -384,12 +596,19 @@ export function Convert(converter: ConverterLike): FieldDecoratorLike {
  * @returns A method decorator that appends route-level response-header metadata.
  */
 export function Header(name: string, value: string): MethodDecoratorLike {
-  const decorator = (_target: Function, context: ClassMethodDecoratorContext) => {
-    const route = getStandardRouteRecord(context.metadata, context.name);
-    route.headers = [...(route.headers ?? []), { name, value }];
+  const decorator = (valueOrTarget: Function | object, contextOrPropertyKey: ClassMethodDecoratorContext | MetadataPropertyKey) => {
+    if (isStandardDecoratorContext(contextOrPropertyKey)) {
+      const route = getStandardRouteRecord(contextOrPropertyKey.metadata, contextOrPropertyKey.name);
+      route.headers = [...(route.headers ?? []), { name, value }];
+      return;
+    }
+
+    if (isMetadataPropertyKey(contextOrPropertyKey)) {
+      appendLegacyRouteHeader(valueOrTarget, contextOrPropertyKey, name, value);
+    }
   };
 
-  return decorator as MethodDecoratorLike;
+  return decorator as MethodDecoratorLike & LegacyMethodDecoratorFn;
 }
 
 /**
@@ -400,11 +619,18 @@ export function Header(name: string, value: string): MethodDecoratorLike {
  * @returns A method decorator that writes redirect metadata for the route.
  */
 export function Redirect(url: string, statusCode?: number): MethodDecoratorLike {
-  const decorator = (_target: Function, context: ClassMethodDecoratorContext) => {
-    getStandardRouteRecord(context.metadata, context.name).redirect = { url, statusCode };
+  const decorator = (valueOrTarget: Function | object, contextOrPropertyKey: ClassMethodDecoratorContext | MetadataPropertyKey) => {
+    if (isStandardDecoratorContext(contextOrPropertyKey)) {
+      getStandardRouteRecord(contextOrPropertyKey.metadata, contextOrPropertyKey.name).redirect = { url, statusCode };
+      return;
+    }
+
+    if (isMetadataPropertyKey(contextOrPropertyKey)) {
+      mergeLegacyRouteMetadata(valueOrTarget, contextOrPropertyKey, { redirect: { url, statusCode } });
+    }
   };
 
-  return decorator as MethodDecoratorLike;
+  return decorator as MethodDecoratorLike & LegacyMethodDecoratorFn;
 }
 
 /**
@@ -414,18 +640,30 @@ export function Redirect(url: string, statusCode?: number): MethodDecoratorLike 
  * @returns A decorator applicable to classes and methods.
  */
 export function UseGuards(...guards: GuardLike[]): ClassOrMethodDecoratorLike {
-  const decorator = (_target: Function, context: ClassDecoratorContext | ClassMethodDecoratorContext) => {
-    if (context.kind === 'class') {
-      const controller = getStandardControllerRecord(context.metadata);
-      controller.guards = mergeUnique(controller.guards as GuardLike[] | undefined, guards);
+  const decorator = (target: Function | object, contextOrPropertyKey?: ClassDecoratorContext | ClassMethodDecoratorContext | MetadataPropertyKey) => {
+    if (isStandardDecoratorContext(contextOrPropertyKey)) {
+      if (contextOrPropertyKey.kind === 'class') {
+        const controller = getStandardControllerRecord(contextOrPropertyKey.metadata);
+        controller.guards = mergeUnique(controller.guards as GuardLike[] | undefined, guards);
+        return;
+      }
+
+      const route = getStandardRouteRecord(contextOrPropertyKey.metadata, contextOrPropertyKey.name);
+      route.guards = mergeUnique(route.guards, guards);
       return;
     }
 
-    const route = getStandardRouteRecord(context.metadata, context.name);
-    route.guards = mergeUnique(route.guards, guards);
+    if (isMetadataPropertyKey(contextOrPropertyKey)) {
+      appendLegacyRouteGuards(target, contextOrPropertyKey, guards);
+      return;
+    }
+
+    if (typeof target === 'function') {
+      appendLegacyControllerGuards(target, guards);
+    }
   };
 
-  return decorator as ClassOrMethodDecoratorLike;
+  return decorator as ClassOrMethodDecoratorLike & LegacyClassDecoratorFn & LegacyMethodDecoratorFn;
 }
 
 /**
@@ -435,16 +673,28 @@ export function UseGuards(...guards: GuardLike[]): ClassOrMethodDecoratorLike {
  * @returns A decorator applicable to classes and methods.
  */
 export function UseInterceptors(...interceptors: InterceptorLike[]): ClassOrMethodDecoratorLike {
-  const decorator = (_target: Function, context: ClassDecoratorContext | ClassMethodDecoratorContext) => {
-    if (context.kind === 'class') {
-      const controller = getStandardControllerRecord(context.metadata);
-      controller.interceptors = mergeUnique(controller.interceptors as InterceptorLike[] | undefined, interceptors);
+  const decorator = (target: Function | object, contextOrPropertyKey?: ClassDecoratorContext | ClassMethodDecoratorContext | MetadataPropertyKey) => {
+    if (isStandardDecoratorContext(contextOrPropertyKey)) {
+      if (contextOrPropertyKey.kind === 'class') {
+        const controller = getStandardControllerRecord(contextOrPropertyKey.metadata);
+        controller.interceptors = mergeUnique(controller.interceptors as InterceptorLike[] | undefined, interceptors);
+        return;
+      }
+
+      const route = getStandardRouteRecord(contextOrPropertyKey.metadata, contextOrPropertyKey.name);
+      route.interceptors = mergeUnique(route.interceptors, interceptors);
       return;
     }
 
-    const route = getStandardRouteRecord(context.metadata, context.name);
-    route.interceptors = mergeUnique(route.interceptors, interceptors);
+    if (isMetadataPropertyKey(contextOrPropertyKey)) {
+      appendLegacyRouteInterceptors(target, contextOrPropertyKey, interceptors);
+      return;
+    }
+
+    if (typeof target === 'function') {
+      appendLegacyControllerInterceptors(target, interceptors);
+    }
   };
 
-  return decorator as ClassOrMethodDecoratorLike;
+  return decorator as ClassOrMethodDecoratorLike & LegacyClassDecoratorFn & LegacyMethodDecoratorFn;
 }

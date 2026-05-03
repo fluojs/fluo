@@ -127,6 +127,12 @@ Use `runWithRequestContext(...)`, `assertRequestContext()`, `createRequestContex
 
 The dispatcher exposes fast-path observability for adapters and diagnostics through `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`, `formatFastPathStats(...)`, and `getDispatcherFastPathStats(...)`.
 
+### Bun decorator bundling compatibility
+
+Fluo's HTTP decorators are standard TC39 decorators and continue to record metadata through `context.metadata` when the runtime or compiler provides the standard decorator context. When Bun bundles an application through its legacy TypeScript decorator transform, the same controller, route, DTO binding, guard/interceptor, header, redirect, versioning, status, request DTO, and `@Produces(...)` metadata is recorded through Fluo's internal metadata stores so generated Bun bundles preserve route mapping behavior.
+
+This compatibility path is an execution fallback for Bun bundle output; application source should still use Fluo's standard decorators and should not enable `emitDecoratorMetadata` or rely on `reflect-metadata`.
+
 ## Request Cleanup and Portability
 
 The dispatcher binds `RequestContext` with `AsyncLocalStorage` for the active dispatch only. When a request may use request-scoped DI through its controller graph, middleware, guards, interceptors, observers, DTO converters, a custom binder, or manual `getCurrentRequestContext()` / `assertRequestContext()` container access, the dispatcher creates and disposes an isolated request-scoped DI container from its `finally` path after request observers finish. Singleton-only routes skip that container lifecycle until `RequestContext.container` is accessed, so the baseline path avoids unnecessary per-request allocation while preserving request-scoped provider isolation whenever the graph is ambiguous or request-scoped. Public `RequestContext.container` reads are therefore always safe for resolving request-scoped providers; the singleton-only fast path is an internal dispatcher optimization, not a promise that the public context exposes the root container.

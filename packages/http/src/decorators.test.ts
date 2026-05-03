@@ -15,12 +15,15 @@ import {
   FromPath,
   FromQuery,
   Get,
+  Header,
   Optional,
   Produces,
   RequestDto,
   HttpCode,
+  Redirect,
   UseGuards,
   UseInterceptors,
+  Version,
   getRouteProducesMetadata,
 } from './decorators.js';
 import { InvalidRoutePathError } from './errors.js';
@@ -32,6 +35,10 @@ class NoopTestConverter {
     return value;
   }
 }
+
+type LegacyClassDecoratorFn = (target: Function) => void;
+type LegacyMethodDecoratorFn = (target: object, propertyKey: string | symbol, descriptor?: PropertyDescriptor) => void;
+type LegacyFieldDecoratorFn = (target: object, propertyKey: string | symbol) => void;
 
 describe('http decorators', () => {
   it('writes controller and route metadata using decorator syntax', () => {
@@ -140,6 +147,122 @@ describe('http decorators', () => {
     ]);
 
     expect(getClassValidationRules(ExampleController)).toHaveLength(1);
+  });
+
+  it('writes controller, route, and dto metadata when invoked by legacy decorator transforms', () => {
+    class ClassGuard {
+      canActivate() {}
+    }
+
+    class MethodGuard {
+      canActivate() {}
+    }
+
+    class ClassInterceptor {
+      intercept(_context: unknown, next: { handle(): Promise<unknown> }) {
+        return next.handle();
+      }
+    }
+
+    class MethodInterceptor {
+      intercept(_context: unknown, next: { handle(): Promise<unknown> }) {
+        return next.handle();
+      }
+    }
+
+    class LegacyRequest {
+      id = '';
+      note?: string;
+    }
+
+    (Optional() as unknown as LegacyFieldDecoratorFn)(LegacyRequest.prototype, 'note');
+    (Convert(NoopTestConverter) as unknown as LegacyFieldDecoratorFn)(LegacyRequest.prototype, 'note');
+    (FromBody('note') as unknown as LegacyFieldDecoratorFn)(LegacyRequest.prototype, 'note');
+    (FromPath('id') as unknown as LegacyFieldDecoratorFn)(LegacyRequest.prototype, 'id');
+
+    class LegacyController {
+      getUser() {
+        return { ok: true };
+      }
+
+      getUserWithoutDescriptor() {
+        return { ok: true };
+      }
+    }
+
+    const getUserDescriptor = Object.getOwnPropertyDescriptor(LegacyController.prototype, 'getUser') ?? {};
+
+    (UseInterceptors(MethodInterceptor) as unknown as LegacyMethodDecoratorFn)(LegacyController.prototype, 'getUser', getUserDescriptor);
+    (UseGuards(MethodGuard) as unknown as LegacyMethodDecoratorFn)(LegacyController.prototype, 'getUser', getUserDescriptor);
+    (Redirect('/users/1', 302) as unknown as LegacyMethodDecoratorFn)(LegacyController.prototype, 'getUser', getUserDescriptor);
+    (Header('x-test', 'legacy') as unknown as LegacyMethodDecoratorFn)(LegacyController.prototype, 'getUser', getUserDescriptor);
+    (Get('/:id') as unknown as LegacyMethodDecoratorFn)(LegacyController.prototype, 'getUser', getUserDescriptor);
+    (Produces('application/json') as unknown as LegacyMethodDecoratorFn)(LegacyController.prototype, 'getUser', getUserDescriptor);
+    (Version('1') as unknown as LegacyMethodDecoratorFn)(LegacyController.prototype, 'getUser', getUserDescriptor);
+    (HttpCode(202) as unknown as LegacyMethodDecoratorFn)(LegacyController.prototype, 'getUser', getUserDescriptor);
+    (RequestDto(LegacyRequest) as unknown as LegacyMethodDecoratorFn)(LegacyController.prototype, 'getUser', getUserDescriptor);
+
+    (UseInterceptors(ClassInterceptor) as unknown as LegacyClassDecoratorFn)(LegacyController);
+    (UseGuards(ClassGuard) as unknown as LegacyClassDecoratorFn)(LegacyController);
+    (Version('2') as unknown as LegacyClassDecoratorFn)(LegacyController);
+    (Controller('/legacy') as unknown as LegacyClassDecoratorFn)(LegacyController);
+
+    expect(getControllerMetadata(LegacyController)).toEqual({
+      basePath: '/legacy',
+      guards: [ClassGuard],
+      interceptors: [ClassInterceptor],
+      version: '2',
+    });
+
+    expect(getRouteMetadata(LegacyController.prototype, 'getUser')).toEqual({
+      guards: [MethodGuard],
+      headers: [{ name: 'x-test', value: 'legacy' }],
+      interceptors: [MethodInterceptor],
+      method: 'GET',
+      path: '/:id',
+      redirect: { url: '/users/1', statusCode: 302 },
+      request: LegacyRequest,
+      successStatus: 202,
+      version: '1',
+    });
+    expect(getRouteProducesMetadata(LegacyController, 'getUser')).toEqual(['application/json']);
+
+    (Get('/without-descriptor') as unknown as LegacyMethodDecoratorFn)(LegacyController.prototype, 'getUserWithoutDescriptor');
+    (Produces('application/json') as unknown as LegacyMethodDecoratorFn)(LegacyController.prototype, 'getUserWithoutDescriptor');
+    (Version('1') as unknown as LegacyMethodDecoratorFn)(LegacyController.prototype, 'getUserWithoutDescriptor');
+    (HttpCode(204) as unknown as LegacyMethodDecoratorFn)(LegacyController.prototype, 'getUserWithoutDescriptor');
+    (RequestDto(LegacyRequest) as unknown as LegacyMethodDecoratorFn)(LegacyController.prototype, 'getUserWithoutDescriptor');
+
+    expect(getRouteMetadata(LegacyController.prototype, 'getUserWithoutDescriptor')).toEqual({
+      guards: undefined,
+      interceptors: undefined,
+      method: 'GET',
+      path: '/without-descriptor',
+      request: LegacyRequest,
+      successStatus: 204,
+      version: '1',
+    });
+    expect(getRouteProducesMetadata(LegacyController, 'getUserWithoutDescriptor')).toEqual(['application/json']);
+
+    expect(getDtoBindingSchema(LegacyRequest)).toEqual([
+      {
+        propertyKey: 'note',
+        metadata: {
+          converter: NoopTestConverter,
+          key: 'note',
+          optional: true,
+          source: 'body',
+        },
+      },
+      {
+        propertyKey: 'id',
+        metadata: {
+          key: 'id',
+          optional: undefined,
+          source: 'path',
+        },
+      },
+    ]);
   });
 
   it('stores handler-level produced media types', () => {
