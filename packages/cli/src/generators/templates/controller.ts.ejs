@@ -1,11 +1,15 @@
 <% if (hasService) { %>
-import { Inject } from '@fluojs/core';
+import { ensureMetadataSymbol, Inject } from '@fluojs/core';
+<% } else { %>
+import { ensureMetadataSymbol } from '@fluojs/core';
 <% } %>
 import { Controller, Get } from '@fluojs/http';
 
 <% if (hasService) { %>
 import { <%- service %> } from './<%- kebab %>.service';
 <% } %>
+
+ensureMetadataSymbol();
 
 @Controller('/<%- kebab %>')
 <% if (hasService) { %>

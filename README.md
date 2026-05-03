@@ -71,6 +71,8 @@ cd my-backend
 pnpm dev
 ```
 
+The generated lifecycle scripts delegate to `fluo dev`, `fluo build`, and `fluo start`, so the CLI selects runtime-specific commands and applies sensible `NODE_ENV` defaults when unset.
+
 The starter template gives you a production-ready setup with Fastify, built-in health checks, and an organized directory structure designed to scale.
 
 ## A Modular Ecosystem

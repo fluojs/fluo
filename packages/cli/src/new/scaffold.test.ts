@@ -208,6 +208,7 @@ describe('scaffoldBootstrapApp', () => {
     const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
+      scripts?: Record<string, string>;
     };
     const tsconfig = readFileSync(join(targetDirectory, 'tsconfig.json'), 'utf8');
     const tsconfigBuild = readFileSync(join(targetDirectory, 'tsconfig.build.json'), 'utf8');
@@ -228,6 +229,9 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/cli': '^1.0.0-beta.3',
       '@fluojs/testing': '^1.0.0-beta.2',
     });
+    expect(packageJson.scripts?.build).toBe('fluo build');
+    expect(packageJson.scripts?.dev).toBe('fluo dev');
+    expect(packageJson.scripts?.start).toBe('fluo start');
     expect(tsconfig).not.toContain('baseUrl');
     expect(tsconfigBuild).not.toContain('baseUrl');
     expect(viteConfig).toContain("import { defineConfig } from 'vite';");
@@ -429,7 +433,9 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/platform-bun': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
-    expect(packageJson.scripts?.dev).toBe('bun --watch src/main.ts');
+    expect(packageJson.scripts?.build).toBe('fluo build');
+    expect(packageJson.scripts?.dev).toBe('fluo dev');
+    expect(packageJson.scripts?.start).toBe('fluo start');
     expect(readme).toContain('Bun runtime + Bun native HTTP via `createBunAdapter(...)`');
     expect(mainFile).toContain("import { createBunAdapter } from '@fluojs/platform-bun';");
     expect(mainFile).toContain("Bun.env.PORT ?? '3000'");
@@ -506,7 +512,9 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/platform-deno': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
-    expect(packageJson.scripts?.dev).toContain('deno run --allow-env --allow-net --watch src/main.ts');
+    expect(packageJson.scripts?.build).toBe('fluo build');
+    expect(packageJson.scripts?.dev).toBe('fluo dev');
+    expect(packageJson.scripts?.start).toBe('fluo start');
     expect(packageJson.devDependencies).not.toHaveProperty('vitest');
     expect(readme).toContain('Deno runtime + Deno native HTTP via `runDenoApplication(...)`');
     expect(appFile).toContain("Deno.env.toObject()");
@@ -551,7 +559,9 @@ describe('scaffoldBootstrapApp', () => {
     });
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/config');
     expect(packageJson.devDependencies).toHaveProperty('wrangler');
-    expect(packageJson.scripts?.dev).toBe('wrangler dev');
+    expect(packageJson.scripts?.build).toBe('fluo build');
+    expect(packageJson.scripts?.dev).toBe('fluo dev');
+    expect(packageJson.scripts?.start).toBe('fluo start');
     expect(readDirectorySnapshot(targetDirectory)).not.toHaveProperty('.env');
     expect(readme).toContain('Cloudflare Workers runtime + Cloudflare Workers HTTP via `createCloudflareWorkerEntrypoint(...)`');
     expect(appFile).not.toContain('ConfigModule.forRoot');
@@ -581,6 +591,7 @@ describe('scaffoldBootstrapApp', () => {
 
     const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
+      scripts?: Record<string, string>;
     };
     const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
     const envFile = readFileSync(join(targetDirectory, '.env'), 'utf8');
@@ -595,6 +606,9 @@ describe('scaffoldBootstrapApp', () => {
     });
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/http');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
+    expect(packageJson.scripts?.build).toBe('fluo build');
+    expect(packageJson.scripts?.dev).toBe('fluo dev');
+    expect(packageJson.scripts?.start).toBe('fluo start');
     expect(readme).toContain('Shape: `microservice`');
     expect(readme).toContain('Transport: `tcp` is the generated runnable starter contract for this project');
     expect(envFile).toContain('MICROSERVICE_PORT=4000');
@@ -890,6 +904,9 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/platform-fastify': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
+    expect(packageJson.scripts?.build).toBe('fluo build');
+    expect(packageJson.scripts?.dev).toBe('fluo dev');
+    expect(packageJson.scripts?.start).toBe('fluo start');
     expect(packageJson.scripts).not.toHaveProperty('dev:microservice');
     expect(readme).toContain('Shape: `mixed`');
     expect(readme).toContain('attached TCP microservice');

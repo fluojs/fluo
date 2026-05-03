@@ -71,6 +71,8 @@ cd my-backend
 pnpm dev
 ```
 
+생성된 lifecycle script는 `fluo dev`, `fluo build`, `fluo start`로 위임하므로, CLI가 런타임별 명령을 선택하고 `NODE_ENV`가 없으면 적절한 기본값을 사용합니다.
+
 생성된 스타터 템플릿에는 바로 프로덕션에 투입 가능한 Fastify 설정, 내장된 헬스 체크, 그리고 확장이 용이한 디렉터리 구조가 포함되어 있습니다.
 
 ## 모듈형 생태계

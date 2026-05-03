@@ -56,6 +56,8 @@ describe('CLI generators', () => {
   it('emits request DTO templates with split validator imports', () => {
     const dto = generateRequestDtoFiles('User')[0]?.content ?? '';
 
+    expect(dto).toContain("import { ensureMetadataSymbol } from '@fluojs/core';");
+    expect(dto).toContain('ensureMetadataSymbol();');
     expect(dto).toContain("from '@fluojs/http'");
     expect(dto).toContain("from '@fluojs/validation'");
     expect(dto).toContain('@FromBody(\'user\')');
@@ -133,7 +135,8 @@ describe('CLI generators', () => {
     const service = generateServiceFiles('User')[0]?.content ?? '';
 
     expect(controller).not.toContain("from './user.service'");
-    expect(controller).not.toContain("from '@fluojs/core'");
+    expect(controller).toContain("import { ensureMetadataSymbol } from '@fluojs/core';");
+    expect(controller).toContain('ensureMetadataSymbol();');
     expect(controller).toContain('return [];');
     expect(service).not.toContain("from './user.repo'");
     expect(service).not.toContain("from '@fluojs/core'");
@@ -145,6 +148,8 @@ describe('CLI generators', () => {
     const service = generateServiceFiles('User', { hasRepo: true })[0]?.content ?? '';
 
     expect(controller).toContain("import { UserService } from './user.service';");
+    expect(controller).toContain("import { ensureMetadataSymbol, Inject } from '@fluojs/core';");
+    expect(controller).toContain('ensureMetadataSymbol();');
     expect(controller).toContain('@Inject(UserService)');
     expect(service).toContain("import { UserRepo } from './user.repo';");
     expect(service).toContain('@Inject(UserRepo)');

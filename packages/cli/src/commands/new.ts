@@ -411,7 +411,7 @@ export function newUsage(): string {
     '',
     'Next steps:',
     '  cd <app-name>',
-    '  pnpm dev  # or npm run dev / yarn dev / bun run dev',
+    '  pnpm dev  # runs fluo dev from the generated package.json script',
     '',
     'Docs: https://github.com/fluojs/fluo/tree/main/docs/getting-started/quick-start.md',
   ].join('\n');
@@ -530,7 +530,7 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
 
     stdout.write('Done.\n');
     stdout.write(
-      `Next steps:\n  cd ${answers.targetDirectory}\n  ${answers.packageManager === 'npm' ? 'npm run dev' : answers.packageManager === 'bun' ? 'bun run dev' : `${answers.packageManager} dev`}\n`,
+      `Next steps:\n  cd ${answers.targetDirectory}\n  ${answers.packageManager === 'npm' ? 'npm run dev' : answers.packageManager === 'bun' ? 'bun run dev' : `${answers.packageManager} dev`}  # runs fluo dev\n`,
     );
     return 0;
   } catch (error: unknown) {

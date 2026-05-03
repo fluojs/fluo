@@ -1,5 +1,8 @@
+import { ensureMetadataSymbol } from '@fluojs/core';
 import { IsString, MinLength } from '@fluojs/validation';
 import { FromBody } from '@fluojs/http';
+
+ensureMetadataSymbol();
 
 export class <%- pascal %> {
   @FromBody('<%- bodyField %>')

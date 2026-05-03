@@ -109,6 +109,8 @@ Generated project start command from the project root:
 pnpm dev
 ```
 
+The generated lifecycle scripts run `fluo dev`, `fluo build`, and `fluo start`. Those CLI lifecycle runners select the starter's runtime commands and default `NODE_ENV` to `development` for dev and `production` for build/start unless the caller already set it.
+
 Expected output pattern:
 
 ```text
@@ -133,7 +135,7 @@ Expected output:
 
 - `tsconfig.json` keeps `experimentalDecorators` disabled.
 - `tsconfig.json` keeps `emitDecoratorMetadata` disabled.
-- The default generated application listens on port `3000` during `pnpm dev`.
+- The default generated application listens on port `3000` during `pnpm dev`, which delegates to `fluo dev`; generated build/start scripts likewise delegate to `fluo build` and `fluo start`.
 - The default generated application exposes `/health` and `/hello`.
 - `fluo new` starter variants map to the maintained starter matrix documented in the CLI README and the support matrix.
 - `fluo new --print-plan` is a read-only preview path. It resolves the starter plan and dependency sets without writing project files, running dependency installation, or initializing git.

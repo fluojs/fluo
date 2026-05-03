@@ -93,7 +93,8 @@ export { PostModule };
     const serviceTestContent = readFileSync(join(sourceDirectory, 'audits', 'audit.service.test.ts'), 'utf8');
 
     expect(controllerContent).not.toContain("from './post.service'");
-    expect(controllerContent).not.toContain("from '@fluojs/core'");
+    expect(controllerContent).toContain("import { ensureMetadataSymbol } from '@fluojs/core';");
+    expect(controllerContent).toContain('ensureMetadataSymbol();');
     expect(controllerContent).toContain('return [];');
     expect(controllerTestContent).toContain('new PostController().listPosts()');
     expect(serviceContent).not.toContain("from './audit.repo'");
