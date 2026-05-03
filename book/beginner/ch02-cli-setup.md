@@ -110,6 +110,8 @@ pnpm update -g @fluojs/cli
 
 A well-maintained CLI brings the latest community knowledge and framework benefits with it every time you start a new project.
 
+When `fluo new` or its `fluo create` alias runs in an interactive terminal, the CLI also attempts a fresh latest-version check before scaffolding, even if ordinary commands can still reuse a cached update-check result. Automation can keep prompts disabled with `--no-update-check` or `FLUO_NO_UPDATE_CHECK=1`.
+
 ## 2.2 fluo new: Interactive Scaffolding
 
 Now that you can use the command, you do not need to create files one by one by hand. Let the generator establish a clean starting point first.
