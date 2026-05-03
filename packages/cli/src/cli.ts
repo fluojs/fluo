@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -138,6 +138,7 @@ const TOP_LEVEL_COMMAND_HELP: TopLevelCommandHelpEntry[] = [
   { aliases: [], command: 'upgrade', description: 'Report latest CLI state and migration workflow guidance.' },
   { aliases: [], command: 'inspect', description: 'Inspect runtime platform snapshot/diagnostics and emit timing optionally.' },
   { aliases: [], command: 'migrate', description: 'Run NestJS-to-fluo codemods (dry-run by default).' },
+  { aliases: ['--version', '-v'], command: 'version', description: 'Print the installed fluo CLI version.' },
   { aliases: [], command: 'help', description: 'Show top-level or command-specific help.' },
 ];
 
@@ -147,6 +148,21 @@ function normalizeGeneratorKind(value: string | undefined): GeneratorKind | unde
 
 function isHelpFlag(value: string | undefined): boolean {
   return value === '--help' || value === '-h';
+}
+
+function isVersionCommand(value: string | undefined): boolean {
+  return value === 'version' || value === '--version' || value === '-v';
+}
+
+function readCliVersion(): string {
+  const packageJsonPath = fileURLToPath(new URL('../package.json', import.meta.url));
+  const manifest: unknown = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+
+  if (typeof manifest !== 'object' || manifest === null || !('version' in manifest) || typeof manifest.version !== 'string') {
+    throw new Error('Unable to determine the installed fluo CLI version.');
+  }
+
+  return manifest.version;
 }
 
 function generateUsage(): string {
@@ -399,6 +415,11 @@ export async function runCli(
   const commandArgv = updateFlagResult.argv;
 
   try {
+    if (isVersionCommand(commandArgv[0])) {
+      stdout.write(`${readCliVersion()}\n`);
+      return 0;
+    }
+
     const updateCheckOptions = runtime.updateCheck === false ? undefined : runtime.updateCheck;
     const updateCheckResult = await runCliUpdateCheck(commandArgv, {
       ...updateCheckOptions,
