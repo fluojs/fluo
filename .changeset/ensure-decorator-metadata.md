@@ -7,6 +7,7 @@
 "@fluojs/http": patch
 "@fluojs/microservices": patch
 "@fluojs/openapi": patch
+"@fluojs/passport": patch
 "@fluojs/queue": patch
 "@fluojs/serialization": patch
 "@fluojs/throttler": patch

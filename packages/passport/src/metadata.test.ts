@@ -1,5 +1,5 @@
 import { Controller, Get } from '@fluojs/http';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { RequireScopes, UseAuth } from './decorators.js';
 import { getAuthRequirement } from './metadata.js';
@@ -67,5 +67,26 @@ describe('auth metadata scope merge', () => {
 
     expect(secondClassRequirement).toBe(firstClassRequirement);
     expect(secondMethodRequirement).toBe(firstMethodRequirement);
+  });
+
+  it('installs Symbol.metadata when the passport decorator module is imported', async () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+
+    vi.resetModules();
+    delete (Symbol as typeof Symbol & { metadata?: symbol }).metadata;
+
+    try {
+      const decoratorModuleSpecifier = './decorators.js?passport-ensure-metadata';
+      await import(/* @vite-ignore */ decoratorModuleSpecifier);
+
+      expect(typeof (Symbol as typeof Symbol & { metadata?: symbol }).metadata).toBe('symbol');
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(Symbol, 'metadata', originalDescriptor);
+      } else {
+        delete (Symbol as typeof Symbol & { metadata?: symbol }).metadata;
+      }
+      vi.resetModules();
+    }
   });
 });
