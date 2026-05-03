@@ -110,6 +110,10 @@ function createRuntimeHealthModule(options: HealthModuleOptions = {}): ModuleTyp
     }
   }
 
+  Object.defineProperty(RuntimeHealthModule, 'name', {
+    value: 'HealthModule',
+  });
+
   defineModule(RuntimeHealthModule, {
     controllers: [HealthController],
   });

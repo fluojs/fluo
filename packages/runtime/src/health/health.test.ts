@@ -5,6 +5,7 @@ import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '../bootstrap.js';
 import type { ModuleType } from '../types.js';
 import { HealthModule } from './health.js';
+import * as healthModuleExports from './health.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
 type ReadinessManagedModule = ModuleType & {
@@ -67,6 +68,16 @@ function createResponse(): TestResponse {
 }
 
 describe('createHealthModule', () => {
+  it('preserves the compatibility helper module class name', () => {
+    const compatibilityHelperName = 'createHealthModule' as const;
+    const compatibilityHelper = (healthModuleExports as Record<typeof compatibilityHelperName, () => ModuleType>)[
+      compatibilityHelperName
+    ];
+
+    expect(compatibilityHelper().name).toBe('HealthModule');
+    expect(HealthModule.forRoot().name).toBe('HealthModule');
+  });
+
   it('exposes the application-facing HealthModule.forRoot facade', async () => {
     const healthModule = HealthModule.forRoot() as ReadinessManagedModule;
 
