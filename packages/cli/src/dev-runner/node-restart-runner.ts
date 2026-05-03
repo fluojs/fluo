@@ -5,10 +5,12 @@ import { basename, dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 type RestartRunnerStream = {
+  isTTY?: boolean;
   write(message: string): unknown;
 };
 
 type RestartChildSpawner = (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; stdio: 'inherit' }) => ChildProcess;
+export type DevRunnerRuntime = 'bun' | 'cloudflare-workers' | 'deno' | 'node';
 
 type RestartSignal = 'SIGINT' | 'SIGTERM';
 
@@ -29,6 +31,7 @@ export type NodeRestartRunnerOptions = {
   debounceMs?: number;
   env: NodeJS.ProcessEnv;
   projectDirectory?: string;
+  runtime?: DevRunnerRuntime;
   signalTarget?: RestartSignalTarget;
   spawnChild?: RestartChildSpawner;
   stderr?: RestartRunnerStream;
@@ -52,6 +55,8 @@ const DEFAULT_IGNORES = [
   '.#*',
 ];
 const WATCH_FILES = ['.env', 'package.json', 'tsconfig.json', 'tsconfig.build.json'];
+const SHOW_NODE_RESTART_NOTICE_ENV = 'FLUO_DEV_SHOW_RESTART_NOTICE';
+const CLEAR_SCREEN = '\u001B[2J\u001B[3J\u001B[H';
 
 function normalizeIgnorePatterns(patterns: string[]): string[] {
   return patterns.map((pattern) => pattern.trim()).filter((pattern) => pattern.length > 0);
@@ -174,10 +179,51 @@ function getPreserveColorTtyImport(): string {
   return join(dirname(dirname(fileURLToPath(import.meta.url))), 'dev-runner', 'preserve-color-tty.js');
 }
 
-function buildAppNodeArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {
+function buildNodeAppArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {
   const colorTtyImport = env[PRETTY_TTY_COLOR_ENV] === '1' ? ['--import', getPreserveColorTtyImport()] : [];
 
   return ['--env-file=.env', ...colorTtyImport, '--import', 'tsx', 'src/main.ts', ...appArgs];
+}
+
+function buildAppCommand(runtime: DevRunnerRuntime, env: NodeJS.ProcessEnv, appArgs: string[]): { args: string[]; command: string } {
+  switch (runtime) {
+    case 'bun':
+      return { command: 'bun', args: ['src/main.ts', ...appArgs] };
+    case 'cloudflare-workers':
+      return { command: 'wrangler', args: ['dev', '--show-interactive-dev-session=false', ...appArgs] };
+    case 'deno':
+      return { command: 'deno', args: ['run', '--allow-env', '--allow-net', 'src/main.ts', ...appArgs] };
+    default:
+      return { command: process.execPath, args: buildNodeAppArgs(env, appArgs) };
+  }
+}
+
+function readDevScriptHeader(projectDirectory: string): string {
+  const fallbackName = basename(projectDirectory);
+
+  try {
+    const manifest = JSON.parse(readFileSync(join(projectDirectory, 'package.json'), 'utf8')) as {
+      name?: unknown;
+      scripts?: { dev?: unknown };
+      version?: unknown;
+    };
+    const name = typeof manifest.name === 'string' && manifest.name.length > 0 ? manifest.name : fallbackName;
+    const version = typeof manifest.version === 'string' && manifest.version.length > 0 ? `@${manifest.version}` : '';
+    const devScript = typeof manifest.scripts?.dev === 'string' && manifest.scripts.dev.length > 0 ? manifest.scripts.dev : 'fluo dev';
+
+    return `> ${name}${version} dev ${projectDirectory}\n> ${devScript}\n\n`;
+  } catch (_error: unknown) {
+    return `> ${fallbackName} dev ${projectDirectory}\n> fluo dev\n\n`;
+  }
+}
+
+function redrawDevScriptHeader(stdout: RestartRunnerStream, projectDirectory: string, env: NodeJS.ProcessEnv): void {
+  if (env[SHOW_NODE_RESTART_NOTICE_ENV] !== '1') {
+    return;
+  }
+
+  stdout.write(CLEAR_SCREEN);
+  stdout.write(readDevScriptHeader(projectDirectory));
 }
 
 /**
@@ -189,6 +235,7 @@ function buildAppNodeArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {
 export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): Promise<number> {
   const projectDirectory = options.projectDirectory ?? process.cwd();
   const env = options.env;
+  const runnerRuntime = options.runtime ?? 'node';
   const signalTarget = options.signalTarget ?? process;
   const spawnChild = options.spawnChild ?? spawn;
   const stdout = options.stdout ?? process.stdout;
@@ -206,7 +253,8 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   let stopping = false;
 
   const startChild = (resolveExitCode: (code: number) => void, cleanup: () => void) => {
-    child = spawnChild(process.execPath, buildAppNodeArgs(env, appArgs), {
+    const appCommand = buildAppCommand(runnerRuntime, env, appArgs);
+    child = spawnChild(appCommand.command, appCommand.args, {
       cwd: projectDirectory,
       env,
       stdio: 'inherit',
@@ -241,9 +289,12 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
         return;
       }
 
-      stdout.write(`[fluo] restarting after content change: ${relative(projectDirectory, restartPaths[restartPaths.length - 1] ?? projectDirectory)}\n`);
+      if (env[SHOW_NODE_RESTART_NOTICE_ENV] === '1') {
+        stdout.write(`[fluo] restarting after content change: ${relative(projectDirectory, restartPaths[restartPaths.length - 1] ?? projectDirectory)}\n`);
+      }
       const previousChild = child;
       const startReplacementChild = () => {
+        redrawDevScriptHeader(stdout, projectDirectory, env);
         startChild(resolveExitCode, cleanup);
         gate.commitBaseline(restartPaths);
       };
@@ -264,6 +315,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
           if (stopping) {
             return;
           }
+          redrawDevScriptHeader(stdout, projectDirectory, env);
           startChild(resolveExitCode, cleanup);
           gate.commitBaseline(committedRestartPaths);
         });

@@ -1667,10 +1667,10 @@ void bootstrap();
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Would run: node --import tsx');
-    expect(stdoutBuffer.join('')).toContain('cli.js __node-dev-runner -- --port 4000');
+    expect(stdoutBuffer.join('')).toContain('cli.js __dev-runner --runtime node -- --port 4000');
     expect(stdoutBuffer.join('')).toContain('NODE_ENV: development');
-    expect(stdoutBuffer.join('')).toContain('Reporter: stream');
-    expect(stdoutBuffer.join('')).toContain('Watch mode: fluo-node-restart');
+    expect(stdoutBuffer.join('')).toContain('Reporter: app');
+    expect(stdoutBuffer.join('')).toContain('Watch mode: fluo-restart');
   });
 
   it('keeps the runtime-native Node watcher behind raw watch escape hatches', async () => {
@@ -1698,6 +1698,82 @@ void bootstrap();
     expect(flagOutput.join('')).toContain('Watch mode: native-watch');
     expect(envOutput.join('')).toContain('Would run: node --env-file=.env --watch --watch-preserve-output --import tsx src/main.ts');
     expect(envOutput.join('')).toContain('Watch mode: native-watch');
+  });
+
+  it('runs Bun dev through the fluo restart boundary in dry-runs', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ dependencies: { '@fluojs/platform-bun': '^1.0.0' }, name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2),
+    );
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['dev', '--dry-run'], {
+      cwd: workspaceDirectory,
+      env: {},
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('cli.js __dev-runner --runtime bun --');
+    expect(stdoutBuffer.join('')).toContain('Watch mode: fluo-restart');
+  });
+
+  it('runs Deno dev through the fluo restart boundary in dry-runs', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ dependencies: { '@fluojs/platform-deno': '^1.0.0' }, name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2),
+    );
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['dev', '--dry-run'], {
+      cwd: workspaceDirectory,
+      env: {},
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('cli.js __dev-runner --runtime deno --');
+    expect(stdoutBuffer.join('')).toContain('Watch mode: fluo-restart');
+  });
+
+  it('runs Workers dev through the fluo restart boundary in dry-runs', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ dependencies: { '@fluojs/platform-cloudflare-workers': '^1.0.0' }, name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2),
+    );
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['dev', '--dry-run'], {
+      cwd: workspaceDirectory,
+      env: {},
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('cli.js __dev-runner --runtime cloudflare-workers --');
+    expect(stdoutBuffer.join('')).toContain('Watch mode: fluo-restart');
+  });
+
+  it('rejects invalid internal dev runner runtimes before starting a watcher', async () => {
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['__dev-runner', '--runtime', 'unknown', '--', '--port', '4000'], {
+      env: {},
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Invalid dev runner runtime "unknown".');
   });
 
   it('baselines watched source directories before the fluo Node restart boundary', () => {
@@ -1755,7 +1831,7 @@ void bootstrap();
 
     const runPromise = runNodeRestartRunner({
       debounceMs: 1,
-      env: {},
+      env: { FLUO_DEV_SHOW_RESTART_NOTICE: '1' },
       projectDirectory: workspaceDirectory,
       signalTarget: signalTarget.target,
       spawnChild: (_command, args) => {
@@ -1798,7 +1874,7 @@ void bootstrap();
 
     const runPromise = runNodeRestartRunner({
       debounceMs: 1,
-      env: {},
+      env: { FLUO_DEV_SHOW_RESTART_NOTICE: '1' },
       projectDirectory: workspaceDirectory,
       signalTarget: signalTarget.target,
       spawnChild: () => {
@@ -1842,7 +1918,7 @@ void bootstrap();
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
 
-    expect(stdoutBuffer).toHaveLength(2);
+    expect(stdoutBuffer.filter((message) => message.startsWith('[fluo] restarting after content change:'))).toHaveLength(2);
 
     children[1]?.emit('close', 0);
     await expect(runPromise).resolves.toBe(0);
@@ -1882,7 +1958,217 @@ void bootstrap();
     expect(signalTarget.offCalls).toEqual(['SIGINT', 'SIGTERM']);
   });
 
-  it('uses a TTY-aware pretty reporter for fluo dev without hiding child output', async () => {
+  it('suppresses fluo restart notices by default in the Node restart runner', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    mkdirSync(sourceDirectory, { recursive: true });
+    const sourceFile = join(sourceDirectory, 'main.ts');
+    writeFileSync(sourceFile, 'console.log("one");\n');
+    const children: ChildProcess[] = [];
+    const stdoutBuffer: string[] = [];
+    const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+
+    const runPromise = runNodeRestartRunner({
+      debounceMs: 1,
+      env: {},
+      projectDirectory: workspaceDirectory,
+      signalTarget: createSignalTarget().target,
+      spawnChild: () => {
+        const child = createMockChild();
+        children.push(child);
+        return child;
+      },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+      watchTarget: (_target, optionsOrListener, listener) => {
+        watchListeners.push(typeof optionsOrListener === 'function' ? optionsOrListener : listener ?? (() => undefined));
+        return { close: () => undefined } as never;
+      },
+    });
+
+    writeFileSync(sourceFile, 'console.log("two");\n');
+    for (const listener of watchListeners) {
+      listener('change', 'main.ts');
+    }
+    await waitForCondition(() => children[0]?.killed === true);
+    expect(stdoutBuffer.join('')).toBe('');
+
+    children[0]?.emit('close', 0);
+    await waitForCondition(() => children.length === 2);
+    children[1]?.emit('close', 0);
+    await expect(runPromise).resolves.toBe(0);
+  });
+
+  it('keeps color preservation from enabling restart header output in default app-only mode', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    mkdirSync(sourceDirectory, { recursive: true });
+    const sourceFile = join(sourceDirectory, 'main.ts');
+    writeFileSync(sourceFile, 'console.log("one");\n');
+    const children: ChildProcess[] = [];
+    const stdoutBuffer: string[] = [];
+    const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+
+    const runPromise = runNodeRestartRunner({
+      debounceMs: 1,
+      env: { FLUO_DEV_PRETTY_TTY_COLOR: '1' },
+      projectDirectory: workspaceDirectory,
+      signalTarget: createSignalTarget().target,
+      spawnChild: () => {
+        const child = createMockChild();
+        children.push(child);
+        return child;
+      },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+      watchTarget: (_target, optionsOrListener, listener) => {
+        watchListeners.push(typeof optionsOrListener === 'function' ? optionsOrListener : listener ?? (() => undefined));
+        return { close: () => undefined } as never;
+      },
+    });
+
+    writeFileSync(sourceFile, 'console.log("two");\n');
+    for (const listener of watchListeners) {
+      listener('change', 'main.ts');
+    }
+
+    await waitForCondition(() => children.length === 2);
+    expect(stdoutBuffer).toEqual([]);
+
+    children[1]?.emit('close', 0);
+    await expect(runPromise).resolves.toBe(0);
+  });
+
+  it('clears and redraws the dev script header before restarted app logs in explicit restart UI mode', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'starter-app', scripts: { dev: 'fluo dev' }, version: '0.1.0' }, null, 2));
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    mkdirSync(sourceDirectory, { recursive: true });
+    const sourceFile = join(sourceDirectory, 'main.ts');
+    writeFileSync(sourceFile, 'console.log("one");\n');
+    const children: ChildProcess[] = [];
+    const stdoutBuffer: string[] = [];
+    const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+
+    const runPromise = runNodeRestartRunner({
+      debounceMs: 1,
+      env: { FLUO_DEV_PRETTY_TTY_COLOR: '1', FLUO_DEV_SHOW_RESTART_NOTICE: '1' },
+      projectDirectory: workspaceDirectory,
+      signalTarget: createSignalTarget().target,
+      spawnChild: () => {
+        const child = createMockChild();
+        children.push(child);
+        return child;
+      },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+      watchTarget: (_target, optionsOrListener, listener) => {
+        watchListeners.push(typeof optionsOrListener === 'function' ? optionsOrListener : listener ?? (() => undefined));
+        return { close: () => undefined } as never;
+      },
+    });
+
+    writeFileSync(sourceFile, 'console.log("two");\n');
+    for (const listener of watchListeners) {
+      listener('change', 'main.ts');
+    }
+
+    await waitForCondition(() => children.length === 2);
+    expect(stdoutBuffer).toEqual([
+      '[fluo] restarting after content change: package.json\n',
+      '\u001B[2J\u001B[3J\u001B[H',
+      `> starter-app@0.1.0 dev ${workspaceDirectory}\n> fluo dev\n\n`,
+    ]);
+
+    children[1]?.emit('close', 0);
+    await expect(runPromise).resolves.toBe(0);
+  });
+
+  it('uses the same restart runner boundary for Bun, Deno, and Workers app children', async () => {
+    const cases: Array<{ args: string[]; command: string; runtime: 'bun' | 'cloudflare-workers' | 'deno' }> = [
+      { args: ['src/main.ts', '--port', '4000'], command: 'bun', runtime: 'bun' },
+      { args: ['run', '--allow-env', '--allow-net', 'src/main.ts', '--port', '4000'], command: 'deno', runtime: 'deno' },
+      { args: ['dev', '--show-interactive-dev-session=false', '--port', '4000'], command: 'wrangler', runtime: 'cloudflare-workers' },
+    ];
+
+    for (const entry of cases) {
+      const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+      createdDirectories.push(workspaceDirectory);
+      const sourceDirectory = join(workspaceDirectory, 'src');
+      mkdirSync(sourceDirectory, { recursive: true });
+      writeFileSync(join(sourceDirectory, 'main.ts'), 'console.log("hello");\n');
+      const spawned: Array<{ args: string[]; command: string; stdio: string }> = [];
+      let child: ChildProcess | undefined;
+
+      const runPromise = runNodeRestartRunner({
+        appArgs: ['--port', '4000'],
+        env: {},
+        projectDirectory: workspaceDirectory,
+        runtime: entry.runtime,
+        signalTarget: createSignalTarget().target,
+        spawnChild: (command, args, options) => {
+          child = createMockChild();
+          spawned.push({ args, command, stdio: options.stdio });
+          return child;
+        },
+        watchTarget: () => ({ close() {} }) as never,
+      });
+
+      expect(spawned).toEqual([{ args: entry.args, command: entry.command, stdio: 'inherit' }]);
+      child?.emit('close', 0);
+      await expect(runPromise).resolves.toBe(0);
+    }
+  });
+
+  it('shows app-only child output by default so fluo dev and fluo start match', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    const spawned: Array<{ forceColor?: string; prettyTtyColor?: string; stdio: string }> = [];
+
+    const exitCode = await runCli(['dev'], {
+      cwd: workspaceDirectory,
+      env: {},
+      spawnCommand: async (_command, _args, options) => {
+        spawned.push({ forceColor: options.env.FORCE_COLOR, prettyTtyColor: options.env.FLUO_DEV_PRETTY_TTY_COLOR, stdio: options.stdio });
+        options.stdout?.write('child stdout\n');
+        options.stderr?.write('child stderr\n');
+        return 1;
+      },
+      stderr: { isTTY: true, write: (message) => stderrBuffer.push(message) },
+      stdout: { isTTY: true, write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(spawned).toEqual([{ forceColor: '1', prettyTtyColor: '1', stdio: 'pipe' }]);
+    expect(stdoutBuffer.join('')).toBe('child stdout\n');
+    expect(stderrBuffer.join('')).toBe('child stderr\n');
+  });
+
+  it('does not force child color output when NO_COLOR is set in app-only mode', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+    const spawned: Array<{ forceColor?: string; prettyTtyColor?: string; stdio: string }> = [];
+
+    const exitCode = await runCli(['dev'], {
+      cwd: workspaceDirectory,
+      env: { NO_COLOR: '1' },
+      spawnCommand: async (_command, _args, options) => {
+        spawned.push({ forceColor: options.env.FORCE_COLOR, prettyTtyColor: options.env.FLUO_DEV_PRETTY_TTY_COLOR, stdio: options.stdio });
+        return 0;
+      },
+      stderr: { isTTY: true, write: () => undefined },
+      stdout: { isTTY: true, write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(spawned).toEqual([{ forceColor: undefined, prettyTtyColor: undefined, stdio: 'pipe' }]);
+  });
+
+  it('supports an explicit TTY-aware pretty reporter for fluo dev without hiding child output', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
     writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
@@ -1890,7 +2176,7 @@ void bootstrap();
     const stderrBuffer: string[] = [];
     const spawned: Array<{ stdio: string }> = [];
 
-    const exitCode = await runCli(['dev'], {
+    const exitCode = await runCli(['dev', '--reporter', 'pretty'], {
       cwd: workspaceDirectory,
       env: {},
       spawnCommand: async (_command, _args, options) => {
@@ -1916,13 +2202,13 @@ void bootstrap();
     createdDirectories.push(workspaceDirectory);
     writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
     const stdoutBuffer: string[] = [];
-    const spawned: Array<{ prettyTtyColor?: string; stdio: string }> = [];
+    const spawned: Array<{ forceColor?: string; prettyTtyColor?: string; stdio: string }> = [];
 
-    const exitCode = await runCli(['dev'], {
+    const exitCode = await runCli(['dev', '--reporter', 'pretty'], {
       cwd: workspaceDirectory,
       env: {},
       spawnCommand: async (_command, _args, options) => {
-        spawned.push({ prettyTtyColor: options.env.FLUO_DEV_PRETTY_TTY_COLOR, stdio: options.stdio });
+        spawned.push({ forceColor: options.env.FORCE_COLOR, prettyTtyColor: options.env.FLUO_DEV_PRETTY_TTY_COLOR, stdio: options.stdio });
         options.stdout?.write('\u001B[32mchild stdout\u001B[0m\n');
         return 0;
       },
@@ -1931,7 +2217,7 @@ void bootstrap();
     });
 
     expect(exitCode).toBe(0);
-    expect(spawned).toEqual([{ prettyTtyColor: '1', stdio: 'pipe' }]);
+    expect(spawned).toEqual([{ forceColor: '1', prettyTtyColor: '1', stdio: 'pipe' }]);
     expect(stdoutBuffer.join('')).toContain('app │ \u001B[32mchild stdout\u001B[0m');
     expect(stdoutBuffer.join('')).toContain('[fluo] dev lifecycle completed');
   });
@@ -1940,13 +2226,13 @@ void bootstrap();
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
     writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
-    const spawned: Array<{ prettyTtyColor?: string; stdio: string }> = [];
+    const spawned: Array<{ forceColor?: string; prettyTtyColor?: string; stdio: string }> = [];
 
-    const exitCode = await runCli(['dev'], {
+    const exitCode = await runCli(['dev', '--reporter', 'pretty'], {
       cwd: workspaceDirectory,
       env: {},
       spawnCommand: async (_command, _args, options) => {
-        spawned.push({ prettyTtyColor: options.env.FLUO_DEV_PRETTY_TTY_COLOR, stdio: options.stdio });
+        spawned.push({ forceColor: options.env.FORCE_COLOR, prettyTtyColor: options.env.FLUO_DEV_PRETTY_TTY_COLOR, stdio: options.stdio });
         return 0;
       },
       stderr: { write: () => undefined },
@@ -1954,7 +2240,7 @@ void bootstrap();
     });
 
     expect(exitCode).toBe(0);
-    expect(spawned).toEqual([{ prettyTtyColor: undefined, stdio: 'pipe' }]);
+    expect(spawned).toEqual([{ forceColor: undefined, prettyTtyColor: undefined, stdio: 'pipe' }]);
   });
 
   it('preserves app child TTY color detection in the Node dev runner when pretty mode requests it', async () => {
@@ -1983,14 +2269,14 @@ void bootstrap();
     await expect(runPromise).resolves.toBe(0);
   });
 
-  it('prefixes multiline child output in non-verbose pretty reporter runs', async () => {
+  it('prefixes multiline child output in explicit non-verbose pretty reporter runs', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
     writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
 
-    const exitCode = await runCli(['dev'], {
+    const exitCode = await runCli(['dev', '--reporter', 'pretty'], {
       cwd: workspaceDirectory,
       env: {},
       spawnCommand: async (_command, _args, options) => {
@@ -2020,7 +2306,7 @@ void bootstrap();
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
 
-    const exitCode = await runCli(['dev'], {
+    const exitCode = await runCli(['dev', '--reporter', 'pretty'], {
       cwd: workspaceDirectory,
       env: {},
       spawnCommand: async (_command, _args, options) => {
@@ -2063,7 +2349,7 @@ exit 7
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
 
-    const exitCode = await runCli(['dev'], {
+    const exitCode = await runCli(['dev', '--reporter', 'pretty'], {
       cwd: workspaceDirectory,
       env: { PATH: process.env.PATH },
       stderr: { write: (message) => stderrBuffer.push(message) },
@@ -2079,7 +2365,7 @@ exit 7
     expect(stderrOutput.indexOf('app │ default spawn stderr before failure')).toBeLessThan(stderrOutput.indexOf('[fluo] dev lifecycle failed with exit code 7'));
   });
 
-  it('keeps raw stream output for CI and explicit verbose dev runs', async () => {
+  it('keeps app-only output by default and raw stream output for explicit verbose dev runs', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
     writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
@@ -2108,7 +2394,7 @@ exit 7
       stdout: { isTTY: true, write: () => undefined },
     });
 
-    expect(modes).toEqual(['inherit', 'inherit']);
+    expect(modes).toEqual(['pipe', 'inherit']);
   });
 
   it('supports a silent lifecycle reporter that preserves child stderr and failures', async () => {
@@ -2183,6 +2469,54 @@ exit 7
     expect(spawned).toEqual([{ nodeEnv: 'production' }]);
   });
 
+  it('preserves TTY color detection for direct Node app lifecycle runs', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { start: 'fluo start' } }, null, 2));
+    const spawned: Array<{ args: string[]; forceColor?: string; prettyTtyColor?: string; stdio: string }> = [];
+
+    const exitCode = await runCli(['start'], {
+      cwd: workspaceDirectory,
+      env: {},
+      spawnCommand: async (_command, args, options) => {
+        spawned.push({ args, forceColor: options.env.FORCE_COLOR, prettyTtyColor: options.env.FLUO_DEV_PRETTY_TTY_COLOR, stdio: options.stdio });
+        return 0;
+      },
+      stderr: { isTTY: true, write: () => undefined },
+      stdout: { isTTY: true, write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0]?.stdio).toBe('pipe');
+    expect(spawned[0]?.forceColor).toBe('1');
+    expect(spawned[0]?.prettyTtyColor).toBe('1');
+    expect(spawned[0]?.args[0]).toBe('--import');
+    expect(spawned[0]?.args[1]?.endsWith('preserve-color-tty.js')).toBe(true);
+    expect(spawned[0]?.args.slice(2)).toEqual(['dist/main.js']);
+  });
+
+  it('does not force direct Node lifecycle colors when NO_COLOR is set', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { start: 'fluo start' } }, null, 2));
+    const spawned: Array<{ args: string[]; forceColor?: string; prettyTtyColor?: string }> = [];
+
+    const exitCode = await runCli(['start'], {
+      cwd: workspaceDirectory,
+      env: { NO_COLOR: '1' },
+      spawnCommand: async (_command, args, options) => {
+        spawned.push({ args, forceColor: options.env.FORCE_COLOR, prettyTtyColor: options.env.FLUO_DEV_PRETTY_TTY_COLOR });
+        return 0;
+      },
+      stderr: { isTTY: true, write: () => undefined },
+      stdout: { isTTY: true, write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(spawned).toEqual([{ args: ['dist/main.js'], forceColor: undefined, prettyTtyColor: undefined }]);
+  });
+
   it('ignores package-manager overrides for direct lifecycle runners', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
@@ -2198,7 +2532,7 @@ exit 7
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Would run: node --import tsx');
-    expect(stdoutBuffer.join('')).toContain('cli.js __node-dev-runner --');
+    expect(stdoutBuffer.join('')).toContain('cli.js __dev-runner --runtime node --');
     expect(stdoutBuffer.join('')).toContain('NODE_ENV: development');
   });
 
@@ -2249,7 +2583,7 @@ exit 7
     expect(exitCode).toBe(0);
     expect(spawned).toEqual([
       {
-        args: ['dev', '--remote', '--port', '8787'],
+        args: ['dev', '--remote', '--show-interactive-dev-session=false', '--port', '8787'],
         command: 'wrangler',
         nodeEnv: 'production',
         path: `${join(workspaceDirectory, 'node_modules', '.bin')}${delimiter}/usr/bin`,

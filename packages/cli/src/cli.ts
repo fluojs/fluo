@@ -9,7 +9,7 @@ import { migrateUsage, runMigrateCommand } from './commands/migrate.js';
 import { type NewCommandRuntimeOptions, newUsage, runNewCommand } from './commands/new.js';
 import { addUsage, runAddCommand, runUpgradeCommand, upgradeUsage } from './commands/package-workflow.js';
 import { runScriptCommand, scriptUsage } from './commands/scripts.js';
-import { runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
+import { type DevRunnerRuntime, runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
 import { builtInGeneratorCollection, generatorManifest, generatorOptionSchemas, resolveGeneratorKind } from './generators/manifest.js';
 import { renderAliasList, renderHelpTable } from './help.js';
 import type { GenerateOptions, GeneratorKind } from './types.js';
@@ -144,6 +144,32 @@ const TOP_LEVEL_COMMAND_HELP: TopLevelCommandHelpEntry[] = [
 ];
 
 const NODE_DEV_RUNNER_COMMAND = '__node-dev-runner';
+const DEV_RUNNER_COMMAND = '__dev-runner';
+
+function parseDevRunnerRuntime(value: string | undefined): DevRunnerRuntime {
+  if (value === 'bun' || value === 'cloudflare-workers' || value === 'deno' || value === 'node') {
+    return value;
+  }
+
+  throw new Error(`Invalid dev runner runtime "${value ?? ''}".`);
+}
+
+function parseDevRunnerInvocation(argv: string[]): { appArgs: string[]; runtime: DevRunnerRuntime } {
+  if (argv[0] === NODE_DEV_RUNNER_COMMAND) {
+    const separatorIndex = argv.indexOf('--');
+    return { appArgs: separatorIndex >= 0 ? argv.slice(separatorIndex + 1) : argv.slice(1), runtime: 'node' };
+  }
+
+  const runtimeFlagIndex = argv.indexOf('--runtime');
+  const runtime = parseDevRunnerRuntime(argv[runtimeFlagIndex + 1]);
+  const separatorIndex = argv.indexOf('--');
+  if (separatorIndex >= 0) {
+    return { appArgs: argv.slice(separatorIndex + 1), runtime };
+  }
+
+  const appArgs = argv.slice(1).filter((arg, index, args) => arg !== '--runtime' && args[index - 1] !== '--runtime');
+  return { appArgs, runtime };
+}
 
 function normalizeGeneratorKind(value: string | undefined): GeneratorKind | undefined {
   return resolveGeneratorKind(value);
@@ -423,10 +449,9 @@ export async function runCli(
   const commandArgv = updateFlagResult.argv;
 
   try {
-    if (commandArgv[0] === NODE_DEV_RUNNER_COMMAND) {
-      const separatorIndex = commandArgv.indexOf('--');
-      const appArgs = separatorIndex >= 0 ? commandArgv.slice(separatorIndex + 1) : commandArgv.slice(1);
-      return runNodeRestartRunner({ appArgs, env, stderr, stdout });
+    if (commandArgv[0] === NODE_DEV_RUNNER_COMMAND || commandArgv[0] === DEV_RUNNER_COMMAND) {
+      const runnerInvocation = parseDevRunnerInvocation(commandArgv);
+      return runNodeRestartRunner({ appArgs: runnerInvocation.appArgs, env, runtime: runnerInvocation.runtime, stderr, stdout });
     }
 
     if (isVersionCommand(commandArgv[0])) {
