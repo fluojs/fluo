@@ -175,7 +175,7 @@ function buildProjectRunner(command: ScriptCommand, runtime: ProjectRuntime, pas
         if (options.rawWatch) {
           return [buildNativeNodeWatchStep(passThrough)];
         }
-        return [{ command: 'node', args: ['--env-file=.env', '--import', 'tsx', getCliEntryPoint(), '__node-dev-runner', '--', ...passThrough], mode: 'fluo-node-restart' }];
+        return [{ command: 'node', args: ['--import', 'tsx', getCliEntryPoint(), '__node-dev-runner', '--', ...passThrough], mode: 'fluo-node-restart' }];
     }
   }
 

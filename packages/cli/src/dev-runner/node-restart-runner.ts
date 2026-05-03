@@ -7,6 +7,17 @@ type RestartRunnerStream = {
   write(message: string): unknown;
 };
 
+type RestartChildSpawner = (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; stdio: 'inherit' }) => ChildProcess;
+
+type RestartSignal = 'SIGINT' | 'SIGTERM';
+
+type RestartSignalTarget = {
+  off(signal: RestartSignal, listener: () => void): unknown;
+  once(signal: RestartSignal, listener: () => void): unknown;
+};
+
+type RestartWatcherFactory = (target: string, optionsOrListener: { recursive: boolean } | ((event: string, filename: string | Buffer | null) => void), listener?: (event: string, filename: string | Buffer | null) => void) => FSWatcher;
+
 type ContentChangeGate = {
   commitBaseline(paths: Iterable<string>): void;
   hasMeaningfulChange(paths: Iterable<string>): boolean;
@@ -17,8 +28,11 @@ export type NodeRestartRunnerOptions = {
   debounceMs?: number;
   env: NodeJS.ProcessEnv;
   projectDirectory?: string;
+  signalTarget?: RestartSignalTarget;
+  spawnChild?: RestartChildSpawner;
   stderr?: RestartRunnerStream;
   stdout?: RestartRunnerStream;
+  watchTarget?: RestartWatcherFactory;
 };
 
 const DEFAULT_DEBOUNCE_MS = 100;
@@ -163,8 +177,11 @@ function stopChild(child: ChildProcess | undefined): void {
 export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): Promise<number> {
   const projectDirectory = options.projectDirectory ?? process.cwd();
   const env = options.env;
+  const signalTarget = options.signalTarget ?? process;
+  const spawnChild = options.spawnChild ?? spawn;
   const stdout = options.stdout ?? process.stdout;
   const stderr = options.stderr ?? process.stderr;
+  const watchTarget = options.watchTarget ?? watch;
   const appArgs = options.appArgs ?? [];
   const debounceMs = options.debounceMs ?? Number(env.FLUO_DEV_RELOAD_DEBOUNCE_MS ?? DEFAULT_DEBOUNCE_MS);
   const gate = createContentChangeGate(projectDirectory, parseIgnorePatterns(env));
@@ -175,8 +192,8 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   let restarting = false;
   let stopping = false;
 
-  const startChild = (resolveExitCode: (code: number) => void) => {
-    child = spawn(process.execPath, ['--import', 'tsx', 'src/main.ts', ...appArgs], {
+  const startChild = (resolveExitCode: (code: number) => void, cleanup: () => void) => {
+    child = spawnChild(process.execPath, ['--env-file=.env', '--import', 'tsx', 'src/main.ts', ...appArgs], {
       cwd: projectDirectory,
       env,
       stdio: 'inherit',
@@ -186,14 +203,16 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
         return;
       }
       if (stopping) {
+        cleanup();
         resolveExitCode(code ?? 0);
         return;
       }
+      cleanup();
       resolveExitCode(code ?? 1);
     });
   };
 
-  const scheduleRestart = (filePath: string, resolveExitCode: (code: number) => void) => {
+  const scheduleRestart = (filePath: string, resolveExitCode: (code: number) => void, cleanup: () => void) => {
     pendingRestartPaths.add(filePath);
 
     if (restartTimer) {
@@ -215,12 +234,12 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
       restarting = true;
       previousChild?.once('close', () => {
         restarting = false;
-        startChild(resolveExitCode);
+        startChild(resolveExitCode, cleanup);
       });
       stopChild(previousChild);
       if (!previousChild) {
         restarting = false;
-        startChild(resolveExitCode);
+        startChild(resolveExitCode, cleanup);
       }
     }, debounceMs);
   };
@@ -228,44 +247,56 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   gate.commitBaseline(watchTargets);
 
   return new Promise((resolveExitCode) => {
-    startChild(resolveExitCode);
-
     const watchers: FSWatcher[] = [];
+    let cleanedUp = false;
+
+    const stop = () => {
+      stopping = true;
+      cleanup();
+      stopChild(child);
+    };
+
+    const cleanup = () => {
+      if (cleanedUp) {
+        return;
+      }
+      cleanedUp = true;
+      if (restartTimer) {
+        clearTimeout(restartTimer);
+        restartTimer = undefined;
+      }
+      pendingRestartPaths.clear();
+      for (const watcher of watchers.splice(0)) {
+        watcher.close();
+      }
+      signalTarget.off('SIGINT', stop);
+      signalTarget.off('SIGTERM', stop);
+    };
+
+    startChild(resolveExitCode, cleanup);
+
     for (const target of watchTargets) {
       try {
         const stats = statSync(target);
         const watchOptions = { recursive: stats.isDirectory() };
         const listener = (_event: string, filename: string | Buffer | null) => {
           const fileName = filename ? String(filename) : basename(target);
-          scheduleRestart(stats.isDirectory() ? join(target, fileName) : target, resolveExitCode);
+          scheduleRestart(stats.isDirectory() ? join(target, fileName) : target, resolveExitCode, cleanup);
         };
         try {
-          watchers.push(watch(target, watchOptions, listener));
+          watchers.push(watchTarget(target, watchOptions, listener));
         } catch (error: unknown) {
           if (!stats.isDirectory()) {
             throw error;
           }
-          watchers.push(watch(target, listener));
+          watchers.push(watchTarget(target, listener));
         }
       } catch (error: unknown) {
         stderr.write(`[fluo] unable to watch ${target}: ${error instanceof Error ? error.message : String(error)}\n`);
       }
     }
 
-    const stop = () => {
-      stopping = true;
-      if (restartTimer) {
-        clearTimeout(restartTimer);
-        restartTimer = undefined;
-      }
-      pendingRestartPaths.clear();
-      for (const watcher of watchers) {
-        watcher.close();
-      }
-      stopChild(child);
-    };
-
-    process.once('SIGINT', stop);
-    process.once('SIGTERM', stop);
+    signalTarget.once('SIGINT', stop);
+    signalTarget.once('SIGTERM', stop);
   });
 }

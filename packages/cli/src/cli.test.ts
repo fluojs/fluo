@@ -1,4 +1,5 @@
-import { spawnSync } from 'node:child_process';
+import { spawnSync, type ChildProcess } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
@@ -8,7 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { generatorManifest } from './generators/manifest.js';
 import { CliPromptCancelledError, runCli } from './index.js';
-import { createContentChangeGate } from './dev-runner/node-restart-runner.js';
+import { createContentChangeGate, runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
 
 const createdDirectories: string[] = [];
 
@@ -35,6 +36,56 @@ function createUpdateCacheFile(): string {
   const cacheDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-update-'));
   createdDirectories.push(cacheDirectory);
   return join(cacheDirectory, 'cache.json');
+}
+
+function createMockChild(closeOnKillCode = 0): ChildProcess {
+  const child = new EventEmitter() as ChildProcess;
+  Object.defineProperty(child, 'exitCode', { configurable: true, value: null, writable: true });
+  Object.defineProperty(child, 'killed', { configurable: true, value: false, writable: true });
+  child.kill = () => {
+    Object.defineProperty(child, 'killed', { configurable: true, value: true, writable: true });
+    Object.defineProperty(child, 'exitCode', { configurable: true, value: closeOnKillCode, writable: true });
+    queueMicrotask(() => child.emit('close', closeOnKillCode));
+    return true;
+  };
+
+  return child;
+}
+
+async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+
+  throw new Error('Timed out waiting for condition.');
+}
+
+function createSignalTarget(): {
+  offCalls: string[];
+  onceCalls: string[];
+  target: { off(signal: 'SIGINT' | 'SIGTERM', listener: () => void): void; once(signal: 'SIGINT' | 'SIGTERM', listener: () => void): void };
+} {
+  const onceCalls: string[] = [];
+  const offCalls: string[] = [];
+
+  return {
+    offCalls,
+    onceCalls,
+    target: {
+      off: (signal) => {
+        offCalls.push(signal);
+      },
+      once: (signal) => {
+        onceCalls.push(signal);
+      },
+    },
+  };
 }
 
 afterEach(() => {
@@ -1615,7 +1666,7 @@ void bootstrap();
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Would run: node --env-file=.env --import tsx');
+    expect(stdoutBuffer.join('')).toContain('Would run: node --import tsx');
     expect(stdoutBuffer.join('')).toContain('cli.js __node-dev-runner -- --port 4000');
     expect(stdoutBuffer.join('')).toContain('NODE_ENV: development');
     expect(stdoutBuffer.join('')).toContain('Reporter: stream');
@@ -1688,6 +1739,83 @@ void bootstrap();
 
     writeFileSync(sourceFile, 'console.log("hello");\n');
     expect(gate.hasMeaningfulChange([sourceFile])).toBe(false);
+  });
+
+  it('loads .env for each restarted app child instead of only for the supervisor', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    mkdirSync(sourceDirectory, { recursive: true });
+    writeFileSync(join(sourceDirectory, 'main.ts'), 'console.log(process.env.APP_VALUE);\n');
+    writeFileSync(join(workspaceDirectory, '.env'), 'APP_VALUE=one\n');
+    const signalTarget = createSignalTarget();
+    const children: ChildProcess[] = [];
+    const spawnedArgs: string[][] = [];
+    const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+
+    const runPromise = runNodeRestartRunner({
+      debounceMs: 1,
+      env: {},
+      projectDirectory: workspaceDirectory,
+      signalTarget: signalTarget.target,
+      spawnChild: (_command, args) => {
+        spawnedArgs.push(args);
+        const child = createMockChild();
+        children.push(child);
+        return child;
+      },
+      watchTarget: (_target, optionsOrListener, listener) => {
+        watchListeners.push(typeof optionsOrListener === 'function' ? optionsOrListener : listener ?? (() => undefined));
+        return { close: () => undefined } as never;
+      },
+    });
+
+    expect(spawnedArgs[0]).toEqual(['--env-file=.env', '--import', 'tsx', 'src/main.ts']);
+
+    writeFileSync(join(workspaceDirectory, '.env'), 'APP_VALUE=two\n');
+    for (const listener of watchListeners) {
+      listener('change', '.env');
+    }
+
+    await waitForCondition(() => spawnedArgs.length === 2);
+    expect(spawnedArgs[1]).toEqual(['--env-file=.env', '--import', 'tsx', 'src/main.ts']);
+
+    children[1]?.emit('close', 0);
+    await expect(runPromise).resolves.toBe(0);
+  });
+
+  it('closes watchers and unregisters signals when the app child exits terminally', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    mkdirSync(sourceDirectory, { recursive: true });
+    writeFileSync(join(sourceDirectory, 'main.ts'), 'throw new Error("boom");\n');
+    const signalTarget = createSignalTarget();
+    const closedWatchers: string[] = [];
+    let child: ChildProcess | undefined;
+
+    const runPromise = runNodeRestartRunner({
+      env: {},
+      projectDirectory: workspaceDirectory,
+      signalTarget: signalTarget.target,
+      spawnChild: () => {
+        child = createMockChild();
+        return child;
+      },
+      watchTarget: (target) => ({
+        close: () => {
+          closedWatchers.push(target);
+        },
+      }) as never,
+    });
+
+    expect(signalTarget.onceCalls).toEqual(['SIGINT', 'SIGTERM']);
+
+    child?.emit('close', 7);
+
+    await expect(runPromise).resolves.toBe(7);
+    expect(closedWatchers).toContain(sourceDirectory);
+    expect(signalTarget.offCalls).toEqual(['SIGINT', 'SIGTERM']);
   });
 
   it('uses a TTY-aware pretty reporter for fluo dev without hiding child errors', async () => {
@@ -1904,7 +2032,7 @@ exit 7
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Would run: node --env-file=.env --import tsx');
+    expect(stdoutBuffer.join('')).toContain('Would run: node --import tsx');
     expect(stdoutBuffer.join('')).toContain('cli.js __node-dev-runner --');
     expect(stdoutBuffer.join('')).toContain('NODE_ENV: development');
   });
