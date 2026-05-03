@@ -9,17 +9,17 @@ importers:
   .:
     dependencies:
       '@fluojs/config':
-        specifier: 1.0.0-beta.3
-        version: 1.0.0-beta.3
-      '@fluojs/core':
-        specifier: 1.0.0-beta.2
-        version: 1.0.0-beta.2
-      '@fluojs/di':
         specifier: 1.0.0-beta.5
         version: 1.0.0-beta.5
+      '@fluojs/core':
+        specifier: 1.0.0-beta.3
+        version: 1.0.0-beta.3
+      '@fluojs/di':
+        specifier: 1.0.0-beta.6
+        version: 1.0.0-beta.6
       '@fluojs/http':
-        specifier: 1.0.0-beta.8
-        version: 1.0.0-beta.8
+        specifier: 1.0.0-beta.9
+        version: 1.0.0-beta.9
       '@fluojs/platform-bun':
         specifier: 1.0.0-beta.6
         version: 1.0.0-beta.6
@@ -27,11 +27,11 @@ importers:
         specifier: 1.0.0-beta.8
         version: 1.0.0-beta.8
       '@fluojs/runtime':
-        specifier: 1.0.0-beta.8
-        version: 1.0.0-beta.8
+        specifier: 1.0.0-beta.9
+        version: 1.0.0-beta.9
       '@fluojs/validation':
-        specifier: 1.0.0-beta.1
-        version: 1.0.0-beta.1
+        specifier: 1.0.0-beta.2
+        version: 1.0.0-beta.2
       '@nestjs/common':
         specifier: ^11.0.0
         version: 11.1.19(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -272,20 +272,20 @@ packages:
   '@fastify/proxy-addr@5.1.0':
     resolution: {integrity: sha512-INS+6gh91cLUjB+PVHfu1UqcB76Sqtpyp7bnL+FYojhjygvOPA9ctiD/JDKsyD9Xgu4hUhCSJBPig/w7duNajw==}
 
-  '@fluojs/config@1.0.0-beta.3':
-    resolution: {integrity: sha512-WxWSZKlgezpHbZuGOnGYH9D3SmMJWduyZHasufz2nuP+nJA4rLKfVOQeb3WKupzMxHGibCQkzE7/nwheidQV7w==}
+  '@fluojs/config@1.0.0-beta.5':
+    resolution: {integrity: sha512-9YnTubN7P0C00b4DT3DFPQ9khy1gnP/fswWiAAUcSSR0klQiBqZM8Iw5vJLuWuTuUGh7Yvegf/m95rHfv5Fm0g==}
     engines: {node: '>=20.0.0'}
 
-  '@fluojs/core@1.0.0-beta.2':
-    resolution: {integrity: sha512-wesWvWH4P3vAug8bwaK3XAwVPREFRmCJPIDDshRNzPRDPdGxPEql78hnq/B4SNRsVxBGnnCcgjWYQWJtGosGZg==}
+  '@fluojs/core@1.0.0-beta.3':
+    resolution: {integrity: sha512-pm2fLLNNGNjTtZcRq+dRxR130zrxEEYj2n1vPA3Oe/q2bfeCibkQhRghZRmyNnNYYyAaNjuQZTPclAOUoK5yUw==}
     engines: {node: '>=20.0.0'}
 
-  '@fluojs/di@1.0.0-beta.5':
-    resolution: {integrity: sha512-2tzNQ9M+MBIkAuEB47aHnd0g9D3r9kvHZR8689LRDW3YowhlpcBzJ4BbG4lbYSmvaz9GhfCvU9Tw+4x3oqI9BA==}
+  '@fluojs/di@1.0.0-beta.6':
+    resolution: {integrity: sha512-xILzEodAOK6fCccRdd2v1X7C/vf2JfpqHjvvHR3W7Ab6oGxtwQi1tcl1tZP++yqvccMqfLsqjuFpxe8CbxNlag==}
     engines: {node: '>=20.0.0'}
 
-  '@fluojs/http@1.0.0-beta.8':
-    resolution: {integrity: sha512-/xMSvEKgEJcFFtH8u2rfg3UPfvQ9GjM547SUbfRcLbkiTQ6E2MW3YtJ2S+S5kzAUT1P3TgQ0GosGf6mMwOd8ig==}
+  '@fluojs/http@1.0.0-beta.9':
+    resolution: {integrity: sha512-or/82Zbb1PEMpF0cyJXsKHW4AreL0J1EutM5iJymjRPe5rT96FLxekRR135CLJd595OAP738Eiv1UTnwTRIgLw==}
     engines: {node: '>=20.0.0'}
 
   '@fluojs/platform-bun@1.0.0-beta.6':
@@ -295,12 +295,12 @@ packages:
     resolution: {integrity: sha512-eyYm5USJxyiBO/s+SawcBDbYPwJG9J0SzjQGmVOgHAiiFfwVOjt4eMU8QBiCZckQM5cuziXz9I8zOhqoSHfdpQ==}
     engines: {node: '>=20.0.0'}
 
-  '@fluojs/runtime@1.0.0-beta.8':
-    resolution: {integrity: sha512-CqlvULASjNvmSetxpCDfEl9XwPHplQnUGZqQZsXRhTHEwLbHHYv3aP6lveglWjyxVmceh14sAvV/lnlO7z9M/w==}
+  '@fluojs/runtime@1.0.0-beta.9':
+    resolution: {integrity: sha512-WtSWY/XJQr/z/DS9nzHwaG27Ad75zcJoopFBVQ3VeO6OoB4HQyRmd326Wi9dUBa58fEuFMW23u9J9xDsJtY5og==}
     engines: {node: '>=20.0.0'}
 
-  '@fluojs/validation@1.0.0-beta.1':
-    resolution: {integrity: sha512-qmY1/+MAnzTarc+TAXWBZopnDu9uK3UZL1EKwi1Y/83jJXuzDpdFI5s7OgHzaeV3zsudgOKj+ts3MkAIQYFggA==}
+  '@fluojs/validation@1.0.0-beta.2':
+    resolution: {integrity: sha512-nGAeSofCiu5YRvKArI3RfE/IYrJdqzLCOa7P+Rqq2oND9aCboF4XHtz+gnm3SyM/GANduVPfShlEH8R+2qmmtw==}
     engines: {node: '>=20.0.0'}
 
   '@jridgewell/resolve-uri@3.1.2':
@@ -1087,47 +1087,48 @@ snapshots:
       '@fastify/forwarded': 3.0.1
       ipaddr.js: 2.3.0
 
-  '@fluojs/config@1.0.0-beta.3':
+  '@fluojs/config@1.0.0-beta.5':
     dependencies:
-      '@fluojs/core': 1.0.0-beta.2
+      '@fluojs/core': 1.0.0-beta.3
+      '@standard-schema/spec': 1.1.0
       dotenv: 16.6.1
       dotenv-expand: 11.0.7
 
-  '@fluojs/core@1.0.0-beta.2': {}
+  '@fluojs/core@1.0.0-beta.3': {}
 
-  '@fluojs/di@1.0.0-beta.5':
+  '@fluojs/di@1.0.0-beta.6':
     dependencies:
-      '@fluojs/core': 1.0.0-beta.2
+      '@fluojs/core': 1.0.0-beta.3
 
-  '@fluojs/http@1.0.0-beta.8':
+  '@fluojs/http@1.0.0-beta.9':
     dependencies:
-      '@fluojs/core': 1.0.0-beta.2
-      '@fluojs/di': 1.0.0-beta.5
-      '@fluojs/validation': 1.0.0-beta.1
+      '@fluojs/core': 1.0.0-beta.3
+      '@fluojs/di': 1.0.0-beta.6
+      '@fluojs/validation': 1.0.0-beta.2
 
   '@fluojs/platform-bun@1.0.0-beta.6':
     dependencies:
-      '@fluojs/http': 1.0.0-beta.8
-      '@fluojs/runtime': 1.0.0-beta.8
+      '@fluojs/http': 1.0.0-beta.9
+      '@fluojs/runtime': 1.0.0-beta.9
 
   '@fluojs/platform-fastify@1.0.0-beta.8':
     dependencies:
       '@fastify/multipart': 9.4.0
-      '@fluojs/http': 1.0.0-beta.8
-      '@fluojs/runtime': 1.0.0-beta.8
+      '@fluojs/http': 1.0.0-beta.9
+      '@fluojs/runtime': 1.0.0-beta.9
       fastify: 5.8.5
       fastify-raw-body: 5.0.0
 
-  '@fluojs/runtime@1.0.0-beta.8':
+  '@fluojs/runtime@1.0.0-beta.9':
     dependencies:
-      '@fluojs/config': 1.0.0-beta.3
-      '@fluojs/core': 1.0.0-beta.2
-      '@fluojs/di': 1.0.0-beta.5
-      '@fluojs/http': 1.0.0-beta.8
+      '@fluojs/config': 1.0.0-beta.5
+      '@fluojs/core': 1.0.0-beta.3
+      '@fluojs/di': 1.0.0-beta.6
+      '@fluojs/http': 1.0.0-beta.9
 
-  '@fluojs/validation@1.0.0-beta.1':
+  '@fluojs/validation@1.0.0-beta.2':
     dependencies:
-      '@fluojs/core': 1.0.0-beta.2
+      '@fluojs/core': 1.0.0-beta.3
       '@standard-schema/spec': 1.1.0
       validator: 13.15.35
 
