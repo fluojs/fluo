@@ -9,6 +9,7 @@ import { migrateUsage, runMigrateCommand } from './commands/migrate.js';
 import { type NewCommandRuntimeOptions, newUsage, runNewCommand } from './commands/new.js';
 import { addUsage, runAddCommand, runUpgradeCommand, upgradeUsage } from './commands/package-workflow.js';
 import { runScriptCommand, scriptUsage } from './commands/scripts.js';
+import { runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
 import { builtInGeneratorCollection, generatorManifest, generatorOptionSchemas, resolveGeneratorKind } from './generators/manifest.js';
 import { renderAliasList, renderHelpTable } from './help.js';
 import type { GenerateOptions, GeneratorKind } from './types.js';
@@ -141,6 +142,8 @@ const TOP_LEVEL_COMMAND_HELP: TopLevelCommandHelpEntry[] = [
   { aliases: ['--version', '-v'], command: 'version', description: 'Print the installed fluo CLI version.' },
   { aliases: [], command: 'help', description: 'Show top-level or command-specific help.' },
 ];
+
+const NODE_DEV_RUNNER_COMMAND = '__node-dev-runner';
 
 function normalizeGeneratorKind(value: string | undefined): GeneratorKind | undefined {
   return resolveGeneratorKind(value);
@@ -420,6 +423,12 @@ export async function runCli(
   const commandArgv = updateFlagResult.argv;
 
   try {
+    if (commandArgv[0] === NODE_DEV_RUNNER_COMMAND) {
+      const separatorIndex = commandArgv.indexOf('--');
+      const appArgs = separatorIndex >= 0 ? commandArgv.slice(separatorIndex + 1) : commandArgv.slice(1);
+      return runNodeRestartRunner({ appArgs, env, stderr, stdout });
+    }
+
     if (isVersionCommand(commandArgv[0])) {
       stdout.write(`${readCliVersion()}\n`);
       return 0;

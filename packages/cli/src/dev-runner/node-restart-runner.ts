@@ -11,10 +11,10 @@ type ContentChangeGate = {
   hasMeaningfulChange(paths: Iterable<string>): boolean;
 };
 
-type NodeRestartRunnerOptions = {
+export type NodeRestartRunnerOptions = {
   appArgs?: string[];
   debounceMs?: number;
-  env?: NodeJS.ProcessEnv;
+  env: NodeJS.ProcessEnv;
   projectDirectory?: string;
   stderr?: RestartRunnerStream;
   stdout?: RestartRunnerStream;
@@ -130,9 +130,9 @@ function stopChild(child: ChildProcess | undefined): void {
  * @param options Runner dependencies and project settings.
  * @returns A promise that resolves with the final child exit code when the runner stops.
  */
-export async function runNodeRestartRunner(options: NodeRestartRunnerOptions = {}): Promise<number> {
+export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): Promise<number> {
   const projectDirectory = options.projectDirectory ?? process.cwd();
-  const env = options.env ?? process.env;
+  const env = options.env;
   const stdout = options.stdout ?? process.stdout;
   const stderr = options.stderr ?? process.stderr;
   const appArgs = options.appArgs ?? [];
@@ -228,10 +228,4 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions = {
     process.once('SIGINT', stop);
     process.once('SIGTERM', stop);
   });
-}
-
-if (process.argv[1]?.endsWith('node-restart-runner.js') || process.argv[1]?.endsWith('node-restart-runner.ts')) {
-  const separatorIndex = process.argv.indexOf('--');
-  const appArgs = separatorIndex >= 0 ? process.argv.slice(separatorIndex + 1) : process.argv.slice(2);
-  process.exitCode = await runNodeRestartRunner({ appArgs });
 }
