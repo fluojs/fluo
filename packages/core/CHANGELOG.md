@@ -1,5 +1,11 @@
 # @fluojs/core
 
+## 1.0.0-beta.4
+
+### Patch Changes
+
+- [#1550](https://github.com/fluojs/fluo/pull/1550) [`4fdb48c`](https://github.com/fluojs/fluo/commit/4fdb48ca03c76a4164856cd1f9cb18c743bfbad3) Thanks [@ayden94](https://github.com/ayden94)! - Support Bun legacy decorator bundle output for HTTP route metadata while preserving the TC39 standard decorator metadata path.
+
 ## 1.0.0-beta.3
 
 ### Patch Changes

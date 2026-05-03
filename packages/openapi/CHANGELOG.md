@@ -1,5 +1,16 @@
 # @fluojs/openapi
 
+## 1.0.0-beta.6
+
+### Patch Changes
+
+- [#1544](https://github.com/fluojs/fluo/pull/1544) [`1dda8b5`](https://github.com/fluojs/fluo/commit/1dda8b5e8c949123125dfc73a4e20ad98b1e7cf5) Thanks [@ayden94](https://github.com/ayden94)! - Ensure first-party standard decorator modules install `Symbol.metadata` before decorated classes evaluate, preventing missing metadata bags in runtimes such as Bun.
+
+- Updated dependencies [[`4fdb48c`](https://github.com/fluojs/fluo/commit/4fdb48ca03c76a4164856cd1f9cb18c743bfbad3), [`1dda8b5`](https://github.com/fluojs/fluo/commit/1dda8b5e8c949123125dfc73a4e20ad98b1e7cf5)]:
+  - @fluojs/core@1.0.0-beta.4
+  - @fluojs/http@1.0.0-beta.10
+  - @fluojs/validation@1.0.0-beta.3
+
 ## 1.0.0-beta.5
 
 ### Patch Changes
