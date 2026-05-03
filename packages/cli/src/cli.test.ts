@@ -1616,7 +1616,7 @@ void bootstrap();
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Would run: node --env-file=.env --import tsx');
-    expect(stdoutBuffer.join('')).toContain('dev-runner/node-restart-runner.js -- --port 4000');
+    expect(stdoutBuffer.join('')).toContain('cli.js __node-dev-runner -- --port 4000');
     expect(stdoutBuffer.join('')).toContain('NODE_ENV: development');
     expect(stdoutBuffer.join('')).toContain('Reporter: stream');
     expect(stdoutBuffer.join('')).toContain('Watch mode: fluo-node-restart');
@@ -1884,7 +1884,7 @@ exit 7
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Would run: node --env-file=.env --import tsx');
-    expect(stdoutBuffer.join('')).toContain('dev-runner/node-restart-runner.js --');
+    expect(stdoutBuffer.join('')).toContain('cli.js __node-dev-runner --');
     expect(stdoutBuffer.join('')).toContain('NODE_ENV: development');
   });
 

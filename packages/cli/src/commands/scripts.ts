@@ -42,8 +42,8 @@ function getCliSourceRoot(): string {
   return dirname(dirname(fileURLToPath(import.meta.url)));
 }
 
-function getNodeDevRunnerEntry(): string {
-  return join(getCliSourceRoot(), 'dev-runner', 'node-restart-runner.js');
+function getCliEntryPoint(): string {
+  return join(getCliSourceRoot(), 'cli.js');
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -175,7 +175,7 @@ function buildProjectRunner(command: ScriptCommand, runtime: ProjectRuntime, pas
         if (options.rawWatch) {
           return [buildNativeNodeWatchStep(passThrough)];
         }
-        return [{ command: 'node', args: ['--env-file=.env', '--import', 'tsx', getNodeDevRunnerEntry(), '--', ...passThrough], mode: 'fluo-node-restart' }];
+        return [{ command: 'node', args: ['--env-file=.env', '--import', 'tsx', getCliEntryPoint(), '__node-dev-runner', '--', ...passThrough], mode: 'fluo-node-restart' }];
     }
   }
 
