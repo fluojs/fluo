@@ -1,4 +1,5 @@
 import type { FSWatcher } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, watch } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
@@ -283,8 +284,21 @@ type ReloaderState = {
   current: ConfigDictionary;
   pendingReloadReason: ConfigReloadReason | undefined;
   reloading: boolean;
+  watchedEnvFileHash: string | undefined;
   watcher: FSWatcher | undefined;
 };
+
+function hashEnvFileContent(envFile: string): string | undefined {
+  try {
+    return createHash('sha256').update(readFileSync(envFile)).digest('hex');
+  } catch (error: unknown) {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
+      return undefined;
+    }
+
+    throw error;
+  }
+}
 
 function notifyReloadListeners(
   listeners: ReadonlySet<ConfigReloadListener>,
@@ -385,7 +399,13 @@ function startReloaderWatcher(
     }
 
     try {
+      const nextEnvFileHash = hashEnvFileContent(normalized.envFile);
+      if (nextEnvFileHash === state.watchedEnvFileHash) {
+        return;
+      }
+
       applyReload(normalized, state, listeners, 'watch');
+      state.watchedEnvFileHash = nextEnvFileHash;
     } catch (error: unknown) {
       notifyReloadErrorListeners(errorListeners, error, getReloadFailureReason(error) ?? 'watch');
     }
@@ -433,6 +453,7 @@ export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader
     current: resolveConfig(normalized),
     pendingReloadReason: undefined,
     reloading: false,
+    watchedEnvFileHash: hashEnvFileContent(normalized.envFile),
     watcher: undefined,
   };
   const listeners = new Set<ConfigReloadListener>();

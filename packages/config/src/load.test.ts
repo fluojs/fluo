@@ -599,6 +599,51 @@ describe('loadConfig', () => {
     }
   });
 
+  it('dedupes watch reloads when env file content returns to the committed baseline', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-watch-dedupe-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const reloader = createConfigReloader({
+      cwd,
+      envFile: envPath,
+      processEnv: {},
+      watch: true,
+    });
+
+    try {
+      const updates: string[] = [];
+      reloader.subscribe((snapshot, reason) => {
+        if (reason !== 'watch') {
+          return;
+        }
+
+        const port = snapshot['PORT'];
+        if (typeof port === 'string') {
+          updates.push(port);
+        }
+      });
+
+      writeFileSync(envPath, 'PORT=4000\n');
+      emitWatchChange();
+      expect(updates).toEqual([]);
+
+      writeFileSync(envPath, 'PORT=4100\n');
+      writeFileSync(envPath, 'PORT=4000\n');
+      emitWatchChange();
+      expect(updates).toEqual([]);
+
+      writeFileSync(envPath, 'PORT=4200\n');
+      emitWatchChange();
+      await waitForCondition(() => updates.includes('4200'));
+
+      expect(reloader.current()['PORT']).toBe('4200');
+    } finally {
+      reloader.close();
+    }
+  });
+
   it('starts watch mode even when the env file is created after startup', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-watch-missing-startup-'));
     const envPath = join(cwd, '.env.dev');
