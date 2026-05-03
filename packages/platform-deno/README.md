@@ -84,13 +84,17 @@ await runDenoApplication(AppModule, {
 
 `hostname` remains the Deno-native option name. The adapter also accepts `host` as a portability alias for shared HTTP adapter tests and cross-runtime configuration helpers; when both are provided, `hostname` wins.
 
+Advanced options include injectable `serve` and `upgradeWebSocket` seams for tests or non-hosted runtimes, `rawBody`, `maxBodySize`, `multipart`, and `shutdownSignals`. `runDenoApplication(...)` wires `SIGINT`/`SIGTERM` by default, `shutdownSignals: false` disables signal registration, and close waits up to 10 seconds for active requests to drain. `handle(...)` returns a JSON `500` before `listen()` binds the dispatcher and a JSON `503` while shutdown is in progress.
+
 ## Public API Overview
 
 - `createDenoAdapter(options)`: Factory for the Deno HTTP adapter.
 - `bootstrapDenoApplication(module, options)`: Advanced bootstrap for custom orchestration.
 - `runDenoApplication(module, options)`: Recommended quick-start helper for Deno.
+- `DenoHttpApplicationAdapter`: Core adapter implementation with `handle(...)`, `getListenTarget()`, `getRealtimeCapability()`, `getServer()`, and `configureWebSocketBinding(...)`.
 - `handle(request)`: Manual `Request` to `Response` dispatcher.
 - `https: { cert, key }`: HTTPS startup options forwarded to `Deno.serve` and reflected in the reported listen URL.
+- Option and seam types: `DenoServeOptions`, `DenoServeController`, `DenoServerWebSocket`, websocket binding interfaces, bootstrap/run options, and listen-target helpers.
 
 ## Related Packages
 

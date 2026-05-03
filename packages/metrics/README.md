@@ -38,7 +38,7 @@ import { Module } from '@fluojs/core';
 class AppModule {}
 ```
 
-`MetricsModule.forRoot()` still exposes `GET /metrics` by default. Pass `http: true` (or an `http` options object) when you want the module to install HTTP request instrumentation middleware. For production deployments, make the scrape endpoint boundary explicit: either disable it with `path: false` until a platform-level proxy is in place, or attach dedicated endpoint middleware.
+`MetricsModule.forRoot()` exposes `GET /metrics` by default. Pass `http: true` (or an `http` options object) when you want the module to install HTTP request instrumentation middleware. When HTTP instrumentation is enabled, the module records request totals, error counts, and request duration. For production deployments, make the scrape endpoint boundary explicit: either disable it with `path: false` until a platform-level proxy is in place, or attach dedicated endpoint middleware.
 
 ## Common Patterns
 
@@ -53,7 +53,17 @@ MetricsModule.forRoot({
 });
 ```
 
-`pathLabelMode: 'raw'` is now treated as an unsafe opt-in. You must pass `allowUnsafeRawPathLabelMode: true` only when you can prove the path space is bounded.
+`pathLabelMode: 'raw'` is an unsafe opt-in. You must pass `allowUnsafeRawPathLabelMode: true` only when you can prove the path space is bounded.
+
+### Custom path label normalization
+
+```ts
+MetricsModule.forRoot({
+  http: {
+    pathLabelNormalizer: ({ path }) => (path.startsWith('/api/v1') ? '/api/v1/:resource' : path),
+  },
+});
+```
 
 ### Protect or disable the metrics endpoint
 
@@ -111,6 +121,7 @@ The module emits fluo-specific gauges that mirror the platform shell and registe
 
 - `fluo_component_ready`: `1` when a component is ready, otherwise `0`.
 - `fluo_component_health`: `1` when a component is healthy, otherwise `0`.
+- `fluo_metrics_registry_mode`: `isolated` or `shared` for the active registry mode.
 
 The platform snapshot is refreshed during each scrape, and you can attach environment labels up front.
 
@@ -128,7 +139,7 @@ MetricsModule.forRoot({
 Platform telemetry refreshes `fluo_component_ready` and `fluo_component_health` on each `/metrics` scrape by resolving `PLATFORM_SHELL`.
 
 - If `PLATFORM_SHELL` is not registered, the scrape still succeeds and omits the platform telemetry series.
-- If `PLATFORM_SHELL` becomes unavailable after a previous successful scrape, stale `fluo_component_ready` and `fluo_component_health` series are removed before metrics are returned.
+- If `PLATFORM_SHELL` becomes unavailable after the last successful scrape, stale `fluo_component_ready` and `fluo_component_health` series are removed before metrics are returned.
 - If resolving `PLATFORM_SHELL` fails for any other reason, the scrape surfaces that failure instead of swallowing it.
 
 ### Disable default process and Node metrics
@@ -148,6 +159,7 @@ MetricsModule.forRoot({
 - `METER_PROVIDER`
 - `PrometheusMeterProvider`
 - `HttpMetricsMiddleware` and HTTP path-label option types
+- Module options including `provider` (currently only `'prometheus'`) and endpoint `middleware`
 - `Registry` from `prom-client`
 
 ### Operational defaults
@@ -159,7 +171,7 @@ MetricsModule.forRoot({
 - Built-in HTTP collectors are reused when module instances share one registry; custom application metric name collisions keep Prometheus' duplicate-name failure behavior.
 - Raw path labels require `allowUnsafeRawPathLabelMode: true` and should stay limited to bounded internal routes.
 - Platform telemetry is omitted only when `PLATFORM_SHELL` is genuinely missing; other resolution failures fail the scrape.
-- Stale platform telemetry series are removed when `PLATFORM_SHELL` becomes unavailable after a prior successful scrape.
+- Stale platform telemetry series are removed when `PLATFORM_SHELL` becomes unavailable after the last successful scrape.
 
 ## Related Packages
 

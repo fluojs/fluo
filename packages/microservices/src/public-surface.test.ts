@@ -51,8 +51,8 @@ describe('@fluojs/microservices root barrel public surface', () => {
     const koreanReadme = readFileSync(resolve(import.meta.dirname, '../README.ko.md'), 'utf8');
 
     expect(readme).toContain('Use `MicroservicesModule.forRoot({ transport, module: { ... } })` when you want custom providers, exports, or non-global registration without dropping back to raw provider arrays.');
-    expect(readme).toContain('`createMicroservicesProviders(...)` remains available only for callers that truly need the low-level provider array itself.');
+    expect(readme).toContain('Use `createMicroservicesProviders(...)` only when you need the low-level provider array itself for custom module assembly.');
     expect(koreanReadme).toContain('custom provider/export/non-global 구성이 필요할 때도 raw provider array로 내려가지 말고 `MicroservicesModule.forRoot({ transport, module: { ... } })`를 우선 사용하세요.');
-    expect(koreanReadme).toContain('`createMicroservicesProviders(...)`는 실제로 low-level provider array 자체가 필요한 호출자에게만 남아 있습니다.');
+    expect(koreanReadme).toContain('`createMicroservicesProviders(...)`는 커스텀 모듈 조합에 low-level provider array 자체가 필요할 때만 사용하세요.');
   });
 });

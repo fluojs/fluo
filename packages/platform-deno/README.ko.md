@@ -84,13 +84,17 @@ await runDenoApplication(AppModule, {
 
 `hostname`은 Deno 네이티브 옵션 이름으로 유지됩니다. 공유 HTTP 어댑터 테스트와 교차 런타임 설정 헬퍼를 위해 `host`도 이식성 alias로 허용하며, 둘 다 제공하면 `hostname`이 우선합니다.
 
+Advanced option에는 test 또는 non-hosted runtime을 위한 injectable `serve`, `upgradeWebSocket` seam, `rawBody`, `maxBodySize`, `multipart`, `shutdownSignals`가 포함됩니다. `runDenoApplication(...)`은 기본적으로 `SIGINT`/`SIGTERM`을 연결하고, `shutdownSignals: false`는 signal registration을 끕니다. Close는 active request drain을 최대 10초 기다립니다. `handle(...)`은 `listen()`이 dispatcher를 bind하기 전에는 JSON `500`, shutdown 진행 중에는 JSON `503`을 반환합니다.
+
 ## 공개 API 개요
 
 - `createDenoAdapter(options)`: Deno HTTP 어댑터를 위한 팩토리입니다.
 - `bootstrapDenoApplication(module, options)`: 커스텀 오케스트레이션을 위한 고급 부트스트랩입니다.
 - `runDenoApplication(module, options)`: Deno를 위한 권장 빠른 시작 헬퍼입니다.
+- `DenoHttpApplicationAdapter`: `handle(...)`, `getListenTarget()`, `getRealtimeCapability()`, `getServer()`, `configureWebSocketBinding(...)`를 제공하는 핵심 adapter 구현체입니다.
 - `handle(request)`: 수동 `Request` to `Response` 디스패처입니다.
 - `https: { cert, key }`: `Deno.serve`로 전달되고 보고되는 listen URL에 반영되는 HTTPS 시작 옵션입니다.
+- Option 및 seam type: `DenoServeOptions`, `DenoServeController`, `DenoServerWebSocket`, websocket binding interface, bootstrap/run option, listen-target helper.
 
 ## 관련 패키지
 

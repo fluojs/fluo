@@ -106,7 +106,7 @@ class UserSaga implements ISaga<UserCreatedEvent> {
 }
 ```
 
-이제 saga 실행은 같은 프로세스 안에서 동일 saga route로 순환 재진입하거나 중첩 hop 수가 32를 넘으면 `SagaTopologyError`로 즉시 실패합니다. 서로 다른 이벤트 단계를 순차 처리하는 multi-stage saga는 계속 허용되지만, in-process saga graph 전체는 비순환(acyclic) 구조를 유지해야 하며, 의도적인 순환/피드백 루프나 더 긴 체인은 외부 transport, scheduler, 또는 다른 bounded boundary 뒤로 이동해야 합니다.
+Saga 실행은 같은 프로세스 안에서 동일 saga route로 순환 재진입하거나 중첩 hop 수가 32를 넘으면 `SagaTopologyError`로 즉시 실패합니다. 서로 다른 이벤트 단계를 순차 처리하는 multi-stage saga는 계속 허용되지만, in-process saga graph 전체는 비순환(acyclic) 구조를 유지해야 하며, 의도적인 순환/피드백 루프나 더 긴 체인은 외부 transport, scheduler, 또는 다른 bounded boundary 뒤로 이동해야 합니다.
 
 ### Event 발행 계약
 
@@ -115,6 +115,8 @@ class UserSaga implements ISaga<UserCreatedEvent> {
 각 CQRS event handler와 saga는 매칭된 event prototype이 복원된 격리 event 복사본을 받습니다. 이 복사본을 mutate해도 변경은 현재 handler 또는 saga route 안에만 머물며, 다른 CQRS handler, saga, 원본 event 객체, 또는 위임된 `@fluojs/event-bus` subscriber에는 보이지 않습니다. 위임된 event-bus 발행은 CQRS side effect가 끝난 뒤 원본 event를 받으므로, `@OnEvent(...)` projection과 transport는 CQRS handler가 mutate한 복사본이 아니라 호출자가 소유한 payload를 관찰합니다.
 
 Event class는 payload state를 clone 가능하고 enumerable하게 유지해야 합니다. 문자열 key와 symbol key를 가진 enumerable payload field는 shared core clone fallback으로 보존되지만, 열린 socket, function, process-local handle처럼 의도적으로 clone할 수 없는 resource는 발행 전에 ID나 다른 serializable boundary로 표현해야 합니다.
+
+CQRS handler, event handler, saga는 singleton provider에서만 discovery됩니다. Non-singleton registration은 경고와 함께 건너뜁니다.
 
 ### 심볼 토큰
 
@@ -134,6 +136,7 @@ class TokenInjectedService {
 
 ### 모듈 및 프로바이더
 - `CqrsModule.forRoot(options)`: 메인 진입점입니다. 버스를 등록하고 탐색을 시작합니다.
+- Module option은 명시적인 `commandHandlers`, `queryHandlers`, `eventHandlers`, `sagas`, 위임 `eventBus` option을 받을 수 있습니다.
 - `CommandBusLifecycleService`: Command 실행을 위한 기본 서비스입니다.
 - `QueryBusLifecycleService`: Query 실행을 위한 기본 서비스입니다.
 - `CqrsEventBusService`: Event 발행을 위한 기본 서비스입니다.
@@ -149,7 +152,14 @@ class TokenInjectedService {
 - `ICommandHandler<C, R>`, `IQueryHandler<Q, R>`, `IEventHandler<E>`, `ISaga<E>`: 핸들러 계약입니다.
 
 ### 오류
+- `CommandHandlerNotFoundException`, `QueryHandlerNotFoundException`: bus에 일치하는 handler가 없을 때 발생합니다.
+- `DuplicateCommandHandlerError`, `DuplicateQueryHandlerError`, `DuplicateEventHandlerError`: 중복 handler registration에서 발생합니다.
+- `SagaExecutionError`: 예상하지 못한 non-Fluo saga 실패를 감쌉니다.
 - `SagaTopologyError`: 자기 트리거, 순환, 또는 과도하게 깊은 in-process saga graph를 감지했을 때 발생합니다.
+
+### status와 metadata
+- `createCqrsPlatformStatusSnapshot(...)`: diagnostics와 health surface를 위한 CQRS status snapshot을 생성합니다.
+- command, query, event, saga registration을 검사해야 하는 framework package를 위해 metadata helper와 symbol이 export됩니다.
 
 ## 관련 패키지
 
@@ -160,3 +170,5 @@ class TokenInjectedService {
 
 - `packages/cqrs/src/module.test.ts`: 모듈 등록 및 기본 버스 사용 예제.
 - `packages/cqrs/src/public-api.test.ts`: 루트 배럴 공개 API 계약 검증 예제.
+- `packages/cqrs/src/status.test.ts`: CQRS status snapshot 동작 테스트 예제.
+- `packages/cqrs/src/event-clone.test.ts`: event clone fallback 동작 테스트 예제.

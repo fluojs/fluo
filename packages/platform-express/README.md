@@ -39,6 +39,8 @@ const app = await fluoFactory.create(AppModule, {
 await app.listen();
 ```
 
+`createExpressAdapter()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit port values throw during adapter setup.
+
 ## Common Patterns
 
 ### Handling Streaming Responses (SSE)
@@ -56,7 +58,7 @@ async streamEvents(@Res() res: FrameworkResponse) {
 ```
 
 ### Body Parsing and Multipart
-The adapter handles `rawBody` and multipart form-data parsing out of the box. When you construct the adapter directly, pass multipart limits as the second argument. `bootstrapExpressApplication(...)` and `runExpressApplication(...)` accept the same multipart settings under `options.multipart`. When `multipart.maxTotalSize` is not set, `maxBodySize` becomes the default total multipart payload cap so body-size limits stay portable across HTTP adapters.
+`rawBody` preservation is opt-in (`rawBody: true`), and multipart requests do not expose `rawBody`. When you construct the adapter directly, pass multipart limits as the second argument. `bootstrapExpressApplication(...)` and `runExpressApplication(...)` accept the same multipart settings under `options.multipart`. When `multipart.maxTotalSize` is not set, `maxBodySize` becomes the default total multipart payload cap so body-size limits stay portable across HTTP adapters.
 
 ```typescript
 const adapter = createExpressAdapter(
@@ -71,7 +73,7 @@ const adapter = createExpressAdapter(
 ```
 
 ### Native Route Registration with Safe Fallback
-The adapter now pre-registers semantically safe Express Router handlers for explicit HTTP methods and still dispatches those requests through the shared fluo dispatcher.
+The adapter pre-registers semantically safe Express Router handlers for explicit `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `HEAD` routes and still dispatches those requests through the shared fluo dispatcher.
 
 For semantically safe unversioned routes, Express hands the pre-matched descriptor and params to the shared dispatcher so eligible singleton-safe handlers can complete on the dispatcher fast path and other handlers can fall back without duplicate route matching, while guards, interceptors, observers, body parsing, raw body capture, SSE, and error responses stay on the same framework-owned execution path.
 
@@ -86,13 +88,20 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 - **OPTIONS ownership parity**: The adapter prevents Express Router from auto-answering `OPTIONS` for native routes, so unsupported methods still fall through to fluo dispatcher semantics and `@All(...)` handlers can continue to own `OPTIONS` when defined.
 - **Path normalization parity**: Requests that Express Router does not normalize the same way as fluo, such as duplicate-slash variants, still resolve through fallback dispatch so fluo's normalized route contract is preserved.
 - **Versioning parity**: Header/media-type/custom version selection remains dispatcher-owned even when Express Router handles the initial path match.
+- **Middleware rewrite parity**: App middleware that rewrites method or path invalidates native handoff and rematches the rewritten request.
+- **Response serialization parity**: String responses default to `text/plain`, objects/arrays serialize as JSON, binary payloads default to `application/octet-stream`, and `set-cookie` values are merged.
+- **Startup and shutdown**: The adapter supports HTTP/HTTPS startup, retries `EADDRINUSE` according to retry options, drains sockets on close, and can force-close connections after shutdown timeout.
 
 ## Public API Overview
 
 - `createExpressAdapter(options)`: Factory for the Express HTTP adapter.
 - `bootstrapExpressApplication(module, options)`: Advanced bootstrap helper for manual control.
 - `runExpressApplication(module, options)`: Compatibility helper for quick startup with signal wiring. On timeout/failure it reports the condition through logging and `process.exitCode`, while leaving final process termination to the surrounding host.
+- `isExpressMultipartTooLargeError(error)`: Normalizes multipart limit detection across adapter error shapes.
 - `ExpressHttpApplicationAdapter`: The core adapter implementation class.
+- Option types: `ExpressAdapterOptions`, `BootstrapExpressApplicationOptions`, `RunExpressApplicationOptions`, `CorsInput`, `ExpressApplicationSignal`.
+
+`createExpressAdapter(options, multipartOptions?)` supports `host`, `https`, `maxBodySize`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs`. `bootstrapExpressApplication(...)` and `runExpressApplication(...)` also accept `cors`, `globalPrefix`, `globalPrefixExclude`, `logger`, `middleware`, `multipart`, `securityHeaders`, `forceExitTimeoutMs`, and `shutdownSignals`.
 
 ## Related Packages
 

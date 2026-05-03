@@ -12,7 +12,7 @@
 | Exported services | `JwtModule`은 `DefaultJwtSigner`, `DefaultJwtVerifier`, `JwtService`를 등록합니다. 동기/비동기 등록은 모두 `RefreshTokenService`를 포함한 동일한 provider surface를 export하며, `RefreshTokenService`를 resolve하려면 여전히 `refreshToken` 옵션이 구성되어 있어야 합니다. | `packages/jwt/src/module.ts` |
 | Allowed signing algorithms | 액세스 토큰 서명은 signer가 지원하는 첫 번째 구성 알고리즘을 사용합니다. 지원 값은 `HS256`, `HS384`, `HS512`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, `ES512`입니다. | `packages/jwt/src/signing/signer.ts`, `packages/jwt/src/types.ts` |
 | Key material | HMAC 서명에는 `secret` 또는 `keys[]`의 HMAC 항목이 필요합니다. 비대칭 서명에는 `privateKey` 또는 `keys[]`의 private-key 항목이 필요합니다. 서명 재료가 없으면 구성 오류입니다. | `packages/jwt/src/signing/signer.ts` |
-| Default lifetime | `DefaultJwtSigner`는 `exp`를 `now + accessTokenTtlSeconds`로 설정합니다. `accessTokenTtlSeconds`가 없으면 기본 액세스 토큰 수명은 `3600`초입니다. | `packages/jwt/src/signing/signer.ts` |
+| Default lifetime | `DefaultJwtSigner`는 `exp`를 서명 시각에 `accessTokenTtlSeconds`를 더한 값으로 설정합니다. `accessTokenTtlSeconds`가 없으면 기본 액세스 토큰 수명은 `3600`초입니다. | `packages/jwt/src/signing/signer.ts` |
 | Default claims | `DefaultJwtSigner`는 호출자가 제공하지 않은 `aud`, `iss`, `iat`, `exp`를 모듈 옵션으로 채웁니다. | `packages/jwt/src/signing/signer.ts` |
 | Per-call overrides | `JwtService.sign(payload, options)`는 `aud`, `iss`, `sub`, `nbf`, `exp`를 호출 단위로 재정의할 수 있습니다. `expiresIn` 옵션은 기존 `payload.exp`보다 우선합니다. | `packages/jwt/src/service.ts`, `packages/jwt/src/service.test.ts` |
 | Refresh-token algorithm set | 리프레시 토큰 서명은 HMAC 알고리즘으로 제한됩니다. 구성된 알고리즘 목록에 HMAC이 없으면 리프레시 토큰 서명이 실패합니다. | `packages/jwt/src/signing/signer.ts`, `packages/jwt/src/signing/verifier.ts` |

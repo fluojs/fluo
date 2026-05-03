@@ -181,6 +181,8 @@ defineModule(ManualPrismaModule, {
 - `forRootAsync(...)`는 `AsyncModuleOptions<PrismaModuleOptions<...>>`를 받습니다.
 - `forRootAsync(...)`는 애플리케이션 컨테이너마다 옵션을 한 번 resolve하여, 별도 bootstrap 사이에서 클라이언트 라이프사이클과 요청 트랜잭션 격리를 보존합니다.
 - `strictTransactions: true` 설정 시 트랜잭션 미지원 환경에서 즉시 예외를 발생시킵니다.
+- `strictTransactions`가 `false`이면 클라이언트가 interactive `$transaction`을 제공하지 않을 때 직접 실행으로 fallback합니다.
+- 이름 있는 등록의 `name`은 trim되며, 빈 이름은 거부됩니다.
 
 ### `PrismaService<TClient>`
 
@@ -189,11 +191,15 @@ defineModule(ManualPrismaModule, {
 - `transaction(fn, options?): Promise<T>`
   - 대화형 트랜잭션 내에서 함수를 실행합니다.
 - `requestTransaction(fn, signal?, options?): Promise<T>`
-  - HTTP 요청 라이프사이클에 특화된 트랜잭션 경계를 실행합니다.
+  - HTTP 요청 라이프사이클에 특화된 트랜잭션 경계를 실행합니다. Abort를 인식하고, shutdown 중에는 disconnect 전에 열린 요청 트랜잭션을 drain하며, Prisma client가 `signal` 옵션을 거부하면 해당 옵션 없이 재시도합니다.
 
 ### `PRISMA_CLIENT` (Token)
 
 원시 `PrismaClient` 인스턴스를 위한 주입 토큰입니다.
+
+### 플랫폼 status
+
+- `createPrismaPlatformStatusSnapshot(input)`: Prisma readiness, health, ownership, ALS 기반 transaction context를 보고하는 persistence platform status snapshot을 생성합니다.
 
 ### 이름 있는 Prisma 토큰 헬퍼
 
@@ -206,6 +212,8 @@ defineModule(ManualPrismaModule, {
 ### 관련 export 타입
 
 - `PrismaModuleOptions`
+- `PrismaClientLike`
+- `PrismaHandleProvider`
 - `PrismaTransactionClient<TClient>`
 - `InferPrismaTransactionClient<TClient>`
 - `InferPrismaTransactionOptions<TClient>`
@@ -219,3 +227,4 @@ defineModule(ManualPrismaModule, {
 ## 예제 소스
 
 - `packages/prisma/src/vertical-slice.test.ts`: 표준 DTO → 서비스 → 리포지토리 → Prisma 흐름 예제.
+- `packages/prisma/src/module.test.ts`: 모듈 라이프사이클, 이름 있는 클라이언트, async factory, strict transaction 동작, status snapshot 테스트.

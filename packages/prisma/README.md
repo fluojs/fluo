@@ -181,6 +181,8 @@ defineModule(ManualPrismaModule, {
 - `forRootAsync(...)` accepts `AsyncModuleOptions<PrismaModuleOptions<...>>`.
 - `forRootAsync(...)` resolves options once per application container, preserving client lifecycle and request transaction isolation across separate bootstraps.
 - Supports `strictTransactions: true` to throw if transaction support is missing.
+- When `strictTransactions` is `false`, PrismaService falls back to direct execution if the client does not expose interactive `$transaction`.
+- Names are trimmed for named registrations, and blank names are rejected.
 
 ### `PrismaService<TClient>`
 
@@ -189,11 +191,15 @@ defineModule(ManualPrismaModule, {
 - `transaction(fn, options?): Promise<T>`
   - Runs a function within an interactive transaction.
 - `requestTransaction(fn, signal?, options?): Promise<T>`
-  - Specialized transaction boundary for HTTP request lifecycles.
+  - Specialized transaction boundary for HTTP request lifecycles. It is abort-aware, drains during shutdown before disconnect, and retries without `signal` when a Prisma client rejects that option.
 
 ### `PRISMA_CLIENT` (Token)
 
 Injectable token for the raw `PrismaClient` instance.
+
+### Platform status
+
+- `createPrismaPlatformStatusSnapshot(input)`: Creates a persistence platform status snapshot that reports Prisma readiness, health, ownership, and ALS-backed transaction context.
 
 ### Named Prisma token helpers
 
@@ -206,6 +212,8 @@ These helpers return the default unnamed token when `name` is omitted and a regi
 ### Related exported types
 
 - `PrismaModuleOptions`
+- `PrismaClientLike`
+- `PrismaHandleProvider`
 - `PrismaTransactionClient<TClient>`
 - `InferPrismaTransactionClient<TClient>`
 - `InferPrismaTransactionOptions<TClient>`
@@ -219,3 +227,4 @@ These helpers return the default unnamed token when `name` is omitted and a regi
 ## Example Sources
 
 - `packages/prisma/src/vertical-slice.test.ts`: DTO → Service → Repository → Prisma flow.
+- `packages/prisma/src/module.test.ts`: Module lifecycle, named clients, async factories, strict transaction behavior, and status snapshots.

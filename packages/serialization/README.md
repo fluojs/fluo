@@ -81,6 +81,8 @@ class ProductDto {
 }
 ```
 
+When the same field is decorated in a base class and a derived class, transforms run in declaration order from base to derived.
+
 ### HTTP response shaping with an interceptor
 
 ```ts
@@ -107,9 +109,11 @@ The serializer cuts active cyclic references safely instead of recursing forever
 
 Serialization metadata declared on a base class is inherited by derived DTOs. `@Expose()`, `@Exclude()`, and `@Transform()` rules applied to shared base fields still take effect when you serialize subclass instances.
 
+Undecorated class instances are still traversed recursively, so decorated nested descendants are respected even when the parent object has no serialization metadata.
+
 ### Plain-object safety
 
-`serialize()` treats plain objects and null-prototype records as data containers, not decorated class instances. Objects with custom or unsafe `constructor` fields are walked safely without throwing.
+`serialize()` treats plain objects and null-prototype records as data containers, not decorated class instances. Enumerable symbol keys are serialized, own `__proto__`, `constructor`, and `prototype` keys are treated as data rather than prototype mutations, and objects with custom or unsafe `constructor` fields are walked safely without throwing.
 
 ### Non-JSON leaf values
 
@@ -120,6 +124,8 @@ Serialization metadata declared on a base class is inherited by derived DTOs. `@
 - **Decorators**: `Expose`, `Exclude`, `Transform`
 - **Engine**: `serialize(value)`
 - **HTTP integration**: `SerializerInterceptor`
+
+`Expose` can be applied to classes and fields. `Exclude` and `Transform` apply to fields.
 
 ## Related Packages
 

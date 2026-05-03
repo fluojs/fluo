@@ -110,7 +110,7 @@ const principal = await verifier.verifyAccessToken(token);
 // principal: { subject: 'user-123', roles: ['admin'], scopes: ['read:profile'], ... }
 ```
 
-When you use `JwtService.sign(payload, { expiresIn })`, the per-call `expiresIn` override always wins over any pre-existing `payload.exp` value so token lifetime stays deterministic at the call site.
+When you use `JwtService.sign(payload, { expiresIn })`, the per-call `expiresIn` override always wins over any pre-existing `payload.exp` value so token lifetime stays deterministic at the call site. `expiresIn` accepts a non-negative number of seconds or short duration strings such as `60s`, `15m`, `1h`, or `7d`.
 
 ## Common Patterns
 
@@ -150,6 +150,12 @@ const verifier = new DefaultJwtVerifier({
 
 `JwtService.verify(token, options)` applies per-call algorithm and claim-policy overrides (`issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`) without rebuilding the underlying JWKS client or static key-resolution cache. Per-call verification does not replace configured key sources such as `jwksUri`, `keys[]`, `publicKey`, `secret`, or `secretOrKeyProvider`.
 
+When multiple compatible keys are configured, `kid` disambiguates the verification key. A single compatible static key can verify tokens without `kid`; JWKS-backed verification relies on the remote key set and its cache policy.
+
+### Refresh tokens
+
+`RefreshTokenService` uses a dedicated HMAC refresh-token path. Configure `refreshToken.secret` separately from access-token signing keys. Rotation requires an atomic `RefreshTokenStore.consume(...)` implementation so replayed tokens can be detected reliably.
+
 ## Configuration Guardrails
 
 JWT signing and verification require at least one supported algorithm in `algorithms`. The built-in signer supports `HS256`, `HS384`, `HS512`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, and `ES512`; configuration with an empty algorithm list fails fast instead of issuing or accepting ambiguous tokens.
@@ -163,10 +169,19 @@ Access-token TTL must also be a positive finite number. When `accessTokenTtlSeco
 - `DefaultJwtSigner`: Handles token issuance with default claim filling.
 - `DefaultJwtVerifier`: Handles token validation and normalization.
 - `JwtService`: A convenience facade combining signing and verification.
+- `JwksClient`: Fetches and caches remote JWKS keys with bounded request timeouts.
+- `RefreshTokenService`: Issues, rotates, and revokes refresh tokens when `refreshToken` options are configured.
 
 ### Types
 - `JwtPrincipal`: The normalized identity object (`subject`, `roles`, `scopes`, `claims`).
 - `JwtVerifierOptions`: Configuration for algorithms, keys, and validation policy.
+- `SignOptions` and `VerifyOptions`: Per-call signing and verification overrides.
+- `JwtClaims`, `JwtSigner`, `JwtVerifier`, `JwtKeyEntry`, `JwtAlgorithm`: Public signing and verification contracts.
+
+### Errors and diagnostics
+- `JwtVerificationError`, `JwtInvalidTokenError`, `JwtExpiredTokenError`, `JwtConfigurationError`: Typed JWT failures.
+- `createJwtPlatformStatusSnapshot(...)` and `createJwtPlatformDiagnosticIssues(...)`: Status and diagnostic helpers.
+- `JWT_OPTIONS`, `HMAC_HASH`, `ASYMMETRIC_HASH`: Exported tokens/constants used by the module and verification layer.
 
 ## Related Packages
 

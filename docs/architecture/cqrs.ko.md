@@ -40,4 +40,4 @@
 - Event 처리는 기본적으로 in-process입니다. `CqrsEventBusService`는 최종 게시 단계를 `@fluojs/event-bus`에 위임하지만, CQRS 패키지 자체가 분산 브로커 계약을 제공하지는 않습니다.
 - Saga 오케스트레이션은 안전하지 않은 재진입을 방지합니다. 같은 saga 경로로 재진입하거나 중첩 깊이 제한 `32`를 초과하면 `SagaTopologyError`가 발생합니다.
 - Saga가 FluoError가 아닌 예외를 던지면 `SagaExecutionError`로 래핑됩니다.
-- CQRS 패키지는 TC39 표준 데코레이터와 명시적 메타데이터 저장에 의존합니다. 레거시 데코레이터 컴파일 모드를 사용하지 않습니다.
+- CQRS 패키지는 TC39 표준 데코레이터와 명시적 메타데이터 저장에 의존합니다.

@@ -127,7 +127,7 @@ export function createJwtGuard(secret: string) {
 ```
 
 ```md
-CHANGELOG
+Release governance note
 
 - changed `createJwtGuard(secret)` to `createJwtGuard(options)`
 ```
@@ -144,7 +144,7 @@ export function createJwtGuard(options: JwtGuardOptions) {
 ```
 
 ```md
-RELEASE NOTE
+Release governance note
 
 - Major release required because the public constructor contract changed in `1.0+`.
 ```

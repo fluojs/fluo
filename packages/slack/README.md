@@ -125,6 +125,7 @@ SlackModule.forRootAsync({
 Behavioral contract notes:
 
 - `SlackService.send(...)` resolves `defaultChannel` before delivery.
+- `SlackService.sendMany(...)` sends messages sequentially and supports `continueOnError` when callers need a batch result instead of fail-fast behavior.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
 - `SlackService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
@@ -172,6 +173,7 @@ Behavioral contract notes:
 
 - One notification dispatch maps to exactly one Slack destination. Use `payload.channel` or a single entry in `recipients`.
 - If `payload.channel` is omitted, `SlackService.sendNotification(...)` uses the first `recipients` entry or falls back to `defaultChannel`.
+- Notification metadata is merged from payload metadata, dispatch metadata, and subject/template markers before delivery.
 - If a notification needs fan-out across multiple Slack destinations, call `sendMany(...)` instead of one multi-recipient dispatch.
 
 ### Webhook-first delivery with explicit fetch injection
@@ -215,21 +217,43 @@ These limitations are part of the package contract so runtime choice, provider c
 - `SlackModule.forRoot(options)` / `SlackModule.forRootAsync(options)`
 - `createSlackProviders(options)`
 - `SlackService`
+- `SlackService.sendMany(messages, options)`
 - `SlackChannel`
 - `SLACK`
 - `SLACK_CHANNEL`
 
+### Service facade and result contracts
+
+- `Slack`
+- `SlackSendOptions`
+- `SlackSendManyOptions`
+- `SlackSendResult`
+- `SlackSendBatchResult`
+- `SlackSendFailure`
+
 ### Contracts and helpers
 
 - `SlackMessage`
+- `NormalizedSlackMessage`
+- `SlackNotificationPayload`
+- `SlackNotificationDispatchRequest`
+- `SlackBlock`
+- `SlackAttachment`
 - `SlackTransport`
 - `SlackTransportFactory`
+- `SlackTransportContext`
+- `SlackTransportReceipt`
+- `SlackFetchLike`
+- `SlackFetchResponse`
 - `SlackTemplateRenderer`
 - `createSlackWebhookTransport(options)`
 
 ### Status and errors
 
 - `createSlackPlatformStatusSnapshot(...)`
+- `SlackPlatformStatusSnapshot`
+- `SlackLifecycleState`
+- `SlackStatusAdapterInput`
 - `SlackConfigurationError`
 - `SlackMessageValidationError`
 - `SlackTransportError`

@@ -125,11 +125,7 @@ Behavioral contract notes:
 
 ### Provider-array helper
 
-`createMicroservicesProviders(...)` remains available only for callers that truly need the low-level provider array itself.
-
-Use `createMicroservicesProviders(...)` when you need a provider array for custom module assembly.
-
-`createMicroservicesProviders(...)` remains available only for callers that truly need the low-level provider array itself.
+Use `createMicroservicesProviders(...)` only when you need the low-level provider array itself for custom module assembly. Prefer `MicroservicesModule.forRoot({ transport, module: { ... } })` for custom providers, exports, or non-global registration because that path keeps the built-in lifecycle wiring and exported tokens intact.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -152,6 +148,18 @@ class ManualMicroserviceProvidersModule {}
 - `TcpMicroserviceTransport`, `RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `KafkaMicroserviceTransport`, `RabbitMqMicroserviceTransport`, `GrpcMicroserviceTransport`, `MqttMicroserviceTransport`: transport adapters exported from the root barrel.
 - `MicroserviceLifecycleService`, `MICROSERVICE`: programmatic runtime access token and service.
 - `createMicroservicePlatformStatusSnapshot`, `ServerStreamWriter`: status and TypeScript contract helpers.
+
+### Programmatic runtime
+
+`MicroserviceLifecycleService` exposes `listen()`, `close()`, `send()`, `emit()`, `serverStream()`, `clientStream()`, `bidiStream()`, and `createPlatformStatusSnapshot()` for programmatic runtime access.
+
+### Type exports
+
+The root barrel exports `Microservice`, `MicroserviceModuleOptions`, `MicroserviceModuleRegistrationOptions`, `MicroserviceTransport`, `Pattern`, `ServerStreamWriter`, and transport option types such as `GrpcMicroserviceTransportOptions`, `KafkaMicroserviceTransportOptions`, `MqttMicroserviceTransportOptions`, `NatsMicroserviceTransportOptions`, `RabbitMqMicroserviceTransportOptions`, `RedisPubSubMicroserviceTransportOptions`, `RedisStreamsMicroserviceTransportOptions`, and `RedisStreamClientLike`.
+
+### Behavioral contracts
+
+Payloads are cloned before dispatch, concurrent `listen()` calls are deduped, request-scoped providers are disposed after success and failure, event fan-out shares one scope per event dispatch, and duplicate message matches fail deterministically.
 
 ### Supported transport subpaths
 

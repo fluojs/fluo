@@ -23,7 +23,7 @@ npm install @fluojs/config
 ## When to Use
 
 Use this package when you need to:
-- Load configuration from `.env` files and environment variables.
+- Load configuration from `.env` files plus an explicit `processEnv` snapshot.
 - Merge multiple configuration sources with strict precedence rules.
 - Validate your application configuration at startup.
 - Access configuration values through a typed `ConfigService`.
@@ -57,6 +57,8 @@ const EnvSchema = z.object({
 class AppModule {}
 ```
 
+Use `envFilePath` when the env file lives at an absolute or pre-resolved path, or `parse` when you need a custom flat-file parser instead of the default dotenv parser.
+
 Once registered, you can inject `ConfigService` to access your values:
 
 ```typescript
@@ -82,6 +84,8 @@ Configuration is merged in the following order (highest precedence wins):
 
 `@fluojs/config` does not scan ambient environment variables automatically. Pass an explicit `processEnv` snapshot at the bootstrap boundary when process-backed values should participate in precedence.
 
+`envFilePath` overrides `envFile`, and `parse` lets callers replace dotenv parsing with a custom parser for flat key/value files. Missing env files are treated as empty input during load; watch mode also observes the parent directory so creating the file later can trigger a reload.
+
 ### Deep Merging
 Plain objects are deep-merged by key. Arrays and primitive values from higher-precedence sources completely replace lower-precedence ones.
 
@@ -97,6 +101,8 @@ The `schema` option accepts a synchronous [Standard Schema](https://standardsche
 
 Module registration and reloader creation snapshot caller-owned options before storing them. Later mutations to objects passed to `ConfigModule.forRoot(...)`, `ConfigReloadModule.forRoot(...)`, or `createConfigReloader(...)` do not affect bootstrap, manual reloads, or watch reloads. In watch mode, a missing env file at startup is treated as an empty file snapshot while the parent directory is watched so creating the env file later can still trigger reload. Watch reloads compare the final env file content with the last committed watch baseline before reloading, so unchanged saves and change-then-revert bursts do not replace the in-process config snapshot.
 
+`ConfigReloadModule` is the reload layer, not a standalone config source. Pair it with `ConfigModule` or another `ConfigService` provider; it registers `ConfigReloadManager` and exports `CONFIG_RELOADER`. The watcher is created only when `watch: true`, and it is closed during module shutdown.
+
 ## Public API
 
 | Class/Helper | Description |
@@ -108,6 +114,8 @@ Module registration and reloader creation snapshot caller-owned options before s
 | `ConfigService` | Read-only service for typed access to configuration values. Snapshot replacement stays inside the config reload path. |
 | `loadConfig(options)` | Functional entry point for loading configuration manually. |
 | `createConfigReloader(options)` | Creates a reloader for dynamic configuration updates. |
+
+The package also exports option and subscription types such as `ConfigModuleOptions`, `ConfigLoadOptions`, `ConfigReloadSubscription`, and `ConfigReloadReason`.
 
 `ConfigReloadManager.reload()` updates the existing `ConfigService` instance so consumers keep their injected service identity while observing the new snapshot. If a reload listener throws, the manager restores the previous snapshot and rethrows the listener error. `createConfigReloader(...).reload()` follows the same listener serialization and rollback behavior for its standalone reloader snapshot.
 
@@ -121,3 +129,6 @@ Module registration and reloader creation snapshot caller-owned options before s
 - `packages/config/src/load.ts`
 - `packages/config/src/service.ts`
 - `packages/config/src/load.test.ts`
+- `packages/config/src/reload-module.ts`
+- `docs/architecture/config-and-environments.md`
+- `docs/architecture/dev-reload-architecture.md`

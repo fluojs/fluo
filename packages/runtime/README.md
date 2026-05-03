@@ -26,7 +26,7 @@ npm install @fluojs/runtime
 Use this package when you need to:
 - **Bootstrap a fluo application**: Convert your modules into a running HTTP server or microservice.
 - **Orchestrate DI and Lifecycle**: Manage module-graph compilation, provider wiring, and application hooks (`onModuleInit`, `onApplicationBootstrap`).
-- **Create Standalone Contexts**: Run CLI tasks, migrations, or workers that need DI but not an HTTP server.
+- **Create Standalone Contexts**: Run CLI tasks, scripts, or workers that need DI but not an HTTP server.
 - **Diagnostic Inspection**: Produce machine-readable platform snapshots for CLI export and Studio-owned graph viewing/rendering.
 
 ## Quick Start
@@ -115,7 +115,7 @@ class DatabaseModule {}
 
 @Module({
   imports: [DatabaseModule],
-  providers: [UsersService], // Can now inject DatabaseService
+providers: [UsersService], // UsersService can inject DatabaseService
 })
 class UsersModule {}
 ```
@@ -144,22 +144,27 @@ class UsersModule {}
 ## Public API Overview
 
 - `fluoFactory`: Lower-camel-case alias for the runtime bootstrap facade used in the package examples.
-- `FluoFactory`: Class-based runtime bootstrap facade retained for compatibility and explicit static access.
+- `FluoFactory`: Class-based runtime bootstrap facade with explicit static access.
 - `Application`: Extends `ApplicationContext` with `listen()`, `dispatch()`, and `state`.
-- `ApplicationContext`: Provides `get<T>(token)`, `close()`, and access to `container` and `modules`.
+- `ApplicationContext`: Provides `get<T>(token)`, `close()`, and access to `container`, `modules`, and bootstrap diagnostics.
 - `LifecycleHooks`: Convenience union covering `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, and `OnApplicationShutdown`.
 - `createHealthModule(options)`: Runtime-owned `/health` and `/ready` module factory whose readiness marker follows bootstrap and shutdown lifecycle transitions.
 - `defineModule(cls, metadata)`: Programmatic module definition helper.
 - `bootstrapApplication(options)`: Lower-level async bootstrap function.
+- `bootstrapModule(...)`: Lower-level module graph bootstrap helper.
+- `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: Runtime diagnostics helpers for CLI/support tooling.
+- `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: Request abort and active transaction helpers used by runtime-aware integrations.
 
 ## Platform-Specific Subpaths
 
 | Subpath | Purpose |
 | :--- | :--- |
 | `@fluojs/runtime/node` | Supported Node.js entrypoint for logger factories, Node adapter/bootstrap helpers, and shutdown signal registration. |
-| `@fluojs/runtime/web` | Shared Web-standard request/response utilities for Bun, Deno, and Cloudflare Workers. |
-| `@fluojs/runtime/internal` | Low-level orchestration helpers and HTTP adapter base logic. |
-| `@fluojs/runtime/internal-node` | Node-only internal seam used by adapter/package compatibility layers; prefer `@fluojs/runtime/node` in application code. |
+| `@fluojs/runtime/web` | Shared Web-standard request/response utilities for Bun, Deno, and Cloudflare Workers, including `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, and `parseMultipart`. |
+| `@fluojs/runtime/internal` | Token-only internal seam for package integrations. |
+| `@fluojs/runtime/internal-node` | Node-only internal seam for adapter/runtime plumbing; prefer `@fluojs/runtime/node` in application code. |
+| `@fluojs/runtime/internal/http-adapter` | Internal HTTP adapter seam for platform packages. |
+| `@fluojs/runtime/internal/request-response-factory` | Internal request/response factory seam for platform packages. |
 
 ### Node-Specific Subpath (`@fluojs/runtime/node`)
 
@@ -184,10 +189,10 @@ const adapter = createNodeHttpAdapter({
 
 For the public Node runtime surface, `maxBodySize` is a byte-count number only. Values such as `'1mb'` are rejected immediately during adapter creation instead of being coerced later.
 
-- `createConsoleApplicationLogger()`: Colorized console logger using `process.stdout`/`process.stderr`. The default remains the historical pretty format. Pass `{ mode: 'minimal' }` for concise `[fluo] LEVEL [context] message` lines, `{ mode: 'silent' }` to suppress runtime logger output, `{ level: 'warn' }` or another threshold to filter lower-severity messages, and `{ color: false }` when you need deterministic non-colored output.
+- `createConsoleApplicationLogger()`: Colorized console logger using `process.stdout`/`process.stderr`. The default remains the pretty format. Pass `{ mode: 'minimal' }` for concise `[fluo] LEVEL [context] message` lines, `{ mode: 'silent' }` to suppress runtime logger output, `{ level: 'warn' }` or another threshold to filter lower-severity messages, and `{ color: false }` when you need deterministic non-colored output.
 - `createJsonApplicationLogger()`: Structured JSON logger using `process.stdout`/`process.stderr`.
 - `createNodeHttpAdapter()`: Raw Node `http`/`https` adapter factory for adapter-first runtime setup. The helper normalizes the primary Node request `content-type` before JSON/multipart detection and accepts `maxBodySize` only as numeric bytes.
-- `bootstrapNodeApplication()` / `runNodeApplication()`: Node-specific bootstrap helpers used by compatibility packages and direct Node runtime flows.
+- `bootstrapNodeApplication()` / `runNodeApplication()`: Node-specific bootstrap helpers used by direct Node runtime flows.
 - `createNodeShutdownSignalRegistration()`, `defaultNodeShutdownSignals()`, `registerShutdownSignals()`: Shutdown registration helpers for hosts that need explicit signal wiring.
 
 Runtime app logging is separate from CLI lifecycle reporting. Configure `ApplicationLogger` when you want to change logs emitted by the application/runtime itself:

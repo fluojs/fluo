@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-General-purpose cache manager for fluo with pluggable memory and Redis stores. Provides both decorator-driven HTTP response caching and a standalone cache API for application-level caching.
+General-purpose cache manager for fluo with pluggable memory, Redis, and custom store adapters. Provides both decorator-driven HTTP response caching and a standalone cache API for application-level caching.
 
 ## Table of Contents
 
@@ -127,7 +127,7 @@ Redis reset ownership is scoped by `keyPrefix`, which defaults to `fluo:cache:`.
 
 Built-in HTTP cache key strategies derive their path segment from the concrete request path (`requestContext.request.path`), not the route template metadata. That means requests such as `/users/1` and `/users/2` always resolve to different cache keys even when they hit the same `@Get('/:id')` handler.
 
-By default, the cache key ignores query parameters and uses only the concrete request path. Enable `httpKeyStrategy: 'route+query'` (or `full`, which is equivalent for the built-in strategy set) to cache different responses for different search parameters. Query-aware keys canonicalize both parameter names and repeated values, so `/products?tag=a&tag=b` and `/products?tag=b&tag=a` share one cache entry.
+By default, anonymous requests use the concrete request path and ignore query parameters. Authenticated requests append a principal scope when one is available; use `principalScopeResolver` to customize that suffix. Enable `httpKeyStrategy: 'route+query'` (or `full`, which is equivalent for the built-in strategy set) to cache different responses for different search parameters. Query-aware keys canonicalize both parameter names and repeated values, so `/products?tag=a&tag=b` and `/products?tag=b&tag=a` share one cache entry.
 
 ```typescript
 CacheModule.forRoot({
@@ -135,6 +135,8 @@ CacheModule.forRoot({
   httpKeyStrategy: 'route+query',
 })
 ```
+
+For fully custom keying, pass a function as `httpKeyStrategy` or use `@CacheKey(...)` with either a literal key or a key factory.
 
 ### Cache Ownership and Reset Scope
 
@@ -150,6 +152,8 @@ CacheModule.forRoot({
 Avoid sharing a Redis cache prefix with non-cache data. `del(key)` removes the exact cache key resolved by this package, while `reset()` removes only the store-owned cache namespace described above.
 
 When the application closes, `CacheService` forwards shutdown to custom stores that expose `close()` or `dispose()`. Use one of those optional hooks when a store owns sockets, pools, timers, or other external resources.
+
+Custom stores can be passed directly through `store` when they implement the `CacheStore` contract. This is the right option for in-process LRU stores, remote caches other than Redis, or test doubles that need to observe cache operations.
 
 ### Manual Module Composition
 
@@ -182,20 +186,25 @@ For non-GET handlers decorated with `@CacheEvict(...)`, eviction is deferred unt
 ## Public API Overview
 
 ### Modules
-- `CacheModule.forRoot(options)`: Configures the cache store (memory/redis), default TTL, and key strategies.
+- `CacheModule.forRoot(options)`: Configures the cache store (memory/redis/custom), default TTL, key strategies, `isGlobal`, `principalScopeResolver`, and Redis options such as `redis.scanCount`.
   This is the primary package entrypoint for application modules.
 
 
 ### Services
-- `CacheService`: Main API for manual cache operations (`get`, `set`, `del`, `remember`, `reset`).
+- `CacheService`: Main API for manual cache operations (`get`, `set`, `del`, `remember`, `reset`, `close`).
 
 ### Decorators
 - `@CacheTTL(seconds)`: Sets the TTL for a specific handler.
-- `@CacheKey(key)`: Sets a custom cache key for a specific handler.
-- `@CacheEvict(key)`: Clears specific cache keys after a successful mutation (POST/PUT/DELETE).
+- `@CacheKey(key)`: Sets a custom cache key or key factory for a specific handler.
+- `@CacheEvict(key)`: Clears one or more cache keys after a successful non-GET handler completes.
 
 ### Interceptors
 - `CacheInterceptor`: Handles automatic GET response caching and eviction logic.
+
+### Stores and status helpers
+- `MemoryStore` and `RedisStore`: Built-in store implementations.
+- `CACHE_OPTIONS` and `CACHE_STORE`: DI tokens for package internals and custom composition.
+- `createCacheManagerPlatformStatusSnapshot(...)` and `createCacheManagerPlatformDiagnosticIssues(...)`: Platform status and diagnostic helpers.
 
 ## Related Packages
 
@@ -207,3 +216,4 @@ For non-GET handlers decorated with `@CacheEvict(...)`, eviction is deferred unt
 - `packages/cache-manager/src/module.test.ts`: Module configuration and provider tests.
 - `packages/cache-manager/src/interceptor.test.ts`: HTTP caching and eviction tests.
 - `packages/cache-manager/src/service.ts`: Core `CacheService` implementation.
+- `packages/cache-manager/src/status.test.ts`: Status and diagnostic helper tests.

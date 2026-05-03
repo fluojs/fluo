@@ -65,8 +65,8 @@ class MetricsGateway {
 }
 ```
 
-### Server-Backed (Node.js Only)
-For Node-based adapters (Express/Fastify), you can opt into a dedicated listener port.
+### Server-Backed Node Adapters
+For server-backed Node adapters (Node.js, Express, Fastify), you can opt into a dedicated listener port. Fetch-style runtimes (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) reject `serverBacked`.
 
 ```typescript
 @WebSocketGateway({ 
@@ -101,7 +101,7 @@ WebSocketModule.forRoot({
 });
 ```
 
-When omitted, `@fluojs/websockets` now applies bounded defaults for concurrent connections and inbound payload size. Server-backed Node listeners also enable heartbeat timers unless you explicitly set `heartbeat.enabled` to `false`. The official fetch-style runtime modules (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) close tracked websocket clients during application shutdown and give `@OnDisconnect()` cleanup a bounded chance to finish within `shutdown.timeoutMs`.
+When omitted, `@fluojs/websockets` applies bounded defaults for concurrent connections, inbound payload size, pending message buffers, and shutdown cleanup. Default settings are `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, and Node backpressure `maxBufferedAmountBytes: 1 MiB` with drop behavior. Server-backed Node listeners enable heartbeat timers unless you explicitly set `heartbeat.enabled` to `false`. The official fetch-style runtime modules (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) close tracked websocket clients during application shutdown and give `@OnDisconnect()` cleanup a bounded chance to finish within `shutdown.timeoutMs`.
 
 ## Public API Overview
 
@@ -110,20 +110,20 @@ When omitted, `@fluojs/websockets` now applies bounded defaults for concurrent c
 - `@OnMessage(event?)`: Decorator for inbound message handlers.
 - `@OnDisconnect()`: Decorator for disconnection handlers.
 - `WebSocketModule`: Root module for WebSocket integration.
-- `WebSocketModule.forRoot({ upgrade, limits, heartbeat, ... })`: Configures pre-upgrade guards and bounded runtime defaults.
+- `WebSocketModule.forRoot({ upgrade, limits, backpressure, buffer, heartbeat, shutdown })`: Configures pre-upgrade guards and bounded runtime defaults.
 - `WebSocketGatewayLifecycleService`: Root alias for the default Node.js-backed lifecycle service token.
-- `WebSocketModule.forRoot(...)`: Configures package-level registration for the default root websocket module.
+- Metadata helpers and symbols: `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, `webSocketHandlerMetadataSymbol`.
 
 ## Runtime-Specific Subpaths
 
 Use the runtime subpaths when you want an explicit runtime binding instead of the default root Node.js alias. Each subpath exposes its `*WebSocketModule.forRoot(...)` entrypoint plus the matching runtime lifecycle service export.
 
-| Runtime | Subpath | Module |
-| --- | --- | --- |
-| Node.js | `@fluojs/websockets/node` | `NodeWebSocketModule` |
-| Bun | `@fluojs/websockets/bun` | `BunWebSocketModule` |
-| Deno | `@fluojs/websockets/deno` | `DenoWebSocketModule` |
-| Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` |
+| Runtime | Subpath | Module | Lifecycle service |
+| --- | --- | --- | --- |
+| Node.js | `@fluojs/websockets/node` | `NodeWebSocketModule` | `NodeWebSocketGatewayLifecycleService` |
+| Bun | `@fluojs/websockets/bun` | `BunWebSocketModule` | `BunWebSocketGatewayLifecycleService` |
+| Deno | `@fluojs/websockets/deno` | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
+| Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` | `CloudflareWorkersWebSocketGatewayLifecycleService` |
 
 ## Example Sources
 

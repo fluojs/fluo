@@ -103,7 +103,15 @@ SocketIoModule.forRoot({
 });
 ```
 
-이제 `cors`를 생략하면 `@fluojs/socket.io`는 `origin: false`를 기본값으로 사용하므로 cross-origin 노출은 명시적 opt-in이 필요합니다. `engine.maxHttpBufferSize`를 생략하면 어댑터가 1 MiB Engine.IO payload 상한을 적용합니다.
+`cors`를 생략하면 `@fluojs/socket.io`는 `{ credentials: false, origin: false }`를 기본값으로 사용하므로 cross-origin 노출은 명시적 opt-in이 필요합니다. `engine.maxHttpBufferSize`를 생략하면 어댑터가 1 MiB Engine.IO payload 상한을 적용합니다. 기본값에는 `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, `shutdown.timeoutMs: 5000`도 포함됩니다.
+
+### Guard 계약
+
+`auth.connection`은 namespace connect handler가 실행되기 전에 `SocketIoConnectionGuardContext`를 받습니다. `auth.message`는 message handler가 실행되기 전에 `SocketIoMessageGuardContext`를 받습니다. Guard는 `true`, `false`, 또는 `message`, optional `data`, optional `disconnect`를 가진 `SocketIoGuardRejection`을 반환할 수 있으며, message rejection은 `{ error, data }` 형태의 ACK payload를 사용합니다.
+
+### Bun 전용 참고
+
+Bun path는 `@socket.io/bun-engine`을 통해 Socket.IO를 지원하지만 static CORS shape가 필요합니다. CORS delegate function과 `cors.origin` array 안의 boolean entry는 지원하지 않습니다. `@WebSocketGateway({ serverBacked })`는 Bun에서 지원하지 않습니다.
 
 ### 모듈 등록
 `SocketIoModule.forRoot(...)`로 Socket.IO를 등록합니다.
@@ -118,6 +126,9 @@ Socket.IO 등록은 소유 모듈의 import 경로에서 구성하여 namespace/
 - `SOCKETIO_ROOM_SERVICE`
 - `SocketIoRoomService`: 공유 room 계약에 Socket.IO namespace-aware `joinRoom`, `leaveRoom`, `broadcastToRoom`, `getRooms` helper를 더한 타입입니다.
 - `SocketIoLifecycleService`: server와 room-service token 뒤에서 동작하는 lifecycle 기반 구현입니다. 애플리케이션 코드는 일반적으로 `SOCKETIO_SERVER` 또는 `SOCKETIO_ROOM_SERVICE`를 주입하세요.
+- 타입: `SocketIoModuleOptions`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
+
+`SocketIoModuleOptions`는 `auth`, `buffer`, `cors`, `engine`, `shutdown`, `transports`를 포함합니다. 지원되는 server-backed runtime adapter가 필요하며, unsupported/noop adapter는 bootstrap 중 빠르게 실패합니다.
 
 ## 지원 플랫폼
 

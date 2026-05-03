@@ -127,7 +127,7 @@ export function createJwtGuard(secret: string) {
 ```
 
 ```md
-CHANGELOG
+Release governance note
 
 - `createJwtGuard(secret)`를 `createJwtGuard(options)`로 변경함
 ```
@@ -144,7 +144,7 @@ export function createJwtGuard(options: JwtGuardOptions) {
 ```
 
 ```md
-RELEASE NOTE
+Release governance note
 
 - `1.0+`에서 공개 생성자 계약이 바뀌었으므로 메이저 릴리스가 필요함
 ```

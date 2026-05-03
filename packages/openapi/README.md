@@ -29,7 +29,7 @@ pnpm add @fluojs/openapi
 
 ## Quick Start
 
-Register the `OpenApiModule` and pass `sources` (or prebuilt `descriptors`) so the document builder knows which HTTP handlers to include.
+Register the `OpenApiModule` and pass `sources`, prebuilt `descriptors`, or both so the document builder knows which HTTP handlers to include. When both inputs are provided, they are merged.
 
 ```typescript
 import { Controller, Get } from '@fluojs/http';
@@ -67,7 +67,7 @@ await app.listen(3000);
 // Swagger UI: http://localhost:3000/docs
 ```
 
-If you need to bypass controller discovery, pass `descriptors: createHandlerMapping([...]).descriptors` instead. `OpenApiModule` does not infer handlers from `@Module({ controllers: [...] })` on its own.
+If you need to bypass controller discovery, create handler descriptors with `createHandlerMapping(...)` from `@fluojs/http` and pass them through `descriptors`. `OpenApiModule` does not infer handlers from `@Module({ controllers: [...] })` on its own.
 
 ## Core Capabilities
 
@@ -94,6 +94,9 @@ When `ui: true` is enabled, the generated `/docs` page references an exact `swag
 ### Module Option Determinism
 `OpenApiModule.forRoot(...)` snapshots and freezes its options at registration time. Mutating the original options object, `sources`, `descriptors`, `securitySchemes`, `extraModels`, or `swaggerUiAssets` after registration does not alter the served OpenAPI document or `/docs` HTML. `OpenApiModule.forRootAsync(...)` applies the same snapshot once the async factory resolves, and factory failures propagate during bootstrap.
 
+### Async Registration and Options
+Use `OpenApiModule.forRootAsync(...)` when title/version/source configuration comes from DI or async setup. Module options include `sources`, `descriptors`, `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, `documentTransform`, `ui`, and `swaggerUiAssets`. `defaultErrorResponsesPolicy` defaults to injecting standard error responses and an `ErrorResponse` schema, while `documentTransform` runs after document generation and before serving.
+
 ## Public API
 
 - `OpenApiModule`: Main entry point for OpenAPI integration.
@@ -104,6 +107,8 @@ When `ui: true` is enabled, the generated `/docs` page references an exact `swag
 - `buildOpenApiDocument`: Programmatic document builder (low-level).
 - `OpenApiHandlerRegistry`: Mutable descriptor registry used by advanced integrations to snapshot handler descriptors before document generation.
 - `getControllerTags`, `getMethodApiMetadata`: Metadata readers for advanced tests and integration tooling.
+- `OpenApiModuleOptions`, `OpenApiSwaggerUiAssetsOptions`, `BuildOpenApiDocumentOptions`, `DefaultErrorResponsesPolicy`: Option types for module and builder integrations.
+- `OpenApiDocument`, `OpenApiSecuritySchemeObject`, and related OpenAPI shape types: Typed document surface for tests, tooling, and integrations.
 - `OpenApiSchemaObject`: Typed schema surface for explicit `@ApiBody(...)` and `@ApiResponse(...)` schemas, including OpenAPI 3.1 composition (`allOf`, `oneOf`, `anyOf`), object/array constraints, examples/defaults, and read/write/deprecated annotations.
 
 ## Related Packages
@@ -115,4 +120,4 @@ When `ui: true` is enabled, the generated `/docs` page references an exact `swag
 ## Example Sources
 
 - `packages/openapi/src/openapi-module.test.ts`: Integration tests and usage examples.
-- `examples/openapi-swagger`: Complete OpenAPI application example.
+- `packages/openapi/src/schema-builder.test.ts`: Document builder and schema generation examples.

@@ -95,6 +95,7 @@ Behavioral contract notes:
 
 - `DiscordService.send(...)` resolves `defaultThreadId` before delivery.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
+- Blank `defaultThreadId` and `notifications.channel` values are trimmed and ignored; the notifications channel defaults to `discord`.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
 ### Integration with `@fluojs/notifications`
@@ -139,6 +140,7 @@ Behavioral contract notes:
 
 - One notification dispatch maps to exactly one Discord thread route. Use `payload.threadId` or a single entry in `recipients`.
 - If `payload.threadId` is omitted, `DiscordService.sendNotification(...)` uses the first `recipients` entry or falls back to `defaultThreadId`.
+- Notification metadata is merged from payload metadata, dispatch metadata, and template/subject markers. `template` is rendered only when a renderer is configured.
 - If a notification needs fan-out across multiple Discord threads, call `sendMany(...)` instead of one multi-recipient dispatch.
 
 ### Webhook-first delivery with explicit fetch injection
@@ -161,7 +163,7 @@ For richer API integrations such as bot-backed REST delivery, implement the expo
 
 Behavioral contract notes:
 
-- The built-in webhook transport retries transient `408`, `429`, and `5xx` failures with bounded exponential backoff before surfacing an error.
+- The built-in webhook transport retries transient `408`, `429`, and `5xx` responses, and also retries transport-level exceptions, using bounded exponential backoff before surfacing an error.
 - Malformed or non-absolute `webhookUrl` values are rejected immediately as `DiscordConfigurationError` instead of being retried as delivery failures.
 - Caller-visible `DiscordTransportError` messages omit raw upstream response bodies by default.
 
@@ -191,14 +193,33 @@ Compose applications through `DiscordModule` and integrate notifications through
 ### Contracts and helpers
 
 - `DiscordMessage`
+- `NormalizedDiscordMessage`
+- `DiscordAsyncModuleOptions`
+- `DiscordWebhookTransportOptions`
+- `DiscordFetchLike`
+- `DiscordFetchResponse`
+- `DiscordSendResult`
+- `DiscordSendManyOptions`
+- `DiscordSendBatchResult`
+- `DiscordSendFailure`
+- `DiscordNotificationPayload`
+- `DiscordNotificationDispatchRequest`
+- `DiscordAllowedMentions`
+- `DiscordAttachment`
+- `DiscordComponent`
+- `DiscordEmbed`
+- `DiscordPoll`
 - `DiscordTransport`
 - `DiscordTransportFactory`
+- `DiscordTemplateRenderInput`
+- `DiscordTemplateRenderResult`
 - `DiscordTemplateRenderer`
 - `createDiscordWebhookTransport(options)`
 
 ### Status and errors
 
 - `createDiscordPlatformStatusSnapshot(...)`
+- `DiscordLifecycleState`
 - `DiscordConfigurationError`
 - `DiscordMessageValidationError`
 - `DiscordTransportError`

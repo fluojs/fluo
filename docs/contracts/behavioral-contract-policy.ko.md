@@ -21,7 +21,7 @@ Behavioral contract의 예시는 다음과 같습니다.
 
 ## Rule 2: Breaking Change Policy
 
-- `0.x`에서는 breaking behavioral change를 minor release에서만 배포할 수 있고, 릴리스에는 `CHANGELOG.md` migration note가 포함되어야 합니다.
+- `0.x`에서는 breaking behavioral change를 minor release에서만 배포할 수 있고, 릴리스에는 `CHANGELOG.md`에 소비자 대상 업그레이드 요구사항이 포함되어야 합니다.
 - `1.0+`에서는 breaking behavioral change가 major version bump를 반드시 유발해야 합니다.
 - 동작을 유지하려면 사용자 쪽 설정, bootstrap 순서, adapter 사용법, 공개 API 기대치를 바꿔야 하는 경우 minor나 patch로 분류하면 안 됩니다.
 - intended publish surface에 있는 패키지의 동작 파괴 변경은 release governance 갱신과 함께 다뤄야 합니다.

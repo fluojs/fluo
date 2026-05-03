@@ -38,7 +38,7 @@ npm install @fluojs/notifications @fluojs/queue
 npm install @fluojs/email nodemailer
 ```
 
-Node 전용 SMTP 전달은 이제 명시적인 `@fluojs/email/node` 서브패스에 위치합니다. queue 기반 notifications 통합도 `@fluojs/email/queue` 서브패스로 분리되었고, 이 서브패스용 `@fluojs/queue`는 루트 설치 필수가 아닌 optional peer로 선언됩니다. 루트 `@fluojs/email` 엔트리포인트는 계속 transport-agnostic 상태를 유지하므로 Bun, Deno, Cloudflare, 커스텀 HTTP transport가 Node 전용 또는 queue 전용 동작을 함께 끌어오지 않습니다.
+Node 전용 SMTP 전달은 명시적인 `@fluojs/email/node` 서브패스에서 사용할 수 있습니다. queue 기반 notifications 통합은 `@fluojs/email/queue` 서브패스에 있으며, 이 서브패스용 `@fluojs/queue`는 루트 설치 필수가 아닌 optional peer로 선언됩니다. 루트 `@fluojs/email` 엔트리포인트는 계속 transport-agnostic 상태를 유지하므로 Bun, Deno, Cloudflare, 커스텀 HTTP transport가 Node 전용 또는 queue 전용 동작을 함께 끌어오지 않습니다.
 
 ## 사용 시점
 
@@ -163,7 +163,10 @@ Behavioral contract 메모:
 
 - `EmailService.send(...)`는 전달 전에 `defaultFrom`과 `defaultReplyTo`를 해석합니다.
 - `EmailService.send(...)`는 `accepted`, `pending`, `rejected` 수신자를 분리해 보존하므로 provider의 부분 실패가 호출자에게 그대로 보입니다.
+- `EmailService.sendMany(...)`는 기본적으로 fail-fast입니다. 실패를 batch result에 수집하려면 `continueOnError: true`를 전달합니다.
+- `EmailService.createPlatformStatusSnapshot()`은 diagnostics를 위해 lifecycle, readiness, health, transport ownership details를 노출합니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
+- 모듈 옵션은 provider wiring 전에 trim 및 normalize됩니다. 여기에는 sender 기본값, notification channel 이름, transport factory 소유권이 포함됩니다.
 - 이 패키지는 절대로 `process.env`를 직접 읽지 않습니다. 모든 설정은 명시적인 옵션 또는 DI를 통해 들어와야 합니다.
 
 ### `@fluojs/notifications`와의 통합
@@ -205,6 +208,7 @@ export class AppModule {}
 Behavioral contract 메모:
 
 - `EmailChannel`은 `pending` 또는 `rejected` 수신자가 하나라도 있으면 전달을 성공으로 보고하지 않고 notification dispatch를 실패로 처리합니다.
+- `EmailService.sendNotification(...)`은 렌더링된 template output을 payload 및 notification metadata와 병합합니다. payload 필드는 notification fallback보다 우선합니다.
 
 ### 큐 기반 대량 전달
 
@@ -280,6 +284,9 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 - `EmailModule.forRoot(options)` / `EmailModule.forRootAsync(options)`
 - `EmailService`
+- `EmailService.sendMany(messages, options)`
+- `EmailService.sendNotification(notification, options)`
+- `EmailService.createPlatformStatusSnapshot()`
 - `EmailChannel`
 - `EMAIL`
 - `EMAIL_CHANNEL`
@@ -293,7 +300,7 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 ### 통합 서브패스
 
-- `@fluojs/email/queue`: `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`
+- `@fluojs/email/queue`: `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`, `EmailQueueWorkerOptions`
 
 ### 상태 및 에러
 
@@ -306,16 +313,19 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `createNodemailerEmailTransport(...)`
 - `createNodemailerEmailTransportFactory(...)`
 - `NodemailerEmailTransport`
+- `NodemailerTransporter`
+- `NodemailerEmailTransportOptions`
+- `NodemailerEmailTransportFactoryOptions`
 
 ## 런타임 전용 및 통합 서브패스
 
 | 런타임 | 서브패스 | export |
 | --- | --- | --- |
-| Node.js | `@fluojs/email/node` | `createNodemailerEmailTransport(...)`, `createNodemailerEmailTransportFactory(...)`, `NodemailerEmailTransport` |
+| Node.js | `@fluojs/email/node` | `createNodemailerEmailTransport(...)`, `createNodemailerEmailTransportFactory(...)`, `NodemailerEmailTransport`, `NodemailerTransporter`, `NodemailerEmailTransportOptions`, `NodemailerEmailTransportFactoryOptions` |
 
 | 관심사 | 서브패스 | export |
 | --- | --- | --- |
-| queue 기반 notifications 통합 | `@fluojs/email/queue` | `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS` |
+| queue 기반 notifications 통합 | `@fluojs/email/queue` | `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`, `EmailQueueWorkerOptions` |
 
 ## 관련 패키지
 

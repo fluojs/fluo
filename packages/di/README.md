@@ -64,7 +64,7 @@ const result = await service.getStatus();
 ## Key Capabilities
 
 ### Provider Types
-fluo DI supports three main provider shapes:
+fluo DI supports four provider shapes:
 - **Class Providers**: `container.register(MyService)` or `{ provide: MyToken, useClass: MyService }`.
 - **Value Providers**: `{ provide: 'API_URL', useValue: 'https://api.example.com' }`.
 - **Factory Providers**: `{ provide: 'ASYNC_CONFIG', useFactory: async (db) => await db.load(), inject: [Database] }`.
@@ -76,6 +76,10 @@ fluo DI supports three main provider shapes:
 - **Transient**: A new instance is created every time it is resolved.
 
 During disposal, the root container first tears down live request-scope children and then continues with root-owned singleton cleanup even if one or more child disposals fail. When multiple child/root disposals fail, `dispose()` reports an `AggregateError` so callers can inspect every shutdown failure without losing cleanup progress.
+
+### Provider Overrides
+
+Use `override(...providers)` when a test or request-local boundary needs to replace existing registrations deliberately. Overrides replace the current provider set for each token, invalidate cached instances, and dispose stale instances immediately. Multi-provider overrides replace the full multi-provider set for that token, so pass every replacement provider together.
 
 ### Request Scoping
 Isolated containers can be created to handle per-request state without polluting the root container.
@@ -119,7 +123,7 @@ You can easily override providers in the container to use mocks or stubs during 
 import { Container } from '@fluojs/di';
 
 const container = new Container();
-const mockDb = { query: jest.fn() };
+const mockDb = { query: vi.fn() };
 
 // Override the real Database class with a mock value
 container.register({ 
@@ -128,7 +132,7 @@ container.register({
 });
 
 const service = await container.resolve(DataService);
-// service will now use mockDb instead of the real Database instance
+// service uses mockDb instead of the real Database instance
 ```
 
 ## Troubleshooting
@@ -145,10 +149,18 @@ Ensure all required providers are registered in the container. If you use `creat
 |---|---|
 | `Container` | The main DI container class. |
 | `register(...providers)` | Registers one or more providers. |
+| `override(...providers)` | Replaces existing providers, invalidates cached instances, and disposes stale instances. |
 | `resolve<T>(token)` | Asynchronously resolves a token to an instance. |
 | `createRequestScope()` | Creates a child container for request-scoped dependencies. |
 | `has(token)` | Checks if a token is registered in the container or its parents. |
 | `hasRequestScopedDependency(token)` | Checks whether resolving a token may require a request-scope container because its provider graph contains request-scoped dependencies or is cyclic. |
+| `dispose()` | Disposes request children and root-owned singleton instances. |
+| `forwardRef(fn)` | Defers token lookup for declaration-order issues. |
+| `optional(token)` | Marks a dependency token as optional; missing optional dependencies resolve to `undefined`. |
+| `Scope` | Exposes `DEFAULT`, `REQUEST`, and `TRANSIENT` scope constants. |
+| Error classes | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |
+
+Resolving a multi-provider token returns an array of resolved values in registration order.
 
 ## Related Packages
 

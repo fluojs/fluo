@@ -58,15 +58,15 @@ Studio consumes JSON exports from the fluo CLI. Runtime produces snapshots, the 
 ## Common Patterns
 
 ### Troubleshooting Initialization
-Use the **Diagnostics** tab to see issues collected during the runtime bootstrap process.
+Use the **Diagnostics issues** section to see issues collected during the runtime bootstrap process.
 - Filter by severity (Error, Warning).
 - Use `fixHint` to get actionable advice on how to resolve the issue.
 - View `dependsOn` to see which components are blocking the failing one.
 
 ### Exporting Architecture Diagrams
-1. Navigate to the **Graph** view.
+1. Use the **Platform dependency graph** section.
 2. Select the modules or components you want to visualize.
-3. Use the **Export to Mermaid** button to get a text-based diagram for your documentation.
+3. Use the **Copy Mermaid** button to get a text-based diagram for your documentation.
 
 For automation, call `renderMermaid(snapshot)` from `@fluojs/studio` or `@fluojs/studio/contracts`. The helper is the supported snapshot-to-Mermaid contract: runtime packages remain snapshot producers, and Studio handles internal dependency edges plus external dependency nodes when rendering the graph.
 
@@ -78,8 +78,14 @@ Studio is primarily a web application, but the published package also exposes th
 |---|---|
 | `PlatformShellSnapshot` | The core data structure representing the application state. |
 | `PlatformDiagnosticIssue` | Schema for reporting and fixing platform errors. |
-| `parseStudioPayload(rawJson)` | Validates CLI/exported JSON into the Studio snapshot/timing envelope. |
+| `parseStudioPayload(rawJson)` | Accepts raw snapshot JSON, standalone timing JSON, snapshot+timing envelopes, and `fluo inspect --report` artifacts; returns the parsed payload plus the original JSON string. |
+| `ParsedPayload` | Parsed Studio payload shape returned by `parseStudioPayload(...)`. |
+| `StudioPayload` | Accepted raw snapshot/timing/report input shapes. |
 | `StudioReportArtifact` | Preserved `fluo inspect --report` artifact with summary, snapshot, and timing data for CI/support automation. |
+| `StudioReportSummary` | Summary block included in report artifacts. |
+| `FilterState` | Filter configuration accepted by `applyFilters(...)`. |
+| `PlatformReadinessStatus` | Readiness status union used by component filters. |
+| `PlatformDiagnosticSeverity` | Diagnostic severity union used by filters and issues. |
 | `applyFilters(snapshot, filter)` | Applies readiness/severity/query filters without mutating the source snapshot. |
 | `renderMermaid(snapshot)` | Produces Mermaid graph text from the loaded platform graph, including internal component dependency edges and external dependency nodes. |
 
@@ -88,6 +94,8 @@ Studio is primarily a web application, but the published package also exposes th
 - `@fluojs/studio`: root helper barrel for snapshot parsing/filtering/rendering automation.
 - `@fluojs/studio/contracts`: explicit helper subpath for tooling that wants the contract helpers directly.
 - `@fluojs/studio/viewer`: packaged `dist/index.html` entrypoint for the browser viewer bundle.
+
+`@fluojs/studio` and `@fluojs/studio/contracts` expose equivalent helper barrels.
 
 ## Related Packages
 

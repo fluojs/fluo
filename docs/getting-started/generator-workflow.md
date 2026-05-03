@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./generator-workflow.ko.md"><kbd>한국어</kbd></a></p>
 
-`fluo generate` and `fluo g` create feature-slice files under a resolved source directory. The shipped generator set covers modules, HTTP entrypoints, providers, middleware, and DTO stubs.
+`fluo generate` and `fluo g` create feature-slice files under a resolved source directory. The shipped generator set covers modules, full resource slices, HTTP entrypoints, providers, middleware, and DTO stubs.
 
 ## Available Generators
 
@@ -21,10 +21,11 @@ fluo g request-dto <feature> <name> [--target-directory <path>] [--force] [--dry
 | Guard | `guard`, `gu` | `fluo generate guard Billing` | Auto-registered | Guard file, module update |
 | Interceptor | `interceptor`, `in` | `fluo generate interceptor Billing` | Auto-registered | Interceptor file, module update |
 | Middleware | `middleware`, `mi` | `fluo generate middleware Billing` | Auto-registered | Middleware file, module update |
+| Resource | `resource`, `resrc` | `fluo generate resource Billing` | Files only | Module, controller, service, repository, DTOs, and tests |
 | Request DTO | `request-dto`, `req` | `fluo generate request-dto billing CreateBilling` | Files only | Request DTO file |
 | Response DTO | `response-dto`, `res` | `fluo generate response-dto Billing` | Files only | Response DTO file |
 
-Auto-registered generators create or update the slice module and append the generated class to `controllers`, `providers`, or `middleware`. Files-only generators emit files without parent-module registration.
+Auto-registered generators create or update the slice module and append the generated class to `controllers`, `providers`, or `middleware`. Files-only generators emit files without parent-module registration; `resource` creates a complete slice but still leaves parent-module import wiring to the caller.
 
 ## Generated Artifacts
 
@@ -39,6 +40,7 @@ Most generator outputs are written under `<resolved-target>/<plural-resource>/`.
 | Guard | `post.guard.ts` | Creates or updates `post.module.ts`, adds `PostGuard` to `providers`. |
 | Interceptor | `post.interceptor.ts` | Creates or updates `post.module.ts`, adds `PostInterceptor` to `providers`. |
 | Middleware | `post.middleware.ts` | Creates or updates `post.module.ts`, adds `PostMiddleware` to `middleware`. |
+| Resource | `post.module.ts`, `post.controller.ts`, `post.controller.test.ts`, `post.service.ts`, `post.service.test.ts`, `post.repo.ts`, `post.repo.test.ts`, `post.repo.slice.test.ts`, `create-post.request.dto.ts`, `post.response.dto.ts` | None for parent modules. Import the generated module separately. |
 | Request DTO | `create-post.request.dto.ts` in `posts/` when using `fluo g req posts CreatePost` | None. Import into controllers manually. |
 | Response DTO | `post.response.dto.ts` | None. Use as a controller return type manually. |
 
@@ -65,7 +67,7 @@ fluo g controller Billing --force --dry-run
 
 Dry-run mode prints `Dry run: no files were written.`, followed by each planned file action. Possible actions include `CREATE`, `SKIP`, `OVERWRITE`, `UNCHANGED`, `MODULE-CREATE`, `MODULE-UPDATE`, and `MODULE-UNCHANGED`. The preview uses the same validation, target-directory resolution, request DTO feature-target parsing, and `--force` overwrite planning as a real run, but it never creates directories, writes generated files, or updates modules.
 
-Auto-registered generators still resolve the module plan during dry-run. Files-only generators such as `module`, `request-dto`, and `response-dto` still report their file actions and leave parent-module wiring to the caller.
+Auto-registered generators still resolve the module plan during dry-run. Files-only generators such as `module`, `resource`, `request-dto`, and `response-dto` still report their file actions and leave parent-module wiring to the caller.
 
 ## Generator Collections
 
@@ -94,5 +96,5 @@ External package-owned or app-local generator collections are intentionally defe
 - Unchanged file content is not rewritten, even when the command resolves auto-registration metadata.
 - Generator discovery is limited to the built-in `@fluojs/cli/builtin` collection; external or app-local collections are deferred and are not loaded by this command.
 - Module auto-registration is limited to controller, service, repository, guard, interceptor, and middleware generators.
-- DTO and module generators do not wire parent-module imports automatically.
+- Resource, DTO, and module generators do not wire parent-module imports automatically.
 - The generate command surface documents `--target-directory`, `--force`, `--dry-run`, and `--help`.

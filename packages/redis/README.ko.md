@@ -2,7 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-fluo를 위한 공유 Redis 연결 계층입니다. 애플리케이션 수명 주기에 따라 관리되는 단일 `ioredis` 클라이언트를 제공합니다.
+fluo를 위한 공유 Redis 연결 계층입니다. 기본 app-scoped `ioredis` client와 선택적인 named client를 제공하며, 모두 애플리케이션 lifecycle로 관리됩니다.
 
 ## 목차
 
@@ -51,6 +51,8 @@ export class AppModule {}
 
 `RedisService`를 주입받아 고수준 작업을 수행하거나, `REDIS_CLIENT`를 통해 원시 `ioredis` 인스턴스를 직접 사용할 수 있습니다.
 
+`RedisService.get()`은 JSON parse를 시도하고 실패하면 raw string을 반환합니다. 누락된 key는 `null`을 반환합니다. `RedisService.set()`은 값을 `JSON.stringify()`로 직렬화하고 양수 TTL에만 `EX`를 사용합니다.
+
 ```typescript
 import { Inject } from '@fluojs/core';
 import { RedisService } from '@fluojs/redis';
@@ -87,6 +89,7 @@ export class CacheRepository {
 - `name`을 생략하면 기본 별칭인 `REDIS_CLIENT` / `RedisService`를 사용합니다.
 - `name`을 지정하면 `getRedisClientToken(name)` / `getRedisServiceToken(name)`으로 이름 있는 바인딩을 가져옵니다.
 - 이름 있는 클라이언트도 기본 클라이언트와 동일한 bootstrap/shutdown 계약을 따르며, `REDIS_CLIENT` / `RedisService` 별칭은 기본 등록에서만 export됩니다.
+- 이름은 trim되며, blank 또는 whitespace-only name은 token/component helper에서 거부됩니다.
 
 ```typescript
 import { Module, Inject } from '@fluojs/core';
@@ -123,6 +126,8 @@ export class AnalyticsStore {
 
 파이프라인, Lua 스크립트, Pub/Sub 등 복잡한 Redis 명령이 필요한 경우 원시 클라이언트를 직접 주입받아 사용합니다.
 
+이미 `RedisService`를 주입받았다면 `redis.getRawClient()`로 같은 underlying `ioredis` instance에 접근할 수 있습니다.
+
 ```typescript
 import { Inject } from '@fluojs/core';
 import { REDIS_CLIENT } from '@fluojs/redis';
@@ -146,6 +151,7 @@ export class AdvancedService {
 - `RedisModule.forRootNamed(name, options)`: 동일한 수명 주기 계약을 유지한 채 기본 별칭을 건드리지 않고 추가 Redis 클라이언트를 등록합니다.
 - `RedisService`: JSON 코덱 지원 및 `get`/`set`/`del` 메서드를 제공하는 파사드입니다.
 - `REDIS_CLIENT`: 내부 `ioredis` 인스턴스에 접근하기 위한 DI 토큰입니다.
+- `DEFAULT_REDIS_CLIENT_NAME`: 안정적인 기본 Redis client name입니다.
 - `getRedisClientToken(name)`: 이름 있는 raw client 토큰 헬퍼입니다. `name`을 생략하면 기본 `REDIS_CLIENT` 토큰을 돌려줍니다.
 - `getRedisServiceToken(name)`: 이름 있는 `RedisService` 토큰 헬퍼입니다. `name`을 생략하면 기본 `RedisService` 토큰을 돌려줍니다.
 - `getRedisComponentId(name)`: Redis 소비 패키지들이 사용하는 상태/의존성 식별자 헬퍼입니다 (`redis.default`, `redis.cache` 등).
@@ -153,6 +159,7 @@ export class AdvancedService {
 
 ### 타입
 - `RedisModuleOptions`: `ioredis` 생성자에 전달되는 설정 옵션입니다.
+- `PersistencePlatformStatusSnapshot`, `RedisStatusAdapterInput`: status snapshot input/output type입니다.
 
 ## 관련 패키지
 

@@ -113,6 +113,18 @@ stream(_input: undefined, ctx: RequestContext) {
 }
 ```
 
+### Versioning
+
+`createHandlerMapping(...)`은 `VersioningType`과 `versioning` option을 통해 URI, header, media-type, custom versioning strategy를 지원합니다. Route registration은 exact/static match를 fallback보다 앞에 두고, 동등하게 정규화된 route는 registration order를 보존합니다.
+
+### Request context helper
+
+Framework integration이 명시적인 request context boundary나 typed per-request storage가 필요할 때 `runWithRequestContext(...)`, `assertRequestContext()`, `createRequestContext(...)`, `createContextKey(...)`, `getContextValue(...)`, `setContextValue(...)`를 사용합니다.
+
+### Fast-path observability
+
+Dispatcher는 adapter와 diagnostics를 위해 `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`, `formatFastPathStats(...)`, `getDispatcherFastPathStats(...)`로 fast-path observability를 노출합니다.
+
 ## 요청 정리와 런타임 이식성
 
 디스패처는 활성 dispatch 동안에만 `AsyncLocalStorage`로 `RequestContext`를 바인딩합니다. 요청이 controller graph, middleware, guard, interceptor, observer, DTO converter, custom binder 또는 수동 `getCurrentRequestContext()` / `assertRequestContext()` container 접근을 통해 request-scoped DI를 사용할 수 있으면, 디스패처는 요청 observer가 끝난 뒤 `finally` 경로에서 isolated request-scoped DI 컨테이너를 생성하고 dispose합니다. Singleton-only route는 `RequestContext.container`가 접근되기 전까지 이 컨테이너 lifecycle을 건너뛰어 baseline 경로의 불필요한 per-request allocation을 피하면서도, graph가 모호하거나 request-scoped이면 request-scoped provider isolation을 유지합니다. 따라서 공개 `RequestContext.container` 읽기는 request-scoped provider resolve에 항상 안전합니다. singleton-only fast path는 내부 dispatcher 최적화일 뿐, 공개 context가 root container를 노출한다는 약속이 아닙니다.
@@ -125,8 +137,10 @@ stream(_input: undefined, ctx: RequestContext) {
 - **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
 - **실행 데코레이터**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **핵심 런타임 타입**: `RequestContext`, `FrameworkRequest`, `FrameworkResponse`, `SseResponse`
-- **예외**: `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `InternalServerErrorException`, `PayloadTooLargeException`
-- **헬퍼**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `getCurrentRequestContext`, `encodeSseComment`, `encodeSseMessage`
+- **Adapter API**: `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
+- **예외와 오류**: `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `HandlerNotFoundError`, `RequestAbortedError`
+- **헬퍼**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`
+- **Option type**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `SecurityHeadersOptions`, `SseSendOptions`
 
 ## 내부 서브경로 (`@fluojs/http/internal`)
 
@@ -134,6 +148,7 @@ stream(_input: undefined, ctx: RequestContext) {
 
 - `DefaultBinder`: 런타임 부트스트랩 경로에서 사용하는 기본 DTO/요청 바인더.
 - `bindRawRequestNativeRouteHandoff(...)` / `attachFrameworkRequestNativeRouteHandoff(...)`: public dispatcher API를 넓히지 않고 의미 보존이 가능한 native route match를 재사용하기 위한 내부 adapter/runtime 헬퍼.
+- `consumeRawRequestNativeRouteHandoff(...)` / `readFrameworkRequestNativeRouteHandoff(...)`: native route handoff를 읽거나 소비하기 위한 내부 helper.
 - Native route handoff는 framework request에 붙는 시점의 method와 path를 함께 스냅샷합니다. app middleware가 handler matching 전에 둘 중 하나를 rewrite하면 dispatcher는 stale handoff를 무시하고 일반 route matching으로 fallback합니다.
 - `isRoutePathNormalizationSensitive(path)`: duplicate slash와 trailing slash 요청을 generic dispatcher 경로에 남기기 위한 내부 guard.
 - `resolveClientIdentity(request)`: 속도 제한과 런타임 통합에서 사용하는 보수적 클라이언트 식별 해석기.

@@ -65,8 +65,8 @@ class MetricsGateway {
 }
 ```
 
-### Server-Backed (Node.js 전용)
-Node 기반 어댑터(Express/Fastify)의 경우 전용 리스너 포트를 사용하도록 설정할 수 있습니다.
+### Server-Backed Node adapter
+Server-backed Node adapter(Node.js, Express, Fastify)에서는 전용 listener port를 사용할 수 있습니다. Fetch-style runtime(`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`)은 `serverBacked`를 거부합니다.
 
 ```typescript
 @WebSocketGateway({ 
@@ -101,7 +101,7 @@ WebSocketModule.forRoot({
 });
 ```
 
-옵션을 생략하면 `@fluojs/websockets`는 동시 연결 수와 인바운드 페이로드 크기에 대해 기본 제한값을 적용합니다. 또한 server-backed Node 리스너는 `heartbeat.enabled`를 명시적으로 `false`로 두지 않는 한 heartbeat 타이머를 활성화합니다. 공식 fetch-style 런타임 모듈(`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`)은 애플리케이션 shutdown 시 추적 중인 websocket 클라이언트를 닫고 `shutdown.timeoutMs` 범위 안에서 `@OnDisconnect()` cleanup이 마무리될 수 있도록 bounded 기회를 제공합니다.
+옵션을 생략하면 `@fluojs/websockets`는 동시 연결 수, inbound payload 크기, pending message buffer, shutdown cleanup에 bounded default를 적용합니다. 기본값은 `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, Node backpressure `maxBufferedAmountBytes: 1 MiB`와 drop behavior입니다. 또한 server-backed Node listener는 `heartbeat.enabled`를 명시적으로 `false`로 두지 않는 한 heartbeat timer를 활성화합니다. 공식 fetch-style runtime module(`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`)은 애플리케이션 shutdown 시 추적 중인 websocket 클라이언트를 닫고 `shutdown.timeoutMs` 범위 안에서 `@OnDisconnect()` cleanup이 마무리될 수 있도록 bounded 기회를 제공합니다.
 
 ## 공개 API 개요
 
@@ -110,20 +110,20 @@ WebSocketModule.forRoot({
 - `@OnMessage(event?)`: 인바운드 메시지 핸들러를 위한 데코레이터입니다.
 - `@OnDisconnect()`: 연결 해제 핸들러를 위한 데코레이터입니다.
 - `WebSocketModule`: WebSocket 통합을 위한 루트 모듈입니다.
-- `WebSocketModule.forRoot({ upgrade, limits, heartbeat, ... })`: pre-upgrade guard와 기본 제한값을 구성합니다.
+- `WebSocketModule.forRoot({ upgrade, limits, backpressure, buffer, heartbeat, shutdown })`: pre-upgrade guard와 bounded runtime default를 구성합니다.
 - `WebSocketGatewayLifecycleService`: 기본 Node.js 기반 lifecycle service token을 위한 루트 alias입니다.
-- `WebSocketModule.forRoot(...)`: 기본 루트 WebSocket 모듈의 패키지 수준 등록을 구성합니다.
+- Metadata helper와 symbol: `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, `webSocketHandlerMetadataSymbol`.
 
 ## 런타임별 서브패스
 
 기본 루트 Node.js alias 대신 런타임을 명시적으로 고정하고 싶다면 런타임별 서브패스를 사용하세요. 각 서브패스는 해당 `*WebSocketModule.forRoot(...)` 진입점과 일치하는 런타임 lifecycle service export를 제공합니다.
 
-| 런타임 | 서브패스 | 모듈 |
-| --- | --- | --- |
-| Node.js | `@fluojs/websockets/node` | `NodeWebSocketModule` |
-| Bun | `@fluojs/websockets/bun` | `BunWebSocketModule` |
-| Deno | `@fluojs/websockets/deno` | `DenoWebSocketModule` |
-| Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` |
+| 런타임 | 서브패스 | 모듈 | Lifecycle service |
+| --- | --- | --- | --- |
+| Node.js | `@fluojs/websockets/node` | `NodeWebSocketModule` | `NodeWebSocketGatewayLifecycleService` |
+| Bun | `@fluojs/websockets/bun` | `BunWebSocketModule` | `BunWebSocketGatewayLifecycleService` |
+| Deno | `@fluojs/websockets/deno` | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
+| Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` | `CloudflareWorkersWebSocketGatewayLifecycleService` |
 
 ## 예제 소스
 

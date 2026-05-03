@@ -62,6 +62,7 @@
 | 조건 | 패키지 선택 | 비고 |
 | --- | --- | --- |
 | 전송 중립 WebSocket이 필요함 | `@fluojs/websockets` | Raw WebSocket 게이트웨이 작성에 사용합니다. |
+| 런타임별 WebSocket lifecycle service가 필요함 | `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers` | 런타임 경계와 일치하는 서브패스를 선택합니다. |
 | Socket.IO 시맨틱이 필요함 | `@fluojs/socket.io` | Socket.IO 호환 통합에 사용합니다. |
 | 메시지 패턴 마이크로서비스가 필요함 | `@fluojs/microservices` | 전송 기반 마이크로서비스 핸들러에 사용합니다. |
 | 백그라운드 작업이 필요함 | `@fluojs/queue` + `@fluojs/redis` | 큐 워커는 Redis에 의존합니다. |
@@ -69,6 +70,7 @@
 | 다중 채널 알림이 필요함 | `@fluojs/notifications` | 공용 알림 오케스트레이션 계층입니다. |
 | 이식 가능한 이메일 전송이 필요함 | `@fluojs/email` | 전송 중립 이메일 코어입니다. |
 | Node.js SMTP 전송이 필요함 | `@fluojs/email/node` | `@fluojs/email`용 Node 전용 SMTP 전송입니다. |
+| queue 기반 대량 이메일 알림이 필요함 | `@fluojs/email/queue` + `@fluojs/queue` | 이메일 알림을 위한 queue adapter와 worker 통합입니다. |
 | Slack 전송이 필요함 | `@fluojs/slack` | webhook-first Slack 통합입니다. |
 | Discord 전송이 필요함 | `@fluojs/discord` | webhook-first Discord 통합입니다. |
 
@@ -79,8 +81,9 @@
 | OpenAPI 출력이 필요함 | `@fluojs/openapi` | 스키마 생성과 API 문서화에 사용합니다. |
 | Prometheus 메트릭이 필요함 | `@fluojs/metrics` | HTTP 및 애플리케이션 메트릭에 사용합니다. |
 | 헬스 엔드포인트가 필요함 | `@fluojs/terminus` | 헬스 집계와 검사에 사용합니다. |
+| Redis 기반 health indicator가 필요함 | `@fluojs/terminus/redis` + `@fluojs/redis` | Terminus용 전용 Redis indicator 통합입니다. |
 
-`@fluojs/queue`, `@fluojs/cron`, `@fluojs/cache-manager`, `@fluojs/terminus`는 모두 기본 Redis 경로와 함께 그대로 동작하며, 특정 패키지에서 이름 있는 Redis 등록을 써야 할 때만 `clientName`을 추가하면 됩니다.
+Redis 기반 패키지 통합은 기능이 `clientName`을 노출하는 경우 기본 Redis 등록을 사용합니다. 이름 있는 Redis 등록이 해당 패키지의 의존성 edge를 맡아야 할 때만 `clientName`을 추가하면 됩니다.
 
 ---
 

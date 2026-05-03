@@ -125,6 +125,7 @@ SlackModule.forRootAsync({
 Behavioral contract 메모:
 
 - `SlackService.send(...)`는 전달 전에 `defaultChannel`을 해석합니다.
+- `SlackService.sendMany(...)`는 메시지를 순차적으로 보내며, fail-fast 대신 batch result가 필요한 호출자를 위해 `continueOnError`를 지원합니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
 - `SlackService.createPlatformStatusSnapshot()`은 호출자가 내부 옵션에 접근하지 않아도 lifecycle, readiness, transport 소유권을 보고합니다.
 - 이 패키지는 절대로 `process.env`를 직접 읽지 않습니다. 모든 설정은 명시적인 옵션 또는 DI를 통해 들어와야 합니다.
@@ -172,6 +173,7 @@ Behavioral contract 메모:
 
 - 하나의 notification dispatch는 정확히 하나의 Slack 대상지로 매핑됩니다. `payload.channel` 또는 `recipients`의 단일 항목을 사용해야 합니다.
 - `payload.channel`이 없으면 `SlackService.sendNotification(...)`는 첫 번째 `recipients` 항목을 사용하고, 그것도 없으면 `defaultChannel`로 폴백합니다.
+- notification metadata는 전달 전에 payload metadata, dispatch metadata, subject/template marker를 합쳐 구성됩니다.
 - 여러 Slack 대상지로 fan-out이 필요하다면 하나의 multi-recipient dispatch 대신 `sendMany(...)`를 사용해야 합니다.
 
 ### 명시적 fetch 주입을 사용하는 webhook-first 전달
@@ -215,21 +217,43 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `SlackModule.forRoot(options)` / `SlackModule.forRootAsync(options)`
 - `createSlackProviders(options)`
 - `SlackService`
+- `SlackService.sendMany(messages, options)`
 - `SlackChannel`
 - `SLACK`
 - `SLACK_CHANNEL`
 
+### Service facade와 result 계약
+
+- `Slack`
+- `SlackSendOptions`
+- `SlackSendManyOptions`
+- `SlackSendResult`
+- `SlackSendBatchResult`
+- `SlackSendFailure`
+
 ### 계약과 헬퍼
 
 - `SlackMessage`
+- `NormalizedSlackMessage`
+- `SlackNotificationPayload`
+- `SlackNotificationDispatchRequest`
+- `SlackBlock`
+- `SlackAttachment`
 - `SlackTransport`
 - `SlackTransportFactory`
+- `SlackTransportContext`
+- `SlackTransportReceipt`
+- `SlackFetchLike`
+- `SlackFetchResponse`
 - `SlackTemplateRenderer`
 - `createSlackWebhookTransport(options)`
 
 ### 상태 및 에러
 
 - `createSlackPlatformStatusSnapshot(...)`
+- `SlackPlatformStatusSnapshot`
+- `SlackLifecycleState`
+- `SlackStatusAdapterInput`
 - `SlackConfigurationError`
 - `SlackMessageValidationError`
 - `SlackTransportError`

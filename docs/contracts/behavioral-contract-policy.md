@@ -21,7 +21,7 @@ Examples of behavioral contracts include:
 
 ## Rule 2: Breaking Change Policy
 
-- In `0.x`, breaking behavioral changes may ship only in a minor release, and the release must include a migration note in `CHANGELOG.md`.
+- In `0.x`, breaking behavioral changes may ship only in a minor release, and the release must include consumer-facing upgrade requirements in `CHANGELOG.md`.
 - In `1.0+`, breaking behavioral changes must trigger a major version bump.
 - Do not classify a behavior change as minor or patch if users must change configuration, bootstrap order, adapter usage, or public API expectations to keep working code.
 - Pair behavior breaking changes with release governance updates when the package is on the intended publish surface.

@@ -62,6 +62,7 @@ Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `R
 | condition | package choice | notes |
 | --- | --- | --- |
 | Need transport-neutral WebSockets | `@fluojs/websockets` | Use for raw WebSocket gateway authoring. |
+| Need runtime-specific WebSocket lifecycle services | `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, or `@fluojs/websockets/cloudflare-workers` | Choose the subpath that matches the runtime boundary. |
 | Need Socket.IO semantics | `@fluojs/socket.io` | Use for Socket.IO-compatible integrations. |
 | Need message-pattern microservices | `@fluojs/microservices` | Use for transport-driven microservice handlers. |
 | Need background jobs | `@fluojs/queue` + `@fluojs/redis` | Queue workers depend on Redis. |
@@ -69,6 +70,7 @@ Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `R
 | Need multi-channel notifications | `@fluojs/notifications` | Shared notification orchestration layer. |
 | Need portable email delivery | `@fluojs/email` | Transport-agnostic email core. |
 | Need Node.js SMTP delivery | `@fluojs/email/node` | Node-specific SMTP transport for `@fluojs/email`. |
+| Need queue-backed bulk email notifications | `@fluojs/email/queue` + `@fluojs/queue` | Queue adapter and worker integration for email notifications. |
 | Need Slack delivery | `@fluojs/slack` | Webhook-first Slack integration. |
 | Need Discord delivery | `@fluojs/discord` | Webhook-first Discord integration. |
 
@@ -79,8 +81,9 @@ Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `R
 | Need OpenAPI output | `@fluojs/openapi` | Use for schema generation and API docs. |
 | Need Prometheus metrics | `@fluojs/metrics` | Use for HTTP and application metrics. |
 | Need health endpoints | `@fluojs/terminus` | Use for health aggregation and checks. |
+| Need Redis-backed health indicators | `@fluojs/terminus/redis` + `@fluojs/redis` | Dedicated Redis indicator integration for Terminus. |
 
-`@fluojs/queue`, `@fluojs/cron`, `@fluojs/cache-manager`, and `@fluojs/terminus` all keep working with the default Redis path; add `clientName` only when a named Redis registration should take over that package's dependency edge.
+Redis-backed package integrations use the default Redis registration unless a feature exposes `clientName`; add `clientName` only when a named Redis registration should take over that package's dependency edge.
 
 ---
 

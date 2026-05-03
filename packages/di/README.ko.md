@@ -78,6 +78,10 @@ const service = await container.resolve(UserService);
 
 dispose 중에는 루트 컨테이너가 먼저 살아 있는 request scope 자식을 정리한 뒤, 자식 dispose 중 하나 이상이 실패하더라도 루트가 소유한 singleton 정리를 계속 수행합니다. 자식/루트 dispose 실패가 여러 개 발생하면 `dispose()`는 모든 shutdown 실패를 확인할 수 있도록 `AggregateError`로 보고합니다.
 
+### provider override
+
+테스트나 request-local 경계에서 기존 등록을 의도적으로 교체해야 할 때는 `override(...providers)`를 사용합니다. override는 각 토큰의 현재 provider set을 교체하고 cached instance를 무효화하며, 오래된 instance를 즉시 dispose합니다. multi provider override는 해당 토큰의 전체 multi-provider set을 교체하므로 필요한 replacement provider를 한 번에 모두 전달하세요.
+
 ### request scope 분리
 
 ```ts
@@ -119,7 +123,7 @@ class ServiceB {
 import { Container } from '@fluojs/di';
 
 const container = new Container();
-const mockDb = { query: jest.fn() };
+const mockDb = { query: vi.fn() };
 
 // 실제 Database 클래스를 모의 객체 값으로 교체
 container.register({ 
@@ -128,7 +132,7 @@ container.register({
 });
 
 const service = await container.resolve(DataService);
-// 이제 service는 실제 Database 인스턴스 대신 mockDb를 사용합니다.
+// service는 실제 Database 인스턴스 대신 mockDb를 사용합니다.
 ```
 
 ## 문제 해결
@@ -145,10 +149,18 @@ const service = await container.resolve(DataService);
 |---|---|
 | `Container` | 메인 DI 컨테이너 클래스입니다. |
 | `register(...providers)` | 하나 이상의 프로바이더를 등록합니다. |
+| `override(...providers)` | 기존 provider를 교체하고 cached instance를 무효화하며 오래된 instance를 dispose합니다. |
 | `resolve<T>(token)` | 토큰을 인스턴스로 비동기 해석합니다. |
 | `createRequestScope()` | 요청 스코프 의존성을 위한 자식 컨테이너를 생성합니다. |
 | `has(token)` | 컨테이너나 부모에 토큰이 등록되어 있는지 확인합니다. |
 | `hasRequestScopedDependency(token)` | 토큰 해석 시 provider 그래프에 request-scoped 의존성이나 순환이 있어 request-scope 컨테이너가 필요할 수 있는지 확인합니다. |
+| `dispose()` | request child와 루트가 소유한 singleton instance를 정리합니다. |
+| `forwardRef(fn)` | 선언 순서 문제를 위해 토큰 조회를 지연합니다. |
+| `optional(token)` | 의존성 토큰을 optional로 표시하며, 누락된 optional dependency는 `undefined`로 해석됩니다. |
+| `Scope` | `DEFAULT`, `REQUEST`, `TRANSIENT` scope 상수를 제공합니다. |
+| 에러 클래스 | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |
+
+multi-provider 토큰을 resolve하면 등록 순서대로 해석된 값의 배열이 반환됩니다.
 
 ## 관련 패키지
 

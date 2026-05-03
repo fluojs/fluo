@@ -33,6 +33,8 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 
 `GraphqlModule.forRoot(...)`를 등록하고 표준 데코레이터를 사용하여 resolver를 정의합니다. 현재 `@fluojs/graphql`는 동기 모듈 엔트리포인트만 제공하며 `GraphqlModule.forRootAsync(...)` 계약은 없습니다.
 
+Code-first resolver discovery 대신 schema-first 통합을 원하면 executable `GraphQLSchema`를 `schema`로 전달할 수도 있습니다.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { bootstrapNodeApplication } from '@fluojs/runtime/node';
@@ -150,6 +152,8 @@ GraphqlModule.forRoot({
 })
 ```
 
+`@Subscription({ topics })`는 지원하지 않습니다. Subscription resolver는 `AsyncIterable`을 반환해야 합니다.
+
 ## 운영 가드레일
 
 - `graphiql`을 명시적으로 켜거나 `introspection: true`를 설정하지 않으면 스키마 introspection은 기본적으로 비활성화됩니다.
@@ -187,8 +191,11 @@ GraphqlModule.forRoot({
 - `GraphqlModule.forRoot(options)`: GraphQL 통합을 위한 메인 엔트리 포인트.
 - `Resolver`, `Query`, `Mutation`, `Subscription`: 작업 데코레이터.
 - `Arg`: Input DTO 필드를 GraphQL 인자로 매핑하는 데코레이터.
-- `createDataLoader`, `createDataLoaderMap`: DataLoader 팩토리 헬퍼.
-- `GraphQLContext`: GraphQL 실행 컨텍스트를 위한 타입 정의.
+- `createDataLoader`, `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`, `DataLoader`: DataLoader factory helper와 type.
+- `listOf`, `isGraphqlListTypeRef`: list output type reference helper.
+- `GraphQLContext` 및 export되는 option/metadata type: GraphQL 실행과 module 설정을 위한 타입 정의.
+
+지원되는 module option에는 `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `connectionInitWaitTimeoutMs`, `keepAliveMs`가 포함됩니다.
 
 ## 관련 패키지
 

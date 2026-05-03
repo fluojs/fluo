@@ -31,7 +31,7 @@ This document defines the contract for third-party adapters, integration package
 
 - Public third-party packages that depend on documented fluo contracts MUST follow semantic versioning for their own published surface.
 - Changes to module option shape, exported token names, adapter capability fields, lifecycle ordering, shutdown semantics, readiness behavior, or documented error behavior count as contract changes.
-- In `0.x`, breaking contract changes may ship only in a minor release and must include migration notes in `CHANGELOG.md`.
+- In `0.x`, breaking contract changes may ship only in a minor release and must include consumer-facing upgrade requirements in `CHANGELOG.md`.
 - In `1.0+`, breaking contract changes MUST ship in a major release.
 - When an extension changes documented behavior, update implementation, tests, README content, and this contract-facing evidence together.
 - If an extension targets the official publish surface or claims official platform compatibility, it must continue to satisfy the release and governance checks documented in `docs/contracts/release-governance.md` and `docs/contracts/behavioral-contract-policy.md`.

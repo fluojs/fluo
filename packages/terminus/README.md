@@ -103,6 +103,8 @@ TerminusModule.forRoot({
 });
 ```
 
+Use `path` to mount the health endpoints under a custom path, and `readinessChecks` to compose application-specific readiness logic with Terminus indicator and platform readiness checks.
+
 ### Failure Semantics
 
 When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthService` aggregates these failures into a report:
@@ -114,6 +116,7 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 - Unsupported, empty, or non-object indicator results are reported as `down` diagnostics instead of being silently discarded.
 - If an indicator reuses a key that was already reported earlier in the same run, Terminus keeps the first entry and adds a deterministic `*-duplicate-key-error` contributor instead of silently overwriting data.
 - Platform health/readiness failures are surfaced as deterministic `fluo-platform-health` and `fluo-platform-readiness` contributors in `/health` responses.
+- `/health` responses may include a `platform` block with platform health/readiness details when runtime diagnostics are available.
 
 ## Public API Overview
 
@@ -121,6 +124,7 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 
 - `static forRoot(options: TerminusModuleOptions): ModuleType`
   - Main entry point for registering indicators and providers.
+  - Options include `indicators`, `indicatorProviders`, `readinessChecks`, `execution.indicatorTimeoutMs`, and `path`.
 
 ### `TerminusHealthService`
 
@@ -128,6 +132,12 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
   - Runs the currently registered indicators and returns the aggregated report.
 - `isHealthy(): Promise<boolean>`
   - Returns whether the current aggregated report is fully healthy.
+
+### Direct helpers and tokens
+
+- `runHealthCheck(...)`, `assertHealthCheck(...)`: Direct aggregation/testing helpers.
+- `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: DI tokens for registered indicators and provider tokens.
+- Built-in indicators also expose `create*HealthIndicator()` and `create*HealthIndicatorProvider()` helpers.
 
 ### `@fluojs/terminus/redis`
 

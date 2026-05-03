@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Redis-backed distributed job processing for fluo. It features decorator-based worker discovery, automatic job serialization, and lifecycle-managed execution.
+Redis-backed distributed job processing for fluo. It features decorator-based worker discovery, JSON-safe job serialization, and lifecycle-managed execution.
 
 ## Table of Contents
 
@@ -52,9 +52,7 @@ export class OrderWorker {
 
 Import `QueueModule` and inject `QueueLifecycleService` to enqueue jobs.
 
-`QueueModule.forRoot(...)` is the supported root entrypoint for queue registration.
-
-Use `QueueModule.forRoot(...)` for application-level queue registration.
+`QueueModule.forRoot(...)` is the supported root entrypoint for application-level queue registration.
 
 ```typescript
 import { Module, Inject } from '@fluojs/core';
@@ -105,9 +103,11 @@ Workers can be configured with a maximum number of attempts and backoff strategi
 
 ### Dead-Letter Handling
 
-Jobs that fail all retry attempts are automatically moved to a dead-letter list in Redis (`fluo:queue:dead-letter:<jobName>`) for manual inspection or recovery.
+When a worker exhausts its retry attempts, Queue appends a dead-letter record to Redis (`fluo:queue:dead-letter:<jobName>`) for manual inspection or recovery. Queue does not move the BullMQ job itself.
 
 `QueueModule.forRoot()` keeps the most recent `1_000` dead-letter entries per job by default. Set `defaultDeadLetterMaxEntries: false` to opt out, or provide a smaller positive number when operators need a tighter retention budget.
+
+Jobs must be JSON-serializable plain objects. Queue serializes the job payload before enqueueing and rehydrates the job prototype on the worker side.
 
 Treat low-level provider assembly as an internal implementation detail: low-level provider helpers are not part of the documented root-barrel contract.
 
@@ -118,14 +118,18 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 - `QueueModule.forRoot(options)`: Registers queue support for an application module.
 - `QueueLifecycleService`: Primary service for enqueuing jobs (`enqueue(job)`).
 - `@QueueWorker(JobClass, options?)`: Decorator to mark a class as a job handler.
+- `QUEUE`: Compatibility injection token for the queue facade.
+- `createQueuePlatformStatusSnapshot(...)`: Status snapshot helper for lifecycle/readiness diagnostics.
 
 
 ### Types
-- `QueueModuleOptions`: Global queue settings (clientName, default attempts, concurrency, rate limiting).
+- `QueueModuleOptions`: Global queue settings (clientName, default attempts, `defaultBackoff`, concurrency, rate limiting, dead-letter retention).
 - `QueueWorkerOptions`: Per-job settings (attempts, backoff, concurrency, jobName, rate limiting).
 - `QueueBackoffOptions`: Retry backoff settings (`type`, `delayMs`).
 
 `QueueModuleOptions` also includes dead-letter retention controls such as `defaultDeadLetterMaxEntries`.
+
+Only singleton `@QueueWorker()` providers/controllers are registered. Request/transient workers are skipped during discovery.
 
 ## Related Packages
 
@@ -136,3 +140,4 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 
 - `packages/queue/src/module.test.ts`: Worker discovery and enqueueing tests.
 - `packages/queue/src/public-surface.test.ts`: Public API contract verification.
+- `packages/queue/src/status.test.ts`: Queue lifecycle status snapshot tests.

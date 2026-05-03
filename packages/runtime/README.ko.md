@@ -26,7 +26,7 @@ npm install @fluojs/runtime
 다음과 같은 경우에 이 패키지를 사용합니다:
 - **fluo 애플리케이션 부트스트랩**: 모듈을 실행 중인 HTTP 서버나 마이크로서비스로 변환할 때.
 - **DI 및 라이프사이클 오케스트레이션**: 모듈 그래프 컴파일, 프로바이더 연결 및 애플리케이션 훅(`onModuleInit`, `onApplicationBootstrap`)을 관리할 때.
-- **독립형 컨텍스트 생성**: HTTP 서버는 필요 없지만 DI가 필요한 CLI 태스크, 마이그레이션 또는 워커를 실행할 때.
+- **독립형 컨텍스트 생성**: HTTP 서버는 필요 없지만 DI가 필요한 CLI task, script 또는 worker를 실행할 때.
 - **진단 및 검사**: CLI 내보내기와 Studio 소유 그래프 보기/렌더링을 위한 기계 읽기 가능한 플랫폼 snapshot을 생산할 때.
 
 ## 퀵 스타트
@@ -115,7 +115,7 @@ class DatabaseModule {}
 
 @Module({
   imports: [DatabaseModule],
-  providers: [UsersService], // 이제 DatabaseService를 주입받을 수 있음
+providers: [UsersService], // UsersService가 DatabaseService를 주입받을 수 있음
 })
 class UsersModule {}
 ```
@@ -144,22 +144,27 @@ class UsersModule {}
 ## 공개 API 개요
 
 - `fluoFactory`: 패키지 예제에서 사용하는 런타임 부트스트랩 파사드의 lower-camel-case 별칭입니다.
-- `FluoFactory`: 호환성과 명시적 static 접근을 위해 유지되는 클래스 기반 런타임 부트스트랩 파사드입니다.
+- `FluoFactory`: 명시적 static 접근을 제공하는 클래스 기반 런타임 부트스트랩 파사드입니다.
 - `Application`: `ApplicationContext`를 확장하며 `listen()`, `dispatch()`, `state`를 포함합니다.
-- `ApplicationContext`: `get<T>(token)`, `close()` 기능을 제공하며 `container`와 `modules`에 접근할 수 있습니다.
+- `ApplicationContext`: `get<T>(token)`, `close()` 기능을 제공하며 `container`, `modules`, bootstrap diagnostics에 접근할 수 있습니다.
 - `LifecycleHooks`: `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`를 묶는 편의 union 타입입니다.
 - `createHealthModule(options)`: bootstrap 및 shutdown 라이프사이클 전이에 맞춰 readiness marker를 관리하는 런타임 소유 `/health`, `/ready` 모듈 팩토리입니다.
 - `defineModule(cls, metadata)`: 프로그래밍 방식의 모듈 정의 헬퍼입니다.
 - `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다.
+- `bootstrapModule(...)`: 저수준 module graph bootstrap helper입니다.
+- `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: CLI/support tooling을 위한 runtime diagnostics helper입니다.
+- `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: runtime-aware integration이 사용하는 request abort 및 active transaction helper입니다.
 
 ## 플랫폼 전용 서브경로
 
 | 서브경로 | 용도 |
 | :--- | :--- |
 | `@fluojs/runtime/node` | 로거 팩토리, Node 어댑터/부트스트랩 헬퍼, 종료 시그널 등록을 위한 지원되는 Node.js 전용 진입점입니다. |
-| `@fluojs/runtime/web` | Bun, Deno, Cloudflare Workers를 위한 공유 웹 표준 요청/응답 유틸리티. |
-| `@fluojs/runtime/internal` | 저수준 오케스트레이션 헬퍼 및 HTTP 어댑터 기본 로직. |
-| `@fluojs/runtime/internal-node` | 어댑터/패키지 호환 계층이 사용하는 Node 전용 내부 seam이며, 애플리케이션 코드에서는 `@fluojs/runtime/node`를 우선 사용하세요. |
+| `@fluojs/runtime/web` | Bun, Deno, Cloudflare Workers를 위한 공유 Web 표준 요청/응답 유틸리티입니다. `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, `parseMultipart`를 포함합니다. |
+| `@fluojs/runtime/internal` | package integration을 위한 token-only internal seam입니다. |
+| `@fluojs/runtime/internal-node` | adapter/runtime plumbing을 위한 Node 전용 internal seam이며, 애플리케이션 코드에서는 `@fluojs/runtime/node`를 우선 사용하세요. |
+| `@fluojs/runtime/internal/http-adapter` | platform package를 위한 internal HTTP adapter seam입니다. |
+| `@fluojs/runtime/internal/request-response-factory` | platform package를 위한 internal request/response factory seam입니다. |
 
 ### Node 전용 서브경로 (`@fluojs/runtime/node`)
 
@@ -184,10 +189,10 @@ const adapter = createNodeHttpAdapter({
 
 공개 Node 런타임 surface에서 `maxBodySize`는 바이트 수를 나타내는 숫자만 허용합니다. `'1mb'` 같은 값은 나중에 암묵 변환되지 않고 어댑터 생성 시점에 즉시 거부됩니다.
 
-- `createConsoleApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 컬러 콘솔 로거입니다. 기본값은 기존 pretty 형식을 유지합니다. 더 간결한 `[fluo] LEVEL [context] message` 줄을 원하면 `{ mode: 'minimal' }`, 런타임 로거 출력을 숨기려면 `{ mode: 'silent' }`, 낮은 심각도 메시지를 걸러내려면 `{ level: 'warn' }` 같은 threshold, 결정적인 비컬러 출력을 원하면 `{ color: false }`를 전달하세요.
+- `createConsoleApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 컬러 콘솔 로거입니다. 기본값은 pretty 형식입니다. 더 간결한 `[fluo] LEVEL [context] message` 줄을 원하면 `{ mode: 'minimal' }`, 런타임 로거 출력을 숨기려면 `{ mode: 'silent' }`, 낮은 심각도 메시지를 걸러내려면 `{ level: 'warn' }` 같은 threshold, 결정적인 비컬러 출력을 원하면 `{ color: false }`를 전달하세요.
 - `createJsonApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 구조화된 JSON 로거.
 - `createNodeHttpAdapter()`: 어댑터 우선 런타임 구성을 위한 raw Node `http`/`https` 어댑터 팩토리입니다. primary Node 요청 `content-type`을 JSON/멀티파트 판별 전에 normalize하며, `maxBodySize`는 숫자 바이트 수만 받습니다.
-- `bootstrapNodeApplication()` / `runNodeApplication()`: 호환 패키지와 직접 Node 런타임 흐름에서 사용하는 Node 전용 부트스트랩 헬퍼.
+- `bootstrapNodeApplication()` / `runNodeApplication()`: 직접 Node runtime flow에서 사용하는 Node 전용 부트스트랩 헬퍼.
 - `createNodeShutdownSignalRegistration()`, `defaultNodeShutdownSignals()`, `registerShutdownSignals()`: 호스트가 명시적으로 시그널 wiring을 제어할 때 쓰는 종료 등록 헬퍼.
 
 런타임 애플리케이션 로깅은 CLI lifecycle reporting과 별개입니다. 애플리케이션/런타임 자체가 내는 로그를 바꾸고 싶을 때 `ApplicationLogger`를 설정하세요:

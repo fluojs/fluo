@@ -89,7 +89,7 @@ export class WelcomeService {
 }
 ```
 
-`NotificationsModule.forRoot(...)`는 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`를 global provider로 export합니다. 애플리케이션 서비스는 fluo의 class-level `@Inject(...)` decorator로 의존성을 선언해야 standard-decorator DI container가 legacy parameter decorator 없이 서비스를 resolve할 수 있습니다.
+`NotificationsModule.forRoot(...)`와 `NotificationsModule.forRootAsync(...)`는 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`를 global provider로 export합니다. 애플리케이션 서비스는 fluo의 class-level `@Inject(...)` decorator로 의존성을 선언해야 standard-decorator DI container가 parameter decorator 없이 서비스를 resolve할 수 있습니다.
 
 ## 일반적인 패턴
 
@@ -118,8 +118,11 @@ Behavioral contract 메모:
 
 - 알림 개수가 `bulkThreshold` 이상이면 대량 큐 위임이 시작됩니다.
 - `dispatch()`는 queue adapter가 구성되어 있어도 기본적으로 직접 전달을 유지합니다. 단건 알림을 큐로 보내려면 `dispatch(..., { queue: true })`를 사용합니다.
+- queue adapter가 있어도 직접 전달을 강제하려면 `dispatch(..., { queue: false })`를 사용합니다.
 - 큐 기반 전달은 단건 dispatch에서는 opt-in이고, `dispatchMany(...)`에서는 threshold 기반으로 동작합니다.
+- `dispatchMany(..., { continueOnError: true })`는 direct delivery에서 첫 실패를 던지는 대신 실패들을 수집합니다.
 - queue enqueue가 실패하면 서비스는 enqueue 에러를 다시 던지기 전에 결정적인 `notification.dispatch.failed` 라이프사이클 이벤트를 발행합니다.
+- `enqueueMany(...)`가 없으면 대량 queue delivery는 각 job을 개별적으로 enqueue하는 방식으로 fallback합니다.
 - foundation 패키지는 특정 큐 구현을 가정하거나 import하지 않습니다.
 
 ### 이벤트 발행자를 통한 라이프사이클 발행
@@ -147,6 +150,8 @@ NotificationsModule.forRoot({
 - `notification.dispatch.delivered`
 - `notification.dispatch.failed`
 
+`events.publisher`가 구성되어 있으면 `publishLifecycleEvents: false`를 설정하지 않는 한 lifecycle event publication은 기본으로 켜집니다. 채널 delivery가 `externalId`를 생략하면 dispatch result가 호출자에게 안정적으로 유지되도록 deterministic fallback delivery id가 부여됩니다.
+
 ### 의도적인 제한 사항
 
 foundation 패키지는 의도적으로 다음을 **포함하지 않습니다**:
@@ -164,23 +169,40 @@ foundation 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 - `NotificationsModule.forRoot(options)` / `NotificationsModule.forRootAsync(options)`
 - `NotificationsService`
+- `NotificationsService.createPlatformStatusSnapshot()`
 - `NOTIFICATIONS`
 - `NOTIFICATION_CHANNELS`
 
 ### 계약(Contracts)
 
 - `NotificationDispatchRequest`
+- `NotificationDispatchOptions`
+- `NotificationDispatchManyOptions`
+- `NotificationDispatchResult`
+- `NotificationDispatchFailure`
+- `NotificationDispatchStatus`
 - `NotificationChannel`
+- `NotificationChannelContext`
+- `NotificationChannelDelivery`
+- `NotificationPayload`
 - `NotificationsQueueAdapter`
+- `NotificationsQueueJob`
+- `NotificationsAsyncModuleOptions`
+- `NotificationsEventsOptions`
 - `NotificationsEventPublisher`
 - `NotificationLifecycleEvent`
+- `NotificationLifecycleEventName`
 
 ### 상태 및 에러
 
 - `createNotificationsPlatformStatusSnapshot(...)`
+- `NotificationsPlatformStatusSnapshot`
+- `NotificationsStatusAdapterInput`
 - `NotificationsConfigurationError`
 - `NotificationChannelNotFoundError`
 - `NotificationQueueNotConfiguredError`
+
+상태 snapshot은 platform diagnostics를 위해 `operationMode`, dependency diagnostics, ownership, readiness, health 필드를 포함합니다.
 
 ## 관련 패키지
 

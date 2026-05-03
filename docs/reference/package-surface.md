@@ -33,7 +33,7 @@
 - **`@fluojs/core`**: Metadata helpers and TC39-standard decorator support.
 - **`@fluojs/di`**: Provider resolution, lifecycle scopes, and dependency graph analysis.
 - **`@fluojs/config`**: Environment-aware configuration loading and typed access.
-- **`@fluojs/runtime`**: Application bootstrap, module orchestration, platform shell registration, and platform snapshot production.
+- **`@fluojs/runtime`**: Application bootstrap, module orchestration, platform shell registration, and platform snapshot production. Public runtime helpers are exposed through `@fluojs/runtime/node` and `@fluojs/runtime/web`.
 
 ### adapters
 - **`platform-*`**: Implement the `PlatformAdapter` interface. They bridge abstract HTTP calls to runtime-specific listeners.
@@ -46,11 +46,11 @@
 - **`@fluojs/passport`**: Strategy-agnostic authentication guards, scopes, and Passport.js bridges.
 - **`@fluojs/microservices`**: Pattern-matching transport abstraction for TCP, Redis, NATS, Kafka, RabbitMQ, MQTT, and gRPC.
 - **`@fluojs/notifications`**: Shared channel contract and orchestration layer for provider-specific notification packages.
-- **`@fluojs/email`**: Transport-agnostic email delivery core. It provides a first-party notifications channel and queue worker integration.
+- **`@fluojs/email`**: Transport-agnostic email delivery core. It provides a first-party notifications channel and queue worker integration through `@fluojs/email/queue`.
 - **`@fluojs/email/node`**: Node.js specific subpath for `@fluojs/email` that provides first-party Nodemailer/SMTP transport.
 - **`@fluojs/slack`**: Webhook-first Slack delivery core that can run standalone or register a first-party notifications channel.
 - **`@fluojs/discord`**: Webhook-first Discord delivery core that can run standalone or register a first-party notifications channel.
-- **`@fluojs/websockets`**: Transport-neutral WebSocket gateway authoring.
+- **`@fluojs/websockets`**: WebSocket gateway authoring with runtime-specific subpaths `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`.
 - **`@fluojs/validation`**: Standard-decorator input validation, DTO materialization, and request-boundary safety.
 - **`@fluojs/prisma` / `@fluojs/drizzle`**: ORM lifecycle and ALS-backed transaction context.
 

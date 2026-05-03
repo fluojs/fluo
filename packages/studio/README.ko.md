@@ -58,15 +58,15 @@ Studio는 fluo CLI에서 내보낸 JSON 파일을 소비합니다. 런타임은 
 ## 주요 패턴
 
 ### 초기화 문제 해결
-**Diagnostics** 탭을 사용하여 런타임 부트스트랩 과정에서 수집된 이슈들을 확인합니다.
+**Diagnostics issues** 섹션을 사용하여 런타임 부트스트랩 과정에서 수집된 이슈들을 확인합니다.
 - 심각도(Error, Warning)별로 필터링합니다.
 - `fixHint`를 통해 문제를 해결하기 위한 구체적인 조치 방법을 확인합니다.
 - `dependsOn`을 통해 어떤 컴포넌트가 실패 지점을 차단하고 있는지 확인합니다.
 
 ### 아키텍처 다이어그램 내보내기
-1. **Graph** 뷰로 이동합니다.
+1. **Platform dependency graph** 섹션을 사용합니다.
 2. 시각화하려는 모듈이나 컴포넌트를 선택합니다.
-3. **Export to Mermaid** 버튼을 사용하여 문서에 사용할 수 있는 텍스트 기반 다이어그램을 가져옵니다.
+3. **Copy Mermaid** 버튼을 사용하여 문서에 사용할 수 있는 텍스트 기반 다이어그램을 가져옵니다.
 
 자동화에서는 `@fluojs/studio` 또는 `@fluojs/studio/contracts`에서 `renderMermaid(snapshot)`을 호출합니다. 이 헬퍼가 지원되는 snapshot-to-Mermaid 계약입니다. 런타임 패키지는 snapshot producer로 남고, Studio는 그래프 렌더링 시 내부 dependency edge와 외부 dependency node를 처리합니다.
 
@@ -78,8 +78,14 @@ Studio는 주로 웹 애플리케이션이지만, 배포된 패키지는 도구/
 |---|---|
 | `PlatformShellSnapshot` | 애플리케이션 상태를 나타내는 핵심 데이터 구조입니다. |
 | `PlatformDiagnosticIssue` | 플랫폼 오류 보고 및 수정을 위한 스키마입니다. |
-| `parseStudioPayload(rawJson)` | CLI/export JSON을 Studio snapshot/timing envelope로 검증합니다. |
+| `parseStudioPayload(rawJson)` | raw snapshot JSON, standalone timing JSON, snapshot+timing envelope, `fluo inspect --report` artifact를 받아 parsed payload와 원본 JSON string을 반환합니다. |
+| `ParsedPayload` | `parseStudioPayload(...)`가 반환하는 parsed Studio payload shape입니다. |
+| `StudioPayload` | 허용되는 raw snapshot/timing/report input shape입니다. |
 | `StudioReportArtifact` | CI/support 자동화를 위해 summary, snapshot, timing 데이터를 함께 보존한 `fluo inspect --report` artifact입니다. |
+| `StudioReportSummary` | report artifact에 포함되는 summary block입니다. |
+| `FilterState` | `applyFilters(...)`가 받는 filter configuration입니다. |
+| `PlatformReadinessStatus` | component filter에서 사용하는 readiness status union입니다. |
+| `PlatformDiagnosticSeverity` | filter와 issue에서 사용하는 diagnostic severity union입니다. |
 | `applyFilters(snapshot, filter)` | 원본 snapshot을 변경하지 않고 readiness/severity/query 필터를 적용합니다. |
 | `renderMermaid(snapshot)` | 내부 컴포넌트 dependency edge와 외부 dependency node를 포함해 로드된 플랫폼 그래프를 Mermaid 텍스트로 변환합니다. |
 
@@ -88,6 +94,8 @@ Studio는 주로 웹 애플리케이션이지만, 배포된 패키지는 도구/
 - `@fluojs/studio`: snapshot 파싱/필터링/렌더링 자동화용 루트 헬퍼 배럴
 - `@fluojs/studio/contracts`: 계약 헬퍼를 직접 가져오고 싶은 도구용 명시적 서브패스
 - `@fluojs/studio/viewer`: 브라우저 뷰어 번들의 `dist/index.html` 진입 파일
+
+`@fluojs/studio`와 `@fluojs/studio/contracts`는 동등한 helper barrel을 노출합니다.
 
 ## 관련 패키지
 

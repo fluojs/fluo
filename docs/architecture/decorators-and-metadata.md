@@ -2,20 +2,19 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./decorators-and-metadata.ko.md"><kbd>한국어</kbd></a></p>
 
-This document defines the current fluo decorator and metadata contract. fluo uses TC39 standard decorators and does not support the legacy TypeScript `experimentalDecorators` and `emitDecoratorMetadata` model as a default runtime contract.
+This document defines the current fluo decorator and metadata contract. fluo uses TC39 standard decorators, explicit dependency tokens, and framework-owned metadata records as its runtime contract.
 
-## Standard vs Legacy
+## Contract Baseline
 
-| Contract area | Standard decorators in fluo | Legacy decorators |
-| --- | --- | --- |
-| Language model | TC39 standard decorator semantics with decorator context objects. | TypeScript legacy proposal semantics. |
-| Compiler flags | `experimentalDecorators` and `emitDecoratorMetadata` are not part of the supported baseline. | Usually enabled through `experimentalDecorators` and `emitDecoratorMetadata`. |
-| DI wiring | Constructor dependencies are explicit through `@Inject(...)` or provider-level `inject`. | Constructor dependencies are often inferred from emitted design-time metadata. |
-| Metadata source | Metadata is written by framework helpers and standard `context.metadata` flows. | Metadata is commonly emitted by the compiler and read through reflection helpers. |
-| Reflection dependency | `reflect-metadata` is not required for fluo's decorator contract. | `reflect-metadata` is commonly required for framework behavior. |
-| Route metadata | `@Controller`, `@Get`, `@Post`, and related decorators write framework-owned controller and route records. | Route metadata is often attached through legacy decorator execution and reflection conventions. |
-| DTO and validation metadata | DTO binding and validation metadata are recorded through fluo-owned metadata helpers. | DTO metadata is often mixed with reflective design-type reads. |
-| Portability | The contract aligns with the standard decorator path and works without legacy decorator flags. | The contract depends on a non-standard compiler mode. |
+| Contract area | fluo runtime rule |
+| --- | --- |
+| Language model | Decorators use TC39 standard decorator semantics with decorator context objects. |
+| DI wiring | Constructor dependencies are explicit through `@Inject(...)` or provider-level `inject`. |
+| Metadata source | Metadata is written by framework helpers and standard `context.metadata` flows. |
+| Reflection dependency | `reflect-metadata` is not required for fluo's decorator contract. |
+| Route metadata | `@Controller`, `@Get`, `@Post`, and related decorators write framework-owned controller and route records. |
+| DTO and validation metadata | DTO binding and validation metadata are recorded through fluo-owned metadata helpers. |
+| Portability | The contract aligns with the standard decorator path and framework-owned metadata stores. |
 
 ## Decorator Model
 
@@ -45,18 +44,15 @@ This document defines the current fluo decorator and metadata contract. fluo use
 - DI resolution MUST use explicit inject tokens. Missing constructor token coverage fails module-graph validation with `ModuleInjectionMetadataError`.
 - Cross-module token visibility MUST follow module `imports`, `exports`, and global-module rules. Metadata presence alone does not make a token visible.
 
-## Migration Rules
+## Authoring Rules
 
-| Legacy pattern | Required migration rule |
+| Contract area | Required rule |
 | --- | --- |
-| `tsconfig.json` enables `experimentalDecorators` | Remove `experimentalDecorators` from the supported fluo configuration baseline. |
-| `tsconfig.json` enables `emitDecoratorMetadata` | Remove `emitDecoratorMetadata` from the supported fluo configuration baseline. |
-| DI depends on constructor type inference | Replace inferred constructor wiring with explicit `@Inject(...)` tokens or provider `inject` arrays. |
-| Runtime depends on `reflect-metadata` reads | Replace reflective reads with fluo metadata helpers and framework-owned metadata consumers. |
-| Route decorators use wildcard or mixed-segment syntax | Rewrite paths to the fluo route contract with literal segments or full `:param` segments. |
-| Subclasses inherit unwanted constructor token metadata | Add `@Inject()` to record an explicit empty override before declaring new tokens. |
+| Compiler baseline | fluo packages and examples use the standard decorator configuration required by the repo. |
+| DI dependencies | Constructor wiring uses explicit `@Inject(...)` tokens or provider `inject` arrays. |
+| Runtime metadata | Runtime consumers read fluo metadata helpers and framework-owned metadata stores. |
+| Route paths | Route paths use literal segments or full `:param` segments. |
+| Constructor inheritance | Subclasses that should not inherit constructor tokens use `@Inject()` to record an explicit empty override. |
 
-- Migration to fluo MUST treat legacy decorator flags as compatibility cleanup, not as a supported end state.
-- New fluo packages and examples MUST NOT require `experimentalDecorators` or `emitDecoratorMetadata`.
-- Migration work SHOULD verify constructor token coverage, module visibility, and route-path normalization after decorator changes.
-- NestJS-style reliance on implicit emitted metadata is not part of the fluo contract and must be removed during migration.
+- Package and example authors MUST keep constructor token coverage, module visibility, and route-path normalization verifiable through tests.
+- Public documentation MUST describe the explicit token and framework-owned metadata contract rather than implying type-reflection behavior.

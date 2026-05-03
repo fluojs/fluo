@@ -2,7 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-fluo 애플리케이션을 위한 Mongoose 라이프사이클 및 세션 기반 트랜잭션 컨텍스트 모듈입니다. Mongoose 연결을 모듈 시스템에 연결하여 자동 연결 관리 및 선택적 요청 범위 트랜잭션을 제공합니다.
+세션 인지형 트랜잭션 처리와 라이프사이클 친화적인 외부 연결 관리를 제공하는 fluo용 Mongoose 통합 패키지입니다.
 
 ## 목차
 
@@ -19,15 +19,14 @@ fluo 애플리케이션을 위한 Mongoose 라이프사이클 및 세션 기반 
 
 ```bash
 pnpm add @fluojs/mongoose
-# mongoose도 함께 설치되어 있어야 합니다.
 pnpm add mongoose
 ```
 
 ## 사용 시점
 
-- Mongoose를 MongoDB ODM으로 사용하면서 fluo의 의존성 주입 및 라이프사이클 훅과 통합하고 싶을 때.
-- 서비스 전반에서 MongoDB 세션과 트랜잭션을 중앙에서 관리하고 싶을 때.
-- 애플리케이션 종료 시 자동 연결 정리(dispose)가 필요할 때.
+- Mongoose를 나머지 애플리케이션과 같은 DI 및 라이프사이클 모델에 연결하고 싶을 때.
+- 모든 서비스에서 MongoDB 세션과 트랜잭션을 임시 배관 코드 없이 하나의 wrapper로 다루고 싶을 때.
+- 요청 범위 트랜잭션을 interceptor로 명시적으로 켜고 싶을 때.
 
 ## 빠른 시작
 
@@ -51,6 +50,8 @@ const connection = mongoose.createConnection('mongodb://localhost:27017/test');
 class AppModule {}
 ```
 
+`MongooseModule.forRootAsync(...)`는 주입된 의존성과 동기 또는 비동기로 옵션을 반환하는 `useFactory`를 지원합니다. 해석된 옵션은 모듈 인스턴스 안에서 재사용되므로 연결 설정과 dispose hook이 모든 provider에서 일관되게 유지됩니다.
+
 ## 라이프사이클과 종료
 
 `MongooseModule`은 `MongooseConnection`을 fluo 애플리케이션 라이프사이클에 등록합니다. 이 패키지는 원본 Mongoose 연결을 직접 생성하거나 소유하지 않습니다. 애플리케이션 종료 시 외부 연결을 닫아야 한다면 `dispose` 훅을 전달하세요.
@@ -61,7 +62,7 @@ class AppModule {}
 2. 해당 Mongoose 세션은 `abortTransaction()`과 `endSession()` 정리를 끝냅니다.
 3. 설정한 `dispose(connection)` 훅은 활성 요청 트랜잭션이 모두 settled된 뒤에만 실행됩니다.
 
-`createMongoosePlatformStatusSnapshot(...)`은 트래픽 처리 중에는 `ready`, 요청 트랜잭션 drain 중에는 `shutting-down`, dispose 훅 완료 뒤에는 `stopped`를 보고합니다. 수동 `transaction()`도 요청 범위 트랜잭션과 같은 명시적 세션 계약을 사용하므로, 트랜잭션에 참여해야 하는 Mongoose 모델 작업에는 repository 코드가 `conn.currentSession()`을 전달해야 합니다.
+`createMongoosePlatformStatusSnapshot(...)`은 트래픽 처리 중에는 `ready`, 요청 트랜잭션 drain 중에는 `shutting-down`, dispose 훅 완료 뒤에는 `stopped`를 보고합니다. 상태 details에는 `sessionStrategy`, `transactionContext: 'als'`, 리소스 소유권, strict/session 지원 진단이 포함됩니다. 수동 `transaction()`도 요청 범위 트랜잭션과 같은 명시적 세션 계약을 사용하므로, 트랜잭션에 참여해야 하는 Mongoose 모델 작업에는 repository 코드가 `conn.currentSession()`을 전달해야 합니다.
 
 ## 공통 패턴
 
@@ -84,7 +85,7 @@ export class UserRepository {
 
 ### 수동 트랜잭션과 세션
 
-`conn.transaction()`을 사용하여 세션을 관리합니다. Prisma와 달리 Mongoose는 각 작업에 세션을 명시적으로 전달해야 합니다.
+`conn.transaction()`으로 세션 경계를 만들고, Mongoose 모델 작업에는 세션을 명시적으로 전달합니다.
 
 ```typescript
 await this.conn.transaction(async () => {
@@ -96,9 +97,11 @@ await this.conn.transaction(async () => {
 });
 ```
 
-### 자동 요청 트랜잭션
+감싼 연결이 `startSession()`을 구현하지 않으면 트랜잭션은 기본적으로 직접 실행으로 fallback합니다. fallback 대신 예외를 던지려면 `strictTransactions: true`를 설정합니다. 이때 오류 메시지는 `Transaction not supported: Mongoose connection does not implement startSession.`입니다.
 
-컨트롤러나 메서드에 `MongooseTransactionInterceptor`를 적용하면 전체 요청을 자동으로 MongoDB 세션으로 감쌉니다.
+### 요청 범위 트랜잭션
+
+컨트롤러나 메서드에 `MongooseTransactionInterceptor`를 적용하면 전체 요청을 MongoDB 세션으로 감쌉니다.
 
 ```typescript
 import { UseInterceptors } from '@fluojs/http';
@@ -107,6 +110,8 @@ import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
 @UseInterceptors(MongooseTransactionInterceptor)
 class UserController {}
 ```
+
+HTTP interceptor 밖에서 같은 request-aware transaction boundary가 필요하다면 `MongooseConnection.requestTransaction(...)`을 직접 사용할 수 있습니다. 중첩된 service transaction은 활성 session boundary를 재사용합니다.
 
 ## 공개 API
 
@@ -122,6 +127,7 @@ class UserController {}
 - `MongooseModuleOptions<TConnection>`
 - `MongooseConnectionLike`
 - `MongooseSessionLike`
+- `MongooseHandleProvider`
 
 ## 관련 패키지
 
@@ -131,6 +137,6 @@ class UserController {}
 
 ## 예제 소스
 
-- `packages/mongoose/src/vertical-slice.test.ts`: 표준 DTO → 서비스 → 리포지토리 → Mongoose 흐름 예제.
-- `packages/mongoose/src/module.test.ts`: 모듈 등록과 수명 주기 계약 예제.
-- `packages/mongoose/src/public-api.test.ts`: 공개 export 검증 예제.
+- `packages/mongoose/src/vertical-slice.test.ts`
+- `packages/mongoose/src/module.test.ts`
+- `packages/mongoose/src/public-api.test.ts`

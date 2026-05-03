@@ -40,4 +40,4 @@ This document defines the current CQRS contract implemented by `@fluojs/cqrs` an
 - Event handling is in-process by default. `CqrsEventBusService` delegates the final publication step to `@fluojs/event-bus`, but the CQRS package itself does not provide a distributed broker contract.
 - Saga orchestration is guarded against unsafe re-entry. Re-entering the same saga route or exceeding the nested depth limit of `32` fails with `SagaTopologyError`.
 - Sagas that throw non-Fluo errors are wrapped as `SagaExecutionError`.
-- The CQRS package relies on TC39 standard decorators and explicit metadata storage. It does not depend on legacy decorator compiler modes.
+- The CQRS package relies on TC39 standard decorators and explicit metadata storage.

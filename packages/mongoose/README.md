@@ -48,6 +48,8 @@ const connection = mongoose.createConnection('mongodb://localhost:27017/test');
 class AppModule {}
 ```
 
+`MongooseModule.forRootAsync(...)` accepts injected dependencies and a `useFactory` that may return options synchronously or asynchronously. The resolved options are reused for the module instance, so connection setup and disposal hooks stay consistent across all providers.
+
 ## Lifecycle and Shutdown
 
 `MongooseModule` registers `MongooseConnection` with the fluo application lifecycle. The package does not create or own the raw Mongoose connection for you; pass a `dispose` hook when the application should close that external connection during shutdown.
@@ -58,7 +60,7 @@ Shutdown preserves request transaction cleanup order:
 2. Their Mongoose sessions finish `abortTransaction()` and `endSession()` cleanup.
 3. The configured `dispose(connection)` hook runs only after active request transactions have settled.
 
-`createMongoosePlatformStatusSnapshot(...)` reports `ready` while serving traffic, `shutting-down` while request transactions are draining, and `stopped` after the dispose hook completes. Manual `transaction()` calls still use the same explicit-session contract as request-scoped transactions: repository code must pass `conn.currentSession()` into Mongoose model operations that participate in the transaction.
+`createMongoosePlatformStatusSnapshot(...)` reports `ready` while serving traffic, `shutting-down` while request transactions are draining, and `stopped` after the dispose hook completes. The status details include `sessionStrategy`, `transactionContext: 'als'`, resource ownership, and strict/session support diagnostics. Manual `transaction()` calls still use the same explicit-session contract as request-scoped transactions: repository code must pass `conn.currentSession()` into Mongoose model operations that participate in the transaction.
 
 ## Common Patterns
 
@@ -88,6 +90,8 @@ await this.conn.transaction(async () => {
 });
 ```
 
+If the wrapped connection does not implement `startSession()`, transactions fall back to direct execution by default. Set `strictTransactions: true` to throw `Transaction not supported: Mongoose connection does not implement startSession.` instead of falling back.
+
 ### Request-scoped transactions
 
 ```ts
@@ -97,6 +101,8 @@ import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
 @UseInterceptors(MongooseTransactionInterceptor)
 class UserController {}
 ```
+
+Use `MongooseConnection.requestTransaction(...)` directly when you need the same request-aware transaction boundary outside an HTTP interceptor. Nested service transactions reuse the active session boundary.
 
 ## Public API
 
@@ -112,6 +118,7 @@ class UserController {}
 - `MongooseModuleOptions<TConnection>`
 - `MongooseConnectionLike`
 - `MongooseSessionLike`
+- `MongooseHandleProvider`
 
 ## Related Packages
 

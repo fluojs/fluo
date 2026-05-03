@@ -43,4 +43,4 @@ This document defines the current OpenAPI document-generation contract implement
 - OpenAPI generation is descriptor-driven. Controllers or handlers not represented in `sources` or `descriptors` are outside the generated document boundary.
 - The package documents the HTTP surface only. It does not generate contracts for non-HTTP transports.
 - Swagger UI is optional and runtime-served; the OpenAPI JSON document remains available even when UI support is disabled.
-- The package uses explicit metadata and DTO schema readers from fluo packages. It does not depend on legacy decorator compiler modes.
+- The package uses explicit metadata and DTO schema readers from fluo packages.

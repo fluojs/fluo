@@ -163,7 +163,10 @@ Behavioral contract notes:
 
 - `EmailService.send(...)` resolves `defaultFrom` and `defaultReplyTo` before delivery.
 - `EmailService.send(...)` preserves `accepted`, `pending`, and `rejected` recipients separately so partial provider failures stay caller-visible.
+- `EmailService.sendMany(...)` is fail-fast by default; pass `continueOnError: true` to collect failures in a batch result.
+- `EmailService.createPlatformStatusSnapshot()` exposes lifecycle, readiness, health, and transport ownership details for diagnostics.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
+- Module options are trimmed and normalized before provider wiring, including sender defaults, notification channel names, and transport factory ownership.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
 ### Integration with `@fluojs/notifications`
@@ -205,6 +208,7 @@ Supported notification payload fields:
 Behavioral contract notes:
 
 - `EmailChannel` treats any `pending` or `rejected` recipients as a failed notification dispatch instead of reporting the delivery as successful.
+- `EmailService.sendNotification(...)` merges rendered template output with payload and notification metadata; payload fields override notification fallbacks.
 
 ### Queue-backed bulk delivery
 
@@ -280,6 +284,9 @@ These limitations are part of the package contract so transport selection, templ
 
 - `EmailModule.forRoot(options)` / `EmailModule.forRootAsync(options)`
 - `EmailService`
+- `EmailService.sendMany(messages, options)`
+- `EmailService.sendNotification(notification, options)`
+- `EmailService.createPlatformStatusSnapshot()`
 - `EmailChannel`
 - `EMAIL`
 - `EMAIL_CHANNEL`
@@ -293,7 +300,7 @@ These limitations are part of the package contract so transport selection, templ
 
 ### Integration subpaths
 
-- `@fluojs/email/queue`: `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`
+- `@fluojs/email/queue`: `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`, `EmailQueueWorkerOptions`
 
 ### Status and errors
 
@@ -306,16 +313,19 @@ These limitations are part of the package contract so transport selection, templ
 - `createNodemailerEmailTransport(...)`
 - `createNodemailerEmailTransportFactory(...)`
 - `NodemailerEmailTransport`
+- `NodemailerTransporter`
+- `NodemailerEmailTransportOptions`
+- `NodemailerEmailTransportFactoryOptions`
 
 ## Runtime-Specific and Integration Subpaths
 
 | Runtime | Subpath | Exports |
 | --- | --- | --- |
-| Node.js | `@fluojs/email/node` | `createNodemailerEmailTransport(...)`, `createNodemailerEmailTransportFactory(...)`, `NodemailerEmailTransport` |
+| Node.js | `@fluojs/email/node` | `createNodemailerEmailTransport(...)`, `createNodemailerEmailTransportFactory(...)`, `NodemailerEmailTransport`, `NodemailerTransporter`, `NodemailerEmailTransportOptions`, `NodemailerEmailTransportFactoryOptions` |
 
 | Concern | Subpath | Exports |
 | --- | --- | --- |
-| Queue-backed notifications integration | `@fluojs/email/queue` | `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS` |
+| Queue-backed notifications integration | `@fluojs/email/queue` | `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`, `EmailQueueWorkerOptions` |
 
 ## Related Packages
 

@@ -52,6 +52,8 @@ const module = await createTestingModule({ rootModule: AppModule })
 const service = await module.resolve(UserService);
 ```
 
+`module.get(token)`은 동기 lookup에, `module.resolve(token)`은 비동기 resolution에, `module.resolveAll(token)`은 multi-provider 토큰의 모든 provider를 가져올 때 사용합니다.
+
 ## 주요 패턴
 
 ### 오버라이드를 이용한 유닛 테스트
@@ -64,6 +66,8 @@ const module = await createTestingModule({ rootModule: AppModule })
   ])
   .compile();
 ```
+
+Testing builder는 route-pipeline 테스트에서 cross-cutting behavior를 교체할 수 있도록 `overrideGuard(...)`, `overrideInterceptor(...)`, `overrideFilter(...)`도 지원합니다.
 
 ### `overrideModule()` 사용 시 모듈 identity 보존
 
@@ -103,6 +107,8 @@ const repo = createMock<UserRepository>({ findById: vi.fn() });
 const mailer = createDeepMock(MailService);
 ```
 
+`asMock(value)`는 기존 값을 mock-friendly 타입으로 좁히고, `mockToken(token, value)`는 token 기반 dependency를 위한 provider override tuple을 만듭니다. `createMock(..., { strict: true })`는 지정하지 않은 member 접근을 거부합니다.
+
 배포된 런타임 import가 안정적으로 해석되도록, mock 헬퍼를 사용할 워크스페이스에는 `vitest`를 함께 설치해야 합니다.
 
 ### 적합성 및 이식성 하니스
@@ -112,6 +118,7 @@ const mailer = createDeepMock(MailService);
 ## 공개 API
 
 - **루트 패키지**: `createTestingModule(...)`, `createTestApp(...)`, 모듈 introspection 헬퍼, 공용 테스트 타입
+- **서브패스**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock`, `@fluojs/testing/types`, `@fluojs/testing/vitest`
 - **Mock 서브패스**: `@fluojs/testing/mock`
 - **HTTP 헬퍼**: `@fluojs/testing/http`
 - **하니스 서브패스**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`

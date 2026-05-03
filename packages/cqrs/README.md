@@ -106,7 +106,7 @@ class UserSaga implements ISaga<UserCreatedEvent> {
 }
 ```
 
-Saga execution now fails fast with `SagaTopologyError` when an in-process publish chain re-enters the same saga route cyclically or exceeds 32 nested saga hops. Multi-stage sagas may still react to different event types in sequence, but in-process saga graphs must stay acyclic overall; move intentionally cyclic or long-running feedback loops behind an external transport, scheduler, or other bounded boundary.
+Saga execution fails fast with `SagaTopologyError` when an in-process publish chain re-enters the same saga route cyclically or exceeds 32 nested saga hops. Multi-stage sagas may still react to different event types in sequence, but in-process saga graphs must stay acyclic overall; move intentionally cyclic or long-running feedback loops behind an external transport, scheduler, or other bounded boundary.
 
 ### Event Publishing Contracts
 
@@ -115,6 +115,8 @@ Saga execution now fails fast with `SagaTopologyError` when an in-process publis
 Each CQRS event handler and saga receives an isolated event copy with the matched event prototype restored. Mutating that copy is local to the current handler or saga route; those mutations are not visible to other CQRS handlers, sagas, the original event object, or delegated `@fluojs/event-bus` subscribers. The delegated event-bus publication receives the original event after CQRS side effects complete, so `@OnEvent(...)` projections and transports observe the caller-owned payload rather than a CQRS handler's mutated copy.
 
 Event classes should keep their payload state cloneable and enumerable. String-keyed and symbol-keyed enumerable payload fields are preserved by the shared core clone fallback, while intentionally non-cloneable resources such as open sockets, functions, or process-local handles should be represented by IDs or other serializable boundaries before publishing.
+
+CQRS handlers, event handlers, and sagas are discovered only on singleton providers. Non-singleton registrations are skipped with warnings.
 
 ### Symbol Tokens
 
@@ -134,6 +136,7 @@ class TokenInjectedService {
 
 ### Modules & Providers
 - `CqrsModule.forRoot(options)`: Main entry point. Registers buses and starts discovery.
+- Module options can provide explicit `commandHandlers`, `queryHandlers`, `eventHandlers`, `sagas`, and delegated `eventBus` options.
 - `CommandBusLifecycleService`: Primary service for executing commands.
 - `QueryBusLifecycleService`: Primary service for executing queries.
 - `CqrsEventBusService`: Primary service for publishing events.
@@ -149,7 +152,14 @@ class TokenInjectedService {
 - `ICommandHandler<C, R>`, `IQueryHandler<Q, R>`, `IEventHandler<E>`, `ISaga<E>`: Handler contracts.
 
 ### Errors
+- `CommandHandlerNotFoundException`, `QueryHandlerNotFoundException`: Raised when a bus has no matching handler.
+- `DuplicateCommandHandlerError`, `DuplicateQueryHandlerError`, `DuplicateEventHandlerError`: Raised for duplicate handler registrations.
+- `SagaExecutionError`: Wraps unexpected non-Fluo saga failures.
 - `SagaTopologyError`: Raised when saga orchestration detects a self-triggering, cyclic, or over-deep in-process saga graph.
+
+### Status and metadata
+- `createCqrsPlatformStatusSnapshot(...)`: Creates CQRS status snapshots for diagnostics and health surfaces.
+- Metadata helpers and symbols are exported for framework packages that need to inspect command, query, event, or saga registrations.
 
 ## Related Packages
 
@@ -160,3 +170,5 @@ class TokenInjectedService {
 
 - `packages/cqrs/src/module.test.ts`: Module registration and basic bus usage.
 - `packages/cqrs/src/public-api.test.ts`: Root-barrel public API contract coverage.
+- `packages/cqrs/src/status.test.ts`: CQRS status snapshot behavior.
+- `packages/cqrs/src/event-clone.test.ts`: Event clone fallback behavior.

@@ -33,7 +33,7 @@
 - **`@fluojs/core`**: 메타데이터 헬퍼 및 TC39 표준 데코레이터 지원.
 - **`@fluojs/di`**: 프로바이더 해결, 라이프사이클 스코프, 의존성 그래프 분석.
 - **`@fluojs/config`**: 환경 인식 설정 로딩 및 타입 안전 접근.
-- **`@fluojs/runtime`**: 애플리케이션 부트스트랩, 모듈 오케스트레이션, 플랫폼 셸 등록, 플랫폼 snapshot 생산.
+- **`@fluojs/runtime`**: 애플리케이션 부트스트랩, 모듈 오케스트레이션, 플랫폼 셸 등록, 플랫폼 snapshot 생산. 공개 런타임 헬퍼는 `@fluojs/runtime/node`와 `@fluojs/runtime/web`에서 제공됩니다.
 
 ### adapters
 - **`platform-*`**: `PlatformAdapter` 인터페이스를 구현합니다. 추상 HTTP 호출을 런타임별 리스너에 연결합니다.
@@ -46,11 +46,11 @@
 - **`@fluojs/passport`**: 전략 비종속 인증 가드, scope 처리, Passport.js 브리지.
 - **`@fluojs/microservices`**: TCP, Redis, NATS, Kafka, RabbitMQ, MQTT, gRPC를 위한 패턴 매칭 전송 추상화.
 - **`@fluojs/notifications`**: provider별 알림 패키지가 공유하는 채널 계약과 오케스트레이션 계층.
-- **`@fluojs/email`**: 전송 중립(transport-agnostic) 이메일 발송 코어. 알림 채널 및 큐 워커 통합을 제공합니다.
+- **`@fluojs/email`**: 전송 중립(transport-agnostic) 이메일 발송 코어. `@fluojs/email/queue`를 통해 알림 채널 및 큐 워커 통합을 제공합니다.
 - **`@fluojs/email/node`**: Nodemailer/SMTP 전송을 제공하는 `@fluojs/email`의 Node.js 전용 서브패스.
 - **`@fluojs/slack`**: standalone으로도 동작하고 공식 알림 채널로도 등록할 수 있는 webhook-first Slack 전달 코어.
 - **`@fluojs/discord`**: standalone으로도 동작하고 공식 알림 채널로도 등록할 수 있는 webhook-first Discord 전달 코어.
-- **`@fluojs/websockets`**: 전송 중립 WebSocket 게이트웨이 작성.
+- **`@fluojs/websockets`**: 런타임별 서브패스 `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`를 제공하는 WebSocket 게이트웨이 작성 패키지.
 - **`@fluojs/validation`**: 표준 데코레이터 기반 입력 검증, DTO 실체화(materialization), request-boundary 안전성.
 - **`@fluojs/prisma` / `@fluojs/drizzle`**: ORM 라이프사이클 및 ALS 기반 트랜잭션 컨텍스트.
 

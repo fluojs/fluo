@@ -67,7 +67,7 @@ export default {
 ## Common Patterns
 
 ### Working with WebSocketPairs
-The adapter supports Cloudflare's native `WebSocketPair` for real-time communication via the `@fluojs/websockets/cloudflare-workers` binding.
+The adapter supports Cloudflare's native `WebSocketPair` for real-time communication via the `@fluojs/websockets/cloudflare-workers` binding. Upgrade handling is opt-in through that binding, and `createWebSocketPair` can be injected for non-hosted runtime tests.
 
 ```typescript
 @WebSocketGateway({ path: '/ws' })
@@ -84,12 +84,21 @@ const adapter = createCloudflareWorkerAdapter({
 });
 ```
 
+### Behavior Notes
+
+- `fetch()` registers active work with `executionContext.waitUntil(...)`.
+- `close()` returns JSON `503` responses for new requests during shutdown and times out after 10 seconds if active requests never settle.
+- Multipart requests do not preserve `rawBody`.
+- The Worker `env` object is passed through the fetch entrypoint boundary; package-level config resolution remains application-owned.
+
 ## Public API Overview
 
 - `createCloudflareWorkerAdapter(options)`: Factory for the Worker HTTP adapter.
 - `createCloudflareWorkerEntrypoint(module, options)`: Creates a lazy-bootstrapping Worker entrypoint.
 - `bootstrapCloudflareWorkerApplication(module, options)`: Async bootstrap helper for Workers.
 - `CloudflareWorkerHttpApplicationAdapter`: The core adapter implementation.
+- `CloudflareWorkerEntrypoint`: Lazy entrypoint with `fetch`, `ready()`, and `close()` lifecycle methods.
+- Options and types: `CloudflareWorkerAdapterOptions`, `BootstrapCloudflareWorkerApplicationOptions`, `CloudflareWorkerExecutionContext`, `CloudflareWorkerWebSocketBinding`, and Worker websocket pair/upgrade types.
 
 ## Related Packages
 

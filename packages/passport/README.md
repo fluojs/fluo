@@ -114,7 +114,7 @@ Import `CookieAuthModule.forRoot(...)` alongside `PassportModule.forRoot(...)` w
 
 `CookieAuthStrategy` preserves the normalized JWT principal contract from `@fluojs/jwt`, including `subject`, `claims`, `issuer`, `audience`, `roles`, and `scopes`.
 
-Protected routes must keep using `@UseAuth(...)`. If you configure `requireAccessToken: false`, a missing cookie now resolves to an explicit unauthenticated result instead of an anonymous principal, so protected routes still reject the request.
+Protected routes must keep using `@UseAuth(...)`. If you configure `requireAccessToken: false`, a missing cookie resolves to an explicit unauthenticated result instead of an anonymous principal, so protected routes still reject the request.
 
 Use `@UseOptionalAuth(...)` only on routes that intentionally support both signed-in and guest callers:
 
@@ -134,7 +134,7 @@ export class SessionController {
 
 ### Refresh Token Lifecycle
 
-The package provides a built-in `RefreshTokenStrategy` and `RefreshTokenService` to handle secure token rotation and revocation.
+The package provides a built-in `RefreshTokenStrategy` plus the `RefreshTokenModule` and `RefreshTokenService` contract for secure token rotation and revocation.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -171,6 +171,14 @@ export class AuthController {
 
 Import `RefreshTokenModule.forRoot(...)` alongside `PassportModule.forRoot(...)` so the refresh-token strategy and shared `REFRESH_TOKEN_SERVICE` alias are available in the same module wiring.
 
+`RefreshTokenStrategy` reads tokens from `body.refreshToken`, `Authorization: Bearer ...`, or `x-refresh-token`; malformed non-string tokens fail authentication. `JwtRefreshTokenAdapter` requires a `secret` and a backing store; `store: 'memory'` is for development and single-instance deployments only.
+
+### Account Linking and Status
+
+Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` to model identity-link decisions. The default conservative policy links explicit existing links or user-confirmed matches, and otherwise creates, skips, rejects, or reports conflicts deterministically.
+
+`createPassportPlatformStatusSnapshot(...)` and `createPassportPlatformDiagnosticIssues(...)` expose readiness/health diagnostics for registered strategies, default strategy configuration, presets, and refresh-token store readiness.
+
 ## Public API Overview
 
 ### Decorators
@@ -185,10 +193,16 @@ Import `RefreshTokenModule.forRoot(...)` alongside `PassportModule.forRoot(...)`
 - `CookieManager`: Utility for managing HttpOnly auth cookies.
 - `RefreshTokenModule`: Module entry point for the built-in refresh-token preset.
 - `JwtRefreshTokenAdapter`: Bridges `@fluojs/jwt` refresh logic to the passport interface.
+- `createPassportJsStrategyBridge(...)`: Adapts Passport.js strategies to fluo `AuthStrategy`.
+- Cookie helpers: `createCookieAuthPreset`, `createCookieAuthStrategyRegistration`, `createCookieManager`, `normalizeCookieAuthOptions`.
+- Refresh helpers: `createRefreshTokenStrategyRegistration`.
+- Status/diagnostics helpers: `createPassportPlatformStatusSnapshot`, `createPassportPlatformDiagnosticIssues`.
 
 ### Interfaces
 - `AuthStrategy`: The contract for implementing custom authentication logic.
 - `AccountLinkPolicy`: Extension point for identity-linking decisions.
+
+`UseOptionalAuth` only bypasses missing credentials when no scopes are required; scoped routes still need a principal. Passport.js bridge `redirect()` commits the response and skips the protected handler, while `pass()` and strategy completion without a Passport action are authentication failures.
 
 ## Related Packages
 

@@ -70,9 +70,11 @@ cd my-app
 pnpm dev
 ```
 
+`fluo create` is an alias for `fluo new`. Use `fluo version`, `fluo help <command>`, `fluo doctor`/`fluo info`/`fluo analyze`, `fluo add`, and `fluo upgrade` for version checks, command help, diagnostics, first-party package shortcuts, and upgrade guidance.
+
 Generated `dev`, `build`, and `start` package scripts delegate to `fluo dev`, `fluo build`, and `fluo start`. The CLI owns the runtime-specific lifecycle command, prepends the project-local `node_modules/.bin` when invoking local toolchain binaries, and defaults `NODE_ENV` to `development` for `dev` and `production` for `build`/`start` when the caller has not set it explicitly. `fluo dev` uses a TTY-aware lifecycle reporter: interactive terminals get concise fluo-branded status while CI, non-TTY output, `--reporter stream`, `--verbose`, and `FLUO_VERBOSE=1` keep raw child-process passthrough available for debugging and automation. Cloudflare Workers `start` opens a remote Wrangler preview instead of deploying; use an explicit deploy command when you intend to publish to Cloudflare.
 
-For Node.js projects, `fluo dev` now runs through a fluo-owned restart boundary instead of delegating directly to `node --watch`. The runner watches source and common config inputs, debounces atomic-save bursts, hashes file content before restarting, loads `.env` for each app child process it spawns, and ignores noisy output/cache paths such as `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache folders, and editor swap files. Pressing Ctrl+S without changing file content should not restart the app. On terminal app child exit or crash outside a planned restart, the runner closes watchers, clears the pending restart timer and paths, unregisters its `SIGINT`/`SIGTERM` handlers, and exits with the child terminal code. This remains full-process restart-on-watch, not true module-level HMR; config watch reloads are a separate in-process config concern, and future HMR work must document which modules can be safely hot-swapped. Use `fluo dev --raw-watch` or `FLUO_DEV_RAW_WATCH=1` to restore the runtime-native Node watcher for debugging, and use `FLUO_DEV_WATCH_IGNORE=path,pattern` to add extra ignored paths.
+For Node.js projects, `fluo dev` runs through a fluo-owned restart boundary. The runner watches source and common config inputs, debounces atomic-save bursts, hashes file content before restarting, loads `.env` for each app child process it spawns, and ignores noisy output/cache paths such as `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache folders, and editor swap files. Pressing Ctrl+S without changing file content should not restart the app. On terminal app child exit or crash outside a planned restart, the runner closes watchers, clears the pending restart timer and paths, unregisters its `SIGINT`/`SIGTERM` handlers, and exits with the child terminal code. This is full-process restart-on-watch, not module-level HMR; config watch reloads are a separate in-process config concern, and future HMR work must document which modules can be safely hot-swapped. Use `fluo dev --raw-watch` or `FLUO_DEV_RAW_WATCH=1` when you need the runtime-native Node watcher for debugging, and use `FLUO_DEV_WATCH_IGNORE=path,pattern` to add extra ignored paths.
 
 `fluo new` supports Node.js + Fastify, Express, and raw Node.js HTTP application starters on the same Node-oriented install/build flow:
 
@@ -102,7 +104,7 @@ fluo new my-mqtt-service --shape microservice --transport mqtt --runtime node --
 fluo new my-grpc-service --shape microservice --transport grpc --runtime node --platform none
 ```
 
-Supported `--shape microservice --transport` starter values are exactly `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, and `grpc`. Earlier docs mentioned `redis`, but that value is no longer part of the shipped starter contract; use `redis-streams` for the maintained Redis-backed starter, or add `@fluojs/redis` manually after scaffolding when you need broader Redis integration patterns.
+Supported `--shape microservice --transport` starter values are exactly `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, and `grpc`. Use `redis-streams` for the maintained Redis-backed starter, or add `@fluojs/redis` manually after scaffolding when you need broader Redis integration patterns.
 
 The NATS/Kafka/RabbitMQ starter contracts stay explicit about external brokers and caller-owned client libraries. Generated projects wire `nats` + `JSONCodec()`, `kafkajs` producer/consumer collaborators, and `amqplib` publisher/consumer collaborators directly in `src/app.ts` so the starter contract is runnable without pretending the base fluo packages hide those dependencies.
 
@@ -127,7 +129,7 @@ Plan preview mode resolves the same project name, shape, runtime, platform, tran
 For a docs-level table that separates the shipped starter matrix (Node.js Fastify/Express/raw Node.js HTTP, Bun, Deno, Cloudflare Workers, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservices, plus mixed) from the remaining broader adapter ecosystem, see the [fluo new support matrix](../../docs/reference/fluo-new-support-matrix.md). Package-level integrations such as `@fluojs/redis` remain part of the broader ecosystem, but they are not extra `fluo new --transport` starter flags.
 
 ### 2. Generate a feature
-Add a new resource with a controller and service, automatically wired into the module.
+Generate a feature slice; some schematics auto-register in the module, while others are files-only and must be wired manually.
 
 ```bash
 fluo generate module users
@@ -137,6 +139,10 @@ fluo generate service users
 fluo generate request-dto users CreateUser
 fluo generate service users --dry-run
 ```
+
+Supported generator kinds and aliases are `controller`/`co`, `guard`/`gu`, `interceptor`/`in`, `middleware`/`mi`, `module`/`mo`, `repo`/`repository`, `request-dto`/`req`, `resource`/`resrc`, `response-dto`/`res`, and `service`/`s`.
+
+Auto-registered generators are `controller`, `service`, `repo`, `guard`, `interceptor`, and `middleware`. Files-only generators are `module`, `request-dto`, `response-dto`, and `resource`.
 
 `fluo generate resource <name>` creates a complete feature slice with a module, controller, service, repository, request DTO, response DTO, and tests. It does not wire the resource module into a parent module automatically; import the generated module when you are ready to activate the slice.
 
@@ -202,13 +208,18 @@ fluo migrate ./src --json
 # Apply transformations
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
+fluo migrate ./src --only imports,inject-params
+fluo migrate ./src --skip tests
 ```
 
 Use `--json` when CI jobs, dashboards, or migration reports need a stable machine-readable result. Human output remains the default. JSON mode writes only the structured report to stdout on success, while parser errors and invalid flag combinations still write their message to stderr and return exit code `1` without partial JSON output. The report includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabled `transforms`, `scannedFiles`, `changedFiles`, aggregate `warningCount`, and per-file metadata with `filePath`, `changed`, `appliedTransforms`, `warningCount`, and warnings including category labels and source line numbers.
 
 **Key Transformations:**
 - Rewrites imports from `@nestjs/common` to `@fluojs/core` or `@fluojs/http`.
+- Rewrites bootstrap patterns and folds supported `listen(port)` calls into fluo runtime startup conventions.
+- Migrates constructor parameter `@Inject(...)` usage into fluo-compatible dependency declarations.
 - Removes `@Injectable()` and maps scopes to `@Scope()`.
+- Migrates test templates toward `@fluojs/testing` helpers where the codemod can do so safely.
 - Updates `tsconfig.json` to disable `experimentalDecorators` and rewrites `baseUrl`-backed path aliases to TS6-safe `paths` entries.
 
 ### Runtime Inspection
@@ -229,9 +240,12 @@ fluo inspect ./src/app.module.ts --json --timing
 
 # Emit a support triage report with summary, snapshot, diagnostics, and timing
 fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
+
+# Inspect a named module export; defaults to AppModule
+fluo inspect ./src/app.module.ts --export AdminModule --json
 ```
 
-The runtime produces the inspection snapshot. `fluo inspect` serializes that snapshot as JSON, and `fluo inspect --mermaid` delegates snapshot-to-Mermaid rendering to the optional `@fluojs/studio` contract. `--timing` records bootstrap timing diagnostics for JSON output, and `--report` wraps the runtime-produced snapshot with a stable summary for CI/support triage. `--output <path>` writes the selected inspect payload to an explicit artifact path instead of stdout; it does not make the inspected application writable or change module graph state beyond the normal bootstrap/close cycle. Install Studio in the project that runs the command when you need Mermaid output:
+The runtime produces the inspection snapshot. `fluo inspect` serializes that snapshot as JSON by default when no output mode flag is provided, and `fluo inspect --mermaid` delegates snapshot-to-Mermaid rendering to the optional `@fluojs/studio` contract. `--export <name>` selects the module export to bootstrap and defaults to `AppModule`; `--timing` records bootstrap timing diagnostics for JSON output, and `--report` wraps the runtime-produced snapshot with a stable summary for CI/support triage. `--timing` cannot be combined with Mermaid output. `--output <path>` writes the selected inspect payload to an explicit artifact path instead of stdout; it does not make the inspected application writable or change module graph state beyond the normal bootstrap/close cycle. Install Studio in the project that runs the command when you need Mermaid output:
 
 ```bash
 pnpm add -D @fluojs/studio
@@ -246,9 +260,13 @@ The package can be used programmatically to trigger CLI actions from within othe
 | Export | Description |
 |---|---|
 | `runCli(argv?, options?)` | Main entry point to execute any CLI command. |
+| `newUsage()` | Returns the current `fluo new` usage text for help surfaces and tests. |
 | `runNewCommand(argv, options?)` | Programmatic access to the project scaffolding logic. |
 | `CliPromptCancelledError` | Stable sentinel that caller-supplied prompt hooks can throw to report normal cancellation. |
+| `GenerateOptions` | Type for programmatic generator options. |
+| `GeneratedFile` | Type describing generated file paths, content, and write status. |
 | `GeneratorKind` | Union type of all supported generator types (e.g., `'controller'`, `'service'`). |
+| `ModuleRegistration` | Type describing module wiring results from generator runs. |
 
 Programmatic entry points preserve caller process ownership. `runCli(...)` and `runNewCommand(...)` return numeric exit codes instead of calling `process.exit(...)`; prompt cancellation resolves as exit code `0` through the command runner, and setup actions such as dependency installation or git initialization only run when the resolved `fluo new` options request them. Caller-supplied prompt hooks can throw `CliPromptCancelledError` from the public package entrypoint to express normal cancellation without depending on CLI-internal files.
 
@@ -263,5 +281,12 @@ Programmatic entry points preserve caller process ownership. `runCli(...)` and `
 
 - [cli.ts](./src/cli.ts) - Command dispatcher and argument parsing.
 - [commands/new.ts](./src/commands/new.ts) - Project scaffolding implementation.
+- [commands/inspect.ts](./src/commands/inspect.ts) - Runtime inspection export modes and Studio delegation.
+- [commands/migrate.ts](./src/commands/migrate.ts) - Decorator codemods, JSON reporting, and transform filters.
+- [commands/package-workflow.ts](./src/commands/package-workflow.ts) - `fluo add` and `fluo upgrade` workflows.
+- [commands/scripts.ts](./src/commands/scripts.ts) - `dev`, `build`, and `start` lifecycle command boundaries.
+- [update-check.ts](./src/update-check.ts) - Interactive latest-version update checks and opt-out handling.
+- [new/](./src/new/) - Starter matrix resolution, prompts, and scaffold execution.
+- [dev-runner/](./src/dev-runner/) - Node restart-on-watch process boundary.
 - [generators/](./src/generators/) - Template-based file generation logic.
 - [transforms/](./src/transforms/) - Code transformation implementations.

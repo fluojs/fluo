@@ -29,7 +29,7 @@ pnpm add @fluojs/openapi
 
 ## 빠른 시작
 
-`OpenApiModule`을 등록하고 `sources`(또는 미리 만든 `descriptors`)를 전달해 문서에 포함할 HTTP 핸들러를 명시합니다.
+`OpenApiModule`을 등록하고 `sources`, 미리 만든 `descriptors`, 또는 둘 다를 전달해 문서에 포함할 HTTP 핸들러를 명시합니다. 두 입력을 모두 제공하면 병합됩니다.
 
 ```typescript
 import { Controller, Get } from '@fluojs/http';
@@ -67,7 +67,7 @@ await app.listen(3000);
 // Swagger UI: http://localhost:3000/docs
 ```
 
-컨트롤러 탐색을 직접 건너뛰고 싶다면 `descriptors: createHandlerMapping([...]).descriptors`를 대신 전달할 수 있습니다. `OpenApiModule`은 `@Module({ controllers: [...] })`만으로 핸들러를 자동 추론하지 않습니다.
+컨트롤러 탐색을 직접 건너뛰고 싶다면 `@fluojs/http`의 `createHandlerMapping(...)`으로 handler descriptor를 만들고 `descriptors`로 전달하세요. `OpenApiModule`은 `@Module({ controllers: [...] })`만으로 핸들러를 자동 추론하지 않습니다.
 
 ## 핵심 기능
 
@@ -94,6 +94,9 @@ HTTP 핸들러가 `@fluojs/http`의 `@Produces(...)`를 선언하면, 생성된 
 ### 모듈 옵션 결정성
 `OpenApiModule.forRoot(...)`는 등록 시점에 옵션을 스냅샷하고 freeze합니다. 등록 후 원본 options 객체, `sources`, `descriptors`, `securitySchemes`, `extraModels`, `swaggerUiAssets`를 변경해도 제공되는 OpenAPI 문서나 `/docs` HTML은 바뀌지 않습니다. `OpenApiModule.forRootAsync(...)`도 async factory가 resolve된 뒤 같은 스냅샷을 적용하며, factory 실패는 bootstrap 중 전파됩니다.
 
+### Async 등록과 옵션
+title/version/source 설정이 DI나 async setup에서 나오는 경우 `OpenApiModule.forRootAsync(...)`를 사용합니다. Module option에는 `sources`, `descriptors`, `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, `documentTransform`, `ui`, `swaggerUiAssets`가 포함됩니다. `defaultErrorResponsesPolicy`는 기본적으로 표준 error response와 `ErrorResponse` schema를 주입하며, `documentTransform`은 문서 생성 뒤 제공되기 전에 실행됩니다.
+
 ## 공개 API
 
 - `OpenApiModule`: OpenAPI 통합을 위한 메인 엔트리 포인트.
@@ -104,6 +107,8 @@ HTTP 핸들러가 `@fluojs/http`의 `@Produces(...)`를 선언하면, 생성된 
 - `buildOpenApiDocument`: 프로그래밍 방식의 문서 빌더 (저수준).
 - `OpenApiHandlerRegistry`: 고급 통합에서 문서 생성 전에 handler descriptor를 스냅샷하는 mutable descriptor registry.
 - `getControllerTags`, `getMethodApiMetadata`: 고급 테스트와 통합 tooling을 위한 metadata reader.
+- `OpenApiModuleOptions`, `OpenApiSwaggerUiAssetsOptions`, `BuildOpenApiDocumentOptions`, `DefaultErrorResponsesPolicy`: module과 builder integration을 위한 option type.
+- `OpenApiDocument`, `OpenApiSecuritySchemeObject` 및 관련 OpenAPI shape type: 테스트, tooling, integration을 위한 typed document surface.
 - `OpenApiSchemaObject`: 명시적 `@ApiBody(...)` 및 `@ApiResponse(...)` 스키마를 위한 타입화된 스키마 표면입니다. OpenAPI 3.1 조합(`allOf`, `oneOf`, `anyOf`), 객체/배열 제약, examples/defaults, 읽기/쓰기/Deprecated 주석을 포함합니다.
 
 ## 관련 패키지
@@ -115,4 +120,4 @@ HTTP 핸들러가 `@fluojs/http`의 `@Produces(...)`를 선언하면, 생성된 
 ## 예제 소스
 
 - `packages/openapi/src/openapi-module.test.ts`: 통합 테스트 및 사용 예제.
-- `examples/openapi-swagger`: 전체 OpenAPI 애플리케이션 예제.
+- `packages/openapi/src/schema-builder.test.ts`: 문서 builder와 schema generation 예제.

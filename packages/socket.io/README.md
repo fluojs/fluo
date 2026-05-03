@@ -105,7 +105,15 @@ SocketIoModule.forRoot({
 });
 ```
 
-When `cors` is omitted, `@fluojs/socket.io` now defaults to `origin: false` so cross-origin exposure stays opt-in. When `engine.maxHttpBufferSize` is omitted, the adapter applies a bounded 1 MiB Engine.IO payload limit.
+When `cors` is omitted, `@fluojs/socket.io` defaults to `{ credentials: false, origin: false }` so cross-origin exposure stays opt-in. When `engine.maxHttpBufferSize` is omitted, the adapter applies a bounded 1 MiB Engine.IO payload limit. Defaults also include `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, and `shutdown.timeoutMs: 5000`.
+
+### Guard contracts
+
+`auth.connection` receives `SocketIoConnectionGuardContext` before namespace connect handlers run. `auth.message` receives `SocketIoMessageGuardContext` before message handlers run. Guards can return `true`, `false`, or a `SocketIoGuardRejection` with `message`, optional `data`, and optional `disconnect`; message rejections use ACK payloads shaped as `{ error, data }`.
+
+### Bun-specific notes
+
+The Bun path supports Socket.IO through `@socket.io/bun-engine`, but it requires static CORS shapes: no CORS delegate functions and no boolean entries inside `cors.origin` arrays. `@WebSocketGateway({ serverBacked })` is not supported on Bun.
 
 ### Module registration
 Register Socket.IO with `SocketIoModule.forRoot(...)`.
@@ -120,6 +128,9 @@ Register Socket.IO through module imports in the owning module so namespace/mess
 - `SOCKETIO_ROOM_SERVICE`: Token to inject the `SocketIoRoomService`.
 - `SocketIoRoomService`: Shared room contract plus Socket.IO namespace-aware `joinRoom`, `leaveRoom`, `broadcastToRoom`, and `getRooms` helpers.
 - `SocketIoLifecycleService`: Lifecycle-backed implementation behind the server and room-service tokens; application code should usually inject `SOCKETIO_SERVER` or `SOCKETIO_ROOM_SERVICE` instead.
+- Types: `SocketIoModuleOptions`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
+
+`SocketIoModuleOptions` covers `auth`, `buffer`, `cors`, `engine`, `shutdown`, and `transports`. A supported server-backed runtime adapter is required; unsupported/noop adapters fail fast during bootstrap.
 
 ## Supported Platforms
 

@@ -90,6 +90,10 @@ await this.db.transaction(async () => {
 });
 ```
 
+중첩 호출은 활성 transaction boundary를 재사용합니다. 이미 boundary가 활성화되어 있는데 중첩 호출이 transaction option을 전달하면, 기존 transaction을 조용히 바꾸지 않고 해당 중첩 option을 거부합니다.
+
+`database.transaction(...)`을 사용할 수 없고 `strictTransactions`가 `false`이면 `transaction()`과 `requestTransaction()`은 직접 실행으로 fallback합니다. 요청 범위 호출은 이 경우에도 `AbortSignal`을 존중합니다.
+
 ### 인터셉터 기반 요청 단위 트랜잭션
 
 ```ts
@@ -109,6 +113,7 @@ class UsersController {}
 - Drizzle이 종료 중이거나 중지된 상태이면, 또는 `strictTransactions`가 켜져 있는데 `database.transaction(...)` 지원이 없으면 `readiness.status`는 `not-ready`입니다.
 - 요청 트랜잭션을 drain하는 종료 중에는 `health.status`가 `degraded`이고, dispose 이후에는 `unhealthy`입니다.
 - `details.activeRequestTransactions`, `details.lifecycleState`, `details.strictTransactions`, `details.supportsTransaction`은 현재 요청 트랜잭션과 트랜잭션 지원 상태를 설명합니다.
+- `details.transactionContext: 'als'`는 요청 및 service transaction boundary가 사용하는 async-local transaction context를 나타냅니다.
 - `ownership.externallyManaged: true`와 `ownership.ownsResources: false`는 이 패키지가 설정된 dispose hook은 실행하지만 underlying driver resource의 소유권을 주장하지 않는다는 뜻입니다.
 
 ## 수동 모듈 구성
@@ -138,11 +143,14 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleTransactionInterceptor`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_OPTIONS`
 - `createDrizzlePlatformStatusSnapshot(...)`
+- `DrizzleDatabaseLike`
+- `DrizzleModuleOptions`
+- `DrizzleHandleProvider`
 
 ### `DrizzleModule`
 
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
-- `forRootAsync(...)`는 `AsyncModuleOptions<DrizzleModuleOptions<...>>`를 받습니다.
+- `forRootAsync(...)`는 `AsyncModuleOptions<DrizzleModuleOptions<...>>`를 받습니다. factory는 Promise를 반환할 수 있으며, 해석 결과는 memoize됩니다.
 - `strictTransactions: true`를 설정하면 transaction 지원이 없는 database handle에서 예외를 던집니다.
 
 ## 관련 패키지

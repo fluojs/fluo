@@ -137,9 +137,11 @@ class TaskManager {
 }
 ```
 
+The registry exposes `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, and `updateCronExpression`. Timeout tasks run once, then disable themselves while remaining in the registry so they can be re-enabled deliberately.
+
 ### Bounded Shutdown
 
-`CronModule` drains active task executions during application shutdown, but it now does so with a bounded timeout so one hung task cannot block process termination forever.
+`CronModule` drains active task executions during application shutdown with a bounded timeout so one hung task cannot block process termination forever.
 
 By default the shutdown drain waits up to `10_000ms`. If that timeout expires, the scheduler logs a warning and continues shutdown without waiting for the hung task to settle. When distributed locking is enabled, locks held by still-running tasks are not eagerly released on timeout; they remain owned by that task until it settles normally, or until Redis expires the lock after the process exits. This prevents another node from starting the same job while the original task is still running.
 
@@ -156,6 +158,8 @@ By default the shutdown drain waits up to `10_000ms`. If that timeout expires, t
 class AppModule {}
 ```
 
+Only singleton providers/controllers are scheduled. Request-scoped and transient scheduled classes are skipped with a warning.
+
 ## Public API Overview
 
 ### Modules
@@ -167,8 +171,11 @@ class AppModule {}
 - `@Timeout(ms, options?)`: Schedules a method to run once after a delay.
 
 ### Constants & Tokens
-- `CronExpression`: Enum-like object with common cron patterns (e.g., `EVERY_HOUR`, `EVERY_DAY_AT_MIDNIGHT`).
+- `CronExpression`: Enum-like object with common cron patterns, including sub-minute presets such as `EVERY_SECOND`, `EVERY_5_SECONDS`, and `EVERY_30_SECONDS`.
 - `SCHEDULING_REGISTRY`: Injection token for the `SchedulingRegistry` service.
+- `normalizeCronModuleOptions(...)`: Normalizes module options and defaults.
+- `createCronPlatformStatusSnapshot(...)`: Creates a status snapshot for health/readiness integrations.
+- Metadata helpers and symbols: `defineSchedulingTaskMetadata`, `defineCronTaskMetadata`, `getSchedulingTaskMetadata`, `getCronTaskMetadata`, `getSchedulingTaskMetadataEntries`, `getCronTaskMetadataEntries`, `schedulingMetadataSymbol`, `cronMetadataSymbol`.
 
 
 ## Related Packages
@@ -180,4 +187,6 @@ class AppModule {}
 ## Example Sources
 
 - `packages/cron/src/module.test.ts`: Comprehensive tests for decorators and module lifecycle.
-- `packages/cron/src/scheduler.ts`: Implementation details of the core scheduling logic.
+- `packages/cron/src/service.ts`: Runtime scheduling, registry, and shutdown behavior.
+- `packages/cron/src/status.test.ts`: Status snapshot behavior.
+- `packages/cron/src/distributed-lock-manager.ts`: Redis distributed lock behavior.

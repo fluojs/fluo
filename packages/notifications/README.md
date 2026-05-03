@@ -89,7 +89,7 @@ export class WelcomeService {
 }
 ```
 
-`NotificationsModule.forRoot(...)` exports `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS` as global providers. Application services should declare dependencies with fluo's class-level `@Inject(...)` decorator so the standard-decorator DI container can resolve the service without legacy parameter decorators.
+`NotificationsModule.forRoot(...)` and `NotificationsModule.forRootAsync(...)` export `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS` as global providers. Application services should declare dependencies with fluo's class-level `@Inject(...)` decorator so the standard-decorator DI container can resolve the service without parameter decorators.
 
 ## Common Patterns
 
@@ -118,8 +118,11 @@ Behavioral contract notes:
 
 - Bulk queue delegation starts when the notification count reaches `bulkThreshold`.
 - `dispatch()` stays direct by default even when a queue adapter is configured. Use `dispatch(..., { queue: true })` to opt one single notification into queue-backed delivery.
+- Use `dispatch(..., { queue: false })` to force direct delivery even when a queue adapter exists.
 - Queue-backed delivery is opt-in for single dispatch and threshold-driven for `dispatchMany(...)`.
+- `dispatchMany(..., { continueOnError: true })` collects failures instead of throwing on the first failed direct delivery.
 - When queue enqueue fails, the service emits deterministic `notification.dispatch.failed` lifecycle events before rethrowing the enqueue error to the caller.
+- If `enqueueMany(...)` is unavailable, bulk queue delivery falls back to enqueueing each job individually.
 - The foundation package does not assume or import a concrete queue implementation.
 
 ### Lifecycle publication through an event publisher
@@ -147,6 +150,8 @@ Published event names:
 - `notification.dispatch.delivered`
 - `notification.dispatch.failed`
 
+If `events.publisher` is configured, lifecycle event publication defaults to on unless `publishLifecycleEvents: false` is set. Channel deliveries that omit `externalId` receive a deterministic fallback delivery id so dispatch results remain stable for callers.
+
 ### Intentional limitations
 
 The foundation package intentionally does **not**:
@@ -164,23 +169,40 @@ These limitations are part of the package contract so leaf packages can evolve i
 
 - `NotificationsModule.forRoot(options)` / `NotificationsModule.forRootAsync(options)`
 - `NotificationsService`
+- `NotificationsService.createPlatformStatusSnapshot()`
 - `NOTIFICATIONS`
 - `NOTIFICATION_CHANNELS`
 
 ### Contracts
 
 - `NotificationDispatchRequest`
+- `NotificationDispatchOptions`
+- `NotificationDispatchManyOptions`
+- `NotificationDispatchResult`
+- `NotificationDispatchFailure`
+- `NotificationDispatchStatus`
 - `NotificationChannel`
+- `NotificationChannelContext`
+- `NotificationChannelDelivery`
+- `NotificationPayload`
 - `NotificationsQueueAdapter`
+- `NotificationsQueueJob`
+- `NotificationsAsyncModuleOptions`
+- `NotificationsEventsOptions`
 - `NotificationsEventPublisher`
 - `NotificationLifecycleEvent`
+- `NotificationLifecycleEventName`
 
 ### Status and errors
 
 - `createNotificationsPlatformStatusSnapshot(...)`
+- `NotificationsPlatformStatusSnapshot`
+- `NotificationsStatusAdapterInput`
 - `NotificationsConfigurationError`
 - `NotificationChannelNotFoundError`
 - `NotificationQueueNotConfiguredError`
+
+Status snapshots include `operationMode`, dependency diagnostics, ownership, readiness, and health fields for platform diagnostics.
 
 ## Related Packages
 

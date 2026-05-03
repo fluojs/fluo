@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Input-side validation decorators, mapped DTO helpers, and the materialization engine for fluo.
+Input-side validation decorators, mapped DTO helpers, and the validation engine for fluo.
 
 ## Table of Contents
 
@@ -121,6 +121,12 @@ class RestrictedUserDto {
 }
 ```
 
+`ValidateClass(...)` also accepts custom class-level validators. `Validate(...)` attaches custom field-level validators when built-in decorators are not enough, and `ValidateIf(...)` short-circuits dependent validators when its predicate returns false.
+
+### Nested validation
+
+`@ValidateNested(...)` supports object fields, arrays, `Set`, and `Map`. Nested DTO paths use dot/index notation in validation issues, cycles are detected safely, and shared references are allowed.
+
 ### No implicit scalar coercion
 
 `materialize()` is intentionally strict. If a transport gives you `'42'` and your DTO expects `number`, the transport or binding layer must convert it first.
@@ -129,10 +135,12 @@ class RestrictedUserDto {
 
 - **Validator engine**: `DefaultValidator`, `DtoValidationError`, `ValidationIssue`, `Validator`
 - **Core decorators**: `IsString`, `IsNumber`, `IsBoolean`, `IsDate`, `IsArray`, `IsObject`, `IsEnum`, `IsInt`, `IsDefined`, `IsOptional`, `ValidateNested`, `ValidateIf`, `Validate`, `ValidateClass`
-- **String and network decorators**: `IsEmail`, `IsUrl`, `IsUUID`, `IsIP`, `IsAlpha`, `IsAlphanumeric`, `IsAscii`, `IsBase64`, `IsDateString`, `IsJSON`, `IsJWT`, `IsNumberString`, `IsISO8601`, `Matches`, `Length`, `MinLength`, `MaxLength`, `Contains`, `NotContains`
-- **Number and date decorators**: `Min`, `Max`, `IsPositive`, `IsNegative`, `IsDivisibleBy`, `MinDate`, `MaxDate`
+- **Presence and comparison decorators**: `IsEmpty`, `IsNotEmpty`, `Equals`, `NotEquals`, `IsIn`, `IsNotIn`
+- **String and network decorators**: `IsEmail`, `IsUrl`, `IsUUID`, `IsIP`, `IsAlpha`, `IsAlphanumeric`, `IsAscii`, `IsBase64`, `IsBooleanString`, `IsDataURI`, `IsDateString`, `IsDecimal`, `IsFQDN`, `IsHexColor`, `IsHexadecimal`, `IsJSON`, `IsJWT`, `IsLocale`, `IsLowercase`, `IsMagnetURI`, `IsMimeType`, `IsMongoId`, `IsNumberString`, `IsPort`, `IsRFC3339`, `IsSemVer`, `IsUppercase`, `IsISO8601`, `Matches`, `Length`, `MinLength`, `MaxLength`, `Contains`, `NotContains`
+- **Number, date, geo, and locale decorators**: `Min`, `Max`, `IsPositive`, `IsNegative`, `IsDivisibleBy`, `MinDate`, `MaxDate`, `IsLatitude`, `IsLongitude`, `IsLatLong`, `IsISBN`, `IsISSN`, `IsMobilePhone`, `IsPostalCode`, `IsRgbColor`, `IsCurrency`
 - **Array decorators**: `ArrayContains`, `ArrayNotContains`, `ArrayNotEmpty`, `ArrayMinSize`, `ArrayMaxSize`, `ArrayUnique`
 - **Mapped DTO helpers**: `PickType`, `OmitType`, `PartialType`, `IntersectionType`
+- **Mapped DTO subpath**: `@fluojs/validation/mapped-types`
 - **Standard Schema contract**: `StandardSchemaV1Like` for typing `ValidateClass(...)` schemas
 - **Validation flow**: `materialize()` for hydration + validation, `validate()` for validation-only checks
 
@@ -145,5 +153,6 @@ class RestrictedUserDto {
 ## Example Sources
 
 - `packages/validation/src/validation.test.ts`
+- `packages/validation/src/mapped-types.test.ts`
 - `examples/realworld-api/src/users/create-user.dto.ts`
 - `examples/auth-jwt-passport/src/auth/login.dto.ts`

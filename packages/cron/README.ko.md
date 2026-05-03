@@ -137,9 +137,11 @@ class TaskManager {
 }
 ```
 
+Registry는 `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, `updateCronExpression`을 제공합니다. Timeout task는 한 번 실행된 뒤 비활성화되지만 registry에는 남아 있어 의도적으로 다시 활성화할 수 있습니다.
+
 ### 제한된 종료
 
-`CronModule`은 애플리케이션 종료 시 실행 중인 작업을 drain하지만, 이제는 제한된 타임아웃 안에서만 기다립니다. 따라서 하나의 hung task 때문에 프로세스 종료가 영원히 막히지 않습니다.
+`CronModule`은 애플리케이션 종료 시 실행 중인 작업을 제한된 타임아웃 안에서 drain합니다. 따라서 하나의 hung task 때문에 프로세스 종료가 영원히 막히지 않습니다.
 
 기본적으로 shutdown drain은 최대 `10_000ms` 동안 기다립니다. 이 시간이 지나면 스케줄러는 경고 로그를 남기고 hung task가 끝나기를 더 기다리지 않은 채 종료를 계속합니다. 분산 락을 사용하는 경우 아직 실행 중인 작업이 보유한 락은 timeout 시점에 즉시 해제하지 않습니다. 해당 작업이 정상적으로 끝날 때까지 락 소유권을 유지하거나, 프로세스가 종료된 뒤 Redis TTL로 만료되게 두어 원래 작업이 아직 실행 중인데 다른 노드가 같은 작업을 시작하지 않도록 합니다.
 
@@ -156,6 +158,8 @@ class TaskManager {
 class AppModule {}
 ```
 
+singleton provider/controller만 스케줄링됩니다. Request-scoped 및 transient scheduled class는 경고와 함께 건너뜁니다.
+
 ## 공개 API 개요
 
 ### 모듈
@@ -167,8 +171,11 @@ class AppModule {}
 - `@Timeout(ms, options?)`: 일정 시간 지연 후 메서드를 한 번 실행합니다.
 
 ### 상수 및 토큰
-- `CronExpression`: 공통 Cron 패턴(예: `EVERY_HOUR`, `EVERY_DAY_AT_MIDNIGHT`)을 담은 객체입니다.
+- `CronExpression`: `EVERY_SECOND`, `EVERY_5_SECONDS`, `EVERY_30_SECONDS` 같은 sub-minute preset을 포함한 공통 Cron 패턴 객체입니다.
 - `SCHEDULING_REGISTRY`: `SchedulingRegistry` 서비스를 위한 주입 토큰입니다.
+- `normalizeCronModuleOptions(...)`: module option과 기본값을 정규화합니다.
+- `createCronPlatformStatusSnapshot(...)`: health/readiness 통합을 위한 status snapshot을 생성합니다.
+- 메타데이터 헬퍼와 심볼: `defineSchedulingTaskMetadata`, `defineCronTaskMetadata`, `getSchedulingTaskMetadata`, `getCronTaskMetadata`, `getSchedulingTaskMetadataEntries`, `getCronTaskMetadataEntries`, `schedulingMetadataSymbol`, `cronMetadataSymbol`.
 
 
 ## 관련 패키지
@@ -180,4 +187,6 @@ class AppModule {}
 ## 예제 소스
 
 - `packages/cron/src/module.test.ts`: 데코레이터 및 모듈 라이프사이클에 대한 종합 테스트.
-- `packages/cron/src/scheduler.ts`: 코어 스케줄링 로직의 구현 상세.
+- `packages/cron/src/service.ts`: 런타임 스케줄링, registry, shutdown 동작.
+- `packages/cron/src/status.test.ts`: status snapshot 동작.
+- `packages/cron/src/distributed-lock-manager.ts`: Redis distributed lock 동작.

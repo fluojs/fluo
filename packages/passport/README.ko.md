@@ -114,7 +114,7 @@ export class AuthModule {}
 
 `CookieAuthStrategy`는 `@fluojs/jwt`가 정규화한 JWT principal 계약을 보존하며, `subject`, `claims`, `issuer`, `audience`, `roles`, `scopes`를 그대로 전달합니다.
 
-보호된 라우트는 계속 `@UseAuth(...)`를 사용해야 합니다. `requireAccessToken: false`를 설정해도 쿠키가 없을 때는 이제 익명 principal이 아니라 명시적인 미인증 결과를 반환하므로, 보호된 라우트는 요청을 계속 거부합니다.
+보호된 라우트는 계속 `@UseAuth(...)`를 사용해야 합니다. `requireAccessToken: false`를 설정해도 쿠키가 없을 때는 익명 principal이 아니라 명시적인 미인증 결과를 반환하므로, 보호된 라우트는 요청을 계속 거부합니다.
 
 로그인 사용자와 게스트 호출자를 모두 허용하려는 라우트에서만 `@UseOptionalAuth(...)`를 사용하세요.
 
@@ -134,7 +134,7 @@ export class SessionController {
 
 ### 리프레시 토큰 수명 주기
 
-패키지에서 제공하는 `RefreshTokenStrategy`와 `RefreshTokenService`를 사용하여 안전한 토큰 로테이션 및 폐기 기능을 구현할 수 있습니다.
+패키지는 안전한 토큰 rotation과 revocation을 위해 built-in `RefreshTokenStrategy`, `RefreshTokenModule`, `RefreshTokenService` contract를 제공합니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -171,6 +171,14 @@ export class AuthController {
 
 `RefreshTokenModule.forRoot(...)`를 `PassportModule.forRoot(...)`와 함께 import 하여 refresh-token 전략과 공유 `REFRESH_TOKEN_SERVICE` alias를 같은 모듈 wiring에서 사용하세요.
 
+`RefreshTokenStrategy`는 `body.refreshToken`, `Authorization: Bearer ...`, `x-refresh-token`에서 token을 읽습니다. Malformed non-string token은 인증 실패로 처리됩니다. `JwtRefreshTokenAdapter`는 `secret`과 backing store가 필요하며, `store: 'memory'`는 development 및 single-instance deployment용입니다.
+
+### Account linking과 status
+
+Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(...)`와 `resolveAccountLinking(...)`을 사용합니다. 기본 conservative policy는 명시적인 existing link 또는 user-confirmed match만 연결하고, 그 외에는 create/skip/reject/conflict를 결정적으로 처리합니다.
+
+`createPassportPlatformStatusSnapshot(...)`와 `createPassportPlatformDiagnosticIssues(...)`는 등록된 strategy, default strategy 설정, preset, refresh-token store readiness에 대한 readiness/health diagnostic을 노출합니다.
+
 ## 공개 API 개요
 
 ### 데코레이터
@@ -185,10 +193,16 @@ export class AuthController {
 - `CookieManager`: HttpOnly 인증 쿠키 관리를 위한 유틸리티입니다.
 - `RefreshTokenModule`: 내장 refresh-token 프리셋의 모듈 진입점입니다.
 - `JwtRefreshTokenAdapter`: `@fluojs/jwt`의 리프레시 로직을 패스포트 인터페이스로 연결합니다.
+- `createPassportJsStrategyBridge(...)`: Passport.js strategy를 fluo `AuthStrategy`로 변환합니다.
+- Cookie helper: `createCookieAuthPreset`, `createCookieAuthStrategyRegistration`, `createCookieManager`, `normalizeCookieAuthOptions`.
+- Refresh helper: `createRefreshTokenStrategyRegistration`.
+- Status/diagnostics helper: `createPassportPlatformStatusSnapshot`, `createPassportPlatformDiagnosticIssues`.
 
 ### 인터페이스
 - `AuthStrategy`: 커스텀 인증 로직 구현을 위한 계약입니다.
 - `AccountLinkPolicy`: 계정 연결 결정 로직을 위한 확장 지점입니다.
+
+`UseOptionalAuth`는 scope가 필요 없는 route에서만 credential 누락을 우회합니다. Scoped route에는 여전히 principal이 필요합니다. Passport.js bridge의 `redirect()`는 response를 commit하고 protected handler를 건너뛰며, `pass()`와 Passport action 없이 완료된 strategy는 인증 실패입니다.
 
 ## 관련 패키지
 

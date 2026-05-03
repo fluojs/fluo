@@ -39,6 +39,8 @@ const app = await fluoFactory.create(AppModule, {
 await app.listen();
 ```
 
+`createExpressAdapter()`는 기본 port로 `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. 잘못된 explicit port 값은 adapter setup 중 throw됩니다.
+
 ## 주요 패턴
 
 ### 스트리밍 응답 처리 (SSE)
@@ -56,7 +58,7 @@ async streamEvents(@Res() res: FrameworkResponse) {
 ```
 
 ### 바디 파싱 및 멀티파트
-`rawBody` 및 멀티파트 form-data 파싱을 즉시 사용할 수 있습니다. 어댑터를 직접 생성할 때는 멀티파트 제한을 두 번째 인자로 전달하고, `bootstrapExpressApplication(...)` 및 `runExpressApplication(...)`에서는 같은 설정을 `options.multipart` 아래에 전달하면 됩니다. `multipart.maxTotalSize`를 지정하지 않으면 `maxBodySize`가 기본 총 멀티파트 payload 제한으로 사용되어 HTTP 어댑터 간 바디 크기 제한 동작이 portable하게 유지됩니다.
+`rawBody` 보존은 opt-in(`rawBody: true`)이며 multipart request는 `rawBody`를 노출하지 않습니다. 어댑터를 직접 생성할 때는 멀티파트 제한을 두 번째 인자로 전달하고, `bootstrapExpressApplication(...)` 및 `runExpressApplication(...)`에서는 같은 설정을 `options.multipart` 아래에 전달하면 됩니다. `multipart.maxTotalSize`를 지정하지 않으면 `maxBodySize`가 기본 총 멀티파트 payload 제한으로 사용되어 HTTP 어댑터 간 바디 크기 제한 동작이 portable하게 유지됩니다.
 
 ```typescript
 const adapter = createExpressAdapter(
@@ -71,7 +73,7 @@ const adapter = createExpressAdapter(
 ```
 
 ### 안전한 fallback을 포함한 Native Route Registration
-이제 어댑터는 의미 보존이 가능한 명시적 HTTP 메서드 라우트를 Express Router에 사전 등록하면서도, 실제 요청 처리는 계속 공유 fluo dispatcher를 통해 수행합니다.
+어댑터는 의미 보존이 가능한 명시적 `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD` route를 Express Router에 사전 등록하면서도, 실제 요청 처리는 계속 공유 fluo dispatcher를 통해 수행합니다.
 
 의미 보존이 가능한 unversioned route에서는 Express가 미리 고른 descriptor와 params를 공유 dispatcher에 전달하므로 singleton-safe handler는 dispatcher fast path에서 완료될 수 있고 그 밖의 handler는 duplicate route matching 없이 fallback되며, guards, interceptors, observers, body parsing, raw body 캡처, SSE, 오류 응답은 기존과 같은 framework-owned 실행 경로를 유지합니다.
 
@@ -87,13 +89,19 @@ const adapter = createExpressAdapter(
 - **경로 정규화 parity**: duplicate slash 변형처럼 Express Router와 fluo의 정규화 방식이 다를 수 있는 요청도 fallback dispatch를 통해 fluo의 normalized route contract를 유지합니다.
 - **버저닝 parity**: Express Router가 최초 path match를 하더라도 header/media-type/custom version 선택은 계속 dispatcher가 최종 결정합니다.
 - **Middleware rewrite parity**: App middleware가 method/path를 rewrite하면 native handoff는 무효화되고 rewrite된 요청을 기준으로 다시 매칭합니다.
+- **응답 serialization parity**: String response는 기본적으로 `text/plain`, object/array는 JSON, binary payload는 `application/octet-stream`으로 serialize되며 `set-cookie` 값은 병합됩니다.
+- **Startup과 shutdown**: 어댑터는 HTTP/HTTPS startup, retry option에 따른 `EADDRINUSE` 재시도, close 시 socket drain, shutdown timeout 이후 force-close를 지원합니다.
 
 ## 공개 API 개요
 
 - `createExpressAdapter(options)`: Express HTTP 어댑터를 위한 팩토리입니다.
 - `bootstrapExpressApplication(module, options)`: 수동 제어를 위한 고급 부트스트랩 헬퍼입니다.
 - `runExpressApplication(module, options)`: 시그널 연결을 포함한 빠른 시작을 위한 호환 헬퍼입니다. timeout/실패 시에는 해당 상태를 로그와 `process.exitCode`로 보고하고, 최종 프로세스 종료는 주변 호스트에 맡깁니다.
+- `isExpressMultipartTooLargeError(error)`: adapter error shape 전반에서 multipart limit 감지를 정규화합니다.
 - `ExpressHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다.
+- Option type: `ExpressAdapterOptions`, `BootstrapExpressApplicationOptions`, `RunExpressApplicationOptions`, `CorsInput`, `ExpressApplicationSignal`.
+
+`createExpressAdapter(options, multipartOptions?)`는 `host`, `https`, `maxBodySize`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`를 지원합니다. `bootstrapExpressApplication(...)`과 `runExpressApplication(...)`은 `cors`, `globalPrefix`, `globalPrefixExclude`, `logger`, `middleware`, `multipart`, `securityHeaders`, `forceExitTimeoutMs`, `shutdownSignals`도 받습니다.
 
 ## 관련 패키지
 

@@ -2,7 +2,7 @@
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./generator-workflow.md"><kbd>English</kbd></a></p>
 
-`fluo generate`와 `fluo g`는 해석된 소스 디렉터리 아래에 기능 슬라이스 파일을 생성합니다. 현재 포함된 생성기 집합은 모듈, HTTP 진입점, 프로바이더, 미들웨어, DTO 스텁을 다룹니다.
+`fluo generate`와 `fluo g`는 해석된 소스 디렉터리 아래에 기능 슬라이스 파일을 생성합니다. 현재 포함된 생성기 집합은 모듈, 전체 resource slice, HTTP 진입점, 프로바이더, 미들웨어, DTO 스텁을 다룹니다.
 
 ## Available Generators
 
@@ -21,10 +21,11 @@ fluo g request-dto <feature> <name> [--target-directory <path>] [--force] [--dry
 | Guard | `guard`, `gu` | `fluo generate guard Billing` | 자동 등록 | 가드 파일, 모듈 갱신 |
 | Interceptor | `interceptor`, `in` | `fluo generate interceptor Billing` | 자동 등록 | 인터셉터 파일, 모듈 갱신 |
 | Middleware | `middleware`, `mi` | `fluo generate middleware Billing` | 자동 등록 | 미들웨어 파일, 모듈 갱신 |
+| Resource | `resource`, `resrc` | `fluo generate resource Billing` | 파일만 생성 | 모듈, 컨트롤러, 서비스, 레포지토리, DTO, 테스트 |
 | Request DTO | `request-dto`, `req` | `fluo generate request-dto billing CreateBilling` | 파일만 생성 | 요청 DTO 파일 |
 | Response DTO | `response-dto`, `res` | `fluo generate response-dto Billing` | 파일만 생성 | 응답 DTO 파일 |
 
-자동 등록 생성기는 슬라이스 모듈을 생성하거나 갱신한 뒤 생성된 클래스를 `controllers`, `providers`, `middleware` 배열에 추가합니다. 파일만 생성하는 생성기는 부모 모듈 등록 없이 파일만 산출합니다.
+자동 등록 생성기는 슬라이스 모듈을 생성하거나 갱신한 뒤 생성된 클래스를 `controllers`, `providers`, `middleware` 배열에 추가합니다. 파일만 생성하는 생성기는 부모 모듈 등록 없이 파일만 산출합니다. `resource`는 완전한 slice를 만들지만 parent-module import wiring은 호출자에게 남깁니다.
 
 ## Generated Artifacts
 
@@ -39,6 +40,7 @@ fluo g request-dto <feature> <name> [--target-directory <path>] [--force] [--dry
 | Guard | `post.guard.ts` | `post.module.ts`를 생성하거나 갱신하고 `PostGuard`를 `providers`에 추가합니다. |
 | Interceptor | `post.interceptor.ts` | `post.module.ts`를 생성하거나 갱신하고 `PostInterceptor`를 `providers`에 추가합니다. |
 | Middleware | `post.middleware.ts` | `post.module.ts`를 생성하거나 갱신하고 `PostMiddleware`를 `middleware`에 추가합니다. |
+| Resource | `post.module.ts`, `post.controller.ts`, `post.controller.test.ts`, `post.service.ts`, `post.service.test.ts`, `post.repo.ts`, `post.repo.test.ts`, `post.repo.slice.test.ts`, `create-post.request.dto.ts`, `post.response.dto.ts` | 상위 모듈에는 영향 없음. 생성된 모듈은 별도로 import합니다. |
 | Request DTO | `fluo g req posts CreatePost` 사용 시 `posts/` 안의 `create-post.request.dto.ts` | 없음. 컨트롤러에서 수동 import가 필요합니다. |
 | Response DTO | `post.response.dto.ts` | 없음. 컨트롤러 반환 타입으로 수동 사용이 필요합니다. |
 
@@ -65,7 +67,7 @@ fluo g controller Billing --force --dry-run
 
 Dry-run 모드는 `Dry run: no files were written.`를 출력한 뒤 각 예정 파일 동작을 나열합니다. 가능한 동작에는 `CREATE`, `SKIP`, `OVERWRITE`, `UNCHANGED`, `MODULE-CREATE`, `MODULE-UPDATE`, `MODULE-UNCHANGED`가 포함됩니다. Preview는 실제 실행과 같은 validation, target-directory 해석, request DTO feature-target 파싱, `--force` overwrite planning을 사용하지만 디렉터리를 만들거나, 생성 파일을 쓰거나, 모듈을 갱신하지 않습니다.
 
-자동 등록 생성기는 dry-run 중에도 module plan을 해석합니다. `module`, `request-dto`, `response-dto`처럼 파일만 생성하는 생성기도 파일 동작을 보고하며, parent-module wiring은 호출자가 직접 처리해야 합니다.
+자동 등록 생성기는 dry-run 중에도 module plan을 해석합니다. `module`, `resource`, `request-dto`, `response-dto`처럼 파일만 생성하는 생성기도 파일 동작을 보고하며, parent-module wiring은 호출자가 직접 처리해야 합니다.
 
 ## Generator Collections
 
@@ -94,5 +96,5 @@ Dry-run 모드는 `Dry run: no files were written.`를 출력한 뒤 각 예정 
 - 자동 등록 메타데이터가 해석되더라도 변경되지 않은 파일 내용은 다시 쓰지 않습니다.
 - Generator discovery는 built-in `@fluojs/cli/builtin` collection으로 제한됩니다. 외부 또는 app-local collection은 보류되어 있으며 이 명령이 로드하지 않습니다.
 - 모듈 자동 등록은 controller, service, repository, guard, interceptor, middleware 생성기에만 적용됩니다.
-- DTO 생성기와 module 생성기는 상위 모듈 import를 자동으로 연결하지 않습니다.
+- Resource, DTO, module 생성기는 상위 모듈 import를 자동으로 연결하지 않습니다.
 - generate 명령이 문서화하는 옵션은 `--target-directory`, `--force`, `--dry-run`, `--help`입니다.

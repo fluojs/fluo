@@ -33,6 +33,8 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 
 Register `GraphqlModule.forRoot(...)` and define a resolver using standard decorators. `@fluojs/graphql` currently exposes a synchronous module entrypoint only; there is no `GraphqlModule.forRootAsync(...)` contract.
 
+You can also pass an executable `GraphQLSchema` via `schema` when you want schema-first integration instead of code-first resolver discovery.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { bootstrapNodeApplication } from '@fluojs/runtime/node';
@@ -150,6 +152,8 @@ GraphqlModule.forRoot({
 })
 ```
 
+`@Subscription({ topics })` is not supported. Subscription resolvers must return an `AsyncIterable`.
+
 ## Operational Guardrails
 
 - Schema introspection is disabled by default unless you explicitly enable `graphiql` or set `introspection: true`.
@@ -187,8 +191,11 @@ GraphqlModule.forRoot({
 - `GraphqlModule.forRoot(options)`: Main entry point for GraphQL integration.
 - `Resolver`, `Query`, `Mutation`, `Subscription`: Operation decorators.
 - `Arg`: Input DTO field-to-GraphQL-argument mapping decorator.
-- `createDataLoader`, `createDataLoaderMap`: DataLoader factory helpers.
-- `GraphQLContext`: Type definition for the GraphQL execution context.
+- `createDataLoader`, `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`, `DataLoader`: DataLoader factory helpers and types.
+- `listOf`, `isGraphqlListTypeRef`: Helpers for list output type references.
+- `GraphQLContext` and exported option/metadata types: Type definitions for GraphQL execution and module configuration.
+
+Supported module options include `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `connectionInitWaitTimeoutMs`, and `keepAliveMs`.
 
 ## Related Packages
 

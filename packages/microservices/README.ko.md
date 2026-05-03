@@ -128,11 +128,7 @@ Behavioral contract notes:
 
 ### provider 배열 헬퍼
 
-`createMicroservicesProviders(...)`는 실제로 low-level provider array 자체가 필요한 호출자에게만 남아 있습니다.
-
-`createMicroservicesProviders(...)`는 커스텀 모듈 조합에 provider 배열이 필요할 때 사용할 수 있습니다.
-
-`createMicroservicesProviders(...)`는 실제로 low-level provider array 자체가 필요한 호출자에게만 남아 있습니다.
+`createMicroservicesProviders(...)`는 커스텀 모듈 조합에 low-level provider array 자체가 필요할 때만 사용하세요. Custom provider/export/non-global registration에는 built-in lifecycle wiring과 export token을 그대로 유지하는 `MicroservicesModule.forRoot({ transport, module: { ... } })` 경로를 우선 사용하세요.
 
 ```ts
 import { Module } from '@fluojs/core';
@@ -155,6 +151,18 @@ class ManualMicroserviceProvidersModule {}
 - `TcpMicroserviceTransport`, `RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `KafkaMicroserviceTransport`, `RabbitMqMicroserviceTransport`, `GrpcMicroserviceTransport`, `MqttMicroserviceTransport`: 루트 배럴에서 제공하는 트랜스포트 어댑터입니다.
 - `MicroserviceLifecycleService`, `MICROSERVICE`: 런타임 접근용 서비스와 토큰입니다.
 - `createMicroservicePlatformStatusSnapshot`, `ServerStreamWriter`: 상태 스냅샷/TypeScript 계약 헬퍼입니다.
+
+### Programmatic runtime
+
+`MicroserviceLifecycleService`는 programmatic runtime access를 위해 `listen()`, `close()`, `send()`, `emit()`, `serverStream()`, `clientStream()`, `bidiStream()`, `createPlatformStatusSnapshot()`을 제공합니다.
+
+### Type export
+
+Root barrel은 `Microservice`, `MicroserviceModuleOptions`, `MicroserviceModuleRegistrationOptions`, `MicroserviceTransport`, `Pattern`, `ServerStreamWriter`와 `GrpcMicroserviceTransportOptions`, `KafkaMicroserviceTransportOptions`, `MqttMicroserviceTransportOptions`, `NatsMicroserviceTransportOptions`, `RabbitMqMicroserviceTransportOptions`, `RedisPubSubMicroserviceTransportOptions`, `RedisStreamsMicroserviceTransportOptions`, `RedisStreamClientLike` 같은 transport option type을 export합니다.
+
+### 동작 계약
+
+Payload는 dispatch 전에 clone되고, 동시 `listen()` 호출은 dedupe되며, request-scoped provider는 성공/실패 후 dispose됩니다. Event fan-out은 event dispatch마다 하나의 scope를 공유하고, duplicate message match는 결정적으로 실패합니다.
 
 ### 지원되는 트랜스포트 서브패스
 

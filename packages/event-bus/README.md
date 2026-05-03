@@ -75,6 +75,8 @@ export class UserService {
 }
 ```
 
+`publish(event, options?)` supports `signal`, `timeoutMs`, and `waitForHandlers`. `waitForHandlers` defaults to `true`; when set to `false`, publishing returns immediately and skips timeout bounds.
+
 ## Common Patterns
 
 ### Distributed Fan-out (Redis)
@@ -102,11 +104,13 @@ class UserRegisteredEvent {
 }
 ```
 
+Handlers are discovered from singleton providers and controllers across imported modules. Each handler receives an isolated cloned payload, and class inheritance is supported through `instanceof` matching.
+
 ## Public API Overview
 
 ### Core
 - `EventBusModule.forRoot(...)`: Main entry point for event bus registration.
-- `EventBusLifecycleService`: Primary service for publishing events (`publish(event)`).
+- `EventBusLifecycleService`: Primary service for publishing events (`publish(event, options?)`) and creating platform status snapshots.
 - `@OnEvent(EventClass)`: Decorator to mark a method as an event handler.
 - `EVENT_BUS`: Compatibility injection token for the publish facade.
 - `createEventBusPlatformStatusSnapshot(...)`: Status snapshot helper used by diagnostics and health surfaces.
@@ -114,6 +118,9 @@ class UserRegisteredEvent {
 ### Interfaces
 - `EventBusTransport`: Contract for implementing external transport adapters.
 - `EventBus`, `EventPublishOptions`, `EventBusModuleOptions`, `EventType`: Type-only contracts for publishing, defaults, transports, and stable event keys.
+- `EventBusLifecycleState`, `EventBusStatusAdapterInput`, `EventBusPlatformStatusSnapshot`: Status snapshot contracts.
+
+Transport bootstrap subscribes once per unique event channel. `eventKey` controls the transport channel name when present. Invalid JSON transport messages are ignored.
 
 ## Runtime-Specific and Integration Subpaths
 
@@ -132,3 +139,5 @@ class UserRegisteredEvent {
 
 - `packages/event-bus/src/module.test.ts`: Handler discovery and publish/subscribe tests.
 - `packages/event-bus/src/public-surface.test.ts`: Public API contract verification.
+- `packages/event-bus/src/status.test.ts`: Status snapshot semantics.
+- `packages/event-bus/src/transports/redis-transport.test.ts`: Redis transport behavior.

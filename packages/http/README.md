@@ -115,6 +115,18 @@ stream(_input: undefined, ctx: RequestContext) {
 }
 ```
 
+### Versioning
+
+`createHandlerMapping(...)` supports URI, header, media-type, and custom versioning strategies through `VersioningType` and the `versioning` option. Route registration keeps exact/static matches ahead of fallbacks while preserving registration order for equivalent normalized routes.
+
+### Request context helpers
+
+Use `runWithRequestContext(...)`, `assertRequestContext()`, `createRequestContext(...)`, `createContextKey(...)`, `getContextValue(...)`, and `setContextValue(...)` when framework integrations need explicit request context boundaries or typed per-request storage.
+
+### Fast-path observability
+
+The dispatcher exposes fast-path observability for adapters and diagnostics through `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`, `formatFastPathStats(...)`, and `getDispatcherFastPathStats(...)`.
+
 ## Request Cleanup and Portability
 
 The dispatcher binds `RequestContext` with `AsyncLocalStorage` for the active dispatch only. When a request may use request-scoped DI through its controller graph, middleware, guards, interceptors, observers, DTO converters, a custom binder, or manual `getCurrentRequestContext()` / `assertRequestContext()` container access, the dispatcher creates and disposes an isolated request-scoped DI container from its `finally` path after request observers finish. Singleton-only routes skip that container lifecycle until `RequestContext.container` is accessed, so the baseline path avoids unnecessary per-request allocation while preserving request-scoped provider isolation whenever the graph is ambiguous or request-scoped. Public `RequestContext.container` reads are therefore always safe for resolving request-scoped providers; the singleton-only fast path is an internal dispatcher optimization, not a promise that the public context exposes the root container.
@@ -127,8 +139,10 @@ Adapters should pass an `AbortSignal` on `FrameworkRequest.signal` when the plat
 - **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **Core runtime types**: `RequestContext`, `FrameworkRequest`, `FrameworkResponse`, `SseResponse`
-- **Exceptions**: `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `InternalServerErrorException`, `PayloadTooLargeException`
-- **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `getCurrentRequestContext`, `encodeSseComment`, `encodeSseMessage`
+- **Adapter API**: `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
+- **Exceptions and errors**: `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `HandlerNotFoundError`, `RequestAbortedError`
+- **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`
+- **Option types**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `SecurityHeadersOptions`, `SseSendOptions`
 
 ## Internal Subpath (`@fluojs/http/internal`)
 
@@ -136,6 +150,7 @@ The `./internal` subpath exports only the low-level utilities used by platform a
 
 - `DefaultBinder`: Default DTO/request binder used by the runtime bootstrap path.
 - `bindRawRequestNativeRouteHandoff(...)` / `attachFrameworkRequestNativeRouteHandoff(...)`: Internal adapter/runtime helpers for reusing semantically safe native route matches without widening the public dispatcher API.
+- `consumeRawRequestNativeRouteHandoff(...)` / `readFrameworkRequestNativeRouteHandoff(...)`: Internal helpers for reading or consuming native route handoffs.
 - Native route handoffs snapshot the framework request method and path when attached; if app middleware rewrites either value before handler matching, the dispatcher ignores the stale handoff and falls back to normal route matching.
 - `isRoutePathNormalizationSensitive(path)`: Internal guard for keeping duplicate-slash and trailing-slash requests on the generic dispatcher path.
 - `resolveClientIdentity(request)`: Conservative client identity resolver used by rate limiting and other runtime integrations.

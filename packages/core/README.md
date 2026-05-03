@@ -25,7 +25,7 @@ npm install @fluojs/core
 
 Use this package when you are:
 
-- defining modules, providers, or controllers with fluo's standard decorators
+- defining modules or providers with fluo's standard decorators
 - building framework extensions that need to participate in the module graph
 - working with shared framework errors, tokens, or constructor-based utility types
 
@@ -83,15 +83,13 @@ class UsesConfigValue {
 }
 ```
 
-Pass multiple tokens as variadic arguments such as `@Inject(A, B)`.
-
-The legacy array form `@Inject([A, B])` remains normalized during the migration window, but new code should prefer the variadic form so constructor tokens stay aligned with standard decorator usage.
+Pass multiple constructor tokens as variadic arguments, such as `@Inject(A, B)`, so dependency metadata stays aligned with standard decorator usage. The array form `@Inject([A, B])` is also accepted, but new code should prefer the variadic form.
 
 ### Shared metadata helpers for sibling packages
 
 Internal readers and writers live under `@fluojs/core/internal`, which is how packages like `@fluojs/di`, `@fluojs/http`, and `@fluojs/runtime` consume the same metadata model.
 
-Application code should import public decorators and `ensureMetadataSymbol()` from `@fluojs/core`. The `@fluojs/core/internal` subpath is reserved for fluo packages that need to read metadata records, merge explicit stores with `Symbol.metadata`, or build framework-level decorators. Standard metadata bag helpers handle mixed-era lookups across current/native `Symbol.metadata` and the fallback symbol: own metadata from either era overrides inherited metadata from either era for the same key, while inherited keys from parent constructors remain visible when the child owns a different key. To reduce DI and module-graph hot-path allocations, `getModuleMetadata()`, `getOwnClassDiMetadata()`, `getInheritedClassDiMetadata()`, and `getClassDiMetadata()` return frozen snapshots and may reuse the same reference between writes. Treat those results, their collection fields, and module provider descriptor wrappers, and middleware route-config wrappers (including their `routes` arrays) as immutable. `useValue` payload objects and runtime middleware/guard/interceptor instances remain mutable references and are not frozen by these snapshots. Other metadata readers keep their existing defensive-read behavior unless their own tests document stable-reference reuse.
+Application code should import public decorators and `ensureMetadataSymbol()` from `@fluojs/core`. The `@fluojs/core/internal` subpath is reserved for fluo packages that need metadata records, controller/route helpers, injection and validation helpers, or clone utilities. Standard metadata bag helpers handle mixed-era lookups across current/native `Symbol.metadata` and the fallback symbol: own metadata from either era overrides inherited metadata from either era for the same key, while inherited keys from parent constructors remain visible when the child owns a different key. To reduce DI and module-graph hot-path allocations, `getModuleMetadata()`, `getOwnClassDiMetadata()`, `getInheritedClassDiMetadata()`, and `getClassDiMetadata()` return frozen snapshots and may reuse the same reference between writes. Treat those results, their collection fields, module provider descriptor wrappers, and middleware route-config wrappers (including their `routes` arrays) as immutable. `useValue` payload objects and runtime middleware/guard/interceptor instances remain mutable references and are not frozen by these snapshots. Other metadata readers keep their existing defensive-read behavior unless their own tests document stable-reference reuse.
 
 ```ts
 import { getModuleMetadata } from '@fluojs/core/internal';
@@ -162,10 +160,10 @@ Standard decorators cannot automatically infer types for abstract classes or int
 ## Public API
 
 - **Decorators**: `Module`, `Global`, `Inject`, `Scope`
-- **Errors**: `FluoError`, `InvariantError`, `FluoCodeError`
+- **Errors**: `FluoError`, `InvariantError`, `FluoCodeError`, `FluoErrorOptions`, `formatTokenName`
 - **Metadata runtime**: `ensureMetadataSymbol`
-- **Types**: `Constructor<T>`, `Token<T>`, `MaybePromise<T>`, `AsyncModuleOptions`
-- **Internal subpath**: metadata helpers via `@fluojs/core/internal`
+- **Types**: `Constructor<T>`, `Token<T>`, `MaybePromise<T>`, `AsyncModuleOptions`, `MetadataPropertyKey`, `MetadataSource`
+- **Internal subpath**: metadata helpers, controller/route helpers, injection helpers, validation helpers, and clone utilities via `@fluojs/core/internal`
 
 ## Related Packages
 

@@ -91,16 +91,20 @@ The adapter also exports the typed Bun integration seams used by realtime packag
 - `BunAdapterOptions`: host, port, TLS, raw-body, multipart, and shutdown options accepted by `createBunAdapter()`.
 - `BootstrapBunApplicationOptions` and `RunBunApplicationOptions`: application bootstrap/run options for Bun-hosted apps.
 - `BunWebSocketBinding` and `BunRealtimeBindingHost`: binding contracts used by `@fluojs/websockets/bun` before normal HTTP dispatch.
+- `BunWebSocketBindingHost`: Backward-compatible alias for configuring Bun realtime bindings.
+- `BunServeOptions`, `BunServerLike`, `BunWebSocketHandler`, `BunServerWebSocket`, `BunWebSocketMessage`, `BunApplicationSignal`, `BunCorsInput`, `BunTlsOptions`, and `CreateBunFetchHandlerOptions`: Lower-level Bun host, websocket, signal, CORS, TLS, and fetch-handler integration types.
 
 ## Adapter Contract
 
 - **Runtime host**: This package requires `globalThis.Bun.serve()` at listen time. Tests may provide a Bun-compatible test double, but production use is Bun-only.
 - **Request portability**: Fetch requests are translated through the shared web dispatcher, preserving malformed cookie values, query arrays, JSON/text raw bodies when `rawBody: true`, and SSE framing.
 - **Native route acceleration**: When Bun's `routes` object is available and a fluo route shape is semantically safe to pre-register, the adapter lets Bun short-circuit path matching before handing the request back to the shared dispatcher. Unsupported or ambiguous route shapes fall back to the regular `fetch` path, and stale handoffs are ignored if middleware rewrites method/path before handler matching.
+- **Native route gate**: Native routes are enabled only on Bun `>=1.2.3`; versioned routes, `ALL` handlers, same-shape conflicts, normalization-sensitive paths, and `OPTIONS`/CORS preflight stay on the fetch/shared-dispatch path.
 - **Multipart behavior**: Multipart requests never expose `rawBody`, and multipart limits continue to flow through the shared runtime parser.
 - **Startup target**: `hostname`, `port`, and `tls` are forwarded to `Bun.serve()`. Startup logs report the configured HTTP or HTTPS listen URL.
 - **Shutdown ownership**: `close()` stops new ingress, waits for in-flight HTTP handlers, clears adapter state after drain settles, and removes signal listeners registered by `runBunApplication()`.
 - **Realtime seam**: Bun websocket bindings must be configured before `listen()` starts the server. Upgrade requests are offered to the configured binding before falling back to HTTP dispatch.
+- **Adapter instance helpers**: `BunHttpApplicationAdapter` exposes `getServer()`, `getListenTarget()`, `getRealtimeCapability()`, `configureRealtimeBinding()`, `configureWebSocketBinding()`, `listen()`, and `close()`.
 
 ## Conformance Coverage
 

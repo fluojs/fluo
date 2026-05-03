@@ -90,6 +90,10 @@ await this.db.transaction(async () => {
 });
 ```
 
+Nested calls reuse the active transaction boundary. If a nested call passes transaction options while a boundary is already active, the package rejects those nested options instead of silently changing the existing transaction.
+
+When `database.transaction(...)` is unavailable and `strictTransactions` is `false`, `transaction()` and `requestTransaction()` fall back to direct execution; request-scoped calls still honor `AbortSignal`.
+
 ### Request-scoped transactions with an interceptor
 
 ```ts
@@ -109,6 +113,7 @@ class UsersController {}
 - `readiness.status` is `not-ready` while Drizzle is shutting down or stopped, and when `strictTransactions` is enabled without `database.transaction(...)` support.
 - `health.status` is `degraded` while request transactions are draining during shutdown and `unhealthy` after disposal.
 - `details.activeRequestTransactions`, `details.lifecycleState`, `details.strictTransactions`, and `details.supportsTransaction` describe the current request transaction and transaction-capability state.
+- `details.transactionContext: 'als'` identifies the async-local transaction context used by request and service transaction boundaries.
 - `ownership.externallyManaged: true` and `ownership.ownsResources: false` mean the package runs your configured dispose hook but does not claim ownership of the underlying driver resources.
 
 ## Manual Module Composition
@@ -138,11 +143,14 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleTransactionInterceptor`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_OPTIONS`
 - `createDrizzlePlatformStatusSnapshot(...)`
+- `DrizzleDatabaseLike`
+- `DrizzleModuleOptions`
+- `DrizzleHandleProvider`
 
 ### `DrizzleModule`
 
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
-- `forRootAsync(...)` accepts `AsyncModuleOptions<DrizzleModuleOptions<...>>`.
+- `forRootAsync(...)` accepts `AsyncModuleOptions<DrizzleModuleOptions<...>>`; the factory may be promise-returning and is memoized for resolution.
 - Supports `strictTransactions: true` to throw if transaction support is missing.
 
 ## Related Packages

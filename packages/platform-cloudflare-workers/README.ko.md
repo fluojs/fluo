@@ -67,7 +67,7 @@ export default {
 ## 주요 패턴
 
 ### WebSocketPair 활용
-어댑터는 `@fluojs/websockets/cloudflare-workers` 바인딩을 통해 실시간 통신을 위한 Cloudflare의 네이티브 `WebSocketPair`를 지원합니다.
+어댑터는 `@fluojs/websockets/cloudflare-workers` 바인딩을 통해 실시간 통신을 위한 Cloudflare의 네이티브 `WebSocketPair`를 지원합니다. Upgrade handling은 해당 binding을 통한 opt-in이며, non-hosted runtime test에서는 `createWebSocketPair`를 주입할 수 있습니다.
 
 ```typescript
 @WebSocketGateway({ path: '/ws' })
@@ -84,12 +84,21 @@ const adapter = createCloudflareWorkerAdapter({
 });
 ```
 
+### 동작 참고
+
+- `fetch()`는 active work를 `executionContext.waitUntil(...)`에 등록합니다.
+- `close()`는 shutdown 중 새 요청에 JSON `503` response를 반환하고, active request가 끝나지 않으면 10초 뒤 timeout됩니다.
+- Multipart request는 `rawBody`를 보존하지 않습니다.
+- Worker `env` 객체는 fetch entrypoint boundary를 통과하며, package-level config resolution은 application이 소유합니다.
+
 ## 공개 API 개요
 
 - `createCloudflareWorkerAdapter(options)`: Worker HTTP 어댑터를 위한 팩토리입니다.
 - `createCloudflareWorkerEntrypoint(module, options)`: 지연 부트스트랩 방식의 Worker 엔트리포인트를 생성합니다.
 - `bootstrapCloudflareWorkerApplication(module, options)`: Worker를 위한 비동기 부트스트랩 헬퍼입니다.
 - `CloudflareWorkerHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다.
+- `CloudflareWorkerEntrypoint`: `fetch`, `ready()`, `close()` lifecycle method를 제공하는 lazy entrypoint입니다.
+- Option 및 type: `CloudflareWorkerAdapterOptions`, `BootstrapCloudflareWorkerApplicationOptions`, `CloudflareWorkerExecutionContext`, `CloudflareWorkerWebSocketBinding`, Worker websocket pair/upgrade type.
 
 ## 관련 패키지
 

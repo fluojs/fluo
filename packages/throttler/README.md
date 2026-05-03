@@ -76,6 +76,7 @@ import { ThrottlerModule, RedisThrottlerStore } from '@fluojs/throttler';
 import { REDIS_CLIENT } from '@fluojs/redis';
 
 // Inside a provider or module factory
+const redisClient = await container.resolve(REDIS_CLIENT);
 const redisStore = new RedisThrottlerStore(redisClient);
 
 ThrottlerModule.forRoot({
@@ -85,9 +86,13 @@ ThrottlerModule.forRoot({
 });
 ```
 
+You can also pass any object that implements the `ThrottlerStore` contract through the `store` option.
+
 ### Custom Key Generation
 
 By default, the throttler resolves client identity from the raw socket `remoteAddress` only. If your deployment sits behind a trusted reverse proxy that rewrites `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, opt in with `trustProxyHeaders: true`. If no trusted socket or proxy identity is available, it throws instead of collapsing unrelated callers into a shared bucket. You can also customize this to use API keys, user IDs, or other identifiers.
+
+Counters are scoped by route identity and client identity. The route portion includes method, path, version, and handler identity so different handlers do not share buckets accidentally. When a request is rejected, `ThrottlerGuard` returns `429` and sets `Retry-After`.
 
 ```typescript
 ThrottlerModule.forRoot({
@@ -120,6 +125,8 @@ ThrottlerModule.forRoot({
 - `ThrottlerModule.forRoot(options)`: Provides throttler options, storage, and `ThrottlerGuard` to the module graph.
 - Package-level registration is supported through `ThrottlerModule.forRoot(options)`. Internal provider-composition helpers are not part of the public contract.
 
+`ttl` and `limit` must be positive finite integers. `store`, `trustProxyHeaders`, and `keyGenerator` customize persistence and client identity.
+
 ### Decorators
 - `@Throttle({ ttl, limit })`: Sets a specific rate limit for a class or method.
 - `@SkipThrottle()`: Disables throttling for a class or method.
@@ -130,6 +137,13 @@ ThrottlerModule.forRoot({
 ### Stores
 - `createMemoryThrottlerStore()`: Creates a simple in-memory store (default).
 - `RedisThrottlerStore`: Store adapter for Redis.
+- `ThrottlerStore`: Public contract for custom stores.
+
+### Status and diagnostics
+- `createThrottlerPlatformStatusSnapshot(...)`: Creates a platform status snapshot.
+- `createThrottlerPlatformDiagnosticIssues(...)`: Creates diagnostic issues for invalid throttler state.
+
+Method-level `@Throttle(...)` overrides class-level settings, class-level settings override module defaults, and `@SkipThrottle()` bypasses throttling at either class or method level.
 
 ## Related Packages
 
@@ -140,3 +154,5 @@ ThrottlerModule.forRoot({
 
 - `packages/throttler/src/module.test.ts`: Tests for module configuration and decorator overrides.
 - `packages/throttler/src/guard.ts`: The core logic for request throttling and header management.
+- `packages/throttler/src/redis-store.test.ts`: Redis store contract and server-time behavior.
+- `packages/throttler/src/status.test.ts`: Status and diagnostic helper behavior.

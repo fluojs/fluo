@@ -75,6 +75,8 @@ export class UserService {
 }
 ```
 
+`publish(event, options?)`는 `signal`, `timeoutMs`, `waitForHandlers`를 지원합니다. `waitForHandlers`의 기본값은 `true`이며, `false`로 설정하면 publish가 즉시 반환되고 timeout bound를 적용하지 않습니다.
+
 ## 일반적인 패턴
 
 ### 분산 팬아웃 (Redis)
@@ -102,11 +104,13 @@ class UserRegisteredEvent {
 }
 ```
 
+핸들러는 imported module의 singleton provider와 controller에서 발견됩니다. 각 핸들러는 격리된 clone payload를 받으며, class inheritance는 `instanceof` 매칭으로 지원됩니다.
+
 ## 공개 API 개요
 
 ### 핵심 구성 요소
 - `EventBusModule.forRoot(...)`: 이벤트 버스 등록을 위한 기본 진입점입니다.
-- `EventBusLifecycleService`: 이벤트를 발행(`publish(event)`)하기 위한 기본 서비스입니다.
+- `EventBusLifecycleService`: 이벤트 발행(`publish(event, options?)`)과 platform status snapshot 생성을 위한 기본 서비스입니다.
 - `@OnEvent(EventClass)`: 특정 메서드를 이벤트 핸들러로 지정하는 데코레이터입니다.
 - `EVENT_BUS`: 발행 facade를 위한 호환성 주입 토큰입니다.
 - `createEventBusPlatformStatusSnapshot(...)`: diagnostics와 health surface에서 사용하는 상태 스냅샷 헬퍼입니다.
@@ -114,6 +118,9 @@ class UserRegisteredEvent {
 ### 인터페이스
 - `EventBusTransport`: 외부 트랜스포트 어댑터 구현을 위한 계약입니다.
 - `EventBus`, `EventPublishOptions`, `EventBusModuleOptions`, `EventType`: 발행, 기본값, 트랜스포트, 안정적인 이벤트 키를 위한 타입 전용 계약입니다.
+- `EventBusLifecycleState`, `EventBusStatusAdapterInput`, `EventBusPlatformStatusSnapshot`: status snapshot 계약입니다.
+
+Transport bootstrap은 unique event channel마다 한 번만 subscribe합니다. `eventKey`가 있으면 transport channel 이름을 제어합니다. 잘못된 JSON transport message는 무시됩니다.
 
 ## 런타임별 및 통합 서브패스
 
@@ -132,3 +139,5 @@ class UserRegisteredEvent {
 
 - `packages/event-bus/src/module.test.ts`: 핸들러 탐색 및 발행/구독 테스트 예제.
 - `packages/event-bus/src/public-surface.test.ts`: 공개 API 계약 검증 예제.
+- `packages/event-bus/src/status.test.ts`: status snapshot semantic 테스트 예제.
+- `packages/event-bus/src/transports/redis-transport.test.ts`: Redis transport 동작 테스트 예제.

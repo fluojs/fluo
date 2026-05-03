@@ -40,10 +40,14 @@ const app = await fluoFactory.create(AppModule, {
 await app.listen();
 ```
 
+`createFastifyAdapter()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit port values throw during adapter setup.
+
 ## Common Patterns
 
 ### Multipart and Raw Body
 The Fastify adapter includes built-in support for multipart form-data and raw body parsing via internal Fastify plugins, exposed through the standard fluo request interface. When `rawBody: true` is enabled, `FrameworkRequest.rawBody` preserves the original request bytes for non-multipart requests so webhook signature verification and other byte-sensitive flows can replay the exact payload. When you construct the adapter directly, pass multipart limits as the second argument. `bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same multipart settings under `options.multipart`.
+
+Raw-body capture is skipped for multipart requests. When `multipart.maxTotalSize` is omitted, it defaults to `maxBodySize` so size limits stay portable across HTTP adapters.
 
 ```typescript
 const adapter = createFastifyAdapter(
@@ -126,7 +130,7 @@ await bootstrapFastifyApplication(AppModule, {
 ```
 
 ### Native Route Registration with Safe Fallback
-When fluo route metadata can be translated directly, the adapter registers Fastify-native per-route handlers instead of sending every request through a single wildcard route. For semantically safe unversioned routes, those native handlers hand a pre-matched descriptor and params to the shared fluo dispatcher so duplicate route matching is skipped without changing framework-owned guards, interceptors, observers, SSE, multipart, raw body, streaming, or error handling.
+When fluo route metadata can be translated directly, the adapter registers Fastify-native per-route handlers for explicit `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `HEAD` routes instead of sending every request through a single wildcard route. For semantically safe unversioned routes, those native handlers hand a pre-matched descriptor and params to the shared fluo dispatcher so duplicate route matching is skipped without changing framework-owned guards, interceptors, observers, SSE, multipart, raw body, streaming, or error handling.
 
 When multiple routes share the same method and normalized param shape (for example `/:id` and `/:slug`), use `@All(...)`, depend on non-URI versioning, or arrive through duplicate-slash / trailing-slash variants, the adapter intentionally leaves those requests on the wildcard fallback path so Fastify registration cannot boot-fail or narrow fluo's matching semantics. If app middleware rewrites the framework request method or path after a native handoff was attached, the dispatcher ignores that stale handoff and rematches the rewritten request.
 
@@ -148,7 +152,9 @@ fluo's Fastify adapter significantly outperforms the raw Node.js adapter in high
 - `createFastifyAdapter(options)`: Recommended factory for the Fastify adapter.
 - `bootstrapFastifyApplication(module, options)`: advanced bootstrap without implicit listening.
 - `runFastifyApplication(module, options)`: Quick-start helper with lifecycle management. On timeout/failure it reports the condition through logging and `process.exitCode`, while leaving final process termination to the surrounding host.
+- `isFastifyMultipartTooLargeError(error)`: Detects multipart limit errors across Fastify error shapes.
 - `FastifyHttpApplicationAdapter`: The core adapter implementation.
+- Option types: `FastifyAdapterOptions`, `BootstrapFastifyApplicationOptions`, `RunFastifyApplicationOptions`, `CorsInput`, `FastifyApplicationSignal`.
 
 ## Troubleshooting
 
@@ -156,6 +162,7 @@ fluo's Fastify adapter significantly outperforms the raw Node.js adapter in high
 - **Middleware Issues**: The `middleware` option accepts runtime-level `MiddlewareLike[]` functions. These are not Fastify plugins and follow the standard middleware interface used across fluo adapters.
 - **Logging**: The native Fastify logger is disabled to prevent duplicate log streams. All logging should be configured via the fluo `logger` option in `runFastifyApplication` or `bootstrapFastifyApplication`.
 - **Global Prefix**: Use `globalPrefixExclude` to prevent the prefix from being applied to internal routes or health check endpoints.
+- **Malformed Cookies**: Malformed cookie headers are preserved rather than failing the request.
 
 ## Related Packages
 

@@ -31,7 +31,7 @@
 
 - 문서화된 fluo contract에 의존하는 public third-party package는 자신의 published surface에 semantic versioning을 적용해야 합니다.
 - module option shape, exported token 이름, adapter capability field, lifecycle ordering, shutdown semantics, readiness behavior, 문서화된 error behavior 변경은 contract change로 취급됩니다.
-- `0.x`에서는 breaking contract change를 minor release에서만 배포할 수 있고, `CHANGELOG.md`에 migration note를 포함해야 합니다.
+- `0.x`에서는 breaking contract change를 minor release에서만 배포할 수 있고, `CHANGELOG.md`에 소비자 대상 업그레이드 요구사항을 포함해야 합니다.
 - `1.0+`에서는 breaking contract change를 major release로 배포해야 합니다.
 - 확장이 문서화된 behavior를 바꾸면 implementation, tests, README 내용, contract-facing evidence를 함께 갱신해야 합니다.
 - 확장이 official publish surface를 대상으로 하거나 official platform compatibility를 주장한다면 `docs/contracts/release-governance.md`와 `docs/contracts/behavioral-contract-policy.md`에 문서화된 release 및 governance check를 계속 만족해야 합니다.

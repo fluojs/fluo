@@ -23,7 +23,7 @@ npm install @fluojs/core
 
 ## 사용 시점
 
-- 표준 데코레이터로 모듈, 프로바이더, 컨트롤러를 선언할 때
+- 표준 데코레이터로 모듈이나 프로바이더를 선언할 때
 - fluo 모듈 그래프에 참여하는 프레임워크 확장이나 내부 라이브러리를 만들 때
 - `Constructor<T>`, `Token<T>`, 프레임워크 공통 에러 같은 기본 타입과 계약을 직접 다뤄야 할 때
 
@@ -81,15 +81,13 @@ class UsesConfigValue {
 }
 ```
 
-여러 토큰을 지정할 때는 `@Inject(A, B)`처럼 variadic 호출을 사용하면 됩니다.
-
-마이그레이션 기간 동안 legacy 배열 형식인 `@Inject([A, B])`도 계속 정규화되지만, 새 코드는 constructor 토큰을 표준 데코레이터 사용 방식과 맞추기 위해 variadic 형식을 권장합니다.
+여러 constructor 토큰은 `@Inject(A, B)`처럼 variadic 호출로 지정하면 dependency metadata가 표준 데코레이터 사용 방식과 맞게 유지됩니다. `@Inject([A, B])` 배열 형태도 허용되지만, 새 코드는 variadic 형태를 사용하는 것이 좋습니다.
 
 ### 형제 패키지를 위한 공용 메타데이터 헬퍼
 
 내부 메타데이터 reader/writer는 `@fluojs/core/internal` 아래에 있으며, `@fluojs/di`, `@fluojs/http`, `@fluojs/runtime` 같은 패키지들이 같은 메타데이터 모델을 공유할 수 있게 합니다.
 
-애플리케이션 코드는 공개 데코레이터와 `ensureMetadataSymbol()`을 `@fluojs/core`에서 import해야 합니다. `@fluojs/core/internal` 서브패스는 메타데이터 레코드를 읽거나, 명시적 저장소와 `Symbol.metadata`를 병합하거나, 프레임워크 수준 데코레이터를 만드는 fluo 패키지를 위한 경로입니다. 표준 metadata bag helper는 current/native `Symbol.metadata`와 fallback symbol이 섞인 lookup을 처리합니다. 어느 era에서 온 own metadata든 같은 key에 대해서는 어느 era에서 온 inherited metadata보다 우선하지만, child가 다른 key만 소유한 경우 parent constructor의 inherited key는 계속 보입니다. DI와 모듈 그래프 hot path의 allocation을 줄이기 위해 `getModuleMetadata()`, `getOwnClassDiMetadata()`, `getInheritedClassDiMetadata()`, `getClassDiMetadata()`는 frozen snapshot을 반환하며 write 사이에는 같은 reference를 재사용할 수 있습니다. 이 결과, collection 필드, module provider descriptor wrapper와 middleware route-config wrapper(그 안의 `routes` 배열 포함)는 immutable로 취급해야 합니다. `useValue` payload 객체와 runtime middleware/guard/interceptor instance는 mutable reference로 유지되며 이 snapshot 때문에 freeze되지 않습니다. 다른 metadata reader는 각 reader의 테스트가 stable-reference 재사용을 문서화하지 않는 한 기존 defensive-read 동작을 유지합니다.
+애플리케이션 코드는 공개 데코레이터와 `ensureMetadataSymbol()`을 `@fluojs/core`에서 import해야 합니다. `@fluojs/core/internal` 서브패스는 메타데이터 레코드, 컨트롤러/라우트 헬퍼, injection/validation 헬퍼, clone 유틸리티가 필요한 fluo 패키지를 위한 경로입니다. 표준 metadata bag helper는 current/native `Symbol.metadata`와 fallback symbol이 섞인 lookup을 처리합니다. 어느 era에서 온 own metadata든 같은 key에 대해서는 어느 era에서 온 inherited metadata보다 우선하지만, child가 다른 key만 소유한 경우 parent constructor의 inherited key는 계속 보입니다. DI와 모듈 그래프 hot path의 allocation을 줄이기 위해 `getModuleMetadata()`, `getOwnClassDiMetadata()`, `getInheritedClassDiMetadata()`, `getClassDiMetadata()`는 frozen snapshot을 반환하며 write 사이에는 같은 reference를 재사용할 수 있습니다. 이 결과, collection 필드, module provider descriptor wrapper와 middleware route-config wrapper(그 안의 `routes` 배열 포함)는 immutable로 취급해야 합니다. `useValue` payload 객체와 runtime middleware/guard/interceptor instance는 mutable reference로 유지되며 이 snapshot 때문에 freeze되지 않습니다. 다른 metadata reader는 각 reader의 테스트가 stable-reference 재사용을 문서화하지 않는 한 기존 defensive-read 동작을 유지합니다.
 
 ```ts
 import { getModuleMetadata } from '@fluojs/core/internal';
@@ -160,10 +158,10 @@ class Logger {}
 ## 공개 API
 
 - **데코레이터**: `Module`, `Global`, `Inject`, `Scope`
-- **에러**: `FluoError`, `InvariantError`, `FluoCodeError`
+- **에러**: `FluoError`, `InvariantError`, `FluoCodeError`, `FluoErrorOptions`, `formatTokenName`
 - **메타데이터 런타임**: `ensureMetadataSymbol`
-- **타입**: `Constructor<T>`, `Token<T>`, `MaybePromise<T>`, `AsyncModuleOptions`
-- **내부 서브패스**: `@fluojs/core/internal`을 통한 메타데이터 헬퍼
+- **타입**: `Constructor<T>`, `Token<T>`, `MaybePromise<T>`, `AsyncModuleOptions`, `MetadataPropertyKey`, `MetadataSource`
+- **내부 서브패스**: `@fluojs/core/internal`을 통한 메타데이터 헬퍼, 컨트롤러/라우트 헬퍼, injection 헬퍼, validation 헬퍼, clone 유틸리티
 
 ## 관련 패키지
 

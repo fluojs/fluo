@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Shared Redis connection layer for fluo. It provides a singleton `ioredis` client managed by the application lifecycle.
+Shared Redis connection layer for fluo. It provides a default app-scoped `ioredis` client plus optional named clients, all managed by the application lifecycle.
 
 ## Table of Contents
 
@@ -51,6 +51,8 @@ export class AppModule {}
 
 Inject `RedisService` for high-level operations or `REDIS_CLIENT` for the raw `ioredis` instance.
 
+`RedisService.get()` attempts JSON parsing and falls back to the raw string; missing keys return `null`. `RedisService.set()` serializes values with `JSON.stringify()` and uses `EX` only for positive TTL values.
+
 ```typescript
 import { Inject } from '@fluojs/core';
 import { RedisService } from '@fluojs/redis';
@@ -87,6 +89,7 @@ Use `RedisModule.forRootNamed(name, options)` when one application needs more th
 - Omit `name` when you want the default aliases: `REDIS_CLIENT` / `RedisService`.
 - Pass `name` when you want the named helpers: `getRedisClientToken(name)` / `getRedisServiceToken(name)`.
 - Named clients follow the same bootstrap/shutdown contract as the default client; only the default registration exports the `REDIS_CLIENT` / `RedisService` aliases.
+- Names are trimmed, and blank or whitespace-only names are rejected by token/component helpers.
 
 ```typescript
 import { Module, Inject } from '@fluojs/core';
@@ -123,6 +126,8 @@ export class AnalyticsStore {
 
 If you need advanced Redis commands (pipelines, lua scripts, pub/sub), inject the raw client directly.
 
+If you already injected `RedisService`, call `redis.getRawClient()` to access the same underlying `ioredis` instance.
+
 ```typescript
 import { Inject } from '@fluojs/core';
 import { REDIS_CLIENT } from '@fluojs/redis';
@@ -146,6 +151,7 @@ export class AdvancedService {
 - `RedisModule.forRootNamed(name, options)`: Registers an additional named Redis client without replacing the default aliases, using the same lifecycle contract.
 - `RedisService`: Facade with JSON codec support and `get`/`set`/`del` methods.
 - `REDIS_CLIENT`: DI token for the underlying `ioredis` instance.
+- `DEFAULT_REDIS_CLIENT_NAME`: Stable default Redis client name.
 - `getRedisClientToken(name)`: DI token helper for a named raw client. Omitting `name` returns the default `REDIS_CLIENT` token.
 - `getRedisServiceToken(name)`: DI token helper for a named `RedisService` facade. Omitting `name` returns the default `RedisService` token.
 - `getRedisComponentId(name)`: Status/dependency id helper used by Redis-consuming packages (`redis.default`, `redis.cache`, etc.).
@@ -153,6 +159,7 @@ export class AdvancedService {
 
 ### Types
 - `RedisModuleOptions`: Configuration options passed directly to the `ioredis` constructor.
+- `PersistencePlatformStatusSnapshot`, `RedisStatusAdapterInput`: Status snapshot input/output types.
 
 ## Related Packages
 

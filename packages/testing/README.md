@@ -50,6 +50,8 @@ const module = await createTestingModule({ rootModule: AppModule })
 const service = await module.resolve(UserService);
 ```
 
+Use `module.get(token)` for synchronous lookup, `module.resolve(token)` for async resolution, and `module.resolveAll(token)` when a multi-provider token should return every matching provider.
+
 ## Common Patterns
 
 ### Override providers before compilation
@@ -62,6 +64,8 @@ const module = await createTestingModule({ rootModule: AppModule })
   ])
   .compile();
 ```
+
+The testing builder also supports `overrideGuard(...)`, `overrideInterceptor(...)`, and `overrideFilter(...)` for route-pipeline tests that need to replace cross-cutting behavior.
 
 ### Preserve module identity with `overrideModule()`
 
@@ -101,6 +105,8 @@ const repo = createMock<UserRepository>({ findById: vi.fn() });
 const mailer = createDeepMock(MailService);
 ```
 
+`asMock(value)` narrows an existing value to a mock-friendly type, and `mockToken(token, value)` creates a provider override tuple for token-based dependencies. `createMock(..., { strict: true })` rejects access to unspecified members.
+
 Install `vitest` in the consuming workspace before using the mock helpers so the published runtime import resolves consistently.
 
 ### Conformance and portability harnesses
@@ -110,6 +116,7 @@ Use subpaths like `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-
 ## Public API
 
 - **Root package**: `createTestingModule(...)`, `createTestApp(...)`, module introspection helpers, shared testing types
+- **Subpaths**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock`, `@fluojs/testing/types`, `@fluojs/testing/vitest`
 - **Mock subpath**: `@fluojs/testing/mock`
 - **HTTP helpers**: `@fluojs/testing/http`
 - **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`
