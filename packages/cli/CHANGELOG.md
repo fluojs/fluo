@@ -1,5 +1,11 @@
 # @fluojs/cli
 
+## 1.0.0-beta.3
+
+### Minor Changes
+
+- [#1525](https://github.com/fluojs/fluo/pull/1525) [`922fa87`](https://github.com/fluojs/fluo/commit/922fa87998ecc4c3c4b94dffb921439171663460) Thanks [@ayden94](https://github.com/ayden94)! - Update the CLI self-update flow to reuse the package manager that owns the current global install instead of always invoking pnpm.
+
 ## 1.0.0-beta.2
 
 ### Minor Changes
