@@ -137,7 +137,7 @@ function withPrettyReporterColorEnv(env: NodeJS.ProcessEnv, mode: EffectiveLifec
     return env;
   }
 
-  if (!stdout.isTTY && !stderr.isTTY) {
+  if (!stdout.isTTY || !stderr.isTTY) {
     return env;
   }
 
