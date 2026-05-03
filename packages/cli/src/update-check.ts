@@ -69,6 +69,7 @@ export type UpdatePrompter = {
  * Describes the cli update check runtime options contract.
  */
 export interface CliUpdateCheckRuntimeOptions {
+  bypassCache?: boolean;
   cacheFile?: string;
   cacheTtlMs?: number;
   ci?: boolean;
@@ -312,10 +313,13 @@ async function resolveLatestVersion(
   cacheTtlMs: number,
   nowMs: number,
   fetchLatestVersion: (packageName: string) => Promise<string | undefined>,
+  bypassCache: boolean,
 ): Promise<string | undefined> {
-  const cachedLatestVersion = await readCachedLatestVersion(cacheFile, nowMs, cacheTtlMs);
-  if (cachedLatestVersion) {
-    return cachedLatestVersion;
+  if (!bypassCache) {
+    const cachedLatestVersion = await readCachedLatestVersion(cacheFile, nowMs, cacheTtlMs);
+    if (cachedLatestVersion) {
+      return cachedLatestVersion;
+    }
   }
 
   let latestVersion: string | undefined;
@@ -597,6 +601,7 @@ export async function runCliUpdateCheck(argv: string[], options: CliUpdateCheckR
     cacheTtlMs,
     nowMs,
     options.fetchLatestVersion ?? fetchLatestDistTag,
+    options.bypassCache === true,
   );
 
   if (!latestVersion || !isNewerVersion(latestVersion, currentVersion)) {

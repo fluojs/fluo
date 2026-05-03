@@ -437,6 +437,138 @@ describe('CLI command runner', () => {
     expect(secondStderrBuffer.join('')).toContain('A newer @fluojs/cli version is available');
   });
 
+  it.each(['new', 'create'] as const)('bypasses a fresh update-check cache for fluo %s', async (command) => {
+    const cacheFile = createUpdateCacheFile();
+    writeFileSync(cacheFile, `${JSON.stringify({ checkedAt: Date.parse('2026-04-26T00:00:00.000Z'), latestVersion: '1.0.0-beta.2' })}\n`, 'utf8');
+
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    let fetchCount = 0;
+
+    const exitCode = await runCli([
+      command,
+      'starter-app',
+      '--shape',
+      'application',
+      '--runtime',
+      'node',
+      '--platform',
+      'fastify',
+      '--transport',
+      'http',
+      '--tooling',
+      'standard',
+      '--topology',
+      'single-package',
+      '--package-manager',
+      'pnpm',
+      '--no-install',
+      '--no-git',
+      '--print-plan',
+    ], {
+      env: updateCheckEnv,
+      stderr: createTtyBufferStream(stderrBuffer),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile,
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async (): Promise<string> => {
+          fetchCount += 1;
+          return '1.0.0-beta.3';
+        },
+        now: () => new Date('2026-04-26T00:00:00.000Z'),
+        prompt: {
+          confirm: async () => false,
+        },
+      },
+    });
+
+    const cache = JSON.parse(readFileSync(cacheFile, 'utf8')) as { latestVersion: string };
+    expect(exitCode).toBe(0);
+    expect(fetchCount).toBe(1);
+    expect(cache.latestVersion).toBe('1.0.0-beta.3');
+    expect(stderrBuffer.join('')).toContain('A newer @fluojs/cli version is available: 1.0.0-beta.1 -> 1.0.0-beta.3.');
+    expect(stdoutBuffer.join('')).toContain('fluo new scaffold plan');
+  });
+
+  it('keeps fresh update-check cache behavior for non-creation commands', async () => {
+    const cacheFile = createUpdateCacheFile();
+    writeFileSync(cacheFile, `${JSON.stringify({ checkedAt: Date.parse('2026-04-26T00:00:00.000Z'), latestVersion: '1.0.0-beta.2' })}\n`, 'utf8');
+
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    let fetchCount = 0;
+
+    const exitCode = await runCli(['help'], {
+      env: updateCheckEnv,
+      stderr: createTtyBufferStream(stderrBuffer),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile,
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async (): Promise<string> => {
+          fetchCount += 1;
+          return '1.0.0-beta.3';
+        },
+        now: () => new Date('2026-04-26T00:00:00.000Z'),
+        prompt: {
+          confirm: async () => false,
+        },
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(fetchCount).toBe(0);
+    expect(stderrBuffer.join('')).toContain('A newer @fluojs/cli version is available: 1.0.0-beta.1 -> 1.0.0-beta.2.');
+    expect(stderrBuffer.join('')).not.toContain('1.0.0-beta.3');
+    expect(stdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
+  });
+
+  it('continues fluo new when a forced update check cannot reach the registry', async () => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli([
+      'new',
+      'starter-app',
+      '--shape',
+      'application',
+      '--runtime',
+      'node',
+      '--platform',
+      'fastify',
+      '--transport',
+      'http',
+      '--tooling',
+      'standard',
+      '--topology',
+      'single-package',
+      '--package-manager',
+      'pnpm',
+      '--no-install',
+      '--no-git',
+      '--print-plan',
+    ], {
+      env: updateCheckEnv,
+      stderr: createTtyBufferStream(stderrBuffer),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async () => {
+          throw new Error('registry unavailable');
+        },
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stderrBuffer.join('')).toBe('');
+    expect(stdoutBuffer.join('')).toContain('fluo new scaffold plan');
+  });
+
   it('does not prompt when the public CLI version is already current', async () => {
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];

@@ -48,6 +48,8 @@ fluo -v
 
 `fluo`가 interactive TTY에서 실행되면 로컬 캐시를 사용해 공개 npm `latest` dist-tag의 `@fluojs/cli` 버전을 확인하므로 매 invocation마다 registry를 호출하지 않습니다. 더 새로운 버전이 있으면 CLI가 설치 여부를 묻습니다. 거절하면 현재 설치된 버전으로 기존 명령을 계속 실행하고, 승인하면 현재 설치를 소유한 것으로 보이는 package manager의 전역 업데이트 명령(`npm install -g`, `pnpm add -g`, `bun add -g`, `yarn global add`)을 사용한 뒤 같은 인자로 업데이트된 `fluo` 바이너리를 다시 시작합니다. 설치 도구를 추론할 수 없으면 Node.js 기본 전역 설치 경로를 소유하는 npm 기준으로 `npm install -g @fluojs/cli@<latest>`를 fallback으로 사용합니다.
 
+`fluo new`와 alias인 `fluo create`는 일반 update-check cache가 아직 fresh하더라도 스캐폴딩 전에 interactive 최신 버전 확인을 새로 시도합니다. 이를 통해 첫 프로젝트 생성 경로가 방금 배포된 starter 동작과 더 잘 맞춰지며, `fluo dev`, `fluo build`, `fluo generate`, `fluo inspect` 같은 일상 명령은 기존처럼 일반 TTL이 만료될 때까지 cached latest-version 결과를 재사용합니다.
+
 업데이트 확인은 CI, non-TTY 출력, npm-script context, 업데이트 후 재실행 context, registry/network 실패, 명시적 opt-out 경로에서는 건너뜁니다. 한 번만 끄려면 `--no-update-check`(또는 compatibility alias `--no-update-notifier`)를 사용하고, 자동화에서 절대 prompt가 뜨면 안 되는 경우에는 `FLUO_NO_UPDATE_CHECK=1`을 설정하세요.
 
 ## 사용 시점

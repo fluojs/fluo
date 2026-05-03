@@ -154,6 +154,10 @@ function isVersionCommand(value: string | undefined): boolean {
   return value === 'version' || value === '--version' || value === '-v';
 }
 
+function isCreationCommand(value: string | undefined): boolean {
+  return value === 'new' || value === 'create';
+}
+
 function readCliVersion(): string {
   const packageJsonPath = fileURLToPath(new URL('../package.json', import.meta.url));
   const manifest: unknown = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
@@ -426,6 +430,7 @@ export async function runCli(
       ...updateCheckOptions,
       ci: runtime.ci,
       env,
+      bypassCache: isCreationCommand(commandArgv[0]),
       interactive: runtime.interactive,
       skip: updateFlagResult.skipUpdateCheck || runtime.updateCheck === false,
       stderr,

@@ -110,6 +110,8 @@ pnpm update -g @fluojs/cli
 
 잘 관리된 CLI는 새 프로젝트를 시작할 때마다 최신 커뮤니티 지식과 프레임워크의 이점을 함께 가져오게 해 줍니다.
 
+`fluo new` 또는 alias인 `fluo create`가 interactive terminal에서 실행되면, 일반 명령이 cached update-check 결과를 재사용할 수 있는 상황에서도 스캐폴딩 전에 fresh latest-version check를 시도합니다. 자동화에서는 `--no-update-check` 또는 `FLUO_NO_UPDATE_CHECK=1`로 prompt를 계속 비활성화할 수 있습니다.
+
 ## 2.2 fluo new: Interactive Scaffolding
 
 이제 명령을 사용할 수 있으니, 파일을 하나씩 손으로 만들 필요는 없습니다. 생성기가 깨끗한 시작점을 먼저 세우게 합니다.
