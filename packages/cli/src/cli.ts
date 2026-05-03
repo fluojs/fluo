@@ -1,11 +1,14 @@
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { diagnosticsUsage, runAnalyzeCommand, runDoctorCommand, runInfoCommand } from './commands/diagnostics.js';
 import { runGenerateCommand } from './commands/generate.js';
 import { type InspectCommandRuntimeOptions, inspectUsage, runInspectCommand } from './commands/inspect.js';
 import { migrateUsage, runMigrateCommand } from './commands/migrate.js';
 import { type NewCommandRuntimeOptions, newUsage, runNewCommand } from './commands/new.js';
+import { addUsage, runAddCommand, runUpgradeCommand, upgradeUsage } from './commands/package-workflow.js';
+import { runScriptCommand, scriptUsage } from './commands/scripts.js';
 import { builtInGeneratorCollection, generatorManifest, generatorOptionSchemas, resolveGeneratorKind } from './generators/manifest.js';
 import { renderAliasList, renderHelpTable } from './help.js';
 import type { GenerateOptions, GeneratorKind } from './types.js';
@@ -27,6 +30,8 @@ export interface CliRuntimeOptions {
   ci?: boolean;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  fetchDistTags?: (packageName: string) => Promise<Record<string, string> | undefined>;
+  spawnCommand?: (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; stdio: 'inherit' }) => Promise<number>;
   stderr?: CliStream;
   stdin?: CliReadableStream;
   stdout?: CliStream;
@@ -41,6 +46,30 @@ type ParsedCliArgs = {
 };
 
 type ParsedCommand =
+  | {
+      argv: string[];
+      command: 'add';
+    }
+  | {
+      argv: string[];
+      command: 'analyze';
+    }
+  | {
+      argv: string[];
+      command: 'doctor';
+    }
+  | {
+      argv: string[];
+      command: 'info';
+    }
+  | {
+      argv: string[];
+      command: 'build' | 'dev' | 'start';
+    }
+  | {
+      argv: string[];
+      command: 'upgrade';
+    }
   | {
       argv: string[];
       command: 'new';
@@ -100,8 +129,16 @@ const GENERATE_OPTION_HELP: GenerateOptionHelpEntry[] = [
 const TOP_LEVEL_COMMAND_HELP: TopLevelCommandHelpEntry[] = [
   { aliases: ['create'], command: 'new', description: 'Scaffold a new fluo application and install dependencies.' },
   { aliases: ['g'], command: 'generate', description: 'Generate a schematic inside an existing fluo application.' },
+  { aliases: ['info'], command: 'doctor', description: 'Print CLI, registry, update-cache, runtime, and project diagnostics.' },
+  { aliases: [], command: 'analyze', description: 'Summarize project diagnostics and point to deeper inspection flows.' },
+  { aliases: [], command: 'dev', description: 'Run the project development script through the detected package manager.' },
+  { aliases: [], command: 'start', description: 'Run the project start script through the detected package manager.' },
+  { aliases: [], command: 'build', description: 'Run the project build script through the detected package manager.' },
+  { aliases: [], command: 'add', description: 'Install @fluojs packages with the detected package manager.' },
+  { aliases: [], command: 'upgrade', description: 'Report latest CLI state and migration workflow guidance.' },
   { aliases: [], command: 'inspect', description: 'Inspect runtime platform snapshot/diagnostics and emit timing optionally.' },
   { aliases: [], command: 'migrate', description: 'Run NestJS-to-fluo codemods (dry-run by default).' },
+  { aliases: ['--version', '-v'], command: 'version', description: 'Print the installed fluo CLI version.' },
   { aliases: [], command: 'help', description: 'Show top-level or command-specific help.' },
 ];
 
@@ -111,6 +148,21 @@ function normalizeGeneratorKind(value: string | undefined): GeneratorKind | unde
 
 function isHelpFlag(value: string | undefined): boolean {
   return value === '--help' || value === '-h';
+}
+
+function isVersionCommand(value: string | undefined): boolean {
+  return value === 'version' || value === '--version' || value === '-v';
+}
+
+function readCliVersion(): string {
+  const packageJsonPath = fileURLToPath(new URL('../package.json', import.meta.url));
+  const manifest: unknown = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+
+  if (typeof manifest !== 'object' || manifest === null || !('version' in manifest) || typeof manifest.version !== 'string') {
+    throw new Error('Unable to determine the installed fluo CLI version.');
+  }
+
+  return manifest.version;
 }
 
 function generateUsage(): string {
@@ -277,6 +329,30 @@ function parseGenerateArgs(argv: string[]): ParsedCliArgs {
 function parseCommand(argv: string[]): ParsedCommand {
   const [command] = argv;
 
+  if (command === 'analyze') {
+    return { argv: argv.slice(1), command: 'analyze' };
+  }
+
+  if (command === 'add') {
+    return { argv: argv.slice(1), command: 'add' };
+  }
+
+  if (command === 'doctor') {
+    return { argv: argv.slice(1), command: 'doctor' };
+  }
+
+  if (command === 'info') {
+    return { argv: argv.slice(1), command: 'info' };
+  }
+
+  if (command === 'build' || command === 'dev' || command === 'start') {
+    return { argv: argv.slice(1), command };
+  }
+
+  if (command === 'upgrade') {
+    return { argv: argv.slice(1), command: 'upgrade' };
+  }
+
   if (command === 'new' || command === 'create') {
     return {
       argv: argv.slice(1),
@@ -335,10 +411,16 @@ export async function runCli(
   const stdout = runtime.stdout ?? process.stdout;
   const stderr = runtime.stderr ?? process.stderr;
   const env = runtime.env ?? process.env;
+  const commandRuntime = { ...runtime, env };
   const updateFlagResult = removeUpdateCheckFlags(argv);
   const commandArgv = updateFlagResult.argv;
 
   try {
+    if (isVersionCommand(commandArgv[0])) {
+      stdout.write(`${readCliVersion()}\n`);
+      return 0;
+    }
+
     const updateCheckOptions = runtime.updateCheck === false ? undefined : runtime.updateCheck;
     const updateCheckResult = await runCliUpdateCheck(commandArgv, {
       ...updateCheckOptions,
@@ -372,6 +454,31 @@ export async function runCli(
         return 0;
       }
 
+      if (topic === 'doctor' || topic === 'info') {
+        stdout.write(`${diagnosticsUsage('doctor')}\n`);
+        return 0;
+      }
+
+      if (topic === 'analyze') {
+        stdout.write(`${diagnosticsUsage('analyze')}\n`);
+        return 0;
+      }
+
+      if (topic === 'build' || topic === 'dev' || topic === 'start') {
+        stdout.write(`${scriptUsage(topic)}\n`);
+        return 0;
+      }
+
+      if (topic === 'add') {
+        stdout.write(`${addUsage()}\n`);
+        return 0;
+      }
+
+      if (topic === 'upgrade') {
+        stdout.write(`${upgradeUsage()}\n`);
+        return 0;
+      }
+
       if (topic === 'migrate') {
         stdout.write(`${migrateUsage()}\n`);
         return 0;
@@ -396,6 +503,31 @@ export async function runCli(
       return 0;
     }
 
+    if ((commandArgv[0] === 'doctor' || commandArgv[0] === 'info') && commandArgv.slice(1).some(isHelpFlag)) {
+      stdout.write(`${diagnosticsUsage('doctor')}\n`);
+      return 0;
+    }
+
+    if (commandArgv[0] === 'analyze' && commandArgv.slice(1).some(isHelpFlag)) {
+      stdout.write(`${diagnosticsUsage('analyze')}\n`);
+      return 0;
+    }
+
+    if ((commandArgv[0] === 'build' || commandArgv[0] === 'dev' || commandArgv[0] === 'start') && commandArgv.slice(1).some(isHelpFlag)) {
+      stdout.write(`${scriptUsage(commandArgv[0])}\n`);
+      return 0;
+    }
+
+    if (commandArgv[0] === 'add' && commandArgv.slice(1).some(isHelpFlag)) {
+      stdout.write(`${addUsage()}\n`);
+      return 0;
+    }
+
+    if (commandArgv[0] === 'upgrade' && commandArgv.slice(1).some(isHelpFlag)) {
+      stdout.write(`${upgradeUsage()}\n`);
+      return 0;
+    }
+
     if (commandArgv[0] === 'migrate' && commandArgv.slice(1).some(isHelpFlag)) {
       stdout.write(`${migrateUsage()}\n`);
       return 0;
@@ -408,16 +540,44 @@ export async function runCli(
 
     const parsedCommand = parseCommand(commandArgv);
 
+    if (parsedCommand.command === 'analyze') {
+      return runAnalyzeCommand(parsedCommand.argv, commandRuntime);
+    }
+
+    if (parsedCommand.command === 'add') {
+      return runAddCommand(parsedCommand.argv, commandRuntime);
+    }
+
+    if (parsedCommand.command === 'doctor') {
+      return runDoctorCommand(parsedCommand.argv, commandRuntime);
+    }
+
+    if (parsedCommand.command === 'info') {
+      return runInfoCommand(parsedCommand.argv, commandRuntime);
+    }
+
+    if (parsedCommand.command === 'build' || parsedCommand.command === 'dev' || parsedCommand.command === 'start') {
+      return runScriptCommand(parsedCommand.command, parsedCommand.argv, commandRuntime);
+    }
+
+    if (parsedCommand.command === 'upgrade') {
+      return runUpgradeCommand(parsedCommand.argv, commandRuntime);
+    }
+
     if (parsedCommand.command === 'new') {
-      return runNewCommand(parsedCommand.argv, runtime);
+      return runNewCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'migrate') {
-      return runMigrateCommand(parsedCommand.argv, runtime);
+      return runMigrateCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'inspect') {
-      return runInspectCommand(parsedCommand.argv, runtime);
+      return runInspectCommand(parsedCommand.argv, commandRuntime);
+    }
+
+    if (parsedCommand.command !== 'generate') {
+      throw new Error(usage());
     }
 
     const targetDirectory = resolve(cwd, parsedCommand.parsed.targetDirectory ?? resolveDefaultTargetDirectory(cwd));
