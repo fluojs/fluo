@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Inject } from '@fluojs/core';
 import { forwardRef, optional } from '@fluojs/di';
 import { defineClassDiMetadata, defineModuleMetadata } from '@fluojs/core/internal';
+import type { MiddlewareRouteConfig } from '@fluojs/http';
 
 import {
   clearModuleGraphCompileCacheForTesting,
@@ -180,6 +181,80 @@ describe('module graph cache-key prerequisites', () => {
       expect.unreachable('expected the first cached dependency to remain a forwardRef wrapper');
     }
     expect(cachedFactoryProvider.inject[1]).toEqual(optional(Metrics));
+  });
+
+  it('keeps cached useValue payload snapshots isolated from returned result mutations', () => {
+    const CONFIG_TOKEN = Symbol('config-token');
+    const originalConfig = {
+      nested: {
+        flag: 'safe',
+      },
+      list: ['first'],
+    };
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [
+        {
+          provide: CONFIG_TOKEN,
+          useValue: originalConfig,
+        },
+      ],
+    });
+
+    const firstCompile = compileModuleGraph(AppModule, { moduleGraphCache: true });
+    const configProvider = firstCompile[0]?.definition.providers?.[0];
+    if (typeof configProvider === 'function' || configProvider === undefined || !('useValue' in configProvider)) {
+      expect.unreachable('expected a value provider with nested configuration');
+    }
+
+    const returnedConfig = configProvider.useValue as typeof originalConfig;
+    returnedConfig.nested.flag = 'poisoned';
+    returnedConfig.list.push('poisoned');
+
+    const secondCompile = compileModuleGraph(AppModule, { moduleGraphCache: true });
+    const cachedConfigProvider = secondCompile[0]?.definition.providers?.[0];
+    if (typeof cachedConfigProvider === 'function' || cachedConfigProvider === undefined || !('useValue' in cachedConfigProvider)) {
+      expect.unreachable('expected a cached value provider with nested configuration');
+    }
+
+    expect(cachedConfigProvider.useValue).toEqual({
+      nested: {
+        flag: 'safe',
+      },
+      list: ['first'],
+    });
+  });
+
+  it('keeps cached middleware route descriptors isolated from returned result mutations', () => {
+    class AuditMiddleware {
+      handle() {}
+    }
+    const routeConfig: MiddlewareRouteConfig = {
+      middleware: AuditMiddleware,
+      routes: ['/safe'],
+    };
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      middleware: [routeConfig],
+    });
+
+    const firstCompile = compileModuleGraph(AppModule, { moduleGraphCache: true });
+    const returnedRouteConfig = firstCompile[0]?.definition.middleware?.[0];
+    if (typeof returnedRouteConfig !== 'object' || returnedRouteConfig === null || !('routes' in returnedRouteConfig)) {
+      expect.unreachable('expected a middleware route config descriptor');
+    }
+
+    returnedRouteConfig.routes.splice(0, returnedRouteConfig.routes.length, '/poisoned');
+
+    const secondCompile = compileModuleGraph(AppModule, { moduleGraphCache: true });
+    const cachedRouteConfig = secondCompile[0]?.definition.middleware?.[0];
+    if (typeof cachedRouteConfig !== 'object' || cachedRouteConfig === null || !('routes' in cachedRouteConfig)) {
+      expect.unreachable('expected a cached middleware route config descriptor');
+    }
+
+    expect(cachedRouteConfig.routes).toEqual(['/safe']);
   });
 
   it('keeps the module graph cache opt-in', () => {

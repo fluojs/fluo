@@ -161,8 +161,71 @@ function cloneModuleDefinition(definition: ModuleDefinition): ModuleDefinition {
     providers: definition.providers ? definition.providers.map((provider) => cloneProvider(provider)) : undefined,
     controllers: definition.controllers ? [...definition.controllers] : undefined,
     exports: definition.exports ? [...definition.exports] : undefined,
-    middleware: definition.middleware ? [...definition.middleware] : undefined,
+    middleware: definition.middleware ? definition.middleware.map((middleware) => cloneMutableValue(middleware)) : undefined,
   };
+}
+
+function cloneMutableValue<T>(value: T, clones = new WeakMap<object, unknown>()): T {
+  if (typeof value !== 'object' || value === null) {
+    return value;
+  }
+
+  const existing = clones.get(value);
+  if (existing !== undefined) {
+    return existing as T;
+  }
+
+  if (value instanceof Date) {
+    return new Date(value) as T;
+  }
+
+  if (value instanceof RegExp) {
+    return new RegExp(value) as T;
+  }
+
+  if (Array.isArray(value)) {
+    const clonedArray: unknown[] = [];
+    clones.set(value, clonedArray);
+
+    for (const item of value) {
+      clonedArray.push(cloneMutableValue(item, clones));
+    }
+
+    return clonedArray as T;
+  }
+
+  if (value instanceof Map) {
+    const clonedMap = new Map<unknown, unknown>();
+    clones.set(value, clonedMap);
+
+    for (const [key, entryValue] of value) {
+      clonedMap.set(cloneMutableValue(key, clones), cloneMutableValue(entryValue, clones));
+    }
+
+    return clonedMap as T;
+  }
+
+  if (value instanceof Set) {
+    const clonedSet = new Set<unknown>();
+    clones.set(value, clonedSet);
+
+    for (const entryValue of value) {
+      clonedSet.add(cloneMutableValue(entryValue, clones));
+    }
+
+    return clonedSet as T;
+  }
+
+  const source = value as Record<PropertyKey, unknown>;
+  const prototype = Object.getPrototypeOf(value) as object | null;
+  const clonedObject = Object.create(prototype) as Record<PropertyKey, unknown>;
+  clones.set(value, clonedObject);
+
+  for (const key of Reflect.ownKeys(source)) {
+    clonedObject[key] = cloneMutableValue(source[key], clones);
+  }
+
+  return clonedObject as T;
 }
 
 function cloneInjectionToken(token: InjectionToken): InjectionToken {
@@ -202,6 +265,13 @@ function cloneProvider(provider: Provider): Provider {
     };
   }
 
+  if ('useValue' in provider) {
+    return {
+      ...provider,
+      useValue: cloneMutableValue(provider.useValue),
+    };
+  }
+
   return { ...provider };
 }
 
@@ -228,6 +298,34 @@ function freezeInjectionToken(token: InjectionToken): InjectionToken {
   return token;
 }
 
+function freezeMutableValue<T>(value: T, frozen = new WeakSet<object>()): T {
+  if (typeof value !== 'object' || value === null || frozen.has(value)) {
+    return value;
+  }
+
+  frozen.add(value);
+
+  if (value instanceof Map) {
+    for (const [key, entryValue] of value) {
+      freezeMutableValue(key, frozen);
+      freezeMutableValue(entryValue, frozen);
+    }
+  } else if (value instanceof Set) {
+    for (const entryValue of value) {
+      freezeMutableValue(entryValue, frozen);
+    }
+  } else {
+    const source = value as Record<PropertyKey, unknown>;
+    for (const key of Reflect.ownKeys(source)) {
+      freezeMutableValue(source[key], frozen);
+    }
+  }
+
+  Object.freeze(value);
+
+  return value;
+}
+
 function freezeProvider(provider: Provider): Provider {
   if (typeof provider === 'function') {
     return provider;
@@ -240,7 +338,19 @@ function freezeProvider(provider: Provider): Provider {
     Object.freeze(provider.inject);
   }
 
+  if ('useValue' in provider) {
+    freezeMutableValue(provider.useValue);
+  }
+
   return Object.freeze(provider);
+}
+
+function freezeMiddleware(middleware: MiddlewareLike): MiddlewareLike {
+  if (typeof middleware === 'object' && middleware !== null) {
+    freezeMutableValue(middleware);
+  }
+
+  return middleware;
 }
 
 function freezeModuleDefinition(definition: ModuleDefinition): ModuleDefinition {
@@ -251,6 +361,9 @@ function freezeModuleDefinition(definition: ModuleDefinition): ModuleDefinition 
   definition.providers && Object.freeze(definition.providers);
   definition.controllers && Object.freeze(definition.controllers);
   definition.exports && Object.freeze(definition.exports);
+  for (const middleware of definition.middleware ?? []) {
+    freezeMiddleware(middleware);
+  }
   definition.middleware && Object.freeze(definition.middleware);
 
   return Object.freeze(definition);
