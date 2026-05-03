@@ -151,11 +151,157 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(42);
-    expect(installCommands).toEqual(['pnpm add -g @fluojs/cli@1.0.0-beta.2']);
+    expect(installCommands).toEqual(['npm install -g @fluojs/cli@1.0.0-beta.2']);
     expect(rerunArgv).toEqual([['help', 'new']]);
     expect(rerunEnvValues).toEqual(['1']);
     expect(stderrBuffer.join('')).toContain('Updated @fluojs/cli to 1.0.0-beta.2. Restarting fluo...');
     expect(stdoutBuffer.join('')).toBe('');
+  });
+
+  it.each([
+    ['bun', 'bun add -g @fluojs/cli@1.0.0-beta.2'],
+    ['npm', 'npm install -g @fluojs/cli@1.0.0-beta.2'],
+    ['pnpm', 'pnpm add -g @fluojs/cli@1.0.0-beta.2'],
+    ['yarn', 'yarn global add @fluojs/cli@1.0.0-beta.2'],
+  ] as const)('uses %s for accepted CLI updates when that installer is detected', async (packageManager, expectedCommand) => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    const installCommands: string[] = [];
+
+    const exitCode = await runCli(['help'], {
+      env: {
+        ...updateCheckEnv,
+        npm_config_user_agent: `${packageManager}/1.0.0 node/v20.0.0 darwin arm64`,
+      },
+      stderr: createTtyBufferStream(stderrBuffer),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async () => '1.0.0-beta.2',
+        installPackage: async (installCommand) => {
+          installCommands.push(installCommand.display);
+          return 0;
+        },
+        prompt: {
+          confirm: async () => true,
+        },
+        rerunCli: async () => 0,
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(installCommands).toEqual([expectedCommand]);
+    expect(stderrBuffer.join('')).toContain(`Installing @fluojs/cli@1.0.0-beta.2 with \`${expectedCommand}\``);
+  });
+
+  it.each([
+    ['bun', '/Users/example/.bun/bin/bun', 'bun add -g @fluojs/cli@1.0.0-beta.2'],
+    ['npm', '/Users/example/.nvm/versions/node/v20.0.0/lib/node_modules/npm/bin/npm-cli.js', 'npm install -g @fluojs/cli@1.0.0-beta.2'],
+    ['pnpm', '/Users/example/Library/pnpm/pnpm.cjs', 'pnpm add -g @fluojs/cli@1.0.0-beta.2'],
+    ['yarn', '/Users/example/.yarn/bin/yarn.js', 'yarn global add @fluojs/cli@1.0.0-beta.2'],
+  ] as const)('uses %s for accepted CLI updates when npm_execpath points at that installer', async (_packageManager, npmExecPath, expectedCommand) => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    const installCommands: string[] = [];
+
+    const exitCode = await runCli(['help'], {
+      env: {
+        ...updateCheckEnv,
+        npm_execpath: npmExecPath,
+      },
+      stderr: createTtyBufferStream(stderrBuffer),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async () => '1.0.0-beta.2',
+        installPackage: async (installCommand) => {
+          installCommands.push(installCommand.display);
+          return 0;
+        },
+        prompt: {
+          confirm: async () => true,
+        },
+        rerunCli: async () => 0,
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(installCommands).toEqual([expectedCommand]);
+  });
+
+  it.each([
+    ['bun', '/Users/example/.bun/install/global/node_modules/@fluojs/cli', 'bun add -g @fluojs/cli@1.0.0-beta.2'],
+    ['npm', '/Users/example/.nvm/versions/node/v20.0.0/lib/node_modules/@fluojs/cli', 'npm install -g @fluojs/cli@1.0.0-beta.2'],
+    ['pnpm', '/Users/example/Library/pnpm/global/5/node_modules/.pnpm/@fluojs+cli@1.0.0-beta.1/node_modules/@fluojs/cli', 'pnpm add -g @fluojs/cli@1.0.0-beta.2'],
+    ['pnpm', '/Users/example/Library/pnpm/global/5/node_modules/@fluojs/cli', 'pnpm add -g @fluojs/cli@1.0.0-beta.2'],
+    ['yarn', '/Users/example/.config/yarn/global/node_modules/@fluojs/cli', 'yarn global add @fluojs/cli@1.0.0-beta.2'],
+  ] as const)('uses the package root as the install-owner signal for %s global installs', async (_packageManager, packageRoot, expectedCommand) => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    const installCommands: string[] = [];
+
+    const exitCode = await runCli(['help'], {
+      env: updateCheckEnv,
+      stderr: createTtyBufferStream(stderrBuffer),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        env: undefined,
+        fetchLatestVersion: async () => '1.0.0-beta.2',
+        installPackage: async (installCommand) => {
+          installCommands.push(installCommand.display);
+          return 0;
+        },
+        packageRoot,
+        prompt: {
+          confirm: async () => true,
+        },
+        rerunCli: async () => 0,
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(installCommands).toEqual([expectedCommand]);
+  });
+
+  it('prefers the package root install-owner signal over launcher package-manager hints', async () => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    const installCommands: string[] = [];
+
+    const exitCode = await runCli(['help'], {
+      env: {
+        ...updateCheckEnv,
+        npm_config_user_agent: 'npm/10.0.0 node/v20.0.0 darwin arm64',
+        npm_execpath: '/Users/example/.nvm/versions/node/v20.0.0/lib/node_modules/npm/bin/npm-cli.js',
+      },
+      stderr: createTtyBufferStream(stderrBuffer),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async () => '1.0.0-beta.2',
+        installPackage: async (installCommand) => {
+          installCommands.push(installCommand.display);
+          return 0;
+        },
+        packageRoot: '/Users/example/Library/pnpm/global/5/node_modules/@fluojs/cli',
+        prompt: {
+          confirm: async () => true,
+        },
+        rerunCli: async () => 0,
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(installCommands).toEqual(['pnpm add -g @fluojs/cli@1.0.0-beta.2']);
   });
 
   it('continues the original CLI command when the accepted update install fails', async () => {

@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join, sep } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 
@@ -47,6 +47,9 @@ export type UpdateInstallCommand = {
   display: string;
 };
 
+/** Package manager that can install the CLI globally. */
+export type UpdatePackageManager = 'bun' | 'npm' | 'pnpm' | 'yarn';
+
 /**
  * Defines the update command runtime type.
  */
@@ -76,6 +79,8 @@ export interface CliUpdateCheckRuntimeOptions {
   interactive?: boolean;
   now?: () => Date;
   packageName?: string;
+  packageManager?: UpdatePackageManager;
+  packageRoot?: string;
   prompt?: UpdatePrompter;
   rerunCli?: (argv: string[], runtime: UpdateCommandRuntime) => Promise<number>;
   skip?: boolean;
@@ -88,6 +93,7 @@ const DEFAULT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_PACKAGE_NAME = '@fluojs/cli';
 const DEFAULT_REGISTRY_TIMEOUT_MS = 5_000;
 const UPDATE_CHECK_FLAGS = new Set(['--no-update-check', '--no-update-notifier']);
+const UPDATE_PACKAGE_MANAGERS = new Set<UpdatePackageManager>(['bun', 'npm', 'pnpm', 'yarn']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -347,13 +353,120 @@ async function readOwnPackageVersion(): Promise<string | undefined> {
   }
 }
 
-function resolveInstallCommand(packageName: string, latestVersion: string): UpdateInstallCommand {
+function normalizePathForDetection(path: string | undefined): string {
+  return (path ?? '').replaceAll('\\', '/').toLowerCase();
+}
+
+function parsePackageManagerName(value: string | undefined): UpdatePackageManager | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (UPDATE_PACKAGE_MANAGERS.has(normalized as UpdatePackageManager)) {
+    return normalized as UpdatePackageManager;
+  }
+
+  return undefined;
+}
+
+function parsePackageManagerFromUserAgent(userAgent: string | undefined): UpdatePackageManager | undefined {
+  const name = userAgent?.split(' ')[0]?.split('/')[0];
+
+  return parsePackageManagerName(name);
+}
+
+function parsePackageManagerFromExecPath(execPath: string | undefined): UpdatePackageManager | undefined {
+  const executableName = basename(execPath ?? '', '.cmd').toLowerCase();
+  const packageManager = parsePackageManagerName(executableName.replace(/\.(?:cjs|mjs|js)$/, ''));
+  if (packageManager) {
+    return packageManager;
+  }
+
+  const normalizedPath = normalizePathForDetection(execPath);
+  if (normalizedPath.includes('/pnpm/')) {
+    return 'pnpm';
+  }
+
+  if (normalizedPath.includes('/yarn/')) {
+    return 'yarn';
+  }
+
+  if (normalizedPath.includes('/bun/')) {
+    return 'bun';
+  }
+
+  if (normalizedPath.includes('/npm/')) {
+    return 'npm';
+  }
+
+  return undefined;
+}
+
+function parsePackageManagerFromPackageRoot(packageRoot: string): UpdatePackageManager | undefined {
+  const normalizedPath = normalizePathForDetection(`${sep}${packageRoot}${sep}`);
+  if (normalizedPath.includes('/.pnpm/') || normalizedPath.includes('/pnpm/global/')) {
+    return 'pnpm';
+  }
+
+  if (normalizedPath.includes('/.bun/install/global/') || normalizedPath.includes('/bun/install/global/')) {
+    return 'bun';
+  }
+
+  if (normalizedPath.includes('/.config/yarn/global/') || normalizedPath.includes('/yarn/global/')) {
+    return 'yarn';
+  }
+
+  if (normalizedPath.includes('/node_modules/')) {
+    return 'npm';
+  }
+
+  return undefined;
+}
+
+function resolveUpdatePackageManager(env: NodeJS.ProcessEnv, packageRoot: string): UpdatePackageManager {
+  return parsePackageManagerName(env.FLUO_UPDATE_PACKAGE_MANAGER)
+    ?? parsePackageManagerFromPackageRoot(packageRoot)
+    ?? parsePackageManagerFromUserAgent(env.npm_config_user_agent)
+    ?? parsePackageManagerFromExecPath(env.npm_execpath)
+    ?? 'npm';
+}
+
+function resolveInstallCommand(
+  packageName: string,
+  latestVersion: string,
+  packageManager: UpdatePackageManager,
+): UpdateInstallCommand {
   const packageSpecifier = `${packageName}@${latestVersion}`;
 
+  if (packageManager === 'bun') {
+    return {
+      args: ['add', '-g', packageSpecifier],
+      command: 'bun',
+      display: `bun add -g ${packageSpecifier}`,
+    };
+  }
+
+  if (packageManager === 'pnpm') {
+    return {
+      args: ['add', '-g', packageSpecifier],
+      command: 'pnpm',
+      display: `pnpm add -g ${packageSpecifier}`,
+    };
+  }
+
+  if (packageManager === 'yarn') {
+    return {
+      args: ['global', 'add', packageSpecifier],
+      command: 'yarn',
+      display: `yarn global add ${packageSpecifier}`,
+    };
+  }
+
   return {
-    args: ['add', '-g', packageSpecifier],
-    command: 'pnpm',
-    display: `pnpm add -g ${packageSpecifier}`,
+    args: ['install', '-g', packageSpecifier],
+    command: 'npm',
+    display: `npm install -g ${packageSpecifier}`,
   };
 }
 
@@ -472,6 +585,7 @@ export async function runCliUpdateCheck(argv: string[], options: CliUpdateCheckR
   const cacheFile = options.cacheFile ?? resolveCacheFile(env);
   const cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
   const currentVersion = options.currentVersion ?? await readOwnPackageVersion();
+  const packageRoot = options.packageRoot ?? dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
 
   if (!currentVersion) {
     return { action: 'continue' };
@@ -498,7 +612,8 @@ export async function runCliUpdateCheck(argv: string[], options: CliUpdateCheckR
     return { action: 'continue' };
   }
 
-  const installCommand = resolveInstallCommand(packageName, latestVersion);
+  const packageManager = options.packageManager ?? resolveUpdatePackageManager(env, packageRoot);
+  const installCommand = resolveInstallCommand(packageName, latestVersion, packageManager);
   stderr.write(`Installing ${packageName}@${latestVersion} with \`${installCommand.display}\`...\n`);
 
   const commandRuntime = { env, stderr };
