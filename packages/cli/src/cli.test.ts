@@ -1649,7 +1649,7 @@ void bootstrap();
     expect(envOutput.join('')).toContain('Watch mode: native-watch');
   });
 
-  it('dedupes unchanged source content before the fluo Node restart boundary', () => {
+  it('baselines watched source directories before the fluo Node restart boundary', () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
     const sourceDirectory = join(workspaceDirectory, 'src');
@@ -1661,12 +1661,33 @@ void bootstrap();
     writeFileSync(ignoredFile, 'console.log("ignored");\n');
     const gate = createContentChangeGate(workspaceDirectory);
 
-    expect(gate.hasMeaningfulChange([sourceFile])).toBe(true);
+    gate.commitBaseline([sourceDirectory]);
+
     writeFileSync(sourceFile, 'console.log("hello");\n');
     expect(gate.hasMeaningfulChange([sourceFile])).toBe(false);
     writeFileSync(sourceFile, 'console.log("hello changed");\n');
     expect(gate.hasMeaningfulChange([sourceFile])).toBe(true);
+    gate.commitBaseline([sourceFile]);
+    expect(gate.hasMeaningfulChange([sourceFile])).toBe(false);
     expect(gate.hasMeaningfulChange([ignoredFile])).toBe(false);
+  });
+
+  it('dedupes change-then-revert bursts until the debounce baseline is committed', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    mkdirSync(sourceDirectory, { recursive: true });
+    const sourceFile = join(sourceDirectory, 'main.ts');
+    writeFileSync(sourceFile, 'console.log("hello");\n');
+    const gate = createContentChangeGate(workspaceDirectory);
+
+    gate.commitBaseline([sourceDirectory]);
+
+    writeFileSync(sourceFile, 'console.log("hello changed");\n');
+    expect(gate.hasMeaningfulChange([sourceFile])).toBe(true);
+
+    writeFileSync(sourceFile, 'console.log("hello");\n');
+    expect(gate.hasMeaningfulChange([sourceFile])).toBe(false);
   });
 
   it('uses a TTY-aware pretty reporter for fluo dev without hiding child errors', async () => {

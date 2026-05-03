@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
 
 type RestartRunnerStream = {
@@ -8,6 +8,7 @@ type RestartRunnerStream = {
 };
 
 type ContentChangeGate = {
+  commitBaseline(paths: Iterable<string>): void;
   hasMeaningfulChange(paths: Iterable<string>): boolean;
 };
 
@@ -80,6 +81,37 @@ function hashFileContent(filePath: string): string | undefined {
   }
 }
 
+function collectContentPaths(filePath: string, projectDirectory: string, ignorePatterns: string[], paths: Set<string>): void {
+  if (shouldIgnorePath(filePath, projectDirectory, ignorePatterns)) {
+    return;
+  }
+
+  try {
+    const stats = statSync(filePath);
+    if (stats.isDirectory()) {
+      for (const entry of readdirSync(filePath)) {
+        collectContentPaths(join(filePath, entry), projectDirectory, ignorePatterns, paths);
+      }
+      return;
+    }
+
+    if (stats.isFile()) {
+      paths.add(filePath);
+    }
+  } catch (_error: unknown) {
+    paths.add(filePath);
+  }
+}
+
+function collectWatchedContentPaths(paths: Iterable<string>, projectDirectory: string, ignorePatterns: string[]): Set<string> {
+  const collected = new Set<string>();
+  for (const filePath of paths) {
+    collectContentPaths(filePath, projectDirectory, ignorePatterns, collected);
+  }
+
+  return collected;
+}
+
 /**
  * Creates a content-diff gate for fluo-owned dev restarts.
  *
@@ -92,24 +124,22 @@ export function createContentChangeGate(projectDirectory: string, ignorePatterns
   const hashes = new Map<string, string | undefined>();
 
   return {
+    commitBaseline(paths) {
+      for (const filePath of collectWatchedContentPaths(paths, projectDirectory, normalizedIgnores)) {
+        hashes.set(filePath, hashFileContent(filePath));
+      }
+    },
     hasMeaningfulChange(paths) {
-      let changed = false;
-
-      for (const filePath of paths) {
-        if (shouldIgnorePath(filePath, projectDirectory, normalizedIgnores)) {
-          continue;
-        }
-
+      for (const filePath of collectWatchedContentPaths(paths, projectDirectory, normalizedIgnores)) {
         const nextHash = hashFileContent(filePath);
         const previousHash = hashes.get(filePath);
 
         if (previousHash !== nextHash) {
-          hashes.set(filePath, nextHash);
-          changed = true;
+          return true;
         }
       }
 
-      return changed;
+      return false;
     },
   };
 }
@@ -140,6 +170,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   const gate = createContentChangeGate(projectDirectory, parseIgnorePatterns(env));
   const watchTargets = getWatchTargets(projectDirectory);
   let child: ChildProcess | undefined;
+  const pendingRestartPaths = new Set<string>();
   let restartTimer: NodeJS.Timeout | undefined;
   let restarting = false;
   let stopping = false;
@@ -163,16 +194,23 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   };
 
   const scheduleRestart = (filePath: string, resolveExitCode: (code: number) => void) => {
-    if (!gate.hasMeaningfulChange([filePath])) {
-      return;
-    }
+    pendingRestartPaths.add(filePath);
 
     if (restartTimer) {
       clearTimeout(restartTimer);
     }
 
     restartTimer = setTimeout(() => {
-      stdout.write(`[fluo] restarting after content change: ${relative(projectDirectory, filePath)}\n`);
+      const restartPaths = [...pendingRestartPaths];
+      pendingRestartPaths.clear();
+      restartTimer = undefined;
+
+      if (!gate.hasMeaningfulChange(restartPaths)) {
+        return;
+      }
+
+      gate.commitBaseline(restartPaths);
+      stdout.write(`[fluo] restarting after content change: ${relative(projectDirectory, restartPaths[restartPaths.length - 1] ?? projectDirectory)}\n`);
       const previousChild = child;
       restarting = true;
       previousChild?.once('close', () => {
@@ -187,7 +225,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
     }, debounceMs);
   };
 
-  gate.hasMeaningfulChange(watchTargets);
+  gate.commitBaseline(watchTargets);
 
   return new Promise((resolveExitCode) => {
     startChild(resolveExitCode);
@@ -218,7 +256,9 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
       stopping = true;
       if (restartTimer) {
         clearTimeout(restartTimer);
+        restartTimer = undefined;
       }
+      pendingRestartPaths.clear();
       for (const watcher of watchers) {
         watcher.close();
       }
