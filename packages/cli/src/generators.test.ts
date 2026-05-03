@@ -253,6 +253,7 @@ describe('GeneratorRegistry', () => {
       'module',
       'repo',
       'request-dto',
+      'resource',
       'response-dto',
       'service',
     ]);

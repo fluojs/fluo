@@ -7,6 +7,7 @@ import { generateMiddlewareFiles } from './middleware.js';
 import { generateModuleFiles } from './module.js';
 import { generateRepoFiles } from './repository.js';
 import { generateRequestDtoFiles } from './request-dto.js';
+import { generateResourceFiles } from './resource.js';
 import { generateResponseDtoFiles } from './response-dto.js';
 import { generateServiceFiles } from './service.js';
 
@@ -115,6 +116,15 @@ const builtInGeneratorDefinitions = [
     kind: 'request-dto',
     nextStepHint: 'Import the DTO in a controller and add it as a parameter with @FromBody or @FromQuery.',
     schematic: 'request-dto',
+    wiringBehavior: 'files-only',
+  },
+  {
+    aliases: ['resrc'],
+    description: 'Generate a full resource slice with module, controller, service, repository, and DTO stubs.',
+    factory: (name, options) => generateResourceFiles(name, options),
+    kind: 'resource',
+    nextStepHint: "Run 'pnpm typecheck' and wire the resource module into a parent module when ready.",
+    schematic: 'resource',
     wiringBehavior: 'files-only',
   },
   {
