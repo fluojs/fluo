@@ -71,7 +71,7 @@ cd my-backend
 pnpm dev
 ```
 
-The generated `pnpm dev` script delegates to `fluo dev`, so the CLI selects the runtime-specific development command and defaults `NODE_ENV` to `development` when unset.
+The generated lifecycle scripts delegate to `fluo dev`, `fluo build`, and `fluo start`, so the CLI selects runtime-specific commands and applies sensible `NODE_ENV` defaults when unset.
 
 The starter template gives you a production-ready setup with Fastify, built-in health checks, and an organized directory structure designed to scale.
 
