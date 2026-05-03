@@ -7,6 +7,7 @@ The canonical CLI for fluo — bootstrap new applications, generate components, 
 ## Table of Contents
 
 - [Installation](#installation)
+- [Version Inspection](#version-inspection)
 - [Update Checks](#update-checks)
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
@@ -32,6 +33,16 @@ pnpm dlx @fluojs/cli new my-app
 - `@fluojs/cli` is a public package in the intended publish surface.
 - The supported install paths are the global package (`npm install -g @fluojs/cli`, `pnpm add -g @fluojs/cli`, `bun add -g @fluojs/cli`, or `yarn global add @fluojs/cli`) and the no-install runner (`pnpm dlx @fluojs/cli ...`).
 - The published `fluo` bin is backed by the dist-built CLI entrypoint declared in `package.json`.
+
+## Version Inspection
+
+Check the installed CLI version without triggering the interactive update check:
+
+```bash
+fluo version
+fluo --version
+fluo -v
+```
 
 ## Update Checks
 
