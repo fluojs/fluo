@@ -1,3 +1,5 @@
+import { ensureMetadataSymbol } from '@fluojs/core/internal';
+
 import type { ThrottlerHandlerOptions } from './types.js';
 import { validateThrottleOptions } from './validation.js';
 
@@ -12,6 +14,8 @@ type StandardMetadataBag = Record<PropertyKey, unknown>;
 type StandardMethodDecoratorFn = (value: Function, context: ClassMethodDecoratorContext) => void;
 type StandardClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
 type ClassOrMethodDecoratorLike = StandardClassDecoratorFn & StandardMethodDecoratorFn;
+
+ensureMetadataSymbol();
 
 function getMetadataBag(metadata: unknown): StandardMetadataBag {
   return metadata as StandardMetadataBag;
