@@ -24,6 +24,7 @@
     "typecheck": "tsc -p tsconfig.tools.json --noEmit && tsc -p examples/tsconfig.json --noEmit && pnpm -r --filter './packages/*' --if-present run typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
+    "bench:di-container": "node tooling/benchmarks/di-container/run.mjs",
     "lint": "biome lint && pnpm verify:public-export-tsdoc",
     "verify": "pnpm build && pnpm typecheck && pnpm lint && pnpm test",
     "changeset": "changeset",
