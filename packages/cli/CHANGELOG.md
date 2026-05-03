@@ -1,5 +1,15 @@
 # @fluojs/cli
 
+## 1.0.0-beta.6
+
+### Patch Changes
+
+- [#1551](https://github.com/fluojs/fluo/pull/1551) [`e0427f6`](https://github.com/fluojs/fluo/commit/e0427f6d260f2dffaf0dc34a98909ddab0eecb40) Thanks [@ayden94](https://github.com/ayden94)! - Include Bun globals in generated Bun starter TypeScript configuration so pnpm typecheck succeeds when the starter references `Bun.env`.
+
+- [#1547](https://github.com/fluojs/fluo/pull/1547) [`292634e`](https://github.com/fluojs/fluo/commit/292634e5be6b17257c3248d4fe79d82d29ea8c3b) Thanks [@ayden94](https://github.com/ayden94)! - Keep interactive `fluo dev` application output visible with an `app │` prefix so CLI lifecycle status and runtime logs remain easy to distinguish.
+
+- [#1549](https://github.com/fluojs/fluo/pull/1549) [`2e3408f`](https://github.com/fluojs/fluo/commit/2e3408f93675e0aa8a2740209ce4061692183292) Thanks [@ayden94](https://github.com/ayden94)! - Keep colorized application logs consistent between `fluo dev` and `fluo start` by preserving ANSI color intent through the CLI development reporter.
+
 ## 1.0.0-beta.5
 
 ### Minor Changes
