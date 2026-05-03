@@ -16,6 +16,7 @@ type ScriptRuntimeOptions = {
 
 type JsonRecord = Record<string, unknown>;
 type ScriptCommand = 'build' | 'dev' | 'start';
+type ProjectRuntime = 'bun' | 'cloudflare-workers' | 'deno' | 'node';
 
 const EMPTY_ENV: NodeJS.ProcessEnv = {};
 
@@ -63,6 +64,41 @@ function readScript(manifest: JsonRecord, scriptName: string): string | undefine
   return typeof script === 'string' ? script : undefined;
 }
 
+function hasManifestDependency(manifest: JsonRecord, packageName: string): boolean {
+  for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+    const entries = manifest[field];
+    if (isRecord(entries) && typeof entries[packageName] === 'string') {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function detectProjectRuntime(manifest: JsonRecord): ProjectRuntime {
+  if (hasManifestDependency(manifest, '@fluojs/platform-bun')) {
+    return 'bun';
+  }
+
+  if (hasManifestDependency(manifest, '@fluojs/platform-deno')) {
+    return 'deno';
+  }
+
+  if (hasManifestDependency(manifest, '@fluojs/platform-cloudflare-workers')) {
+    return 'cloudflare-workers';
+  }
+
+  return 'node';
+}
+
+function withDefaultNodeEnv(env: NodeJS.ProcessEnv, defaultNodeEnv: 'development' | 'production'): NodeJS.ProcessEnv {
+  if (env.NODE_ENV) {
+    return { ...env };
+  }
+
+  return { ...env, NODE_ENV: defaultNodeEnv };
+}
+
 function buildRunArgs(packageManager: string, scriptName: string, passThrough: string[]): string[] {
   if (packageManager === 'npm') {
     return ['run', scriptName, ...(passThrough.length > 0 ? ['--', ...passThrough] : [])];
@@ -81,6 +117,32 @@ function defaultSpawnCommand(command: string, args: string[], options: { cwd: st
     child.on('error', reject);
     child.on('exit', (code) => resolveExitCode(code ?? 1));
   });
+}
+
+function buildProjectRunner(command: Extract<ScriptCommand, 'dev' | 'start'>, runtime: ProjectRuntime, passThrough: string[]): { args: string[]; command: string } {
+  if (command === 'dev') {
+    switch (runtime) {
+      case 'bun':
+        return { command: 'bun', args: ['--watch', 'src/main.ts', ...passThrough] };
+      case 'deno':
+        return { command: 'deno', args: ['run', '--allow-env', '--allow-net', '--watch', 'src/main.ts', ...passThrough] };
+      case 'cloudflare-workers':
+        return { command: 'wrangler', args: ['dev', ...passThrough] };
+      default:
+        return { command: 'node', args: ['--env-file=.env', '--watch', '--watch-preserve-output', '--import', 'tsx', 'src/main.ts', ...passThrough] };
+    }
+  }
+
+  switch (runtime) {
+    case 'bun':
+      return { command: 'bun', args: ['dist/main.js', ...passThrough] };
+    case 'deno':
+      return { command: join('dist', 'app'), args: [...passThrough] };
+    case 'cloudflare-workers':
+      return { command: 'wrangler', args: ['deploy', ...passThrough] };
+    default:
+      return { command: 'node', args: ['dist/main.js', ...passThrough] };
+  }
 }
 
 function parseScriptArgs(argv: string[]): { dryRun: boolean; packageManager?: string; passThrough: string[] } {
@@ -121,6 +183,19 @@ function parseScriptArgs(argv: string[]): { dryRun: boolean; packageManager?: st
 }
 
 export function scriptUsage(command: ScriptCommand): string {
+  if (command === 'dev' || command === 'start') {
+    const nodeEnv = command === 'dev' ? 'development' : 'production';
+    return [
+      `Usage: fluo ${command} [options] [-- <args>]`,
+      '',
+      `Run the generated fluo project ${command} lifecycle with NODE_ENV defaulting to ${nodeEnv} when unset.`,
+      '',
+      'Options',
+      '  --dry-run                              Print the command without running it.',
+      `  --help                                 Show help for the ${command} command.`,
+    ].join('\n');
+  }
+
   return [
     `Usage: fluo ${command} [options] [-- <args>]`,
     '',
@@ -146,12 +221,34 @@ export async function runScriptCommand(command: ScriptCommand, argv: string[], r
     throw new Error(`Unable to find package.json for fluo ${command}.`);
   }
 
+  const parsed = parseScriptArgs(argv);
+
+  if (command === 'dev' || command === 'start') {
+    const projectRuntime = detectProjectRuntime(project.manifest);
+    const defaultNodeEnv = command === 'dev' ? 'development' : 'production';
+    const childEnv = withDefaultNodeEnv(env, defaultNodeEnv);
+    const runner = buildProjectRunner(command, projectRuntime, parsed.passThrough);
+
+    if (parsed.dryRun) {
+      stdout.write(`Would run: ${runner.command} ${runner.args.join(' ')}\n`);
+      stdout.write(`Project: ${project.path}\n`);
+      stdout.write(`Runtime: ${projectRuntime}\n`);
+      stdout.write(`NODE_ENV: ${childEnv.NODE_ENV ?? ''}\n`);
+      return 0;
+    }
+
+    return (runtime.spawnCommand ?? defaultSpawnCommand)(runner.command, runner.args, {
+      cwd: project.directory,
+      env: childEnv,
+      stdio: 'inherit',
+    });
+  }
+
   const script = readScript(project.manifest, command);
   if (!script) {
     throw new Error(`package.json does not define a "${command}" script.`);
   }
 
-  const parsed = parseScriptArgs(argv);
   const packageManager = parsed.packageManager ?? detectPackageManager({ cwd: project.directory, env, manifest: project.manifest });
   const args = buildRunArgs(packageManager, command, parsed.passThrough);
 
