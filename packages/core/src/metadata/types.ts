@@ -47,7 +47,7 @@ export interface RouteRedirect {
  * Describes the route metadata contract.
  */
 export interface RouteMetadata {
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD' | 'ALL';
   path: string;
   request?: new (...args: never[]) => unknown;
   guards?: MetadataCollection;
