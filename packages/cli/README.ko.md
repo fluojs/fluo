@@ -72,9 +72,9 @@ pnpm dev
 
 `fluo create`는 `fluo new`의 alias입니다. 버전 확인, 명령 도움말, 진단, first-party package shortcut, upgrade 안내가 필요하면 `fluo version`, `fluo help <command>`, `fluo doctor`/`fluo info`/`fluo analyze`, `fluo add`, `fluo upgrade`를 사용하세요.
 
-생성된 `dev`, `build`, `start` package script는 각각 `fluo dev`, `fluo build`, `fluo start`로 위임합니다. CLI가 런타임별 lifecycle 명령을 소유하고 local toolchain binary를 실행할 때 project-local `node_modules/.bin`을 앞에 붙이며, 호출자가 명시하지 않은 경우 `dev`는 `NODE_ENV=development`, `build`/`start`는 `NODE_ENV=production`을 기본값으로 사용합니다. `fluo dev`는 TTY-aware lifecycle reporter를 사용합니다. Interactive terminal에서는 간결한 fluo-branded status를 보여주고, 애플리케이션 child process가 `fluo start`에서 내보내는 것과 같은 ANSI color 출력을 유지하며, 애플리케이션 stdout/stderr는 `app │` prefix 아래 계속 표시합니다. CI, non-TTY 출력, `--reporter stream`, `--verbose`, `FLUO_VERBOSE=1`에서는 디버깅과 자동화를 위해 raw child-process passthrough를 유지합니다. Cloudflare Workers의 `start`는 배포하지 않고 Wrangler remote preview를 열며, Cloudflare에 게시하려면 명시적인 deploy 명령을 사용하세요.
+생성된 `dev`, `build`, `start` package script는 각각 `fluo dev`, `fluo build`, `fluo start`로 위임합니다. CLI가 런타임별 lifecycle 명령을 소유하고 local toolchain binary를 실행할 때 project-local `node_modules/.bin`을 앞에 붙이며, 호출자가 명시하지 않은 경우 `dev`는 `NODE_ENV=development`, `build`/`start`는 `NODE_ENV=production`을 기본값으로 사용합니다. 기본적으로 `fluo dev`와 `fluo start`는 앱 로그만(애플리케이션 stdout/stderr) 표시하여 런타임 간 lifecycle 출력 형태를 통일합니다. Node, Bun, Deno, Workers dev 명령은 fluo가 소유한 restart boundary를 통과하므로 색상 보존과 restart clear/header 동작이 일관됩니다. Interactive terminal에서 fluo lifecycle status와 `app │` prefix가 붙은 애플리케이션 출력이 필요하면 `--reporter pretty`를 사용하고, 런타임/도구 watcher 원본 출력이 필요하면 `--verbose`(또는 `FLUO_VERBOSE=1`)를 사용하세요. Cloudflare Workers의 `start`는 배포하지 않고 Wrangler remote preview를 열며, Cloudflare에 게시하려면 명시적인 deploy 명령을 사용하세요.
 
-Node.js 프로젝트에서 `fluo dev`는 fluo가 소유한 restart boundary를 거칩니다. 이 runner는 source와 주요 config 입력을 watch하고, atomic-save event burst를 debounce하며, restart 전에 파일 content hash를 비교하고, spawn하는 각 앱 child process마다 `.env`를 로드하며, `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache 폴더, editor swap file 같은 noisy output/cache 경로를 무시합니다. 파일 내용이 바뀌지 않은 Ctrl+S 저장은 앱을 재시작하지 않아야 합니다. 계획된 restart가 아닌 terminal 앱 child exit 또는 crash가 발생하면 runner는 watcher를 닫고, pending restart timer와 path를 비우며, `SIGINT`/`SIGTERM` handler를 등록 해제하고, child의 terminal code로 종료합니다. 이 동작은 full-process restart-on-watch이며 module-level HMR이 아닙니다. Config watch reload는 별도의 in-process config 관심사이고, 향후 HMR 작업은 어떤 모듈을 안전하게 hot-swap할 수 있는지 따로 문서화해야 합니다. 디버깅에 runtime-native Node watcher가 필요하면 `fluo dev --raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`을 사용하고, 추가 ignore 경로는 `FLUO_DEV_WATCH_IGNORE=path,pattern`으로 지정하세요.
+생성된 애플리케이션 프로젝트에서 `fluo dev`는 fluo가 소유한 restart boundary를 거칩니다. 이 runner는 source와 주요 config 입력을 watch하고, atomic-save event burst를 debounce하며, restart 전에 파일 content hash를 비교하고, spawn하는 각 Node 앱 child process마다 `.env`를 로드하며, `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache 폴더, editor swap file 같은 noisy output/cache 경로를 무시합니다. 파일 내용이 바뀌지 않은 Ctrl+S 저장은 앱을 재시작하지 않아야 합니다. 계획된 restart가 아닌 terminal 앱 child exit 또는 crash가 발생하면 runner는 watcher를 닫고, pending restart timer와 path를 비우며, `SIGINT`/`SIGTERM` handler를 등록 해제하고, child의 terminal code로 종료합니다. 이 동작은 full-process restart-on-watch이며 module-level HMR이 아닙니다. Config watch reload는 별도의 in-process config 관심사이고, 향후 HMR 작업은 어떤 모듈을 안전하게 hot-swap할 수 있는지 따로 문서화해야 합니다. 디버깅에 runtime-native Node watcher가 필요하면 `fluo dev --raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`을 사용하고, 추가 ignore 경로는 `FLUO_DEV_WATCH_IGNORE=path,pattern`으로 지정하세요.
 
 `fluo new`는 같은 Node 기반 설치/빌드 흐름 위에서 Node.js + Fastify, Express, raw Node.js HTTP 애플리케이션 스타터를 제공합니다.
 
@@ -171,17 +171,18 @@ fluo build --dry-run
 fluo start --dry-run
 ```
 
-`fluo dev --dry-run`은 watch boundary도 함께 표시합니다. Node.js 프로젝트는 기본적으로 `Watch mode: fluo-node-restart`를 보여 주며, `--raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`을 쓰면 `Watch mode: native-watch`를 보여 줍니다. Bun, Deno, Cloudflare Workers는 계속 각 런타임의 native dev watcher를 사용합니다.
+`fluo dev --dry-run`은 watch boundary도 함께 표시합니다. 생성된 Node, Bun, Deno, Cloudflare Workers 프로젝트는 기본적으로 `Watch mode: fluo-restart`를 보여 주며, Node의 `--raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`만 디버깅용 `Watch mode: native-watch`를 보여 줍니다.
 
 CLI process boundary를 조정해야 할 때는 런타임 앱 로깅이 아니라 reporter flag를 사용하세요:
 
 ```bash
-# TTY에서는 pretty status, CI/non-TTY에서는 raw passthrough (기본값)
+# 기본값: 앱 로그(stdout/stderr)만 표시, fluo lifecycle UI 없음
 fluo dev
 
-# Interactive dev는 app │ prefix로 CLI status와 애플리케이션 로그를 구분
+# opt-in pretty lifecycle UI + app │ prefix
+fluo dev --reporter pretty
 
-# child process log를 디버깅하기 위한 기존 passthrough에 가까운 출력
+# 디버깅용 raw 런타임/도구 출력(Watcher 배너, native dev UI 등)
 fluo dev --reporter stream
 fluo dev --verbose
 FLUO_VERBOSE=1 fluo dev

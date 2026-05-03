@@ -72,9 +72,9 @@ pnpm dev
 
 `fluo create` is an alias for `fluo new`. Use `fluo version`, `fluo help <command>`, `fluo doctor`/`fluo info`/`fluo analyze`, `fluo add`, and `fluo upgrade` for version checks, command help, diagnostics, first-party package shortcuts, and upgrade guidance.
 
-Generated `dev`, `build`, and `start` package scripts delegate to `fluo dev`, `fluo build`, and `fluo start`. The CLI owns the runtime-specific lifecycle command, prepends the project-local `node_modules/.bin` when invoking local toolchain binaries, and defaults `NODE_ENV` to `development` for `dev` and `production` for `build`/`start` when the caller has not set it explicitly. `fluo dev` uses a TTY-aware lifecycle reporter: interactive terminals get concise fluo-branded status, preserve the same ANSI color output application child processes would emit under `fluo start`, and keep application stdout/stderr visible under an `app │` prefix, while CI, non-TTY output, `--reporter stream`, `--verbose`, and `FLUO_VERBOSE=1` keep raw child-process passthrough available for debugging and automation. Cloudflare Workers `start` opens a remote Wrangler preview instead of deploying; use an explicit deploy command when you intend to publish to Cloudflare.
+Generated `dev`, `build`, and `start` package scripts delegate to `fluo dev`, `fluo build`, and `fluo start`. The CLI owns the runtime-specific lifecycle command, prepends the project-local `node_modules/.bin` when invoking local toolchain binaries, and defaults `NODE_ENV` to `development` for `dev` and `production` for `build`/`start` when the caller has not set it explicitly. By default, `fluo dev` and `fluo start` show app logs only (application stdout/stderr) so the lifecycle output shape is unified across runtimes; Node, Bun, Deno, and Workers dev commands run through the fluo-owned restart boundary so color preservation and restart clear/header behavior are consistent. Use `--reporter pretty` when you want concise fluo-branded lifecycle status and `app │`-prefixed application stdout/stderr, and use `--verbose` (or `FLUO_VERBOSE=1`) when you need raw runtime/tooling watcher output for debugging. Cloudflare Workers `start` opens a remote Wrangler preview instead of deploying; use an explicit deploy command when you intend to publish to Cloudflare.
 
-For Node.js projects, `fluo dev` runs through a fluo-owned restart boundary. The runner watches source and common config inputs, debounces atomic-save bursts, hashes file content before restarting, loads `.env` for each app child process it spawns, and ignores noisy output/cache paths such as `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache folders, and editor swap files. Pressing Ctrl+S without changing file content should not restart the app. On terminal app child exit or crash outside a planned restart, the runner closes watchers, clears the pending restart timer and paths, unregisters its `SIGINT`/`SIGTERM` handlers, and exits with the child terminal code. This is full-process restart-on-watch, not module-level HMR; config watch reloads are a separate in-process config concern, and future HMR work must document which modules can be safely hot-swapped. Use `fluo dev --raw-watch` or `FLUO_DEV_RAW_WATCH=1` when you need the runtime-native Node watcher for debugging, and use `FLUO_DEV_WATCH_IGNORE=path,pattern` to add extra ignored paths.
+For generated application projects, `fluo dev` runs through a fluo-owned restart boundary. The runner watches source and common config inputs, debounces atomic-save bursts, hashes file content before restarting, loads `.env` for each Node app child process it spawns, and ignores noisy output/cache paths such as `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache folders, and editor swap files. Pressing Ctrl+S without changing file content should not restart the app. On terminal app child exit or crash outside a planned restart, the runner closes watchers, clears the pending restart timer and paths, unregisters its `SIGINT`/`SIGTERM` handlers, and exits with the child terminal code. This is full-process restart-on-watch, not module-level HMR; config watch reloads are a separate in-process config concern, and future HMR work must document which modules can be safely hot-swapped. Use `fluo dev --raw-watch` or `FLUO_DEV_RAW_WATCH=1` when you need the runtime-native Node watcher for debugging, and use `FLUO_DEV_WATCH_IGNORE=path,pattern` to add extra ignored paths.
 
 `fluo new` supports Node.js + Fastify, Express, and raw Node.js HTTP application starters on the same Node-oriented install/build flow:
 
@@ -171,17 +171,18 @@ fluo build --dry-run
 fluo start --dry-run
 ```
 
-`fluo dev --dry-run` also reports the watch boundary. Node.js projects show `Watch mode: fluo-node-restart` by default, while `--raw-watch` and `FLUO_DEV_RAW_WATCH=1` show `Watch mode: native-watch`. Bun, Deno, and Cloudflare Workers still use their runtime-native dev watchers.
+`fluo dev --dry-run` also reports the watch boundary. Generated Node, Bun, Deno, and Cloudflare Workers projects show `Watch mode: fluo-restart` by default, while Node `--raw-watch` and `FLUO_DEV_RAW_WATCH=1` show `Watch mode: native-watch` for debugging.
 
 Use reporter flags when you need to tune the CLI process boundary rather than runtime app logging:
 
 ```bash
-# Pretty status in TTY, raw passthrough in CI/non-TTY (default)
+# Default: app logs only (stdout/stderr), no fluo lifecycle UI
 fluo dev
 
-# Interactive dev separates CLI status from application logs with app │ prefixes
+# Opt-in pretty lifecycle UI + app │ prefixes
+fluo dev --reporter pretty
 
-# Current passthrough-like output for debugging child process logs
+# Raw runtime/tooling output for debugging (watcher banners, native dev UI, etc.)
 fluo dev --reporter stream
 fluo dev --verbose
 FLUO_VERBOSE=1 fluo dev
