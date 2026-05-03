@@ -785,11 +785,13 @@ describe('HealthService', () => {
 }
 
 function createHealthControllerFile(importSuffix = ''): string {
-  return `import { Inject } from '@fluojs/core';
+  return `import { ensureMetadataSymbol, Inject } from '@fluojs/core';
 import { Controller, Get } from '@fluojs/http';
 
 import { HealthService } from './health.service${importSuffix}';
 import { HealthResponseDto } from './health.response.dto${importSuffix}';
+
+ensureMetadataSymbol();
 
 @Inject(HealthService)
 @Controller('/health-info')
