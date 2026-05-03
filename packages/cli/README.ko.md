@@ -68,6 +68,8 @@ cd my-app
 pnpm dev
 ```
 
+생성된 `dev`와 `start` package script는 각각 `fluo dev`, `fluo start`로 위임합니다. CLI가 런타임별 lifecycle 명령을 소유하며, 호출자가 명시하지 않은 경우 `dev`는 `NODE_ENV=development`, `start`는 `NODE_ENV=production`을 기본값으로 사용합니다.
+
 `fluo new`는 같은 Node 기반 설치/빌드 흐름 위에서 Node.js + Fastify, Express, raw Node.js HTTP 애플리케이션 스타터를 제공합니다.
 
 ```bash
@@ -151,12 +153,12 @@ fluo info
 fluo analyze
 ```
 
-`fluo analyze`는 read-only로 동작하며 더 깊은 `inspect --report`와 `migrate --json` workflow를 안내합니다. 생성된 프로젝트에서는 `fluo dev`, `fluo start`, `fluo build`가 감지된 package manager를 통해 같은 이름의 `package.json` script를 실행하며, `--dry-run`으로 미리 확인할 수 있습니다:
+`fluo analyze`는 read-only로 동작하며 더 깊은 `inspect --report`와 `migrate --json` workflow를 안내합니다. 생성된 프로젝트에서는 `fluo dev`와 `fluo start`가 환경 기본값과 함께 생성 lifecycle을 직접 실행하고, `fluo build`는 감지된 package manager를 통해 같은 이름의 `package.json` script를 실행합니다. lifecycle 명령은 `--dry-run`으로 미리 확인할 수 있습니다:
 
 ```bash
 fluo dev --dry-run
 fluo build -- --verbose
-fluo start --package-manager npm
+fluo start --dry-run
 ```
 
 first-party package 설치 shortcut에는 `fluo add <package>`를 사용하고, CLI/latest-version 및 migration 안내는 `fluo upgrade`로 확인합니다:
