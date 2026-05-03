@@ -37,6 +37,7 @@ type ProjectRunnerStep = { args: string[]; command: string; mode?: ProjectRunner
 
 const EMPTY_ENV: NodeJS.ProcessEnv = {};
 const FAILURE_STDOUT_BUFFER_LIMIT = 16_384;
+const PRETTY_TTY_COLOR_ENV = 'FLUO_DEV_PRETTY_TTY_COLOR';
 const PRETTY_CHILD_OUTPUT_PREFIX = 'app │ ';
 
 function getCliSourceRoot(): string {
@@ -132,7 +133,7 @@ function withProjectLocalBin(env: NodeJS.ProcessEnv, projectDirectory: string): 
 }
 
 function withPrettyReporterColorEnv(env: NodeJS.ProcessEnv, mode: EffectiveLifecycleReporterMode, stdout: CliStream, stderr: CliStream): NodeJS.ProcessEnv {
-  if (mode !== 'pretty' || env.NO_COLOR !== undefined || env.FORCE_COLOR !== undefined || env.CLICOLOR_FORCE !== undefined) {
+  if (mode !== 'pretty' || env.NO_COLOR !== undefined) {
     return env;
   }
 
@@ -140,7 +141,7 @@ function withPrettyReporterColorEnv(env: NodeJS.ProcessEnv, mode: EffectiveLifec
     return env;
   }
 
-  return { ...env, FORCE_COLOR: '1' };
+  return { ...env, [PRETTY_TTY_COLOR_ENV]: '1' };
 }
 
 function defaultSpawnCommand(command: string, args: string[], options: SpawnCommandOptions): Promise<number> {

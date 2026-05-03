@@ -1,7 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
-import { basename, join, relative, sep } from 'node:path';
+import { basename, dirname, join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 type RestartRunnerStream = {
   write(message: string): unknown;
@@ -36,6 +37,7 @@ export type NodeRestartRunnerOptions = {
 };
 
 const DEFAULT_DEBOUNCE_MS = 100;
+const PRETTY_TTY_COLOR_ENV = 'FLUO_DEV_PRETTY_TTY_COLOR';
 const DEFAULT_IGNORES = [
   '.cache',
   '.fluo',
@@ -168,6 +170,16 @@ function stopChild(child: ChildProcess | undefined): void {
   }
 }
 
+function getPreserveColorTtyImport(): string {
+  return join(dirname(dirname(fileURLToPath(import.meta.url))), 'dev-runner', 'preserve-color-tty.js');
+}
+
+function buildAppNodeArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {
+  const colorTtyImport = env[PRETTY_TTY_COLOR_ENV] === '1' ? ['--import', getPreserveColorTtyImport()] : [];
+
+  return ['--env-file=.env', ...colorTtyImport, '--import', 'tsx', 'src/main.ts', ...appArgs];
+}
+
 /**
  * Runs the Node.js development lifecycle through fluo-owned restart supervision.
  *
@@ -194,7 +206,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   let stopping = false;
 
   const startChild = (resolveExitCode: (code: number) => void, cleanup: () => void) => {
-    child = spawnChild(process.execPath, ['--env-file=.env', '--import', 'tsx', 'src/main.ts', ...appArgs], {
+    child = spawnChild(process.execPath, buildAppNodeArgs(env, appArgs), {
       cwd: projectDirectory,
       env,
       stdio: 'inherit',
