@@ -184,11 +184,22 @@ const adapter = createNodeHttpAdapter({
 
 For the public Node runtime surface, `maxBodySize` is a byte-count number only. Values such as `'1mb'` are rejected immediately during adapter creation instead of being coerced later.
 
-- `createConsoleApplicationLogger()`: Colorized console logger using `process.stdout`/`process.stderr`.
+- `createConsoleApplicationLogger()`: Colorized console logger using `process.stdout`/`process.stderr`. The default remains the historical pretty format. Pass `{ mode: 'minimal' }` for concise `[fluo] LEVEL [context] message` lines, `{ mode: 'silent' }` to suppress runtime logger output, `{ level: 'warn' }` or another threshold to filter lower-severity messages, and `{ color: false }` when you need deterministic non-colored output.
 - `createJsonApplicationLogger()`: Structured JSON logger using `process.stdout`/`process.stderr`.
 - `createNodeHttpAdapter()`: Raw Node `http`/`https` adapter factory for adapter-first runtime setup. The helper normalizes the primary Node request `content-type` before JSON/multipart detection and accepts `maxBodySize` only as numeric bytes.
 - `bootstrapNodeApplication()` / `runNodeApplication()`: Node-specific bootstrap helpers used by compatibility packages and direct Node runtime flows.
 - `createNodeShutdownSignalRegistration()`, `defaultNodeShutdownSignals()`, `registerShutdownSignals()`: Shutdown registration helpers for hosts that need explicit signal wiring.
+
+Runtime app logging is separate from CLI lifecycle reporting. Configure `ApplicationLogger` when you want to change logs emitted by the application/runtime itself:
+
+```typescript
+import { createConsoleApplicationLogger, createJsonApplicationLogger } from '@fluojs/runtime/node';
+
+const minimalLogger = createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' });
+const jsonLogger = createJsonApplicationLogger();
+```
+
+Use CLI reporter flags such as `fluo dev --verbose` when you need raw child-process output from the development command instead.
 
 Lower-level Node compression internals stay behind the `@fluojs/runtime/internal-node` seam rather than the public `@fluojs/runtime/node` contract.
 

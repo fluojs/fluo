@@ -70,7 +70,7 @@ cd my-app
 pnpm dev
 ```
 
-Generated `dev`, `build`, and `start` package scripts delegate to `fluo dev`, `fluo build`, and `fluo start`. The CLI owns the runtime-specific lifecycle command, prepends the project-local `node_modules/.bin` when invoking local toolchain binaries, and defaults `NODE_ENV` to `development` for `dev` and `production` for `build`/`start` when the caller has not set it explicitly. Cloudflare Workers `start` opens a remote Wrangler preview instead of deploying; use an explicit deploy command when you intend to publish to Cloudflare.
+Generated `dev`, `build`, and `start` package scripts delegate to `fluo dev`, `fluo build`, and `fluo start`. The CLI owns the runtime-specific lifecycle command, prepends the project-local `node_modules/.bin` when invoking local toolchain binaries, and defaults `NODE_ENV` to `development` for `dev` and `production` for `build`/`start` when the caller has not set it explicitly. `fluo dev` uses a TTY-aware lifecycle reporter: interactive terminals get concise fluo-branded status while CI, non-TTY output, `--reporter stream`, `--verbose`, and `FLUO_VERBOSE=1` keep raw child-process passthrough available for debugging and automation. Cloudflare Workers `start` opens a remote Wrangler preview instead of deploying; use an explicit deploy command when you intend to publish to Cloudflare.
 
 `fluo new` supports Node.js + Fastify, Express, and raw Node.js HTTP application starters on the same Node-oriented install/build flow:
 
@@ -162,6 +162,23 @@ fluo dev --dry-run
 fluo build --dry-run
 fluo start --dry-run
 ```
+
+Use reporter flags when you need to tune the CLI process boundary rather than runtime app logging:
+
+```bash
+# Pretty status in TTY, raw passthrough in CI/non-TTY (default)
+fluo dev
+
+# Current passthrough-like output for debugging child process logs
+fluo dev --reporter stream
+fluo dev --verbose
+FLUO_VERBOSE=1 fluo dev
+
+# Suppress wrapper/tool status while keeping child stderr and failures visible
+fluo build --reporter silent
+```
+
+Runtime application logs are configured separately through `ApplicationLogger`, for example `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })` or `createJsonApplicationLogger()` from `@fluojs/runtime/node`.
 
 Use `fluo add <package>` for first-party package installation shortcuts and `fluo upgrade` for CLI/latest-version and migration guidance:
 

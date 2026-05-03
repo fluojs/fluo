@@ -31,7 +31,7 @@ export interface CliRuntimeOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   fetchDistTags?: (packageName: string) => Promise<Record<string, string> | undefined>;
-  spawnCommand?: (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; stdio: 'inherit' }) => Promise<number>;
+  spawnCommand?: (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; stderr?: CliStream; stdio: 'inherit' | 'pipe'; stdout?: CliStream }) => Promise<number>;
   stderr?: CliStream;
   stdin?: CliReadableStream;
   stdout?: CliStream;

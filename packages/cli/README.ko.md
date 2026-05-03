@@ -70,7 +70,7 @@ cd my-app
 pnpm dev
 ```
 
-생성된 `dev`, `build`, `start` package script는 각각 `fluo dev`, `fluo build`, `fluo start`로 위임합니다. CLI가 런타임별 lifecycle 명령을 소유하고 local toolchain binary를 실행할 때 project-local `node_modules/.bin`을 앞에 붙이며, 호출자가 명시하지 않은 경우 `dev`는 `NODE_ENV=development`, `build`/`start`는 `NODE_ENV=production`을 기본값으로 사용합니다. Cloudflare Workers의 `start`는 배포하지 않고 Wrangler remote preview를 열며, Cloudflare에 게시하려면 명시적인 deploy 명령을 사용하세요.
+생성된 `dev`, `build`, `start` package script는 각각 `fluo dev`, `fluo build`, `fluo start`로 위임합니다. CLI가 런타임별 lifecycle 명령을 소유하고 local toolchain binary를 실행할 때 project-local `node_modules/.bin`을 앞에 붙이며, 호출자가 명시하지 않은 경우 `dev`는 `NODE_ENV=development`, `build`/`start`는 `NODE_ENV=production`을 기본값으로 사용합니다. `fluo dev`는 TTY-aware lifecycle reporter를 사용합니다. Interactive terminal에서는 간결한 fluo-branded status를 보여주고, CI, non-TTY 출력, `--reporter stream`, `--verbose`, `FLUO_VERBOSE=1`에서는 디버깅과 자동화를 위해 raw child-process passthrough를 유지합니다. Cloudflare Workers의 `start`는 배포하지 않고 Wrangler remote preview를 열며, Cloudflare에 게시하려면 명시적인 deploy 명령을 사용하세요.
 
 `fluo new`는 같은 Node 기반 설치/빌드 흐름 위에서 Node.js + Fastify, Express, raw Node.js HTTP 애플리케이션 스타터를 제공합니다.
 
@@ -162,6 +162,23 @@ fluo dev --dry-run
 fluo build --dry-run
 fluo start --dry-run
 ```
+
+CLI process boundary를 조정해야 할 때는 런타임 앱 로깅이 아니라 reporter flag를 사용하세요:
+
+```bash
+# TTY에서는 pretty status, CI/non-TTY에서는 raw passthrough (기본값)
+fluo dev
+
+# child process log를 디버깅하기 위한 기존 passthrough에 가까운 출력
+fluo dev --reporter stream
+fluo dev --verbose
+FLUO_VERBOSE=1 fluo dev
+
+# child stderr와 실패는 보존하면서 wrapper/tool status는 숨김
+fluo build --reporter silent
+```
+
+런타임 애플리케이션 로그는 `ApplicationLogger`로 별도 설정합니다. 예를 들어 `@fluojs/runtime/node`의 `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })` 또는 `createJsonApplicationLogger()`를 사용하세요.
 
 first-party package 설치 shortcut에는 `fluo add <package>`를 사용하고, CLI/latest-version 및 migration 안내는 `fluo upgrade`로 확인합니다:
 

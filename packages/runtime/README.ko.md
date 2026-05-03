@@ -184,11 +184,22 @@ const adapter = createNodeHttpAdapter({
 
 공개 Node 런타임 surface에서 `maxBodySize`는 바이트 수를 나타내는 숫자만 허용합니다. `'1mb'` 같은 값은 나중에 암묵 변환되지 않고 어댑터 생성 시점에 즉시 거부됩니다.
 
-- `createConsoleApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 컬러 콘솔 로거.
+- `createConsoleApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 컬러 콘솔 로거입니다. 기본값은 기존 pretty 형식을 유지합니다. 더 간결한 `[fluo] LEVEL [context] message` 줄을 원하면 `{ mode: 'minimal' }`, 런타임 로거 출력을 숨기려면 `{ mode: 'silent' }`, 낮은 심각도 메시지를 걸러내려면 `{ level: 'warn' }` 같은 threshold, 결정적인 비컬러 출력을 원하면 `{ color: false }`를 전달하세요.
 - `createJsonApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 구조화된 JSON 로거.
 - `createNodeHttpAdapter()`: 어댑터 우선 런타임 구성을 위한 raw Node `http`/`https` 어댑터 팩토리입니다. primary Node 요청 `content-type`을 JSON/멀티파트 판별 전에 normalize하며, `maxBodySize`는 숫자 바이트 수만 받습니다.
 - `bootstrapNodeApplication()` / `runNodeApplication()`: 호환 패키지와 직접 Node 런타임 흐름에서 사용하는 Node 전용 부트스트랩 헬퍼.
 - `createNodeShutdownSignalRegistration()`, `defaultNodeShutdownSignals()`, `registerShutdownSignals()`: 호스트가 명시적으로 시그널 wiring을 제어할 때 쓰는 종료 등록 헬퍼.
+
+런타임 애플리케이션 로깅은 CLI lifecycle reporting과 별개입니다. 애플리케이션/런타임 자체가 내는 로그를 바꾸고 싶을 때 `ApplicationLogger`를 설정하세요:
+
+```typescript
+import { createConsoleApplicationLogger, createJsonApplicationLogger } from '@fluojs/runtime/node';
+
+const minimalLogger = createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' });
+const jsonLogger = createJsonApplicationLogger();
+```
+
+개발 명령의 raw child-process 출력이 필요하면 대신 `fluo dev --verbose` 같은 CLI reporter flag를 사용하세요.
 
 더 저수준의 Node compression internals는 공개 `@fluojs/runtime/node` 계약이 아니라 `@fluojs/runtime/internal-node` seam 뒤에 둡니다.
 

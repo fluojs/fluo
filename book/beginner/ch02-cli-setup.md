@@ -353,6 +353,10 @@ pnpm dev
 
 If you intentionally generated the project with a different package manager, use that project's matching script command. The book's documented path stays on `pnpm`.
 
+The generated `dev` script delegates to `fluo dev`. In an interactive terminal, the CLI prints concise fluo lifecycle status and keeps child-process errors visible. In CI or other non-interactive output, it falls back to raw stream passthrough so logs remain automation-friendly. If you need to debug every line from the underlying toolchain, run `fluo dev --verbose`, `fluo dev --reporter stream`, or set `FLUO_VERBOSE=1`.
+
+That CLI reporter is different from application/runtime logging. To tune logs emitted by your app after bootstrap, configure `ApplicationLogger` in code, for example with `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })` or `createJsonApplicationLogger()` from `@fluojs/runtime/node`.
+
 On the first run, the flow looks like this. You can expect startup logs similar to the following.
 
 ```text
