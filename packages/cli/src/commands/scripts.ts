@@ -34,6 +34,7 @@ type ProjectRuntime = 'bun' | 'cloudflare-workers' | 'deno' | 'node';
 type ProjectRunnerStep = { args: string[]; command: string };
 
 const EMPTY_ENV: NodeJS.ProcessEnv = {};
+const FAILURE_STDOUT_BUFFER_LIMIT = 16_384;
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null;
@@ -273,16 +274,59 @@ function renderStep(step: ProjectRunnerStep): string {
   return `${step.command} ${step.args.join(' ')}`.trim();
 }
 
-function createReporterStreams(mode: EffectiveLifecycleReporterMode, verbose: boolean, stdout: CliStream, stderr: CliStream): { stderr?: CliStream; stdio: 'inherit' | 'pipe'; stdout?: CliStream } {
+function createBoundedBufferStream(limit: number): CliStream & { flush(target: CliStream): void; hasContent(): boolean } {
+  let buffer = '';
+
+  return {
+    flush(target) {
+      if (buffer.length > 0) {
+        target.write(buffer);
+      }
+    },
+    hasContent() {
+      return buffer.length > 0;
+    },
+    write(message) {
+      buffer += message;
+      if (buffer.length > limit) {
+        buffer = buffer.slice(buffer.length - limit);
+      }
+    },
+  };
+}
+
+function createReporterStreams(
+  mode: EffectiveLifecycleReporterMode,
+  verbose: boolean,
+  stdout: CliStream,
+  stderr: CliStream,
+): { flushBufferedStdoutOnFailure(): void; stderr?: CliStream; stdio: 'inherit' | 'pipe'; stdout?: CliStream } {
   if (mode === 'stream') {
-    return { stdio: 'inherit' };
+    return { flushBufferedStdoutOnFailure() {}, stdio: 'inherit' };
   }
 
   if (mode === 'silent' || mode === 'pretty') {
-    return { stderr, stdio: 'pipe', ...(verbose ? { stdout } : {}) };
+    if (verbose) {
+      return { flushBufferedStdoutOnFailure() {}, stderr, stdio: 'pipe', stdout };
+    }
+
+    const bufferedStdout = createBoundedBufferStream(FAILURE_STDOUT_BUFFER_LIMIT);
+
+    return {
+      flushBufferedStdoutOnFailure() {
+        if (bufferedStdout.hasContent()) {
+          stderr.write('[fluo] child stdout before failure:\n');
+          bufferedStdout.flush(stderr);
+          stderr.write('\n');
+        }
+      },
+      stderr,
+      stdio: 'pipe',
+      stdout: bufferedStdout,
+    };
   }
 
-  return { stdio: 'inherit' };
+  return { flushBufferedStdoutOnFailure() {}, stdio: 'inherit' };
 }
 
 /**
@@ -362,11 +406,13 @@ export async function runScriptCommand(command: ScriptCommand, argv: string[], r
 
   if (reporterMode === 'pretty') {
     if (exitCode === 0) {
-      stdout.write(`[fluo] ${command} lifecycle ready\n`);
+      stdout.write(`[fluo] ${command} lifecycle completed\n`);
     } else {
+      reporterStreams.flushBufferedStdoutOnFailure();
       stderr.write(`[fluo] ${command} lifecycle failed with exit code ${exitCode}\n`);
     }
   } else if (reporterMode === 'silent' && exitCode !== 0) {
+    reporterStreams.flushBufferedStdoutOnFailure();
     stderr.write(`[fluo] ${command} lifecycle failed with exit code ${exitCode}\n`);
   }
 

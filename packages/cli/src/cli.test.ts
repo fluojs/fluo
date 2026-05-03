@@ -1512,8 +1512,36 @@ void bootstrap();
     expect(spawned).toEqual([{ stdio: 'pipe' }]);
     expect(stdoutBuffer.join('')).toContain('[fluo] dev node lifecycle starting');
     expect(stdoutBuffer.join('')).not.toContain('child stdout');
+    expect(stderrBuffer.join('')).toContain('[fluo] child stdout before failure:');
+    expect(stderrBuffer.join('')).toContain('child stdout');
     expect(stderrBuffer.join('')).toContain('child stderr');
     expect(stderrBuffer.join('')).toContain('[fluo] dev lifecycle failed with exit code 1');
+  });
+
+  it('flushes only bounded child stdout on non-verbose pretty reporter failures', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['dev'], {
+      cwd: workspaceDirectory,
+      env: {},
+      spawnCommand: async (_command, _args, options) => {
+        options.stdout?.write(`start-${'x'.repeat(20_000)}-end`);
+        return 9;
+      },
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { isTTY: true, write: () => undefined },
+    });
+
+    const stderrOutput = stderrBuffer.join('');
+
+    expect(exitCode).toBe(9);
+    expect(stderrOutput).toContain('[fluo] child stdout before failure:');
+    expect(stderrOutput).toContain('-end');
+    expect(stderrOutput).not.toContain('start-');
+    expect(stderrOutput.length).toBeLessThan(17_000);
   });
 
   it('keeps raw stream output for CI and explicit verbose dev runs', async () => {
@@ -1569,6 +1597,8 @@ void bootstrap();
 
     expect(exitCode).toBe(2);
     expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain('[fluo] child stdout before failure:');
+    expect(stderrBuffer.join('')).toContain('child stdout');
     expect(stderrBuffer.join('')).toContain('child stderr');
     expect(stderrBuffer.join('')).toContain('[fluo] build lifecycle failed with exit code 2');
   });
