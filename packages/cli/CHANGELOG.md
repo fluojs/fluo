@@ -1,5 +1,11 @@
 # @fluojs/cli
 
+## 1.0.0-beta.4
+
+### Patch Changes
+
+- [#1527](https://github.com/fluojs/fluo/pull/1527) [`0b0bb10`](https://github.com/fluojs/fluo/commit/0b0bb10f2efa206e6c71cd5cf88ea0f28685b5e2) Thanks [@ayden94](https://github.com/ayden94)! - Refresh `fluo new` starter dependency pins to the latest published beta versions of the generated `@fluojs/*` packages.
+
 ## 1.0.0-beta.3
 
 ### Minor Changes

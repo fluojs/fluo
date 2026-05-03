@@ -63,6 +63,7 @@
     "clean-metrics-telemetry",
     "clean-rings-smile",
     "cli-self-update-installer",
+    "cli-starter-latest-beta-deps",
     "config-reload-deep-clone-guard",
     "core-metadata-hotpath-snapshots",
     "cqrs-event-contracts",
