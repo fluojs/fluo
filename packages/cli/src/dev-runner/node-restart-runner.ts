@@ -10,6 +10,7 @@ type RestartRunnerStream = {
 };
 
 type RestartChildSpawner = (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; stdio: 'inherit' }) => ChildProcess;
+/** Runtime target handled by the fluo-owned development restart runner. */
 export type DevRunnerRuntime = 'bun' | 'cloudflare-workers' | 'deno' | 'node';
 
 type RestartSignal = 'SIGINT' | 'SIGTERM';
@@ -26,6 +27,7 @@ type ContentChangeGate = {
   hasMeaningfulChange(paths: Iterable<string>): boolean;
 };
 
+/** Options used to configure the fluo-owned Node restart-on-watch process boundary. */
 export type NodeRestartRunnerOptions = {
   appArgs?: string[];
   debounceMs?: number;

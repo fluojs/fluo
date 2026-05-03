@@ -4,8 +4,6 @@ import { createConsoleApplicationLogger } from './logger.js';
 
 describe('createConsoleApplicationLogger', () => {
   afterEach(() => {
-    delete process.env.FORCE_COLOR;
-    delete process.env.NO_COLOR;
     vi.restoreAllMocks();
   });
 
@@ -18,14 +16,13 @@ describe('createConsoleApplicationLogger', () => {
     expect(log.mock.calls[0]?.[0]).toMatch(/^\[fluo\] \d+ - .+ LOG \[Bootstrap\] Application started$/);
   });
 
-  it('honors FORCE_COLOR when stdout is not a TTY', () => {
-    process.env.FORCE_COLOR = '1';
+  it('honors explicit force color input when stdout is not a TTY', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const originalStdoutIsTty = process.stdout.isTTY;
     Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: false });
 
     try {
-      createConsoleApplicationLogger().log('Application started', 'Bootstrap');
+      createConsoleApplicationLogger({ environment: { forceColor: '1' } }).log('Application started', 'Bootstrap');
     } finally {
       Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: originalStdoutIsTty });
     }
@@ -36,15 +33,16 @@ describe('createConsoleApplicationLogger', () => {
     expect(log.mock.calls[0]?.[0]).toContain('\u001B[33m[Bootstrap]\u001B[0m');
   });
 
-  it('lets NO_COLOR override FORCE_COLOR', () => {
-    process.env.FORCE_COLOR = '1';
-    process.env.NO_COLOR = '1';
+  it('lets explicit no color input override force color input', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const originalStdoutIsTty = process.stdout.isTTY;
     Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: false });
 
     try {
-      createConsoleApplicationLogger().log('Application started', 'Bootstrap');
+      createConsoleApplicationLogger({ environment: { forceColor: '1', noColor: true } }).log(
+        'Application started',
+        'Bootstrap',
+      );
     } finally {
       Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: originalStdoutIsTty });
     }
