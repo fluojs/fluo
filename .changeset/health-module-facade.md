@@ -1,5 +1,5 @@
 ---
-"@fluojs/runtime": patch
+"@fluojs/runtime": minor
 "@fluojs/cli": patch
 ---
 
