@@ -48,6 +48,8 @@ fluo -v
 
 When `fluo` runs in an interactive TTY, it checks the public npm `latest` dist-tag for `@fluojs/cli` using a local cache so every invocation does not hit the registry. If a newer version is available, the CLI asks whether to install it. Declining continues the current command with the installed version; accepting updates the global CLI with the package manager that appears to own the current installation (`npm install -g`, `pnpm add -g`, `bun add -g`, or `yarn global add`) and then restarts `fluo` with the same arguments under the updated binary. If the installer cannot be inferred, the CLI falls back to `npm install -g @fluojs/cli@<latest>` because npm owns the default Node.js global installation path.
 
+`fluo new` and its `fluo create` alias attempt a fresh interactive latest-version check before scaffolding, even when the normal update-check cache is still fresh. This keeps first-run project creation aligned with newly published starter behavior, while day-to-day commands such as `fluo dev`, `fluo build`, `fluo generate`, and `fluo inspect` continue to reuse the cached latest-version result until the normal TTL expires.
+
 The update check is skipped in CI, non-TTY output, npm-script contexts, rerun-after-update contexts, registry/network failures, and explicit opt-out paths. Use `--no-update-check` (or the compatibility alias `--no-update-notifier`) for one invocation, or set `FLUO_NO_UPDATE_CHECK=1` when automation must never prompt.
 
 ## When to Use
