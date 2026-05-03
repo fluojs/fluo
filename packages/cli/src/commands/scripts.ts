@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { SUPPORTED_PACKAGE_MANAGERS } from './package-manager.js';
 
 type CliStream = {
@@ -90,6 +90,21 @@ function withDefaultNodeEnv(env: NodeJS.ProcessEnv, defaultNodeEnv: 'development
   return { ...env, NODE_ENV: defaultNodeEnv };
 }
 
+function findPathEnvKey(env: NodeJS.ProcessEnv): string {
+  return Object.keys(env).find((key) => key.toLowerCase() === 'path') ?? 'PATH';
+}
+
+function withProjectLocalBin(env: NodeJS.ProcessEnv, projectDirectory: string): NodeJS.ProcessEnv {
+  const pathKey = findPathEnvKey(env);
+  const existingPath = env[pathKey];
+  const localBin = join(projectDirectory, 'node_modules', '.bin');
+
+  return {
+    ...env,
+    [pathKey]: existingPath ? `${localBin}${delimiter}${existingPath}` : localBin,
+  };
+}
+
 function defaultSpawnCommand(command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; stdio: 'inherit' }): Promise<number> {
   return new Promise((resolveExitCode, reject) => {
     const child = spawn(command, args, options);
@@ -134,7 +149,7 @@ function buildProjectRunner(command: ScriptCommand, runtime: ProjectRuntime, pas
     case 'deno':
       return [{ command: join('dist', 'app'), args: [...passThrough] }];
     case 'cloudflare-workers':
-      return [{ command: 'wrangler', args: ['deploy', ...passThrough] }];
+      return [{ command: 'wrangler', args: ['dev', '--remote', ...passThrough] }];
     default:
       return [{ command: 'node', args: ['dist/main.js', ...passThrough] }];
   }
@@ -222,7 +237,7 @@ export async function runScriptCommand(command: ScriptCommand, argv: string[], r
 
   const projectRuntime = detectProjectRuntime(project.manifest);
   const defaultNodeEnv = command === 'dev' ? 'development' : 'production';
-  const childEnv = withDefaultNodeEnv(env, defaultNodeEnv);
+  const childEnv = withProjectLocalBin(withDefaultNodeEnv(env, defaultNodeEnv), project.directory);
   const runnerSteps = buildProjectRunner(command, projectRuntime, parsed.passThrough);
 
   if (parsed.dryRun) {

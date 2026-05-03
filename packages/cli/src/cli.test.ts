@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -1553,13 +1553,13 @@ void bootstrap();
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
     writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { build: 'fluo build' } }, null, 2));
-    const spawned: Array<{ args: string[]; command: string; cwd: string; nodeEnv?: string }> = [];
+    const spawned: Array<{ args: string[]; command: string; cwd: string; nodeEnv?: string; path?: string }> = [];
 
     const exitCode = await runCli(['build'], {
       cwd: workspaceDirectory,
-      env: {},
+      env: { PATH: '/usr/bin' },
       spawnCommand: async (command, args, options) => {
-        spawned.push({ args, command, cwd: options.cwd, nodeEnv: options.env.NODE_ENV });
+        spawned.push({ args, command, cwd: options.cwd, nodeEnv: options.env.NODE_ENV, path: options.env.PATH });
         return 0;
       },
       stderr: { write: () => undefined },
@@ -1568,8 +1568,39 @@ void bootstrap();
 
     expect(exitCode).toBe(0);
     expect(spawned).toEqual([
-      { args: ['build'], command: 'vite', cwd: workspaceDirectory, nodeEnv: 'production' },
-      { args: ['-p', 'tsconfig.build.json'], command: 'tsc', cwd: workspaceDirectory, nodeEnv: 'production' },
+      { args: ['build'], command: 'vite', cwd: workspaceDirectory, nodeEnv: 'production', path: `${join(workspaceDirectory, 'node_modules', '.bin')}${delimiter}/usr/bin` },
+      { args: ['-p', 'tsconfig.build.json'], command: 'tsc', cwd: workspaceDirectory, nodeEnv: 'production', path: `${join(workspaceDirectory, 'node_modules', '.bin')}${delimiter}/usr/bin` },
+    ]);
+  });
+
+  it('runs Cloudflare Workers start as a remote preview without deploying', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ dependencies: { '@fluojs/platform-cloudflare-workers': '^1.0.0' }, name: 'test-app', scripts: { start: 'fluo start' } }, null, 2),
+    );
+    const spawned: Array<{ args: string[]; command: string; nodeEnv?: string; path?: string }> = [];
+
+    const exitCode = await runCli(['start', '--', '--port', '8787'], {
+      cwd: workspaceDirectory,
+      env: { PATH: '/usr/bin' },
+      spawnCommand: async (command, args, options) => {
+        spawned.push({ args, command, nodeEnv: options.env.NODE_ENV, path: options.env.PATH });
+        return 0;
+      },
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(spawned).toEqual([
+      {
+        args: ['dev', '--remote', '--port', '8787'],
+        command: 'wrangler',
+        nodeEnv: 'production',
+        path: `${join(workspaceDirectory, 'node_modules', '.bin')}${delimiter}/usr/bin`,
+      },
     ]);
   });
 
