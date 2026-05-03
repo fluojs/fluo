@@ -1,5 +1,16 @@
 # @fluojs/runtime
 
+## 1.0.0-beta.10
+
+### Minor Changes
+
+- [#1539](https://github.com/fluojs/fluo/pull/1539) [`f28a8c8`](https://github.com/fluojs/fluo/commit/f28a8c8e01a2dea8906c1d0b47ed60c4966b8081) Thanks [@ayden94](https://github.com/ayden94)! - Add configurable runtime console logger modes and level filtering, and add CLI lifecycle reporter controls for quieter interactive dev output while preserving raw passthrough for CI and debugging.
+
+### Patch Changes
+
+- Updated dependencies [[`1f312e0`](https://github.com/fluojs/fluo/commit/1f312e02ff7123a82c63d86d022ec9d3bb8c92eb)]:
+  - @fluojs/config@1.0.0-beta.6
+
 ## 1.0.0-beta.9
 
 ### Minor Changes

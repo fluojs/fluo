@@ -62,6 +62,8 @@
     "calm-rabbits-run",
     "clean-metrics-telemetry",
     "clean-rings-smile",
+    "cli-lifecycle-runner",
+    "cli-roadmap-commands",
     "cli-self-update-installer",
     "cli-starter-latest-beta-deps",
     "config-reload-deep-clone-guard",
@@ -80,6 +82,7 @@
     "fastify-adapter-hot-path",
     "fastify-portability-stream-edge",
     "flat-bikes-fry",
+    "fresh-cli-creation-check",
     "friendly-lions-fry",
     "graphql-resolver-lifecycle-contracts",
     "graphql-stream-teardown",
@@ -111,6 +114,7 @@
     "prisma-named-scoped-registrations",
     "recover-lane-2026-04-27-metadata",
     "runtime-lifecycle-health-readiness",
+    "runtime-logger-cli-reporter",
     "runtime-microservice-ownership",
     "runtime-normalization-lazy-hotpath",
     "runtime-request-bootstrap-hot-path",
@@ -125,6 +129,7 @@
     "terminus-diagnostics-health-regressions",
     "testing-module-identity-contracts",
     "throttler-failure-learning-docs",
+    "tidy-node-dev-restarts",
     "validation-root-guard"
   ]
 }

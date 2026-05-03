@@ -1,5 +1,24 @@
 # @fluojs/cli
 
+## 1.0.0-beta.5
+
+### Minor Changes
+
+- [#1535](https://github.com/fluojs/fluo/pull/1535) [`45a84a8`](https://github.com/fluojs/fluo/commit/45a84a87fe77d2936ab075d2c7b3eafd870d3b41) Thanks [@ayden94](https://github.com/ayden94)! - Align generated project lifecycle scripts around `fluo dev`, `fluo build`, and `fluo start`, with CLI-owned runtime commands, project-local toolchain binary resolution, Workers preview-safe start behavior, and Next.js-like `NODE_ENV` defaults that preserve explicitly provided environment values.
+
+- [#1531](https://github.com/fluojs/fluo/pull/1531) [`6cb8d78`](https://github.com/fluojs/fluo/commit/6cb8d781f3ac62f7848da71aad292d78948abf04) Thanks [@ayden94](https://github.com/ayden94)! - Add CLI roadmap command MVPs for version inspection, diagnostics, script orchestration, package workflow guidance, and composite resource generation.
+
+- [#1539](https://github.com/fluojs/fluo/pull/1539) [`f28a8c8`](https://github.com/fluojs/fluo/commit/f28a8c8e01a2dea8906c1d0b47ed60c4966b8081) Thanks [@ayden94](https://github.com/ayden94)! - Add configurable runtime console logger modes and level filtering, and add CLI lifecycle reporter controls for quieter interactive dev output while preserving raw passthrough for CI and debugging.
+
+### Patch Changes
+
+- [#1538](https://github.com/fluojs/fluo/pull/1538) [`2239996`](https://github.com/fluojs/fluo/commit/2239996bcc61c5fa63427511c6927ad0e248b78c) Thanks [@ayden94](https://github.com/ayden94)! - Refresh the interactive CLI latest-version check for `fluo new` and `fluo create` before scaffolding while preserving cached update checks for normal commands.
+
+- [#1540](https://github.com/fluojs/fluo/pull/1540) [`1f312e0`](https://github.com/fluojs/fluo/commit/1f312e02ff7123a82c63d86d022ec9d3bb8c92eb) Thanks [@ayden94](https://github.com/ayden94)! - Add a fluo-owned Node dev restart runner that dedupes unchanged file saves before restart while preserving raw runtime watcher escape hatches. Config watch reloads now also skip unchanged env file saves and change-then-revert bursts before replacing the in-process snapshot.
+
+- Updated dependencies [[`f28a8c8`](https://github.com/fluojs/fluo/commit/f28a8c8e01a2dea8906c1d0b47ed60c4966b8081)]:
+  - @fluojs/runtime@1.0.0-beta.10
+
 ## 1.0.0-beta.4
 
 ### Patch Changes
