@@ -128,7 +128,7 @@ function defaultSpawnCommand(command: string, args: string[], options: SpawnComm
       child.stderr?.on('data', (chunk) => options.stderr?.write(String(chunk)));
     }
     child.on('error', reject);
-    child.on('exit', (code) => resolveExitCode(code ?? 1));
+    child.on('close', (code) => resolveExitCode(code ?? 1));
   });
 }
 

@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1542,6 +1542,45 @@ void bootstrap();
     expect(stderrOutput).toContain('-end');
     expect(stderrOutput).not.toContain('start-');
     expect(stderrOutput.length).toBeLessThan(17_000);
+  });
+
+  it('drains default spawned child stdout before flushing pretty reporter failures', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const binDirectory = join(workspaceDirectory, 'node_modules', '.bin');
+    mkdirSync(binDirectory, { recursive: true });
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+
+    const nodeBin = join(binDirectory, 'node');
+    writeFileSync(
+      nodeBin,
+      `#!/bin/sh
+printf 'default spawn stdout before failure\n'
+printf 'default spawn stderr before failure\n' >&2
+exit 7
+`,
+    );
+    chmodSync(nodeBin, 0o755);
+
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['dev'], {
+      cwd: workspaceDirectory,
+      env: { PATH: process.env.PATH },
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { isTTY: true, write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const stderrOutput = stderrBuffer.join('');
+
+    expect(exitCode).toBe(7);
+    expect(stdoutBuffer.join('')).toContain('[fluo] dev node lifecycle starting');
+    expect(stdoutBuffer.join('')).not.toContain('default spawn stdout before failure');
+    expect(stderrOutput).toContain('[fluo] child stdout before failure:');
+    expect(stderrOutput).toContain('default spawn stdout before failure');
+    expect(stderrOutput).toContain('default spawn stderr before failure');
+    expect(stderrOutput.indexOf('default spawn stdout before failure')).toBeLessThan(stderrOutput.indexOf('[fluo] dev lifecycle failed with exit code 7'));
   });
 
   it('keeps raw stream output for CI and explicit verbose dev runs', async () => {
