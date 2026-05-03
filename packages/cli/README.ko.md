@@ -7,6 +7,7 @@ fluo 공식 CLI — 새 애플리케이션 부트스트랩, 컴포넌트 생성,
 ## 목차
 
 - [설치](#설치)
+- [버전 확인](#버전-확인)
 - [업데이트 확인](#업데이트-확인)
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
@@ -32,6 +33,16 @@ pnpm dlx @fluojs/cli new my-app
 - `@fluojs/cli`는 intended publish surface에 포함되는 공개 패키지입니다.
 - 지원되는 설치 경로는 전역 패키지(`npm install -g @fluojs/cli`, `pnpm add -g @fluojs/cli`, `bun add -g @fluojs/cli`, `yarn global add @fluojs/cli`)와 무설치 실행 경로(`pnpm dlx @fluojs/cli ...`)입니다.
 - 배포되는 `fluo` bin은 `package.json`에 선언된 dist 빌드 CLI 엔트리포인트를 기준으로 동작합니다.
+
+## 버전 확인
+
+Interactive update check를 실행하지 않고 설치된 CLI 버전을 확인합니다:
+
+```bash
+fluo version
+fluo --version
+fluo -v
+```
 
 ## 업데이트 확인
 
