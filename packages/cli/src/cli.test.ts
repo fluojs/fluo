@@ -1549,18 +1549,17 @@ void bootstrap();
     expect(stdoutBuffer.join('')).toContain('NODE_ENV: development');
   });
 
-  it('runs the build script through lockfile package-manager detection', async () => {
+  it('runs the Node build lifecycle directly with production env defaults', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
-    writeFileSync(join(workspaceDirectory, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n');
-    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { build: 'tsc -p tsconfig.json' } }, null, 2));
-    const spawned: Array<{ args: string[]; command: string; cwd: string }> = [];
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { build: 'fluo build' } }, null, 2));
+    const spawned: Array<{ args: string[]; command: string; cwd: string; nodeEnv?: string }> = [];
 
     const exitCode = await runCli(['build'], {
       cwd: workspaceDirectory,
-      env: { npm_config_user_agent: 'npm/10.8.0 node/v20.0.0 darwin arm64' },
+      env: {},
       spawnCommand: async (command, args, options) => {
-        spawned.push({ args, command, cwd: options.cwd });
+        spawned.push({ args, command, cwd: options.cwd, nodeEnv: options.env.NODE_ENV });
         return 0;
       },
       stderr: { write: () => undefined },
@@ -1568,7 +1567,31 @@ void bootstrap();
     });
 
     expect(exitCode).toBe(0);
-    expect(spawned).toEqual([{ args: ['run', 'build'], command: 'pnpm', cwd: workspaceDirectory }]);
+    expect(spawned).toEqual([
+      { args: ['build'], command: 'vite', cwd: workspaceDirectory, nodeEnv: 'production' },
+      { args: ['-p', 'tsconfig.build.json'], command: 'tsc', cwd: workspaceDirectory, nodeEnv: 'production' },
+    ]);
+  });
+
+  it('prints runtime-specific build lifecycle dry-runs', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ dependencies: { '@fluojs/platform-bun': '^1.0.0' }, name: 'test-app', scripts: { build: 'fluo build' } }, null, 2),
+    );
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['build', '--dry-run', '--', '--minify'], {
+      cwd: workspaceDirectory,
+      env: {},
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Would run: bun build ./src/main.ts --outdir ./dist --target bun --minify');
+    expect(stdoutBuffer.join('')).toContain('NODE_ENV: production');
   });
 
   it('prints add dry-runs with normalized fluo package names', async () => {

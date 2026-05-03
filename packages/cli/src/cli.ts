@@ -133,7 +133,7 @@ const TOP_LEVEL_COMMAND_HELP: TopLevelCommandHelpEntry[] = [
   { aliases: [], command: 'analyze', description: 'Summarize project diagnostics and point to deeper inspection flows.' },
   { aliases: [], command: 'dev', description: 'Run the generated project development lifecycle.' },
   { aliases: [], command: 'start', description: 'Run the generated project production lifecycle.' },
-  { aliases: [], command: 'build', description: 'Run the project build script through the detected package manager.' },
+  { aliases: [], command: 'build', description: 'Run the generated project build lifecycle.' },
   { aliases: [], command: 'add', description: 'Install @fluojs packages with the detected package manager.' },
   { aliases: [], command: 'upgrade', description: 'Report latest CLI state and migration workflow guidance.' },
   { aliases: [], command: 'inspect', description: 'Inspect runtime platform snapshot/diagnostics and emit timing optionally.' },
