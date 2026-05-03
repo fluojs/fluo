@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@fluojs/core/internal';
+import { ensureMetadataSymbol } from '@fluojs/core/internal';
 
 import {
   argMetadataSymbol,
@@ -26,8 +26,9 @@ type ClassDecoratorLike = StandardClassDecoratorFn;
 type MethodDecoratorLike = StandardMethodDecoratorFn;
 type FieldDecoratorLike = StandardFieldDecoratorFn;
 
+ensureMetadataSymbol();
+
 function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
-  void metadataSymbol;
   return metadata as StandardMetadataBag;
 }
 

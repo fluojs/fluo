@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   getClassValidationRules,
@@ -447,5 +447,26 @@ describe('http decorators', () => {
         },
       },
     ]);
+  });
+
+  it('installs Symbol.metadata when the HTTP decorator module is imported', async () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+
+    vi.resetModules();
+    delete (Symbol as typeof Symbol & { metadata?: symbol }).metadata;
+
+    try {
+      const decoratorModuleSpecifier = './decorators.js?http-ensure-metadata';
+      await import(/* @vite-ignore */ decoratorModuleSpecifier);
+
+      expect(typeof (Symbol as typeof Symbol & { metadata?: symbol }).metadata).toBe('symbol');
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(Symbol, 'metadata', originalDescriptor);
+      } else {
+        delete (Symbol as typeof Symbol & { metadata?: symbol }).metadata;
+      }
+      vi.resetModules();
+    }
   });
 });

@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@fluojs/core/internal';
+import { ensureMetadataSymbol } from '@fluojs/core/internal';
 
 import {
   commandHandlerMetadataSymbol,
@@ -19,9 +19,9 @@ import type {
 type ClassDecoratorLike = (value: Function, context: ClassDecoratorContext) => void;
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 
-function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
-  void metadataSymbol;
+ensureMetadataSymbol();
 
+function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
   if (typeof metadata !== 'object' || metadata === null) {
     throw new Error('Decorator metadata is unavailable. Ensure standard decorators are enabled.');
   }

@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@fluojs/core/internal';
+import { ensureMetadataSymbol } from '@fluojs/core/internal';
 
 import { microserviceMetadataSymbol } from './metadata.js';
 import type { HandlerKind, HandlerMetadata, Pattern } from './types.js';
@@ -6,8 +6,9 @@ import type { HandlerKind, HandlerMetadata, Pattern } from './types.js';
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 type MethodDecoratorLike = (value: Function, context: ClassMethodDecoratorContext) => void;
 
+ensureMetadataSymbol();
+
 function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
-  void metadataSymbol;
   return metadata as StandardMetadataBag;
 }
 

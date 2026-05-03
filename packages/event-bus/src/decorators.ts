@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@fluojs/core/internal';
+import { ensureMetadataSymbol } from '@fluojs/core/internal';
 
 import type { EventHandlerMetadata, EventType } from './types.js';
 import { eventBusMetadataSymbol } from './metadata.js';
@@ -7,8 +7,9 @@ type StandardMetadataBag = Record<PropertyKey, unknown>;
 type StandardMethodDecoratorFn = (value: Function, context: ClassMethodDecoratorContext) => void;
 type MethodDecoratorLike = StandardMethodDecoratorFn;
 
+ensureMetadataSymbol();
+
 function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
-  void metadataSymbol;
   return metadata as StandardMetadataBag;
 }
 

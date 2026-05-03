@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@fluojs/core/internal';
+import { ensureMetadataSymbol } from '@fluojs/core/internal';
 
 import { queueWorkerMetadataSymbol } from './metadata.js';
 import type { QueueJobType, QueueWorkerMetadata, QueueWorkerOptions } from './types.js';
@@ -6,8 +6,9 @@ import type { QueueJobType, QueueWorkerMetadata, QueueWorkerOptions } from './ty
 type ClassDecoratorLike = (value: Function, context: ClassDecoratorContext) => void;
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 
+ensureMetadataSymbol();
+
 function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
-  void metadataSymbol;
   return metadata as StandardMetadataBag;
 }
 
