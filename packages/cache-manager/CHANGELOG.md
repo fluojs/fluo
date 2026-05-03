@@ -1,5 +1,16 @@
 # @fluojs/cache-manager
 
+## 1.0.0-beta.5
+
+### Patch Changes
+
+- [#1508](https://github.com/fluojs/fluo/pull/1508) [`3c14c5e`](https://github.com/fluojs/fluo/commit/3c14c5ea727ce3055f47f9d400f9b6b9cdc7c895) Thanks [@ayden94](https://github.com/ayden94)! - Canonicalize repeated query values in query-aware cache keys and release resource-owning custom stores during application shutdown.
+
+- Updated dependencies [[`c5aebdf`](https://github.com/fluojs/fluo/commit/c5aebdfe141bda72a6701516c48ace0f5caf5ee2), [`1d43614`](https://github.com/fluojs/fluo/commit/1d4361416e56ec935d67da096ba8b72d3886f7ee), [`f086fa5`](https://github.com/fluojs/fluo/commit/f086fa58827617bda8bdef50e0b694bd5e85dfaa), [`f8d05fa`](https://github.com/fluojs/fluo/commit/f8d05fac610bd5a58c27f84e764338ee718c0a67), [`6b8e8a9`](https://github.com/fluojs/fluo/commit/6b8e8a9d2c6123d9a1ca2ec805ef4fde97d1f199)]:
+  - @fluojs/core@1.0.0-beta.3
+  - @fluojs/di@1.0.0-beta.6
+  - @fluojs/runtime@1.0.0-beta.9
+
 ## 1.0.0-beta.4
 
 ### Patch Changes

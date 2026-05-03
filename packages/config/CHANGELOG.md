@@ -1,5 +1,14 @@
 # @fluojs/config
 
+## 1.0.0-beta.5
+
+### Patch Changes
+
+- [#1505](https://github.com/fluojs/fluo/pull/1505) [`e430e58`](https://github.com/fluojs/fluo/commit/e430e589d2bee458bf42199acbd50cbb25ea76c9) Thanks [@ayden94](https://github.com/ayden94)! - Snapshot config module/reloader options at registration time and keep watch reloads active when env files are created after startup.
+
+- Updated dependencies [[`c5aebdf`](https://github.com/fluojs/fluo/commit/c5aebdfe141bda72a6701516c48ace0f5caf5ee2)]:
+  - @fluojs/core@1.0.0-beta.3
+
 ## 1.0.0-beta.4
 
 ### Minor Changes

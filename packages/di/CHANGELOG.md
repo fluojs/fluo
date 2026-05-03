@@ -1,5 +1,16 @@
 # @fluojs/di
 
+## 1.0.0-beta.6
+
+### Patch Changes
+
+- [#1502](https://github.com/fluojs/fluo/pull/1502) [`1d43614`](https://github.com/fluojs/fluo/commit/1d4361416e56ec935d67da096ba8b72d3886f7ee) Thanks [@ayden94](https://github.com/ayden94)! - Preserve DI shutdown progress when request-scope child disposal fails, aggregate child/root disposal failures, and reject singleton dependency graphs that reach request scope through transient or factory providers.
+
+- [#1521](https://github.com/fluojs/fluo/pull/1521) [`f086fa5`](https://github.com/fluojs/fluo/commit/f086fa58827617bda8bdef50e0b694bd5e85dfaa) Thanks [@ayden94](https://github.com/ayden94)! - Cache DI provider resolution plans so repeated resolves and request-scope checks avoid redundant provider graph traversal without caching transient or request-scoped instances.
+
+- Updated dependencies [[`c5aebdf`](https://github.com/fluojs/fluo/commit/c5aebdfe141bda72a6701516c48ace0f5caf5ee2)]:
+  - @fluojs/core@1.0.0-beta.3
+
 ## 1.0.0-beta.5
 
 ### Patch Changes

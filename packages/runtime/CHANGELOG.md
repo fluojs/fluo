@@ -1,5 +1,22 @@
 # @fluojs/runtime
 
+## 1.0.0-beta.9
+
+### Minor Changes
+
+- [#1520](https://github.com/fluojs/fluo/pull/1520) [`f8d05fa`](https://github.com/fluojs/fluo/commit/f8d05fac610bd5a58c27f84e764338ee718c0a67) Thanks [@ayden94](https://github.com/ayden94)! - Add an opt-in module graph compile-result cache for repeated bootstrap flows while keeping failed compilations uncached and cached graph snapshots isolated from caller mutation.
+
+- [#1507](https://github.com/fluojs/fluo/pull/1507) [`6b8e8a9`](https://github.com/fluojs/fluo/commit/6b8e8a9d2c6123d9a1ca2ec805ef4fde97d1f199) Thanks [@ayden94](https://github.com/ayden94)! - Harden runtime microservice ownership by cascading parent application shutdown to connected microservices, rolling back started children when `startAllMicroservices()` fails, and preserving original microservice bootstrap errors when cleanup also fails.
+
+  The root `@fluojs/runtime` entrypoint no longer exports `renderRuntimeDiagnosticsMermaid`; Mermaid rendering is Studio-owned, so consumers that need Mermaid output should migrate to the Studio contract path and call `renderMermaid(snapshot)` from `@fluojs/studio/contracts`.
+
+### Patch Changes
+
+- Updated dependencies [[`c5aebdf`](https://github.com/fluojs/fluo/commit/c5aebdfe141bda72a6701516c48ace0f5caf5ee2), [`1d43614`](https://github.com/fluojs/fluo/commit/1d4361416e56ec935d67da096ba8b72d3886f7ee), [`f086fa5`](https://github.com/fluojs/fluo/commit/f086fa58827617bda8bdef50e0b694bd5e85dfaa), [`e430e58`](https://github.com/fluojs/fluo/commit/e430e589d2bee458bf42199acbd50cbb25ea76c9)]:
+  - @fluojs/core@1.0.0-beta.3
+  - @fluojs/di@1.0.0-beta.6
+  - @fluojs/config@1.0.0-beta.5
+
 ## 1.0.0-beta.8
 
 ### Patch Changes

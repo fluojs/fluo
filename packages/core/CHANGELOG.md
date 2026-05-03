@@ -1,5 +1,11 @@
 # @fluojs/core
 
+## 1.0.0-beta.3
+
+### Patch Changes
+
+- [#1510](https://github.com/fluojs/fluo/pull/1510) [`c5aebdf`](https://github.com/fluojs/fluo/commit/c5aebdfe141bda72a6701516c48ace0f5caf5ee2) Thanks [@ayden94](https://github.com/ayden94)! - Avoid installing the global `Symbol.metadata` polyfill as an import side effect; applications and tests should call `ensureMetadataSymbol()` at explicit bootstrap boundaries when they need the polyfill.
+
 ## 1.0.0-beta.2
 
 ### Minor Changes

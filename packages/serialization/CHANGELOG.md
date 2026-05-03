@@ -1,5 +1,14 @@
 # @fluojs/serialization
 
+## 1.0.0-beta.4
+
+### Patch Changes
+
+- [#1517](https://github.com/fluojs/fluo/pull/1517) [`15c571e`](https://github.com/fluojs/fluo/commit/15c571e53e2a45bec1ceab6f8a9551238972ca5f) Thanks [@ayden94](https://github.com/ayden94)! - Preserve opaque built-in response values such as Map, Set, URL, and Error during serialization instead of flattening them as empty DTO-like objects.
+
+- Updated dependencies [[`c5aebdf`](https://github.com/fluojs/fluo/commit/c5aebdfe141bda72a6701516c48ace0f5caf5ee2)]:
+  - @fluojs/core@1.0.0-beta.3
+
 ## 1.0.0-beta.3
 
 ### Patch Changes

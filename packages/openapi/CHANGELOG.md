@@ -1,5 +1,16 @@
 # @fluojs/openapi
 
+## 1.0.0-beta.5
+
+### Patch Changes
+
+- [#1516](https://github.com/fluojs/fluo/pull/1516) [`afc7dec`](https://github.com/fluojs/fluo/commit/afc7decf9f68ea7fa3481a121582650b07bd2136) Thanks [@ayden94](https://github.com/ayden94)! - Snapshot OpenAPI module options at registration/resolution time and allow Swagger UI assets to be configured for deterministic self-hosted documentation pages.
+
+- Updated dependencies [[`c5aebdf`](https://github.com/fluojs/fluo/commit/c5aebdfe141bda72a6701516c48ace0f5caf5ee2), [`f8d05fa`](https://github.com/fluojs/fluo/commit/f8d05fac610bd5a58c27f84e764338ee718c0a67), [`6b8e8a9`](https://github.com/fluojs/fluo/commit/6b8e8a9d2c6123d9a1ca2ec805ef4fde97d1f199), [`8422e56`](https://github.com/fluojs/fluo/commit/8422e566e4d22b466542ef457d36c2e99e1a634a)]:
+  - @fluojs/core@1.0.0-beta.3
+  - @fluojs/runtime@1.0.0-beta.9
+  - @fluojs/validation@1.0.0-beta.2
+
 ## 1.0.0-beta.4
 
 ### Patch Changes

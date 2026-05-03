@@ -1,5 +1,17 @@
 # @fluojs/graphql
 
+## 1.0.0-beta.5
+
+### Patch Changes
+
+- [#1503](https://github.com/fluojs/fluo/pull/1503) [`5b97a76`](https://github.com/fluojs/fluo/commit/5b97a7657889587a9e9d03245772d1d94c7d4ef9) Thanks [@ayden94](https://github.com/ayden94)! - Restore GraphQL's patched instance helper on shutdown and cancel streaming GraphQL response bodies when downstream streams close or error, preventing long-lived subscription resources from leaking.
+
+- Updated dependencies [[`c5aebdf`](https://github.com/fluojs/fluo/commit/c5aebdfe141bda72a6701516c48ace0f5caf5ee2), [`1d43614`](https://github.com/fluojs/fluo/commit/1d4361416e56ec935d67da096ba8b72d3886f7ee), [`f086fa5`](https://github.com/fluojs/fluo/commit/f086fa58827617bda8bdef50e0b694bd5e85dfaa), [`f8d05fa`](https://github.com/fluojs/fluo/commit/f8d05fac610bd5a58c27f84e764338ee718c0a67), [`6b8e8a9`](https://github.com/fluojs/fluo/commit/6b8e8a9d2c6123d9a1ca2ec805ef4fde97d1f199), [`8422e56`](https://github.com/fluojs/fluo/commit/8422e566e4d22b466542ef457d36c2e99e1a634a)]:
+  - @fluojs/core@1.0.0-beta.3
+  - @fluojs/di@1.0.0-beta.6
+  - @fluojs/runtime@1.0.0-beta.9
+  - @fluojs/validation@1.0.0-beta.2
+
 ## 1.0.0-beta.4
 
 ### Minor Changes
