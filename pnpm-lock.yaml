@@ -953,6 +953,19 @@ importers:
         specifier: ^4.1.11
         version: 4.3.6
 
+  packages/vite:
+    dependencies:
+      '@babel/core':
+        specifier: '>=7.0.0'
+        version: 7.29.0
+      vite:
+        specifier: '>=5.0.0'
+        version: 6.4.1(@types/node@22.19.15)(tsx@4.21.0)
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
+
   packages/websockets:
     dependencies:
       '@fluojs/core':
