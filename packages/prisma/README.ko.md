@@ -178,7 +178,7 @@ defineModule(ManualPrismaModule, {
 - `PrismaModule.forRoot(options)` / `PrismaModule.forRootAsync(options)`
 - `PrismaModule.forName(name, options)` / `PrismaModule.forNameAsync(name, options)`
 - `forRoot(...)`와 `forRootAsync(...)`도 이름 있는/scoped 등록을 위해 `name`을 받을 수 있습니다.
-- `forRootAsync(...)`는 `AsyncModuleOptions<PrismaModuleOptions<...>>`를 받습니다.
+- `forRootAsync(...)`는 client와 transaction 설정을 factory에서 반환하는 DI-aware Prisma 옵션을 받습니다. 모듈 identity와 visibility가 factory 실행 전에 결정되도록 `name` 또는 `global`은 최상위 async 등록 옵션에 전달하세요.
 - `forRootAsync(...)`는 애플리케이션 컨테이너마다 옵션을 한 번 resolve하여, 별도 bootstrap 사이에서 클라이언트 라이프사이클과 요청 트랜잭션 격리를 보존합니다.
 - `strictTransactions: true` 설정 시 트랜잭션 미지원 환경에서 즉시 예외를 발생시킵니다.
 - `strictTransactions`가 `false`이면 클라이언트가 interactive `$transaction`을 제공하지 않을 때 직접 실행으로 fallback합니다.

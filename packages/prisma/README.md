@@ -178,7 +178,7 @@ defineModule(ManualPrismaModule, {
 - `PrismaModule.forRoot(options)` / `PrismaModule.forRootAsync(options)`
 - `PrismaModule.forName(name, options)` / `PrismaModule.forNameAsync(name, options)`
 - `forRoot(...)` and `forRootAsync(...)` also accept `name` for named/scoped registrations.
-- `forRootAsync(...)` accepts `AsyncModuleOptions<PrismaModuleOptions<...>>`.
+- `forRootAsync(...)` accepts DI-aware Prisma options whose factory returns the client and transaction settings; pass `name` or `global` on the top-level async registration so module identity and visibility are decided before the factory runs.
 - `forRootAsync(...)` resolves options once per application container, preserving client lifecycle and request transaction isolation across separate bootstraps.
 - Supports `strictTransactions: true` to throw if transaction support is missing.
 - When `strictTransactions` is `false`, PrismaService falls back to direct execution if the client does not expose interactive `$transaction`.

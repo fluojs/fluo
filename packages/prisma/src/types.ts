@@ -61,6 +61,8 @@ export interface PrismaModuleOptions<
   TTransactionClient = InferPrismaTransactionClient<TClient>,
   TTransactionOptions = InferPrismaTransactionOptions<TClient>,
 > {
+  /** Whether the default unnamed Prisma registration should be visible globally. Defaults to `false`. */
+  global?: boolean;
   /** Optional registration name used to isolate Prisma tokens inside one application container. */
   name?: string;
   /** Root Prisma client shared outside ambient transaction scopes. */
