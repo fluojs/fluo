@@ -22,6 +22,8 @@ export interface CqrsModuleOptions {
   commandHandlers?: readonly CommandHandlerClass[];
   eventBus?: EventBusModuleOptions;
   eventHandlers?: readonly EventHandlerClass[];
+  /** Whether CQRS bus providers should be visible globally. Defaults to `true`. */
+  global?: boolean;
   queryHandlers?: readonly QueryHandlerClass[];
   sagas?: readonly SagaClass[];
 }
@@ -106,7 +108,7 @@ export class CqrsModule {
         QUERY_BUS,
         EVENT_BUS,
       ],
-      global: true,
+      global: options.global ?? true,
       imports: [EventBusModule.forRoot(options.eventBus)],
       providers: createCqrsProviders(options),
     });
