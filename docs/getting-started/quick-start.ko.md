@@ -121,14 +121,14 @@ Server listening on http://localhost:3000
 
 ```bash
 curl http://localhost:3000/health
-curl http://localhost:3000/hello
+curl http://localhost:3000/greeting
 ```
 
 예상 출력:
 
 ```text
 {"status":"ok"}
-{"message":"Hello, World!"}
+{"message":"Hello from fluo","framework":"fluo","project":"my-fluo-app"}
 ```
 
 ## Invariants
@@ -136,6 +136,6 @@ curl http://localhost:3000/hello
 - `tsconfig.json`에서 `experimentalDecorators`는 비활성화 상태를 유지합니다.
 - `tsconfig.json`에서 `emitDecoratorMetadata`는 비활성화 상태를 유지합니다.
 - 기본 생성 애플리케이션은 `fluo dev`로 위임되는 `pnpm dev` 중 포트 `3000`에서 리슨하며, 생성된 build/start script도 각각 `fluo build`, `fluo start`로 위임됩니다.
-- 기본 생성 애플리케이션은 `/health`와 `/hello`를 노출합니다.
+- 기본 생성 애플리케이션은 runtime `/health`와 starter-owned `/greeting`을 노출합니다.
 - `fluo new` 스타터 변형은 CLI README와 지원 매트릭스에 문서화된 유지보수 대상 스타터 매트릭스에 맞춰집니다.
 - `fluo new --print-plan`은 읽기 전용 preview 경로입니다. 프로젝트 파일 작성, dependency 설치, git 초기화 없이 starter plan과 dependency 세트를 해석합니다.
