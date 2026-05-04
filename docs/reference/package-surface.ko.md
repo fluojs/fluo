@@ -14,7 +14,7 @@
 | **Persistence** | 데이터베이스 및 캐시. | `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose`, `@fluojs/redis`, `@fluojs/cache-manager` |
 | **Patterns** | 메시징 및 아키텍처. | `@fluojs/microservices`, `@fluojs/cqrs`, `@fluojs/event-bus`, `@fluojs/cron`, `@fluojs/queue`, `@fluojs/notifications`, `@fluojs/email`, `@fluojs/slack`, `@fluojs/discord` |
 | **Operations** | 헬스 및 모니터링. | `@fluojs/metrics`, `@fluojs/terminus`, `@fluojs/throttler` |
-| **Tooling** | CLI 검사 내보내기, Studio를 통한 inspect artifact 보기/렌더링, 테스트 진단. | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing` |
+| **Tooling** | CLI 검사 내보내기, Studio를 통한 inspect artifact 보기/렌더링, 테스트 진단, Vite 빌드 통합. | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
 ## canonical runtime package matrix
 
@@ -58,6 +58,7 @@
 - **`@fluojs/cli`**: 프로젝트 스캐폴딩, 생성, codemod, 런타임이 생산한 snapshot에 대한 inspection 내보내기/위임. `fluo inspect`는 CLI argument validation, application bootstrap/close, JSON snapshot serialization, report artifact 쓰기, `--output <path>` file emission, Mermaid rendering을 위한 Studio handoff를 소유합니다.
 - **`@fluojs/studio`**: 파일 우선 snapshot/report/timing 뷰어와 CLI 및 자동화 호출자를 위한 canonical 파싱, 필터링, 그래프 렌더링 헬퍼. Studio는 `fluo inspect --json` snapshot, standalone `--timing` diagnostics, `--json --timing` envelope, `--report` artifact, `renderMermaid(snapshot)`을 통한 Mermaid graph rendering을 소비하는 책임 경계를 소유합니다.
 - **`@fluojs/testing`**: 애플리케이션 및 플랫폼 계약을 검증하기 위한 conformance 및 통합 헬퍼.
+- **`@fluojs/vite`**: 생성된 starter `vite.config.ts` 파일이 사용하는 유지보수형 `fluoDecoratorsPlugin()`을 포함한 fluo 프로젝트용 Vite 빌드 유틸리티.
 
 ## Studio inspect artifact ownership
 
