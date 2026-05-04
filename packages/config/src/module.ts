@@ -33,7 +33,7 @@ export class ConfigModule {
     class ConfigModuleImpl extends ConfigModule {}
 
     defineModuleMetadata(ConfigModuleImpl, {
-      global: loadOptions.isGlobal ?? true,
+      global: loadOptions.global ?? true,
       exports: [ConfigService],
       providers: [
         {

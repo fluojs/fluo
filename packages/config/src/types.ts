@@ -49,7 +49,8 @@ export interface ConfigModuleOptions {
    *  returns a flat key-value record. Defaults to dotenv parsing. */
   parse?: (content: string) => Record<string, string>;
   watch?: boolean;
-  isGlobal?: boolean;
+  /** Whether the module should expose `ConfigService` globally. Defaults to `true`. */
+  global?: boolean;
 }
 
 /**

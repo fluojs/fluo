@@ -42,7 +42,7 @@ function isConfigDictionary(value: unknown): value is ConfigDictionary {
 function createPortSchema(): ConfigSchema {
   return {
     '~standard': {
-      validate: (value) => {
+      validate: (value: unknown) => {
         if (!isConfigDictionary(value)) {
           return { issues: [{ message: 'config must be an object' }] };
         }
@@ -1134,14 +1134,14 @@ describe('ConfigModule', () => {
     expect(getModuleMetadata(moduleRef)?.global).toBe(true);
   });
 
-  it('honors isGlobal=false', () => {
-    const moduleRef = ConfigModule.forRoot({ isGlobal: false });
+  it('honors global=false', () => {
+    const moduleRef = ConfigModule.forRoot({ global: false });
 
     expect(getModuleMetadata(moduleRef)?.global).toBe(false);
   });
 
-  it('honors isGlobal=true', () => {
-    const moduleRef = ConfigModule.forRoot({ isGlobal: true });
+  it('honors global=true', () => {
+    const moduleRef = ConfigModule.forRoot({ global: true });
 
     expect(getModuleMetadata(moduleRef)?.global).toBe(true);
   });
