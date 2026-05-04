@@ -29,6 +29,8 @@ export interface DrizzleModuleOptions<TDatabase extends DrizzleDatabaseLike<TTra
   database: TDatabase;
   /** Optional shutdown hook used to close pools or driver resources during application shutdown. */
   dispose?: (database: TDatabase) => MaybePromise<void>;
+  /** Whether Drizzle providers should be visible globally. Defaults to `false`. */
+  global?: boolean;
   /**
    * Throws when transaction helpers are used against a database that does not expose `transaction(...)`.
    *

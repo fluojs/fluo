@@ -150,7 +150,7 @@ defineModule(ManualDrizzleModule, {
 ### `DrizzleModule`
 
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
-- `forRootAsync(...)` accepts `AsyncModuleOptions<DrizzleModuleOptions<...>>`; the factory may be promise-returning and is memoized for resolution.
+- `forRootAsync(...)` accepts DI-aware Drizzle options whose factory returns the database/dispose/transaction settings; pass `global` on the top-level async registration when the providers should be visible globally.
 - Supports `strictTransactions: true` to throw if transaction support is missing.
 
 ## Related Packages
