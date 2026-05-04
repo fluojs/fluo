@@ -75,7 +75,7 @@ export class CacheRepository {
 
 ### 수명 주기 소유권
 
-`@fluojs/redis`는 `RedisModule.forRootNamed(...)`로 등록한 연결을 포함해, 자신이 생성한 모든 Redis 클라이언트의 수명 주기를 직접 관리합니다.
+`@fluojs/redis`는 `RedisModule.forRoot({ name, ... })`로 등록한 이름 있는 연결을 포함해, 자신이 생성한 모든 Redis 클라이언트의 수명 주기를 직접 관리합니다.
 
 - 호출자가 옵션을 강제로 캐스팅하더라도 Fluo는 항상 `lazyConnect: true`를 강제하므로, 소켓은 import 시점이 아니라 애플리케이션 bootstrap 중에 열립니다.
 - bootstrap 단계에서는 클라이언트가 ioredis `wait` 상태일 때만 lifecycle service가 `connect()`를 호출합니다.
@@ -84,7 +84,7 @@ export class CacheRepository {
 
 ### 이름 있는 클라이언트
 
-하나의 애플리케이션에서 여러 Redis 연결이 필요하면 `RedisModule.forRootNamed(name, options)`를 사용하세요. `RedisModule.forRoot(options)`는 기본 `REDIS_CLIENT`와 `RedisService` 별칭을 제공하고, 이름 있는 등록은 `getRedisClientToken(name)`과 `getRedisServiceToken(name)`으로 해석합니다.
+하나의 애플리케이션에서 여러 Redis 연결이 필요하면 `RedisModule.forRoot({ name, ...options })`를 사용하세요. `name` 없는 `RedisModule.forRoot(options)`는 기본 `REDIS_CLIENT`와 `RedisService` 별칭을 제공하고, 이름 있는 등록은 `getRedisClientToken(name)`과 `getRedisServiceToken(name)`으로 해석합니다.
 
 - `name`을 생략하면 기본 별칭인 `REDIS_CLIENT` / `RedisService`를 사용합니다.
 - `name`을 지정하면 `getRedisClientToken(name)` / `getRedisServiceToken(name)`으로 이름 있는 바인딩을 가져옵니다.
@@ -107,7 +107,7 @@ const ANALYTICS_REDIS_CLIENT = getRedisClientToken('analytics');
 @Module({
   imports: [
     RedisModule.forRoot({ host: 'localhost', port: 6379 }),
-    RedisModule.forRootNamed('analytics', { host: 'localhost', port: 6380 }),
+    RedisModule.forRoot({ name: 'analytics', host: 'localhost', port: 6380 }),
   ],
 })
 export class AppModule {}
@@ -146,9 +146,8 @@ export class AdvancedService {
 ## 공개 API 개요
 
 ### 핵심 구성 요소
-- `RedisModule`: 전역 Redis 클라이언트 등록 및 수명 주기 훅을 관리합니다.
-- `RedisModule.forRoot(options)`: `lazyConnect` 수명 주기 제어를 Fluo 내부에서 유지하면서 기본 Redis 클라이언트와 `RedisService` 파사드를 등록하는 지원되는 root entrypoint입니다.
-- `RedisModule.forRootNamed(name, options)`: 동일한 수명 주기 계약을 유지한 채 기본 별칭을 건드리지 않고 추가 Redis 클라이언트를 등록합니다.
+- `RedisModule`: Redis 클라이언트 등록 및 수명 주기 훅을 관리합니다.
+- `RedisModule.forRoot(options)`: `name`을 생략하면 기본 Redis 클라이언트와 `RedisService` 파사드를 등록하고, `name`을 제공하면 추가 이름 있는 Redis 클라이언트를 등록합니다. 기본 등록은 기본적으로 global이고, 이름 있는 등록은 scoped입니다.
 - `RedisService`: JSON 코덱 지원 및 `get`/`set`/`del` 메서드를 제공하는 파사드입니다.
 - `REDIS_CLIENT`: 내부 `ioredis` 인스턴스에 접근하기 위한 DI 토큰입니다.
 - `DEFAULT_REDIS_CLIENT_NAME`: 안정적인 기본 Redis client name입니다.

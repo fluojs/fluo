@@ -75,7 +75,7 @@ export class CacheRepository {
 
 ### Lifecycle Ownership
 
-`@fluojs/redis` owns the lifecycle of every client it creates, including clients registered through `RedisModule.forRootNamed(...)`.
+`@fluojs/redis` owns the lifecycle of every client it creates, including named clients registered through `RedisModule.forRoot({ name, ... })`.
 
 - Fluo always forces `lazyConnect: true`, even if callers cast options manually, so sockets open during application bootstrap instead of import time.
 - During bootstrap, the lifecycle service only calls `connect()` while the client is still in ioredis `wait` state.
@@ -84,7 +84,7 @@ export class CacheRepository {
 
 ### Named Clients
 
-Use `RedisModule.forRootNamed(name, options)` when one application needs more than one Redis connection. `RedisModule.forRoot(options)` provides the default `REDIS_CLIENT` and `RedisService` aliases, and named registrations are resolved with `getRedisClientToken(name)` and `getRedisServiceToken(name)`.
+Use `RedisModule.forRoot({ name, ...options })` when one application needs more than one Redis connection. `RedisModule.forRoot(options)` without `name` provides the default `REDIS_CLIENT` and `RedisService` aliases, and named registrations are resolved with `getRedisClientToken(name)` and `getRedisServiceToken(name)`.
 
 - Omit `name` when you want the default aliases: `REDIS_CLIENT` / `RedisService`.
 - Pass `name` when you want the named helpers: `getRedisClientToken(name)` / `getRedisServiceToken(name)`.
@@ -107,7 +107,7 @@ const ANALYTICS_REDIS_CLIENT = getRedisClientToken('analytics');
 @Module({
   imports: [
     RedisModule.forRoot({ host: 'localhost', port: 6379 }),
-    RedisModule.forRootNamed('analytics', { host: 'localhost', port: 6380 }),
+    RedisModule.forRoot({ name: 'analytics', host: 'localhost', port: 6380 }),
   ],
 })
 export class AppModule {}
@@ -146,9 +146,8 @@ export class AdvancedService {
 ## Public API Overview
 
 ### Core
-- `RedisModule`: Registers the global Redis client and lifecycle hooks.
-- `RedisModule.forRoot(options)`: Registers the default Redis client plus `RedisService` facade, with `lazyConnect` lifecycle ownership kept inside Fluo.
-- `RedisModule.forRootNamed(name, options)`: Registers an additional named Redis client without replacing the default aliases, using the same lifecycle contract.
+- `RedisModule`: Registers Redis clients and lifecycle hooks.
+- `RedisModule.forRoot(options)`: Registers the default Redis client plus `RedisService` facade when `name` is omitted, or an additional named Redis client when `name` is provided. The default registration is global by default; named registrations are scoped.
 - `RedisService`: Facade with JSON codec support and `get`/`set`/`del` methods.
 - `REDIS_CLIENT`: DI token for the underlying `ioredis` instance.
 - `DEFAULT_REDIS_CLIENT_NAME`: Stable default Redis client name.

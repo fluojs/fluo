@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Inject } from '@fluojs/core';
+import { getModuleMetadata } from '@fluojs/core/internal';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 
 interface MockRedisInstance {
@@ -146,7 +147,7 @@ describe('@fluojs/redis', () => {
     defineModule(AppModule, {
       imports: [
         RedisModule.forRoot({ host: '127.0.0.1', lazyConnect: false, port: 6379 } as never),
-        RedisModule.forRootNamed('cache', { host: '127.0.0.1', lazyConnect: false, port: 6380 } as never),
+        RedisModule.forRoot({ name: 'cache', host: '127.0.0.1', lazyConnect: false, port: 6380 } as never),
       ],
     });
 
@@ -160,6 +161,41 @@ describe('@fluojs/redis', () => {
     await app.close();
 
     expect(mockRedisState.events).toEqual(['connect', 'connect', 'quit', 'quit']);
+  });
+
+  it('uses global visibility only for unnamed default registrations', () => {
+    const defaultModule = RedisModule.forRoot({ host: '127.0.0.1', port: 6379 });
+    const localDefaultModule = RedisModule.forRoot({ global: false, host: '127.0.0.1', port: 6379 });
+    const namedModule = RedisModule.forRoot({ name: 'cache', host: '127.0.0.1', port: 6380 });
+
+    expect(getModuleMetadata(defaultModule)?.global).toBe(true);
+    expect(getModuleMetadata(localDefaultModule)?.global).toBe(false);
+    expect(getModuleMetadata(namedModule)?.global).toBe(false);
+  });
+
+  it('rejects global visibility on named registrations', () => {
+    expect(() => RedisModule.forRoot({ name: 'cache', global: true, host: '127.0.0.1', port: 6380 } as never)).toThrow(
+      'Named Redis registrations are scoped and cannot be registered globally.',
+    );
+  });
+
+  it('does not forward module-only name and global fields to ioredis', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [RedisModule.forRoot({ name: 'cache', host: '127.0.0.1', port: 6380 })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    expect(mockRedisState.instances[0]?.options).toMatchObject({
+      host: '127.0.0.1',
+      lazyConnect: true,
+      port: 6380,
+    });
+    expect(mockRedisState.instances[0]?.options).not.toHaveProperty('name');
+    expect(mockRedisState.instances[0]?.options).not.toHaveProperty('global');
+
+    await app.close();
   });
 
   it('registers named Redis clients without changing the default aliases', async () => {
@@ -186,6 +222,7 @@ describe('@fluojs/redis', () => {
 
     class FeatureModule {}
     defineModule(FeatureModule, {
+      imports: [RedisModule.forRoot({ name: 'cache', db: 1, host: '127.0.0.1', port: 6379 })],
       providers: [DefaultClientConsumer, NamedClientConsumer, RedisFacadeConsumer],
     });
 
@@ -193,7 +230,6 @@ describe('@fluojs/redis', () => {
     defineModule(AppModule, {
       imports: [
         RedisModule.forRoot({ db: 0, host: '127.0.0.1', port: 6379 }),
-        RedisModule.forRootNamed('cache', { db: 1, host: '127.0.0.1', port: 6379 }),
         FeatureModule,
       ],
     });
@@ -252,7 +288,7 @@ describe('@fluojs/redis', () => {
     defineModule(AppModule, {
       imports: [
         RedisModule.forRoot({ db: 0, host: '127.0.0.1', port: 6379 }),
-        RedisModule.forRootNamed('cache', { db: 1, host: '127.0.0.1', port: 6380 }),
+        RedisModule.forRoot({ name: 'cache', db: 1, host: '127.0.0.1', port: 6380 }),
       ],
     });
 
