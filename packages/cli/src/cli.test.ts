@@ -1727,7 +1727,7 @@ void bootstrap();
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Would run: bun --watch run src/main.ts');
+    expect(stdoutBuffer.join('')).toContain('Would run: bun --watch src/main.ts');
     expect(stdoutBuffer.join('')).toContain('Watch mode: runtime-native-watch');
   });
 
@@ -1832,7 +1832,7 @@ void bootstrap();
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Would run: bun --watch run src/main.ts --port 4000');
+    expect(stdoutBuffer.join('')).toContain('Would run: bun --watch src/main.ts --port 4000');
     expect(stdoutBuffer.join('')).toContain('Watch mode: runtime-native-watch');
   });
 
@@ -2437,6 +2437,85 @@ void bootstrap();
 
     children[0]?.child.emit('close', 0);
     await expect(runPromise).resolves.toBe(0);
+  });
+
+  it('preserves app child TTY color detection in runtime-native Bun dev runs', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ dependencies: { '@fluojs/platform-bun': '^1.0.0' }, name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2),
+    );
+    const spawned: Array<{ args: string[]; command: string; forceColor?: string; prettyTtyColor?: string; stdio: string }> = [];
+
+    const exitCode = await runCli(['dev'], {
+      cwd: workspaceDirectory,
+      env: {},
+      spawnCommand: async (command, args, options) => {
+        spawned.push({ args, command, forceColor: options.env.FORCE_COLOR, prettyTtyColor: options.env.FLUO_DEV_PRETTY_TTY_COLOR, stdio: options.stdio });
+        return 0;
+      },
+      stderr: { isTTY: true, write: () => undefined },
+      stdout: { isTTY: true, write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0]?.command).toBe('bun');
+    expect(spawned[0]?.stdio).toBe('pipe');
+    expect(spawned[0]?.forceColor).toBe('1');
+    expect(spawned[0]?.prettyTtyColor).toBe('1');
+    expect(spawned[0]?.args[0]).toBe('--preload');
+    expect(spawned[0]?.args[1]?.endsWith('preserve-color-tty.js')).toBe(true);
+    expect(spawned[0]?.args.slice(2)).toEqual(['--watch', 'src/main.ts']);
+  });
+
+  it('passes forced color environment through runtime-native Deno dev runs', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ dependencies: { '@fluojs/platform-deno': '^1.0.0' }, name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2),
+    );
+    const spawned: Array<{ args: string[]; command: string; forceColor?: string; prettyTtyColor?: string; stdio: string }> = [];
+
+    const exitCode = await runCli(['dev'], {
+      cwd: workspaceDirectory,
+      env: {},
+      spawnCommand: async (command, args, options) => {
+        spawned.push({ args, command, forceColor: options.env.FORCE_COLOR, prettyTtyColor: options.env.FLUO_DEV_PRETTY_TTY_COLOR, stdio: options.stdio });
+        return 0;
+      },
+      stderr: { isTTY: true, write: () => undefined },
+      stdout: { isTTY: true, write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(spawned).toEqual([{ args: ['run', '--watch', '--allow-env', '--allow-net', 'src/main.ts'], command: 'deno', forceColor: '1', prettyTtyColor: '1', stdio: 'pipe' }]);
+  });
+
+  it('passes forced color environment through runtime-native Workers dev runs', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ dependencies: { '@fluojs/platform-cloudflare-workers': '^1.0.0' }, name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2),
+    );
+    const spawned: Array<{ args: string[]; command: string; forceColor?: string; prettyTtyColor?: string; stdio: string }> = [];
+
+    const exitCode = await runCli(['dev'], {
+      cwd: workspaceDirectory,
+      env: {},
+      spawnCommand: async (command, args, options) => {
+        spawned.push({ args, command, forceColor: options.env.FORCE_COLOR, prettyTtyColor: options.env.FLUO_DEV_PRETTY_TTY_COLOR, stdio: options.stdio });
+        return 0;
+      },
+      stderr: { isTTY: true, write: () => undefined },
+      stdout: { isTTY: true, write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(spawned).toEqual([{ args: ['dev', '--show-interactive-dev-session=false'], command: 'wrangler', forceColor: '1', prettyTtyColor: '1', stdio: 'pipe' }]);
   });
 
   it('prefixes multiline child output in explicit non-verbose pretty reporter runs', async () => {

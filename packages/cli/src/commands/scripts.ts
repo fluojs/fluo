@@ -175,7 +175,7 @@ function buildNativeRuntimeDevStep(runtime: ProjectRuntime, passThrough: string[
     case 'node':
       return buildNativeNodeWatchStep(passThrough);
     case 'bun':
-      return { command: 'bun', args: ['--watch', 'run', 'src/main.ts', ...passThrough], mode: 'runtime-native-watch' };
+      return { command: 'bun', args: ['--watch', 'src/main.ts', ...passThrough], mode: 'runtime-native-watch' };
     case 'deno':
       return { command: 'deno', args: ['run', '--watch', '--allow-env', '--allow-net', 'src/main.ts', ...passThrough], mode: 'runtime-native-watch' };
     case 'cloudflare-workers':
@@ -258,12 +258,14 @@ function withPipedAppColorTtyBootstrap(steps: ProjectRunnerStep[], env: NodeJS.P
   }
 
   return steps.map((step) => {
+    const preserveColorTtyImport = getPreserveColorTtyImport();
+
     if (step.command === 'node' && step.mode !== 'fluo-restart') {
-      return { ...step, args: ['--import', getPreserveColorTtyImport(), ...step.args] };
+      return { ...step, args: ['--import', preserveColorTtyImport, ...step.args] };
     }
 
-    if (step.command === 'bun' && step.args[0] === 'dist/main.js') {
-      return { ...step, args: ['--preload', getPreserveColorTtyImport(), ...step.args] };
+    if (step.command === 'bun' && (step.mode === 'runtime-native-watch' || step.args[0] === 'dist/main.js')) {
+      return { ...step, args: ['--preload', preserveColorTtyImport, ...step.args] };
     }
 
     return step;
