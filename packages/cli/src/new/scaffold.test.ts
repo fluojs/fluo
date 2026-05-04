@@ -222,18 +222,18 @@ describe('scaffoldBootstrapApp', () => {
 
     expect(packageJson.devDependencies?.typescript).toBe('^6.0.2');
     expect(packageJson.dependencies).toMatchObject({
-      '@fluojs/config': '^1.0.0-beta.5',
-      '@fluojs/core': '^1.0.0-beta.3',
+      '@fluojs/config': '^1.0.0-beta.7',
+      '@fluojs/core': '^1.0.0-beta.4',
       '@fluojs/di': '^1.0.0-beta.6',
-      '@fluojs/http': '^1.0.0-beta.9',
+      '@fluojs/http': '^1.0.0-beta.10',
       '@fluojs/platform-fastify': '^1.0.0-beta.8',
-      '@fluojs/runtime': '^1.0.0-beta.9',
-      '@fluojs/validation': '^1.0.0-beta.2',
+      '@fluojs/runtime': '^1.0.0-beta.11',
+      '@fluojs/validation': '^1.0.0-beta.3',
     });
     expect(packageJson.devDependencies).toMatchObject({
-      '@fluojs/cli': '^1.0.0-beta.3',
+      '@fluojs/cli': '^1.0.0-beta.7',
       '@fluojs/testing': '^1.0.0-beta.2',
-      '@fluojs/vite': '^1.0.0-beta.1',
+      '@fluojs/vite': '^1.0.0-beta.2',
     });
     expect(packageJson.scripts?.build).toBe('fluo build');
     expect(packageJson.scripts?.dev).toBe('fluo dev');
