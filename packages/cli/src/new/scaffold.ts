@@ -437,11 +437,11 @@ coverage
 function createHttpPackageManagerLine(options: BootstrapOptions): string {
   switch (options.runtime) {
     case 'bun':
-      return `- Package manager: install/run commands can use ${options.packageManager}; ${createRunCommand(options.packageManager, 'dev')} stays on the Node-backed \`fluo dev\` supervisor for restart-on-watch, while ${createRunCommand(options.packageManager, 'build')} and ${createRunCommand(options.packageManager, 'start')} run Bun-native production commands (\`bun build ./src/main.ts --outdir ./dist --target bun\` then \`bun dist/main.js\`) so deployment targets do not need Node just to start the built app`;
+      return `- Package manager: install/run commands can use ${options.packageManager}; ${createRunCommand(options.packageManager, 'dev')} keeps the \`fluo dev\` abstraction while defaulting to Bun's native watch loop (\`bun --watch run src/main.ts\`) for fewer Node-supervised dev processes, \`fluo dev --runner fluo\` restores the Node-backed fluo restart supervisor when you need its debounce/hash reporter contract, and ${createRunCommand(options.packageManager, 'build')} plus ${createRunCommand(options.packageManager, 'start')} run Bun-native production commands (\`bun build ./src/main.ts --outdir ./dist --target bun\` then \`bun dist/main.js\`) so deployment targets do not need Node just to start the built app`;
     case 'deno':
-      return `- Package manager: install/run commands can use ${options.packageManager}; ${createRunCommand(options.packageManager, 'dev')} stays on the Node-backed \`fluo dev\` supervisor for restart-on-watch, while ${createRunCommand(options.packageManager, 'build')} and ${createRunCommand(options.packageManager, 'start')} run Deno-native production commands (\`deno compile --allow-env --allow-net --output dist/app src/main.ts\` then \`./dist/app\`) so deployment targets can run the compiled app without Node`;
+      return `- Package manager: install/run commands can use ${options.packageManager}; ${createRunCommand(options.packageManager, 'dev')} keeps the \`fluo dev\` abstraction while defaulting to Deno's native watch loop (\`deno run --watch --allow-env --allow-net src/main.ts\`) for fewer Node-supervised dev processes, \`fluo dev --runner fluo\` restores the Node-backed fluo restart supervisor when you need its debounce/hash reporter contract, and ${createRunCommand(options.packageManager, 'build')} plus ${createRunCommand(options.packageManager, 'start')} run Deno-native production commands (\`deno compile --allow-env --allow-net --output dist/app src/main.ts\` then \`./dist/app\`) so deployment targets can run the compiled app without Node`;
     case 'cloudflare-workers':
-      return `- Package manager: install/run commands can use ${options.packageManager}; ${createRunCommand(options.packageManager, 'dev')} stays on the Node-backed \`fluo dev\` supervisor for local restart-on-watch, while ${createRunCommand(options.packageManager, 'preview')} and ${createRunCommand(options.packageManager, 'deploy')} run Wrangler-native preview/deploy commands; Wrangler tooling requires Node/npm-compatible tooling locally, but deployed Workers run on Cloudflare's isolate runtime`;
+      return `- Package manager: install/run commands can use ${options.packageManager}; ${createRunCommand(options.packageManager, 'dev')} keeps the \`fluo dev\` abstraction while defaulting to Wrangler's native dev loop (\`wrangler dev --show-interactive-dev-session=false\`) for Wrangler-owned reloads, \`fluo dev --runner fluo\` restores the Node-backed fluo restart supervisor when you need its debounce/hash reporter contract, and ${createRunCommand(options.packageManager, 'preview')} plus ${createRunCommand(options.packageManager, 'deploy')} run Wrangler-native preview/deploy commands; Wrangler tooling requires Node/npm-compatible tooling locally, but deployed Workers run on Cloudflare's isolate runtime`;
     default:
       return `- Package manager: install/run commands can use ${options.packageManager}; ${createRunCommand(options.packageManager, 'dev')}, ${createRunCommand(options.packageManager, 'build')}, and ${createRunCommand(options.packageManager, 'start')} delegate to \`fluo dev\`, \`fluo build\`, and \`fluo start\`, which own the generated runtime lifecycle and default \`NODE_ENV\` when unset`;
   }
@@ -452,6 +452,10 @@ function createHttpCommandsSection(options: BootstrapOptions): string {
     `- Dev: ${createRunCommand(options.packageManager, 'dev')}`,
     `- Build: ${createRunCommand(options.packageManager, 'build')}`,
   ];
+
+  if (options.runtime === 'bun' || options.runtime === 'deno' || options.runtime === 'cloudflare-workers') {
+    commands.push('- Dev fluo restart fallback: fluo dev --runner fluo');
+  }
 
   if (options.runtime === 'cloudflare-workers') {
     commands.push(

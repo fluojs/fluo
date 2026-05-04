@@ -461,7 +461,8 @@ describe('scaffoldBootstrapApp', () => {
     expect(packageJson.scripts?.start).toBe('bun dist/main.js');
     expect(tsconfig.compilerOptions?.types).toEqual(['node', 'bun']);
     expect(readme).toContain('Bun runtime + Bun native HTTP via `createBunAdapter(...)`');
-    expect(readme).toContain('fluo dev` supervisor for restart-on-watch');
+    expect(readme).toContain('defaulting to Bun\'s native watch loop');
+    expect(readme).toContain('fluo dev --runner fluo');
     expect(readme).toContain('Bun-native production commands');
     expect(readme).toContain('bun dist/main.js');
     expect(appFile).toContain('processEnv: process.env');
@@ -546,6 +547,8 @@ describe('scaffoldBootstrapApp', () => {
     expect(packageJson.scripts?.start).toBe('./dist/app');
     expect(packageJson.devDependencies).not.toHaveProperty('vitest');
     expect(readme).toContain('Deno runtime + Deno native HTTP via `runDenoApplication(...)`');
+    expect(readme).toContain('defaulting to Deno\'s native watch loop');
+    expect(readme).toContain('fluo dev --runner fluo');
     expect(readme).toContain('Deno-native production commands');
     expect(readme).toContain('./dist/app');
     expect(appFile).toContain("Deno.env.toObject()");
@@ -597,6 +600,8 @@ describe('scaffoldBootstrapApp', () => {
     expect(packageJson.scripts).not.toHaveProperty('start');
     expect(readDirectorySnapshot(targetDirectory)).not.toHaveProperty('.env');
     expect(readme).toContain('Cloudflare Workers runtime + Cloudflare Workers HTTP via `createCloudflareWorkerEntrypoint(...)`');
+    expect(readme).toContain('defaulting to Wrangler\'s native dev loop');
+    expect(readme).toContain('fluo dev --runner fluo');
     expect(readme).toContain('Wrangler-native preview/deploy commands');
     expect(readme).toContain('Wrangler tooling requires Node/npm-compatible tooling locally');
     expect(readme).toContain('- Preview: pnpm preview');
