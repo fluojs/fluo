@@ -1,5 +1,34 @@
 # @fluojs/cli
 
+## 1.0.0-beta.6
+
+### Minor Changes
+
+- [#1556](https://github.com/fluojs/fluo/pull/1556) [`f516e5f`](https://github.com/fluojs/fluo/commit/f516e5f10dd6aaaf9a8cde44031f4eebd42d6fc5) Thanks [@ayden94](https://github.com/ayden94)! - Replace the generated starter-owned `src/health/*` example slice and `/health-info` route with a `src/greeting/*` feature slice exposed at `/greeting`. Runtime operational health remains owned by `HealthModule.forRoot(...)`, so new projects should treat `/health` and `/ready` as runtime endpoints and use the greeting slice as the starter application-structure example.
+
+- [#1563](https://github.com/fluojs/fluo/pull/1563) [`1b75835`](https://github.com/fluojs/fluo/commit/1b7583508375a8a4cd7b5cbfa69bced006e5df5d) Thanks [@ayden94](https://github.com/ayden94)! - Extract the generated Vite decorator transform into the new `@fluojs/vite` package so `fluo new` projects import a maintained plugin instead of copying the Babel implementation inline.
+
+### Patch Changes
+
+- [#1558](https://github.com/fluojs/fluo/pull/1558) [`6c877e2`](https://github.com/fluojs/fluo/commit/6c877e2dfb07b4514aae027eece38db673cc9a05) Thanks [@ayden94](https://github.com/ayden94)! - Preserve Bun app terminal color detection when `fluo dev` or `fluo start` pipes child output through the CLI lifecycle reporter.
+
+- [#1551](https://github.com/fluojs/fluo/pull/1551) [`e0427f6`](https://github.com/fluojs/fluo/commit/e0427f6d260f2dffaf0dc34a98909ddab0eecb40) Thanks [@ayden94](https://github.com/ayden94)! - Include Bun globals in generated Bun starter TypeScript configuration so pnpm typecheck succeeds when the starter references `Bun.env`.
+
+- [#1547](https://github.com/fluojs/fluo/pull/1547) [`292634e`](https://github.com/fluojs/fluo/commit/292634e5be6b17257c3248d4fe79d82d29ea8c3b) Thanks [@ayden94](https://github.com/ayden94)! - Keep interactive `fluo dev` application output visible with an `app │` prefix so CLI lifecycle status and runtime logs remain easy to distinguish.
+
+- [#1557](https://github.com/fluojs/fluo/pull/1557) [`ca1bbdd`](https://github.com/fluojs/fluo/commit/ca1bbdd84b71bfe3e5f8af9321cd4624aa376c52) Thanks [@ayden94](https://github.com/ayden94)! - Update generated `fluo new` starters to import `HealthModule` directly from `@fluojs/runtime`, call `HealthModule.forRoot()`, and omit explicit metadata symbol setup from the greeting controller scaffold.
+
+- [#1549](https://github.com/fluojs/fluo/pull/1549) [`2e3408f`](https://github.com/fluojs/fluo/commit/2e3408f93675e0aa8a2740209ce4061692183292) Thanks [@ayden94](https://github.com/ayden94)! - Keep colorized application logs consistent between `fluo dev` and `fluo start` by preserving ANSI color intent through the CLI development reporter.
+
+- [#1554](https://github.com/fluojs/fluo/pull/1554) [`93fc34b`](https://github.com/fluojs/fluo/commit/93fc34bba9d82870da49d9e69ad6e62821f598b0) Thanks [@ayden94](https://github.com/ayden94)! - Add `HealthModule.forRoot(...)` as the application-facing runtime health facade and update generated starters to use it while preserving the deprecated `createHealthModule(...)` compatibility helper.
+
+- [#1562](https://github.com/fluojs/fluo/pull/1562) [`c7a31c3`](https://github.com/fluojs/fluo/commit/c7a31c356942556f4f4c84e8bec0ef62e1d94785) Thanks [@ayden94](https://github.com/ayden94)! - Preserve fluo application log colors when generated Bun, Deno, and Cloudflare Workers dev lifecycles run through the CLI reporter.
+
+- [#1560](https://github.com/fluojs/fluo/pull/1560) [`9295ce5`](https://github.com/fluojs/fluo/commit/9295ce57d965639baec9ed03d806b743e66d3251) Thanks [@ayden94](https://github.com/ayden94)! - Update generated Bun, Deno, and Cloudflare Workers starter lifecycles so `fluo dev` defaults to runtime-native watch loops with an explicit `--runner fluo` fallback, while production and deployment use runtime-native commands.
+
+- Updated dependencies [[`93fc34b`](https://github.com/fluojs/fluo/commit/93fc34bba9d82870da49d9e69ad6e62821f598b0)]:
+  - @fluojs/runtime@1.0.0-beta.11
+
 ## 1.0.0-beta.5
 
 ### Minor Changes

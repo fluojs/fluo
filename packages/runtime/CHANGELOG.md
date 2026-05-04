@@ -1,5 +1,17 @@
 # @fluojs/runtime
 
+## 1.0.0-beta.11
+
+### Minor Changes
+
+- [#1554](https://github.com/fluojs/fluo/pull/1554) [`93fc34b`](https://github.com/fluojs/fluo/commit/93fc34bba9d82870da49d9e69ad6e62821f598b0) Thanks [@ayden94](https://github.com/ayden94)! - Add `HealthModule.forRoot(...)` as the application-facing runtime health facade and update generated starters to use it while preserving the deprecated `createHealthModule(...)` compatibility helper.
+
+### Patch Changes
+
+- Updated dependencies [[`4fdb48c`](https://github.com/fluojs/fluo/commit/4fdb48ca03c76a4164856cd1f9cb18c743bfbad3), [`1dda8b5`](https://github.com/fluojs/fluo/commit/1dda8b5e8c949123125dfc73a4e20ad98b1e7cf5)]:
+  - @fluojs/core@1.0.0-beta.4
+  - @fluojs/http@1.0.0-beta.10
+
 ## 1.0.0-beta.10
 
 ### Minor Changes
