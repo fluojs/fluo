@@ -72,9 +72,9 @@ pnpm dev
 
 `fluo create`는 `fluo new`의 alias입니다. 버전 확인, 명령 도움말, 진단, first-party package shortcut, upgrade 안내가 필요하면 `fluo version`, `fluo help <command>`, `fluo doctor`/`fluo info`/`fluo analyze`, `fluo add`, `fluo upgrade`를 사용하세요.
 
-생성된 Node.js `dev`, `build`, `start` package script는 각각 `fluo dev`, `fluo build`, `fluo start`로 위임합니다. CLI가 Node 지향 lifecycle 명령을 소유하고 local toolchain binary를 실행할 때 project-local `node_modules/.bin`을 앞에 붙이며, 호출자가 명시하지 않은 경우 `dev`는 `NODE_ENV=development`, `build`/`start`는 `NODE_ENV=production`을 기본값으로 사용합니다. Bun, Deno, Workers의 생성된 `dev` script도 fluo가 소유한 restart boundary를 통과하므로 색상 보존과 restart clear/header 동작이 일관되지만, production/deployment script는 runtime-native입니다. Bun은 `bun build ./src/main.ts --outdir ./dist --target bun`과 `bun dist/main.js`를 사용하고, Deno는 `deno compile --allow-env --allow-net --output dist/app src/main.ts`와 `./dist/app`을 사용하며, Workers는 `start` 대신 Wrangler `preview`/`deploy` script를 노출합니다. 기본적으로 `fluo dev`와 `fluo start`는 CLI가 process boundary를 소유하는 경로에서 앱 로그만(애플리케이션 stdout/stderr) 표시합니다. Interactive terminal에서 fluo lifecycle status와 `app │` prefix가 붙은 애플리케이션 출력이 필요하면 `--reporter pretty`를 사용하고, 런타임/도구 watcher 원본 출력이 필요하면 `--verbose`(또는 `FLUO_VERBOSE=1`)를 사용하세요.
+생성된 Node.js `dev`, `build`, `start` package script는 각각 `fluo dev`, `fluo build`, `fluo start`로 위임합니다. CLI가 Node 지향 lifecycle 명령을 소유하고 local toolchain binary를 실행할 때 project-local `node_modules/.bin`을 앞에 붙이며, 호출자가 명시하지 않은 경우 `dev`는 `NODE_ENV=development`, `build`/`start`는 `NODE_ENV=production`을 기본값으로 사용합니다. Bun, Deno, Workers의 생성된 `dev` script는 같은 `fluo dev` 추상성을 유지하되 Node-supervised dev process를 줄이도록 Bun, Deno, Wrangler의 native watch loop를 기본값으로 사용합니다. fluo가 소유한 restart boundary의 debounce/hash reporter 계약이 필요하면 `fluo dev --runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용하세요. production/deployment script는 runtime-native입니다. Bun은 `bun build ./src/main.ts --outdir ./dist --target bun`과 `bun dist/main.js`를 사용하고, Deno는 `deno compile --allow-env --allow-net --output dist/app src/main.ts`와 `./dist/app`을 사용하며, Workers는 `start` 대신 Wrangler `preview`/`deploy` script를 노출합니다. 기본적으로 `fluo dev`와 `fluo start`는 CLI가 process boundary를 소유하는 경로에서 앱 로그만(애플리케이션 stdout/stderr) 표시합니다. Interactive terminal에서 fluo lifecycle status와 `app │` prefix가 붙은 애플리케이션 출력이 필요하면 `--reporter pretty`를 사용하고, 런타임/도구 watcher 원본 출력이 필요하면 `--verbose`(또는 `FLUO_VERBOSE=1`)를 사용하세요.
 
-생성된 애플리케이션 프로젝트에서 `fluo dev`는 fluo가 소유한 restart boundary를 거칩니다. 이 runner는 source와 주요 config 입력을 watch하고, atomic-save event burst를 debounce하며, restart 전에 파일 content hash를 비교하고, spawn하는 각 Node 앱 child process마다 `.env`를 로드하며, `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache 폴더, editor swap file 같은 noisy output/cache 경로를 무시합니다. 파일 내용이 바뀌지 않은 Ctrl+S 저장은 앱을 재시작하지 않아야 합니다. 계획된 restart가 아닌 terminal 앱 child exit 또는 crash가 발생하면 runner는 watcher를 닫고, pending restart timer와 path를 비우며, `SIGINT`/`SIGTERM` handler를 등록 해제하고, child의 terminal code로 종료합니다. 이 동작은 full-process restart-on-watch이며 module-level HMR이 아닙니다. Config watch reload는 별도의 in-process config 관심사이고, 향후 HMR 작업은 어떤 모듈을 안전하게 hot-swap할 수 있는지 따로 문서화해야 합니다. 디버깅에 runtime-native Node watcher가 필요하면 `fluo dev --raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`을 사용하고, 추가 ignore 경로는 `FLUO_DEV_WATCH_IGNORE=path,pattern`으로 지정하세요.
+생성된 Node.js 애플리케이션 프로젝트에서 `fluo dev`는 기본적으로 fluo가 소유한 restart boundary를 거칩니다. 이 runner는 source와 주요 config 입력을 watch하고, atomic-save event burst를 debounce하며, restart 전에 파일 content hash를 비교하고, spawn하는 각 Node 앱 child process마다 `.env`를 로드하며, `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache 폴더, editor swap file 같은 noisy output/cache 경로를 무시합니다. 파일 내용이 바뀌지 않은 Ctrl+S 저장은 앱을 재시작하지 않아야 합니다. 계획된 restart가 아닌 terminal 앱 child exit 또는 crash가 발생하면 runner는 watcher를 닫고, pending restart timer와 path를 비우며, `SIGINT`/`SIGTERM` handler를 등록 해제하고, child의 terminal code로 종료합니다. 이 동작은 full-process restart-on-watch이며 module-level HMR이 아닙니다. Config watch reload는 별도의 in-process config 관심사이고, 향후 HMR 작업은 어떤 모듈을 안전하게 hot-swap할 수 있는지 따로 문서화해야 합니다. 디버깅에 runtime-native Node watcher가 필요하면 `fluo dev --raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`을 사용하세요. 생성된 Bun/Deno/Workers 프로젝트는 기본적으로 watch/reload를 `bun --watch`, `deno run --watch`, `wrangler dev`에 위임합니다. 해당 프로젝트에서 fluo 소유 restart runner로 되돌리려면 `fluo dev --runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용하고, 그 runner에 추가 ignore 경로가 필요하면 `FLUO_DEV_WATCH_IGNORE=path,pattern`으로 지정하세요.
 
 `fluo new`는 같은 Node 기반 설치/빌드 흐름 위에서 Node.js + Fastify, Express, raw Node.js HTTP 애플리케이션 스타터를 제공합니다.
 
@@ -163,7 +163,7 @@ fluo info
 fluo analyze
 ```
 
-`fluo analyze`는 read-only로 동작하며 더 깊은 `inspect --report`와 `migrate --json` workflow를 안내합니다. 생성된 Node.js 프로젝트에서는 `fluo dev`, `fluo build`, `fluo start`가 환경 기본값 및 project-local toolchain binary와 함께 생성 lifecycle을 직접 실행합니다. 생성된 Bun, Deno, Cloudflare Workers 프로젝트에서는 `fluo dev --dry-run`으로 CLI가 소유한 개발 restart boundary를 확인하고, production/deployment에는 생성된 package script(`bun dist/main.js`, `./dist/app`, Wrangler `preview`/`deploy`)를 사용합니다. CLI가 소유한 lifecycle 명령은 `--dry-run`으로 미리 확인할 수 있습니다:
+`fluo analyze`는 read-only로 동작하며 더 깊은 `inspect --report`와 `migrate --json` workflow를 안내합니다. 생성된 Node.js 프로젝트에서는 `fluo dev`, `fluo build`, `fluo start`가 환경 기본값 및 project-local toolchain binary와 함께 생성 lifecycle을 직접 실행합니다. 생성된 Bun, Deno, Cloudflare Workers 프로젝트에서는 `fluo dev`가 runtime-owned watch loop를 기본값으로 사용하고, `fluo dev --runner fluo`가 CLI 소유 restart boundary를 복원합니다. production/deployment에는 생성된 package script(`bun dist/main.js`, `./dist/app`, Wrangler `preview`/`deploy`)를 사용합니다. lifecycle 명령은 `--dry-run`으로 미리 확인할 수 있습니다:
 
 ```bash
 fluo dev --dry-run
@@ -171,12 +171,12 @@ fluo build --dry-run
 fluo start --dry-run
 ```
 
-`fluo dev --dry-run`은 watch boundary도 함께 표시합니다. 생성된 Node, Bun, Deno, Cloudflare Workers 프로젝트는 기본적으로 `Watch mode: fluo-restart`를 보여 주며, Node의 `--raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`만 디버깅용 `Watch mode: native-watch`를 보여 줍니다.
+`fluo dev --dry-run`은 watch boundary도 함께 표시합니다. 생성된 Node 프로젝트는 기본적으로 `Watch mode: fluo-restart`를 보여 주며, Node의 `--raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`은 `Watch mode: native-watch`를 보여 줍니다. Bun/Deno/Workers 프로젝트는 기본적으로 `Watch mode: runtime-native-watch`를 보여 주며, `--runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용하면 `Watch mode: fluo-restart`로 fluo 소유 restart runner가 복원됩니다.
 
 CLI process boundary를 조정해야 할 때는 런타임 앱 로깅이 아니라 reporter flag를 사용하세요:
 
 ```bash
-# 기본값: 앱 로그(stdout/stderr)만 표시, fluo lifecycle UI 없음
+# 기본값: child stdout/stderr만 표시, fluo lifecycle UI 없음
 fluo dev
 
 # opt-in pretty lifecycle UI + app │ prefix
