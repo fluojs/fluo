@@ -2269,6 +2269,35 @@ void bootstrap();
     await expect(runPromise).resolves.toBe(0);
   });
 
+  it('preserves app child TTY color detection in the Bun dev runner when pretty mode requests it', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(join(workspaceDirectory, 'src', 'main.ts'), '');
+    const children: Array<{ args: string[]; child: ChildProcess; command: string }> = [];
+
+    const runPromise = runNodeRestartRunner({
+      env: { FLUO_DEV_PRETTY_TTY_COLOR: '1' },
+      projectDirectory: workspaceDirectory,
+      runtime: 'bun',
+      signalTarget: createSignalTarget().target,
+      spawnChild: (command, args) => {
+        const child = createMockChild();
+        children.push({ args, child, command });
+        return child;
+      },
+      watchTarget: () => ({ close() {} }) as never,
+    });
+
+    expect(children[0]?.command).toBe('bun');
+    expect(children[0]?.args[0]).toBe('--preload');
+    expect(children[0]?.args[1]?.endsWith('preserve-color-tty.js')).toBe(true);
+    expect(children[0]?.args.slice(2)).toEqual(['src/main.ts']);
+
+    children[0]?.child.emit('close', 0);
+    await expect(runPromise).resolves.toBe(0);
+  });
+
   it('prefixes multiline child output in explicit non-verbose pretty reporter runs', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
@@ -2492,6 +2521,37 @@ exit 7
     expect(spawned[0]?.forceColor).toBe('1');
     expect(spawned[0]?.prettyTtyColor).toBe('1');
     expect(spawned[0]?.args[0]).toBe('--import');
+    expect(spawned[0]?.args[1]?.endsWith('preserve-color-tty.js')).toBe(true);
+    expect(spawned[0]?.args.slice(2)).toEqual(['dist/main.js']);
+  });
+
+  it('preserves TTY color detection for direct Bun app lifecycle runs', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ dependencies: { '@fluojs/platform-bun': '^1.0.0' }, name: 'test-app', scripts: { start: 'fluo start' } }, null, 2),
+    );
+    const spawned: Array<{ args: string[]; command: string; forceColor?: string; prettyTtyColor?: string; stdio: string }> = [];
+
+    const exitCode = await runCli(['start'], {
+      cwd: workspaceDirectory,
+      env: {},
+      spawnCommand: async (command, args, options) => {
+        spawned.push({ args, command, forceColor: options.env.FORCE_COLOR, prettyTtyColor: options.env.FLUO_DEV_PRETTY_TTY_COLOR, stdio: options.stdio });
+        return 0;
+      },
+      stderr: { isTTY: true, write: () => undefined },
+      stdout: { isTTY: true, write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0]?.command).toBe('bun');
+    expect(spawned[0]?.stdio).toBe('pipe');
+    expect(spawned[0]?.forceColor).toBe('1');
+    expect(spawned[0]?.prettyTtyColor).toBe('1');
+    expect(spawned[0]?.args[0]).toBe('--preload');
     expect(spawned[0]?.args[1]?.endsWith('preserve-color-tty.js')).toBe(true);
     expect(spawned[0]?.args.slice(2)).toEqual(['dist/main.js']);
   });

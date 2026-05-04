@@ -187,10 +187,16 @@ function buildNodeAppArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {
   return ['--env-file=.env', ...colorTtyImport, '--import', 'tsx', 'src/main.ts', ...appArgs];
 }
 
+function buildBunAppArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {
+  const colorTtyPreload = env[PRETTY_TTY_COLOR_ENV] === '1' ? ['--preload', getPreserveColorTtyImport()] : [];
+
+  return [...colorTtyPreload, 'src/main.ts', ...appArgs];
+}
+
 function buildAppCommand(runtime: DevRunnerRuntime, env: NodeJS.ProcessEnv, appArgs: string[]): { args: string[]; command: string } {
   switch (runtime) {
     case 'bun':
-      return { command: 'bun', args: ['src/main.ts', ...appArgs] };
+      return { command: 'bun', args: buildBunAppArgs(env, appArgs) };
     case 'cloudflare-workers':
       return { command: 'wrangler', args: ['dev', '--show-interactive-dev-session=false', ...appArgs] };
     case 'deno':

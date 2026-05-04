@@ -229,17 +229,21 @@ async function runProjectRunnerSteps(
   return 0;
 }
 
-function withPipedNodeColorTtyImport(steps: ProjectRunnerStep[], env: NodeJS.ProcessEnv): ProjectRunnerStep[] {
+function withPipedAppColorTtyBootstrap(steps: ProjectRunnerStep[], env: NodeJS.ProcessEnv): ProjectRunnerStep[] {
   if (env[PRETTY_TTY_COLOR_ENV] !== '1') {
     return steps;
   }
 
   return steps.map((step) => {
-    if (step.command !== 'node' || step.mode === 'fluo-restart') {
-      return step;
+    if (step.command === 'node' && step.mode !== 'fluo-restart') {
+      return { ...step, args: ['--import', getPreserveColorTtyImport(), ...step.args] };
     }
 
-    return { ...step, args: ['--import', getPreserveColorTtyImport(), ...step.args] };
+    if (step.command === 'bun' && step.args[0] === 'dist/main.js') {
+      return { ...step, args: ['--preload', getPreserveColorTtyImport(), ...step.args] };
+    }
+
+    return step;
   });
 }
 
@@ -492,7 +496,7 @@ export async function runScriptCommand(command: ScriptCommand, argv: string[], r
   const reporterMode = resolveReporterMode(parsed, { ...runtime, env, stdout });
   const verbose = parsed.verbose || isEnabledEnvironmentFlag(env.FLUO_VERBOSE);
   const childEnv = withPipedReporterColorEnv(withProjectLocalBin(withDefaultNodeEnv(env, defaultNodeEnv), project.directory), reporterMode, stdout, stderr);
-  const colorAwareRunnerSteps = withPipedNodeColorTtyImport(runnerSteps, childEnv);
+  const colorAwareRunnerSteps = withPipedAppColorTtyBootstrap(runnerSteps, childEnv);
 
   if (command === 'dev' && (reporterMode === 'pretty' || verbose)) {
     childEnv[SHOW_NODE_RESTART_NOTICE_ENV] = '1';
