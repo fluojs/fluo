@@ -105,6 +105,7 @@ export class CronModule {
 
     return defineModule(CronModuleDefinition, {
       exports: [SCHEDULING_REGISTRY],
+      global: options.global ?? false,
       providers: createCronProviders(options),
     });
   }

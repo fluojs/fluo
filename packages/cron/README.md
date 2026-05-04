@@ -90,7 +90,7 @@ import { RedisModule } from '@fluojs/redis';
 class AppModule {}
 ```
 
-Leave `distributed.clientName` unset to keep using the default Redis registration above. To use a non-default Redis connection for distributed locks, set `distributed.clientName` to the name registered through `RedisModule.forRootNamed(...)`.
+Leave `distributed.clientName` unset to keep using the default Redis registration above. To use a non-default Redis connection for distributed locks, set `distributed.clientName` to the name registered through `RedisModule.forRoot({ name, ... })`.
 
 `distributed.lockTtlMs` must stay at or above `1_000ms`. fluo renews the Redis lock before that TTL expires, including the minimum supported `1_000ms` boundary.
 
@@ -98,7 +98,7 @@ Leave `distributed.clientName` unset to keep using the default Redis registratio
 @Module({
   imports: [
     RedisModule.forRoot({ host: 'localhost', port: 6379 }),
-    RedisModule.forRootNamed('locks', { host: 'localhost', port: 6380 }),
+    RedisModule.forRoot({ name: 'locks', host: 'localhost', port: 6380 }),
     CronModule.forRoot({
       distributed: {
         clientName: 'locks',

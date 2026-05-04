@@ -89,6 +89,8 @@ export type CronScheduler = (
 /** Module configuration accepted by {@link CronModule.forRoot}. */
 export interface CronModuleOptions {
   distributed?: boolean | CronDistributedOptions;
+  /** Whether scheduling providers should be visible globally. Defaults to `false`. */
+  global?: boolean;
   scheduler?: CronScheduler;
   shutdown?: CronShutdownOptions;
 }
