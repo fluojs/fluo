@@ -30,6 +30,8 @@ export interface MongooseModuleOptions<TConnection extends MongooseConnectionLik
   connection: TConnection;
   /** Optional shutdown hook used to close the connection or surrounding driver resources. */
   dispose?: (connection: TConnection) => MaybePromise<void>;
+  /** Whether Mongoose providers should be visible globally. Defaults to `false`. */
+  global?: boolean;
   /**
    * Throws when transaction helpers are used against a connection that does not implement `startSession()`.
    *

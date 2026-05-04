@@ -18,6 +18,10 @@ type ResolvedMongooseModuleOptions<TConnection extends MongooseConnectionLike> =
   strictTransactions: boolean;
 };
 
+type MongooseAsyncModuleOptions<TConnection extends MongooseConnectionLike> = AsyncModuleOptions<
+  Omit<MongooseModuleOptions<TConnection>, 'global'>
+> & Pick<MongooseModuleOptions<TConnection>, 'global'>;
+
 const MONGOOSE_NORMALIZED_OPTIONS = Symbol('fluo.mongoose.normalized-options');
 const MONGOOSE_MODULE_EXPORTS = [MongooseConnection, MongooseTransactionInterceptor];
 
@@ -63,7 +67,7 @@ function createMongooseRuntimeProviders<TConnection extends MongooseConnectionLi
 }
 
 function createMemoizedMongooseOptionsResolver<TConnection extends MongooseConnectionLike>(
-  options: AsyncModuleOptions<MongooseModuleOptions<TConnection>>,
+  options: MongooseAsyncModuleOptions<TConnection>,
 ): (...deps: unknown[]) => Promise<ResolvedMongooseModuleOptions<TConnection>> {
   let cachedResult: Promise<ResolvedMongooseModuleOptions<TConnection>> | undefined;
 
@@ -83,7 +87,7 @@ function createMemoizedMongooseOptionsResolver<TConnection extends MongooseConne
 }
 
 function createMongooseProvidersAsync<TConnection extends MongooseConnectionLike>(
-  options: AsyncModuleOptions<MongooseModuleOptions<TConnection>>,
+  options: MongooseAsyncModuleOptions<TConnection>,
 ): Provider[] {
   const resolveOptions = createMemoizedMongooseOptionsResolver(options);
 
@@ -121,17 +125,19 @@ function buildMongooseModule<TConnection extends MongooseConnectionLike>(
 
   return defineModule(MongooseRootModuleDefinition, {
     exports: MONGOOSE_MODULE_EXPORTS,
+    global: options.global ?? false,
     providers: createMongooseProviders(options),
   });
 }
 
 function buildMongooseModuleAsync<TConnection extends MongooseConnectionLike>(
-  options: AsyncModuleOptions<MongooseModuleOptions<TConnection>>,
+  options: MongooseAsyncModuleOptions<TConnection>,
 ): ModuleType {
   class MongooseAsyncModuleDefinition {}
 
   return defineModule(MongooseAsyncModuleDefinition, {
     exports: MONGOOSE_MODULE_EXPORTS,
+    global: options.global ?? false,
     providers: createMongooseProvidersAsync(options),
   });
 }
@@ -147,7 +153,7 @@ export class MongooseModule {
 
   /** Creates a module definition from DI-aware async Mongoose options. */
   static forRootAsync<TConnection extends MongooseConnectionLike>(
-    options: AsyncModuleOptions<MongooseModuleOptions<TConnection>>,
+    options: MongooseAsyncModuleOptions<TConnection>,
   ): ModuleType {
     return buildMongooseModuleAsync<TConnection>(options);
   }

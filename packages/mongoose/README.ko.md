@@ -50,7 +50,7 @@ const connection = mongoose.createConnection('mongodb://localhost:27017/test');
 class AppModule {}
 ```
 
-`MongooseModule.forRootAsync(...)`는 주입된 의존성과 동기 또는 비동기로 옵션을 반환하는 `useFactory`를 지원합니다. 해석된 옵션은 모듈 인스턴스 안에서 재사용되므로 연결 설정과 dispose hook이 모든 provider에서 일관되게 유지됩니다.
+`MongooseModule.forRootAsync(...)`는 주입된 의존성과 동기 또는 비동기로 옵션을 반환하는 `useFactory`를 지원합니다. provider를 전역으로 노출해야 할 때는 최상위 async 등록 옵션에 `global`을 전달하세요. 해석된 옵션은 모듈 인스턴스 안에서 재사용되므로 연결 설정과 dispose hook이 모든 provider에서 일관되게 유지됩니다.
 
 ## 라이프사이클과 종료
 

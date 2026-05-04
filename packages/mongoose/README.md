@@ -48,7 +48,7 @@ const connection = mongoose.createConnection('mongodb://localhost:27017/test');
 class AppModule {}
 ```
 
-`MongooseModule.forRootAsync(...)` accepts injected dependencies and a `useFactory` that may return options synchronously or asynchronously. The resolved options are reused for the module instance, so connection setup and disposal hooks stay consistent across all providers.
+`MongooseModule.forRootAsync(...)` accepts injected dependencies and a `useFactory` that may return options synchronously or asynchronously. Pass `global` on the top-level async registration when the providers should be visible globally. The resolved options are reused for the module instance, so connection setup and disposal hooks stay consistent across all providers.
 
 ## Lifecycle and Shutdown
 
