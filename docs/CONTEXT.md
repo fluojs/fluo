@@ -27,7 +27,7 @@ fluo is a standard-first TypeScript backend framework built on TC39 standard dec
 | Persistence | Database and cache integration | `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose`, `@fluojs/redis`, `@fluojs/cache-manager` |
 | Patterns | Messaging and orchestration patterns | `@fluojs/microservices`, `@fluojs/cqrs`, `@fluojs/event-bus`, `@fluojs/cron`, `@fluojs/queue`, `@fluojs/notifications`, `@fluojs/email`, `@fluojs/slack`, `@fluojs/discord` |
 | Operations | Health, metrics, throttling | `@fluojs/metrics`, `@fluojs/terminus`, `@fluojs/throttler` |
-| Tooling | CLI and diagnostics | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing` |
+| Tooling | CLI, diagnostics, and Vite build integration | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
 Canonical package and runtime coverage lives in [`docs/reference/package-surface.md`](./reference/package-surface.md).
 
