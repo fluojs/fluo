@@ -94,6 +94,7 @@ Prerelease workflow uses Changesets prerelease mode (`changeset pre enter <tag>`
 - `@fluojs/testing`
 - `@fluojs/throttler`
 - `@fluojs/validation`
+- `@fluojs/vite`
 - `@fluojs/websockets`
 
 ## Enforcement

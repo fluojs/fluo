@@ -27,7 +27,7 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 | Persistence | 데이터베이스와 캐시 통합 | `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose`, `@fluojs/redis`, `@fluojs/cache-manager` |
 | Patterns | 메시징과 오케스트레이션 패턴 | `@fluojs/microservices`, `@fluojs/cqrs`, `@fluojs/event-bus`, `@fluojs/cron`, `@fluojs/queue`, `@fluojs/notifications`, `@fluojs/email`, `@fluojs/slack`, `@fluojs/discord` |
 | Operations | 헬스, 메트릭, 스로틀링 | `@fluojs/metrics`, `@fluojs/terminus`, `@fluojs/throttler` |
-| Tooling | CLI와 진단 도구 | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing` |
+| Tooling | CLI, 진단 도구, Vite 빌드 통합 | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
 정식 패키지 및 런타임 범위는 [`docs/reference/package-surface.md`](./reference/package-surface.md)에 있다.
 

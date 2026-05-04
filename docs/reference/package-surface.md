@@ -14,7 +14,7 @@
 | **Persistence** | Database and cache. | `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose`, `@fluojs/redis`, `@fluojs/cache-manager` |
 | **Patterns** | Messaging and architecture. | `@fluojs/microservices`, `@fluojs/cqrs`, `@fluojs/event-bus`, `@fluojs/cron`, `@fluojs/queue`, `@fluojs/notifications`, `@fluojs/email`, `@fluojs/slack`, `@fluojs/discord` |
 | **Operations** | Health and monitoring. | `@fluojs/metrics`, `@fluojs/terminus`, `@fluojs/throttler` |
-| **Tooling** | CLI inspection export, inspect artifact viewing/rendering through Studio, and testing diagnostics. | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing` |
+| **Tooling** | CLI inspection export, inspect artifact viewing/rendering through Studio, testing diagnostics, and Vite build integration. | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
 ## canonical runtime package matrix
 
@@ -58,6 +58,7 @@
 - **`@fluojs/cli`**: Project scaffolding, generation, codemods, and inspection export/delegation for runtime-produced snapshots. `fluo inspect` owns CLI argument validation, application bootstrap/close, JSON snapshot serialization, report artifact writing, `--output <path>` file emission, and the handoff to Studio for Mermaid rendering.
 - **`@fluojs/studio`**: File-first snapshot/report/timing viewer plus canonical parsing, filtering, and graph rendering helpers for CLI and automation callers. Studio owns the responsibility boundary for consuming `fluo inspect --json` snapshots, standalone `--timing` diagnostics, `--json --timing` envelopes, `--report` artifacts, and Mermaid graph rendering through `renderMermaid(snapshot)`.
 - **`@fluojs/testing`**: Conformance and integration helpers for verifying application and platform contracts.
+- **`@fluojs/vite`**: Vite-facing build utilities for fluo projects, including the maintained `fluoDecoratorsPlugin()` used by generated starter `vite.config.ts` files.
 
 ## Studio inspect artifact ownership
 

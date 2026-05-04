@@ -48,6 +48,7 @@ const PUBLISHED_INTERNAL_DEPENDENCIES = {
   '@fluojs/runtime': '^1.0.0-beta.9',
   '@fluojs/testing': '^1.0.0-beta.2',
   '@fluojs/validation': '^1.0.0-beta.2',
+  '@fluojs/vite': '^1.0.0-beta.1',
 } as const;
 
 
@@ -357,35 +358,8 @@ function createBabelConfig(): string {
 }
 
 function createViteConfig(): string {
-  return `import { transformAsync } from '@babel/core';
-import type { Plugin } from 'vite';
+  return `import { fluoDecoratorsPlugin } from '@fluojs/vite';
 import { defineConfig } from 'vite';
-
-function fluoDecoratorsPlugin(): Plugin {
-  return {
-    name: 'fluo-babel-decorators',
-    async transform(code: string, id: string) {
-      if (!id.endsWith('.ts') || id.includes('.test.')) {
-        return null;
-      }
-
-      const result = await transformAsync(code, {
-        babelrc: false,
-        configFile: false,
-        filename: id,
-        plugins: [['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
-        presets: [['@babel/preset-typescript', { allowDeclareFields: true }]],
-        sourceMaps: true,
-      });
-
-      if (!result?.code) {
-        return null;
-      }
-
-      return { code: result.code, map: result.map };
-    },
-  };
-}
 
 export default defineConfig({
   plugins: [fluoDecoratorsPlugin()],

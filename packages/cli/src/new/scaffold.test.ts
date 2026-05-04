@@ -26,6 +26,7 @@ const LOCAL_PACKAGE_DIRECTORY_BY_NAME = {
   '@fluojs/runtime': 'runtime',
   '@fluojs/testing': 'testing',
   '@fluojs/validation': 'validation',
+  '@fluojs/vite': 'vite',
 } as const;
 
 const FIXTURE_WORKSPACE_DEPENDENCIES: Partial<Record<keyof typeof LOCAL_PACKAGE_DIRECTORY_BY_NAME, Record<string, string>>> = {
@@ -232,6 +233,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(packageJson.devDependencies).toMatchObject({
       '@fluojs/cli': '^1.0.0-beta.3',
       '@fluojs/testing': '^1.0.0-beta.2',
+      '@fluojs/vite': '^1.0.0-beta.1',
     });
     expect(packageJson.scripts?.build).toBe('fluo build');
     expect(packageJson.scripts?.dev).toBe('fluo dev');
@@ -249,7 +251,10 @@ describe('scaffoldBootstrapApp', () => {
     expect(greetingRepoFile).toContain('findGreeting');
     expect(greetingRepoFile).toContain("message: 'Hello from fluo'");
     expect(greetingModuleFile).toContain('export class GreetingModule');
+    expect(viteConfig).toContain("import { fluoDecoratorsPlugin } from '@fluojs/vite';");
     expect(viteConfig).toContain("import { defineConfig } from 'vite';");
+    expect(viteConfig).not.toContain("import { transformAsync } from '@babel/core';");
+    expect(viteConfig).not.toContain('function fluoDecoratorsPlugin');
     expect(viteConfig).not.toContain('baseUrl');
     expect(vitestConfig).toContain("import { fluoBabelDecoratorsPlugin } from '@fluojs/testing/vitest';");
     expect(vitestConfig).not.toContain('baseUrl');

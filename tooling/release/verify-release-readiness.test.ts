@@ -129,16 +129,16 @@ function modelCoreWithCliAndStudioDownstreams(dependencies: ReturnType<typeof cr
 
   dependencies.read = vi.fn((relativePath) => {
     if (relativePath === 'docs/contracts/release-governance.md') {
-      return '## intended publish surface\n- `@fluojs/cli`\n- `@fluojs/core`\n- `@fluojs/studio`\n\npnpm verify:release-readiness\npnpm verify:platform-consistency-governance';
+      return '## intended publish surface\n- `@fluojs/cli`\n- `@fluojs/core`\n- `@fluojs/studio`\n- `@fluojs/vite`\n\npnpm verify:release-readiness\npnpm verify:platform-consistency-governance';
     }
 
     if (relativePath === 'docs/reference/package-surface.md') {
-      return '## public package families\n| Core | `@fluojs/cli` `@fluojs/core` `@fluojs/studio` |';
+      return '## public package families\n| Core | `@fluojs/cli` `@fluojs/core` `@fluojs/studio` `@fluojs/vite` |';
     }
 
     return baseRead(relativePath);
   });
-  dependencies.workspacePackageNames = vi.fn(() => ['@fluojs/cli', '@fluojs/core', '@fluojs/studio']);
+  dependencies.workspacePackageNames = vi.fn(() => ['@fluojs/cli', '@fluojs/core', '@fluojs/studio', '@fluojs/vite']);
   dependencies.workspacePackageManifests = vi.fn<() => WorkspacePackageManifestRecord[]>(() => [
     {
       manifest: {
@@ -169,6 +169,14 @@ function modelCoreWithCliAndStudioDownstreams(dependencies: ReturnType<typeof cr
         },
       },
       packageJsonPath: '/repo/packages/studio/package.json',
+    },
+    {
+      manifest: {
+        name: '@fluojs/vite',
+        private: false,
+        publishConfig: { access: 'public' },
+      },
+      packageJsonPath: '/repo/packages/vite/package.json',
     },
   ]);
   (dependencies as ReturnType<typeof createDependencies> & { hasReleaseNotesForPackage: ReturnType<typeof vi.fn> }).hasReleaseNotesForPackage = vi.fn(() => true);

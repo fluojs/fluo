@@ -107,6 +107,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
       devDependencies: [
         '@fluojs/cli',
         '@fluojs/testing',
+        '@fluojs/vite',
       ],
     },
     emitter: {
@@ -161,6 +162,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
       devDependencies: [
         '@fluojs/cli',
         '@fluojs/testing',
+        '@fluojs/vite',
       ],
     },
     emitter: {
@@ -189,6 +191,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
       devDependencies: [
         '@fluojs/cli',
         '@fluojs/testing',
+        '@fluojs/vite',
       ],
     },
     emitter: {
@@ -217,6 +220,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
       devDependencies: [
         '@fluojs/cli',
         '@fluojs/testing',
+        '@fluojs/vite',
       ],
     },
     emitter: {
@@ -245,6 +249,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
       devDependencies: [
         '@fluojs/cli',
         '@fluojs/testing',
+        '@fluojs/vite',
       ],
     },
     emitter: {
@@ -271,6 +276,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
       devDependencies: [
         '@fluojs/cli',
         '@fluojs/testing',
+        '@fluojs/vite',
       ],
     },
     emitter: {
@@ -297,6 +303,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
       devDependencies: [
         '@fluojs/cli',
         '@fluojs/testing',
+        '@fluojs/vite',
       ],
     },
     emitter: {
@@ -323,6 +330,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
       devDependencies: [
         '@fluojs/cli',
         '@fluojs/testing',
+        '@fluojs/vite',
       ],
     },
     emitter: {
@@ -350,6 +358,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
       devDependencies: [
         '@fluojs/cli',
         '@fluojs/testing',
+        '@fluojs/vite',
       ],
     },
     emitter: {
@@ -376,6 +385,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
       devDependencies: [
         '@fluojs/cli',
         '@fluojs/testing',
+        '@fluojs/vite',
       ],
     },
     emitter: {
@@ -402,6 +412,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
       devDependencies: [
         '@fluojs/cli',
         '@fluojs/testing',
+        '@fluojs/vite',
       ],
     },
     emitter: {
@@ -428,6 +439,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
       devDependencies: [
         '@fluojs/cli',
         '@fluojs/testing',
+        '@fluojs/vite',
         '@types/amqplib',
       ],
     },
@@ -457,6 +469,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
       devDependencies: [
         '@fluojs/cli',
         '@fluojs/testing',
+        '@fluojs/vite',
       ],
     },
     emitter: {

@@ -261,6 +261,7 @@ describe('resolveBootstrapPlan', () => {
         devDependencies: [
           '@fluojs/cli',
           '@fluojs/testing',
+          '@fluojs/vite',
         ],
       },
       emitter: {
@@ -294,6 +295,7 @@ describe('resolveBootstrapPlan', () => {
         devDependencies: [
           '@fluojs/cli',
           '@fluojs/testing',
+          '@fluojs/vite',
         ],
       },
       emitter: {
@@ -378,6 +380,7 @@ describe('resolveBootstrapPlan', () => {
         devDependencies: [
           '@fluojs/cli',
           '@fluojs/testing',
+          '@fluojs/vite',
         ],
       },
       emitter: {
@@ -436,6 +439,7 @@ describe('resolveBootstrapPlan', () => {
         devDependencies: [
           '@fluojs/cli',
           '@fluojs/testing',
+          '@fluojs/vite',
         ],
       },
       emitter: {
@@ -479,6 +483,7 @@ describe('resolveBootstrapPlan', () => {
         devDependencies: [
           '@fluojs/cli',
           '@fluojs/testing',
+          '@fluojs/vite',
         ],
       },
       emitter: {
@@ -528,6 +533,7 @@ describe('resolveBootstrapPlan', () => {
         devDependencies: [
           '@fluojs/cli',
           '@fluojs/testing',
+          '@fluojs/vite',
         ],
       },
       emitter: {
@@ -571,6 +577,7 @@ describe('resolveBootstrapPlan', () => {
         devDependencies: [
           '@fluojs/cli',
           '@fluojs/testing',
+          '@fluojs/vite',
         ],
       },
       emitter: {
@@ -614,6 +621,7 @@ describe('resolveBootstrapPlan', () => {
         devDependencies: [
           '@fluojs/cli',
           '@fluojs/testing',
+          '@fluojs/vite',
         ],
       },
       emitter: {
@@ -658,6 +666,7 @@ describe('resolveBootstrapPlan', () => {
         devDependencies: [
           '@fluojs/cli',
           '@fluojs/testing',
+          '@fluojs/vite',
         ],
       },
       emitter: {
@@ -701,6 +710,7 @@ describe('resolveBootstrapPlan', () => {
         devDependencies: [
           '@fluojs/cli',
           '@fluojs/testing',
+          '@fluojs/vite',
         ],
       },
       emitter: {
@@ -744,6 +754,7 @@ describe('resolveBootstrapPlan', () => {
         devDependencies: [
           '@fluojs/cli',
           '@fluojs/testing',
+          '@fluojs/vite',
         ],
       },
       emitter: {
@@ -787,6 +798,7 @@ describe('resolveBootstrapPlan', () => {
         devDependencies: [
           '@fluojs/cli',
           '@fluojs/testing',
+          '@fluojs/vite',
           '@types/amqplib',
         ],
       },
@@ -831,6 +843,7 @@ describe('resolveBootstrapPlan', () => {
         devDependencies: [
           '@fluojs/cli',
           '@fluojs/testing',
+          '@fluojs/vite',
         ],
       },
       emitter: {
