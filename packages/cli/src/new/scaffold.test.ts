@@ -237,8 +237,8 @@ describe('scaffoldBootstrapApp', () => {
     expect(packageJson.scripts?.start).toBe('fluo start');
     expect(tsconfig).not.toContain('baseUrl');
     expect(tsconfigBuild).not.toContain('baseUrl');
-    expect(appFile).toContain("import { HealthModule as RuntimeHealthModule } from '@fluojs/runtime';");
-    expect(appFile).toContain('RuntimeHealthModule.forRoot()');
+    expect(appFile).toContain("import { HealthModule } from '@fluojs/runtime';");
+    expect(appFile).toContain('HealthModule.forRoot()');
     expect(appFile).toContain("import { GreetingModule } from './greeting/greeting.module';");
     expect(appFile).toContain('GreetingModule');
     expect(appFile).not.toContain('./health/health.module');
@@ -588,8 +588,8 @@ describe('scaffoldBootstrapApp', () => {
     expect(readDirectorySnapshot(targetDirectory)).not.toHaveProperty('.env');
     expect(readme).toContain('Cloudflare Workers runtime + Cloudflare Workers HTTP via `createCloudflareWorkerEntrypoint(...)`');
     expect(appFile).not.toContain('ConfigModule.forRoot');
-    expect(appFile).toContain("import { HealthModule as RuntimeHealthModule } from '@fluojs/runtime';");
-    expect(appFile).toContain('RuntimeHealthModule.forRoot()');
+    expect(appFile).toContain("import { HealthModule } from '@fluojs/runtime';");
+    expect(appFile).toContain('HealthModule.forRoot()');
     expect(appFile).not.toContain('createHealthModule');
     expect(workerFile).toContain('createCloudflareWorkerEntrypoint(AppModule)');
     expect(wranglerConfig).toContain('src/worker.ts');
@@ -939,13 +939,13 @@ describe('scaffoldBootstrapApp', () => {
     expect(envFile).toContain('PORT=3000');
     expect(envFile).toContain('MICROSERVICE_PORT=4000');
     expect(appFile).toContain('MicroservicesModule.forRoot');
-    expect(appFile).toContain("import { HealthModule as RuntimeHealthModule } from '@fluojs/runtime';");
-    expect(appFile).toContain('RuntimeHealthModule.forRoot()');
+    expect(appFile).toContain("import { HealthModule } from '@fluojs/runtime';");
+    expect(appFile).toContain('HealthModule.forRoot()');
     expect(appFile).not.toContain('createHealthModule');
     expect(mainFile).toContain('await app.connectMicroservice();');
     expect(mainFile).toContain('await app.startAllMicroservices();');
     expect(appTestFile).toContain('InMemoryLoopbackTransport');
-    expect(appTestFile).toContain('RuntimeHealthModule.forRoot()');
+    expect(appTestFile).toContain('HealthModule.forRoot()');
     expect(appTestFile).not.toContain('createHealthModule');
     expect(readDirectorySnapshot(targetDirectory)).not.toHaveProperty('src/microservice.ts');
   });
