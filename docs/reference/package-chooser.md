@@ -47,7 +47,7 @@
 | Need cache abstraction | `@fluojs/cache-manager` | Use for cache-backed reads and writes. |
 | Need a shared Redis client/service layer | `@fluojs/redis` | Use for default or named Redis registrations. |
 
-Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `RedisService`) with optional named clients layered on through `RedisModule.forRootNamed(...)`. When app code needs to inject one named binding directly, resolve it with `getRedisClientToken(name)` or `getRedisServiceToken(name)`.
+Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `RedisService`) with optional named clients layered on through `RedisModule.forRoot({ name, ... })`. When app code needs to inject one named binding directly, resolve it with `getRedisClientToken(name)` or `getRedisServiceToken(name)`.
 
 ## implement security & auth
 

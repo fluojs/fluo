@@ -8,7 +8,7 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 
 | Surface | Current contract | Source anchor |
 | --- | --- | --- |
-| Module entrypoint | Applications register cache support through `CacheModule.forRoot(...)`. Public options include `store`, `ttl`, `httpKeyStrategy`, `principalScopeResolver`, `redis`, and `isGlobal`. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
+| Module entrypoint | Applications register cache support through `CacheModule.forRoot(...)`. Public options include `store`, `ttl`, `httpKeyStrategy`, `principalScopeResolver`, `redis`, and `global`. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
 | Cache service | `CacheService` is the direct application cache facade with `get`, `set`, `remember`, `del`, and `reset`. | `packages/cache-manager/src/service.ts` |
 | HTTP integration | `CacheInterceptor` performs GET read-through caching and post-write eviction. | `packages/cache-manager/src/interceptor.ts` |
 | Memory store | `MemoryStore` keeps cache entries in-process, sweeps expirations lazily on access, and caps live entries at `1,000` by evicting the oldest keys. | `packages/cache-manager/src/stores/memory-store.ts` |

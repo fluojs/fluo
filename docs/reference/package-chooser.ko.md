@@ -47,7 +47,7 @@
 | 캐시 추상화가 필요함 | `@fluojs/cache-manager` | 캐시 기반 읽기와 쓰기에 사용합니다. |
 | 공유 Redis 클라이언트/서비스 계층이 필요함 | `@fluojs/redis` | 기본 또는 이름 있는 Redis 등록에 사용합니다. |
 
-`@fluojs/redis`는 하나의 공유 기본 클라이언트(`REDIS_CLIENT` / `RedisService`)를 제공하고, 필요할 때 `RedisModule.forRootNamed(...)`로 이름 있는 클라이언트를 추가하는 기준 레이어입니다. 앱 코드에서 특정 이름의 바인딩을 직접 주입해야 한다면 `getRedisClientToken(name)` 또는 `getRedisServiceToken(name)`으로 가져옵니다.
+`@fluojs/redis`는 하나의 공유 기본 클라이언트(`REDIS_CLIENT` / `RedisService`)를 제공하고, 필요할 때 `RedisModule.forRoot({ name, ... })`로 이름 있는 클라이언트를 추가하는 기준 레이어입니다. 앱 코드에서 특정 이름의 바인딩을 직접 주입해야 한다면 `getRedisClientToken(name)` 또는 `getRedisServiceToken(name)`으로 가져옵니다.
 
 ## 보안 및 인증 구현
 
