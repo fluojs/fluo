@@ -139,6 +139,8 @@ export interface NotificationsEventsOptions {
 export interface NotificationsModuleOptions {
   channels?: readonly NotificationChannel[];
   events?: NotificationsEventsOptions;
+  /** Whether notification providers should be visible globally. Defaults to `true`. */
+  global?: boolean;
   queue?: NotificationsQueueOptions;
 }
 
@@ -221,4 +223,4 @@ export interface Notifications {
 }
 
 /** Async registration options for notifications modules that derive config through DI. */
-export type NotificationsAsyncModuleOptions = AsyncModuleOptions<NotificationsModuleOptions>;
+export type NotificationsAsyncModuleOptions = AsyncModuleOptions<Omit<NotificationsModuleOptions, 'global'>> & Pick<NotificationsModuleOptions, 'global'>;

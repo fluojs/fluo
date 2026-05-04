@@ -1,4 +1,4 @@
-import type { AsyncModuleOptions, MaybePromise } from '@fluojs/core';
+import type { MaybePromise } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
@@ -11,6 +11,7 @@ import type {
   NotificationDispatchManyOptions,
   NotificationDispatchOptions,
   NotificationDispatchRequest,
+  NotificationsAsyncModuleOptions,
   NotificationsModuleOptions,
 } from './types.js';
 
@@ -88,12 +89,12 @@ function buildNotificationsModule(options: NotificationsModuleOptions): ModuleTy
 
   return defineModule(NotificationsRootModuleDefinition, {
     exports: [NotificationsService, NOTIFICATIONS, NOTIFICATION_CHANNELS],
-    global: true,
+    global: options.global ?? true,
     providers: buildNotificationsProviders(options),
   });
 }
 
-function buildNotificationsModuleAsync(options: AsyncModuleOptions<NotificationsModuleOptions>): ModuleType {
+function buildNotificationsModuleAsync(options: NotificationsAsyncModuleOptions): ModuleType {
   class NotificationsAsyncModuleDefinition {}
 
   const factory = options.useFactory as (...args: unknown[]) => MaybePromise<NotificationsModuleOptions>;
@@ -109,7 +110,7 @@ function buildNotificationsModuleAsync(options: AsyncModuleOptions<Notifications
 
   return defineModule(NotificationsAsyncModuleDefinition, {
     exports: [NotificationsService, NOTIFICATIONS, NOTIFICATION_CHANNELS],
-    global: true,
+    global: options.global ?? true,
     providers: createNotificationsRuntimeProviders({
       inject: options.inject,
       provide: NOTIFICATIONS_OPTIONS,
@@ -154,7 +155,7 @@ export class NotificationsModule {
    * });
    * ```
    */
-  static forRootAsync(options: AsyncModuleOptions<NotificationsModuleOptions>): ModuleType {
+  static forRootAsync(options: NotificationsAsyncModuleOptions): ModuleType {
     return buildNotificationsModuleAsync(options);
   }
 }
