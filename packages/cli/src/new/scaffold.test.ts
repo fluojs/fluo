@@ -379,6 +379,10 @@ describe('scaffoldBootstrapApp', () => {
     expect(readme).not.toContain('@fluojs/platform-nodejs');
     expect(mainFile).toContain('// The generated starter wires the selected first-class fluo new application path:');
     expect(mainFile).toContain('// Node.js runtime + Fastify HTTP via createFastifyAdapter(...).');
+    expect(mainFile).toContain('// Application logging defaults to the pretty console logger when logger is omitted.');
+    expect(mainFile).toContain("// import { createJsonApplicationLogger } from '@fluojs/runtime/node';");
+    expect(mainFile).toContain('// Then pass `logger: createJsonApplicationLogger()` to FluoFactory.create(...).');
+    expect(mainFile).not.toContain('logger: createJsonApplicationLogger(),');
     expect(mainFile).not.toContain('Bun');
     expect(mainFile).not.toContain('Deno');
     expect(mainFile).not.toContain('Cloudflare');

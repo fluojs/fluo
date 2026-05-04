@@ -894,6 +894,14 @@ export default {
   const portExpression = options.runtime === 'bun'
     ? "Bun.env.PORT ?? '3000'"
     : "process.env.PORT ?? '3000'";
+  const loggerGuidance = options.runtime === 'node'
+    ? `
+// Application logging defaults to the pretty console logger when logger is omitted.
+// JSON logs are opt-in:
+// import { createJsonApplicationLogger } from '@fluojs/runtime/node';
+// Then pass \`logger: createJsonApplicationLogger()\` to FluoFactory.create(...).
+`
+    : '';
 
   return `import { ${starter.adapterFactory} } from '${starter.packageName}';
 import { FluoFactory } from '@fluojs/runtime';
@@ -902,6 +910,7 @@ import { AppModule } from './app';
 
 // The generated starter wires the selected first-class fluo new application path:
 // ${starter.runtimeLabel} + ${starter.platformLabel} via ${starter.adapterFactory}(...).
+${loggerGuidance}
 
 const parsedPort = Number.parseInt(${portExpression}, 10);
 const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
