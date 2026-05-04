@@ -1,4 +1,4 @@
-import type { AsyncModuleOptions, MaybePromise } from '@fluojs/core';
+import type { MaybePromise } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
@@ -89,12 +89,12 @@ function buildDiscordModule(options: DiscordModuleOptions): ModuleType {
 
   return defineModule(DiscordRootModuleDefinition, {
     exports: [DiscordService, DiscordChannel, DISCORD, DISCORD_CHANNEL],
-    global: true,
+    global: options.global ?? true,
     providers: createDiscordProviders(options),
   });
 }
 
-function buildDiscordModuleAsync(options: AsyncModuleOptions<DiscordModuleOptions>): ModuleType {
+function buildDiscordModuleAsync(options: DiscordAsyncModuleOptions): ModuleType {
   class DiscordAsyncModuleDefinition {}
 
   const factory = options.useFactory as (...args: unknown[]) => MaybePromise<DiscordModuleOptions>;
@@ -110,7 +110,7 @@ function buildDiscordModuleAsync(options: AsyncModuleOptions<DiscordModuleOption
 
   return defineModule(DiscordAsyncModuleDefinition, {
     exports: [DiscordService, DiscordChannel, DISCORD, DISCORD_CHANNEL],
-    global: true,
+    global: options.global ?? true,
     providers: createDiscordRuntimeProviders({
       inject: options.inject,
       provide: DISCORD_OPTIONS,

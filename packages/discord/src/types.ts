@@ -231,6 +231,8 @@ export interface DiscordSendManyOptions extends DiscordSendOptions {
 /** Module options accepted by {@link DiscordModule.forRoot} and `forRootAsync`. */
 export interface DiscordModuleOptions {
   defaultThreadId?: string;
+  /** Whether Discord providers should be visible globally. Defaults to `true`. */
+  global?: boolean;
   notifications?: {
     channel?: string;
   };
@@ -240,7 +242,7 @@ export interface DiscordModuleOptions {
 }
 
 /** Async registration options for Discord modules that derive config through DI. */
-export type DiscordAsyncModuleOptions = AsyncModuleOptions<DiscordModuleOptions>;
+export type DiscordAsyncModuleOptions = AsyncModuleOptions<Omit<DiscordModuleOptions, 'global'>> & Pick<DiscordModuleOptions, 'global'>;
 
 /** Normalized module options resolved once during module registration. */
 export interface NormalizedDiscordModuleOptions {
