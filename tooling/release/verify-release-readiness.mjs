@@ -862,7 +862,7 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     'Starter shape and runtime ownership',
     scaffoldSource.includes("import { HealthModule as RuntimeHealthModule } from '@fluojs/runtime';") &&
       scaffoldSource.includes('RuntimeHealthModule.forRoot()') &&
-      scaffoldSource.includes('@Controller(\'/health-info\')') &&
+      scaffoldSource.includes('@Controller(\'/greeting\')') &&
       scaffoldSource.includes('const app = await FluoFactory.create(AppModule, {') &&
       scaffoldSource.includes('adapter: createFastifyAdapter({ port })') &&
       scaffoldSource.includes('await app.listen();') &&
@@ -871,7 +871,7 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
       !scaffoldSource.includes('MetricsModule.forRoot') &&
       !scaffoldSource.includes('OpenApiModule.forRoot') &&
       !scaffoldSource.includes('src/node-http-adapter.ts'),
-    'The generated starter uses runtime-owned bootstrap helpers plus a starter-owned health module, without default metrics or OpenAPI surfaces.',
+    'The generated starter uses runtime-owned bootstrap helpers plus a starter-owned greeting module, without default metrics or OpenAPI surfaces.',
   );
   assertCheck(
     checks,

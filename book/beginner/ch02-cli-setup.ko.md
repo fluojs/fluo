@@ -255,11 +255,11 @@ FluoBlog가 커질수록 이 조립 지점은 이후 장에서 더 많은 구성
 - 컴파일된 출력을 어떻게 실행하는지,
 - 그리고 린트나 테스트를 어떻게 연결하는지.
 
-### src/hello.controller.ts와 src/hello.service.ts
+### src/greeting/*
 
-이 두 파일은 기본 스타터가 실제로 응답 가능한 앱이라는 사실을 가장 빨리 보여 줍니다.
+greeting slice는 기본 스타터가 실제로 응답 가능한 앱이라는 사실을 가장 빨리 보여 줍니다.
 
-컨트롤러는 기본 라우트를 노출하고, 서비스는 그 라우트가 반환할 값을 제공합니다. 처음에는 이 한 쌍만 읽어도 요청이 어디로 들어와 어디서 값이 만들어지는지 바로 추적할 수 있습니다.
+컨트롤러는 스타터 라우트를 노출하고, 서비스는 use case를 위임하며, 저장소는 작은 응답 payload를 소유합니다. 처음에는 이 slice만 읽어도 요청이 어디로 들어와 어디서 값이 만들어지는지 바로 추적할 수 있습니다.
 
 ### Reading Before Editing
 
@@ -269,11 +269,11 @@ FluoBlog가 커질수록 이 조립 지점은 이후 장에서 더 많은 구성
 2. 이후 장에서 직접 바꿀 것.
 3. 어떤 파일이 어떤 책임을 가지는지.
 
-### Why the starter includes hello files
+### Why the starter includes greeting files
 
-`hello.controller.ts`와 `hello.service.ts`는 첫 실행 확인을 위한 가장 작은 예제입니다.
+`greeting.controller.ts`, `greeting.service.ts`, `greeting.repo.ts`는 첫 실행 확인을 위한 가장 작은 생성 feature slice입니다.
 
-복잡한 도메인 코드를 넣기 전에, 기본 라우트와 응답이 어디서 오는지 눈으로 확인할 수 있게 해 줍니다. 이 출발점 덕분에 이후 장에서 코드를 바꿨을 때 무엇이 새로 추가된 것인지 더 쉽게 구분할 수 있습니다.
+복잡한 도메인 코드를 넣기 전에 controller, service, repository, DTO, module이 어떻게 맞물리는지 눈으로 확인할 수 있게 해 줍니다. 이 출발점 덕분에 이후 장에서 코드를 바꿨을 때 무엇이 새로 추가된 것인지 더 쉽게 구분할 수 있습니다.
 
 ### Exploring the `node_modules` Folder (Briefly)
 
@@ -375,10 +375,10 @@ pnpm dev
 
 ```bash
 curl http://localhost:3000/health
-curl http://localhost:3000/hello
+curl http://localhost:3000/greeting
 ```
 
-`{"status":"ok"}`와 `{"message":"Hello, World!"}`가 보이면 기본 헬스 체크와 스타터 라우트가 현재 계약대로 함께 정상 동작하고 있다는 의미입니다.
+`{"status":"ok"}`와 `{"message":"Hello from fluo","framework":"fluo","project":"fluo-blog"}` 같은 greeting payload가 보이면 runtime health check와 starter feature route가 현재 계약대로 함께 정상 동작하고 있다는 의미입니다.
 
 ### What You Actually Verified
 
@@ -388,7 +388,7 @@ curl http://localhost:3000/hello
 - 의존성이 정상적으로 설치되었습니다.
 - TypeScript가 개발 모드에서 기대한 방식으로 컴파일 또는 변환되었습니다.
 - 런타임 어댑터가 정상적으로 시작되었습니다.
-- 기본 검증 라우트인 `/health`와 `/hello`에 접근할 수 있습니다.
+- 기본 검증 라우트인 runtime `/health`와 starter-owned `/greeting`에 접근할 수 있습니다.
 
 이 정도만 확인해도 이후 장을 위한 강한 기준선이 마련됩니다.
 

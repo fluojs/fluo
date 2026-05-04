@@ -448,7 +448,7 @@ function createHttpProjectReadme(options: BootstrapOptions): string {
       : `- CORS: defaults to allowOrigin '*'; pass a \`cors\` option to \`FluoFactory.create(..., { cors, adapter: ${starter.adapterFactory}(...) })\` to restrict origins`;
   const testingSection = options.runtime === 'deno'
     ? `## Official generated testing templates\n\n- \`src/app.test.ts\` — Deno-native integration-style dispatch verification for the generated runtime + starter routes.\n\nUse this test when you need confidence that the generated Deno entrypoint and module graph still agree on the same HTTP contract.`
-    : `## Official generated testing templates\n\n- \`src/health/*.test.ts\` — unit templates for the starter-owned health slice.\n- \`src/app.test.ts\` — integration-style dispatch template for runtime + starter routes.\n- \`src/app.e2e.test.ts\` — e2e-style template powered by \`createTestApp\` from \`@fluojs/testing\`.\n- \`${createExecCommand(options.packageManager, 'fluo g repo User')}\` also adds:\n  - \`src/users/user.repo.test.ts\` (unit template)\n  - \`src/users/user.repo.slice.test.ts\` (slice/integration template via \`createTestingModule\`)\n\nUse unit templates for fast logic checks. Use slice/e2e templates when you need module wiring and route-level confidence.`;
+    : `## Official generated testing templates\n\n- \`src/greeting/*.test.ts\` — unit templates for the starter-owned greeting slice.\n- \`src/app.test.ts\` — integration-style dispatch template for runtime + starter routes.\n- \`src/app.e2e.test.ts\` — e2e-style template powered by \`createTestApp\` from \`@fluojs/testing\`.\n- \`${createExecCommand(options.packageManager, 'fluo g repo User')}\` also adds:\n  - \`src/users/user.repo.test.ts\` (unit template)\n  - \`src/users/user.repo.slice.test.ts\` (slice/integration template via \`createTestingModule\`)\n\nUse unit templates for fast logic checks. Use slice/e2e templates when you need module wiring and route-level confidence.`;
 
   return `# ${options.projectName}
 
@@ -677,12 +677,12 @@ function createAppFile(options: BootstrapOptions): string {
     return `import { Global, Module } from '@fluojs/core';
 import { HealthModule as RuntimeHealthModule } from '@fluojs/runtime';
 
-import { HealthModule } from './health/health.module';
+import { GreetingModule } from './greeting/greeting.module';
 
 @Global()
 @Module({
   imports: [
-    HealthModule,
+    GreetingModule,
     RuntimeHealthModule.forRoot(),
   ],
 })
@@ -698,7 +698,7 @@ export class AppModule {}
 import { ConfigModule } from '@fluojs/config';
 import { HealthModule as RuntimeHealthModule } from '@fluojs/runtime';
 
-import { HealthModule } from './health/health.module${importSuffix}';
+import { GreetingModule } from './greeting/greeting.module${importSuffix}';
 
 @Global()
 @Module({
@@ -707,7 +707,7 @@ import { HealthModule } from './health/health.module${importSuffix}';
       envFile: '.env',
       processEnv: ${processEnvValue},
     }),
-    HealthModule,
+    GreetingModule,
     RuntimeHealthModule.forRoot(),
   ],
 })
@@ -715,134 +715,136 @@ export class AppModule {}
 `;
 }
 
-function createHealthResponseDtoFile(): string {
-  return `export class HealthResponseDto {
-  ok!: boolean;
-  service!: string;
+function createGreetingResponseDtoFile(): string {
+  return `export class GreetingResponseDto {
+  message!: string;
+  framework!: 'fluo';
+  project!: string;
 }
 `;
 }
 
-function createHealthRepoFile(projectName: string, importSuffix = ''): string {
-  return `import type { HealthResponseDto } from './health.response.dto${importSuffix}';
+function createGreetingRepoFile(projectName: string, importSuffix = ''): string {
+  return `import type { GreetingResponseDto } from './greeting.response.dto${importSuffix}';
 
-export class HealthRepo {
-  findHealth(): HealthResponseDto {
+export class GreetingRepo {
+  findGreeting(): GreetingResponseDto {
     return {
-      ok: true,
-      service: ${JSON.stringify(projectName)},
+      message: 'Hello from fluo',
+      framework: 'fluo',
+      project: ${JSON.stringify(projectName)},
     };
   }
 }
 `;
 }
 
-function createHealthRepoTestFile(): string {
+function createGreetingRepoTestFile(): string {
   return `import { describe, expect, it } from 'vitest';
 
-import { HealthRepo } from './health.repo';
+import { GreetingRepo } from './greeting.repo';
 
-describe('HealthRepo', () => {
-  it('returns health data', () => {
-    const repo = new HealthRepo();
-    expect(repo.findHealth()).toEqual({ ok: true, service: expect.any(String) });
+describe('GreetingRepo', () => {
+  it('returns greeting data', () => {
+    const repo = new GreetingRepo();
+    expect(repo.findGreeting()).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) });
   });
 });
 `;
 }
 
-function createHealthServiceFile(importSuffix = ''): string {
+function createGreetingServiceFile(importSuffix = ''): string {
   return `import { Inject } from '@fluojs/core';
-import type { HealthResponseDto } from './health.response.dto${importSuffix}';
+import type { GreetingResponseDto } from './greeting.response.dto${importSuffix}';
 
-import { HealthRepo } from './health.repo${importSuffix}';
+import { GreetingRepo } from './greeting.repo${importSuffix}';
 
-@Inject(HealthRepo)
-export class HealthService {
-  constructor(private readonly repo: HealthRepo) {}
+@Inject(GreetingRepo)
+export class GreetingService {
+  constructor(private readonly repo: GreetingRepo) {}
 
-  getHealth(): HealthResponseDto {
-    return this.repo.findHealth();
+  getGreeting(): GreetingResponseDto {
+    return this.repo.findGreeting();
   }
 }
 `;
 }
 
-function createHealthServiceTestFile(): string {
+function createGreetingServiceTestFile(): string {
   return `import { describe, expect, it } from 'vitest';
 
-import { HealthService } from './health.service';
-import { HealthRepo } from './health.repo';
+import { GreetingService } from './greeting.service';
+import { GreetingRepo } from './greeting.repo';
 
-class FakeHealthRepo {
-  findHealth() {
-    return { ok: true, service: 'test' };
+class FakeGreetingRepo {
+  findGreeting() {
+    return { message: 'Hello from fluo', framework: 'fluo' as const, project: 'test' };
   }
 }
 
-describe('HealthService', () => {
+describe('GreetingService', () => {
   it('delegates to the repo', () => {
-    const service = new HealthService(new FakeHealthRepo() as HealthRepo);
-    expect(service.getHealth()).toEqual({ ok: true, service: 'test' });
+    const service = new GreetingService(new FakeGreetingRepo() as GreetingRepo);
+    expect(service.getGreeting()).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: 'test' });
   });
 });
 `;
 }
 
-function createHealthControllerFile(importSuffix = ''): string {
+function createGreetingControllerFile(importSuffix = ''): string {
   return `import { ensureMetadataSymbol, Inject } from '@fluojs/core';
 import { Controller, Get } from '@fluojs/http';
 
-import { HealthService } from './health.service${importSuffix}';
-import { HealthResponseDto } from './health.response.dto${importSuffix}';
+import { GreetingService } from './greeting.service${importSuffix}';
+import { GreetingResponseDto } from './greeting.response.dto${importSuffix}';
 
 ensureMetadataSymbol();
 
-@Inject(HealthService)
-@Controller('/health-info')
-export class HealthController {
-  constructor(private readonly service: HealthService) {}
+@Inject(GreetingService)
+@Controller('/greeting')
+export class GreetingController {
+  constructor(private readonly service: GreetingService) {}
 
   @Get('/')
-  getHealth(): HealthResponseDto {
-    return this.service.getHealth();
+  getGreeting(): GreetingResponseDto {
+    return this.service.getGreeting();
   }
 }
 `;
 }
 
-function createHealthControllerTestFile(): string {
+function createGreetingControllerTestFile(): string {
   return `import { describe, expect, it } from 'vitest';
 
-import { HealthController } from './health.controller';
+import { GreetingController } from './greeting.controller';
 
-class FakeHealthService {
-  getHealth() {
-    return { ok: true, service: 'test' };
+class FakeGreetingService {
+  getGreeting() {
+    return { message: 'Hello from fluo', framework: 'fluo' as const, project: 'test' };
   }
 }
 
-describe('HealthController', () => {
+describe('GreetingController', () => {
   it('delegates to the service', () => {
-    const controller = new HealthController(new FakeHealthService() as never);
-    expect(controller.getHealth()).toEqual({ ok: true, service: 'test' });
+    const controller = new GreetingController(new FakeGreetingService() as never);
+    expect(controller.getGreeting()).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: 'test' });
   });
 });
 `;
 }
 
-function createHealthModuleFile(importSuffix = ''): string {
+function createGreetingModuleFile(importSuffix = ''): string {
   return `import { Module } from '@fluojs/core';
 
-import { HealthController } from './health.controller${importSuffix}';
-import { HealthRepo } from './health.repo${importSuffix}';
-import { HealthService } from './health.service${importSuffix}';
+import { GreetingController } from './greeting.controller${importSuffix}';
+import { GreetingRepo } from './greeting.repo${importSuffix}';
+import { GreetingService } from './greeting.service${importSuffix}';
 
 @Module({
-  controllers: [HealthController],
-  providers: [HealthRepo, HealthService],
+  controllers: [GreetingController],
+  providers: [GreetingRepo, GreetingService],
 })
-export class HealthModule {}
+export class GreetingModule {}
 `;
 }
 
@@ -1581,12 +1583,12 @@ Generated by @fluojs/cli.
 
 - \`src/app.ts\` — shared application module with config, runtime health endpoints, and the TCP microservice registration.
 - \`src/main.ts\` — Fastify HTTP bootstrap that also starts the attached TCP microservice.
-- \`src/health/*\` — starter-owned HTTP health slice.
+- \`src/greeting/*\` — starter-owned HTTP greeting slice.
 - \`src/math/*\` — starter-owned message handler slice that proves the microservice half of the topology.
 
 ## Official generated testing templates
 
-- \`src/health/*.test.ts\` — unit templates for the HTTP slice.
+- \`src/greeting/*.test.ts\` — unit templates for the HTTP slice.
 - \`src/math/math.handler.test.ts\` — unit template for the microservice handler.
 - \`src/app.test.ts\` — hybrid verification template covering HTTP dispatch plus in-memory message routing with the same shared module contract.
 
@@ -1600,7 +1602,7 @@ import { ConfigModule } from '@fluojs/config';
 import { MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
 import { HealthModule as RuntimeHealthModule } from '@fluojs/runtime';
 
-import { HealthModule } from './health/health.module';
+import { GreetingModule } from './greeting/greeting.module';
 import { MathHandler } from './math/math.handler';
 
 const parsedMicroservicePort = Number.parseInt(process.env.MICROSERVICE_PORT ?? '4000', 10);
@@ -1614,7 +1616,7 @@ const microserviceHost = process.env.MICROSERVICE_HOST ?? '127.0.0.1';
       envFile: '.env',
       processEnv: process.env,
     }),
-    HealthModule,
+    GreetingModule,
     RuntimeHealthModule.forRoot(),
     MicroservicesModule.forRoot({
       transport: new TcpMicroserviceTransport({ host: microserviceHost, port: microservicePort }),
@@ -1656,7 +1658,7 @@ import {
 } from '@fluojs/microservices';
 import { FluoFactory, HealthModule as RuntimeHealthModule } from '@fluojs/runtime';
 
-import { HealthModule } from './health/health.module';
+import { GreetingModule } from './greeting/greeting.module';
 import { MathHandler } from './math/math.handler';
 
 type TransportHandler = Parameters<MicroserviceTransport['listen']>[0];
@@ -1738,7 +1740,7 @@ describe('AppModule mixed starter', () => {
           envFile: '.env',
           processEnv: process.env,
         }),
-        HealthModule,
+        GreetingModule,
         RuntimeHealthModule.forRoot(),
         MicroservicesModule.forRoot({ transport }),
       ],
@@ -1747,13 +1749,13 @@ describe('AppModule mixed starter', () => {
     class TestAppModule {}
 
     const app = await FluoFactory.create(TestAppModule, {});
-    const healthResponse = createResponse();
+    const greetingResponse = createResponse();
 
     const microservice = await app.connectMicroservice();
 
-    await Promise.all([app.startAllMicroservices(), app.dispatch(createRequest('/health-info/'), healthResponse)]);
+    await Promise.all([app.startAllMicroservices(), app.dispatch(createRequest('/greeting/'), greetingResponse)]);
 
-    expect(healthResponse.body).toEqual({ ok: true, service: expect.any(String) });
+    expect(greetingResponse.body).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) });
     await expect(transport.send('math.sum', { a: 20, b: 22 })).resolves.toBe(42);
     expect(microservice.state).toBe('ready');
 
@@ -1825,13 +1827,13 @@ describe('AppModule', () => {
     await app.close();
   });
 
-  it('dispatches the health-info route', async () => {
+  it('dispatches the greeting route', async () => {
     const app = await FluoFactory.create(AppModule, {});
     const response = createResponse();
 
-    await app.dispatch(createRequest('/health-info/'), response);
+    await app.dispatch(createRequest('/greeting/'), response);
 
-    expect(response.body).toEqual({ ok: true, service: expect.any(String) });
+    expect(response.body).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) });
 
     await app.close();
   });
@@ -1858,8 +1860,8 @@ describe('AppModule e2e', () => {
       body: { status: 'ready' },
       status: 200,
     });
-    await expect(app.dispatch({ method: 'GET', path: '/health-info/' })).resolves.toMatchObject({
-      body: { ok: true, service: expect.any(String) },
+    await expect(app.dispatch({ method: 'GET', path: '/greeting/' })).resolves.toMatchObject({
+      body: { message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) },
       status: 200,
     });
 
@@ -1919,7 +1921,7 @@ Deno.test('AppModule dispatches the generated Deno starter routes', async () => 
 
   await app.dispatch({ body: undefined, cookies: {}, headers: {}, method: 'GET', params: {}, path: '/health', query: {}, raw: {}, url: '/health' }, healthResponse as never);
   await app.dispatch({ body: undefined, cookies: {}, headers: {}, method: 'GET', params: {}, path: '/ready', query: {}, raw: {}, url: '/ready' }, readyResponse as never);
-  await app.dispatch({ body: undefined, cookies: {}, headers: {}, method: 'GET', params: {}, path: '/health-info/', query: {}, raw: {}, url: '/health-info/' }, infoResponse as never);
+  await app.dispatch({ body: undefined, cookies: {}, headers: {}, method: 'GET', params: {}, path: '/greeting/', query: {}, raw: {}, url: '/greeting/' }, infoResponse as never);
 
   if (JSON.stringify(healthResponse.body) !== JSON.stringify({ status: 'ok' })) {
     throw new Error('Expected /health to return status ok.');
@@ -1930,12 +1932,12 @@ Deno.test('AppModule dispatches the generated Deno starter routes', async () => 
   }
 
   if (typeof infoResponse.body !== 'object' || infoResponse.body === null) {
-    throw new Error('Expected /health-info/ to return an object body.');
+    throw new Error('Expected /greeting/ to return an object body.');
   }
 
-  const infoBody = infoResponse.body as { ok?: unknown; service?: unknown };
-  if (infoBody.ok !== true || typeof infoBody.service !== 'string') {
-    throw new Error('Expected /health-info/ to return the generated service payload.');
+  const infoBody = infoResponse.body as { framework?: unknown; message?: unknown; project?: unknown };
+  if (infoBody.message !== 'Hello from fluo' || infoBody.framework !== 'fluo' || typeof infoBody.project !== 'string') {
+    throw new Error('Expected /greeting/ to return the generated service payload.');
   }
 
   await app.close();
@@ -2063,11 +2065,11 @@ function emitApplicationScaffoldFiles(options: BootstrapOptions): ScaffoldFile[]
   const files: ScaffoldFile[] = [
     { content: createAppFile(options), path: 'src/app.ts' },
     { content: createMainFile(options), path: entrypointPath },
-    { content: createHealthResponseDtoFile(), path: 'src/health/health.response.dto.ts' },
-    { content: createHealthRepoFile(options.projectName, importSuffix), path: 'src/health/health.repo.ts' },
-    { content: createHealthServiceFile(importSuffix), path: 'src/health/health.service.ts' },
-    { content: createHealthControllerFile(importSuffix), path: 'src/health/health.controller.ts' },
-    { content: createHealthModuleFile(importSuffix), path: 'src/health/health.module.ts' },
+    { content: createGreetingResponseDtoFile(), path: 'src/greeting/greeting.response.dto.ts' },
+    { content: createGreetingRepoFile(options.projectName, importSuffix), path: 'src/greeting/greeting.repo.ts' },
+    { content: createGreetingServiceFile(importSuffix), path: 'src/greeting/greeting.service.ts' },
+    { content: createGreetingControllerFile(importSuffix), path: 'src/greeting/greeting.controller.ts' },
+    { content: createGreetingModuleFile(importSuffix), path: 'src/greeting/greeting.module.ts' },
   ];
 
   if (options.runtime === 'deno') {
@@ -2076,9 +2078,9 @@ function emitApplicationScaffoldFiles(options: BootstrapOptions): ScaffoldFile[]
   }
 
   files.push(
-    { content: createHealthRepoTestFile(), path: 'src/health/health.repo.test.ts' },
-    { content: createHealthServiceTestFile(), path: 'src/health/health.service.test.ts' },
-    { content: createHealthControllerTestFile(), path: 'src/health/health.controller.test.ts' },
+    { content: createGreetingRepoTestFile(), path: 'src/greeting/greeting.repo.test.ts' },
+    { content: createGreetingServiceTestFile(), path: 'src/greeting/greeting.service.test.ts' },
+    { content: createGreetingControllerTestFile(), path: 'src/greeting/greeting.controller.test.ts' },
     { content: createAppTestFile(importSuffix), path: 'src/app.test.ts' },
     { content: createAppE2eTestFile(importSuffix), path: 'src/app.e2e.test.ts' },
   );
@@ -2140,14 +2142,14 @@ function emitScaffoldFilesForRecipe(options: BootstrapOptions, recipeId: Starter
     return [
       { content: createMixedAppFile(), path: 'src/app.ts' },
       { content: createMixedMainFile(), path: 'src/main.ts' },
-      { content: createHealthResponseDtoFile(), path: 'src/health/health.response.dto.ts' },
-      { content: createHealthRepoFile(options.projectName), path: 'src/health/health.repo.ts' },
-      { content: createHealthRepoTestFile(), path: 'src/health/health.repo.test.ts' },
-      { content: createHealthServiceFile(), path: 'src/health/health.service.ts' },
-      { content: createHealthServiceTestFile(), path: 'src/health/health.service.test.ts' },
-      { content: createHealthControllerFile(), path: 'src/health/health.controller.ts' },
-      { content: createHealthControllerTestFile(), path: 'src/health/health.controller.test.ts' },
-      { content: createHealthModuleFile(), path: 'src/health/health.module.ts' },
+      { content: createGreetingResponseDtoFile(), path: 'src/greeting/greeting.response.dto.ts' },
+      { content: createGreetingRepoFile(options.projectName), path: 'src/greeting/greeting.repo.ts' },
+      { content: createGreetingRepoTestFile(), path: 'src/greeting/greeting.repo.test.ts' },
+      { content: createGreetingServiceFile(), path: 'src/greeting/greeting.service.ts' },
+      { content: createGreetingServiceTestFile(), path: 'src/greeting/greeting.service.test.ts' },
+      { content: createGreetingControllerFile(), path: 'src/greeting/greeting.controller.ts' },
+      { content: createGreetingControllerTestFile(), path: 'src/greeting/greeting.controller.test.ts' },
+      { content: createGreetingModuleFile(), path: 'src/greeting/greeting.module.ts' },
       { content: createMathHandlerFile({ transport: 'tcp' }), path: 'src/math/math.handler.ts' },
       { content: createMathHandlerTestFile({ transport: 'tcp' }), path: 'src/math/math.handler.test.ts' },
       { content: createMixedAppTestFile(), path: 'src/app.test.ts' },

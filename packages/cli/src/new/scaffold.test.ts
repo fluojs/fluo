@@ -213,6 +213,8 @@ describe('scaffoldBootstrapApp', () => {
     const tsconfig = readFileSync(join(targetDirectory, 'tsconfig.json'), 'utf8');
     const tsconfigBuild = readFileSync(join(targetDirectory, 'tsconfig.build.json'), 'utf8');
     const appFile = readFileSync(join(targetDirectory, 'src', 'app.ts'), 'utf8');
+    const greetingRepoFile = readFileSync(join(targetDirectory, 'src', 'greeting', 'greeting.repo.ts'), 'utf8');
+    const greetingModuleFile = readFileSync(join(targetDirectory, 'src', 'greeting', 'greeting.module.ts'), 'utf8');
     const viteConfig = readFileSync(join(targetDirectory, 'vite.config.ts'), 'utf8');
     const vitestConfig = readFileSync(join(targetDirectory, 'vitest.config.ts'), 'utf8');
 
@@ -237,7 +239,13 @@ describe('scaffoldBootstrapApp', () => {
     expect(tsconfigBuild).not.toContain('baseUrl');
     expect(appFile).toContain("import { HealthModule as RuntimeHealthModule } from '@fluojs/runtime';");
     expect(appFile).toContain('RuntimeHealthModule.forRoot()');
+    expect(appFile).toContain("import { GreetingModule } from './greeting/greeting.module';");
+    expect(appFile).toContain('GreetingModule');
+    expect(appFile).not.toContain('./health/health.module');
     expect(appFile).not.toContain('createHealthModule');
+    expect(greetingRepoFile).toContain('findGreeting');
+    expect(greetingRepoFile).toContain("message: 'Hello from fluo'");
+    expect(greetingModuleFile).toContain('export class GreetingModule');
     expect(viteConfig).toContain("import { defineConfig } from 'vite';");
     expect(viteConfig).not.toContain('baseUrl');
     expect(vitestConfig).toContain("import { fluoBabelDecoratorsPlugin } from '@fluojs/testing/vitest';");
@@ -533,7 +541,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(packageJson.devDependencies).not.toHaveProperty('vitest');
     expect(readme).toContain('Deno runtime + Deno native HTTP via `runDenoApplication(...)`');
     expect(appFile).toContain("Deno.env.toObject()");
-    expect(appFile).toContain("'./health/health.module.ts'");
+    expect(appFile).toContain("'./greeting/greeting.module.ts'");
     expect(mainFile).toContain("import { AppModule } from './app.ts';");
     expect(appTestFile).toContain('Deno.test');
   });

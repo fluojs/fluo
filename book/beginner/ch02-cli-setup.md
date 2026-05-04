@@ -255,11 +255,11 @@ This file tells you the following.
 - How to run the compiled output,
 - How linting or testing is connected.
 
-### src/hello.controller.ts and src/hello.service.ts
+### src/greeting/*
 
-These two files are the fastest proof that the default starter is an app that can actually respond.
+The greeting slice is the fastest proof that the default starter is an app that can actually respond.
 
-The Controller exposes the default route, and the service provides the value returned by that route. At the beginning, reading only this pair lets you trace where a request enters and where the returned value is created.
+The Controller exposes the starter route, the service delegates the use case, and the repository owns the tiny response payload. At the beginning, reading this slice lets you trace where a request enters and where the returned value is created.
 
 ### Reading Before Editing
 
@@ -269,11 +269,11 @@ Before changing anything, spend a few minutes reading the generated files. That 
 2. What you will change yourself in later chapters.
 3. Which file owns which responsibility.
 
-### Why the starter includes hello files
+### Why the starter includes greeting files
 
-`hello.controller.ts` and `hello.service.ts` are the smallest example for verifying the first run.
+`greeting.controller.ts`, `greeting.service.ts`, and `greeting.repo.ts` are the smallest generated feature slice for verifying the first run.
 
-Before adding complex domain code, they let you see where the default route and response come from. This starting point makes it easier to tell what was newly added when you change code in later chapters.
+Before adding complex domain code, they let you see how a controller, service, repository, DTO, and module fit together. This starting point makes it easier to tell what was newly added when you change code in later chapters.
 
 ### Exploring the `node_modules` Folder (Briefly)
 
@@ -375,10 +375,10 @@ After the server starts, send a real request once.
 
 ```bash
 curl http://localhost:3000/health
-curl http://localhost:3000/hello
+curl http://localhost:3000/greeting
 ```
 
-If you see `{"status":"ok"}` and `{"message":"Hello, World!"}`, the default health check and starter route are both working correctly according to the current contract.
+If you see `{"status":"ok"}` and a greeting payload such as `{"message":"Hello from fluo","framework":"fluo","project":"fluo-blog"}`, the runtime health check and starter feature route are both working correctly according to the current contract.
 
 ### What You Actually Verified
 
@@ -388,7 +388,7 @@ When the first run succeeds, it is easy to underestimate what that request prove
 - Dependencies were installed correctly.
 - TypeScript compiled or transformed as expected in development mode.
 - The runtime adapter started correctly.
-- The default verification routes, `/health` and `/hello`, are reachable.
+- The default verification routes, runtime `/health` and starter-owned `/greeting`, are reachable.
 
 That is enough to give you a strong baseline for the chapters that follow.
 

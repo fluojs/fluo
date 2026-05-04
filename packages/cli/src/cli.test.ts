@@ -3414,13 +3414,13 @@ exit 7
     expect(readFileSync(join(projectDirectory, '.gitignore'), 'utf8')).toContain('.env');
     expect(readFileSync(join(projectDirectory, '.env'), 'utf8')).toContain('PORT=3000');
     expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
-    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.repo.ts'))).toBe(true);
-    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.repo.test.ts'))).toBe(true);
-    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.service.ts'))).toBe(true);
-    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.service.test.ts'))).toBe(true);
-    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.response.dto.ts'))).toBe(true);
-    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.controller.ts'))).toBe(true);
-    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.controller.test.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'greeting', 'greeting.repo.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'greeting', 'greeting.repo.test.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'greeting', 'greeting.service.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'greeting', 'greeting.service.test.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'greeting', 'greeting.response.dto.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'greeting', 'greeting.controller.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'greeting', 'greeting.controller.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.e2e.test.ts'))).toBe(true);
     expect(readmeContent).toContain('Starter contract: `src/main.ts` wires the selected first-class application starter: Node.js runtime + Fastify HTTP via `createFastifyAdapter(...)`');
@@ -3435,10 +3435,10 @@ exit 7
     expect(mainContent).toContain('await app.listen();');
     expect(appTestContent).toContain("createRequest('/health')");
     expect(appTestContent).toContain("createRequest('/ready')");
-    expect(appTestContent).toContain("createRequest('/health-info/')");
+    expect(appTestContent).toContain("createRequest('/greeting/')");
     expect(appE2eTestContent).toContain("path: '/health'");
     expect(appE2eTestContent).toContain("path: '/ready'");
-    expect(appE2eTestContent).toContain("path: '/health-info/'");
+    expect(appE2eTestContent).toContain("path: '/greeting/'");
 
   }, 90000);
 
@@ -3677,7 +3677,7 @@ exit 7
     });
 
     expect(exitCode).toBe(0);
-    expect(readFileSync(join(workspaceDirectory, "starter'app", 'src', 'health', 'health.repo.ts'), 'utf8')).toContain('service: "starter\'app"');
+    expect(readFileSync(join(workspaceDirectory, "starter'app", 'src', 'greeting', 'greeting.repo.ts'), 'utf8')).toContain('project: "starter\'app"');
   });
 
   it('prints generate usage for an unknown schematic', async () => {

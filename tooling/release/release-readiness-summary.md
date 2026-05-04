@@ -4,7 +4,7 @@
 
 - [x] Canonical bootstrap docs — The quick start guide documents the public `pnpm add -g @fluojs/cli` + `fluo new` path.
 - [x] Repo-local smoke path docs — The repo-local sandbox path is documented in CONTRIBUTING.md as monorepo verification support.
-- [x] Starter shape and runtime ownership — The generated starter uses runtime-owned bootstrap helpers plus a starter-owned health module, without default metrics or OpenAPI surfaces.
+- [x] Starter shape and runtime ownership — The generated starter uses runtime-owned bootstrap helpers plus a starter-owned greeting module, without default metrics or OpenAPI surfaces.
 - [x] Generic-first bootstrap contract — Bootstrap docs and scaffold source no longer encode ORM/DB prompts, support tiers, or starter-time ORM adapter injection.
 - [x] Toolchain contract lock — The toolchain contract matrix documents the generated app baseline plus the canonical fluo command surfaces.
 - [x] Manifest benchmark evidence — Release governance documents the canonical publish surface and the automated release gates.

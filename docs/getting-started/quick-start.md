@@ -121,14 +121,14 @@ Default verification endpoints:
 
 ```bash
 curl http://localhost:3000/health
-curl http://localhost:3000/hello
+curl http://localhost:3000/greeting
 ```
 
 Expected output:
 
 ```text
 {"status":"ok"}
-{"message":"Hello, World!"}
+{"message":"Hello from fluo","framework":"fluo","project":"my-fluo-app"}
 ```
 
 ## Invariants
@@ -136,6 +136,6 @@ Expected output:
 - `tsconfig.json` keeps `experimentalDecorators` disabled.
 - `tsconfig.json` keeps `emitDecoratorMetadata` disabled.
 - The default generated application listens on port `3000` during `pnpm dev`, which delegates to `fluo dev`; generated build/start scripts likewise delegate to `fluo build` and `fluo start`.
-- The default generated application exposes `/health` and `/hello`.
+- The default generated application exposes runtime `/health` plus starter-owned `/greeting`.
 - `fluo new` starter variants map to the maintained starter matrix documented in the CLI README and the support matrix.
 - `fluo new --print-plan` is a read-only preview path. It resolves the starter plan and dependency sets without writing project files, running dependency installation, or initializing git.
