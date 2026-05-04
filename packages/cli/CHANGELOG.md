@@ -1,5 +1,11 @@
 # @fluojs/cli
 
+## 1.0.0-beta.7
+
+### Patch Changes
+
+- [#1566](https://github.com/fluojs/fluo/pull/1566) [`6adc9dc`](https://github.com/fluojs/fluo/commit/6adc9dca23341bd97cc6c64aeb041c80f29f15dc) Thanks [@ayden94](https://github.com/ayden94)! - Clarify generated Node.js starter logging defaults and point JSON-log opt-ins to the runtime logger factory.
+
 ## 1.0.0-beta.6
 
 ### Minor Changes

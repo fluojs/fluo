@@ -1,5 +1,14 @@
 # @fluojs/terminus
 
+## 1.0.0-beta.4
+
+### Patch Changes
+
+- Updated dependencies [[`dc8fff1`](https://github.com/fluojs/fluo/commit/dc8fff11bc0880667cebba3aa808ed4e9eef1299)]:
+  - @fluojs/drizzle@1.0.0-beta.3
+  - @fluojs/prisma@1.0.0-beta.3
+  - @fluojs/redis@1.0.0-beta.3
+
 ## 1.0.0-beta.3
 
 ### Patch Changes
