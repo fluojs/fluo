@@ -51,6 +51,8 @@ export interface EventBusTransport {
 
 /** Module options for local event dispatch defaults and optional external fan-out. */
 export interface EventBusModuleOptions {
+  /** Whether event-bus providers should be visible globally. Defaults to `true`. */
+  global?: boolean;
   publish?: {
     timeoutMs?: number;
     waitForHandlers?: boolean;

@@ -38,7 +38,7 @@ export class EventBusModule {
 
     return defineModule(EventBusModuleDefinition, {
       exports: [EventBusLifecycleService, EVENT_BUS],
-      global: true,
+      global: options.global ?? true,
       providers: createEventBusProviders(options),
     });
   }
