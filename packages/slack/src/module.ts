@@ -1,4 +1,4 @@
-import type { AsyncModuleOptions, MaybePromise } from '@fluojs/core';
+import type { MaybePromise } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
@@ -89,12 +89,12 @@ function buildSlackModule(options: SlackModuleOptions): ModuleType {
 
   return defineModule(SlackRootModuleDefinition, {
     exports: [SlackService, SlackChannel, SLACK, SLACK_CHANNEL],
-    global: true,
+    global: options.global ?? true,
     providers: createSlackProviders(options),
   });
 }
 
-function buildSlackModuleAsync(options: AsyncModuleOptions<SlackModuleOptions>): ModuleType {
+function buildSlackModuleAsync(options: SlackAsyncModuleOptions): ModuleType {
   class SlackAsyncModuleDefinition {}
 
   const factory = options.useFactory as (...args: unknown[]) => MaybePromise<SlackModuleOptions>;
@@ -110,7 +110,7 @@ function buildSlackModuleAsync(options: AsyncModuleOptions<SlackModuleOptions>):
 
   return defineModule(SlackAsyncModuleDefinition, {
     exports: [SlackService, SlackChannel, SLACK, SLACK_CHANNEL],
-    global: true,
+    global: options.global ?? true,
     providers: createSlackRuntimeProviders({
       inject: options.inject,
       provide: SLACK_OPTIONS,

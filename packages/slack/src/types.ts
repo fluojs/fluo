@@ -221,6 +221,8 @@ export interface SlackSendManyOptions extends SlackSendOptions {
 /** Module options accepted by {@link SlackModule.forRoot} and `forRootAsync`. */
 export interface SlackModuleOptions {
   defaultChannel?: string;
+  /** Whether Slack providers should be visible globally. Defaults to `true`. */
+  global?: boolean;
   notifications?: {
     channel?: string;
   };
@@ -230,7 +232,7 @@ export interface SlackModuleOptions {
 }
 
 /** Async registration options for Slack modules that derive config through DI. */
-export type SlackAsyncModuleOptions = AsyncModuleOptions<SlackModuleOptions>;
+export type SlackAsyncModuleOptions = AsyncModuleOptions<Omit<SlackModuleOptions, 'global'>> & Pick<SlackModuleOptions, 'global'>;
 
 /** Normalized module options resolved once during module registration. */
 export interface NormalizedSlackModuleOptions {
