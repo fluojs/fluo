@@ -109,7 +109,7 @@ Plan preview 모드는 실제 scaffold와 같은 프로젝트 이름, target dir
 pnpm dev
 ```
 
-생성된 lifecycle script는 `fluo dev`, `fluo build`, `fluo start`를 실행합니다. 이 CLI lifecycle runner들은 스타터의 런타임 명령을 선택하고, 호출자가 이미 설정하지 않은 경우 dev는 `NODE_ENV=development`, build/start는 `NODE_ENV=production`을 기본 설정합니다.
+기본 Node.js + Fastify 스타터는 `fluo dev`, `fluo build`, `fluo start`를 실행하는 lifecycle script를 생성합니다. 이 CLI lifecycle runner들은 스타터의 런타임 명령을 선택하고, 호출자가 이미 설정하지 않은 경우 dev는 `NODE_ENV=development`, build/start는 `NODE_ENV=production`을 기본 설정합니다. Bun, Deno, Cloudflare Workers 스타터도 restart-on-watch 개발 boundary에는 `fluo dev`를 사용하지만, 생성된 production/deployment script는 runtime-native 명령을 사용합니다. Bun은 `bun build`로 빌드하고 `bun dist/main.js`로 시작하며, Deno는 `deno compile` 후 컴파일된 `./dist/app`을 실행하고, Workers는 `start` script 대신 Wrangler `preview`/`deploy` script를 노출합니다.
 
 예상 출력 패턴:
 
@@ -135,7 +135,8 @@ curl http://localhost:3000/greeting
 
 - `tsconfig.json`에서 `experimentalDecorators`는 비활성화 상태를 유지합니다.
 - `tsconfig.json`에서 `emitDecoratorMetadata`는 비활성화 상태를 유지합니다.
-- 기본 생성 애플리케이션은 `fluo dev`로 위임되는 `pnpm dev` 중 포트 `3000`에서 리슨하며, 생성된 build/start script도 각각 `fluo build`, `fluo start`로 위임됩니다.
+- 기본 생성 Node.js 애플리케이션은 `fluo dev`로 위임되는 `pnpm dev` 중 포트 `3000`에서 리슨하며, 생성된 build/start script도 각각 `fluo build`, `fluo start`로 위임됩니다.
+- 생성된 Bun 및 Deno 애플리케이션의 production script는 build 이후 runtime-native 명령을 사용하고, 생성된 Cloudflare Workers 애플리케이션은 `start` 대신 Wrangler `preview`/`deploy` script를 사용합니다.
 - 기본 생성 애플리케이션은 runtime `/health`와 starter-owned `/greeting`을 노출합니다.
 - `fluo new` 스타터 변형은 CLI README와 지원 매트릭스에 문서화된 유지보수 대상 스타터 매트릭스에 맞춰집니다.
 - `fluo new --print-plan`은 읽기 전용 preview 경로입니다. 프로젝트 파일 작성, dependency 설치, git 초기화 없이 starter plan과 dependency 세트를 해석합니다.

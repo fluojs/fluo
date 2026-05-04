@@ -109,7 +109,7 @@ Generated project start command from the project root:
 pnpm dev
 ```
 
-The generated lifecycle scripts run `fluo dev`, `fluo build`, and `fluo start`. Those CLI lifecycle runners select the starter's runtime commands and default `NODE_ENV` to `development` for dev and `production` for build/start unless the caller already set it.
+The default Node.js + Fastify starter generates lifecycle scripts that run `fluo dev`, `fluo build`, and `fluo start`. Those CLI lifecycle runners select the starter's runtime commands and default `NODE_ENV` to `development` for dev and `production` for build/start unless the caller already set it. Bun, Deno, and Cloudflare Workers starters still use `fluo dev` for the restart-on-watch development boundary, but their generated production/deployment scripts use runtime-native commands: Bun builds with `bun build` and starts with `bun dist/main.js`, Deno compiles with `deno compile` and starts the compiled `./dist/app`, and Workers exposes Wrangler `preview`/`deploy` scripts instead of a `start` script.
 
 Expected output pattern:
 
@@ -135,7 +135,8 @@ Expected output:
 
 - `tsconfig.json` keeps `experimentalDecorators` disabled.
 - `tsconfig.json` keeps `emitDecoratorMetadata` disabled.
-- The default generated application listens on port `3000` during `pnpm dev`, which delegates to `fluo dev`; generated build/start scripts likewise delegate to `fluo build` and `fluo start`.
+- The default generated Node.js application listens on port `3000` during `pnpm dev`, which delegates to `fluo dev`; its generated build/start scripts likewise delegate to `fluo build` and `fluo start`.
+- Generated Bun and Deno application production scripts are runtime-native after build, and generated Cloudflare Workers applications use Wrangler `preview`/`deploy` scripts instead of `start`.
 - The default generated application exposes runtime `/health` plus starter-owned `/greeting`.
 - `fluo new` starter variants map to the maintained starter matrix documented in the CLI README and the support matrix.
 - `fluo new --print-plan` is a read-only preview path. It resolves the starter plan and dependency sets without writing project files, running dependency installation, or initializing git.
