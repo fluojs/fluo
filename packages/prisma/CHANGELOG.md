@@ -1,5 +1,11 @@
 # @fluojs/prisma
 
+## 1.0.0-beta.4
+
+### Major Changes
+
+- [#1571](https://github.com/fluojs/fluo/pull/1571) [`de78f42`](https://github.com/fluojs/fluo/commit/de78f42839c54af97369c37e6fc1cc7985b9f5fb) Thanks [@ayden94](https://github.com/ayden94)! - Remove the `PrismaModule.forName` and `PrismaModule.forNameAsync` convenience aliases. Register named Prisma clients through `PrismaModule.forRoot({ name, ... })` or `PrismaModule.forRootAsync({ name, ... })` instead.
+
 ## 1.0.0-beta.3
 
 ### Minor Changes

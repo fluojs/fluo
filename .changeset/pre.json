@@ -127,6 +127,7 @@
     "preserve-cron-shutdown-locks",
     "prisma-named-scoped-registrations",
     "recover-lane-2026-04-27-metadata",
+    "remove-prisma-forname-aliases",
     "runtime-lifecycle-health-readiness",
     "runtime-logger-cli-reporter",
     "runtime-microservice-ownership",

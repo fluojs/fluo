@@ -1,5 +1,12 @@
 # @fluojs/terminus
 
+## 1.0.0-beta.5
+
+### Patch Changes
+
+- Updated dependencies [[`de78f42`](https://github.com/fluojs/fluo/commit/de78f42839c54af97369c37e6fc1cc7985b9f5fb)]:
+  - @fluojs/prisma@1.0.0-beta.4
+
 ## 1.0.0-beta.4
 
 ### Patch Changes
