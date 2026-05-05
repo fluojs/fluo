@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 import {
+  createAbortError,
   createRequestAbortContext,
   raceWithAbort,
   trackActiveRequestTransaction,
@@ -19,6 +20,7 @@ import type {
 const TRANSACTION_NOT_SUPPORTED_ERROR = 'Transaction not supported: Drizzle database does not implement transaction.';
 const NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR =
   'Nested Drizzle transaction options are not supported because the active transaction context is reused.';
+const REQUEST_TRANSACTION_UNAVAILABLE_ERROR = 'Drizzle request transactions are not available during shutdown.';
 
 type ActiveRequestTransaction = {
   abort(reason?: unknown): void;
@@ -181,14 +183,20 @@ export class DrizzleDatabase<
     options: TTransactionOptions | undefined,
     signal?: AbortSignal,
   ): Promise<T> {
+    this.assertRequestTransactionsAvailable();
+
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
 
     try {
-      return await transactionRunner(
+      const result = await transactionRunner<T>(
         (transactionDatabase) => this.transactions.run(transactionDatabase, () => raceWithAbort(fn, abortContext.signal)),
         options,
       );
+
+      this.throwIfRequestAborted(abortContext.signal);
+
+      return result;
     } finally {
       abortContext.cleanup();
       this.untrackActiveRequestTransaction(active);
@@ -196,14 +204,32 @@ export class DrizzleDatabase<
   }
 
   private async executeRequestFallback<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    this.assertRequestTransactionsAvailable();
+
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
 
     try {
-      return await raceWithAbort(fn, abortContext.signal);
+      const result = await raceWithAbort(fn, abortContext.signal);
+
+      this.throwIfRequestAborted(abortContext.signal);
+
+      return result;
     } finally {
       abortContext.cleanup();
       this.untrackActiveRequestTransaction(active);
+    }
+  }
+
+  private assertRequestTransactionsAvailable(): void {
+    if (this.lifecycleState !== 'ready') {
+      throw new Error(REQUEST_TRANSACTION_UNAVAILABLE_ERROR);
+    }
+  }
+
+  private throwIfRequestAborted(signal: AbortSignal): void {
+    if (signal.aborted) {
+      throw createAbortError(signal.reason);
     }
   }
 
