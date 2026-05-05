@@ -3681,7 +3681,7 @@ exit 7
     const readmeContent = readFileSync(join(projectDirectory, 'README.md'), 'utf8');
     const mainContent = readFileSync(join(projectDirectory, 'src', 'main.ts'), 'utf8');
     const appTestContent = readFileSync(join(projectDirectory, 'src', 'app.test.ts'), 'utf8');
-    const appE2eTestContent = readFileSync(join(projectDirectory, 'src', 'app.e2e.test.ts'), 'utf8');
+    const appE2eTestContent = readFileSync(join(projectDirectory, 'test', 'app.e2e.test.ts'), 'utf8');
 
     expect(exitCode).toBe(0);
     expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).toContain('@fluojs/runtime');
@@ -3691,6 +3691,8 @@ exit 7
     expect(packageJson.scripts?.typecheck).toBeDefined();
     expect(packageJson.scripts?.build).toBeDefined();
     expect(packageJson.scripts?.test).toBeDefined();
+    expect(packageJson.scripts?.['test:cov']).toBe('vitest run --coverage');
+    expect(packageJson.scripts?.['test:e2e']).toBe('vitest run test/**/*.e2e.test.ts');
     expect(readFileSync(join(projectDirectory, '.gitignore'), 'utf8')).toContain('.env');
     expect(readFileSync(join(projectDirectory, '.env'), 'utf8')).toContain('PORT=3000');
     expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
@@ -3701,8 +3703,9 @@ exit 7
     expect(existsSync(join(projectDirectory, 'src', 'greeting', 'greeting.response.dto.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'greeting', 'greeting.controller.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'greeting', 'greeting.controller.test.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'greeting', 'greeting.slice.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.test.ts'))).toBe(true);
-    expect(existsSync(join(projectDirectory, 'src', 'app.e2e.test.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'test', 'app.e2e.test.ts'))).toBe(true);
     expect(readmeContent).toContain('Starter contract: `src/main.ts` wires the selected first-class application starter: Node.js runtime + Fastify HTTP via `createFastifyAdapter(...)`');
     expect(readmeContent).toContain('Default baseline: when you omit `--platform`, `fluo new` still generates the Node.js + Fastify HTTP starter by default');
     expect(readmeContent).toContain('Broader runtime/adapter package coverage is documented in the fluo docs and package READMEs; this generated starter intentionally describes only the wired starter path above');

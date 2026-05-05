@@ -15,6 +15,7 @@ const PUBLISHED_DEV_DEPENDENCIES = {
   '@babel/preset-typescript': '^7.27.1',
   '@types/babel__core': '^7.20.5',
   '@types/node': '^22.13.10',
+  '@vitest/coverage-v8': '^3.0.8',
   tsx: '^4.20.4',
   typescript: '^6.0.2',
   vite: '^6.2.1',
@@ -188,6 +189,8 @@ function createProjectScripts(bootstrapPlan: ResolvedBootstrapPlan): Record<stri
         dev: 'fluo dev',
         start: 'bun dist/main.js',
         test: 'vitest run',
+        'test:cov': 'vitest run --coverage',
+        'test:e2e': 'vitest run test/**/*.e2e.test.ts',
         'test:watch': 'vitest',
         typecheck: 'tsc -p tsconfig.json --noEmit',
       };
@@ -207,6 +210,8 @@ function createProjectScripts(bootstrapPlan: ResolvedBootstrapPlan): Record<stri
         dev: 'fluo dev',
         preview: 'wrangler dev --remote --show-interactive-dev-session=false',
         test: 'vitest run',
+        'test:cov': 'vitest run --coverage',
+        'test:e2e': 'vitest run test/**/*.e2e.test.ts',
         'test:watch': 'vitest',
         typecheck: 'tsc -p tsconfig.json --noEmit',
       };
@@ -216,6 +221,12 @@ function createProjectScripts(bootstrapPlan: ResolvedBootstrapPlan): Record<stri
         dev: 'fluo dev',
         start: 'fluo start',
         test: 'vitest run',
+        ...(bootstrapPlan.profile.emitter.type === 'http'
+          ? {
+              'test:cov': 'vitest run --coverage',
+              'test:e2e': 'vitest run test/**/*.e2e.test.ts',
+            }
+          : {}),
         'test:watch': 'vitest',
         typecheck: 'tsc -p tsconfig.json --noEmit',
       };
@@ -390,7 +401,7 @@ export default defineConfig({
   plugins: [fluoBabelDecoratorsPlugin()],
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'test/**/*.test.ts'],
   },
 });
 `;
@@ -463,7 +474,7 @@ function createHttpProjectReadme(options: BootstrapOptions): string {
       : `- CORS: defaults to allowOrigin '*'; pass a \`cors\` option to \`FluoFactory.create(..., { cors, adapter: ${starter.adapterFactory}(...) })\` to restrict origins`;
   const testingSection = options.runtime === 'deno'
     ? `## Official generated testing templates\n\n- \`src/app.test.ts\` — Deno-native integration-style dispatch verification for the generated runtime + starter routes.\n\nUse this test when you need confidence that the generated Deno entrypoint and module graph still agree on the same HTTP contract.`
-    : `## Official generated testing templates\n\n- \`src/greeting/*.test.ts\` — unit templates for the starter-owned greeting slice.\n- \`src/app.test.ts\` — integration-style dispatch template for runtime + starter routes.\n- \`src/app.e2e.test.ts\` — e2e-style template powered by \`createTestApp\` from \`@fluojs/testing\`.\n- \`${createExecCommand(options.packageManager, 'fluo g repo User')}\` also adds:\n  - \`src/users/user.repo.test.ts\` (unit template)\n  - \`src/users/user.repo.slice.test.ts\` (slice/integration template via \`createTestingModule\`)\n\nUse unit templates for fast logic checks. Use slice/e2e templates when you need module wiring and route-level confidence.`;
+    : `## Official generated testing templates\n\n- \`src/greeting/greeting.repo.test.ts\`, \`src/greeting/greeting.service.test.ts\`, and \`src/greeting/greeting.controller.test.ts\` — unit templates for the starter-owned greeting slice.\n- \`src/greeting/greeting.slice.test.ts\` — module/slice template via \`createTestingModule\` for real DI graph confidence.\n- \`src/app.test.ts\` — integration-style dispatch template for runtime + starter routes.\n- \`test/app.e2e.test.ts\` — dedicated e2e-style template powered by \`createTestApp\` from \`@fluojs/testing\`; older \`src/app.e2e.test.ts\` tests can be moved here without changing the request helper.\n- \`${createExecCommand(options.packageManager, 'fluo g repo User')}\` also adds:\n  - \`src/users/user.repo.test.ts\` (unit template)\n  - \`src/users/user.repo.slice.test.ts\` (slice/integration template via \`createTestingModule\`)\n\nUse unit templates for fast logic checks, \`${createRunCommand(options.packageManager, 'test:e2e')}\` for the dedicated e2e suite, and \`${createRunCommand(options.packageManager, 'test:cov')}\` when your Vitest runtime supports coverage.`;
 
   return `# ${options.projectName}
 
@@ -837,6 +848,29 @@ describe('GreetingController', () => {
   it('delegates to the service', () => {
     const controller = new GreetingController(new FakeGreetingService() as never);
     expect(controller.getGreeting()).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: 'test' });
+  });
+});
+`;
+}
+
+function createGreetingSliceTestFile(importSuffix = ''): string {
+  return `import { describe, expect, it } from 'vitest';
+
+import { createTestingModule } from '@fluojs/testing';
+
+import { GreetingModule } from './greeting.module${importSuffix}';
+import { GreetingRepo } from './greeting.repo${importSuffix}';
+import { GreetingService } from './greeting.service${importSuffix}';
+
+describe('Greeting slice', () => {
+  it('resolves starter providers from the module graph', async () => {
+    const testingModule = await createTestingModule({ rootModule: GreetingModule }).compile();
+
+    const repo = await testingModule.resolve(GreetingRepo);
+    const service = await testingModule.resolve(GreetingService);
+
+    expect(repo.findGreeting()).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) });
+    expect(service.getGreeting()).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) });
   });
 });
 `;
@@ -1864,7 +1898,7 @@ function createAppE2eTestFile(importSuffix = ''): string {
 
 import { createTestApp } from '@fluojs/testing';
 
-import { AppModule } from './app${importSuffix}';
+import { AppModule } from '../src/app${importSuffix}';
 
 describe('AppModule e2e', () => {
   it('serves runtime and starter routes through createTestApp', async () => {
@@ -2099,8 +2133,9 @@ function emitApplicationScaffoldFiles(options: BootstrapOptions): ScaffoldFile[]
     { content: createGreetingRepoTestFile(), path: 'src/greeting/greeting.repo.test.ts' },
     { content: createGreetingServiceTestFile(), path: 'src/greeting/greeting.service.test.ts' },
     { content: createGreetingControllerTestFile(), path: 'src/greeting/greeting.controller.test.ts' },
+    { content: createGreetingSliceTestFile(importSuffix), path: 'src/greeting/greeting.slice.test.ts' },
     { content: createAppTestFile(importSuffix), path: 'src/app.test.ts' },
-    { content: createAppE2eTestFile(importSuffix), path: 'src/app.e2e.test.ts' },
+    { content: createAppE2eTestFile(importSuffix), path: 'test/app.e2e.test.ts' },
   );
 
   return files;
@@ -2168,6 +2203,7 @@ function emitScaffoldFilesForRecipe(options: BootstrapOptions, recipeId: Starter
       { content: createGreetingControllerFile(), path: 'src/greeting/greeting.controller.ts' },
       { content: createGreetingControllerTestFile(), path: 'src/greeting/greeting.controller.test.ts' },
       { content: createGreetingModuleFile(), path: 'src/greeting/greeting.module.ts' },
+      { content: createGreetingSliceTestFile(), path: 'src/greeting/greeting.slice.test.ts' },
       { content: createMathHandlerFile({ transport: 'tcp' }), path: 'src/math/math.handler.ts' },
       { content: createMathHandlerTestFile({ transport: 'tcp' }), path: 'src/math/math.handler.test.ts' },
       { content: createMixedAppTestFile(), path: 'src/app.test.ts' },

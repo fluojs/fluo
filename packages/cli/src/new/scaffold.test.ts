@@ -234,10 +234,13 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/cli': '^1.0.0-beta.7',
       '@fluojs/testing': '^1.0.0-beta.2',
       '@fluojs/vite': '^1.0.0-beta.2',
+      '@vitest/coverage-v8': '^3.0.8',
     });
     expect(packageJson.scripts?.build).toBe('fluo build');
     expect(packageJson.scripts?.dev).toBe('fluo dev');
     expect(packageJson.scripts?.start).toBe('fluo start');
+    expect(packageJson.scripts?.['test:cov']).toBe('vitest run --coverage');
+    expect(packageJson.scripts?.['test:e2e']).toBe('vitest run test/**/*.e2e.test.ts');
     expect(tsconfig).not.toContain('baseUrl');
     expect(tsconfigBuild).not.toContain('baseUrl');
     expect(appFile).toContain("import { HealthModule } from '@fluojs/runtime';");
@@ -257,6 +260,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(viteConfig).not.toContain('function fluoDecoratorsPlugin');
     expect(viteConfig).not.toContain('baseUrl');
     expect(vitestConfig).toContain("import { fluoBabelDecoratorsPlugin } from '@fluojs/testing/vitest';");
+    expect(vitestConfig).toContain("include: ['src/**/*.test.ts', 'test/**/*.test.ts']");
     expect(vitestConfig).not.toContain('baseUrl');
   });
 
