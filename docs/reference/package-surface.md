@@ -36,7 +36,7 @@
 - **`@fluojs/runtime`**: Application bootstrap, module orchestration, platform shell registration, and platform snapshot production. Public runtime helpers are exposed through `@fluojs/runtime/node` and `@fluojs/runtime/web`.
 
 ### adapters
-- **`platform-*`**: Implement the `PlatformAdapter` interface. They bridge abstract HTTP calls to runtime-specific listeners.
+- **`platform-*`**: Implement the repository policy seam named `PlatformAdapter`; HTTP runtime packages do so through `HttpApplicationAdapter` from `@fluojs/http`. They bridge abstract HTTP calls to runtime-specific listeners.
 - **`@fluojs/socket.io`**: A dedicated transport-brand adapter that mirrors upstream Socket.IO semantics.
 
 ### features
@@ -67,7 +67,7 @@ Runtime packages remain the source of inspection snapshots and timing diagnostic
 This boundary keeps graph semantics out of `@fluojs/cli`: the CLI may locate `@fluojs/studio/contracts` and call `renderMermaid(snapshot)`, but Studio defines how internal dependency edges and external dependency nodes become Mermaid output. Consumers that need a persistent artifact should use `fluo inspect --json --output <path>` for raw snapshots, `fluo inspect --timing --output <path>` for standalone timing diagnostics, `fluo inspect --json --timing --output <path>` for snapshot-plus-timing envelopes, or `fluo inspect --report --output <path>` for support reports.
 
 ## naming conventions
-- **`platform-*`**: Reserved for runtime/protocol adapters implementing `PlatformAdapter`.
+- **`platform-*`**: Reserved for runtime/protocol adapters that implement the documented adapter seam (`HttpApplicationAdapter` for HTTP transports).
 - **`*service`**: Concrete implementation of business logic.
 - **`*module`**: Entry point for a package's runtime initialization.
 

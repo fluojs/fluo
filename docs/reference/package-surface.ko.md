@@ -36,7 +36,7 @@
 - **`@fluojs/runtime`**: 애플리케이션 부트스트랩, 모듈 오케스트레이션, 플랫폼 셸 등록, 플랫폼 snapshot 생산. 공개 런타임 헬퍼는 `@fluojs/runtime/node`와 `@fluojs/runtime/web`에서 제공됩니다.
 
 ### adapters
-- **`platform-*`**: `PlatformAdapter` 인터페이스를 구현합니다. 추상 HTTP 호출을 런타임별 리스너에 연결합니다.
+- **`platform-*`**: 저장소 정책상 `PlatformAdapter`라고 부르는 접점을 구현합니다. HTTP 런타임 패키지는 `@fluojs/http`의 `HttpApplicationAdapter`로 이를 충족합니다. 추상 HTTP 호출을 런타임별 리스너에 연결합니다.
 - **`@fluojs/socket.io`**: 업스트림 Socket.IO 시맨틱을 미러링하는 전용 전송 브랜드 어댑터.
 
 ### features
@@ -67,7 +67,7 @@
 이 경계는 graph semantics를 `@fluojs/cli` 밖에 둡니다. CLI는 `@fluojs/studio/contracts`를 찾아 `renderMermaid(snapshot)`을 호출할 수 있지만, 내부 dependency edge와 외부 dependency node를 Mermaid output으로 바꾸는 방식은 Studio가 정의합니다. 지속 보관할 artifact가 필요한 소비자는 raw snapshot에는 `fluo inspect --json --output <path>`, standalone timing diagnostics에는 `fluo inspect --timing --output <path>`, snapshot-plus-timing envelope에는 `fluo inspect --json --timing --output <path>`, support report에는 `fluo inspect --report --output <path>`를 사용해야 합니다.
 
 ## 명명 규칙
-- **`platform-*`**: `PlatformAdapter`를 구현하는 런타임/프로토콜 어댑터 전용.
+- **`platform-*`**: 문서화된 adapter seam(HTTP transport에서는 `HttpApplicationAdapter`)을 구현하는 런타임/프로토콜 어댑터 전용.
 - **`*service`**: 비즈니스 로직의 구체적 구현.
 - **`*module`**: 패키지 런타임 초기화의 진입점.
 

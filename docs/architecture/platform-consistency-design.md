@@ -2,13 +2,13 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./platform-consistency-design.ko.md"><kbd>한국어</kbd></a></p>
 
-This document defines the current platform adapter contract used by fluo transport packages. Repository guidance names this seam `PlatformAdapter`, while the current transport-facing code exposes `HttpApplicationAdapter` in `@fluojs/http` and platform component orchestration through `PlatformShell` in `@fluojs/runtime`.
+This document defines the current platform adapter contract used by fluo transport packages. Repository guidance names this policy seam `PlatformAdapter`, while the current transport-facing code exposes `HttpApplicationAdapter` in `@fluojs/http` and platform component orchestration through `PlatformShell` in `@fluojs/runtime`.
 
-## PlatformAdapter Interface
+## Platform Adapter Seam
 
 | Contract area | Current source | Requirement |
 | --- | --- | --- |
-| Package identity | `docs/reference/package-surface.md` reserves `@fluojs/platform-*` for adapters implementing `PlatformAdapter`. | Platform packages MUST provide the runtime-facing adapter seam for one hosting environment or protocol. |
+| Package identity | `docs/reference/package-surface.md` reserves `@fluojs/platform-*` for adapters implementing the documented adapter seam. | Platform packages MUST provide the runtime-facing adapter seam for one hosting environment or protocol. |
 | HTTP transport seam | `packages/http/src/adapter.ts` defines `HttpApplicationAdapter`. | An adapter MUST bind the dispatcher to the host transport through `listen(dispatcher)` and release transport resources through `close(signal?)`. |
 | Request contract | `packages/http/src/types.ts` defines `FrameworkRequest` and `FrameworkResponse`. | An adapter MUST normalize host-native request and response objects to the framework contracts before dispatch. |
 | Runtime shell integration | `packages/runtime/src/bootstrap.ts` registers `HTTP_APPLICATION_ADAPTER` and `PLATFORM_SHELL`. | An adapter MUST participate in runtime bootstrap without changing module compilation, lifecycle hook order, or dispatcher creation order. |

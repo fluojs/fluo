@@ -35,8 +35,8 @@
 | Rule 1 | Core packages MUST NOT depend on transport adapters or feature packages. |
 | Rule 2 | Transport packages MAY depend on core contracts, but transport packages MUST NOT redefine decorator, DI, or config primitives owned by the core layer. |
 | Rule 3 | Feature packages MAY depend on core packages and the documented transport surface that they extend. |
-| Rule 4 | Feature packages MUST NOT access hosting-environment APIs as a substitute for `@fluojs/config`, runtime lifecycle contracts, or `PlatformAdapter` seams. |
-| Rule 5 | Platform packages MUST implement the `PlatformAdapter` interface and MUST preserve the request-phase ordering defined by the HTTP runtime. |
+| Rule 4 | Feature packages MUST NOT access hosting-environment APIs as a substitute for `@fluojs/config`, runtime lifecycle contracts, or documented adapter seams. |
+| Rule 5 | Platform packages MUST implement the repository policy seam named `PlatformAdapter` (`HttpApplicationAdapter` for HTTP transports) and MUST preserve the request-phase ordering defined by the HTTP runtime. |
 | Rule 6 | Cross-package integration MUST flow through exported module contracts, provider tokens, and documented metadata rather than implicit reflection or ambient globals. |
 
 ## Constraints
