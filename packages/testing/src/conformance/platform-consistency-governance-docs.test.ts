@@ -157,6 +157,8 @@ describe('platform consistency governance docs', () => {
     expect(docsContextKo).toContain('docs/contracts/release-governance.md');
     expect(docsContext).toContain('docs/contracts/public-export-tsdoc-baseline.md');
     expect(docsContextKo).toContain('docs/contracts/public-export-tsdoc-baseline.md');
+    expect(docsContext).toContain('docs/contracts/testing-guide.md');
+    expect(docsContextKo).toContain('docs/contracts/testing-guide.md');
   });
 
   it('verifies CI-only Changesets release runbook discoverability', () => {
