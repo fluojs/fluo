@@ -10,6 +10,7 @@ fluo 런타임을 위한 데코레이터 기반 WebSocket 게이트웨이 작성
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
+- [바이너리 페이로드](#바이너리-페이로드)
 - [공개 API 개요](#공개-api-개요)
 - [런타임별 서브패스](#런타임별-서브패스)
 - [예제 소스](#예제-소스)
@@ -102,6 +103,10 @@ WebSocketModule.forRoot({
 ```
 
 옵션을 생략하면 `@fluojs/websockets`는 동시 연결 수, inbound payload 크기, pending message buffer, shutdown cleanup에 bounded default를 적용합니다. 기본값은 `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, Node backpressure `maxBufferedAmountBytes: 1 MiB`와 drop behavior입니다. 또한 server-backed Node listener는 `heartbeat.enabled`를 명시적으로 `false`로 두지 않는 한 heartbeat timer를 활성화합니다. 공식 fetch-style runtime module(`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`)은 애플리케이션 shutdown 시 추적 중인 websocket 클라이언트를 닫고 `shutdown.timeoutMs` 범위 안에서 `@OnDisconnect()` cleanup이 마무리될 수 있도록 bounded 기회를 제공합니다.
+
+## 바이너리 페이로드
+
+Gateway `@OnMessage()` handler는 지원 런타임 전반에서 하나의 정규화된 payload contract를 받습니다. Text frame은 가능한 경우 JSON으로 파싱하고, 그렇지 않으면 string으로 전달합니다. Binary frame은 런타임이 Node `Buffer`/typed array, Bun `ArrayBuffer`/view, Deno `ArrayBuffer`/view/`Blob`, Cloudflare Workers `ArrayBuffer`/view/`Blob` 중 어떤 형태로 노출하더라도 UTF-8로 디코딩한 뒤 동일한 JSON/event dispatch 단계를 거칩니다. `limits.maxPayloadBytes` 검사는 모든 표현에 byte length를 사용하며, 허용된 socket에서 oversized payload가 들어오면 close code `1009`로 닫습니다.
 
 ## 공개 API 개요
 

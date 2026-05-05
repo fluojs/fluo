@@ -1,9 +1,14 @@
 import type { WebSocketModuleOptions as SharedWebSocketModuleOptions } from '../types.js';
 
 /**
- * Defines the deno web socket message type.
+ * Defines the Deno websocket inbound message contract.
+ *
+ * @remarks
+ * Deno deployments may surface binary frames as `ArrayBuffer`, typed array views, or
+ * `Blob` values depending on the host and compatibility layer. The adapter accepts
+ * each binary representation and normalizes it before dispatching gateway handlers.
  */
-export type DenoWebSocketMessage = Blob | string;
+export type DenoWebSocketMessage = ArrayBuffer | ArrayBufferView | Blob | string;
 
 /**
  * Describes the deno server web socket contract.

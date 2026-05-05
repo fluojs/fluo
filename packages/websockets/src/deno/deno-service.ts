@@ -128,7 +128,20 @@ function resolveMessageByteLength(message: DenoWebSocketMessage): number {
     return new TextEncoder().encode(message).byteLength;
   }
 
-  return message.size;
+  if (message instanceof Blob) {
+    return message.size;
+  }
+
+  if (message instanceof ArrayBuffer) {
+    return message.byteLength;
+  }
+
+  if (ArrayBuffer.isView(message)) {
+    return message.byteLength;
+  }
+
+  const unreachable: never = message;
+  return unreachable;
 }
 
 function createCompletionSignal(): { promise: Promise<void>; resolve: () => void } {
@@ -567,8 +580,12 @@ export class DenoWebSocketGatewayLifecycleService
     this.clearQueuedMessages(state);
   }
 
-  private async normalizeMessage(message: DenoWebSocketMessage): Promise<string | ArrayBuffer> {
+  private async normalizeMessage(message: DenoWebSocketMessage): Promise<string | ArrayBuffer | ArrayBufferView> {
     if (typeof message === 'string') {
+      return message;
+    }
+
+    if (message instanceof ArrayBuffer || ArrayBuffer.isView(message)) {
       return message;
     }
 
