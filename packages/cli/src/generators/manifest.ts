@@ -1,6 +1,7 @@
 import type { GeneratorFactory, GeneratorOptionSchema } from '../generator-types.js';
 
 import { generateControllerFiles } from './controller.js';
+import { generateE2eFiles } from './e2e.js';
 import { generateGuardFiles } from './guard.js';
 import { generateInterceptorFiles } from './interceptor.js';
 import { generateMiddlewareFiles } from './middleware.js';
@@ -45,6 +46,8 @@ export const generatorOptionSchemas = [
   { aliases: ['-o'], description: 'Write generated files under a specific source directory.', name: '--target-directory <path>', value: 'path' },
   { aliases: ['-f'], description: 'Overwrite files that already exist.', name: '--force', value: 'boolean' },
   { aliases: [], description: 'Preview planned writes, skips, and module wiring without touching files.', name: '--dry-run', value: 'boolean' },
+  { aliases: [], description: 'Emit a module-level slice test when generating module schematics.', name: '--with-test', value: 'boolean' },
+  { aliases: [], description: 'Emit the resource slice test with createTestingModule provider override coverage.', name: '--with-slice-test', value: 'boolean' },
   { aliases: ['-h'], description: 'Show help for the generate command.', name: '--help', value: 'boolean' },
 ] as const satisfies readonly GeneratorOptionSchema[];
 
@@ -58,6 +61,15 @@ const builtInGeneratorDefinitions = [
     nextStepHint: "Run 'pnpm typecheck' to verify module wiring, then add route handlers.",
     schematic: 'controller',
     wiringBehavior: 'auto-registered',
+  },
+  {
+    aliases: [],
+    description: 'Generate an app-level e2e-style test with createTestApp({ rootModule }).',
+    factory: (name, options) => generateE2eFiles(name, options),
+    kind: 'e2e',
+    nextStepHint: "Run 'pnpm test:e2e' after wiring the route into AppModule, or update the generated path expectation first.",
+    schematic: 'e2e',
+    wiringBehavior: 'files-only',
   },
   {
     aliases: ['gu'],
@@ -91,8 +103,8 @@ const builtInGeneratorDefinitions = [
   },
   {
     aliases: ['mo'],
-    description: 'Generate a standalone module (import it in a parent module to activate).',
-    factory: (name) => generateModuleFiles(name),
+    description: 'Generate a standalone module (add --with-test for a module graph slice test).',
+    factory: (name, options) => generateModuleFiles(name, options),
     kind: 'module',
     nextStepHint: "Import the new module in a parent module's imports array, then run 'pnpm typecheck'.",
     schematic: 'module',
@@ -120,7 +132,7 @@ const builtInGeneratorDefinitions = [
   },
   {
     aliases: ['resrc'],
-    description: 'Generate a full resource slice with module, controller, service, repository, and DTO stubs.',
+    description: 'Generate a full resource slice with module, controller, service, repository, DTO stubs, and optional --with-slice-test.',
     factory: (name, options) => generateResourceFiles(name, options),
     kind: 'resource',
     nextStepHint: "Run 'pnpm typecheck' and wire the resource module into a parent module when ready.",

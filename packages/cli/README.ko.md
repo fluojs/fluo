@@ -137,18 +137,23 @@ feature slice를 생성합니다. 일부 schematic은 모듈에 자동 등록되
 
 ```bash
 fluo generate module users
+fluo generate module users --with-test
 fluo generate resource users
+fluo generate resource users --with-slice-test
+fluo generate e2e users
 fluo generate controller users
 fluo generate service users
 fluo generate request-dto users CreateUser
 fluo generate service users --dry-run
 ```
 
-지원되는 generator kind와 alias는 `controller`/`co`, `guard`/`gu`, `interceptor`/`in`, `middleware`/`mi`, `module`/`mo`, `repo`/`repository`, `request-dto`/`req`, `resource`/`resrc`, `response-dto`/`res`, `service`/`s`입니다.
+지원되는 generator kind와 alias는 `controller`/`co`, `e2e`, `guard`/`gu`, `interceptor`/`in`, `middleware`/`mi`, `module`/`mo`, `repo`/`repository`, `request-dto`/`req`, `resource`/`resrc`, `response-dto`/`res`, `service`/`s`입니다.
 
-자동 등록되는 generator는 `controller`, `service`, `repo`, `guard`, `interceptor`, `middleware`입니다. 파일만 생성하는 generator는 `module`, `request-dto`, `response-dto`, `resource`입니다.
+자동 등록되는 generator는 `controller`, `service`, `repo`, `guard`, `interceptor`, `middleware`입니다. 파일만 생성하는 generator는 `e2e`, `module`, `request-dto`, `response-dto`, `resource`입니다.
 
-`fluo generate resource <name>`는 module, controller, service, repository, request DTO, response DTO, test를 포함하는 완전한 feature slice를 생성합니다. 생성된 resource module은 parent module에 자동으로 연결하지 않으므로, slice를 활성화할 준비가 되었을 때 직접 import하세요.
+`fluo generate module <name> --with-test`는 작성한 module을 `createTestingModule({ rootModule })`로 컴파일하는 `*.slice.test.ts`를 추가합니다. `fluo generate resource <name>`는 module, controller, service, repository, request DTO, response DTO, test를 포함하는 완전한 feature slice를 생성합니다. `--with-slice-test`를 추가하면 provider override와 service resolution을 보여 주는 resource-level slice test도 포함합니다. 생성된 resource module은 parent module에 자동으로 연결하지 않으므로, slice를 활성화할 준비가 되었을 때 직접 import하세요.
+
+`fluo generate e2e <name>`는 generated starter와 같은 app-level test 영역에 request-pipeline test를 두도록 `createTestApp({ rootModule: AppModule })`을 사용하는 `test/<name>.e2e.test.ts`를 작성합니다. 생성된 unit test는 직접 class 동작 검증에, slice test는 DI wiring과 override 검증에, e2e test는 virtual app을 통과하는 route, guard, interceptor, DTO validation, response writing 검증에 사용하세요.
 
 Request DTO 생성은 feature 디렉터리와 DTO 클래스 이름을 분리해서 받습니다. 따라서 `CreateUser`, `UpdateUser` 같은 여러 입력 계약을 같은 `src/users/` 슬라이스 안에 둘 수 있습니다.
 

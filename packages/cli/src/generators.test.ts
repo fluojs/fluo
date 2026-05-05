@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { generateControllerFiles } from './generators/controller.js';
+import { generateE2eFiles } from './generators/e2e.js';
 import { generateGuardFiles } from './generators/guard.js';
 import { generateInterceptorFiles } from './generators/interceptor.js';
 import {
@@ -17,6 +18,7 @@ import { generateRepoFiles } from './generators/repository.js';
 import { generateRequestDtoFiles } from './generators/request-dto.js';
 import { generateResponseDtoFiles } from './generators/response-dto.js';
 import { renderTemplate } from './generators/render.js';
+import { generateResourceFiles } from './generators/resource.js';
 import { generateServiceFiles } from './generators/service.js';
 import { GeneratorRegistry, defaultRegistry } from './registry.js';
 
@@ -35,6 +37,9 @@ describe('CLI generators', () => {
     expect(generateServiceFiles('User')[1]?.path).toBe('user.service.test.ts');
     expect(generateRepoFiles('User')[1]?.path).toBe('user.repo.test.ts');
     expect(generateRepoFiles('User')[2]?.path).toBe('user.repo.slice.test.ts');
+    expect(generateModuleFiles('User', { withTest: true })[1]?.path).toBe('user.slice.test.ts');
+    expect(generateResourceFiles('User', { withSliceTest: true }).at(-1)?.path).toBe('user.slice.test.ts');
+    expect(generateE2eFiles('Users')[0]?.path).toBe('users.e2e.test.ts');
   });
 
   it('emits repo slice templates based on stable testing APIs', () => {
@@ -43,6 +48,36 @@ describe('CLI generators', () => {
     expect(content).toContain("from '@fluojs/testing'");
     expect(content).toContain('createTestingModule({ rootModule: UserModule })');
     expect(content).toContain('await testingModule.resolve(UserRepo)');
+  });
+
+  it('emits module and resource slice templates based on stable testing APIs', () => {
+    const moduleSlice = generateModuleFiles('User', { withTest: true })[1]?.content ?? '';
+    const resourceSlice = generateResourceFiles('User', { withSliceTest: true }).at(-1)?.content ?? '';
+
+    expect(moduleSlice).toContain('createTestingModule({ rootModule: UserModule })');
+    expect(moduleSlice).toContain('testingModule.rootModule');
+    expect(resourceSlice).toContain('createTestingModule({ rootModule: UserModule })');
+    expect(resourceSlice).toContain('overrideProvider(UserRepo');
+    expect(resourceSlice).toContain('await testingModule.resolve<UserService>(UserService)');
+  });
+
+  it('generates resource modules with internal slice wiring', () => {
+    const content = generateResourceFiles('User')[0]?.content ?? '';
+
+    expect(content).toContain("import { UserController } from './user.controller';");
+    expect(content).toContain("import { UserRepo } from './user.repo';");
+    expect(content).toContain("import { UserService } from './user.service';");
+    expect(content).toContain('controllers: [UserController]');
+    expect(content).toContain('providers: [UserRepo, UserService]');
+  });
+
+  it('emits e2e templates based on createTestApp', () => {
+    const content = generateE2eFiles('Users', { e2eRootModuleImport: '../src/app.module' })[0]?.content ?? '';
+
+    expect(content).toContain("import { createTestApp } from '@fluojs/testing';");
+    expect(content).toContain("import { AppModule } from '../src/app.module';");
+    expect(content).toContain('createTestApp({ rootModule: AppModule })');
+    expect(content).toContain("app.request('GET', '/users').send()");
   });
 
   it('emits generic repository examples without ORM-specific access', () => {
@@ -252,6 +287,7 @@ describe('GeneratorRegistry', () => {
     expect(listGeneratorDefinitions()).toEqual(generatorManifest);
     expect(generatorManifest.map((entry) => entry.kind)).toEqual([
       'controller',
+      'e2e',
       'guard',
       'interceptor',
       'middleware',
@@ -270,6 +306,8 @@ describe('GeneratorRegistry', () => {
       { aliases: ['-o'], description: 'Write generated files under a specific source directory.', name: '--target-directory <path>', value: 'path' },
       { aliases: ['-f'], description: 'Overwrite files that already exist.', name: '--force', value: 'boolean' },
       { aliases: [], description: 'Preview planned writes, skips, and module wiring without touching files.', name: '--dry-run', value: 'boolean' },
+      { aliases: [], description: 'Emit a module-level slice test when generating module schematics.', name: '--with-test', value: 'boolean' },
+      { aliases: [], description: 'Emit the resource slice test with createTestingModule provider override coverage.', name: '--with-slice-test', value: 'boolean' },
       { aliases: ['-h'], description: 'Show help for the generate command.', name: '--help', value: 'boolean' },
     ]);
   });

@@ -10,18 +10,20 @@
 fluo generate <generator> <name> [--target-directory <path>] [--force] [--dry-run]
 fluo g <generator> <name> [--target-directory <path>] [--force] [--dry-run]
 fluo g request-dto <feature> <name> [--target-directory <path>] [--force] [--dry-run]
+fluo g e2e <name> [--target-directory <path>] [--force] [--dry-run]
 ```
 
 | 생성기 | 허용 토큰 | 예시 문법 | 배선 방식 | 출력 범위 |
 | --- | --- | --- | --- | --- |
-| Module | `module`, `mo` | `fluo generate module Billing` | 파일만 생성 | 독립 모듈 파일 |
+| Module | `module`, `mo` | `fluo generate module Billing --with-test` | 파일만 생성 | 독립 모듈 파일, 선택적 slice test |
+| E2E | `e2e` | `fluo generate e2e Billing` | 파일만 생성 | `test/` 아래 app-level e2e-style test |
 | Controller | `controller`, `co` | `fluo g controller Billing` | 자동 등록 | 컨트롤러 파일, 테스트 파일, 모듈 갱신 |
 | Service | `service`, `s` | `fluo g service Billing` | 자동 등록 | 서비스 파일, 테스트 파일, 모듈 갱신 |
 | Repository | `repo`, `repository` | `fluo g repo Billing` | 자동 등록 | 레포지토리 파일, 단위 테스트, 슬라이스 테스트, 모듈 갱신 |
 | Guard | `guard`, `gu` | `fluo generate guard Billing` | 자동 등록 | 가드 파일, 모듈 갱신 |
 | Interceptor | `interceptor`, `in` | `fluo generate interceptor Billing` | 자동 등록 | 인터셉터 파일, 모듈 갱신 |
 | Middleware | `middleware`, `mi` | `fluo generate middleware Billing` | 자동 등록 | 미들웨어 파일, 모듈 갱신 |
-| Resource | `resource`, `resrc` | `fluo generate resource Billing` | 파일만 생성 | 모듈, 컨트롤러, 서비스, 레포지토리, DTO, 테스트 |
+| Resource | `resource`, `resrc` | `fluo generate resource Billing --with-slice-test` | 파일만 생성 | 모듈, 컨트롤러, 서비스, 레포지토리, DTO, 테스트 |
 | Request DTO | `request-dto`, `req` | `fluo generate request-dto billing CreateBilling` | 파일만 생성 | 요청 DTO 파일 |
 | Response DTO | `response-dto`, `res` | `fluo generate response-dto Billing` | 파일만 생성 | 응답 DTO 파일 |
 
@@ -33,14 +35,15 @@ fluo g request-dto <feature> <name> [--target-directory <path>] [--force] [--dry
 
 | 생성기 | 슬라이스 디렉터리에 생성되는 파일 | 모듈 영향 |
 | --- | --- | --- |
-| Module | `post.module.ts` | 없음. 상위 모듈 import는 별도로 처리합니다. |
+| Module | `post.module.ts`; `--with-test`를 추가하면 `post.slice.test.ts` | 없음. 상위 모듈 import는 별도로 처리합니다. |
+| E2E | `test/post.e2e.test.ts` | 없음. 해석된 source directory에서 `AppModule`을 import하고 `createTestApp({ rootModule })`을 사용합니다. |
 | Controller | `post.controller.ts`, `post.controller.test.ts` | `post.module.ts`를 생성하거나 갱신하고 `PostController`를 `controllers`에 추가합니다. |
 | Service | `post.service.ts`, `post.service.test.ts` | `post.module.ts`를 생성하거나 갱신하고 `PostService`를 `providers`에 추가합니다. |
 | Repository | `post.repo.ts`, `post.repo.test.ts`, `post.repo.slice.test.ts` | `post.module.ts`를 생성하거나 갱신하고 `PostRepo`를 `providers`에 추가합니다. |
 | Guard | `post.guard.ts` | `post.module.ts`를 생성하거나 갱신하고 `PostGuard`를 `providers`에 추가합니다. |
 | Interceptor | `post.interceptor.ts` | `post.module.ts`를 생성하거나 갱신하고 `PostInterceptor`를 `providers`에 추가합니다. |
 | Middleware | `post.middleware.ts` | `post.module.ts`를 생성하거나 갱신하고 `PostMiddleware`를 `middleware`에 추가합니다. |
-| Resource | `post.module.ts`, `post.controller.ts`, `post.controller.test.ts`, `post.service.ts`, `post.service.test.ts`, `post.repo.ts`, `post.repo.test.ts`, `post.repo.slice.test.ts`, `create-post.request.dto.ts`, `post.response.dto.ts` | 상위 모듈에는 영향 없음. 생성된 모듈은 별도로 import합니다. |
+| Resource | `post.module.ts`, `post.controller.ts`, `post.controller.test.ts`, `post.service.ts`, `post.service.test.ts`, `post.repo.ts`, `post.repo.test.ts`, `post.repo.slice.test.ts`, `create-post.request.dto.ts`, `post.response.dto.ts`; `--with-slice-test`를 추가하면 `post.slice.test.ts` | 상위 모듈에는 영향 없음. 생성된 모듈은 별도로 import합니다. |
 | Request DTO | `fluo g req posts CreatePost` 사용 시 `posts/` 안의 `create-post.request.dto.ts` | 없음. 컨트롤러에서 수동 import가 필요합니다. |
 | Response DTO | `post.response.dto.ts` | 없음. 컨트롤러 반환 타입으로 수동 사용이 필요합니다. |
 
@@ -53,7 +56,17 @@ fluo g request-dto <feature> <name> [--target-directory <path>] [--force] [--dry
 | `--target-directory <path>` | `-o` | 모든 생성기 | 지정한 소스 디렉터리 아래에 슬라이스를 기록합니다. |
 | `--force` | `-f` | 모든 생성기 | 기존 생성 파일을 건너뛰지 않고 덮어씁니다. |
 | `--dry-run` | 없음 | 모든 생성기 | 디렉터리 생성, 파일 쓰기, 모듈 갱신 없이 예정된 생성, 건너뛰기, 덮어쓰기, 모듈 갱신을 출력합니다. |
+| `--with-test` | 없음 | `module` | `createTestingModule({ rootModule })`로 작성한 모듈을 컴파일하는 `*.slice.test.ts`를 추가합니다. |
+| `--with-slice-test` | 없음 | `resource` | `createTestingModule({ rootModule })`로 provider override와 service resolution을 보여 주는 resource-level `*.slice.test.ts`를 추가합니다. |
 | `--help` | `-h` | `fluo generate`, `fluo g` | generate 명령 사용법과 생성기 메타데이터를 출력합니다. |
+
+## Generated Test Ladder
+
+- 생성된 unit test(`*.service.test.ts`, `*.controller.test.ts`, `*.repo.test.ts`)는 직접 class를 구성하고 명시적 fake를 넘기는 빠른 동작 검증에 사용합니다.
+- Repository 또는 resource slice test(`*.slice.test.ts`)는 `createTestingModule({ rootModule })`을 통한 DI graph 신뢰도, provider visibility, override 예제가 필요할 때 사용합니다.
+- Provider를 직접 배선하기 전에 최소 module compilation test가 필요하면 `fluo g module <name> --with-test`를 사용합니다.
+- 생성된 feature slice에 repo slice test 외에도 module-level provider override 패턴을 포함하려면 `fluo g resource <name> --with-slice-test`를 사용합니다.
+- App-level request-pipeline scaffold가 필요하면 `fluo g e2e <name>`을 사용합니다. 이 명령은 `test/<name>.e2e.test.ts`를 쓰고, `AppModule`을 import하며, `createTestApp({ rootModule: AppModule })`을 호출합니다. Route expectation은 생성 또는 작성한 controller에 맞게 개발자가 조정합니다.
 
 ## Dry-run Preview
 
@@ -93,8 +106,10 @@ Dry-run 모드는 `Dry run: no files were written.`를 출력한 뒤 각 예정 
 - `--dry-run`은 실제 실행과 같은 검증, 기본 타깃 해석, `--target-directory`, request DTO feature 타깃 규칙을 사용하지만 작업공간은 변경하지 않습니다.
 - Dry-run 출력은 파일만 생성하는 생성기와 자동 등록 생성기를 구분하며, 모듈이 생성, 갱신, 또는 변경 없음 상태인지도 표시합니다.
 - `--dry-run`과 `--force`를 함께 사용하면 덮어쓰기 결정을 적용하지 않고 미리 볼 수 있습니다.
+- `--with-test`는 `module`에서만 지원됩니다. `fluo g resource User --with-test` 같은 지원되지 않는 조합은 non-zero exit로 실패하며 resource에는 `--with-slice-test`를 사용하라는 안내를 출력합니다.
+- `--with-slice-test`는 `resource`에서만 지원됩니다. `fluo g module User --with-slice-test` 같은 지원되지 않는 조합은 non-zero exit로 실패합니다.
 - 자동 등록 메타데이터가 해석되더라도 변경되지 않은 파일 내용은 다시 쓰지 않습니다.
 - Generator discovery는 built-in `@fluojs/cli/builtin` collection으로 제한됩니다. 외부 또는 app-local collection은 보류되어 있으며 이 명령이 로드하지 않습니다.
 - 모듈 자동 등록은 controller, service, repository, guard, interceptor, middleware 생성기에만 적용됩니다.
 - Resource, DTO, module 생성기는 상위 모듈 import를 자동으로 연결하지 않습니다.
-- generate 명령이 문서화하는 옵션은 `--target-directory`, `--force`, `--dry-run`, `--help`입니다.
+- generate 명령이 문서화하는 옵션은 `--target-directory`, `--force`, `--dry-run`, `--with-test`, `--with-slice-test`, `--help`입니다.

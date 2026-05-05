@@ -1,0 +1,13 @@
+import { Module } from '@fluojs/core';
+
+import { <%- controller %> } from './<%- kebab %>.controller';
+import { <%- repo %> } from './<%- kebab %>.repo';
+import { <%- service %> } from './<%- kebab %>.service';
+
+@Module({
+  controllers: [<%- controller %>],
+  providers: [<%- repo %>, <%- service %>],
+})
+class <%- module %> {}
+
+export { <%- module %> };

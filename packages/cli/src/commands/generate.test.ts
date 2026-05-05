@@ -317,4 +317,49 @@ export { PostModule };
     expect(result.moduleRegistered).toBe(false);
     expect(result.nextStepHint).toContain('parent module');
   });
+
+  it('generates standalone module slice tests when requested', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-generate-'));
+    tempDirectories.push(workspaceDirectory);
+
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    const result = runGenerateCommand('module', 'Auth', sourceDirectory, { withTest: true });
+
+    expect(result.generatedFiles).toEqual([
+      join(sourceDirectory, 'auths', 'auth.module.ts'),
+      join(sourceDirectory, 'auths', 'auth.slice.test.ts'),
+    ]);
+    expect(readFileSync(join(sourceDirectory, 'auths', 'auth.slice.test.ts'), 'utf8')).toContain(
+      'createTestingModule({ rootModule: AuthModule })',
+    );
+  });
+
+  it('generates resource slice tests when requested', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-generate-'));
+    tempDirectories.push(workspaceDirectory);
+
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    const result = runGenerateCommand('resource', 'User', sourceDirectory, { withSliceTest: true });
+    const slicePath = join(sourceDirectory, 'users', 'user.slice.test.ts');
+    const sliceContent = readFileSync(slicePath, 'utf8');
+
+    expect(result.generatedFiles).toContain(slicePath);
+    expect(sliceContent).toContain('createTestingModule({ rootModule: UserModule })');
+    expect(sliceContent).toContain('overrideProvider(UserRepo');
+    expect(sliceContent).toContain('await testingModule.resolve<UserService>(UserService)');
+  });
+
+  it('generates e2e tests under the project test directory', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-generate-'));
+    tempDirectories.push(workspaceDirectory);
+
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    const result = runGenerateCommand('e2e', 'Users', sourceDirectory);
+    const e2ePath = join(workspaceDirectory, 'test', 'users.e2e.test.ts');
+    const e2eContent = readFileSync(e2ePath, 'utf8');
+
+    expect(result.generatedFiles).toEqual([e2ePath]);
+    expect(e2eContent).toContain("import { AppModule } from '../src/app.module';");
+    expect(e2eContent).toContain('createTestApp({ rootModule: AppModule })');
+  });
 });

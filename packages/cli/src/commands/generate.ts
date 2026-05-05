@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, normalize, resolve } from 'node:path';
+import { basename, dirname, join, normalize, relative, resolve, sep } from 'node:path';
 
 import type { GenerateOptions, GeneratorKind } from '../types.js';
 import type { GeneratorManifestEntry, ModuleArrayKey } from '../generators/manifest.js';
@@ -61,15 +61,30 @@ function createGeneratorOptions(
   domainDirectory: string,
   kebab: string,
   options: GenerateOptions,
+  resolvedBase: string,
 ): GenerateOptions {
   return {
     ...options,
+    e2eRootModuleImport: options.e2eRootModuleImport ?? (kind === 'e2e' ? resolveE2eRootModuleImport(domainDirectory, resolvedBase) : undefined),
     hasRepo: options.hasRepo ?? (kind === 'service' ? existsSync(join(domainDirectory, `${kebab}.repo.ts`)) : undefined),
     hasService: options.hasService ?? (kind === 'controller' ? existsSync(join(domainDirectory, `${kebab}.service.ts`)) : undefined),
   };
 }
 
+function toImportSpecifier(path: string): string {
+  const normalized = path.split(sep).join('/');
+  return normalized.startsWith('.') ? normalized : `./${normalized}`;
+}
+
+function resolveE2eRootModuleImport(domainDirectory: string, resolvedBase: string): string {
+  return toImportSpecifier(relative(domainDirectory, join(resolvedBase, 'app.module')));
+}
+
 function resolveDomainDirectory(kind: GeneratorKind, resolvedBase: string, kebab: string, options: GenerateOptions): string {
+  if (kind === 'e2e') {
+    return basename(resolvedBase) === 'src' ? join(dirname(resolvedBase), 'test') : join(resolvedBase, 'test');
+  }
+
   if (kind === 'request-dto' && options.targetFeature !== undefined) {
     const normalizedFeature = options.targetFeature.trim();
     const featureKebab = assertValidResourceName(normalizedFeature);
@@ -193,7 +208,7 @@ export function runGenerateCommand(kind: GeneratorKind, name: string, baseDirect
 
   const resolvedBase = resolve(baseDirectory);
   const domainDirectory = resolveDomainDirectory(kind, resolvedBase, kebab, options);
-  const generatorOptions = createGeneratorOptions(kind, domainDirectory, kebab, options);
+  const generatorOptions = createGeneratorOptions(kind, domainDirectory, kebab, options, resolvedBase);
   const files = generator.factory(normalizedName, generatorOptions);
   const moduleRegistration = 'moduleRegistration' in generator ? generator.moduleRegistration : undefined;
 

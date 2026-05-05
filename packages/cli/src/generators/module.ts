@@ -1,4 +1,4 @@
-import type { GeneratedFile } from '../types.js';
+import type { GenerateOptions, GeneratedFile } from '../types.js';
 import ts from 'typescript';
 
 import type { ModuleArrayKey } from './manifest.js';
@@ -167,16 +167,25 @@ export function ensureModuleImport(source: string, className: string, importPath
  * @param name The name.
  * @returns The generate module files result.
  */
-export function generateModuleFiles(name: string): GeneratedFile[] {
+export function generateModuleFiles(name: string, options: GenerateOptions = {}): GeneratedFile[] {
   const kebab = toKebabCase(name);
   const pascal = `${toPascalCase(name)}Module`;
 
-  return [
+  const files: GeneratedFile[] = [
     {
       content: renderTemplate('module.ts.ejs', { kebab, pascal }),
       path: `${kebab}.module.ts`,
     },
   ];
+
+  if (options.withTest) {
+    files.push({
+      content: renderTemplate('module.slice.test.ts.ejs', { kebab, pascal }),
+      path: `${kebab}.slice.test.ts`,
+    });
+  }
+
+  return files;
 }
 
 function insertIntoModuleArray(source: string, arrayKey: 'controllers' | 'providers' | 'middleware', className: string): string {

@@ -1,0 +1,19 @@
+import { describe, expect, it } from 'vitest';
+
+import { createTestApp } from '@fluojs/testing';
+
+import { AppModule } from '<%- rootModuleImport %>';
+
+describe('<%- kebab %> e2e', () => {
+  it('dispatches through the app request pipeline', async () => {
+    const app = await createTestApp({ rootModule: AppModule });
+
+    try {
+      const response = await app.request('GET', '/<%- kebab %>').send();
+
+      expect(response.status).toBe(200);
+    } finally {
+      await app.close();
+    }
+  });
+});

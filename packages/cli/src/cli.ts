@@ -202,6 +202,7 @@ function generateUsage(): string {
   return [
     'Usage: fluo generate|g <kind> <name> [options]',
     '       fluo generate|g request-dto|req <feature> <name> [options]',
+    '       fluo generate|g e2e <name> [options]',
     '',
     'Schematics',
     renderHelpTable(GENERATE_KIND_HELP, [
@@ -301,6 +302,8 @@ function parseGenerateArgs(argv: string[]): ParsedCliArgs {
   let seenForce = false;
   let seenDryRun = false;
   let seenTargetDirectory = false;
+  let seenWithSliceTest = false;
+  let seenWithTest = false;
 
   for (let index = 0; index < optionArgs.length; index += 1) {
     const option = optionArgs[index];
@@ -348,7 +351,35 @@ function parseGenerateArgs(argv: string[]): ParsedCliArgs {
       continue;
     }
 
+    if (option === '--with-test') {
+      if (seenWithTest) {
+        throw new Error('Duplicate --with-test option.');
+      }
+
+      parsedOptions.withTest = true;
+      seenWithTest = true;
+      continue;
+    }
+
+    if (option === '--with-slice-test') {
+      if (seenWithSliceTest) {
+        throw new Error('Duplicate --with-slice-test option.');
+      }
+
+      parsedOptions.withSliceTest = true;
+      seenWithSliceTest = true;
+      continue;
+    }
+
     throw new Error(`Unknown option: ${option}`);
+  }
+
+  if (parsedOptions.withTest && kind !== 'module') {
+    throw new Error('--with-test is only supported for module generation. Use --with-slice-test for resource generation.');
+  }
+
+  if (parsedOptions.withSliceTest && kind !== 'resource') {
+    throw new Error('--with-slice-test is only supported for resource generation.');
   }
 
   return {
