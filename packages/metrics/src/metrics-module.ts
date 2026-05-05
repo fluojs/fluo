@@ -140,6 +140,7 @@ type RuntimeTelemetryComponent = {
 
 const PLATFORM_COMPONENT_LABELS = ['component_id', 'component_kind', 'operation', 'result', 'env', 'instance'] as const;
 const REGISTRY_MODE_LABELS = ['mode'] as const;
+const FRAMEWORK_PLATFORM_GAUGES = new WeakSet<Gauge<string>>();
 const HEALTH_STATUSES = ['healthy', 'unhealthy', 'degraded'] as const satisfies readonly PlatformHealthStatus[];
 const READINESS_STATUSES = ['ready', 'not-ready', 'degraded'] as const satisfies readonly PlatformReadinessStatus[];
 const PLATFORM_SHELL_TOKEN_NAME = 'PLATFORM_SHELL';
@@ -164,15 +165,41 @@ function getOrCreateGauge(
   const existing = registry.getSingleMetric(config.name);
 
   if (existing instanceof Gauge) {
+    if (!FRAMEWORK_PLATFORM_GAUGES.has(existing)) {
+      throw new Error(
+        `Metric name "${config.name}" is already registered by the application. Built-in platform telemetry requires framework-owned gauges.`,
+      );
+    }
+
+    assertGaugeLabelSchema(existing, config);
     return existing;
   }
 
-  return new Gauge({
+  const gauge = new Gauge({
     help: config.help,
     labelNames: [...config.labelNames],
     name: config.name,
     registers: [registry],
   });
+  FRAMEWORK_PLATFORM_GAUGES.add(gauge);
+  return gauge;
+}
+
+function assertGaugeLabelSchema(
+  gauge: Gauge<string>,
+  config: {
+    labelNames: readonly string[];
+    name: string;
+  },
+): void {
+  const registeredLabels = ((gauge as Gauge<string> & { labelNames?: string[] }).labelNames ?? []).join(',');
+  const expectedLabels = config.labelNames.join(',');
+
+  if (registeredLabels !== expectedLabels) {
+    throw new Error(
+      `Metric name "${config.name}" is already registered with labels [${registeredLabels}]. Built-in platform telemetry requires labels [${expectedLabels}].`,
+    );
+  }
 }
 
 class RuntimePlatformTelemetry {

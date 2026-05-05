@@ -7,7 +7,7 @@ import {
   type Next,
 } from '@fluojs/http';
 import { bootstrapApplication, defineModule, PLATFORM_SHELL, type PlatformComponent } from '@fluojs/runtime';
-import { Counter, Histogram, Registry } from 'prom-client';
+import { Counter, Gauge, Histogram, Registry } from 'prom-client';
 import { describe, expect, it } from 'vitest';
 import { METER_PROVIDER } from './providers/meter-provider.js';
 import { MetricsModule } from './metrics-module.js';
@@ -436,6 +436,65 @@ describe('MetricsModule', () => {
     expect(metricsText).toContain('fluo_metrics_registry_mode{mode="shared"} 1');
 
     await app.close();
+  });
+
+  it('reuses framework-owned platform telemetry gauges when module instances share one registry', async () => {
+    const sharedRegistry = new Registry();
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-a', registry: sharedRegistry }),
+        MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-b', registry: sharedRegistry }),
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    const firstResponse = createResponse();
+    await app.dispatch(createRequest('/metrics-a'), firstResponse);
+    expect(firstResponse.statusCode).toBe(200);
+
+    const secondResponse = createResponse();
+    await app.dispatch(createRequest('/metrics-b'), secondResponse);
+    expect(secondResponse.statusCode).toBe(200);
+
+    const metricsText = await sharedRegistry.metrics();
+    expect(metricsText).toContain('fluo_metrics_registry_mode{mode="shared"} 1');
+    expect(metricsText).toContain('fluo_component_ready{component_id="runtime.shell"');
+    expect(metricsText).toContain('fluo_component_health{component_id="runtime.shell"');
+
+    await app.close();
+  });
+
+  it('throws when an app predefines a built-in platform telemetry gauge name', () => {
+    const sharedRegistry = new Registry();
+
+    new Gauge({
+      help: 'Application-defined platform readiness',
+      labelNames: ['component_id'],
+      name: 'fluo_component_ready',
+      registers: [sharedRegistry],
+    });
+
+    expect(() => MetricsModule.forRoot({ defaultMetrics: false, registry: sharedRegistry })).toThrow(
+      'Metric name "fluo_component_ready" is already registered by the application. Built-in platform telemetry requires framework-owned gauges.',
+    );
+  });
+
+  it('validates framework-owned platform telemetry gauge label schemas before reuse', () => {
+    const sharedRegistry = new Registry();
+
+    MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-a', registry: sharedRegistry });
+    const readinessGauge = sharedRegistry.getSingleMetric('fluo_component_ready') as Gauge<string> & { labelNames: string[] };
+    readinessGauge.labelNames = ['component_id'];
+
+    expect(() => MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-b', registry: sharedRegistry })).toThrow(
+      'Metric name "fluo_component_ready" is already registered with labels [component_id]. Built-in platform telemetry requires labels [component_id,component_kind,operation,result,env,instance].',
+    );
   });
 
   it('exports runtime component readiness and health metrics with shared labels', async () => {
