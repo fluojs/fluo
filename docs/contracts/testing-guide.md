@@ -11,6 +11,37 @@
 | E2E-style HTTP | Request dispatch, guards, interceptors, DTO validation, and response writing through the real HTTP stack. | Use `createTestApp({ rootModule })` from `@fluojs/testing`. The repository example at `examples/ops-metrics-terminus/src/app.test.ts` dispatches `/health`, `/ready`, `/metrics`, and application routes this way. |
 | Platform conformance | Framework-facing platform packages and portability-sensitive adapters. | Use `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, `@fluojs/testing/web-runtime-adapter-portability`, or `@fluojs/testing/fetch-style-websocket-conformance` when the change affects runtime or adapter contracts. |
 
+## Canonical fluo TDD Ladder
+
+Use this ladder when building a fluo feature with test-driven development:
+
+1. **Unit**: keep fast service, controller, helper, and failure-branch tests near the source under `src/**`. Construct classes directly and pass explicit fakes, or use `@fluojs/testing/mock` helpers such as `createMock(...)`, `createDeepMock(...)`, `asMock(...)`, and `mockToken(...)` when typed doubles keep setup clear.
+2. **Slice/module integration**: add role-specific slice tests that compile the production-shaped module graph with `createTestingModule({ rootModule })` or `Test.createTestingModule({ rootModule })`. Use this layer for DI wiring, provider visibility, lifecycle hooks, and explicit provider, guard, interceptor, filter, or module overrides before `.compile()`.
+3. **HTTP e2e-style**: put request-pipeline tests in a dedicated app-level test area and build the virtual app with `createTestApp({ rootModule })`. Use `app.request(...).send()` for route assertions and `app.dispatch(...)` when a lower-level dispatch path is the contract being exercised.
+4. **Platform/conformance**: reserve `@fluojs/testing/*-conformance` and portability harness subpaths for adapter/runtime packages. Application feature tests should not use those harnesses unless they are proving platform-facing contracts.
+
+Recommended project shape:
+
+```txt
+src/users/
+  users.service.test.ts
+  users.controller.test.ts
+  users.slice.test.ts
+
+test/
+  app.e2e.test.ts
+```
+
+If you come from NestJS, map the concepts explicitly rather than expecting metadata-driven inference:
+
+| NestJS pattern | fluo pattern |
+| --- | --- |
+| `Test.createTestingModule({ imports: [...] })` | `createTestingModule({ rootModule })` or `Test.createTestingModule({ rootModule })`, with an explicit root module that imports the slice you want to verify. |
+| Supertest e2e against an initialized Nest app | `createTestApp({ rootModule })`, then `app.request(method, path).send()` or `app.dispatch(...)` without opening a network socket. |
+| `.spec.ts` as the default suffix | `.test.ts` as the default suffix, with role-specific names such as `.slice.test.ts` and `.e2e.test.ts` when the test scope matters. |
+
+fluo's test setup follows its runtime model: standard decorators, explicit DI tokens, and authored module graphs. Tests must name the `rootModule` they compile; fluo does not infer dependencies from TypeScript design metadata or legacy reflection flags.
+
 ## Commands
 
 | Command | Use |
