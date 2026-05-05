@@ -24,6 +24,10 @@ describe('AppModule e2e', () => {
       status: 200,
     });
 
+    await expect(app.request('GET', '/ready').send()).resolves.toMatchObject({
+      status: 200,
+    });
+
     const triggerResult = await app.request('GET', '/ops/jobs/trigger').send();
     expect(triggerResult.status).toBe(200);
     expect(triggerResult.body).toEqual({

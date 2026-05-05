@@ -82,8 +82,16 @@ describe('BearerJwtStrategy', () => {
 });
 
 describe('AppModule e2e', () => {
-  it('returns 401 without a token and 200 with a valid token through createTestApp request helpers', async () => {
+  it('serves health, ready, and auth routes through createTestApp request helpers', async () => {
     const app = await createTestApp({ rootModule: AppModule });
+
+    await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
+      status: 200,
+    });
+
+    await expect(app.request('GET', '/ready').send()).resolves.toMatchObject({
+      status: 200,
+    });
 
     await expect(app.request('GET', '/profile/').send()).resolves.toMatchObject({
       status: 401,
