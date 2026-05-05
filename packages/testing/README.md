@@ -10,6 +10,7 @@ Testing module construction, provider overrides, and request-level test helpers 
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Canonical TDD Ladder](#canonical-tdd-ladder)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -112,6 +113,27 @@ Install `vitest` in the consuming workspace before using the mock helpers so the
 ### Conformance and portability harnesses
 
 Use subpaths like `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, and `@fluojs/testing/web-runtime-adapter-portability` when authoring framework-facing platform packages.
+
+## Canonical TDD Ladder
+
+For application features, build tests from the smallest explicit dependency boundary outward:
+
+1. **Unit**: place `*.test.ts` files next to the service, controller, helper, or failure branch under `src/**`. Construct the class directly with explicit fakes, or use `@fluojs/testing/mock` helpers when typed mocks keep setup readable.
+2. **Slice/module integration**: add `*.slice.test.ts` files for DI wiring and provider override coverage with `createTestingModule({ rootModule })` or `Test.createTestingModule({ rootModule })`.
+3. **HTTP e2e-style**: place app-level tests such as `test/app.e2e.test.ts` around the virtual request pipeline with `createTestApp({ rootModule })`, `app.request(...).send()`, or `app.dispatch(...)`.
+4. **Platform/conformance**: use harness subpaths only for adapter/runtime package contracts, not ordinary application feature coverage.
+
+```txt
+src/users/
+  users.service.test.ts
+  users.controller.test.ts
+  users.slice.test.ts
+
+test/
+  app.e2e.test.ts
+```
+
+fluo differs from NestJS by requiring tests to name an explicit `rootModule`. The testing utilities compile the module graph you authored instead of inferring dependencies from legacy TypeScript design metadata or reflection flags.
 
 ## Public API
 
