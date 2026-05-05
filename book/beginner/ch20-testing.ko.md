@@ -35,7 +35,14 @@
 테스트를 작성하는 데는 초기에 시간이 걸리지만, 그 투자 수익률(ROI)은 큽니다. 자동화된 테스트를 통해 배포 전 신호를 얻고, 수동 QA에 드는 시간을 줄이며, 버그가 프로덕션에 도달하기 전에 잡아낼 수 있습니다. FluoBlog와 같이 빠르게 변하는 프로젝트에서 테스트는 개발 속도와 안정성을 함께 유지하기 위한 핵심 장치입니다.
 
 ### 20.1.3 The Testing Pyramid in Fluo
-건강한 테스트 전략은 "테스트 피라미드"를 따릅니다. 즉, 기반이 되는 수많은 빠른 단위 테스트, 중간 계층의 통합 테스트, 그리고 최상위의 소수 E2E 테스트로 구성됩니다. Fluo의 도구들은 개발 시간이 많이 쓰이는 아래 두 계층에 맞춰져 있습니다. 이 테스트들을 작성하기 쉽고 빠르게 실행되도록 만들면 코드베이스를 깨끗하고 신뢰할 수 있게 유지하는 테스트 문화가 자리 잡습니다.
+건강한 테스트 전략은 "테스트 피라미드"를 따릅니다. fluo에서는 그 피라미드를 실용적인 TDD ladder로 다룹니다. 많은 빠른 unit 테스트로 시작하고, DI wiring이 중요할 때 module-slice integration 테스트를 추가한 뒤, request pipeline에는 더 적은 app-level E2E 스타일 HTTP 테스트를 둡니다. canonical flow는 다음과 같습니다.
+
+1. **Unit**: source 가까이에 `users.service.test.ts` 또는 `users.controller.test.ts`를 작성하고, 클래스를 직접 구성하며 명시적 fake나 `@fluojs/testing/mock` 헬퍼를 넘깁니다.
+2. **Slice/module integration**: `createTestingModule({ rootModule })` 또는 `Test.createTestingModule({ rootModule })` 기반 `users.slice.test.ts`를 작성해 실제 module graph를 컴파일하고, provider registration을 검증하며, `.compile()` 전에 provider override를 적용합니다.
+3. **HTTP e2e-style**: `createTestApp({ rootModule })` 기반 `test/app.e2e.test.ts`를 작성한 뒤 `app.request(...).send()` 또는 `app.dispatch(...)`로 request-pipeline behavior를 검증합니다.
+4. **Platform/conformance**: testing harness subpath는 일반 FluoBlog 기능 테스트가 아니라 adapter나 runtime package를 작성할 때만 사용합니다.
+
+이 ladder는 fluo의 명시적 runtime model과 일치합니다. NestJS의 metadata 기반 설정과 달리, fluo 테스트는 컴파일할 `rootModule`을 이름으로 지정하며 TypeScript design metadata나 reflection flag로 dependency를 추론하지 않습니다.
 
 ### 20.1.4 Mocking the Clock: Dealing with Time
 시간은 "불안정한 테스트(Flaky Tests, 무작위로 통과하거나 실패하는 테스트)"의 빈번한 원인입니다. 로직이 현재 시간에 의존한다면(예: 게시물이 "오늘" 생성되었는지 확인), 자정에 테스트를 실행할 때 실패할 수 있습니다. Fluo는 Vitest의 시간 조작 기능과 연동됩니다. 특정 시점에 시간을 고정하거나 5분을 진행시킨 후, 테스트가 실제로 언제 실행되는지와 상관없이 시간 민감 로직이 예상대로 동작하는지 검증할 수 있습니다.
@@ -301,10 +308,10 @@ Fluo 테스트 유틸리티의 큰 장점 중 하나는 TypeScript와의 깊은 
 5.  **결정론적 테스트**: 테스트에서 `Date.now()`나 랜덤 숫자를 직접 사용하는 것을 피하세요. Vitest의 시간 여행 기능(`vi.useFakeTimers()`)을 사용하여 테스트가 실행될 때마다 동일하게 동작하도록 보장하세요.
 
 ### 20.7.1 Test-Driven Development (TDD) with Fluo
-테스트 주도 개발(TDD)은 실제 구현을 작성하기 *전에* 테스트를 먼저 작성하는 워크플로우입니다. Fluo의 명시적인 의존성 관리는 TDD를 적용하기 좋은 구조를 제공합니다. 서비스의 인터페이스와 그 동작을 검증하는 테스트를 정의하는 것부터 시작하세요. 어떤 의존성을 모의(mock)해야 하는지 정확히 알고 있기 때문에, 테스트 모듈을 먼저 구축하고 테스트가 통과할 때까지 서비스 로직을 구현할 수 있습니다. 이러한 "Red-Green-Refactor" 사이클은 코드가 테스트 커버리지와 명확한 아키텍처를 갖춘 상태로 발전하도록 돕습니다.
+테스트 주도 개발(TDD)은 실제 구현을 작성하기 *전에* 테스트를 먼저 작성하는 워크플로우입니다. Fluo의 명시적인 의존성 관리는 TDD를 적용하기 좋은 구조를 제공합니다. 서비스의 인터페이스와 동작을 검증하는 직접 unit 테스트로 시작하고, module graph나 provider override가 계약의 일부일 때 `createTestingModule({ rootModule })`로 이동하며, request pipeline을 실행해야 할 때 `createTestApp({ rootModule })`로 기능을 마무리하세요. 이러한 "Red-Green-Refactor" 사이클은 코드가 테스트 커버리지와 명확한 아키텍처를 갖춘 상태로 발전하도록 돕습니다.
 
 ### 20.7.2 Naming and Organizing Your Tests
-대규모 테스트 스위트를 관리하려면 조직화가 핵심입니다. 단위 테스트의 경우 `*.test.ts`, 통합 테스트의 경우 `*.spec.ts` 또는 `*.int.ts`와 같이 일관된 명명 규칙을 따르세요. 테스트를 모듈이나 기능별로 그룹화하여 찾기 쉽게 만드세요. 각 테스트 파일 내에서는 `describe` 블록을 사용하여 관련 테스트를 묶고, `beforeEach`/`afterEach`를 사용하여 설정 및 정리를 수행하세요. 잘 조직된 테스트 스위트는 FluoBlog 애플리케이션이 수십 개의 서비스와 컨트롤러를 포함할 정도로 성장하더라도 탐색과 유지보수가 쉽습니다.
+대규모 테스트 스위트를 관리하려면 조직화가 핵심입니다. 기본 suffix는 `*.test.ts`를 사용하고, scope가 중요할 때는 test role을 이름에 드러내세요. unit 테스트에는 `users.service.test.ts`와 `users.controller.test.ts`, module-slice integration에는 `users.slice.test.ts`, app-level request-pipeline 점검에는 `test/app.e2e.test.ts`를 사용합니다. 테스트를 모듈이나 기능별로 그룹화하여 찾기 쉽게 만드세요. 각 테스트 파일 내에서는 `describe` 블록을 사용하여 관련 테스트를 묶고, `beforeEach`/`afterEach`를 사용하여 설정 및 정리를 수행하세요. 잘 조직된 테스트 스위트는 FluoBlog 애플리케이션이 수십 개의 서비스와 컨트롤러를 포함할 정도로 성장하더라도 탐색과 유지보수가 쉽습니다.
 
 ### 20.7.3 Avoiding "Mocks for Mocks"
 애플리케이션을 과도하게 모의(mocking)하지 않도록 주의하세요. 의존성이 단순한 유틸리티나 순수 함수라면, 모의 객체를 만드는 대신 실제 구현을 사용하는 것이 나을 때가 많습니다. 과도한 모의는 유지보수가 어렵고 시스템의 실제 동작을 검증하지 못하는 취약한 테스트로 이어질 수 있습니다. Fluo에서 권장하는 규칙은 다음과 같습니다: 외부 의존성(데이터베이스, API, 서드파티 라이브러리)과 상태를 가진 서비스는 모의하되, 상태가 없는 로직과 내부 헬퍼는 실제 구현을 사용하세요.
