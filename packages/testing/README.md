@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Testing module construction, provider overrides, and request-level test helpers for fluo applications.
+Default request-level testing helpers, testing module construction, and provider overrides for fluo applications.
 
 ## Table of Contents
 
@@ -39,6 +39,30 @@ npm install --save-dev @babel/core
 ## Quick Start
 
 ```ts
+import { createTestApp } from '@fluojs/testing';
+
+const app = await createTestApp({ rootModule: AppModule });
+
+const response = await app
+  .request('POST', '/users/')
+  .header('x-request-id', 'test-request-1')
+  .query('include', 'profile')
+  .principal({ subject: 'user-1', roles: ['admin'] })
+  .body({ name: 'Ada' })
+  .send();
+
+expect(response.status).toBe(201);
+
+await app.close();
+```
+
+Use `createTestApp({ rootModule })` as the default HTTP/e2e-style path for application routes, guards, interceptors, DTO validation, request bodies, query parameters, headers, synthetic principals, and serialized responses. Reach for `createTestingModule(...)` when the contract is module wiring, provider visibility, or provider/guard/interceptor overrides inside one slice.
+
+## Common Patterns
+
+### Override providers before compilation
+
+```ts
 import { createTestingModule } from '@fluojs/testing';
 import { vi } from 'vitest';
 
@@ -49,21 +73,6 @@ const module = await createTestingModule({ rootModule: AppModule })
   .compile();
 
 const service = await module.resolve(UserService);
-```
-
-Use `module.get(token)` for synchronous lookup, `module.resolve(token)` for async resolution, and `module.resolveAll(token)` when a multi-provider token should return every matching provider.
-
-## Common Patterns
-
-### Override providers before compilation
-
-```ts
-const module = await createTestingModule({ rootModule: AppModule })
-  .overrideProviders([
-    [USER_REPOSITORY, fakeUserRepo],
-    [EMAIL_SERVICE, fakeEmailService],
-  ])
-  .compile();
 ```
 
 The testing builder also supports `overrideGuard(...)`, `overrideInterceptor(...)`, and `overrideFilter(...)` for route-pipeline tests that need to replace cross-cutting behavior.
@@ -89,12 +98,19 @@ import { createTestApp } from '@fluojs/testing';
 const app = await createTestApp({ rootModule: AppModule });
 
 const response = await app
-  .request('GET', '/users/me')
+  .request('POST', '/users/')
+  .header('authorization', 'Bearer test-token')
+  .query('include', ['profile', 'settings'])
   .principal({ subject: 'user-1', roles: ['member'] })
+  .body({ name: 'Ada' })
   .send();
+
+expect(response.status).toBe(201);
 
 await app.close();
 ```
+
+`app.request(...).send()` is the preferred app-developer path because it keeps tests close to HTTP semantics without manual `FrameworkRequest`/`FrameworkResponse` stubs. Keep `app.dispatch(...)`, `makeRequest(...)`, and raw `FluoFactory.create(...)` tests for adapter/runtime contracts, framework internals, or compatibility cases where the low-level dispatch boundary itself is what the test must prove.
 
 ### Mock helpers from explicit subpaths
 
@@ -120,7 +136,7 @@ For application features, build tests from the smallest explicit dependency boun
 
 1. **Unit**: place `*.test.ts` files next to the service, controller, helper, or failure branch under `src/**`. Construct the class directly with explicit fakes, or use `@fluojs/testing/mock` helpers when typed mocks keep setup readable.
 2. **Slice/module integration**: add `*.slice.test.ts` files for DI wiring and provider override coverage with `createTestingModule({ rootModule })` or `Test.createTestingModule({ rootModule })`.
-3. **HTTP e2e-style**: place app-level tests such as `test/app.e2e.test.ts` around the virtual request pipeline with `createTestApp({ rootModule })`, `app.request(...).send()`, or `app.dispatch(...)`.
+3. **HTTP e2e-style**: place app-level tests such as `test/app.e2e.test.ts` around the virtual request pipeline with `createTestApp({ rootModule })` and `app.request(...).send()` as the default route assertion helper. Use `app.dispatch(...)` only when a lower-level dispatch contract is the subject of the test.
 4. **Platform/conformance**: use harness subpaths only for adapter/runtime package contracts, not ordinary application feature coverage.
 
 ```txt

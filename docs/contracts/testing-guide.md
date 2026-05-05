@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | Unit | Pure provider logic, helpers, and failure branches with no network or external process dependency. | Use Vitest directly. `@fluojs/testing/mock` exposes `createMock(...)` and `createDeepMock(...)` for explicit doubles. |
 | Integration | Real module graph compilation, provider overrides, and DI visibility checks inside one application slice. | Use `createTestingModule({ rootModule })`, then `overrideProvider(...)`, `overrideGuard(...)`, `overrideInterceptor(...)`, or `overrideProviders(...)` before `.compile()`. |
-| E2E-style HTTP | Request dispatch, guards, interceptors, DTO validation, and response writing through the real HTTP stack. | Use `createTestApp({ rootModule })` from `@fluojs/testing`. The repository example at `examples/ops-metrics-terminus/src/app.test.ts` dispatches `/health`, `/ready`, `/metrics`, and application routes this way. |
+| E2E-style HTTP | Request dispatch, guards, interceptors, DTO validation, and response writing through the real HTTP stack. | Use `createTestApp({ rootModule })` from `@fluojs/testing`, then prefer `app.request(method, path).header(...).query(...).principal(...).body(...).send()` for app-level route assertions. Repository examples exercise `/health`, `/ready`, `/metrics`, auth, and CRUD routes this way. |
 | Platform conformance | Framework-facing platform packages and portability-sensitive adapters. | Use `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, `@fluojs/testing/web-runtime-adapter-portability`, or `@fluojs/testing/fetch-style-websocket-conformance` when the change affects runtime or adapter contracts. |
 
 ## Canonical fluo TDD Ladder
@@ -17,7 +17,7 @@ Use this ladder when building a fluo feature with test-driven development:
 
 1. **Unit**: keep fast service, controller, helper, and failure-branch tests near the source under `src/**`. Construct classes directly and pass explicit fakes, or use `@fluojs/testing/mock` helpers such as `createMock(...)`, `createDeepMock(...)`, `asMock(...)`, and `mockToken(...)` when typed doubles keep setup clear.
 2. **Slice/module integration**: add role-specific slice tests that compile the production-shaped module graph with `createTestingModule({ rootModule })` or `Test.createTestingModule({ rootModule })`. Use this layer for DI wiring, provider visibility, lifecycle hooks, and explicit provider, guard, interceptor, filter, or module overrides before `.compile()`.
-3. **HTTP e2e-style**: put request-pipeline tests in a dedicated app-level test area and build the virtual app with `createTestApp({ rootModule })`. Use `app.request(...).send()` for route assertions and `app.dispatch(...)` when a lower-level dispatch path is the contract being exercised.
+3. **HTTP e2e-style**: put request-pipeline tests in a dedicated app-level test area and build the virtual app with `createTestApp({ rootModule })`. Use `app.request(...).send()` as the default route assertion helper for headers, query parameters, request bodies, principals, and response assertions. Use `app.dispatch(...)` only when a lower-level dispatch path is the contract being exercised.
 4. **Platform/conformance**: reserve `@fluojs/testing/*-conformance` and portability harness subpaths for adapter/runtime packages. Application feature tests should not use those harnesses unless they are proving platform-facing contracts.
 
 Recommended project shape:
@@ -37,10 +37,12 @@ If you come from NestJS, map the concepts explicitly rather than expecting metad
 | NestJS pattern | fluo pattern |
 | --- | --- |
 | `Test.createTestingModule({ imports: [...] })` | `createTestingModule({ rootModule })` or `Test.createTestingModule({ rootModule })`, with an explicit root module that imports the slice you want to verify. |
-| Supertest e2e against an initialized Nest app | `createTestApp({ rootModule })`, then `app.request(method, path).send()` or `app.dispatch(...)` without opening a network socket. |
+| Supertest e2e against an initialized Nest app | `createTestApp({ rootModule })`, then `app.request(method, path).send()` without opening a network socket. |
 | `.spec.ts` as the default suffix | `.test.ts` as the default suffix, with role-specific names such as `.slice.test.ts` and `.e2e.test.ts` when the test scope matters. |
 
 fluo's test setup follows its runtime model: standard decorators, explicit DI tokens, and authored module graphs. Tests must name the `rootModule` they compile; fluo does not infer dependencies from TypeScript design metadata or legacy reflection flags.
+
+Keep manual `FrameworkRequest`/`FrameworkResponse` stubs, `makeRequest(...)`, raw `FluoFactory.create(...)`, and direct `app.dispatch(...)` tests for framework-internal, adapter/runtime, or compatibility contracts. They are intentionally lower-level than the default app-developer HTTP path.
 
 ## Commands
 
@@ -60,6 +62,6 @@ fluo's test setup follows its runtime model: standard decorators, explicit DI to
 - The repository does not define a single global line-coverage percentage in `package.json` or governance tooling. Coverage is enforced by contract surface, not by one numeric threshold.
 - Every behavior change MUST add or update tests in the affected package, example, or tooling project. The nearest existing `*.test.ts` files are the primary placement target.
 - Module wiring changes MUST keep integration coverage through `createTestingModule(...)` so provider registration, overrides, and DI resolution remain exercised.
-- Request-facing HTTP changes MUST keep request-level coverage through `createTestApp(...)` or equivalent dispatch tests that execute the real request pipeline.
+- Request-facing HTTP changes MUST keep request-level coverage through `createTestApp(...).request(...).send()`. Direct dispatch tests are appropriate only when the low-level dispatch boundary itself is the contract under review.
 - Platform and adapter changes MUST keep conformance or portability coverage through the `@fluojs/testing` harness subpaths when the change affects runtime portability.
 - Release-governed testing changes MUST stay green under the split Vitest project model used by `pnpm verify:release-readiness`. Do not treat a local `pnpm test` pass as a replacement for those split project runs.

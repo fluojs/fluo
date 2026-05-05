@@ -474,7 +474,7 @@ function createHttpProjectReadme(options: BootstrapOptions): string {
       : `- CORS: defaults to allowOrigin '*'; pass a \`cors\` option to \`FluoFactory.create(..., { cors, adapter: ${starter.adapterFactory}(...) })\` to restrict origins`;
   const testingSection = options.runtime === 'deno'
     ? `## Official generated testing templates\n\n- \`src/app.test.ts\` — Deno-native integration-style dispatch verification for the generated runtime + starter routes.\n\nUse this test when you need confidence that the generated Deno entrypoint and module graph still agree on the same HTTP contract.`
-    : `## Official generated testing templates\n\n- \`src/greeting/greeting.repo.test.ts\`, \`src/greeting/greeting.service.test.ts\`, and \`src/greeting/greeting.controller.test.ts\` — unit templates for the starter-owned greeting slice.\n- \`src/greeting/greeting.slice.test.ts\` — module/slice template via \`createTestingModule\` for real DI graph confidence.\n- \`src/app.test.ts\` — integration-style dispatch template for runtime + starter routes.\n- \`test/app.e2e.test.ts\` — dedicated e2e-style template powered by \`createTestApp\` from \`@fluojs/testing\`; older \`src/app.e2e.test.ts\` tests can be moved here without changing the request helper.\n- \`${createExecCommand(options.packageManager, 'fluo g repo User')}\` also adds:\n  - \`src/users/user.repo.test.ts\` (unit template)\n  - \`src/users/user.repo.slice.test.ts\` (slice/integration template via \`createTestingModule\`)\n\nUse unit templates for fast logic checks, \`${createRunCommand(options.packageManager, 'test:e2e')}\` for the dedicated e2e suite, and \`${createRunCommand(options.packageManager, 'test:cov')}\` when your Vitest runtime supports coverage.`;
+    : `## Official generated testing templates\n\n- \`src/greeting/greeting.repo.test.ts\`, \`src/greeting/greeting.service.test.ts\`, and \`src/greeting/greeting.controller.test.ts\` — unit templates for the starter-owned greeting slice.\n- \`src/greeting/greeting.slice.test.ts\` — module/slice template via \`createTestingModule\` for real DI graph confidence.\n- \`src/app.test.ts\` — integration-style dispatch template for runtime + starter routes.\n- \`test/app.e2e.test.ts\` — default HTTP/e2e-style template powered by \`createTestApp\` and \`app.request(...).send()\` from \`@fluojs/testing\`; older \`src/app.e2e.test.ts\` tests can be moved here without changing the request helper.\n- \`${createExecCommand(options.packageManager, 'fluo g repo User')}\` also adds:\n  - \`src/users/user.repo.test.ts\` (unit template)\n  - \`src/users/user.repo.slice.test.ts\` (slice/integration template via \`createTestingModule\`)\n\nUse unit templates for fast logic checks, \`${createRunCommand(options.packageManager, 'test:e2e')}\` for the dedicated request-level e2e suite, and \`${createRunCommand(options.packageManager, 'test:cov')}\` when your Vitest runtime supports coverage.`;
 
   return `# ${options.projectName}
 
@@ -1901,18 +1901,18 @@ import { createTestApp } from '@fluojs/testing';
 import { AppModule } from '../src/app${importSuffix}';
 
 describe('AppModule e2e', () => {
-  it('serves runtime and starter routes through createTestApp', async () => {
+  it('serves runtime and starter routes through createTestApp request helpers', async () => {
     const app = await createTestApp({ rootModule: AppModule });
 
-    await expect(app.dispatch({ method: 'GET', path: '/health' })).resolves.toMatchObject({
+    await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
       body: { status: 'ok' },
       status: 200,
     });
-    await expect(app.dispatch({ method: 'GET', path: '/ready' })).resolves.toMatchObject({
+    await expect(app.request('GET', '/ready').send()).resolves.toMatchObject({
       body: { status: 'ready' },
       status: 200,
     });
-    await expect(app.dispatch({ method: 'GET', path: '/greeting/' })).resolves.toMatchObject({
+    await expect(app.request('GET', '/greeting/').send()).resolves.toMatchObject({
       body: { message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) },
       status: 200,
     });

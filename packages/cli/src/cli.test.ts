@@ -3719,9 +3719,9 @@ exit 7
     expect(appTestContent).toContain("createRequest('/health')");
     expect(appTestContent).toContain("createRequest('/ready')");
     expect(appTestContent).toContain("createRequest('/greeting/')");
-    expect(appE2eTestContent).toContain("path: '/health'");
-    expect(appE2eTestContent).toContain("path: '/ready'");
-    expect(appE2eTestContent).toContain("path: '/greeting/'");
+    expect(appE2eTestContent).toContain("app.request('GET', '/health').send()");
+    expect(appE2eTestContent).toContain("app.request('GET', '/ready').send()");
+    expect(appE2eTestContent).toContain("app.request('GET', '/greeting/').send()");
 
   }, 90000);
 

@@ -49,7 +49,7 @@ examples/ops-metrics-terminus/
 2. `src/ops/metrics-registry.ts` — shared Registry and custom metric registration
 3. `src/ops/ops-metrics.service.ts` — business action that increments the counter
 4. `src/ops/ops.controller.ts` — route that mutates metrics state
-5. `src/app.test.ts` — `/health`, `/ready`, `/metrics`, and custom route verification
+5. `src/app.test.ts` — `/health`, `/ready`, `/metrics`, and custom route verification through `createTestApp(...).request(...).send()`
 
 ## related docs
 

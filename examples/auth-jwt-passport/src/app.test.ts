@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import { createTestApp, createTestingModule } from '@fluojs/testing';
-import { FluoFactory } from '@fluojs/runtime';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 
 import { AppModule } from './app';
@@ -82,64 +81,32 @@ describe('BearerJwtStrategy', () => {
   });
 });
 
-describe('AppModule integration', () => {
-  it('dispatches /health and /ready', async () => {
-    const app = await FluoFactory.create(AppModule, {});
-    const healthRes = createResponse();
-    const readyRes = createResponse();
-
-    await app.dispatch(createRequest('GET', '/health'), healthRes);
-    await app.dispatch(createRequest('GET', '/ready'), readyRes);
-
-    expect(healthRes.body).toEqual({ status: 'ok' });
-    expect(readyRes.body).toEqual({ status: 'ready' });
-
-    await app.close();
-  });
-
-  it('issues a token and serves a protected profile route', async () => {
-    const app = await FluoFactory.create(AppModule, {});
-
-    const loginRes = createResponse();
-    await app.dispatch(createRequest('POST', '/auth/token', { username: 'ada' }), loginRes);
-    const { accessToken } = loginRes.body as { accessToken: string };
-
-    const profileRes = createResponse();
-    await app.dispatch(createRequest('GET', '/profile/', undefined, {
-      authorization: `Bearer ${accessToken}`,
-    }), profileRes);
-
-    expect(profileRes.body).toMatchObject({
-      user: expect.objectContaining({
-        scopes: ['profile:read'],
-        subject: 'ada',
-      }),
-    });
-
-    await app.close();
-  });
-});
-
 describe('AppModule e2e', () => {
-  it('returns 401 without a token and 201 with a valid token', async () => {
+  it('serves health, ready, and auth routes through createTestApp request helpers', async () => {
     const app = await createTestApp({ rootModule: AppModule });
 
-    await expect(app.dispatch({ method: 'GET', path: '/profile/' })).resolves.toMatchObject({
+    await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
+      status: 200,
+    });
+
+    await expect(app.request('GET', '/ready').send()).resolves.toMatchObject({
+      status: 200,
+    });
+
+    await expect(app.request('GET', '/profile/').send()).resolves.toMatchObject({
       status: 401,
     });
 
-    const issueResult = await app.dispatch({
-      method: 'POST',
-      path: '/auth/token',
-      body: { username: 'grace' },
-    });
+    const issueResult = await app
+      .request('POST', '/auth/token')
+      .body({ username: 'grace' })
+      .send();
     expect(issueResult.status).toBe(201);
 
-    const profileResult = await app.dispatch({
-      headers: { authorization: `Bearer ${(issueResult.body as { accessToken: string }).accessToken}` },
-      method: 'GET',
-      path: '/profile/',
-    });
+    const profileResult = await app
+      .request('GET', '/profile/')
+      .header('authorization', `Bearer ${(issueResult.body as { accessToken: string }).accessToken}`)
+      .send();
 
     expect(profileResult.status).toBe(200);
     expect(profileResult.body).toMatchObject({

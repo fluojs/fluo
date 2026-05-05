@@ -39,7 +39,7 @@
 
 1. **Unit**: source 가까이에 `users.service.test.ts` 또는 `users.controller.test.ts`를 작성하고, 클래스를 직접 구성하며 명시적 fake나 `@fluojs/testing/mock` 헬퍼를 넘깁니다.
 2. **Slice/module integration**: `createTestingModule({ rootModule })` 또는 `Test.createTestingModule({ rootModule })` 기반 `users.slice.test.ts`를 작성해 실제 module graph를 컴파일하고, provider registration을 검증하며, `.compile()` 전에 provider override를 적용합니다.
-3. **HTTP e2e-style**: `createTestApp({ rootModule })` 기반 `test/app.e2e.test.ts`를 작성한 뒤 `app.request(...).send()` 또는 `app.dispatch(...)`로 request-pipeline behavior를 검증합니다.
+3. **HTTP e2e-style**: `createTestApp({ rootModule })` 기반 `test/app.e2e.test.ts`를 작성한 뒤 애플리케이션 개발자의 기본 경로인 `app.request(...).send()`로 request-pipeline behavior를 검증합니다.
 4. **Platform/conformance**: testing harness subpath는 일반 FluoBlog 기능 테스트가 아니라 adapter나 runtime package를 작성할 때만 사용합니다.
 
 이 ladder는 fluo의 명시적 runtime model과 일치합니다. NestJS의 metadata 기반 설정과 달리, fluo 테스트는 컴파일할 `rootModule`을 이름으로 지정하며 TypeScript design metadata나 reflection flag로 dependency를 추론하지 않습니다.
@@ -218,7 +218,7 @@ const module = await createTestingModule({ rootModule: PostTestModule })
 ## 20.5 E2E-Style HTTP Testing with createTestApp
 `createTestApp`은 요청 디스패치, 가드, 인터셉터, DTO 검증, 응답 작성을 포함한 실제 HTTP 파이프라인을 실행하는 E2E 스타일 HTTP 테스트 표면입니다. 실제 네트워크 소켓만 열지 않을 뿐, 요청 처리 스택 자체는 프로덕션 경로와 같은 방식으로 검증합니다.
 
-실제 네트워크 서버를 시작하는 대신, 가상 요청 디스패치 시스템을 제공하는 `createTestApp`을 사용합니다. 이는 테스트 속도와 안정성을 높이면서도 전체 요청 라이프사이클이 올바르게 구성되었는지 확인합니다.
+실제 네트워크 서버를 시작하는 대신, 가상 요청 시스템을 제공하는 `createTestApp`을 사용합니다. 애플리케이션 개발자의 기본 경로는 fluent `app.request(...).send()` helper입니다. 이 방식은 HTTP 클라이언트처럼 읽히면서도 framework request pipeline을 그대로 실행합니다. Direct `app.dispatch(...)`와 수동 request/response stub은 dispatch boundary 자체를 검사해야 하는 lower-level framework-internal contract나 adapter/runtime package에 남겨 두세요. 이는 테스트 속도와 안정성을 높이면서도 전체 요청 라이프사이클이 올바르게 구성되었는지 확인합니다.
 
 ### The Test Case
 ```typescript
@@ -269,6 +269,16 @@ it('POST /posts should create a new post for admin', async () => {
 
 ### 20.5.3 Testing Middleware and Headers
 통합 테스트는 커스텀 미들웨어와 헤더 처리 로직이 올바른지 확인하기에 적합한 장소입니다. 가상 요청에 특정 헤더를 포함해 보내고, 애플리케이션이 예상한 헤더로 응답하는지 혹은 입력에 따라 올바른 로직을 수행하는지 검증할 수 있습니다. 이러한 세부적인 검증을 통해 API의 "HTTP 규약(HTTP Contract)"이 지켜지는지 확인할 수 있습니다.
+
+```typescript
+const response = await app
+  .request('GET', '/posts')
+  .header('x-request-id', 'test-request-1')
+  .query('tag', ['fluo', 'testing'])
+  .send();
+
+expect(response.status).toBe(200);
+```
 
 ### 20.5.4 Simulating Network Failures in Integration
 `createTestApp`은 가상 시스템이지만, 기반 데이터 프로바이더를 모의함으로써 네트워크 수준의 실패를 여전히 시뮬레이션할 수 있습니다. 예를 들어 `PrismaService`가 타임아웃 에러를 던지도록 모의하고, 애플리케이션이 적절한 `504 Gateway Timeout` 또는 `503 Service Unavailable` 응답을 반환하는지 확인할 수 있습니다. 이를 통해 네트워크 하드웨어를 실제로 망가뜨리지 않고도 애플리케이션의 복원력을 테스트할 수 있습니다.

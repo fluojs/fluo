@@ -41,7 +41,7 @@ examples/realworld-api/
 │   │   ├── users.repo.ts          # 인메모리 리포지토리
 │   │   ├── create-user.dto.ts     # 검증 포함 Request DTO
 │   │   └── user-response.dto.ts   # 응답 형태
-│   └── app.test.ts                # 통합 + e2e 테스트
+│   └── app.test.ts                # unit + createTestApp request helper 테스트
 └── README.md
 ```
 
@@ -59,7 +59,7 @@ examples/realworld-api/
 4. `src/users/users.controller.ts` — `@RequestDto`를 사용한 라우트 핸들러
 5. `src/users/users.module.ts` — `exports`가 있는 모듈 경계
 6. `src/app.ts` — 루트 모듈 조합
-7. `src/app.test.ts` — 단위, 통합, e2e 수준의 테스트
+7. `src/app.test.ts` — unit coverage와 `createTestApp(...).request(...).send()` 기반 e2e 스타일 HTTP 점검
 
 ## 관련 문서
 

@@ -41,7 +41,7 @@ examples/realworld-api/
 │   │   ├── users.repo.ts          # In-memory repository
 │   │   ├── create-user.dto.ts     # Request DTO with validation
 │   │   └── user-response.dto.ts   # Response shape
-│   └── app.test.ts                # Integration + e2e tests
+│   └── app.test.ts                # Unit + createTestApp request-helper tests
 └── README.md
 ```
 
@@ -59,7 +59,7 @@ It is intentionally not a microservice or mixed-topology example. For those `flu
 4. `src/users/users.controller.ts` — route handlers with `@RequestDto`
 5. `src/users/users.module.ts` — module boundary with `exports`
 6. `src/app.ts` — root module composition
-7. `src/app.test.ts` — testing at unit, integration, and e2e levels
+7. `src/app.test.ts` — unit coverage plus e2e-style HTTP checks through `createTestApp(...).request(...).send()`
 
 ## related docs
 

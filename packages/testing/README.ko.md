@@ -2,9 +2,9 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-fluo 애플리케이션 테스트를 위한 모듈 구성 및 프로바이더 오버라이드 유틸리티입니다.
+fluo 애플리케이션을 위한 기본 request-level 테스트 헬퍼, 모듈 구성, 프로바이더 오버라이드 유틸리티입니다.
 
-`@fluojs/testing`은 fluo 애플리케이션 테스트를 위한 공식적인 기준(Baseline)을 제공합니다. 격리된 테스트 환경을 구축하고, 의존성을 가짜(Fake)나 목(Mock)으로 교체하며, 모듈 그래프에서 직접 컴포넌트를 resolve하거나 가상 HTTP 요청을 디스패치하여 통합 테스트를 수행할 수 있게 합니다.
+`@fluojs/testing`은 fluo 애플리케이션 테스트를 위한 공식적인 기준(Baseline)을 제공합니다. 격리된 테스트 환경을 구축하고, 의존성을 가짜(Fake)나 목(Mock)으로 교체하며, 모듈 그래프에서 직접 컴포넌트를 resolve하거나 `createTestApp(...).request(...).send()`로 가상 HTTP 요청을 실행하여 e2e 스타일 테스트를 수행할 수 있게 합니다.
 
 ## 목차
 
@@ -41,6 +41,30 @@ pnpm add -D @babel/core
 ## 빠른 시작
 
 ```typescript
+import { createTestApp } from '@fluojs/testing';
+
+const app = await createTestApp({ rootModule: AppModule });
+
+const response = await app
+  .request('POST', '/users/')
+  .header('x-request-id', 'test-request-1')
+  .query('include', 'profile')
+  .principal({ subject: 'user-1', roles: ['admin'] })
+  .body({ name: 'Ada' })
+  .send();
+
+expect(response.status).toBe(201);
+
+await app.close();
+```
+
+애플리케이션 route, guard, interceptor, DTO validation, request body, query parameter, header, synthetic principal, serialized response를 검증하는 기본 HTTP/e2e 스타일 경로로는 `createTestApp({ rootModule })`을 사용하세요. 하나의 slice 안에서 module wiring, provider visibility, provider/guard/interceptor override가 계약일 때는 `createTestingModule(...)`을 사용합니다.
+
+## 주요 패턴
+
+### 컴파일 전 프로바이더 오버라이드
+
+```typescript
 import { createTestingModule } from '@fluojs/testing';
 import { vi } from 'vitest';
 
@@ -51,21 +75,6 @@ const module = await createTestingModule({ rootModule: AppModule })
   .compile();
 
 const service = await module.resolve(UserService);
-```
-
-`module.get(token)`은 동기 lookup에, `module.resolve(token)`은 비동기 resolution에, `module.resolveAll(token)`은 multi-provider 토큰의 모든 provider를 가져올 때 사용합니다.
-
-## 주요 패턴
-
-### 오버라이드를 이용한 유닛 테스트
-
-```typescript
-const module = await createTestingModule({ rootModule: AppModule })
-  .overrideProviders([
-    [USER_REPOSITORY, fakeUserRepo],
-    [EMAIL_SERVICE, fakeEmailService],
-  ])
-  .compile();
 ```
 
 Testing builder는 route-pipeline 테스트에서 cross-cutting behavior를 교체할 수 있도록 `overrideGuard(...)`, `overrideInterceptor(...)`, `overrideFilter(...)`도 지원합니다.
@@ -83,7 +92,7 @@ expect(module.rootModule).toBe(AppModule);
 expect(module.modules.some((compiledModule) => compiledModule.type === BillingModule)).toBe(true);
 ```
 
-### HTTP 통합 테스트
+### `createTestApp()` 기반 request-level 테스트
 
 ```typescript
 import { createTestApp } from '@fluojs/testing';
@@ -91,12 +100,19 @@ import { createTestApp } from '@fluojs/testing';
 const app = await createTestApp({ rootModule: AppModule });
 
 const response = await app
-  .request('GET', '/users/me')
+  .request('POST', '/users/')
+  .header('authorization', 'Bearer test-token')
+  .query('include', ['profile', 'settings'])
   .principal({ subject: 'user-1', roles: ['member'] })
+  .body({ name: 'Ada' })
   .send();
+
+expect(response.status).toBe(201);
 
 await app.close();
 ```
+
+`app.request(...).send()`는 수동 `FrameworkRequest`/`FrameworkResponse` stub 없이 HTTP 의미에 가까운 테스트를 작성하게 해 주므로 애플리케이션 개발자의 기본 경로입니다. `app.dispatch(...)`, `makeRequest(...)`, raw `FluoFactory.create(...)` 테스트는 adapter/runtime contract, framework internal, 또는 low-level dispatch boundary 자체를 증명해야 하는 compatibility case에 남겨 둡니다.
 
 ### 명시적 서브패스의 mock 헬퍼
 
@@ -122,7 +138,7 @@ const mailer = createDeepMock(MailService);
 
 1. **Unit**: `src/**` 아래 service, controller, helper, failure branch 가까이에 `*.test.ts` 파일을 둡니다. 클래스를 직접 구성하고 명시적 fake를 넘기거나, typed mock이 설정을 읽기 쉽게 만들 때 `@fluojs/testing/mock` 헬퍼를 사용합니다.
 2. **Slice/module integration**: DI wiring과 provider override coverage에는 `createTestingModule({ rootModule })` 또는 `Test.createTestingModule({ rootModule })` 기반 `*.slice.test.ts` 파일을 추가합니다.
-3. **HTTP e2e-style**: `test/app.e2e.test.ts` 같은 app-level 테스트는 `createTestApp({ rootModule })`, `app.request(...).send()`, 또는 `app.dispatch(...)`로 virtual request pipeline을 검증합니다.
+3. **HTTP e2e-style**: `test/app.e2e.test.ts` 같은 app-level 테스트는 `createTestApp({ rootModule })`와 기본 route assertion helper인 `app.request(...).send()`로 virtual request pipeline을 검증합니다. 더 낮은 수준의 dispatch contract 자체가 테스트 대상일 때만 `app.dispatch(...)`를 사용합니다.
 4. **Platform/conformance**: harness subpath는 일반 애플리케이션 기능 coverage가 아니라 adapter/runtime package contract에만 사용합니다.
 
 ```txt

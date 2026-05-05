@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import { createTestApp } from '@fluojs/testing';
-import { FluoFactory } from '@fluojs/runtime';
-import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 
 import { AppModule } from './app';
 import { UsersRepo } from './users/users.repo';
@@ -32,99 +30,28 @@ describe('UsersService', () => {
   });
 });
 
-function createRequest(method: string, path: string, body?: unknown): FrameworkRequest {
-  return {
-    body,
-    cookies: {},
-    headers: {},
-    method,
-    params: {},
-    path,
-    query: {},
-    raw: {},
-    url: path,
-  };
-}
-
-function createResponse(): FrameworkResponse & { body?: unknown } {
-  return {
-    committed: false,
-    headers: {},
-    redirect(status, location) {
-      this.setStatus(status);
-      this.setHeader('Location', location);
-      this.committed = true;
-    },
-    send(body) {
-      this.body = body;
-      this.committed = true;
-    },
-    setHeader(name, value) {
-      this.headers[name] = value;
-    },
-    setStatus(code) {
-      this.statusCode = code;
-      this.statusSet = true;
-    },
-    statusCode: undefined,
-    statusSet: false,
-  };
-}
-
-describe('AppModule integration', () => {
-  it('dispatches /health and /ready', async () => {
-    const app = await FluoFactory.create(AppModule, {});
-
-    const healthRes = createResponse();
-    await app.dispatch(createRequest('GET', '/health'), healthRes);
-    expect(healthRes.body).toEqual({ status: 'ok' });
-
-    const readyRes = createResponse();
-    await app.dispatch(createRequest('GET', '/ready'), readyRes);
-    expect(readyRes.body).toEqual({ status: 'ready' });
-
-    await app.close();
-  });
-
-  it('dispatches POST /users/ then GET /users/', async () => {
-    const app = await FluoFactory.create(AppModule, {});
-
-    const postRes = createResponse();
-    await app.dispatch(createRequest('POST', '/users/', { name: 'Ada', email: 'ada@example.com' }), postRes);
-    expect(postRes.statusCode).toBe(201);
-    expect(postRes.body).toMatchObject({ name: 'Ada', email: 'ada@example.com' });
-
-    const getRes = createResponse();
-    await app.dispatch(createRequest('GET', '/users/'), getRes);
-    expect(getRes.body).toEqual([expect.objectContaining({ name: 'Ada' })]);
-
-    await app.close();
-  });
-});
-
 describe('AppModule e2e', () => {
-  it('serves health, ready, and user CRUD through createTestApp', async () => {
+  it('serves health, ready, and user CRUD through createTestApp request helpers', async () => {
     const app = await createTestApp({ rootModule: AppModule });
 
-    await expect(app.dispatch({ method: 'GET', path: '/health' })).resolves.toMatchObject({
+    await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
       body: { status: 'ok' },
       status: 200,
     });
 
-    await expect(app.dispatch({ method: 'GET', path: '/ready' })).resolves.toMatchObject({
+    await expect(app.request('GET', '/ready').send()).resolves.toMatchObject({
       body: { status: 'ready' },
       status: 200,
     });
 
-    const createResult = await app.dispatch({
-      method: 'POST',
-      path: '/users/',
-      body: { name: 'Grace', email: 'grace@example.com' },
-    });
+    const createResult = await app
+      .request('POST', '/users/')
+      .body({ name: 'Grace', email: 'grace@example.com' })
+      .send();
     expect(createResult.status).toBe(201);
     expect(createResult.body).toMatchObject({ name: 'Grace', email: 'grace@example.com' });
 
-    const listResult = await app.dispatch({ method: 'GET', path: '/users/' });
+    const listResult = await app.request('GET', '/users/').send();
     expect(listResult.status).toBe(200);
     expect(listResult.body).toEqual([expect.objectContaining({ name: 'Grace' })]);
 
@@ -134,11 +61,10 @@ describe('AppModule e2e', () => {
   it('returns validation errors for invalid input', async () => {
     const app = await createTestApp({ rootModule: AppModule });
 
-    const result = await app.dispatch({
-      method: 'POST',
-      path: '/users/',
-      body: { name: '', email: '' },
-    });
+    const result = await app
+      .request('POST', '/users/')
+      .body({ name: '', email: '' })
+      .send();
 
     expect(result.status).toBe(400);
 

@@ -53,7 +53,7 @@ examples/auth-jwt-passport/
 3. `src/auth/bearer.strategy.ts` — passport core를 통한 bearer token 검증
 4. `src/auth/auth.controller.ts` — 토큰 발급 라우트 + 보호된 profile 라우트
 5. `src/auth/auth.module.ts` — `JwtModule.forRoot(...)` + `PassportModule.forRoot(...)` 기반 module-first 등록
-6. `src/app.test.ts` — integration 및 e2e 스타일 검증
+6. `src/app.test.ts` — service/strategy coverage와 `createTestApp(...).request(...).send()` 기반 e2e 스타일 HTTP 점검
 
 ## 관련 문서
 

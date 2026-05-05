@@ -31,7 +31,7 @@ If you are new to the repo, follow this order:
 - `auth-jwt-passport` proves the current official bearer-token auth path
 - `ops-metrics-terminus` proves the current markdown-first observability/health path
 
-The examples also anchor the canonical fluo TDD ladder from `../docs/contracts/testing-guide.md`: write fast unit tests near `src/**`, add slice/module tests with `createTestingModule({ rootModule })` when DI wiring or provider overrides matter, and use `createTestApp({ rootModule })` for app-level e2e-style request-pipeline checks. Existing files such as `minimal/src/app.test.ts`, `auth-jwt-passport/src/app.test.ts`, and `ops-metrics-terminus/src/app.test.ts` show the app-level end of that ladder.
+The examples also anchor the canonical fluo TDD ladder from `../docs/contracts/testing-guide.md`: write fast unit tests near `src/**`, add slice/module tests with `createTestingModule({ rootModule })` when DI wiring or provider overrides matter, and use `createTestApp({ rootModule })` with `app.request(...).send()` for app-level e2e-style request-pipeline checks. Existing files such as `minimal/src/app.test.ts`, `auth-jwt-passport/src/app.test.ts`, and `ops-metrics-terminus/src/app.test.ts` show the app-level end of that ladder.
 
 For the other v2 starter contracts, see the CLI README for commands and the contract matrix for the full specification:
 

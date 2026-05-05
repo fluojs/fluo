@@ -49,7 +49,7 @@ examples/ops-metrics-terminus/
 2. `src/ops/metrics-registry.ts` — shared Registry와 custom metric 등록
 3. `src/ops/ops-metrics.service.ts` — counter를 증가시키는 비즈니스 액션
 4. `src/ops/ops.controller.ts` — metrics 상태를 바꾸는 라우트
-5. `src/app.test.ts` — `/health`, `/ready`, `/metrics`, custom route 검증
+5. `src/app.test.ts` — `createTestApp(...).request(...).send()` 기반 `/health`, `/ready`, `/metrics`, custom route 검증
 
 ## 관련 문서
 

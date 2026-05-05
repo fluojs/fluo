@@ -35,7 +35,7 @@ examples/minimal/
 │   ├── main.ts             # 진입점: adapter-first Fastify startup
 │   ├── hello.controller.ts # GET /hello
 │   ├── hello.service.ts    # 비즈니스 로직
-│   └── app.test.ts         # 런타임 디스패치 + e2e 스타일 테스트
+│   └── app.test.ts         # unit + createTestApp request helper 테스트
 └── README.md
 ```
 
