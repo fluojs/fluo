@@ -1070,6 +1070,53 @@ describe('ConfigModule', () => {
     expect(service?.get('nested.value' as never)).toBe('registered');
   });
 
+  it('activates watch reloads from ConfigModule.forRoot without replacing ConfigService identity', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-module-watch-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const moduleRef = ConfigModule.forRoot({
+      envFile: envPath,
+      processEnv: {},
+      watch: true,
+    });
+    const providers = getModuleMetadata(moduleRef)?.providers as
+      | Array<{ provide?: unknown; useFactory?: () => unknown; useValue?: unknown } | (new (...args: never[]) => unknown)>
+      | undefined;
+    const configProvider = providers?.find((provider) => typeof provider === 'object' && provider.provide === ConfigService) as
+      | { useFactory?: () => unknown }
+      | undefined;
+    const optionsProvider = providers?.find((provider) => typeof provider === 'object' && provider.useValue !== undefined) as
+      | { useValue?: ConfigModuleOptions }
+      | undefined;
+    const watchManagerProvider = providers?.find(
+      (provider) => typeof provider === 'function' && provider.name === 'ConfigModuleWatchManager',
+    ) as (new (config: ConfigService, options: ConfigModuleOptions) => { onApplicationBootstrap(): void; onModuleDestroy(): void }) | undefined;
+    const service = configProvider?.useFactory?.() as ConfigService | undefined;
+    const manager = service && optionsProvider?.useValue && watchManagerProvider
+      ? new watchManagerProvider(service, optionsProvider.useValue)
+      : undefined;
+
+    expect(service?.get('PORT')).toBe('4000');
+    expect(manager).toBeDefined();
+
+    try {
+      manager?.onApplicationBootstrap();
+
+      writeFileSync(envPath, 'PORT=4100\n');
+      emitWatchChange();
+      await waitForCondition(() => service?.get('PORT') === '4100');
+
+      expect(service?.get('PORT')).toBe('4100');
+      expect(watchCallbacks.size).toBe(1);
+    } finally {
+      manager?.onModuleDestroy();
+    }
+
+    expect(watchCallbacks.size).toBe(0);
+  });
+
   it('uses Standard Schema validation through ConfigModule.forRoot', () => {
     const moduleRef = ConfigModule.forRoot({
       defaults: { PORT: '4000' },

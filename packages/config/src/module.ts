@@ -1,9 +1,42 @@
-import { defineModuleMetadata } from '@fluojs/core/internal';
+import { Inject } from '@fluojs/core';
+import { defineModuleMetadata, type ModuleMetadata } from '@fluojs/core/internal';
 
-import { loadConfig } from './load.js';
+import { createConfigReloader, loadConfig } from './load.js';
 import { snapshotConfigModuleOptions } from './options.js';
-import { ConfigService, createConfigServiceFromSnapshot } from './service.js';
-import type { ConfigModuleOptions } from './types.js';
+import {
+  ConfigService,
+  createConfigServiceFromSnapshot,
+  replaceConfigServiceSnapshotUnchecked,
+} from './service.js';
+import type { ConfigModuleOptions, ConfigReloader } from './types.js';
+
+const CONFIG_MODULE_WATCH_OPTIONS = Symbol('fluo.config.module-watch-options');
+
+@Inject(ConfigService, CONFIG_MODULE_WATCH_OPTIONS)
+class ConfigModuleWatchManager {
+  private reloader: ConfigReloader | undefined;
+
+  constructor(
+    private readonly config: ConfigService,
+    private readonly options: ConfigModuleOptions,
+  ) {}
+
+  onApplicationBootstrap(): void {
+    if (!this.options.watch) {
+      return;
+    }
+
+    this.reloader = createConfigReloader(this.options);
+    this.reloader.subscribe((snapshot) => {
+      replaceConfigServiceSnapshotUnchecked(this.config, snapshot);
+    });
+  }
+
+  onModuleDestroy(): void {
+    this.reloader?.close();
+    this.reloader = undefined;
+  }
+}
 
 /**
  * Module facade that wires normalized configuration into the application container.
@@ -31,16 +64,27 @@ export class ConfigModule {
   static forRoot(options?: ConfigModuleOptions): new () => ConfigModule {
     const loadOptions = snapshotConfigModuleOptions(options);
     class ConfigModuleImpl extends ConfigModule {}
+    const providers: NonNullable<ModuleMetadata['providers']> = [
+      {
+        provide: ConfigService,
+        useFactory: () => createConfigServiceFromSnapshot(loadConfig(loadOptions)),
+      },
+    ];
+
+    if (loadOptions.watch) {
+      providers.push(
+        {
+          provide: CONFIG_MODULE_WATCH_OPTIONS,
+          useValue: loadOptions,
+        },
+        ConfigModuleWatchManager,
+      );
+    }
 
     defineModuleMetadata(ConfigModuleImpl, {
       global: loadOptions.global ?? true,
       exports: [ConfigService],
-      providers: [
-        {
-          provide: ConfigService,
-          useFactory: () => createConfigServiceFromSnapshot(loadConfig(loadOptions)),
-        },
-      ],
+      providers,
     });
 
     return ConfigModuleImpl;
