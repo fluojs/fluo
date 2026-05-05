@@ -8,7 +8,7 @@ type ExportTarget = {
 };
 
 describe('@fluojs/terminus subpath exports', () => {
-  it('keeps the redis subpath aligned with emitted dist artifacts', () => {
+  it('keeps the node and redis subpaths aligned with emitted dist artifacts', () => {
     const packageJson = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
     ) as {

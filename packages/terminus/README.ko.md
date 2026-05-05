@@ -62,8 +62,8 @@ class AppModule {}
 - `PrismaHealthIndicator` / `DrizzleHealthIndicator`
 - `RedisHealthIndicator` (`@fluojs/terminus/redis`에서 제공)
 - `HttpHealthIndicator`
-- `MemoryHealthIndicator` (`@fluojs/terminus/node`에서 제공)
-- `DiskHealthIndicator` (`@fluojs/terminus/node`에서 제공)
+- `MemoryHealthIndicator` (호환성을 위해 root에서도 export되며 `@fluojs/terminus/node`에서도 제공)
+- `DiskHealthIndicator` (호환성을 위해 root에서도 export되며 `@fluojs/terminus/node`에서도 제공)
 
 ### DI 기반 인디케이터
 
@@ -149,7 +149,7 @@ TerminusModule.forRoot({
 ### `@fluojs/terminus/node`
 
 - `MemoryHealthIndicator`, `DiskHealthIndicator`, `createMemoryHealthIndicator()`, `createDiskHealthIndicator()`
-  - Node 전용 indicator helper는 non-Node runtime에서도 root package import가 안전하도록 전용 subpath에서 export됩니다.
+  - Node 전용 indicator helper는 호환성을 위해 root에서도 계속 export되며 이 전용 subpath에서도 export됩니다. Disk check의 filesystem access는 lazy-load되므로 root package import 시점에는 Node filesystem module을 load하지 않습니다.
 
 
 ### `HealthCheckError`

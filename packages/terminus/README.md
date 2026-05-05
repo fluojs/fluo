@@ -60,8 +60,8 @@ The package provides several indicators out of the box:
 - `PrismaHealthIndicator` / `DrizzleHealthIndicator`
 - `RedisHealthIndicator` (from `@fluojs/terminus/redis`)
 - `HttpHealthIndicator`
-- `MemoryHealthIndicator` (from `@fluojs/terminus/node`)
-- `DiskHealthIndicator` (from `@fluojs/terminus/node`)
+- `MemoryHealthIndicator` (root-exported for compatibility and also available from `@fluojs/terminus/node`)
+- `DiskHealthIndicator` (root-exported for compatibility and also available from `@fluojs/terminus/node`)
 
 ### DI-Backed Indicators
 
@@ -149,7 +149,7 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 ### `@fluojs/terminus/node`
 
 - `MemoryHealthIndicator`, `DiskHealthIndicator`, `createMemoryHealthIndicator()`, `createDiskHealthIndicator()`
-  - Node-specific indicator helpers are exported from the dedicated subpath so the root package stays import-safe in non-Node runtimes.
+  - Node-specific indicator helpers remain root-exported for compatibility and are also exported from this dedicated subpath. Filesystem access for disk checks is lazy-loaded so importing the root package does not load Node filesystem modules at module initialization time.
 
 
 ### `HealthCheckError`
