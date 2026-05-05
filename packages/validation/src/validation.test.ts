@@ -96,6 +96,30 @@ describe('DefaultValidator', () => {
     expect(result.email).toBe('hello@example.com');
   });
 
+  it('validate rejects malformed roots with deterministic validation issues', async () => {
+    let conditionRuns = 0;
+
+    class RootDto {
+      @ValidateIf(() => {
+        conditionRuns += 1;
+        return true;
+      })
+      @IsString()
+      name = '';
+    }
+
+    const validator = new DefaultValidator();
+    const malformedRoots: unknown[] = [undefined, null, 'unsafe-string-input', ['unsafe-array-input']];
+
+    for (const malformedRoot of malformedRoots) {
+      await expect(validator.validate(malformedRoot, RootDto)).rejects.toMatchObject({
+        issues: [{ code: 'INVALID_DTO', message: 'DTO root value must be a plain object.' }],
+      });
+    }
+
+    expect(conditionRuns).toBe(0);
+  });
+
   it('rejects malformed materialize roots before constructor and initializer side effects run', async () => {
     let constructorRuns = 0;
     let initializerRuns = 0;
@@ -153,6 +177,35 @@ describe('DefaultValidator', () => {
     expect(result).toBeInstanceOf(CreateOrderDto);
     expect(result.address).toBeInstanceOf(AddressDto);
     expect(result.previousAddresses[0]).toBeInstanceOf(AddressDto);
+  });
+
+  it('materialize preserves nested DTO instances while hydrating plain nested values', async () => {
+    class AddressDto {
+      @MinLength(1)
+      city = '';
+    }
+
+    class CreateOrderDto {
+      @ValidateNested(() => AddressDto)
+      currentAddress = new AddressDto();
+
+      @ValidateNested(() => AddressDto, { each: true })
+      previousAddresses: AddressDto[] = [];
+    }
+
+    const existingAddress = Object.assign(new AddressDto(), { city: 'Seoul' });
+    const validator = new DefaultValidator();
+    const result = await validator.materialize<CreateOrderDto>(
+      {
+        currentAddress: existingAddress,
+        previousAddresses: [existingAddress, { city: 'Busan' }],
+      },
+      CreateOrderDto,
+    );
+
+    expect(result.currentAddress).toBe(existingAddress);
+    expect(result.previousAddresses[0]).toBe(existingAddress);
+    expect(result.previousAddresses[1]).toBeInstanceOf(AddressDto);
   });
 
   it('materialize recursively hydrates nested Set and Map DTO collections', async () => {
