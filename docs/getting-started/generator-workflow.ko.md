@@ -106,8 +106,10 @@ Dry-run 모드는 `Dry run: no files were written.`를 출력한 뒤 각 예정 
 - `--dry-run`은 실제 실행과 같은 검증, 기본 타깃 해석, `--target-directory`, request DTO feature 타깃 규칙을 사용하지만 작업공간은 변경하지 않습니다.
 - Dry-run 출력은 파일만 생성하는 생성기와 자동 등록 생성기를 구분하며, 모듈이 생성, 갱신, 또는 변경 없음 상태인지도 표시합니다.
 - `--dry-run`과 `--force`를 함께 사용하면 덮어쓰기 결정을 적용하지 않고 미리 볼 수 있습니다.
+- `--with-test`는 `module`에서만 지원됩니다. `fluo g resource User --with-test` 같은 지원되지 않는 조합은 non-zero exit로 실패하며 resource에는 `--with-slice-test`를 사용하라는 안내를 출력합니다.
+- `--with-slice-test`는 `resource`에서만 지원됩니다. `fluo g module User --with-slice-test` 같은 지원되지 않는 조합은 non-zero exit로 실패합니다.
 - 자동 등록 메타데이터가 해석되더라도 변경되지 않은 파일 내용은 다시 쓰지 않습니다.
 - Generator discovery는 built-in `@fluojs/cli/builtin` collection으로 제한됩니다. 외부 또는 app-local collection은 보류되어 있으며 이 명령이 로드하지 않습니다.
 - 모듈 자동 등록은 controller, service, repository, guard, interceptor, middleware 생성기에만 적용됩니다.
 - Resource, DTO, module 생성기는 상위 모듈 import를 자동으로 연결하지 않습니다.
-- generate 명령이 문서화하는 옵션은 `--target-directory`, `--force`, `--dry-run`, `--help`입니다.
+- generate 명령이 문서화하는 옵션은 `--target-directory`, `--force`, `--dry-run`, `--with-test`, `--with-slice-test`, `--help`입니다.

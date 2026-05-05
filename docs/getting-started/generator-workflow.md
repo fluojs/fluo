@@ -106,8 +106,10 @@ External package-owned or app-local generator collections are intentionally defe
 - `--dry-run` uses the same validation, default target resolution, `--target-directory`, and request DTO feature-target rules as a real run, but it leaves the workspace unchanged.
 - Dry-run output distinguishes files-only generators from auto-registered generators, including whether a module would be created, updated, or left unchanged.
 - Combining `--dry-run` with `--force` previews overwrite decisions without applying them.
+- `--with-test` is supported only for `module`; unsupported combinations such as `fluo g resource User --with-test` fail with a non-zero exit and guidance to use `--with-slice-test` for resources.
+- `--with-slice-test` is supported only for `resource`; unsupported combinations such as `fluo g module User --with-slice-test` fail with a non-zero exit.
 - Unchanged file content is not rewritten, even when the command resolves auto-registration metadata.
 - Generator discovery is limited to the built-in `@fluojs/cli/builtin` collection; external or app-local collections are deferred and are not loaded by this command.
 - Module auto-registration is limited to controller, service, repository, guard, interceptor, and middleware generators.
 - Resource, DTO, and module generators do not wire parent-module imports automatically.
-- The generate command surface documents `--target-directory`, `--force`, `--dry-run`, and `--help`.
+- The generate command surface documents `--target-directory`, `--force`, `--dry-run`, `--with-test`, `--with-slice-test`, and `--help`.
