@@ -39,7 +39,7 @@ A healthy testing strategy follows the "testing pyramid." In fluo, treat that py
 
 1. **Unit**: write `users.service.test.ts` or `users.controller.test.ts` near the source, construct classes directly, and pass explicit fakes or `@fluojs/testing/mock` helpers.
 2. **Slice/module integration**: write `users.slice.test.ts` with `createTestingModule({ rootModule })` or `Test.createTestingModule({ rootModule })` to compile the real module graph, verify provider registration, and apply provider overrides before `.compile()`.
-3. **HTTP e2e-style**: write `test/app.e2e.test.ts` with `createTestApp({ rootModule })`, then use `app.request(...).send()` or `app.dispatch(...)` for request-pipeline behavior.
+3. **HTTP e2e-style**: write `test/app.e2e.test.ts` with `createTestApp({ rootModule })`, then use `app.request(...).send()` as the default application-developer path for request-pipeline behavior.
 4. **Platform/conformance**: use testing harness subpaths only when authoring adapter or runtime packages, not ordinary FluoBlog feature tests.
 
 This ladder matches fluo's explicit runtime model. Unlike NestJS metadata-based setup, a fluo test names the `rootModule` it wants to compile and does not rely on TypeScript design metadata or reflection flags to infer dependencies.
@@ -218,7 +218,7 @@ Sometimes you need to replace an entire Module, not just a single Provider. Fluo
 ## 20.5 E2E-Style HTTP Testing with createTestApp
 `createTestApp` is an E2E-style HTTP test surface that runs the real HTTP pipeline, including request dispatch, Guards, Interceptors, DTO validation, and response writing. It does not open a real network socket, but it verifies the request handling stack itself in the same way as the production path.
 
-Instead of starting a real network server, use `createTestApp`, which provides a virtual request system. The default application-developer path is the fluent `app.request(...).send()` helper; reserve direct `app.dispatch(...)` and manual request/response stubs for framework-internal or adapter/runtime contracts. This improves test speed and reliability while still checking that the full request lifecycle is configured correctly.
+Instead of starting a real network server, use `createTestApp`, which provides a virtual request system. The default application-developer path is the fluent `app.request(...).send()` helper because it reads like an HTTP client while still exercising the framework request pipeline. Reserve direct `app.dispatch(...)` and manual request/response stubs for lower-level framework-internal contracts or adapter/runtime packages that need to inspect the dispatch boundary itself. This improves test speed and reliability while still checking that the full request lifecycle is configured correctly.
 
 ### The Test Case
 ```typescript
