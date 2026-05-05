@@ -77,6 +77,9 @@ fluo는 컨트롤러와 메서드를 조사하여 전체 OpenAPI 3.1.0 문서를
 ### 응답 미디어 타입
 HTTP 핸들러가 `@fluojs/http`의 `@Produces(...)`를 선언하면, 생성된 OpenAPI 응답은 해당 미디어 타입을 response `content` 키로 사용합니다. 예를 들어 `@ApiResponse(...)` 스키마가 있는 핸들러에 `@Produces('application/json', 'application/problem+json')`를 붙이면, `application/json`만으로 되돌아가지 않고 두 미디어 타입 모두 같은 응답 스키마로 방출합니다.
 
+### 기본 성공 응답
+핸들러가 `@ApiResponse(...)`를 선언하지 않으면 생성된 OpenAPI 응답은 `@fluojs/http` 라우트 관례를 따릅니다. `POST` 핸들러는 기본적으로 `201`, 그 밖의 메서드는 `200`을 사용합니다. 엔드포인트가 의도적으로 다른 성공 상태를 반환해야 한다면 `@ApiResponse(...)` 또는 `@HttpCode(...)`를 사용하세요.
+
 ### 통합 DTO 스키마
 `@fluojs/validation`과 원활하게 작동합니다. DTO 클래스는 자동으로 OpenAPI 컴포넌트로 변환되어 적절한 오퍼레이션에서 참조됩니다.
 
