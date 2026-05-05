@@ -35,7 +35,7 @@ examples/minimal/
 │   ├── main.ts             # Entry point: adapter-first Fastify startup
 │   ├── hello.controller.ts # GET /hello
 │   ├── hello.service.ts    # Business logic
-│   └── app.test.ts         # Runtime dispatch + e2e-style tests
+│   └── app.test.ts         # Unit + createTestApp request-helper tests
 └── README.md
 ```
 
