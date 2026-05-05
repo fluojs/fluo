@@ -310,6 +310,33 @@ describe('CacheInterceptor', () => {
     await expect(cacheService.get('/events')).resolves.toBeUndefined();
   });
 
+  it('does not cache non-success HTTP responses returned by GET handlers', async () => {
+    class ProductController {
+      @CacheTTL(120)
+      list() {}
+    }
+
+    const { interceptor, cacheService } = createInterceptor({ ttl: 120 });
+    const firstRequestContext = createRequestContext('GET', '/products', '/products');
+    const secondRequestContext = createRequestContext('GET', '/products', '/products');
+    firstRequestContext.response.statusCode = 500;
+    secondRequestContext.response.statusCode = 500;
+    const firstContext = createContext(ProductController, 'list', firstRequestContext);
+    const secondContext = createContext(ProductController, 'list', secondRequestContext);
+    const next: CallHandler = {
+      handle: vi
+        .fn<CallHandler['handle']>()
+        .mockResolvedValueOnce({ error: 'temporary' })
+        .mockResolvedValueOnce({ error: 'still-temporary' }),
+    };
+
+    await expect(interceptor.intercept(firstContext, next)).resolves.toEqual({ error: 'temporary' });
+    await expect(interceptor.intercept(secondContext, next)).resolves.toEqual({ error: 'still-temporary' });
+
+    expect(next.handle).toHaveBeenCalledTimes(2);
+    await expect(cacheService.get('/products')).resolves.toBeUndefined();
+  });
+
   it('does not fail successful non-GET handlers when cache eviction fails', async () => {
     class ProductController {
       @CacheEvict('GET:/products')

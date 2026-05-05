@@ -121,6 +121,8 @@ CacheModule.forRoot({
 
 The built-in `RedisStore` persists entries with `JSON.stringify(...)`. Cache values therefore need to be JSON-compatible: plain objects, arrays, strings, numbers, booleans, and `null` round-trip cleanly, while values such as `Date` come back as JSON output (for example ISO strings), functions/`undefined`/symbols do not survive, and non-serializable values like `bigint` or cyclic graphs should be normalized before caching.
 
+Positive Redis TTL values are accepted in seconds and may be fractional. Redis expiry is rounded up to the next whole second because Redis `EX` uses integer seconds, while fluo also records the millisecond-precision expiry timestamp in the stored entry and treats the value as expired once that timestamp is reached. Use `ttl: 0` when you intentionally want no Redis expiry.
+
 Redis reset ownership is scoped by `keyPrefix`, which defaults to `fluo:cache:`. `CacheService.reset()` deletes only keys under that prefix for Redis-backed stores, so application-owned Redis data outside the cache prefix is preserved. If you intentionally configure an empty `keyPrefix`, reset is limited to keys written by the current `RedisStore` instance instead of scanning `*`; use a non-empty, application-specific prefix when you need reset to cover cache entries across restarts or multiple processes.
 
 ### Query-Sensitive Caching
@@ -137,6 +139,8 @@ CacheModule.forRoot({
 ```
 
 For fully custom keying, pass a function as `httpKeyStrategy` or use `@CacheKey(...)` with either a literal key or a key factory.
+
+The HTTP interceptor caches only successful, uncommitted GET handler results with a value that can be replayed later. It skips `undefined`, `SseResponse` streams, already committed responses, and responses whose status code is outside the `2xx` range, so redirects and error responses are not stored as cache hits.
 
 ### Cache Ownership and Reset Scope
 

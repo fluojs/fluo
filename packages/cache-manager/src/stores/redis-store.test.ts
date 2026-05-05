@@ -138,6 +138,28 @@ describe('RedisStore', () => {
     });
   });
 
+  it('rounds fractional positive TTLs up for Redis expiry while enforcing millisecond freshness', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-24T00:00:00.000Z'));
+
+    const client = new MockRedisClient();
+    const store = new RedisStore(client, { keyPrefix: 'cache:' });
+
+    await store.set('short', { fresh: true }, 0.25);
+
+    expect(client.setCalls[0]?.args).toEqual(['EX', 1]);
+    expect(JSON.parse(client.setCalls[0]?.value ?? '{}')).toEqual({
+      expiresAt: Date.parse('2026-03-24T00:00:00.250Z'),
+      value: { fresh: true },
+    });
+    await expect(store.get('short')).resolves.toEqual({ fresh: true });
+
+    vi.setSystemTime(new Date('2026-03-24T00:00:00.250Z'));
+
+    await expect(store.get('short')).resolves.toBeUndefined();
+    expect(client.deletedKeys).toContainEqual(['cache:short']);
+  });
+
   it('round-trips values using JSON serialization semantics', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-24T00:00:00.000Z'));

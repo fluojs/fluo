@@ -273,7 +273,13 @@ export class CacheInterceptor implements Interceptor {
   }
 
   private shouldCacheValue(context: InterceptorContext, value: unknown): boolean {
+    const statusCode = context.requestContext.response.statusCode;
+
     if (value === undefined) {
+      return false;
+    }
+
+    if (typeof statusCode === 'number' && (statusCode < 200 || statusCode >= 300)) {
       return false;
     }
 

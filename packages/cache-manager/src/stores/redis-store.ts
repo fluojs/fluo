@@ -52,6 +52,14 @@ function normalizeScanResponse(result: [string | number, string[]]): { cursor: s
   };
 }
 
+function normalizePositiveTtlMilliseconds(ttlSeconds: number): number {
+  return Math.max(1, Math.ceil(ttlSeconds * 1000));
+}
+
+function normalizeRedisExpirySeconds(ttlSeconds: number): number {
+  return Math.max(1, Math.ceil(ttlSeconds));
+}
+
 /**
  * Cache store implementation backed by a Redis-compatible client.
  */
@@ -86,6 +94,11 @@ export class RedisStore implements CacheStore {
       return undefined;
     }
 
+    if (decoded.expiresAt !== undefined && decoded.expiresAt <= Date.now()) {
+      await this.del(key);
+      return undefined;
+    }
+
     return decoded.value as T;
   }
 
@@ -97,9 +110,9 @@ export class RedisStore implements CacheStore {
     };
 
     if (ttlSeconds > 0) {
-      const ttlMilliseconds = Math.max(1, Math.floor(ttlSeconds * 1000));
+      const ttlMilliseconds = normalizePositiveTtlMilliseconds(ttlSeconds);
       entry.expiresAt = now + ttlMilliseconds;
-      const ttlSecondsRounded = Math.max(1, Math.ceil(ttlMilliseconds / 1000));
+      const ttlSecondsRounded = normalizeRedisExpirySeconds(ttlSeconds);
       await this.client.set(redisKey, JSON.stringify(entry), 'EX', ttlSecondsRounded);
       this.trackOwnedKey(redisKey);
       return;

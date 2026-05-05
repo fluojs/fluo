@@ -121,6 +121,8 @@ CacheModule.forRoot({
 
 내장 `RedisStore`는 엔트리를 `JSON.stringify(...)`로 저장합니다. 따라서 캐시 값은 JSON 호환 형태여야 합니다. 일반 객체, 배열, 문자열, 숫자, 불리언, `null`은 안정적으로 round-trip 되지만, `Date`는 JSON 결과(예: ISO 문자열)로 돌아오고, 함수/`undefined`/`symbol`은 유지되지 않으며, `bigint`나 순환 그래프처럼 직렬화 불가능한 값은 캐싱 전에 정규화해야 합니다.
 
+양수 Redis TTL 값은 초 단위로 받으며 소수도 허용됩니다. Redis `EX`는 정수 초를 사용하므로 Redis 만료 시간은 다음 정수 초로 올림하지만, fluo는 저장된 엔트리 안에 밀리초 정밀도의 만료 timestamp도 기록하고 해당 timestamp에 도달하면 값을 만료된 것으로 처리합니다. Redis 만료를 의도적으로 사용하지 않으려면 `ttl: 0`을 사용하세요.
+
 Redis reset 소유권은 기본값이 `fluo:cache:`인 `keyPrefix`로 제한됩니다. Redis 기반 저장소에서 `CacheService.reset()`은 해당 prefix 아래의 키만 삭제하므로, cache prefix 밖의 애플리케이션 소유 Redis 데이터는 유지됩니다. 의도적으로 빈 `keyPrefix`를 설정하면 reset은 `*`를 scan하지 않고 현재 `RedisStore` 인스턴스가 쓴 키로만 제한됩니다. 재시작 이후나 여러 프로세스에 걸친 캐시 엔트리까지 reset해야 한다면 비어 있지 않은 애플리케이션 전용 prefix를 사용하세요.
 
 ### 쿼리 매개변수 기반 캐싱
@@ -137,6 +139,8 @@ CacheModule.forRoot({
 ```
 
 완전히 다른 키 전략이 필요하다면 `httpKeyStrategy`에 함수를 전달하거나, literal key 또는 key factory를 받는 `@CacheKey(...)`를 사용하세요.
+
+HTTP 인터셉터는 나중에 재사용할 수 있는 값이 있는 성공한, 아직 commit되지 않은 GET 핸들러 결과만 캐싱합니다. `undefined`, `SseResponse` 스트림, 이미 commit된 응답, 그리고 status code가 `2xx` 범위를 벗어난 응답은 건너뛰므로 redirect와 error 응답은 cache hit로 저장되지 않습니다.
 
 ### 캐시 소유권과 reset 범위
 
