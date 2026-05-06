@@ -9,10 +9,16 @@ export interface ThrottlerStoreEntry {
 }
 
 /**
- * Input passed to a `ThrottlerStore` when consuming a request slot.
+ * Public input passed to a `ThrottlerStore` when consuming a request slot.
+ *
+ * @remarks `ThrottlerGuard` passes this shape to `ThrottlerStore.consume(...)`
+ * so custom stores can anchor the current window to the guard's clock and the
+ * resolved module or route-level TTL.
  */
 export interface ThrottlerConsumeInput {
+  /** Current epoch time in milliseconds for the consume operation. */
   now: number;
+  /** Rate-limit window length in seconds. */
   ttlSeconds: number;
 }
 
