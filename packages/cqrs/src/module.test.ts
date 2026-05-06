@@ -937,6 +937,113 @@ describe('@fluojs/cqrs', () => {
     expect(store.completed).toBe(true);
   });
 
+  it('waits for in-flight CQRS event handlers during application shutdown', async () => {
+    const releaseHandler = createDeferred<void>();
+    let closeCompleted = false;
+
+    class ShutdownStore {
+      completed = false;
+    }
+
+    class HandlerShutdownEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    @Inject(ShutdownStore)
+    @EventHandler(HandlerShutdownEvent)
+    class ShutdownEventHandler implements IEventHandler<HandlerShutdownEvent> {
+      constructor(private readonly store: ShutdownStore) {}
+
+      async handle(_event: HandlerShutdownEvent): Promise<void> {
+        await releaseHandler.promise;
+        this.store.completed = true;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [ShutdownStore, ShutdownEventHandler],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const store = await app.container.resolve(ShutdownStore);
+
+    const publishPromise = eventBus.publish(new HandlerShutdownEvent('shutdown-handler-1'));
+    await Promise.resolve();
+
+    const closePromise = app.close().then(() => {
+      closeCompleted = true;
+    });
+    await Promise.resolve();
+
+    expect(closeCompleted).toBe(false);
+    expect(store.completed).toBe(false);
+
+    releaseHandler.resolve();
+
+    await publishPromise;
+    await closePromise;
+
+    expect(store.completed).toBe(true);
+  });
+
+  it('waits for in-flight publishAll sequences during application shutdown', async () => {
+    const releaseFirstEvent = createDeferred<void>();
+    let closeCompleted = false;
+
+    class BatchShutdownEvent implements IEvent {
+      constructor(public readonly id: number) {}
+    }
+
+    class ShutdownStore {
+      seen: number[] = [];
+    }
+
+    @Inject(ShutdownStore)
+    @EventHandler(BatchShutdownEvent)
+    class BatchShutdownEventHandler implements IEventHandler<BatchShutdownEvent> {
+      constructor(private readonly store: ShutdownStore) {}
+
+      async handle(event: BatchShutdownEvent): Promise<void> {
+        if (event.id === 1) {
+          await releaseFirstEvent.promise;
+        }
+
+        this.store.seen.push(event.id);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [ShutdownStore, BatchShutdownEventHandler],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const store = await app.container.resolve(ShutdownStore);
+
+    const publishAllPromise = eventBus.publishAll([new BatchShutdownEvent(1), new BatchShutdownEvent(2)]);
+    await Promise.resolve();
+
+    const closePromise = app.close().then(() => {
+      closeCompleted = true;
+    });
+    await Promise.resolve();
+
+    expect(closeCompleted).toBe(false);
+    expect(store.seen).toEqual([]);
+
+    releaseFirstEvent.resolve();
+
+    await publishAllPromise;
+    await closePromise;
+
+    expect(store.seen).toEqual([1, 2]);
+  });
+
   it('wires command/query/event buses through CqrsModule.forRoot with bootstrapApplication', async () => {
     class Store {
       commandCount = 0;
