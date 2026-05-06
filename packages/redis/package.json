@@ -45,10 +45,13 @@
   "dependencies": {
     "@fluojs/core": "workspace:^",
     "@fluojs/di": "workspace:^",
-    "@fluojs/runtime": "workspace:^",
+    "@fluojs/runtime": "workspace:^"
+  },
+  "peerDependencies": {
     "ioredis": "^5.10.0"
   },
   "devDependencies": {
+    "ioredis": "^5.10.0",
     "vitest": "^3.2.4"
   }
 }
