@@ -48,7 +48,11 @@ export class DuplicateQueryHandlerError extends FluoError {
   }
 }
 
-/** Raised when conflicting event-handler registrations break the CQRS discovery contract. */
+/**
+ * Raised when conflicting event-handler registrations break CQRS discovery invariants.
+ *
+ * Ordinary multiple `@EventHandler(...)` providers for the same event are valid and fan out.
+ */
 export class DuplicateEventHandlerError extends FluoError {
   /**
    * Creates a duplicate-event-handler error.

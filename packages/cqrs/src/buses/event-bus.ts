@@ -29,6 +29,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   private descriptors: EventHandlerDescriptor[] = [];
   private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
+  private readonly activePublishPipelines = new Set<Promise<void>>();
   private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
 
   constructor(
@@ -55,6 +56,11 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
 
   async onApplicationShutdown(): Promise<void> {
     this.lifecycleState = 'stopping';
+
+    while (this.activePublishPipelines.size > 0) {
+      await Promise.allSettled(Array.from(this.activePublishPipelines));
+    }
+
     this.lifecycleState = 'stopped';
   }
 
@@ -84,6 +90,20 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
    * @throws {InvariantError} When a discovered provider does not implement `handle(event)`.
    */
   async publish<TEvent extends IEvent>(event: TEvent): Promise<void> {
+    await this.trackPublishPipeline(this.runPublishPipeline(event));
+  }
+
+  /**
+   * Publishes a batch of events sequentially through the CQRS event pipeline.
+   *
+   * @param events Event instances to publish in order.
+   * @returns A promise that resolves once all events are published.
+   */
+  async publishAll<TEvent extends IEvent>(events: readonly TEvent[]): Promise<void> {
+    await this.trackPublishPipeline(this.runPublishAllPipeline(events));
+  }
+
+  private async runPublishPipeline<TEvent extends IEvent>(event: TEvent): Promise<void> {
     await this.ensureDiscovered();
 
     for (const descriptor of this.matchEventDescriptors(event)) {
@@ -100,15 +120,19 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     await this.eventBus.publish(event);
   }
 
-  /**
-   * Publishes a batch of events sequentially through the CQRS event pipeline.
-   *
-   * @param events Event instances to publish in order.
-   * @returns A promise that resolves once all events are published.
-   */
-  async publishAll<TEvent extends IEvent>(events: readonly TEvent[]): Promise<void> {
+  private async runPublishAllPipeline<TEvent extends IEvent>(events: readonly TEvent[]): Promise<void> {
     for (const event of events) {
       await this.publish(event);
+    }
+  }
+
+  private async trackPublishPipeline(pipeline: Promise<void>): Promise<void> {
+    this.activePublishPipelines.add(pipeline);
+
+    try {
+      await pipeline;
+    } finally {
+      this.activePublishPipelines.delete(pipeline);
     }
   }
 
