@@ -150,7 +150,7 @@ Published event names:
 - `notification.dispatch.delivered`
 - `notification.dispatch.failed`
 
-If `events.publisher` is configured, lifecycle event publication defaults to on unless `publishLifecycleEvents: false` is set. Channel deliveries that omit `externalId` receive a deterministic fallback delivery id so dispatch results remain stable for callers.
+If `events.publisher` is configured, lifecycle event publication defaults to on unless `publishLifecycleEvents: false` is set. Channel deliveries that omit `externalId` receive a deterministic fallback delivery id derived from the notification envelope so dispatch results remain stable for callers without relying on time or random data. Channel resolution failures publish `requested` and then `failed` events before throwing `NotificationChannelNotFoundError`; treat those failures as permanent configuration errors. Queue enqueue and provider delivery failures also publish `failed` events, but callers should classify their retry behavior from the underlying adapter/provider error.
 
 ### Intentional limitations
 

@@ -145,7 +145,9 @@ NotificationsModule.forRoot({
 - `notification.dispatch.requested`: When `dispatch()` is called.
 - `notification.dispatch.queued`: When a notification moves to the background queue.
 - `notification.dispatch.delivered`: When the channel confirms successful delivery.
-- `notification.dispatch.failed`: When delivery still fails after retries.
+- `notification.dispatch.failed`: When channel resolution, queue enqueue, or provider delivery fails.
+
+Channel resolution failures are permanent configuration errors: the service publishes `requested`, then `failed`, and throws `NotificationChannelNotFoundError` without enqueueing or calling a provider. Queue enqueue and provider delivery failures also publish `failed`, but retry policy should be based on the underlying queue or provider error. When a channel omits `externalId`, the service creates a deterministic fallback delivery id from the notification envelope rather than using time or random data.
 
 ## 15.7 FluoShop Context: Order Success Flow
 
