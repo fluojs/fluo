@@ -206,7 +206,7 @@ describe('@fluojs/drizzle', () => {
 
     const shutdownPromise = app.close();
 
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(events).toContain('transaction:rollback:pending');
     expect(events).not.toContain('dispose');
 
@@ -221,6 +221,118 @@ describe('@fluojs/drizzle', () => {
       'transaction:rollback:done',
       'transaction:end',
       'dispose',
+    ]);
+  });
+
+  it('rejects new request transactions once shutdown begins', async () => {
+    const events: string[] = [];
+    const transactionDatabase = {};
+    let releaseRollback!: () => void;
+    const rollbackBarrier = new Promise<void>((resolve) => {
+      releaseRollback = resolve;
+    });
+    const database = {
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+
+        try {
+          return await callback(transactionDatabase);
+        } catch (error) {
+          events.push('transaction:rollback:pending');
+          await rollbackBarrier;
+          events.push('transaction:rollback:done');
+          throw error;
+        } finally {
+          events.push('transaction:end');
+        }
+      },
+    };
+
+    const drizzleModule = DrizzleModule.forRoot<typeof database, typeof transactionDatabase>({
+      database,
+      dispose() {
+        events.push('dispose');
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [drizzleModule],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+    const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
+    const openTransaction = drizzle.requestTransaction(async () => new Promise<never>(() => undefined));
+    const shutdownPromise = app.close();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(events).toContain('transaction:rollback:pending');
+
+    await expect(drizzle.requestTransaction(async () => 'late-request')).rejects.toThrow(
+      'Drizzle request transactions are not available during shutdown.',
+    );
+
+    releaseRollback();
+
+    await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+    await shutdownPromise;
+
+    expect(events).toEqual([
+      'transaction:start',
+      'transaction:rollback:pending',
+      'transaction:rollback:done',
+      'transaction:end',
+      'dispose',
+    ]);
+  });
+
+  it('waits for transaction runner settlement before reporting late request aborts', async () => {
+    const events: string[] = [];
+    const transactionDatabase = {};
+    let releaseCommit!: () => void;
+    const commitBarrier = new Promise<void>((resolve) => {
+      releaseCommit = resolve;
+    });
+    const database = {
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+        const result = await callback(transactionDatabase);
+        events.push('transaction:commit:pending');
+        await commitBarrier;
+        events.push('transaction:commit:done');
+        return result;
+      },
+    };
+    const drizzle = new DrizzleDatabase<typeof database, typeof transactionDatabase>(database);
+    const controller = new AbortController();
+
+    const requestTransaction = drizzle.requestTransaction(
+      async () => {
+        events.push('request:done');
+        return 'committed-result';
+      },
+      controller.signal,
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(events).toEqual(['transaction:start', 'request:done', 'transaction:commit:pending']);
+
+    controller.abort(new Error('client aborted during transaction settlement'));
+
+    await Promise.resolve();
+    expect(events).not.toContain('transaction:commit:done');
+
+    releaseCommit();
+
+    await expect(requestTransaction).rejects.toThrow('client aborted during transaction settlement');
+    expect(events).toEqual([
+      'transaction:start',
+      'request:done',
+      'transaction:commit:pending',
+      'transaction:commit:done',
     ]);
   });
 
