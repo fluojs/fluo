@@ -268,23 +268,53 @@ export class Container {
       );
     }
 
+    const normalizedByToken = new Map<Token, NormalizedProvider[]>();
+
     for (const provider of providers) {
       const normalized = normalizeProvider(provider);
-      const existing = this.lookupProvider(normalized.provide);
+      const normalizedProviders = normalizedByToken.get(normalized.provide);
 
-      this.registrations.delete(normalized.provide);
-      this.multiRegistrations.delete(normalized.provide);
-      this.invalidateCachedEntry(normalized.provide, existing?.scope ?? normalized.scope);
+      if (normalizedProviders) {
+        normalizedProviders.push(normalized);
+        continue;
+      }
 
-      if (normalized.multi) {
-        this.multiRegistrations.set(normalized.provide, [normalized]);
-        this.multiOverriddenTokens.add(normalized.provide);
+      normalizedByToken.set(normalized.provide, [normalized]);
+    }
+
+    for (const [token, normalizedProviders] of normalizedByToken) {
+      const firstProvider = normalizedProviders[0];
+
+      if (!firstProvider) {
+        continue;
+      }
+
+      const containsMultiProvider = normalizedProviders.some((normalized) => normalized.multi === true);
+
+      if (containsMultiProvider && normalizedProviders.some((normalized) => normalized.multi !== true)) {
+        throw new DuplicateProviderError(token);
+      }
+
+      if (!containsMultiProvider && normalizedProviders.length > 1) {
+        throw new DuplicateProviderError(token);
+      }
+
+      const existing = this.lookupProvider(token);
+      const existingMultiProviders = this.collectMultiProviders(token);
+
+      this.registrations.delete(token);
+      this.multiRegistrations.delete(token);
+      this.invalidateCachedEntry(token, existing?.scope ?? existingMultiProviders[0]?.scope ?? firstProvider.scope);
+
+      if (containsMultiProvider) {
+        this.multiRegistrations.set(token, normalizedProviders);
+        this.multiOverriddenTokens.add(token);
         this.advanceGraphRevision();
         continue;
       }
 
-      this.multiOverriddenTokens.add(normalized.provide);
-      this.registrations.set(normalized.provide, normalized);
+      this.multiOverriddenTokens.add(token);
+      this.registrations.set(token, firstProvider);
       this.advanceGraphRevision();
     }
 

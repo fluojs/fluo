@@ -50,7 +50,7 @@
 
 - fluo는 DI 해석을 위해 `emitDecoratorMetadata`나 암시적 생성자 타입 리플렉션에 의존해서는 안 됩니다.
 - 공급자 토큰은 등록 메타데이터를 정규화하는 시점에 정의되어 있어야 합니다. `null` 또는 `undefined` inject 토큰은 유효하지 않습니다.
-- 공급자 순환 의존성 체인은 `forwardRef(...)`로 지연시키거나 리팩터링으로 제거하지 않으면 `CircularDependencyError`로 해석 실패합니다.
+- 공급자 순환 의존성 체인은 `CircularDependencyError`로 해석 실패합니다. `forwardRef(...)`는 선언 시점의 토큰 조회만 지연하며 실제 생성자 순환을 해석 가능하게 만들지 않으므로, 그런 순환은 리팩터링으로 제거해야 합니다.
 - 하나의 컨테이너 안에서 같은 토큰을 중복 등록하는 행위는 의도적인 교체가 `container.override(...)`로 수행되지 않는 한 실패해야 합니다.
 - 모듈 간 중복 공급자 토큰은 부트스트랩 시 `duplicateProviderPolicy`로 관리되며, 기본 정책은 `warn`입니다.
 - 모듈 가시성의 기본값은 비공개입니다. 교차 모듈 접근은 명시적 `exports`와 `imports`, 또는 전역 모듈의 export를 통해서만 허용됩니다.

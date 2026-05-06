@@ -552,6 +552,35 @@ describe('Container', () => {
       expect(await container.resolve<string>(token)).toBe('single');
     });
 
+    it('replaces a multi-provider set with every replacement passed in one override call', async () => {
+      const token = Symbol('plugins');
+      const container = new Container().register(
+        { provide: token, useValue: 'original-a', multi: true },
+        { provide: token, useValue: 'original-b', multi: true },
+      );
+
+      await expect(container.resolve<string[]>(token)).resolves.toEqual(['original-a', 'original-b']);
+
+      container.override(
+        { provide: token, useValue: 'replacement-a', multi: true },
+        { provide: token, useValue: 'replacement-b', multi: true },
+      );
+
+      await expect(container.resolve<string[]>(token)).resolves.toEqual(['replacement-a', 'replacement-b']);
+    });
+
+    it('rejects ambiguous override calls that mix single and multi providers for one token', () => {
+      const token = Symbol('plugins');
+      const container = new Container().register({ provide: token, useValue: 'original', multi: true });
+
+      expect(() =>
+        container.override(
+          { provide: token, useValue: 'replacement-a', multi: true },
+          { provide: token, useValue: 'replacement-b' },
+        ),
+      ).toThrow(DuplicateProviderError);
+    });
+
     it('throws DuplicateProviderError when registering a single provider after multi providers for the same token', () => {
       const token = Symbol('plugins');
 

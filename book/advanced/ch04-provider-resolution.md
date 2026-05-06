@@ -277,32 +277,31 @@ After the conflict check passes, multi and single entries split into different s
 
 This split lets the resolver clearly decide whether a Token should be seen as a single value or collected as an array. It is also why the conflict check runs immediately before this point. The same Token must not mix both meanings.
 
-Override semantics are intentionally destructive. The comment in `path:packages/di/src/container.ts:193-206` says that a multi override replaces the entire existing set for that Token. The code in `path:packages/di/src/container.ts:215-231` also deletes both single and multi registrations before inserting the new value. There is no API for partially replacing one entry inside a multi-Provider group.
+Override semantics are intentionally destructive. The comment in `path:packages/di/src/container.ts:249-257` says that a multi override replaces the entire existing set for that Token. The implementation first groups all incoming override Providers by Token, then deletes both single and multi registrations once per Token before inserting the replacement set. There is no API for partially replacing one entry inside a multi-Provider group.
 
-Override deletes the existing single slot and multi array, then makes one new record authoritative.
+Override deletes the existing single slot and multi array, then makes either one single Provider or the full incoming multi-Provider replacement set authoritative.
 
-`path:packages/di/src/container.ts:215-231`
+`path:packages/di/src/container.ts:271-309`
 ```typescript
-    for (const provider of providers) {
-      const normalized = normalizeProvider(provider);
-      const existing = this.lookupProvider(normalized.provide);
+    for (const [token, normalizedProviders] of normalizedByToken) {
+      const containsMultiProvider = normalizedProviders.some((normalized) => normalized.multi === true);
 
-      this.registrations.delete(normalized.provide);
-      this.multiRegistrations.delete(normalized.provide);
-      this.invalidateCachedEntry(normalized.provide, existing?.scope ?? normalized.scope);
+      this.registrations.delete(token);
+      this.multiRegistrations.delete(token);
+      this.invalidateCachedEntry(token, existing?.scope ?? existingMultiProviders[0]?.scope ?? firstProvider.scope);
 
-      if (normalized.multi) {
-        this.multiRegistrations.set(normalized.provide, [normalized]);
-        this.multiOverriddenTokens.add(normalized.provide);
+      if (containsMultiProvider) {
+        this.multiRegistrations.set(token, normalizedProviders);
+        this.multiOverriddenTokens.add(token);
         continue;
       }
 
-      this.multiOverriddenTokens.add(normalized.provide);
-      this.registrations.set(normalized.provide, normalized);
+      this.multiOverriddenTokens.add(token);
+      this.registrations.set(token, firstProvider);
     }
 ```
 
-`multiOverriddenTokens` is recorded too, so a child Scope can preserve the meaning of cutting off parent multi collection. Cache invalidation happens at the same point, so an old instance doesn't remain after the new definition is installed.
+`multiOverriddenTokens` is recorded too, so a child Scope can preserve the meaning of cutting off parent multi collection. Cache invalidation happens at the same point, so an old instance doesn't remain after the new definition is installed. If more than one replacement is passed for the same Token, all entries must be `multi: true`; mixed single/multi replacement is rejected as ambiguous.
 
 The ban on conflicts between single and multi checks ancestors as well as the local map.
 
@@ -333,7 +332,7 @@ The ban on conflicts between single and multi checks ancestors as well as the lo
 
 This excerpt shows the policy. If the same Token appears as single anywhere in the hierarchy, adding multi is blocked. If it appears as multi, adding single is blocked. The recursive details of the ancestor helpers repeat the same policy, so this core branch is the important part.
 
-This design helps tests and replacement strategies. Override is an operation that creates a new truth for one Token. The container doesn't need to create stable identities for individual entries inside a multi cluster. `path:packages/di/src/container.test.ts:375-412` checks both single replacement and multi replacement.
+This design helps tests and replacement strategies. Override is an operation that creates a new truth for one Token. The container doesn't need to create stable identities for individual entries inside a multi cluster. `path:packages/di/src/container.test.ts:494-573` checks single replacement, full multi replacement, and rejection of ambiguous mixed replacement.
 
 The registration algorithm can be summarized as follows.
 

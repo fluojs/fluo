@@ -277,32 +277,31 @@ multi-provider 등록 자체는 additive입니다. `path:packages/di/src/contain
 
 이 분리 덕분에 resolver는 token을 single 값으로 볼지, 배열로 집계할지 명확히 판단할 수 있습니다. 같은 token에 두 의미가 섞이지 않도록 바로 앞에서 conflict 검사를 수행하는 이유도 여기에 있습니다.
 
-override semantics는 의도적으로 destructive합니다. `path:packages/di/src/container.ts:193-206`의 주석은 multi override가 해당 token의 기존 전체 집합을 갈아치운다고 명시합니다. 실제 코드도 `path:packages/di/src/container.ts:215-231`에서 single과 multi 등록을 모두 지운 뒤 새 값을 넣습니다. multi-provider 묶음 안의 특정 엔트리만 부분적으로 바꾸는 API는 없습니다.
+override semantics는 의도적으로 destructive합니다. `path:packages/di/src/container.ts:249-257`의 주석은 multi override가 해당 token의 기존 전체 집합을 갈아치운다고 명시합니다. 구현은 먼저 들어온 override provider를 token별로 묶은 뒤, 각 token마다 single과 multi 등록을 한 번 지우고 replacement set을 넣습니다. multi-provider 묶음 안의 특정 엔트리만 부분적으로 바꾸는 API는 없습니다.
 
-override는 기존 single slot과 multi array를 모두 지우고 새 레코드 하나를 기준으로 삼습니다.
+override는 기존 single slot과 multi array를 모두 지운 뒤, 하나의 single provider 또는 한 번에 전달된 전체 multi-provider replacement set을 기준으로 삼습니다.
 
-`path:packages/di/src/container.ts:215-231`
+`path:packages/di/src/container.ts:271-309`
 ```typescript
-    for (const provider of providers) {
-      const normalized = normalizeProvider(provider);
-      const existing = this.lookupProvider(normalized.provide);
+    for (const [token, normalizedProviders] of normalizedByToken) {
+      const containsMultiProvider = normalizedProviders.some((normalized) => normalized.multi === true);
 
-      this.registrations.delete(normalized.provide);
-      this.multiRegistrations.delete(normalized.provide);
-      this.invalidateCachedEntry(normalized.provide, existing?.scope ?? normalized.scope);
+      this.registrations.delete(token);
+      this.multiRegistrations.delete(token);
+      this.invalidateCachedEntry(token, existing?.scope ?? existingMultiProviders[0]?.scope ?? firstProvider.scope);
 
-      if (normalized.multi) {
-        this.multiRegistrations.set(normalized.provide, [normalized]);
-        this.multiOverriddenTokens.add(normalized.provide);
+      if (containsMultiProvider) {
+        this.multiRegistrations.set(token, normalizedProviders);
+        this.multiOverriddenTokens.add(token);
         continue;
       }
 
-      this.multiOverriddenTokens.add(normalized.provide);
-      this.registrations.set(normalized.provide, normalized);
+      this.multiOverriddenTokens.add(token);
+      this.registrations.set(token, firstProvider);
     }
 ```
 
-`multiOverriddenTokens`가 함께 기록되므로 child scope에서 parent multi collection을 끊는 의미도 보존됩니다. cache invalidation까지 같은 지점에서 일어나기 때문에 이전 인스턴스가 새 정의 뒤에 남지 않습니다.
+`multiOverriddenTokens`가 함께 기록되므로 child scope에서 parent multi collection을 끊는 의미도 보존됩니다. cache invalidation까지 같은 지점에서 일어나기 때문에 이전 인스턴스가 새 정의 뒤에 남지 않습니다. 같은 token에 여러 replacement를 전달하는 경우 모든 entry가 `multi: true`여야 하며, single/multi를 섞은 replacement는 모호하므로 거부됩니다.
 
 single과 multi의 충돌 금지는 local map뿐 아니라 ancestor까지 확인합니다.
 
@@ -333,7 +332,7 @@ single과 multi의 충돌 금지는 local map뿐 아니라 ancestor까지 확인
 
 이 발췌는 같은 token이 계층 어디선가 single로 보이면 multi 추가가 막히고, multi로 보이면 single 추가가 막히는 정책을 보여 줍니다. ancestor helper의 세부 재귀는 같은 정책의 반복이므로 여기서는 이 핵심 분기로 통합합니다.
 
-이 설계는 테스트와 교체 전략에 유리합니다. override는 하나의 token에 대해 새 진실을 만드는 연산입니다. 컨테이너는 multi cluster 내부 개별 entry의 안정적인 identity를 만들 필요가 없습니다. `path:packages/di/src/container.test.ts:375-412`는 single 교체와 multi 교체를 모두 확인합니다.
+이 설계는 테스트와 교체 전략에 유리합니다. override는 하나의 token에 대해 새 진실을 만드는 연산입니다. 컨테이너는 multi cluster 내부 개별 entry의 안정적인 identity를 만들 필요가 없습니다. `path:packages/di/src/container.test.ts:494-573`은 single 교체, 전체 multi 교체, 모호한 mixed replacement 거부를 확인합니다.
 
 등록 알고리즘은 다음과 같이 정리할 수 있습니다.
 

@@ -50,7 +50,7 @@
 
 - fluo MUST NOT rely on `emitDecoratorMetadata` or implicit constructor type reflection for DI resolution.
 - Provider tokens MUST be defined when registration metadata is normalized. `null` or `undefined` inject tokens are invalid.
-- Circular provider dependency chains fail resolution with `CircularDependencyError` unless deferred through `forwardRef(...)` or removed by refactoring.
+- Circular provider dependency chains fail resolution with `CircularDependencyError`. `forwardRef(...)` only defers declaration-time token lookup; it does not make true constructor cycles resolvable, so those cycles must be removed by refactoring.
 - Duplicate registration of the same token inside one container MUST fail unless the replacement is intentional through `container.override(...)`.
 - Duplicate provider tokens across modules are governed at bootstrap by `duplicateProviderPolicy`, with `warn` as the default policy.
 - Module visibility is private by default. Cross-module access MUST pass through explicit `exports` and `imports`, or through exports from a global module.
