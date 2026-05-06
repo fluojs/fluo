@@ -545,6 +545,52 @@ describe('SlackModule', () => {
     }
   });
 
+  it('rethrows permanent webhook failures (like 403) without retrying', async () => {
+    const fetchLike = vi.fn<SlackFetchLike>().mockResolvedValue({
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+      async text() {
+        return 'invalid_token';
+      },
+    });
+    const transport = createSlackWebhookTransport({
+      fetch: fetchLike,
+      webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+    });
+
+    const pending = transport.send({ attachments: [], blocks: [], channel: '#ops', text: 'Permanent failure path' }, {});
+    await expect(pending).rejects.toThrowError(
+      new SlackTransportError(
+        'Slack webhook delivery failed with status 403 Forbidden after 1 attempt(s). Upstream response body was omitted from the caller-visible error.',
+      ),
+    );
+    expect(fetchLike).toHaveBeenCalledTimes(1);
+  });
+
+  it('rethrows permanent webhook failures (like 404) without retrying', async () => {
+    const fetchLike = vi.fn<SlackFetchLike>().mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      async text() {
+        return 'channel_not_found';
+      },
+    });
+    const transport = createSlackWebhookTransport({
+      fetch: fetchLike,
+      webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+    });
+
+    const pending = transport.send({ attachments: [], blocks: [], channel: '#ops', text: 'Permanent failure path' }, {});
+    await expect(pending).rejects.toThrowError(
+      new SlackTransportError(
+        'Slack webhook delivery failed with status 404 Not Found after 1 attempt(s). Upstream response body was omitted from the caller-visible error.',
+      ),
+    );
+    expect(fetchLike).toHaveBeenCalledTimes(1);
+  });
+
   it('accepts custom provider-backed transports without bootstrap verification', async () => {
     const transport = new PassiveTransport();
     const container = new Container();
