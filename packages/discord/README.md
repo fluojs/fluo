@@ -95,6 +95,7 @@ Behavioral contract notes:
 
 - `DiscordService.send(...)` resolves `defaultThreadId` before delivery.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
+- Sends attempted while the service is shutting down or already stopped are rejected before reusing the cached transport.
 - Blank `defaultThreadId` and `notifications.channel` values are trimmed and ignored; the notifications channel defaults to `discord`.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
@@ -163,7 +164,7 @@ For richer API integrations such as bot-backed REST delivery, implement the expo
 
 Behavioral contract notes:
 
-- The built-in webhook transport retries transient `408`, `429`, and `5xx` responses, and also retries transport-level exceptions, using bounded exponential backoff before surfacing an error.
+- The built-in webhook transport retries transient `408`, `429`, and `5xx` responses, and also retries transport-level exceptions, using bounded exponential backoff before surfacing an error. Permanent upstream responses are not retried.
 - Malformed or non-absolute `webhookUrl` values are rejected immediately as `DiscordConfigurationError` instead of being retried as delivery failures.
 - Caller-visible `DiscordTransportError` messages omit raw upstream response bodies by default.
 
