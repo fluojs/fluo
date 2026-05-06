@@ -35,8 +35,8 @@
 | Rule 1 | Core 패키지는 transport adapter나 feature 패키지에 의존하면 안 된다. |
 | Rule 2 | Transport 패키지는 core 계약에는 의존할 수 있지만, core 계층이 소유한 decorator, DI, config primitive를 다시 정의하면 안 된다. |
 | Rule 3 | Feature 패키지는 core 패키지와 자신이 확장하는 문서화된 transport 표면에 의존할 수 있다. |
-| Rule 4 | Feature 패키지는 `@fluojs/config`, runtime lifecycle contract, `PlatformAdapter` 접점을 우회하기 위해 hosting environment API에 직접 접근하면 안 된다. |
-| Rule 5 | Platform 패키지는 `PlatformAdapter` 인터페이스를 구현해야 하며, HTTP runtime이 정의한 요청 phase 순서를 보존해야 한다. |
+| Rule 4 | Feature 패키지는 `@fluojs/config`, runtime lifecycle contract, 문서화된 adapter seam을 우회하기 위해 hosting environment API에 직접 접근하면 안 된다. |
+| Rule 5 | Platform 패키지는 저장소 정책상 `PlatformAdapter`라고 부르는 접점(HTTP transport에서는 `HttpApplicationAdapter`)을 구현해야 하며, HTTP runtime이 정의한 요청 phase 순서를 보존해야 한다. |
 | Rule 6 | 패키지 간 통합은 암시적 reflection이나 ambient global이 아니라 export된 module contract, provider token, 문서화된 metadata를 통해 흘러야 한다. |
 
 ## Constraints

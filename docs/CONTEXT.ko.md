@@ -11,7 +11,7 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 - NEVER use `experimentalDecorators`.
 - NEVER use `emitDecoratorMetadata`.
 - NEVER access `process.env` directly inside packages, use `@fluojs/config` at the application boundary.
-- Platform packages MUST implement the `PlatformAdapter` interface.
+- Platform packages MUST implement the repository policy seam named `PlatformAdapter`; current HTTP adapters satisfy it through `HttpApplicationAdapter` from `@fluojs/http`.
 - All public exports MUST have TSDoc.
 - Breaking changes in `1.0+` MUST trigger a major version bump.
 
@@ -59,7 +59,7 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 
 - `experimentalDecorators` 또는 `emitDecoratorMetadata`를 활성화하는 것, fluo의 표준 데코레이터 기준을 깨뜨린다.
 - 패키지 코드 안에서 `process.env`를 읽는 것, environment isolation을 깨뜨리고 `@fluojs/config`를 우회한다.
-- `PlatformAdapter` 없이 플랫폼 패키지를 배포하는 것, 런타임 이식성과 conformance를 깨뜨린다.
+- 문서화된 adapter seam 없이 플랫폼 패키지를 배포하는 것(HTTP transport에서는 `HttpApplicationAdapter`), 런타임 이식성과 conformance를 깨뜨린다.
 - TSDoc 없이 공개 export를 노출하는 것, 패키지 계약과 리뷰 가능성을 약화한다.
 - major bump 없이 `1.0+`의 문서화된 동작을 변경하는 것, release governance를 위반한다.
 

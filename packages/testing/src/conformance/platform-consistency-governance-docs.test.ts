@@ -271,6 +271,8 @@ describe('platform consistency governance docs', () => {
     expect(ciWorkflow).toContain('build-and-typecheck:');
     expect(ciWorkflow).toContain("if: github.event_name == 'pull_request'");
     expect(ciWorkflow).toContain('verify-platform-consistency-governance');
+    expect(ciWorkflow).toMatch(/resolve-pr-verification-scope:[\s\S]*?- name: Checkout[\s\S]*?fetch-depth: 0/u);
+    expect(ciWorkflow).toMatch(/verify-platform-consistency-governance:[\s\S]*?- name: Checkout[\s\S]*?fetch-depth: 0/u);
   });
 
   it('keeps Changesets release automation bound to main pushes and token-backed npm publish', () => {

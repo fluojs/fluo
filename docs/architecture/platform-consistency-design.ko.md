@@ -2,13 +2,13 @@
 
 <p><a href="./platform-consistency-design.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 문서는 fluo transport 패키지가 사용하는 현재 플랫폼 어댑터 계약을 정의한다. 저장소 가이드는 이 접점을 `PlatformAdapter`로 부르며, 현재 transport 중심 코드는 `@fluojs/http`의 `HttpApplicationAdapter`와 `@fluojs/runtime`의 `PlatformShell`로 이 계약을 노출한다.
+이 문서는 fluo transport 패키지가 사용하는 현재 플랫폼 어댑터 계약을 정의한다. 저장소 가이드는 이 정책 접점을 `PlatformAdapter`로 부르며, 현재 transport 중심 코드는 `@fluojs/http`의 `HttpApplicationAdapter`와 `@fluojs/runtime`의 `PlatformShell`로 이 계약을 노출한다.
 
-## PlatformAdapter Interface
+## Platform Adapter Seam
 
 | Contract area | Current source | Requirement |
 | --- | --- | --- |
-| Package identity | `docs/reference/package-surface.ko.md`는 `@fluojs/platform-*`를 `PlatformAdapter`를 구현하는 어댑터 전용으로 예약한다. | Platform 패키지는 하나의 hosting environment 또는 protocol을 위한 런타임 어댑터 접점을 제공해야 한다. |
+| Package identity | `docs/reference/package-surface.ko.md`는 `@fluojs/platform-*`를 문서화된 adapter seam을 구현하는 어댑터 전용으로 예약한다. | Platform 패키지는 하나의 hosting environment 또는 protocol을 위한 런타임 어댑터 접점을 제공해야 한다. |
 | HTTP transport seam | `packages/http/src/adapter.ts`는 `HttpApplicationAdapter`를 정의한다. | 어댑터는 `listen(dispatcher)`로 dispatcher를 host transport에 연결하고, `close(signal?)`로 transport resource를 해제해야 한다. |
 | Request contract | `packages/http/src/types.ts`는 `FrameworkRequest`와 `FrameworkResponse`를 정의한다. | 어댑터는 dispatch 전에 host-native request와 response를 framework contract로 정규화해야 한다. |
 | Runtime shell integration | `packages/runtime/src/bootstrap.ts`는 `HTTP_APPLICATION_ADAPTER`와 `PLATFORM_SHELL`을 등록한다. | 어댑터는 module compilation, lifecycle hook 순서, dispatcher 생성 순서를 바꾸지 않고 runtime bootstrap에 참여해야 한다. |

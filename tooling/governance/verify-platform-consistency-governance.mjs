@@ -80,28 +80,51 @@ function run(command, args, options = {}) {
   return result;
 }
 
-function changedFilesFromGit() {
-  const preferredBase = process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : 'origin/main';
-  const mergeBaseResult = run('git', ['merge-base', 'HEAD', preferredBase], { allowFailure: true });
+export function changedFilesFromGit(runCommand = run, env = process.env) {
+  const preferredBase = env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : 'origin/main';
+  const mergeBaseResult = runCommand('git', ['merge-base', 'HEAD', preferredBase], { allowFailure: true });
 
   if (mergeBaseResult.status === 0 && mergeBaseResult.stdout.trim().length > 0) {
     const mergeBase = mergeBaseResult.stdout.trim();
-    const diffResult = run('git', ['diff', '--name-only', `${mergeBase}...HEAD`]);
-    return diffResult.stdout
+    const diffResult = runCommand('git', ['diff', '--name-only', `${mergeBase}...HEAD`], { allowFailure: true });
+
+    if (diffResult.status !== 0) {
+      throw new Error(
+        'Platform consistency governance check failed: unable to compute changed files from git diff. Ensure CI fetches full history before running pnpm verify:platform-consistency-governance.',
+      );
+    }
+
+    const changedFiles = diffResult.stdout
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean);
+
+    for (const args of [
+      ['diff', '--name-only'],
+      ['diff', '--name-only', '--cached'],
+      ['ls-files', '--others', '--exclude-standard'],
+    ]) {
+      const workingTreeResult = runCommand('git', args, { allowFailure: true });
+      if (workingTreeResult.status !== 0) {
+        throw new Error(
+          'Platform consistency governance check failed: unable to compute working tree changed files. Ensure git status is readable before running pnpm verify:platform-consistency-governance.',
+        );
+      }
+
+      changedFiles.push(
+        ...workingTreeResult.stdout
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean),
+      );
+    }
+
+    return [...new Set(changedFiles)].sort((left, right) => left.localeCompare(right));
   }
 
-  const fallbackDiff = run('git', ['diff', '--name-only', 'HEAD~1...HEAD'], { allowFailure: true });
-  if (fallbackDiff.status === 0) {
-    return fallbackDiff.stdout
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
-  }
-
-  return [];
+  throw new Error(
+    `Platform consistency governance check failed: unable to compute merge-base with ${preferredBase}. Ensure CI fetches full history before running pnpm verify:platform-consistency-governance.`,
+  );
 }
 
 function normalizeHeading(line) {
@@ -500,7 +523,7 @@ function enforceSsotMirrorStructure() {
   }
 }
 
-function enforceContractCompanionUpdates(changedFiles) {
+export function enforceContractCompanionUpdates(changedFiles) {
   const touchedContractGate = changedFiles.some((path) => contractGateTriggers.has(path));
 
   if (!touchedContractGate) {

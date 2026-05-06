@@ -37,7 +37,7 @@ Use this checklist when authoring or changing official platform-facing packages 
 
 ## Package Contract Requirements
 
-- [ ] MUST: Implement the `PlatformAdapter` interface for official platform packages.
+- [ ] MUST: Implement the repository policy seam named `PlatformAdapter`; HTTP platform packages satisfy that seam through `HttpApplicationAdapter` from `@fluojs/http`.
 - [ ] MUST: Expose typed configuration and validate inputs during bootstrap.
 - [ ] MUST: Distinguish health from readiness in package behavior and package docs.
 - [ ] MUST: Emit stable diagnostic codes for caller-visible failure states.

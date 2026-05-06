@@ -37,7 +37,7 @@
 
 ## Package Contract Requirements
 
-- [ ] MUST: 공식 플랫폼 패키지는 `PlatformAdapter` 인터페이스를 구현합니다.
+- [ ] MUST: 공식 플랫폼 패키지는 저장소 정책상 `PlatformAdapter`라고 부르는 접점을 구현합니다. HTTP 플랫폼 패키지는 `@fluojs/http`의 `HttpApplicationAdapter`로 이 접점을 충족합니다.
 - [ ] MUST: 타입이 있는 구성을 노출하고 bootstrap 중 입력을 검증합니다.
 - [ ] MUST: 패키지 동작과 문서에서 health와 readiness를 구분합니다.
 - [ ] MUST: 호출자에게 보이는 실패 상태에 대해 안정적인 diagnostic code를 제공합니다.

@@ -11,7 +11,7 @@ fluo is a standard-first TypeScript backend framework built on TC39 standard dec
 - NEVER use `experimentalDecorators`.
 - NEVER use `emitDecoratorMetadata`.
 - NEVER access `process.env` directly inside packages, use `@fluojs/config` at the application boundary.
-- Platform packages MUST implement the `PlatformAdapter` interface.
+- Platform packages MUST implement the repository policy seam named `PlatformAdapter`; current HTTP adapters satisfy it through `HttpApplicationAdapter` from `@fluojs/http`.
 - All public exports MUST have TSDoc.
 - Breaking changes in `1.0+` MUST trigger a major version bump.
 
@@ -59,7 +59,7 @@ Canonical package and runtime coverage lives in [`docs/reference/package-surface
 
 - Enabling `experimentalDecorators` or `emitDecoratorMetadata`, this violates fluo's standard-decorator baseline.
 - Reading `process.env` inside package code, this breaks environment isolation and bypasses `@fluojs/config`.
-- Shipping a platform package without `PlatformAdapter`, this breaks runtime portability and conformance.
+- Shipping a platform package without the documented adapter seam (`HttpApplicationAdapter` for HTTP transports), this breaks runtime portability and conformance.
 - Exposing public exports without TSDoc, this weakens package contracts and reviewability.
 - Changing documented behavior in `1.0+` without a major bump, this violates release governance.
 

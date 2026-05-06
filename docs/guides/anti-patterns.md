@@ -101,17 +101,17 @@ export class FastifyLikePlatform {
 ### ✅ Correct
 
 ```ts
-import type { PlatformAdapter } from '@fluojs/runtime';
+import type { Dispatcher, HttpApplicationAdapter } from '@fluojs/http';
 
-export class FastifyPlatformAdapter implements PlatformAdapter {
-  readonly name = '@fluojs/platform-fastify';
+export class FastifyPlatformAdapter implements HttpApplicationAdapter {
+  #server: FastifyServer | undefined;
 
-  async listen(app: FluoRuntimeApplication): Promise<void> {
-    await app.start();
+  async listen(dispatcher: Dispatcher): Promise<void> {
+    this.#server = await startFastifyServer(dispatcher);
   }
 
-  async close(app: FluoRuntimeApplication): Promise<void> {
-    await app.close();
+  async close(_signal?: string): Promise<void> {
+    await this.#server?.close();
   }
 }
 ```

@@ -9,6 +9,16 @@ import {
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
 
+type GitResult = { status: number; stdout: string };
+type RunCommand = (command: string, args: string[], options?: { allowFailure?: boolean }) => GitResult;
+
+async function loadGovernanceInternals() {
+  return (await import('./verify-platform-consistency-governance.mjs')) as unknown as {
+    changedFilesFromGit: (runCommand?: RunCommand, env?: { GITHUB_BASE_REF?: string }) => string[];
+    enforceContractCompanionUpdates: (changedFiles: string[]) => void;
+  };
+}
+
 describe('isGovernedPackageSourcePath', () => {
   it('includes ordinary package source files', () => {
     expect(isGovernedPackageSourcePath('packages/core/src/module.ts')).toBe(true);
@@ -148,6 +158,98 @@ describe('officialTransportDocsPackages', () => {
     };
 
     expect(governanceModule.getOfficialTransportDocsPackages()).toContain('@fluojs/socket.io');
+  });
+});
+
+describe('changedFilesFromGit', () => {
+  it('fails closed when merge-base cannot be computed', async () => {
+    const { changedFilesFromGit } = await loadGovernanceInternals();
+    const runCommand = () => ({ status: 1, stdout: '' });
+
+    expect(() => changedFilesFromGit(runCommand, { GITHUB_BASE_REF: 'main' })).toThrowError(
+      /unable to compute merge-base with origin\/main/,
+    );
+  });
+
+  it('fails closed when diff cannot be computed after merge-base resolves', async () => {
+    const { changedFilesFromGit } = await loadGovernanceInternals();
+    const results: GitResult[] = [
+      { status: 0, stdout: 'abc123\n' },
+      { status: 1, stdout: '' },
+    ];
+    const runCommand = () => results.shift() ?? { status: 1, stdout: '' };
+
+    expect(() => changedFilesFromGit(runCommand, { GITHUB_BASE_REF: 'main' })).toThrowError(
+      /unable to compute changed files from git diff/,
+    );
+  });
+
+  it('returns changed files from the merge-base diff', async () => {
+    const { changedFilesFromGit } = await loadGovernanceInternals();
+    const calls: string[][] = [];
+    const results: GitResult[] = [
+      { status: 0, stdout: 'abc123\n' },
+      { status: 0, stdout: 'docs/CONTEXT.md\n.github/workflows/ci.yml\n' },
+      { status: 0, stdout: 'tooling/governance/verify-platform-consistency-governance.mjs\n' },
+      { status: 0, stdout: 'tooling/governance/verify-platform-consistency-governance.test.ts\n' },
+      { status: 0, stdout: 'packages/testing/src/conformance/platform-consistency-governance-docs.test.ts\n' },
+    ];
+    const runCommand = (_command: string, args: string[]) => {
+      calls.push(args);
+      return results.shift() ?? { status: 1, stdout: '' };
+    };
+
+    expect(changedFilesFromGit(runCommand, { GITHUB_BASE_REF: 'main' })).toEqual([
+      '.github/workflows/ci.yml',
+      'docs/CONTEXT.md',
+      'packages/testing/src/conformance/platform-consistency-governance-docs.test.ts',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ]);
+    expect(calls).toEqual([
+      ['merge-base', 'HEAD', 'origin/main'],
+      ['diff', '--name-only', 'abc123...HEAD'],
+      ['diff', '--name-only'],
+      ['diff', '--name-only', '--cached'],
+      ['ls-files', '--others', '--exclude-standard'],
+    ]);
+  });
+});
+
+describe('enforceContractCompanionUpdates', () => {
+  it('requires discoverability, tooling or CI, and regression test updates for contract-governing docs', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() => enforceContractCompanionUpdates(['docs/reference/package-surface.md'])).toThrowError(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
+    );
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/reference/package-surface.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).toThrowError(/CI\/tooling enforcement updates/);
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/reference/package-surface.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        '.github/workflows/ci.yml',
+      ]),
+    ).toThrowError(/regression test updates/);
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/reference/package-surface.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        '.github/workflows/ci.yml',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
   });
 });
 
