@@ -16,7 +16,7 @@ This book shows, in concrete terms, how to use fluo to move from a modular monol
 
 We focus on four main themes.
 
-1. **Microservices infrastructure**: Understand transport protocols, message patterns, and how fluo abstracts network complexity (TCP, Redis, Kafka, NATS, gRPC).
+1. **Microservices infrastructure**: Understand transport protocols, message patterns, and how fluo abstracts network complexity (TCP, Redis, Kafka, NATS, MQTT, gRPC).
 
 2. **Event-driven architecture**: Move away from direct request flows toward decoupled event flows built with CQRS and message brokers.
 
@@ -49,7 +49,7 @@ In fluo, everything is an explicit Provider. The dependency graph is auditable, 
 This book is organized in the order you typically encounter concerns when introducing distributed systems. Each part adds the next operational problem on top of the previous decision, so readers can follow why FluoShop adopts a new transport or pattern at that point in the journey.
 
 - **Part 0. Preparing for microservices**: Define the strategy and learn TCP as the first transport.
-- **Part 1. Message brokers**: Integrate Redis, RabbitMQ, Kafka, NATS, and gRPC, then evaluate the tradeoffs of each one.
+- **Part 1. Message brokers**: Integrate Redis, RabbitMQ, Kafka, NATS, MQTT, and gRPC, then evaluate the tradeoffs of each one.
 - **Part 2. Event-driven architecture**: Implement an event bus, CQRS, the Saga pattern, and distributed locks.
 - **Part 3. Realtime communication**: Scale WebSocket gateways and Socket.IO in a multi-service environment.
 - **Part 4. Notification system**: Orchestrate notifications across email, Slack, and Discord.

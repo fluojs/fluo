@@ -78,7 +78,7 @@ The pattern name is the contract, and the transport is only the delivery mechani
 
 ### 1.2.2 Protocol Independence
 
-This abstraction lets you switch from TCP to Kafka, NATS, or gRPC by changing only the Module's transport configuration. This doesn't mean every transport behaves the same way. TCP is optimized for latency, while Kafka is optimized for durability. It means the *handler interface* remains stable.
+This abstraction lets you switch from TCP to Kafka, NATS, MQTT, or gRPC by changing only the Module's transport configuration. This doesn't mean every transport behaves the same way. TCP is optimized for latency, MQTT is optimized for lightweight brokered telemetry, and Kafka is optimized for durability. It means the *handler interface* remains stable.
 
 fluo's value is that it lets you choose the right transport for each connection while keeping business handlers, DTOs, and the DI structure consistent. You gain the freedom to optimize infrastructure without rebuilding the application.
 
