@@ -512,6 +512,30 @@ describe('DiscordModule', () => {
     }
   });
 
+  it('does not retry permanent webhook failures', async () => {
+    const fetchLike = vi.fn<DiscordFetchLike>().mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      async text() {
+        return '{"message":"invalid request"}';
+      },
+    });
+    const transport = createDiscordWebhookTransport({
+      fetch: fetchLike,
+      webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+    });
+
+    await expect(
+      transport.send({ attachments: [], components: [], content: 'Permanent failure', embeds: [], threadId: 'thread-ops' }, {}),
+    ).rejects.toThrowError(
+      new DiscordTransportError(
+        'Discord webhook delivery failed with status 400 Bad Request after 1 attempt(s). Upstream response body was omitted from the caller-visible error.',
+      ),
+    );
+    expect(fetchLike).toHaveBeenCalledTimes(1);
+  });
+
   it('accepts custom provider-backed transports without bootstrap verification', async () => {
     const transport = new PassiveTransport();
     const container = new Container();
@@ -573,6 +597,65 @@ describe('DiscordModule', () => {
         status: 'not-ready',
       },
     });
+
+    await expect(service.send({ content: 'After shutdown' })).rejects.toThrowError(
+      new DiscordTransportError('Discord transport is shutting down or already stopped.'),
+    );
+    expect(transport.sent).toEqual(['App-owned transport']);
+  });
+
+  it('preserves the cause when bootstrap verification fails', async () => {
+    const cause = new Error('webhook credentials revoked');
+    const transport: DiscordTransport = {
+      async send() {
+        return { ok: true, warnings: [] };
+      },
+      async verify() {
+        throw cause;
+      },
+    };
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      transport,
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+
+    await expect(service.onModuleInit()).rejects.toMatchObject({
+      cause,
+      message: 'Discord transport failed to initialize.',
+    });
+  });
+
+  it('rejects aborted notification sends before rendering templates', async () => {
+    const render = vi.fn().mockResolvedValue({ content: 'Rendered' });
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      renderer: { render },
+      transport: createRecordingTransportFactory(),
+    });
+    const controller = new AbortController();
+    controller.abort();
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+
+    await expect(
+      service.sendNotification(
+        {
+          channel: 'discord',
+          payload: {},
+          template: 'welcome',
+        },
+        { signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({
+      message: 'Discord delivery was aborted.',
+      name: 'AbortError',
+    });
+    expect(render).not.toHaveBeenCalled();
   });
 
   it('rejects module registration without an explicit transport contract', () => {
