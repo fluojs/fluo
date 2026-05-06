@@ -726,10 +726,10 @@ importers:
       '@fluojs/runtime':
         specifier: workspace:^
         version: link:../runtime
+    devDependencies:
       ioredis:
         specifier: ^5.10.0
         version: 5.10.0
-    devDependencies:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@22.19.15)(happy-dom@20.9.0)(tsx@4.21.0)
