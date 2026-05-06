@@ -56,7 +56,10 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once the TCP server is listening.
    */
   async listen(handler: TransportHandler): Promise<void> {
-    this.closing = false;
+    if (this.closing) {
+      throw new Error('TcpMicroserviceTransport is closing. Wait for close() to complete before listen().');
+    }
+
     this.handler = handler;
 
     if (this.server.listening) {
@@ -272,6 +275,13 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
       }
 
       socket.once('error', fail);
+      try {
+        this.assertAcceptingOutbound(packet.kind === 'event' ? 'emit' : 'send');
+      } catch (error) {
+        fail(error);
+        return;
+      }
+
       socket.connect(this.resolveConnectPort(), this.host);
     });
   }
