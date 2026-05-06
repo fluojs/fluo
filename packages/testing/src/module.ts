@@ -201,6 +201,48 @@ function hasToken(state: SyncResolverState, token: Token): boolean {
   return lookupProvider(state.introspection, token) !== undefined || collectMultiProviders(state.introspection, token).length > 0;
 }
 
+function dependencyToken(entry: Token | ForwardRefFn | OptionalToken): Token {
+  if (isOptionalToken(entry)) {
+    return entry.token;
+  }
+
+  if (isForwardRef(entry)) {
+    return entry.forwardRef();
+  }
+
+  return entry as Token;
+}
+
+function providerGraphUsesFactory(target: ContainerIntrospection, token: Token, visited = new Set<Token>()): boolean {
+  if (visited.has(token)) {
+    return false;
+  }
+
+  visited.add(token);
+
+  try {
+    const provider = lookupProvider(target, token);
+    const multiProviders = collectMultiProviders(target, token);
+    const providers = provider ? [provider, ...multiProviders] : multiProviders;
+
+    return providers.some((candidate) => {
+      if (candidate.type === 'factory') {
+        return true;
+      }
+
+      return candidate.inject.some((entry) => providerGraphUsesFactory(target, dependencyToken(entry), visited));
+    });
+  } finally {
+    visited.delete(token);
+  }
+}
+
+function canPromoteCachedSingleton(state: SyncResolverState, token: Token): boolean {
+  const provider = lookupProvider(state.introspection, token);
+
+  return provider !== undefined && provider.scope !== 'request' && !providerGraphUsesFactory(state.introspection, token);
+}
+
 function resolveSyncDependency(entry: Token | ForwardRefFn | OptionalToken, state: SyncResolverState): unknown {
   if (isOptionalToken(entry)) {
     if (!hasToken(state, entry.token)) {
@@ -329,6 +371,10 @@ function createSyncResolver(
     get: <T>(token: Token<T>): T => resolveSyncToken(token, state) as T,
     syncFromContainer: async (): Promise<void> => {
       for (const [token, promise] of state.singletonCache) {
+        if (!canPromoteCachedSingleton(state, token)) {
+          continue;
+        }
+
         state.syncSingletonValues.set(token, await promise);
       }
     },

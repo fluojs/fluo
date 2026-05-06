@@ -172,6 +172,55 @@ describe('@fluojs/testing', () => {
     await expect(testingModule.resolve<string>(TOKEN)).resolves.toBe('async-value');
   });
 
+  it('keeps async factory providers resolve-only after async singleton sync points', async () => {
+    const RESOLVE_TOKEN = Symbol('resolve-async-token');
+    const RESOLVE_ALL_TOKEN = Symbol('resolve-all-async-token');
+    const DISPATCH_TOKEN = Symbol('dispatch-async-token');
+
+    @Inject(DISPATCH_TOKEN)
+    @Controller('/async-singleton')
+    class AsyncSingletonController {
+      constructor(private readonly value: string) {}
+
+      @Get('/')
+      read() {
+        return { value: this.value };
+      }
+    }
+
+    @Module({
+      controllers: [AsyncSingletonController],
+      providers: [
+        {
+          provide: RESOLVE_TOKEN,
+          useFactory: async () => 'resolved-async-value',
+        },
+        {
+          provide: RESOLVE_ALL_TOKEN,
+          useFactory: async () => 'resolve-all-async-value',
+        },
+        {
+          provide: DISPATCH_TOKEN,
+          useFactory: async () => 'dispatch-async-value',
+        },
+      ],
+    })
+    class AsyncSingletonModule {}
+
+    const testingModule = await createTestingModule({ rootModule: AsyncSingletonModule }).compile();
+
+    await expect(testingModule.resolve<string>(RESOLVE_TOKEN)).resolves.toBe('resolved-async-value');
+    expect(() => testingModule.get<string>(RESOLVE_TOKEN)).toThrow(/already resolved asynchronously/);
+
+    await expect(testingModule.resolveAll<string>([RESOLVE_ALL_TOKEN])).resolves.toEqual(['resolve-all-async-value']);
+    expect(() => testingModule.get<string>(RESOLVE_ALL_TOKEN)).toThrow(/already resolved asynchronously/);
+
+    const response = await testingModule.dispatch({ method: 'GET', path: '/async-singleton' });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ value: 'dispatch-async-value' });
+    expect(() => testingModule.get<string>(DISPATCH_TOKEN)).toThrow(/already resolved asynchronously/);
+  });
+
   it('treats direct function mocks in overrideProvider as useValue', async () => {
     const FUNCTION_TOKEN = Symbol('function-token');
     const mockFn = vi.fn().mockReturnValue('ok');
