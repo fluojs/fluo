@@ -128,7 +128,11 @@ function resolveMessageByteLength(message: DenoWebSocketMessage): number {
     return new TextEncoder().encode(message).byteLength;
   }
 
-  return message.size;
+  if (message instanceof Blob) {
+    return message.size;
+  }
+
+  return message.byteLength;
 }
 
 function createCompletionSignal(): { promise: Promise<void>; resolve: () => void } {
@@ -567,12 +571,12 @@ export class DenoWebSocketGatewayLifecycleService
     this.clearQueuedMessages(state);
   }
 
-  private async normalizeMessage(message: DenoWebSocketMessage): Promise<string | ArrayBuffer> {
-    if (typeof message === 'string') {
-      return message;
+  private async normalizeMessage(message: DenoWebSocketMessage): Promise<ArrayBuffer | ArrayBufferView | string> {
+    if (message instanceof Blob) {
+      return await message.arrayBuffer();
     }
 
-    return await message.arrayBuffer();
+    return message;
   }
 
   private enqueueDisconnectDispatch(

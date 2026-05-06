@@ -870,4 +870,116 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       await app.close();
     }
   });
+
+  it('closes Worker sockets when binary payloads exceed the configured limit', async () => {
+    const adapter = new TestWorkerAdapter();
+
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/binary-payload' })
+    class BinaryPayloadGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CloudflareWorkersWebSocketModule.forRoot({
+        limits: {
+          maxPayloadBytes: 4,
+        },
+      })],
+      providers: [GatewayState, BinaryPayloadGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+
+    try {
+      const state = await app.container.resolve<GatewayState>(GatewayState);
+      await app.listen();
+
+      const server = adapter.getServer();
+      await server?.fetch(new Request('https://worker.test/binary-payload', {
+        headers: { upgrade: 'websocket' },
+      }));
+      await flushAsyncWork();
+
+      const socket = server?.lastSocket;
+
+      if (!socket) {
+        throw new Error('Expected Worker test socket to be available after websocket upgrade.');
+      }
+
+      socket.emitMessage(new Uint8Array([1, 2, 3, 4, 5]));
+      await flushAsyncWork();
+
+      expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
+      expect(state.messages).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('receives binary payloads under the configured limit', async () => {
+    const adapter = new TestWorkerAdapter();
+
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/binary-ok' })
+    class BinaryPayloadGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage()
+      onMessage(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CloudflareWorkersWebSocketModule.forRoot({
+        limits: {
+          maxPayloadBytes: 10,
+        },
+      })],
+      providers: [GatewayState, BinaryPayloadGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+
+    try {
+      const state = await app.container.resolve<GatewayState>(GatewayState);
+      await app.listen();
+
+      const server = adapter.getServer();
+      await server?.fetch(new Request('https://worker.test/binary-ok', {
+        headers: { upgrade: 'websocket' },
+      }));
+      await flushAsyncWork();
+
+      const socket = server?.lastSocket;
+
+      if (!socket) {
+        throw new Error('Expected Worker test socket to be available after websocket upgrade.');
+      }
+
+      socket.emitMessage(new Uint8Array([1, 2, 3, 4]));
+      await flushAsyncWork();
+
+      expect(socket.readyState).toBe(WEBSOCKET_OPEN_READY_STATE);
+      expect(state.messages).toEqual(['\x01\x02\x03\x04']);
+    } finally {
+      await app.close();
+    }
+  });
 });

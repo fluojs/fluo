@@ -908,4 +908,110 @@ describe('@fluojs/websockets/bun', () => {
 
     await app.close();
   });
+
+  it('closes Bun sockets when binary payloads exceed the configured limit', async () => {
+    const adapter = new TestBunAdapter();
+
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/binary-payload' })
+    class BinaryPayloadGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({
+        limits: {
+          maxPayloadBytes: 4,
+        },
+      })],
+      providers: [GatewayState, BinaryPayloadGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+    await app.listen();
+
+    const server = adapter.getServer();
+    await server?.fetch(new Request('http://127.0.0.1:3000/binary-payload', {
+      headers: { upgrade: 'websocket' },
+    }));
+    await flushAsyncWork();
+
+    const socket = server?.lastSocket;
+
+    if (!server || !socket) {
+      throw new Error('Expected Bun test socket to be available after websocket upgrade.');
+    }
+
+    await server.emitMessage(new Uint8Array([1, 2, 3, 4, 5]));
+    await flushAsyncWork();
+
+    expect(socket.closeCalls).toEqual([{ code: 1009, reason: 'Payload too large' }]);
+    expect(state.messages).toEqual([]);
+
+    await app.close();
+  });
+
+  it('receives binary payloads under the configured limit', async () => {
+    const adapter = new TestBunAdapter();
+
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/binary-ok' })
+    class BinaryPayloadGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage()
+      onMessage(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({
+        limits: {
+          maxPayloadBytes: 10,
+        },
+      })],
+      providers: [GatewayState, BinaryPayloadGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+    await app.listen();
+
+    const server = adapter.getServer();
+    await server?.fetch(new Request('http://127.0.0.1:3000/binary-ok', {
+      headers: { upgrade: 'websocket' },
+    }));
+    await flushAsyncWork();
+
+    const socket = server?.lastSocket;
+
+    if (!server || !socket) {
+      throw new Error('Expected Bun test socket to be available after websocket upgrade.');
+    }
+
+    await server.emitMessage(new Uint8Array([1, 2, 3, 4]));
+    await flushAsyncWork();
+
+    expect(socket.closeCalls).toEqual([]);
+    expect(state.messages).toEqual(['\x01\x02\x03\x04']);
+
+    await app.close();
+  });
 });

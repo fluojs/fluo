@@ -3,7 +3,7 @@ import type { WebSocketModuleOptions as SharedWebSocketModuleOptions } from '../
 /**
  * Defines the deno web socket message type.
  */
-export type DenoWebSocketMessage = Blob | string;
+export type DenoWebSocketMessage = ArrayBuffer | ArrayBufferView | Blob | string;
 
 /**
  * Describes the deno server web socket contract.
