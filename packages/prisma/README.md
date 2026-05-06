@@ -196,6 +196,12 @@ defineModule(ManualPrismaModule, {
 
 Injectable token for the raw `PrismaClient` instance.
 
+### `PRISMA_OPTIONS` (Token)
+
+Injectable token for the public runtime options consumed by `PrismaService`, currently `{ strictTransactions: boolean }`.
+This is intentionally narrower than the package's internal normalized module-options token, which also carries registration
+identity, client ownership, and visibility metadata and is not part of the public API.
+
 ### Platform status
 
 - `createPrismaPlatformStatusSnapshot(input)`: Creates a persistence platform status snapshot that reports Prisma readiness, health, ownership, and ALS-backed transaction context.
@@ -207,6 +213,8 @@ Injectable token for the raw `PrismaClient` instance.
 - `getPrismaServiceToken(name?)`
 
 These helpers return the default unnamed token when `name` is omitted and a registration-specific token when `name` is provided.
+They are the public way to target named registrations; internal implementation tokens such as the normalized module-options
+token are deliberately not exported.
 
 ### Related exported types
 

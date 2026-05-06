@@ -196,6 +196,11 @@ defineModule(ManualPrismaModule, {
 
 원시 `PrismaClient` 인스턴스를 위한 주입 토큰입니다.
 
+### `PRISMA_OPTIONS` (Token)
+
+`PrismaService`가 소비하는 공개 런타임 옵션을 위한 주입 토큰이며, 현재 형태는 `{ strictTransactions: boolean }`입니다.
+이는 등록 identity, client ownership, visibility metadata까지 담는 패키지 내부 정규화 모듈 옵션 토큰보다 의도적으로 좁은 표면이며, 그 내부 토큰은 공개 API가 아닙니다.
+
 ### 플랫폼 status
 
 - `createPrismaPlatformStatusSnapshot(input)`: Prisma readiness, health, ownership, ALS 기반 transaction context를 보고하는 persistence platform status snapshot을 생성합니다.
@@ -207,6 +212,7 @@ defineModule(ManualPrismaModule, {
 - `getPrismaServiceToken(name?)`
 
 이 헬퍼들은 `name`이 없으면 기본 이름 없는 토큰을 반환하고, `name`이 있으면 해당 등록 전용 토큰을 반환합니다.
+이 헬퍼가 이름 있는 등록을 대상으로 삼는 공개 방법이며, 정규화 모듈 옵션 토큰 같은 내부 구현 토큰은 의도적으로 export하지 않습니다.
 
 ### 관련 export 타입
 
