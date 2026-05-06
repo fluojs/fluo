@@ -681,6 +681,33 @@ describe('@fluojs/prisma', () => {
     );
   });
 
+  it('rejects nested request transaction options to preserve the active transaction contract', async () => {
+    const transactionClient = {
+      kind: 'transaction' as const,
+    };
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        return callback(transactionClient);
+      },
+    };
+
+    const prisma = new PrismaService<typeof client, typeof transactionClient, { isolationLevel: string }>(client);
+    const requestAbortController = new AbortController();
+
+    await expect(
+      prisma.requestTransaction(
+        async () => prisma.requestTransaction(async () => 'never', requestAbortController.signal, {
+          isolationLevel: 'serializable',
+        }),
+        requestAbortController.signal,
+      ),
+    ).rejects.toThrow(
+      'Nested Prisma transaction options are not supported because the active transaction context is reused.',
+    );
+  });
+
   it('falls back when transaction client is unsupported and strictTransactions is false', async () => {
     const client = {
       async $connect() {},
