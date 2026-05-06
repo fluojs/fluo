@@ -48,7 +48,6 @@
     "dotenv-expand": "^11.0.0"
   },
   "devDependencies": {
-    "@fluojs/testing": "workspace:^",
     "vitest": "^3.2.4"
   }
 }

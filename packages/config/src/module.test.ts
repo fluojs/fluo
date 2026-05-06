@@ -1,12 +1,12 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Module, type Token } from '@fluojs/core';
-import { createTestingModule } from '@fluojs/testing';
+import { getClassDiMetadata, getModuleMetadata } from '@fluojs/core/internal';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ConfigModule } from './module.js';
 import { ConfigService } from './service.js';
+import type { ConfigModuleOptions } from './types.js';
 
 const watchCallbacks = vi.hoisted(() => new Set<() => void>());
 
@@ -48,12 +48,11 @@ async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Pr
   throw new Error('Timed out waiting for condition.');
 }
 
-type WatchManager = { onApplicationBootstrap(): void; onModuleDestroy(): void };
-type WatchManagerToken = Token<WatchManager> & { name?: string };
-
-function isWatchManagerToken(provider: unknown): provider is WatchManagerToken {
-  return typeof provider === 'function' && provider.name === 'ConfigModuleWatchManager';
-}
+type ConfigProvider = { provide?: unknown; useFactory?: () => unknown; useValue?: unknown };
+type WatchManagerConstructor = new (
+  config: ConfigService,
+  options: ConfigModuleOptions,
+) => { onApplicationBootstrap(): void; onModuleDestroy(): void };
 
 describe('ConfigModule watch mode', () => {
   it('activates watch reloads from ConfigModule.forRoot without replacing ConfigService identity', async () => {
@@ -62,38 +61,46 @@ describe('ConfigModule watch mode', () => {
 
     writeFileSync(envPath, 'PORT=4000\n');
 
-    @Module({
-      imports: [
-        ConfigModule.forRoot({
-          envFile: envPath,
-          processEnv: {},
-          watch: true,
-        }),
-      ],
-    })
-    class AppModule {}
+    const moduleRef = ConfigModule.forRoot({
+      envFile: envPath,
+      processEnv: {},
+      watch: true,
+    });
+    const providers = getModuleMetadata(moduleRef)?.providers as Array<ConfigProvider | WatchManagerConstructor> | undefined;
+    const configProvider = providers?.find(
+      (provider): provider is ConfigProvider => typeof provider === 'object' && provider.provide === ConfigService,
+    );
+    const optionsProvider = providers?.find(
+      (provider): provider is ConfigProvider => typeof provider === 'object' && provider.useValue !== undefined,
+    );
+    const watchManagerProvider = providers?.find(
+      (provider): provider is WatchManagerConstructor => typeof provider === 'function' && provider.name === 'ConfigModuleWatchManager',
+    );
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
-    const service = await testingModule.resolve(ConfigService);
-    const watchManagerToken = testingModule.effectiveProviders.moduleProviders.find(isWatchManagerToken);
+    expect(watchManagerProvider ? getClassDiMetadata(watchManagerProvider)?.inject : undefined).toEqual([
+      ConfigService,
+      optionsProvider?.provide,
+    ]);
 
-    expect(watchManagerToken).toBeDefined();
+    const service = configProvider?.useFactory?.() as ConfigService | undefined;
+    const manager = service && optionsProvider?.useValue && watchManagerProvider
+      ? new watchManagerProvider(service, optionsProvider.useValue as ConfigModuleOptions)
+      : undefined;
 
-    const manager = await testingModule.resolve(watchManagerToken as WatchManagerToken);
-
-    expect(service.get('PORT')).toBe('4000');
+    expect(service?.get('PORT')).toBe('4000');
+    expect(manager).toBeDefined();
 
     try {
-      manager.onApplicationBootstrap();
+      manager?.onApplicationBootstrap();
 
       writeFileSync(envPath, 'PORT=4100\n');
       emitWatchChange();
-      await waitForCondition(() => service.get('PORT') === '4100');
+      await waitForCondition(() => service?.get('PORT') === '4100');
 
-      expect(service.get('PORT')).toBe('4100');
+      expect(service?.get('PORT')).toBe('4100');
       expect(watchCallbacks.size).toBe(1);
     } finally {
-      manager.onModuleDestroy();
+      manager?.onModuleDestroy();
     }
 
     expect(watchCallbacks.size).toBe(0);
