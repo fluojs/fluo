@@ -208,13 +208,13 @@ export function createDiscordWebhookTransport(options: DiscordWebhookTransportOp
             throw error;
           }
 
+          if (error instanceof DiscordTransportError) {
+            throw error;
+          }
+
           if (attempt < DEFAULT_RETRY_ATTEMPTS) {
             await waitForRetry(DEFAULT_RETRY_DELAY_MS * 2 ** (attempt - 1), context.signal);
             continue;
-          }
-
-          if (error instanceof DiscordTransportError) {
-            throw error;
           }
 
           throw new DiscordTransportError(createTransportFailureMessage(attempt));

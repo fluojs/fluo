@@ -1,7 +1,7 @@
 import { Inject } from '@fluojs/core';
 import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
-import { DiscordMessageValidationError } from './errors.js';
+import { DiscordMessageValidationError, DiscordTransportError } from './errors.js';
 import { createDiscordPlatformStatusSnapshot } from './status.js';
 import { DISCORD_OPTIONS } from './tokens.js';
 import type {
@@ -23,6 +23,10 @@ function createAbortError(): Error {
   const error = new Error('Discord delivery was aborted.');
   error.name = 'AbortError';
   return error;
+}
+
+function createStoppedTransportError(): DiscordTransportError {
+  return new DiscordTransportError('Discord transport is shutting down or already stopped.');
 }
 
 function normalizeOptionalString(value: string | undefined): string | undefined {
@@ -63,9 +67,9 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
       }
 
       this.lifecycleState = 'stopped';
-    } catch {
+    } catch (error) {
       this.lifecycleState = 'failed';
-      throw new Error('Discord transport failed to close cleanly.');
+      throw new Error('Discord transport failed to close cleanly.', { cause: error });
     }
   }
 
@@ -80,9 +84,9 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
       }
 
       this.lifecycleState = 'ready';
-    } catch {
+    } catch (error) {
       this.lifecycleState = 'failed';
-      throw new Error('Discord transport failed to initialize.');
+      throw new Error('Discord transport failed to initialize.', { cause: error });
     }
   }
 
@@ -121,6 +125,8 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     if (options.signal?.aborted) {
       throw createAbortError();
     }
+
+    this.assertReadyForSend();
 
     const transport = await this.ensureTransport();
     const normalized = this.normalizeMessage(message);
@@ -203,6 +209,10 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     notification: DiscordNotificationDispatchRequest,
     options: DiscordSendOptions = {},
   ): Promise<DiscordSendResult> {
+    if (options.signal?.aborted) {
+      throw createAbortError();
+    }
+
     const payload = notification.payload;
     const rendered = await this.renderNotification(notification);
 
@@ -244,6 +254,12 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     }
 
     return this.transportPromise;
+  }
+
+  private assertReadyForSend(): void {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      throw createStoppedTransportError();
+    }
   }
 
   private normalizeMessage(message: DiscordMessage): NormalizedDiscordMessage {
