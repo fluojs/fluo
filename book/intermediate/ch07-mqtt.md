@@ -30,7 +30,7 @@ These signals matter operationally. But not every signal needs Kafka-level repla
 
 ## 7.2 MQTT transport setup
 
-Unlike NATS, Kafka, or RabbitMQ, MQTT does not force a fully caller owned broker setup. You can provide an existing client, or you can let the transport configure a URL-based connection directly through the `mqtt` package. This flexibility matches real deployment models. Some teams already manage a shared MQTT client. Other teams prefer transport local ownership.
+Unlike RabbitMQ, Kafka, or NATS, MQTT does not force a fully caller owned broker setup. You can provide an existing client, or you can let the transport configure a URL-based connection directly through the `mqtt` package. This flexibility matches real deployment models. Some teams already manage a shared MQTT client. Other teams prefer transport local ownership.
 
 ### 7.2.1 Core options
 
