@@ -791,6 +791,55 @@ describe('@fluojs/platform-express', () => {
     await app.close();
   });
 
+  it('accepts raw bodies at maxBodySize and rejects the first byte over the Express limit', async () => {
+    @Controller('/body-limit')
+    class BodyLimitController {
+      @Post('/')
+      echo(_input: undefined, context: RequestContext) {
+        return context.request.body;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [BodyLimitController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapExpressApplication(AppModule, {
+      cors: false,
+      maxBodySize: 8,
+      port,
+    });
+
+    await app.listen();
+
+    try {
+      const boundaryResponse = await fetch(`http://127.0.0.1:${String(port)}/body-limit`, {
+        body: '12345678',
+        headers: { 'content-type': 'text/plain' },
+        method: 'POST',
+      });
+      const overflowResponse = await fetch(`http://127.0.0.1:${String(port)}/body-limit`, {
+        body: '123456789',
+        headers: { 'content-type': 'text/plain' },
+        method: 'POST',
+      });
+
+      expect(boundaryResponse.status).toBe(201);
+      await expect(boundaryResponse.text()).resolves.toBe('12345678');
+      expect(overflowResponse.status).toBe(413);
+      await expect(overflowResponse.json()).resolves.toMatchObject({
+        error: {
+          code: 'PAYLOAD_TOO_LARGE',
+          message: 'Request body exceeds the size limit.',
+        },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('accepts a cors string and merges framework defaults', async () => {
     @Controller('/ping')
     class PingController {
@@ -1446,6 +1495,73 @@ describe('@fluojs/platform-express', () => {
       expect(fullDispatch).toHaveBeenCalledTimes(1);
     } finally {
       await adapter.close();
+    }
+  });
+
+  it('rematches a native Express handoff when middleware rewrites the framework path', async () => {
+    const lifecycle: string[] = [];
+    const rewriteMiddleware = {
+      async handle(context: MiddlewareContext, next: () => Promise<void>) {
+        lifecycle.push(`middleware:${context.request.path}`);
+
+        if (context.request.path === '/rewrite-source/42') {
+          context.request.path = '/rewrite-target/42';
+          context.request.url = '/rewrite-target/42';
+        }
+
+        await next();
+      },
+    };
+
+    @Controller('/rewrite-source')
+    class RewriteSourceController {
+      @Get('/:id')
+      source(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'source' };
+      }
+    }
+
+    @Controller('/rewrite-target')
+    class RewriteTargetController {
+      @Get('/:id')
+      target(_input: undefined, context: RequestContext) {
+        lifecycle.push(`target:${context.request.params.id}`);
+        return { id: context.request.params.id, path: context.request.path, route: 'target' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [RewriteSourceController, RewriteTargetController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await fluoFactory.create(AppModule, {
+      adapter: createExpressAdapter({ port }),
+      middleware: [rewriteMiddleware],
+    });
+
+    await app.listen();
+
+    try {
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/rewrite-source/42',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({
+        id: '42',
+        path: '/rewrite-target/42',
+        route: 'target',
+      });
+      expect(lifecycle).toEqual([
+        'middleware:/rewrite-source/42',
+        'target:42',
+      ]);
+    } finally {
+      await app.close();
     }
   });
 
