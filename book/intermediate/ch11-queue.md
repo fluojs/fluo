@@ -109,7 +109,7 @@ Fixed backoff is easy to predict. Exponential backoff is often safer for depende
 
 ## 11.5 Dead-letter handling
 
-Some jobs still fail after every retry attempt. Those jobs must not disappear silently. The Queue package moves them to a Redis dead-letter list under `fluo:queue:dead-letter:<jobName>`. That list gives operators a durable place to inspect what failed. The README also states the default retention policy. Without separate configuration, `QueueModule.forRoot()` keeps the most recent `1_000` dead-letter entries per job. This is an important operational default. It prevents unbounded growth while preserving recent failure evidence.
+Some jobs still fail after every retry attempt. Those failures must not disappear silently. The Queue package appends a dead-letter record to a Redis list under `fluo:queue:dead-letter:<jobName>`; it does not move the BullMQ job itself. That list gives operators a durable place to inspect what failed. The README also states the default retention policy. Without separate configuration, `QueueModule.forRoot()` keeps the most recent `1_000` dead-letter entries per job. This is an important operational default. It prevents unbounded growth while preserving recent failure evidence.
 
 ### 11.5.1 What FluoShop stores in dead letters
 
