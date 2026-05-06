@@ -1,8 +1,7 @@
-import { describe, expect, it } from 'vitest';
-
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
 import { bootstrapApplication, defineModule, type PlatformComponent } from '@fluojs/runtime';
+import { describe, expect, it } from 'vitest';
 
 import { MemoryHealthIndicator } from './indicators/memory.js';
 import { createRedisHealthIndicatorProvider, RedisHealthIndicator } from './indicators/redis.js';
@@ -98,6 +97,53 @@ describe('TerminusModule.forRoot', () => {
 
     expect(readyResponse.statusCode).toBe(200);
     expect(readyResponse.body).toEqual({ status: 'ready' });
+
+    await app.close();
+  });
+
+  it('mounts /health and /ready under the configured custom path', async () => {
+    const indicators: HealthIndicator[] = [new MemoryHealthIndicator({ key: 'database' })];
+    const terminusModule = TerminusModule.forRoot({
+      indicators,
+      path: '/internal',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [terminusModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    const customHealthResponse = createResponse();
+    await app.dispatch(createRequest('/internal/health'), customHealthResponse);
+
+    expect(customHealthResponse.statusCode).toBe(200);
+    expect(customHealthResponse.body).toMatchObject({
+      details: {
+        database: {
+          status: 'up',
+        },
+      },
+      status: 'ok',
+    });
+
+    const customReadyResponse = createResponse();
+    await app.dispatch(createRequest('/internal/ready'), customReadyResponse);
+
+    expect(customReadyResponse.statusCode).toBe(200);
+    expect(customReadyResponse.body).toEqual({ status: 'ready' });
+
+    const defaultHealthResponse = createResponse();
+    await app.dispatch(createRequest('/health'), defaultHealthResponse);
+
+    expect(defaultHealthResponse.statusCode).toBe(404);
+
+    const defaultReadyResponse = createResponse();
+    await app.dispatch(createRequest('/ready'), defaultReadyResponse);
+
+    expect(defaultReadyResponse.statusCode).toBe(404);
 
     await app.close();
   });
