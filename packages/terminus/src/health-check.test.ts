@@ -189,24 +189,24 @@ describe('runHealthCheck', () => {
     });
   });
 
-  it('keeps first entries when malformed blank result keys fold to an existing indicator key', async () => {
+  it('reports blank result keys as down diagnostics instead of healthy contributors', async () => {
     const report = await runHealthCheck([
       {
         key: 'dependencies',
         check: async () => unsafeHealthIndicatorResult({
           dependencies: { status: 'up' },
-          ' ': { message: 'blank key should not overwrite', status: 'degraded' },
+          ' ': { status: 'up' },
         }),
       },
     ]);
 
     expect(report.details.dependencies).toEqual({ status: 'up' });
-    expect(report.details['dependencies-duplicate-key-error']).toEqual({
-      message: 'Indicator produced duplicate result key(s): dependencies.',
+    expect(report.details['dependencies-blank-key-error']).toEqual({
+      message: 'Indicator returned a blank result key.',
       status: 'down',
     });
     expect(report.contributors).toEqual({
-      down: ['dependencies-duplicate-key-error'],
+      down: ['dependencies-blank-key-error'],
       up: ['dependencies'],
     });
   });

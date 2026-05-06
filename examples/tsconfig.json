@@ -3,6 +3,7 @@
   "compilerOptions": {
     "noEmit": true,
     "paths": {
+      "@fluojs/terminus/node": ["../packages/terminus/src/node.ts"],
       "@fluojs/*": ["../packages/*/src/index.ts"]
     },
     "types": ["node"]

@@ -2,12 +2,12 @@ import { Inject } from '@fluojs/core';
 import { cloneWithFallback } from '@fluojs/core/internal';
 import type { Container } from '@fluojs/di';
 import { getRedisClientToken, getRedisComponentId } from '@fluojs/redis';
-import {
-  type ApplicationLogger,
-  type CompiledModule,
-  type OnApplicationBootstrap,
-  type OnApplicationShutdown,
-  type OnModuleDestroy,
+import type {
+  ApplicationLogger,
+  CompiledModule,
+  OnApplicationBootstrap,
+  OnApplicationShutdown,
+  OnModuleDestroy,
 } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { Queue as BullQueue, Worker as BullWorker, type ConnectionOptions, type JobsOptions, type Job as BullJob } from 'bullmq';
@@ -171,6 +171,10 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   async enqueue<TJob extends object>(job: TJob): Promise<string> {
     await this.ensureStarted();
 
+    if (this.lifecycleState !== 'started') {
+      throw new Error(`Queue lifecycle state is ${this.lifecycleState}.`);
+    }
+
     const descriptor = this.descriptorsByJobType.get(job.constructor as QueueJobType);
 
     if (!descriptor) {
@@ -241,12 +245,16 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     }
 
     await this.initializeWorkers(redis);
-    this.lifecycleState = 'started';
+    if (this.lifecycleState === 'starting') {
+      this.lifecycleState = 'started';
+    }
   }
 
   private async handleStartupFailure(): Promise<void> {
     await this.closeInitializedResources();
-    this.lifecycleState = 'idle';
+    if (this.lifecycleState === 'starting') {
+      this.lifecycleState = 'idle';
+    }
     this.redisClient = undefined;
     this.startPromise = undefined;
   }
@@ -471,13 +479,32 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     this.lifecycleState = 'stopping';
 
     this.shutdownPromise = (async () => {
+      await this.waitForInFlightStartup();
+
       await this.closeInitializedResources();
       await this.deadLetterManager.drainPendingWrites();
       this.lifecycleState = 'stopped';
+      this.redisClient = undefined;
       this.startPromise = undefined;
     })();
 
     await this.shutdownPromise;
+  }
+
+  private async waitForInFlightStartup(): Promise<void> {
+    const startup = this.startPromise;
+
+    if (!startup) {
+      return;
+    }
+
+    try {
+      await startup;
+    } catch {
+      // ensureStarted() owns startup rollback and preserves the original
+      // bootstrap error. Shutdown still continues so partially registered
+      // resources cannot outlive the application lifecycle.
+    }
   }
 
   private async closeInitializedResources(): Promise<void> {

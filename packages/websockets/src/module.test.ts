@@ -1028,6 +1028,104 @@ describe('@fluojs/websockets', () => {
     await app.close();
   });
 
+  it('closes websocket connections when binary payloads exceed the configured limit', async () => {
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/binary-limit' })
+    class PayloadGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [WebSocketModule.forRoot({
+        limits: {
+          maxPayloadBytes: 4,
+        },
+      })],
+      providers: [GatewayState, PayloadGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+    const state = await app.container.resolve(GatewayState);
+
+    await app.listen();
+
+    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/binary-limit`);
+    await onceOpen(socket);
+    const closed = onceCloseDetails(socket);
+
+    socket.send(new Uint8Array([1, 2, 3, 4, 5]));
+
+    const { code } = await closed;
+
+    expect(code).toBe(1009);
+    expect(state.messages).toEqual([]);
+
+    await app.close();
+  });
+
+  it('receives binary payloads under the configured limit', async () => {
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/binary-ok' })
+    class PayloadGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage()
+      onMessage(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [WebSocketModule.forRoot({
+        limits: {
+          maxPayloadBytes: 10,
+        },
+      })],
+      providers: [GatewayState, PayloadGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+    const state = await app.container.resolve(GatewayState);
+
+    await app.listen();
+
+    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/binary-ok`);
+    await onceOpen(socket);
+
+    socket.send(new Uint8Array([1, 2, 3, 4]));
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(state.messages).toEqual(['\x01\x02\x03\x04']);
+
+    socket.close();
+    await onceCloseDetails(socket);
+    await app.close();
+  });
+
   it('caps pre-ready buffered websocket messages with drop-oldest policy', async () => {
     const connected = createDeferred<void>();
 

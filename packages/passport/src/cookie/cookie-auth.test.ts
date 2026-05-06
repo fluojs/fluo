@@ -130,6 +130,15 @@ describe('CookieAuthStrategy', () => {
       await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationRequiredError);
     });
 
+    it('throws AuthenticationRequiredError for malformed non-string access token cookies', async () => {
+      const verifier = createMockVerifier();
+      const strategy = new CookieAuthStrategy(verifier, { requireAccessToken: false });
+      const context = createGuardContext({ access_token: ['not-a-cookie-string'] as unknown as string });
+
+      await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationRequiredError);
+      expect(verifier.verifyAccessToken).not.toHaveBeenCalled();
+    });
+
     it('handles non-Error verification failures gracefully', async () => {
       const verifier = createMockVerifier({
         verifyAccessToken: vi.fn().mockRejectedValue('string error'),
@@ -225,7 +234,7 @@ describe('CookieManager', () => {
         this.setHeader('Location', location);
         this.committed = true;
       },
-      send(body: unknown) {
+      send(_body: unknown) {
         this.committed = true;
       },
     };

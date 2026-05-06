@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { IsArray, IsEnum, IsOptional, IsString, MinLength, ValidateNested } from '@fluojs/validation';
-import { Controller, FromBody, Get, Post, Produces, RequestDto, createHandlerMapping } from '@fluojs/http';
+import { Controller, FromBody, Get, HttpCode, Post, Produces, RequestDto, createHandlerMapping } from '@fluojs/http';
 
 import { ApiBearerAuth, ApiBody, ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiSecurity } from './decorators.js';
 import { buildOpenApiDocument } from './schema-builder.js';
@@ -302,6 +302,82 @@ describe('buildOpenApiDocument', () => {
         },
       },
       description: 'Exported payload',
+    });
+  });
+
+  it('aligns implicit response statuses with HTTP route defaults', () => {
+    @Controller('/implicit-status')
+    class ImplicitStatusController {
+      @Post('/')
+      create() {
+        return { created: true };
+      }
+
+      @Get('/')
+      list() {
+        return [];
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: ImplicitStatusController }]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      title: 'Implicit Status API',
+      version: '1.0.0',
+    });
+
+    expect(document.paths['/implicit-status']?.post?.responses).toEqual({
+      '201': { description: 'OK' },
+    });
+    expect(document.paths['/implicit-status']?.get?.responses).toEqual({
+      '200': { description: 'OK' },
+    });
+  });
+
+  it('keeps explicit ApiResponse statuses ahead of HTTP route defaults', () => {
+    @Controller('/explicit-status')
+    class ExplicitStatusController {
+      @ApiResponse(202, { description: 'Accepted for async processing' })
+      @Post('/')
+      create() {
+        return { accepted: true };
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: ExplicitStatusController }]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      title: 'Explicit Status API',
+      version: '1.0.0',
+    });
+
+    expect(document.paths['/explicit-status']?.post?.responses).toEqual({
+      '202': { description: 'Accepted for async processing' },
+    });
+  });
+
+  it('reflects explicit HttpCode overrides in response statuses', () => {
+    @Controller('/http-code-status')
+    class HttpCodeStatusController {
+      @HttpCode(204)
+      @Post('/')
+      create() {
+        return undefined;
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: HttpCodeStatusController }]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      title: 'HTTP Code Status API',
+      version: '1.0.0',
+    });
+
+    expect(document.paths['/http-code-status']?.post?.responses).toEqual({
+      '204': { description: 'OK' },
     });
   });
 

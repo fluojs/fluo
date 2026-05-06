@@ -169,6 +169,13 @@ describe('runtime matrix docs contract', () => {
     ]);
   });
 
+  it('keeps book setup prerequisites aligned to the Node.js 20 baseline', () => {
+    expect(read('book/beginner/ch02-cli-setup.md')).toContain('Node.js 20 or later');
+    expect(read('book/beginner/ch02-cli-setup.ko.md')).toContain('Node.js 20 이상');
+    expect(read('book/advanced/ch17-contributing.md')).toContain('Node.js 20 or later');
+    expect(read('book/advanced/ch17-contributing.ko.md')).toContain('Node.js 20 이상');
+  });
+
   it('keeps contract matrix and example docs aligned to the published starter split', () => {
     expectAll(read('docs/reference/toolchain-contract-matrix.md'), [
       'Project Creation (explicit HTTP)',

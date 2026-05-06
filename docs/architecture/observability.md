@@ -26,7 +26,7 @@
 
 - `TerminusHealthService.check()` aggregates registered indicators into `info`, `error`, and `details` maps keyed by indicator result keys.
 - `execution.indicatorTimeoutMs` converts slow or hanging indicator probes into `down` results instead of waiting indefinitely.
-- Built-in indicator packages include HTTP, memory, disk, Prisma, Drizzle, and Redis variants, with Redis exported from `@fluojs/terminus/redis`.
+- Built-in indicator packages include HTTP, memory, disk, Prisma, Drizzle, and Redis variants, with Node-specific memory/disk indicators exported from `@fluojs/terminus/node` and Redis exported from `@fluojs/terminus/redis`.
 
 ## Readiness vs Liveness
 

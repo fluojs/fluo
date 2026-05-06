@@ -77,7 +77,8 @@ Fluo 생태계의 최신 상태를 유지하면 신뢰성 엔지니어링 분야
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { MemoryHealthIndicator, TerminusModule } from '@fluojs/terminus';
+import { TerminusModule } from '@fluojs/terminus';
+import { MemoryHealthIndicator } from '@fluojs/terminus/node';
 
 @Module({
   imports: [

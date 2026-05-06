@@ -9,6 +9,10 @@ const unauthenticatedCookieAuthResult: AuthOptionalResult = {
   authenticated: false,
 };
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
 /**
  * Provides cookie-auth strategy options through dependency injection.
  */
@@ -79,12 +83,16 @@ export class CookieAuthStrategy implements AuthStrategy {
 
     const accessToken = cookies[this.options.accessTokenCookieName];
 
-    if (!accessToken) {
+    if (accessToken === undefined || accessToken === '') {
       if (this.options.requireAccessToken) {
         throw new AuthenticationRequiredError('Access token cookie is required.');
       }
 
       return unauthenticatedCookieAuthResult;
+    }
+
+    if (!isNonEmptyString(accessToken)) {
+      throw new AuthenticationRequiredError('Access token cookie must be a non-empty string.');
     }
 
     try {

@@ -929,6 +929,155 @@ describe('@fluojs/queue', () => {
     expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
   });
 
+  it('waits for in-flight startup before closing queue-owned resources during shutdown', async () => {
+    const releaseStartup = createDeferred<void>();
+    const loggerEvents: string[] = [];
+
+    class SlowStartupJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(SlowStartupJob)
+    class SlowStartupWorker {
+      async handle(_job: SlowStartupJob): Promise<void> {}
+    }
+
+    class AppModule {}
+
+    const redis = new MockRedisClient();
+    const originalDuplicate = redis.duplicate.bind(redis);
+    let duplicateCount = 0;
+    redis.duplicate = (options: MockRedisDuplicateOptions = {}): MockRedisConnection => {
+      duplicateCount += 1;
+      const connection = originalDuplicate(options);
+      const originalConnect = connection.connect;
+
+      connection.connect = async () => {
+        if (duplicateCount === 1) {
+          await releaseStartup.promise;
+        }
+
+        await originalConnect();
+      };
+
+      return connection;
+    };
+
+    const container = {
+      has: (token: unknown) => token === REDIS_CLIENT,
+      resolve: async (token: unknown) => {
+        if (token === REDIS_CLIENT) {
+          return redis;
+        }
+
+        return new SlowStartupWorker();
+      },
+    };
+    const service = new QueueLifecycleService(
+      {
+        defaultAttempts: 1,
+        defaultConcurrency: 1,
+        defaultDeadLetterMaxEntries: 1_000,
+      },
+      container as never,
+      [
+        {
+          definition: { providers: [SlowStartupWorker] },
+          type: AppModule,
+        },
+      ] as never,
+      createLogger(loggerEvents),
+    );
+
+    const startupPromise = service.onApplicationBootstrap();
+    await Promise.resolve();
+
+    const shutdownPromise = service.onApplicationShutdown();
+    await Promise.resolve();
+
+    releaseStartup.resolve();
+
+    await startupPromise;
+    await shutdownPromise;
+
+    expect(bullmqState.workers.get('SlowStartupJob')?.closeCalls).toBe(1);
+    expect(bullmqState.queues.get('SlowStartupJob')?.closeCalls).toBe(1);
+    expect(redis.duplicates).toHaveLength(2);
+    expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+  });
+
+  it('keeps shutdown terminal when in-flight startup fails during shutdown', async () => {
+    const releaseStartup = createDeferred<void>();
+    const loggerEvents: string[] = [];
+
+    class FailingStartupOverlapJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(FailingStartupOverlapJob)
+    class FailingStartupOverlapWorker {
+      async handle(_job: FailingStartupOverlapJob): Promise<void> {}
+    }
+
+    class AppModule {}
+
+    const redis = new MockRedisClient();
+    const originalDuplicate = redis.duplicate.bind(redis);
+    redis.duplicate = (options: MockRedisDuplicateOptions = {}): MockRedisConnection => {
+      const connection = originalDuplicate(options);
+      const originalConnect = connection.connect;
+
+      connection.connect = async () => {
+        await releaseStartup.promise;
+        await originalConnect();
+      };
+
+      return connection;
+    };
+
+    const container = {
+      has: (token: unknown) => token === REDIS_CLIENT,
+      resolve: async (token: unknown) => {
+        if (token === REDIS_CLIENT) {
+          return redis;
+        }
+
+        return new FailingStartupOverlapWorker();
+      },
+    };
+    const service = new QueueLifecycleService(
+      {
+        defaultAttempts: 1,
+        defaultConcurrency: 1,
+        defaultDeadLetterMaxEntries: 1_000,
+      },
+      container as never,
+      [
+        {
+          definition: { providers: [FailingStartupOverlapWorker] },
+          type: AppModule,
+        },
+      ] as never,
+      createLogger(loggerEvents),
+    );
+
+    const startupPromise = service.onApplicationBootstrap();
+    await Promise.resolve();
+
+    const shutdownPromise = service.onApplicationShutdown();
+    await Promise.resolve();
+
+    releaseStartup.reject(new Error('startup overlap failed'));
+
+    await expect(startupPromise).rejects.toThrow('startup overlap failed');
+    await shutdownPromise;
+
+    expect(service.createPlatformStatusSnapshot().details).toMatchObject({ lifecycleState: 'stopped' });
+    expect(redis.duplicates).toHaveLength(1);
+    expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+    await expect(service.enqueue(new FailingStartupOverlapJob('after-stop'))).rejects.toThrow('Queue lifecycle state is stopped.');
+  });
+
   it('returns deterministic state-aware errors for enqueue after shutdown', async () => {
     class ShutdownStateJob {
       constructor(public readonly value: string) {}

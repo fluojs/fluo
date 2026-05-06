@@ -70,6 +70,34 @@ function createUnsupportedEntryMessage(entryKey: string): string {
     : 'Indicator returned an unsupported status value for an empty result key.';
 }
 
+function createBlankKeyFailureKey(indicatorKey: string, seenKeys: ReadonlySet<string>): string {
+  const baseKey = `${indicatorKey}-blank-key-error`;
+
+  if (!seenKeys.has(baseKey)) {
+    return baseKey;
+  }
+
+  let suffix = 2;
+  let candidate = `${baseKey}-${String(suffix)}`;
+
+  while (seenKeys.has(candidate)) {
+    suffix += 1;
+    candidate = `${baseKey}-${String(suffix)}`;
+  }
+
+  return candidate;
+}
+
+function createBlankKeyFailure(indicatorKey: string, seenKeys: ReadonlySet<string>): HealthCheckEntry {
+  return [
+    createBlankKeyFailureKey(indicatorKey, seenKeys),
+    {
+      message: 'Indicator returned a blank result key.',
+      status: 'down',
+    },
+  ];
+}
+
 function normalizeIndicatorResult(key: string, result: unknown): HealthCheckEntry[] {
   if (typeof result !== 'object' || result === null || Array.isArray(result)) {
     return [
@@ -95,7 +123,14 @@ function normalizeIndicatorResult(key: string, result: unknown): HealthCheckEntr
   }
 
   for (const [entryKey, entryValue] of entries) {
-    const normalizedKey = hasIndicatorStatus(entryValue) || entryKey.trim().length > 0 ? entryKey : key;
+    if (entryKey.trim().length === 0) {
+      const blankKeyFailure = createBlankKeyFailure(key, seenKeys);
+      seenKeys.add(blankKeyFailure[0]);
+      normalizedEntries.push(blankKeyFailure);
+      continue;
+    }
+
+    const normalizedKey = entryKey;
 
     if (seenKeys.has(normalizedKey)) {
       duplicateKeys.push(normalizedKey);

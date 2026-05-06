@@ -297,6 +297,8 @@ export class TerminusModule {
    *
    * @example
    * ```ts
+   * import { MemoryHealthIndicator } from '@fluojs/terminus/node';
+   *
    * TerminusModule.forRoot({
    *   indicators: [new MemoryHealthIndicator({ key: 'memory' })],
    * });

@@ -1049,6 +1049,10 @@ function createResponseObject(
   };
 }
 
+function resolveDocumentedDefaultSuccessStatus(method: HttpMethod): number {
+  return method === 'POST' ? 201 : 200;
+}
+
 function createOperationResponses(
   descriptor: HandlerDescriptor,
   methodMeta: MethodApiMetadata | undefined,
@@ -1064,7 +1068,9 @@ function createOperationResponses(
       responses[String(response.status)] = createResponseObject(response, responseMediaTypes, componentSchemas, context);
     }
   } else {
-    responses[String(descriptor.route.successStatus ?? 200)] = { description: 'OK' };
+    responses[String(descriptor.route.successStatus ?? resolveDocumentedDefaultSuccessStatus(descriptor.route.method))] = {
+      description: 'OK',
+    };
   }
 
   if (defaultErrorResponsesPolicy === 'inject') {

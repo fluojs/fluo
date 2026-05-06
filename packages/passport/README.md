@@ -34,23 +34,46 @@ npm install @fluojs/passport
 Define your strategies and register them using `PassportModule.forRoot(...)`.
 
 ```typescript
-import { Module } from '@fluojs/core';
-import { PassportModule } from '@fluojs/passport';
-import { MyJwtStrategy } from './jwt.strategy';
+import { Inject, Module } from '@fluojs/core';
+import type { GuardContext } from '@fluojs/http';
+import { DefaultJwtVerifier, JwtModule } from '@fluojs/jwt';
+import { AuthenticationRequiredError, PassportModule, type AuthStrategy } from '@fluojs/passport';
+
+@Inject(DefaultJwtVerifier)
+export class BearerJwtStrategy implements AuthStrategy {
+  constructor(private readonly verifier: DefaultJwtVerifier) {}
+
+  async authenticate(context: GuardContext) {
+    const authorization = context.requestContext.request.headers.authorization;
+    const [scheme, token] = typeof authorization === 'string' ? authorization.split(' ') : [];
+
+    if (scheme !== 'Bearer' || !token) {
+      throw new AuthenticationRequiredError('Bearer access token is required.');
+    }
+
+    return this.verifier.verifyAccessToken(token);
+  }
+}
 
 @Module({
   imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      audience: 'my-app',
+      issuer: 'my-api',
+      secret: 'your-secure-secret',
+    }),
     PassportModule.forRoot(
       { defaultStrategy: 'jwt' },
-      [{ name: 'jwt', token: MyJwtStrategy }]
+      [{ name: 'jwt', token: BearerJwtStrategy }],
     ),
   ],
-  providers: [MyJwtStrategy],
+  providers: [BearerJwtStrategy],
 })
 export class AuthModule {}
 ```
 
-Register strategies through `PassportModule.forRoot(...)`.
+JWT-based passport strategies require both pieces of module wiring: `JwtModule.forRoot(...)` registers `DefaultJwtVerifier`, and `PassportModule.forRoot(...)` registers the named strategy that `@UseAuth('jwt')` resolves. Returning the `DefaultJwtVerifier.verifyAccessToken(...)` result preserves the normalized principal contract (`subject`, `claims`, `issuer`, `audience`, `roles`, and `scopes`) that `AuthGuard` writes to `requestContext.principal`.
 
 ### 2. Protect Routes
 
@@ -91,6 +114,7 @@ Use `CookieAuthModule.forRoot(...)` when your app authenticates requests from HT
 
 ```typescript
 import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
 import {
   CookieAuthModule,
   CookieAuthStrategy,
@@ -101,6 +125,10 @@ import {
 @Module({
   imports: [
     CookieAuthModule.forRoot(),
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      secret: 'your-secure-secret',
+    }),
     PassportModule.forRoot(
       { defaultStrategy: COOKIE_AUTH_STRATEGY_NAME },
       [{ name: COOKIE_AUTH_STRATEGY_NAME, token: CookieAuthStrategy }],
@@ -110,9 +138,11 @@ import {
 export class AuthModule {}
 ```
 
-Import `CookieAuthModule.forRoot(...)` alongside `PassportModule.forRoot(...)` when you want cookie-auth support in an application module.
+Import `CookieAuthModule.forRoot(...)`, `JwtModule.forRoot(...)`, and `PassportModule.forRoot(...)` together when you want cookie-auth support in an application module. The cookie preset provides `CookieAuthStrategy` and cookie options; JWT verification still comes from `@fluojs/jwt`, and the passport registry still comes from `PassportModule.forRoot(...)`.
 
 `CookieAuthStrategy` preserves the normalized JWT principal contract from `@fluojs/jwt`, including `subject`, `claims`, `issuer`, `audience`, `roles`, and `scopes`.
+
+Cookie access tokens must be non-empty strings. Missing cookies can resolve to `{ authenticated: false }` only when `requireAccessToken: false`; malformed present cookie values always fail authentication before JWT verification.
 
 Protected routes must keep using `@UseAuth(...)`. If you configure `requireAccessToken: false`, a missing cookie resolves to an explicit unauthenticated result instead of an anonymous principal, so protected routes still reject the request.
 

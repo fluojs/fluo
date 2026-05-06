@@ -1,5 +1,3 @@
-import { statfs } from 'node:fs/promises';
-
 import type { Provider } from '@fluojs/di';
 
 import { createDownResult, createUpResult, resolveIndicatorKey, throwHealthCheckError } from './utils.js';
@@ -17,6 +15,12 @@ const DEFAULT_DISK_FREE_RATIO_THRESHOLD = 0.1;
 
 function toNumber(value: bigint | number): number {
   return typeof value === 'bigint' ? Number(value) : value;
+}
+
+async function statFilesystem(path: string) {
+  const { statfs } = await import('node:fs/promises');
+
+  return statfs(path);
 }
 
 /**
@@ -56,7 +60,7 @@ export class DiskHealthIndicator implements HealthIndicator {
     const minFreeRatio = this.options.minFreeRatio ?? DEFAULT_DISK_FREE_RATIO_THRESHOLD;
 
     try {
-      const stats = await statfs(path);
+      const stats = await statFilesystem(path);
       const blockSize = toNumber(stats.bsize);
       const blocks = toNumber(stats.blocks);
       const availableBlocks = toNumber(stats.bavail);

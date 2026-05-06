@@ -66,10 +66,19 @@ try {
   temporarily materialize plain nested `@ValidateNested(...)` values to run their
   nested DTO rules without replacing the caller's properties
 
+`validate()` rejects malformed roots such as strings, arrays, `null`, and
+`undefined` with a deterministic `DtoValidationError` before field or class rules
+run. It accepts already-created target DTO instances and plain root objects so
+request-pipeline binders can validate their prepared DTO payloads without scalar
+coercion.
+
 `materialize()` copies safe own enumerable properties from plain input objects,
 applies DTO binding metadata, and recursively hydrates `@ValidateNested(...)`
 fields. It preserves the request-pipeline contract that transports or binders own
 source selection and scalar conversion before validation runs.
+Existing nested values that are already instances of the declared nested DTO are
+preserved; plain nested values are hydrated only for the affected nested field or
+collection entry.
 The root value passed to `materialize()` must already be a plain object or an
 instance of the target DTO; malformed roots such as strings, arrays, and `null`
 are rejected before the target DTO constructor or field initializers run.

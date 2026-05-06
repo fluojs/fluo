@@ -109,7 +109,7 @@ fixed backoff는 예측하기 쉽습니다. exponential backoff는 부하를 받
 
 ## 11.5 Dead-letter handling
 
-모든 retry attempt 이후에도 실패하는 job이 있습니다. 그런 job이 조용히 사라지면 안 됩니다. Queue 패키지는 해당 job을 `fluo:queue:dead-letter:<jobName>` 아래의 Redis dead-letter list로 옮깁니다. 운영자는 이 목록을 통해 무엇이 실패했는지 확인할 수 있는 durable place를 얻습니다. README는 기본 retention policy도 명시합니다. 별도 설정이 없으면 `QueueModule.forRoot()`는 job당 가장 최근 `1_000`개의 dead-letter entry를 유지합니다. 이는 운영상 중요한 기본값입니다. 무한 성장을 막으면서도 최근 실패 증거를 보존하기 때문입니다.
+모든 retry attempt 이후에도 실패하는 job이 있습니다. 그런 실패가 조용히 사라지면 안 됩니다. Queue 패키지는 `fluo:queue:dead-letter:<jobName>` 아래의 Redis dead-letter list에 dead-letter record를 append하며, BullMQ job 자체를 옮기지는 않습니다. 운영자는 이 목록을 통해 무엇이 실패했는지 확인할 수 있는 durable place를 얻습니다. README는 기본 retention policy도 명시합니다. 별도 설정이 없으면 `QueueModule.forRoot()`는 job당 가장 최근 `1_000`개의 dead-letter entry를 유지합니다. 이는 운영상 중요한 기본값입니다. 무한 성장을 막으면서도 최근 실패 증거를 보존하기 때문입니다.
 
 ### 11.5.1 What FluoShop stores in dead letters
 

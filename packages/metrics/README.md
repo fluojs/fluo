@@ -109,11 +109,11 @@ new Counter({
 class AppModule {}
 ```
 
-When multiple metrics module instances intentionally share the same registry, built-in HTTP metrics reuse the existing `http_requests_total`, `http_errors_total`, and `http_request_duration_seconds` collectors instead of registering duplicate framework metrics. Application-defined duplicate names still fail fast.
+When multiple metrics module instances intentionally share the same registry, built-in HTTP metrics reuse the existing `http_requests_total`, `http_errors_total`, and `http_request_duration_seconds` collectors instead of registering duplicate framework metrics. Built-in platform telemetry gauges follow the same ownership rule: module-created `fluo_component_ready`, `fluo_component_health`, and `fluo_metrics_registry_mode` gauges are reused only when their framework ownership and label schema match. Application-defined duplicate names still fail fast.
 
 ### Duplicate metric names still fail fast
 
-Prometheus metric names must stay unique inside a registry. Shared-registry mode keeps that behavior intact instead of silently shadowing metrics.
+Prometheus metric names must stay unique inside a registry. Shared-registry mode keeps that behavior intact instead of silently shadowing metrics. If an application predefines a built-in HTTP collector or platform telemetry gauge name, `MetricsModule.forRoot()` rejects the collision instead of reusing an app-owned collector.
 
 ### Runtime platform telemetry
 
@@ -168,7 +168,7 @@ MetricsModule.forRoot({
 - `defaultMetrics` defaults to `true`, and `defaultMetrics: false` disables Prometheus default process and Node.js collectors for that registry.
 - `endpointMiddleware` binds route-scoped middleware only to the scrape endpoint.
 - HTTP metrics are installed only when `http: true` or an `http` options object is provided, and then default to template-normalized path labels.
-- Built-in HTTP collectors are reused when module instances share one registry; custom application metric name collisions keep Prometheus' duplicate-name failure behavior.
+- Built-in HTTP collectors and platform telemetry gauges are reused when module instances share one registry only if they are framework-owned and have the expected label schema; custom application metric name collisions keep Prometheus' duplicate-name failure behavior.
 - Raw path labels require `allowUnsafeRawPathLabelMode: true` and should stay limited to bounded internal routes.
 - Platform telemetry is omitted only when `PLATFORM_SHELL` is genuinely missing; other resolution failures fail the scrape.
 - Stale platform telemetry series are removed when `PLATFORM_SHELL` becomes unavailable after the last successful scrape.

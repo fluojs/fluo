@@ -35,7 +35,8 @@ Import `TerminusModule.forRoot()` to register health indicators.
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { HttpHealthIndicator, MemoryHealthIndicator, TerminusModule } from '@fluojs/terminus';
+import { HttpHealthIndicator, TerminusModule } from '@fluojs/terminus';
+import { MemoryHealthIndicator } from '@fluojs/terminus/node';
 
 @Module({
   imports: [
@@ -59,8 +60,8 @@ The package provides several indicators out of the box:
 - `PrismaHealthIndicator` / `DrizzleHealthIndicator`
 - `RedisHealthIndicator` (from `@fluojs/terminus/redis`)
 - `HttpHealthIndicator`
-- `MemoryHealthIndicator`
-- `DiskHealthIndicator`
+- `MemoryHealthIndicator` (root-exported for compatibility and also available from `@fluojs/terminus/node`)
+- `DiskHealthIndicator` (root-exported for compatibility and also available from `@fluojs/terminus/node`)
 
 ### DI-Backed Indicators
 
@@ -114,6 +115,7 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 - The response body contains a structured JSON object with `status`, `contributors`, `info`, `error`, and `details`.
 - Indicators may emit multiple keyed entries in a single check result; `/health` preserves every keyed entry in `details` and in the `contributors.up` / `contributors.down` summaries.
 - Unsupported, empty, or non-object indicator results are reported as `down` diagnostics instead of being silently discarded.
+- Blank indicator result keys are reported as `down` diagnostics instead of contributing healthy entries.
 - If an indicator reuses a key that was already reported earlier in the same run, Terminus keeps the first entry and adds a deterministic `*-duplicate-key-error` contributor instead of silently overwriting data.
 - Platform health/readiness failures are surfaced as deterministic `fluo-platform-health` and `fluo-platform-readiness` contributors in `/health` responses.
 - `/health` responses may include a `platform` block with platform health/readiness details when runtime diagnostics are available.
@@ -143,6 +145,11 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 
 - `RedisHealthIndicator`, `createRedisHealthIndicator()`, `createRedisHealthIndicatorProvider()`
   - Redis-specific indicator helpers are exported from the dedicated subpath so the root package stays import-safe without the optional Redis peer installed.
+
+### `@fluojs/terminus/node`
+
+- `MemoryHealthIndicator`, `DiskHealthIndicator`, `createMemoryHealthIndicator()`, `createDiskHealthIndicator()`
+  - Node-specific indicator helpers remain root-exported for compatibility and are also exported from this dedicated subpath. Filesystem access for disk checks is lazy-loaded so importing the root package does not load Node filesystem modules at module initialization time.
 
 
 ### `HealthCheckError`

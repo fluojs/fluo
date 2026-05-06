@@ -580,16 +580,12 @@ export class DenoWebSocketGatewayLifecycleService
     this.clearQueuedMessages(state);
   }
 
-  private async normalizeMessage(message: DenoWebSocketMessage): Promise<string | ArrayBuffer | ArrayBufferView> {
-    if (typeof message === 'string') {
-      return message;
+  private async normalizeMessage(message: DenoWebSocketMessage): Promise<ArrayBuffer | ArrayBufferView | string> {
+    if (message instanceof Blob) {
+      return await message.arrayBuffer();
     }
 
-    if (message instanceof ArrayBuffer || ArrayBuffer.isView(message)) {
-      return message;
-    }
-
-    return await message.arrayBuffer();
+    return message;
   }
 
   private enqueueDisconnectDispatch(

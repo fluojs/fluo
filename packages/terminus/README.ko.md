@@ -37,7 +37,8 @@ pnpm add @fluojs/terminus
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { HttpHealthIndicator, MemoryHealthIndicator, TerminusModule } from '@fluojs/terminus';
+import { HttpHealthIndicator, TerminusModule } from '@fluojs/terminus';
+import { MemoryHealthIndicator } from '@fluojs/terminus/node';
 
 @Module({
   imports: [
@@ -61,8 +62,8 @@ class AppModule {}
 - `PrismaHealthIndicator` / `DrizzleHealthIndicator`
 - `RedisHealthIndicator` (`@fluojs/terminus/redis`에서 제공)
 - `HttpHealthIndicator`
-- `MemoryHealthIndicator`
-- `DiskHealthIndicator`
+- `MemoryHealthIndicator` (호환성을 위해 root에서도 export되며 `@fluojs/terminus/node`에서도 제공)
+- `DiskHealthIndicator` (호환성을 위해 root에서도 export되며 `@fluojs/terminus/node`에서도 제공)
 
 ### DI 기반 인디케이터
 
@@ -114,6 +115,7 @@ TerminusModule.forRoot({
 - 응답 본문은 `status`, `contributors`, `info`, `error`, `details`를 포함한 구조화된 JSON 객체입니다.
 - 하나의 인디케이터가 여러 keyed entry를 반환할 수도 있으며, 이 경우 `/health`는 모든 entry를 `details`와 `contributors.up` / `contributors.down` 요약에 그대로 반영합니다.
 - 지원하지 않는 status, 빈 결과, 객체가 아닌 인디케이터 결과는 조용히 버려지지 않고 `down` 진단으로 보고됩니다.
+- Blank indicator result key는 healthy entry로 기여하지 않고 `down` 진단으로 보고됩니다.
 - 같은 실행에서 이미 보고된 key를 다른 인디케이터가 다시 사용하면, Terminus는 먼저 기록된 entry를 유지하고 데이터를 조용히 덮어쓰는 대신 결정적인 `*-duplicate-key-error` contributor를 추가합니다.
 - 플랫폼 health/readiness 실패는 `/health` 응답에서 결정적인 `fluo-platform-health`, `fluo-platform-readiness` contributor로 노출됩니다.
 - Runtime diagnostics가 있으면 `/health` response에 platform health/readiness detail을 담은 `platform` block이 포함될 수 있습니다.
@@ -143,6 +145,11 @@ TerminusModule.forRoot({
 
 - `RedisHealthIndicator`, `createRedisHealthIndicator()`, `createRedisHealthIndicatorProvider()`
   - Redis 전용 인디케이터 헬퍼는 선택적 Redis 피어가 설치되지 않은 환경에서도 루트 패키지 import가 안전하도록 전용 subpath에서 export됩니다.
+
+### `@fluojs/terminus/node`
+
+- `MemoryHealthIndicator`, `DiskHealthIndicator`, `createMemoryHealthIndicator()`, `createDiskHealthIndicator()`
+  - Node 전용 indicator helper는 호환성을 위해 root에서도 계속 export되며 이 전용 subpath에서도 export됩니다. Disk check의 filesystem access는 lazy-load되므로 root package import 시점에는 Node filesystem module을 load하지 않습니다.
 
 
 ### `HealthCheckError`

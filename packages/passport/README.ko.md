@@ -34,23 +34,46 @@ npm install @fluojs/passport
 사용할 전략을 정의하고 `PassportModule.forRoot(...)`를 통해 등록합니다.
 
 ```typescript
-import { Module } from '@fluojs/core';
-import { PassportModule } from '@fluojs/passport';
-import { MyJwtStrategy } from './jwt.strategy';
+import { Inject, Module } from '@fluojs/core';
+import type { GuardContext } from '@fluojs/http';
+import { DefaultJwtVerifier, JwtModule } from '@fluojs/jwt';
+import { AuthenticationRequiredError, PassportModule, type AuthStrategy } from '@fluojs/passport';
+
+@Inject(DefaultJwtVerifier)
+export class BearerJwtStrategy implements AuthStrategy {
+  constructor(private readonly verifier: DefaultJwtVerifier) {}
+
+  async authenticate(context: GuardContext) {
+    const authorization = context.requestContext.request.headers.authorization;
+    const [scheme, token] = typeof authorization === 'string' ? authorization.split(' ') : [];
+
+    if (scheme !== 'Bearer' || !token) {
+      throw new AuthenticationRequiredError('Bearer access token is required.');
+    }
+
+    return this.verifier.verifyAccessToken(token);
+  }
+}
 
 @Module({
   imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      audience: 'my-app',
+      issuer: 'my-api',
+      secret: 'your-secure-secret',
+    }),
     PassportModule.forRoot(
       { defaultStrategy: 'jwt' },
-      [{ name: 'jwt', token: MyJwtStrategy }]
+      [{ name: 'jwt', token: BearerJwtStrategy }],
     ),
   ],
-  providers: [MyJwtStrategy],
+  providers: [BearerJwtStrategy],
 })
 export class AuthModule {}
 ```
 
-전략 등록은 `PassportModule.forRoot(...)`로 구성합니다.
+JWT 기반 passport 전략에는 두 가지 module wiring이 모두 필요합니다. `JwtModule.forRoot(...)`는 `DefaultJwtVerifier`를 등록하고, `PassportModule.forRoot(...)`는 `@UseAuth('jwt')`가 resolve할 named strategy를 등록합니다. `DefaultJwtVerifier.verifyAccessToken(...)` 결과를 반환하면 `AuthGuard`가 `requestContext.principal`에 기록하는 정규화 principal 계약(`subject`, `claims`, `issuer`, `audience`, `roles`, `scopes`)이 보존됩니다.
 
 ### 2. 라우트 보호
 
@@ -91,6 +114,7 @@ HTTP 쿠키에서 인증 정보를 읽는 애플리케이션이라면 `CookieAut
 
 ```typescript
 import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
 import {
   CookieAuthModule,
   CookieAuthStrategy,
@@ -101,6 +125,10 @@ import {
 @Module({
   imports: [
     CookieAuthModule.forRoot(),
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      secret: 'your-secure-secret',
+    }),
     PassportModule.forRoot(
       { defaultStrategy: COOKIE_AUTH_STRATEGY_NAME },
       [{ name: COOKIE_AUTH_STRATEGY_NAME, token: CookieAuthStrategy }],
@@ -110,9 +138,11 @@ import {
 export class AuthModule {}
 ```
 
-애플리케이션 모듈에서 cookie-auth 지원이 필요하면 `CookieAuthModule.forRoot(...)`를 `PassportModule.forRoot(...)`와 함께 import 하세요.
+애플리케이션 모듈에서 cookie-auth 지원이 필요하면 `CookieAuthModule.forRoot(...)`, `JwtModule.forRoot(...)`, `PassportModule.forRoot(...)`를 함께 import 하세요. Cookie preset은 `CookieAuthStrategy`와 cookie option을 제공하고, JWT 검증은 여전히 `@fluojs/jwt`에서 오며, passport registry는 여전히 `PassportModule.forRoot(...)`에서 옵니다.
 
 `CookieAuthStrategy`는 `@fluojs/jwt`가 정규화한 JWT principal 계약을 보존하며, `subject`, `claims`, `issuer`, `audience`, `roles`, `scopes`를 그대로 전달합니다.
+
+Cookie access token은 비어 있지 않은 문자열이어야 합니다. `requireAccessToken: false`일 때만 누락된 cookie가 `{ authenticated: false }`로 resolve될 수 있으며, 존재하지만 malformed인 cookie 값은 JWT 검증 전에 항상 인증 실패로 처리됩니다.
 
 보호된 라우트는 계속 `@UseAuth(...)`를 사용해야 합니다. `requireAccessToken: false`를 설정해도 쿠키가 없을 때는 익명 principal이 아니라 명시적인 미인증 결과를 반환하므로, 보호된 라우트는 요청을 계속 거부합니다.
 

@@ -77,6 +77,9 @@ fluo inspects your controllers and methods to build a complete OpenAPI 3.1.0 doc
 ### Response Media Types
 When an HTTP handler declares `@Produces(...)` from `@fluojs/http`, generated OpenAPI responses use those media types as the response `content` keys. For example, `@Produces('application/json', 'application/problem+json')` on a handler with an `@ApiResponse(...)` schema emits both media types with the same response schema instead of silently falling back to only `application/json`.
 
+### Default Success Responses
+When a handler does not declare `@ApiResponse(...)` or `@HttpCode(...)`, the OpenAPI builder applies method-only implicit defaults: `POST` handlers default to `201`, and other methods default to `200`. Bodyless or runtime-dependent cases such as `DELETE` and `OPTIONS` should declare the intended success status explicitly with `@HttpCode(...)` or `@ApiResponse(...)`.
+
 ### Integrated DTO Schemas
 Works seamlessly with `@fluojs/validation`. Your DTO classes are automatically converted to OpenAPI components and referenced in the appropriate operations.
 

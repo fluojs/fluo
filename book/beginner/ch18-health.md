@@ -77,7 +77,8 @@ Register `TerminusModule` and prepare the configuration that will expose monitor
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { MemoryHealthIndicator, TerminusModule } from '@fluojs/terminus';
+import { TerminusModule } from '@fluojs/terminus';
+import { MemoryHealthIndicator } from '@fluojs/terminus/node';
 
 @Module({
   imports: [

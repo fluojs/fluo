@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import * as terminus from './index.js';
+import * as terminusNode from './node.js';
 import * as terminusRedis from './redis.js';
 
 describe('terminus public surface', () => {
@@ -9,6 +10,8 @@ describe('terminus public surface', () => {
     expect(terminus).toHaveProperty('TERMINUS_INDICATOR_PROVIDER_TOKENS');
     expect(terminus).toHaveProperty('TerminusHealthService');
     expect(terminus).not.toHaveProperty('TERMINUS_OPTIONS');
+    expect(terminus).toHaveProperty('DiskHealthIndicator');
+    expect(terminus).toHaveProperty('MemoryHealthIndicator');
     expect(terminus).not.toHaveProperty('RedisHealthIndicator');
   });
 
@@ -23,5 +26,12 @@ describe('terminus public surface', () => {
     expect(terminusRedis).toHaveProperty('RedisHealthIndicator');
     expect(terminusRedis).toHaveProperty('createRedisHealthIndicator');
     expect(terminusRedis).toHaveProperty('createRedisHealthIndicatorProvider');
+  });
+
+  it('keeps Node-specific indicators on the dedicated node subpath export', () => {
+    expect(terminusNode).toHaveProperty('DiskHealthIndicator');
+    expect(terminusNode).toHaveProperty('MemoryHealthIndicator');
+    expect(terminusNode).toHaveProperty('createDiskHealthIndicator');
+    expect(terminusNode).toHaveProperty('createMemoryHealthIndicator');
   });
 });

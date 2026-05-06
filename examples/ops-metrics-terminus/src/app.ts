@@ -1,6 +1,7 @@
 import { Module } from '@fluojs/core';
 import { MetricsModule } from '@fluojs/metrics';
-import { MemoryHealthIndicator, TerminusModule } from '@fluojs/terminus';
+import { TerminusModule } from '@fluojs/terminus';
+import { MemoryHealthIndicator } from '@fluojs/terminus/node';
 
 import { OpsModule } from './ops/ops.module';
 import { sharedRegistry } from './ops/metrics-registry';

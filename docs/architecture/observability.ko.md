@@ -26,7 +26,7 @@
 
 - `TerminusHealthService.check()`는 등록된 indicator를 indicator result key 기준으로 집계하여 `info`, `error`, `details` 맵을 만든다.
 - `execution.indicatorTimeoutMs`는 느리거나 멈춘 indicator probe를 무기한 대기하지 않고 `down` 결과로 바꾼다.
-- 기본 제공 indicator 패키지에는 HTTP, memory, disk, Prisma, Drizzle, Redis 변형이 포함되며 Redis는 `@fluojs/terminus/redis`에서 export된다.
+- 기본 제공 indicator 패키지에는 HTTP, memory, disk, Prisma, Drizzle, Redis 변형이 포함되며 Node 전용 memory/disk indicator는 `@fluojs/terminus/node`, Redis는 `@fluojs/terminus/redis`에서 export된다.
 
 ## Readiness vs Liveness
 

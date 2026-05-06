@@ -583,6 +583,14 @@ function buildInvalidRootIssue(): ValidationIssue {
   };
 }
 
+function assertValidRootValue(value: unknown, target: Constructor): void {
+  if (value instanceof target || isPlainObject(value)) {
+    return;
+  }
+
+  throw new DtoValidationError('Validation failed.', [buildInvalidRootIssue()]);
+}
+
 function getRuleValues(value: unknown): unknown[] {
   return getIterableValues(value) ?? [value];
 }
@@ -805,15 +813,15 @@ async function collectValidationIssuesInternal<T>(
  */
 export class DefaultValidator implements Validator {
   async validate(value: unknown, target: Constructor): Promise<void> {
+    assertValidRootValue(value, target);
+
     const issues = await collectValidationIssues(target, value);
     if (issues.length === 0) return;
     throw new DtoValidationError('Validation failed.', issues);
   }
 
   async materialize<T>(value: unknown, target: Constructor<T>): Promise<T> {
-    if (!(value instanceof target) && !isPlainObject(value)) {
-      throw new DtoValidationError('Validation failed.', [buildInvalidRootIssue()]);
-    }
+    assertValidRootValue(value, target);
 
     const instance = createNestedDtoInstance(target, value, { active: new WeakSet<object>() });
     const issues = await collectValidationIssues(target, instance);

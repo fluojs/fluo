@@ -10,7 +10,7 @@
 | 생성된 Bun 스타터의 소스 코드 변경 | 기본 생성 `dev` 스크립트는 `fluo dev`이며, Bun native watch loop(`bun --watch src/main.ts`)를 기본값으로 사용합니다. `fluo dev --runner fluo`는 fluo 소유 restart runner를 복원합니다. | Bun 런타임이 기본 watch/reload를 소유하므로 Node-supervised dev process를 줄이고, 명시적 fluo restart fallback은 유지합니다. | `packages/cli/src/commands/scripts.ts`, `packages/cli/src/dev-runner/node-restart-runner.ts` |
 | 생성된 Deno 스타터의 소스 코드 변경 | 기본 생성 `dev` 스크립트는 `fluo dev`이며, Deno native watch loop(`deno run --watch --allow-env --allow-net src/main.ts`)를 기본값으로 사용합니다. `fluo dev --runner fluo`는 fluo 소유 restart runner를 복원합니다. | Deno 런타임이 기본 watch/reload를 소유하므로 Node-supervised dev process를 줄이고, 명시적 fluo restart fallback은 유지합니다. | `packages/cli/src/commands/scripts.ts`, `packages/cli/src/dev-runner/node-restart-runner.ts` |
 | 생성된 Workers 스타터의 소스 코드 변경 | 기본 생성 `dev` 스크립트는 `fluo dev`이며, Wrangler native dev loop(`wrangler dev --show-interactive-dev-session=false`)를 기본값으로 사용합니다. `fluo dev --runner fluo`는 fluo 소유 restart runner를 복원합니다. | Wrangler가 기본 watch/reload를 소유하므로 fluo Node supervisor boundary를 줄이고, 명시적 fluo restart fallback은 유지합니다. | `packages/cli/src/commands/scripts.ts`, `packages/cli/src/dev-runner/node-restart-runner.ts` |
-| config reload가 활성화된 설정 파일 변경 | `createConfigReloader(...)`는 `watch: true`일 때 설정된 env 파일을 감시할 수 있고, `ConfigReloadModule`은 `onApplicationBootstrap()`에서 그 watcher를 활성화합니다. watcher는 최종 env file content가 마지막으로 commit된 watch baseline과 같으면 reload를 건너뜁니다. | content가 바뀌고 검증이 성공하면 `ConfigService` 스냅샷이 프로세스 내부에서 교체됩니다. | `packages/config/src/load.ts`, `packages/config/src/reload-module.ts` |
+| config reload가 활성화된 설정 파일 변경 | `createConfigReloader(...)`는 `watch: true`일 때 설정된 env 파일을 감시할 수 있고, `ConfigModule.forRoot({ watch: true, ... })`는 `onApplicationBootstrap()`에서 watcher를 활성화하며, `ConfigReloadModule`은 같은 lifecycle phase에서 injectable reload-layer watcher를 활성화합니다. watcher는 최종 env file content가 마지막으로 commit된 watch baseline과 같으면 reload를 건너뜁니다. | content가 바뀌고 검증이 성공하면 `ConfigService` 스냅샷이 프로세스 내부에서 교체됩니다. | `packages/config/src/load.ts`, `packages/config/src/module.ts`, `packages/config/src/reload-module.ts` |
 | 수동 config refresh | `ConfigReloader.reload()`는 파일 시스템 watch 없이 같은 reload 경로를 실행합니다. | 호출자는 새로 검증된 스냅샷을 명시적으로 요청할 수 있습니다. | `packages/config/src/load.ts:251-267` |
 
 이 저장소가 노출하는 리로드 계열은 둘뿐입니다. 코드에 대해서는 호스트가 소유하는 재시작 흐름, 설정 입력에 대해서는 config 스냅샷 교체 흐름입니다.
@@ -27,7 +27,7 @@
 | 활성화 시점 | `ConfigReloadManager`는 reloader를 지연 생성하며, `options.watch`가 참일 때만 `onApplicationBootstrap()`에서 이를 생성합니다. | `packages/config/src/reload-module.ts:80-97` |
 | listener 실패 시 롤백 | 스냅샷 교체 중 reload listener가 예외를 던지면 `replaceConfigServiceSnapshot(...)`은 이전 스냅샷으로 롤백됩니다. | `packages/config/src/reload-module.ts:99-117` |
 | 종료 시 정리 | `ConfigReloadManager.onModuleDestroy()`는 종료 과정에서 watcher를 닫고 listener를 비웁니다. | `packages/config/src/reload-module.ts:88-90` |
-| 운영 환경 경계 | 확인한 저장소 소스는 config reload를 가능한 메커니즘으로 문서화하지만, 운영 환경에서의 자동 활성화를 선언하지는 않습니다. watch 활성화는 애플리케이션 경계에서의 명시적 `watch: true` 선택에 달려 있습니다. | `packages/config/src/reload-module.ts:80-86`, `packages/config/src/load.ts:193-204` |
+| 운영 환경 경계 | 확인한 저장소 소스는 config reload를 가능한 메커니즘으로 문서화하지만, 운영 환경에서의 자동 활성화를 선언하지는 않습니다. watch 활성화는 애플리케이션 경계에서의 명시적 `watch: true` 선택에 달려 있습니다. | `packages/config/src/module.ts`, `packages/config/src/reload-module.ts`, `packages/config/src/load.ts` |
 
 이 아키텍처는 애플리케이션 코드 리로드를 런타임 계약 바깥에 둡니다. 런타임이 직접 관리하는 리로드는 `@fluojs/config`를 통과하는 검증된 설정 스냅샷으로 제한됩니다.
 
