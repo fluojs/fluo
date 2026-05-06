@@ -59,4 +59,40 @@ describe('HttpHealthIndicator', () => {
       name: 'HealthCheckError',
     } satisfies Partial<HealthCheckError>);
   });
+
+  it('aborts timed out HTTP probes and reports the timeout as down', async () => {
+    let observedSignal: AbortSignal | undefined;
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => {
+      observedSignal = init?.signal ?? undefined;
+
+      return new Promise<Response>((_resolve, reject) => {
+        observedSignal?.addEventListener('abort', () => {
+          reject(observedSignal?.reason instanceof Error ? observedSignal.reason : new Error('HTTP probe aborted.'));
+        }, { once: true });
+      });
+    });
+
+    const indicator = new HttpHealthIndicator({
+      timeoutMs: 5,
+      url: 'https://example.com/slow-health',
+    });
+
+    await expect(indicator.check('upstream')).rejects.toMatchObject({
+      causes: {
+        upstream: {
+          message: 'HTTP health check timed out after 5ms.',
+          status: 'down',
+        },
+      },
+      message: 'HTTP health check failed.',
+      name: 'HealthCheckError',
+    } satisfies Partial<HealthCheckError>);
+
+    expect(fetch).toHaveBeenCalledWith('https://example.com/slow-health', expect.objectContaining({
+      method: 'GET',
+      signal: observedSignal,
+    }));
+    expect(observedSignal?.aborted).toBe(true);
+    expect(observedSignal?.reason).toEqual(new Error('HTTP health check timed out after 5ms.'));
+  });
 });
