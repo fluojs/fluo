@@ -42,8 +42,10 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "peerDependencies": {
-    "@babel/core": ">=7.0.0",
-    "vite": ">=5.0.0"
+    "@babel/core": ">=7.26.0",
+    "@babel/plugin-proposal-decorators": ">=7.28.0",
+    "@babel/preset-typescript": ">=7.27.0",
+    "vite": ">=6.2.0"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

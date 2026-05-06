@@ -962,10 +962,16 @@ importers:
   packages/vite:
     dependencies:
       '@babel/core':
-        specifier: '>=7.0.0'
+        specifier: '>=7.26.0'
         version: 7.29.0
+      '@babel/plugin-proposal-decorators':
+        specifier: '>=7.28.0'
+        version: 7.29.0(@babel/core@7.29.0)
+      '@babel/preset-typescript':
+        specifier: '>=7.27.0'
+        version: 7.28.5(@babel/core@7.29.0)
       vite:
-        specifier: '>=5.0.0'
+        specifier: '>=6.2.0'
         version: 6.4.1(@types/node@22.19.15)(tsx@4.21.0)
     devDependencies:
       vitest:
