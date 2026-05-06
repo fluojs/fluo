@@ -138,6 +138,7 @@ ThrottlerModule.forRoot({
 - `createMemoryThrottlerStore()`: Creates a simple in-memory store (default).
 - `RedisThrottlerStore`: Store adapter for Redis.
 - `ThrottlerStore`: Public contract for custom stores.
+- `ThrottlerConsumeInput`: Public input shape passed to `ThrottlerStore.consume(key, input)` so custom stores can share the guard's current time and TTL window.
 
 ### Status and diagnostics
 - `createThrottlerPlatformStatusSnapshot(...)`: Creates a platform status snapshot.

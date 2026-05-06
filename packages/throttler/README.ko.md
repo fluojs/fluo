@@ -138,6 +138,7 @@ ThrottlerModule.forRoot({
 - `createMemoryThrottlerStore()`: 간단한 메모리 내 저장소를 생성합니다 (기본값).
 - `RedisThrottlerStore`: Redis용 저장소 어댑터입니다.
 - `ThrottlerStore`: custom store를 위한 공개 계약입니다.
+- `ThrottlerConsumeInput`: custom store가 guard의 현재 시간과 TTL window를 공유할 수 있도록 `ThrottlerStore.consume(key, input)`에 전달되는 공개 입력 shape입니다.
 
 ### status와 diagnostics
 - `createThrottlerPlatformStatusSnapshot(...)`: 플랫폼 status snapshot을 생성합니다.
