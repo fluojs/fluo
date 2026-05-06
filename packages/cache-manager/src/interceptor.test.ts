@@ -1,11 +1,10 @@
+import { type CallHandler, type HttpMethod, type InterceptorContext, type Principal, type RequestContext, SseResponse } from '@fluojs/http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
-import { SseResponse, type CallHandler, type HttpMethod, type InterceptorContext, type Principal, type RequestContext } from '@fluojs/http';
 
 import { CacheEvict, CacheKey, CacheTTL } from './decorators.js';
 import { CacheInterceptor } from './interceptor.js';
-import { MemoryStore } from './stores/memory-store.js';
 import { CacheService } from './service.js';
+import { MemoryStore } from './stores/memory-store.js';
 import type { NormalizedCacheModuleOptions } from './types.js';
 
 const cacheOptions: NormalizedCacheModuleOptions = {
@@ -91,6 +90,7 @@ function createContext(
   requestContext: RequestContext,
   requestMethod: HttpMethod = 'GET',
   effectivePath = requestContext.request.path,
+  routeOverrides: Partial<InterceptorContext['handler']['route']> = {},
 ): InterceptorContext {
   return {
     handler: {
@@ -107,6 +107,7 @@ function createContext(
       route: {
         method: requestMethod,
         path: requestContext.request.path,
+        ...routeOverrides,
       },
     },
     requestContext,
@@ -308,6 +309,159 @@ describe('CacheInterceptor', () => {
     expect(second).toBeInstanceOf(SseResponse);
     expect(next.handle).toHaveBeenCalledTimes(2);
     await expect(cacheService.get('/events')).resolves.toBeUndefined();
+  });
+
+  it('does not cache non-success HTTP responses returned by GET handlers', async () => {
+    class ProductController {
+      @CacheTTL(120)
+      list() {}
+    }
+
+    const { interceptor, cacheService } = createInterceptor({ ttl: 120 });
+    const firstRequestContext = createRequestContext('GET', '/products', '/products');
+    const secondRequestContext = createRequestContext('GET', '/products', '/products');
+    firstRequestContext.response.statusCode = 500;
+    secondRequestContext.response.statusCode = 500;
+    const firstContext = createContext(ProductController, 'list', firstRequestContext);
+    const secondContext = createContext(ProductController, 'list', secondRequestContext);
+    const next: CallHandler = {
+      handle: vi
+        .fn<CallHandler['handle']>()
+        .mockResolvedValueOnce({ error: 'temporary' })
+        .mockResolvedValueOnce({ error: 'still-temporary' }),
+    };
+
+    await expect(interceptor.intercept(firstContext, next)).resolves.toEqual({ error: 'temporary' });
+    await expect(interceptor.intercept(secondContext, next)).resolves.toEqual({ error: 'still-temporary' });
+
+    expect(next.handle).toHaveBeenCalledTimes(2);
+    await expect(cacheService.get('/products')).resolves.toBeUndefined();
+  });
+
+  it('does not cache GET handlers whose route metadata redirects later in dispatch', async () => {
+    class ProductController {
+      @CacheTTL(120)
+      detail() {}
+    }
+
+    const { interceptor, cacheService } = createInterceptor({ ttl: 120 });
+    const firstContext = createContext(
+      ProductController,
+      'detail',
+      createRequestContext('GET', '/products/old', '/products/old'),
+      'GET',
+      '/products/old',
+      { redirect: { url: '/products/new', statusCode: 302 } },
+    );
+    const secondContext = createContext(
+      ProductController,
+      'detail',
+      createRequestContext('GET', '/products/old', '/products/old'),
+      'GET',
+      '/products/old',
+      { redirect: { url: '/products/new', statusCode: 302 } },
+    );
+    const next: CallHandler = {
+      handle: vi
+        .fn<CallHandler['handle']>()
+        .mockResolvedValueOnce({ redirect: 'first' })
+        .mockResolvedValueOnce({ redirect: 'second' }),
+    };
+
+    await expect(interceptor.intercept(firstContext, next)).resolves.toEqual({ redirect: 'first' });
+    await expect(interceptor.intercept(secondContext, next)).resolves.toEqual({ redirect: 'second' });
+
+    expect(next.handle).toHaveBeenCalledTimes(2);
+    await expect(cacheService.get('/products/old')).resolves.toBeUndefined();
+  });
+
+  it('does not return pre-existing cache hits for GET handlers whose route metadata redirects later in dispatch', async () => {
+    class ProductController {
+      @CacheTTL(120)
+      detail() {}
+    }
+
+    const { interceptor, cacheService } = createInterceptor({ ttl: 120 });
+    await cacheService.set('/products/old', { stale: 'redirect-cache-hit' }, 120);
+    const context = createContext(
+      ProductController,
+      'detail',
+      createRequestContext('GET', '/products/old', '/products/old'),
+      'GET',
+      '/products/old',
+      { redirect: { url: '/products/new', statusCode: 302 } },
+    );
+    const next: CallHandler = {
+      handle: vi.fn<CallHandler['handle']>().mockResolvedValue({ redirect: 'handler' }),
+    };
+
+    await expect(interceptor.intercept(context, next)).resolves.toEqual({ redirect: 'handler' });
+
+    expect(next.handle).toHaveBeenCalledTimes(1);
+    await expect(cacheService.get('/products/old')).resolves.toEqual({ stale: 'redirect-cache-hit' });
+  });
+
+  it('does not cache GET handlers whose route metadata applies a non-success status later in dispatch', async () => {
+    class ProductController {
+      @CacheTTL(120)
+      missing() {}
+    }
+
+    const { interceptor, cacheService } = createInterceptor({ ttl: 120 });
+    const firstContext = createContext(
+      ProductController,
+      'missing',
+      createRequestContext('GET', '/products/missing', '/products/missing'),
+      'GET',
+      '/products/missing',
+      { successStatus: 404 },
+    );
+    const secondContext = createContext(
+      ProductController,
+      'missing',
+      createRequestContext('GET', '/products/missing', '/products/missing'),
+      'GET',
+      '/products/missing',
+      { successStatus: 404 },
+    );
+    const next: CallHandler = {
+      handle: vi
+        .fn<CallHandler['handle']>()
+        .mockResolvedValueOnce({ error: 'not-found' })
+        .mockResolvedValueOnce({ error: 'still-not-found' }),
+    };
+
+    await expect(interceptor.intercept(firstContext, next)).resolves.toEqual({ error: 'not-found' });
+    await expect(interceptor.intercept(secondContext, next)).resolves.toEqual({ error: 'still-not-found' });
+
+    expect(next.handle).toHaveBeenCalledTimes(2);
+    await expect(cacheService.get('/products/missing')).resolves.toBeUndefined();
+  });
+
+  it('does not return pre-existing cache hits for GET handlers with route-level non-success status metadata', async () => {
+    class ProductController {
+      @CacheTTL(120)
+      missing() {}
+    }
+
+    const { interceptor, cacheService } = createInterceptor({ ttl: 120 });
+    await cacheService.set('/products/missing', { stale: 'not-found-cache-hit' }, 120);
+    const context = createContext(
+      ProductController,
+      'missing',
+      createRequestContext('GET', '/products/missing', '/products/missing'),
+      'GET',
+      '/products/missing',
+      { successStatus: 404 },
+    );
+    const next: CallHandler = {
+      handle: vi.fn<CallHandler['handle']>().mockResolvedValue({ error: 'handler-not-found' }),
+    };
+
+    await expect(interceptor.intercept(context, next)).resolves.toEqual({ error: 'handler-not-found' });
+
+    expect(next.handle).toHaveBeenCalledTimes(1);
+    await expect(cacheService.get('/products/missing')).resolves.toEqual({ stale: 'not-found-cache-hit' });
   });
 
   it('does not fail successful non-GET handlers when cache eviction fails', async () => {

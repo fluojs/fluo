@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import { getStandardMetadataBag } from '@fluojs/core/internal';
-import { SseResponse, type CallHandler, type Interceptor, type InterceptorContext } from '@fluojs/http';
+import { type CallHandler, type Interceptor, type InterceptorContext, SseResponse } from '@fluojs/http';
 
 import { cacheRouteMetadataKey, getCacheEvictMetadata, getCacheKeyMetadata, getCacheTtlMetadata } from './decorators.js';
 import { CacheService } from './service.js';
@@ -123,6 +123,10 @@ function normalizeEvictKeys(value: string | readonly string[]): string[] {
   return [];
 }
 
+function isSuccessStatusCode(statusCode: number): boolean {
+  return statusCode >= 200 && statusCode < 300;
+}
+
 async function resolveCacheKeyValue(
   metadata: CacheKeyDecoratorValue | undefined,
   context: InterceptorContext,
@@ -215,8 +219,9 @@ export class CacheInterceptor implements Interceptor {
     const keyMetadata = metadataBag ? getCacheKeyMetadata(metadataBag) : undefined;
     const key = await resolveCacheKeyValue(keyMetadata, context, this.options.httpKeyStrategy, this.options.principalScopeResolver);
     const ttl = normalizeTtl(metadataBag ? getCacheTtlMetadata(metadataBag) : undefined, this.options.ttl);
+    const cacheableRoute = this.shouldCacheRoute(context);
 
-    if (ttl !== undefined) {
+    if (ttl !== undefined && cacheableRoute) {
       const cached = await this.safeGet(key);
 
       if (cached !== undefined) {
@@ -226,7 +231,7 @@ export class CacheInterceptor implements Interceptor {
 
     const value = await next.handle();
 
-    if (ttl !== undefined && this.shouldCacheValue(context, value)) {
+    if (ttl !== undefined && cacheableRoute && this.shouldCacheValue(context, value)) {
       await this.safeSet(key, value, ttl);
     }
 
@@ -272,8 +277,24 @@ export class CacheInterceptor implements Interceptor {
     return normalizeEvictKeys(metadata);
   }
 
+  private shouldCacheRoute(context: InterceptorContext): boolean {
+    const route = context.handler.route;
+
+    if (route.redirect) {
+      return false;
+    }
+
+    return typeof route.successStatus !== 'number' || isSuccessStatusCode(route.successStatus);
+  }
+
   private shouldCacheValue(context: InterceptorContext, value: unknown): boolean {
+    const statusCode = context.requestContext.response.statusCode;
+
     if (value === undefined) {
+      return false;
+    }
+
+    if (typeof statusCode === 'number' && !isSuccessStatusCode(statusCode)) {
       return false;
     }
 
