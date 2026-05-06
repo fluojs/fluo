@@ -16,7 +16,7 @@ Chapter 1에서 fluo가 어떤 생각으로 만들어졌는지 봤다면, 이제
 - 다음 장으로 넘어가기 전에 초기 문제 해결 습관을 익힙니다.
 
 ## Prerequisites
-- Node.js 18 이상.
+- Node.js 20 이상.
 - 이 책에서 CLI 설치, 일회성 CLI 실행, 프로젝트 script 실행에 사용하는 `pnpm`.
 - Chapter 1 완료.
 - 실습 중 계속 열어 둘 수 있는 터미널 세션.

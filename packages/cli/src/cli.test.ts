@@ -1836,24 +1836,30 @@ void bootstrap();
     expect(stdoutBuffer.join('')).toContain('Watch mode: runtime-native-watch');
   });
 
-  it('rejects invalid dev runner preferences', async () => {
+  it('returns non-zero exit codes for invalid dev runner preferences', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
     writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+    const stderrBuffer: string[] = [];
 
-    await expect(runCli(['dev', '--dry-run', '--runner', 'bogus'], {
+    const flagExitCode = await runCli(['dev', '--dry-run', '--runner', 'bogus'], {
       cwd: workspaceDirectory,
       env: {},
-      stderr: { write: () => undefined },
+      stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: () => undefined },
-    })).rejects.toThrow('Invalid --runner value "bogus". Use one of: fluo, native.');
+    });
 
-    await expect(runCli(['dev', '--dry-run'], {
+    const envExitCode = await runCli(['dev', '--dry-run'], {
       cwd: workspaceDirectory,
       env: { FLUO_DEV_RUNNER: 'bogus' },
-      stderr: { write: () => undefined },
+      stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: () => undefined },
-    })).rejects.toThrow('Invalid FLUO_DEV_RUNNER value "bogus". Use one of: fluo, native.');
+    });
+
+    expect(flagExitCode).toBe(1);
+    expect(envExitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Invalid --runner value "bogus". Use one of: fluo, native.');
+    expect(stderrBuffer.join('')).toContain('Invalid FLUO_DEV_RUNNER value "bogus". Use one of: fluo, native.');
   });
 
   it('ignores dev runner environment preferences outside the dev lifecycle', async () => {
@@ -1873,25 +1879,30 @@ void bootstrap();
     expect(stdoutBuffer.join('')).toContain('Would run: vite build');
   });
 
-  it('rejects dev runner flags outside the dev lifecycle while preserving child pass-through args', async () => {
+  it('returns non-zero for dev runner flags outside the dev lifecycle while preserving child pass-through args', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
     writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { build: 'fluo build', start: 'fluo start' } }, null, 2));
+    const stderrBuffer: string[] = [];
     const stdoutBuffer: string[] = [];
 
-    await expect(runCli(['build', '--dry-run', '--runner', 'native'], {
+    const buildExitCode = await runCli(['build', '--dry-run', '--runner', 'native'], {
       cwd: workspaceDirectory,
       env: {},
-      stderr: { write: () => undefined },
+      stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: () => undefined },
-    })).rejects.toThrow('--runner is only supported for fluo dev. Use -- to forward --runner to the child command.');
+    });
 
-    await expect(runCli(['start', '--dry-run', '--runner', 'fluo'], {
+    const startExitCode = await runCli(['start', '--dry-run', '--runner', 'fluo'], {
       cwd: workspaceDirectory,
       env: {},
-      stderr: { write: () => undefined },
+      stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: () => undefined },
-    })).rejects.toThrow('--runner is only supported for fluo dev. Use -- to forward --runner to the child command.');
+    });
+
+    expect(buildExitCode).toBe(1);
+    expect(startExitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('--runner is only supported for fluo dev. Use -- to forward --runner to the child command.');
 
     const exitCode = await runCli(['build', '--dry-run', '--', '--runner', 'native'], {
       cwd: workspaceDirectory,
@@ -2671,6 +2682,26 @@ exit 7
     expect(stderrBuffer.join('')).toContain('child stdout');
     expect(stderrBuffer.join('')).toContain('child stderr');
     expect(stderrBuffer.join('')).toContain('[fluo] build lifecycle failed with exit code 2');
+  });
+
+  it('returns a numeric exit code when lifecycle command spawning fails', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { build: 'fluo build' } }, null, 2));
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['build'], {
+      cwd: workspaceDirectory,
+      env: {},
+      spawnCommand: async () => {
+        throw new Error('spawn unavailable');
+      },
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('spawn unavailable');
   });
 
   it('runs the production lifecycle directly while preserving explicit NODE_ENV', async () => {

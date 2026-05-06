@@ -16,7 +16,7 @@ In Chapter 1, you saw the ideas behind fluo. Now it is time to turn that philoso
 - Build initial troubleshooting habits before moving to the next chapter.
 
 ## Prerequisites
-- Node.js 18 or later.
+- Node.js 20 or later.
 - `pnpm`, which this book uses for CLI installation, one-off CLI execution, and project scripts.
 - Completion of Chapter 1.
 - A terminal session you can keep open throughout the exercises.

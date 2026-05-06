@@ -627,7 +627,7 @@ export async function runCli(
     }
 
     if (parsedCommand.command === 'build' || parsedCommand.command === 'dev' || parsedCommand.command === 'start') {
-      return runScriptCommand(parsedCommand.command, parsedCommand.argv, commandRuntime);
+      return await runScriptCommand(parsedCommand.command, parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'upgrade') {
