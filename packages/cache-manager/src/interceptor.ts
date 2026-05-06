@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import { getStandardMetadataBag } from '@fluojs/core/internal';
-import { SseResponse, type CallHandler, type Interceptor, type InterceptorContext } from '@fluojs/http';
+import { type CallHandler, type Interceptor, type InterceptorContext, SseResponse } from '@fluojs/http';
 
 import { cacheRouteMetadataKey, getCacheEvictMetadata, getCacheKeyMetadata, getCacheTtlMetadata } from './decorators.js';
 import { CacheService } from './service.js';
@@ -121,6 +121,10 @@ function normalizeEvictKeys(value: string | readonly string[]): string[] {
   }
 
   return [];
+}
+
+function isSuccessStatusCode(statusCode: number): boolean {
+  return statusCode >= 200 && statusCode < 300;
 }
 
 async function resolveCacheKeyValue(
@@ -274,12 +278,21 @@ export class CacheInterceptor implements Interceptor {
 
   private shouldCacheValue(context: InterceptorContext, value: unknown): boolean {
     const statusCode = context.requestContext.response.statusCode;
+    const route = context.handler.route;
 
     if (value === undefined) {
       return false;
     }
 
-    if (typeof statusCode === 'number' && (statusCode < 200 || statusCode >= 300)) {
+    if (route.redirect) {
+      return false;
+    }
+
+    if (typeof route.successStatus === 'number' && !isSuccessStatusCode(route.successStatus)) {
+      return false;
+    }
+
+    if (typeof statusCode === 'number' && !isSuccessStatusCode(statusCode)) {
       return false;
     }
 
