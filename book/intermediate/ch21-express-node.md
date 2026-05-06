@@ -11,6 +11,7 @@ This chapter explains how to choose between the Express and raw Node.js adapters
 - Confirm the portability principle that keeps business logic unchanged after swapping adapters.
 - Review situations where you need access to platform-native request and response objects.
 - Learn how to connect Express middleware and Node.js streams to the fluo flow.
+- Distinguish runtime-owned diagnostic snapshots from Studio-owned graph and Mermaid presentation.
 - Summarize the checklist for moving FluoShop to an Express-based runtime environment.
 
 ## Prerequisites
@@ -148,6 +149,12 @@ async download(_input: undefined, ctx: RequestContext) {
 }
 ```
 
+### 21.3.3 Runtime diagnostics snapshots vs Studio rendering
+
+Adapter choice does not change who owns diagnostics. `@fluojs/runtime` and the platform shell produce the machine-readable `PlatformShellSnapshot`, including readiness, health, component graph data, and structured diagnostic issues. `fluo inspect` exports that runtime-produced snapshot as JSON or as a report artifact for CLI, CI, and support workflows.
+
+Visual presentation belongs elsewhere. When you request a graph view or Mermaid output, the CLI delegates rendering to `@fluojs/studio`. Studio parses and filters the runtime snapshot, owns viewer behavior, and owns the snapshot-to-Mermaid contract. This keeps Express and raw Node.js adapters focused on HTTP execution, keeps runtime focused on truthful diagnostics data, and prevents CLI or adapter packages from duplicating Studio rendering semantics.
+
 ## 21.4 Conclusion
 
 Portability does not mean giving up the tools you prefer. fluo's adapter system separates business logic from the web engine while still letting you access the performance and ecosystem of the underlying platform when needed. In the next chapter, we'll look at the flow for moving FluoShop to the Bun runtime while keeping the same logic.
@@ -226,4 +233,5 @@ This helper helps clean up active connections before the process exits. In deplo
 - `@fluojs/platform-nodejs` provides a minimal HTTP layer without a framework.
 - Most fluo code (Controllers, Providers, Modules) does not need to know which adapter is running at all.
 - Access the underlying engine with `getInstance()` only when you need platform-specific features.
+- Runtime owns diagnostic snapshot and issue production; Studio owns graph viewing and Mermaid rendering of those artifacts.
 - To maintain cross-platform compatibility, review fluo abstractions first, such as `MiddlewareConsumer`.

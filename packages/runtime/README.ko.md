@@ -27,7 +27,7 @@ npm install @fluojs/runtime
 - **fluo 애플리케이션 부트스트랩**: 모듈을 실행 중인 HTTP 서버나 마이크로서비스로 변환할 때.
 - **DI 및 라이프사이클 오케스트레이션**: 모듈 그래프 컴파일, 프로바이더 연결 및 애플리케이션 훅(`onModuleInit`, `onApplicationBootstrap`)을 관리할 때.
 - **독립형 컨텍스트 생성**: HTTP 서버는 필요 없지만 DI가 필요한 CLI task, script 또는 worker를 실행할 때.
-- **진단 및 검사**: CLI 내보내기와 Studio 소유 그래프 보기/렌더링을 위한 기계 읽기 가능한 플랫폼 snapshot을 생산할 때.
+- **진단 및 검사**: CLI 내보내기를 위한 기계 읽기 가능한 플랫폼 snapshot과 diagnostic issue를 생산하되, 그래프 보기와 Mermaid 표현은 Studio에 맡길 때.
 
 ## 퀵 스타트
 
@@ -138,7 +138,7 @@ class UsersModule {}
 - 응답 스트림 백프레셔 헬퍼는 `drain`, `close`, `error` 중 어느 경우에도 `waitForDrain()`을 완료시켜 끊어진 연결에서 스트리밍 작성기가 멈추지 않도록 합니다.
 - 런타임 health 모듈은 bootstrap이 ready로 표시하기 전까지 `/ready`를 HTTP 503과 `starting`으로 보고하며, 애플리케이션/컨텍스트 종료가 시작되는 즉시, 종료 시도가 실패하더라도 다시 `starting`으로 내려갑니다.
 - 시그널 기반 종료 헬퍼는 bounded drain semantics를 유지하면서 timeout/실패 상황을 로그와 `process.exitCode`로 보고하지만, 최종 프로세스 종료 소유권은 주변 호스트 런타임에 남겨 둡니다.
-- 플랫폼 snapshot 생산은 런타임에 남아 있고, 그래프 보기와 Mermaid 렌더링은 CLI 및 자동화 호출자가 소비하는 Studio 소유 계약입니다.
+- 플랫폼 snapshot 및 diagnostic issue 생산은 런타임에 남아 있고, 그래프 보기, filtering 표현, Mermaid 렌더링은 CLI 및 자동화 호출자가 소비하는 Studio 소유 계약입니다.
 - 모듈 그래프 컴파일 결과 캐시는 `moduleGraphCache: true`를 통한 opt-in입니다. 캐시 항목은 root module identity, runtime provider, validation token, core metadata version, compile algorithm version으로 식별되며, 성공한 컴파일만 저장하고 호출자 mutation이 이후 bootstrap을 오염시키지 않도록 격리된 그래프 복사본을 반환합니다.
 
 ## 공개 API 개요
@@ -153,7 +153,7 @@ class UsersModule {}
 - `defineModule(cls, metadata)`: 프로그래밍 방식의 모듈 정의 헬퍼입니다.
 - `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다.
 - `bootstrapModule(...)`: 저수준 module graph bootstrap helper입니다.
-- `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: CLI/support tooling을 위한 runtime diagnostics helper입니다.
+- `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: CLI/support tooling을 위한 runtime 소유 diagnostics snapshot helper입니다. 이 helper들은 기계 읽기 가능한 데이터를 생산하며, Studio가 viewer parsing, graph presentation, Mermaid rendering을 소유합니다.
 - `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: runtime-aware integration이 사용하는 request abort 및 active transaction helper입니다.
 
 ## 플랫폼 전용 서브경로
@@ -215,7 +215,7 @@ const jsonLogger = createJsonApplicationLogger();
 - [@fluojs/di](../di): 의존성 주입(DI) 컨테이너 구현체.
 - [@fluojs/http](../http): HTTP 라우팅, 컨트롤러 및 디스패처.
 - [@fluojs/platform-nodejs](../platform-nodejs): 공식 Node.js HTTP 어댑터.
-- [@fluojs/studio](../studio): 런타임이 생산한 snapshot을 위한 뷰어 및 렌더링 헬퍼.
+- [@fluojs/studio](../studio): 런타임이 생산한 snapshot과 diagnostic issue를 위한 viewer, filtering, rendering helper.
 
 ## 예제 소스
 

@@ -11,6 +11,7 @@
 - 어댑터 교체 뒤에도 비즈니스 로직을 그대로 유지하는 이식성 원칙을 확인합니다.
 - 플랫폼 네이티브 요청과 응답 객체에 접근해야 하는 상황을 살펴봅니다.
 - Express 미들웨어와 Node.js 스트림을 fluo 흐름에 맞게 연결하는 방법을 익힙니다.
+- 런타임이 소유하는 diagnostic snapshot과 Studio가 소유하는 graph 및 Mermaid 표현을 구분합니다.
 - FluoShop을 Express 기반 실행 환경으로 옮길 때 점검할 항목을 정리합니다.
 
 ## Prerequisites
@@ -148,6 +149,12 @@ async download(_input: undefined, ctx: RequestContext) {
 }
 ```
 
+### 21.3.3 Runtime diagnostics snapshots vs Studio rendering
+
+어댑터 선택은 diagnostics 소유권을 바꾸지 않습니다. `@fluojs/runtime`과 platform shell은 readiness, health, component graph data, structured diagnostic issue를 포함한 기계 읽기 가능한 `PlatformShellSnapshot`을 생산합니다. `fluo inspect`는 CLI, CI, support workflow를 위해 런타임이 생산한 snapshot을 JSON 또는 report artifact로 내보냅니다.
+
+시각적 표현은 다른 곳의 책임입니다. Graph view나 Mermaid 출력이 필요하면 CLI는 렌더링을 `@fluojs/studio`에 위임합니다. Studio는 runtime snapshot을 parsing/filtering하고, viewer behavior를 소유하며, snapshot-to-Mermaid 계약을 소유합니다. 이 분리는 Express 및 raw Node.js adapter가 HTTP 실행에 집중하고, runtime은 진실한 diagnostics data에 집중하며, CLI나 adapter package가 Studio rendering semantics를 중복하지 않게 합니다.
+
 ## 21.4 Conclusion
 
 이식성은 선호하는 도구를 포기하라는 뜻이 아닙니다. fluo의 어댑터 시스템은 비즈니스 로직을 웹 엔진에서 분리하면서도, 필요할 때 하부 플랫폼의 성능과 생태계에 접근할 수 있게 합니다. 다음 장에서는 같은 로직을 유지한 채 FluoShop을 Bun 런타임으로 옮기는 흐름을 살펴봅니다.
@@ -226,4 +233,5 @@ await runExpressApplication(AppModule, {
 - `@fluojs/platform-nodejs`는 최소한의 프레임워크 없는 HTTP 레이어를 제공합니다.
 - 대부분의 fluo 코드(컨트롤러, 프로바이더, 모듈)는 어떤 어댑터가 실행 중인지 전혀 알 필요가 없습니다.
 - 플랫폼 전용 기능이 필요한 경우에만 `getInstance()`로 하부 엔진에 접근하세요.
+- Runtime은 diagnostic snapshot과 issue 생산을 소유하고, Studio는 해당 artifact의 graph viewing 및 Mermaid rendering을 소유합니다.
 - 크로스 플랫폼 호환성을 유지하려면 fluo의 추상화(예: `MiddlewareConsumer`)를 먼저 검토하세요.
