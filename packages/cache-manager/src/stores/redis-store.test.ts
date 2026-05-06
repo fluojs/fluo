@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
-import { RedisStore } from './redis-store.js';
 import type { RedisCompatibleClient } from '../types.js';
+import { RedisStore } from './redis-store.js';
 
 class MockRedisClient implements RedisCompatibleClient {
   readonly deletedKeys: string[][] = [];
@@ -157,7 +156,32 @@ describe('RedisStore', () => {
     vi.setSystemTime(new Date('2026-03-24T00:00:00.250Z'));
 
     await expect(store.get('short')).resolves.toBeUndefined();
-    expect(client.deletedKeys).toContainEqual(['cache:short']);
+    expect(client.deletedKeys).not.toContainEqual(['cache:short']);
+  });
+
+  it('does not delete a fresh Redis value written while an expired entry is being read', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-24T00:00:00.500Z'));
+
+    class RefreshingRedisClient extends MockRedisClient {
+      async get(key: string): Promise<string | null> {
+        const raw = await super.get(key);
+        this.storage.set(key, JSON.stringify({ value: { fresh: true } }));
+        return raw;
+      }
+    }
+
+    const client = new RefreshingRedisClient();
+    const store = new RedisStore(client, { keyPrefix: 'cache:' });
+    client.storage.set('cache:short', JSON.stringify({
+      expiresAt: Date.parse('2026-03-24T00:00:00.250Z'),
+      value: { stale: true },
+    }));
+
+    await expect(store.get('short')).resolves.toBeUndefined();
+
+    expect(client.deletedKeys).toEqual([]);
+    expect(client.storage.get('cache:short')).toBe(JSON.stringify({ value: { fresh: true } }));
   });
 
   it('round-trips values using JSON serialization semantics', async () => {

@@ -95,7 +95,6 @@ export class RedisStore implements CacheStore {
     }
 
     if (decoded.expiresAt !== undefined && decoded.expiresAt <= Date.now()) {
-      await this.del(key);
       return undefined;
     }
 
