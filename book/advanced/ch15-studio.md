@@ -130,7 +130,14 @@ A report does not replace the raw snapshot. It packages the snapshot with the ex
 
 ## 15.5 Using the Studio Viewer
 
-Studio Viewer is a standalone web application. You can run it locally inside the monorepo or use a packaged viewer entry when your install path provides one.
+Studio Viewer is a standalone web application. Installed-package users can resolve the packaged static HTML entry and open it in a browser.
+
+```bash
+pnpm add -D @fluojs/studio
+node -p "require.resolve('@fluojs/studio/viewer')"
+```
+
+The printed path points at the packaged `dist/index.html` artifact. Open that file in a browser, then load your inspect artifact. Repository contributors who are developing the Studio app itself can run the local dev server instead.
 
 ```bash
 pnpm --dir packages/studio dev
@@ -145,7 +152,7 @@ Internally, Studio uses `parseStudioPayload(rawJson)` before rendering. This kee
 - **Graph View**: Renders the application dependency graph so you can see modules, providers, and dependency edges at a glance.
 - **Diagnostics Tab**: Lists `PlatformDiagnosticIssue` entries with severity, message, cause, fix hints, blockers, and docs links when present.
 - **Timing View**: Uses `BootstrapTimingDiagnostics` to show total bootstrap time and phase-level cost when timing data is present.
-- **Filtering**: Applies query, readiness, and severity filters without mutating the loaded snapshot.
+- **Filtering**: Applies query, readiness, and severity filters without mutating the loaded snapshot, and keeps keyboard focus in the active search or filter control while the view updates.
 - **Mermaid Export**: Produces text diagrams through Studio-owned `renderMermaid(snapshot)` logic, including internal dependency edges and external dependency nodes.
 
 These features give teams a shared artifact review flow. The CLI exports the file, CI stores it, and Studio turns the same file into a graph, issue list, and timing explanation.

@@ -48,12 +48,20 @@ Studio는 fluo CLI에서 내보낸 JSON 파일을 소비합니다. 런타임은 
    fluo inspect ./src/app.module.ts --json > snapshot.json
    ```
 
-2. **Studio 실행**:
+2. **패키징된 Studio viewer 열기**:
+   ```bash
+   pnpm add -D @fluojs/studio
+   node -p "require.resolve('@fluojs/studio/viewer')"
+   ```
+
+   출력된 `dist/index.html` 경로를 브라우저에서 엽니다. 패키징된 viewer entry는 `@fluojs/studio/viewer`로 export되는 정적 HTML artifact이며, 모노레포 개발 서버를 시작하지 않습니다.
+
+   저장소 내부 Studio 개발에는 다음 명령을 사용합니다.
    ```bash
    pnpm --dir packages/studio dev
    ```
 
-3. **파일 로드**: Studio 웹 인터페이스에 `snapshot.json` 파일을 드래그 앤 드롭합니다.
+3. **파일 로드**: Studio 웹 인터페이스에 `snapshot.json` 파일을 드래그 앤 드롭합니다. Search와 filter control은 graph, diagnostics, summary가 갱신되는 동안 focus를 유지합니다.
 
 ## 주요 패턴
 

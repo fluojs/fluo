@@ -48,12 +48,20 @@ Studio consumes JSON exports from the fluo CLI. Runtime produces snapshots, the 
    fluo inspect ./src/app.module.ts --json > snapshot.json
    ```
 
-2. **Open Studio**:
+2. **Open the packaged Studio viewer**:
+   ```bash
+   pnpm add -D @fluojs/studio
+   node -p "require.resolve('@fluojs/studio/viewer')"
+   ```
+
+   Open the printed `dist/index.html` path in a browser. The packaged viewer entry is a static HTML artifact exported as `@fluojs/studio/viewer`; it does not start the monorepo development server.
+
+   For repo-local Studio development, use:
    ```bash
    pnpm --dir packages/studio dev
    ```
 
-3. **Load the file**: Drag and drop `snapshot.json` into the Studio web interface.
+3. **Load the file**: Drag and drop `snapshot.json` into the Studio web interface. Search and filter controls preserve focus while the graph, diagnostics, and summary update.
 
 ## Common Patterns
 

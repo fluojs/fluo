@@ -130,7 +130,14 @@ Report가 raw snapshot을 대체하는 것은 아닙니다. Report는 support와
 
 ## 15.5 Using the Studio Viewer
 
-Studio Viewer는 독립 실행형 web application입니다. 모노레포 안에서 로컬로 실행하거나, install path가 제공하는 packaged viewer entry를 사용할 수 있습니다.
+Studio Viewer는 독립 실행형 web application입니다. 설치된 패키지를 사용하는 사용자는 패키징된 정적 HTML entry를 resolve해서 브라우저에서 열 수 있습니다.
+
+```bash
+pnpm add -D @fluojs/studio
+node -p "require.resolve('@fluojs/studio/viewer')"
+```
+
+출력된 경로는 패키징된 `dist/index.html` artifact를 가리킵니다. 해당 파일을 브라우저에서 연 다음 inspect artifact를 로드합니다. Studio 앱 자체를 개발하는 저장소 기여자는 대신 로컬 dev server를 실행할 수 있습니다.
 
 ```bash
 pnpm --dir packages/studio dev
@@ -145,7 +152,7 @@ Viewer가 열리면 inspect artifact를 브라우저로 drag and drop합니다. 
 - **Graph View**: 애플리케이션 dependency graph를 렌더링해 modules, providers, dependency edges를 한눈에 보게 합니다.
 - **Diagnostics Tab**: `PlatformDiagnosticIssue` 항목을 severity, message, cause, fix hints, blockers, docs links와 함께 나열합니다.
 - **Timing View**: Timing data가 있을 때 `BootstrapTimingDiagnostics`를 사용해 total bootstrap time과 phase-level cost를 보여줍니다.
-- **Filtering**: 로드된 snapshot을 변경하지 않고 query, readiness, severity filter를 적용합니다.
+- **Filtering**: 로드된 snapshot을 변경하지 않고 query, readiness, severity filter를 적용하며, view가 갱신되는 동안 활성 search 또는 filter control의 keyboard focus를 유지합니다.
 - **Mermaid Export**: Internal dependency edges와 external dependency nodes를 포함해 Studio가 소유한 `renderMermaid(snapshot)` logic으로 text diagram을 생성합니다.
 
 이 기능들은 팀에 공유 artifact review flow를 제공합니다. CLI가 파일을 내보내고, CI가 저장하고, Studio가 같은 파일을 graph, issue list, timing explanation으로 바꿉니다.
