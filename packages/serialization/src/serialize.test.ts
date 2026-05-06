@@ -284,6 +284,50 @@ describe('serialize', () => {
     });
   });
 
+  it('preserves inherited excludeExtraneous when derived classes use class-level Expose without options', () => {
+    @Expose({ excludeExtraneous: true })
+    class BaseView {
+      @Expose()
+      id = 'u-1';
+
+      inheritedInternal = 'hidden-base';
+    }
+
+    @Expose()
+    class DerivedView extends BaseView {
+      @Expose()
+      role = 'admin';
+
+      derivedInternal = 'hidden-derived';
+    }
+
+    expect(serialize(new DerivedView())).toEqual({
+      id: 'u-1',
+      role: 'admin',
+    });
+  });
+
+  it('lets derived classes explicitly override inherited excludeExtraneous with false', () => {
+    @Expose({ excludeExtraneous: true })
+    class BaseView {
+      @Expose()
+      id = 'u-1';
+
+      @Exclude()
+      inheritedSecret = 'hidden';
+    }
+
+    @Expose({ excludeExtraneous: false })
+    class DerivedView extends BaseView {
+      role = 'admin';
+    }
+
+    expect(serialize(new DerivedView())).toEqual({
+      id: 'u-1',
+      role: 'admin',
+    });
+  });
+
   it('merges base and derived transforms for the same field in declaration order', () => {
     class BaseView {
       @Transform((value) => String(value).trim())

@@ -42,9 +42,11 @@ export function Expose(options?: ExposeClassOptions): ClassOrFieldDecoratorLike 
     context: ClassDecoratorContext | ClassFieldDecoratorContext<unknown, unknown>,
   ) => {
     if (context.kind === 'class') {
-      updateClassSerializationOptions(context.metadata, {
-        excludeExtraneous: options?.excludeExtraneous,
-      });
+      if (Object.prototype.hasOwnProperty.call(options ?? {}, 'excludeExtraneous')) {
+        updateClassSerializationOptions(context.metadata, {
+          excludeExtraneous: options?.excludeExtraneous,
+        });
+      }
       return;
     }
 
