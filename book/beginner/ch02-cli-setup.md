@@ -220,8 +220,12 @@ fluo-blog/
 ├── tsconfig.json             # TypeScript configuration
 └── src/                      # Application source
     ├── app.ts                # App assembly
-    ├── hello.controller.ts   # Default HTTP route
-    ├── hello.service.ts      # Route logic
+    ├── greeting/             # Default greeting feature slice
+    │   ├── greeting.controller.ts      # Default HTTP route
+    │   ├── greeting.module.ts          # Feature assembly
+    │   ├── greeting.repo.ts            # Response payload source
+    │   ├── greeting.response.dto.ts    # Response DTO
+    │   └── greeting.service.ts         # Route logic
     └── main.ts               # Bootstrap entrypoint
 ```
 
