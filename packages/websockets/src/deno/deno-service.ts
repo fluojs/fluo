@@ -132,7 +132,16 @@ function resolveMessageByteLength(message: DenoWebSocketMessage): number {
     return message.size;
   }
 
-  return message.byteLength;
+  if (message instanceof ArrayBuffer) {
+    return message.byteLength;
+  }
+
+  if (ArrayBuffer.isView(message)) {
+    return message.byteLength;
+  }
+
+  const unreachable: never = message;
+  return unreachable;
 }
 
 function createCompletionSignal(): { promise: Promise<void>; resolve: () => void } {

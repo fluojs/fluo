@@ -228,6 +228,41 @@ function createDeferred<T = void>() {
   return { promise, reject, resolve };
 }
 
+type BinaryMessageCase = readonly [
+  label: string,
+  message: DenoWebSocketMessage,
+  expectedPayload: { value: string },
+];
+
+type OversizedBinaryMessageCase = readonly [
+  label: string,
+  message: DenoWebSocketMessage,
+];
+
+const binaryMessageCases: BinaryMessageCase[] = [
+  [
+    'ArrayBuffer',
+    new TextEncoder().encode('{"event":"ping","data":{"value":"array-buffer"}}').buffer as ArrayBuffer,
+    { value: 'array-buffer' },
+  ],
+  [
+    'typed array view',
+    new TextEncoder().encode('{"event":"ping","data":{"value":"typed-array"}}'),
+    { value: 'typed-array' },
+  ],
+  [
+    'Blob',
+    new Blob(['{"event":"ping","data":{"value":"blob"}}']),
+    { value: 'blob' },
+  ],
+];
+
+const oversizedBinaryMessageCases: OversizedBinaryMessageCase[] = [
+  ['typed array view', new Uint8Array([1, 2, 3, 4, 5])],
+  ['ArrayBuffer', new Uint8Array([1, 2, 3, 4, 5]).buffer as ArrayBuffer],
+  ['Blob', new Blob([new Uint8Array([1, 2, 3, 4, 5])])],
+];
+
 describe('@fluojs/websockets/deno', () => {
   it('exposes the explicit Deno websocket seam', () => {
     expect(denoPublicApi).toHaveProperty('DenoWebSocketModule');
@@ -817,6 +852,62 @@ describe('@fluojs/websockets/deno', () => {
     expect(state.disconnectCount).toBe(1);
   });
 
+  it.each(binaryMessageCases)(
+    'normalizes Deno binary %s messages before dispatching gateway handlers',
+    async (_label, message, expectedPayload) => {
+      const adapter = new TestDenoAdapter();
+
+      class GatewayState {
+        messages: unknown[] = [];
+      }
+
+      @Inject(GatewayState)
+      @WebSocketGateway({ path: '/binary' })
+      class BinaryGateway {
+        constructor(private readonly state: GatewayState) {}
+
+        @OnMessage('ping')
+        onPing(payload: unknown, socket: DenoServerWebSocket) {
+          this.state.messages.push(payload);
+          socket.send(JSON.stringify({ event: 'pong', data: payload }));
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [DenoWebSocketModule.forRoot()],
+        providers: [GatewayState, BinaryGateway],
+      });
+
+      const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+
+      try {
+        const state = await app.container.resolve<GatewayState>(GatewayState);
+        await app.listen();
+
+        const server = adapter.getServer();
+        await server?.fetch(new Request('https://runtime.test/binary', {
+          headers: { upgrade: 'websocket' },
+        }));
+        await flushAsyncWork();
+
+        const socket = server?.lastSocket;
+
+        if (!socket) {
+          throw new Error('Expected Deno test socket to be available after websocket upgrade.');
+        }
+
+        socket.emitMessage(message);
+        await flushAsyncWork();
+
+        expect(state.messages).toEqual([expectedPayload]);
+        expect(socket.sentMessages).toEqual([JSON.stringify({ event: 'pong', data: state.messages[0] })]);
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
   it('closes Deno sockets when string payloads exceed the configured limit', async () => {
     const adapter = new TestDenoAdapter();
 
@@ -873,61 +964,64 @@ describe('@fluojs/websockets/deno', () => {
     }
   });
 
-  it('closes Deno sockets when binary payloads exceed the configured limit', async () => {
-    const adapter = new TestDenoAdapter();
+  it.each(oversizedBinaryMessageCases)(
+    'closes Deno sockets when oversized binary %s payloads exceed the configured limit',
+    async (_label, message) => {
+      const adapter = new TestDenoAdapter();
 
-    class GatewayState {
-      messages: unknown[] = [];
-    }
-
-    @Inject(GatewayState)
-    @WebSocketGateway({ path: '/binary-payload' })
-    class BinaryPayloadGateway {
-      constructor(private readonly state: GatewayState) {}
-
-      @OnMessage('ping')
-      onPing(payload: unknown) {
-        this.state.messages.push(payload);
-      }
-    }
-
-    class AppModule {}
-    defineModule(AppModule, {
-      imports: [DenoWebSocketModule.forRoot({
-        limits: {
-          maxPayloadBytes: 4,
-        },
-      })],
-      providers: [GatewayState, BinaryPayloadGateway],
-    });
-
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
-
-    try {
-      const state = await app.container.resolve<GatewayState>(GatewayState);
-      await app.listen();
-
-      const server = adapter.getServer();
-      await server?.fetch(new Request('https://runtime.test/binary-payload', {
-        headers: { upgrade: 'websocket' },
-      }));
-      await flushAsyncWork();
-
-      const socket = server?.lastSocket;
-
-      if (!socket) {
-        throw new Error('Expected Deno test socket to be available after websocket upgrade.');
+      class GatewayState {
+        messages: unknown[] = [];
       }
 
-      socket.emitMessage(new Uint8Array([1, 2, 3, 4, 5]));
-      await flushAsyncWork();
+      @Inject(GatewayState)
+      @WebSocketGateway({ path: '/binary-payload' })
+      class PayloadGateway {
+        constructor(private readonly state: GatewayState) {}
 
-      expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
-      expect(state.messages).toEqual([]);
-    } finally {
-      await app.close();
-    }
-  });
+        @OnMessage('ping')
+        onPing(payload: unknown) {
+          this.state.messages.push(payload);
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [DenoWebSocketModule.forRoot({
+          limits: {
+            maxPayloadBytes: 4,
+          },
+        })],
+        providers: [GatewayState, PayloadGateway],
+      });
+
+      const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+
+      try {
+        const state = await app.container.resolve<GatewayState>(GatewayState);
+        await app.listen();
+
+        const server = adapter.getServer();
+        await server?.fetch(new Request('https://runtime.test/binary-payload', {
+          headers: { upgrade: 'websocket' },
+        }));
+        await flushAsyncWork();
+
+        const socket = server?.lastSocket;
+
+        if (!socket) {
+          throw new Error('Expected Deno test socket to be available after websocket upgrade.');
+        }
+
+        socket.emitMessage(message);
+        await flushAsyncWork();
+
+        expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
+        expect(state.messages).toEqual([]);
+      } finally {
+        await app.close();
+      }
+    },
+  );
 
   it('receives binary payloads under the configured limit', async () => {
     const adapter = new TestDenoAdapter();

@@ -10,6 +10,7 @@ Decorator-based WebSocket gateway authoring for the fluo runtime.
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Binary Payloads](#binary-payloads)
 - [Public API Overview](#public-api-overview)
 - [Runtime-Specific Subpaths](#runtime-specific-subpaths)
 - [Example Sources](#example-sources)
@@ -102,6 +103,10 @@ WebSocketModule.forRoot({
 ```
 
 When omitted, `@fluojs/websockets` applies bounded defaults for concurrent connections, inbound payload size, pending message buffers, and shutdown cleanup. Default settings are `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, and Node backpressure `maxBufferedAmountBytes: 1 MiB` with drop behavior. Server-backed Node listeners enable heartbeat timers unless you explicitly set `heartbeat.enabled` to `false`. The official fetch-style runtime modules (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) close tracked websocket clients during application shutdown and give `@OnDisconnect()` cleanup a bounded chance to finish within `shutdown.timeoutMs`.
+
+## Binary Payloads
+
+Gateway `@OnMessage()` handlers receive one normalized payload contract across supported runtimes. Text frames are parsed as JSON when possible and otherwise delivered as strings. Binary frames are decoded as UTF-8 before the same JSON/event dispatch step, whether the runtime surfaces them as Node `Buffer`/typed arrays, Bun `ArrayBuffer`/views, Deno `ArrayBuffer`/views/`Blob`, or Cloudflare Workers `ArrayBuffer`/views/`Blob`. The `limits.maxPayloadBytes` check uses byte length for every representation and closes oversized accepted sockets with close code `1009`.
 
 ## Public API Overview
 
