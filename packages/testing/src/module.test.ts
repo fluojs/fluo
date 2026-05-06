@@ -221,6 +221,87 @@ describe('@fluojs/testing', () => {
     expect(() => testingModule.get<string>(DISPATCH_TOKEN)).toThrow(/already resolved asynchronously/);
   });
 
+  it('promotes sync useFactory singletons after resolve() while preserving identity for get()', async () => {
+    const TOKEN = Symbol('sync-factory-token');
+    const value = { id: 'sync-factory-value' };
+
+    @Module({
+      providers: [
+        {
+          provide: TOKEN,
+          useFactory: () => value,
+        },
+      ],
+    })
+    class SyncFactoryModule {}
+
+    const testingModule = await createTestingModule({ rootModule: SyncFactoryModule }).compile();
+
+    const resolved = await testingModule.resolve<typeof value>(TOKEN);
+    const syncValue = testingModule.get<typeof value>(TOKEN);
+
+    expect(resolved).toBe(value);
+    expect(syncValue).toBe(resolved);
+  });
+
+  it('promotes classes depending on sync factories after resolve() while preserving get() identity', async () => {
+    const TOKEN = Symbol('sync-factory-dependency-token');
+    const dependency = { name: 'sync-dependency' };
+
+    @Inject(TOKEN)
+    class SyncFactoryConsumer {
+      constructor(readonly value: typeof dependency) {}
+    }
+
+    @Module({
+      providers: [
+        {
+          provide: TOKEN,
+          useFactory: () => dependency,
+        },
+        SyncFactoryConsumer,
+      ],
+    })
+    class SyncFactoryConsumerModule {}
+
+    const testingModule = await createTestingModule({ rootModule: SyncFactoryConsumerModule }).compile();
+
+    const resolved = await testingModule.resolve<SyncFactoryConsumer>(SyncFactoryConsumer);
+    const syncConsumer = testingModule.get<SyncFactoryConsumer>(SyncFactoryConsumer);
+
+    expect(resolved.value).toBe(dependency);
+    expect(syncConsumer).toBe(resolved);
+  });
+
+  it('keeps classes depending on useExisting aliases to async factories resolve-only after resolve()', async () => {
+    const SOURCE = Symbol('async-factory-source-token');
+    const ALIAS = Symbol('async-factory-alias-token');
+
+    @Inject(ALIAS)
+    class AliasAsyncConsumer {
+      constructor(readonly value: string) {}
+    }
+
+    @Module({
+      providers: [
+        {
+          provide: SOURCE,
+          useFactory: async () => 'async-aliased-value',
+        },
+        { provide: ALIAS, useExisting: SOURCE },
+        AliasAsyncConsumer,
+      ],
+    })
+    class AliasAsyncFactoryModule {}
+
+    const testingModule = await createTestingModule({ rootModule: AliasAsyncFactoryModule }).compile();
+
+    const resolved = await testingModule.resolve<AliasAsyncConsumer>(AliasAsyncConsumer);
+
+    expect(resolved.value).toBe('async-aliased-value');
+    expect(() => testingModule.get<AliasAsyncConsumer>(AliasAsyncConsumer)).toThrow(/already resolved asynchronously/);
+  });
+
   it('treats direct function mocks in overrideProvider as useValue', async () => {
     const FUNCTION_TOKEN = Symbol('function-token');
     const mockFn = vi.fn().mockReturnValue('ok');

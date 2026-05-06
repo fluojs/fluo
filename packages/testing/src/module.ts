@@ -171,6 +171,7 @@ function isPromiseLike<T>(value: unknown): value is PromiseLike<T> {
 }
 
 interface SyncResolverState {
+  factoryResolutionKinds: WeakMap<NormalizedProvider, 'async' | 'sync'>;
   introspection: ContainerIntrospection;
   resolutionChain: Set<Token>;
   singletonCache: Map<Token, Promise<unknown>>;
@@ -213,24 +214,69 @@ function dependencyToken(entry: Token | ForwardRefFn | OptionalToken): Token {
   return entry as Token;
 }
 
-function providerGraphUsesFactory(target: ContainerIntrospection, token: Token, visited = new Set<Token>()): boolean {
+function trackFactoryResolutionKind(
+  provider: NormalizedProvider,
+  factoryResolutionKinds: WeakMap<NormalizedProvider, 'async' | 'sync'>,
+): void {
+  if (provider.type !== 'factory' || !provider.useFactory) {
+    return;
+  }
+
+  const originalFactory = provider.useFactory;
+  provider.useFactory = (...deps: unknown[]) => {
+    const value = originalFactory(...deps);
+    factoryResolutionKinds.set(provider, isPromiseLike(value) ? 'async' : 'sync');
+    return value;
+  };
+}
+
+function installFactoryResolutionTracking(
+  target: ContainerIntrospection,
+  factoryResolutionKinds: WeakMap<NormalizedProvider, 'async' | 'sync'>,
+): void {
+  if (target.parent) {
+    installFactoryResolutionTracking(target.parent, factoryResolutionKinds);
+  }
+
+  for (const provider of target.registrations.values()) {
+    trackFactoryResolutionKind(provider, factoryResolutionKinds);
+  }
+
+  for (const providers of target.multiRegistrations.values()) {
+    for (const provider of providers) {
+      trackFactoryResolutionKind(provider, factoryResolutionKinds);
+    }
+  }
+}
+
+function providerGraphIsSyncResolvable(state: SyncResolverState, token: Token, visited = new Set<Token>()): boolean {
   if (visited.has(token)) {
-    return false;
+    return true;
   }
 
   visited.add(token);
 
   try {
-    const provider = lookupProvider(target, token);
-    const multiProviders = collectMultiProviders(target, token);
+    const provider = lookupProvider(state.introspection, token);
+    const multiProviders = collectMultiProviders(state.introspection, token);
     const providers = provider ? [provider, ...multiProviders] : multiProviders;
 
-    return providers.some((candidate) => {
+    return providers.every((candidate) => {
       if (candidate.type === 'factory') {
-        return true;
+        return state.factoryResolutionKinds.get(candidate) === 'sync';
       }
 
-      return candidate.inject.some((entry) => providerGraphUsesFactory(target, dependencyToken(entry), visited));
+      if (candidate.type === 'existing') {
+        return candidate.useExisting !== undefined && providerGraphIsSyncResolvable(state, candidate.useExisting, visited);
+      }
+
+      return candidate.inject.every((entry) => {
+        if (isOptionalToken(entry) && !hasToken(state, entry.token)) {
+          return true;
+        }
+
+        return providerGraphIsSyncResolvable(state, dependencyToken(entry), visited);
+      });
     });
   } finally {
     visited.delete(token);
@@ -240,7 +286,7 @@ function providerGraphUsesFactory(target: ContainerIntrospection, token: Token, 
 function canPromoteCachedSingleton(state: SyncResolverState, token: Token): boolean {
   const provider = lookupProvider(state.introspection, token);
 
-  return provider !== undefined && provider.scope !== 'request' && !providerGraphUsesFactory(state.introspection, token);
+  return provider !== undefined && provider.scope !== 'request' && providerGraphIsSyncResolvable(state, token);
 }
 
 function resolveSyncDependency(entry: Token | ForwardRefFn | OptionalToken, state: SyncResolverState): unknown {
@@ -359,8 +405,12 @@ function createSyncResolver(
   syncFromContainer(): Promise<void>;
 } {
   const introspection = toContainerIntrospection(container);
+  const factoryResolutionKinds = new WeakMap<NormalizedProvider, 'async' | 'sync'>();
+
+  installFactoryResolutionTracking(introspection, factoryResolutionKinds);
 
   const state: SyncResolverState = {
+    factoryResolutionKinds,
     introspection,
     resolutionChain: new Set<Token>(),
     singletonCache: rootContainerIntrospection(introspection).singletonCache,
