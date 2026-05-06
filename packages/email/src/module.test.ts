@@ -617,6 +617,38 @@ describe('EmailModule', () => {
     expect(transportState.sent).toHaveLength(0);
   });
 
+  it('aborts notification delivery after template rendering before transport handoff', async () => {
+    const controller = new AbortController();
+    const render = vi.fn(async () => {
+      controller.abort();
+
+      return { text: 'rendered' };
+    });
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      renderer: { render },
+      transport: createRecordingTransportFactory(),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    await expect(
+      service.sendNotification(
+        {
+          channel: 'email',
+          payload: {},
+          recipients: ['user@example.com'],
+          template: 'welcome',
+        },
+        { signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(render).toHaveBeenCalledOnce();
+    expect(transportState.sent).toHaveLength(0);
+  });
+
   it('preserves provider errors as lifecycle failure causes', async () => {
     const initContainer = new Container();
     const initModule = EmailModule.forRoot({
