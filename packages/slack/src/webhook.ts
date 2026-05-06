@@ -155,13 +155,13 @@ export function createSlackWebhookTransport(options: SlackWebhookTransportOption
             throw error;
           }
 
+          if (error instanceof SlackTransportError) {
+            throw error;
+          }
+
           if (attempt < DEFAULT_RETRY_ATTEMPTS) {
             await waitForRetry(DEFAULT_RETRY_DELAY_MS * 2 ** (attempt - 1), context.signal);
             continue;
-          }
-
-          if (error instanceof SlackTransportError) {
-            throw error;
           }
 
           throw new SlackTransportError(createTransportFailureMessage(attempt));
