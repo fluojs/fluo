@@ -108,6 +108,7 @@ class UsersController {}
 
 `DrizzleTransactionInterceptor` runs each HTTP request through `DrizzleDatabase.requestTransaction(...)`. During application shutdown, `DrizzleDatabase` aborts any still-active request transaction, waits for its transaction callback to settle or roll back, and only then runs the optional `dispose(database)` hook. This ordering lets drivers finish rollback/cleanup work before pools or externally managed resources are closed.
 New `requestTransaction(...)` calls are rejected once shutdown begins, so disposal cannot overtake a late request transaction that starts after the shutdown boundary is crossed.
+If the request signal aborts after the request callback has completed but before the underlying Drizzle transaction runner finishes committing or rolling back, `requestTransaction(...)` waits for that runner to settle first and then rejects with the abort reason. This keeps Drizzle cleanup serialized with request cancellation while making the late request abort visible to the caller instead of returning the completed callback result.
 
 `createDrizzlePlatformStatusSnapshot(...)` and `DrizzleDatabase.createPlatformStatusSnapshot()` expose the same contract to diagnostics surfaces:
 
