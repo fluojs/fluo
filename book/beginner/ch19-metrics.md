@@ -96,9 +96,9 @@ Fluo provides a global default registry, but sometimes you may need to manage mu
 In service mesh environments such as Istio or Linkerd, applications often run with sidecar proxies. These proxies may have their own metrics, but they can also be configured to aggregate and expose Fluo application metrics. Because Fluo follows the OpenMetrics standard, this data connects naturally with sidecar-based observability patterns.
 
 ### 19.3.5 Metrics in Distributed Environments
-In distributed systems where multiple application instances run across different availability zones or cloud providers, `MetricsModule` helps each instance report data in a consistent and identifiable way. Automatically including instance-level labels such as `pod_name` or `host_ip` lets monitoring tools aggregate data across the full server fleet while still drilling into a single problematic instance.
+In distributed systems where multiple application instances run across different availability zones or cloud providers, `MetricsModule` helps each instance report data in a consistent and identifiable way when you configure the supported platform telemetry labels explicitly. The built-in platform telemetry contract supports the documented `env` and `instance` labels; it does not automatically add infrastructure labels such as pod names, host IPs, zones, or regions.
 
-This "aggregate first, drill down second" approach is key to managing complexity at scale. You can check the global error rate for the whole API and, if the error rate spikes, identify whether it is happening across all instances or only on a specific set of nodes in a specific region. This level of visibility is the practical standard a metrics module should meet in modern infrastructure.
+This explicit-label approach keeps cardinality predictable while still supporting an "aggregate first, drill down second" workflow. You can aggregate by `env`, drill into a configured `instance`, and add any higher-cardinality infrastructure details through your deployment metadata, Prometheus relabeling, or carefully bounded custom metrics instead of assuming `@fluojs/metrics` injects those labels for you.
 
 ### 19.3.6 Extending Prometheus with Custom Exporters
 Fluo provides several metrics by default, but you can expand monitoring coverage by integrating with third-party **Prometheus Exporters**. For example, you might use `process-exporter` for deeper visibility into the Node.js event loop, or `blackbox-exporter` to monitor APIs externally. Fluo's metrics system complements these external tools and lets you observe the application stack across multiple layers.
@@ -108,6 +108,7 @@ Fluo provides several metrics by default, but you can expand monitoring coverage
 
 - `http_request_duration_seconds`: A **Histogram** of request latency broken down by method, path, and status code.
 - `http_requests_total`: A **Counter** for total request count, which enables RPS and error rate calculations.
+- `http_errors_total`: A **Counter** for HTTP error counts.
 
 ### Path Normalization
 To prevent label cardinality explosion, a problem where a new metric series is created for every unique URL path such as `/posts/1` and `/posts/2`, which adds load to the system, `fluo` uses route templates by default to normalize paths. This groups all requests for the same endpoint, making dashboards much more useful and the Prometheus database more efficient.
@@ -180,8 +181,8 @@ this.metrics.histogram({
 ### 19.5.1 Labels: Adding Dimension to Data
 Labels are key-value pairs you can add to metrics to provide more context. For example, instead of tracking only `posts_created_total`, you can add a `category` label. This lets you query how many "technology" posts were created compared with "lifestyle" posts. Labels are very powerful, but they must be used carefully. Every unique combination of label values creates a new time-series data set, which can consume significant Prometheus memory.
 
-### 19.5.2 Summary: Client-Side Aggregation
-Fluo primarily focuses on histograms for distribution measurement, but it also supports `Summary` metrics. A summary calculates percentiles, such as p95, directly on the application server. This is useful when the sample count is very high and you want to reduce Prometheus load, but it has the drawback that these percentiles cannot be accurately aggregated across multiple server instances. For most Fluo applications, histograms are the recommended choice.
+### 19.5.2 Supported Custom Metric Types
+The current `MetricsService` custom metric surface supports `Counter`, `Gauge`, and `Histogram`. Use histograms for latency, size, and other distribution measurements that need percentile queries in Prometheus. The package contract does not expose a `Summary` helper today, so do not design tutorial code or dashboards around Fluo-managed summary metrics unless a future package version documents that API.
 
 ### 19.5.3 Best Practices for Naming Metrics
 Naming conventions are very important for long-term maintainability. Follow the Prometheus convention `namespace_subsystem_name_unit_suffix`.

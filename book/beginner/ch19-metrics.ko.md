@@ -96,9 +96,9 @@ Fluo는 글로벌 기본 레지스트리를 제공하지만, 때로는 시스템
 Istio나 Linkerd와 같은 서비스 메쉬(Service Mesh) 환경에서 애플리케이션은 종종 "사이드카(Sidecar)" 프록시와 함께 실행됩니다. 이러한 프록시들은 자체 메트릭을 가지기도 하지만, Fluo 애플리케이션 메트릭을 합산하고 노출하도록 설정할 수도 있습니다. Fluo가 OpenMetrics 표준을 따르기 때문에 이 데이터는 사이드카 기반 관측성 패턴과 자연스럽게 연결됩니다.
 
 ### 19.3.5 Metrics in Distributed Environments
-애플리케이션의 여러 인스턴스가 서로 다른 가용 영역(availability zones)이나 클라우드 제공업체에 걸쳐 실행되는 분산 시스템에서, `MetricsModule`은 각 인스턴스가 데이터를 일관되고 식별 가능한 방식으로 보고하도록 돕습니다. 인스턴스 레벨의 라벨(`pod_name` 또는 `host_ip` 등)을 자동으로 포함하면 모니터링 도구가 전체 서버 집합의 데이터를 합산하면서도 문제가 있는 단일 인스턴스를 상세히 분석할 수 있습니다.
+애플리케이션의 여러 인스턴스가 서로 다른 가용 영역(availability zones)이나 클라우드 제공업체에 걸쳐 실행되는 분산 시스템에서, `MetricsModule`은 지원되는 플랫폼 텔레메트리 라벨을 명시적으로 설정했을 때 각 인스턴스가 데이터를 일관되고 식별 가능한 방식으로 보고하도록 돕습니다. 현재 내장 플랫폼 텔레메트리 계약은 문서화된 `env`와 `instance` 라벨을 지원하며, pod 이름, host IP, zone, region 같은 인프라 라벨을 자동으로 추가하지 않습니다.
 
-이러한 "합산 우선, 상세 분석 차선" 접근 방식은 대규모 환경에서 복잡성을 관리하는 핵심입니다. 전체 API에 대한 글로벌 에러율을 확인하고, 에러율이 급증할 경우 그것이 모든 인스턴스에서 발생하는지 아니면 특정 지역의 특정 노드 세트에서만 발생하는지 식별할 수 있습니다. 이 수준의 가시성은 현대적인 인프라에서 메트릭 모듈이 가져야 할 실무적 기준입니다.
+이러한 명시적 라벨 접근 방식은 카디널리티를 예측 가능하게 유지하면서도 "합산 우선, 상세 분석 차선" 흐름을 지원합니다. `env`로 집계하고 설정한 `instance`로 상세 분석할 수 있으며, 더 높은 카디널리티의 인프라 정보는 `@fluojs/metrics`가 자동 주입한다고 가정하지 말고 배포 메타데이터, Prometheus relabeling, 또는 신중하게 제한한 커스텀 메트릭으로 추가하세요.
 
 ### 19.3.6 Extending Prometheus with Custom Exporters
 Fluo는 기본적으로 여러 메트릭을 제공하지만, 제3자 **Prometheus Exporters**와 통합하여 모니터링 범위를 넓힐 수 있습니다. 예를 들어 Node.js 이벤트 루프에 대해 더 깊은 가시성을 얻기 위해 `process-exporter`를 사용하거나, 외부에서 API를 모니터링하기 위해 `blackbox-exporter`를 사용할 수 있습니다. Fluo의 메트릭 시스템은 이러한 외부 도구를 보완하며, 애플리케이션 스택을 여러 계층에서 관찰할 수 있게 합니다.
@@ -108,6 +108,7 @@ Fluo는 기본적으로 여러 메트릭을 제공하지만, 제3자 **Prometheu
 
 - `http_request_duration_seconds`: 메서드, 경로, 상태 코드별로 세분화된 요청 지연 시간의 **히스토그램(Histogram)**.
 - `http_requests_total`: 전체 요청 횟수의 **카운터(Counter)**로, RPS와 에러율 계산을 가능하게 합니다.
+- `http_errors_total`: HTTP 에러 횟수의 **카운터(Counter)**.
 
 ### Path Normalization
 "라벨 카디널리티 폭발(Label Cardinality Explosion, `/posts/1`, `/posts/2`와 같이 고유한 URL 경로마다 새로운 메트릭 시리즈가 생성되어 시스템에 부하를 주는 현상)"을 방지하기 위해, `fluo`는 기본적으로 라우트 템플릿을 사용하여 경로를 정규화합니다. 이를 통해 동일한 엔드포인트에 대한 모든 요청이 그룹화되어 대시보드가 훨씬 유용해지고 Prometheus 데이터베이스의 효율성이 높아집니다.
@@ -180,8 +181,8 @@ this.metrics.histogram({
 ### 19.5.1 Labels: Adding Dimension to Data
 라벨은 메트릭에 더 많은 컨텍스트를 제공하기 위해 추가할 수 있는 키-값 쌍입니다. 예를 들어 단순히 `posts_created_total`만 추적하는 대신 `category` 라벨을 추가할 수 있습니다. 이를 통해 "기술" 게시물이 "라이프스타일" 게시물에 비해 얼마나 많이 생성되었는지 쿼리할 수 있습니다. 라벨은 매우 강력하지만 신중하게 사용해야 합니다. 라벨 값의 고유한 조합마다 새로운 시계열 데이터가 생성되어 Prometheus의 메모리를 크게 소모할 수 있기 때문입니다.
 
-### 19.5.2 Summary: Client-Side Aggregation
-Fluo는 주로 분포 측정을 위해 히스토그램에 집중하지만, `Summary` 메트릭도 지원합니다. 서머리는 애플리케이션 서버에서 직접 퍼센타일(예: p95)을 계산합니다. 이는 샘플 수가 매우 많아 Prometheus의 부하를 줄이고 싶을 때 유용하지만, 여러 서버 인스턴스에 걸쳐 이러한 퍼센타일을 정확하게 합산할 수 없다는 단점이 있습니다. 대부분의 Fluo 애플리케이션에서는 히스토그램이 권장되는 선택입니다.
+### 19.5.2 Supported Custom Metric Types
+현재 `MetricsService`의 커스텀 메트릭 표면은 `Counter`, `Gauge`, `Histogram`을 지원합니다. 지연 시간, 크기처럼 Prometheus에서 퍼센타일 쿼리가 필요한 분포 측정에는 히스토그램을 사용하세요. 현재 패키지 계약은 `Summary` helper를 노출하지 않으므로, 향후 패키지 버전이 해당 API를 문서화하기 전까지는 Fluo가 관리하는 summary metric을 기준으로 튜토리얼 코드나 대시보드를 설계하지 마세요.
 
 ### 19.5.3 Best Practices for Naming Metrics
 명명 규칙은 장기적인 유지보수성을 위해 매우 중요합니다. Prometheus의 관례인 `namespace_subsystem_name_unit_suffix`를 따르십시오.
