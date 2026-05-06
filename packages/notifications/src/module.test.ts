@@ -291,8 +291,38 @@ describe('NotificationsModule', () => {
     ]);
   });
 
+  it('publishes requested and failed lifecycle events for direct missing-channel dispatch', async () => {
+    const publisher = new RecordingPublisher();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [],
+      events: {
+        publisher,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await expect(service.dispatch({ channel: 'discord', payload: { template: 'missing' } })).rejects.toBeInstanceOf(
+      NotificationChannelNotFoundError,
+    );
+    expect(publisher.events).toMatchObject([
+      {
+        channel: 'discord',
+        name: 'notification.dispatch.requested',
+      },
+      {
+        channel: 'discord',
+        error: { message: 'No notification channel is registered for "discord".', name: 'NotificationChannelNotFoundError' },
+        name: 'notification.dispatch.failed',
+      },
+    ]);
+  });
+
   it('validates channels before queueing a single explicit queue dispatch', async () => {
     const queue = new RecordingQueueAdapter();
+    const publisher = new RecordingPublisher();
     const container = new Container();
     const moduleType = NotificationsModule.forRoot({
       channels: [
@@ -307,6 +337,9 @@ describe('NotificationsModule', () => {
         adapter: queue,
         bulkThreshold: 50,
       },
+      events: {
+        publisher,
+      },
     });
 
     container.register(...moduleProviders(moduleType));
@@ -316,6 +349,10 @@ describe('NotificationsModule', () => {
       service.dispatch({ channel: 'discord', payload: { template: 'unknown' } }, { queue: true }),
     ).rejects.toBeInstanceOf(NotificationChannelNotFoundError);
     expect(queue.jobs).toHaveLength(0);
+    expect(publisher.events.map((event) => event.name)).toEqual([
+      'notification.dispatch.requested',
+      'notification.dispatch.failed',
+    ]);
   });
 
   it('resolves async options once and exposes the compatibility facade and channel token', async () => {
@@ -532,6 +569,7 @@ describe('NotificationsModule', () => {
 
   it('validates channels before queueing bulk deliveries', async () => {
     const queue = new RecordingQueueAdapter();
+    const publisher = new RecordingPublisher();
     const container = new Container();
     const moduleType = NotificationsModule.forRoot({
       channels: [
@@ -546,6 +584,9 @@ describe('NotificationsModule', () => {
         adapter: queue,
         bulkThreshold: 2,
       },
+      events: {
+        publisher,
+      },
     });
 
     container.register(...moduleProviders(moduleType));
@@ -558,6 +599,21 @@ describe('NotificationsModule', () => {
       ]),
     ).rejects.toBeInstanceOf(NotificationChannelNotFoundError);
     expect(queue.jobs).toHaveLength(0);
+    expect(publisher.events).toMatchObject([
+      {
+        channel: 'email',
+        name: 'notification.dispatch.requested',
+      },
+      {
+        channel: 'discord',
+        name: 'notification.dispatch.requested',
+      },
+      {
+        channel: 'discord',
+        error: { message: 'No notification channel is registered for "discord".', name: 'NotificationChannelNotFoundError' },
+        name: 'notification.dispatch.failed',
+      },
+    ]);
   });
 
   it('preserves direct delivery results when lifecycle publication fails', async () => {
@@ -615,7 +671,7 @@ describe('NotificationsModule', () => {
     );
   });
 
-  it('uses collision-resistant fallback delivery ids when channels omit external ids', async () => {
+  it('uses deterministic fallback delivery ids when channels omit external ids', async () => {
     const container = new Container();
     const moduleType = NotificationsModule.forRoot({
       channels: [
@@ -630,10 +686,14 @@ describe('NotificationsModule', () => {
 
     container.register(...moduleProviders(moduleType));
     const service = await container.resolve(NotificationsService);
-    const first = await service.dispatch({ channel: 'email', payload: { template: 'first' } });
-    const second = await service.dispatch({ channel: 'email', payload: { template: 'second' } });
+    const request = { channel: 'email', payload: { template: 'welcome', userId: 'u1' } };
+    const first = await service.dispatch(request);
+    const repeated = await service.dispatch(request);
+    const different = await service.dispatch({ channel: 'email', payload: { template: 'welcome', userId: 'u2' } });
 
-    expect(first.deliveryId).not.toBe(second.deliveryId);
+    expect(first.deliveryId).toMatch(/^fallback:email:/);
+    expect(repeated.deliveryId).toBe(first.deliveryId);
+    expect(different.deliveryId).not.toBe(first.deliveryId);
   });
 
   it('captures missing-channel failures during tolerant bulk dispatch', async () => {

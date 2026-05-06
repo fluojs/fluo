@@ -30,7 +30,6 @@ import type {
 @Inject(NOTIFICATIONS_OPTIONS, NOTIFICATION_CHANNELS)
 export class NotificationsService implements Notifications {
   private readonly channelsByName = new Map<string, NotificationChannel>();
-  private fallbackDeliveryIdSequence = 0;
 
   constructor(
     private readonly options: NormalizedNotificationsModuleOptions,
@@ -68,7 +67,13 @@ export class NotificationsService implements Notifications {
     await this.publishLifecycleEventSafely('notification.dispatch.requested', notification, options);
 
     if (this.shouldQueueSingleDispatch(options)) {
-      this.requireChannel(notification.channel);
+      try {
+        this.requireChannel(notification.channel);
+      } catch (error) {
+        await this.publishLifecycleEventSafely('notification.dispatch.failed', notification, options, undefined, error);
+        throw error;
+      }
+
       const job = this.createQueueJob(notification);
       try {
         const deliveryId = await this.requireQueueAdapter().enqueue(job);
@@ -88,7 +93,14 @@ export class NotificationsService implements Notifications {
       }
     }
 
-    const channel = this.requireChannel(notification.channel);
+    let channel: NotificationChannel;
+
+    try {
+      channel = this.requireChannel(notification.channel);
+    } catch (error) {
+      await this.publishLifecycleEventSafely('notification.dispatch.failed', notification, options, undefined, error);
+      throw error;
+    }
 
     try {
       const delivery = await channel.send(notification, { signal: options.signal });
@@ -139,14 +151,21 @@ export class NotificationsService implements Notifications {
 
     if (this.shouldQueue(notifications.length, options)) {
       const queue = this.requireQueueAdapter();
-      for (const notification of notifications) {
-        this.requireChannel(notification.channel);
-      }
-      const jobs = notifications.map((notification) => this.createQueueJob(notification));
 
       for (const notification of notifications) {
         await this.publishLifecycleEventSafely('notification.dispatch.requested', notification, options);
       }
+
+      for (const notification of notifications) {
+        try {
+          this.requireChannel(notification.channel);
+        } catch (error) {
+          await this.publishLifecycleEventSafely('notification.dispatch.failed', notification, options, undefined, error);
+          throw error;
+        }
+      }
+
+      const jobs = notifications.map((notification) => this.createQueueJob(notification));
 
       let ids: readonly string[];
 
@@ -254,9 +273,7 @@ export class NotificationsService implements Notifications {
       return fallback.id;
     }
 
-    this.fallbackDeliveryIdSequence = (this.fallbackDeliveryIdSequence + 1) % Number.MAX_SAFE_INTEGER;
-
-    return `${fallback.channel}:${Date.now().toString(36)}:${this.fallbackDeliveryIdSequence.toString(36)}:${Math.random().toString(36).slice(2, 10)}`;
+    return `fallback:${fallback.channel}:${stableNotificationHash(fallback)}`;
   }
 
   private requireQueueAdapter() {
@@ -332,4 +349,32 @@ export class NotificationsService implements Notifications {
       return;
     }
   }
+}
+
+function stableNotificationHash(notification: NotificationDispatchRequest): string {
+  let hash = 0x811c9dc5;
+  const input = stableStringify(notification);
+
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+
+  return hash.toString(36).padStart(7, '0');
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value) ?? String(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableStringify(entry)).join(',')}]`;
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, entry]) => entry !== undefined)
+    .sort(([left], [right]) => left.localeCompare(right));
+
+  return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`).join(',')}}`;
 }

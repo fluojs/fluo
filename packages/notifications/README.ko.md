@@ -150,7 +150,7 @@ NotificationsModule.forRoot({
 - `notification.dispatch.delivered`
 - `notification.dispatch.failed`
 
-`events.publisher`가 구성되어 있으면 `publishLifecycleEvents: false`를 설정하지 않는 한 lifecycle event publication은 기본으로 켜집니다. 채널 delivery가 `externalId`를 생략하면 dispatch result가 호출자에게 안정적으로 유지되도록 deterministic fallback delivery id가 부여됩니다.
+`events.publisher`가 구성되어 있으면 `publishLifecycleEvents: false`를 설정하지 않는 한 lifecycle event publication은 기본으로 켜집니다. 채널 delivery가 `externalId`를 생략하면 시간이나 난수에 의존하지 않고 notification envelope에서 파생한 deterministic fallback delivery id가 부여되어 dispatch result가 호출자에게 안정적으로 유지됩니다. 채널 해석 실패는 `NotificationChannelNotFoundError`를 던지기 전에 `requested` 이후 `failed` 이벤트를 발행하며, 이는 영구적인 구성 오류로 취급해야 합니다. Queue enqueue와 provider delivery 실패도 `failed` 이벤트를 발행하지만, retry 여부는 underlying adapter/provider error를 기준으로 분류해야 합니다.
 
 ### 의도적인 제한 사항
 
