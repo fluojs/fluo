@@ -109,6 +109,8 @@ fluo의 직렬화 엔진은 활성 순환 참조를 자동으로 감지하고 `u
 
 기반 클래스에 선언한 직렬화 메타데이터는 파생 DTO에도 상속됩니다. 공통 필드에 적용한 `@Expose()`, `@Exclude()`, `@Transform()` 규칙은 서브클래스 인스턴스를 직렬화할 때도 그대로 반영됩니다.
 
+Class-level `excludeExtraneous`도 일반 상속 규칙을 따릅니다. 파생 클래스에 option 없는 `@Expose()`를 붙여도 가장 가까운 상속 설정이 유지되므로, expose-only 기반 DTO는 subclass에서도 expose-only 상태를 유지합니다. 일반 enumerable field를 다시 포함하려는 의도가 있을 때만 파생 클래스에 `@Expose({ excludeExtraneous: false })`를 명시하세요. 이 경우에도 상속된 field-level `@Exclude()` metadata는 계속 적용됩니다.
+
 Decorated metadata가 없는 class instance도 재귀적으로 순회하므로, parent object에 serialization metadata가 없어도 decorated nested descendant는 반영됩니다.
 
 ### 일반 객체 안전성

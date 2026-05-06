@@ -109,6 +109,8 @@ The serializer cuts active cyclic references safely instead of recursing forever
 
 Serialization metadata declared on a base class is inherited by derived DTOs. `@Expose()`, `@Exclude()`, and `@Transform()` rules applied to shared base fields still take effect when you serialize subclass instances.
 
+Class-level `excludeExtraneous` also follows normal inheritance. A derived class with `@Expose()` and no options keeps the nearest inherited setting, so an expose-only base DTO remains expose-only in subclasses. Use `@Expose({ excludeExtraneous: false })` on the derived class only when you intentionally want to re-enable ordinary enumerable fields while still honoring inherited field-level `@Exclude()` metadata.
+
 Undecorated class instances are still traversed recursively, so decorated nested descendants are respected even when the parent object has no serialization metadata.
 
 ### Plain-object safety
