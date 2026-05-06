@@ -98,7 +98,7 @@ class MyService {
 
 Module registration과 reloader 생성은 caller-owned options를 저장하기 전에 snapshot으로 분리합니다. `ConfigModule.forRoot(...)`, `ConfigReloadModule.forRoot(...)`, `createConfigReloader(...)`에 넘긴 객체를 나중에 변경해도 bootstrap, manual reload, watch reload 입력은 바뀌지 않습니다. `ConfigModule.forRoot({ watch: true, ... })`를 사용하면 module은 application bootstrap 중 env-file watcher를 시작하고, watch reload가 성공한 뒤 같은 injected `ConfigService` instance를 갱신합니다. Watch mode에서 시작 시점에 env file이 없으면 빈 file snapshot처럼 취급하고 parent directory를 watch하므로, 나중에 env file을 생성해도 reload가 트리거될 수 있습니다. Watch reload는 reload 전에 최종 env file content를 마지막으로 commit된 watch baseline과 비교하므로, 내용이 바뀌지 않은 저장이나 변경 후 debounce 안에서 원래 내용으로 되돌린 burst는 인프로세스 config snapshot을 교체하지 않습니다.
 
-`ConfigReloadModule`은 명시적으로 주입 가능한 reload layer이며 standalone config source가 아닙니다. manual reload나 subscription을 위해 `CONFIG_RELOADER`가 필요한 caller는 `ConfigModule` 또는 다른 `ConfigService` provider와 함께 사용하세요. `ConfigModule` 또는 `ConfigReloadModule`이 만든 watcher는 `watch: true`일 때만 생성되며 module shutdown 중에 닫힙니다.
+`ConfigReloadModule`은 명시적으로 주입 가능한 reload layer이며 standalone config source가 아닙니다. manual reload나 subscription을 위해 `CONFIG_RELOADER`가 필요한 caller는 `ConfigModule` 또는 다른 `ConfigService` provider와 함께 사용하세요. `ConfigModule` 또는 `ConfigReloadModule`이 만든 watcher는 `watch: true`일 때만 생성되며 module shutdown 중에 닫힙니다. 같은 env file에 대해서는 한 layer에서만 `watch: true`를 활성화하세요. 자동 `ConfigService` 갱신만 필요하면 `ConfigModule`을 사용하고, subscription/manual reload를 위한 injected reloader 계약이 필요하면 `ConfigReloadModule`을 사용합니다.
 
 ## 공개 API
 
