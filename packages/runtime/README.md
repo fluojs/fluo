@@ -27,7 +27,7 @@ Use this package when you need to:
 - **Bootstrap a fluo application**: Convert your modules into a running HTTP server or microservice.
 - **Orchestrate DI and Lifecycle**: Manage module-graph compilation, provider wiring, and application hooks (`onModuleInit`, `onApplicationBootstrap`).
 - **Create Standalone Contexts**: Run CLI tasks, scripts, or workers that need DI but not an HTTP server.
-- **Diagnostic Inspection**: Produce machine-readable platform snapshots for CLI export and Studio-owned graph viewing/rendering.
+- **Diagnostic Inspection**: Produce machine-readable platform snapshots and diagnostic issues for CLI export while leaving graph viewing and Mermaid presentation to Studio.
 
 ## Quick Start
 
@@ -138,7 +138,7 @@ class UsersModule {}
 - Response stream backpressure helpers settle `waitForDrain()` on `drain`, `close`, or `error` so streaming writers do not hang on dead connections.
 - Runtime health modules report `/ready` as `starting` with HTTP 503 until bootstrap marks them ready, and they return to `starting` as soon as application/context shutdown begins, including failed shutdown attempts.
 - Signal-driven shutdown helpers preserve bounded drain semantics, log timeout/failure conditions, and set `process.exitCode` when shutdown does not finish cleanly, but they leave final process termination ownership to the surrounding host runtime.
-- Platform snapshot production stays in runtime; graph viewing and Mermaid rendering are Studio-owned contracts consumed by CLI and automation callers.
+- Platform snapshot and diagnostic issue production stay in runtime; graph viewing, filtering presentation, and Mermaid rendering are Studio-owned contracts consumed by CLI and automation callers.
 - Module graph compile-result caching is opt-in through `moduleGraphCache: true`; it keys entries by root module identity, runtime providers, validation tokens, core metadata versions, and the compile algorithm version, caches only successful compilations, and returns isolated graph copies so caller mutations cannot poison later bootstraps.
 
 ## Public API Overview
@@ -153,7 +153,7 @@ class UsersModule {}
 - `defineModule(cls, metadata)`: Programmatic module definition helper.
 - `bootstrapApplication(options)`: Lower-level async bootstrap function.
 - `bootstrapModule(...)`: Lower-level module graph bootstrap helper.
-- `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: Runtime diagnostics helpers for CLI/support tooling.
+- `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: Runtime-owned diagnostics snapshot helpers for CLI/support tooling. They produce machine-readable data; Studio owns viewer parsing, graph presentation, and Mermaid rendering.
 - `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: Request abort and active transaction helpers used by runtime-aware integrations.
 
 ## Platform-Specific Subpaths
@@ -215,7 +215,7 @@ Lower-level Node compression internals stay behind the `@fluojs/runtime/internal
 - [@fluojs/di](../di): Dependency injection container implementation.
 - [@fluojs/http](../http): HTTP routing, controllers, and dispatcher.
 - [@fluojs/platform-nodejs](../platform-nodejs): Official Node.js HTTP adapter.
-- [@fluojs/studio](../studio): Viewer and rendering helpers for runtime-produced snapshots.
+- [@fluojs/studio](../studio): Viewer, filtering, and rendering helpers for runtime-produced snapshots and diagnostic issues.
 
 ## Example Sources
 
