@@ -115,6 +115,42 @@ describe('@fluojs/platform-nodejs', () => {
     }
   });
 
+  it('removes registered shutdown signal listeners after close through the platform run helper', async () => {
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [HealthController] });
+
+    const signal = 'SIGTERM' as const;
+    const listenersBefore = new Set(process.listeners(signal));
+    const port = await findAvailablePort();
+    const app = await runNodejsApplication(AppModule, {
+      logger: {
+        debug() {},
+        error() {},
+        log() {},
+        warn() {},
+      },
+      port,
+      shutdownSignals: [signal],
+    });
+    const registeredListeners = process.listeners(signal).filter((listener) => !listenersBefore.has(listener));
+
+    expect(registeredListeners.length).toBeGreaterThan(0);
+
+    await app.close();
+
+    for (const listener of registeredListeners) {
+      expect(process.listeners(signal)).not.toContain(listener);
+    }
+  });
+
   it('preserves benchmark-style simple query and JSON body routes through the public Node adapter path', async () => {
     @Controller('/')
     class BenchmarkController {
@@ -191,6 +227,11 @@ describe('@fluojs/platform-nodejs', () => {
 
     @Controller('/echo')
     class EchoController {
+      @Post('/raw')
+      raw(_input: undefined, context: RequestContext) {
+        return context.request.body;
+      }
+
       @Post('/')
       @RequestDto(EchoBody)
       echo(input: EchoBody) {
@@ -208,6 +249,17 @@ describe('@fluojs/platform-nodejs', () => {
 
     try {
       await app.listen();
+
+      const boundaryResponse = await fetch(`http://127.0.0.1:${String(port)}/echo/raw`, {
+        body: '12345678',
+        headers: {
+          'content-type': 'text/plain',
+        },
+        method: 'POST',
+      });
+
+      expect(boundaryResponse.status).toBe(201);
+      await expect(boundaryResponse.text()).resolves.toBe('12345678');
 
       const response = await fetch(`http://127.0.0.1:${String(port)}/echo`, {
         body: '0123456789',

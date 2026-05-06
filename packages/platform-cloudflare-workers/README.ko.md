@@ -10,6 +10,7 @@
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
+- [Conformance 커버리지](#conformance-커버리지)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -90,6 +91,12 @@ const adapter = createCloudflareWorkerAdapter({
 - `close()`는 shutdown 중 새 요청에 JSON `503` response를 반환하고, active request가 끝나지 않으면 10초 뒤 timeout됩니다.
 - Multipart request는 `rawBody`를 보존하지 않습니다.
 - Worker `env` 객체는 fetch entrypoint boundary를 통과하며, package-level config resolution은 application이 소유합니다.
+
+## Conformance 커버리지
+
+`packages/platform-cloudflare-workers/src/adapter.test.ts`는 문서화된 Worker 계약을 검증하는 package-local regression 대상입니다. 이 파일은 shared Web dispatch delegation, `executionContext.waitUntil(...)` 등록, websocket upgrade binding, lazy entrypoint 재사용, shutdown gating, close 중 JSON `503` response, bounded 10초 close timeout을 검증합니다.
+
+공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Cloudflare Workers를 Bun 및 Deno와 함께 실행해 malformed cookie 보존, query decoding, JSON/text raw-body capture, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트의 README parity assertion은 이 edge-runtime 커버리지 문서가 한국어 mirror와 계속 동기화되도록 확인합니다.
 
 ## 공개 API 개요
 
