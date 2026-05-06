@@ -11,6 +11,7 @@
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
 - [HTTPS와 런타임 이식성](#https와-런타임-이식성)
+- [Conformance 커버리지](#conformance-커버리지)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -85,6 +86,12 @@ await runDenoApplication(AppModule, {
 `hostname`은 Deno 네이티브 옵션 이름으로 유지됩니다. 공유 HTTP 어댑터 테스트와 교차 런타임 설정 헬퍼를 위해 `host`도 이식성 alias로 허용하며, 둘 다 제공하면 `hostname`이 우선합니다.
 
 Advanced option에는 test 또는 non-hosted runtime을 위한 injectable `serve`, `upgradeWebSocket` seam, `rawBody`, `maxBodySize`, `multipart`, `shutdownSignals`가 포함됩니다. `runDenoApplication(...)`은 기본적으로 `SIGINT`/`SIGTERM`을 연결하고, `shutdownSignals: false`는 signal registration을 끕니다. Close는 active request drain을 최대 10초 기다립니다. `handle(...)`은 `listen()`이 dispatcher를 bind하기 전에는 JSON `500`, shutdown 진행 중에는 JSON `503`을 반환합니다.
+
+## Conformance 커버리지
+
+`packages/platform-deno/src/adapter.test.ts`는 문서화된 Deno 계약을 검증하는 package-local regression 대상입니다. 이 파일은 shared Web dispatch delegation, HTTPS startup forwarding, `SIGINT`/`SIGTERM` signal listener 등록과 정리, websocket upgrade binding, listen 전 `500` 처리, shutdown 중 `503` 처리, in-flight request drain, bounded 10초 close timeout을 검증합니다.
+
+공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Deno를 Bun 및 Cloudflare Workers와 함께 실행해 malformed cookie 보존, query decoding, JSON/text raw-body capture, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트의 README parity assertion은 이 edge-runtime 커버리지 문서가 한국어 mirror와 계속 동기화되도록 확인합니다.
 
 ## 공개 API 개요
 

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -91,6 +93,20 @@ afterEach(() => {
 });
 
 describe('@fluojs/platform-cloudflare-workers', () => {
+  it('keeps edge runtime README conformance coverage aligned across English and Korean docs', () => {
+    const englishReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    const koreanReadme = readFileSync(new URL('../README.ko.md', import.meta.url), 'utf8');
+
+    for (const readme of [englishReadme, koreanReadme]) {
+      expect(readme).toContain('Cloudflare Workers');
+      expect(readme).toContain('executionContext.waitUntil(...)');
+      expect(readme).toContain('10');
+      expect(readme).toContain('503');
+      expect(readme).toContain('packages/platform-cloudflare-workers/src/adapter.test.ts');
+      expect(readme).toContain('packages/testing/src/portability/web-runtime-adapter-portability.test.ts');
+    }
+  });
+
   it('delegates Worker fetch handling to the shared web adapter core', async () => {
     const adapter = createCloudflareWorkerAdapter({ rawBody: true });
     const dispatcher = {

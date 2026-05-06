@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 
@@ -310,6 +311,20 @@ function createMockDenoSocket(): DenoServerWebSocket {
 }
 
 describe('@fluojs/platform-deno', () => {
+  it('keeps edge runtime README conformance coverage aligned across English and Korean docs', () => {
+    const englishReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    const koreanReadme = readFileSync(new URL('../README.ko.md', import.meta.url), 'utf8');
+
+    for (const readme of [englishReadme, koreanReadme]) {
+      expect(readme).toContain('Deno.serve');
+      expect(readme).toContain('SIGINT');
+      expect(readme).toContain('SIGTERM');
+      expect(readme).toContain('10');
+      expect(readme).toContain('packages/platform-deno/src/adapter.test.ts');
+      expect(readme).toContain('packages/testing/src/portability/web-runtime-adapter-portability.test.ts');
+    }
+  });
+
   it('dispatches requests through the shared Web request/response core', async () => {
     @Controller('/hooks')
     class WebhookController {

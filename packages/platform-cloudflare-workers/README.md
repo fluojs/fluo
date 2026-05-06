@@ -10,6 +10,7 @@ Cloudflare Workers HTTP adapter for the fluo runtime, optimized for the edge.
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Conformance Coverage](#conformance-coverage)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -90,6 +91,12 @@ const adapter = createCloudflareWorkerAdapter({
 - `close()` returns JSON `503` responses for new requests during shutdown and times out after 10 seconds if active requests never settle.
 - Multipart requests do not preserve `rawBody`.
 - The Worker `env` object is passed through the fetch entrypoint boundary; package-level config resolution remains application-owned.
+
+## Conformance Coverage
+
+`packages/platform-cloudflare-workers/src/adapter.test.ts` is the package-local regression target for the documented Worker contract. It covers shared Web dispatch delegation, `executionContext.waitUntil(...)` registration, websocket upgrade binding, lazy entrypoint reuse, shutdown gating, JSON `503` responses while closing, and the bounded 10-second close timeout.
+
+The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Cloudflare Workers beside Bun and Deno for malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The README parity assertion in the package test keeps these documented edge-runtime coverage claims synchronized with the Korean mirror.
 
 ## Public API Overview
 
