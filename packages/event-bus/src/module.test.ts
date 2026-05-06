@@ -915,6 +915,180 @@ describe('@fluojs/event-bus', () => {
       await closeApplication(app);
     });
 
+    it('applies timeout bounds to awaited transport publish calls', async () => {
+      vi.useFakeTimers();
+      const loggerEvents: string[] = [];
+      const gate = createDeferred<void>();
+      const transport = {
+        publishStarted: false,
+        async publish(_channel: string, _payload: unknown) {
+          this.publishStarted = true;
+          await gate.promise;
+        },
+        async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {},
+        async close() {},
+      } satisfies EventBusTransport & { publishStarted: boolean };
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [EventBusModule.forRoot({ publish: { timeoutMs: 15 }, transport })],
+      });
+
+      const app = await bootstrapApplication({
+        logger: createLogger(loggerEvents),
+        rootModule: AppModule,
+      });
+      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const service = await app.container.resolve(EventBusLifecycleService);
+
+      const publishPromise = eventBus.publish(new UserCreatedEvent('transport-user-timeout'));
+
+      await flushAsyncWork();
+      expect(transport.publishStarted).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(15);
+      await expect(publishPromise).resolves.toBeUndefined();
+
+      expect(
+        loggerEvents.some((event) =>
+          event.includes('EventBusTransport publish to channel "UserCreatedEvent" exceeded publish timeout of 15ms.'),
+        ),
+      ).toBe(true);
+      expect(service.createPlatformStatusSnapshot()).toMatchObject({
+        details: {
+          transportPublishFailures: 1,
+        },
+      });
+
+      gate.resolve();
+      await closeApplication(app);
+    });
+
+    it('applies abort signal bounds before dispatching transport publish calls', async () => {
+      const loggerEvents: string[] = [];
+      const transport = {
+        publishCalls: 0,
+        async publish(_channel: string, _payload: unknown) {
+          this.publishCalls += 1;
+        },
+        async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {},
+        async close() {},
+      } satisfies EventBusTransport & { publishCalls: number };
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [EventBusModule.forRoot({ transport })],
+      });
+
+      const app = await bootstrapApplication({
+        logger: createLogger(loggerEvents),
+        rootModule: AppModule,
+      });
+      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        eventBus.publish(new UserCreatedEvent('transport-user-abort'), { signal: controller.signal }),
+      ).resolves.toBeUndefined();
+
+      expect(transport.publishCalls).toBe(0);
+      expect(
+        loggerEvents.some((event) =>
+          event.includes('Event publish was cancelled before publishing transport channel "UserCreatedEvent".'),
+        ),
+      ).toBe(true);
+
+      await app.close();
+    });
+
+    it('drains in-flight awaited transport publish work before closing the transport', async () => {
+      const gate = createDeferred<void>();
+      const transport = {
+        closeCalls: 0,
+        publishStarted: false,
+        async publish(_channel: string, _payload: unknown) {
+          this.publishStarted = true;
+          await gate.promise;
+        },
+        async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {},
+        async close() {
+          this.closeCalls += 1;
+        },
+      } satisfies EventBusTransport & { closeCalls: number; publishStarted: boolean };
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [EventBusModule.forRoot({ transport })],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const publishPromise = eventBus.publish(new UserCreatedEvent('transport-user-drain'));
+
+      await flushAsyncWork();
+      expect(transport.publishStarted).toBe(true);
+
+      let closeResolved = false;
+      const closePromise = app.close().then(() => {
+        closeResolved = true;
+      });
+
+      await flushAsyncWork();
+
+      expect(closeResolved).toBe(false);
+      expect(transport.closeCalls).toBe(0);
+
+      gate.resolve();
+      await publishPromise;
+      await closePromise;
+      await settleEventBusTeardown();
+
+      expect(closeResolved).toBe(true);
+      expect(transport.closeCalls).toBe(1);
+    });
+
+    it('ignores publish calls after shutdown without dispatching handlers or transport work', async () => {
+      const loggerEvents: string[] = [];
+      const transport = createMockTransport();
+
+      class EventStore {
+        calls = 0;
+      }
+
+      @Inject(EventStore)
+      class Handler {
+        constructor(private readonly store: EventStore) {}
+
+        @OnEvent(UserCreatedEvent)
+        onUserCreated(_event: UserCreatedEvent) {
+          this.store.calls += 1;
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [EventBusModule.forRoot({ transport })],
+        providers: [EventStore, Handler],
+      });
+
+      const app = await bootstrapApplication({
+        logger: createLogger(loggerEvents),
+        rootModule: AppModule,
+      });
+      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const store = await app.container.resolve(EventStore);
+
+      await closeApplication(app);
+      await expect(eventBus.publish(new UserCreatedEvent('transport-user-stopped'))).resolves.toBeUndefined();
+
+      expect(store.calls).toBe(0);
+      expect(transport.published).toHaveLength(0);
+      expect(
+        loggerEvents.some((event) => event.includes('EventBus.publish() was ignored because the event bus is stopped.')),
+      ).toBe(true);
+    });
+
     it('subscribes to a channel per discovered local handler event type on bootstrap', async () => {
       const transport = createMockTransport();
 

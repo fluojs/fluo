@@ -98,6 +98,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   private transportCloseFailures = 0;
   private transportPublishFailures = 0;
   private transportSubscribeFailures = 0;
+  private readonly activePublishes = new Set<Promise<void>>();
   private readonly transport: EventBusTransport | undefined;
 
   constructor(
@@ -124,6 +125,10 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
 
   async onApplicationShutdown(): Promise<void> {
     this.lifecycleState = 'stopping';
+
+    if (this.activePublishes.size > 0) {
+      await this.drainActivePublishes();
+    }
 
     if (this.transport) {
       try {
@@ -166,19 +171,43 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
    * @returns A promise that resolves once the configured local/transport publication completes.
    */
   async publish(event: object, options?: EventPublishOptions): Promise<void> {
+    if (!this.canPublishInCurrentLifecycle()) {
+      this.logger.warn(
+        `EventBus.publish() was ignored because the event bus is ${this.lifecycleState}.`,
+        'EventBusLifecycleService',
+      );
+      return;
+    }
+
+    const publishWorkflow = this.executePublish(event, options);
+    this.activePublishes.add(publishWorkflow);
+
+    try {
+      await publishWorkflow;
+    } finally {
+      this.activePublishes.delete(publishWorkflow);
+    }
+  }
+
+  private async executePublish(event: object, options?: EventPublishOptions): Promise<void> {
     await this.ensureDiscovered();
     const matchingDescriptors = this.matchEventDescriptors(event);
     const publishOptions = this.resolvePublishOptions(options);
 
     const transportPayload = createIsolatedEvent(event.constructor as EventType, event);
-    const transportPublish = this.publishToTransport(transportPayload, matchingDescriptors);
 
     if (!publishOptions.waitForHandlers) {
+      const transportPublish = this.publishToTransport(transportPayload, matchingDescriptors, {
+        ...publishOptions,
+        timeoutMs: undefined,
+      });
       const backgroundTasks = this.createBackgroundInvocationTasks(matchingDescriptors, event, publishOptions.signal);
       this.runInvocationTasksInBackground([...backgroundTasks, transportPublish]);
 
       return;
     }
+
+    const transportPublish = this.publishToTransport(transportPayload, matchingDescriptors, publishOptions);
 
     if (matchingDescriptors.length === 0) {
       await transportPublish;
@@ -189,6 +218,14 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     const invocationTasks = this.createInvocationTasks(matchingDescriptors, event, publishOptions);
 
     await Promise.allSettled([...invocationTasks, transportPublish]);
+  }
+
+  private canPublishInCurrentLifecycle(): boolean {
+    return !['failed', 'stopped', 'stopping'].includes(this.lifecycleState);
+  }
+
+  private async drainActivePublishes(): Promise<void> {
+    await Promise.allSettled(Array.from(this.activePublishes));
   }
 
   private matchEventDescriptors(event: object): EventHandlerDescriptor[] {
@@ -314,7 +351,11 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     return Array.from(channels);
   }
 
-  private async publishToTransport(event: object, descriptors: EventHandlerDescriptor[]): Promise<void> {
+  private async publishToTransport(
+    event: object,
+    descriptors: EventHandlerDescriptor[],
+    publishOptions: ResolvedPublishOptions,
+  ): Promise<void> {
     if (!this.transport) {
       return;
     }
@@ -324,19 +365,51 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     const publishTasks = channels.map(async (channel) => {
       const payload = createIsolatedEvent(event.constructor as EventType, event);
 
+      if (publishOptions.signal?.aborted) {
+        this.logTransportPublishCancelledBeforeDispatch(channel);
+        return;
+      }
+
       try {
-        await this.transport!.publish(channel, payload);
+        await this.awaitInvocationBounds(this.transport!.publish(channel, payload), publishOptions);
       } catch (error) {
         this.transportPublishFailures += 1;
-        this.logger.error(
-          `EventBusTransport failed to publish to channel "${channel}".`,
-          error,
-          'EventBusLifecycleService',
-        );
+        this.logBoundedTransportPublishError(channel, error);
       }
     });
 
     await Promise.allSettled(publishTasks);
+  }
+
+  private logTransportPublishCancelledBeforeDispatch(channel: string): void {
+    this.logger.warn(
+      `Event publish was cancelled before publishing transport channel "${channel}".`,
+      'EventBusLifecycleService',
+    );
+  }
+
+  private logBoundedTransportPublishError(channel: string, error: unknown): void {
+    if (error instanceof EventPublishTimeoutError) {
+      this.logger.warn(
+        `EventBusTransport publish to channel "${channel}" exceeded publish timeout of ${String(error.timeoutMs)}ms.`,
+        'EventBusLifecycleService',
+      );
+      return;
+    }
+
+    if (error instanceof EventPublishAbortError) {
+      this.logger.warn(
+        `Event publish was cancelled while waiting for transport channel "${channel}".`,
+        'EventBusLifecycleService',
+      );
+      return;
+    }
+
+    this.logger.error(
+      `EventBusTransport failed to publish to channel "${channel}".`,
+      error,
+      'EventBusLifecycleService',
+    );
   }
 
   private async subscribeTransportChannels(): Promise<void> {

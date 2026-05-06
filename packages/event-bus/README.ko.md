@@ -58,24 +58,24 @@ export class NotificationService {
 import { Module, Inject } from '@fluojs/core';
 import { EventBusModule, EventBusLifecycleService } from '@fluojs/event-bus';
 
-@Module({
-  imports: [EventBusModule.forRoot()],
-  providers: [NotificationService],
-})
-export class AppModule {}
-
+@Inject(EventBusLifecycleService)
 export class UserService {
-  @Inject(EventBusLifecycleService)
-  private readonly eventBus: EventBusLifecycleService;
+  constructor(private readonly eventBus: EventBusLifecycleService) {}
 
   async signUp(email: string) {
     // 사용자 저장 로직...
     await this.eventBus.publish(new UserSignedUpEvent(email));
   }
 }
+
+@Module({
+  imports: [EventBusModule.forRoot()],
+  providers: [NotificationService, UserService],
+})
+export class AppModule {}
 ```
 
-`publish(event, options?)`는 `signal`, `timeoutMs`, `waitForHandlers`를 지원합니다. `waitForHandlers`의 기본값은 `true`이며, `false`로 설정하면 publish가 즉시 반환되고 timeout bound를 적용하지 않습니다.
+`publish(event, options?)`는 `signal`, `timeoutMs`, `waitForHandlers`를 지원합니다. `waitForHandlers`의 기본값은 `true`이며, 기다리는 로컬 핸들러와 기다리는 트랜스포트 publish는 동일한 timeout 및 cancellation bound를 공유합니다. `waitForHandlers`를 `false`로 설정하면 publish가 즉시 반환되고 timeout bound를 적용하지 않습니다. Shutdown 중에는 이벤트 버스가 진행 중인 awaited publish 작업을 drain한 뒤 트랜스포트를 닫고, lifecycle이 stopping에 진입한 뒤의 새 publish 호출은 무시합니다.
 
 ## 일반적인 패턴
 

@@ -58,24 +58,24 @@ Use `EventBusModule.forRoot(...)` to wire the in-process event bus.
 import { Module, Inject } from '@fluojs/core';
 import { EventBusModule, EventBusLifecycleService } from '@fluojs/event-bus';
 
-@Module({
-  imports: [EventBusModule.forRoot()],
-  providers: [NotificationService],
-})
-export class AppModule {}
-
+@Inject(EventBusLifecycleService)
 export class UserService {
-  @Inject(EventBusLifecycleService)
-  private readonly eventBus: EventBusLifecycleService;
+  constructor(private readonly eventBus: EventBusLifecycleService) {}
 
   async signUp(email: string) {
     // Logic to save user...
     await this.eventBus.publish(new UserSignedUpEvent(email));
   }
 }
+
+@Module({
+  imports: [EventBusModule.forRoot()],
+  providers: [NotificationService, UserService],
+})
+export class AppModule {}
 ```
 
-`publish(event, options?)` supports `signal`, `timeoutMs`, and `waitForHandlers`. `waitForHandlers` defaults to `true`; when set to `false`, publishing returns immediately and skips timeout bounds.
+`publish(event, options?)` supports `signal`, `timeoutMs`, and `waitForHandlers`. `waitForHandlers` defaults to `true`; awaited local handlers and awaited transport publishes share the same timeout and cancellation bounds. When `waitForHandlers` is set to `false`, publishing returns immediately and skips timeout bounds. During shutdown, the event bus drains in-flight awaited publish work before closing the transport and ignores new publish calls after the lifecycle has started stopping.
 
 ## Common Patterns
 

@@ -104,8 +104,12 @@ If the Guard fails, the connection is rejected immediately. It is a boundary tha
 A Gateway itself is closer to a pipe. To turn it into a useful realtime feature, you need to connect it to the FluoShop event bus. When an `OrderShippedEvent` occurs in the backend, the gateway should read that internal event and push a status-change message to the relevant client.
 
 ```typescript
-import { OnEvent } from '@fluojs/events';
-import { WebSocketGateway } from '@fluojs/websockets';
+import { OnEvent } from '@fluojs/event-bus';
+import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
+
+class OrderShippedEvent {
+  constructor(public readonly orderId: string) {}
+}
 
 @WebSocketGateway({ path: '/orders/updates' })
 export class OrderStatusGateway {
@@ -116,7 +120,7 @@ export class OrderStatusGateway {
     this.clients.set(payload.orderId, socket);
   }
 
-  @OnEvent('order.shipped')
+  @OnEvent(OrderShippedEvent)
   handleOrderShipped(event: OrderShippedEvent) {
     const socket = this.clients.get(event.orderId);
     if (socket) {
