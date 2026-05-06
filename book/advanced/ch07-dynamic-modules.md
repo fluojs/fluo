@@ -143,11 +143,11 @@ Developers coming from other ecosystems should especially notice that this class
 
 Once you strip away the syntax, a `forRoot(...)` helper usually does two things. It computes stable Provider definitions from options, then binds those definitions to a new Module type.
 
-`PrismaModule.forRoot()` is a very good reference implementation. `path:packages/prisma/src/module.ts:68-84` creates a new class, calls `defineModule(...)`, exports a fixed public Provider set, and registers a normalized option value Provider under `PRISMA_NORMALIZED_OPTIONS`. The remaining runtime Providers, such as the database client itself, are not hard-coded into the factory. They are derived through DI from this options Token.
+`PrismaModule.forRoot()` is a very good reference implementation. `path:packages/prisma/src/module.ts:141-168` creates a new class, calls `defineModule(...)`, exports the intended public Provider set, and registers a normalized option value Provider under an internal normalized-options Token. The remaining runtime Providers, such as the database client itself, are not hard-coded into the factory. They are derived through DI from that internal options Token.
 
 The core shape of the static helper is visible directly in `buildPrismaModule()`.
 
-`path:packages/prisma/src/module.ts:68-84`
+`path:packages/prisma/src/module.ts:141-168`
 ```typescript
 function buildPrismaModule<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
@@ -157,22 +157,29 @@ function buildPrismaModule<
   options: PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
 ): ModuleType {
   class PrismaRootModuleDefinition {}
+  const normalizedOptions = normalizePrismaModuleOptions(options);
 
   return defineModule(PrismaRootModuleDefinition, {
-    exports: PRISMA_MODULE_EXPORTS,
+    exports: normalizedOptions.name === undefined
+      ? [PrismaService, PrismaTransactionInterceptor, getPrismaServiceToken(), getPrismaClientToken(), getPrismaOptionsToken()]
+      : [
+        getPrismaServiceToken(normalizedOptions.name),
+        getPrismaClientToken(normalizedOptions.name),
+        getPrismaOptionsToken(normalizedOptions.name),
+      ],
     providers: createPrismaRuntimeProviders<TClient, TTransactionClient, TTransactionOptions>({
-      provide: PRISMA_NORMALIZED_OPTIONS,
-      useValue: normalizePrismaModuleOptions(options),
-    }),
+      provide: getPrismaNormalizedOptionsToken(normalizedOptions.name),
+      useValue: normalizedOptions,
+    }, normalizedOptions.name),
   });
 }
 ```
 
 This code shows that `forRoot()` is effectively a function that first creates an options Provider, then binds the runtime Provider array containing that Provider to a new Module class. The public export list is fixed in the same place, so one helper call describes the whole registration surface.
 
-This separation between "option production" and "service production" is an important Fluo design trait. When normalized options are registered as an actual Provider, Module configuration becomes an observable and injectable value. If another service in the application needs the database timeout value, it can inject the `PRISMA_NORMALIZED_OPTIONS` Token. This is easier to trace than manually passing option objects through multiple constructor layers, and tests can replace the whole `PRISMA_NORMALIZED_OPTIONS` Provider without rerunning the Module factory.
+This separation between "option production" and "service production" is an important Fluo design trait. When normalized options are registered as an actual Provider, Module configuration becomes observable to the package's own Provider factories. Consumer code should inject only the public facade Tokens exported by `@fluojs/prisma`, such as `PrismaService`, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, or the named-token helpers. The normalized-options Token also carries internal registration identity and visibility metadata, so it intentionally remains an implementation detail.
 
-The normalization step is also an important stabilization boundary. `normalizePrismaModuleOptions()` in `path:packages/prisma/src/module.ts:27-38` preserves the client passed by the caller while turning the `strictTransactions` default into an explicit internal value. When this default fixing happens early in the Dynamic Module lifecycle, later Provider factories only need to deal with a complete internal shape rather than partial options.
+The normalization step is also an important stabilization boundary. `normalizePrismaModuleOptions()` in `path:packages/prisma/src/module.ts:63-76` preserves the client passed by the caller while turning the `strictTransactions` default into an explicit internal value. When this default fixing happens early in the Dynamic Module lifecycle, later Provider factories only need to deal with a complete internal shape rather than partial options.
 
 `RedisModule.forRoot()` shows a slightly different variant. `path:packages/redis/src/module.ts:31-83` builds a Provider set that includes the raw Redis client, the higher-level `RedisService`, and a lifecycle service. Then `path:packages/redis/src/module.ts:108-116` wraps that Provider set in a global Module export. Here too, the Module factory is fundamentally an orchestration layer for Provider assembly and metadata binding. Because it registers the lifecycle service too, Redis client disconnection during application shutdown is handled inside Fluo's standard lifecycle hook. In other words, the Dynamic Module is not limited to static object registration. It also participates in the runtime lifecycle.
 
@@ -246,7 +253,7 @@ This orchestration also allows conditional Provider registration. For example, a
 The design lesson here is simple. The Dynamic Module itself should not contain complex business logic. Most complexity should move down into **pure option normalization** and a **Provider construction helper**. The actual Module factory function should act only as the final binder and stay very small.
 
 This separation repeats across several packages.
-- `PrismaModule` keeps option normalization and runtime Provider assembly in `path:packages/prisma/src/module.ts:27-66`.
+- `PrismaModule` keeps option normalization and runtime Provider assembly in `path:packages/prisma/src/module.ts:41-139`.
 - `QueueModule` keeps option normalization and internal Provider assembly in `path:packages/queue/src/module.ts:9-42`.
 - `RedisModule` keeps Redis client/service Provider assembly in `path:packages/redis/src/module.ts:24-83`.
 
@@ -298,7 +305,7 @@ The asynchronous case is where many frameworks become opaque. They often hide th
 
 The shared contract comes from `AsyncModuleOptions<T>` in `path:packages/core/src/types.ts:29-37`. Its only fields are `inject?: Token[]` for dependency resolution and `useFactory` for the actual configuration logic.
 
-`EmailModule.forRootAsync()` is a very readable example. `path:packages/email/src/module.ts:114-138` stores the user factory in a local variable, creates a `cachedResult` promise, defines `memoizedFactory(...deps)` that initializes the promise only once, and registers a singleton Factory Provider for `EMAIL_OPTIONS`.
+`EmailModule.forRootAsync()` is a very readable explicit-memoization example. `path:packages/email/src/module.ts:114-138` stores the user factory in a local variable, creates a `cachedResult` promise, defines `memoizedFactory(...deps)` that initializes the promise only once, and registers a singleton Factory Provider for `EMAIL_OPTIONS`.
 
 The difference in an async helper centers on the options Provider being a singleton `useFactory`, not `useValue`.
 
@@ -333,9 +340,9 @@ function buildEmailModuleAsync(options: AsyncModuleOptions<EmailModuleOptions>):
 
 `cachedResult` is local state inside the Module factory call. That means option resolution is shared inside the same Module instance, but the cache is not mixed with a class created by another `forRootAsync()` call.
 
-This memoization is not cosmetic. It is central to system correctness. Without memoization, every downstream consumer of the options Token could repeat a separate asynchronous configuration load, such as a file read or API call. With memoization, resolution happens exactly once per Module instance.
+This memoization is not cosmetic. It is central to system correctness. Without either an explicit memoized promise or a singleton Provider whose resolution promise is shared by the container, every downstream consumer of the options Token could repeat a separate asynchronous configuration load, such as a file read or API call. With one of those sharing strategies, resolution happens exactly once per application container for that Module registration.
 
-`PrismaModule.forRootAsync()` uses exactly the same approach for normalized Prisma options, as shown in `path:packages/prisma/src/module.ts:86-120`. By centralizing asynchronous resolution in a single Provider, the rest of the system can consume those options synchronously.
+`PrismaModule.forRootAsync()` follows the same centralization principle for normalized Prisma options, as shown in `path:packages/prisma/src/module.ts:171-208`. It registers one singleton async options Provider and derives the public client, options, and service Providers from that internal value, so the rest of the package can consume those options synchronously after bootstrap resolves them.
 
 This leads to a subtle but important observation. An async helper is not fundamentally different from a static helper. The options Provider changed from `useValue` to a singleton `useFactory`. Every other Provider below it still sees an ordinary DI Token synchronously.
 
@@ -343,18 +350,19 @@ The algorithm is therefore:
 
 ```text
 forRootAsync(options):
-  1. Capture a local cachedResult promise for memoization.
-  2. Define a factory function that calls the user's useFactory exactly once.
-  3. Register a singleton options provider using that factory and injected dependencies.
+  1. Choose the sharing boundary for async options: a local cachedResult promise, a singleton
+     options Provider, or both when the module needs explicit memoization outside the container.
+  2. Define a factory function that calls the user's useFactory through that sharing boundary.
+  3. Register the options provider using that factory and injected dependencies.
   4. Register all other runtime providers so they depend on that options token.
   5. Return the manufactured module type.
 ```
 
 At this point, the second half of the chapter title, "Factory Providers," becomes concrete. A Dynamic Module does not only create a class. It is also a disciplined way to create a Provider Graph from runtime configuration. By centralizing asynchronous configuration under one Token, it prevents configuration fan-out where several services each try to parse the same raw settings.
 
-You can see this repeated pattern clearly by comparing `path:packages/email/src/module.ts:74-95` with `path:packages/prisma/src/module.ts:40-66`. One Provider materializes the normalized options, and other Providers fan out derived values and services from that single source.
+You can see this repeated pattern clearly by comparing `path:packages/email/src/module.ts:74-95` with `path:packages/prisma/src/module.ts:100-139`. One Provider materializes the normalized options, and other Providers fan out derived values and services from that single source.
 
-This repeated pattern is represented by the Prisma and Email excerpts above. Since `path:packages/email/src/module.ts:74-95` and `path:packages/prisma/src/module.ts:40-66` share the same structure, this chapter leaves them as citations instead of expanding both files in full. The important common point is that a public facade Provider is derived from one options Token.
+This repeated pattern is represented by the Prisma and Email excerpts above. Since `path:packages/email/src/module.ts:74-95` and `path:packages/prisma/src/module.ts:100-139` share the same structure, this chapter leaves them as citations instead of expanding both files in full. The important common point is that a public facade Provider is derived from one internal options Token while only the documented facade Tokens are exported to consumers.
 
 This fan-out architecture is key to keeping the dependency graph clean. The Providers in `EmailModule` do not depend directly on raw `AsyncEmailOptions`. Instead, they derive from the stable and already resolved `EMAIL_OPTIONS` Token. If email configuration changes from a static file to a secret manager like AWS Secrets Manager, only the `forRootAsync` factory needs to change. The remaining Providers, such as mailer, template, and queue handler Providers, keep looking at the stable `EMAIL_OPTIONS` Token.
 
@@ -364,7 +372,7 @@ Internally, Fluo's DI container stores the promise returned by a Factory Provide
 
 This synchronization proceeds in a fixed order. First, all Module imports are resolved. Then the Provider dependency order inside each Module is analyzed. If a Circular Dependency is detected, as discussed in Chapter 6, the system fails immediately. If the graph is a directed acyclic graph (DAG), the runtime initializes Providers from the leaves toward the root so asynchronous factories are resolved before they are used.
 
-The memoization pattern also ensures that expensive asynchronous logic runs only once in complex graphs where several Modules import the same "shared configuration" Module. The `cachedResult` promise acts as a synchronization point, gathering several asynchronous calls into one deterministic initialization sequence. This is important in operational environments where startup race conditions must be avoided.
+The sharing pattern also ensures that expensive asynchronous logic runs only once in complex graphs where several Modules import the same "shared configuration" Module. In the explicit variant, the `cachedResult` promise acts as a synchronization point; in the singleton-provider variant, the DI container's stored resolution promise provides the same synchronization for all dependents. Both approaches gather several consumers into one deterministic initialization sequence, which is important in operational environments where startup race conditions must be avoided.
 
 ## 7.4 Global exports, named registrations, and alias-based public surfaces
 Fluo's Dynamic Modules are also a primary place where public API design becomes visible. A Module helper decides which Providers to hide as internal details and which Tokens to expose as the supported public surface.
@@ -520,15 +528,15 @@ Now that the internal model is clear enough, we can turn it into an authoring ch
 
 First, decide whether the Module really needs to be dynamic. If the registration has no runtime options and no computed Provider set, plain `@Module(...)` metadata may be simpler. Use a Dynamic Module when code actually needs to compute metadata or Providers. Static Modules are easier to analyze and lint, so it is better to place Dynamic Modules only where flexibility is required.
 
-Second, normalize options before building the Provider Graph. `normalizePrismaModuleOptions()` in `path:packages/prisma/src/module.ts:27-38`, `normalizeQueueModuleOptions()` in `path:packages/queue/src/module.ts:9-25`, and `normalizeEmailModuleOptions()` in `path:packages/email/src/module.ts:48-72` all demonstrate this rule. This step keeps Provider factories small and avoids duplicated validation logic. The normalization function should handle defaults and let the Provider factory assume it is working with the complete internal shape.
+Second, normalize options before building the Provider Graph. `normalizePrismaModuleOptions()` in `path:packages/prisma/src/module.ts:63-76`, `normalizeQueueModuleOptions()` in `path:packages/queue/src/module.ts:9-25`, and `normalizeEmailModuleOptions()` in `path:packages/email/src/module.ts:48-72` all demonstrate this rule. This step keeps Provider factories small and avoids duplicated validation logic. The normalization function should handle defaults and let the Provider factory assume it is working with the complete internal shape.
 
 This item is closer to package inventory, so this chapter does not expand all three files as code. The earlier Prisma and Queue excerpts represent the normalized value Provider pattern, and Email showed the same `normalizeEmailModuleOptions()` entry point in the asynchronous options Provider excerpt.
 
 Third, centralize configuration under one options Token. `EmailModule` and `PrismaModule` both create one normalized options Provider and derive the remaining Providers from that Token. This keeps configuration fan-out logic from spreading across several factories. It also gives logging and audit flows a clear reference point for the final configuration.
 
-Fourth, always memoize asynchronous option factories. Safe patterns are in `path:packages/email/src/module.ts:117-136` and `path:packages/prisma/src/module.ts:97-114`. Without memoization, asynchronous `useFactory` work can repeat unexpectedly. This matters especially when several Providers in the same Module depend on that options Token.
+Fourth, ensure asynchronous option factories resolve once per application container. `path:packages/email/src/module.ts:117-136` shows an explicit local `cachedResult` pattern, while `path:packages/prisma/src/module.ts:187-200` registers the async normalized-options Provider as a singleton so downstream Providers share that resolved value through the container. Either explicit memoization or singleton provider sharing is acceptable when it preserves the same once-per-container contract. Without one of these patterns, asynchronous `useFactory` work can repeat unexpectedly. This matters especially when several Providers in the same Module depend on that options Token.
 
-The Email async excerpt above represents this rule. Prisma's `path:packages/prisma/src/module.ts:97-114` uses the same `cachedResult` promise and singleton `useFactory` structure, so this chapter reinforces the point with a citation instead of repeating the code.
+The Email async excerpt above represents the explicit memoization variant. Prisma's `path:packages/prisma/src/module.ts:187-200` represents the singleton-provider variant, so this chapter reinforces the shared goal with a citation instead of repeating the code.
 
 Fifth, design exports and global visibility deliberately. Remember that runtime validation in `path:packages/runtime/src/module-graph.ts:333-415` enforces that every exported Token is actually valid and visible. Global Modules widen access, but they do not bypass the graph compiler. Mark a Module as global only when its services are intended to be consumed by almost every Module in the system, such as `LoggerModule` or `ConfigModule`.
 

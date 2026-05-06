@@ -114,6 +114,8 @@ await this.prisma.transaction(async () => {
 });
 ```
 
+When `transaction()` is called while a transaction context is already active, `PrismaService` reuses the active transaction client instead of opening a nested Prisma transaction. Nested calls must not pass transaction options such as isolation levels; providing options in an active context is rejected so the package does not silently drop caller intent while reusing the ambient transaction.
+
 ### Automatic Request Transactions
 
 Apply the `PrismaTransactionInterceptor` to a controller or method to wrap the entire request in a transaction automatically.
@@ -188,13 +190,19 @@ defineModule(ManualPrismaModule, {
 - `current(): TClient | PrismaTransactionClient<TClient>`
   - Returns the ambient transaction client or the root client.
 - `transaction(fn, options?): Promise<T>`
-  - Runs a function within an interactive transaction.
+  - Runs a function within an interactive transaction. If a transaction context is already active, the callback reuses that context; nested transaction options are rejected because no new Prisma transaction boundary is opened.
 - `requestTransaction(fn, signal?, options?): Promise<T>`
-  - Specialized transaction boundary for HTTP request lifecycles. It is abort-aware, drains during shutdown before disconnect, and retries without `signal` when a Prisma client rejects that option.
+  - Specialized transaction boundary for HTTP request lifecycles. It is abort-aware, drains during shutdown before disconnect, and retries without `signal` when a Prisma client rejects that option. Like `transaction()`, nested calls reuse the active transaction context and reject nested options to avoid silently ignoring transaction settings.
 
 ### `PRISMA_CLIENT` (Token)
 
 Injectable token for the raw `PrismaClient` instance.
+
+### `PRISMA_OPTIONS` (Token)
+
+Injectable token for the public runtime options consumed by `PrismaService`, currently `{ strictTransactions: boolean }`.
+This is intentionally narrower than the package's internal normalized module-options token, which also carries registration
+identity, client ownership, and visibility metadata and is not part of the public API.
 
 ### Platform status
 
@@ -207,6 +215,8 @@ Injectable token for the raw `PrismaClient` instance.
 - `getPrismaServiceToken(name?)`
 
 These helpers return the default unnamed token when `name` is omitted and a registration-specific token when `name` is provided.
+They are the public way to target named registrations; internal implementation tokens such as the normalized module-options
+token are deliberately not exported.
 
 ### Related exported types
 

@@ -2,7 +2,7 @@ import type { Token } from '@fluojs/core';
 
 /** Dependency-injection token for the raw Prisma client handle. */
 export const PRISMA_CLIENT = Symbol.for('fluo.prisma.client');
-/** Dependency-injection token for normalized Prisma runtime options. */
+/** Dependency-injection token for public Prisma runtime options, such as strict transaction mode. */
 export const PRISMA_OPTIONS = Symbol.for('fluo.prisma.options');
 
 function normalizePrismaRegistrationName(name?: string): string | undefined {
@@ -34,7 +34,10 @@ export function getPrismaClientToken(name?: string): Token {
 }
 
 /**
- * Returns the DI token for normalized Prisma module options bound to a registration name.
+ * Returns the DI token for the public Prisma runtime options bound to a registration name.
+ *
+ * This token resolves the `PRISMA_OPTIONS` public surface consumed by `PrismaService`.
+ * Normalized module options remain internal implementation details.
  *
  * @param name Optional registration name. Omit it to target the default unnamed Prisma registration.
  * @returns The token that resolves the matching Prisma runtime options.

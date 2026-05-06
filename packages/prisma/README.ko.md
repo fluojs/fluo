@@ -114,6 +114,8 @@ await this.prisma.transaction(async () => {
 });
 ```
 
+이미 활성 트랜잭션 컨텍스트가 있는 상태에서 `transaction()`을 호출하면 `PrismaService`는 중첩 Prisma 트랜잭션을 새로 열지 않고 활성 트랜잭션 클라이언트를 재사용합니다. 중첩 호출에는 isolation level 같은 트랜잭션 옵션을 전달하면 안 됩니다. 활성 컨텍스트에서 옵션을 제공하면 ambient transaction을 재사용하는 동안 호출자의 의도를 조용히 버리지 않도록 예외로 거부합니다.
+
 ### 자동 요청 트랜잭션
 
 컨트롤러나 메서드에 `PrismaTransactionInterceptor`를 적용하면 전체 요청을 자동으로 트랜잭션으로 감쌉니다.
@@ -188,13 +190,18 @@ defineModule(ManualPrismaModule, {
 - `current(): TClient | PrismaTransactionClient<TClient>`
   - 현재 컨텍스트에 맞는 트랜잭션 클라이언트 또는 루트 클라이언트를 반환합니다.
 - `transaction(fn, options?): Promise<T>`
-  - 대화형 트랜잭션 내에서 함수를 실행합니다.
+  - 대화형 트랜잭션 내에서 함수를 실행합니다. 이미 트랜잭션 컨텍스트가 활성화되어 있으면 callback은 그 컨텍스트를 재사용하며, 새 Prisma 트랜잭션 경계가 열리지 않기 때문에 중첩 트랜잭션 옵션은 거부됩니다.
 - `requestTransaction(fn, signal?, options?): Promise<T>`
-  - HTTP 요청 라이프사이클에 특화된 트랜잭션 경계를 실행합니다. Abort를 인식하고, shutdown 중에는 disconnect 전에 열린 요청 트랜잭션을 drain하며, Prisma client가 `signal` 옵션을 거부하면 해당 옵션 없이 재시도합니다.
+  - HTTP 요청 라이프사이클에 특화된 트랜잭션 경계를 실행합니다. Abort를 인식하고, shutdown 중에는 disconnect 전에 열린 요청 트랜잭션을 drain하며, Prisma client가 `signal` 옵션을 거부하면 해당 옵션 없이 재시도합니다. `transaction()`과 마찬가지로 중첩 호출은 활성 트랜잭션 컨텍스트를 재사용하고, 트랜잭션 설정을 조용히 무시하지 않도록 중첩 옵션을 거부합니다.
 
 ### `PRISMA_CLIENT` (Token)
 
 원시 `PrismaClient` 인스턴스를 위한 주입 토큰입니다.
+
+### `PRISMA_OPTIONS` (Token)
+
+`PrismaService`가 소비하는 공개 런타임 옵션을 위한 주입 토큰이며, 현재 형태는 `{ strictTransactions: boolean }`입니다.
+이는 등록 identity, client ownership, visibility metadata까지 담는 패키지 내부 정규화 모듈 옵션 토큰보다 의도적으로 좁은 표면이며, 그 내부 토큰은 공개 API가 아닙니다.
 
 ### 플랫폼 status
 
@@ -207,6 +214,7 @@ defineModule(ManualPrismaModule, {
 - `getPrismaServiceToken(name?)`
 
 이 헬퍼들은 `name`이 없으면 기본 이름 없는 토큰을 반환하고, `name`이 있으면 해당 등록 전용 토큰을 반환합니다.
+이 헬퍼가 이름 있는 등록을 대상으로 삼는 공개 방법이며, 정규화 모듈 옵션 토큰 같은 내부 구현 토큰은 의도적으로 export하지 않습니다.
 
 ### 관련 export 타입
 
