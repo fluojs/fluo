@@ -19,7 +19,7 @@ fluo 프로젝트를 위한 Vite 플러그인과 빌드 유틸리티입니다.
 npm install --save-dev @fluojs/vite vite @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript
 ```
 
-`@babel/core`와 `vite`는 peer dependency입니다. `fluoDecoratorsPlugin()`이 Vite transform 시점에 decorator plugin과 TypeScript preset을 해석하므로 consuming project에는 `@babel/plugin-proposal-decorators`와 `@babel/preset-typescript`도 필요합니다.
+`@babel/core` `>=7.26.0`, `@babel/plugin-proposal-decorators` `>=7.28.0`, `@babel/preset-typescript` `>=7.27.0`, `vite` `>=6.2.0`은 peer dependency입니다. `fluoDecoratorsPlugin()`이 Vite transform 시점에 Babel decorator plugin과 TypeScript preset을 해석하기 때문입니다.
 
 ## 사용 시점
 
@@ -42,7 +42,7 @@ export default defineConfig({
 });
 ```
 
-이 플러그인은 `.ts` 애플리케이션 파일을 Babel로 변환하며 `2023-11` decorators proposal과 `@babel/preset-typescript`를 사용합니다. 경로에 `.test.`가 포함된 파일은 건너뛰므로 생성된 Vitest 테스트 파일은 계속 전용 `@fluojs/testing/vitest` transform 경로를 사용합니다.
+이 플러그인은 `.ts` 애플리케이션 파일을 Babel로 변환하며 `2023-11` decorators proposal과 `@babel/preset-typescript`를 사용합니다. declaration 파일, `.test.` 또는 `.spec.` 파일, `node_modules`, `.ts`가 아닌 파일은 건너뛰므로 생성된 Vitest 테스트 파일은 계속 전용 `@fluojs/testing/vitest` transform 경로를 사용합니다.
 
 ## 공개 API
 
