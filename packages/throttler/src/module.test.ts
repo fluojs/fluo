@@ -16,7 +16,7 @@ import type {
   ThrottlerModuleOptions,
   ThrottlerStore,
   ThrottlerStoreEntry,
-} from './types.js';
+} from './index.js';
 
 function createRequestContext(
   options:
@@ -104,6 +104,18 @@ describe('@fluojs/throttler public entrypoints', () => {
     expect(throttlerExports).not.toHaveProperty('createThrottlerProviders');
     expect(throttlerExports.ThrottlerModule).toBe(ThrottlerModule);
     expect(typeof throttlerExports.ThrottlerModule.forRoot).toBe('function');
+  });
+
+  it('keeps the low-level consume input type available from the root barrel', () => {
+    const consume: ThrottlerStore['consume'] = (_key: string, input: ThrottlerConsumeInput): ThrottlerStoreEntry => ({
+      count: input.ttlSeconds,
+      resetAt: input.now + input.ttlSeconds * 1000,
+    });
+
+    expect(consume('client', { now: 1000, ttlSeconds: 60 })).toEqual({
+      count: 60,
+      resetAt: 61_000,
+    });
   });
 });
 
