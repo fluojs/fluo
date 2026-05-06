@@ -30,7 +30,7 @@ MQTT는 topic 기반이고 가볍습니다. 간헐적 연결이나 자원 제약
 
 ## 7.2 MQTT transport setup
 
-NATS, Kafka, RabbitMQ처럼 완전한 caller-owned 브로커만 강제하지 않습니다. MQTT는 제공된 client를 쓰거나, `mqtt` 패키지를 통해 transport가 URL 기반 연결을 직접 구성하게 둘 수도 있습니다. 이 유연성은 실제 배포 방식과 잘 맞습니다. 어떤 팀은 이미 shared MQTT client를 관리합니다. 다른 팀은 transport-local ownership을 선호합니다.
+RabbitMQ, Kafka, NATS처럼 완전한 caller-owned 브로커만 강제하지 않습니다. MQTT는 제공된 client를 쓰거나, `mqtt` 패키지를 통해 transport가 URL 기반 연결을 직접 구성하게 둘 수도 있습니다. 이 유연성은 실제 배포 방식과 잘 맞습니다. 어떤 팀은 이미 shared MQTT client를 관리합니다. 다른 팀은 transport-local ownership을 선호합니다.
 
 ### 7.2.1 Core options
 
