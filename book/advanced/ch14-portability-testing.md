@@ -205,6 +205,7 @@ The WebSocket harness also includes "backpressure" tests. These verify that the 
 If you implemented a custom adapter in Chapter 13, you should now verify it with the harness. This is the key test that checks whether your adapter complies with the fluo Behavioral Contract. Passing the portability harness gives you evidence that the adapter can be deployed to different runtimes without breaking existing business logic.
 
 ```typescript
+import { FluoFactory } from '@fluojs/runtime';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import { myAdapter } from './my-adapter';
 
@@ -215,7 +216,9 @@ const harness = createHttpAdapterPortabilityHarness({
     return app;
   },
   run: async (module, opts) => {
-    return await FluoFactory.run(module, { adapter: myAdapter(opts) });
+    const app = await FluoFactory.create(module, { adapter: myAdapter(opts) });
+    await app.listen();
+    return app;
   }
 });
 
