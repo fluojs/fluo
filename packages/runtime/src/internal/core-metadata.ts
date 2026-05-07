@@ -47,37 +47,70 @@ export interface RuntimeWritableModuleMetadata {
   providers?: unknown[];
 }
 
-/** Runtime-owned seam for writing module metadata during dynamic module normalization. */
+/**
+ * Writes runtime-visible module metadata through the runtime-owned core metadata seam.
+ *
+ * @param target Module constructor that should receive the metadata snapshot.
+ * @param metadata Module metadata used by decorators, tests, or dynamic module normalization.
+ */
 export function defineRuntimeModuleMetadata(target: Function, metadata: RuntimeWritableModuleMetadata): void {
   definePeerModuleMetadata(target, metadata);
 }
 
-/** Runtime-owned seam for tests that need to mutate class DI metadata versions explicitly. */
+/**
+ * Writes runtime-visible class DI metadata through the runtime-owned core metadata seam.
+ *
+ * @param target Class constructor that should receive DI metadata.
+ * @param metadata DI metadata used by explicit runtime metadata-version tests.
+ */
 export function defineRuntimeClassDiMetadata(target: Function, metadata: RuntimeWritableClassDiMetadata): void {
   definePeerClassDiMetadata(target, metadata);
 }
 
-/** Runtime-owned seam for reading class DI metadata without spreading peer internal imports. */
+/**
+ * Reads runtime-visible class DI metadata without spreading peer internal imports.
+ *
+ * @param target Class constructor whose effective DI metadata should be read.
+ * @returns The effective class DI metadata when present.
+ */
 export function getRuntimeClassDiMetadata(target: Function): RuntimeClassDiMetadata | undefined {
   return getPeerClassDiMetadata(target) as RuntimeClassDiMetadata | undefined;
 }
 
-/** Runtime-owned seam for reading own class DI metadata without spreading peer internal imports. */
+/**
+ * Reads own runtime-visible class DI metadata without inherited metadata fallback.
+ *
+ * @param target Class constructor whose own DI metadata should be read.
+ * @returns The own class DI metadata when present.
+ */
 export function getOwnRuntimeClassDiMetadata(target: Function): RuntimeClassDiMetadata | undefined {
   return getPeerOwnClassDiMetadata(target) as RuntimeClassDiMetadata | undefined;
 }
 
-/** Runtime-owned seam for module metadata versioning used by compile-cache keys. */
+/**
+ * Reads the current module metadata version for runtime compile-cache keys.
+ *
+ * @returns Monotonic module metadata version maintained by the core metadata store.
+ */
 export function getRuntimeModuleMetadataVersion(): number {
   return getPeerModuleMetadataVersion();
 }
 
-/** Runtime-owned seam for class DI metadata versioning used by compile-cache keys. */
+/**
+ * Reads the current class DI metadata version for runtime compile-cache keys.
+ *
+ * @returns Monotonic class DI metadata version maintained by the core metadata store.
+ */
 export function getRuntimeClassDiMetadataVersion(): number {
   return getPeerClassDiMetadataVersion();
 }
 
-/** Runtime-owned seam for reading module metadata during graph compilation. */
+/**
+ * Reads runtime-visible module metadata during graph compilation.
+ *
+ * @param target Module constructor whose metadata should be read.
+ * @returns Module metadata normalized by the core metadata store.
+ */
 export function getRuntimeModuleMetadata(target: Function): RuntimeModuleMetadata {
   return getPeerModuleMetadata(target) as RuntimeModuleMetadata;
 }

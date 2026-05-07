@@ -45,7 +45,10 @@ describe('runtime peer package internal dependencies', () => {
       }
     }
 
-    expect(importHits).toEqual([
+    expect([...importHits].sort((left, right) => {
+      const fileOrder = left.file.localeCompare(right.file);
+      return fileOrder === 0 ? left.specifier.localeCompare(right.specifier) : fileOrder;
+    })).toEqual([
       { file: 'internal/core-metadata.ts', specifier: CORE_INTERNAL_IMPORT },
       { file: 'internal/http-runtime.ts', specifier: HTTP_INTERNAL_IMPORT },
     ]);
