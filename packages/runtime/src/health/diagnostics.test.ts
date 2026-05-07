@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { Scope } from '@fluojs/core';
-import { defineModuleMetadata } from '@fluojs/core/internal';
 
+import { defineRuntimeModuleMetadata } from '../internal/core-metadata.js';
 import { compileModuleGraph } from '../module-graph.js';
 import {
   createBootstrapTimingDiagnostics,
@@ -23,7 +23,7 @@ describe('runtime diagnostics graph export', () => {
     class UsersController {}
 
     class SharedModule {}
-    defineModuleMetadata(SharedModule, {
+    defineRuntimeModuleMetadata(SharedModule, {
       exports: [LoggerService, FACTORY_TOKEN],
       providers: [
         LoggerService,
@@ -37,7 +37,7 @@ describe('runtime diagnostics graph export', () => {
     });
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       controllers: [UsersController],
       exports: [VALUE_TOKEN],
       imports: [SharedModule],
@@ -88,10 +88,10 @@ describe('runtime diagnostics graph export', () => {
 
   it('renders module-level Mermaid output', () => {
     class SharedModule {}
-    defineModuleMetadata(SharedModule, {});
+    defineRuntimeModuleMetadata(SharedModule, {});
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       imports: [SharedModule],
     });
 

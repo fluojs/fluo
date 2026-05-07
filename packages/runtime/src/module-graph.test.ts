@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { Inject } from '@fluojs/core';
 import { forwardRef, optional } from '@fluojs/di';
-import { defineClassDiMetadata, defineModuleMetadata } from '@fluojs/core/internal';
 import type { MiddlewareRouteConfig } from '@fluojs/http';
 
+import { defineRuntimeClassDiMetadata, defineRuntimeModuleMetadata } from './internal/core-metadata.js';
 import {
   clearModuleGraphCompileCacheForTesting,
   compileModuleGraph,
@@ -19,7 +19,7 @@ describe('module graph cache-key prerequisites', () => {
 
   it('returns the same key for the same root module and options inputs', () => {
     class AppModule {}
-    defineModuleMetadata(AppModule, {});
+    defineRuntimeModuleMetadata(AppModule, {});
 
     expect(createModuleGraphCacheKey(AppModule)).toBe(createModuleGraphCacheKey(AppModule));
   });
@@ -28,7 +28,7 @@ describe('module graph cache-key prerequisites', () => {
     class Logger {}
     class Metrics {}
     class AppModule {}
-    defineModuleMetadata(AppModule, {});
+    defineRuntimeModuleMetadata(AppModule, {});
 
     const loggerKey = createModuleGraphCacheKey(AppModule, { providers: [Logger] });
     const metricsKey = createModuleGraphCacheKey(AppModule, { providers: [Metrics] });
@@ -41,7 +41,7 @@ describe('module graph cache-key prerequisites', () => {
     const SECOND_TOKEN = Symbol('second-validation-token');
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {});
+    defineRuntimeModuleMetadata(AppModule, {});
 
     const firstKey = createModuleGraphCacheKey(AppModule, { validationTokens: [FIRST_TOKEN] });
     const secondKey = createModuleGraphCacheKey(AppModule, { validationTokens: [SECOND_TOKEN] });
@@ -51,7 +51,7 @@ describe('module graph cache-key prerequisites', () => {
 
   it('includes the compile algorithm version in the cache key', () => {
     class AppModule {}
-    defineModuleMetadata(AppModule, {});
+    defineRuntimeModuleMetadata(AppModule, {});
 
     expect(createModuleGraphCacheKey(AppModule)).toContain('algorithm:1');
   });
@@ -59,10 +59,10 @@ describe('module graph cache-key prerequisites', () => {
   it('changes when module metadata changes', () => {
     class Logger {}
     class AppModule {}
-    defineModuleMetadata(AppModule, {});
+    defineRuntimeModuleMetadata(AppModule, {});
     const emptyKey = createModuleGraphCacheKey(AppModule);
 
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [Logger],
     });
 
@@ -78,12 +78,12 @@ describe('module graph cache-key prerequisites', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [Logger, AppService],
     });
     const initialKey = createModuleGraphCacheKey(AppModule);
 
-    defineClassDiMetadata(AppService, {
+    defineRuntimeClassDiMetadata(AppService, {
       scope: 'request',
     });
 
@@ -99,7 +99,7 @@ describe('module graph cache-key prerequisites', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [AppService],
     });
 
@@ -114,7 +114,7 @@ describe('module graph cache-key prerequisites', () => {
   it('keeps cached module graph snapshots isolated from returned result mutations', () => {
     class Logger {}
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [Logger],
       exports: [Logger],
     });
@@ -140,7 +140,7 @@ describe('module graph cache-key prerequisites', () => {
     const createService = (logger: Logger) => ({ logger });
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         Logger,
         Metrics,
@@ -193,7 +193,7 @@ describe('module graph cache-key prerequisites', () => {
     };
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         {
           provide: CONFIG_TOKEN,
@@ -236,7 +236,7 @@ describe('module graph cache-key prerequisites', () => {
     };
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       middleware: [routeConfig],
     });
 
@@ -260,7 +260,7 @@ describe('module graph cache-key prerequisites', () => {
   it('keeps the module graph cache opt-in', () => {
     class Logger {}
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [Logger],
     });
 

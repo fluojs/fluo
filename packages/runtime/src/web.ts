@@ -8,11 +8,11 @@ import {
   type FrameworkRequest,
   type FrameworkResponse,
 } from '@fluojs/http';
-import {
-  attachFrameworkRequestNativeRouteHandoff,
-  consumeRawRequestNativeRouteHandoff,
-} from '@fluojs/http/internal';
 
+import {
+  attachRuntimeFrameworkRequestNativeRouteHandoff,
+  consumeRuntimeRawRequestNativeRouteHandoff,
+} from './internal/http-runtime.js';
 import {
   parseMultipart,
   type MultipartOptions,
@@ -461,10 +461,10 @@ function createDeferredWebFrameworkRequest(
     frameworkRequest.body = undefined;
   }
 
-  const nativeRouteHandoff = consumeRawRequestNativeRouteHandoff(request);
+  const nativeRouteHandoff = consumeRuntimeRawRequestNativeRouteHandoff(request);
 
   return nativeRouteHandoff
-    ? attachFrameworkRequestNativeRouteHandoff(frameworkRequest, nativeRouteHandoff)
+    ? attachRuntimeFrameworkRequestNativeRouteHandoff(frameworkRequest, nativeRouteHandoff)
     : frameworkRequest;
 }
 
