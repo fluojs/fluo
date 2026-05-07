@@ -1,7 +1,7 @@
 import { type Token } from '@fluojs/core';
-import { getClassDiMetadata } from '@fluojs/core/internal';
 import type { Provider, Scope } from '@fluojs/di';
 
+import { getRuntimeClassDiMetadata } from '../internal/core-metadata.js';
 import type { CompiledModule, ModuleType } from '../types.js';
 
 /**
@@ -125,7 +125,7 @@ function providerShape(provider: Provider): RuntimeDiagnosticsProvider['type'] {
 
 function providerScope(provider: Provider): Scope {
   if (typeof provider === 'function') {
-    return getClassDiMetadata(provider)?.scope ?? 'singleton';
+    return getRuntimeClassDiMetadata(provider)?.scope ?? 'singleton';
   }
 
   if ('useValue' in provider || 'useExisting' in provider) {
@@ -133,11 +133,11 @@ function providerScope(provider: Provider): Scope {
   }
 
   if ('useFactory' in provider) {
-    return provider.scope ?? (provider.resolverClass ? getClassDiMetadata(provider.resolverClass)?.scope : undefined) ?? 'singleton';
+    return provider.scope ?? (provider.resolverClass ? getRuntimeClassDiMetadata(provider.resolverClass)?.scope : undefined) ?? 'singleton';
   }
 
   if ('useClass' in provider) {
-    return provider.scope ?? getClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
+    return provider.scope ?? getRuntimeClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
   }
 
   return 'singleton';

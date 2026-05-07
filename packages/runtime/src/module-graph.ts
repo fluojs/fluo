@@ -1,13 +1,14 @@
-import type { Provider } from '@fluojs/di';
 import type { Token } from '@fluojs/core';
-import {
-  getClassDiMetadata,
-  getClassDiMetadataVersion,
-  getModuleMetadata,
-  getModuleMetadataVersion,
-  getOwnClassDiMetadata,
-} from '@fluojs/core/internal';
+import type { Provider } from '@fluojs/di';
 import type { MiddlewareLike } from '@fluojs/http';
+
+import {
+  getRuntimeClassDiMetadata,
+  getRuntimeClassDiMetadataVersion,
+  getOwnRuntimeClassDiMetadata,
+  getRuntimeModuleMetadata,
+  getRuntimeModuleMetadataVersion,
+} from './internal/core-metadata.js';
 
 import { ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
 import type { BootstrapModuleOptions, CompiledModule, ModuleDefinition, ModuleType } from './types.js';
@@ -146,8 +147,8 @@ export function createModuleGraphCacheKey(rootModule: ModuleType, options: Boots
 
   return [
     `root:${describeTokenForCacheKey(rootModule)}`,
-    `module:${getModuleMetadataVersion()}`,
-    `class-di:${getClassDiMetadataVersion()}`,
+    `module:${getRuntimeModuleMetadataVersion()}`,
+    `class-di:${getRuntimeClassDiMetadataVersion()}`,
     `algorithm:${MODULE_GRAPH_COMPILE_ALGORITHM_VERSION}`,
     `runtime:${runtimeProviders}`,
     `validation:${validationTokens}`,
@@ -380,7 +381,7 @@ function createModuleGraphCacheSnapshot(modules: readonly CompiledModule[]): rea
 }
 
 function getEffectiveClassDiMetadata(target: Function): ClassDiMetadataView | undefined {
-  const metadata = getClassDiMetadata(target);
+  const metadata = getRuntimeClassDiMetadata(target);
 
   if (!metadata) {
     return undefined;
@@ -443,7 +444,7 @@ function mergeRuntimeTokenSets(providers: Provider[] = [], validationTokens: rea
 }
 
 function requiredConstructorParameters(target: Function): number {
-  if (getOwnClassDiMetadata(target)?.inject !== undefined) {
+  if (getOwnRuntimeClassDiMetadata(target)?.inject !== undefined) {
     return 0;
   }
 
@@ -517,7 +518,7 @@ function validateControllerInjectionMetadata(controller: ModuleType, scope: stri
   );
 }
 
-function normalizeModuleDefinition(rawDefinition: ReturnType<typeof getModuleMetadata>): ModuleDefinition {
+function normalizeModuleDefinition(rawDefinition: ReturnType<typeof getRuntimeModuleMetadata>): ModuleDefinition {
   if (!rawDefinition) {
     return {};
   }
@@ -560,7 +561,7 @@ function compileModule(
 
   visiting.add(moduleType);
 
-  const definition = normalizeModuleDefinition(getModuleMetadata(moduleType));
+  const definition = normalizeModuleDefinition(getRuntimeModuleMetadata(moduleType));
 
   for (const imported of definition.imports ?? []) {
     compileModule(imported, runtimeProviderTokens, compiled, visiting, ordered);

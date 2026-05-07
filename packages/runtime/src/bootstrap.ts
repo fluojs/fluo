@@ -1,7 +1,5 @@
 import { Container, type Provider } from '@fluojs/di';
-import { DefaultBinder } from '@fluojs/http/internal';
 import { InvariantError, type Token } from '@fluojs/core';
-import { defineModuleMetadata, getClassDiMetadata } from '@fluojs/core/internal';
 import {
   createDispatcher,
   createHandlerMapping,
@@ -14,6 +12,8 @@ import {
 
 import { DuplicateProviderError } from './errors.js';
 import { createBootstrapTimingDiagnostics, type BootstrapTimingPhase } from './health/diagnostics.js';
+import { defineRuntimeModuleMetadata, getRuntimeClassDiMetadata } from './internal/core-metadata.js';
+import { RuntimeDefaultBinder } from './internal/http-runtime.js';
 import { createConsoleApplicationLogger } from './logging/logger.js';
 import { compileModuleGraph, providerToken } from './module-graph.js';
 import { createRuntimePlatformShell, type RuntimePlatformShell } from './platform-shell.js';
@@ -70,7 +70,7 @@ async function runExceptionFilters(
 
 function providerScope(provider: Provider): 'singleton' | 'request' | 'transient' {
   if (typeof provider === 'function') {
-    return getClassDiMetadata(provider)?.scope ?? 'singleton';
+    return getRuntimeClassDiMetadata(provider)?.scope ?? 'singleton';
   }
 
   if ('useValue' in provider) {
@@ -78,11 +78,11 @@ function providerScope(provider: Provider): 'singleton' | 'request' | 'transient
   }
 
   if ('useClass' in provider) {
-    return provider.scope ?? getClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
+    return provider.scope ?? getRuntimeClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
   }
 
   if ('useFactory' in provider) {
-    return provider.scope ?? (provider.resolverClass ? getClassDiMetadata(provider.resolverClass)?.scope : undefined) ?? 'singleton';
+    return provider.scope ?? (provider.resolverClass ? getRuntimeClassDiMetadata(provider.resolverClass)?.scope : undefined) ?? 'singleton';
   }
 
   return 'singleton';
@@ -487,7 +487,7 @@ function registerModuleMiddleware(container: Container, modules: CompiledModule[
  * @returns The same `moduleType` reference for fluent helper composition.
  */
 export function defineModule<T extends ModuleType>(moduleType: T, definition: ModuleDefinition): T {
-  defineModuleMetadata(moduleType, definition);
+  defineRuntimeModuleMetadata(moduleType, definition);
 
   return moduleType;
 }
@@ -1254,7 +1254,7 @@ function createRuntimeDispatcherOptions(
   };
 
   if (converters.length > 0) {
-    dispatcherOptions.binder = new DefaultBinder(converters);
+    dispatcherOptions.binder = new RuntimeDefaultBinder(converters);
   }
 
   if (errorHandler) {

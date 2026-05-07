@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { Global, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
-import { defineModuleMetadata } from '@fluojs/core/internal';
 import { Controller, Convert, FromQuery, Get, RequestDto, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
 
 import { bootstrapApplication, bootstrapModule, FluoFactory } from './bootstrap.js';
 import { DuplicateProviderError, ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
+import { defineRuntimeModuleMetadata } from './internal/core-metadata.js';
 import { clearModuleGraphCompileCacheForTesting, getModuleGraphCompileCacheSizeForTesting } from './module-graph.js';
 import type { PlatformComponent, PlatformState } from './platform-contract.js';
 import { HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL } from './tokens.js';
@@ -64,7 +64,7 @@ describe('bootstrapModule', () => {
     class Logger {}
 
     class SharedModule {}
-    defineModuleMetadata(SharedModule, {
+    defineRuntimeModuleMetadata(SharedModule, {
       exports: [Logger],
       providers: [Logger],
     });
@@ -75,7 +75,7 @@ describe('bootstrapModule', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       imports: [SharedModule],
       providers: [AppService],
     });
@@ -92,13 +92,13 @@ describe('bootstrapModule', () => {
     class Logger {}
 
     class SharedModule {}
-    defineModuleMetadata(SharedModule, {
+    defineRuntimeModuleMetadata(SharedModule, {
       exports: [Logger],
       providers: [Logger],
     });
 
     class ReExportModule {}
-    defineModuleMetadata(ReExportModule, {
+    defineRuntimeModuleMetadata(ReExportModule, {
       exports: [Logger],
       imports: [SharedModule],
     });
@@ -109,7 +109,7 @@ describe('bootstrapModule', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       imports: [ReExportModule],
       providers: [AppService],
     });
@@ -128,7 +128,7 @@ describe('bootstrapModule', () => {
     class InternalRepository {}
 
     class DataModule {}
-    defineModuleMetadata(DataModule, {
+    defineRuntimeModuleMetadata(DataModule, {
       providers: [InternalRepository],
     });
 
@@ -136,7 +136,7 @@ describe('bootstrapModule', () => {
     class BillingService {}
 
     class BillingModule {}
-    defineModuleMetadata(BillingModule, {
+    defineRuntimeModuleMetadata(BillingModule, {
       imports: [DataModule],
       providers: [BillingService],
     });
@@ -152,7 +152,7 @@ describe('bootstrapModule', () => {
     }
 
     class BillingModule {}
-    defineModuleMetadata(BillingModule, {
+    defineRuntimeModuleMetadata(BillingModule, {
       providers: [Logger, BillingService],
     });
 
@@ -172,7 +172,7 @@ describe('bootstrapModule', () => {
     }
 
     class BillingModule {}
-    defineModuleMetadata(BillingModule, {
+    defineRuntimeModuleMetadata(BillingModule, {
       providers: [
         Logger,
         Metrics,
@@ -196,7 +196,7 @@ describe('bootstrapModule', () => {
     }
 
     class BillingModule {}
-    defineModuleMetadata(BillingModule, {
+    defineRuntimeModuleMetadata(BillingModule, {
       controllers: [BillingController],
       providers: [Logger],
     });
@@ -213,7 +213,7 @@ describe('bootstrapModule', () => {
     }
 
     class BillingModule {}
-    defineModuleMetadata(BillingModule, {
+    defineRuntimeModuleMetadata(BillingModule, {
       providers: [
         Logger,
         {
@@ -238,7 +238,7 @@ describe('bootstrapModule', () => {
     class BillingService extends BaseBillingService {}
 
     class BillingModule {}
-    defineModuleMetadata(BillingModule, {
+    defineRuntimeModuleMetadata(BillingModule, {
       providers: [Logger, BillingService],
     });
 
@@ -264,7 +264,7 @@ describe('bootstrapModule', () => {
     }
 
     class BillingModule {}
-    defineModuleMetadata(BillingModule, {
+    defineRuntimeModuleMetadata(BillingModule, {
       providers: [Logger, Metrics, BillingService],
     });
 
@@ -298,7 +298,7 @@ describe('bootstrapModule', () => {
     class BillingModule {}
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       imports: [RootModule, BillingModule],
     });
 
@@ -315,7 +315,7 @@ describe('bootstrapModule middleware DI registration', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       middleware: [LoggingMiddleware],
     });
 
@@ -333,7 +333,7 @@ describe('bootstrapModule middleware DI registration', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       middleware: [{ middleware: AuthMiddleware, routes: ['/users'] }],
     });
 
@@ -349,7 +349,7 @@ describe('bootstrapModule middleware DI registration', () => {
     };
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       middleware: [factoryMiddleware],
     });
 
@@ -364,7 +364,7 @@ describe('bootstrapModule middleware DI registration', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       middleware: [LoggingMiddleware],
       providers: [LoggingMiddleware],
     });
@@ -378,19 +378,19 @@ describe('bootstrapModule duplicate provider detection', () => {
     class SharedService {}
 
     class ModuleA {}
-    defineModuleMetadata(ModuleA, {
+    defineRuntimeModuleMetadata(ModuleA, {
       providers: [SharedService],
       exports: [SharedService],
     });
 
     class ModuleB {}
-    defineModuleMetadata(ModuleB, {
+    defineRuntimeModuleMetadata(ModuleB, {
       providers: [SharedService],
       exports: [SharedService],
     });
 
     class RootModule {}
-    defineModuleMetadata(RootModule, {
+    defineRuntimeModuleMetadata(RootModule, {
       imports: [ModuleA, ModuleB],
     });
 
@@ -406,17 +406,17 @@ describe('bootstrapModule duplicate provider detection', () => {
     const SHARED = Symbol('shared-token');
 
     class ModuleA {}
-    defineModuleMetadata(ModuleA, {
+    defineRuntimeModuleMetadata(ModuleA, {
       providers: [{ provide: SHARED, useValue: 'from-a' }],
     });
 
     class ModuleB {}
-    defineModuleMetadata(ModuleB, {
+    defineRuntimeModuleMetadata(ModuleB, {
       providers: [{ provide: SHARED, useValue: 'from-b' }],
     });
 
     class RootModule {}
-    defineModuleMetadata(RootModule, {
+    defineRuntimeModuleMetadata(RootModule, {
       imports: [ModuleA, ModuleB],
     });
 
@@ -432,19 +432,19 @@ describe('bootstrapModule duplicate provider detection', () => {
     class SharedService {}
 
     class ModuleA {}
-    defineModuleMetadata(ModuleA, {
+    defineRuntimeModuleMetadata(ModuleA, {
       providers: [SharedService],
       exports: [SharedService],
     });
 
     class ModuleB {}
-    defineModuleMetadata(ModuleB, {
+    defineRuntimeModuleMetadata(ModuleB, {
       providers: [SharedService],
       exports: [SharedService],
     });
 
     class RootModule {}
-    defineModuleMetadata(RootModule, {
+    defineRuntimeModuleMetadata(RootModule, {
       imports: [ModuleA, ModuleB],
     });
 
@@ -459,19 +459,19 @@ describe('bootstrapModule duplicate provider detection', () => {
     class SharedService {}
 
     class ModuleA {}
-    defineModuleMetadata(ModuleA, {
+    defineRuntimeModuleMetadata(ModuleA, {
       providers: [SharedService],
       exports: [SharedService],
     });
 
     class ModuleB {}
-    defineModuleMetadata(ModuleB, {
+    defineRuntimeModuleMetadata(ModuleB, {
       providers: [SharedService],
       exports: [SharedService],
     });
 
     class RootModule {}
-    defineModuleMetadata(RootModule, {
+    defineRuntimeModuleMetadata(RootModule, {
       imports: [ModuleA, ModuleB],
     });
 
@@ -483,19 +483,19 @@ describe('bootstrapModule duplicate provider detection', () => {
     class SharedService {}
 
     class ModuleA {}
-    defineModuleMetadata(ModuleA, {
+    defineRuntimeModuleMetadata(ModuleA, {
       providers: [SharedService],
       exports: [SharedService],
     });
 
     class ModuleB {}
-    defineModuleMetadata(ModuleB, {
+    defineRuntimeModuleMetadata(ModuleB, {
       providers: [SharedService],
       exports: [SharedService],
     });
 
     class RootModule {}
-    defineModuleMetadata(RootModule, {
+    defineRuntimeModuleMetadata(RootModule, {
       imports: [ModuleA, ModuleB],
     });
 
@@ -510,17 +510,17 @@ describe('bootstrapModule duplicate provider detection', () => {
     const SHARED = Symbol('shared-token');
 
     class ModuleA {}
-    defineModuleMetadata(ModuleA, {
+    defineRuntimeModuleMetadata(ModuleA, {
       providers: [{ provide: SHARED, useValue: 'from-a' }],
     });
 
     class ModuleB {}
-    defineModuleMetadata(ModuleB, {
+    defineRuntimeModuleMetadata(ModuleB, {
       providers: [{ provide: SHARED, useValue: 'from-b' }],
     });
 
     class RootModule {}
-    defineModuleMetadata(RootModule, {
+    defineRuntimeModuleMetadata(RootModule, {
       imports: [ModuleA, ModuleB],
     });
 
@@ -536,7 +536,7 @@ describe('bootstrapModule duplicate provider detection', () => {
     class SharedService {}
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [SharedService],
     });
 
@@ -562,7 +562,7 @@ describe('bootstrapModule requiredConstructorParameters fix', () => {
     class ZeroDependencyService {}
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [ZeroDependencyService],
     });
 
@@ -581,7 +581,7 @@ describe('bootstrapModule requiredConstructorParameters fix', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [Logger, AppService],
     });
 
@@ -597,7 +597,7 @@ describe('bootstrapModule requiredConstructorParameters fix', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [Logger, LegacyAppService],
     });
 
@@ -612,7 +612,7 @@ describe('FluoFactory.createApplicationContext', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [AppService],
     });
 
@@ -630,7 +630,7 @@ describe('FluoFactory.createApplicationContext', () => {
     class AppService {}
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [AppService],
     });
 
@@ -651,7 +651,7 @@ describe('FluoFactory.createApplicationContext', () => {
     class AppService {}
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [AppService],
     });
 
@@ -684,7 +684,7 @@ describe('FluoFactory.createApplicationContext', () => {
       let resolutionCount = 0;
 
       class AppModule {}
-      defineModuleMetadata(AppModule, {
+      defineRuntimeModuleMetadata(AppModule, {
         providers: [
           {
             provide: CACHE_TOKEN,
@@ -722,7 +722,7 @@ describe('FluoFactory.createApplicationContext', () => {
       let resolutionCount = 0;
 
       class AppModule {}
-      defineModuleMetadata(AppModule, {});
+      defineRuntimeModuleMetadata(AppModule, {});
 
       const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
       const context = await FluoFactory.createApplicationContext(AppModule, {
@@ -758,7 +758,7 @@ describe('FluoFactory.createApplicationContext', () => {
     const secondContribution = { id: 'second' };
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         {
           multi: true,
@@ -796,7 +796,7 @@ describe('FluoFactory.createApplicationContext', () => {
     const runtimeContribution = { id: 'runtime' };
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         {
           multi: true,
@@ -837,7 +837,7 @@ describe('FluoFactory.createApplicationContext', () => {
     const firstCanResolve = createDeferred<void>();
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         {
           provide: FIRST,
@@ -887,7 +887,7 @@ describe('FluoFactory.createApplicationContext', () => {
     const FAILING = Symbol('failing');
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         {
           provide: SUCCESS,
@@ -947,7 +947,7 @@ describe('FluoFactory.createApplicationContext', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [AppService],
     });
 
@@ -971,7 +971,7 @@ describe('FluoFactory.createApplicationContext', () => {
     const LIFECYCLE_VALUE = Symbol('lifecycle-value');
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         {
           provide: LIFECYCLE_VALUE,
@@ -1015,7 +1015,7 @@ describe('FluoFactory.createApplicationContext', () => {
       const LIFECYCLE_VALUE = Symbol('lifecycle-value');
 
       class AppModule {}
-      defineModuleMetadata(AppModule, {
+      defineRuntimeModuleMetadata(AppModule, {
         providers: [
           {
             provide: LIFECYCLE_VALUE,
@@ -1080,7 +1080,7 @@ describe('FluoFactory.createApplicationContext', () => {
       const LIFECYCLE_VALUE = Symbol('runtime-lifecycle-value');
 
       class AppModule {}
-      defineModuleMetadata(AppModule, {});
+      defineRuntimeModuleMetadata(AppModule, {});
 
       const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
       const context = await FluoFactory.createApplicationContext(AppModule, {
@@ -1144,7 +1144,7 @@ describe('FluoFactory.createApplicationContext', () => {
       const LIFECYCLE_VALUE = Symbol('lifecycle-value');
 
       class AppModule {}
-      defineModuleMetadata(AppModule, {
+      defineRuntimeModuleMetadata(AppModule, {
         providers: [
           {
             provide: LIFECYCLE_VALUE,
@@ -1191,7 +1191,7 @@ describe('FluoFactory.createApplicationContext', () => {
       const LIFECYCLE_VALUE = Symbol('runtime-lifecycle-value-without-hooks');
 
       class AppModule {}
-      defineModuleMetadata(AppModule, {});
+      defineRuntimeModuleMetadata(AppModule, {});
 
       const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
       const context = await FluoFactory.createApplicationContext(AppModule, {
@@ -1232,7 +1232,7 @@ describe('FluoFactory.createApplicationContext', () => {
 
   it('does not collect bootstrap timing diagnostics by default', async () => {
     class AppModule {}
-    defineModuleMetadata(AppModule, {});
+    defineRuntimeModuleMetadata(AppModule, {});
 
     const context = await FluoFactory.createApplicationContext(AppModule);
 
@@ -1243,7 +1243,7 @@ describe('FluoFactory.createApplicationContext', () => {
 
   it('collects bootstrap timing diagnostics when enabled', async () => {
     class AppModule {}
-    defineModuleMetadata(AppModule, {});
+    defineRuntimeModuleMetadata(AppModule, {});
 
     const context = await FluoFactory.createApplicationContext(AppModule, {
       diagnostics: {
@@ -1266,7 +1266,7 @@ describe('FluoFactory.createApplicationContext', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [AppService],
     });
 
@@ -1403,7 +1403,7 @@ describe('runtime platform shell enforcement', () => {
     const queue = createComponent('queue.default', events);
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {});
+    defineRuntimeModuleMetadata(AppModule, {});
 
     const app = await FluoFactory.create(AppModule, {
       platform: {
@@ -1431,7 +1431,7 @@ describe('runtime platform shell enforcement', () => {
     const queue = createComponent('queue.default', events);
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {});
+    defineRuntimeModuleMetadata(AppModule, {});
 
     await expect(
       FluoFactory.create(AppModule, {
@@ -1451,7 +1451,7 @@ describe('runtime platform shell enforcement', () => {
     };
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {});
+    defineRuntimeModuleMetadata(AppModule, {});
 
     const app = await FluoFactory.create(AppModule, {
       adapter,
@@ -1477,7 +1477,7 @@ describe('FluoFactory.createMicroservice', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         {
           provide: MICROSERVICE_TOKEN,
@@ -1520,7 +1520,7 @@ describe('FluoFactory.createMicroservice', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         CleanupHook,
         {
@@ -1552,7 +1552,7 @@ describe('FluoFactory.createMicroservice', () => {
     const MICROSERVICE_TOKEN = Symbol.for('fluo.microservices.service');
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         {
           provide: MICROSERVICE_TOKEN,
@@ -1580,7 +1580,7 @@ describe('FluoFactory.createMicroservice', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         CleanupHook,
         {
@@ -1611,7 +1611,7 @@ describe('FluoFactory.createMicroservice', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         {
           provide: MICROSERVICE_TOKEN,
@@ -1646,7 +1646,7 @@ describe('FluoFactory.createMicroservice', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         {
           provide: MICROSERVICE_TOKEN,
@@ -1687,7 +1687,7 @@ describe('FluoFactory.createMicroservice', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         LifecycleHook,
         {
@@ -1746,7 +1746,7 @@ describe('FluoFactory.createMicroservice', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         {
           provide: FIRST_MICROSERVICE_TOKEN,
@@ -1783,7 +1783,7 @@ describe('moduleGraphCache bootstrap wiring', () => {
 
     class AppService {}
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [AppService],
     });
 
@@ -1799,7 +1799,7 @@ describe('moduleGraphCache bootstrap wiring', () => {
 
     class AppService {}
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [AppService],
     });
 
@@ -1825,7 +1825,7 @@ describe('moduleGraphCache bootstrap wiring', () => {
 
     class AppService {}
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [AppService],
     });
 
@@ -1847,7 +1847,7 @@ describe('moduleGraphCache bootstrap wiring', () => {
     }
 
     class AppModule {}
-    defineModuleMetadata(AppModule, {
+    defineRuntimeModuleMetadata(AppModule, {
       providers: [
         {
           provide: MICROSERVICE_TOKEN,
@@ -1872,7 +1872,7 @@ describe('Recovery-oriented error context (runtime)', () => {
       class InternalRepository {}
 
       class DataModule {}
-      defineModuleMetadata(DataModule, {
+      defineRuntimeModuleMetadata(DataModule, {
         providers: [InternalRepository],
       });
 
@@ -1880,7 +1880,7 @@ describe('Recovery-oriented error context (runtime)', () => {
       class BillingService {}
 
       class BillingModule {}
-      defineModuleMetadata(BillingModule, {
+      defineRuntimeModuleMetadata(BillingModule, {
         imports: [DataModule],
         providers: [BillingService],
       });
@@ -1903,7 +1903,7 @@ describe('Recovery-oriented error context (runtime)', () => {
       class InternalRepository {}
 
       class DataModule {}
-      defineModuleMetadata(DataModule, {
+      defineRuntimeModuleMetadata(DataModule, {
         providers: [InternalRepository],
       });
 
@@ -1911,7 +1911,7 @@ describe('Recovery-oriented error context (runtime)', () => {
       class BillingController {}
 
       class BillingModule {}
-      defineModuleMetadata(BillingModule, {
+      defineRuntimeModuleMetadata(BillingModule, {
         imports: [DataModule],
         controllers: [BillingController],
       });
@@ -1933,7 +1933,7 @@ describe('Recovery-oriented error context (runtime)', () => {
       class InternalRepository {}
 
       class DataModule {}
-      defineModuleMetadata(DataModule, {
+      defineRuntimeModuleMetadata(DataModule, {
         providers: [InternalRepository],
       });
 
@@ -1941,7 +1941,7 @@ describe('Recovery-oriented error context (runtime)', () => {
       class BillingService {}
 
       class BillingModule {}
-      defineModuleMetadata(BillingModule, {
+      defineRuntimeModuleMetadata(BillingModule, {
         imports: [DataModule],
         providers: [BillingService],
       });
@@ -1964,10 +1964,10 @@ describe('Recovery-oriented error context (runtime)', () => {
     it('includes module name and hint for circular module imports', () => {
       class ModuleA {}
       class ModuleB {}
-      defineModuleMetadata(ModuleA, {
+      defineRuntimeModuleMetadata(ModuleA, {
         imports: [ModuleB],
       });
-      defineModuleMetadata(ModuleB, {
+      defineRuntimeModuleMetadata(ModuleB, {
         imports: [ModuleA],
       });
 
@@ -1988,10 +1988,10 @@ describe('Recovery-oriented error context (runtime)', () => {
     it('provides machine-readable meta on ModuleGraphError', () => {
       class ModuleA {}
       class ModuleB {}
-      defineModuleMetadata(ModuleA, {
+      defineRuntimeModuleMetadata(ModuleA, {
         imports: [ModuleB],
       });
-      defineModuleMetadata(ModuleB, {
+      defineRuntimeModuleMetadata(ModuleB, {
         imports: [ModuleA],
       });
 
@@ -2016,7 +2016,7 @@ describe('Recovery-oriented error context (runtime)', () => {
       }
 
       class BillingModule {}
-      defineModuleMetadata(BillingModule, {
+      defineRuntimeModuleMetadata(BillingModule, {
         providers: [Logger, BillingService],
       });
 
@@ -2041,7 +2041,7 @@ describe('Recovery-oriented error context (runtime)', () => {
       }
 
       class BillingModule {}
-      defineModuleMetadata(BillingModule, {
+      defineRuntimeModuleMetadata(BillingModule, {
         providers: [Logger, BillingService],
       });
 
@@ -2063,19 +2063,19 @@ describe('Recovery-oriented error context (runtime)', () => {
       class SharedService {}
 
       class ModuleA {}
-      defineModuleMetadata(ModuleA, {
+      defineRuntimeModuleMetadata(ModuleA, {
         providers: [SharedService],
         exports: [SharedService],
       });
 
       class ModuleB {}
-      defineModuleMetadata(ModuleB, {
+      defineRuntimeModuleMetadata(ModuleB, {
         providers: [SharedService],
         exports: [SharedService],
       });
 
       class RootModule {}
-      defineModuleMetadata(RootModule, {
+      defineRuntimeModuleMetadata(RootModule, {
         imports: [ModuleA, ModuleB],
       });
 
@@ -2097,19 +2097,19 @@ describe('Recovery-oriented error context (runtime)', () => {
       class SharedService {}
 
       class ModuleA {}
-      defineModuleMetadata(ModuleA, {
+      defineRuntimeModuleMetadata(ModuleA, {
         providers: [SharedService],
         exports: [SharedService],
       });
 
       class ModuleB {}
-      defineModuleMetadata(ModuleB, {
+      defineRuntimeModuleMetadata(ModuleB, {
         providers: [SharedService],
         exports: [SharedService],
       });
 
       class RootModule {}
-      defineModuleMetadata(RootModule, {
+      defineRuntimeModuleMetadata(RootModule, {
         imports: [ModuleA, ModuleB],
       });
 
@@ -2132,12 +2132,12 @@ describe('Recovery-oriented error context (runtime)', () => {
       class NonExistentService {}
 
       class BadModule {}
-      defineModuleMetadata(BadModule, {
+      defineRuntimeModuleMetadata(BadModule, {
         exports: [NonExistentService],
       });
 
       class AppModule {}
-      defineModuleMetadata(AppModule, {
+      defineRuntimeModuleMetadata(AppModule, {
         imports: [BadModule],
       });
 
