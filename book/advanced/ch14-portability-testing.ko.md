@@ -205,6 +205,7 @@ WebSocket 하네스에는 "백프레셔(backpressure)" 테스트도 포함되어
 13장에서 커스텀 어댑터를 구현했다면, 이제 하네스를 사용해 이를 검증해야 합니다. 이는 어댑터가 fluo 동작 계약을 준수하는지 확인하는 핵심 테스트입니다. 이식성 하네스를 통과하면 기존 비즈니스 로직을 깨뜨리지 않고 서로 다른 런타임에 어댑터를 배포할 수 있다는 근거를 얻습니다.
 
 ```typescript
+import { FluoFactory } from '@fluojs/runtime';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import { myAdapter } from './my-adapter';
 
