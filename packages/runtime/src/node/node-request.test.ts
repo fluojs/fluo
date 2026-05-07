@@ -195,6 +195,31 @@ describe('node request adapter', () => {
     ]);
   });
 
+  it('uses maxBodySize as the Node multipart total-size fallback', async () => {
+    const form = new FormData();
+    form.append('name', 'Ada Lovelace');
+    form.append('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
+
+    const multipartRequest = new Request('http://localhost/uploads', {
+      body: form,
+      method: 'POST',
+    });
+    const requestBody = Buffer.from(await multipartRequest.arrayBuffer());
+
+    const request = createIncomingMessage({
+      body: requestBody,
+      headers: {
+        'content-type': multipartRequest.headers.get('content-type') ?? undefined,
+      },
+      method: 'POST',
+      url: '/uploads',
+    });
+
+    const result = createFrameworkRequest(request, new AbortController().signal, undefined, 10);
+
+    await expect(result).rejects.toThrow('Multipart body exceeds the maximum size of 10 bytes.');
+  });
+
   it('creates the request shell before materializing body and rawBody', async () => {
     let chunksRead = 0;
     const request = {

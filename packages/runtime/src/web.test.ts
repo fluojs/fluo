@@ -246,6 +246,38 @@ describe('dispatchWebRequest', () => {
     expect(producedChunks).toBeLessThanOrEqual(3);
   });
 
+  it('uses maxBodySize as the Web multipart total-size fallback', async () => {
+    const boundary = 'fluo-boundary';
+    const body = `--${boundary}\r\ncontent-disposition: form-data; name="name"\r\n\r\nAda Lovelace\r\n--${boundary}--\r\n`;
+
+    const response = await dispatchWebRequest({
+      dispatcher: {
+        async dispatch() {
+          throw new Error('should not dispatch oversized multipart request');
+        },
+      },
+      maxBodySize: 10,
+      request: new Request('https://runtime.test/upload', {
+        body,
+        headers: {
+          'content-length': String(Buffer.byteLength(body)),
+          'content-type': `multipart/form-data; boundary=${boundary}`,
+          'x-request-id': 'req-web-multipart-fallback',
+        },
+        method: 'POST',
+      }),
+    });
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        message: 'Multipart body exceeds the maximum size of 10 bytes.',
+        requestId: 'req-web-multipart-fallback',
+        status: 413,
+      },
+    });
+  });
+
   it('reuses an injected web factory without sharing request-specific state', async () => {
     const factory = createWebRequestResponseFactory({ rawBody: true });
     const seenBodies: unknown[] = [];
