@@ -215,7 +215,9 @@ const harness = createHttpAdapterPortabilityHarness({
     return app;
   },
   run: async (module, opts) => {
-    return await FluoFactory.run(module, { adapter: myAdapter(opts) });
+    const app = await FluoFactory.create(module, { adapter: myAdapter(opts) });
+    await app.listen();
+    return app;
   }
 });
 
