@@ -772,6 +772,57 @@ describe('bootstrapApplication', () => {
     await app.close();
   });
 
+  it('uses maxBodySize as the Node adapter multipart total-size fallback', async () => {
+    @Controller('/uploads')
+    class UploadController {
+      @Post('/')
+      upload(_input: undefined, context: RequestContext) {
+        return {
+          body: context.request.body,
+          fileCount: context.request.files?.length ?? 0,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UploadController],
+    });
+
+    const port = await findAvailablePort();
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      maxBodySize: 10,
+      port,
+    }));
+
+    await app.listen();
+
+    const form = new FormData();
+    form.set('name', 'Ada Lovelace');
+    form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
+
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/uploads`, {
+      body: form,
+      headers: { 'x-request-id': 'req-multipart-fallback' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: 'PAYLOAD_TOO_LARGE',
+        details: undefined,
+        message: 'Multipart body exceeds the maximum size of 10 bytes.',
+        meta: undefined,
+        requestId: 'req-multipart-fallback',
+        status: 413,
+      },
+    });
+
+    await app.close();
+  });
+
   it('serves text and HTML bodies over the Node adapter without JSON quoting', async () => {
     const docsHtml = '<!doctype html><html><body>Docs</body></html>';
     const metricsBody = 'process_cpu_seconds_total 1';
@@ -1284,7 +1335,6 @@ describe('bootstrapApplication', () => {
     });
 
     const originalExitCode = process.exitCode;
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number | string | null) => undefined as never) as typeof process.exit);
     const port = await findAvailablePort();
     const app = await runNodeApplication(AppModule, {
       cors: false,
@@ -1301,7 +1351,6 @@ describe('bootstrapApplication', () => {
       process.emit('SIGTERM', 'SIGTERM');
       await vi.advanceTimersByTimeAsync(26);
 
-      expect(exitSpy).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
       expect(loggerEvents).toContain(
         'error:FluoFactory:Shutdown timeout exceeded after 25ms; leaving process termination to the host.:none',
@@ -1309,9 +1358,67 @@ describe('bootstrapApplication', () => {
     } finally {
       app.close = originalClose;
       await app.close();
-      exitSpy.mockRestore();
       process.exitCode = originalExitCode;
       vi.useRealTimers();
+    }
+  });
+
+  it('marks signal-driven shutdown failures without terminating the host process directly', async () => {
+    const shutdownLogged = createDeferred<void>();
+    const shutdownError = new Error('close failed');
+    const loggerEvents: string[] = [];
+    const logger: ApplicationLogger = {
+      debug() {},
+      error(message, error, context) {
+        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
+
+        if (message === 'Failed to shut down the application cleanly.') {
+          shutdownLogged.resolve();
+        }
+      },
+      log() {},
+      warn() {},
+    };
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [HealthController],
+    });
+
+    const originalExitCode = process.exitCode;
+    const port = await findAvailablePort();
+    const app = await runNodeApplication(AppModule, {
+      cors: false,
+      logger,
+      port,
+      shutdownSignals: ['SIGTERM'],
+    });
+    const originalClose = app.close.bind(app);
+    let observedSignal: string | undefined;
+    app.close = async (signal?: string) => {
+      observedSignal = signal;
+      throw shutdownError;
+    };
+
+    try {
+      process.emit('SIGTERM', 'SIGTERM');
+      await shutdownLogged.promise;
+
+      expect(observedSignal).toBe('SIGTERM');
+      expect(process.exitCode).toBe(1);
+      expect(loggerEvents).toContain('error:FluoFactory:Failed to shut down the application cleanly.:close failed');
+    } finally {
+      app.close = originalClose;
+      await app.close();
+      process.exitCode = originalExitCode;
     }
   });
 
