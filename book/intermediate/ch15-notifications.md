@@ -156,7 +156,7 @@ Publication failures for success events are best-effort so they do not turn a co
 FluoShop uses notifications for order confirmations. This sits on top of the event-driven work built in Part 2. When `OrderPlacedEvent` is captured by `OrderSaga`, notification dispatch is triggered, and order processing and user notification become loosely connected follow-up responsibilities.
 
 ```typescript
-@OnEvent('order.placed')
+@OnEvent(OrderPlacedEvent)
 async onOrderPlaced(event: OrderPlacedEvent) {
   await this.notifications.dispatch({
     channel: 'email',
