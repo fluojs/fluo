@@ -188,7 +188,7 @@ GraphqlModule.forRoot({
 
 FluoShop에서는 제품 카탈로그 조회 경험을 세밀하게 제공하기 위해 GraphQL을 사용합니다. 카테고리 조회에는 DataLoader를 적용하고, 검색 엔드포인트에는 복잡도 제한을 둬 성능과 안전성을 함께 관리합니다. 이 조합은 클라이언트가 필요한 필드를 유연하게 고르면서도, 서버가 감당하기 어려운 쿼리를 미리 제한하게 해줍니다.
 
-제품 카탈로그 가드레일은 module boundary에 둡니다. 지원되지 않는 resolver 또는 field-cost decorator를 추가하는 대신, 카탈로그 쿼리 형태에 맞게 `limits.maxDepth`, `limits.maxComplexity`, `limits.maxCost` 값을 조정합니다.
+제품 카탈로그 가드레일은 module boundary에 둡니다. 지원되지 않는 resolver-level field-cost decorator를 추가하는 대신, 카탈로그 쿼리 형태에 맞게 `limits.maxDepth`, `limits.maxComplexity`, `limits.maxCost` 값을 조정합니다.
 
 ```typescript
 class CatalogSearchInput {

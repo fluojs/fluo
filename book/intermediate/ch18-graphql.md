@@ -188,7 +188,7 @@ GraphqlModule.forRoot({
 
 FluoShop uses GraphQL to provide a more fine-grained product catalog query experience. It applies DataLoader to category lookups and puts complexity limits on search endpoints so performance and safety are managed together.
 
-Keep the product catalog guardrail at the module boundary. Tune `limits.maxDepth`, `limits.maxComplexity`, and `limits.maxCost` for the catalog query shape instead of adding unsupported resolver or field-cost decorators.
+Keep the product catalog guardrail at the module boundary. Tune `limits.maxDepth`, `limits.maxComplexity`, and `limits.maxCost` for the catalog query shape instead of adding unsupported resolver-level field-cost decorators.
 
 ```typescript
 class CatalogSearchInput {
