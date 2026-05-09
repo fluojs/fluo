@@ -137,6 +137,7 @@ class UsersModule {}
 - `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, `runNodeApplication(...)`는 `maxBodySize`를 0 이상의 정수 바이트 수로만 받으며, 값이 잘못되면 어댑터 생성/부트스트랩 단계에서 즉시 실패합니다.
 - 응답 스트림 백프레셔 헬퍼는 `drain`, `close`, `error` 중 어느 경우에도 `waitForDrain()`을 완료시켜 끊어진 연결에서 스트리밍 작성기가 멈추지 않도록 합니다.
 - 런타임 health 모듈은 bootstrap이 ready로 표시하기 전까지 `/ready`를 HTTP 503과 `starting`으로 보고하며, 애플리케이션/컨텍스트 종료가 시작되는 즉시, 종료 시도가 실패하더라도 다시 `starting`으로 내려갑니다.
+- 런타임 health module readiness check는 현재 `RequestContext`를 받으므로, public integration이 internal runtime token을 import하지 않고도 runtime-exposed status provider를 해석할 수 있습니다.
 - 시그널 기반 종료 헬퍼는 bounded drain semantics를 유지하면서 timeout/실패 상황을 로그와 `process.exitCode`로 보고하지만, 최종 프로세스 종료 소유권은 주변 호스트 런타임에 남겨 둡니다.
 - 플랫폼 snapshot 및 diagnostic issue 생산은 런타임에 남아 있고, 그래프 보기, filtering 표현, Mermaid 렌더링은 CLI 및 자동화 호출자가 소비하는 Studio 소유 계약입니다.
 - 모듈 그래프 컴파일 결과 캐시는 `moduleGraphCache: true`를 통한 opt-in입니다. 캐시 항목은 root module identity, runtime provider, validation token, core metadata version, compile algorithm version으로 식별되며, 성공한 컴파일만 저장하고 호출자 mutation이 이후 bootstrap을 오염시키지 않도록 격리된 그래프 복사본을 반환합니다.
@@ -150,6 +151,7 @@ class UsersModule {}
 - `LifecycleHooks`: `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`를 묶는 편의 union 타입입니다.
 - `HealthModule.forRoot(options)`: bootstrap 및 shutdown 라이프사이클 전이에 맞춰 readiness marker를 관리하는 런타임 소유 `/health`, `/ready` 모듈 파사드입니다.
 - `createHealthModule(options)`: 같은 런타임 health module 계약을 위한 deprecated compatibility helper입니다. 애플리케이션-facing module import에서는 `HealthModule.forRoot(...)`를 우선 사용하세요.
+- `ReadinessCheck`: runtime health module이 사용하는 function type입니다. Check는 `/ready` request context를 받고 boolean 또는 promise를 반환합니다.
 - `defineModule(cls, metadata)`: 프로그래밍 방식의 모듈 정의 헬퍼입니다.
 - `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다.
 - `bootstrapModule(...)`: 저수준 module graph bootstrap helper입니다.
