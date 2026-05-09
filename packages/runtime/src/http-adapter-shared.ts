@@ -182,21 +182,55 @@ export async function runHttpAdapterApplication(
     throw error;
   }
 
-  const unregisterShutdownSignals = options.shutdownRegistration?.(
-    app,
-    logger,
-    options.forceExitTimeoutMs,
-  ) ?? (() => {});
+  let unregisterShutdownSignals: () => void;
+
+  try {
+    unregisterShutdownSignals = options.shutdownRegistration?.(
+      app,
+      logger,
+      options.forceExitTimeoutMs,
+    ) ?? (() => {});
+  } catch (error: unknown) {
+    logger.error('Failed to register shutdown signals.', error, 'FluoFactory');
+
+    try {
+      await app.close('bootstrap-failed');
+    } catch (closeError) {
+      logger.error('Failed to close application after shutdown registration failure.', closeError, 'FluoFactory');
+    }
+
+    throw error;
+  }
+
   const close = app.close.bind(app);
   let shutdownSignalsUnregistered = false;
 
   app.close = async (signal?: string) => {
+    let unregisterError: unknown;
+
     if (!shutdownSignalsUnregistered) {
-      unregisterShutdownSignals();
-      shutdownSignalsUnregistered = true;
+      try {
+        unregisterShutdownSignals();
+      } catch (error) {
+        unregisterError = error;
+      } finally {
+        shutdownSignalsUnregistered = true;
+      }
     }
 
-    await close(signal);
+    try {
+      await close(signal);
+    } catch (closeError) {
+      if (unregisterError) {
+        throw new AggregateError([unregisterError, closeError], 'Application close failed during shutdown signal cleanup.');
+      }
+
+      throw closeError;
+    }
+
+    if (unregisterError) {
+      throw unregisterError;
+    }
   };
 
   return app;

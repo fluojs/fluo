@@ -205,4 +205,94 @@ describe('runHttpAdapterApplication', () => {
       'adapter:close',
     ]);
   });
+
+  it('closes the application when custom shutdown registration throws', async () => {
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const events: string[] = [];
+    const registrationFailure = new Error('registration failed');
+    const logger: ApplicationLogger = {
+      debug() {},
+      error(message, error) {
+        events.push(`logger:error:${message}:${error instanceof Error ? error.message : String(error)}`);
+      },
+      log() {},
+      warn() {},
+    };
+    const adapter = {
+      async close(signal?: string) {
+        events.push(`adapter:close:${signal ?? 'none'}`);
+      },
+      getListenTarget() {
+        return {
+          bindTarget: 'runtime://test',
+          url: 'runtime://test',
+        };
+      },
+      async listen() {
+        events.push('adapter:listen');
+      },
+    };
+
+    await expect(runHttpAdapterApplication(AppModule, {
+      logger,
+      shutdownRegistration() {
+        throw registrationFailure;
+      },
+    }, adapter)).rejects.toBe(registrationFailure);
+
+    expect(events).toEqual([
+      'adapter:listen',
+      'logger:error:Failed to register shutdown signals.:registration failed',
+      'adapter:close:bootstrap-failed',
+    ]);
+  });
+
+  it('still closes the application when custom shutdown unregistration throws', async () => {
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const events: string[] = [];
+    const unregisterFailure = new Error('unregister failed');
+    const logger: ApplicationLogger = {
+      debug() {},
+      error() {},
+      log() {},
+      warn() {},
+    };
+    const adapter = {
+      async close(signal?: string) {
+        events.push(`adapter:close:${signal ?? 'none'}`);
+      },
+      getListenTarget() {
+        return {
+          bindTarget: 'runtime://test',
+          url: 'runtime://test',
+        };
+      },
+      async listen() {
+        events.push('adapter:listen');
+      },
+    };
+
+    const app = await runHttpAdapterApplication(AppModule, {
+      logger,
+      shutdownRegistration() {
+        return () => {
+          events.push('unregister');
+          throw unregisterFailure;
+        };
+      },
+    }, adapter);
+
+    await expect(app.close('SIGTERM')).rejects.toBe(unregisterFailure);
+
+    expect(app.state).toBe('closed');
+    expect(events).toEqual([
+      'adapter:listen',
+      'unregister',
+      'adapter:close:SIGTERM',
+    ]);
+  });
 });
