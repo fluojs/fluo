@@ -351,7 +351,7 @@ WebSocket을 스로틀링할 때 **인바운드 바이트 속도(Inbound Byte Ra
 ### 16.13.3 GraphQL Complexity Throttling
 GraphQL API에서는 단일 쿼리가 매우 비쌀 수 있기 때문에 단순한 요청 카운팅만으로는 부족합니다. 대신 module-level complexity guardrail로 GraphQL 엔드포인트를 보호해야 합니다. Fluo의 GraphQL 통합에서는 `GraphqlModule.forRoot(...)`에 `limits.maxDepth`, `limits.maxComplexity`, `limits.maxCost`를 전달할 수 있고, 이 예산을 초과하는 요청은 resolver 실행 전에 거부됩니다. 이러한 "비용 기반 스로틀링"은 유연하고 풍부한 데이터를 제공하는 API에서 중요한 보호책입니다.
 
-fluo에서 **복잡도 기반 스로틀링(Complexity-Based Throttling)**을 구현하려면 resolver에 field-cost decorator를 추가하는 대신 module boundary에서 해당 예산을 설정합니다. 예를 들어 공개 카탈로그 API는 recursive traversal을 막기 위해 `maxDepth`를 낮게 유지하고, 전체 필드 가중치를 제한하기 위해 `maxComplexity`를 설정하며, aggregate compute estimate를 제한하기 위해 `maxCost`를 설정할 수 있습니다. 이러한 module-level control은 악의적이거나 잘못 작성된 쿼리로 서버를 마비시킬 수 있는 "N+1" 성능 문제나 깊은 재귀 공격을 방지하면서도 GraphQL 계약을 런타임 패키지 표면과 일치시킵니다.
+fluo에서 **복잡도 기반 스로틀링(Complexity-Based Throttling)**을 구현하려면 resolver에 field-cost decorator를 추가하는 대신 module boundary에서 해당 예산을 설정합니다. 예를 들어 공개 카탈로그 API는 recursive traversal을 막기 위해 `maxDepth`를 낮게 유지하고, 전체 필드 가중치를 제한하기 위해 `maxComplexity`를 설정하며, aggregate compute estimate를 제한하기 위해 `maxCost`를 설정할 수 있습니다. 이러한 module-level control은 서버를 마비시킬 수 있는 고비용 또는 깊은 재귀 쿼리에 대한 노출을 줄이며, N+1 조회 패턴에 대한 완화책은 request-scoped DataLoader로 유지해 GraphQL 계약을 런타임 패키지 표면과 일치시킵니다.
 
 나아가 복잡도 분석을 **영구 쿼리 화이트리스트(Persistent Query Whitelisting)**와 결합할 수 있습니다. 프로덕션에서 사전 승인된 명명된 쿼리만 실행할 수 있도록 허용함으로써, 공격자가 임의의 고비용 쿼리를 보낼 위험을 제거합니다. 임의의 쿼리가 필요한 공개 GraphQL API의 경우, 복잡도 기반 스로틀링이 여전히 가장 강력한 방어책입니다. 요청되는 데이터의 "비용"과 "형태"를 모두 분석하는 이러한 이중 계층 접근 방식은 클라이언트의 요구 사항이 아무리 복잡해지더라도 GraphQL 백엔드가 우수한 성능과 보안을 유지하도록 보장합니다.
 
