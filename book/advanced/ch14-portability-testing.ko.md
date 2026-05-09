@@ -225,8 +225,8 @@ const harness = createHttpAdapterPortabilityHarness({
 describe('MyCustomAdapter Portability', () => {
   it('잘못된 형식의 쿠키를 보존해야 함', () => harness.assertPreservesMalformedCookieValues());
   it('SSE를 처리해야 함', () => harness.assertSupportsSseStreaming());
-  it('중단 시그널을 준수해야 함', () => harness.assertPropagatesAbortSignals());
-  it('원시 바디 무결성을 검증해야 함', () => harness.assertPreservesRawBodyBuffer());
+  it('JSON 및 text 원시 바디를 보존해야 함', () => harness.assertPreservesRawBodyForJsonAndText());
+  it('multipart 원시 바디를 제외해야 함', () => harness.assertExcludesRawBodyForMultipart());
 });
 ```
 

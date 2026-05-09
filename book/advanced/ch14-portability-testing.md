@@ -225,8 +225,8 @@ const harness = createHttpAdapterPortabilityHarness({
 describe('MyCustomAdapter Portability', () => {
   it('preserves malformed cookies', () => harness.assertPreservesMalformedCookieValues());
   it('handles SSE', () => harness.assertSupportsSseStreaming());
-  it('respects abort signals', () => harness.assertPropagatesAbortSignals());
-  it('verifies raw body integrity', () => harness.assertPreservesRawBodyBuffer());
+  it('preserves JSON and text raw bodies', () => harness.assertPreservesRawBodyForJsonAndText());
+  it('excludes multipart raw bodies', () => harness.assertExcludesRawBodyForMultipart());
 });
 ```
 
