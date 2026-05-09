@@ -59,15 +59,6 @@ import { Module, Inject } from '@fluojs/core';
 import { QueueModule, QueueLifecycleService } from '@fluojs/queue';
 import { RedisModule } from '@fluojs/redis';
 
-@Module({
-  imports: [
-    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
-    QueueModule.forRoot(),
-  ],
-  providers: [OrderService, OrderWorker],
-})
-export class AppModule {}
-
 @Inject(QueueLifecycleService)
 export class OrderService {
   constructor(private readonly queue: QueueLifecycleService) {}
@@ -76,6 +67,15 @@ export class OrderService {
     await this.queue.enqueue(new ProcessOrderJob(id));
   }
 }
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    QueueModule.forRoot(),
+  ],
+  providers: [OrderService, OrderWorker],
+})
+export class AppModule {}
 ```
 
 ## Common Patterns
