@@ -81,19 +81,19 @@ import { MetricsModule } from '@fluojs/metrics';
 export class AppModule {}
 ```
 
-기본적으로 이는 `GET /metrics` 엔드포인트를 노출합니다. 이 엔드포인트에 접속하면 내부 Node.js 메트릭(CPU, 메모리, 가비지 컬렉션)과 Fluo 전용 메트릭이 포함된 텍스트 형식(OpenMetrics)의 데이터를 볼 수 있습니다. 이 "OpenMetrics" 형식은 현대적인 관측성 도구에서 널리 쓰이는 공통 형식이며, 많은 모니터링 도구가 그대로 읽을 수 있습니다.
+기본적으로 이는 `GET /metrics` 엔드포인트를 노출합니다. 응답은 활성 `prom-client` Registry가 제공하는 Prometheus text exposition content type을 사용합니다. `defaultMetrics`를 켜 둔 경우 기본 프로세스 및 Node.js 메트릭과 같은 Registry의 Fluo 전용 메트릭이 함께 포함됩니다. 이것이 현재 `@fluojs/metrics` 패키지 계약입니다. 향후 패키지 버전이 명시적으로 문서화하기 전까지는 이 엔드포인트가 다른 exposition format을 반환한다고 가정하여 스크레이퍼나 테스트를 구성하지 마세요.
 
 ### 19.3.1 Under the Hood: The Registry
-`MetricsModule`은 애플리케이션에 정의된 모든 메트릭의 내부 "레지스트리(Registry)"를 유지 관리합니다. `/metrics` 엔드포인트가 호출되면 모듈은 이 레지스트리를 순회하며 현재 값들을 수집하고 이를 텍스트 응답 형식으로 변환합니다. 이 과정은 스크랩 요청이 애플리케이션 성능에 불필요한 부담을 주지 않도록 가볍게 유지되어야 합니다.
+각 `MetricsModule.forRoot()` 호출은 `registry` option을 명시적으로 전달하지 않는 한 격리된 `prom-client` `Registry`를 소유합니다. `/metrics` 엔드포인트가 호출되면 모듈은 해당 active Registry를 스크레이프하고 현재 값을 수집하여 Prometheus 텍스트 응답 형식으로 변환합니다. 이 과정은 스크랩 요청이 애플리케이션 성능에 불필요한 부담을 주지 않도록 가볍게 유지되어야 합니다.
 
 ### 19.3.2 Scrape Intervals and Resolution
 중요한 고려 사항 중 하나는 Prometheus가 얼마나 자주 애플리케이션을 스크랩해야 하는가입니다. 전형적인 간격은 15초 또는 30초입니다. 간격이 짧을수록 더 고해상도의 데이터를 얻을 수 있지만 서버 부하가 늘어납니다. 간격이 길면 가볍지만 짧은 트래픽 폭주(micro-bursts)를 놓칠 수 있습니다. Fluo의 메트릭은 "스레드 안전"하고 "비차단(Non-Blocking)" 방식으로 설계되어 있으므로, 운영자는 정확도와 비용 사이의 균형을 기준으로 간격을 정하면 됩니다.
 
-### 19.3.3 Customizing the Default Registry
-Fluo는 글로벌 기본 레지스트리를 제공하지만, 때로는 시스템 메트릭과 비즈니스 KPI를 분리하기 위해 여러 레지스트리를 관리해야 할 수도 있습니다. `MetricsModule`을 사용하면 커스텀 레지스트리를 정의하고 주입할 수 있어 데이터가 조직되고 노출되는 방식을 완전히 제어할 수 있습니다. 이는 각 테넌트마다 별도의 메트릭 엔드포인트를 노출하고 싶은 멀티 테넌트 애플리케이션에서 특히 유용합니다.
+### 19.3.3 Choosing a Registry Model
+기본 모델은 격리된 Registry ownership입니다. 하나의 `MetricsModule.forRoot()` 인스턴스가 자신이 소유한 collector를 등록하고 스크레이프합니다. framework metric과 application metric을 하나의 scrape surface에서 공유해야 한다면 직접 `Registry`를 만들고 제한된 custom metric을 등록한 뒤 `MetricsModule.forRoot({ registry })`에 전달하세요. 내장 HTTP collector와 플랫폼 텔레메트리 Gauge는 의도적으로 공유된 모듈 인스턴스 사이에서도 framework-owned이고 예상 label schema를 가진 경우에만 재사용되며, 애플리케이션이 직접 정의한 중복 메트릭 이름은 계속 빠르게 실패합니다.
 
 ### 19.3.4 Integration with Cloud-Native Sidecars
-Istio나 Linkerd와 같은 서비스 메쉬(Service Mesh) 환경에서 애플리케이션은 종종 "사이드카(Sidecar)" 프록시와 함께 실행됩니다. 이러한 프록시들은 자체 메트릭을 가지기도 하지만, Fluo 애플리케이션 메트릭을 합산하고 노출하도록 설정할 수도 있습니다. Fluo가 OpenMetrics 표준을 따르기 때문에 이 데이터는 사이드카 기반 관측성 패턴과 자연스럽게 연결됩니다.
+Istio나 Linkerd와 같은 서비스 메쉬(Service Mesh) 환경에서 애플리케이션은 종종 "사이드카(Sidecar)" 프록시와 함께 실행됩니다. 이러한 프록시들은 자체 메트릭을 가지기도 하지만, Fluo 애플리케이션 메트릭을 합산하고 노출하도록 설정할 수도 있습니다. Fluo는 Prometheus 텍스트 스크레이프 형식을 노출하므로 이 데이터는 Prometheus-compatible 사이드카 관측성 패턴과 자연스럽게 연결됩니다.
 
 ### 19.3.5 Metrics in Distributed Environments
 애플리케이션의 여러 인스턴스가 서로 다른 가용 영역(availability zones)이나 클라우드 제공업체에 걸쳐 실행되는 분산 시스템에서, `MetricsModule`은 지원되는 플랫폼 텔레메트리 라벨을 명시적으로 설정했을 때 각 인스턴스가 데이터를 일관되고 식별 가능한 방식으로 보고하도록 돕습니다. 현재 내장 플랫폼 텔레메트리 계약은 문서화된 `env`와 `instance` 라벨을 지원하며, pod 이름, host IP, zone, region 같은 인프라 라벨을 자동으로 추가하지 않습니다.
@@ -205,18 +205,27 @@ this.metrics.histogram({
 프로덕션 환경에서는 일반 대중에게 내부 메트릭을 공개하고 싶지 않을 것입니다. 메트릭은 트래픽 패턴, 사용자 증가세, 내부 아키텍처에 대한 민감한 정보를 드러낼 수 있습니다. 커스텀 미들웨어나 Fluo의 내장 보안 기능을 사용하여 엔드포인트를 보호할 수 있습니다.
 
 ```typescript
-MetricsModule.forRoot({
-  endpointMiddleware: [
-    (context, next) => {
-      const apiKey = context.request.headers['x-monitoring-key'];
-      if (apiKey !== process.env.MONITORING_SECRET) {
-        throw new ForbiddenException('Restricted Access');
-      }
-      return next();
+import { ForbiddenException, type MiddlewareContext, type Next } from '@fluojs/http';
+
+class MetricsTokenMiddleware {
+  private readonly monitoringSecret = 'configured-secret';
+
+  async handle(context: MiddlewareContext, next: Next): Promise<void> {
+    const apiKey = context.request.headers['x-monitoring-key'];
+    if (apiKey !== this.monitoringSecret) {
+      throw new ForbiddenException('Restricted Access');
     }
-  ],
+
+    await next();
+  }
+}
+
+MetricsModule.forRoot({
+  endpointMiddleware: [MetricsTokenMiddleware],
 })
 ```
+
+`endpointMiddleware`는 scrape endpoint에만 적용되는 route-scoped middleware이며 `@fluojs/http`와 같은 class-based middleware 계약을 따릅니다. `handle(context, next)` 메서드에서 예외를 던지거나 반환하거나 `next()`를 `await`하는 middleware constructor를 전달하세요.
 
 ### 19.6.1 IP Whitelisting
 프로덕션에서 흔히 쓰이는 패턴은 Prometheus 서버의 IP 주소만 `/metrics` 라우트에 접근할 수 있도록 허용하는 것입니다. 이는 모니터링 도구에 복잡한 인증 로직을 요구하지 않으면서도 강력한 보안 계층을 제공합니다. 대부분의 클라우드 제공업체는 보안 그룹이나 방화벽을 통해 네트워크 수준에서 이를 구현할 수 있게 해주지만, Fluo의 미들웨어 시스템은 코드에서도 이를 유연하게 처리할 수 있는 방법을 제공합니다.
@@ -281,7 +290,7 @@ Fluo는 공통적인 사용 사례(예: "API 개요", "데이터베이스 성능
 - **커스텀 추적**: 비즈니스에 중요한 KPI와 시스템 상태를 측정하기 위해 `Counter`, `Gauge`, `Histogram`을 사용하세요.
 - **HTTP 인스트루먼테이션**: Fluo는 `MetricsModule.forRoot({ http: true })` 또는 동등한 HTTP 옵션을 활성화한 경우 기준 가시성을 위한 기본 HTTP 요청, 에러, 지연 시간 메트릭을 제공합니다.
 - **알림**: 성능이 저하되거나 에러율이 급증할 때 팀에 알리도록 Grafana를 활용하여 선제적인 사고 대응을 준비하세요.
-- **표준화**: OpenMetrics 표준을 따름으로써 Fluo는 현대적인 모니터링 생태계와의 호환성을 확보합니다.
+- **표준화**: Prometheus 텍스트 형식 스크레이프를 노출함으로써 Fluo는 Prometheus 모니터링 생태계와의 호환성을 확보합니다.
 
 Part 4: 캐싱과 운영을 마쳤습니다. 이제 FluoBlog에는 더 빠른 읽기 경로와 명확한 헬스 신호, 그리고 실행 중 상태를 관찰할 수 있는 메트릭이 갖춰졌습니다. 마지막 파트에서는 테스트와 최종 프로덕션 점검에 집중합니다.
 

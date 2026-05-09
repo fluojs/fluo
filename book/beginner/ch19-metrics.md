@@ -81,19 +81,19 @@ import { MetricsModule } from '@fluojs/metrics';
 export class AppModule {}
 ```
 
-By default, this exposes the `GET /metrics` endpoint. When you access this endpoint, you can see text-format data, OpenMetrics, that includes internal Node.js metrics such as CPU, memory, and garbage collection, as well as Fluo-specific metrics. This "OpenMetrics" format is a common format widely used by modern observability tools, and many monitoring tools can read it as-is.
+By default, this exposes the `GET /metrics` endpoint. The response uses the Prometheus text exposition content type provided by the active `prom-client` registry. It includes default process and Node.js metrics when `defaultMetrics` stays enabled, plus Fluo-specific metrics from the same registry. This is the package contract for `@fluojs/metrics`; do not configure scrapers or tests as if the endpoint returned another exposition format unless a future package version explicitly documents that format.
 
 ### 19.3.1 Under the Hood: The Registry
-`MetricsModule` maintains an internal registry of every metric defined in the application. When the `/metrics` endpoint is called, the Module walks this registry, collects the current values, and converts them into a text response format. This process should stay lightweight so scrape requests do not add unnecessary load to application performance.
+Each `MetricsModule.forRoot()` call owns an isolated `prom-client` `Registry` unless you explicitly pass a `registry` option. When the `/metrics` endpoint is called, the module scrapes that active registry, collects the current values, and converts them into the Prometheus text response format. This process should stay lightweight so scrape requests do not add unnecessary load to application performance.
 
 ### 19.3.2 Scrape Intervals and Resolution
 One important consideration is how often Prometheus should scrape the application. Typical intervals are 15 or 30 seconds. Shorter intervals provide higher-resolution data but increase server load. Longer intervals are lighter, but they can miss short traffic micro-bursts. Fluo's metrics are designed to be thread-safe and non-blocking, so operators can choose an interval based on the balance between accuracy and cost.
 
-### 19.3.3 Customizing the Default Registry
-Fluo provides a global default registry, but sometimes you may need to manage multiple registries to separate system metrics from business KPIs. `MetricsModule` lets you define and inject custom registries, giving you full control over how data is organized and exposed. This is especially useful in multi-tenant applications where you want to expose a separate metrics endpoint for each tenant.
+### 19.3.3 Choosing a Registry Model
+The default model is isolated registry ownership: one `MetricsModule.forRoot()` instance registers and scrapes the collectors it owns. If you need framework metrics and application metrics to share a scrape surface, create a `Registry` yourself, register bounded custom metrics on it, and pass that registry to `MetricsModule.forRoot({ registry })`. Built-in HTTP collectors and platform telemetry gauges are reused across intentionally shared module instances only when they are framework-owned and have the expected label schema; application-defined duplicate metric names still fail fast.
 
 ### 19.3.4 Integration with Cloud-Native Sidecars
-In service mesh environments such as Istio or Linkerd, applications often run with sidecar proxies. These proxies may have their own metrics, but they can also be configured to aggregate and expose Fluo application metrics. Because Fluo follows the OpenMetrics standard, this data connects naturally with sidecar-based observability patterns.
+In service mesh environments such as Istio or Linkerd, applications often run with sidecar proxies. These proxies may have their own metrics, but they can also be configured to aggregate and expose Fluo application metrics. Because Fluo exposes the Prometheus text scrape format, this data connects naturally with Prometheus-compatible sidecar observability patterns.
 
 ### 19.3.5 Metrics in Distributed Environments
 In distributed systems where multiple application instances run across different availability zones or cloud providers, `MetricsModule` helps each instance report data in a consistent and identifiable way when you configure the supported platform telemetry labels explicitly. The built-in platform telemetry contract supports the documented `env` and `instance` labels; it does not automatically add infrastructure labels such as pod names, host IPs, zones, or regions.
@@ -205,18 +205,27 @@ A common monitoring problem is that metrics do not appear in Prometheus until th
 In production, you likely do not want to expose internal metrics to the general public. Metrics can reveal sensitive information about traffic patterns, user growth, and internal architecture. You can protect the endpoint with custom Middleware or Fluo's built-in security features.
 
 ```typescript
-MetricsModule.forRoot({
-  endpointMiddleware: [
-    (context, next) => {
-      const apiKey = context.request.headers['x-monitoring-key'];
-      if (apiKey !== process.env.MONITORING_SECRET) {
-        throw new ForbiddenException('Restricted Access');
-      }
-      return next();
+import { ForbiddenException, type MiddlewareContext, type Next } from '@fluojs/http';
+
+class MetricsTokenMiddleware {
+  private readonly monitoringSecret = 'configured-secret';
+
+  async handle(context: MiddlewareContext, next: Next): Promise<void> {
+    const apiKey = context.request.headers['x-monitoring-key'];
+    if (apiKey !== this.monitoringSecret) {
+      throw new ForbiddenException('Restricted Access');
     }
-  ],
+
+    await next();
+  }
+}
+
+MetricsModule.forRoot({
+  endpointMiddleware: [MetricsTokenMiddleware],
 })
 ```
+
+`endpointMiddleware` is route-scoped middleware for the scrape endpoint and follows the same class-based middleware contract as `@fluojs/http`: pass middleware constructors whose `handle(context, next)` method either throws, returns, or awaits `next()`.
 
 ### 19.6.1 IP Whitelisting
 A common production pattern is allowing only the Prometheus server IP address to access the `/metrics` route. This provides a strong security layer without requiring complex authentication logic in the monitoring tool. Most cloud providers let you implement this at the network level through security groups or firewalls, but Fluo's Middleware system also gives you a flexible way to handle it in code.
@@ -281,7 +290,7 @@ Metrics turn FluoBlog from a "black box" into an observable system. Collecting d
 - **Custom tracking**: Use `Counter`, `Gauge`, and `Histogram` to measure business-critical KPIs and system state.
 - **HTTP instrumentation**: Fluo provides baseline HTTP request, error, and latency metrics when `MetricsModule.forRoot({ http: true })` or equivalent HTTP options are enabled.
 - **Alerting**: Use Grafana to prepare proactive incident response by notifying the team when performance degrades or error rates spike.
-- **Standardization**: By following the OpenMetrics standard, Fluo remains compatible with the modern monitoring ecosystem.
+- **Standardization**: By exposing Prometheus text-format scrapes, Fluo remains compatible with the Prometheus monitoring ecosystem.
 
 Part 4, caching and operations, is complete. FluoBlog now has faster read paths, clear health signals, and metrics for observing runtime state. In the final part, we will focus on testing and final production checks.
 
