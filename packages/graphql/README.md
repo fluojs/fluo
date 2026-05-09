@@ -205,5 +205,5 @@ Supported module options include `schema`, `context`, `plugins`, `graphiql`, `in
 
 ## Example Sources
 
-- `packages/graphql/src/module.test.ts`: Integration tests and usage examples.
-- `examples/graphql-yoga`: Complete GraphQL application example.
+- `packages/graphql/src/module.test.ts`: Integration tests and usage examples for module registration, resolver execution, request-scoped containers, subscriptions, and guardrail defaults.
+- `packages/graphql/field-resolver-rfc.md`: Design notes for field-resolver patterns that are not part of the current runtime contract.

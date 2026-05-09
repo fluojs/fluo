@@ -205,5 +205,5 @@ GraphqlModule.forRoot({
 
 ## 예제 소스
 
-- `packages/graphql/src/module.test.ts`: 통합 테스트 및 사용 예제.
-- `examples/graphql-yoga`: 전체 GraphQL 애플리케이션 예제.
+- `packages/graphql/src/module.test.ts`: 모듈 등록, resolver 실행, request-scoped container, subscription, guardrail 기본값을 다루는 통합 테스트 및 사용 예제.
+- `packages/graphql/field-resolver-rfc.md`: 현재 런타임 계약에 포함되지 않는 field-resolver 패턴의 설계 노트.
