@@ -172,7 +172,7 @@ GraphqlModule.forRoot({
 GraphQL APIs can be vulnerable to deeply nested or expensive queries. Fluo includes **operational guardrails** in the default configuration to reduce these risks.
 
 - **Introspection**: Disabled by default in production environments.
-- **Complexity limits**: Use `maxDepth`, `maxComplexity`, and `maxCost` to reduce excessive query cost and the possibility of denial-of-service (DoS) attacks.
+- **Complexity limits**: Configure `maxDepth`, `maxComplexity`, and `maxCost` at the `GraphqlModule.forRoot(...)` boundary to reduce excessive query cost and the possibility of denial-of-service (DoS) attacks. These limits are module-level guardrails; the current runtime contract does not expose per-field cost decorators.
 
 ```typescript
 GraphqlModule.forRoot({
@@ -188,6 +188,8 @@ GraphqlModule.forRoot({
 
 FluoShop uses GraphQL to provide a more fine-grained product catalog query experience. It applies DataLoader to category lookups and puts complexity limits on search endpoints so performance and safety are managed together.
 
+Keep the product catalog guardrail at the module boundary. Tune `limits.maxDepth`, `limits.maxComplexity`, and `limits.maxCost` for the catalog query shape instead of adding unsupported resolver or field-cost decorators.
+
 ```typescript
 class CatalogSearchInput {
   @Arg('query')
@@ -198,7 +200,7 @@ class CatalogSearchInput {
 export class CatalogResolver {
   @Query({ input: CatalogSearchInput })
   async search(input: CatalogSearchInput) {
-    // Complexity is calculated automatically based on the result set size.
+    // Module-level GraphqlModule limits bound this query's shape and cost.
     return this.catalogService.search(input.query);
   }
 }
