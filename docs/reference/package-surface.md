@@ -53,6 +53,7 @@
 - **`@fluojs/websockets`**: WebSocket gateway authoring with runtime-specific subpaths `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`.
 - **`@fluojs/validation`**: Standard-decorator input validation, DTO materialization, and request-boundary safety.
 - **`@fluojs/prisma` / `@fluojs/drizzle`**: ORM lifecycle and ALS-backed transaction context.
+- **`@fluojs/mongoose`**: Mongoose lifecycle integration with ALS/session-aware transaction boundaries, request-scoped transaction interception, explicit `currentSession()` access for model operations, ambient-session delegation through `connection.transaction(...)` when available, and shutdown snapshots that report active request/session drain state.
 
 ### tooling
 - **`@fluojs/cli`**: Project scaffolding, generation, codemods, and inspection export/delegation for runtime-produced snapshots. `fluo inspect` owns CLI argument validation, application bootstrap/close, JSON snapshot serialization, report artifact writing, `--output <path>` file emission, and the handoff to Studio for Mermaid rendering.
