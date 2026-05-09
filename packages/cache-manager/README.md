@@ -79,8 +79,9 @@ Inject `CacheService` to manage cache programmatically.
 import { Inject } from '@fluojs/core';
 import { CacheService } from '@fluojs/cache-manager';
 
+@Inject(CacheService)
 class UserService {
-  constructor(@Inject(CacheService) private readonly cache: CacheService) {}
+  constructor(private readonly cache: CacheService) {}
 
   async getProfile(userId: string) {
     return this.cache.remember(`user:${userId}`, async () => {

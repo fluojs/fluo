@@ -65,8 +65,9 @@ Once registered, you can inject `ConfigService` to access your values:
 import { Inject } from '@fluojs/core';
 import { ConfigService } from '@fluojs/config';
 
+@Inject(ConfigService)
 class MyService {
-  constructor(@Inject(ConfigService) private config: ConfigService) {
+  constructor(private readonly config: ConfigService) {
     const port = this.config.get('PORT');
     const dbUrl = this.config.getOrThrow('DATABASE_URL');
   }

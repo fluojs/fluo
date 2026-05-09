@@ -115,6 +115,18 @@ class ServiceB {
 }
 ```
 
+`forwardRef(...)` and `optional(...)` are token wrappers used inside the class-level `@Inject(...)` token list or provider-level `inject` arrays. They are not decorators and do not attach to constructor parameters.
+
+```typescript
+import { optional } from '@fluojs/di';
+import { Inject } from '@fluojs/core';
+
+@Inject(optional(AuditLogger))
+class ServiceWithOptionalLogger {
+  constructor(private readonly auditLogger: AuditLogger | undefined) {}
+}
+```
+
 ## Testing and Mocking
 
 You can easily override providers in the container to use mocks or stubs during unit testing by using `useValue`.
@@ -155,8 +167,8 @@ Ensure all required providers are registered in the container. If you use `creat
 | `has(token)` | Checks if a token is registered in the container or its parents. |
 | `hasRequestScopedDependency(token)` | Checks whether resolving a token may require a request-scope container because its provider graph contains request-scoped dependencies or is cyclic. |
 | `dispose()` | Disposes request children and root-owned singleton instances. |
-| `forwardRef(fn)` | Defers token lookup for declaration-order issues. |
-| `optional(token)` | Marks a dependency token as optional; missing optional dependencies resolve to `undefined`. |
+| `forwardRef(fn)` | Returns a token wrapper that defers lookup for declaration-order issues; it does not make constructor dependency cycles resolvable. |
+| `optional(token)` | Returns a token wrapper that marks one dependency as optional; missing optional dependencies resolve to `undefined`. |
 | `Scope` | Exposes `DEFAULT`, `REQUEST`, and `TRANSIENT` scope constants. |
 | Error classes | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |
 

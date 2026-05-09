@@ -86,8 +86,9 @@ export class AppModule {}
 import { Inject } from '@fluojs/core';
 import { EmailService } from '@fluojs/email';
 
+@Inject(EmailService)
 export class WelcomeService {
-  constructor(@Inject(EmailService) private readonly email: EmailService) {}
+  constructor(private readonly email: EmailService) {}
 
   async sendWelcome(address: string) {
     await this.email.send({

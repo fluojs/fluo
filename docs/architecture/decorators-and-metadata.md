@@ -9,7 +9,7 @@ This document defines the current fluo decorator and metadata contract. fluo use
 | Contract area | fluo runtime rule |
 | --- | --- |
 | Language model | Decorators use TC39 standard decorator semantics with decorator context objects. |
-| DI wiring | Constructor dependencies are explicit through `@Inject(...)` or provider-level `inject`. |
+| DI wiring | Constructor dependencies are explicit through class-level `@Inject(...)` or provider-level `inject`. |
 | Metadata source | Metadata is written by framework helpers and standard `context.metadata` flows. |
 | Reflection dependency | `reflect-metadata` is not required for fluo's decorator contract. |
 | Route metadata | `@Controller`, `@Get`, `@Post`, and related decorators write framework-owned controller and route records. |
@@ -23,7 +23,7 @@ This document defines the current fluo decorator and metadata contract. fluo use
 - `@Get(...)`, `@Post(...)`, `@Put(...)`, `@Patch(...)`, `@Delete(...)`, `@Options(...)`, `@Head(...)`, and related HTTP decorators are standard method decorators.
 - DTO binding decorators such as `@FromBody(...)` and related HTTP field decorators are standard field decorators.
 - Decorators write metadata during decorator evaluation. fluo does not scan files or infer runtime contracts from unrelated source structure.
-- `@Inject(...)` defines constructor tokens explicitly. Token order maps to constructor parameter order.
+- `@Inject(...)` is a standard class decorator that defines constructor tokens explicitly. Token order maps to constructor parameter order.
 - `@Inject()` with no tokens records an explicit empty override for inherited constructor token metadata.
 - `@Scope(...)` records provider lifetime metadata. Supported values are `singleton`, `request`, and `transient`.
 - `@Module(...)` records module composition metadata such as `imports`, `providers`, `controllers`, `exports`, and `global`.
@@ -49,7 +49,7 @@ This document defines the current fluo decorator and metadata contract. fluo use
 | Contract area | Required rule |
 | --- | --- |
 | Compiler baseline | fluo packages and examples use the standard decorator configuration required by the repo. |
-| DI dependencies | Constructor wiring uses explicit `@Inject(...)` tokens or provider `inject` arrays. |
+| DI dependencies | Constructor wiring uses explicit class-level `@Inject(...)` tokens or provider `inject` arrays. |
 | Runtime metadata | Runtime consumers read fluo metadata helpers and framework-owned metadata stores. |
 | Route paths | Route paths use literal segments or full `:param` segments. |
 | Constructor inheritance | Subclasses that should not inherit constructor tokens use `@Inject()` to record an explicit empty override. |

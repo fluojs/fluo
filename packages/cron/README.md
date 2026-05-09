@@ -123,10 +123,9 @@ You can manage tasks at runtime using the `SCHEDULING_REGISTRY`.
 import { Inject } from '@fluojs/core';
 import { SCHEDULING_REGISTRY, type SchedulingRegistry } from '@fluojs/cron';
 
+@Inject(SCHEDULING_REGISTRY)
 class TaskManager {
-  constructor(
-    @Inject(SCHEDULING_REGISTRY) private readonly registry: SchedulingRegistry
-  ) {}
+  constructor(private readonly registry: SchedulingRegistry) {}
 
   addNewTask() {
     this.registry.addCron('dynamic-job', '0 * * * *', () => {

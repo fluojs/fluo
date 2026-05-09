@@ -22,12 +22,12 @@
 ## Injection Rules
 
 - fluo uses explicit token-based injection. Constructor resolution MUST use declared tokens, not emitted type metadata.
-- A class or controller with required constructor parameters MUST provide matching `@Inject(...)` metadata unless the provider object supplies `inject` explicitly.
+- A class or controller with required constructor parameters MUST provide matching class-level `@Inject(...)` metadata unless the provider object supplies `inject` explicitly.
 - `@Inject(...)` tokens MUST cover every required constructor parameter. Missing entries fail module-graph validation with `ModuleInjectionMetadataError`.
 - `@Inject()` with no tokens records an explicit empty override and clears inherited constructor token metadata.
 - Constructor tokens MAY be classes, strings, symbols, `forwardRef(...)` wrappers, or `optional(...)` wrappers.
-- `forwardRef(...)` MUST be used when a token is not defined at decoration time because of a declaration-time cycle.
-- `optional(token)` marks one dependency as optional. A missing optional token resolves to `undefined` instead of throwing.
+- `forwardRef(...)` wraps one token whose value is not defined at decoration time because of declaration order; it does not make true constructor cycles resolvable.
+- `optional(token)` wraps one dependency token as optional. A missing optional token resolves to `undefined` instead of throwing.
 - A provider or controller MAY inject tokens that are local to the current module.
 - A provider or controller MAY inject tokens exported by directly imported modules.
 - A provider or controller MAY inject tokens exported by global modules.
