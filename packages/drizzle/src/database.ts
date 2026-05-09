@@ -41,6 +41,12 @@ type DrizzleRuntimeOptions = {
   strictTransactions: boolean;
 };
 
+type TransactionContext<TTransactionDatabase> = {
+  database: TTransactionDatabase;
+  deferredRequestTransactionHandles?: Set<ActiveRequestTransactionHandle>;
+  requestAbortSignal?: AbortSignal;
+};
+
 /**
  * Transaction-aware Drizzle wrapper that integrates request scoping and shutdown handling with the Fluo runtime.
  *
@@ -55,7 +61,7 @@ export class DrizzleDatabase<
   TTransactionOptions = unknown,
 > implements DrizzleHandleProvider<TDatabase, TTransactionDatabase, TTransactionOptions>, OnApplicationShutdown
 {
-  private readonly transactions = new AsyncLocalStorage<TTransactionDatabase>();
+  private readonly transactions = new AsyncLocalStorage<TransactionContext<TTransactionDatabase>>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
   private lifecycleState: 'ready' | 'shutting-down' | 'stopped' = 'ready';
 
@@ -76,7 +82,7 @@ export class DrizzleDatabase<
    * @returns The transaction-scoped database inside an active boundary, or the root database outside one.
    */
   current(): TDatabase | TTransactionDatabase {
-    return this.transactions.getStore() ?? this.database;
+    return this.transactions.getStore()?.database ?? this.database;
   }
 
   /** Aborts active request transactions, waits for settlement, then runs the optional dispose hook. */
@@ -154,8 +160,8 @@ export class DrizzleDatabase<
         throw new Error(NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR);
       }
 
-      if (requestScoped && signal) {
-        return raceWithAbort(fn, signal);
+      if (requestScoped) {
+        return this.executeNestedRequestTransaction(current, fn, signal);
       }
 
       return fn();
@@ -171,7 +177,22 @@ export class DrizzleDatabase<
     }
 
     if (!requestScoped) {
-      return transactionRunner((transactionDatabase) => this.transactions.run(transactionDatabase, fn), options);
+      const deferredRequestTransactionHandles = new Set<ActiveRequestTransactionHandle>();
+
+      try {
+        return await transactionRunner(
+          (transactionDatabase) =>
+            this.transactions.run(
+              { database: transactionDatabase, deferredRequestTransactionHandles },
+              fn,
+            ),
+          options,
+        );
+      } finally {
+        for (const handle of deferredRequestTransactionHandles) {
+          this.untrackActiveRequestTransaction(handle);
+        }
+      }
     }
 
     return this.executeRequestTransaction(transactionRunner, fn, options, signal);
@@ -190,7 +211,11 @@ export class DrizzleDatabase<
 
     try {
       const result = await transactionRunner<T>(
-        (transactionDatabase) => this.transactions.run(transactionDatabase, () => raceWithAbort(fn, abortContext.signal)),
+        (transactionDatabase) =>
+          this.transactions.run(
+            { database: transactionDatabase, requestAbortSignal: abortContext.signal },
+            () => raceWithAbort(fn, abortContext.signal),
+          ),
         options,
       );
 
@@ -200,6 +225,43 @@ export class DrizzleDatabase<
     } finally {
       abortContext.cleanup();
       this.untrackActiveRequestTransaction(active);
+    }
+  }
+
+  private async executeNestedRequestTransaction<T>(
+    current: TransactionContext<TTransactionDatabase>,
+    fn: () => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    if (current.requestAbortSignal) {
+      if (signal) {
+        return raceWithAbort(fn, signal);
+      }
+
+      return fn();
+    }
+
+    this.assertRequestTransactionsAvailable();
+
+    const abortContext = createRequestAbortContext(signal);
+    const active = this.trackActiveRequestTransaction(abortContext.controller);
+    current.deferredRequestTransactionHandles?.add(active);
+
+    try {
+      const result = await this.transactions.run(
+        { database: current.database, requestAbortSignal: abortContext.signal },
+        () => raceWithAbort(fn, abortContext.signal),
+      );
+
+      this.throwIfRequestAborted(abortContext.signal);
+
+      return result;
+    } finally {
+      abortContext.cleanup();
+
+      if (!current.deferredRequestTransactionHandles) {
+        this.untrackActiveRequestTransaction(active);
+      }
     }
   }
 

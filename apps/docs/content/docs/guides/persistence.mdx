@@ -136,7 +136,7 @@ export class UserRepository {
 }
 ```
 
-`DrizzleTransactionInterceptor` wraps HTTP requests with `DrizzleDatabase.requestTransaction(...)`. During shutdown, active request transactions are aborted and settled before the configured `dispose(database)` hook runs.
+`DrizzleTransactionInterceptor` wraps HTTP requests with `DrizzleDatabase.requestTransaction(...)`. During shutdown, active request transactions are aborted and settled before the configured `dispose(database)` hook runs. Nested `requestTransaction(...)` calls inside existing manual transaction boundaries participate in the same shutdown tracking without opening another Drizzle transaction.
 
 ## Mongoose
 
