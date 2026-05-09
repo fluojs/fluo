@@ -65,6 +65,24 @@ function isFiniteNumericDate(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+function assertFiniteNumericDateClaim(payload: JwtClaims, claim: 'exp' | 'iat' | 'nbf'): void {
+  const value = payload[claim];
+
+  if (value !== undefined && !isFiniteNumericDate(value)) {
+    throw new JwtInvalidTokenError(`JWT ${claim} claim must be a finite numeric date.`);
+  }
+}
+
+function resolveClockSkewSeconds(clockSkewSeconds: number | undefined): number {
+  const clockSkew = clockSkewSeconds ?? 0;
+
+  if (!Number.isFinite(clockSkew) || clockSkew < 0) {
+    throw new JwtConfigurationError('JWT clockSkewSeconds must be a non-negative finite number.');
+  }
+
+  return clockSkew;
+}
+
 type AccessTokenVerificationOverrides = Pick<
   JwtVerifierOptions,
   'algorithms' | 'audience' | 'clockSkewSeconds' | 'issuer' | 'maxAge' | 'requireExp'
@@ -465,11 +483,14 @@ export class DefaultJwtVerifier {
 
   private validateTokenClaims(payload: JwtClaims, options: JwtVerifierOptions): void {
     const now = Math.floor(Date.now() / 1000);
-    const clockSkew = options.clockSkewSeconds ?? 0;
+    const clockSkew = resolveClockSkewSeconds(options.clockSkewSeconds);
 
     if (options.requireExp !== false && typeof payload.exp !== 'number') {
       throw new JwtInvalidTokenError('JWT is missing a required expiration claim.');
     }
+
+    assertFiniteNumericDateClaim(payload, 'exp');
+    assertFiniteNumericDateClaim(payload, 'nbf');
 
     this.validateMaxAgeClaims(payload, options.maxAge, clockSkew, now);
 

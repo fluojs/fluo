@@ -19,8 +19,17 @@ function signToken(
   header: Record<string, unknown> = { alg: 'HS256', typ: 'JWT' },
   hashAlgorithm = 'sha256',
 ) {
+  return signRawPayload(JSON.stringify(payload), secret, header, hashAlgorithm);
+}
+
+function signRawPayload(
+  payloadJson: string,
+  secret: string,
+  header: Record<string, unknown> = { alg: 'HS256', typ: 'JWT' },
+  hashAlgorithm = 'sha256',
+) {
   const headerSegment = encodeBase64Url(JSON.stringify(header));
-  const payloadSegment = encodeBase64Url(JSON.stringify(payload));
+  const payloadSegment = encodeBase64Url(payloadJson);
   const signature = createHmac(hashAlgorithm, secret)
     .update(`${headerSegment}.${payloadSegment}`)
     .digest('base64')
@@ -169,6 +178,45 @@ describe('DefaultJwtVerifier', () => {
     );
 
     await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtExpiredTokenError);
+  });
+
+  it('rejects non-finite exp NumericDate claims', async () => {
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      secret: 'secret',
+    });
+    const token = signRawPayload('{"exp":1e999,"sub":"non-finite-exp"}', 'secret');
+
+    await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtInvalidTokenError);
+    await expect(verifier.verifyAccessToken(token)).rejects.toThrow('JWT exp claim must be a finite numeric date.');
+  });
+
+  it('rejects non-finite nbf NumericDate claims', async () => {
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      secret: 'secret',
+    });
+    const token = signRawPayload('{"exp":4102444800,"nbf":1e999,"sub":"non-finite-nbf"}', 'secret');
+
+    await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtInvalidTokenError);
+    await expect(verifier.verifyAccessToken(token)).rejects.toThrow('JWT nbf claim must be a finite numeric date.');
+  });
+
+  it('rejects non-finite or negative clock skew configuration before time checks', async () => {
+    const token = signToken({ exp: Math.floor(Date.now() / 1000) - 60, sub: 'invalid-clock-skew' }, 'secret');
+
+    for (const clockSkewSeconds of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1]) {
+      const verifier = new DefaultJwtVerifier({
+        algorithms: ['HS256'],
+        clockSkewSeconds,
+        secret: 'secret',
+      });
+
+      await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtConfigurationError);
+      await expect(verifier.verifyAccessToken(token)).rejects.toThrow(
+        'JWT clockSkewSeconds must be a non-negative finite number.',
+      );
+    }
   });
 
   it('rejects invalid signatures', async () => {
