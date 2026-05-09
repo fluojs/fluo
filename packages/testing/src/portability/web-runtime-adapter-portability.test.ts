@@ -1,4 +1,4 @@
-import { describe, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 // biome-ignore lint/suspicious/noTsIgnore: Vitest resolves workspace package aliases after package builds.
 // @ts-ignore Vitest workspace alias resolution handles package test imports.
@@ -101,6 +101,41 @@ function restoreMockBun(originalBun: MockBun | undefined): void {
   (globalThis as typeof globalThis & { Bun?: MockBun }).Bun = originalBun;
 }
 
+async function createBunPortabilityApp(
+  rootModule: Parameters<typeof bootstrapBunApplication>[0],
+  options: Parameters<typeof bootstrapBunApplication>[1],
+  bootstrap: typeof bootstrapBunApplication = bootstrapBunApplication,
+) {
+  const originalBun = (globalThis as typeof globalThis & { Bun?: MockBun }).Bun;
+  const mockBun = installMockBun();
+  let app: Awaited<ReturnType<typeof bootstrapBunApplication>> | undefined;
+
+  try {
+    app = await bootstrap(rootModule, options);
+    await app.listen();
+  } catch (error) {
+    if (app) {
+      await app.close().catch(() => {});
+    }
+
+    restoreMockBun(originalBun);
+    throw error;
+  }
+
+  return {
+    async close() {
+      try {
+        await app.close();
+      } finally {
+        restoreMockBun(originalBun);
+      }
+    },
+    async dispatch(request: Request) {
+      return await mockBun.lastServer!.fetch(request);
+    },
+  };
+}
+
 function registerWebRuntimePortabilitySuite(
   name: string,
   harness: {
@@ -138,38 +173,56 @@ registerWebRuntimePortabilitySuite(
   'bun',
   createWebRuntimeHttpAdapterPortabilityHarness({
     async bootstrap(rootModule, options) {
-      const originalBun = (globalThis as typeof globalThis & { Bun?: MockBun }).Bun;
-      const mockBun = installMockBun();
-      let app: Awaited<ReturnType<typeof bootstrapBunApplication>> | undefined;
-
-      try {
-        app = await bootstrapBunApplication(rootModule, options);
-        await app.listen();
-      } catch (error) {
-        if (app) {
-          await app.close().catch(() => {});
-        }
-
-        restoreMockBun(originalBun);
-        throw error;
-      }
-
-      return {
-        async close() {
-          try {
-            await app.close();
-          } finally {
-            restoreMockBun(originalBun);
-          }
-        },
-        async dispatch(request: Request) {
-          return await mockBun.lastServer!.fetch(request);
-        },
-      };
+      return await createBunPortabilityApp(rootModule, options);
     },
     name: 'bun',
   }),
 );
+
+describe('bun web runtime adapter cleanup', () => {
+  it('restores mocked Bun when bootstrap throws before listen', async () => {
+    class BrokenModule {}
+    const previousBun = (globalThis as typeof globalThis & { Bun?: MockBun }).Bun;
+    const originalBun = { serve: vi.fn() } as MockBun;
+    (globalThis as typeof globalThis & { Bun?: MockBun }).Bun = originalBun;
+
+    try {
+      await expect(
+        createBunPortabilityApp(BrokenModule, {} as Parameters<typeof bootstrapBunApplication>[1], async () => {
+          throw new Error('bootstrap failed');
+        }),
+      ).rejects.toThrow('bootstrap failed');
+
+      expect((globalThis as typeof globalThis & { Bun?: MockBun }).Bun).toBe(originalBun);
+    } finally {
+      restoreMockBun(previousBun);
+    }
+  });
+
+  it('restores mocked Bun and closes partial apps when listen throws', async () => {
+    class BrokenModule {}
+    const previousBun = (globalThis as typeof globalThis & { Bun?: MockBun }).Bun;
+    const originalBun = { serve: vi.fn() } as MockBun;
+    const close = vi.fn(async () => {});
+    (globalThis as typeof globalThis & { Bun?: MockBun }).Bun = originalBun;
+
+    try {
+      await expect(
+        createBunPortabilityApp(BrokenModule, {} as Parameters<typeof bootstrapBunApplication>[1], async () => ({
+          close,
+          async listen() {
+            throw new Error('listen failed');
+          },
+        } as Awaited<ReturnType<typeof bootstrapBunApplication>>)),
+      ).rejects.toThrow('listen failed');
+
+      expect(close).toHaveBeenCalledTimes(1);
+      expect((globalThis as typeof globalThis & { Bun?: MockBun }).Bun).toBe(originalBun);
+    } finally {
+      restoreMockBun(previousBun);
+    }
+  });
+});
 
 registerWebRuntimePortabilitySuite(
   'deno',

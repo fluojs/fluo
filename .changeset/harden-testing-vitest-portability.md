@@ -1,6 +1,6 @@
 ---
-"@fluojs/core": patch
+"@fluojs/core": minor
 "@fluojs/testing": patch
 ---
 
-Harden `@fluojs/testing/vitest` module-id and Babel config portability, make HTTP portability harness assertions less flaky, and expose the module metadata reader through the public core entrypoint so testing helpers avoid private internals.
+Harden `@fluojs/testing/vitest` module-id and Babel config portability, make HTTP portability harness assertions less flaky, and add a public `getModuleMetadata()` reader through the core root entrypoint so testing helpers avoid private internals.
