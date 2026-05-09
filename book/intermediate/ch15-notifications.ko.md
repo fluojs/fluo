@@ -156,7 +156,7 @@ NotificationsModule.forRoot({
 FluoShop은 주문 확인을 위해 알림을 사용합니다. 이는 Part 2에서 구축한 event-driven 작업 위에 놓입니다. `OrderPlacedEvent`가 `OrderSaga`에 의해 포착되면 알림 dispatch가 트리거되고, 주문 처리와 사용자 알림은 느슨하게 연결된 후속 책임으로 분리됩니다.
 
 ```typescript
-@OnEvent('order.placed')
+@OnEvent(OrderPlacedEvent)
 async onOrderPlaced(event: OrderPlacedEvent) {
   await this.notifications.dispatch({
     channel: 'email',

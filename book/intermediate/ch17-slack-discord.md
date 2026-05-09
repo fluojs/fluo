@@ -175,7 +175,7 @@ In FluoShop, Slack is used for internal operational notifications, while Discord
 `NotificationsService` lets a single domain event route to one platform or several platforms based on policy.
 
 ```typescript
-@OnEvent('order.placed')
+@OnEvent(OrderPlacedEvent)
 async alertOps(event: OrderPlacedEvent) {
   // Notify developers through Slack
   await this.notifications.dispatch({

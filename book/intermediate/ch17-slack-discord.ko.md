@@ -173,7 +173,7 @@ await this.discord.send({
 FluoShop에서는 내부 운영 알림에는 Slack을 사용하고, 공개 커뮤니티에 공유할 주문 알림에는 Discord를 사용합니다. `NotificationsService`를 사용하면 하나의 도메인 이벤트를 정책에 따라 한 플랫폼 또는 여러 플랫폼으로 라우팅할 수 있습니다. 이 구분은 이벤트 생산자에게 채널 선택 책임을 떠넘기지 않고, 알림 정책을 중앙에서 관리하게 해줍니다.
 
 ```typescript
-@OnEvent('order.placed')
+@OnEvent(OrderPlacedEvent)
 async alertOps(event: OrderPlacedEvent) {
   // Slack으로 개발자에게 알림
   await this.notifications.dispatch({
