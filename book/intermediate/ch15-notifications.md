@@ -120,7 +120,7 @@ NotificationsModule.forRoot({
 });
 ```
 
-When `bulkThreshold` is reached, or when options explicitly request it, the service uses the queue adapter instead of direct delivery.
+When `bulkThreshold` is reached, or when options explicitly request it, the service uses the queue adapter instead of direct delivery. Each queued job carries a stable idempotency key: `notification.id` is preserved when supplied, otherwise the key is derived from the notification envelope so repeated requests can be deduplicated by queue backends that support idempotent enqueue operations.
 
 ## 15.6 Lifecycle Events
 
@@ -148,6 +148,8 @@ NotificationsModule.forRoot({
 - `notification.dispatch.failed`: When channel resolution, queue enqueue, or provider delivery fails.
 
 Channel resolution failures are permanent configuration errors: the service publishes `requested`, then `failed`, and throws `NotificationChannelNotFoundError` without enqueueing or calling a provider. Queue enqueue and provider delivery failures also publish `failed`, but retry policy should be based on the underlying queue or provider error. When a channel omits `externalId`, the service creates a deterministic fallback delivery id from the notification envelope rather than using time or random data.
+
+Publication failures for success events are best-effort so they do not turn a completed delivery into an application failure. Publication failures for `notification.dispatch.failed` are different: the caller receives an `AggregateError` containing both the original dispatch error and the publisher error so failed notification reporting is never silently swallowed.
 
 ## 15.7 FluoShop Context: Order Success Flow
 

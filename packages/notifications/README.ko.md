@@ -120,6 +120,7 @@ Behavioral contract 메모:
 - `dispatch()`는 queue adapter가 구성되어 있어도 기본적으로 직접 전달을 유지합니다. 단건 알림을 큐로 보내려면 `dispatch(..., { queue: true })`를 사용합니다.
 - queue adapter가 있어도 직접 전달을 강제하려면 `dispatch(..., { queue: false })`를 사용합니다.
 - 큐 기반 전달은 단건 dispatch에서는 opt-in이고, `dispatchMany(...)`에서는 threshold 기반으로 동작합니다.
+- Queue job에는 `notification.id`가 있으면 그 값을, 없으면 notification envelope에서 파생한 deterministic `id` idempotency key가 포함됩니다. Queue adapter는 deduplication을 지원하는 backing queue에 이 값을 전달해야 합니다.
 - `dispatchMany(..., { continueOnError: true })`는 direct delivery에서 첫 실패를 던지는 대신 실패들을 수집합니다.
 - queue enqueue가 실패하면 서비스는 enqueue 에러를 다시 던지기 전에 결정적인 `notification.dispatch.failed` 라이프사이클 이벤트를 발행합니다.
 - `enqueueMany(...)`가 없으면 대량 queue delivery는 각 job을 개별적으로 enqueue하는 방식으로 fallback합니다.
@@ -150,7 +151,7 @@ NotificationsModule.forRoot({
 - `notification.dispatch.delivered`
 - `notification.dispatch.failed`
 
-`events.publisher`가 구성되어 있으면 `publishLifecycleEvents: false`를 설정하지 않는 한 lifecycle event publication은 기본으로 켜집니다. 채널 delivery가 `externalId`를 생략하면 시간이나 난수에 의존하지 않고 notification envelope에서 파생한 deterministic fallback delivery id가 부여되어 dispatch result가 호출자에게 안정적으로 유지됩니다. 채널 해석 실패는 `NotificationChannelNotFoundError`를 던지기 전에 `requested` 이후 `failed` 이벤트를 발행하며, 이는 영구적인 구성 오류로 취급해야 합니다. Queue enqueue와 provider delivery 실패도 `failed` 이벤트를 발행하지만, retry 여부는 underlying adapter/provider error를 기준으로 분류해야 합니다.
+`events.publisher`가 구성되어 있으면 `publishLifecycleEvents: false`를 설정하지 않는 한 lifecycle event publication은 기본으로 켜집니다. 채널 delivery가 `externalId`를 생략하면 시간이나 난수에 의존하지 않고 notification envelope에서 파생한 deterministic fallback delivery id가 부여되어 dispatch result가 호출자에게 안정적으로 유지됩니다. 채널 해석 실패는 `NotificationChannelNotFoundError`를 던지기 전에 `requested` 이후 `failed` 이벤트를 발행하며, 이는 영구적인 구성 오류로 취급해야 합니다. Queue enqueue와 provider delivery 실패도 `failed` 이벤트를 발행하지만, retry 여부는 underlying adapter/provider error를 기준으로 분류해야 합니다. 성공 경로 lifecycle event의 publication failure는 이미 전달된 알림을 애플리케이션 실패로 바꾸지 않도록 best-effort로 유지됩니다. `notification.dispatch.failed` publication failure는 원래 dispatch error와 publisher error를 모두 포함하는 `AggregateError`로 호출자에게 드러나므로 failed-event 보장이 조용히 약해지지 않습니다.
 
 ### 의도적인 제한 사항
 
@@ -170,6 +171,7 @@ foundation 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `NotificationsModule.forRoot(options)` / `NotificationsModule.forRootAsync(options)`
 - `NotificationsService`
 - `NotificationsService.createPlatformStatusSnapshot()`
+- `Notifications`
 - `NOTIFICATIONS`
 - `NOTIFICATION_CHANNELS`
 
@@ -179,6 +181,7 @@ foundation 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `NotificationDispatchOptions`
 - `NotificationDispatchManyOptions`
 - `NotificationDispatchResult`
+- `NotificationDispatchBatchResult`
 - `NotificationDispatchFailure`
 - `NotificationDispatchStatus`
 - `NotificationChannel`
@@ -187,6 +190,8 @@ foundation 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `NotificationPayload`
 - `NotificationsQueueAdapter`
 - `NotificationsQueueJob`
+- `NotificationsQueueOptions`
+- `NotificationsModuleOptions`
 - `NotificationsAsyncModuleOptions`
 - `NotificationsEventsOptions`
 - `NotificationsEventPublisher`

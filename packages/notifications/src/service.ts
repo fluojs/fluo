@@ -70,7 +70,7 @@ export class NotificationsService implements Notifications {
       try {
         this.requireChannel(notification.channel);
       } catch (error) {
-        await this.publishLifecycleEventSafely('notification.dispatch.failed', notification, options, undefined, error);
+        await this.publishFailureLifecycleEvent(notification, options, error);
         throw error;
       }
 
@@ -88,7 +88,7 @@ export class NotificationsService implements Notifications {
 
         return result;
       } catch (error) {
-        await this.publishLifecycleEventSafely('notification.dispatch.failed', notification, options, undefined, error);
+        await this.publishFailureLifecycleEvent(notification, options, error);
         throw error;
       }
     }
@@ -98,7 +98,7 @@ export class NotificationsService implements Notifications {
     try {
       channel = this.requireChannel(notification.channel);
     } catch (error) {
-      await this.publishLifecycleEventSafely('notification.dispatch.failed', notification, options, undefined, error);
+      await this.publishFailureLifecycleEvent(notification, options, error);
       throw error;
     }
 
@@ -121,7 +121,7 @@ export class NotificationsService implements Notifications {
 
       return result;
     } catch (error) {
-      await this.publishLifecycleEventSafely('notification.dispatch.failed', notification, options, undefined, error);
+      await this.publishFailureLifecycleEvent(notification, options, error);
       throw error;
     }
   }
@@ -160,7 +160,7 @@ export class NotificationsService implements Notifications {
         try {
           this.requireChannel(notification.channel);
         } catch (error) {
-          await this.publishLifecycleEventSafely('notification.dispatch.failed', notification, options, undefined, error);
+          await this.publishFailureLifecycleEvent(notification, options, error);
           throw error;
         }
       }
@@ -174,11 +174,20 @@ export class NotificationsService implements Notifications {
           ? await queue.enqueueMany(jobs)
           : await Promise.all(jobs.map((job) => queue.enqueue(job)));
       } catch (error) {
-        await Promise.all(
+        const failurePublicationResults = await Promise.allSettled(
           notifications.map((notification) =>
-            this.publishLifecycleEventSafely('notification.dispatch.failed', notification, options, undefined, error),
+            this.publishLifecycleEvent('notification.dispatch.failed', notification, options, undefined, error),
           ),
         );
+
+        const publicationFailures = failurePublicationResults
+          .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+          .map((result) => result.reason);
+
+        if (publicationFailures.length > 0) {
+          throw createLifecyclePublicationFailureError(error, ...publicationFailures);
+        }
+
         throw error;
       }
 
@@ -249,9 +258,18 @@ export class NotificationsService implements Notifications {
   private createQueueJob<TRequest extends NotificationDispatchRequest>(notification: TRequest): NotificationsQueueJob<TRequest> {
     return {
       channel: notification.channel,
+      id: this.createQueueJobId(notification),
       notification,
       queuedAt: new Date().toISOString(),
     };
+  }
+
+  private createQueueJobId(notification: NotificationDispatchRequest): string {
+    if (notification.id && notification.id.length > 0) {
+      return notification.id;
+    }
+
+    return `notification:${notification.channel}:${stableNotificationHash(notification)}`;
   }
 
   private requireChannel(channelName: string): NotificationChannel {
@@ -349,6 +367,27 @@ export class NotificationsService implements Notifications {
       return;
     }
   }
+
+  private async publishFailureLifecycleEvent<TRequest extends NotificationDispatchRequest>(
+    notification: TRequest,
+    options: NotificationDispatchOptions,
+    error: unknown,
+  ): Promise<void> {
+    try {
+      await this.publishLifecycleEvent('notification.dispatch.failed', notification, options, undefined, error);
+    } catch (publicationError) {
+      throw createLifecyclePublicationFailureError(error, publicationError);
+    }
+  }
+}
+
+function createLifecyclePublicationFailureError(dispatchError: unknown, ...publicationErrors: unknown[]): AggregateError {
+  const primaryMessage = dispatchError instanceof Error ? dispatchError.message : 'Notification dispatch failed.';
+
+  return new AggregateError(
+    [dispatchError, ...publicationErrors],
+    `Notification dispatch failed, and failed lifecycle event publication also failed: ${primaryMessage}`,
+  );
 }
 
 function stableNotificationHash(notification: NotificationDispatchRequest): string {
