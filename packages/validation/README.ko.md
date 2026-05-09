@@ -131,10 +131,12 @@ class RestrictedUserDto {
 ### 중첩 검증
 
 `@ValidateNested(...)`는 객체 필드, 배열, `Set`, `Map`을 지원합니다. 중첩 DTO path는 validation issue에서 dot/index 표기법을 사용하며, cycle은 안전하게 감지되고 shared reference는 허용됩니다.
+중첩 타입을 지연 해석해야 할 때는 DTO 클래스 자체나 `() => ChildDto`, `function resolveChildDto() { return ChildDto; }` 같은 lazy constructor factory를 전달할 수 있습니다.
 
 ### 암묵적 scalar coercion 없음
 
 `materialize()`는 의도적으로 엄격합니다. Transport가 `'42'`를 넘기고 DTO가 `number`를 기대한다면, transport나 binding layer가 먼저 변환해야 합니다.
+`@IsLatitude()`, `@IsLongitude()`를 포함한 numeric validator는 numeric string을 이미 변환된 number처럼 취급하지 않고 DTO의 numeric 값을 검증합니다.
 
 ## 공개 API
 

@@ -201,6 +201,7 @@ These utilities let you define validation rules **once** in the base DTO and reu
 There is one detail in the validation package documentation that deserves special attention.
 
 The validator is intentionally strict. If the transport layer gives it `'42'` but the DTO expects a `number`, it does not quietly treat the string as if it had already been a number.
+The same rule applies to numeric helpers such as latitude and longitude validation: they validate already-converted numeric DTO values rather than coercing numeric strings.
 
 This is a healthy design choice. Silent coercion can hide bugs and make input behavior hard to predict. As Part 1 later covers failure paths too, this explicitness becomes even more important.
 
