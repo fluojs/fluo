@@ -40,6 +40,8 @@ class AppModule {}
 
 `MetricsModule.forRoot()`는 기본적으로 `GET /metrics`를 노출합니다. HTTP request instrumentation middleware를 설치하려면 `http: true` 또는 `http` option object를 전달하세요. HTTP 계측이 활성화되면 request total, error count, request duration을 기록합니다. 운영 환경에서는 scrape endpoint boundary를 명시적으로 다루세요. platform-level proxy가 준비될 때까지 `path: false`로 끄거나 dedicated endpoint middleware를 연결할 수 있습니다.
 
+Scrape endpoint는 active `prom-client` Registry output을 해당 Registry의 Prometheus content type으로 반환합니다. `MetricsModule.forRoot()`는 `registry` option을 전달하지 않는 한 격리된 Registry를 생성합니다. framework metric과 application-defined metric이 하나의 scrape surface를 의도적으로 공유해야 할 때만 shared `Registry`를 전달하세요.
+
 ## 공통 패턴
 
 ### HTTP path label 정규화
@@ -88,6 +90,8 @@ MetricsModule.forRoot({
   path: false,
 });
 ```
+
+`endpointMiddleware`는 class-based `@fluojs/http` middleware constructor를 받으며 metrics scrape endpoint에만 바인딩됩니다. middleware function이나 global middleware declaration은 이 option의 패키지 계약이 아닙니다.
 
 ### Framework metric과 app metric이 하나의 registry를 공유하기
 
@@ -165,8 +169,9 @@ MetricsModule.forRoot({
 ### 운영 기본값
 
 - `path`의 기본값은 `'/metrics'`이며, `path: false`로 스크레이프 엔드포인트를 완전히 비활성화할 수 있습니다.
+- scrape response는 active Registry의 Prometheus content type과 Registry contents를 사용합니다.
 - `defaultMetrics`의 기본값은 `true`이며, `defaultMetrics: false`로 해당 Registry의 Prometheus 기본 프로세스/Node.js collector를 끌 수 있습니다.
-- `endpointMiddleware`는 스크레이프 엔드포인트에만 route-scoped middleware를 바인딩합니다.
+- `endpointMiddleware`는 class-based route-scoped middleware를 스크레이프 엔드포인트에만 바인딩합니다.
 - HTTP 메트릭은 `http: true` 또는 `http` 옵션 객체를 전달한 경우에만 설치되며, 설치된 뒤에는 기본적으로 템플릿 기반 경로 라벨 정규화를 사용합니다.
 - 내장 HTTP collector와 플랫폼 텔레메트리 Gauge는 같은 Registry를 공유하는 모듈 인스턴스 사이에서 framework-owned이고 예상 label schema를 가진 경우에만 재사용되며, 커스텀 애플리케이션 메트릭 이름 충돌은 Prometheus의 중복 이름 실패 동작을 유지합니다.
 - raw path 라벨은 `allowUnsafeRawPathLabelMode: true`를 명시한 bounded internal route에서만 사용해야 합니다.

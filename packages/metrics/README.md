@@ -40,6 +40,8 @@ class AppModule {}
 
 `MetricsModule.forRoot()` exposes `GET /metrics` by default. Pass `http: true` (or an `http` options object) when you want the module to install HTTP request instrumentation middleware. When HTTP instrumentation is enabled, the module records request totals, error counts, and request duration. For production deployments, make the scrape endpoint boundary explicit: either disable it with `path: false` until a platform-level proxy is in place, or attach dedicated endpoint middleware.
 
+The scrape endpoint returns the active `prom-client` registry output with that registry's Prometheus content type. `MetricsModule.forRoot()` creates an isolated registry unless you pass a `registry` option; pass a shared `Registry` only when framework metrics and application-defined metrics intentionally share one scrape surface.
+
 ## Common Patterns
 
 ### Normalize HTTP path labels
@@ -88,6 +90,8 @@ MetricsModule.forRoot({
   path: false,
 });
 ```
+
+`endpointMiddleware` accepts class-based `@fluojs/http` middleware constructors and binds them only to the metrics scrape endpoint. Middleware functions or global middleware declarations are not the package contract for this option.
 
 ### Share one registry for framework and app metrics
 
@@ -165,8 +169,9 @@ MetricsModule.forRoot({
 ### Operational defaults
 
 - `path` defaults to `'/metrics'`, and `path: false` disables the scrape endpoint entirely.
+- The scrape response uses the active registry's Prometheus content type and registry contents.
 - `defaultMetrics` defaults to `true`, and `defaultMetrics: false` disables Prometheus default process and Node.js collectors for that registry.
-- `endpointMiddleware` binds route-scoped middleware only to the scrape endpoint.
+- `endpointMiddleware` binds class-based route-scoped middleware only to the scrape endpoint.
 - HTTP metrics are installed only when `http: true` or an `http` options object is provided, and then default to template-normalized path labels.
 - Built-in HTTP collectors and platform telemetry gauges are reused when module instances share one registry only if they are framework-owned and have the expected label schema; custom application metric name collisions keep Prometheus' duplicate-name failure behavior.
 - Raw path labels require `allowUnsafeRawPathLabelMode: true` and should stay limited to bounded internal routes.
