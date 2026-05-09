@@ -11,6 +11,7 @@ Raw Node.js HTTP adapter package for the fluo runtime.
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
 - [Behavioral Contracts](#behavioral-contracts)
+- [Conformance Coverage](#conformance-coverage)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -91,6 +92,12 @@ await app.listen();
 - `runNodejsApplication(module, options)` bootstraps, starts, and wires graceful shutdown. When signal-driven shutdown times out or fails, it logs the condition and sets `process.exitCode`; final process termination remains owned by the host process.
 - Advanced compression and shutdown utility functions remain on `@fluojs/runtime/node` or internal runtime seams rather than this primary platform startup surface.
 
+## Conformance Coverage
+
+`packages/platform-nodejs/src/index.test.ts` is the package-local regression target for the documented Node.js contract. It runs the shared `createHttpAdapterPortabilityHarness(...)` checks for malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
+
+The same file also covers the package-specific public surface, type aliases, adapter-first startup, `maxBodySize` failures, mixed-case JSON and multipart content-type parsing, and server-backed realtime capability exposure. Keep README example pointers aligned with that test file and the Node.js chapter examples below when changing startup behavior.
+
 ## Public API Overview
 
 - `createNodejsAdapter(options)`: Primary factory for the raw Node.js HTTP adapter.
@@ -111,4 +118,4 @@ await app.listen();
 ## Example Sources
 
 - `packages/platform-nodejs/src/index.test.ts`
-- `examples/minimal/src/main.ts` (Fastify-based, but structurally similar)
+- `book/intermediate/ch21-express-node.md`
