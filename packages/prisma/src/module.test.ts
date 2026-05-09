@@ -768,6 +768,20 @@ describe('@fluojs/prisma', () => {
     await app.close();
   });
 
+  it('cleans up request transaction tracking when strict transaction validation throws synchronously', async () => {
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+    };
+
+    const prisma = new PrismaService<typeof client>(client, { strictTransactions: true });
+
+    await expect(prisma.requestTransaction(async () => 'never')).rejects.toThrow(
+      'Transaction not supported: Prisma client does not implement $transaction.',
+    );
+    expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 0 });
+  });
+
   it('reports ownership/readiness/health semantics in platform snapshot shape', () => {
     const snapshot = createPrismaPlatformStatusSnapshot({
       activeRequestTransactions: 1,
