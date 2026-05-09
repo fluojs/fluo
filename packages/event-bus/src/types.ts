@@ -38,8 +38,8 @@ export interface EventBusTransport {
 
   /**
    * Subscribe to incoming messages on the given channel from the external transport.
-   * The event bus calls this once per discovered local handler during bootstrap.
-   * Received messages are deserialized and dispatched to matching local handlers.
+   * The event bus calls this once per unique event channel during bootstrap.
+   * Received messages are dispatched to every matching local handler for that channel.
    */
   subscribe(channel: string, handler: (payload: unknown) => Promise<void>): Promise<void>;
 
