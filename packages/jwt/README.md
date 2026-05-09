@@ -162,6 +162,8 @@ JWT signing and verification require at least one supported algorithm in `algori
 
 Access-token TTL must also be a positive finite number. When `accessTokenTtlSeconds` is omitted, `DefaultJwtSigner` uses the documented `3600` second default. Fractional seconds are preserved in the JWT NumericDate `exp` claim; when the option is provided as `0`, a negative number, or a non-finite value, signing fails with `JwtConfigurationError` before a token is issued.
 
+Verification fails closed on malformed time policy. `exp`, `nbf`, and `iat` claims that participate in verification must be finite JWT NumericDate numbers, and `clockSkewSeconds` must be a non-negative finite number. Non-finite values are rejected instead of extending expiration, not-before, or age checks.
+
 ## Public API Overview
 
 ### Core Classes
