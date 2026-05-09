@@ -192,7 +192,7 @@ bootstrap().catch(err => {
 });
 ```
 
-여기서 중요한 점은 Fastify가 요청을 처리하든 Express가 처리하든 `@FromBody()`, `@FromPath()`, `@FromQuery()` 같은 바인딩 데코레이터가 같은 계약으로 동작한다는 것입니다. fluo의 내부 디스패처가 어댑터의 네이티브 요청 형식과 표준 fluo 컨텍스트 사이의 변환을 담당합니다. DTO 검증은 여전히 `@fluojs/validation` 계약을 따릅니다. 요청 바인딩 코드는 Nest 스타일 전역 `ValidationPipe`를 설치하는 대신, 비즈니스 로직이 타입 있는 DTO를 보기 전에 `DefaultValidator.materialize(...)`로 들어온 페이로드를 materialize합니다.
+여기서 중요한 점은 Fastify가 요청을 처리하든 Express가 처리하든 `@FromBody()`, `@FromPath()`, `@FromQuery()` 같은 바인딩 데코레이터가 같은 계약으로 동작한다는 것입니다. fluo의 내부 디스패처가 어댑터의 네이티브 요청 형식과 표준 fluo 컨텍스트 사이의 변환을 담당합니다. DTO 검증은 여전히 `@fluojs/validation` 계약을 따릅니다. HTTP binder가 선택한 요청 source에서 DTO instance를 구성한 뒤, validation adapter가 설정된 validator를 통해 `@fluojs/validation` rule을 적용하고 나서 비즈니스 로직이 타입 있는 DTO를 보게 합니다. Nest 스타일 전역 `ValidationPipe`를 설치하지 않습니다.
 
 ## 21.6 Advanced: The `run` Helpers
 
