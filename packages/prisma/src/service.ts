@@ -192,15 +192,14 @@ export class PrismaService<
   async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions): Promise<T> {
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
-    const transactionPromise = this.runWithTransactionClient<T>(
-      () => raceWithAbort(fn, abortContext.signal),
-      (callback, transactionOptions) =>
-        this.runRequestTransactionWithAbortSignal(callback, abortContext.signal, transactionOptions),
-      options,
-    );
 
     try {
-      return await transactionPromise;
+      return await this.runWithTransactionClient<T>(
+        () => raceWithAbort(fn, abortContext.signal),
+        (callback, transactionOptions) =>
+          this.runRequestTransactionWithAbortSignal(callback, abortContext.signal, transactionOptions),
+        options,
+      );
     } finally {
       abortContext.cleanup();
       this.untrackActiveRequestTransaction(active);
