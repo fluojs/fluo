@@ -1,0 +1,75 @@
+---
+title: Package Selection
+description: Choose the smallest fluo package family that owns your task.
+---
+
+fluo has many packages because each package owns a clear boundary. The goal is not to install everything; the goal is to pick the package that owns the behavior you need.
+
+## Start from the task
+
+| If you are trying to... | Start with | Then add |
+| --- | --- | --- |
+| Create and run a project | `@fluojs/cli` | runtime adapter selected by the starter |
+| Define modules and providers | `@fluojs/core`, `@fluojs/di` | `@fluojs/runtime` when bootstrapping manually |
+| Build REST APIs | `@fluojs/http` | one `@fluojs/platform-*` adapter |
+| Validate request bodies | `@fluojs/validation` | `@fluojs/serialization` for response DTOs |
+| Publish API documentation | `@fluojs/openapi` | route DTOs and tests |
+| Add bearer auth | `@fluojs/jwt` | `@fluojs/passport` for strategies |
+| Add rate limits | `@fluojs/throttler` | Redis store if limits must be shared |
+| Add a database | `@fluojs/prisma`, `@fluojs/drizzle`, or `@fluojs/mongoose` | transaction/request context patterns |
+| Add Redis or cache | `@fluojs/redis`, `@fluojs/cache-manager` | `@fluojs/queue` for jobs |
+| Add realtime | `@fluojs/websockets` or `@fluojs/socket.io` | platform support for upgrades |
+| Add async workflows | `@fluojs/event-bus`, `@fluojs/cqrs`, `@fluojs/microservices`, `@fluojs/cron` | queue/notification packages |
+| Add observability | `@fluojs/metrics`, `@fluojs/terminus`, `@fluojs/studio` | production checklist |
+| Test behavior | `@fluojs/testing` | package-specific conformance tests |
+
+## Decision rules
+
+1. **Do not cross ownership boundaries.** Platform packages adapt runtimes; HTTP packages own request semantics; data packages own storage semantics.
+2. **Install the package closest to the behavior.** Need JWT verification? Start with `@fluojs/jwt`, not a higher-level auth bundle.
+3. **Use guides for workflows and reference for ownership.** Guides explain how packages compose; package reference tells you who owns what.
+4. **Prefer examples when learning.** The runnable examples prove how packages work together.
+
+## Example decisions
+
+### “I need a Fastify REST API with DTO validation.”
+
+Use:
+
+- `@fluojs/http`
+- `@fluojs/platform-fastify`
+- `@fluojs/validation`
+- `@fluojs/testing`
+
+Read [HTTP API](./http-api), then [Validation & Serialization](./validation-serialization).
+
+### “I need login with JWT and protected routes.”
+
+Use:
+
+- `@fluojs/jwt`
+- `@fluojs/passport` if you want strategy-based guards
+- `@fluojs/throttler` for login or refresh endpoints
+
+Read [Auth](./auth) and the [Auth JWT Passport example](../examples/auth-jwt-passport).
+
+### “I need a database-backed feature with background processing.”
+
+Use:
+
+- one database package: `@fluojs/prisma`, `@fluojs/drizzle`, or `@fluojs/mongoose`
+- `@fluojs/redis` when shared infrastructure is needed
+- `@fluojs/queue` when work should leave the request path
+
+Read [Persistence](./persistence) and [Messaging & Workflows](./messaging-workflows).
+
+## Verify your choice
+
+Before adding a package to an app or guide, check:
+
+- Does this package own the boundary I am changing?
+- Is there a package README with a working example?
+- Is there an example app or test proving the behavior?
+- Does the package appear in [Package Matrix](../packages/matrix)?
+
+The canonical repository source of truth is `docs/reference/package-surface.md`.

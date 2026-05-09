@@ -1,0 +1,24 @@
+---
+title: 표준 데코레이터
+description: fluo의 TC39 데코레이터 기준과 메타데이터 없는 의존성 모델을 이해합니다.
+---
+
+fluo는 TC39 표준 데코레이터를 단순한 문법 취향이 아니라 설계 경계로 취급합니다. 공개 API는 legacy 데코레이터 emit이나 컴파일러 생성 타입 메타데이터 없이 동작해야 합니다.
+
+## 기준선
+
+- `experimentalDecorators`를 사용하지 않습니다.
+- `emitDecoratorMetadata`를 사용하지 않습니다.
+- 패키지 내부에서 `process.env`에 직접 접근하지 않습니다.
+- 공개 export는 TSDoc으로 문서화합니다.
+- 런타임 동작은 behavioral contract로 보호합니다.
+
+## 왜 중요한가요?
+
+의존성 그래프는 소스 코드에서 보이고 숨겨진 메타데이터 없이 테스트 가능해야 합니다. 이 방식은 애플리케이션을 여러 런타임에 이식 가능하게 만들고 특정 컴파일러 모드에서만 동작하는 프레임워크 마법을 피합니다.
+
+## 관련 레퍼런스
+
+- 저장소 컨텍스트: `docs/CONTEXT.md`
+- 동작 정책: `docs/contracts/behavioral-contract-policy.md`
+- 패키지 표면: `docs/reference/package-surface.md`

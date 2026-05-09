@@ -1,0 +1,310 @@
+---
+title: Runtime Adapters
+description: 같은 fluo application model을 Fastify, Express, raw Node.js, Bun, Deno, Cloudflare Workers에서 실행합니다.
+---
+
+Runtime adapter는 fluo application semantics와 실제 host runtime 사이의 seam입니다.
+
+Controller, provider, guard, interceptor, validation, serialization, middleware는 fluo contract에 의존해야 합니다. Platform package는 그 contract를 Node.js server, fetch-style runtime, edge worker API로 변환합니다.
+
+```txt
+AppModule
+  -> fluo runtime
+  -> HTTP dispatcher
+  -> platform adapter
+  -> host runtime
+```
+
+Runtime target을 선택하거나 어떤 behavior가 portable하고 어떤 behavior가 adapter 책임인지 이해해야 할 때 이 가이드를 사용하세요.
+
+## Adapter families
+
+| Target | Package | Best for |
+| --- | --- | --- |
+| Fastify on Node.js | `@fluojs/platform-fastify` | High-throughput Node.js apps and server-backed realtime |
+| Raw Node.js HTTP/HTTPS | `@fluojs/platform-nodejs` | Minimal dependencies and direct Node server control |
+| Express | `@fluojs/platform-express` | Existing Express infrastructure and middleware familiarity |
+| Bun | `@fluojs/platform-bun` | Bun-native `Bun.serve()` applications |
+| Deno | `@fluojs/platform-deno` | Deno-native `Deno.serve` deployments |
+| Cloudflare Workers | `@fluojs/platform-cloudflare-workers` | Edge `fetch` handlers and Worker isolate constraints |
+
+## Portable application contract
+
+Adapter가 달라도 fluo는 같은 framework-owned semantics를 보존합니다.
+
+- Route metadata와 controller dispatch
+- Middleware, guard, interceptor, filter, observer
+- Request binding, DTO validation, response serialization
+- Normalized headers, query values, params, body parsing, error envelopes
+- Host가 지원하는 SSE와 streaming contract
+- Lifecycle startup, shutdown, readiness/health integration
+
+Adapter는 host-level route matching을 optimize할 수 있지만, matched request는 shared fluo dispatcher로 다시 전달되어 application behavior가 portable하게 유지됩니다.
+
+## Fastify
+
+Fastify는 권장 high-throughput Node.js adapter입니다.
+
+```ts
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { fluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.module';
+
+const app = await fluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({ port: 3000 }),
+});
+
+await app.listen();
+```
+
+`createFastifyAdapter()`는 기본 port `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. 명시한 port가 잘못되면 adapter setup 중 throw합니다.
+
+중요한 Fastify capability:
+
+- fluo request interface를 통한 multipart/raw-body support
+- `@fluojs/websockets`용 server-backed realtime
+- Shared streaming response backpressure semantics
+- fluo bootstrap option을 통한 CORS, global prefix, middleware, logging
+- Portability-sensitive case용 wildcard fallback이 있는 safe native Fastify route registration
+
+```ts
+const adapter = createFastifyAdapter(
+  {
+    port: 3000,
+    rawBody: true,
+  },
+  {
+    maxTotalSize: 10 * 1024 * 1024,
+  },
+);
+```
+
+Multipart request에서는 raw-body capture가 생략됩니다. `multipart.maxTotalSize`가 없으면 `maxBodySize`가 기본값이 되어 HTTP adapter 전반의 size limit이 portable하게 유지됩니다.
+
+## Raw Node.js
+
+Express나 Fastify 없이 built-in `http`/`https` server primitive를 직접 사용하려면 raw Node.js adapter를 선택합니다.
+
+```ts
+import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { fluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.module';
+
+const app = await fluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
+});
+
+await app.listen();
+```
+
+Adapter는 HTTPS option과 body-size limit을 받습니다.
+
+```ts
+const adapter = createNodejsAdapter({
+  port: 443,
+  https: {
+    key: fs.readFileSync('key.pem'),
+    cert: fs.readFileSync('cert.pem'),
+  },
+  maxBodySize: 1_048_576,
+});
+```
+
+`maxBodySize`는 raw Node request byte가 아직 streaming 중일 때 적용됩니다. 기본 request body cap은 `1 MiB`이고, 잘못된 `port` 또는 `maxBodySize`는 setup 중 throw합니다.
+
+Graceful shutdown을 포함한 one-call startup에는 `runNodejsApplication(...)`을 사용합니다.
+
+```ts
+import { runNodejsApplication } from '@fluojs/platform-nodejs';
+import { AppModule } from './app.module';
+
+await runNodejsApplication(AppModule, {
+  port: 3000,
+  globalPrefix: 'api',
+  shutdownSignals: ['SIGINT', 'SIGTERM'],
+});
+```
+
+Shutdown timeout이나 failure가 발생하면 helper는 log를 남기고 `process.exitCode`를 설정하지만, 최종 process termination은 host process가 소유합니다.
+
+## Express
+
+기존 Express-oriented environment와 통합하려면 Express adapter를 사용합니다.
+
+```ts
+import { createExpressAdapter } from '@fluojs/platform-express';
+import { fluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.module';
+
+const app = await fluoFactory.create(AppModule, {
+  adapter: createExpressAdapter({ port: 3000 }),
+});
+
+await app.listen();
+```
+
+Express는 shared SSE/streaming response contract를 지원합니다.
+
+```ts
+@Get('events')
+async streamEvents(@Res() res: FrameworkResponse) {
+  const events = new SseResponse();
+  events.send({ data: 'hello' });
+  return events;
+}
+```
+
+Native Express Router match도 shared fluo dispatcher로 hand off됩니다. 따라서 middleware, guard, interceptor, observer, params, error envelope, versioning, response serialization이 보존됩니다. `/:id`와 `/:slug`처럼 모호한 route shape, `@All(...)`, `OPTIONS` ownership, duplicate-slash/trailing-slash normalization, non-URI versioning은 catch-all fallback path에 남습니다.
+
+## Bun
+
+Native `Bun.serve()` application에는 Bun adapter를 사용합니다.
+
+```ts
+import { createBunAdapter } from '@fluojs/platform-bun';
+import { fluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.module';
+
+const app = await fluoFactory.create(AppModule, {
+  adapter: createBunAdapter({ port: 3000 }),
+});
+
+await app.listen();
+```
+
+`Bun.serve()`를 직접 관리하고 싶다면 fetch handler를 생성합니다.
+
+```ts
+import { createBunFetchHandler } from '@fluojs/platform-bun';
+
+const handler = await createBunFetchHandler({
+  dispatcher: app.getHttpDispatcher(),
+});
+
+Bun.serve({
+  fetch: handler,
+  port: 3000,
+});
+```
+
+Bun `>=1.2.3`에서는 semantically safe static/parameterized fluo route가 `Bun.serve({ routes })`로 등록될 수 있지만, matched request는 여전히 shared dispatcher로 돌아갑니다. Versioned route, `ALL` handler, same-shape conflict, normalization-sensitive path, `OPTIONS`/CORS preflight는 shared fetch path에 남습니다.
+
+Bun WebSocket upgrade는 `@fluojs/websockets/bun`을 통해 제공되며, `listen()`이 server를 시작하기 전에 설정되어야 합니다.
+
+## Deno
+
+Native `Deno.serve` deployment에는 Deno adapter를 사용합니다.
+
+```ts
+import { runDenoApplication } from '@fluojs/platform-deno';
+import { AppModule } from './app.module.ts';
+
+await runDenoApplication(AppModule, {
+  port: 3000,
+});
+```
+
+Runtime bootstrap 후에는 manual request dispatch도 가능합니다.
+
+```ts
+import { fluoFactory } from '@fluojs/runtime';
+import { createDenoAdapter } from '@fluojs/platform-deno';
+
+const adapter = createDenoAdapter({ port: 3000 });
+const app = await fluoFactory.create(AppModule, { adapter });
+
+await app.listen();
+
+const response = await adapter.handle(new Request('http://localhost:3000/health'));
+```
+
+HTTPS mode로 시작하려면 TLS material을 `https` option으로 넘깁니다.
+
+```ts
+await runDenoApplication(AppModule, {
+  hostname: '127.0.0.1',
+  https: {
+    cert: await Deno.readTextFile('./cert.pem'),
+    key: await Deno.readTextFile('./key.pem'),
+  },
+  port: 3443,
+});
+```
+
+`hostname`은 Deno-native option name입니다. `host`는 portability alias로 허용되며, 둘 다 있으면 `hostname`이 우선합니다. Dispatcher가 bind되기 전 `handle(...)`은 JSON `500`, shutdown 중에는 JSON `503`을 반환합니다.
+
+## Cloudflare Workers
+
+Edge `fetch` deployment에는 Workers adapter를 사용합니다.
+
+```ts
+import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
+import { fluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.module';
+
+const adapter = createCloudflareWorkerAdapter();
+const app = await fluoFactory.create(AppModule, { adapter });
+
+await app.listen();
+
+export default {
+  fetch: (req, env, ctx) => adapter.fetch(req, env, ctx),
+};
+```
+
+Zero-config lazy bootstrap에는 entrypoint helper를 사용합니다.
+
+```ts
+import { createCloudflareWorkerEntrypoint } from '@fluojs/platform-cloudflare-workers';
+import { AppModule } from './app.module';
+
+const worker = createCloudflareWorkerEntrypoint(AppModule);
+
+export default {
+  fetch: worker.fetch,
+};
+```
+
+Worker request는 active work를 `executionContext.waitUntil(...)`에 등록합니다. Shutdown 중 새 request는 JSON `503`을 받고, active dispatch에는 bounded 10-second drain window가 주어집니다. Worker `env` object는 fetch entrypoint boundary를 통과하며, package-level config resolution은 application-owned입니다.
+
+## Runtime behavior matrix
+
+| Behavior | Fastify | Node.js | Express | Bun | Deno | Workers |
+| --- | --- | --- | --- | --- | --- | --- |
+| Server-backed HTTP | Yes | Yes | Yes | Native `Bun.serve` | Native `Deno.serve` | Fetch handler |
+| Bootstrap helper | `runFastifyApplication` | `runNodejsApplication` | `runExpressApplication` | `runBunApplication` | `runDenoApplication` | `createCloudflareWorkerEntrypoint` |
+| Manual bootstrap | `bootstrapFastifyApplication` | `bootstrapNodejsApplication` | `bootstrapExpressApplication` | `bootstrapBunApplication` | `bootstrapDenoApplication` | `bootstrapCloudflareWorkerApplication` |
+| Raw body option | Yes | Yes | Yes | Yes | Yes | Fetch portability; multipart excludes raw body |
+| Multipart support | Yes | Yes | Yes | Shared parser | Shared parser | Shared parser; no multipart raw body |
+| SSE/streaming | Yes | Yes | Yes | Yes | Yes | Fetch response contract |
+| WebSockets | Server-backed | Server-backed | Server-backed | Native Bun binding | Native Deno binding | WebSocketPair binding |
+| Native route acceleration | Fastify native safe path | No | Express native safe path | Bun routes safe path | No | No |
+
+## Public API summary
+
+| Package | Public API |
+| --- | --- |
+| `@fluojs/platform-fastify` | `createFastifyAdapter`, `bootstrapFastifyApplication`, `runFastifyApplication`, `FastifyHttpApplicationAdapter`, multipart helpers |
+| `@fluojs/platform-nodejs` | `createNodejsAdapter`, `bootstrapNodejsApplication`, `runNodejsApplication`, Node adapter option types |
+| `@fluojs/platform-express` | `createExpressAdapter`, `bootstrapExpressApplication`, `runExpressApplication`, `ExpressHttpApplicationAdapter`, multipart helpers |
+| `@fluojs/platform-bun` | `createBunAdapter`, `createBunFetchHandler`, `bootstrapBunApplication`, `runBunApplication`, Bun realtime binding types |
+| `@fluojs/platform-deno` | `createDenoAdapter`, `bootstrapDenoApplication`, `runDenoApplication`, `DenoHttpApplicationAdapter`, manual `handle(request)` |
+| `@fluojs/platform-cloudflare-workers` | `createCloudflareWorkerAdapter`, `createCloudflareWorkerEntrypoint`, `bootstrapCloudflareWorkerApplication`, Worker adapter/entrypoint types |
+
+## 흔한 실수
+
+| 실수 | 더 나은 접근 |
+| --- | --- |
+| Adapter factory가 `process.env.PORT`를 암묵적으로 읽는다고 가정함 | Adapter 또는 bootstrap option에 port를 명시하세요. |
+| Native route acceleration이 fluo semantics를 우회한다고 생각함 | Native match도 shared dispatcher로 돌아갑니다. |
+| Fetch-style runtime에서 server-backed WebSocket option을 사용함 | Runtime-specific WebSocket subpath를 사용하고 Bun/Deno/Workers fetch-style binding에서 `serverBacked`를 피하세요. |
+| Multipart request에서 raw body를 기대함 | Multipart request는 `rawBody`를 노출하지 않습니다. Multipart API와 limit을 사용하세요. |
+| Platform helper가 process를 직접 종료한다고 가정함 | Helper는 shutdown failure를 log/exit code로 보고하고 최종 termination은 host가 소유합니다. |
+| Portable app code에서 Node global에 의존함 | Runtime-specific behavior는 adapter/bootstrap code에만 두세요. |
+
+## 관련 문서
+
+- [HTTP API](./http-api)
+- [Realtime](./realtime)
+- [Operations](./operations)
+- [HTTP & Platform Packages](../packages/http-platform)

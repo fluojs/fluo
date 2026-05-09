@@ -1,0 +1,250 @@
+---
+title: CLI
+description: fluo CLI로 project 생성, feature generation, lifecycle script, decorator migration, runtime graph inspection을 수행합니다.
+---
+
+`@fluojs/cli`는 fluo의 canonical command-line entrypoint입니다. Project를 만들고, feature slice를 생성하고, app lifecycle command를 실행하고, standard decorator로 코드를 migration하고, runtime inspection data를 export합니다.
+
+## 설치
+
+```bash
+pnpm add -g @fluojs/cli
+```
+
+Global install 없이 실행할 수도 있습니다.
+
+```bash
+pnpm dlx @fluojs/cli new my-app
+```
+
+설치된 version 확인:
+
+```bash
+fluo version
+fluo --version
+fluo -v
+```
+
+Interactive run에서는 public npm `latest` dist-tag를 확인하고 global CLI update를 제안할 수 있습니다. CI, non-TTY output, npm-script context, registry failure, rerun-after-update context, `--no-update-check`에서는 prompt를 건너뜁니다.
+
+## Project 생성
+
+가장 짧은 path는 다음과 같습니다.
+
+```bash
+fluo new my-app
+cd my-app
+pnpm dev
+```
+
+`fluo create`는 `fluo new`의 alias입니다.
+
+파일 생성, dependency install, git initialization 없이 resolved starter를 미리 보려면 `--print-plan`을 사용합니다.
+
+```bash
+fluo new my-app --shape application --runtime node --platform fastify --print-plan
+fluo new my-service --shape microservice --transport tcp --print-plan
+fluo new my-mixed-app --shape mixed --print-plan
+```
+
+## Application starters
+
+Node.js HTTP application starter는 같은 install/build flow를 공유합니다.
+
+```bash
+fluo new my-app --shape application --transport http --runtime node --platform fastify
+fluo new my-express-app --shape application --transport http --runtime node --platform express
+fluo new my-node-app --shape application --transport http --runtime node --platform nodejs
+```
+
+Runtime-native starter는 runtime-specific entrypoint와 script를 사용합니다.
+
+```bash
+fluo new my-bun-app --shape application --transport http --runtime bun --platform bun
+fluo new my-deno-app --shape application --transport http --runtime deno --platform deno
+fluo new my-worker-app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers
+```
+
+Generated non-Deno HTTP starter는 TDD-first Vitest layout을 포함합니다.
+
+- `src/**` 아래 colocated fast unit tests
+- `*.slice.test.ts` slice tests
+- `src/app.test.ts` app dispatch tests
+- `createTestApp({ rootModule })` 기반 `test/app.e2e.test.ts` default e2e-style tests
+
+## Microservice and mixed starters
+
+Microservice starter에는 `--shape microservice`를 사용합니다. `--transport`를 생략하면 TCP가 기본입니다.
+
+```bash
+fluo new my-microservice --shape microservice --transport tcp --runtime node --platform none
+fluo new my-redis-streams-service --shape microservice --transport redis-streams --runtime node --platform none
+fluo new my-nats-service --shape microservice --transport nats --runtime node --platform none
+fluo new my-kafka-service --shape microservice --transport kafka --runtime node --platform none
+fluo new my-rabbitmq-service --shape microservice --transport rabbitmq --runtime node --platform none
+fluo new my-mqtt-service --shape microservice --transport mqtt --runtime node --platform none
+fluo new my-grpc-service --shape microservice --transport grpc --runtime node --platform none
+```
+
+지원되는 microservice starter transport는 정확히 `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, `grpc`입니다.
+
+Mixed starter는 하나의 generated project 안에 Fastify HTTP app과 attached TCP microservice를 함께 만듭니다.
+
+```bash
+fluo new my-mixed-app --shape mixed --transport tcp --runtime node --platform fastify
+```
+
+## Lifecycle commands
+
+Generated Node.js package script는 다음 명령으로 delegate됩니다.
+
+```bash
+fluo dev
+fluo build
+fluo start
+```
+
+CLI는 project-local `node_modules/.bin`을 앞에 붙이고, caller가 명시하지 않았을 때 `dev`에는 `NODE_ENV=development`, `build`/`start`에는 `NODE_ENV=production`을 기본으로 사용하며, 기본적으로 application stdout/stderr를 보여 줍니다.
+
+Command boundary를 확인하려면 dry-run mode를 사용합니다.
+
+```bash
+fluo dev --dry-run
+fluo build --dry-run
+fluo start --dry-run
+```
+
+Generated Node app은 기본적으로 fluo-owned restart boundary를 사용합니다. Dev runner는 source/config input을 watch하고, atomic save burst를 debounce하며, restart 전에 file content hash를 확인하고, child process마다 `.env`를 load하며, `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache, editor swap file 같은 noisy path를 무시합니다.
+
+Bun, Deno, Workers project는 기본적으로 runtime-owned watch loop를 사용합니다. 해당 project에서 fluo restart runner를 쓰려면 `fluo dev --runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용합니다.
+
+Reporter flag는 application logging이 아니라 CLI process output을 제어합니다.
+
+```bash
+fluo dev --reporter pretty
+fluo dev --reporter stream
+fluo dev --verbose
+FLUO_VERBOSE=1 fluo dev
+fluo build --reporter silent
+```
+
+## Feature generation
+
+Feature slice와 framework artifact를 만들 때 `fluo generate`를 사용합니다.
+
+```bash
+fluo generate module users
+fluo generate module users --with-test
+fluo generate resource users
+fluo generate resource users --with-slice-test
+fluo generate e2e users
+fluo generate controller users
+fluo generate service users
+fluo generate request-dto users CreateUser
+fluo generate service users --dry-run
+```
+
+지원되는 generator kind와 alias:
+
+| Kind | Alias | Wiring behavior |
+| --- | --- | --- |
+| `controller` | `co` | Auto-registers |
+| `service` | `s` | Auto-registers |
+| `repo` / `repository` | — | Auto-registers |
+| `guard` | `gu` | Auto-registers |
+| `interceptor` | `in` | Auto-registers |
+| `middleware` | `mi` | Auto-registers |
+| `module` | `mo` | Files-only |
+| `request-dto` | `req` | Files-only |
+| `response-dto` | `res` | Files-only |
+| `e2e` | — | Files-only |
+| `resource` | `resrc` | Full feature slice 생성; 준비되면 generated module을 import |
+
+`fluo generate resource <name>`은 module, controller, service, repository, request DTO, response DTO, tests를 만듭니다. Resource module을 parent module에 자동으로 wire하지는 않습니다.
+
+Target resolution, skipped/overwritten files, module auto-registration, files-only wiring status, next-step hint를 미리 보려면 `--dry-run`을 사용하세요. `--force`는 변경될 existing file plan을 `SKIP`에서 `OVERWRITE`로 바꿉니다.
+
+Generator discovery는 의도적으로 built-in `@fluojs/cli/builtin` collection으로 제한됩니다. CLI는 arbitrary workspace generator code를 load하지 않습니다.
+
+## Diagnostics commands
+
+CLI 설치, project script, runtime fact, update state를 debug할 때 다음 명령을 사용합니다.
+
+```bash
+fluo doctor
+fluo info
+fluo analyze
+```
+
+`fluo analyze`는 read-only이며 더 깊은 `inspect --report`, `migrate --json` workflow를 안내합니다.
+
+First-party package helper와 upgrade guide도 제공합니다.
+
+```bash
+fluo add studio --dev --dry-run
+fluo upgrade
+```
+
+## Decorator codemods
+
+TC39 standard decorator에 맞추려면 `fluo migrate`를 사용합니다.
+
+```bash
+fluo migrate ./src
+fluo migrate ./src --json
+fluo migrate ./src --apply
+fluo migrate ./src --apply --json
+fluo migrate ./src --only imports,inject-params
+fluo migrate ./src --skip tests
+```
+
+주요 transformation:
+
+- `@nestjs/common` import를 `@fluojs/core` 또는 `@fluojs/http`로 rewrite
+- bootstrap/listen pattern을 fluo runtime startup convention으로 rewrite
+- Constructor parameter `@Inject(...)` 사용을 fluo-compatible dependency declaration으로 migration
+- `@Injectable()` 제거 및 scope를 `@Scope()`로 mapping
+- 가능한 test template을 `@fluojs/testing` helper로 migration
+- Standard decorator와 TS6-safe path에 맞게 `tsconfig.json` update
+
+JSON mode는 stable machine-readable report를 출력하고, parser error나 invalid flag는 stderr와 exit code `1`로 보고합니다.
+
+## Runtime inspection
+
+Module graph와 diagnostics snapshot을 export하려면 `fluo inspect`를 사용합니다.
+
+```bash
+fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
+fluo inspect ./src/app.module.ts --json --timing
+fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
+fluo inspect ./src/app.module.ts --export AdminModule --json
+```
+
+Mermaid output은 Studio에 delegate됩니다.
+
+```bash
+pnpm add -D @fluojs/studio
+fluo inspect ./src/app.module.ts --mermaid
+```
+
+Snapshot은 runtime이 생성합니다. CLI는 snapshot을 serialize하고, `--export`로 named module export를 선택하고, `--timing`으로 timing diagnostics를 포함하며, `--output`으로 explicit artifact를 씁니다.
+
+## Public API summary
+
+| Export | 설명 |
+| --- | --- |
+| `runCli(argv?, options?)` | CLI command programmatic entrypoint |
+| `newUsage()` | 현재 `fluo new` usage text |
+| `runNewCommand(argv, options?)` | Programmatic scaffolding entrypoint |
+| `CliPromptCancelledError` | 정상 prompt cancellation용 stable sentinel |
+| `GenerateOptions`, `GeneratedFile`, `GeneratorKind`, `ModuleRegistration` | Programmatic generator types |
+
+Programmatic entrypoint는 `process.exit(...)`를 호출하지 않고 numeric exit code를 반환합니다. Dependency install과 git initialization은 resolved `fluo new` option이 요청한 경우에만 실행됩니다.
+
+## 관련 문서
+
+- [Quick Start](../getting-started/quick-start)
+- [First Feature](./first-feature)
+- [Testing](./testing)
+- [Runtime Adapters](./runtime-adapters)
+- [Tooling](../tooling)

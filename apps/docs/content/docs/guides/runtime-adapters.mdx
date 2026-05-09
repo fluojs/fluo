@@ -1,0 +1,310 @@
+---
+title: Runtime Adapters
+description: Run the same fluo application model on Fastify, Express, raw Node.js, Bun, Deno, and Cloudflare Workers.
+---
+
+Runtime adapters are the seam between fluo application semantics and a concrete host runtime.
+
+Controllers, providers, guards, interceptors, validation, serialization, and middleware should depend on fluo contracts. Platform packages translate those contracts into Node.js servers, fetch-style runtimes, or edge worker APIs.
+
+```txt
+AppModule
+  -> fluo runtime
+  -> HTTP dispatcher
+  -> platform adapter
+  -> host runtime
+```
+
+Use this guide when choosing a runtime target or when you need to understand which behavior is portable and which behavior belongs to an adapter.
+
+## Adapter families
+
+| Target | Package | Best for |
+| --- | --- | --- |
+| Fastify on Node.js | `@fluojs/platform-fastify` | High-throughput Node.js apps and server-backed realtime. |
+| Raw Node.js HTTP/HTTPS | `@fluojs/platform-nodejs` | Minimal dependencies and direct Node server control. |
+| Express | `@fluojs/platform-express` | Existing Express infrastructure and middleware familiarity. |
+| Bun | `@fluojs/platform-bun` | Bun-native `Bun.serve()` applications. |
+| Deno | `@fluojs/platform-deno` | Deno-native `Deno.serve` deployments. |
+| Cloudflare Workers | `@fluojs/platform-cloudflare-workers` | Edge `fetch` handlers and Worker isolate constraints. |
+
+## The portable application contract
+
+Across adapters, fluo preserves the same framework-owned semantics:
+
+- route metadata and controller dispatch,
+- middleware, guards, interceptors, filters, and observers,
+- request binding, DTO validation, and response serialization,
+- normalized headers, query values, params, body parsing, and error envelopes,
+- SSE and streaming contracts where the host supports them,
+- lifecycle startup, shutdown, and readiness/health integration.
+
+Adapters may optimize host-level route matching, but matched requests still hand back to the shared fluo dispatcher so application behavior stays portable.
+
+## Fastify
+
+Fastify is the recommended high-throughput Node.js adapter.
+
+```ts
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { fluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.module';
+
+const app = await fluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({ port: 3000 }),
+});
+
+await app.listen();
+```
+
+`createFastifyAdapter()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit port values throw during adapter setup.
+
+Important Fastify capabilities:
+
+- multipart and raw-body support through fluo's request interface,
+- server-backed realtime for `@fluojs/websockets`,
+- shared streaming response backpressure semantics,
+- CORS, global prefix, middleware, and logging through fluo bootstrap options,
+- safe native Fastify route registration with wildcard fallback for portability-sensitive cases.
+
+```ts
+const adapter = createFastifyAdapter(
+  {
+    port: 3000,
+    rawBody: true,
+  },
+  {
+    maxTotalSize: 10 * 1024 * 1024,
+  },
+);
+```
+
+Raw-body capture is skipped for multipart requests. When `multipart.maxTotalSize` is omitted, it defaults to `maxBodySize` so size limits stay portable across HTTP adapters.
+
+## Raw Node.js
+
+Use the raw Node.js adapter when you want the built-in `http` or `https` server primitives without Express or Fastify.
+
+```ts
+import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { fluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.module';
+
+const app = await fluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
+});
+
+await app.listen();
+```
+
+The adapter accepts HTTPS options and body-size limits.
+
+```ts
+const adapter = createNodejsAdapter({
+  port: 443,
+  https: {
+    key: fs.readFileSync('key.pem'),
+    cert: fs.readFileSync('cert.pem'),
+  },
+  maxBodySize: 1_048_576,
+});
+```
+
+`maxBodySize` is enforced while raw Node request bytes are still streaming. The default request body cap is `1 MiB`; invalid `port` or `maxBodySize` values throw during setup.
+
+For one-call startup with graceful shutdown, use `runNodejsApplication(...)`.
+
+```ts
+import { runNodejsApplication } from '@fluojs/platform-nodejs';
+import { AppModule } from './app.module';
+
+await runNodejsApplication(AppModule, {
+  port: 3000,
+  globalPrefix: 'api',
+  shutdownSignals: ['SIGINT', 'SIGTERM'],
+});
+```
+
+If shutdown times out or fails, the helper logs the condition and sets `process.exitCode`; final process termination remains owned by the host process.
+
+## Express
+
+Use the Express adapter when integrating with an existing Express-oriented environment.
+
+```ts
+import { createExpressAdapter } from '@fluojs/platform-express';
+import { fluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.module';
+
+const app = await fluoFactory.create(AppModule, {
+  adapter: createExpressAdapter({ port: 3000 }),
+});
+
+await app.listen();
+```
+
+Express supports the shared SSE and streaming response contract.
+
+```ts
+@Get('events')
+async streamEvents(@Res() res: FrameworkResponse) {
+  const events = new SseResponse();
+  events.send({ data: 'hello' });
+  return events;
+}
+```
+
+Native Express Router matches still hand off to the shared fluo dispatcher. This preserves middleware, guards, interceptors, observers, params, error envelopes, versioning, and response serialization. Ambiguous route shapes such as overlapping `/:id` and `/:slug`, `@All(...)` handlers, `OPTIONS` ownership, duplicate-slash/trailing-slash normalization, and non-URI versioning stay on the catch-all fallback path.
+
+## Bun
+
+Use the Bun adapter for native `Bun.serve()` applications.
+
+```ts
+import { createBunAdapter } from '@fluojs/platform-bun';
+import { fluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.module';
+
+const app = await fluoFactory.create(AppModule, {
+  adapter: createBunAdapter({ port: 3000 }),
+});
+
+await app.listen();
+```
+
+If you manage `Bun.serve()` yourself, create a fetch handler directly.
+
+```ts
+import { createBunFetchHandler } from '@fluojs/platform-bun';
+
+const handler = await createBunFetchHandler({
+  dispatcher: app.getHttpDispatcher(),
+});
+
+Bun.serve({
+  fetch: handler,
+  port: 3000,
+});
+```
+
+On Bun `>=1.2.3`, safe static and parameterized fluo routes may be registered through `Bun.serve({ routes })` while matched requests still return to the shared dispatcher. Versioned routes, `ALL` handlers, same-shape conflicts, normalization-sensitive paths, and `OPTIONS`/CORS preflight remain on the shared fetch path.
+
+Bun WebSocket upgrades are provided through `@fluojs/websockets/bun` and must be configured before `listen()` starts the server.
+
+## Deno
+
+Use the Deno adapter for native `Deno.serve` deployments.
+
+```ts
+import { runDenoApplication } from '@fluojs/platform-deno';
+import { AppModule } from './app.module.ts';
+
+await runDenoApplication(AppModule, {
+  port: 3000,
+});
+```
+
+Manual request dispatch is available after the runtime has been bootstrapped.
+
+```ts
+import { fluoFactory } from '@fluojs/runtime';
+import { createDenoAdapter } from '@fluojs/platform-deno';
+
+const adapter = createDenoAdapter({ port: 3000 });
+const app = await fluoFactory.create(AppModule, { adapter });
+
+await app.listen();
+
+const response = await adapter.handle(new Request('http://localhost:3000/health'));
+```
+
+Pass TLS material through `https` to start in HTTPS mode.
+
+```ts
+await runDenoApplication(AppModule, {
+  hostname: '127.0.0.1',
+  https: {
+    cert: await Deno.readTextFile('./cert.pem'),
+    key: await Deno.readTextFile('./key.pem'),
+  },
+  port: 3443,
+});
+```
+
+`hostname` is the Deno-native option name. `host` is accepted as a portability alias; when both are provided, `hostname` wins. `handle(...)` returns JSON `500` before `listen()` binds the dispatcher and JSON `503` while shutdown is in progress.
+
+## Cloudflare Workers
+
+Use the Workers adapter for edge `fetch` deployments.
+
+```ts
+import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
+import { fluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.module';
+
+const adapter = createCloudflareWorkerAdapter();
+const app = await fluoFactory.create(AppModule, { adapter });
+
+await app.listen();
+
+export default {
+  fetch: (req, env, ctx) => adapter.fetch(req, env, ctx),
+};
+```
+
+For zero-config lazy bootstrap, use the entrypoint helper.
+
+```ts
+import { createCloudflareWorkerEntrypoint } from '@fluojs/platform-cloudflare-workers';
+import { AppModule } from './app.module';
+
+const worker = createCloudflareWorkerEntrypoint(AppModule);
+
+export default {
+  fetch: worker.fetch,
+};
+```
+
+Worker requests register active work with `executionContext.waitUntil(...)`. During shutdown, new requests receive JSON `503`, and active dispatches get a bounded 10-second drain window. The Worker `env` object passes through the fetch entrypoint boundary; package-level config resolution remains application-owned.
+
+## Runtime behavior matrix
+
+| Behavior | Fastify | Node.js | Express | Bun | Deno | Workers |
+| --- | --- | --- | --- | --- | --- | --- |
+| Server-backed HTTP | Yes | Yes | Yes | Native `Bun.serve` | Native `Deno.serve` | Fetch handler |
+| Bootstrap helper | `runFastifyApplication` | `runNodejsApplication` | `runExpressApplication` | `runBunApplication` | `runDenoApplication` | `createCloudflareWorkerEntrypoint` |
+| Manual bootstrap | `bootstrapFastifyApplication` | `bootstrapNodejsApplication` | `bootstrapExpressApplication` | `bootstrapBunApplication` | `bootstrapDenoApplication` | `bootstrapCloudflareWorkerApplication` |
+| Raw body option | Yes | Yes | Yes | Yes | Yes | Fetch portability; multipart excludes raw body |
+| Multipart support | Yes | Yes | Yes | Shared parser | Shared parser | Shared parser; no multipart raw body |
+| SSE/streaming | Yes | Yes | Yes | Yes | Yes | Yes through fetch response contract |
+| WebSockets | Server-backed | Server-backed | Server-backed | Native Bun binding | Native Deno binding | WebSocketPair binding |
+| Native route acceleration | Fastify native safe path | No | Express native safe path | Bun routes safe path | No | No |
+
+## Public API summary
+
+| Package | Public API |
+| --- | --- |
+| `@fluojs/platform-fastify` | `createFastifyAdapter`, `bootstrapFastifyApplication`, `runFastifyApplication`, `FastifyHttpApplicationAdapter`, multipart helpers |
+| `@fluojs/platform-nodejs` | `createNodejsAdapter`, `bootstrapNodejsApplication`, `runNodejsApplication`, Node adapter option types |
+| `@fluojs/platform-express` | `createExpressAdapter`, `bootstrapExpressApplication`, `runExpressApplication`, `ExpressHttpApplicationAdapter`, multipart helpers |
+| `@fluojs/platform-bun` | `createBunAdapter`, `createBunFetchHandler`, `bootstrapBunApplication`, `runBunApplication`, Bun realtime binding types |
+| `@fluojs/platform-deno` | `createDenoAdapter`, `bootstrapDenoApplication`, `runDenoApplication`, `DenoHttpApplicationAdapter`, manual `handle(request)` |
+| `@fluojs/platform-cloudflare-workers` | `createCloudflareWorkerAdapter`, `createCloudflareWorkerEntrypoint`, `bootstrapCloudflareWorkerApplication`, Worker adapter/entrypoint types |
+
+## Common mistakes
+
+| Mistake | Better approach |
+| --- | --- |
+| Reading `process.env.PORT` implicitly from adapter factories | Pass explicit ports through adapter or bootstrap options. |
+| Assuming native route acceleration bypasses fluo semantics | Native matches still hand back to the shared dispatcher. |
+| Using server-backed WebSocket options on fetch-style runtimes | Use runtime-specific WebSocket subpaths and avoid `serverBacked` on Bun/Deno/Workers fetch-style bindings. |
+| Treating raw body as available for multipart requests | Multipart requests do not expose `rawBody`; use multipart APIs and limits. |
+| Letting platform helpers terminate the process directly | Helpers report shutdown failure through logs/exit code; host process owns final termination. |
+| Depending on Node globals in portable app code | Keep runtime-specific behavior inside adapter/bootstrap code. |
+
+## Related reading
+
+- [HTTP API](./http-api)
+- [Realtime](./realtime)
+- [Operations](./operations)
+- [HTTP & Platform Packages](../packages/http-platform)

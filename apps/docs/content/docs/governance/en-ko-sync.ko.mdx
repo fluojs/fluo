@@ -1,0 +1,17 @@
+---
+title: EN/KO 동기화 정책
+description: 공식 fluo 문서의 locale parity 규칙입니다.
+---
+
+영어와 한국어 문서는 모두 first-class surface입니다.
+
+## 필요한 parity
+
+- 같은 slug 구조.
+- 같은 navigation metadata coverage.
+- locale-specific 설명이 필요한 경우를 제외하면 같은 package name과 command snippet.
+- 같은 source-of-truth reference.
+
+## 검증
+
+`pnpm docs:sync-check`는 `apps/docs/content/docs`를 순회하며 English page 또는 navigation metadata file에 Korean counterpart가 없거나 Korean page에 English counterpart가 없으면 실패합니다.

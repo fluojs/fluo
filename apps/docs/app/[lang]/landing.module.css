@@ -1,0 +1,399 @@
+.page {
+  position: relative;
+  min-height: 100vh;
+  overflow-x: clip;
+  background: #f7f8f8;
+  color: #0b1114;
+}
+
+.page::before {
+  display: none;
+}
+
+.aurora {
+  display: none;
+}
+
+.hero {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(22rem, 0.95fr);
+  gap: clamp(2rem, 6vw, 6rem);
+  align-items: center;
+  width: min(1120px, calc(100% - 2rem));
+  min-height: 72vh;
+  margin: 0 auto;
+  padding: clamp(5rem, 9vw, 7rem) 0 clamp(2.5rem, 6vw, 4rem);
+}
+
+.copyStack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(1rem, 2vw, 1.35rem);
+}
+
+.eyebrow {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 0.42rem 0.7rem;
+  border: 1px solid #c8d0d4;
+  border-radius: 0.55rem;
+  background: #ffffff;
+  color: #2d3a40;
+  font-size: 0.72rem;
+  font-weight: 760;
+  letter-spacing: 0.11em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.title {
+  display: grid;
+  gap: 0.08em;
+  max-width: 12ch;
+  margin: 0;
+  color: #070b0d;
+  font-size: clamp(3.8rem, 7.2vw, 6.8rem);
+  font-weight: 900;
+  letter-spacing: -0.058em;
+  line-height: 0.93;
+  text-wrap: pretty;
+  word-spacing: 0.04em;
+}
+
+.titleLine {
+  display: block;
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+
+.titleAccent {
+  color: #1769e8;
+}
+
+.koreanTitle {
+  max-width: 8.5ch;
+  letter-spacing: -0.052em;
+  word-spacing: 0;
+}
+
+.subtitle {
+  max-width: 38rem;
+  margin: 0;
+  color: #536168;
+  font-size: clamp(1rem, 1.6vw, 1.17rem);
+  line-height: 1.72;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.primaryAction,
+.secondaryAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.85rem;
+  padding: 0 1.05rem;
+  border: 1px solid #c5cdd1;
+  border-radius: 0.7rem;
+  font-weight: 780;
+  text-decoration: none;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.primaryAction {
+  border-color: #1769e8;
+  background: #1769e8;
+  color: #ffffff;
+}
+
+.secondaryAction {
+  background: #ffffff;
+  color: #11191d;
+}
+
+.primaryAction:hover,
+.secondaryAction:hover {
+  transform: translateY(-1px);
+}
+
+.secondaryAction:hover {
+  border-color: #0b1114;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  max-width: 34rem;
+  margin: 1rem 0 0;
+}
+
+.statCard {
+  padding: 0.95rem;
+  border: 1px solid #d5dcdf;
+  border-radius: 0.95rem;
+  background: #ffffff;
+}
+
+.statCard dt {
+  margin: 0;
+  color: #0b1114;
+  font-size: 1.85rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.statCard dd {
+  margin: 0.35rem 0 0;
+  color: #66737a;
+  font-size: 0.82rem;
+}
+
+.logoStage {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 30rem;
+  place-items: center;
+}
+
+.logoPanel {
+  position: relative;
+  display: grid;
+  width: min(34rem, 86vw);
+  aspect-ratio: 1.25;
+  place-items: center;
+}
+
+.logo {
+  width: min(29rem, 92%);
+  height: auto;
+  filter: drop-shadow(0 28px 34px rgba(16, 79, 142, 0.18));
+}
+
+.orbitOne,
+.orbitTwo {
+  position: absolute;
+  z-index: -1;
+  border: 1px solid #dfe7eb;
+  border-radius: 999px;
+}
+
+.orbitOne {
+  width: min(36rem, 86vw);
+  height: 10rem;
+  transform: rotate(-17deg);
+}
+
+.orbitTwo {
+  width: min(30rem, 74vw);
+  height: 7.5rem;
+  border-color: #e8eef1;
+  transform: rotate(24deg);
+}
+
+.codeCard {
+  position: absolute;
+  right: clamp(0rem, 2vw, 1rem);
+  bottom: 2.5rem;
+  display: grid;
+  width: min(22rem, 100%);
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #ccd4d8;
+  border-radius: 0.9rem;
+  background: #ffffff;
+  box-shadow: 0 18px 48px rgba(14, 26, 32, 0.1);
+}
+
+.codeCard span {
+  color: #536168;
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.codeCard code {
+  color: #11191d;
+  font-size: 0.9rem;
+}
+
+.flowGrid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.9rem;
+  width: min(1120px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 0 0 4rem;
+}
+
+.flowCard {
+  min-height: 12.25rem;
+  padding: 1.05rem;
+  border: 1px solid #d5dcdf;
+  border-radius: 1rem;
+  background: #ffffff;
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.flowCard:hover {
+  transform: translateY(-2px);
+  border-color: #0b1114;
+  box-shadow: 0 16px 44px rgba(14, 26, 32, 0.08);
+}
+
+.flowCard span {
+  color: #536168;
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.flowCard strong {
+  display: block;
+  margin-top: 1.5rem;
+  color: #0b1114;
+  font-size: 1.14rem;
+  line-height: 1.18;
+}
+
+.flowCard p {
+  margin: 0.7rem 0 0;
+  color: #66737a;
+  line-height: 1.55;
+}
+
+@media (max-width: 980px) {
+  .hero {
+    grid-template-columns: 1fr;
+    min-height: auto;
+    padding-top: 4.25rem;
+  }
+
+  .title {
+    max-width: 12ch;
+    font-size: clamp(3.6rem, 11vw, 6.4rem);
+  }
+
+  .logoStage {
+    min-height: 24rem;
+    justify-items: start;
+  }
+
+  .flowGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .hero {
+    width: min(100% - 1.25rem, 1120px);
+    gap: 1.75rem;
+    padding-top: 2rem;
+    padding-bottom: 2.4rem;
+  }
+
+  .eyebrow {
+    padding: 0.42rem 0.58rem;
+    font-size: 0.64rem;
+    letter-spacing: 0.08em;
+  }
+
+  .title {
+    max-width: 10ch;
+    font-size: clamp(2.65rem, 12.5vw, 3.9rem);
+    letter-spacing: -0.032em;
+    line-height: 0.98;
+    word-spacing: 0.1em;
+  }
+
+  .koreanTitle {
+    max-width: 8.5ch;
+    font-size: clamp(3rem, 13.8vw, 4rem);
+    letter-spacing: -0.052em;
+    word-spacing: 0;
+  }
+
+  .subtitle {
+    font-size: 1rem;
+    line-height: 1.62;
+  }
+
+  .actions {
+    gap: 0.65rem;
+  }
+
+  .primaryAction,
+  .secondaryAction {
+    width: 100%;
+    min-height: 2.95rem;
+  }
+
+  .stats,
+  .flowGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .stats {
+    margin-top: 0.5rem;
+  }
+
+  .logoStage {
+    min-height: auto;
+    gap: 0.8rem;
+  }
+
+  .logoPanel {
+    width: 100%;
+  }
+
+  .orbitOne {
+    width: 18rem;
+    height: 5.7rem;
+  }
+
+  .orbitTwo {
+    width: 15rem;
+    height: 4.6rem;
+  }
+
+  .codeCard {
+    position: relative;
+    right: auto;
+    bottom: auto;
+    width: 100%;
+    max-width: none;
+  }
+
+  .codeCard code {
+    font-size: 0.78rem;
+    white-space: pre-wrap;
+  }
+
+  .flowGrid {
+    width: min(100% - 1.25rem, 1120px);
+    padding-bottom: 2.75rem;
+  }
+}

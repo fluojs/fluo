@@ -1,0 +1,104 @@
+---
+title: HTTP API
+description: Route를 만들고, request를 bind하고, adapter를 선택하고, API contract를 공개합니다.
+---
+
+fluo의 HTTP 모델은 두 책임으로 나뉩니다.
+
+- `@fluojs/http`는 controller routing, request binding, guard, interceptor, middleware, exception behavior를 소유합니다.
+- Platform package는 그 HTTP contract를 Fastify, raw Node.js, Express, Bun, Deno, Cloudflare Workers에 맞게 어댑트합니다.
+
+이 분리를 유지하세요. 애플리케이션 코드는 runtime global이 아니라 HTTP contract에 의존해야 합니다.
+
+## 1. Controller에서 시작
+
+```ts
+import { Body, Controller, Get, Param, Post } from '@fluojs/http';
+
+interface CreateArticleBody {
+  title: string;
+  body: string;
+}
+
+@Controller('/articles')
+export class ArticlesController {
+  @Post()
+  create(@Body() input: CreateArticleBody) {
+    return {
+      slug: input.title.toLowerCase().replaceAll(' ', '-'),
+      title: input.title,
+      body: input.body,
+    };
+  }
+
+  @Get('/:slug')
+  findOne(@Param('slug') slug: string) {
+    return { slug };
+  }
+}
+```
+
+이 controller는 transport contract를 정의합니다. route path, HTTP method, request binding, response shape가 여기에 있습니다.
+
+## 2. Platform adapter 추가
+
+배포할 런타임에 맞는 adapter를 하나 선택합니다.
+
+| 런타임 대상 | 먼저 볼 패키지 |
+| --- | --- |
+| Node.js의 Fastify | `@fluojs/platform-fastify` |
+| Raw Node.js HTTP | `@fluojs/platform-nodejs` |
+| 기존 Express stack | `@fluojs/platform-express` |
+| Bun | `@fluojs/platform-bun` |
+| Deno | `@fluojs/platform-deno` |
+| Cloudflare Workers | `@fluojs/platform-cloudflare-workers` |
+
+Multipart, WebSocket upgrade, Workers request handling 같은 runtime-specific setup이 필요하면 adapter README를 사용하세요.
+
+## 3. curl로 검증
+
+```bash
+pnpm dev
+curl -X POST http://localhost:3000/articles \
+  -H 'content-type: application/json' \
+  -d '{"title":"Hello fluo","body":"Standard-first APIs"}'
+curl http://localhost:3000/articles/hello-fluo
+```
+
+기대 결과: POST는 `slug`, `title`, `body`를 가진 JSON object를 반환하고, GET은 요청한 slug를 반환합니다.
+
+## 4. Validation과 serialization 추가
+
+Route가 공개되면 raw body를 신뢰하지 마세요. 이 가이드를 다음과 함께 읽으세요.
+
+- DTO contract는 [검증과 직렬화](./validation-serialization).
+- Request validation은 `@fluojs/validation`.
+- Output shaping은 `@fluojs/serialization`.
+
+## 5. Contract 공개
+
+API contract를 consumer에게 보여줘야 하면 `@fluojs/openapi`를 사용합니다.
+
+권장 workflow:
+
+1. Route와 DTO를 작성합니다.
+2. Request-level test를 추가합니다.
+3. OpenAPI docs를 생성하거나 노출합니다.
+4. OpenAPI 페이지를 package docs와 examples에서 연결합니다.
+
+## 패키지 맵
+
+| 필요 | 패키지 |
+| --- | --- |
+| HTTP route 실행 | `@fluojs/http` |
+| Runtime adapter | `@fluojs/platform-*` packages |
+| Validation | `@fluojs/validation` |
+| Serialization | `@fluojs/serialization` |
+| OpenAPI documentation | `@fluojs/openapi` |
+| App/request tests | `@fluojs/testing` |
+
+## 다음 문서
+
+- [런타임 어댑터](./runtime-adapters)
+- [검증과 직렬화](./validation-serialization)
+- [패키지 레퍼런스: HTTP & Platform](../packages/http-platform)

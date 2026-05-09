@@ -1,0 +1,104 @@
+---
+title: HTTP API
+description: Build routes, bind requests, choose adapters, and publish API contracts.
+---
+
+fluo's HTTP model has two separate responsibilities:
+
+- `@fluojs/http` owns controller routing, request binding, guards, interceptors, middleware, and exception behavior.
+- Platform packages adapt that HTTP contract to Fastify, raw Node.js, Express, Bun, Deno, or Cloudflare Workers.
+
+Keep this split in mind: application code should depend on HTTP contracts, not on runtime globals.
+
+## 1. Start with a controller
+
+```ts
+import { Body, Controller, Get, Param, Post } from '@fluojs/http';
+
+interface CreateArticleBody {
+  title: string;
+  body: string;
+}
+
+@Controller('/articles')
+export class ArticlesController {
+  @Post()
+  create(@Body() input: CreateArticleBody) {
+    return {
+      slug: input.title.toLowerCase().replaceAll(' ', '-'),
+      title: input.title,
+      body: input.body,
+    };
+  }
+
+  @Get('/:slug')
+  findOne(@Param('slug') slug: string) {
+    return { slug };
+  }
+}
+```
+
+This controller defines the transport contract: route path, HTTP method, request binding, and response shape.
+
+## 2. Add the platform adapter
+
+Pick one adapter for the runtime you deploy to.
+
+| Runtime target | Start with |
+| --- | --- |
+| Fastify on Node.js | `@fluojs/platform-fastify` |
+| Raw Node.js HTTP | `@fluojs/platform-nodejs` |
+| Existing Express stack | `@fluojs/platform-express` |
+| Bun | `@fluojs/platform-bun` |
+| Deno | `@fluojs/platform-deno` |
+| Cloudflare Workers | `@fluojs/platform-cloudflare-workers` |
+
+Use the adapter README when you need runtime-specific setup such as multipart, WebSocket upgrade, or Workers request handling.
+
+## 3. Verify with curl
+
+```bash
+pnpm dev
+curl -X POST http://localhost:3000/articles \
+  -H 'content-type: application/json' \
+  -d '{"title":"Hello fluo","body":"Standard-first APIs"}'
+curl http://localhost:3000/articles/hello-fluo
+```
+
+Expected result: the POST returns a JSON object with `slug`, `title`, and `body`; the GET returns the requested slug.
+
+## 4. Add validation and serialization
+
+Once the route is public, do not trust raw bodies. Pair this guide with:
+
+- [Validation & Serialization](./validation-serialization) for DTO contracts.
+- `@fluojs/validation` for request validation.
+- `@fluojs/serialization` for output shaping.
+
+## 5. Publish the contract
+
+Use `@fluojs/openapi` when the API contract needs to be visible to consumers.
+
+Recommended workflow:
+
+1. Write the route and DTOs.
+2. Add request-level tests.
+3. Generate or expose OpenAPI docs.
+4. Keep the OpenAPI page linked from package docs and examples.
+
+## Package map
+
+| Need | Package |
+| --- | --- |
+| HTTP route execution | `@fluojs/http` |
+| Runtime adapter | `@fluojs/platform-*` packages |
+| Validation | `@fluojs/validation` |
+| Serialization | `@fluojs/serialization` |
+| OpenAPI documentation | `@fluojs/openapi` |
+| App/request tests | `@fluojs/testing` |
+
+## Read next
+
+- [Runtime Adapters](./runtime-adapters)
+- [Validation & Serialization](./validation-serialization)
+- [Package Reference: HTTP & Platform](../packages/http-platform)

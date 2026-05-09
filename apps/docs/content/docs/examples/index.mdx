@@ -1,0 +1,54 @@
+---
+title: Examples Overview
+description: Choose, run, inspect, and verify the official fluo examples.
+---
+
+Examples are executable companions to the guides. They are not screenshots of a happy path; they are the quickest way to prove a documented behavior in a real app shape.
+
+## Choose an example
+
+| Example | Use when | What to inspect |
+| --- | --- | --- |
+| [Minimal](./minimal) | You want the smallest runnable app. | bootstrap, health/readiness routes, app e2e test |
+| [RealWorld API](./realworld-api) | You want a real feature slice. | modules, controllers, services, DTOs, validation, tests |
+| [Auth JWT Passport](./auth-jwt-passport) | You need protected routes. | token issuance, Passport strategy, profile route, auth tests |
+| [Ops Metrics Terminus](./ops-metrics-terminus) | You are preparing for production. | health checks, readiness, metrics, operations routes |
+
+## Run an example
+
+From the repository root:
+
+```bash
+pnpm install
+pnpm test -- --project examples
+```
+
+For a focused pass, run the test file for the example you are reading. Example:
+
+```bash
+pnpm vitest run examples/minimal/src/app.test.ts
+pnpm vitest run examples/auth-jwt-passport/src/app.test.ts
+```
+
+Expected result: the selected test file passes and proves the behavior described by the example page.
+
+## How to read examples
+
+1. Read the example README first.
+2. Open the module file to see package composition.
+3. Open controller files to see HTTP boundaries.
+4. Open service/provider files to see business logic.
+5. Open test files to see the behavior the example promises.
+
+## Guide mapping
+
+| If you are reading... | Pair it with |
+| --- | --- |
+| [First Feature](../guides/first-feature) | [RealWorld API](./realworld-api) |
+| [HTTP API](../guides/http-api) | [Minimal](./minimal) or [RealWorld API](./realworld-api) |
+| [Auth](../guides/auth) | [Auth JWT Passport](./auth-jwt-passport) |
+| [Operations](../guides/operations) | [Ops Metrics Terminus](./ops-metrics-terminus) |
+
+## Documentation contract
+
+If a guide promises runtime behavior, there should be an example or test path that proves it. If you add a new official guide, add or link the example that verifies the flow.

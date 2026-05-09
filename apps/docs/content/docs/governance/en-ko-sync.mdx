@@ -1,0 +1,17 @@
+---
+title: EN/KO Sync Policy
+description: Locale parity rules for official fluo documentation.
+---
+
+English and Korean docs are first-class surfaces.
+
+## Required parity
+
+- Same slug structure.
+- Same navigation metadata coverage.
+- Same package names and command snippets unless a locale-specific explanation is required.
+- Same source-of-truth references.
+
+## Verification
+
+`pnpm docs:sync-check` walks `apps/docs/content/docs` and fails when an English page or navigation metadata file has no Korean counterpart, or when a Korean page has no English counterpart.

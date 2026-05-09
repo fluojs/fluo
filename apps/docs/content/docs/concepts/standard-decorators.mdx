@@ -1,0 +1,24 @@
+---
+title: Standard Decorators
+description: Understand fluo's TC39 decorator baseline and metadata-free dependency model.
+---
+
+fluo treats TC39 standard decorators as a design boundary, not as a syntax preference. Public APIs must work without legacy decorator emit or compiler-generated type metadata.
+
+## The baseline
+
+- No `experimentalDecorators`.
+- No `emitDecoratorMetadata`.
+- No package-internal `process.env` access.
+- Public exports are documented with TSDoc.
+- Runtime behavior is protected by behavioral contracts.
+
+## Why it matters
+
+The dependency graph should be visible in source code and testable without hidden metadata. This keeps applications portable across runtimes and avoids framework magic that only works under a specific compiler mode.
+
+## Related references
+
+- Repository context: `docs/CONTEXT.md`
+- Behavioral policy: `docs/contracts/behavioral-contract-policy.md`
+- Package surface: `docs/reference/package-surface.md`

@@ -1,0 +1,75 @@
+---
+title: 패키지 선택
+description: 작업을 소유하는 가장 작은 fluo 패키지 계열을 선택합니다.
+---
+
+fluo에 패키지가 많은 이유는 각 패키지가 명확한 경계를 소유하기 때문입니다. 목표는 모든 패키지를 설치하는 것이 아니라 필요한 동작을 소유하는 패키지를 고르는 것입니다.
+
+## 작업에서 시작하기
+
+| 하려는 일 | 먼저 볼 패키지 | 다음에 추가할 것 |
+| --- | --- | --- |
+| 프로젝트 생성과 실행 | `@fluojs/cli` | starter가 선택한 runtime adapter |
+| Module과 provider 정의 | `@fluojs/core`, `@fluojs/di` | 직접 bootstrap할 때 `@fluojs/runtime` |
+| REST API 만들기 | `@fluojs/http` | 하나의 `@fluojs/platform-*` adapter |
+| Request body 검증 | `@fluojs/validation` | response DTO에는 `@fluojs/serialization` |
+| API 문서 공개 | `@fluojs/openapi` | route DTO와 test |
+| Bearer auth 추가 | `@fluojs/jwt` | strategy가 필요하면 `@fluojs/passport` |
+| Rate limit 추가 | `@fluojs/throttler` | limit 공유가 필요하면 Redis store |
+| 데이터베이스 추가 | `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose` | transaction/request context pattern |
+| Redis 또는 cache 추가 | `@fluojs/redis`, `@fluojs/cache-manager` | job에는 `@fluojs/queue` |
+| Realtime 추가 | `@fluojs/websockets` 또는 `@fluojs/socket.io` | upgrade를 지원하는 platform |
+| 비동기 workflow 추가 | `@fluojs/event-bus`, `@fluojs/cqrs`, `@fluojs/microservices`, `@fluojs/cron` | queue/notification package |
+| 관측성 추가 | `@fluojs/metrics`, `@fluojs/terminus`, `@fluojs/studio` | production checklist |
+| 동작 테스트 | `@fluojs/testing` | package-specific conformance tests |
+
+## 선택 규칙
+
+1. **Ownership boundary를 넘지 마세요.** Platform package는 런타임을 어댑트하고, HTTP package는 request semantics를 소유하며, data package는 storage semantics를 소유합니다.
+2. **동작에 가장 가까운 패키지를 설치하세요.** JWT verification이 필요하면 더 큰 auth bundle이 아니라 `@fluojs/jwt`에서 시작합니다.
+3. **Workflow는 guide, ownership은 reference를 사용하세요.** Guide는 package composition을 설명하고, package reference는 누가 무엇을 소유하는지 알려줍니다.
+4. **학습할 때는 example을 우선하세요.** 실행 가능한 예제가 package 조합을 증명합니다.
+
+## 선택 예시
+
+### “DTO validation이 있는 Fastify REST API가 필요합니다.”
+
+사용:
+
+- `@fluojs/http`
+- `@fluojs/platform-fastify`
+- `@fluojs/validation`
+- `@fluojs/testing`
+
+[HTTP API](./http-api)를 읽고, 이어서 [검증과 직렬화](./validation-serialization)를 읽으세요.
+
+### “JWT login과 protected route가 필요합니다.”
+
+사용:
+
+- `@fluojs/jwt`
+- strategy-based guard가 필요하면 `@fluojs/passport`
+- login 또는 refresh endpoint에는 `@fluojs/throttler`
+
+[인증](./auth)과 [Auth JWT Passport 예제](../examples/auth-jwt-passport)를 읽으세요.
+
+### “Database-backed feature와 background processing이 필요합니다.”
+
+사용:
+
+- database package 하나: `@fluojs/prisma`, `@fluojs/drizzle`, 또는 `@fluojs/mongoose`
+- shared infrastructure가 필요하면 `@fluojs/redis`
+- request path 밖으로 작업을 옮기려면 `@fluojs/queue`
+
+[영속성](./persistence)과 [메시징과 워크플로](./messaging-workflows)를 읽으세요.
+
+## 선택 검증
+
+앱이나 가이드에 패키지를 추가하기 전에 확인하세요.
+
+- 이 패키지가 내가 바꾸는 boundary를 소유하나요?
+- 동작하는 예제가 있는 package README가 있나요?
+- 동작을 증명하는 example app 또는 test가 있나요?
+- [패키지 매트릭스](../packages/matrix)에 포함되어 있나요?
+
+Canonical repository source of truth는 `docs/reference/package-surface.md`입니다.

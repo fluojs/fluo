@@ -1,0 +1,370 @@
+---
+title: Persistence
+description: fluo 애플리케이션에서 database, Redis, cache, transaction, queue 패키지를 선택하고 운영합니다.
+---
+
+fluo의 persistence는 의도적으로 명시적입니다. 프레임워크가 모든 database를 하나의 generic repository abstraction 뒤에 숨기지 않습니다. 대신 각 패키지는 backing technology의 의미를 보존하면서 fluo의 DI, lifecycle, interceptor, status contract에 연결합니다.
+
+Durable record, shared Redis state, HTTP/application caching, background job processing이 필요할 때 이 가이드를 사용하세요.
+
+## Package map
+
+| 필요 | 패키지 | Primary contract |
+| --- | --- | --- |
+| Prisma ORM | `@fluojs/prisma` | `PrismaModule`, `PrismaService.current()`, request transactions |
+| Drizzle ORM | `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase.current()`, optional dispose hook |
+| Mongoose ODM | `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection`, explicit sessions |
+| Shared Redis clients | `@fluojs/redis` | `RedisModule`, `RedisService`, named clients |
+| HTTP/application caching | `@fluojs/cache-manager` | `CacheModule`, `CacheInterceptor`, `CacheService` |
+| Background jobs | `@fluojs/queue` | `QueueModule`, `QueueLifecycleService`, `@QueueWorker()` |
+
+## Persistence package 선택하기
+
+| 필요한 것 | 선택 | 이유 |
+| --- | --- | --- |
+| Generated Prisma client 기반 type-safe relational access | `@fluojs/prisma` | Prisma generated type을 유지하면서 lifecycle과 ALS-backed transaction context를 추가합니다. |
+| Drizzle query builder integration | `@fluojs/drizzle` | Drizzle database handle을 `current()`, request transaction, shutdown status와 함께 감쌉니다. |
+| MongoDB with Mongoose models and sessions | `@fluojs/mongoose` | Operation option을 재작성하지 않고 explicit Mongoose session semantics를 보존합니다. |
+| Cache, queue, throttling, fan-out, custom key-value를 위한 shared state | `@fluojs/redis` | Redis client bootstrap/shutdown과 named client token을 소유합니다. |
+| Cached GET response 또는 `remember(...)` style application caching | `@fluojs/cache-manager` | Memory, Redis, custom store contract와 bounded ownership을 제공합니다. |
+| Request path 밖의 retryable work | `@fluojs/queue` | Redis-backed distributed jobs, worker discovery, retry/backoff, dead-letter record를 제공합니다. |
+
+## Prisma
+
+`PrismaModule.forRoot(...)`로 `PrismaClient`를 등록합니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { PrismaModule } from '@fluojs/prisma';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+@Module({
+  imports: [PrismaModule.forRoot({ client: prisma })],
+})
+class AppModule {}
+```
+
+Repository 안에서는 `PrismaService.current()`를 사용합니다. Transaction context가 있으면 active transaction client를 반환하고, 없으면 root client를 반환합니다.
+
+```ts
+import { Inject } from '@fluojs/core';
+import { PrismaService } from '@fluojs/prisma';
+import { PrismaClient } from '@prisma/client';
+
+@Inject(PrismaService)
+export class UserRepository {
+  constructor(private readonly prisma: PrismaService<PrismaClient>) {}
+
+  async findById(id: string) {
+    return this.prisma.current().user.findUnique({ where: { id } });
+  }
+}
+```
+
+Manual transaction은 `transaction(...)`으로 열고 repository code는 계속 `current()`를 사용합니다.
+
+```ts
+await this.prisma.transaction(async () => {
+  const user = await this.prisma.current().user.create({ data });
+  await this.prisma.current().profile.create({ data: { userId: user.id } });
+});
+```
+
+Default unnamed client의 request-scoped transaction에는 `PrismaTransactionInterceptor`를 적용합니다.
+
+```ts
+import { Post, UseInterceptors } from '@fluojs/http';
+import { PrismaTransactionInterceptor } from '@fluojs/prisma';
+
+@UseInterceptors(PrismaTransactionInterceptor)
+class UserController {
+  @Post()
+  async create() {
+    // Downstream PrismaService.current() calls share this transaction.
+  }
+}
+```
+
+Named client는 `PrismaModule.forRoot({ name, client })`와 `getPrismaServiceToken(name)`으로 지원됩니다. Token resolution을 명시적으로 유지하려면 추가 client마다 name을 사용하세요.
+
+## Drizzle
+
+Drizzle registration은 보통 underlying driver가 connection pool을 소유하므로 injected config provider에서 만듭니다.
+
+```ts
+import { ConfigService } from '@fluojs/config';
+import { Module } from '@fluojs/core';
+import { DrizzleModule } from '@fluojs/drizzle';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
+
+@Module({
+  imports: [
+    DrizzleModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: async (config: ConfigService) => {
+        const pool = new Pool({ connectionString: config.getOrThrow<string>('DATABASE_URL') });
+
+        return {
+          database: drizzle(pool),
+          dispose: async () => {
+            await pool.end();
+          },
+        };
+      },
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+Repository code는 `DrizzleDatabase.current()`를 사용하므로 active transaction handle을 자동으로 볼 수 있습니다.
+
+```ts
+import { DrizzleDatabase } from '@fluojs/drizzle';
+import { eq } from 'drizzle-orm';
+import { users } from './schema';
+
+export class UserRepository {
+  constructor(private readonly db: DrizzleDatabase) {}
+
+  async findById(id: string) {
+    return this.db.current().select().from(users).where(eq(users.id, id));
+  }
+}
+```
+
+`DrizzleTransactionInterceptor`는 HTTP request를 `DrizzleDatabase.requestTransaction(...)`으로 감쌉니다. Shutdown 중에는 active request transaction을 abort/settle한 뒤 configured `dispose(database)` hook을 실행합니다.
+
+## Mongoose
+
+`@fluojs/mongoose`는 기존 Mongoose connection을 fluo lifecycle management에 연결합니다. 이 패키지는 raw connection을 직접 만들거나 소유하지 않습니다. 애플리케이션 종료 시 닫아야 한다면 `dispose` hook을 넘기세요.
+
+```ts
+import { Module } from '@fluojs/core';
+import { MongooseModule } from '@fluojs/mongoose';
+import mongoose from 'mongoose';
+
+const connection = mongoose.createConnection('mongodb://localhost:27017/test');
+
+@Module({
+  imports: [
+    MongooseModule.forRoot({
+      connection,
+      dispose: async (conn) => conn.close(),
+    }),
+  ],
+})
+class AppModule {}
+```
+
+Connection 접근에는 `MongooseConnection.current()`, transaction 안에서는 `currentSession()`을 사용합니다.
+
+```ts
+import { MongooseConnection } from '@fluojs/mongoose';
+
+export class UserRepository {
+  constructor(private readonly conn: MongooseConnection) {}
+
+  async findById(id: string) {
+    const User = this.conn.current().model('User');
+    return User.findById(id);
+  }
+}
+```
+
+Mongoose transaction에서는 model call에 session option을 명시해야 합니다.
+
+```ts
+await this.conn.transaction(async () => {
+  const session = this.conn.currentSession();
+  const User = this.conn.current().model('User');
+
+  await User.create([{ name: 'Ada' }], { session });
+});
+```
+
+fluo는 Mongoose operation option을 재작성하지 않습니다. Model call이 `{ session }`을 생략했다면 fluo가 session을 자동으로 붙여 줄 것이라고 가정하면 안 됩니다.
+
+## Redis
+
+Cache storage, queue, throttling, fan-out, custom key-value operation처럼 여러 package가 shared ephemeral state를 필요로 할 때 Redis를 사용합니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { RedisModule } from '@fluojs/redis';
+
+@Module({
+  imports: [
+    RedisModule.forRoot({
+      host: 'localhost',
+      port: 6379,
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+JSON-aware `get`/`set`/`del`에는 `RedisService`, raw `ioredis` instance가 필요하면 `REDIS_CLIENT`를 주입합니다.
+
+```ts
+import { Inject } from '@fluojs/core';
+import { RedisService } from '@fluojs/redis';
+
+@Inject(RedisService)
+export class CacheRepository {
+  constructor(private readonly redis: RedisService) {}
+
+  async saveUser(id: string, user: object) {
+    await this.redis.set(`user:${id}`, user, 3600);
+  }
+
+  async getUser(id: string) {
+    return await this.redis.get(`user:${id}`);
+  }
+}
+```
+
+`RedisModule`이 만든 Redis client는 lifecycle-managed입니다. fluo는 `lazyConnect: true`를 강제하고, bootstrap 중 socket을 열고, shutdown 중 graceful `quit()`을 시도하며, 필요하면 `disconnect()`로 fallback합니다.
+
+하나의 앱에 Redis connection이 여러 개 필요하면 `RedisModule.forRoot({ name, ...options })`, `getRedisClientToken(name)`, `getRedisServiceToken(name)`을 사용하세요.
+
+## Cache manager
+
+`@fluojs/cache-manager`는 HTTP response caching과 programmatic application caching을 지원합니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { Controller, Get, UseInterceptors } from '@fluojs/http';
+import { CacheInterceptor, CacheModule, CacheTTL } from '@fluojs/cache-manager';
+
+@Controller('/products')
+class ProductController {
+  @Get('/')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(60)
+  list() {
+    return [{ id: 1, name: 'Product A' }];
+  }
+}
+
+@Module({
+  imports: [CacheModule.forRoot({ store: 'memory' })],
+  controllers: [ProductController],
+})
+class AppModule {}
+```
+
+Application-level caching에는 `CacheService`를 주입합니다.
+
+```ts
+import { Inject } from '@fluojs/core';
+import { CacheService } from '@fluojs/cache-manager';
+
+class UserService {
+  constructor(@Inject(CacheService) private readonly cache: CacheService) {}
+
+  async getProfile(userId: string) {
+    return this.cache.remember(`user:${userId}`, async () => fetchUserProfile(userId), 300);
+  }
+}
+```
+
+중요한 cache semantics:
+
+- Memory cache는 `ttl`이 없으면 300초 TTL과 최대 1,000개 live entry를 기본으로 사용합니다.
+- Redis cache는 `JSON.stringify(...)`로 entry를 저장합니다. `Date`, `bigint`, function, symbol, cyclic graph는 caching 전에 normalize하세요.
+- `CacheService.reset()`은 configured store 또는 Redis `keyPrefix`가 소유한 entry만 지웁니다.
+- HTTP caching은 successful, uncommitted GET result만 저장합니다. Stream, committed response, `undefined`, non-2xx response는 저장하지 않습니다.
+
+## Queue
+
+Request path 밖으로 작업을 옮기고 process boundary를 넘어 유지해야 할 때 queue를 사용합니다.
+
+```ts
+import { QueueWorker } from '@fluojs/queue';
+
+export class ProcessOrderJob {
+  constructor(public readonly orderId: string) {}
+}
+
+@QueueWorker(ProcessOrderJob, { attempts: 3, backoff: { type: 'fixed', delayMs: 5000 } })
+export class OrderWorker {
+  async handle(job: ProcessOrderJob) {
+    console.log(`Processing order: ${job.orderId}`);
+  }
+}
+```
+
+Redis와 `QueueModule`을 등록한 뒤 `QueueLifecycleService`로 job을 enqueue합니다.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
+import { RedisModule } from '@fluojs/redis';
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    QueueModule.forRoot(),
+  ],
+  providers: [OrderWorker],
+})
+export class AppModule {}
+
+export class OrderService {
+  @Inject(QueueLifecycleService)
+  private readonly queue: QueueLifecycleService;
+
+  async placeOrder(id: string) {
+    await this.queue.enqueue(new ProcessOrderJob(id));
+  }
+}
+```
+
+Queue job은 JSON-serializable plain object여야 합니다. Queue는 enqueue 전에 payload를 serialize하고 worker side에서 job prototype을 rehydrate합니다. Retry가 모두 소진되면 Queue는 Redis의 `fluo:queue:dead-letter:<jobName>`에 dead-letter record를 추가해 수동 점검이나 복구가 가능하게 합니다.
+
+## Transaction and lifecycle rules
+
+| 주제 | 규칙 |
+| --- | --- |
+| Repository access | Package별 `current()` seam을 사용하세요. (`PrismaService.current()`, `DrizzleDatabase.current()`, `MongooseConnection.current()`) |
+| Request transactions | 기본 HTTP request boundary에는 interceptor를 사용하고, named/multiple client는 보통 explicit transaction call을 사용합니다. |
+| Nested transactions | Active boundary는 재사용됩니다. 무시될 nested option은 rejected됩니다. |
+| Shutdown | Package는 underlying resource를 dispose하기 전에 active request transaction을 drain 또는 abort합니다. |
+| Strict transactions | Driver capability 누락이 direct execution fallback으로 숨겨지면 안 될 때 strict mode를 켜세요. |
+| Redis ownership | `RedisModule`은 자신이 만든 client를 소유하고, consuming package는 duplicate 또는 package-created resource만 소유합니다. |
+| Cache reset | Cache-owned namespace만 reset하세요. Cache prefix를 unrelated application data와 공유하지 마세요. |
+| Queue workers | Singleton `@QueueWorker()` provider/controller만 등록됩니다. |
+
+## Public API summary
+
+| 패키지 | Public API |
+| --- | --- |
+| `@fluojs/prisma` | `PrismaModule`, `PrismaService`, `PrismaTransactionInterceptor`, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, named token helpers, status snapshot helper |
+| `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase`, `DrizzleTransactionInterceptor`, `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, status snapshot helper |
+| `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection`, `MongooseTransactionInterceptor`, `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, status snapshot helper |
+| `@fluojs/redis` | `RedisModule`, `RedisService`, `REDIS_CLIENT`, named client/service token helpers, status snapshot helper |
+| `@fluojs/cache-manager` | `CacheModule`, `CacheService`, `CacheInterceptor`, `CacheTTL`, `CacheKey`, `CacheEvict`, memory/Redis stores, diagnostics helpers |
+| `@fluojs/queue` | `QueueModule`, `QueueLifecycleService`, `QueueWorker`, `QUEUE`, queue options, status snapshot helper |
+
+## 흔한 실수
+
+| 실수 | 더 나은 접근 |
+| --- | --- |
+| 모든 service에 `tx` object를 직접 전달함 | Repository access를 `current()` 뒤에 두고 explicit transaction boundary를 여세요. |
+| Mongoose session이 자동으로 붙는다고 가정함 | Transaction에 참여하는 Mongoose operation에는 `currentSession()`을 명시적으로 넘기세요. |
+| Memory cache 또는 in-memory throttling을 shared production state로 사용함 | Multi-instance deployment에서는 Redis-backed storage를 사용하세요. |
+| Redis에 non-JSON value를 cache함 | Caching 전에 value를 normalize하세요. |
+| Redis cache prefix를 application data와 공유함 | `myapp:cache:` 같은 dedicated `keyPrefix`를 사용하세요. |
+| Non-serializable payload가 있는 class instance를 enqueue함 | Job payload를 JSON-serializable하게 유지하고 worker에서 rich object를 재구성하세요. |
+
+## 관련 문서
+
+- [Validation & Serialization](./validation-serialization)
+- [Operations](./operations)
+- [Testing](./testing)
+- [Data & Storage Packages](../packages/data)
+- [Messaging & Workflows](./messaging-workflows)

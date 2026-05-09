@@ -1,0 +1,33 @@
+---
+title: Why fluo?
+description: Understand the framework tradeoffs behind fluo's standard-first backend model.
+---
+
+fluo is for teams that want a structured TypeScript backend framework without depending on legacy decorator compiler modes or hidden runtime metadata.
+
+## The problem fluo avoids
+
+Decorator-based frameworks often look ergonomic at the controller layer but rely on `experimentalDecorators`, `emitDecoratorMetadata`, and reflection-heavy conventions. Those choices make dependency graphs harder to audit and harder to port across runtimes.
+
+fluo keeps the same organizational benefits—modules, controllers, providers, lifecycle hooks, guards, interceptors, validation, and platform adapters—while making the runtime contract explicit.
+
+## Design goals
+
+| Goal | What it means |
+| --- | --- |
+| Standard-first TypeScript | TC39 standard decorators are the baseline. |
+| Explicit dependency boundaries | Providers and modules expose wiring in source code. |
+| Runtime portability | HTTP semantics are separated from Node, Bun, Deno, Workers, and framework adapters. |
+| Package clarity | Each `@fluojs/*` package owns a focused boundary. |
+| Contract-backed behavior | Docs, tests, and package surfaces are treated as binding contracts. |
+
+## When fluo fits
+
+- You want NestJS-like structure without legacy decorator metadata.
+- You need one application model that can move across Fastify, Node.js, Express, Bun, Deno, or Workers.
+- You prefer package-level boundaries over a monolithic framework surface.
+- You want docs and tests to describe the same behavior.
+
+## When to start elsewhere
+
+If you only need a tiny HTTP handler with no DI, lifecycle, module graph, validation, or portability story, a minimal router may be enough. fluo becomes valuable when the application needs structure, package composition, runtime boundaries, and long-term maintainability.

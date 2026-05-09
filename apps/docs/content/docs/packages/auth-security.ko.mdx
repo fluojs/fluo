@@ -1,0 +1,14 @@
+---
+title: Auth & Security 패키지
+description: 보호된 route를 위한 JWT, Passport, throttling 패키지입니다.
+---
+
+Security package는 route boundary와 비용이 큰 operation을 보호합니다.
+
+| 패키지 | 사용할 때 | Deep dive |
+| --- | --- | --- |
+| `@fluojs/jwt` | Token signing, verification, JWKS | `packages/jwt/README.ko.md` |
+| `@fluojs/passport` | Passport strategy, guard, cookie auth, refresh lifecycle | `packages/passport/README.ko.md` |
+| `@fluojs/throttler` | Rate limiting guard와 Redis/in-memory store | `packages/throttler/README.ko.md` |
+
+보호된 application route를 구성할 때는 [인증](../guides/auth)을 읽으세요.

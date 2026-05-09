@@ -1,0 +1,118 @@
+---
+title: 첫 기능 만들기
+description: module, service, controller, DTO, test 경로로 작은 feature slice를 만듭니다.
+---
+
+Feature slice는 fluo 애플리케이션의 가장 작은 유용한 단위입니다. 하나의 domain concept에 module boundary, business logic provider, HTTP controller, public contract DTO, 동작을 증명하는 test를 제공합니다.
+
+이 walkthrough는 `users` 기능을 사용합니다. 코드는 생성된 앱에 복사할 수 있는 shape로 보고, domain에 맞게 이름을 바꾸세요.
+
+## 1. Module boundary 만들기
+
+```ts
+import { Module } from '@fluojs/core';
+
+import { UsersController } from './users.controller';
+import { UsersService } from './users.service';
+
+@Module({
+  controllers: [UsersController],
+  providers: [UsersService],
+})
+export class UsersModule {}
+```
+
+Module은 review boundary입니다. 어떤 controller와 provider가 함께 속하는지 보여줍니다.
+
+## 2. Provider 추가
+
+```ts
+export interface UserSummary {
+  id: string;
+  name: string;
+}
+
+export class UsersService {
+  private readonly users = new Map<string, UserSummary>();
+
+  create(name: string): UserSummary {
+    const user = { id: crypto.randomUUID(), name };
+    this.users.set(user.id, user);
+    return user;
+  }
+
+  findById(id: string): UserSummary | undefined {
+    return this.users.get(id);
+  }
+}
+```
+
+Provider는 business behavior를 소유해야 합니다. Controller는 transport input을 provider call로 바꾸는 역할만 해야 합니다.
+
+## 3. HTTP boundary 정의
+
+```ts
+import { Body, Controller, Get, Param, Post } from '@fluojs/http';
+
+import { UsersService } from './users.service';
+
+interface CreateUserBody {
+  name: string;
+}
+
+@Controller('/users')
+export class UsersController {
+  constructor(private readonly users: UsersService) {}
+
+  @Post()
+  create(@Body() body: CreateUserBody) {
+    return this.users.create(body.name);
+  }
+
+  @Get('/:id')
+  findOne(@Param('id') id: string) {
+    return this.users.findById(id);
+  }
+}
+```
+
+Controller는 route shape와 request binding을 소유합니다. Package나 persistence 결정을 숨기면 안 됩니다.
+
+## 4. 입력이 외부에서 오면 validation 추가
+
+Route가 실제 외부 입력을 받기 시작하면 `@fluojs/validation`을 사용하세요. DTO validation은 edge에 두고, 검증된 값을 내부로 전달합니다.
+
+```ts
+export class CreateUserDto {
+  name!: string;
+}
+```
+
+그다음 앱에서 사용하는 validation pattern에 따라 DTO를 연결합니다. `@fluojs/validation` package reference는 `validate()`와 `materialize()`의 tradeoff를 설명합니다.
+
+## 5. 기능 검증
+
+생성된 앱을 실행하고 route를 호출합니다.
+
+```bash
+pnpm dev
+curl -X POST http://localhost:3000/users \
+  -H 'content-type: application/json' \
+  -d '{"name":"Ada"}'
+```
+
+그다음 `@fluojs/testing`으로 test를 추가해 동작이 prose에만 남지 않게 합니다.
+
+## 리뷰 체크리스트
+
+- Module이 feature boundary를 보여주나요?
+- Provider가 logic을 소유하고 controller는 얇게 유지되나요?
+- Controller가 transport behavior만 노출하나요?
+- 신뢰할 수 없는 입력이 business logic 전에 검증되나요?
+- Route를 증명하는 request-level 또는 app-level test가 있나요?
+
+## 다음 문서
+
+- 더 깊은 routing과 platform adapter는 [HTTP API](./http-api).
+- DTO input/output contract는 [검증과 직렬화](./validation-serialization).
+- App test ladder는 [테스트](./testing).

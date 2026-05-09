@@ -1,0 +1,512 @@
+---
+title: 메시징과 워크플로
+description: event, CQRS saga, queue, cron, microservice, notification channel로 비동기 fluo system을 구성합니다.
+---
+
+Messaging과 workflow package는 작업을 경계 너머로 이동시킵니다. 하나의 application process 안에서, service process 사이에서, request path 밖에서, 또는 scheduled operational loop 안에서 work를 실행해야 할 때 사용합니다.
+
+fluo에는 별도의 workflow engine package가 없습니다. 대신 workflow는 명시적인 framework contract를 조합해서 만듭니다.
+
+```txt
+business fact
+  -> event handler or CQRS saga
+  -> command, queue job, scheduled task, transport message, or notification
+  -> lifecycle, retry, shutdown, and observability boundary
+```
+
+기능을 하나의 synchronous HTTP controller method로 구현하면 안 될 때 이 가이드를 사용하세요.
+
+## Package map
+
+| Need | Package | Primary contract |
+| --- | --- | --- |
+| Local event와 optional Redis fan-out | `@fluojs/event-bus` | `EventBusModule`, `@OnEvent`, `EventBusLifecycleService.publish(...)` |
+| Command, query, event, saga | `@fluojs/cqrs` | `CqrsModule`, `@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga` |
+| Broker-backed service boundary | `@fluojs/microservices` | `MicroservicesModule`, `@MessagePattern`, `@EventPattern`, transport adapter |
+| Redis-backed background job | `@fluojs/queue` | `QueueModule`, `@QueueWorker`, `QueueLifecycleService.enqueue(...)` |
+| Scheduled and delayed work | `@fluojs/cron` | `CronModule`, `@Cron`, `@Interval`, `@Timeout`, `SCHEDULING_REGISTRY` |
+| Channel-agnostic notification orchestration | `@fluojs/notifications` | `NotificationsModule`, `NotificationsService`, lifecycle event, queue seam |
+| Email delivery와 notification queue worker | `@fluojs/email` | `EmailModule`, `EmailService`, `EMAIL_CHANNEL`, `@fluojs/email/queue` |
+| Slack delivery | `@fluojs/slack` | `SlackModule`, `SlackService`, `SLACK_CHANNEL` |
+| Discord delivery | `@fluojs/discord` | `DiscordModule`, `DiscordService`, `DISCORD_CHANNEL` |
+
+## Choose the right boundary
+
+| Situation | Start with | Why |
+| --- | --- | --- |
+| 하나의 domain fact 뒤에 local reaction이 필요함 | `@fluojs/event-bus` | Command/query model 없이 단순하게 decoupling합니다. |
+| Fact가 다음 explicit business command를 trigger해야 함 | `@fluojs/cqrs` saga | Saga는 process manager이고 command는 write ownership을 명확히 합니다. |
+| Work가 느리거나 retry 가능하거나 operator-facing임 | `@fluojs/queue` | Job은 attempts, backoff, Redis persistence, dead-letter evidence를 가집니다. |
+| Work가 특정 time 또는 interval에 실행되어야 함 | `@fluojs/cron` | Scheduling은 lifecycle-managed이고 Redis distributed lock을 사용할 수 있습니다. |
+| 다른 service가 handler를 소유함 | `@fluojs/microservices` | Pattern routing이 process와 broker boundary를 넘습니다. |
+| Side effect가 email, Slack, Discord, custom channel로 나감 | `@fluojs/notifications` plus channel package | Application code가 provider SDK 대신 하나의 dispatch contract에 의존합니다. |
+
+대부분의 production flow는 여러 행을 조합합니다. 예를 들어 checkout은 `OrderPlacedEvent`를 publish하고, saga는 inventory를 reserve하고, 뒤따르는 handler는 invoice generation을 enqueue하고, cron은 stale reservation을 expire하고, notification은 customer update를 보낼 수 있습니다.
+
+## Local events
+
+여러 provider가 서로 직접 의존하지 않고 같은 event에 반응해야 하면 `@fluojs/event-bus`를 사용합니다.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import { EventBusLifecycleService, EventBusModule, OnEvent } from '@fluojs/event-bus';
+
+class UserSignedUpEvent {
+  static readonly eventKey = 'user.signed-up.v1';
+
+  constructor(public readonly email: string) {}
+}
+
+class WelcomeProjection {
+  @OnEvent(UserSignedUpEvent)
+  async project(event: UserSignedUpEvent) {
+    console.log('prepare welcome journey for', event.email);
+  }
+}
+
+@Inject(EventBusLifecycleService)
+class UsersService {
+  constructor(private readonly eventBus: EventBusLifecycleService) {}
+
+  async signUp(email: string) {
+    await this.eventBus.publish(new UserSignedUpEvent(email));
+  }
+}
+
+@Module({
+  imports: [EventBusModule.forRoot()],
+  providers: [UsersService, WelcomeProjection],
+})
+class AppModule {}
+```
+
+`publish(event, options?)`는 `signal`, `timeoutMs`, `waitForHandlers`를 지원합니다. `waitForHandlers`의 기본값은 `true`이므로 awaited local handler와 awaited transport publish가 같은 cancellation/timeout boundary를 공유합니다.
+
+### Redis fan-out
+
+Event publication이 process를 넘어야 하면 Redis subpath를 사용합니다.
+
+```ts
+import { EventBusModule } from '@fluojs/event-bus';
+import { RedisEventBusTransport } from '@fluojs/event-bus/redis';
+
+EventBusModule.forRoot({
+  transport: new RedisEventBusTransport({
+    publishClient: redis,
+    subscribeClient: redisSubscriber,
+  }),
+});
+```
+
+Stable transport channel name이 필요하면 static `eventKey`를 사용하세요. Redis transport는 shutdown 중 자신이 등록한 channel을 unsubscribe하지만 caller-owned Redis client를 disconnect하지 않습니다.
+
+## CQRS and sagas
+
+Write intent, read intent, domain-event handling, process orchestration을 분리해야 하면 `@fluojs/cqrs`를 사용합니다.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import {
+  CommandBusLifecycleService,
+  CommandHandler,
+  CqrsModule,
+  ICommand,
+  ICommandHandler,
+  ISaga,
+  Saga,
+} from '@fluojs/cqrs';
+
+class ReserveInventoryCommand implements ICommand {
+  constructor(public readonly orderId: string) {}
+}
+
+class OrderPlacedEvent {
+  constructor(public readonly orderId: string) {}
+}
+
+@CommandHandler(ReserveInventoryCommand)
+class ReserveInventoryHandler implements ICommandHandler<ReserveInventoryCommand, void> {
+  async execute(command: ReserveInventoryCommand): Promise<void> {
+    console.log('reserve inventory for', command.orderId);
+  }
+}
+
+@Inject(CommandBusLifecycleService)
+@Saga(OrderPlacedEvent)
+class FulfillmentSaga implements ISaga<OrderPlacedEvent> {
+  constructor(private readonly commandBus: CommandBusLifecycleService) {}
+
+  async handle(event: OrderPlacedEvent): Promise<void> {
+    await this.commandBus.execute(new ReserveInventoryCommand(event.orderId));
+  }
+}
+
+@Module({
+  imports: [CqrsModule.forRoot()],
+  providers: [ReserveInventoryHandler, FulfillmentSaga],
+})
+class CommerceModule {}
+```
+
+Saga는 process manager이지 숨겨진 workflow engine이 아닙니다. 각 step은 작게 유지하세요. 하나의 event에 반응하고 다음 command 또는 boundary를 선택하면 됩니다.
+
+### Event pipeline order
+
+`CqrsEventBusService.publish(event)`는 matching `@EventHandler(...)` provider를 먼저 실행하고, matching `@Saga(...)` provider를 두 번째로 실행한 뒤, delegated `@fluojs/event-bus` publication을 마지막에 실행합니다. `publishAll(events)`는 다음 event를 publish하기 전에 각 event pipeline을 await하므로 input order를 보존합니다.
+
+In-process saga graph는 bounded해야 합니다. Publish chain이 같은 saga route에 cyclically re-enter하거나 32 nested saga hop을 넘으면 fluo는 `SagaTopologyError`를 발생시킵니다. 의도적으로 cyclic하거나 long-running인 feedback loop는 queue, scheduler, external transport 또는 다른 bounded boundary 뒤로 이동하세요.
+
+## Background jobs
+
+Work가 느리거나 retry 가능하거나 failure-prone이거나 initiating request 밖에서 살아야 하면 `@fluojs/queue`를 사용합니다.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import { QueueLifecycleService, QueueModule, QueueWorker } from '@fluojs/queue';
+import { RedisModule } from '@fluojs/redis';
+
+class GenerateInvoiceJob {
+  constructor(public readonly orderId: string) {}
+}
+
+@QueueWorker(GenerateInvoiceJob, {
+  attempts: 5,
+  backoff: { type: 'exponential', delayMs: 1_000 },
+})
+class InvoiceWorker {
+  async handle(job: GenerateInvoiceJob) {
+    console.log('generate invoice for', job.orderId);
+  }
+}
+
+@Inject(QueueLifecycleService)
+class BillingService {
+  constructor(private readonly queue: QueueLifecycleService) {}
+
+  async afterShipmentDispatched(orderId: string) {
+    await this.queue.enqueue(new GenerateInvoiceJob(orderId));
+  }
+}
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    QueueModule.forRoot(),
+  ],
+  providers: [BillingService, InvoiceWorker],
+})
+class BackgroundJobsModule {}
+```
+
+Job은 JSON-serializable plain object여야 합니다. Queue는 enqueue 전에 job payload를 serialize하고 worker 쪽에서 job prototype을 rehydrate합니다.
+
+### Retry and dead letters
+
+Attempts와 backoff는 workload별로 설정하세요. Fixed backoff는 예측하기 쉽고, exponential backoff는 load가 걸린 dependency에 보통 더 안전합니다.
+
+Worker가 retry attempts를 모두 소진하면 Queue는 Redis의 `fluo:queue:dead-letter:<jobName>` 아래 dead-letter record를 append합니다. `QueueModule.forRoot()`는 기본적으로 job당 최신 `1_000`개 entry를 보존합니다. Opt out하려면 `defaultDeadLetterMaxEntries: false`를 설정하고, 더 작은 retention budget이 필요하면 양의 정수를 제공하세요.
+
+Queue traffic이 default connection 대신 named `@fluojs/redis` client를 사용해야 하면 `QueueModule.forRoot({ clientName: 'jobs' })`를 사용합니다.
+
+## Scheduled work
+
+Periodic job, one-off delayed task, fixed-rate interval에는 `@fluojs/cron`을 사용합니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { Cron, CronExpression, CronModule, Interval, Timeout } from '@fluojs/cron';
+
+class BillingScheduler {
+  @Cron(CronExpression.EVERY_MINUTE, { name: 'billing.reconcile' })
+  async reconcilePendingInvoices() {
+    console.log('reconcile invoices');
+  }
+
+  @Interval(15_000)
+  async pollProviderStatus() {
+    console.log('poll provider status');
+  }
+
+  @Timeout(5_000)
+  async warmUpAfterStartup() {
+    console.log('warm up');
+  }
+}
+
+@Module({
+  imports: [CronModule.forRoot()],
+  providers: [BillingScheduler],
+})
+class SchedulerModule {}
+```
+
+Cron expression은 five-field 또는 six-field 형식을 사용할 수 있습니다. Built-in `CronExpression` preset은 sub-minute precision이 필요할 때 six-field expression을 사용합니다. Scheduled method는 singleton provider와 controller에서만 discovery됩니다.
+
+### Distributed locks and shutdown
+
+여러 instance가 같은 scheduler를 실행하고 task가 한 owner에서만 실행되어야 하면 distributed mode를 enable합니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { CronModule } from '@fluojs/cron';
+import { RedisModule } from '@fluojs/redis';
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    CronModule.forRoot({
+      distributed: {
+        enabled: true,
+        keyPrefix: 'fluo:cron:lock',
+        lockTtlMs: 30_000,
+      },
+      shutdown: {
+        timeoutMs: 5_000,
+      },
+    }),
+  ],
+})
+class DistributedSchedulerModule {}
+```
+
+`lockTtlMs`는 최소 `1_000ms`여야 합니다. fluo는 TTL 만료 전에 Redis lock을 renew하지만 Redis TTL은 여전히 drift-sensitive coordination primitive입니다. Long-running scheduled work는 idempotent하게 유지하고 stale work가 위험한 경우 application-level fencing을 사용하세요.
+
+Scheduler는 shutdown 중 active task execution을 bounded timeout으로 drain합니다. Timeout이 만료되면 영원히 block하지 않고 shutdown을 계속합니다.
+
+### Dynamic scheduling
+
+Runtime에 task를 add, remove, enable, disable, retime해야 하면 `SCHEDULING_REGISTRY`를 inject합니다.
+
+```ts
+import { Inject } from '@fluojs/core';
+import { SCHEDULING_REGISTRY, type SchedulingRegistry } from '@fluojs/cron';
+
+@Inject(SCHEDULING_REGISTRY)
+class TenantScheduleManager {
+  constructor(private readonly registry: SchedulingRegistry) {}
+
+  addTenantReconciliation(tenantId: string) {
+    this.registry.addCron(`tenant:${tenantId}:reconcile`, '0 * * * *', () => {
+      console.log('reconcile tenant', tenantId);
+    });
+  }
+}
+```
+
+Registry는 `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, `updateCronExpression`을 제공합니다.
+
+## Transport-driven services
+
+Handler가 같은 application process 안이 아니라 transport boundary 뒤에 있으면 `@fluojs/microservices`를 사용합니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { MessagePattern, MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { fluoFactory } from '@fluojs/runtime';
+
+class MathHandler {
+  @MessagePattern('math.sum')
+  sum(data: { a: number; b: number }) {
+    return data.a + data.b;
+  }
+}
+
+@Module({
+  imports: [
+    MicroservicesModule.forRoot({
+      transport: new TcpMicroserviceTransport({ port: 4000 }),
+    }),
+  ],
+  providers: [MathHandler],
+})
+class AppModule {}
+
+const microservice = await fluoFactory.createMicroservice(AppModule);
+await microservice.listen();
+```
+
+Request-response flow에는 `@MessagePattern`을, fire-and-forget event broadcasting에는 `@EventPattern`을 사용합니다. gRPC streaming handler는 `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`을 사용합니다.
+
+Supported transport에는 TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC가 포함됩니다. NATS, Kafka, RabbitMQ starter project는 caller-owned broker client를 숨겨진 built-in으로 처리하지 않고 application bootstrap에서 명시합니다.
+
+중요한 delivery contract:
+
+- TCP frame은 기본적으로 1 MiB로 bounded됩니다.
+- Redis Streams는 handler-side processing이 끝난 뒤에만 entry를 acknowledge합니다.
+- NATS, Kafka, RabbitMQ transport는 shutdown 중 subscription/consumer를 detach하지만 caller-owned collaborator를 disconnect하지 않습니다.
+- Duplicate message match는 deterministic하게 fail합니다.
+- Request-scoped provider는 success와 failure 뒤에 dispose됩니다.
+
+## Notifications and delivery channels
+
+Application code가 하나의 channel-agnostic contract로 dispatch해야 하면 `@fluojs/notifications`를 사용합니다.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import { NotificationsModule, NotificationsService, type NotificationChannel } from '@fluojs/notifications';
+
+const emailChannel: NotificationChannel = {
+  channel: 'email',
+  async send(notification) {
+    console.log('send email', notification.subject, notification.payload);
+    return { externalId: 'email-123' };
+  },
+};
+
+@Inject(NotificationsService)
+class WelcomeService {
+  constructor(private readonly notifications: NotificationsService) {}
+
+  async sendWelcomeEmail(userId: string, email: string) {
+    await this.notifications.dispatch({
+      channel: 'email',
+      recipients: [email],
+      subject: 'Welcome to fluo',
+      payload: { template: 'welcome-email', userId },
+    });
+  }
+}
+
+@Module({
+  imports: [NotificationsModule.forRoot({ channels: [emailChannel] })],
+  providers: [WelcomeService],
+})
+class NotificationsAppModule {}
+```
+
+`NotificationsModule`은 의도적으로 concrete channel package를 import하지 않습니다. Provider-specific payload mapping을 해당 package가 소유해야 하면 `@fluojs/email`, `@fluojs/slack`, `@fluojs/discord`를 사용하세요.
+
+### Email with queue-backed notifications
+
+`@fluojs/email`은 direct email delivery, `@fluojs/notifications`용 `EMAIL_CHANNEL`, queue integration subpath를 제공합니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { EMAIL_CHANNEL, EmailModule } from '@fluojs/email';
+import { createEmailNotificationsQueueAdapter, EmailNotificationsQueueWorker } from '@fluojs/email/queue';
+import { NotificationsModule } from '@fluojs/notifications';
+import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
+
+@Module({
+  imports: [
+    QueueModule.forRoot(),
+    EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: {
+        kind: 'transactional-http',
+        create: () => transactionalTransport,
+        ownsResources: false,
+      },
+    }),
+    NotificationsModule.forRootAsync({
+      inject: [EMAIL_CHANNEL, QueueLifecycleService],
+      useFactory: (channel, queue) => ({
+        channels: [channel],
+        queue: {
+          adapter: createEmailNotificationsQueueAdapter(queue),
+          bulkThreshold: 25,
+        },
+      }),
+    }),
+  ],
+  providers: [EmailNotificationsQueueWorker],
+})
+class EmailNotificationsModule {}
+```
+
+Queue support는 opt-in입니다. `EmailModule`은 `EmailNotificationsQueueWorker`를 자동으로 register하지 않으며, `@fluojs/email/queue`를 import하지 않는 application은 runtime에 `@fluojs/queue`가 필요하지 않습니다.
+
+### Lifecycle events
+
+Notifications는 `@fluojs/event-bus`에 직접 의존하지 않고 caller-provided publisher를 통해 lifecycle event를 publish할 수 있습니다.
+
+```ts
+NotificationsModule.forRoot({
+  channels: [emailChannel],
+  events: {
+    publishLifecycleEvents: true,
+    publisher: {
+      async publish(event) {
+        await eventBus.publish(event);
+      },
+    },
+  },
+});
+```
+
+Published lifecycle event name은 `notification.dispatch.requested`, `notification.dispatch.queued`, `notification.dispatch.delivered`, `notification.dispatch.failed`입니다.
+
+## End-to-end order flow
+
+대표적인 production flow는 모든 boundary를 의도적으로 사용할 수 있습니다.
+
+1. HTTP checkout이 command를 validate하고 order를 저장합니다.
+2. Write side가 CQRS event bus로 `OrderPlacedEvent`를 publish합니다.
+3. `@EventHandler(...)` provider가 local projection을 update합니다.
+4. `@Saga(OrderPlacedEvent)`가 `ReserveInventoryCommand`를 dispatch합니다.
+5. Inventory completion이 `InventoryReservedEvent`를 publish합니다.
+6. Handler가 느린 PDF 작업을 위해 `GenerateInvoiceJob`을 enqueue합니다.
+7. `@QueueWorker(GenerateInvoiceJob)`이 transient failure를 retry하고 attempts가 소진되면 dead letter를 기록합니다.
+8. `@Cron(...)`이 stale reservation을 expire하고 external state를 reconcile합니다.
+9. `NotificationsService`가 email, Slack, Discord update를 direct 또는 queue seam으로 보냅니다.
+10. 다른 service가 fulfillment를 소유한다면 `@MessagePattern(...)` 또는 `@EventPattern(...)`이 해당 step을 microservice transport 뒤로 이동시킵니다.
+
+각 boundary가 하나의 질문에 답하기 때문에 design은 이해 가능한 상태를 유지합니다. 누가 intent를 소유하는가, 누가 fact에 반응하는가, 무엇이 retry 가능한가, 무엇이 scheduled인가, 무엇이 broker를 넘는가, 무엇이 delivery channel인가를 구분합니다.
+
+## Testing workflows
+
+Workflow code는 선택한 boundary에서 test하세요.
+
+| Boundary | Test focus |
+| --- | --- |
+| Event bus | Published event class, matching `@OnEvent` handler, configured timeout/cancellation behavior |
+| CQRS | Exactly one command/query handler, event pipeline order, saga dispatch of next command, topology failure cases |
+| Queue | Serializable job payload, worker behavior, attempts/backoff, dead-letter behavior |
+| Cron | Decorator discovery, lock configuration, idempotent task body, bounded shutdown |
+| Microservices | Pattern matching, transport send/emit behavior, request scope disposal, shutdown ownership |
+| Notifications | Channel resolution, direct versus queued dispatch, lifecycle event publication, provider payload mapping |
+
+App-level module과 request test에는 `@fluojs/testing`을 사용하세요. Package-level conformance는 각 README가 나열한 package test에 있습니다. 예: `packages/cqrs/src/module.test.ts`, `packages/queue/src/module.test.ts`, `packages/cron/src/module.test.ts`, `packages/notifications/src/module.test.ts`.
+
+## Operational rules
+
+- In-process event handler는 빠르게 유지하세요. 느리거나 flaky한 work는 queue로 이동합니다.
+- Saga graph는 acyclic하고 shallow하게 유지하세요. Long-running loop에는 queue, scheduler, transport를 사용합니다.
+- Job payload는 작고 cloneable해야 하며 secret을 포함하면 안 됩니다.
+- Retry와 backoff는 blanket default가 아니라 workload별로 선택합니다.
+- Distributed lock이 enabled된 cron task는 특히 idempotent해야 합니다.
+- Transported event에는 stable event key를 사용합니다.
+- Caller-owned broker와 Redis client는 shutdown 중에도 caller-owned로 취급합니다.
+- Delivery visibility가 중요하면 notification lifecycle event를 publish합니다.
+- Provider-specific payload semantics가 business service로 새지 않도록 channel package를 명시적으로 register합니다.
+
+## Public API summary
+
+| Package | Entry APIs |
+| --- | --- |
+| `@fluojs/event-bus` | `EventBusModule.forRoot(...)`, `EventBusLifecycleService`, `@OnEvent`, `EVENT_BUS`, `@fluojs/event-bus/redis` |
+| `@fluojs/cqrs` | `CqrsModule.forRoot(...)`, `CommandBusLifecycleService`, `QueryBusLifecycleService`, `CqrsEventBusService`, handler decorators, `SagaTopologyError` |
+| `@fluojs/queue` | `QueueModule.forRoot(...)`, `QueueLifecycleService`, `@QueueWorker`, `QUEUE`, queue status snapshots |
+| `@fluojs/cron` | `CronModule.forRoot(...)`, `@Cron`, `@Interval`, `@Timeout`, `CronExpression`, `SCHEDULING_REGISTRY` |
+| `@fluojs/microservices` | `MicroservicesModule.forRoot(...)`, `createMicroservicesProviders(...)`, pattern decorators, transport adapters, `MicroserviceLifecycleService` |
+| `@fluojs/notifications` | `NotificationsModule.forRoot(...)`, `NotificationsModule.forRootAsync(...)`, `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS` |
+| `@fluojs/email` | `EmailModule`, `EmailService`, `EMAIL_CHANNEL`, `@fluojs/email/node`, `@fluojs/email/queue` |
+| `@fluojs/slack` | `SlackModule`, `SlackService`, `SLACK_CHANNEL`, `createSlackWebhookTransport(...)` |
+| `@fluojs/discord` | `DiscordModule`, `DiscordService`, `DISCORD_CHANNEL`, `createDiscordWebhookTransport(...)` |
+
+## Source material
+
+- `packages/event-bus/README.ko.md`
+- `packages/cqrs/README.ko.md`
+- `packages/microservices/README.ko.md`
+- `packages/queue/README.ko.md`
+- `packages/cron/README.ko.md`
+- `packages/notifications/README.ko.md`
+- `packages/email/README.ko.md`
+- `packages/slack/README.ko.md`
+- `packages/discord/README.ko.md`
+- `book/intermediate/ch09-event-bus.ko.md`
+- `book/intermediate/ch10-cqrs.ko.md`
+- `book/intermediate/ch11-queue.ko.md`
+- `book/intermediate/ch12-cron.ko.md`
+- `book/intermediate/ch15-notifications.ko.md`

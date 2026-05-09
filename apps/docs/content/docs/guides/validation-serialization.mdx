@@ -1,0 +1,459 @@
+---
+title: Validation & Serialization
+description: Build explicit request DTOs and response DTOs for safe input and output boundaries.
+---
+
+Validation and serialization are the two DTO boundaries of a fluo application.
+
+Validation protects the **input** side: unknown request data becomes a named, validated DTO before it reaches business logic. Serialization protects the **output** side: internal records become intentional response shapes before they leave the application.
+
+```txt
+client input
+  -> HTTP binding
+  -> request DTO materialization
+  -> validation rules
+  -> service logic
+  -> response DTO
+  -> serialization rules
+  -> client response
+```
+
+Use this guide when you want a NestJS-style request/response contract with fluo's standard-first, metadata-free runtime model.
+
+## Packages
+
+| Concern | Package | Typical entry point |
+| --- | --- | --- |
+| Request DTO validation | `@fluojs/validation` | `IsString`, `DefaultValidator`, `PartialType` |
+| HTTP DTO binding | `@fluojs/http` | `@RequestDto()` |
+| Response serialization | `@fluojs/serialization` | `Expose`, `Exclude`, `Transform`, `SerializerInterceptor` |
+| Contract tests | `@fluojs/testing` | request and app-level helpers |
+
+Install the packages you need at the boundary you are building:
+
+```bash
+pnpm add @fluojs/validation @fluojs/serialization
+```
+
+HTTP applications usually use these together with `@fluojs/http`.
+
+## Request validation
+
+Request validation answers one question: **what data is allowed to enter the application?**
+
+Network input is untrusted. A route body, query string, path parameter, header, or cookie can have the wrong shape even when TypeScript types look correct in the handler signature. A DTO gives that input a runtime contract.
+
+### DTOs are boundary objects
+
+Prefer DTO classes at transport boundaries instead of anonymous object types.
+
+```ts
+import { IsBoolean, IsOptional, IsString, MinLength } from '@fluojs/validation';
+
+export class CreatePostDto {
+  @IsString()
+  @MinLength(3)
+  title = '';
+
+  @IsString()
+  @MinLength(10)
+  body = '';
+
+  @IsOptional()
+  @IsBoolean()
+  published?: boolean;
+}
+```
+
+This class does three jobs at once:
+
+- it names the payload (`CreatePostDto`),
+- it documents expected fields (`title`, `body`, `published`),
+- and it attaches validation metadata that exists at runtime.
+
+### Why classes, not interfaces?
+
+TypeScript interfaces disappear during compilation. fluo cannot attach runtime validation metadata to something that no longer exists in JavaScript.
+
+Classes remain at runtime, so decorators can associate validation rules with class fields without requiring `emitDecoratorMetadata` or legacy decorator compiler behavior. This keeps the fluo programming model explicit and standard-first.
+
+### Connect a DTO to a route
+
+Validation rules matter only after the HTTP layer is told which DTO to use. `@RequestDto()` connects request binding, DTO materialization, and validation.
+
+```ts
+import { Controller, Post, RequestDto } from '@fluojs/http';
+import { CreatePostDto } from './create-post.dto';
+
+@Controller('/posts')
+export class PostsController {
+  @Post('/')
+  @RequestDto(CreatePostDto)
+  create(input: CreatePostDto) {
+    return input;
+  }
+}
+```
+
+When a request reaches this route, the HTTP pipeline binds request data, creates a `CreatePostDto` instance, applies validation rules, and only then calls the handler.
+
+### `materialize()` vs `validate()`
+
+The validation package exposes a lower-level engine for code outside HTTP handlers.
+
+```ts
+import { DefaultValidator, DtoValidationError } from '@fluojs/validation';
+import { CreatePostDto } from './create-post.dto';
+
+const validator = new DefaultValidator();
+
+try {
+  const dto = await validator.materialize(
+    { title: 'Hello fluo', body: 'DTO boundaries make APIs safer.' },
+    CreatePostDto,
+  );
+
+  console.log(dto instanceof CreatePostDto); // true
+} catch (error) {
+  if (error instanceof DtoValidationError) {
+    console.log(error.issues);
+  }
+}
+```
+
+| Method | Use when | Behavior |
+| --- | --- | --- |
+| `materialize(value, Target)` | You received unknown input and need a DTO instance. | Copies safe own enumerable properties, applies DTO binding metadata, recursively materializes nested DTOs, then validates. |
+| `validate(instance, Target)` | You already have a root object and only need to check rules. | Runs validation rules against the existing root value. Plain nested DTO values may be temporarily materialized for nested validation, but caller-owned values are not replaced. |
+
+Root values must be plain objects or instances of the target DTO. Scalars, arrays, `null`, and `undefined` are rejected before DTO constructors or field initializers run.
+
+### Validation error shape
+
+`DtoValidationError.issues` is the stable DTO used to describe validation failures.
+
+```ts
+type ValidationIssue = {
+  code: string;
+  field?: string;
+  message: string;
+  source?: 'path' | 'query' | 'header' | 'cookie' | 'body';
+};
+```
+
+Nested fields use dot paths and collection indexes, for example `address.city` or `items[0].name`. HTTP binding rules can include `source`; standalone validation and Standard Schema rules may omit it.
+
+### Nested DTOs
+
+Use `@ValidateNested()` when a field owns another DTO.
+
+```ts
+import { IsString, ValidateNested } from '@fluojs/validation';
+
+class AddressDto {
+  @IsString()
+  city = '';
+}
+
+class CreateUserDto {
+  @ValidateNested(() => AddressDto)
+  address = new AddressDto();
+
+  @ValidateNested(() => AddressDto, { each: true })
+  previousAddresses: AddressDto[] = [];
+}
+```
+
+Nested validation supports object fields, arrays, `Set`, and `Map`. Cycles are detected safely, and shared references are allowed.
+
+### No implicit scalar coercion
+
+fluo validation is intentionally strict. If the transport layer provides `'42'` and your application needs a number, validation will not silently pretend the string was already a number.
+
+Convert values deliberately at the boundary where conversion belongs.
+
+```ts
+import { Controller, Get, RequestDto } from '@fluojs/http';
+import { IsOptional, IsString } from '@fluojs/validation';
+
+class ListPostsQueryDto {
+  @IsOptional()
+  @IsString()
+  page = '1';
+}
+
+@Controller('/posts')
+export class PostsController {
+  @Get('/')
+  @RequestDto(ListPostsQueryDto)
+  findAll(input: ListPostsQueryDto) {
+    const page = Number.parseInt(input.page, 10);
+    return this.postsService.findAll(page);
+  }
+}
+```
+
+This keeps the request contract honest: first validate the transport shape, then make any application-specific conversion visible in code.
+
+### Mapped DTO helpers
+
+Create DTOs often become the source of update, public, or partial variants. Mapped DTO helpers preserve validation metadata while avoiding manual duplication.
+
+```ts
+import { OmitType, PartialType, PickType } from '@fluojs/validation';
+import { CreatePostDto } from './create-post.dto';
+
+export class UpdatePostDto extends PartialType(CreatePostDto) {}
+
+export class UpdateTitleDto extends PickType(CreatePostDto, ['title']) {}
+
+export class PublicCreatePostDto extends OmitType(CreatePostDto, ['published']) {}
+```
+
+`IntersectionType(A, B)` combines two DTO contracts. The mapped-type helpers are also available from the `@fluojs/validation/mapped-types` subpath.
+
+### Custom rules and Standard Schema
+
+Use built-in decorators first. When a field or class needs custom behavior, use `Validate`, `ValidateIf`, or `ValidateClass`.
+
+```ts
+import { IsString, ValidateIf } from '@fluojs/validation';
+
+class PublishPostDto {
+  @ValidateIf((value, object) => object.published === true)
+  @IsString()
+  summary?: string;
+
+  published = false;
+}
+```
+
+`ValidateIf()` short-circuits dependent validators when its predicate returns `false`.
+
+For schema libraries that implement the Standard Schema contract, attach a class-level schema with `ValidateClass()`.
+
+```ts
+import { ValidateClass } from '@fluojs/validation';
+import { z } from 'zod';
+
+const UserSchema = z.object({ age: z.number().min(18) });
+
+@ValidateClass(UserSchema)
+class RestrictedUserDto {
+  age = 0;
+}
+```
+
+### Validation API summary
+
+| Area | Public API |
+| --- | --- |
+| Engine | `DefaultValidator`, `Validator`, `DtoValidationError`, `ValidationIssue` |
+| Core type decorators | `IsString`, `IsNumber`, `IsBoolean`, `IsDate`, `IsArray`, `IsObject`, `IsEnum`, `IsInt` |
+| Presence and comparison | `IsDefined`, `IsOptional`, `IsEmpty`, `IsNotEmpty`, `Equals`, `NotEquals`, `IsIn`, `IsNotIn` |
+| Strings and network values | `IsEmail`, `IsUrl`, `IsUUID`, `IsIP`, `Matches`, `Length`, `MinLength`, `MaxLength`, `Contains`, `NotContains` |
+| Numbers, dates, locale, geo | `Min`, `Max`, `IsPositive`, `IsNegative`, `MinDate`, `MaxDate`, `IsLatitude`, `IsLongitude`, `IsCurrency` |
+| Arrays | `ArrayContains`, `ArrayNotContains`, `ArrayNotEmpty`, `ArrayMinSize`, `ArrayMaxSize`, `ArrayUnique` |
+| Nested and custom rules | `ValidateNested`, `Validate`, `ValidateIf`, `ValidateClass`, `StandardSchemaV1Like` |
+| DTO composition | `PickType`, `OmitType`, `PartialType`, `IntersectionType` |
+
+## Response serialization
+
+Response serialization answers a different question: **what data is allowed to leave the application?**
+
+Do not assume a request DTO is also a response DTO. Input contracts and output contracts evolve for different reasons. A request may accept a password, but a response must never expose it. A database record may contain internal notes, but a public API should return only the documented fields.
+
+### Public response DTOs
+
+Use `@Expose()` to allow fields, `@Exclude()` to hide fields, and `@Transform()` for lightweight synchronous output shaping.
+
+```ts
+import { Exclude, Expose, Transform } from '@fluojs/serialization';
+
+@Expose({ excludeExtraneous: true })
+export class PublicPostDto {
+  @Expose()
+  id = '';
+
+  @Expose()
+  title = '';
+
+  @Expose()
+  body = '';
+
+  @Expose()
+  published = false;
+
+  @Expose()
+  @Transform((value) => String(value).trim())
+  summary = '';
+
+  @Exclude()
+  internalNotes = '';
+}
+```
+
+`@Expose({ excludeExtraneous: true })` makes the class allowlist-based: only explicitly exposed fields are serialized. This is safer than trying to remember every field that should be hidden.
+
+### Shape controller results automatically
+
+For HTTP handlers, use `SerializerInterceptor` instead of calling `serialize()` in every route.
+
+```ts
+import { Controller, Get, UseInterceptors } from '@fluojs/http';
+import { SerializerInterceptor } from '@fluojs/serialization';
+
+@Controller('/posts')
+@UseInterceptors(SerializerInterceptor)
+export class PostsController {
+  @Get('/')
+  findAll() {
+    return this.postsService.findAllPublic();
+  }
+}
+```
+
+The usual flow is:
+
+```txt
+internal record -> public DTO instance -> SerializerInterceptor -> serialized response
+```
+
+Apply the interceptor at controller level when every route in the controller should use the same serialization rules. Apply it at method level when only a specific route should be shaped.
+
+`SerializerInterceptor` only serializes values still owned by the normal HTTP response writer. If a handler has already committed `RequestContext.response` directly, such as for an SSE stream, the interceptor preserves that ownership and returns the handler-owned value unchanged.
+
+### Manual serialization
+
+Use `serialize(value)` outside the HTTP pipeline, for example in a CLI command, background job, or test.
+
+```ts
+import { Expose, serialize } from '@fluojs/serialization';
+
+@Expose({ excludeExtraneous: true })
+class PublicUserDto {
+  @Expose()
+  id = '';
+
+  @Expose()
+  username = '';
+}
+
+const dto = Object.assign(new PublicUserDto(), {
+  id: 'user-1',
+  username: 'fluo',
+  passwordHash: 'secret',
+});
+
+console.log(serialize(dto));
+// { id: 'user-1', username: 'fluo' }
+```
+
+The important detail is that serialization rules are read from the DTO instance you provide. Map internal records into public DTOs first, then serialize.
+
+### Inheritance and metadata
+
+Serialization metadata declared on a base class is inherited by subclasses.
+
+```ts
+import { Expose } from '@fluojs/serialization';
+
+@Expose({ excludeExtraneous: true })
+class BaseResponseDto {
+  @Expose()
+  id = '';
+}
+
+class UserResponseDto extends BaseResponseDto {
+  @Expose()
+  username = '';
+
+  internalRole = 'admin';
+}
+```
+
+`UserResponseDto` remains expose-only because it inherits the closest class-level `excludeExtraneous` setting. Add `@Expose({ excludeExtraneous: false })` to a derived class only when you intentionally want normal enumerable fields to be included again. Inherited field-level `@Exclude()` metadata still applies.
+
+### Safety semantics
+
+Serialization is recursive and decorator-aware, but it is not a universal JSON normalizer.
+
+| Case | Behavior |
+| --- | --- |
+| Active circular reference | Cut to `undefined` to avoid infinite recursion. |
+| Shared reference that is not an active cycle | Reused in the serialized graph. |
+| Plain object or null-prototype record | Traversed safely and not mistaken for a decorated class instance. |
+| Symbol keys | Enumerable symbol keys are serialized. |
+| Own `__proto__`, `constructor`, `prototype` keys | Treated as data, not prototype mutation. |
+| Decorated nested descendant under undecorated parent | Still honored during recursive traversal. |
+
+Opaque built-ins such as `Date`, `Map`, `Set`, `URL`, `URLSearchParams`, `RegExp`, `Error`, `ArrayBuffer`, typed arrays, `WeakMap`, `WeakSet`, and `Promise` are passed through instead of being expanded as DTOs. Values such as `bigint`, functions, and symbols can also pass through unless you normalize them with `@Transform()` or before the final HTTP writer.
+
+### Serialization API summary
+
+| Area | Public API |
+| --- | --- |
+| Field and class decorators | `Expose`, `Exclude`, `Transform` |
+| Class options | `ExposeClassOptions` |
+| Engine | `serialize(value)` |
+| HTTP integration | `SerializerInterceptor` |
+
+## Designing both contracts together
+
+A complete endpoint usually has separate contracts for input and output.
+
+```ts
+import { Controller, Post, RequestDto, UseInterceptors } from '@fluojs/http';
+import { SerializerInterceptor } from '@fluojs/serialization';
+import { CreatePostDto } from './create-post.dto';
+import { PublicPostDto } from './public-post.dto';
+
+@Controller('/posts')
+@UseInterceptors(SerializerInterceptor)
+export class PostsController {
+  @Post('/')
+  @RequestDto(CreatePostDto)
+  async create(input: CreatePostDto): Promise<PublicPostDto> {
+    const post = await this.postsService.create(input);
+
+    return Object.assign(new PublicPostDto(), {
+      id: post.id,
+      title: post.title,
+      body: post.body,
+      published: post.published,
+      summary: post.summary,
+    });
+  }
+}
+```
+
+The service can use richer internal records. The public response remains stable because the controller maps only the documented fields into `PublicPostDto`.
+
+## Common mistakes
+
+| Mistake | Better approach |
+| --- | --- |
+| Adding decorators to a DTO but forgetting `@RequestDto()` | Connect the DTO to the HTTP route. |
+| Expecting query strings to become numbers automatically | Validate the string shape, then parse intentionally. |
+| Hand-copying create DTO fields into update DTOs | Use `PartialType`, `PickType`, `OmitType`, or `IntersectionType`. |
+| Reusing request DTOs as response DTOs | Create dedicated public response DTOs. |
+| Returning database records directly | Map internal records into DTOs, then serialize. |
+| Assuming serialization returns strict JSON primitives | Normalize special values explicitly with `@Transform()` or response writer logic. |
+| Treating DTOs as domain models | Keep DTOs at transport boundaries; keep business invariants in services/domain code. |
+
+## Testing checklist
+
+- Send invalid request bodies and assert deterministic validation failures.
+- Test optional fields, nested DTO paths, arrays, and mapped DTO variants.
+- Assert that response DTOs do not expose sensitive fields.
+- Test controller-level and method-level `SerializerInterceptor` usage.
+- Include cases for circular or shared references if your response graph can contain them.
+- Keep examples and docs aligned with [Testing](./testing) and the runnable examples under [Examples](../examples).
+
+## Related reading
+
+- [HTTP API](./http-api)
+- [Testing](./testing)
+- [Package Selection](./package-selection)
+- [Package Reference](../packages)
+- [RealWorld API Example](../examples/realworld-api)

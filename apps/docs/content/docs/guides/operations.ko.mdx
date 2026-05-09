@@ -1,0 +1,219 @@
+---
+title: 운영
+description: Metrics, health checks, readiness, diagnostics, production guardrail로 fluo 애플리케이션을 운영합니다.
+---
+
+Operations 문서는 fluo 애플리케이션이 production에서 살아 있고, 준비됐고, 관측 가능하며, 진단 가능한지를 증명하는 방법을 설명합니다.
+
+핵심 운영 루프는 다음과 같습니다.
+
+```txt
+runtime state -> health/readiness -> metrics scrape -> diagnostics snapshot -> tests/alerts
+```
+
+## 패키지
+
+| 관심사 | 패키지 | Primary contract |
+| --- | --- | --- |
+| Prometheus metrics | `@fluojs/metrics` | `/metrics`, HTTP metrics, platform telemetry |
+| Health and readiness | `@fluojs/terminus` | `/health`, `/ready`, indicator aggregation |
+| Diagnostics viewer | `@fluojs/studio` | inspection snapshots, filtering, Mermaid rendering |
+| Rate limits | `@fluojs/throttler` | route-level request limits and `429` responses |
+| Runtime lifecycle | `@fluojs/runtime` | platform shell, component readiness/health snapshots |
+
+## Metrics
+
+Prometheus-compatible scraping이 필요하면 `MetricsModule`을 등록합니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { MetricsModule } from '@fluojs/metrics';
+
+@Module({
+  imports: [MetricsModule.forRoot({ http: true })],
+})
+class AppModule {}
+```
+
+`MetricsModule.forRoot()`는 기본적으로 `GET /metrics`를 노출합니다. `http: true`를 넘기면 HTTP request instrumentation middleware가 설치되어 request totals, error counts, request duration을 기록합니다.
+
+### Label cardinality를 bounded하게 유지하기
+
+HTTP metrics에는 template-normalized path label을 사용하세요.
+
+```ts
+MetricsModule.forRoot({
+  http: {
+    pathLabelMode: 'template',
+    unknownPathLabel: 'UNKNOWN',
+  },
+});
+```
+
+`pathLabelMode: 'raw'`는 path space가 bounded임을 증명할 수 있을 때만 안전합니다. 꼭 필요하다면 `allowUnsafeRawPathLabelMode: true`로 명시적으로 opt in해야 합니다.
+
+### Scrape endpoint 보호 또는 비활성화
+
+Production deployment에서는 scrape boundary를 명확히 해야 합니다. 전용 middleware로 endpoint를 보호하거나, platform-level proxy가 준비될 때까지 비활성화하세요.
+
+```ts
+import { ForbiddenException, type MiddlewareContext, type Next } from '@fluojs/http';
+
+class MetricsTokenMiddleware {
+  async handle(context: MiddlewareContext, next: Next): Promise<void> {
+    if (context.request.headers['x-metrics-token'] !== 'secret-token') {
+      throw new ForbiddenException('Metrics endpoint requires x-metrics-token.');
+    }
+
+    await next();
+  }
+}
+
+MetricsModule.forRoot({
+  endpointMiddleware: [MetricsTokenMiddleware],
+});
+
+MetricsModule.forRoot({
+  path: false,
+});
+```
+
+### Platform telemetry
+
+Metrics는 fluo-specific platform gauge를 노출할 수 있습니다.
+
+- `fluo_component_ready`: component가 ready이면 `1`, 아니면 `0`
+- `fluo_component_health`: component가 healthy이면 `1`, 아니면 `0`
+- `fluo_metrics_registry_mode`: `isolated` 또는 `shared`
+
+```ts
+MetricsModule.forRoot({
+  platformTelemetry: {
+    env: 'production',
+    instance: 'web-01',
+  },
+});
+```
+
+Platform telemetry는 `/metrics` scrape마다 refresh됩니다. Platform shell이 실제로 없으면 scrape는 성공하고 platform telemetry만 생략됩니다. 다른 platform-shell resolution failure는 삼키지 않고 scrape 실패로 노출됩니다.
+
+## Health and readiness
+
+HTTP upstream, Redis, database, memory, disk 같은 external dependency를 health check에 포함해야 한다면 `@fluojs/terminus`를 사용합니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { HttpHealthIndicator, TerminusModule } from '@fluojs/terminus';
+import { MemoryHealthIndicator } from '@fluojs/terminus/node';
+
+@Module({
+  imports: [
+    TerminusModule.forRoot({
+      indicators: [
+        new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
+        new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+      ],
+    }),
+  ],
+})
+class AppModule {}
+```
+
+Built-in indicator family에는 Prisma, Drizzle, Redis, HTTP, memory, disk check가 포함됩니다. Redis-specific helper는 `@fluojs/terminus/redis`, Node-specific helper는 `@fluojs/terminus/node`에서 사용할 수 있습니다.
+
+### DI-backed indicators
+
+Root import 시 optional peer dependency를 로드하지 않으면서 DI container의 dependency가 필요한 indicator를 쓰려면 provider factory를 사용하세요.
+
+```ts
+import { TerminusModule } from '@fluojs/terminus';
+import { createRedisHealthIndicatorProvider } from '@fluojs/terminus/redis';
+
+TerminusModule.forRoot({
+  indicatorProviders: [
+    createRedisHealthIndicatorProvider({ key: 'redis' }),
+    createRedisHealthIndicatorProvider({ clientName: 'cache', key: 'cache-redis' }),
+  ],
+});
+```
+
+### Execution guardrails
+
+느린 indicator는 `execution.indicatorTimeoutMs`로 bounded하게 만드세요.
+
+```ts
+TerminusModule.forRoot({
+  execution: {
+    indicatorTimeoutMs: 1_500,
+  },
+  indicators: [
+    new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
+  ],
+});
+```
+
+`/health`는 health indicator가 하나라도 실패하면 HTTP `503`을 반환합니다. `/ready`는 readiness check가 실패하면 HTTP `503`을 반환합니다. Response에는 structured `status`, `contributors`, `info`, `error`, `details` field가 포함됩니다.
+
+## Diagnostics and Studio
+
+Runtime snapshot을 export하려면 `fluo inspect`, 확인하거나 render하려면 `@fluojs/studio`를 사용합니다.
+
+```bash
+fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
+fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
+fluo inspect ./src/app.module.ts --mermaid
+```
+
+Studio는 raw snapshot, timing diagnostics, snapshot-plus-timing envelope, `fluo inspect --report` artifact를 소비합니다.
+
+```bash
+pnpm add -D @fluojs/studio
+node -p "require.resolve('@fluojs/studio/viewer')"
+```
+
+출력된 `dist/index.html` path를 열고 snapshot file을 viewer에 drag-and-drop하세요. Studio는 `parseStudioPayload(...)`, `applyFilters(...)`, `renderMermaid(...)`를 통해 snapshot parsing, filtering, Mermaid rendering을 소유합니다.
+
+## Runnable operations example
+
+`examples/ops-metrics-terminus`는 다음을 보여 줍니다.
+
+- `MetricsModule.forRoot()` 기반 `GET /metrics`
+- `TerminusModule.forRoot(...)` 기반 `GET /health`, `GET /ready`
+- Shared `Registry`에 등록된 custom Prometheus counter
+- Runtime-aligned health/readiness semantics
+- `createTestApp(...).request(...).send()` 기반 tests
+
+Repository root에서 실행합니다.
+
+```bash
+pnpm vitest run examples/ops-metrics-terminus
+```
+
+## Production checklist
+
+| 영역 | 요구사항 |
+| --- | --- |
+| Metrics endpoint | `/metrics`를 보호하거나 platform access control 전까지 `path: false`로 비활성화하세요. |
+| Metric labels | Template label을 선호하세요. Raw label은 explicit unsafe opt-in과 bounded path가 필요합니다. |
+| Duplicate metrics | Shared registry는 schema가 맞는 framework-owned collector만 재사용합니다. App-owned duplicate name은 fail-fast됩니다. |
+| Health indicators | 느린 probe는 `indicatorTimeoutMs`로 bounded하게 만드세요. |
+| Readiness | Traffic serving에 downstream dependency가 필요하다면 readiness는 liveness보다 엄격해야 합니다. |
+| Runtime snapshots | Bootstrap 문제를 진단할 때 CI/support triage용 inspect report를 export하세요. |
+| Studio viewer | Snapshot parsing/filtering/rendering은 runtime package가 아니라 Studio가 소유합니다. |
+| Tests | `/health`, `/ready`, `/metrics`, custom operation route를 app-level test에서 검증하세요. |
+
+## Public API summary
+
+| 패키지 | Public API |
+| --- | --- |
+| `@fluojs/metrics` | `MetricsModule.forRoot(options)`, `MetricsService`, `METER_PROVIDER`, `PrometheusMeterProvider`, `HttpMetricsMiddleware`, `Registry` |
+| `@fluojs/terminus` | `TerminusModule.forRoot(options)`, `TerminusHealthService`, `HealthCheckError`, `runHealthCheck`, `assertHealthCheck`, indicator tokens and helpers |
+| `@fluojs/studio` | `parseStudioPayload`, `applyFilters`, `renderMermaid`, snapshot/report types, `@fluojs/studio/viewer` |
+
+## 관련 문서
+
+- [Production Checklist](../operations/production-checklist)
+- [Testing](./testing)
+- [Auth](./auth)
+- [Operations Packages](../packages/operations)
+- [Ops Metrics Terminus Example](../examples/ops-metrics-terminus)

@@ -1,0 +1,19 @@
+---
+title: HTTP & Platform Packages
+description: HTTP semantics, platform adapters, and OpenAPI publication.
+---
+
+`@fluojs/http` owns HTTP behavior. Platform packages adapt that behavior to a runtime.
+
+| Package | Use for | Deep dive |
+| --- | --- | --- |
+| `@fluojs/http` | Routing, binding, guards, interceptors, middleware, SSE | `packages/http/README.md` |
+| `@fluojs/platform-fastify` | Primary Fastify adapter | `packages/platform-fastify/README.md` |
+| `@fluojs/platform-nodejs` | Raw Node.js HTTP adapter | `packages/platform-nodejs/README.md` |
+| `@fluojs/platform-express` | Express integration | `packages/platform-express/README.md` |
+| `@fluojs/platform-bun` | Bun-native HTTP/WebSocket behavior | `packages/platform-bun/README.md` |
+| `@fluojs/platform-deno` | Deno-native request dispatch | `packages/platform-deno/README.md` |
+| `@fluojs/platform-cloudflare-workers` | Edge Workers request/response APIs | `packages/platform-cloudflare-workers/README.md` |
+| `@fluojs/openapi` | OpenAPI 3.1 and Swagger UI | `packages/openapi/README.md` |
+
+Read [HTTP API](../guides/http-api) and [Runtime Adapters](../guides/runtime-adapters) for task-oriented guidance.

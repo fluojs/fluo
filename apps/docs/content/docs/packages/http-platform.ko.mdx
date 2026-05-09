@@ -1,0 +1,19 @@
+---
+title: HTTP & Platform 패키지
+description: HTTP 의미론, platform adapter, OpenAPI publication을 다룹니다.
+---
+
+`@fluojs/http`는 HTTP 동작을 소유합니다. Platform package는 그 동작을 런타임에 맞게 어댑트합니다.
+
+| 패키지 | 사용할 때 | Deep dive |
+| --- | --- | --- |
+| `@fluojs/http` | Routing, binding, guard, interceptor, middleware, SSE | `packages/http/README.ko.md` |
+| `@fluojs/platform-fastify` | 기본 Fastify adapter | `packages/platform-fastify/README.ko.md` |
+| `@fluojs/platform-nodejs` | Raw Node.js HTTP adapter | `packages/platform-nodejs/README.ko.md` |
+| `@fluojs/platform-express` | Express integration | `packages/platform-express/README.ko.md` |
+| `@fluojs/platform-bun` | Bun-native HTTP/WebSocket behavior | `packages/platform-bun/README.ko.md` |
+| `@fluojs/platform-deno` | Deno-native request dispatch | `packages/platform-deno/README.ko.md` |
+| `@fluojs/platform-cloudflare-workers` | Edge Workers request/response APIs | `packages/platform-cloudflare-workers/README.ko.md` |
+| `@fluojs/openapi` | OpenAPI 3.1과 Swagger UI | `packages/openapi/README.ko.md` |
+
+작업 중심 안내는 [HTTP API](../guides/http-api)와 [런타임 어댑터](../guides/runtime-adapters)를 읽으세요.

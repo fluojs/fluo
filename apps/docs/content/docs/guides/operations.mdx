@@ -1,0 +1,219 @@
+---
+title: Operations
+description: Run fluo applications with metrics, health checks, readiness, diagnostics, and production guardrails.
+---
+
+Operations docs describe how a fluo application proves that it is alive, ready, observable, and diagnosable in production.
+
+The core operations loop is:
+
+```txt
+runtime state -> health/readiness -> metrics scrape -> diagnostics snapshot -> tests/alerts
+```
+
+## Packages
+
+| Concern | Package | Primary contract |
+| --- | --- | --- |
+| Prometheus metrics | `@fluojs/metrics` | `/metrics`, HTTP metrics, platform telemetry |
+| Health and readiness | `@fluojs/terminus` | `/health`, `/ready`, indicator aggregation |
+| Diagnostics viewer | `@fluojs/studio` | inspection snapshots, filtering, Mermaid rendering |
+| Rate limits | `@fluojs/throttler` | route-level request limits and `429` responses |
+| Runtime lifecycle | `@fluojs/runtime` | platform shell, component readiness/health snapshots |
+
+## Metrics
+
+Register `MetricsModule` when Prometheus-compatible scraping is required.
+
+```ts
+import { Module } from '@fluojs/core';
+import { MetricsModule } from '@fluojs/metrics';
+
+@Module({
+  imports: [MetricsModule.forRoot({ http: true })],
+})
+class AppModule {}
+```
+
+`MetricsModule.forRoot()` exposes `GET /metrics` by default. Passing `http: true` installs HTTP request instrumentation middleware that records request totals, error counts, and request duration.
+
+### Keep label cardinality bounded
+
+Use template-normalized path labels for HTTP metrics.
+
+```ts
+MetricsModule.forRoot({
+  http: {
+    pathLabelMode: 'template',
+    unknownPathLabel: 'UNKNOWN',
+  },
+});
+```
+
+`pathLabelMode: 'raw'` is unsafe unless the path space is proven bounded. If you must use raw labels, opt in explicitly with `allowUnsafeRawPathLabelMode: true`.
+
+### Protect or disable the scrape endpoint
+
+Production deployments should make the scrape boundary explicit. Either protect the endpoint with dedicated middleware or disable it until a platform-level proxy owns access.
+
+```ts
+import { ForbiddenException, type MiddlewareContext, type Next } from '@fluojs/http';
+
+class MetricsTokenMiddleware {
+  async handle(context: MiddlewareContext, next: Next): Promise<void> {
+    if (context.request.headers['x-metrics-token'] !== 'secret-token') {
+      throw new ForbiddenException('Metrics endpoint requires x-metrics-token.');
+    }
+
+    await next();
+  }
+}
+
+MetricsModule.forRoot({
+  endpointMiddleware: [MetricsTokenMiddleware],
+});
+
+MetricsModule.forRoot({
+  path: false,
+});
+```
+
+### Platform telemetry
+
+Metrics can expose fluo-specific platform gauges:
+
+- `fluo_component_ready`: `1` when a component is ready, otherwise `0`.
+- `fluo_component_health`: `1` when a component is healthy, otherwise `0`.
+- `fluo_metrics_registry_mode`: `isolated` or `shared`.
+
+```ts
+MetricsModule.forRoot({
+  platformTelemetry: {
+    env: 'production',
+    instance: 'web-01',
+  },
+});
+```
+
+Platform telemetry refreshes on each `/metrics` scrape. If the platform shell is genuinely missing, the scrape still succeeds and omits platform telemetry. Other platform-shell resolution failures fail the scrape instead of being swallowed.
+
+## Health and readiness
+
+Use `@fluojs/terminus` when health checks should include external dependencies such as HTTP upstreams, Redis, databases, memory, or disk.
+
+```ts
+import { Module } from '@fluojs/core';
+import { HttpHealthIndicator, TerminusModule } from '@fluojs/terminus';
+import { MemoryHealthIndicator } from '@fluojs/terminus/node';
+
+@Module({
+  imports: [
+    TerminusModule.forRoot({
+      indicators: [
+        new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
+        new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+      ],
+    }),
+  ],
+})
+class AppModule {}
+```
+
+Built-in indicator families include Prisma, Drizzle, Redis, HTTP, memory, and disk checks. Redis-specific helpers are available from `@fluojs/terminus/redis`; Node-specific helpers are available from `@fluojs/terminus/node`.
+
+### DI-backed indicators
+
+Use provider factories when indicators need dependencies from the DI container without loading optional peer dependencies at root import time.
+
+```ts
+import { TerminusModule } from '@fluojs/terminus';
+import { createRedisHealthIndicatorProvider } from '@fluojs/terminus/redis';
+
+TerminusModule.forRoot({
+  indicatorProviders: [
+    createRedisHealthIndicatorProvider({ key: 'redis' }),
+    createRedisHealthIndicatorProvider({ clientName: 'cache', key: 'cache-redis' }),
+  ],
+});
+```
+
+### Execution guardrails
+
+Bound slow indicators with `execution.indicatorTimeoutMs`.
+
+```ts
+TerminusModule.forRoot({
+  execution: {
+    indicatorTimeoutMs: 1_500,
+  },
+  indicators: [
+    new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
+  ],
+});
+```
+
+`/health` returns HTTP `503` if any health indicator fails. `/ready` returns HTTP `503` if any readiness check fails. Responses include structured `status`, `contributors`, `info`, `error`, and `details` fields.
+
+## Diagnostics and Studio
+
+Use `fluo inspect` to export a runtime snapshot and `@fluojs/studio` to view or render it.
+
+```bash
+fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
+fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
+fluo inspect ./src/app.module.ts --mermaid
+```
+
+Studio consumes raw snapshots, timing diagnostics, snapshot-plus-timing envelopes, and `fluo inspect --report` artifacts.
+
+```bash
+pnpm add -D @fluojs/studio
+node -p "require.resolve('@fluojs/studio/viewer')"
+```
+
+Open the printed `dist/index.html` path and drag a snapshot file into the viewer. Studio owns snapshot parsing, filtering, and Mermaid rendering through `parseStudioPayload(...)`, `applyFilters(...)`, and `renderMermaid(...)`.
+
+## Runnable operations example
+
+`examples/ops-metrics-terminus` demonstrates:
+
+- `GET /metrics` through `MetricsModule.forRoot()`
+- `GET /health` and `GET /ready` through `TerminusModule.forRoot(...)`
+- one custom Prometheus counter registered on a shared `Registry`
+- runtime-aligned health/readiness semantics
+- tests through `createTestApp(...).request(...).send()`
+
+Run it from the repository root:
+
+```bash
+pnpm vitest run examples/ops-metrics-terminus
+```
+
+## Production checklist
+
+| Area | Requirement |
+| --- | --- |
+| Metrics endpoint | Protect `/metrics` or disable it with `path: false` until platform access control is in place. |
+| Metric labels | Prefer template labels; raw labels require explicit unsafe opt-in and bounded paths. |
+| Duplicate metrics | Shared registries reuse framework-owned collectors only when schema matches; app-owned duplicate names fail fast. |
+| Health indicators | Bound slow probes with `indicatorTimeoutMs`. |
+| Readiness | Keep readiness stricter than liveness when downstream dependencies are required to serve traffic. |
+| Runtime snapshots | Export inspect reports for CI/support triage when diagnosing bootstrap issues. |
+| Studio viewer | Treat Studio as the owner of snapshot parsing/filtering/rendering, not runtime packages. |
+| Tests | Assert `/health`, `/ready`, `/metrics`, and custom operation routes in app-level tests. |
+
+## Public API summary
+
+| Package | Public API |
+| --- | --- |
+| `@fluojs/metrics` | `MetricsModule.forRoot(options)`, `MetricsService`, `METER_PROVIDER`, `PrometheusMeterProvider`, `HttpMetricsMiddleware`, `Registry` |
+| `@fluojs/terminus` | `TerminusModule.forRoot(options)`, `TerminusHealthService`, `HealthCheckError`, `runHealthCheck`, `assertHealthCheck`, indicator tokens and helpers |
+| `@fluojs/studio` | `parseStudioPayload`, `applyFilters`, `renderMermaid`, snapshot/report types, `@fluojs/studio/viewer` |
+
+## Related reading
+
+- [Production Checklist](../operations/production-checklist)
+- [Testing](./testing)
+- [Auth](./auth)
+- [Operations Packages](../packages/operations)
+- [Ops Metrics Terminus Example](../examples/ops-metrics-terminus)

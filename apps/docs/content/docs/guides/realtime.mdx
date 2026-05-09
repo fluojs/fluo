@@ -1,0 +1,246 @@
+---
+title: Realtime
+description: Add WebSocket and Socket.IO gateways with runtime-aware limits, guards, rooms, and shutdown behavior.
+---
+
+Realtime features sit beside the HTTP request/response model. Use them when clients need persistent connections, event-style messages, rooms, namespaces, or low-latency server push.
+
+fluo exposes two official realtime paths:
+
+- `@fluojs/websockets` for decorator-based WebSocket gateways across Node.js, Bun, Deno, and Cloudflare Workers.
+- `@fluojs/socket.io` for Socket.IO v4 features such as rooms, namespaces, broadcasting, and automatic reconnection.
+
+## Choosing a realtime package
+
+| Need | Choose | Reason |
+| --- | --- | --- |
+| Raw WebSocket protocol control | `@fluojs/websockets` | Small protocol surface and runtime-specific subpaths. |
+| Runtime portability across Node, Bun, Deno, Workers | `@fluojs/websockets` | Official subpaths expose runtime-specific modules. |
+| Rooms, namespaces, broadcasting, Socket.IO clients | `@fluojs/socket.io` | Uses Socket.IO v4 while sharing fluo gateway decorators. |
+| Node/Fastify/Express server-backed realtime | Either | WebSockets support server-backed gateways; Socket.IO supports server-backed mode. |
+| Deno or Workers Socket.IO | Not supported | Socket.IO docs currently support Node and Bun only. |
+
+## Raw WebSocket gateways
+
+Use `WebSocketModule.forRoot()` for the default Node.js-backed WebSocket runtime.
+
+```ts
+import { Module } from '@fluojs/core';
+import { OnConnect, OnMessage, WebSocketGateway, WebSocketModule } from '@fluojs/websockets';
+
+@WebSocketGateway({ path: '/chat' })
+class ChatGateway {
+  @OnConnect()
+  handleConnect(socket) {
+    console.log('Client connected');
+  }
+
+  @OnMessage('ping')
+  handlePing(payload, socket) {
+    socket.send(JSON.stringify({ event: 'pong', data: payload }));
+  }
+}
+
+@Module({
+  imports: [WebSocketModule.forRoot()],
+  providers: [ChatGateway],
+})
+export class AppModule {}
+```
+
+Gateway classes are discovered through fluo providers. `@WebSocketGateway({ path })` owns the connection path, `@OnConnect()` handles accepted connections, `@OnMessage(event?)` handles inbound messages, and `@OnDisconnect()` handles cleanup.
+
+### Shared paths
+
+Multiple gateways may share one path. Handlers run in discovery order.
+
+```ts
+@WebSocketGateway({ path: '/events' })
+class MetricsGateway {
+  @OnMessage('metrics')
+  handleMetrics(data) {
+    // publish metrics update
+  }
+}
+```
+
+### Server-backed Node adapters
+
+For server-backed Node adapters such as raw Node.js, Express, and Fastify, a gateway can opt into a dedicated listener port.
+
+```ts
+@WebSocketGateway({
+  path: '/chat',
+  serverBacked: { port: 3101 },
+})
+class DedicatedChatGateway {}
+```
+
+Fetch-style runtimes (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) reject `serverBacked`.
+
+## Pre-upgrade guards and bounded defaults
+
+Use `WebSocketModule.forRoot(...)` to reject anonymous upgrades before the handshake completes and to tune connection and payload limits.
+
+```ts
+import { UnauthorizedException } from '@fluojs/http';
+import { WebSocketModule } from '@fluojs/websockets';
+
+WebSocketModule.forRoot({
+  limits: {
+    maxConnections: 500,
+    maxPayloadBytes: 65_536,
+  },
+  upgrade: {
+    guard(request) {
+      const authorization = request instanceof Request
+        ? request.headers.get('authorization')
+        : request.headers.authorization;
+
+      if (authorization !== 'Bearer demo-token') {
+        throw new UnauthorizedException('Authentication required.');
+      }
+    },
+  },
+});
+```
+
+When omitted, WebSocket defaults are bounded: `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, and Node backpressure `maxBufferedAmountBytes: 1 MiB` with drop behavior.
+
+Gateway message handlers receive one normalized payload contract across runtimes. Text frames are parsed as JSON when possible and otherwise delivered as strings. Binary frames are decoded as UTF-8 before the same dispatch step. Oversized accepted sockets are closed with close code `1009`.
+
+## Runtime-specific WebSocket modules
+
+Use runtime subpaths when you want an explicit runtime binding instead of the root Node.js alias.
+
+| Runtime | Subpath | Module | Lifecycle service |
+| --- | --- | --- | --- |
+| Node.js | `@fluojs/websockets/node` | `NodeWebSocketModule` | `NodeWebSocketGatewayLifecycleService` |
+| Bun | `@fluojs/websockets/bun` | `BunWebSocketModule` | `BunWebSocketGatewayLifecycleService` |
+| Deno | `@fluojs/websockets/deno` | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
+| Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` | `CloudflareWorkersWebSocketGatewayLifecycleService` |
+
+## Socket.IO gateways
+
+Use `@fluojs/socket.io` when you need rooms, namespaces, broadcasting, or Socket.IO client compatibility.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import { SOCKETIO_ROOM_SERVICE, SocketIoModule, type SocketIoRoomService } from '@fluojs/socket.io';
+import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
+
+@Inject(SOCKETIO_ROOM_SERVICE)
+@WebSocketGateway({ path: '/chat' })
+class ChatGateway {
+  constructor(private readonly rooms: SocketIoRoomService) {}
+
+  @OnMessage('ping')
+  handlePing(payload: unknown) {
+    this.rooms.broadcastToRoom('chat:lobby', 'pong', payload);
+  }
+}
+
+@Module({
+  imports: [SocketIoModule.forRoot()],
+  providers: [ChatGateway],
+})
+export class AppModule {}
+```
+
+### Rooms and namespaces
+
+`SocketIoRoomService` provides room helpers and adds Socket.IO namespace awareness.
+
+```ts
+this.rooms.joinRoom(socket.id, 'room:123');
+this.rooms.broadcastToRoom('room:123', 'event', data);
+```
+
+Inside a gateway handler, the current `@WebSocketGateway({ path })` namespace is inferred. Outside gateway handler context, pass the namespace path explicitly.
+
+```ts
+this.rooms.broadcastToRoom('room:123', 'event', data, '/chat');
+this.rooms.joinRoom(socketId, 'room:123', '/chat');
+```
+
+Inject `SOCKETIO_SERVER` only when you need raw Socket.IO `Server` access.
+
+```ts
+import { Inject } from '@fluojs/core';
+import { SOCKETIO_SERVER } from '@fluojs/socket.io';
+import type { Server } from 'socket.io';
+
+@Inject(SOCKETIO_SERVER)
+class MyService {
+  constructor(private readonly io: Server) {}
+}
+```
+
+## Socket.IO guards, CORS, and payload limits
+
+Socket.IO should be configured in the owning module so namespace/message guards, CORS, and Engine.IO limits stay in one place.
+
+```ts
+import { SocketIoModule } from '@fluojs/socket.io';
+
+SocketIoModule.forRoot({
+  auth: {
+    connection({ socket }) {
+      return socket.handshake.auth.token === 'demo-token'
+        ? true
+        : { message: 'Authentication required.' };
+    },
+    message({ payload }) {
+      return payload === 'allowed'
+        ? true
+        : { message: 'Forbidden event.' };
+    },
+  },
+  cors: {
+    origin: ['https://app.example.com'],
+  },
+  engine: {
+    maxHttpBufferSize: 65_536,
+  },
+});
+```
+
+When `cors` is omitted, Socket.IO defaults to `{ credentials: false, origin: false }` so cross-origin exposure is opt-in. When `engine.maxHttpBufferSize` is omitted, the adapter applies a bounded 1 MiB payload limit. Defaults also include `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, and `shutdown.timeoutMs: 5000`.
+
+Guard functions may return `true`, `false`, or a rejection object with `message`, optional `data`, and optional `disconnect`. Message rejections use ACK payloads shaped as `{ error, data }`.
+
+## Socket.IO platform support
+
+| Platform | Support | Note |
+| --- | --- | --- |
+| Node.js, Express, Fastify | Supported | Server-backed mode |
+| Bun | Supported | Uses `@socket.io/bun-engine`; CORS shapes must be static |
+| Deno | Not supported | Use raw WebSockets instead |
+| Cloudflare Workers | Not supported | Use raw WebSockets instead |
+
+During shutdown, Socket.IO cleans up connected Socket.IO clients but does not close the adapter-owned or shared HTTP listener. Do not add a second manual disconnect path around the same managed Socket.IO instance.
+
+## Public API summary
+
+| Package | Public API |
+| --- | --- |
+| `@fluojs/websockets` | `WebSocketGateway`, `OnConnect`, `OnMessage`, `OnDisconnect`, `WebSocketModule`, runtime subpath modules, metadata helpers |
+| `@fluojs/socket.io` | `SocketIoModule`, `SOCKETIO_SERVER`, `SOCKETIO_ROOM_SERVICE`, `SocketIoRoomService`, `SocketIoLifecycleService`, guard context types |
+
+## Common mistakes
+
+| Mistake | Better approach |
+| --- | --- |
+| Using Socket.IO when raw WebSockets are enough | Start with `@fluojs/websockets` unless rooms/namespaces/client compatibility are required. |
+| Accepting every upgrade and authenticating later | Use pre-upgrade guards or Socket.IO connection guards. |
+| Assuming fetch-style runtimes support `serverBacked` gateways | Use runtime subpath modules and avoid server-backed options on Bun/Deno/Workers WebSocket paths. |
+| Leaving CORS open by default | Configure allowed origins explicitly for Socket.IO. |
+| Ignoring payload bounds | Keep `maxPayloadBytes` or `engine.maxHttpBufferSize` bounded. |
+| Manually closing shared HTTP listeners from Socket.IO cleanup | Let the platform adapter own the HTTP server. |
+
+## Related reading
+
+- [Runtime Adapters](./runtime-adapters)
+- [Auth](./auth)
+- [Operations](./operations)
+- [Realtime & Messaging Packages](../packages/realtime-messaging)

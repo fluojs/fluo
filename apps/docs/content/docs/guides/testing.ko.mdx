@@ -1,0 +1,171 @@
+---
+title: Testing
+description: Unit, module slice, request pipeline, platform conformance까지 fluo 애플리케이션을 테스트합니다.
+---
+
+fluo testing은 runtime과 같은 원칙을 따릅니다. Dependency는 명시적이고, module graph는 의도적으로 compile되며, request-pipeline behavior는 legacy TypeScript metadata에 의존하지 않고 검증됩니다.
+
+Provider, module wiring, guard, interceptor, DTO validation, request body, synthetic principal, serialized response를 테스트해야 할 때 `@fluojs/testing`을 사용하세요.
+
+## 설치
+
+```bash
+pnpm add -D @fluojs/testing vitest
+```
+
+`@fluojs/testing/vitest`를 사용한다면 `@babel/core`도 설치하세요. `fluoBabelDecoratorsPlugin()`이 runtime에 Babel을 호출하기 때문입니다.
+
+```bash
+pnpm add -D @babel/core
+```
+
+## fluo testing ladder
+
+가장 작은 explicit dependency boundary부터 바깥으로 테스트를 쌓습니다.
+
+| Level | File location | 사용 목적 | Main API |
+| --- | --- | --- | --- |
+| Unit | `src/**/*.test.ts` | Direct class behavior, 작은 failure branch | direct construction, `@fluojs/testing/mock` |
+| Slice/module | `src/**/*.slice.test.ts` | DI wiring, provider visibility, overrides | `createTestingModule({ rootModule })` |
+| HTTP e2e-style | `test/**/*.e2e.test.ts` | Routes, guards, interceptors, DTOs, serialization | `createTestApp({ rootModule })` |
+| Platform/conformance | package tests | Adapter/runtime package contracts | conformance subpaths |
+
+```txt
+src/users/
+  users.service.test.ts
+  users.controller.test.ts
+  users.slice.test.ts
+
+test/
+  app.e2e.test.ts
+```
+
+fluo는 test가 explicit `rootModule`을 지정해야 한다는 점에서 NestJS와 다릅니다. Testing utility는 reflection metadata에서 dependency를 추론하지 않고, 여러분이 작성한 module graph를 compile합니다.
+
+## Request-level tests
+
+HTTP behavior를 검증하는 기본 app-developer path는 `createTestApp({ rootModule })`입니다.
+
+```ts
+import { createTestApp } from '@fluojs/testing';
+
+const app = await createTestApp({ rootModule: AppModule });
+
+const response = await app
+  .request('POST', '/users/')
+  .header('x-request-id', 'test-request-1')
+  .query('include', 'profile')
+  .principal({ subject: 'user-1', roles: ['admin'] })
+  .body({ name: 'Ada' })
+  .send();
+
+expect(response.status).toBe(201);
+
+await app.close();
+```
+
+`app.request(...).send()`는 manual `FrameworkRequest`/`FrameworkResponse` stub 없이 HTTP semantics에 가까운 테스트를 작성하게 해 줍니다. Route behavior, guard, interceptor, DTO validation, query parameter, header, request body, synthetic principal, response serialization에 사용하세요.
+
+`app.dispatch(...)`, `makeRequest(...)`, raw runtime bootstrap test 같은 lower-level helper는 adapter/runtime contract처럼 dispatch boundary 자체를 증명해야 할 때만 사용합니다.
+
+`createTestApp(...)`은 runtime HTTP bootstrap과 같은 bootstrap option을 받습니다. Provider, filter, converter, interceptor, middleware, observer, versioning, diagnostics option을 넘길 수 있습니다. Testing helper는 request-context middleware를 앞에 추가하면서 caller-provided middleware를 같은 app middleware chain에 보존합니다.
+
+## Module and slice tests
+
+DI wiring, provider visibility, cross-cutting behavior replacement가 contract라면 `createTestingModule(...)`을 사용합니다.
+
+```ts
+import { createTestingModule } from '@fluojs/testing';
+import { vi } from 'vitest';
+
+const module = await createTestingModule({ rootModule: AppModule })
+  .overrideProvider(USER_REPOSITORY, {
+    create: vi.fn().mockResolvedValue({ id: '1', name: 'Alice' }),
+  })
+  .compile();
+
+const service = await module.resolve(UserService);
+```
+
+Builder는 compile 전에 cross-cutting behavior를 교체할 수 있도록 `overrideGuard(...)`, `overrideInterceptor(...)`, `overrideFilter(...)`도 지원합니다.
+
+### Module identity 보존하기
+
+`overrideModule(source, replacement)`는 imported module을 교체하지만 authored root module과 compiled module identity를 보존합니다. 그래서 diagnostics와 graph assertion이 synthetic test wrapper가 아니라 실제 application module class에 연결됩니다.
+
+```ts
+const module = await createTestingModule({ rootModule: AppModule })
+  .overrideModule(StripeModule, FakeStripeModule)
+  .compile();
+
+expect(module.rootModule).toBe(AppModule);
+expect(module.modules.some((compiledModule) => compiledModule.type === BillingModule)).toBe(true);
+```
+
+## Mock helpers
+
+Typed mock에는 explicit mock subpath를 사용합니다.
+
+```ts
+import { createDeepMock, createMock } from '@fluojs/testing/mock';
+import { vi } from 'vitest';
+
+const repo = createMock<UserRepository>({ findById: vi.fn() });
+const mailer = createDeepMock(MailService);
+```
+
+`asMock(value)`는 기존 value를 mock-friendly type으로 좁히고, `mockToken(token, value)`는 token-based dependency용 provider override tuple을 만듭니다. `createMock(..., { strict: true })`는 지정하지 않은 member 접근을 거부합니다.
+
+## 무엇을 테스트할까
+
+| Feature | Recommended test |
+| --- | --- |
+| Service logic | Explicit fake dependency를 사용한 unit test |
+| Provider registration | `createTestingModule({ rootModule })`을 사용한 slice test |
+| Controller request/response | `createTestApp(...).request(...).send()` |
+| Guards and scopes | `.principal(...)` 또는 auth header를 사용한 request-level test |
+| DTO validation | Request pipeline을 통한 invalid/valid body 테스트 |
+| Serialization | 민감한 field가 response payload에 없는지 확인 |
+| Interceptors | Request-level test 또는 behavior가 대상이 아닐 때 slice test에서 override |
+| Runtime adapters | Explicit testing subpath의 conformance harness |
+
+## Conformance and portability harnesses
+
+Application code는 보통 conformance harness가 필요 없습니다. 이 harness들은 runtime adapter 같은 framework-facing package용입니다.
+
+Responsibility-specific subpath를 사용합니다.
+
+- `@fluojs/testing/platform-conformance`
+- `@fluojs/testing/http-adapter-portability`
+- `@fluojs/testing/web-runtime-adapter-portability`
+- `@fluojs/testing/fetch-style-websocket-conformance`
+
+## Public API summary
+
+| 영역 | API |
+| --- | --- |
+| Root package | `createTestingModule(...)`, `createTestApp(...)`, module introspection helpers, shared testing types |
+| App subpath | `@fluojs/testing/app` |
+| Module subpath | `@fluojs/testing/module` |
+| HTTP helpers | `@fluojs/testing/http` |
+| Mock helpers | `@fluojs/testing/mock` |
+| Types | `@fluojs/testing/types` |
+| Vitest tooling | `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` |
+
+## 흔한 실수
+
+| 실수 | 더 나은 접근 |
+| --- | --- |
+| Controller method를 직접 호출해서 route behavior를 테스트함 | Guard, interceptor, DTO, response writing까지 실행되도록 `createTestApp(...).request(...).send()`를 사용하세요. |
+| 모든 test마다 synthetic wrapper module을 만듦 | Authored `rootModule`을 compile하고 필요한 부분만 override하세요. |
+| E2E-style level에서 너무 많이 mock함 | App-level test는 request-pipeline contract에 집중하고, business branch는 unit test로 검증하세요. |
+| Ordinary app feature에 conformance harness 사용 | Adapter/runtime package contract에만 사용하세요. |
+| Test app을 닫지 않음 | Lifecycle resource를 release하도록 항상 `await app.close()` 하세요. |
+
+## 관련 문서
+
+- [Validation & Serialization](./validation-serialization)
+- [HTTP API](./http-api)
+- [CLI](./cli)
+- [Tooling](../tooling)
+- [Examples](../examples)

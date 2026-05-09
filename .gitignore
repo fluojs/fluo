@@ -2,6 +2,9 @@
 node_modules/
 dist/
 coverage/
+.next/
+.source/
+*.tsbuildinfo
 .turbo/
 .sisyphus/
 .worktrees/

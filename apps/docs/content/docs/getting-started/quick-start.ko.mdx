@@ -1,0 +1,91 @@
+---
+title: 빠른 시작
+description: 첫 fluo 애플리케이션을 생성, 실행, 확인, 검증합니다.
+---
+
+이 가이드는 빈 터미널에서 health endpoint가 동작하는 fluo 앱까지 안내합니다. 짧게 유지하되, 모든 단계에 확인 가능한 성공 신호를 둡니다.
+
+## 시작 전 준비
+
+필요한 것:
+
+- Node.js 20 이상.
+- pnpm 10 이상.
+- global npm/pnpm binary가 `PATH`에 잡힌 터미널.
+
+fluo 프로젝트는 표준 TypeScript 프로젝트입니다. `experimentalDecorators` 또는 `emitDecoratorMetadata`를 활성화하지 마세요. fluo는 TC39 표준 데코레이터와 명시적 런타임 구성을 기준으로 설계되었습니다.
+
+## 1. CLI 설치
+
+```bash
+pnpm add -g @fluojs/cli
+fluo --version
+```
+
+기대 결과: 두 번째 명령이 `command not found`가 아니라 fluo CLI 버전을 출력합니다.
+
+## 2. 애플리케이션 생성
+
+```bash
+fluo new my-backend
+cd my-backend
+pnpm install
+```
+
+생성된 프로젝트에는 다음이 포함됩니다.
+
+- application module,
+- runtime adapter,
+- fluo CLI로 위임되는 lifecycle scripts,
+- starter shape의 health/readiness routes,
+- legacy decorator metadata에 의존하지 않는 TypeScript 설정.
+
+## 3. Dev server 실행
+
+```bash
+pnpm dev
+```
+
+이 프로세스는 계속 실행해 둡니다. 두 번째 터미널에서 앱 응답을 확인하세요.
+
+```bash
+curl http://localhost:3000/health
+curl http://localhost:3000/ready
+```
+
+생성된 starter가 다른 port를 사용한다면 `pnpm dev`가 출력한 port를 사용하세요.
+
+## 4. 신뢰하기 전에 build
+
+```bash
+pnpm build
+pnpm start
+```
+
+`pnpm build`는 프로젝트가 컴파일되는지 증명합니다. `pnpm start`는 production lifecycle script가 built app을 부팅할 수 있는지 증명합니다.
+
+## 5. 살펴볼 파일
+
+생성된 앱에서 먼저 볼 파일은 다음입니다.
+
+| 파일 또는 디렉터리 | 중요한 이유 |
+| --- | --- |
+| `src/app.module.ts` | Root module boundary. |
+| `src/**/*.controller.ts` | HTTP entrypoint. |
+| `src/**/*.service.ts` | Business logic provider. |
+| `package.json` | Runtime lifecycle scripts. |
+| `tsconfig.json` | Standard decorator baseline. |
+
+## 문제 해결
+
+| 증상 | 확인할 것 |
+| --- | --- |
+| `fluo` 명령이 없습니다 | `pnpm add -g @fluojs/cli`를 다시 실행하고 global binary path를 확인하세요. |
+| Dev server는 시작했지만 `curl`이 실패합니다 | 출력된 port와 route path를 확인하세요. |
+| TypeScript가 legacy decorator flag를 요구합니다 | 추가하지 마세요. 생성된 프로젝트가 fluo 지원 설정을 사용하는지 확인하세요. |
+
+## 다음 단계
+
+- 실제 route는 [첫 기능 만들기](../guides/first-feature)에서 만듭니다.
+- Route 계층은 [HTTP API](../guides/http-api)에서 배웁니다.
+- 패키지는 [패키지 선택](../guides/package-selection)에서 고릅니다.
