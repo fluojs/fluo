@@ -120,6 +120,7 @@ Behavioral contract notes:
 - `dispatch()` stays direct by default even when a queue adapter is configured. Use `dispatch(..., { queue: true })` to opt one single notification into queue-backed delivery.
 - Use `dispatch(..., { queue: false })` to force direct delivery even when a queue adapter exists.
 - Queue-backed delivery is opt-in for single dispatch and threshold-driven for `dispatchMany(...)`.
+- Queue jobs include a deterministic `id` idempotency key derived from `notification.id` when present, otherwise from the notification envelope. Queue adapters should pass this value to backing queues that support deduplication.
 - `dispatchMany(..., { continueOnError: true })` collects failures instead of throwing on the first failed direct delivery.
 - When queue enqueue fails, the service emits deterministic `notification.dispatch.failed` lifecycle events before rethrowing the enqueue error to the caller.
 - If `enqueueMany(...)` is unavailable, bulk queue delivery falls back to enqueueing each job individually.
@@ -150,7 +151,7 @@ Published event names:
 - `notification.dispatch.delivered`
 - `notification.dispatch.failed`
 
-If `events.publisher` is configured, lifecycle event publication defaults to on unless `publishLifecycleEvents: false` is set. Channel deliveries that omit `externalId` receive a deterministic fallback delivery id derived from the notification envelope so dispatch results remain stable for callers without relying on time or random data. Channel resolution failures publish `requested` and then `failed` events before throwing `NotificationChannelNotFoundError`; treat those failures as permanent configuration errors. Queue enqueue and provider delivery failures also publish `failed` events, but callers should classify their retry behavior from the underlying adapter/provider error.
+If `events.publisher` is configured, lifecycle event publication defaults to on unless `publishLifecycleEvents: false` is set. Channel deliveries that omit `externalId` receive a deterministic fallback delivery id derived from the notification envelope so dispatch results remain stable for callers without relying on time or random data. Channel resolution failures publish `requested` and then `failed` events before throwing `NotificationChannelNotFoundError`; treat those failures as permanent configuration errors. Queue enqueue and provider delivery failures also publish `failed` events, but callers should classify their retry behavior from the underlying adapter/provider error. Publication failures for success-path lifecycle events remain best-effort so a delivered notification is not converted into an application failure. Publication failures for `notification.dispatch.failed` are caller-visible as `AggregateError` values that include both the original dispatch error and the publisher error so failed-event guarantees are not silently weakened.
 
 ### Intentional limitations
 
@@ -170,6 +171,7 @@ These limitations are part of the package contract so leaf packages can evolve i
 - `NotificationsModule.forRoot(options)` / `NotificationsModule.forRootAsync(options)`
 - `NotificationsService`
 - `NotificationsService.createPlatformStatusSnapshot()`
+- `Notifications`
 - `NOTIFICATIONS`
 - `NOTIFICATION_CHANNELS`
 
@@ -179,6 +181,7 @@ These limitations are part of the package contract so leaf packages can evolve i
 - `NotificationDispatchOptions`
 - `NotificationDispatchManyOptions`
 - `NotificationDispatchResult`
+- `NotificationDispatchBatchResult`
 - `NotificationDispatchFailure`
 - `NotificationDispatchStatus`
 - `NotificationChannel`
@@ -187,6 +190,8 @@ These limitations are part of the package contract so leaf packages can evolve i
 - `NotificationPayload`
 - `NotificationsQueueAdapter`
 - `NotificationsQueueJob`
+- `NotificationsQueueOptions`
+- `NotificationsModuleOptions`
 - `NotificationsAsyncModuleOptions`
 - `NotificationsEventsOptions`
 - `NotificationsEventPublisher`
