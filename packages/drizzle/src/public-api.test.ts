@@ -10,6 +10,7 @@ describe('@fluojs/drizzle public API surface', () => {
     expect(drizzlePublicApi).toHaveProperty('createDrizzlePlatformStatusSnapshot');
     expect(drizzlePublicApi).toHaveProperty('DRIZZLE_DATABASE');
     expect(drizzlePublicApi).toHaveProperty('DRIZZLE_DISPOSE');
+    expect(drizzlePublicApi).toHaveProperty('DRIZZLE_HANDLE_PROVIDER');
     expect(drizzlePublicApi).toHaveProperty('DRIZZLE_OPTIONS');
   });
 

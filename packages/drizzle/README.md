@@ -144,11 +144,13 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`
 - `DrizzleTransactionInterceptor`
-- `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_OPTIONS`
+- `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
 - `createDrizzlePlatformStatusSnapshot(...)`
 - `DrizzleDatabaseLike`
 - `DrizzleModuleOptions`
 - `DrizzleHandleProvider`
+
+`DRIZZLE_HANDLE_PROVIDER` is an alias token for the lifecycle-aware `DrizzleDatabase` wrapper. Health integrations such as `@fluojs/terminus` use this token to read `createPlatformStatusSnapshot()` before falling back to raw database pings.
 
 ### `DrizzleModule`
 
