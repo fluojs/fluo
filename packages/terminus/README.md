@@ -89,6 +89,8 @@ TerminusModule.forRoot({
 });
 ```
 
+For Drizzle, `createDrizzleHealthIndicatorProvider()` prefers the lifecycle-aware `DrizzleDatabase` wrapper exported by `@fluojs/drizzle`. The indicator reports `down` before probing SQL whenever Drizzle is shutting down, stopped, or otherwise not ready according to `DrizzleDatabase.createPlatformStatusSnapshot()`. If only the legacy raw `DRIZZLE_DATABASE` handle is registered, the provider keeps the previous lightweight SQL probe behavior.
+
 ### Execution Guardrails
 
 Use `execution.indicatorTimeoutMs` when custom indicators might hang or depend on slow downstreams. When a probe exceeds the configured timeout, Terminus marks that indicator as `down` instead of waiting forever.
@@ -119,6 +121,7 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 - If an indicator reuses a key that was already reported earlier in the same run, Terminus keeps the first entry and adds a deterministic `*-duplicate-key-error` contributor instead of silently overwriting data.
 - Platform health/readiness failures are surfaced as deterministic `fluo-platform-health` and `fluo-platform-readiness` contributors in `/health` responses.
 - `/health` responses may include a `platform` block with platform health/readiness details when runtime diagnostics are available.
+- Drizzle indicators created through the DI provider map Drizzle lifecycle readiness/health state before SQL probing, so shutdown or stopped integrations mark `/health` and `/ready` as unavailable even if the underlying driver still accepts a raw ping.
 
 ## Public API Overview
 

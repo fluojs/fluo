@@ -91,6 +91,8 @@ TerminusModule.forRoot({
 });
 ```
 
+Drizzle의 경우 `createDrizzleHealthIndicatorProvider()`는 `@fluojs/drizzle`이 노출하는 lifecycle-aware `DrizzleDatabase` wrapper를 우선 사용합니다. Drizzle이 종료 중이거나 중지되었거나 `DrizzleDatabase.createPlatformStatusSnapshot()` 기준으로 준비되지 않은 상태이면 SQL probe를 실행하기 전에 해당 indicator를 `down`으로 보고합니다. legacy raw `DRIZZLE_DATABASE` handle만 등록된 경우에는 기존 lightweight SQL probe 동작을 유지합니다.
+
 ### 실행 가드레일
 
 커스텀 인디케이터가 멈추거나 느린 하위 서비스에 의존할 수 있다면 `execution.indicatorTimeoutMs`를 사용하세요. probe가 설정된 시간을 넘기면 Terminus는 무기한 대기하지 않고 해당 인디케이터를 `down`으로 표시합니다.
@@ -119,6 +121,7 @@ TerminusModule.forRoot({
 - 같은 실행에서 이미 보고된 key를 다른 인디케이터가 다시 사용하면, Terminus는 먼저 기록된 entry를 유지하고 데이터를 조용히 덮어쓰는 대신 결정적인 `*-duplicate-key-error` contributor를 추가합니다.
 - 플랫폼 health/readiness 실패는 `/health` 응답에서 결정적인 `fluo-platform-health`, `fluo-platform-readiness` contributor로 노출됩니다.
 - Runtime diagnostics가 있으면 `/health` response에 platform health/readiness detail을 담은 `platform` block이 포함될 수 있습니다.
+- DI provider로 생성한 Drizzle indicator는 SQL probe보다 먼저 Drizzle lifecycle readiness/health state를 반영하므로, underlying driver가 raw ping을 아직 받을 수 있어도 종료 중이거나 중지된 통합은 `/health`와 `/ready`를 unavailable로 표시합니다.
 
 ## 공개 API 개요
 
