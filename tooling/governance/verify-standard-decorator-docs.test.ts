@@ -31,7 +31,7 @@ function collectParameterInjectExamplesFromSource(source: string, file: string):
   const invalidInjectUsages = [
     /constructor\s*\([^)]*@Inject\(/gs,
     /@Inject\([^\n]*\)\s*(?:(?:public|private|protected|readonly|declare|static)\s+)*[A-Za-z_$][\w$]*[!?]?\s*:/g,
-    /@Inject\([^\n]*\)\s*\n\s*(?:(?:public|private|protected|readonly|declare|static)\s+)*[A-Za-z_$][\w$]*[!?]?\s*:/g,
+    /@Inject\([\s\S]*?\)\s*\n\s*(?:(?:public|private|protected|readonly|declare|static)\s+)*[A-Za-z_$][\w$]*[!?]?\s*:/g,
   ];
 
   return [...new Set(invalidInjectUsages.flatMap((pattern) =>
@@ -40,7 +40,9 @@ function collectParameterInjectExamplesFromSource(source: string, file: string):
       const excerpt = source.split('\n')[line - 1]?.trim() ?? match[0];
       return `${relative(process.cwd(), file)}:${line} ${excerpt}`;
     }),
-  ))];
+  ))].sort(
+    (left, right) => Number(left.match(/:(\d+) /)?.[1] ?? 0) - Number(right.match(/:(\d+) /)?.[1] ?? 0),
+  );
 }
 
 function collectParameterInjectExamples(files: string[]): string[] {
@@ -71,6 +73,13 @@ class ServiceB2 {
   private readonly dep!: Dep;
 }
 
+class ServiceB3 {
+  @Inject(
+    TOKEN
+  )
+  private readonly dep!: Dep;
+}
+
 class ServiceC {
   @Inject(OTHER_TOKEN) private readonly other: Other;
 }
@@ -82,7 +91,8 @@ class ServiceC {
       'docs/example.md:9 @Inject(DepB) private readonly depB: DepB,',
       'docs/example.md:14 @Inject(TOKEN)',
       'docs/example.md:19 @Inject(TOKEN)',
-      'docs/example.md:24 @Inject(OTHER_TOKEN) private readonly other: Other;',
+      'docs/example.md:24 @Inject(',
+      'docs/example.md:31 @Inject(OTHER_TOKEN) private readonly other: Other;',
     ]);
   });
 
