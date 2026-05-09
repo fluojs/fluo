@@ -3,14 +3,15 @@ import { join, relative } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-const DOCUMENTATION_ROOTS = ['README.md', 'README.ko.md', 'docs', 'book', 'packages'] as const;
+const DOCUMENTATION_ROOTS = ['README.md', 'README.ko.md', 'docs', 'book', 'packages', 'apps/docs'] as const;
 const SKIPPED_DIRECTORIES = new Set(['.git', '.worktrees', 'coverage', 'dist', 'node_modules']);
+const DOCUMENTATION_EXTENSIONS = new Set(['.md', '.mdx']);
 
 function collectMarkdownFiles(path: string): string[] {
   const stat = statSync(path);
 
   if (stat.isFile()) {
-    return path.endsWith('.md') ? [path] : [];
+    return DOCUMENTATION_EXTENSIONS.has(path.slice(path.lastIndexOf('.'))) ? [path] : [];
   }
 
   return readdirSync(path).flatMap((entry) => {
@@ -30,6 +31,7 @@ function collectParameterInjectExamplesFromSource(source: string, file: string):
   const invalidInjectUsages = [
     /constructor\s*\([^)]*@Inject\(/gs,
     /@Inject\([^\n]*\)\s*(?:(?:public|private|protected|readonly|declare|static)\s+)*[A-Za-z_$][\w$]*[!?]?\s*:/g,
+    /@Inject\([^\n]*\)\s*\n\s*(?:(?:public|private|protected|readonly|declare|static)\s+)*[A-Za-z_$][\w$]*[!?]?\s*:/g,
   ];
 
   return [...new Set(invalidInjectUsages.flatMap((pattern) =>
@@ -52,9 +54,21 @@ class ServiceA {
   constructor(dep: DepA, @Inject(DepB) private readonly depB: DepB) {}
 }
 
+class ServiceA2 {
+  constructor(
+    dep: DepA,
+    @Inject(DepB) private readonly depB: DepB,
+  ) {}
+}
+
 class ServiceB {
   @Inject(TOKEN)
   dep!: Dep;
+}
+
+class ServiceB2 {
+  @Inject(TOKEN)
+  private readonly dep!: Dep;
 }
 
 class ServiceC {
@@ -64,8 +78,11 @@ class ServiceC {
 
     expect(collectParameterInjectExamplesFromSource(source, 'docs/example.md')).toEqual([
       'docs/example.md:3 constructor(dep: DepA, @Inject(DepB) private readonly depB: DepB) {}',
-      'docs/example.md:7 @Inject(TOKEN)',
-      'docs/example.md:12 @Inject(OTHER_TOKEN) private readonly other: Other;',
+      'docs/example.md:7 constructor(',
+      'docs/example.md:9 @Inject(DepB) private readonly depB: DepB,',
+      'docs/example.md:14 @Inject(TOKEN)',
+      'docs/example.md:19 @Inject(TOKEN)',
+      'docs/example.md:24 @Inject(OTHER_TOKEN) private readonly other: Other;',
     ]);
   });
 
