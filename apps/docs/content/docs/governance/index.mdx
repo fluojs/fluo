@@ -1,0 +1,15 @@
+---
+title: Docs Governance
+description: How official fluo docs stay synchronized with package contracts.
+---
+
+fluo treats documented behavior as a contract. Website pages should summarize and organize governed facts, not silently fork package behavior.
+
+## Rules
+
+- Every website MDX page must have an English and Korean counterpart.
+- Package pages should link back to package README files and `docs/reference/package-surface.md`.
+- Contract-bearing documentation changes need regression evidence.
+- The website should stay task-first for guides and package-first for reference.
+
+Run `pnpm docs:sync-check` before opening a docs PR.

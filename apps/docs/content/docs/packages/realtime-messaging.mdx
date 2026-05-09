@@ -1,0 +1,18 @@
+---
+title: Realtime & Messaging Packages
+description: WebSockets, Socket.IO, events, CQRS, microservices, GraphQL, and scheduling.
+---
+
+Realtime and messaging packages help you build flows that are not just synchronous HTTP request/response.
+
+| Package | Use for | Deep dive |
+| --- | --- | --- |
+| `@fluojs/websockets` | Raw WebSocket gateways | `packages/websockets/README.md` |
+| `@fluojs/socket.io` | Socket.IO rooms, namespaces, auth guards | `packages/socket.io/README.md` |
+| `@fluojs/event-bus` | In-process events and Redis fan-out | `packages/event-bus/README.md` |
+| `@fluojs/cqrs` | Commands, queries, events, sagas | `packages/cqrs/README.md` |
+| `@fluojs/microservices` | Multi-transport service runtime | `packages/microservices/README.md` |
+| `@fluojs/graphql` | GraphQL resolvers, schemas, DataLoaders | `packages/graphql/README.md` |
+| `@fluojs/cron` | Cron, interval, timeout triggers | `packages/cron/README.md` |
+
+Read [Realtime](../guides/realtime) or [Messaging & Workflows](../guides/messaging-workflows) based on whether the client connection or the backend workflow is the main concern.

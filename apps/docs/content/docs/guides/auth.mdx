@@ -1,0 +1,377 @@
+---
+title: Auth
+description: Build bearer-token, cookie, scope, refresh-token, and throttling boundaries in fluo applications.
+---
+
+Authentication in fluo is split into focused packages instead of hidden inside the HTTP runtime.
+
+`@fluojs/jwt` signs and verifies tokens. `@fluojs/passport` executes strategies through guards and writes the authenticated principal into the request context. `@fluojs/throttler` protects expensive or sensitive routes from repeated calls.
+
+```txt
+request
+  -> throttling guard
+  -> auth strategy
+  -> principal normalization
+  -> scope checks
+  -> protected handler
+```
+
+Use this guide when you need bearer tokens, cookie auth, scope-based route protection, refresh tokens, or login throttling.
+
+## Packages
+
+| Concern | Package | Use for |
+| --- | --- | --- |
+| Token core | `@fluojs/jwt` | Access token signing, verification, JWKS, refresh-token primitives |
+| Strategy execution | `@fluojs/passport` | `AuthStrategy`, `AuthGuard`, `@UseAuth`, `@RequireScopes`, cookie and refresh presets |
+| Rate limiting | `@fluojs/throttler` | Login protection, API quotas, Redis-backed distributed buckets |
+| HTTP boundary | `@fluojs/http` | Controllers, guards, request context, route metadata |
+| Runnable example | `examples/auth-jwt-passport` | Token route, protected profile route, e2e-style tests |
+
+Install only the pieces you need:
+
+```bash
+pnpm add @fluojs/jwt @fluojs/passport @fluojs/throttler
+```
+
+## Token issuance with `@fluojs/jwt`
+
+JWT configuration belongs in a module, not inside route handlers. Register `JwtModule` with the algorithms and claims policy your app accepts.
+
+```ts
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+
+@Module({
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      secret: 'your-secure-secret',
+      issuer: 'my-api',
+      audience: 'my-app',
+      accessTokenTtlSeconds: 3600,
+    }),
+  ],
+})
+export class AuthModule {}
+```
+
+Inject `DefaultJwtSigner` when you need to issue access tokens and `DefaultJwtVerifier` when you need to verify them.
+
+```ts
+import { DefaultJwtSigner, DefaultJwtVerifier } from '@fluojs/jwt';
+
+const token = await signer.signAccessToken({
+  sub: 'user-123',
+  roles: ['admin'],
+  scopes: ['profile:read'],
+});
+
+const principal = await verifier.verifyAccessToken(token);
+// principal.subject === 'user-123'
+// principal.scopes includes 'profile:read'
+```
+
+`@fluojs/jwt` normalizes `scope` and `scopes` token claims into a stable `JwtPrincipal.scopes: string[]` shape so authorization guards can read one contract.
+
+### Async configuration
+
+Use `JwtModule.forRootAsync(...)` when keys or issuer settings come from config providers.
+
+```ts
+import { Module, type Token } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+
+const JWT_SETTINGS = Symbol('jwt-settings');
+
+@Module({
+  imports: [
+    JwtModule.forRootAsync({
+      inject: [JWT_SETTINGS],
+      useFactory: async (settings) => ({
+        accessTokenTtlSeconds: 900,
+        algorithms: ['HS256'],
+        audience: 'my-app',
+        issuer: settings.issuer,
+        secret: settings.secret,
+      }),
+    }),
+  ],
+  providers: [
+    {
+      provide: JWT_SETTINGS as Token<{ issuer: string; secret: string }>,
+      useValue: { issuer: 'my-api', secret: 'your-secure-secret' },
+    },
+  ],
+})
+export class AuthModule {}
+```
+
+## Protect routes with `@fluojs/passport`
+
+Passport in fluo is strategy-agnostic. A strategy implements `AuthStrategy`, authenticates a request, and returns a principal. `AuthGuard` runs that strategy for protected routes.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import type { GuardContext } from '@fluojs/http';
+import { DefaultJwtVerifier, JwtModule } from '@fluojs/jwt';
+import { AuthenticationRequiredError, PassportModule, type AuthStrategy } from '@fluojs/passport';
+
+@Inject(DefaultJwtVerifier)
+export class BearerJwtStrategy implements AuthStrategy {
+  constructor(private readonly verifier: DefaultJwtVerifier) {}
+
+  async authenticate(context: GuardContext) {
+    const authorization = context.requestContext.request.headers.authorization;
+    const [scheme, token] = typeof authorization === 'string' ? authorization.split(' ') : [];
+
+    if (scheme !== 'Bearer' || !token) {
+      throw new AuthenticationRequiredError('Bearer access token is required.');
+    }
+
+    return this.verifier.verifyAccessToken(token);
+  }
+}
+
+@Module({
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      audience: 'my-app',
+      issuer: 'my-api',
+      secret: 'your-secure-secret',
+    }),
+    PassportModule.forRoot(
+      { defaultStrategy: 'jwt' },
+      [{ name: 'jwt', token: BearerJwtStrategy }],
+    ),
+  ],
+  providers: [BearerJwtStrategy],
+})
+export class AuthModule {}
+```
+
+Both module registrations are required for JWT-based passport auth: `JwtModule` provides the verifier, and `PassportModule` registers the named strategy that `@UseAuth('jwt')` resolves.
+
+### Scopes and protected handlers
+
+Use `@UseAuth()` to require a principal and `@RequireScopes()` to enforce authorization.
+
+```ts
+import { Controller, Get, type RequestContext } from '@fluojs/http';
+import { RequireScopes, UseAuth } from '@fluojs/passport';
+
+@Controller('/profile')
+export class ProfileController {
+  @Get('/')
+  @UseAuth('jwt')
+  @RequireScopes('profile:read')
+  async getProfile(input: never, ctx: RequestContext) {
+    return { user: ctx.principal };
+  }
+}
+```
+
+`AuthGuard` writes the authenticated principal to `requestContext.principal`. Downstream handlers should read the principal from the request context rather than parsing tokens again.
+
+## Cookie auth and optional auth
+
+Use `CookieAuthModule.forRoot(...)` when access tokens arrive through HTTP cookies.
+
+```ts
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+import {
+  CookieAuthModule,
+  CookieAuthStrategy,
+  COOKIE_AUTH_STRATEGY_NAME,
+  PassportModule,
+} from '@fluojs/passport';
+
+@Module({
+  imports: [
+    CookieAuthModule.forRoot(),
+    JwtModule.forRoot({ algorithms: ['HS256'], secret: 'your-secure-secret' }),
+    PassportModule.forRoot(
+      { defaultStrategy: COOKIE_AUTH_STRATEGY_NAME },
+      [{ name: COOKIE_AUTH_STRATEGY_NAME, token: CookieAuthStrategy }],
+    ),
+  ],
+})
+export class AuthModule {}
+```
+
+Protected routes still need `@UseAuth(...)`. If a route supports both signed-in and guest callers, use `@UseOptionalAuth(...)` intentionally.
+
+```ts
+import { Controller, Get, type RequestContext } from '@fluojs/http';
+import { UseOptionalAuth } from '@fluojs/passport';
+
+@Controller('/session')
+export class SessionController {
+  @Get('/')
+  @UseOptionalAuth('cookie')
+  getSession(_input: never, ctx: RequestContext) {
+    return { subject: ctx.principal?.subject ?? null };
+  }
+}
+```
+
+Optional auth only bypasses missing credentials when no scopes are required. Scoped routes still need an authenticated principal.
+
+## Refresh tokens
+
+Use refresh tokens when clients need long-lived sessions without extending access-token lifetime.
+
+`RefreshTokenStrategy` reads tokens from `body.refreshToken`, `Authorization: Bearer ...`, or `x-refresh-token`. Malformed non-string tokens fail before verification.
+
+```ts
+import { Module } from '@fluojs/core';
+import { Controller, Post, type RequestContext } from '@fluojs/http';
+import {
+  PassportModule,
+  REFRESH_TOKEN_STRATEGY_NAME,
+  RefreshTokenModule,
+  RefreshTokenStrategy,
+  UseAuth,
+} from '@fluojs/passport';
+
+@Module({
+  imports: [
+    RefreshTokenModule.forRoot(MyRefreshTokenService),
+    PassportModule.forRoot(
+      { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
+      [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
+    ),
+  ],
+  providers: [MyRefreshTokenService],
+})
+export class AuthModule {}
+
+@Controller('/auth')
+export class AuthController {
+  @Post('/refresh')
+  @UseAuth('refresh-token')
+  async refresh(input: never, ctx: RequestContext) {
+    return ctx.principal;
+  }
+}
+```
+
+For production, refresh-token rotation needs an atomic `RefreshTokenStore.consume(...)` implementation so replayed tokens are detected reliably. In-memory stores are only appropriate for development and single-instance deployments.
+
+## Rate limiting sensitive routes
+
+Auth endpoints should usually be throttled. Register `ThrottlerModule`, activate `ThrottlerGuard`, and override limits where needed.
+
+```ts
+import { Module } from '@fluojs/core';
+import { Controller, Post, UseGuards } from '@fluojs/http';
+import { SkipThrottle, Throttle, ThrottlerGuard, ThrottlerModule } from '@fluojs/throttler';
+
+@Module({
+  imports: [
+    ThrottlerModule.forRoot({
+      ttl: 60,
+      limit: 10,
+    }),
+  ],
+})
+class AppModule {}
+
+@Controller('/auth')
+@UseGuards(ThrottlerGuard)
+class AuthController {
+  @Post('/login')
+  @Throttle({ ttl: 60, limit: 5 })
+  login() {
+    return { success: true };
+  }
+
+  @Post('/public-info')
+  @SkipThrottle()
+  getInfo() {
+    return { info: '...' };
+  }
+}
+```
+
+For multi-instance deployments, use a Redis-backed store so every instance shares the same reset boundary.
+
+```ts
+import { REDIS_CLIENT } from '@fluojs/redis';
+import { RedisThrottlerStore, ThrottlerModule } from '@fluojs/throttler';
+
+const redisClient = await container.resolve(REDIS_CLIENT);
+
+ThrottlerModule.forRoot({
+  ttl: 60,
+  limit: 100,
+  store: new RedisThrottlerStore(redisClient),
+});
+```
+
+When an app sits behind a trusted reverse proxy, opt in to proxy header identity with `trustProxyHeaders: true`. Without a trusted socket or proxy identity, the throttler fails instead of collapsing unrelated callers into one bucket.
+
+## Operational guardrails
+
+| Area | Guardrail |
+| --- | --- |
+| Algorithms | Configure at least one supported algorithm. Empty algorithm lists fail fast. |
+| Access-token TTL | Use a positive finite `accessTokenTtlSeconds`; invalid TTL values fail before issuing a token. |
+| JWKS | Keep remote JWKS fetches bounded with `jwksRequestTimeoutMs` (default `5_000`). |
+| Principal shape | Read `subject`, `roles`, `scopes`, and `claims` from the normalized principal. |
+| Refresh rotation | Use atomic consume/revoke semantics; avoid memory stores in multi-instance production. |
+| Optional auth | Use only for guest-compatible routes; scoped routes still need credentials. |
+| Throttling identity | Trust proxy headers only when your deployment controls the proxy boundary. |
+
+## Public API summary
+
+| Package | Public API |
+| --- | --- |
+| `@fluojs/jwt` | `JwtModule`, `DefaultJwtSigner`, `DefaultJwtVerifier`, `JwtService`, `JwksClient`, `RefreshTokenService`, `JwtPrincipal`, JWT error classes, status helpers |
+| `@fluojs/passport` | `PassportModule`, `AuthGuard`, `AuthStrategy`, `UseAuth`, `UseOptionalAuth`, `RequireScopes`, `CookieAuthModule`, `RefreshTokenModule`, Passport.js bridge helpers, diagnostics helpers |
+| `@fluojs/throttler` | `ThrottlerModule`, `ThrottlerGuard`, `Throttle`, `SkipThrottle`, `RedisThrottlerStore`, `createMemoryThrottlerStore`, `ThrottlerStore`, diagnostics helpers |
+
+## Runnable example
+
+`examples/auth-jwt-passport` demonstrates the official bearer-token path:
+
+- `POST /auth/token` issues a demo access token.
+- `GET /profile/` requires bearer auth and `profile:read`.
+- `GET /health` and `GET /ready` stay available for runtime checks.
+
+Run it from the repository root:
+
+```bash
+pnpm vitest run examples/auth-jwt-passport
+```
+
+Recommended reading order:
+
+1. `src/auth/login.dto.ts` — request boundary
+2. `src/auth/auth.service.ts` — token issuance
+3. `src/auth/bearer.strategy.ts` — bearer verification
+4. `src/auth/auth.controller.ts` — open and protected routes
+5. `src/auth/auth.module.ts` — module registration
+6. `src/app.test.ts` — service, strategy, and e2e-style checks
+
+## Common mistakes
+
+| Mistake | Better approach |
+| --- | --- |
+| Verifying JWTs in every handler | Centralize verification in an `AuthStrategy`. |
+| Registering `PassportModule` without the verifier provider | Register `JwtModule` and `PassportModule` together for JWT strategies. |
+| Treating optional auth as anonymous auth | Use it only when guest callers are expected. |
+| Using in-memory refresh or throttler stores in multi-instance production | Use durable or distributed storage. |
+| Trusting forwarded IP headers by default | Enable proxy trust only behind infrastructure you control. |
+| Returning raw token claims as application identity | Use the normalized principal contract. |
+
+## Related reading
+
+- [Validation & Serialization](./validation-serialization)
+- [HTTP API](./http-api)
+- [Operations](./operations)
+- [Testing](./testing)
+- [Auth & Security Packages](../packages/auth-security)
+- [Auth JWT Passport Example](../examples/auth-jwt-passport)

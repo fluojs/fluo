@@ -1,0 +1,49 @@
+---
+title: Package Matrix
+description: A compact map of the official fluo package surface.
+---
+
+| Package | Family | Primary responsibility |
+| --- | --- | --- |
+| `@fluojs/core` | Foundation | Decorators, module contracts, shared metadata helpers |
+| `@fluojs/di` | Foundation | Token-based dependency injection container |
+| `@fluojs/config` | Foundation | Configuration loading, merge, validation, and access |
+| `@fluojs/runtime` | Foundation | Application bootstrap, lifecycle, module graph |
+| `@fluojs/validation` | Foundation | DTO validation and materialization |
+| `@fluojs/serialization` | Foundation | Response shaping and exposed output contracts |
+| `@fluojs/http` | HTTP & Platform | HTTP routing, pipeline, binding, guards, interceptors |
+| `@fluojs/platform-nodejs` | HTTP & Platform | Raw Node.js HTTP adapter |
+| `@fluojs/platform-express` | HTTP & Platform | Express adapter |
+| `@fluojs/platform-fastify` | HTTP & Platform | Fastify adapter |
+| `@fluojs/platform-bun` | HTTP & Platform | Bun adapter |
+| `@fluojs/platform-deno` | HTTP & Platform | Deno adapter |
+| `@fluojs/platform-cloudflare-workers` | HTTP & Platform | Cloudflare Workers adapter |
+| `@fluojs/openapi` | HTTP & Platform | OpenAPI 3.1 and Swagger UI generation |
+| `@fluojs/redis` | Data & Storage | Redis client lifecycle and named clients |
+| `@fluojs/cache-manager` | Data & Storage | HTTP/application cache contracts |
+| `@fluojs/prisma` | Data & Storage | Prisma clients and transaction context |
+| `@fluojs/drizzle` | Data & Storage | Drizzle database lifecycle and transactions |
+| `@fluojs/mongoose` | Data & Storage | Mongoose connections, sessions, transactions |
+| `@fluojs/queue` | Data & Storage | Redis-backed queues and workers |
+| `@fluojs/jwt` | Auth & Security | JWT signing, verification, JWKS support |
+| `@fluojs/passport` | Auth & Security | Passport strategy and guard integration |
+| `@fluojs/throttler` | Auth & Security | Rate limiting guards and stores |
+| `@fluojs/event-bus` | Realtime & Messaging | In-process events and Redis fan-out |
+| `@fluojs/cqrs` | Realtime & Messaging | Commands, queries, events, sagas |
+| `@fluojs/microservices` | Realtime & Messaging | Transport-driven service runtime |
+| `@fluojs/websockets` | Realtime & Messaging | WebSocket gateway core |
+| `@fluojs/socket.io` | Realtime & Messaging | Socket.IO gateway adapter |
+| `@fluojs/graphql` | Realtime & Messaging | GraphQL module and resolver pipeline |
+| `@fluojs/cron` | Realtime & Messaging | Cron, interval, timeout scheduling |
+| `@fluojs/notifications` | Integrations | Notification orchestration |
+| `@fluojs/email` | Integrations | Email delivery channel |
+| `@fluojs/slack` | Integrations | Slack webhook delivery channel |
+| `@fluojs/discord` | Integrations | Discord webhook delivery channel |
+| `@fluojs/metrics` | Operations | Prometheus metrics and telemetry |
+| `@fluojs/terminus` | Operations | Health and readiness indicators |
+| `@fluojs/studio` | Operations | Diagnostics viewer and snapshots |
+| `@fluojs/cli` | Tooling & Testing | Project creation, generation, migration, inspection |
+| `@fluojs/testing` | Tooling & Testing | Test module and app harness |
+| `@fluojs/vite` | Tooling & Testing | Vite plugin/build utilities |
+
+Use `docs/reference/package-surface.md` for the governed package/runtime matrix and package README files for package-specific deep dives.

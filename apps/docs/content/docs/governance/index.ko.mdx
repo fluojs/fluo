@@ -1,0 +1,15 @@
+---
+title: 문서 거버넌스
+description: 공식 fluo 문서가 패키지 contract와 동기화되는 방식입니다.
+---
+
+fluo는 문서화된 동작을 contract로 취급합니다. 웹사이트 페이지는 거버넌스가 적용되는 사실을 요약하고 조직화해야 하며, package behavior를 조용히 fork하면 안 됩니다.
+
+## 규칙
+
+- 모든 웹사이트 MDX 페이지는 영어와 한국어 counterpart를 가져야 합니다.
+- Package page는 package README와 `docs/reference/package-surface.md`로 다시 연결해야 합니다.
+- Contract-bearing documentation change에는 regression evidence가 필요합니다.
+- 웹사이트는 guide에서는 task-first, reference에서는 package-first 구조를 유지해야 합니다.
+
+Docs PR을 열기 전에 `pnpm docs:sync-check`를 실행하세요.

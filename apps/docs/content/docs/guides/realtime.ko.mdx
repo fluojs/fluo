@@ -1,0 +1,246 @@
+---
+title: 실시간
+description: Runtime-aware limits, guards, rooms, shutdown behavior를 갖춘 WebSocket 및 Socket.IO gateway를 추가합니다.
+---
+
+Realtime 기능은 HTTP request/response 모델 옆에 위치합니다. Persistent connection, event-style message, room, namespace, low-latency server push가 필요할 때 사용합니다.
+
+fluo는 두 가지 공식 realtime path를 제공합니다.
+
+- `@fluojs/websockets`: Node.js, Bun, Deno, Cloudflare Workers를 지원하는 decorator-based WebSocket gateway
+- `@fluojs/socket.io`: Room, namespace, broadcasting, automatic reconnection 같은 Socket.IO v4 기능
+
+## Realtime package 선택하기
+
+| 필요 | 선택 | 이유 |
+| --- | --- | --- |
+| Raw WebSocket protocol control | `@fluojs/websockets` | 작은 protocol surface와 runtime-specific subpath를 제공합니다. |
+| Node, Bun, Deno, Workers portability | `@fluojs/websockets` | 공식 subpath가 runtime-specific module을 노출합니다. |
+| Room, namespace, broadcasting, Socket.IO clients | `@fluojs/socket.io` | fluo gateway decorator를 공유하면서 Socket.IO v4를 사용합니다. |
+| Node/Fastify/Express server-backed realtime | 둘 다 가능 | WebSockets는 server-backed gateway를 지원하고 Socket.IO도 server-backed mode를 지원합니다. |
+| Deno 또는 Workers Socket.IO | 지원하지 않음 | Socket.IO 문서는 현재 Node와 Bun만 지원합니다. |
+
+## Raw WebSocket gateways
+
+기본 Node.js-backed WebSocket runtime에는 `WebSocketModule.forRoot()`를 사용합니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { OnConnect, OnMessage, WebSocketGateway, WebSocketModule } from '@fluojs/websockets';
+
+@WebSocketGateway({ path: '/chat' })
+class ChatGateway {
+  @OnConnect()
+  handleConnect(socket) {
+    console.log('Client connected');
+  }
+
+  @OnMessage('ping')
+  handlePing(payload, socket) {
+    socket.send(JSON.stringify({ event: 'pong', data: payload }));
+  }
+}
+
+@Module({
+  imports: [WebSocketModule.forRoot()],
+  providers: [ChatGateway],
+})
+export class AppModule {}
+```
+
+Gateway class는 fluo provider discovery를 통해 발견됩니다. `@WebSocketGateway({ path })`가 connection path를 소유하고, `@OnConnect()`는 accepted connection을, `@OnMessage(event?)`는 inbound message를, `@OnDisconnect()`는 cleanup을 처리합니다.
+
+### Shared paths
+
+여러 gateway가 같은 path를 공유할 수 있습니다. Handler는 discovery order로 실행됩니다.
+
+```ts
+@WebSocketGateway({ path: '/events' })
+class MetricsGateway {
+  @OnMessage('metrics')
+  handleMetrics(data) {
+    // publish metrics update
+  }
+}
+```
+
+### Server-backed Node adapters
+
+Raw Node.js, Express, Fastify 같은 server-backed Node adapter에서는 dedicated listener port를 선택할 수 있습니다.
+
+```ts
+@WebSocketGateway({
+  path: '/chat',
+  serverBacked: { port: 3101 },
+})
+class DedicatedChatGateway {}
+```
+
+Fetch-style runtime (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`)은 `serverBacked`를 거부합니다.
+
+## Pre-upgrade guard와 bounded defaults
+
+Handshake가 완료되기 전에 anonymous upgrade를 거부하고 connection/payload limit을 조정하려면 `WebSocketModule.forRoot(...)`를 사용합니다.
+
+```ts
+import { UnauthorizedException } from '@fluojs/http';
+import { WebSocketModule } from '@fluojs/websockets';
+
+WebSocketModule.forRoot({
+  limits: {
+    maxConnections: 500,
+    maxPayloadBytes: 65_536,
+  },
+  upgrade: {
+    guard(request) {
+      const authorization = request instanceof Request
+        ? request.headers.get('authorization')
+        : request.headers.authorization;
+
+      if (authorization !== 'Bearer demo-token') {
+        throw new UnauthorizedException('Authentication required.');
+      }
+    },
+  },
+});
+```
+
+설정을 생략해도 WebSocket default는 bounded입니다. `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, Node backpressure `maxBufferedAmountBytes: 1 MiB` with drop behavior가 적용됩니다.
+
+Gateway message handler는 runtime 전반에서 하나의 normalized payload contract를 받습니다. Text frame은 가능하면 JSON으로 parse되고 아니면 string으로 전달됩니다. Binary frame은 같은 dispatch 단계 전에 UTF-8로 decode됩니다. Limit을 초과한 accepted socket은 close code `1009`로 닫힙니다.
+
+## Runtime-specific WebSocket modules
+
+Root Node.js alias 대신 명시적인 runtime binding이 필요할 때 runtime subpath를 사용합니다.
+
+| Runtime | Subpath | Module | Lifecycle service |
+| --- | --- | --- | --- |
+| Node.js | `@fluojs/websockets/node` | `NodeWebSocketModule` | `NodeWebSocketGatewayLifecycleService` |
+| Bun | `@fluojs/websockets/bun` | `BunWebSocketModule` | `BunWebSocketGatewayLifecycleService` |
+| Deno | `@fluojs/websockets/deno` | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
+| Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` | `CloudflareWorkersWebSocketGatewayLifecycleService` |
+
+## Socket.IO gateways
+
+Room, namespace, broadcasting, Socket.IO client compatibility가 필요할 때 `@fluojs/socket.io`를 사용합니다.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import { SOCKETIO_ROOM_SERVICE, SocketIoModule, type SocketIoRoomService } from '@fluojs/socket.io';
+import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
+
+@Inject(SOCKETIO_ROOM_SERVICE)
+@WebSocketGateway({ path: '/chat' })
+class ChatGateway {
+  constructor(private readonly rooms: SocketIoRoomService) {}
+
+  @OnMessage('ping')
+  handlePing(payload: unknown) {
+    this.rooms.broadcastToRoom('chat:lobby', 'pong', payload);
+  }
+}
+
+@Module({
+  imports: [SocketIoModule.forRoot()],
+  providers: [ChatGateway],
+})
+export class AppModule {}
+```
+
+### Rooms and namespaces
+
+`SocketIoRoomService`는 room helper와 Socket.IO namespace awareness를 제공합니다.
+
+```ts
+this.rooms.joinRoom(socket.id, 'room:123');
+this.rooms.broadcastToRoom('room:123', 'event', data);
+```
+
+Gateway handler 안에서는 현재 `@WebSocketGateway({ path })` namespace가 자동으로 추론됩니다. Gateway handler context 밖에서는 namespace path를 명시적으로 넘기세요.
+
+```ts
+this.rooms.broadcastToRoom('room:123', 'event', data, '/chat');
+this.rooms.joinRoom(socketId, 'room:123', '/chat');
+```
+
+Raw Socket.IO `Server` 접근이 필요할 때만 `SOCKETIO_SERVER`를 주입합니다.
+
+```ts
+import { Inject } from '@fluojs/core';
+import { SOCKETIO_SERVER } from '@fluojs/socket.io';
+import type { Server } from 'socket.io';
+
+@Inject(SOCKETIO_SERVER)
+class MyService {
+  constructor(private readonly io: Server) {}
+}
+```
+
+## Socket.IO guards, CORS, payload limits
+
+Namespace/message guard, CORS, Engine.IO limit은 owning module에서 한 곳에 설정해야 합니다.
+
+```ts
+import { SocketIoModule } from '@fluojs/socket.io';
+
+SocketIoModule.forRoot({
+  auth: {
+    connection({ socket }) {
+      return socket.handshake.auth.token === 'demo-token'
+        ? true
+        : { message: 'Authentication required.' };
+    },
+    message({ payload }) {
+      return payload === 'allowed'
+        ? true
+        : { message: 'Forbidden event.' };
+    },
+  },
+  cors: {
+    origin: ['https://app.example.com'],
+  },
+  engine: {
+    maxHttpBufferSize: 65_536,
+  },
+});
+```
+
+`cors`를 생략하면 Socket.IO는 `{ credentials: false, origin: false }`를 기본값으로 사용하므로 cross-origin exposure는 opt-in입니다. `engine.maxHttpBufferSize`를 생략하면 bounded 1 MiB payload limit이 적용됩니다. 기본값에는 `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, `shutdown.timeoutMs: 5000`도 포함됩니다.
+
+Guard function은 `true`, `false`, 또는 `message`, optional `data`, optional `disconnect`가 있는 rejection object를 반환할 수 있습니다. Message rejection은 `{ error, data }` 형태의 ACK payload를 사용합니다.
+
+## Socket.IO platform support
+
+| Platform | Support | Note |
+| --- | --- | --- |
+| Node.js, Express, Fastify | Supported | Server-backed mode |
+| Bun | Supported | `@socket.io/bun-engine` 사용; CORS shape은 static이어야 함 |
+| Deno | Not supported | Raw WebSockets 사용 |
+| Cloudflare Workers | Not supported | Raw WebSockets 사용 |
+
+Shutdown 중 Socket.IO는 연결된 Socket.IO client를 cleanup하지만, underlying HTTP server는 platform adapter 또는 shared HTTP server integration이 소유합니다. 같은 managed Socket.IO instance 주변에 두 번째 manual disconnect path를 추가하지 마세요.
+
+## Public API summary
+
+| 패키지 | Public API |
+| --- | --- |
+| `@fluojs/websockets` | `WebSocketGateway`, `OnConnect`, `OnMessage`, `OnDisconnect`, `WebSocketModule`, runtime subpath modules, metadata helpers |
+| `@fluojs/socket.io` | `SocketIoModule`, `SOCKETIO_SERVER`, `SOCKETIO_ROOM_SERVICE`, `SocketIoRoomService`, `SocketIoLifecycleService`, guard context types |
+
+## 흔한 실수
+
+| 실수 | 더 나은 접근 |
+| --- | --- |
+| Raw WebSocket으로 충분한데 Socket.IO부터 사용함 | Room/namespace/client compatibility가 필요할 때만 `@fluojs/socket.io`를 선택하세요. |
+| 모든 upgrade를 허용하고 나중에 인증함 | Pre-upgrade guard 또는 Socket.IO connection guard를 사용하세요. |
+| Fetch-style runtime이 `serverBacked` gateway를 지원한다고 가정함 | Runtime subpath module을 사용하고 Bun/Deno/Workers WebSocket path에서 server-backed option을 피하세요. |
+| CORS를 기본 open 상태로 둠 | Socket.IO에서 허용 origin을 명시적으로 설정하세요. |
+| Payload bound를 무시함 | `maxPayloadBytes` 또는 `engine.maxHttpBufferSize`를 bounded하게 유지하세요. |
+| Socket.IO cleanup에서 shared HTTP listener를 직접 닫음 | HTTP server ownership은 platform adapter에 맡기세요. |
+
+## 관련 문서
+
+- [Runtime Adapters](./runtime-adapters)
+- [Auth](./auth)
+- [Operations](./operations)
+- [Realtime & Messaging Packages](../packages/realtime-messaging)

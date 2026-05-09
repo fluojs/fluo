@@ -1,0 +1,49 @@
+---
+title: 패키지 매트릭스
+description: 공식 fluo 패키지 표면의 compact map입니다.
+---
+
+| 패키지 | 계열 | 주요 책임 |
+| --- | --- | --- |
+| `@fluojs/core` | Foundation | Decorator, module contract, shared metadata helper |
+| `@fluojs/di` | Foundation | Token 기반 dependency injection container |
+| `@fluojs/config` | Foundation | Configuration loading, merge, validation, access |
+| `@fluojs/runtime` | Foundation | Application bootstrap, lifecycle, module graph |
+| `@fluojs/validation` | Foundation | DTO validation과 materialization |
+| `@fluojs/serialization` | Foundation | Response shaping과 exposed output contract |
+| `@fluojs/http` | HTTP & Platform | HTTP routing, pipeline, binding, guard, interceptor |
+| `@fluojs/platform-nodejs` | HTTP & Platform | Raw Node.js HTTP adapter |
+| `@fluojs/platform-express` | HTTP & Platform | Express adapter |
+| `@fluojs/platform-fastify` | HTTP & Platform | Fastify adapter |
+| `@fluojs/platform-bun` | HTTP & Platform | Bun adapter |
+| `@fluojs/platform-deno` | HTTP & Platform | Deno adapter |
+| `@fluojs/platform-cloudflare-workers` | HTTP & Platform | Cloudflare Workers adapter |
+| `@fluojs/openapi` | HTTP & Platform | OpenAPI 3.1과 Swagger UI generation |
+| `@fluojs/redis` | Data & Storage | Redis client lifecycle과 named clients |
+| `@fluojs/cache-manager` | Data & Storage | HTTP/application cache contracts |
+| `@fluojs/prisma` | Data & Storage | Prisma clients와 transaction context |
+| `@fluojs/drizzle` | Data & Storage | Drizzle database lifecycle과 transactions |
+| `@fluojs/mongoose` | Data & Storage | Mongoose connections, sessions, transactions |
+| `@fluojs/queue` | Data & Storage | Redis-backed queues와 workers |
+| `@fluojs/jwt` | Auth & Security | JWT signing, verification, JWKS support |
+| `@fluojs/passport` | Auth & Security | Passport strategy와 guard integration |
+| `@fluojs/throttler` | Auth & Security | Rate limiting guards와 stores |
+| `@fluojs/event-bus` | Realtime & Messaging | In-process events와 Redis fan-out |
+| `@fluojs/cqrs` | Realtime & Messaging | Commands, queries, events, sagas |
+| `@fluojs/microservices` | Realtime & Messaging | Transport-driven service runtime |
+| `@fluojs/websockets` | Realtime & Messaging | WebSocket gateway core |
+| `@fluojs/socket.io` | Realtime & Messaging | Socket.IO gateway adapter |
+| `@fluojs/graphql` | Realtime & Messaging | GraphQL module과 resolver pipeline |
+| `@fluojs/cron` | Realtime & Messaging | Cron, interval, timeout scheduling |
+| `@fluojs/notifications` | Integrations | Notification orchestration |
+| `@fluojs/email` | Integrations | Email delivery channel |
+| `@fluojs/slack` | Integrations | Slack webhook delivery channel |
+| `@fluojs/discord` | Integrations | Discord webhook delivery channel |
+| `@fluojs/metrics` | Operations | Prometheus metrics와 telemetry |
+| `@fluojs/terminus` | Operations | Health와 readiness indicators |
+| `@fluojs/studio` | Operations | Diagnostics viewer와 snapshots |
+| `@fluojs/cli` | Tooling & Testing | Project creation, generation, migration, inspection |
+| `@fluojs/testing` | Tooling & Testing | Test module과 app harness |
+| `@fluojs/vite` | Tooling & Testing | Vite plugin/build utilities |
+
+거버넌스가 적용되는 package/runtime matrix는 `docs/reference/package-surface.md`를, package-specific deep dive는 각 package README를 기준으로 사용하세요.

@@ -1,0 +1,18 @@
+{
+  "title": "가이드",
+  "pages": [
+    "index",
+    "first-feature",
+    "package-selection",
+    "http-api",
+    "runtime-adapters",
+    "validation-serialization",
+    "auth",
+    "persistence",
+    "realtime",
+    "messaging-workflows",
+    "operations",
+    "testing",
+    "cli"
+  ]
+}

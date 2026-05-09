@@ -1,0 +1,17 @@
+---
+title: Data & Storage Packages
+description: Database, Redis, cache, transaction, and queue packages.
+---
+
+Data packages keep storage semantics explicit instead of hiding every database behind one abstraction.
+
+| Package | Use for | Deep dive |
+| --- | --- | --- |
+| `@fluojs/prisma` | Prisma clients and transaction context | `packages/prisma/README.md` |
+| `@fluojs/drizzle` | Drizzle database lifecycle and transactions | `packages/drizzle/README.md` |
+| `@fluojs/mongoose` | Mongoose connections, sessions, request transactions | `packages/mongoose/README.md` |
+| `@fluojs/redis` | Redis clients and named clients | `packages/redis/README.md` |
+| `@fluojs/cache-manager` | HTTP/application cache contracts | `packages/cache-manager/README.md` |
+| `@fluojs/queue` | Redis-backed jobs and workers | `packages/queue/README.md` |
+
+Read [Persistence](../guides/persistence) when choosing a storage path for an application feature.

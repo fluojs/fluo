@@ -1,0 +1,15 @@
+---
+title: Integration Packages
+description: Notifications and delivery channels for application workflows.
+---
+
+Integration packages connect application events to external delivery channels.
+
+| Package | Use for | Deep dive |
+| --- | --- | --- |
+| `@fluojs/notifications` | Orchestrating notification delivery | `packages/notifications/README.md` |
+| `@fluojs/email` | Email delivery and Node SMTP subpath | `packages/email/README.md` |
+| `@fluojs/slack` | Slack webhook delivery | `packages/slack/README.md` |
+| `@fluojs/discord` | Discord webhook delivery | `packages/discord/README.md` |
+
+Use these packages with queues or events when delivery should be retried or moved out of the request path.

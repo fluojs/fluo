@@ -1,0 +1,15 @@
+---
+title: Integration 패키지
+description: 애플리케이션 워크플로를 위한 notification과 delivery channel입니다.
+---
+
+Integration package는 application event를 외부 delivery channel과 연결합니다.
+
+| 패키지 | 사용할 때 | Deep dive |
+| --- | --- | --- |
+| `@fluojs/notifications` | Notification delivery orchestration | `packages/notifications/README.ko.md` |
+| `@fluojs/email` | Email delivery와 Node SMTP subpath | `packages/email/README.ko.md` |
+| `@fluojs/slack` | Slack webhook delivery | `packages/slack/README.ko.md` |
+| `@fluojs/discord` | Discord webhook delivery | `packages/discord/README.ko.md` |
+
+delivery를 retry하거나 request path 밖으로 옮겨야 하면 queue 또는 event와 함께 사용하세요.

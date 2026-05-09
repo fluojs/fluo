@@ -1,0 +1,4 @@
+{
+  "title": "Examples",
+  "pages": ["index", "minimal", "realworld-api", "auth-jwt-passport", "ops-metrics-terminus", "starter"]
+}

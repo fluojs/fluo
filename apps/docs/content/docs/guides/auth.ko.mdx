@@ -1,0 +1,377 @@
+---
+title: 인증
+description: fluo 애플리케이션에서 bearer token, cookie, scope, refresh token, throttling 경계를 구축합니다.
+---
+
+fluo의 인증은 HTTP runtime 안에 숨겨져 있지 않고, 역할이 분리된 패키지로 구성됩니다.
+
+`@fluojs/jwt`는 token을 sign/verify합니다. `@fluojs/passport`는 strategy를 guard로 실행하고 인증된 principal을 request context에 기록합니다. `@fluojs/throttler`는 반복 호출로부터 비용이 큰 route와 민감한 route를 보호합니다.
+
+```txt
+request
+  -> throttling guard
+  -> auth strategy
+  -> principal normalization
+  -> scope checks
+  -> protected handler
+```
+
+Bearer token, cookie auth, scope 기반 route protection, refresh token, login throttling이 필요할 때 이 가이드를 사용하세요.
+
+## 패키지
+
+| 관심사 | 패키지 | 사용 목적 |
+| --- | --- | --- |
+| Token core | `@fluojs/jwt` | Access token signing, verification, JWKS, refresh-token primitive |
+| Strategy execution | `@fluojs/passport` | `AuthStrategy`, `AuthGuard`, `@UseAuth`, `@RequireScopes`, cookie/refresh preset |
+| Rate limiting | `@fluojs/throttler` | Login protection, API quota, Redis-backed distributed bucket |
+| HTTP boundary | `@fluojs/http` | Controller, guard, request context, route metadata |
+| Runnable example | `examples/auth-jwt-passport` | Token route, protected profile route, e2e-style tests |
+
+필요한 조각만 설치합니다.
+
+```bash
+pnpm add @fluojs/jwt @fluojs/passport @fluojs/throttler
+```
+
+## `@fluojs/jwt`로 token 발급하기
+
+JWT 설정은 route handler 안이 아니라 module에 둡니다. 애플리케이션이 허용하는 algorithm과 claim policy로 `JwtModule`을 등록하세요.
+
+```ts
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+
+@Module({
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      secret: 'your-secure-secret',
+      issuer: 'my-api',
+      audience: 'my-app',
+      accessTokenTtlSeconds: 3600,
+    }),
+  ],
+})
+export class AuthModule {}
+```
+
+Access token을 발급할 때는 `DefaultJwtSigner`, 검증할 때는 `DefaultJwtVerifier`를 주입합니다.
+
+```ts
+import { DefaultJwtSigner, DefaultJwtVerifier } from '@fluojs/jwt';
+
+const token = await signer.signAccessToken({
+  sub: 'user-123',
+  roles: ['admin'],
+  scopes: ['profile:read'],
+});
+
+const principal = await verifier.verifyAccessToken(token);
+// principal.subject === 'user-123'
+// principal.scopes includes 'profile:read'
+```
+
+`@fluojs/jwt`는 token의 `scope`와 `scopes` claim을 안정적인 `JwtPrincipal.scopes: string[]` 형태로 normalize하므로 authorization guard는 하나의 contract만 읽으면 됩니다.
+
+### Async configuration
+
+Key나 issuer 설정을 config provider에서 가져와야 한다면 `JwtModule.forRootAsync(...)`를 사용합니다.
+
+```ts
+import { Module, type Token } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+
+const JWT_SETTINGS = Symbol('jwt-settings');
+
+@Module({
+  imports: [
+    JwtModule.forRootAsync({
+      inject: [JWT_SETTINGS],
+      useFactory: async (settings) => ({
+        accessTokenTtlSeconds: 900,
+        algorithms: ['HS256'],
+        audience: 'my-app',
+        issuer: settings.issuer,
+        secret: settings.secret,
+      }),
+    }),
+  ],
+  providers: [
+    {
+      provide: JWT_SETTINGS as Token<{ issuer: string; secret: string }>,
+      useValue: { issuer: 'my-api', secret: 'your-secure-secret' },
+    },
+  ],
+})
+export class AuthModule {}
+```
+
+## `@fluojs/passport`로 route 보호하기
+
+fluo의 Passport 계층은 strategy-agnostic입니다. Strategy는 `AuthStrategy`를 구현하고 request를 인증한 뒤 principal을 반환합니다. `AuthGuard`는 protected route에서 해당 strategy를 실행합니다.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import type { GuardContext } from '@fluojs/http';
+import { DefaultJwtVerifier, JwtModule } from '@fluojs/jwt';
+import { AuthenticationRequiredError, PassportModule, type AuthStrategy } from '@fluojs/passport';
+
+@Inject(DefaultJwtVerifier)
+export class BearerJwtStrategy implements AuthStrategy {
+  constructor(private readonly verifier: DefaultJwtVerifier) {}
+
+  async authenticate(context: GuardContext) {
+    const authorization = context.requestContext.request.headers.authorization;
+    const [scheme, token] = typeof authorization === 'string' ? authorization.split(' ') : [];
+
+    if (scheme !== 'Bearer' || !token) {
+      throw new AuthenticationRequiredError('Bearer access token is required.');
+    }
+
+    return this.verifier.verifyAccessToken(token);
+  }
+}
+
+@Module({
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      audience: 'my-app',
+      issuer: 'my-api',
+      secret: 'your-secure-secret',
+    }),
+    PassportModule.forRoot(
+      { defaultStrategy: 'jwt' },
+      [{ name: 'jwt', token: BearerJwtStrategy }],
+    ),
+  ],
+  providers: [BearerJwtStrategy],
+})
+export class AuthModule {}
+```
+
+JWT 기반 passport auth에는 두 module registration이 모두 필요합니다. `JwtModule`은 verifier를 제공하고, `PassportModule`은 `@UseAuth('jwt')`가 resolve할 named strategy를 등록합니다.
+
+### Scope와 protected handler
+
+Principal이 필요하면 `@UseAuth()`, authorization scope가 필요하면 `@RequireScopes()`를 사용합니다.
+
+```ts
+import { Controller, Get, type RequestContext } from '@fluojs/http';
+import { RequireScopes, UseAuth } from '@fluojs/passport';
+
+@Controller('/profile')
+export class ProfileController {
+  @Get('/')
+  @UseAuth('jwt')
+  @RequireScopes('profile:read')
+  async getProfile(input: never, ctx: RequestContext) {
+    return { user: ctx.principal };
+  }
+}
+```
+
+`AuthGuard`는 인증된 principal을 `requestContext.principal`에 기록합니다. Downstream handler는 token을 다시 parsing하지 말고 request context에서 principal을 읽어야 합니다.
+
+## Cookie auth와 optional auth
+
+Access token이 HTTP cookie로 전달되는 앱에서는 `CookieAuthModule.forRoot(...)`를 사용합니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+import {
+  CookieAuthModule,
+  CookieAuthStrategy,
+  COOKIE_AUTH_STRATEGY_NAME,
+  PassportModule,
+} from '@fluojs/passport';
+
+@Module({
+  imports: [
+    CookieAuthModule.forRoot(),
+    JwtModule.forRoot({ algorithms: ['HS256'], secret: 'your-secure-secret' }),
+    PassportModule.forRoot(
+      { defaultStrategy: COOKIE_AUTH_STRATEGY_NAME },
+      [{ name: COOKIE_AUTH_STRATEGY_NAME, token: CookieAuthStrategy }],
+    ),
+  ],
+})
+export class AuthModule {}
+```
+
+Protected route에는 여전히 `@UseAuth(...)`가 필요합니다. Signed-in caller와 guest caller를 모두 허용하는 route라면 의도적으로 `@UseOptionalAuth(...)`를 사용합니다.
+
+```ts
+import { Controller, Get, type RequestContext } from '@fluojs/http';
+import { UseOptionalAuth } from '@fluojs/passport';
+
+@Controller('/session')
+export class SessionController {
+  @Get('/')
+  @UseOptionalAuth('cookie')
+  getSession(_input: never, ctx: RequestContext) {
+    return { subject: ctx.principal?.subject ?? null };
+  }
+}
+```
+
+Optional auth는 scope가 없을 때 missing credential만 bypass합니다. Scoped route에는 여전히 authenticated principal이 필요합니다.
+
+## Refresh token
+
+Access-token lifetime을 늘리지 않으면서 long-lived session이 필요할 때 refresh token을 사용합니다.
+
+`RefreshTokenStrategy`는 `body.refreshToken`, `Authorization: Bearer ...`, `x-refresh-token`에서 token을 읽습니다. Non-string malformed token은 verification 전에 실패합니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { Controller, Post, type RequestContext } from '@fluojs/http';
+import {
+  PassportModule,
+  REFRESH_TOKEN_STRATEGY_NAME,
+  RefreshTokenModule,
+  RefreshTokenStrategy,
+  UseAuth,
+} from '@fluojs/passport';
+
+@Module({
+  imports: [
+    RefreshTokenModule.forRoot(MyRefreshTokenService),
+    PassportModule.forRoot(
+      { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
+      [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
+    ),
+  ],
+  providers: [MyRefreshTokenService],
+})
+export class AuthModule {}
+
+@Controller('/auth')
+export class AuthController {
+  @Post('/refresh')
+  @UseAuth('refresh-token')
+  async refresh(input: never, ctx: RequestContext) {
+    return ctx.principal;
+  }
+}
+```
+
+Production에서는 refresh-token rotation에 atomic `RefreshTokenStore.consume(...)` 구현이 필요합니다. 그래야 replayed token을 안정적으로 감지할 수 있습니다. Memory store는 development 또는 single-instance deployment에만 적합합니다.
+
+## 민감한 route rate limiting
+
+Auth endpoint에는 보통 throttling이 필요합니다. `ThrottlerModule`을 등록하고, `ThrottlerGuard`를 활성화한 뒤 필요한 route에서 limit을 override하세요.
+
+```ts
+import { Module } from '@fluojs/core';
+import { Controller, Post, UseGuards } from '@fluojs/http';
+import { SkipThrottle, Throttle, ThrottlerGuard, ThrottlerModule } from '@fluojs/throttler';
+
+@Module({
+  imports: [
+    ThrottlerModule.forRoot({
+      ttl: 60,
+      limit: 10,
+    }),
+  ],
+})
+class AppModule {}
+
+@Controller('/auth')
+@UseGuards(ThrottlerGuard)
+class AuthController {
+  @Post('/login')
+  @Throttle({ ttl: 60, limit: 5 })
+  login() {
+    return { success: true };
+  }
+
+  @Post('/public-info')
+  @SkipThrottle()
+  getInfo() {
+    return { info: '...' };
+  }
+}
+```
+
+Multi-instance deployment에서는 Redis-backed store를 사용해 모든 instance가 같은 reset boundary를 공유하도록 합니다.
+
+```ts
+import { REDIS_CLIENT } from '@fluojs/redis';
+import { RedisThrottlerStore, ThrottlerModule } from '@fluojs/throttler';
+
+const redisClient = await container.resolve(REDIS_CLIENT);
+
+ThrottlerModule.forRoot({
+  ttl: 60,
+  limit: 100,
+  store: new RedisThrottlerStore(redisClient),
+});
+```
+
+앱이 trusted reverse proxy 뒤에 있다면 `trustProxyHeaders: true`로 proxy header identity를 명시적으로 opt in하세요. Trusted socket 또는 proxy identity가 없으면 throttler는 서로 다른 caller를 하나의 bucket으로 합치지 않고 실패합니다.
+
+## Operational guardrails
+
+| 영역 | Guardrail |
+| --- | --- |
+| Algorithms | 지원 algorithm을 하나 이상 설정하세요. 빈 algorithm list는 fail-fast됩니다. |
+| Access-token TTL | 양의 finite `accessTokenTtlSeconds`를 사용하세요. 잘못된 TTL은 token 발급 전에 실패합니다. |
+| JWKS | `jwksRequestTimeoutMs`로 remote JWKS fetch를 bounded하게 유지하세요. 기본값은 `5_000`입니다. |
+| Principal shape | Normalized principal의 `subject`, `roles`, `scopes`, `claims`를 읽으세요. |
+| Refresh rotation | Atomic consume/revoke semantics를 사용하고, multi-instance production에서 memory store를 피하세요. |
+| Optional auth | Guest-compatible route에만 사용하세요. Scoped route에는 credential이 필요합니다. |
+| Throttling identity | 직접 제어하는 proxy boundary 뒤에서만 proxy header를 신뢰하세요. |
+
+## Public API summary
+
+| 패키지 | Public API |
+| --- | --- |
+| `@fluojs/jwt` | `JwtModule`, `DefaultJwtSigner`, `DefaultJwtVerifier`, `JwtService`, `JwksClient`, `RefreshTokenService`, `JwtPrincipal`, JWT error classes, status helpers |
+| `@fluojs/passport` | `PassportModule`, `AuthGuard`, `AuthStrategy`, `UseAuth`, `UseOptionalAuth`, `RequireScopes`, `CookieAuthModule`, `RefreshTokenModule`, Passport.js bridge helpers, diagnostics helpers |
+| `@fluojs/throttler` | `ThrottlerModule`, `ThrottlerGuard`, `Throttle`, `SkipThrottle`, `RedisThrottlerStore`, `createMemoryThrottlerStore`, `ThrottlerStore`, diagnostics helpers |
+
+## Runnable example
+
+`examples/auth-jwt-passport`는 공식 bearer-token path를 보여 줍니다.
+
+- `POST /auth/token`은 demo access token을 발급합니다.
+- `GET /profile/`은 bearer auth와 `profile:read`를 요구합니다.
+- `GET /health`, `GET /ready`는 runtime check용으로 열려 있습니다.
+
+Repository root에서 실행합니다.
+
+```bash
+pnpm vitest run examples/auth-jwt-passport
+```
+
+권장 읽기 순서:
+
+1. `src/auth/login.dto.ts` — request boundary
+2. `src/auth/auth.service.ts` — token issuance
+3. `src/auth/bearer.strategy.ts` — bearer verification
+4. `src/auth/auth.controller.ts` — open/protected routes
+5. `src/auth/auth.module.ts` — module registration
+6. `src/app.test.ts` — service, strategy, e2e-style checks
+
+## 흔한 실수
+
+| 실수 | 더 나은 접근 |
+| --- | --- |
+| 모든 handler에서 JWT를 직접 verify함 | Verification을 `AuthStrategy`에 집중시키세요. |
+| Verifier provider 없이 `PassportModule`만 등록함 | JWT strategy에는 `JwtModule`과 `PassportModule`을 함께 등록하세요. |
+| Optional auth를 anonymous auth처럼 취급함 | Guest caller를 의도적으로 허용하는 route에만 사용하세요. |
+| Multi-instance production에서 in-memory refresh/throttler store 사용 | Durable 또는 distributed storage를 사용하세요. |
+| Forwarded IP header를 기본으로 신뢰함 | 직접 제어하는 infrastructure 뒤에서만 proxy trust를 켜세요. |
+| Raw token claims를 application identity로 반환함 | Normalized principal contract를 사용하세요. |
+
+## 관련 문서
+
+- [Validation & Serialization](./validation-serialization)
+- [HTTP API](./http-api)
+- [Operations](./operations)
+- [Testing](./testing)
+- [Auth & Security Packages](../packages/auth-security)
+- [Auth JWT Passport Example](../examples/auth-jwt-passport)

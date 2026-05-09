@@ -1,0 +1,18 @@
+---
+title: Realtime & Messaging 패키지
+description: WebSocket, Socket.IO, event, CQRS, microservice, GraphQL, scheduling을 다룹니다.
+---
+
+Realtime과 messaging package는 synchronous HTTP request/response만으로 끝나지 않는 흐름을 만들 때 사용합니다.
+
+| 패키지 | 사용할 때 | Deep dive |
+| --- | --- | --- |
+| `@fluojs/websockets` | Raw WebSocket gateway | `packages/websockets/README.ko.md` |
+| `@fluojs/socket.io` | Socket.IO room, namespace, auth guard | `packages/socket.io/README.ko.md` |
+| `@fluojs/event-bus` | In-process event와 Redis fan-out | `packages/event-bus/README.ko.md` |
+| `@fluojs/cqrs` | Command, query, event, saga | `packages/cqrs/README.ko.md` |
+| `@fluojs/microservices` | Multi-transport service runtime | `packages/microservices/README.ko.md` |
+| `@fluojs/graphql` | GraphQL resolver, schema, DataLoader | `packages/graphql/README.ko.md` |
+| `@fluojs/cron` | Cron, interval, timeout trigger | `packages/cron/README.ko.md` |
+
+client connection이 핵심이면 [실시간](../guides/realtime)을, backend workflow가 핵심이면 [메시징과 워크플로](../guides/messaging-workflows)를 읽으세요.

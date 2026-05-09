@@ -1,0 +1,17 @@
+---
+title: Foundation 패키지
+description: module, dependency injection, config, runtime, validation, serialization을 위한 core package입니다.
+---
+
+Foundation package는 모든 상위 fluo 기능이 사용하는 애플리케이션 모델을 정의합니다.
+
+| 패키지 | 사용할 때 | Deep dive |
+| --- | --- | --- |
+| `@fluojs/core` | Decorator, module contract, shared metadata helper | `packages/core/README.ko.md` |
+| `@fluojs/di` | Provider registration, scope, override, container resolution | `packages/di/README.ko.md` |
+| `@fluojs/config` | Config source precedence, validation, typed runtime access | `packages/config/README.ko.md` |
+| `@fluojs/runtime` | Bootstrap, lifecycle, module graph, app context | `packages/runtime/README.ko.md` |
+| `@fluojs/validation` | Request DTO validation과 materialization | `packages/validation/README.ko.md` |
+| `@fluojs/serialization` | Expose-only response DTO와 transform | `packages/serialization/README.ko.md` |
+
+이 패키지를 작업 중심으로 따라가려면 [첫 기능 만들기](../guides/first-feature)를 읽으세요.

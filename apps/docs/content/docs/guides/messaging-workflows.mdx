@@ -1,0 +1,512 @@
+---
+title: Messaging & Workflows
+description: Build asynchronous fluo systems with events, CQRS sagas, queues, cron, microservices, and notification channels.
+---
+
+Messaging and workflow packages move work across boundaries: inside one application process, between service processes, out of the request path, or into a scheduled operational loop.
+
+fluo does not ship a separate workflow-engine package. Instead, workflows are composed from explicit framework contracts:
+
+```txt
+business fact
+  -> event handler or CQRS saga
+  -> command, queue job, scheduled task, transport message, or notification
+  -> lifecycle, retry, shutdown, and observability boundary
+```
+
+Use this guide when a feature should not be implemented as one synchronous HTTP controller method.
+
+## Package map
+
+| Need | Package | Primary contract |
+| --- | --- | --- |
+| Local events and optional Redis fan-out | `@fluojs/event-bus` | `EventBusModule`, `@OnEvent`, `EventBusLifecycleService.publish(...)` |
+| Commands, queries, events, and sagas | `@fluojs/cqrs` | `CqrsModule`, `@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga` |
+| Broker-backed service boundaries | `@fluojs/microservices` | `MicroservicesModule`, `@MessagePattern`, `@EventPattern`, transport adapters |
+| Redis-backed background jobs | `@fluojs/queue` | `QueueModule`, `@QueueWorker`, `QueueLifecycleService.enqueue(...)` |
+| Scheduled and delayed work | `@fluojs/cron` | `CronModule`, `@Cron`, `@Interval`, `@Timeout`, `SCHEDULING_REGISTRY` |
+| Channel-agnostic notification orchestration | `@fluojs/notifications` | `NotificationsModule`, `NotificationsService`, lifecycle events, queue seam |
+| Email delivery and notification queue workers | `@fluojs/email` | `EmailModule`, `EmailService`, `EMAIL_CHANNEL`, `@fluojs/email/queue` |
+| Slack delivery | `@fluojs/slack` | `SlackModule`, `SlackService`, `SLACK_CHANNEL` |
+| Discord delivery | `@fluojs/discord` | `DiscordModule`, `DiscordService`, `DISCORD_CHANNEL` |
+
+## Choose the right boundary
+
+| Situation | Start with | Why |
+| --- | --- | --- |
+| One local reaction should follow one domain fact | `@fluojs/event-bus` | Simple decoupling without a command/query model. |
+| A fact should trigger the next explicit business command | `@fluojs/cqrs` saga | Sagas act as process managers while commands keep write ownership explicit. |
+| Work is slow, retryable, or operator-facing | `@fluojs/queue` | Jobs get attempts, backoff, Redis persistence, and dead-letter evidence. |
+| Work must run at a time or interval | `@fluojs/cron` | Scheduling is lifecycle-managed and can use Redis distributed locks. |
+| Another service owns the handler | `@fluojs/microservices` | Pattern routing crosses process and broker boundaries. |
+| A side effect targets email, Slack, Discord, or a custom channel | `@fluojs/notifications` plus a channel package | Application code depends on one dispatch contract instead of provider SDKs. |
+
+Most production flows combine several rows. For example, checkout may publish `OrderPlacedEvent`, a saga may reserve inventory, a later handler may enqueue invoice generation, cron may expire stale reservations, and notifications may send customer updates.
+
+## Local events
+
+Use `@fluojs/event-bus` when several providers should react to the same event without directly depending on each other.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import { EventBusLifecycleService, EventBusModule, OnEvent } from '@fluojs/event-bus';
+
+class UserSignedUpEvent {
+  static readonly eventKey = 'user.signed-up.v1';
+
+  constructor(public readonly email: string) {}
+}
+
+class WelcomeProjection {
+  @OnEvent(UserSignedUpEvent)
+  async project(event: UserSignedUpEvent) {
+    console.log('prepare welcome journey for', event.email);
+  }
+}
+
+@Inject(EventBusLifecycleService)
+class UsersService {
+  constructor(private readonly eventBus: EventBusLifecycleService) {}
+
+  async signUp(email: string) {
+    await this.eventBus.publish(new UserSignedUpEvent(email));
+  }
+}
+
+@Module({
+  imports: [EventBusModule.forRoot()],
+  providers: [UsersService, WelcomeProjection],
+})
+class AppModule {}
+```
+
+`publish(event, options?)` supports `signal`, `timeoutMs`, and `waitForHandlers`. `waitForHandlers` defaults to `true`, so awaited local handlers and awaited transport publishes share the same cancellation and timeout boundary.
+
+### Redis fan-out
+
+Use the Redis subpath when event publication must cross processes.
+
+```ts
+import { EventBusModule } from '@fluojs/event-bus';
+import { RedisEventBusTransport } from '@fluojs/event-bus/redis';
+
+EventBusModule.forRoot({
+  transport: new RedisEventBusTransport({
+    publishClient: redis,
+    subscribeClient: redisSubscriber,
+  }),
+});
+```
+
+Use a static `eventKey` for stable transport channel names. Redis transport unsubscribes its own channels during shutdown but does not disconnect caller-owned Redis clients.
+
+## CQRS and sagas
+
+Use `@fluojs/cqrs` when the system should separate write intents, read intents, domain-event handling, and process orchestration.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import {
+  CommandBusLifecycleService,
+  CommandHandler,
+  CqrsModule,
+  ICommand,
+  ICommandHandler,
+  ISaga,
+  Saga,
+} from '@fluojs/cqrs';
+
+class ReserveInventoryCommand implements ICommand {
+  constructor(public readonly orderId: string) {}
+}
+
+class OrderPlacedEvent {
+  constructor(public readonly orderId: string) {}
+}
+
+@CommandHandler(ReserveInventoryCommand)
+class ReserveInventoryHandler implements ICommandHandler<ReserveInventoryCommand, void> {
+  async execute(command: ReserveInventoryCommand): Promise<void> {
+    console.log('reserve inventory for', command.orderId);
+  }
+}
+
+@Inject(CommandBusLifecycleService)
+@Saga(OrderPlacedEvent)
+class FulfillmentSaga implements ISaga<OrderPlacedEvent> {
+  constructor(private readonly commandBus: CommandBusLifecycleService) {}
+
+  async handle(event: OrderPlacedEvent): Promise<void> {
+    await this.commandBus.execute(new ReserveInventoryCommand(event.orderId));
+  }
+}
+
+@Module({
+  imports: [CqrsModule.forRoot()],
+  providers: [ReserveInventoryHandler, FulfillmentSaga],
+})
+class CommerceModule {}
+```
+
+A saga is a process manager, not a hidden workflow engine. Keep each step small: react to one event and choose the next command or boundary.
+
+### Event pipeline order
+
+`CqrsEventBusService.publish(event)` runs matching `@EventHandler(...)` providers first, matching `@Saga(...)` providers second, and delegated `@fluojs/event-bus` publication last. `publishAll(events)` preserves input order by awaiting each event pipeline before publishing the next event.
+
+In-process saga graphs must stay bounded. fluo raises `SagaTopologyError` when a publish chain re-enters the same saga route cyclically or exceeds 32 nested saga hops. Move intentionally cyclic or long-running feedback loops behind a queue, scheduler, external transport, or another bounded boundary.
+
+## Background jobs
+
+Use `@fluojs/queue` when work is slow, retryable, failure-prone, or should survive outside the initiating request.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import { QueueLifecycleService, QueueModule, QueueWorker } from '@fluojs/queue';
+import { RedisModule } from '@fluojs/redis';
+
+class GenerateInvoiceJob {
+  constructor(public readonly orderId: string) {}
+}
+
+@QueueWorker(GenerateInvoiceJob, {
+  attempts: 5,
+  backoff: { type: 'exponential', delayMs: 1_000 },
+})
+class InvoiceWorker {
+  async handle(job: GenerateInvoiceJob) {
+    console.log('generate invoice for', job.orderId);
+  }
+}
+
+@Inject(QueueLifecycleService)
+class BillingService {
+  constructor(private readonly queue: QueueLifecycleService) {}
+
+  async afterShipmentDispatched(orderId: string) {
+    await this.queue.enqueue(new GenerateInvoiceJob(orderId));
+  }
+}
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    QueueModule.forRoot(),
+  ],
+  providers: [BillingService, InvoiceWorker],
+})
+class BackgroundJobsModule {}
+```
+
+Jobs must be JSON-serializable plain objects. Queue serializes the payload before enqueueing and rehydrates the job prototype on the worker side.
+
+### Retry and dead letters
+
+Configure attempts and backoff per workload. Fixed backoff is predictable; exponential backoff is usually safer for dependencies under load.
+
+When a worker exhausts its retry attempts, Queue appends a dead-letter record to Redis under `fluo:queue:dead-letter:<jobName>`. `QueueModule.forRoot()` keeps the most recent `1_000` entries per job by default. Set `defaultDeadLetterMaxEntries: false` to opt out, or provide a smaller positive number for a tighter retention budget.
+
+Use `QueueModule.forRoot({ clientName: 'jobs' })` when queue traffic should use a named `@fluojs/redis` client instead of the default connection.
+
+## Scheduled work
+
+Use `@fluojs/cron` for periodic jobs, one-off delayed tasks, and fixed-rate intervals.
+
+```ts
+import { Module } from '@fluojs/core';
+import { Cron, CronExpression, CronModule, Interval, Timeout } from '@fluojs/cron';
+
+class BillingScheduler {
+  @Cron(CronExpression.EVERY_MINUTE, { name: 'billing.reconcile' })
+  async reconcilePendingInvoices() {
+    console.log('reconcile invoices');
+  }
+
+  @Interval(15_000)
+  async pollProviderStatus() {
+    console.log('poll provider status');
+  }
+
+  @Timeout(5_000)
+  async warmUpAfterStartup() {
+    console.log('warm up');
+  }
+}
+
+@Module({
+  imports: [CronModule.forRoot()],
+  providers: [BillingScheduler],
+})
+class SchedulerModule {}
+```
+
+Cron expressions may use five fields or six fields. The built-in `CronExpression` presets use six-field expressions when sub-minute precision is needed. Scheduled methods are discovered only on singleton providers and controllers.
+
+### Distributed locks and shutdown
+
+Enable distributed mode when multiple instances run the same scheduler and only one owner should execute a task at a time.
+
+```ts
+import { Module } from '@fluojs/core';
+import { CronModule } from '@fluojs/cron';
+import { RedisModule } from '@fluojs/redis';
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    CronModule.forRoot({
+      distributed: {
+        enabled: true,
+        keyPrefix: 'fluo:cron:lock',
+        lockTtlMs: 30_000,
+      },
+      shutdown: {
+        timeoutMs: 5_000,
+      },
+    }),
+  ],
+})
+class DistributedSchedulerModule {}
+```
+
+`lockTtlMs` must be at least `1_000ms`. fluo renews Redis locks before TTL expiry, but Redis TTLs are still drift-sensitive coordination primitives. Keep long-running scheduled work idempotent and use application-level fencing when stale work would be unsafe.
+
+The scheduler drains active task executions during shutdown with a bounded timeout. If that timeout expires, shutdown continues rather than blocking forever.
+
+### Dynamic scheduling
+
+Inject `SCHEDULING_REGISTRY` when tasks must be added, removed, enabled, disabled, or retimed at runtime.
+
+```ts
+import { Inject } from '@fluojs/core';
+import { SCHEDULING_REGISTRY, type SchedulingRegistry } from '@fluojs/cron';
+
+@Inject(SCHEDULING_REGISTRY)
+class TenantScheduleManager {
+  constructor(private readonly registry: SchedulingRegistry) {}
+
+  addTenantReconciliation(tenantId: string) {
+    this.registry.addCron(`tenant:${tenantId}:reconcile`, '0 * * * *', () => {
+      console.log('reconcile tenant', tenantId);
+    });
+  }
+}
+```
+
+The registry exposes `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, and `updateCronExpression`.
+
+## Transport-driven services
+
+Use `@fluojs/microservices` when the handler lives behind a transport boundary instead of inside the same application process.
+
+```ts
+import { Module } from '@fluojs/core';
+import { MessagePattern, MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { fluoFactory } from '@fluojs/runtime';
+
+class MathHandler {
+  @MessagePattern('math.sum')
+  sum(data: { a: number; b: number }) {
+    return data.a + data.b;
+  }
+}
+
+@Module({
+  imports: [
+    MicroservicesModule.forRoot({
+      transport: new TcpMicroserviceTransport({ port: 4000 }),
+    }),
+  ],
+  providers: [MathHandler],
+})
+class AppModule {}
+
+const microservice = await fluoFactory.createMicroservice(AppModule);
+await microservice.listen();
+```
+
+Use `@MessagePattern` for request-response flows and `@EventPattern` for fire-and-forget event broadcasting. gRPC streaming handlers use `@ServerStreamPattern`, `@ClientStreamPattern`, and `@BidiStreamPattern`.
+
+Supported transports include TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC. NATS, Kafka, and RabbitMQ starter projects make caller-owned broker clients explicit in application bootstrap instead of hiding them as built-ins.
+
+Important delivery contracts:
+
+- TCP frames are bounded to 1 MiB by default.
+- Redis Streams acknowledges entries only after handler-side processing finishes.
+- NATS, Kafka, and RabbitMQ transports detach subscriptions/consumers during shutdown but do not disconnect caller-owned collaborators.
+- Duplicate message matches fail deterministically.
+- Request-scoped providers are disposed after success and failure.
+
+## Notifications and delivery channels
+
+Use `@fluojs/notifications` when application code should dispatch through one channel-agnostic contract.
+
+```ts
+import { Inject, Module } from '@fluojs/core';
+import { NotificationsModule, NotificationsService, type NotificationChannel } from '@fluojs/notifications';
+
+const emailChannel: NotificationChannel = {
+  channel: 'email',
+  async send(notification) {
+    console.log('send email', notification.subject, notification.payload);
+    return { externalId: 'email-123' };
+  },
+};
+
+@Inject(NotificationsService)
+class WelcomeService {
+  constructor(private readonly notifications: NotificationsService) {}
+
+  async sendWelcomeEmail(userId: string, email: string) {
+    await this.notifications.dispatch({
+      channel: 'email',
+      recipients: [email],
+      subject: 'Welcome to fluo',
+      payload: { template: 'welcome-email', userId },
+    });
+  }
+}
+
+@Module({
+  imports: [NotificationsModule.forRoot({ channels: [emailChannel] })],
+  providers: [WelcomeService],
+})
+class NotificationsAppModule {}
+```
+
+`NotificationsModule` intentionally does not import concrete channel packages. Use `@fluojs/email`, `@fluojs/slack`, and `@fluojs/discord` when those packages should own provider-specific payload mapping.
+
+### Email with queue-backed notifications
+
+`@fluojs/email` provides direct email delivery, an `EMAIL_CHANNEL` for `@fluojs/notifications`, and a queue integration subpath.
+
+```ts
+import { Module } from '@fluojs/core';
+import { EMAIL_CHANNEL, EmailModule } from '@fluojs/email';
+import { createEmailNotificationsQueueAdapter, EmailNotificationsQueueWorker } from '@fluojs/email/queue';
+import { NotificationsModule } from '@fluojs/notifications';
+import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
+
+@Module({
+  imports: [
+    QueueModule.forRoot(),
+    EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: {
+        kind: 'transactional-http',
+        create: () => transactionalTransport,
+        ownsResources: false,
+      },
+    }),
+    NotificationsModule.forRootAsync({
+      inject: [EMAIL_CHANNEL, QueueLifecycleService],
+      useFactory: (channel, queue) => ({
+        channels: [channel],
+        queue: {
+          adapter: createEmailNotificationsQueueAdapter(queue),
+          bulkThreshold: 25,
+        },
+      }),
+    }),
+  ],
+  providers: [EmailNotificationsQueueWorker],
+})
+class EmailNotificationsModule {}
+```
+
+Queue support is opt-in. `EmailModule` does not register `EmailNotificationsQueueWorker` automatically, and applications that never import `@fluojs/email/queue` do not need `@fluojs/queue` at runtime.
+
+### Lifecycle events
+
+Notifications can publish lifecycle events through a caller-provided publisher without depending directly on `@fluojs/event-bus`.
+
+```ts
+NotificationsModule.forRoot({
+  channels: [emailChannel],
+  events: {
+    publishLifecycleEvents: true,
+    publisher: {
+      async publish(event) {
+        await eventBus.publish(event);
+      },
+    },
+  },
+});
+```
+
+Published lifecycle event names are `notification.dispatch.requested`, `notification.dispatch.queued`, `notification.dispatch.delivered`, and `notification.dispatch.failed`.
+
+## End-to-end order flow
+
+A representative production flow can use every boundary deliberately:
+
+1. HTTP checkout validates the command and stores the order.
+2. The write side publishes `OrderPlacedEvent` through the CQRS event bus.
+3. `@EventHandler(...)` providers update local projections.
+4. A `@Saga(OrderPlacedEvent)` dispatches `ReserveInventoryCommand`.
+5. Inventory completion publishes `InventoryReservedEvent`.
+6. A handler enqueues `GenerateInvoiceJob` for slow PDF work.
+7. `@QueueWorker(GenerateInvoiceJob)` retries transient failures and records dead letters after exhausted attempts.
+8. `@Cron(...)` expires stale reservations and reconciles external state.
+9. `NotificationsService` sends email, Slack, or Discord updates directly or through a queue seam.
+10. If another service owns fulfillment, `@MessagePattern(...)` or `@EventPattern(...)` moves that step behind a microservice transport.
+
+The design remains understandable because each boundary answers one question: who owns intent, who reacts to facts, what is retryable, what is scheduled, what crosses a broker, and what is a delivery channel.
+
+## Testing workflows
+
+Test workflow code at the boundary you chose.
+
+| Boundary | Test focus |
+| --- | --- |
+| Event bus | Published event class, matching `@OnEvent` handler, timeout/cancellation behavior if configured. |
+| CQRS | Exactly one command/query handler, event pipeline order, saga dispatch of next command, topology failure cases. |
+| Queue | Serializable job payload, worker behavior, attempts/backoff, dead-letter behavior. |
+| Cron | Decorator discovery, lock configuration, idempotent task body, bounded shutdown. |
+| Microservices | Pattern matching, transport send/emit behavior, request scope disposal, shutdown ownership. |
+| Notifications | Channel resolution, direct versus queued dispatch, lifecycle event publication, provider payload mapping. |
+
+Use `@fluojs/testing` for app-level module and request tests. Package-level conformance lives in the package tests listed by each README, such as `packages/cqrs/src/module.test.ts`, `packages/queue/src/module.test.ts`, `packages/cron/src/module.test.ts`, and `packages/notifications/src/module.test.ts`.
+
+## Operational rules
+
+- Keep in-process event handlers fast. Move slow or flaky work to queues.
+- Keep saga graphs acyclic and shallow. Use queues, schedulers, or transports for long-running loops.
+- Make job payloads small, cloneable, and free of secrets.
+- Choose retry and backoff per workload, not as a blanket default.
+- Keep cron tasks idempotent, especially when distributed locks are enabled.
+- Use stable event keys for transported events.
+- Treat caller-owned broker and Redis clients as caller-owned during shutdown.
+- Publish notification lifecycle events when delivery visibility matters.
+- Register channel packages explicitly so provider-specific payload semantics stay out of business services.
+
+## Public API summary
+
+| Package | Entry APIs |
+| --- | --- |
+| `@fluojs/event-bus` | `EventBusModule.forRoot(...)`, `EventBusLifecycleService`, `@OnEvent`, `EVENT_BUS`, `@fluojs/event-bus/redis` |
+| `@fluojs/cqrs` | `CqrsModule.forRoot(...)`, `CommandBusLifecycleService`, `QueryBusLifecycleService`, `CqrsEventBusService`, handler decorators, `SagaTopologyError` |
+| `@fluojs/queue` | `QueueModule.forRoot(...)`, `QueueLifecycleService`, `@QueueWorker`, `QUEUE`, queue status snapshots |
+| `@fluojs/cron` | `CronModule.forRoot(...)`, `@Cron`, `@Interval`, `@Timeout`, `CronExpression`, `SCHEDULING_REGISTRY` |
+| `@fluojs/microservices` | `MicroservicesModule.forRoot(...)`, `createMicroservicesProviders(...)`, pattern decorators, transport adapters, `MicroserviceLifecycleService` |
+| `@fluojs/notifications` | `NotificationsModule.forRoot(...)`, `NotificationsModule.forRootAsync(...)`, `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS` |
+| `@fluojs/email` | `EmailModule`, `EmailService`, `EMAIL_CHANNEL`, `@fluojs/email/node`, `@fluojs/email/queue` |
+| `@fluojs/slack` | `SlackModule`, `SlackService`, `SLACK_CHANNEL`, `createSlackWebhookTransport(...)` |
+| `@fluojs/discord` | `DiscordModule`, `DiscordService`, `DISCORD_CHANNEL`, `createDiscordWebhookTransport(...)` |
+
+## Source material
+
+- `packages/event-bus/README.md`
+- `packages/cqrs/README.md`
+- `packages/microservices/README.md`
+- `packages/queue/README.md`
+- `packages/cron/README.md`
+- `packages/notifications/README.md`
+- `packages/email/README.md`
+- `packages/slack/README.md`
+- `packages/discord/README.md`
+- `book/intermediate/ch09-event-bus.md`
+- `book/intermediate/ch10-cqrs.md`
+- `book/intermediate/ch11-queue.md`
+- `book/intermediate/ch12-cron.md`
+- `book/intermediate/ch15-notifications.md`

@@ -1,0 +1,14 @@
+---
+title: Auth & Security Packages
+description: JWT, Passport, and throttling packages for protected routes.
+---
+
+Security packages protect route boundaries and expensive operations.
+
+| Package | Use for | Deep dive |
+| --- | --- | --- |
+| `@fluojs/jwt` | Token signing, verification, JWKS | `packages/jwt/README.md` |
+| `@fluojs/passport` | Passport strategies, guards, cookie auth, refresh lifecycle | `packages/passport/README.md` |
+| `@fluojs/throttler` | Rate limiting guards and Redis/in-memory stores | `packages/throttler/README.md` |
+
+Read [Auth](../guides/auth) when wiring a protected application route.

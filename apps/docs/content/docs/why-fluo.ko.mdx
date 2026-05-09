@@ -1,0 +1,33 @@
+---
+title: 왜 fluo인가요?
+description: fluo의 standard-first 백엔드 모델 뒤에 있는 프레임워크 선택 기준을 이해합니다.
+---
+
+fluo는 legacy 데코레이터 컴파일러 모드나 숨겨진 런타임 메타데이터에 의존하지 않으면서도 구조화된 TypeScript 백엔드 프레임워크를 원하는 팀을 위한 도구입니다.
+
+## fluo가 피하는 문제
+
+데코레이터 기반 프레임워크는 controller 계층에서 편해 보이지만 `experimentalDecorators`, `emitDecoratorMetadata`, reflection 중심 관례에 의존하는 경우가 많습니다. 이런 선택은 의존성 그래프를 감사하기 어렵게 만들고 여러 런타임으로 이식하기도 어렵게 만듭니다.
+
+fluo는 module, controller, provider, lifecycle hook, guard, interceptor, validation, platform adapter 같은 조직화 장점은 유지하면서 런타임 계약을 명시적으로 만듭니다.
+
+## 설계 목표
+
+| 목표 | 의미 |
+| --- | --- |
+| Standard-first TypeScript | TC39 표준 데코레이터가 기준선입니다. |
+| 명시적 의존성 경계 | provider와 module의 wiring이 소스 코드에 드러납니다. |
+| 런타임 이식성 | HTTP 의미론을 Node, Bun, Deno, Workers, framework adapter와 분리합니다. |
+| 패키지 명확성 | 각 `@fluojs/*` 패키지는 집중된 경계를 소유합니다. |
+| 계약 기반 동작 | 문서, 테스트, 패키지 표면을 binding contract로 취급합니다. |
+
+## fluo가 잘 맞는 경우
+
+- legacy decorator metadata 없이 NestJS 같은 구조가 필요합니다.
+- Fastify, Node.js, Express, Bun, Deno, Workers로 이동 가능한 하나의 애플리케이션 모델이 필요합니다.
+- 거대한 단일 표면보다 패키지 단위 경계를 선호합니다.
+- 문서와 테스트가 같은 동작을 설명하길 원합니다.
+
+## 다른 선택이 나을 수 있는 경우
+
+DI, lifecycle, module graph, validation, portability 없이 작은 HTTP handler만 필요하다면 더 작은 router로 충분할 수 있습니다. fluo는 애플리케이션에 구조, 패키지 조합, 런타임 경계, 장기 유지보수가 필요해질 때 가치가 커집니다.

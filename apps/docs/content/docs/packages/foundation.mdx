@@ -1,0 +1,17 @@
+---
+title: Foundation Packages
+description: Core packages for modules, dependency injection, config, runtime, validation, and serialization.
+---
+
+Foundation packages define the application model used by every higher-level fluo feature.
+
+| Package | Use for | Deep dive |
+| --- | --- | --- |
+| `@fluojs/core` | Decorators, module contracts, shared metadata helpers | `packages/core/README.md` |
+| `@fluojs/di` | Provider registration, scopes, overrides, container resolution | `packages/di/README.md` |
+| `@fluojs/config` | Config source precedence, validation, typed runtime access | `packages/config/README.md` |
+| `@fluojs/runtime` | Bootstrap, lifecycle, module graph, app context | `packages/runtime/README.md` |
+| `@fluojs/validation` | Request DTO validation and materialization | `packages/validation/README.md` |
+| `@fluojs/serialization` | Expose-only response DTOs and transforms | `packages/serialization/README.md` |
+
+Read [First Feature](../guides/first-feature) for the task-first path through these packages.

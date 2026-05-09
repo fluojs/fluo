@@ -1,0 +1,14 @@
+---
+title: Production Checklist
+description: A compact checklist before running a fluo application in production.
+---
+
+- Pick the runtime adapter intentionally and verify its documented contract.
+- Keep configuration at the application boundary through `@fluojs/config`.
+- Validate external input and serialize outward-facing responses.
+- Protect authentication and high-cost routes with guards and throttling.
+- Expose health and readiness checks separately.
+- Keep metrics labels bounded and stable.
+- Move retryable or slow work into queues, events, cron, or notification flows.
+- Cover behavior with `@fluojs/testing` before relying on documentation promises.
+- Check package and runtime support against `docs/reference/package-surface.md`.

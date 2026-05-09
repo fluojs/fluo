@@ -1,0 +1,14 @@
+---
+title: 프로덕션 체크리스트
+description: fluo 애플리케이션을 production에서 실행하기 전 확인할 compact checklist입니다.
+---
+
+- 런타임 어댑터를 의도적으로 선택하고 문서화된 contract를 검증합니다.
+- 설정은 `@fluojs/config`를 통해 application boundary에 유지합니다.
+- 외부 입력을 검증하고 외부로 나가는 response를 직렬화합니다.
+- 인증 route와 비용이 큰 route를 guard와 throttling으로 보호합니다.
+- health와 readiness check를 분리해 노출합니다.
+- metrics label을 제한되고 안정적으로 유지합니다.
+- retry 가능하거나 느린 작업은 queue, event, cron, notification flow로 이동합니다.
+- 문서 약속에 의존하기 전에 `@fluojs/testing`으로 동작을 커버합니다.
+- package와 runtime support는 `docs/reference/package-surface.md` 기준으로 확인합니다.

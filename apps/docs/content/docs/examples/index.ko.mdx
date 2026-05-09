@@ -1,0 +1,54 @@
+---
+title: 예제 개요
+description: 공식 fluo 예제를 선택, 실행, 확인, 검증합니다.
+---
+
+예제는 가이드의 실행 가능한 동반 자료입니다. 단순한 happy path 스크린샷이 아니라, 문서화된 동작을 실제 app shape에서 가장 빠르게 증명하는 방법입니다.
+
+## 예제 선택
+
+| 예제 | 사용할 때 | 살펴볼 것 |
+| --- | --- | --- |
+| [Minimal](./minimal) | 가장 작은 runnable app이 필요할 때. | bootstrap, health/readiness routes, app e2e test |
+| [RealWorld API](./realworld-api) | 실제 feature slice가 필요할 때. | modules, controllers, services, DTOs, validation, tests |
+| [Auth JWT Passport](./auth-jwt-passport) | protected routes가 필요할 때. | token issuance, Passport strategy, profile route, auth tests |
+| [Ops Metrics Terminus](./ops-metrics-terminus) | production 준비가 필요할 때. | health checks, readiness, metrics, operations routes |
+
+## 예제 실행
+
+저장소 root에서 실행합니다.
+
+```bash
+pnpm install
+pnpm test -- --project examples
+```
+
+특정 예제만 확인하려면 해당 test file을 실행합니다. 예:
+
+```bash
+pnpm vitest run examples/minimal/src/app.test.ts
+pnpm vitest run examples/auth-jwt-passport/src/app.test.ts
+```
+
+기대 결과: 선택한 test file이 통과하고 example page가 설명한 동작을 증명합니다.
+
+## 예제 읽는 법
+
+1. 먼저 example README를 읽습니다.
+2. Module file을 열어 package composition을 봅니다.
+3. Controller file을 열어 HTTP boundary를 봅니다.
+4. Service/provider file을 열어 business logic을 봅니다.
+5. Test file을 열어 예제가 약속하는 동작을 봅니다.
+
+## Guide mapping
+
+| 읽는 문서 | 함께 볼 예제 |
+| --- | --- |
+| [첫 기능 만들기](../guides/first-feature) | [RealWorld API](./realworld-api) |
+| [HTTP API](../guides/http-api) | [Minimal](./minimal) 또는 [RealWorld API](./realworld-api) |
+| [인증](../guides/auth) | [Auth JWT Passport](./auth-jwt-passport) |
+| [운영](../guides/operations) | [Ops Metrics Terminus](./ops-metrics-terminus) |
+
+## 문서 계약
+
+Guide가 runtime behavior를 약속한다면 이를 증명하는 example 또는 test path가 있어야 합니다. 새 공식 guide를 추가한다면 그 흐름을 검증하는 example을 추가하거나 연결하세요.

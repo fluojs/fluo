@@ -1,0 +1,91 @@
+---
+title: Quick Start
+description: Create, run, inspect, and verify your first fluo application.
+---
+
+This guide takes you from an empty terminal to a running fluo app with a health endpoint. It is intentionally short, but every step has a visible success signal.
+
+## Before you start
+
+You need:
+
+- Node.js 20 or newer.
+- pnpm 10 or newer.
+- A terminal where global npm/pnpm binaries are available on `PATH`.
+
+fluo projects are standard TypeScript projects. You should not enable `experimentalDecorators` or `emitDecoratorMetadata`; fluo is designed around TC39 standard decorators and explicit runtime wiring.
+
+## 1. Install the CLI
+
+```bash
+pnpm add -g @fluojs/cli
+fluo --version
+```
+
+Expected result: the second command prints a fluo CLI version instead of `command not found`.
+
+## 2. Create an application
+
+```bash
+fluo new my-backend
+cd my-backend
+pnpm install
+```
+
+The generated project gives you:
+
+- an application module,
+- a runtime adapter,
+- lifecycle scripts delegated to the fluo CLI,
+- health/readiness routes in the starter shape,
+- TypeScript settings that do not rely on legacy decorator metadata.
+
+## 3. Run the dev server
+
+```bash
+pnpm dev
+```
+
+Keep this process running. In a second terminal, verify the app responds:
+
+```bash
+curl http://localhost:3000/health
+curl http://localhost:3000/ready
+```
+
+If your generated starter uses a different port, use the port printed by `pnpm dev`.
+
+## 4. Build before you trust it
+
+```bash
+pnpm build
+pnpm start
+```
+
+`pnpm build` proves the project compiles. `pnpm start` proves the production lifecycle script can boot the built app.
+
+## 5. Know what to inspect
+
+Start with these files in the generated app:
+
+| File or directory | Why it matters |
+| --- | --- |
+| `src/app.module.ts` | The root module boundary. |
+| `src/**/*.controller.ts` | HTTP entrypoints. |
+| `src/**/*.service.ts` | Business logic providers. |
+| `package.json` | Runtime lifecycle scripts. |
+| `tsconfig.json` | Standard decorator baseline. |
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| `fluo` command is missing | Re-run `pnpm add -g @fluojs/cli` and check your global binary path. |
+| Dev server starts but `curl` fails | Confirm the printed port and route path. |
+| TypeScript asks for legacy decorator flags | Do not add them; check that the generated project uses fluo's supported config. |
+
+## Next steps
+
+- Build a real route with [First Feature](../guides/first-feature).
+- Learn the route layer in [HTTP API](../guides/http-api).
+- Choose packages with [Package Selection](../guides/package-selection).

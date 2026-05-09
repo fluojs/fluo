@@ -1,0 +1,118 @@
+---
+title: First Feature
+description: Build a small feature slice with a module, service, controller, DTO, and test path.
+---
+
+A feature slice is the smallest useful unit of a fluo application. It gives one domain concept a module boundary, a provider for business logic, a controller for HTTP behavior, DTOs for the public contract, and tests that prove the behavior.
+
+This walkthrough uses a `users` feature. Treat the code as a shape to copy into a generated app, then adjust names for your domain.
+
+## 1. Create the module boundary
+
+```ts
+import { Module } from '@fluojs/core';
+
+import { UsersController } from './users.controller';
+import { UsersService } from './users.service';
+
+@Module({
+  controllers: [UsersController],
+  providers: [UsersService],
+})
+export class UsersModule {}
+```
+
+The module is the review boundary: it shows which controller and provider belong together.
+
+## 2. Add the provider
+
+```ts
+export interface UserSummary {
+  id: string;
+  name: string;
+}
+
+export class UsersService {
+  private readonly users = new Map<string, UserSummary>();
+
+  create(name: string): UserSummary {
+    const user = { id: crypto.randomUUID(), name };
+    this.users.set(user.id, user);
+    return user;
+  }
+
+  findById(id: string): UserSummary | undefined {
+    return this.users.get(id);
+  }
+}
+```
+
+Providers should own business behavior. Controllers should only translate transport input into provider calls.
+
+## 3. Define the HTTP boundary
+
+```ts
+import { Body, Controller, Get, Param, Post } from '@fluojs/http';
+
+import { UsersService } from './users.service';
+
+interface CreateUserBody {
+  name: string;
+}
+
+@Controller('/users')
+export class UsersController {
+  constructor(private readonly users: UsersService) {}
+
+  @Post()
+  create(@Body() body: CreateUserBody) {
+    return this.users.create(body.name);
+  }
+
+  @Get('/:id')
+  findOne(@Param('id') id: string) {
+    return this.users.findById(id);
+  }
+}
+```
+
+The controller owns route shape and request binding. It should not hide package or persistence decisions.
+
+## 4. Add validation when input becomes untrusted
+
+Use `@fluojs/validation` once the route accepts real external input. Keep DTO validation at the edge and pass validated values inward.
+
+```ts
+export class CreateUserDto {
+  name!: string;
+}
+```
+
+Then wire the DTO through the validation pattern used by your app. The package reference for `@fluojs/validation` explains `validate()` and `materialize()` tradeoffs.
+
+## 5. Verify the feature
+
+Run the generated app and exercise the route:
+
+```bash
+pnpm dev
+curl -X POST http://localhost:3000/users \
+  -H 'content-type: application/json' \
+  -d '{"name":"Ada"}'
+```
+
+Then add a test with `@fluojs/testing` so the behavior is not only documented by prose.
+
+## Review checklist
+
+- Does the module show the feature boundary?
+- Does the provider own logic instead of the controller?
+- Does the controller only expose transport behavior?
+- Are untrusted inputs validated before business logic?
+- Is there a request-level or app-level test proving the route?
+
+## Read next
+
+- [HTTP API](./http-api) for deeper routing and platform adapter details.
+- [Validation & Serialization](./validation-serialization) for DTO input/output contracts.
+- [Testing](./testing) for the app test ladder.

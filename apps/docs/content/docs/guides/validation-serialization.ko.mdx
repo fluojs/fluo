@@ -1,0 +1,459 @@
+---
+title: 검증과 직렬화
+description: 안전한 입력과 출력을 위해 명시적인 request DTO와 response DTO를 설계합니다.
+---
+
+검증과 직렬화는 fluo 애플리케이션의 두 DTO 경계입니다.
+
+검증은 **입력** 경계를 보호합니다. 알 수 없는 request data는 비즈니스 로직에 도달하기 전에 이름 있는 검증 DTO가 됩니다. 직렬화는 **출력** 경계를 보호합니다. 내부 record는 애플리케이션 밖으로 나가기 전에 의도적으로 설계한 response shape으로 바뀝니다.
+
+```txt
+client input
+  -> HTTP binding
+  -> request DTO materialization
+  -> validation rules
+  -> service logic
+  -> response DTO
+  -> serialization rules
+  -> client response
+```
+
+NestJS 같은 request/response 계약을 원하면서도 fluo의 standard-first, metadata-free runtime model을 유지하고 싶을 때 이 가이드를 사용하세요.
+
+## 패키지
+
+| 관심사 | 패키지 | 대표 진입점 |
+| --- | --- | --- |
+| Request DTO validation | `@fluojs/validation` | `IsString`, `DefaultValidator`, `PartialType` |
+| HTTP DTO binding | `@fluojs/http` | `@RequestDto()` |
+| Response serialization | `@fluojs/serialization` | `Expose`, `Exclude`, `Transform`, `SerializerInterceptor` |
+| Contract tests | `@fluojs/testing` | request 및 app-level helper |
+
+구축하려는 경계에 필요한 패키지를 설치합니다.
+
+```bash
+pnpm add @fluojs/validation @fluojs/serialization
+```
+
+HTTP 애플리케이션에서는 보통 `@fluojs/http`와 함께 사용합니다.
+
+## Request validation
+
+Request validation이 답하는 질문은 하나입니다. **어떤 데이터가 애플리케이션 안으로 들어와도 되는가?**
+
+네트워크 입력은 신뢰할 수 없습니다. route body, query string, path parameter, header, cookie는 TypeScript handler signature가 올바르게 보여도 런타임에서는 다른 형태일 수 있습니다. DTO는 그 입력에 runtime contract를 부여합니다.
+
+### DTO는 boundary object입니다
+
+전송 경계에서는 익명 객체 타입보다 DTO class를 선호하세요.
+
+```ts
+import { IsBoolean, IsOptional, IsString, MinLength } from '@fluojs/validation';
+
+export class CreatePostDto {
+  @IsString()
+  @MinLength(3)
+  title = '';
+
+  @IsString()
+  @MinLength(10)
+  body = '';
+
+  @IsOptional()
+  @IsBoolean()
+  published?: boolean;
+}
+```
+
+이 class는 세 가지 일을 동시에 합니다.
+
+- payload에 이름을 붙입니다. (`CreatePostDto`)
+- 기대하는 field를 문서화합니다. (`title`, `body`, `published`)
+- runtime에 존재하는 validation metadata를 붙입니다.
+
+### 왜 interface가 아니라 class인가요?
+
+TypeScript interface는 컴파일 중에 사라집니다. JavaScript 런타임에 존재하지 않는 대상에는 fluo가 validation metadata를 붙일 수 없습니다.
+
+Class는 런타임에 남아 있으므로 decorator가 class field에 validation rule을 연결할 수 있습니다. 이 방식은 `emitDecoratorMetadata`나 legacy decorator compiler behavior에 의존하지 않으므로 fluo의 explicit, standard-first 모델과 잘 맞습니다.
+
+### DTO를 route에 연결하기
+
+Validation rule은 HTTP 계층이 어떤 DTO를 써야 하는지 알 때 의미가 있습니다. `@RequestDto()`는 request binding, DTO materialization, validation을 연결합니다.
+
+```ts
+import { Controller, Post, RequestDto } from '@fluojs/http';
+import { CreatePostDto } from './create-post.dto';
+
+@Controller('/posts')
+export class PostsController {
+  @Post('/')
+  @RequestDto(CreatePostDto)
+  create(input: CreatePostDto) {
+    return input;
+  }
+}
+```
+
+이 route로 request가 들어오면 HTTP pipeline은 request data를 bind하고, `CreatePostDto` instance를 만들고, validation rule을 적용한 뒤 handler를 호출합니다.
+
+### `materialize()` vs `validate()`
+
+HTTP handler 밖에서 사용할 수 있도록 validation package는 lower-level engine도 제공합니다.
+
+```ts
+import { DefaultValidator, DtoValidationError } from '@fluojs/validation';
+import { CreatePostDto } from './create-post.dto';
+
+const validator = new DefaultValidator();
+
+try {
+  const dto = await validator.materialize(
+    { title: 'Hello fluo', body: 'DTO boundaries make APIs safer.' },
+    CreatePostDto,
+  );
+
+  console.log(dto instanceof CreatePostDto); // true
+} catch (error) {
+  if (error instanceof DtoValidationError) {
+    console.log(error.issues);
+  }
+}
+```
+
+| Method | 사용할 때 | 동작 |
+| --- | --- | --- |
+| `materialize(value, Target)` | 알 수 없는 입력을 받아 DTO instance가 필요할 때 | 안전한 own enumerable property를 복사하고, DTO binding metadata를 적용하고, nested DTO를 재귀적으로 materialize한 뒤 검증합니다. |
+| `validate(instance, Target)` | 이미 root object가 있고 rule 확인만 필요할 때 | 기존 root value에 대해 validation rule을 실행합니다. Plain nested DTO 값은 nested validation을 위해 임시 materialize될 수 있지만, 호출자가 가진 값이 대체되지는 않습니다. |
+
+Root value는 plain object이거나 target DTO instance여야 합니다. Scalar, array, `null`, `undefined`는 DTO constructor나 field initializer가 실행되기 전에 거부됩니다.
+
+### Validation error shape
+
+`DtoValidationError.issues`는 validation failure를 설명하는 안정적인 DTO입니다.
+
+```ts
+type ValidationIssue = {
+  code: string;
+  field?: string;
+  message: string;
+  source?: 'path' | 'query' | 'header' | 'cookie' | 'body';
+};
+```
+
+Nested field는 `address.city`, `items[0].name` 같은 dot path와 collection index를 사용합니다. HTTP binding rule은 `source`를 포함할 수 있고, standalone validation이나 Standard Schema rule에서는 생략될 수 있습니다.
+
+### Nested DTO
+
+Field가 다른 DTO를 소유한다면 `@ValidateNested()`를 사용하세요.
+
+```ts
+import { IsString, ValidateNested } from '@fluojs/validation';
+
+class AddressDto {
+  @IsString()
+  city = '';
+}
+
+class CreateUserDto {
+  @ValidateNested(() => AddressDto)
+  address = new AddressDto();
+
+  @ValidateNested(() => AddressDto, { each: true })
+  previousAddresses: AddressDto[] = [];
+}
+```
+
+Nested validation은 object field, array, `Set`, `Map`을 지원합니다. Cycle은 안전하게 감지되고 shared reference는 허용됩니다.
+
+### 암묵적 scalar coercion은 없습니다
+
+fluo validation은 의도적으로 엄격합니다. Transport layer가 `'42'`를 제공했는데 애플리케이션이 number를 필요로 한다면, validation은 문자열을 이미 숫자였던 것처럼 조용히 처리하지 않습니다.
+
+변환은 변환 책임이 있는 경계에서 명시적으로 수행하세요.
+
+```ts
+import { Controller, Get, RequestDto } from '@fluojs/http';
+import { IsOptional, IsString } from '@fluojs/validation';
+
+class ListPostsQueryDto {
+  @IsOptional()
+  @IsString()
+  page = '1';
+}
+
+@Controller('/posts')
+export class PostsController {
+  @Get('/')
+  @RequestDto(ListPostsQueryDto)
+  findAll(input: ListPostsQueryDto) {
+    const page = Number.parseInt(input.page, 10);
+    return this.postsService.findAll(page);
+  }
+}
+```
+
+이렇게 하면 request contract가 정직하게 유지됩니다. 먼저 transport shape을 검증하고, 그 다음 application-specific conversion을 코드에서 드러냅니다.
+
+### Mapped DTO helper
+
+Create DTO는 update, public, partial variant의 기준이 되는 경우가 많습니다. Mapped DTO helper는 validation metadata를 보존하면서 수동 복사를 피하게 해 줍니다.
+
+```ts
+import { OmitType, PartialType, PickType } from '@fluojs/validation';
+import { CreatePostDto } from './create-post.dto';
+
+export class UpdatePostDto extends PartialType(CreatePostDto) {}
+
+export class UpdateTitleDto extends PickType(CreatePostDto, ['title']) {}
+
+export class PublicCreatePostDto extends OmitType(CreatePostDto, ['published']) {}
+```
+
+`IntersectionType(A, B)`는 두 DTO contract를 결합합니다. Mapped-type helper는 `@fluojs/validation/mapped-types` subpath에서도 사용할 수 있습니다.
+
+### Custom rule과 Standard Schema
+
+먼저 built-in decorator를 사용하세요. Field나 class에 custom behavior가 필요하다면 `Validate`, `ValidateIf`, `ValidateClass`를 사용합니다.
+
+```ts
+import { IsString, ValidateIf } from '@fluojs/validation';
+
+class PublishPostDto {
+  @ValidateIf((value, object) => object.published === true)
+  @IsString()
+  summary?: string;
+
+  published = false;
+}
+```
+
+`ValidateIf()`는 predicate가 `false`를 반환하면 dependent validator를 short-circuit합니다.
+
+Standard Schema contract를 구현한 schema library를 사용한다면 `ValidateClass()`로 class-level schema를 붙일 수 있습니다.
+
+```ts
+import { ValidateClass } from '@fluojs/validation';
+import { z } from 'zod';
+
+const UserSchema = z.object({ age: z.number().min(18) });
+
+@ValidateClass(UserSchema)
+class RestrictedUserDto {
+  age = 0;
+}
+```
+
+### Validation API summary
+
+| 영역 | Public API |
+| --- | --- |
+| Engine | `DefaultValidator`, `Validator`, `DtoValidationError`, `ValidationIssue` |
+| Core type decorators | `IsString`, `IsNumber`, `IsBoolean`, `IsDate`, `IsArray`, `IsObject`, `IsEnum`, `IsInt` |
+| Presence and comparison | `IsDefined`, `IsOptional`, `IsEmpty`, `IsNotEmpty`, `Equals`, `NotEquals`, `IsIn`, `IsNotIn` |
+| Strings and network values | `IsEmail`, `IsUrl`, `IsUUID`, `IsIP`, `Matches`, `Length`, `MinLength`, `MaxLength`, `Contains`, `NotContains` |
+| Numbers, dates, locale, geo | `Min`, `Max`, `IsPositive`, `IsNegative`, `MinDate`, `MaxDate`, `IsLatitude`, `IsLongitude`, `IsCurrency` |
+| Arrays | `ArrayContains`, `ArrayNotContains`, `ArrayNotEmpty`, `ArrayMinSize`, `ArrayMaxSize`, `ArrayUnique` |
+| Nested and custom rules | `ValidateNested`, `Validate`, `ValidateIf`, `ValidateClass`, `StandardSchemaV1Like` |
+| DTO composition | `PickType`, `OmitType`, `PartialType`, `IntersectionType` |
+
+## Response serialization
+
+Response serialization이 답하는 질문은 다릅니다. **어떤 데이터가 애플리케이션 밖으로 나가도 되는가?**
+
+Request DTO가 response DTO이기도 하다고 가정하지 마세요. 입력 계약과 출력 계약은 서로 다른 이유로 변합니다. Request는 password를 받을 수 있지만 response는 절대 password를 노출하면 안 됩니다. Database record는 internal notes를 가질 수 있지만 public API는 문서화된 field만 반환해야 합니다.
+
+### Public response DTO
+
+Field를 허용하려면 `@Expose()`, 숨기려면 `@Exclude()`, 가벼운 synchronous output shaping에는 `@Transform()`을 사용합니다.
+
+```ts
+import { Exclude, Expose, Transform } from '@fluojs/serialization';
+
+@Expose({ excludeExtraneous: true })
+export class PublicPostDto {
+  @Expose()
+  id = '';
+
+  @Expose()
+  title = '';
+
+  @Expose()
+  body = '';
+
+  @Expose()
+  published = false;
+
+  @Expose()
+  @Transform((value) => String(value).trim())
+  summary = '';
+
+  @Exclude()
+  internalNotes = '';
+}
+```
+
+`@Expose({ excludeExtraneous: true })`는 class를 allowlist 기반으로 만듭니다. 명시적으로 expose한 field만 serialized output에 포함됩니다. 숨겨야 할 field를 모두 기억하는 방식보다 안전합니다.
+
+### Controller result를 자동으로 shaping하기
+
+HTTP handler에서는 모든 route에서 `serialize()`를 직접 호출하기보다 `SerializerInterceptor`를 사용하세요.
+
+```ts
+import { Controller, Get, UseInterceptors } from '@fluojs/http';
+import { SerializerInterceptor } from '@fluojs/serialization';
+
+@Controller('/posts')
+@UseInterceptors(SerializerInterceptor)
+export class PostsController {
+  @Get('/')
+  findAll() {
+    return this.postsService.findAllPublic();
+  }
+}
+```
+
+일반적인 흐름은 다음과 같습니다.
+
+```txt
+internal record -> public DTO instance -> SerializerInterceptor -> serialized response
+```
+
+컨트롤러 안의 모든 route에 같은 serialization rule을 적용하려면 controller level에 interceptor를 붙입니다. 특정 route만 shaping해야 한다면 method level에 붙입니다.
+
+`SerializerInterceptor`는 일반 HTTP response writer가 아직 소유한 값만 serialize합니다. Handler가 SSE stream처럼 `RequestContext.response`를 직접 commit했다면, interceptor는 그 response ownership을 보존하고 handler-owned value를 그대로 반환합니다.
+
+### Manual serialization
+
+HTTP pipeline 밖, 예를 들어 CLI command, background job, test에서는 `serialize(value)`를 직접 사용합니다.
+
+```ts
+import { Expose, serialize } from '@fluojs/serialization';
+
+@Expose({ excludeExtraneous: true })
+class PublicUserDto {
+  @Expose()
+  id = '';
+
+  @Expose()
+  username = '';
+}
+
+const dto = Object.assign(new PublicUserDto(), {
+  id: 'user-1',
+  username: 'fluo',
+  passwordHash: 'secret',
+});
+
+console.log(serialize(dto));
+// { id: 'user-1', username: 'fluo' }
+```
+
+중요한 점은 serialization rule이 넘겨 준 DTO instance에서 읽힌다는 것입니다. 먼저 internal record를 public DTO로 map한 뒤 serialize하세요.
+
+### Inheritance와 metadata
+
+Base class에 선언한 serialization metadata는 subclass에 상속됩니다.
+
+```ts
+import { Expose } from '@fluojs/serialization';
+
+@Expose({ excludeExtraneous: true })
+class BaseResponseDto {
+  @Expose()
+  id = '';
+}
+
+class UserResponseDto extends BaseResponseDto {
+  @Expose()
+  username = '';
+
+  internalRole = 'admin';
+}
+```
+
+`UserResponseDto`는 가장 가까운 class-level `excludeExtraneous` 설정을 상속하므로 expose-only 상태를 유지합니다. 일반 enumerable field를 다시 포함하려는 의도가 있을 때만 derived class에 `@Expose({ excludeExtraneous: false })`를 붙이세요. 상속된 field-level `@Exclude()` metadata는 계속 적용됩니다.
+
+### Safety semantics
+
+Serialization은 재귀적이고 decorator-aware이지만, 모든 값을 JSON primitive로 바꾸는 universal normalizer는 아닙니다.
+
+| 경우 | 동작 |
+| --- | --- |
+| Active circular reference | 무한 재귀를 막기 위해 `undefined`로 자릅니다. |
+| Active cycle이 아닌 shared reference | Serialized graph 안에서 재사용됩니다. |
+| Plain object 또는 null-prototype record | 안전하게 순회하며 decorated class instance로 오인하지 않습니다. |
+| Symbol key | Enumerable symbol key는 serialize됩니다. |
+| Own `__proto__`, `constructor`, `prototype` key | Prototype mutation이 아니라 data로 취급합니다. |
+| Undecorated parent 아래 decorated nested descendant | Recursive traversal 중에도 metadata가 반영됩니다. |
+
+`Date`, `Map`, `Set`, `URL`, `URLSearchParams`, `RegExp`, `Error`, `ArrayBuffer`, typed array, `WeakMap`, `WeakSet`, `Promise` 같은 opaque built-in은 DTO처럼 펼치지 않고 그대로 통과합니다. `bigint`, function, symbol 같은 값도 `@Transform()`이나 최종 HTTP writer 전에 정규화하지 않으면 그대로 통과할 수 있습니다.
+
+### Serialization API summary
+
+| 영역 | Public API |
+| --- | --- |
+| Field and class decorators | `Expose`, `Exclude`, `Transform` |
+| Class options | `ExposeClassOptions` |
+| Engine | `serialize(value)` |
+| HTTP integration | `SerializerInterceptor` |
+
+## 두 contract를 함께 설계하기
+
+완성된 endpoint는 보통 입력과 출력에 별도의 contract를 둡니다.
+
+```ts
+import { Controller, Post, RequestDto, UseInterceptors } from '@fluojs/http';
+import { SerializerInterceptor } from '@fluojs/serialization';
+import { CreatePostDto } from './create-post.dto';
+import { PublicPostDto } from './public-post.dto';
+
+@Controller('/posts')
+@UseInterceptors(SerializerInterceptor)
+export class PostsController {
+  @Post('/')
+  @RequestDto(CreatePostDto)
+  async create(input: CreatePostDto): Promise<PublicPostDto> {
+    const post = await this.postsService.create(input);
+
+    return Object.assign(new PublicPostDto(), {
+      id: post.id,
+      title: post.title,
+      body: post.body,
+      published: post.published,
+      summary: post.summary,
+    });
+  }
+}
+```
+
+Service는 더 풍부한 internal record를 사용할 수 있습니다. Controller가 문서화된 field만 `PublicPostDto`로 mapping하므로 public response는 안정적으로 유지됩니다.
+
+## 흔한 실수
+
+| 실수 | 더 나은 접근 |
+| --- | --- |
+| DTO에 decorator를 붙였지만 `@RequestDto()`를 빠뜨림 | DTO를 HTTP route에 연결하세요. |
+| Query string이 자동으로 number가 된다고 기대함 | String shape을 검증한 뒤 의도적으로 parse하세요. |
+| Create DTO field를 update DTO에 손으로 복사함 | `PartialType`, `PickType`, `OmitType`, `IntersectionType`을 사용하세요. |
+| Request DTO를 response DTO로 재사용함 | 별도의 public response DTO를 만드세요. |
+| Database record를 그대로 반환함 | Internal record를 DTO로 map한 뒤 serialize하세요. |
+| Serialization이 strict JSON primitive를 반환한다고 가정함 | Special value는 `@Transform()`이나 response writer logic으로 명시적으로 정규화하세요. |
+| DTO를 domain model처럼 취급함 | DTO는 transport boundary에 두고, business invariant는 service/domain code에 두세요. |
+
+## Testing checklist
+
+- Invalid request body를 보내 deterministic validation failure를 확인합니다.
+- Optional field, nested DTO path, array, mapped DTO variant를 테스트합니다.
+- Response DTO가 민감한 field를 노출하지 않는지 확인합니다.
+- Controller-level 및 method-level `SerializerInterceptor` 사용을 테스트합니다.
+- Response graph에 circular/shared reference가 가능하다면 해당 case를 포함합니다.
+- 예제와 문서는 [Testing](./testing) 및 [Examples](../examples)의 runnable example과 맞춰 유지합니다.
+
+## 관련 문서
+
+- [HTTP API](./http-api)
+- [Testing](./testing)
+- [Package Selection](./package-selection)
+- [Package Reference](../packages)
+- [RealWorld API Example](../examples/realworld-api)
