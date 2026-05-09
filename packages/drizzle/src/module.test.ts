@@ -553,6 +553,60 @@ describe('@fluojs/drizzle', () => {
     expect(transactionCalls).toBe(1);
   });
 
+  it('tracks nested request transactions during shutdown when an explicit transaction is already active', async () => {
+    const events: string[] = [];
+    const transactionDatabase = {};
+    const database = {
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+
+        try {
+          return await callback(transactionDatabase);
+        } catch (error) {
+          events.push('transaction:rollback');
+          throw error;
+        } finally {
+          events.push('transaction:end');
+        }
+      },
+    };
+
+    const drizzleModule = DrizzleModule.forRoot<typeof database, typeof transactionDatabase>({
+      database,
+      dispose() {
+        events.push('dispose');
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [drizzleModule],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+    const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
+
+    const openTransaction = drizzle.transaction(async () =>
+      drizzle.requestTransaction(async () => new Promise<never>(() => undefined)),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(1);
+
+    await app.close();
+
+    await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+    expect(events).toEqual([
+      'transaction:start',
+      'transaction:rollback',
+      'transaction:end',
+      'dispose',
+    ]);
+  });
+
   it('forwards transaction options for explicit and request-scoped transactions', async () => {
     const optionsCalls: Array<{ isolationLevel: string } | undefined> = [];
     const transactionDatabase = { kind: 'transaction' };
