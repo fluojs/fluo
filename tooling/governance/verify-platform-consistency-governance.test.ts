@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -11,6 +14,8 @@ import {
 
 type GitResult = { status: number; stdout: string };
 type RunCommand = (command: string, args: string[], options?: { allowFailure?: boolean }) => GitResult;
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 async function loadGovernanceInternals() {
   return (await import('./verify-platform-consistency-governance.mjs')) as unknown as {
@@ -290,5 +295,19 @@ describe('parsePackageNamesFromFamilyTable', () => {
       '@fluojs/email',
       '@fluojs/notifications',
     ]);
+  });
+});
+
+describe('package surface persistence responsibilities', () => {
+  it('documents Mongoose ALS and session transaction ownership in both locales', () => {
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+
+    expect(englishSurface).toContain('**`@fluojs/mongoose`**');
+    expect(englishSurface).toContain('ALS/session-aware transaction boundaries');
+    expect(englishSurface).toContain('explicit `currentSession()` access');
+    expect(koreanSurface).toContain('**`@fluojs/mongoose`**');
+    expect(koreanSurface).toContain('ALS/session 인지형 transaction boundary');
+    expect(koreanSurface).toContain('명시적 `currentSession()` 접근');
   });
 });
