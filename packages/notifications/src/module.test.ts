@@ -299,6 +299,52 @@ describe('NotificationsModule', () => {
     ]);
   });
 
+  it('surfaces explicit queue enqueue failure publication errors with the original queue error', async () => {
+    const queue = new RecordingQueueAdapter();
+    queue.failOnEnqueue = true;
+    const publisher = new RecordingPublisher();
+    publisher.failOnNames.add('notification.dispatch.failed');
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not run when queue is explicitly requested');
+          },
+        },
+      ],
+      events: {
+        publishLifecycleEvents: true,
+        publisher,
+      },
+      queue: {
+        adapter: queue,
+        bulkThreshold: 50,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatch({ channel: 'email', payload: { template: 'single' } }, { queue: true });
+
+    await expect(dispatch).rejects.toBeInstanceOf(AggregateError);
+    await expect(dispatch).rejects.toThrow(
+      'Notification dispatch failed, and failed lifecycle event publication also failed: queue enqueue failed',
+    );
+
+    try {
+      await dispatch;
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors).toHaveLength(2);
+      expect((error as AggregateError).errors[0]).toMatchObject({ message: 'queue enqueue failed' });
+      expect((error as AggregateError).errors[1]).toMatchObject({
+        message: 'publisher failed:notification.dispatch.failed',
+      });
+    }
+  });
+
   it('defaults lifecycle publication on when an events publisher is configured', async () => {
     const publisher = new RecordingPublisher();
     const container = new Container();
@@ -476,10 +522,12 @@ describe('NotificationsModule', () => {
     const service = await container.resolve(NotificationsService);
     const result = await service.dispatchMany([
       { channel: 'email', payload: { template: 'digest', userId: 'u1' } },
-      { channel: 'email', payload: { template: 'digest', userId: 'u2' } },
+      { channel: 'email', id: 'caller-bulk-job-id', payload: { template: 'digest', userId: 'u2' } },
     ]);
 
     expect(queue.jobs).toHaveLength(2);
+    expect(queue.jobs[0]?.id).toMatch(/^notification:email:/);
+    expect(queue.jobs[1]?.id).toBe('caller-bulk-job-id');
     expect(result).toMatchObject({
       failed: 0,
       queued: 2,
@@ -603,6 +651,58 @@ describe('NotificationsModule', () => {
         name: 'notification.dispatch.failed',
       },
     ]);
+  });
+
+  it('surfaces bulk queue enqueue failure publication errors from allSettled results', async () => {
+    const queue = new RecordingQueueAdapter();
+    queue.failOnEnqueueMany = true;
+    const publisher = new RecordingPublisher();
+    publisher.failOnNames.add('notification.dispatch.failed');
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      events: {
+        publishLifecycleEvents: true,
+        publisher,
+      },
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const dispatch = service.dispatchMany([
+      { channel: 'email', payload: { template: 'digest', userId: 'u1' } },
+      { channel: 'email', payload: { template: 'digest', userId: 'u2' } },
+    ]);
+
+    await expect(dispatch).rejects.toBeInstanceOf(AggregateError);
+    await expect(dispatch).rejects.toThrow(
+      'Notification dispatch failed, and failed lifecycle event publication also failed: queue enqueueMany failed',
+    );
+
+    try {
+      await dispatch;
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors).toHaveLength(3);
+      expect((error as AggregateError).errors[0]).toMatchObject({ message: 'queue enqueueMany failed' });
+      expect((error as AggregateError).errors[1]).toMatchObject({
+        message: 'publisher failed:notification.dispatch.failed',
+      });
+      expect((error as AggregateError).errors[2]).toMatchObject({
+        message: 'publisher failed:notification.dispatch.failed',
+      });
+    }
   });
 
   it('validates channels before queueing bulk deliveries', async () => {
