@@ -63,6 +63,14 @@ export interface NotificationChannel<
 /** Job payload forwarded to an optional queue adapter for deferred delivery. */
 export interface NotificationsQueueJob<TRequest extends NotificationDispatchRequest = NotificationDispatchRequest> {
   channel: string;
+  /**
+   * Deterministic idempotency key derived from the notification envelope.
+   *
+   * @remarks
+   * Queue adapters should use this value as their deduplication key when the
+   * backing queue supports idempotent enqueue semantics.
+   */
+  id: string;
   notification: TRequest;
   queuedAt: string;
 }

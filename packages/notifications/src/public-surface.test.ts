@@ -11,6 +11,8 @@ import type {
   NotificationsEventPublisher,
   NotificationsModuleOptions,
   NotificationsQueueAdapter,
+  NotificationsQueueJob,
+  NotificationsQueueOptions,
   NotificationsStatusAdapterInput,
 } from './index.js';
 
@@ -39,6 +41,14 @@ describe('@fluojs/notifications public API surface', () => {
     expectTypeOf<NotificationChannel>().toHaveProperty('channel');
     expectTypeOf<NotificationChannel>().toHaveProperty('send');
     expectTypeOf<NotificationsQueueAdapter>().toHaveProperty('enqueue');
+    expectTypeOf<NotificationsQueueJob>().toMatchTypeOf<{
+      channel: string;
+      id: string;
+      queuedAt: string;
+    }>();
+    expectTypeOf<NotificationsQueueOptions>().toMatchTypeOf<{
+      adapter: NotificationsQueueAdapter;
+    }>();
     expectTypeOf<NotificationsEventPublisher>().toHaveProperty('publish');
     expectTypeOf<Notifications>().toHaveProperty('dispatch');
     expectTypeOf<Notifications>().toHaveProperty('dispatchMany');

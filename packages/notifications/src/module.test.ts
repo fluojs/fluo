@@ -216,6 +216,44 @@ describe('NotificationsModule', () => {
 
     expect(result).toMatchObject({ deliveryId: 'queued:1', queued: true, status: 'queued' });
     expect(queue.jobs).toHaveLength(1);
+    expect(queue.jobs[0]).toMatchObject({
+      channel: 'email',
+      id: 'notification:email:1qpsje2',
+      notification: { channel: 'email', payload: { template: 'single' } },
+    });
+  });
+
+  it('uses stable queue job ids so queue adapters can deduplicate repeated requests', async () => {
+    const queue = new RecordingQueueAdapter();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not run when queue is explicitly requested');
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const request = { channel: 'email', payload: { template: 'digest', userId: 'u1' } };
+
+    await service.dispatch(request, { queue: true });
+    await service.dispatch(request, { queue: true });
+    await service.dispatch({ ...request, id: 'caller-job-id' }, { queue: true });
+
+    expect(queue.jobs.map((job) => job.id)).toEqual([
+      'notification:email:05en8lg',
+      'notification:email:05en8lg',
+      'caller-job-id',
+    ]);
   });
 
   it('publishes a failed lifecycle event when explicit queue dispatch enqueue fails', async () => {
@@ -644,7 +682,7 @@ describe('NotificationsModule', () => {
     });
   });
 
-  it('preserves underlying delivery errors when lifecycle failure publication also fails', async () => {
+  it('surfaces failed lifecycle publication errors instead of swallowing them', async () => {
     const publisher = new RecordingPublisher();
     publisher.failOnNames.add('notification.dispatch.failed');
     const container = new Container();
@@ -666,9 +704,23 @@ describe('NotificationsModule', () => {
     container.register(...moduleProviders(moduleType));
     const service = await container.resolve(NotificationsService);
 
-    await expect(service.dispatch({ channel: 'email', payload: { template: 'broken' } })).rejects.toThrow(
-      'channel delivery failed',
+    const dispatch = service.dispatch({ channel: 'email', payload: { template: 'broken' } });
+
+    await expect(dispatch).rejects.toBeInstanceOf(AggregateError);
+    await expect(dispatch).rejects.toThrow(
+      'Notification dispatch failed, and failed lifecycle event publication also failed: channel delivery failed',
     );
+
+    try {
+      await dispatch;
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors).toHaveLength(2);
+      expect((error as AggregateError).errors[0]).toMatchObject({ message: 'channel delivery failed' });
+      expect((error as AggregateError).errors[1]).toMatchObject({
+        message: 'publisher failed:notification.dispatch.failed',
+      });
+    }
   });
 
   it('uses deterministic fallback delivery ids when channels omit external ids', async () => {
