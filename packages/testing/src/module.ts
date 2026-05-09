@@ -1,5 +1,4 @@
-import type { MaybePromise, Token } from '@fluojs/core';
-import { getModuleMetadata } from '@fluojs/core/internal';
+import { getModuleMetadata, type MaybePromise, type Token } from '@fluojs/core';
 import {
   isForwardRef,
   isOptionalToken,

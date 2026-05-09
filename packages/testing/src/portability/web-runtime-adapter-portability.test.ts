@@ -1,9 +1,12 @@
 import { describe, it, vi } from 'vitest';
 
+// biome-ignore lint/suspicious/noTsIgnore: Vitest resolves workspace package aliases after package builds.
 // @ts-ignore Vitest workspace alias resolution handles package test imports.
 import { bootstrapBunApplication, type BunServeOptions, type BunServerLike } from '@fluojs/platform-bun';
+// biome-ignore lint/suspicious/noTsIgnore: Vitest resolves workspace package aliases after package builds.
 // @ts-ignore Vitest workspace alias resolution handles package test imports.
 import { bootstrapCloudflareWorkerApplication, type CloudflareWorkerExecutionContext } from '@fluojs/platform-cloudflare-workers';
+// biome-ignore lint/suspicious/noTsIgnore: Vitest resolves workspace package aliases after package builds.
 // @ts-ignore Vitest workspace alias resolution handles package test imports.
 import { bootstrapDenoApplication, type DenoServeController, type DenoServeHandler, type DenoServeOptions } from '@fluojs/platform-deno';
 
@@ -89,6 +92,15 @@ function installMockBun(): MockBun {
   return mockBun;
 }
 
+function restoreMockBun(originalBun: MockBun | undefined): void {
+  if (originalBun === undefined) {
+    delete (globalThis as typeof globalThis & { Bun?: MockBun }).Bun;
+    return;
+  }
+
+  (globalThis as typeof globalThis & { Bun?: MockBun }).Bun = originalBun;
+}
+
 function registerWebRuntimePortabilitySuite(
   name: string,
   harness: {
@@ -128,20 +140,27 @@ registerWebRuntimePortabilitySuite(
     async bootstrap(rootModule, options) {
       const originalBun = (globalThis as typeof globalThis & { Bun?: MockBun }).Bun;
       const mockBun = installMockBun();
-      const app = await bootstrapBunApplication(rootModule, options);
+      let app: Awaited<ReturnType<typeof bootstrapBunApplication>> | undefined;
 
-      await app.listen();
+      try {
+        app = await bootstrapBunApplication(rootModule, options);
+        await app.listen();
+      } catch (error) {
+        if (app) {
+          await app.close().catch(() => {});
+        }
+
+        restoreMockBun(originalBun);
+        throw error;
+      }
 
       return {
         async close() {
-          await app.close();
-
-          if (originalBun === undefined) {
-            delete (globalThis as typeof globalThis & { Bun?: MockBun }).Bun;
-            return;
+          try {
+            await app.close();
+          } finally {
+            restoreMockBun(originalBun);
           }
-
-          (globalThis as typeof globalThis & { Bun?: MockBun }).Bun = originalBun;
         },
         async dispatch(request: Request) {
           return await mockBun.lastServer!.fetch(request);
