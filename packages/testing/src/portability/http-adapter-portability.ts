@@ -415,9 +415,9 @@ export class HttpAdapterPortabilityHarness<
 
         stream.comment('connected');
         stream.send({ ready: true }, { event: 'ready', id: 'evt-1' });
-        setTimeout(() => {
+        queueMicrotask(() => {
           stream.close();
-        }, 10);
+        });
 
         return stream;
       }

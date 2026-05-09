@@ -23,7 +23,7 @@ npm install --save-dev @fluojs/testing vitest
 
 `vitest` is a required peer dependency for the mock helpers and the `@fluojs/testing/vitest` entrypoint.
 
-If you use `@fluojs/testing/vitest`, install `@babel/core` in the consuming workspace as well because `fluoBabelDecoratorsPlugin()` invokes Babel at runtime:
+If you use `@fluojs/testing/vitest`, install `@babel/core` in the consuming workspace as well because `fluoBabelDecoratorsPlugin()` invokes Babel at runtime. The Vitest plugin transforms `.ts`, `.tsx`, `.mts`, and `.cts` source ids after removing Vite query/hash suffixes, skips `node_modules`, and resolves the nearest root Babel config named `babel.config.cjs`, `babel.config.mjs`, `babel.config.js`, or `babel.config.json`:
 
 ```bash
 npm install --save-dev @babel/core
@@ -131,6 +131,8 @@ Install `vitest` in the consuming workspace before using the mock helpers so the
 ### Conformance and portability harnesses
 
 Use subpaths like `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, and `@fluojs/testing/web-runtime-adapter-portability` when authoring framework-facing platform packages.
+
+`HttpAdapterPortabilityHarness` methods are the public adapter contract checks. Prefer focused assertions such as `assertPreservesMalformedCookieValues()`, `assertSupportsSseStreaming()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, `assertDefaultsMultipartTotalLimitToMaxBodySize()`, `assertSettlesStreamDrainWaitOnClose()`, `assertReportsConfiguredHostInStartupLogs()`, `assertReportsHttpsStartupUrl(...)`, and `assertRemovesShutdownSignalListenersAfterClose()` instead of hand-rolled equivalents.
 
 ## Canonical TDD Ladder
 

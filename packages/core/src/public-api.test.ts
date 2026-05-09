@@ -12,11 +12,11 @@ describe('@fluojs/core public API surface', () => {
     expect(corePublicApi).toHaveProperty('FluoError');
     expect(corePublicApi).toHaveProperty('InvariantError');
     expect(corePublicApi).toHaveProperty('ensureMetadataSymbol');
+    expect(corePublicApi).toHaveProperty('getModuleMetadata');
   });
 
-  it('does not expose internal metadata helpers on the root barrel', () => {
+  it('does not expose internal metadata writers or non-module readers on the root barrel', () => {
     expect(corePublicApi).not.toHaveProperty('defineModuleMetadata');
-    expect(corePublicApi).not.toHaveProperty('getModuleMetadata');
     expect(corePublicApi).not.toHaveProperty('getModuleMetadataVersion');
     expect(corePublicApi).not.toHaveProperty('defineControllerMetadata');
     expect(corePublicApi).not.toHaveProperty('getControllerMetadata');
