@@ -1,0 +1,31 @@
+:root {
+  --fluo-highlight: #00f0b5;
+  --fluo-highlight-soft: rgba(0, 240, 181, 0.14);
+  --color-fd-primary: #00f0b5;
+  --color-fd-primary-foreground: #031015;
+  --color-fd-accent: rgba(0, 240, 181, 0.12);
+  --color-fd-accent-foreground: #06372f;
+  --color-fd-ring: #00f0b5;
+}
+
+.dark {
+  --color-fd-primary: #00f0b5;
+  --color-fd-primary-foreground: #031015;
+  --color-fd-accent: rgba(0, 240, 181, 0.16);
+  --color-fd-accent-foreground: #cafff2;
+  --color-fd-ring: #00f0b5;
+}
+
+::selection {
+  background: rgba(0, 240, 181, 0.32);
+  color: #001512;
+}
+
+.dark ::selection {
+  color: #f5fffc;
+}
+
+a[data-active='true'],
+button[data-active='true'] {
+  text-shadow: 0 0 18px rgba(0, 240, 181, 0.22);
+}

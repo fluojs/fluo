@@ -1,0 +1,28 @@
+{
+  "name": "@fluo/docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "next build",
+    "clean": "rm -rf .next .source tsconfig.tsbuildinfo",
+    "dev": "next dev",
+    "dev:clean": "pnpm clean && pnpm dev",
+    "start": "next start",
+    "typecheck": "fumadocs-mdx && next typegen && tsc --noEmit"
+  },
+  "dependencies": {
+    "@orama/tokenizers": "^3.1.18",
+    "fumadocs-core": "^16.8.7",
+    "fumadocs-mdx": "^14.3.2",
+    "fumadocs-ui": "^16.8.7",
+    "next": "16.2.5",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@types/mdx": "^2.0.13",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
+  }
+}
