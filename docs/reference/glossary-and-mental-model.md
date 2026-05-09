@@ -28,7 +28,7 @@ Lookup reference for fluo terminology, execution framing, and bootstrap stages.
 | **Exception Resolver** | Error-to-response mapping layer. | Normalizes thrown errors into HTTP responses. |
 | **Dynamic Module** | Module definition produced at runtime. | Common for auth, config, persistence, and adapter packages. |
 | **Circular Dependency** | Mutual dependency across providers or modules. | Requires explicit handling or boundary cleanup. |
-| **Injection Point** | Constructor or property where a dependency is requested. | Usually paired with `@Inject(...)` when the token is explicit. |
+| **Injection Point** | Constructor parameter position resolved from class-level `@Inject(...)` metadata or provider-level `inject` arrays. | `@Inject(...)` is a standard class decorator in fluo, not a constructor-parameter or property decorator. |
 
 ## mental model
 
