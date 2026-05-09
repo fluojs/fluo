@@ -190,5 +190,4 @@ Payload는 dispatch 전에 clone되고, 동시 `listen()` 호출은 dedupe되며
 - `packages/microservices/src/public-api.test.ts`: 모듈 등록 override와 `createMicroservicesProviders(...)`를 포함한 루트 배럴 export 계약을 검증합니다.
 - `packages/microservices/src/public-surface.test.ts`: 문서화된 공개 surface를 검증합니다.
 - `packages/microservices/src/public-subpaths.test.ts`: 문서화된 트랜스포트 서브패스 export map 계약을 검증합니다.
-- `examples/microservices-tcp`: 기본 TCP 마이크로서비스 예제입니다.
-- `examples/microservices-kafka`: Kafka 기반 분산 아키텍처 예제입니다.
+- 실행 가능한 스타터 예제는 지원되는 TCP, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC 트랜스포트 변형에 대해 `fluo new --shape microservice --transport <transport> --runtime node --platform none`로 생성합니다.

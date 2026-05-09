@@ -187,5 +187,4 @@ Payloads are cloned before dispatch, concurrent `listen()` calls are deduped, re
 - `packages/microservices/src/public-api.test.ts`: Root-barrel export coverage, including module registration overrides and `createMicroservicesProviders(...)`.
 - `packages/microservices/src/public-surface.test.ts`: Root-barrel snapshot coverage for the documented public surface.
 - `packages/microservices/src/public-subpaths.test.ts`: Export-map coverage for documented transport subpaths.
-- `examples/microservices-tcp`: Basic TCP microservice example.
-- `examples/microservices-kafka`: Distributed Kafka-based architecture example.
+- Runnable starter examples are generated with `fluo new --shape microservice --transport <transport> --runtime node --platform none` for the supported TCP, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC transport variants.
