@@ -11,6 +11,7 @@ fluo 런타임을 위한 raw Node.js HTTP 어댑터 패키지입니다.
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
 - [동작 계약](#동작-계약)
+- [Conformance 커버리지](#conformance-커버리지)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -91,6 +92,12 @@ await app.listen();
 - `runNodejsApplication(module, options)`는 부트스트랩, 리스닝 시작, graceful shutdown 배선을 함께 수행합니다. 시그널 기반 종료가 타임아웃되거나 실패하면 해당 상태를 로그와 `process.exitCode`로 보고하며, 최종 프로세스 종료는 호스트 프로세스가 계속 소유합니다.
 - 고급 압축 및 shutdown 유틸리티 함수는 이 기본 platform startup surface가 아니라 `@fluojs/runtime/node` 또는 runtime 내부 seam에 남아 있습니다.
 
+## Conformance 커버리지
+
+`packages/platform-nodejs/src/index.test.ts`는 문서화된 Node.js 계약을 위한 package-local regression target입니다. 이 파일은 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body 제외, multipart 전체 크기 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 검증합니다.
+
+같은 파일은 package-specific public surface, type alias, adapter-first startup, `maxBodySize` failure, 대소문자가 섞인 JSON 및 multipart content-type parsing, server-backed realtime capability 노출도 함께 다룹니다. Startup behavior를 바꿀 때는 README 예제 포인터를 아래 테스트 파일 및 Node.js 챕터 예제와 맞춰 유지하세요.
+
 ## 공개 API 개요
 
 - `createNodejsAdapter(options)`: raw Node.js HTTP 어댑터를 위한 기본 팩토리입니다.
@@ -111,4 +118,4 @@ await app.listen();
 ## 예제 소스
 
 - `packages/platform-nodejs/src/index.test.ts`
-- `examples/minimal/src/main.ts` (Fastify 기반이지만 구조적으로 유사함)
+- `book/intermediate/ch21-express-node.ko.md`
