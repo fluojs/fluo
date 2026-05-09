@@ -61,8 +61,9 @@ export class AppModule {}
 import { Inject } from '@fluojs/core';
 import { DiscordService } from '@fluojs/discord';
 
+@Inject(DiscordService)
 export class DeployNotifier {
-  constructor(@Inject(DiscordService) private readonly discord: DiscordService) {}
+  constructor(private readonly discord: DiscordService) {}
 
   async announce(version: string) {
     await this.discord.send({

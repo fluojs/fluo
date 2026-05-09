@@ -115,6 +115,18 @@ class ServiceB {
 }
 ```
 
+`forwardRef(...)`와 `optional(...)`은 클래스 수준 `@Inject(...)` 토큰 목록이나 provider 수준 `inject` 배열 안에서 쓰는 토큰 래퍼입니다. 이들은 데코레이터가 아니며 constructor parameter에 붙이지 않습니다.
+
+```typescript
+import { optional } from '@fluojs/di';
+import { Inject } from '@fluojs/core';
+
+@Inject(optional(AuditLogger))
+class ServiceWithOptionalLogger {
+  constructor(private readonly auditLogger: AuditLogger | undefined) {}
+}
+```
+
 ## 테스트 및 모킹
 
 `useValue`를 사용하면 단위 테스트 중에 컨테이너의 provider를 모의 객체(mock)나 스텁(stub)으로 쉽게 교체할 수 있습니다.
@@ -155,8 +167,8 @@ const service = await container.resolve(DataService);
 | `has(token)` | 컨테이너나 부모에 토큰이 등록되어 있는지 확인합니다. |
 | `hasRequestScopedDependency(token)` | 토큰 해석 시 provider 그래프에 request-scoped 의존성이나 순환이 있어 request-scope 컨테이너가 필요할 수 있는지 확인합니다. |
 | `dispose()` | request child와 루트가 소유한 singleton instance를 정리합니다. |
-| `forwardRef(fn)` | 선언 순서 문제를 위해 토큰 조회를 지연합니다. |
-| `optional(token)` | 의존성 토큰을 optional로 표시하며, 누락된 optional dependency는 `undefined`로 해석됩니다. |
+| `forwardRef(fn)` | 선언 순서 문제를 위해 조회를 지연하는 토큰 래퍼를 반환합니다. 실제 생성자 순환을 해석 가능하게 만들지는 않습니다. |
+| `optional(token)` | 하나의 의존성을 optional로 표시하는 토큰 래퍼를 반환합니다. 누락된 optional dependency는 `undefined`로 해석됩니다. |
 | `Scope` | `DEFAULT`, `REQUEST`, `TRANSIENT` scope 상수를 제공합니다. |
 | 에러 클래스 | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |
 

@@ -250,10 +250,10 @@ To explain the migration path, consider a hypothetical `LegacyService` from a St
 ```ts
 @Injectable()
 class LegacyService {
-  constructor(@Inject(TOKEN) private readonly dep: Dependency) {}
+  constructor(@LegacyInject(TOKEN) private readonly dep: Dependency) {}
 }
 ```
-In Fluo, you can move the same dependency to an explicit Token as follows.
+The `@LegacyInject(...)` marker above represents the legacy parameter-decorator style used by Stage 1-era frameworks. In Fluo, you move the same dependency to an explicit class-level token as follows.
 ```ts
 @Inject(TOKEN)
 class ModernService {

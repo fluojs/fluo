@@ -72,7 +72,7 @@ ensureMetadataSymbol();
 
 ### Explicit dependency metadata
 
-`@Inject(...)` keeps dependency wiring visible in code instead of relying on emitted reflection metadata. Call `@Inject()` when you want to record an explicit empty override for inherited constructor tokens.
+`@Inject(...)` keeps dependency wiring visible in code instead of relying on emitted reflection metadata. It is a standard class decorator: place it on the class whose constructor tokens you are declaring, not on constructor parameters or properties. Call `@Inject()` when you want to record an explicit empty override for inherited constructor tokens.
 
 ```ts
 const CONFIG_TOKEN = Symbol('CONFIG_TOKEN');
@@ -83,7 +83,7 @@ class UsesConfigValue {
 }
 ```
 
-Pass multiple constructor tokens as variadic arguments, such as `@Inject(A, B)`, so dependency metadata stays aligned with standard decorator usage. The array form `@Inject([A, B])` is also accepted, but new code should prefer the variadic form.
+Pass multiple constructor tokens as variadic arguments, such as `@Inject(A, B)`, so dependency metadata stays aligned with standard decorator usage. The array form `@Inject([A, B])` is also accepted, but new code should prefer the variadic form. If a token is unavailable at decoration time, wrap that one token with `forwardRef(...)`; if a dependency may be absent, wrap that token with `optional(...)`.
 
 ### Shared metadata helpers for sibling packages
 

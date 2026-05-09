@@ -290,7 +290,7 @@ function collectMarkdownFiles(relativeRoot) {
         continue;
       }
 
-      if (extname(entry.name) !== '.md') {
+      if (!['.md', '.mdx'].includes(extname(entry.name))) {
         continue;
       }
 

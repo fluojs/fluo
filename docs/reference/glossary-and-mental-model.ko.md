@@ -28,7 +28,7 @@ fluo 용어, 실행 관점, 부트스트랩 단계를 빠르게 조회하기 위
 | **Exception Resolver** | 오류를 HTTP 응답으로 매핑하는 계층입니다. | 던져진 오류를 정규화된 응답으로 바꿉니다. |
 | **Dynamic Module** | 런타임에 생성되는 모듈 정의입니다. | auth, config, persistence, adapter 패키지에서 자주 사용됩니다. |
 | **Circular Dependency** | 프로바이더 또는 모듈 간 상호 의존입니다. | 명시적 처리 또는 경계 정리가 필요합니다. |
-| **Injection Point** | 의존성을 요청하는 생성자 또는 프로퍼티 위치입니다. | 보통 명시적 토큰과 함께 `@Inject(...)`를 사용합니다. |
+| **Injection Point** | 클래스 수준 `@Inject(...)` 메타데이터나 provider 수준 `inject` 배열로 해석되는 생성자 매개변수 위치입니다. | fluo에서 `@Inject(...)`는 표준 클래스 데코레이터이며 constructor-parameter나 property 데코레이터가 아닙니다. |
 
 ## mental model
 

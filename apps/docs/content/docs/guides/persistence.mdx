@@ -263,8 +263,9 @@ For application-level caching, inject `CacheService`.
 import { Inject } from '@fluojs/core';
 import { CacheService } from '@fluojs/cache-manager';
 
+@Inject(CacheService)
 class UserService {
-  constructor(@Inject(CacheService) private readonly cache: CacheService) {}
+  constructor(private readonly cache: CacheService) {}
 
   async getProfile(userId: string) {
     return this.cache.remember(`user:${userId}`, async () => fetchUserProfile(userId), 300);
@@ -305,23 +306,23 @@ import { Inject, Module } from '@fluojs/core';
 import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
 import { RedisModule } from '@fluojs/redis';
 
-@Module({
-  imports: [
-    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
-    QueueModule.forRoot(),
-  ],
-  providers: [OrderWorker],
-})
-export class AppModule {}
-
+@Inject(QueueLifecycleService)
 export class OrderService {
-  @Inject(QueueLifecycleService)
-  private readonly queue: QueueLifecycleService;
+  constructor(private readonly queue: QueueLifecycleService) {}
 
   async placeOrder(id: string) {
     await this.queue.enqueue(new ProcessOrderJob(id));
   }
 }
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    QueueModule.forRoot(),
+  ],
+  providers: [OrderService, OrderWorker],
+})
+export class AppModule {}
 ```
 
 Queue jobs must be JSON-serializable plain objects. Queue serializes the payload before enqueueing and rehydrates the job prototype on the worker side. When retries are exhausted, Queue appends a dead-letter record to Redis under `fluo:queue:dead-letter:<jobName>` for manual inspection or recovery.

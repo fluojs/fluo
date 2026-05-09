@@ -70,7 +70,7 @@ ensureMetadataSymbol();
 
 ### 명시적인 의존성 메타데이터
 
-`@Inject(...)`는 리플렉션 기반 추론 대신 코드 안에서 의존성 토큰을 직접 드러냅니다. 상속된 constructor 토큰을 명시적으로 비우려면 `@Inject()`를 사용하면 됩니다.
+`@Inject(...)`는 리플렉션 기반 추론 대신 코드 안에서 의존성 토큰을 직접 드러냅니다. 이 데코레이터는 표준 클래스 데코레이터이므로 constructor parameter나 property가 아니라 생성자 토큰을 선언할 클래스 위에 붙입니다. 상속된 constructor 토큰을 명시적으로 비우려면 `@Inject()`를 사용하면 됩니다.
 
 ```ts
 const CONFIG_TOKEN = Symbol('CONFIG_TOKEN');
@@ -81,7 +81,7 @@ class UsesConfigValue {
 }
 ```
 
-여러 constructor 토큰은 `@Inject(A, B)`처럼 variadic 호출로 지정하면 dependency metadata가 표준 데코레이터 사용 방식과 맞게 유지됩니다. `@Inject([A, B])` 배열 형태도 허용되지만, 새 코드는 variadic 형태를 사용하는 것이 좋습니다.
+여러 constructor 토큰은 `@Inject(A, B)`처럼 variadic 호출로 지정하면 dependency metadata가 표준 데코레이터 사용 방식과 맞게 유지됩니다. `@Inject([A, B])` 배열 형태도 허용되지만, 새 코드는 variadic 형태를 사용하는 것이 좋습니다. 데코레이션 시점에 아직 사용할 수 없는 토큰은 해당 토큰만 `forwardRef(...)`로 감싸고, 없어도 되는 의존성은 해당 토큰만 `optional(...)`로 감쌉니다.
 
 ### 형제 패키지를 위한 공용 메타데이터 헬퍼
 
