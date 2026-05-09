@@ -172,7 +172,7 @@ GraphqlModule.forRoot({
 GraphQL API는 깊게 중첩되거나 비용이 큰 쿼리에 취약할 수 있습니다. Fluo는 이런 위험을 줄이기 위해 **운영 가드레일**을 기본 설정에 포함합니다.
 
 - **인트로스펙션(Introspection)**: 프로덕션 환경에서는 기본적으로 비활성화됩니다.
-- **복잡도 제한**: `maxDepth`, `maxComplexity`, `maxCost`로 과도한 쿼리 비용과 서비스 거부(DoS) 공격 가능성을 줄입니다.
+- **복잡도 제한**: `GraphqlModule.forRoot(...)` 경계에서 `maxDepth`, `maxComplexity`, `maxCost`를 설정해 과도한 쿼리 비용과 서비스 거부(DoS) 공격 가능성을 줄입니다. 이 제한은 module-level guardrail이며, 현재 런타임 계약은 필드별 비용 데코레이터를 제공하지 않습니다.
 
 ```typescript
 GraphqlModule.forRoot({
@@ -188,6 +188,8 @@ GraphqlModule.forRoot({
 
 FluoShop에서는 제품 카탈로그 조회 경험을 세밀하게 제공하기 위해 GraphQL을 사용합니다. 카테고리 조회에는 DataLoader를 적용하고, 검색 엔드포인트에는 복잡도 제한을 둬 성능과 안전성을 함께 관리합니다. 이 조합은 클라이언트가 필요한 필드를 유연하게 고르면서도, 서버가 감당하기 어려운 쿼리를 미리 제한하게 해줍니다.
 
+제품 카탈로그 가드레일은 module boundary에 둡니다. 지원되지 않는 resolver-level field-cost decorator를 추가하는 대신, 카탈로그 쿼리 형태에 맞게 `limits.maxDepth`, `limits.maxComplexity`, `limits.maxCost` 값을 조정합니다.
+
 ```typescript
 class CatalogSearchInput {
   @Arg('query')
@@ -198,7 +200,7 @@ class CatalogSearchInput {
 export class CatalogResolver {
   @Query({ input: CatalogSearchInput })
   async search(input: CatalogSearchInput) {
-    // 복잡도는 결과 세트 크기에 따라 자동으로 계산됩니다.
+    // Module-level GraphqlModule limits가 이 쿼리의 형태와 비용을 제한합니다.
     return this.catalogService.search(input.query);
   }
 }
