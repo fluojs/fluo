@@ -5,7 +5,7 @@ import { z } from 'zod';
 
 import { DefaultValidator } from './validation.js';
 import { DtoValidationError } from './errors.js';
-import { ArrayUnique, IsDateString, IsEmail, IsNotEmpty, IsNumber, IsString, MinLength, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
+import { ArrayUnique, IsDateString, IsEmail, IsLatitude, IsLongitude, IsNotEmpty, IsNumber, IsString, MinLength, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
 import type { StandardSchemaV1Like } from './index.js';
 
 describe('DefaultValidator', () => {
@@ -433,6 +433,60 @@ describe('DefaultValidator', () => {
     });
   });
 
+  it('resolves function-based lazy nested DTO factories at validation time', async () => {
+    function resolveChildDto(): typeof ChildDto {
+      return ChildDto;
+    }
+
+    class ParentDto {
+      @ValidateNested(resolveChildDto)
+      child!: ChildDto;
+    }
+
+    class ChildDto {
+      @MinLength(2, { message: 'child name must have length at least 2' })
+      name = '';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(
+        Object.assign(new ParentDto(), {
+          child: { name: 'x' },
+        }),
+        ParentDto,
+      ),
+    ).rejects.toMatchObject({
+      issues: [{ field: 'child.name', message: 'child name must have length at least 2' }],
+    });
+  });
+
+  it('validates latitude and longitude without coercing scalar strings', async () => {
+    class LocationDto {
+      @IsLatitude({ message: 'latitude must be numeric and within range' })
+      latitude = 0;
+
+      @IsLongitude({ message: 'longitude must be numeric and within range' })
+      longitude = 0;
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(Object.assign(new LocationDto(), { latitude: 37.5665, longitude: 126.978 }), LocationDto),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      validator.validate(Object.assign(new LocationDto(), { latitude: '37.5665', longitude: '126.978' }), LocationDto),
+    ).rejects.toMatchObject({
+      issues: [
+        { field: 'latitude', message: 'latitude must be numeric and within range' },
+        { field: 'longitude', message: 'longitude must be numeric and within range' },
+      ],
+    });
+  });
+
   it('rejects cyclic nested payloads during validation instead of recursing indefinitely', async () => {
     class NodeDto {
       @MinLength(1)
@@ -779,7 +833,7 @@ describe('DefaultValidator', () => {
   it('supports class-level Standard Schema validators with Zod', async () => {
     @ValidateClass(
       z.object({
-        email: z.string().email(),
+        email: z.email(),
       }),
     )
     class CreateUserDto {

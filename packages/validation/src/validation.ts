@@ -18,9 +18,13 @@ import {
 import { DtoValidationError } from './errors.js';
 import type { ValidationIssue, Validator } from './types.js';
 
+function isClassConstructor(dto: Constructor | (() => Constructor)): dto is Constructor {
+  return typeof dto === 'function' && Function.prototype.toString.call(dto).startsWith('class ');
+}
+
 function resolveNestedDto(dto: Constructor | (() => Constructor)): Constructor {
-  if (typeof dto === 'function' && 'prototype' in dto && dto.prototype) {
-    return dto as Constructor;
+  if (isClassConstructor(dto)) {
+    return dto;
   }
 
   return (dto as () => Constructor)();
@@ -377,7 +381,7 @@ const RULE_HANDLERS: { [K in RuleKind]: RuleHandler<K> } = {
   validatorjs: {
     defaultCode: 'INVALID_FIELD',
     describe: (field) => `${field} is invalid.`,
-    validate: (rule, value) => typeof value === 'string' && runValidatorJs(rule, value),
+    validate: (rule, value) => runValidatorJs(rule, value),
   },
   arrayContains: {
     defaultCode: 'ARRAY_CONTAINS',
@@ -523,7 +527,19 @@ function describeValidator(rule: DtoFieldValidationRule, field: string): { code:
   };
 }
 
-function runValidatorJs(rule: Extract<DtoFieldValidationRule, { kind: 'validatorjs' }>, value: string): boolean {
+function runValidatorJs(rule: Extract<DtoFieldValidationRule, { kind: 'validatorjs' }>, value: unknown): boolean {
+  if (rule.validator === 'latitude') {
+    return typeof value === 'number' && Number.isFinite(value) && value >= -90 && value <= 90;
+  }
+
+  if (rule.validator === 'longitude') {
+    return typeof value === 'number' && Number.isFinite(value) && value >= -180 && value <= 180;
+  }
+
+  if (typeof value !== 'string') {
+    return false;
+  }
+
   switch (rule.validator) {
     case 'alpha': return validator.isAlpha(value);
     case 'alphanumeric': return validator.isAlphanumeric(value);
@@ -560,8 +576,6 @@ function runValidatorJs(rule: Extract<DtoFieldValidationRule, { kind: 'validator
     case 'url': return validator.isURL(value, rule.args?.[0] as validator.IsURLOptions | undefined);
     case 'uuid': return validator.isUUID(value, rule.args?.[0] as validator.UUIDVersion | undefined);
     case 'iso8601': return validator.isISO8601(value);
-    case 'latitude': { const number = Number(value); return !Number.isNaN(number) && number >= -90 && number <= 90; }
-    case 'longitude': { const number = Number(value); return !Number.isNaN(number) && number >= -180 && number <= 180; }
     case 'latLong': return validator.isLatLong(value);
     default: return false;
   }
