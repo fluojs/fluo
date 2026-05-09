@@ -107,6 +107,9 @@ export interface ApplicationLogger {
   warn(message: string, context?: string): void;
 }
 
+/** Registers runtime-owned cleanup callbacks that must run during bootstrap failure or shutdown. */
+export type RuntimeCleanupRegistration = (cleanup: () => void) => () => void;
+
 /** Runtime-visible application states for HTTP and microservice shells. */
 export type ApplicationState = 'bootstrapped' | 'ready' | 'closed';
 

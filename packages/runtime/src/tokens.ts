@@ -4,6 +4,7 @@ import type { HttpApplicationAdapter } from '@fluojs/http';
 
 import type { ApplicationLogger } from './types.js';
 import type { CompiledModule } from './types.js';
+import type { RuntimeCleanupRegistration } from './types.js';
 import type { PlatformShell } from './platform-contract.js';
 
 /**
@@ -30,3 +31,8 @@ export const HTTP_APPLICATION_ADAPTER: Token<HttpApplicationAdapter> = Symbol('H
  * Injection token for the platform shell.
  */
 export const PLATFORM_SHELL: Token<PlatformShell> = Symbol('PLATFORM_SHELL');
+
+/**
+ * Internal injection token for registering runtime-owned cleanup callbacks.
+ */
+export const RUNTIME_CLEANUP_REGISTRATION: Token<RuntimeCleanupRegistration> = Symbol('RUNTIME_CLEANUP_REGISTRATION');
