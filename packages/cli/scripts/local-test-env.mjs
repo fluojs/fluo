@@ -345,8 +345,8 @@ function verifySandboxProject(projectName) {
     }
   }
 
-  if (starterContract === 'application' && !existsSync(join(projectDirectory, 'src', 'app.e2e.test.ts'))) {
-    throw new Error('Expected the starter scaffold to include src/app.e2e.test.ts.');
+  if (starterContract === 'application' && !existsSync(join(projectDirectory, 'test', 'app.e2e.test.ts'))) {
+    throw new Error('Expected the starter scaffold to include test/app.e2e.test.ts.');
   }
 
   if (!existsSync(join(projectDirectory, 'vite.config.ts'))) {
