@@ -25,9 +25,9 @@ import {
   VersioningType,
   type CallHandler,
   type Dispatcher,
-    type FrameworkRequest,
-    type FrameworkResponse,
-    type GuardContext,
+  type FrameworkRequest,
+  type FrameworkResponse,
+  type GuardContext,
   type InterceptorContext,
   type MiddlewareContext,
   type RequestObservationContext,
@@ -1643,8 +1643,9 @@ describe('@fluojs/platform-fastify', () => {
     expect(closeCallCount).toBe(1);
     expect(Reflect.get(adapter, 'dispatcher')).toBe(dispatcher);
 
+    const closeInFlight = Reflect.get(adapter, 'closeInFlight') as Promise<void>;
     deferred.resolve();
-    await Promise.resolve();
+    await closeInFlight;
 
     expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
   });
@@ -1696,8 +1697,42 @@ describe('@fluojs/platform-fastify', () => {
 
     await expect(adapter.close()).rejects.toThrow(/shutdown timeout/i);
 
+    const closeInFlight = Reflect.get(adapter, 'closeInFlight') as Promise<void>;
     deferred.resolve();
-    await Promise.resolve();
+    await closeInFlight;
+  });
+
+  it('keeps timed-out shutdown attempts on the same in-flight close until fastify settles', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, 20);
+    const deferred = createDeferred<void>();
+    let closeCallCount = 0;
+    const app = {
+      close: () => {
+        closeCallCount += 1;
+        return deferred.promise;
+      },
+      server: {
+        listening: true,
+      },
+    };
+    const dispatcher = {
+      async dispatch() {},
+    };
+
+    Reflect.set(adapter, 'app', app);
+    Reflect.set(adapter, 'dispatcher', dispatcher);
+
+    await expect(adapter.close()).rejects.toThrow(/shutdown timeout/i);
+    await expect(adapter.close()).rejects.toThrow(/shutdown timeout/i);
+
+    expect(closeCallCount).toBe(1);
+    expect(Reflect.get(adapter, 'dispatcher')).toBe(dispatcher);
+
+    const closeInFlight = Reflect.get(adapter, 'closeInFlight') as Promise<void>;
+    deferred.resolve();
+    await closeInFlight;
+
+    expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
   });
 
   it('clears the fastify shutdown timer once close settles', async () => {
@@ -1721,7 +1756,6 @@ describe('@fluojs/platform-fastify', () => {
       expect(vi.getTimerCount()).toBe(1);
 
       deferred.resolve();
-      await Promise.resolve();
       await closePromise;
 
       expect(vi.getTimerCount()).toBe(0);
