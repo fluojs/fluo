@@ -128,22 +128,36 @@ export class AppModule {}
 루프 안에서 이메일 1,000개를 직접 보내면 이벤트 루프를 오래 점유하거나 공급자 속도 제한에 걸리기 쉽습니다. 대량 발송은 `@fluojs/email/queue` 서브패스로 백그라운드 작업에 넘기는 편이 안전합니다.
 
 ```typescript
-import { createEmailNotificationsQueueAdapter } from '@fluojs/email/queue';
-import { QueueLifecycleService } from '@fluojs/queue';
+import { Module } from '@fluojs/core';
+import { EmailModule, EMAIL_CHANNEL } from '@fluojs/email';
+import {
+  createEmailNotificationsQueueAdapter,
+  EmailNotificationsQueueWorker,
+} from '@fluojs/email/queue';
+import { NotificationsModule } from '@fluojs/notifications';
+import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
 
-NotificationsModule.forRootAsync({
-  inject: [EMAIL_CHANNEL, QueueLifecycleService],
-  useFactory: (channel, queue) => ({
-    channels: [channel],
-    queue: {
-      adapter: createEmailNotificationsQueueAdapter(queue),
-      bulkThreshold: 25,
-    },
-  }),
-});
+@Module({
+  imports: [
+    QueueModule.forRoot(),
+    EmailModule.forRoot({ ... }),
+    NotificationsModule.forRootAsync({
+      inject: [EMAIL_CHANNEL, QueueLifecycleService],
+      useFactory: (channel, queue) => ({
+        channels: [channel],
+        queue: {
+          adapter: createEmailNotificationsQueueAdapter(queue),
+          bulkThreshold: 25,
+        },
+      }),
+    }),
+  ],
+  providers: [EmailNotificationsQueueWorker],
+})
+export class AppModule {}
 ```
 
-큐 어댑터는 대량 알림을 개별 백그라운드 작업으로 나누고, 각 작업에 설정 가능한 재시도와 백오프 정책을 적용합니다.
+큐 어댑터는 대량 알림을 개별 백그라운드 작업으로 나누고, 각 작업에 설정 가능한 재시도와 백오프 정책을 적용합니다. 큐에 쌓인 이메일 작업이 실제로 소비되도록 같은 애플리케이션 모듈의 provider에 `EmailNotificationsQueueWorker`를 등록해야 합니다.
 
 ## 16.7 Template Rendering
 

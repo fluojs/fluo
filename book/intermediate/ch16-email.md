@@ -128,22 +128,36 @@ After integration, calls to `NotificationsService.dispatch({ channel: 'email', .
 Sending 1,000 emails directly inside a loop can occupy the event loop for too long or hit provider rate limits. Bulk delivery is safer when handed off to background jobs through the `@fluojs/email/queue` subpath.
 
 ```typescript
-import { createEmailNotificationsQueueAdapter } from '@fluojs/email/queue';
-import { QueueLifecycleService } from '@fluojs/queue';
+import { Module } from '@fluojs/core';
+import { EmailModule, EMAIL_CHANNEL } from '@fluojs/email';
+import {
+  createEmailNotificationsQueueAdapter,
+  EmailNotificationsQueueWorker,
+} from '@fluojs/email/queue';
+import { NotificationsModule } from '@fluojs/notifications';
+import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
 
-NotificationsModule.forRootAsync({
-  inject: [EMAIL_CHANNEL, QueueLifecycleService],
-  useFactory: (channel, queue) => ({
-    channels: [channel],
-    queue: {
-      adapter: createEmailNotificationsQueueAdapter(queue),
-      bulkThreshold: 25,
-    },
-  }),
-});
+@Module({
+  imports: [
+    QueueModule.forRoot(),
+    EmailModule.forRoot({ ... }),
+    NotificationsModule.forRootAsync({
+      inject: [EMAIL_CHANNEL, QueueLifecycleService],
+      useFactory: (channel, queue) => ({
+        channels: [channel],
+        queue: {
+          adapter: createEmailNotificationsQueueAdapter(queue),
+          bulkThreshold: 25,
+        },
+      }),
+    }),
+  ],
+  providers: [EmailNotificationsQueueWorker],
+})
+export class AppModule {}
 ```
 
-The queue adapter splits bulk notifications into individual background jobs and applies configurable retry and backoff policies to each job.
+The queue adapter splits bulk notifications into individual background jobs and applies configurable retry and backoff policies to each job. Register `EmailNotificationsQueueWorker` as a provider in the same application module so those queued email jobs are actually consumed.
 
 ## 16.7 Template Rendering
 
