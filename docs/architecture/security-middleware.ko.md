@@ -37,14 +37,14 @@
 
 | Stage | Current order | Result | Source anchor |
 | --- | --- | --- | --- |
-| 1 | Request context creation and request observers start | 미들웨어 실행 전에 요청 범위와 요청 메타데이터를 생성합니다. | `packages/http/src/dispatch/dispatcher.ts` |
+| 1 | Request context creation and request observers start | 미들웨어 실행 전에 요청 메타데이터를 생성하고, 활성 파이프라인이 request scope를 필요로 할 수 있을 때만 request scope로 승격합니다. | `packages/http/src/dispatch/dispatcher.ts` |
 | 2 | Global application middleware | 모든 요청에서 `appMiddleware`를 먼저 실행합니다. | `packages/http/src/dispatch/dispatcher.ts` |
 | 3 | Route match and param update | 모듈 미들웨어 전에 핸들러를 선택하고 라우트 파라미터를 기록합니다. | `packages/http/src/dispatch/dispatcher.ts` |
 | 4 | Module middleware | 라우트 매칭 후, guard 전에 라우트 모듈 미들웨어를 실행합니다. | `packages/http/src/dispatch/dispatcher.ts` |
 | 5 | Guard chain | `AuthGuard`, `ThrottlerGuard` 같은 라우트 guard를 실행합니다. | `packages/http/src/dispatch/dispatcher.ts`, `packages/passport/src/guard.ts`, `packages/throttler/src/guard.ts` |
 | 6 | Interceptor chain | guard가 성공한 뒤 전역 및 라우트 interceptor를 실행합니다. | `packages/http/src/dispatch/dispatcher.ts` |
 | 7 | Handler invocation and response write | 컨트롤러 핸들러를 실행한 뒤, 응답이 이미 커밋되지 않았다면 성공 응답을 기록합니다. | `packages/http/src/dispatch/dispatcher.ts` |
-| 8 | Error mapping and request-scope disposal | 처리되지 않은 실패를 정규화하고, 오류 응답을 기록하고, finish observer를 호출한 뒤 요청 컨테이너를 dispose합니다. | `packages/http/src/dispatch/dispatcher.ts` |
+| 8 | Error mapping and request-scope disposal | 처리되지 않은 실패를 정규화하고, 오류 응답을 기록하고, finish observer를 호출한 뒤 isolated request scope로 승격된 dispatch에서만 요청 컨테이너를 dispose합니다. | `packages/http/src/dispatch/dispatcher.ts` |
 
 미들웨어별 순서 규칙:
 

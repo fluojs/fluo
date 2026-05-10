@@ -7,7 +7,7 @@
 ## Request Lifecycle
 
 1. 어댑터는 정규화된 `FrameworkRequest`와 `FrameworkResponse`를 `Dispatcher.dispatch(...)`에 전달한다.
-2. dispatcher는 request params를 복사하고 request-scoped container를 만든 뒤, request metadata와 선택적 `x-request-id`를 포함하는 `RequestContext`를 생성한다.
+2. dispatcher는 request params를 복사하고 request metadata와 선택적 `x-request-id`를 포함하는 `RequestContext`를 생성한다. 시작 시에는 root container를 사용하고, 매칭된 graph, 활성 middleware, observer, DTO conversion, binder, guard, interceptor, controller dependency graph, 또는 수동 `RequestContext.container.resolve(...)` 접근이 request scope를 필요로 할 수 있을 때만 isolated request-scoped container로 승격한다.
 3. 등록된 request observer는 route matching 전에 `onRequestStart`를 받는다.
 4. 전역 application middleware가 `runMiddlewareChain(...)`을 통해 가장 먼저 실행된다.
 5. `matchHandlerOrThrow(...)`는 `HandlerMapping`에서 하나의 handler를 해석하거나 `HandlerNotFoundError`를 던진다.
@@ -19,7 +19,7 @@
 11. controller method는 `(input, requestContext)`를 받고 handler 결과를 반환한다.
 12. 성공한 non-SSE 결과는 `writeSuccessResponse(...)`를 통해 기록되며, 여기서 redirect metadata, route header, formatter 선택, 기본 성공 status 규칙이 적용된다.
 13. 어느 단계에서든 예외가 발생하면 dispatcher는 설정된 경우 `onError`를 실행하고, 그렇지 않으면 `writeErrorResponse(...)`가 기본 에러 응답을 기록한다.
-14. dispatcher는 항상 `onRequestFinish`를 호출하고 요청이 끝나기 전에 request-scoped container를 dispose 한다.
+14. dispatcher는 항상 `onRequestFinish`를 호출한다. request scope가 생성되었거나 lazy promotion 되었다면 요청이 끝나기 전에 해당 isolated request-scoped container를 dispose하며, 끝까지 승격되지 않은 singleton-only fast-path 요청은 root container를 dispose하지 않는다.
 
 ## Routing Rules
 
