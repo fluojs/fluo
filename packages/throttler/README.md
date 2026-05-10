@@ -122,10 +122,10 @@ ThrottlerModule.forRoot({
 ## Public API Overview
 
 ### Modules
-- `ThrottlerModule.forRoot(options)`: Provides throttler options, storage, and `ThrottlerGuard` to the module graph.
-- Package-level registration is supported through `ThrottlerModule.forRoot(options)`. Internal provider-composition helpers are not part of the public contract.
+- `ThrottlerModule.forRoot(options)`: Provides validated throttler options and `ThrottlerGuard` to the module graph.
+- Package-level registration is supported through `ThrottlerModule.forRoot(options)`. Internal provider-composition helpers and DI tokens are not part of the public contract.
 
-`ttl` and `limit` must be positive finite integers. `store`, `trustProxyHeaders`, and `keyGenerator` customize persistence and client identity.
+`ttl` and `limit` must be positive finite integers. `trustProxyHeaders` and `keyGenerator` customize client identity. If no `store` option is supplied, each `ThrottlerGuard` instance owns its own in-memory store; pass a `ThrottlerStore` implementation such as `RedisThrottlerStore` when storage must be shared or externally managed.
 
 ### Decorators
 - `@Throttle({ ttl, limit })`: Sets a specific rate limit for a class or method.
