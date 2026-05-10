@@ -1,5 +1,19 @@
 # @fluojs/prisma
 
+## 1.0.0-beta.5
+
+### Patch Changes
+
+- [#1696](https://github.com/fluojs/fluo/pull/1696) [`9f168b1`](https://github.com/fluojs/fluo/commit/9f168b1121760b8e32faee34332cc4590008fdff) Thanks [@ayden94](https://github.com/ayden94)! - Ensure request-scoped transaction bookkeeping is released when Prisma transaction validation fails before the request transaction starts.
+
+- [#1656](https://github.com/fluojs/fluo/pull/1656) [`b6f8754`](https://github.com/fluojs/fluo/commit/b6f8754e3d3247b29c412b5b5b20353ac60115a8) Thanks [@ayden94](https://github.com/ayden94)! - Clarify public Prisma DI tokens versus internal normalized module tokens, and document the nested transaction option guard with regression coverage.
+
+- Updated dependencies [[`2159d4f`](https://github.com/fluojs/fluo/commit/2159d4f35993af7f5b6e056afd535a02d1831cab), [`b15ac1b`](https://github.com/fluojs/fluo/commit/b15ac1bacccf53b39862ef0243182107840e9a3a), [`aaab8c4`](https://github.com/fluojs/fluo/commit/aaab8c440caddbf32e7657b859e36a238c7ea3f0), [`65a08db`](https://github.com/fluojs/fluo/commit/65a08db23814e2234bf5739fecf04f710b02a996), [`b74832f`](https://github.com/fluojs/fluo/commit/b74832f7d3d17a7d0bb071dabcced291f3543f44), [`f0dce1f`](https://github.com/fluojs/fluo/commit/f0dce1f493688907e60b27701b6d7d664a352294), [`d3504c6`](https://github.com/fluojs/fluo/commit/d3504c6a822bdab95bb638852dba2d9b865fc34f)]:
+  - @fluojs/di@1.0.0-beta.7
+  - @fluojs/validation@1.0.0-beta.4
+  - @fluojs/core@1.0.0-beta.5
+  - @fluojs/runtime@1.0.0-beta.12
+
 ## 1.0.0-beta.4
 
 ### Major Changes

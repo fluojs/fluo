@@ -1,5 +1,16 @@
 # @fluojs/openapi
 
+## 1.0.0-beta.7
+
+### Patch Changes
+
+- [#1628](https://github.com/fluojs/fluo/pull/1628) [`6ae99f8`](https://github.com/fluojs/fluo/commit/6ae99f866e27a5dceed1dfd987348e86744c36e5) Thanks [@ayden94](https://github.com/ayden94)! - Align implicit OpenAPI success response statuses with HTTP route defaults so undocumented POST responses are generated as 201 instead of 200.
+
+- Updated dependencies [[`b15ac1b`](https://github.com/fluojs/fluo/commit/b15ac1bacccf53b39862ef0243182107840e9a3a), [`aaab8c4`](https://github.com/fluojs/fluo/commit/aaab8c440caddbf32e7657b859e36a238c7ea3f0), [`65a08db`](https://github.com/fluojs/fluo/commit/65a08db23814e2234bf5739fecf04f710b02a996), [`b74832f`](https://github.com/fluojs/fluo/commit/b74832f7d3d17a7d0bb071dabcced291f3543f44), [`f0dce1f`](https://github.com/fluojs/fluo/commit/f0dce1f493688907e60b27701b6d7d664a352294), [`d3504c6`](https://github.com/fluojs/fluo/commit/d3504c6a822bdab95bb638852dba2d9b865fc34f)]:
+  - @fluojs/validation@1.0.0-beta.4
+  - @fluojs/core@1.0.0-beta.5
+  - @fluojs/runtime@1.0.0-beta.12
+
 ## 1.0.0-beta.6
 
 ### Patch Changes

@@ -1,5 +1,18 @@
 # @fluojs/websockets
 
+## 1.0.0-beta.6
+
+### Patch Changes
+
+- [#1621](https://github.com/fluojs/fluo/pull/1621) [`57d61c0`](https://github.com/fluojs/fluo/commit/57d61c0ade9112be48455c48f8ed86d11e46c726) Thanks [@ayden94](https://github.com/ayden94)! - Normalize WebSocket binary payload limits across supported runtimes (Deno, Bun, Cloudflare Workers, Node). Size calculations for array buffers and typed arrays now correctly count bytes instead of falling through to `undefined` or `0`, fixing an issue where standard binary frames could prematurely trigger "Payload too large" disconnects or bypass limits.
+
+- [#1623](https://github.com/fluojs/fluo/pull/1623) [`ac77310`](https://github.com/fluojs/fluo/commit/ac7731044ea42347eafe5d2cc7a5c88af5dcda9d) Thanks [@ayden94](https://github.com/ayden94)! - Normalize Deno websocket binary frames across `ArrayBuffer`, typed array, and `Blob` hosts so gateway message dispatch and payload limits match the documented cross-runtime contract.
+
+- Updated dependencies [[`2159d4f`](https://github.com/fluojs/fluo/commit/2159d4f35993af7f5b6e056afd535a02d1831cab), [`aaab8c4`](https://github.com/fluojs/fluo/commit/aaab8c440caddbf32e7657b859e36a238c7ea3f0), [`b74832f`](https://github.com/fluojs/fluo/commit/b74832f7d3d17a7d0bb071dabcced291f3543f44), [`f0dce1f`](https://github.com/fluojs/fluo/commit/f0dce1f493688907e60b27701b6d7d664a352294), [`d3504c6`](https://github.com/fluojs/fluo/commit/d3504c6a822bdab95bb638852dba2d9b865fc34f)]:
+  - @fluojs/di@1.0.0-beta.7
+  - @fluojs/core@1.0.0-beta.5
+  - @fluojs/runtime@1.0.0-beta.12
+
 ## 1.0.0-beta.5
 
 ### Patch Changes

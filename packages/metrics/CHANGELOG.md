@@ -1,5 +1,15 @@
 # @fluojs/metrics
 
+## 1.0.0-beta.4
+
+### Patch Changes
+
+- [#1624](https://github.com/fluojs/fluo/pull/1624) [`e55065e`](https://github.com/fluojs/fluo/commit/e55065e0a563f778b5227dadd6f7d1a4a12a2ee6) Thanks [@ayden94](https://github.com/ayden94)! - Reject app-owned platform telemetry gauge name collisions in shared registries and reuse only framework-owned gauges with the expected label schema.
+
+- Updated dependencies [[`2159d4f`](https://github.com/fluojs/fluo/commit/2159d4f35993af7f5b6e056afd535a02d1831cab), [`b74832f`](https://github.com/fluojs/fluo/commit/b74832f7d3d17a7d0bb071dabcced291f3543f44), [`f0dce1f`](https://github.com/fluojs/fluo/commit/f0dce1f493688907e60b27701b6d7d664a352294), [`d3504c6`](https://github.com/fluojs/fluo/commit/d3504c6a822bdab95bb638852dba2d9b865fc34f)]:
+  - @fluojs/di@1.0.0-beta.7
+  - @fluojs/runtime@1.0.0-beta.12
+
 ## 1.0.0-beta.3
 
 ### Patch Changes

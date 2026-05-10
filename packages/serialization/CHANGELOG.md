@@ -1,5 +1,14 @@
 # @fluojs/serialization
 
+## 1.0.0-beta.6
+
+### Patch Changes
+
+- [#1650](https://github.com/fluojs/fluo/pull/1650) [`3c44712`](https://github.com/fluojs/fluo/commit/3c447127d65ea74f0574cae6b49ae4f6a579cce3) Thanks [@ayden94](https://github.com/ayden94)! - Preserve inherited excludeExtraneous serialization metadata when derived DTOs use class-level Expose without options.
+
+- Updated dependencies [[`aaab8c4`](https://github.com/fluojs/fluo/commit/aaab8c440caddbf32e7657b859e36a238c7ea3f0)]:
+  - @fluojs/core@1.0.0-beta.5
+
 ## 1.0.0-beta.5
 
 ### Patch Changes

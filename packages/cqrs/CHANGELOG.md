@@ -1,5 +1,17 @@
 # @fluojs/cqrs
 
+## 1.0.0-beta.6
+
+### Patch Changes
+
+- [#1645](https://github.com/fluojs/fluo/pull/1645) [`fd6864f`](https://github.com/fluojs/fluo/commit/fd6864ff3f44f3da8ee348500eeebd292df77bbd) Thanks [@ayden94](https://github.com/ayden94)! - Drain active CQRS event publish and publishAll pipelines during application shutdown, and clarify that duplicate event handlers fan out instead of throwing duplicate-handler errors.
+
+- Updated dependencies [[`eaddb13`](https://github.com/fluojs/fluo/commit/eaddb13cdc700762fcdb731ffb310018ad1d6205), [`2159d4f`](https://github.com/fluojs/fluo/commit/2159d4f35993af7f5b6e056afd535a02d1831cab), [`68fc4d0`](https://github.com/fluojs/fluo/commit/68fc4d081a87e5c6516033d6c08bc1737ce158f0), [`aaab8c4`](https://github.com/fluojs/fluo/commit/aaab8c440caddbf32e7657b859e36a238c7ea3f0), [`b74832f`](https://github.com/fluojs/fluo/commit/b74832f7d3d17a7d0bb071dabcced291f3543f44), [`f0dce1f`](https://github.com/fluojs/fluo/commit/f0dce1f493688907e60b27701b6d7d664a352294), [`d3504c6`](https://github.com/fluojs/fluo/commit/d3504c6a822bdab95bb638852dba2d9b865fc34f)]:
+  - @fluojs/event-bus@1.0.0-beta.6
+  - @fluojs/di@1.0.0-beta.7
+  - @fluojs/core@1.0.0-beta.5
+  - @fluojs/runtime@1.0.0-beta.12
+
 ## 1.0.0-beta.5
 
 ### Minor Changes

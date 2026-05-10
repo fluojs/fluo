@@ -1,5 +1,17 @@
 # @fluojs/passport
 
+## 1.0.0-beta.7
+
+### Patch Changes
+
+- [#1620](https://github.com/fluojs/fluo/pull/1620) [`b821b89`](https://github.com/fluojs/fluo/commit/b821b8984ffc7cc9fcb47a9419e87212c0e76518) Thanks [@ayden94](https://github.com/ayden94)! - Align JWT and cookie-auth documentation with the runtime wiring contract, and reject malformed non-string cookie access tokens before verification.
+
+- Updated dependencies [[`2159d4f`](https://github.com/fluojs/fluo/commit/2159d4f35993af7f5b6e056afd535a02d1831cab), [`c9dae56`](https://github.com/fluojs/fluo/commit/c9dae561fd2981f394ebd41f8ea15b17fe6a2ba8), [`aaab8c4`](https://github.com/fluojs/fluo/commit/aaab8c440caddbf32e7657b859e36a238c7ea3f0), [`b74832f`](https://github.com/fluojs/fluo/commit/b74832f7d3d17a7d0bb071dabcced291f3543f44), [`f0dce1f`](https://github.com/fluojs/fluo/commit/f0dce1f493688907e60b27701b6d7d664a352294), [`d3504c6`](https://github.com/fluojs/fluo/commit/d3504c6a822bdab95bb638852dba2d9b865fc34f)]:
+  - @fluojs/di@1.0.0-beta.7
+  - @fluojs/jwt@1.0.0-beta.4
+  - @fluojs/core@1.0.0-beta.5
+  - @fluojs/runtime@1.0.0-beta.12
+
 ## 1.0.0-beta.6
 
 ### Minor Changes
