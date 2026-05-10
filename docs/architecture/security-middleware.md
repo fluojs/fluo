@@ -37,14 +37,14 @@ The current HTTP dispatcher order is fixed by `createDispatcher(...)`.
 
 | Stage | Current order | Result | Source anchor |
 | --- | --- | --- | --- |
-| 1 | Request context creation and request observers start | Creates request scope and request metadata before middleware execution. | `packages/http/src/dispatch/dispatcher.ts` |
+| 1 | Request context creation and request observers start | Creates request metadata before middleware execution and promotes to a request scope only when the active pipeline may need one. | `packages/http/src/dispatch/dispatcher.ts` |
 | 2 | Global application middleware | Runs `appMiddleware` first for every request. | `packages/http/src/dispatch/dispatcher.ts` |
 | 3 | Route match and param update | Selects handler and writes route params before module middleware. | `packages/http/src/dispatch/dispatcher.ts` |
 | 4 | Module middleware | Runs route-module middleware after route match and before guards. | `packages/http/src/dispatch/dispatcher.ts` |
 | 5 | Guard chain | Runs route guards such as `AuthGuard` and `ThrottlerGuard`. | `packages/http/src/dispatch/dispatcher.ts`, `packages/passport/src/guard.ts`, `packages/throttler/src/guard.ts` |
 | 6 | Interceptor chain | Runs global and route interceptors after guards succeed. | `packages/http/src/dispatch/dispatcher.ts` |
 | 7 | Handler invocation and response write | Executes the controller handler, then writes success output unless the response is already committed. | `packages/http/src/dispatch/dispatcher.ts` |
-| 8 | Error mapping and request-scope disposal | Normalizes unhandled failures, writes error responses, notifies finish observers, then disposes the request container. | `packages/http/src/dispatch/dispatcher.ts` |
+| 8 | Error mapping and request-scope disposal | Normalizes unhandled failures, writes error responses, notifies finish observers, then disposes the request container only when the dispatch promoted to an isolated request scope. | `packages/http/src/dispatch/dispatcher.ts` |
 
 Middleware-specific ordering rules:
 

@@ -7,7 +7,7 @@ This document defines the current request execution contract implemented by `@fl
 ## Request Lifecycle
 
 1. The adapter supplies a normalized `FrameworkRequest` and `FrameworkResponse` to `Dispatcher.dispatch(...)`.
-2. The dispatcher clones request params, creates a request-scoped container, and builds a `RequestContext` with request metadata and an optional `x-request-id`.
+2. The dispatcher clones request params and builds a `RequestContext` with request metadata and an optional `x-request-id`. It starts on the root container and promotes to an isolated request-scoped container only when the matched graph, active middleware, observers, DTO conversion, binder, guard, interceptor, controller dependency graph, or manual `RequestContext.container.resolve(...)` access may need request scope.
 3. Registered request observers receive `onRequestStart` before route matching.
 4. Global application middleware runs first through `runMiddlewareChain(...)`.
 5. `matchHandlerOrThrow(...)` resolves one handler from the `HandlerMapping` or throws `HandlerNotFoundError`.
@@ -19,7 +19,7 @@ This document defines the current request execution contract implemented by `@fl
 11. The controller method receives `(input, requestContext)` and returns the handler result.
 12. Successful non-SSE results are written through `writeSuccessResponse(...)`, which applies redirect metadata, route headers, formatter selection, and default success status rules.
 13. If any stage throws, the dispatcher runs `onError` when configured, otherwise `writeErrorResponse(...)` writes the default error response.
-14. The dispatcher always emits `onRequestFinish` and disposes the request-scoped container before the request ends.
+14. The dispatcher always emits `onRequestFinish`. When a request scope was created or lazily promoted, it disposes that isolated request-scoped container before the request ends; singleton-only fast-path requests that never promote do not dispose the root container.
 
 ## Routing Rules
 
