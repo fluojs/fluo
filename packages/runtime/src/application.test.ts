@@ -269,6 +269,46 @@ describe('bootstrapApplication', () => {
     expect(events).toEqual(['adapter:listen', 'adapter:close:SIGTERM', 'adapter:close:SIGTERM']);
   });
 
+  it('shares the same in-flight startup across overlapping listen() calls', async () => {
+    const listenCanFinish = createDeferred<void>();
+    const events: string[] = [];
+    const adapter: HttpApplicationAdapter = {
+      async close(signal) {
+        events.push(`adapter:close:${signal ?? 'none'}`);
+      },
+      async listen() {
+        events.push('adapter:listen:start');
+        await listenCanFinish.promise;
+        events.push('adapter:listen:end');
+      },
+    };
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    }));
+
+    const firstListen = app.listen();
+    const secondListen = app.listen();
+
+    await vi.waitFor(() => {
+      expect(events).toEqual(['adapter:listen:start']);
+    });
+    expect(app.state).toBe('bootstrapped');
+
+    listenCanFinish.resolve();
+
+    await expect(Promise.all([firstListen, secondListen])).resolves.toEqual([undefined, undefined]);
+    expect(app.state).toBe('ready');
+    expect(events).toEqual([
+      'adapter:listen:start',
+      'adapter:listen:end',
+    ]);
+  });
+
   it('does not let a delayed listen transition back to ready after close starts', async () => {
     const listenCanFinish = createDeferred<void>();
     const events: string[] = [];
