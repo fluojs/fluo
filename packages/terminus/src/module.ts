@@ -1,13 +1,14 @@
+import type { Token } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 import type { RequestContext } from '@fluojs/http';
 import {
-  createHealthModule,
   defineModule,
+  HealthModule,
   type ModuleType,
+  PLATFORM_SHELL,
   type PlatformHealthReport,
   type PlatformReadinessReport,
 } from '@fluojs/runtime';
-import { PLATFORM_SHELL, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { TerminusHealthService } from './health-check.js';
 import { TERMINUS_HEALTH_INDICATORS, TERMINUS_INDICATOR_PROVIDER_TOKENS } from './tokens.js';
@@ -15,8 +16,8 @@ import type { HealthCheckReport, HealthIndicator, HealthIndicatorState, Terminus
 
 const TERMINUS_OPTIONS = Symbol.for('fluo.terminus.options');
 
-type ReadinessManagedModule = ReturnType<typeof createHealthModule> & {
-  addReadinessCheck(fn: () => boolean | Promise<boolean>): void;
+type ReadinessManagedModule = ReturnType<typeof HealthModule.forRoot> & {
+  addReadinessCheck(fn: (ctx: RequestContext) => boolean | Promise<boolean>): void;
 };
 
 function copyIndicators(indicators: readonly HealthIndicator[] | undefined): HealthIndicator[] {
@@ -27,9 +28,9 @@ function copyProviders(providers: readonly Provider[] | undefined): Provider[] {
   return [...(providers ?? [])];
 }
 
-function providerToken(provider: Provider): unknown {
+function providerToken(provider: Provider): Token | undefined {
   if (typeof provider === 'function') {
-    return provider;
+    return provider as Token;
   }
 
   if ('provide' in provider) {
@@ -62,9 +63,9 @@ function createTerminusProviders(options: TerminusModuleOptions = {}): Provider[
       useValue: indicatorProviderTokens,
     },
     {
-      inject: [TERMINUS_OPTIONS, TERMINUS_INDICATOR_PROVIDER_TOKENS, RUNTIME_CONTAINER],
+      inject: [TERMINUS_OPTIONS, ...indicatorProviderTokens],
       provide: TERMINUS_HEALTH_INDICATORS,
-      useFactory: async (resolvedOptions: unknown, registeredTokens: unknown, runtimeContainer: unknown) => {
+      useFactory: (resolvedOptions: unknown, ...resolvedProviderIndicators: unknown[]) => {
         const resolvedIndicators: HealthIndicator[] = [];
 
         if (typeof resolvedOptions === 'object' && resolvedOptions !== null && 'indicators' in resolvedOptions) {
@@ -72,17 +73,8 @@ function createTerminusProviders(options: TerminusModuleOptions = {}): Provider[
           resolvedIndicators.push(...copyIndicators(indicators));
         }
 
-        if (
-          runtimeContainer
-          && typeof runtimeContainer === 'object'
-          && runtimeContainer !== null
-          && 'resolve' in runtimeContainer
-          && typeof (runtimeContainer as { resolve?: unknown }).resolve === 'function'
-          && Array.isArray(registeredTokens)
-        ) {
-          for (const token of registeredTokens) {
-            resolvedIndicators.push(await (runtimeContainer as { resolve(token: unknown): Promise<HealthIndicator> }).resolve(token));
-          }
+        for (const providerIndicator of resolvedProviderIndicators) {
+          resolvedIndicators.push(providerIndicator as HealthIndicator);
         }
 
         return resolvedIndicators;
@@ -220,7 +212,7 @@ function withPlatformDiagnostics(
 
 function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): ModuleType {
   const readinessChecks = [...(options.readinessChecks ?? [])];
-  const healthModule = createHealthModule({
+  const healthModule = HealthModule.forRoot({
     healthCheck: async (ctx: RequestContext) => {
       const healthService = await ctx.container.resolve(TerminusHealthService);
       const platformShell = await ctx.container.resolve(PLATFORM_SHELL);
@@ -259,22 +251,17 @@ function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): Modul
         readinessChecks,
       }),
       {
-        inject: [TerminusHealthService, RUNTIME_CONTAINER],
+        inject: [TerminusHealthService],
         provide: TERMINUS_READINESS_REGISTRAR,
-        useFactory: (...deps: unknown[]) => {
-          const [healthService, runtimeContainer] = deps as [{
+        useFactory: (resolvedHealthService: unknown) => {
+          const healthService = resolvedHealthService as {
             isHealthy(): Promise<boolean>;
-          }, {
-            resolve(token: unknown): Promise<{
-              ready(): Promise<PlatformReadinessReport>;
-              health(): Promise<PlatformHealthReport>;
-            }>;
-          }];
+          };
 
           return {
             onApplicationBootstrap(): void {
-              healthModule.addReadinessCheck(async () => {
-                const platformShell = await runtimeContainer.resolve(PLATFORM_SHELL);
+              healthModule.addReadinessCheck(async (ctx: RequestContext) => {
+                const platformShell = await ctx.container.resolve(PLATFORM_SHELL);
                 const [indicatorHealthy, readiness] = await Promise.all([
                   healthService.isHealthy(),
                   platformShell.ready(),

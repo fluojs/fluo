@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
+import type { FrameworkRequest, FrameworkResponse, RequestContext } from '@fluojs/http';
 
 import { bootstrapApplication, defineModule } from '../bootstrap.js';
 import type { ModuleType } from '../types.js';
@@ -9,7 +9,7 @@ import * as healthModuleExports from './health.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
 type ReadinessManagedModule = ModuleType & {
-  addReadinessCheck(fn: () => boolean | Promise<boolean>): void;
+  addReadinessCheck(fn: (ctx: RequestContext) => boolean | Promise<boolean>): void;
   markReady(): void;
   markStarting(): void;
 };
@@ -152,6 +152,28 @@ describe('createHealthModule', () => {
     await app.dispatch(createRequest('/ready'), readyResponse);
     expect(readyResponse.statusCode).toBe(503);
     expect(readyResponse.body).toEqual({ status: 'unavailable' });
+
+    await app.close();
+  });
+
+  it('passes the request context into readiness checks', async () => {
+    const healthModule = HealthModule.forRoot() as ReadinessManagedModule;
+    healthModule.addReadinessCheck((ctx) => ctx.request.path === '/ready');
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [healthModule],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    const readyResponse = createResponse();
+    await app.dispatch(createRequest('/ready'), readyResponse);
+    expect(readyResponse.statusCode).toBe(200);
+    expect(readyResponse.body).toEqual({ status: 'ready' });
 
     await app.close();
   });

@@ -39,7 +39,7 @@ export interface HealthModuleOptions {
 /**
  * Defines the readiness check type.
  */
-export type ReadinessCheck = () => boolean | Promise<boolean>;
+export type ReadinessCheck = (ctx: import('@fluojs/http').RequestContext) => boolean | Promise<boolean>;
 
 function createRuntimeHealthModule(options: HealthModuleOptions = {}): ModuleType {
   const basePath = options.path ?? '';
@@ -84,7 +84,7 @@ function createRuntimeHealthModule(options: HealthModuleOptions = {}): ModuleTyp
       }
 
       for (const check of readinessChecks) {
-        const result = await check();
+        const result = await check(ctx);
 
         if (!result) {
           ctx.response.setStatus(503);
