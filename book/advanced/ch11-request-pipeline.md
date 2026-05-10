@@ -22,18 +22,24 @@ This chapter looks at the internal steps the Fluo HTTP Dispatcher follows from r
 
 Every HTTP request in fluo is handled through the `Dispatcher`. The Dispatcher provides a general interface that does not depend on a specific HTTP server framework, such as Fastify or Express, and turns framework metadata into real execution logic. As a result, once an adapter hands a request to the framework, routing and pipeline execution can follow the same central flow regardless of the server that received it.
 
-`packages/http/src/dispatch/dispatcher.ts:L324-L354`
+`packages/http/src/dispatch/dispatcher.ts` (simplified)
 ```typescript
 export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
   const contentNegotiation = resolveContentNegotiation(options.contentNegotiation);
 
   return {
     async dispatch(request: FrameworkRequest, response: FrameworkResponse): Promise<void> {
-      const phaseContext: DispatchPhaseContext = {
+      const dispatchScope = createRootDispatchScope(options.rootContainer);
+      let phaseContext: DispatchPhaseContext;
+      phaseContext = {
         contentNegotiation,
+        dispatchScope,
         observers: options.observers ?? [],
         options,
-        requestContext: createDispatchContext(createDispatchRequest(request), response, options.rootContainer),
+        requestContext: createDispatchContext(request, response, dispatchScope.container, () => {
+          ensureRequestScope(phaseContext);
+          return phaseContext.dispatchScope.container;
+        }),
         response,
       };
 
@@ -46,7 +52,9 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
         } finally {
           await notifyRequestFinish(phaseContext);
           try {
-            await phaseContext.requestContext.container.dispose();
+            if (phaseContext.dispatchScope.requestScoped) {
+              await phaseContext.dispatchScope.container.dispose();
+            }
           } catch (error) {
             logDispatchFailure(options.logger, 'Request-scoped container dispose threw an error.', error);
           }
@@ -57,13 +65,13 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
 }
 ```
 
-The Dispatcher does not only run handlers. It is the coordination point that manages the full lifecycle, catches errors, and safely releases request-scoped resources.
+The Dispatcher does not only run handlers. It is the coordination point that manages the full lifecycle, catches errors, and safely releases request-scoped resources when a request scope is actually created.
 
 ## 11.2 The Ten-Step Request Pipeline Flow
 
 When a single HTTP request arrives, fluo runs the pipeline in the following order. Each stage depends on the result of the previous stage or can stop the flow under a specific condition, such as failed authentication.
 
-1.  **Context Creation**: Creates a `RequestContext` and assigns a request-specific DI Scope. `createDispatchContext` is called in `dispatcher.ts:L93-L101`. The container created at this point manages instances that belong only to this request until the request ends.
+1.  **Context Creation**: Creates a `RequestContext` and starts from the root DI container. `createDispatchContext` can wrap `RequestContext.container` so a manual `resolve()` promotes the request to an isolated request scope only while dispatch is active. The Dispatcher also promotes before stages that may need request scope, such as active middleware, observers, guards, interceptors, DTO conversion, a custom binder, request-context handler parameters, or a controller graph with request-scoped dependencies.
 2.  **Notification (Start)**: Notifies every registered observer that the request has started. `notifyRequestStart` runs in `dispatcher.ts:L211-L220`. Logging or metrics collection usually starts here.
 3.  **Global Middleware**: Runs application-level global Middleware. `runMiddlewareChain` starts in `dispatcher.ts:L267`. CORS, security headers, and similar concerns are usually handled here.
 4.  **Route Matching**: Finds the right Controller handler from the request URL and method. `matchHandlerOrThrow` is called in `dispatcher.ts:L272`. If no handler is found, a 404 error is raised and the pipeline jumps directly to error handling.
@@ -142,7 +150,7 @@ The full flow can be visualized as follows. The arrows between stages represent 
 [Incoming Request]
        │
        ▼
-[Create RequestContext & DI Scope] ─── (Failure) ──┐
+[Create RequestContext] ────────────── (Failure) ──┐
        │                                           │
        ▼                                           │
 [Notify: onRequestStart] ───────────── (Failure) ──┤
@@ -175,13 +183,13 @@ The full flow can be visualized as follows. The arrows between stages represent 
 [Notify: onRequestFinish] ◀─────────────────────────────────────────────┘
        │
        ▼
-[Dispose DI Scope]
+[Dispose request scope if promoted]
        │
        ▼
 [End of Request]
 ```
 
-This diagram shows Guaranteed Cleanup, a core principle of fluo architecture. Each layer is independent, but the Dispatcher ties them together as one flow. Whether the request takes a success path, an expected error path, or an unexpected panic path, the resource release stage is designed to run every time.
+This diagram shows Guaranteed Cleanup, a core principle of fluo architecture. Each layer is independent, but the Dispatcher ties them together as one flow. Whether the request takes a success path, an expected error path, or an unexpected panic path, the request-scope release stage is designed to run every time a request-scoped container was created. Singleton-only fast-path requests that never promote keep using the root container and do not dispose it.
 
 ## 11.7 DispatchPhaseContext, Phase-Level State Sharing
 
@@ -214,13 +222,13 @@ If an error occurs anywhere in the pipeline, `handleDispatchError` is called and
 
 The Dispatcher does not repeat complex work on every route match. Inside `packages/http/src/dispatch/dispatch-routing-policy.ts`, it uses a `WeakMap` to cache Controller classes and the route metadata for those classes. Because this is a `WeakMap`, the cached data is removed as well when the Controller class becomes eligible for garbage collection.
 
-The Dispatcher also precomputes configuration at creation time through `resolveContentNegotiation`, reducing per-request overhead. The integration tests at the level of `packages/http/src/public-api.test.ts:L39-L52` verify that routing latency stays consistent even in large applications. These optimizations let Fluo keep high throughput even while paying the cost of creating and disposing a container for every request.
+The Dispatcher also precomputes configuration at creation time through `resolveContentNegotiation`, reducing per-request overhead. The integration tests at the level of `packages/http/src/public-api.test.ts:L39-L52` verify that routing latency stays consistent even in large applications. These optimizations let Fluo keep high throughput by keeping singleton-only routes on the root-container fast path while still promoting to isolated request scopes when the pipeline needs request-scoped providers.
 
 ## 11.10 Resource Cleanup, DI Scope Disposal
 
-When request handling ends, `requestContext.container.dispose()` must be called. This runs `onDispose` hooks for non-singleton objects created during the request, meaning request-scoped providers, and releases memory to prevent leaks.
+When request handling ends, a promoted request-scoped container must be disposed. This runs `onDispose` hooks for non-singleton objects created during the request, meaning request-scoped providers, and releases memory to prevent leaks. If the request stayed singleton-only and no promotion occurred, the cleanup path leaves the root container alive.
 
-`packages/http/src/dispatch/dispatcher.ts:L240-L255`
+`packages/http/src/dispatch/dispatcher.ts` (simplified)
 ```typescript
 async function finalizeRequest(phaseContext: DispatchPhaseContext): Promise<void> {
   try {
@@ -229,7 +237,9 @@ async function finalizeRequest(phaseContext: DispatchPhaseContext): Promise<void
     phaseContext.options.logger?.error('Observer onRequestFinish threw an error', error);
   } finally {
     try {
-      await phaseContext.requestContext.container.dispose();
+      if (phaseContext.dispatchScope.requestScoped) {
+        await phaseContext.dispatchScope.container.dispose();
+      }
     } catch (error) {
       phaseContext.options.logger?.error('Request-scoped container dispose threw an error', error);
     }
@@ -237,7 +247,7 @@ async function finalizeRequest(phaseContext: DispatchPhaseContext): Promise<void
 }
 ```
 
-This process runs inside a `finally` block, so it always runs regardless of whether the request succeeds or fails. `packages/http/src/public-api.test.ts:L39-L52` verifies the isolation and disposal policy by confirming that providers that belonged to a request container can no longer be accessed after that container is disposed.
+This process runs inside a `finally` block, so it always checks cleanup regardless of whether the request succeeds or fails. `packages/http/src/dispatch/dispatcher.test.ts` verifies both sides of the policy: singleton-only routes skip request-scope creation, while request-scoped controllers, active middleware, observers, custom binders, DTO converters, and manual container resolution use isolated scopes that are disposed after the dispatch.
 
 Temporary file references or open streams stored inside `RequestContext` are also closed at this stage. Fluo's HTTP Dispatcher uses a leak-prevention-centered design to help keep memory usage stable in production environments with heavy request traffic.
 
@@ -246,7 +256,7 @@ Temporary file references or open streams stored inside `RequestContext` are als
 - **Ten-step pipeline**: Guarantees clearly defined phase-by-phase execution from global Middleware to response writing.
 - **Async isolation**: Isolates data between requests with `AsyncLocalStorage`-based `RequestContext`.
 - **Observability layer**: Enables monitoring across the full flow through the observer pattern without changing business logic.
-- **Reliable cleanup**: Reduces wasted resources through `AbortSignal` checks and forced `dispose()` calls.
+- **Reliable cleanup**: Reduces wasted resources through `AbortSignal` checks and request-scope disposal whenever dispatch promoted to an isolated request scope.
 
 ## Next Chapter Preview
 The next chapter looks more deeply at how Guards, Interceptors, and Middleware form chains and control each other's execution. It also covers what execution order is produced by chain composition with `reduceRight`.

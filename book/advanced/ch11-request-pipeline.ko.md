@@ -22,18 +22,24 @@
 
 fluo의 모든 HTTP 요청은 `Dispatcher`를 통해 처리됩니다. 디스패처는 특정 HTTP 서버 프레임워크(Fastify, Express 등)에 종속되지 않는 범용 인터페이스를 제공하며, 프레임워크 메타데이터를 실제 실행 로직으로 전환합니다. 따라서 어댑터가 어떤 서버에서 요청을 받아오든, 이후의 라우팅과 파이프라인 실행은 같은 중심 흐름을 따를 수 있습니다.
 
-`packages/http/src/dispatch/dispatcher.ts:L324-L354`
+`packages/http/src/dispatch/dispatcher.ts` (simplified)
 ```typescript
 export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
   const contentNegotiation = resolveContentNegotiation(options.contentNegotiation);
 
   return {
     async dispatch(request: FrameworkRequest, response: FrameworkResponse): Promise<void> {
-      const phaseContext: DispatchPhaseContext = {
+      const dispatchScope = createRootDispatchScope(options.rootContainer);
+      let phaseContext: DispatchPhaseContext;
+      phaseContext = {
         contentNegotiation,
+        dispatchScope,
         observers: options.observers ?? [],
         options,
-        requestContext: createDispatchContext(createDispatchRequest(request), response, options.rootContainer),
+        requestContext: createDispatchContext(request, response, dispatchScope.container, () => {
+          ensureRequestScope(phaseContext);
+          return phaseContext.dispatchScope.container;
+        }),
         response,
       };
 
@@ -46,7 +52,9 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
         } finally {
           await notifyRequestFinish(phaseContext);
           try {
-            await phaseContext.requestContext.container.dispose();
+            if (phaseContext.dispatchScope.requestScoped) {
+              await phaseContext.dispatchScope.container.dispose();
+            }
           } catch (error) {
             logDispatchFailure(options.logger, 'Request-scoped container dispose threw an error.', error);
           }
@@ -57,13 +65,13 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
 }
 ```
 
-디스패처는 핸들러만 실행하지 않습니다. 전체 생명주기를 관리하고, 오류를 포착하며, 요청 단위 리소스를 안전하게 해제하는 조율 지점입니다.
+디스패처는 핸들러만 실행하지 않습니다. 전체 생명주기를 관리하고, 오류를 포착하며, request scope가 실제로 만들어진 경우 요청 단위 리소스를 안전하게 해제하는 조율 지점입니다.
 
 ## 11.2 요청 파이프라인의 10단계 흐름
 
 하나의 HTTP 요청이 들어오면 fluo는 다음 순서로 파이프라인을 실행합니다. 각 단계는 이전 단계의 결과에 의존하거나, 특정 조건(예: 인증 실패)에 따라 흐름을 중단할 수 있습니다.
 
-1.  **Context Creation**: `RequestContext`를 생성하고 요청별 DI 스코프를 할당합니다. `dispatcher.ts:L93-L101`에서 `createDispatchContext`가 호출됩니다. 이때 생성된 컨테이너는 요청이 끝날 때까지 해당 요청에만 속한 인스턴스를 관리합니다.
+1.  **Context Creation**: `RequestContext`를 생성하고 root DI container에서 시작합니다. `createDispatchContext`는 `RequestContext.container`를 감싸 수동 `resolve()`가 활성 dispatch 중에만 isolated request scope로 승격되게 할 수 있습니다. 또한 활성 middleware, observer, guard, interceptor, DTO conversion, custom binder, request-context handler parameter, request-scoped dependency를 가진 controller graph처럼 request scope가 필요할 수 있는 단계 전에 디스패처가 승격합니다.
 2.  **Notification (Start)**: 등록된 모든 옵저버에게 요청 시작을 알립니다. `dispatcher.ts:L211-L220`에서 `notifyRequestStart`가 수행됩니다. 로깅이나 메트릭 수집이 여기서 시작됩니다.
 3.  **Global Middleware**: 애플리케이션 수준의 전역 미들웨어를 실행합니다. `dispatcher.ts:L267`에서 `runMiddlewareChain`이 시작됩니다. CORS나 보안 헤더 설정 등이 주로 여기서 처리됩니다.
 4.  **Route Matching**: 요청 URL과 메서드를 기반으로 적절한 컨트롤러 핸들러를 찾습니다. `dispatcher.ts:L272`에서 `matchHandlerOrThrow`가 호출됩니다. 여기서 핸들러를 찾지 못하면 404 에러가 발생하며 파이프라인은 즉시 에러 처리 단계로 건너뜁니다.
@@ -142,7 +150,7 @@ function ensureRequestNotAborted(request: FrameworkRequest): void {
 [Incoming Request]
        │
        ▼
-[Create RequestContext & DI Scope] ─── (Failure) ──┐
+[Create RequestContext] ────────────── (Failure) ──┐
        │                                           │
        ▼                                           │
 [Notify: onRequestStart] ───────────── (Failure) ──┤
@@ -175,13 +183,13 @@ function ensureRequestNotAborted(request: FrameworkRequest): void {
 [Notify: onRequestFinish] ◀─────────────────────────────────────────────┘
        │
        ▼
-[Dispose DI Scope]
+[Dispose request scope if promoted]
        │
        ▼
 [End of Request]
 ```
 
-이 다이어그램은 fluo 아키텍처의 핵심인 "보증된 정리(Guaranteed Cleanup)" 원칙을 보여 줍니다. 각 레이어는 독립적이지만, 디스패처는 이를 하나의 흐름으로 묶습니다. 성공, 예상된 에러, 예기치 못한 패닉 중 어떤 경로를 지나도 리소스 해제 단계는 반드시 실행되도록 설계되어 있습니다.
+이 다이어그램은 fluo 아키텍처의 핵심인 "보증된 정리(Guaranteed Cleanup)" 원칙을 보여 줍니다. 각 레이어는 독립적이지만, 디스패처는 이를 하나의 흐름으로 묶습니다. 성공, 예상된 에러, 예기치 못한 패닉 중 어떤 경로를 지나도 request-scoped container가 생성된 경우 리소스 해제 단계가 실행되도록 설계되어 있습니다. 끝까지 승격되지 않은 singleton-only fast-path 요청은 root container를 계속 사용하며 이를 dispose하지 않습니다.
 
 ## 11.7 DispatchPhaseContext: 단계별 상태 공유
 
@@ -214,11 +222,11 @@ interface DispatchPhaseContext {
 
 디스패처는 라우트 매칭 시 매번 복잡한 연산을 수행하지 않습니다. `packages/http/src/dispatch/dispatch-routing-policy.ts` 내부에서는 `WeakMap`을 사용하여 컨트롤러 클래스와 해당 클래스의 라우트 메타데이터를 캐싱합니다. `WeakMap`을 사용하기 때문에 컨트롤러 클래스가 가비지 컬렉션 대상이 되었을 때 캐시 데이터도 함께 제거됩니다.
 
-또한 디스패처 생성 시점에 `resolveContentNegotiation`을 통해 설정을 미리 계산해 두어 요청당 오버헤드를 줄입니다. `packages/http/src/public-api.test.ts:L39-L52` 수준의 통합 테스트는 대규모 애플리케이션에서도 일관된 라우팅 지연 시간(Latency)을 유지하는지 확인합니다. 이런 최적화 덕분에 Fluo는 매 요청마다 컨테이너를 생성하고 해제하는 비용을 감수하면서도 높은 처리량(Throughput)을 유지할 수 있습니다.
+또한 디스패처 생성 시점에 `resolveContentNegotiation`을 통해 설정을 미리 계산해 두어 요청당 오버헤드를 줄입니다. `packages/http/src/public-api.test.ts:L39-L52` 수준의 통합 테스트는 대규모 애플리케이션에서도 일관된 라우팅 지연 시간(Latency)을 유지하는지 확인합니다. 이런 최적화 덕분에 Fluo는 singleton-only route를 root-container fast path에 유지하면서도, 파이프라인이 request-scoped provider를 필요로 할 때는 isolated request scope로 승격해 높은 처리량(Throughput)을 유지할 수 있습니다.
 
 ## 11.10 리소스 정리: DI 스코프 소멸
 
-요청 처리가 끝나면 반드시 `requestContext.container.dispose()`를 호출합니다. 이는 해당 요청 기간 동안 생성된 싱글톤이 아닌 객체(Request-scoped providers)의 `onDispose` 훅을 실행하고 메모리를 해제하여 누수를 막습니다.
+요청 처리가 끝나면 승격된 request-scoped container를 반드시 dispose해야 합니다. 이는 해당 요청 기간 동안 생성된 싱글톤이 아닌 객체(Request-scoped providers)의 `onDispose` 훅을 실행하고 메모리를 해제하여 누수를 막습니다. 요청이 singleton-only로 유지되어 승격이 일어나지 않았다면 cleanup 경로는 root container를 그대로 둡니다.
 
 `packages/http/src/dispatch/dispatcher.ts:L240-L255`
 ```typescript
@@ -229,7 +237,9 @@ async function finalizeRequest(phaseContext: DispatchPhaseContext): Promise<void
     phaseContext.options.logger?.error('Observer onRequestFinish threw an error', error);
   } finally {
     try {
-      await phaseContext.requestContext.container.dispose();
+      if (phaseContext.dispatchScope.requestScoped) {
+        await phaseContext.dispatchScope.container.dispose();
+      }
     } catch (error) {
       phaseContext.options.logger?.error('Request-scoped container dispose threw an error', error);
     }
@@ -237,7 +247,7 @@ async function finalizeRequest(phaseContext: DispatchPhaseContext): Promise<void
 }
 ```
 
-이 과정은 `finally` 블록 안에서 수행되어 요청의 성공/실패 여부와 관계없이 항상 실행됩니다. `packages/http/src/public-api.test.ts:L39-L52`에서는 요청 컨테이너가 해제된 뒤 해당 컨테이너에 속했던 프로바이더에 더 이상 접근할 수 없음을 확인하여 격리 및 해제 정책이 지켜지는지 검증합니다.
+이 과정은 `finally` 블록 안에서 수행되어 요청의 성공/실패 여부와 관계없이 항상 cleanup 여부를 확인합니다. `packages/http/src/dispatch/dispatcher.test.ts`는 singleton-only route가 request-scope 생성을 건너뛰는 경우와, request-scoped controller, 활성 middleware, observer, custom binder, DTO converter, 수동 container resolution이 isolated scope를 사용한 뒤 dispatch 후 dispose되는 경우를 모두 검증합니다.
 
 또한 `RequestContext` 내부에 저장된 임시 파일 참조나 열려 있는 스트림도 이 단계에서 닫힙니다. Fluo의 HTTP 디스패처는 누수 방지 중심 설계를 통해 많은 요청이 흐르는 프로덕션 환경에서도 메모리 점유율을 안정적으로 유지하도록 돕습니다.
 
@@ -246,7 +256,7 @@ async function finalizeRequest(phaseContext: DispatchPhaseContext): Promise<void
 - **10단계 파이프라인**: 전역 미들웨어부터 응답 쓰기까지 명확히 정의된 단계별 실행을 보장합니다.
 - **비동기 격리**: `AsyncLocalStorage` 기반의 `RequestContext`로 요청 간 데이터를 격리합니다.
 - **관찰성 계층**: 옵저버 패턴을 통해 비즈니스 로직 수정 없이 전 구간 모니터링이 가능합니다.
-- **신뢰할 수 있는 정리**: `AbortSignal` 감시와 강제 `dispose()` 호출로 리소스 낭비를 줄입니다.
+- **신뢰할 수 있는 정리**: `AbortSignal` 감시와 isolated request scope로 승격된 dispatch의 request-scope disposal로 리소스 낭비를 줄입니다.
 
 ## 다음 챕터 예고
 다음 챕터에서는 가드, 인터셉터, 미들웨어가 어떻게 "체인"을 형성하고 서로의 실행을 제어하는지 더 깊게 살펴봅니다. `reduceRight`를 활용한 체인 구성이 어떤 실행 순서를 만드는지도 함께 다룹니다.
