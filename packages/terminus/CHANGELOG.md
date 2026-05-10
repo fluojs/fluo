@@ -1,5 +1,23 @@
 # @fluojs/terminus
 
+## 1.0.0-beta.6
+
+### Patch Changes
+
+- [#1629](https://github.com/fluojs/fluo/pull/1629) [`758d1df`](https://github.com/fluojs/fluo/commit/758d1dfbe2d4c5de32077f832cbbbca957a271a4) Thanks [@ayden94](https://github.com/ayden94)! - Reject blank health indicator result keys as down diagnostics and lazy-load Node filesystem access so root Terminus imports stay runtime-safe. Node-specific memory/disk indicators are also available from the `@fluojs/terminus/node` subpath.
+
+- [#1704](https://github.com/fluojs/fluo/pull/1704) [`d3504c6`](https://github.com/fluojs/fluo/commit/d3504c6a822bdab95bb638852dba2d9b865fc34f) Thanks [@ayden94](https://github.com/ayden94)! - Make Terminus Drizzle health checks lifecycle-aware by resolving the public Drizzle wrapper token before raw ping fallback, so shutdown and stopped Drizzle integrations now report unavailable health/readiness.
+
+  Expose the `/ready` request context to runtime health readiness checks so integrations can resolve public runtime status providers without importing runtime internals.
+
+- Updated dependencies [[`2159d4f`](https://github.com/fluojs/fluo/commit/2159d4f35993af7f5b6e056afd535a02d1831cab), [`3465437`](https://github.com/fluojs/fluo/commit/3465437399e8e6ecdfca68fa8f5ccb02d5a9c52f), [`d9bff54`](https://github.com/fluojs/fluo/commit/d9bff543e337eaa7654fae5e25dcaef2784fa8d1), [`aaab8c4`](https://github.com/fluojs/fluo/commit/aaab8c440caddbf32e7657b859e36a238c7ea3f0), [`9f168b1`](https://github.com/fluojs/fluo/commit/9f168b1121760b8e32faee34332cc4590008fdff), [`b6f8754`](https://github.com/fluojs/fluo/commit/b6f8754e3d3247b29c412b5b5b20353ac60115a8), [`f1a94b2`](https://github.com/fluojs/fluo/commit/f1a94b2e184c8f4507294a826676d36b218a5bbb), [`b74832f`](https://github.com/fluojs/fluo/commit/b74832f7d3d17a7d0bb071dabcced291f3543f44), [`f0dce1f`](https://github.com/fluojs/fluo/commit/f0dce1f493688907e60b27701b6d7d664a352294), [`d3504c6`](https://github.com/fluojs/fluo/commit/d3504c6a822bdab95bb638852dba2d9b865fc34f)]:
+  - @fluojs/di@1.0.0-beta.7
+  - @fluojs/drizzle@1.0.0-beta.4
+  - @fluojs/core@1.0.0-beta.5
+  - @fluojs/prisma@1.0.0-beta.5
+  - @fluojs/redis@1.0.0-beta.4
+  - @fluojs/runtime@1.0.0-beta.12
+
 ## 1.0.0-beta.5
 
 ### Patch Changes

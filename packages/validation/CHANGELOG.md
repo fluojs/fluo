@@ -1,5 +1,16 @@
 # @fluojs/validation
 
+## 1.0.0-beta.4
+
+### Patch Changes
+
+- [#1619](https://github.com/fluojs/fluo/pull/1619) [`b15ac1b`](https://github.com/fluojs/fluo/commit/b15ac1bacccf53b39862ef0243182107840e9a3a) Thanks [@ayden94](https://github.com/ayden94)! - Return deterministic validation errors for malformed validation roots and document nested DTO instance preservation during materialization.
+
+- [#1703](https://github.com/fluojs/fluo/pull/1703) [`65a08db`](https://github.com/fluojs/fluo/commit/65a08db23814e2234bf5739fecf04f710b02a996) Thanks [@ayden94](https://github.com/ayden94)! - Harden nested DTO lazy factory resolution and keep latitude/longitude validation aligned with strict no-coercion scalar validation.
+
+- Updated dependencies [[`aaab8c4`](https://github.com/fluojs/fluo/commit/aaab8c440caddbf32e7657b859e36a238c7ea3f0)]:
+  - @fluojs/core@1.0.0-beta.5
+
 ## 1.0.0-beta.3
 
 ### Patch Changes

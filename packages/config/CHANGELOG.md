@@ -1,5 +1,14 @@
 # @fluojs/config
 
+## 1.0.0-beta.8
+
+### Patch Changes
+
+- [#1627](https://github.com/fluojs/fluo/pull/1627) [`372a80d`](https://github.com/fluojs/fluo/commit/372a80d337f8b806f05693ed33ca45d6e4289115) Thanks [@ayden94](https://github.com/ayden94)! - Implement `ConfigModule.forRoot({ watch: true })` watcher activation so documented watch reloads update the injected `ConfigService` instance during application runtime.
+
+- Updated dependencies [[`aaab8c4`](https://github.com/fluojs/fluo/commit/aaab8c440caddbf32e7657b859e36a238c7ea3f0)]:
+  - @fluojs/core@1.0.0-beta.5
+
 ## 1.0.0-beta.7
 
 ### Minor Changes

@@ -1,5 +1,23 @@
 # @fluojs/cli
 
+## 1.0.0-beta.8
+
+### Minor Changes
+
+- [#1581](https://github.com/fluojs/fluo/pull/1581) [`b6ab426`](https://github.com/fluojs/fluo/commit/b6ab4260fd6b641d94eb144d771a5cac311d2de0) Thanks [@ayden94](https://github.com/ayden94)! - Add module slice-test, resource slice-test, and e2e test generators so generated projects can scaffold the canonical fluo TDD ladder with `createTestingModule({ rootModule })` and `createTestApp({ rootModule })`.
+
+### Patch Changes
+
+- [#1626](https://github.com/fluojs/fluo/pull/1626) [`207de57`](https://github.com/fluojs/fluo/commit/207de57ffb524d1a6150304030d50831f9085101) Thanks [@ayden94](https://github.com/ayden94)! - Preserve `runCli(...)` numeric exit-code behavior when lifecycle command spawning fails, and align CLI learning docs with the Node.js 20+ package baseline.
+
+- [#1580](https://github.com/fluojs/fluo/pull/1580) [`cf2be08`](https://github.com/fluojs/fluo/commit/cf2be087c19465aa01ad4d58ecb6ffd6452eed25) Thanks [@ayden94](https://github.com/ayden94)! - Generated starter e2e templates now use the application-level `app.request(...).send()` testing helper as the default HTTP request path.
+
+- [#1578](https://github.com/fluojs/fluo/pull/1578) [`fd0aeda`](https://github.com/fluojs/fluo/commit/fd0aedaf385e79bb1cefd0bd7e05d3d71a9509ef) Thanks [@ayden94](https://github.com/ayden94)! - Normalize generated HTTP starter tests around colocated unit/slice coverage plus a dedicated `test/app.e2e.test.ts` suite, and expose `test:cov`/`test:e2e` scripts for Vitest-backed starters.
+
+- Updated dependencies [[`b74832f`](https://github.com/fluojs/fluo/commit/b74832f7d3d17a7d0bb071dabcced291f3543f44), [`f0dce1f`](https://github.com/fluojs/fluo/commit/f0dce1f493688907e60b27701b6d7d664a352294), [`db1723c`](https://github.com/fluojs/fluo/commit/db1723cde769526a6ad73e19424fc78297ec745a), [`d3504c6`](https://github.com/fluojs/fluo/commit/d3504c6a822bdab95bb638852dba2d9b865fc34f)]:
+  - @fluojs/runtime@1.0.0-beta.12
+  - @fluojs/studio@1.0.0-beta.4
+
 ## 1.0.0-beta.7
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @fluojs/core
 
+## 1.0.0-beta.5
+
+### Minor Changes
+
+- [#1692](https://github.com/fluojs/fluo/pull/1692) [`aaab8c4`](https://github.com/fluojs/fluo/commit/aaab8c440caddbf32e7657b859e36a238c7ea3f0) Thanks [@ayden94](https://github.com/ayden94)! - Harden `@fluojs/testing/vitest` module-id and Babel config portability, make HTTP portability harness assertions less flaky, and add a public `getModuleMetadata()` reader through the core root entrypoint so testing helpers avoid private internals.
+
 ## 1.0.0-beta.4
 
 ### Patch Changes
