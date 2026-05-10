@@ -17,7 +17,7 @@ import { RuntimeDefaultBinder } from './internal/http-runtime.js';
 import { createConsoleApplicationLogger } from './logging/logger.js';
 import { compileModuleGraph, providerToken } from './module-graph.js';
 import { createRuntimePlatformShell, type RuntimePlatformShell } from './platform-shell.js';
-import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CONTAINER } from './tokens.js';
+import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
 import type {
   ApplicationContext,
   Application,
@@ -40,6 +40,7 @@ import type {
   OnApplicationShutdown,
   OnModuleDestroy,
   OnModuleInit,
+  RuntimeCleanupRegistration,
 } from './types.js';
 
 const DEFAULT_MICROSERVICE_TOKEN = Symbol.for('fluo.microservices.service') as Token<MicroserviceRuntime>;
@@ -120,6 +121,20 @@ async function runCleanupCallbacks(cleanups: readonly (() => void)[]): Promise<u
   }
 
   return errors;
+}
+
+function createRuntimeCleanupRegistration(cleanups: Array<() => void>): RuntimeCleanupRegistration {
+  return (cleanup) => {
+    cleanups.push(cleanup);
+
+    return () => {
+      const index = cleanups.indexOf(cleanup);
+
+      if (index >= 0) {
+        cleanups.splice(index, 1);
+      }
+    };
+  };
 }
 
 async function closeRuntimeResources(options: {
@@ -541,6 +556,7 @@ class FluoApplication implements Application {
   private applicationState: ApplicationState = 'bootstrapped';
   private closed = false;
   private closingPromise: Promise<void> | undefined;
+  private listenPromise: Promise<void> | undefined;
   private readonly contextResolutionCache: ContextResolutionCache = new Map();
   private readonly lifecycleInstances: unknown[];
   private readonly connectedMicroservices: MicroserviceApplication[] = [];
@@ -648,12 +664,31 @@ class FluoApplication implements Application {
    * 준비 검사를 통과한 뒤 어댑터에 바인딩을 위임하고 상태를 `ready`로 전이한다.
    */
   async listen(): Promise<void> {
-    if (this.applicationState === 'closed') {
+    if (this.closed || this.closingPromise || this.applicationState === 'closed') {
       throw new InvariantError('Application cannot listen after it has been closed.');
     }
 
     if (this.applicationState === 'ready') {
       return;
+    }
+
+    if (this.listenPromise) {
+      await this.listenPromise;
+      return;
+    }
+
+    this.listenPromise = this.startListening();
+
+    try {
+      await this.listenPromise;
+    } finally {
+      this.listenPromise = undefined;
+    }
+  }
+
+  private async startListening(): Promise<void> {
+    if (this.closed || this.closingPromise || this.applicationState === 'closed') {
+      throw new InvariantError('Application cannot listen after it has been closed.');
     }
 
     if (!this.hasHttpAdapter) {
@@ -670,8 +705,12 @@ class FluoApplication implements Application {
       throw error;
     }
 
+    if (this.closed || this.closingPromise) {
+      throw new InvariantError('Application startup was interrupted by shutdown.');
+    }
+
     this.applicationState = 'ready';
-      this.logger.log('fluo application successfully started.', 'FluoApplication');
+    this.logger.log('fluo application successfully started.', 'FluoApplication');
   }
 
   dispatch = async (...args: Parameters<Dispatcher['dispatch']>): Promise<void> => {
@@ -693,6 +732,12 @@ class FluoApplication implements Application {
 
     this.closingPromise = (async () => {
       const errors: unknown[] = [];
+
+      if (this.listenPromise) {
+        try {
+          await this.listenPromise;
+        } catch {}
+      }
 
       try {
         await this.closeConnectedMicroservices(signal);
@@ -788,6 +833,7 @@ class FluoApplicationContext implements ApplicationContext {
 class FluoMicroserviceApplication implements MicroserviceApplication {
   private closed = false;
   private closingPromise: Promise<void> | undefined;
+  private listenPromise: Promise<void> | undefined;
   private microserviceState: ApplicationState = 'bootstrapped';
 
   constructor(
@@ -818,7 +864,7 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
   }
 
   async listen(): Promise<void> {
-    if (this.microserviceState === 'closed') {
+    if (this.closed || this.closingPromise || this.microserviceState === 'closed') {
       throw new InvariantError('Microservice cannot listen after it has been closed.');
     }
 
@@ -826,9 +872,33 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
       return;
     }
 
+    if (this.listenPromise) {
+      await this.listenPromise;
+      return;
+    }
+
+    this.listenPromise = this.startListening();
+
+    try {
+      await this.listenPromise;
+    } finally {
+      this.listenPromise = undefined;
+    }
+  }
+
+  private async startListening(): Promise<void> {
+    if (this.closed || this.closingPromise || this.microserviceState === 'closed') {
+      throw new InvariantError('Microservice cannot listen after it has been closed.');
+    }
+
     await this.runtime.listen();
+
+    if (this.closed || this.closingPromise) {
+      throw new InvariantError('Microservice startup was interrupted by shutdown.');
+    }
+
     this.microserviceState = 'ready';
-      this.logger.log('fluo microservice successfully started.', 'FluoFactory');
+    this.logger.log('fluo microservice successfully started.', 'FluoFactory');
   }
 
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
@@ -858,6 +928,12 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
     }
 
     this.closingPromise = (async () => {
+      if (this.listenPromise) {
+        try {
+          await this.listenPromise;
+        } catch {}
+      }
+
       if (this.closeContextOnClose) {
         const errors: unknown[] = [];
 
@@ -1154,6 +1230,7 @@ function registerRuntimeBootstrapTokens(
   bootstrapped: BootstrapResult,
   adapter: HttpApplicationAdapter,
   platformShell: RuntimePlatformShell,
+  runtimeCleanup: Array<() => void>,
 ): void {
   registerRuntimeContextTokens(bootstrapped, {
     provide: HTTP_APPLICATION_ADAPTER,
@@ -1161,6 +1238,9 @@ function registerRuntimeBootstrapTokens(
   }, {
     provide: PLATFORM_SHELL,
     useValue: platformShell,
+  }, {
+    provide: RUNTIME_CLEANUP_REGISTRATION,
+    useValue: createRuntimeCleanupRegistration(runtimeCleanup),
   });
 }
 
@@ -1178,10 +1258,17 @@ function registerRuntimeContextTokens(bootstrapped: BootstrapResult, ...provider
   );
 }
 
-function registerRuntimeApplicationContextTokens(bootstrapped: BootstrapResult, platformShell: RuntimePlatformShell): void {
+function registerRuntimeApplicationContextTokens(
+  bootstrapped: BootstrapResult,
+  platformShell: RuntimePlatformShell,
+  runtimeCleanup: Array<() => void>,
+): void {
   registerRuntimeContextTokens(bootstrapped, {
     provide: PLATFORM_SHELL,
     useValue: platformShell,
+  }, {
+    provide: RUNTIME_CLEANUP_REGISTRATION,
+    useValue: createRuntimeCleanupRegistration(runtimeCleanup),
   });
 }
 
@@ -1320,7 +1407,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       logger,
       moduleGraphCache: options.moduleGraphCache,
       providers: runtimeProviders,
-      validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER],
+      validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CLEANUP_REGISTRATION],
     });
     if (timingEnabled) {
       timingPhases.push({
@@ -1330,7 +1417,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     }
 
     const registerTokensStart = timingEnabled ? runtimePerformance.now() : 0;
-    registerRuntimeBootstrapTokens(bootstrapped, adapter, platformShell);
+    registerRuntimeBootstrapTokens(bootstrapped, adapter, platformShell, runtimeCleanup);
     if (timingEnabled) {
       timingPhases.push({
         durationMs: runtimePerformance.now() - registerTokensStart,
@@ -1391,7 +1478,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       runtimeCleanup,
       createContextCacheableTokenSet(
         bootstrapped.effectiveProviders,
-        [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL],
+        [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION],
       ),
     );
   } catch (error: unknown) {
@@ -1465,7 +1552,7 @@ export class FluoFactory {
         logger,
         moduleGraphCache: options.moduleGraphCache,
         providers: runtimeProviders,
-        validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES],
+        validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION],
       });
       if (timingEnabled) {
         timingPhases.push({
@@ -1475,7 +1562,7 @@ export class FluoFactory {
       }
 
       const registerTokensStart = timingEnabled ? runtimePerformance.now() : 0;
-      registerRuntimeApplicationContextTokens(bootstrapped, platformShell);
+      registerRuntimeApplicationContextTokens(bootstrapped, platformShell, runtimeCleanup);
       if (timingEnabled) {
         timingPhases.push({
           durationMs: runtimePerformance.now() - registerTokensStart,
@@ -1522,7 +1609,7 @@ export class FluoFactory {
         runtimeCleanup,
         createContextCacheableTokenSet(
           bootstrapped.effectiveProviders,
-          [RUNTIME_CONTAINER, COMPILED_MODULES, PLATFORM_SHELL],
+          [RUNTIME_CONTAINER, COMPILED_MODULES, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION],
         ),
       );
     } catch (error: unknown) {

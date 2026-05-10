@@ -37,6 +37,7 @@ describe('runtime export boundaries', () => {
       'COMPILED_MODULES',
       'HTTP_APPLICATION_ADAPTER',
       'PLATFORM_SHELL',
+      'RUNTIME_CLEANUP_REGISTRATION',
       'RUNTIME_CONTAINER',
     ]);
   });

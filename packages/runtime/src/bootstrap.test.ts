@@ -8,8 +8,8 @@ import { DuplicateProviderError, ModuleGraphError, ModuleInjectionMetadataError,
 import { defineRuntimeModuleMetadata } from './internal/core-metadata.js';
 import { clearModuleGraphCompileCacheForTesting, getModuleGraphCompileCacheSizeForTesting } from './module-graph.js';
 import type { PlatformComponent, PlatformState } from './platform-contract.js';
-import { HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL } from './tokens.js';
-import type { MicroserviceRuntime } from './types.js';
+import { HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION } from './tokens.js';
+import type { MicroserviceRuntime, OnModuleInit, RuntimeCleanupRegistration } from './types.js';
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -925,6 +925,41 @@ describe('FluoFactory.createApplicationContext', () => {
     ]);
   });
 
+  it('runs internally registered runtime cleanup callbacks after bootstrap hook failure', async () => {
+    const events: string[] = [];
+
+    @Inject(RUNTIME_CLEANUP_REGISTRATION)
+    class CleanupRegistrant implements OnModuleInit {
+      constructor(private readonly registerCleanup: RuntimeCleanupRegistration) {}
+
+      onModuleInit() {
+        this.registerCleanup(() => {
+          events.push('runtime:cleanup');
+        });
+      }
+    }
+
+    class FailingBootstrapHook {
+      onApplicationBootstrap() {
+        events.push('bootstrap:fail');
+        throw new Error('bootstrap hook failed');
+      }
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [CleanupRegistrant, FailingBootstrapHook],
+    });
+
+    await expect(FluoFactory.createApplicationContext(AppModule, {
+    })).rejects.toThrow('bootstrap hook failed');
+
+    expect(events).toEqual([
+      'bootstrap:fail',
+      'runtime:cleanup',
+    ]);
+  });
+
   it('runs startup and shutdown lifecycle hooks around close()', async () => {
     const events: string[] = [];
 
@@ -1495,6 +1530,59 @@ describe('FluoFactory.createMicroservice', () => {
     await microservice.close();
   });
 
+  it('shares the same in-flight startup across overlapping microservice listen() calls', async () => {
+    const events: string[] = [];
+    const listenCanFinish = createDeferred<void>();
+    const MICROSERVICE_TOKEN = Symbol.for('fluo.microservices.service');
+
+    class StubMicroserviceRuntime implements MicroserviceRuntime {
+      async close(): Promise<void> {
+        events.push('runtime:close');
+      }
+
+      async listen(): Promise<void> {
+        events.push('runtime:listen:start');
+        await listenCanFinish.promise;
+        events.push('runtime:listen:end');
+      }
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [
+        {
+          provide: MICROSERVICE_TOKEN,
+          useClass: StubMicroserviceRuntime,
+        },
+      ],
+    });
+
+    const microservice = await FluoFactory.createMicroservice(AppModule);
+    const firstListen = microservice.listen();
+    const secondListen = microservice.listen();
+
+    await vi.waitFor(() => {
+      expect(events).toEqual(['runtime:listen:start']);
+    });
+    expect(microservice.state).toBe('bootstrapped');
+
+    listenCanFinish.resolve();
+
+    await expect(Promise.all([firstListen, secondListen])).resolves.toEqual([undefined, undefined]);
+    expect(microservice.state).toBe('ready');
+    expect(events).toEqual([
+      'runtime:listen:start',
+      'runtime:listen:end',
+    ]);
+
+    await microservice.close();
+    expect(events).toEqual([
+      'runtime:listen:start',
+      'runtime:listen:end',
+      'runtime:close',
+    ]);
+  });
+
   it('attempts standalone runtime and context close before surfacing close failures', async () => {
     const events: string[] = [];
     const MICROSERVICE_TOKEN = Symbol.for('fluo.microservices.service');
@@ -1774,6 +1862,50 @@ describe('FluoFactory.createMicroservice', () => {
     ]);
 
     await app.close();
+  });
+
+  it('does not let a delayed microservice listen transition back to ready after close starts', async () => {
+    const events: string[] = [];
+    const listenCanFinish = createDeferred<void>();
+    const MICROSERVICE_TOKEN = Symbol.for('fluo.microservices.service');
+
+    class StubMicroserviceRuntime implements MicroserviceRuntime {
+      async close(signal?: string): Promise<void> {
+        events.push(`runtime:close:${signal ?? 'none'}`);
+      }
+
+      async listen(): Promise<void> {
+        events.push('runtime:listen:start');
+        await listenCanFinish.promise;
+        events.push('runtime:listen:end');
+      }
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [
+        {
+          provide: MICROSERVICE_TOKEN,
+          useClass: StubMicroserviceRuntime,
+        },
+      ],
+    });
+
+    const microservice = await FluoFactory.createMicroservice(AppModule);
+    const listenPromise = microservice.listen();
+    const closePromise = microservice.close('SIGTERM');
+
+    listenCanFinish.resolve();
+
+    await expect(listenPromise).rejects.toThrow('Microservice startup was interrupted by shutdown.');
+    await expect(closePromise).resolves.toBeUndefined();
+
+    expect(microservice.state).toBe('closed');
+    expect(events).toEqual([
+      'runtime:listen:start',
+      'runtime:listen:end',
+      'runtime:close:SIGTERM',
+    ]);
   });
 });
 

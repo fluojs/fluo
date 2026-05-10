@@ -28,8 +28,8 @@ import { bootstrapApplication, defineModule, FluoFactory } from './bootstrap.js'
 import { ModuleInjectionMetadataError } from './errors.js';
 import { createHealthModule } from './health/health.js';
 import { bootstrapNodeApplication, createNodeHttpAdapter, runNodeApplication } from './node/node.js';
-import { COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from './tokens.js';
-import type { ApplicationLogger, CompiledModule, ExceptionFilterContext, ExceptionFilterHandler, OnApplicationBootstrap, OnModuleInit } from './types.js';
+import { COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
+import type { ApplicationLogger, CompiledModule, ExceptionFilterContext, ExceptionFilterHandler, OnApplicationBootstrap, OnModuleInit, RuntimeCleanupRegistration } from './types.js';
 
 async function findAvailablePort(): Promise<number> {
   return await new Promise<number>((resolve, reject) => {
@@ -267,6 +267,112 @@ describe('bootstrapApplication', () => {
     await expect(app.close('SIGTERM')).resolves.toBeUndefined();
     expect(app.state).toBe('closed');
     expect(events).toEqual(['adapter:listen', 'adapter:close:SIGTERM', 'adapter:close:SIGTERM']);
+  });
+
+  it('shares the same in-flight startup across overlapping listen() calls', async () => {
+    const listenCanFinish = createDeferred<void>();
+    const events: string[] = [];
+    const adapter: HttpApplicationAdapter = {
+      async close(signal) {
+        events.push(`adapter:close:${signal ?? 'none'}`);
+      },
+      async listen() {
+        events.push('adapter:listen:start');
+        await listenCanFinish.promise;
+        events.push('adapter:listen:end');
+      },
+    };
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    }));
+
+    const firstListen = app.listen();
+    const secondListen = app.listen();
+
+    await vi.waitFor(() => {
+      expect(events).toEqual(['adapter:listen:start']);
+    });
+    expect(app.state).toBe('bootstrapped');
+
+    listenCanFinish.resolve();
+
+    await expect(Promise.all([firstListen, secondListen])).resolves.toEqual([undefined, undefined]);
+    expect(app.state).toBe('ready');
+    expect(events).toEqual([
+      'adapter:listen:start',
+      'adapter:listen:end',
+    ]);
+  });
+
+  it('does not let a delayed listen transition back to ready after close starts', async () => {
+    const listenCanFinish = createDeferred<void>();
+    const events: string[] = [];
+    const adapter: HttpApplicationAdapter = {
+      async close(signal) {
+        events.push(`adapter:close:${signal ?? 'none'}`);
+      },
+      async listen() {
+        events.push('adapter:listen:start');
+        await listenCanFinish.promise;
+        events.push('adapter:listen:end');
+      },
+    };
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    }));
+
+    const listenPromise = app.listen();
+    const closePromise = app.close('SIGTERM');
+
+    listenCanFinish.resolve();
+
+    await expect(listenPromise).rejects.toThrow('Application startup was interrupted by shutdown.');
+    await expect(closePromise).resolves.toBeUndefined();
+
+    expect(app.state).toBe('closed');
+    expect(events).toEqual([
+      'adapter:listen:start',
+      'adapter:listen:end',
+      'adapter:close:SIGTERM',
+    ]);
+  });
+
+  it('runs internally registered runtime cleanup callbacks on close', async () => {
+    const events: string[] = [];
+
+    @Inject(RUNTIME_CLEANUP_REGISTRATION)
+    class RuntimeCleanupProbe implements OnModuleInit {
+      constructor(private readonly registerCleanup: RuntimeCleanupRegistration) {}
+
+      onModuleInit() {
+        this.registerCleanup(() => {
+          events.push('runtime:cleanup');
+        });
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      providers: [RuntimeCleanupProbe],
+    });
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      rootModule: AppModule,
+    }));
+
+    await app.close('SIGTERM');
+
+    expect(events).toEqual(['runtime:cleanup']);
   });
 
   it('surfaces shutdown hook failures from close() instead of masking them as success', async () => {
