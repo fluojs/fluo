@@ -135,10 +135,12 @@ class RestrictedUserDto {
 ### Nested validation
 
 `@ValidateNested(...)` supports object fields, arrays, `Set`, and `Map`. Nested DTO paths use dot/index notation in validation issues, cycles are detected safely, and shared references are allowed.
+Pass either a DTO class or a lazy constructor factory such as `() => ChildDto` or `function resolveChildDto() { return ChildDto; }` when nested types need deferred resolution.
 
 ### No implicit scalar coercion
 
 `materialize()` is intentionally strict. If a transport gives you `'42'` and your DTO expects `number`, the transport or binding layer must convert it first.
+Numeric validators, including `@IsLatitude()` and `@IsLongitude()`, validate numeric DTO values without treating numeric strings as already-converted numbers.
 
 ## Public API
 
