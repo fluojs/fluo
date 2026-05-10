@@ -41,7 +41,7 @@ export async function runMiddlewareChain(
 ): Promise<void> {
   const chain = middlewares.reduceRight(
     (next, middleware) => async () => {
-      await middleware.use(context, next);
+      await middleware.handle(context, next);
     },
     terminal
   );
@@ -49,7 +49,7 @@ export async function runMiddlewareChain(
 }
 ```
 
-In this structure, logic after the `next()` call runs in reverse order. That lets Middleware participate not only when the request moves inward, but also when the response moves outward. `reduceRight` is used because the last element in the list must wrap `terminal`, the innermost logic.
+In this structure, each class-based middleware implements `handle(context, next)`, and logic after the `next()` call runs in reverse order. That lets Middleware participate not only when the request moves inward, but also when the response moves outward. `reduceRight` is used because the last element in the list must wrap `terminal`, the innermost logic.
 
 ## 12.3 Guard: Strict Access Control
 

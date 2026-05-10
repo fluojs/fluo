@@ -41,7 +41,7 @@ export async function runMiddlewareChain(
 ): Promise<void> {
   const chain = middlewares.reduceRight(
     (next, middleware) => async () => {
-      await middleware.use(context, next);
+      await middleware.handle(context, next);
     },
     terminal
   );
@@ -49,7 +49,7 @@ export async function runMiddlewareChain(
 }
 ```
 
-이 구조에서는 `next()` 호출 이후의 로직이 역순으로 실행됩니다. 그래서 미들웨어는 요청이 안쪽으로 들어가는 단계뿐 아니라 응답이 바깥쪽으로 나오는 단계에도 개입할 수 있습니다. `reduceRight`를 쓰는 이유는 리스트의 마지막 요소가 `terminal`(가장 안쪽 로직)을 감싸야 하기 때문입니다.
+이 구조에서는 각 class-based middleware가 `handle(context, next)`를 구현하며, `next()` 호출 이후의 로직이 역순으로 실행됩니다. 그래서 미들웨어는 요청이 안쪽으로 들어가는 단계뿐 아니라 응답이 바깥쪽으로 나오는 단계에도 개입할 수 있습니다. `reduceRight`를 쓰는 이유는 리스트의 마지막 요소가 `terminal`(가장 안쪽 로직)을 감싸야 하기 때문입니다.
 
 ## 12.3 가드(Guard): 철저한 출입 통제
 
