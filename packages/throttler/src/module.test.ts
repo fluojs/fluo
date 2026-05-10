@@ -102,6 +102,7 @@ function createGuardContext(
 describe('@fluojs/throttler public entrypoints', () => {
   it('keeps ThrottlerModule.forRoot as the supported registration entrypoint without exporting internal provider helpers', () => {
     expect(throttlerExports).not.toHaveProperty('createThrottlerProviders');
+    expect(throttlerExports).not.toHaveProperty('THROTTLER_OPTIONS');
     expect(throttlerExports.ThrottlerModule).toBe(ThrottlerModule);
     expect(typeof throttlerExports.ThrottlerModule.forRoot).toBe('function');
   });
