@@ -500,13 +500,24 @@ describe('serialize', () => {
     expect(serialized.total).toBe(1n);
   });
 
-  it('preserves opaque built-in objects instead of flattening them as DTO-like instances', () => {
+  it('preserves every documented opaque built-in instead of flattening them as DTO-like instances', () => {
+    const createdAt = new Date('2026-03-24T00:00:00.000Z');
     const roles = new Map([['admin', true]]);
     const tags = new Set(['framework']);
     const profileUrl = new URL('https://fluo.dev/users/u-1');
+    const searchParams = new URLSearchParams([['role', 'admin']]);
+    const routePattern = /^\/users\/[a-z0-9-]+$/u;
     const failure = new Error('not serialized as an empty object');
+    const binaryBuffer = new ArrayBuffer(8);
+    const typedScores = new Uint16Array([100, 200]);
+    const weakRoles = new WeakMap<object, string>();
+    const weakTags = new WeakSet<object>();
+    const pendingProfile = Promise.resolve({ id: 'u-1' });
 
     class UserView {
+      @Expose()
+      createdAt = createdAt;
+
       @Expose()
       roles = roles;
 
@@ -517,19 +528,115 @@ describe('serialize', () => {
       profileUrl = profileUrl;
 
       @Expose()
+      searchParams = searchParams;
+
+      @Expose()
+      routePattern = routePattern;
+
+      @Expose()
       failure = failure;
+
+      @Expose()
+      binaryBuffer = binaryBuffer;
+
+      @Expose()
+      typedScores = typedScores;
+
+      @Expose()
+      weakRoles = weakRoles;
+
+      @Expose()
+      weakTags = weakTags;
+
+      @Expose()
+      pendingProfile = pendingProfile;
     }
 
     const serialized = serialize(new UserView()) as {
+      createdAt: Date;
       roles: Map<string, boolean>;
       tags: Set<string>;
       profileUrl: URL;
+      searchParams: URLSearchParams;
+      routePattern: RegExp;
       failure: Error;
+      binaryBuffer: ArrayBuffer;
+      typedScores: Uint16Array;
+      weakRoles: WeakMap<object, string>;
+      weakTags: WeakSet<object>;
+      pendingProfile: Promise<{ id: string }>;
     };
 
+    expect(serialized.createdAt).toBe(createdAt);
     expect(serialized.roles).toBe(roles);
     expect(serialized.tags).toBe(tags);
     expect(serialized.profileUrl).toBe(profileUrl);
+    expect(serialized.searchParams).toBe(searchParams);
+    expect(serialized.routePattern).toBe(routePattern);
     expect(serialized.failure).toBe(failure);
+    expect(serialized.binaryBuffer).toBe(binaryBuffer);
+    expect(serialized.typedScores).toBe(typedScores);
+    expect(serialized.weakRoles).toBe(weakRoles);
+    expect(serialized.weakTags).toBe(weakTags);
+    expect(serialized.pendingProfile).toBe(pendingProfile);
+  });
+
+  it('serializes exposed own constructor keys on decorated instances without prototype mutation', () => {
+    @Expose({ excludeExtraneous: false })
+    class DangerousView {
+      @Expose()
+      safe = true;
+
+      constructor() {
+        Object.defineProperty(this, 'constructor', {
+          configurable: true,
+          enumerable: true,
+          value: {
+            polluted: true,
+          },
+          writable: true,
+        });
+      }
+    }
+
+    const serialized = serialize(new DangerousView()) as Record<string, unknown>;
+
+    expect(Object.keys(serialized)).toEqual(['safe', 'constructor']);
+    expect(Object.getPrototypeOf(serialized)).toBe(Object.prototype);
+    expect(Object.prototype.hasOwnProperty.call(serialized, 'constructor')).toBe(true);
+    expect(serialized.safe).toBe(true);
+    expect(serialized.constructor).toEqual({ polluted: true });
+    expect((serialized as { polluted?: boolean }).polluted).toBeUndefined();
+  });
+
+  it('serializes exposed own prototype keys on decorated instances without prototype mutation', () => {
+    @Expose({ excludeExtraneous: true })
+    class DangerousView {
+      @Expose()
+      safe = true;
+
+      @Expose()
+      prototype!: Record<string, unknown>;
+
+      constructor() {
+        Object.defineProperty(this, 'prototype', {
+          configurable: true,
+          enumerable: true,
+          value: {
+            polluted: true,
+          },
+          writable: true,
+        });
+      }
+    }
+
+    const serialized = serialize(new DangerousView()) as Record<string, unknown>;
+
+    expect(Object.keys(serialized)).toEqual(['safe', 'prototype']);
+    expect(Object.getPrototypeOf(serialized)).toBe(Object.prototype);
+    expect(Object.prototype.hasOwnProperty.call(serialized, 'prototype')).toBe(true);
+    expect(serialized.safe).toBe(true);
+    expect(serialized.prototype).toEqual({ polluted: true });
+    expect((serialized as { polluted?: boolean }).polluted).toBeUndefined();
   });
 });
