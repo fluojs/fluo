@@ -146,6 +146,28 @@ describe('JwtService', () => {
     expect((decoded as { exp: number }).exp).toBeGreaterThanOrEqual(now + 59);
   });
 
+  it('preserves fractional NumericDate precision for numeric per-call expiresIn', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+
+    try {
+      const service = createJwtService({
+        algorithms: ['HS256'],
+        issuer: 'jwt-service-tests',
+        secret: 'service-secret',
+      });
+      const now = Math.floor(Date.now() / 1000);
+      const token = await service.sign({ sub: 'fractional-user' }, { expiresIn: 0.75 });
+
+      expect(service.decode(token)).toMatchObject({
+        exp: now + 0.75,
+        sub: 'fractional-user',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('decodes payload without signature verification', async () => {
     const service = createJwtService({
       algorithms: ['HS256'],
