@@ -256,6 +256,14 @@ describe('enforceContractCompanionUpdates', () => {
       ]),
     ).not.toThrow();
   });
+
+  it('treats release governance publish-surface edits as contract-governing updates', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() => enforceContractCompanionUpdates(['docs/contracts/release-governance.md'])).toThrowError(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
+    );
+  });
 });
 
 describe('parsePackageNamesFromFamilyTable', () => {
