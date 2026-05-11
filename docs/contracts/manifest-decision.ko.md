@@ -30,8 +30,9 @@
 | Rule | Required shape | Repo grounding |
 | --- | --- | --- |
 | Root export | `"."`를 MUST로 선언하고 `types`와 `import` 타깃을 함께 가져야 합니다. | `packages/core/package.json`, `packages/http/package.json`, `packages/cli/package.json`이 이 형태를 따릅니다. |
-| Subpath export | 패키지가 별도 표면을 의도적으로 노출할 때 추가 subpath를 MAY로 선언할 수 있습니다. 각 subpath는 dist 빌드된 `.js`와 `.d.ts`를 가리켜야 합니다. | `@fluojs/email`은 `./queue`, `./node`를 노출하고, `@fluojs/microservices`는 `./tcp`, `./grpc`, `./rabbitmq` 같은 전송 subpath를 노출합니다. |
-| Dist-only targets | 배포 런타임 코드와 declaration은 모두 `./dist/` 아래 파일을 가리켜야 합니다. | 현재 공개 패키지는 exports를 `./dist/...` 출력으로 매핑합니다. |
+| Code subpath export | 패키지가 별도 JavaScript 표면을 의도적으로 노출할 때 추가 subpath를 MAY로 선언할 수 있습니다. 각 code subpath는 dist 빌드된 `.js`와 `.d.ts`를 가리켜야 합니다. | `@fluojs/email`은 `./queue`, `./node`를 노출하고, `@fluojs/microservices`는 `./tcp`, `./grpc`, `./rabbitmq` 같은 전송 subpath를 노출합니다. |
+| Asset-only subpath export | 패키지 README가 해당 subpath를 asset entrypoint로 문서화하고 TypeScript import 해석이 그 subpath 계약에 포함되지 않을 때, `./dist/` 아래 단일 정적 asset을 MAY로 노출할 수 있습니다. | `@fluojs/studio/viewer`는 호출자가 `require.resolve('@fluojs/studio/viewer')`로 패키징된 브라우저 viewer를 찾을 수 있도록 의도적으로 `./dist/index.html`로 해석됩니다. |
+| Dist-only targets | 배포 런타임 코드, declaration, 문서화된 정적 asset entrypoint는 모두 `./dist/` 아래 파일을 가리켜야 합니다. | 현재 공개 패키지는 exports를 `./dist/...` 출력으로 매핑합니다. |
 | Root manifest alignment | `main`과 `types`는 루트 `exports["."]` 타깃과 맞아야 합니다. | 현재 공개 매니페스트는 루트 export가 같은 파일을 가리킬 때 `main: ./dist/index.js`, `types: ./dist/index.d.ts`를 사용합니다. |
 | Subpath TypeScript resolution | 공개 subpath가 루트 `types`만으로 충분하지 않을 때 `typesVersions`를 SHOULD로 추가합니다. | `@fluojs/email`, `@fluojs/runtime`, `@fluojs/websockets`는 공개 subpath를 위해 `typesVersions`를 정의합니다. |
 | Internal surface control | 문서화되지 않았거나 우발적인 소스 경로를 매니페스트로 노출하면 안 됩니다. | 현재 패키지는 `.` 또는 명시적 named subpath 같은 공개 barrel만 노출하고, raw `src/*` 경로는 노출하지 않습니다. |
@@ -44,3 +45,4 @@
 - 선택적 런타임 통합은 루트 패키지 계약을 약화하지 않도록 peer dependency나 명시적 subpath로 유지하는 편이 맞습니다. 현재 예시는 `@fluojs/microservices`의 optional peer와 Node 전용 `@fluojs/email/node` subpath입니다.
 - 루트 패키지가 이식성을 유지해야 할 때는 런타임 전용 또는 통합 전용 표면을 루트 export에 넣지 않는 편이 맞습니다. 현재 예시는 `@fluojs/email/node`, `@fluojs/email/queue`, `@fluojs/microservices`의 transport subpath입니다.
 - 새 공개 export는 public-export TSDoc baseline과 문서화된 package surface에 맞아야 합니다.
+- Asset-only subpath는 패키지 README에 명시적으로 문서화되어야 하며, JavaScript와 declaration target이 필요한 code subpath를 대체하면 안 됩니다.

@@ -104,6 +104,7 @@ Studio is primarily a web application, but the published package also exposes th
 - `@fluojs/studio/viewer`: packaged `dist/index.html` entrypoint for the browser viewer bundle.
 
 `@fluojs/studio` and `@fluojs/studio/contracts` expose equivalent helper barrels.
+`@fluojs/studio/viewer` is an asset-only manifest subpath: callers resolve the packaged HTML file path, not a JavaScript module or TypeScript declaration entrypoint.
 
 ## Related Packages
 

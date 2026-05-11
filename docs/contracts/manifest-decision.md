@@ -30,8 +30,9 @@ This document defines the current package manifest contract for public `@fluojs/
 | Rule | Required shape | Repo grounding |
 | --- | --- | --- |
 | Root export | MUST declare `"."` with both `types` and `import` targets. | `packages/core/package.json`, `packages/http/package.json`, and `packages/cli/package.json` follow this shape. |
-| Subpath export | MAY declare additional subpaths when the package intentionally exposes separate surfaces. Each subpath MUST point to dist-built `.js` and `.d.ts` files. | `@fluojs/email` exports `./queue` and `./node`. `@fluojs/microservices` exports transport subpaths such as `./tcp`, `./grpc`, and `./rabbitmq`. |
-| Dist-only targets | MUST point at files under `./dist/` for published runtime code and declarations. | Current public packages map exports to `./dist/...` outputs. |
+| Code subpath export | MAY declare additional subpaths when the package intentionally exposes separate JavaScript surfaces. Each code subpath MUST point to dist-built `.js` and `.d.ts` files. | `@fluojs/email` exports `./queue` and `./node`. `@fluojs/microservices` exports transport subpaths such as `./tcp`, `./grpc`, and `./rabbitmq`. |
+| Asset-only subpath export | MAY expose a single static asset under `./dist/` when the package README documents the subpath as an asset entrypoint and TypeScript import resolution is not part of that subpath contract. | `@fluojs/studio/viewer` intentionally resolves to `./dist/index.html` so callers can locate the packaged browser viewer with `require.resolve('@fluojs/studio/viewer')`. |
+| Dist-only targets | MUST point at files under `./dist/` for published runtime code, declarations, and documented static asset entrypoints. | Current public packages map exports to `./dist/...` outputs. |
 | Root manifest alignment | `main` and `types` MUST match the root `exports["."]` targets. | Current public manifests use `main: ./dist/index.js` and `types: ./dist/index.d.ts` when the root export points to the same files. |
 | Subpath TypeScript resolution | SHOULD add `typesVersions` when published subpaths need TypeScript path hints beyond the root `types` field. | `@fluojs/email`, `@fluojs/runtime`, and `@fluojs/websockets` define `typesVersions` for published subpaths. |
 | Internal surface control | MUST NOT expose undocumented or accidental source paths through the manifest. | Current packages expose explicit public barrels such as `.` or named subpaths, not raw `src/*` paths. |
@@ -44,3 +45,4 @@ This document defines the current package manifest contract for public `@fluojs/
 - Optional runtime integrations SHOULD stay explicit through peer dependencies or explicit subpaths instead of weakening the root package contract. Current examples include optional peers in `@fluojs/microservices` and the Node-only `@fluojs/email/node` subpath.
 - Runtime-specific or integration-only surfaces SHOULD stay out of the root export when the root package is meant to remain portable. Current examples include `@fluojs/email/node`, `@fluojs/email/queue`, and transport subpaths in `@fluojs/microservices`.
 - New public exports MUST stay aligned with the public-export TSDoc baseline and the documented package surface.
+- Asset-only subpaths MUST stay explicitly documented in the package README and MUST NOT replace code subpaths that need JavaScript and declaration targets.
