@@ -157,4 +157,150 @@ describe('@fluojs/i18n root public surface', () => {
     );
     expectI18nCode(() => service.translate('missing', { locale: 'en' }), 'I18N_MISSING_MESSAGE');
   });
+
+  it('formats date/time, numbers, currency, percent, lists, and relative time through standard Intl APIs', () => {
+    const service = createI18n({
+      defaultLocale: 'en-US',
+      formats: {
+        dateTime: {
+          short: { dateStyle: 'medium', timeZone: 'UTC' },
+        },
+        list: {
+          conjunction: { style: 'long', type: 'conjunction' },
+        },
+        number: {
+          precise: { maximumFractionDigits: 2, minimumFractionDigits: 2 },
+        },
+        relativeTime: {
+          narrow: { numeric: 'auto', style: 'narrow' },
+        },
+      },
+      supportedLocales: ['en-US', 'de-DE', 'ko-KR'],
+    });
+
+    expect(service.formatDateTime(new Date('2026-05-11T00:00:00.000Z'), { format: 'short', locale: 'en-US' })).toBe(
+      'May 11, 2026',
+    );
+    expect(service.formatNumber(1234.5, { format: 'precise', locale: 'de-DE' })).toBe('1.234,50');
+    expect(service.formatCurrency(12.5, { currency: 'EUR', locale: 'de-DE' })).toBe('12,50 €');
+    expect(service.formatPercent(0.125, { locale: 'en-US', options: { maximumFractionDigits: 1 } })).toBe('12.5%');
+    expect(service.formatList(['red', 'green', 'blue'], { format: 'conjunction', locale: 'en-US' })).toBe('red, green, and blue');
+    expect(service.formatRelativeTime(-1, 'day', { format: 'narrow', locale: 'en-US' })).toBe('yesterday');
+  });
+
+  it('normalizes named format options into immutable service-owned snapshots', () => {
+    const formats = {
+      number: {
+        score: { maximumFractionDigits: 1 },
+      },
+    } satisfies NonNullable<I18nModuleOptions['formats']>;
+    const service = createI18n({ defaultLocale: 'en', formats, supportedLocales: ['en'] });
+
+    formats.number.score.maximumFractionDigits = 4;
+
+    expect(service.formatNumber(1.25, { format: 'score', locale: 'en' })).toBe('1.3');
+    expect(service.formatNumber(1.25, { format: 'score', locale: 'en', options: { maximumFractionDigits: 2 } })).toBe('1.25');
+    expect(service.snapshotOptions().formats?.number?.score).toEqual({ maximumFractionDigits: 1 });
+  });
+
+  it('fails with stable errors for missing and invalid named Intl formats', () => {
+    expectI18nCode(
+      () => createI18n({ defaultLocale: 'en', formats: { number: { '': { maximumFractionDigits: 1 } } } }),
+      'I18N_INVALID_OPTIONS',
+    );
+    expectI18nCode(
+      () => createI18n({ defaultLocale: 'en', formats: { dateTime: { short: [] as unknown as Intl.DateTimeFormatOptions } } }),
+      'I18N_INVALID_OPTIONS',
+    );
+
+    const service = createI18n({ defaultLocale: 'en', formats: { number: { whole: { maximumFractionDigits: 0 } } } });
+
+    expectI18nCode(() => service.formatNumber(1, { format: 'missing', locale: 'en' }), 'I18N_INVALID_OPTIONS');
+    expectI18nCode(
+      () =>
+        service.formatDateTime(new Date('2026-05-11T00:00:00.000Z'), {
+          locale: 'en',
+          options: [] as unknown as Intl.DateTimeFormatOptions,
+        }),
+      'I18N_INVALID_OPTIONS',
+    );
+    expectI18nCode(() => service.formatCurrency(1, { currency: '', locale: 'en' }), 'I18N_INVALID_OPTIONS');
+    expectI18nCode(() => service.formatList([1] as unknown as string[], { locale: 'en' }), 'I18N_INVALID_OPTIONS');
+  });
+
+  it('wraps invalid inline Intl option values with stable i18n errors', () => {
+    const service = createI18n({ defaultLocale: 'en', supportedLocales: ['en'] });
+
+    expectI18nCode(
+      () =>
+        service.formatDateTime(new Date('2026-05-11T00:00:00.000Z'), {
+          locale: 'en',
+          options: { dateStyle: 'invalid' as unknown as Intl.DateTimeFormatOptions['dateStyle'] },
+        }),
+      'I18N_INVALID_OPTIONS',
+    );
+    expectI18nCode(
+      () =>
+        service.formatNumber(1, {
+          locale: 'en',
+          options: { style: 'invalid' as unknown as Intl.NumberFormatOptions['style'] },
+        }),
+      'I18N_INVALID_OPTIONS',
+    );
+    expectI18nCode(() => service.formatCurrency(1, { currency: 'INVALID', locale: 'en' }), 'I18N_INVALID_OPTIONS');
+    expectI18nCode(
+      () => service.formatPercent(0.1, { locale: 'en', options: { maximumFractionDigits: -1 } }),
+      'I18N_INVALID_OPTIONS',
+    );
+    expectI18nCode(
+      () =>
+        service.formatList(['red', 'green'], {
+          locale: 'en',
+          options: { type: 'invalid' as unknown as Intl.ListFormatOptions['type'] },
+        }),
+      'I18N_INVALID_OPTIONS',
+    );
+    expectI18nCode(
+      () =>
+        service.formatRelativeTime(-1, 'day', {
+          locale: 'en',
+          options: { numeric: 'sometimes' as unknown as Intl.RelativeTimeFormatOptions['numeric'] },
+        }),
+      'I18N_INVALID_OPTIONS',
+    );
+  });
+
+  it('wraps invalid named Intl option values with stable i18n errors at use time', () => {
+    const service = createI18n({
+      defaultLocale: 'en',
+      formats: {
+        dateTime: {
+          invalid: { timeZone: 'Not/A_Zone' },
+        },
+        list: {
+          invalid: { style: 'invalid' as unknown as Intl.ListFormatOptions['style'] },
+        },
+        number: {
+          invalid: { maximumSignificantDigits: 0 },
+        },
+        relativeTime: {
+          invalid: { style: 'invalid' as unknown as Intl.RelativeTimeFormatOptions['style'] },
+        },
+      },
+      supportedLocales: ['en'],
+    });
+
+    expectI18nCode(
+      () => service.formatDateTime(new Date('2026-05-11T00:00:00.000Z'), { format: 'invalid', locale: 'en' }),
+      'I18N_INVALID_OPTIONS',
+    );
+    expectI18nCode(() => service.formatNumber(1, { format: 'invalid', locale: 'en' }), 'I18N_INVALID_OPTIONS');
+    expectI18nCode(
+      () => service.formatCurrency(1, { currency: 'USD', format: 'invalid', locale: 'en' }),
+      'I18N_INVALID_OPTIONS',
+    );
+    expectI18nCode(() => service.formatPercent(0.1, { format: 'invalid', locale: 'en' }), 'I18N_INVALID_OPTIONS');
+    expectI18nCode(() => service.formatList(['red', 'green'], { format: 'invalid', locale: 'en' }), 'I18N_INVALID_OPTIONS');
+    expectI18nCode(() => service.formatRelativeTime(-1, 'day', { format: 'invalid', locale: 'en' }), 'I18N_INVALID_OPTIONS');
+  });
 });

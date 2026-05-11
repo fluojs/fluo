@@ -1,6 +1,17 @@
 import { snapshotI18nModuleOptions } from './options.js';
 import { I18nError } from './errors.js';
-import type { I18nFallbackLocales, I18nLocale, I18nMessageTree, I18nModuleOptions, I18nTranslateOptions } from './types.js';
+import type {
+  I18nCurrencyFormatOptions,
+  I18nDateTimeFormatOptions,
+  I18nFallbackLocales,
+  I18nListFormatOptions,
+  I18nLocale,
+  I18nMessageTree,
+  I18nModuleOptions,
+  I18nNumberFormatOptions,
+  I18nRelativeTimeFormatOptions,
+  I18nTranslateOptions,
+} from './types.js';
 
 function hasOwn(value: unknown, key: string): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && Object.hasOwn(value, key);
@@ -48,6 +59,50 @@ function assertInterpolationValues(values: unknown): asserts values is I18nTrans
 function assertDefaultValue(defaultValue: unknown): asserts defaultValue is string | undefined {
   if (defaultValue !== undefined && typeof defaultValue !== 'string') {
     throw new I18nError('Translation defaultValue must be a string when provided.', 'I18N_INVALID_OPTIONS');
+  }
+}
+
+function assertFormatterOptions(options: unknown, label: string): asserts options is { readonly locale: I18nLocale; readonly format?: string } {
+  if (!isPlainObject(options)) {
+    throw new I18nError(`${label} options are required.`, 'I18N_INVALID_OPTIONS');
+  }
+
+  if (typeof options.locale !== 'string' || options.locale.trim() === '') {
+    throw new I18nError(`${label} locale must be a non-empty string.`, 'I18N_INVALID_OPTIONS');
+  }
+
+  if (options.format !== undefined && (typeof options.format !== 'string' || options.format.trim() === '')) {
+    throw new I18nError(`${label} format must be a non-empty string when provided.`, 'I18N_INVALID_OPTIONS');
+  }
+}
+
+function assertIntlOptionBag(options: unknown, label: string): asserts options is object | undefined {
+  if (options !== undefined && !isPlainObject(options)) {
+    throw new I18nError(`${label} Intl options must be a plain object when provided.`, 'I18N_INVALID_OPTIONS');
+  }
+}
+
+function assertCurrency(currency: unknown): asserts currency is string {
+  if (typeof currency !== 'string' || currency.trim() === '') {
+    throw new I18nError('Currency code must be a non-empty string.', 'I18N_INVALID_OPTIONS');
+  }
+}
+
+function assertListValues(values: unknown): asserts values is readonly string[] {
+  if (!Array.isArray(values) || values.some((value) => typeof value !== 'string')) {
+    throw new I18nError('List values must be an array of strings.', 'I18N_INVALID_OPTIONS');
+  }
+}
+
+function formatWithIntlErrorBoundary(label: string, action: () => string): string {
+  try {
+    return action();
+  } catch (error) {
+    if (error instanceof RangeError || error instanceof TypeError) {
+      throw new I18nError(`${label} Intl options are invalid.`, 'I18N_INVALID_OPTIONS');
+    }
+
+    throw error;
   }
 }
 
@@ -159,6 +214,146 @@ export class I18nService {
     pushUnique(chain, this.options.defaultLocale);
 
     return Object.freeze(chain);
+  }
+
+  private resolveNamedOptions<T extends object>(
+    formats: Readonly<Record<string, T>> | undefined,
+    name: string | undefined,
+    label: string,
+  ): T | undefined {
+    if (name === undefined) {
+      return undefined;
+    }
+
+    const options = formats?.[name];
+
+    if (options === undefined) {
+      throw new I18nError(`Unknown ${label} format: ${name}`, 'I18N_INVALID_OPTIONS');
+    }
+
+    return options;
+  }
+
+  /**
+   * Formats a date or timestamp for an explicit locale using `Intl.DateTimeFormat`.
+   *
+   * @param value Date instance or epoch timestamp accepted by `Intl.DateTimeFormat`.
+   * @param options Explicit locale, optional named format, and inline date/time options.
+   * @returns Locale-formatted date/time text from the host standard `Intl` implementation.
+   * @throws {I18nError} When options are invalid or a named date/time format is missing.
+   */
+  formatDateTime(value: Date | number, options: I18nDateTimeFormatOptions): string {
+    assertFormatterOptions(options, 'Date/time formatter');
+    assertIntlOptionBag(options.options, 'Date/time formatter');
+    this.resolveLocales(options.locale);
+
+    const namedOptions = this.resolveNamedOptions(this.options.formats?.dateTime, options.format, 'dateTime');
+    return formatWithIntlErrorBoundary('Date/time formatter', () =>
+      new Intl.DateTimeFormat(options.locale, { ...namedOptions, ...options.options }).format(value),
+    );
+  }
+
+  /**
+   * Formats a number for an explicit locale using `Intl.NumberFormat`.
+   *
+   * @param value Number value passed to `Intl.NumberFormat`.
+   * @param options Explicit locale, optional named format, and inline number options.
+   * @returns Locale-formatted number text from the host standard `Intl` implementation.
+   * @throws {I18nError} When options are invalid or a named number format is missing.
+   */
+  formatNumber(value: number, options: I18nNumberFormatOptions): string {
+    assertFormatterOptions(options, 'Number formatter');
+    assertIntlOptionBag(options.options, 'Number formatter');
+    this.resolveLocales(options.locale);
+
+    const namedOptions = this.resolveNamedOptions(this.options.formats?.number, options.format, 'number');
+    return formatWithIntlErrorBoundary('Number formatter', () =>
+      new Intl.NumberFormat(options.locale, { ...namedOptions, ...options.options }).format(value),
+    );
+  }
+
+  /**
+   * Formats a currency amount for an explicit locale using `Intl.NumberFormat`.
+   *
+   * @param value Currency amount passed to `Intl.NumberFormat`.
+   * @param options Explicit locale, ISO 4217 currency code, optional named format, and inline number options.
+   * @returns Locale-formatted currency text from the host standard `Intl` implementation.
+   * @throws {I18nError} When options are invalid or a named number format is missing.
+   */
+  formatCurrency(value: number, options: I18nCurrencyFormatOptions): string {
+    assertFormatterOptions(options, 'Currency formatter');
+    assertCurrency(options.currency);
+    assertIntlOptionBag(options.options, 'Currency formatter');
+    this.resolveLocales(options.locale);
+
+    const namedOptions = this.resolveNamedOptions(this.options.formats?.number, options.format, 'number');
+    return formatWithIntlErrorBoundary('Currency formatter', () =>
+      new Intl.NumberFormat(options.locale, {
+        ...namedOptions,
+        ...options.options,
+        currency: options.currency,
+        style: 'currency',
+      }).format(value),
+    );
+  }
+
+  /**
+   * Formats a ratio as a percent for an explicit locale using `Intl.NumberFormat`.
+   *
+   * @param value Ratio value passed to `Intl.NumberFormat` with `style: 'percent'`.
+   * @param options Explicit locale, optional named format, and inline number options.
+   * @returns Locale-formatted percent text from the host standard `Intl` implementation.
+   * @throws {I18nError} When options are invalid or a named number format is missing.
+   */
+  formatPercent(value: number, options: I18nNumberFormatOptions): string {
+    assertFormatterOptions(options, 'Percent formatter');
+    assertIntlOptionBag(options.options, 'Percent formatter');
+    this.resolveLocales(options.locale);
+
+    const namedOptions = this.resolveNamedOptions(this.options.formats?.number, options.format, 'number');
+    return formatWithIntlErrorBoundary('Percent formatter', () =>
+      new Intl.NumberFormat(options.locale, { ...namedOptions, ...options.options, style: 'percent' }).format(value),
+    );
+  }
+
+  /**
+   * Formats a string list for an explicit locale using `Intl.ListFormat`.
+   *
+   * @param values List item strings passed to `Intl.ListFormat`.
+   * @param options Explicit locale, optional named format, and inline list options.
+   * @returns Locale-formatted list text from the host standard `Intl` implementation.
+   * @throws {I18nError} When options are invalid or a named list format is missing.
+   */
+  formatList(values: readonly string[], options: I18nListFormatOptions): string {
+    assertListValues(values);
+    assertFormatterOptions(options, 'List formatter');
+    assertIntlOptionBag(options.options, 'List formatter');
+    this.resolveLocales(options.locale);
+
+    const namedOptions = this.resolveNamedOptions(this.options.formats?.list, options.format, 'list');
+    return formatWithIntlErrorBoundary('List formatter', () =>
+      new Intl.ListFormat(options.locale, { ...namedOptions, ...options.options }).format(values),
+    );
+  }
+
+  /**
+   * Formats a relative time value for an explicit locale using `Intl.RelativeTimeFormat`.
+   *
+   * @param value Numeric offset passed to `Intl.RelativeTimeFormat`.
+   * @param unit Relative time unit such as `day`, `hour`, or `minute`.
+   * @param options Explicit locale, optional named format, and inline relative time options.
+   * @returns Locale-formatted relative time text from the host standard `Intl` implementation.
+   * @throws {I18nError} When options are invalid or a named relative time format is missing.
+   */
+  formatRelativeTime(value: number, unit: Intl.RelativeTimeFormatUnit, options: I18nRelativeTimeFormatOptions): string {
+    assertFormatterOptions(options, 'Relative time formatter');
+    assertIntlOptionBag(options.options, 'Relative time formatter');
+    this.resolveLocales(options.locale);
+
+    const namedOptions = this.resolveNamedOptions(this.options.formats?.relativeTime, options.format, 'relativeTime');
+    return formatWithIntlErrorBoundary('Relative time formatter', () =>
+      new Intl.RelativeTimeFormat(options.locale, { ...namedOptions, ...options.options }).format(value, unit),
+    );
   }
 
   /**

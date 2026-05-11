@@ -1,5 +1,5 @@
 import { I18nError } from './errors.js';
-import type { I18nFallbackLocales, I18nMessageCatalogs, I18nMessageTree, I18nModuleOptions } from './types.js';
+import type { I18nFallbackLocales, I18nFormatOptions, I18nMessageCatalogs, I18nMessageTree, I18nModuleOptions } from './types.js';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null) {
@@ -30,6 +30,53 @@ function assertSupportedLocale(locale: string, supportedLocales: readonly string
   if (supportedLocales !== undefined && !supportedLocales.includes(locale)) {
     throw new I18nError(`${label} must be listed in supportedLocales.`, 'I18N_INVALID_LOCALE_CONFIG');
   }
+}
+
+function snapshotIntlOptions(value: unknown, path: string): Readonly<Record<string, unknown>> {
+  if (!isPlainObject(value)) {
+    throw new I18nError(`${path} must be a plain object option bag.`, 'I18N_INVALID_OPTIONS');
+  }
+
+  return Object.freeze({ ...value });
+}
+
+function snapshotNamedIntlFormats(value: unknown, path: string): Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!isPlainObject(value)) {
+    throw new I18nError(`${path} must be a named format map.`, 'I18N_INVALID_OPTIONS');
+  }
+
+  const snapshot: Record<string, Readonly<Record<string, unknown>>> = {};
+
+  for (const [name, options] of Object.entries(value)) {
+    if (name.trim() === '') {
+      throw new I18nError(`${path} contains an empty format name.`, 'I18N_INVALID_OPTIONS');
+    }
+
+    snapshot[name] = snapshotIntlOptions(options, `${path}.${name}`);
+  }
+
+  return Object.freeze(snapshot);
+}
+
+function snapshotFormats(formats: I18nFormatOptions | undefined): I18nFormatOptions | undefined {
+  if (formats === undefined) {
+    return undefined;
+  }
+
+  if (!isPlainObject(formats)) {
+    throw new I18nError('formats must be a plain object when provided.', 'I18N_INVALID_OPTIONS');
+  }
+
+  return Object.freeze({
+    dateTime: snapshotNamedIntlFormats(formats.dateTime, 'formats.dateTime') as I18nFormatOptions['dateTime'],
+    list: snapshotNamedIntlFormats(formats.list, 'formats.list') as I18nFormatOptions['list'],
+    number: snapshotNamedIntlFormats(formats.number, 'formats.number') as I18nFormatOptions['number'],
+    relativeTime: snapshotNamedIntlFormats(formats.relativeTime, 'formats.relativeTime') as I18nFormatOptions['relativeTime'],
+  });
 }
 
 function snapshotMessageTree(value: unknown, path: string): I18nMessageTree {
@@ -135,6 +182,10 @@ function validateModuleOptions(options: I18nModuleOptions): void {
     throw new I18nError('missingMessage must be a function when provided.', 'I18N_INVALID_OPTIONS');
   }
 
+  if (options.formats !== undefined && !isPlainObject(options.formats)) {
+    throw new I18nError('formats must be a plain object when provided.', 'I18N_INVALID_OPTIONS');
+  }
+
   if (options.supportedLocales !== undefined) {
     assertLocaleList(options.supportedLocales, 'supportedLocales');
 
@@ -161,6 +212,7 @@ export function snapshotI18nModuleOptions(options: I18nModuleOptions = {}): I18n
     ...options,
     catalogs: snapshotCatalogs(options.catalogs, options.supportedLocales),
     fallbackLocales: snapshotFallbackLocales(options.fallbackLocales, options.supportedLocales),
+    formats: snapshotFormats(options.formats),
     supportedLocales: options.supportedLocales ? Object.freeze([...options.supportedLocales]) : undefined,
   });
 }

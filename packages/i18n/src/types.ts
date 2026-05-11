@@ -21,6 +21,90 @@ export type I18nErrorCode =
   | 'I18N_MISSING_MESSAGE';
 
 /**
+ * Named `Intl.DateTimeFormat` option bags captured during i18n registration.
+ */
+export type I18nNamedDateTimeFormats = Readonly<Record<string, Intl.DateTimeFormatOptions>>;
+
+/**
+ * Named `Intl.NumberFormat` option bags captured during i18n registration.
+ */
+export type I18nNamedNumberFormats = Readonly<Record<string, Intl.NumberFormatOptions>>;
+
+/**
+ * Named `Intl.ListFormat` option bags captured during i18n registration.
+ */
+export type I18nNamedListFormats = Readonly<Record<string, Intl.ListFormatOptions>>;
+
+/**
+ * Named `Intl.RelativeTimeFormat` option bags captured during i18n registration.
+ */
+export type I18nNamedRelativeTimeFormats = Readonly<Record<string, Intl.RelativeTimeFormatOptions>>;
+
+/**
+ * Reusable named option groups for standard `Intl` formatters.
+ */
+export interface I18nFormatOptions {
+  /** Named date/time format option bags. */
+  readonly dateTime?: I18nNamedDateTimeFormats;
+  /** Named number, currency, and percent format option bags. */
+  readonly number?: I18nNamedNumberFormats;
+  /** Named list format option bags. */
+  readonly list?: I18nNamedListFormats;
+  /** Named relative time format option bags. */
+  readonly relativeTime?: I18nNamedRelativeTimeFormats;
+}
+
+/**
+ * Common per-call options for helpers backed by standard `Intl` formatters.
+ */
+export interface I18nFormatterOptions {
+  /** Locale passed directly to the underlying `Intl` formatter. */
+  readonly locale: I18nLocale;
+  /** Optional named format option bag registered in `I18nModuleOptions.formats`. */
+  readonly format?: string;
+}
+
+/**
+ * Per-call date/time formatting options.
+ */
+export interface I18nDateTimeFormatOptions extends I18nFormatterOptions {
+  /** Inline `Intl.DateTimeFormat` options merged after the named option bag. */
+  readonly options?: Intl.DateTimeFormatOptions;
+}
+
+/**
+ * Per-call number, currency, and percent formatting options.
+ */
+export interface I18nNumberFormatOptions extends I18nFormatterOptions {
+  /** Inline `Intl.NumberFormat` options merged after the named option bag. */
+  readonly options?: Intl.NumberFormatOptions;
+}
+
+/**
+ * Per-call currency formatting options.
+ */
+export interface I18nCurrencyFormatOptions extends I18nNumberFormatOptions {
+  /** ISO 4217 currency code passed to `Intl.NumberFormat`. */
+  readonly currency: string;
+}
+
+/**
+ * Per-call list formatting options.
+ */
+export interface I18nListFormatOptions extends I18nFormatterOptions {
+  /** Inline `Intl.ListFormat` options merged after the named option bag. */
+  readonly options?: Intl.ListFormatOptions;
+}
+
+/**
+ * Per-call relative time formatting options.
+ */
+export interface I18nRelativeTimeFormatOptions extends I18nFormatterOptions {
+  /** Inline `Intl.RelativeTimeFormat` options merged after the named option bag. */
+  readonly options?: Intl.RelativeTimeFormatOptions;
+}
+
+/**
  * Interpolation values available to simple `{{ name }}` placeholders.
  */
 export type I18nInterpolationValues = Readonly<Record<string, string | number | boolean | null | undefined>>;
@@ -90,6 +174,8 @@ export interface I18nModuleOptions {
   fallbackLocales?: I18nFallbackLocales;
   /** Hook invoked when no catalog entry and no default value can satisfy a translation request. */
   missingMessage?: I18nMissingMessageHandler;
+  /** Reusable named `Intl` formatter option bags captured as immutable service-owned snapshots. */
+  formats?: I18nFormatOptions;
   /** Whether the module should expose `I18nService` globally. Defaults to `true`. */
   global?: boolean;
 }
