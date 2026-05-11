@@ -30,6 +30,7 @@ Use this package when you need a stable fluo-native package boundary for upcomin
 - a standalone `createI18n(...)` entry point for non-module usage
 - locale-scoped message catalogs, deterministic fallback resolution, interpolation, defaults, and missing-message hooks
 - optional Node-only JSON catalog loading through `@fluojs/i18n/loaders/fs`
+- standard `Intl` date/time, number, currency, percent, list, and relative-time formatting helpers with explicit locales
 - shared option, catalog, locale, translation-key, and error types
 
 `@fluojs/i18n` is intentionally not coupled to NestJS, i18next, React, Next.js, HTTP adapters, ICU/messageformat, validation, or type generation. The root export stays runtime-portable; filesystem loading is available only from the Node-specific `@fluojs/i18n/loaders/fs` subpath.
@@ -70,11 +71,50 @@ const title = i18n.translate('app.title', {
   locale: 'ko',
   values: { name: 'fluo' },
 });
+
+const total = i18n.formatCurrency(12900, {
+  currency: 'KRW',
+  locale: 'ko-KR',
+});
 ```
 
 ## Current Scope
 
-This package provides the framework-agnostic core translation engine plus an optional Node-only filesystem loader subpath. Request locale detection, HTTP adapters, ICU/messageformat integration, validation integration, generated key unions, NestJS compatibility, React/Next.js helpers, remote backend/plugin chains, and watch/reload behavior remain documented non-goals for this core package.
+This package provides the framework-agnostic core translation engine, an optional Node-only filesystem loader subpath, and a small standard-first formatting facade only. Request locale detection, HTTP adapters, ICU/messageformat integration, validation integration, generated key unions, NestJS compatibility, React/Next.js helpers, remote backend/plugin chains, watch/reload behavior, and runtime-specific adapters remain documented non-goals for this core package.
+
+Formatting helpers delegate directly to the host standard `Intl` implementation. Locale is explicit on every formatting call, and named formatter options are captured through `createI18n(...)` or `I18nModule.forRoot(...)` as immutable service-owned snapshots:
+
+```ts
+const i18n = createI18n({
+  defaultLocale: 'en-US',
+  formats: {
+    dateTime: {
+      invoice: { dateStyle: 'medium', timeZone: 'UTC' },
+    },
+    number: {
+      score: { maximumFractionDigits: 1 },
+    },
+    list: {
+      conjunction: { style: 'long', type: 'conjunction' },
+    },
+    relativeTime: {
+      short: { numeric: 'auto', style: 'short' },
+    },
+  },
+});
+
+i18n.formatDateTime(new Date('2026-05-11T00:00:00.000Z'), {
+  format: 'invoice',
+  locale: 'en-US',
+});
+i18n.formatNumber(1234.5, { format: 'score', locale: 'en-US' });
+i18n.formatCurrency(12.5, { currency: 'USD', locale: 'en-US' });
+i18n.formatPercent(0.125, { locale: 'en-US' });
+i18n.formatList(['red', 'green', 'blue'], { format: 'conjunction', locale: 'en-US' });
+i18n.formatRelativeTime(-1, 'day', { format: 'short', locale: 'en-US' });
+```
+
+Unknown named formats and invalid formatter option shapes or values throw `I18N_INVALID_OPTIONS`. `Intl` support, locale data, and output punctuation follow the host runtime; this package does not install polyfills. ICU/messageformat is deferred to a later optional subpath so the core package stays dependency-free and standard-first.
 
 Message catalogs use one canonical locale-scoped nested tree shape:
 
@@ -134,7 +174,7 @@ This subpath imports Node built-ins and is not exported from `@fluojs/i18n` root
 
 The Node-only `@fluojs/i18n/loaders/fs` subpath exports `FileSystemI18nLoader`, `createFileSystemI18nLoader(options)`, `FileSystemI18nLoaderOptions`, and `I18nLoader`.
 
-The root package also exports `I18nModuleOptions`, `I18nMessageCatalogs`, `I18nMessageTree`, `I18nTranslateOptions`, `I18nInterpolationValues`, `I18nMissingMessageHandler`, `I18nLocale`, `I18nTranslationKey`, and `I18nErrorCode` types.
+The root package also exports `I18nModuleOptions`, `I18nMessageCatalogs`, `I18nMessageTree`, `I18nTranslateOptions`, `I18nInterpolationValues`, `I18nMissingMessageHandler`, `I18nLocale`, `I18nTranslationKey`, `I18nErrorCode`, `I18nFormatOptions`, `I18nFormatterOptions`, `I18nDateTimeFormatOptions`, `I18nNumberFormatOptions`, `I18nCurrencyFormatOptions`, `I18nListFormatOptions`, `I18nRelativeTimeFormatOptions`, `I18nNamedDateTimeFormats`, `I18nNamedNumberFormats`, `I18nNamedListFormats`, and `I18nNamedRelativeTimeFormats` types.
 
 ## Related Packages
 

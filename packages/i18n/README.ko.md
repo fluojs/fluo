@@ -30,6 +30,7 @@ npm install @fluojs/i18n
 - module 없이 사용하는 standalone `createI18n(...)` entry point
 - locale-scoped message catalog, deterministic fallback resolution, interpolation, default, missing-message hook
 - `@fluojs/i18n/loaders/fs`를 통한 선택적 Node-only JSON catalog loading
+- explicit locale을 사용하는 standard `Intl` date/time, number, currency, percent, list, relative-time formatting helper
 - 공유 option, catalog, locale, translation-key, error type
 
 `@fluojs/i18n`은 의도적으로 NestJS, i18next, React, Next.js, HTTP adapter, ICU/messageformat, validation, type generation에 결합하지 않습니다. Root export는 runtime-portable하게 유지되며, filesystem loading은 Node-specific `@fluojs/i18n/loaders/fs` subpath에서만 제공합니다.
@@ -70,11 +71,50 @@ const title = i18n.translate('app.title', {
   locale: 'ko',
   values: { name: 'fluo' },
 });
+
+const total = i18n.formatCurrency(12900, {
+  currency: 'KRW',
+  locale: 'ko-KR',
+});
 ```
 
 ## 현재 범위
 
-이 패키지는 프레임워크 비종속 core translation engine과 선택적 Node-only filesystem loader subpath를 제공합니다. Request locale detection, HTTP adapter, ICU/messageformat integration, validation integration, generated key union, NestJS compatibility, React/Next.js helper, remote backend/plugin chain, watch/reload behavior는 core package의 명시적 non-goal로 남아 있습니다.
+이 패키지는 프레임워크 비종속 core translation engine, 선택적 Node-only filesystem loader subpath, 작은 standard-first formatting facade만 제공합니다. Request locale detection, HTTP adapter, ICU/messageformat integration, validation integration, generated key union, NestJS compatibility, React/Next.js helper, remote backend/plugin chain, watch/reload behavior, runtime-specific adapter는 core package의 명시적 non-goal로 남아 있습니다.
+
+Formatting helper는 host standard `Intl` implementation에 직접 위임합니다. Locale은 모든 formatting call에서 explicit하며, named formatter option은 `createI18n(...)` 또는 `I18nModule.forRoot(...)`를 통해 service-owned immutable snapshot으로 캡처됩니다.
+
+```ts
+const i18n = createI18n({
+  defaultLocale: 'en-US',
+  formats: {
+    dateTime: {
+      invoice: { dateStyle: 'medium', timeZone: 'UTC' },
+    },
+    number: {
+      score: { maximumFractionDigits: 1 },
+    },
+    list: {
+      conjunction: { style: 'long', type: 'conjunction' },
+    },
+    relativeTime: {
+      short: { numeric: 'auto', style: 'short' },
+    },
+  },
+});
+
+i18n.formatDateTime(new Date('2026-05-11T00:00:00.000Z'), {
+  format: 'invoice',
+  locale: 'en-US',
+});
+i18n.formatNumber(1234.5, { format: 'score', locale: 'en-US' });
+i18n.formatCurrency(12.5, { currency: 'USD', locale: 'en-US' });
+i18n.formatPercent(0.125, { locale: 'en-US' });
+i18n.formatList(['red', 'green', 'blue'], { format: 'conjunction', locale: 'en-US' });
+i18n.formatRelativeTime(-1, 'day', { format: 'short', locale: 'en-US' });
+```
+
+알 수 없는 named format과 invalid formatter option shape 또는 value는 `I18N_INVALID_OPTIONS`를 throw합니다. `Intl` support, locale data, output punctuation은 host runtime을 따르며, 이 패키지는 polyfill을 설치하지 않습니다. ICU/messageformat은 core package를 dependency-free와 standard-first로 유지하기 위해 이후 optional subpath로 미룹니다.
 
 Message catalog는 하나의 canonical locale-scoped nested tree shape를 사용합니다.
 
@@ -134,7 +174,7 @@ Loader는 `${rootDir}/${locale}/${namespace}.json`을 읽고 immutable `I18nMess
 
 Node-only `@fluojs/i18n/loaders/fs` subpath는 `FileSystemI18nLoader`, `createFileSystemI18nLoader(options)`, `FileSystemI18nLoaderOptions`, `I18nLoader`를 export합니다.
 
-Root package는 `I18nModuleOptions`, `I18nMessageCatalogs`, `I18nMessageTree`, `I18nTranslateOptions`, `I18nInterpolationValues`, `I18nMissingMessageHandler`, `I18nLocale`, `I18nTranslationKey`, `I18nErrorCode` type도 export합니다.
+Root package는 `I18nModuleOptions`, `I18nMessageCatalogs`, `I18nMessageTree`, `I18nTranslateOptions`, `I18nInterpolationValues`, `I18nMissingMessageHandler`, `I18nLocale`, `I18nTranslationKey`, `I18nErrorCode`, `I18nFormatOptions`, `I18nFormatterOptions`, `I18nDateTimeFormatOptions`, `I18nNumberFormatOptions`, `I18nCurrencyFormatOptions`, `I18nListFormatOptions`, `I18nRelativeTimeFormatOptions`, `I18nNamedDateTimeFormats`, `I18nNamedNumberFormats`, `I18nNamedListFormats`, `I18nNamedRelativeTimeFormats` type도 export합니다.
 
 ## 관련 패키지
 
