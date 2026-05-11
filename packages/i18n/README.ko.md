@@ -118,24 +118,6 @@ i18n.formatCurrency(12900, {
 });
 ```
 
-## Node Filesystem Loader
-
-Node 애플리케이션은 dedicated subpath에서 JSON filesystem loader를 선택적으로 사용할 수 있습니다.
-
-```ts
-import { createFileSystemI18nLoader } from '@fluojs/i18n/loaders/fs';
-
-const loader = createFileSystemI18nLoader({
-  rootDir: new URL('./locales', import.meta.url).pathname,
-});
-
-const common = await loader.load('en', 'common');
-```
-
-Loader는 `${rootDir}/${locale}/${namespace}.json`을 읽고 immutable `I18nMessageTree`를 반환합니다. Namespace는 `admin/common` 같은 safe relative path segment를 사용할 수 있습니다. Locale과 namespace 값은 disk read 전에 validate되며, `.`, `..`, absolute path, empty segment, `common.json` 같은 extension-bearing name, traversal attempt는 `I18N_INVALID_LOADER_OPTIONS`로 거부됩니다. Missing file은 `I18N_MISSING_CATALOG`, malformed JSON 또는 invalid message tree shape는 `I18N_INVALID_CATALOG`를 throw합니다.
-
-이 subpath는 Node built-in을 import하며 `@fluojs/i18n` root에서 export하지 않습니다. Bundler가 명시적으로 Node.js를 target하지 않는 한 Bun, Deno, Cloudflare Workers, browser 또는 다른 non-Node runtime-portable bundle에서 import하지 마세요.
-
 ## HTTP Locale Context Adapter
 
 HTTP request locale helper는 `@fluojs/i18n/http` subpath에서만 제공됩니다. 따라서 root `@fluojs/i18n` entry point는 프레임워크 비종속으로 유지되며 `@fluojs/http`를 import하지 않습니다.
@@ -179,6 +161,24 @@ Adapter는 의도적으로 explicit합니다:
 - `resolveHttpLocale(ctx, options)`는 application-provided resolver를 배열 순서대로 실행하고 invalid 또는 unsupported resolver output을 무시하며, 아무 resolver도 match하지 않으면 `defaultLocale`을 source `default`로 저장합니다.
 
 Wildcard `*` range는 parse되지만 자동으로 locale을 선택하지는 않습니다. Wildcard별 동작이 필요한 애플리케이션은 제공된 `Accept-Language` resolver 앞이나 뒤에 resolver를 추가할 수 있습니다.
+
+## Node Filesystem Loader
+
+Node 애플리케이션은 dedicated subpath에서 JSON filesystem loader를 선택적으로 사용할 수 있습니다.
+
+```ts
+import { createFileSystemI18nLoader } from '@fluojs/i18n/loaders/fs';
+
+const loader = createFileSystemI18nLoader({
+  rootDir: new URL('./locales', import.meta.url).pathname,
+});
+
+const common = await loader.load('en', 'common');
+```
+
+Loader는 `${rootDir}/${locale}/${namespace}.json`을 읽고 immutable `I18nMessageTree`를 반환합니다. Namespace는 `admin/common` 같은 safe relative path segment를 사용할 수 있습니다. Locale과 namespace 값은 disk read 전에 validate되며, `.`, `..`, absolute path, empty segment, `common.json` 같은 extension-bearing name, traversal attempt는 `I18N_INVALID_LOADER_OPTIONS`로 거부됩니다. Missing file은 `I18N_MISSING_CATALOG`, malformed JSON 또는 invalid message tree shape는 `I18N_INVALID_CATALOG`를 throw합니다.
+
+이 subpath는 Node built-in을 import하며 `@fluojs/i18n` root에서 export하지 않습니다. Bundler가 명시적으로 Node.js를 target하지 않는 한 Bun, Deno, Cloudflare Workers, browser 또는 다른 non-Node runtime-portable bundle에서 import하지 마세요.
 
 ## 공개 API
 
