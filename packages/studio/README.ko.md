@@ -104,6 +104,7 @@ Studio는 주로 웹 애플리케이션이지만, 배포된 패키지는 도구/
 - `@fluojs/studio/viewer`: 브라우저 뷰어 번들의 `dist/index.html` 진입 파일
 
 `@fluojs/studio`와 `@fluojs/studio/contracts`는 동등한 helper barrel을 노출합니다.
+`@fluojs/studio/viewer`는 asset-only manifest subpath입니다. 호출자는 JavaScript module이나 TypeScript declaration entrypoint가 아니라 패키징된 HTML 파일 경로를 resolve합니다.
 
 ## 관련 패키지
 
