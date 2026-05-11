@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { I18nError } from '../errors.js';
 import type { I18nErrorCode, I18nMessageTree } from '../types.js';
 import type { I18nLoader, I18nLoaderLoadOptions } from './remote.js';
-import { RemoteI18nLoader, createRemoteI18nLoader } from './remote.js';
+import { createRemoteI18nLoader, RemoteI18nLoader } from './remote.js';
 
 async function expectI18nRejection(action: () => Promise<unknown>, code: I18nErrorCode): Promise<void> {
   try {
@@ -125,12 +125,21 @@ describe('@fluojs/i18n/loaders/remote', () => {
   });
 
   it('aborts provider work and rejects with a stable timeout code', async () => {
+    let observedSignal: AbortSignal | undefined;
     const loader = new RemoteI18nLoader({
-      provider: () => new Promise<unknown>(() => undefined),
+      provider: async ({ signal }) => {
+        observedSignal = signal;
+        await waitForAbort(signal);
+        return { title: 'timed out' };
+      },
       timeoutMs: 1,
     });
 
     await expectI18nRejection(() => loader.load('en', 'common'), 'I18N_LOADER_TIMEOUT');
+    if (observedSignal === undefined) {
+      throw new Error('Expected the provider to receive the loader signal.');
+    }
+    expect(observedSignal.aborted).toBe(true);
   });
 
   it('propagates caller cancellation to the remote provider', async () => {

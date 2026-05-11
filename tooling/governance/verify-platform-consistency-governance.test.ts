@@ -320,8 +320,8 @@ describe('package surface persistence responsibilities', () => {
   });
 });
 
-describe('i18n ICU subpath discoverability', () => {
-  it('documents @fluojs/i18n/icu from the AI context and package references in both locales', () => {
+describe('i18n subpath discoverability', () => {
+  it('documents governed @fluojs/i18n subpaths from the AI context and package references in both locales', () => {
     const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
     const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
     const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
@@ -331,7 +331,12 @@ describe('i18n ICU subpath discoverability', () => {
 
     for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface, englishChooser, koreanChooser]) {
       expect(markdown).toContain('@fluojs/i18n/icu');
-      expect(markdown).toContain('ICU MessageFormat');
+      expect(markdown).toContain('@fluojs/i18n/http');
+      expect(markdown).toContain('@fluojs/i18n/adapters');
+      expect(markdown).toContain('@fluojs/i18n/validation');
+      expect(markdown).toContain('@fluojs/i18n/loaders/fs');
+      expect(markdown).toContain('@fluojs/i18n/loaders/remote');
+      expect(markdown).toContain('@fluojs/i18n/typegen');
     }
   });
 });
