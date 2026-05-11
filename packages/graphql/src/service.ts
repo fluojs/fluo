@@ -6,12 +6,7 @@ import type { Duplex } from 'node:stream';
 import { Controller, Get, Post, type FrameworkRequest, type HttpApplicationAdapter, type Middleware, type MiddlewareContext, type Next } from '@fluojs/http';
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
-import {
-  type ApplicationLogger,
-  type CompiledModule,
-  type OnApplicationBootstrap,
-  type OnApplicationShutdown,
-} from '@fluojs/runtime';
+import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import type {
   GraphQLError as GraphQLErrorType,
@@ -400,7 +395,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
     private readonly compiledModules: readonly CompiledModule[],
     private readonly logger: ApplicationLogger,
     private readonly adapter: HttpApplicationAdapter,
-  private readonly options: GraphqlModuleOptions,
+    private readonly options: GraphqlModuleOptions,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -408,40 +403,54 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
       return;
     }
 
-    const deps = await loadGraphqlDeps();
-    const schema = this.resolveSchema(deps);
-    this.executeGraphqlOperation = deps.execute;
-    this.graphQLErrorConstructor = deps.GraphQLError;
-    this.subscribeGraphqlOperation = deps.subscribe;
-    const requestLimits = resolveGraphqlRequestLimits(this.options.limits);
-    const validationPlugin = createGraphqlValidationPlugin({
-      introspection: this.resolveIntrospectionEnabled(),
-      limits: requestLimits,
-    });
+    try {
+      const deps = await loadGraphqlDeps();
+      const schema = this.resolveSchema(deps);
+      this.executeGraphqlOperation = deps.execute;
+      this.graphQLErrorConstructor = deps.GraphQLError;
+      this.subscribeGraphqlOperation = deps.subscribe;
+      const requestLimits = resolveGraphqlRequestLimits(this.options.limits);
+      const validationPlugin = createGraphqlValidationPlugin({
+        introspection: this.resolveIntrospectionEnabled(),
+        limits: requestLimits,
+      });
 
-    this.yoga = deps.createYoga({
-      context: (contextValue: { request: Request; [GRAPHQL_CONTEXT_OVERRIDE]?: GraphQLContext }) =>
-        contextValue[GRAPHQL_CONTEXT_OVERRIDE] ?? this.buildGraphqlContext(contextValue.request),
-      graphqlEndpoint: '/graphql',
-      graphiql: this.resolveGraphiqlEnabled(),
-      ...((validationPlugin || (this.options.plugins && this.options.plugins.length > 0))
-        ? {
-            plugins: [
-              ...(validationPlugin ? [validationPlugin] : []),
-              ...(this.options.plugins ?? []),
-            ],
-          }
-        : {}),
-      schema,
-    });
+      this.yoga = deps.createYoga({
+        context: (contextValue: { request: Request; [GRAPHQL_CONTEXT_OVERRIDE]?: GraphQLContext }) =>
+          contextValue[GRAPHQL_CONTEXT_OVERRIDE] ?? this.buildGraphqlContext(contextValue.request),
+        graphqlEndpoint: '/graphql',
+        graphiql: this.resolveGraphiqlEnabled(),
+        ...((validationPlugin || (this.options.plugins && this.options.plugins.length > 0))
+          ? {
+              plugins: [
+                ...(validationPlugin ? [validationPlugin] : []),
+                ...(this.options.plugins ?? []),
+              ],
+            }
+          : {}),
+        schema,
+      });
 
-    this.registerWebSocketTransport();
+      this.registerWebSocketTransport();
 
-    this.registerMiddleware();
-    this.middlewareRegistered = true;
+      this.registerMiddleware();
+      this.middlewareRegistered = true;
+    } catch (error) {
+      try {
+        await this.resetGraphqlRuntimeState();
+      } catch (cleanupError) {
+        this.logger.error('Failed to clean up GraphQL runtime after bootstrap failure.', cleanupError, 'GraphqlLifecycleService');
+      }
+
+      throw error;
+    }
   }
 
   async onApplicationShutdown(): Promise<void> {
+    await this.resetGraphqlRuntimeState();
+  }
+
+  private async resetGraphqlRuntimeState(): Promise<void> {
     await this.unregisterWebSocketTransport();
     this.unregisterMiddleware();
     this.middlewareRegistered = false;

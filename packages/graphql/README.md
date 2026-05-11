@@ -159,6 +159,7 @@ GraphqlModule.forRoot({
 - Schema introspection is disabled by default unless you explicitly enable `graphiql` or set `introspection: true`.
 - Request validation budgets are enabled by default with conservative limits for document depth, field complexity, and aggregate query cost.
 - Streaming GraphQL responses cancel the upstream fetch body when the downstream response stream closes or errors, so SSE subscription resources are released promptly.
+- Bootstrap failures after GraphQL schema resolution restore the package's temporary `graphql/jsutils/instanceOf` patch before rethrowing, so failed startups do not leak process-wide GraphQL behavior into later app attempts.
 - WebSocket subscriptions use separate transport budgets by default: `100` concurrent connections, `64 KiB` maximum payload size, and `25` active operations per connection.
 - Set `subscriptions.websocket.limits = false` only when you intentionally need unbounded websocket behavior and can enforce equivalent controls elsewhere.
 - Pass `limits: false` only when you intentionally need unbounded behavior and can compensate with external controls.
