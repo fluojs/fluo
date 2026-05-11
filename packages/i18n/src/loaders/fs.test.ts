@@ -31,6 +31,18 @@ async function expectI18nRejection(action: () => Promise<unknown>, code: I18nErr
   throw new Error(`Expected action to fail with ${code}.`);
 }
 
+function expectI18nThrow(action: () => unknown, code: I18nErrorCode): void {
+  try {
+    action();
+  } catch (error) {
+    expect(error).toBeInstanceOf(I18nError);
+    expect((error as I18nError).code).toBe(code);
+    return;
+  }
+
+  throw new Error(`Expected action to fail with ${code}.`);
+}
+
 describe('@fluojs/i18n/loaders/fs', () => {
   beforeEach(async () => {
     rootDir = await mkdtemp(join(tmpdir(), 'fluo-i18n-fs-'));
@@ -63,6 +75,40 @@ describe('@fluojs/i18n/loaders/fs', () => {
     const loader = new FileSystemI18nLoader({ rootDir });
 
     await expectI18nRejection(() => loader.load('en', 'common'), 'I18N_INVALID_CATALOG');
+  });
+
+  it('fails with a stable code for valid JSON that is not a message tree', async () => {
+    await writeCatalog('en', 'array', JSON.stringify(['not', 'a', 'tree']));
+    await writeCatalog('en', 'number', JSON.stringify(123));
+    await writeCatalog('en', 'boolean-entry', JSON.stringify({ enabled: true }));
+    await writeCatalog('en', 'array-entry', JSON.stringify({ labels: ['save'] }));
+    await writeCatalog('en', 'empty-key', JSON.stringify({ '': 'blank' }));
+
+    const loader = new FileSystemI18nLoader({ rootDir });
+
+    await expectI18nRejection(() => loader.load('en', 'array'), 'I18N_INVALID_CATALOG');
+    await expectI18nRejection(() => loader.load('en', 'number'), 'I18N_INVALID_CATALOG');
+    await expectI18nRejection(() => loader.load('en', 'boolean-entry'), 'I18N_INVALID_CATALOG');
+    await expectI18nRejection(() => loader.load('en', 'array-entry'), 'I18N_INVALID_CATALOG');
+    await expectI18nRejection(() => loader.load('en', 'empty-key'), 'I18N_INVALID_CATALOG');
+  });
+
+  it('rejects invalid rootDir constructor options', () => {
+    const invalidOptions: readonly unknown[] = [
+      undefined,
+      null,
+      {},
+      { rootDir: '' },
+      { rootDir: '   ' },
+      { rootDir: 123 },
+    ];
+
+    for (const options of invalidOptions) {
+      expectI18nThrow(
+        () => new FileSystemI18nLoader(options as { readonly rootDir: string }),
+        'I18N_INVALID_LOADER_OPTIONS',
+      );
+    }
   });
 
   it('fails before disk reads for invalid locale values', async () => {
