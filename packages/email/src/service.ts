@@ -2,7 +2,7 @@ import { Inject } from '@fluojs/core';
 import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
 import { DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS } from './constants.js';
-import { EmailMessageValidationError } from './errors.js';
+import { EmailLifecycleError, EmailMessageValidationError } from './errors.js';
 import { createEmailPlatformStatusSnapshot } from './status.js';
 import { EMAIL_OPTIONS } from './tokens.js';
 import type {
@@ -57,8 +57,14 @@ function assertNotAborted(signal: AbortSignal | undefined): void {
 }
 
 function createLifecycleError(message: string, cause: unknown): Error {
-  return new Error(message, { cause });
+  return new EmailLifecycleError(message, { cause });
 }
+
+function createDeliveryLifecycleError(state: EmailServiceLifecycleState): EmailLifecycleError {
+  return new EmailLifecycleError(`Email delivery cannot start while the service lifecycle is ${state}.`);
+}
+
+type EmailServiceLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';
 
 function assertMessageContent(message: NormalizedEmailMessage): void {
   if (message.to.length === 0) {
@@ -88,7 +94,7 @@ function assertMessageContent(message: NormalizedEmailMessage): void {
  */
 @Inject(EMAIL_OPTIONS)
 export class EmailService implements Email, OnModuleInit, OnApplicationShutdown {
-  private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
+  private lifecycleState: EmailServiceLifecycleState = 'created';
   private resolvedTransport: EmailTransport | undefined;
   private transportPromise: Promise<EmailTransport> | undefined;
 
@@ -98,8 +104,10 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
     this.lifecycleState = 'stopping';
 
     try {
-      if (this.resolvedTransport && this.options.transport.ownsResources && this.resolvedTransport.close) {
-        await this.resolvedTransport.close();
+      const transport = this.resolvedTransport ?? (this.transportPromise ? await this.transportPromise : undefined);
+
+      if (transport && this.options.transport.ownsResources && transport.close) {
+        await transport.close();
       }
 
       this.lifecycleState = 'stopped';
@@ -163,11 +171,13 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
    */
   async send(message: EmailMessage, options: EmailSendOptions = {}): Promise<EmailSendResult> {
     assertNotAborted(options.signal);
+    this.assertCanDeliver();
 
     const transport = await this.ensureTransport();
     const normalized = this.normalizeMessage(message);
     assertMessageContent(normalized);
     assertNotAborted(options.signal);
+    this.assertCanDeliver();
     const result = await transport.send(normalized, options);
 
     return {
@@ -272,6 +282,8 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
   }
 
   private async ensureTransport(): Promise<EmailTransport> {
+    this.assertCanCreateOrUseTransport();
+
     if (this.resolvedTransport) {
       return this.resolvedTransport;
     }
@@ -284,6 +296,16 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
     }
 
     return this.transportPromise;
+  }
+
+  private assertCanCreateOrUseTransport(): void {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped' || this.lifecycleState === 'failed') {
+      throw createDeliveryLifecycleError(this.lifecycleState);
+    }
+  }
+
+  private assertCanDeliver(): void {
+    this.assertCanCreateOrUseTransport();
   }
 
   private normalizeMessage(message: EmailMessage): NormalizedEmailMessage {

@@ -128,6 +128,7 @@ Behavioral contract notes:
 - `SlackService.send(...)` resolves `defaultChannel` before delivery.
 - `SlackService.sendMany(...)` sends messages sequentially and supports `continueOnError` when callers need a batch result instead of fail-fast behavior.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
+- Once shutdown starts, `SlackService.send(...)` and `SlackService.sendNotification(...)` fail with `SlackLifecycleError` instead of reusing or lazily creating transports; any in-flight factory-owned transport creation is awaited and closed by shutdown.
 - `SlackService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
@@ -256,6 +257,7 @@ These limitations are part of the package contract so runtime choice, provider c
 - `SlackLifecycleState`
 - `SlackStatusAdapterInput`
 - `SlackConfigurationError`
+- `SlackLifecycleError`
 - `SlackMessageValidationError`
 - `SlackTransportError`
 

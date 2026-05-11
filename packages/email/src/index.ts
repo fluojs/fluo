@@ -1,5 +1,6 @@
 export {
   EmailConfigurationError,
+  EmailLifecycleError,
   EmailMessageValidationError,
 } from './errors.js';
 export { EmailChannel } from './channel.js';

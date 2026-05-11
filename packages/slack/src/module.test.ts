@@ -6,7 +6,7 @@ import { Container, type Provider } from '@fluojs/di';
 import { NOTIFICATION_CHANNELS, NotificationsModule, NotificationsService } from '@fluojs/notifications';
 
 import { SlackChannel } from './channel.js';
-import { SlackConfigurationError, SlackMessageValidationError, SlackTransportError } from './errors.js';
+import { SlackConfigurationError, SlackLifecycleError, SlackMessageValidationError, SlackTransportError } from './errors.js';
 import { SlackModule, createSlackProviders } from './module.js';
 import { SlackService } from './service.js';
 import { SLACK, SLACK_CHANNEL } from './tokens.js';
@@ -79,6 +79,27 @@ class UnsuccessfulTransport implements SlackTransport {
       channel: message.channel,
       ok: false,
       response: 'denied',
+      statusCode: 200,
+      warnings: [],
+    };
+  }
+}
+
+class DelayedLifecycleTransport implements SlackTransport {
+  closeCalls = 0;
+  sendCalls = 0;
+
+  async close(): Promise<void> {
+    this.closeCalls += 1;
+  }
+
+  async send(message: NormalizedSlackMessage) {
+    this.sendCalls += 1;
+
+    return {
+      channel: message.channel,
+      ok: true,
+      response: 'ok',
       statusCode: 200,
       warnings: [],
     };
@@ -650,6 +671,43 @@ describe('SlackModule', () => {
         status: 'not-ready',
       },
     });
+  });
+
+  it('blocks shutdown-time delivery from reusing or recreating transports', async () => {
+    let resolveTransport!: (transport: DelayedLifecycleTransport) => void;
+    const createdTransport = new DelayedLifecycleTransport();
+    const create = vi.fn(
+      () =>
+        new Promise<SlackTransport>((resolve) => {
+          resolveTransport = resolve;
+        }),
+    );
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport: {
+        create,
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+    const sendDuringCreate = service.send({ text: 'Shutdown race' });
+    const shutdown = service.onApplicationShutdown();
+
+    resolveTransport(createdTransport);
+
+    await expect(sendDuringCreate).rejects.toThrowError(
+      new SlackLifecycleError('Slack delivery cannot start while the service lifecycle is stopped.'),
+    );
+    await shutdown;
+    await expect(service.send({ text: 'After shutdown' })).rejects.toThrowError(
+      new SlackLifecycleError('Slack delivery cannot start while the service lifecycle is stopped.'),
+    );
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(createdTransport.closeCalls).toBe(1);
+    expect(createdTransport.sendCalls).toBe(0);
   });
 
   it('rejects module registration without an explicit transport contract', () => {

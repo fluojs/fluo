@@ -19,6 +19,16 @@ export class SlackMessageValidationError extends Error {
 }
 
 /**
+ * Thrown when Slack delivery is requested after the service lifecycle has started shutting down.
+ */
+export class SlackLifecycleError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'SlackLifecycleError';
+  }
+}
+
+/**
  * Thrown when one concrete Slack transport reports a caller-visible delivery failure.
  */
 export class SlackTransportError extends Error {
