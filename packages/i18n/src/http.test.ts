@@ -69,6 +69,15 @@ describe('@fluojs/i18n/http locale context adapter', () => {
     ]);
   });
 
+  it('preserves original header order when Accept-Language q-values tie', () => {
+    expect(parseAcceptLanguage('fr;q=0.8, ko;q=0.8, en;q=0.8, ja;q=0.7')).toEqual([
+      { locale: 'fr', quality: 0.8 },
+      { locale: 'ko', quality: 0.8 },
+      { locale: 'en', quality: 0.8 },
+      { locale: 'ja', quality: 0.7 },
+    ]);
+  });
+
   it('rejects non-spec Accept-Language q-value syntax', () => {
     expect(
       parseAcceptLanguage([
@@ -132,6 +141,23 @@ describe('@fluojs/i18n/http locale context adapter', () => {
     expect(locale).toEqual({ locale: 'ko', source: 'accept-language' });
   });
 
+  it('uses custom Accept-Language header name and source options', () => {
+    const context = createMockContext({ 'x-locale-preference': 'fr;q=1, ko;q=0.9' });
+    const resolver = createAcceptLanguageLocaleResolver({
+      headerName: 'X-Locale-Preference',
+      source: 'custom-header',
+    });
+
+    const locale = resolveHttpLocale(context, {
+      defaultLocale: 'en',
+      resolvers: [resolver],
+      supportedLocales: ['en', 'ko'],
+    });
+
+    expect(locale).toEqual({ locale: 'ko', source: 'custom-header' });
+    expect(getHttpLocale(context)).toEqual({ locale: 'ko', source: 'custom-header' });
+  });
+
   it('skips non-string resolver outputs instead of validating them as locales', () => {
     const context = createMockContext();
     const numberLocale: HttpLocaleResolver = () => 123;
@@ -158,5 +184,33 @@ describe('@fluojs/i18n/http locale context adapter', () => {
 
     expect(locale).toEqual({ locale: 'en', source: 'default' });
     expect(getHttpLocale(context)).toEqual({ locale: 'en', source: 'default' });
+  });
+
+  it('rejects invalid defaultLocale values before resolving request locales', () => {
+    const context = createMockContext({ 'accept-language': 'ko;q=1' });
+
+    expect(() =>
+      resolveHttpLocale(context, {
+        defaultLocale: 'invalid locale',
+        resolvers: [createAcceptLanguageLocaleResolver()],
+        supportedLocales: ['en', 'ko'],
+      }),
+    ).toThrow(TypeError);
+
+    expect(getHttpLocale(context)).toBeUndefined();
+  });
+
+  it('rejects unsupported defaultLocale values before resolving request locales', () => {
+    const context = createMockContext({ 'accept-language': 'ko;q=1' });
+
+    expect(() =>
+      resolveHttpLocale(context, {
+        defaultLocale: 'fr',
+        resolvers: [createAcceptLanguageLocaleResolver()],
+        supportedLocales: ['en', 'ko'],
+      }),
+    ).toThrow(TypeError);
+
+    expect(getHttpLocale(context)).toBeUndefined();
   });
 });
