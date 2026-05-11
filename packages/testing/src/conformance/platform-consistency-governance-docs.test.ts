@@ -224,6 +224,26 @@ describe('platform consistency governance docs', () => {
     expect(packageChooserKo).toContain('@fluojs/email/node');
   });
 
+  it('keeps the i18n package discoverable from task-based package chooser guidance', () => {
+    const packageSurface = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const packageSurfaceKo = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const packageChooser = readFileSync(resolve(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
+    const packageChooserKo = readFileSync(resolve(repoRoot, 'docs/reference/package-chooser.ko.md'), 'utf8');
+    const docsContext = readFileSync(resolve(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const docsContextKo = readFileSync(resolve(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+
+    expect(packageSurface).toContain('@fluojs/i18n');
+    expect(packageSurfaceKo).toContain('@fluojs/i18n');
+    expect(packageChooser).toContain('@fluojs/i18n');
+    expect(packageChooser).toContain('localization');
+    expect(packageChooserKo).toContain('@fluojs/i18n');
+    expect(packageChooserKo).toContain('localization');
+    expect(docsContext).toContain('docs/reference/package-chooser.md');
+    expect(docsContext).toContain('@fluojs/i18n');
+    expect(docsContextKo).toContain('docs/reference/package-chooser.md');
+    expect(docsContextKo).toContain('@fluojs/i18n');
+  });
+
   it('keeps the websockets README shutdown contract scoped to fetch-style runtimes with linked regression evidence', () => {
     const websocketsReadme = readFileSync(resolve(repoRoot, 'packages/websockets/README.md'), 'utf8');
     const websocketsReadmeKo = readFileSync(resolve(repoRoot, 'packages/websockets/README.ko.md'), 'utf8');

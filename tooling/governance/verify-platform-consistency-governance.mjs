@@ -669,6 +669,14 @@ function enforceCanonicalRuntimeMatrixReferences() {
     packageChooserKo.includes('./package-surface.ko.md#canonical-runtime-package-matrix'),
     'docs/reference/package-chooser.ko.md must point to the canonical runtime package matrix anchor.',
   );
+  assert(
+    packageChooser.includes('@fluojs/i18n') && packageChooser.includes('localization'),
+    'docs/reference/package-chooser.md must keep @fluojs/i18n discoverable for localization tasks.',
+  );
+  assert(
+    packageChooserKo.includes('@fluojs/i18n') && packageChooserKo.includes('localization'),
+    'docs/reference/package-chooser.ko.md must keep @fluojs/i18n discoverable for localization tasks.',
+  );
 
   assert(
     docsContext.includes('docs/reference/package-surface.md'),
@@ -677,6 +685,14 @@ function enforceCanonicalRuntimeMatrixReferences() {
   assert(
     docsContextKo.includes('docs/reference/package-surface.md'),
     'docs/CONTEXT.ko.md must point readers to the canonical runtime package matrix page.',
+  );
+  assert(
+    docsContext.includes('docs/reference/package-chooser.md') && docsContext.includes('@fluojs/i18n'),
+    'docs/CONTEXT.md must point readers to package chooser i18n discovery guidance.',
+  );
+  assert(
+    docsContextKo.includes('docs/reference/package-chooser.md') && docsContextKo.includes('@fluojs/i18n'),
+    'docs/CONTEXT.ko.md must point readers to package chooser i18n discovery guidance.',
   );
   assert(rootReadme.includes('docs/reference/package-surface.md'), 'README.md must point to the canonical runtime package matrix page.');
   assert(
