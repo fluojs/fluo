@@ -19,6 +19,7 @@ Framework-agnostic internationalization core surface for fluo applications.
 - [Remote Catalog Loader](#remote-catalog-loader)
 - [Catalog Type Generation](#catalog-type-generation)
 - [Public API](#public-api)
+- [Ecosystem Bridge Evaluation](#ecosystem-bridge-evaluation)
 - [Post-MVP Roadmap](#post-mvp-roadmap)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -502,6 +503,12 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 | `generateI18nCatalogTypesFromDirectory(options)` | Reads locale/namespace JSON catalogs from disk and generates key declarations. |
 
 **Types:** `I18nCatalogTypegenInput`, `I18nCatalogTypegenOptions`, `I18nCatalogTypegenDirectoryOptions`. Generated declaration defaults include `I18nCatalogKey`, `I18nCatalogNamespace`, `I18nCatalogKeyByNamespace`, `I18nCatalogNamespaceKey`, `I18nCatalogTypedTranslateOptions`, `I18nCatalogTypedTranslate`, and `I18nCatalogTypedService`.
+
+## Ecosystem Bridge Evaluation
+
+The current bridge decision is documentation-first: NestJS i18n parity, i18next interop, next-intl catalog sharing, and request-locale/validation convenience glue should be handled through migration guidance and existing opt-in subpaths before adding runtime helpers. See [i18n ecosystem bridge decision record](../../docs/reference/i18n-ecosystem-bridges.md) for the classification matrix and the acceptance criteria required before any future bridge helper can become a first-party subpath.
+
+This preserves the root package guarantee that `@fluojs/i18n` is not coupled to NestJS i18n, i18next, next-intl, React/Next.js runtime assumptions, or HTTP-only validation localization.
 
 ## Post-MVP Roadmap
 
