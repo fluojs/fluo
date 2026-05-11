@@ -19,7 +19,7 @@ fluo is a standard-first TypeScript backend framework built on TC39 standard dec
 
 | Family | Purpose | Representative packages |
 | --- | --- | --- |
-| Core | Decorators, DI, config, runtime orchestration | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/runtime` |
+| Core | Decorators, DI, config, i18n, runtime orchestration | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/i18n`, `@fluojs/runtime` |
 | HTTP | Request execution and API surface | `@fluojs/http`, `@fluojs/graphql`, `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` |
 | Auth | Authentication and authorization | `@fluojs/jwt`, `@fluojs/passport` |
 | Platform | Runtime adapters | `@fluojs/platform-fastify`, `@fluojs/platform-nodejs`, `@fluojs/platform-express`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, `@fluojs/platform-cloudflare-workers` |
@@ -29,7 +29,7 @@ fluo is a standard-first TypeScript backend framework built on TC39 standard dec
 | Operations | Health, metrics, throttling | `@fluojs/metrics`, `@fluojs/terminus`, `@fluojs/throttler` |
 | Tooling | CLI, diagnostics, and Vite build integration | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
-Canonical package and runtime coverage lives in [`docs/reference/package-surface.md`](./reference/package-surface.md), including persistence responsibilities such as `@fluojs/mongoose` ALS/session transaction ownership.
+Canonical package and runtime coverage lives in [`docs/reference/package-surface.md`](./reference/package-surface.md), including core additions such as the fluo-native `@fluojs/i18n` package boundary and persistence responsibilities such as `@fluojs/mongoose` ALS/session transaction ownership.
 
 ## File Structure
 

@@ -69,6 +69,7 @@ Prerelease workflow uses Changesets prerelease mode (`changeset pre enter <tag>`
 - `@fluojs/event-bus`
 - `@fluojs/graphql`
 - `@fluojs/http`
+- `@fluojs/i18n`
 - `@fluojs/jwt`
 - `@fluojs/metrics`
 - `@fluojs/microservices`
