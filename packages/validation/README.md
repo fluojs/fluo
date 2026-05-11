@@ -26,6 +26,7 @@ pnpm add @fluojs/validation
 - when you want class-based validation rules instead of ad hoc parsing in controllers and services
 - when you need metadata-preserving mapped DTO helpers such as `PickType`, `PartialType`, and `IntersectionType`
 - when you want to attach Standard Schema validators such as Zod or Valibot through `@ValidateClass(...)`
+- when you want stable validation issue codes and paths that can be localized explicitly through `@fluojs/i18n/validation`
 
 ## Quick Start
 
@@ -100,6 +101,8 @@ Nested DTOs use dot paths and collection indexes, such as `address.city` or
 `items[0].name`. HTTP bindings attach `source` when the rule came from request
 metadata; standalone validation and Standard Schema issues may leave it unset.
 
+`@fluojs/validation` always emits its normal human-readable `message` values. Applications that need localized messages can opt into `@fluojs/i18n/validation` after validation fails. That integration maps `source`, `field`, and `code` to translation keys without changing validator execution or coupling this package to HTTP locale resolution.
+
 ### Mapped DTO helpers
 
 ```ts
@@ -158,6 +161,7 @@ Numeric validators, including `@IsLatitude()` and `@IsLongitude()`, validate num
 ## Related Packages
 
 - `@fluojs/http`: binds request data, then uses this package to validate it
+- `@fluojs/i18n`: exposes `@fluojs/i18n/validation` for opt-in localized validation issue messages
 - `@fluojs/serialization`: shapes output DTOs on the response side
 - `@fluojs/core`: provides the metadata primitives used by validation decorators
 

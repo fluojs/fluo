@@ -26,6 +26,7 @@ pnpm add @fluojs/validation
 - 컨트롤러나 서비스에서 ad hoc parsing 대신 class 기반 검증 규칙을 쓰고 싶을 때
 - `PickType`, `PartialType`, `IntersectionType` 같은 metadata-preserving mapped DTO helper가 필요할 때
 - `@ValidateClass(...)`로 Zod나 Valibot 같은 Standard Schema validator를 붙이고 싶을 때
+- `@fluojs/i18n/validation`으로 명시적으로 localize할 수 있는 안정적인 validation issue code와 path가 필요할 때
 
 ## 빠른 시작
 
@@ -96,6 +97,8 @@ type ValidationIssue = {
 사용합니다. HTTP 바인딩에서 온 규칙은 `source`를 붙이며, standalone validation이나
 Standard Schema 이슈에서는 값이 없을 수 있습니다.
 
+`@fluojs/validation`은 항상 기존 human-readable `message` 값을 방출합니다. Localized message가 필요한 애플리케이션은 validation 실패 후 `@fluojs/i18n/validation`에 opt-in할 수 있습니다. 이 통합은 validator 실행을 바꾸거나 이 패키지를 HTTP locale resolution에 결합하지 않고 `source`, `field`, `code`를 translation key로 매핑합니다.
+
 ### Mapped DTO 헬퍼
 
 ```ts
@@ -154,6 +157,7 @@ class RestrictedUserDto {
 ## 관련 패키지
 
 - `@fluojs/http`: request data를 bind한 뒤 이 패키지로 검증합니다.
+- `@fluojs/i18n`: opt-in localized validation issue message를 위한 `@fluojs/i18n/validation`을 제공합니다.
 - `@fluojs/serialization`: response side에서 output DTO를 가공합니다.
 - `@fluojs/core`: validation decorator가 사용하는 metadata primitive를 제공합니다.
 

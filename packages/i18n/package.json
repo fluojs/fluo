@@ -44,6 +44,10 @@
       "types": "./dist/icu.d.ts",
       "import": "./dist/icu.js"
     },
+    "./validation": {
+      "types": "./dist/validation.d.ts",
+      "import": "./dist/validation.js"
+    },
     "./typegen": {
       "types": "./dist/typegen.d.ts",
       "import": "./dist/typegen.js"
@@ -64,6 +68,7 @@
   "dependencies": {
     "@fluojs/core": "workspace:^",
     "@fluojs/http": "workspace:^",
+    "@fluojs/validation": "workspace:^",
     "intl-messageformat": "^11.2.4"
   },
   "devDependencies": {
