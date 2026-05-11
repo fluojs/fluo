@@ -14,8 +14,10 @@ export type I18nTranslationKey = string;
 export type I18nErrorCode =
   | 'I18N_ERROR'
   | 'I18N_INVALID_CATALOG'
+  | 'I18N_INVALID_LOADER_OPTIONS'
   | 'I18N_INVALID_LOCALE_CONFIG'
   | 'I18N_INVALID_OPTIONS'
+  | 'I18N_MISSING_CATALOG'
   | 'I18N_MISSING_MESSAGE';
 
 /**
