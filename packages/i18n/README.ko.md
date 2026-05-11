@@ -15,6 +15,7 @@ fluo 애플리케이션을 위한 프레임워크 비종속 국제화 코어 표
 - [HTTP Locale Context Adapter](#http-locale-context-adapter)
 - [Node Filesystem Loader](#node-filesystem-loader)
 - [Remote Catalog Loader](#remote-catalog-loader)
+- [Catalog Type Generation](#catalog-type-generation)
 - [공개 API](#공개-api)
 - [Post-MVP 로드맵](#post-mvp-로드맵)
 - [관련 패키지](#관련-패키지)
@@ -38,6 +39,7 @@ i18n 작업을 위한 안정적인 fluo-native 패키지 경계가 필요할 때
 - 명시적 로케일을 사용하는 표준 `Intl` 포맷팅 헬퍼.
 - `@fluojs/i18n/http`를 통한 명시적 HTTP `RequestContext` 로케일 헬퍼.
 - `@fluojs/i18n/loaders/remote`를 통한 provider-backed remote catalog loading.
+- `@fluojs/i18n/typegen`을 통한 opt-in catalog key declaration generation.
 - 공유 옵션, 카탈로그, 로케일, 번역 키 및 에러 타입.
 
 `@fluojs/i18n`은 의도적으로 NestJS i18n, i18next, next-intl와 결합하지 않습니다. Root entry point는 TC39 `Intl` 기준에 가까운 표준 지향적 대안을 제공하고, ICU MessageFormat 지원은 dedicated `@fluojs/i18n/icu` subpath에 격리됩니다.
@@ -240,6 +242,40 @@ Remote loader는 기본적으로 cache하지 않습니다. 모든 `load(locale, 
 
 Filesystem loader와 마찬가지로 locale과 namespace 값은 provider 호출 전에 validate됩니다. Namespace는 `admin/common` 같은 safe relative path segment를 사용할 수 있습니다. `.`, `..`, absolute path, empty segment, `common.json` 같은 extension-bearing name, traversal attempt는 `I18N_INVALID_LOADER_OPTIONS`로 거부됩니다.
 
+## Catalog Type Generation
+
+Catalog type generation은 Node-oriented `@fluojs/i18n/typegen` tooling subpath에서 제공합니다. 이 기능은 `I18nService.translate(key: string, ...)`를 좁히지 않습니다. 애플리케이션은 type-safe translation key 변수가 필요한 위치에서 generated helper type을 선택적으로 사용할 수 있습니다.
+
+```ts
+import { generateI18nCatalogTypesFromDirectory } from '@fluojs/i18n/typegen';
+
+const declarations = await generateI18nCatalogTypesFromDirectory({
+  rootDir: new URL('./locales', import.meta.url).pathname,
+});
+```
+
+Directory helper는 `${rootDir}/${locale}/**/*.json`을 scan하고, 각 JSON 파일을 `I18nMessageTree`로 validate한 뒤 deterministic TypeScript declaration text를 생성합니다. Filesystem namespace path는 loader가 받는 형태 그대로 보존됩니다. 예를 들어 `locales/en/admin/common.json`은 namespace `admin/common`을 제공하고, nested leaf는 `admin/common.dashboard.title` 같은 fully qualified key가 됩니다. 이는 namespace를 그대로 prefix하는 `I18nService.translate('dashboard.title', { namespace: 'admin/common', ... })` lookup과 일치합니다.
+
+Custom pipeline 또는 remote catalog에는 in-memory message tree에서 생성할 수 있습니다.
+
+```ts
+import { generateI18nCatalogTypes } from '@fluojs/i18n/typegen';
+
+const declarations = generateI18nCatalogTypes([
+  {
+    locale: 'en',
+    namespace: 'admin/common',
+    messages: {
+      dashboard: {
+        title: 'Dashboard',
+      },
+    },
+  },
+]);
+```
+
+두 helper 모두 locale 간 key를 deduplicate하고 stable diff를 위해 output을 sort하며, invalid catalog shape는 `I18N_INVALID_CATALOG`, unsafe locale 또는 namespace path는 `I18N_INVALID_LOADER_OPTIONS`로 거부합니다.
+
 ## 공개 API
 
 ### 코어 (@fluojs/i18n)
@@ -293,13 +329,21 @@ Filesystem loader와 마찬가지로 locale과 namespace 값은 provider 호출 
 
 **타입:** `I18nLoader`, `I18nLoaderLoadOptions`, `RemoteI18nCatalogProvider`, `RemoteI18nCatalogRequest`, `RemoteI18nLoaderOptions`.
 
+### Catalog Type Generation (@fluojs/i18n/typegen)
+
+| Export | 설명 |
+|---|---|
+| `generateI18nCatalogTypes(inputs, options?)` | In-memory catalog tree에서 deterministic TypeScript key declaration을 생성합니다. |
+| `generateI18nCatalogTypesFromDirectory(options)` | Disk의 locale/namespace JSON catalog를 읽고 key declaration을 생성합니다. |
+
+**타입:** `I18nCatalogTypegenInput`, `I18nCatalogTypegenOptions`, `I18nCatalogTypegenDirectoryOptions`.
+
 ## Post-MVP 로드맵
 
 
 다음 기능은 초기 MVP의 명시적 비목표이며 향후 확장이 계획되어 있습니다.
 
 - **`@fluojs/i18n/validation`**: 지역화된 에러 메시지를 위한 `@fluojs/validation`과의 통합.
-- **`@fluojs/i18n/typegen`**: 타입 안전한 번역 키를 위해 카탈로그 파일에서 TypeScript 타입을 생성하는 CLI 도구.
 - **Additional Transport Adapters**: WebSockets, gRPC 및 CLI 환경을 위한 로케일 처리.
 
 ## 관련 패키지
@@ -317,3 +361,4 @@ Filesystem loader와 마찬가지로 locale과 namespace 값은 provider 호출 
 - `packages/i18n/src/http.ts`
 - `packages/i18n/src/index.test.ts`
 - `packages/i18n/src/loaders/remote.ts`
+- `packages/i18n/src/typegen.ts`
