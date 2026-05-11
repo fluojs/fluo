@@ -27,6 +27,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./loaders/fs": {
+      "types": "./dist/loaders/fs.d.ts",
+      "import": "./dist/loaders/fs.js"
     }
   },
   "main": "./dist/index.js",
