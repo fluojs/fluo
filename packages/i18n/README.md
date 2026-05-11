@@ -13,6 +13,7 @@ Framework-agnostic internationalization core surface for fluo applications.
 - [Formatting](#formatting)
 - [ICU MessageFormat](#icu-messageformat)
 - [HTTP Locale Context Adapter](#http-locale-context-adapter)
+- [Validation Error Localization](#validation-error-localization)
 - [Node Filesystem Loader](#node-filesystem-loader)
 - [Remote Catalog Loader](#remote-catalog-loader)
 - [Catalog Type Generation](#catalog-type-generation)
@@ -38,6 +39,7 @@ Use this package when you need a stable fluo-native package boundary for i18n wo
 - optional ICU MessageFormat plural/select formatting through `@fluojs/i18n/icu`
 - standard `Intl` formatting helpers with explicit locales
 - explicit HTTP `RequestContext` locale helpers through `@fluojs/i18n/http`
+- opt-in `@fluojs/validation` issue localization through `@fluojs/i18n/validation`
 - provider-backed remote catalog loading through `@fluojs/i18n/loaders/remote`
 - opt-in catalog key declaration generation through `@fluojs/i18n/typegen`
 - shared option, catalog, locale, translation-key, and error types
@@ -197,6 +199,39 @@ The adapter is intentionally explicit:
 
 Wildcard `*` ranges are parsed but do not automatically select a locale. Applications that want wildcard-specific behavior can add a resolver before or after the provided `Accept-Language` resolver.
 
+## Validation Error Localization
+
+Validation issue localization lives under `@fluojs/i18n/validation` so the root `@fluojs/i18n` entry point stays framework-agnostic and does not change `@fluojs/validation` behavior by default. Applications opt in after validation fails by translating `ValidationIssue.message` snapshots explicitly.
+
+```ts
+import { createI18n } from '@fluojs/i18n';
+import { localizeDtoValidationError } from '@fluojs/i18n/validation';
+import { DefaultValidator, DtoValidationError } from '@fluojs/validation';
+
+const i18n = createI18n({
+  defaultLocale: 'en',
+  supportedLocales: ['en', 'ko'],
+  fallbackLocales: { ko: ['en'] },
+  catalogs: {
+    en: { validation: { email: { EMAIL: '{{ field }} must be a valid email address.' } } },
+    ko: { validation: { email: { EMAIL: '{{ field }}에는 올바른 이메일 주소가 필요합니다.' } } },
+  },
+});
+
+try {
+  await new DefaultValidator().materialize(input, CreateUserDto);
+} catch (error) {
+  if (error instanceof DtoValidationError) {
+    throw localizeDtoValidationError(i18n, error, { locale: 'ko' });
+  }
+  throw error;
+}
+```
+
+The default key candidates are most-specific to least-specific: `source.field.code`, `field.code`, `source.code`, then `code`. The default namespace is `validation`, and callers can provide `keyPrefix`, `namespace`, or a custom `keyBuilder` to match their catalog layout. Translation values include `code`, `field`, `source`, and the original `message`. Missing translations preserve the original validation message unless `fallbackToIssueMessage: false` is set, in which case an `I18nError` with code `I18N_MISSING_MESSAGE` is thrown.
+
+This integration is intentionally not an HTTP adapter. Request locale resolution can happen through `@fluojs/i18n/http`, CLI configuration, WebSocket session state, or any other application boundary, then the chosen locale is passed explicitly to the validation localization helper.
+
 ## Node Filesystem Loader
 
 Node applications can opt into a JSON filesystem loader from the dedicated subpath:
@@ -302,6 +337,17 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 
 **Types:** `HttpLocaleContext`, `HttpLocaleResolver`, `HttpLocaleResolverInput`, `HttpLocaleResolverResult`, `ResolveHttpLocaleOptions`, `AcceptLanguageLocaleResolverOptions`, `AcceptLanguagePreference`.
 
+### Validation Integration (@fluojs/i18n/validation)
+
+| Export | Description |
+|---|---|
+| `createValidationIssueTranslationKeys(issue, keyPrefix?)` | Builds default translation key candidates from validation issue source, field path, and code. |
+| `localizeValidationIssue(i18n, issue, options, index?)` | Returns a validation issue snapshot with a localized message when a candidate key resolves. |
+| `localizeValidationIssues(i18n, issues, options)` | Localizes an issue list without mutating the original issues. |
+| `localizeDtoValidationError(i18n, error, options)` | Creates a new `DtoValidationError` with localized issue messages. |
+
+**Types:** `LocalizeValidationIssuesOptions`, `ValidationIssueTranslationKeyBuilder`, `ValidationIssueTranslationKeyContext`.
+
 ### ICU MessageFormat (@fluojs/i18n/icu)
 
 | Export | Description |
@@ -340,9 +386,8 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 
 ## Post-MVP Roadmap
 
-The following features are explicit non-goals for the initial MVP and are planned for future expansion:
+The following feature remains an explicit non-goal for the initial MVP and is planned for future expansion:
 
-- **`@fluojs/i18n/validation`**: Integration with `@fluojs/validation` for localized error messages.
 - **Additional Transport Adapters**: Locale resolution for WebSockets, gRPC, and CLI environments.
 
 ## Related Packages
@@ -350,6 +395,7 @@ The following features are explicit non-goals for the initial MVP and are planne
 
 - **`@fluojs/core`**: Provides module metadata and shared framework errors used by this package.
 - **`@fluojs/config`**: The closest package layout model for module registration and option snapshotting conventions.
+- **`@fluojs/validation`**: Provides the opt-in validation issue contract consumed by `@fluojs/i18n/validation`.
 
 ## Example Sources
 
@@ -358,6 +404,7 @@ The following features are explicit non-goals for the initial MVP and are planne
 - `packages/i18n/src/icu.ts`
 - `packages/i18n/src/loaders/fs.ts`
 - `packages/i18n/src/http.ts`
+- `packages/i18n/src/validation.ts`
 - `packages/i18n/src/index.test.ts`
 - `packages/i18n/src/loaders/remote.ts`
 - `packages/i18n/src/typegen.ts`

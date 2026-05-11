@@ -13,6 +13,7 @@ fluo 애플리케이션을 위한 프레임워크 비종속 국제화 코어 표
 - [포맷팅](#포맷팅)
 - [ICU MessageFormat](#icu-messageformat)
 - [HTTP Locale Context Adapter](#http-locale-context-adapter)
+- [Validation Error Localization](#validation-error-localization)
 - [Node Filesystem Loader](#node-filesystem-loader)
 - [Remote Catalog Loader](#remote-catalog-loader)
 - [Catalog Type Generation](#catalog-type-generation)
@@ -38,6 +39,7 @@ i18n 작업을 위한 안정적인 fluo-native 패키지 경계가 필요할 때
 - `@fluojs/i18n/icu`를 통한 선택적 ICU MessageFormat 복수형/select 포맷팅.
 - 명시적 로케일을 사용하는 표준 `Intl` 포맷팅 헬퍼.
 - `@fluojs/i18n/http`를 통한 명시적 HTTP `RequestContext` 로케일 헬퍼.
+- `@fluojs/i18n/validation`을 통한 opt-in `@fluojs/validation` issue localization.
 - `@fluojs/i18n/loaders/remote`를 통한 provider-backed remote catalog loading.
 - `@fluojs/i18n/typegen`을 통한 opt-in catalog key declaration generation.
 - 공유 옵션, 카탈로그, 로케일, 번역 키 및 에러 타입.
@@ -197,6 +199,39 @@ Adapter는 의도적으로 explicit합니다:
 
 Wildcard `*` range는 parse되지만 자동으로 locale을 선택하지는 않습니다. Wildcard별 동작이 필요한 애플리케이션은 제공된 `Accept-Language` resolver 앞이나 뒤에 resolver를 추가할 수 있습니다.
 
+## Validation Error Localization
+
+Validation issue localization은 `@fluojs/i18n/validation` subpath에서 제공합니다. 따라서 root `@fluojs/i18n` entry point는 framework-agnostic 상태를 유지하고, `@fluojs/validation` 기본 동작도 바꾸지 않습니다. 애플리케이션은 validation 실패 후 `ValidationIssue.message` snapshot을 명시적으로 번역해 opt-in합니다.
+
+```ts
+import { createI18n } from '@fluojs/i18n';
+import { localizeDtoValidationError } from '@fluojs/i18n/validation';
+import { DefaultValidator, DtoValidationError } from '@fluojs/validation';
+
+const i18n = createI18n({
+  defaultLocale: 'en',
+  supportedLocales: ['en', 'ko'],
+  fallbackLocales: { ko: ['en'] },
+  catalogs: {
+    en: { validation: { email: { EMAIL: '{{ field }} must be a valid email address.' } } },
+    ko: { validation: { email: { EMAIL: '{{ field }}에는 올바른 이메일 주소가 필요합니다.' } } },
+  },
+});
+
+try {
+  await new DefaultValidator().materialize(input, CreateUserDto);
+} catch (error) {
+  if (error instanceof DtoValidationError) {
+    throw localizeDtoValidationError(i18n, error, { locale: 'ko' });
+  }
+  throw error;
+}
+```
+
+기본 key candidate 순서는 가장 구체적인 것부터 덜 구체적인 것까지 `source.field.code`, `field.code`, `source.code`, `code`입니다. 기본 namespace는 `validation`이고, 호출자는 catalog 구조에 맞춰 `keyPrefix`, `namespace`, 또는 custom `keyBuilder`를 제공할 수 있습니다. Translation value에는 `code`, `field`, `source`, 원래 `message`가 포함됩니다. 누락된 번역은 기본적으로 원래 validation message를 보존합니다. `fallbackToIssueMessage: false`를 설정하면 `I18N_MISSING_MESSAGE` 코드의 `I18nError`를 throw합니다.
+
+이 통합은 의도적으로 HTTP adapter가 아닙니다. Request locale resolution은 `@fluojs/i18n/http`, CLI configuration, WebSocket session state 또는 다른 application boundary에서 처리하고, 선택된 locale을 validation localization helper에 명시적으로 전달합니다.
+
 ## Node Filesystem Loader
 
 Node 애플리케이션은 dedicated subpath에서 JSON filesystem loader를 선택적으로 사용할 수 있습니다.
@@ -302,6 +337,17 @@ const declarations = generateI18nCatalogTypes([
 
 **타입:** `HttpLocaleContext`, `HttpLocaleResolver`, `HttpLocaleResolverInput`, `HttpLocaleResolverResult`, `ResolveHttpLocaleOptions`, `AcceptLanguageLocaleResolverOptions`, `AcceptLanguagePreference`.
 
+### Validation Integration (@fluojs/i18n/validation)
+
+| Export | 설명 |
+|---|---|
+| `createValidationIssueTranslationKeys(issue, keyPrefix?)` | validation issue source, field path, code에서 기본 translation key candidate를 생성합니다. |
+| `localizeValidationIssue(i18n, issue, options, index?)` | candidate key가 resolve되면 localized message가 포함된 validation issue snapshot을 반환합니다. |
+| `localizeValidationIssues(i18n, issues, options)` | 원본 issue를 mutate하지 않고 issue list를 localize합니다. |
+| `localizeDtoValidationError(i18n, error, options)` | localized issue message를 가진 새 `DtoValidationError`를 생성합니다. |
+
+**타입:** `LocalizeValidationIssuesOptions`, `ValidationIssueTranslationKeyBuilder`, `ValidationIssueTranslationKeyContext`.
+
 ### ICU MessageFormat (@fluojs/i18n/icu)
 
 | Export | 설명 |
@@ -341,9 +387,8 @@ const declarations = generateI18nCatalogTypes([
 ## Post-MVP 로드맵
 
 
-다음 기능은 초기 MVP의 명시적 비목표이며 향후 확장이 계획되어 있습니다.
+다음 기능은 초기 MVP의 명시적 비목표로 남아 있으며 향후 확장이 계획되어 있습니다.
 
-- **`@fluojs/i18n/validation`**: 지역화된 에러 메시지를 위한 `@fluojs/validation`과의 통합.
 - **Additional Transport Adapters**: WebSockets, gRPC 및 CLI 환경을 위한 로케일 처리.
 
 ## 관련 패키지
@@ -351,6 +396,7 @@ const declarations = generateI18nCatalogTypes([
 
 - **`@fluojs/core`**: 이 패키지가 사용하는 module metadata와 shared framework error를 제공합니다.
 - **`@fluojs/config`**: module registration 및 option snapshotting convention에 가장 가까운 package layout model입니다.
+- **`@fluojs/validation`**: `@fluojs/i18n/validation`이 소비하는 opt-in validation issue contract를 제공합니다.
 
 ## 예제 소스
 
@@ -359,6 +405,7 @@ const declarations = generateI18nCatalogTypes([
 - `packages/i18n/src/icu.ts`
 - `packages/i18n/src/loaders/fs.ts`
 - `packages/i18n/src/http.ts`
+- `packages/i18n/src/validation.ts`
 - `packages/i18n/src/index.test.ts`
 - `packages/i18n/src/loaders/remote.ts`
 - `packages/i18n/src/typegen.ts`
