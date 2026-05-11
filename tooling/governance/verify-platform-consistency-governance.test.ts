@@ -339,4 +339,14 @@ describe('i18n subpath discoverability', () => {
       expect(markdown).toContain('@fluojs/i18n/typegen');
     }
   });
+
+  it('links the i18n ecosystem bridge decision record from the AI context in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+
+    expect(englishContext).toContain('docs/reference/i18n-ecosystem-bridges.md');
+    expect(englishContext).toContain('i18n ecosystem bridge compatibility');
+    expect(koreanContext).toContain('docs/reference/i18n-ecosystem-bridges.ko.md');
+    expect(koreanContext).toContain('i18n ecosystem bridge compatibility');
+  });
 });
