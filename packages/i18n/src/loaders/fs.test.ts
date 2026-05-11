@@ -1,12 +1,12 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { I18nError } from '../errors.js';
 import type { I18nErrorCode } from '../types.js';
-import { FileSystemI18nLoader, createFileSystemI18nLoader } from './fs.js';
+import { createFileSystemI18nLoader, FileSystemI18nLoader } from './fs.js';
 
 let rootDir: string;
 
@@ -131,5 +131,12 @@ describe('@fluojs/i18n/loaders/fs', () => {
     await expectI18nRejection(() => loader.load('en', '../secrets'), 'I18N_INVALID_LOADER_OPTIONS');
     await expectI18nRejection(() => loader.load('en', 'common/../../secrets'), 'I18N_INVALID_LOADER_OPTIONS');
     await expectI18nRejection(() => loader.load('en', 'common\\..\\secrets'), 'I18N_INVALID_LOADER_OPTIONS');
+  });
+
+  it('rejects absolute namespace paths before resolving files', async () => {
+    const loader = new FileSystemI18nLoader({ rootDir });
+
+    await expectI18nRejection(() => loader.load('en', '/common'), 'I18N_INVALID_LOADER_OPTIONS');
+    await expectI18nRejection(() => loader.load('en', `${rootDir}/common`), 'I18N_INVALID_LOADER_OPTIONS');
   });
 });

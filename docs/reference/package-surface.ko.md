@@ -33,7 +33,7 @@
 - **`@fluojs/core`**: 메타데이터 헬퍼 및 TC39 표준 데코레이터 지원.
 - **`@fluojs/di`**: 프로바이더 해결, 라이프사이클 스코프, 의존성 그래프 분석.
 - **`@fluojs/config`**: 환경 인식 설정 로딩 및 타입 안전 접근.
-- **`@fluojs/i18n`**: module registration, standalone service factory, reserved core option/error type, `@fluojs/i18n/icu`를 통한 ICU MessageFormat 지원, `@fluojs/i18n/adapters`를 통한 opt-in non-HTTP locale adapter를 제공하는 framework-agnostic internationalization package boundary.
+- **`@fluojs/i18n`**: module registration, standalone service factory, reserved core option/error type, `@fluojs/i18n/icu`를 통한 ICU MessageFormat 지원, `@fluojs/i18n/http`를 통한 HTTP locale helper, `@fluojs/i18n/adapters`를 통한 opt-in non-HTTP locale adapter, `@fluojs/i18n/validation`을 통한 validation localization, `@fluojs/i18n/loaders/fs`와 `@fluojs/i18n/loaders/remote`를 통한 Node filesystem/provider-backed catalog loader, `@fluojs/i18n/typegen`을 통한 catalog key declaration generation을 제공하는 framework-agnostic internationalization package boundary.
 - **`@fluojs/runtime`**: 애플리케이션 부트스트랩, 모듈 오케스트레이션, 플랫폼 셸 등록, 플랫폼 snapshot 생산. 공개 런타임 헬퍼는 `@fluojs/runtime/node`와 `@fluojs/runtime/web`에서 제공됩니다.
 
 ### adapters

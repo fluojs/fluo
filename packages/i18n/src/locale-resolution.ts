@@ -1,10 +1,16 @@
 import type { I18nLocale } from './types.js';
 
+/**
+ * Normalized locale candidate returned by HTTP or non-HTTP locale resolvers.
+ */
 export interface LocaleResolverCandidate {
   readonly locale: unknown;
   readonly source?: string;
 }
 
+/**
+ * Parsed `Accept-Language` preference with a validated locale range and q-value.
+ */
 export interface AcceptLanguagePreferenceInternal {
   readonly locale: I18nLocale;
   readonly quality: number;
@@ -13,14 +19,33 @@ export interface AcceptLanguagePreferenceInternal {
 const LOCALE_PATTERN = /^[A-Za-z]{1,8}(?:-[A-Za-z0-9]{1,8})*$/;
 const ACCEPT_LANGUAGE_QVALUE_PATTERN = /^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/;
 
+/**
+ * Checks whether a value is a syntactically valid locale identifier for resolver input.
+ *
+ * @param locale Value to validate as a locale identifier.
+ * @returns Whether the value is a string matching the locale grammar accepted by i18n resolvers.
+ */
 export function isValidLocale(locale: unknown): locale is I18nLocale {
   return typeof locale === 'string' && LOCALE_PATTERN.test(locale);
 }
 
+/**
+ * Checks whether a valid locale is allowed by an optional supported-locale list.
+ *
+ * @param locale Locale identifier to check.
+ * @param supportedLocales Optional list of supported locale identifiers.
+ * @returns Whether the locale is supported, or `true` when no supported-locale list is configured.
+ */
 export function isSupportedLocale(locale: I18nLocale, supportedLocales: readonly I18nLocale[] | undefined): boolean {
   return supportedLocales === undefined || supportedLocales.length === 0 || supportedLocales.includes(locale);
 }
 
+/**
+ * Normalizes resolver output into a locale candidate object when the output shape is supported.
+ *
+ * @param result Resolver output to normalize.
+ * @returns A locale candidate, or `undefined` when the resolver output should be ignored.
+ */
 export function normalizeLocaleResolverResult(result: unknown): LocaleResolverCandidate | undefined {
   if (result === undefined) {
     return undefined;
@@ -68,6 +93,12 @@ function parseAcceptLanguageQuality(parameters: readonly string[]): number | und
   return quality;
 }
 
+/**
+ * Parses one or more `Accept-Language` header values into sorted locale preferences.
+ *
+ * @param header Header value or values to parse.
+ * @returns Valid preferences sorted by descending q-value and original header order.
+ */
 export function parseLocalePreferences(header: string | readonly string[] | undefined): readonly AcceptLanguagePreferenceInternal[] {
   const rawHeader = typeof header === 'string' ? header : header?.join(',');
 

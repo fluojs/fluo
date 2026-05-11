@@ -1,15 +1,14 @@
+import { DefaultValidator, DtoValidationError, IsEmail, IsString, MinLength } from '@fluojs/validation';
 import { describe, expect, it } from 'vitest';
 
-import { DefaultValidator, DtoValidationError, IsEmail, IsString, MinLength } from '@fluojs/validation';
-
-import { createI18n } from './index.js';
 import { I18nError } from './errors.js';
+import { createI18n } from './index.js';
+import type { LocalizeValidationIssuesOptions, ValidationIssueTranslationKeyBuilder } from './validation.js';
 import {
   createValidationIssueTranslationKeys,
   localizeDtoValidationError,
   localizeValidationIssues,
 } from './validation.js';
-import type { LocalizeValidationIssuesOptions, ValidationIssueTranslationKeyBuilder } from './validation.js';
 
 class CreateUserDto {
   @IsEmail()
@@ -84,6 +83,39 @@ describe('@fluojs/i18n/validation localized validation errors', () => {
       { code: 'MIN_LENGTH', field: 'name', message: 'name의 길이가 너무 짧습니다.', source: undefined },
     ]);
     expect(error.issues[0]?.message).toBe('email is invalid.');
+  });
+
+  it('passes code, field, source, and original message values to validation translations', () => {
+    const i18n = createI18n({
+      catalogs: {
+        en: {
+          validation: {
+            body: {
+              email: {
+                EMAIL: '{{ source }}.{{ field }} failed {{ code }} with "{{ message }}".',
+              },
+            },
+          },
+        },
+      },
+      defaultLocale: 'en',
+      supportedLocales: ['en'],
+    });
+
+    expect(
+      localizeValidationIssues(
+        i18n,
+        [{ code: 'EMAIL', field: 'email', message: 'email is invalid.', source: 'body' }],
+        { locale: 'en' },
+      ),
+    ).toEqual([
+      {
+        code: 'EMAIL',
+        field: 'email',
+        message: 'body.email failed EMAIL with "email is invalid.".',
+        source: 'body',
+      },
+    ]);
   });
 
   it('falls back through i18n catalogs and then preserves original messages for missing translations', async () => {

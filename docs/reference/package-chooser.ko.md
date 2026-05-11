@@ -16,7 +16,7 @@
 | Node.js HTTP를 직접 제어해야 함 | `@fluojs/platform-nodejs` | Node.js에서 first-class `fluo new` 애플리케이션 스타터로도 제공됩니다. |
 | 요청 유효성 검사가 필요함 | `@fluojs/validation` | DTO 바인딩과 검증이 필요할 때 추가합니다. |
 | 타입 안전 설정 접근이 필요함 | `@fluojs/config` | 패키지 내부의 직접 `process.env` 접근 대신 사용합니다. |
-| localization 또는 i18n service가 필요함 | `@fluojs/i18n` | framework-agnostic internationalization module registration, standalone service 생성, 공유 option/error type, `@fluojs/i18n/icu` ICU MessageFormat plural/select 지원, `@fluojs/i18n/adapters` opt-in non-HTTP locale resolution에 사용합니다. |
+| localization 또는 i18n service가 필요함 | `@fluojs/i18n` | framework-agnostic internationalization module registration, standalone service 생성, 공유 option/error type, `@fluojs/i18n/icu` ICU MessageFormat plural/select 지원, `@fluojs/i18n/http` HTTP locale helper, `@fluojs/i18n/adapters` opt-in non-HTTP locale resolution, `@fluojs/i18n/validation` validation localization, `@fluojs/i18n/loaders/fs`와 `@fluojs/i18n/loaders/remote` catalog loading, `@fluojs/i18n/typegen` catalog key declaration에 사용합니다. |
 
 ## 엣지 / 모던 런타임에 배포
 
