@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { I18nError } from '../errors.js';
 import type { I18nErrorCode, I18nMessageTree } from '../types.js';
+import type { I18nLoader, I18nLoaderLoadOptions } from './remote.js';
 import { RemoteI18nLoader, createRemoteI18nLoader } from './remote.js';
 
 async function expectI18nRejection(action: () => Promise<unknown>, code: I18nErrorCode): Promise<void> {
@@ -67,6 +68,20 @@ describe('@fluojs/i18n/loaders/remote', () => {
 
     expect(catalog).toEqual({ title: 'Welcome' });
     expect(Object.isFrozen(catalog)).toBe(true);
+  });
+
+  it('does not cache catalogs and delegates caching policy to the provider', async () => {
+    let providerCalls = 0;
+    const loader = new RemoteI18nLoader({
+      provider: () => {
+        providerCalls += 1;
+        return { title: `Welcome ${providerCalls}` };
+      },
+    });
+
+    await expect(loader.load('en', 'common')).resolves.toEqual({ title: 'Welcome 1' });
+    await expect(loader.load('en', 'common')).resolves.toEqual({ title: 'Welcome 2' });
+    expect(providerCalls).toBe(2);
   });
 
   it('fails with a stable code for missing remote catalogs', async () => {
@@ -150,9 +165,12 @@ describe('@fluojs/i18n/loaders/remote', () => {
   it('is available from the remote loader subpath without adding root value exports', async () => {
     const root = await import('../index.js');
     const remote = await import('./remote.js');
+    const loaderLoadOptions: I18nLoaderLoadOptions = {};
+    const loader: I18nLoader = new RemoteI18nLoader({ provider: () => ({ title: 'typed' }) });
 
     expect(Object.keys(root).sort()).toEqual(['I18nError', 'I18nModule', 'I18nService', 'createI18n']);
     expect(remote.RemoteI18nLoader).toBe(RemoteI18nLoader);
     expect(remote.createRemoteI18nLoader).toBe(createRemoteI18nLoader);
+    await expect(loader.load('en', 'common', loaderLoadOptions)).resolves.toEqual({ title: 'typed' });
   });
 });

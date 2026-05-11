@@ -236,6 +236,8 @@ const common = await loader.load('en', 'common');
 
 The provider receives the validated `locale`, `namespace`, and an `AbortSignal` that combines the loader timeout with optional per-call cancellation. Providers may return a raw object message tree or a JSON string. `undefined` and `null` are treated as missing catalogs and throw `I18N_MISSING_CATALOG`; malformed JSON and invalid message tree shapes throw `I18N_INVALID_CATALOG`; provider failures are wrapped as `I18N_LOADER_FAILED`; timeouts throw `I18N_LOADER_TIMEOUT`; caller cancellation throws `I18N_LOADER_ABORTED`. Returned catalogs are always detached immutable `I18nMessageTree` snapshots.
 
+The remote loader never caches by default: every `load(locale, namespace)` call invokes the provider and snapshots that provider result. Applications that need memory, HTTP, CDN, database, or stale-while-revalidate caching should implement it inside the provider or in a wrapper around the provider so cache invalidation remains explicit at the application boundary.
+
 Like the filesystem loader, locale and namespace values are validated before the provider is called. Namespaces may use safe relative path segments such as `admin/common`; `.`/`..`, absolute paths, empty segments, extension-bearing names such as `common.json`, and traversal attempts are rejected with `I18N_INVALID_LOADER_OPTIONS`.
 
 ## Public API

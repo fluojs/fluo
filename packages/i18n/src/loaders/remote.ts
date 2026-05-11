@@ -8,6 +8,8 @@ import {
 } from './shared.js';
 import type { I18nLoader, I18nLoaderLoadOptions } from './shared.js';
 
+export type { I18nLoader, I18nLoaderLoadOptions } from './shared.js';
+
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 /**

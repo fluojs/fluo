@@ -27,6 +27,12 @@ export interface I18nLoader {
   load(locale: I18nLocale, namespace: I18nTranslationKey, options?: I18nLoaderLoadOptions): Promise<I18nMessageTree>;
 }
 
+/**
+ * Checks whether a value is a plain object suitable for loader option or catalog validation.
+ *
+ * @param value Candidate value to inspect.
+ * @returns `true` when the value is a plain object or null-prototype object.
+ */
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null) {
     return false;
@@ -36,12 +42,26 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
   return prototype === Object.prototype || prototype === null;
 }
 
+/**
+ * Validates a loader locale before a backend is called.
+ *
+ * @param locale Candidate locale value supplied by the loader caller.
+ * @param label Loader label used in stable error messages.
+ * @returns Nothing when the locale is valid.
+ */
 export function validateLoaderLocale(locale: unknown, label: string): asserts locale is I18nLocale {
   if (typeof locale !== 'string' || locale.trim() === '' || !SAFE_LOCALE_PATTERN.test(locale)) {
     throw new I18nError(`${label} locale must be a safe non-empty locale segment.`, 'I18N_INVALID_LOADER_OPTIONS');
   }
 }
 
+/**
+ * Validates a loader namespace before a backend is called.
+ *
+ * @param namespace Candidate namespace value supplied by the loader caller.
+ * @param label Loader label used in stable error messages.
+ * @returns Nothing when the namespace is valid.
+ */
 export function validateLoaderNamespace(namespace: unknown, label: string): asserts namespace is I18nTranslationKey {
   if (typeof namespace !== 'string' || namespace.trim() === '') {
     throw new I18nError(`${label} namespace must be a safe non-empty namespace path.`, 'I18N_INVALID_LOADER_OPTIONS');

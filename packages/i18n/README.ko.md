@@ -236,6 +236,8 @@ const common = await loader.load('en', 'common');
 
 Provider는 validated `locale`, `namespace`, 그리고 loader timeout과 optional per-call cancellation을 결합한 `AbortSignal`을 받습니다. Provider는 raw object message tree 또는 JSON string을 반환할 수 있습니다. `undefined`와 `null`은 missing catalog로 취급되어 `I18N_MISSING_CATALOG`를 throw합니다. Malformed JSON과 invalid message tree shape는 `I18N_INVALID_CATALOG`, provider failure는 `I18N_LOADER_FAILED`, timeout은 `I18N_LOADER_TIMEOUT`, caller cancellation은 `I18N_LOADER_ABORTED`로 보고됩니다. 반환된 catalog는 항상 detached immutable `I18nMessageTree` snapshot입니다.
 
+Remote loader는 기본적으로 cache하지 않습니다. 모든 `load(locale, namespace)` 호출은 provider를 호출하고 그 provider result를 snapshot합니다. Memory, HTTP, CDN, database 또는 stale-while-revalidate caching이 필요한 애플리케이션은 cache invalidation이 application boundary에서 명시적으로 유지되도록 provider 내부 또는 provider wrapper에서 구현해야 합니다.
+
 Filesystem loader와 마찬가지로 locale과 namespace 값은 provider 호출 전에 validate됩니다. Namespace는 `admin/common` 같은 safe relative path segment를 사용할 수 있습니다. `.`, `..`, absolute path, empty segment, `common.json` 같은 extension-bearing name, traversal attempt는 `I18N_INVALID_LOADER_OPTIONS`로 거부됩니다.
 
 ## 공개 API
