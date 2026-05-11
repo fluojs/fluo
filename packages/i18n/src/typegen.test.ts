@@ -84,6 +84,7 @@ describe('@fluojs/i18n/typegen', () => {
     expect(output).toContain('export type I18nCatalogNamespace = "admin/common";');
     expect(output).toContain('readonly "admin/common": "cancel" | "nested.save";');
     expect(output).toContain('export type I18nCatalogNamespaceKey<Namespace extends I18nCatalogNamespace> = I18nCatalogKeyByNamespace[Namespace];');
+    expect(output).toContain("export type I18nCatalogTypedTranslateOptions = Omit<import('@fluojs/i18n').I18nTranslateOptions, 'namespace'>;");
     expect(output).toContain('export type I18nCatalogTypedTranslate = <Key extends I18nCatalogKey>(');
     expect(output).toContain('export interface I18nCatalogTypedService {');
   });
@@ -104,9 +105,10 @@ export interface I18nCatalogKeyByNamespace {
   readonly "root": "app.title";
 }
 export type I18nCatalogNamespaceKey<Namespace extends I18nCatalogNamespace> = I18nCatalogKeyByNamespace[Namespace];
+export type I18nCatalogTypedTranslateOptions = Omit<import('@fluojs/i18n').I18nTranslateOptions, 'namespace'>;
 export type I18nCatalogTypedTranslate = <Key extends I18nCatalogKey>(
   key: Key,
-  options: import('@fluojs/i18n').I18nTranslateOptions,
+  options: I18nCatalogTypedTranslateOptions,
 ) => string;
 export interface I18nCatalogTypedService {
   readonly translate: I18nCatalogTypedTranslate;
@@ -141,13 +143,16 @@ export interface I18nCatalogTypedService {
         namespaceKeyTypeName: 'AppI18nNamespaceKey',
         namespaceTypeName: 'AppI18nNamespace',
         typedServiceTypeName: 'AppTypedI18n',
+        typedTranslateOptionsTypeName: 'AppTypedTranslateOptions',
         typedTranslateTypeName: 'AppTypedTranslate',
       },
     );
 
     expect(output).toContain('export type AppI18nKey = "admin/common.dashboard.title";');
     expect(output).toContain('export type AppI18nNamespaceKey<Namespace extends AppI18nNamespace> = AppI18nKeysByNamespace[Namespace];');
+    expect(output).toContain("export type AppTypedTranslateOptions = Omit<import('@fluojs/i18n').I18nTranslateOptions, 'namespace'>;");
     expect(output).toContain('export type AppTypedTranslate = <Key extends AppI18nKey>(');
+    expect(output).toContain('options: AppTypedTranslateOptions,');
     expect(output).toContain('readonly translate: AppTypedTranslate;');
     expect(output).toContain('Namespace extends AppI18nNamespace,');
     expect(output).toContain('Key extends AppI18nNamespaceKey<Namespace>,');

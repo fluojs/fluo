@@ -11,7 +11,13 @@ interface AppI18nKeyByNamespace {
 }
 
 type AppI18nNamespaceKey<Namespace extends AppI18nNamespace> = AppI18nKeyByNamespace[Namespace];
-type AppI18nTypedTranslate = <Key extends AppI18nKey>(key: Key, options: I18nTranslateOptions) => string;
+type AppI18nTypedTranslateOptions = Omit<I18nTranslateOptions, 'namespace'>;
+type AppI18nTypedTranslate = <Key extends AppI18nKey>(key: Key, options: AppI18nTypedTranslateOptions) => string;
+type HasNamespaceOption<Options> = 'namespace' extends keyof Options ? true : false;
+type FullyQualifiedTranslateOptionsHaveNamespace = HasNamespaceOption<Parameters<AppI18nTypedTranslate>[1]>;
+type NamespaceScopedHelperOptionsHaveNamespace = HasNamespaceOption<Parameters<AppTypedI18nService['translateInNamespace']>[2]>;
+type AdminCommonAllowsDashboardTitle = 'dashboard.title' extends AppI18nNamespaceKey<'admin/common'> ? true : false;
+type CommonAllowsDashboardTitle = 'dashboard.title' extends AppI18nNamespaceKey<'common'> ? true : false;
 
 interface AppTypedI18nService {
   readonly translate: AppI18nTypedTranslate;
@@ -31,8 +37,16 @@ describe('@fluojs/i18n/typegen typed helper declarations', () => {
   it('supports fully qualified and namespace-scoped translation key callsites', () => {
     const fromFullyQualifiedKey = typedI18n.translate('admin/common.dashboard.title', { locale: 'en' });
     const fromNamespaceScopedKey = typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en' });
+    const fullyQualifiedOptionsHaveNamespace: FullyQualifiedTranslateOptionsHaveNamespace = false;
+    const namespaceScopedOptionsHaveNamespace: NamespaceScopedHelperOptionsHaveNamespace = false;
+    const adminCommonSupportsDashboardTitle: AdminCommonAllowsDashboardTitle = true;
+    const commonSupportsDashboardTitle: CommonAllowsDashboardTitle = false;
 
     expectTypeOf(fromFullyQualifiedKey).toEqualTypeOf<string>();
     expectTypeOf(fromNamespaceScopedKey).toEqualTypeOf<string>();
+    expectTypeOf(fullyQualifiedOptionsHaveNamespace).toEqualTypeOf<false>();
+    expectTypeOf(namespaceScopedOptionsHaveNamespace).toEqualTypeOf<false>();
+    expectTypeOf(adminCommonSupportsDashboardTitle).toEqualTypeOf<true>();
+    expectTypeOf(commonSupportsDashboardTitle).toEqualTypeOf<false>();
   });
 });

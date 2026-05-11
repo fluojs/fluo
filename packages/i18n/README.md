@@ -501,7 +501,7 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 | `generateI18nCatalogTypes(inputs, options?)` | Generates deterministic TypeScript key declarations from in-memory catalog trees. |
 | `generateI18nCatalogTypesFromDirectory(options)` | Reads locale/namespace JSON catalogs from disk and generates key declarations. |
 
-**Types:** `I18nCatalogTypegenInput`, `I18nCatalogTypegenOptions`, `I18nCatalogTypegenDirectoryOptions`. Generated declaration defaults include `I18nCatalogKey`, `I18nCatalogNamespace`, `I18nCatalogKeyByNamespace`, `I18nCatalogNamespaceKey`, `I18nCatalogTypedTranslate`, and `I18nCatalogTypedService`.
+**Types:** `I18nCatalogTypegenInput`, `I18nCatalogTypegenOptions`, `I18nCatalogTypegenDirectoryOptions`. Generated declaration defaults include `I18nCatalogKey`, `I18nCatalogNamespace`, `I18nCatalogKeyByNamespace`, `I18nCatalogNamespaceKey`, `I18nCatalogTypedTranslateOptions`, `I18nCatalogTypedTranslate`, and `I18nCatalogTypedService`.
 
 ## Post-MVP Roadmap
 

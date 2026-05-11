@@ -501,7 +501,7 @@ typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en'
 | `generateI18nCatalogTypes(inputs, options?)` | In-memory catalog tree에서 deterministic TypeScript key declaration을 생성합니다. |
 | `generateI18nCatalogTypesFromDirectory(options)` | Disk의 locale/namespace JSON catalog를 읽고 key declaration을 생성합니다. |
 
-**타입:** `I18nCatalogTypegenInput`, `I18nCatalogTypegenOptions`, `I18nCatalogTypegenDirectoryOptions`. Generated declaration 기본값에는 `I18nCatalogKey`, `I18nCatalogNamespace`, `I18nCatalogKeyByNamespace`, `I18nCatalogNamespaceKey`, `I18nCatalogTypedTranslate`, `I18nCatalogTypedService`가 포함됩니다.
+**타입:** `I18nCatalogTypegenInput`, `I18nCatalogTypegenOptions`, `I18nCatalogTypegenDirectoryOptions`. Generated declaration 기본값에는 `I18nCatalogKey`, `I18nCatalogNamespace`, `I18nCatalogKeyByNamespace`, `I18nCatalogNamespaceKey`, `I18nCatalogTypedTranslateOptions`, `I18nCatalogTypedTranslate`, `I18nCatalogTypedService`가 포함됩니다.
 
 ## Post-MVP 로드맵
 

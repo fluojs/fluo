@@ -10,6 +10,7 @@ const DEFAULT_KEY_TYPE_NAME = 'I18nCatalogKey';
 const DEFAULT_NAMESPACE_TYPE_NAME = 'I18nCatalogNamespace';
 const DEFAULT_KEY_BY_NAMESPACE_TYPE_NAME = 'I18nCatalogKeyByNamespace';
 const DEFAULT_NAMESPACE_KEY_TYPE_NAME = 'I18nCatalogNamespaceKey';
+const DEFAULT_TYPED_TRANSLATE_OPTIONS_TYPE_NAME = 'I18nCatalogTypedTranslateOptions';
 const DEFAULT_TYPED_TRANSLATE_TYPE_NAME = 'I18nCatalogTypedTranslate';
 const DEFAULT_TYPED_SERVICE_TYPE_NAME = 'I18nCatalogTypedService';
 const IDENTIFIER_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -46,6 +47,8 @@ export interface I18nCatalogTypegenOptions {
   readonly keyByNamespaceTypeName?: string;
   /** Exported helper type name that resolves leaf keys for a namespace path. */
   readonly namespaceKeyTypeName?: string;
+  /** Exported options type name for fully qualified typed translation calls. */
+  readonly typedTranslateOptionsTypeName?: string;
   /** Exported callable type name for fully qualified key translation. */
   readonly typedTranslateTypeName?: string;
   /** Exported facade type name for opt-in typed translation callsites. */
@@ -159,14 +162,16 @@ function renderTypedHelpers(names: {
   readonly namespaceTypeName: string;
   readonly keyByNamespaceTypeName: string;
   readonly namespaceKeyTypeName: string;
+  readonly typedTranslateOptionsTypeName: string;
   readonly typedTranslateTypeName: string;
   readonly typedServiceTypeName: string;
 }): string[] {
   return [
     `export type ${names.namespaceKeyTypeName}<Namespace extends ${names.namespaceTypeName}> = ${names.keyByNamespaceTypeName}[Namespace];`,
+    `export type ${names.typedTranslateOptionsTypeName} = Omit<import('@fluojs/i18n').I18nTranslateOptions, 'namespace'>;`,
     `export type ${names.typedTranslateTypeName} = <Key extends ${names.keyTypeName}>(`,
     '  key: Key,',
-    "  options: import('@fluojs/i18n').I18nTranslateOptions,",
+    `  options: ${names.typedTranslateOptionsTypeName},`,
     ') => string;',
     `export interface ${names.typedServiceTypeName} {`,
     `  readonly translate: ${names.typedTranslateTypeName};`,
@@ -250,6 +255,11 @@ export function generateI18nCatalogTypes(
     DEFAULT_TYPED_TRANSLATE_TYPE_NAME,
     'Catalog typegen typedTranslateTypeName',
   );
+  const typedTranslateOptionsTypeName = assertIdentifier(
+    options.typedTranslateOptionsTypeName,
+    DEFAULT_TYPED_TRANSLATE_OPTIONS_TYPE_NAME,
+    'Catalog typegen typedTranslateOptionsTypeName',
+  );
   const typedServiceTypeName = assertIdentifier(
     options.typedServiceTypeName,
     DEFAULT_TYPED_SERVICE_TYPE_NAME,
@@ -296,6 +306,7 @@ export function generateI18nCatalogTypes(
       namespaceKeyTypeName,
       namespaceTypeName,
       typedServiceTypeName,
+      typedTranslateOptionsTypeName,
       typedTranslateTypeName,
     }),
     '',
