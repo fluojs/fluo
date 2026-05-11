@@ -11,6 +11,7 @@ fluo 애플리케이션을 위한 프레임워크 비종속 국제화 코어 표
 - [빠른 시작](#빠른-시작)
 - [코어 번역](#코어-번역)
 - [포맷팅](#포맷팅)
+- [ICU MessageFormat](#icu-messageformat)
 - [HTTP Locale Context Adapter](#http-locale-context-adapter)
 - [Node Filesystem Loader](#node-filesystem-loader)
 - [공개 API](#공개-api)
@@ -32,11 +33,12 @@ i18n 작업을 위한 안정적인 fluo-native 패키지 경계가 필요할 때
 - 명시적 로케일 번역 조회를 위한 프레임워크 비종속 `I18nService`.
 - 모듈 없이 사용하는 독립형 `createI18n(...)` 진입점.
 - 로케일 범위 메시지 카탈로그, 결정론적 폴백 처리, 보간법 및 누락된 메시지 훅.
+- `@fluojs/i18n/icu`를 통한 선택적 ICU MessageFormat 복수형/select 포맷팅.
 - 명시적 로케일을 사용하는 표준 `Intl` 포맷팅 헬퍼.
 - `@fluojs/i18n/http`를 통한 명시적 HTTP `RequestContext` 로케일 헬퍼.
 - 공유 옵션, 카탈로그, 로케일, 번역 키 및 에러 타입.
 
-`@fluojs/i18n`은 의도적으로 NestJS i18n, i18next, next-intl, FormatJS와 결합하지 않습니다. 외부 의존성 없이 TC39 `Intl` 기준에 근접한 표준 지향적 대안을 제공합니다.
+`@fluojs/i18n`은 의도적으로 NestJS i18n, i18next, next-intl와 결합하지 않습니다. Root entry point는 TC39 `Intl` 기준에 가까운 표준 지향적 대안을 제공하고, ICU MessageFormat 지원은 dedicated `@fluojs/i18n/icu` subpath에 격리됩니다.
 
 ## 빠른 시작
 
@@ -117,6 +119,35 @@ i18n.formatCurrency(12900, {
   locale: 'ko-KR',
 });
 ```
+
+## ICU MessageFormat
+
+ICU MessageFormat 지원은 `@fluojs/i18n/icu`에 있습니다. 따라서 root `@fluojs/i18n` entry point는 프레임워크 비종속 simple interpolation contract를 유지합니다. ICU service는 먼저 core `I18nService`를 통해 메시지를 resolve하므로 locale fallback, 호출별 `defaultValue`, missing-message hook, 호환되는 primitive 값의 `{{ name }}` interpolation을 보존합니다. 이후 resolve된 메시지를 ICU plural, select, nested MessageFormat 규칙으로 포맷합니다.
+
+```ts
+import { createIcuI18n } from '@fluojs/i18n/icu';
+
+const i18n = createIcuI18n({
+  defaultLocale: 'en',
+  supportedLocales: ['en', 'ko'],
+  fallbackLocales: { ko: ['en'] },
+  catalogs: {
+    en: {
+      inbox: 'Hello {{ name }}. {count, plural, =0 {No messages} one {One message} other {# messages}}.',
+      invite:
+        '{gender, select, female {{host} invited {count, plural, one {one guest} other {# guests}}} other {{host} invited {count, plural, one {one guest} other {# guests}}}}',
+    },
+  },
+});
+
+i18n.translate('inbox', {
+  locale: 'ko',
+  values: { count: 3, name: 'Mina' },
+});
+// "Hello Mina. 3 messages."
+```
+
+Invalid ICU pattern, 누락된 ICU value, string이 아닌 rich formatting result는 `I18N_INVALID_MESSAGE_FORMAT` 코드의 `I18nError`로 보고됩니다. 이 subpath는 `intl-messageformat`이 사용하는 host `Intl.NumberFormat`, `Intl.DateTimeFormat`, `Intl.PluralRules` 구현에 의존합니다.
 
 ## HTTP Locale Context Adapter
 
@@ -206,6 +237,15 @@ Loader는 `${rootDir}/${locale}/${namespace}.json`을 읽고 immutable `I18nMess
 
 **타입:** `HttpLocaleContext`, `HttpLocaleResolver`, `HttpLocaleResolverInput`, `HttpLocaleResolverResult`, `ResolveHttpLocaleOptions`, `AcceptLanguageLocaleResolverOptions`, `AcceptLanguagePreference`.
 
+### ICU MessageFormat (@fluojs/i18n/icu)
+
+| Export | 설명 |
+|---|---|
+| `createIcuI18n(options)` | Core lookup semantics를 보존하면서 standalone ICU MessageFormat service를 생성합니다. |
+| `IcuI18nService` | `I18nService`로 메시지를 resolve한 뒤 ICU formatting을 수행하는 service입니다. |
+
+**타입:** `I18nIcuTranslateOptions`, `I18nIcuValue`, `I18nIcuValues`.
+
 ### 파일시스템 로더 (@fluojs/i18n/loaders/fs)
 
 | Export | 설명 |
@@ -220,7 +260,6 @@ Loader는 `${rootDir}/${locale}/${namespace}.json`을 읽고 immutable `I18nMess
 
 다음 기능은 초기 MVP의 명시적 비목표이며 향후 확장이 계획되어 있습니다.
 
-- **`@fluojs/i18n/icu`**: 복잡한 복수형 및 성별 규칙을 위한 ICU MessageFormat 지원.
 - **`@fluojs/i18n/validation`**: 지역화된 에러 메시지를 위한 `@fluojs/validation`과의 통합.
 - **`@fluojs/i18n/typegen`**: 타입 안전한 번역 키를 위해 카탈로그 파일에서 TypeScript 타입을 생성하는 CLI 도구.
 - **Remote Loaders**: 외부 API 또는 데이터베이스에서 카탈로그를 가져오는 기능 지원.
@@ -236,6 +275,7 @@ Loader는 `${rootDir}/${locale}/${namespace}.json`을 읽고 immutable `I18nMess
 
 - `packages/i18n/src/module.ts`
 - `packages/i18n/src/service.ts`
+- `packages/i18n/src/icu.ts`
 - `packages/i18n/src/loaders/fs.ts`
 - `packages/i18n/src/http.ts`
 - `packages/i18n/src/index.test.ts`

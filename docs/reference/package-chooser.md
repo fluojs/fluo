@@ -16,7 +16,7 @@
 | Need direct Node.js HTTP control | `@fluojs/platform-nodejs` | Also available as a first-class `fluo new` application starter on Node.js. |
 | Need request validation | `@fluojs/validation` | Add when DTO binding and validation are required. |
 | Need typed configuration access | `@fluojs/config` | Use instead of direct `process.env` access inside packages. |
-| Need localization or i18n services | `@fluojs/i18n` | Use for framework-agnostic internationalization module registration, standalone service creation, and shared option/error types. |
+| Need localization or i18n services | `@fluojs/i18n` | Use for framework-agnostic internationalization module registration, standalone service creation, shared option/error types, and `@fluojs/i18n/icu` plural/select MessageFormat support. |
 
 ## deploy to edge / modern runtimes
 
