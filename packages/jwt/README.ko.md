@@ -110,7 +110,7 @@ const principal = await verifier.verifyAccessToken(token);
 // principal: { subject: 'user-123', roles: ['admin'], scopes: ['read:profile'], ... }
 ```
 
-`JwtService.sign(payload, { expiresIn })`를 사용할 때는 payload 안에 기존 `exp` 값이 있더라도 호출 시점의 `expiresIn` 재정의가 항상 우선합니다. 따라서 토큰 수명은 호출 위치에서 결정적으로 제어됩니다. `expiresIn`은 초 단위의 0 이상 숫자 또는 `60s`, `15m`, `1h`, `7d` 같은 짧은 duration 문자열을 받을 수 있습니다.
+`JwtService.sign(payload, { expiresIn })`를 사용할 때는 payload 안에 기존 `exp` 값이 있더라도 호출 시점의 `expiresIn` 재정의가 항상 우선합니다. 따라서 토큰 수명은 호출 위치에서 결정적으로 제어됩니다. `expiresIn`은 초 단위의 0 이상 숫자 또는 `60s`, `15m`, `1h`, `7d` 같은 짧은 duration 문자열을 받을 수 있습니다. 숫자 초 값은 JWT NumericDate의 소수 정밀도를 보존하며, 문자열 duration은 기존처럼 정수 초 리터럴로 처리됩니다.
 
 ## 일반적인 패턴
 
