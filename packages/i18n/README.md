@@ -15,6 +15,7 @@ Framework-agnostic internationalization core surface for fluo applications.
 - [HTTP Locale Context Adapter](#http-locale-context-adapter)
 - [Node Filesystem Loader](#node-filesystem-loader)
 - [Remote Catalog Loader](#remote-catalog-loader)
+- [Catalog Type Generation](#catalog-type-generation)
 - [Public API](#public-api)
 - [Post-MVP Roadmap](#post-mvp-roadmap)
 - [Related Packages](#related-packages)
@@ -38,6 +39,7 @@ Use this package when you need a stable fluo-native package boundary for i18n wo
 - standard `Intl` formatting helpers with explicit locales
 - explicit HTTP `RequestContext` locale helpers through `@fluojs/i18n/http`
 - provider-backed remote catalog loading through `@fluojs/i18n/loaders/remote`
+- opt-in catalog key declaration generation through `@fluojs/i18n/typegen`
 - shared option, catalog, locale, translation-key, and error types
 
 `@fluojs/i18n` is intentionally not coupled to NestJS i18n, i18next, or next-intl. Its root entry point provides a standard-first alternative that stays close to the TC39 `Intl` baseline, while ICU MessageFormat support is isolated behind the dedicated `@fluojs/i18n/icu` subpath.
@@ -240,6 +242,40 @@ The remote loader never caches by default: every `load(locale, namespace)` call 
 
 Like the filesystem loader, locale and namespace values are validated before the provider is called. Namespaces may use safe relative path segments such as `admin/common`; `.`/`..`, absolute paths, empty segments, extension-bearing names such as `common.json`, and traversal attempts are rejected with `I18N_INVALID_LOADER_OPTIONS`.
 
+## Catalog Type Generation
+
+Catalog type generation lives under the Node-oriented `@fluojs/i18n/typegen` tooling subpath. It does not narrow `I18nService.translate(key: string, ...)`; applications can opt into generated helper types where they want type-safe translation key variables.
+
+```ts
+import { generateI18nCatalogTypesFromDirectory } from '@fluojs/i18n/typegen';
+
+const declarations = await generateI18nCatalogTypesFromDirectory({
+  rootDir: new URL('./locales', import.meta.url).pathname,
+});
+```
+
+The directory helper scans `${rootDir}/${locale}/**/*.json`, validates each JSON file as an `I18nMessageTree`, and emits deterministic TypeScript declaration text. Filesystem namespace paths are preserved the same way loaders receive them: `locales/en/admin/common.json` contributes namespace `admin/common`, and nested leaves become fully qualified keys such as `admin/common.dashboard.title`. This matches `I18nService.translate('dashboard.title', { namespace: 'admin/common', ... })`, which prefixes the namespace exactly before lookup.
+
+For custom pipelines or remote catalogs, generate from in-memory message trees:
+
+```ts
+import { generateI18nCatalogTypes } from '@fluojs/i18n/typegen';
+
+const declarations = generateI18nCatalogTypes([
+  {
+    locale: 'en',
+    namespace: 'admin/common',
+    messages: {
+      dashboard: {
+        title: 'Dashboard',
+      },
+    },
+  },
+]);
+```
+
+Both helpers deduplicate keys across locales, sort output for stable diffs, reject invalid catalog shapes with `I18N_INVALID_CATALOG`, and reject unsafe locale or namespace paths with `I18N_INVALID_LOADER_OPTIONS`.
+
 ## Public API
 
 ### Core (@fluojs/i18n)
@@ -293,12 +329,20 @@ Like the filesystem loader, locale and namespace values are validated before the
 
 **Types:** `I18nLoader`, `I18nLoaderLoadOptions`, `RemoteI18nCatalogProvider`, `RemoteI18nCatalogRequest`, `RemoteI18nLoaderOptions`.
 
+### Catalog Type Generation (@fluojs/i18n/typegen)
+
+| Export | Description |
+|---|---|
+| `generateI18nCatalogTypes(inputs, options?)` | Generates deterministic TypeScript key declarations from in-memory catalog trees. |
+| `generateI18nCatalogTypesFromDirectory(options)` | Reads locale/namespace JSON catalogs from disk and generates key declarations. |
+
+**Types:** `I18nCatalogTypegenInput`, `I18nCatalogTypegenOptions`, `I18nCatalogTypegenDirectoryOptions`.
+
 ## Post-MVP Roadmap
 
 The following features are explicit non-goals for the initial MVP and are planned for future expansion:
 
 - **`@fluojs/i18n/validation`**: Integration with `@fluojs/validation` for localized error messages.
-- **`@fluojs/i18n/typegen`**: CLI tools to generate TypeScript types from catalog files for type-safe translation keys.
 - **Additional Transport Adapters**: Locale resolution for WebSockets, gRPC, and CLI environments.
 
 ## Related Packages
@@ -316,3 +360,4 @@ The following features are explicit non-goals for the initial MVP and are planne
 - `packages/i18n/src/http.ts`
 - `packages/i18n/src/index.test.ts`
 - `packages/i18n/src/loaders/remote.ts`
+- `packages/i18n/src/typegen.ts`
