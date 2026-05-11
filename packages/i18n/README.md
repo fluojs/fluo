@@ -13,6 +13,7 @@ Framework-agnostic internationalization core surface for fluo applications.
 - [Formatting](#formatting)
 - [ICU MessageFormat](#icu-messageformat)
 - [HTTP Locale Context Adapter](#http-locale-context-adapter)
+- [Non-HTTP Locale Adapters](#non-http-locale-adapters)
 - [Validation Error Localization](#validation-error-localization)
 - [Node Filesystem Loader](#node-filesystem-loader)
 - [Remote Catalog Loader](#remote-catalog-loader)
@@ -39,6 +40,7 @@ Use this package when you need a stable fluo-native package boundary for i18n wo
 - optional ICU MessageFormat plural/select formatting through `@fluojs/i18n/icu`
 - standard `Intl` formatting helpers with explicit locales
 - explicit HTTP `RequestContext` locale helpers through `@fluojs/i18n/http`
+- opt-in non-HTTP locale adapters for WebSocket, gRPC, CLI, local storage, and server-request abstractions through `@fluojs/i18n/adapters`
 - opt-in `@fluojs/validation` issue localization through `@fluojs/i18n/validation`
 - provider-backed remote catalog loading through `@fluojs/i18n/loaders/remote`
 - opt-in catalog key declaration generation through `@fluojs/i18n/typegen`
@@ -199,6 +201,62 @@ The adapter is intentionally explicit:
 
 Wildcard `*` ranges are parsed but do not automatically select a locale. Applications that want wildcard-specific behavior can add a resolver before or after the provided `Accept-Language` resolver.
 
+## Non-HTTP Locale Adapters
+
+Non-HTTP locale helpers live under the `@fluojs/i18n/adapters` subpath. They provide resolver-order locale selection for WebSocket handshakes, gRPC metadata, CLI option objects, local storage wrappers, server sessions, and request-like abstractions without coupling the root package to browser globals, Node process state, or framework-specific transport packages.
+
+```ts
+import {
+  bindLocale,
+  createHeaderLocaleResolver,
+  createQueryLocaleResolver,
+  createWeakMapLocaleStore,
+  getAdapterLocale,
+} from '@fluojs/i18n/adapters';
+
+interface SocketContext {
+  readonly handshake: {
+    readonly headers: Readonly<Record<string, string | undefined>>;
+    readonly query: Readonly<Record<string, string | undefined>>;
+  };
+}
+
+const socketLocales = createWeakMapLocaleStore<SocketContext>();
+
+const queryLocale = createQueryLocaleResolver<SocketContext>({
+  getQueryValue: (socket) => socket.handshake.query.locale,
+  source: 'socket-query',
+});
+const headerLocale = createHeaderLocaleResolver<SocketContext>({
+  getHeader: (socket) => socket.handshake.headers['accept-language'],
+  source: 'socket-accept-language',
+});
+
+function bindSocketLocale(socket: SocketContext) {
+  return bindLocale(socket, {
+    defaultLocale: 'en',
+    supportedLocales: ['en', 'ko'],
+    resolvers: [queryLocale, headerLocale],
+    store: socketLocales,
+  });
+}
+
+function handleSocketMessage(socket: SocketContext) {
+  const locale = getAdapterLocale(socketLocales, socket)?.locale ?? 'en';
+  return locale;
+}
+```
+
+The generic adapter contract is intentionally explicit:
+
+- `resolveLocale(context, options)` runs application-provided resolvers in order, ignores empty, invalid, and unsupported resolver output, and returns `defaultLocale` with source `default` when nothing matches.
+- `bindLocale(context, { store, ...options })` resolves a locale and stores immutable metadata in an application-provided `LocaleAdapterStore`.
+- `createWeakMapLocaleStore()` provides per-object metadata storage for socket, call, session, or request objects without mutating those objects.
+- `createHeaderLocaleResolver(...)` parses `Accept-Language`-style values with the same q-value and wildcard behavior as the HTTP adapter.
+- `createQueryLocaleResolver(...)`, `createCookieLocaleResolver(...)`, and `createStorageLocaleResolver(...)` read locale candidates from caller-owned abstractions and never access browser globals or framework internals.
+
+Applications choose the context shape and accessor functions. For example, a gRPC integration can read metadata through `getHeader`, a CLI integration can read a parsed `--locale` option through `getQueryValue` or `getStoredLocale`, and a browser application can pass a safe wrapper around `localStorage` through `getStoredLocale`.
+
 ## Validation Error Localization
 
 Validation issue localization lives under `@fluojs/i18n/validation` so the root `@fluojs/i18n` entry point stays framework-agnostic and does not change `@fluojs/validation` behavior by default. Applications opt in after validation fails by translating `ValidationIssue.message` snapshots explicitly.
@@ -337,6 +395,22 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 
 **Types:** `HttpLocaleContext`, `HttpLocaleResolver`, `HttpLocaleResolverInput`, `HttpLocaleResolverResult`, `ResolveHttpLocaleOptions`, `AcceptLanguageLocaleResolverOptions`, `AcceptLanguagePreference`.
 
+### Non-HTTP Adapters (@fluojs/i18n/adapters)
+
+| Export | Description |
+|---|---|
+| `resolveLocale` | Resolves locale metadata from an explicit non-HTTP resolver chain. |
+| `bindLocale` | Resolves and stores locale metadata in a caller-provided adapter store. |
+| `setAdapterLocale` | Manually stores locale metadata in a caller-provided adapter store. |
+| `getAdapterLocale` | Retrieves locale metadata from a caller-provided adapter store. |
+| `createWeakMapLocaleStore` | Creates per-object metadata storage without mutating transport contexts. |
+| `createHeaderLocaleResolver` | Creates an `Accept-Language`-style resolver for caller-owned header abstractions. |
+| `createQueryLocaleResolver` | Creates a resolver for query, CLI option, or request parameter abstractions. |
+| `createCookieLocaleResolver` | Creates a resolver for caller-owned cookie abstractions. |
+| `createStorageLocaleResolver` | Creates a resolver for local storage, server session, socket data, or CLI config abstractions. |
+
+**Types:** `LocaleAdapterContext`, `LocaleAdapterResolver`, `LocaleAdapterResolverInput`, `LocaleAdapterResolverResult`, `LocaleAdapterStore`, `ResolveLocaleOptions`, `BindLocaleOptions`, `HeaderLocaleResolverOptions`, `QueryLocaleResolverOptions`, `CookieLocaleResolverOptions`, `StorageLocaleResolverOptions`.
+
 ### Validation Integration (@fluojs/i18n/validation)
 
 | Export | Description |
@@ -386,9 +460,7 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 
 ## Post-MVP Roadmap
 
-The following feature remains an explicit non-goal for the initial MVP and is planned for future expansion:
-
-- **Additional Transport Adapters**: Locale resolution for WebSockets, gRPC, and CLI environments.
+The core locale-resolution roadmap item for WebSocket, gRPC, CLI, local storage, and request-style abstractions is now available through `@fluojs/i18n/adapters`. Future transport work should stay opt-in and subpath-scoped unless a dedicated framework package owns the integration.
 
 ## Related Packages
 
@@ -404,6 +476,7 @@ The following feature remains an explicit non-goal for the initial MVP and is pl
 - `packages/i18n/src/icu.ts`
 - `packages/i18n/src/loaders/fs.ts`
 - `packages/i18n/src/http.ts`
+- `packages/i18n/src/adapters.ts`
 - `packages/i18n/src/validation.ts`
 - `packages/i18n/src/index.test.ts`
 - `packages/i18n/src/loaders/remote.ts`

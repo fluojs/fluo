@@ -13,6 +13,7 @@ fluo 애플리케이션을 위한 프레임워크 비종속 국제화 코어 표
 - [포맷팅](#포맷팅)
 - [ICU MessageFormat](#icu-messageformat)
 - [HTTP Locale Context Adapter](#http-locale-context-adapter)
+- [Non-HTTP Locale Adapters](#non-http-locale-adapters)
 - [Validation Error Localization](#validation-error-localization)
 - [Node Filesystem Loader](#node-filesystem-loader)
 - [Remote Catalog Loader](#remote-catalog-loader)
@@ -39,6 +40,7 @@ i18n 작업을 위한 안정적인 fluo-native 패키지 경계가 필요할 때
 - `@fluojs/i18n/icu`를 통한 선택적 ICU MessageFormat 복수형/select 포맷팅.
 - 명시적 로케일을 사용하는 표준 `Intl` 포맷팅 헬퍼.
 - `@fluojs/i18n/http`를 통한 명시적 HTTP `RequestContext` 로케일 헬퍼.
+- `@fluojs/i18n/adapters`를 통한 WebSocket, gRPC, CLI, local storage, server-request abstraction용 opt-in non-HTTP locale adapter.
 - `@fluojs/i18n/validation`을 통한 opt-in `@fluojs/validation` issue localization.
 - `@fluojs/i18n/loaders/remote`를 통한 provider-backed remote catalog loading.
 - `@fluojs/i18n/typegen`을 통한 opt-in catalog key declaration generation.
@@ -199,6 +201,62 @@ Adapter는 의도적으로 explicit합니다:
 
 Wildcard `*` range는 parse되지만 자동으로 locale을 선택하지는 않습니다. Wildcard별 동작이 필요한 애플리케이션은 제공된 `Accept-Language` resolver 앞이나 뒤에 resolver를 추가할 수 있습니다.
 
+## Non-HTTP Locale Adapters
+
+Non-HTTP locale helper는 `@fluojs/i18n/adapters` subpath에서 제공합니다. WebSocket handshake, gRPC metadata, CLI option object, local storage wrapper, server session, request-like abstraction에 resolver-order locale selection을 제공하되 root package를 browser global, Node process state, framework-specific transport package와 결합하지 않습니다.
+
+```ts
+import {
+  bindLocale,
+  createHeaderLocaleResolver,
+  createQueryLocaleResolver,
+  createWeakMapLocaleStore,
+  getAdapterLocale,
+} from '@fluojs/i18n/adapters';
+
+interface SocketContext {
+  readonly handshake: {
+    readonly headers: Readonly<Record<string, string | undefined>>;
+    readonly query: Readonly<Record<string, string | undefined>>;
+  };
+}
+
+const socketLocales = createWeakMapLocaleStore<SocketContext>();
+
+const queryLocale = createQueryLocaleResolver<SocketContext>({
+  getQueryValue: (socket) => socket.handshake.query.locale,
+  source: 'socket-query',
+});
+const headerLocale = createHeaderLocaleResolver<SocketContext>({
+  getHeader: (socket) => socket.handshake.headers['accept-language'],
+  source: 'socket-accept-language',
+});
+
+function bindSocketLocale(socket: SocketContext) {
+  return bindLocale(socket, {
+    defaultLocale: 'en',
+    supportedLocales: ['en', 'ko'],
+    resolvers: [queryLocale, headerLocale],
+    store: socketLocales,
+  });
+}
+
+function handleSocketMessage(socket: SocketContext) {
+  const locale = getAdapterLocale(socketLocales, socket)?.locale ?? 'en';
+  return locale;
+}
+```
+
+Generic adapter contract는 의도적으로 explicit합니다.
+
+- `resolveLocale(context, options)`는 application-provided resolver를 배열 순서대로 실행하고 empty, invalid, unsupported resolver output을 무시하며, 아무 것도 match하지 않으면 `defaultLocale`을 source `default`로 반환합니다.
+- `bindLocale(context, { store, ...options })`는 locale을 resolve한 뒤 application-provided `LocaleAdapterStore`에 immutable metadata를 저장합니다.
+- `createWeakMapLocaleStore()`는 socket, call, session, request object를 mutate하지 않고 per-object metadata storage를 제공합니다.
+- `createHeaderLocaleResolver(...)`는 HTTP adapter와 같은 q-value 및 wildcard 동작으로 `Accept-Language` style 값을 parse합니다.
+- `createQueryLocaleResolver(...)`, `createCookieLocaleResolver(...)`, `createStorageLocaleResolver(...)`는 caller-owned abstraction에서 locale candidate를 읽고 browser global이나 framework internal에는 접근하지 않습니다.
+
+애플리케이션이 context shape와 accessor function을 선택합니다. 예를 들어 gRPC 통합은 `getHeader`로 metadata를 읽고, CLI 통합은 parsed `--locale` option을 `getQueryValue` 또는 `getStoredLocale`로 읽으며, browser application은 `localStorage` around safe wrapper를 `getStoredLocale`에 전달할 수 있습니다.
+
 ## Validation Error Localization
 
 Validation issue localization은 `@fluojs/i18n/validation` subpath에서 제공합니다. 따라서 root `@fluojs/i18n` entry point는 framework-agnostic 상태를 유지하고, `@fluojs/validation` 기본 동작도 바꾸지 않습니다. 애플리케이션은 validation 실패 후 `ValidationIssue.message` snapshot을 명시적으로 번역해 opt-in합니다.
@@ -337,6 +395,22 @@ const declarations = generateI18nCatalogTypes([
 
 **타입:** `HttpLocaleContext`, `HttpLocaleResolver`, `HttpLocaleResolverInput`, `HttpLocaleResolverResult`, `ResolveHttpLocaleOptions`, `AcceptLanguageLocaleResolverOptions`, `AcceptLanguagePreference`.
 
+### Non-HTTP Adapters (@fluojs/i18n/adapters)
+
+| Export | 설명 |
+|---|---|
+| `resolveLocale` | 명시적 non-HTTP resolver chain에서 locale metadata를 resolve합니다. |
+| `bindLocale` | Caller-provided adapter store에 locale metadata를 resolve하고 저장합니다. |
+| `setAdapterLocale` | Caller-provided adapter store에 locale metadata를 수동으로 저장합니다. |
+| `getAdapterLocale` | Caller-provided adapter store에서 locale metadata를 가져옵니다. |
+| `createWeakMapLocaleStore` | Transport context를 mutate하지 않는 per-object metadata storage를 생성합니다. |
+| `createHeaderLocaleResolver` | Caller-owned header abstraction용 `Accept-Language` style resolver를 생성합니다. |
+| `createQueryLocaleResolver` | Query, CLI option, request parameter abstraction용 resolver를 생성합니다. |
+| `createCookieLocaleResolver` | Caller-owned cookie abstraction용 resolver를 생성합니다. |
+| `createStorageLocaleResolver` | Local storage, server session, socket data, CLI config abstraction용 resolver를 생성합니다. |
+
+**타입:** `LocaleAdapterContext`, `LocaleAdapterResolver`, `LocaleAdapterResolverInput`, `LocaleAdapterResolverResult`, `LocaleAdapterStore`, `ResolveLocaleOptions`, `BindLocaleOptions`, `HeaderLocaleResolverOptions`, `QueryLocaleResolverOptions`, `CookieLocaleResolverOptions`, `StorageLocaleResolverOptions`.
+
 ### Validation Integration (@fluojs/i18n/validation)
 
 | Export | 설명 |
@@ -386,10 +460,7 @@ const declarations = generateI18nCatalogTypes([
 
 ## Post-MVP 로드맵
 
-
-다음 기능은 초기 MVP의 명시적 비목표로 남아 있으며 향후 확장이 계획되어 있습니다.
-
-- **Additional Transport Adapters**: WebSockets, gRPC 및 CLI 환경을 위한 로케일 처리.
+WebSocket, gRPC, CLI, local storage, request-style abstraction을 위한 core locale-resolution roadmap item은 이제 `@fluojs/i18n/adapters`에서 사용할 수 있습니다. 향후 transport 작업은 dedicated framework package가 통합을 소유하지 않는 한 opt-in 및 subpath-scoped 상태를 유지해야 합니다.
 
 ## 관련 패키지
 
@@ -405,6 +476,7 @@ const declarations = generateI18nCatalogTypes([
 - `packages/i18n/src/icu.ts`
 - `packages/i18n/src/loaders/fs.ts`
 - `packages/i18n/src/http.ts`
+- `packages/i18n/src/adapters.ts`
 - `packages/i18n/src/validation.ts`
 - `packages/i18n/src/index.test.ts`
 - `packages/i18n/src/loaders/remote.ts`

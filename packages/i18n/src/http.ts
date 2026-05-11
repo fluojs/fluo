@@ -7,6 +7,12 @@ import {
 } from '@fluojs/http';
 
 import type { I18nLocale } from './types.js';
+import {
+  isSupportedLocale,
+  isValidLocale,
+  normalizeLocaleResolverResult,
+  parseLocalePreferences,
+} from './locale-resolution.js';
 
 /**
  * Locale metadata stored on a fluo HTTP request context.
@@ -83,22 +89,6 @@ export interface AcceptLanguageLocaleResolverOptions {
 export const HTTP_LOCALE_CONTEXT_KEY = createContextKey<HttpLocaleContext>('fluo.i18n.http.locale');
 
 const DEFAULT_ACCEPT_LANGUAGE_SOURCE = 'accept-language';
-const LOCALE_PATTERN = /^[A-Za-z]{1,8}(?:-[A-Za-z0-9]{1,8})*$/;
-const ACCEPT_LANGUAGE_QVALUE_PATTERN = /^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/;
-
-interface ResolverCandidate {
-  readonly locale: unknown;
-  readonly source?: string;
-}
-
-function isValidLocale(locale: unknown): locale is I18nLocale {
-  return typeof locale === 'string' && LOCALE_PATTERN.test(locale);
-}
-
-function isSupportedLocale(locale: I18nLocale, supportedLocales: readonly I18nLocale[] | undefined): boolean {
-  return supportedLocales === undefined || supportedLocales.length === 0 || supportedLocales.includes(locale);
-}
-
 function readHeader(request: FrameworkRequest, headerName: string): string | string[] | undefined {
   const normalizedName = headerName.toLowerCase();
 
@@ -109,55 +99,6 @@ function readHeader(request: FrameworkRequest, headerName: string): string | str
   }
 
   return undefined;
-}
-
-function normalizeResolverResult(
-  result: unknown,
-): ResolverCandidate | undefined {
-  if (result === undefined) {
-    return undefined;
-  }
-
-  if (typeof result === 'string') {
-    return { locale: result };
-  }
-
-  if (typeof result !== 'object' || result === null || !Object.hasOwn(result, 'locale')) {
-    return undefined;
-  }
-
-  const { locale, source } = result as { readonly locale?: unknown; readonly source?: unknown };
-
-  if (source !== undefined && typeof source !== 'string') {
-    return undefined;
-  }
-
-  return { locale, source };
-}
-
-function parseAcceptLanguageQuality(parameters: readonly string[]): number | undefined {
-  let quality = 1;
-  let hasQuality = false;
-
-  for (const parameter of parameters) {
-    const normalizedParameter = parameter.trim();
-    const qualityMatch = /^q=(.+)$/i.exec(normalizedParameter);
-
-    if (qualityMatch === null || hasQuality) {
-      return undefined;
-    }
-
-    const [, value] = qualityMatch;
-
-    if (value === undefined || !ACCEPT_LANGUAGE_QVALUE_PATTERN.test(value)) {
-      return undefined;
-    }
-
-    hasQuality = true;
-    quality = Number(value);
-  }
-
-  return quality;
 }
 
 /**
@@ -192,32 +133,7 @@ export function getHttpLocale(context: RequestContext): HttpLocaleContext | unde
  * @returns Valid language ranges ordered by descending q-value and original header order for ties.
  */
 export function parseAcceptLanguage(header: string | readonly string[] | undefined): readonly AcceptLanguagePreference[] {
-  const rawHeader = typeof header === 'string' ? header : header?.join(',');
-
-  if (rawHeader === undefined || rawHeader.trim() === '') {
-    return [];
-  }
-
-  const preferences: Array<AcceptLanguagePreference & { readonly index: number }> = [];
-
-  for (const [index, rawPart] of rawHeader.split(',').entries()) {
-    const [rawLocale, ...parameters] = rawPart.split(';');
-    const locale = rawLocale?.trim();
-
-    if (locale === undefined || locale === '' || (locale !== '*' && !isValidLocale(locale))) {
-      continue;
-    }
-
-    const quality = parseAcceptLanguageQuality(parameters);
-
-    if (quality !== undefined && quality > 0) {
-      preferences.push({ index, locale, quality });
-    }
-  }
-
-  return [...preferences]
-    .sort((left, right) => right.quality - left.quality || left.index - right.index)
-    .map(({ locale, quality }) => ({ locale, quality }));
+  return parseLocalePreferences(header);
 }
 
 /**
@@ -268,7 +184,7 @@ export function resolveHttpLocale(context: RequestContext, options: ResolveHttpL
   }
 
   for (const resolver of options.resolvers ?? []) {
-    const result = normalizeResolverResult(
+    const result = normalizeLocaleResolverResult(
       resolver({ context, defaultLocale: options.defaultLocale, supportedLocales: options.supportedLocales }),
     );
 
