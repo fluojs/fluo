@@ -25,6 +25,12 @@ function createAbortError(): Error {
   return error;
 }
 
+function assertNotAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+}
+
 type SlackServiceLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';
 
 function createLifecycleError(message: string, cause: unknown): SlackLifecycleError {
@@ -82,17 +88,33 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
   }
 
   async onModuleInit(): Promise<void> {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      return;
+    }
+
     this.lifecycleState = 'starting';
 
     try {
       const transport = await this.ensureTransport();
 
+      if (this.lifecycleState !== 'starting') {
+        return;
+      }
+
       if (this.options.verifyOnModuleInit && transport.verify) {
         await transport.verify();
       }
 
+      if (this.lifecycleState !== 'starting') {
+        return;
+      }
+
       this.lifecycleState = 'ready';
     } catch (error) {
+      if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+        throw error;
+      }
+
       this.lifecycleState = 'failed';
       throw createLifecycleError('Slack transport failed to initialize.', error);
     }
@@ -131,9 +153,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
    * ```
    */
   async send(message: SlackMessage, options: SlackSendOptions = {}): Promise<SlackSendResult> {
-    if (options.signal?.aborted) {
-      throw createAbortError();
-    }
+    assertNotAborted(options.signal);
     this.assertCanDeliver();
 
     const transport = await this.ensureTransport();
@@ -216,6 +236,9 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
     notification: SlackNotificationDispatchRequest,
     options: SlackSendOptions = {},
   ): Promise<SlackSendResult> {
+    assertNotAborted(options.signal);
+    this.assertCanDeliver();
+
     const payload = notification.payload;
     const rendered = await this.renderNotification(notification);
 
