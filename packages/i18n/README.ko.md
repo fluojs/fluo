@@ -19,6 +19,7 @@ fluo 애플리케이션을 위한 프레임워크 비종속 국제화 코어 표
 - [Remote Catalog Loader](#remote-catalog-loader)
 - [Catalog Type Generation](#catalog-type-generation)
 - [공개 API](#공개-api)
+- [Ecosystem Bridge Evaluation](#ecosystem-bridge-evaluation)
 - [Post-MVP 로드맵](#post-mvp-로드맵)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -502,6 +503,12 @@ typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en'
 | `generateI18nCatalogTypesFromDirectory(options)` | Disk의 locale/namespace JSON catalog를 읽고 key declaration을 생성합니다. |
 
 **타입:** `I18nCatalogTypegenInput`, `I18nCatalogTypegenOptions`, `I18nCatalogTypegenDirectoryOptions`. Generated declaration 기본값에는 `I18nCatalogKey`, `I18nCatalogNamespace`, `I18nCatalogKeyByNamespace`, `I18nCatalogNamespaceKey`, `I18nCatalogTypedTranslateOptions`, `I18nCatalogTypedTranslate`, `I18nCatalogTypedService`가 포함됩니다.
+
+## Ecosystem Bridge Evaluation
+
+현재 bridge decision은 documentation-first입니다. NestJS i18n parity, i18next interop, next-intl catalog sharing, request-locale/validation convenience glue는 runtime helper를 추가하기 전에 migration guidance와 기존 opt-in subpath로 처리해야 합니다. 향후 bridge helper가 first-party subpath가 되기 위해 필요한 classification matrix와 acceptance criteria는 [i18n ecosystem bridge decision record](../../docs/reference/i18n-ecosystem-bridges.ko.md)를 참조하세요.
+
+이 결정은 `@fluojs/i18n` root package가 NestJS i18n, i18next, next-intl, React/Next.js runtime assumption, HTTP-only validation localization과 결합하지 않는다는 보장을 유지합니다.
 
 ## Post-MVP 로드맵
 
