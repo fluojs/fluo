@@ -460,6 +460,9 @@ importers:
       '@fluojs/core':
         specifier: workspace:^
         version: link:../core
+      '@fluojs/http':
+        specifier: workspace:^
+        version: link:../http
     devDependencies:
       vitest:
         specifier: ^3.2.4

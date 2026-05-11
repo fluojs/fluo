@@ -31,6 +31,10 @@
     "./loaders/fs": {
       "types": "./dist/loaders/fs.d.ts",
       "import": "./dist/loaders/fs.js"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "import": "./dist/http.js"
     }
   },
   "main": "./dist/index.js",
@@ -46,7 +50,8 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@fluojs/core": "workspace:^"
+    "@fluojs/core": "workspace:^",
+    "@fluojs/http": "workspace:^"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

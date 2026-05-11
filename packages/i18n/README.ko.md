@@ -11,6 +11,7 @@ fluo 애플리케이션을 위한 프레임워크 비종속 국제화 코어 표
 - [빠른 시작](#빠른-시작)
 - [현재 범위](#현재-범위)
 - [Node Filesystem Loader](#node-filesystem-loader)
+- [HTTP Locale Context Adapter](#http-locale-context-adapter)
 - [공개 API](#공개-api)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -31,9 +32,10 @@ npm install @fluojs/i18n
 - locale-scoped message catalog, deterministic fallback resolution, interpolation, default, missing-message hook
 - `@fluojs/i18n/loaders/fs`를 통한 선택적 Node-only JSON catalog loading
 - explicit locale을 사용하는 standard `Intl` date/time, number, currency, percent, list, relative-time formatting helper
+- `@fluojs/i18n/http`를 통한 explicit HTTP `RequestContext` locale helper
 - 공유 option, catalog, locale, translation-key, error type
 
-`@fluojs/i18n`은 의도적으로 NestJS, i18next, React, Next.js, HTTP adapter, ICU/messageformat, validation, type generation에 결합하지 않습니다. Root export는 runtime-portable하게 유지되며, filesystem loading은 Node-specific `@fluojs/i18n/loaders/fs` subpath에서만 제공합니다.
+`@fluojs/i18n`은 의도적으로 NestJS, i18next, React, Next.js, ICU/messageformat, validation, type generation에 결합하지 않습니다. Root export는 프레임워크 비종속이고 runtime-portable하게 유지됩니다. Filesystem loading은 Node-specific `@fluojs/i18n/loaders/fs` subpath에서만 제공하며, HTTP request locale helper는 `@fluojs/i18n/http` subpath에서만 제공합니다.
 
 ## 빠른 시작
 
@@ -80,7 +82,7 @@ const total = i18n.formatCurrency(12900, {
 
 ## 현재 범위
 
-이 패키지는 프레임워크 비종속 core translation engine, 선택적 Node-only filesystem loader subpath, 작은 standard-first formatting facade만 제공합니다. Request locale detection, HTTP adapter, ICU/messageformat integration, validation integration, generated key union, NestJS compatibility, React/Next.js helper, remote backend/plugin chain, watch/reload behavior, runtime-specific adapter는 core package의 명시적 non-goal로 남아 있습니다.
+이 패키지는 root entry point에서 프레임워크 비종속 core translation engine과 작은 standard-first formatting facade를 제공하고, Node-only filesystem loading과 HTTP request locale context helper를 opt-in subpath로 제공합니다. ICU/messageformat integration, validation integration, generated key union, NestJS compatibility, React/Next.js helper, remote backend/plugin chain, watch/reload behavior, runtime-specific adapter는 이 패키지의 명시적 non-goal로 남아 있습니다.
 
 Formatting helper는 host standard `Intl` implementation에 직접 위임합니다. Locale은 모든 formatting call에서 explicit하며, named formatter option은 `createI18n(...)` 또는 `I18nModule.forRoot(...)`를 통해 service-owned immutable snapshot으로 캡처됩니다.
 
@@ -163,6 +165,40 @@ Loader는 `${rootDir}/${locale}/${namespace}.json`을 읽고 immutable `I18nMess
 
 이 subpath는 Node built-in을 import하며 `@fluojs/i18n` root에서 export하지 않습니다. Bundler가 명시적으로 Node.js를 target하지 않는 한 Bun, Deno, Cloudflare Workers, browser 또는 다른 non-Node runtime-portable bundle에서 import하지 마세요.
 
+## HTTP Locale Context Adapter
+
+HTTP request locale helper는 `@fluojs/i18n/http` subpath에서만 제공됩니다. 따라서 root `@fluojs/i18n` entry point는 프레임워크 비종속으로 유지되며 `@fluojs/http`를 import하지 않습니다.
+
+```ts
+import { createAcceptLanguageLocaleResolver, getHttpLocale, resolveHttpLocale } from '@fluojs/i18n/http';
+import type { RequestContext } from '@fluojs/http';
+
+const acceptLanguage = createAcceptLanguageLocaleResolver();
+
+function bindRequestLocale(ctx: RequestContext) {
+  return resolveHttpLocale(ctx, {
+    defaultLocale: 'en',
+    supportedLocales: ['en', 'ko'],
+    resolvers: [acceptLanguage],
+  });
+}
+
+function handler(ctx: RequestContext) {
+  const locale = getHttpLocale(ctx)?.locale ?? 'en';
+  return { locale };
+}
+```
+
+Adapter는 의도적으로 explicit합니다.
+
+- `setHttpLocale(ctx, locale, metadata)`는 `createContextKey(...)`를 사용해 현재 `RequestContext`에 locale metadata를 저장합니다.
+- `getHttpLocale(ctx)`는 global fallback 없이 metadata를 읽습니다.
+- `parseAcceptLanguage(header)`는 q-value 순서로 valid `Accept-Language` range를 parse하고 invalid 또는 q=0 entry를 무시합니다.
+- `createAcceptLanguageLocaleResolver(...)`는 request header에서 첫 번째 supported locale을 선택합니다.
+- `resolveHttpLocale(ctx, options)`는 application-provided resolver를 배열 순서대로 실행하고 invalid 또는 unsupported resolver output을 무시하며, 아무 resolver도 match하지 않으면 `defaultLocale`을 source `default`로 저장합니다.
+
+Wildcard `*` range는 parse되지만 자동으로 locale을 선택하지는 않습니다. Wildcard별 동작이 필요한 애플리케이션은 제공된 `Accept-Language` resolver 앞이나 뒤에 resolver를 추가할 수 있습니다.
+
 ## 공개 API
 
 | 클래스/헬퍼 | 설명 |
@@ -171,6 +207,7 @@ Loader는 `${rootDir}/${locale}/${namespace}.json`을 읽고 immutable `I18nMess
 | `I18nService` | 분리된 options/catalog snapshot을 소유하고 translation을 resolve하는 core service입니다. |
 | `createI18n(options)` | module registration 없이 standalone `I18nService`를 생성합니다. |
 | `I18nError` | 안정적인 error code를 가진 i18n package base error입니다. |
+| `@fluojs/i18n/http` | Explicit HTTP request locale context helper와 `Accept-Language` resolver utility입니다. |
 
 Node-only `@fluojs/i18n/loaders/fs` subpath는 `FileSystemI18nLoader`, `createFileSystemI18nLoader(options)`, `FileSystemI18nLoaderOptions`, `I18nLoader`를 export합니다.
 
@@ -186,4 +223,5 @@ Root package는 `I18nModuleOptions`, `I18nMessageCatalogs`, `I18nMessageTree`, `
 - `packages/i18n/src/module.ts`
 - `packages/i18n/src/service.ts`
 - `packages/i18n/src/loaders/fs.ts`
+- `packages/i18n/src/http.ts`
 - `packages/i18n/src/index.test.ts`
