@@ -11,6 +11,7 @@ Framework-agnostic internationalization core surface for fluo applications.
 - [Quick Start](#quick-start)
 - [Current Scope](#current-scope)
 - [Node Filesystem Loader](#node-filesystem-loader)
+- [HTTP Locale Context Adapter](#http-locale-context-adapter)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -31,9 +32,10 @@ Use this package when you need a stable fluo-native package boundary for upcomin
 - locale-scoped message catalogs, deterministic fallback resolution, interpolation, defaults, and missing-message hooks
 - optional Node-only JSON catalog loading through `@fluojs/i18n/loaders/fs`
 - standard `Intl` date/time, number, currency, percent, list, and relative-time formatting helpers with explicit locales
+- explicit HTTP `RequestContext` locale helpers through `@fluojs/i18n/http`
 - shared option, catalog, locale, translation-key, and error types
 
-`@fluojs/i18n` is intentionally not coupled to NestJS, i18next, React, Next.js, HTTP adapters, ICU/messageformat, validation, or type generation. The root export stays runtime-portable; filesystem loading is available only from the Node-specific `@fluojs/i18n/loaders/fs` subpath.
+`@fluojs/i18n` is intentionally not coupled to NestJS, i18next, React, Next.js, ICU/messageformat, validation, or type generation. The root export stays framework-agnostic and runtime-portable; filesystem loading is available only from the Node-specific `@fluojs/i18n/loaders/fs` subpath, and HTTP request locale helpers are available only from the `@fluojs/i18n/http` subpath.
 
 ## Quick Start
 
@@ -80,7 +82,7 @@ const total = i18n.formatCurrency(12900, {
 
 ## Current Scope
 
-This package provides the framework-agnostic core translation engine, an optional Node-only filesystem loader subpath, and a small standard-first formatting facade only. Request locale detection, HTTP adapters, ICU/messageformat integration, validation integration, generated key unions, NestJS compatibility, React/Next.js helpers, remote backend/plugin chains, watch/reload behavior, and runtime-specific adapters remain documented non-goals for this core package.
+This package provides the framework-agnostic core translation engine at the root entry point plus a small standard-first formatting facade and opt-in subpaths for Node-only filesystem loading and HTTP request locale context helpers. ICU/messageformat integration, validation integration, generated key unions, NestJS compatibility, React/Next.js helpers, remote backend/plugin chains, watch/reload behavior, and runtime-specific adapters remain documented non-goals for this package.
 
 Formatting helpers delegate directly to the host standard `Intl` implementation. Locale is explicit on every formatting call, and named formatter options are captured through `createI18n(...)` or `I18nModule.forRoot(...)` as immutable service-owned snapshots:
 
@@ -163,6 +165,40 @@ The loader reads `${rootDir}/${locale}/${namespace}.json` and returns an immutab
 
 This subpath imports Node built-ins and is not exported from `@fluojs/i18n` root. Do not import it in Bun, Deno, Cloudflare Workers, browser, or other non-Node runtime-portable bundles unless your bundler explicitly targets Node.js.
 
+## HTTP Locale Context Adapter
+
+HTTP request locale helpers live only under the `@fluojs/i18n/http` subpath so the root `@fluojs/i18n` entry point remains framework-agnostic and does not import `@fluojs/http`.
+
+```ts
+import { createAcceptLanguageLocaleResolver, getHttpLocale, resolveHttpLocale } from '@fluojs/i18n/http';
+import type { RequestContext } from '@fluojs/http';
+
+const acceptLanguage = createAcceptLanguageLocaleResolver();
+
+function bindRequestLocale(ctx: RequestContext) {
+  return resolveHttpLocale(ctx, {
+    defaultLocale: 'en',
+    supportedLocales: ['en', 'ko'],
+    resolvers: [acceptLanguage],
+  });
+}
+
+function handler(ctx: RequestContext) {
+  const locale = getHttpLocale(ctx)?.locale ?? 'en';
+  return { locale };
+}
+```
+
+The adapter is intentionally explicit:
+
+- `setHttpLocale(ctx, locale, metadata)` stores locale metadata on the current `RequestContext` using `createContextKey(...)`.
+- `getHttpLocale(ctx)` reads the metadata without falling back to globals.
+- `parseAcceptLanguage(header)` parses valid `Accept-Language` ranges by q-value and ignores invalid or q=0 entries.
+- `createAcceptLanguageLocaleResolver(...)` selects the first supported locale from the request header.
+- `resolveHttpLocale(ctx, options)` runs application-provided resolvers in order, ignores invalid or unsupported resolver output, and stores `defaultLocale` with source `default` when nothing matches.
+
+Wildcard `*` ranges are parsed but do not automatically select a locale. Applications that want wildcard-specific behavior can add a resolver before or after the provided `Accept-Language` resolver.
+
 ## Public API
 
 | Class/Helper | Description |
@@ -171,6 +207,7 @@ This subpath imports Node built-ins and is not exported from `@fluojs/i18n` root
 | `I18nService` | Core service that owns detached options/catalog snapshots and resolves translations. |
 | `createI18n(options)` | Creates a standalone `I18nService` without module registration. |
 | `I18nError` | Base i18n package error with a stable error code. |
+| `@fluojs/i18n/http` | Explicit HTTP request locale context helpers and `Accept-Language` resolver utilities. |
 
 The Node-only `@fluojs/i18n/loaders/fs` subpath exports `FileSystemI18nLoader`, `createFileSystemI18nLoader(options)`, `FileSystemI18nLoaderOptions`, and `I18nLoader`.
 
@@ -186,4 +223,5 @@ The root package also exports `I18nModuleOptions`, `I18nMessageCatalogs`, `I18nM
 - `packages/i18n/src/module.ts`
 - `packages/i18n/src/service.ts`
 - `packages/i18n/src/loaders/fs.ts`
+- `packages/i18n/src/http.ts`
 - `packages/i18n/src/index.test.ts`
