@@ -83,19 +83,21 @@ const title = i18n.translate('app.title', {
 
 Translation lookup follows a strict order:
 
-1. the explicit per-call locale
-2. the configured fallback chain for that locale, or the global fallback chain
-3. the configured `defaultLocale`
-4. the per-call `defaultValue`
-5. the configured `missingMessage` hook
+1. The explicit per-call locale.
+2. The configured fallback for that locale (either from the `fallbackLocales` map or a global fallback array).
+3. The configured `defaultLocale`.
+4. The per-call `defaultValue`.
+5. The configured `missingMessage` hook.
 
-If none of those produce a message, `I18nError` is thrown with `code: 'I18N_MISSING_MESSAGE'`.
+If no message is found, an `I18nError` is thrown with code `I18N_MISSING_MESSAGE`.
 
 ## Formatting
 
 Formatting helpers delegate directly to the host standard `Intl` implementation. Locale is explicit on every formatting call, and named formatter options are captured as immutable service-owned snapshots.
 
 ```ts
+import { createI18n } from '@fluojs/i18n';
+
 const i18n = createI18n({
   defaultLocale: 'en-US',
   formats: {
@@ -124,9 +126,14 @@ HTTP request locale helpers live only under the `@fluojs/i18n/http` subpath so t
 import { createAcceptLanguageLocaleResolver, getHttpLocale, resolveHttpLocale } from '@fluojs/i18n/http';
 import type { RequestContext } from '@fluojs/http';
 
+const i18n = createI18n({
+  defaultLocale: 'en',
+  supportedLocales: ['en', 'ko'],
+});
+
 const acceptLanguage = createAcceptLanguageLocaleResolver();
 
-function bindRequestLocale(ctx: RequestContext) {
+async function bindRequestLocale(ctx: RequestContext) {
   return resolveHttpLocale(ctx, {
     defaultLocale: 'en',
     supportedLocales: ['en', 'ko'],
@@ -136,7 +143,8 @@ function bindRequestLocale(ctx: RequestContext) {
 
 function handler(ctx: RequestContext) {
   const locale = getHttpLocale(ctx)?.locale ?? 'en';
-  return { locale };
+  // Use the service with the resolved locale
+  return i18n.translate('app.title', { locale });
 }
 ```
 
@@ -150,7 +158,27 @@ The adapter is intentionally explicit:
 
 Wildcard `*` ranges are parsed but do not automatically select a locale. Applications that want wildcard-specific behavior can add a resolver before or after the provided `Accept-Language` resolver.
 
+## Node Filesystem Loader
+
+Node applications can opt into a JSON filesystem loader from the dedicated subpath:
+
+```ts
+import { createFileSystemI18nLoader } from '@fluojs/i18n/loaders/fs';
+
+const loader = createFileSystemI18nLoader({
+  rootDir: new URL('./locales', import.meta.url).pathname,
+});
+
+const common = await loader.load('en', 'common');
+```
+
+The loader reads `${rootDir}/${locale}/${namespace}.json` and returns an immutable `I18nMessageTree`. Namespaces may use safe relative path segments such as `admin/common`; locale and namespace values are validated before disk reads, `.`/`..`, absolute paths, empty segments, extension-bearing names such as `common.json`, and traversal attempts are rejected with `I18N_INVALID_LOADER_OPTIONS`. Missing files throw `I18N_MISSING_CATALOG`; malformed JSON or invalid message tree shapes throw `I18N_INVALID_CATALOG`.
+
+This subpath imports Node built-ins and is not exported from `@fluojs/i18n` root. Do not import it in Bun, Deno, Cloudflare Workers, browser, or other non-Node runtime-portable bundles unless your bundler explicitly targets Node.js.
+
 ## Public API
+
+### Core (@fluojs/i18n)
 
 | Export | Description |
 |---|---|
@@ -158,8 +186,29 @@ Wildcard `*` ranges are parsed but do not automatically select a locale. Applica
 | `I18nService` | Core service that owns detached options/catalog snapshots and resolves translations. |
 | `createI18n(options)` | Creates a standalone `I18nService` without module registration. |
 | `I18nError` | Base i18n package error with a stable error code. |
-| `@fluojs/i18n/http` | Explicit HTTP request locale context helpers and `Accept-Language` resolver utilities. |
-| `@fluojs/i18n/loaders/fs` | Node-only filesystem loader utilities. |
+
+**Types:** `I18nModuleOptions`, `I18nMessageCatalogs`, `I18nMessageTree`, `I18nTranslateOptions`, `I18nInterpolationValues`, `I18nMissingMessageHandler`, `I18nLocale`, `I18nTranslationKey`, `I18nErrorCode`, `I18nFormatOptions`, `I18nFormatterOptions`, `I18nDateTimeFormatOptions`, `I18nNumberFormatOptions`, `I18nCurrencyFormatOptions`, `I18nListFormatOptions`, `I18nRelativeTimeFormatOptions`, `I18nNamedDateTimeFormats`, `I18nNamedNumberFormats`, `I18nNamedListFormats`, `I18nNamedRelativeTimeFormats`.
+
+### HTTP Adapter (@fluojs/i18n/http)
+
+| Export | Description |
+|---|---|
+| `resolveHttpLocale` | Resolves and stores locale metadata on the `RequestContext`. |
+| `getHttpLocale` | Retrieves locale metadata from the `RequestContext`. |
+| `setHttpLocale` | Manually stores locale metadata on the `RequestContext`. |
+| `createAcceptLanguageLocaleResolver` | Creates a resolver for the `Accept-Language` header. |
+| `parseAcceptLanguage` | Utility to parse `Accept-Language` header into q-value preferences. |
+
+**Types:** `HttpLocaleContext`, `HttpLocaleResolver`, `HttpLocaleResolverInput`, `HttpLocaleResolverResult`, `ResolveHttpLocaleOptions`, `AcceptLanguageLocaleResolverOptions`, `AcceptLanguagePreference`.
+
+### Filesystem Loader (@fluojs/i18n/loaders/fs)
+
+| Export | Description |
+|---|---|
+| `createFileSystemI18nLoader` | Creates a Node.js JSON filesystem loader. |
+| `FileSystemI18nLoader` | Class implementation of the filesystem loader. |
+
+**Types:** `I18nLoader`, `FileSystemI18nLoaderOptions`.
 
 ## Post-MVP Roadmap
 
