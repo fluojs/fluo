@@ -40,6 +40,10 @@
       "types": "./dist/http.d.ts",
       "import": "./dist/http.js"
     },
+    "./adapters": {
+      "types": "./dist/adapters.d.ts",
+      "import": "./dist/adapters.js"
+    },
     "./icu": {
       "types": "./dist/icu.d.ts",
       "import": "./dist/icu.js"

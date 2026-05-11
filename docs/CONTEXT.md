@@ -29,7 +29,7 @@ fluo is a standard-first TypeScript backend framework built on TC39 standard dec
 | Operations | Health, metrics, throttling | `@fluojs/metrics`, `@fluojs/terminus`, `@fluojs/throttler` |
 | Tooling | CLI, diagnostics, and Vite build integration | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
-Canonical package and runtime coverage lives in [`docs/reference/package-surface.md`](./reference/package-surface.md), including core additions such as the fluo-native `@fluojs/i18n` package boundary, its `@fluojs/i18n/icu` ICU MessageFormat subpath for plural/select localization, and persistence responsibilities such as `@fluojs/mongoose` ALS/session transaction ownership. Task-based package discovery lives in [`docs/reference/package-chooser.md`](./reference/package-chooser.md), including localization/i18n selection guidance for `@fluojs/i18n` and its ICU subpath.
+Canonical package and runtime coverage lives in [`docs/reference/package-surface.md`](./reference/package-surface.md), including core additions such as the fluo-native `@fluojs/i18n` package boundary, its `@fluojs/i18n/icu` ICU MessageFormat subpath for plural/select localization, its `@fluojs/i18n/adapters` subpath for opt-in non-HTTP locale resolution, and persistence responsibilities such as `@fluojs/mongoose` ALS/session transaction ownership. Task-based package discovery lives in [`docs/reference/package-chooser.md`](./reference/package-chooser.md), including localization/i18n selection guidance for `@fluojs/i18n`, its ICU subpath, and its non-HTTP adapter subpath.
 
 ## File Structure
 

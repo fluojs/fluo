@@ -674,8 +674,16 @@ function enforceCanonicalRuntimeMatrixReferences() {
     'docs/reference/package-chooser.md must keep @fluojs/i18n discoverable for localization tasks.',
   );
   assert(
+    packageSurface.includes('@fluojs/i18n/adapters') && packageChooser.includes('@fluojs/i18n/adapters'),
+    'docs/reference package-surface and package-chooser must keep @fluojs/i18n/adapters discoverable for non-HTTP locale resolution.',
+  );
+  assert(
     packageChooserKo.includes('@fluojs/i18n') && packageChooserKo.includes('localization'),
     'docs/reference/package-chooser.ko.md must keep @fluojs/i18n discoverable for localization tasks.',
+  );
+  assert(
+    packageSurfaceKo.includes('@fluojs/i18n/adapters') && packageChooserKo.includes('@fluojs/i18n/adapters'),
+    'docs/reference package-surface.ko.md and package-chooser.ko.md must keep @fluojs/i18n/adapters discoverable for non-HTTP locale resolution.',
   );
 
   assert(
@@ -691,8 +699,16 @@ function enforceCanonicalRuntimeMatrixReferences() {
     'docs/CONTEXT.md must point readers to package chooser i18n discovery guidance.',
   );
   assert(
+    docsContext.includes('@fluojs/i18n/adapters'),
+    'docs/CONTEXT.md must mention @fluojs/i18n/adapters when non-HTTP locale resolution is documented.',
+  );
+  assert(
     docsContextKo.includes('docs/reference/package-chooser.md') && docsContextKo.includes('@fluojs/i18n'),
     'docs/CONTEXT.ko.md must point readers to package chooser i18n discovery guidance.',
+  );
+  assert(
+    docsContextKo.includes('@fluojs/i18n/adapters'),
+    'docs/CONTEXT.ko.md must mention @fluojs/i18n/adapters when non-HTTP locale resolution is documented.',
   );
   assert(rootReadme.includes('docs/reference/package-surface.md'), 'README.md must point to the canonical runtime package matrix page.');
   assert(
