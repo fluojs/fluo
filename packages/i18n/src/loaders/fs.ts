@@ -3,88 +3,15 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 import { I18nError } from '../errors.js';
 import type { I18nLocale, I18nMessageTree, I18nTranslationKey } from '../types.js';
-
-const SAFE_LOCALE_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?(?:-[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?)*$/;
-const SAFE_NAMESPACE_SEGMENT_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?$/;
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
+import { isPlainObject, snapshotLoaderMessageTree, validateLoaderLocale, validateLoaderNamespace } from './shared.js';
+import type { I18nLoader } from './shared.js';
 
 function isWithinDirectory(rootDir: string, targetPath: string): boolean {
   const relativePath = relative(rootDir, targetPath);
   return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath));
 }
 
-function validateLocale(locale: unknown): asserts locale is I18nLocale {
-  if (typeof locale !== 'string' || locale.trim() === '' || !SAFE_LOCALE_PATTERN.test(locale)) {
-    throw new I18nError('Filesystem i18n locale must be a safe non-empty locale segment.', 'I18N_INVALID_LOADER_OPTIONS');
-  }
-}
-
-function validateNamespace(namespace: unknown): asserts namespace is I18nTranslationKey {
-  if (typeof namespace !== 'string' || namespace.trim() === '') {
-    throw new I18nError('Filesystem i18n namespace must be a safe non-empty namespace path.', 'I18N_INVALID_LOADER_OPTIONS');
-  }
-
-  const normalized = namespace.replaceAll('\\', '/');
-  if (normalized.startsWith('/') || normalized.endsWith('/') || normalized.includes('//')) {
-    throw new I18nError('Filesystem i18n namespace must be a relative namespace path.', 'I18N_INVALID_LOADER_OPTIONS');
-  }
-
-  for (const segment of normalized.split('/')) {
-    if (segment === '.' || segment === '..' || !SAFE_NAMESPACE_SEGMENT_PATTERN.test(segment)) {
-      throw new I18nError('Filesystem i18n namespace contains an unsafe path segment.', 'I18N_INVALID_LOADER_OPTIONS');
-    }
-  }
-}
-
-function snapshotMessageTree(value: unknown, path: string): I18nMessageTree {
-  if (!isPlainObject(value)) {
-    throw new I18nError(`${path} must be a plain object message tree.`, 'I18N_INVALID_CATALOG');
-  }
-
-  const snapshot: Record<string, string | I18nMessageTree> = {};
-
-  for (const [key, entry] of Object.entries(value)) {
-    if (key.trim() === '') {
-      throw new I18nError(`${path} contains an empty message key segment.`, 'I18N_INVALID_CATALOG');
-    }
-
-    if (typeof entry === 'string') {
-      snapshot[key] = entry;
-      continue;
-    }
-
-    if (isPlainObject(entry)) {
-      snapshot[key] = snapshotMessageTree(entry, `${path}.${key}`);
-      continue;
-    }
-
-    throw new I18nError(`${path}.${key} must be a string or nested message tree.`, 'I18N_INVALID_CATALOG');
-  }
-
-  return Object.freeze(snapshot);
-}
-
-/**
- * Loader contract for asynchronous locale and namespace catalog sources.
- */
-export interface I18nLoader {
-  /**
-   * Loads one locale and namespace catalog tree.
-   *
-   * @param locale Locale directory to load from.
-   * @param namespace Namespace JSON file path without extension.
-   * @returns A detached immutable i18n message tree.
-   */
-  load(locale: I18nLocale, namespace: I18nTranslationKey): Promise<I18nMessageTree>;
-}
+export type { I18nLoader, I18nLoaderLoadOptions } from './shared.js';
 
 /**
  * Options for the Node-only filesystem i18n catalog loader.
@@ -126,8 +53,8 @@ export class FileSystemI18nLoader implements I18nLoader {
    * @throws {I18nError} When inputs are unsafe, the file is missing, JSON is malformed, or catalog shape is invalid.
    */
   async load(locale: I18nLocale, namespace: I18nTranslationKey): Promise<I18nMessageTree> {
-    validateLocale(locale);
-    validateNamespace(namespace);
+    validateLoaderLocale(locale, 'Filesystem i18n');
+    validateLoaderNamespace(namespace, 'Filesystem i18n');
 
     const namespacePath = namespace.replaceAll('/', sep);
     const catalogPath = resolve(this.rootDir, locale, `${namespacePath}.json`);
@@ -154,7 +81,7 @@ export class FileSystemI18nLoader implements I18nLoader {
       throw new I18nError(`Malformed i18n catalog JSON: ${locale}/${namespace}.json`, 'I18N_INVALID_CATALOG');
     }
 
-    return snapshotMessageTree(parsed, `catalogs.${locale}.${namespace}`);
+    return snapshotLoaderMessageTree(parsed, `catalogs.${locale}.${namespace}`);
   }
 }
 
