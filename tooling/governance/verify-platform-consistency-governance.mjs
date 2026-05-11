@@ -679,12 +679,20 @@ function enforceCanonicalRuntimeMatrixReferences() {
     'docs/reference package-surface and package-chooser must keep @fluojs/i18n/adapters discoverable for non-HTTP locale resolution.',
   );
   assert(
+    packageSurface.includes('typed translation helper declaration') && packageChooser.includes('typed translation helper declaration'),
+    'docs/reference package-surface and package-chooser must keep @fluojs/i18n/typegen typed helper declarations discoverable.',
+  );
+  assert(
     packageChooserKo.includes('@fluojs/i18n') && packageChooserKo.includes('localization'),
     'docs/reference/package-chooser.ko.md must keep @fluojs/i18n discoverable for localization tasks.',
   );
   assert(
     packageSurfaceKo.includes('@fluojs/i18n/adapters') && packageChooserKo.includes('@fluojs/i18n/adapters'),
     'docs/reference package-surface.ko.md and package-chooser.ko.md must keep @fluojs/i18n/adapters discoverable for non-HTTP locale resolution.',
+  );
+  assert(
+    packageSurfaceKo.includes('typed translation helper declaration') && packageChooserKo.includes('typed translation helper declaration'),
+    'docs/reference package-surface.ko.md and package-chooser.ko.md must keep @fluojs/i18n/typegen typed helper declarations discoverable.',
   );
 
   assert(
@@ -704,12 +712,20 @@ function enforceCanonicalRuntimeMatrixReferences() {
     'docs/CONTEXT.md must mention @fluojs/i18n/adapters when non-HTTP locale resolution is documented.',
   );
   assert(
+    docsContext.includes('typed translation helper declaration'),
+    'docs/CONTEXT.md must mention @fluojs/i18n/typegen typed helper declarations when documented.',
+  );
+  assert(
     docsContextKo.includes('docs/reference/package-chooser.md') && docsContextKo.includes('@fluojs/i18n'),
     'docs/CONTEXT.ko.md must point readers to package chooser i18n discovery guidance.',
   );
   assert(
     docsContextKo.includes('@fluojs/i18n/adapters'),
     'docs/CONTEXT.ko.md must mention @fluojs/i18n/adapters when non-HTTP locale resolution is documented.',
+  );
+  assert(
+    docsContextKo.includes('typed translation helper declaration'),
+    'docs/CONTEXT.ko.md must mention @fluojs/i18n/typegen typed helper declarations when documented.',
   );
   assert(rootReadme.includes('docs/reference/package-surface.md'), 'README.md must point to the canonical runtime package matrix page.');
   assert(

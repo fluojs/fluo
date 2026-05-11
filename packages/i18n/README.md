@@ -43,7 +43,7 @@ Use this package when you need a stable fluo-native package boundary for i18n wo
 - opt-in non-HTTP locale adapters for WebSocket, gRPC, CLI, local storage, and server-request abstractions through `@fluojs/i18n/adapters`
 - opt-in `@fluojs/validation` issue localization through `@fluojs/i18n/validation`
 - provider-backed remote catalog loading and opt-in cache wrappers through `@fluojs/i18n/loaders/remote`
-- opt-in catalog key declaration generation through `@fluojs/i18n/typegen`
+- opt-in catalog key declaration generation and typed translation helper declarations through `@fluojs/i18n/typegen`
 - shared option, catalog, locale, translation-key, and error types
 
 `@fluojs/i18n` is intentionally not coupled to NestJS i18n, i18next, or next-intl. Its root entry point provides a standard-first alternative that stays close to the TC39 `Intl` baseline, while ICU MessageFormat support is isolated behind the dedicated `@fluojs/i18n/icu` subpath.
@@ -362,7 +362,7 @@ Like the filesystem loader, locale and namespace values are validated before the
 
 ## Catalog Type Generation
 
-Catalog type generation lives under the Node-oriented `@fluojs/i18n/typegen` tooling subpath. It does not narrow `I18nService.translate(key: string, ...)`; applications can opt into generated helper types where they want type-safe translation key variables.
+Catalog type generation lives under the Node-oriented `@fluojs/i18n/typegen` tooling subpath. It does not narrow `I18nService.translate(key: string, ...)`; applications can opt into generated helper types where they want type-safe translation key variables or typed translation facades.
 
 ```ts
 import { generateI18nCatalogTypesFromDirectory } from '@fluojs/i18n/typegen';
@@ -391,6 +391,22 @@ const declarations = generateI18nCatalogTypes([
   },
 ]);
 ```
+
+The generated declaration text includes fully qualified key unions, namespace unions, namespace-to-leaf-key maps, and opt-in typed facade types. For example, `admin/common.dashboard.title` is available as a fully qualified key, while the same message can be represented as namespace `admin/common` plus leaf key `dashboard.title` through `I18nCatalogNamespaceKey<"admin/common">`.
+
+```ts
+import type { I18nCatalogTypedService } from './generated-i18n-catalog.d.ts';
+
+const typedI18n = {
+  translate: i18n.translate.bind(i18n),
+  translateInNamespace: (namespace, key, options) => i18n.translate(key, { ...options, namespace }),
+} satisfies I18nCatalogTypedService;
+
+typedI18n.translate('admin/common.dashboard.title', { locale: 'en' });
+typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en' });
+```
+
+These helper declarations are type-only and application-owned. They do not add runtime wrappers, do not import framework bridges, and do not change the broad runtime `I18nService.translate(key: string, options)` signature.
 
 Both helpers deduplicate keys across locales, sort output for stable diffs, reject invalid catalog shapes with `I18N_INVALID_CATALOG`, and reject unsafe locale or namespace paths with `I18N_INVALID_LOADER_OPTIONS`.
 
@@ -485,7 +501,7 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 | `generateI18nCatalogTypes(inputs, options?)` | Generates deterministic TypeScript key declarations from in-memory catalog trees. |
 | `generateI18nCatalogTypesFromDirectory(options)` | Reads locale/namespace JSON catalogs from disk and generates key declarations. |
 
-**Types:** `I18nCatalogTypegenInput`, `I18nCatalogTypegenOptions`, `I18nCatalogTypegenDirectoryOptions`.
+**Types:** `I18nCatalogTypegenInput`, `I18nCatalogTypegenOptions`, `I18nCatalogTypegenDirectoryOptions`. Generated declaration defaults include `I18nCatalogKey`, `I18nCatalogNamespace`, `I18nCatalogKeyByNamespace`, `I18nCatalogNamespaceKey`, `I18nCatalogTypedTranslate`, and `I18nCatalogTypedService`.
 
 ## Post-MVP Roadmap
 
