@@ -3,9 +3,12 @@ import { FluoError } from '@fluojs/core';
 import type { I18nErrorCode } from './types.js';
 
 /**
- * Base error type reserved for caller-visible i18n package failures.
+ * Base error type for caller-visible i18n package failures.
  */
 export class I18nError extends FluoError {
+  /** Stable i18n error code. */
+  declare readonly code: I18nErrorCode;
+
   /**
    * Creates an i18n package error with a stable code.
    *
