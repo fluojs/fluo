@@ -69,6 +69,27 @@ describe('@fluojs/i18n/http locale context adapter', () => {
     ]);
   });
 
+  it('rejects non-spec Accept-Language q-value syntax', () => {
+    expect(
+      parseAcceptLanguage([
+        'ko;q=0.123',
+        'en;q=1.000',
+        'hex;q=0x1',
+        'scientific;q=1e-1',
+        'precise;q=0.1234',
+        'large;q=1.001',
+        'two;q=2',
+        'negative;q=-0.1',
+        'malformed;q',
+        'empty;q=',
+        'extra;q=0.5=oops',
+      ]),
+    ).toEqual([
+      { locale: 'en', quality: 1 },
+      { locale: 'ko', quality: 0.123 },
+    ]);
+  });
+
   it('runs explicit resolver chains in order', () => {
     const context = createMockContext({ 'accept-language': 'ko;q=1' });
     const first: HttpLocaleResolver = () => 'fr';
@@ -97,6 +118,21 @@ describe('@fluojs/i18n/http locale context adapter', () => {
     });
 
     expect(locale).toEqual({ locale: 'ko', source: 'accept-language' });
+  });
+
+  it('skips non-string resolver outputs instead of validating them as locales', () => {
+    const context = createMockContext();
+    const numberLocale: HttpLocaleResolver = () => 123;
+    const objectLocale: HttpLocaleResolver = () => ({ locale: ['ko'], source: 'array-locale' });
+    const valid: HttpLocaleResolver = () => ({ locale: 'ko', source: 'valid' });
+
+    const locale = resolveHttpLocale(context, {
+      defaultLocale: 'en',
+      resolvers: [numberLocale, objectLocale, valid],
+      supportedLocales: ['en', 'ko'],
+    });
+
+    expect(locale).toEqual({ locale: 'ko', source: 'valid' });
   });
 
   it('falls back to the configured default locale when no resolver matches', () => {

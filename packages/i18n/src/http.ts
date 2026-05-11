@@ -53,7 +53,7 @@ export interface HttpLocaleResolverResult {
 /**
  * Explicit locale resolver used by `resolveHttpLocale(...)` in application-defined order.
  */
-export type HttpLocaleResolver = (input: HttpLocaleResolverInput) => HttpLocaleResolverResult | I18nLocale | undefined;
+export type HttpLocaleResolver = (input: HttpLocaleResolverInput) => unknown;
 
 /**
  * Options for resolving a request locale from an ordered resolver chain.
@@ -84,9 +84,15 @@ export const HTTP_LOCALE_CONTEXT_KEY = createContextKey<HttpLocaleContext>('fluo
 
 const DEFAULT_ACCEPT_LANGUAGE_SOURCE = 'accept-language';
 const LOCALE_PATTERN = /^[A-Za-z]{1,8}(?:-[A-Za-z0-9]{1,8})*$/;
+const ACCEPT_LANGUAGE_QVALUE_PATTERN = /^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/;
 
-function isValidLocale(locale: string): boolean {
-  return LOCALE_PATTERN.test(locale);
+interface ResolverCandidate {
+  readonly locale: unknown;
+  readonly source?: string;
+}
+
+function isValidLocale(locale: unknown): locale is I18nLocale {
+  return typeof locale === 'string' && LOCALE_PATTERN.test(locale);
 }
 
 function isSupportedLocale(locale: I18nLocale, supportedLocales: readonly I18nLocale[] | undefined): boolean {
@@ -106,8 +112,8 @@ function readHeader(request: FrameworkRequest, headerName: string): string | str
 }
 
 function normalizeResolverResult(
-  result: HttpLocaleResolverResult | I18nLocale | undefined,
-): HttpLocaleResolverResult | undefined {
+  result: unknown,
+): ResolverCandidate | undefined {
   if (result === undefined) {
     return undefined;
   }
@@ -116,7 +122,39 @@ function normalizeResolverResult(
     return { locale: result };
   }
 
-  return result;
+  if (typeof result !== 'object' || result === null || !Object.hasOwn(result, 'locale')) {
+    return undefined;
+  }
+
+  const { locale, source } = result as { readonly locale?: unknown; readonly source?: unknown };
+
+  if (source !== undefined && typeof source !== 'string') {
+    return undefined;
+  }
+
+  return { locale, source };
+}
+
+function parseAcceptLanguageQuality(parameters: readonly string[]): number | undefined {
+  let quality = 1;
+
+  for (const parameter of parameters) {
+    const [rawName, rawValue, ...extraParts] = parameter.split('=');
+
+    if (rawName?.trim().toLowerCase() !== 'q') {
+      continue;
+    }
+
+    const value = rawValue?.trim();
+
+    if (extraParts.length > 0 || value === undefined || !ACCEPT_LANGUAGE_QVALUE_PATTERN.test(value)) {
+      return undefined;
+    }
+
+    quality = Number(value);
+  }
+
+  return quality;
 }
 
 /**
@@ -167,28 +205,9 @@ export function parseAcceptLanguage(header: string | readonly string[] | undefin
       continue;
     }
 
-    let quality = 1;
-    let invalidQuality = false;
+    const quality = parseAcceptLanguageQuality(parameters);
 
-    for (const parameter of parameters) {
-      const [rawName, rawValue] = parameter.split('=');
-
-      if (rawName?.trim().toLowerCase() !== 'q') {
-        continue;
-      }
-
-      const value = rawValue?.trim();
-      const parsed = value === undefined || value === '' ? Number.NaN : Number(value);
-
-      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
-        invalidQuality = true;
-        break;
-      }
-
-      quality = parsed;
-    }
-
-    if (!invalidQuality && quality > 0) {
+    if (quality !== undefined && quality > 0) {
       preferences.push({ index, locale, quality });
     }
   }
