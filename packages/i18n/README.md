@@ -123,12 +123,16 @@ i18n.formatCurrency(12900, {
 HTTP request locale helpers live only under the `@fluojs/i18n/http` subpath so the root `@fluojs/i18n` entry point remains framework-agnostic and does not import `@fluojs/http`.
 
 ```ts
+import { createI18n } from '@fluojs/i18n';
 import { createAcceptLanguageLocaleResolver, getHttpLocale, resolveHttpLocale } from '@fluojs/i18n/http';
 import type { RequestContext } from '@fluojs/http';
 
 const i18n = createI18n({
   defaultLocale: 'en',
   supportedLocales: ['en', 'ko'],
+  catalogs: {
+    en: { app: { title: 'Welcome' } },
+  },
 });
 
 const acceptLanguage = createAcceptLanguageLocaleResolver();
@@ -144,7 +148,7 @@ async function bindRequestLocale(ctx: RequestContext) {
 function handler(ctx: RequestContext) {
   const locale = getHttpLocale(ctx)?.locale ?? 'en';
   // Use the service with the resolved locale
-  return i18n.translate('app.title', { locale });
+  return i18n.translate('app.title', { locale, defaultValue: 'Welcome' });
 }
 ```
 
@@ -187,7 +191,7 @@ This subpath imports Node built-ins and is not exported from `@fluojs/i18n` root
 | `createI18n(options)` | Creates a standalone `I18nService` without module registration. |
 | `I18nError` | Base i18n package error with a stable error code. |
 
-**Types:** `I18nModuleOptions`, `I18nMessageCatalogs`, `I18nMessageTree`, `I18nTranslateOptions`, `I18nInterpolationValues`, `I18nMissingMessageHandler`, `I18nLocale`, `I18nTranslationKey`, `I18nErrorCode`, `I18nFormatOptions`, `I18nFormatterOptions`, `I18nDateTimeFormatOptions`, `I18nNumberFormatOptions`, `I18nCurrencyFormatOptions`, `I18nListFormatOptions`, `I18nRelativeTimeFormatOptions`, `I18nNamedDateTimeFormats`, `I18nNamedNumberFormats`, `I18nNamedListFormats`, `I18nNamedRelativeTimeFormats`.
+**Types:** `I18nModuleOptions`, `I18nMessageCatalogs`, `I18nMessageTree`, `I18nTranslateOptions`, `I18nInterpolationValues`, `I18nMissingMessageHandler`, `I18nMissingMessageContext`, `I18nLocale`, `I18nTranslationKey`, `I18nErrorCode`, `I18nFallbackLocales`, `I18nFormatOptions`, `I18nFormatterOptions`, `I18nDateTimeFormatOptions`, `I18nNumberFormatOptions`, `I18nCurrencyFormatOptions`, `I18nListFormatOptions`, `I18nRelativeTimeFormatOptions`, `I18nNamedDateTimeFormats`, `I18nNamedNumberFormats`, `I18nNamedListFormats`, `I18nNamedRelativeTimeFormats`.
 
 ### HTTP Adapter (@fluojs/i18n/http)
 
@@ -198,6 +202,7 @@ This subpath imports Node built-ins and is not exported from `@fluojs/i18n` root
 | `setHttpLocale` | Manually stores locale metadata on the `RequestContext`. |
 | `createAcceptLanguageLocaleResolver` | Creates a resolver for the `Accept-Language` header. |
 | `parseAcceptLanguage` | Utility to parse `Accept-Language` header into q-value preferences. |
+| `HTTP_LOCALE_CONTEXT_KEY` | Context key used to store locale metadata on `RequestContext`. |
 
 **Types:** `HttpLocaleContext`, `HttpLocaleResolver`, `HttpLocaleResolverInput`, `HttpLocaleResolverResult`, `ResolveHttpLocaleOptions`, `AcceptLanguageLocaleResolverOptions`, `AcceptLanguagePreference`.
 
