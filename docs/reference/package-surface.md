@@ -33,7 +33,7 @@
 - **`@fluojs/core`**: Metadata helpers and TC39-standard decorator support.
 - **`@fluojs/di`**: Provider resolution, lifecycle scopes, and dependency graph analysis.
 - **`@fluojs/config`**: Environment-aware configuration loading and typed access.
-- **`@fluojs/i18n`**: Framework-agnostic internationalization package boundary with module registration, a standalone service factory, reserved core option/error types, ICU MessageFormat support through `@fluojs/i18n/icu`, HTTP locale helpers through `@fluojs/i18n/http`, opt-in non-HTTP locale adapters through `@fluojs/i18n/adapters`, validation localization through `@fluojs/i18n/validation`, Node filesystem and provider-backed catalog loaders through `@fluojs/i18n/loaders/fs` and `@fluojs/i18n/loaders/remote`, and catalog key declaration generation through `@fluojs/i18n/typegen`.
+- **`@fluojs/i18n`**: Framework-agnostic internationalization package boundary with module registration, a standalone service factory, reserved core option/error types, ICU MessageFormat support through `@fluojs/i18n/icu`, HTTP locale helpers and opt-in `Accept-Language` policy helpers through `@fluojs/i18n/http`, opt-in non-HTTP locale adapters and header policy helpers through `@fluojs/i18n/adapters`, validation localization through `@fluojs/i18n/validation`, Node filesystem and provider-backed catalog loaders with opt-in remote cache wrappers through `@fluojs/i18n/loaders/fs` and `@fluojs/i18n/loaders/remote`, and catalog key declaration generation through `@fluojs/i18n/typegen`.
 - **`@fluojs/runtime`**: Application bootstrap, module orchestration, platform shell registration, and platform snapshot production. Public runtime helpers are exposed through `@fluojs/runtime/node` and `@fluojs/runtime/web`.
 
 ### adapters

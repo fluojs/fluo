@@ -42,7 +42,7 @@ i18n 작업을 위한 안정적인 fluo-native 패키지 경계가 필요할 때
 - `@fluojs/i18n/http`를 통한 명시적 HTTP `RequestContext` 로케일 헬퍼.
 - `@fluojs/i18n/adapters`를 통한 WebSocket, gRPC, CLI, local storage, server-request abstraction용 opt-in non-HTTP locale adapter.
 - `@fluojs/i18n/validation`을 통한 opt-in `@fluojs/validation` issue localization.
-- `@fluojs/i18n/loaders/remote`를 통한 provider-backed remote catalog loading.
+- `@fluojs/i18n/loaders/remote`를 통한 provider-backed remote catalog loading 및 opt-in cache wrapper.
 - `@fluojs/i18n/typegen`을 통한 opt-in catalog key declaration generation.
 - 공유 옵션, 카탈로그, 로케일, 번역 키 및 에러 타입.
 
@@ -197,9 +197,18 @@ Adapter는 의도적으로 explicit합니다:
 - `getHttpLocale(ctx)`는 global fallback 없이 metadata를 읽습니다.
 - `parseAcceptLanguage(header)`는 q-value 순서로 valid `Accept-Language` range를 parse하고 invalid 또는 q=0 entry를 무시합니다.
 - `createAcceptLanguageLocaleResolver(...)`는 request header에서 첫 번째 supported locale을 선택합니다.
+- `createAcceptLanguageLocalePolicyResolver(...)`는 opt-in이며, `en-US` 같은 regional range를 supported `en`으로 normalize하거나 explicit supported range를 모두 확인한 뒤 wildcard fallback을 선택할 수 있습니다.
 - `resolveHttpLocale(ctx, options)`는 application-provided resolver를 배열 순서대로 실행하고 invalid 또는 unsupported resolver output을 무시하며, 아무 resolver도 match하지 않으면 `defaultLocale`을 source `default`로 저장합니다.
 
 Wildcard `*` range는 parse되지만 자동으로 locale을 선택하지는 않습니다. Wildcard별 동작이 필요한 애플리케이션은 제공된 `Accept-Language` resolver 앞이나 뒤에 resolver를 추가할 수 있습니다.
+
+예를 들어 이 resolver는 explicit user range를 먼저 유지하고, `*`는 fallback-only로 취급하며, explicit range가 match하지 않을 때만 첫 번째 configured supported locale을 선택합니다.
+
+```ts
+const acceptLanguagePolicy = createAcceptLanguageLocalePolicyResolver({
+  wildcardLocale: 'firstSupportedLocale',
+});
+```
 
 ## Non-HTTP Locale Adapters
 
@@ -253,6 +262,7 @@ Generic adapter contract는 의도적으로 explicit합니다.
 - `bindLocale(context, { store, ...options })`는 locale을 resolve한 뒤 application-provided `LocaleAdapterStore`에 immutable metadata를 저장합니다.
 - `createWeakMapLocaleStore()`는 socket, call, session, request object를 mutate하지 않고 per-object metadata storage를 제공합니다.
 - `createHeaderLocaleResolver(...)`는 HTTP adapter와 같은 q-value 및 wildcard 동작으로 `Accept-Language` style 값을 parse합니다.
+- `createHeaderLocalePolicyResolver(...)`는 HTTP type을 import하지 않고 동일한 opt-in regional-locale normalization 및 wildcard fallback policy를 제공합니다.
 - `createQueryLocaleResolver(...)`, `createCookieLocaleResolver(...)`, `createStorageLocaleResolver(...)`는 caller-owned abstraction에서 locale candidate를 읽고 browser global이나 framework internal에는 접근하지 않습니다.
 
 애플리케이션이 context shape와 accessor function을 선택합니다. 예를 들어 gRPC 통합은 `getHeader`로 metadata를 읽고, CLI 통합은 parsed `--locale` option을 `getQueryValue` 또는 `getStoredLocale`로 읽으며, browser application은 `localStorage` around safe wrapper를 `getStoredLocale`에 전달할 수 있습니다.
@@ -333,6 +343,21 @@ Provider는 validated `locale`, `namespace`, 그리고 loader timeout과 optiona
 
 Remote loader는 기본적으로 cache하지 않습니다. 모든 `load(locale, namespace)` 호출은 provider를 호출하고 그 provider result를 snapshot합니다. Memory, HTTP, CDN, database 또는 stale-while-revalidate caching이 필요한 애플리케이션은 cache invalidation이 application boundary에서 명시적으로 유지되도록 provider 내부 또는 provider wrapper에서 구현해야 합니다.
 
+First-party in-memory policy가 필요한 애플리케이션은 loader를 명시적으로 wrap할 수 있습니다. Cache entry는 caller가 custom key를 제공하지 않는 한 `(locale, namespace, version)`으로 keying되며, `invalidate(...)` / `clear()`가 invalidation을 application-owned 상태로 유지합니다.
+
+```ts
+import { createCachedRemoteI18nLoader, createRemoteI18nLoader } from '@fluojs/i18n/loaders/remote';
+
+const uncachedLoader = createRemoteI18nLoader({ provider: fetchCatalog });
+const cachedLoader = createCachedRemoteI18nLoader({
+  loader: uncachedLoader,
+  ttlMs: 60_000,
+  version: 'catalog-2026-05-11',
+});
+
+cachedLoader.invalidate('en', 'common');
+```
+
 Filesystem loader와 마찬가지로 locale과 namespace 값은 provider 호출 전에 validate됩니다. Namespace는 `admin/common` 같은 safe relative path segment를 사용할 수 있습니다. `.`, `..`, absolute path, empty segment, `common.json` 같은 extension-bearing name, traversal attempt는 `I18N_INVALID_LOADER_OPTIONS`로 거부됩니다.
 
 ## Catalog Type Generation
@@ -390,10 +415,11 @@ const declarations = generateI18nCatalogTypes([
 | `getHttpLocale` | `RequestContext`에서 로케일 메타데이터를 가져옵니다. |
 | `setHttpLocale` | `RequestContext`에 로케일 메타데이터를 수동으로 저장합니다. |
 | `createAcceptLanguageLocaleResolver` | `Accept-Language` 헤더에 대한 리졸버를 생성합니다. |
+| `createAcceptLanguageLocalePolicyResolver` | Regional normalization과 wildcard fallback handling을 위한 opt-in `Accept-Language` policy resolver를 생성합니다. |
 | `parseAcceptLanguage` | `Accept-Language` 헤더를 q-value 선호도로 파싱하는 유틸리티입니다. |
 | `HTTP_LOCALE_CONTEXT_KEY` | `RequestContext`에 로케일 메타데이터를 저장할 때 사용하는 컨텍스트 키입니다. |
 
-**타입:** `HttpLocaleContext`, `HttpLocaleResolver`, `HttpLocaleResolverInput`, `HttpLocaleResolverResult`, `ResolveHttpLocaleOptions`, `AcceptLanguageLocaleResolverOptions`, `AcceptLanguagePreference`.
+**타입:** `HttpLocaleContext`, `HttpLocaleResolver`, `HttpLocaleResolverInput`, `HttpLocaleResolverResult`, `ResolveHttpLocaleOptions`, `AcceptLanguageLocaleResolverOptions`, `AcceptLanguageLocalePolicyResolverOptions`, `AcceptLanguagePreference`.
 
 ### Non-HTTP Adapters (@fluojs/i18n/adapters)
 
@@ -405,11 +431,12 @@ const declarations = generateI18nCatalogTypes([
 | `getAdapterLocale` | Caller-provided adapter store에서 locale metadata를 가져옵니다. |
 | `createWeakMapLocaleStore` | Transport context를 mutate하지 않는 per-object metadata storage를 생성합니다. |
 | `createHeaderLocaleResolver` | Caller-owned header abstraction용 `Accept-Language` style resolver를 생성합니다. |
+| `createHeaderLocalePolicyResolver` | Regional normalization과 wildcard fallback handling을 위한 opt-in header policy resolver를 생성합니다. |
 | `createQueryLocaleResolver` | Query, CLI option, request parameter abstraction용 resolver를 생성합니다. |
 | `createCookieLocaleResolver` | Caller-owned cookie abstraction용 resolver를 생성합니다. |
 | `createStorageLocaleResolver` | Local storage, server session, socket data, CLI config abstraction용 resolver를 생성합니다. |
 
-**타입:** `LocaleAdapterContext`, `LocaleAdapterResolver`, `LocaleAdapterResolverInput`, `LocaleAdapterResolverResult`, `LocaleAdapterStore`, `ResolveLocaleOptions`, `BindLocaleOptions`, `HeaderLocaleResolverOptions`, `QueryLocaleResolverOptions`, `CookieLocaleResolverOptions`, `StorageLocaleResolverOptions`.
+**타입:** `LocaleAdapterContext`, `LocaleAdapterResolver`, `LocaleAdapterResolverInput`, `LocaleAdapterResolverResult`, `LocaleAdapterStore`, `ResolveLocaleOptions`, `BindLocaleOptions`, `HeaderLocaleResolverOptions`, `HeaderLocalePolicyResolverOptions`, `QueryLocaleResolverOptions`, `CookieLocaleResolverOptions`, `StorageLocaleResolverOptions`.
 
 ### Validation Integration (@fluojs/i18n/validation)
 
@@ -446,8 +473,10 @@ const declarations = generateI18nCatalogTypes([
 |---|---|
 | `createRemoteI18nLoader` | Provider-backed remote catalog loader를 생성합니다. |
 | `RemoteI18nLoader` | Remote catalog loader의 클래스 구현체입니다. |
+| `createCachedRemoteI18nLoader` | Remote catalog loader 주변에 opt-in in-memory cache wrapper를 생성합니다. |
+| `CachedRemoteI18nLoader` | Explicit `invalidate(...)`와 `clear()` control을 제공하는 cache wrapper 구현체입니다. |
 
-**타입:** `I18nLoader`, `I18nLoaderLoadOptions`, `RemoteI18nCatalogProvider`, `RemoteI18nCatalogRequest`, `RemoteI18nLoaderOptions`.
+**타입:** `I18nLoader`, `I18nLoaderLoadOptions`, `RemoteI18nCatalogProvider`, `RemoteI18nCatalogRequest`, `RemoteI18nLoaderOptions`, `CachedI18nLoader`, `CachedI18nLoaderKeyInput`, `CachedI18nLoaderOptions`.
 
 ### Catalog Type Generation (@fluojs/i18n/typegen)
 

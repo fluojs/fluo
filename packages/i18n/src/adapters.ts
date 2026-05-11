@@ -1,10 +1,12 @@
-import type { I18nLocale } from './types.js';
 import {
+  type AcceptLanguageLocalePolicyOptions,
   isSupportedLocale,
   isValidLocale,
   normalizeLocaleResolverResult,
   parseLocalePreferences,
+  selectLocaleFromAcceptLanguagePolicy,
 } from './locale-resolution.js';
+import type { I18nLocale } from './types.js';
 
 /**
  * Locale metadata resolved for a non-HTTP transport context.
@@ -82,6 +84,13 @@ export interface HeaderLocaleResolverOptions<TContext> {
   /** Resolver source label returned with matches. Defaults to `accept-language`. */
   readonly source?: string;
 }
+
+/**
+ * Options for creating an opt-in `Accept-Language` policy resolver without importing HTTP types.
+ */
+export interface HeaderLocalePolicyResolverOptions<TContext>
+  extends HeaderLocaleResolverOptions<TContext>,
+    AcceptLanguageLocalePolicyOptions {}
 
 /**
  * Options for creating a query parameter resolver.
@@ -231,6 +240,33 @@ export function createHeaderLocaleResolver<TContext>(
     }
 
     return undefined;
+  };
+}
+
+/**
+ * Creates an opt-in header policy resolver that normalizes supported locale ranges and can select wildcard fallbacks.
+ *
+ * @param options Header accessor, source, normalization, and wildcard policy options.
+ * @returns Locale resolver that treats `*` as fallback-only and preserves explicit locale preferences first.
+ */
+export function createHeaderLocalePolicyResolver<TContext>(
+  options: HeaderLocalePolicyResolverOptions<TContext>,
+): LocaleAdapterResolver<TContext> {
+  const source = options.source ?? 'accept-language';
+
+  return ({ context, defaultLocale, supportedLocales }) => {
+    const locale = selectLocaleFromAcceptLanguagePolicy(
+      parseLocalePreferences(options.getHeader(context)),
+      defaultLocale,
+      supportedLocales,
+      options,
+    );
+
+    if (locale === undefined) {
+      return undefined;
+    }
+
+    return { locale, source };
   };
 }
 

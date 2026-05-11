@@ -1,18 +1,19 @@
 import {
   createContextKey,
-  getContextValue,
-  setContextValue,
   type FrameworkRequest,
+  getContextValue,
   type RequestContext,
+  setContextValue,
 } from '@fluojs/http';
-
-import type { I18nLocale } from './types.js';
 import {
+  type AcceptLanguageLocalePolicyOptions,
   isSupportedLocale,
   isValidLocale,
   normalizeLocaleResolverResult,
   parseLocalePreferences,
+  selectLocaleFromAcceptLanguagePolicy,
 } from './locale-resolution.js';
+import type { I18nLocale } from './types.js';
 
 /**
  * Locale metadata stored on a fluo HTTP request context.
@@ -82,6 +83,11 @@ export interface AcceptLanguageLocaleResolverOptions {
   /** Resolver source label returned with matches. Defaults to `accept-language`. */
   readonly source?: string;
 }
+
+/**
+ * Options for the opt-in `Accept-Language` policy resolver.
+ */
+export interface AcceptLanguageLocalePolicyResolverOptions extends AcceptLanguageLocaleResolverOptions, AcceptLanguageLocalePolicyOptions {}
 
 /**
  * Request-context key used by `setHttpLocale(...)` and `getHttpLocale(...)`.
@@ -163,6 +169,34 @@ export function createAcceptLanguageLocaleResolver(
     }
 
     return undefined;
+  };
+}
+
+/**
+ * Creates an opt-in resolver that normalizes supported `Accept-Language` ranges and can select a wildcard fallback.
+ *
+ * @param options Header, source, normalization, and wildcard policy options.
+ * @returns Locale resolver that treats `*` as fallback-only and preserves explicit locale preferences first.
+ */
+export function createAcceptLanguageLocalePolicyResolver(
+  options: AcceptLanguageLocalePolicyResolverOptions = {},
+): HttpLocaleResolver {
+  const headerName = options.headerName ?? 'accept-language';
+  const source = options.source ?? DEFAULT_ACCEPT_LANGUAGE_SOURCE;
+
+  return ({ context, defaultLocale, supportedLocales }) => {
+    const locale = selectLocaleFromAcceptLanguagePolicy(
+      parseAcceptLanguage(readHeader(context.request, headerName)),
+      defaultLocale,
+      supportedLocales,
+      options,
+    );
+
+    if (locale === undefined) {
+      return undefined;
+    }
+
+    return { locale, source };
   };
 }
 

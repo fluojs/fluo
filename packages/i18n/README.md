@@ -42,7 +42,7 @@ Use this package when you need a stable fluo-native package boundary for i18n wo
 - explicit HTTP `RequestContext` locale helpers through `@fluojs/i18n/http`
 - opt-in non-HTTP locale adapters for WebSocket, gRPC, CLI, local storage, and server-request abstractions through `@fluojs/i18n/adapters`
 - opt-in `@fluojs/validation` issue localization through `@fluojs/i18n/validation`
-- provider-backed remote catalog loading through `@fluojs/i18n/loaders/remote`
+- provider-backed remote catalog loading and opt-in cache wrappers through `@fluojs/i18n/loaders/remote`
 - opt-in catalog key declaration generation through `@fluojs/i18n/typegen`
 - shared option, catalog, locale, translation-key, and error types
 
@@ -197,9 +197,18 @@ The adapter is intentionally explicit:
 - `getHttpLocale(ctx)` reads the metadata without falling back to globals.
 - `parseAcceptLanguage(header)` parses valid `Accept-Language` ranges by q-value and ignores invalid or q=0 entries.
 - `createAcceptLanguageLocaleResolver(...)` selects the first supported locale from the request header.
+- `createAcceptLanguageLocalePolicyResolver(...)` is opt-in and can normalize regional ranges such as `en-US` to supported `en` or select a wildcard fallback only after explicit supported ranges are exhausted.
 - `resolveHttpLocale(ctx, options)` runs application-provided resolvers in order, ignores invalid or unsupported resolver output, and stores `defaultLocale` with source `default` when nothing matches.
 
 Wildcard `*` ranges are parsed but do not automatically select a locale. Applications that want wildcard-specific behavior can add a resolver before or after the provided `Accept-Language` resolver.
+
+For example, this resolver keeps explicit user ranges first, treats `*` as fallback-only, and only selects the first configured supported locale when no explicit range matches:
+
+```ts
+const acceptLanguagePolicy = createAcceptLanguageLocalePolicyResolver({
+  wildcardLocale: 'firstSupportedLocale',
+});
+```
 
 ## Non-HTTP Locale Adapters
 
@@ -253,6 +262,7 @@ The generic adapter contract is intentionally explicit:
 - `bindLocale(context, { store, ...options })` resolves a locale and stores immutable metadata in an application-provided `LocaleAdapterStore`.
 - `createWeakMapLocaleStore()` provides per-object metadata storage for socket, call, session, or request objects without mutating those objects.
 - `createHeaderLocaleResolver(...)` parses `Accept-Language`-style values with the same q-value and wildcard behavior as the HTTP adapter.
+- `createHeaderLocalePolicyResolver(...)` provides the same opt-in regional-locale normalization and wildcard fallback policy without importing HTTP types.
 - `createQueryLocaleResolver(...)`, `createCookieLocaleResolver(...)`, and `createStorageLocaleResolver(...)` read locale candidates from caller-owned abstractions and never access browser globals or framework internals.
 
 Applications choose the context shape and accessor functions. For example, a gRPC integration can read metadata through `getHeader`, a CLI integration can read a parsed `--locale` option through `getQueryValue` or `getStoredLocale`, and a browser application can pass a safe wrapper around `localStorage` through `getStoredLocale`.
@@ -333,6 +343,21 @@ The provider receives the validated `locale`, `namespace`, and an `AbortSignal` 
 
 The remote loader never caches by default: every `load(locale, namespace)` call invokes the provider and snapshots that provider result. Applications that need memory, HTTP, CDN, database, or stale-while-revalidate caching should implement it inside the provider or in a wrapper around the provider so cache invalidation remains explicit at the application boundary.
 
+Applications that want a first-party in-memory policy can wrap the loader explicitly. Cache entries are keyed by `(locale, namespace, version)` unless the caller provides a custom key, and `invalidate(...)` / `clear()` keep invalidation application-owned:
+
+```ts
+import { createCachedRemoteI18nLoader, createRemoteI18nLoader } from '@fluojs/i18n/loaders/remote';
+
+const uncachedLoader = createRemoteI18nLoader({ provider: fetchCatalog });
+const cachedLoader = createCachedRemoteI18nLoader({
+  loader: uncachedLoader,
+  ttlMs: 60_000,
+  version: 'catalog-2026-05-11',
+});
+
+cachedLoader.invalidate('en', 'common');
+```
+
 Like the filesystem loader, locale and namespace values are validated before the provider is called. Namespaces may use safe relative path segments such as `admin/common`; `.`/`..`, absolute paths, empty segments, extension-bearing names such as `common.json`, and traversal attempts are rejected with `I18N_INVALID_LOADER_OPTIONS`.
 
 ## Catalog Type Generation
@@ -390,10 +415,11 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 | `getHttpLocale` | Retrieves locale metadata from the `RequestContext`. |
 | `setHttpLocale` | Manually stores locale metadata on the `RequestContext`. |
 | `createAcceptLanguageLocaleResolver` | Creates a resolver for the `Accept-Language` header. |
+| `createAcceptLanguageLocalePolicyResolver` | Creates an opt-in `Accept-Language` policy resolver for regional normalization and wildcard fallback handling. |
 | `parseAcceptLanguage` | Utility to parse `Accept-Language` header into q-value preferences. |
 | `HTTP_LOCALE_CONTEXT_KEY` | Context key used to store locale metadata on `RequestContext`. |
 
-**Types:** `HttpLocaleContext`, `HttpLocaleResolver`, `HttpLocaleResolverInput`, `HttpLocaleResolverResult`, `ResolveHttpLocaleOptions`, `AcceptLanguageLocaleResolverOptions`, `AcceptLanguagePreference`.
+**Types:** `HttpLocaleContext`, `HttpLocaleResolver`, `HttpLocaleResolverInput`, `HttpLocaleResolverResult`, `ResolveHttpLocaleOptions`, `AcceptLanguageLocaleResolverOptions`, `AcceptLanguageLocalePolicyResolverOptions`, `AcceptLanguagePreference`.
 
 ### Non-HTTP Adapters (@fluojs/i18n/adapters)
 
@@ -405,11 +431,12 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 | `getAdapterLocale` | Retrieves locale metadata from a caller-provided adapter store. |
 | `createWeakMapLocaleStore` | Creates per-object metadata storage without mutating transport contexts. |
 | `createHeaderLocaleResolver` | Creates an `Accept-Language`-style resolver for caller-owned header abstractions. |
+| `createHeaderLocalePolicyResolver` | Creates an opt-in header policy resolver for regional normalization and wildcard fallback handling. |
 | `createQueryLocaleResolver` | Creates a resolver for query, CLI option, or request parameter abstractions. |
 | `createCookieLocaleResolver` | Creates a resolver for caller-owned cookie abstractions. |
 | `createStorageLocaleResolver` | Creates a resolver for local storage, server session, socket data, or CLI config abstractions. |
 
-**Types:** `LocaleAdapterContext`, `LocaleAdapterResolver`, `LocaleAdapterResolverInput`, `LocaleAdapterResolverResult`, `LocaleAdapterStore`, `ResolveLocaleOptions`, `BindLocaleOptions`, `HeaderLocaleResolverOptions`, `QueryLocaleResolverOptions`, `CookieLocaleResolverOptions`, `StorageLocaleResolverOptions`.
+**Types:** `LocaleAdapterContext`, `LocaleAdapterResolver`, `LocaleAdapterResolverInput`, `LocaleAdapterResolverResult`, `LocaleAdapterStore`, `ResolveLocaleOptions`, `BindLocaleOptions`, `HeaderLocaleResolverOptions`, `HeaderLocalePolicyResolverOptions`, `QueryLocaleResolverOptions`, `CookieLocaleResolverOptions`, `StorageLocaleResolverOptions`.
 
 ### Validation Integration (@fluojs/i18n/validation)
 
@@ -446,8 +473,10 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 |---|---|
 | `createRemoteI18nLoader` | Creates a provider-backed remote catalog loader. |
 | `RemoteI18nLoader` | Class implementation of the remote catalog loader. |
+| `createCachedRemoteI18nLoader` | Creates an opt-in in-memory cache wrapper around a remote catalog loader. |
+| `CachedRemoteI18nLoader` | Cache wrapper implementation with explicit `invalidate(...)` and `clear()` controls. |
 
-**Types:** `I18nLoader`, `I18nLoaderLoadOptions`, `RemoteI18nCatalogProvider`, `RemoteI18nCatalogRequest`, `RemoteI18nLoaderOptions`.
+**Types:** `I18nLoader`, `I18nLoaderLoadOptions`, `RemoteI18nCatalogProvider`, `RemoteI18nCatalogRequest`, `RemoteI18nLoaderOptions`, `CachedI18nLoader`, `CachedI18nLoaderKeyInput`, `CachedI18nLoaderOptions`.
 
 ### Catalog Type Generation (@fluojs/i18n/typegen)
 

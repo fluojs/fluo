@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
-
-import { createAcceptLanguageLocaleResolver, resolveHttpLocale, type HttpLocaleResolver } from './http.js';
 import {
   bindLocale,
   createCookieLocaleResolver,
+  createHeaderLocalePolicyResolver,
   createHeaderLocaleResolver,
   createQueryLocaleResolver,
   createStorageLocaleResolver,
   createWeakMapLocaleStore,
   getAdapterLocale,
+  type LocaleAdapterResolver,
   resolveLocale,
   setAdapterLocale,
-  type LocaleAdapterResolver,
 } from './adapters.js';
+import { createAcceptLanguageLocaleResolver, type HttpLocaleResolver, resolveHttpLocale } from './http.js';
 
 type HttpRequestContext = Parameters<typeof resolveHttpLocale>[0];
 
@@ -71,6 +71,7 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
     expect(Object.keys(adapters).sort()).toEqual([
       'bindLocale',
       'createCookieLocaleResolver',
+      'createHeaderLocalePolicyResolver',
       'createHeaderLocaleResolver',
       'createQueryLocaleResolver',
       'createStorageLocaleResolver',
@@ -155,6 +156,47 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
     });
 
     expect(locale).toEqual({ locale: 'en', source: 'default' });
+  });
+
+  it('keeps adapter wildcard ranges fallback-only unless the policy resolver is selected', () => {
+    const context: TransportContext = { headers: { 'accept-language': '*;q=1' } };
+
+    expect(
+      resolveLocale(context, {
+        defaultLocale: 'en',
+        resolvers: [createHeaderLocaleResolver({ getHeader: (ctx) => ctx.headers?.['accept-language'] })],
+        supportedLocales: ['en', 'ko'],
+      }),
+    ).toEqual({ locale: 'en', source: 'default' });
+    expect(
+      resolveLocale(context, {
+        defaultLocale: 'en',
+        resolvers: [
+          createHeaderLocalePolicyResolver({
+            getHeader: (ctx) => ctx.headers?.['accept-language'],
+            wildcardLocale: 'firstSupportedLocale',
+          }),
+        ],
+        supportedLocales: ['ko', 'en'],
+      }),
+    ).toEqual({ locale: 'ko', source: 'accept-language' });
+  });
+
+  it('keeps explicit adapter locale preferences ahead of wildcard policy fallbacks', () => {
+    const context: TransportContext = { headers: { 'accept-language': '*;q=1, en-US;q=0.5' } };
+
+    const locale = resolveLocale(context, {
+      defaultLocale: 'ko',
+      resolvers: [
+        createHeaderLocalePolicyResolver({
+          getHeader: (ctx) => ctx.headers?.['accept-language'],
+          wildcardLocale: 'defaultLocale',
+        }),
+      ],
+      supportedLocales: ['en', 'ko'],
+    });
+
+    expect(locale).toEqual({ locale: 'en', source: 'accept-language' });
   });
 
   it('rejects invalid and unsupported default locales before storing metadata', () => {

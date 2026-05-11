@@ -16,6 +16,34 @@ export interface AcceptLanguagePreferenceInternal {
   readonly quality: number;
 }
 
+/**
+ * Input passed to wildcard locale policy callbacks.
+ */
+export interface WildcardLocalePolicyInput {
+  /** Default locale configured for the resolver chain. */
+  readonly defaultLocale: I18nLocale;
+  /** Supported locale allow-list supplied by the caller. */
+  readonly supportedLocales?: readonly I18nLocale[];
+}
+
+/**
+ * Opt-in policy for resolving an `Accept-Language: *` fallback.
+ */
+export type WildcardLocalePolicy =
+  | 'defaultLocale'
+  | 'firstSupportedLocale'
+  | ((input: WildcardLocalePolicyInput) => I18nLocale | undefined);
+
+/**
+ * Options for locale policy helpers that extend `Accept-Language` matching without changing defaults.
+ */
+export interface AcceptLanguageLocalePolicyOptions {
+  /** Optional wildcard fallback policy. Omit this to keep `*` fallback-only and non-selecting. */
+  readonly wildcardLocale?: WildcardLocalePolicy;
+  /** Whether regional ranges such as `en-US` may normalize to supported base locales such as `en`. Defaults to `true`. */
+  readonly normalizeToSupportedLocale?: boolean;
+}
+
 const LOCALE_PATTERN = /^[A-Za-z]{1,8}(?:-[A-Za-z0-9]{1,8})*$/;
 const ACCEPT_LANGUAGE_QVALUE_PATTERN = /^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/;
 
@@ -38,6 +66,48 @@ export function isValidLocale(locale: unknown): locale is I18nLocale {
  */
 export function isSupportedLocale(locale: I18nLocale, supportedLocales: readonly I18nLocale[] | undefined): boolean {
   return supportedLocales === undefined || supportedLocales.length === 0 || supportedLocales.includes(locale);
+}
+
+/**
+ * Normalizes a valid locale candidate to the configured supported locale surface.
+ *
+ * @param locale Locale candidate from an explicit resolver or language range.
+ * @param supportedLocales Optional supported locale allow-list.
+ * @param allowBaseLocaleMatch Whether `en-US` may resolve to supported `en`.
+ * @returns The supported locale spelling selected by the caller, or `undefined` when unsupported.
+ */
+export function normalizeSupportedLocale(
+  locale: I18nLocale,
+  supportedLocales: readonly I18nLocale[] | undefined,
+  allowBaseLocaleMatch = true,
+): I18nLocale | undefined {
+  if (supportedLocales === undefined || supportedLocales.length === 0) {
+    return locale;
+  }
+
+  const normalizedLocale = locale.toLowerCase();
+  const exact = supportedLocales.find((supportedLocale) => supportedLocale.toLowerCase() === normalizedLocale);
+
+  if (exact !== undefined) {
+    return exact;
+  }
+
+  if (!allowBaseLocaleMatch) {
+    return undefined;
+  }
+
+  const localeSegments = normalizedLocale.split('-');
+  while (localeSegments.length > 1) {
+    localeSegments.pop();
+    const parentLocale = localeSegments.join('-');
+    const supportedParent = supportedLocales.find((supportedLocale) => supportedLocale.toLowerCase() === parentLocale);
+
+    if (supportedParent !== undefined) {
+      return supportedParent;
+    }
+  }
+
+  return undefined;
 }
 
 /**
@@ -126,4 +196,64 @@ export function parseLocalePreferences(header: string | readonly string[] | unde
   return [...preferences]
     .sort((left, right) => right.quality - left.quality || left.index - right.index)
     .map(({ locale, quality }) => ({ locale, quality }));
+}
+
+function resolveWildcardLocale(
+  policy: WildcardLocalePolicy,
+  defaultLocale: I18nLocale,
+  supportedLocales: readonly I18nLocale[] | undefined,
+): I18nLocale | undefined {
+  if (policy === 'defaultLocale') {
+    return normalizeSupportedLocale(defaultLocale, supportedLocales, false);
+  }
+
+  if (policy === 'firstSupportedLocale') {
+    return supportedLocales?.[0] ?? defaultLocale;
+  }
+
+  return policy({ defaultLocale, supportedLocales });
+}
+
+/**
+ * Selects a locale from parsed `Accept-Language` preferences using opt-in policy rules.
+ *
+ * @param preferences Parsed header preferences ordered by q-value.
+ * @param defaultLocale Default locale configured for resolver fallback.
+ * @param supportedLocales Optional supported locale allow-list.
+ * @param options Wildcard and normalization policy options.
+ * @returns The selected supported locale, or `undefined` when no policy-selected locale matches.
+ */
+export function selectLocaleFromAcceptLanguagePolicy(
+  preferences: readonly AcceptLanguagePreferenceInternal[],
+  defaultLocale: I18nLocale,
+  supportedLocales: readonly I18nLocale[] | undefined,
+  options: AcceptLanguageLocalePolicyOptions = {},
+): I18nLocale | undefined {
+  const allowBaseLocaleMatch = options.normalizeToSupportedLocale ?? true;
+  let hasWildcard = false;
+
+  for (const preference of preferences) {
+    if (preference.locale === '*') {
+      hasWildcard = true;
+      continue;
+    }
+
+    const normalizedLocale = normalizeSupportedLocale(preference.locale, supportedLocales, allowBaseLocaleMatch);
+
+    if (normalizedLocale !== undefined) {
+      return normalizedLocale;
+    }
+  }
+
+  if (!hasWildcard || options.wildcardLocale === undefined) {
+    return undefined;
+  }
+
+  const wildcardLocale = resolveWildcardLocale(options.wildcardLocale, defaultLocale, supportedLocales);
+
+  if (wildcardLocale === undefined || !isValidLocale(wildcardLocale)) {
+    return undefined;
+  }
+
+  return normalizeSupportedLocale(wildcardLocale, supportedLocales, allowBaseLocaleMatch);
 }
