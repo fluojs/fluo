@@ -9,6 +9,7 @@ const directProcessEnvPattern = /\bprocess\s*(?:\?\.|\.)\s*env\b/g;
 const nodeGlobalBufferPattern = /\bBuffer\b/g;
 
 const ssotPairs = [
+  ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'],
   ['docs/architecture/platform-consistency-design.md', 'docs/architecture/platform-consistency-design.ko.md'],
   ['docs/contracts/behavioral-contract-policy.md', 'docs/contracts/behavioral-contract-policy.ko.md'],
   ['docs/contracts/public-export-tsdoc-baseline.md', 'docs/contracts/public-export-tsdoc-baseline.ko.md'],

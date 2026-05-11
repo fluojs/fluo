@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,6 +8,7 @@ const packageDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(packageDirectory, '..', '..', '..', '..');
 
 const ssotPairs: Array<[englishPath: string, koreanPath: string]> = [
+  ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'],
   ['docs/architecture/platform-consistency-design.md', 'docs/architecture/platform-consistency-design.ko.md'],
   ['docs/contracts/behavioral-contract-policy.md', 'docs/contracts/behavioral-contract-policy.ko.md'],
   ['docs/contracts/public-export-tsdoc-baseline.md', 'docs/contracts/public-export-tsdoc-baseline.ko.md'],
@@ -240,8 +241,12 @@ describe('platform consistency governance docs', () => {
     expect(packageChooserKo).toContain('localization');
     expect(docsContext).toContain('docs/reference/package-chooser.md');
     expect(docsContext).toContain('@fluojs/i18n');
+    expect(docsContext).toContain('HTTP locale policy');
+    expect(docsContext).toContain('loader/cache');
     expect(docsContextKo).toContain('docs/reference/package-chooser.md');
     expect(docsContextKo).toContain('@fluojs/i18n');
+    expect(docsContextKo).toContain('HTTP locale policy');
+    expect(docsContextKo).toContain('loader/cache');
   });
 
   it('keeps the websockets README shutdown contract scoped to fetch-style runtimes with linked regression evidence', () => {
