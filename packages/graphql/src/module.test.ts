@@ -1470,6 +1470,25 @@ describe('@fluojs/graphql', () => {
     expect(instanceOfModule.instanceOf).toBe(originalInstanceOf);
   });
 
+  it('restores the GraphQL instanceOf helper when bootstrap fails after patch installation', async () => {
+    const instanceOfModule = runtimeRequire('graphql/jsutils/instanceOf.js') as {
+      instanceOf: GraphqlInstanceOf;
+    };
+    const originalInstanceOf = instanceOfModule.instanceOf;
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [GraphqlModule.forRoot()],
+    });
+
+    const port = await findAvailablePort();
+
+    await expect(bootstrapNodeApplication(AppModule, { cors: false, port })).rejects.toThrow(
+      'GraphQL module requires either schema or at least one resolver decorated with @Resolver().',
+    );
+    expect(instanceOfModule.instanceOf).toBe(originalInstanceOf);
+  });
+
   it('keeps internal operation container when custom context includes reserved symbol key', async () => {
     const poisonedOperationContainer = {
       async dispose() {},
