@@ -64,6 +64,35 @@ describe('request context store', () => {
     expect(getCurrentRequestContext()).toBeUndefined();
   });
 
+  it('isolates overlapping async request context work when host async storage is available', async () => {
+    const contextA = createRequestContext({
+      ...createMockContext(),
+      requestId: 'req_a',
+    });
+    const contextB = createRequestContext({
+      ...createMockContext(),
+      requestId: 'req_b',
+    });
+    const releaseA = createDeferred<void>();
+    const releaseB = createDeferred<void>();
+
+    const requestA = runWithRequestContext(contextA, async () => {
+      await releaseA.promise;
+      return assertRequestContext().requestId;
+    });
+    const requestB = runWithRequestContext(contextB, async () => {
+      releaseA.resolve();
+      await releaseB.promise;
+      return assertRequestContext().requestId;
+    });
+
+    await Promise.resolve();
+    releaseB.resolve();
+
+    await expect(requestA).resolves.toBe('req_a');
+    await expect(requestB).resolves.toBe('req_b');
+  });
+
   it('exposes a request-scoped container inside ALS context', async () => {
     let created = 0;
 
@@ -148,3 +177,14 @@ describe('request context store', () => {
     });
   });
 });
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, reject, resolve };
+}

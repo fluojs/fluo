@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-
 import type { Middleware } from '../types.js';
 
 const REQUEST_ID_HEADER = 'x-request-id';
@@ -9,7 +7,17 @@ function resolveInboundRequestId(headers: Readonly<Record<string, string | strin
   const requestId = headers[REQUEST_ID_HEADER] ?? headers[CORRELATION_ID_HEADER];
   const value = Array.isArray(requestId) ? requestId[0] : requestId;
 
-  return value ?? randomUUID();
+  return value ?? createRequestId();
+}
+
+function createRequestId(): string {
+  const randomUUID = globalThis.crypto?.randomUUID;
+
+  if (randomUUID) {
+    return randomUUID.call(globalThis.crypto);
+  }
+
+  return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
 }
 
 /**

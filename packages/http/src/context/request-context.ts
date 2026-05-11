@@ -1,10 +1,13 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
-
 import { FluoError } from '@fluojs/core';
 
 import type { ContextKey, RequestContext } from '../types.js';
 
-const requestContextStore = new AsyncLocalStorage<RequestContext>();
+type RequestContextStore = {
+  getStore(): RequestContext | undefined;
+  run<T>(context: RequestContext, callback: () => T): T;
+};
+
+const requestContextStore: RequestContextStore = createRequestContextStore();
 
 /**
  * Runs a callback inside the request-scoped AsyncLocalStorage context.
@@ -90,4 +93,75 @@ export function getContextValue<T>(context: RequestContext, key: ContextKey<T>):
  */
 export function setContextValue<T>(context: RequestContext, key: ContextKey<T>, value: T): void {
   context.metadata[key.id] = value;
+}
+
+function createRequestContextStore(): RequestContextStore {
+  const AsyncLocalStorage = resolveAsyncLocalStorageConstructor();
+
+  if (typeof AsyncLocalStorage === 'function') {
+    return new AsyncLocalStorage<RequestContext>();
+  }
+
+  return createStackRequestContextStore();
+}
+
+function resolveAsyncLocalStorageConstructor(): (new <T>() => RequestContextStore) | undefined {
+  const globalAsyncLocalStorage = (globalThis as typeof globalThis & {
+    AsyncLocalStorage?: new <T>() => RequestContextStore;
+  }).AsyncLocalStorage;
+
+  if (typeof globalAsyncLocalStorage === 'function') {
+    return globalAsyncLocalStorage;
+  }
+
+  const getBuiltinModule = (globalThis as typeof globalThis & {
+    process?: {
+      getBuiltinModule?(id: 'node:async_hooks'): {
+        AsyncLocalStorage?: new <T>() => RequestContextStore;
+      };
+    };
+  }).process?.getBuiltinModule;
+
+  return getBuiltinModule?.('node:async_hooks').AsyncLocalStorage;
+}
+
+function createStackRequestContextStore(): RequestContextStore {
+  const stack: RequestContext[] = [];
+
+  return {
+    getStore() {
+      return stack.at(-1);
+    },
+    run<T>(context: RequestContext, callback: () => T): T {
+      stack.push(context);
+
+      try {
+        const result = callback();
+
+        if (isPromiseLike(result)) {
+          return result.finally(() => {
+            removeStackContext(stack, context);
+          }) as T;
+        }
+
+        removeStackContext(stack, context);
+        return result;
+      } catch (error) {
+        removeStackContext(stack, context);
+        throw error;
+      }
+    },
+  };
+}
+
+function isPromiseLike(value: unknown): value is Promise<unknown> {
+  return typeof value === 'object' && value !== null && 'finally' in value && typeof value.finally === 'function';
+}
+
+function removeStackContext(stack: RequestContext[], context: RequestContext): void {
+  const index = stack.lastIndexOf(context);
+
+  if (index >= 0) {
+    stack.splice(index, 1);
+  }
 }

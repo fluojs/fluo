@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import * as httpPublicApi from './index.js';
@@ -56,6 +58,14 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).not.toHaveProperty('getRouteProducesMetadata');
   });
 
+  it('keeps root-barrel request helpers free of eager Node built-in imports', () => {
+    const correlationSource = readFileSync(new URL('./middleware/correlation.ts', import.meta.url), 'utf8');
+    const requestContextSource = readFileSync(new URL('./context/request-context.ts', import.meta.url), 'utf8');
+
+    expect(correlationSource).not.toContain("from 'node:crypto'");
+    expect(requestContextSource).not.toContain("from 'node:async_hooks'");
+  });
+
   it('keeps the internal subpath limited to the documented exported helpers', () => {
     expect(httpInternalApi).toHaveProperty('DefaultBinder');
     expect(httpInternalApi).toHaveProperty('resolveClientIdentity');
@@ -64,6 +74,7 @@ describe('@fluojs/http public API surface', () => {
       'attachFrameworkRequestNativeRouteHandoff',
       'bindRawRequestNativeRouteHandoff',
       'consumeRawRequestNativeRouteHandoff',
+      'createFetchStyleHttpAdapterRealtimeCapability',
       'isRoutePathNormalizationSensitive',
       'readFrameworkRequestNativeRouteHandoff',
       'resolveClientIdentity',
