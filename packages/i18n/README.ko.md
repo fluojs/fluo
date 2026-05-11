@@ -43,7 +43,7 @@ i18n 작업을 위한 안정적인 fluo-native 패키지 경계가 필요할 때
 - `@fluojs/i18n/adapters`를 통한 WebSocket, gRPC, CLI, local storage, server-request abstraction용 opt-in non-HTTP locale adapter.
 - `@fluojs/i18n/validation`을 통한 opt-in `@fluojs/validation` issue localization.
 - `@fluojs/i18n/loaders/remote`를 통한 provider-backed remote catalog loading 및 opt-in cache wrapper.
-- `@fluojs/i18n/typegen`을 통한 opt-in catalog key declaration generation.
+- `@fluojs/i18n/typegen`을 통한 opt-in catalog key declaration generation 및 typed translation helper declaration.
 - 공유 옵션, 카탈로그, 로케일, 번역 키 및 에러 타입.
 
 `@fluojs/i18n`은 의도적으로 NestJS i18n, i18next, next-intl와 결합하지 않습니다. Root entry point는 TC39 `Intl` 기준에 가까운 표준 지향적 대안을 제공하고, ICU MessageFormat 지원은 dedicated `@fluojs/i18n/icu` subpath에 격리됩니다.
@@ -362,7 +362,7 @@ Filesystem loader와 마찬가지로 locale과 namespace 값은 provider 호출 
 
 ## Catalog Type Generation
 
-Catalog type generation은 Node-oriented `@fluojs/i18n/typegen` tooling subpath에서 제공합니다. 이 기능은 `I18nService.translate(key: string, ...)`를 좁히지 않습니다. 애플리케이션은 type-safe translation key 변수가 필요한 위치에서 generated helper type을 선택적으로 사용할 수 있습니다.
+Catalog type generation은 Node-oriented `@fluojs/i18n/typegen` tooling subpath에서 제공합니다. 이 기능은 `I18nService.translate(key: string, ...)`를 좁히지 않습니다. 애플리케이션은 type-safe translation key 변수 또는 typed translation facade가 필요한 위치에서 generated helper type을 선택적으로 사용할 수 있습니다.
 
 ```ts
 import { generateI18nCatalogTypesFromDirectory } from '@fluojs/i18n/typegen';
@@ -391,6 +391,22 @@ const declarations = generateI18nCatalogTypes([
   },
 ]);
 ```
+
+Generated declaration text에는 fully qualified key union, namespace union, namespace-to-leaf-key map, opt-in typed facade type이 포함됩니다. 예를 들어 `admin/common.dashboard.title`은 fully qualified key로 사용할 수 있고, 같은 메시지는 `I18nCatalogNamespaceKey<"admin/common">`을 통해 namespace `admin/common`과 leaf key `dashboard.title` 조합으로 표현할 수 있습니다.
+
+```ts
+import type { I18nCatalogTypedService } from './generated-i18n-catalog.d.ts';
+
+const typedI18n = {
+  translate: i18n.translate.bind(i18n),
+  translateInNamespace: (namespace, key, options) => i18n.translate(key, { ...options, namespace }),
+} satisfies I18nCatalogTypedService;
+
+typedI18n.translate('admin/common.dashboard.title', { locale: 'en' });
+typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en' });
+```
+
+이 helper declaration은 type-only이며 application-owned입니다. Runtime wrapper를 추가하지 않고, framework bridge를 import하지 않으며, 넓은 runtime `I18nService.translate(key: string, options)` signature도 바꾸지 않습니다.
 
 두 helper 모두 locale 간 key를 deduplicate하고 stable diff를 위해 output을 sort하며, invalid catalog shape는 `I18N_INVALID_CATALOG`, unsafe locale 또는 namespace path는 `I18N_INVALID_LOADER_OPTIONS`로 거부합니다.
 
@@ -485,7 +501,7 @@ const declarations = generateI18nCatalogTypes([
 | `generateI18nCatalogTypes(inputs, options?)` | In-memory catalog tree에서 deterministic TypeScript key declaration을 생성합니다. |
 | `generateI18nCatalogTypesFromDirectory(options)` | Disk의 locale/namespace JSON catalog를 읽고 key declaration을 생성합니다. |
 
-**타입:** `I18nCatalogTypegenInput`, `I18nCatalogTypegenOptions`, `I18nCatalogTypegenDirectoryOptions`.
+**타입:** `I18nCatalogTypegenInput`, `I18nCatalogTypegenOptions`, `I18nCatalogTypegenDirectoryOptions`. Generated declaration 기본값에는 `I18nCatalogKey`, `I18nCatalogNamespace`, `I18nCatalogKeyByNamespace`, `I18nCatalogNamespaceKey`, `I18nCatalogTypedTranslateOptions`, `I18nCatalogTypedTranslate`, `I18nCatalogTypedService`가 포함됩니다.
 
 ## Post-MVP 로드맵
 

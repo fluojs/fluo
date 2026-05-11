@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { I18nError } from './errors.js';
-import type { I18nErrorCode, I18nMessageTree } from './types.js';
 import {
   generateI18nCatalogTypes,
   generateI18nCatalogTypesFromDirectory,
@@ -13,6 +12,7 @@ import {
   type I18nCatalogTypegenInput,
   type I18nCatalogTypegenOptions,
 } from './typegen.js';
+import type { I18nErrorCode, I18nMessageTree } from './types.js';
 
 let rootDir: string;
 
@@ -83,6 +83,10 @@ describe('@fluojs/i18n/typegen', () => {
     expect(output).toContain('export type I18nCatalogKey = "admin/common.cancel" | "admin/common.nested.save" | "app.title";');
     expect(output).toContain('export type I18nCatalogNamespace = "admin/common";');
     expect(output).toContain('readonly "admin/common": "cancel" | "nested.save";');
+    expect(output).toContain('export type I18nCatalogNamespaceKey<Namespace extends I18nCatalogNamespace> = I18nCatalogKeyByNamespace[Namespace];');
+    expect(output).toContain("export type I18nCatalogTypedTranslateOptions = Omit<import('@fluojs/i18n').I18nTranslateOptions, 'namespace'>;");
+    expect(output).toContain('export type I18nCatalogTypedTranslate = <Key extends I18nCatalogKey>(');
+    expect(output).toContain('export interface I18nCatalogTypedService {');
   });
 
   it('reads locale namespace files from disk using deterministic namespace paths', async () => {
@@ -100,7 +104,58 @@ export interface I18nCatalogKeyByNamespace {
   readonly "common/actions": "cancel" | "save";
   readonly "root": "app.title";
 }
+export type I18nCatalogNamespaceKey<Namespace extends I18nCatalogNamespace> = I18nCatalogKeyByNamespace[Namespace];
+export type I18nCatalogTypedTranslateOptions = Omit<import('@fluojs/i18n').I18nTranslateOptions, 'namespace'>;
+export type I18nCatalogTypedTranslate = <Key extends I18nCatalogKey>(
+  key: Key,
+  options: I18nCatalogTypedTranslateOptions,
+) => string;
+export interface I18nCatalogTypedService {
+  readonly translate: I18nCatalogTypedTranslate;
+  readonly translateInNamespace: <
+    Namespace extends I18nCatalogNamespace,
+    Key extends I18nCatalogNamespaceKey<Namespace>,
+  >(
+    namespace: Namespace,
+    key: Key,
+    options: Omit<import('@fluojs/i18n').I18nTranslateOptions, 'namespace'>,
+  ) => string;
+}
 `);
+  });
+
+  it('generates opt-in typed helper surfaces for fully qualified and namespace-scoped keys', () => {
+    const output = generateI18nCatalogTypes(
+      [
+        {
+          locale: 'en',
+          messages: {
+            dashboard: {
+              title: 'Dashboard',
+            },
+          },
+          namespace: 'admin/common',
+        },
+      ],
+      {
+        keyTypeName: 'AppI18nKey',
+        keyByNamespaceTypeName: 'AppI18nKeysByNamespace',
+        namespaceKeyTypeName: 'AppI18nNamespaceKey',
+        namespaceTypeName: 'AppI18nNamespace',
+        typedServiceTypeName: 'AppTypedI18n',
+        typedTranslateOptionsTypeName: 'AppTypedTranslateOptions',
+        typedTranslateTypeName: 'AppTypedTranslate',
+      },
+    );
+
+    expect(output).toContain('export type AppI18nKey = "admin/common.dashboard.title";');
+    expect(output).toContain('export type AppI18nNamespaceKey<Namespace extends AppI18nNamespace> = AppI18nKeysByNamespace[Namespace];');
+    expect(output).toContain("export type AppTypedTranslateOptions = Omit<import('@fluojs/i18n').I18nTranslateOptions, 'namespace'>;");
+    expect(output).toContain('export type AppTypedTranslate = <Key extends AppI18nKey>(');
+    expect(output).toContain('options: AppTypedTranslateOptions,');
+    expect(output).toContain('readonly translate: AppTypedTranslate;');
+    expect(output).toContain('Namespace extends AppI18nNamespace,');
+    expect(output).toContain('Key extends AppI18nNamespaceKey<Namespace>,');
   });
 
   it('keeps generated output stable regardless of input order and duplicate locale leaves', () => {
