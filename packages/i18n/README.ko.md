@@ -14,6 +14,7 @@ fluo 애플리케이션을 위한 프레임워크 비종속 국제화 코어 표
 - [ICU MessageFormat](#icu-messageformat)
 - [HTTP Locale Context Adapter](#http-locale-context-adapter)
 - [Node Filesystem Loader](#node-filesystem-loader)
+- [Remote Catalog Loader](#remote-catalog-loader)
 - [공개 API](#공개-api)
 - [Post-MVP 로드맵](#post-mvp-로드맵)
 - [관련 패키지](#관련-패키지)
@@ -36,6 +37,7 @@ i18n 작업을 위한 안정적인 fluo-native 패키지 경계가 필요할 때
 - `@fluojs/i18n/icu`를 통한 선택적 ICU MessageFormat 복수형/select 포맷팅.
 - 명시적 로케일을 사용하는 표준 `Intl` 포맷팅 헬퍼.
 - `@fluojs/i18n/http`를 통한 명시적 HTTP `RequestContext` 로케일 헬퍼.
+- `@fluojs/i18n/loaders/remote`를 통한 provider-backed remote catalog loading.
 - 공유 옵션, 카탈로그, 로케일, 번역 키 및 에러 타입.
 
 `@fluojs/i18n`은 의도적으로 NestJS i18n, i18next, next-intl와 결합하지 않습니다. Root entry point는 TC39 `Intl` 기준에 가까운 표준 지향적 대안을 제공하고, ICU MessageFormat 지원은 dedicated `@fluojs/i18n/icu` subpath에 격리됩니다.
@@ -211,6 +213,33 @@ Loader는 `${rootDir}/${locale}/${namespace}.json`을 읽고 immutable `I18nMess
 
 이 subpath는 Node built-in을 import하며 `@fluojs/i18n` root에서 export하지 않습니다. Bundler가 명시적으로 Node.js를 target하지 않는 한 Bun, Deno, Cloudflare Workers, browser 또는 다른 non-Node runtime-portable bundle에서 import하지 마세요.
 
+## Remote Catalog Loader
+
+Remote catalog loading은 dedicated provider-backed subpath에서 제공합니다. 애플리케이션은 root entry point에 runtime-specific dependency를 추가하지 않고 HTTP API, object store, database 또는 다른 asynchronous catalog source를 연결할 수 있습니다.
+
+```ts
+import { createRemoteI18nLoader } from '@fluojs/i18n/loaders/remote';
+
+const loader = createRemoteI18nLoader({
+  timeoutMs: 5_000,
+  provider: async ({ locale, namespace, signal }) => {
+    const response = await fetch(`https://catalog.example/${locale}/${namespace}.json`, { signal });
+    if (response.status === 404) {
+      return undefined;
+    }
+    return response.text();
+  },
+});
+
+const common = await loader.load('en', 'common');
+```
+
+Provider는 validated `locale`, `namespace`, 그리고 loader timeout과 optional per-call cancellation을 결합한 `AbortSignal`을 받습니다. Provider는 raw object message tree 또는 JSON string을 반환할 수 있습니다. `undefined`와 `null`은 missing catalog로 취급되어 `I18N_MISSING_CATALOG`를 throw합니다. Malformed JSON과 invalid message tree shape는 `I18N_INVALID_CATALOG`, provider failure는 `I18N_LOADER_FAILED`, timeout은 `I18N_LOADER_TIMEOUT`, caller cancellation은 `I18N_LOADER_ABORTED`로 보고됩니다. 반환된 catalog는 항상 detached immutable `I18nMessageTree` snapshot입니다.
+
+Remote loader는 기본적으로 cache하지 않습니다. 모든 `load(locale, namespace)` 호출은 provider를 호출하고 그 provider result를 snapshot합니다. Memory, HTTP, CDN, database 또는 stale-while-revalidate caching이 필요한 애플리케이션은 cache invalidation이 application boundary에서 명시적으로 유지되도록 provider 내부 또는 provider wrapper에서 구현해야 합니다.
+
+Filesystem loader와 마찬가지로 locale과 namespace 값은 provider 호출 전에 validate됩니다. Namespace는 `admin/common` 같은 safe relative path segment를 사용할 수 있습니다. `.`, `..`, absolute path, empty segment, `common.json` 같은 extension-bearing name, traversal attempt는 `I18N_INVALID_LOADER_OPTIONS`로 거부됩니다.
+
 ## 공개 API
 
 ### 코어 (@fluojs/i18n)
@@ -255,6 +284,15 @@ Loader는 `${rootDir}/${locale}/${namespace}.json`을 읽고 immutable `I18nMess
 
 **타입:** `I18nLoader`, `FileSystemI18nLoaderOptions`.
 
+### Remote Loader (@fluojs/i18n/loaders/remote)
+
+| Export | 설명 |
+|---|---|
+| `createRemoteI18nLoader` | Provider-backed remote catalog loader를 생성합니다. |
+| `RemoteI18nLoader` | Remote catalog loader의 클래스 구현체입니다. |
+
+**타입:** `I18nLoader`, `I18nLoaderLoadOptions`, `RemoteI18nCatalogProvider`, `RemoteI18nCatalogRequest`, `RemoteI18nLoaderOptions`.
+
 ## Post-MVP 로드맵
 
 
@@ -262,7 +300,6 @@ Loader는 `${rootDir}/${locale}/${namespace}.json`을 읽고 immutable `I18nMess
 
 - **`@fluojs/i18n/validation`**: 지역화된 에러 메시지를 위한 `@fluojs/validation`과의 통합.
 - **`@fluojs/i18n/typegen`**: 타입 안전한 번역 키를 위해 카탈로그 파일에서 TypeScript 타입을 생성하는 CLI 도구.
-- **Remote Loaders**: 외부 API 또는 데이터베이스에서 카탈로그를 가져오는 기능 지원.
 - **Additional Transport Adapters**: WebSockets, gRPC 및 CLI 환경을 위한 로케일 처리.
 
 ## 관련 패키지
@@ -279,3 +316,4 @@ Loader는 `${rootDir}/${locale}/${namespace}.json`을 읽고 immutable `I18nMess
 - `packages/i18n/src/loaders/fs.ts`
 - `packages/i18n/src/http.ts`
 - `packages/i18n/src/index.test.ts`
+- `packages/i18n/src/loaders/remote.ts`

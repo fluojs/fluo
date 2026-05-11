@@ -32,6 +32,10 @@
       "types": "./dist/loaders/fs.d.ts",
       "import": "./dist/loaders/fs.js"
     },
+    "./loaders/remote": {
+      "types": "./dist/loaders/remote.d.ts",
+      "import": "./dist/loaders/remote.js"
+    },
     "./http": {
       "types": "./dist/http.d.ts",
       "import": "./dist/http.js"

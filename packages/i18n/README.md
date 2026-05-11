@@ -14,6 +14,7 @@ Framework-agnostic internationalization core surface for fluo applications.
 - [ICU MessageFormat](#icu-messageformat)
 - [HTTP Locale Context Adapter](#http-locale-context-adapter)
 - [Node Filesystem Loader](#node-filesystem-loader)
+- [Remote Catalog Loader](#remote-catalog-loader)
 - [Public API](#public-api)
 - [Post-MVP Roadmap](#post-mvp-roadmap)
 - [Related Packages](#related-packages)
@@ -36,6 +37,7 @@ Use this package when you need a stable fluo-native package boundary for i18n wo
 - optional ICU MessageFormat plural/select formatting through `@fluojs/i18n/icu`
 - standard `Intl` formatting helpers with explicit locales
 - explicit HTTP `RequestContext` locale helpers through `@fluojs/i18n/http`
+- provider-backed remote catalog loading through `@fluojs/i18n/loaders/remote`
 - shared option, catalog, locale, translation-key, and error types
 
 `@fluojs/i18n` is intentionally not coupled to NestJS i18n, i18next, or next-intl. Its root entry point provides a standard-first alternative that stays close to the TC39 `Intl` baseline, while ICU MessageFormat support is isolated behind the dedicated `@fluojs/i18n/icu` subpath.
@@ -211,6 +213,33 @@ The loader reads `${rootDir}/${locale}/${namespace}.json` and returns an immutab
 
 This subpath imports Node built-ins and is not exported from `@fluojs/i18n` root. Do not import it in Bun, Deno, Cloudflare Workers, browser, or other non-Node runtime-portable bundles unless your bundler explicitly targets Node.js.
 
+## Remote Catalog Loader
+
+Remote catalog loading lives under a dedicated provider-backed subpath so applications can connect HTTP APIs, object stores, databases, or other asynchronous catalog sources without adding runtime-specific dependencies to the root entry point:
+
+```ts
+import { createRemoteI18nLoader } from '@fluojs/i18n/loaders/remote';
+
+const loader = createRemoteI18nLoader({
+  timeoutMs: 5_000,
+  provider: async ({ locale, namespace, signal }) => {
+    const response = await fetch(`https://catalog.example/${locale}/${namespace}.json`, { signal });
+    if (response.status === 404) {
+      return undefined;
+    }
+    return response.text();
+  },
+});
+
+const common = await loader.load('en', 'common');
+```
+
+The provider receives the validated `locale`, `namespace`, and an `AbortSignal` that combines the loader timeout with optional per-call cancellation. Providers may return a raw object message tree or a JSON string. `undefined` and `null` are treated as missing catalogs and throw `I18N_MISSING_CATALOG`; malformed JSON and invalid message tree shapes throw `I18N_INVALID_CATALOG`; provider failures are wrapped as `I18N_LOADER_FAILED`; timeouts throw `I18N_LOADER_TIMEOUT`; caller cancellation throws `I18N_LOADER_ABORTED`. Returned catalogs are always detached immutable `I18nMessageTree` snapshots.
+
+The remote loader never caches by default: every `load(locale, namespace)` call invokes the provider and snapshots that provider result. Applications that need memory, HTTP, CDN, database, or stale-while-revalidate caching should implement it inside the provider or in a wrapper around the provider so cache invalidation remains explicit at the application boundary.
+
+Like the filesystem loader, locale and namespace values are validated before the provider is called. Namespaces may use safe relative path segments such as `admin/common`; `.`/`..`, absolute paths, empty segments, extension-bearing names such as `common.json`, and traversal attempts are rejected with `I18N_INVALID_LOADER_OPTIONS`.
+
 ## Public API
 
 ### Core (@fluojs/i18n)
@@ -255,13 +284,21 @@ This subpath imports Node built-ins and is not exported from `@fluojs/i18n` root
 
 **Types:** `I18nLoader`, `FileSystemI18nLoaderOptions`.
 
+### Remote Loader (@fluojs/i18n/loaders/remote)
+
+| Export | Description |
+|---|---|
+| `createRemoteI18nLoader` | Creates a provider-backed remote catalog loader. |
+| `RemoteI18nLoader` | Class implementation of the remote catalog loader. |
+
+**Types:** `I18nLoader`, `I18nLoaderLoadOptions`, `RemoteI18nCatalogProvider`, `RemoteI18nCatalogRequest`, `RemoteI18nLoaderOptions`.
+
 ## Post-MVP Roadmap
 
 The following features are explicit non-goals for the initial MVP and are planned for future expansion:
 
 - **`@fluojs/i18n/validation`**: Integration with `@fluojs/validation` for localized error messages.
 - **`@fluojs/i18n/typegen`**: CLI tools to generate TypeScript types from catalog files for type-safe translation keys.
-- **Remote Loaders**: Support for fetching catalogs from external APIs or databases.
 - **Additional Transport Adapters**: Locale resolution for WebSockets, gRPC, and CLI environments.
 
 ## Related Packages
@@ -278,3 +315,4 @@ The following features are explicit non-goals for the initial MVP and are planne
 - `packages/i18n/src/loaders/fs.ts`
 - `packages/i18n/src/http.ts`
 - `packages/i18n/src/index.test.ts`
+- `packages/i18n/src/loaders/remote.ts`
