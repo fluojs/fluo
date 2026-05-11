@@ -16,7 +16,7 @@
 | Need direct Node.js HTTP control | `@fluojs/platform-nodejs` | Also available as a first-class `fluo new` application starter on Node.js. |
 | Need request validation | `@fluojs/validation` | Add when DTO binding and validation are required. |
 | Need typed configuration access | `@fluojs/config` | Use instead of direct `process.env` access inside packages. |
-| Need localization or i18n services | `@fluojs/i18n` | Use for framework-agnostic internationalization module registration, standalone service creation, shared option/error types, `@fluojs/i18n/icu` ICU MessageFormat plural/select support, `@fluojs/i18n/http` HTTP locale helpers, `@fluojs/i18n/adapters` opt-in non-HTTP locale resolution, `@fluojs/i18n/validation` validation localization, `@fluojs/i18n/loaders/fs` and `@fluojs/i18n/loaders/remote` catalog loading, and `@fluojs/i18n/typegen` catalog key declarations. |
+| Need localization or i18n services | `@fluojs/i18n` | Use for framework-agnostic internationalization module registration, standalone service creation, shared option/error types, `@fluojs/i18n/icu` ICU MessageFormat plural/select support, `@fluojs/i18n/http` HTTP locale helpers and opt-in `Accept-Language` policies, `@fluojs/i18n/adapters` opt-in non-HTTP locale resolution and header policies, `@fluojs/i18n/validation` validation localization, `@fluojs/i18n/loaders/fs` and `@fluojs/i18n/loaders/remote` catalog loading with opt-in remote cache wrappers, and `@fluojs/i18n/typegen` catalog key declarations. |
 
 ## deploy to edge / modern runtimes
 

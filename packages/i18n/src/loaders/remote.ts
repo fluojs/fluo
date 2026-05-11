@@ -1,12 +1,12 @@
 import { I18nError } from '../errors.js';
 import type { I18nLocale, I18nMessageTree, I18nTranslationKey } from '../types.js';
+import type { I18nLoader, I18nLoaderLoadOptions } from './shared.js';
 import {
   isPlainObject,
   snapshotLoaderMessageTree,
   validateLoaderLocale,
   validateLoaderNamespace,
 } from './shared.js';
-import type { I18nLoader, I18nLoaderLoadOptions } from './shared.js';
 
 export type { I18nLoader, I18nLoaderLoadOptions } from './shared.js';
 
@@ -39,6 +39,44 @@ export interface RemoteI18nLoaderOptions {
   readonly timeoutMs?: number;
 }
 
+/**
+ * Cache key input for opt-in remote catalog caching helpers.
+ */
+export interface CachedI18nLoaderKeyInput {
+  /** Locale identifier requested by the loader caller. */
+  readonly locale: I18nLocale;
+  /** Namespace identifier requested by the loader caller. */
+  readonly namespace: I18nTranslationKey;
+  /** Optional caller-owned catalog version included in the default cache key. */
+  readonly version?: string;
+}
+
+/**
+ * Options for wrapping a remote catalog loader with explicit in-memory caching.
+ */
+export interface CachedI18nLoaderOptions {
+  /** Loader to wrap with opt-in cache behavior. */
+  readonly loader: I18nLoader;
+  /** Cache entry lifetime in milliseconds. */
+  readonly ttlMs: number;
+  /** Optional catalog version included in the default `(locale, namespace, version)` cache key. */
+  readonly version?: string;
+  /** Optional caller-owned cache key function for application-specific invalidation boundaries. */
+  readonly getCacheKey?: (input: CachedI18nLoaderKeyInput) => string;
+  /** Optional clock used by tests or deterministic runtime wrappers. */
+  readonly now?: () => number;
+}
+
+/**
+ * Invalidation controls exposed by opt-in cached i18n loaders.
+ */
+export interface CachedI18nLoader extends I18nLoader {
+  /** Invalidates one catalog cache entry by locale and namespace. */
+  invalidate(locale: I18nLocale, namespace: I18nTranslationKey): void;
+  /** Clears every cached catalog entry owned by this wrapper. */
+  clear(): void;
+}
+
 function validateTimeout(timeoutMs: unknown): number {
   if (timeoutMs === undefined) {
     return DEFAULT_TIMEOUT_MS;
@@ -49,6 +87,18 @@ function validateTimeout(timeoutMs: unknown): number {
   }
 
   return timeoutMs;
+}
+
+function validateCacheTtl(ttlMs: unknown): number {
+  if (typeof ttlMs !== 'number' || !Number.isInteger(ttlMs) || ttlMs <= 0) {
+    throw new I18nError('Cached i18n loader ttlMs must be a positive integer.', 'I18N_INVALID_LOADER_OPTIONS');
+  }
+
+  return ttlMs;
+}
+
+function createDefaultCacheKey({ locale, namespace, version }: CachedI18nLoaderKeyInput): string {
+  return `${locale}\u0000${namespace}\u0000${version ?? ''}`;
 }
 
 function parseRemoteCatalog(value: unknown, locale: I18nLocale, namespace: I18nTranslationKey): I18nMessageTree {
@@ -178,6 +228,88 @@ export class RemoteI18nLoader implements I18nLoader {
 }
 
 /**
+ * Opt-in in-memory caching wrapper for remote i18n catalog loaders.
+ *
+ * @remarks
+ * This wrapper never changes `RemoteI18nLoader` defaults. Applications choose it explicitly when they want catalog
+ * caching at the loading boundary and can invalidate entries through `invalidate(...)` or `clear()`.
+ */
+export class CachedRemoteI18nLoader implements CachedI18nLoader {
+  private readonly cache = new Map<string, { readonly catalog: I18nMessageTree; readonly expiresAt: number }>();
+  private readonly getCacheKey: (input: CachedI18nLoaderKeyInput) => string;
+  private readonly loader: I18nLoader;
+  private readonly now: () => number;
+  private readonly ttlMs: number;
+  private readonly version: string | undefined;
+
+  /**
+   * Creates an explicit cache wrapper around a remote catalog loader.
+   *
+   * @param options Loader, TTL, version, key, and clock options for the cache wrapper.
+   */
+  constructor(options: CachedI18nLoaderOptions) {
+    if (
+      !isPlainObject(options) ||
+      typeof options.loader !== 'object' ||
+      options.loader === null ||
+      typeof options.loader.load !== 'function'
+    ) {
+      throw new I18nError('Cached i18n loader requires a loader with a load function.', 'I18N_INVALID_LOADER_OPTIONS');
+    }
+
+    this.loader = options.loader;
+    this.ttlMs = validateCacheTtl(options.ttlMs);
+    this.version = options.version;
+    this.getCacheKey = options.getCacheKey ?? createDefaultCacheKey;
+    this.now = options.now ?? Date.now;
+  }
+
+  /**
+   * Loads a catalog through the wrapped loader and caches successful results until the configured TTL expires.
+   *
+   * @param locale Locale identifier passed to the wrapped loader.
+   * @param namespace Namespace identifier passed to the wrapped loader.
+   * @param options Optional per-load cancellation controls for cache misses.
+   * @returns A cached or freshly loaded immutable i18n message tree.
+   */
+  async load(locale: I18nLocale, namespace: I18nTranslationKey, options: I18nLoaderLoadOptions = {}): Promise<I18nMessageTree> {
+    validateLoaderLocale(locale, 'Cached remote i18n');
+    validateLoaderNamespace(namespace, 'Cached remote i18n');
+
+    const cacheKey = this.getCacheKey({ locale, namespace, version: this.version });
+    const cached = this.cache.get(cacheKey);
+    const currentTime = this.now();
+
+    if (cached !== undefined && cached.expiresAt > currentTime) {
+      return cached.catalog;
+    }
+
+    const catalog = await this.loader.load(locale, namespace, options);
+    this.cache.set(cacheKey, { catalog, expiresAt: currentTime + this.ttlMs });
+    return catalog;
+  }
+
+  /**
+   * Invalidates one cached catalog entry using the same key policy as `load(...)`.
+   *
+   * @param locale Locale identifier for the cache entry.
+   * @param namespace Namespace identifier for the cache entry.
+   */
+  invalidate(locale: I18nLocale, namespace: I18nTranslationKey): void {
+    validateLoaderLocale(locale, 'Cached remote i18n');
+    validateLoaderNamespace(namespace, 'Cached remote i18n');
+    this.cache.delete(this.getCacheKey({ locale, namespace, version: this.version }));
+  }
+
+  /**
+   * Clears every cache entry owned by this wrapper.
+   */
+  clear(): void {
+    this.cache.clear();
+  }
+}
+
+/**
  * Creates a provider-backed remote JSON catalog loader.
  *
  * @param options Remote loader options with a provider and optional timeout.
@@ -185,4 +317,14 @@ export class RemoteI18nLoader implements I18nLoader {
  */
 export function createRemoteI18nLoader(options: RemoteI18nLoaderOptions): RemoteI18nLoader {
   return new RemoteI18nLoader(options);
+}
+
+/**
+ * Creates an opt-in cached remote catalog loader wrapper.
+ *
+ * @param options Loader, TTL, version, key, and clock options for the cache wrapper.
+ * @returns A cached loader wrapper with explicit invalidation controls.
+ */
+export function createCachedRemoteI18nLoader(options: CachedI18nLoaderOptions): CachedRemoteI18nLoader {
+  return new CachedRemoteI18nLoader(options);
 }

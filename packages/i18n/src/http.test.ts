@@ -1,14 +1,14 @@
+import type { RequestContext } from '@fluojs/http';
 import { describe, expect, it } from 'vitest';
 
-import type { RequestContext } from '@fluojs/http';
-
 import {
+  createAcceptLanguageLocalePolicyResolver,
   createAcceptLanguageLocaleResolver,
   getHttpLocale,
+  type HttpLocaleResolver,
   parseAcceptLanguage,
   resolveHttpLocale,
   setHttpLocale,
-  type HttpLocaleResolver,
 } from './http.js';
 
 function createMockContext(headers: RequestContext['request']['headers'] = {}): RequestContext {
@@ -184,6 +184,50 @@ describe('@fluojs/i18n/http locale context adapter', () => {
 
     expect(locale).toEqual({ locale: 'en', source: 'default' });
     expect(getHttpLocale(context)).toEqual({ locale: 'en', source: 'default' });
+  });
+
+  it('keeps wildcard ranges fallback-only unless the policy resolver is selected', () => {
+    const defaultContext = createMockContext({ 'accept-language': '*;q=1' });
+    const policyContext = createMockContext({ 'accept-language': '*;q=1' });
+
+    expect(
+      resolveHttpLocale(defaultContext, {
+        defaultLocale: 'en',
+        resolvers: [createAcceptLanguageLocaleResolver()],
+        supportedLocales: ['en', 'ko'],
+      }),
+    ).toEqual({ locale: 'en', source: 'default' });
+    expect(
+      resolveHttpLocale(policyContext, {
+        defaultLocale: 'en',
+        resolvers: [createAcceptLanguageLocalePolicyResolver({ wildcardLocale: 'firstSupportedLocale' })],
+        supportedLocales: ['ko', 'en'],
+      }),
+    ).toEqual({ locale: 'ko', source: 'accept-language' });
+  });
+
+  it('preserves explicit user locales before wildcard policy fallbacks', () => {
+    const context = createMockContext({ 'accept-language': '*;q=1, ko;q=0.4' });
+
+    const locale = resolveHttpLocale(context, {
+      defaultLocale: 'en',
+      resolvers: [createAcceptLanguageLocalePolicyResolver({ wildcardLocale: 'defaultLocale' })],
+      supportedLocales: ['en', 'ko'],
+    });
+
+    expect(locale).toEqual({ locale: 'ko', source: 'accept-language' });
+  });
+
+  it('normalizes regional language ranges to supported locales when the policy resolver is selected', () => {
+    const context = createMockContext({ 'accept-language': 'en-US;q=1' });
+
+    const locale = resolveHttpLocale(context, {
+      defaultLocale: 'ko',
+      resolvers: [createAcceptLanguageLocalePolicyResolver()],
+      supportedLocales: ['en', 'ko'],
+    });
+
+    expect(locale).toEqual({ locale: 'en', source: 'accept-language' });
   });
 
   it('rejects invalid defaultLocale values before resolving request locales', () => {

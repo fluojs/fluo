@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { I18nError } from '../errors.js';
 import type { I18nErrorCode, I18nMessageTree } from '../types.js';
 import type { I18nLoader, I18nLoaderLoadOptions } from './remote.js';
-import { createRemoteI18nLoader, RemoteI18nLoader } from './remote.js';
+import { CachedRemoteI18nLoader, createCachedRemoteI18nLoader, createRemoteI18nLoader, RemoteI18nLoader } from './remote.js';
 
 async function expectI18nRejection(action: () => Promise<unknown>, code: I18nErrorCode): Promise<void> {
   try {
@@ -82,6 +82,48 @@ describe('@fluojs/i18n/loaders/remote', () => {
     await expect(loader.load('en', 'common')).resolves.toEqual({ title: 'Welcome 1' });
     await expect(loader.load('en', 'common')).resolves.toEqual({ title: 'Welcome 2' });
     expect(providerCalls).toBe(2);
+  });
+
+  it('caches remote catalogs only through the explicit cache wrapper', async () => {
+    let providerCalls = 0;
+    let now = 1_000;
+    const loader = new RemoteI18nLoader({
+      provider: () => {
+        providerCalls += 1;
+        return { title: `Welcome ${providerCalls}` };
+      },
+    });
+    const cached = createCachedRemoteI18nLoader({ loader, now: () => now, ttlMs: 100, version: 'v1' });
+
+    await expect(cached.load('en', 'common')).resolves.toEqual({ title: 'Welcome 1' });
+    await expect(cached.load('en', 'common')).resolves.toEqual({ title: 'Welcome 1' });
+    now = 1_101;
+    await expect(cached.load('en', 'common')).resolves.toEqual({ title: 'Welcome 2' });
+    expect(providerCalls).toBe(2);
+  });
+
+  it('supports caller-owned cache keys and explicit invalidation', async () => {
+    let providerCalls = 0;
+    const loader = new RemoteI18nLoader({
+      provider: ({ locale, namespace }) => {
+        providerCalls += 1;
+        return { title: `${locale}/${namespace}/${providerCalls}` };
+      },
+    });
+    const cached = new CachedRemoteI18nLoader({
+      getCacheKey: ({ locale, namespace, version }) => `${version}:${locale}:${namespace}`,
+      loader,
+      ttlMs: 1_000,
+      version: 'catalog-2026-05-11',
+    });
+
+    await expect(cached.load('ko', 'common')).resolves.toEqual({ title: 'ko/common/1' });
+    await expect(cached.load('ko', 'common')).resolves.toEqual({ title: 'ko/common/1' });
+    cached.invalidate('ko', 'common');
+    await expect(cached.load('ko', 'common')).resolves.toEqual({ title: 'ko/common/2' });
+    cached.clear();
+    await expect(cached.load('ko', 'common')).resolves.toEqual({ title: 'ko/common/3' });
+    expect(providerCalls).toBe(3);
   });
 
   it('fails with a stable code for missing remote catalogs', async () => {
@@ -179,6 +221,8 @@ describe('@fluojs/i18n/loaders/remote', () => {
 
     expect(Object.keys(root).sort()).toEqual(['I18nError', 'I18nModule', 'I18nService', 'createI18n']);
     expect(remote.RemoteI18nLoader).toBe(RemoteI18nLoader);
+    expect(remote.CachedRemoteI18nLoader).toBe(CachedRemoteI18nLoader);
+    expect(remote.createCachedRemoteI18nLoader).toBe(createCachedRemoteI18nLoader);
     expect(remote.createRemoteI18nLoader).toBe(createRemoteI18nLoader);
     await expect(loader.load('en', 'common', loaderLoadOptions)).resolves.toEqual({ title: 'typed' });
   });
