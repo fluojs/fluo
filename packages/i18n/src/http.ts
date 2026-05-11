@@ -137,20 +137,23 @@ function normalizeResolverResult(
 
 function parseAcceptLanguageQuality(parameters: readonly string[]): number | undefined {
   let quality = 1;
+  let hasQuality = false;
 
   for (const parameter of parameters) {
-    const [rawName, rawValue, ...extraParts] = parameter.split('=');
+    const normalizedParameter = parameter.trim();
+    const qualityMatch = /^q=(.+)$/i.exec(normalizedParameter);
 
-    if (rawName?.trim().toLowerCase() !== 'q') {
-      continue;
-    }
-
-    const value = rawValue?.trim();
-
-    if (extraParts.length > 0 || value === undefined || !ACCEPT_LANGUAGE_QVALUE_PATTERN.test(value)) {
+    if (qualityMatch === null || hasQuality) {
       return undefined;
     }
 
+    const [, value] = qualityMatch;
+
+    if (value === undefined || !ACCEPT_LANGUAGE_QVALUE_PATTERN.test(value)) {
+      return undefined;
+    }
+
+    hasQuality = true;
     quality = Number(value);
   }
 

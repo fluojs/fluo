@@ -90,6 +90,18 @@ describe('@fluojs/i18n/http locale context adapter', () => {
     ]);
   });
 
+  it('rejects invalid Accept-Language parameters and duplicate q-values', () => {
+    expect(
+      parseAcceptLanguage([
+        'valid;q=0.4',
+        'space-before-equals;q =0.5',
+        'space-after-equals;q= 0.5',
+        'unknown;foo=bar',
+        'duplicate;q=0.8;q=0.7',
+      ]),
+    ).toEqual([{ locale: 'valid', quality: 0.4 }]);
+  });
+
   it('runs explicit resolver chains in order', () => {
     const context = createMockContext({ 'accept-language': 'ko;q=1' });
     const first: HttpLocaleResolver = () => 'fr';
