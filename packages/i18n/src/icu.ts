@@ -3,7 +3,7 @@ import type { Formats } from 'intl-messageformat';
 
 import { I18nError } from './errors.js';
 import { I18nService, createI18n } from './service.js';
-import type { I18nInterpolationValues, I18nModuleOptions, I18nTranslateOptions } from './types.js';
+import type { I18nInterpolationValues, I18nLocale, I18nMessageTree, I18nModuleOptions, I18nTranslateOptions } from './types.js';
 
 /**
  * Primitive values accepted by the ICU MessageFormat subpath.
@@ -53,6 +53,46 @@ function toMessageFormatValues(values: I18nIcuValues | undefined): Record<string
   }
 
   return Object.fromEntries(Object.entries(values));
+}
+
+function hasOwn(value: unknown, key: string): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && Object.hasOwn(value, key);
+}
+
+function resolveMessage(tree: I18nMessageTree | undefined, key: string): string | undefined {
+  if (tree === undefined) {
+    return undefined;
+  }
+
+  if (hasOwn(tree, key)) {
+    const direct = tree[key];
+    return typeof direct === 'string' ? direct : undefined;
+  }
+
+  let current: unknown = tree;
+
+  for (const part of key.split('.')) {
+    if (!hasOwn(current, part)) {
+      return undefined;
+    }
+
+    current = current[part];
+  }
+
+  return typeof current === 'string' ? current : undefined;
+}
+
+function resolveMessageLocale(service: I18nService, key: string, options: I18nIcuTranslateOptions): I18nLocale {
+  const resolvedKey = options.namespace === undefined ? key : `${options.namespace}.${key}`;
+  const snapshot = service.snapshotOptions();
+
+  for (const locale of service.resolveLocales(options.locale)) {
+    if (resolveMessage(snapshot.catalogs?.[locale], resolvedKey) !== undefined) {
+      return locale;
+    }
+  }
+
+  return options.locale;
 }
 
 function normalizeMessageFormatError(error: unknown, key: string): I18nError {
@@ -106,9 +146,10 @@ export class IcuI18nService {
       namespace: options.namespace,
       values: toCoreInterpolationValues(options.values),
     });
+    const messageLocale = resolveMessageLocale(this.service, key, options);
 
     try {
-      const formatter = new IntlMessageFormat(message, options.locale, options.formats);
+      const formatter = new IntlMessageFormat(message, messageLocale, options.formats);
       const formatted = formatter.format(toMessageFormatValues(options.values));
 
       if (typeof formatted === 'string') {

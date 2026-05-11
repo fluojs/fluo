@@ -101,6 +101,22 @@ describe('@fluojs/i18n/icu MessageFormat subpath', () => {
     ).toBe('2 fallback items');
   });
 
+  it('formats fallback catalog messages with the locale that supplied the message', () => {
+    const service = createIcuI18n({
+      catalogs: {
+        en: {
+          ordinal: '{count, selectordinal, one {#st result} other {#th results}}',
+        },
+        ko: {},
+      },
+      defaultLocale: 'en',
+      fallbackLocales: { ko: ['en'] },
+      supportedLocales: ['en', 'ko'],
+    });
+
+    expect(service.translate('ordinal', { locale: 'ko', values: { count: 1 } })).toBe('1st result');
+  });
+
   it('wraps invalid ICU patterns and missing ICU values with stable i18n errors', () => {
     const service = createIcuI18n({
       catalogs: {
