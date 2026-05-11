@@ -2,4 +2,4 @@
 "@fluojs/i18n": minor
 ---
 
-Introduce the initial fluo-native i18n package scaffold with a small root module/service/factory/error surface for future translation features.
+Introduce the fluo-native i18n package with a framework-agnostic core translation service, locale-scoped catalogs, deterministic fallback resolution, interpolation, missing-message hooks, and stable configuration/catalog error codes.
