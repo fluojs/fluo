@@ -33,7 +33,7 @@
 - **`@fluojs/core`**: Metadata helpers and TC39-standard decorator support.
 - **`@fluojs/di`**: Provider resolution, lifecycle scopes, and dependency graph analysis.
 - **`@fluojs/config`**: Environment-aware configuration loading and typed access.
-- **`@fluojs/i18n`**: Framework-agnostic internationalization package boundary with module registration, a standalone service factory, and reserved core option/error types.
+- **`@fluojs/i18n`**: Framework-agnostic internationalization package boundary with module registration, a standalone service factory, reserved core option/error types, and ICU MessageFormat support through `@fluojs/i18n/icu`.
 - **`@fluojs/runtime`**: Application bootstrap, module orchestration, platform shell registration, and platform snapshot production. Public runtime helpers are exposed through `@fluojs/runtime/node` and `@fluojs/runtime/web`.
 
 ### adapters

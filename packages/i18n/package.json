@@ -35,6 +35,10 @@
     "./http": {
       "types": "./dist/http.d.ts",
       "import": "./dist/http.js"
+    },
+    "./icu": {
+      "types": "./dist/icu.d.ts",
+      "import": "./dist/icu.js"
     }
   },
   "main": "./dist/index.js",
@@ -51,7 +55,8 @@
   },
   "dependencies": {
     "@fluojs/core": "workspace:^",
-    "@fluojs/http": "workspace:^"
+    "@fluojs/http": "workspace:^",
+    "intl-messageformat": "^11.2.4"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

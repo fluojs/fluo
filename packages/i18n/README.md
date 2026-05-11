@@ -11,6 +11,7 @@ Framework-agnostic internationalization core surface for fluo applications.
 - [Quick Start](#quick-start)
 - [Core Translation](#core-translation)
 - [Formatting](#formatting)
+- [ICU MessageFormat](#icu-messageformat)
 - [HTTP Locale Context Adapter](#http-locale-context-adapter)
 - [Node Filesystem Loader](#node-filesystem-loader)
 - [Public API](#public-api)
@@ -32,11 +33,12 @@ Use this package when you need a stable fluo-native package boundary for i18n wo
 - a framework-agnostic `I18nService` for explicit-locale translation lookup
 - a standalone `createI18n(...)` entry point for non-module usage
 - locale-scoped message catalogs, deterministic fallback resolution, interpolation, and missing-message hooks
+- optional ICU MessageFormat plural/select formatting through `@fluojs/i18n/icu`
 - standard `Intl` formatting helpers with explicit locales
 - explicit HTTP `RequestContext` locale helpers through `@fluojs/i18n/http`
 - shared option, catalog, locale, translation-key, and error types
 
-`@fluojs/i18n` is intentionally not coupled to NestJS i18n, i18next, next-intl, or FormatJS. It provides a standard-first alternative that stays close to the TC39 `Intl` baseline without external dependencies.
+`@fluojs/i18n` is intentionally not coupled to NestJS i18n, i18next, or next-intl. Its root entry point provides a standard-first alternative that stays close to the TC39 `Intl` baseline, while ICU MessageFormat support is isolated behind the dedicated `@fluojs/i18n/icu` subpath.
 
 ## Quick Start
 
@@ -117,6 +119,35 @@ i18n.formatCurrency(12900, {
   locale: 'ko-KR',
 });
 ```
+
+## ICU MessageFormat
+
+ICU MessageFormat support lives under `@fluojs/i18n/icu` so the root `@fluojs/i18n` entry point keeps its framework-agnostic simple interpolation contract. The ICU service first resolves messages through the core `I18nService`, preserving locale fallback, per-call `defaultValue`, missing-message hooks, and `{{ name }}` interpolation for compatible primitive values. It then formats the resolved message with ICU plural, select, and nested MessageFormat rules.
+
+```ts
+import { createIcuI18n } from '@fluojs/i18n/icu';
+
+const i18n = createIcuI18n({
+  defaultLocale: 'en',
+  supportedLocales: ['en', 'ko'],
+  fallbackLocales: { ko: ['en'] },
+  catalogs: {
+    en: {
+      inbox: 'Hello {{ name }}. {count, plural, =0 {No messages} one {One message} other {# messages}}.',
+      invite:
+        '{gender, select, female {{host} invited {count, plural, one {one guest} other {# guests}}} other {{host} invited {count, plural, one {one guest} other {# guests}}}}',
+    },
+  },
+});
+
+i18n.translate('inbox', {
+  locale: 'ko',
+  values: { count: 3, name: 'Mina' },
+});
+// "Hello Mina. 3 messages."
+```
+
+Invalid ICU patterns, missing ICU values, and non-string rich formatting results are reported as `I18nError` with code `I18N_INVALID_MESSAGE_FORMAT`. The subpath relies on the host `Intl.NumberFormat`, `Intl.DateTimeFormat`, and `Intl.PluralRules` implementations used by `intl-messageformat`.
 
 ## HTTP Locale Context Adapter
 
@@ -206,6 +237,15 @@ This subpath imports Node built-ins and is not exported from `@fluojs/i18n` root
 
 **Types:** `HttpLocaleContext`, `HttpLocaleResolver`, `HttpLocaleResolverInput`, `HttpLocaleResolverResult`, `ResolveHttpLocaleOptions`, `AcceptLanguageLocaleResolverOptions`, `AcceptLanguagePreference`.
 
+### ICU MessageFormat (@fluojs/i18n/icu)
+
+| Export | Description |
+|---|---|
+| `createIcuI18n(options)` | Creates a standalone ICU MessageFormat service while preserving core lookup semantics. |
+| `IcuI18nService` | Service that resolves messages through `I18nService` before ICU formatting. |
+
+**Types:** `I18nIcuTranslateOptions`, `I18nIcuValue`, `I18nIcuValues`.
+
 ### Filesystem Loader (@fluojs/i18n/loaders/fs)
 
 | Export | Description |
@@ -219,7 +259,6 @@ This subpath imports Node built-ins and is not exported from `@fluojs/i18n` root
 
 The following features are explicit non-goals for the initial MVP and are planned for future expansion:
 
-- **`@fluojs/i18n/icu`**: ICU MessageFormat support for complex pluralization and gender rules.
 - **`@fluojs/i18n/validation`**: Integration with `@fluojs/validation` for localized error messages.
 - **`@fluojs/i18n/typegen`**: CLI tools to generate TypeScript types from catalog files for type-safe translation keys.
 - **Remote Loaders**: Support for fetching catalogs from external APIs or databases.
@@ -235,6 +274,7 @@ The following features are explicit non-goals for the initial MVP and are planne
 
 - `packages/i18n/src/module.ts`
 - `packages/i18n/src/service.ts`
+- `packages/i18n/src/icu.ts`
 - `packages/i18n/src/loaders/fs.ts`
 - `packages/i18n/src/http.ts`
 - `packages/i18n/src/index.test.ts`

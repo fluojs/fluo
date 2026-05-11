@@ -29,7 +29,7 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 | Operations | 헬스, 메트릭, 스로틀링 | `@fluojs/metrics`, `@fluojs/terminus`, `@fluojs/throttler` |
 | Tooling | CLI, 진단 도구, Vite 빌드 통합 | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
-정식 패키지 및 런타임 범위는 [`docs/reference/package-surface.md`](./reference/package-surface.md)에 있으며, fluo-native `@fluojs/i18n` package boundary 같은 core 추가 항목과 `@fluojs/mongoose`의 ALS/session transaction 책임 같은 persistence 책임도 포함한다. 작업 기반 패키지 발견성은 [`docs/reference/package-chooser.md`](./reference/package-chooser.md)에 있으며, `@fluojs/i18n`을 위한 localization/i18n 선택 guidance도 포함한다.
+정식 패키지 및 런타임 범위는 [`docs/reference/package-surface.md`](./reference/package-surface.md)에 있으며, fluo-native `@fluojs/i18n` package boundary, plural/select localization을 위한 `@fluojs/i18n/icu` ICU MessageFormat subpath 같은 core 추가 항목과 `@fluojs/mongoose`의 ALS/session transaction 책임 같은 persistence 책임도 포함한다. 작업 기반 패키지 발견성은 [`docs/reference/package-chooser.md`](./reference/package-chooser.md)에 있으며, `@fluojs/i18n`과 그 ICU subpath를 위한 localization/i18n 선택 guidance도 포함한다.
 
 ## File Structure
 

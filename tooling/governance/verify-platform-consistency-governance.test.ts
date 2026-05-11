@@ -319,3 +319,19 @@ describe('package surface persistence responsibilities', () => {
     expect(koreanSurface).toContain('명시적 `currentSession()` 접근');
   });
 });
+
+describe('i18n ICU subpath discoverability', () => {
+  it('documents @fluojs/i18n/icu from the AI context and package references in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const englishChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
+    const koreanChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.ko.md'), 'utf8');
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface, englishChooser, koreanChooser]) {
+      expect(markdown).toContain('@fluojs/i18n/icu');
+      expect(markdown).toContain('ICU MessageFormat');
+    }
+  });
+});
