@@ -6,7 +6,7 @@
 
 | family | description | packages |
 | --- | --- | --- |
-| **Core** | Shared contracts and DI. | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/runtime` |
+| **Core** | Shared contracts and DI. | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/i18n`, `@fluojs/runtime` |
 | **HTTP** | Web API execution and routing. | `@fluojs/http`, `@fluojs/graphql`, `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` |
 | **Auth** | Authentication and authorization. | `@fluojs/jwt`, `@fluojs/passport` |
 | **Platform** | Runtime adapters. | `@fluojs/platform-fastify`, `@fluojs/platform-nodejs`, `@fluojs/platform-express`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, `@fluojs/platform-cloudflare-workers` |
@@ -33,6 +33,7 @@
 - **`@fluojs/core`**: Metadata helpers and TC39-standard decorator support.
 - **`@fluojs/di`**: Provider resolution, lifecycle scopes, and dependency graph analysis.
 - **`@fluojs/config`**: Environment-aware configuration loading and typed access.
+- **`@fluojs/i18n`**: Framework-agnostic internationalization package boundary with module registration, a standalone service factory, and reserved core option/error types.
 - **`@fluojs/runtime`**: Application bootstrap, module orchestration, platform shell registration, and platform snapshot production. Public runtime helpers are exposed through `@fluojs/runtime/node` and `@fluojs/runtime/web`.
 
 ### adapters

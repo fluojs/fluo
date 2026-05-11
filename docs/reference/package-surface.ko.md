@@ -6,7 +6,7 @@
 
 | 패밀리 | 설명 | 패키지 |
 | --- | --- | --- |
-| **Core** | 공유 계약 및 DI. | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/runtime` |
+| **Core** | 공유 계약 및 DI. | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/i18n`, `@fluojs/runtime` |
 | **HTTP** | 웹 API 실행 및 라우팅. | `@fluojs/http`, `@fluojs/graphql`, `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` |
 | **Auth** | 인증 및 인가. | `@fluojs/jwt`, `@fluojs/passport` |
 | **Platform** | 런타임 어댑터. | `@fluojs/platform-fastify`, `@fluojs/platform-nodejs`, `@fluojs/platform-express`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, `@fluojs/platform-cloudflare-workers` |
@@ -33,6 +33,7 @@
 - **`@fluojs/core`**: 메타데이터 헬퍼 및 TC39 표준 데코레이터 지원.
 - **`@fluojs/di`**: 프로바이더 해결, 라이프사이클 스코프, 의존성 그래프 분석.
 - **`@fluojs/config`**: 환경 인식 설정 로딩 및 타입 안전 접근.
+- **`@fluojs/i18n`**: module registration, standalone service factory, reserved core option/error type을 제공하는 framework-agnostic internationalization package boundary.
 - **`@fluojs/runtime`**: 애플리케이션 부트스트랩, 모듈 오케스트레이션, 플랫폼 셸 등록, 플랫폼 snapshot 생산. 공개 런타임 헬퍼는 `@fluojs/runtime/node`와 `@fluojs/runtime/web`에서 제공됩니다.
 
 ### adapters
