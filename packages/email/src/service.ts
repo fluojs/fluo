@@ -118,17 +118,33 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
   }
 
   async onModuleInit(): Promise<void> {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      return;
+    }
+
     this.lifecycleState = 'starting';
 
     try {
       const transport = await this.ensureTransport();
 
+      if (this.lifecycleState !== 'starting') {
+        return;
+      }
+
       if (this.options.verifyOnModuleInit && transport.verify) {
         await transport.verify();
       }
 
+      if (this.lifecycleState !== 'starting') {
+        return;
+      }
+
       this.lifecycleState = 'ready';
     } catch (error) {
+      if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+        throw error;
+      }
+
       this.lifecycleState = 'failed';
       throw createLifecycleError('Email transport failed to initialize.', error);
     }
@@ -254,6 +270,9 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
     notification: EmailNotificationDispatchRequest,
     options: EmailSendOptions = {},
   ): Promise<EmailSendResult> {
+    assertNotAborted(options.signal);
+    this.assertCanDeliver();
+
     const payload = notification.payload;
     const rendered = await this.renderNotification(notification, options.signal);
 

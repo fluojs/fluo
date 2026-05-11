@@ -245,6 +245,9 @@ class FailingLifecycleTransport implements EmailTransport {
 class DelayedLifecycleTransport implements EmailTransport {
   closeCalls = 0;
   sendCalls = 0;
+  verifyCalls = 0;
+
+  constructor(private readonly verifyDelay: Promise<void> | undefined = undefined) {}
 
   async close(): Promise<void> {
     this.closeCalls += 1;
@@ -259,6 +262,11 @@ class DelayedLifecycleTransport implements EmailTransport {
       pending: [],
       rejected: [],
     };
+  }
+
+  async verify(): Promise<void> {
+    this.verifyCalls += 1;
+    await this.verifyDelay;
   }
 }
 
@@ -742,6 +750,86 @@ describe('EmailModule', () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(createdTransport.closeCalls).toBe(1);
     expect(createdTransport.sendCalls).toBe(0);
+  });
+
+  it('does not mark the service ready when shutdown interrupts bootstrap verification', async () => {
+    let resolveVerify!: () => void;
+    let resolveVerifyStarted!: () => void;
+    const verifyDelay = new Promise<void>((resolve) => {
+      resolveVerify = resolve;
+    });
+    const verifyStarted = new Promise<void>((resolve) => {
+      resolveVerifyStarted = resolve;
+    });
+    const createdTransport = new DelayedLifecycleTransport(
+      verifyDelay.then(() => undefined),
+    );
+    const verify = vi.spyOn(createdTransport, 'verify').mockImplementation(async () => {
+      createdTransport.verifyCalls += 1;
+      resolveVerifyStarted();
+      await verifyDelay;
+    });
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: {
+        create: async () => createdTransport,
+        ownsResources: true,
+      },
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+    const bootstrap = service.onModuleInit();
+    await verifyStarted;
+    const shutdown = service.onApplicationShutdown();
+
+    await shutdown;
+    resolveVerify();
+    await bootstrap;
+
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'stopped' },
+      readiness: { status: 'not-ready' },
+    });
+    await expect(
+      service.sendNotification({
+        channel: 'email',
+        payload: {},
+        recipients: ['user@example.com'],
+        subject: 'After interrupted bootstrap',
+      }),
+    ).rejects.toThrowError(new EmailLifecycleError('Email delivery cannot start while the service lifecycle is stopped.'));
+    expect(createdTransport.closeCalls).toBe(1);
+    expect(createdTransport.verifyCalls).toBe(1);
+    expect(verify).toHaveBeenCalledOnce();
+    expect(createdTransport.sendCalls).toBe(0);
+  });
+
+  it('checks notification lifecycle before renderer or validation errors after shutdown', async () => {
+    const render = vi.fn(async () => ({ text: 'rendered' }));
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      renderer: { render },
+      transport: createRecordingTransportFactory(),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+    await service.onApplicationShutdown();
+
+    await expect(
+      service.sendNotification({
+        channel: 'email',
+        payload: {},
+        recipients: ['user@example.com'],
+        template: 'shutdown-template',
+      }),
+    ).rejects.toThrowError(new EmailLifecycleError('Email delivery cannot start while the service lifecycle is stopped.'));
+    expect(render).not.toHaveBeenCalled();
+    expect(transportState.sent).toHaveLength(0);
   });
 
   it('accepts custom provider-backed transports without bootstrap verification', async () => {
