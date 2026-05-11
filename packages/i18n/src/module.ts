@@ -15,13 +15,13 @@ class I18nServiceFactory extends I18nService {
 }
 
 /**
- * Module facade that registers the initial fluo-native i18n service surface.
+ * Module facade that registers the fluo-native core i18n service surface.
  */
 export class I18nModule {
   /**
    * Creates a module class that registers `I18nService` with captured root options.
    *
-   * @param options Root i18n module options reserved for later translation behavior.
+   * @param options Root i18n module options for catalogs, fallback behavior, and service registration.
    * @returns A module type that can be listed in `imports` during bootstrap.
    *
    * @example
