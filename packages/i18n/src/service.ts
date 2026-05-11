@@ -94,6 +94,18 @@ function assertListValues(values: unknown): asserts values is readonly string[] 
   }
 }
 
+function formatWithIntlErrorBoundary(label: string, action: () => string): string {
+  try {
+    return action();
+  } catch (error) {
+    if (error instanceof RangeError || error instanceof TypeError) {
+      throw new I18nError(`${label} Intl options are invalid.`, 'I18N_INVALID_OPTIONS');
+    }
+
+    throw error;
+  }
+}
+
 function interpolate(message: string, values: I18nTranslateOptions['values']): string {
   if (values === undefined) {
     return message;
@@ -236,7 +248,9 @@ export class I18nService {
     this.resolveLocales(options.locale);
 
     const namedOptions = this.resolveNamedOptions(this.options.formats?.dateTime, options.format, 'dateTime');
-    return new Intl.DateTimeFormat(options.locale, { ...namedOptions, ...options.options }).format(value);
+    return formatWithIntlErrorBoundary('Date/time formatter', () =>
+      new Intl.DateTimeFormat(options.locale, { ...namedOptions, ...options.options }).format(value),
+    );
   }
 
   /**
@@ -253,7 +267,9 @@ export class I18nService {
     this.resolveLocales(options.locale);
 
     const namedOptions = this.resolveNamedOptions(this.options.formats?.number, options.format, 'number');
-    return new Intl.NumberFormat(options.locale, { ...namedOptions, ...options.options }).format(value);
+    return formatWithIntlErrorBoundary('Number formatter', () =>
+      new Intl.NumberFormat(options.locale, { ...namedOptions, ...options.options }).format(value),
+    );
   }
 
   /**
@@ -271,12 +287,14 @@ export class I18nService {
     this.resolveLocales(options.locale);
 
     const namedOptions = this.resolveNamedOptions(this.options.formats?.number, options.format, 'number');
-    return new Intl.NumberFormat(options.locale, {
-      ...namedOptions,
-      ...options.options,
-      currency: options.currency,
-      style: 'currency',
-    }).format(value);
+    return formatWithIntlErrorBoundary('Currency formatter', () =>
+      new Intl.NumberFormat(options.locale, {
+        ...namedOptions,
+        ...options.options,
+        currency: options.currency,
+        style: 'currency',
+      }).format(value),
+    );
   }
 
   /**
@@ -293,7 +311,9 @@ export class I18nService {
     this.resolveLocales(options.locale);
 
     const namedOptions = this.resolveNamedOptions(this.options.formats?.number, options.format, 'number');
-    return new Intl.NumberFormat(options.locale, { ...namedOptions, ...options.options, style: 'percent' }).format(value);
+    return formatWithIntlErrorBoundary('Percent formatter', () =>
+      new Intl.NumberFormat(options.locale, { ...namedOptions, ...options.options, style: 'percent' }).format(value),
+    );
   }
 
   /**
@@ -311,7 +331,9 @@ export class I18nService {
     this.resolveLocales(options.locale);
 
     const namedOptions = this.resolveNamedOptions(this.options.formats?.list, options.format, 'list');
-    return new Intl.ListFormat(options.locale, { ...namedOptions, ...options.options }).format(values);
+    return formatWithIntlErrorBoundary('List formatter', () =>
+      new Intl.ListFormat(options.locale, { ...namedOptions, ...options.options }).format(values),
+    );
   }
 
   /**
@@ -329,7 +351,9 @@ export class I18nService {
     this.resolveLocales(options.locale);
 
     const namedOptions = this.resolveNamedOptions(this.options.formats?.relativeTime, options.format, 'relativeTime');
-    return new Intl.RelativeTimeFormat(options.locale, { ...namedOptions, ...options.options }).format(value, unit);
+    return formatWithIntlErrorBoundary('Relative time formatter', () =>
+      new Intl.RelativeTimeFormat(options.locale, { ...namedOptions, ...options.options }).format(value, unit),
+    );
   }
 
   /**
