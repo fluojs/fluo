@@ -99,15 +99,15 @@ function createRequestContextStore(): RequestContextStore {
   const AsyncLocalStorage = resolveAsyncLocalStorageConstructor();
 
   if (typeof AsyncLocalStorage === 'function') {
-    return new AsyncLocalStorage<RequestContext>();
+    return new AsyncLocalStorage();
   }
 
   return createStackRequestContextStore();
 }
 
-function resolveAsyncLocalStorageConstructor(): (new <T>() => RequestContextStore) | undefined {
+function resolveAsyncLocalStorageConstructor(): (new () => RequestContextStore) | undefined {
   const globalAsyncLocalStorage = (globalThis as typeof globalThis & {
-    AsyncLocalStorage?: new <T>() => RequestContextStore;
+    AsyncLocalStorage?: new () => RequestContextStore;
   }).AsyncLocalStorage;
 
   if (typeof globalAsyncLocalStorage === 'function') {
@@ -117,7 +117,7 @@ function resolveAsyncLocalStorageConstructor(): (new <T>() => RequestContextStor
   const getBuiltinModule = (globalThis as typeof globalThis & {
     process?: {
       getBuiltinModule?(id: 'node:async_hooks'): {
-        AsyncLocalStorage?: new <T>() => RequestContextStore;
+        AsyncLocalStorage?: new () => RequestContextStore;
       };
     };
   }).process?.getBuiltinModule;
@@ -125,7 +125,7 @@ function resolveAsyncLocalStorageConstructor(): (new <T>() => RequestContextStor
   return getBuiltinModule?.('node:async_hooks').AsyncLocalStorage;
 }
 
-function createStackRequestContextStore(): RequestContextStore {
+export function createStackRequestContextStore(): RequestContextStore {
   const stack: RequestContext[] = [];
 
   return {
@@ -136,26 +136,14 @@ function createStackRequestContextStore(): RequestContextStore {
       stack.push(context);
 
       try {
-        const result = callback();
-
-        if (isPromiseLike(result)) {
-          return result.finally(() => {
-            removeStackContext(stack, context);
-          }) as T;
-        }
-
-        removeStackContext(stack, context);
-        return result;
+        return callback();
       } catch (error) {
-        removeStackContext(stack, context);
         throw error;
+      } finally {
+        removeStackContext(stack, context);
       }
     },
   };
-}
-
-function isPromiseLike(value: unknown): value is Promise<unknown> {
-  return typeof value === 'object' && value !== null && 'finally' in value && typeof value.finally === 'function';
 }
 
 function removeStackContext(stack: RequestContext[], context: RequestContext): void {

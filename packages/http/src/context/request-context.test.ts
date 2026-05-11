@@ -6,6 +6,7 @@ import {
   assertRequestContext,
   createContextKey,
   createRequestContext,
+  createStackRequestContextStore,
   getContextValue,
   getCurrentRequestContext,
   runWithRequestContext,
@@ -91,6 +92,43 @@ describe('request context store', () => {
 
     await expect(requestA).resolves.toBe('req_a');
     await expect(requestB).resolves.toBe('req_b');
+  });
+
+  it('does not leak another request context during overlapping async fallback work', async () => {
+    const store = createStackRequestContextStore();
+    const contextA = createRequestContext({
+      ...createMockContext(),
+      requestId: 'req_a',
+    });
+    const contextB = createRequestContext({
+      ...createMockContext(),
+      requestId: 'req_b',
+    });
+    const releaseA = createDeferred<void>();
+    const releaseB = createDeferred<void>();
+
+    const requestA = store.run(contextA, async () => {
+      expect(store.getStore()?.requestId).toBe('req_a');
+
+      await releaseA.promise;
+
+      return store.getStore()?.requestId;
+    });
+    const requestB = store.run(contextB, async () => {
+      expect(store.getStore()?.requestId).toBe('req_b');
+      releaseA.resolve();
+
+      await releaseB.promise;
+
+      return store.getStore()?.requestId;
+    });
+
+    await Promise.resolve();
+    releaseB.resolve();
+
+    await expect(requestA).resolves.toBeUndefined();
+    await expect(requestB).resolves.toBeUndefined();
+    expect(store.getStore()).toBeUndefined();
   });
 
   it('exposes a request-scoped container inside ALS context', async () => {
