@@ -151,6 +151,7 @@ Using `DrizzleDatabase` lets services coordinate complex multi-table insert oper
 ## 20.7 Observability and Health
 
 The injected `DrizzleDatabase` wrapper exposes a snapshot method that matches the same public status contract used by diagnostics surfaces.
+During shutdown, active request transactions are aborted and drained before the configured dispose hook runs. Nested request transactions reuse the active Drizzle transaction handle; when they are opened inside a manual transaction, `activeRequestTransactions` reflects the nested request callback while it is still running and drops as soon as that callback settles.
 
 ```typescript
 import { Inject } from '@fluojs/core';

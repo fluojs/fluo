@@ -101,7 +101,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   private transportPublishFailures = 0;
   private transportSubscribeFailures = 0;
   private shutdownDrainTimeouts = 0;
-  private readonly activePublishes = new Set<Promise<void>>();
+  private readonly activeDispatches = new Set<Promise<void>>();
   private readonly transport: EventBusTransport | undefined;
 
   constructor(
@@ -129,8 +129,8 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   async onApplicationShutdown(): Promise<void> {
     this.lifecycleState = 'stopping';
 
-    if (this.activePublishes.size > 0) {
-      await this.drainActivePublishes();
+    if (this.activeDispatches.size > 0) {
+      await this.drainActiveDispatches();
     }
 
     if (this.transport) {
@@ -184,14 +184,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
       return;
     }
 
-    const publishWorkflow = this.executePublish(event, options);
-    this.activePublishes.add(publishWorkflow);
-
-    try {
-      await publishWorkflow;
-    } finally {
-      this.activePublishes.delete(publishWorkflow);
-    }
+    await this.trackActiveDispatch(this.executePublish(event, options));
   }
 
   private async executePublish(event: object, options?: EventPublishOptions): Promise<void> {
@@ -229,17 +222,27 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     return !['failed', 'stopped', 'stopping'].includes(this.lifecycleState);
   }
 
-  private async drainActivePublishes(): Promise<void> {
-    const activePublishes = Array.from(this.activePublishes);
+  private async drainActiveDispatches(): Promise<void> {
+    const activeDispatches = Array.from(this.activeDispatches);
     const timeoutMs = this.resolveShutdownDrainTimeoutMs();
-    const drained = await this.awaitShutdownDrain(activePublishes, timeoutMs);
+    const drained = await this.awaitShutdownDrain(activeDispatches, timeoutMs);
 
     if (!drained) {
       this.shutdownDrainTimeouts += 1;
       this.logger.warn(
-        `Event bus shutdown drain exceeded ${String(timeoutMs)}ms with ${String(activePublishes.length)} active publish workflow(s); continuing shutdown.`,
+        `Event bus shutdown drain exceeded ${String(timeoutMs)}ms with ${String(activeDispatches.length)} active dispatch workflow(s); continuing shutdown.`,
         'EventBusLifecycleService',
       );
+    }
+  }
+
+  private async trackActiveDispatch(dispatchWorkflow: Promise<void>): Promise<void> {
+    this.activeDispatches.add(dispatchWorkflow);
+
+    try {
+      await dispatchWorkflow;
+    } finally {
+      this.activeDispatches.delete(dispatchWorkflow);
     }
   }
 
@@ -362,7 +365,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   }
 
   private channelFromEventType(eventType: EventType): string {
-    if (typeof eventType.eventKey === 'string') {
+    if (Object.hasOwn(eventType, 'eventKey') && typeof eventType.eventKey === 'string') {
       const eventKey = eventType.eventKey.trim();
 
       if (eventKey.length > 0) {
@@ -376,6 +379,10 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   private channelsForTransportPublish(event: object, descriptors: EventHandlerDescriptor[]): string[] {
     const channels = new Set<string>();
 
+    for (const eventType of this.eventTypeLineage(event)) {
+      channels.add(this.channelFromEventType(eventType));
+    }
+
     for (const descriptor of descriptors) {
       channels.add(this.channelFromEventType(descriptor.eventType));
     }
@@ -385,6 +392,23 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     }
 
     return Array.from(channels);
+  }
+
+  private eventTypeLineage(event: object): EventType[] {
+    const eventTypes: EventType[] = [];
+    let prototype = Object.getPrototypeOf(event) as object | null;
+
+    while (prototype && prototype !== Object.prototype) {
+      const constructor = prototype.constructor;
+
+      if (typeof constructor === 'function') {
+        eventTypes.push(constructor as EventType);
+      }
+
+      prototype = Object.getPrototypeOf(prototype) as object | null;
+    }
+
+    return eventTypes;
   }
 
   private async publishToTransport(
@@ -473,23 +497,19 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   ): Promise<void> {
     try {
       await this.transport!.subscribe(channel, async (payload) => {
+        if (!this.canDispatchIncomingTransportMessage()) {
+          this.logger.warn(
+            `EventBusTransport message on channel "${channel}" was ignored because the event bus is ${this.lifecycleState}.`,
+            'EventBusLifecycleService',
+          );
+          return;
+        }
+
         if (channelDescriptors.length === 0) {
           return;
         }
 
-        const invocationTasks = channelDescriptors.map((descriptor) =>
-          this.invokeHandlerWithBounds(
-            descriptor,
-            createIsolatedEvent(descriptor.eventType, payload),
-            {
-              signal: undefined,
-              timeoutMs: this.normalizeTimeoutMs(this.moduleOptions.publish?.timeoutMs),
-              waitForHandlers: this.moduleOptions.publish?.waitForHandlers ?? true,
-            },
-          ),
-        );
-
-        await Promise.allSettled(invocationTasks);
+        await this.trackActiveDispatch(this.dispatchIncomingTransportMessage(channelDescriptors, payload));
       });
       this.subscribedChannels.add(channel);
     } catch (error) {
@@ -502,6 +522,29 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
 
       throw error;
     }
+  }
+
+  private canDispatchIncomingTransportMessage(): boolean {
+    return this.lifecycleState === 'ready';
+  }
+
+  private async dispatchIncomingTransportMessage(
+    channelDescriptors: EventHandlerDescriptor[],
+    payload: unknown,
+  ): Promise<void> {
+    const invocationTasks = channelDescriptors.map((descriptor) =>
+      this.invokeHandlerWithBounds(
+        descriptor,
+        createIsolatedEvent(descriptor.eventType, payload),
+        {
+          signal: undefined,
+          timeoutMs: this.normalizeTimeoutMs(this.moduleOptions.publish?.timeoutMs),
+          waitForHandlers: this.moduleOptions.publish?.waitForHandlers ?? true,
+        },
+      ),
+    );
+
+    await Promise.allSettled(invocationTasks);
   }
 
   private async preloadHandlerInstances(descriptors: EventHandlerDescriptor[]): Promise<void> {

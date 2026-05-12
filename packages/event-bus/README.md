@@ -75,7 +75,7 @@ export class UserService {
 export class AppModule {}
 ```
 
-`publish(event, options?)` supports `signal`, `timeoutMs`, and `waitForHandlers`. `waitForHandlers` defaults to `true`; awaited local handlers and awaited transport publishes share the same timeout and cancellation bounds. When `waitForHandlers` is set to `false`, publishing returns immediately and skips timeout bounds. During shutdown, the event bus drains in-flight awaited publish work before closing the transport and ignores new publish calls after the lifecycle has started stopping. Shutdown drain is bounded by `EventBusModule.forRoot({ shutdown: { drainTimeoutMs } })`, which defaults to 5000ms; if active publish work is still stuck after the bound, the bus records a degraded status diagnostic, logs a warning, and continues transport cleanup instead of hanging application close indefinitely.
+`publish(event, options?)` supports `signal`, `timeoutMs`, and `waitForHandlers`. `waitForHandlers` defaults to `true`; awaited local handlers and awaited transport publishes share the same timeout and cancellation bounds. When `waitForHandlers` is set to `false`, publishing returns immediately and skips timeout bounds. During shutdown, the event bus drains in-flight awaited publish and inbound transport handler work before closing the transport, ignores new publish calls after the lifecycle has started stopping, and ignores inbound transport callbacks that arrive after shutdown begins. Shutdown drain is bounded by `EventBusModule.forRoot({ shutdown: { drainTimeoutMs } })`, which defaults to 5000ms; if active dispatch work is still stuck after the bound, the bus records a degraded status diagnostic, logs a warning, and continues transport cleanup instead of hanging application close indefinitely.
 
 ## Common Patterns
 
@@ -104,7 +104,7 @@ class UserRegisteredEvent {
 }
 ```
 
-Handlers are discovered from singleton providers and controllers across imported modules. Each handler receives an isolated cloned payload, and class inheritance is supported through `instanceof` matching.
+Handlers are discovered from singleton providers and controllers across imported modules. Each handler receives an isolated cloned payload, and class inheritance is supported through `instanceof` matching. With an external transport configured, publishing a subclass event fans out to the subclass channel and every inherited event channel in its prototype chain, even when the publisher process has no matching local handlers for those types. A subclass uses its own `static eventKey` only when it declares one directly; otherwise its class name remains the subclass channel while base classes keep their own stable keys.
 
 ## Public API Overview
 
@@ -120,7 +120,7 @@ Handlers are discovered from singleton providers and controllers across imported
 - `EventBus`, `EventPublishOptions`, `EventBusModuleOptions`, `EventType`: Type-only contracts for publishing, defaults, transports, and stable event keys.
 - `EventBusLifecycleState`, `EventBusStatusAdapterInput`, `EventBusPlatformStatusSnapshot`: Status snapshot contracts.
 
-Transport bootstrap subscribes once per unique event channel. `eventKey` controls the transport channel name when present. Invalid JSON transport messages are ignored.
+Transport bootstrap subscribes once per unique event channel. `eventKey` controls the transport channel name when present. Invalid JSON transport messages are ignored, and inbound transport messages that arrive after shutdown starts are ignored before local handler dispatch.
 
 ## Runtime-Specific and Integration Subpaths
 

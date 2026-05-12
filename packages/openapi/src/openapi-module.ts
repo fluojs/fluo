@@ -7,7 +7,7 @@ import {
   type HandlerSource,
   type RequestContext,
 } from '@fluojs/http';
-import { Inject, type AsyncModuleOptions, type Constructor, type MaybePromise, type Token } from '@fluojs/core';
+import { Inject, type AsyncModuleOptions, type Constructor, type InjectionToken, type MaybePromise, type Token } from '@fluojs/core';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { OpenApiHandlerRegistry } from './handler-registry.js';
@@ -57,7 +57,7 @@ type OpenApiOptionsProvider =
       useValue: OpenApiModuleOptions;
     }
   | {
-      inject?: Token[];
+      inject?: InjectionToken[];
       scope: 'singleton';
       useFactory: (...deps: unknown[]) => MaybePromise<OpenApiModuleOptions>;
     };

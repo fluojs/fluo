@@ -335,6 +335,30 @@ describe('package surface microservices transport discoverability', () => {
   });
 });
 
+describe('event-bus transport discoverability', () => {
+  it('documents event-bus transport fan-out and drain guidance from the AI context and package references in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const englishChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
+    const koreanChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.ko.md'), 'utf8');
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface]) {
+      expect(markdown).toContain('@fluojs/event-bus');
+      expect(markdown).toContain('Redis Pub/Sub');
+      expect(markdown).toContain('inherited event channel fan-out');
+      expect(markdown).toContain('inbound transport callback');
+    }
+
+    for (const markdown of [englishContext, koreanContext, englishChooser, koreanChooser]) {
+      expect(markdown).toContain('@fluojs/event-bus/redis');
+      expect(markdown).toContain('@fluojs/redis');
+      expect(markdown).toContain('cross-process');
+    }
+  });
+});
+
 describe('i18n subpath discoverability', () => {
   it('documents governed @fluojs/i18n subpaths from the AI context and package references in both locales', () => {
     const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');

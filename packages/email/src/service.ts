@@ -101,6 +101,7 @@ function assertMessageContent(message: NormalizedEmailMessage): void {
 @Inject(EMAIL_OPTIONS)
 export class EmailService implements Email, OnModuleInit, OnApplicationShutdown {
   private lifecycleState: EmailServiceLifecycleState = 'created';
+  private bootstrapPromise: Promise<void> | undefined;
   private resolvedTransport: EmailTransport | undefined;
   private transportPromise: Promise<EmailTransport> | undefined;
 
@@ -124,6 +125,22 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
   }
 
   async onModuleInit(): Promise<void> {
+    if (this.bootstrapPromise) {
+      return this.bootstrapPromise;
+    }
+
+    this.bootstrapPromise = this.startTransport();
+
+    try {
+      await this.bootstrapPromise;
+    } finally {
+      if (this.lifecycleState === 'failed') {
+        this.bootstrapPromise = undefined;
+      }
+    }
+  }
+
+  private async startTransport(): Promise<void> {
     if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
       return;
     }
@@ -193,13 +210,21 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
    */
   async send(message: EmailMessage, options: EmailSendOptions = {}): Promise<EmailSendResult> {
     assertNotAborted(options.signal);
-    this.assertCanDeliver();
+    if (this.options.verifyOnModuleInit) {
+      await this.ensureReadyForDelivery();
+    } else {
+      this.assertCanDeliver();
+    }
 
     const transport = await this.ensureTransport();
     const normalized = this.normalizeMessage(message);
     assertMessageContent(normalized);
     assertNotAborted(options.signal);
-    this.assertCanDeliver();
+    if (this.options.verifyOnModuleInit) {
+      await this.ensureReadyForDelivery();
+    } else {
+      this.assertCanDeliver();
+    }
     const result = await transport.send(normalized, options);
 
     return {
@@ -321,6 +346,34 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
     }
 
     return this.transportPromise;
+  }
+
+  private async ensureReadyForDelivery(): Promise<void> {
+    this.assertCanDeliver();
+
+    if (!this.options.verifyOnModuleInit) {
+      return;
+    }
+
+    if (this.lifecycleState === 'ready') {
+      return;
+    }
+
+    if (this.lifecycleState === 'created' || this.lifecycleState === 'starting') {
+      await this.onModuleInit();
+    }
+
+    this.assertCanDeliver();
+
+    const state = this.getLifecycleState();
+
+    if (state !== 'ready') {
+      throw createDeliveryLifecycleError(state);
+    }
+  }
+
+  private getLifecycleState(): EmailServiceLifecycleState {
+    return this.lifecycleState;
   }
 
   private assertCanCreateOrUseTransport(): void {
