@@ -110,6 +110,21 @@ describe('JwksClient', () => {
 
     await expect(client.getSigningKey('key-1')).rejects.toThrow('JWKS fetch timed out after 5ms.');
   });
+
+  it('rejects unknown JWKS kids with the JWT invalid-token error code', async () => {
+    const { publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const jwk = publicKey.export({ format: 'jwk' });
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ keys: [{ ...jwk, kid: 'known-key' }] }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    ) as typeof fetch;
+
+    const client = new JwksClient('https://example.test/.well-known/jwks.json');
+
+    await expect(client.getSigningKey('unknown-key')).rejects.toMatchObject({ code: 'JWT_INVALID_TOKEN' });
+  });
 });
 
 describe('DefaultJwtVerifier with jwksUri', () => {

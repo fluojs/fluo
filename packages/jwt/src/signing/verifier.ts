@@ -259,7 +259,7 @@ function normalizePrincipal(claims: JwtClaims): JwtPrincipal {
   }
 
   const scopes = Array.isArray(claims.scopes)
-    ? claims.scopes.filter((scope): scope is string => typeof scope === 'string')
+    ? claims.scopes.filter((scope): scope is string => typeof scope === 'string' && scope.length > 0)
     : typeof claims.scope === 'string'
       ? claims.scope.split(' ').filter(Boolean)
       : undefined;
