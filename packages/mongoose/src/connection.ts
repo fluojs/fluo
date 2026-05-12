@@ -113,20 +113,26 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
   async onApplicationShutdown(): Promise<void> {
     this.lifecycleState = 'shutting-down';
 
-    for (const transaction of this.activeRequestTransactions) {
-      transaction.abort(new Error('Application shutdown interrupted an open request transaction.'));
-    }
-
-    await Promise.allSettled([
-      ...Array.from(this.activeRequestTransactions, (transaction) => transaction.settled),
-      ...Array.from(this.activeSessions, (session) => session.settled),
-    ]);
+    await this.drainActiveShutdownWork();
 
     if (this.dispose) {
       await this.dispose(this.connection);
     }
 
     this.lifecycleState = 'stopped';
+  }
+
+  private async drainActiveShutdownWork(): Promise<void> {
+    do {
+      for (const transaction of this.activeRequestTransactions) {
+        transaction.abort(new Error('Application shutdown interrupted an open request transaction.'));
+      }
+
+      await Promise.allSettled([
+        ...Array.from(this.activeRequestTransactions, (transaction) => transaction.settled),
+        ...Array.from(this.activeSessions, (session) => session.settled),
+      ]);
+    } while (this.activeRequestTransactions.size > 0 || this.activeSessions.size > 0);
   }
 
   /** Produces the shared persistence status snapshot for platform diagnostics surfaces. */

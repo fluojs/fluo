@@ -720,6 +720,68 @@ describe('@fluojs/mongoose', () => {
     expect(events).toEqual(['connection:startSession', 'session:end:start', 'session:end:done', 'dispose']);
   });
 
+  it('waits for shutdown-aborted pending startSession cleanup before dispose', async () => {
+    const events: string[] = [];
+    let resolveStartSession!: (session: MongooseSessionLike) => void;
+    let resolveEndSession!: () => void;
+    const startSessionDeferred = new Promise<MongooseSessionLike>((resolve) => {
+      resolveStartSession = resolve;
+    });
+    const endSessionDeferred = new Promise<void>((resolve) => {
+      resolveEndSession = resolve;
+    });
+
+    const session: MongooseSessionLike = {
+      abortTransaction() {
+        events.push('transaction:abort');
+      },
+      commitTransaction() {
+        events.push('transaction:commit');
+      },
+      async endSession() {
+        events.push('session:end:start');
+        await endSessionDeferred;
+        events.push('session:end:done');
+      },
+      startTransaction() {
+        events.push('transaction:start');
+      },
+    };
+
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return startSessionDeferred;
+      },
+    };
+
+    const mongoose = new MongooseConnection<typeof connection>(connection, () => {
+      events.push('dispose');
+    });
+    const controller = new AbortController();
+
+    const requestTransaction = mongoose.requestTransaction(async () => {
+      events.push('tx:work');
+      return 'ok';
+    }, controller.signal);
+
+    const shutdown = mongoose.onApplicationShutdown();
+    await expect(requestTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(events).toEqual(['connection:startSession']);
+
+    resolveStartSession(session);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(events).toEqual(['connection:startSession', 'session:end:start']);
+
+    resolveEndSession();
+    await shutdown;
+
+    expect(events).toEqual(['connection:startSession', 'session:end:start', 'session:end:done', 'dispose']);
+  });
+
   it('races delegated connection.transaction startup against request abort', async () => {
     const events: string[] = [];
     const session = createFakeSession(events);
