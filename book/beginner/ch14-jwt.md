@@ -184,14 +184,15 @@ export class AuthController {
   @RequestDto(LoginDto)
   async login(dto: LoginDto) {
     // 1. Verify credentials through AuthService
-    // 2. Run signAccessToken and signRefreshToken
+    // 2. Issue the access token and call RefreshTokenService.issueRefreshToken
+    //    so the refresh token is persisted in the configured durable store
     return this.authService.signIn(dto.email, dto.password);
   }
 }
 ```
 
 ### The Authentication Lifecycle
-The Authentication lifecycle in Fluo starts with a request to the `login` endpoint. After verifying credentials, usually by checking a hashed password in the database, the service uses `JwtSigner` to create tokens. These tokens are returned to the client through the response body or secure cookies.
+The Authentication lifecycle in Fluo starts with a request to the `login` endpoint. After verifying credentials, usually by checking a hashed password in the database, the service can sign the short lived access token directly, but it should issue refresh tokens through `RefreshTokenService.issueRefreshToken(...)`. That service signs the refresh token and persists its record in the configured `RefreshTokenStore`, so the later `refresh` endpoint can call `RefreshTokenService.rotateRefreshToken(...)` and keep rotation, reuse detection, and durable replacement persistence on the same path. These tokens are returned to the client through the response body or secure cookies.
 
 From that point on, the client includes the access token in the `Authorization` header of every request. When the access token expires, the client calls the `refresh` endpoint with the refresh token to obtain a new token pair. This cycle ensures continuous, safe user sessions while preserving the performance benefits of statelessness. It is the engine that keeps the application's front door both secure and welcoming. This lifecycle can also include a grace period where a slightly expired access token is still allowed for certain low-risk operations but triggers forced renewal for others.
 

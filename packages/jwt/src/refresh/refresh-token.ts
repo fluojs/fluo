@@ -136,6 +136,7 @@ export class RefreshTokenService {
       }
 
       const next = await this.createRefreshTokenWithFamily(claims.sub, claims.family);
+      const accessToken = await this.signer.signAccessToken({ sub: claims.sub });
       const consumeResult = this.options.store.rotate
         ? await this.options.store.rotate({
           family: claims.family,
@@ -155,7 +156,6 @@ export class RefreshTokenService {
         if (!this.options.store.rotate) {
           await this.options.store.save(next.record);
         }
-        const accessToken = await this.signer.signAccessToken({ sub: claims.sub });
 
         return { accessToken, refreshToken: next.token };
       }

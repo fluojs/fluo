@@ -260,6 +260,38 @@ describe('RefreshTokenService', () => {
     expect(store.countBySubject('user-1')).toBe(1);
   });
 
+  it('does not consume the current token when access token signing fails during rotation', async () => {
+    const store = new InMemoryRefreshTokenStore();
+    const refreshOptions = {
+      expiresInSeconds: 3600,
+      rotation: true,
+      secret: 'refresh-secret',
+      store,
+    };
+    const signer = new DefaultJwtSigner({
+      algorithms: ['HS256'],
+      refreshToken: refreshOptions,
+      secret: 'access-secret',
+    });
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      refreshToken: refreshOptions,
+      secret: 'access-secret',
+    });
+    const service = new RefreshTokenService(refreshOptions, signer, verifier);
+    const token = await service.issueRefreshToken('user-1');
+    const payload = readTokenPayload(token);
+    const signAccessToken = vi.spyOn(signer, 'signAccessToken');
+    signAccessToken.mockRejectedValueOnce(new Error('access signing failed'));
+
+    await expect(service.rotateRefreshToken(token)).rejects.toThrow('access signing failed');
+
+    const currentRecord = await store.find(payload.jti as string);
+    expect(currentRecord?.used).toBe(false);
+    expect(store.rotateCalls).toBe(0);
+    expect(store.countBySubject('user-1')).toBe(1);
+  });
+
   it('detects refresh token reuse and revokes all tokens for the subject', async () => {
     const store = new InMemoryRefreshTokenStore();
     const { service } = createService(store);

@@ -184,14 +184,15 @@ export class AuthController {
   @RequestDto(LoginDto)
   async login(dto: LoginDto) {
     // 1. AuthService를 통해 자격 증명 확인
-    // 2. signAccessToken 및 signRefreshToken 수행
+    // 2. 액세스 토큰을 발급하고 RefreshTokenService.issueRefreshToken을 호출해
+    //    리프레시 토큰을 설정된 durable store에 저장
     return this.authService.signIn(dto.email, dto.password);
   }
 }
 ```
 
 ### The Authentication Lifecycle
-Fluo에서의 인증 생명주기는 `login` 엔드포인트에 대한 요청으로 시작됩니다. 자격 증명을 확인한 후(주로 데이터베이스에서 해시된 비밀번호 확인), 서비스는 `JwtSigner`를 사용하여 토큰을 생성합니다. 이 토큰들은 응답 바디나 보안 쿠키를 통해 클라이언트에게 반환됩니다.
+Fluo에서의 인증 생명주기는 `login` 엔드포인트에 대한 요청으로 시작됩니다. 자격 증명을 확인한 후(주로 데이터베이스에서 해시된 비밀번호 확인), 서비스는 짧게 사는 액세스 토큰은 직접 서명할 수 있지만 리프레시 토큰은 `RefreshTokenService.issueRefreshToken(...)`을 통해 발급해야 합니다. 이 서비스는 리프레시 토큰을 서명하고 설정된 `RefreshTokenStore`에 레코드를 저장하므로, 이후 `refresh` 엔드포인트가 `RefreshTokenService.rotateRefreshToken(...)`을 호출할 때 로테이션, 재사용 감지, durable replacement persistence가 같은 경로에서 유지됩니다. 이 토큰들은 응답 바디나 보안 쿠키를 통해 클라이언트에게 반환됩니다.
 
 그 시점부터 클라이언트는 모든 요청의 `Authorization` 헤더에 액세스 토큰을 포함합니다. 액세스 토큰이 만료되면 클라이언트는 새로운 토큰 쌍을 얻기 위해 리프레시 토큰과 함께 `refresh` 엔드포인트를 호출합니다. 이 사이클은 상태 비저장성의 성능 이점을 유지하면서 지속적이고 안전한 사용자 세션을 보장합니다. 이는 애플리케이션의 정문을 안전하면서도 환영받는 상태로 유지하는 엔진입니다. 또한 이러한 생명주기를 통해 약간 만료된 액세스 토큰이 특정 저위험 작업에는 여전히 허용되면서도 다른 작업에는 강제 갱신을 트리거하는 "유예 기간"을 둘 수도 있습니다.
 
