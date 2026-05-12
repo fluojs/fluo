@@ -45,7 +45,7 @@
 - **`@fluojs/graphql`**: GraphQL schema exposure, resolver execution, and subscriptions on top of the HTTP abstraction.
 - **`@fluojs/jwt`**: HTTP-agnostic JWT signing, verification, and principal normalization.
 - **`@fluojs/passport`**: Strategy-agnostic authentication guards, scopes, and Passport.js bridges.
-- **`@fluojs/microservices`**: Pattern-matching transport abstraction for TCP, Redis, NATS, Kafka, RabbitMQ, MQTT, and gRPC.
+- **`@fluojs/microservices`**: Pattern-matching transport abstraction for TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC.
 - **`@fluojs/notifications`**: Shared channel contract and orchestration layer for provider-specific notification packages.
 - **`@fluojs/email`**: Transport-agnostic email delivery core. It provides a first-party notifications channel and queue worker integration through `@fluojs/email/queue`.
 - **`@fluojs/email/node`**: Node.js specific subpath for `@fluojs/email` that provides first-party Nodemailer/SMTP transport.
