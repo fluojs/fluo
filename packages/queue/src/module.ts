@@ -21,6 +21,7 @@ function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): Normaliz
     defaultConcurrency: normalizePositiveInteger(options.defaultConcurrency, 1),
     defaultDeadLetterMaxEntries: normalizePositiveIntegerOrFalse(options.defaultDeadLetterMaxEntries, 1_000),
     defaultRateLimiter,
+    workerShutdownTimeoutMs: normalizePositiveInteger(options.workerShutdownTimeoutMs, 30_000),
   };
 }
 
