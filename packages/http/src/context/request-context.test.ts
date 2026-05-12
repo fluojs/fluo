@@ -6,12 +6,12 @@ import {
   assertRequestContext,
   createContextKey,
   createRequestContext,
-  createStackRequestContextStore,
   getContextValue,
   getCurrentRequestContext,
   runWithRequestContext,
   setContextValue,
 } from './request-context.js';
+import { createStackRequestContextStore } from './request-context-stack-store.js';
 import type { RequestContext } from '../types.js';
 
 function createMockContext(): RequestContext {
@@ -128,6 +128,22 @@ describe('request context store', () => {
 
     await expect(requestA).resolves.toBeUndefined();
     await expect(requestB).resolves.toBeUndefined();
+    expect(store.getStore()).toBeUndefined();
+  });
+
+  it('limits fallback request context to the synchronous frame before awaited work resumes', async () => {
+    const store = createStackRequestContextStore();
+    const context = createRequestContext(createMockContext());
+
+    const requestId = await store.run(context, async () => {
+      expect(store.getStore()?.requestId).toBe('req_123');
+
+      await Promise.resolve();
+
+      return store.getStore()?.requestId;
+    });
+
+    expect(requestId).toBeUndefined();
     expect(store.getStore()).toBeUndefined();
   });
 

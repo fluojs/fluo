@@ -1,16 +1,17 @@
 import { FluoError } from '@fluojs/core';
 
 import type { ContextKey, RequestContext } from '../types.js';
-
-type RequestContextStore = {
-  getStore(): RequestContext | undefined;
-  run<T>(context: RequestContext, callback: () => T): T;
-};
+import { createStackRequestContextStore } from './request-context-stack-store.js';
+import type { RequestContextStore } from './request-context-store.js';
 
 const requestContextStore: RequestContextStore = createRequestContextStore();
 
 /**
- * Runs a callback inside the request-scoped AsyncLocalStorage context.
+ * Runs a callback inside the request-scoped async context.
+ *
+ * Hosts with `AsyncLocalStorage` preserve the context across awaited work. Hosts without an async
+ * context primitive use a stack fallback that keeps the context only for the synchronous callback
+ * frame and clears it before awaited continuations resume.
  *
  * @param context Request context snapshot to bind to the current async execution chain.
  * @param callback Callback executed with `context` available through request-context helpers.
@@ -48,9 +49,9 @@ export function assertRequestContext(): RequestContext {
 }
 
 /**
- * Creates a defensive clone of a request context for AsyncLocalStorage storage.
+ * Creates a defensive clone of a request context for async-context storage.
  *
- * @param context Request context to clone before storing in AsyncLocalStorage.
+ * @param context Request context to clone before storing in the active async-context store.
  * @returns A shallow clone with copied metadata map to avoid cross-request mutation.
  */
 export function createRequestContext(context: RequestContext): RequestContext {
@@ -123,33 +124,4 @@ function resolveAsyncLocalStorageConstructor(): (new () => RequestContextStore) 
   }).process?.getBuiltinModule;
 
   return getBuiltinModule?.('node:async_hooks').AsyncLocalStorage;
-}
-
-export function createStackRequestContextStore(): RequestContextStore {
-  const stack: RequestContext[] = [];
-
-  return {
-    getStore() {
-      return stack.at(-1);
-    },
-    run<T>(context: RequestContext, callback: () => T): T {
-      stack.push(context);
-
-      try {
-        return callback();
-      } catch (error) {
-        throw error;
-      } finally {
-        removeStackContext(stack, context);
-      }
-    },
-  };
-}
-
-function removeStackContext(stack: RequestContext[], context: RequestContext): void {
-  const index = stack.lastIndexOf(context);
-
-  if (index >= 0) {
-    stack.splice(index, 1);
-  }
 }
