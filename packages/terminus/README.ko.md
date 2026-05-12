@@ -93,6 +93,8 @@ TerminusModule.forRoot({
 
 Drizzle의 경우 `createDrizzleHealthIndicatorProvider()`는 `@fluojs/drizzle`이 노출하는 lifecycle-aware `DrizzleDatabase` wrapper를 우선 사용합니다. Drizzle이 종료 중이거나 중지되었거나 `DrizzleDatabase.createPlatformStatusSnapshot()` 기준으로 준비되지 않은 상태이면 SQL probe를 실행하기 전에 해당 indicator를 `down`으로 보고합니다. legacy raw `DRIZZLE_DATABASE` handle만 등록된 경우에는 기존 lightweight SQL probe 동작을 유지합니다.
 
+`indicatorProviders`에 전달하는 provider factory는 Terminus가 소유하는 aggregation helper입니다. 각 factory는 생성한 indicator를 고유한 내부 `Symbol` token 아래에 등록하므로 같은 indicator type provider를 반복 등록해도 충돌하지 않습니다. 이는 public class-token 등록 메커니즘이 아닙니다. 애플리케이션 코드에서 indicator class를 직접 resolve해야 한다면 해당 class나 custom provider를 별도로 등록하세요.
+
 ### 실행 가드레일
 
 커스텀 인디케이터가 멈추거나 느린 하위 서비스에 의존할 수 있다면 `execution.indicatorTimeoutMs`를 사용하세요. probe가 설정된 시간을 넘기면 Terminus는 무기한 대기하지 않고 해당 인디케이터를 `down`으로 표시합니다.
@@ -157,7 +159,7 @@ TerminusModule.forRoot({
 ### 직접 helper와 token
 
 - `runHealthCheck(...)`, `assertHealthCheck(...)`: 직접 aggregation/testing helper입니다.
-- `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: 등록된 indicator와 provider token을 위한 DI token입니다. 내장 provider factory는 고유한 내부 token을 사용하므로 같은 indicator type provider를 하나의 모듈에 여러 개 등록할 수 있습니다.
+- `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: 등록된 indicator와 provider token을 위한 DI token입니다. 내장 provider factory는 Terminus aggregation을 위해 고유한 내부 `Symbol` token을 사용하므로, direct class-token resolution을 약속하지 않으면서 같은 indicator type provider를 하나의 모듈에 여러 개 등록할 수 있습니다.
 - Built-in indicator는 `create*HealthIndicator()` 및 `create*HealthIndicatorProvider()` helper도 노출합니다.
 
 ### `@fluojs/terminus/redis`

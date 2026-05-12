@@ -91,6 +91,8 @@ TerminusModule.forRoot({
 
 For Drizzle, `createDrizzleHealthIndicatorProvider()` prefers the lifecycle-aware `DrizzleDatabase` wrapper exported by `@fluojs/drizzle`. The indicator reports `down` before probing SQL whenever Drizzle is shutting down, stopped, or otherwise not ready according to `DrizzleDatabase.createPlatformStatusSnapshot()`. If only the legacy raw `DRIZZLE_DATABASE` handle is registered, the provider keeps the previous lightweight SQL probe behavior.
 
+Provider factories passed through `indicatorProviders` are Terminus-owned aggregation helpers. Each factory registers the created indicator under a unique internal `Symbol` token so repeated providers of the same indicator type do not collide. They are not a public class-token registration mechanism; if application code needs to resolve an indicator class directly, register that class or a custom provider separately.
+
 ### Execution Guardrails
 
 Use `execution.indicatorTimeoutMs` when custom indicators might hang or depend on slow downstreams. When a probe exceeds the configured timeout, Terminus marks that indicator as `down` instead of waiting forever.
@@ -157,7 +159,7 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 ### Direct helpers and tokens
 
 - `runHealthCheck(...)`, `assertHealthCheck(...)`: Direct aggregation/testing helpers.
-- `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: DI tokens for registered indicators and provider tokens. Built-in provider factories use unique internal tokens, so multiple providers of the same indicator type can be registered in one module.
+- `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: DI tokens for registered indicators and provider tokens. Built-in provider factories use unique internal `Symbol` tokens for Terminus aggregation, so multiple providers of the same indicator type can be registered in one module without promising direct class-token resolution.
 - Built-in indicators also expose `create*HealthIndicator()` and `create*HealthIndicatorProvider()` helpers.
 
 ### `@fluojs/terminus/redis`
