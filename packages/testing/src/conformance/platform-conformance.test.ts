@@ -25,6 +25,7 @@ class TestPlatformComponent implements PlatformComponent {
       nonIdempotentStart?: boolean;
       snapshotDetails?: Record<string, unknown>;
       state?: PlatformState;
+      stopError?: Error;
     } = {},
   ) {
     this.currentState = options.state ?? 'created';
@@ -32,6 +33,7 @@ class TestPlatformComponent implements PlatformComponent {
     this.mutateOnValidate = options.mutateOnValidate ?? false;
     this.nonIdempotentStart = options.nonIdempotentStart ?? false;
     this.snapshotDetails = options.snapshotDetails ?? { queueDepth: 3 };
+    this.stopError = options.stopError;
     this.sideEffects = { validateCalls: 0 };
   }
 
@@ -39,6 +41,7 @@ class TestPlatformComponent implements PlatformComponent {
   private readonly mutateOnValidate: boolean;
   private readonly nonIdempotentStart: boolean;
   private readonly snapshotDetails: Record<string, unknown>;
+  private readonly stopError: Error | undefined;
 
   readSideEffects(): { validateCalls: number } {
     return { ...this.sideEffects };
@@ -99,6 +102,10 @@ class TestPlatformComponent implements PlatformComponent {
   }
 
   async stop(): Promise<void> {
+    if (this.stopError) {
+      throw this.stopError;
+    }
+
     this.currentState = 'stopped';
   }
 
@@ -191,6 +198,94 @@ describe('platform conformance harness', () => {
     });
 
     await expect(harness.assertStartIsDeterministic()).rejects.toThrow('not idempotent');
+  });
+
+  it('reports cleanup failures after start determinism checks', async () => {
+    const stopError = new Error('stop exploded');
+    const harness = createPlatformConformanceHarness({
+      createComponent: () => new TestPlatformComponent('cache.default', 'cache', { stopError }),
+      scenarios: {
+        degraded: {
+          createComponent: () => new TestPlatformComponent('cache.default', 'cache', { state: 'degraded' }),
+          enterState: () => undefined,
+          name: 'degraded',
+        },
+        failed: {
+          createComponent: () => new TestPlatformComponent('cache.default', 'cache', { state: 'failed' }),
+          enterState: () => undefined,
+          name: 'failed',
+        },
+      },
+    });
+
+    await expect(harness.assertStartIsDeterministic()).rejects.toThrow('stop() failed during conformance cleanup');
+  });
+
+  it('requires diagnostics to include stable non-empty messages', async () => {
+    const harness = createPlatformConformanceHarness({
+      createComponent: () =>
+        new TestPlatformComponent('queue.default', 'queue', {
+          diagnostics: [
+            {
+              code: 'QUEUE_DEPENDENCY_NOT_READY',
+              componentId: 'queue.default',
+              fixHint: 'Verify Redis dependency readiness before enabling queue startup.',
+              message: '',
+              severity: 'error',
+            },
+          ],
+        }),
+      scenarios: {
+        degraded: {
+          createComponent: () => new TestPlatformComponent('queue.default', 'queue', { state: 'degraded' }),
+          enterState: () => undefined,
+          name: 'degraded',
+        },
+        failed: {
+          createComponent: () => new TestPlatformComponent('queue.default', 'queue', { state: 'failed' }),
+          enterState: () => undefined,
+          name: 'failed',
+        },
+      },
+    });
+
+    await expect(harness.assertStableDiagnostics()).rejects.toThrow('must provide a stable non-empty message');
+  });
+
+  it('reports missing and unexpected diagnostic codes', async () => {
+    const harness = createPlatformConformanceHarness({
+      createComponent: () =>
+        new TestPlatformComponent('queue.default', 'queue', {
+          diagnostics: [
+            {
+              code: 'QUEUE_DEPENDENCY_NOT_READY',
+              componentId: 'queue.default',
+              fixHint: 'Verify Redis dependency readiness before enabling queue startup.',
+              message: 'Queue startup requires ready Redis.',
+              severity: 'error',
+            },
+          ],
+        }),
+      diagnostics: {
+        expectedCodes: ['QUEUE_CONFIG_MISSING'],
+      },
+      scenarios: {
+        degraded: {
+          createComponent: () => new TestPlatformComponent('queue.default', 'queue', { state: 'degraded' }),
+          enterState: () => undefined,
+          name: 'degraded',
+        },
+        failed: {
+          createComponent: () => new TestPlatformComponent('queue.default', 'queue', { state: 'failed' }),
+          enterState: () => undefined,
+          name: 'failed',
+        },
+      },
+    });
+
+    await expect(harness.assertStableDiagnostics()).rejects.toThrow(
+      'Missing [QUEUE_CONFIG_MISSING]; unexpected [QUEUE_DEPENDENCY_NOT_READY]',
+    );
   });
 
   it('fails when snapshot details leak unsanitized credential keys', async () => {
