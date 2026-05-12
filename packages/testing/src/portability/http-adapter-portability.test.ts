@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   bootstrapFastifyApplication,
-  FastifyHttpApplicationAdapter,
+  type FastifyHttpApplicationAdapter,
   runFastifyApplication,
 } from '@fluojs/platform-fastify';
 import { bootstrapExpressApplication, runExpressApplication } from '@fluojs/platform-express';
@@ -127,6 +127,61 @@ function registerPortabilitySuite(
 }
 
 describe('http adapter portability cleanup reporting', () => {
+  it('closes partially bootstrapped apps when listen fails', async () => {
+    const listenError = new Error('listen exploded');
+    const close = vi.fn(async () => {});
+    const harness = createHttpAdapterPortabilityHarness({
+      async bootstrap() {
+        return {
+          close,
+          async listen() {
+            throw listenError;
+          },
+        };
+      },
+      name: 'listen-cleanup',
+      async run() {
+        throw new Error('run should not be used');
+      },
+    });
+
+    await expect(harness.assertPreservesMalformedCookieValues()).rejects.toBe(listenError);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves listen and cleanup failures when closing a partial app also fails', async () => {
+    const listenError = new Error('listen exploded');
+    const closeError = new Error('close exploded');
+    const harness = createHttpAdapterPortabilityHarness({
+      async bootstrap() {
+        return {
+          async close() {
+            throw closeError;
+          },
+          async listen() {
+            throw listenError;
+          },
+        };
+      },
+      name: 'listen-cleanup-aggregate',
+      async run() {
+        throw new Error('run should not be used');
+      },
+    });
+
+    try {
+      await harness.assertPreservesMalformedCookieValues();
+      throw new Error('Expected aggregate failure to be reported.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      if (!(error instanceof AggregateError)) {
+        throw error;
+      }
+      expect(error.message).toContain('app.listen() failed and app.close() also failed');
+      expect(error.errors).toEqual([listenError, closeError]);
+    }
+  });
+
   it('reports close failures when the assertion path succeeds', async () => {
     const closeError = new Error('close exploded');
     const signal = 'SIGTERM' as const;
