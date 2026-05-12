@@ -137,8 +137,10 @@ import { Container } from '@fluojs/di';
 const container = new Container();
 const mockDb = { query: vi.fn() };
 
+container.register(DataService);
+
 // 실제 Database 클래스를 모의 객체 값으로 교체
-container.register({ 
+container.override({ 
   provide: Database, 
   useValue: mockDb 
 });
@@ -169,7 +171,10 @@ const service = await container.resolve(DataService);
 | `dispose()` | request child와 루트가 소유한 singleton instance를 정리합니다. |
 | `forwardRef(fn)` | 선언 순서 문제를 위해 조회를 지연하는 토큰 래퍼를 반환합니다. 실제 생성자 순환을 해석 가능하게 만들지는 않습니다. |
 | `optional(token)` | 하나의 의존성을 optional로 표시하는 토큰 래퍼를 반환합니다. 누락된 optional dependency는 `undefined`로 해석됩니다. |
+| `isForwardRef(value)` | 값이 지연된 토큰 래퍼인지 확인하는 타입 가드입니다. |
+| `isOptionalToken(value)` | 값이 optional 토큰 래퍼인지 확인하는 타입 가드입니다. |
 | `Scope` | `DEFAULT`, `REQUEST`, `TRANSIENT` scope 상수를 제공합니다. |
+| Provider Types | `ClassProvider`, `FactoryProvider`, `ValueProvider`, `ExistingProvider` 및 공용체 `Provider`. |
 | 에러 클래스 | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |
 
 multi-provider 토큰을 resolve하면 등록 순서대로 해석된 값의 배열이 반환됩니다.

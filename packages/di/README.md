@@ -137,8 +137,10 @@ import { Container } from '@fluojs/di';
 const container = new Container();
 const mockDb = { query: vi.fn() };
 
+container.register(DataService);
+
 // Override the real Database class with a mock value
-container.register({ 
+container.override({ 
   provide: Database, 
   useValue: mockDb 
 });
@@ -169,7 +171,10 @@ Ensure all required providers are registered in the container. If you use `creat
 | `dispose()` | Disposes request children and root-owned singleton instances. |
 | `forwardRef(fn)` | Returns a token wrapper that defers lookup for declaration-order issues; it does not make constructor dependency cycles resolvable. |
 | `optional(token)` | Returns a token wrapper that marks one dependency as optional; missing optional dependencies resolve to `undefined`. |
+| `isForwardRef(value)` | Type guard that checks if a value is a deferred token wrapper. |
+| `isOptionalToken(value)` | Type guard that checks if a value is an optional token wrapper. |
 | `Scope` | Exposes `DEFAULT`, `REQUEST`, and `TRANSIENT` scope constants. |
+| Provider Types | `ClassProvider`, `FactoryProvider`, `ValueProvider`, `ExistingProvider`, and the union `Provider`. |
 | Error classes | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |
 
 Resolving a multi-provider token returns an array of resolved values in registration order.

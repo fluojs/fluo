@@ -1819,4 +1819,115 @@ describe('Recovery-oriented error context', () => {
     expect((error as ContainerResolutionError).meta!['token']).toContain('MyToken');
     expect((error as ContainerResolutionError).meta!['hint']).toBeDefined();
   });
+
+  describe('FactoryProvider.resolverClass @Scope metadata derivation', () => {
+    it('uses scope from resolverClass metadata when factory provider lacks scope', () => {
+      @ScopeDecorator(Scope.TRANSIENT)
+      class TransientResolver {
+        static create() { return 'foo'; }
+      }
+
+      const container = new Container().register({
+        provide: 'token',
+        useFactory: TransientResolver.create,
+        resolverClass: TransientResolver,
+      });
+
+      const provider = (container as any).registrations.get('token');
+      expect(provider.scope).toBe(Scope.TRANSIENT);
+    });
+  });
+
+  describe('Nullish inject token validation', () => {
+    it('throws InvalidProviderError on registration if an inject token is nullish', () => {
+      expect(() => {
+        new Container().register({
+          provide: 'token',
+          useFactory: () => 'val',
+          inject: [null as any],
+        });
+      }).toThrow(InvalidProviderError);
+    });
+
+    it('throws InvalidProviderError on registration if @Inject token is nullish', () => {
+      @Inject(null as any)
+      class Target {
+        constructor(public dep: any) {}
+      }
+
+      expect(() => {
+        new Container().register(Target);
+      }).toThrow(InvalidProviderError);
+    });
+  });
+
+  describe('Request-scope single-provider direct coverage', () => {
+    it('caches request-scoped instances independently per request', async () => {
+      class RequestService {}
+
+      const root = new Container().register({
+        provide: RequestService,
+        useClass: RequestService,
+        scope: Scope.REQUEST,
+      });
+
+      const req1 = root.createRequestScope();
+      const req2 = root.createRequestScope();
+
+      const [inst1a, inst1b, inst2a] = await Promise.all([
+        req1.resolve(RequestService),
+        req1.resolve(RequestService),
+        req2.resolve(RequestService),
+      ]);
+
+      expect(inst1a).toBe(inst1b);
+      expect(inst1a).not.toBe(inst2a);
+    });
+  });
+
+  describe('Atomic registration and override', () => {
+    it('prevents partial registration when a later provider throws', () => {
+      const container = new Container();
+
+      expect(() => {
+        container.register(
+          { provide: 'valid', useValue: 1 },
+          { provide: 'invalid', useFactory: 'not-a-function' as any }
+        );
+      }).toThrow(InvalidProviderError);
+
+      expect(container.has('valid')).toBe(false);
+    });
+
+    it('prevents partial override when a later provider throws', async () => {
+      const container = new Container();
+      container.register({ provide: 'valid1', useValue: 1 });
+      container.register({ provide: 'valid2', useValue: 2 });
+
+      expect(() => {
+        container.override(
+          { provide: 'valid1', useValue: 10 },
+          { provide: 'invalid', useFactory: 'not-a-function' as any }
+        );
+      }).toThrow(InvalidProviderError);
+
+      expect(await container.resolve('valid1')).toBe(1);
+    });
+  });
+
+  describe('Request-scope cache invalidation on parent override', () => {
+    it('invalidates request-scope caches when overridden in parent', async () => {
+      class Dep {}
+      const root = new Container().register({ provide: Dep, useValue: { id: 1 } });
+      const req = root.createRequestScope();
+
+      const inst1 = await req.resolve(Dep);
+      expect((inst1 as any).id).toBe(1);
+
+      root.override({ provide: Dep, useValue: { id: 2 } });
+
+      const inst2 = await req.resolve(Dep);
+      expect((inst2 as any).id).toBe(2);
+    });
+  });
 });

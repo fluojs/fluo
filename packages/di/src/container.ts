@@ -210,9 +210,12 @@ export class Container {
       );
     }
 
-    for (const provider of providers) {
-      const normalized = normalizeProvider(provider);
+    const normalizedProviders = providers.map(normalizeProvider);
 
+    const pendingSingleTokens = new Set<Token>();
+    const pendingMultiTokens = new Set<Token>();
+
+    for (const normalized of normalizedProviders) {
       if (this.requestScopeEnabled && normalized.scope === Scope.DEFAULT) {
         throw new ScopeMismatchError(
           `Singleton provider ${String(normalized.provide)} cannot be registered on a request-scope container.`,
@@ -227,11 +230,27 @@ export class Container {
       this.assertNoRegistrationConflict(normalized.provide, normalized.multi === true);
 
       if (normalized.multi) {
+        if (pendingSingleTokens.has(normalized.provide)) {
+          throw new DuplicateProviderError(normalized.provide);
+        }
+        pendingMultiTokens.add(normalized.provide);
+      } else {
+        if (pendingMultiTokens.has(normalized.provide)) {
+          throw new DuplicateProviderError(normalized.provide);
+        }
+        if (pendingSingleTokens.has(normalized.provide)) {
+          throw new DuplicateProviderError(normalized.provide);
+        }
+        pendingSingleTokens.add(normalized.provide);
+      }
+    }
+
+    for (const normalized of normalizedProviders) {
+      if (normalized.multi) {
         const existing = this.multiRegistrations.get(normalized.provide);
 
         if (existing) {
           existing.push(normalized);
-          this.advanceGraphRevision();
           continue;
         }
 
@@ -239,7 +258,9 @@ export class Container {
       } else {
         this.registrations.set(normalized.provide, normalized);
       }
+    }
 
+    if (normalizedProviders.length > 0) {
       this.advanceGraphRevision();
     }
 
@@ -283,12 +304,6 @@ export class Container {
     }
 
     for (const [token, normalizedProviders] of normalizedByToken) {
-      const firstProvider = normalizedProviders[0];
-
-      if (!firstProvider) {
-        continue;
-      }
-
       const containsMultiProvider = normalizedProviders.some((normalized) => normalized.multi === true);
 
       if (containsMultiProvider && normalizedProviders.some((normalized) => normalized.multi !== true)) {
@@ -298,6 +313,16 @@ export class Container {
       if (!containsMultiProvider && normalizedProviders.length > 1) {
         throw new DuplicateProviderError(token);
       }
+    }
+
+    for (const [token, normalizedProviders] of normalizedByToken) {
+      const firstProvider = normalizedProviders[0];
+
+      if (!firstProvider) {
+        continue;
+      }
+
+      const containsMultiProvider = normalizedProviders.some((normalized) => normalized.multi === true);
 
       const existing = this.lookupProvider(token);
       const existingMultiProviders = this.collectMultiProviders(token);
@@ -309,12 +334,14 @@ export class Container {
       if (containsMultiProvider) {
         this.multiRegistrations.set(token, normalizedProviders);
         this.multiOverriddenTokens.add(token);
-        this.advanceGraphRevision();
         continue;
       }
 
       this.multiOverriddenTokens.add(token);
       this.registrations.set(token, firstProvider);
+    }
+
+    if (normalizedByToken.size > 0) {
       this.advanceGraphRevision();
     }
 
@@ -1319,6 +1346,12 @@ export class Container {
 
       this.scheduleStaleDisposal(cached);
       multiRequestCache.delete(provider);
+    }
+
+    if (this.childScopes) {
+      for (const child of this.childScopes) {
+        child.invalidateCachedEntry(token, scope);
+      }
     }
   }
 }

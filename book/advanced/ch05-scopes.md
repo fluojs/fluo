@@ -169,20 +169,18 @@ The request child creation code passes that shared state directly as a construct
 `path:packages/di/src/container.ts:252-263`
 ```typescript
 createRequestScope(): Container {
-  if (this.disposed) {
+  if (this.isDisposedInHierarchy()) {
     throw new ContainerResolutionError(
       'Container has been disposed and can no longer create request scopes.',
       { hint: 'Create request scopes before calling container.dispose().' },
     );
   }
 
-  const child = new Container(this, true, this.root().singletonCache);
-  this.root().childScopes.add(child);
-  return child;
+  return new Container(this, true, this.root().singletonCache);
 }
 ```
 
-A request child therefore has a parent and the request flag, but it sees the root's singleton promise map. This one line supports the chapter's claim that "the child is the boundary, and the root is the singleton owner."
+A request child therefore has a parent and the request flag, but it sees the root's singleton promise map. The child is not added to the root's `childScopes` set immediately; instead, it is lazily tracked via `ensureTrackedRequestScope()` only when a request-scoped dependency is actually resolved or overridden. This lazy tracking avoids memory overhead for request scopes that never resolve request-scoped or overridden tokens. This supports the chapter's claim that "the child is the boundary, and the root is the singleton owner."
 
 The resolution step enforces the same structure again.
 `resolveScopedOrSingletonInstance()` in `path:packages/di/src/container.ts:527-548` first checks `shouldResolveFromRoot(provider)`.
