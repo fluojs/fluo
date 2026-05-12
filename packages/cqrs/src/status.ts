@@ -13,7 +13,10 @@ export interface CqrsStatusAdapterInput {
   inFlightSagaExecutions: number;
   lifecycleState: CqrsLifecycleState;
   sagaLifecycleState: CqrsLifecycleState;
+  sagaShutdownDrainTimeouts: number;
   sagasDiscovered: number;
+  shutdownDrainTimeoutMs: number;
+  shutdownDrainTimeouts: number;
 }
 
 /**
@@ -95,6 +98,13 @@ function createHealth(input: CqrsStatusAdapterInput): PlatformHealthReport {
     };
   }
 
+  if (input.shutdownDrainTimeouts > 0 || input.sagaShutdownDrainTimeouts > 0) {
+    return {
+      reason: 'CQRS event/saga pipeline reported bounded shutdown drain timeouts.',
+      status: 'degraded',
+    };
+  }
+
   return {
     status: 'healthy',
   };
@@ -114,7 +124,10 @@ export function createCqrsPlatformStatusSnapshot(input: CqrsStatusAdapterInput):
       inFlightSagaExecutions: input.inFlightSagaExecutions,
       lifecycleState: input.lifecycleState,
       sagaLifecycleState: input.sagaLifecycleState,
+      sagaShutdownDrainTimeouts: input.sagaShutdownDrainTimeouts,
       sagasDiscovered: input.sagasDiscovered,
+      shutdownDrainTimeoutMs: input.shutdownDrainTimeoutMs,
+      shutdownDrainTimeouts: input.shutdownDrainTimeouts,
     },
     health: createHealth(input),
     ownership: {

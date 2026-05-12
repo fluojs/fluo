@@ -937,6 +937,55 @@ describe('@fluojs/cqrs', () => {
     expect(store.completed).toBe(true);
   });
 
+  it('bounds shutdown drain when saga execution is stuck', async () => {
+    const loggerEvents: string[] = [];
+    const releaseSaga = createDeferred<void>();
+    const sagaStarted = createDeferred<void>();
+
+    class ShutdownEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    @Saga(ShutdownEvent)
+    class StuckShutdownSaga implements ISaga<ShutdownEvent> {
+      async handle(_event: ShutdownEvent): Promise<void> {
+        sagaStarted.resolve();
+        await releaseSaga.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot({ shutdown: { drainTimeoutMs: 20 } })],
+      providers: [StuckShutdownSaga],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      rootModule: AppModule,
+    });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const publishPromise = eventBus.publish(new ShutdownEvent('shutdown-stuck-saga'));
+
+    await sagaStarted.promise;
+
+    let closeCompleted = false;
+    const closePromise = app.close().then(() => {
+      closeCompleted = true;
+    });
+
+    await Promise.resolve();
+    expect(closeCompleted).toBe(false);
+
+    await closePromise;
+
+    expect(closeCompleted).toBe(true);
+    expect(loggerEvents.some((event) => event.includes('CQRS saga shutdown drain exceeded'))).toBe(true);
+
+    releaseSaga.resolve();
+    await publishPromise;
+  });
+
   it('waits for in-flight CQRS event handlers during application shutdown', async () => {
     const releaseHandler = createDeferred<void>();
     let closeCompleted = false;
@@ -987,6 +1036,56 @@ describe('@fluojs/cqrs', () => {
     await closePromise;
 
     expect(store.completed).toBe(true);
+  });
+
+  it('bounds shutdown drain when a CQRS event handler is stuck', async () => {
+    vi.useFakeTimers();
+    const loggerEvents: string[] = [];
+    const releaseHandler = createDeferred<void>();
+
+    class HandlerShutdownEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    @EventHandler(HandlerShutdownEvent)
+    class StuckShutdownEventHandler implements IEventHandler<HandlerShutdownEvent> {
+      async handle(_event: HandlerShutdownEvent): Promise<void> {
+        await releaseHandler.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot({ shutdown: { drainTimeoutMs: 20 } })],
+      providers: [StuckShutdownEventHandler],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      rootModule: AppModule,
+    });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const publishPromise = eventBus.publish(new HandlerShutdownEvent('shutdown-stuck-handler'));
+
+    await Promise.resolve();
+
+    let closeCompleted = false;
+    const closePromise = app.close().then(() => {
+      closeCompleted = true;
+    });
+
+    await Promise.resolve();
+    expect(closeCompleted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(20);
+    await closePromise;
+
+    expect(closeCompleted).toBe(true);
+    expect(loggerEvents.some((event) => event.includes('CQRS event shutdown drain exceeded 20ms'))).toBe(true);
+
+    releaseHandler.resolve();
+    await publishPromise;
+    vi.useRealTimers();
   });
 
   it('waits for in-flight publishAll sequences during application shutdown', async () => {

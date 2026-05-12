@@ -1,19 +1,8 @@
 import { createServer } from 'node:net';
 import { request as httpsRequest } from 'node:https';
 
-import {
-  Controller,
-  Get,
-  Post,
-  SseResponse,
-  type RequestContext,
-} from '@fluojs/http';
-import {
-  defineModule,
-  type ApplicationLogger,
-  type ModuleType,
-  type UploadedFile,
-} from '@fluojs/runtime';
+import { Controller, Get, Post, SseResponse, type RequestContext } from '@fluojs/http';
+import { defineModule, type ApplicationLogger, type ModuleType, type UploadedFile } from '@fluojs/runtime';
 
 declare module '@fluojs/http' {
   interface FrameworkRequest {
@@ -120,10 +109,36 @@ async function requestHttps(url: string): Promise<{ body: string; statusCode: nu
   });
 }
 
-async function closeSilently(app: AppLike): Promise<void> {
+async function runWithCleanup(app: AppLike, adapterName: string, assertion: () => Promise<void>): Promise<void> {
+  let hasAssertionError = false;
+  let assertionError: unknown;
+
+  try {
+    await assertion();
+  } catch (error) {
+    hasAssertionError = true;
+    assertionError = error;
+  }
+
   try {
     await app.close();
-  } catch {}
+  } catch (cleanupError) {
+    if (hasAssertionError) {
+      throw new AggregateError(
+        [assertionError, cleanupError],
+        `${adapterName} adapter portability assertion failed and app.close() also failed during harness cleanup.`,
+      );
+    }
+
+    throw new AggregateError(
+      [cleanupError],
+      `${adapterName} adapter app.close() failed during portability harness cleanup.`,
+    );
+  }
+
+  if (hasAssertionError) {
+    throw assertionError;
+  }
 }
 
 /**
@@ -165,11 +180,14 @@ export class HttpAdapterPortabilityHarness<
     });
 
     const port = await findAvailablePort();
-    const app = await this.options.bootstrap(AppModule, { cors: false, port } as TBootstrapOptions);
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      port,
+    } as TBootstrapOptions);
 
     await app.listen();
 
-    try {
+    await runWithCleanup(app, this.options.name, async () => {
       const response = await fetch(`http://127.0.0.1:${String(port)}/cookies`, {
         headers: {
           cookie: 'good=hello%20world; bad=%E0%A4%A',
@@ -177,7 +195,9 @@ export class HttpAdapterPortabilityHarness<
       });
 
       if (response.status !== 200) {
-        throw new Error(`${this.options.name} adapter changed malformed-cookie handling: expected 200 but received ${String(response.status)}.`);
+        throw new Error(
+          `${this.options.name} adapter changed malformed-cookie handling: expected 200 but received ${String(response.status)}.`,
+        );
       }
 
       const body = await response.json();
@@ -192,9 +212,7 @@ export class HttpAdapterPortabilityHarness<
       ) {
         throw new Error(`${this.options.name} adapter changed malformed-cookie normalization.`);
       }
-    } finally {
-      await closeSilently(app);
-    }
+    });
   }
 
   async assertPreservesRawBodyForJsonAndText(): Promise<void> {
@@ -223,11 +241,15 @@ export class HttpAdapterPortabilityHarness<
     });
 
     const port = await findAvailablePort();
-    const app = await this.options.bootstrap(AppModule, { cors: false, port, rawBody: true } as TBootstrapOptions);
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      port,
+      rawBody: true,
+    } as TBootstrapOptions);
 
     await app.listen();
 
-    try {
+    await runWithCleanup(app, this.options.name, async () => {
       const [jsonResponse, textResponse] = await Promise.all([
         fetch(`http://127.0.0.1:${String(port)}/webhooks/json`, {
           body: JSON.stringify({ provider: 'stripe' }),
@@ -247,16 +269,20 @@ export class HttpAdapterPortabilityHarness<
 
       const [jsonBody, textBody] = await Promise.all([jsonResponse.json(), textResponse.json()]);
 
-      if (JSON.stringify(jsonBody) !== JSON.stringify({ parsed: { provider: 'stripe' }, raw: '{"provider":"stripe"}' })) {
+      if (
+        JSON.stringify(jsonBody) !==
+        JSON.stringify({
+          parsed: { provider: 'stripe' },
+          raw: '{"provider":"stripe"}',
+        })
+      ) {
         throw new Error(`${this.options.name} adapter changed JSON rawBody semantics.`);
       }
 
       if (JSON.stringify(textBody) !== JSON.stringify({ parsed: 'ping=1', raw: 'ping=1' })) {
         throw new Error(`${this.options.name} adapter changed text rawBody semantics.`);
       }
-    } finally {
-      await closeSilently(app);
-    }
+    });
   }
 
   async assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void> {
@@ -276,13 +302,17 @@ export class HttpAdapterPortabilityHarness<
     });
 
     const port = await findAvailablePort();
-    const app = await this.options.bootstrap(AppModule, { cors: false, port, rawBody: true } as TBootstrapOptions);
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      port,
+      rawBody: true,
+    } as TBootstrapOptions);
 
     await this.options.prepareExactRawBodyByteTest?.(app);
 
     await app.listen();
 
-    try {
+    await runWithCleanup(app, this.options.name, async () => {
       const payload = Uint8Array.from([0xe9, 0x41]);
       const contentType = this.options.exactRawBodyByteContentType ?? 'text/plain; charset=latin1';
       const response = await fetch(`http://127.0.0.1:${String(port)}/webhooks/bytes`, {
@@ -299,9 +329,7 @@ export class HttpAdapterPortabilityHarness<
       if (JSON.stringify(body) !== JSON.stringify({ rawBytes: Array.from(payload) })) {
         throw new Error(`${this.options.name} adapter changed exact-byte rawBody semantics.`);
       }
-    } finally {
-      await closeSilently(app);
-    }
+    });
   }
 
   async assertExcludesRawBodyForMultipart(): Promise<void> {
@@ -323,11 +351,15 @@ export class HttpAdapterPortabilityHarness<
     });
 
     const port = await findAvailablePort();
-    const app = await this.options.bootstrap(AppModule, { cors: false, port, rawBody: true } as TBootstrapOptions);
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      port,
+      rawBody: true,
+    } as TBootstrapOptions);
 
     await app.listen();
 
-    try {
+    await runWithCleanup(app, this.options.name, async () => {
       const form = new FormData();
       form.set('name', 'Ada');
       form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
@@ -342,12 +374,17 @@ export class HttpAdapterPortabilityHarness<
       }
 
       const body = await response.json();
-      if (JSON.stringify(body) !== JSON.stringify({ body: { name: 'Ada' }, fileCount: 1, hasRawBody: false })) {
+      if (
+        JSON.stringify(body) !==
+        JSON.stringify({
+          body: { name: 'Ada' },
+          fileCount: 1,
+          hasRawBody: false,
+        })
+      ) {
         throw new Error(`${this.options.name} adapter changed multipart rawBody semantics.`);
       }
-    } finally {
-      await closeSilently(app);
-    }
+    });
   }
 
   async assertDefaultsMultipartTotalLimitToMaxBodySize(): Promise<void> {
@@ -379,7 +416,7 @@ export class HttpAdapterPortabilityHarness<
 
     await app.listen();
 
-    try {
+    await runWithCleanup(app, this.options.name, async () => {
       const form = new FormData();
       form.set('name', 'Ada');
       form.set('payload', new Blob(['12345678'], { type: 'text/plain' }), 'payload.txt');
@@ -401,9 +438,7 @@ export class HttpAdapterPortabilityHarness<
       ) {
         throw new Error(`${this.options.name} adapter changed multipart limit error semantics.`);
       }
-    } finally {
-      await closeSilently(app);
-    }
+    });
   }
 
   async assertSupportsSseStreaming(): Promise<void> {
@@ -429,11 +464,14 @@ export class HttpAdapterPortabilityHarness<
     });
 
     const port = await findAvailablePort();
-    const app = await this.options.bootstrap(AppModule, { cors: false, port } as TBootstrapOptions);
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      port,
+    } as TBootstrapOptions);
 
     await app.listen();
 
-    try {
+    await runWithCleanup(app, this.options.name, async () => {
       const response = await fetch(`http://127.0.0.1:${String(port)}/events`, {
         headers: { accept: 'text/event-stream' },
       });
@@ -451,9 +489,7 @@ export class HttpAdapterPortabilityHarness<
       if (!body.includes('event: ready') || !body.includes('data: {"ready":true}')) {
         throw new Error(`${this.options.name} adapter changed SSE body framing.`);
       }
-    } finally {
-      await closeSilently(app);
-    }
+    });
   }
 
   /**
@@ -493,11 +529,14 @@ export class HttpAdapterPortabilityHarness<
     });
 
     const port = await findAvailablePort();
-    const app = await this.options.bootstrap(AppModule, { cors: false, port } as TBootstrapOptions);
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      port,
+    } as TBootstrapOptions);
 
     await app.listen();
 
-    try {
+    await runWithCleanup(app, this.options.name, async () => {
       const response = await fetch(`http://127.0.0.1:${String(port)}/events`, {
         headers: { accept: 'text/event-stream' },
       });
@@ -507,10 +546,12 @@ export class HttpAdapterPortabilityHarness<
       }
 
       await response.text();
-      await withTimeout(drainWaitSettled, 2_000, `${this.options.name} adapter left response.stream.waitForDrain() pending after close.`);
-    } finally {
-      await closeSilently(app);
-    }
+      await withTimeout(
+        drainWaitSettled,
+        2_000,
+        `${this.options.name} adapter left response.stream.waitForDrain() pending after close.`,
+      );
+    });
   }
 
   async assertReportsConfiguredHostInStartupLogs(): Promise<void> {
@@ -547,7 +588,7 @@ export class HttpAdapterPortabilityHarness<
       port,
     } as TRunOptions);
 
-    try {
+    await runWithCleanup(app, this.options.name, async () => {
       const response = await fetch(`http://127.0.0.1:${String(port)}/health`);
 
       if (response.status !== 200) {
@@ -563,9 +604,7 @@ export class HttpAdapterPortabilityHarness<
       if (!loggerEvents.includes(expectedLog)) {
         throw new Error(`${this.options.name} adapter changed startup host logging.`);
       }
-    } finally {
-      await closeSilently(app);
-    }
+    });
   }
 
   async assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void> {
@@ -603,7 +642,7 @@ export class HttpAdapterPortabilityHarness<
       port,
     } as TRunOptions);
 
-    try {
+    await runWithCleanup(app, this.options.name, async () => {
       const response = await requestHttps(`https://127.0.0.1:${String(port)}/health`);
 
       if (response.statusCode !== 200) {
@@ -618,9 +657,7 @@ export class HttpAdapterPortabilityHarness<
       if (!loggerEvents.includes(expectedLog)) {
         throw new Error(`${this.options.name} adapter changed HTTPS startup logging.`);
       }
-    } finally {
-      await closeSilently(app);
-    }
+    });
   }
 
   async assertRemovesShutdownSignalListenersAfterClose(): Promise<void> {
@@ -655,13 +692,11 @@ export class HttpAdapterPortabilityHarness<
     } as TRunOptions);
     const registeredListeners = process.listeners(signal).filter((listener) => !listenersBefore.has(listener));
 
-    try {
+    await runWithCleanup(app, this.options.name, async () => {
       if (registeredListeners.length === 0) {
         throw new Error(`${this.options.name} adapter did not register the expected shutdown listener.`);
       }
-    } finally {
-      await closeSilently(app);
-    }
+    });
 
     const remainingListeners = process.listeners(signal);
     const leakedListeners = registeredListeners.filter((listener) => remainingListeners.includes(listener));

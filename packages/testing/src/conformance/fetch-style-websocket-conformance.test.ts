@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-// @ts-ignore Vitest workspace alias resolution handles package test imports.
 import { createBunAdapter } from '@fluojs/platform-bun';
-// @ts-ignore Vitest workspace alias resolution handles package test imports.
 import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
-// @ts-ignore Vitest workspace alias resolution handles package test imports.
 import { createDenoAdapter } from '@fluojs/platform-deno';
 
 import { createFetchStyleWebSocketConformanceHarness } from './fetch-style-websocket-conformance.js';

@@ -134,6 +134,8 @@ const mailer = createDeepMock(MailService);
 
 프레임워크 지향 플랫폼 패키지를 작성할 때는 `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, `@fluojs/testing/web-runtime-adapter-portability` 같은 서브패스를 사용해 적합성 및 이식성 검증을 수행합니다.
 
+이식성 하니스의 cleanup도 계약에 포함됩니다. `app.close()`가 실패하면 하니스는 cleanup 실패를 보고하며, assertion이 이미 실패한 경우에는 assertion 실패와 cleanup 실패를 모두 보존하는 aggregate error를 발생시킵니다.
+
 `HttpAdapterPortabilityHarness` 메서드는 공개 어댑터 계약 체크입니다. 직접 같은 검증을 다시 만들기보다 `assertPreservesMalformedCookieValues()`, `assertSupportsSseStreaming()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, `assertDefaultsMultipartTotalLimitToMaxBodySize()`, `assertSettlesStreamDrainWaitOnClose()`, `assertReportsConfiguredHostInStartupLogs()`, `assertReportsHttpsStartupUrl(...)`, `assertRemovesShutdownSignalListenersAfterClose()`처럼 초점이 분명한 assertion을 사용하세요.
 
 ## canonical TDD ladder

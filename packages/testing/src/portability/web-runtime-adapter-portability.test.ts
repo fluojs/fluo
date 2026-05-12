@@ -1,16 +1,84 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// biome-ignore lint/suspicious/noTsIgnore: Vitest resolves workspace package aliases after package builds.
-// @ts-ignore Vitest workspace alias resolution handles package test imports.
 import { bootstrapBunApplication, type BunServeOptions, type BunServerLike } from '@fluojs/platform-bun';
-// biome-ignore lint/suspicious/noTsIgnore: Vitest resolves workspace package aliases after package builds.
-// @ts-ignore Vitest workspace alias resolution handles package test imports.
-import { bootstrapCloudflareWorkerApplication, type CloudflareWorkerExecutionContext } from '@fluojs/platform-cloudflare-workers';
-// biome-ignore lint/suspicious/noTsIgnore: Vitest resolves workspace package aliases after package builds.
-// @ts-ignore Vitest workspace alias resolution handles package test imports.
-import { bootstrapDenoApplication, type DenoServeController, type DenoServeHandler, type DenoServeOptions } from '@fluojs/platform-deno';
+import {
+  bootstrapCloudflareWorkerApplication,
+  type CloudflareWorkerExecutionContext,
+} from '@fluojs/platform-cloudflare-workers';
+import {
+  bootstrapDenoApplication,
+  type DenoServeController,
+  type DenoServeHandler,
+  type DenoServeOptions,
+} from '@fluojs/platform-deno';
 
 import { createWebRuntimeHttpAdapterPortabilityHarness } from './web-runtime-adapter-portability.js';
+
+describe('web runtime portability cleanup reporting', () => {
+  it('reports close failures when the assertion path succeeds', async () => {
+    const closeError = new Error('close exploded');
+    const harness = createWebRuntimeHttpAdapterPortabilityHarness({
+      async bootstrap() {
+        return {
+          async close() {
+            throw closeError;
+          },
+          async dispatch() {
+            return Response.json({
+              bad: '�%A',
+              encoded: 'hello world',
+              tag: ['one', 'two'],
+            });
+          },
+        };
+      },
+      name: 'cleanup-only',
+    });
+
+    try {
+      await harness.assertPreservesQueryArraysAndDecoding();
+      throw new Error('Expected cleanup failure to be reported.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      if (!(error instanceof AggregateError)) {
+        throw error;
+      }
+      expect(error.message).toContain('app.close() failed during portability harness cleanup');
+      expect(error.errors).toEqual([closeError]);
+    }
+  });
+
+  it('preserves assertion failures when close also fails', async () => {
+    const closeError = new Error('close exploded');
+    const harness = createWebRuntimeHttpAdapterPortabilityHarness({
+      async bootstrap() {
+        return {
+          async close() {
+            throw closeError;
+          },
+          async dispatch() {
+            return Response.json({}, { status: 500 });
+          },
+        };
+      },
+      name: 'assertion-and-cleanup',
+    });
+
+    try {
+      await harness.assertPreservesQueryArraysAndDecoding();
+      throw new Error('Expected aggregate failure to be reported.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      if (!(error instanceof AggregateError)) {
+        throw error;
+      }
+      expect(error.message).toContain('assertion failed and app.close() also failed');
+      expect(error.errors).toHaveLength(2);
+      expect(error.errors[0]).toBeInstanceOf(Error);
+      expect(error.errors[1]).toBe(closeError);
+    }
+  });
+});
 
 type MockBunServer = BunServerLike & {
   fetch(request: Request): Promise<Response>;
@@ -20,6 +88,16 @@ type MockBun = {
   lastServer?: MockBunServer;
   serve: ReturnType<typeof vi.fn<(options: BunServeOptions) => MockBunServer>>;
 };
+
+type BunBootstrapApp = {
+  close(): Promise<void>;
+  listen(): Promise<void>;
+};
+
+type BunBootstrap = (
+  rootModule: Parameters<typeof bootstrapBunApplication>[0],
+  options: Parameters<typeof bootstrapBunApplication>[1],
+) => Promise<BunBootstrapApp>;
 
 function createExecutionContext(): CloudflareWorkerExecutionContext {
   return {
@@ -77,10 +155,21 @@ function installMockBun(): MockBun {
     let server!: MockBunServer;
 
     server = {
-      fetch: async (request: Request): Promise<Response> => await options.fetch(request, server),
+      async fetch(request: Request): Promise<Response> {
+        const response = await options.fetch(request, server);
+
+        if (response === undefined) {
+          throw new Error('Mock Bun server fetch handler did not return a response.');
+        }
+
+        return response;
+      },
       hostname,
       port,
       stop() {},
+      upgrade() {
+        return false;
+      },
       url: new URL(`${protocol}://${hostname}:${String(port)}`),
     };
 
@@ -104,11 +193,11 @@ function restoreMockBun(originalBun: MockBun | undefined): void {
 async function createBunPortabilityApp(
   rootModule: Parameters<typeof bootstrapBunApplication>[0],
   options: Parameters<typeof bootstrapBunApplication>[1],
-  bootstrap: typeof bootstrapBunApplication = bootstrapBunApplication,
+  bootstrap: BunBootstrap = bootstrapBunApplication,
 ) {
   const originalBun = (globalThis as typeof globalThis & { Bun?: MockBun }).Bun;
   const mockBun = installMockBun();
-  let app: Awaited<ReturnType<typeof bootstrapBunApplication>> | undefined;
+  let app: BunBootstrapApp | undefined;
 
   try {
     app = await bootstrap(rootModule, options);
@@ -131,7 +220,13 @@ async function createBunPortabilityApp(
       }
     },
     async dispatch(request: Request) {
-      return await mockBun.lastServer!.fetch(request);
+      const response = await mockBun.lastServer?.fetch(request);
+
+      if (response === undefined) {
+        throw new Error('Mock Bun server did not dispatch a response.');
+      }
+
+      return response;
     },
   };
 }
@@ -213,7 +308,7 @@ describe('bun web runtime adapter cleanup', () => {
           async listen() {
             throw new Error('listen failed');
           },
-        } as Awaited<ReturnType<typeof bootstrapBunApplication>>)),
+        })),
       ).rejects.toThrow('listen failed');
 
       expect(close).toHaveBeenCalledTimes(1);

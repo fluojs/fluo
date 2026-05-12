@@ -172,12 +172,7 @@ function collectWorkspaceManifests(rootDirectory) {
 }
 
 function collectLocalDependencies(manifest, workspaceNames) {
-  const sections = [
-    manifest.dependencies,
-    manifest.devDependencies,
-    manifest.peerDependencies,
-    manifest.optionalDependencies,
-  ];
+  const sections = [manifest.dependencies, manifest.peerDependencies, manifest.optionalDependencies];
 
   const dependencies = new Set();
   for (const section of sections) {
@@ -190,7 +185,10 @@ function collectLocalDependencies(manifest, workspaceNames) {
         continue;
       }
 
-      if (typeof dependencyVersion === 'string' && (dependencyVersion.startsWith('workspace:') || dependencyVersion === 'catalog:')) {
+      if (
+        typeof dependencyVersion === 'string' &&
+        (dependencyVersion.startsWith('workspace:') || dependencyVersion === 'catalog:')
+      ) {
         dependencies.add(dependencyName);
       }
     }

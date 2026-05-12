@@ -39,6 +39,8 @@ interface InvocationBound {
   promise: Promise<never>;
 }
 
+const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
+
 function createIsolatedEvent<TEvent extends object>(eventType: EventType<TEvent>, source: unknown): TEvent {
   const clonedPayload = cloneWithFallback(source);
 
@@ -98,6 +100,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   private transportCloseFailures = 0;
   private transportPublishFailures = 0;
   private transportSubscribeFailures = 0;
+  private shutdownDrainTimeouts = 0;
   private readonly activePublishes = new Set<Promise<void>>();
   private readonly transport: EventBusTransport | undefined;
 
@@ -154,6 +157,8 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     return createEventBusPlatformStatusSnapshot({
       handlersDiscovered: this.descriptors.length,
       lifecycleState: this.lifecycleState,
+      shutdownDrainTimeoutMs: this.resolveShutdownDrainTimeoutMs(),
+      shutdownDrainTimeouts: this.shutdownDrainTimeouts,
       subscribedChannels: this.subscribedChannels.size,
       transportCloseFailures: this.transportCloseFailures,
       transportConfigured: this.transport !== undefined,
@@ -225,7 +230,38 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   }
 
   private async drainActivePublishes(): Promise<void> {
-    await Promise.allSettled(Array.from(this.activePublishes));
+    const activePublishes = Array.from(this.activePublishes);
+    const timeoutMs = this.resolveShutdownDrainTimeoutMs();
+    const drained = await this.awaitShutdownDrain(activePublishes, timeoutMs);
+
+    if (!drained) {
+      this.shutdownDrainTimeouts += 1;
+      this.logger.warn(
+        `Event bus shutdown drain exceeded ${String(timeoutMs)}ms with ${String(activePublishes.length)} active publish workflow(s); continuing shutdown.`,
+        'EventBusLifecycleService',
+      );
+    }
+  }
+
+  private async awaitShutdownDrain(activePublishes: Promise<void>[], timeoutMs: number): Promise<boolean> {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<false>((resolve) => {
+      timeoutId = setTimeout(() => resolve(false), timeoutMs);
+    });
+
+    const drain = Promise.allSettled(activePublishes).then(() => true);
+
+    try {
+      return await Promise.race([drain, timeout]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
+  private resolveShutdownDrainTimeoutMs(): number {
+    return this.normalizeTimeoutMs(this.moduleOptions.shutdown?.drainTimeoutMs) ?? DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS;
   }
 
   private matchEventDescriptors(event: object): EventHandlerDescriptor[] {

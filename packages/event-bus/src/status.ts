@@ -11,6 +11,8 @@ export type EventBusLifecycleState = 'created' | 'discovering' | 'ready' | 'stop
 export interface EventBusStatusAdapterInput {
   handlersDiscovered: number;
   lifecycleState: EventBusLifecycleState;
+  shutdownDrainTimeoutMs: number;
+  shutdownDrainTimeouts: number;
   subscribedChannels: number;
   transportCloseFailures: number;
   transportConfigured: boolean;
@@ -99,9 +101,14 @@ function createHealth(input: EventBusStatusAdapterInput): PlatformHealthReport {
     };
   }
 
-  if (input.transportPublishFailures > 0 || input.transportSubscribeFailures > 0 || input.transportCloseFailures > 0) {
+  if (
+    input.shutdownDrainTimeouts > 0 ||
+    input.transportPublishFailures > 0 ||
+    input.transportSubscribeFailures > 0 ||
+    input.transportCloseFailures > 0
+  ) {
     return {
-      reason: 'Event bus transport reported recoverable runtime failures.',
+      reason: 'Event bus reported recoverable runtime failures.',
       status: 'degraded',
     };
   }
@@ -128,6 +135,8 @@ export function createEventBusPlatformStatusSnapshot(input: EventBusStatusAdapte
       handlersDiscovered: input.handlersDiscovered,
       lifecycleState: input.lifecycleState,
       operationMode: resolveOperationMode(input),
+      shutdownDrainTimeoutMs: input.shutdownDrainTimeoutMs,
+      shutdownDrainTimeouts: input.shutdownDrainTimeouts,
       subscribedChannels: input.subscribedChannels,
       transportCloseFailures: input.transportCloseFailures,
       transportConfigured: input.transportConfigured,
