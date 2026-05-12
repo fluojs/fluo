@@ -120,7 +120,7 @@ NotificationsModule.forRoot({
 });
 ```
 
-`bulkThreshold`에 도달하거나 옵션을 통해 명시적으로 요청된 경우, service는 직접 전송 대신 queue adapter를 사용합니다. 각 queued job은 안정적인 idempotency key를 포함합니다. `notification.id`가 있으면 그 값을 보존하고, 없으면 notification envelope에서 key를 파생하므로 idempotent enqueue를 지원하는 queue backend가 반복 요청을 중복 제거할 수 있습니다.
+`bulkThreshold`에 도달하거나 옵션을 통해 명시적으로 요청된 경우, service는 직접 전송 대신 queue adapter를 사용합니다. 각 queued job은 안정적인 idempotency key를 포함합니다. `notification.id`가 있으면 그 값을 보존하고, 없으면 notification envelope에서 key를 파생하므로 idempotent enqueue를 지원하는 queue backend가 반복 요청을 중복 제거할 수 있습니다. Adapter가 `enqueueMany()`를 구현하지 않으면 fluo는 input order대로 job을 하나씩 enqueue합니다. 이때 `continueOnError: true`이면 성공한 queued result를 보존하고 실패한 enqueue 시도는 batch failures 목록으로 반환합니다.
 
 ## 15.6 Lifecycle Events
 
@@ -147,7 +147,7 @@ NotificationsModule.forRoot({
 - `notification.dispatch.delivered`: 채널이 성공적인 전송을 확인했을 때.
 - `notification.dispatch.failed`: 채널 해석, queue enqueue, provider delivery가 실패했을 때.
 
-채널 해석 실패는 영구적인 구성 오류입니다. 서비스는 `requested` 다음 `failed`를 발행하고, queue에 넣거나 provider를 호출하지 않은 채 `NotificationChannelNotFoundError`를 던집니다. Queue enqueue와 provider delivery 실패도 `failed`를 발행하지만, retry 정책은 underlying queue/provider error를 기준으로 판단해야 합니다. 채널이 `externalId`를 생략하면 서비스는 시간이나 난수가 아니라 notification envelope에서 deterministic fallback delivery id를 만듭니다.
+채널 해석 실패는 영구적인 구성 오류입니다. 서비스는 `requested` 다음 `failed`를 발행하고, queue에 넣거나 provider를 호출하지 않은 채 `NotificationChannelNotFoundError`를 던집니다. Queue enqueue와 provider delivery 실패도 `failed`를 발행하지만, retry 정책은 underlying queue/provider error를 기준으로 판단해야 합니다. Queued bulk dispatch는 queue 미구성, channel 해석, 순차 fallback enqueue 실패를 포함해 `requested`를 발행한 모든 notification에 terminal `queued` 또는 `failed` 이벤트를 발행합니다. 채널이 `externalId`를 생략하면 서비스는 시간이나 난수가 아니라 notification envelope에서 deterministic fallback delivery id를 만듭니다.
 
 성공 이벤트 publication failure는 이미 완료된 delivery를 애플리케이션 실패로 바꾸지 않도록 best-effort입니다. 반면 `notification.dispatch.failed` publication failure는 다르게 처리됩니다. 호출자는 원래 dispatch error와 publisher error를 모두 담은 `AggregateError`를 받으므로 실패 알림 reporting이 조용히 누락되지 않습니다.
 

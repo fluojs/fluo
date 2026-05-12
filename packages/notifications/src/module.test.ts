@@ -1,17 +1,16 @@
-import { describe, expect, it } from 'vitest';
-
-import { Inject, type Constructor, type Token } from '@fluojs/core';
+import { type Constructor, Inject, type Token } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
+import { describe, expect, it } from 'vitest';
 
-import { NotificationChannelNotFoundError } from './errors.js';
+import { NotificationChannelNotFoundError, NotificationQueueNotConfiguredError } from './errors.js';
 import { NotificationsModule } from './module.js';
 import { NotificationsService } from './service.js';
 import { NOTIFICATION_CHANNELS, NOTIFICATIONS } from './tokens.js';
 import type {
   NotificationChannel,
-  NotificationDispatchResult,
   NotificationDispatchRequest,
+  NotificationDispatchResult,
   NotificationLifecycleEvent,
   Notifications,
   NotificationsEventPublisher,
@@ -70,6 +69,24 @@ class EnqueueOnlyQueueAdapter implements NotificationsQueueAdapter {
   readonly jobs: NotificationsQueueJob[] = [];
 
   async enqueue(job: NotificationsQueueJob): Promise<string> {
+    this.jobs.push(job);
+    return `queued:${this.jobs.length}`;
+  }
+}
+
+class FailingEnqueueOnlyQueueAdapter implements NotificationsQueueAdapter {
+  readonly jobs: NotificationsQueueJob[] = [];
+  private calls = 0;
+
+  constructor(private readonly failOnCall: number) {}
+
+  async enqueue(job: NotificationsQueueJob): Promise<string> {
+    this.calls += 1;
+
+    if (this.calls === this.failOnCall) {
+      throw new Error(`queue enqueue failed:${this.failOnCall}`);
+    }
+
     this.jobs.push(job);
     return `queued:${this.jobs.length}`;
   }
@@ -597,6 +614,222 @@ describe('NotificationsModule', () => {
     ]);
   });
 
+  it('reports partial enqueue results from sequential queue fallback when continueOnError is enabled', async () => {
+    const queue = new FailingEnqueueOnlyQueueAdapter(2);
+    const publisher = new RecordingPublisher();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+      events: {
+        publisher,
+      },
+    });
+
+    const notifications = [
+      { channel: 'email', id: 'first-job', payload: { template: 'digest', userId: 'u1' } },
+      { channel: 'email', id: 'second-job', payload: { template: 'digest', userId: 'u2' } },
+      { channel: 'email', id: 'third-job', payload: { template: 'digest', userId: 'u3' } },
+    ];
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const result = await service.dispatchMany(notifications, { continueOnError: true });
+
+    expect(queue.jobs.map((job) => job.id)).toEqual(['first-job', 'third-job']);
+    expect(result).toMatchObject({
+      failed: 1,
+      queued: 2,
+      succeeded: 2,
+    });
+    expect(result.results.map((entry: NotificationDispatchResult) => entry.deliveryId)).toEqual(['queued:1', 'queued:2']);
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]?.notification).toBe(notifications[1]);
+    expect(result.failures[0]?.error).toMatchObject({ message: 'queue enqueue failed:2' });
+    expect(publisher.events).toMatchObject([
+      { channel: 'email', name: 'notification.dispatch.requested' },
+      { channel: 'email', name: 'notification.dispatch.requested' },
+      { channel: 'email', name: 'notification.dispatch.requested' },
+      { channel: 'email', deliveryId: 'queued:1', name: 'notification.dispatch.queued' },
+      {
+        channel: 'email',
+        error: { message: 'queue enqueue failed:2', name: 'Error' },
+        name: 'notification.dispatch.failed',
+      },
+      { channel: 'email', deliveryId: 'queued:2', name: 'notification.dispatch.queued' },
+    ]);
+  });
+
+  it('preserves sequential queue fallback partial results when failed lifecycle publication fails under continueOnError', async () => {
+    const queue = new FailingEnqueueOnlyQueueAdapter(2);
+    const publisher = new RecordingPublisher();
+    publisher.failOnNames.add('notification.dispatch.failed');
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+      events: {
+        publisher,
+      },
+    });
+
+    const notifications = [
+      { channel: 'email', id: 'first-job', payload: { template: 'digest', userId: 'u1' } },
+      { channel: 'email', id: 'second-job', payload: { template: 'digest', userId: 'u2' } },
+      { channel: 'email', id: 'third-job', payload: { template: 'digest', userId: 'u3' } },
+    ];
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const result = await service.dispatchMany(notifications, { continueOnError: true });
+
+    expect(queue.jobs.map((job) => job.id)).toEqual(['first-job', 'third-job']);
+    expect(result).toMatchObject({
+      failed: 1,
+      queued: 2,
+      succeeded: 2,
+    });
+    expect(result.results.map((entry: NotificationDispatchResult) => entry.deliveryId)).toEqual(['queued:1', 'queued:2']);
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]?.notification).toBe(notifications[1]);
+    expect(result.failures[0]?.error).toBeInstanceOf(AggregateError);
+
+    const failureError = result.failures[0]?.error;
+
+    if (!(failureError instanceof AggregateError)) {
+      throw new Error('Expected sequential fallback failure to include lifecycle publication failure details.');
+    }
+
+    expect(failureError.errors).toHaveLength(2);
+    expect(failureError.errors[0]).toMatchObject({ message: 'queue enqueue failed:2' });
+    expect(failureError.errors[1]).toMatchObject({ message: 'publisher failed:notification.dispatch.failed' });
+    expect(publisher.events).toMatchObject([
+      { channel: 'email', name: 'notification.dispatch.requested' },
+      { channel: 'email', name: 'notification.dispatch.requested' },
+      { channel: 'email', name: 'notification.dispatch.requested' },
+      { channel: 'email', deliveryId: 'queued:1', name: 'notification.dispatch.queued' },
+      { channel: 'email', deliveryId: 'queued:2', name: 'notification.dispatch.queued' },
+    ]);
+  });
+
+  it('publishes terminal events for all requested sequential fallback jobs after an enqueue failure', async () => {
+    const queue = new FailingEnqueueOnlyQueueAdapter(2);
+    const publisher = new RecordingPublisher();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+      events: {
+        publisher,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await expect(
+      service.dispatchMany([
+        { channel: 'email', id: 'first-job', payload: { template: 'digest', userId: 'u1' } },
+        { channel: 'email', id: 'second-job', payload: { template: 'digest', userId: 'u2' } },
+        { channel: 'email', id: 'third-job', payload: { template: 'digest', userId: 'u3' } },
+      ]),
+    ).rejects.toThrow('queue enqueue failed:2');
+
+    expect(queue.jobs.map((job) => job.id)).toEqual(['first-job']);
+    expect(publisher.events).toMatchObject([
+      { channel: 'email', name: 'notification.dispatch.requested' },
+      { channel: 'email', name: 'notification.dispatch.requested' },
+      { channel: 'email', name: 'notification.dispatch.requested' },
+      { channel: 'email', deliveryId: 'queued:1', name: 'notification.dispatch.queued' },
+      {
+        channel: 'email',
+        error: { message: 'queue enqueue failed:2', name: 'Error' },
+        name: 'notification.dispatch.failed',
+      },
+      {
+        channel: 'email',
+        error: { message: 'queue enqueue failed:2', name: 'Error' },
+        name: 'notification.dispatch.failed',
+      },
+    ]);
+  });
+
+  it('publishes failed lifecycle events for queued bulk dispatch when the queue is missing', async () => {
+    const publisher = new RecordingPublisher();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      events: {
+        publisher,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await expect(
+      service.dispatchMany(
+        [
+          { channel: 'email', payload: { template: 'digest', userId: 'u1' } },
+          { channel: 'email', payload: { template: 'digest', userId: 'u2' } },
+        ],
+        { queue: true },
+      ),
+    ).rejects.toBeInstanceOf(NotificationQueueNotConfiguredError);
+
+    expect(publisher.events).toMatchObject([
+      { channel: 'email', name: 'notification.dispatch.requested' },
+      { channel: 'email', name: 'notification.dispatch.requested' },
+      {
+        channel: 'email',
+        error: { message: 'Queue-backed notification delivery requires a configured queue adapter.', name: 'NotificationQueueNotConfiguredError' },
+        name: 'notification.dispatch.failed',
+      },
+      {
+        channel: 'email',
+        error: { message: 'Queue-backed notification delivery requires a configured queue adapter.', name: 'NotificationQueueNotConfiguredError' },
+        name: 'notification.dispatch.failed',
+      },
+    ]);
+  });
+
   it('publishes deterministic failed lifecycle events when bulk queue enqueue fails', async () => {
     const queue = new RecordingQueueAdapter();
     queue.failOnEnqueueMany = true;
@@ -745,6 +978,11 @@ describe('NotificationsModule', () => {
       {
         channel: 'discord',
         name: 'notification.dispatch.requested',
+      },
+      {
+        channel: 'email',
+        error: { message: 'No notification channel is registered for "discord".', name: 'NotificationChannelNotFoundError' },
+        name: 'notification.dispatch.failed',
       },
       {
         channel: 'discord',
