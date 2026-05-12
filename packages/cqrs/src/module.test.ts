@@ -252,6 +252,54 @@ describe('@fluojs/cqrs', () => {
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateCommandHandlerError);
   });
 
+  it('fails bootstrap when the same command handler target is registered under different DI tokens', async () => {
+    const commandHandlerToken = Symbol('command-handler-token');
+
+    @CommandHandler(CreateUserCommand)
+    class CreateUserHandler {
+      execute(_command: CreateUserCommand) {
+        return 'created';
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [CreateUserHandler, { provide: commandHandlerToken, useClass: CreateUserHandler }],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateCommandHandlerError);
+  });
+
+  it('fails bootstrap when the same command handler token is registered for different targets', async () => {
+    const commandHandlerToken = Symbol('shared-command-handler-token');
+
+    @CommandHandler(CreateUserCommand)
+    class FirstCreateUserHandler {
+      execute(_command: CreateUserCommand) {
+        return 'first';
+      }
+    }
+
+    @CommandHandler(CreateUserCommand)
+    class SecondCreateUserHandler {
+      execute(_command: CreateUserCommand) {
+        return 'second';
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [
+        { provide: commandHandlerToken, useClass: FirstCreateUserHandler, multi: true },
+        { provide: commandHandlerToken, useClass: SecondCreateUserHandler, multi: true },
+      ],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateCommandHandlerError);
+  });
+
   it('fails bootstrap when duplicate query handlers are registered for one query type', async () => {
     @QueryHandler(GetUserQuery)
     class FirstGetUserHandler {
@@ -271,6 +319,54 @@ describe('@fluojs/cqrs', () => {
     defineModule(AppModule, {
       imports: [CqrsModule.forRoot()],
       providers: [FirstGetUserHandler, SecondGetUserHandler],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateQueryHandlerError);
+  });
+
+  it('fails bootstrap when the same query handler target is registered under different DI tokens', async () => {
+    const queryHandlerToken = Symbol('query-handler-token');
+
+    @QueryHandler(GetUserQuery)
+    class GetUserHandler {
+      execute(query: GetUserQuery) {
+        return { id: query.id, name: 'user' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [GetUserHandler, { provide: queryHandlerToken, useClass: GetUserHandler }],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateQueryHandlerError);
+  });
+
+  it('fails bootstrap when the same query handler token is registered for different targets', async () => {
+    const queryHandlerToken = Symbol('shared-query-handler-token');
+
+    @QueryHandler(GetUserQuery)
+    class FirstGetUserHandler {
+      execute(query: GetUserQuery) {
+        return { id: query.id, name: 'first' };
+      }
+    }
+
+    @QueryHandler(GetUserQuery)
+    class SecondGetUserHandler {
+      execute(query: GetUserQuery) {
+        return { id: query.id, name: 'second' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [
+        { provide: queryHandlerToken, useClass: FirstGetUserHandler, multi: true },
+        { provide: queryHandlerToken, useClass: SecondGetUserHandler, multi: true },
+      ],
     });
 
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateQueryHandlerError);

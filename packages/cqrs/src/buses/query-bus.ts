@@ -1,6 +1,6 @@
 import { Inject, InvariantError } from '@fluojs/core';
-import {
-  type OnApplicationBootstrap,
+import type {
+  OnApplicationBootstrap,
 } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
@@ -116,7 +116,7 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
 
       const existing = descriptors.get(metadata.queryType);
 
-      if (existing && existing.token !== candidate.token) {
+      if (existing && (existing.token !== candidate.token || existing.targetType !== candidate.targetType)) {
         throw new DuplicateQueryHandlerError(
           createDuplicateHandlerMessage('query', metadata.queryType, existing, {
             moduleName: candidate.moduleName,
