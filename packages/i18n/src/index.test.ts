@@ -93,6 +93,43 @@ describe('@fluojs/i18n root public surface', () => {
     expect(service.translate('missing', { locale: 'ko' })).toBe('missing:ko>fr>en');
   });
 
+  it('uses global fallback arrays before default values and missing-message hooks', () => {
+    const service = createI18n({
+      catalogs: {
+        en: { greeting: 'Hello from fallback' },
+        ko: { other: '다른 문장' },
+      },
+      defaultLocale: 'ko',
+      fallbackLocales: ['en'],
+      missingMessage: ({ key }) => `missing:${key}`,
+      supportedLocales: ['en', 'ko'],
+    });
+
+    expect(service.resolveLocales('ko')).toEqual(['ko', 'en']);
+    expect(service.translate('greeting', { defaultValue: 'Default', locale: 'ko' })).toBe('Hello from fallback');
+    expect(service.translate('unknown', { defaultValue: 'Default', locale: 'ko' })).toBe('Default');
+    expect(service.translate('stillMissing', { locale: 'ko' })).toBe('missing:stillMissing');
+  });
+
+  it('locks interpolation edge cases for primitive, nullish, and absent values', () => {
+    const service = createI18n({
+      catalogs: {
+        en: {
+          message: 'zero={{ zero }} false={{ enabled }} null={{ empty }} undefined={{ missing }} absent={{ absent }}',
+        },
+      },
+      defaultLocale: 'en',
+      supportedLocales: ['en'],
+    });
+
+    expect(
+      service.translate('message', {
+        locale: 'en',
+        values: { empty: null, enabled: false, missing: undefined, zero: 0 },
+      }),
+    ).toBe('zero=0 false=false null= undefined= absent={{ absent }}');
+  });
+
   it('snapshots caller-owned catalog, fallback, and supported-locale inputs', () => {
     const catalogs = {
       en: { greeting: 'Hello' },
