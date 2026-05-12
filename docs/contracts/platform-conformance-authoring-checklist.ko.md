@@ -18,7 +18,7 @@
 - [ ] MUST: `start()`가 중복 호출에서도 결정론적인지 검증합니다.
 - [ ] MUST: `stop()`이 중복 호출에서도 멱등적인지 검증합니다.
 - [ ] MUST: `snapshot()`이 degraded 상태와 failed 상태에서도 호출 가능한지 검증합니다.
-- [ ] MUST: diagnostics가 비어 있지 않은 안정적인 `code` 값을 유지하는지 검증합니다.
+- [ ] MUST: diagnostics가 비어 있지 않은 안정적인 `code` 값과 사람이 읽을 수 있는 `message` 값을 유지하는지 검증합니다.
 - [ ] MUST: 하네스 설정에서 완화하지 않는 한 error severity diagnostics에 `fixHint`를 제공합니다.
 - [ ] MUST: `snapshot()` 출력이 sanitize 되었는지 검증합니다. 기본 금지 키 패턴은 `secret`, `password`, `token`, `credential`, `api-key`입니다. 명시적 allowlist가 있는 경우만 예외입니다.
 

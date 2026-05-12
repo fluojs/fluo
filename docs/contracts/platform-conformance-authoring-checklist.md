@@ -18,7 +18,7 @@ Use this checklist when authoring or changing official platform-facing packages 
 - [ ] MUST: Verify `start()` is deterministic across duplicate calls.
 - [ ] MUST: Verify `stop()` is idempotent across duplicate calls.
 - [ ] MUST: Verify `snapshot()` stays callable in degraded and failed states.
-- [ ] MUST: Verify diagnostics keep stable non-empty `code` values.
+- [ ] MUST: Verify diagnostics keep stable non-empty `code` and human-readable `message` values.
 - [ ] MUST: Provide `fixHint` for error-severity diagnostics unless the harness configuration explicitly relaxes that requirement.
 - [ ] MUST: Verify `snapshot()` output is sanitized. Forbidden key patterns include `secret`, `password`, `token`, `credential`, and `api-key` unless explicitly allowlisted.
 
