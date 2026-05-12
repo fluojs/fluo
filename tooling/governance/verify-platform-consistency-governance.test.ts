@@ -350,3 +350,18 @@ describe('i18n subpath discoverability', () => {
     expect(koreanContext).toContain('i18n ecosystem bridge compatibility');
   });
 });
+
+describe('Terminus chooser discoverability', () => {
+  it('documents Terminus subpaths and timeout guardrails from the AI context and package chooser in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
+    const koreanChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.ko.md'), 'utf8');
+
+    for (const markdown of [englishContext, koreanContext, englishChooser, koreanChooser]) {
+      expect(markdown).toContain('@fluojs/terminus/node');
+      expect(markdown).toContain('@fluojs/terminus/redis');
+      expect(markdown).toContain('execution.indicatorTimeoutMs');
+    }
+  });
+});

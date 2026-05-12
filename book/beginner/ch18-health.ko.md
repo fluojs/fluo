@@ -65,7 +65,7 @@ Terminus는 단순히 "OK"라는 문자열만 반환하지 않습니다. 업계 
 관측 가능성(Observability)은 단순한 모니터링 그 이상입니다. 이는 시스템이 제공하는 외부 신호를 통해 시스템의 내부 상태를 이해하는 것입니다. 헬스 체크는 이 범주에서 가장 근본적인 신호입니다. Fluo 애플리케이션에서 관측 가능성은 설계 단계부터 내장되어 있습니다. 헬스를 위한 Terminus, 구조화된 로그를 위한 `@fluojs/logger`, 성능 데이터를 위한 `@fluojs/metrics`를 결합함으로써, 가장 복잡한 프로덕션 환경에서도 디버깅, 스케일링, 유지보수가 용이한 "투명한 백엔드"를 구축할 수 있습니다.
 
 ### 18.2.5 The Evolution of Terminus in Fluo
-`@fluojs/terminus` 모듈은 대규모 트래픽 사용자들의 요구 사항과 함께 발전해 왔습니다. 단순한 종료 신호 래퍼(wrapper)로 시작했던 것이 이제는 종합적인 신뢰성 스위트로 거듭났습니다. 최신 버전의 Terminus는 모니터링 요청 폭주가 서버에 부하를 주는 것을 방지하는 **속도 제한 헬스 체크(Rate-Limited Health Checks)**와, 느린 헬스 체크(예: 원격 API 핑)가 메인 이벤트 루프를 차단하지 않도록 보장하는 **비동기 인디케이터 실행(Asynchronous Indicator Execution)**과 같은 기능들을 포함하고 있습니다.
+`@fluojs/terminus` 모듈은 대규모 트래픽 사용자들의 요구 사항과 함께 발전해 왔습니다. 단순한 종료 신호 래퍼(wrapper)로 시작했던 것이 이제는 종합적인 신뢰성 스위트로 거듭났습니다. 현재 Terminus 계약은 `execution.indicatorTimeoutMs`를 통한 **slow-indicator timeout guardrail**을 강조합니다. 따라서 원격 API ping처럼 느린 probe는 무기한 기다리지 않고 `down`으로 표시됩니다. 요청 rate limiting 같은 traffic-shaping 책임은 Terminus 자체가 아니라 gateway policy 또는 `@fluojs/throttler` 같은 패키지에 둡니다.
 
 Fluo 생태계의 최신 상태를 유지하면 신뢰성 엔지니어링 분야의 지속적인 개선 사항을 적용할 수 있습니다. Terminus 패키지는 실제 프로덕션 요구를 반영해 발전하며, 애플리케이션을 건강하고 응답성 있게 유지하기 위한 검증된 패턴을 제공합니다.
 

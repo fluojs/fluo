@@ -81,7 +81,8 @@ Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `R
 | --- | --- | --- |
 | Need OpenAPI output | `@fluojs/openapi` | Use for schema generation and API docs. |
 | Need Prometheus metrics | `@fluojs/metrics` | Use for HTTP and application metrics. |
-| Need health endpoints | `@fluojs/terminus` | Use for health aggregation and checks. |
+| Need health endpoints | `@fluojs/terminus` | Use for health aggregation, readiness checks, custom endpoint paths, and slow-indicator timeout guardrails through `execution.indicatorTimeoutMs`. |
+| Need Node.js memory or disk health indicators | `@fluojs/terminus/node` | Dedicated Node-specific memory/disk indicator helpers; root exports remain available for compatibility. |
 | Need Redis-backed health indicators | `@fluojs/terminus/redis` + `@fluojs/redis` | Dedicated Redis indicator integration for Terminus. |
 
 Redis-backed package integrations use the default Redis registration unless a feature exposes `clientName`; add `clientName` only when a named Redis registration should take over that package's dependency edge.
