@@ -476,6 +476,9 @@ export class BunWebSocketGatewayLifecycleService
 
     if (!state.handlersReady) {
       state.bufferedDisconnect = disconnectEvent;
+      if (state.connectLifecycleSettled) {
+        this.settleDisconnectLifecycle(state);
+      }
       return;
     }
 
@@ -1054,6 +1057,8 @@ export class BunWebSocketGatewayLifecycleService
   }
 
   private unregisterSocket(socketId: string): void {
+    const state = this.socketStates.get(socketId);
+
     this.socketRegistry.delete(socketId);
 
     const rooms = this.socketRooms.get(socketId);
@@ -1069,7 +1074,12 @@ export class BunWebSocketGatewayLifecycleService
       this.socketRooms.delete(socketId);
     }
 
-    this.pruneSettledSocketState(socketId);
+    if (state?.connectLifecycleSettled && !state.handlersReady) {
+      this.settleDisconnectLifecycle(state);
+      return;
+    }
+
+    this.pruneSettledSocketState(socketId, state);
   }
 
   private pruneSettledSocketState(socketId: string, state = this.socketStates.get(socketId)): void {

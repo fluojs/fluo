@@ -23,6 +23,13 @@ type MockSocket = BunServerWebSocket<unknown> & {
   sentMessages: string[];
 };
 
+type ReflectedBunConnectionState = {
+  connectLifecycleSettled: boolean;
+  handlersReady: boolean;
+  request: Request;
+  socketId: string;
+};
+
 const WEBSOCKET_CLOSED_READY_STATE = 3;
 const WEBSOCKET_OPEN_READY_STATE = 1;
 
@@ -101,10 +108,11 @@ class TestBunServer implements BunServerLike {
     socket = createMockSocket(options?.data, (code, reason) => {
       const deliver = () => Promise.resolve(this.binding?.websocket.close?.(socket, code ?? 1000, reason ?? ''));
       if (this.closeDeliveryPromise) {
-        return this.closeDeliveryPromise.then(deliver);
+        void this.closeDeliveryPromise.then(deliver);
+        return;
       }
 
-      return deliver();
+      void deliver();
     });
     this.lastSocket = socket;
 
@@ -315,6 +323,23 @@ describe('@fluojs/websockets/bun', () => {
     expect(state.disconnectCount).toBe(1);
 
     await app.close();
+  });
+
+  it('prunes Bun connection state when open lifecycle fails before close delivery', async () => {
+    const lifecycle = Object.create(BunWebSocketGatewayLifecycleService.prototype) as BunWebSocketGatewayLifecycleService;
+    const request = new Request('http://127.0.0.1:3000/open-failure-prune');
+    const state = Reflect.get(lifecycle, 'createConnectionHandlerState').call(lifecycle, request, []) as ReflectedBunConnectionState;
+    const socket = createMockSocket({ state });
+
+    Reflect.set(lifecycle, 'socketRegistry', new Map([[state.socketId, socket]]));
+    Reflect.set(lifecycle, 'socketStates', new Map([[state.socketId, state]]));
+    Reflect.set(lifecycle, 'socketRooms', new Map());
+    Reflect.set(lifecycle, 'roomSockets', new Map());
+    Reflect.get(lifecycle, 'settleConnectLifecycle').call(lifecycle, state);
+    Reflect.get(lifecycle, 'unregisterSocket').call(lifecycle, state.socketId);
+    Reflect.get(lifecycle, 'handleSocketClose').call(lifecycle, socket, 1006, 'late close');
+
+    expect(Reflect.get(lifecycle, 'socketStates')).toHaveProperty('size', 0);
   });
 
   it('rejects anonymous upgrade requests before the Bun websocket upgrade completes', async () => {

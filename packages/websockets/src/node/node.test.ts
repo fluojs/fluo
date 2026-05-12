@@ -1,3 +1,5 @@
+import { EventEmitter } from 'node:events';
+import type { IncomingMessage } from 'node:http';
 import { createServer } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
@@ -93,6 +95,12 @@ function createDeferred<T = void>(): {
 
   return { promise, resolve };
 }
+
+type ReflectedNodeConnectionState = {
+  connectLifecycleSettled: boolean;
+  handlersReady: boolean;
+  socketId: string;
+};
 
 describe('@fluojs/websockets/node', () => {
   it('exposes the explicit Node-only websocket seam', () => {
@@ -225,6 +233,56 @@ describe('@fluojs/websockets/node', () => {
     expect(closeFinished).toBe(true);
   });
 
+  it('terminates Node sockets that do not finish the shutdown close handshake', async () => {
+    @WebSocketGateway({ path: '/shutdown-terminate-fallback' })
+    class ShutdownGateway {
+      @OnConnect()
+      onConnect() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [NodeWebSocketModule.forRoot({ shutdown: { timeoutMs: 10 } })],
+      providers: [ShutdownGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+    const lifecycle = await app.container.resolve(NodeWebSocketGatewayLifecycleService);
+
+    await app.listen();
+
+    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/shutdown-terminate-fallback`);
+    await onceOpen(socket);
+
+    const serverSockets = Reflect.get(lifecycle, 'socketRegistry') as Map<string, WebSocket>;
+    const serverSocket = [...serverSockets.values()][0];
+
+    if (!serverSocket) {
+      throw new Error('Expected server-side websocket to be tracked.');
+    }
+
+    const terminate = serverSocket.terminate.bind(serverSocket);
+    let closeCallCount = 0;
+    let terminateCallCount = 0;
+    Reflect.set(serverSocket, 'close', () => {
+      closeCallCount += 1;
+    });
+    Reflect.set(serverSocket, 'terminate', () => {
+      terminateCallCount += 1;
+      terminate();
+    });
+
+    await app.close();
+
+    expect(closeCallCount).toBe(1);
+    expect(terminateCallCount).toBe(1);
+    expect(socket.readyState).toBe(WebSocket.CLOSED);
+  });
+
   it('prunes Node connection handler state after normal disconnect cleanup', async () => {
     const disconnected = createDeferred<void>();
 
@@ -257,9 +315,29 @@ describe('@fluojs/websockets/node', () => {
 
     socket.close();
     await Promise.all([onceClosed(socket), disconnected.promise]);
+    await delay(0);
 
     expect(Reflect.get(lifecycle, 'socketStates')).toHaveProperty('size', 0);
 
     await app.close();
+  });
+
+  it('prunes Node connection state when open lifecycle fails before close delivery', async () => {
+    const lifecycle = Object.create(NodeWebSocketGatewayLifecycleService.prototype) as NodeWebSocketGatewayLifecycleService;
+    const socket = new EventEmitter();
+    const state = Reflect.get(lifecycle, 'createConnectionHandlerState').call(lifecycle) as ReflectedNodeConnectionState;
+
+    Reflect.set(lifecycle, 'socketRegistry', new Map([[state.socketId, socket]]));
+    Reflect.set(lifecycle, 'socketStates', new Map([[state.socketId, state]]));
+    Reflect.set(lifecycle, 'socketRooms', new Map());
+    Reflect.set(lifecycle, 'roomSockets', new Map());
+    Reflect.set(lifecycle, 'pingPending', new Set());
+    Reflect.set(lifecycle, 'pingSentAt', new Map());
+    Reflect.get(lifecycle, 'attachConnectionListeners').call(lifecycle, state, socket, {} as IncomingMessage);
+    Reflect.get(lifecycle, 'settleConnectLifecycle').call(lifecycle, state);
+
+    socket.emit('close', 1006, Buffer.from('late close'));
+
+    expect(Reflect.get(lifecycle, 'socketStates')).toHaveProperty('size', 0);
   });
 });

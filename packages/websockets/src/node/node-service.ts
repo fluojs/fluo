@@ -832,6 +832,9 @@ export class NodeWebSocketGatewayLifecycleService
 
       if (!state.handlersReady) {
         state.bufferedDisconnect = disconnectEvent;
+        if (state.connectLifecycleSettled) {
+          this.settleDisconnectLifecycle(state);
+        }
         return;
       }
 
@@ -1243,18 +1246,32 @@ export class NodeWebSocketGatewayLifecycleService
       }
     }
 
-    await this.awaitHandlerQueueDrain(activeStates, timeoutMs);
+    const drained = await this.awaitHandlerQueueDrain(activeStates, timeoutMs);
+    if (!drained) {
+      this.terminateActiveSockets(activeSockets);
+    }
+  }
+
+  private terminateActiveSockets(activeSockets: readonly (readonly [string, WebSocket])[]): void {
+    for (const [socketId, socket] of activeSockets) {
+      if (socket.readyState === WebSocket.CLOSED) {
+        continue;
+      }
+
+      socket.terminate();
+      this.unregisterSocket(socketId);
+    }
   }
 
   private async awaitHandlerQueueDrain(
     states: readonly ConnectionHandlerState[],
     timeoutMs: number,
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (states.length === 0) {
-      return;
+      return true;
     }
 
-    await new Promise<void>((resolve, reject) => {
+    return await new Promise<boolean>((resolve, reject) => {
       let settled = false;
       const timeout = setTimeout(() => {
         if (settled) {
@@ -1276,7 +1293,7 @@ export class NodeWebSocketGatewayLifecycleService
 
           settled = true;
           clearTimeout(timeout);
-          resolve();
+          resolve(true);
         })
         .catch((error: unknown) => {
           if (settled) {
@@ -1293,6 +1310,7 @@ export class NodeWebSocketGatewayLifecycleService
         error,
         'WebSocketGatewayLifecycleService',
       );
+      return false;
     });
   }
 
@@ -1568,6 +1586,8 @@ export class NodeWebSocketGatewayLifecycleService
   }
 
   private unregisterSocket(socketId: string): void {
+    const state = this.socketStates.get(socketId);
+
     this.socketRegistry.delete(socketId);
     this.pingPending.delete(socketId);
     this.pingSentAt.delete(socketId);
@@ -1584,7 +1604,12 @@ export class NodeWebSocketGatewayLifecycleService
       this.socketRooms.delete(socketId);
     }
 
-    this.pruneSettledSocketState(socketId);
+    if (state?.connectLifecycleSettled && !state.handlersReady) {
+      this.settleDisconnectLifecycle(state);
+      return;
+    }
+
+    this.pruneSettledSocketState(socketId, state);
   }
 
   private pruneSettledSocketState(socketId: string, state = this.socketStates.get(socketId)): void {

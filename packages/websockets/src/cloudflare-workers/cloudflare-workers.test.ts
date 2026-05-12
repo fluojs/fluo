@@ -24,6 +24,12 @@ type MockSocketListenerMap = {
   message: Array<(event: MessageEvent<CloudflareWorkerWebSocketMessage>) => void>;
 };
 
+type ReflectedWorkerConnectionState = {
+  connectLifecycleSettled: boolean;
+  handlersReady: boolean;
+  socketId: string;
+};
+
 const WEBSOCKET_OPEN_READY_STATE = 1;
 const WEBSOCKET_CLOSED_READY_STATE = 3;
 
@@ -352,6 +358,24 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     expect(state.disconnectCount).toBe(1);
 
     await app.close();
+  });
+
+  it('prunes Worker connection state when open lifecycle fails before close delivery', async () => {
+    const lifecycle = Object.create(CloudflareWorkersWebSocketGatewayLifecycleService.prototype) as CloudflareWorkersWebSocketGatewayLifecycleService;
+    const request = new Request('https://worker.test/open-failure-prune');
+    const socket = new MockWorkerSocket();
+    const state = Reflect.get(lifecycle, 'createConnectionHandlerState').call(lifecycle, request, []) as ReflectedWorkerConnectionState;
+
+    Reflect.set(lifecycle, 'socketRegistry', new Map([[state.socketId, socket]]));
+    Reflect.set(lifecycle, 'socketStates', new Map([[state.socketId, state]]));
+    Reflect.set(lifecycle, 'socketRooms', new Map());
+    Reflect.set(lifecycle, 'roomSockets', new Map());
+    Reflect.get(lifecycle, 'attachConnectionListeners').call(lifecycle, state, socket, request);
+    Reflect.get(lifecycle, 'settleConnectLifecycle').call(lifecycle, state);
+
+    socket.close(1006, 'late close');
+
+    expect(Reflect.get(lifecycle, 'socketStates')).toHaveProperty('size', 0);
   });
 
   it('rejects anonymous upgrade requests before the Worker websocket upgrade completes', async () => {
