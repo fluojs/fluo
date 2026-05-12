@@ -33,6 +33,8 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 
 Redis 통합의 discoverability는 책임별로 나뉜다. `packages/redis/README.ko.md`는 `RedisModule.forRoot({ lifecycle })`의 connect/quit timeout guardrail과 Pub/Sub subscriber에 전용 Redis 연결이 필요하다는 raw-client 규칙을 문서화한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 정식 `@fluojs/redis` surface 요약을 담고, [`book/intermediate/ch03-redis-transport.ko.md`](../book/intermediate/ch03-redis-transport.ko.md)는 Redis Pub/Sub과 Redis Streams 학습 경로를 설명하며 공유 command client를 subscribed Pub/Sub connection으로 재사용하면 안 되는 이유를 포함한다.
 
+Queue lifecycle discoverability도 패키지 문서와 governed docs로 나뉜다. `packages/queue/README.ko.md`는 `QueueModule.forRoot(...)`, Redis duplicate ownership, bootstrap-ready worker processor handoff, `workerShutdownTimeoutMs`를 통한 bounded worker shutdown, dead-letter retention, lifecycle status snapshot을 문서화한다. [`docs/contracts/behavioral-contract-policy.md`](./contracts/behavioral-contract-policy.md)는 readiness 및 shutdown ordering을 구현, 문서, regression test가 함께 바뀌어야 하는 behavioral contract로 다루며, [`docs/contracts/testing-guide.md`](./contracts/testing-guide.md)는 queue lifecycle behavior 변경 시 실행할 가까운 package test와 governance command를 안내한다.
+
 ## File Structure
 
 | Path | Role |
