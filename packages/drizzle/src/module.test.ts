@@ -607,6 +607,60 @@ describe('@fluojs/drizzle', () => {
     ]);
   });
 
+  it('removes completed nested request transactions from active status before the outer transaction settles', async () => {
+    const transactionDatabase = {};
+    let releaseOuterTransaction!: () => void;
+    const outerTransactionBarrier = new Promise<void>((resolve) => {
+      releaseOuterTransaction = resolve;
+    });
+    const database = {
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        return callback(transactionDatabase);
+      },
+    };
+    const drizzle = new DrizzleDatabase<typeof database, typeof transactionDatabase>(database);
+
+    const outerTransaction = drizzle.transaction(async () => {
+      await expect(drizzle.requestTransaction(async () => 'nested-complete')).resolves.toBe('nested-complete');
+      await outerTransactionBarrier;
+      return 'outer-complete';
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(0);
+
+    releaseOuterTransaction();
+
+    await expect(outerTransaction).resolves.toBe('outer-complete');
+  });
+
+  it('links nested request fast paths to the ambient request abort signal', async () => {
+    const transactionDatabase = {};
+    let transactionCalls = 0;
+    const database = {
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        transactionCalls += 1;
+        return callback(transactionDatabase);
+      },
+    };
+    const drizzle = new DrizzleDatabase<typeof database, typeof transactionDatabase>(database);
+    const controller = new AbortController();
+
+    const requestTransaction = drizzle.requestTransaction(
+      async () =>
+        drizzle.requestTransaction(async () => {
+          controller.abort(new Error('ambient request aborted'));
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          return 'unreachable';
+        }),
+      controller.signal,
+    );
+
+    await expect(requestTransaction).rejects.toThrow('ambient request aborted');
+    expect(transactionCalls).toBe(1);
+  });
+
   it('forwards transaction options for explicit and request-scoped transactions', async () => {
     const optionsCalls: Array<{ isolationLevel: string } | undefined> = [];
     const transactionDatabase = { kind: 'transaction' };
