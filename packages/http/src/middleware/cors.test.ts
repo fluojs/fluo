@@ -143,4 +143,46 @@ describe('createCorsMiddleware', () => {
     expect(response.headers['Access-Control-Allow-Credentials']).toBe('true');
     expect(response.headers['Access-Control-Allow-Origin']).toBe('https://trusted.example.com');
   });
+
+  it('preserves existing Vary values and does not duplicate Origin', async () => {
+    const middleware = createCorsMiddleware({
+      allowOrigin: ['https://app.example.com'],
+    });
+    const response = createResponse();
+    response.setHeader('Vary', 'Accept-Encoding, Origin');
+
+    await middleware.handle(
+      {
+        request: createRequest('GET', 'https://app.example.com'),
+        requestContext: {} as never,
+        response,
+      },
+      async () => {},
+    );
+
+    expect(response.headers.Vary).toBe('Accept-Encoding, Origin');
+  });
+
+  it('does not emit allow-origin for unlisted origins while continuing the request', async () => {
+    const middleware = createCorsMiddleware({
+      allowOrigin: ['https://trusted.example.com'],
+    });
+    const response = createResponse();
+    let reachedNext = false;
+
+    await middleware.handle(
+      {
+        request: createRequest('GET', 'https://evil.example.com'),
+        requestContext: {} as never,
+        response,
+      },
+      async () => {
+        reachedNext = true;
+      },
+    );
+
+    expect(reachedNext).toBe(true);
+    expect(response.headers['Access-Control-Allow-Origin']).toBeUndefined();
+    expect(response.headers.Vary).toBeUndefined();
+  });
 });
