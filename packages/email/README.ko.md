@@ -140,6 +140,7 @@ Behavioral contract 메모:
 - `createNodemailerEmailTransportFactory(...)`는 Node 전용이며 `@fluojs/email/node`에서만 export됩니다.
 - 이 factory는 자신이 생성한 Nodemailer transporter 리소스를 소유하므로 `EmailService`가 bootstrap 시 검증하고 shutdown 시 닫을 수 있습니다.
 - `createNodemailerEmailTransport(...)`는 이미 존재하는 Nodemailer transporter를 감싸지만 리소스 소유권은 호출자에게 남깁니다.
+- Nodemailer display-name 주소는 구조화된 address object로 전달되며, newline 문자가 포함되면 provider handoff 전에 거부됩니다.
 - SMTP 자격 증명은 여전히 명시적인 옵션 또는 DI를 통해 들어와야 합니다. 루트 패키지와 Node 서브패스 모두 `process.env`를 직접 읽지 않습니다.
 
 ### `EmailService`를 이용한 standalone 전달
@@ -168,7 +169,8 @@ Behavioral contract 메모:
 - `EmailService.send(...)`는 `accepted`, `pending`, `rejected` 수신자를 분리해 보존하므로 provider의 부분 실패가 호출자에게 그대로 보입니다.
 - `EmailService.sendMany(...)`는 기본적으로 fail-fast입니다. 실패를 batch result에 수집하려면 `continueOnError: true`를 전달합니다.
 - `EmailService.createPlatformStatusSnapshot()`은 diagnostics를 위해 lifecycle, readiness, health, transport ownership details를 노출합니다.
-- 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
+- 서비스는 모듈 bootstrap 시 transport를 초기화하며, `verifyOnModuleInit: true`인 경우 bootstrap 검증이 성공적으로 끝날 때까지 delivery가 transport handoff로 진행되지 않습니다.
+- 거부된 `forRootAsync(...)` 옵션 factory 결과는 영구 memoize되지 않으며, 다음 provider resolution에서 configuration lookup을 다시 시도할 수 있습니다.
 - shutdown이 시작된 뒤에는 `EmailService.send(...)`와 `EmailService.sendNotification(...)`이 transport를 재사용하거나 lazy 생성하지 않고 `EmailLifecycleError`로 실패합니다. 진행 중인 factory 소유 transport 생성은 shutdown이 기다린 뒤 닫습니다.
 - transport `verify()`와 `close()`에서 발생한 provider error는 diagnostics를 위해 lifecycle failure의 `cause`로 보존됩니다.
 - 모듈 옵션은 provider wiring 전에 trim 및 normalize됩니다. 여기에는 sender 기본값, notification channel 이름, transport factory 소유권이 포함됩니다.
@@ -214,6 +216,7 @@ Behavioral contract 메모:
 
 - `EmailChannel`은 `pending` 또는 `rejected` 수신자가 하나라도 있으면 전달을 성공으로 보고하지 않고 notification dispatch를 실패로 처리합니다.
 - `EmailService.sendNotification(...)`은 렌더링된 template output을 payload 및 notification metadata와 병합합니다. payload 필드는 notification fallback보다 우선합니다.
+- Template rendering에는 notification `payload`, `metadata`, `locale`, `subject`, `template`이 전달되며, payload `text`, `html`과 notification `subject`가 렌더링된 fallback보다 우선합니다.
 
 ### 큐 기반 대량 전달
 

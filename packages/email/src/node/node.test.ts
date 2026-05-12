@@ -90,14 +90,14 @@ describe('@fluojs/email/node', () => {
           }),
         ],
         bcc: ['bcc@example.com'],
-        cc: ['Copy <cc@example.com>'],
-        from: 'Sender <from@example.com>',
+        cc: [{ address: 'cc@example.com', name: 'Copy' }],
+        from: { address: 'from@example.com', name: 'Sender' },
         headers: { 'x-fluo-template': 'welcome' },
         html: '<p>Hello</p>',
         replyTo: ['reply@example.com'],
         subject: 'Subject',
         text: 'Hello',
-        to: ['Recipient <to@example.com>'],
+        to: [{ address: 'to@example.com', name: 'Recipient' }],
       }),
     );
 
@@ -166,5 +166,67 @@ describe('@fluojs/email/node', () => {
     });
     expect(verify).toHaveBeenCalledTimes(1);
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes display-name addresses as structured Nodemailer address objects', async () => {
+    const sendMail = vi.fn().mockResolvedValue({
+      accepted: ['to@example.com'],
+      messageId: 'node-structured-1',
+      pending: [],
+      rejected: [],
+    });
+    const transport = createNodemailerEmailTransport({
+      transporter: {
+        sendMail,
+      } as never,
+    });
+
+    await transport.send(
+      {
+        bcc: [],
+        cc: [],
+        from: { address: 'from@example.com', name: 'Sender, Support' },
+        replyTo: [],
+        subject: 'Structured names',
+        text: 'hello',
+        to: [{ address: 'to@example.com', name: 'Recipient, Team' }],
+      },
+      {},
+    );
+
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        from: { address: 'from@example.com', name: 'Sender, Support' },
+        to: [{ address: 'to@example.com', name: 'Recipient, Team' }],
+      }),
+    );
+  });
+
+  it('rejects unsafe Nodemailer display names before provider handoff', async () => {
+    const sendMail = vi.fn();
+    const transport = createNodemailerEmailTransport({
+      transporter: {
+        sendMail,
+      } as never,
+    });
+
+    await expect(
+      transport.send(
+        {
+          bcc: [],
+          cc: [],
+          from: { address: 'from@example.com', name: 'Sender\r\nBcc: attacker@example.com' },
+          replyTo: [],
+          subject: 'Unsafe name',
+          text: 'hello',
+          to: [{ address: 'to@example.com' }],
+        },
+        {},
+      ),
+    ).rejects.toMatchObject({
+      message: 'Nodemailer display name must not contain newline characters.',
+      name: 'EmailMessageValidationError',
+    });
+    expect(sendMail).not.toHaveBeenCalled();
   });
 });
