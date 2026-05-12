@@ -46,6 +46,7 @@
 - **`@fluojs/jwt`**: HTTP 비종속 JWT 서명, 검증, principal 정규화.
 - **`@fluojs/passport`**: 전략 비종속 인증 가드, scope 처리, Passport.js 브리지.
 - **`@fluojs/microservices`**: TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC를 위한 패턴 매칭 전송 추상화.
+- **`@fluojs/event-bus`**: optional Redis Pub/Sub transport, inherited event channel fan-out, bounded publish cancellation/timeout, local publish와 inbound transport callback 모두에 대한 shutdown drain semantic을 갖춘 in-process domain event fan-out.
 - **`@fluojs/notifications`**: provider별 알림 패키지가 공유하는 채널 계약과 오케스트레이션 계층.
 - **`@fluojs/email`**: 전송 중립(transport-agnostic) 이메일 발송 코어. `@fluojs/email/queue`를 통해 알림 채널 및 큐 워커 통합을 제공합니다.
 - **`@fluojs/email/node`**: Nodemailer/SMTP 전송을 제공하는 `@fluojs/email`의 Node.js 전용 서브패스.
@@ -54,6 +55,7 @@
 - **`@fluojs/websockets`**: 런타임별 서브패스 `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`를 제공하는 WebSocket 게이트웨이 작성 패키지.
 - **`@fluojs/validation`**: 표준 데코레이터 기반 입력 검증, DTO 실체화(materialization), request-boundary 안전성.
 - **`@fluojs/prisma` / `@fluojs/drizzle`**: ORM 라이프사이클 및 ALS 기반 트랜잭션 컨텍스트.
+- **`@fluojs/redis`**: App-scoped Redis client 등록, raw-client injection, JSON-aware `RedisService` facade, named-client token, lifecycle-owned connect/quit timeout guardrail, 그리고 Pub/Sub subscriber는 일반 command client를 공유하지 않고 전용 Redis 연결을 사용해야 한다는 문서 가이드를 담당합니다.
 - **`@fluojs/mongoose`**: Mongoose 라이프사이클 통합과 ALS/session 인지형 transaction boundary, 요청 범위 transaction interceptor, 모델 작업을 위한 명시적 `currentSession()` 접근, 사용 가능한 경우 `connection.transaction(...)`을 통한 ambient-session 위임, 활성 요청/session drain 상태를 보고하는 shutdown snapshot을 담당합니다.
 
 ### tooling

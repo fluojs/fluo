@@ -708,6 +708,67 @@ describe('@fluojs/prisma', () => {
     );
   });
 
+  it('keeps nested request transaction cleanup tracked until the outer manual transaction settles', async () => {
+    const transactionClient = {
+      kind: 'transaction' as const,
+    };
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        return callback(transactionClient);
+      },
+    };
+
+    const prisma = new PrismaService<typeof client, typeof transactionClient>(client);
+
+    await expect(
+      prisma.transaction(async () => {
+        await expect(prisma.requestTransaction(async () => prisma.current())).resolves.toBe(transactionClient);
+        expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 1 });
+
+        return 'outer-complete';
+      }),
+    ).resolves.toBe('outer-complete');
+
+    expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 0 });
+  });
+
+  it('rejects new request transactions while shutdown is draining or stopped', async () => {
+    let releaseDisconnect!: () => void;
+    const disconnectReady = new Promise<void>((resolve) => {
+      releaseDisconnect = resolve;
+    });
+    const transactionClient = {
+      kind: 'transaction' as const,
+    };
+    const client = {
+      async $connect() {},
+      async $disconnect() {
+        await disconnectReady;
+      },
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        return callback(transactionClient);
+      },
+    };
+
+    const prisma = new PrismaService<typeof client, typeof transactionClient>(client);
+    await prisma.onModuleInit();
+
+    const shutdown = prisma.onApplicationShutdown();
+
+    await expect(prisma.requestTransaction(async () => 'during-shutdown')).rejects.toThrow(
+      'Prisma request transactions are not available during shutdown.',
+    );
+
+    releaseDisconnect();
+    await shutdown;
+
+    await expect(prisma.requestTransaction(async () => 'after-stop')).rejects.toThrow(
+      'Prisma request transactions are not available during shutdown.',
+    );
+  });
+
   it('falls back when transaction client is unsupported and strictTransactions is false', async () => {
     const client = {
       async $connect() {},
@@ -793,7 +854,7 @@ describe('@fluojs/prisma', () => {
       transactionAbortSignalSupport: 'supported',
     });
 
-    expect(snapshot.ownership).toEqual({ externallyManaged: true, ownsResources: false });
+    expect(snapshot.ownership).toEqual({ externallyManaged: false, ownsResources: true });
     expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
     expect(snapshot.health).toEqual({ status: 'healthy' });
     expect(snapshot.details).toMatchObject({

@@ -5,7 +5,7 @@ import Redis from 'ioredis';
 import { getRedisServiceToken, RedisService } from './redis-service.js';
 import { RedisLifecycleService } from './service.js';
 import { getRedisClientToken, REDIS_CLIENT } from './tokens.js';
-import type { RedisClientOptions, RedisModuleOptions } from './types.js';
+import type { RedisClientOptions, RedisLifecycleOptions, RedisModuleOptions } from './types.js';
 
 const redisLifecycleTokens = new Map<string, symbol>();
 
@@ -31,9 +31,10 @@ function getRedisLifecycleToken(name: string): symbol {
 function normalizeRedisModuleOptions(options: RedisModuleOptions): {
   clientOptions: RedisClientOptions;
   global: boolean;
+  lifecycleOptions: RedisLifecycleOptions;
   name?: string;
 } {
-  const { global, name, ...clientOptions } = options;
+  const { global, lifecycle, name, ...clientOptions } = options;
   const normalizedName = name?.trim();
 
   if (normalizedName !== undefined && normalizedName.length === 0) {
@@ -47,11 +48,12 @@ function normalizeRedisModuleOptions(options: RedisModuleOptions): {
   return {
     clientOptions,
     global: normalizedName === undefined ? global ?? true : false,
+    lifecycleOptions: lifecycle ?? {},
     name: normalizedName,
   };
 }
 
-function createRedisProviders(options: RedisClientOptions, name?: string): Provider[] {
+function createRedisProviders(options: RedisClientOptions, lifecycleOptions: RedisLifecycleOptions, name?: string): Provider[] {
   const clientToken = getRedisClientToken(name);
 
   if (clientToken === REDIS_CLIENT) {
@@ -65,7 +67,15 @@ function createRedisProviders(options: RedisClientOptions, name?: string): Provi
         }),
       },
       RedisService,
-      RedisLifecycleService,
+      {
+        inject: [REDIS_CLIENT],
+        provide: RedisLifecycleService,
+        scope: 'singleton',
+        useFactory: (...deps: unknown[]) => {
+          const [client] = deps as [Redis];
+          return new RedisLifecycleService(client, undefined, lifecycleOptions);
+        },
+      },
     ];
   }
 
@@ -99,7 +109,7 @@ function createRedisProviders(options: RedisClientOptions, name?: string): Provi
       scope: 'singleton',
       useFactory: (...deps: unknown[]) => {
         const [client] = deps as [Redis];
-        return new RedisLifecycleService(client, name);
+        return new RedisLifecycleService(client, name, lifecycleOptions);
       },
     },
   ];
@@ -139,7 +149,7 @@ export class RedisModule {
     return defineModule(RedisModuleDefinition, {
       global: normalized.global,
       exports: normalized.name === undefined ? [REDIS_CLIENT, RedisService] : [clientToken, serviceToken],
-      providers: createRedisProviders(normalized.clientOptions, normalized.name),
+      providers: createRedisProviders(normalized.clientOptions, normalized.lifecycleOptions, normalized.name),
     });
   }
 }

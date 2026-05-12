@@ -12,6 +12,7 @@ import type {
   EmailTransportReceipt,
   NormalizedEmailMessage,
 } from '../types.js';
+import { EmailMessageValidationError } from '../errors.js';
 
 /** Node-only Nodemailer transporter type used by the explicit `@fluojs/email/node` seam. */
 export type NodemailerTransporter = Mail<SMTPTransport.SentMessageInfo>;
@@ -45,11 +46,24 @@ export interface NodemailerEmailTransportFactoryOptions {
   smtp: SMTPTransport.Options | string;
 }
 
-function createAddress(address: { address: string; name?: string }): string {
-  return address.name ? `${address.name} <${address.address}>` : address.address;
+function assertSafeAddressPart(value: string, label: string): void {
+  if (/\r|\n/.test(value)) {
+    throw new EmailMessageValidationError(`Nodemailer ${label} must not contain newline characters.`);
+  }
 }
 
-function createAddressList(addresses: readonly { address: string; name?: string }[]): string[] | undefined {
+function createAddress(address: { address: string; name?: string }): string | Mail.Address {
+  assertSafeAddressPart(address.address, 'address');
+
+  if (address.name) {
+    assertSafeAddressPart(address.name, 'display name');
+    return { address: address.address, name: address.name };
+  }
+
+  return address.address;
+}
+
+function createAddressList(addresses: readonly { address: string; name?: string }[]): (string | Mail.Address)[] | undefined {
   if (addresses.length === 0) {
     return undefined;
   }

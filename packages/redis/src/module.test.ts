@@ -1,7 +1,7 @@
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface MockRedisInstance {
   options: Record<string, unknown>;
@@ -16,10 +16,15 @@ interface MockRedisInstance {
 
 const mockRedisState = vi.hoisted(() => ({
   connectError: undefined as Error | undefined,
+  connectHangs: false,
+  delError: undefined as Error | undefined,
   disconnectLeavesOpen: false,
   events: [] as string[],
+  getError: undefined as Error | undefined,
   instances: [] as MockRedisInstance[],
   quitError: undefined as Error | undefined,
+  quitHangs: false,
+  setError: undefined as Error | undefined,
   setCalls: [] as Array<{ args: unknown[]; key: string; value: string }>,
 }));
 
@@ -36,6 +41,11 @@ vi.mock('ioredis', () => ({
 
     async connect(): Promise<void> {
       mockRedisState.events.push('connect');
+
+      if (mockRedisState.connectHangs) {
+        await new Promise(() => {});
+        return;
+      }
 
       if (mockRedisState.connectError) {
         throw mockRedisState.connectError;
@@ -54,6 +64,11 @@ vi.mock('ioredis', () => ({
     async quit(): Promise<'OK'> {
       mockRedisState.events.push('quit');
 
+      if (mockRedisState.quitHangs) {
+        await new Promise(() => {});
+        return 'OK';
+      }
+
       if (mockRedisState.quitError) {
         throw mockRedisState.quitError;
       }
@@ -63,16 +78,28 @@ vi.mock('ioredis', () => ({
     }
 
     async get(key: string): Promise<string | null> {
+      if (mockRedisState.getError) {
+        throw mockRedisState.getError;
+      }
+
       return this.storage.get(key) ?? null;
     }
 
     async set(key: string, value: string, ...args: unknown[]): Promise<'OK'> {
+      if (mockRedisState.setError) {
+        throw mockRedisState.setError;
+      }
+
       mockRedisState.setCalls.push({ args, key, value });
       this.storage.set(key, value);
       return 'OK';
     }
 
     async del(key: string): Promise<number> {
+      if (mockRedisState.delError) {
+        throw mockRedisState.delError;
+      }
+
       const existed = this.storage.delete(key);
       return existed ? 1 : 0;
     }
@@ -92,11 +119,20 @@ import {
 describe('@fluojs/redis', () => {
   beforeEach(() => {
     mockRedisState.connectError = undefined;
+    mockRedisState.connectHangs = false;
+    mockRedisState.delError = undefined;
     mockRedisState.disconnectLeavesOpen = false;
     mockRedisState.events.length = 0;
+    mockRedisState.getError = undefined;
     mockRedisState.instances.length = 0;
     mockRedisState.quitError = undefined;
+    mockRedisState.quitHangs = false;
+    mockRedisState.setError = undefined;
     mockRedisState.setCalls.length = 0;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('fails bootstrap when connect throws and disconnects wait-state client', async () => {
@@ -164,6 +200,29 @@ describe('@fluojs/redis', () => {
     await app.close();
 
     expect(mockRedisState.events).toEqual(['connect', 'connect', 'quit', 'quit']);
+  });
+
+  it('fails bootstrap when lifecycle-owned connect exceeds the configured timeout', async () => {
+    vi.useFakeTimers();
+    mockRedisState.connectHangs = true;
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        RedisModule.forRoot({
+          host: '127.0.0.1',
+          lifecycle: { connectTimeoutMs: 25 },
+          port: 6379,
+        }),
+      ],
+    });
+
+    const bootstrapPromise = bootstrapApplication({ rootModule: AppModule });
+    const bootstrapAssertion = expect(bootstrapPromise).rejects.toThrow('Redis client default connect timed out after 25ms.');
+    await vi.advanceTimersByTimeAsync(25);
+
+    await bootstrapAssertion;
+    expect(mockRedisState.events).toEqual(['connect', 'disconnect']);
   });
 
   it('uses global visibility only for unnamed default registrations', () => {
@@ -313,6 +372,30 @@ describe('@fluojs/redis', () => {
 
     await expect(app.close()).resolves.toBeUndefined();
     expect(mockRedisState.events).toEqual(['connect', 'connect', 'quit', 'disconnect', 'quit', 'disconnect']);
+  });
+
+  it('forces disconnect when lifecycle-owned quit exceeds the configured timeout', async () => {
+    vi.useFakeTimers();
+    mockRedisState.quitHangs = true;
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        RedisModule.forRoot({
+          host: '127.0.0.1',
+          lifecycle: { quitTimeoutMs: 25 },
+          port: 6379,
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const closePromise = app.close();
+    const closeAssertion = expect(closePromise).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(25);
+
+    await closeAssertion;
+    expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
   });
 
   it('rethrows quit failures when disconnect does not close the client', async () => {
@@ -471,6 +554,47 @@ describe('@fluojs/redis', () => {
     await rawClient.set('raw:key', 'plain-string');
 
     await expect(cacheFacade.redisService.get<string>('raw:key')).resolves.toBe('plain-string');
+
+    await app.close();
+  });
+
+  it.each([
+    ['get', () => {
+      mockRedisState.getError = new Error('get failed');
+    }, async (redisService: RedisService) => {
+      await expect(redisService.get('broken:key')).rejects.toThrow('get failed');
+    }],
+    ['set', () => {
+      mockRedisState.setError = new Error('set failed');
+    }, async (redisService: RedisService) => {
+      await expect(redisService.set('broken:key', { ok: false })).rejects.toThrow('set failed');
+    }],
+    ['del', () => {
+      mockRedisState.delError = new Error('del failed');
+    }, async (redisService: RedisService) => {
+      await expect(redisService.del('broken:key')).rejects.toThrow('del failed');
+    }],
+  ] as const)('propagates Redis command errors from RedisService.%s', async (_operation, arrange, act) => {
+    @Inject(RedisService)
+    class CacheFacade {
+      constructor(readonly redisService: RedisService) {}
+    }
+
+    class FeatureModule {}
+    defineModule(FeatureModule, {
+      providers: [CacheFacade],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }), FeatureModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const cacheFacade = await app.container.resolve(CacheFacade);
+
+    arrange();
+    await act(cacheFacade.redisService);
 
     await app.close();
   });

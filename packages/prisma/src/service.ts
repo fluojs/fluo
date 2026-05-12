@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 import {
+  createAbortError,
   createRequestAbortContext,
   raceWithAbort,
   trackActiveRequestTransaction,
@@ -20,6 +21,7 @@ import type {
 
 const NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR =
   'Nested Prisma transaction options are not supported because the active transaction context is reused.';
+const REQUEST_TRANSACTION_UNAVAILABLE_ERROR = 'Prisma request transactions are not available during shutdown.';
 
 interface PrismaServiceOptions {
   strictTransactions: boolean;
@@ -37,6 +39,12 @@ type ActiveRequestTransactionHandle = {
 
 type TransactionAbortSignalSupport = 'unknown' | 'supported' | 'unsupported';
 
+type TransactionContext<TTransactionClient> = {
+  client: TTransactionClient;
+  deferredRequestTransactionHandles?: Set<ActiveRequestTransactionHandle>;
+  requestAbortSignal?: AbortSignal;
+};
+
 /**
  * Prisma runtime facade that owns lifecycle hooks and transaction context access.
  *
@@ -52,7 +60,7 @@ export class PrismaService<
 >
   implements PrismaHandleProvider<TClient, TTransactionClient, TTransactionOptions>, OnModuleInit, OnApplicationShutdown
 {
-  private readonly transactions = new AsyncLocalStorage<TTransactionClient>();
+  private readonly transactions = new AsyncLocalStorage<TransactionContext<TTransactionClient>>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
   private transactionAbortSignalSupport: TransactionAbortSignalSupport = 'unknown';
   private lifecycleState: 'created' | 'ready' | 'shutting-down' | 'stopped' = 'created';
@@ -73,7 +81,7 @@ export class PrismaService<
    * @returns The request/transaction-scoped client when a transaction is active; otherwise the root client.
    */
   current(): TClient | TTransactionClient {
-    return this.transactions.getStore() ?? this.client;
+    return this.transactions.getStore()?.client ?? this.client;
   }
 
   private async runWithTransactionClient<T>(
@@ -100,7 +108,19 @@ export class PrismaService<
       return fn();
     }
 
-    return run((transactionClient) => this.transactions.run(transactionClient, fn), options);
+    const deferredRequestTransactionHandles = new Set<ActiveRequestTransactionHandle>();
+
+    try {
+      return await run(
+        (transactionClient) =>
+          this.transactions.run({ client: transactionClient, deferredRequestTransactionHandles }, fn),
+        options,
+      );
+    } finally {
+      for (const handle of deferredRequestTransactionHandles) {
+        this.untrackActiveRequestTransaction(handle);
+      }
+    }
   }
 
   async onModuleInit(): Promise<void> {
@@ -190,19 +210,108 @@ export class PrismaService<
    * error type/message depends on the runtime abort implementation.
    */
   async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions): Promise<T> {
+    const current = this.transactions.getStore();
+
+    if (current) {
+      if (options !== undefined) {
+        throw new Error(NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR);
+      }
+
+      return this.runNestedRequestTransaction(current, fn, signal);
+    }
+
+    this.assertRequestTransactionsAvailable();
+
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
 
     try {
-      return await this.runWithTransactionClient<T>(
+      const result = await this.runWithRequestTransactionClient<T>(
         () => raceWithAbort(fn, abortContext.signal),
         (callback, transactionOptions) =>
           this.runRequestTransactionWithAbortSignal(callback, abortContext.signal, transactionOptions),
         options,
+        abortContext.signal,
       );
+
+      this.throwIfRequestAborted(abortContext.signal);
+
+      return result;
     } finally {
       abortContext.cleanup();
       this.untrackActiveRequestTransaction(active);
+    }
+  }
+
+  private async runWithRequestTransactionClient<T>(
+    fn: () => Promise<T>,
+    run: (
+      callback: (transactionClient: TTransactionClient) => Promise<T>,
+      options?: TTransactionOptions,
+    ) => Promise<T>,
+    options: TTransactionOptions | undefined,
+    signal: AbortSignal,
+  ): Promise<T> {
+    if (typeof this.client.$transaction !== 'function') {
+      if (this.serviceOptions.strictTransactions) {
+        throw new Error('Transaction not supported: Prisma client does not implement $transaction.');
+      }
+
+      return fn();
+    }
+
+    return run(
+      (transactionClient) => this.transactions.run({ client: transactionClient, requestAbortSignal: signal }, fn),
+      options,
+    );
+  }
+
+  private async runNestedRequestTransaction<T>(
+    current: TransactionContext<TTransactionClient>,
+    fn: () => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    if (current.requestAbortSignal) {
+      if (signal) {
+        return raceWithAbort(fn, signal);
+      }
+
+      return fn();
+    }
+
+    this.assertRequestTransactionsAvailable();
+
+    const abortContext = createRequestAbortContext(signal);
+    const active = this.trackActiveRequestTransaction(abortContext.controller);
+    current.deferredRequestTransactionHandles?.add(active);
+
+    try {
+      const result = await this.transactions.run(
+        { client: current.client, requestAbortSignal: abortContext.signal },
+        () => raceWithAbort(fn, abortContext.signal),
+      );
+
+      this.throwIfRequestAborted(abortContext.signal);
+
+      return result;
+    } finally {
+      abortContext.cleanup();
+
+      if (!current.deferredRequestTransactionHandles) {
+        this.untrackActiveRequestTransaction(active);
+      }
+    }
+  }
+
+  private assertRequestTransactionsAvailable(): void {
+    if (this.lifecycleState === 'shutting-down' || this.lifecycleState === 'stopped') {
+      throw new Error(REQUEST_TRANSACTION_UNAVAILABLE_ERROR);
+    }
+  }
+
+  private throwIfRequestAborted(signal: AbortSignal): void {
+    if (signal.aborted) {
+      throw createAbortError(signal.reason);
     }
   }
 

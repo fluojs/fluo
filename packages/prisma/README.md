@@ -14,6 +14,7 @@ Prisma lifecycle and ALS-backed transaction context for fluo applications. Conne
   - [Named Registrations for Multiple Clients](#named-registrations-for-multiple-clients)
   - [Manual Transactions](#manual-transactions)
   - [Automatic Request Transactions](#automatic-request-transactions)
+  - [Shutdown and Status Contracts](#shutdown-and-status-contracts)
   - [Async Configuration and Isolation](#async-configuration-and-isolation)
   - [Manual Module Composition](#manual-module-composition)
 - [Public API Overview](#public-api-overview)
@@ -134,6 +135,18 @@ class UserController {
 ```
 
 `PrismaTransactionInterceptor` targets the default unnamed `PrismaService`. For named multi-client registrations, inject the corresponding named `PrismaService` and open explicit `transaction()` / `requestTransaction()` boundaries where needed.
+
+### Shutdown and Status Contracts
+
+`PrismaService.requestTransaction(...)` is available before and during normal serving, but new request-scoped transactions are rejected once application shutdown has started. During shutdown, open request transactions are aborted, tracked until their outer transaction boundary has settled, and drained before `$disconnect()` runs. This includes nested `requestTransaction(...)` calls opened inside an existing manual `transaction(...)` boundary: they reuse the ambient Prisma transaction client, stay visible in `details.activeRequestTransactions` until the outer boundary finishes, and do not open a second Prisma transaction.
+
+`createPrismaPlatformStatusSnapshot(...)` and `PrismaService.createPlatformStatusSnapshot()` expose the same lifecycle contract to diagnostics surfaces:
+
+- `readiness.status` is `not-ready` while Prisma is shutting down or stopped, and when `strictTransactions` is enabled without `$transaction(...)` support.
+- `health.status` is `degraded` while request transactions are draining during shutdown and `unhealthy` after disconnect.
+- `details.activeRequestTransactions`, `details.lifecycleState`, `details.strictTransactions`, `details.supportsTransaction`, and `details.transactionAbortSignalSupport` describe the current request transaction and transaction-capability state.
+- `details.transactionContext: 'als'` identifies the async-local transaction context used by request and service transaction boundaries.
+- `ownership.externallyManaged: false` and `ownership.ownsResources: true` mean the package owns the registered client's `$connect()` / `$disconnect()` lifecycle hooks inside the fluo application lifecycle.
 
 ### Async Configuration and Isolation
 
