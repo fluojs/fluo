@@ -1,7 +1,7 @@
 import { metadataSymbol } from '@fluojs/core/internal';
 import type { GuardContext, HandlerDescriptor, RequestContext } from '@fluojs/http';
 import type Redis from 'ioredis';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getThrottleMetadata, SkipThrottle, Throttle } from './decorators.js';
 import { ThrottlerGuard } from './guard.js';
 import type {
