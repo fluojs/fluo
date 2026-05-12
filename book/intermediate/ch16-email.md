@@ -53,6 +53,8 @@ export class AppModule {}
 ### verifyOnModuleInit
 Setting `verifyOnModuleInit: true` lets you confirm during application bootstrap that the transport is actually usable. This is useful when deployment should surface failures early, such as SMTP credential validation. Catching the problem at startup reduces the chance that the first order confirmation email is where you discover a bad setting.
 
+When bootstrap verification is enabled, `EmailService` does not hand a message to the transport until verification has completed successfully. If configuration is resolved through `EmailModule.forRootAsync(...)` and the factory rejects, fluo does not permanently memoize that rejection; a later provider resolution can retry the configuration lookup.
+
 ## 16.3 Node-only SMTP with @fluojs/email/node
 
 When you use SMTP in a Node.js environment, import the dedicated subpath. This separation keeps the core package from being tied to Node-only dependencies such as `nodemailer`, while preserving the same root API for other runtimes.
@@ -74,6 +76,8 @@ EmailModule.forRoot({
   }),
 });
 ```
+
+The Nodemailer adapter forwards display-name recipients as structured address objects instead of interpolating strings such as `Name <user@example.com>`. This keeps names containing commas or quotes provider-safe while rejecting newline characters before handoff.
 
 ## 16.4 Standalone Usage: EmailService
 
@@ -176,6 +180,8 @@ EmailModule.forRoot({
 ```
 
 After registering a renderer, notification requests can pass `template` and `payload.templateData` to create template-based emails. Explicit `payload.text`, `payload.html`, and `subject` values still override rendered fallbacks.
+
+The renderer receives the notification `payload`, `metadata`, `locale`, `subject`, and `template`. Attachments, headers, and recipient overrides stay in the payload and are forwarded to the final email message after rendering.
 
 ## 16.8 Status and Health Checks
 
