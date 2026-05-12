@@ -229,7 +229,10 @@ update(input: UpdatePostDto, requestContext: RequestContext) {
 가끔 쿼리 입력이 선택 사항일 수 있습니다. 이럴 때는 DTO 필드를 optional로 두고, 핸들러 안에서 기본값을 명시적으로 정하면 됩니다.
 
 ```typescript
+import { FromQuery } from '@fluojs/http';
+
 class SearchLimitDto {
+  @FromQuery('limit')
   limit?: string;
 }
 

@@ -229,7 +229,10 @@ In this contract, the input DTO enters as the first argument, and you read `requ
 Sometimes query input can be optional. In that case, leave the DTO field optional and set the default value explicitly inside the handler.
 
 ```typescript
+import { FromQuery } from '@fluojs/http';
+
 class SearchLimitDto {
+  @FromQuery('limit')
   limit?: string;
 }
 
