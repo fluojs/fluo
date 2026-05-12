@@ -30,7 +30,7 @@ fluo 애플리케이션을 위한 프레임워크 비종속 국제화 코어 표
 npm install @fluojs/i18n
 ```
 
-Root entry point는 `@fluojs/core`에만 의존합니다. Optional subpath는 integration dependency를 optional peer로 유지합니다. `@fluojs/i18n/icu`를 opt-in하면 `intl-messageformat`, `@fluojs/i18n/http`를 opt-in하면 `@fluojs/http`, `@fluojs/i18n/validation`을 opt-in하면 `@fluojs/validation`을 함께 설치하세요.
+Root entry point는 `@fluojs/core`에만 의존합니다. Optional subpath는 integration dependency를 optional peer로 유지합니다. `@fluojs/i18n/icu`를 opt-in하면 `intl-messageformat`, `@fluojs/i18n/http`를 opt-in하면 `@fluojs/http`, `@fluojs/i18n/validation`을 opt-in하면 `@fluojs/validation`을 함께 설치하세요. 기존 subpath 사용자는 이 dependency boundary 변경이 포함된 릴리스로 업그레이드하기 전에 해당 peer dependency를 application 또는 package manifest에 추가해야 합니다.
 
 ## 사용 시점
 

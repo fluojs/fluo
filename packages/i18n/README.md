@@ -30,7 +30,7 @@ Framework-agnostic internationalization core surface for fluo applications.
 npm install @fluojs/i18n
 ```
 
-The root entry point depends only on `@fluojs/core`. Optional subpaths keep their integration dependencies as optional peers: install `intl-messageformat` for `@fluojs/i18n/icu`, `@fluojs/http` for `@fluojs/i18n/http`, and `@fluojs/validation` for `@fluojs/i18n/validation` when you opt into those surfaces.
+The root entry point depends only on `@fluojs/core`. Optional subpaths keep their integration dependencies as optional peers: install `intl-messageformat` for `@fluojs/i18n/icu`, `@fluojs/http` for `@fluojs/i18n/http`, and `@fluojs/validation` for `@fluojs/i18n/validation` when you opt into those surfaces. Existing subpath users should add those peer dependencies to their application or package manifest before upgrading to the release that includes this dependency boundary change.
 
 ## When to Use
 
