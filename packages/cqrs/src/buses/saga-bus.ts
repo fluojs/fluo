@@ -116,6 +116,14 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
    * @returns A promise that resolves once all matching saga chains for the event complete.
    */
   async dispatch<TEvent extends IEvent>(event: TEvent): Promise<void> {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      this.logger.warn(
+        `Saga dispatch ignored because the CQRS saga bus is ${this.lifecycleState}.`,
+        'CqrsSagaLifecycleService',
+      );
+      return;
+    }
+
     await this.ensureDiscovered();
 
     const descriptors = this.matchSagaDescriptors(event);
@@ -300,7 +308,6 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
 
   private discoverSagaDescriptors(): Map<CqrsEventType, SagaDescriptor[]> {
     const descriptorsByEvent = new Map<CqrsEventType, SagaDescriptor[]>();
-    const seenByTarget = new WeakMap<Function, Set<CqrsEventType>>();
 
     for (const candidate of this.discoveryCandidates()) {
       const metadata = getSagaMetadata(candidate.targetType);
@@ -317,18 +324,10 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
         continue;
       }
 
-      const seenEventTypes = seenByTarget.get(candidate.targetType) ?? new Set<CqrsEventType>();
-
       for (const eventType of metadata.eventTypes) {
-        if (seenEventTypes.has(eventType)) {
-          continue;
-        }
-
-        seenEventTypes.add(eventType);
-
         const descriptors = descriptorsByEvent.get(eventType) ?? [];
 
-        if (!descriptors.some((descriptor) => descriptor.targetType === candidate.targetType)) {
+        if (!descriptors.some((descriptor) => descriptor.token === candidate.token)) {
           descriptors.push({
             eventType,
             moduleName: candidate.moduleName,
@@ -339,8 +338,6 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
           descriptorsByEvent.set(eventType, descriptors);
         }
       }
-
-      seenByTarget.set(candidate.targetType, seenEventTypes);
     }
 
     return descriptorsByEvent;

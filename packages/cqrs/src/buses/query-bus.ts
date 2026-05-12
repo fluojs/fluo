@@ -98,7 +98,6 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
 
   private discoverQueryDescriptors(): Map<QueryType, QueryHandlerDescriptor> {
     const descriptors = new Map<QueryType, QueryHandlerDescriptor>();
-    const seenByTarget = new WeakMap<Function, Set<QueryType>>();
 
     for (const candidate of this.discoveryCandidates()) {
       const metadata = getQueryHandlerMetadata(candidate.targetType);
@@ -115,18 +114,9 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
         continue;
       }
 
-      const seenQueryTypes = seenByTarget.get(candidate.targetType) ?? new Set<QueryType>();
-
-      if (seenQueryTypes.has(metadata.queryType)) {
-        continue;
-      }
-
-      seenQueryTypes.add(metadata.queryType);
-      seenByTarget.set(candidate.targetType, seenQueryTypes);
-
       const existing = descriptors.get(metadata.queryType);
 
-      if (existing && existing.targetType !== candidate.targetType) {
+      if (existing) {
         throw new DuplicateQueryHandlerError(
           createDuplicateHandlerMessage('query', metadata.queryType, existing, {
             moduleName: candidate.moduleName,
@@ -135,14 +125,12 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
         );
       }
 
-      if (!existing) {
-        descriptors.set(metadata.queryType, {
-          moduleName: candidate.moduleName,
-          queryType: metadata.queryType,
-          targetType: candidate.targetType,
-          token: candidate.token,
-        });
-      }
+      descriptors.set(metadata.queryType, {
+        moduleName: candidate.moduleName,
+        queryType: metadata.queryType,
+        targetType: candidate.targetType,
+        token: candidate.token,
+      });
     }
 
     return descriptors;

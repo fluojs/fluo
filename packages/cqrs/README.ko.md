@@ -154,7 +154,7 @@ class TokenInjectedService {
 ### 오류
 - `CommandHandlerNotFoundException`, `QueryHandlerNotFoundException`: bus에 일치하는 handler가 없을 때 발생합니다.
 - `DuplicateCommandHandlerError`, `DuplicateQueryHandlerError`: 서로 다른 singleton provider가 같은 command 또는 query type을 claim할 때 발생합니다.
-- `DuplicateEventHandlerError`: 충돌하는 event-handler discovery 실패를 위해 export됩니다. 일반적으로 같은 event에 여러 `@EventHandler(...)` provider를 등록하는 것은 유효하며 discovery 순서대로 fan-out됩니다.
+- `DuplicateEventHandlerError`: 충돌하는 event-handler discovery 실패를 위해 export됩니다. 일반적으로 같은 event에 여러 `@EventHandler(...)` provider를 등록하는 것은 유효하며 discovery 순서대로 fan-out되지만, 완전히 동일한 DI provider(동일한 token)가 중복 발견되면 불필요한 중복 실행을 막기 위해 단일 구독으로 병합(collapse)됩니다.
 - `SagaExecutionError`: 예상하지 못한 non-Fluo saga 실패를 감쌉니다.
 - `SagaTopologyError`: 자기 트리거, 순환, 또는 과도하게 깊은 in-process saga graph를 감지했을 때 발생합니다.
 

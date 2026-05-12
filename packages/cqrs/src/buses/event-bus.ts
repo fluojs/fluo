@@ -99,6 +99,14 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
    * @throws {InvariantError} When a discovered provider does not implement `handle(event)`.
    */
   async publish<TEvent extends IEvent>(event: TEvent): Promise<void> {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      this.logger.warn(
+        `Event publication ignored because the CQRS event bus is ${this.lifecycleState}.`,
+        'CqrsEventBusService',
+      );
+      return;
+    }
+
     await this.trackPublishPipeline(this.runPublishPipeline(event));
   }
 
@@ -109,6 +117,14 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
    * @returns A promise that resolves once all events are published.
    */
   async publishAll<TEvent extends IEvent>(events: readonly TEvent[]): Promise<void> {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      this.logger.warn(
+        `Event publication ignored because the CQRS event bus is ${this.lifecycleState}.`,
+        'CqrsEventBusService',
+      );
+      return;
+    }
+
     await this.trackPublishPipeline(this.runPublishAllPipeline(events));
   }
 
@@ -131,7 +147,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
 
   private async runPublishAllPipeline<TEvent extends IEvent>(events: readonly TEvent[]): Promise<void> {
     for (const event of events) {
-      await this.publish(event);
+      await this.runPublishPipeline(event);
     }
   }
 
@@ -221,7 +237,6 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
 
   private discoverEventDescriptors(): EventHandlerDescriptor[] {
     const descriptors: EventHandlerDescriptor[] = [];
-    const seenByTarget = new WeakMap<Function, Set<CqrsEventType>>();
 
     for (const candidate of this.discoveryCandidates()) {
       const metadata = getEventHandlerMetadata(candidate.targetType);
@@ -238,17 +253,8 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
         continue;
       }
 
-      const seenEventTypes = seenByTarget.get(candidate.targetType) ?? new Set<CqrsEventType>();
-
-      if (seenEventTypes.has(metadata.eventType)) {
-        continue;
-      }
-
-      seenEventTypes.add(metadata.eventType);
-      seenByTarget.set(candidate.targetType, seenEventTypes);
-
       const alreadyRegistered = descriptors.some(
-        (descriptor) => descriptor.eventType === metadata.eventType && descriptor.targetType === candidate.targetType,
+        (descriptor) => descriptor.eventType === metadata.eventType && descriptor.token === candidate.token,
       );
 
       if (!alreadyRegistered) {
