@@ -75,7 +75,7 @@ export class UserService {
 export class AppModule {}
 ```
 
-`publish(event, options?)` supports `signal`, `timeoutMs`, and `waitForHandlers`. `waitForHandlers` defaults to `true`; awaited local handlers and awaited transport publishes share the same timeout and cancellation bounds. When `waitForHandlers` is set to `false`, publishing returns immediately and skips timeout bounds. During shutdown, the event bus drains in-flight awaited publish work before closing the transport and ignores new publish calls after the lifecycle has started stopping.
+`publish(event, options?)` supports `signal`, `timeoutMs`, and `waitForHandlers`. `waitForHandlers` defaults to `true`; awaited local handlers and awaited transport publishes share the same timeout and cancellation bounds. When `waitForHandlers` is set to `false`, publishing returns immediately and skips timeout bounds. During shutdown, the event bus drains in-flight awaited publish work before closing the transport and ignores new publish calls after the lifecycle has started stopping. Shutdown drain is bounded by `EventBusModule.forRoot({ shutdown: { drainTimeoutMs } })`, which defaults to 5000ms; if active publish work is still stuck after the bound, the bus records a degraded status diagnostic, logs a warning, and continues transport cleanup instead of hanging application close indefinitely.
 
 ## Common Patterns
 

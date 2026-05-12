@@ -946,6 +946,15 @@ importers:
         specifier: workspace:^
         version: link:../runtime
     devDependencies:
+      '@fluojs/platform-bun':
+        specifier: workspace:^
+        version: link:../platform-bun
+      '@fluojs/platform-cloudflare-workers':
+        specifier: workspace:^
+        version: link:../platform-cloudflare-workers
+      '@fluojs/platform-deno':
+        specifier: workspace:^
+        version: link:../platform-deno
       '@fluojs/platform-express':
         specifier: workspace:^
         version: link:../platform-express

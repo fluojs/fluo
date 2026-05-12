@@ -1048,6 +1048,58 @@ describe('@fluojs/event-bus', () => {
       expect(transport.closeCalls).toBe(1);
     });
 
+    it('bounds shutdown drain and still closes the transport when publish work is stuck', async () => {
+      vi.useFakeTimers();
+      const loggerEvents: string[] = [];
+      const gate = createDeferred<void>();
+      const transport = {
+        closeCalls: 0,
+        publishStarted: false,
+        async publish(_channel: string, _payload: unknown) {
+          this.publishStarted = true;
+          await gate.promise;
+        },
+        async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {},
+        async close() {
+          this.closeCalls += 1;
+        },
+      } satisfies EventBusTransport & { closeCalls: number; publishStarted: boolean };
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [EventBusModule.forRoot({ shutdown: { drainTimeoutMs: 20 }, transport })],
+      });
+
+      const app = await bootstrapApplication({
+        logger: createLogger(loggerEvents),
+        rootModule: AppModule,
+      });
+      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const publishPromise = eventBus.publish(new UserCreatedEvent('transport-user-stuck-drain'));
+
+      await flushAsyncWork();
+      expect(transport.publishStarted).toBe(true);
+
+      let closeResolved = false;
+      const closePromise = app.close().then(() => {
+        closeResolved = true;
+      });
+
+      await flushAsyncWork();
+      expect(closeResolved).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(20);
+      await closePromise;
+
+      expect(closeResolved).toBe(true);
+      expect(transport.closeCalls).toBe(1);
+      expect(loggerEvents.some((event) => event.includes('Event bus shutdown drain exceeded 20ms'))).toBe(true);
+
+      gate.resolve();
+      await publishPromise;
+      await settleEventBusTeardown();
+    });
+
     it('ignores publish calls after shutdown without dispatching handlers or transport work', async () => {
       const loggerEvents: string[] = [];
       const transport = createMockTransport();

@@ -57,6 +57,10 @@ export interface EventBusModuleOptions {
     timeoutMs?: number;
     waitForHandlers?: boolean;
   };
+  /** Shutdown drain policy. `drainTimeoutMs` defaults to 5000ms. */
+  shutdown?: {
+    drainTimeoutMs?: number;
+  };
   /**
    * Optional external transport adapter (e.g. Redis Pub/Sub).
    * When provided, `publish()` fans out to the transport in addition to local handlers,
