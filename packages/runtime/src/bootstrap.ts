@@ -17,7 +17,8 @@ import { RuntimeDefaultBinder } from './internal/http-runtime.js';
 import { createConsoleApplicationLogger } from './logging/logger.js';
 import { compileModuleGraph, providerToken } from './module-graph.js';
 import { createRuntimePlatformShell, type RuntimePlatformShell } from './platform-shell.js';
-import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
+import { APPLICATION_LOGGER, BOOTSTRAP_READY_SIGNAL, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
+import type { BootstrapReadySignal } from './tokens.js';
 import type {
   ApplicationContext,
   Application,
@@ -48,6 +49,11 @@ const runtimePerformance = globalThis.performance;
 
 type ContextResolutionCache = Map<Token, Promise<unknown>>;
 type ContextCacheableTokens = Set<Token>;
+
+type MutableBootstrapReadySignal = BootstrapReadySignal & {
+  markFailed(error: unknown): void;
+  markReady(): void;
+};
 
 type CacheInvalidatingContainer = Container & { override(...providers: Provider[]): Container };
 
@@ -134,6 +140,25 @@ function createRuntimeCleanupRegistration(cleanups: Array<() => void>): RuntimeC
         cleanups.splice(index, 1);
       }
     };
+  };
+}
+
+function createBootstrapReadySignal(): MutableBootstrapReadySignal {
+  let markReady!: () => void;
+  let markFailed!: (error: unknown) => void;
+  const ready = new Promise<void>((resolve, reject) => {
+    markReady = resolve;
+    markFailed = reject;
+  });
+
+  ready.catch(() => undefined);
+
+  return {
+    markFailed,
+    markReady,
+    wait() {
+      return ready;
+    },
   };
 }
 
@@ -1231,6 +1256,7 @@ function registerRuntimeBootstrapTokens(
   adapter: HttpApplicationAdapter,
   platformShell: RuntimePlatformShell,
   runtimeCleanup: Array<() => void>,
+  bootstrapReadySignal: BootstrapReadySignal,
 ): void {
   registerRuntimeContextTokens(bootstrapped, {
     provide: HTTP_APPLICATION_ADAPTER,
@@ -1241,6 +1267,9 @@ function registerRuntimeBootstrapTokens(
   }, {
     provide: RUNTIME_CLEANUP_REGISTRATION,
     useValue: createRuntimeCleanupRegistration(runtimeCleanup),
+  }, {
+    provide: BOOTSTRAP_READY_SIGNAL,
+    useValue: bootstrapReadySignal,
   });
 }
 
@@ -1262,6 +1291,7 @@ function registerRuntimeApplicationContextTokens(
   bootstrapped: BootstrapResult,
   platformShell: RuntimePlatformShell,
   runtimeCleanup: Array<() => void>,
+  bootstrapReadySignal: BootstrapReadySignal,
 ): void {
   registerRuntimeContextTokens(bootstrapped, {
     provide: PLATFORM_SHELL,
@@ -1269,6 +1299,9 @@ function registerRuntimeApplicationContextTokens(
   }, {
     provide: RUNTIME_CLEANUP_REGISTRATION,
     useValue: createRuntimeCleanupRegistration(runtimeCleanup),
+  }, {
+    provide: BOOTSTRAP_READY_SIGNAL,
+    useValue: bootstrapReadySignal,
   });
 }
 
@@ -1289,11 +1322,13 @@ async function runBootstrapLifecycle(
   lifecycleInstances: unknown[],
   logger: ApplicationLogger,
   platformShell: RuntimePlatformShell,
+  bootstrapReadySignal: MutableBootstrapReadySignal,
 ): Promise<void> {
   resetReadinessState(modules);
   await runBootstrapHooks(lifecycleInstances);
   await platformShell.start();
   markReadinessState(modules);
+  bootstrapReadySignal.markReady();
   logCompiledModules(logger, modules);
 }
 
@@ -1392,6 +1427,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     async listen() {},
   };
   const runtimeCleanup: Array<() => void> = [];
+  const bootstrapReadySignal = createBootstrapReadySignal();
   const platformShell = createRuntimePlatformShell(options.platform?.components);
   const timingEnabled = options.diagnostics?.timing === true;
   const timingStart = timingEnabled ? runtimePerformance.now() : 0;
@@ -1407,7 +1443,13 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       logger,
       moduleGraphCache: options.moduleGraphCache,
       providers: runtimeProviders,
-      validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CLEANUP_REGISTRATION],
+      validationTokens: [
+        RUNTIME_CONTAINER,
+        COMPILED_MODULES,
+        HTTP_APPLICATION_ADAPTER,
+        RUNTIME_CLEANUP_REGISTRATION,
+        BOOTSTRAP_READY_SIGNAL,
+      ],
     });
     if (timingEnabled) {
       timingPhases.push({
@@ -1417,7 +1459,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     }
 
     const registerTokensStart = timingEnabled ? runtimePerformance.now() : 0;
-    registerRuntimeBootstrapTokens(bootstrapped, adapter, platformShell, runtimeCleanup);
+    registerRuntimeBootstrapTokens(bootstrapped, adapter, platformShell, runtimeCleanup, bootstrapReadySignal);
     if (timingEnabled) {
       timingPhases.push({
         durationMs: runtimePerformance.now() - registerTokensStart,
@@ -1443,7 +1485,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     }
 
     const lifecycleStart = timingEnabled ? runtimePerformance.now() : 0;
-    await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger, platformShell);
+    await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger, platformShell, bootstrapReadySignal);
     if (timingEnabled) {
       timingPhases.push({
         durationMs: runtimePerformance.now() - lifecycleStart,
@@ -1478,10 +1520,18 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       runtimeCleanup,
       createContextCacheableTokenSet(
         bootstrapped.effectiveProviders,
-        [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION],
+        [
+          RUNTIME_CONTAINER,
+          COMPILED_MODULES,
+          HTTP_APPLICATION_ADAPTER,
+          PLATFORM_SHELL,
+          RUNTIME_CLEANUP_REGISTRATION,
+          BOOTSTRAP_READY_SIGNAL,
+        ],
       ),
     );
   } catch (error: unknown) {
+    bootstrapReadySignal.markFailed(error);
     logger.error(
       'Failed to bootstrap the fluo application. Check the error below for what failed and how to fix it.',
       error,
@@ -1537,6 +1587,7 @@ export class FluoFactory {
     let bootstrappedContainer: Container | undefined;
     let bootstrappedModules: CompiledModule[] = [];
     const runtimeCleanup: Array<() => void> = [];
+    const bootstrapReadySignal = createBootstrapReadySignal();
     const platformShell = createRuntimePlatformShell(options.platform?.components);
     const timingEnabled = options.diagnostics?.timing === true;
     const timingStart = timingEnabled ? runtimePerformance.now() : 0;
@@ -1552,7 +1603,7 @@ export class FluoFactory {
         logger,
         moduleGraphCache: options.moduleGraphCache,
         providers: runtimeProviders,
-        validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION],
+        validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, BOOTSTRAP_READY_SIGNAL],
       });
       if (timingEnabled) {
         timingPhases.push({
@@ -1562,7 +1613,7 @@ export class FluoFactory {
       }
 
       const registerTokensStart = timingEnabled ? runtimePerformance.now() : 0;
-      registerRuntimeApplicationContextTokens(bootstrapped, platformShell, runtimeCleanup);
+      registerRuntimeApplicationContextTokens(bootstrapped, platformShell, runtimeCleanup, bootstrapReadySignal);
       if (timingEnabled) {
         timingPhases.push({
           durationMs: runtimePerformance.now() - registerTokensStart,
@@ -1588,7 +1639,7 @@ export class FluoFactory {
       }
 
       const lifecycleStart = timingEnabled ? runtimePerformance.now() : 0;
-      await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger, platformShell);
+      await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger, platformShell, bootstrapReadySignal);
       if (timingEnabled) {
         timingPhases.push({
           durationMs: runtimePerformance.now() - lifecycleStart,
@@ -1609,10 +1660,17 @@ export class FluoFactory {
         runtimeCleanup,
         createContextCacheableTokenSet(
           bootstrapped.effectiveProviders,
-          [RUNTIME_CONTAINER, COMPILED_MODULES, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION],
+          [
+            RUNTIME_CONTAINER,
+            COMPILED_MODULES,
+            PLATFORM_SHELL,
+            RUNTIME_CLEANUP_REGISTRATION,
+            BOOTSTRAP_READY_SIGNAL,
+          ],
         ),
       );
     } catch (error: unknown) {
+      bootstrapReadySignal.markFailed(error);
       logger.error(
         'Failed to bootstrap application context. Check the error below for what failed and how to fix it.',
         error,

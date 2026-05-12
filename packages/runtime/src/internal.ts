@@ -1,8 +1,10 @@
 export {
   APPLICATION_LOGGER,
+  BOOTSTRAP_READY_SIGNAL,
   COMPILED_MODULES,
   HTTP_APPLICATION_ADAPTER,
   PLATFORM_SHELL,
   RUNTIME_CONTAINER,
   RUNTIME_CLEANUP_REGISTRATION,
 } from './tokens.js';
+export type { BootstrapReadySignal } from './tokens.js';

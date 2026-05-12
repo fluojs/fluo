@@ -1,4 +1,4 @@
-import type { Constructor, MaybePromise, Token } from '@fluojs/core';
+import type { Constructor, ForwardRefToken, InjectionToken, MaybePromise, OptionalInjectToken, Token } from '@fluojs/core';
 
 /**
  * Lifetime policy understood by the DI container.
@@ -36,7 +36,7 @@ export type ClassType<T = unknown> = Constructor<T> & Function;
 export interface ClassProvider<T = unknown> {
   provide: Token<T>;
   useClass: ClassType<T>;
-  inject?: Array<Token | ForwardRefFn | OptionalToken>;
+  inject?: InjectionToken[];
   scope?: Scope;
   multi?: boolean;
 }
@@ -47,7 +47,7 @@ export interface ClassProvider<T = unknown> {
 export interface FactoryProvider<T = unknown> {
   provide: Token<T>;
   useFactory: (...deps: unknown[]) => MaybePromise<T>;
-  inject?: Array<Token | ForwardRefFn | OptionalToken>;
+  inject?: InjectionToken[];
   scope?: Scope;
   multi?: boolean;
   resolverClass?: ClassType;
@@ -73,12 +73,12 @@ export interface ExistingProvider<T = unknown> {
 /**
  * Deferred token resolver used to break declaration-time cycles between providers.
  */
-export type ForwardRefFn<T = unknown> = { __forwardRef__: true; forwardRef: () => Token<T> };
+export type ForwardRefFn<T = unknown> = ForwardRefToken<T>;
 
 /**
  * Wrapper token that marks a dependency as optional during resolution.
  */
-export type OptionalToken<T = unknown> = { __optional__: true; token: Token<T> };
+export type OptionalToken<T = unknown> = OptionalInjectToken<T>;
 
 /**
  * Public provider shape accepted by container registration and override APIs.
@@ -109,7 +109,7 @@ export interface RequestScopeContainer {
  * Internal normalized provider representation used after the container validates public provider inputs.
  */
 export interface NormalizedProvider<T = unknown> {
-  inject: Array<Token | ForwardRefFn | OptionalToken>;
+  inject: InjectionToken[];
   provide: Token<T>;
   scope: Scope;
   type: 'class' | 'factory' | 'value' | 'existing';

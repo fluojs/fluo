@@ -2,4 +2,4 @@
 "@fluojs/queue": patch
 ---
 
-Serialize queue shutdown with in-flight startup so queue-owned BullMQ workers, queues, and Redis duplicate connections are closed reliably during overlapping application lifecycle transitions.
+Start Queue processors after the bootstrap-ready handoff, bound worker shutdown with `workerShutdownTimeoutMs`, and document the lifecycle/status options so stuck processors cannot block application shutdown indefinitely.

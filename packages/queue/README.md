@@ -90,6 +90,12 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 `@fluojs/queue` resolves that Redis client during application bootstrap, then creates queue-owned duplicate connections for BullMQ. The shared `@fluojs/redis` client remains owned by `RedisModule`; Queue closes only the duplicate BullMQ connections it creates. Those duplicate connections are configured with BullMQ's required `maxRetriesPerRequest: null` worker setting so startup behavior matches BullMQ's runtime constraints.
 
+### Bootstrap and Shutdown Lifecycle
+
+Queue discovers workers and creates queue-owned BullMQ resources during application bootstrap, but BullMQ worker processors are started only after the runtime marks the full application bootstrap/readiness sequence complete. Jobs enqueued by other `onApplicationBootstrap()` hooks can be accepted once the Queue service is initialized, and their processors run after the bootstrap-ready handoff instead of racing ahead of later async bootstrap hooks or application readiness.
+
+Application shutdown marks Queue as `stopping`, rejects new enqueue attempts, closes queue-owned workers/queues/connections, and drains pending dead-letter writes. Worker shutdown is bounded by `workerShutdownTimeoutMs` so an active processor that never settles cannot block application shutdown indefinitely. When the timeout elapses, Queue logs the timeout and asks BullMQ to force-close the worker before continuing resource cleanup.
+
 ### Distributed Retries
 
 Workers can be configured with a maximum number of attempts and backoff strategies to handle transient failures automatically.
@@ -127,7 +133,14 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 - `QueueWorkerOptions`: Per-job settings (attempts, backoff, concurrency, jobName, rate limiting).
 - `QueueBackoffOptions`: Retry backoff settings (`type`, `delayMs`).
 
-`QueueModuleOptions` also includes dead-letter retention controls such as `defaultDeadLetterMaxEntries`.
+`QueueModuleOptions` also includes lifecycle and dead-letter retention controls such as `workerShutdownTimeoutMs` and `defaultDeadLetterMaxEntries`.
+
+`QueueModuleOptions` lifecycle/status controls:
+
+- `workerShutdownTimeoutMs`: maximum time to wait for active worker processors during shutdown before force-closing the BullMQ worker. Defaults to `30_000`.
+- `defaultDeadLetterMaxEntries`: maximum retained dead-letter records per job, or `false` to disable trimming. Defaults to `1_000`.
+
+`createQueuePlatformStatusSnapshot(...)` reports readiness as `ready` only after Queue reaches `started`; `starting` reports degraded readiness, and `stopping`/`stopped` report not-ready. Snapshot details include the Redis dependency id, lifecycle state, ready/discovered worker counts, pending dead-letter writes, the dead-letter drain timeout, and `workerShutdownTimeoutMs`.
 
 Only singleton `@QueueWorker()` providers/controllers are registered. Request/transient workers are skipped during discovery.
 
