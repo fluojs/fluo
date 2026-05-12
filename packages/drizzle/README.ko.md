@@ -107,7 +107,7 @@ class UsersController {}
 ### 종료와 상태 계약
 
 `DrizzleTransactionInterceptor`는 각 HTTP 요청을 `DrizzleDatabase.requestTransaction(...)`으로 실행합니다. 애플리케이션 종료 중에는 `DrizzleDatabase`가 아직 활성 상태인 요청 트랜잭션을 abort하고, 해당 transaction callback이 settle되거나 rollback될 때까지 기다린 뒤 선택적 `dispose(database)` hook을 실행합니다. 이 순서는 pool이나 외부 관리 리소스를 닫기 전에 driver가 rollback/cleanup 작업을 끝낼 수 있게 보장합니다.
-기존 수동 transaction boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 shutdown tracking에 참여하므로, 두 번째 Drizzle transaction을 열지 않으면서 shutdown이 해당 호출을 abort하고 drain한 뒤 `dispose(database)`를 실행합니다.
+기존 요청 boundary 안에서 열린 중첩 `requestTransaction(...)` 호출은 활성 Drizzle transaction을 재사용하면서도 ambient request abort signal을 관찰합니다. 기존 수동 transaction boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 request callback이 활성 상태인 동안 shutdown tracking에 참여하므로, 두 번째 Drizzle transaction을 열지 않으면서 shutdown이 해당 호출을 abort하고 drain한 뒤 `dispose(database)`를 실행합니다. 중첩 request callback이 settle되면 바깥 수동 transaction이 계속 실행 중이어도 `details.activeRequestTransactions`는 감소합니다.
 종료가 시작된 뒤 새 `requestTransaction(...)` 호출은 거부되므로, 종료 boundary를 지난 뒤 시작되는 늦은 요청 트랜잭션보다 dispose가 먼저 실행되는 상황을 방지합니다.
 요청 callback이 완료된 뒤 underlying Drizzle transaction runner가 commit 또는 rollback을 끝내기 전에 request signal이 abort되면, `requestTransaction(...)`은 먼저 해당 runner가 settle될 때까지 기다린 다음 abort reason으로 reject합니다. 이 동작은 Drizzle cleanup을 request cancellation과 직렬화하면서, 완료된 callback 결과를 반환하는 대신 늦은 request abort를 caller에게 드러냅니다.
 
