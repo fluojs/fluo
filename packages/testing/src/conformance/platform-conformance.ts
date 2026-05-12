@@ -84,12 +84,13 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function captureOutcome(action: () => Promise<void>): Promise<{ ok: true } | { message: string; ok: false }> {
+async function captureOutcome(action: () => Promise<void>): Promise<{ ok: true } | { error: unknown; message: string; ok: false }> {
   try {
     await action();
     return { ok: true };
   } catch (error) {
     return {
+      error,
       message: toErrorMessage(error),
       ok: false,
     };
@@ -113,15 +114,14 @@ async function runWithStopCleanup(
 
   const cleanup = await captureOutcome(() => component.stop());
   if (!cleanup.ok) {
-    const cleanupError = new Error(cleanup.message);
     if (hasAssertionError) {
       throw new AggregateError(
-        [assertionError, cleanupError],
+        [assertionError, cleanup.error],
         `${harnessName} assertion failed and stop() also failed during conformance cleanup.`,
       );
     }
 
-    throw new AggregateError([cleanupError], `${harnessName} stop() failed during conformance cleanup.`);
+    throw new AggregateError([cleanup.error], `${harnessName} stop() failed during conformance cleanup.`);
   }
 
   if (hasAssertionError) {
@@ -271,13 +271,11 @@ export class PlatformConformanceHarness {
           );
         }
 
-        component.snapshot();
-      }).catch((error) => {
-        if (error instanceof AggregateError) {
-          throw error;
+        try {
+          component.snapshot();
+        } catch (error) {
+          throw new Error(`snapshot() must be safe in "${scenario.name}" state: ${toErrorMessage(error)}`);
         }
-
-        throw new Error(`snapshot() must be safe in "${scenario.name}" state: ${toErrorMessage(error)}`);
       });
     }
   }

@@ -23,6 +23,7 @@ class TestPlatformComponent implements PlatformComponent {
       diagnostics?: PlatformDiagnosticIssue[];
       mutateOnValidate?: boolean;
       nonIdempotentStart?: boolean;
+      snapshotError?: Error;
       snapshotDetails?: Record<string, unknown>;
       state?: PlatformState;
       stopError?: Error;
@@ -32,6 +33,7 @@ class TestPlatformComponent implements PlatformComponent {
     this.diagnostics = options.diagnostics ?? [];
     this.mutateOnValidate = options.mutateOnValidate ?? false;
     this.nonIdempotentStart = options.nonIdempotentStart ?? false;
+    this.snapshotError = options.snapshotError;
     this.snapshotDetails = options.snapshotDetails ?? { queueDepth: 3 };
     this.stopError = options.stopError;
     this.sideEffects = { validateCalls: 0 };
@@ -40,6 +42,7 @@ class TestPlatformComponent implements PlatformComponent {
   private readonly diagnostics: PlatformDiagnosticIssue[];
   private readonly mutateOnValidate: boolean;
   private readonly nonIdempotentStart: boolean;
+  private readonly snapshotError: Error | undefined;
   private readonly snapshotDetails: Record<string, unknown>;
   private readonly stopError: Error | undefined;
 
@@ -64,6 +67,10 @@ class TestPlatformComponent implements PlatformComponent {
   }
 
   snapshot(): PlatformSnapshot {
+    if (this.snapshotError) {
+      throw this.snapshotError;
+    }
+
     return {
       dependencies: [],
       details: this.snapshotDetails,
@@ -124,6 +131,15 @@ class TestPlatformComponent implements PlatformComponent {
 }
 
 describe('platform conformance harness', () => {
+  class StopFailure extends Error {
+    readonly code = 'STOP_FAILURE';
+
+    constructor(cause: Error) {
+      super('custom stop failed', { cause });
+      this.name = 'StopFailure';
+    }
+  }
+
   it('passes full checks for a deterministic, sanitized component', async () => {
     const harness = createPlatformConformanceHarness({
       createComponent: () =>
@@ -219,6 +235,108 @@ describe('platform conformance harness', () => {
     });
 
     await expect(harness.assertStartIsDeterministic()).rejects.toThrow('stop() failed during conformance cleanup');
+  });
+
+  it('preserves the original stop rejection object in cleanup aggregate errors', async () => {
+    const cause = new Error('socket close cause');
+    const stopError = new StopFailure(cause);
+    const harness = createPlatformConformanceHarness({
+      createComponent: () => new TestPlatformComponent('cache.default', 'cache', { stopError }),
+      scenarios: {
+        degraded: {
+          createComponent: () => new TestPlatformComponent('cache.default', 'cache', { state: 'degraded' }),
+          enterState: () => undefined,
+          name: 'degraded',
+        },
+        failed: {
+          createComponent: () => new TestPlatformComponent('cache.default', 'cache', { state: 'failed' }),
+          enterState: () => undefined,
+          name: 'failed',
+        },
+      },
+    });
+
+    await expect(harness.assertStartIsDeterministic()).rejects.toMatchObject({
+      errors: [stopError],
+    });
+    expect(stopError).toBeInstanceOf(StopFailure);
+    expect(stopError.cause).toBe(cause);
+    expect(stopError.stack).toContain('custom stop failed');
+  });
+
+  it('wraps only snapshot failures when checking degraded and failed states', async () => {
+    const harness = createPlatformConformanceHarness({
+      createComponent: () => new TestPlatformComponent('cache.default', 'cache'),
+      scenarios: {
+        degraded: {
+          createComponent: () =>
+            new TestPlatformComponent('cache.default', 'cache', {
+              snapshotError: new Error('snapshot storage unavailable'),
+              state: 'degraded',
+            }),
+          enterState: () => undefined,
+          expectedState: 'degraded',
+          name: 'degraded',
+        },
+        failed: {
+          createComponent: () => new TestPlatformComponent('cache.default', 'cache', { state: 'failed' }),
+          enterState: () => undefined,
+          expectedState: 'failed',
+          name: 'failed',
+        },
+      },
+    });
+
+    await expect(harness.assertSnapshotSafeInDegradedAndFailedStates()).rejects.toThrow(
+      'snapshot() must be safe in "degraded" state: snapshot storage unavailable',
+    );
+  });
+
+  it('does not report enterState failures as snapshot safety failures', async () => {
+    const harness = createPlatformConformanceHarness({
+      createComponent: () => new TestPlatformComponent('cache.default', 'cache'),
+      scenarios: {
+        degraded: {
+          createComponent: () => new TestPlatformComponent('cache.default', 'cache', { state: 'created' }),
+          enterState: () => {
+            throw new Error('degraded transition failed');
+          },
+          name: 'degraded',
+        },
+        failed: {
+          createComponent: () => new TestPlatformComponent('cache.default', 'cache', { state: 'failed' }),
+          enterState: () => undefined,
+          name: 'failed',
+        },
+      },
+    });
+
+    await expect(harness.assertSnapshotSafeInDegradedAndFailedStates()).rejects.toThrow('degraded transition failed');
+    await expect(harness.assertSnapshotSafeInDegradedAndFailedStates()).rejects.not.toThrow('snapshot() must be safe');
+  });
+
+  it('does not report expected-state mismatches as snapshot safety failures', async () => {
+    const harness = createPlatformConformanceHarness({
+      createComponent: () => new TestPlatformComponent('cache.default', 'cache'),
+      scenarios: {
+        degraded: {
+          createComponent: () => new TestPlatformComponent('cache.default', 'cache', { state: 'ready' }),
+          enterState: () => undefined,
+          expectedState: 'degraded',
+          name: 'degraded',
+        },
+        failed: {
+          createComponent: () => new TestPlatformComponent('cache.default', 'cache', { state: 'failed' }),
+          enterState: () => undefined,
+          name: 'failed',
+        },
+      },
+    });
+
+    await expect(harness.assertSnapshotSafeInDegradedAndFailedStates()).rejects.toThrow(
+      'Scenario "degraded" expected state "degraded" but received "ready".',
+    );
+    await expect(harness.assertSnapshotSafeInDegradedAndFailedStates()).rejects.not.toThrow('snapshot() must be safe');
   });
 
   it('requires diagnostics to include stable non-empty messages', async () => {
