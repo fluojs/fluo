@@ -85,7 +85,7 @@ The `conn.current()` method always returns the registered Mongoose connection. T
 
 MongoDB transactions require an active **session**. Fluo reduces the caller's burden by grouping session creation, execution, and cleanup into one transaction wrapper.
 
-When the provided Mongoose connection exposes `connection.transaction(...)`, fluo delegates the transaction boundary to that API so Mongoose's own ambient-session scope and cleanup semantics remain intact. Otherwise it falls back to `startSession()`, `startTransaction()`, `commitTransaction()` / `abortTransaction()`, and `endSession()` directly. In both modes, `dispose(connection)` waits until active request transactions and session cleanup settle during application shutdown.
+When the provided Mongoose connection exposes `connection.transaction(...)`, fluo delegates manual and request-scoped transaction boundaries to that API so Mongoose's own ambient-session scope and cleanup semantics remain intact. Otherwise it falls back to `startSession()`, `startTransaction()`, `commitTransaction()` / `abortTransaction()`, and `endSession()` directly. Request-scoped transactions race request cancellation against session acquisition, delegated transaction startup, and the wrapped handler. In both modes, `dispose(connection)` waits until active request transactions and session cleanup settle during application shutdown, and new manual or request-scoped transaction boundaries are rejected once shutdown begins.
 
 ### Manual Transactions
 

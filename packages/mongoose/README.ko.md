@@ -56,14 +56,14 @@ class AppModule {}
 
 `MongooseModule`은 `MongooseConnection`을 fluo 애플리케이션 라이프사이클에 등록합니다. 이 패키지는 원본 Mongoose 연결을 직접 생성하거나 소유하지 않습니다. 애플리케이션 종료 시 외부 연결을 닫아야 한다면 `dispose` 훅을 전달하세요.
 
-종료 과정은 트랜잭션 정리 순서를 보존합니다.
+종료 과정은 트랜잭션 정리 순서를 보존하며, 종료가 시작된 뒤에는 새 수동 또는 요청 범위 트랜잭션 경계를 열지 못하게 합니다.
 
 1. 열려 있는 요청 범위 트랜잭션은 `Application shutdown interrupted an open request transaction.` 오류로 abort됩니다.
 2. 활성 ambient session은 transaction callback과 session cleanup이 settle될 때까지 추적됩니다.
 3. 해당 Mongoose 세션은 `abortTransaction()`과 `endSession()` 정리를 끝냅니다.
 4. 설정한 `dispose(connection)` 훅은 활성 요청 트랜잭션과 ambient session scope가 모두 settled된 뒤에만 실행됩니다.
 
-`createMongoosePlatformStatusSnapshot(...)`은 트래픽 처리 중에는 `ready`, 요청 트랜잭션 drain 중에는 `shutting-down`, dispose 훅 완료 뒤에는 `stopped`를 보고합니다. 상태 details에는 `sessionStrategy`, `transactionContext: 'als'`, 활성 요청/session 개수, 리소스 소유권, strict/session 지원 진단이 포함됩니다. 수동 `transaction()`도 요청 범위 트랜잭션과 같은 명시적 세션 계약을 사용하므로, 트랜잭션에 참여해야 하는 Mongoose 모델 작업에는 repository 코드가 `conn.currentSession()`을 전달해야 합니다. 감싼 Mongoose 연결이 `connection.transaction(...)`을 노출하면 fluo는 Mongoose 자체 ambient-session scope를 보존하기 위해 그 API에 transaction boundary를 위임하면서도 같은 session을 `currentSession()`으로 노출합니다.
+`requestTransaction(...)`은 요청 취소를 session 획득, 위임된 `connection.transaction(...)` 시작, 감싼 callback과 race하여 중단된 요청이 느린 transaction boundary가 열릴 때까지 기다리지 않고 거부되게 합니다. `createMongoosePlatformStatusSnapshot(...)`은 트래픽 처리 중에는 `ready`, 요청 트랜잭션 drain 중에는 `shutting-down`, dispose 훅 완료 뒤에는 `stopped`를 보고합니다. 상태 details에는 `sessionStrategy`, `transactionContext: 'als'`, 활성 요청/session 개수, 리소스 소유권, strict/session 지원 진단이 포함됩니다. 수동 `transaction()`도 요청 범위 트랜잭션과 같은 명시적 세션 계약을 사용하므로, 트랜잭션에 참여해야 하는 Mongoose 모델 작업에는 repository 코드가 `conn.currentSession()`을 전달해야 합니다. 감싼 Mongoose 연결이 `connection.transaction(...)`을 노출하면 fluo는 Mongoose 자체 ambient-session scope와 시작/정리 의미론을 보존하기 위해 수동 및 요청 범위 transaction boundary를 그 API에 위임하면서도 같은 session을 `currentSession()`으로 노출합니다.
 
 ## 공통 패턴
 

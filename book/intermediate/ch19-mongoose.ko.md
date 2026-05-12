@@ -85,6 +85,8 @@ export class ProductRepository {
 
 MongoDB 트랜잭션은 활성화된 **세션(Session)**을 필요로 합니다. Fluo는 세션 생성, 실행, 정리를 하나의 트랜잭션 래퍼로 묶어 호출부의 부담을 줄입니다.
 
+제공된 Mongoose 연결이 `connection.transaction(...)`을 노출하면 fluo는 수동 및 요청 범위 트랜잭션 경계를 그 API에 위임하여 Mongoose 자체 ambient-session scope와 정리 의미론을 유지합니다. 그렇지 않으면 `startSession()`, `startTransaction()`, `commitTransaction()` / `abortTransaction()`, `endSession()`을 직접 사용합니다. 요청 범위 트랜잭션은 요청 취소를 session 획득, 위임된 transaction 시작, 감싼 handler와 race합니다. 두 방식 모두 애플리케이션 종료 중에는 `dispose(connection)`이 활성 요청 트랜잭션과 session cleanup이 settle될 때까지 기다리며, 종료가 시작된 뒤에는 새 수동 또는 요청 범위 트랜잭션 경계를 거부합니다.
+
 ### Manual Transactions
 
 ```typescript

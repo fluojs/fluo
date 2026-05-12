@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 import {
+  createAbortError,
   createRequestAbortContext,
   raceWithAbort,
   trackActiveRequestTransaction,
@@ -18,6 +19,8 @@ import type {
 } from './types.js';
 
 const TRANSACTIONS_NOT_SUPPORTED_ERROR = 'Transaction not supported: Mongoose connection does not implement startSession.';
+const TRANSACTIONS_UNAVAILABLE_ERROR = 'Mongoose transactions are not available during shutdown.';
+const REQUEST_TRANSACTIONS_UNAVAILABLE_ERROR = 'Mongoose request transactions are not available during shutdown.';
 
 type ActiveRequestTransaction = {
   abort(reason?: unknown): void;
@@ -158,6 +161,8 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       return fn();
     }
 
+    this.assertTransactionsAvailable();
+
     if (typeof this.connection.transaction === 'function') {
       return this.runConnectionTransaction(fn);
     }
@@ -185,30 +190,65 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
   async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     const currentSession = this.sessions.getStore();
     if (currentSession) {
+      this.assertRequestTransactionsAvailable();
+
       if (signal) {
         return raceWithAbort(fn, signal);
       }
       return fn();
     }
 
+    this.assertRequestTransactionsAvailable();
+
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
 
     try {
       if (typeof this.connection.transaction === 'function') {
-        return await this.runConnectionTransaction(() => raceWithAbort(fn, abortContext.signal));
+        const transaction = () => this.runConnectionTransaction(() => raceWithAbort(fn, abortContext.signal));
+        const result = signal ? await raceWithAbort<T>(transaction, abortContext.signal) : await transaction();
+
+        this.throwIfRequestAborted(abortContext.signal);
+
+        return result;
       }
 
-      const resolvedSession = await this.resolveSession();
+      const resolvedSession = await this.resolveRequestSession(abortContext.signal, signal !== undefined);
       if (!resolvedSession) {
-        return await raceWithAbort(fn, abortContext.signal);
+        const result = await raceWithAbort(fn, abortContext.signal);
+
+        this.throwIfRequestAborted(abortContext.signal);
+
+        return result;
       }
 
-      return await this.runManualSessionTransaction(resolvedSession, () => raceWithAbort(fn, abortContext.signal));
+      const result = await this.runManualSessionTransaction<T>(resolvedSession, () => raceWithAbort(fn, abortContext.signal));
+
+      this.throwIfRequestAborted(abortContext.signal);
+
+      return result;
     } finally {
       abortContext.cleanup();
 
       this.untrackActiveRequestTransaction(active);
+    }
+  }
+
+  private assertTransactionsAvailable(): void {
+    if (this.lifecycleState !== 'ready') {
+      throw new Error(TRANSACTIONS_UNAVAILABLE_ERROR);
+    }
+  }
+
+  private assertRequestTransactionsAvailable(): void {
+    if (this.lifecycleState !== 'ready') {
+      throw new Error(REQUEST_TRANSACTIONS_UNAVAILABLE_ERROR);
+    }
+  }
+
+  private throwIfRequestAborted(signal: AbortSignal): void {
+    if (signal.aborted) {
+      throw createAbortError(signal.reason);
     }
   }
 
@@ -276,5 +316,30 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     }
 
     return this.connection.startSession();
+  }
+
+  private async resolveRequestSession(
+    signal: AbortSignal,
+    raceSessionAcquisition: boolean,
+  ): Promise<MongooseSessionLike | undefined> {
+    const sessionPromise = this.resolveSession();
+
+    if (!raceSessionAcquisition) {
+      return sessionPromise;
+    }
+
+    try {
+      return await raceWithAbort(() => sessionPromise, signal);
+    } catch (error) {
+      if (signal.aborted) {
+        void sessionPromise
+          .then((session) => session?.endSession())
+          .catch((cleanupError: unknown) => {
+            void cleanupError;
+          });
+      }
+
+      throw error;
+    }
   }
 }

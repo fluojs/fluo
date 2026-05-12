@@ -611,6 +611,108 @@ describe('@fluojs/mongoose', () => {
     expect(events).not.toContain('connection:startSession');
   });
 
+  it('races request session acquisition against abort and cleans up late sessions', async () => {
+    const events: string[] = [];
+    const session = createFakeSession(events);
+    let resolveStartSession!: (session: MongooseSessionLike) => void;
+    const startSessionDeferred = new Promise<MongooseSessionLike>((resolve) => {
+      resolveStartSession = resolve;
+    });
+    const controller = new AbortController();
+
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return startSessionDeferred;
+      },
+    };
+
+    const mongoose = new MongooseConnection<typeof connection>(connection);
+    const requestTransaction = mongoose.requestTransaction(async () => {
+      events.push('tx:work');
+      return 'ok';
+    }, controller.signal);
+
+    controller.abort(new Error('request aborted before session acquisition'));
+
+    await expect(requestTransaction).rejects.toThrow('request aborted before session acquisition');
+
+    resolveStartSession(session);
+    await startSessionDeferred;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(events).toEqual(['connection:startSession', 'session:end']);
+  });
+
+  it('races delegated connection.transaction startup against request abort', async () => {
+    const events: string[] = [];
+    const session = createFakeSession(events);
+    let resolveTransactionStartup!: () => void;
+    const transactionStartupDeferred = new Promise<void>((resolve) => {
+      resolveTransactionStartup = resolve;
+    });
+    const controller = new AbortController();
+
+    const connection: MongooseConnectionLike = {
+      async transaction(fn) {
+        events.push('connection:transaction:start');
+        await transactionStartupDeferred;
+        return fn(session);
+      },
+    };
+
+    const mongoose = new MongooseConnection<typeof connection>(connection);
+    const requestTransaction = mongoose.requestTransaction(async () => {
+      events.push('tx:work');
+      return 'ok';
+    }, controller.signal);
+
+    controller.abort(new Error('request aborted before delegated transaction startup'));
+
+    await expect(requestTransaction).rejects.toThrow('request aborted before delegated transaction startup');
+
+    resolveTransactionStartup();
+    await transactionStartupDeferred;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(events).toEqual(['connection:transaction:start']);
+  });
+
+  it('rejects new manual and request transactions after shutdown starts', async () => {
+    const events: string[] = [];
+    let resolveDispose!: () => void;
+    const disposeDeferred = new Promise<void>((resolve) => {
+      resolveDispose = resolve;
+    });
+    const session = createFakeSession(events);
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return session;
+      },
+    };
+    const mongoose = new MongooseConnection<typeof connection>(connection, async () => {
+      events.push('dispose:start');
+      await disposeDeferred;
+      events.push('dispose:end');
+    });
+
+    const shutdown = mongoose.onApplicationShutdown();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    await expect(mongoose.transaction(async () => 'manual')).rejects.toThrow(
+      'Mongoose transactions are not available during shutdown.',
+    );
+    await expect(mongoose.requestTransaction(async () => 'request')).rejects.toThrow(
+      'Mongoose request transactions are not available during shutdown.',
+    );
+
+    resolveDispose();
+    await shutdown;
+
+    expect(events).toEqual(['dispose:start', 'dispose:end']);
+  });
+
   it('waits for connection.transaction request session cleanup before dispose on shutdown', async () => {
     const events: string[] = [];
     let resolveEndSessionStarted!: () => void;
