@@ -104,8 +104,8 @@ import { Controller, Get } from '@fluojs/http';
 import { PostsService } from './posts.service';
 
 @Controller('/posts')
-@Inject (PostsService)
-class PostsController {
+@Inject(PostsService)
+export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
   @Get('/')
