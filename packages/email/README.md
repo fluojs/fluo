@@ -169,6 +169,7 @@ Behavioral contract notes:
 - `EmailService.sendMany(...)` is fail-fast by default; pass `continueOnError: true` to collect failures in a batch result.
 - `EmailService.createPlatformStatusSnapshot()` exposes lifecycle, readiness, health, and transport ownership details for diagnostics.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
+- Once shutdown starts, `EmailService.send(...)` and `EmailService.sendNotification(...)` fail with `EmailLifecycleError` instead of reusing or lazily creating transports; any in-flight factory-owned transport creation is awaited and closed by shutdown.
 - Transport `verify()` and `close()` provider errors are preserved as the `cause` of lifecycle failures for diagnostics.
 - Module options are trimmed and normalized before provider wiring, including sender defaults, notification channel names, and transport factory ownership.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
@@ -310,6 +311,7 @@ These limitations are part of the package contract so transport selection, templ
 
 - `createEmailPlatformStatusSnapshot(...)`
 - `EmailConfigurationError`
+- `EmailLifecycleError`: thrown by lifecycle-gated delivery, transport initialization or verification, and owned-resource shutdown failures. Catch this error when sends can race with application teardown.
 - `EmailMessageValidationError`
 
 ### Node-only subpath

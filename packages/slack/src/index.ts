@@ -1,5 +1,6 @@
 export {
   SlackConfigurationError,
+  SlackLifecycleError,
   SlackMessageValidationError,
   SlackTransportError,
 } from './errors.js';

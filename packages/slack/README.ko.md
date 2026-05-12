@@ -128,6 +128,7 @@ Behavioral contract 메모:
 - `SlackService.send(...)`는 전달 전에 `defaultChannel`을 해석합니다.
 - `SlackService.sendMany(...)`는 메시지를 순차적으로 보내며, fail-fast 대신 batch result가 필요한 호출자를 위해 `continueOnError`를 지원합니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
+- shutdown이 시작된 뒤에는 `SlackService.send(...)`와 `SlackService.sendNotification(...)`이 transport를 재사용하거나 lazy 생성하지 않고 `SlackLifecycleError`로 실패합니다. 진행 중인 factory 소유 transport 생성은 shutdown이 기다린 뒤 닫습니다.
 - `SlackService.createPlatformStatusSnapshot()`은 호출자가 내부 옵션에 접근하지 않아도 lifecycle, readiness, transport 소유권을 보고합니다.
 - 이 패키지는 절대로 `process.env`를 직접 읽지 않습니다. 모든 설정은 명시적인 옵션 또는 DI를 통해 들어와야 합니다.
 
@@ -218,7 +219,10 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `SlackModule.forRoot(options)` / `SlackModule.forRootAsync(options)`
 - `createSlackProviders(options)`
 - `SlackService`
+- `SlackService.send(message, options)`
 - `SlackService.sendMany(messages, options)`
+- `SlackService.sendNotification(notification, options)`
+- `SlackService.createPlatformStatusSnapshot()`
 - `SlackChannel`
 - `SLACK`
 - `SLACK_CHANNEL`
@@ -256,6 +260,7 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `SlackLifecycleState`
 - `SlackStatusAdapterInput`
 - `SlackConfigurationError`
+- `SlackLifecycleError`: lifecycle로 차단된 전달, transport 초기화, 소유 리소스 shutdown 실패에서 발생합니다. 애플리케이션 teardown과 전송이 경합할 수 있다면 이 에러를 catch하세요.
 - `SlackMessageValidationError`
 - `SlackTransportError`
 

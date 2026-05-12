@@ -17,3 +17,13 @@ export class EmailMessageValidationError extends Error {
     this.name = 'EmailMessageValidationError';
   }
 }
+
+/**
+ * Thrown when email delivery is requested after the service lifecycle has started shutting down.
+ */
+export class EmailLifecycleError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'EmailLifecycleError';
+  }
+}

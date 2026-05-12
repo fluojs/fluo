@@ -1,7 +1,7 @@
 import { Inject } from '@fluojs/core';
 import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
-import { SlackMessageValidationError } from './errors.js';
+import { SlackLifecycleError, SlackMessageValidationError } from './errors.js';
 import { createSlackPlatformStatusSnapshot } from './status.js';
 import { SLACK_OPTIONS } from './tokens.js';
 import type {
@@ -23,6 +23,28 @@ function createAbortError(): Error {
   const error = new Error('Slack delivery was aborted.');
   error.name = 'AbortError';
   return error;
+}
+
+function assertNotAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+}
+
+type SlackServiceLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';
+
+function createLifecycleError(message: string, cause: unknown): SlackLifecycleError {
+  return new SlackLifecycleError(message, { cause });
+}
+
+function createDeliveryLifecycleError(state: SlackServiceLifecycleState): SlackLifecycleError {
+  return new SlackLifecycleError(`Slack delivery cannot start while the service lifecycle is ${state}.`);
+}
+
+function isShutdownLifecycleState(
+  state: SlackServiceLifecycleState,
+): state is Extract<SlackServiceLifecycleState, 'stopping' | 'stopped'> {
+  return state === 'stopping' || state === 'stopped';
 }
 
 function normalizeOptionalString(value: string | undefined): string | undefined {
@@ -48,7 +70,7 @@ function assertMessageContent(message: NormalizedSlackMessage): void {
  */
 @Inject(SLACK_OPTIONS)
 export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown {
-  private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
+  private lifecycleState: SlackServiceLifecycleState = 'created';
   private resolvedTransport: SlackTransport | undefined;
   private transportPromise: Promise<SlackTransport> | undefined;
 
@@ -58,31 +80,49 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
     this.lifecycleState = 'stopping';
 
     try {
-      if (this.resolvedTransport && this.options.transport.ownsResources && this.resolvedTransport.close) {
-        await this.resolvedTransport.close();
+      const transport = this.resolvedTransport ?? (this.transportPromise ? await this.transportPromise : undefined);
+
+      if (transport && this.options.transport.ownsResources && transport.close) {
+        await transport.close();
       }
 
       this.lifecycleState = 'stopped';
-    } catch {
+    } catch (error) {
       this.lifecycleState = 'failed';
-      throw new Error('Slack transport failed to close cleanly.');
+      throw createLifecycleError('Slack transport failed to close cleanly.', error);
     }
   }
 
   async onModuleInit(): Promise<void> {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      return;
+    }
+
     this.lifecycleState = 'starting';
 
     try {
       const transport = await this.ensureTransport();
 
+      if (this.lifecycleState !== 'starting') {
+        return;
+      }
+
       if (this.options.verifyOnModuleInit && transport.verify) {
         await transport.verify();
       }
 
+      if (this.lifecycleState !== 'starting') {
+        return;
+      }
+
       this.lifecycleState = 'ready';
-    } catch {
+    } catch (error) {
+      if (isShutdownLifecycleState(this.lifecycleState)) {
+        throw error;
+      }
+
       this.lifecycleState = 'failed';
-      throw new Error('Slack transport failed to initialize.');
+      throw createLifecycleError('Slack transport failed to initialize.', error);
     }
   }
 
@@ -119,13 +159,13 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
    * ```
    */
   async send(message: SlackMessage, options: SlackSendOptions = {}): Promise<SlackSendResult> {
-    if (options.signal?.aborted) {
-      throw createAbortError();
-    }
+    assertNotAborted(options.signal);
+    this.assertCanDeliver();
 
     const transport = await this.ensureTransport();
     const normalized = this.normalizeMessage(message);
     assertMessageContent(normalized);
+    this.assertCanDeliver();
     const result = await transport.send(normalized, options);
 
     return {
@@ -202,6 +242,9 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
     notification: SlackNotificationDispatchRequest,
     options: SlackSendOptions = {},
   ): Promise<SlackSendResult> {
+    assertNotAborted(options.signal);
+    this.assertCanDeliver();
+
     const payload = notification.payload;
     const rendered = await this.renderNotification(notification);
 
@@ -231,6 +274,8 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
   }
 
   private async ensureTransport(): Promise<SlackTransport> {
+    this.assertCanCreateOrUseTransport();
+
     if (this.resolvedTransport) {
       return this.resolvedTransport;
     }
@@ -243,6 +288,16 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
     }
 
     return this.transportPromise;
+  }
+
+  private assertCanCreateOrUseTransport(): void {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped' || this.lifecycleState === 'failed') {
+      throw createDeliveryLifecycleError(this.lifecycleState);
+    }
+  }
+
+  private assertCanDeliver(): void {
+    this.assertCanCreateOrUseTransport();
   }
 
   private normalizeMessage(message: SlackMessage): NormalizedSlackMessage {
@@ -274,7 +329,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
 
     if (recipients.length > 1) {
       throw new SlackMessageValidationError(
-      'Slack notifications accept exactly one target channel per dispatch. Use `sendMany(...)` for fan-out delivery.',
+        'Slack notifications accept exactly one target channel per dispatch. Use `sendMany(...)` for fan-out delivery.',
       );
     }
 
