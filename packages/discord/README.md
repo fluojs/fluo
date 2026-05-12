@@ -96,8 +96,10 @@ Behavioral contract notes:
 
 - `DiscordService.send(...)` resolves `defaultThreadId` before delivery.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
-- Sends attempted before bootstrap failure recovery, while shutdown is in progress, or after shutdown are rejected with `DiscordLifecycleError` before reusing or lazily creating transports; any in-flight factory-owned transport creation is awaited and closed by shutdown.
+- Sends attempted while the service is `created` or `starting` wait for bootstrap transport creation and optional verification before delivery, so callers cannot bypass `verifyOnModuleInit` with a lazy send.
+- Sends attempted after bootstrap failure, while shutdown is in progress, or after shutdown are rejected with `DiscordLifecycleError` before reusing or lazily creating transports; any in-flight factory-owned transport creation is awaited and closed by shutdown.
 - `DiscordService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options.
+- `DiscordLifecycleError` is a backward-compatible public error subclass for lifecycle-gated delivery failures; the compatibility impact is classified as patch because previously unsafe sends now fail earlier instead of racing failed bootstrap or teardown.
 - Blank `defaultThreadId` and `notifications.channel` values are trimmed and ignored; the notifications channel defaults to `discord`.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 

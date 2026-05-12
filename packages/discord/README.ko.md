@@ -96,8 +96,10 @@ Behavioral contract 메모:
 
 - `DiscordService.send(...)`는 전달 전에 `defaultThreadId`를 해석합니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
-- bootstrap 실패 복구 전, shutdown 진행 중, 또는 shutdown 이후의 send는 transport를 재사용하거나 lazy 생성하지 않고 `DiscordLifecycleError`로 거부됩니다. 진행 중인 factory 소유 transport 생성은 shutdown이 기다린 뒤 닫습니다.
+- 서비스가 `created` 또는 `starting` 상태일 때 시도된 send는 bootstrap transport 생성과 선택적 verification을 기다린 뒤 전달되므로, 호출자가 lazy send로 `verifyOnModuleInit`을 우회할 수 없습니다.
+- bootstrap 실패 이후, shutdown 진행 중, 또는 shutdown 이후의 send는 transport를 재사용하거나 lazy 생성하지 않고 `DiscordLifecycleError`로 거부됩니다. 진행 중인 factory 소유 transport 생성은 shutdown이 기다린 뒤 닫습니다.
 - `DiscordService.createPlatformStatusSnapshot()`은 호출자가 내부 옵션에 접근하지 않아도 lifecycle, readiness, transport 소유권을 보고합니다.
+- `DiscordLifecycleError`는 lifecycle로 차단된 전달 실패를 위한 backward-compatible 공개 error subclass입니다. 기존의 안전하지 않은 send가 실패한 bootstrap이나 teardown과 경합하는 대신 더 이른 시점에 실패하므로 compatibility 영향은 patch로 분류합니다.
 - 빈 `defaultThreadId`와 `notifications.channel` 값은 trim 후 무시됩니다. notifications channel은 기본적으로 `discord`입니다.
 - 이 패키지는 절대로 `process.env`를 직접 읽지 않습니다. 모든 설정은 명시적인 옵션 또는 DI를 통해 들어와야 합니다.
 
