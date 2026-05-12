@@ -537,52 +537,89 @@ The cost is clear too. Because the container does not cache the result at all, e
 ## 5.5 Overrides, cache invalidation, and stale instance disposal
 The container's most subtle lifetime behavior appears when a provider is overridden after it has already been resolved. This is exactly where scope, cache invalidation, and disposal meet.
 
-`override()` itself is implemented in `path:packages/di/src/container.ts:207-234`. It normalizes the incoming provider, finds the existing visible provider, deletes both single and multi registrations for that token, then calls `invalidateCachedEntry(token, existing?.scope ?? normalized.scope)`.
+`override()` itself is implemented in `path:packages/di/src/container.ts:289-335`. It now has two distinct phases. First it normalizes every incoming provider and validates the complete override batch by token. Only after the batch is valid does it mutate registrations, invalidate cached entries, and advance the graph revision.
 
-Override clears lifetime state before replacing the registration.
+This atomic validation step matters because an invalid later provider must not leave an earlier token half-overridden.
 
-`path:packages/di/src/container.ts:207-234`
+`path:packages/di/src/container.ts:289-335`
 ```typescript
 override(...providers: Provider[]): this {
-  if (this.disposed) {
+  if (this.isDisposedInHierarchy()) {
     throw new ContainerResolutionError(
       'Container has been disposed and can no longer override providers.',
       { hint: 'Ensure overrides are applied before calling container.dispose().' },
     );
   }
 
+  const normalizedByToken = new Map<Token, NormalizedProvider[]>();
+
   for (const provider of providers) {
     const normalized = normalizeProvider(provider);
-    const existing = this.lookupProvider(normalized.provide);
+    const normalizedProviders = normalizedByToken.get(normalized.provide);
 
-    this.registrations.delete(normalized.provide);
-    this.multiRegistrations.delete(normalized.provide);
-    this.invalidateCachedEntry(normalized.provide, existing?.scope ?? normalized.scope);
-
-    if (normalized.multi) {
-      this.multiRegistrations.set(normalized.provide, [normalized]);
-      this.multiOverriddenTokens.add(normalized.provide);
+    if (normalizedProviders) {
+      normalizedProviders.push(normalized);
       continue;
     }
 
-    this.multiOverriddenTokens.add(normalized.provide);
-    this.registrations.set(normalized.provide, normalized);
+    normalizedByToken.set(normalized.provide, [normalized]);
+  }
+
+  const overrideGroups = this.validateOverrideGroups(normalizedByToken);
+
+  for (const { token, normalizedProviders, firstProvider, containsMultiProvider } of overrideGroups) {
+    const existing = this.lookupProvider(token);
+    const existingMultiProviders = this.collectMultiProviders(token);
+
+    this.registrations.delete(token);
+    this.multiRegistrations.delete(token);
+    this.invalidateCachedEntry(token, existing?.scope ?? existingMultiProviders[0]?.scope ?? firstProvider.scope);
+
+    if (containsMultiProvider) {
+      this.multiRegistrations.set(token, normalizedProviders);
+      this.multiOverriddenTokens.add(token);
+      this.advanceGraphRevision();
+      continue;
+    }
+
+    this.multiOverriddenTokens.add(token);
+    this.registrations.set(token, firstProvider);
+    this.advanceGraphRevision();
   }
 
   return this;
 }
 ```
 
-The order matters. If Fluo deleted only the old registration and left the cache behind, the next resolve might not see the new provider. Fluo treats override as the combination of registration update and cache eviction.
+`validateOverrideGroups()` in `path:packages/di/src/container.ts:497-522` rejects mixed single/multi replacements for the same token and duplicate single replacements before any registration is deleted. This gives `override(...providers)` the same all-or-nothing shape as batch `register(...providers)`: every provider in the call is structurally acceptable, or the container graph remains unchanged.
 
-This invalidation routine is in `path:packages/di/src/container.ts:900-944`. It checks the request cache entry, root singleton cache entry, root multi singleton cache entry, and request multi cache entry. If there is a cached promise, it schedules stale disposal before deleting the cache entry.
+After validation, the mutation order still matters. For each token, Fluo deletes the visible single and multi registrations, invalidates lifetime state using the old visible scope when available, installs the replacement provider set, and advances the graph revision. If Fluo changed only the registration map and left caches behind, the next resolve might not see the new provider. If it mutated before validating the whole batch, a failed override call could partially rewrite the graph.
+
+The invalidation entrypoint is `path:packages/di/src/container.ts:1312-1320`. It invalidates the current container first, then walks the root's lazily tracked request-scope children and invalidates only materialized descendants of the container where the override occurred.
+
+`path:packages/di/src/container.ts:1312-1320`
+```typescript
+private invalidateCachedEntry(token: Token, scope: Scope): void {
+  this.invalidateLocalCachedEntry(token, scope);
+
+  for (const childScope of this.root().childScopes ?? []) {
+    if (childScope !== this && childScope.isDescendantOf(this)) {
+      childScope.invalidateLocalCachedEntry(token, scope);
+    }
+  }
+}
+```
+
+This is the materialized descendant rule from section 5.2 applied to overrides. A request child is tracked only after it has created request-local cache state. When the root overrides a request-scoped provider, already-materialized request children must drop their request cache entries so the next resolve sees the replacement. Untouched request children do not need invalidation because they have no request-local cache entry yet. When an intermediate container overrides a token, only descendants of that container are invalidated; sibling request scopes keep their own local state.
+
+The local invalidation routine is in `path:packages/di/src/container.ts:1336-1386`. It checks the request cache entry, root singleton cache entry, root multi singleton cache entry, and request multi cache entry. If there is a cached promise, it schedules stale disposal before deleting the cache entry.
 
 The full routine is long, but the first part that handles stale single cache entries shows the core ownership rule.
 
-`path:packages/di/src/container.ts:900-923`
+`path:packages/di/src/container.ts:1336-1359`
 ```typescript
-private invalidateCachedEntry(token: Token, scope: Scope): void {
-  if (this.requestCache.has(token)) {
+private invalidateLocalCachedEntry(token: Token, scope: Scope): void {
+  if (this.requestCache?.has(token)) {
     const cached = this.requestCache.get(token);
 
     if (cached) {
@@ -605,15 +642,16 @@ private invalidateCachedEntry(token: Token, scope: Scope): void {
       singletonCache.delete(token);
     }
   }
+}
 ```
 
-Both the request cache and root singleton cache are checked because the override location and provider scope can differ. The later multi cache branch applies the same principle to provider array entries.
+Both the request cache and root singleton cache are checked because the override location and provider scope can differ. The later multi cache branch applies the same principle to provider array entries, including request-scoped multi providers that were materialized in a descendant request container.
 
-The actual scheduling path is `scheduleStaleDisposal()` in `path:packages/di/src/container.ts:762-780`. Fluo does not simply drop stale instance references. It awaits the already-created promise, and if the resulting instance has `onDestroy()`, it calls it exactly once. Errors from that path do not break `override()` synchronously. They are accumulated in `staleDisposalErrors`.
+The actual scheduling path is `scheduleStaleDisposal()` in `path:packages/di/src/container.ts:1085-1103`. Fluo does not simply drop stale instance references. It awaits the already-created promise, and if the resulting instance has `onDestroy()`, it calls it exactly once. Errors from that path do not break `override()` synchronously. They are accumulated in `staleDisposalErrors`.
 
 Stale disposal scheduling works from the cached promise.
 
-`path:packages/di/src/container.ts:762-780`
+`path:packages/di/src/container.ts:1085-1103`
 ```typescript
 private scheduleStaleDisposal(instancePromise: Promise<unknown>): void {
   let task: Promise<void>;
@@ -640,22 +678,31 @@ The design has to await the promise because only an object that has already been
 
 Tests pin this behavior tightly.
 `path:packages/di/src/container.test.ts:385-397` verifies that overriding an already-resolved singleton invalidates the cache.
-`path:packages/di/src/container.test.ts:905-932` proves that a stale overridden singleton instance is disposed immediately and exactly once.
-`path:packages/di/src/container.test.ts:934-974` extends the same guarantee to multi-provider singleton entries.
+`path:packages/di/src/container.test.ts:1181-1231` verifies that root overrides invalidate materialized request-scope single and multi providers in existing request children.
+`path:packages/di/src/container.test.ts:1233-1273` proves the batch atomicity rule: if a later override token is invalid or mixes single and multi replacements, earlier tokens remain unchanged.
+`path:packages/di/src/container.test.ts:1734-1752` proves that a stale overridden singleton instance is disposed immediately and exactly once.
+`path:packages/di/src/container.test.ts:1768-1787` extends the same guarantee to multi-provider singleton entries.
 
 There is also a regression test for repeated overrides.
-`path:packages/di/src/container.test.ts:976-1012` confirms that stale singleton versions do not keep piling up.
+`path:packages/di/src/container.test.ts:1800-1833` confirms that stale singleton versions do not keep piling up.
 As the token changes from `v1` to `v2` to `v3`, each old version is disposed exactly once.
 
-The override-and-evict algorithm can be summarized like this.
+The override algorithm can be summarized like this.
 
 ```text
-override(token, replacement):
-  delete visible registrations for token in current scope
-  find and evict matching cache entries
-  for each evicted cached promise:
-    schedule disposal of resolved stale instance
-  register replacement provider
+override(...providers):
+  normalize all providers and group them by token
+  validate every override group
+  if validation fails:
+    leave registrations and caches unchanged
+  for each validated token group:
+    delete visible registrations for token in current scope
+    invalidate the current container's matching cache entries
+    invalidate already-materialized descendant request scopes
+    for each evicted cached promise:
+      schedule disposal of resolved stale instance
+    register replacement provider or replacement multi-provider set
+    advance the graph revision
 ```
 
 ```typescript

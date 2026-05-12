@@ -537,52 +537,89 @@ console.log(first === second, report.currentBuilder() instanceof QueryBuilder);
 ## 5.5 Overrides, cache invalidation, and stale instance disposal
 컨테이너의 가장 미묘한 lifetime 동작은, 이미 resolve된 뒤의 provider를 override할 때 나타납니다. 바로 여기서 scope와 cache invalidation, disposal이 만납니다.
 
-`override()` 자체는 `path:packages/di/src/container.ts:207-234`에 구현되어 있습니다. incoming provider를 normalize하고, 기존 visible provider를 찾고, 해당 token의 single/multi registration을 모두 삭제한 뒤, `invalidateCachedEntry(token, existing?.scope ?? normalized.scope)`를 호출합니다.
+`override()` 자체는 `path:packages/di/src/container.ts:289-335`에 구현되어 있습니다. 이제 이 메서드는 두 단계로 나뉩니다. 먼저 모든 incoming provider를 normalize하고 token별 override batch 전체를 검증합니다. batch가 유효한 경우에만 registration을 변경하고, cached entry를 무효화하고, graph revision을 전진시킵니다.
 
-override는 registration 교체 전에 lifetime state를 먼저 비웁니다.
+이 atomic validation 단계가 중요한 이유는 뒤쪽 provider가 invalid일 때 앞쪽 token만 half-overridden 상태로 남으면 안 되기 때문입니다.
 
-`path:packages/di/src/container.ts:207-234`
+`path:packages/di/src/container.ts:289-335`
 ```typescript
 override(...providers: Provider[]): this {
-  if (this.disposed) {
+  if (this.isDisposedInHierarchy()) {
     throw new ContainerResolutionError(
       'Container has been disposed and can no longer override providers.',
       { hint: 'Ensure overrides are applied before calling container.dispose().' },
     );
   }
 
+  const normalizedByToken = new Map<Token, NormalizedProvider[]>();
+
   for (const provider of providers) {
     const normalized = normalizeProvider(provider);
-    const existing = this.lookupProvider(normalized.provide);
+    const normalizedProviders = normalizedByToken.get(normalized.provide);
 
-    this.registrations.delete(normalized.provide);
-    this.multiRegistrations.delete(normalized.provide);
-    this.invalidateCachedEntry(normalized.provide, existing?.scope ?? normalized.scope);
-
-    if (normalized.multi) {
-      this.multiRegistrations.set(normalized.provide, [normalized]);
-      this.multiOverriddenTokens.add(normalized.provide);
+    if (normalizedProviders) {
+      normalizedProviders.push(normalized);
       continue;
     }
 
-    this.multiOverriddenTokens.add(normalized.provide);
-    this.registrations.set(normalized.provide, normalized);
+    normalizedByToken.set(normalized.provide, [normalized]);
+  }
+
+  const overrideGroups = this.validateOverrideGroups(normalizedByToken);
+
+  for (const { token, normalizedProviders, firstProvider, containsMultiProvider } of overrideGroups) {
+    const existing = this.lookupProvider(token);
+    const existingMultiProviders = this.collectMultiProviders(token);
+
+    this.registrations.delete(token);
+    this.multiRegistrations.delete(token);
+    this.invalidateCachedEntry(token, existing?.scope ?? existingMultiProviders[0]?.scope ?? firstProvider.scope);
+
+    if (containsMultiProvider) {
+      this.multiRegistrations.set(token, normalizedProviders);
+      this.multiOverriddenTokens.add(token);
+      this.advanceGraphRevision();
+      continue;
+    }
+
+    this.multiOverriddenTokens.add(token);
+    this.registrations.set(token, firstProvider);
+    this.advanceGraphRevision();
   }
 
   return this;
 }
 ```
 
-이 순서가 중요합니다. 기존 registration만 지우고 cache를 남기면 다음 resolve가 새 provider를 보지 못할 수 있습니다. Fluo는 override를 registration update와 cache eviction의 결합으로 취급합니다.
+`path:packages/di/src/container.ts:497-522`의 `validateOverrideGroups()`는 같은 token에 single/multi replacement를 섞거나 single replacement를 중복으로 넣은 경우를 registration 삭제 전에 거부합니다. 그래서 `override(...providers)`는 batch `register(...providers)`와 같은 all-or-nothing 형태를 갖습니다. 호출 안의 모든 provider가 구조적으로 유효하거나, container graph가 그대로 유지됩니다.
 
-이 invalidation routine은 `path:packages/di/src/container.ts:900-944`에 있습니다. request cache entry, root singleton cache entry, root multi singleton cache entry, request multi cache entry를 모두 검사합니다. cached promise가 있으면 cache entry를 삭제하기 전에 stale disposal을 예약합니다.
+검증이 끝난 뒤에도 mutation 순서는 중요합니다. Fluo는 token마다 visible single/multi registration을 삭제하고, 가능하면 기존 visible scope를 기준으로 lifetime state를 무효화한 뒤, replacement provider set을 설치하고 graph revision을 전진시킵니다. registration map만 바꾸고 cache를 남기면 다음 resolve가 새 provider를 보지 못할 수 있습니다. 반대로 batch 전체를 검증하기 전에 mutation을 시작하면 실패한 override 호출이 graph를 부분적으로 다시 쓸 수 있습니다.
+
+invalidation entrypoint는 `path:packages/di/src/container.ts:1312-1320`에 있습니다. 먼저 현재 컨테이너를 무효화하고, 그다음 root가 lazy하게 추적 중인 request-scope child를 순회하면서 override가 일어난 컨테이너의 materialized descendant만 무효화합니다.
+
+`path:packages/di/src/container.ts:1312-1320`
+```typescript
+private invalidateCachedEntry(token: Token, scope: Scope): void {
+  this.invalidateLocalCachedEntry(token, scope);
+
+  for (const childScope of this.root().childScopes ?? []) {
+    if (childScope !== this && childScope.isDescendantOf(this)) {
+      childScope.invalidateLocalCachedEntry(token, scope);
+    }
+  }
+}
+```
+
+이것은 5.2절의 materialized descendant 규칙이 override에 적용된 형태입니다. request child는 request-local cache state를 실제로 만든 뒤에만 tracking됩니다. root가 request-scoped provider를 override하면 이미 materialize된 request child는 request cache entry를 버려야 다음 resolve에서 replacement를 볼 수 있습니다. 아직 한 번도 request-local cache를 만들지 않은 child는 무효화할 entry가 없습니다. 중간 container에서 token을 override하면 그 container의 descendant만 무효화되고, sibling request scope의 local state는 유지됩니다.
+
+local invalidation routine은 `path:packages/di/src/container.ts:1336-1386`에 있습니다. request cache entry, root singleton cache entry, root multi singleton cache entry, request multi cache entry를 모두 검사합니다. cached promise가 있으면 cache entry를 삭제하기 전에 stale disposal을 예약합니다.
 
 routine 전체는 길지만, stale single cache를 다루는 앞부분만으로 핵심 소유권을 볼 수 있습니다.
 
-`path:packages/di/src/container.ts:900-923`
+`path:packages/di/src/container.ts:1336-1359`
 ```typescript
-private invalidateCachedEntry(token: Token, scope: Scope): void {
-  if (this.requestCache.has(token)) {
+private invalidateLocalCachedEntry(token: Token, scope: Scope): void {
+  if (this.requestCache?.has(token)) {
     const cached = this.requestCache.get(token);
 
     if (cached) {
@@ -605,15 +642,16 @@ private invalidateCachedEntry(token: Token, scope: Scope): void {
       singletonCache.delete(token);
     }
   }
+}
 ```
 
-request cache와 root singleton cache가 모두 검사되는 이유는 override 위치와 provider scope가 다를 수 있기 때문입니다. 뒤의 multi cache 분기도 같은 원칙을 provider 배열 entry에 적용합니다.
+request cache와 root singleton cache가 모두 검사되는 이유는 override 위치와 provider scope가 다를 수 있기 때문입니다. 뒤의 multi cache 분기도 같은 원칙을 provider 배열 entry에 적용하며, descendant request container에서 materialize된 request-scoped multi provider도 포함합니다.
 
-실제 예약 경로는 `path:packages/di/src/container.ts:762-780`의 `scheduleStaleDisposal()`입니다. Fluo는 stale instance reference를 그냥 버리지 않습니다. 이미 만들어진 promise를 await하고, 그 결과 인스턴스에 `onDestroy()`가 있으면 정확히 한 번 실행합니다. 여기서 발생한 에러는 `override()`를 동기적으로 깨뜨리지 않고 `staleDisposalErrors`에 누적됩니다.
+실제 예약 경로는 `path:packages/di/src/container.ts:1085-1103`의 `scheduleStaleDisposal()`입니다. Fluo는 stale instance reference를 그냥 버리지 않습니다. 이미 만들어진 promise를 await하고, 그 결과 인스턴스에 `onDestroy()`가 있으면 정확히 한 번 실행합니다. 여기서 발생한 에러는 `override()`를 동기적으로 깨뜨리지 않고 `staleDisposalErrors`에 누적됩니다.
 
 stale disposal 예약은 cached promise를 기준으로 동작합니다.
 
-`path:packages/di/src/container.ts:762-780`
+`path:packages/di/src/container.ts:1085-1103`
 ```typescript
 private scheduleStaleDisposal(instancePromise: Promise<unknown>): void {
   let task: Promise<void>;
@@ -640,22 +678,31 @@ private scheduleStaleDisposal(instancePromise: Promise<unknown>): void {
 
 이 동작은 테스트로 촘촘히 고정되어 있습니다.
 `path:packages/di/src/container.test.ts:385-397`은 이미 resolve된 singleton을 override하면 cache가 무효화됨을 검증합니다.
-`path:packages/di/src/container.test.ts:905-932`는 stale overridden singleton instance가 즉시 그리고 정확히 한 번 dispose됨을 증명합니다.
-`path:packages/di/src/container.test.ts:934-974`는 같은 보장을 multi-provider singleton entry까지 확장합니다.
+`path:packages/di/src/container.test.ts:1181-1231`은 root override가 기존 request child 안에서 materialize된 request-scope single/multi provider를 무효화함을 검증합니다.
+`path:packages/di/src/container.test.ts:1233-1273`은 batch atomicity 규칙을 증명합니다. 뒤쪽 override token이 invalid이거나 single/multi replacement를 섞으면 앞쪽 token은 변경되지 않습니다.
+`path:packages/di/src/container.test.ts:1734-1752`는 stale overridden singleton instance가 즉시 그리고 정확히 한 번 dispose됨을 증명합니다.
+`path:packages/di/src/container.test.ts:1768-1787`는 같은 보장을 multi-provider singleton entry까지 확장합니다.
 
 반복 override에 대한 회귀 테스트도 있습니다.
-`path:packages/di/src/container.test.ts:976-1012`는 stale singleton 버전이 계속 쌓이지 않음을 확인합니다.
+`path:packages/di/src/container.test.ts:1800-1833`는 stale singleton 버전이 계속 쌓이지 않음을 확인합니다.
 token이 `v1`에서 `v2`, `v3`로 바뀌는 동안 각 예전 버전은 정확히 한 번만 dispose됩니다.
 
-override-and-evict 알고리즘은 이렇게 정리할 수 있습니다.
+override 알고리즘은 이렇게 정리할 수 있습니다.
 
 ```text
-override(token, replacement):
-  delete visible registrations for token in current scope
-  find and evict matching cache entries
-  for each evicted cached promise:
-    schedule disposal of resolved stale instance
-  register replacement provider
+override(...providers):
+  normalize all providers and group them by token
+  validate every override group
+  if validation fails:
+    leave registrations and caches unchanged
+  for each validated token group:
+    delete visible registrations for token in current scope
+    invalidate the current container's matching cache entries
+    invalidate already-materialized descendant request scopes
+    for each evicted cached promise:
+      schedule disposal of resolved stale instance
+    register replacement provider or replacement multi-provider set
+    advance the graph revision
 ```
 
 ```typescript
