@@ -1345,6 +1345,25 @@ describe('@fluojs/event-bus', () => {
       await app.close();
     });
 
+    it('publishes inherited transport channels even without matching local handler descriptors', async () => {
+      const transport = createMockTransport();
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [EventBusModule.forRoot({ transport })],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+
+      await eventBus.publish(new UserPromotedEvent('transport-user-no-local-base', 'admin'));
+
+      const publishedChannels = transport.published.map((entry) => entry.channel).sort();
+      expect(publishedChannels).toEqual(['UserCreatedEvent', 'UserPromotedEvent']);
+
+      await app.close();
+    });
+
     it('uses explicit static eventKey values for transport channels', async () => {
       const transport = createMockTransport();
 
@@ -1389,6 +1408,37 @@ describe('@fluojs/event-bus', () => {
       await incomingSubscription!.handler({ sku: 'sku-2' });
 
       expect(store.receivedSku).toBe('sku-2');
+
+      await app.close();
+    });
+
+    it('does not inherit static eventKey values when publishing subclass transport channels', async () => {
+      const transport = createMockTransport();
+
+      class BaseIntegrationEvent {
+        static readonly eventKey = 'integration.base.v1';
+
+        constructor(public readonly id: string) {}
+      }
+
+      class DetailedIntegrationEvent extends BaseIntegrationEvent {
+        constructor(id: string, public readonly detail: string) {
+          super(id);
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [EventBusModule.forRoot({ transport })],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+
+      await eventBus.publish(new DetailedIntegrationEvent('event-1', 'expanded'));
+
+      const publishedChannels = transport.published.map((entry) => entry.channel).sort();
+      expect(publishedChannels).toEqual(['DetailedIntegrationEvent', 'integration.base.v1']);
 
       await app.close();
     });
@@ -1506,6 +1556,118 @@ describe('@fluojs/event-bus', () => {
       expect(store.secondSeen).toBe('original');
 
       await app.close();
+    });
+
+    it('drains in-flight incoming transport handler work before closing the transport', async () => {
+      const gate = createDeferred<void>();
+      const started = createDeferred<void>();
+      const completed = createDeferred<void>();
+      const transport = createMockTransport();
+
+      class SlowTransportHandler {
+        @OnEvent(UserCreatedEvent)
+        async onUserCreated(_event: UserCreatedEvent) {
+          started.resolve();
+          await gate.promise;
+          completed.resolve();
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [EventBusModule.forRoot({ transport })],
+        providers: [SlowTransportHandler],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const incomingSubscription = transport.subscribed.find((entry) => entry.channel === 'UserCreatedEvent');
+      expect(incomingSubscription).toBeDefined();
+
+      const incomingPromise = incomingSubscription!.handler({ userId: 'transport-drain-inbound' });
+      await started.promise;
+
+      let closeResolved = false;
+      const closePromise = app.close().then(() => {
+        closeResolved = true;
+      });
+
+      await flushAsyncWork();
+
+      expect(closeResolved).toBe(false);
+      expect(transport.closeCalls).toBe(0);
+
+      gate.resolve();
+      await incomingPromise;
+      await completed.promise;
+      await closePromise;
+      await settleEventBusTeardown();
+
+      expect(closeResolved).toBe(true);
+      expect(transport.closeCalls).toBe(1);
+    });
+
+    it('ignores incoming transport messages once shutdown starts', async () => {
+      const loggerEvents: string[] = [];
+      const releaseClose = createDeferred<void>();
+      const transport = {
+        published: [] as Array<{ channel: string; payload: unknown }>,
+        subscribed: [] as Array<{ channel: string; handler: (payload: unknown) => Promise<void> }>,
+        async publish(channel: string, payload: unknown) {
+          this.published.push({ channel, payload });
+        },
+        async subscribe(channel: string, handler: (payload: unknown) => Promise<void>) {
+          this.subscribed.push({ channel, handler });
+        },
+        async close() {
+          await releaseClose.promise;
+        },
+      } satisfies EventBusTransport & {
+        published: Array<{ channel: string; payload: unknown }>;
+        subscribed: Array<{ channel: string; handler: (payload: unknown) => Promise<void> }>;
+      };
+
+      class EventStore {
+        calls = 0;
+      }
+
+      @Inject(EventStore)
+      class Handler {
+        constructor(private readonly store: EventStore) {}
+
+        @OnEvent(UserCreatedEvent)
+        onUserCreated(_event: UserCreatedEvent) {
+          this.store.calls += 1;
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [EventBusModule.forRoot({ transport })],
+        providers: [EventStore, Handler],
+      });
+
+      const app = await bootstrapApplication({
+        logger: createLogger(loggerEvents),
+        rootModule: AppModule,
+      });
+      const store = await app.container.resolve(EventStore);
+      const incomingSubscription = transport.subscribed.find((entry) => entry.channel === 'UserCreatedEvent');
+      expect(incomingSubscription).toBeDefined();
+
+      const closePromise = app.close();
+      await flushAsyncWork();
+      await incomingSubscription!.handler({ userId: 'ignored-during-shutdown' });
+
+      expect(store.calls).toBe(0);
+      expect(
+        loggerEvents.some((event) =>
+          event.includes('EventBusTransport message on channel "UserCreatedEvent" was ignored because the event bus is stopping.'),
+        ),
+      ).toBe(true);
+
+      releaseClose.resolve();
+      await closePromise;
+      await settleEventBusTeardown();
     });
 
     it('calls transport.close() on application shutdown', async () => {
