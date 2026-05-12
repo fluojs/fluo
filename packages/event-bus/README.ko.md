@@ -75,7 +75,7 @@ export class UserService {
 export class AppModule {}
 ```
 
-`publish(event, options?)`는 `signal`, `timeoutMs`, `waitForHandlers`를 지원합니다. `waitForHandlers`의 기본값은 `true`이며, 기다리는 로컬 핸들러와 기다리는 트랜스포트 publish는 동일한 timeout 및 cancellation bound를 공유합니다. `waitForHandlers`를 `false`로 설정하면 publish가 즉시 반환되고 timeout bound를 적용하지 않습니다. Shutdown 중에는 이벤트 버스가 진행 중인 awaited publish 작업을 drain한 뒤 트랜스포트를 닫고, lifecycle이 stopping에 진입한 뒤의 새 publish 호출은 무시합니다. Shutdown drain은 기본값이 5000ms인 `EventBusModule.forRoot({ shutdown: { drainTimeoutMs } })`로 제한됩니다. 활성 publish 작업이 이 bound 이후에도 멈춰 있으면 bus는 degraded status diagnostic을 기록하고 경고를 남긴 뒤, 애플리케이션 close를 무기한 hang시키지 않고 transport cleanup을 계속합니다.
+`publish(event, options?)`는 `signal`, `timeoutMs`, `waitForHandlers`를 지원합니다. `waitForHandlers`의 기본값은 `true`이며, 기다리는 로컬 핸들러와 기다리는 트랜스포트 publish는 동일한 timeout 및 cancellation bound를 공유합니다. `waitForHandlers`를 `false`로 설정하면 publish가 즉시 반환되고 timeout bound를 적용하지 않습니다. Shutdown 중에는 이벤트 버스가 진행 중인 awaited publish 및 inbound transport handler 작업을 drain한 뒤 트랜스포트를 닫고, lifecycle이 stopping에 진입한 뒤의 새 publish 호출과 shutdown 시작 뒤 도착한 inbound transport callback은 무시합니다. Shutdown drain은 기본값이 5000ms인 `EventBusModule.forRoot({ shutdown: { drainTimeoutMs } })`로 제한됩니다. 활성 dispatch 작업이 이 bound 이후에도 멈춰 있으면 bus는 degraded status diagnostic을 기록하고 경고를 남긴 뒤, 애플리케이션 close를 무기한 hang시키지 않고 transport cleanup을 계속합니다.
 
 ## 일반적인 패턴
 
@@ -104,7 +104,7 @@ class UserRegisteredEvent {
 }
 ```
 
-핸들러는 imported module의 singleton provider와 controller에서 발견됩니다. 각 핸들러는 격리된 clone payload를 받으며, class inheritance는 `instanceof` 매칭으로 지원됩니다.
+핸들러는 imported module의 singleton provider와 controller에서 발견됩니다. 각 핸들러는 격리된 clone payload를 받으며, class inheritance는 `instanceof` 매칭으로 지원됩니다. 외부 트랜스포트를 구성하면 subclass event publish는 publisher process에 해당 타입의 local handler가 없더라도 subclass channel과 prototype chain의 모든 inherited event channel로 fan-out됩니다. Subclass가 직접 `static eventKey`를 선언한 경우에만 그 값을 사용하며, 그렇지 않으면 subclass channel은 class name을 유지하고 base class는 자신의 stable key를 유지합니다.
 
 ## 공개 API 개요
 
@@ -120,7 +120,7 @@ class UserRegisteredEvent {
 - `EventBus`, `EventPublishOptions`, `EventBusModuleOptions`, `EventType`: 발행, 기본값, 트랜스포트, 안정적인 이벤트 키를 위한 타입 전용 계약입니다.
 - `EventBusLifecycleState`, `EventBusStatusAdapterInput`, `EventBusPlatformStatusSnapshot`: status snapshot 계약입니다.
 
-Transport bootstrap은 unique event channel마다 한 번만 subscribe합니다. `eventKey`가 있으면 transport channel 이름을 제어합니다. 잘못된 JSON transport message는 무시됩니다.
+Transport bootstrap은 unique event channel마다 한 번만 subscribe합니다. `eventKey`가 있으면 transport channel 이름을 제어합니다. 잘못된 JSON transport message는 무시되며, shutdown 시작 뒤 도착한 inbound transport message는 local handler dispatch 전에 무시됩니다.
 
 ## 런타임별 및 통합 서브패스
 
