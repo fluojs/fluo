@@ -155,18 +155,23 @@ These questions are simple, but they help keep the HTTP layer readable.
 Real APIs do more than list resources. They fetch one resource by id, filter results, and receive payloads from clients. fluo exposes these inputs through DTO contracts declared on routes so each handler clearly shows what data it expects.
 
 ```typescript
-import { Controller, Get, Post, RequestDto } from '@fluojs/http';
+import { Controller, FromBody, FromPath, FromQuery, Get, Post, RequestDto } from '@fluojs/http';
 
 class FindPostParamsDto {
+  @FromPath('id')
   id = '';
 }
 
 class SearchPostsQueryDto {
+  @FromQuery('published')
   published?: string;
 }
 
 class CreatePostDto {
+  @FromBody('title')
   title = '';
+
+  @FromBody('body')
   body = '';
 }
 
@@ -192,7 +197,7 @@ export class PostsController {
 }
 ```
 
-Each route directly declares the input DTO it receives. `FindPostParamsDto` shows the input shape bound from the `/:id` path, `SearchPostsQueryDto` gathers values read from the query string into one input object, and `CreatePostDto` shows what shape the request body should have before it crosses the service boundary.
+Each route directly declares the input DTO it receives. `@RequestDto(...)` selects the DTO for the handler, and field-level binding decorators such as `@FromPath(...)`, `@FromQuery(...)`, and `@FromBody(...)` say which request source fills each DTO field. `FindPostParamsDto` shows the input shape bound from the `/:id` path, `SearchPostsQueryDto` gathers values read from the query string into one input object, and `CreatePostDto` shows what shape the request body should have before it crosses the service boundary.
 
 ### Why Explicit Binding Matters
 
@@ -200,7 +205,7 @@ Explicit binding is especially helpful when you first read a request flow. The h
 
 ### Binding vs. Raw Objects
 
-You may want to use raw objects such as `@Req()` or `@Res()`, as you might see in other frameworks. fluo supports this for advanced cases, but it is better to avoid it in typical development. If you fix the input DTO first with `@RequestDto()`, the method clearly declares which input contract it receives instead of forcing readers to dig through a huge, complex request object. That makes the code easier to read and test.
+You may want to reach for raw request or response decorators such as `@Req()` or `@Res()`, as you might see in other frameworks. fluo does not expose those decorators. Use a `RequestContext` parameter for advanced cases where you need request metadata or low-level response access. If you fix the input DTO first with `@RequestDto()`, the method clearly declares which input contract it receives instead of forcing readers to dig through a huge, complex request object. That makes the code easier to read and test.
 
 ### A Route Path Contract to Remember
 
@@ -290,14 +295,18 @@ export class PostsService {
 ```typescript
 // src/posts/posts.controller.ts
 import { Inject } from '@fluojs/core';
-import { Controller, Get, Post, RequestDto } from '@fluojs/http';
+import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@fluojs/http';
 
 class FindPostParamsDto {
+  @FromPath('id')
   id = '';
 }
 
 class CreatePostDto {
+  @FromBody('title')
   title = '';
+
+  @FromBody('body')
   body = '';
 }
 

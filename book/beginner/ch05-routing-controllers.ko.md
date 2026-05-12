@@ -155,18 +155,23 @@ export class PostsController {
 실제 API는 목록 조회만 하지 않습니다. 하나의 리소스를 id로 조회하고, 결과를 필터링하며, 클라이언트가 보낸 페이로드도 받습니다. fluo는 이런 입력을 라우트에 선언된 DTO 계약으로 드러내어 각 핸들러가 어떤 데이터를 기대하는지 분명하게 보여 줍니다.
 
 ```typescript
-import { Controller, Get, Post, RequestDto } from '@fluojs/http';
+import { Controller, FromBody, FromPath, FromQuery, Get, Post, RequestDto } from '@fluojs/http';
 
 class FindPostParamsDto {
+  @FromPath('id')
   id = '';
 }
 
 class SearchPostsQueryDto {
+  @FromQuery('published')
   published?: string;
 }
 
 class CreatePostDto {
+  @FromBody('title')
   title = '';
+
+  @FromBody('body')
   body = '';
 }
 
@@ -192,7 +197,7 @@ export class PostsController {
 }
 ```
 
-각 라우트는 자신이 받을 입력 DTO를 직접 선언합니다. `FindPostParamsDto`는 `/:id` 경로에서 바인딩된 입력 형태를 보여 주고, `SearchPostsQueryDto`는 쿼리 문자열에서 읽을 값을 하나의 입력 객체로 모읍니다. `CreatePostDto`는 요청 본문이 서비스 경계로 들어가기 전에 어떤 형태여야 하는지 드러냅니다.
+각 라우트는 자신이 받을 입력 DTO를 직접 선언합니다. `@RequestDto(...)`는 핸들러가 사용할 DTO를 고르고, `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)` 같은 필드 단위 바인딩 데코레이터는 각 DTO 필드를 어떤 요청 출처에서 채울지 말해 줍니다. `FindPostParamsDto`는 `/:id` 경로에서 바인딩된 입력 형태를 보여 주고, `SearchPostsQueryDto`는 쿼리 문자열에서 읽을 값을 하나의 입력 객체로 모읍니다. `CreatePostDto`는 요청 본문이 서비스 경계로 들어가기 전에 어떤 형태여야 하는지 드러냅니다.
 
 ### Why Explicit Binding Matters
 
@@ -200,7 +205,7 @@ export class PostsController {
 
 ### Binding vs. Raw Objects
 
-다른 프레임워크에서 볼 수 있는 것처럼 `@Req()`나 `@Res()` 같은 로우 객체를 직접 쓰고 싶을 수 있습니다. fluo도 고급 사례를 위해 이를 지원하지만, 일반적인 개발에서는 지양하는 편이 좋습니다. `@RequestDto()`로 입력 DTO를 먼저 고정하면, 거대하고 복잡한 요청 객체 전체를 뒤지는 대신 메서드가 어떤 입력 계약을 받는지 분명하게 선언할 수 있어 코드가 읽기 쉽고 테스트하기 좋아집니다.
+다른 프레임워크에서 볼 수 있는 것처럼 `@Req()`나 `@Res()` 같은 로우 요청/응답 데코레이터를 찾고 싶을 수 있습니다. fluo는 그런 데코레이터를 노출하지 않습니다. 요청 메타데이터나 저수준 응답 접근이 필요한 고급 사례에서는 `RequestContext` 파라미터를 사용하세요. `@RequestDto()`로 입력 DTO를 먼저 고정하면, 거대하고 복잡한 요청 객체 전체를 뒤지는 대신 메서드가 어떤 입력 계약을 받는지 분명하게 선언할 수 있어 코드가 읽기 쉽고 테스트하기 좋아집니다.
 
 ### A Route Path Contract to Remember
 
@@ -290,14 +295,18 @@ export class PostsService {
 ```typescript
 // src/posts/posts.controller.ts
 import { Inject } from '@fluojs/core';
-import { Controller, Get, Post, RequestDto } from '@fluojs/http';
+import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@fluojs/http';
 
 class FindPostParamsDto {
+  @FromPath('id')
   id = '';
 }
 
 class CreatePostDto {
+  @FromBody('title')
   title = '';
+
+  @FromBody('body')
   body = '';
 }
 
