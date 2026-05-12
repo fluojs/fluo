@@ -8,9 +8,12 @@ import { CqrsBusBase } from '../discovery.js';
 import { SagaExecutionError, SagaTopologyError } from '../errors.js';
 import { createIsolatedEvent } from '../event-clone.js';
 import { getSagaMetadata } from '../metadata.js';
+import { CQRS_MODULE_OPTIONS } from '../tokens.js';
+import type { CqrsModuleOptions } from '../module.js';
 import type { CqrsEventType, IEvent, ISaga, SagaDescriptor } from '../types.js';
 
 const MAX_NESTED_SAGA_DEPTH = 32;
+const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
 
 interface SagaDispatchContext {
   activeRoutes: Array<{ eventType: CqrsEventType; token: Token }>;
@@ -40,7 +43,7 @@ function toErrorMessage(error: unknown): string {
  * The service prevents re-entrant dispatch loops within the same async context and waits for
  * in-flight saga chains during shutdown so lifecycle guarantees remain predictable.
  */
-@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
+@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, CQRS_MODULE_OPTIONS)
 export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicationBootstrap, OnApplicationShutdown {
   private descriptorsByEvent = new Map<CqrsEventType, SagaDescriptor[]>();
   private discoveryPromise: Promise<void> | undefined;
@@ -49,6 +52,16 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
   private readonly pendingDispatches = new Set<Promise<void>>();
   private readonly dispatchContext = new AsyncLocalStorage<SagaDispatchContext>();
+  private shutdownDrainTimeouts = 0;
+
+  constructor(
+    runtimeContainer: ConstructorParameters<typeof CqrsBusBase>[0],
+    compiledModules: ConstructorParameters<typeof CqrsBusBase>[1],
+    logger: ConstructorParameters<typeof CqrsBusBase>[2],
+    private readonly moduleOptions: CqrsModuleOptions = {},
+  ) {
+    super(runtimeContainer, compiledModules, logger);
+  }
 
   async onApplicationBootstrap(): Promise<void> {
     this.lifecycleState = 'discovering';
@@ -65,11 +78,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   async onApplicationShutdown(): Promise<void> {
     this.lifecycleState = 'stopping';
 
-    while (this.pendingDispatches.size > 0) {
-      await Promise.allSettled(Array.from(this.pendingDispatches));
-    }
-
-    await Promise.allSettled(this.executionChains.values());
+    await this.drainActiveSagaWork();
 
     this.executionChains.clear();
     this.handlerInstances.clear();
@@ -89,12 +98,14 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     inFlightSagaExecutions: number;
     lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed';
     sagasDiscovered: number;
+    shutdownDrainTimeouts: number;
   } {
     return {
       discovered: this.discovered,
       inFlightSagaExecutions: this.pendingDispatches.size,
       lifecycleState: this.lifecycleState,
       sagasDiscovered: new Set(Array.from(this.descriptorsByEvent.values()).flatMap((descriptors) => descriptors.map((d) => d.token))).size,
+      shutdownDrainTimeouts: this.shutdownDrainTimeouts,
     };
   }
 
@@ -173,6 +184,52 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     } finally {
       this.pendingDispatches.delete(current);
     }
+  }
+
+  private async drainActiveSagaWork(): Promise<void> {
+    const activeWork = [...this.pendingDispatches, ...this.executionChains.values()];
+
+    if (activeWork.length === 0) {
+      return;
+    }
+
+    const timeoutMs = this.resolveShutdownDrainTimeoutMs();
+    const drained = await this.awaitShutdownDrain(activeWork, timeoutMs);
+
+    if (!drained) {
+      this.shutdownDrainTimeouts += 1;
+      this.logger.warn(
+        `CQRS saga shutdown drain exceeded ${String(timeoutMs)}ms with ${String(activeWork.length)} active saga task(s); continuing shutdown.`,
+        'CqrsSagaLifecycleService',
+      );
+    }
+  }
+
+  private async awaitShutdownDrain(activeWork: Promise<void>[], timeoutMs: number): Promise<boolean> {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<false>((resolve) => {
+      timeoutId = setTimeout(() => resolve(false), timeoutMs);
+    });
+
+    const drain = Promise.allSettled(activeWork).then(() => true);
+
+    try {
+      return await Promise.race([drain, timeout]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
+  private resolveShutdownDrainTimeoutMs(): number {
+    const timeoutMs = this.moduleOptions.shutdown?.drainTimeoutMs;
+
+    if (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      return DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS;
+    }
+
+    return Math.floor(timeoutMs);
   }
 
   private async runInDispatchContext(
