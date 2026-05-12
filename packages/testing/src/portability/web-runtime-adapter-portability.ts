@@ -1,6 +1,4 @@
-// @ts-ignore Worktree-local LSP does not resolve workspace package aliases.
 import { Controller, Get, Post, SseResponse, type RequestContext } from '@fluojs/http';
-// @ts-ignore Worktree-local LSP does not resolve workspace package aliases.
 import { defineModule, type ModuleType, type UploadedFile } from '@fluojs/runtime';
 
 declare module '@fluojs/http' {
@@ -30,10 +28,40 @@ function decodeUtf8(input: Uint8Array | undefined): string {
   return new TextDecoder().decode(input ?? new Uint8Array());
 }
 
-async function closeSilently(app: WebRuntimePortabilityAppLike): Promise<void> {
+async function runWithCleanup(
+  app: WebRuntimePortabilityAppLike,
+  adapterName: string,
+  assertion: () => Promise<void>,
+): Promise<void> {
+  let hasAssertionError = false;
+  let assertionError: unknown;
+
+  try {
+    await assertion();
+  } catch (error) {
+    hasAssertionError = true;
+    assertionError = error;
+  }
+
   try {
     await app.close();
-  } catch {}
+  } catch (cleanupError) {
+    if (hasAssertionError) {
+      throw new AggregateError(
+        [assertionError, cleanupError],
+        `${adapterName} adapter portability assertion failed and app.close() also failed during harness cleanup.`,
+      );
+    }
+
+    throw new AggregateError(
+      [cleanupError],
+      `${adapterName} adapter app.close() failed during portability harness cleanup.`,
+    );
+  }
+
+  if (hasAssertionError) {
+    throw assertionError;
+  }
 }
 
 /**
@@ -59,10 +87,14 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
       controllers: [QueryController],
     });
 
-    const app = await this.options.bootstrap(AppModule, { cors: false } as TBootstrapOptions);
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+    } as TBootstrapOptions);
 
-    try {
-      const response = await app.dispatch(new Request('https://runtime.test/query?tag=one&tag=two&encoded=hello+world&flag&bad=%E0%A4%A'));
+    await runWithCleanup(app, this.options.name, async () => {
+      const response = await app.dispatch(
+        new Request('https://runtime.test/query?tag=one&tag=two&encoded=hello+world&flag&bad=%E0%A4%A'),
+      );
 
       if (response.status !== 200) {
         throw new Error(`${this.options.name} adapter changed query response status semantics.`);
@@ -70,18 +102,16 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
 
       const body = await response.json();
       if (
-        typeof body !== 'object'
-        || body === null
-        || (body as Record<string, unknown>).bad !== '�%A'
-        || (body as Record<string, unknown>).encoded !== 'hello world'
-        || !Array.isArray((body as Record<string, unknown>).tag)
-        || JSON.stringify((body as Record<string, unknown>).tag) !== JSON.stringify(['one', 'two'])
+        typeof body !== 'object' ||
+        body === null ||
+        (body as Record<string, unknown>).bad !== '�%A' ||
+        (body as Record<string, unknown>).encoded !== 'hello world' ||
+        !Array.isArray((body as Record<string, unknown>).tag) ||
+        JSON.stringify((body as Record<string, unknown>).tag) !== JSON.stringify(['one', 'two'])
       ) {
         throw new Error(`${this.options.name} adapter changed query decoding semantics.`);
       }
-    } finally {
-      await closeSilently(app);
-    }
+    });
   }
 
   async assertPreservesMalformedCookieValues(): Promise<void> {
@@ -98,17 +128,23 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
       controllers: [CookieController],
     });
 
-    const app = await this.options.bootstrap(AppModule, { cors: false } as TBootstrapOptions);
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+    } as TBootstrapOptions);
 
-    try {
-      const response = await app.dispatch(new Request('https://runtime.test/cookies', {
-        headers: {
-          cookie: 'good=hello%20world; bad=%E0%A4%A',
-        },
-      }));
+    await runWithCleanup(app, this.options.name, async () => {
+      const response = await app.dispatch(
+        new Request('https://runtime.test/cookies', {
+          headers: {
+            cookie: 'good=hello%20world; bad=%E0%A4%A',
+          },
+        }),
+      );
 
       if (response.status !== 200) {
-        throw new Error(`${this.options.name} adapter changed malformed-cookie handling: expected 200 but received ${String(response.status)}.`);
+        throw new Error(
+          `${this.options.name} adapter changed malformed-cookie handling: expected 200 but received ${String(response.status)}.`,
+        );
       }
 
       const body = await response.json();
@@ -123,9 +159,7 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
       ) {
         throw new Error(`${this.options.name} adapter changed malformed-cookie normalization.`);
       }
-    } finally {
-      await closeSilently(app);
-    }
+    });
   }
 
   async assertPreservesRawBodyForJsonAndText(): Promise<void> {
@@ -153,20 +187,27 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
       controllers: [WebhookController],
     });
 
-    const app = await this.options.bootstrap(AppModule, { cors: false, rawBody: true } as TBootstrapOptions);
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      rawBody: true,
+    } as TBootstrapOptions);
 
-    try {
+    await runWithCleanup(app, this.options.name, async () => {
       const [jsonResponse, textResponse] = await Promise.all([
-        app.dispatch(new Request('https://runtime.test/webhooks/json', {
-          body: JSON.stringify({ provider: 'stripe' }),
-          headers: { 'content-type': 'application/json' },
-          method: 'POST',
-        })),
-        app.dispatch(new Request('https://runtime.test/webhooks/text', {
-          body: 'ping=1',
-          headers: { 'content-type': 'text/plain; charset=utf-8' },
-          method: 'POST',
-        })),
+        app.dispatch(
+          new Request('https://runtime.test/webhooks/json', {
+            body: JSON.stringify({ provider: 'stripe' }),
+            headers: { 'content-type': 'application/json' },
+            method: 'POST',
+          }),
+        ),
+        app.dispatch(
+          new Request('https://runtime.test/webhooks/text', {
+            body: 'ping=1',
+            headers: { 'content-type': 'text/plain; charset=utf-8' },
+            method: 'POST',
+          }),
+        ),
       ]);
 
       if (jsonResponse.status !== 201 || textResponse.status !== 201) {
@@ -175,16 +216,20 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
 
       const [jsonBody, textBody] = await Promise.all([jsonResponse.json(), textResponse.json()]);
 
-      if (JSON.stringify(jsonBody) !== JSON.stringify({ parsed: { provider: 'stripe' }, raw: '{"provider":"stripe"}' })) {
+      if (
+        JSON.stringify(jsonBody) !==
+        JSON.stringify({
+          parsed: { provider: 'stripe' },
+          raw: '{"provider":"stripe"}',
+        })
+      ) {
         throw new Error(`${this.options.name} adapter changed JSON rawBody semantics.`);
       }
 
       if (JSON.stringify(textBody) !== JSON.stringify({ parsed: 'ping=1', raw: 'ping=1' })) {
         throw new Error(`${this.options.name} adapter changed text rawBody semantics.`);
       }
-    } finally {
-      await closeSilently(app);
-    }
+    });
   }
 
   async assertExcludesRawBodyForMultipart(): Promise<void> {
@@ -205,29 +250,39 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
       controllers: [UploadController],
     });
 
-    const app = await this.options.bootstrap(AppModule, { cors: false, rawBody: true } as TBootstrapOptions);
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      rawBody: true,
+    } as TBootstrapOptions);
 
-    try {
+    await runWithCleanup(app, this.options.name, async () => {
       const form = new FormData();
       form.set('name', 'Ada');
       form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
 
-      const response = await app.dispatch(new Request('https://runtime.test/uploads', {
-        body: form,
-        method: 'POST',
-      }));
+      const response = await app.dispatch(
+        new Request('https://runtime.test/uploads', {
+          body: form,
+          method: 'POST',
+        }),
+      );
 
       if (response.status !== 201) {
         throw new Error(`${this.options.name} adapter changed multipart response status semantics.`);
       }
 
       const body = await response.json();
-      if (JSON.stringify(body) !== JSON.stringify({ body: { name: 'Ada' }, fileCount: 1, hasRawBody: false })) {
+      if (
+        JSON.stringify(body) !==
+        JSON.stringify({
+          body: { name: 'Ada' },
+          fileCount: 1,
+          hasRawBody: false,
+        })
+      ) {
         throw new Error(`${this.options.name} adapter changed multipart rawBody semantics.`);
       }
-    } finally {
-      await closeSilently(app);
-    }
+    });
   }
 
   async assertSupportsSseStreaming(): Promise<void> {
@@ -250,12 +305,16 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
       controllers: [EventsController],
     });
 
-    const app = await this.options.bootstrap(AppModule, { cors: false } as TBootstrapOptions);
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+    } as TBootstrapOptions);
 
-    try {
-      const response = await app.dispatch(new Request('https://runtime.test/events', {
-        headers: { accept: 'text/event-stream' },
-      }));
+    await runWithCleanup(app, this.options.name, async () => {
+      const response = await app.dispatch(
+        new Request('https://runtime.test/events', {
+          headers: { accept: 'text/event-stream' },
+        }),
+      );
       const body = await response.text();
 
       if (response.status !== 200) {
@@ -270,9 +329,7 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
       if (!body.includes('event: ready') || !body.includes('data: {"ready":true}')) {
         throw new Error(`${this.options.name} adapter changed SSE body framing.`);
       }
-    } finally {
-      await closeSilently(app);
-    }
+    });
   }
 }
 

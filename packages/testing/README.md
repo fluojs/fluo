@@ -132,6 +132,8 @@ Install `vitest` in the consuming workspace before using the mock helpers so the
 
 Use subpaths like `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, and `@fluojs/testing/web-runtime-adapter-portability` when authoring framework-facing platform packages.
 
+Portability harness cleanup is part of the contract: if `app.close()` fails, the harness reports that cleanup failure, and when an assertion already failed it raises an aggregate error that preserves both the assertion failure and the cleanup failure.
+
 `HttpAdapterPortabilityHarness` methods are the public adapter contract checks. Prefer focused assertions such as `assertPreservesMalformedCookieValues()`, `assertSupportsSseStreaming()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, `assertDefaultsMultipartTotalLimitToMaxBodySize()`, `assertSettlesStreamDrainWaitOnClose()`, `assertReportsConfiguredHostInStartupLogs()`, `assertReportsHttpsStartupUrl(...)`, and `assertRemovesShutdownSignalListenersAfterClose()` instead of hand-rolled equivalents.
 
 ## Canonical TDD Ladder
