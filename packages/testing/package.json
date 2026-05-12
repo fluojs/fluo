@@ -94,6 +94,9 @@
     "vitest": "^3.0.8"
   },
   "devDependencies": {
+    "@fluojs/platform-bun": "workspace:^",
+    "@fluojs/platform-cloudflare-workers": "workspace:^",
+    "@fluojs/platform-deno": "workspace:^",
     "@fluojs/platform-nodejs": "workspace:^",
     "@fluojs/platform-express": "workspace:^",
     "@fluojs/platform-fastify": "workspace:^",

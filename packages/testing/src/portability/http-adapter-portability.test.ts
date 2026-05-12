@@ -1,22 +1,13 @@
-import { describe, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
   bootstrapFastifyApplication,
   FastifyHttpApplicationAdapter,
   runFastifyApplication,
 } from '@fluojs/platform-fastify';
-import {
-  bootstrapExpressApplication,
-  runExpressApplication,
-} from '@fluojs/platform-express';
-import {
-  bootstrapNodejsApplication,
-  runNodejsApplication,
-} from '@fluojs/platform-nodejs';
-import {
-  bootstrapNodeApplication,
-  runNodeApplication,
-} from '@fluojs/runtime/node';
+import { bootstrapExpressApplication, runExpressApplication } from '@fluojs/platform-express';
+import { bootstrapNodejsApplication, runNodejsApplication } from '@fluojs/platform-nodejs';
+import { bootstrapNodeApplication, runNodeApplication } from '@fluojs/runtime/node';
 
 import { createHttpAdapterPortabilityHarness } from './http-adapter-portability.js';
 
@@ -135,6 +126,75 @@ function registerPortabilitySuite(
   });
 }
 
+describe('http adapter portability cleanup reporting', () => {
+  it('reports close failures when the assertion path succeeds', async () => {
+    const closeError = new Error('close exploded');
+    const signal = 'SIGTERM' as const;
+    const listener = () => {};
+    const harness = createHttpAdapterPortabilityHarness({
+      async bootstrap() {
+        throw new Error('bootstrap should not be used');
+      },
+      name: 'cleanup-only',
+      async run() {
+        process.on(signal, listener);
+
+        return {
+          async close() {
+            process.removeListener(signal, listener);
+            throw closeError;
+          },
+          async listen() {},
+        };
+      },
+    });
+
+    try {
+      await harness.assertRemovesShutdownSignalListenersAfterClose();
+      throw new Error('Expected cleanup failure to be reported.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      if (!(error instanceof AggregateError)) {
+        throw error;
+      }
+      expect(error.message).toContain('app.close() failed during portability harness cleanup');
+      expect(error.errors).toEqual([closeError]);
+    }
+  });
+
+  it('preserves assertion failures when close also fails', async () => {
+    const closeError = new Error('close exploded');
+    const harness = createHttpAdapterPortabilityHarness({
+      async bootstrap() {
+        throw new Error('bootstrap should not be used');
+      },
+      name: 'assertion-and-cleanup',
+      async run() {
+        return {
+          async close() {
+            throw closeError;
+          },
+          async listen() {},
+        };
+      },
+    });
+
+    try {
+      await harness.assertRemovesShutdownSignalListenersAfterClose();
+      throw new Error('Expected aggregate failure to be reported.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      if (!(error instanceof AggregateError)) {
+        throw error;
+      }
+      expect(error.message).toContain('assertion failed and app.close() also failed');
+      expect(error.errors).toHaveLength(2);
+      expect(error.errors[0]).toBeInstanceOf(Error);
+      expect(error.errors[1]).toBe(closeError);
+    }
+  });
+});
+
 registerPortabilitySuite(
   'node',
   createHttpAdapterPortabilityHarness({
@@ -172,11 +232,7 @@ const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness({
       addContentTypeParser: (
         contentType: string,
         options: { parseAs: 'buffer' },
-        parser: (
-          request: unknown,
-          body: Buffer,
-          done: (error: Error | null, body: Buffer) => void,
-        ) => void,
+        parser: (request: unknown, body: Buffer, done: (error: Error | null, body: Buffer) => void) => void,
       ) => void;
     };
 
