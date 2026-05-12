@@ -95,7 +95,7 @@ export class PostsService {
 }
 ```
 
-Next, connect this service to a Controller. Register the service in the `providers` array of `PostsModule`, and declare the constructor dependency explicitly with `@Inject(...)`.
+Next, connect this service to a Controller. Register the service in the `providers` array of `PostsModule`. The controller declares its dependency list with a class-level injection decorator, while the constructor stays plain TypeScript.
 
 ```typescript
 // src/posts/posts.controller.ts
@@ -103,9 +103,9 @@ import { Inject } from '@fluojs/core';
 import { Controller, Get } from '@fluojs/http';
 import { PostsService } from './posts.service';
 
-@Inject(PostsService)
 @Controller('/posts')
-export class PostsController {
+@Inject (PostsService)
+class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
   @Get('/')

@@ -95,7 +95,7 @@ export class PostsService {
 }
 ```
 
-그다음 이 서비스를 컨트롤러에 연결합니다. 서비스는 `PostsModule`의 `providers`에 등록하고, 생성자 의존성은 `@Inject(...)`로 명시합니다.
+그다음 이 서비스를 컨트롤러에 연결합니다. 서비스는 `PostsModule`의 `providers`에 등록합니다. 컨트롤러의 의존성 목록은 클래스 수준 주입 데코레이터로 명시하고, 생성자는 일반 TypeScript 형태로 둡니다.
 
 ```typescript
 // src/posts/posts.controller.ts
@@ -103,9 +103,9 @@ import { Inject } from '@fluojs/core';
 import { Controller, Get } from '@fluojs/http';
 import { PostsService } from './posts.service';
 
-@Inject(PostsService)
 @Controller('/posts')
-export class PostsController {
+@Inject (PostsService)
+class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
   @Get('/')
