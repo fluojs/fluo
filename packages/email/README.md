@@ -140,6 +140,7 @@ Behavioral contract notes:
 - `createNodemailerEmailTransportFactory(...)` is Node-only and is exported exclusively from `@fluojs/email/node`.
 - The factory owns the Nodemailer transporter it creates, so `EmailService` can verify it on bootstrap and close it during shutdown.
 - `createNodemailerEmailTransport(...)` wraps an existing Nodemailer transporter without transferring resource ownership.
+- Nodemailer display-name addresses are forwarded as structured address objects and reject newline characters before provider handoff.
 - SMTP credentials still enter through explicit options or DI. Neither the root package nor the Node subpath reads `process.env` directly.
 
 ### Standalone delivery with `EmailService`
@@ -168,7 +169,8 @@ Behavioral contract notes:
 - `EmailService.send(...)` preserves `accepted`, `pending`, and `rejected` recipients separately so partial provider failures stay caller-visible.
 - `EmailService.sendMany(...)` is fail-fast by default; pass `continueOnError: true` to collect failures in a batch result.
 - `EmailService.createPlatformStatusSnapshot()` exposes lifecycle, readiness, health, and transport ownership details for diagnostics.
-- The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
+- The service initializes the configured transport during module bootstrap and, when `verifyOnModuleInit: true`, delivery waits until bootstrap verification has completed successfully before transport handoff.
+- Rejected `forRootAsync(...)` option factories are not memoized permanently; the next provider resolution can retry configuration lookup.
 - Once shutdown starts, `EmailService.send(...)` and `EmailService.sendNotification(...)` fail with `EmailLifecycleError` instead of reusing or lazily creating transports; any in-flight factory-owned transport creation is awaited and closed by shutdown.
 - Transport `verify()` and `close()` provider errors are preserved as the `cause` of lifecycle failures for diagnostics.
 - Module options are trimmed and normalized before provider wiring, including sender defaults, notification channel names, and transport factory ownership.
@@ -214,6 +216,7 @@ Behavioral contract notes:
 
 - `EmailChannel` treats any `pending` or `rejected` recipients as a failed notification dispatch instead of reporting the delivery as successful.
 - `EmailService.sendNotification(...)` merges rendered template output with payload and notification metadata; payload fields override notification fallbacks.
+- Template rendering receives notification `payload`, `metadata`, `locale`, `subject`, and `template`; payload `text`, `html`, and notification `subject` override rendered fallbacks.
 
 ### Queue-backed bulk delivery
 
