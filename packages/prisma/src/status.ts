@@ -89,8 +89,8 @@ export function createPrismaPlatformStatusSnapshot(
     },
     health: createHealth(input),
     ownership: {
-      externallyManaged: true,
-      ownsResources: false,
+      externallyManaged: false,
+      ownsResources: true,
     },
     readiness: createReadiness(input),
   };

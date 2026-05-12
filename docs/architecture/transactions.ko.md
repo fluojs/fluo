@@ -32,6 +32,8 @@
 | 요청 범위 경계 | 세 가지 트랜잭션 인터셉터는 `requestTransaction(...)`으로 downstream HTTP 핸들러를 감싸며, `context.requestContext.request.signal`의 request abort signal을 사용합니다. | `packages/prisma/src/transaction.ts`, `packages/drizzle/src/transaction.ts`, `packages/mongoose/src/transaction.ts` |
 | abort 처리 | Prisma와 Drizzle은 요청 범위 작업을 `raceWithAbort(...)`로 감싸고, 종료 정리를 위해 활성 request transaction을 추적합니다. Mongoose도 session 기반 작업 주변에 같은 request-abort race를 적용합니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
 | 종료 동작 | 활성 request transaction은 애플리케이션 종료 시 abort되고, settlement를 기다린 후 패키지별 disconnect 또는 dispose hook이 실행됩니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
+| 종료 진입 gate | Prisma와 Drizzle은 종료가 시작된 뒤 새 `requestTransaction(...)` 호출을 거부하여 disconnect/dispose가 늦게 시작된 요청 작업에 추월되지 않도록 합니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
+| 중첩 요청 추적 | Prisma와 Drizzle은 기존 수동 트랜잭션 안에서 실행되는 중첩 `requestTransaction(...)` 호출을 바깥 수동 경계가 settle될 때까지 shutdown tracking에 남겨 둡니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
 
 ## 제약 사항
 

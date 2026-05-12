@@ -4,9 +4,11 @@ import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
 import { createRedisPlatformStatusSnapshot } from './status.js';
 import { getRedisComponentId, REDIS_CLIENT } from './tokens.js';
+import type { RedisLifecycleOptions } from './types.js';
 
 const QUITTABLE_STATUSES = new Set(['connect', 'connecting', 'ready', 'reconnecting']);
 const DISCONNECTABLE_STATUSES = new Set(['close', 'connect', 'connecting', 'ready', 'reconnecting', 'wait']);
+const DEFAULT_REDIS_LIFECYCLE_TIMEOUT_MS = 10_000;
 
 function isClosed(status: string): boolean {
   return status === 'end';
@@ -24,6 +26,33 @@ function isDisconnectable(status: string): boolean {
   return DISCONNECTABLE_STATUSES.has(status);
 }
 
+function normalizeTimeoutMs(value: number | undefined): number {
+  return value === undefined ? DEFAULT_REDIS_LIFECYCLE_TIMEOUT_MS : value;
+}
+
+async function withLifecycleTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  if (timeoutMs <= 0) {
+    return await operation;
+  }
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_resolve, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(message));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
+
 /**
  * Manages Redis client startup and shutdown as part of the application lifecycle.
  */
@@ -32,6 +61,7 @@ export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdow
   constructor(
     private readonly client: Redis,
     private readonly clientName?: string,
+    private readonly lifecycleOptions: RedisLifecycleOptions = {},
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -39,7 +69,11 @@ export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdow
       return;
     }
 
-    await this.client.connect();
+    await withLifecycleTimeout(
+      this.client.connect(),
+      normalizeTimeoutMs(this.lifecycleOptions.connectTimeoutMs),
+      `Redis client ${this.describeClient()} connect timed out after ${String(normalizeTimeoutMs(this.lifecycleOptions.connectTimeoutMs))}ms.`,
+    );
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -77,7 +111,11 @@ export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdow
 
   private async quitWithDisconnectFallback(): Promise<void> {
     try {
-      await this.client.quit();
+      await withLifecycleTimeout(
+        this.client.quit(),
+        normalizeTimeoutMs(this.lifecycleOptions.quitTimeoutMs),
+        `Redis client ${this.describeClient()} quit timed out after ${String(normalizeTimeoutMs(this.lifecycleOptions.quitTimeoutMs))}ms.`,
+      );
       return;
     } catch (error: unknown) {
       this.disconnectIfPossible(this.client.status);
@@ -86,5 +124,9 @@ export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdow
         throw error;
       }
     }
+  }
+
+  private describeClient(): string {
+    return this.clientName ?? 'default';
   }
 }
