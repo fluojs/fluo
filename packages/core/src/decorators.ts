@@ -4,7 +4,7 @@ import {
   type ClassDiMetadata,
   type ModuleMetadata,
 } from './metadata.js';
-import type { Token } from './types.js';
+import type { InjectionToken } from './types.js';
 
 type StandardClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
 
@@ -50,7 +50,7 @@ export function Inject(): StandardClassDecoratorFn;
  * @param tokens Constructor-parameter token list used by `@fluojs/di` during dependency resolution.
  * @returns A standard class decorator that stores explicit injection metadata on the target class.
  */
-export function Inject<const TTokens extends readonly Token[]>(
+export function Inject<const TTokens extends readonly InjectionToken[]>(
   ...tokens: TupleOnly<TTokens>
 ): StandardClassDecoratorFn;
 /**
@@ -59,7 +59,7 @@ export function Inject<const TTokens extends readonly Token[]>(
  * @param tokens Constructor-parameter token list used by `@fluojs/di` during dependency resolution.
  * @returns A standard class decorator that stores explicit injection metadata on the target class.
  */
-export function Inject(tokens: readonly Token[]): StandardClassDecoratorFn;
+export function Inject(tokens: readonly InjectionToken[]): StandardClassDecoratorFn;
 /**
  * Defines explicit constructor injection tokens for the decorated class.
  *
@@ -68,8 +68,8 @@ export function Inject(tokens: readonly Token[]): StandardClassDecoratorFn;
  */
 export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecoratorFn {
   const tokens = tokensOrList.length === 1 && Array.isArray(tokensOrList[0])
-    ? [...tokensOrList[0] as readonly Token[]]
-    : [...tokensOrList as readonly Token[]];
+    ? [...tokensOrList[0] as readonly InjectionToken[]]
+    : [...tokensOrList as readonly InjectionToken[]];
 
   return (target) => {
     defineClassDiMetadata(target, { inject: [...tokens] });

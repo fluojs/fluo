@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Global, Inject, Module, Scope } from './decorators.js';
 import { getClassDiMetadata, getModuleMetadata, getOwnClassDiMetadata } from './metadata.js';
+import type { ForwardRefToken, OptionalInjectToken } from './types.js';
 
 describe('core decorators', () => {
   it('writes module metadata through decorators', () => {
@@ -110,6 +111,43 @@ describe('core decorators', () => {
 
     expect(getClassDiMetadata(LegacyArrayService)).toEqual({
       inject: [LOGGER, CACHE],
+      scope: undefined,
+    });
+  });
+
+  it('passes forwardRef and optional token wrappers through inject metadata', () => {
+    class Logger {}
+    class Cache {}
+    const forwardLogger: ForwardRefToken<Logger> = {
+      __forwardRef__: true,
+      forwardRef: () => Logger,
+    };
+    const optionalCache: OptionalInjectToken<Cache> = {
+      __optional__: true,
+      token: Cache,
+    };
+
+    @Inject(forwardLogger, optionalCache)
+    class WrappedTokenService {}
+
+    expect(getClassDiMetadata(WrappedTokenService)).toEqual({
+      inject: [forwardLogger, optionalCache],
+      scope: undefined,
+    });
+  });
+
+  it('keeps wrapper tokens type-compatible with the legacy array syntax', () => {
+    const LOGGER = Symbol('LOGGER');
+    const optionalLogger: OptionalInjectToken = {
+      __optional__: true,
+      token: LOGGER,
+    };
+
+    @Inject([optionalLogger])
+    class LegacyWrappedTokenService {}
+
+    expect(getClassDiMetadata(LegacyWrappedTokenService)).toEqual({
+      inject: [optionalLogger],
       scope: undefined,
     });
   });
