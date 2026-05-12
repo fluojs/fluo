@@ -161,28 +161,42 @@ constructor(
 Because of this structure, the singleton cache is keyed by token, while the multi singleton cache is keyed by each normalized provider. The request caches repeat the same separation, but they are owned by the child container.
 
 The root container owns singleton cache state.
-`createRequestScope()` in `path:packages/di/src/container.ts:247-263` creates the child container by passing `this.root().singletonCache`.
+`createRequestScope()` in `path:packages/di/src/container.ts:360-369` creates the child container by passing `this.root().singletonCache`.
 So request scope does not copy singleton state. It shares it.
 
 The request child creation code passes that shared state directly as a constructor argument.
 
-`path:packages/di/src/container.ts:252-263`
+`path:packages/di/src/container.ts:360-369`
 ```typescript
 createRequestScope(): Container {
-  if (this.disposed) {
+  if (this.isDisposedInHierarchy()) {
     throw new ContainerResolutionError(
       'Container has been disposed and can no longer create request scopes.',
       { hint: 'Create request scopes before calling container.dispose().' },
     );
   }
 
-  const child = new Container(this, true, this.root().singletonCache);
-  this.root().childScopes.add(child);
-  return child;
+  return new Container(this, true, this.root().singletonCache);
 }
 ```
 
-A request child therefore has a parent and the request flag, but it sees the root's singleton promise map. This one line supports the chapter's claim that "the child is the boundary, and the root is the singleton owner."
+A request child therefore has a parent and the request flag, but it sees the root's singleton promise map. The child is not added to the root's live-child registry at creation time. Fluo tracks it lazily when request-local cache state is first materialized, which avoids retaining untouched request scopes while still giving root/parent override and dispose paths a list of already-materialized children to invalidate or tear down.
+
+`path:packages/di/src/container.ts:822-842`
+```typescript
+private ensureTrackedRequestScope(): void {
+  if (!this.requestScopeEnabled || !this.parent || this.trackedByRoot) {
+    return;
+  }
+
+  const root = this.root();
+  root.childScopes ??= new Set<Container>();
+  root.childScopes.add(this);
+  this.trackedByRoot = true;
+}
+```
+
+This supports the chapter's claim that "the child is the boundary, and the root is the singleton owner," with one important refinement: the root tracks only live request children that have actually produced request-local state.
 
 The resolution step enforces the same structure again.
 `resolveScopedOrSingletonInstance()` in `path:packages/di/src/container.ts:527-548` first checks `shouldResolveFromRoot(provider)`.
@@ -294,10 +308,10 @@ Because `cache.set()` appears before `await`, concurrent resolves share the same
 ## 5.3 Request scope is a child container, not a flag on a provider
 Request lifetime is modeled structurally. It is not just a label that means "create this provider often." Fluo creates a real child container for each request boundary.
 
-`createRequestScope()` in `path:packages/di/src/container.ts:247-263` calls `new Container(this, true, this.root().singletonCache)`.
+`createRequestScope()` in `path:packages/di/src/container.ts:360-369` calls `new Container(this, true, this.root().singletonCache)`.
 That constructor call contains three decisions. The child has a parent reference. It has request-scope enabled. It shares the root singleton cache.
 
-So request scope is not a special cache bucket inside the root container. It is a separate container instance with its own `requestCache` and `multiRequestCache`. These fields are declared in `path:packages/di/src/container.ts:124-127`.
+So request scope is not a special cache bucket inside the root container. It is a separate container instance with lazily allocated `requestCache` and `multiRequestCache` maps. These fields are declared in `path:packages/di/src/container.ts:170-172`, and the write helpers allocate them only when a request-local single or multi provider is actually cached.
 
 Request-only resolution is enforced in `cacheFor()` and `multiCacheFor()`. If the provider scope is `request` and `requestScopeEnabled` is false, the container throws `RequestScopeResolutionError` with a hint to use `container.createRequestScope()`. The code is in `path:packages/di/src/container.ts:633-645` and `path:packages/di/src/container.ts:656-668`.
 

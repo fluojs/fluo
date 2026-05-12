@@ -25,6 +25,13 @@ import { Scope, isForwardRef, isOptionalToken } from './types.js';
 
 type ObjectProvider = ClassProvider | ExistingProvider | FactoryProvider | ValueProvider;
 
+interface OverrideGroup {
+  readonly containsMultiProvider: boolean;
+  readonly firstProvider: NormalizedProvider;
+  readonly normalizedProviders: NormalizedProvider[];
+  readonly token: Token;
+}
+
 interface CachedResolutionPlan<T> {
   readonly lineageRevision: string;
   readonly value: T;
@@ -210,9 +217,11 @@ export class Container {
       );
     }
 
-    for (const provider of providers) {
-      const normalized = normalizeProvider(provider);
+    const normalizedProviders = providers.map((provider) => normalizeProvider(provider));
+    const pendingSingleTokens = new Set<Token>();
+    const pendingMultiTokens = new Set<Token>();
 
+    for (const normalized of normalizedProviders) {
       if (this.requestScopeEnabled && normalized.scope === Scope.DEFAULT) {
         throw new ScopeMismatchError(
           `Singleton provider ${String(normalized.provide)} cannot be registered on a request-scope container.`,
@@ -226,6 +235,23 @@ export class Container {
 
       this.assertNoRegistrationConflict(normalized.provide, normalized.multi === true);
 
+      if (normalized.multi) {
+        if (pendingSingleTokens.has(normalized.provide)) {
+          throw new DuplicateProviderError(normalized.provide);
+        }
+
+        pendingMultiTokens.add(normalized.provide);
+        continue;
+      }
+
+      if (pendingSingleTokens.has(normalized.provide) || pendingMultiTokens.has(normalized.provide)) {
+        throw new DuplicateProviderError(normalized.provide);
+      }
+
+      pendingSingleTokens.add(normalized.provide);
+    }
+
+    for (const normalized of normalizedProviders) {
       if (normalized.multi) {
         const existing = this.multiRegistrations.get(normalized.provide);
 
@@ -282,22 +308,9 @@ export class Container {
       normalizedByToken.set(normalized.provide, [normalized]);
     }
 
-    for (const [token, normalizedProviders] of normalizedByToken) {
-      const firstProvider = normalizedProviders[0];
+    const overrideGroups = this.validateOverrideGroups(normalizedByToken);
 
-      if (!firstProvider) {
-        continue;
-      }
-
-      const containsMultiProvider = normalizedProviders.some((normalized) => normalized.multi === true);
-
-      if (containsMultiProvider && normalizedProviders.some((normalized) => normalized.multi !== true)) {
-        throw new DuplicateProviderError(token);
-      }
-
-      if (!containsMultiProvider && normalizedProviders.length > 1) {
-        throw new DuplicateProviderError(token);
-      }
+    for (const { token, normalizedProviders, firstProvider, containsMultiProvider } of overrideGroups) {
 
       const existing = this.lookupProvider(token);
       const existingMultiProviders = this.collectMultiProviders(token);
@@ -479,6 +492,32 @@ export class Container {
     if (this.hasAncestorMultiRegistration(token)) {
       throw new DuplicateProviderError(token);
     }
+  }
+
+  private validateOverrideGroups(normalizedByToken: ReadonlyMap<Token, NormalizedProvider[]>): OverrideGroup[] {
+    const groups: OverrideGroup[] = [];
+
+    for (const [token, normalizedProviders] of normalizedByToken) {
+      const firstProvider = normalizedProviders[0];
+
+      if (!firstProvider) {
+        continue;
+      }
+
+      const containsMultiProvider = normalizedProviders.some((normalized) => normalized.multi === true);
+
+      if (containsMultiProvider && normalizedProviders.some((normalized) => normalized.multi !== true)) {
+        throw new DuplicateProviderError(token);
+      }
+
+      if (!containsMultiProvider && normalizedProviders.length > 1) {
+        throw new DuplicateProviderError(token);
+      }
+
+      groups.push({ containsMultiProvider, firstProvider, normalizedProviders, token });
+    }
+
+    return groups;
   }
 
   private hasAncestorSingleRegistration(token: Token): boolean {
@@ -1271,6 +1310,30 @@ export class Container {
   }
 
   private invalidateCachedEntry(token: Token, scope: Scope): void {
+    this.invalidateLocalCachedEntry(token, scope);
+
+    for (const childScope of this.root().childScopes ?? []) {
+      if (childScope !== this && childScope.isDescendantOf(this)) {
+        childScope.invalidateLocalCachedEntry(token, scope);
+      }
+    }
+  }
+
+  private isDescendantOf(ancestor: Container): boolean {
+    let current = this.parent;
+
+    while (current) {
+      if (current === ancestor) {
+        return true;
+      }
+
+      current = current.parent;
+    }
+
+    return false;
+  }
+
+  private invalidateLocalCachedEntry(token: Token, scope: Scope): void {
     if (this.requestCache?.has(token)) {
       const cached = this.requestCache.get(token);
 

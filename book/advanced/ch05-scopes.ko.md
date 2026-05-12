@@ -161,28 +161,42 @@ constructor(
 이 구조 때문에 singleton cache는 token 기준이고, multi singleton cache는 개별 normalized provider 기준입니다. request cache도 같은 분리를 반복하지만 child container의 소유물이 됩니다.
 
 root container가 singleton cache state를 소유합니다.
-`path:packages/di/src/container.ts:247-263`의 `createRequestScope()`는 `this.root().singletonCache`를 넘겨 child container를 생성합니다.
+`path:packages/di/src/container.ts:360-369`의 `createRequestScope()`는 `this.root().singletonCache`를 넘겨 child container를 생성합니다.
 즉 request scope는 singleton state를 복제하지 않습니다. 공유합니다.
 
 request child 생성 코드는 그 공유를 constructor 인자로 직접 넘깁니다.
 
-`path:packages/di/src/container.ts:252-263`
+`path:packages/di/src/container.ts:360-369`
 ```typescript
 createRequestScope(): Container {
-  if (this.disposed) {
+  if (this.isDisposedInHierarchy()) {
     throw new ContainerResolutionError(
       'Container has been disposed and can no longer create request scopes.',
       { hint: 'Create request scopes before calling container.dispose().' },
     );
   }
 
-  const child = new Container(this, true, this.root().singletonCache);
-  this.root().childScopes.add(child);
-  return child;
+  return new Container(this, true, this.root().singletonCache);
 }
 ```
 
-따라서 request child는 parent와 request flag를 갖지만, singleton promise map은 root의 것을 봅니다. 이 한 줄이 "child는 boundary이고 singleton owner는 root"라는 장의 주장을 지탱합니다.
+따라서 request child는 parent와 request flag를 갖지만, singleton promise map은 root의 것을 봅니다. child는 생성 시점에 root의 live-child registry에 추가되지 않습니다. Fluo는 request-local cache state가 처음 materialize될 때 child를 lazy tracking합니다. 그래서 untouched request scope를 붙잡아 두지 않으면서도, root/parent override와 dispose 경로는 이미 materialize된 child를 찾아 invalidate하거나 정리할 수 있습니다.
+
+`path:packages/di/src/container.ts:822-842`
+```typescript
+private ensureTrackedRequestScope(): void {
+  if (!this.requestScopeEnabled || !this.parent || this.trackedByRoot) {
+    return;
+  }
+
+  const root = this.root();
+  root.childScopes ??= new Set<Container>();
+  root.childScopes.add(this);
+  this.trackedByRoot = true;
+}
+```
+
+이 구조는 "child는 boundary이고 singleton owner는 root"라는 장의 주장을 유지하면서 한 가지 중요한 보정을 더합니다. root는 실제 request-local state를 만든 live request child만 추적합니다.
 
 이 구조는 resolution 단계에서 다시 강제됩니다.
 `path:packages/di/src/container.ts:527-548`의 `resolveScopedOrSingletonInstance()`는 먼저 `shouldResolveFromRoot(provider)`를 검사합니다.
@@ -294,10 +308,10 @@ return cache.get(provider.provide);
 ## 5.3 Request scope is a child container, not a flag on a provider
 request lifetime은 구조적으로 모델링됩니다. 단순히 "이 provider는 자주 다시 만들어라"라는 label이 아닙니다. Fluo는 request boundary마다 child container를 실제로 만듭니다.
 
-`path:packages/di/src/container.ts:247-263`의 `createRequestScope()`는 `new Container(this, true, this.root().singletonCache)`를 호출합니다.
+`path:packages/di/src/container.ts:360-369`의 `createRequestScope()`는 `new Container(this, true, this.root().singletonCache)`를 호출합니다.
 이 constructor 호출 안에 세 가지 결정이 들어 있습니다. child는 parent reference를 갖습니다. request-scope enabled 상태가 됩니다. 그리고 root singleton cache를 공유합니다.
 
-즉 request scope는 root container 내부의 특별한 cache bucket이 아닙니다. 자기 own `requestCache`와 `multiRequestCache`를 가진 별도 container instance입니다. 이 field들은 `path:packages/di/src/container.ts:124-127`에 선언되어 있습니다.
+즉 request scope는 root container 내부의 특별한 cache bucket이 아닙니다. lazy하게 할당되는 `requestCache`와 `multiRequestCache` map을 가진 별도 container instance입니다. 이 field들은 `path:packages/di/src/container.ts:170-172`에 선언되어 있으며, write helper가 request-local single 또는 multi provider를 실제로 cache할 때만 map을 만듭니다.
 
 request-only resolution은 `cacheFor()`와 `multiCacheFor()`에서 강제됩니다. provider scope가 `request`인데 `requestScopeEnabled`가 false이면, 컨테이너는 `container.createRequestScope()`를 사용하라는 힌트와 함께 `RequestScopeResolutionError`를 던집니다. 코드는 `path:packages/di/src/container.ts:633-645`와 `path:packages/di/src/container.ts:656-668`에 있습니다.
 

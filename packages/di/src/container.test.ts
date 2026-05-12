@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Inject, Scope as ScopeDecorator } from '@fluojs/core';
+import { Inject, Scope as ScopeDecorator, type InjectionToken } from '@fluojs/core';
 
 import { Container } from './container.js';
 import { CircularDependencyError, ContainerResolutionError, DuplicateProviderError, InvalidProviderError, RequestScopeResolutionError, ScopeMismatchError } from './errors.js';
@@ -708,6 +708,57 @@ describe('Container', () => {
       expect(() => new Container().register(provider)).toThrow(InvalidProviderError);
       expect(() => new Container().register(provider)).toThrow('useExisting');
     });
+
+    it('rejects nullish provider-level inject tokens during registration', () => {
+      class Consumer {
+        constructor(readonly dependency: unknown) {}
+      }
+
+      const provider = {
+        provide: Consumer,
+        useClass: Consumer,
+        inject: [undefined],
+      } as unknown as Provider;
+
+      expect(() => new Container().register(provider)).toThrow(InvalidProviderError);
+      expect(() => new Container().register(provider)).toThrow('@Inject');
+    });
+
+    it('rejects nullish @Inject metadata tokens during registration', () => {
+      @Inject([undefined as unknown as InjectionToken])
+      class Consumer {
+        constructor(readonly dependency: unknown) {}
+      }
+
+      expect(() => new Container().register(Consumer)).toThrow(InvalidProviderError);
+      expect(() => new Container().register(Consumer)).toThrow('forwardRef');
+    });
+
+    it('keeps register() atomic when a later provider is invalid', () => {
+      const firstToken = Symbol('first-valid-token');
+      const invalidProvider = { useValue: 'missing-token' } as unknown as Provider;
+      const container = new Container();
+
+      expect(() => container.register({ provide: firstToken, useValue: 'first' }, invalidProvider)).toThrow(InvalidProviderError);
+      expect(container.has(firstToken)).toBe(false);
+    });
+
+    it('keeps register() atomic when a later provider conflicts with an earlier provider', () => {
+      const firstToken = Symbol('first-valid-token');
+      const duplicateToken = Symbol('duplicate-token');
+      const container = new Container();
+
+      expect(() =>
+        container.register(
+          { provide: firstToken, useValue: 'first' },
+          { provide: duplicateToken, useValue: 'second' },
+          { provide: duplicateToken, useValue: 'third' },
+        ),
+      ).toThrow(DuplicateProviderError);
+
+      expect(container.has(firstToken)).toBe(false);
+      expect(container.has(duplicateToken)).toBe(false);
+    });
   });
 
   describe('optional injection', () => {
@@ -1102,6 +1153,147 @@ describe('Container', () => {
       expect(first).toBe(second);
       expect(root.has(token)).toBe(false);
       await expect(root.resolve(token)).rejects.toThrow(ContainerResolutionError);
+    });
+
+    it('caches direct request-scoped single providers within one request scope only', async () => {
+      const token = Symbol('DirectRequestProvider');
+      let created = 0;
+      const root = new Container().register({
+        provide: token,
+        scope: Scope.REQUEST,
+        useFactory: () => ({ id: ++created }),
+      });
+
+      const requestA = root.createRequestScope();
+      const requestB = root.createRequestScope();
+
+      const firstA = await requestA.resolve<{ id: number }>(token);
+      const secondA = await requestA.resolve<{ id: number }>(token);
+      const firstB = await requestB.resolve<{ id: number }>(token);
+
+      expect(firstA).toBe(secondA);
+      expect(firstA).not.toBe(firstB);
+      expect([firstA.id, firstB.id]).toEqual([1, 2]);
+    });
+  });
+
+  describe('override invalidation and atomicity', () => {
+    it('invalidates materialized request-scope children when the root overrides a request-scoped provider', async () => {
+      const token = Symbol('request-provider');
+      const root = new Container().register({
+        provide: token,
+        scope: Scope.REQUEST,
+        useFactory: () => ({ version: 'before' }),
+      });
+      const requestScope = root.createRequestScope();
+
+      const beforeOverride = await requestScope.resolve<{ version: string }>(token);
+
+      root.override({
+        provide: token,
+        scope: Scope.REQUEST,
+        useFactory: () => ({ version: 'after' }),
+      });
+
+      const afterOverride = await requestScope.resolve<{ version: string }>(token);
+
+      expect(beforeOverride.version).toBe('before');
+      expect(afterOverride.version).toBe('after');
+      expect(afterOverride).not.toBe(beforeOverride);
+    });
+
+    it('invalidates materialized request-scope multi providers when the root overrides their token', async () => {
+      const token = Symbol('request-multi-provider');
+      const root = new Container().register({
+        provide: token,
+        multi: true,
+        scope: Scope.REQUEST,
+        useFactory: () => ({ version: 'before' }),
+      });
+      const requestScope = root.createRequestScope();
+
+      const beforeOverride = await requestScope.resolve<Array<{ version: string }>>(token);
+
+      root.override({
+        provide: token,
+        multi: true,
+        scope: Scope.REQUEST,
+        useFactory: () => ({ version: 'after' }),
+      });
+
+      const afterOverride = await requestScope.resolve<Array<{ version: string }>>(token);
+
+      expect(beforeOverride).toHaveLength(1);
+      expect(afterOverride).toHaveLength(1);
+      expect(beforeOverride[0]?.version).toBe('before');
+      expect(afterOverride[0]?.version).toBe('after');
+      expect(afterOverride[0]).not.toBe(beforeOverride[0]);
+    });
+
+    it('keeps multi-token override() atomic when a later token is invalid', async () => {
+      const firstToken = Symbol('first-multi-token');
+      const secondToken = Symbol('second-multi-token');
+      const invalidProvider = { useValue: 'missing-token' } as unknown as Provider;
+      const container = new Container().register(
+        { provide: firstToken, useValue: 'first-before', multi: true },
+        { provide: secondToken, useValue: 'second-before' },
+      );
+
+      await expect(container.resolve<string[]>(firstToken)).resolves.toEqual(['first-before']);
+
+      expect(() =>
+        container.override(
+          { provide: firstToken, useValue: 'first-after', multi: true },
+          invalidProvider,
+        ),
+      ).toThrow(InvalidProviderError);
+
+      await expect(container.resolve<string[]>(firstToken)).resolves.toEqual(['first-before']);
+      await expect(container.resolve<string>(secondToken)).resolves.toBe('second-before');
+    });
+
+    it('keeps multi-token override() atomic when a later token mixes single and multi replacements', async () => {
+      const firstToken = Symbol('first-multi-token');
+      const duplicateToken = Symbol('duplicate-token');
+      const container = new Container().register(
+        { provide: firstToken, useValue: 'first-before', multi: true },
+        { provide: duplicateToken, useValue: 'duplicate-before' },
+      );
+
+      expect(() =>
+        container.override(
+          { provide: firstToken, useValue: 'first-after', multi: true },
+          { provide: duplicateToken, useValue: 'duplicate-after' },
+          { provide: duplicateToken, useValue: 'duplicate-multi-after', multi: true },
+        ),
+      ).toThrow(DuplicateProviderError);
+
+      await expect(container.resolve<string[]>(firstToken)).resolves.toEqual(['first-before']);
+      await expect(container.resolve<string>(duplicateToken)).resolves.toBe('duplicate-before');
+    });
+  });
+
+  describe('factory provider resolverClass metadata', () => {
+    it('derives request scope from resolverClass @Scope metadata when provider scope is omitted', async () => {
+      const token = Symbol('resolver-class-scoped-factory');
+
+      @ScopeDecorator(Scope.REQUEST)
+      class RequestResolver {}
+
+      const root = new Container().register({
+        provide: token,
+        resolverClass: RequestResolver,
+        useFactory: () => ({ value: 'request-scoped' }),
+      });
+
+      await expect(root.resolve(token)).rejects.toThrow(RequestScopeResolutionError);
+
+      const requestScope = root.createRequestScope();
+      const first = await requestScope.resolve<{ value: string }>(token);
+      const second = await requestScope.resolve<{ value: string }>(token);
+
+      expect(first).toBe(second);
+      expect(first.value).toBe('request-scoped');
     });
   });
 

@@ -79,7 +79,7 @@ During disposal, the root container first tears down live request-scope children
 
 ### Provider Overrides
 
-Use `override(...providers)` when a test or request-local boundary needs to replace existing registrations deliberately. Overrides replace the current provider set for each token, invalidate cached instances, and dispose stale instances immediately. Multi-provider overrides replace the full multi-provider set for that token, so pass every replacement provider together; mixing single and multi replacements for the same token in one override call is rejected as ambiguous.
+Use `override(...providers)` when a test or request-local boundary needs to replace existing registrations deliberately. Overrides replace the current provider set for each token, invalidate cached instances in the current container and already-materialized request-scope children, and dispose stale instances immediately. Multi-provider overrides replace the full multi-provider set for that token, so pass every replacement provider together; mixing single and multi replacements for the same token in one override call is rejected as ambiguous. Batch `register(...providers)` and `override(...providers)` calls validate every provider before mutating the graph, so invalid later providers do not leave partial registrations behind.
 
 ### Request Scoping
 Isolated containers can be created to handle per-request state without polluting the root container.
@@ -142,6 +142,11 @@ container.register({
   provide: Database, 
   useValue: mockDb 
 });
+container.register({
+  provide: DataService,
+  useClass: DataService,
+  inject: [Database],
+});
 
 const service = await container.resolve(DataService);
 // service uses mockDb instead of the real Database instance
@@ -168,8 +173,11 @@ Ensure all required providers are registered in the container. If you use `creat
 | `hasRequestScopedDependency(token)` | Checks whether resolving a token may require a request-scope container because its provider graph contains request-scoped dependencies or is cyclic. |
 | `dispose()` | Disposes request children and root-owned singleton instances. |
 | `forwardRef(fn)` | Returns a token wrapper that defers lookup for declaration-order issues; it does not make constructor dependency cycles resolvable. |
+| `isForwardRef(value)` | Narrows values created by `forwardRef(...)` for custom provider tooling. |
 | `optional(token)` | Returns a token wrapper that marks one dependency as optional; missing optional dependencies resolve to `undefined`. |
+| `isOptionalToken(value)` | Narrows values created by `optional(...)` for custom provider tooling. |
 | `Scope` | Exposes `DEFAULT`, `REQUEST`, and `TRANSIENT` scope constants. |
+| Provider types | `Provider`, `ClassProvider`, `ValueProvider`, `FactoryProvider`, `ExistingProvider`, `ClassType`, `ForwardRefFn`, `OptionalToken`, `Disposable`, and `RequestScopeContainer`. |
 | Error classes | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |
 
 Resolving a multi-provider token returns an array of resolved values in registration order.
