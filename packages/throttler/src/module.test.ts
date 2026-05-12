@@ -1,22 +1,19 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-import type Redis from 'ioredis';
-
 import { metadataSymbol } from '@fluojs/core/internal';
 import type { GuardContext, HandlerDescriptor, RequestContext } from '@fluojs/http';
-
-import * as throttlerExports from './index.js';
-import { SkipThrottle, Throttle, getThrottleMetadata } from './decorators.js';
+import type Redis from 'ioredis';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getThrottleMetadata, SkipThrottle, Throttle } from './decorators.js';
 import { ThrottlerGuard } from './guard.js';
-import { ThrottlerModule } from './module.js';
-import { RedisThrottlerStore } from './redis-store.js';
-import { createMemoryThrottlerStore } from './store.js';
 import type {
   ThrottlerConsumeInput,
   ThrottlerModuleOptions,
   ThrottlerStore,
   ThrottlerStoreEntry,
 } from './index.js';
+import * as throttlerExports from './index.js';
+import { ThrottlerModule } from './module.js';
+import { RedisThrottlerStore } from './redis-store.js';
+import { createMemoryThrottlerStore } from './store.js';
 
 function createRequestContext(
   options:
@@ -229,6 +226,10 @@ describe('@fluojs/throttler decorators', () => {
 
 describe('ThrottlerGuard — in-memory store', () => {
   let options: ThrottlerModuleOptions;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   beforeEach(() => {
     vi.useFakeTimers();
