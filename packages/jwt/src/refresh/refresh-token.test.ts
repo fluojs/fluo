@@ -1,14 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
-import { RefreshTokenService, type RefreshTokenRecord, type RefreshTokenStore } from './refresh-token.js';
+import {
+  RefreshTokenService,
+  type RefreshTokenRecord,
+  type RefreshTokenRotateInput,
+  type RefreshTokenStore,
+} from './refresh-token.js';
 import { DefaultJwtSigner } from '../signing/signer.js';
 import { DefaultJwtVerifier } from '../signing/verifier.js';
 
 class InMemoryRefreshTokenStore implements RefreshTokenStore {
   private readonly records = new Map<string, RefreshTokenRecord>();
+  rotateCalls = 0;
+  saveCalls = 0;
 
   async save(token: RefreshTokenRecord): Promise<void> {
+    this.saveCalls += 1;
     this.records.set(token.id, token);
   }
 
@@ -55,6 +63,18 @@ class InMemoryRefreshTokenStore implements RefreshTokenStore {
     return 'consumed';
   }
 
+  async rotate(input: RefreshTokenRotateInput): Promise<'consumed' | 'already_used' | 'expired' | 'not_found' | 'mismatch'> {
+    this.rotateCalls += 1;
+    const consumeResult = await this.consume(input);
+
+    if (consumeResult !== 'consumed') {
+      return consumeResult;
+    }
+
+    this.records.set(input.replacement.id, input.replacement);
+    return 'consumed';
+  }
+
   countBySubject(subject: string): number {
     let count = 0;
 
@@ -79,6 +99,7 @@ class InMemoryRefreshTokenStore implements RefreshTokenStore {
       expiresAt: new Date(Date.now() - 1_000),
     });
   }
+
 }
 
 function readTokenPayload(token: string): Record<string, unknown> {
@@ -183,6 +204,60 @@ describe('RefreshTokenService', () => {
     expect(updatedFirstRecord?.used).toBe(true);
     expect(newRecord?.used).toBe(false);
     expect(newPayload.family).toBe(firstPayload.family);
+    expect(store.rotateCalls).toBe(1);
+  });
+
+  it('persists the consumed marker and replacement token through the durable rotate store operation', async () => {
+    const store = new InMemoryRefreshTokenStore();
+    const { service } = createService(store);
+    const firstToken = await service.issueRefreshToken('user-1');
+    const firstPayload = readTokenPayload(firstToken);
+
+    const rotated = await service.rotateRefreshToken(firstToken);
+    const newPayload = readTokenPayload(rotated.refreshToken);
+    const firstRecord = await store.find(firstPayload.jti as string);
+    const newRecord = await store.find(newPayload.jti as string);
+
+    expect(store.rotateCalls).toBe(1);
+    expect(store.saveCalls).toBe(1);
+    expect(firstRecord?.used).toBe(true);
+    expect(newRecord).toMatchObject({
+      family: firstPayload.family,
+      subject: 'user-1',
+      used: false,
+    });
+  });
+
+  it('does not consume the current token when replacement signing fails', async () => {
+    const store = new InMemoryRefreshTokenStore();
+    const refreshOptions = {
+      expiresInSeconds: 3600,
+      rotation: true,
+      secret: 'refresh-secret',
+      store,
+    };
+    const signer = new DefaultJwtSigner({
+      algorithms: ['HS256'],
+      refreshToken: refreshOptions,
+      secret: 'access-secret',
+    });
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      refreshToken: refreshOptions,
+      secret: 'access-secret',
+    });
+    const service = new RefreshTokenService(refreshOptions, signer, verifier);
+    const token = await service.issueRefreshToken('user-1');
+    const payload = readTokenPayload(token);
+    const signRefreshToken = vi.spyOn(signer, 'signRefreshToken');
+    signRefreshToken.mockRejectedValueOnce(new Error('replacement signing failed'));
+
+    await expect(service.rotateRefreshToken(token)).rejects.toThrow('replacement signing failed');
+
+    const currentRecord = await store.find(payload.jti as string);
+    expect(currentRecord?.used).toBe(false);
+    expect(store.rotateCalls).toBe(0);
+    expect(store.countBySubject('user-1')).toBe(1);
   });
 
   it('detects refresh token reuse and revokes all tokens for the subject', async () => {
@@ -391,7 +466,7 @@ describe('RefreshTokenService', () => {
           },
         }),
     ).toThrowError(
-      'JWT refresh token verifier requires at least one HMAC algorithm (HS256/HS384/HS512) in the allowed algorithms list.',
+        'JWT refresh token verifier requires at least one HMAC algorithm (HS256/HS384/HS512) in the allowed algorithms list.',
     );
   });
 });
