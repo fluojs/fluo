@@ -381,6 +381,7 @@ export class DenoWebSocketGatewayLifecycleService
 
     state.disconnectLifecycleSettled = true;
     state.resolveDisconnectLifecycle();
+    this.pruneSettledSocketState(state.socketId, state);
   }
 
   private attachConnectionListeners(
@@ -910,14 +911,11 @@ export class DenoWebSocketGatewayLifecycleService
 
   private async closeActiveSockets(timeoutMs: number): Promise<void> {
     const activeSockets = [...this.socketRegistry.entries()];
+    const activeStates = [...this.socketStates.values()];
 
-    if (activeSockets.length === 0) {
+    if (activeSockets.length === 0 && activeStates.length === 0) {
       return;
     }
-
-    const activeStates = activeSockets
-      .map(([socketId]) => this.socketStates.get(socketId))
-      .filter((state): state is ConnectionHandlerState => state !== undefined);
 
     for (const [, socket] of activeSockets) {
       if (socket.readyState === WEBSOCKET_OPEN_READY_STATE) {
@@ -1055,7 +1053,6 @@ export class DenoWebSocketGatewayLifecycleService
     }
 
     this.socketRegistry.delete(socketId);
-    this.socketStates.delete(socketId);
 
     const rooms = this.socketRooms.get(socketId);
     if (rooms) {
@@ -1069,5 +1066,15 @@ export class DenoWebSocketGatewayLifecycleService
 
       this.socketRooms.delete(socketId);
     }
+
+    this.pruneSettledSocketState(socketId);
+  }
+
+  private pruneSettledSocketState(socketId: string, state = this.socketStates.get(socketId)): void {
+    if (!state?.disconnectLifecycleSettled) {
+      return;
+    }
+
+    this.socketStates.delete(socketId);
   }
 }
