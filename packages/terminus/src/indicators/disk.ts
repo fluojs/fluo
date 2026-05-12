@@ -34,10 +34,10 @@ export function createDiskHealthIndicator(options: DiskHealthIndicatorOptions = 
 }
 
 /**
- * Create a provider that registers a `DiskHealthIndicator` instance.
+ * Create a provider that registers a `DiskHealthIndicator` instance for Terminus aggregation.
  *
  * @param options Optional filesystem path and free-space thresholds.
- * @returns A value provider that exposes `DiskHealthIndicator` from the DI container.
+ * @returns A value provider keyed by a unique internal `Symbol`, allowing repeated same-type providers without class-token collisions.
  */
 export function createDiskHealthIndicatorProvider(options: DiskHealthIndicatorOptions = {}): Provider {
   const indicatorProviderToken = Symbol('fluo.terminus.disk-health-indicator');

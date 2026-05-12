@@ -68,10 +68,10 @@ export function createPrismaHealthIndicator(options: PrismaHealthIndicatorOption
 }
 
 /**
- * Create a provider that resolves a Prisma client from DI and wraps it as an indicator.
+ * Create a provider that resolves a Prisma client from DI and wraps it as an indicator for Terminus aggregation.
  *
  * @param options Optional timeout, key override, or custom ping callback.
- * @returns A factory provider that exposes `PrismaHealthIndicator` from the DI container.
+ * @returns A factory provider keyed by a unique internal `Symbol`, allowing repeated same-type providers without class-token collisions.
  */
 export function createPrismaHealthIndicatorProvider(options: Omit<PrismaHealthIndicatorOptions, 'client'> = {}): Provider {
   const indicatorProviderToken = Symbol('fluo.terminus.prisma-health-indicator');

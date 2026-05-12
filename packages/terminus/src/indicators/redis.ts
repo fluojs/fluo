@@ -45,10 +45,10 @@ export function createRedisHealthIndicator(options: RedisHealthIndicatorOptions 
 }
 
 /**
- * Create a provider that resolves a Redis client from DI and wraps it as an indicator.
+ * Create a provider that resolves a Redis client from DI and wraps it as an indicator for Terminus aggregation.
  *
  * @param options Optional timeout, key override, or custom ping callback.
- * @returns A factory provider that exposes `RedisHealthIndicator` from the DI container.
+ * @returns A factory provider keyed by a unique internal `Symbol`, allowing repeated same-type providers without class-token collisions.
  */
 export function createRedisHealthIndicatorProvider(options: Omit<RedisHealthIndicatorOptions, 'client'> = {}): Provider {
   const indicatorProviderToken = Symbol('fluo.terminus.redis-health-indicator');
