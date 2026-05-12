@@ -790,6 +790,20 @@ function enforceRemovedRuntimeFactoryNamesNotUsedInDocs() {
   );
 }
 
+function enforcePlatformConformanceChecklistDiagnosticMessageRequirement() {
+  const checklist = readFileSync(join(repoRoot, 'docs/contracts/platform-conformance-authoring-checklist.md'), 'utf8');
+  const checklistKo = readFileSync(join(repoRoot, 'docs/contracts/platform-conformance-authoring-checklist.ko.md'), 'utf8');
+
+  assert(
+    checklist.includes('non-empty `code` and human-readable `message`'),
+    'platform conformance checklist must document non-empty diagnostic code and message requirements.',
+  );
+  assert(
+    checklistKo.includes('비어 있지 않은 안정적인 `code` 값과 사람이 읽을 수 있는 `message` 값'),
+    'Korean platform conformance checklist must mirror non-empty diagnostic code and message requirements.',
+  );
+}
+
 export function main() {
   const changedFiles = changedFilesFromGit();
 
@@ -800,6 +814,7 @@ export function main() {
   enforceDocsHubOfficialTransportLinks();
   enforceCanonicalRuntimeMatrixReferences();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
+  enforcePlatformConformanceChecklistDiagnosticMessageRequirement();
   enforceNoDirectProcessEnvInOrdinaryPackageSource();
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceContractCompanionUpdates(changedFiles);
