@@ -212,14 +212,14 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     try {
       if (typeof this.connection.transaction === 'function') {
         const transaction = () => this.runConnectionTransaction(() => raceWithAbort(fn, abortContext.signal));
-        const result = signal ? await raceWithAbort<T>(transaction, abortContext.signal) : await transaction();
+        const result = await raceWithAbort<T>(transaction, abortContext.signal);
 
         this.throwIfRequestAborted(abortContext.signal);
 
         return result;
       }
 
-      const resolvedSession = await this.resolveRequestSession(abortContext.signal, signal !== undefined);
+      const resolvedSession = await this.resolveRequestSession(abortContext.signal);
       if (!resolvedSession) {
         const result = await raceWithAbort(fn, abortContext.signal);
 
@@ -324,15 +324,8 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     return this.connection.startSession();
   }
 
-  private async resolveRequestSession(
-    signal: AbortSignal,
-    raceSessionAcquisition: boolean,
-  ): Promise<MongooseSessionLike | undefined> {
+  private async resolveRequestSession(signal: AbortSignal): Promise<MongooseSessionLike | undefined> {
     const sessionPromise = this.resolveSession();
-
-    if (!raceSessionAcquisition) {
-      return sessionPromise;
-    }
 
     try {
       return await raceWithAbort(() => sessionPromise, signal);
