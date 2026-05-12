@@ -56,6 +56,7 @@
 - **`@fluojs/validation`**: 표준 데코레이터 기반 입력 검증, DTO 실체화(materialization), request-boundary 안전성.
 - **`@fluojs/prisma` / `@fluojs/drizzle`**: ORM 라이프사이클 및 ALS 기반 트랜잭션 컨텍스트.
 - **`@fluojs/redis`**: App-scoped Redis client 등록, raw-client injection, JSON-aware `RedisService` facade, named-client token, lifecycle-owned connect/quit timeout guardrail, 그리고 Pub/Sub subscriber는 일반 command client를 공유하지 않고 전용 Redis 연결을 사용해야 한다는 문서 가이드를 담당합니다.
+- **`@fluojs/queue`**: decorator로 발견한 singleton worker, Queue가 소유하는 duplicate Redis connection, JSON-object payload serialization, dead-letter retention, bootstrap-ready worker startup, `workerShutdownTimeoutMs` 기반 bounded worker shutdown, lifecycle/readiness status snapshot을 제공하는 Redis-backed BullMQ job processing 패키지입니다.
 - **`@fluojs/mongoose`**: Mongoose 라이프사이클 통합과 ALS/session 인지형 transaction boundary, 요청 범위 transaction interceptor, 모델 작업을 위한 명시적 `currentSession()` 접근, 사용 가능한 경우 `connection.transaction(...)`을 통한 ambient-session 위임, 활성 요청/session drain 상태를 보고하는 shutdown snapshot을 담당합니다.
 
 ### tooling
