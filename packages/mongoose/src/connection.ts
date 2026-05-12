@@ -332,14 +332,23 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       return await raceWithAbort(() => sessionPromise, signal);
     } catch (error) {
       if (signal.aborted) {
-        void sessionPromise
-          .then((session) => session?.endSession())
-          .catch((cleanupError: unknown) => {
-            void cleanupError;
-          });
+        this.trackPendingRequestSessionCleanup(sessionPromise);
       }
 
       throw error;
     }
+  }
+
+  private trackPendingRequestSessionCleanup(sessionPromise: Promise<MongooseSessionLike | undefined>): void {
+    const activeSession = this.trackActiveSession();
+
+    void sessionPromise
+      .then((session) => session?.endSession())
+      .catch((cleanupError: unknown) => {
+        void cleanupError;
+      })
+      .finally(() => {
+        activeSession.settle();
+      });
   }
 }

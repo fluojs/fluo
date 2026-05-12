@@ -644,6 +644,82 @@ describe('@fluojs/mongoose', () => {
     expect(events).toEqual(['connection:startSession', 'session:end']);
   });
 
+  it('waits for abort-raced pending startSession cleanup before dispose on shutdown', async () => {
+    const events: string[] = [];
+    let resolveStartSession!: (session: MongooseSessionLike) => void;
+    let resolveEndSessionStarted!: () => void;
+    let resolveEndSession!: () => void;
+    const startSessionDeferred = new Promise<MongooseSessionLike>((resolve) => {
+      resolveStartSession = resolve;
+    });
+    const endSessionStarted = new Promise<void>((resolve) => {
+      resolveEndSessionStarted = resolve;
+    });
+    const endSessionDeferred = new Promise<void>((resolve) => {
+      resolveEndSession = resolve;
+    });
+    const controller = new AbortController();
+
+    const session: MongooseSessionLike = {
+      abortTransaction() {
+        events.push('transaction:abort');
+      },
+      commitTransaction() {
+        events.push('transaction:commit');
+      },
+      async endSession() {
+        events.push('session:end:start');
+        resolveEndSessionStarted();
+        await endSessionDeferred;
+        events.push('session:end:done');
+      },
+      startTransaction() {
+        events.push('transaction:start');
+      },
+    };
+
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return startSessionDeferred;
+      },
+    };
+
+    const mongoose = new MongooseConnection<typeof connection>(connection, () => {
+      events.push('dispose');
+    });
+
+    const requestTransaction = mongoose.requestTransaction(async () => {
+      events.push('tx:work');
+      return 'ok';
+    }, controller.signal);
+
+    controller.abort(new Error('request aborted before session acquisition'));
+
+    await expect(requestTransaction).rejects.toThrow('request aborted before session acquisition');
+
+    const shutdown = mongoose.onApplicationShutdown();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        activeSessions: 1,
+        lifecycleState: 'shutting-down',
+      },
+    });
+    expect(events).toEqual(['connection:startSession']);
+
+    resolveStartSession(session);
+    await endSessionStarted;
+
+    expect(events).toEqual(['connection:startSession', 'session:end:start']);
+
+    resolveEndSession();
+    await shutdown;
+
+    expect(events).toEqual(['connection:startSession', 'session:end:start', 'session:end:done', 'dispose']);
+  });
+
   it('races delegated connection.transaction startup against request abort', async () => {
     const events: string[] = [];
     const session = createFakeSession(events);
