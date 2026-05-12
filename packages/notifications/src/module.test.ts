@@ -670,6 +670,68 @@ describe('NotificationsModule', () => {
     ]);
   });
 
+  it('preserves sequential queue fallback partial results when failed lifecycle publication fails under continueOnError', async () => {
+    const queue = new FailingEnqueueOnlyQueueAdapter(2);
+    const publisher = new RecordingPublisher();
+    publisher.failOnNames.add('notification.dispatch.failed');
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+      events: {
+        publisher,
+      },
+    });
+
+    const notifications = [
+      { channel: 'email', id: 'first-job', payload: { template: 'digest', userId: 'u1' } },
+      { channel: 'email', id: 'second-job', payload: { template: 'digest', userId: 'u2' } },
+      { channel: 'email', id: 'third-job', payload: { template: 'digest', userId: 'u3' } },
+    ];
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const result = await service.dispatchMany(notifications, { continueOnError: true });
+
+    expect(queue.jobs.map((job) => job.id)).toEqual(['first-job', 'third-job']);
+    expect(result).toMatchObject({
+      failed: 1,
+      queued: 2,
+      succeeded: 2,
+    });
+    expect(result.results.map((entry: NotificationDispatchResult) => entry.deliveryId)).toEqual(['queued:1', 'queued:2']);
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]?.notification).toBe(notifications[1]);
+    expect(result.failures[0]?.error).toBeInstanceOf(AggregateError);
+
+    const failureError = result.failures[0]?.error;
+
+    if (!(failureError instanceof AggregateError)) {
+      throw new Error('Expected sequential fallback failure to include lifecycle publication failure details.');
+    }
+
+    expect(failureError.errors).toHaveLength(2);
+    expect(failureError.errors[0]).toMatchObject({ message: 'queue enqueue failed:2' });
+    expect(failureError.errors[1]).toMatchObject({ message: 'publisher failed:notification.dispatch.failed' });
+    expect(publisher.events).toMatchObject([
+      { channel: 'email', name: 'notification.dispatch.requested' },
+      { channel: 'email', name: 'notification.dispatch.requested' },
+      { channel: 'email', name: 'notification.dispatch.requested' },
+      { channel: 'email', deliveryId: 'queued:1', name: 'notification.dispatch.queued' },
+      { channel: 'email', deliveryId: 'queued:2', name: 'notification.dispatch.queued' },
+    ]);
+  });
+
   it('publishes terminal events for all requested sequential fallback jobs after an enqueue failure', async () => {
     const queue = new FailingEnqueueOnlyQueueAdapter(2);
     const publisher = new RecordingPublisher();

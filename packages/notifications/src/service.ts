@@ -425,7 +425,7 @@ export class NotificationsService implements Notifications {
         results.push(result);
         await this.publishLifecycleEventSafely('notification.dispatch.queued', notification, options, deliveryId);
       } catch (error) {
-        const failure = {
+        const failure: { error: Error; notification: TRequest } = {
           error: error instanceof Error ? error : new Error('Notification queue enqueue failed.'),
           notification,
         };
@@ -435,8 +435,15 @@ export class NotificationsService implements Notifications {
           throw error;
         }
 
+        try {
+          await this.publishFailureLifecycleEvent(notification, options, error);
+        } catch (publicationError) {
+          failure.error = publicationError instanceof Error
+            ? publicationError
+            : createLifecyclePublicationFailureError(error, publicationError);
+        }
+
         failures.push(failure);
-        await this.publishFailureLifecycleEvent(notification, options, error);
       }
     }
 
