@@ -92,7 +92,7 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 ### 부트스트랩 및 종료 수명 주기
 
-Queue는 애플리케이션 부트스트랩 중 worker를 탐색하고 Queue가 소유하는 BullMQ 리소스를 만들지만, BullMQ worker processor는 Queue 부트스트랩이 끝난 뒤에 시작합니다. 다른 `onApplicationBootstrap()` hook에서 enqueue한 job은 Queue 서비스가 초기화된 뒤에는 받을 수 있으며, processor는 애플리케이션 readiness보다 먼저 앞서 실행되지 않고 bootstrap-ready handoff 이후 실행됩니다.
+Queue는 애플리케이션 부트스트랩 중 worker를 탐색하고 Queue가 소유하는 BullMQ 리소스를 만들지만, BullMQ worker processor는 runtime이 전체 애플리케이션 bootstrap/readiness sequence 완료를 표시한 뒤에만 시작합니다. 다른 `onApplicationBootstrap()` hook에서 enqueue한 job은 Queue 서비스가 초기화된 뒤에는 받을 수 있으며, processor는 뒤에 실행되는 async bootstrap hook이나 애플리케이션 readiness보다 앞서 실행되지 않고 bootstrap-ready handoff 이후 실행됩니다.
 
 애플리케이션 종료가 시작되면 Queue는 상태를 `stopping`으로 바꾸고 새 enqueue를 거부한 다음 Queue 소유 worker/queue/connection을 닫고 pending dead-letter write를 drain합니다. Worker 종료는 `workerShutdownTimeoutMs`로 bounded wait를 적용하므로 끝나지 않는 active processor가 애플리케이션 종료를 무기한 막을 수 없습니다. Timeout이 지나면 Queue는 로그를 남기고 BullMQ worker에 force-close를 요청한 뒤 나머지 리소스 정리를 계속합니다.
 
