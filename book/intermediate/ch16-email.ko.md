@@ -53,6 +53,8 @@ export class AppModule {}
 ### verifyOnModuleInit
 `verifyOnModuleInit: true`를 설정하면 애플리케이션 부트스트랩 중 트랜스포트가 실제로 사용 가능한지 확인할 수 있습니다. SMTP 자격 증명 검증처럼 배포 초기에 실패를 드러내야 하는 경우에 유용합니다. 이렇게 시작 단계에서 문제를 확인하면 첫 주문 확인 메일이 실패한 뒤에야 설정 오류를 발견하는 상황을 줄일 수 있습니다.
 
+Bootstrap 검증이 활성화된 경우 `EmailService`는 검증이 성공적으로 끝나기 전까지 메시지를 transport에 넘기지 않습니다. `EmailModule.forRootAsync(...)`로 구성을 해석하다가 factory가 reject되더라도 fluo는 그 rejection을 영구 memoize하지 않으므로, 이후 provider resolution에서 configuration lookup을 다시 시도할 수 있습니다.
+
 ## 16.3 Node-only SMTP with @fluojs/email/node
 
 Node.js 환경에서 SMTP를 사용할 때는 전용 서브패스를 가져옵니다. 이렇게 분리하면 핵심 패키지가 `nodemailer` 같은 Node 전용 의존성에 묶이지 않고, 다른 런타임에서도 같은 루트 API를 유지할 수 있습니다.
@@ -74,6 +76,8 @@ EmailModule.forRoot({
   }),
 });
 ```
+
+Nodemailer adapter는 `Name <user@example.com>` 같은 문자열을 직접 조합하지 않고 display-name 수신자를 구조화된 address object로 전달합니다. 따라서 쉼표나 따옴표가 들어간 이름도 provider-safe하게 유지하면서, newline 문자는 handoff 전에 거부합니다.
 
 ## 16.4 Standalone Usage: EmailService
 
@@ -176,6 +180,8 @@ EmailModule.forRoot({
 ```
 
 렌더러를 등록하면 notification 요청에서 `template`과 `payload.templateData`를 넘겨 템플릿 기반 메일을 생성할 수 있습니다. 명시적인 `payload.text`, `payload.html`, `subject` 값은 렌더링된 fallback보다 우선합니다.
+
+Renderer는 notification `payload`, `metadata`, `locale`, `subject`, `template`을 받습니다. Attachment, header, recipient override는 payload에 남아 있다가 렌더링 후 최종 email message로 전달됩니다.
 
 ## 16.8 Status and Health Checks
 

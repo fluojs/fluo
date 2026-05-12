@@ -147,6 +147,8 @@ This is powerful for simple CRUD APIs where you want full consistency without ma
 
 It provides a high level of safety for standard API actions and reduces the need to write error handling and manual rollback logic in every service method. It also ensures that if validation fails halfway through a request, or an external service call times out and throws an error, only part of the data will not be committed.
 
+Request-scoped transaction boundaries also participate in application shutdown. Once shutdown begins, fluo rejects new Prisma request transactions, aborts any still-active request transaction, waits for the transaction boundary to settle, and only then disconnects the Prisma client. If a request-scoped boundary is opened inside an existing manual transaction, it reuses the outer transaction client and remains visible to shutdown tracking until that outer manual block finishes.
+
 ### When to use Interceptors vs. Blocks?
 - **Interceptors**: Best for the "unit of work" pattern, where the entire request is one logical change. They are ideal for standardizing behavior across a whole Controller or application. Use them when an endpoint has a binary outcome: everything succeeds, or nothing changes.
 - **Blocks**: Best when only a specific part of a complex method must be atomic, or when you need precise error handling for a specific step. They are also preferred when non-database side effects such as sending emails or pushing to a queue must happen only after database work has committed successfully. It is easier to wrap a block in try/catch than an Interceptor.
