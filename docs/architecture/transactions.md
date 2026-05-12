@@ -32,6 +32,8 @@ This document defines the current transaction-context contract across `@fluojs/p
 | Request-scoped boundary | The three transaction interceptors wrap the downstream HTTP handler in `requestTransaction(...)`, using the request abort signal from `context.requestContext.request.signal`. | `packages/prisma/src/transaction.ts`, `packages/drizzle/src/transaction.ts`, `packages/mongoose/src/transaction.ts` |
 | Abort handling | Prisma and Drizzle wrap request-scoped work in `raceWithAbort(...)` and track active request transactions for shutdown cleanup. Mongoose applies the same request-abort race around session-backed work. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
 | Shutdown behavior | Active request transactions are aborted during application shutdown, awaited for settlement, and then the package-specific disconnect or dispose hook runs. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
+| Shutdown entry gate | Prisma and Drizzle reject new `requestTransaction(...)` calls once shutdown has started so disconnect/dispose cannot be overtaken by late request work. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
+| Nested request tracking | Prisma and Drizzle keep nested `requestTransaction(...)` calls that run inside an existing manual transaction visible to shutdown tracking until the outer manual boundary settles. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
 
 ## Constraints
 
