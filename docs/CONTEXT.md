@@ -35,6 +35,8 @@ Redis integration discoverability is split by responsibility: `packages/redis/RE
 
 Redis integration discoverability is split by responsibility: `packages/redis/README.md` documents `RedisModule.forRoot({ lifecycle })` connect/quit timeout guardrails and the raw-client rule that Pub/Sub subscribers need dedicated Redis connections; [`docs/reference/package-surface.md`](./reference/package-surface.md) carries the canonical `@fluojs/redis` surface summary; and [`book/intermediate/ch03-redis-transport.md`](../book/intermediate/ch03-redis-transport.md) explains the Redis Pub/Sub versus Redis Streams learning path, including why shared command clients should not be reused as subscribed Pub/Sub connections.
 
+Queue lifecycle discoverability is split across the package and governed docs: `packages/queue/README.md` documents `QueueModule.forRoot(...)`, Redis duplicate ownership, the bootstrap-ready worker processor handoff, bounded worker shutdown through `workerShutdownTimeoutMs`, dead-letter retention, and lifecycle status snapshots; [`docs/contracts/behavioral-contract-policy.md`](./contracts/behavioral-contract-policy.md) treats readiness and shutdown ordering as behavioral contracts that require implementation, docs, and regression tests to change together; and [`docs/contracts/testing-guide.md`](./contracts/testing-guide.md) identifies the nearest package tests and governance commands to run when queue lifecycle behavior changes.
+
 ## File Structure
 
 | Path | Role |
