@@ -110,7 +110,7 @@ const principal = await verifier.verifyAccessToken(token);
 // principal: { subject: 'user-123', roles: ['admin'], scopes: ['read:profile'], ... }
 ```
 
-When you use `JwtService.sign(payload, { expiresIn })`, the per-call `expiresIn` override always wins over any pre-existing `payload.exp` value so token lifetime stays deterministic at the call site. `expiresIn` accepts a non-negative number of seconds or short duration strings such as `60s`, `15m`, `1h`, or `7d`.
+When you use `JwtService.sign(payload, { expiresIn })`, the per-call `expiresIn` override always wins over any pre-existing `payload.exp` value so token lifetime stays deterministic at the call site. `expiresIn` accepts a non-negative number of seconds or short duration strings such as `60s`, `15m`, `1h`, or `7d`. Numeric seconds preserve fractional JWT NumericDate precision; string durations remain whole-second literals.
 
 ## Common Patterns
 

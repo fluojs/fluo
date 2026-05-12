@@ -36,7 +36,7 @@ function parseExpiresInSeconds(expiresIn: SignOptions['expiresIn']): number | un
       throw new Error('JwtService.sign() options.expiresIn must be a non-negative finite number.');
     }
 
-    return Math.floor(expiresIn);
+    return expiresIn;
   }
 
   const trimmed = expiresIn.trim();
@@ -74,7 +74,8 @@ export interface SignOptions {
    * Sets the token lifetime relative to the current clock.
    *
    * Accepts seconds or a short duration literal such as `"60s"`, `"15m"`,
-   * `"1h"`, or `"7d"`.
+   * `"1h"`, or `"7d"`. Numeric seconds preserve fractional JWT
+   * NumericDate precision.
    */
   expiresIn?: number | `${number}${DurationUnit}`;
   /**
