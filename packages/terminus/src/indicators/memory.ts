@@ -38,8 +38,10 @@ export function createMemoryHealthIndicator(options: MemoryHealthIndicatorOption
  * @returns A value provider that exposes `MemoryHealthIndicator` from the DI container.
  */
 export function createMemoryHealthIndicatorProvider(options: MemoryHealthIndicatorOptions = {}): Provider {
+  const indicatorProviderToken = Symbol('fluo.terminus.memory-health-indicator');
+
   return {
-    provide: MemoryHealthIndicator,
+    provide: indicatorProviderToken,
     useValue: new MemoryHealthIndicator(options),
   };
 }

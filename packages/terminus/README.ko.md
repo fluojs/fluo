@@ -29,7 +29,7 @@ pnpm add @fluojs/terminus
 
 - 외부 의존성(데이터베이스, Redis, API 등)의 상태를 애플리케이션 헬스 체크 결과에 포함해야 할 때.
 - 표준 모니터링 패턴에 맞는 구조화된 JSON 헬스 보고서가 필요할 때.
-- 핵심 하위 서비스에 접속할 수 없는 경우 `/ready` 체크가 실패하도록 설정해야 할 때.
+- 핵심 하위 서비스에는 `/ready` 체크가 실패하도록 하면서도, 비핵심 인디케이터는 `/health` 진단만 보강하게 설정해야 할 때.
 
 ## 빠른 시작
 
@@ -108,12 +108,26 @@ TerminusModule.forRoot({
 });
 ```
 
+기본값에서는 하위 호환성을 위해 등록된 모든 인디케이터가 readiness-critical로 동작합니다. 일부 indicator result key만 `/ready`를 gate해야 한다면 `readiness.indicatorKeys`를 사용하세요. 목록에 없는 인디케이터는 계속 `/health`에 표시되고 `/health`를 `503`으로 만들 수 있지만, `/ready`를 unavailable로 만들지는 않습니다.
+
+```typescript
+TerminusModule.forRoot({
+  indicators: [
+    new HttpHealthIndicator({ key: 'database', url: 'https://db.example.com/health' }),
+    new HttpHealthIndicator({ key: 'search-index', url: 'https://search.example.com/health' }),
+  ],
+  readiness: {
+    indicatorKeys: ['database'],
+  },
+});
+```
+
 ### 실패 시맨틱
 
 인디케이터가 실패하면 `HealthCheckError`를 던집니다. `TerminusHealthService`는 이 실패들을 모아 보고서를 작성합니다.
 
 - 하나 이상의 인디케이터가 실패하면 `/health`는 HTTP `503`을 반환합니다.
-- 준비 상태(readiness)와 관련된 인디케이터가 실패하면 `/ready`는 HTTP `503`을 반환합니다.
+- 플랫폼 readiness, custom `readinessChecks` callback, 또는 readiness-critical indicator가 실패하면 `/ready`는 HTTP `503`을 반환합니다. `readiness.indicatorKeys`를 생략하면 등록된 모든 인디케이터가 readiness-critical이고, 값을 제공하면 목록에 있는 indicator result key만 `/ready`를 gate합니다.
 - 응답 본문은 `status`, `contributors`, `info`, `error`, `details`를 포함한 구조화된 JSON 객체입니다.
 - 하나의 인디케이터가 여러 keyed entry를 반환할 수도 있으며, 이 경우 `/health`는 모든 entry를 `details`와 `contributors.up` / `contributors.down` 요약에 그대로 반영합니다.
 - 지원하지 않는 status, 빈 결과, 객체가 아닌 인디케이터 결과는 조용히 버려지지 않고 `down` 진단으로 보고됩니다.
@@ -129,7 +143,7 @@ TerminusModule.forRoot({
 
 - `static forRoot(options: TerminusModuleOptions): ModuleType`
   - 인디케이터 및 provider 등록을 위한 메인 엔트리 포인트입니다.
-  - Option에는 `indicators`, `indicatorProviders`, `readinessChecks`, `execution.indicatorTimeoutMs`, `path`가 포함됩니다.
+  - Option에는 `indicators`, `indicatorProviders`, `readiness.indicatorKeys`, `readinessChecks`, `execution.indicatorTimeoutMs`, `path`가 포함됩니다.
 
 ### `TerminusHealthService`
 
@@ -141,7 +155,7 @@ TerminusModule.forRoot({
 ### 직접 helper와 token
 
 - `runHealthCheck(...)`, `assertHealthCheck(...)`: 직접 aggregation/testing helper입니다.
-- `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: 등록된 indicator와 provider token을 위한 DI token입니다.
+- `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: 등록된 indicator와 provider token을 위한 DI token입니다. 내장 provider factory는 고유한 내부 token을 사용하므로 같은 indicator type provider를 하나의 모듈에 여러 개 등록할 수 있습니다.
 - Built-in indicator는 `create*HealthIndicator()` 및 `create*HealthIndicatorProvider()` helper도 노출합니다.
 
 ### `@fluojs/terminus/redis`

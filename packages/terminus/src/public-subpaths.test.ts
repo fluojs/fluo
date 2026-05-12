@@ -25,5 +25,8 @@ describe('@fluojs/terminus subpath exports', () => {
         types: './dist/redis.d.ts',
       },
     });
+    expect(readFileSync(new URL('./node.ts', import.meta.url), 'utf8')).toContain("export * from './indicators/memory.js'");
+    expect(readFileSync(new URL('./node.ts', import.meta.url), 'utf8')).toContain("export * from './indicators/disk.js'");
+    expect(readFileSync(new URL('./redis.ts', import.meta.url), 'utf8')).toContain("export * from './indicators/redis.js'");
   });
 });

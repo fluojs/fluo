@@ -46,6 +46,19 @@ export interface HealthCheckExecutionOptions {
   indicatorTimeoutMs?: number;
 }
 
+/** Options that control how Terminus indicator results contribute to `/ready`. */
+export interface TerminusReadinessOptions {
+  /**
+   * Indicator result keys that must stay `up` for `/ready` to remain ready.
+   *
+   * When omitted, every registered indicator remains readiness-critical for
+   * backward compatibility. Pass an empty array when indicators should enrich
+   * `/health` only and readiness should be controlled by `readinessChecks` and
+   * platform readiness.
+   */
+  indicatorKeys?: readonly string[];
+}
+
 /**
  * Module options for registering health indicators, providers, and readiness hooks.
  */
@@ -54,5 +67,6 @@ export interface TerminusModuleOptions {
   indicators?: readonly HealthIndicator[];
   indicatorProviders?: readonly Provider[];
   path?: string;
+  readiness?: TerminusReadinessOptions;
   readinessChecks?: readonly ReadinessCheck[];
 }

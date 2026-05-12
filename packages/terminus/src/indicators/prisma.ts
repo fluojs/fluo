@@ -74,9 +74,11 @@ export function createPrismaHealthIndicator(options: PrismaHealthIndicatorOption
  * @returns A factory provider that exposes `PrismaHealthIndicator` from the DI container.
  */
 export function createPrismaHealthIndicatorProvider(options: Omit<PrismaHealthIndicatorOptions, 'client'> = {}): Provider {
+  const indicatorProviderToken = Symbol('fluo.terminus.prisma-health-indicator');
+
   return {
     inject: [PRISMA_CLIENT],
-    provide: PrismaHealthIndicator,
+    provide: indicatorProviderToken,
     useFactory: (client: unknown) => new PrismaHealthIndicator({ ...options, client: client as PrismaClientLike }),
   };
 }

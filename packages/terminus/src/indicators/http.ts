@@ -49,8 +49,10 @@ export function createHttpHealthIndicator(options: HttpHealthIndicatorOptions): 
  * @returns A value provider that exposes `HttpHealthIndicator` from the DI container.
  */
 export function createHttpHealthIndicatorProvider(options: HttpHealthIndicatorOptions): Provider {
+  const indicatorProviderToken = Symbol('fluo.terminus.http-health-indicator');
+
   return {
-    provide: HttpHealthIndicator,
+    provide: indicatorProviderToken,
     useValue: new HttpHealthIndicator(options),
   };
 }

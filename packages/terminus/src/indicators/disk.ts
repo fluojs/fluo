@@ -40,8 +40,10 @@ export function createDiskHealthIndicator(options: DiskHealthIndicatorOptions = 
  * @returns A value provider that exposes `DiskHealthIndicator` from the DI container.
  */
 export function createDiskHealthIndicatorProvider(options: DiskHealthIndicatorOptions = {}): Provider {
+  const indicatorProviderToken = Symbol('fluo.terminus.disk-health-indicator');
+
   return {
-    provide: DiskHealthIndicator,
+    provide: indicatorProviderToken,
     useValue: new DiskHealthIndicator(options),
   };
 }

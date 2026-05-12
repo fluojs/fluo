@@ -27,7 +27,7 @@ pnpm add @fluojs/terminus
 
 - When you need to monitor external dependencies (databases, Redis, APIs) as part of your application's health status.
 - When you want a structured JSON health report that aligns with standard monitoring patterns.
-- When you need your `/ready` check to fail if critical downstream services are unreachable.
+- When you need your `/ready` check to fail for critical downstream services while still allowing non-critical indicators to enrich `/health` diagnostics.
 
 ## Quick Start
 
@@ -108,12 +108,26 @@ TerminusModule.forRoot({
 
 Use `path` to mount the health endpoints under a custom path, and `readinessChecks` to compose application-specific readiness logic with Terminus indicator and platform readiness checks.
 
+By default, every registered indicator remains readiness-critical for backward compatibility. Use `readiness.indicatorKeys` when only a subset of indicator result keys should gate `/ready`; indicators outside that list still appear in `/health` and can make `/health` return `503`, but they do not make `/ready` unavailable.
+
+```typescript
+TerminusModule.forRoot({
+  indicators: [
+    new HttpHealthIndicator({ key: 'database', url: 'https://db.example.com/health' }),
+    new HttpHealthIndicator({ key: 'search-index', url: 'https://search.example.com/health' }),
+  ],
+  readiness: {
+    indicatorKeys: ['database'],
+  },
+});
+```
+
 ### Failure Semantics
 
 When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthService` aggregates these failures into a report:
 
 - `/health` returns HTTP `503` if any indicator fails.
-- `/ready` returns HTTP `503` if any indicator associated with readiness fails.
+- `/ready` returns HTTP `503` when platform readiness, a custom `readinessChecks` callback, or a readiness-critical indicator fails. If `readiness.indicatorKeys` is omitted, every registered indicator is readiness-critical; if it is provided, only the listed indicator result keys gate `/ready`.
 - The response body contains a structured JSON object with `status`, `contributors`, `info`, `error`, and `details`.
 - Indicators may emit multiple keyed entries in a single check result; `/health` preserves every keyed entry in `details` and in the `contributors.up` / `contributors.down` summaries.
 - Unsupported, empty, or non-object indicator results are reported as `down` diagnostics instead of being silently discarded.
@@ -129,7 +143,7 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 
 - `static forRoot(options: TerminusModuleOptions): ModuleType`
   - Main entry point for registering indicators and providers.
-  - Options include `indicators`, `indicatorProviders`, `readinessChecks`, `execution.indicatorTimeoutMs`, and `path`.
+  - Options include `indicators`, `indicatorProviders`, `readiness.indicatorKeys`, `readinessChecks`, `execution.indicatorTimeoutMs`, and `path`.
 
 ### `TerminusHealthService`
 
@@ -141,7 +155,7 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 ### Direct helpers and tokens
 
 - `runHealthCheck(...)`, `assertHealthCheck(...)`: Direct aggregation/testing helpers.
-- `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: DI tokens for registered indicators and provider tokens.
+- `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: DI tokens for registered indicators and provider tokens. Built-in provider factories use unique internal tokens, so multiple providers of the same indicator type can be registered in one module.
 - Built-in indicators also expose `create*HealthIndicator()` and `create*HealthIndicatorProvider()` helpers.
 
 ### `@fluojs/terminus/redis`

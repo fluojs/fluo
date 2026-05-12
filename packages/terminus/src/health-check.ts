@@ -342,4 +342,20 @@ export class TerminusHealthService {
   async isHealthy(): Promise<boolean> {
     return (await this.check()).status === 'ok';
   }
+
+  /**
+   * Return whether selected indicator keys currently report `up`.
+   *
+   * @param indicatorKeys Indicator result keys that are readiness-critical. When omitted, all indicators are checked.
+   * @returns `true` when each selected key is present and reports `up`.
+   */
+  async isReady(indicatorKeys?: readonly string[]): Promise<boolean> {
+    const report = await this.check();
+
+    if (indicatorKeys === undefined) {
+      return report.status === 'ok';
+    }
+
+    return indicatorKeys.every((indicatorKey) => report.details[indicatorKey]?.status === 'up');
+  }
 }

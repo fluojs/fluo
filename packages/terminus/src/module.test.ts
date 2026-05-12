@@ -3,6 +3,7 @@ import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
 import { bootstrapApplication, defineModule, type PlatformComponent } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
+import { createHttpHealthIndicatorProvider } from './indicators/http.js';
 import { MemoryHealthIndicator } from './indicators/memory.js';
 import { createRedisHealthIndicatorProvider, RedisHealthIndicator } from './indicators/redis.js';
 import { TerminusModule } from './module.js';
@@ -326,6 +327,141 @@ describe('TerminusModule.forRoot', () => {
     expect(readyResponse.body).toEqual({ status: 'unavailable' });
 
     await app.close();
+  });
+
+  it('limits /ready failures to configured readiness-critical indicator keys', async () => {
+    const indicators: HealthIndicator[] = [
+      {
+        key: 'database',
+        check: async (key: string) => ({ [key]: { status: 'up' } }),
+      },
+      {
+        key: 'search-index',
+        check: async (key: string) => ({ [key]: { message: 'degraded', status: 'down' } }),
+      },
+    ];
+
+    const terminusModule = TerminusModule.forRoot({
+      indicators,
+      readiness: {
+        indicatorKeys: ['database'],
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [terminusModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    const healthResponse = createResponse();
+    await app.dispatch(createRequest('/health'), healthResponse);
+    expect(healthResponse.statusCode).toBe(503);
+    expect(healthResponse.body).toMatchObject({
+      contributors: {
+        down: ['search-index'],
+        up: ['database'],
+      },
+      status: 'error',
+    });
+
+    const readyResponse = createResponse();
+    await app.dispatch(createRequest('/ready'), readyResponse);
+    expect(readyResponse.statusCode).toBe(200);
+    expect(readyResponse.body).toEqual({ status: 'ready' });
+
+    await app.close();
+  });
+
+  it('keeps /ready unavailable when a configured readiness-critical indicator fails', async () => {
+    const indicators: HealthIndicator[] = [
+      {
+        key: 'database',
+        check: async (key: string) => ({ [key]: { message: 'database down', status: 'down' } }),
+      },
+      {
+        key: 'search-index',
+        check: async (key: string) => ({ [key]: { status: 'up' } }),
+      },
+    ];
+
+    const terminusModule = TerminusModule.forRoot({
+      indicators,
+      readiness: {
+        indicatorKeys: ['database'],
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [terminusModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    const readyResponse = createResponse();
+    await app.dispatch(createRequest('/ready'), readyResponse);
+    expect(readyResponse.statusCode).toBe(503);
+    expect(readyResponse.body).toEqual({ status: 'unavailable' });
+
+    await app.close();
+  });
+
+  it('registers repeatable same-type indicator providers without DI token collisions', async () => {
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (input: string | URL | Request) => {
+      const url = String(input);
+
+      return new Response(null, {
+        status: url.includes('cache') ? 204 : 200,
+      });
+    };
+
+    try {
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [
+          TerminusModule.forRoot({
+            indicatorProviders: [
+              createHttpHealthIndicatorProvider({ key: 'primary-api', url: 'https://example.com/health' }),
+              createHttpHealthIndicatorProvider({ key: 'cache-api', url: 'https://example.com/cache/health' }),
+            ],
+          }),
+        ],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+
+      const healthResponse = createResponse();
+      await app.dispatch(createRequest('/health'), healthResponse);
+
+      expect(healthResponse.statusCode).toBe(200);
+      expect(healthResponse.body).toMatchObject({
+        details: {
+          'cache-api': {
+            status: 'up',
+            statusCode: 204,
+          },
+          'primary-api': {
+            status: 'up',
+            statusCode: 200,
+          },
+        },
+        status: 'ok',
+      });
+      expect((healthResponse.body as { contributors: { up: string[] } }).contributors.up).toEqual(
+        expect.arrayContaining(['primary-api', 'cache-api']),
+      );
+
+      await app.close();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('uses indicatorProviders for both /health and /ready checks', async () => {

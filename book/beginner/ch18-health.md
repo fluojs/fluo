@@ -121,6 +121,17 @@ return report;
 ### 18.4.1 Strategic Monitoring
 Be careful not to include every dependency in health checks. If an auxiliary external service such as email delivery goes down, the application may still serve most users normally. Including that service in the readiness check can unnecessarily make the entire app look "offline." Focus on the core dependencies that are strictly required for the application to do its job. This is called "differentiated monitoring," and it means separating "fatal" conditions from "warning" conditions.
 
+In `@fluojs/terminus`, every registered indicator is readiness-critical by default for backward compatibility. When a dependency should enrich `/health` but should not gate `/ready`, configure the readiness-critical result keys explicitly:
+
+```typescript
+TerminusModule.forRoot({
+  indicators: [databaseIndicator, searchIndexIndicator],
+  readiness: {
+    indicatorKeys: ['database'],
+  },
+});
+```
+
 ### 18.4.2 Resource Monitoring: Memory and CPU
 Beyond external services, you should monitor server resource usage. Memory leaks slowly degrade performance before they eventually cause a crash. With the built in memory health indicator, you can mark an instance as "unhealthy" when RAM usage crosses a specific threshold. This lets the orchestrator gracefully replace the instance before it reaches a critical failure state, keeping the overall service stable and responsive.
 
@@ -129,7 +140,7 @@ In highly connected microservice architectures, the failure of a small service c
 - **Critical Dependencies**: Core elements such as the primary database, where failure should immediately fail the readiness check.
 - **Non-Critical Dependencies**: Elements such as a nonessential search indexer, where failure can return a "warning" state from the readiness check while the application is still considered "ready" to handle most user requests.
 
-By strategically deciding which dependencies are fatal to application health, you can build a stronger system that degrades gracefully instead of failing completely. Fluo's Terminus configuration can express these thresholds and behaviors through indicator combinations, giving you the flexibility to handle complex real world failure scenarios precisely.
+By strategically deciding which dependencies are fatal to application readiness, you can build a stronger system that degrades gracefully instead of failing completely. Fluo's Terminus configuration can express these thresholds and behaviors through indicator combinations plus `readiness.indicatorKeys`, giving you the flexibility to handle complex real world failure scenarios precisely.
 
 ### 18.4.4 Disk Space and I/O Monitoring
 For applications that handle file uploads or heavy logging, **disk space** is a critical resource. If the disk fills up, the application can crash or stop responding just as it would with a memory leak. Terminus includes built in indicators for monitoring disk space and I/O performance. By setting thresholds, such as disk usage reaching 90%, you can take action before a production emergency occurs, such as cleaning temporary files or expanding storage.

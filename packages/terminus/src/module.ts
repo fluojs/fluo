@@ -47,6 +47,13 @@ function createTerminusProviders(options: TerminusModuleOptions = {}): Provider[
     indicators: copyIndicators(options.indicators),
     indicatorProviders: copyProviders(options.indicatorProviders),
     readinessChecks: [...(options.readinessChecks ?? [])],
+    readiness: options.readiness === undefined
+      ? undefined
+      : {
+          indicatorKeys: options.readiness.indicatorKeys === undefined
+            ? undefined
+            : [...options.readiness.indicatorKeys],
+        },
   };
   const indicatorProviders = copyProviders(normalizedOptions.indicatorProviders);
   const indicatorProviderTokens = indicatorProviders
@@ -254,16 +261,17 @@ function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): Modul
         inject: [TerminusHealthService],
         provide: TERMINUS_READINESS_REGISTRAR,
         useFactory: (resolvedHealthService: unknown) => {
-          const healthService = resolvedHealthService as {
-            isHealthy(): Promise<boolean>;
-          };
+          const healthService = resolvedHealthService as TerminusHealthService;
+          const readinessIndicatorKeys = options.readiness?.indicatorKeys === undefined
+            ? undefined
+            : [...options.readiness.indicatorKeys];
 
           return {
             onApplicationBootstrap(): void {
               healthModule.addReadinessCheck(async (ctx: RequestContext) => {
                 const platformShell = await ctx.container.resolve(PLATFORM_SHELL);
                 const [indicatorHealthy, readiness] = await Promise.all([
-                  healthService.isHealthy(),
+                  healthService.isReady(readinessIndicatorKeys),
                   platformShell.ready(),
                 ]);
 
