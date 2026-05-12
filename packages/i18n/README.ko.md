@@ -30,6 +30,8 @@ fluo 애플리케이션을 위한 프레임워크 비종속 국제화 코어 표
 npm install @fluojs/i18n
 ```
 
+Root entry point는 `@fluojs/core`에만 의존합니다. Optional subpath는 integration dependency를 optional peer로 유지합니다. `@fluojs/i18n/icu`를 opt-in하면 `intl-messageformat`, `@fluojs/i18n/http`를 opt-in하면 `@fluojs/http`, `@fluojs/i18n/validation`을 opt-in하면 `@fluojs/validation`을 함께 설치하세요.
+
 ## 사용 시점
 
 i18n 작업을 위한 안정적인 fluo-native 패키지 경계가 필요할 때 이 패키지를 사용하세요.
@@ -482,7 +484,7 @@ typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en'
 | `createFileSystemI18nLoader` | Node.js JSON 파일시스템 로더를 생성합니다. |
 | `FileSystemI18nLoader` | 파일시스템 로더의 클래스 구현체입니다. |
 
-**타입:** `I18nLoader`, `FileSystemI18nLoaderOptions`.
+**타입:** `I18nLoader`, `I18nLoaderLoadOptions`, `FileSystemI18nLoaderOptions`.
 
 ### Remote Loader (@fluojs/i18n/loaders/remote)
 
