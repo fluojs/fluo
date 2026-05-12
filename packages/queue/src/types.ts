@@ -44,6 +44,8 @@ export interface QueueModuleOptions {
   defaultConcurrency?: number;
   defaultDeadLetterMaxEntries?: number | false;
   defaultRateLimiter?: QueueRateLimiterOptions;
+  /** Maximum time shutdown waits for active worker processors before forcing worker close. Defaults to `30_000`. */
+  workerShutdownTimeoutMs?: number;
 }
 
 /** Normalized queue options resolved once during module registration. */
@@ -54,6 +56,7 @@ export interface NormalizedQueueModuleOptions {
   defaultConcurrency: number;
   defaultDeadLetterMaxEntries: number | false;
   defaultRateLimiter?: QueueRateLimiterOptions;
+  workerShutdownTimeoutMs: number;
 }
 
 /** Metadata captured by {@link QueueWorker} during decorator evaluation. */

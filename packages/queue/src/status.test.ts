@@ -9,6 +9,7 @@ describe('createQueuePlatformStatusSnapshot', () => {
       lifecycleState: 'started',
       pendingDeadLetterWrites: 0,
       queuesReady: 2,
+      workerShutdownTimeoutMs: 30_000,
       workersDiscovered: 2,
       workersReady: 2,
     });
@@ -17,6 +18,7 @@ describe('createQueuePlatformStatusSnapshot', () => {
     expect(snapshot.health).toEqual({ status: 'healthy' });
     expect(snapshot.details).toMatchObject({
       dependencies: ['redis.jobs'],
+      workerShutdownTimeoutMs: 30_000,
       workersDiscovered: 2,
       workersReady: 2,
     });
@@ -28,6 +30,7 @@ describe('createQueuePlatformStatusSnapshot', () => {
       lifecycleState: 'stopping',
       pendingDeadLetterWrites: 1,
       queuesReady: 1,
+      workerShutdownTimeoutMs: 30_000,
       workersDiscovered: 1,
       workersReady: 1,
     });

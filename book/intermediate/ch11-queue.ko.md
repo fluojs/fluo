@@ -140,6 +140,12 @@ v2.0.0에서 대표적인 background flow는 다음과 같습니다.
 
 이 경계는 PDF generation을 inline으로 수행하는 방식보다 운영적으로 낫습니다. 고객은 시의적절한 API 응답을 받고, 운영자는 통제된 failure model을 얻으며, 시스템은 회복할 여지를 확보합니다.
 
+### 11.7.1 Bootstrap readiness and bounded shutdown
+
+Queue lifecycle 동작은 운영 계약의 일부입니다. 애플리케이션 부트스트랩 중 Queue는 자신이 소유하는 BullMQ queue, worker, Redis duplicate connection을 만들 수 있지만, worker processor는 Queue가 bootstrap-ready handoff에 도달한 뒤에만 시작합니다. 따라서 background processor가 아직 `onApplicationBootstrap()`을 실행 중인 provider보다 앞서 실행되는 race를 피합니다.
+
+Shutdown은 반대 규칙을 따릅니다. 종료가 시작되면 Queue는 `stopping`을 보고하고, 새 enqueue를 거부하며, Queue 소유 리소스를 닫고 pending dead-letter write를 drain합니다. `workerShutdownTimeoutMs`는 active processor를 기다리는 시간을 제한하며, 시간이 지나면 Queue가 timeout을 기록하고 BullMQ worker를 force-close합니다. 이 덕분에 멈춘 background job이 전체 애플리케이션 종료를 영원히 막지 못합니다.
+
 ## 11.8 Queue workers are not a second hidden application
 
 팀은 때때로 불분명한 로직을 worker로 옮기고 그것을 아키텍처라고 부르는 실수를 합니다. FluoShop은 그 함정을 피해야 합니다. Worker는 hidden business ownership이 아니라 background execution을 소유해야 합니다. command side는 여전히 어떤 business step이 필요한지 결정해야 하고, event side는 후속 동작이 왜 존재하는지 표현해야 합니다. Queue는 다른 질문에 답합니다. 느린 작업을 언제, 어떤 방식으로 신뢰성 있게 처리할 것인가. 이 분리가 플랫폼을 이해 가능한 상태로 유지합니다.
@@ -158,6 +164,7 @@ v2.0.0으로 넘어가면서 FluoShop은 더 이상 event-aware 수준에 머무
 - job은 invoice generation, email batch, catalog sync처럼 느리거나 failure-prone한 작업을 위한 durable handoff입니다.
 - retry attempt와 backoff strategy는 무비판적으로 복사하지 말고 workload별로 선택해야 합니다.
 - dead-letter list는 bounded retention policy 아래에서 반복 실패 job을 보존하므로 운영자가 inspect할 수 있습니다.
+- Queue는 bootstrap-ready handoff 이후 processor를 시작하고, `workerShutdownTimeoutMs`로 stuck processor를 기다리는 종료 시간을 제한합니다.
 - FluoShop v2.0.0은 이제 post-order의 expensive work를 customer request path를 늘리는 대신 queue boundary 뒤로 이동시킵니다.
 
 실무적 기준은 분명합니다. 작업이 느리고, retry 가능하며, 운영적으로 구별되어야 한다면, 메인 플로의 또 다른 synchronous callback보다 queue가 더 적합할 가능성이 큽니다.

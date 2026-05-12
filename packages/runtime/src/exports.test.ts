@@ -34,6 +34,7 @@ describe('runtime export boundaries', () => {
   it('keeps internal root focused on wiring tokens', () => {
     expect(Object.keys(runtimeInternal).sort()).toEqual([
       'APPLICATION_LOGGER',
+      'BOOTSTRAP_READY_SIGNAL',
       'COMPILED_MODULES',
       'HTTP_APPLICATION_ADAPTER',
       'PLATFORM_SHELL',
