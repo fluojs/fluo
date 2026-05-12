@@ -163,7 +163,7 @@ export class OrderAuditHandler {
 
 ## 9.5 In-process first, distributed when needed
 
-패키지 README는 기본 모델을 in-process로 설명하고, 필요할 때 외부 transport adapter를 덧붙일 수 있다고 말합니다. 이는 건강한 기본값입니다. FluoShop은 단지 옵션이 있다는 이유만으로 distributed event fan-out을 선택하지 않아야 합니다. 로컬 전달은 더 단순하고 이해하기 쉬우며 움직이는 부품도 적습니다. 관련 module이 한 application instance에 함께 있을 때는 in-process delivery만으로 충분한 경우가 많습니다. Distributed transport는 반응이 process boundary를 넘어가야 할 때 유용해집니다. 예를 들어 Checkout와 Notifications가 별도 프로세스로 실행될 수 있습니다. 또는 analytics projector가 독립적으로 scale될 수 있습니다. Redis fan-out은 같은 event model을 그 배포 topology 위로 확장합니다.
+패키지 README는 기본 모델을 in-process로 설명하고, 필요할 때 외부 transport adapter를 덧붙일 수 있다고 말합니다. 이는 건강한 기본값입니다. FluoShop은 단지 옵션이 있다는 이유만으로 distributed event fan-out을 선택하지 않아야 합니다. 로컬 전달은 더 단순하고 이해하기 쉬우며 움직이는 부품도 적습니다. 관련 module이 한 application instance에 함께 있을 때는 in-process delivery만으로 충분한 경우가 많습니다. Distributed transport는 반응이 process boundary를 넘어가야 할 때 유용해집니다. 예를 들어 Checkout와 Notifications가 별도 프로세스로 실행될 수 있습니다. 또는 analytics projector가 독립적으로 scale될 수 있습니다. Redis fan-out은 같은 event model을 그 배포 topology 위로 확장합니다. Published event class가 더 넓은 domain event를 상속하면 transport fan-out은 구체 subclass channel과 inherited event channel을 함께 포함하므로, publisher process가 matching local handler를 등록하지 않아도 remote handler가 자신이 소유한 specificity level에서 구독할 수 있습니다.
 
 ## 9.6 Event bus flow in FluoShop
 
