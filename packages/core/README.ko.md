@@ -160,7 +160,7 @@ class Logger {}
 - **데코레이터**: `Module`, `Global`, `Inject`, `Scope`
 - **에러**: `FluoError`, `InvariantError`, `FluoCodeError`, `FluoErrorOptions`, `formatTokenName`
 - **메타데이터 런타임**: `ensureMetadataSymbol`, `getModuleMetadata`
-- **타입**: `Constructor<T>`, `Token<T>`, `MaybePromise<T>`, `AsyncModuleOptions`, `MetadataPropertyKey`, `MetadataSource`
+- **타입**: `Constructor<T>`, `Token<T>`, `InjectionToken<T>`, `ForwardRefToken<T>`, `OptionalInjectToken<T>`, `MaybePromise<T>`, `AsyncModuleOptions`, `MetadataPropertyKey`, `MetadataSource`
 - **내부 서브패스**: `@fluojs/core/internal`을 통한 메타데이터 헬퍼, 컨트롤러/라우트 헬퍼, injection 헬퍼, validation 헬퍼, clone 유틸리티
 
 ## 관련 패키지
