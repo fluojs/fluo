@@ -46,6 +46,7 @@
 - **`@fluojs/jwt`**: HTTP 비종속 JWT 서명, 검증, principal 정규화.
 - **`@fluojs/passport`**: 전략 비종속 인증 가드, scope 처리, Passport.js 브리지.
 - **`@fluojs/microservices`**: TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC를 위한 패턴 매칭 전송 추상화.
+- **`@fluojs/event-bus`**: optional Redis Pub/Sub transport, inherited event channel fan-out, bounded publish cancellation/timeout, local publish와 inbound transport callback 모두에 대한 shutdown drain semantic을 갖춘 in-process domain event fan-out.
 - **`@fluojs/notifications`**: provider별 알림 패키지가 공유하는 채널 계약과 오케스트레이션 계층.
 - **`@fluojs/email`**: 전송 중립(transport-agnostic) 이메일 발송 코어. `@fluojs/email/queue`를 통해 알림 채널 및 큐 워커 통합을 제공합니다.
 - **`@fluojs/email/node`**: Nodemailer/SMTP 전송을 제공하는 `@fluojs/email`의 Node.js 전용 서브패스.
