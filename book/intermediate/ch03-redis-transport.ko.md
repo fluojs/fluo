@@ -47,6 +47,8 @@ export class NotificationModule {}
 
 Redis는 구독 모드에 전용 연결이 필요합니다. 그래서 구독자는 발행 클라이언트를 그대로 공유하기보다 보통 `duplicate()`로 분리합니다. Redis Pub/Sub은 확인 응답이나 응답 메시지를 지원하지 않기 때문에, 이 트랜스포트는 사실상 `emit()` 중심 워크플로에 적합합니다. 이 제약은 오히려 의미론적 경계를 분명하게 보여 줍니다. 내구성 있는 요청-응답 계약이 필요하다면 Pub/Sub이 그 역할을 대신할 수 있다고 가정하면 안 됩니다.
 
+같은 앱이 `@fluojs/redis`도 등록한다면, 해당 패키지의 공유 `REDIS_CLIENT`는 cache read, pipeline, Lua script, queue helper 같은 일반 명령에 남겨 두세요. Pub/Sub subscriber 연결로 재사용하면 안 됩니다. Redis는 구독한 연결을 subscribe mode로 전환하고, 그 연결은 더 이상 일반 command traffic을 안전하게 처리할 수 없습니다. Pub/Sub transport에는 `duplicate()` 또는 별도 named Redis registration으로 전용 subscriber를 제공하고, `@fluojs/redis`가 생성한 클라이언트의 connect/quit timeout은 그 패키지가 소유하게 하세요.
+
 ## 3.2 Redis Streams for Durable Delivery
 
 주문 처리나 결제 조율 같은 중요한 작업에는 지속성이 필수적입니다. `RedisStreamsMicroserviceTransport`는 Redis Streams와 컨슈머 그룹을 사용하여 at-least-once 전달을 제공합니다. **FluoShop**에서 이는 Order→Payment 핸드오프에 적합한 선택입니다. 주문이 발생했을 때 필요한 것은 단순히 빠른 응답이 아닙니다. Payment Service가 재시작 중이더라도 결국 해당 주문을 확인할 수 있다는 보장이 필요합니다. 따라서 Streams는 즉각적인 응답 시간보다 결국 작업이 완료되는 것이 더 중요한 경우에 더 잘 맞습니다. FluoShop은 돈이 개입되는 순간 바로 그 지점에 도달합니다. 주문 의도가 조용히 사라지는 상황은 받아들일 수 없습니다. 반면 결제 이벤트가 회수되고 재시도될 수 있다면 훨씬 안전합니다.

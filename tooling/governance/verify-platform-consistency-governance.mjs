@@ -743,6 +743,27 @@ function enforceCanonicalRuntimeMatrixReferences() {
     packageChooserKo.includes('execution.indicatorTimeoutMs') && docsContextKo.includes('execution.indicatorTimeoutMs'),
     'docs/CONTEXT.ko.md must mention Terminus slow-indicator timeout guardrails when documented.',
   );
+  assert(
+    packageSurface.includes('lifecycle-owned connect/quit timeout guardrails') &&
+      docsContext.includes('RedisModule.forRoot({ lifecycle })') &&
+      docsContext.includes('book/intermediate/ch03-redis-transport.md'),
+    'docs/CONTEXT.md must keep Redis lifecycle timeout guardrails and Redis transport book guidance discoverable when package-surface.md documents them.',
+  );
+  assert(
+    packageSurface.includes('Pub/Sub subscribers use dedicated Redis connections') &&
+      docsContext.includes('Pub/Sub subscribers need dedicated Redis connections'),
+    'docs/CONTEXT.md must mention dedicated Redis Pub/Sub subscriber connections when package-surface.md documents them.',
+  );
+  assert(
+    packageSurfaceKo.includes('lifecycle-owned connect/quit timeout guardrail') &&
+      docsContextKo.includes('RedisModule.forRoot({ lifecycle })') &&
+      docsContextKo.includes('book/intermediate/ch03-redis-transport.ko.md'),
+    'docs/CONTEXT.ko.md must keep Redis lifecycle timeout guardrails and Redis transport book guidance discoverable when package-surface.ko.md documents them.',
+  );
+  assert(
+    packageSurfaceKo.includes('Pub/Sub subscriber') && docsContextKo.includes('Pub/Sub subscriber에 전용 Redis 연결'),
+    'docs/CONTEXT.ko.md must mention dedicated Redis Pub/Sub subscriber connections when package-surface.ko.md documents them.',
+  );
   assert(rootReadme.includes('docs/reference/package-surface.md'), 'README.md must point to the canonical runtime package matrix page.');
   assert(
     rootReadmeKo.includes('docs/reference/package-surface.ko.md'),

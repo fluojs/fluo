@@ -79,6 +79,7 @@ export class CacheRepository {
 
 - Fluo always forces `lazyConnect: true`, even if callers cast options manually, so sockets open during application bootstrap instead of import time.
 - During bootstrap, the lifecycle service only calls `connect()` while the client is still in ioredis `wait` state.
+- Lifecycle-owned `connect()` and `quit()` calls are bounded by package timeouts (`10_000` ms by default) so bootstrap and shutdown do not wait forever on a stalled Redis command. Override them with `lifecycle.connectTimeoutMs` and `lifecycle.quitTimeoutMs`; pass `0` only when the host process intentionally owns an unbounded wait.
 - During shutdown, ready/connecting clients attempt `quit()` first for graceful teardown, while wait/closed-transition states use `disconnect()` directly.
 - If `quit()` fails, Fluo falls back to `disconnect()` and only rethrows when the client still remains open afterward.
 
@@ -124,9 +125,11 @@ export class AnalyticsStore {
 
 ### Raw Client Access
 
-If you need advanced Redis commands (pipelines, lua scripts, pub/sub), inject the raw client directly.
+If you need advanced Redis commands (pipelines or Lua scripts), inject the raw client directly.
 
 If you already injected `RedisService`, call `redis.getRawClient()` to access the same underlying `ioredis` instance.
+
+Redis Pub/Sub is the exception to ordinary shared-client reuse: Redis switches subscribed connections into subscribe mode, so do not use the lifecycle-managed `REDIS_CLIENT` or a `RedisService.getRawClient()` result as both publisher and subscriber. Create a dedicated subscriber connection with `client.duplicate()` (or an explicitly named `RedisModule.forRoot({ name: 'subscriber', ... })` registration) and let that connection have its own lifecycle owner.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -147,7 +150,7 @@ export class AdvancedService {
 
 ### Core
 - `RedisModule`: Registers Redis clients and lifecycle hooks.
-- `RedisModule.forRoot(options)`: Registers the default Redis client plus `RedisService` facade when `name` is omitted, or an additional named Redis client when `name` is provided. The default registration is global by default; named registrations are scoped.
+- `RedisModule.forRoot(options)`: Registers the default Redis client plus `RedisService` facade when `name` is omitted, or an additional named Redis client when `name` is provided. The default registration is global by default; named registrations are scoped. Use `lifecycle.connectTimeoutMs` and `lifecycle.quitTimeoutMs` to bound Fluo-owned connection startup and shutdown.
 - `RedisService`: Facade with JSON codec support and `get`/`set`/`del` methods.
 - `REDIS_CLIENT`: DI token for the underlying `ioredis` instance.
 - `DEFAULT_REDIS_CLIENT_NAME`: Stable default Redis client name.
@@ -157,7 +160,8 @@ export class AdvancedService {
 - `createRedisPlatformStatusSnapshot(input)`: Adapts Redis connection state into Fluo's platform health/readiness snapshot contract.
 
 ### Types
-- `RedisModuleOptions`: Configuration options passed directly to the `ioredis` constructor.
+- `RedisModuleOptions`: Configuration options passed to the `ioredis` constructor after Fluo removes module-only `name`, `global`, and `lifecycle` fields.
+- `RedisLifecycleOptions`: Optional timeout controls for Fluo-owned `connect()` and `quit()` lifecycle commands.
 - `PersistencePlatformStatusSnapshot`, `RedisStatusAdapterInput`: Status snapshot input/output types.
 
 ## Related Packages

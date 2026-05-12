@@ -79,6 +79,7 @@ export class CacheRepository {
 
 - 호출자가 옵션을 강제로 캐스팅하더라도 Fluo는 항상 `lazyConnect: true`를 강제하므로, 소켓은 import 시점이 아니라 애플리케이션 bootstrap 중에 열립니다.
 - bootstrap 단계에서는 클라이언트가 ioredis `wait` 상태일 때만 lifecycle service가 `connect()`를 호출합니다.
+- lifecycle이 소유한 `connect()`와 `quit()` 호출은 package timeout(기본 `10_000` ms)으로 제한되어, Redis 명령이 멈춰도 bootstrap/shutdown이 무기한 대기하지 않습니다. `lifecycle.connectTimeoutMs`와 `lifecycle.quitTimeoutMs`로 재정의할 수 있으며, host process가 의도적으로 무제한 대기를 소유하는 경우에만 `0`을 전달하세요.
 - shutdown 단계에서는 ready/connecting 계열 상태에 `quit()`를 우선 시도해 정상 종료를 노리고, wait/종료 전이 상태에서는 `disconnect()`를 직접 사용합니다.
 - `quit()`가 실패하면 Fluo는 `disconnect()`로 fallback하고, 그 뒤에도 클라이언트가 닫히지 않은 경우에만 에러를 다시 던집니다.
 
@@ -124,9 +125,11 @@ export class AnalyticsStore {
 
 ### 원시 클라이언트 접근 (Raw Client Access)
 
-파이프라인, Lua 스크립트, Pub/Sub 등 복잡한 Redis 명령이 필요한 경우 원시 클라이언트를 직접 주입받아 사용합니다.
+파이프라인이나 Lua 스크립트처럼 복잡한 Redis 명령이 필요한 경우 원시 클라이언트를 직접 주입받아 사용합니다.
 
 이미 `RedisService`를 주입받았다면 `redis.getRawClient()`로 같은 underlying `ioredis` instance에 접근할 수 있습니다.
+
+Redis Pub/Sub은 일반적인 shared-client 재사용의 예외입니다. Redis는 구독한 연결을 subscribe mode로 전환하므로, lifecycle-managed `REDIS_CLIENT`나 `RedisService.getRawClient()` 결과를 publisher와 subscriber로 동시에 사용하지 마세요. `client.duplicate()`로 전용 subscriber 연결을 만들거나 명시적인 `RedisModule.forRoot({ name: 'subscriber', ... })` 등록을 사용하고, 그 연결도 별도 lifecycle owner를 갖게 하세요.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -147,7 +150,7 @@ export class AdvancedService {
 
 ### 핵심 구성 요소
 - `RedisModule`: Redis 클라이언트 등록 및 수명 주기 훅을 관리합니다.
-- `RedisModule.forRoot(options)`: `name`을 생략하면 기본 Redis 클라이언트와 `RedisService` 파사드를 등록하고, `name`을 제공하면 추가 이름 있는 Redis 클라이언트를 등록합니다. 기본 등록은 기본적으로 global이고, 이름 있는 등록은 scoped입니다.
+- `RedisModule.forRoot(options)`: `name`을 생략하면 기본 Redis 클라이언트와 `RedisService` 파사드를 등록하고, `name`을 제공하면 추가 이름 있는 Redis 클라이언트를 등록합니다. 기본 등록은 기본적으로 global이고, 이름 있는 등록은 scoped입니다. `lifecycle.connectTimeoutMs`와 `lifecycle.quitTimeoutMs`로 Fluo가 소유한 연결 시작/종료 시간을 제한할 수 있습니다.
 - `RedisService`: JSON 코덱 지원 및 `get`/`set`/`del` 메서드를 제공하는 파사드입니다.
 - `REDIS_CLIENT`: 내부 `ioredis` 인스턴스에 접근하기 위한 DI 토큰입니다.
 - `DEFAULT_REDIS_CLIENT_NAME`: 안정적인 기본 Redis client name입니다.
@@ -157,7 +160,8 @@ export class AdvancedService {
 - `createRedisPlatformStatusSnapshot(input)`: Redis 연결 상태를 Fluo 플랫폼 health/readiness 스냅샷으로 변환합니다.
 
 ### 타입
-- `RedisModuleOptions`: `ioredis` 생성자에 전달되는 설정 옵션입니다.
+- `RedisModuleOptions`: Fluo가 module-only `name`, `global`, `lifecycle` 필드를 제거한 뒤 `ioredis` 생성자에 전달하는 설정 옵션입니다.
+- `RedisLifecycleOptions`: Fluo가 소유한 `connect()`와 `quit()` lifecycle command의 timeout을 조정하는 선택적 옵션입니다.
 - `PersistencePlatformStatusSnapshot`, `RedisStatusAdapterInput`: status snapshot input/output type입니다.
 
 ## 관련 패키지
