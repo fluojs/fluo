@@ -55,6 +55,7 @@
 - **`@fluojs/validation`**: Standard-decorator input validation, DTO materialization, and request-boundary safety.
 - **`@fluojs/prisma` / `@fluojs/drizzle`**: ORM lifecycle and ALS-backed transaction context.
 - **`@fluojs/redis`**: App-scoped Redis client registration, raw-client injection, JSON-aware `RedisService` facade, named-client tokens, lifecycle-owned connect/quit timeout guardrails, and documentation guidance that Pub/Sub subscribers use dedicated Redis connections rather than sharing the ordinary command client.
+- **`@fluojs/queue`**: Redis-backed BullMQ job processing with decorator-discovered singleton workers, queue-owned duplicate Redis connections, JSON-object payload serialization, dead-letter retention, bootstrap-ready worker startup, bounded worker shutdown through `workerShutdownTimeoutMs`, and lifecycle/readiness status snapshots.
 - **`@fluojs/mongoose`**: Mongoose lifecycle integration with ALS/session-aware transaction boundaries, request-scoped transaction interception, explicit `currentSession()` access for model operations, ambient-session delegation through `connection.transaction(...)` when available, and shutdown snapshots that report active request/session drain state.
 
 ### tooling
