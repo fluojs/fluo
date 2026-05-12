@@ -1,4 +1,4 @@
-import type { Token } from '@fluojs/core';
+import type { InjectionToken, Token } from '@fluojs/core';
 import {
   defineClassDiMetadata as definePeerClassDiMetadata,
   defineModuleMetadata as definePeerModuleMetadata,
@@ -27,7 +27,7 @@ export interface RuntimeClassDiMetadata {
 
 /** Runtime-local writable class DI metadata shape used by explicit metadata-version tests. */
 export interface RuntimeWritableClassDiMetadata {
-  inject?: Token[];
+  inject?: InjectionToken[];
   scope?: Scope;
 }
 

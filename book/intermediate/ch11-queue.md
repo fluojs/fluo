@@ -140,6 +140,12 @@ In v2.0.0, a representative background flow looks like this:
 
 This boundary is operationally better than generating the PDF inline. The customer gets a timely API response, operators get a controlled failure model, and the system keeps room to recover.
 
+### 11.7.1 Bootstrap readiness and bounded shutdown
+
+Queue lifecycle behavior is part of the operational contract. During application bootstrap, Queue can create the BullMQ queues, workers, and Redis duplicate connections it owns, but worker processors are started only after Queue reaches its bootstrap-ready handoff. That prevents background processors from racing ahead of providers that are still running `onApplicationBootstrap()`.
+
+Shutdown follows the opposite rule. Once shutdown begins, Queue reports `stopping`, rejects new enqueue attempts, closes queue-owned resources, and drains pending dead-letter writes. `workerShutdownTimeoutMs` bounds how long Queue waits for active processors before it logs the timeout and force-closes the BullMQ worker. This keeps a stuck background job from blocking the whole application shutdown forever.
+
 ## 11.8 Queue workers are not a second hidden application
 
 Teams sometimes make the mistake of moving unclear logic into a worker and calling that architecture. FluoShop should avoid that trap. A worker should own background execution, not hidden business ownership. The command side should still decide which business step is needed, and the event side should still express why the follow-up action exists. Queue answers a different question: when and how should slow work be processed reliably? Keeping that split makes the platform understandable.
@@ -158,6 +164,7 @@ As FluoShop moves to v2.0.0, it no longer stops at being event-aware. It recogni
 - A job is a durable handoff for slow or failure-prone work such as invoice generation, email batches, and catalog syncs.
 - Retry attempts and backoff strategies should be chosen per workload rather than copied uncritically.
 - The dead-letter list preserves repeatedly failed jobs under a bounded retention policy so operators can inspect them.
+- Queue starts processors after the bootstrap-ready handoff and uses `workerShutdownTimeoutMs` to bound shutdown waiting for stuck processors.
 - FluoShop v2.0.0 now moves expensive post-order work behind a queue boundary instead of extending the customer request path.
 
 The practical standard is clear. If work is slow, retryable, and operationally distinct, a queue is likely a better fit than another synchronous callback in the main flow.

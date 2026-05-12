@@ -19,6 +19,36 @@ export type Constructor<T = unknown> = new (...args: any[]) => T;
 export type Token<T = unknown> = string | symbol | Constructor<T>;
 
 /**
+ * Deferred dependency-token wrapper accepted inside injection metadata.
+ *
+ * `@fluojs/di` creates this shape with `forwardRef(...)` so class decorators can
+ * record tokens that are not available at decoration time without widening provider tokens.
+ */
+export interface ForwardRefToken<T = unknown> {
+  __forwardRef__: true;
+  forwardRef: () => Token<T>;
+}
+
+/**
+ * Optional dependency-token wrapper accepted inside injection metadata.
+ *
+ * `@fluojs/di` creates this shape with `optional(...)` so required and optional
+ * constructor dependencies can share the same class-level `@Inject(...)` list.
+ */
+export interface OptionalInjectToken<T = unknown> {
+  __optional__: true;
+  token: Token<T>;
+}
+
+/**
+ * Constructor dependency entry accepted by `@Inject(...)` and provider inject arrays.
+ *
+ * Plain `Token` values register required dependencies, while `ForwardRefToken` and
+ * `OptionalInjectToken` preserve documented `forwardRef(...)` and `optional(...)` wrappers.
+ */
+export type InjectionToken<T = unknown> = Token<T> | ForwardRefToken<T> | OptionalInjectToken<T>;
+
+/**
  * Value that may be returned synchronously or wrapped in a `Promise`.
  *
  * This keeps factory helpers and lifecycle hooks flexible without forcing every caller to
@@ -32,7 +62,7 @@ export type MaybePromise<T> = T | Promise<T>;
  * @typeParam T Resolved options shape returned to the module factory.
  */
 export interface AsyncModuleOptions<T> {
-  inject?: Token[];
+  inject?: InjectionToken[];
   useFactory: (...deps: unknown[]) => MaybePromise<T>;
 }
 

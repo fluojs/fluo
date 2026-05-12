@@ -1,4 +1,4 @@
-import type { Constructor, MaybePromise, MetadataPropertyKey, MetadataSource, Token } from '../types.js';
+import type { Constructor, InjectionToken, MaybePromise, MetadataPropertyKey, MetadataSource, Token } from '../types.js';
 
 /**
  * Defines the metadata collection type.
@@ -234,7 +234,7 @@ export interface InjectionMetadata {
  * Describes the class di metadata contract.
  */
 export interface ClassDiMetadata {
-  inject?: Token[];
+  inject?: InjectionToken[];
   scope?: 'singleton' | 'request' | 'transient';
 }
 

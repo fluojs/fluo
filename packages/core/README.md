@@ -162,7 +162,7 @@ Standard decorators cannot automatically infer types for abstract classes or int
 - **Decorators**: `Module`, `Global`, `Inject`, `Scope`
 - **Errors**: `FluoError`, `InvariantError`, `FluoCodeError`, `FluoErrorOptions`, `formatTokenName`
 - **Metadata runtime**: `ensureMetadataSymbol`, `getModuleMetadata`
-- **Types**: `Constructor<T>`, `Token<T>`, `MaybePromise<T>`, `AsyncModuleOptions`, `MetadataPropertyKey`, `MetadataSource`
+- **Types**: `Constructor<T>`, `Token<T>`, `InjectionToken<T>`, `ForwardRefToken<T>`, `OptionalInjectToken<T>`, `MaybePromise<T>`, `AsyncModuleOptions`, `MetadataPropertyKey`, `MetadataSource`
 - **Internal subpath**: metadata helpers, controller/route helpers, injection helpers, validation helpers, and clone utilities via `@fluojs/core/internal`
 
 ## Related Packages
