@@ -30,6 +30,7 @@ type ActiveRequestTransaction = {
 type ActiveRequestTransactionHandle = {
   active: ActiveRequestTransaction;
   settle(): void;
+  statusActive: boolean;
 };
 
 type DrizzleTransactionRunner<TTransactionDatabase, TTransactionOptions> = <T>(
@@ -43,9 +44,47 @@ type DrizzleRuntimeOptions = {
 
 type TransactionContext<TTransactionDatabase> = {
   database: TTransactionDatabase;
-  deferredRequestTransactionHandles?: Set<ActiveRequestTransactionHandle>;
+  deferredRequestTransactionSettlements?: Set<ActiveRequestTransactionHandle>;
   requestAbortSignal?: AbortSignal;
 };
+
+type RequestAbortSignalView = {
+  cleanup(): void;
+  signal: AbortSignal;
+};
+
+function createRequestAbortSignalView(parentSignal: AbortSignal, signal?: AbortSignal): RequestAbortSignalView {
+  if (!signal) {
+    return {
+      cleanup() {},
+      signal: parentSignal,
+    };
+  }
+
+  const controller = new AbortController();
+  const forwardParentAbort = () => controller.abort(parentSignal.reason);
+  const forwardRequestAbort = () => controller.abort(signal.reason);
+
+  if (parentSignal.aborted) {
+    forwardParentAbort();
+  } else {
+    parentSignal.addEventListener('abort', forwardParentAbort, { once: true });
+  }
+
+  if (signal.aborted) {
+    forwardRequestAbort();
+  } else {
+    signal.addEventListener('abort', forwardRequestAbort, { once: true });
+  }
+
+  return {
+    cleanup() {
+      parentSignal.removeEventListener('abort', forwardParentAbort);
+      signal.removeEventListener('abort', forwardRequestAbort);
+    },
+    signal: controller.signal,
+  };
+}
 
 /**
  * Transaction-aware Drizzle wrapper that integrates request scoping and shutdown handling with the Fluo runtime.
@@ -63,6 +102,7 @@ export class DrizzleDatabase<
 {
   private readonly transactions = new AsyncLocalStorage<TransactionContext<TTransactionDatabase>>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
+  private activeRequestTransactionStatusCount = 0;
   private lifecycleState: 'ready' | 'shutting-down' | 'stopped' = 'ready';
 
   constructor(
@@ -88,12 +128,13 @@ export class DrizzleDatabase<
   /** Aborts active request transactions, waits for settlement, then runs the optional dispose hook. */
   async onApplicationShutdown(): Promise<void> {
     this.lifecycleState = 'shutting-down';
+    const activeRequestTransactions = Array.from(this.activeRequestTransactions);
 
-    for (const transaction of this.activeRequestTransactions) {
+    for (const transaction of activeRequestTransactions) {
       transaction.abort(new Error('Application shutdown interrupted an open request transaction.'));
     }
 
-    await Promise.allSettled(Array.from(this.activeRequestTransactions, (transaction) => transaction.settled));
+    await Promise.allSettled(activeRequestTransactions.map((transaction) => transaction.settled));
 
     if (this.dispose) {
       await this.dispose(this.database);
@@ -105,7 +146,7 @@ export class DrizzleDatabase<
   /** Produces the shared persistence status snapshot for platform diagnostics surfaces. */
   createPlatformStatusSnapshot() {
     return createDrizzlePlatformStatusSnapshot({
-      activeRequestTransactions: this.activeRequestTransactions.size,
+      activeRequestTransactions: this.activeRequestTransactionStatusCount,
       lifecycleState: this.lifecycleState,
       strictTransactions: this.databaseOptions.strictTransactions,
       supportsTransaction: typeof this.database.transaction === 'function',
@@ -177,19 +218,19 @@ export class DrizzleDatabase<
     }
 
     if (!requestScoped) {
-      const deferredRequestTransactionHandles = new Set<ActiveRequestTransactionHandle>();
+      const deferredRequestTransactionSettlements = new Set<ActiveRequestTransactionHandle>();
 
       try {
         return await transactionRunner(
           (transactionDatabase) =>
             this.transactions.run(
-              { database: transactionDatabase, deferredRequestTransactionHandles },
+              { database: transactionDatabase, deferredRequestTransactionSettlements },
               fn,
             ),
           options,
         );
       } finally {
-        for (const handle of deferredRequestTransactionHandles) {
+        for (const handle of deferredRequestTransactionSettlements) {
           this.untrackActiveRequestTransaction(handle);
         }
       }
@@ -234,18 +275,24 @@ export class DrizzleDatabase<
     signal?: AbortSignal,
   ): Promise<T> {
     if (current.requestAbortSignal) {
-      if (signal) {
-        return raceWithAbort(fn, signal);
-      }
+      const abortSignalView = createRequestAbortSignalView(current.requestAbortSignal, signal);
 
-      return fn();
+      try {
+        const result = await raceWithAbort(fn, abortSignalView.signal);
+
+        this.throwIfRequestAborted(abortSignalView.signal);
+
+        return result;
+      } finally {
+        abortSignalView.cleanup();
+      }
     }
 
     this.assertRequestTransactionsAvailable();
 
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
-    current.deferredRequestTransactionHandles?.add(active);
+    current.deferredRequestTransactionSettlements?.add(active);
 
     try {
       const result = await this.transactions.run(
@@ -259,7 +306,9 @@ export class DrizzleDatabase<
     } finally {
       abortContext.cleanup();
 
-      if (!current.deferredRequestTransactionHandles) {
+      if (current.deferredRequestTransactionSettlements) {
+        this.markRequestTransactionInactiveForStatus(active);
+      } else {
         this.untrackActiveRequestTransaction(active);
       }
     }
@@ -296,11 +345,22 @@ export class DrizzleDatabase<
   }
 
   private trackActiveRequestTransaction(controller: AbortController): ActiveRequestTransactionHandle {
-    return trackActiveRequestTransaction(this.activeRequestTransactions, controller);
+    const handle = trackActiveRequestTransaction(this.activeRequestTransactions, controller);
+    this.activeRequestTransactionStatusCount += 1;
+
+    return { ...handle, statusActive: true };
   }
 
   private untrackActiveRequestTransaction(handle: ActiveRequestTransactionHandle): void {
+    this.markRequestTransactionInactiveForStatus(handle);
     untrackActiveRequestTransaction(this.activeRequestTransactions, handle);
+  }
+
+  private markRequestTransactionInactiveForStatus(handle: ActiveRequestTransactionHandle): void {
+    if (handle.statusActive) {
+      this.activeRequestTransactionStatusCount -= 1;
+      handle.statusActive = false;
+    }
   }
 
   private resolveTransactionRunner(): DrizzleTransactionRunner<TTransactionDatabase, TTransactionOptions> | undefined {
