@@ -34,22 +34,22 @@ const PUBLISHED_RUNTIME_DEPENDENCIES = {
 } as const;
 
 const PUBLISHED_INTERNAL_DEPENDENCIES = {
-  '@fluojs/cli': '^1.0.0-beta.7',
-  '@fluojs/config': '^1.0.0-beta.7',
-  '@fluojs/core': '^1.0.0-beta.4',
-  '@fluojs/di': '^1.0.0-beta.6',
-  '@fluojs/http': '^1.0.0-beta.10',
-  '@fluojs/microservices': '^1.0.0-beta.5',
-  '@fluojs/platform-bun': '^1.0.0-beta.6',
-  '@fluojs/platform-cloudflare-workers': '^1.0.0-beta.2',
-  '@fluojs/platform-deno': '^1.0.0-beta.3',
-  '@fluojs/platform-express': '^1.0.0-beta.6',
-  '@fluojs/platform-fastify': '^1.0.0-beta.8',
-  '@fluojs/platform-nodejs': '^1.0.0-beta.4',
-  '@fluojs/runtime': '^1.0.0-beta.11',
-  '@fluojs/testing': '^1.0.0-beta.2',
-  '@fluojs/validation': '^1.0.0-beta.3',
-  '@fluojs/vite': '^1.0.0-beta.2',
+  '@fluojs/cli': '^1.0.0',
+  '@fluojs/config': '^1.0.0',
+  '@fluojs/core': '^1.0.0',
+  '@fluojs/di': '^1.0.0',
+  '@fluojs/http': '^1.0.0',
+  '@fluojs/microservices': '^1.0.0',
+  '@fluojs/platform-bun': '^1.0.0',
+  '@fluojs/platform-cloudflare-workers': '^1.0.0',
+  '@fluojs/platform-deno': '^1.0.0',
+  '@fluojs/platform-express': '^1.0.0',
+  '@fluojs/platform-fastify': '^1.0.0',
+  '@fluojs/platform-nodejs': '^1.0.0',
+  '@fluojs/runtime': '^1.0.0',
+  '@fluojs/testing': '^1.0.0',
+  '@fluojs/validation': '^1.0.0',
+  '@fluojs/vite': '^1.0.0',
 } as const;
 
 

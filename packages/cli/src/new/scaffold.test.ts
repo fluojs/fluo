@@ -222,18 +222,18 @@ describe('scaffoldBootstrapApp', () => {
 
     expect(packageJson.devDependencies?.typescript).toBe('^6.0.2');
     expect(packageJson.dependencies).toMatchObject({
-      '@fluojs/config': '^1.0.0-beta.7',
-      '@fluojs/core': '^1.0.0-beta.4',
-      '@fluojs/di': '^1.0.0-beta.6',
-      '@fluojs/http': '^1.0.0-beta.10',
-      '@fluojs/platform-fastify': '^1.0.0-beta.8',
-      '@fluojs/runtime': '^1.0.0-beta.11',
-      '@fluojs/validation': '^1.0.0-beta.3',
+      '@fluojs/config': '^1.0.0',
+      '@fluojs/core': '^1.0.0',
+      '@fluojs/di': '^1.0.0',
+      '@fluojs/http': '^1.0.0',
+      '@fluojs/platform-fastify': '^1.0.0',
+      '@fluojs/runtime': '^1.0.0',
+      '@fluojs/validation': '^1.0.0',
     });
     expect(packageJson.devDependencies).toMatchObject({
-      '@fluojs/cli': '^1.0.0-beta.7',
-      '@fluojs/testing': '^1.0.0-beta.2',
-      '@fluojs/vite': '^1.0.0-beta.2',
+      '@fluojs/cli': '^1.0.0',
+      '@fluojs/testing': '^1.0.0',
+      '@fluojs/vite': '^1.0.0',
       '@vitest/coverage-v8': '^3.0.8',
     });
     expect(packageJson.scripts?.build).toBe('fluo build');
