@@ -1,4 +1,4 @@
-import { Inject, type AsyncModuleOptions, type Constructor, type MaybePromise, type Token } from '@fluojs/core';
+import { Inject, type AsyncModuleOptions, type Constructor, type InjectionToken, type MaybePromise, type Token } from '@fluojs/core';
 import { defineModuleMetadata } from '@fluojs/core/internal';
 import type { Provider } from '@fluojs/di';
 
@@ -18,7 +18,7 @@ type JwtOptionsProvider =
       useValue: JwtVerifierOptions;
     }
   | {
-      inject?: Token[];
+      inject?: InjectionToken[];
       provide: typeof JWT_OPTIONS;
       scope: 'singleton';
       useFactory: (...deps: unknown[]) => MaybePromise<JwtVerifierOptions>;
