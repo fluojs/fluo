@@ -81,7 +81,8 @@
 | --- | --- | --- |
 | OpenAPI 출력이 필요함 | `@fluojs/openapi` | 스키마 생성과 API 문서화에 사용합니다. |
 | Prometheus 메트릭이 필요함 | `@fluojs/metrics` | HTTP 및 애플리케이션 메트릭에 사용합니다. |
-| 헬스 엔드포인트가 필요함 | `@fluojs/terminus` | 헬스 집계와 검사에 사용합니다. |
+| 헬스 엔드포인트가 필요함 | `@fluojs/terminus` | 헬스 집계, readiness check, custom endpoint path, `execution.indicatorTimeoutMs` 기반 slow-indicator timeout guardrail에 사용합니다. |
+| Node.js memory 또는 disk health indicator가 필요함 | `@fluojs/terminus/node` | Node 전용 memory/disk indicator helper용 subpath입니다. 호환성을 위한 root export도 유지됩니다. |
 | Redis 기반 health indicator가 필요함 | `@fluojs/terminus/redis` + `@fluojs/redis` | Terminus용 전용 Redis indicator 통합입니다. |
 
 Redis 기반 패키지 통합은 기능이 `clientName`을 노출하는 경우 기본 Redis 등록을 사용합니다. 이름 있는 Redis 등록이 해당 패키지의 의존성 edge를 맡아야 할 때만 `clientName`을 추가하면 됩니다.

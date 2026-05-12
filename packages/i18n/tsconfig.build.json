@@ -4,7 +4,9 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "outDir": "dist",
-    "noEmit": false
+    "noEmit": false,
+    "types": ["node"]
   },
+  "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.test.ts"]
 }

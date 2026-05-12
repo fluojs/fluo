@@ -727,6 +727,22 @@ function enforceCanonicalRuntimeMatrixReferences() {
     docsContextKo.includes('typed translation helper declaration'),
     'docs/CONTEXT.ko.md must mention @fluojs/i18n/typegen typed helper declarations when documented.',
   );
+  assert(
+    packageChooser.includes('@fluojs/terminus/node') && docsContext.includes('@fluojs/terminus/node'),
+    'docs/CONTEXT.md must point readers to package chooser Terminus Node indicator subpath guidance.',
+  );
+  assert(
+    packageChooser.includes('execution.indicatorTimeoutMs') && docsContext.includes('execution.indicatorTimeoutMs'),
+    'docs/CONTEXT.md must mention Terminus slow-indicator timeout guardrails when documented.',
+  );
+  assert(
+    packageChooserKo.includes('@fluojs/terminus/node') && docsContextKo.includes('@fluojs/terminus/node'),
+    'docs/CONTEXT.ko.md must point readers to package chooser Terminus Node indicator subpath guidance.',
+  );
+  assert(
+    packageChooserKo.includes('execution.indicatorTimeoutMs') && docsContextKo.includes('execution.indicatorTimeoutMs'),
+    'docs/CONTEXT.ko.md must mention Terminus slow-indicator timeout guardrails when documented.',
+  );
   assert(rootReadme.includes('docs/reference/package-surface.md'), 'README.md must point to the canonical runtime package matrix page.');
   assert(
     rootReadmeKo.includes('docs/reference/package-surface.ko.md'),

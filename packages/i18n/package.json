@@ -65,17 +65,33 @@
   "scripts": {
     "prebuild": "node ../../tooling/scripts/clean-dist.mjs",
     "build": "pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
-    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit && pnpm exec tsc -p tsconfig.node.json --noEmit",
     "test": "pnpm exec vitest run -c vitest.config.ts",
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@fluojs/core": "workspace:^",
+    "@fluojs/core": "workspace:^"
+  },
+  "peerDependencies": {
     "@fluojs/http": "workspace:^",
     "@fluojs/validation": "workspace:^",
     "intl-messageformat": "^11.2.4"
   },
+  "peerDependenciesMeta": {
+    "@fluojs/http": {
+      "optional": true
+    },
+    "@fluojs/validation": {
+      "optional": true
+    },
+    "intl-messageformat": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@fluojs/http": "workspace:^",
+    "@fluojs/validation": "workspace:^",
+    "intl-messageformat": "^11.2.4",
     "vitest": "^3.2.4"
   }
 }
