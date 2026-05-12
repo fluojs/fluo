@@ -154,7 +154,7 @@ When multiple compatible keys are configured, `kid` disambiguates the verificati
 
 ### Refresh tokens
 
-`RefreshTokenService` uses a dedicated HMAC refresh-token path. Configure `refreshToken.secret` separately from access-token signing keys. Rotation requires an atomic `RefreshTokenStore.consume(...)` implementation so replayed tokens can be detected reliably.
+`RefreshTokenService` uses a dedicated HMAC refresh-token path. Configure `refreshToken.secret` separately from access-token signing keys. Rotation can use `RefreshTokenStore.rotate(...)` to atomically mark the current token as consumed and persist the replacement token in the same durable store operation, so a successful rotation never consumes the old token without a stored successor. Stores that only implement the older atomic `consume(...)` hook remain supported, but durable replacement persistence depends on the store-owned `rotate(...)` operation.
 
 ## Configuration Guardrails
 

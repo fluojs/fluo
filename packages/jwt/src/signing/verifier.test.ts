@@ -100,6 +100,38 @@ describe('DefaultJwtVerifier', () => {
     });
   });
 
+  it('removes empty items from scopes array claims during principal normalization', async () => {
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      secret: 'secret',
+    });
+    const token = signToken(
+      {
+        exp: Math.floor(Date.now() / 1000) + 60,
+        scopes: ['read', '', 'write', 1],
+        sub: 'normalized-scopes',
+      },
+      'secret',
+    );
+
+    await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
+      scopes: ['read', 'write'],
+      subject: 'normalized-scopes',
+    });
+  });
+
+  it('preserves typed JWT error codes for invalid and expired failures', async () => {
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      secret: 'secret',
+    });
+    const invalidToken = signToken({ exp: Math.floor(Date.now() / 1000) + 60, sub: 'invalid-code' }, 'wrong-secret');
+    const expiredToken = signToken({ exp: Math.floor(Date.now() / 1000) - 10, sub: 'expired-code' }, 'secret');
+
+    await expect(verifier.verifyAccessToken(invalidToken)).rejects.toMatchObject({ code: 'JWT_INVALID_TOKEN' });
+    await expect(verifier.verifyAccessToken(expiredToken)).rejects.toMatchObject({ code: 'JWT_EXPIRED' });
+  });
+
   it('verifies a valid HS384 token', async () => {
     const verifier = new DefaultJwtVerifier({
       algorithms: ['HS384'],

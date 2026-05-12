@@ -14,6 +14,7 @@ export interface RefreshTokenStore {
   revoke(tokenId: string): Promise<void>;
   revokeBySubject(subject: string): Promise<void>;
   consume?(input: RefreshTokenConsumeInput): Promise<RefreshTokenConsumeResult>;
+  rotate?(input: RefreshTokenRotateInput): Promise<RefreshTokenConsumeResult>;
 }
 
 /**
@@ -24,6 +25,13 @@ export interface RefreshTokenConsumeInput {
   subject: string;
   family: string;
   now: Date;
+}
+
+/**
+ * Describes the durable refresh token rotation input contract.
+ */
+export interface RefreshTokenRotateInput extends RefreshTokenConsumeInput {
+  replacement: RefreshTokenRecord;
 }
 
 /**
@@ -80,8 +88,10 @@ export function normalizeRefreshTokenOptions(options: RefreshTokenOptions | unde
     throw new JwtConfigurationError('JWT refresh token verifyMaxAgeSeconds must be a non-negative finite number.');
   }
 
-  if (options.rotation && typeof options.store.consume !== 'function') {
-    throw new JwtConfigurationError('Refresh token rotation requires an atomic store.consume() implementation.');
+  if (options.rotation && typeof options.store.rotate !== 'function' && typeof options.store.consume !== 'function') {
+    throw new JwtConfigurationError(
+      'Refresh token rotation requires an atomic store.rotate() or store.consume() implementation.',
+    );
   }
 
   return {
@@ -119,24 +129,35 @@ export class RefreshTokenService {
     const claims = await this.verifyRefreshClaims(currentToken);
 
     if (this.options.rotation) {
-      if (!this.options.store.consume) {
+      if (!this.options.store.rotate && !this.options.store.consume) {
         throw new JwtConfigurationError(
-          'Refresh token rotation requires an atomic store.consume() implementation.',
+          'Refresh token rotation requires an atomic store.rotate() or store.consume() implementation.',
         );
       }
 
-      const consumeResult = await this.options.store.consume({
-        family: claims.family,
-        now: new Date(),
-        subject: claims.sub,
-        tokenId: claims.jti,
-      });
+      const next = await this.createRefreshTokenWithFamily(claims.sub, claims.family);
+      const accessToken = await this.signer.signAccessToken({ sub: claims.sub });
+      const consumeResult = this.options.store.rotate
+        ? await this.options.store.rotate({
+          family: claims.family,
+          now: new Date(),
+          replacement: next.record,
+          subject: claims.sub,
+          tokenId: claims.jti,
+        })
+        : await this.consumeRefreshToken({
+          family: claims.family,
+          now: new Date(),
+          subject: claims.sub,
+          tokenId: claims.jti,
+        });
 
       if (consumeResult === 'consumed') {
-        const refreshToken = await this.issueRefreshTokenWithFamily(claims.sub, claims.family);
-        const accessToken = await this.signer.signAccessToken({ sub: claims.sub });
+        if (!this.options.store.rotate) {
+          await this.options.store.save(next.record);
+        }
 
-        return { accessToken, refreshToken };
+        return { accessToken, refreshToken: next.token };
       }
 
       if (consumeResult === 'already_used') {
@@ -187,10 +208,31 @@ export class RefreshTokenService {
   }
 
   private async issueRefreshTokenWithFamily(subject: string, family: string): Promise<string> {
+    const { record, token } = await this.createRefreshTokenWithFamily(subject, family);
+
+    await this.options.store.save(record);
+
+    return token;
+  }
+
+  private async consumeRefreshToken(input: RefreshTokenConsumeInput): Promise<RefreshTokenConsumeResult> {
+    if (!this.options.store.consume) {
+      throw new JwtConfigurationError(
+        'Refresh token rotation requires an atomic store.rotate() or store.consume() implementation.',
+      );
+    }
+
+    return this.options.store.consume(input);
+  }
+
+  private async createRefreshTokenWithFamily(
+    subject: string,
+    family: string,
+  ): Promise<{ record: RefreshTokenRecord; token: string }> {
     const now = Math.floor(Date.now() / 1000);
     const tokenId = randomUUID();
     const expiresAt = new Date((now + this.options.expiresInSeconds) * 1000);
-    const tokenRecord = {
+    const record = {
       createdAt: new Date(now * 1000),
       expiresAt,
       family,
@@ -208,11 +250,9 @@ export class RefreshTokenService {
       type: 'refresh',
     };
 
-    const refreshToken = await this.signer.signRefreshToken(claims);
+    const token = await this.signer.signRefreshToken(claims);
 
-    await this.options.store.save(tokenRecord);
-
-    return refreshToken;
+    return { record, token };
   }
 
   private async verifyRefreshClaims(token: string): Promise<RefreshTokenClaims & { sub: string }> {

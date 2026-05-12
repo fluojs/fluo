@@ -17,8 +17,8 @@ This document defines the current JWT signing, verification, and principal-norma
 | Per-call overrides | `JwtService.sign(payload, options)` MAY override `aud`, `iss`, `sub`, `nbf`, and `exp`. The `expiresIn` option takes precedence over any existing `payload.exp` value. | `packages/jwt/src/service.ts`, `packages/jwt/src/service.test.ts` |
 | Refresh-token algorithm set | Refresh-token signing is limited to HMAC algorithms. If the configured algorithm list contains no HMAC algorithm, refresh-token signing fails. | `packages/jwt/src/signing/signer.ts`, `packages/jwt/src/signing/verifier.ts` |
 | Refresh-token shape | `RefreshTokenService` issues refresh tokens with `type: 'refresh'`, `jti`, `family`, `sub`, `iat`, and `exp`, then persists a matching store record. | `packages/jwt/src/refresh/refresh-token.ts` |
-| Rotation prerequisite | When `refreshToken.rotation` is enabled, the configured refresh-token store MUST implement atomic `consume(...)`. Missing atomic consume support is a configuration error. | `packages/jwt/src/refresh/refresh-token.ts` |
-| Rotation failure handling | Reuse of a consumed refresh token revokes the subject token family and raises `JwtInvalidTokenError`. | `packages/jwt/src/refresh/refresh-token.ts` |
+| Rotation prerequisite | When `refreshToken.rotation` is enabled, the configured refresh-token store MUST implement atomic `rotate(...)` or atomic `consume(...)`. `rotate(...)` is the durable replacement path because it marks the current token consumed and persists the replacement token in one store-owned operation; stores with only `consume(...)` retain the legacy replay-detection contract. Missing atomic support is a configuration error. | `packages/jwt/src/refresh/refresh-token.ts` |
+| Rotation failure handling | Reuse of a consumed refresh token revokes the subject token family and raises `JwtInvalidTokenError`. Replacement-token signing happens before the current token is consumed, and durable stores perform consume-plus-replacement persistence atomically. | `packages/jwt/src/refresh/refresh-token.ts` |
 
 ## Verification Constraints
 
