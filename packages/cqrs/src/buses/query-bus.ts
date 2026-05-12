@@ -115,6 +115,17 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
         continue;
       }
 
+      const existing = descriptors.get(metadata.queryType);
+
+      if (existing) {
+        throw new DuplicateQueryHandlerError(
+          createDuplicateHandlerMessage('query', metadata.queryType, existing, {
+            moduleName: candidate.moduleName,
+            targetType: candidate.targetType,
+          }),
+        );
+      }
+
       const seenQueryTypes = seenByTarget.get(candidate.targetType) ?? new Set<QueryType>();
 
       if (seenQueryTypes.has(metadata.queryType)) {
@@ -124,25 +135,12 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
       seenQueryTypes.add(metadata.queryType);
       seenByTarget.set(candidate.targetType, seenQueryTypes);
 
-      const existing = descriptors.get(metadata.queryType);
-
-      if (existing && existing.targetType !== candidate.targetType) {
-        throw new DuplicateQueryHandlerError(
-          createDuplicateHandlerMessage('query', metadata.queryType, existing, {
-            moduleName: candidate.moduleName,
-            targetType: candidate.targetType,
-          }),
-        );
-      }
-
-      if (!existing) {
-        descriptors.set(metadata.queryType, {
-          moduleName: candidate.moduleName,
-          queryType: metadata.queryType,
-          targetType: candidate.targetType,
-          token: candidate.token,
-        });
-      }
+      descriptors.set(metadata.queryType, {
+        moduleName: candidate.moduleName,
+        queryType: metadata.queryType,
+        targetType: candidate.targetType,
+        token: candidate.token,
+      });
     }
 
     return descriptors;

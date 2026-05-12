@@ -113,6 +113,17 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
         continue;
       }
 
+      const existing = descriptors.get(metadata.commandType);
+
+      if (existing) {
+        throw new DuplicateCommandHandlerError(
+          createDuplicateHandlerMessage('command', metadata.commandType, existing, {
+            moduleName: candidate.moduleName,
+            targetType: candidate.targetType,
+          }),
+        );
+      }
+
       const seenCommandTypes = seenByTarget.get(candidate.targetType) ?? new Set<CommandType>();
 
       if (seenCommandTypes.has(metadata.commandType)) {
@@ -122,25 +133,12 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
       seenCommandTypes.add(metadata.commandType);
       seenByTarget.set(candidate.targetType, seenCommandTypes);
 
-      const existing = descriptors.get(metadata.commandType);
-
-      if (existing && existing.targetType !== candidate.targetType) {
-        throw new DuplicateCommandHandlerError(
-          createDuplicateHandlerMessage('command', metadata.commandType, existing, {
-            moduleName: candidate.moduleName,
-            targetType: candidate.targetType,
-          }),
-        );
-      }
-
-      if (!existing) {
-        descriptors.set(metadata.commandType, {
-          commandType: metadata.commandType,
-          moduleName: candidate.moduleName,
-          targetType: candidate.targetType,
-          token: candidate.token,
-        });
-      }
+      descriptors.set(metadata.commandType, {
+        commandType: metadata.commandType,
+        moduleName: candidate.moduleName,
+        targetType: candidate.targetType,
+        token: candidate.token,
+      });
     }
 
     return descriptors;

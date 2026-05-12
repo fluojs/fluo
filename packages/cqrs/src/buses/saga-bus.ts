@@ -116,6 +116,14 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
    * @returns A promise that resolves once all matching saga chains for the event complete.
    */
   async dispatch<TEvent extends IEvent>(event: TEvent): Promise<void> {
+    if (!this.canDispatchInCurrentLifecycle()) {
+      this.logger.warn(
+        `CqrsSagaLifecycleService.dispatch() was ignored because the CQRS saga service is ${this.lifecycleState}.`,
+        'CqrsSagaLifecycleService',
+      );
+      return;
+    }
+
     await this.ensureDiscovered();
 
     const descriptors = this.matchSagaDescriptors(event);
@@ -125,6 +133,10 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     }
 
     await Promise.all(descriptors.map((descriptor) => this.dispatchWithOrdering(descriptor, event)));
+  }
+
+  private canDispatchInCurrentLifecycle(): boolean {
+    return !['failed', 'stopped'].includes(this.lifecycleState);
   }
 
   private matchSagaDescriptors(event: IEvent): SagaDescriptor[] {

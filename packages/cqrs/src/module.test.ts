@@ -276,6 +276,52 @@ describe('@fluojs/cqrs', () => {
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateQueryHandlerError);
   });
 
+  it('fails bootstrap when aliased singleton providers use the same command handler class', async () => {
+    const FIRST_CREATE_USER_HANDLER = Symbol('FIRST_CREATE_USER_HANDLER');
+    const SECOND_CREATE_USER_HANDLER = Symbol('SECOND_CREATE_USER_HANDLER');
+
+    @CommandHandler(CreateUserCommand)
+    class AliasedCreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
+      execute(command: CreateUserCommand): string {
+        return command.name;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [
+        { provide: FIRST_CREATE_USER_HANDLER, useClass: AliasedCreateUserHandler },
+        { provide: SECOND_CREATE_USER_HANDLER, useClass: AliasedCreateUserHandler },
+      ],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateCommandHandlerError);
+  });
+
+  it('fails bootstrap when aliased singleton providers use the same query handler class', async () => {
+    const FIRST_GET_USER_HANDLER = Symbol('FIRST_GET_USER_HANDLER');
+    const SECOND_GET_USER_HANDLER = Symbol('SECOND_GET_USER_HANDLER');
+
+    @QueryHandler(GetUserQuery)
+    class AliasedGetUserHandler implements IQueryHandler<GetUserQuery, { id: string; name: string | undefined }> {
+      execute(query: GetUserQuery): { id: string; name: string | undefined } {
+        return { id: query.id, name: 'aliased-user' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [
+        { provide: FIRST_GET_USER_HANDLER, useClass: AliasedGetUserHandler },
+        { provide: SECOND_GET_USER_HANDLER, useClass: AliasedGetUserHandler },
+      ],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateQueryHandlerError);
+  });
+
   it('delegates publish and publishAll to the underlying event bus when no CQRS event handlers are registered', async () => {
     const publish = vi.fn(async () => undefined);
     const eventBus = { publish };
@@ -746,6 +792,37 @@ describe('@fluojs/cqrs', () => {
     await app.close();
   });
 
+  it('fans out aliased singleton providers that use the same event handler class', async () => {
+    const FIRST_USER_CREATED_HANDLER = Symbol('FIRST_USER_CREATED_HANDLER');
+    const SECOND_USER_CREATED_HANDLER = Symbol('SECOND_USER_CREATED_HANDLER');
+    const seen: string[] = [];
+
+    @EventHandler(UserCreatedEvent)
+    class AliasedUserCreatedHandler implements IEventHandler<UserCreatedEvent> {
+      handle(event: UserCreatedEvent): void {
+        seen.push(event.name);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [
+        { provide: FIRST_USER_CREATED_HANDLER, useClass: AliasedUserCreatedHandler },
+        { provide: SECOND_USER_CREATED_HANDLER, useClass: AliasedUserCreatedHandler },
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    await eventBus.publish(new UserCreatedEvent('alice'));
+
+    expect(seen).toEqual(['alice', 'alice']);
+
+    await app.close();
+  });
+
   it('isolates CQRS event handler and saga mutations from delegated event-bus subscribers', async () => {
     interface Snapshot {
       readonly flagged: boolean;
@@ -1141,6 +1218,64 @@ describe('@fluojs/cqrs', () => {
     await closePromise;
 
     expect(store.seen).toEqual([1, 2]);
+  });
+
+  it('ignores new CQRS publishes after application shutdown starts', async () => {
+    const seen: string[] = [];
+
+    @EventHandler(UserCreatedEvent)
+    class PostShutdownEventHandler implements IEventHandler<UserCreatedEvent> {
+      handle(event: UserCreatedEvent): void {
+        seen.push(`handler:${event.name}`);
+      }
+    }
+
+    @Saga(UserCreatedEvent)
+    class PostShutdownSaga implements ISaga<UserCreatedEvent> {
+      handle(event: UserCreatedEvent): void {
+        seen.push(`saga:${event.name}`);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [PostShutdownEventHandler, PostShutdownSaga],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    await app.close();
+    await eventBus.publish(new UserCreatedEvent('after-close'));
+    await eventBus.publishAll([new UserCreatedEvent('after-close-all')]);
+
+    expect(seen).toEqual([]);
+  });
+
+  it('ignores direct saga dispatch after saga shutdown completes', async () => {
+    const seen: string[] = [];
+
+    @Saga(UserCreatedEvent)
+    class DirectPostShutdownSaga implements ISaga<UserCreatedEvent> {
+      handle(event: UserCreatedEvent): void {
+        seen.push(event.name);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [DirectPostShutdownSaga],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const sagaService = await app.container.resolve(CqrsSagaLifecycleService);
+
+    await app.close();
+    await sagaService.dispatch(new UserCreatedEvent('after-close'));
+
+    expect(seen).toEqual([]);
   });
 
   it('wires command/query/event buses through CqrsModule.forRoot with bootstrapApplication', async () => {
