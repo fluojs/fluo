@@ -151,6 +151,8 @@ TerminusModule.forRoot({
   - 현재 등록된 인디케이터를 실행해 집계된 보고서를 반환합니다.
 - `isHealthy(): Promise<boolean>`
   - 현재 집계 결과가 완전히 healthy 상태인지 반환합니다.
+- `isReady(indicatorKeys?: readonly string[]): Promise<boolean>`
+  - 모든 readiness-critical indicator result key가 `up`인지 반환합니다. `indicatorKeys`를 생략하면 전체 집계 보고서를 확인합니다.
 
 ### 직접 helper와 token
 
