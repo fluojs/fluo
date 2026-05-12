@@ -460,6 +460,7 @@ importers:
       '@fluojs/core':
         specifier: workspace:^
         version: link:../core
+    devDependencies:
       '@fluojs/http':
         specifier: workspace:^
         version: link:../http
@@ -469,7 +470,6 @@ importers:
       intl-messageformat:
         specifier: ^11.2.4
         version: 11.2.4
-    devDependencies:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.15)(happy-dom@20.9.0)(tsx@4.21.0)
