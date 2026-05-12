@@ -114,13 +114,17 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
 
       const existing = descriptors.get(metadata.commandType);
 
-      if (existing) {
+      if (existing && existing.token !== candidate.token) {
         throw new DuplicateCommandHandlerError(
           createDuplicateHandlerMessage('command', metadata.commandType, existing, {
             moduleName: candidate.moduleName,
             targetType: candidate.targetType,
           }),
         );
+      }
+
+      if (existing) {
+        continue;
       }
 
       descriptors.set(metadata.commandType, {

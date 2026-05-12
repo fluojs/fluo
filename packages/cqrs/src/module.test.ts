@@ -276,6 +276,58 @@ describe('@fluojs/cqrs', () => {
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateQueryHandlerError);
   });
 
+  it('collapses duplicate command handler discovery entries when they use the same DI token', async () => {
+    let executionCount = 0;
+
+    @CommandHandler(CreateUserCommand)
+    class CreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
+      execute(command: CreateUserCommand): string {
+        executionCount += 1;
+        return `created:${command.name}`;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot({ commandHandlers: [CreateUserHandler] })],
+      providers: [CreateUserHandler],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
+
+    await expect(commandBus.execute(new CreateUserCommand('alice'))).resolves.toBe('created:alice');
+    expect(executionCount).toBe(1);
+
+    await app.close();
+  });
+
+  it('collapses duplicate query handler discovery entries when they use the same DI token', async () => {
+    let executionCount = 0;
+
+    @QueryHandler(GetUserCountQuery)
+    class GetUserCountHandler implements IQueryHandler<GetUserCountQuery, number> {
+      execute(_query: GetUserCountQuery): number {
+        executionCount += 1;
+        return executionCount;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot({ queryHandlers: [GetUserCountHandler] })],
+      providers: [GetUserCountHandler],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
+
+    await expect(queryBus.execute<GetUserCountQuery, number>(new GetUserCountQuery('count'))).resolves.toBe(1);
+    expect(executionCount).toBe(1);
+
+    await app.close();
+  });
+
   it('delegates publish and publishAll to the underlying event bus when no CQRS event handlers are registered', async () => {
     const publish = vi.fn(async () => undefined);
     const eventBus = { publish };
@@ -299,6 +351,31 @@ describe('@fluojs/cqrs', () => {
     expect(publish).toHaveBeenNthCalledWith(1, events[0]);
     expect(publish).toHaveBeenNthCalledWith(2, events[0]);
     expect(publish).toHaveBeenNthCalledWith(3, events[1]);
+  });
+
+  it('keeps publish and publishAll as no-ops after shutdown', async () => {
+    const publish = vi.fn(async () => undefined);
+    const eventBus = { publish };
+    const loggerEvents: string[] = [];
+    const container = new Container();
+    const sagaService = new CqrsSagaLifecycleService(container, [], createLogger(loggerEvents));
+    const cqrsEventBus = new CqrsEventBusService(
+      eventBus,
+      sagaService,
+      container,
+      [],
+      createLogger(loggerEvents),
+    );
+
+    await cqrsEventBus.onApplicationShutdown();
+    await cqrsEventBus.publish(new UserCreatedEvent('alice'));
+    await cqrsEventBus.publishAll([new UserCreatedEvent('bob')]);
+
+    expect(publish).not.toHaveBeenCalled();
+    expect(loggerEvents).toEqual([
+      'warn:CqrsEventBusService:Event publication ignored because the CQRS event bus is stopped.',
+      'warn:CqrsEventBusService:Event publication ignored because the CQRS event bus is stopped.',
+    ]);
   });
 
   it('keeps EVENT_BUS available as a compatibility CQRS event-bus token', async () => {
@@ -746,6 +823,39 @@ describe('@fluojs/cqrs', () => {
     await app.close();
   });
 
+  it('collapses duplicate event handler discovery entries with the same token but still invokes distinct handlers', async () => {
+    const seen: string[] = [];
+
+    @EventHandler(UserCreatedEvent)
+    class FirstEventHandler implements IEventHandler<UserCreatedEvent> {
+      handle(event: UserCreatedEvent): void {
+        seen.push(`first:${event.name}`);
+      }
+    }
+
+    @EventHandler(UserCreatedEvent)
+    class SecondEventHandler implements IEventHandler<UserCreatedEvent> {
+      handle(event: UserCreatedEvent): void {
+        seen.push(`second:${event.name}`);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot({ eventHandlers: [FirstEventHandler] })],
+      providers: [FirstEventHandler, SecondEventHandler],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    await eventBus.publish(new UserCreatedEvent('alice'));
+
+    expect(seen).toEqual(['first:alice', 'second:alice']);
+
+    await app.close();
+  });
+
   it('isolates CQRS event handler and saga mutations from delegated event-bus subscribers', async () => {
     interface Snapshot {
       readonly flagged: boolean;
@@ -935,6 +1045,47 @@ describe('@fluojs/cqrs', () => {
     await closePromise;
 
     expect(store.completed).toBe(true);
+  });
+
+  it('keeps saga dispatch as a no-op after shutdown', async () => {
+    const loggerEvents: string[] = [];
+
+    class ShutdownStore {
+      seen: string[] = [];
+    }
+
+    class ShutdownEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    @Inject(ShutdownStore)
+    @Saga(ShutdownEvent)
+    class ShutdownSaga implements ISaga<ShutdownEvent> {
+      constructor(private readonly store: ShutdownStore) {}
+
+      handle(event: ShutdownEvent): void {
+        this.store.seen.push(event.id);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [ShutdownStore, ShutdownSaga],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      rootModule: AppModule,
+    });
+    const sagaService = await app.container.resolve(CqrsSagaLifecycleService);
+    const store = await app.container.resolve(ShutdownStore);
+
+    await app.close();
+    await sagaService.dispatch(new ShutdownEvent('after-close'));
+
+    expect(store.seen).toEqual([]);
+    expect(loggerEvents).toContain('warn:CqrsSagaLifecycleService:Saga dispatch ignored because the CQRS saga bus is stopped.');
   });
 
   it('bounds shutdown drain when saga execution is stuck', async () => {

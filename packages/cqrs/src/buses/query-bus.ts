@@ -116,13 +116,17 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
 
       const existing = descriptors.get(metadata.queryType);
 
-      if (existing) {
+      if (existing && existing.token !== candidate.token) {
         throw new DuplicateQueryHandlerError(
           createDuplicateHandlerMessage('query', metadata.queryType, existing, {
             moduleName: candidate.moduleName,
             targetType: candidate.targetType,
           }),
         );
+      }
+
+      if (existing) {
+        continue;
       }
 
       descriptors.set(metadata.queryType, {
