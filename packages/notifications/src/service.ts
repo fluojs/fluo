@@ -150,44 +150,40 @@ export class NotificationsService implements Notifications {
     }
 
     if (this.shouldQueue(notifications.length, options)) {
-      const queue = this.requireQueueAdapter();
-
       for (const notification of notifications) {
         await this.publishLifecycleEventSafely('notification.dispatch.requested', notification, options);
       }
 
-      for (const notification of notifications) {
-        try {
+      let queue: ReturnType<NotificationsService['requireQueueAdapter']>;
+
+      try {
+        queue = this.requireQueueAdapter();
+      } catch (error) {
+        await this.publishFailureLifecycleEvents(notifications, options, error);
+        throw error;
+      }
+
+      try {
+        for (const notification of notifications) {
           this.requireChannel(notification.channel);
-        } catch (error) {
-          await this.publishFailureLifecycleEvent(notification, options, error);
-          throw error;
         }
+      } catch (error) {
+        await this.publishFailureLifecycleEvents(notifications, options, error);
+        throw error;
       }
 
       const jobs = notifications.map((notification) => this.createQueueJob(notification));
 
+      if (!queue.enqueueMany) {
+        return this.dispatchManyThroughSequentialQueueFallback(notifications, jobs, options);
+      }
+
       let ids: readonly string[];
 
       try {
-        ids = queue.enqueueMany
-          ? await queue.enqueueMany(jobs)
-          : await Promise.all(jobs.map((job) => queue.enqueue(job)));
+        ids = await queue.enqueueMany(jobs);
       } catch (error) {
-        const failurePublicationResults = await Promise.allSettled(
-          notifications.map((notification) =>
-            this.publishLifecycleEvent('notification.dispatch.failed', notification, options, undefined, error),
-          ),
-        );
-
-        const publicationFailures = failurePublicationResults
-          .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
-          .map((result) => result.reason);
-
-        if (publicationFailures.length > 0) {
-          throw createLifecyclePublicationFailureError(error, ...publicationFailures);
-        }
-
+        await this.publishFailureLifecycleEvents(notifications, options, error);
         throw error;
       }
 
@@ -378,6 +374,86 @@ export class NotificationsService implements Notifications {
     } catch (publicationError) {
       throw createLifecyclePublicationFailureError(error, publicationError);
     }
+  }
+
+  private async publishFailureLifecycleEvents<TRequest extends NotificationDispatchRequest>(
+    notifications: readonly TRequest[],
+    options: NotificationDispatchOptions,
+    error: unknown,
+  ): Promise<void> {
+    const failurePublicationResults = await Promise.allSettled(
+      notifications.map((notification) =>
+        this.publishLifecycleEvent('notification.dispatch.failed', notification, options, undefined, error),
+      ),
+    );
+
+    const publicationFailures = failurePublicationResults
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map((result) => result.reason);
+
+    if (publicationFailures.length > 0) {
+      throw createLifecyclePublicationFailureError(error, ...publicationFailures);
+    }
+  }
+
+  private async dispatchManyThroughSequentialQueueFallback<TRequest extends NotificationDispatchRequest>(
+    notifications: readonly TRequest[],
+    jobs: readonly NotificationsQueueJob<TRequest>[],
+    options: NotificationDispatchManyOptions,
+  ): Promise<NotificationDispatchBatchResult<TRequest>> {
+    const queue = this.requireQueueAdapter();
+    const results: NotificationDispatchResult[] = [];
+    const failures: Array<{ error: Error; notification: TRequest }> = [];
+
+    for (let index = 0; index < jobs.length; index += 1) {
+      const job = jobs[index];
+      const notification = notifications[index];
+
+      if (!job || !notification) {
+        continue;
+      }
+
+      try {
+        const deliveryId = this.normalizeDeliveryId(await queue.enqueue(job), notification);
+        const result: NotificationDispatchResult = {
+          channel: notification.channel,
+          deliveryId,
+          queued: true,
+          status: 'queued',
+        };
+
+        results.push(result);
+        await this.publishLifecycleEventSafely('notification.dispatch.queued', notification, options, deliveryId);
+      } catch (error) {
+        const failure: { error: Error; notification: TRequest } = {
+          error: error instanceof Error ? error : new Error('Notification queue enqueue failed.'),
+          notification,
+        };
+
+        if (!(options.continueOnError ?? false)) {
+          await this.publishFailureLifecycleEvents(notifications.slice(index), options, error);
+          throw error;
+        }
+
+        try {
+          await this.publishFailureLifecycleEvent(notification, options, error);
+        } catch (publicationError) {
+          failure.error = publicationError instanceof Error
+            ? publicationError
+            : createLifecyclePublicationFailureError(error, publicationError);
+        }
+
+        failures.push(failure);
+      }
+    }
+
+    return {
+      failed: failures.length,
+      failures,
+      queued: results.length,
+      results,
+      succeeded: results.length,
+    };
   }
 }
 

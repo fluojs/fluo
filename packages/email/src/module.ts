@@ -117,7 +117,12 @@ function buildEmailModuleAsync(options: EmailAsyncModuleOptions): ModuleType {
 
   const memoizedFactory = (...deps: unknown[]): Promise<NormalizedEmailModuleOptions> => {
     if (!cachedResult) {
-      cachedResult = Promise.resolve(factory(...deps)).then((resolved) => normalizeEmailModuleOptions(resolved));
+      cachedResult = Promise.resolve(factory(...deps))
+        .then((resolved) => normalizeEmailModuleOptions(resolved))
+        .catch((error) => {
+          cachedResult = undefined;
+          throw error;
+        });
     }
 
     return cachedResult;
