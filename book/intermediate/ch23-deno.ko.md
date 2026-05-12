@@ -98,8 +98,8 @@ import { DenoWebSocketModule } from '@fluojs/websockets/deno';
 @WebSocketGateway({ path: '/ws' })
 export class MyGateway {
   @OnMessage('ping')
-  handlePing() {
-    return { event: 'pong', data: 'hello from deno' };
+  handlePing(_payload: unknown, socket: WebSocket) {
+    socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));
   }
   // fluo가 내부적으로 Deno 네이티브 업그레이드를 처리합니다.
 }
@@ -110,6 +110,8 @@ export class MyGateway {
 })
 export class RealtimeModule {}
 ```
+
+`@OnMessage()` handler는 런타임별 서브패스 전반에서 동일한 void-return contract를 사용합니다. 응답은 전달받은 socket으로 보내야 하며, handler에서 object를 반환해도 websocket frame으로 직렬화되지 않고 무시됩니다.
 
 ## 23.5 Handling Deno Permissions in FluoShop
 

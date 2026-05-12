@@ -62,4 +62,18 @@ describe('@fluojs/websockets tutorial API alignment', () => {
     expect(chapterKo).toContain("request.headers.get('authorization')");
     expect(chapterKo).toContain('request.headers.authorization');
   });
+
+  it('documents websocket handler return values and room service exports', () => {
+    const deno = readTutorial('../../../book/intermediate/ch23-deno.md');
+    const denoKo = readTutorial('../../../book/intermediate/ch23-deno.ko.md');
+    const readme = readTutorial('../README.md');
+    const readmeKo = readTutorial('../README.ko.md');
+
+    expect(deno).toContain('socket.send(JSON.stringify({ event: \'pong\', data: \'hello from deno\' }));');
+    expect(deno).toContain('returning an object from a handler is ignored');
+    expect(denoKo).toContain('socket.send(JSON.stringify({ event: \'pong\', data: \'hello from deno\' }));');
+    expect(denoKo).toContain('handler에서 object를 반환해도 websocket frame으로 직렬화되지 않고 무시됩니다');
+    expect(readme).toContain('WebSocketRoomService');
+    expect(readmeKo).toContain('WebSocketRoomService');
+  });
 });

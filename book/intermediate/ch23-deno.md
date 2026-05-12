@@ -98,8 +98,8 @@ import { DenoWebSocketModule } from '@fluojs/websockets/deno';
 @WebSocketGateway({ path: '/ws' })
 export class MyGateway {
   @OnMessage('ping')
-  handlePing() {
-    return { event: 'pong', data: 'hello from deno' };
+  handlePing(_payload: unknown, socket: WebSocket) {
+    socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));
   }
   // fluo handles Deno-native upgrades internally.
 }
@@ -110,6 +110,8 @@ export class MyGateway {
 })
 export class RealtimeModule {}
 ```
+
+`@OnMessage()` handlers use the same void-return contract across runtime subpaths. Send responses through the provided socket; returning an object from a handler is ignored rather than serialized into a websocket frame.
 
 ## 23.5 Handling Deno Permissions in FluoShop
 

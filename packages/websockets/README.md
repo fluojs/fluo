@@ -117,6 +117,7 @@ Gateway `@OnMessage()` handlers receive one normalized payload contract across s
 - `WebSocketModule`: Root module for WebSocket integration.
 - `WebSocketModule.forRoot({ upgrade, limits, backpressure, buffer, heartbeat, shutdown })`: Configures pre-upgrade guards and bounded runtime defaults.
 - `WebSocketGatewayLifecycleService`: Root alias for the default Node.js-backed lifecycle service token.
+- `WebSocketRoomService`: Room membership helper contract implemented by the runtime lifecycle services for `joinRoom`, `leaveRoom`, `broadcastToRoom`, and `getRooms`.
 - Metadata helpers and symbols: `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, `webSocketHandlerMetadataSymbol`.
 
 ## Runtime-Specific Subpaths
