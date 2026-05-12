@@ -146,7 +146,7 @@ import { EmailChannel } from './channel.js';
 import { EmailNotificationQueueJob, EmailNotificationsQueueWorker, createEmailNotificationsQueueAdapter } from './queue.js';
 import { EmailModule } from './module.js';
 import { EmailService } from './service.js';
-import { EMAIL } from './tokens.js';
+import { EMAIL, EMAIL_OPTIONS } from './tokens.js';
 import { EmailConfigurationError, EmailLifecycleError, EmailMessageValidationError } from './errors.js';
 import type { Email, EmailTransport, EmailTransportFactory, NormalizedEmailMessage } from './types.js';
 
@@ -407,6 +407,37 @@ describe('EmailModule', () => {
     expect(result.messageId).toBe('async-1');
     expect(channel.channel).toBe('mailer');
     expect(factoryCalls).toEqual(['smtp.local']);
+  });
+
+  it('retries async options resolution after a rejected factory attempt', async () => {
+    const MAIL_HOST = Symbol('mail-host');
+    let attempts = 0;
+    const container = new Container();
+    const moduleType = EmailModule.forRootAsync({
+      inject: [MAIL_HOST],
+      useFactory: async () => {
+        attempts += 1;
+
+        if (attempts === 1) {
+          throw new Error('temporary configuration lookup failed');
+        }
+
+        return {
+          defaultFrom: 'retry@example.com',
+          transport: createRecordingTransportFactory({ messagePrefix: 'retry' }),
+        };
+      },
+    });
+
+    container.register({ provide: MAIL_HOST as Token<string>, useValue: 'smtp.local' }, ...moduleProviders(moduleType));
+
+    await expect(container.resolve(EMAIL_OPTIONS)).rejects.toThrowError('temporary configuration lookup failed');
+    const options = await container.resolve(EMAIL_OPTIONS);
+    const service = new EmailService(options as never);
+    const result = await service.send({ subject: 'Retry', text: 'ok', to: ['user@example.com'] });
+
+    expect(result.messageId).toBe('retry-1');
+    expect(attempts).toBe(2);
   });
 
   it('renders notification templates and adapts them through EmailChannel', async () => {
@@ -805,6 +836,49 @@ describe('EmailModule', () => {
     expect(createdTransport.verifyCalls).toBe(1);
     expect(verify).toHaveBeenCalledOnce();
     expect(createdTransport.sendCalls).toBe(0);
+  });
+
+  it('waits for bootstrap transport verification before delivery proceeds', async () => {
+    let resolveVerify!: () => void;
+    let resolveVerifyStarted!: () => void;
+    const verifyDelay = new Promise<void>((resolve) => {
+      resolveVerify = resolve;
+    });
+    const verifyStarted = new Promise<void>((resolve) => {
+      resolveVerifyStarted = resolve;
+    });
+    const createdTransport = new DelayedLifecycleTransport();
+    const verify = vi.spyOn(createdTransport, 'verify').mockImplementation(async () => {
+      createdTransport.verifyCalls += 1;
+      resolveVerifyStarted();
+      await verifyDelay;
+    });
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: {
+        create: async () => createdTransport,
+        ownsResources: true,
+      },
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+    const bootstrap = service.onModuleInit();
+    await verifyStarted;
+
+    const delivery = service.send({ subject: 'Readiness', text: 'hello', to: ['user@example.com'] });
+    await Promise.resolve();
+
+    expect(createdTransport.sendCalls).toBe(0);
+
+    resolveVerify();
+
+    await bootstrap;
+    await expect(delivery).resolves.toMatchObject({ messageId: 'delayed-1' });
+    expect(createdTransport.sendCalls).toBe(1);
+    expect(verify).toHaveBeenCalledOnce();
   });
 
   it('checks notification lifecycle before renderer or validation errors after shutdown', async () => {
