@@ -1,4 +1,4 @@
-import { Socket } from 'node:net';
+import { createServer, Socket } from 'node:net';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -19,23 +19,17 @@ describe('TcpMicroserviceTransport', () => {
   };
 
   it('closes sockets that exceed the inbound frame buffer cap', async () => {
-    const port = 0;
+    const port = await reserveTcpPort();
     const handler = vi.fn(async () => undefined);
     const transport = createTransport({ port, requestTimeoutMs: 1_000 });
 
     await transport.listen(handler);
 
-    await new Promise<void>((resolve, reject) => {
-      const socket = new Socket();
+    const socket = new Socket();
 
-      socket.once('close', () => resolve());
-      socket.once('error', () => resolve());
-      socket.connect((transport as unknown as { boundPort: number }).boundPort, '127.0.0.1', () => {
-        socket.write('x'.repeat(1_048_577));
-      });
-
-      setTimeout(() => reject(new Error('Timed out waiting for oversized TCP frame to close.')), 1_000);
-    });
+    await connectSocket(socket, port);
+    socket.write('x'.repeat(1_048_577));
+    await expectSocketTermination(socket, 'oversized TCP frame');
 
     expect(handler).not.toHaveBeenCalled();
 
@@ -89,3 +83,72 @@ describe('TcpMicroserviceTransport', () => {
     await closePromise;
   });
 });
+
+async function reserveTcpPort(): Promise<number> {
+  const server = createServer();
+
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      server.off('error', reject);
+      resolve();
+    });
+  });
+
+  const address = server.address();
+
+  if (!address || typeof address !== 'object') {
+    server.close();
+    throw new Error('Expected an ephemeral TCP port from the reservation server.');
+  }
+
+  const port = address.port;
+
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+
+  return port;
+}
+
+async function connectSocket(socket: Socket, port: number): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    socket.once('error', reject);
+    socket.connect(port, '127.0.0.1', () => {
+      socket.off('error', reject);
+      resolve();
+    });
+  });
+}
+
+async function expectSocketTermination(socket: Socket, reason: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      socket.destroy();
+      reject(
+        new Error(
+          `Timed out waiting for ${reason} termination; destroyed=${String(socket.destroyed)}, connecting=${String(
+            socket.connecting,
+          )}, bytesWritten=${String(socket.bytesWritten)}, bytesRead=${String(socket.bytesRead)}.`,
+        ),
+      );
+    }, 5_000);
+
+    const settle = () => {
+      clearTimeout(timeout);
+      socket.removeAllListeners('close');
+      socket.removeAllListeners('error');
+      resolve();
+    };
+
+    socket.once('close', settle);
+    socket.once('error', settle);
+  });
+}
