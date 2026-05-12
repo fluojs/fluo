@@ -320,6 +320,21 @@ describe('package surface persistence responsibilities', () => {
   });
 });
 
+describe('package surface microservices transport discoverability', () => {
+  it('documents Redis Pub/Sub and Redis Streams in both package surface and AI context locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface]) {
+      expect(markdown).toContain('@fluojs/microservices');
+      expect(markdown).toContain('Redis Pub/Sub');
+      expect(markdown).toContain('Redis Streams');
+    }
+  });
+});
+
 describe('i18n subpath discoverability', () => {
   it('documents governed @fluojs/i18n subpaths from the AI context and package references in both locales', () => {
     const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
