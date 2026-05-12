@@ -149,6 +149,7 @@ export const orders = pgTable('orders', {
 ## 20.7 Observability and Health
 
 주입된 `DrizzleDatabase` 래퍼는 진단 surface와 같은 공개 상태 계약을 따르는 스냅샷 메서드를 제공합니다. 데이터베이스 풀이 끊기거나 지연이 커지는 상황을 애플리케이션 상태와 함께 확인할 수 있어 운영 판단이 빨라집니다.
+종료 중에는 활성 request transaction을 abort하고 drain한 뒤 설정된 dispose hook을 실행합니다. 중첩 request transaction은 활성 Drizzle transaction handle을 재사용하며, 수동 transaction 안에서 열렸다면 `activeRequestTransactions`는 해당 중첩 request callback이 실행 중인 동안만 반영되고 callback이 settle되는 즉시 감소합니다.
 
 ```typescript
 import { Inject } from '@fluojs/core';
