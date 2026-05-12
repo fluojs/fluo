@@ -29,7 +29,9 @@ import {
   getDispatcherFastPathStats,
   getCurrentRequestContext,
   Header,
+  Head,
   HttpCode,
+  Options,
   Post,
   Produces,
   Redirect,
@@ -827,6 +829,37 @@ describe('dispatcher runtime', () => {
 
     expect(response.headers['X-Fluo-Path']).toBe('fast; route=GET:/fast-path-debug-header');
     expect(response.simpleJsonBody).toEqual({ ok: true });
+  });
+
+  it('dispatches OPTIONS and HEAD route decorators through the HTTP pipeline', async () => {
+    @Controller('/metadata')
+    class MetadataController {
+      @Options('/')
+      options() {
+        return { allow: ['GET', 'HEAD', 'OPTIONS'] };
+      }
+
+      @Head('/')
+      head() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(MetadataController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: MetadataController }]),
+      rootContainer: root,
+    });
+    const optionsResponse = createResponse();
+    const headResponse = createResponse();
+
+    await dispatcher.dispatch(createRequest('/metadata', 'OPTIONS'), optionsResponse);
+    await dispatcher.dispatch(createRequest('/metadata', 'HEAD'), headResponse);
+
+    expect(optionsResponse.statusCode).toBe(200);
+    expect(optionsResponse.body).toEqual({ allow: ['GET', 'HEAD', 'OPTIONS'] });
+    expect(headResponse.statusCode).toBe(200);
+    expect(headResponse.body).toEqual({ ok: true });
   });
 
   it('falls back to full path when route capabilities are not fast-path safe', async () => {
@@ -2056,6 +2089,47 @@ describe('dispatcher runtime', () => {
     expect(root.requestScopeCreateCount).toBe(0);
   });
 
+  it('emits fast-path debug headers for adapter-native route handoffs when explicitly enabled', async () => {
+    @Controller('/native-debug')
+    class NativeDebugController {
+      @Get('/:id')
+      getById(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id };
+      }
+    }
+
+    const root = new Container().register(NativeDebugController);
+    const baseMapping = createHandlerMapping([{ controllerToken: NativeDebugController }]);
+    const handlerMapping = {
+      descriptors: baseMapping.descriptors,
+      match: vi.fn(() => {
+        throw new Error('native route handoff should bypass handlerMapping.match');
+      }),
+    };
+    const dispatcher = createDispatcher({
+      fastPathDebugHeaders: true,
+      handlerMapping,
+      rootContainer: root,
+    });
+    const descriptor = dispatcher.describeRoutes?.()[0];
+
+    if (!descriptor) {
+      throw new Error('Expected one cloned native route descriptor.');
+    }
+
+    const request = attachFrameworkRequestNativeRouteHandoff(createRequest('/native-debug/123'), {
+      descriptor,
+      params: { id: '123' },
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatchNativeRoute?.({ descriptor, params: { id: '123' } }, request, response);
+
+    expect(handlerMapping.match).not.toHaveBeenCalled();
+    expect(response.headers['X-Fluo-Path']).toBe('fast; route=GET:/native-debug/:id');
+    expect(response.body).toEqual({ id: '123' });
+  });
+
   it('reuses adapter-native route handoff on error paths without rematching', async () => {
     const events: string[] = [];
     const observer = {
@@ -2210,6 +2284,37 @@ describe('dispatcher runtime', () => {
         meta: undefined,
         requestId: undefined,
         status: 403,
+      },
+    });
+  });
+
+  it('returns a canonical 404 response when no route matches', async () => {
+    @Controller('/known')
+    class KnownController {
+      @Get('/')
+      getKnown() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(KnownController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: KnownController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/missing', 'GET', { 'x-request-id': 'req-missing-404' }), response);
+
+    expect(response.statusCode).toBe(404);
+    expect(response.body).toEqual({
+      error: {
+        code: 'NOT_FOUND',
+        details: undefined,
+        message: 'No handler registered for GET /missing.',
+        meta: undefined,
+        requestId: 'req-missing-404',
+        status: 404,
       },
     });
   });
