@@ -102,7 +102,7 @@ WebSocketModule.forRoot({
 });
 ```
 
-옵션을 생략하면 `@fluojs/websockets`는 동시 연결 수, inbound payload 크기, pending message buffer, shutdown cleanup에 bounded default를 적용합니다. 기본값은 `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, Node backpressure `maxBufferedAmountBytes: 1 MiB`와 drop behavior입니다. 또한 server-backed Node listener는 `heartbeat.enabled`를 명시적으로 `false`로 두지 않는 한 heartbeat timer를 활성화합니다. 공식 fetch-style runtime module(`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`)은 애플리케이션 shutdown 시 추적 중인 websocket 클라이언트를 닫고 `shutdown.timeoutMs` 범위 안에서 `@OnDisconnect()` cleanup이 마무리될 수 있도록 bounded 기회를 제공합니다.
+옵션을 생략하면 `@fluojs/websockets`는 동시 연결 수, inbound payload 크기, pending message buffer, shutdown cleanup에 bounded default를 적용합니다. 기본값은 `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, Node backpressure `maxBufferedAmountBytes: 1 MiB`와 drop behavior입니다. 또한 server-backed Node listener는 `heartbeat.enabled`를 명시적으로 `false`로 두지 않는 한 heartbeat timer를 활성화하고, shutdown이 시작되면 진행 중인 async upgrade를 거절하며, 애플리케이션 shutdown 시 추적 중인 websocket 클라이언트를 닫고 `shutdown.timeoutMs` 범위 안에서 `@OnDisconnect()` cleanup이 마무리될 수 있도록 bounded 기회를 제공합니다. 공식 fetch-style runtime module(`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`)도 같은 bounded client close 및 disconnect cleanup shutdown contract를 유지합니다.
 
 ## 바이너리 페이로드
 
