@@ -9,6 +9,7 @@ export interface QueueStatusAdapterInput {
   lifecycleState: QueueLifecycleState;
   pendingDeadLetterWrites: number;
   queuesReady: number;
+  workerShutdownTimeoutMs: number;
   workersDiscovered: number;
   workersReady: number;
 }
@@ -115,6 +116,7 @@ export function createQueuePlatformStatusSnapshot(input: QueueStatusAdapterInput
       lifecycleState: input.lifecycleState,
       pendingDeadLetterWrites: input.pendingDeadLetterWrites,
       queuesReady: input.queuesReady,
+      workerShutdownTimeoutMs: input.workerShutdownTimeoutMs,
       workersDiscovered: input.workersDiscovered,
       workersReady: input.workersReady,
     },
