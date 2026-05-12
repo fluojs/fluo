@@ -500,6 +500,48 @@ describe('DiscordModule', () => {
     }
   });
 
+  it('uses Discord 429 JSON retry_after as the retry delay instead of fallback backoff', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fetchLike = vi
+        .fn<DiscordFetchLike>()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          async text() {
+            return JSON.stringify({ message: 'rate limited', retry_after: 1.25 });
+          },
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({ channel_id: 'chan-1', guild_id: 'guild-1', id: 'msg-1' });
+          },
+        });
+      const transport = createDiscordWebhookTransport({
+        fetch: fetchLike,
+        webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+      });
+
+      const pending = transport.send({ attachments: [], components: [], content: 'Retry-after path', embeds: [], threadId: 'thread-ops' }, {});
+
+      await vi.advanceTimersByTimeAsync(250);
+      expect(fetchLike).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(999);
+      expect(fetchLike).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(1);
+
+      await expect(pending).resolves.toMatchObject({ messageId: 'msg-1', ok: true, statusCode: 200, threadId: 'thread-ops' });
+      expect(fetchLike).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('sanitizes webhook failure errors after bounded retries', async () => {
     vi.useFakeTimers();
 
