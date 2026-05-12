@@ -1,5 +1,19 @@
 # @fluojs/jwt
 
+## 1.0.0-beta.5
+
+### Minor Changes
+
+- [#1817](https://github.com/fluojs/fluo/pull/1817) [`d8d20d5`](https://github.com/fluojs/fluo/commit/d8d20d5ab28021d716994b5db9291de41e9a5be5) Thanks [@ayden94](https://github.com/ayden94)! - Add a durable refresh-token rotation store hook so replacement refresh tokens can be persisted atomically with consuming the previous token, and tighten JWT edge-case coverage for JWKS lookup, principal scope normalization, and typed failure codes.
+
+### Patch Changes
+
+- [#1759](https://github.com/fluojs/fluo/pull/1759) [`397d7c6`](https://github.com/fluojs/fluo/commit/397d7c6797d3960c65ce0499879fe3595fe834cf) Thanks [@ayden94](https://github.com/ayden94)! - Preserve fractional NumericDate precision for numeric per-call `JwtService.sign(..., { expiresIn })` values so short fractional TTLs no longer collapse to whole seconds.
+
+- Updated dependencies [[`33987e4`](https://github.com/fluojs/fluo/commit/33987e4b3168154b06693a5fbf062472e06ab157)]:
+  - @fluojs/core@1.0.0-beta.6
+  - @fluojs/di@1.0.0-beta.8
+
 ## 1.0.0-beta.4
 
 ### Patch Changes

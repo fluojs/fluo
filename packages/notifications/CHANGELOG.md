@@ -1,5 +1,15 @@
 # @fluojs/notifications
 
+## 1.0.0-beta.5
+
+### Patch Changes
+
+- [#1820](https://github.com/fluojs/fluo/pull/1820) [`512bfd7`](https://github.com/fluojs/fluo/commit/512bfd7edabd1d906e1964c0ecf5d7041d2f0477) Thanks [@ayden94](https://github.com/ayden94)! - Ensure queued bulk notification dispatch publishes terminal lifecycle events for every requested notification and reports partial sequential enqueue fallback results when `continueOnError` is enabled.
+
+- Updated dependencies [[`33987e4`](https://github.com/fluojs/fluo/commit/33987e4b3168154b06693a5fbf062472e06ab157)]:
+  - @fluojs/core@1.0.0-beta.6
+  - @fluojs/di@1.0.0-beta.8
+
 ## 1.0.0-beta.4
 
 ### Minor Changes

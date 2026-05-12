@@ -1,5 +1,16 @@
 # @fluojs/drizzle
 
+## 1.0.0-beta.5
+
+### Patch Changes
+
+- [#1823](https://github.com/fluojs/fluo/pull/1823) [`c5521e0`](https://github.com/fluojs/fluo/commit/c5521e0c2d9fc7070126f5e857cf6bb2cf7b9579) Thanks [@ayden94](https://github.com/ayden94)! - Keep nested request transactions linked to ambient request abort signals and report completed nested request callbacks as inactive even while an outer manual transaction continues.
+
+- Updated dependencies [[`33987e4`](https://github.com/fluojs/fluo/commit/33987e4b3168154b06693a5fbf062472e06ab157), [`45e0f1b`](https://github.com/fluojs/fluo/commit/45e0f1bf877ba69544d93094d9c54657ea941e74), [`7b50db8`](https://github.com/fluojs/fluo/commit/7b50db85e95e2341f82d006f1e665c2bbcebeaa5)]:
+  - @fluojs/core@1.0.0-beta.6
+  - @fluojs/di@1.0.0-beta.8
+  - @fluojs/http@1.0.0-beta.11
+
 ## 1.0.0-beta.4
 
 ### Patch Changes

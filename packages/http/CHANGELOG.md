@@ -1,5 +1,17 @@
 # @fluojs/http
 
+## 1.0.0-beta.11
+
+### Patch Changes
+
+- [#1764](https://github.com/fluojs/fluo/pull/1764) [`45e0f1b`](https://github.com/fluojs/fluo/commit/45e0f1bf877ba69544d93094d9c54657ea941e74) Thanks [@ayden94](https://github.com/ayden94)! - Keep fetch-style platform adapter runtime imports off the HTTP root barrel and remove eager Node built-in imports from HTTP request-id/context helpers so edge bundles can instantiate without Node built-in shims.
+
+- [#1815](https://github.com/fluojs/fluo/pull/1815) [`7b50db8`](https://github.com/fluojs/fluo/commit/7b50db85e95e2341f82d006f1e665c2bbcebeaa5) Thanks [@ayden94](https://github.com/ayden94)! - Apply opt-in fast-path debug headers to adapter-native route handoffs and document explicit HTTP DTO field binding in the beginner routing guide.
+
+- Updated dependencies [[`33987e4`](https://github.com/fluojs/fluo/commit/33987e4b3168154b06693a5fbf062472e06ab157)]:
+  - @fluojs/core@1.0.0-beta.6
+  - @fluojs/di@1.0.0-beta.8
+
 ## 1.0.0-beta.10
 
 ### Patch Changes

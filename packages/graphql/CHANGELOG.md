@@ -1,5 +1,16 @@
 # @fluojs/graphql
 
+## 1.0.0-beta.7
+
+### Patch Changes
+
+- [#1762](https://github.com/fluojs/fluo/pull/1762) [`17eddf8`](https://github.com/fluojs/fluo/commit/17eddf876bd5a8d6d7497430468112dce3ba8215) Thanks [@ayden94](https://github.com/ayden94)! - Restore the temporary GraphQL `instanceOf` monkey patch when application bootstrap fails, preventing failed startups from leaking process-wide GraphQL behavior into later app attempts.
+
+- Updated dependencies [[`33987e4`](https://github.com/fluojs/fluo/commit/33987e4b3168154b06693a5fbf062472e06ab157), [`45e0f1b`](https://github.com/fluojs/fluo/commit/45e0f1bf877ba69544d93094d9c54657ea941e74), [`7b50db8`](https://github.com/fluojs/fluo/commit/7b50db85e95e2341f82d006f1e665c2bbcebeaa5)]:
+  - @fluojs/core@1.0.0-beta.6
+  - @fluojs/di@1.0.0-beta.8
+  - @fluojs/http@1.0.0-beta.11
+
 ## 1.0.0-beta.6
 
 ### Patch Changes

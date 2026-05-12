@@ -1,5 +1,14 @@
 # @fluojs/platform-bun
 
+## 1.0.0-beta.7
+
+### Patch Changes
+
+- [#1764](https://github.com/fluojs/fluo/pull/1764) [`45e0f1b`](https://github.com/fluojs/fluo/commit/45e0f1bf877ba69544d93094d9c54657ea941e74) Thanks [@ayden94](https://github.com/ayden94)! - Keep fetch-style platform adapter runtime imports off the HTTP root barrel and remove eager Node built-in imports from HTTP request-id/context helpers so edge bundles can instantiate without Node built-in shims.
+
+- Updated dependencies [[`45e0f1b`](https://github.com/fluojs/fluo/commit/45e0f1bf877ba69544d93094d9c54657ea941e74), [`7b50db8`](https://github.com/fluojs/fluo/commit/7b50db85e95e2341f82d006f1e665c2bbcebeaa5)]:
+  - @fluojs/http@1.0.0-beta.11
+
 ## 1.0.0-beta.6
 
 ### Patch Changes
