@@ -633,6 +633,11 @@ async function dispatchNativeFastRoute(
     return false;
   }
 
+  if (options.fastPathDebugHeaders === true && eligibility && !response.committed) {
+    const debugInfo = createPathDebugInfo(eligibility);
+    addPathDebugHeader(response.setHeader.bind(response), debugInfo);
+  }
+
   const dispatchRequest = request;
   const dispatchScope = createRootDispatchScope(options.rootContainer);
   let phaseContext: DispatchPhaseContext;
