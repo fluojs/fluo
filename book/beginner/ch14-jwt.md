@@ -161,6 +161,8 @@ Fluo implements **Refresh Token Rotation**. Every time a client uses a refresh t
 
 This proactive security approach greatly narrows the window in which a leaked refresh token can be abused. By invalidating the whole token family when reuse is detected, it protects users from ongoing unauthorized access. This is an important defense-in-depth measure for any application that handles sensitive user data. Implementing rotation manually is difficult and error prone, but Fluo's built-in support makes it part of the standard Authentication flow. It turns a complex security protocol into a single simple configuration choice.
 
+For production stores, implement the refresh-token store's durable rotation operation so the current token is consumed and the replacement token is persisted together. That keeps the refresh flow from losing a valid session if a replacement token cannot be issued or stored after the old token is marked used.
+
 ### Securing Refresh Tokens
 Because refresh tokens are long lived, they must be stored with special care. On the web, the standard is to store them in `httpOnly`, `secure`, `sameSite: 'strict'` cookies. This prevents JavaScript from accessing the token through cross-site scripting (XSS) attacks. Fluo's Authentication patterns are designed to work smoothly with both cookie based and header based token delivery, giving you the flexibility to choose the security model that best fits the client type, whether that client is a browser, a native mobile app, or another server. For mobile apps, it is also recommended to use secure enclaves or keychain storage to protect these persistent credentials from unauthorized extraction.
 ## 14.6 Implementing FluoBlog Auth Endpoints
@@ -409,7 +411,7 @@ After the third party verifies the user, it provides a token that `AuthService` 
 ### The Role of Refresh Token Rotation in Security
 We have already mentioned refresh token rotation, but its importance in production cannot be overstated. It is the primary defense against stolen refresh tokens being used to maintain indefinite access. By issuing a new refresh token every time an access token is renewed, you create a moving target for attackers.
 
-If an attacker tries to use an old refresh token, Fluo's detection mechanism identifies the reuse and immediately blocks that account's entire session family. This breach detection is an advanced security feature built into Fluo's Authentication package by default. When the package handles complex security boundaries, application code can focus more on business logic and policy decisions.
+If an attacker tries to use an old refresh token, Fluo's detection mechanism identifies the reuse and immediately blocks that account's entire session family. For durable production stores, the consume step and replacement-token persistence should be one atomic store operation so a successful refresh never leaves the client without a stored successor. When the package handles complex security boundaries, application code can focus more on business logic and policy decisions.
 
 ### Implementing Secure Default Claims
 Every JWT issued by a Fluo application should include a standard set of security claims. At minimum, most production flows should think about `iat` (issued at) and `exp` (expiration time), and many systems also choose to set `nbf` (not before) when a token must remain inactive until a specific moment.

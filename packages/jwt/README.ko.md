@@ -154,7 +154,7 @@ const verifier = new DefaultJwtVerifier({
 
 ### 리프레시 토큰
 
-`RefreshTokenService`는 전용 HMAC refresh-token 경로를 사용합니다. `refreshToken.secret`은 access-token 서명 키와 별도로 설정하세요. Rotation은 재사용된 토큰을 안정적으로 감지할 수 있도록 atomic `RefreshTokenStore.consume(...)` 구현을 필요로 합니다.
+`RefreshTokenService`는 전용 HMAC refresh-token 경로를 사용합니다. `refreshToken.secret`은 access-token 서명 키와 별도로 설정하세요. Rotation은 `RefreshTokenStore.rotate(...)`를 사용해 현재 토큰을 소비 처리하고 대체 토큰을 같은 durable store 작업 안에서 저장할 수 있습니다. 따라서 성공한 rotation은 저장된 후속 토큰 없이 기존 토큰만 소비하지 않습니다. 기존 atomic `consume(...)` hook만 구현한 store도 계속 지원하지만, 대체 토큰 저장의 내구성은 store가 소유한 `rotate(...)` 작업에 달려 있습니다.
 
 ## 설정 가드레일
 

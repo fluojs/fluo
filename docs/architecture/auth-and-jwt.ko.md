@@ -17,8 +17,8 @@
 | Per-call overrides | `JwtService.sign(payload, options)`는 `aud`, `iss`, `sub`, `nbf`, `exp`를 호출 단위로 재정의할 수 있습니다. `expiresIn` 옵션은 기존 `payload.exp`보다 우선합니다. | `packages/jwt/src/service.ts`, `packages/jwt/src/service.test.ts` |
 | Refresh-token algorithm set | 리프레시 토큰 서명은 HMAC 알고리즘으로 제한됩니다. 구성된 알고리즘 목록에 HMAC이 없으면 리프레시 토큰 서명이 실패합니다. | `packages/jwt/src/signing/signer.ts`, `packages/jwt/src/signing/verifier.ts` |
 | Refresh-token shape | `RefreshTokenService`는 `type: 'refresh'`, `jti`, `family`, `sub`, `iat`, `exp`를 포함한 리프레시 토큰을 발급하고, 이에 대응하는 저장소 레코드를 저장합니다. | `packages/jwt/src/refresh/refresh-token.ts` |
-| Rotation prerequisite | `refreshToken.rotation`이 활성화되면 구성된 리프레시 토큰 저장소는 원자적 `consume(...)`를 구현해야 합니다. 원자적 consume 지원이 없으면 구성 오류입니다. | `packages/jwt/src/refresh/refresh-token.ts` |
-| Rotation failure handling | 이미 소비된 리프레시 토큰의 재사용은 subject 토큰 패밀리를 revoke하고 `JwtInvalidTokenError`를 발생시킵니다. | `packages/jwt/src/refresh/refresh-token.ts` |
+| Rotation prerequisite | `refreshToken.rotation`이 활성화되면 구성된 리프레시 토큰 저장소는 원자적 `rotate(...)` 또는 원자적 `consume(...)`를 구현해야 합니다. `rotate(...)`는 현재 토큰 소비와 대체 토큰 저장을 저장소 소유의 단일 작업으로 처리하므로 durable replacement 경로입니다. `consume(...)`만 있는 저장소는 기존 replay-detection 계약을 유지합니다. 원자적 지원이 없으면 구성 오류입니다. | `packages/jwt/src/refresh/refresh-token.ts` |
+| Rotation failure handling | 이미 소비된 리프레시 토큰의 재사용은 subject 토큰 패밀리를 revoke하고 `JwtInvalidTokenError`를 발생시킵니다. 대체 토큰 서명은 현재 토큰이 소비되기 전에 완료되며, durable store는 consume과 replacement 저장을 원자적으로 수행합니다. | `packages/jwt/src/refresh/refresh-token.ts` |
 
 ## Verification Constraints
 
