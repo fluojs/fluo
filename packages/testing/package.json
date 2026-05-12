@@ -93,6 +93,11 @@
     "@babel/core": ">=7.0.0",
     "vitest": "^3.0.8"
   },
+  "peerDependenciesMeta": {
+    "@babel/core": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@fluojs/platform-bun": "workspace:^",
     "@fluojs/platform-cloudflare-workers": "workspace:^",

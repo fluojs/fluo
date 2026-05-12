@@ -86,7 +86,7 @@ describe('@fluojs/testing surface', () => {
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
       exports: Record<string, { import: string; types: string }>;
       peerDependencies: Record<string, string>;
-      peerDependenciesMeta?: Record<string, unknown>;
+      peerDependenciesMeta?: Record<string, { optional?: boolean }>;
     };
 
     expect(packageJson.exports['./platform-conformance']).toEqual({
@@ -107,7 +107,7 @@ describe('@fluojs/testing surface', () => {
     });
     expect(packageJson.peerDependencies['@babel/core']).toBe('>=7.0.0');
     expect(packageJson.peerDependencies.vitest).toBe('^3.0.8');
-    expect(packageJson.peerDependenciesMeta?.['@babel/core']).toBeUndefined();
+    expect(packageJson.peerDependenciesMeta?.['@babel/core']).toEqual({ optional: true });
     expect(readFileSync(resolve(packageRootPath, 'README.md'), 'utf8')).toContain('npm install --save-dev @babel/core');
     expect(readFileSync(resolve(packageRootPath, 'README.ko.md'), 'utf8')).toContain('pnpm add -D @babel/core');
   });
