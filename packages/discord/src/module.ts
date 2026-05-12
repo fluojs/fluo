@@ -58,6 +58,7 @@ function createDiscordRuntimeProviders(optionsProvider: Provider): Provider[] {
       inject: [DiscordService],
       provide: DISCORD,
       useFactory: (service: unknown): Discord => ({
+        createPlatformStatusSnapshot: () => (service as DiscordService).createPlatformStatusSnapshot(),
         send: (message, options) => (service as DiscordService).send(message, options),
         sendMany: (messages, options) => (service as DiscordService).sendMany(messages, options),
         sendNotification: (notification, options) => (service as DiscordService).sendNotification(notification, options),

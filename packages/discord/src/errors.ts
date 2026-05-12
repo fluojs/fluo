@@ -19,6 +19,16 @@ export class DiscordMessageValidationError extends Error {
 }
 
 /**
+ * Thrown when Discord delivery is requested while the service lifecycle is not delivery-ready.
+ */
+export class DiscordLifecycleError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'DiscordLifecycleError';
+  }
+}
+
+/**
  * Thrown when one concrete Discord transport reports a caller-visible delivery failure.
  */
 export class DiscordTransportError extends Error {

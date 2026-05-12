@@ -6,7 +6,7 @@ import { Container, type Provider } from '@fluojs/di';
 import { NOTIFICATION_CHANNELS, NotificationsModule, NotificationsService } from '@fluojs/notifications';
 
 import { DiscordChannel } from './channel.js';
-import { DiscordConfigurationError, DiscordMessageValidationError, DiscordTransportError } from './errors.js';
+import { DiscordConfigurationError, DiscordLifecycleError, DiscordMessageValidationError, DiscordTransportError } from './errors.js';
 import { DiscordModule } from './module.js';
 import { DiscordService } from './service.js';
 import { DISCORD, DISCORD_CHANNEL } from './tokens.js';
@@ -383,6 +383,26 @@ describe('DiscordModule', () => {
     ]);
   });
 
+  it('accepts poll-only Discord messages as documented delivery content', async () => {
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      transport: createRecordingTransportFactory({ responsePrefix: 'poll' }),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+
+    const result = await service.send({ poll: { question: { text: 'Ship now?' } } });
+
+    expect(result).toMatchObject({ messageId: 'poll-1', ok: true });
+    expect(transportState.sent[0]).toMatchObject({
+      attachments: [],
+      components: [],
+      embeds: [],
+      poll: { question: { text: 'Ship now?' } },
+    });
+  });
+
   it('classifies malformed webhook configuration as a configuration error before delivery starts', () => {
     expect(() =>
       createDiscordWebhookTransport({
@@ -599,9 +619,75 @@ describe('DiscordModule', () => {
     });
 
     await expect(service.send({ content: 'After shutdown' })).rejects.toThrowError(
-      new DiscordTransportError('Discord transport is shutting down or already stopped.'),
+      new DiscordLifecycleError('Discord delivery cannot start while the service lifecycle is stopped.'),
     );
     expect(transport.sent).toEqual(['App-owned transport']);
+  });
+
+  it('rejects sends after failed bootstrap without creating a fallback transport', async () => {
+    const cause = new Error('webhook credentials revoked');
+    const send = vi.fn<DiscordTransport['send']>().mockResolvedValue({ ok: true, warnings: [] });
+    const transport: DiscordTransport = {
+      send,
+      async verify() {
+        throw cause;
+      },
+    };
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      transport,
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+
+    await expect(service.onModuleInit()).rejects.toThrowError(
+      new DiscordLifecycleError('Discord transport failed to initialize.'),
+    );
+    await expect(service.send({ content: 'After failed bootstrap' })).rejects.toThrowError(
+      new DiscordLifecycleError('Discord delivery cannot start while the service lifecycle is failed.'),
+    );
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('awaits in-flight factory transport creation and closes owned resources during shutdown', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const close = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+      const send = vi.fn<DiscordTransport['send']>().mockResolvedValue({ ok: true, warnings: [] });
+      const create = vi.fn<() => Promise<DiscordTransport>>(
+        () => new Promise((resolve) => setTimeout(() => resolve({ close, send }), 10)),
+      );
+      const container = new Container();
+      const moduleType = DiscordModule.forRoot({
+        transport: {
+          create,
+          ownsResources: true,
+        },
+      });
+
+      container.register(...moduleProviders(moduleType));
+      const service = await container.resolve(DiscordService);
+      const init = service.onModuleInit();
+      const shutdown = service.onApplicationShutdown();
+
+      await vi.runAllTimersAsync();
+      await expect(init).resolves.toBeUndefined();
+      await expect(shutdown).resolves.toBeUndefined();
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(service.createPlatformStatusSnapshot()).toMatchObject({
+        details: { lifecycleState: 'stopped' },
+        readiness: { status: 'not-ready' },
+      });
+      await expect(service.send({ content: 'After shutdown' })).rejects.toThrowError(
+        new DiscordLifecycleError('Discord delivery cannot start while the service lifecycle is stopped.'),
+      );
+      expect(send).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('preserves the cause when bootstrap verification fails', async () => {

@@ -1,6 +1,8 @@
 import type { AsyncModuleOptions, MaybePromise } from '@fluojs/core';
 import type { NotificationDispatchRequest } from '@fluojs/notifications';
 
+import type { DiscordPlatformStatusSnapshot } from './status.js';
+
 /** Opaque Discord embed object forwarded to one transport implementation. */
 export type DiscordEmbed = Readonly<Record<string, unknown>>;
 
@@ -261,6 +263,13 @@ export interface NormalizedDiscordModuleOptions {
 
 /** Discord facade exposed to application code and the compatibility token. */
 export interface Discord {
+  /**
+   * Creates a platform status snapshot for the active Discord transport wiring.
+   *
+   * @returns A structured snapshot describing lifecycle state, resource ownership, and notifications integration details.
+   */
+  createPlatformStatusSnapshot(): DiscordPlatformStatusSnapshot;
+
   /**
    * Sends one Discord message directly through the configured transport.
    *

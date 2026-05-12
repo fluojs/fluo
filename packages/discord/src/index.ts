@@ -1,5 +1,6 @@
 export {
   DiscordConfigurationError,
+  DiscordLifecycleError,
   DiscordMessageValidationError,
   DiscordTransportError,
 } from './errors.js';

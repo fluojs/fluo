@@ -24,6 +24,7 @@ describe('@fluojs/discord public API surface', () => {
     expect(discordPublicApi).toHaveProperty('DISCORD_CHANNEL');
     expect(discordPublicApi).toHaveProperty('createDiscordPlatformStatusSnapshot');
     expect(discordPublicApi).toHaveProperty('DiscordConfigurationError');
+    expect(discordPublicApi).toHaveProperty('DiscordLifecycleError');
     expect(discordPublicApi).toHaveProperty('DiscordMessageValidationError');
     expect(discordPublicApi).toHaveProperty('DiscordTransportError');
   });
@@ -32,6 +33,7 @@ describe('@fluojs/discord public API surface', () => {
     expectTypeOf<DiscordMessage>().toHaveProperty('content');
     expectTypeOf<DiscordMessage>().toHaveProperty('embeds');
     expectTypeOf<DiscordTransport>().toHaveProperty('send');
+    expectTypeOf<Discord>().toHaveProperty('createPlatformStatusSnapshot');
     expectTypeOf<Discord>().toHaveProperty('send');
     expectTypeOf<Discord>().toHaveProperty('sendMany');
     expectTypeOf<Discord>().toHaveProperty('sendNotification');

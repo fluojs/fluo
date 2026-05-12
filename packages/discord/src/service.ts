@@ -1,7 +1,7 @@
 import { Inject } from '@fluojs/core';
 import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
-import { DiscordMessageValidationError, DiscordTransportError } from './errors.js';
+import { DiscordLifecycleError, DiscordMessageValidationError } from './errors.js';
 import { createDiscordPlatformStatusSnapshot } from './status.js';
 import { DISCORD_OPTIONS } from './tokens.js';
 import type {
@@ -25,8 +25,26 @@ function createAbortError(): Error {
   return error;
 }
 
-function createStoppedTransportError(): DiscordTransportError {
-  return new DiscordTransportError('Discord transport is shutting down or already stopped.');
+function assertNotAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+}
+
+type DiscordServiceLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';
+
+function createLifecycleError(message: string, cause: unknown): DiscordLifecycleError {
+  return new DiscordLifecycleError(message, { cause });
+}
+
+function createDeliveryLifecycleError(state: DiscordServiceLifecycleState): DiscordLifecycleError {
+  return new DiscordLifecycleError(`Discord delivery cannot start while the service lifecycle is ${state}.`);
+}
+
+function isShutdownLifecycleState(
+  state: DiscordServiceLifecycleState,
+): state is Extract<DiscordServiceLifecycleState, 'stopping' | 'stopped'> {
+  return state === 'stopping' || state === 'stopped';
 }
 
 function normalizeOptionalString(value: string | undefined): string | undefined {
@@ -35,9 +53,15 @@ function normalizeOptionalString(value: string | undefined): string | undefined 
 }
 
 function assertMessageContent(message: NormalizedDiscordMessage): void {
-  if (!message.content && message.embeds.length === 0 && message.components.length === 0 && message.attachments.length === 0) {
+  if (
+    !message.content
+    && message.embeds.length === 0
+    && message.components.length === 0
+    && message.attachments.length === 0
+    && !message.poll
+  ) {
     throw new DiscordMessageValidationError(
-      'Discord messages require `content`, `embeds`, `components`, or `attachments` content.',
+      'Discord messages require `content`, `embeds`, `components`, `attachments`, or `poll` content.',
     );
   }
 }
@@ -52,7 +76,7 @@ function assertMessageContent(message: NormalizedDiscordMessage): void {
  */
 @Inject(DISCORD_OPTIONS)
 export class DiscordService implements Discord, OnModuleInit, OnApplicationShutdown {
-  private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
+  private lifecycleState: DiscordServiceLifecycleState = 'created';
   private resolvedTransport: DiscordTransport | undefined;
   private transportPromise: Promise<DiscordTransport> | undefined;
 
@@ -62,31 +86,49 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     this.lifecycleState = 'stopping';
 
     try {
-      if (this.resolvedTransport && this.options.transport.ownsResources && this.resolvedTransport.close) {
-        await this.resolvedTransport.close();
+      const transport = this.resolvedTransport ?? (this.transportPromise ? await this.transportPromise : undefined);
+
+      if (transport && this.options.transport.ownsResources && transport.close) {
+        await transport.close();
       }
 
       this.lifecycleState = 'stopped';
     } catch (error) {
       this.lifecycleState = 'failed';
-      throw new Error('Discord transport failed to close cleanly.', { cause: error });
+      throw createLifecycleError('Discord transport failed to close cleanly.', error);
     }
   }
 
   async onModuleInit(): Promise<void> {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      return;
+    }
+
     this.lifecycleState = 'starting';
 
     try {
       const transport = await this.ensureTransport();
 
+      if (this.lifecycleState !== 'starting') {
+        return;
+      }
+
       if (this.options.verifyOnModuleInit && transport.verify) {
         await transport.verify();
       }
 
+      if (this.lifecycleState !== 'starting') {
+        return;
+      }
+
       this.lifecycleState = 'ready';
     } catch (error) {
+      if (isShutdownLifecycleState(this.lifecycleState)) {
+        throw error;
+      }
+
       this.lifecycleState = 'failed';
-      throw new Error('Discord transport failed to initialize.', { cause: error });
+      throw createLifecycleError('Discord transport failed to initialize.', error);
     }
   }
 
@@ -122,15 +164,13 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
    * ```
    */
   async send(message: DiscordMessage, options: DiscordSendOptions = {}): Promise<DiscordSendResult> {
-    if (options.signal?.aborted) {
-      throw createAbortError();
-    }
-
-    this.assertReadyForSend();
+    assertNotAborted(options.signal);
+    this.assertCanDeliver();
 
     const transport = await this.ensureTransport();
     const normalized = this.normalizeMessage(message);
     assertMessageContent(normalized);
+    this.assertCanDeliver();
     const result = await transport.send(normalized, options);
 
     return {
@@ -209,9 +249,8 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     notification: DiscordNotificationDispatchRequest,
     options: DiscordSendOptions = {},
   ): Promise<DiscordSendResult> {
-    if (options.signal?.aborted) {
-      throw createAbortError();
-    }
+    assertNotAborted(options.signal);
+    this.assertCanDeliver();
 
     const payload = notification.payload;
     const rendered = await this.renderNotification(notification);
@@ -242,6 +281,8 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
   }
 
   private async ensureTransport(): Promise<DiscordTransport> {
+    this.assertCanCreateOrUseTransport();
+
     if (this.resolvedTransport) {
       return this.resolvedTransport;
     }
@@ -256,10 +297,14 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     return this.transportPromise;
   }
 
-  private assertReadyForSend(): void {
-    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
-      throw createStoppedTransportError();
+  private assertCanCreateOrUseTransport(): void {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped' || this.lifecycleState === 'failed') {
+      throw createDeliveryLifecycleError(this.lifecycleState);
     }
+  }
+
+  private assertCanDeliver(): void {
+    this.assertCanCreateOrUseTransport();
   }
 
   private normalizeMessage(message: DiscordMessage): NormalizedDiscordMessage {
@@ -291,7 +336,7 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
 
     if (recipients.length > 1) {
       throw new DiscordMessageValidationError(
-      'Discord notifications accept exactly one target thread per dispatch. Use `sendMany(...)` for fan-out delivery.',
+        'Discord notifications accept exactly one target thread per dispatch. Use `sendMany(...)` for fan-out delivery.',
       );
     }
 
