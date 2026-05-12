@@ -98,6 +98,19 @@ function isTransientStatus(status: number): boolean {
   return status === 408 || status === 429 || (status >= 500 && status <= 599);
 }
 
+function getDiscordRetryAfterMs(status: number, body: string, attempt: number): number {
+  if (status !== 429) {
+    return DEFAULT_RETRY_DELAY_MS * 2 ** (attempt - 1);
+  }
+
+  const retryAfter = parseJsonRecord(body)?.retry_after;
+  const retryAfterSeconds = typeof retryAfter === 'number' ? retryAfter : Number.NaN;
+
+  return Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0
+    ? Math.ceil(retryAfterSeconds * 1000)
+    : DEFAULT_RETRY_DELAY_MS * 2 ** (attempt - 1);
+}
+
 async function waitForRetry(delayMs: number, signal: AbortSignal | undefined): Promise<void> {
   if (delayMs <= 0) {
     return;
@@ -179,7 +192,7 @@ export function createDiscordWebhookTransport(options: DiscordWebhookTransportOp
 
           if (!response.ok) {
             if (attempt < DEFAULT_RETRY_ATTEMPTS && isTransientStatus(response.status)) {
-              await waitForRetry(DEFAULT_RETRY_DELAY_MS * 2 ** (attempt - 1), context.signal);
+              await waitForRetry(getDiscordRetryAfterMs(response.status, body, attempt), context.signal);
               continue;
             }
 
