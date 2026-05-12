@@ -1917,17 +1917,50 @@ describe('Recovery-oriented error context', () => {
 
   describe('Request-scope cache invalidation on parent override', () => {
     it('invalidates request-scope caches when overridden in parent', async () => {
-      class Dep {}
-      const root = new Container().register({ provide: Dep, useValue: { id: 1 } });
+      interface DepValue {
+        readonly id: number;
+      }
+
+      const dep = Symbol('Dep');
+      const root = new Container().register({ provide: dep, useValue: { id: 1 } });
       const req = root.createRequestScope();
 
-      const inst1 = await req.resolve(Dep);
-      expect((inst1 as any).id).toBe(1);
+      const inst1 = await req.resolve<DepValue>(dep);
+      expect(inst1.id).toBe(1);
 
-      root.override({ provide: Dep, useValue: { id: 2 } });
+      root.override({ provide: dep, useValue: { id: 2 } });
 
-      const inst2 = await req.resolve(Dep);
-      expect((inst2 as any).id).toBe(2);
+      const inst2 = await req.resolve<DepValue>(dep);
+      expect(inst2.id).toBe(2);
+    });
+
+    it('invalidates child request-scope caches even when the child has no multi-provider cache', async () => {
+      class RequestStore {
+        constructor(readonly id: number) {}
+      }
+
+      const root = new Container().register({
+        provide: RequestStore,
+        scope: Scope.REQUEST,
+        useFactory: () => new RequestStore(1),
+      });
+      const req = root.createRequestScope();
+
+      const beforeOverride = await req.resolve(RequestStore);
+      const cachedBeforeOverride = await req.resolve(RequestStore);
+
+      root.override({
+        provide: RequestStore,
+        scope: Scope.REQUEST,
+        useFactory: () => new RequestStore(2),
+      });
+
+      const afterOverride = await req.resolve(RequestStore);
+
+      expect(cachedBeforeOverride).toBe(beforeOverride);
+      expect(beforeOverride.id).toBe(1);
+      expect(afterOverride.id).toBe(2);
+      expect(afterOverride).not.toBe(beforeOverride);
     });
   });
 });

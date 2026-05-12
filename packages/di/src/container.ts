@@ -1335,17 +1335,15 @@ export class Container {
 
     const multiRequestCache = this.multiRequestCache;
 
-    if (!multiRequestCache) {
-      return;
-    }
+    if (multiRequestCache) {
+      for (const [provider, cached] of multiRequestCache.entries()) {
+        if (provider.provide !== token) {
+          continue;
+        }
 
-    for (const [provider, cached] of multiRequestCache.entries()) {
-      if (provider.provide !== token) {
-        continue;
+        this.scheduleStaleDisposal(cached);
+        multiRequestCache.delete(provider);
       }
-
-      this.scheduleStaleDisposal(cached);
-      multiRequestCache.delete(provider);
     }
 
     if (this.childScopes) {
