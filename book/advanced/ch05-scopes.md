@@ -521,49 +521,76 @@ The cost is clear too. Because the container does not cache the result at all, e
 ## 5.5 Overrides, cache invalidation, and stale instance disposal
 The container's most subtle lifetime behavior appears when a provider is overridden after it has already been resolved. This is exactly where scope, cache invalidation, and disposal meet.
 
-`override()` itself is implemented in `path:packages/di/src/container.ts:207-234`. It normalizes the incoming provider, finds the existing visible provider, deletes both single and multi registrations for that token, then calls `invalidateCachedEntry(token, existing?.scope ?? normalized.scope)`.
+`override()` itself is implemented in `path:packages/di/src/container.ts:270-349`. It first normalizes every incoming provider and groups the result by token. That preflight pass rejects invalid provider shapes, mixed single/multi replacements for one token, and duplicate single replacements before touching the container's registration maps. Only after the whole override call is known to be valid does the method enter its commit phase: it deletes the current single and multi registrations for each affected token, invalidates caches, and installs the replacement provider set.
 
-Override clears lifetime state before replacing the registration.
+Override is therefore atomic at the API boundary. A failing provider later in the argument list does not leave earlier providers partially overridden.
 
-`path:packages/di/src/container.ts:207-234`
+`path:packages/di/src/container.ts:292-349`
 ```typescript
 override(...providers: Provider[]): this {
-  if (this.disposed) {
-    throw new ContainerResolutionError(
-      'Container has been disposed and can no longer override providers.',
-      { hint: 'Ensure overrides are applied before calling container.dispose().' },
-    );
-  }
+  const normalizedByToken = new Map<Token, NormalizedProvider[]>();
 
   for (const provider of providers) {
     const normalized = normalizeProvider(provider);
-    const existing = this.lookupProvider(normalized.provide);
+    const normalizedProviders = normalizedByToken.get(normalized.provide);
 
-    this.registrations.delete(normalized.provide);
-    this.multiRegistrations.delete(normalized.provide);
-    this.invalidateCachedEntry(normalized.provide, existing?.scope ?? normalized.scope);
-
-    if (normalized.multi) {
-      this.multiRegistrations.set(normalized.provide, [normalized]);
-      this.multiOverriddenTokens.add(normalized.provide);
+    if (normalizedProviders) {
+      normalizedProviders.push(normalized);
       continue;
     }
 
-    this.multiOverriddenTokens.add(normalized.provide);
-    this.registrations.set(normalized.provide, normalized);
+    normalizedByToken.set(normalized.provide, [normalized]);
+  }
+
+  for (const [token, normalizedProviders] of normalizedByToken) {
+    const containsMultiProvider = normalizedProviders.some((normalized) => normalized.multi === true);
+
+    if (containsMultiProvider && normalizedProviders.some((normalized) => normalized.multi !== true)) {
+      throw new DuplicateProviderError(token);
+    }
+
+    if (!containsMultiProvider && normalizedProviders.length > 1) {
+      throw new DuplicateProviderError(token);
+    }
+  }
+
+  for (const [token, normalizedProviders] of normalizedByToken) {
+    const firstProvider = normalizedProviders[0];
+
+    if (!firstProvider) {
+      continue;
+    }
+
+    const containsMultiProvider = normalizedProviders.some((normalized) => normalized.multi === true);
+
+    const existing = this.lookupProvider(token);
+    const existingMultiProviders = this.collectMultiProviders(token);
+
+    this.registrations.delete(token);
+    this.multiRegistrations.delete(token);
+    this.invalidateCachedEntry(token, existing?.scope ?? existingMultiProviders[0]?.scope ?? firstProvider.scope);
+
+    if (containsMultiProvider) {
+      this.multiRegistrations.set(token, normalizedProviders);
+      this.multiOverriddenTokens.add(token);
+      continue;
+    }
+
+    this.multiOverriddenTokens.add(token);
+    this.registrations.set(token, firstProvider);
   }
 
   return this;
 }
 ```
 
-The order matters. If Fluo deleted only the old registration and left the cache behind, the next resolve might not see the new provider. Fluo treats override as the combination of registration update and cache eviction.
+The commit order matters. If Fluo deleted only the old registration and left the cache behind, the next resolve might not see the new provider. If it mutated registrations during preflight, a later invalid provider could leave the graph half-changed. Fluo treats override as a validated transaction that commits registration updates and cache eviction together.
 
-This invalidation routine is in `path:packages/di/src/container.ts:900-944`. It checks the request cache entry, root singleton cache entry, root multi singleton cache entry, and request multi cache entry. If there is a cached promise, it schedules stale disposal before deleting the cache entry.
+This invalidation routine is in `path:packages/di/src/container.ts:1300-1356`. It checks the request cache entry, root singleton cache entry, root multi singleton cache entry, and request multi cache entry. It also always recurses into tracked child request scopes, even when the current container never created a multi-provider request cache. If there is a cached promise, it schedules stale disposal before deleting the cache entry.
 
 The full routine is long, but the first part that handles stale single cache entries shows the core ownership rule.
 
-`path:packages/di/src/container.ts:900-923`
+`path:packages/di/src/container.ts:1300-1323`
 ```typescript
 private invalidateCachedEntry(token: Token, scope: Scope): void {
   if (this.requestCache.has(token)) {
@@ -591,7 +618,7 @@ private invalidateCachedEntry(token: Token, scope: Scope): void {
   }
 ```
 
-Both the request cache and root singleton cache are checked because the override location and provider scope can differ. The later multi cache branch applies the same principle to provider array entries.
+Both the request cache and root singleton cache are checked because the override location and provider scope can differ. The later multi cache branch applies the same principle to provider array entries, and the child recursion step ensures a root override evicts already-materialized request-scoped instances in child containers.
 
 The actual scheduling path is `scheduleStaleDisposal()` in `path:packages/di/src/container.ts:762-780`. Fluo does not simply drop stale instance references. It awaits the already-created promise, and if the resulting instance has `onDestroy()`, it calls it exactly once. Errors from that path do not break `override()` synchronously. They are accumulated in `staleDisposalErrors`.
 
@@ -623,7 +650,9 @@ private scheduleStaleDisposal(instancePromise: Promise<unknown>): void {
 The design has to await the promise because only an object that has already been created can be disposed. The error collection structure separates the override call itself from later shutdown reporting.
 
 Tests pin this behavior tightly.
-`path:packages/di/src/container.test.ts:385-397` verifies that overriding an already-resolved singleton invalidates the cache.
+`path:packages/di/src/container.test.ts:504-517` verifies that overriding an already-resolved singleton invalidates the cache.
+`path:packages/di/src/container.test.ts:1902-1915` verifies the preflight rule by proving that a failing provider prevents partial override of earlier tokens.
+`path:packages/di/src/container.test.ts:1918-1959` verifies that root overrides invalidate cached request-scoped instances in child scopes.
 `path:packages/di/src/container.test.ts:905-932` proves that a stale overridden singleton instance is disposed immediately and exactly once.
 `path:packages/di/src/container.test.ts:934-974` extends the same guarantee to multi-provider singleton entries.
 
@@ -635,11 +664,14 @@ The override-and-evict algorithm can be summarized like this.
 
 ```text
 override(token, replacement):
-  delete visible registrations for token in current scope
-  find and evict matching cache entries
-  for each evicted cached promise:
-    schedule disposal of resolved stale instance
-  register replacement provider
+  normalize and group every incoming provider by token
+  reject invalid or ambiguous replacement sets before mutation
+  for each validated token:
+    delete visible registrations for token in current scope
+    find and evict matching cache entries in this scope and tracked children
+    for each evicted cached promise:
+      schedule disposal of resolved stale instance
+    register replacement provider set
 ```
 
 ```typescript
