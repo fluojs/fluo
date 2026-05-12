@@ -28,6 +28,12 @@ function copyProviders(providers: readonly Provider[] | undefined): Provider[] {
   return [...(providers ?? [])];
 }
 
+function copyReadinessIndicatorKeys(
+  indicatorKeys: readonly string[] | undefined,
+): readonly string[] | undefined {
+  return indicatorKeys === undefined ? undefined : [...indicatorKeys];
+}
+
 function providerToken(provider: Provider): Token | undefined {
   if (typeof provider === 'function') {
     return provider as Token;
@@ -50,9 +56,7 @@ function createTerminusProviders(options: TerminusModuleOptions = {}): Provider[
     readiness: options.readiness === undefined
       ? undefined
       : {
-          indicatorKeys: options.readiness.indicatorKeys === undefined
-            ? undefined
-            : [...options.readiness.indicatorKeys],
+          indicatorKeys: copyReadinessIndicatorKeys(options.readiness.indicatorKeys),
         },
   };
   const indicatorProviders = copyProviders(normalizedOptions.indicatorProviders);
@@ -219,6 +223,7 @@ function withPlatformDiagnostics(
 
 function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): ModuleType {
   const readinessChecks = [...(options.readinessChecks ?? [])];
+  const readinessIndicatorKeys = copyReadinessIndicatorKeys(options.readiness?.indicatorKeys);
   const healthModule = HealthModule.forRoot({
     healthCheck: async (ctx: RequestContext) => {
       const healthService = await ctx.container.resolve(TerminusHealthService);
@@ -262,10 +267,6 @@ function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): Modul
         provide: TERMINUS_READINESS_REGISTRAR,
         useFactory: (resolvedHealthService: unknown) => {
           const healthService = resolvedHealthService as TerminusHealthService;
-          const readinessIndicatorKeys = options.readiness?.indicatorKeys === undefined
-            ? undefined
-            : [...options.readiness.indicatorKeys];
-
           return {
             onApplicationBootstrap(): void {
               healthModule.addReadinessCheck(async (ctx: RequestContext) => {

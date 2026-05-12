@@ -375,6 +375,44 @@ describe('TerminusModule.forRoot', () => {
     await app.close();
   });
 
+  it('keeps configured readiness-critical indicator keys stable after options mutation', async () => {
+    const readinessIndicatorKeys = ['database'];
+    const indicators: HealthIndicator[] = [
+      {
+        key: 'database',
+        check: async (key: string) => ({ [key]: { status: 'up' } }),
+      },
+      {
+        key: 'search-index',
+        check: async (key: string) => ({ [key]: { message: 'degraded', status: 'down' } }),
+      },
+    ];
+
+    const terminusModule = TerminusModule.forRoot({
+      indicators,
+      readiness: {
+        indicatorKeys: readinessIndicatorKeys,
+      },
+    });
+
+    readinessIndicatorKeys.push('search-index');
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [terminusModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    const readyResponse = createResponse();
+    await app.dispatch(createRequest('/ready'), readyResponse);
+    expect(readyResponse.statusCode).toBe(200);
+    expect(readyResponse.body).toEqual({ status: 'ready' });
+
+    await app.close();
+  });
+
   it('keeps /ready unavailable when a configured readiness-critical indicator fails', async () => {
     const indicators: HealthIndicator[] = [
       {

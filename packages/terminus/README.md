@@ -151,6 +151,8 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
   - Runs the currently registered indicators and returns the aggregated report.
 - `isHealthy(): Promise<boolean>`
   - Returns whether the current aggregated report is fully healthy.
+- `isReady(indicatorKeys?: readonly string[]): Promise<boolean>`
+  - Returns whether every readiness-critical indicator result key is `up`; omitting `indicatorKeys` checks the full aggregated report.
 
 ### Direct helpers and tokens
 
