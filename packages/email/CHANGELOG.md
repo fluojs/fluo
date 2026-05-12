@@ -1,5 +1,20 @@
 # @fluojs/email
 
+## 1.0.0-beta.5
+
+### Minor Changes
+
+- [#1761](https://github.com/fluojs/fluo/pull/1761) [`7db5223`](https://github.com/fluojs/fluo/commit/7db522316b8204f80631e2594afbe9d6f9093382) Thanks [@ayden94](https://github.com/ayden94)! - Add lifecycle-gated email and Slack delivery failures once shutdown begins so factory-owned notification transports are not reused or recreated during teardown, and expose lifecycle error classes for callers that handle send/shutdown races.
+
+### Patch Changes
+
+- [#1825](https://github.com/fluojs/fluo/pull/1825) [`e2fb7ca`](https://github.com/fluojs/fluo/commit/e2fb7cac6da379070f12d6f1f62d3da6f9aaad73) Thanks [@ayden94](https://github.com/ayden94)! - Require verified email transports to finish bootstrap readiness before delivery, allow rejected async option factories to retry, and validate Nodemailer display-name address handoff.
+
+- Updated dependencies [[`33987e4`](https://github.com/fluojs/fluo/commit/33987e4b3168154b06693a5fbf062472e06ab157), [`512bfd7`](https://github.com/fluojs/fluo/commit/512bfd7edabd1d906e1964c0ecf5d7041d2f0477)]:
+  - @fluojs/core@1.0.0-beta.6
+  - @fluojs/di@1.0.0-beta.8
+  - @fluojs/notifications@1.0.0-beta.5
+
 ## 1.0.0-beta.4
 
 ### Patch Changes

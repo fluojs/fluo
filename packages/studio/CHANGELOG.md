@@ -1,5 +1,11 @@
 # @fluojs/studio
 
+## 1.0.0-beta.5
+
+### Patch Changes
+
+- [#1763](https://github.com/fluojs/fluo/pull/1763) [`3ccf4e1`](https://github.com/fluojs/fluo/commit/3ccf4e180a2d8817a0fd3b4439887254808b31c5) Thanks [@ayden94](https://github.com/ayden94)! - Clarify that `@fluojs/studio/viewer` is an asset-only manifest subpath for resolving the packaged HTML viewer entrypoint.
+
 ## 1.0.0-beta.4
 
 ### Patch Changes

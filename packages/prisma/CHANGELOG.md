@@ -1,5 +1,16 @@
 # @fluojs/prisma
 
+## 1.0.0-beta.6
+
+### Patch Changes
+
+- [#1816](https://github.com/fluojs/fluo/pull/1816) [`49c22da`](https://github.com/fluojs/fluo/commit/49c22da803c716abe637389b2cd8c07a05a4b931) Thanks [@ayden94](https://github.com/ayden94)! - Reject new request-scoped Prisma transactions after shutdown starts and keep nested request transaction cleanup visible until the outer manual transaction settles.
+
+- Updated dependencies [[`33987e4`](https://github.com/fluojs/fluo/commit/33987e4b3168154b06693a5fbf062472e06ab157), [`45e0f1b`](https://github.com/fluojs/fluo/commit/45e0f1bf877ba69544d93094d9c54657ea941e74), [`7b50db8`](https://github.com/fluojs/fluo/commit/7b50db85e95e2341f82d006f1e665c2bbcebeaa5)]:
+  - @fluojs/core@1.0.0-beta.6
+  - @fluojs/di@1.0.0-beta.8
+  - @fluojs/http@1.0.0-beta.11
+
 ## 1.0.0-beta.5
 
 ### Patch Changes

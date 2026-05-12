@@ -1,5 +1,16 @@
 # @fluojs/cqrs
 
+## 1.0.0-beta.7
+
+### Patch Changes
+
+- [#1768](https://github.com/fluojs/fluo/pull/1768) [`c32073a`](https://github.com/fluojs/fluo/commit/c32073a31cb474a8323dae5ca2538f243ec6b6a6) Thanks [@ayden94](https://github.com/ayden94)! - Bound event-bus and CQRS shutdown drains so stuck handlers, sagas, or delegated publish chains report degraded diagnostics and no longer hang application close indefinitely.
+
+- Updated dependencies [[`c32073a`](https://github.com/fluojs/fluo/commit/c32073a31cb474a8323dae5ca2538f243ec6b6a6), [`33987e4`](https://github.com/fluojs/fluo/commit/33987e4b3168154b06693a5fbf062472e06ab157), [`0d6f074`](https://github.com/fluojs/fluo/commit/0d6f074b861325c665a73770b8bb413da08d0f9b)]:
+  - @fluojs/event-bus@1.0.0-beta.7
+  - @fluojs/core@1.0.0-beta.6
+  - @fluojs/di@1.0.0-beta.8
+
 ## 1.0.0-beta.6
 
 ### Patch Changes

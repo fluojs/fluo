@@ -1,5 +1,15 @@
 # @fluojs/redis
 
+## 1.0.0-beta.5
+
+### Patch Changes
+
+- [#1819](https://github.com/fluojs/fluo/pull/1819) [`ea86ded`](https://github.com/fluojs/fluo/commit/ea86dedcbfcd7e217e43de1b6e0c3eb588fc4314) Thanks [@ayden94](https://github.com/ayden94)! - Bound lifecycle-owned Redis `connect()` and `quit()` calls with configurable timeouts, document dedicated Pub/Sub subscriber connections, and preserve command error propagation through regression coverage.
+
+- Updated dependencies [[`33987e4`](https://github.com/fluojs/fluo/commit/33987e4b3168154b06693a5fbf062472e06ab157)]:
+  - @fluojs/core@1.0.0-beta.6
+  - @fluojs/di@1.0.0-beta.8
+
 ## 1.0.0-beta.4
 
 ### Patch Changes

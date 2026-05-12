@@ -1,5 +1,11 @@
 # @fluojs/core
 
+## 1.0.0-beta.6
+
+### Patch Changes
+
+- [#1814](https://github.com/fluojs/fluo/pull/1814) [`33987e4`](https://github.com/fluojs/fluo/commit/33987e4b3168154b06693a5fbf062472e06ab157) Thanks [@ayden94](https://github.com/ayden94)! - Fix documented `@Inject(forwardRef(...))` and `@Inject(optional(...))` TypeScript compatibility by sharing wrapper-aware injection token types across core decorators and DI helpers.
+
 ## 1.0.0-beta.5
 
 ### Minor Changes
