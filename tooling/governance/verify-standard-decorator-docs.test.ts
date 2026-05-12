@@ -28,19 +28,46 @@ function lineNumberForOffset(source: string, offset: number): number {
 }
 
 function collectParameterInjectExamplesFromSource(source: string, file: string): string[] {
-  const invalidInjectUsages = [
-    /constructor\s*\([^)]*@Inject\(/gs,
-    /@Inject\([^\n]*\)\s*(?:(?:public|private|protected|readonly|declare|static)\s+)*[A-Za-z_$][\w$]*[!?]?\s*:/g,
-    /@Inject\([\s\S]*?\)\s*\n\s*(?:(?:public|private|protected|readonly|declare|static)\s+)*[A-Za-z_$][\w$]*[!?]?\s*:/g,
-  ];
+  const constructorInjectUsage = /constructor\s*\([^)]*@Inject\(/gs;
+  const propertyDeclaration = /^(?:(?:public|private|protected|readonly|declare|static)\s+)*[A-Za-z_$][\w$]*[!?]?\s*:/;
+  const lines = source.split('\n');
+  const invalidExamples = [...source.matchAll(constructorInjectUsage)].map((match) => {
+    const line = lineNumberForOffset(source, match.index ?? 0);
+    const excerpt = lines[line - 1]?.trim() ?? match[0];
+    return `${relative(process.cwd(), file)}:${line} ${excerpt}`;
+  });
 
-  return [...new Set(invalidInjectUsages.flatMap((pattern) =>
-    [...source.matchAll(pattern)].map((match) => {
-      const line = lineNumberForOffset(source, match.index ?? 0);
-      const excerpt = source.split('\n')[line - 1]?.trim() ?? match[0];
-      return `${relative(process.cwd(), file)}:${line} ${excerpt}`;
-    }),
-  ))].sort(
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    const trimmedLine = line.trim();
+    const injectIndex = trimmedLine.startsWith('@Inject(') ? 0 : -1;
+
+    if (injectIndex === -1) {
+      continue;
+    }
+
+    const sameLineAfterInjectCall = trimmedLine.replace(/^@Inject\([^)]*\)/, '');
+
+    if (propertyDeclaration.test(sameLineAfterInjectCall.trim())) {
+      invalidExamples.push(`${relative(process.cwd(), file)}:${index + 1} ${line.trim()}`);
+      continue;
+    }
+
+    let decoratorEndLine = index;
+
+    while (decoratorEndLine < lines.length && !(lines[decoratorEndLine] ?? '').includes(')')) {
+      decoratorEndLine += 1;
+    }
+
+    const nextLineIndex = decoratorEndLine + 1;
+    const nextLine = lines[nextLineIndex]?.trim() ?? '';
+
+    if (nextLine !== '' && propertyDeclaration.test(nextLine)) {
+      invalidExamples.push(`${relative(process.cwd(), file)}:${index + 1} ${line.trim()}`);
+    }
+  }
+
+  return [...new Set(invalidExamples)].sort(
     (left, right) => Number(left.match(/:(\d+) /)?.[1] ?? 0) - Number(right.match(/:(\d+) /)?.[1] ?? 0),
   );
 }
