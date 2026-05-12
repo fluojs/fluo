@@ -121,9 +121,9 @@ Behavioral contract notes:
 - Use `dispatch(..., { queue: false })` to force direct delivery even when a queue adapter exists.
 - Queue-backed delivery is opt-in for single dispatch and threshold-driven for `dispatchMany(...)`.
 - Queue jobs include a deterministic `id` idempotency key derived from `notification.id` when present, otherwise from the notification envelope. Queue adapters should pass this value to backing queues that support deduplication.
-- `dispatchMany(..., { continueOnError: true })` collects failures instead of throwing on the first failed direct delivery.
-- When queue enqueue fails, the service emits deterministic `notification.dispatch.failed` lifecycle events before rethrowing the enqueue error to the caller.
-- If `enqueueMany(...)` is unavailable, bulk queue delivery falls back to enqueueing each job individually.
+- `dispatchMany(..., { continueOnError: true })` collects failures instead of throwing on the first failed direct delivery or sequential queue fallback enqueue.
+- When queue enqueue fails, the service emits deterministic `notification.dispatch.failed` lifecycle events before rethrowing the enqueue error to the caller. Queued bulk dispatch also publishes a terminal `queued` or `failed` event for every notification that already emitted `requested`, including queue-missing, channel-resolution, and provider/adapter failure paths.
+- If `enqueueMany(...)` is unavailable, bulk queue delivery falls back to enqueueing each job individually in input order. With `continueOnError: true`, successful enqueues remain visible in `results` while failed enqueues are returned in `failures`; without it, the first enqueue failure is rethrown after the remaining requested fallback jobs receive `failed` lifecycle events.
 - The foundation package does not assume or import a concrete queue implementation.
 
 ### Lifecycle publication through an event publisher

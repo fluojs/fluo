@@ -65,6 +65,7 @@
 | 전송 중립 WebSocket이 필요함 | `@fluojs/websockets` | Raw WebSocket 게이트웨이 작성에 사용합니다. |
 | 런타임별 WebSocket lifecycle service가 필요함 | `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers` | 런타임 경계와 일치하는 서브패스를 선택합니다. |
 | Socket.IO 시맨틱이 필요함 | `@fluojs/socket.io` | Socket.IO 호환 통합에 사용합니다. |
+| optional cross-process fan-out이 있는 in-process domain event가 필요함 | `@fluojs/event-bus` + optional `@fluojs/event-bus/redis` 및 `@fluojs/redis` | 하나의 published domain fact가 여러 local handler를 알릴 때 사용하고, 반응이 process boundary를 넘어야 할 때만 Redis Pub/Sub fan-out을 추가합니다. |
 | 메시지 패턴 마이크로서비스가 필요함 | `@fluojs/microservices` | 전송 기반 마이크로서비스 핸들러에 사용합니다. |
 | 백그라운드 작업이 필요함 | `@fluojs/queue` + `@fluojs/redis` | 큐 워커는 Redis에 의존합니다. |
 | 스케줄 작업이 필요함 | `@fluojs/cron` | cron 스타일 스케줄링에 사용합니다. |
