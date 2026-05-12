@@ -103,14 +103,18 @@ import { Inject } from '@fluojs/core';
 import { Controller, Get } from '@fluojs/http';
 import { PostsService } from './posts.service';
 
-@Controller('/posts')
 @Inject(PostsService)
+@Controller('/posts')
 export class PostsController {
-  constructor(private readonly postsService: PostsService) {}
+  readonly #postsService: PostsService;
+
+  constructor(postsService: PostsService) {
+    this.#postsService = postsService;
+  }
 
   @Get('/')
   findAll() {
-    return this.postsService.findAll();
+    return this.#postsService.findAll();
   }
 }
 ```
@@ -318,23 +322,27 @@ import { PostsService } from './posts.service';
 @Inject(PostsService)
 @Controller('/posts')
 export class PostsController {
-  constructor(private readonly postsService: PostsService) {}
+  readonly #postsService: PostsService;
+
+  constructor(postsService: PostsService) {
+    this.#postsService = postsService;
+  }
 
   @Get('/')
   findAll() {
-    return this.postsService.findAll();
+    return this.#postsService.findAll();
   }
 
   @Get('/:id')
   @RequestDto(FindPostParamsDto)
   findById(input: FindPostParamsDto) {
-    return this.postsService.findById(input.id);
+    return this.#postsService.findById(input.id);
   }
 
   @Post('/')
   @RequestDto(CreatePostDto)
   create(input: CreatePostDto) {
-    return this.postsService.create(input);
+    return this.#postsService.create(input);
   }
 }
 ```
