@@ -1,5 +1,31 @@
 # @fluojs/config
 
+## 1.0.0
+
+### Minor Changes
+
+- d4b7d48: Replace function-based config validation with a synchronous Standard Schema `schema` option so applications can validate and normalize config through vendor-neutral schema libraries such as Zod, Valibot, and ArkType.
+- dc8fff1: Standardize runtime module visibility options on `global?: boolean` across `forRoot` APIs, remove the legacy `isGlobal` spelling from config/cache-manager, and replace Redis named registration with `RedisModule.forRoot({ name, ... })`.
+
+### Patch Changes
+
+- aa80042: Reduce redundant config snapshot cloning during bootstrap and reloads, optimize multi-source deep merging, and serialize overlapping reload requests so consumers keep isolated snapshots without reload interleaving corrupting the active config state.
+- 372a80d: Implement `ConfigModule.forRoot({ watch: true })` watcher activation so documented watch reloads update the injected `ConfigService` instance during application runtime.
+- e430e58: Snapshot config module/reloader options at registration time and keep watch reloads active when env files are created after startup.
+- 00f4d90: Recover release metadata for the already-merged audit fixes that restored package behavioral contracts, documentation, and regression coverage.
+
+  Record the serialization response ownership fix, Passport strategy settlement and cookie-auth guardrails, config reload surface alignment, and Express adapter portability parity test helpers.
+
+  Record the notifications injection coverage update, event-bus shutdown and public-surface guardrails, Drizzle request transaction shutdown docs, Socket.IO room contract alignment, and Redis lifecycle regression coverage.
+
+- 1f312e0: Add a fluo-owned Node dev restart runner that dedupes unchanged file saves before restart while preserving raw runtime watcher escape hatches. Config watch reloads now also skip unchanged env file saves and change-then-revert bursts before replacing the in-process snapshot.
+- Updated dependencies [4fdb48c]
+- Updated dependencies [c5aebdf]
+- Updated dependencies [33987e4]
+- Updated dependencies [fa0ecca]
+- Updated dependencies [aaab8c4]
+  - @fluojs/core@1.0.0
+
 ## 1.0.0-beta.8
 
 ### Patch Changes

@@ -1,5 +1,54 @@
 # @fluojs/discord
 
+## 1.0.0
+
+### Minor Changes
+
+- dc8fff1: Standardize runtime module visibility options on `global?: boolean` across `forRoot` APIs, remove the legacy `isGlobal` spelling from config/cache-manager, and replace Redis named registration with `RedisModule.forRoot({ name, ... })`.
+
+### Patch Changes
+
+- da7264d: Stop retrying permanent Discord webhook failures and reject sends once the Discord service is shutting down or stopped.
+- Updated dependencies [4fdb48c]
+- Updated dependencies [da003a1]
+- Updated dependencies [c5aebdf]
+- Updated dependencies [33987e4]
+- Updated dependencies [fa0ecca]
+- Updated dependencies [1d43614]
+- Updated dependencies [2159d4f]
+- Updated dependencies [f086fa5]
+- Updated dependencies [288a0b1]
+- Updated dependencies [33d51e1]
+- Updated dependencies [3785a42]
+- Updated dependencies [1911e11]
+- Updated dependencies [1b0a68a]
+- Updated dependencies [aaab8c4]
+- Updated dependencies [93fc34b]
+- Updated dependencies [37ae1c5]
+- Updated dependencies [48a9f97]
+- Updated dependencies [53a2b8e]
+- Updated dependencies [005d3d7]
+- Updated dependencies [f8d05fa]
+- Updated dependencies [8fb13ad]
+- Updated dependencies [512bfd7]
+- Updated dependencies [00f4d90]
+- Updated dependencies [b74832f]
+- Updated dependencies [4333cee]
+- Updated dependencies [f28a8c8]
+- Updated dependencies [6b8e8a9]
+- Updated dependencies [89f6379]
+- Updated dependencies [f0dce1f]
+- Updated dependencies [c509e27]
+- Updated dependencies [c3ef937]
+- Updated dependencies [69936b1]
+- Updated dependencies [35f60fd]
+- Updated dependencies [dc8fff1]
+- Updated dependencies [d3504c6]
+  - @fluojs/core@1.0.0
+  - @fluojs/runtime@1.0.0
+  - @fluojs/di@1.0.0
+  - @fluojs/notifications@1.0.0
+
 ## 1.0.0-beta.3
 
 ### Patch Changes

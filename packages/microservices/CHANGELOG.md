@@ -1,5 +1,52 @@
 # @fluojs/microservices
 
+## 1.0.0
+
+### Minor Changes
+
+- dc8fff1: Standardize runtime module visibility options on `global?: boolean` across `forRoot` APIs, remove the legacy `isGlobal` spelling from config/cache-manager, and replace Redis named registration with `RedisModule.forRoot({ name, ... })`.
+
+### Patch Changes
+
+- fa0ecca: Reduce module and class DI metadata read-path allocations by returning frozen snapshots that may reuse stable references between metadata writes. Standard metadata bag helpers now document and preserve mixed-era lookup semantics across current/native `Symbol.metadata` and the fallback symbol: own metadata from either era overrides inherited metadata for the same key while preserving inherited keys when the child owns different metadata. Downstream packages receive patch releases because their source now consumes the centralized `@fluojs/core/internal` standard metadata helpers instead of local mixed-era `Symbol.metadata` lookups, preserving the same native/fallback lookup behavior while sharing the core implementation. Migration caveat: consumers of `@fluojs/core/internal` must treat `getModuleMetadata()`, `getOwnClassDiMetadata()`, `getInheritedClassDiMetadata()`, and `getClassDiMetadata()` results, their collection fields, and module provider descriptor wrappers and middleware route-config wrappers (including their `routes` arrays) as immutable. `useValue` payload objects and runtime middleware/guard/interceptor instances remain mutable references and are not frozen by this change.
+- 1dda8b5: Ensure first-party standard decorator modules install `Symbol.metadata` before decorated classes evaluate, preventing missing metadata bags in runtimes such as Bun.
+- 8e7acc7: Fix TCP shutdown guards and gRPC streaming AbortSignal cleanup so closing microservice transports reject new work and release stream abort listeners reliably.
+- cf14bbb: Correct the microservices README example references and clarify that RabbitMQ request/reply uses instance-scoped response queues rather than direct reply-to.
+- 106e51d: Tighten microservice transport ownership, abort, and shutdown contracts so caller-owned NATS clients are not closed by transport shutdown, NATS request/reply honors AbortSignal, and NATS/Kafka/RabbitMQ reject new publishes once close starts.
+- Updated dependencies [4fdb48c]
+- Updated dependencies [da003a1]
+- Updated dependencies [c5aebdf]
+- Updated dependencies [33987e4]
+- Updated dependencies [fa0ecca]
+- Updated dependencies [1d43614]
+- Updated dependencies [2159d4f]
+- Updated dependencies [f086fa5]
+- Updated dependencies [288a0b1]
+- Updated dependencies [33d51e1]
+- Updated dependencies [1911e11]
+- Updated dependencies [1b0a68a]
+- Updated dependencies [aaab8c4]
+- Updated dependencies [93fc34b]
+- Updated dependencies [37ae1c5]
+- Updated dependencies [48a9f97]
+- Updated dependencies [53a2b8e]
+- Updated dependencies [005d3d7]
+- Updated dependencies [f8d05fa]
+- Updated dependencies [b74832f]
+- Updated dependencies [4333cee]
+- Updated dependencies [f28a8c8]
+- Updated dependencies [6b8e8a9]
+- Updated dependencies [89f6379]
+- Updated dependencies [f0dce1f]
+- Updated dependencies [c509e27]
+- Updated dependencies [c3ef937]
+- Updated dependencies [69936b1]
+- Updated dependencies [35f60fd]
+- Updated dependencies [d3504c6]
+  - @fluojs/core@1.0.0
+  - @fluojs/runtime@1.0.0
+  - @fluojs/di@1.0.0
+
 ## 1.0.0-beta.6
 
 ### Patch Changes

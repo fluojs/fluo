@@ -1,5 +1,54 @@
 # @fluojs/i18n
 
+## 1.0.0
+
+### Minor Changes
+
+- 55cd0af: Add a Node-only `@fluojs/i18n/loaders/fs` subpath for safely loading JSON catalogs from filesystem locale directories.
+- a24fa3f: Add the `@fluojs/i18n/typegen` subpath for opt-in TypeScript translation key declaration generation from locale catalog trees and JSON catalog directories.
+- 7fcadbe: Add the `@fluojs/i18n/http` subpath with explicit fluo HTTP request-context locale helpers, `Accept-Language` parsing, and ordered resolver-chain utilities.
+- 849497f: Add the `@fluojs/i18n/icu` subpath with ICU MessageFormat plural/select formatting on top of the existing core catalog fallback and interpolation behavior.
+- 4d059ee: Add opt-in locale policy resolvers and remote catalog cache wrappers while preserving default `Accept-Language: *` and uncached remote loader behavior.
+- 24f6531: Add the `@fluojs/i18n/adapters` subpath with opt-in non-HTTP locale resolvers and stores for WebSocket, gRPC, CLI, local storage, and request-style abstractions.
+- 22bfd25: Introduce the fluo-native i18n package with a framework-agnostic core translation service, locale-scoped catalogs, deterministic fallback resolution, interpolation, missing-message hooks, and stable configuration/catalog error codes.
+- 947a842: Add opt-in generated i18n type helper declarations so applications can type fully qualified translation keys and namespace-scoped key facades without narrowing the runtime `I18nService.translate(key: string, ...)` method.
+- b9c7e5d: Add the `@fluojs/i18n/validation` subpath for opt-in localization of `@fluojs/validation` issue messages while preserving default validation behavior.
+- 44587f8: Add standard `Intl` date/time, number, currency, percent, list, and relative-time formatting helpers with explicit locales and immutable named formatter option snapshots.
+- b578488: Add the `@fluojs/i18n/loaders/remote` subpath for provider-backed remote catalog loading with timeout, cancellation, provider failure, missing catalog, invalid JSON, invalid tree shape, and immutable snapshot guarantees.
+- 5aef583: Keep optional i18n subpath integrations out of the default root dependency graph while documenting their peer prerequisites and hardening fallback, interpolation, and remote-loader cancellation contract coverage.
+
+  Upgrade note: consumers that import `@fluojs/i18n/icu`, `@fluojs/i18n/http`, or `@fluojs/i18n/validation` must list the matching peer dependency in their application or package manifest: `intl-messageformat` for ICU formatting, `@fluojs/http` for HTTP locale helpers, and `@fluojs/validation` for validation localization. The root `@fluojs/i18n` entry point does not require these integration peers.
+
+### Patch Changes
+
+- Updated dependencies [01d5e65]
+- Updated dependencies [4fdb48c]
+- Updated dependencies [72462e3]
+- Updated dependencies [c5aebdf]
+- Updated dependencies [33987e4]
+- Updated dependencies [fa0ecca]
+- Updated dependencies [b15ac1b]
+- Updated dependencies [1dda8b5]
+- Updated dependencies [3f70169]
+- Updated dependencies [aaab8c4]
+- Updated dependencies [65a08db]
+- Updated dependencies [a625716]
+- Updated dependencies [45e0f1b]
+- Updated dependencies [b82b28f]
+- Updated dependencies [37ae1c5]
+- Updated dependencies [16420f9]
+- Updated dependencies [53a2b8e]
+- Updated dependencies [e1bce3d]
+- Updated dependencies [3baf5df]
+- Updated dependencies [7b50db8]
+- Updated dependencies [69936b1]
+- Updated dependencies [35f60fd]
+- Updated dependencies [28ca2ef]
+- Updated dependencies [8422e56]
+  - @fluojs/http@1.0.0
+  - @fluojs/core@1.0.0
+  - @fluojs/validation@1.0.0
+
 ## 1.0.0-beta.1
 
 ### Minor Changes

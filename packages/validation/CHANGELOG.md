@@ -1,5 +1,20 @@
 # @fluojs/validation
 
+## 1.0.0
+
+### Patch Changes
+
+- b15ac1b: Return deterministic validation errors for malformed validation roots and document nested DTO instance preservation during materialization.
+- 1dda8b5: Ensure first-party standard decorator modules install `Symbol.metadata` before decorated classes evaluate, preventing missing metadata bags in runtimes such as Bun.
+- 65a08db: Harden nested DTO lazy factory resolution and keep latitude/longitude validation aligned with strict no-coercion scalar validation.
+- 8422e56: Reject malformed `materialize()` root payloads before DTO constructors or field initializers run, preserving request-boundary safety for invalid inputs.
+- Updated dependencies [4fdb48c]
+- Updated dependencies [c5aebdf]
+- Updated dependencies [33987e4]
+- Updated dependencies [fa0ecca]
+- Updated dependencies [aaab8c4]
+  - @fluojs/core@1.0.0
+
 ## 1.0.0-beta.4
 
 ### Patch Changes

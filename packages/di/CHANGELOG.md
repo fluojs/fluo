@@ -1,5 +1,29 @@
 # @fluojs/di
 
+## 1.0.0
+
+### Minor Changes
+
+- 288a0b1: Validate DI provider object shapes during registration and prevent request scopes from owning implicit singleton multi-provider registrations.
+
+  Migration: consumers that registered default-scope multi providers directly on a request container must move those registrations to the root container before calling `createRequestScope()`. If the multi provider is intentionally request-local, declare it with `scope: 'request'`/`Scope.REQUEST`, or replace the request-local set with `override()` so the ownership boundary is explicit.
+
+### Patch Changes
+
+- 33987e4: Fix documented `@Inject(forwardRef(...))` and `@Inject(optional(...))` TypeScript compatibility by sharing wrapper-aware injection token types across core decorators and DI helpers.
+- 1d43614: Preserve DI shutdown progress when request-scope child disposal fails, aggregate child/root disposal failures, and reject singleton dependency graphs that reach request scope through transient or factory providers.
+- 2159d4f: Preserve every replacement passed to a multi-provider `override()` call and align DI circular-dependency guidance with the runtime `forwardRef()` contract.
+- f086fa5: Cache DI provider resolution plans so repeated resolves and request-scope checks avoid redundant provider graph traversal without caching transient or request-scoped instances.
+- 33d51e1: Cache forwardRef token lookups and avoid extra singleton cache traversal work on repeated DI resolutions.
+- 1911e11: Lazily materialize request-scope container tracking and caches so singleton-only request paths avoid the fixed request-scope lifecycle overhead while preserving request-local isolation and disposal behavior.
+- 35f60fd: Skip HTTP request-scope container creation for singleton-only routes while preserving isolated request-scoped DI whenever a controller graph, middleware, guard, interceptor, observer, DTO converter, or custom binder may require it.
+- Updated dependencies [4fdb48c]
+- Updated dependencies [c5aebdf]
+- Updated dependencies [33987e4]
+- Updated dependencies [fa0ecca]
+- Updated dependencies [aaab8c4]
+  - @fluojs/core@1.0.0
+
 ## 1.0.0-beta.8
 
 ### Patch Changes

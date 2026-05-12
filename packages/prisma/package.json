@@ -9,7 +9,7 @@
     "transaction",
     "als"
   ],
-  "version": "1.0.0-beta.6",
+  "version": "1.0.0",
   "private": false,
   "license": "MIT",
   "repository": {
