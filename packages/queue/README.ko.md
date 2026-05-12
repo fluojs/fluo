@@ -90,6 +90,12 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 `@fluojs/queue`는 애플리케이션 부트스트랩 중 해당 Redis 클라이언트를 조회한 뒤 BullMQ용으로 큐가 소유하는 duplicate 연결을 만듭니다. 공유 `@fluojs/redis` 클라이언트의 소유권은 `RedisModule`에 남아 있으며, Queue는 자신이 만든 BullMQ duplicate 연결만 닫습니다. 이 duplicate 연결은 BullMQ Worker가 요구하는 `maxRetriesPerRequest: null` 설정으로 구성되어 시작 동작이 BullMQ의 실제 런타임 제약과 일치합니다.
 
+### 부트스트랩 및 종료 수명 주기
+
+Queue는 애플리케이션 부트스트랩 중 worker를 탐색하고 Queue가 소유하는 BullMQ 리소스를 만들지만, BullMQ worker processor는 Queue 부트스트랩이 끝난 뒤에 시작합니다. 다른 `onApplicationBootstrap()` hook에서 enqueue한 job은 Queue 서비스가 초기화된 뒤에는 받을 수 있으며, processor는 애플리케이션 readiness보다 먼저 앞서 실행되지 않고 bootstrap-ready handoff 이후 실행됩니다.
+
+애플리케이션 종료가 시작되면 Queue는 상태를 `stopping`으로 바꾸고 새 enqueue를 거부한 다음 Queue 소유 worker/queue/connection을 닫고 pending dead-letter write를 drain합니다. Worker 종료는 `workerShutdownTimeoutMs`로 bounded wait를 적용하므로 끝나지 않는 active processor가 애플리케이션 종료를 무기한 막을 수 없습니다. Timeout이 지나면 Queue는 로그를 남기고 BullMQ worker에 force-close를 요청한 뒤 나머지 리소스 정리를 계속합니다.
+
 ### 분산 재시도 (Distributed Retries)
 
 워커 설정에서 최대 시도 횟수와 백오프 전략을 지정하여 일시적인 실패를 자동으로 처리할 수 있습니다.
@@ -127,7 +133,14 @@ Job은 JSON으로 직렬화 가능한 plain object여야 합니다. Queue는 enq
 - `QueueWorkerOptions`: 개별 작업 설정(시도 횟수, 백오프, 동시성, jobName, 전송률 제한 등)을 위한 타입입니다.
 - `QueueBackoffOptions`: 재시도 백오프 설정(`type`, `delayMs`)을 위한 타입입니다.
 
-`QueueModuleOptions`에는 `defaultDeadLetterMaxEntries` 같은 dead-letter retention 설정도 포함됩니다.
+`QueueModuleOptions`에는 `workerShutdownTimeoutMs`, `defaultDeadLetterMaxEntries` 같은 lifecycle 및 dead-letter retention 설정도 포함됩니다.
+
+`QueueModuleOptions` 수명 주기/status 설정:
+
+- `workerShutdownTimeoutMs`: 종료 중 active worker processor를 기다리는 최대 시간입니다. 시간이 지나면 BullMQ worker를 force-close합니다. 기본값은 `30_000`입니다.
+- `defaultDeadLetterMaxEntries`: job별로 유지할 dead-letter record의 최대 개수이며, trimming을 끄려면 `false`를 지정합니다. 기본값은 `1_000`입니다.
+
+`createQueuePlatformStatusSnapshot(...)`은 Queue가 `started`에 도달한 뒤에만 readiness를 `ready`로 보고합니다. `starting`은 degraded readiness, `stopping`/`stopped`는 not-ready로 보고합니다. Snapshot details에는 Redis dependency id, lifecycle state, ready/discovered worker 수, pending dead-letter write 수, dead-letter drain timeout, `workerShutdownTimeoutMs`가 포함됩니다.
 
 singleton `@QueueWorker()` provider/controller만 등록됩니다. request/transient worker는 discovery 중 건너뜁니다.
 
