@@ -232,6 +232,48 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
     });
   }
 
+  async assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void> {
+    @Controller('/webhooks')
+    class WebhookController {
+      @Post('/bytes')
+      handleBytes(_input: undefined, context: RequestContext) {
+        return {
+          rawBytes: Array.from(context.request.rawBody ?? new Uint8Array()),
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [WebhookController],
+    });
+
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      rawBody: true,
+    } as TBootstrapOptions);
+
+    await runWithCleanup(app, this.options.name, async () => {
+      const payload = Uint8Array.from([0xe9, 0x41]);
+      const response = await app.dispatch(
+        new Request('https://runtime.test/webhooks/bytes', {
+          body: payload,
+          headers: { 'content-type': 'application/octet-stream' },
+          method: 'POST',
+        }),
+      );
+
+      if (response.status !== 201) {
+        throw new Error(`${this.options.name} adapter changed byte-sensitive rawBody response status semantics.`);
+      }
+
+      const body = await response.json();
+      if (JSON.stringify(body) !== JSON.stringify({ rawBytes: Array.from(payload) })) {
+        throw new Error(`${this.options.name} adapter changed exact-byte rawBody semantics.`);
+      }
+    });
+  }
+
   async assertExcludesRawBodyForMultipart(): Promise<void> {
     @Controller('/uploads')
     class UploadController {

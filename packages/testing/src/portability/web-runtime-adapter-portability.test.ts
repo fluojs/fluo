@@ -235,6 +235,7 @@ function registerWebRuntimePortabilitySuite(
   name: string,
   harness: {
     assertExcludesRawBodyForMultipart(): Promise<void>;
+    assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
     assertPreservesQueryArraysAndDecoding(): Promise<void>;
     assertPreservesMalformedCookieValues(): Promise<void>;
     assertPreservesRawBodyForJsonAndText(): Promise<void>;
@@ -252,6 +253,10 @@ function registerWebRuntimePortabilitySuite(
 
     it('preserves raw body for JSON and text requests when enabled', async () => {
       await harness.assertPreservesRawBodyForJsonAndText();
+    });
+
+    it('preserves exact raw body bytes for byte-sensitive payloads', async () => {
+      await harness.assertPreservesExactRawBodyBytesForByteSensitivePayloads();
     });
 
     it('does not preserve rawBody for multipart requests', async () => {
