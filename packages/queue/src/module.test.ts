@@ -871,10 +871,71 @@ describe('@fluojs/queue', () => {
     });
     const workerStore = await app.container.resolve(WorkerStore);
 
-    expect(workerStore.received).toEqual([]);
     await waitForQueueWorkers();
     expect(workerStore.received).toEqual(['bootstrapped']);
     expect(workerStore.receivedDuringBootstrap).toBe(false);
+
+    await app.close();
+  });
+
+  it('keeps workers stopped while later async onApplicationBootstrap hooks are still pending', async () => {
+    class LaterBootstrapJob {
+      constructor(public readonly value: string) {}
+    }
+
+    class WorkerStore {
+      received: string[] = [];
+      receivedDuringLaterBootstrap = false;
+    }
+
+    const laterBootstrapState = { running: false };
+
+    @Inject(WorkerStore)
+    @QueueWorker(LaterBootstrapJob)
+    class LaterBootstrapWorker {
+      constructor(private readonly store: WorkerStore) {}
+
+      async handle(job: LaterBootstrapJob): Promise<void> {
+        this.store.receivedDuringLaterBootstrap = laterBootstrapState.running;
+        this.store.received.push(job.value);
+      }
+    }
+
+    @Inject(QUEUE)
+    class BootstrapPublisher {
+      constructor(private readonly queue: Queue) {}
+
+      async onApplicationBootstrap(): Promise<void> {
+        await this.queue.enqueue(new LaterBootstrapJob('queued-before-later-hook'));
+      }
+    }
+
+    class LaterAsyncBootstrapHook {
+      async onApplicationBootstrap(): Promise<void> {
+        laterBootstrapState.running = true;
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        });
+        laterBootstrapState.running = false;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [WorkerStore, LaterBootstrapWorker, BootstrapPublisher, LaterAsyncBootstrapHook],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const workerStore = await app.container.resolve(WorkerStore);
+
+    await waitForQueueWorkers();
+    expect(workerStore.received).toEqual(['queued-before-later-hook']);
+    expect(workerStore.receivedDuringLaterBootstrap).toBe(false);
 
     await app.close();
   });

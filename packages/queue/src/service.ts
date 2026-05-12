@@ -9,7 +9,13 @@ import type {
   OnApplicationShutdown,
   OnModuleDestroy,
 } from '@fluojs/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
+import {
+  APPLICATION_LOGGER,
+  BOOTSTRAP_READY_SIGNAL,
+  COMPILED_MODULES,
+  RUNTIME_CONTAINER,
+  type BootstrapReadySignal,
+} from '@fluojs/runtime/internal';
 import { Queue as BullQueue, Worker as BullWorker, type ConnectionOptions, type JobsOptions, type Job as BullJob } from 'bullmq';
 
 import { QueueDeadLetterManager, type QueueRedisDeadLetterClient } from './dead-letter-manager.js';
@@ -81,6 +87,10 @@ interface ResolvedWorkerHandler {
   instance: unknown;
 }
 
+const IMMEDIATE_BOOTSTRAP_READY_SIGNAL: BootstrapReadySignal = {
+  wait: () => Promise.resolve(),
+};
+
 function hasQueueRedisClient(value: unknown): value is QueueRedisClient {
   if (typeof value !== 'object' || value === null) {
     return false;
@@ -142,7 +152,7 @@ async function closeConnection(connection: QueueOwnedConnection): Promise<void> 
  * The service discovers `@QueueWorker()` providers during bootstrap, creates the
  * BullMQ queues/workers they require, and shuts them down with the application.
  */
-@Inject(QUEUE_OPTIONS, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
+@Inject(QUEUE_OPTIONS, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, BOOTSTRAP_READY_SIGNAL)
 export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy {
   private readonly descriptorsByJobType = new Map<QueueJobType, QueueWorkerDescriptor>();
   private readonly queuesByJobName = new Map<string, QueueInstance>();
@@ -160,6 +170,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     private readonly runtimeContainer: Container,
     private readonly compiledModules: readonly CompiledModule[],
     private readonly logger: ApplicationLogger,
+    private readonly bootstrapReadySignal: BootstrapReadySignal = IMMEDIATE_BOOTSTRAP_READY_SIGNAL,
   ) {
     this.deadLetterManager = new QueueDeadLetterManager(this.options, this.logger, () => this.getRedisClient());
   }
@@ -407,7 +418,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   private scheduleReadyWorkers(): void {
     const workers = this.readyWorkers.splice(0);
 
-    setTimeout(() => {
+    void this.bootstrapReadySignal.wait().then(() => {
       if (this.lifecycleState !== 'started') {
         return;
       }
@@ -415,7 +426,17 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       for (const { descriptor, worker } of workers) {
         this.runWorker(descriptor, worker);
       }
-    }, 0);
+    }).catch((error: unknown) => {
+      if (this.lifecycleState !== 'started') {
+        return;
+      }
+
+      this.logger.error(
+        'Failed to start queue workers after application bootstrap readiness.',
+        error,
+        'QueueLifecycleService',
+      );
+    });
   }
 
   private runWorker(descriptor: QueueWorkerDescriptor, worker: WorkerInstance): void {
