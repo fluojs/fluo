@@ -1,5 +1,58 @@
 # @fluojs/platform-bun
 
+## 1.0.0
+
+### Minor Changes
+
+- 28ca2ef: Expose `Dispatcher.describeRoutes?.()` for adapter-side route introspection and let the Bun adapter pre-register semver-safe `Bun.serve({ routes })` entries for compatible static and parameter routes. Same-shape parameter routes, `ALL` handlers, older Bun runtimes, and other unsupported shapes continue to fall back to fetch-only dispatch so fluo path, error, and request-body semantics stay unchanged.
+
+### Patch Changes
+
+- dd33c35: Document Bun adapter API contracts and add package-local web-runtime portability conformance coverage.
+- 45e0f1b: Keep fetch-style platform adapter runtime imports off the HTTP root barrel and remove eager Node built-in imports from HTTP request-id/context helpers so edge bundles can instantiate without Node built-in shims.
+- 37ae1c5: Add conservative HTTP fast-path execution and native route handoff optimizations for singleton-safe routes while preserving middleware, guards, pipes, interceptors, error handling, adapter fallback, raw-body, multipart, streaming, abort, and request-scope behavior.
+- 53a2b8e: Avoid duplicate route matching when semantically safe adapter-native routes hand a pre-matched descriptor into the shared `@fluojs/http` dispatcher.
+
+  Keep `@All(...)`, same-shape params, normalization-sensitive paths, `OPTIONS`/CORS ownership, and versioning-sensitive routes on the generic fallback path so adapter portability contracts stay unchanged.
+
+- c3ef937: Reuse shared Web request-response factories across adapter requests while preserving per-request body materialization and error/fallback response semantics.
+- 69936b1: Add a conservative fast path for successful object and array JSON responses while preserving existing formatter, streaming, redirect, binary, string, header, status, and error semantics.
+- Updated dependencies [01d5e65]
+- Updated dependencies [4fdb48c]
+- Updated dependencies [72462e3]
+- Updated dependencies [da003a1]
+- Updated dependencies [fa0ecca]
+- Updated dependencies [1dda8b5]
+- Updated dependencies [3f70169]
+- Updated dependencies [1b0a68a]
+- Updated dependencies [93fc34b]
+- Updated dependencies [a625716]
+- Updated dependencies [45e0f1b]
+- Updated dependencies [b82b28f]
+- Updated dependencies [37ae1c5]
+- Updated dependencies [48a9f97]
+- Updated dependencies [16420f9]
+- Updated dependencies [53a2b8e]
+- Updated dependencies [e1bce3d]
+- Updated dependencies [3baf5df]
+- Updated dependencies [7b50db8]
+- Updated dependencies [005d3d7]
+- Updated dependencies [f8d05fa]
+- Updated dependencies [b74832f]
+- Updated dependencies [4333cee]
+- Updated dependencies [f28a8c8]
+- Updated dependencies [6b8e8a9]
+- Updated dependencies [89f6379]
+- Updated dependencies [f0dce1f]
+- Updated dependencies [c509e27]
+- Updated dependencies [c3ef937]
+- Updated dependencies [69936b1]
+- Updated dependencies [35f60fd]
+- Updated dependencies [28ca2ef]
+- Updated dependencies [d3504c6]
+  - @fluojs/http@1.0.0
+  - @fluojs/runtime@1.0.0
+
 ## 1.0.0-beta.7
 
 ### Patch Changes

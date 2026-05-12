@@ -1,5 +1,60 @@
 # @fluojs/email
 
+## 1.0.0
+
+### Minor Changes
+
+- 7db5223: Add lifecycle-gated email and Slack delivery failures once shutdown begins so factory-owned notification transports are not reused or recreated during teardown, and expose lifecycle error classes for callers that handle send/shutdown races.
+- dc8fff1: Standardize runtime module visibility options on `global?: boolean` across `forRoot` APIs, remove the legacy `isGlobal` spelling from config/cache-manager, and replace Redis named registration with `RedisModule.forRoot({ name, ... })`.
+
+### Patch Changes
+
+- e2fb7ca: Require verified email transports to finish bootstrap readiness before delivery, allow rejected async option factories to retry, and validate Nodemailer display-name address handoff.
+- 35043e1: Reject blank email recipients before transport handoff, honor aborted sends before rendering or provider delivery, and preserve lifecycle provider errors as diagnostic causes.
+- 10431ae: Restore the email package's optional queue boundary by keeping queue workers behind the `@fluojs/email/queue` subpath and make queued email notification workers fail incomplete provider deliveries so retry/dead-letter handling can run.
+- Updated dependencies [4fdb48c]
+- Updated dependencies [da003a1]
+- Updated dependencies [c5aebdf]
+- Updated dependencies [33987e4]
+- Updated dependencies [fa0ecca]
+- Updated dependencies [1d43614]
+- Updated dependencies [2159d4f]
+- Updated dependencies [f086fa5]
+- Updated dependencies [288a0b1]
+- Updated dependencies [33d51e1]
+- Updated dependencies [1dda8b5]
+- Updated dependencies [3785a42]
+- Updated dependencies [1911e11]
+- Updated dependencies [1b0a68a]
+- Updated dependencies [aaab8c4]
+- Updated dependencies [93fc34b]
+- Updated dependencies [37ae1c5]
+- Updated dependencies [48a9f97]
+- Updated dependencies [53a2b8e]
+- Updated dependencies [005d3d7]
+- Updated dependencies [f8d05fa]
+- Updated dependencies [8fb13ad]
+- Updated dependencies [512bfd7]
+- Updated dependencies [995a55f]
+- Updated dependencies [00f4d90]
+- Updated dependencies [b74832f]
+- Updated dependencies [4333cee]
+- Updated dependencies [f28a8c8]
+- Updated dependencies [6b8e8a9]
+- Updated dependencies [89f6379]
+- Updated dependencies [f0dce1f]
+- Updated dependencies [c509e27]
+- Updated dependencies [c3ef937]
+- Updated dependencies [69936b1]
+- Updated dependencies [35f60fd]
+- Updated dependencies [dc8fff1]
+- Updated dependencies [d3504c6]
+  - @fluojs/core@1.0.0
+  - @fluojs/runtime@1.0.0
+  - @fluojs/di@1.0.0
+  - @fluojs/queue@1.0.0
+  - @fluojs/notifications@1.0.0
+
 ## 1.0.0-beta.5
 
 ### Minor Changes

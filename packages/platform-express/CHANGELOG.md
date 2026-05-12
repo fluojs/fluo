@@ -1,5 +1,61 @@
 # @fluojs/platform-express
 
+## 1.0.0
+
+### Patch Changes
+
+- 3f70169: Route semantically safe Express native matches through the shared dispatcher native fast path when eligible while preserving full dispatcher fallback, body materialization, error handling, and documented route fallback semantics. Synthetic dispatch requests also preserve request extension data so testing helpers can continue injecting principals into `RequestContext`.
+- 8694b9f: Fix Express response stream backpressure waits so `waitForDrain()` settles when the connection drains, closes, or errors instead of hanging on disconnected clients.
+- 1b0a68a: Optimize Node-backed request shell creation so Express, Fastify, and raw Node adapters reuse host-parsed request data where possible without changing query, body, raw body, multipart, or native route handoff behavior.
+- fa11273: Preserve fluo routing semantics while letting the Express adapter pre-register safe per-method router entries for explicit routes and fall back to catch-all dispatch for overlapping param shapes, `@All(...)` handlers, and normalization-sensitive requests.
+- 53a2b8e: Avoid duplicate route matching when semantically safe adapter-native routes hand a pre-matched descriptor into the shared `@fluojs/http` dispatcher.
+
+  Keep `@All(...)`, same-shape params, normalization-sensitive paths, `OPTIONS`/CORS ownership, and versioning-sensitive routes on the generic fallback path so adapter portability contracts stay unchanged.
+
+- d772919: Document and test platform runtime edge contracts for native-route rematching, shutdown and body-size boundaries, Node.js portability harness coverage, and edge runtime conformance parity.
+- 00f4d90: Recover release metadata for the already-merged audit fixes that restored package behavioral contracts, documentation, and regression coverage.
+
+  Record the serialization response ownership fix, Passport strategy settlement and cookie-auth guardrails, config reload surface alignment, and Express adapter portability parity test helpers.
+
+  Record the notifications injection coverage update, event-bus shutdown and public-surface guardrails, Drizzle request transaction shutdown docs, Socket.IO room contract alignment, and Redis lifecycle regression coverage.
+
+- 69936b1: Add a conservative fast path for successful object and array JSON responses while preserving existing formatter, streaming, redirect, binary, string, header, status, and error semantics.
+- Updated dependencies [01d5e65]
+- Updated dependencies [4fdb48c]
+- Updated dependencies [72462e3]
+- Updated dependencies [da003a1]
+- Updated dependencies [fa0ecca]
+- Updated dependencies [1dda8b5]
+- Updated dependencies [3f70169]
+- Updated dependencies [1b0a68a]
+- Updated dependencies [93fc34b]
+- Updated dependencies [a625716]
+- Updated dependencies [45e0f1b]
+- Updated dependencies [b82b28f]
+- Updated dependencies [37ae1c5]
+- Updated dependencies [48a9f97]
+- Updated dependencies [16420f9]
+- Updated dependencies [53a2b8e]
+- Updated dependencies [e1bce3d]
+- Updated dependencies [3baf5df]
+- Updated dependencies [7b50db8]
+- Updated dependencies [005d3d7]
+- Updated dependencies [f8d05fa]
+- Updated dependencies [b74832f]
+- Updated dependencies [4333cee]
+- Updated dependencies [f28a8c8]
+- Updated dependencies [6b8e8a9]
+- Updated dependencies [89f6379]
+- Updated dependencies [f0dce1f]
+- Updated dependencies [c509e27]
+- Updated dependencies [c3ef937]
+- Updated dependencies [69936b1]
+- Updated dependencies [35f60fd]
+- Updated dependencies [28ca2ef]
+- Updated dependencies [d3504c6]
+  - @fluojs/http@1.0.0
+  - @fluojs/runtime@1.0.0
+
 ## 1.0.0-beta.7
 
 ### Patch Changes

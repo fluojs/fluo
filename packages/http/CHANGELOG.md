@@ -1,5 +1,56 @@
 # @fluojs/http
 
+## 1.0.0
+
+### Minor Changes
+
+- 28ca2ef: Expose `Dispatcher.describeRoutes?.()` for adapter-side route introspection and let the Bun adapter pre-register semver-safe `Bun.serve({ routes })` entries for compatible static and parameter routes. Same-shape parameter routes, `ALL` handlers, older Bun runtimes, and other unsupported shapes continue to fall back to fetch-only dispatch so fluo path, error, and request-body semantics stay unchanged.
+
+### Patch Changes
+
+- 01d5e65: Improve `@fluojs/http` dispatcher and route-matching hot paths by short-circuiting empty middleware/guard/interceptor/observer chains and pre-indexing static routes for faster request matching.
+- 4fdb48c: Support Bun legacy decorator bundle output for HTTP route metadata while preserving the TC39 standard decorator metadata path.
+- 72462e3: Reduce `@RequestDto()` binding overhead by reusing compiled HTTP DTO binding plans while preserving request-scoped converter resolution and existing validation/binding error contracts.
+- fa0ecca: Reduce module and class DI metadata read-path allocations by returning frozen snapshots that may reuse stable references between metadata writes. Standard metadata bag helpers now document and preserve mixed-era lookup semantics across current/native `Symbol.metadata` and the fallback symbol: own metadata from either era overrides inherited metadata for the same key while preserving inherited keys when the child owns different metadata. Downstream packages receive patch releases because their source now consumes the centralized `@fluojs/core/internal` standard metadata helpers instead of local mixed-era `Symbol.metadata` lookups, preserving the same native/fallback lookup behavior while sharing the core implementation. Migration caveat: consumers of `@fluojs/core/internal` must treat `getModuleMetadata()`, `getOwnClassDiMetadata()`, `getInheritedClassDiMetadata()`, and `getClassDiMetadata()` results, their collection fields, and module provider descriptor wrappers and middleware route-config wrappers (including their `routes` arrays) as immutable. `useValue` payload objects and runtime middleware/guard/interceptor instances remain mutable references and are not frozen by this change.
+- 1dda8b5: Ensure first-party standard decorator modules install `Symbol.metadata` before decorated classes evaluate, preventing missing metadata bags in runtimes such as Bun.
+- 3f70169: Route semantically safe Express native matches through the shared dispatcher native fast path when eligible while preserving full dispatcher fallback, body materialization, error handling, and documented route fallback semantics. Synthetic dispatch requests also preserve request extension data so testing helpers can continue injecting principals into `RequestContext`.
+- a625716: Allow simple `@RequestDto` routes to use the shared dispatcher fast path while preserving binding, validation, request-scope, middleware, guard, and interceptor behavior.
+- 45e0f1b: Keep fetch-style platform adapter runtime imports off the HTTP root barrel and remove eager Node built-in imports from HTTP request-id/context helpers so edge bundles can instantiate without Node built-in shims.
+- b82b28f: Reduce dispatcher route-param update overhead by using direct assignment for standard writable request objects while preserving descriptor-based fallback behavior for custom request shapes.
+- 37ae1c5: Add conservative HTTP fast-path execution and native route handoff optimizations for singleton-safe routes while preserving middleware, guards, pipes, interceptors, error handling, adapter fallback, raw-body, multipart, streaming, abort, and request-scope behavior.
+- 16420f9: Improve `@fluojs/platform-fastify` request dispatch by registering Fastify-native per-route handlers when fluo route metadata can be translated safely, while keeping wildcard fallback behavior for unmatched requests.
+
+  Preserve fluo route semantics for params, versioning, middleware/guard/interceptor/observer lifecycle, error handling, SSE, multipart, raw body, and streaming with regression coverage for native route selection.
+
+- 53a2b8e: Avoid duplicate route matching when semantically safe adapter-native routes hand a pre-matched descriptor into the shared `@fluojs/http` dispatcher.
+
+  Keep `@All(...)`, same-shape params, normalization-sensitive paths, `OPTIONS`/CORS ownership, and versioning-sensitive routes on the generic fallback path so adapter portability contracts stay unchanged.
+
+- e1bce3d: Reduce singleton-route dispatcher overhead by caching stable execution plans while preserving lazy request-scope promotion, route-matched middleware behavior, observer callbacks, and request-scoped DI isolation.
+- 3baf5df: Improve `@RequestDto` request-pipeline throughput by skipping unnecessary validation work for DTOs without validation rules and by reducing per-request binding overhead on the common no-converter path.
+- 7b50db8: Apply opt-in fast-path debug headers to adapter-native route handoffs and document explicit HTTP DTO field binding in the beginner routing guide.
+- 69936b1: Add a conservative fast path for successful object and array JSON responses while preserving existing formatter, streaming, redirect, binary, string, header, status, and error semantics.
+- 35f60fd: Skip HTTP request-scope container creation for singleton-only routes while preserving isolated request-scoped DI whenever a controller graph, middleware, guard, interceptor, observer, DTO converter, or custom binder may require it.
+- Updated dependencies [4fdb48c]
+- Updated dependencies [c5aebdf]
+- Updated dependencies [33987e4]
+- Updated dependencies [fa0ecca]
+- Updated dependencies [1d43614]
+- Updated dependencies [2159d4f]
+- Updated dependencies [f086fa5]
+- Updated dependencies [288a0b1]
+- Updated dependencies [33d51e1]
+- Updated dependencies [b15ac1b]
+- Updated dependencies [1dda8b5]
+- Updated dependencies [1911e11]
+- Updated dependencies [aaab8c4]
+- Updated dependencies [65a08db]
+- Updated dependencies [35f60fd]
+- Updated dependencies [8422e56]
+  - @fluojs/core@1.0.0
+  - @fluojs/di@1.0.0
+  - @fluojs/validation@1.0.0
+
 ## 1.0.0-beta.11
 
 ### Patch Changes

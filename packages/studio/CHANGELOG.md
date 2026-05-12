@@ -1,5 +1,41 @@
 # @fluojs/studio
 
+## 1.0.0
+
+### Minor Changes
+
+- 185487f: Expand CLI automation outputs for generation, inspection, migration, scaffolding, and generator metadata.
+
+  Expose Studio-owned snapshot-to-Mermaid rendering helpers and platform snapshot types.
+
+  Refresh the published Fastify adapter dependency metadata to fastify@^5.8.5.
+
+### Patch Changes
+
+- ec504ae: Preserve Studio report and timing artifact parsing by accepting standalone timing diagnostics while failing malformed report envelopes without summaries.
+- db1723c: Preserve Studio viewer focus while users search or filter loaded snapshots, and document the packaged viewer entry separately from repo-local development commands.
+- 3ccf4e1: Clarify that `@fluojs/studio/viewer` is an asset-only manifest subpath for resolving the packaged HTML viewer entrypoint.
+- Updated dependencies [da003a1]
+- Updated dependencies [1b0a68a]
+- Updated dependencies [93fc34b]
+- Updated dependencies [37ae1c5]
+- Updated dependencies [48a9f97]
+- Updated dependencies [53a2b8e]
+- Updated dependencies [005d3d7]
+- Updated dependencies [f8d05fa]
+- Updated dependencies [b74832f]
+- Updated dependencies [4333cee]
+- Updated dependencies [f28a8c8]
+- Updated dependencies [6b8e8a9]
+- Updated dependencies [89f6379]
+- Updated dependencies [f0dce1f]
+- Updated dependencies [c509e27]
+- Updated dependencies [c3ef937]
+- Updated dependencies [69936b1]
+- Updated dependencies [35f60fd]
+- Updated dependencies [d3504c6]
+  - @fluojs/runtime@1.0.0
+
 ## 1.0.0-beta.5
 
 ### Patch Changes

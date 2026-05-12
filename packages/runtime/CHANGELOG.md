@@ -1,5 +1,78 @@
 # @fluojs/runtime
 
+## 1.0.0
+
+### Minor Changes
+
+- da003a1: Defer Node and Web request body materialization to the dispatch boundary while preserving synchronous `FrameworkRequest.body` and `rawBody` values for application code.
+- 93fc34b: Add `HealthModule.forRoot(...)` as the application-facing runtime health facade and update generated starters to use it while preserving the deprecated `createHealthModule(...)` compatibility helper.
+- f8d05fa: Add an opt-in module graph compile-result cache for repeated bootstrap flows while keeping failed compilations uncached and cached graph snapshots isolated from caller mutation.
+- f28a8c8: Add configurable runtime console logger modes and level filtering, and add CLI lifecycle reporter controls for quieter interactive dev output while preserving raw passthrough for CI and debugging.
+- 6b8e8a9: Harden runtime microservice ownership by cascading parent application shutdown to connected microservices, rolling back started children when `startAllMicroservices()` fails, and preserving original microservice bootstrap errors when cleanup also fails.
+
+  The root `@fluojs/runtime` entrypoint no longer exports `renderRuntimeDiagnosticsMermaid`; Mermaid rendering is Studio-owned, so consumers that need Mermaid output should migrate to the Studio contract path and call `renderMermaid(snapshot)` from `@fluojs/studio/contracts`.
+
+### Patch Changes
+
+- 1b0a68a: Optimize Node-backed request shell creation so Express, Fastify, and raw Node adapters reuse host-parsed request data where possible without changing query, body, raw body, multipart, or native route handoff behavior.
+- 37ae1c5: Add conservative HTTP fast-path execution and native route handoff optimizations for singleton-safe routes while preserving middleware, guards, pipes, interceptors, error handling, adapter fallback, raw-body, multipart, streaming, abort, and request-scope behavior.
+- 48a9f97: Fix the raw Node adapter to recognize mixed-case JSON and multipart content types, and fail fast when `maxBodySize` is configured with a non-numeric value instead of byte-count input.
+- 53a2b8e: Avoid duplicate route matching when semantically safe adapter-native routes hand a pre-matched descriptor into the shared `@fluojs/http` dispatcher.
+
+  Keep `@All(...)`, same-shape params, normalization-sensitive paths, `OPTIONS`/CORS ownership, and versioning-sensitive routes on the generic fallback path so adapter portability contracts stay unchanged.
+
+- 005d3d7: Optimize Web runtime request materialization so fetch-style adapters avoid extra request cloning and eager query/header snapshots while preserving rawBody, multipart, and portability semantics.
+- b74832f: Serialize runtime startup against shutdown, expose the internal runtime cleanup registration seam during bootstrap, and make custom HTTP adapter shutdown registration cleanup exception-safe.
+- 4333cee: Reset runtime health readiness markers as soon as application or context shutdown begins so `/ready` leaves traffic rotation before cleanup hooks and remains unavailable even when shutdown fails.
+- 89f6379: Reduce request/response normalization overhead for common adapter hot paths by skipping empty-body materialization and deferring stream/compression helper setup until requests actually use them.
+- f0dce1f: Reduce runtime coupling to peer package internal subpaths by isolating the remaining core/http integration points behind runtime-owned seams.
+- c509e27: Reduce runtime hot-path overhead by memoizing request metadata materialization, safe direct root singleton context lookups, and independent bootstrap lifecycle provider resolution.
+- c3ef937: Reuse shared Web request-response factories across adapter requests while preserving per-request body materialization and error/fallback response semantics.
+- 69936b1: Add a conservative fast path for successful object and array JSON responses while preserving existing formatter, streaming, redirect, binary, string, header, status, and error semantics.
+- 35f60fd: Skip HTTP request-scope container creation for singleton-only routes while preserving isolated request-scoped DI whenever a controller graph, middleware, guard, interceptor, observer, DTO converter, or custom binder may require it.
+- d3504c6: Make Terminus Drizzle health checks lifecycle-aware by resolving the public Drizzle wrapper token before raw ping fallback, so shutdown and stopped Drizzle integrations now report unavailable health/readiness.
+
+  Expose the `/ready` request context to runtime health readiness checks so integrations can resolve public runtime status providers without importing runtime internals.
+
+- Updated dependencies [01d5e65]
+- Updated dependencies [4fdb48c]
+- Updated dependencies [72462e3]
+- Updated dependencies [c5aebdf]
+- Updated dependencies [aa80042]
+- Updated dependencies [372a80d]
+- Updated dependencies [33987e4]
+- Updated dependencies [fa0ecca]
+- Updated dependencies [1d43614]
+- Updated dependencies [2159d4f]
+- Updated dependencies [f086fa5]
+- Updated dependencies [288a0b1]
+- Updated dependencies [33d51e1]
+- Updated dependencies [1dda8b5]
+- Updated dependencies [3f70169]
+- Updated dependencies [1911e11]
+- Updated dependencies [e430e58]
+- Updated dependencies [aaab8c4]
+- Updated dependencies [a625716]
+- Updated dependencies [45e0f1b]
+- Updated dependencies [b82b28f]
+- Updated dependencies [37ae1c5]
+- Updated dependencies [16420f9]
+- Updated dependencies [53a2b8e]
+- Updated dependencies [e1bce3d]
+- Updated dependencies [3baf5df]
+- Updated dependencies [7b50db8]
+- Updated dependencies [00f4d90]
+- Updated dependencies [69936b1]
+- Updated dependencies [35f60fd]
+- Updated dependencies [28ca2ef]
+- Updated dependencies [d4b7d48]
+- Updated dependencies [dc8fff1]
+- Updated dependencies [1f312e0]
+  - @fluojs/http@1.0.0
+  - @fluojs/core@1.0.0
+  - @fluojs/config@1.0.0
+  - @fluojs/di@1.0.0
+
 ## 1.0.0-beta.12
 
 ### Patch Changes

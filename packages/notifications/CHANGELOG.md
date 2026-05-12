@@ -1,5 +1,56 @@
 # @fluojs/notifications
 
+## 1.0.0
+
+### Minor Changes
+
+- 3785a42: Preserve failed lifecycle publication visibility and add deterministic queue job idempotency keys for notification dispatch.
+- dc8fff1: Standardize runtime module visibility options on `global?: boolean` across `forRoot` APIs, remove the legacy `isGlobal` spelling from config/cache-manager, and replace Redis named registration with `RedisModule.forRoot({ name, ... })`.
+
+### Patch Changes
+
+- 8fb13ad: Fix notification fallback delivery IDs so channel deliveries without external IDs use deterministic request-derived IDs, and publish failed lifecycle events for missing-channel dispatch attempts before throwing configuration errors.
+- 512bfd7: Ensure queued bulk notification dispatch publishes terminal lifecycle events for every requested notification and reports partial sequential enqueue fallback results when `continueOnError` is enabled.
+- 00f4d90: Recover release metadata for the already-merged audit fixes that restored package behavioral contracts, documentation, and regression coverage.
+
+  Record the serialization response ownership fix, Passport strategy settlement and cookie-auth guardrails, config reload surface alignment, and Express adapter portability parity test helpers.
+
+  Record the notifications injection coverage update, event-bus shutdown and public-surface guardrails, Drizzle request transaction shutdown docs, Socket.IO room contract alignment, and Redis lifecycle regression coverage.
+
+- Updated dependencies [4fdb48c]
+- Updated dependencies [da003a1]
+- Updated dependencies [c5aebdf]
+- Updated dependencies [33987e4]
+- Updated dependencies [fa0ecca]
+- Updated dependencies [1d43614]
+- Updated dependencies [2159d4f]
+- Updated dependencies [f086fa5]
+- Updated dependencies [288a0b1]
+- Updated dependencies [33d51e1]
+- Updated dependencies [1911e11]
+- Updated dependencies [1b0a68a]
+- Updated dependencies [aaab8c4]
+- Updated dependencies [93fc34b]
+- Updated dependencies [37ae1c5]
+- Updated dependencies [48a9f97]
+- Updated dependencies [53a2b8e]
+- Updated dependencies [005d3d7]
+- Updated dependencies [f8d05fa]
+- Updated dependencies [b74832f]
+- Updated dependencies [4333cee]
+- Updated dependencies [f28a8c8]
+- Updated dependencies [6b8e8a9]
+- Updated dependencies [89f6379]
+- Updated dependencies [f0dce1f]
+- Updated dependencies [c509e27]
+- Updated dependencies [c3ef937]
+- Updated dependencies [69936b1]
+- Updated dependencies [35f60fd]
+- Updated dependencies [d3504c6]
+  - @fluojs/core@1.0.0
+  - @fluojs/runtime@1.0.0
+  - @fluojs/di@1.0.0
+
 ## 1.0.0-beta.5
 
 ### Patch Changes

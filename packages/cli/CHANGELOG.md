@@ -1,5 +1,66 @@
 # @fluojs/cli
 
+## 1.0.0
+
+### Minor Changes
+
+- 185487f: Expand CLI automation outputs for generation, inspection, migration, scaffolding, and generator metadata.
+
+  Expose Studio-owned snapshot-to-Mermaid rendering helpers and platform snapshot types.
+
+  Refresh the published Fastify adapter dependency metadata to fastify@^5.8.5.
+
+- 45a84a8: Align generated project lifecycle scripts around `fluo dev`, `fluo build`, and `fluo start`, with CLI-owned runtime commands, project-local toolchain binary resolution, Workers preview-safe start behavior, and Next.js-like `NODE_ENV` defaults that preserve explicitly provided environment values.
+- 6cb8d78: Add CLI roadmap command MVPs for version inspection, diagnostics, script orchestration, package workflow guidance, and composite resource generation.
+- 922fa87: Update the CLI self-update flow to reuse the package manager that owns the current global install instead of always invoking pnpm.
+- b6ab426: Add module slice-test, resource slice-test, and e2e test generators so generated projects can scaffold the canonical fluo TDD ladder with `createTestingModule({ rootModule })` and `createTestApp({ rootModule })`.
+- f516e5f: Replace the generated starter-owned `src/health/*` example slice and `/health-info` route with a `src/greeting/*` feature slice exposed at `/greeting`. Runtime operational health remains owned by `HealthModule.forRoot(...)`, so new projects should treat `/health` and `/ready` as runtime endpoints and use the greeting slice as the starter application-structure example.
+- 1b75835: Extract the generated Vite decorator transform into the new `@fluojs/vite` package so `fluo new` projects import a maintained plugin instead of copying the Babel implementation inline.
+- f28a8c8: Add configurable runtime console logger modes and level filtering, and add CLI lifecycle reporter controls for quieter interactive dev output while preserving raw passthrough for CI and debugging.
+
+### Patch Changes
+
+- 6c877e2: Preserve Bun app terminal color detection when `fluo dev` or `fluo start` pipes child output through the CLI lifecycle reporter.
+- e0427f6: Include Bun globals in generated Bun starter TypeScript configuration so pnpm typecheck succeeds when the starter references `Bun.env`.
+- 292634e: Keep interactive `fluo dev` application output visible with an `app │` prefix so CLI lifecycle status and runtime logs remain easy to distinguish.
+- 207de57: Preserve `runCli(...)` numeric exit-code behavior when lifecycle command spawning fails, and align CLI learning docs with the Node.js 20+ package baseline.
+- ca1bbdd: Update generated `fluo new` starters to import `HealthModule` directly from `@fluojs/runtime`, call `HealthModule.forRoot()`, and omit explicit metadata symbol setup from the greeting controller scaffold.
+- cf2be08: Generated starter e2e templates now use the application-level `app.request(...).send()` testing helper as the default HTTP request path.
+- 0b0bb10: Refresh `fluo new` starter dependency pins to the latest published beta versions of the generated `@fluojs/*` packages.
+- 2239996: Refresh the interactive CLI latest-version check for `fluo new` and `fluo create` before scaffolding while preserving cached update checks for normal commands.
+- 2e3408f: Keep colorized application logs consistent between `fluo dev` and `fluo start` by preserving ANSI color intent through the CLI development reporter.
+- 93fc34b: Add `HealthModule.forRoot(...)` as the application-facing runtime health facade and update generated starters to use it while preserving the deprecated `createHealthModule(...)` compatibility helper.
+- c7a31c3: Preserve fluo application log colors when generated Bun, Deno, and Cloudflare Workers dev lifecycles run through the CLI reporter.
+- 6adc9dc: Clarify generated Node.js starter logging defaults and point JSON-log opt-ins to the runtime logger factory.
+- 9295ce5: Update generated Bun, Deno, and Cloudflare Workers starter lifecycles so `fluo dev` defaults to runtime-native watch loops with an explicit `--runner fluo` fallback, while production and deployment use runtime-native commands.
+- fd0aeda: Normalize generated HTTP starter tests around colocated unit/slice coverage plus a dedicated `test/app.e2e.test.ts` suite, and expose `test:cov`/`test:e2e` scripts for Vitest-backed starters.
+- 1f312e0: Add a fluo-owned Node dev restart runner that dedupes unchanged file saves before restart while preserving raw runtime watcher escape hatches. Config watch reloads now also skip unchanged env file saves and change-then-revert bursts before replacing the in-process snapshot.
+- Updated dependencies [185487f]
+- Updated dependencies [da003a1]
+- Updated dependencies [1b0a68a]
+- Updated dependencies [93fc34b]
+- Updated dependencies [37ae1c5]
+- Updated dependencies [48a9f97]
+- Updated dependencies [53a2b8e]
+- Updated dependencies [005d3d7]
+- Updated dependencies [f8d05fa]
+- Updated dependencies [b74832f]
+- Updated dependencies [4333cee]
+- Updated dependencies [f28a8c8]
+- Updated dependencies [6b8e8a9]
+- Updated dependencies [89f6379]
+- Updated dependencies [f0dce1f]
+- Updated dependencies [c509e27]
+- Updated dependencies [c3ef937]
+- Updated dependencies [69936b1]
+- Updated dependencies [35f60fd]
+- Updated dependencies [ec504ae]
+- Updated dependencies [db1723c]
+- Updated dependencies [3ccf4e1]
+- Updated dependencies [d3504c6]
+  - @fluojs/studio@1.0.0
+  - @fluojs/runtime@1.0.0
+
 ## 1.0.0-beta.8
 
 ### Minor Changes
