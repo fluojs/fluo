@@ -76,6 +76,12 @@ function onceClosed(socket: WebSocket): Promise<void> {
   });
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 function createDeferred<T = void>(): {
   promise: Promise<T>;
   resolve: (value: T | PromiseLike<T>) => void;
@@ -169,6 +175,90 @@ describe('@fluojs/websockets/node', () => {
     expect(state.connectCount).toBe(1);
     expect(state.messages).toEqual([{ value: 'hello' }]);
     expect(state.disconnectCount).toBe(1);
+
+    await app.close();
+  });
+
+  it('waits for client-closed sockets to finish async disconnect cleanup during shutdown', async () => {
+    const cleanupRelease = createDeferred<void>();
+    const cleanupStarted = createDeferred<void>();
+
+    @WebSocketGateway({ path: '/shutdown-client-closed' })
+    class ShutdownGateway {
+      @OnDisconnect()
+      async onDisconnect() {
+        cleanupStarted.resolve();
+        await cleanupRelease.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [NodeWebSocketModule.forRoot({ shutdown: { timeoutMs: 200 } })],
+      providers: [ShutdownGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/shutdown-client-closed`);
+    await onceOpen(socket);
+
+    socket.close();
+    await Promise.all([onceClosed(socket), cleanupStarted.promise]);
+
+    let closeFinished = false;
+    const closePromise = app.close().then(() => {
+      closeFinished = true;
+    });
+
+    await delay(20);
+    expect(closeFinished).toBe(false);
+
+    cleanupRelease.resolve();
+    await closePromise;
+    expect(closeFinished).toBe(true);
+  });
+
+  it('prunes Node connection handler state after normal disconnect cleanup', async () => {
+    const disconnected = createDeferred<void>();
+
+    @WebSocketGateway({ path: '/state-prune' })
+    class StatePruneGateway {
+      @OnDisconnect()
+      onDisconnect() {
+        disconnected.resolve();
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [NodeWebSocketModule.forRoot()],
+      providers: [StatePruneGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+    const lifecycle = await app.container.resolve(NodeWebSocketGatewayLifecycleService);
+
+    await app.listen();
+
+    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/state-prune`);
+    await onceOpen(socket);
+    expect(Reflect.get(lifecycle, 'socketStates')).toHaveProperty('size', 1);
+
+    socket.close();
+    await Promise.all([onceClosed(socket), disconnected.promise]);
+
+    expect(Reflect.get(lifecycle, 'socketStates')).toHaveProperty('size', 0);
 
     await app.close();
   });

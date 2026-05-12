@@ -632,6 +632,7 @@ export class NodeWebSocketGatewayLifecycleService
 
     state.disconnectLifecycleSettled = true;
     state.resolveDisconnectLifecycle();
+    this.pruneSettledSocketState(state.socketId, state);
   }
 
   private getBufferedMessageCount(state: ConnectionHandlerState): number {
@@ -1220,14 +1221,11 @@ export class NodeWebSocketGatewayLifecycleService
 
   private async closeActiveSockets(timeoutMs: number): Promise<void> {
     const activeSockets = [...this.socketRegistry.entries()];
+    const activeStates = [...this.socketStates.values()];
 
-    if (activeSockets.length === 0) {
+    if (activeSockets.length === 0 && activeStates.length === 0) {
       return;
     }
-
-    const activeStates = activeSockets
-      .map(([socketId]) => this.socketStates.get(socketId))
-      .filter((state): state is ConnectionHandlerState => state !== undefined);
 
     for (const [socketId, socket] of activeSockets) {
       if (socket.readyState !== WebSocket.OPEN) {
@@ -1585,6 +1583,16 @@ export class NodeWebSocketGatewayLifecycleService
       }
       this.socketRooms.delete(socketId);
     }
+
+    this.pruneSettledSocketState(socketId);
+  }
+
+  private pruneSettledSocketState(socketId: string, state = this.socketStates.get(socketId)): void {
+    if (!state?.disconnectLifecycleSettled) {
+      return;
+    }
+
+    this.socketStates.delete(socketId);
   }
 }
 
