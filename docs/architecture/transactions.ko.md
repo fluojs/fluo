@@ -33,7 +33,7 @@
 | abort 처리 | Prisma와 Drizzle은 요청 범위 작업을 `raceWithAbort(...)`로 감싸고, 종료 정리를 위해 활성 request transaction을 추적합니다. Mongoose도 session 기반 작업 주변에 같은 request-abort race를 적용합니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
 | 종료 동작 | 활성 request transaction은 애플리케이션 종료 시 abort되고, settlement를 기다린 후 패키지별 disconnect 또는 dispose hook이 실행됩니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
 | 종료 진입 gate | Prisma와 Drizzle은 종료가 시작된 뒤 새 `requestTransaction(...)` 호출을 거부하여 disconnect/dispose가 늦게 시작된 요청 작업에 추월되지 않도록 합니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
-| 중첩 요청 추적 | Prisma는 기존 수동 트랜잭션 안에서 실행되는 중첩 `requestTransaction(...)` 호출을 바깥 수동 경계가 settle될 때까지 shutdown tracking에 남겨 둡니다. Drizzle은 해당 중첩 호출의 request callback이 활성 상태인 동안만 tracking에 남기므로, 중첩 요청이 settle되면 바깥 수동 경계가 계속 실행 중이어도 `details.activeRequestTransactions`가 감소합니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
+| 중첩 요청 추적 | Prisma는 기존 수동 트랜잭션 안에서 실행되는 중첩 `requestTransaction(...)` 호출을 바깥 수동 경계가 settle될 때까지 shutdown tracking에 남겨 둡니다. Drizzle도 중첩 수동 트랜잭션 request handle을 바깥 수동 경계가 settle될 때까지 shutdown settlement tracking에 남겨 두므로, shutdown은 `dispose(database)`를 실행하기 전에 그 바깥 경계까지 drain합니다. 단, platform status activity count는 더 좁게 계산됩니다. 중첩 request callback이 settle되는 즉시, 바깥 수동 경계가 계속 실행 중이어도 `details.activeRequestTransactions`는 감소합니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
 | 중첩 요청 abort 전파 | Drizzle은 기존 요청 경계 안의 중첩 `requestTransaction(...)` 호출이 활성 transaction handle을 재사용하면서도 ambient request abort signal을 관찰하도록 합니다. | `packages/drizzle/src/database.ts` |
 
 ## 제약 사항
