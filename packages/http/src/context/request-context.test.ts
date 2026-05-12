@@ -11,7 +11,22 @@ import {
   runWithRequestContext,
   setContextValue,
 } from './request-context.js';
+import { resolveAsyncLocalStorageConstructor } from './request-context-node-store.js';
+import { createStackRequestContextStore } from './request-context-stack-store.js';
+import type { RequestContextStore } from './request-context-store.js';
 import type { RequestContext } from '../types.js';
+
+class MockAsyncLocalStorage implements RequestContextStore {
+  readonly #store = createStackRequestContextStore();
+
+  getStore(): RequestContext | undefined {
+    return this.#store.getStore();
+  }
+
+  run<T>(context: RequestContext, callback: () => T): T {
+    return this.#store.run(context, callback);
+  }
+}
 
 function createMockContext(): RequestContext {
   const root = new Container();
@@ -62,6 +77,111 @@ describe('request context store', () => {
 
   it('returns undefined outside request scope', () => {
     expect(getCurrentRequestContext()).toBeUndefined();
+  });
+
+  it('isolates overlapping async request context work when host async storage is available', async () => {
+    const contextA = createRequestContext({
+      ...createMockContext(),
+      requestId: 'req_a',
+    });
+    const contextB = createRequestContext({
+      ...createMockContext(),
+      requestId: 'req_b',
+    });
+    const releaseA = createDeferred<void>();
+    const releaseB = createDeferred<void>();
+
+    const requestA = runWithRequestContext(contextA, async () => {
+      await releaseA.promise;
+      return assertRequestContext().requestId;
+    });
+    const requestB = runWithRequestContext(contextB, async () => {
+      releaseA.resolve();
+      await releaseB.promise;
+      return assertRequestContext().requestId;
+    });
+
+    await Promise.resolve();
+    releaseB.resolve();
+
+    await expect(requestA).resolves.toBe('req_a');
+    await expect(requestB).resolves.toBe('req_b');
+  });
+
+  it('resolves Node AsyncLocalStorage dynamically when getBuiltinModule is unavailable', async () => {
+    const AsyncLocalStorage = await resolveAsyncLocalStorageConstructor(
+      {
+        process: {
+          versions: {
+            node: '20.0.0',
+          },
+        },
+      },
+      async () => ({ AsyncLocalStorage: MockAsyncLocalStorage }),
+    );
+
+    expect(AsyncLocalStorage).toBe(MockAsyncLocalStorage);
+  });
+
+  it('does not load Node async hooks for non-Node hosts without async storage', async () => {
+    const AsyncLocalStorage = await resolveAsyncLocalStorageConstructor({}, async () => {
+      throw new Error('node async_hooks should not be loaded outside Node hosts');
+    });
+
+    expect(AsyncLocalStorage).toBeUndefined();
+  });
+
+  it('does not leak another request context during overlapping async fallback work', async () => {
+    const store = createStackRequestContextStore();
+    const contextA = createRequestContext({
+      ...createMockContext(),
+      requestId: 'req_a',
+    });
+    const contextB = createRequestContext({
+      ...createMockContext(),
+      requestId: 'req_b',
+    });
+    const releaseA = createDeferred<void>();
+    const releaseB = createDeferred<void>();
+
+    const requestA = store.run(contextA, async () => {
+      expect(store.getStore()?.requestId).toBe('req_a');
+
+      await releaseA.promise;
+
+      return store.getStore()?.requestId;
+    });
+    const requestB = store.run(contextB, async () => {
+      expect(store.getStore()?.requestId).toBe('req_b');
+      releaseA.resolve();
+
+      await releaseB.promise;
+
+      return store.getStore()?.requestId;
+    });
+
+    await Promise.resolve();
+    releaseB.resolve();
+
+    await expect(requestA).resolves.toBeUndefined();
+    await expect(requestB).resolves.toBeUndefined();
+    expect(store.getStore()).toBeUndefined();
+  });
+
+  it('limits fallback request context to the synchronous frame before awaited work resumes', async () => {
+    const store = createStackRequestContextStore();
+    const context = createRequestContext(createMockContext());
+
+    const requestId = await store.run(context, async () => {
+      expect(store.getStore()?.requestId).toBe('req_123');
+
+      await Promise.resolve();
+
+      return store.getStore()?.requestId;
+    });
+
+    expect(requestId).toBeUndefined();
+    expect(store.getStore()).toBeUndefined();
   });
 
   it('exposes a request-scoped container inside ALS context', async () => {
@@ -148,3 +268,14 @@ describe('request context store', () => {
     });
   });
 });
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, reject, resolve };
+}

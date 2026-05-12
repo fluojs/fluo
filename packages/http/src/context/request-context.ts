@@ -1,13 +1,18 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
-
 import { FluoError } from '@fluojs/core';
 
 import type { ContextKey, RequestContext } from '../types.js';
+import { resolveAsyncLocalStorageConstructor } from './request-context-node-store.js';
+import { createStackRequestContextStore } from './request-context-stack-store.js';
+import type { RequestContextStore } from './request-context-store.js';
 
-const requestContextStore = new AsyncLocalStorage<RequestContext>();
+const requestContextStore: RequestContextStore = await createRequestContextStore();
 
 /**
- * Runs a callback inside the request-scoped AsyncLocalStorage context.
+ * Runs a callback inside the request-scoped async context.
+ *
+ * Hosts with `AsyncLocalStorage` preserve the context across awaited work. Hosts without an async
+ * context primitive use a stack fallback that keeps the context only for the synchronous callback
+ * frame and clears it before awaited continuations resume.
  *
  * @param context Request context snapshot to bind to the current async execution chain.
  * @param callback Callback executed with `context` available through request-context helpers.
@@ -45,9 +50,9 @@ export function assertRequestContext(): RequestContext {
 }
 
 /**
- * Creates a defensive clone of a request context for AsyncLocalStorage storage.
+ * Creates a defensive clone of a request context for async-context storage.
  *
- * @param context Request context to clone before storing in AsyncLocalStorage.
+ * @param context Request context to clone before storing in the active async-context store.
  * @returns A shallow clone with copied metadata map to avoid cross-request mutation.
  */
 export function createRequestContext(context: RequestContext): RequestContext {
@@ -90,4 +95,14 @@ export function getContextValue<T>(context: RequestContext, key: ContextKey<T>):
  */
 export function setContextValue<T>(context: RequestContext, key: ContextKey<T>, value: T): void {
   context.metadata[key.id] = value;
+}
+
+async function createRequestContextStore(): Promise<RequestContextStore> {
+  const AsyncLocalStorage = await resolveAsyncLocalStorageConstructor();
+
+  if (typeof AsyncLocalStorage === 'function') {
+    return new AsyncLocalStorage();
+  }
+
+  return createStackRequestContextStore();
 }

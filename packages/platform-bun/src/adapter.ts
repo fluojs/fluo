@@ -7,9 +7,9 @@ import type {
   MiddlewareLike,
   SecurityHeadersOptions,
 } from '@fluojs/http';
-import { createFetchStyleHttpAdapterRealtimeCapability } from '@fluojs/http';
 import {
   bindRawRequestNativeRouteHandoff,
+  createFetchStyleHttpAdapterRealtimeCapability,
   isRoutePathNormalizationSensitive,
 } from '@fluojs/http/internal';
 import type {

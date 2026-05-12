@@ -98,6 +98,8 @@ function someDeepHelper() {
 }
 ```
 
+`runWithRequestContext(...)` preserves the active context across awaited work when the host provides `AsyncLocalStorage` through `globalThis.AsyncLocalStorage` or Node's built-in `node:async_hooks` module. Node runtimes in the declared `>=20.0.0` support range keep ALS semantics even when `process.getBuiltinModule(...)` is unavailable by resolving `node:async_hooks` dynamically. Non-Node hosts without an async-context primitive use a synchronous stack fallback that clears the context before awaited continuations resume, avoiding cross-request leaks instead of pretending to isolate overlapping async work.
+
 ### Rate limiting behind proxies
 
 `createRateLimitMiddleware(...)` resolves client identity from the raw socket `remoteAddress` by default. To trust `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, opt in with `trustProxyHeaders: true` only when your adapter sits behind a trusted proxy that overwrites those headers. If your adapter exposes neither a trusted proxy chain nor a raw socket identity, provide an explicit `keyResolver`.
@@ -135,7 +137,7 @@ This compatibility path is an execution fallback for Bun bundle output; applicat
 
 ## Request Cleanup and Portability
 
-The dispatcher binds `RequestContext` with `AsyncLocalStorage` for the active dispatch only. When a request may use request-scoped DI through its controller graph, middleware, guards, interceptors, observers, DTO converters, a custom binder, or manual `getCurrentRequestContext()` / `assertRequestContext()` container access, the dispatcher creates and disposes an isolated request-scoped DI container from its `finally` path after request observers finish. Singleton-only routes skip that container lifecycle until `RequestContext.container` is accessed, so the baseline path avoids unnecessary per-request allocation while preserving request-scoped provider isolation whenever the graph is ambiguous or request-scoped. Public `RequestContext.container` reads are therefore always safe for resolving request-scoped providers; the singleton-only fast path is an internal dispatcher optimization, not a promise that the public context exposes the root container.
+The dispatcher binds `RequestContext` with host async-context storage for the active dispatch only. On hosts with `AsyncLocalStorage`, including supported Node 20+ runtimes, the context remains available across awaited work. On non-Node hosts without an async-context primitive, the fallback context is synchronous-only and intentionally unavailable after `await` so overlapping requests cannot observe one another's context. When a request may use request-scoped DI through its controller graph, middleware, guards, interceptors, observers, DTO converters, a custom binder, or manual `getCurrentRequestContext()` / `assertRequestContext()` container access, the dispatcher creates and disposes an isolated request-scoped DI container from its `finally` path after request observers finish. Singleton-only routes skip that container lifecycle until `RequestContext.container` is accessed, so the baseline path avoids unnecessary per-request allocation while preserving request-scoped provider isolation whenever the graph is ambiguous or request-scoped. Public `RequestContext.container` reads are therefore always safe for resolving request-scoped providers; the singleton-only fast path is an internal dispatcher optimization, not a promise that the public context exposes the root container.
 
 Adapters should pass an `AbortSignal` on `FrameworkRequest.signal` when the platform exposes one. For SSE, adapters should also expose `FrameworkResponse.stream.onClose(...)` when possible; `SseResponse` listens to both request abort and raw stream close, closes idempotently, and removes registered listeners when either side terminates first.
 
@@ -160,6 +162,7 @@ The `./internal` subpath exports only the low-level utilities used by platform a
 - Native route handoffs snapshot the framework request method and path when attached; if app middleware rewrites either value before handler matching, the dispatcher ignores the stale handoff and falls back to normal route matching.
 - `isRoutePathNormalizationSensitive(path)`: Internal guard for keeping duplicate-slash and trailing-slash requests on the generic dispatcher path.
 - `resolveClientIdentity(request)`: Conservative client identity resolver used by rate limiting and other runtime integrations.
+- `createFetchStyleHttpAdapterRealtimeCapability(...)`, `Dispatcher`, and `HttpApplicationAdapter`: internal adapter seams for edge/fetch-style platform packages that must avoid instantiating the full HTTP root barrel.
 
 ## Related Packages
 

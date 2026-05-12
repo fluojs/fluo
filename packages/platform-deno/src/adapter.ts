@@ -1,4 +1,4 @@
-import { createFetchStyleHttpAdapterRealtimeCapability, type Dispatcher, type HttpApplicationAdapter } from '@fluojs/http';
+import { createFetchStyleHttpAdapterRealtimeCapability, type Dispatcher, type HttpApplicationAdapter } from '@fluojs/http/internal';
 import type { Application, ApplicationLogger, ModuleType, MultipartOptions } from '@fluojs/runtime';
 import {
   bootstrapHttpAdapterApplication,

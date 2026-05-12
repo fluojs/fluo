@@ -2,7 +2,7 @@ import {
   createFetchStyleHttpAdapterRealtimeCapability,
   type Dispatcher,
   type HttpApplicationAdapter,
-} from '@fluojs/http';
+} from '@fluojs/http/internal';
 import {
   bootstrapHttpAdapterApplication,
   type BootstrapHttpAdapterApplicationOptions,

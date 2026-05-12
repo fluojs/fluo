@@ -107,6 +107,13 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     }
   });
 
+  it('keeps the Worker adapter runtime import path free of the HTTP root barrel', () => {
+    const source = readFileSync(new URL('./adapter.ts', import.meta.url), 'utf8');
+
+    expect(source).toContain("from '@fluojs/http/internal'");
+    expect(source).not.toContain("} from '@fluojs/http';");
+  });
+
   it('delegates Worker fetch handling to the shared web adapter core', async () => {
     const adapter = createCloudflareWorkerAdapter({ rawBody: true });
     const dispatcher = {
