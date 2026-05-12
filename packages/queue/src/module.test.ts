@@ -21,6 +21,18 @@ interface MockQueueJob {
   };
 }
 
+interface MockWorkerState {
+  active: Set<Promise<void>>;
+  closeCalls: number;
+  closed: boolean;
+  failedListeners: FailedListener[];
+  failures: number;
+  name: string;
+  processor: (job: MockQueueJob) => Promise<unknown>;
+  running: boolean;
+  workerOpts: { autorun?: boolean; concurrency?: number; limiter?: { duration: number; max: number } };
+}
+
 interface MockRedisConnection {
   connect: () => Promise<void>;
   disconnect: () => void;
@@ -38,19 +50,7 @@ type FailedListener = (job: MockQueueJob | undefined, error: Error) => void
 
 const bullmqState = vi.hoisted(() => {
   const queues = new Map<string, { closeCalls: number; jobs: MockQueueJob[]; name: string }>();
-  const workers = new Map<
-    string,
-    {
-      active: Set<Promise<void>>;
-      closeCalls: number;
-      closed: boolean;
-      failedListeners: FailedListener[];
-      failures: number;
-      name: string;
-      processor: (job: MockQueueJob) => Promise<unknown>;
-      workerOpts: { concurrency?: number; limiter?: { duration: number; max: number } };
-    }
-  >();
+  const workers = new Map<string, MockWorkerState>();
 
   let sequence = 0;
   const failQueueCreation = new Set<string>();
@@ -67,7 +67,7 @@ const bullmqState = vi.hoisted(() => {
   async function dispatch(name: string, job: MockQueueJob): Promise<void> {
     const worker = workers.get(name);
 
-    if (!worker || worker.closed) {
+    if (!worker || worker.closed || !worker.running) {
       return;
     }
 
@@ -120,7 +120,7 @@ const bullmqState = vi.hoisted(() => {
     createWorker(
       name: string,
       processor: (job: MockQueueJob) => Promise<unknown>,
-      workerOpts: { concurrency?: number; limiter?: { duration: number; max: number } },
+      workerOpts: { autorun?: boolean; concurrency?: number; limiter?: { duration: number; max: number } },
     ) {
       const worker = {
         active: new Set<Promise<void>>(),
@@ -130,6 +130,7 @@ const bullmqState = vi.hoisted(() => {
         failures: 0,
         name,
         processor,
+        running: workerOpts.autorun !== false,
         workerOpts,
       };
 
@@ -153,6 +154,18 @@ const bullmqState = vi.hoisted(() => {
     workers,
     async dispatch(name: string, job: MockQueueJob) {
       await dispatch(name, job);
+    },
+    async runWorker(worker: MockWorkerState) {
+      worker.running = true;
+      const queue = queues.get(worker.name);
+
+      if (!queue) {
+        return;
+      }
+
+      for (const job of queue.jobs) {
+        await dispatch(worker.name, job);
+      }
     },
   };
 });
@@ -197,6 +210,7 @@ vi.mock('bullmq', () => ({
         concurrency?: number;
         connection: MockRedisConnection;
         limiter?: { duration: number; max: number };
+        autorun?: boolean;
       },
     ) {
       if (bullmqState.failWorkerCreation.has(name)) {
@@ -218,14 +232,22 @@ vi.mock('bullmq', () => ({
       return this;
     }
 
-    async close(): Promise<void> {
+    async close(force = false): Promise<void> {
       if (this.worker.closed) {
         return;
       }
 
       this.worker.closeCalls += 1;
+
+      if (!force) {
+        await Promise.allSettled(Array.from(this.worker.active));
+      }
+
       this.worker.closed = true;
-      await Promise.allSettled(Array.from(this.worker.active));
+    }
+
+    async run(): Promise<void> {
+      await bullmqState.runWorker(this.worker);
     }
   },
 }));
@@ -339,6 +361,13 @@ function createDeferred<T = void>() {
   return { promise, reject, resolve };
 }
 
+async function waitForQueueWorkers(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+  await Promise.resolve();
+}
+
 describe('@fluojs/queue', () => {
   beforeEach(() => {
     bullmqState.clear();
@@ -450,6 +479,7 @@ describe('@fluojs/queue', () => {
     });
     const userService = await app.container.resolve(UserService);
     const workerStore = await app.container.resolve(WorkerStore);
+    await waitForQueueWorkers();
 
     const jobId = await userService.register('user-1');
 
@@ -503,6 +533,7 @@ describe('@fluojs/queue', () => {
     });
     const userService = await app.container.resolve(UserService);
     const workerStore = await app.container.resolve(WorkerStore);
+    await waitForQueueWorkers();
 
     await expect(userService.enqueue('user-9')).resolves.toBe('1');
     expect(workerStore.handled).toEqual(['user-9']);
@@ -542,6 +573,7 @@ describe('@fluojs/queue', () => {
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
     const workerStore = await app.container.resolve(WorkerStore);
+    await waitForQueueWorkers();
 
     await expect(queue.enqueue(new BullMqStartupJob('ready'))).resolves.toBe('1');
     expect(workerStore.handled).toEqual(['ready']);
@@ -642,6 +674,7 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
+    await waitForQueueWorkers();
 
     const jobId = await queue.enqueue(new FailingJob('invoice-1'));
 
@@ -699,6 +732,7 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
+    await waitForQueueWorkers();
 
     await queue.enqueue(new MutableFailingJob({ role: 'original' }));
 
@@ -739,6 +773,7 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
+    await waitForQueueWorkers();
 
     await queue.enqueue(new TrimmedDeadLetterJob('job-1'));
     await queue.enqueue(new TrimmedDeadLetterJob('job-2'));
@@ -776,6 +811,7 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
+    await waitForQueueWorkers();
 
     await queue.enqueue(new UnboundedDeadLetterJob('job-1'));
     await queue.enqueue(new UnboundedDeadLetterJob('job-2'));
@@ -788,14 +824,17 @@ describe('@fluojs/queue', () => {
     await app.close();
   });
 
-  it('allows enqueue during another provider onApplicationBootstrap', async () => {
+  it('defers workers for jobs enqueued during onApplicationBootstrap until bootstrap readiness', async () => {
     class BootstrapJob {
       constructor(public readonly value: string) {}
     }
 
     class WorkerStore {
       received: string[] = [];
+      receivedDuringBootstrap = false;
     }
+
+    const bootstrapState = { running: false };
 
     @Inject(WorkerStore)
     @QueueWorker(BootstrapJob)
@@ -803,6 +842,7 @@ describe('@fluojs/queue', () => {
       constructor(private readonly store: WorkerStore) {}
 
       async handle(job: BootstrapJob): Promise<void> {
+        this.store.receivedDuringBootstrap = bootstrapState.running;
         this.store.received.push(job.value);
       }
     }
@@ -812,7 +852,9 @@ describe('@fluojs/queue', () => {
       constructor(private readonly queue: Queue) {}
 
       async onApplicationBootstrap(): Promise<void> {
+        bootstrapState.running = true;
         await this.queue.enqueue(new BootstrapJob('bootstrapped'));
+        bootstrapState.running = false;
       }
     }
 
@@ -829,7 +871,71 @@ describe('@fluojs/queue', () => {
     });
     const workerStore = await app.container.resolve(WorkerStore);
 
+    await waitForQueueWorkers();
     expect(workerStore.received).toEqual(['bootstrapped']);
+    expect(workerStore.receivedDuringBootstrap).toBe(false);
+
+    await app.close();
+  });
+
+  it('keeps workers stopped while later async onApplicationBootstrap hooks are still pending', async () => {
+    class LaterBootstrapJob {
+      constructor(public readonly value: string) {}
+    }
+
+    class WorkerStore {
+      received: string[] = [];
+      receivedDuringLaterBootstrap = false;
+    }
+
+    const laterBootstrapState = { running: false };
+
+    @Inject(WorkerStore)
+    @QueueWorker(LaterBootstrapJob)
+    class LaterBootstrapWorker {
+      constructor(private readonly store: WorkerStore) {}
+
+      async handle(job: LaterBootstrapJob): Promise<void> {
+        this.store.receivedDuringLaterBootstrap = laterBootstrapState.running;
+        this.store.received.push(job.value);
+      }
+    }
+
+    @Inject(QUEUE)
+    class BootstrapPublisher {
+      constructor(private readonly queue: Queue) {}
+
+      async onApplicationBootstrap(): Promise<void> {
+        await this.queue.enqueue(new LaterBootstrapJob('queued-before-later-hook'));
+      }
+    }
+
+    class LaterAsyncBootstrapHook {
+      async onApplicationBootstrap(): Promise<void> {
+        laterBootstrapState.running = true;
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        });
+        laterBootstrapState.running = false;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [WorkerStore, LaterBootstrapWorker, BootstrapPublisher, LaterAsyncBootstrapHook],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const workerStore = await app.container.resolve(WorkerStore);
+
+    await waitForQueueWorkers();
+    expect(workerStore.received).toEqual(['queued-before-later-hook']);
+    expect(workerStore.receivedDuringLaterBootstrap).toBe(false);
 
     await app.close();
   });
@@ -870,6 +976,7 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
+    await waitForQueueWorkers();
 
     const enqueuePromise = queue.enqueue(new ShutdownFailingJob('job-1'));
     await Promise.resolve();
@@ -978,6 +1085,7 @@ describe('@fluojs/queue', () => {
         defaultAttempts: 1,
         defaultConcurrency: 1,
         defaultDeadLetterMaxEntries: 1_000,
+        workerShutdownTimeoutMs: 30_000,
       },
       container as never,
       [
@@ -1050,6 +1158,7 @@ describe('@fluojs/queue', () => {
         defaultAttempts: 1,
         defaultConcurrency: 1,
         defaultDeadLetterMaxEntries: 1_000,
+        workerShutdownTimeoutMs: 30_000,
       },
       container as never,
       [
@@ -1137,6 +1246,7 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
+    await vi.advanceTimersByTimeAsync(0);
 
     await queue.enqueue(new TimeoutFailingJob('job-1'));
 
@@ -1149,6 +1259,139 @@ describe('@fluojs/queue', () => {
         event.includes('error:QueueLifecycleService:Dead-letter write did not complete within shutdown timeout.'),
       ),
     ).toHaveLength(1);
+  });
+
+  it('bounds worker shutdown when an active processor does not settle', async () => {
+    vi.useFakeTimers();
+    const loggerEvents: string[] = [];
+
+    class HangingProcessorJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(HangingProcessorJob, { jobName: 'hanging-processor-job' })
+    class HangingProcessorWorker {
+      async handle(_job: HangingProcessorJob): Promise<void> {
+        await new Promise<void>(() => undefined);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot({ workerShutdownTimeoutMs: 25 })],
+      providers: [HangingProcessorWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const queue = await app.container.resolve<Queue>(QUEUE);
+    await vi.advanceTimersByTimeAsync(0);
+
+    void queue.enqueue(new HangingProcessorJob('job-1'));
+    await Promise.resolve();
+
+    const closePromise = app.close();
+    await vi.advanceTimersByTimeAsync(25);
+    await closePromise;
+
+    const worker = bullmqState.workers.get('hanging-processor-job');
+    expect(worker?.closeCalls).toBe(2);
+    expect(loggerEvents.some((event) => event.includes('Failed to close queue worker within shutdown timeout.'))).toBe(true);
+  });
+
+  it('rejects enqueue payloads that do not serialize to JSON objects', async () => {
+    class ArrayPayloadJob {
+      toJSON(): unknown[] {
+        return ['not-object'];
+      }
+    }
+
+    @QueueWorker(ArrayPayloadJob)
+    class ArrayPayloadWorker {
+      async handle(_job: ArrayPayloadJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [ArrayPayloadWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const queue = await app.container.resolve<Queue>(QUEUE);
+    await waitForQueueWorkers();
+
+    await expect(queue.enqueue(new ArrayPayloadJob())).rejects.toThrow(
+      'Queue payload must be a plain object after JSON serialization.',
+    );
+
+    await app.close();
+  });
+
+  it('surfaces processor contract errors when worker instances do not implement handle(job)', async () => {
+    class MissingHandleJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(MissingHandleJob)
+    class MissingHandleWorker {}
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [MissingHandleWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const queue = await app.container.resolve<Queue>(QUEUE);
+    await waitForQueueWorkers();
+
+    await expect(queue.enqueue(new MissingHandleJob('job-1'))).resolves.toBe('1');
+
+    const deadLetters = redis.deadLetters.get('fluo:queue:dead-letter:MissingHandleJob') ?? [];
+    expect(deadLetters).toHaveLength(1);
+    expect(JSON.parse(deadLetters[0]!)).toMatchObject({
+      errorMessage: 'Queue worker MissingHandleWorker must implement handle(job).',
+      jobName: 'MissingHandleJob',
+    });
+
+    await app.close();
+  });
+
+  it('rejects Redis clients that cannot create queue-owned BullMQ duplicate connections', async () => {
+    class RedisShapeJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(RedisShapeJob)
+    class RedisShapeWorker {
+      async handle(_job: RedisShapeJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [RedisShapeWorker],
+    });
+
+    await expect(
+      bootstrapApplication({
+        providers: [{ provide: REDIS_CLIENT, useValue: { ltrim: async () => 'OK', rpush: async () => 1 } }],
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow('@fluojs/queue requires a Redis client with duplicate(), rpush(), and ltrim() methods.');
   });
 
   it('passes rate limiter options from @QueueWorker() to Bull worker configuration', async () => {
@@ -1278,6 +1521,7 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
+    await waitForQueueWorkers();
 
     await queue.enqueue(new DefaultedJob('ok'));
 

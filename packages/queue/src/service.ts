@@ -9,11 +9,17 @@ import type {
   OnApplicationShutdown,
   OnModuleDestroy,
 } from '@fluojs/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
+import {
+  APPLICATION_LOGGER,
+  BOOTSTRAP_READY_SIGNAL,
+  COMPILED_MODULES,
+  RUNTIME_CONTAINER,
+  type BootstrapReadySignal,
+} from '@fluojs/runtime/internal';
 import { Queue as BullQueue, Worker as BullWorker, type ConnectionOptions, type JobsOptions, type Job as BullJob } from 'bullmq';
 
 import { QueueDeadLetterManager, type QueueRedisDeadLetterClient } from './dead-letter-manager.js';
-import { normalizePositiveInteger } from './helpers.js';
+import { normalizePositiveInteger, withTimeout } from './helpers.js';
 import { createQueuePlatformStatusSnapshot } from './status.js';
 import { QUEUE_OPTIONS } from './tokens.js';
 import { discoverQueueWorkerDescriptors } from './worker-discovery.js';
@@ -43,6 +49,16 @@ interface QueueBullMqConnectionOptions {
   maxRetriesPerRequest: null;
 }
 
+interface QueueBullMqWorkerOptions {
+  autorun: false;
+  concurrency: number;
+  connection: ConnectionOptions;
+  limiter?: {
+    duration: number;
+    max: number;
+  };
+}
+
 interface QueueRedisClient extends QueueRedisDeadLetterClient {
   duplicate(options?: QueueBullMqConnectionOptions): QueueOwnedConnection;
 }
@@ -61,10 +77,19 @@ interface InitializedWorkerResources {
   workerConnection: QueueOwnedConnection;
 }
 
+interface ReadyWorker {
+  descriptor: QueueWorkerDescriptor;
+  worker: WorkerInstance;
+}
+
 interface ResolvedWorkerHandler {
   handler: (this: unknown, payload: object) => Promise<void>;
   instance: unknown;
 }
+
+const IMMEDIATE_BOOTSTRAP_READY_SIGNAL: BootstrapReadySignal = {
+  wait: () => Promise.resolve(),
+};
 
 function hasQueueRedisClient(value: unknown): value is QueueRedisClient {
   if (typeof value !== 'object' || value === null) {
@@ -127,13 +152,14 @@ async function closeConnection(connection: QueueOwnedConnection): Promise<void> 
  * The service discovers `@QueueWorker()` providers during bootstrap, creates the
  * BullMQ queues/workers they require, and shuts them down with the application.
  */
-@Inject(QUEUE_OPTIONS, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
+@Inject(QUEUE_OPTIONS, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, BOOTSTRAP_READY_SIGNAL)
 export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy {
   private readonly descriptorsByJobType = new Map<QueueJobType, QueueWorkerDescriptor>();
   private readonly queuesByJobName = new Map<string, QueueInstance>();
   private readonly workersByJobName = new Map<string, WorkerInstance>();
   private readonly ownedConnections: QueueOwnedConnection[] = [];
   private readonly deadLetterManager: QueueDeadLetterManager;
+  private readonly readyWorkers: ReadyWorker[] = [];
   private lifecycleState: QueueLifecycleState = 'idle';
   private redisClient: QueueRedisClient | undefined;
   private startPromise: Promise<void> | undefined;
@@ -144,6 +170,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     private readonly runtimeContainer: Container,
     private readonly compiledModules: readonly CompiledModule[],
     private readonly logger: ApplicationLogger,
+    private readonly bootstrapReadySignal: BootstrapReadySignal = IMMEDIATE_BOOTSTRAP_READY_SIGNAL,
   ) {
     this.deadLetterManager = new QueueDeadLetterManager(this.options, this.logger, () => this.getRedisClient());
   }
@@ -206,6 +233,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       lifecycleState: this.lifecycleState,
       pendingDeadLetterWrites: this.deadLetterManager.pendingWriteCount,
       queuesReady: this.queuesByJobName.size,
+      workerShutdownTimeoutMs: this.options.workerShutdownTimeoutMs,
       workersDiscovered: this.descriptorsByJobType.size,
       workersReady: this.workersByJobName.size,
     });
@@ -247,6 +275,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     await this.initializeWorkers(redis);
     if (this.lifecycleState === 'starting') {
       this.lifecycleState = 'started';
+      this.scheduleReadyWorkers();
     }
   }
 
@@ -340,15 +369,9 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   private createWorkerOptions(
     descriptor: QueueWorkerDescriptor,
     workerConnection: QueueOwnedConnection,
-  ): {
-    concurrency: number;
-    connection: ConnectionOptions;
-    limiter?: {
-      duration: number;
-      max: number;
-    };
-  } {
+  ): QueueBullMqWorkerOptions {
     return {
+      autorun: false,
       concurrency: descriptor.concurrency,
       connection: workerConnection,
       ...this.createWorkerLimiterOptions(descriptor),
@@ -389,6 +412,47 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     this.queuesByJobName.set(descriptor.jobName, resources.queue);
     this.workersByJobName.set(descriptor.jobName, resources.worker);
     this.ownedConnections.push(resources.queueConnection, resources.workerConnection);
+    this.readyWorkers.push({ descriptor, worker: resources.worker });
+  }
+
+  private scheduleReadyWorkers(): void {
+    const workers = this.readyWorkers.splice(0);
+
+    void this.bootstrapReadySignal.wait().then(() => {
+      if (this.lifecycleState !== 'started') {
+        return;
+      }
+
+      for (const { descriptor, worker } of workers) {
+        this.runWorker(descriptor, worker);
+      }
+    }).catch((error: unknown) => {
+      if (this.lifecycleState !== 'started') {
+        return;
+      }
+
+      this.logger.error(
+        'Failed to start queue workers after application bootstrap readiness.',
+        error,
+        'QueueLifecycleService',
+      );
+    });
+  }
+
+  private runWorker(descriptor: QueueWorkerDescriptor, worker: WorkerInstance): void {
+    const runnableWorker = worker as WorkerInstance & { run?: () => Promise<void> | void };
+
+    if (typeof runnableWorker.run !== 'function') {
+      return;
+    }
+
+    void Promise.resolve(runnableWorker.run()).catch((error: unknown) => {
+      this.logger.error(
+        `Failed to start queue worker ${descriptor.workerName} after application bootstrap.`,
+        error,
+        'QueueLifecycleService',
+      );
+    });
   }
 
   private async cleanupWorkerInitializationFailure(resources: WorkerInitializationResources): Promise<void> {
@@ -514,6 +578,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
 
     this.workersByJobName.clear();
     this.queuesByJobName.clear();
+    this.readyWorkers.splice(0);
 
     for (const worker of workers) {
       await this.tryCloseWorker(worker);
@@ -530,9 +595,19 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
 
   private async tryCloseWorker(worker: WorkerInstance): Promise<void> {
     try {
-      await worker.close();
+      await withTimeout(
+        worker.close(),
+        this.options.workerShutdownTimeoutMs,
+        () => new Error('queue worker shutdown timed out'),
+      );
     } catch (error) {
-      this.logger.error('Failed to close queue worker during shutdown.', error, 'QueueLifecycleService');
+      this.logger.error('Failed to close queue worker within shutdown timeout.', error, 'QueueLifecycleService');
+
+      try {
+        await worker.close(true);
+      } catch (forceCloseError) {
+        this.logger.error('Failed to force close queue worker during shutdown.', forceCloseError, 'QueueLifecycleService');
+      }
     }
   }
 
