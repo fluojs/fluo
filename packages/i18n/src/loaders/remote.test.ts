@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { I18nError } from '../errors.js';
 import type { I18nErrorCode, I18nMessageTree } from '../types.js';
@@ -167,6 +167,7 @@ describe('@fluojs/i18n/loaders/remote', () => {
   });
 
   it('aborts provider work and rejects with a stable timeout code', async () => {
+    vi.useFakeTimers();
     let observedSignal: AbortSignal | undefined;
     const loader = new RemoteI18nLoader({
       provider: async ({ signal }) => {
@@ -174,14 +175,38 @@ describe('@fluojs/i18n/loaders/remote', () => {
         await waitForAbort(signal);
         return { title: 'timed out' };
       },
-      timeoutMs: 1,
+      timeoutMs: 100,
     });
 
-    await expectI18nRejection(() => loader.load('en', 'common'), 'I18N_LOADER_TIMEOUT');
-    if (observedSignal === undefined) {
-      throw new Error('Expected the provider to receive the loader signal.');
+    try {
+      const load = loader.load('en', 'common');
+      const rejection = expectI18nRejection(() => load, 'I18N_LOADER_TIMEOUT');
+      await vi.advanceTimersByTimeAsync(100);
+
+      await rejection;
+      if (observedSignal === undefined) {
+        throw new Error('Expected the provider to receive the loader signal.');
+      }
+      expect(observedSignal.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
     }
-    expect(observedSignal.aborted).toBe(true);
+  });
+
+  it('rejects already-aborted caller signals before provider invocation', async () => {
+    const controller = new AbortController();
+    let providerCalls = 0;
+    const loader = new RemoteI18nLoader({
+      provider: () => {
+        providerCalls += 1;
+        return { title: 'unused' };
+      },
+    });
+
+    controller.abort();
+
+    await expectI18nRejection(() => loader.load('en', 'common', { signal: controller.signal }), 'I18N_LOADER_ABORTED');
+    expect(providerCalls).toBe(0);
   });
 
   it('propagates caller cancellation to the remote provider', async () => {
