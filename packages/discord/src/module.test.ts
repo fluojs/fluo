@@ -693,6 +693,117 @@ describe('DiscordModule', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it('waits for bootstrap verification before delivering sends during the created lifecycle', async () => {
+    const events: string[] = [];
+    const send = vi.fn<DiscordTransport['send']>().mockImplementation(async () => {
+      events.push('send');
+      return { ok: true, warnings: [] };
+    });
+    const transport: DiscordTransport = {
+      send,
+      async verify() {
+        events.push('verify');
+      },
+    };
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      transport,
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+
+    await expect(service.send({ content: 'Created lifecycle send' })).resolves.toMatchObject({ ok: true });
+    expect(events).toEqual(['verify', 'send']);
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'ready' },
+      readiness: { status: 'ready' },
+    });
+  });
+
+  it('queues sends behind in-flight bootstrap verification during the starting lifecycle', async () => {
+    let resolveVerify!: () => void;
+    const verifyPromise = new Promise<void>((resolve) => {
+      resolveVerify = resolve;
+    });
+    const send = vi.fn<DiscordTransport['send']>().mockResolvedValue({ ok: true, warnings: [] });
+    const transport: DiscordTransport = {
+      send,
+      verify: vi.fn(() => verifyPromise),
+    };
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      transport,
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+
+    const init = service.onModuleInit();
+    const pendingSend = service.send({ content: 'Starting lifecycle send' });
+    await Promise.resolve();
+
+    expect(send).not.toHaveBeenCalled();
+
+    resolveVerify();
+
+    await expect(init).resolves.toBeUndefined();
+    await expect(pendingSend).resolves.toMatchObject({ ok: true });
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects sends when shutdown starts in the final pre-transport delivery window', async () => {
+    const transport = new PassiveTransport();
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    const pendingSend = service.send({ content: 'Race with shutdown' });
+    await service.onApplicationShutdown();
+
+    await expect(pendingSend).rejects.toThrowError(
+      new DiscordLifecycleError('Discord delivery cannot start while the service lifecycle is stopped.'),
+    );
+    expect(transport.sent).toEqual([]);
+  });
+
+  it('rejects notification sends before rendering when bootstrap verification fails', async () => {
+    const render = vi.fn().mockResolvedValue({ content: 'Rendered after failed bootstrap' });
+    const send = vi.fn<DiscordTransport['send']>().mockResolvedValue({ ok: true, warnings: [] });
+    const transport: DiscordTransport = {
+      send,
+      async verify() {
+        throw new Error('webhook credentials revoked');
+      },
+    };
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      renderer: { render },
+      transport,
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+
+    await expect(
+      service.sendNotification({
+        channel: 'discord',
+        payload: {},
+        template: 'welcome',
+      }),
+    ).rejects.toThrowError(new DiscordLifecycleError('Discord transport failed to initialize.'));
+    expect(render).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('awaits in-flight factory transport creation and closes owned resources during shutdown', async () => {
     vi.useFakeTimers();
 

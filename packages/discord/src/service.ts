@@ -77,6 +77,7 @@ function assertMessageContent(message: NormalizedDiscordMessage): void {
 @Inject(DISCORD_OPTIONS)
 export class DiscordService implements Discord, OnModuleInit, OnApplicationShutdown {
   private lifecycleState: DiscordServiceLifecycleState = 'created';
+  private bootstrapPromise: Promise<void> | undefined;
   private resolvedTransport: DiscordTransport | undefined;
   private transportPromise: Promise<DiscordTransport> | undefined;
 
@@ -104,10 +105,23 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
       return;
     }
 
+    if (this.lifecycleState === 'ready') {
+      return;
+    }
+
+    if (this.lifecycleState === 'starting' && this.bootstrapPromise) {
+      return this.bootstrapPromise;
+    }
+
+    this.bootstrapPromise = this.initializeTransport();
+    return this.bootstrapPromise;
+  }
+
+  private async initializeTransport(): Promise<void> {
     this.lifecycleState = 'starting';
 
     try {
-      const transport = await this.ensureTransport();
+      const transport = await this.ensureTransport({ allowStarting: true });
 
       if (this.lifecycleState !== 'starting') {
         return;
@@ -165,11 +179,13 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
    */
   async send(message: DiscordMessage, options: DiscordSendOptions = {}): Promise<DiscordSendResult> {
     assertNotAborted(options.signal);
-    this.assertCanDeliver();
+    await this.waitUntilReadyForDelivery();
+    assertNotAborted(options.signal);
 
     const transport = await this.ensureTransport();
     const normalized = this.normalizeMessage(message);
     assertMessageContent(normalized);
+    await Promise.resolve();
     this.assertCanDeliver();
     const result = await transport.send(normalized, options);
 
@@ -250,7 +266,8 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     options: DiscordSendOptions = {},
   ): Promise<DiscordSendResult> {
     assertNotAborted(options.signal);
-    this.assertCanDeliver();
+    await this.waitUntilReadyForDelivery();
+    assertNotAborted(options.signal);
 
     const payload = notification.payload;
     const rendered = await this.renderNotification(notification);
@@ -280,8 +297,8 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     );
   }
 
-  private async ensureTransport(): Promise<DiscordTransport> {
-    this.assertCanCreateOrUseTransport();
+  private async ensureTransport(options: { allowStarting?: boolean } = {}): Promise<DiscordTransport> {
+    this.assertCanCreateOrUseTransport(options);
 
     if (this.resolvedTransport) {
       return this.resolvedTransport;
@@ -297,7 +314,11 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     return this.transportPromise;
   }
 
-  private assertCanCreateOrUseTransport(): void {
+  private assertCanCreateOrUseTransport(options: { allowStarting?: boolean } = {}): void {
+    if (!options.allowStarting && (this.lifecycleState === 'created' || this.lifecycleState === 'starting')) {
+      throw createDeliveryLifecycleError(this.lifecycleState);
+    }
+
     if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped' || this.lifecycleState === 'failed') {
       throw createDeliveryLifecycleError(this.lifecycleState);
     }
@@ -305,6 +326,26 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
 
   private assertCanDeliver(): void {
     this.assertCanCreateOrUseTransport();
+  }
+
+  private getLifecycleState(): DiscordServiceLifecycleState {
+    return this.lifecycleState;
+  }
+
+  private async waitUntilReadyForDelivery(): Promise<void> {
+    if (this.lifecycleState === 'ready') {
+      return;
+    }
+
+    if (this.lifecycleState === 'created' || this.lifecycleState === 'starting') {
+      await this.onModuleInit();
+
+      if (this.getLifecycleState() === 'ready') {
+        return;
+      }
+    }
+
+    this.assertCanDeliver();
   }
 
   private normalizeMessage(message: DiscordMessage): NormalizedDiscordMessage {
