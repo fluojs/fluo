@@ -11,8 +11,22 @@ import {
   runWithRequestContext,
   setContextValue,
 } from './request-context.js';
+import { resolveAsyncLocalStorageConstructor } from './request-context-node-store.js';
 import { createStackRequestContextStore } from './request-context-stack-store.js';
+import type { RequestContextStore } from './request-context-store.js';
 import type { RequestContext } from '../types.js';
+
+class MockAsyncLocalStorage implements RequestContextStore {
+  readonly #store = createStackRequestContextStore();
+
+  getStore(): RequestContext | undefined {
+    return this.#store.getStore();
+  }
+
+  run<T>(context: RequestContext, callback: () => T): T {
+    return this.#store.run(context, callback);
+  }
+}
 
 function createMockContext(): RequestContext {
   const root = new Container();
@@ -92,6 +106,29 @@ describe('request context store', () => {
 
     await expect(requestA).resolves.toBe('req_a');
     await expect(requestB).resolves.toBe('req_b');
+  });
+
+  it('resolves Node AsyncLocalStorage dynamically when getBuiltinModule is unavailable', async () => {
+    const AsyncLocalStorage = await resolveAsyncLocalStorageConstructor(
+      {
+        process: {
+          versions: {
+            node: '20.0.0',
+          },
+        },
+      },
+      async () => ({ AsyncLocalStorage: MockAsyncLocalStorage }),
+    );
+
+    expect(AsyncLocalStorage).toBe(MockAsyncLocalStorage);
+  });
+
+  it('does not load Node async hooks for non-Node hosts without async storage', async () => {
+    const AsyncLocalStorage = await resolveAsyncLocalStorageConstructor({}, async () => {
+      throw new Error('node async_hooks should not be loaded outside Node hosts');
+    });
+
+    expect(AsyncLocalStorage).toBeUndefined();
   });
 
   it('does not leak another request context during overlapping async fallback work', async () => {

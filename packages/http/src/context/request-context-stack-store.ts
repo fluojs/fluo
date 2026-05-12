@@ -1,6 +1,11 @@
 import type { RequestContext } from '../types.js';
 import type { RequestContextStore } from './request-context-store.js';
 
+/**
+ * Creates the synchronous fallback request-context store used when no async-context primitive exists.
+ *
+ * @returns A stack-backed request-context store scoped to synchronous callback frames.
+ */
 export function createStackRequestContextStore(): RequestContextStore {
   const stack: RequestContext[] = [];
 

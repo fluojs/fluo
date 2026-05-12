@@ -1,10 +1,11 @@
 import { FluoError } from '@fluojs/core';
 
 import type { ContextKey, RequestContext } from '../types.js';
+import { resolveAsyncLocalStorageConstructor } from './request-context-node-store.js';
 import { createStackRequestContextStore } from './request-context-stack-store.js';
 import type { RequestContextStore } from './request-context-store.js';
 
-const requestContextStore: RequestContextStore = createRequestContextStore();
+const requestContextStore: RequestContextStore = await createRequestContextStore();
 
 /**
  * Runs a callback inside the request-scoped async context.
@@ -96,32 +97,12 @@ export function setContextValue<T>(context: RequestContext, key: ContextKey<T>, 
   context.metadata[key.id] = value;
 }
 
-function createRequestContextStore(): RequestContextStore {
-  const AsyncLocalStorage = resolveAsyncLocalStorageConstructor();
+async function createRequestContextStore(): Promise<RequestContextStore> {
+  const AsyncLocalStorage = await resolveAsyncLocalStorageConstructor();
 
   if (typeof AsyncLocalStorage === 'function') {
     return new AsyncLocalStorage();
   }
 
   return createStackRequestContextStore();
-}
-
-function resolveAsyncLocalStorageConstructor(): (new () => RequestContextStore) | undefined {
-  const globalAsyncLocalStorage = (globalThis as typeof globalThis & {
-    AsyncLocalStorage?: new () => RequestContextStore;
-  }).AsyncLocalStorage;
-
-  if (typeof globalAsyncLocalStorage === 'function') {
-    return globalAsyncLocalStorage;
-  }
-
-  const getBuiltinModule = (globalThis as typeof globalThis & {
-    process?: {
-      getBuiltinModule?(id: 'node:async_hooks'): {
-        AsyncLocalStorage?: new () => RequestContextStore;
-      };
-    };
-  }).process?.getBuiltinModule;
-
-  return getBuiltinModule?.('node:async_hooks').AsyncLocalStorage;
 }
