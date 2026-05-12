@@ -134,6 +134,8 @@ const mailer = createDeepMock(MailService);
 
 프레임워크 지향 플랫폼 패키지를 작성할 때는 `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, `@fluojs/testing/web-runtime-adapter-portability` 같은 서브패스를 사용해 적합성 및 이식성 검증을 수행합니다.
 
+`PlatformConformanceHarness`는 diagnostics를 안정적인 공개 계약으로 취급합니다. 모든 diagnostic issue는 비어 있지 않은 안정적인 `code`와 사람이 읽을 수 있는 비어 있지 않은 `message`를 제공해야 하며, error severity diagnostics에는 하니스 설정에서 명시적으로 완화하지 않는 한 `fixHint`가 필요합니다.
+
 이식성 하니스의 cleanup도 계약에 포함됩니다. `app.close()`가 실패하면 하니스는 cleanup 실패를 보고하며, assertion 또는 listen 단계가 이미 실패한 경우에는 primary failure와 cleanup 실패를 모두 보존하는 aggregate error를 발생시킵니다. 네트워크 기반 HTTP 이식성 검증은 테스트 assertion을 실행하기 전에 `app.listen()`이 실패해도 부분적으로 bootstrap된 앱을 닫습니다.
 
 `HttpAdapterPortabilityHarness`와 `WebRuntimeHttpAdapterPortabilityHarness` 메서드는 공개 어댑터 계약 체크입니다. 직접 같은 검증을 다시 만들기보다 `assertPreservesMalformedCookieValues()`, `assertSupportsSseStreaming()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, `assertDefaultsMultipartTotalLimitToMaxBodySize()`, `assertSettlesStreamDrainWaitOnClose()`, `assertReportsConfiguredHostInStartupLogs()`, `assertReportsHttpsStartupUrl(...)`, `assertRemovesShutdownSignalListenersAfterClose()`처럼 초점이 분명한 assertion을 사용하세요. 네트워크 기반 하니스와 fetch-style web-runtime 하니스 모두 byte-sensitive payload를 위한 exact raw-byte 검증을 포함합니다.

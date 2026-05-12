@@ -132,6 +132,8 @@ Install `vitest` in the consuming workspace before using the mock helpers so the
 
 Use subpaths like `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, and `@fluojs/testing/web-runtime-adapter-portability` when authoring framework-facing platform packages.
 
+`PlatformConformanceHarness` treats diagnostics as a stable public contract: every diagnostic issue must provide a non-empty `code` and human-readable non-empty `message`, and error-severity diagnostics must include `fixHint` unless the harness configuration explicitly relaxes that requirement.
+
 Portability harness cleanup is part of the contract: if `app.close()` fails, the harness reports that cleanup failure, and when an assertion or listen step already failed it raises an aggregate error that preserves both the primary failure and the cleanup failure. Network-backed HTTP portability checks also close partially bootstrapped apps when `app.listen()` fails before a test assertion can run.
 
 `HttpAdapterPortabilityHarness` and `WebRuntimeHttpAdapterPortabilityHarness` methods are the public adapter contract checks. Prefer focused assertions such as `assertPreservesMalformedCookieValues()`, `assertSupportsSseStreaming()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, `assertDefaultsMultipartTotalLimitToMaxBodySize()`, `assertSettlesStreamDrainWaitOnClose()`, `assertReportsConfiguredHostInStartupLogs()`, `assertReportsHttpsStartupUrl(...)`, and `assertRemovesShutdownSignalListenersAfterClose()` instead of hand-rolled equivalents. Both network-backed and fetch-style web-runtime harnesses include exact raw-byte checks for byte-sensitive payloads.
