@@ -11,17 +11,17 @@ import type {
   EmailAddressLike,
   EmailMessage,
   EmailNotificationDispatchRequest,
-    EmailSendBatchResult,
-    EmailSendFailure,
-    EmailSendManyOptions,
-    EmailSendOptions,
-    EmailSendResult,
-    EmailTemplateRenderResult,
-    EmailTransport,
-    NormalizedEmailAddressList,
-    NormalizedEmailMessage,
-    NormalizedEmailModuleOptions,
-  } from './types.js';
+  EmailSendBatchResult,
+  EmailSendFailure,
+  EmailSendManyOptions,
+  EmailSendOptions,
+  EmailSendResult,
+  EmailTemplateRenderResult,
+  EmailTransport,
+  NormalizedEmailAddressList,
+  NormalizedEmailMessage,
+  NormalizedEmailModuleOptions,
+} from './types.js';
 
 function normalizeAddress(address: EmailAddressLike): EmailAddress {
   if (typeof address === 'string') {
@@ -65,6 +65,12 @@ function createDeliveryLifecycleError(state: EmailServiceLifecycleState): EmailL
 }
 
 type EmailServiceLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';
+
+function isShutdownLifecycleState(
+  state: EmailServiceLifecycleState,
+): state is Extract<EmailServiceLifecycleState, 'stopping' | 'stopped'> {
+  return state === 'stopping' || state === 'stopped';
+}
 
 function assertMessageContent(message: NormalizedEmailMessage): void {
   if (message.to.length === 0) {
@@ -141,7 +147,7 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
 
       this.lifecycleState = 'ready';
     } catch (error) {
-      if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      if (isShutdownLifecycleState(this.lifecycleState)) {
         throw error;
       }
 

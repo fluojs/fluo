@@ -311,7 +311,7 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 - `createEmailPlatformStatusSnapshot(...)`
 - `EmailConfigurationError`
-- `EmailLifecycleError`
+- `EmailLifecycleError`: lifecycle로 차단된 전달, transport 초기화 또는 검증, 소유 리소스 shutdown 실패에서 발생합니다. 애플리케이션 teardown과 전송이 경합할 수 있다면 이 에러를 catch하세요.
 - `EmailMessageValidationError`
 
 ### Node 전용 서브패스

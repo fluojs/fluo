@@ -311,7 +311,7 @@ These limitations are part of the package contract so transport selection, templ
 
 - `createEmailPlatformStatusSnapshot(...)`
 - `EmailConfigurationError`
-- `EmailLifecycleError`
+- `EmailLifecycleError`: thrown by lifecycle-gated delivery, transport initialization or verification, and owned-resource shutdown failures. Catch this error when sends can race with application teardown.
 - `EmailMessageValidationError`
 
 ### Node-only subpath

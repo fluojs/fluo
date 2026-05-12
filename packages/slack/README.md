@@ -219,7 +219,10 @@ These limitations are part of the package contract so runtime choice, provider c
 - `SlackModule.forRoot(options)` / `SlackModule.forRootAsync(options)`
 - `createSlackProviders(options)`
 - `SlackService`
+- `SlackService.send(message, options)`
 - `SlackService.sendMany(messages, options)`
+- `SlackService.sendNotification(notification, options)`
+- `SlackService.createPlatformStatusSnapshot()`
 - `SlackChannel`
 - `SLACK`
 - `SLACK_CHANNEL`
@@ -257,7 +260,7 @@ These limitations are part of the package contract so runtime choice, provider c
 - `SlackLifecycleState`
 - `SlackStatusAdapterInput`
 - `SlackConfigurationError`
-- `SlackLifecycleError`
+- `SlackLifecycleError`: thrown by lifecycle-gated delivery, transport initialization, and owned-resource shutdown failures. Catch this error when sends can race with application teardown.
 - `SlackMessageValidationError`
 - `SlackTransportError`
 

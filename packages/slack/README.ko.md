@@ -219,7 +219,10 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `SlackModule.forRoot(options)` / `SlackModule.forRootAsync(options)`
 - `createSlackProviders(options)`
 - `SlackService`
+- `SlackService.send(message, options)`
 - `SlackService.sendMany(messages, options)`
+- `SlackService.sendNotification(notification, options)`
+- `SlackService.createPlatformStatusSnapshot()`
 - `SlackChannel`
 - `SLACK`
 - `SLACK_CHANNEL`
@@ -257,7 +260,7 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `SlackLifecycleState`
 - `SlackStatusAdapterInput`
 - `SlackConfigurationError`
-- `SlackLifecycleError`
+- `SlackLifecycleError`: lifecycle로 차단된 전달, transport 초기화, 소유 리소스 shutdown 실패에서 발생합니다. 애플리케이션 teardown과 전송이 경합할 수 있다면 이 에러를 catch하세요.
 - `SlackMessageValidationError`
 - `SlackTransportError`
 

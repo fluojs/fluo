@@ -41,6 +41,12 @@ function createDeliveryLifecycleError(state: SlackServiceLifecycleState): SlackL
   return new SlackLifecycleError(`Slack delivery cannot start while the service lifecycle is ${state}.`);
 }
 
+function isShutdownLifecycleState(
+  state: SlackServiceLifecycleState,
+): state is Extract<SlackServiceLifecycleState, 'stopping' | 'stopped'> {
+  return state === 'stopping' || state === 'stopped';
+}
+
 function normalizeOptionalString(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
@@ -111,7 +117,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
 
       this.lifecycleState = 'ready';
     } catch (error) {
-      if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      if (isShutdownLifecycleState(this.lifecycleState)) {
         throw error;
       }
 
@@ -323,7 +329,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
 
     if (recipients.length > 1) {
       throw new SlackMessageValidationError(
-      'Slack notifications accept exactly one target channel per dispatch. Use `sendMany(...)` for fan-out delivery.',
+        'Slack notifications accept exactly one target channel per dispatch. Use `sendMany(...)` for fan-out delivery.',
       );
     }
 
