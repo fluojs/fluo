@@ -4,6 +4,7 @@ import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import type { HttpApplicationAdapter } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as denoPublicApi from './deno.js';
@@ -264,6 +265,16 @@ const oversizedBinaryMessageCases: OversizedBinaryMessageCase[] = [
 ];
 
 describe('@fluojs/websockets/deno', () => {
+  it('aligns Deno fetch-style realtime capability with the canonical conformance harness', () => {
+    createFetchStyleWebSocketConformanceHarness({
+      createAdapter: () => new TestDenoAdapter(),
+      expectedReason:
+        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.',
+      expectedSupport: 'supported',
+      name: '@fluojs/websockets/deno test adapter',
+    }).assertExposesRawWebSocketExpansionContract();
+  });
+
   it('exposes the explicit Deno websocket seam', () => {
     expect(denoPublicApi).toHaveProperty('DenoWebSocketModule');
     expect(denoPublicApi).toHaveProperty('DenoWebSocketGatewayLifecycleService');

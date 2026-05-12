@@ -4,6 +4,7 @@ import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import type { HttpApplicationAdapter } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as workerPublicApi from './cloudflare-workers.js';
@@ -226,6 +227,16 @@ function createDeferred<T = void>() {
 }
 
 describe('@fluojs/websockets/cloudflare-workers', () => {
+  it('aligns Workers fetch-style realtime capability with the canonical conformance harness', () => {
+    createFetchStyleWebSocketConformanceHarness({
+      createAdapter: () => new TestWorkerAdapter(),
+      expectedReason:
+        'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @fluojs/websockets/cloudflare-workers for the official raw websocket binding.',
+      expectedSupport: 'supported',
+      name: '@fluojs/websockets/cloudflare-workers test adapter',
+    }).assertExposesRawWebSocketExpansionContract();
+  });
+
   it('exposes the explicit Cloudflare Workers websocket seam', () => {
     expect(workerPublicApi).toHaveProperty('CloudflareWorkersWebSocketModule');
     expect(workerPublicApi).toHaveProperty('CloudflareWorkersWebSocketGatewayLifecycleService');

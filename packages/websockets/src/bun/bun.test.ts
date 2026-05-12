@@ -4,6 +4,7 @@ import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import type { HttpApplicationAdapter } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as bunPublicApi from './bun.js';
@@ -190,6 +191,16 @@ function createDeferred<T = void>() {
 }
 
 describe('@fluojs/websockets/bun', () => {
+  it('aligns Bun fetch-style realtime capability with the canonical conformance harness', () => {
+    createFetchStyleWebSocketConformanceHarness({
+      createAdapter: () => new TestBunAdapter(),
+      expectedReason:
+        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.',
+      expectedSupport: 'supported',
+      name: '@fluojs/websockets/bun test adapter',
+    }).assertExposesRawWebSocketExpansionContract();
+  });
+
   it('exposes the explicit Bun websocket seam', () => {
     expect(bunPublicApi).toHaveProperty('BunWebSocketModule');
     expect(bunPublicApi).toHaveProperty('BunWebSocketGatewayLifecycleService');
