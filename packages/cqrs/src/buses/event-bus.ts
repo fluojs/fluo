@@ -6,9 +6,13 @@ import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs
 import { CqrsBusBase } from '../discovery.js';
 import { createIsolatedEvent } from '../event-clone.js';
 import { getEventHandlerMetadata } from '../metadata.js';
-import { CqrsSagaLifecycleService } from './saga-bus.js';
+import { CQRS_MODULE_OPTIONS } from '../tokens.js';
 import { createCqrsPlatformStatusSnapshot } from '../status.js';
+import type { CqrsModuleOptions } from '../module.js';
 import type { CqrsEventBus, CqrsEventType, EventHandlerDescriptor, IEvent, IEventHandler } from '../types.js';
+import { CqrsSagaLifecycleService } from './saga-bus.js';
+
+const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
 
 function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
   if (typeof value !== 'object' || value === null) {
@@ -24,12 +28,13 @@ function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
  * This service keeps CQRS event handlers singleton-only, fans events into saga orchestration,
  * and delegates the final publication step to `@fluojs/event-bus`.
  */
-@Inject(FLUO_EVENT_BUS, CqrsSagaLifecycleService, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
+@Inject(FLUO_EVENT_BUS, CqrsSagaLifecycleService, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, CQRS_MODULE_OPTIONS)
 export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors: EventHandlerDescriptor[] = [];
   private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
   private readonly activePublishPipelines = new Set<Promise<void>>();
+  private shutdownDrainTimeouts = 0;
   private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
 
   constructor(
@@ -38,6 +43,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     runtimeContainer: ConstructorParameters<typeof CqrsBusBase>[0],
     compiledModules: ConstructorParameters<typeof CqrsBusBase>[1],
     logger: ConstructorParameters<typeof CqrsBusBase>[2],
+    private readonly moduleOptions: CqrsModuleOptions = {},
   ) {
     super(runtimeContainer, compiledModules, logger);
   }
@@ -57,8 +63,8 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   async onApplicationShutdown(): Promise<void> {
     this.lifecycleState = 'stopping';
 
-    while (this.activePublishPipelines.size > 0) {
-      await Promise.allSettled(Array.from(this.activePublishPipelines));
+    if (this.activePublishPipelines.size > 0) {
+      await this.drainActivePublishPipelines();
     }
 
     this.lifecycleState = 'stopped';
@@ -77,7 +83,10 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
       inFlightSagaExecutions: sagaSnapshot.inFlightSagaExecutions,
       lifecycleState: this.lifecycleState,
       sagaLifecycleState: sagaSnapshot.lifecycleState,
+      sagaShutdownDrainTimeouts: sagaSnapshot.shutdownDrainTimeouts,
       sagasDiscovered: sagaSnapshot.sagasDiscovered,
+      shutdownDrainTimeoutMs: this.resolveShutdownDrainTimeoutMs(),
+      shutdownDrainTimeouts: this.shutdownDrainTimeouts,
     });
   }
 
@@ -134,6 +143,47 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     } finally {
       this.activePublishPipelines.delete(pipeline);
     }
+  }
+
+  private async drainActivePublishPipelines(): Promise<void> {
+    const activePipelines = Array.from(this.activePublishPipelines);
+    const timeoutMs = this.resolveShutdownDrainTimeoutMs();
+    const drained = await this.awaitShutdownDrain(activePipelines, timeoutMs);
+
+    if (!drained) {
+      this.shutdownDrainTimeouts += 1;
+      this.logger.warn(
+        `CQRS event shutdown drain exceeded ${String(timeoutMs)}ms with ${String(activePipelines.length)} active publish pipeline(s); continuing shutdown.`,
+        'CqrsEventBusService',
+      );
+    }
+  }
+
+  private async awaitShutdownDrain(activePipelines: Promise<void>[], timeoutMs: number): Promise<boolean> {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<false>((resolve) => {
+      timeoutId = setTimeout(() => resolve(false), timeoutMs);
+    });
+
+    const drain = Promise.allSettled(activePipelines).then(() => true);
+
+    try {
+      return await Promise.race([drain, timeout]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
+  private resolveShutdownDrainTimeoutMs(): number {
+    const timeoutMs = this.moduleOptions.shutdown?.drainTimeoutMs;
+
+    if (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      return DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS;
+    }
+
+    return Math.floor(timeoutMs);
   }
 
   private matchEventDescriptors(event: IEvent): EventHandlerDescriptor[] {

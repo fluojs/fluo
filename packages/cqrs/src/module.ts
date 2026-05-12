@@ -6,7 +6,7 @@ import { CommandBusLifecycleService } from './buses/command-bus.js';
 import { CqrsEventBusService } from './buses/event-bus.js';
 import { QueryBusLifecycleService } from './buses/query-bus.js';
 import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
-import { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
+import { COMMAND_BUS, CQRS_MODULE_OPTIONS, EVENT_BUS, QUERY_BUS } from './tokens.js';
 import type {
   CommandHandlerClass,
   EventHandlerClass,
@@ -26,6 +26,10 @@ export interface CqrsModuleOptions {
   global?: boolean;
   queryHandlers?: readonly QueryHandlerClass[];
   sagas?: readonly SagaClass[];
+  /** Shutdown drain policy for CQRS event pipelines and saga execution. `drainTimeoutMs` defaults to 5000ms. */
+  shutdown?: {
+    drainTimeoutMs?: number;
+  };
 }
 
 function collectOptionHandlerProviders(options: CqrsModuleOptions): Provider[] {
@@ -58,6 +62,10 @@ function collectOptionHandlerProviders(options: CqrsModuleOptions): Provider[] {
  */
 export function createCqrsProviders(options: CqrsModuleOptions = {}): Provider[] {
   return [
+    {
+      provide: CQRS_MODULE_OPTIONS,
+      useValue: options,
+    },
     CommandBusLifecycleService,
     {
       inject: [CommandBusLifecycleService],
