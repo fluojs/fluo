@@ -168,6 +168,8 @@ await this.discord.send({
 });
 ```
 
+Discord poll payload도 사용자가 볼 수 있는 메시지 content로 취급됩니다. 대상 Discord 기능이 poll을 지원한다면 fallback `content` 문자열 없이 poll-only 메시지를 보낼 수 있습니다.
+
 ## 17.6 FluoShop Context: Operational Alerts
 
 FluoShop에서는 내부 운영 알림에는 Slack을 사용하고, 공개 커뮤니티에 공유할 주문 알림에는 Discord를 사용합니다. `NotificationsService`를 사용하면 하나의 도메인 이벤트를 정책에 따라 한 플랫폼 또는 여러 플랫폼으로 라우팅할 수 있습니다. 이 구분은 이벤트 생산자에게 채널 선택 책임을 떠넘기지 않고, 알림 정책을 중앙에서 관리하게 해줍니다.
@@ -194,7 +196,9 @@ async alertOps(event: OrderPlacedEvent) {
 내장 웹훅 트랜스포트는 운영 환경의 실패 양상을 기준으로 설계되어 있습니다. 네트워크 오류, 만료된 웹훅 URL, 플랫폼 rate limit처럼 채팅 연동에서 자주 만나는 문제를 같은 전송 경계에서 다룰 수 있습니다.
 
 - **자동 재시도**: 일시적인 `408`, `429`, `5xx` 오류에는 지수 백오프(exponential backoff)를 적용해 다시 시도합니다.
+- **Rate limit 힌트**: Discord webhook `429` 응답은 JSON `retry_after` 값을 포함할 수 있습니다. 내장 Discord transport는 이 힌트를 반영한 뒤, 없을 때는 bounded exponential backoff로 폴백합니다.
 - **명시적 에러**: 영구적인 실패(404, 403 등)는 `SlackTransportError` 또는 `DiscordTransportError`로 드러내 애플리케이션 레벨에서 처리하게 합니다.
+- **Lifecycle readiness**: `DiscordService`는 bootstrap 실패 이후, shutdown 중, 또는 shutdown 이후의 send를 `DiscordLifecycleError`로 거부하며 ready lifecycle 밖에서 transport를 lazy 생성하거나 재사용하지 않습니다.
 
 ## 17.8 Status Snapshots
 
@@ -204,6 +208,11 @@ async alertOps(event: OrderPlacedEvent) {
 const slackStatus = slackService.createPlatformStatusSnapshot();
 if (slackStatus.readiness.status !== 'ready') {
   metrics.increment('notifications.slack.offline');
+}
+
+const discordStatus = discordService.createPlatformStatusSnapshot();
+if (discordStatus.readiness.status !== 'ready') {
+  metrics.increment('notifications.discord.offline');
 }
 ```
 

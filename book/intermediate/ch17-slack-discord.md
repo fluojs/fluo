@@ -168,6 +168,8 @@ await this.discord.send({
 });
 ```
 
+Discord poll payloads are also treated as visible message content. A poll-only message can be sent without a fallback `content` string when the target Discord capability supports polls.
+
 ## 17.6 FluoShop Context: Operational Alerts
 
 In FluoShop, Slack is used for internal operational notifications, while Discord is used for order notifications shared with the public community.
@@ -196,7 +198,9 @@ async alertOps(event: OrderPlacedEvent) {
 The built-in webhook transports are designed around failure patterns seen in production environments.
 
 - **Automatic retry**: Transient `408`, `429`, and `5xx` errors are retried with exponential backoff.
+- **Rate-limit hints**: Discord webhook `429` responses can include a JSON `retry_after` value. The built-in Discord transport honors that hint before falling back to bounded exponential backoff.
 - **Explicit errors**: Permanent failures, such as 404 or 403, are surfaced as `SlackTransportError` or `DiscordTransportError` so the application level can handle them.
+- **Lifecycle readiness**: `DiscordService` rejects sends after bootstrap failure, during shutdown, or after shutdown with `DiscordLifecycleError` instead of lazily creating or reusing a transport outside the ready lifecycle.
 
 ## 17.8 Status Snapshots
 
@@ -206,6 +210,11 @@ Chat integrations can stop working because webhook URLs expire, permissions chan
 const slackStatus = slackService.createPlatformStatusSnapshot();
 if (slackStatus.readiness.status !== 'ready') {
   metrics.increment('notifications.slack.offline');
+}
+
+const discordStatus = discordService.createPlatformStatusSnapshot();
+if (discordStatus.readiness.status !== 'ready') {
+  metrics.increment('notifications.discord.offline');
 }
 ```
 
