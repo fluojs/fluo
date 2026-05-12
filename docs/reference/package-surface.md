@@ -46,6 +46,7 @@
 - **`@fluojs/jwt`**: HTTP-agnostic JWT signing, verification, and principal normalization.
 - **`@fluojs/passport`**: Strategy-agnostic authentication guards, scopes, and Passport.js bridges.
 - **`@fluojs/microservices`**: Pattern-matching transport abstraction for TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC.
+- **`@fluojs/event-bus`**: In-process domain event fan-out with optional Redis Pub/Sub transport, inherited event channel fan-out, bounded publish cancellation/timeouts, and shutdown drain semantics for both local publishes and inbound transport callbacks.
 - **`@fluojs/notifications`**: Shared channel contract and orchestration layer for provider-specific notification packages.
 - **`@fluojs/email`**: Transport-agnostic email delivery core. It provides a first-party notifications channel and queue worker integration through `@fluojs/email/queue`.
 - **`@fluojs/email/node`**: Node.js specific subpath for `@fluojs/email` that provides first-party Nodemailer/SMTP transport.
