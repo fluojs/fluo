@@ -244,9 +244,11 @@ describe('@fluojs/platform-nodejs', () => {
     });
     const registeredListeners = process.listeners(signal).filter((listener) => !listenersBefore.has(listener));
 
-    expect(registeredListeners.length).toBeGreaterThan(0);
-
-    await app.close();
+    try {
+      expect(registeredListeners.length).toBeGreaterThan(0);
+    } finally {
+      await app.close();
+    }
 
     for (const listener of registeredListeners) {
       expect(process.listeners(signal)).not.toContain(listener);
