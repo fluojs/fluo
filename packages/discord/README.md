@@ -96,7 +96,8 @@ Behavioral contract notes:
 
 - `DiscordService.send(...)` resolves `defaultThreadId` before delivery.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
-- Sends attempted while the service is shutting down or already stopped are rejected before reusing the cached transport.
+- Sends attempted before bootstrap failure recovery, while shutdown is in progress, or after shutdown are rejected with `DiscordLifecycleError` before reusing or lazily creating transports; any in-flight factory-owned transport creation is awaited and closed by shutdown.
+- `DiscordService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options.
 - Blank `defaultThreadId` and `notifications.channel` values are trimmed and ignored; the notifications channel defaults to `discord`.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
@@ -143,6 +144,7 @@ Behavioral contract notes:
 - One notification dispatch maps to exactly one Discord thread route. Use `payload.threadId` or a single entry in `recipients`.
 - If `payload.threadId` is omitted, `DiscordService.sendNotification(...)` uses the first `recipients` entry or falls back to `defaultThreadId`.
 - Notification metadata is merged from payload metadata, dispatch metadata, and template/subject markers. `template` is rendered only when a renderer is configured.
+- Discord `poll` payloads are accepted as visible content even when `content`, `embeds`, `components`, and `attachments` are omitted.
 - If a notification needs fan-out across multiple Discord threads, call `sendMany(...)` instead of one multi-recipient dispatch.
 
 ### Webhook-first delivery with explicit fetch injection
@@ -165,9 +167,9 @@ For richer API integrations such as bot-backed REST delivery, implement the expo
 
 Behavioral contract notes:
 
-- The built-in webhook transport retries transient `408`, `429`, and `5xx` responses, and also retries transport-level exceptions, using bounded exponential backoff before surfacing an error. Permanent upstream responses are not retried.
+- The built-in webhook transport retries transient `408`, `429`, and `5xx` responses, and also retries transport-level exceptions, using bounded exponential backoff before surfacing an error. Discord `429` JSON `retry_after` hints are honored when present. Permanent upstream responses are not retried.
 - Malformed or non-absolute `webhookUrl` values are rejected immediately as `DiscordConfigurationError` instead of being retried as delivery failures.
-- Caller-visible `DiscordTransportError` messages omit raw upstream response bodies by default.
+- Caller-visible `DiscordTransportError` messages omit raw upstream response bodies by default, while successful webhook responses remain available on `DiscordSendResult.response` for callers that opt into `wait: true` response inspection.
 
 ### Intentional limitations
 
@@ -186,6 +188,10 @@ These limitations are part of the package contract so runtime choice, provider c
 
 - `DiscordModule.forRoot(options)` / `DiscordModule.forRootAsync(options)`
 - `DiscordService`
+- `DiscordService.send(message, options)`
+- `DiscordService.sendMany(messages, options)`
+- `DiscordService.sendNotification(notification, options)`
+- `DiscordService.createPlatformStatusSnapshot()`
 - `DiscordChannel`
 - `DISCORD`
 - `DISCORD_CHANNEL`
@@ -221,8 +227,11 @@ Compose applications through `DiscordModule` and integrate notifications through
 ### Status and errors
 
 - `createDiscordPlatformStatusSnapshot(...)`
+- `DiscordPlatformStatusSnapshot`
 - `DiscordLifecycleState`
+- `DiscordStatusAdapterInput`
 - `DiscordConfigurationError`
+- `DiscordLifecycleError`: thrown by lifecycle-gated delivery, transport initialization, and owned-resource shutdown failures. Catch this error when sends can race with bootstrap failure or application teardown.
 - `DiscordMessageValidationError`
 - `DiscordTransportError`
 
