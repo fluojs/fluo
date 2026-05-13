@@ -16,7 +16,7 @@ import { bootstrapApplication, defineModule, FluoFactory, type Application, type
 import { bootstrapNodeApplication } from '@fluojs/runtime/node';
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@fluojs/websockets';
 import { io as createClient, type Socket as ClientSocket } from 'socket.io-client';
-import type { Server as SocketIoServer, Socket } from 'socket.io';
+import type { Namespace, Server as SocketIoServer, Socket } from 'socket.io';
 
 import { SocketIoModule } from './module.js';
 import * as publicApi from './index.js';
@@ -491,6 +491,38 @@ describe('@fluojs/socket.io', () => {
       expect(state.disconnectReason).toBe('client namespace disconnect');
     });
 
+    await app.close();
+  });
+
+  it('configures the Bun realtime binding before listen when only the raw Socket.IO server is used', async () => {
+    const port = await findAvailablePort();
+    const adapter = new TestBunSocketIoAdapter(port);
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({ transports: ['polling'] })],
+    });
+
+    const app = await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    });
+
+    await app.listen();
+
+    const server = await app.container.resolve<SocketIoServer>(SOCKETIO_SERVER);
+    server.on('connection', (socket: Socket) => {
+      socket.emit('raw:ready', 'ok');
+    });
+
+    const socket = createClient(`http://127.0.0.1:${String(port)}`, {
+      reconnection: false,
+      transports: ['polling'],
+    });
+
+    expect(await onceEvent<string>(socket, 'raw:ready')).toBe('ok');
+
+    socket.close();
     await app.close();
   });
 
@@ -1319,6 +1351,68 @@ describe('@fluojs/socket.io', () => {
     await Promise.resolve();
 
     expect(socketRegistry.has(socket.id)).toBe(false);
+  });
+
+  it('honors an explicit namespace path when joining or leaving a registered socket id', () => {
+    const service = new SocketIoLifecycleService(
+      {} as never,
+      [] as never,
+      createLogger([]),
+      {
+        async close() {},
+        getRealtimeCapability() {
+          return createServerBackedHttpAdapterRealtimeCapability({});
+        },
+      } as never,
+      {
+        transports: ['websocket'],
+      },
+    );
+    const chatJoinedRooms: string[] = [];
+    const chatLeftRooms: string[] = [];
+    const adminJoinedRooms: string[] = [];
+    const adminLeftRooms: string[] = [];
+    const socket = {
+      id: 'socket-1',
+      join(room: string) {
+        chatJoinedRooms.push(room);
+      },
+      leave(room: string) {
+        chatLeftRooms.push(room);
+      },
+      nsp: { name: '/chat' },
+    } as unknown as Socket;
+    const adminNamespace = {
+      in(socketId: string) {
+        expect(socketId).toBe('socket-1');
+        return {
+          socketsJoin(room: string) {
+            adminJoinedRooms.push(room);
+          },
+          socketsLeave(room: string) {
+            adminLeftRooms.push(room);
+          },
+        };
+      },
+      sockets: new Map<string, Socket>(),
+    } as unknown as Namespace;
+    const chatNamespace = {
+      sockets: new Map<string, Socket>([['socket-1', socket]]),
+    } as unknown as Namespace;
+
+    Reflect.set(service, 'attachments', [
+      { descriptors: [], namespace: chatNamespace, path: '/chat' },
+      { descriptors: [], namespace: adminNamespace, path: '/admin' },
+    ]);
+    (Reflect.get(service, 'socketRegistry') as Map<string, Socket>).set('socket-1', socket);
+
+    service.joinRoom('socket-1', 'shared-room', '/admin');
+    service.leaveRoom('socket-1', 'shared-room', '/admin');
+
+    expect(chatJoinedRooms).toEqual([]);
+    expect(chatLeftRooms).toEqual([]);
+    expect(adminJoinedRooms).toEqual(['shared-room']);
+    expect(adminLeftRooms).toEqual(['shared-room']);
   });
 
   for (const scenario of supportedSocketIoAdapterScenarios) {
