@@ -340,8 +340,7 @@ export function resolveRequestIdFromHeaders(headers: IncomingHttpHeaders): strin
 }
 
 function resolvePrimaryRequestIdFromHeaders(headers: IncomingHttpHeaders): string | undefined {
-  const requestId = headers['x-request-id'];
-  return Array.isArray(requestId) ? requestId[0] : requestId;
+  return resolveRequestIdFromHeaders(headers);
 }
 
 /**

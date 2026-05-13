@@ -58,7 +58,7 @@ const adapter = createNodejsAdapter({
 
 `maxBodySize`는 바이트 수를 나타내는 숫자만 받습니다. 이 값은 raw Node 요청 바디가 아직 스트리밍되는 동안 바로 강제되며, 부트스트랩 시 `multipart.maxTotalSize`를 따로 재정의하지 않으면 같은 값이 멀티파트 전체 페이로드 한도의 기본값으로도 사용됩니다.
 
-`createNodejsAdapter()`는 기본 port로 `3000`을 사용하고 `process.env.PORT`를 무시하며, `port` 또는 `maxBodySize`가 잘못되면 throw합니다. 기본 request body cap은 `1 MiB`입니다.
+`createNodejsAdapter()`는 기본 port로 `3000`을 사용하고 `process.env.PORT`를 무시하며, `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`가 잘못되면 throw합니다. 기본 request body cap은 `1 MiB`입니다.
 
 ### 직접 애플리케이션 실행
 `runNodejsApplication`을 사용하여 graceful shutdown 및 로깅이 포함된 보일러플레이트 없는 시작이 가능합니다.
@@ -87,16 +87,16 @@ await app.listen();
 
 - `createNodejsAdapter(options)`는 Node 내장 `http` 또는 `https` 서버 primitive 위에서 fluo를 직접 실행하는 adapter-first 진입점입니다.
 - `maxBodySize`는 0 이상의 정수 바이트 수만 받으며, raw Node 요청 바이트가 아직 스트리밍되는 동안 강제되고, 부트스트랩/실행 헬퍼에서 `multipart.maxTotalSize`를 명시적으로 제공하지 않으면 멀티파트 전체 크기 한도의 기본값이 됩니다.
-- Raw Node adapter는 대소문자가 섞인 JSON 및 multipart `content-type` 값을 normalize하고, request body가 `maxBodySize`를 넘으면 `413`을 반환하며, `getServer()` / `getRealtimeCapability()`를 통해 server-backed realtime capability를 노출합니다.
+- Raw Node adapter는 대소문자가 섞인 JSON 및 multipart `content-type` 값을 normalize하고, request body가 `maxBodySize`를 넘으면 `413`을 반환하며, `x-request-id`와 `x-correlation-id` fallback을 request context와 error response에 전파하고, `getServer()` / `getRealtimeCapability()`를 통해 server-backed realtime capability를 노출합니다.
 - `bootstrapNodejsApplication(module, options)`는 raw Node 어댑터가 포함된 애플리케이션을 만들지만 리스닝은 시작하지 않으므로 이후 `app.listen()`과 `app.close()` 생명주기는 호출자가 소유합니다.
-- `runNodejsApplication(module, options)`는 부트스트랩, 리스닝 시작, graceful shutdown 배선을 함께 수행합니다. 시그널 기반 종료가 타임아웃되거나 실패하면 해당 상태를 로그와 `process.exitCode`로 보고하며, 최종 프로세스 종료는 호스트 프로세스가 계속 소유합니다.
+- `runNodejsApplication(module, options)`는 부트스트랩, 리스닝 시작, graceful shutdown 배선을 함께 수행합니다. Listen retry는 `retryLimit`/`retryDelayMs`를 따르고, shutdown은 bounded drain 전에 idle keep-alive connection을 닫으며, 시그널 기반 종료가 타임아웃되거나 실패하면 해당 상태를 로그와 `process.exitCode`로 보고합니다. 최종 프로세스 종료는 호스트 프로세스가 계속 소유합니다.
 - 고급 압축 및 shutdown 유틸리티 함수는 이 기본 platform startup surface가 아니라 `@fluojs/runtime/node` 또는 runtime 내부 seam에 남아 있습니다.
 
 ## Conformance 커버리지
 
 `packages/platform-nodejs/src/index.test.ts`는 문서화된 Node.js 계약을 위한 package-local regression target입니다. 이 파일은 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body 제외, multipart 전체 크기 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 검증합니다.
 
-같은 파일은 package-specific public surface, type alias, adapter-first startup, `maxBodySize` failure, 대소문자가 섞인 JSON 및 multipart content-type parsing, server-backed realtime capability 노출도 함께 다룹니다. Startup behavior를 바꿀 때는 README 예제 포인터를 아래 테스트 파일 및 Node.js 챕터 예제와 맞춰 유지하세요.
+같은 파일은 package-specific public surface, type alias, adapter-first startup, lifecycle option validation, listen retry behavior, idle keep-alive shutdown, `maxBodySize` failure, 대소문자가 섞인 JSON 및 multipart content-type parsing, `x-correlation-id` request ID fallback, server-backed realtime capability 노출도 함께 다룹니다. Startup behavior를 바꿀 때는 README 예제 포인터를 아래 테스트 파일 및 Node.js 챕터 예제와 맞춰 유지하세요.
 
 ## 공개 API 개요
 
