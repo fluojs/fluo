@@ -432,9 +432,13 @@ function closeDenoServerWithDrain(
   waitForDrain: () => Promise<void>,
 ): Promise<void> {
   return (async () => {
-    abortController?.abort();
-    await server.shutdown();
-    await waitForDrain();
+    try {
+      await server.shutdown();
+      await waitForDrain();
+    } finally {
+      abortController?.abort();
+    }
+
     await server.finished;
   })();
 }

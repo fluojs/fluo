@@ -60,12 +60,21 @@ const response = await adapter.handle(new Request('http://localhost:3000/health'
 ```
 
 ### Deno-Native WebSocket Support
-The adapter supports Deno's native `Deno.upgradeWebSocket` through the `@fluojs/websockets/deno` binding.
+The adapter supports Deno's native `Deno.upgradeWebSocket` after the application imports and configures the `@fluojs/websockets/deno` binding. Without that binding, websocket upgrade requests continue through normal HTTP dispatch instead of being upgraded implicitly.
 
 ```typescript
-// Gateways automatically use Deno's native upgrade when the Deno adapter is active
+import { Module } from '@fluojs/core';
+import { WebSocketGateway } from '@fluojs/websockets';
+import { DenoWebSocketModule } from '@fluojs/websockets/deno';
+
 @WebSocketGateway({ path: '/ws' })
 export class MyGateway {}
+
+@Module({
+  imports: [DenoWebSocketModule.forRoot()],
+  providers: [MyGateway],
+})
+export class RealtimeModule {}
 ```
 
 ## HTTPS and Runtime Portability
@@ -85,11 +94,11 @@ await runDenoApplication(AppModule, {
 
 `hostname` remains the Deno-native option name. The adapter also accepts `host` as a portability alias for shared HTTP adapter tests and cross-runtime configuration helpers; when both are provided, `hostname` wins.
 
-Advanced options include injectable `serve` and `upgradeWebSocket` seams for tests or non-hosted runtimes, `rawBody`, `maxBodySize`, `multipart`, and `shutdownSignals`. `runDenoApplication(...)` wires `SIGINT`/`SIGTERM` by default, `shutdownSignals: false` disables signal registration, and close waits up to 10 seconds for active requests to drain. `handle(...)` returns a JSON `500` before `listen()` binds the dispatcher and a JSON `503` while shutdown is in progress.
+Advanced options include injectable `serve` and `upgradeWebSocket` seams for tests or non-hosted runtimes, `rawBody`, `maxBodySize`, `multipart`, and `shutdownSignals`. When a seam is not injected, the adapter falls back to `globalThis.Deno.serve` and `globalThis.Deno.upgradeWebSocket` at listen/upgrade time. `runDenoApplication(...)` wires `SIGINT`/`SIGTERM` by default, `shutdownSignals: false` disables signal registration, and close waits up to 10 seconds for active requests to drain before aborting the Deno serve signal. `handle(...)` returns a JSON `500` before `listen()` binds the dispatcher and a JSON `503` while shutdown is in progress.
 
 ## Conformance Coverage
 
-`packages/platform-deno/src/adapter.test.ts` is the package-local regression target for the documented Deno contract. It covers shared Web dispatch delegation, HTTPS startup forwarding, `SIGINT`/`SIGTERM` signal listener registration and cleanup, websocket upgrade binding, pre-listen `500` handling, shutdown `503` handling, in-flight request drain, and the bounded 10-second close timeout.
+`packages/platform-deno/src/adapter.test.ts` is the package-local regression target for the documented Deno contract. It covers shared Web dispatch delegation, HTTPS startup forwarding, `SIGINT`/`SIGTERM` signal listener registration and cleanup, websocket upgrade binding, global Deno serve/upgrade fallback seams, pre-listen `500` handling, shutdown `503` handling, in-flight request drain before serve-signal abort, and the bounded 10-second close timeout.
 
 The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Deno beside Bun and Cloudflare Workers for malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The README parity assertion in the package test keeps these documented edge-runtime coverage claims synchronized with the Korean mirror.
 

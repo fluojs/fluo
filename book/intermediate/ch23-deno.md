@@ -87,10 +87,10 @@ Alignment with Web standards makes the runtime boundary of fluo apps running on 
 
 ## 23.4 Native Deno WebSockets
 
-Like Bun, Deno provides its own WebSocket implementation through `Deno.upgradeWebSocket`. fluo provides a runtime-specific path for this so gateway code does not become tied to platform upgrade details.
+Like Bun, Deno provides its own WebSocket implementation through `Deno.upgradeWebSocket`. fluo provides a runtime-specific binding for this so gateway code does not become tied to platform upgrade details. Import `DenoWebSocketModule.forRoot()` from `@fluojs/websockets/deno` in the module that owns Deno-hosted gateways; the Deno HTTP adapter only performs native upgrades after that binding is configured.
 
 ```typescript
-// When the Deno adapter is active, gateways automatically use Deno's native upgrade.
+// With DenoWebSocketModule configured, gateways use Deno's native upgrade.
 import { Module } from '@fluojs/core';
 import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
 import { DenoWebSocketModule } from '@fluojs/websockets/deno';
@@ -101,7 +101,7 @@ export class MyGateway {
   handlePing() {
     return { event: 'pong', data: 'hello from deno' };
   }
-  // fluo handles Deno-native upgrades internally.
+  // The Deno binding handles native upgrades internally.
 }
 
 @Module({

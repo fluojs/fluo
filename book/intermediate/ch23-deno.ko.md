@@ -87,10 +87,10 @@ console.log(await response.json());
 
 ## 23.4 Native Deno WebSockets
 
-Bun과 마찬가지로 Deno는 `Deno.upgradeWebSocket`을 통한 자체 WebSocket 구현을 제공합니다. fluo는 이를 위한 런타임별 경로를 제공하여 게이트웨이 코드가 플랫폼 업그레이드 세부 사항에 묶이지 않도록 합니다.
+Bun과 마찬가지로 Deno는 `Deno.upgradeWebSocket`을 통한 자체 WebSocket 구현을 제공합니다. fluo는 이를 위한 런타임별 바인딩을 제공하여 게이트웨이 코드가 플랫폼 업그레이드 세부 사항에 묶이지 않도록 합니다. Deno에서 호스팅되는 게이트웨이를 소유한 모듈에 `@fluojs/websockets/deno`의 `DenoWebSocketModule.forRoot()`를 import하세요. Deno HTTP 어댑터는 이 바인딩이 설정된 뒤에만 네이티브 upgrade를 수행합니다.
 
 ```typescript
-// Deno 어댑터가 활성화된 경우 게이트웨이가 자동으로 Deno의 네이티브 업그레이드를 사용합니다.
+// DenoWebSocketModule을 설정하면 게이트웨이가 Deno의 네이티브 업그레이드를 사용합니다.
 import { Module } from '@fluojs/core';
 import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
 import { DenoWebSocketModule } from '@fluojs/websockets/deno';
@@ -101,7 +101,7 @@ export class MyGateway {
   handlePing() {
     return { event: 'pong', data: 'hello from deno' };
   }
-  // fluo가 내부적으로 Deno 네이티브 업그레이드를 처리합니다.
+  // Deno 바인딩이 내부적으로 네이티브 업그레이드를 처리합니다.
 }
 
 @Module({
