@@ -436,7 +436,12 @@ function listenNodeServerWithRetry(server: NodeServer, options: NodeListenRetryO
         onListeningListener = undefined;
 
         if (error.code === 'EADDRINUSE' && attempt < options.retryLimit) {
-          scheduleNodeListenRetry(server, attempt, options.retryDelayMs, tryListen, (timer) => {
+          scheduleNodeListenRetry(server, attempt, options.retryDelayMs, tryListen, () => settled || options.signal?.aborted === true, (timer) => {
+            if (settled || options.signal?.aborted) {
+              clearTimeout(timer);
+              return;
+            }
+
             retryTimer = timer;
           });
           return;
@@ -469,15 +474,35 @@ function scheduleNodeListenRetry(
   attempt: number,
   retryDelayMs: number,
   tryListen: (attempt: number) => void,
+  isCancelled: () => boolean,
   setTimer: (timer: ReturnType<typeof setTimeout>) => void,
 ): void {
   const schedule = () => {
-    setTimer(setTimeout(() => {
+    if (isCancelled()) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (isCancelled()) {
+        return;
+      }
+
       tryListen(attempt + 1);
-    }, retryDelayMs));
+    }, retryDelayMs);
+
+    if (isCancelled()) {
+      clearTimeout(timer);
+      return;
+    }
+
+    setTimer(timer);
   };
 
   try {
+    if (isCancelled()) {
+      return;
+    }
+
     server.close(schedule);
   } catch {
     schedule();

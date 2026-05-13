@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
@@ -88,6 +88,64 @@ describe('createNodeHttpAdapter', () => {
       await expect(listenPromise).rejects.toThrow('Node HTTP adapter listen retry was cancelled during shutdown.');
     } finally {
       await adapter.close();
+      await new Promise<void>((resolve, reject) => {
+        blocker.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    }
+  });
+
+  it('does not register a retry timer when shutdown wins the server close callback race', async () => {
+    const blocker = createServer();
+    await new Promise<void>((resolve) => {
+      blocker.listen(0, '127.0.0.1', resolve);
+    });
+
+    const { port } = blocker.address() as AddressInfo;
+    const adapter = publicNodeApi.createNodeHttpAdapter({
+      host: '127.0.0.1',
+      port,
+      retryDelayMs: 10_000,
+      retryLimit: 1,
+    }) as NodeHttpApplicationAdapter;
+    const dispatcher: Dispatcher = {
+      async dispatch() {},
+    };
+    const server = adapter.getServer();
+    const originalClose = server.close.bind(server);
+    let releaseRetryClose: (() => void) | undefined;
+    const retryCloseRequested = new Promise<void>((resolve) => {
+      vi.spyOn(server, 'close').mockImplementation(((callback?: (error?: Error) => void) => {
+        releaseRetryClose = () => {
+          callback?.();
+        };
+        resolve();
+        return server;
+      }) as typeof server.close);
+    });
+
+    try {
+      const listenPromise = adapter.listen(dispatcher);
+      await retryCloseRequested;
+
+      await adapter.close();
+      vi.useFakeTimers();
+
+      releaseRetryClose?.();
+
+      expect(vi.getTimerCount()).toBe(0);
+      await expect(listenPromise).rejects.toThrow('Node HTTP adapter listen retry was cancelled during shutdown.');
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+      await adapter.close();
+      server.close = originalClose;
       await new Promise<void>((resolve, reject) => {
         blocker.close((error) => {
           if (error) {
