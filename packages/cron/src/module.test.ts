@@ -9,7 +9,7 @@ import { Cron, Interval, Timeout } from './decorators.js';
 import { CronExpression } from './expressions.js';
 import { getCronTaskMetadataEntries, getSchedulingTaskMetadataEntries } from './metadata.js';
 import { CronModule, normalizeCronModuleOptions } from './module.js';
-import { CronLifecycleService } from './service.js';
+import type { CronLifecycleService } from './service.js';
 import { SCHEDULING_REGISTRY } from './tokens.js';
 import type { CronScheduleOptions, CronScheduledJob, CronScheduler, SchedulingRegistry } from './types.js';
 
@@ -1705,6 +1705,95 @@ describe('@fluojs/cron', () => {
 
     expect(registry.remove('dynamic-timeout')).toBe(true);
     expect(registry.get('dynamic-timeout')).toBeUndefined();
+
+    await closeApplication(app);
+  });
+
+  it('rolls back dynamic cron registration when the scheduler rejects it', async () => {
+    const scheduler: CronScheduler = () => {
+      throw new Error('dynamic scheduler boom');
+    };
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot({ scheduler })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    expect(() => registry.addCron('dynamic-failure', CronExpression.EVERY_SECOND, () => {})).toThrow(
+      'dynamic scheduler boom',
+    );
+    expect(registry.get('dynamic-failure')).toBeUndefined();
+    expect(registry.getAll()).toHaveLength(0);
+
+    await closeApplication(app);
+  });
+
+  it('rolls back cron expression updates when rescheduling fails', async () => {
+    const firstStop = vi.fn();
+    const scheduler = vi.fn<CronScheduler>((_expression, _options, _callback) => {
+      if (scheduler.mock.calls.length === 1) {
+        return { stop: firstStop };
+      }
+
+      throw new Error('reschedule failed');
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot({ scheduler })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {});
+
+    expect(() => registry.updateCronExpression('dynamic-cron', CronExpression.EVERY_5_SECONDS)).toThrow(
+      'reschedule failed',
+    );
+    expect(registry.get('dynamic-cron')?.expression).toBe(CronExpression.EVERY_SECOND);
+    expect(firstStop).not.toHaveBeenCalled();
+
+    await closeApplication(app);
+    expect(firstStop).toHaveBeenCalledTimes(1);
+  });
+
+  it('prevents overlapping dynamic cron ticks while forwarding no-overlap scheduler protection', async () => {
+    const scheduled = createManualScheduler();
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+    let runs = 0;
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    registry.addCron('dynamic-no-overlap', CronExpression.EVERY_SECOND, async () => {
+      runs += 1;
+      started.resolve();
+      await release.promise;
+    });
+
+    expect(scheduled.records[0]?.options.protect).toBe(true);
+
+    const firstTick = scheduled.records[0]!.tick();
+    await started.promise;
+    await scheduled.records[0]!.tick();
+
+    expect(runs).toBe(1);
+
+    release.resolve();
+    await firstTick;
+    await scheduled.records[0]!.tick();
+
+    expect(runs).toBe(2);
 
     await closeApplication(app);
   });
