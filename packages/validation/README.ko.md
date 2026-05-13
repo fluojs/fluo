@@ -113,6 +113,11 @@ class EmailOnlyDto extends PickType(UserDto, ['email']) {}
 class UpdateUserDto extends PartialType(UserDto) {}
 ```
 
+Mapped DTO helper는 위와 같은 문서화된 subclassing 패턴에서도 field-level
+validation 및 binding metadata를 보존합니다. `PickType`, `OmitType`,
+`PartialType`은 생략되었거나 optional이 된 필드에 의존할 수 있는 base
+class-level validator를 derived DTO로 전달하지 않습니다.
+
 ### Standard Schema 지원
 
 Standard Schema adapter는 유효하지 않은 입력을 명시적인 issue로 보고해야 합니다. issue가 없는 검증 결과는 성공으로 처리합니다.
