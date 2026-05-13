@@ -29,7 +29,7 @@ Use this package when deploying fluo applications to [Cloudflare Workers](https:
 
 The adapter binds each request lifecycle to `executionContext.waitUntil(...)` and keeps in-flight dispatches alive during `close()` so Worker shutdown does not drop active work mid-request.
 
-During application shutdown, the adapter stops accepting new ingress immediately and gives active HTTP handlers a bounded 10-second drain window before `close()` fails with a timeout instead of hanging indefinitely. Once closed, follow-up HTTP and WebSocket upgrade requests receive the same JSON `503` shutdown response until the adapter is explicitly listened again.
+During application shutdown, the adapter stops accepting new ingress immediately and gives active HTTP handlers a bounded 10-second drain window before `close()` fails with a timeout instead of hanging indefinitely. While that drain is still in progress, a concurrent `listen()` call rejects with `Cloudflare Workers adapter cannot listen while shutdown is still draining.` instead of reopening the Worker. Once closed, follow-up HTTP and WebSocket upgrade requests receive the same JSON `503` shutdown response until the adapter is explicitly listened again.
 
 ## Quick Start
 
@@ -89,13 +89,13 @@ const adapter = createCloudflareWorkerAdapter({
 
 - `fetch()` registers active work with `executionContext.waitUntil(...)` after `listen()` binds the dispatcher.
 - WebSocket upgrades are owned by the same listen boundary as HTTP dispatch; upgrade requests before `listen()` do not reach the configured binding.
-- `close()` returns JSON `503` responses for new requests during and after shutdown and times out after 10 seconds if active requests never settle.
+- `close()` returns JSON `503` responses for new requests during and after shutdown and times out after 10 seconds if active requests never settle. Calling `listen()` while that close drain is still active rejects with the Cloudflare Workers adapter shutdown-draining error.
 - Multipart requests do not preserve `rawBody`.
 - The Worker `env` object is passed through the fetch entrypoint boundary; package-level config resolution remains application-owned.
 
 ## Conformance Coverage
 
-`packages/platform-cloudflare-workers/src/adapter.test.ts` is the package-local regression target for the documented Worker contract. It covers shared Web dispatch delegation, `executionContext.waitUntil(...)` registration, websocket upgrade binding, listen-bound upgrade ownership, lazy entrypoint reuse, shutdown gating, JSON `503` responses while closing and after close, and the bounded 10-second close timeout.
+`packages/platform-cloudflare-workers/src/adapter.test.ts` is the package-local regression target for the documented Worker contract. It covers shared Web dispatch delegation, `executionContext.waitUntil(...)` registration, websocket upgrade binding, listen-bound upgrade ownership, lazy entrypoint reuse, shutdown gating, drain-time `listen()` rejection, JSON `503` responses while closing and after close, and the bounded 10-second close timeout.
 
 The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Cloudflare Workers beside Bun and Deno for malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The README parity assertion in the package test keeps these documented edge-runtime coverage claims synchronized with the Korean mirror.
 

@@ -29,7 +29,7 @@ fluo 애플리케이션을 [Cloudflare Workers](https://workers.cloudflare.com/)
 
 이 어댑터는 각 요청 수명주기를 `executionContext.waitUntil(...)`에 연결하고, `close()` 중에도 진행 중인 디스패치를 유지하여 Worker 종료 도중 활성 작업이 중간에 잘리지 않도록 보장합니다.
 
-애플리케이션 종료 중에는 즉시 새 ingress 수락을 중단하고, 활성 HTTP 핸들러가 정리될 수 있도록 최대 10초의 bounded drain window를 제공합니다. 이 시간을 넘기면 `close()`는 무기한 대기하지 않고 timeout 오류로 종료됩니다. 닫힌 뒤에는 어댑터가 명시적으로 다시 `listen()`될 때까지 후속 HTTP 및 WebSocket upgrade request가 동일한 JSON `503` shutdown response를 받습니다.
+애플리케이션 종료 중에는 즉시 새 ingress 수락을 중단하고, 활성 HTTP 핸들러가 정리될 수 있도록 최대 10초의 bounded drain window를 제공합니다. 이 시간을 넘기면 `close()`는 무기한 대기하지 않고 timeout 오류로 종료됩니다. 해당 drain이 아직 진행 중일 때 동시에 `listen()`을 호출하면 Worker를 다시 열지 않고 `Cloudflare Workers adapter cannot listen while shutdown is still draining.` 오류로 reject됩니다. 닫힌 뒤에는 어댑터가 명시적으로 다시 `listen()`될 때까지 후속 HTTP 및 WebSocket upgrade request가 동일한 JSON `503` shutdown response를 받습니다.
 
 ## 빠른 시작
 
@@ -89,13 +89,13 @@ const adapter = createCloudflareWorkerAdapter({
 
 - `fetch()`는 `listen()`이 dispatcher를 binding한 뒤 active work를 `executionContext.waitUntil(...)`에 등록합니다.
 - WebSocket upgrade는 HTTP dispatch와 같은 listen boundary가 소유합니다. `listen()` 전의 upgrade request는 설정된 binding에 도달하지 않습니다.
-- `close()`는 shutdown 중 및 shutdown 이후 새 요청에 JSON `503` response를 반환하고, active request가 끝나지 않으면 10초 뒤 timeout됩니다.
+- `close()`는 shutdown 중 및 shutdown 이후 새 요청에 JSON `503` response를 반환하고, active request가 끝나지 않으면 10초 뒤 timeout됩니다. 해당 close drain이 아직 활성 상태일 때 `listen()`을 호출하면 Cloudflare Workers adapter shutdown-draining 오류로 reject됩니다.
 - Multipart request는 `rawBody`를 보존하지 않습니다.
 - Worker `env` 객체는 fetch entrypoint boundary를 통과하며, package-level config resolution은 application이 소유합니다.
 
 ## Conformance 커버리지
 
-`packages/platform-cloudflare-workers/src/adapter.test.ts`는 문서화된 Worker 계약을 검증하는 package-local regression 대상입니다. 이 파일은 shared Web dispatch delegation, `executionContext.waitUntil(...)` 등록, websocket upgrade binding, listen-bound upgrade ownership, lazy entrypoint 재사용, shutdown gating, close 중 및 close 이후 JSON `503` response, bounded 10초 close timeout을 검증합니다.
+`packages/platform-cloudflare-workers/src/adapter.test.ts`는 문서화된 Worker 계약을 검증하는 package-local regression 대상입니다. 이 파일은 shared Web dispatch delegation, `executionContext.waitUntil(...)` 등록, websocket upgrade binding, listen-bound upgrade ownership, lazy entrypoint 재사용, shutdown gating, drain 중 `listen()` rejection, close 중 및 close 이후 JSON `503` response, bounded 10초 close timeout을 검증합니다.
 
 공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Cloudflare Workers를 Bun 및 Deno와 함께 실행해 malformed cookie 보존, query decoding, JSON/text raw-body capture, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트의 README parity assertion은 이 edge-runtime 커버리지 문서가 한국어 mirror와 계속 동기화되도록 확인합니다.
 
