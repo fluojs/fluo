@@ -1,5 +1,15 @@
 # @fluojs/cli
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1853](https://github.com/fluojs/fluo/pull/1853) [`010f5ac`](https://github.com/fluojs/fluo/commit/010f5ac256a65f616b39ff5fc6bad049b14efd8c) Thanks [@ayden94](https://github.com/ayden94)! - Keep generated starter CLI scripts aligned to the generator version and bound `fluo dev` restart shutdowns so non-cooperative child processes cannot hang restarts indefinitely.
+
+- Updated dependencies [[`92636ee`](https://github.com/fluojs/fluo/commit/92636eee23991859a04f4590871179508dee12fb), [`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2)]:
+  - @fluojs/studio@1.0.1
+  - @fluojs/runtime@1.0.1
+
 ## 1.0.0
 
 ### Minor Changes

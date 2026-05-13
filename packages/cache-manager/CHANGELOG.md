@@ -1,5 +1,16 @@
 # @fluojs/cache-manager
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1864](https://github.com/fluojs/fluo/pull/1864) [`d6c905d`](https://github.com/fluojs/fluo/commit/d6c905da8b8f60c05e22f5656ba5db67e0e42258) Thanks [@ayden94](https://github.com/ayden94)! - Cancel deferred cache eviction when `response.send(...)` rejects so failed response commits do not clear previously cached successful reads.
+
+- Updated dependencies [[`01ea60e`](https://github.com/fluojs/fluo/commit/01ea60eff7a8d3b30509aff8aaf21649178a9fad), [`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2), [`3aa93d9`](https://github.com/fluojs/fluo/commit/3aa93d9bbea28342f225b727f2ec0640acdf7986)]:
+  - @fluojs/di@1.0.1
+  - @fluojs/runtime@1.0.1
+  - @fluojs/core@1.0.1
+
 ## 1.0.0
 
 ### Minor Changes

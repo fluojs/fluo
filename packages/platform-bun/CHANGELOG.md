@@ -1,5 +1,14 @@
 # @fluojs/platform-bun
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1860](https://github.com/fluojs/fluo/pull/1860) [`60c2782`](https://github.com/fluojs/fluo/commit/60c27823003df01d22cc0d71e4d49f63d77b225f) Thanks [@ayden94](https://github.com/ayden94)! - Reject Bun websocket upgrade attempts with the documented 503 shutdown response once adapter close begins, keeping shutdown ingress behavior consistent across HTTP and realtime paths.
+
+- Updated dependencies [[`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2)]:
+  - @fluojs/runtime@1.0.1
+
 ## 1.0.0
 
 ### Minor Changes

@@ -1,5 +1,16 @@
 # @fluojs/runtime
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1856](https://github.com/fluojs/fluo/pull/1856) [`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2) Thanks [@ayden94](https://github.com/ayden94)! - Harden the Node.js platform contract by validating lifecycle retry/shutdown options, preserving `x-correlation-id` as the request ID fallback on Node-backed requests, and documenting package-local coverage for listen retry and keep-alive shutdown behavior.
+
+- Updated dependencies [[`34c840f`](https://github.com/fluojs/fluo/commit/34c840f3a1cd15e0399aa91467201d5b8f85a988), [`01ea60e`](https://github.com/fluojs/fluo/commit/01ea60eff7a8d3b30509aff8aaf21649178a9fad), [`3aa93d9`](https://github.com/fluojs/fluo/commit/3aa93d9bbea28342f225b727f2ec0640acdf7986)]:
+  - @fluojs/config@1.0.1
+  - @fluojs/di@1.0.1
+  - @fluojs/core@1.0.1
+
 ## 1.0.0
 
 ### Minor Changes

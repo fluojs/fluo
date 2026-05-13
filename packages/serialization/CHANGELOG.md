@@ -1,5 +1,14 @@
 # @fluojs/serialization
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1862](https://github.com/fluojs/fluo/pull/1862) [`1b63a98`](https://github.com/fluojs/fluo/commit/1b63a98faf04c2b7e58f867e3daf71a3f262b7dd) Thanks [@ayden94](https://github.com/ayden94)! - Prevent decorated class serialization from copying non-enumerable symbol properties while keeping enumerable symbol keys and documented transform examples aligned with the public `unknown` transform callback contract.
+
+- Updated dependencies [[`3aa93d9`](https://github.com/fluojs/fluo/commit/3aa93d9bbea28342f225b727f2ec0640acdf7986)]:
+  - @fluojs/core@1.0.1
+
 ## 1.0.0
 
 ### Patch Changes

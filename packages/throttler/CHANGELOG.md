@@ -1,5 +1,16 @@
 # @fluojs/throttler
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1851](https://github.com/fluojs/fluo/pull/1851) [`15f730a`](https://github.com/fluojs/fluo/commit/15f730a8cc7fcc7539dcecf4d027ceb3faafa6af) Thanks [@ayden94](https://github.com/ayden94)! - Harden throttler guard option capture while preserving existing root-barrel decorator metadata helper exports and adding HTTP request-pipeline regression coverage.
+
+- Updated dependencies [[`01ea60e`](https://github.com/fluojs/fluo/commit/01ea60eff7a8d3b30509aff8aaf21649178a9fad), [`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2), [`3aa93d9`](https://github.com/fluojs/fluo/commit/3aa93d9bbea28342f225b727f2ec0640acdf7986)]:
+  - @fluojs/di@1.0.1
+  - @fluojs/runtime@1.0.1
+  - @fluojs/core@1.0.1
+
 ## 1.0.0
 
 ### Minor Changes

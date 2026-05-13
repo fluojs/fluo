@@ -1,5 +1,16 @@
 # @fluojs/mongoose
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1841](https://github.com/fluojs/fluo/pull/1841) [`673c98f`](https://github.com/fluojs/fluo/commit/673c98f2f9b653fca4804f2dfe5f73e28c0feb12) Thanks [@ayden94](https://github.com/ayden94)! - Race Mongoose request transaction session acquisition and delegated `connection.transaction(...)` startup against request aborts, and reject new manual/request transaction boundaries once application shutdown begins.
+
+- Updated dependencies [[`01ea60e`](https://github.com/fluojs/fluo/commit/01ea60eff7a8d3b30509aff8aaf21649178a9fad), [`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2), [`3aa93d9`](https://github.com/fluojs/fluo/commit/3aa93d9bbea28342f225b727f2ec0640acdf7986)]:
+  - @fluojs/di@1.0.1
+  - @fluojs/runtime@1.0.1
+  - @fluojs/core@1.0.1
+
 ## 1.0.0
 
 ### Minor Changes

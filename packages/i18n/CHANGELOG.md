@@ -1,5 +1,15 @@
 # @fluojs/i18n
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1868](https://github.com/fluojs/fluo/pull/1868) [`44e2c56`](https://github.com/fluojs/fluo/commit/44e2c562714742020639754151dc02cf9ffe1fb8) Thanks [@ayden94](https://github.com/ayden94)! - Match `Accept-Language` locale ranges case-insensitively while preserving the configured supported locale spelling in HTTP and non-HTTP locale resolvers.
+
+- Updated dependencies [[`3aa93d9`](https://github.com/fluojs/fluo/commit/3aa93d9bbea28342f225b727f2ec0640acdf7986)]:
+  - @fluojs/core@1.0.1
+  - @fluojs/validation@1.0.1
+
 ## 1.0.0
 
 ### Minor Changes

@@ -1,5 +1,16 @@
 # @fluojs/openapi
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1863](https://github.com/fluojs/fluo/pull/1863) [`daee854`](https://github.com/fluojs/fluo/commit/daee854ca5bc022297f38c412ab019c3f6450bdc) Thanks [@ayden94](https://github.com/ayden94)! - Deduplicate generated OpenAPI operations by path and method so explicit descriptors consistently take precedence over discovered sources and operation IDs remain unique.
+
+- Updated dependencies [[`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2), [`3aa93d9`](https://github.com/fluojs/fluo/commit/3aa93d9bbea28342f225b727f2ec0640acdf7986)]:
+  - @fluojs/runtime@1.0.1
+  - @fluojs/core@1.0.1
+  - @fluojs/validation@1.0.1
+
 ## 1.0.0
 
 ### Patch Changes
