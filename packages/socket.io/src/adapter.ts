@@ -395,6 +395,7 @@ export class SocketIoLifecycleService
     const descriptors = this.discoverGatewayDescriptors();
 
     if (descriptors.length === 0) {
+      this.ensureBunRealtimeBindingForRawServerAccess();
       return;
     }
 
@@ -433,14 +434,14 @@ export class SocketIoLifecycleService
    * @param namespacePath Optional namespace path required when the helper runs outside gateway handler context.
    */
   joinRoom(socketId: string, room: string, namespacePath?: string): void {
-    const socket = this.resolveSocket(socketId);
+    const { namespace, socket } = this.resolveRoomOperationTarget(socketId, namespacePath);
 
     if (socket) {
       void socket.join(room);
       return;
     }
 
-    this.resolveRequiredNamespace(namespacePath).in(socketId).socketsJoin(room);
+    namespace.in(socketId).socketsJoin(room);
   }
 
   /**
@@ -451,14 +452,14 @@ export class SocketIoLifecycleService
    * @param namespacePath Optional namespace path required when the helper runs outside gateway handler context.
    */
   leaveRoom(socketId: string, room: string, namespacePath?: string): void {
-    const socket = this.resolveSocket(socketId);
+    const { namespace, socket } = this.resolveRoomOperationTarget(socketId, namespacePath);
 
     if (socket) {
       void socket.leave(room);
       return;
     }
 
-    this.resolveRequiredNamespace(namespacePath).in(socketId).socketsLeave(room);
+    namespace.in(socketId).socketsLeave(room);
   }
 
   /**
@@ -578,6 +579,14 @@ export class SocketIoLifecycleService
     return pathname === '/socket.io' || pathname === DEFAULT_SOCKETIO_ENGINE_PATH;
   }
 
+  private ensureBunRealtimeBindingForRawServerAccess(): void {
+    if (!hasBunRealtimeBindingHost(this.adapter)) {
+      return;
+    }
+
+    this.getServer();
+  }
+
   private assertNoServerBackedGatewayOptIn(descriptors: readonly WebSocketGatewayDescriptor[]): void {
     const runtime = resolveSocketIoBootstrapRuntime(this.adapter);
 
@@ -639,6 +648,30 @@ export class SocketIoLifecycleService
     }
 
     return namespace;
+  }
+
+  private resolveRoomOperationTarget(socketId: string, namespacePath?: string): { namespace: Namespace; socket?: Socket } {
+    const namespace = namespacePath ? this.resolveRequiredNamespace(namespacePath) : this.resolveContextNamespace();
+
+    if (namespace) {
+      return {
+        namespace,
+        socket: namespace.sockets.get(socketId),
+      };
+    }
+
+    const socket = this.resolveSocket(socketId);
+
+    if (socket) {
+      return {
+        namespace: socket.nsp,
+        socket,
+      };
+    }
+
+    return {
+      namespace: this.resolveRequiredNamespace(namespacePath),
+    };
   }
 
   private resolveSocket(socketId: string): Socket | undefined {
