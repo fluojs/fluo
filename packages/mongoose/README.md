@@ -54,14 +54,14 @@ class AppModule {}
 
 `MongooseModule` registers `MongooseConnection` with the fluo application lifecycle. The package does not create or own the raw Mongoose connection for you; pass a `dispose` hook when the application should close that external connection during shutdown.
 
-Shutdown preserves transaction cleanup order:
+Shutdown preserves transaction cleanup order and rejects new manual or request-scoped transaction boundaries once shutdown begins:
 
 1. Open request-scoped transactions are aborted with `Application shutdown interrupted an open request transaction.`
 2. Active ambient sessions are tracked until their transaction callback and session cleanup settle.
 3. Their Mongoose sessions finish `abortTransaction()` and `endSession()` cleanup.
 4. The configured `dispose(connection)` hook runs only after active request transactions and ambient session scopes have settled.
 
-`createMongoosePlatformStatusSnapshot(...)` reports `ready` while serving traffic, `shutting-down` while request transactions are draining, and `stopped` after the dispose hook completes. The status details include `sessionStrategy`, `transactionContext: 'als'`, active request/session counts, resource ownership, and strict/session support diagnostics. Manual `transaction()` calls still use the same explicit-session contract as request-scoped transactions: repository code must pass `conn.currentSession()` into Mongoose model operations that participate in the transaction. If the wrapped Mongoose connection exposes `connection.transaction(...)`, fluo delegates the transaction boundary to that API so Mongoose's own ambient-session scope is preserved while still exposing the same session through `currentSession()`.
+`createMongoosePlatformStatusSnapshot(...)` reports `ready` while serving traffic, `shutting-down` while request transactions are draining, and `stopped` after the dispose hook completes. The status details include `sessionStrategy`, `transactionContext: 'als'`, active request/session counts, resource ownership, and strict/session support diagnostics. Manual `transaction()` calls still use the same explicit-session contract as request-scoped transactions: repository code must pass `conn.currentSession()` into Mongoose model operations that participate in the transaction. If the wrapped Mongoose connection exposes `connection.transaction(...)`, fluo delegates the transaction boundary to that API so Mongoose's own ambient-session scope is preserved while still exposing the same session through `currentSession()`. Request-scoped transactions observe the request `AbortSignal` while acquiring sessions and while starting delegated `connection.transaction(...)` work, so request cancellation can interrupt those startup phases before user callbacks run.
 
 ## Common Patterns
 

@@ -18,6 +18,7 @@ import type {
 } from './types.js';
 
 const TRANSACTIONS_NOT_SUPPORTED_ERROR = 'Transaction not supported: Mongoose connection does not implement startSession.';
+const TRANSACTION_UNAVAILABLE_ERROR = 'Mongoose transactions are unavailable during application shutdown.';
 
 type ActiveRequestTransaction = {
   abort(reason?: unknown): void;
@@ -158,6 +159,8 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       return fn();
     }
 
+    this.assertTransactionsAvailable();
+
     if (typeof this.connection.transaction === 'function') {
       return this.runConnectionTransaction(fn);
     }
@@ -191,15 +194,23 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       return fn();
     }
 
+    this.assertRequestTransactionsAvailable();
+
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
+    let untrackActiveInFinally = true;
 
     try {
       if (typeof this.connection.transaction === 'function') {
-        return await this.runConnectionTransaction(() => raceWithAbort(fn, abortContext.signal));
+        return await raceWithAbort(
+          () => this.runConnectionTransaction(() => raceWithAbort(fn, abortContext.signal)),
+          abortContext.signal,
+        );
       }
 
-      const resolvedSession = await this.resolveSession();
+      const resolvedSession = await this.resolveSessionForRequest(abortContext.signal, active, () => {
+        untrackActiveInFinally = false;
+      });
       if (!resolvedSession) {
         return await raceWithAbort(fn, abortContext.signal);
       }
@@ -208,7 +219,21 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     } finally {
       abortContext.cleanup();
 
-      this.untrackActiveRequestTransaction(active);
+      if (untrackActiveInFinally) {
+        this.untrackActiveRequestTransaction(active);
+      }
+    }
+  }
+
+  private assertTransactionsAvailable(): void {
+    if (this.lifecycleState !== 'ready') {
+      throw new Error(TRANSACTION_UNAVAILABLE_ERROR);
+    }
+  }
+
+  private assertRequestTransactionsAvailable(): void {
+    if (this.lifecycleState !== 'ready') {
+      throw new Error(TRANSACTION_UNAVAILABLE_ERROR);
     }
   }
 
@@ -223,6 +248,34 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       } finally {
         activeSession.settle();
       }
+    }
+  }
+
+  private async resolveSessionForRequest(
+    signal: AbortSignal,
+    active: ActiveRequestTransactionHandle,
+    deferActiveSettlement: () => void,
+  ): Promise<MongooseSessionLike | undefined> {
+    const sessionPromise = this.resolveSession();
+
+    try {
+      return await raceWithAbort(() => sessionPromise, signal);
+    } catch (error) {
+      if (!signal.aborted) {
+        throw error;
+      }
+
+      deferActiveSettlement();
+      void sessionPromise
+        .then(async (session) => {
+          await session?.endSession();
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          this.untrackActiveRequestTransaction(active);
+        });
+
+      throw error;
     }
   }
 
