@@ -3,12 +3,17 @@ import type { Plugin } from 'vite';
 
 function shouldTransformTypeScriptApplicationFile(id: string): boolean {
   const [filePath] = id.split('?', 1);
+  const normalizedFilePath = filePath.replaceAll('\\', '/');
 
-  if (!filePath.endsWith('.ts') || filePath.endsWith('.d.ts')) {
+  if (!normalizedFilePath.endsWith('.ts') || normalizedFilePath.endsWith('.d.ts')) {
     return false;
   }
 
-  return !filePath.includes('/node_modules/') && !filePath.includes('.test.') && !filePath.includes('.spec.');
+  return (
+    !normalizedFilePath.includes('/node_modules/') &&
+    !normalizedFilePath.includes('.test.') &&
+    !normalizedFilePath.includes('.spec.')
+  );
 }
 
 /**
