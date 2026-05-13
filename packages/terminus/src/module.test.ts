@@ -2,8 +2,9 @@ import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
 import { bootstrapApplication, defineModule, type PlatformComponent } from '@fluojs/runtime';
 import { createTestApp } from '@fluojs/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
+import { createHttpHealthIndicatorProvider } from './indicators/http.js';
 import { createMemoryHealthIndicatorProvider, MemoryHealthIndicator } from './indicators/memory.js';
 import { createRedisHealthIndicatorProvider, RedisHealthIndicator } from './indicators/redis.js';
 import { TerminusModule } from './module.js';
@@ -509,6 +510,50 @@ describe('TerminusModule.forRoot', () => {
 
     expect(readyResponse.statusCode).toBe(200);
     expect(readyResponse.body).toEqual({ status: 'ready' });
+
+    await app.close();
+  });
+
+  it('supports repeatable same-type HTTP indicator providers without token collisions', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(undefined, { status: 204 }));
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        TerminusModule.forRoot({
+          indicatorProviders: [
+            createHttpHealthIndicatorProvider({ key: 'primary-api', url: 'https://example.com/primary/health' }),
+            createHttpHealthIndicatorProvider({ key: 'secondary-api', url: 'https://example.com/secondary/health' }),
+          ],
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    const healthResponse = createResponse();
+    await app.dispatch(createRequest('/health'), healthResponse);
+
+    expect(healthResponse.statusCode).toBe(200);
+    expect(healthResponse.body).toMatchObject({
+      contributors: {
+        down: [],
+      },
+      details: {
+        'primary-api': {
+          status: 'up',
+        },
+        'secondary-api': {
+          status: 'up',
+        },
+      },
+      status: 'ok',
+    });
+    expect((healthResponse.body as { contributors: { up: string[] } }).contributors.up).toEqual(
+      expect.arrayContaining(['primary-api', 'secondary-api']),
+    );
+    expect(fetch).toHaveBeenCalledTimes(2);
 
     await app.close();
   });

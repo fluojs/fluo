@@ -43,14 +43,16 @@ export function createHttpHealthIndicator(options: HttpHealthIndicatorOptions): 
 }
 
 /**
- * Create a provider that registers an `HttpHealthIndicator` instance.
+ * Create a Terminus indicator provider collection entry for an `HttpHealthIndicator` instance.
  *
  * @param options HTTP probe settings such as URL, method, headers, and accepted status codes.
- * @returns A value provider that exposes `HttpHealthIndicator` from the DI container.
+ * @returns A value provider with a unique internal DI token for `TerminusModule` indicatorProviders.
  */
 export function createHttpHealthIndicatorProvider(options: HttpHealthIndicatorOptions): Provider {
+  const indicatorProviderToken = Symbol('fluo.terminus.http-health-indicator');
+
   return {
-    provide: HttpHealthIndicator,
+    provide: indicatorProviderToken,
     useValue: new HttpHealthIndicator(options),
   };
 }
