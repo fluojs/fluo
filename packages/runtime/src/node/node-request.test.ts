@@ -186,7 +186,7 @@ describe('node request adapter', () => {
     expect(frameworkRequest.body).toEqual({ name: 'Ada' });
     expect(frameworkRequest.files).toEqual([
       {
-        buffer: Buffer.from('hello'),
+        buffer: new TextEncoder().encode('hello'),
         fieldname: 'payload',
         mimetype: 'text/plain',
         originalname: 'payload.txt',
