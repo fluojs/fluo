@@ -71,6 +71,9 @@ describe('fluoDecoratorsPlugin', () => {
     await expect(
       runTransform(plugin, 'export const value: number = 1;', '/app/node_modules/dependency/index.ts'),
     ).resolves.toBeNull();
+    await expect(
+      runTransform(plugin, 'export const value: number = 1;', 'C:\\app\\node_modules\\dependency\\index.ts'),
+    ).resolves.toBeNull();
     await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/component.tsx')).resolves.toBeNull();
   });
 
