@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import {
+  defineDtoFieldBindingMetadata,
+  getDtoBindingSchema,
+  getDtoFieldBindingMetadata,
+} from '@fluojs/core/internal';
+
 import { IsEmail, IsString, ValidateClass } from './decorators.js';
 import { IntersectionType, OmitType, PartialType, PickType } from './mapped-types.js';
 import { DefaultValidator } from './validation.js';
@@ -103,6 +109,158 @@ describe('mapped DTO helpers', () => {
     });
 
     await expect(validator.materialize({}, UpdateUserDto)).resolves.toBeInstanceOf(UpdateUserDto);
+  });
+
+  it('preserves binding metadata on mapped DTO subclasses', () => {
+    class TrimConverter {
+      convert(value: unknown) {
+        return value;
+      }
+    }
+
+    class UserDto {
+      id = '';
+      email = '';
+      passwordHash = '';
+    }
+
+    class PagingDto {
+      cursor = '';
+    }
+
+    defineDtoFieldBindingMetadata(UserDto.prototype, 'id', {
+      key: 'userId',
+      source: 'path',
+    });
+    defineDtoFieldBindingMetadata(UserDto.prototype, 'email', {
+      converter: TrimConverter,
+      key: 'email',
+      source: 'body',
+    });
+    defineDtoFieldBindingMetadata(UserDto.prototype, 'passwordHash', {
+      key: 'passwordHash',
+      source: 'body',
+    });
+    defineDtoFieldBindingMetadata(PagingDto.prototype, 'cursor', {
+      key: 'cursor',
+      optional: true,
+      source: 'query',
+    });
+
+    class UserEmailDto extends PickType(UserDto, ['email']) {}
+    class PublicUserDto extends OmitType(UserDto, ['passwordHash']) {}
+    class UpdateUserDto extends PartialType(UserDto) {}
+    class UserPageDto extends IntersectionType(UserDto, PagingDto) {}
+
+    expect(getDtoFieldBindingMetadata(UserEmailDto.prototype, 'email')).toEqual({
+      converter: TrimConverter,
+      key: 'email',
+      source: 'body',
+    });
+    expect(getDtoBindingSchema(UserEmailDto)).toEqual([
+      {
+        propertyKey: 'email',
+        metadata: {
+          converter: TrimConverter,
+          key: 'email',
+          source: 'body',
+        },
+      },
+    ]);
+
+    expect(getDtoFieldBindingMetadata(PublicUserDto.prototype, 'id')).toEqual({
+      key: 'userId',
+      source: 'path',
+    });
+    expect(getDtoFieldBindingMetadata(PublicUserDto.prototype, 'passwordHash')).toBeUndefined();
+    expect(getDtoBindingSchema(PublicUserDto)).toEqual([
+      {
+        propertyKey: 'id',
+        metadata: {
+          key: 'userId',
+          source: 'path',
+        },
+      },
+      {
+        propertyKey: 'email',
+        metadata: {
+          converter: TrimConverter,
+          key: 'email',
+          source: 'body',
+        },
+      },
+    ]);
+
+    expect(getDtoFieldBindingMetadata(UpdateUserDto.prototype, 'id')).toEqual({
+      key: 'userId',
+      optional: true,
+      source: 'path',
+    });
+    expect(getDtoBindingSchema(UpdateUserDto)).toEqual([
+      {
+        propertyKey: 'id',
+        metadata: {
+          key: 'userId',
+          optional: true,
+          source: 'path',
+        },
+      },
+      {
+        propertyKey: 'email',
+        metadata: {
+          converter: TrimConverter,
+          key: 'email',
+          optional: true,
+          source: 'body',
+        },
+      },
+      {
+        propertyKey: 'passwordHash',
+        metadata: {
+          key: 'passwordHash',
+          optional: true,
+          source: 'body',
+        },
+      },
+    ]);
+
+    expect(getDtoFieldBindingMetadata(UserPageDto.prototype, 'cursor')).toEqual({
+      key: 'cursor',
+      optional: true,
+      source: 'query',
+    });
+    expect(getDtoBindingSchema(UserPageDto)).toEqual([
+      {
+        propertyKey: 'id',
+        metadata: {
+          key: 'userId',
+          source: 'path',
+        },
+      },
+      {
+        propertyKey: 'email',
+        metadata: {
+          converter: TrimConverter,
+          key: 'email',
+          source: 'body',
+        },
+      },
+      {
+        propertyKey: 'passwordHash',
+        metadata: {
+          key: 'passwordHash',
+          source: 'body',
+        },
+      },
+      {
+        propertyKey: 'cursor',
+        metadata: {
+          key: 'cursor',
+          optional: true,
+          source: 'query',
+        },
+      },
+    ]);
   });
 
   it('does not copy base class-level validators onto subset or partial DTO helpers', async () => {
