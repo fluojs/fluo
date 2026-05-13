@@ -304,7 +304,7 @@ export class Container {
 
       this.registrations.delete(token);
       this.multiRegistrations.delete(token);
-      this.invalidateCachedEntry(token, existing?.scope ?? existingMultiProviders[0]?.scope ?? firstProvider.scope);
+      this.invalidateCachedEntryInHierarchy(token, existing?.scope ?? existingMultiProviders[0]?.scope ?? firstProvider.scope);
 
       if (containsMultiProvider) {
         this.multiRegistrations.set(token, normalizedProviders);
@@ -1268,6 +1268,36 @@ export class Container {
     }
 
     return deps;
+  }
+
+  private invalidateCachedEntryInHierarchy(token: Token, scope: Scope): void {
+    this.invalidateCachedEntry(token, scope);
+
+    const childScopes = this.root().childScopes;
+
+    if (!childScopes) {
+      return;
+    }
+
+    for (const childScope of childScopes) {
+      if (this.isAncestorOf(childScope)) {
+        childScope.invalidateCachedEntry(token, scope);
+      }
+    }
+  }
+
+  private isAncestorOf(container: Container): boolean {
+    let current = container.parent;
+
+    while (current) {
+      if (current === this) {
+        return true;
+      }
+
+      current = current.parent;
+    }
+
+    return false;
   }
 
   private invalidateCachedEntry(token: Token, scope: Scope): void {

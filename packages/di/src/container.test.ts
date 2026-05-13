@@ -516,6 +516,32 @@ describe('Container', () => {
       expect(first).not.toBe(second);
     });
 
+    it('invalidates materialized request-scope children when overriding a parent request-scoped provider', async () => {
+      const token = Symbol('request-cache-token');
+      let created = 0;
+
+      const root = new Container().register({
+        provide: token,
+        scope: Scope.REQUEST,
+        useFactory: () => ({ value: `first-${++created}` }),
+      });
+      const requestScope = root.createRequestScope();
+
+      const first = await requestScope.resolve<{ value: string }>(token);
+
+      root.override({
+        provide: token,
+        scope: Scope.REQUEST,
+        useFactory: () => ({ value: `second-${++created}` }),
+      });
+
+      const second = await requestScope.resolve<{ value: string }>(token);
+
+      expect(first).toEqual({ value: 'first-1' });
+      expect(second).toEqual({ value: 'second-2' });
+      expect(first).not.toBe(second);
+    });
+
     it('resolves transient dependency graphs against the latest override', async () => {
       const CONFIG = Symbol('Config');
 
