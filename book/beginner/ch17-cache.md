@@ -44,7 +44,7 @@ Finding the "sweet spot" starts with understanding the application's domain. For
 Fluo provides the `@fluojs/cache-manager` package, which offers a unified interface across different caching backends. Whether you use a simple in-memory store for development or a distributed Redis cluster for production, your code stays the same. This abstraction is central to Fluo's "Standard-First" philosophy because it keeps applications portable and easier to test.
 
 ### 17.2.1 Core Concepts: TTL, Store, and Beyond
-- **TTL (Time To Live)**: The amount of time data remains in the cache. After this time passes, the data is considered expired and is deleted automatically.
+- **TTL (Time To Live)**: The amount of time data remains valid in the cache. After this time passes, the data is considered expired; stores may remove it immediately or ignore it on the next access depending on their cleanup strategy.
 - **Store**: The mechanism that actually stores the data. The built-in stores are currently `memory` and `redis`. If another store is needed, extend the system with a custom store that implements the `CacheStore` contract.
 - **Namespace**: A logical group used to prevent cache key collisions between different modules.
 - **Key Eviction**: The way entries are removed when the cache is full. The default `MemoryStore` cleans up the oldest keys first when the number of entries reaches its limit.
@@ -108,7 +108,7 @@ Although caches are usually considered "volatile" storage, some providers such a
 However, persistence can affect write performance, so use it carefully. Most Fluo applications prefer the default non-persistent mode for maximum speed. If the cache server goes down, the application falls back to the database until the cache recovers. This "fail-soft" behavior is a key design principle of high-availability systems because it prevents a single component failure from turning into a full service outage.
 
 ## 17.4 Automatic Response Caching
-The easiest way to improve performance is to cache entire HTTP responses. Fluo provides `CacheInterceptor` for this purpose. When this Interceptor is applied to a specific route, successful responses are cached automatically, and later identical requests return the cached content immediately.
+The easiest way to improve performance is to cache entire HTTP responses. Fluo provides `CacheInterceptor` for this purpose. When this Interceptor is applied to a specific route, successful uncommitted GET results are cached automatically, and later identical requests return the cached content immediately.
 
 ```typescript
 import { Controller, Get, UseInterceptors } from '@fluojs/http';

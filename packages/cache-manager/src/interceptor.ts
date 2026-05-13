@@ -180,9 +180,15 @@ function installDeferredEviction(
   }, EVICTION_FALLBACK_TIMEOUT_MS);
 
   response.send = async (body: unknown) => {
-    await originalSend(body);
-    runEviction();
-    restore();
+    try {
+      await originalSend(body);
+      runEviction();
+    } catch (error) {
+      completed = true;
+      throw error;
+    } finally {
+      restore();
+    }
   };
 
   return restore;
