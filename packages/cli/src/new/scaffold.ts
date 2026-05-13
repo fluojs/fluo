@@ -34,7 +34,6 @@ const PUBLISHED_RUNTIME_DEPENDENCIES = {
 } as const;
 
 const PUBLISHED_INTERNAL_DEPENDENCIES = {
-  '@fluojs/cli': '^1.0.0',
   '@fluojs/config': '^1.0.0',
   '@fluojs/core': '^1.0.0',
   '@fluojs/di': '^1.0.0',
@@ -145,6 +144,10 @@ function createDependencySpec(
   releaseVersion: string,
   packageSpecs: Record<string, string>,
 ): string {
+  if (packageName === '@fluojs/cli') {
+    return packageSpecs[packageName] ?? createPublishedInternalDependencySpec(releaseVersion);
+  }
+
   return packageSpecs[packageName]
     ?? PUBLISHED_RUNTIME_DEPENDENCIES[packageName as keyof typeof PUBLISHED_RUNTIME_DEPENDENCIES]
     ?? PUBLISHED_INTERNAL_DEPENDENCIES[packageName as keyof typeof PUBLISHED_INTERNAL_DEPENDENCIES]

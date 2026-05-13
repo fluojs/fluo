@@ -42,6 +42,7 @@ export type NodeRestartRunnerOptions = {
 };
 
 const DEFAULT_DEBOUNCE_MS = 100;
+const DEFAULT_CHILD_SHUTDOWN_TIMEOUT_MS = 5_000;
 const PRETTY_TTY_COLOR_ENV = 'FLUO_DEV_PRETTY_TTY_COLOR';
 const DEFAULT_IGNORES = [
   '.cache',
@@ -171,8 +172,18 @@ function getWatchTargets(projectDirectory: string): string[] {
   return [join(projectDirectory, 'src'), ...WATCH_FILES.map((fileName) => join(projectDirectory, fileName))].filter((target) => existsSync(target));
 }
 
-function stopChild(child: ChildProcess | undefined): void {
+function stopChild(child: ChildProcess | undefined, shutdownTimeoutMs = DEFAULT_CHILD_SHUTDOWN_TIMEOUT_MS): void {
   if (child && child.exitCode === null && !child.killed) {
+    const forceKillTimer = setTimeout(() => {
+      if (child.exitCode === null) {
+        child.kill('SIGKILL');
+      }
+    }, shutdownTimeoutMs);
+
+    forceKillTimer.unref?.();
+    child.once('close', () => {
+      clearTimeout(forceKillTimer);
+    });
     child.kill('SIGTERM');
   }
 }
@@ -251,6 +262,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   const watchTarget = options.watchTarget ?? watch;
   const appArgs = options.appArgs ?? [];
   const debounceMs = options.debounceMs ?? Number(env.FLUO_DEV_RELOAD_DEBOUNCE_MS ?? DEFAULT_DEBOUNCE_MS);
+  const childShutdownTimeoutMs = Number(env.FLUO_DEV_CHILD_SHUTDOWN_TIMEOUT_MS ?? DEFAULT_CHILD_SHUTDOWN_TIMEOUT_MS);
   const gate = createContentChangeGate(projectDirectory, parseIgnorePatterns(env));
   const watchTargets = getWatchTargets(projectDirectory);
   let child: ChildProcess | undefined;
@@ -327,7 +339,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
           startChild(resolveExitCode, cleanup);
           gate.commitBaseline(committedRestartPaths);
         });
-        stopChild(previousChild);
+        stopChild(previousChild, childShutdownTimeoutMs);
         return;
       }
 
@@ -348,7 +360,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
     const stop = () => {
       stopping = true;
       cleanup();
-      stopChild(child);
+      stopChild(child, childShutdownTimeoutMs);
     };
 
     const cleanup = () => {
