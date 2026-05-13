@@ -34,13 +34,16 @@ import {
   type RequestContext,
   type RequestObserver,
 } from '@fluojs/http';
-import { createHealthModule, defineModule, fluoFactory, type ApplicationLogger } from '@fluojs/runtime';
+import { createHealthModule, defineModule, fluoFactory, type Application, type ApplicationLogger } from '@fluojs/runtime';
+import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 
 import {
   bootstrapFastifyApplication,
+  type BootstrapFastifyApplicationOptions,
   createFastifyAdapter,
   FastifyHttpApplicationAdapter,
   isFastifyMultipartTooLargeError,
+  type RunFastifyApplicationOptions,
   runFastifyApplication,
 } from './adapter.js';
 
@@ -193,11 +196,66 @@ fHFvqyh6pXZV7XKcPxCTNuIw2rpw2WqY5/H+lTmUFmSXieFZAAMRueGH8Y5trCHU
 JNCDpGwh8us=
 -----END CERTIFICATE-----`;
 
+const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness<
+  BootstrapFastifyApplicationOptions,
+  RunFastifyApplicationOptions,
+  Application
+>({
+  bootstrap: bootstrapFastifyApplication,
+  name: 'fastify',
+  run: runFastifyApplication,
+});
+
 interface FastifyReplySerializerHost {
   setReplySerializer(serializer: (payload: unknown, statusCode: number) => string): void;
 }
 
 describe('@fluojs/platform-fastify', () => {
+  describe('adapter portability', () => {
+    it('preserves malformed cookie values', async () => {
+      await fastifyPortabilityHarness.assertPreservesMalformedCookieValues();
+    });
+
+    it('preserves raw body for JSON and text requests when enabled', async () => {
+      await fastifyPortabilityHarness.assertPreservesRawBodyForJsonAndText();
+    });
+
+    it('preserves exact raw body bytes for byte-sensitive payloads', async () => {
+      await fastifyPortabilityHarness.assertPreservesExactRawBodyBytesForByteSensitivePayloads();
+    });
+
+    it('does not preserve rawBody for multipart requests', async () => {
+      await fastifyPortabilityHarness.assertExcludesRawBodyForMultipart();
+    });
+
+    it('defaults multipart.maxTotalSize to maxBodySize', async () => {
+      await fastifyPortabilityHarness.assertDefaultsMultipartTotalLimitToMaxBodySize();
+    });
+
+    it('supports SSE streaming', async () => {
+      await fastifyPortabilityHarness.assertSupportsSseStreaming();
+    });
+
+    it('settles stream drain waits when the stream closes first', async () => {
+      await fastifyPortabilityHarness.assertSettlesStreamDrainWaitOnClose();
+    });
+
+    it('reports the configured host in startup logs', async () => {
+      await fastifyPortabilityHarness.assertReportsConfiguredHostInStartupLogs();
+    });
+
+    it('supports https startup and reports the https listen URL', async () => {
+      await fastifyPortabilityHarness.assertReportsHttpsStartupUrl({
+        cert: TEST_TLS_CERTIFICATE,
+        key: TEST_TLS_PRIVATE_KEY,
+      });
+    });
+
+    it('removes registered shutdown signal listeners after close', async () => {
+      await fastifyPortabilityHarness.assertRemovesShutdownSignalListenersAfterClose();
+    });
+  });
+
   it('uses the runtime default port instead of process.env.PORT', async () => {
     const previousPort = process.env.PORT;
     process.env.PORT = '4321';
@@ -571,6 +629,43 @@ describe('@fluojs/platform-fastify', () => {
     });
 
     await app.close();
+  });
+
+  it('keeps maxBodySize enforced while capturing raw body bytes', async () => {
+    @Controller('/webhooks')
+    class WebhookController {
+      @Post('/json')
+      handleJson() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [WebhookController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      maxBodySize: 8,
+      port,
+      rawBody: true,
+    });
+
+    await app.listen();
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${String(port)}/webhooks/json`, {
+        body: JSON.stringify({ tooLarge: true }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
+
+      expect(response.status).toBe(413);
+    } finally {
+      await app.close();
+    }
   });
 
   it('preserves raw body as exact bytes for byte-sensitive payloads when enabled', async () => {

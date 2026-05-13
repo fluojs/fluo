@@ -50,6 +50,7 @@
   },
   "devDependencies": {
     "@fluojs/di": "workspace:^",
+    "@fluojs/testing": "workspace:^",
     "vitest": "^3.2.4"
   }
 }

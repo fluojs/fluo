@@ -11,6 +11,7 @@ fluo 런타임을 위한 Fastify 기반 HTTP 어댑터 패키지입니다.
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
 - [성능](#성능)
+- [적합성 커버리지](#적합성-커버리지)
 - [공개 API 개요](#공개-api-개요)
 - [트러블슈팅](#트러블슈팅)
 - [관련 패키지](#관련-패키지)
@@ -146,6 +147,12 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 | Fastify 어댑터 | **~58,000** | **2.1ms** |
 
 *표준 `/health` 엔드포인트에서 `wrk`를 사용하여 측정되었습니다.*
+
+## 적합성 커버리지
+
+`packages/platform-fastify/src/adapter.test.ts`는 문서화된 Fastify 어댑터 계약을 위한 package-local regression target입니다. 이 파일은 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body 제외, multipart total-size 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 확인합니다.
+
+같은 파일은 Fastify 전용 native route registration과 wildcard fallback, duplicate shape route fallback, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, multipart limit handling도 함께 다룹니다. startup, routing, adapter portability behavior를 변경할 때는 README 예제 포인터를 이 테스트 파일 및 custom adapter book chapter와 맞추어 유지하세요.
 
 ## 공개 API 개요
 

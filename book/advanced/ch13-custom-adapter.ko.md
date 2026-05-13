@@ -77,7 +77,7 @@ const fluoRequest: FrameworkRequest = {
 
 ## 13.4 실전: Fastify 어댑터 핵심 로직 분석
 
-`@fluojs/platform-fastify` 패키지는 이 인터페이스를 어떻게 구현할까요? Fastify는 이미 고도로 최적화된 라우팅과 플러그인 시스템을 갖추고 있지만, Fluo 어댑터는 이를 전송 계층으로만 사용합니다.
+`@fluojs/platform-fastify` 패키지는 이 인터페이스를 어떻게 구현할까요? Fastify는 이미 고도로 최적화된 라우팅과 플러그인 시스템을 갖추고 있으며, 실제 프로덕션 어댑터는 Fluo dispatcher의 소유권을 빼앗지 않는 범위에서만 그 시스템을 사용합니다.
 
 ```typescript
 // packages/platform-fastify/src/adapter.ts (개념적 코드)
@@ -85,7 +85,22 @@ export class FastifyAdapter implements HttpApplicationAdapter {
   constructor(private instance = fastify()) {}
 
   async listen(dispatcher: Dispatcher) {
-    // 모든 경로를 Fluo 디스패처로 위임
+    // Fastify router에 안전한 native route를 등록합니다.
+    for (const route of this.describeSafeRoutes(dispatcher)) {
+      this.instance.route({
+        method: route.method,
+        url: route.path,
+        handler: async (req, reply) => {
+          await dispatcher.dispatchNativeRoute?.(
+            { descriptor: route.descriptor, params: req.params },
+            this.mapRequest(req),
+            this.mapResponse(reply)
+          );
+        },
+      });
+    }
+
+    // 매칭되지 않거나 이식성에 민감한 경우를 위해 wildcard fallback을 유지합니다.
     this.instance.all('*', async (req, reply) => {
       await dispatcher.dispatch(
         this.mapRequest(req),
@@ -101,7 +116,9 @@ export class FastifyAdapter implements HttpApplicationAdapter {
 }
 ```
 
-Fastify의 와일드카드 핸들러(`all('*')`)를 사용해 모든 경로의 제어권을 Fluo 디스패처로 넘기는 방식이 전형적인 패턴입니다. Fastify는 네트워크와 플러그인 실행을 담당하고, Fluo는 라우트 해석 이후의 프레임워크 파이프라인을 담당하므로 두 책임이 겹치지 않습니다.
+Fastify는 networking, plugin execution, 그리고 명시적 route에 대한 안전한 path selection을 담당합니다. 하지만 route handoff 이후의 framework pipeline, 즉 middleware, guards, interceptors, observers, body semantics, streaming, errors, 최종 dispatch behavior는 여전히 공유 dispatcher contract 안에서 Fluo가 소유합니다. 어댑터는 매칭되지 않은 path, `@All(...)`, version-sensitive route, 중복 parameter shape, multipart request, duplicate-slash 또는 trailing-slash variant, native registration이 Fluo의 route ordering semantics를 좁힐 수 있는 모든 경우를 위해 `all('*')` fallback을 유지합니다.
+
+이 분리는 `packages/platform-fastify/src/adapter.test.ts`의 공유 `createHttpAdapterPortabilityHarness(...)` 검사로 커버됩니다. 여기에는 malformed cookie, raw-body byte preservation, multipart raw-body exclusion, SSE framing, HTTPS startup, shutdown signal cleanup이 포함됩니다. Fastify의 raw-body pre-parsing hook도 byte를 복사하는 동안 Fastify의 encoded-length accounting을 유지하므로, capture stream 때문에 `maxBodySize` enforcement가 우회되지 않고 adapter가 계속 소유합니다.
 
 ## 13.5 FrameworkResponse와 응답 쓰기 위임
 
