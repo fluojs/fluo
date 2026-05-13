@@ -10,7 +10,7 @@
 - `@fluojs/platform-express`와 `@fluojs/platform-nodejs`로 부트스트랩 구성을 바꾸는 방법을 배웁니다.
 - 어댑터 교체 뒤에도 비즈니스 로직을 그대로 유지하는 이식성 원칙을 확인합니다.
 - 플랫폼 네이티브 요청과 응답 객체에 접근해야 하는 상황을 살펴봅니다.
-- Express 미들웨어와 Node.js 스트림을 fluo 흐름에 맞게 연결하는 방법을 익힙니다.
+- HTTP 미들웨어와 Node.js 스트림을 fluo 흐름에 맞게 표현하는 방법을 익힙니다.
 - 런타임이 소유하는 diagnostic snapshot과 Studio가 소유하는 graph 및 Mermaid 표현을 구분합니다.
 - FluoShop을 Express 기반 실행 환경으로 옮길 때 점검할 항목을 정리합니다.
 
@@ -21,7 +21,7 @@
 
 ## 21.1 The Express Adapter
 
-Express는 Node.js 생태계에서 여전히 가장 널리 쓰이는 프레임워크입니다. 기존 Express 미들웨어가 운영 경로에 들어 있거나 레거시 Express 앱을 fluo로 단계적으로 옮겨야 한다면, `@fluojs/platform-express`가 현실적인 진입점이 됩니다.
+Express는 Node.js 생태계에서 여전히 가장 널리 쓰이는 프레임워크입니다. 기존 Express 인프라가 운영 경로에 들어 있거나 레거시 Express 앱을 fluo로 단계적으로 옮겨야 한다면, `@fluojs/platform-express`가 현실적인 진입점이 됩니다.
 
 ### 21.1.1 Installation
 
@@ -33,7 +33,7 @@ npm install @fluojs/platform-express express
 
 ### 21.1.2 Bootstrapping with Express
 
-Express 전환은 애플리케이션 진입점의 어댑터 선택을 바꾸는 작업에서 시작합니다. 컨트롤러와 서비스는 그대로 두고 HTTP 엔진 경계만 교체하는 방식입니다. 이 덕분에 기존 비즈니스 로직을 다시 작성하지 않고도 Express 미들웨어 생태계를 활용할 수 있습니다.
+Express 전환은 애플리케이션 진입점의 어댑터 선택을 바꾸는 작업에서 시작합니다. 컨트롤러와 서비스는 그대로 두고 HTTP 엔진 경계만 교체하는 방식입니다. 이 덕분에 기존 비즈니스 로직을 다시 작성하지 않고도 Express를 호스트 엔진으로 사용할 수 있습니다.
 
 ```typescript
 import { createExpressAdapter } from '@fluojs/platform-express';
@@ -58,18 +58,26 @@ bootstrap();
 
 ### 21.1.3 Handling Middleware
 
-Express를 선택하는 가장 큰 이유 중 하나는 이미 검증된 미들웨어 생태계입니다. fluo의 Express 어댑터는 이런 미들웨어를 전역 또는 모듈 경계에서 등록할 수 있게 해주며, 기존 운영 자산을 버리지 않고 이식할 수 있게 합니다.
+Express를 선택하는 가장 큰 이유 중 하나는 이미 검증된 운영 생태계입니다. fluo의 애플리케이션 레벨 `middleware` 옵션은 여전히 공유 `MiddlewareContext` 위에서 `handle(context, next)`를 구현한 fluo 미들웨어 객체나 provider를 기대합니다. `compression()` 같은 Express/Connect `(req, res, next)` 함수는 `fluoFactory.create(...)`에 직접 전달하지 마세요. 해당 동작을 fluo 계약 뒤에 감싸거나 Express가 소유하는 통합 계층에 두어야 합니다.
 
 ```typescript
-// Express 호환 미들웨어는 fluo bootstrap 경계를 통해 등록하는 편을 권장합니다.
+import type { Middleware } from '@fluojs/http';
+
+const compressionHeaders: Middleware = {
+  async handle(context, next) {
+    context.response.setHeader('vary', 'Accept-Encoding');
+    await next();
+  },
+};
+
 const adapter = createExpressAdapter();
 const app = await fluoFactory.create(AppModule, {
   adapter,
-  middleware: [compression()],
+  middleware: [compressionHeaders],
 });
 ```
 
-다만 장기 이식성을 생각한다면 미들웨어를 fluo 모듈 시스템 안에서 등록하는 편이 낫습니다. 그래야 다른 런타임으로 옮길 때 플랫폼 전용 코드의 위치가 명확해집니다.
+장기 이식성을 생각한다면 fluo 계약으로 작성한 미들웨어를 사용하거나 fluo 모듈 시스템 안에서 등록하는 편이 낫습니다. 그래야 다른 런타임으로 옮길 때 플랫폼 전용 코드의 위치가 명확해집니다.
 
 ## 21.2 The Raw Node.js Adapter
 
@@ -219,7 +227,7 @@ await runExpressApplication(AppModule, {
 | :--- | :--- | :--- | :--- |
 | **Performance** | Good | Excellent | High |
 | **Ecosystem** | Massive | Standard Lib | Large |
-| **Middleware** | Connect-style | Custom | Hook-style |
+| **Middleware** | Express host 위의 fluo contract | Custom | Fastify host 위의 fluo contract |
 | **Footprint** | Moderate | Minimal | Moderate |
 | **Best For** | Legacy Migrations | Micro-services | Standard Apps |
 

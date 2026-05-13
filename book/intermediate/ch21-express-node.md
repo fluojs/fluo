@@ -10,7 +10,7 @@ This chapter explains how to choose between the Express and raw Node.js adapters
 - Learn how to change bootstrap configuration with `@fluojs/platform-express` and `@fluojs/platform-nodejs`.
 - Confirm the portability principle that keeps business logic unchanged after swapping adapters.
 - Review situations where you need access to platform-native request and response objects.
-- Learn how to connect Express middleware and Node.js streams to the fluo flow.
+- Learn how to model HTTP middleware and Node.js streams through the fluo flow.
 - Distinguish runtime-owned diagnostic snapshots from Studio-owned graph and Mermaid presentation.
 - Summarize the checklist for moving FluoShop to an Express-based runtime environment.
 
@@ -21,7 +21,7 @@ This chapter explains how to choose between the Express and raw Node.js adapters
 
 ## 21.1 The Express Adapter
 
-Express is still the most widely used framework in the Node.js ecosystem. If existing Express middleware is part of your operational path, or if you need to move a legacy Express app into fluo gradually, `@fluojs/platform-express` is a practical entry point.
+Express is still the most widely used framework in the Node.js ecosystem. If existing Express infrastructure is part of your operational path, or if you need to move a legacy Express app into fluo gradually, `@fluojs/platform-express` is a practical entry point.
 
 ### 21.1.1 Installation
 
@@ -33,7 +33,7 @@ npm install @fluojs/platform-express express
 
 ### 21.1.2 Bootstrapping with Express
 
-The switch to Express starts by changing the adapter selection in the application entrypoint. Controllers and services stay the same; only the HTTP engine boundary is replaced. This lets you use the Express middleware ecosystem without rewriting existing business logic.
+The switch to Express starts by changing the adapter selection in the application entrypoint. Controllers and services stay the same; only the HTTP engine boundary is replaced. This lets you use Express as the host engine without rewriting existing business logic.
 
 ```typescript
 import { createExpressAdapter } from '@fluojs/platform-express';
@@ -58,18 +58,26 @@ bootstrap();
 
 ### 21.1.3 Handling Middleware
 
-One of the biggest reasons to choose Express is its proven middleware ecosystem. fluo's Express adapter lets you register that middleware globally or at Module boundaries, so you can migrate existing operational assets without throwing them away.
+One of the biggest reasons to choose Express is its proven operational ecosystem. fluo's application-level `middleware` option still expects fluo middleware: an object or provider that implements `handle(context, next)` over the shared `MiddlewareContext`. Do not pass an Express/Connect `(req, res, next)` function such as `compression()` directly to `fluoFactory.create(...)`; wrap that behavior behind the fluo contract or keep it in an Express-owned integration layer.
 
 ```typescript
-// Prefer registering Express-compatible middleware through the fluo bootstrap boundary.
+import type { Middleware } from '@fluojs/http';
+
+const compressionHeaders: Middleware = {
+  async handle(context, next) {
+    context.response.setHeader('vary', 'Accept-Encoding');
+    await next();
+  },
+};
+
 const adapter = createExpressAdapter();
 const app = await fluoFactory.create(AppModule, {
   adapter,
-  middleware: [compression()],
+  middleware: [compressionHeaders],
 });
 ```
 
-For long-term portability, however, it is better to register middleware inside the fluo Module system. That keeps the location of platform-specific code clear when you move to another runtime.
+For long-term portability, prefer middleware written to the fluo contract or registered through the fluo Module system. That keeps the location of platform-specific code clear when you move to another runtime.
 
 ## 21.2 The Raw Node.js Adapter
 
@@ -219,7 +227,7 @@ This helper wires process signals to the standard fluo shutdown lifecycle and he
 | :--- | :--- | :--- | :--- |
 | **Performance** | Good | Excellent | High |
 | **Ecosystem** | Massive | Standard Lib | Large |
-| **Middleware** | Connect-style | Custom | Hook-style |
+| **Middleware** | fluo contract over Express host | Custom | fluo contract over Fastify host |
 | **Footprint** | Moderate | Minimal | Moderate |
 | **Best For** | Legacy Migrations | Micro-services | Standard Apps |
 
