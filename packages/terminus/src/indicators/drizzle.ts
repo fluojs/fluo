@@ -114,9 +114,11 @@ export function createDrizzleHealthIndicator(options: DrizzleHealthIndicatorOpti
  * @returns A factory provider that exposes `DrizzleHealthIndicator` from the DI container.
  */
 export function createDrizzleHealthIndicatorProvider(options: Omit<DrizzleHealthIndicatorOptions, 'database' | 'handleProvider'> = {}): Provider {
+  const indicatorProviderToken = Symbol('fluo.terminus.drizzle-health-indicator');
+
   return {
     inject: [optional(DRIZZLE_HANDLE_PROVIDER), optional(DRIZZLE_DATABASE)],
-    provide: DrizzleHealthIndicator,
+    provide: indicatorProviderToken,
     useFactory: (handleProvider: unknown, database: unknown) => {
       const resolvedHandleProvider = typeof handleProvider === 'object' && handleProvider !== null
         ? handleProvider as DrizzleHandleProviderLike

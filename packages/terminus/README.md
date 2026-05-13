@@ -12,6 +12,7 @@ Health indicator toolkit for fluo applications. `@fluojs/terminus` layers on top
 - [Common Patterns](#common-patterns)
   - [Built-in Indicators](#built-in-indicators)
   - [DI-Backed Indicators](#di-backed-indicators)
+  - [Execution Guardrails](#execution-guardrails)
   - [Failure Semantics](#failure-semantics)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
@@ -90,6 +91,8 @@ TerminusModule.forRoot({
 ```
 
 For Drizzle, `createDrizzleHealthIndicatorProvider()` prefers the lifecycle-aware `DrizzleDatabase` wrapper exported by `@fluojs/drizzle`. The indicator reports `down` before probing SQL whenever Drizzle is shutting down, stopped, or otherwise not ready according to `DrizzleDatabase.createPlatformStatusSnapshot()`. If only the legacy raw `DRIZZLE_DATABASE` handle is registered, the provider keeps the previous lightweight SQL probe behavior.
+
+Provider factories are repeatable. You may register multiple providers created by the same factory in one `indicatorProviders` array when each instance uses a distinct indicator key or dependency option; Terminus keeps every provider instance under its own DI token instead of letting later same-type providers overwrite earlier ones.
 
 ### Execution Guardrails
 
