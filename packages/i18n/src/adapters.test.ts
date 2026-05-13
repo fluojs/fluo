@@ -118,6 +118,20 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
     expect(locale).toEqual({ locale: 'ko', source: 'grpc-metadata' });
   });
 
+  it('matches adapter Accept-Language ranges case-insensitively while preserving supported locale spelling', () => {
+    const context: TransportContext = {
+      headers: { metadata: 'EN-us;q=1, KO;q=0.8' },
+    };
+
+    const locale = resolveLocale(context, {
+      defaultLocale: 'ko-KR',
+      resolvers: [createHeaderLocaleResolver({ getHeader: (ctx) => ctx.headers?.metadata, source: 'grpc-metadata' })],
+      supportedLocales: ['en-US', 'ko-KR'],
+    });
+
+    expect(locale).toEqual({ locale: 'en-US', source: 'grpc-metadata' });
+  });
+
   it('ignores empty, invalid, and unsupported adapter output before using storage fallback', () => {
     const context: TransportContext = {
       cookies: { locale: '' },
