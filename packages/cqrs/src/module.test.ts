@@ -252,29 +252,6 @@ describe('@fluojs/cqrs', () => {
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateCommandHandlerError);
   });
 
-  it('fails bootstrap when one command handler class is registered under multiple provider tokens', async () => {
-    const firstToken = Symbol('first-create-user-handler');
-    const secondToken = Symbol('second-create-user-handler');
-
-    @CommandHandler(CreateUserCommand)
-    class AliasedCreateUserHandler {
-      execute(_command: CreateUserCommand) {
-        return 'created';
-      }
-    }
-
-    class AppModule {}
-    defineModule(AppModule, {
-      imports: [CqrsModule.forRoot()],
-      providers: [
-        { provide: firstToken, useClass: AliasedCreateUserHandler },
-        { provide: secondToken, useClass: AliasedCreateUserHandler },
-      ],
-    });
-
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateCommandHandlerError);
-  });
-
   it('fails bootstrap when duplicate query handlers are registered for one query type', async () => {
     @QueryHandler(GetUserQuery)
     class FirstGetUserHandler {
@@ -294,29 +271,6 @@ describe('@fluojs/cqrs', () => {
     defineModule(AppModule, {
       imports: [CqrsModule.forRoot()],
       providers: [FirstGetUserHandler, SecondGetUserHandler],
-    });
-
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateQueryHandlerError);
-  });
-
-  it('fails bootstrap when one query handler class is registered under multiple provider tokens', async () => {
-    const firstToken = Symbol('first-get-user-handler');
-    const secondToken = Symbol('second-get-user-handler');
-
-    @QueryHandler(GetUserQuery)
-    class AliasedGetUserHandler {
-      execute(_query: GetUserQuery) {
-        return { id: 'x', name: 'aliased' };
-      }
-    }
-
-    class AppModule {}
-    defineModule(AppModule, {
-      imports: [CqrsModule.forRoot()],
-      providers: [
-        { provide: firstToken, useClass: AliasedGetUserHandler },
-        { provide: secondToken, useClass: AliasedGetUserHandler },
-      ],
     });
 
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateQueryHandlerError);
@@ -792,65 +746,6 @@ describe('@fluojs/cqrs', () => {
     await app.close();
   });
 
-  it('fans out event handlers and sagas when one class is registered under multiple provider tokens', async () => {
-    const firstEventToken = Symbol('first-aliased-event-handler');
-    const secondEventToken = Symbol('second-aliased-event-handler');
-    const firstSagaToken = Symbol('first-aliased-saga');
-    const secondSagaToken = Symbol('second-aliased-saga');
-
-    class FanOutStore {
-      events: string[] = [];
-      sagas: string[] = [];
-    }
-
-    class FanOutEvent implements IEvent {
-      constructor(public readonly id: string) {}
-    }
-
-    @Inject(FanOutStore)
-    @EventHandler(FanOutEvent)
-    class AliasedEventHandler implements IEventHandler<FanOutEvent> {
-      constructor(private readonly store: FanOutStore) {}
-
-      handle(event: FanOutEvent): void {
-        this.store.events.push(event.id);
-      }
-    }
-
-    @Inject(FanOutStore)
-    @Saga(FanOutEvent)
-    class AliasedSaga implements ISaga<FanOutEvent> {
-      constructor(private readonly store: FanOutStore) {}
-
-      handle(event: FanOutEvent): void {
-        this.store.sagas.push(event.id);
-      }
-    }
-
-    class AppModule {}
-    defineModule(AppModule, {
-      imports: [CqrsModule.forRoot()],
-      providers: [
-        FanOutStore,
-        { provide: firstEventToken, useClass: AliasedEventHandler },
-        { provide: secondEventToken, useClass: AliasedEventHandler },
-        { provide: firstSagaToken, useClass: AliasedSaga },
-        { provide: secondSagaToken, useClass: AliasedSaga },
-      ],
-    });
-
-    const app = await bootstrapApplication({ rootModule: AppModule });
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
-    const store = await app.container.resolve(FanOutStore);
-
-    await eventBus.publish(new FanOutEvent('fanout-1'));
-
-    expect(store.events).toEqual(['fanout-1', 'fanout-1']);
-    expect(store.sagas).toEqual(['fanout-1', 'fanout-1']);
-
-    await app.close();
-  });
-
   it('isolates CQRS event handler and saga mutations from delegated event-bus subscribers', async () => {
     interface Snapshot {
       readonly flagged: boolean;
@@ -1193,60 +1088,6 @@ describe('@fluojs/cqrs', () => {
     vi.useRealTimers();
   });
 
-  it('does not start saga work when a drained publish pipeline resumes after saga shutdown', async () => {
-    vi.useFakeTimers();
-    const releaseHandler = createDeferred<void>();
-
-    class LateSagaStore {
-      sagaCount = 0;
-    }
-
-    class LateSagaEvent implements IEvent {
-      constructor(public readonly id: string) {}
-    }
-
-    @EventHandler(LateSagaEvent)
-    class StuckBeforeSagaHandler implements IEventHandler<LateSagaEvent> {
-      async handle(_event: LateSagaEvent): Promise<void> {
-        await releaseHandler.promise;
-      }
-    }
-
-    @Inject(LateSagaStore)
-    @Saga(LateSagaEvent)
-    class LateSaga implements ISaga<LateSagaEvent> {
-      constructor(private readonly store: LateSagaStore) {}
-
-      handle(_event: LateSagaEvent): void {
-        this.store.sagaCount += 1;
-      }
-    }
-
-    class AppModule {}
-    defineModule(AppModule, {
-      imports: [CqrsModule.forRoot({ shutdown: { drainTimeoutMs: 20 } })],
-      providers: [LateSagaStore, StuckBeforeSagaHandler, LateSaga],
-    });
-
-    const app = await bootstrapApplication({ rootModule: AppModule });
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
-    const store = await app.container.resolve(LateSagaStore);
-    const publishPromise = eventBus.publish(new LateSagaEvent('late-saga'));
-
-    await Promise.resolve();
-
-    const closePromise = app.close();
-    await vi.advanceTimersByTimeAsync(20);
-    await closePromise;
-
-    releaseHandler.resolve();
-
-    await publishPromise;
-    expect(store.sagaCount).toBe(0);
-
-    vi.useRealTimers();
-  });
-
   it('waits for in-flight publishAll sequences during application shutdown', async () => {
     const releaseFirstEvent = createDeferred<void>();
     let closeCompleted = false;
@@ -1300,79 +1141,6 @@ describe('@fluojs/cqrs', () => {
     await closePromise;
 
     expect(store.seen).toEqual([1, 2]);
-  });
-
-  it('rejects command, query, event, and direct saga dispatch after application shutdown', async () => {
-    class Store {
-      commandCount = 0;
-      eventCount = 0;
-      sagaCount = 0;
-    }
-
-    @Inject(Store)
-    @CommandHandler(CreateUserCommand)
-    class CreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
-      constructor(private readonly store: Store) {}
-
-      execute(command: CreateUserCommand): string {
-        this.store.commandCount += 1;
-        return command.name;
-      }
-    }
-
-    @Inject(Store)
-    @QueryHandler(GetUserCountQuery)
-    class GetUserHandler implements IQueryHandler<GetUserCountQuery, number> {
-      constructor(private readonly store: Store) {}
-
-      execute(_query: GetUserCountQuery): number {
-        return this.store.commandCount;
-      }
-    }
-
-    @Inject(Store)
-    @EventHandler(UserCreatedEvent)
-    class UserCreatedRecorder implements IEventHandler<UserCreatedEvent> {
-      constructor(private readonly store: Store) {}
-
-      handle(_event: UserCreatedEvent): void {
-        this.store.eventCount += 1;
-      }
-    }
-
-    @Inject(Store)
-    @Saga(UserCreatedEvent)
-    class UserCreatedSaga implements ISaga<UserCreatedEvent> {
-      constructor(private readonly store: Store) {}
-
-      handle(_event: UserCreatedEvent): void {
-        this.store.sagaCount += 1;
-      }
-    }
-
-    class AppModule {}
-    defineModule(AppModule, {
-      imports: [CqrsModule.forRoot()],
-      providers: [Store, CreateUserHandler, GetUserHandler, UserCreatedRecorder, UserCreatedSaga],
-    });
-
-    const app = await bootstrapApplication({ rootModule: AppModule });
-    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
-    const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
-    const sagaBus = await app.container.resolve(CqrsSagaLifecycleService);
-    const store = await app.container.resolve(Store);
-
-    await app.close();
-
-    await expect(commandBus.execute(new CreateUserCommand('alice'))).rejects.toThrow('command bus has stopped');
-    await expect(queryBus.execute(new GetUserCountQuery('ignored'))).rejects.toThrow('query bus has stopped');
-    await expect(eventBus.publish(new UserCreatedEvent('alice'))).rejects.toThrow('event bus has stopped');
-    await expect(sagaBus.dispatch(new UserCreatedEvent('alice'))).rejects.toThrow('saga bus has stopped');
-
-    expect(store.commandCount).toBe(0);
-    expect(store.eventCount).toBe(0);
-    expect(store.sagaCount).toBe(0);
   });
 
   it('wires command/query/event buses through CqrsModule.forRoot with bootstrapApplication', async () => {

@@ -3,7 +3,7 @@ import { EVENT_BUS as FLUO_EVENT_BUS, type EventBus } from '@fluojs/event-bus';
 import type { OnApplicationShutdown, OnApplicationBootstrap } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
-import { CqrsBusBase, isSameDiscoveredProvider } from '../discovery.js';
+import { CqrsBusBase } from '../discovery.js';
 import { createIsolatedEvent } from '../event-clone.js';
 import { getEventHandlerMetadata } from '../metadata.js';
 import { CQRS_MODULE_OPTIONS } from '../tokens.js';
@@ -99,7 +99,6 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
    * @throws {InvariantError} When a discovered provider does not implement `handle(event)`.
    */
   async publish<TEvent extends IEvent>(event: TEvent): Promise<void> {
-    this.assertNotStopped('publish events');
     await this.trackPublishPipeline(this.runPublishPipeline(event));
   }
 
@@ -110,14 +109,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
    * @returns A promise that resolves once all events are published.
    */
   async publishAll<TEvent extends IEvent>(events: readonly TEvent[]): Promise<void> {
-    this.assertNotStopped('publish events');
     await this.trackPublishPipeline(this.runPublishAllPipeline(events));
-  }
-
-  private assertNotStopped(operation: string): void {
-    if (this.lifecycleState === 'stopped') {
-      throw new InvariantError(`Cannot ${operation} after the CQRS event bus has stopped.`);
-    }
   }
 
   private async runPublishPipeline<TEvent extends IEvent>(event: TEvent): Promise<void> {
@@ -133,7 +125,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
       await instance.handle(createIsolatedEvent(descriptor.eventType as CqrsEventType<TEvent>, event));
     }
 
-    await this.sagaService.dispatch(event, { allowStopped: true });
+    await this.sagaService.dispatch(event);
     await this.eventBus.publish(event);
   }
 
@@ -229,6 +221,8 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
 
   private discoverEventDescriptors(): EventHandlerDescriptor[] {
     const descriptors: EventHandlerDescriptor[] = [];
+    const seenByTarget = new WeakMap<Function, Set<CqrsEventType>>();
+
     for (const candidate of this.discoveryCandidates()) {
       const metadata = getEventHandlerMetadata(candidate.targetType);
 
@@ -244,8 +238,17 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
         continue;
       }
 
+      const seenEventTypes = seenByTarget.get(candidate.targetType) ?? new Set<CqrsEventType>();
+
+      if (seenEventTypes.has(metadata.eventType)) {
+        continue;
+      }
+
+      seenEventTypes.add(metadata.eventType);
+      seenByTarget.set(candidate.targetType, seenEventTypes);
+
       const alreadyRegistered = descriptors.some(
-        (descriptor) => descriptor.eventType === metadata.eventType && isSameDiscoveredProvider(descriptor, candidate),
+        (descriptor) => descriptor.eventType === metadata.eventType && descriptor.targetType === candidate.targetType,
       );
 
       if (!alreadyRegistered) {

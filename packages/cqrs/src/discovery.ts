@@ -1,4 +1,4 @@
-import type { Token } from '@fluojs/core';
+import { type Token } from '@fluojs/core';
 import { getClassDiMetadata } from '@fluojs/core/internal';
 import type { Container, Provider } from '@fluojs/di';
 import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
@@ -45,20 +45,6 @@ export function createDuplicateHandlerMessage(
   second: { moduleName: string; targetType: Function },
 ): string {
   return `Duplicate ${kind} handler for ${messageType.name} was discovered in ${first.moduleName}.${first.targetType.name} and ${second.moduleName}.${second.targetType.name}.`;
-}
-
-/**
- * Determines whether two discovery records point at the same singleton provider registration.
- *
- * @param first First discovered provider record.
- * @param second Second discovered provider record.
- * @returns Whether both records use the same DI token and handler class.
- */
-export function isSameDiscoveredProvider(
-  first: { targetType: Function; token: Token },
-  second: { targetType: Function; token: Token },
-): boolean {
-  return first.targetType === second.targetType && Object.is(first.token, second.token);
 }
 
 /**

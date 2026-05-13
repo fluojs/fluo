@@ -4,7 +4,7 @@ import { Inject, InvariantError, FluoError, type Token } from '@fluojs/core';
 import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
-import { CqrsBusBase, isSameDiscoveredProvider } from '../discovery.js';
+import { CqrsBusBase } from '../discovery.js';
 import { SagaExecutionError, SagaTopologyError } from '../errors.js';
 import { createIsolatedEvent } from '../event-clone.js';
 import { getSagaMetadata } from '../metadata.js';
@@ -115,12 +115,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
    * @param event Event instance that may trigger one or more sagas.
    * @returns A promise that resolves once all matching saga chains for the event complete.
    */
-  async dispatch<TEvent extends IEvent>(event: TEvent, options: { allowStopped?: boolean } = {}): Promise<void> {
-    if (this.lifecycleState === 'stopped' && options.allowStopped) {
-      return;
-    }
-
-    this.assertCanDispatch('dispatch sagas', options);
+  async dispatch<TEvent extends IEvent>(event: TEvent): Promise<void> {
     await this.ensureDiscovered();
 
     const descriptors = this.matchSagaDescriptors(event);
@@ -130,12 +125,6 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     }
 
     await Promise.all(descriptors.map((descriptor) => this.dispatchWithOrdering(descriptor, event)));
-  }
-
-  private assertCanDispatch(operation: string, options: { allowStopped?: boolean }): void {
-    if (this.lifecycleState === 'stopped' || (this.lifecycleState === 'stopping' && !options.allowStopped)) {
-      throw new InvariantError(`Cannot ${operation} after the CQRS saga bus has stopped.`);
-    }
   }
 
   private matchSagaDescriptors(event: IEvent): SagaDescriptor[] {
@@ -311,6 +300,8 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
 
   private discoverSagaDescriptors(): Map<CqrsEventType, SagaDescriptor[]> {
     const descriptorsByEvent = new Map<CqrsEventType, SagaDescriptor[]>();
+    const seenByTarget = new WeakMap<Function, Set<CqrsEventType>>();
+
     for (const candidate of this.discoveryCandidates()) {
       const metadata = getSagaMetadata(candidate.targetType);
 
@@ -326,10 +317,18 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
         continue;
       }
 
+      const seenEventTypes = seenByTarget.get(candidate.targetType) ?? new Set<CqrsEventType>();
+
       for (const eventType of metadata.eventTypes) {
+        if (seenEventTypes.has(eventType)) {
+          continue;
+        }
+
+        seenEventTypes.add(eventType);
+
         const descriptors = descriptorsByEvent.get(eventType) ?? [];
 
-        if (!descriptors.some((descriptor) => isSameDiscoveredProvider(descriptor, candidate))) {
+        if (!descriptors.some((descriptor) => descriptor.targetType === candidate.targetType)) {
           descriptors.push({
             eventType,
             moduleName: candidate.moduleName,
@@ -340,6 +339,8 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
           descriptorsByEvent.set(eventType, descriptors);
         }
       }
+
+      seenByTarget.set(candidate.targetType, seenEventTypes);
     }
 
     return descriptorsByEvent;

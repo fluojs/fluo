@@ -1,10 +1,10 @@
 import { Inject, InvariantError } from '@fluojs/core';
-import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runtime';
+import type { OnApplicationBootstrap } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { CommandHandlerNotFoundException, DuplicateCommandHandlerError } from '../errors.js';
 import { getCommandHandlerMetadata } from '../metadata.js';
-import { CqrsBusBase, createDuplicateHandlerMessage, isSameDiscoveredProvider } from '../discovery.js';
+import { CqrsBusBase, createDuplicateHandlerMessage } from '../discovery.js';
 import type {
   CommandBus,
   CommandHandlerDescriptor,
@@ -28,19 +28,13 @@ function isCommandHandler(value: unknown): value is ICommandHandler<ICommand, un
  * and throws explicit contract errors when no handler or multiple handlers exist.
  */
 @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
-export class CommandBusLifecycleService extends CqrsBusBase implements CommandBus, OnApplicationBootstrap, OnApplicationShutdown {
+export class CommandBusLifecycleService extends CqrsBusBase implements CommandBus, OnApplicationBootstrap {
   private descriptors = new Map<CommandType, CommandHandlerDescriptor>();
   private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
-  private stopped = false;
 
   async onApplicationBootstrap(): Promise<void> {
-    this.stopped = false;
     await this.ensureDiscovered();
-  }
-
-  async onApplicationShutdown(): Promise<void> {
-    this.stopped = true;
   }
 
   /**
@@ -53,7 +47,6 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
    * @throws {InvariantError} When the resolved provider does not implement `execute(command)`.
    */
   async execute<TCommand extends ICommand, TResult = void>(command: TCommand): Promise<TResult> {
-    this.assertNotStopped('execute commands');
     await this.ensureDiscovered();
 
     const commandType = command.constructor as CommandType<TCommand>;
@@ -70,12 +63,6 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
     }
 
     return await instance.execute(command) as TResult;
-  }
-
-  private assertNotStopped(operation: string): void {
-    if (this.stopped) {
-      throw new InvariantError(`Cannot ${operation} after the CQRS command bus has stopped.`);
-    }
   }
 
   private async ensureDiscovered(): Promise<void> {
@@ -109,6 +96,8 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
 
   private discoverCommandDescriptors(): Map<CommandType, CommandHandlerDescriptor> {
     const descriptors = new Map<CommandType, CommandHandlerDescriptor>();
+    const seenByTarget = new WeakMap<Function, Set<CommandType>>();
+
     for (const candidate of this.discoveryCandidates()) {
       const metadata = getCommandHandlerMetadata(candidate.targetType);
 
@@ -124,9 +113,18 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
         continue;
       }
 
+      const seenCommandTypes = seenByTarget.get(candidate.targetType) ?? new Set<CommandType>();
+
+      if (seenCommandTypes.has(metadata.commandType)) {
+        continue;
+      }
+
+      seenCommandTypes.add(metadata.commandType);
+      seenByTarget.set(candidate.targetType, seenCommandTypes);
+
       const existing = descriptors.get(metadata.commandType);
 
-      if (existing && !isSameDiscoveredProvider(existing, candidate)) {
+      if (existing && existing.targetType !== candidate.targetType) {
         throw new DuplicateCommandHandlerError(
           createDuplicateHandlerMessage('command', metadata.commandType, existing, {
             moduleName: candidate.moduleName,

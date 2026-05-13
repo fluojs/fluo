@@ -22,7 +22,7 @@
 | 선택적 eager 등록 | `CqrsModule.forRoot({ commandHandlers, queryHandlers, eventHandlers, sagas })`는 해당 클래스를 프로바이더 목록에 추가하지만, 탐색은 동일한 핸들러 메타데이터를 읽습니다. | `packages/cqrs/src/module.ts` |
 | singleton 전용 탐색 | Command 핸들러, Query 핸들러, Event 핸들러, saga는 프로바이더 스코프가 `singleton`일 때만 등록됩니다. singleton이 아닌 후보는 logger 경고와 함께 건너뜁니다. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
 | 핸들러 형태 | Command/Query 핸들러는 `execute(...)`를 구현해야 합니다. Event 핸들러와 saga는 `handle(...)`을 구현해야 합니다. 이를 위반하면 디스패치 시 `InvariantError`가 발생합니다. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
-| 중복 등록 | 중복 singleton Command/Query 핸들러는 해당 bus가 point-to-point이므로 discovery error입니다. 중복 검사는 provider registration 기준입니다. 따라서 같은 handler class가 서로 다른 DI token으로 등록되어도 Command/Query에서는 ownership 충돌로 처리됩니다. 중복 singleton Event 핸들러는 충돌이 아니며, 서로 다른 DI token에 등록된 같은 class provider를 포함해 일치하는 모든 `@EventHandler(...)` provider가 유지되고 discovery 순서대로 한 번씩 호출됩니다. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/errors.ts` |
+| 중복 등록 | 중복 singleton Command/Query 핸들러는 해당 bus가 point-to-point이므로 discovery error입니다. 중복 singleton Event 핸들러는 충돌이 아니며, 일치하는 모든 `@EventHandler(...)` provider가 유지되고 discovery 순서대로 한 번씩 호출됩니다. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/errors.ts` |
 | saga 이벤트 목록 | `@Saga()`는 최소 하나의 이벤트 생성자를 요구하며, 클래스가 아닌 이벤트 값은 거부합니다. 하나의 데코레이터 호출 안에서 중복된 이벤트 생성자는 제거됩니다. | `packages/cqrs/src/decorators.ts` |
 
 ## 버스 및 라이프사이클 경계
@@ -33,7 +33,7 @@
 | Query 버스 | 핸들러를 한 번 탐색하고, 핸들러 인스턴스를 preload한 뒤, 하나의 Query를 하나의 핸들러에 디스패치합니다. | `packages/cqrs/src/buses/query-bus.ts` |
 | CQRS 이벤트 버스 | 매칭되는 로컬 Event 핸들러에 게시한 뒤, saga lifecycle service로 전달하고, 마지막으로 공유 `@fluojs/event-bus` 전송 계층으로 위임합니다. `publishAll(...)`은 다음 Event를 발행하기 전에 각 Event의 전체 CQRS pipeline을 기다리므로 입력 순서를 보존합니다. | `packages/cqrs/src/buses/event-bus.ts` |
 | saga 런타임 | saga 토큰별 실행을 직렬화하고, `AsyncLocalStorage`로 활성 디스패치 문맥을 추적하며, 진단용 런타임 스냅샷 데이터를 제공합니다. | `packages/cqrs/src/buses/saga-bus.ts` |
-| 종료 동작 | CQRS 이벤트 버스는 진행 중인 `publish(...)` pipeline과 `publishAll(...)` sequence가 settle될 때까지 기다린 뒤 stopped 상태로 전환합니다. saga 런타임도 종료 시 진행 중인 디스패치를 기다린 뒤 descriptor와 캐시된 핸들러 인스턴스를 정리합니다. Shutdown이 완료된 뒤에는 command 실행, query 실행, event 발행, 직접 saga dispatch가 새 local handler 또는 saga work를 시작하지 않고 거부됩니다. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
+| 종료 동작 | CQRS 이벤트 버스는 진행 중인 `publish(...)` pipeline과 `publishAll(...)` sequence가 settle될 때까지 기다린 뒤 stopped 상태로 전환합니다. saga 런타임도 종료 시 진행 중인 디스패치를 기다린 뒤 descriptor와 캐시된 핸들러 인스턴스를 정리합니다. | `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
 
 ## 제약 사항
 
