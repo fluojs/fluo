@@ -36,9 +36,9 @@ describe('@fluojs/slack public API surface', () => {
     const readme = readFileSync(resolve(import.meta.dirname, '../README.md'), 'utf8');
     const koreanReadme = readFileSync(resolve(import.meta.dirname, '../README.ko.md'), 'utf8');
 
-    expect(readme).toContain('`createSlackProviders(...)` is the supported manual-composition helper when applications need the same provider normalization outside `SlackModule.forRoot(...)`.');
+    expect(readme).toContain('Prefer `SlackModule.forRoot(...)` or `SlackModule.forRootAsync(...)` for application-facing registration. `createSlackProviders(...)` remains a low-level compatibility helper for wrapper modules that must assemble the same normalized providers manually.');
     expect(readme).toContain('The helper preserves the same `SLACK`, `SLACK_CHANNEL`, and `SlackService` wiring that `SlackModule.forRoot(...)` installs.');
-    expect(koreanReadme).toContain('`createSlackProviders(...)`는 애플리케이션이 `SlackModule.forRoot(...)` 밖에서 동일한 provider 정규화 구성을 재사용해야 할 때 지원되는 manual-composition helper입니다.');
+    expect(koreanReadme).toContain('애플리케이션-facing 등록에는 `SlackModule.forRoot(...)` 또는 `SlackModule.forRootAsync(...)`를 우선 사용하세요. `createSlackProviders(...)`는 동일하게 정규화된 provider를 직접 조합해야 하는 wrapper module을 위한 low-level compatibility helper로 유지됩니다.');
     expect(koreanReadme).toContain('이 helper는 `SlackModule.forRoot(...)`가 구성하는 `SLACK`, `SLACK_CHANNEL`, `SlackService` wiring을 동일하게 유지합니다.');
   });
 

@@ -78,7 +78,7 @@ export class DeployNotifier {
 
 ### Manual provider composition with `createSlackProviders`
 
-`createSlackProviders(...)` is the supported manual-composition helper when applications need the same provider normalization outside `SlackModule.forRoot(...)`.
+Prefer `SlackModule.forRoot(...)` or `SlackModule.forRootAsync(...)` for application-facing registration. `createSlackProviders(...)` remains a low-level compatibility helper for wrapper modules that must assemble the same normalized providers manually.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -105,6 +105,7 @@ Behavioral contract notes:
 - The helper preserves the same `SLACK`, `SLACK_CHANNEL`, and `SlackService` wiring that `SlackModule.forRoot(...)` installs.
 - `createSlackProviders(...)` applies the same option normalization as `SlackModule.forRoot(...)`, including trimmed default channels, notification channel fallback, and transport ownership defaults.
 - The helper still requires an explicit `transport`; it does not weaken the package's runtime-portable, no-implicit-env contract.
+- New application code should still prefer the `SlackModule` namespace facade so provider assembly remains an implementation detail unless a wrapper module needs compatibility-level access.
 
 ### Standalone delivery with `SlackService`
 
@@ -180,7 +181,7 @@ Behavioral contract notes:
 
 ### Webhook-first delivery with explicit fetch injection
 
-Use `createSlackWebhookTransport(...)` when you want a portable first-party transport that only depends on a fetch-compatible HTTP boundary.
+Use `createSlackWebhookTransport(...)` when you want a portable first-party transport that only depends on an explicitly injected fetch-compatible HTTP boundary.
 
 ```typescript
 const transport = createSlackWebhookTransport({
@@ -200,6 +201,7 @@ Behavioral contract notes:
 
 - The built-in webhook transport retries transient `408`, `429`, and `5xx` failures with bounded exponential backoff before surfacing an error.
 - Caller-visible `SlackTransportError` messages omit raw upstream response bodies by default.
+- `fetch` is required even on runtimes that expose `globalThis.fetch`; callers choose the runtime boundary instead of the package relying on ambient globals.
 
 ### Intentional limitations
 
@@ -217,6 +219,8 @@ These limitations are part of the package contract so runtime choice, provider c
 ### Core
 
 - `SlackModule.forRoot(options)` / `SlackModule.forRootAsync(options)`
+- `SlackModuleOptions`
+- `SlackAsyncModuleOptions`
 - `createSlackProviders(options)`
 - `SlackService`
 - `SlackService.send(message, options)`
@@ -250,7 +254,10 @@ These limitations are part of the package contract so runtime choice, provider c
 - `SlackTransportReceipt`
 - `SlackFetchLike`
 - `SlackFetchResponse`
+- `SlackWebhookTransportOptions`
 - `SlackTemplateRenderer`
+- `SlackTemplateRenderInput`
+- `SlackTemplateRenderResult`
 - `createSlackWebhookTransport(options)`
 
 ### Status and errors
