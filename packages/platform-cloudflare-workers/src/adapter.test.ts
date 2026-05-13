@@ -202,6 +202,40 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     expect(httpResponse.status).toBe(200);
   });
 
+  it('keeps websocket upgrades behind the dispatcher listen boundary', async () => {
+    const createWebSocketPair = createWebSocketPairStub();
+    const adapter = new CloudflareWorkerHttpApplicationAdapter({
+      createWebSocketPair,
+    });
+    const bindingFetch = vi.fn<CloudflareWorkerWebSocketBinding['fetch']>(async (request, host) => {
+      const upgraded = host.upgrade(request);
+
+      expect(upgraded.serverSocket).toBeDefined();
+      return upgraded.response;
+    });
+
+    adapter.configureWebSocketBinding({
+      fetch: bindingFetch,
+    });
+
+    const response = await adapter.fetch(
+      new Request('https://worker.test/chat', {
+        headers: { upgrade: 'websocket' },
+      }),
+      {},
+      createExecutionContext(),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        message: 'Internal server error.',
+      },
+    });
+    expect(bindingFetch).not.toHaveBeenCalled();
+    expect(createWebSocketPair).not.toHaveBeenCalled();
+  });
+
   it('boots a Worker application that reuses shared runtime middleware and Web request handling', async () => {
     @Controller('/webhooks')
     class WebhookController {
@@ -316,6 +350,10 @@ describe('@fluojs/platform-cloudflare-workers', () => {
 
     expect(closeSettled).toBe(true);
     expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
+
+    const closedResponse = await adapter.fetch(new Request('https://worker.test/closed'), {}, createExecutionContext());
+
+    expect(closedResponse.status).toBe(503);
   });
 
   it('bounds Worker close() while preserving shutdown responses for new requests', async () => {
