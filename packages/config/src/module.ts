@@ -16,6 +16,7 @@ const CONFIG_MODULE_WATCH_OPTIONS = Symbol('fluo.config.module-watch-options');
 class ConfigModuleWatchManager {
   private reloader: ConfigReloader | undefined;
   private reloadForwarder: ConfigReloadSubscription | undefined;
+  private errorForwarder: ConfigReloadSubscription | undefined;
 
   constructor(
     private readonly config: ConfigService,
@@ -32,6 +33,7 @@ class ConfigModuleWatchManager {
     }
 
     this.reloader = createConfigReloader(this.options);
+    replaceConfigServiceSnapshotUnchecked(this.config, this.reloader.current());
     this.reloadForwarder = this.reloader.subscribe((snapshot) => {
       const previousConfig = this.config.snapshot();
 
@@ -42,11 +44,16 @@ class ConfigModuleWatchManager {
         throw error;
       }
     });
+    if (this.options.onReloadError) {
+      this.errorForwarder = this.reloader.subscribeError(this.options.onReloadError);
+    }
   }
 
   onModuleDestroy(): void {
     this.reloadForwarder?.unsubscribe();
     this.reloadForwarder = undefined;
+    this.errorForwarder?.unsubscribe();
+    this.errorForwarder = undefined;
     this.reloader?.close();
     this.reloader = undefined;
   }

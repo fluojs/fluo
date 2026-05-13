@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, watch, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getModuleMetadata } from '@fluojs/core/internal';
@@ -81,6 +81,44 @@ function getErrorCause(error: unknown): unknown {
   }
 
   return undefined;
+}
+
+type WatchManagerInstance = {
+  onApplicationBootstrap(): void;
+  onModuleDestroy(): void;
+};
+
+type WatchManagerConstructor = new (config: ConfigService, options: ConfigModuleOptions) => WatchManagerInstance;
+
+function createConfigModuleWatchHarness(moduleRef: new () => ConfigModule): {
+  manager: WatchManagerInstance;
+  service: ConfigService;
+} {
+  const providers = getModuleMetadata(moduleRef)?.providers as
+    | Array<WatchManagerConstructor | { provide?: unknown; useFactory?: () => unknown; useValue?: ConfigModuleOptions }>
+    | undefined;
+  const configProvider = providers?.find(
+    (provider): provider is { provide: typeof ConfigService; useFactory: () => ConfigService } =>
+      typeof provider === 'object' && provider.provide === ConfigService && typeof provider.useFactory === 'function',
+  );
+  const optionsProvider = providers?.find(
+    (provider): provider is { useValue: ConfigModuleOptions } =>
+      typeof provider === 'object' && provider.useValue !== undefined,
+  );
+  const managerClass = providers?.find(
+    (provider): provider is WatchManagerConstructor => typeof provider === 'function',
+  );
+
+  if (!configProvider || !optionsProvider || !managerClass) {
+    throw new Error('Expected ConfigModule watch providers to be registered.');
+  }
+
+  const service = configProvider.useFactory();
+
+  return {
+    manager: new managerClass(service, optionsProvider.useValue),
+    service,
+  };
 }
 
 beforeEach(() => {
@@ -683,6 +721,44 @@ describe('loadConfig', () => {
     }
   });
 
+  it('watches the parent directory when the env file exists so atomic replacements trigger reloads', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-watch-existing-parent-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const reloader = createConfigReloader({
+      cwd,
+      envFile: envPath,
+      processEnv: {},
+      watch: true,
+    });
+
+    try {
+      expect(vi.mocked(watch).mock.calls.at(-1)?.[0]).toBe(cwd);
+
+      const updates: string[] = [];
+      reloader.subscribe((snapshot, reason) => {
+        if (reason !== 'watch') {
+          return;
+        }
+
+        const port = snapshot['PORT'];
+        if (typeof port === 'string') {
+          updates.push(port);
+        }
+      });
+
+      writeFileSync(envPath, 'PORT=4100\n');
+      emitWatchChange();
+
+      await waitForCondition(() => updates.includes('4100'));
+      expect(reloader.current()['PORT']).toBe('4100');
+    } finally {
+      reloader.close();
+    }
+  });
+
   it('keeps the previous snapshot when manual reload listeners throw', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-reload-ordering-'));
     const envPath = join(cwd, '.env.dev');
@@ -928,6 +1004,7 @@ describe('ConfigService', () => {
     const service = new ConfigService({ PORT: '3000' });
 
     expect(() => service.getOrThrow('MISSING' as never)).toThrow('Missing config key');
+    expect(() => service.getOrThrow('MISSING' as never)).toThrow(expect.objectContaining({ code: 'CONFIG_KEY_MISSING' }));
   });
 
   it('returns value with getOrThrow for existing key', () => {
@@ -1014,6 +1091,73 @@ describe('ConfigService', () => {
 });
 
 describe('ConfigModule', () => {
+  it('keeps the injected service aligned with the watch reloader baseline at application bootstrap', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-module-watch-baseline-'));
+    const envPath = join(cwd, '.env.dev');
+    let parseCalls = 0;
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const ConfigFeatureModule = ConfigModule.forRoot({
+      envFile: envPath,
+      parse: (content) => {
+        parseCalls += 1;
+        if (parseCalls === 1) {
+          writeFileSync(envPath, 'PORT=4100\n');
+        }
+
+        const [key, value] = content.trim().split('=');
+        return key && value ? { [key]: value } : {};
+      },
+      processEnv: {},
+      watch: true,
+    });
+
+    const { manager, service } = createConfigModuleWatchHarness(ConfigFeatureModule);
+
+    try {
+      manager.onApplicationBootstrap();
+
+      expect(service.get('PORT')).toBe('4100');
+      expect(parseCalls).toBe(2);
+    } finally {
+      manager.onModuleDestroy();
+    }
+  });
+
+  it('forwards ConfigModule watch reload failures to the configured owner', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-module-watch-errors-'));
+    const envPath = join(cwd, '.env.dev');
+    const errors: string[] = [];
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const ConfigFeatureModule = ConfigModule.forRoot({
+      envFile: envPath,
+      onReloadError: (error, reason) => {
+        errors.push(`${reason}:${error instanceof Error ? error.message : String(error)}`);
+      },
+      processEnv: {},
+      schema: createPortSchema(),
+      watch: true,
+    });
+
+    const { manager, service } = createConfigModuleWatchHarness(ConfigFeatureModule);
+
+    try {
+      manager.onApplicationBootstrap();
+
+      writeFileSync(envPath, 'PORT=oops\n');
+      emitWatchChange();
+
+      await waitForCondition(() => errors.length > 0);
+      expect(errors[0]).toContain('watch:Invalid configuration.');
+      expect(service.get('PORT')).toBe(4000);
+    } finally {
+      manager.onModuleDestroy();
+    }
+  });
+
   it('loads configuration once during provider creation and reuses the service snapshot', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-module-bootstrap-once-'));
     const envPath = join(cwd, '.env.dev');
