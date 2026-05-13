@@ -220,6 +220,8 @@ describe('scaffoldBootstrapApp', () => {
     const greetingModuleFile = readFileSync(join(targetDirectory, 'src', 'greeting', 'greeting.module.ts'), 'utf8');
     const viteConfig = readFileSync(join(targetDirectory, 'vite.config.ts'), 'utf8');
     const vitestConfig = readFileSync(join(targetDirectory, 'vitest.config.ts'), 'utf8');
+    const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const cliManifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as { version: string };
 
     expect(packageJson.devDependencies?.typescript).toBe('^6.0.2');
     expect(packageJson.dependencies).toMatchObject({
@@ -232,7 +234,7 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/validation': '^1.0.0',
     });
     expect(packageJson.devDependencies).toMatchObject({
-      '@fluojs/cli': '^1.0.0',
+      '@fluojs/cli': `^${cliManifest.version}`,
       '@fluojs/testing': '^1.0.0',
       '@fluojs/vite': '^1.0.0',
       '@vitest/coverage-v8': '^3.0.8',
