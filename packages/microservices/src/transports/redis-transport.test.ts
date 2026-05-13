@@ -199,6 +199,48 @@ describe('RedisPubSubMicroserviceTransport', () => {
     );
   });
 
+  it('rejects emit() without publishing while close() is still draining', async () => {
+    const bus = new InMemoryRedisBus();
+    const { publishClient, subscribeClient } = bus.createClient();
+    const publish = vi.fn(async () => undefined);
+    publishClient.publish = publish;
+
+    let releaseUnsubscribe: (() => void) | undefined;
+    const unsubscribeStarted = new Promise<void>((resolve) => {
+      subscribeClient.unsubscribe = vi.fn(async (...channels: string[]) => {
+        resolve();
+        await new Promise<void>((release) => {
+          releaseUnsubscribe = release;
+        });
+
+        for (const channel of channels) {
+          subscribeClient.subscriptions.delete(channel);
+        }
+      });
+    });
+
+    const transport = new RedisPubSubMicroserviceTransport({
+      publishClient,
+      subscribeClient,
+    });
+
+    await transport.listen(async () => undefined);
+
+    const closing = transport.close();
+    await unsubscribeStarted;
+
+    await expect(transport.listen(async () => undefined)).rejects.toThrow(
+      'RedisPubSubMicroserviceTransport is closing. Wait for close() to complete before listen().',
+    );
+    await expect(transport.emit('during.close', {})).rejects.toThrow(
+      'RedisPubSubMicroserviceTransport is closing. Wait for close() to complete before emit().',
+    );
+    expect(publish).not.toHaveBeenCalled();
+
+    releaseUnsubscribe?.();
+    await closing;
+  });
+
   it('removes the message listener on close so reconnect does not duplicate event dispatch', async () => {
     const bus = new InMemoryRedisBus();
     const { publishClient, subscribeClient } = bus.createClient();

@@ -30,6 +30,7 @@ export interface RedisPubSubMicroserviceTransportOptions {
  * a transport with durable reply semantics such as TCP, Kafka, or Redis Streams.
  */
 export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
+  private closePromise: Promise<void> | undefined;
   private closing = false;
   private handler: TransportHandler | undefined;
   private logger: MicroserviceTransportLogger | undefined;
@@ -64,7 +65,14 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once the Redis subscription is active.
    */
   async listen(handler: TransportHandler): Promise<void> {
-    this.closing = false;
+    if (this.closing) {
+      if (this.closePromise) {
+        throw new Error('RedisPubSubMicroserviceTransport is closing. Wait for close() to complete before listen().');
+      }
+
+      this.closing = false;
+    }
+
     this.handler = handler;
 
     if (this.listening) {
@@ -138,27 +146,40 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once shutdown cleanup completes.
    */
   async close(): Promise<void> {
-    this.closing = true;
-    let closeError: unknown;
-
-    if (this.listenPromise) {
-      await this.listenPromise;
+    if (this.closePromise) {
+      await this.closePromise;
+      return;
     }
+
+    this.closing = true;
+    this.closePromise = (async () => {
+      let closeError: unknown;
+
+      if (this.listenPromise) {
+        await this.listenPromise;
+      }
+
+      try {
+        if (this.listening) {
+          await this.options.subscribeClient.unsubscribe(this.eventChannel);
+        }
+      } catch (error) {
+        closeError = error;
+      } finally {
+        this.options.subscribeClient.off?.('message', this.messageListener);
+        this.listening = false;
+        this.handler = undefined;
+      }
+
+      if (closeError) {
+        throw closeError;
+      }
+    })();
 
     try {
-      if (this.listening) {
-        await this.options.subscribeClient.unsubscribe(this.eventChannel);
-      }
-    } catch (error) {
-      closeError = error;
+      await this.closePromise;
     } finally {
-      this.options.subscribeClient.off?.('message', this.messageListener);
-      this.listening = false;
-      this.handler = undefined;
-    }
-
-    if (closeError) {
-      throw closeError;
+      this.closePromise = undefined;
     }
   }
 

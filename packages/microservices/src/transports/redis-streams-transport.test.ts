@@ -1059,6 +1059,86 @@ describe('RedisStreamsMicroserviceTransport', () => {
     );
   });
 
+  it('rejects emit() without xadd while close() is still draining', async () => {
+    const bus = new InMemoryStreamBus();
+    let releaseDestroy: (() => void) | undefined;
+    let resolveDestroyStarted: (() => void) | undefined;
+    let destroyBlocked = false;
+    const destroyStarted = new Promise<void>((resolve) => {
+      resolveDestroyStarted = resolve;
+    });
+    const readerClient = {
+      xadd: async (stream, fields, options) => {
+        return await bus.xadd(stream, fields, options);
+      },
+      xreadgroup: async (group, consumer, streams, options) => {
+        return await bus.xreadgroup(group, consumer, streams, options);
+      },
+      xack: async (stream, group, id) => {
+        await bus.xack(stream, group, id);
+      },
+      xdel: async (stream, id) => {
+        await bus.xdel(stream, id);
+      },
+      del: async (stream) => {
+        await bus.del(stream);
+      },
+      xgroupCreate: async (stream, group, startId, mkstream) => {
+        await bus.xgroupCreate(stream, group, startId, mkstream);
+      },
+      xgroupDestroy: async (stream, group) => {
+        if (!destroyBlocked) {
+          destroyBlocked = true;
+          resolveDestroyStarted?.();
+          await new Promise<void>((release) => {
+            releaseDestroy = release;
+          });
+        }
+
+        await bus.xgroupDestroy(stream, group);
+      },
+    } satisfies RedisStreamClientLike;
+    const xadd = vi.fn(async (stream: string, fields: Record<string, string>, options?: RedisStreamWriteOptions) => {
+      return await bus.xadd(stream, fields, options);
+    });
+    const transport = new RedisStreamsMicroserviceTransport({
+      pollBlockMs: 1,
+      readerClient,
+      requestTimeoutMs: 1_000,
+      writerClient: {
+        xadd,
+        xreadgroup: async (group, consumer, streams, options) => {
+          return await bus.xreadgroup(group, consumer, streams, options);
+        },
+        xack: async (stream, group, id) => {
+          await bus.xack(stream, group, id);
+        },
+        xgroupCreate: async (stream, group, startId, mkstream) => {
+          await bus.xgroupCreate(stream, group, startId, mkstream);
+        },
+        xgroupDestroy: async (stream, group) => {
+          await bus.xgroupDestroy(stream, group);
+        },
+      },
+    });
+
+    await transport.listen(async () => undefined);
+
+    const closing = transport.close();
+    await destroyStarted;
+
+    await expect(transport.listen(async () => undefined)).rejects.toThrow(
+      'RedisStreamsMicroserviceTransport is closing. Wait for close() to complete before listen().',
+    );
+    await expect(transport.emit('during.close', {})).rejects.toThrow(
+      'RedisStreamsMicroserviceTransport is closing. Wait for close() to complete before emit().',
+    );
+    expect(xadd).not.toHaveBeenCalled();
+
+    releaseDestroy?.();
+    await closing;
+  });
+
   it('still rejects pending requests when group destroy fails during close', async () => {
     const bus = new InMemoryStreamBus();
     const closeError = new Error('group destroy failed');
