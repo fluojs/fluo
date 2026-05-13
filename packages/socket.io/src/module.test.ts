@@ -1196,6 +1196,74 @@ describe('@fluojs/socket.io', () => {
     await app.close();
   });
 
+  it('runs message guards for buffered pre-connect events before replaying handlers', async () => {
+    const connected = createDeferred<void>();
+
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/buffered-message-guard' })
+    class BufferedGuardGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      async onConnect() {
+        await connected.promise;
+      }
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({
+        auth: {
+          message({ payload }) {
+            return payload === 'allowed'
+              ? true
+              : { data: { code: 'BUFFERED_REJECTED' }, message: 'Buffered event rejected.' };
+          },
+        },
+        transports: ['websocket'],
+      })],
+      providers: [GatewayState, BufferedGuardGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+    const state = await app.container.resolve(GatewayState);
+
+    await app.listen();
+
+    const socket = createClient(`http://127.0.0.1:${String(port)}/buffered-message-guard`, {
+      reconnection: false,
+      transports: ['websocket'],
+    });
+    await onceConnected(socket);
+
+    const rejectedAck = new Promise<unknown>((resolve) => {
+      socket.emit('ping', 'blocked', (response: unknown) => resolve(response));
+    });
+    socket.emit('ping', 'allowed');
+
+    connected.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(await rejectedAck).toEqual({ data: { code: 'BUFFERED_REJECTED' }, error: 'Buffered event rejected.' });
+    expect(state.messages).toEqual(['allowed']);
+
+    socket.close();
+    await app.close();
+  });
+
   it('drops oldest pre-connect socket.io messages once the pending buffer limit is reached', () => {
     const loggerEvents: string[] = [];
     const service = new SocketIoLifecycleService(
