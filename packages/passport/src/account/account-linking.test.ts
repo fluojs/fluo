@@ -94,6 +94,54 @@ describe('resolveAccountLinking', () => {
     }
   });
 
+  it('throws AccountLinkConflictError when multiple existing links match different accounts', async () => {
+    const policy = createConservativeAccountLinkPolicy();
+
+    await expect(
+      resolveAccountLinking(
+        createContext({
+          candidates: [
+            {
+              accountId: 'account-1',
+              reason: 'existing-link',
+            },
+            {
+              accountId: 'account-2',
+              reason: 'existing-link',
+            },
+          ],
+        }),
+        policy,
+      ),
+    ).rejects.toThrow(AccountLinkConflictError);
+  });
+
+  it('links duplicate existing-link candidates only when they resolve to the same account', async () => {
+    const policy = createConservativeAccountLinkPolicy();
+
+    const result = await resolveAccountLinking(
+      createContext({
+        candidates: [
+          {
+            accountId: 'account-1',
+            reason: 'existing-link',
+          },
+          {
+            accountId: 'account-1',
+            reason: 'existing-link',
+          },
+        ],
+      }),
+      policy,
+    );
+
+    expect(result).toEqual({
+      accountId: 'account-1',
+      reason: 'Existing identity link found.',
+      status: 'linked',
+    });
+  });
+
   it('returns skipped when no policy is configured (non-linking fallback)', async () => {
     const result = await resolveAccountLinking(
       createContext({

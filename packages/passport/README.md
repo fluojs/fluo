@@ -106,7 +106,7 @@ const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
 });
 ```
 
-The bridge settles each Passport.js strategy execution exactly once. A strategy must call one of the bound Passport actions (`success`, `fail`, `redirect`, `pass`, or `error`); promise rejections and promise completion without an action become authentication failures instead of leaving the request unresolved. Custom `mapPrincipal` functions must return a valid fluo `Principal` with a non-empty `subject` and object `claims`.
+The bridge settles each Passport.js strategy execution exactly once. A strategy must call one of the bound Passport actions (`success`, `fail`, `redirect`, `pass`, or `error`); promise rejections, promise completion without an action, and callback-style executions that exceed the bounded action timeout become authentication failures instead of leaving the request unresolved. Custom `mapPrincipal` functions must return a valid fluo `Principal` with a non-empty `subject` and object `claims`.
 
 ### Cookie Auth Preset
 
@@ -201,11 +201,11 @@ export class AuthController {
 
 Import `RefreshTokenModule.forRoot(...)` alongside `PassportModule.forRoot(...)` so the refresh-token strategy and shared `REFRESH_TOKEN_SERVICE` alias are available in the same module wiring.
 
-`RefreshTokenStrategy` reads tokens from `body.refreshToken`, `Authorization: Bearer ...`, or `x-refresh-token`; malformed non-string tokens fail authentication. `JwtRefreshTokenAdapter` requires a `secret` and a backing store; `store: 'memory'` is for development and single-instance deployments only.
+`RefreshTokenStrategy` reads tokens from `body.refreshToken`, `Authorization: Bearer ...`, or `x-refresh-token`; malformed non-string tokens fail authentication. After rotation, it trusts the normalized access-token principal subject returned by `@fluojs/jwt`. `JwtRefreshTokenAdapter` requires a `secret` and a backing store; `store: 'memory'` is for development and single-instance deployments only, and rotation detects reuse through the store consume contract.
 
 ### Account Linking and Status
 
-Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` to model identity-link decisions. The default conservative policy links explicit existing links or user-confirmed matches, and otherwise creates, skips, rejects, or reports conflicts deterministically.
+Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` to model identity-link decisions. The default conservative policy links one unambiguous existing account link or user-confirmed matches, reports multiple existing links as conflicts, and otherwise creates, skips, rejects, or reports conflicts deterministically.
 
 `createPassportPlatformStatusSnapshot(...)` and `createPassportPlatformDiagnosticIssues(...)` expose readiness/health diagnostics for registered strategies, default strategy configuration, presets, and refresh-token store readiness.
 

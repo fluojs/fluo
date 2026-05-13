@@ -83,7 +83,7 @@ export class CookieAuthStrategy implements AuthStrategy {
 
     const accessToken = cookies[this.options.accessTokenCookieName];
 
-    if (accessToken === undefined || accessToken === '') {
+    if (accessToken === undefined) {
       if (this.options.requireAccessToken) {
         throw new AuthenticationRequiredError('Access token cookie is required.');
       }

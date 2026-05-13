@@ -106,7 +106,7 @@ const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
 });
 ```
 
-브릿지는 각 Passport.js 전략 실행을 정확히 한 번만 정착(settle)시킵니다. 전략은 바인딩된 Passport 액션(`success`, `fail`, `redirect`, `pass`, `error`) 중 하나를 호출해야 하며, promise rejection 또는 액션 없이 완료된 promise는 요청을 미해결 상태로 두지 않고 인증 실패로 처리됩니다. 커스텀 `mapPrincipal` 함수는 비어 있지 않은 `subject`와 객체 형태의 `claims`를 포함한 유효한 fluo `Principal`을 반환해야 합니다.
+브릿지는 각 Passport.js 전략 실행을 정확히 한 번만 정착(settle)시킵니다. 전략은 바인딩된 Passport 액션(`success`, `fail`, `redirect`, `pass`, `error`) 중 하나를 호출해야 하며, promise rejection, 액션 없이 완료된 promise, 그리고 제한된 action timeout을 초과한 callback-style 실행은 요청을 미해결 상태로 두지 않고 인증 실패로 처리됩니다. 커스텀 `mapPrincipal` 함수는 비어 있지 않은 `subject`와 객체 형태의 `claims`를 포함한 유효한 fluo `Principal`을 반환해야 합니다.
 
 ### 쿠키 인증 프리셋
 
@@ -201,11 +201,11 @@ export class AuthController {
 
 `RefreshTokenModule.forRoot(...)`를 `PassportModule.forRoot(...)`와 함께 import 하여 refresh-token 전략과 공유 `REFRESH_TOKEN_SERVICE` alias를 같은 모듈 wiring에서 사용하세요.
 
-`RefreshTokenStrategy`는 `body.refreshToken`, `Authorization: Bearer ...`, `x-refresh-token`에서 token을 읽습니다. Malformed non-string token은 인증 실패로 처리됩니다. `JwtRefreshTokenAdapter`는 `secret`과 backing store가 필요하며, `store: 'memory'`는 development 및 single-instance deployment용입니다.
+`RefreshTokenStrategy`는 `body.refreshToken`, `Authorization: Bearer ...`, `x-refresh-token`에서 token을 읽습니다. Malformed non-string token은 인증 실패로 처리됩니다. Rotation 후에는 `@fluojs/jwt`가 반환한 정규화 access-token principal subject를 신뢰합니다. `JwtRefreshTokenAdapter`는 `secret`과 backing store가 필요하며, `store: 'memory'`는 development 및 single-instance deployment용이고 rotation은 store consume contract를 통해 재사용을 감지합니다.
 
 ### Account linking과 status
 
-Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(...)`와 `resolveAccountLinking(...)`을 사용합니다. 기본 conservative policy는 명시적인 existing link 또는 user-confirmed match만 연결하고, 그 외에는 create/skip/reject/conflict를 결정적으로 처리합니다.
+Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(...)`와 `resolveAccountLinking(...)`을 사용합니다. 기본 conservative policy는 모호하지 않은 단일 existing account link 또는 user-confirmed match만 연결하고, 여러 existing link는 conflict로 보고하며, 그 외에는 create/skip/reject/conflict를 결정적으로 처리합니다.
 
 `createPassportPlatformStatusSnapshot(...)`와 `createPassportPlatformDiagnosticIssues(...)`는 등록된 strategy, default strategy 설정, preset, refresh-token store readiness에 대한 readiness/health diagnostic을 노출합니다.
 

@@ -139,6 +139,15 @@ describe('CookieAuthStrategy', () => {
       expect(verifier.verifyAccessToken).not.toHaveBeenCalled();
     });
 
+    it('throws AuthenticationRequiredError for present empty access token cookies even when optional', async () => {
+      const verifier = createMockVerifier();
+      const strategy = new CookieAuthStrategy(verifier, { requireAccessToken: false });
+      const context = createGuardContext({ access_token: '' });
+
+      await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationRequiredError);
+      expect(verifier.verifyAccessToken).not.toHaveBeenCalled();
+    });
+
     it('handles non-Error verification failures gracefully', async () => {
       const verifier = createMockVerifier({
         verifyAccessToken: vi.fn().mockRejectedValue('string error'),

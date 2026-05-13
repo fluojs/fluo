@@ -113,12 +113,27 @@ export class AccountLinkRejectedError extends FluoError {
 export function createConservativeAccountLinkPolicy(): AccountLinkPolicy {
   return {
     evaluate(context) {
-      const existingLink = context.candidates.find((candidate) => candidate.reason === 'existing-link');
-      if (existingLink) {
+      const existingLinkAccountIds = Array.from(
+        new Set(
+          context.candidates
+            .filter((candidate) => candidate.reason === 'existing-link')
+            .map((candidate) => candidate.accountId),
+        ),
+      );
+
+      if (existingLinkAccountIds.length === 1) {
         return {
           action: 'link',
-          accountId: existingLink.accountId,
+          accountId: existingLinkAccountIds[0],
           reason: 'Existing identity link found.',
+        };
+      }
+
+      if (existingLinkAccountIds.length > 1) {
+        return {
+          action: 'conflict',
+          candidateAccountIds: existingLinkAccountIds,
+          reason: 'Multiple existing identity links matched. Explicit review is required before linking.',
         };
       }
 

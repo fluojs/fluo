@@ -32,6 +32,7 @@ export interface PassportJsStrategyLike {
 type PassportJsExecutableStrategy = PassportJsStrategyLike & PassportJsActionBindings;
 
 interface PassportJsRequestState {
+  clearActionTimeout?: () => void;
   context: GuardContext;
   mapPrincipal: PassportJsPrincipalMapper;
   reject: (reason?: unknown) => void;
@@ -64,9 +65,13 @@ export type PassportJsPrincipalMapper = (input: PassportJsPrincipalMapperInput) 
 export interface PassportJsAuthStrategyOptions {
   /** Optional options to pass to the Passport strategy's `authenticate` method. */
   authenticateOptions?: Readonly<Record<string, unknown>>;
+  /** Maximum time to wait for callback-style strategies to call a bound Passport action. */
+  actionTimeoutMs?: number;
   /** Optional custom mapper for converting user data to a principal. */
   mapPrincipal?: PassportJsPrincipalMapper;
 }
+
+const DEFAULT_ACTION_TIMEOUT_MS = 30_000;
 
 /**
  * Bridge interface containing DI providers and strategy registration for Passport.js.
@@ -195,7 +200,17 @@ export class PassportJsAuthStrategy implements AuthStrategy {
     const mapPrincipal = this.options.mapPrincipal ?? defaultPrincipalMapper;
 
     return new Promise((resolve, reject) => {
+      let actionTimeout: ReturnType<typeof setTimeout> | undefined;
+
+      const clearActionTimeout = () => {
+        if (actionTimeout) {
+          clearTimeout(actionTimeout);
+          actionTimeout = undefined;
+        }
+      };
+
       this.requestState.set(strategy, {
+        clearActionTimeout,
         context,
         mapPrincipal,
         reject,
@@ -206,17 +221,29 @@ export class PassportJsAuthStrategy implements AuthStrategy {
 
       this.bindStrategyActions(strategy);
 
+      const actionTimeoutMs = this.options.actionTimeoutMs ?? DEFAULT_ACTION_TIMEOUT_MS;
+
+      if (Number.isFinite(actionTimeoutMs) && actionTimeoutMs >= 0) {
+        actionTimeout = setTimeout(() => {
+          this.settle(strategy, (state) => {
+            state.reject(new AuthenticationRequiredError('Passport strategy did not settle authentication.'));
+          });
+        }, actionTimeoutMs);
+      }
+
       try {
         const result = strategy.authenticate(request, this.options.authenticateOptions);
 
         if (isPromiseLike(result)) {
           result.then(
             () => {
+              clearActionTimeout();
               this.settle(strategy, (state) => {
                 state.reject(new AuthenticationRequiredError('Passport strategy did not settle authentication.'));
               });
             },
             (error: unknown) => {
+              clearActionTimeout();
               this.settle(strategy, (state) => {
                 state.reject(error);
               });
@@ -224,6 +251,7 @@ export class PassportJsAuthStrategy implements AuthStrategy {
           );
         }
       } catch (error: unknown) {
+        clearActionTimeout();
         this.settle(strategy, () => reject(error));
       }
     });
@@ -260,6 +288,7 @@ export class PassportJsAuthStrategy implements AuthStrategy {
     try {
       handler(state);
     } finally {
+      state.clearActionTimeout?.();
       this.requestState.delete(strategy);
     }
   }

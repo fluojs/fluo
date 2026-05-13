@@ -618,6 +618,51 @@ describe('AuthGuard', () => {
     });
   });
 
+  it('rejects synchronous Passport.js strategies that never settle a strategy action', async () => {
+    class PassportLikeSyncUnsettledStrategy {
+      authenticate(): void {}
+    }
+
+    const bridge = createPassportJsStrategyBridge('google-sync-unsettled', PassportLikeSyncUnsettledStrategy, {
+      actionTimeoutMs: 0,
+    });
+
+    @Controller('/oauth')
+    class ProtectedController {
+      @Get('/profile')
+      @UseAuth('google-sync-unsettled')
+      getProfile() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      PassportLikeSyncUnsettledStrategy,
+      ...bridge.providers,
+      ...createPassportModuleProviders({ defaultStrategy: 'google-sync-unsettled' }, [bridge.strategy]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/oauth/profile', { 'x-request-id': 'req-sync-unsettled' }), response);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({
+      error: {
+        code: 'UNAUTHORIZED',
+        details: undefined,
+        message: 'Authentication required.',
+        meta: undefined,
+        requestId: 'req-sync-unsettled',
+        status: 401,
+      },
+    });
+  });
+
   it('isolates Passport.js bridge request state across concurrent authentications', async () => {
     let sequence = 0;
 

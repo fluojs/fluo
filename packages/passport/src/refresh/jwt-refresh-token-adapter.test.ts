@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { DefaultJwtSigner, DefaultJwtVerifier, JwtConfigurationError, type RefreshTokenStore } from '@fluojs/jwt';
+import { DefaultJwtSigner, DefaultJwtVerifier, JwtConfigurationError, JwtInvalidTokenError, type RefreshTokenStore } from '@fluojs/jwt';
 
 import { JwtRefreshTokenAdapter } from './jwt-refresh-token-adapter.js';
 
@@ -19,6 +19,20 @@ function createVerifier(): DefaultJwtVerifier {
 }
 
 describe('JwtRefreshTokenAdapter', () => {
+  function createRotationCapableStore(): RefreshTokenStore {
+    return {
+      async consume() {
+        return 'invalid';
+      },
+      async find() {
+        return undefined;
+      },
+      async revoke() {},
+      async revokeBySubject() {},
+      async save() {},
+    };
+  }
+
   it('requires an explicit refresh token secret', () => {
     expect(() =>
       new JwtRefreshTokenAdapter(createSigner(), createVerifier(), {
@@ -78,5 +92,39 @@ describe('JwtRefreshTokenAdapter', () => {
 
     expect(rotated.accessToken).toContain('.');
     expect(rotated.refreshToken).toBe(issued);
+  });
+
+  it('detects refresh token reuse when rotation is enabled with the in-memory store', async () => {
+    const store = createRotationCapableStore();
+    const signer = new DefaultJwtSigner({
+      algorithms: ['HS256'],
+      refreshToken: {
+        expiresInSeconds: 3600,
+        rotation: true,
+        secret: 'refresh-secret',
+        store,
+      },
+      secret: 'access-secret',
+    });
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      refreshToken: {
+        expiresInSeconds: 3600,
+        rotation: true,
+        secret: 'refresh-secret',
+        store,
+      },
+      secret: 'access-secret',
+    });
+    const adapter = new JwtRefreshTokenAdapter(signer, verifier, {
+      secret: 'refresh-secret',
+      store: 'memory',
+    });
+
+    const issued = await adapter.issueRefreshToken('user-1');
+    const firstRotation = await adapter.rotateRefreshToken(issued);
+
+    expect(firstRotation.refreshToken).not.toBe(issued);
+    await expect(adapter.rotateRefreshToken(issued)).rejects.toThrow(JwtInvalidTokenError);
   });
 });

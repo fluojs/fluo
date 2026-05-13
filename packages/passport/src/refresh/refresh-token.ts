@@ -133,11 +133,11 @@ export class RefreshTokenStrategy implements AuthStrategy {
 
   private async extractVerifiedSubject(accessToken: string): Promise<string> {
     const principal = await this.verifier.verifyAccessToken(accessToken);
-    const sub = principal.claims.sub;
-    if (typeof sub !== 'string' || sub.length === 0) {
+    if (typeof principal.subject !== 'string' || principal.subject.length === 0) {
       throw new InvariantError('Refresh token service returned an access token without a valid subject claim.');
     }
-    return sub;
+
+    return principal.subject;
   }
 }
 
