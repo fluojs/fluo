@@ -6,7 +6,7 @@ import type { Dispatcher } from '@fluojs/http';
 
 import * as rootRuntimeApi from '../index.js';
 import * as publicNodeApi from '../node.js';
-import type { NodeHttpApplicationAdapter } from '../node.js';
+import type { NodeHttpAdapterOptions, NodeHttpApplicationAdapter } from '../node.js';
 
 describe('createNodeHttpAdapter', () => {
   it('keeps Node lifecycle helpers out of the runtime root barrel', () => {
@@ -61,6 +61,14 @@ describe('createNodeHttpAdapter', () => {
     expect(() => Function.prototype.call.call(publicNodeApi.createNodeHttpAdapter, undefined, { maxBodySize: '1mb' })).toThrow(
       'Invalid maxBodySize value: 1mb. Expected a non-negative integer number of bytes.',
     );
+  });
+
+  it.each([
+    ['retryDelayMs', -1, 'Invalid retryDelayMs value: -1. Expected a non-negative integer.'],
+    ['retryLimit', 1.5, 'Invalid retryLimit value: 1.5. Expected a non-negative integer.'],
+    ['shutdownTimeoutMs', Number.NaN, 'Invalid shutdownTimeoutMs value: NaN. Expected a non-negative integer.'],
+  ] as const)('fails fast when %s is not a non-negative integer', (name, value, message) => {
+    expect(() => publicNodeApi.createNodeHttpAdapter({ [name]: value } as unknown as NodeHttpAdapterOptions)).toThrow(message);
   });
 
   it('cancels pending listen retries when the adapter closes during shutdown', async () => {

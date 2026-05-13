@@ -126,6 +126,7 @@ class UsersModule {}
 - On `@fluojs/runtime/node`, Node request body parsing normalizes the primary `content-type` media type before JSON and multipart detection, so mixed-case JSON and multipart headers preserve the documented parser behavior.
 - Node-backed and Web-standard request wrappers snapshot cheap request metadata before body parsing, then materialize `body`/`rawBody` once at the dispatch boundary so userland continues to observe synchronous parsed values.
 - Node-backed cookies/query values and Web-standard headers are snapshotted when the request wrapper is created, then lazily normalized and memoized per request; later upstream object mutations do not change the `FrameworkRequest` view.
+- Node-backed request context IDs prefer `x-request-id` and fall back to `x-correlation-id` when `x-request-id` is absent, so error responses and request-aware integrations keep the upstream correlation identifier.
 - `ApplicationContext.get()` and `Application.get()` memoize only direct root singleton class/factory provider lookups known at bootstrap, while preserving alias, request, transient, post-close, multi-provider, and `container.override()` resolution semantics.
 - `multi: true` provider tokens are not context-cache memoized: each `get()` call delegates to DI so the container can assemble a fresh contribution array while still reusing each contribution according to its own provider scope.
 - When `duplicateProviderPolicy` is `warn` or `ignore`, context-cache eligibility and lifecycle hook execution are based on the effective winning provider selected by bootstrap; stale losing providers do not seed cache entries or lifecycle hooks.
@@ -137,7 +138,7 @@ class UsersModule {}
 - `FluoFactory.createMicroservice()` preserves the original bootstrap/runtime-resolution error when cleanup fails and logs cleanup failures separately.
 - Bootstrap resolves independent singleton lifecycle providers concurrently, then runs lifecycle hooks in deterministic provider order.
 - Multipart parsing rejects payloads when the cumulative body size exceeds the configured `multipart.maxTotalSize`; runtime adapters default that limit to `maxBodySize` unless you override it, and uploaded file buffers are Web-standard `Uint8Array` values so the shared Web runtime path stays portable across Bun, Deno, and Cloudflare Workers.
-- `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, and `runNodeApplication(...)` accept `maxBodySize` only as a non-negative integer byte count and fail fast during adapter creation/bootstrap when the value is invalid.
+- `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, and `runNodeApplication(...)` accept `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` only as non-negative integers and fail fast during adapter creation/bootstrap when any value is invalid.
 - Response stream backpressure helpers settle `waitForDrain()` on `drain`, `close`, or `error` so streaming writers do not hang on dead connections.
 - Runtime health modules report `/ready` as `starting` with HTTP 503 until bootstrap marks them ready, and they return to `starting` as soon as application/context shutdown begins, including failed shutdown attempts.
 - Runtime health module readiness checks receive the current `RequestContext`, allowing public integrations to resolve runtime-exposed status providers without importing internal runtime tokens.
@@ -195,11 +196,11 @@ const adapter = createNodeHttpAdapter({
 });
 ```
 
-For the public Node runtime surface, `maxBodySize` is a byte-count number only. Values such as `'1mb'` are rejected immediately during adapter creation instead of being coerced later.
+For the public Node runtime surface, `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` are number-only non-negative integers. Values such as `'1mb'`, fractional retry counts, or negative shutdown timeouts are rejected immediately during adapter creation instead of being coerced later. Node request context IDs prefer `x-request-id`; when it is absent, `x-correlation-id` is used as the request ID fallback for runtime error responses and request-aware integrations.
 
 - `createConsoleApplicationLogger()`: Colorized console logger using `process.stdout`/`process.stderr`. The default remains the pretty format. Pass `{ mode: 'minimal' }` for concise `[fluo] LEVEL [context] message` lines, `{ mode: 'silent' }` to suppress runtime logger output, `{ level: 'warn' }` or another threshold to filter lower-severity messages, and `{ color: false }` when you need deterministic non-colored output.
 - `createJsonApplicationLogger()`: Structured JSON logger using `process.stdout`/`process.stderr`.
-- `createNodeHttpAdapter()`: Raw Node `http`/`https` adapter factory for adapter-first runtime setup. The helper normalizes the primary Node request `content-type` before JSON/multipart detection and accepts `maxBodySize` only as numeric bytes.
+- `createNodeHttpAdapter()`: Raw Node `http`/`https` adapter factory for adapter-first runtime setup. The helper normalizes the primary Node request `content-type` before JSON/multipart detection and accepts `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` only as non-negative integers.
 - `bootstrapNodeApplication()` / `runNodeApplication()`: Node-specific bootstrap helpers used by direct Node runtime flows.
 - `createNodeShutdownSignalRegistration()`, `defaultNodeShutdownSignals()`, `registerShutdownSignals()`: Shutdown registration helpers for hosts that need explicit signal wiring.
 
