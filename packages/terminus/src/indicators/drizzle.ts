@@ -108,15 +108,17 @@ export function createDrizzleHealthIndicator(options: DrizzleHealthIndicatorOpti
 }
 
 /**
- * Create a provider that resolves a Drizzle database handle from DI and wraps it as an indicator.
+ * Create a Terminus indicator provider collection entry that resolves a Drizzle database handle from DI.
  *
  * @param options Optional timeout, query override, key override, or custom ping callback.
- * @returns A factory provider that exposes `DrizzleHealthIndicator` from the DI container.
+ * @returns A factory provider with a unique internal DI token for `TerminusModule` indicatorProviders.
  */
 export function createDrizzleHealthIndicatorProvider(options: Omit<DrizzleHealthIndicatorOptions, 'database' | 'handleProvider'> = {}): Provider {
+  const indicatorProviderToken = Symbol('fluo.terminus.drizzle-health-indicator');
+
   return {
     inject: [optional(DRIZZLE_HANDLE_PROVIDER), optional(DRIZZLE_DATABASE)],
-    provide: DrizzleHealthIndicator,
+    provide: indicatorProviderToken,
     useFactory: (handleProvider: unknown, database: unknown) => {
       const resolvedHandleProvider = typeof handleProvider === 'object' && handleProvider !== null
         ? handleProvider as DrizzleHandleProviderLike

@@ -1,9 +1,11 @@
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
 import { bootstrapApplication, defineModule, type PlatformComponent } from '@fluojs/runtime';
-import { describe, expect, it } from 'vitest';
+import { createTestApp } from '@fluojs/testing';
+import { describe, expect, it, vi } from 'vitest';
 
-import { MemoryHealthIndicator } from './indicators/memory.js';
+import { createHttpHealthIndicatorProvider } from './indicators/http.js';
+import { createMemoryHealthIndicatorProvider, MemoryHealthIndicator } from './indicators/memory.js';
 import { createRedisHealthIndicatorProvider, RedisHealthIndicator } from './indicators/redis.js';
 import { TerminusModule } from './module.js';
 import type { HealthIndicator } from './types.js';
@@ -208,7 +210,7 @@ describe('TerminusModule.forRoot', () => {
     await app.close();
   });
 
-  it('applies execution timeouts to /health and /ready checks', async () => {
+  it('applies execution timeouts through request-facing /health and /ready endpoints', async () => {
     const indicators: HealthIndicator[] = [
       {
         key: 'database',
@@ -228,12 +230,11 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await createTestApp({ rootModule: AppModule });
 
-    const healthResponse = createResponse();
-    await app.dispatch(createRequest('/health'), healthResponse);
+    const healthResponse = await app.request('GET', '/health').send();
 
-    expect(healthResponse.statusCode).toBe(503);
+    expect(healthResponse.status).toBe(503);
     expect(healthResponse.body).toMatchObject({
       contributors: {
         down: ['database'],
@@ -248,10 +249,9 @@ describe('TerminusModule.forRoot', () => {
       status: 'error',
     });
 
-    const readyResponse = createResponse();
-    await app.dispatch(createRequest('/ready'), readyResponse);
+    const readyResponse = await app.request('GET', '/ready').send();
 
-    expect(readyResponse.statusCode).toBe(503);
+    expect(readyResponse.status).toBe(503);
     expect(readyResponse.body).toEqual({ status: 'unavailable' });
 
     await app.close();
@@ -463,6 +463,97 @@ describe('TerminusModule.forRoot', () => {
     await app.dispatch(createRequest('/ready'), readyResponse);
     expect(readyResponse.statusCode).toBe(200);
     expect(readyResponse.body).toEqual({ status: 'ready' });
+
+    await app.close();
+  });
+
+  it('supports repeatable same-type indicator providers without token collisions', async () => {
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        TerminusModule.forRoot({
+          indicatorProviders: [
+            createMemoryHealthIndicatorProvider({ key: 'heap' }),
+            createMemoryHealthIndicatorProvider({ key: 'rss' }),
+          ],
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    const healthResponse = createResponse();
+    await app.dispatch(createRequest('/health'), healthResponse);
+
+    expect(healthResponse.statusCode).toBe(200);
+    expect(healthResponse.body).toMatchObject({
+      contributors: {
+        down: [],
+      },
+      details: {
+        heap: {
+          status: 'up',
+        },
+        rss: {
+          status: 'up',
+        },
+      },
+      status: 'ok',
+    });
+    expect((healthResponse.body as { contributors: { up: string[] } }).contributors.up).toEqual(
+      expect.arrayContaining(['heap', 'rss']),
+    );
+
+    const readyResponse = createResponse();
+    await app.dispatch(createRequest('/ready'), readyResponse);
+
+    expect(readyResponse.statusCode).toBe(200);
+    expect(readyResponse.body).toEqual({ status: 'ready' });
+
+    await app.close();
+  });
+
+  it('supports repeatable same-type HTTP indicator providers without token collisions', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(undefined, { status: 204 }));
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        TerminusModule.forRoot({
+          indicatorProviders: [
+            createHttpHealthIndicatorProvider({ key: 'primary-api', url: 'https://example.com/primary/health' }),
+            createHttpHealthIndicatorProvider({ key: 'secondary-api', url: 'https://example.com/secondary/health' }),
+          ],
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    const healthResponse = createResponse();
+    await app.dispatch(createRequest('/health'), healthResponse);
+
+    expect(healthResponse.statusCode).toBe(200);
+    expect(healthResponse.body).toMatchObject({
+      contributors: {
+        down: [],
+      },
+      details: {
+        'primary-api': {
+          status: 'up',
+        },
+        'secondary-api': {
+          status: 'up',
+        },
+      },
+      status: 'ok',
+    });
+    expect((healthResponse.body as { contributors: { up: string[] } }).contributors.up).toEqual(
+      expect.arrayContaining(['primary-api', 'secondary-api']),
+    );
+    expect(fetch).toHaveBeenCalledTimes(2);
 
     await app.close();
   });

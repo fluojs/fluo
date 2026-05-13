@@ -32,14 +32,16 @@ export function createMemoryHealthIndicator(options: MemoryHealthIndicatorOption
 }
 
 /**
- * Create a provider that registers a `MemoryHealthIndicator` instance.
+ * Create a Terminus indicator provider collection entry for a `MemoryHealthIndicator` instance.
  *
  * @param options Optional heap and RSS thresholds plus an indicator key override.
- * @returns A value provider that exposes `MemoryHealthIndicator` from the DI container.
+ * @returns A value provider with a unique internal DI token for `TerminusModule` indicatorProviders.
  */
 export function createMemoryHealthIndicatorProvider(options: MemoryHealthIndicatorOptions = {}): Provider {
+  const indicatorProviderToken = Symbol('fluo.terminus.memory-health-indicator');
+
   return {
-    provide: MemoryHealthIndicator,
+    provide: indicatorProviderToken,
     useValue: new MemoryHealthIndicator(options),
   };
 }
