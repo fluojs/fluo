@@ -119,6 +119,7 @@ export class CloudflareWorkerHttpApplicationAdapter
   private dispatcher?: Dispatcher;
   private inFlightDrain?: Deferred<void>;
   private inFlightRequestCount = 0;
+  private isClosed = false;
   private websocketBinding?: CloudflareWorkerWebSocketBinding;
   private readonly options: CloudflareWorkerAdapterOptions;
   private readonly webRequestResponseFactory;
@@ -135,8 +136,11 @@ export class CloudflareWorkerHttpApplicationAdapter
     }
 
     if (!this.dispatcher) {
+      this.isClosed = true;
       return;
     }
+
+    this.isClosed = true;
 
     const closeInFlight = this.waitForInFlightRequests().finally(() => {
       this.closeInFlight = undefined;
@@ -165,21 +169,23 @@ export class CloudflareWorkerHttpApplicationAdapter
     _env?: Env,
     executionContext?: CloudflareWorkerExecutionContext,
   ): Promise<Response> {
-    if (this.closeInFlight) {
+    if (this.closeInFlight || this.isClosed) {
       return createShutdownResponse();
     }
 
     const release = this.trackInFlightRequest();
     const responsePromise = (async () => {
       try {
-        if (this.websocketBinding && isWebSocketUpgradeRequest(request)) {
+        const dispatcher = this.dispatcher;
+
+        if (dispatcher && this.websocketBinding && isWebSocketUpgradeRequest(request)) {
           return await this.websocketBinding.fetch(request, {
             upgrade: (upgradeRequest) => this.upgradeWebSocket(upgradeRequest),
           });
         }
 
         return await dispatchWebRequest({
-          dispatcher: this.dispatcher,
+          dispatcher,
           dispatcherNotReadyMessage: WORKER_DISPATCHER_NOT_READY_MESSAGE,
           factory: this.webRequestResponseFactory,
           request,
@@ -195,6 +201,11 @@ export class CloudflareWorkerHttpApplicationAdapter
   }
 
   async listen(dispatcher: Dispatcher): Promise<void> {
+    if (this.closeInFlight) {
+      throw new Error('Cloudflare Workers adapter cannot listen while shutdown is still draining.');
+    }
+
+    this.isClosed = false;
     this.dispatcher = dispatcher;
   }
 

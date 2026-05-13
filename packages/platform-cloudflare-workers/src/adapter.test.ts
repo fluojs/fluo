@@ -202,6 +202,40 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     expect(httpResponse.status).toBe(200);
   });
 
+  it('keeps websocket upgrades behind the dispatcher listen boundary', async () => {
+    const createWebSocketPair = createWebSocketPairStub();
+    const adapter = new CloudflareWorkerHttpApplicationAdapter({
+      createWebSocketPair,
+    });
+    const bindingFetch = vi.fn<CloudflareWorkerWebSocketBinding['fetch']>(async (request, host) => {
+      const upgraded = host.upgrade(request);
+
+      expect(upgraded.serverSocket).toBeDefined();
+      return upgraded.response;
+    });
+
+    adapter.configureWebSocketBinding({
+      fetch: bindingFetch,
+    });
+
+    const response = await adapter.fetch(
+      new Request('https://worker.test/chat', {
+        headers: { upgrade: 'websocket' },
+      }),
+      {},
+      createExecutionContext(),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        message: 'Internal server error.',
+      },
+    });
+    expect(bindingFetch).not.toHaveBeenCalled();
+    expect(createWebSocketPair).not.toHaveBeenCalled();
+  });
+
   it('boots a Worker application that reuses shared runtime middleware and Web request handling', async () => {
     @Controller('/webhooks')
     class WebhookController {
@@ -316,6 +350,106 @@ describe('@fluojs/platform-cloudflare-workers', () => {
 
     expect(closeSettled).toBe(true);
     expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
+
+    const closedResponse = await adapter.fetch(new Request('https://worker.test/closed'), {}, createExecutionContext());
+
+    expect(closedResponse.status).toBe(503);
+  });
+
+  it('rejects listen while Worker close is still draining and keeps shutdown responses stable', async () => {
+    const adapter = createCloudflareWorkerAdapter();
+    const deferred = createDeferred<void>();
+    const originalDispatcher = {
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        await deferred.promise;
+        response.setStatus(200);
+        await response.send({ ok: true });
+      },
+    };
+    const replacementDispatcher = {
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        response.setStatus(204);
+      },
+    };
+
+    await adapter.listen(originalDispatcher);
+
+    const inFlightResponse = adapter.fetch(new Request('https://worker.test/drain'), {}, createExecutionContext());
+
+    await Promise.resolve();
+
+    const closePromise = adapter.close();
+
+    await expect(adapter.listen(replacementDispatcher)).rejects.toThrow(
+      'Cloudflare Workers adapter cannot listen while shutdown is still draining.',
+    );
+    expect(Reflect.get(adapter, 'dispatcher')).toBe(originalDispatcher);
+
+    const closingHttpResponse = await adapter.fetch(new Request('https://worker.test/closing'), {}, createExecutionContext());
+
+    expect(closingHttpResponse.status).toBe(503);
+    await expect(closingHttpResponse.json()).resolves.toMatchObject({
+      error: {
+        code: 'SERVICE_UNAVAILABLE',
+      },
+    });
+
+    deferred.resolve();
+
+    await inFlightResponse;
+    await closePromise;
+
+    const closedHttpResponse = await adapter.fetch(new Request('https://worker.test/closed'), {}, createExecutionContext());
+
+    expect(closedHttpResponse.status).toBe(503);
+    expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
+
+    await adapter.listen(replacementDispatcher);
+
+    const reopenedResponse = await adapter.fetch(new Request('https://worker.test/reopened'), {}, createExecutionContext());
+
+    expect(reopenedResponse.status).toBe(204);
+  });
+
+  it('returns shutdown JSON instead of upgrading WebSocket requests after close', async () => {
+    const createWebSocketPair = createWebSocketPairStub();
+    const adapter = new CloudflareWorkerHttpApplicationAdapter({
+      createWebSocketPair,
+    });
+    const bindingFetch = vi.fn<CloudflareWorkerWebSocketBinding['fetch']>(async (request, host) => {
+      const upgraded = host.upgrade(request);
+
+      expect(upgraded.serverSocket).toBeDefined();
+      return upgraded.response;
+    });
+
+    adapter.configureWebSocketBinding({
+      fetch: bindingFetch,
+    });
+
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        response.setStatus(200);
+      },
+    });
+    await adapter.close();
+
+    const response = await adapter.fetch(
+      new Request('https://worker.test/chat', {
+        headers: { upgrade: 'websocket' },
+      }),
+      {},
+      createExecutionContext(),
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'SERVICE_UNAVAILABLE',
+      },
+    });
+    expect(bindingFetch).not.toHaveBeenCalled();
+    expect(createWebSocketPair).not.toHaveBeenCalled();
   });
 
   it('bounds Worker close() while preserving shutdown responses for new requests', async () => {

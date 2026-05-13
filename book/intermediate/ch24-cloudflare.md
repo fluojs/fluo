@@ -53,7 +53,8 @@ const adapter = createCloudflareWorkerAdapter({
   cors: true,
 });
 
-// After bootstrapping once, this is reused by requests in the same Isolate.
+// After bootstrapping once, listen() binds the dispatcher without opening a socket,
+// and the same application is reused by requests in the same Isolate.
 const app = await fluoFactory.create(AppModule, { adapter });
 await app.listen();
 
@@ -90,7 +91,7 @@ Cloudflare Workers have constraints that differ from traditional Node.js environ
 
 ### 24.4.1 Integrating Worker Env into fluo
 
-fluo's Cloudflare adapter connects the Worker `env` object, including KV namespaces and secrets, to the `ConfigService` boundary. Service code can handle settings and bindings through the same configuration contract without reading Cloudflare globals directly.
+fluo's Cloudflare adapter passes the Worker `env` object through the `fetch` entrypoint boundary but does not read or merge it into package configuration by itself. Keep config ownership in the application: map the Worker bindings you need into explicit providers or into `@fluojs/config` at bootstrap, so service code never reads Cloudflare globals directly.
 
 ```typescript
 import { ConfigService } from '@fluojs/config';
@@ -99,7 +100,7 @@ import { Inject } from '@fluojs/core';
 @Inject(ConfigService)
 export class MyService {
   constructor(private config: ConfigService) {
-    // Correctly resolves variables from the Cloudflare env object.
+    // Correctly resolves variables that the application mapped from Worker env.
     const apiKey = this.config.get('API_KEY');
   }
 }
@@ -208,9 +209,9 @@ export class DatabaseModule {}
 
 - Cloudflare Workers run in V8 Isolates at the edge and provide a lightweight alternative to traditional serverless.
 - `@fluojs/platform-cloudflare-workers` provides a standard `fetch`-based adapter integrated with the fluo lifecycle.
-- Export a `fetch` handler instead of calling `listen()` to match the Worker runtime.
+- Export a `fetch` handler instead of opening a server socket; `app.listen()` still binds the fluo dispatcher before the Worker handler receives traffic.
 - Native edge features such as KV, D1, and WebSockets can be connected through dedicated fluo bindings and Provider boundaries.
-- Use `ConfigService` to access variables and bindings from the Worker `env` object smoothly.
+- Map variables and bindings from the Worker `env` object at the application boundary before reading them through providers such as `ConfigService`.
 - Use `wrangler` to keep deployment and environment management consistent.
 - `ctx.waitUntil` is handled by fluo to ensure background work completes successfully at the edge.
 - The edge is not just a hosting platform; it is a different way to think about global application architecture.
