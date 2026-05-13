@@ -2,7 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -262,6 +263,30 @@ describe('scaffoldBootstrapApp', () => {
     expect(vitestConfig).toContain("import { fluoBabelDecoratorsPlugin } from '@fluojs/testing/vitest';");
     expect(vitestConfig).toContain("include: ['src/**/*.test.ts', 'test/**/*.test.ts']");
     expect(vitestConfig).not.toContain('baseUrl');
+  });
+
+  it('pins generated local CLI scripts to the generator package version', async () => {
+    const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-cli-version-'));
+    temporaryDirectories.push(targetDirectory);
+
+    await scaffoldBootstrapApp({
+      ...DEFAULT_BOOTSTRAP_SCHEMA,
+      packageManager: 'pnpm',
+      projectName: 'starter-app',
+      skipInstall: true,
+      targetDirectory,
+    });
+
+    const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const cliManifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as { version: string };
+    const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
+      devDependencies?: Record<string, string>;
+    };
+
+    expect(packageJson.devDependencies?.['@fluojs/cli']).toBe(`^${cliManifest.version}`);
+
+    const scaffoldSource = readFileSync(join(packageRoot, 'src', 'new', 'scaffold.ts'), 'utf8');
+    expect(scaffoldSource).not.toContain("'@fluojs/cli': '^1.0.0'");
   });
 
   it('packs local starter tarballs from staged package manifests with published workspace caret semantics', async () => {

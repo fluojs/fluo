@@ -2076,6 +2076,115 @@ void bootstrap();
     await expect(runPromise).resolves.toBe(0);
   });
 
+  it('force-kills non-cooperative app children so restart supervision cannot hang indefinitely', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    mkdirSync(sourceDirectory, { recursive: true });
+    const sourceFile = join(sourceDirectory, 'main.ts');
+    writeFileSync(sourceFile, 'console.log("one");\n');
+    const children: ChildProcess[] = [];
+    const signals: Array<NodeJS.Signals | undefined> = [];
+    const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+
+    const runPromise = runNodeRestartRunner({
+      debounceMs: 1,
+      env: { FLUO_DEV_CHILD_SHUTDOWN_TIMEOUT_MS: '1' },
+      projectDirectory: workspaceDirectory,
+      signalTarget: createSignalTarget().target,
+      spawnChild: () => {
+        const child = createMockChild();
+        if (children.length === 0) {
+          child.kill = (signal?: NodeJS.Signals) => {
+            signals.push(signal);
+            if (signal === 'SIGKILL') {
+              Object.defineProperty(child, 'killed', { configurable: true, value: true, writable: true });
+              Object.defineProperty(child, 'exitCode', { configurable: true, value: 137, writable: true });
+              queueMicrotask(() => child.emit('close', 137));
+            }
+            return true;
+          };
+        }
+        children.push(child);
+        return child;
+      },
+      watchTarget: (_target, optionsOrListener, listener) => {
+        watchListeners.push(typeof optionsOrListener === 'function' ? optionsOrListener : listener ?? (() => undefined));
+        return { close: () => undefined } as never;
+      },
+    });
+
+    writeFileSync(sourceFile, 'console.log("two");\n');
+    for (const listener of watchListeners) {
+      listener('change', 'main.ts');
+    }
+
+    await waitForCondition(() => signals.includes('SIGKILL') && children.length === 2);
+    expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
+
+    children[1]?.emit('close', 0);
+    await expect(runPromise).resolves.toBe(0);
+  });
+
+  it('resolves terminal shutdown while a planned restart is waiting for the previous child to close', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    mkdirSync(sourceDirectory, { recursive: true });
+    const sourceFile = join(sourceDirectory, 'main.ts');
+    writeFileSync(sourceFile, 'console.log("one");\n');
+    const signalHandlers = new Map<'SIGINT' | 'SIGTERM', () => void>();
+    const children: ChildProcess[] = [];
+    const signals: Array<NodeJS.Signals | undefined> = [];
+    const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+
+    const runPromise = runNodeRestartRunner({
+      debounceMs: 1,
+      env: { FLUO_DEV_CHILD_SHUTDOWN_TIMEOUT_MS: '1' },
+      projectDirectory: workspaceDirectory,
+      signalTarget: {
+        off: () => undefined,
+        once: (signal, listener) => {
+          signalHandlers.set(signal, listener);
+        },
+      },
+      spawnChild: () => {
+        const child = createMockChild();
+        if (children.length === 0) {
+          child.kill = (signal?: NodeJS.Signals) => {
+            signals.push(signal);
+            if (signal === 'SIGTERM') {
+              Object.defineProperty(child, 'killed', { configurable: true, value: true, writable: true });
+              signalHandlers.get('SIGINT')?.();
+            }
+            if (signal === 'SIGKILL') {
+              Object.defineProperty(child, 'killed', { configurable: true, value: true, writable: true });
+              Object.defineProperty(child, 'exitCode', { configurable: true, value: 137, writable: true });
+              queueMicrotask(() => child.emit('close', 137));
+            }
+            return true;
+          };
+        }
+        children.push(child);
+        return child;
+      },
+      watchTarget: (_target, optionsOrListener, listener) => {
+        watchListeners.push(typeof optionsOrListener === 'function' ? optionsOrListener : listener ?? (() => undefined));
+        return { close: () => undefined } as never;
+      },
+    });
+
+    writeFileSync(sourceFile, 'console.log("two");\n');
+    for (const listener of watchListeners) {
+      listener('change', 'main.ts');
+    }
+
+    await waitForCondition(() => signals.includes('SIGKILL'));
+    await expect(runPromise).resolves.toBe(137);
+    expect(children).toHaveLength(1);
+    expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
+  });
+
   it('closes watchers and unregisters signals when the app child exits terminally', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
