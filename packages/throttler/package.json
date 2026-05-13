@@ -61,6 +61,7 @@
     }
   },
   "devDependencies": {
+    "@fluojs/testing": "workspace:^",
     "ioredis": "^5.10.0",
     "vitest": "^3.2.4"
   }

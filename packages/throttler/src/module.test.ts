@@ -1,5 +1,8 @@
+import { Module } from '@fluojs/core';
 import { metadataSymbol } from '@fluojs/core/internal';
 import type { GuardContext, HandlerDescriptor, RequestContext } from '@fluojs/http';
+import { Controller, Get, UseGuards } from '@fluojs/http';
+import { createTestApp } from '@fluojs/testing';
 import type Redis from 'ioredis';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getThrottleMetadata, SkipThrottle, Throttle } from './decorators.js';
@@ -100,8 +103,15 @@ describe('@fluojs/throttler public entrypoints', () => {
   it('keeps ThrottlerModule.forRoot as the supported registration entrypoint without exporting internal provider helpers', () => {
     expect(throttlerExports).not.toHaveProperty('createThrottlerProviders');
     expect(throttlerExports).not.toHaveProperty('THROTTLER_OPTIONS');
+    expect(throttlerExports).toHaveProperty('throttleRouteMetadataKey');
+    expect(throttlerExports).toHaveProperty('getThrottleMetadata');
+    expect(throttlerExports).toHaveProperty('getSkipThrottleMetadata');
+    expect(throttlerExports).toHaveProperty('getClassThrottleMetadata');
+    expect(throttlerExports).toHaveProperty('getClassSkipThrottleMetadata');
     expect(throttlerExports.ThrottlerModule).toBe(ThrottlerModule);
     expect(typeof throttlerExports.ThrottlerModule.forRoot).toBe('function');
+    expect(throttlerExports.Throttle).toBe(Throttle);
+    expect(throttlerExports.SkipThrottle).toBe(SkipThrottle);
   });
 
   it('keeps the low-level consume input type available from the root barrel', () => {
@@ -361,6 +371,29 @@ describe('ThrottlerGuard — in-memory store', () => {
     );
   });
 
+  it('captures module options by value before request handling starts', async () => {
+    class TestController {
+      action() {}
+    }
+
+    const mutableOptions: ThrottlerModuleOptions = {
+      limit: 1,
+      store: createMemoryThrottlerStore(),
+      ttl: 60,
+    };
+    const guard = new ThrottlerGuard(mutableOptions);
+    const ctx = createRequestContext();
+
+    mutableOptions.limit = 100;
+    mutableOptions.ttl = 1;
+
+    await guard.canActivate(createGuardContext(TestController, 'action', ctx));
+
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', ctx))).rejects.toThrow(
+      'Too Many Requests',
+    );
+  });
+
   it('uses module-level defaults when no handler-level @Throttle', async () => {
     class TestController {
       action() {}
@@ -531,6 +564,39 @@ describe('ThrottlerGuard — in-memory store', () => {
         }),
       ),
     ).resolves.toBe(true);
+  });
+});
+
+describe('ThrottlerGuard — HTTP request pipeline', () => {
+  it('enforces @UseGuards(ThrottlerGuard) through createTestApp requests', async () => {
+    @Controller('/throttled')
+    class ThrottledController {
+      @Get('/limited')
+      @UseGuards(ThrottlerGuard)
+      getLimited() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      controllers: [ThrottledController],
+      imports: [ThrottlerModule.forRoot({ limit: 1, ttl: 60, trustProxyHeaders: true })],
+    })
+    class ThrottledAppModule {}
+
+    const app = await createTestApp({ rootModule: ThrottledAppModule });
+
+    try {
+      const firstResponse = await app.request('GET', '/throttled/limited').header('x-real-ip', '198.51.100.10').send();
+      const secondResponse = await app.request('GET', '/throttled/limited').header('x-real-ip', '198.51.100.10').send();
+
+      expect(firstResponse.status).toBe(200);
+      expect(firstResponse.body).toEqual({ ok: true });
+      expect(secondResponse.status).toBe(429);
+      expect(secondResponse.headers['Retry-After']).toBe('60');
+    } finally {
+      await app.close();
+    }
   });
 });
 

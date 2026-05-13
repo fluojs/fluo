@@ -125,11 +125,12 @@ ThrottlerModule.forRoot({
 - `ThrottlerModule.forRoot(options)`: Provides validated throttler options and `ThrottlerGuard` to the module graph.
 - Package-level registration is supported through `ThrottlerModule.forRoot(options)`. Internal provider-composition helpers and DI tokens are not part of the public contract.
 
-`ttl` and `limit` must be positive finite integers. `trustProxyHeaders` and `keyGenerator` customize client identity. If no `store` option is supplied, each `ThrottlerGuard` instance owns its own in-memory store; pass a `ThrottlerStore` implementation such as `RedisThrottlerStore` when storage must be shared or externally managed.
+`ttl` and `limit` must be positive finite integers. `trustProxyHeaders` and `keyGenerator` customize client identity. Module options are validated and captured by value when the guard is wired so later mutation of the caller's options object does not change live throttling policy. If no `store` option is supplied, each `ThrottlerGuard` instance owns its own in-memory store; pass a `ThrottlerStore` implementation such as `RedisThrottlerStore` when storage must be shared or externally managed.
 
 ### Decorators
 - `@Throttle({ ttl, limit })`: Sets a specific rate limit for a class or method.
 - `@SkipThrottle()`: Disables throttling for a class or method.
+- Existing root-barrel metadata helpers (`throttleRouteMetadataKey`, `getThrottleMetadata`, `getSkipThrottleMetadata`, `getClassThrottleMetadata`, and `getClassSkipThrottleMetadata`) remain exported for compatibility with advanced integrations that already inspect decorator metadata directly.
 
 ### Guards
 - `ThrottlerGuard`: The guard responsible for enforcing rate limits. `ThrottlerModule.forRoot()` makes it injectable; route handlers still activate it through Fluo guard metadata such as `@UseGuards(ThrottlerGuard)`.
@@ -153,7 +154,7 @@ Method-level `@Throttle(...)` overrides class-level settings, class-level settin
 
 ## Example Sources
 
-- `packages/throttler/src/module.test.ts`: Tests for module configuration and decorator overrides.
+- `packages/throttler/src/module.test.ts`: Tests for module configuration, decorator overrides, and HTTP guard integration through `createTestApp(...)`.
 - `packages/throttler/src/guard.ts`: The core logic for request throttling and header management.
 - `packages/throttler/src/redis-store.test.ts`: Redis store contract and server-time behavior.
 - `packages/throttler/src/status.test.ts`: Status and diagnostic helper behavior.

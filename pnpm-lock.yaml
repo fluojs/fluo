@@ -986,6 +986,9 @@ importers:
         specifier: workspace:^
         version: link:../runtime
     devDependencies:
+      '@fluojs/testing':
+        specifier: workspace:^
+        version: link:../testing
       ioredis:
         specifier: ^5.10.0
         version: 5.10.0
