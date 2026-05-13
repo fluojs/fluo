@@ -62,10 +62,12 @@ export interface HttpAdapterPortabilityHarnessOptions<
 하네스는 런타임 사이에서 차이가 발생하기 쉬운 여러 임계 표면을 다룹니다. 목적은 Fluo 추상화 계층이 서로 다른 실행 환경에서도 새지 않도록 확인하는 것입니다:
 
 1. **쿠키 처리(Cookie Handling)**: 잘못된 형식의 쿠키가 서버를 중단시키거나 다른 헤더를 오염시키지 않도록 보장.
-2. **원시 바디 보존(Raw Body Preservation)**: 메모리 절약을 위해 JSON 및 Text에 대해서는 `rawBody`를 사용할 수 있지만 Multipart에 대해서는 제외되는지 확인.
+2. **원시 바디 보존(Raw Body Preservation)**: JSON 및 text에서는 `rawBody`를 사용할 수 있고, byte-sensitive payload에서는 정확한 바이트가 보존되며, 메모리 절약을 위해 multipart request에서는 제외되는지 확인.
 3. **SSE (Server-Sent Events)**: 버퍼링 없이 연결을 열린 상태로 유지하는 적절한 스트리밍 동작 확인.
 4. **시작 로그(Startup Logs)**: 어댑터가 표준화된 훅을 통해 리스닝 호스트와 포트를 올바르게 보고하는지 검증.
 5. **종료 시그널(Shutdown Signals)**: 메모리 누수를 방지하기 위해 `SIGTERM` 및 `SIGINT` 리스너가 종료 후 올바르게 정리되는지 확인.
+
+하니스가 앱을 bootstrap한 뒤 assertion 본문이 실행되기 전에 setup 또는 `listen()`이 실패해도 cleanup은 계약에 포함됩니다. 부분적으로 bootstrap된 앱은 반드시 닫혀야 하며, `close()`까지 실패하면 원래 setup 실패와 cleanup 실패를 함께 보고합니다.
 
 ## 14.4 Implementation Deep Dive: Malformed Cookies
 

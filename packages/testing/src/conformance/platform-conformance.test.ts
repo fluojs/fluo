@@ -193,6 +193,90 @@ describe('platform conformance harness', () => {
     await expect(harness.assertStartIsDeterministic()).rejects.toThrow('not idempotent');
   });
 
+  it('reports cleanup failures after successful start determinism checks', async () => {
+    class StopFailureComponent extends TestPlatformComponent {
+      async stop(): Promise<void> {
+        throw new Error('stop exploded');
+      }
+    }
+
+    const harness = createPlatformConformanceHarness({
+      createComponent: () => new StopFailureComponent('cache.default', 'cache'),
+    });
+
+    try {
+      await harness.assertStartIsDeterministic();
+      throw new Error('Expected cleanup failure to be reported.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      if (!(error instanceof AggregateError)) {
+        throw error;
+      }
+      expect(error.message).toContain('failed during platform conformance cleanup');
+      expect(error.errors[0]).toBeInstanceOf(Error);
+      expect((error.errors[0] as Error).message).toBe('stop exploded');
+    }
+  });
+
+  it('preserves snapshot scenario assertions when cleanup also fails', async () => {
+    class SnapshotFailureComponent extends TestPlatformComponent {
+      snapshot(): PlatformSnapshot {
+        throw new Error('snapshot exploded');
+      }
+
+      async stop(): Promise<void> {
+        throw new Error('stop exploded');
+      }
+    }
+
+    const harness = createPlatformConformanceHarness({
+      createComponent: () => new TestPlatformComponent('cache.default', 'cache'),
+      scenarios: {
+        degraded: {
+          createComponent: () => new SnapshotFailureComponent('cache.default', 'cache', { state: 'degraded' }),
+          enterState: () => undefined,
+          name: 'degraded',
+        },
+        failed: {
+          createComponent: () => new TestPlatformComponent('cache.default', 'cache', { state: 'failed' }),
+          enterState: () => undefined,
+          name: 'failed',
+        },
+      },
+    });
+
+    try {
+      await harness.assertSnapshotSafeInDegradedAndFailedStates();
+      throw new Error('Expected aggregate cleanup failure to be reported.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      if (!(error instanceof AggregateError)) {
+        throw error;
+      }
+      expect(error.message).toContain('preserving the original conformance assertion failure');
+      expect((error.errors[0] as Error).message).toContain('snapshot() must be safe in "degraded" state');
+      expect((error.errors[1] as Error).message).toBe('stop exploded');
+    }
+  });
+
+  it('includes diagnostic messages when fixHint enforcement fails', async () => {
+    const harness = createPlatformConformanceHarness({
+      createComponent: () =>
+        new TestPlatformComponent('queue.default', 'queue', {
+          diagnostics: [
+            {
+              code: 'QUEUE_DEPENDENCY_NOT_READY',
+              componentId: 'queue.default',
+              message: 'Queue startup requires ready Redis.',
+              severity: 'error',
+            },
+          ],
+        }),
+    });
+
+    await expect(harness.assertStableDiagnostics()).rejects.toThrow('Queue startup requires ready Redis.');
+  });
+
   it('fails when snapshot details leak unsanitized credential keys', async () => {
     const harness = createPlatformConformanceHarness({
       createComponent: () =>
