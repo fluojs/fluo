@@ -27,7 +27,7 @@ pnpm add @fluojs/terminus
 
 - When you need to monitor external dependencies (databases, Redis, APIs) as part of your application's health status.
 - When you want a structured JSON health report that aligns with standard monitoring patterns.
-- When you need your `/ready` check to fail if critical downstream services are unreachable.
+- When you need your `/ready` check to leave rotation while required downstream readiness signals are unavailable.
 
 ## Quick Start
 
@@ -113,7 +113,7 @@ Use `path` to mount the health endpoints under a custom path, and `readinessChec
 When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthService` aggregates these failures into a report:
 
 - `/health` returns HTTP `503` if any indicator fails.
-- `/ready` returns HTTP `503` if any indicator associated with readiness fails.
+- `/ready` returns HTTP `503` when registered indicators fail, a custom readiness check returns `false`, runtime shutdown has begun, or platform readiness is anything other than `ready`. Platform `critical` metadata is preserved in diagnostics, but the HTTP readiness endpoint itself is a binary ready/unavailable gate and does not expose warning severity buckets.
 - The response body contains a structured JSON object with `status`, `contributors`, `info`, `error`, and `details`.
 - Indicators may emit multiple keyed entries in a single check result; `/health` preserves every keyed entry in `details` and in the `contributors.up` / `contributors.down` summaries.
 - Unsupported, empty, or non-object indicator results are reported as `down` diagnostics instead of being silently discarded.
@@ -151,7 +151,7 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 
 ### `@fluojs/terminus/node`
 
-- `MemoryHealthIndicator`, `DiskHealthIndicator`, `createMemoryHealthIndicator()`, `createDiskHealthIndicator()`
+- `MemoryHealthIndicator`, `DiskHealthIndicator`, `createMemoryHealthIndicator()`, `createDiskHealthIndicator()`, `createMemoryHealthIndicatorProvider()`, `createDiskHealthIndicatorProvider()`
   - Node-specific indicator helpers remain root-exported for compatibility and are also exported from this dedicated subpath. Filesystem access for disk checks is lazy-loaded so importing the root package does not load Node filesystem modules at module initialization time.
 
 

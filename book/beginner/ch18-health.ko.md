@@ -127,9 +127,9 @@ return report;
 ### 18.4.3 Dependency Priority and Cascading Failures
 고도로 연결된 마이크로서비스 아키텍처에서는 작은 서비스 하나가 실패했을 때 전체 시스템이 중단되는 "연쇄 실패(Cascading Failure)"가 발생할 수 있습니다. 차등 모니터링을 사용하면 각 의존성에 **우선순위 레벨(Priority Level)**을 지정할 수 있습니다.
 - **Critical Dependencies (임계 의존성)**: 기본 데이터베이스와 같이 실패 시 준비성 체크가 즉시 실패해야 하는 핵심 요소입니다.
-- **Non-Critical Dependencies (비임계 의존성)**: 필수적이지 않은 검색 인덱서와 같이 실패 시 준비성 체크에서 "경고" 상태를 반환하되, 대부분의 사용자 요청을 처리하기에는 여전히 "준비됨"으로 간주할 수 있는 요소입니다.
+- **Non-Critical Dependencies (비임계 의존성)**: 필수적이지 않은 검색 인덱서와 같이 실패하더라도 대부분의 사용자 요청을 처리할 수 있다면 binary `/ready` gate 대신 health detail, metrics, alert로 보고하는 편이 적합한 요소입니다.
 
-애플리케이션의 헬스에 치명적인 의존성이 무엇인지 전략적으로 결정함으로써, 완전히 실패하기보다는 우아하게 기능이 저하되는 더욱 강력한 시스템을 구축할 수 있습니다. Fluo의 Terminus 구성은 이러한 임계값과 동작을 인디케이터 조합으로 표현할 수 있어, 실제 세계의 복잡한 실패 시나리오를 정밀하게 처리할 수 있는 유연성을 제공합니다.
+애플리케이션의 헬스에 치명적인 의존성이 무엇인지 전략적으로 결정함으로써, 완전히 실패하기보다는 우아하게 기능이 저하되는 더욱 강력한 시스템을 구축할 수 있습니다. Fluo의 Terminus 구성은 indicator 결과, custom readiness check, runtime platform readiness를 조합해 binary `/ready` 결정을 만듭니다. 따라서 non-critical degraded 결과를 포함해 platform readiness가 `ready`가 아니면 인스턴스는 rotation에서 빠지고, severity context는 diagnostic payload에 보존됩니다.
 
 ### 18.4.4 Disk Space and I/O Monitoring
 파일 업로드를 처리하거나 집중적인 로깅을 수행하는 애플리케이션에서 **디스크 공간**은 매우 중요한 리소스입니다. 디스크가 가득 차면 메모리 누수와 마찬가지로 애플리케이션이 충돌하거나 응답하지 않게 될 수 있습니다. Terminus는 디스크 공간과 I/O 성능을 모니터링하기 위한 내장 인디케이터를 포함하고 있습니다. 임계값(예: 디스크가 90% 가득 참)을 설정함으로써, 프로덕션 비상 사태가 발생하기 전에 임시 파일 정리나 스토리지 확장과 같은 조치를 취할 수 있습니다.
