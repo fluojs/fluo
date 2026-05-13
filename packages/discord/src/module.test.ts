@@ -1,16 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
 import type { Constructor, Token } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
 import { NOTIFICATION_CHANNELS, NotificationsModule, NotificationsService } from '@fluojs/notifications';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DiscordChannel } from './channel.js';
 import { DiscordConfigurationError, DiscordMessageValidationError, DiscordTransportError } from './errors.js';
 import { DiscordModule } from './module.js';
 import { DiscordService } from './service.js';
 import { DISCORD, DISCORD_CHANNEL } from './tokens.js';
-import { createDiscordWebhookTransport } from './webhook.js';
 import type {
   Discord,
   DiscordFetchLike,
@@ -18,6 +16,7 @@ import type {
   DiscordTransportFactory,
   NormalizedDiscordMessage,
 } from './types.js';
+import { createDiscordWebhookTransport } from './webhook.js';
 
 const transportState = vi.hoisted(() => ({
   closeCalls: 0,
@@ -177,7 +176,10 @@ describe('DiscordModule', () => {
     container.register({ provide: DISCORD_CONFIG as Token<string>, useValue: 'thread-release' }, ...moduleProviders(moduleType));
 
     const facade = await container.resolve<Discord>(DISCORD);
+    const service = await container.resolve(DiscordService);
     const channel = await container.resolve(DiscordChannel);
+    await service.onModuleInit();
+
     const result = await facade.send({ content: 'Shipped' });
 
     expect(result.messageId).toBe('async-1');
@@ -223,7 +225,10 @@ describe('DiscordModule', () => {
     );
 
     const notifications = await container.resolve(NotificationsService);
+    const service = await container.resolve(DiscordService);
     const channels = await container.resolve(NOTIFICATION_CHANNELS);
+    await service.onModuleInit();
+
     const result = await notifications.dispatch({
       channel: 'alerts',
       metadata: { source: 'ci' },
@@ -265,7 +270,9 @@ describe('DiscordModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
     const channel = await container.resolve(DiscordChannel);
+    await service.onModuleInit();
 
     const result = await channel.send(
       {
@@ -394,6 +401,44 @@ describe('DiscordModule', () => {
     );
   });
 
+  it('rejects sends before module bootstrap marks the transport ready', async () => {
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      transport: createRecordingTransportFactory(),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+
+    await expect(service.send({ content: 'Before bootstrap' })).rejects.toThrowError(
+      new DiscordTransportError('Discord transport is not ready for delivery.'),
+    );
+    expect(transportState.sent).toEqual([]);
+  });
+
+  it('accepts poll-only Discord payloads documented by the notifications contract', async () => {
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      transport: createRecordingTransportFactory({ responsePrefix: 'poll' }),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    const result = await service.sendNotification({
+      channel: 'discord',
+      payload: {
+        poll: { question: { text: 'Ship?' } },
+      },
+    });
+
+    expect(result.messageId).toBe('poll-1');
+    expect(transportState.sent[0]).toMatchObject({
+      poll: { question: { text: 'Ship?' } },
+    });
+  });
+
   it('rejects multi-recipient notification fan-out inside one Discord dispatch', async () => {
     const container = new Container();
     const moduleType = DiscordModule.forRoot({
@@ -402,6 +447,7 @@ describe('DiscordModule', () => {
 
     container.register(...moduleProviders(moduleType));
     const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
 
     await expect(
       service.sendNotification({
@@ -424,6 +470,8 @@ describe('DiscordModule', () => {
 
     container.register(...moduleProviders(moduleType));
     const channel = await container.resolve(DiscordChannel);
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
 
     await expect(
       channel.send(
@@ -546,6 +594,9 @@ describe('DiscordModule', () => {
 
     container.register(...moduleProviders(moduleType));
     const facade = await container.resolve<Discord>(DISCORD);
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
     const result = await facade.send({ content: 'Provider transport' });
 
     expect(result.ok).toBe(true);
@@ -627,6 +678,9 @@ describe('DiscordModule', () => {
       cause,
       message: 'Discord transport failed to initialize.',
     });
+    await expect(service.send({ content: 'After failed bootstrap' })).rejects.toThrowError(
+      new DiscordTransportError('Discord transport failed to initialize.'),
+    );
   });
 
   it('rejects aborted notification sends before rendering templates', async () => {
