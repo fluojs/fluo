@@ -83,6 +83,7 @@ function delay(ms: number): Promise<void> {
  * at-least-once delivery with request timeouts while preserving Fluo's transport abstraction.
  */
 export class RedisStreamsMicroserviceTransport implements MicroserviceTransport {
+  private closePromise: Promise<void> | undefined;
   private closing = false;
   private readonly consumerId: string;
   private handler: TransportHandler | undefined;
@@ -129,7 +130,14 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
    * @returns A promise that resolves once all stream consumers are initialized.
    */
   async listen(handler: TransportHandler): Promise<void> {
-    this.closing = false;
+    if (this.closing) {
+      if (this.closePromise) {
+        throw new Error('RedisStreamsMicroserviceTransport is closing. Wait for close() to complete before listen().');
+      }
+
+      this.closing = false;
+    }
+
     this.handler = handler;
 
     if (this.listening) {
@@ -263,6 +271,10 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
    * @returns A promise that resolves once the event frame is appended to the stream.
    */
   async emit(pattern: string, payload: unknown): Promise<void> {
+    if (this.closing) {
+      throw new Error('RedisStreamsMicroserviceTransport is closing. Wait for close() to complete before emit().');
+    }
+
     const frame = {
       kind: 'event',
       pattern,
@@ -282,62 +294,75 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
    * @returns A promise that resolves once shutdown cleanup finishes.
    */
   async close(): Promise<void> {
-    this.closing = true;
-    let closeError: unknown;
-
-    if (this.listenPromise) {
-      await this.listenPromise;
+    if (this.closePromise) {
+      await this.closePromise;
+      return;
     }
 
-    try {
-      const settled = await Promise.allSettled(this.pollPromises);
-      const shouldDestroyMessageGroup = await this.releaseMessageGroupLease();
+    this.closing = true;
+    this.closePromise = (async () => {
+      let closeError: unknown;
 
-      for (const result of settled) {
-        if (result.status === 'rejected') {
-          closeError ??= result.reason;
-        }
+      if (this.listenPromise) {
+        await this.listenPromise;
       }
 
-      if (shouldDestroyMessageGroup) {
+      try {
+        const settled = await Promise.allSettled(this.pollPromises);
+        const shouldDestroyMessageGroup = await this.releaseMessageGroupLease();
+
+        for (const result of settled) {
+          if (result.status === 'rejected') {
+            closeError ??= result.reason;
+          }
+        }
+
+        if (shouldDestroyMessageGroup) {
+          try {
+            await this.options.readerClient.xgroupDestroy(this.messageStream, this.messageGroup);
+          } catch (error) {
+            closeError ??= error;
+          }
+        }
+
         try {
-          await this.options.readerClient.xgroupDestroy(this.messageStream, this.messageGroup);
+          await this.options.readerClient.xgroupDestroy(this.eventStream, this.eventGroup);
         } catch (error) {
           closeError ??= error;
         }
+
+        try {
+          await this.options.readerClient.xgroupDestroy(this.responseStream, this.responseGroup);
+        } catch (error) {
+          closeError ??= error;
+        }
+
+        try {
+          await this.options.readerClient.del?.(this.responseStream);
+        } catch (error) {
+          closeError ??= error;
+        }
+      } finally {
+        this.listening = false;
+        this.handler = undefined;
+        this.messageGroupLeaseRegistered = false;
+        this.ownsMessageGroup = false;
+        this.pollPromises = [];
+
+        for (const pending of [...this.pending.values()]) {
+          pending.reject(new Error('Redis Streams microservice transport closed before response.'));
+        }
       }
 
-      try {
-        await this.options.readerClient.xgroupDestroy(this.eventStream, this.eventGroup);
-      } catch (error) {
-        closeError ??= error;
+      if (closeError) {
+        throw closeError;
       }
+    })();
 
-      try {
-        await this.options.readerClient.xgroupDestroy(this.responseStream, this.responseGroup);
-      } catch (error) {
-        closeError ??= error;
-      }
-
-      try {
-        await this.options.readerClient.del?.(this.responseStream);
-      } catch (error) {
-        closeError ??= error;
-      }
+    try {
+      await this.closePromise;
     } finally {
-      this.listening = false;
-      this.handler = undefined;
-      this.messageGroupLeaseRegistered = false;
-      this.ownsMessageGroup = false;
-      this.pollPromises = [];
-
-      for (const pending of [...this.pending.values()]) {
-        pending.reject(new Error('Redis Streams microservice transport closed before response.'));
-      }
-    }
-
-    if (closeError) {
-      throw closeError;
+      this.closePromise = undefined;
     }
   }
 
