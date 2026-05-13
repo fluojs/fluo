@@ -376,6 +376,37 @@ describe('serialize', () => {
     expect(serialized[token]).toEqual({ nested: true });
   });
 
+  it('does not leak non-enumerable symbol-keyed properties from decorated instances', () => {
+    const publicToken = Symbol('public-token');
+    const internalToken = Symbol('internal-token');
+
+    class TokenView {
+      @Expose()
+      id = 'view-1';
+
+      constructor() {
+        Object.defineProperty(this, publicToken, {
+          configurable: true,
+          enumerable: true,
+          value: 'public',
+          writable: true,
+        });
+        Object.defineProperty(this, internalToken, {
+          configurable: true,
+          enumerable: false,
+          value: 'secret',
+          writable: true,
+        });
+      }
+    }
+
+    const serialized = serialize(new TokenView()) as Record<string | symbol, unknown>;
+
+    expect(serialized.id).toBe('view-1');
+    expect(serialized[publicToken]).toBe('public');
+    expect(serialized[internalToken]).toBeUndefined();
+  });
+
   it('serializes null-prototype records without crashing', () => {
     const input = Object.create(null) as Record<string, unknown>;
     input.id = 'p-1';
@@ -404,7 +435,7 @@ describe('serialize', () => {
 
     expect(Object.keys(serialized)).toEqual(['safe', '__proto__']);
     expect(Object.getPrototypeOf(serialized)).toBe(Object.prototype);
-    expect(Object.prototype.hasOwnProperty.call(serialized, '__proto__')).toBe(true);
+    expect(Object.hasOwn(serialized, '__proto__')).toBe(true);
     expect(serialized.safe).toBe(true);
     expect(serialized.__proto__).toEqual({ polluted: true });
     expect((serialized as { polluted?: boolean }).polluted).toBeUndefined();
@@ -435,7 +466,7 @@ describe('serialize', () => {
 
     expect(Object.keys(serialized)).toEqual(['safe', '__proto__']);
     expect(Object.getPrototypeOf(serialized)).toBe(Object.prototype);
-    expect(Object.prototype.hasOwnProperty.call(serialized, '__proto__')).toBe(true);
+    expect(Object.hasOwn(serialized, '__proto__')).toBe(true);
     expect(serialized.safe).toBe(true);
     expect(serialized.__proto__).toEqual({ polluted: true });
     expect((serialized as { polluted?: boolean }).polluted).toBeUndefined();
@@ -603,7 +634,7 @@ describe('serialize', () => {
 
     expect(Object.keys(serialized)).toEqual(['safe', 'constructor']);
     expect(Object.getPrototypeOf(serialized)).toBe(Object.prototype);
-    expect(Object.prototype.hasOwnProperty.call(serialized, 'constructor')).toBe(true);
+    expect(Object.hasOwn(serialized, 'constructor')).toBe(true);
     expect(serialized.safe).toBe(true);
     expect(serialized.constructor).toEqual({ polluted: true });
     expect((serialized as { polluted?: boolean }).polluted).toBeUndefined();
@@ -634,7 +665,7 @@ describe('serialize', () => {
 
     expect(Object.keys(serialized)).toEqual(['safe', 'prototype']);
     expect(Object.getPrototypeOf(serialized)).toBe(Object.prototype);
-    expect(Object.prototype.hasOwnProperty.call(serialized, 'prototype')).toBe(true);
+    expect(Object.hasOwn(serialized, 'prototype')).toBe(true);
     expect(serialized.safe).toBe(true);
     expect(serialized.prototype).toEqual({ polluted: true });
     expect((serialized as { polluted?: boolean }).polluted).toBeUndefined();

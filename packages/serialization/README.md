@@ -37,7 +37,7 @@ class UserEntity {
   id = '';
 
   @Expose()
-  @Transform((value) => value.toUpperCase())
+  @Transform((value) => String(value).toUpperCase())
   username = '';
 
   @Exclude()
@@ -76,7 +76,7 @@ class SecureDto {
 import { Transform } from '@fluojs/serialization';
 
 class ProductDto {
-  @Transform((price) => `$${price.toFixed(2)}`)
+  @Transform((price) => `$${Number(price).toFixed(2)}`)
   price = 0;
 }
 ```

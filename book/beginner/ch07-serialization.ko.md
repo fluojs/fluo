@@ -70,7 +70,7 @@ export class PublicPostDto {
   published = false;
 
   @Expose()
-  @Transform((value) => value.trim())
+  @Transform((value) => String(value).trim())
   summary = '';
 
   @Exclude()
