@@ -136,6 +136,8 @@ Portability harness cleanup is part of the contract: if setup, `listen()`, or an
 
 `HttpAdapterPortabilityHarness` and web-runtime portability harness methods are the public adapter contract checks. Prefer focused assertions such as `assertPreservesMalformedCookieValues()`, `assertSupportsSseStreaming()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, `assertDefaultsMultipartTotalLimitToMaxBodySize()`, `assertSettlesStreamDrainWaitOnClose()`, `assertReportsConfiguredHostInStartupLogs()`, `assertReportsHttpsStartupUrl(...)`, and `assertRemovesShutdownSignalListenersAfterClose()` instead of hand-rolled equivalents.
 
+Use `assertPreservesExactRawBodyBytesForByteSensitivePayloads()` when an HTTP adapter must prove `rawBody` keeps byte-sensitive payload bytes intact across runtimes.
+
 ## Canonical TDD Ladder
 
 For application features, build tests from the smallest explicit dependency boundary outward:

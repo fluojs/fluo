@@ -138,6 +138,8 @@ const mailer = createDeepMock(MailService);
 
 `HttpAdapterPortabilityHarness`와 web-runtime portability harness 메서드는 공개 어댑터 계약 체크입니다. 직접 같은 검증을 다시 만들기보다 `assertPreservesMalformedCookieValues()`, `assertSupportsSseStreaming()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, `assertDefaultsMultipartTotalLimitToMaxBodySize()`, `assertSettlesStreamDrainWaitOnClose()`, `assertReportsConfiguredHostInStartupLogs()`, `assertReportsHttpsStartupUrl(...)`, `assertRemovesShutdownSignalListenersAfterClose()`처럼 초점이 분명한 assertion을 사용하세요.
 
+HTTP 어댑터가 런타임 전반에서 `rawBody`의 byte-sensitive payload byte를 그대로 보존하는지 증명해야 할 때는 `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`를 사용하세요.
+
 ## canonical TDD ladder
 
 애플리케이션 기능 테스트는 가장 작은 명시적 dependency boundary에서 시작해 바깥쪽으로 확장합니다.
