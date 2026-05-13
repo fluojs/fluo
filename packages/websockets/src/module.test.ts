@@ -308,6 +308,32 @@ function createMockSocket(): {
   };
 }
 
+function createTrackedSocketState(
+  socketId: string,
+  lifecycle: { connect?: Promise<void>; disconnect?: Promise<void> } = {},
+) {
+  return {
+    bufferedDisconnect: undefined,
+    bufferedMessages: [],
+    bufferedMessagesStartIndex: 0,
+    cleanupScheduled: false,
+    connectLifecyclePromise: lifecycle.connect ?? Promise.resolve(),
+    connectLifecycleSettled: false,
+    disconnectLifecyclePromise: lifecycle.disconnect ?? Promise.resolve(),
+    disconnectLifecycleSettled: false,
+    enqueuedMessageCount: 0,
+    handlerQueue: Promise.resolve(),
+    handlersReady: true,
+    processingMessageQueue: false,
+    queuedMessages: [],
+    queuedMessagesStartIndex: 0,
+    resolveConnectLifecycle() {},
+    resolveDisconnectLifecycle() {},
+    resolved: [],
+    socketId,
+  };
+}
+
 describe('@fluojs/websockets', () => {
   it('keeps lifecycle DI tokens internal to module wiring', () => {
     expect(publicApi).not.toHaveProperty('WEBSOCKET_GATEWAY_SERVICE');
@@ -1450,14 +1476,64 @@ describe('@fluojs/websockets', () => {
     expect(state.enqueuedMessageCount).toBe(0);
   });
 
+  it('defers socket state cleanup when ready-state queue overflow terminates a socket', async () => {
+    const service = createTestLifecycleService({
+      buffer: {
+        maxPendingMessagesPerSocket: 1,
+        overflowPolicy: 'close',
+      },
+    });
+    const { socket, terminate } = createMockSocket();
+    const disconnectRelease = createDeferred<void>();
+    const messageRelease = createDeferred<void>();
+    const state = createTrackedSocketState('socket-ready-close', {
+      disconnect: disconnectRelease.promise,
+    });
+    const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
+    const socketStates = Reflect.get(service, 'socketStates') as Map<string, unknown>;
+    const enqueueMessageDispatch = Reflect.get(service, 'enqueueMessageDispatch') as (
+      state: ReturnType<typeof createTrackedSocketState>,
+      socket: WebSocket,
+      request: IncomingMessage,
+      data: unknown,
+    ) => void;
+
+    Reflect.set(service, 'handleMessage', async () => {
+      await messageRelease.promise;
+    });
+    socketRegistry.set(state.socketId, socket);
+    socketStates.set(state.socketId, state);
+
+    enqueueMessageDispatch.call(service, state, socket, {} as IncomingMessage, 'first');
+    enqueueMessageDispatch.call(service, state, socket, {} as IncomingMessage, 'second');
+    enqueueMessageDispatch.call(service, state, socket, {} as IncomingMessage, 'third');
+
+    expect(terminate).toHaveBeenCalledTimes(1);
+    expect(socketRegistry.has(state.socketId)).toBe(false);
+    expect(socketStates.has(state.socketId)).toBe(true);
+
+    disconnectRelease.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(socketStates.has(state.socketId)).toBe(false);
+
+    messageRelease.resolve();
+    await state.handlerQueue;
+  });
+
   it('terminates sockets when pong timeout is missed and clears heartbeat state', async () => {
     vi.useFakeTimers();
 
     try {
       const service = createTestLifecycleService();
       const { ping, socket, terminate } = createMockSocket();
+      const disconnectRelease = createDeferred<void>();
+      const state = createTrackedSocketState('socket-1', { disconnect: disconnectRelease.promise });
       const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
+      const socketStates = Reflect.get(service, 'socketStates') as Map<string, unknown>;
       socketRegistry.set('socket-1', socket);
+      socketStates.set('socket-1', state);
 
       const startHeartbeat = Reflect.get(service, 'startHeartbeat') as (intervalMs: number, timeoutMs: number) => void;
       startHeartbeat.call(service, 100, 150);
@@ -1474,8 +1550,15 @@ describe('@fluojs/websockets', () => {
 
       expect(terminate).toHaveBeenCalledTimes(1);
       expect(socketRegistry.has('socket-1')).toBe(false);
+      expect(socketStates.has('socket-1')).toBe(true);
       expect(pingPending.has('socket-1')).toBe(false);
       expect(pingSentAt.has('socket-1')).toBe(false);
+
+      disconnectRelease.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(socketStates.has('socket-1')).toBe(false);
 
       const shutdown = Reflect.get(service, 'shutdown') as () => Promise<void>;
       await shutdown.call(service);
@@ -1505,7 +1588,7 @@ describe('@fluojs/websockets', () => {
     expect(terminate).not.toHaveBeenCalled();
   });
 
-  it('terminates sockets on backpressure when policy is close', () => {
+  it('terminates sockets on backpressure when policy is close', async () => {
     const service = createTestLifecycleService({
       backpressure: {
         maxBufferedAmountBytes: 1,
@@ -1513,11 +1596,15 @@ describe('@fluojs/websockets', () => {
       },
     });
     const { send, socket, terminate } = createMockSocket();
+    const disconnectRelease = createDeferred<void>();
+    const state = createTrackedSocketState('socket-1', { disconnect: disconnectRelease.promise });
     (socket as unknown as { bufferedAmount: number }).bufferedAmount = 4;
 
     const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
+    const socketStates = Reflect.get(service, 'socketStates') as Map<string, unknown>;
     const roomSockets = Reflect.get(service, 'roomSockets') as Map<string, Set<string>>;
     socketRegistry.set('socket-1', socket);
+    socketStates.set('socket-1', state);
     roomSockets.set('room-1', new Set(['socket-1']));
 
     service.broadcastToRoom('room-1', 'event', { value: 'payload' });
@@ -1525,6 +1612,13 @@ describe('@fluojs/websockets', () => {
     expect(send).not.toHaveBeenCalled();
     expect(terminate).toHaveBeenCalledTimes(1);
     expect(socketRegistry.has('socket-1')).toBe(false);
+    expect(socketStates.has('socket-1')).toBe(true);
+
+    disconnectRelease.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(socketStates.has('socket-1')).toBe(false);
   });
 
   it('returns room snapshots so external mutation cannot corrupt internal room indexes', () => {

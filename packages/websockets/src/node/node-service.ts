@@ -678,7 +678,7 @@ export class NodeWebSocketGatewayLifecycleService
       if (policy === 'close') {
         socket.terminate();
         this.clearQueuedMessages(state);
-        this.unregisterSocket(state.socketId);
+        this.unregisterSocketWithDeferredStateCleanup(state);
         this.logger.warn(
           `WebSocket connection ${state.socketId} exceeded ready-state message queue limit (${String(limit)}). Connection terminated.`,
           'WebSocketGatewayLifecycleService',
@@ -927,7 +927,7 @@ export class NodeWebSocketGatewayLifecycleService
     this.clearBufferedMessages(state);
 
     if (socket.readyState !== WebSocket.OPEN && socket.readyState !== WebSocket.CONNECTING) {
-      this.unregisterSocket(state.socketId);
+      this.unregisterSocketWithDeferredStateCleanup(state);
     }
   }
 
@@ -1470,7 +1470,7 @@ export class NodeWebSocketGatewayLifecycleService
         if (socket.bufferedAmount > maxBufferedAmountBytes) {
           if (backpressurePolicy === 'close') {
             socket.terminate();
-            this.unregisterSocket(socketId);
+            this.unregisterTrackedSocketWithDeferredStateCleanup(socketId);
             this.logger.warn(
               `WebSocket connection ${socketId} exceeded bufferedAmount threshold (${String(maxBufferedAmountBytes)} bytes). Connection terminated.`,
               'WebSocketGatewayLifecycleService',
@@ -1521,7 +1521,7 @@ export class NodeWebSocketGatewayLifecycleService
 
           if (elapsed >= timeoutMs) {
             socket.terminate();
-            this.unregisterSocket(socketId);
+            this.unregisterTrackedSocketWithDeferredStateCleanup(socketId);
           }
           continue;
         }
@@ -1533,6 +1533,22 @@ export class NodeWebSocketGatewayLifecycleService
         }
       }
     }, intervalMs);
+  }
+
+  private unregisterSocketWithDeferredStateCleanup(state: ConnectionHandlerState): void {
+    this.unregisterSocket(state.socketId, { deleteState: false });
+    this.scheduleSocketStateCleanup(state);
+  }
+
+  private unregisterTrackedSocketWithDeferredStateCleanup(socketId: string): void {
+    const state = this.socketStates.get(socketId);
+
+    if (!state) {
+      this.unregisterSocket(socketId);
+      return;
+    }
+
+    this.unregisterSocketWithDeferredStateCleanup(state);
   }
 
   private unregisterSocket(socketId: string, options: { deleteState?: boolean } = {}): void {
