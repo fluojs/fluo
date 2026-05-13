@@ -38,6 +38,7 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "publish-packages": "changeset publish",
+    "verify:changeset-release-lane": "node tooling/release/verify-changeset-release-lane.mjs",
     "verify:release-readiness": "node tooling/release/verify-release-readiness.mjs",
     "generate:release-readiness-drafts": "node tooling/release/verify-release-readiness.mjs --write-drafts",
     "verify:public-export-tsdoc": "node tooling/governance/verify-public-export-tsdoc.mjs",
