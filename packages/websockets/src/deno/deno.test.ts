@@ -4,6 +4,7 @@ import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import type { HttpApplicationAdapter } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as denoPublicApi from './deno.js';
@@ -25,6 +26,8 @@ type MockDenoSocketListenerMap = {
 
 const WEBSOCKET_OPEN_READY_STATE = 1;
 const WEBSOCKET_CLOSED_READY_STATE = 3;
+const DENO_WEBSOCKET_CAPABILITY_REASON =
+  'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.';
 
 class MockDenoSocket implements DenoServerWebSocket {
   readonly #listeners: MockDenoSocketListenerMap = {
@@ -192,8 +195,7 @@ class TestDenoAdapter implements HttpApplicationAdapter, DenoWebSocketBindingHos
       contract: 'raw-websocket-expansion' as const,
       kind: 'fetch-style' as const,
       mode: 'request-upgrade' as const,
-      reason:
-        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.',
+      reason: DENO_WEBSOCKET_CAPABILITY_REASON,
       support: 'supported' as const,
       version: 1 as const,
     };
@@ -281,6 +283,17 @@ describe('@fluojs/websockets/deno', () => {
 
     expect(providers).toContain(DenoWebSocketGatewayLifecycleService);
     expect(optionsProvider).toHaveProperty('useValue', options);
+  });
+
+  it('reports the supported fetch-style websocket contract through the conformance harness', () => {
+    const harness = createFetchStyleWebSocketConformanceHarness({
+      createAdapter: () => new TestDenoAdapter(),
+      expectedReason: DENO_WEBSOCKET_CAPABILITY_REASON,
+      expectedSupport: 'supported',
+      name: 'websockets deno test adapter',
+    });
+
+    expect(() => harness.assertExposesRawWebSocketExpansionContract()).not.toThrow();
   });
 
   it('rejects serverBacked gateway opt-in on the Deno fetch-style binding', async () => {

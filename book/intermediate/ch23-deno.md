@@ -94,12 +94,13 @@ Like Bun, Deno provides its own WebSocket implementation through `Deno.upgradeWe
 import { Module } from '@fluojs/core';
 import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
 import { DenoWebSocketModule } from '@fluojs/websockets/deno';
+import type { DenoServerWebSocket } from '@fluojs/websockets/deno';
 
 @WebSocketGateway({ path: '/ws' })
 export class MyGateway {
   @OnMessage('ping')
-  handlePing() {
-    return { event: 'pong', data: 'hello from deno' };
+  handlePing(_payload: unknown, socket: DenoServerWebSocket) {
+    socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));
   }
   // The Deno binding handles native upgrades internally.
 }
@@ -110,6 +111,8 @@ export class MyGateway {
 })
 export class RealtimeModule {}
 ```
+
+Gateway return values are ignored by the WebSocket dispatcher. Send replies explicitly through the runtime socket passed to the handler, as shown above.
 
 ## 23.5 Handling Deno Permissions in FluoShop
 

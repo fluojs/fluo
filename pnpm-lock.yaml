@@ -1076,6 +1076,9 @@ importers:
       '@fluojs/platform-fastify':
         specifier: workspace:^
         version: link:../platform-fastify
+      '@fluojs/testing':
+        specifier: workspace:^
+        version: link:../testing
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1

@@ -4,6 +4,7 @@ import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import type { HttpApplicationAdapter } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as bunPublicApi from './bun.js';
@@ -24,6 +25,8 @@ type MockSocket = BunServerWebSocket<unknown> & {
 
 const WEBSOCKET_CLOSED_READY_STATE = 3;
 const WEBSOCKET_OPEN_READY_STATE = 1;
+const BUN_WEBSOCKET_CAPABILITY_REASON =
+  'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.';
 
 class TestBunAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost {
   private binding?: BunWebSocketBinding<unknown>;
@@ -38,8 +41,7 @@ class TestBunAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost 
       contract: 'raw-websocket-expansion' as const,
       kind: 'fetch-style' as const,
       mode: 'request-upgrade' as const,
-      reason:
-        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.',
+      reason: BUN_WEBSOCKET_CAPABILITY_REASON,
       support: 'supported' as const,
       version: 1 as const,
     };
@@ -207,6 +209,17 @@ describe('@fluojs/websockets/bun', () => {
 
     expect(providers).toContain(BunWebSocketGatewayLifecycleService);
     expect(optionsProvider).toHaveProperty('useValue', options);
+  });
+
+  it('reports the supported fetch-style websocket contract through the conformance harness', () => {
+    const harness = createFetchStyleWebSocketConformanceHarness({
+      createAdapter: () => new TestBunAdapter(),
+      expectedReason: BUN_WEBSOCKET_CAPABILITY_REASON,
+      expectedSupport: 'supported',
+      name: 'websockets bun test adapter',
+    });
+
+    expect(() => harness.assertExposesRawWebSocketExpansionContract()).not.toThrow();
   });
 
   it('rejects serverBacked gateway opt-in on the Bun fetch-style binding', async () => {
