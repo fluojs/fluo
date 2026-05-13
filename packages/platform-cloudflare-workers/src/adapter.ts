@@ -201,6 +201,10 @@ export class CloudflareWorkerHttpApplicationAdapter
   }
 
   async listen(dispatcher: Dispatcher): Promise<void> {
+    if (this.closeInFlight) {
+      throw new Error('Cloudflare Workers adapter cannot listen while shutdown is still draining.');
+    }
+
     this.isClosed = false;
     this.dispatcher = dispatcher;
   }
