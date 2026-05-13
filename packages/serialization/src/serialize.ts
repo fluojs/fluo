@@ -76,6 +76,12 @@ function assignSerializedProperty(
   target[propertyKey] = value;
 }
 
+function getEnumerableOwnSymbolKeys(value: Record<string | symbol, unknown>): symbol[] {
+  return Object.getOwnPropertySymbols(value).filter((key) => (
+    Object.prototype.propertyIsEnumerable.call(value, key)
+  ));
+}
+
 function resolveCandidateKeys(
   value: Record<string | symbol, unknown>,
   fieldMetadata: Map<MetadataPropertyKey, SerializationFieldMetadata>,
@@ -89,7 +95,7 @@ function resolveCandidateKeys(
 
   const keys = new Set<MetadataPropertyKey>([
     ...Object.keys(value),
-    ...Object.getOwnPropertySymbols(value),
+    ...getEnumerableOwnSymbolKeys(value),
   ]);
 
   for (const [propertyKey, metadata] of fieldMetadata) {
@@ -217,7 +223,7 @@ function serializeRecord(
   value: Record<string | symbol, unknown>,
   context: SerializationContext,
 ): Record<string | symbol, unknown> {
-  const symbolKeys = Object.getOwnPropertySymbols(value).filter((key) => Object.prototype.propertyIsEnumerable.call(value, key));
+  const symbolKeys = getEnumerableOwnSymbolKeys(value);
   const keys: Array<string | symbol> = [...Object.keys(value), ...symbolKeys];
 
   return serializeWithTrackedReference<Record<string | symbol, unknown>>(value, context, () => ({}), (serialized) => {
