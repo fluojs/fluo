@@ -11,6 +11,7 @@ import {
   isValidLocale,
   normalizeLocaleResolverResult,
   parseLocalePreferences,
+  resolveSupportedLocale,
   selectLocaleFromAcceptLanguagePolicy,
 } from './locale-resolution.js';
 import type { I18nLocale } from './types.js';
@@ -163,8 +164,10 @@ export function createAcceptLanguageLocaleResolver(
         continue;
       }
 
-      if (isSupportedLocale(preference.locale, supportedLocales)) {
-        return { locale: preference.locale, source };
+      const locale = resolveSupportedLocale(preference.locale, supportedLocales);
+
+      if (locale !== undefined) {
+        return { locale, source };
       }
     }
 

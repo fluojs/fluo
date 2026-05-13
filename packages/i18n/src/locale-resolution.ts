@@ -65,7 +65,26 @@ export function isValidLocale(locale: unknown): locale is I18nLocale {
  * @returns Whether the locale is supported, or `true` when no supported-locale list is configured.
  */
 export function isSupportedLocale(locale: I18nLocale, supportedLocales: readonly I18nLocale[] | undefined): boolean {
-  return supportedLocales === undefined || supportedLocales.length === 0 || supportedLocales.includes(locale);
+  return resolveSupportedLocale(locale, supportedLocales) !== undefined;
+}
+
+/**
+ * Resolves a valid locale candidate to the caller-configured supported locale spelling.
+ *
+ * @param locale Locale identifier to check.
+ * @param supportedLocales Optional list of supported locale identifiers.
+ * @returns The matching supported locale spelling, the original locale when no list is configured, or `undefined` when unsupported.
+ */
+export function resolveSupportedLocale(
+  locale: I18nLocale,
+  supportedLocales: readonly I18nLocale[] | undefined,
+): I18nLocale | undefined {
+  if (supportedLocales === undefined || supportedLocales.length === 0) {
+    return locale;
+  }
+
+  const normalizedLocale = locale.toLowerCase();
+  return supportedLocales.find((supportedLocale) => supportedLocale.toLowerCase() === normalizedLocale);
 }
 
 /**
@@ -86,7 +105,7 @@ export function normalizeSupportedLocale(
   }
 
   const normalizedLocale = locale.toLowerCase();
-  const exact = supportedLocales.find((supportedLocale) => supportedLocale.toLowerCase() === normalizedLocale);
+  const exact = resolveSupportedLocale(locale, supportedLocales);
 
   if (exact !== undefined) {
     return exact;
