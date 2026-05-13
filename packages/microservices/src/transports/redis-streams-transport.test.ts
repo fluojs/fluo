@@ -1045,6 +1045,20 @@ describe('RedisStreamsMicroserviceTransport', () => {
     await expect(pending).rejects.toThrow(/Redis Streams microservice transport closed before/);
   });
 
+  it('rejects emit() after close() starts', async () => {
+    const bus = new InMemoryStreamBus();
+    const { transport } = createTransport(bus, {
+      requestTimeoutMs: 1_000,
+    });
+
+    await transport.listen(async () => undefined);
+    await transport.close();
+
+    await expect(transport.emit('after.close', {})).rejects.toThrow(
+      'RedisStreamsMicroserviceTransport is closing. Wait for close() to complete before emit().',
+    );
+  });
+
   it('still rejects pending requests when group destroy fails during close', async () => {
     const bus = new InMemoryStreamBus();
     const closeError = new Error('group destroy failed');

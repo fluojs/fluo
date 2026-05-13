@@ -183,6 +183,22 @@ describe('RedisPubSubMicroserviceTransport', () => {
     expect(subscribeClient.subscriptions.has('test-ns:events')).toBe(false);
   });
 
+  it('rejects emit() after close() starts', async () => {
+    const bus = new InMemoryRedisBus();
+    const { publishClient, subscribeClient } = bus.createClient();
+    const transport = new RedisPubSubMicroserviceTransport({
+      publishClient,
+      subscribeClient,
+    });
+
+    await transport.listen(async () => undefined);
+    await transport.close();
+
+    await expect(transport.emit('after.close', {})).rejects.toThrow(
+      'RedisPubSubMicroserviceTransport is closing. Wait for close() to complete before emit().',
+    );
+  });
+
   it('removes the message listener on close so reconnect does not duplicate event dispatch', async () => {
     const bus = new InMemoryRedisBus();
     const { publishClient, subscribeClient } = bus.createClient();

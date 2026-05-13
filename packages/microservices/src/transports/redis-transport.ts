@@ -30,6 +30,7 @@ export interface RedisPubSubMicroserviceTransportOptions {
  * a transport with durable reply semantics such as TCP, Kafka, or Redis Streams.
  */
 export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
+  private closing = false;
   private handler: TransportHandler | undefined;
   private logger: MicroserviceTransportLogger | undefined;
   private listening = false;
@@ -63,6 +64,7 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once the Redis subscription is active.
    */
   async listen(handler: TransportHandler): Promise<void> {
+    this.closing = false;
     this.handler = handler;
 
     if (this.listening) {
@@ -101,6 +103,10 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once Redis accepts the publication.
    */
   async emit(pattern: string, payload: unknown): Promise<void> {
+    if (this.closing) {
+      throw new Error('RedisPubSubMicroserviceTransport is closing. Wait for close() to complete before emit().');
+    }
+
     const message: RedisPubSubMessage = {
       kind: 'event',
       pattern,
@@ -132,6 +138,7 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once shutdown cleanup completes.
    */
   async close(): Promise<void> {
+    this.closing = true;
     let closeError: unknown;
 
     if (this.listenPromise) {

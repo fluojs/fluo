@@ -263,6 +263,10 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
    * @returns A promise that resolves once the event frame is appended to the stream.
    */
   async emit(pattern: string, payload: unknown): Promise<void> {
+    if (this.closing) {
+      throw new Error('RedisStreamsMicroserviceTransport is closing. Wait for close() to complete before emit().');
+    }
+
     const frame = {
       kind: 'event',
       pattern,
