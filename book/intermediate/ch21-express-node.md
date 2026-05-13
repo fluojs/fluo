@@ -229,6 +229,6 @@ This helper helps clean up active connections before the process exits. In deplo
 - `@fluojs/platform-express` lets you continue using the existing Express ecosystem and operational assets.
 - `@fluojs/platform-nodejs` provides a minimal HTTP layer without a framework.
 - Most fluo code (Controllers, Providers, Modules) does not need to know which adapter is running at all.
-- Access the underlying engine with `getInstance()` only when you need platform-specific features.
+- Access the underlying Node server with `getServer()` or inspect `getRealtimeCapability()` only when you need platform-specific features.
 - Runtime owns diagnostic snapshot and issue production; Studio owns graph viewing and Mermaid rendering of those artifacts.
 - To maintain cross-platform compatibility, review fluo abstractions first, such as `MiddlewareConsumer`.

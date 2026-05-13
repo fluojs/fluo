@@ -146,6 +146,33 @@ describe('node request adapter', () => {
     expect(frameworkRequest.body).toEqual({ ok: true });
   });
 
+  it('uses x-correlation-id as the Node request id fallback', async () => {
+    const request = createIncomingMessage({
+      headers: {
+        'x-correlation-id': 'correlation-123',
+      },
+      url: '/request-id',
+    });
+
+    const frameworkRequest = await createFrameworkRequest(request, new AbortController().signal);
+
+    expect(frameworkRequest.requestId).toBe('correlation-123');
+  });
+
+  it('prefers x-request-id over x-correlation-id for Node request ids', async () => {
+    const request = createIncomingMessage({
+      headers: {
+        'x-correlation-id': 'correlation-123',
+        'x-request-id': 'request-123',
+      },
+      url: '/request-id',
+    });
+
+    const frameworkRequest = await createFrameworkRequest(request, new AbortController().signal);
+
+    expect(frameworkRequest.requestId).toBe('request-123');
+  });
+
   it('parses JSON bodies when the primary content-type uses mixed-case media types', async () => {
     const request = createIncomingMessage({
       body: '{"ok":true}',

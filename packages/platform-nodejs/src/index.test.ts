@@ -1,5 +1,5 @@
 import { createServer } from 'node:net';
-import { Controller, FromBody, Get, Post, RequestDto, type RequestContext } from '@fluojs/http';
+import { Controller, type Dispatcher, FromBody, Get, Post, RequestDto, type RequestContext } from '@fluojs/http';
 import { defineModule, FluoFactory } from '@fluojs/runtime';
 import {
   type BootstrapNodeApplicationOptions,
@@ -11,7 +11,7 @@ import {
   runNodeApplication,
 } from '@fluojs/runtime/node';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
-import { describe, expect, expectTypeOf, it } from 'vitest';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import * as platformNodejsApi from './index.js';
 import {
   type BootstrapNodejsApplicationOptions,
@@ -217,6 +217,89 @@ describe('@fluojs/platform-nodejs', () => {
     }
   });
 
+  it('fails fast when Node lifecycle options are invalid through the platform adapter', () => {
+    expect(() => createNodejsAdapter({ retryDelayMs: -1 })).toThrow(
+      'Invalid retryDelayMs value: -1. Expected a non-negative integer.',
+    );
+    expect(() => createNodejsAdapter({ retryLimit: 1.5 })).toThrow(
+      'Invalid retryLimit value: 1.5. Expected a non-negative integer.',
+    );
+    expect(() => createNodejsAdapter({ shutdownTimeoutMs: -1 })).toThrow(
+      'Invalid shutdownTimeoutMs value: -1. Expected a non-negative integer.',
+    );
+  });
+
+  it('retries listen through the package adapter until the address is released', async () => {
+    const blocker = createServer();
+    await new Promise<void>((resolve) => {
+      blocker.listen(0, '127.0.0.1', resolve);
+    });
+    const address = blocker.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Failed to bind a retry test port.');
+    }
+    const dispatcher: Dispatcher = {
+      async dispatch() {},
+    };
+    const adapter = createNodejsAdapter({
+      host: '127.0.0.1',
+      port: address.port,
+      retryDelayMs: 10,
+      retryLimit: 5,
+    });
+
+    try {
+      const listenPromise = adapter.listen(dispatcher);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      await new Promise<void>((resolve, reject) => {
+        blocker.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+
+      await expect(listenPromise).resolves.toBeUndefined();
+    } finally {
+      await adapter.close();
+      if (blocker.listening) {
+        await new Promise<void>((resolve, reject) => {
+          blocker.close((error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve();
+          });
+        });
+      }
+    }
+  });
+
+  it('closes idle keep-alive connections during package adapter shutdown', async () => {
+    const port = await findAvailablePort();
+    const adapter = createNodejsAdapter({ port });
+    const server = adapter.getServer();
+    const closeIdleConnections = vi.spyOn(server, 'closeIdleConnections');
+    const dispatcher: Dispatcher = {
+      async dispatch() {},
+    };
+
+    try {
+      await adapter.listen(dispatcher);
+      await adapter.close();
+
+      expect(closeIdleConnections).toHaveBeenCalled();
+    } finally {
+      closeIdleConnections.mockRestore();
+      await adapter.close();
+    }
+  });
+
   it('removes registered shutdown signal listeners after close through the platform run helper', async () => {
     @Controller('/health')
     class HealthController {
@@ -304,6 +387,41 @@ describe('@fluojs/platform-nodejs', () => {
       expect(bodyResponse.status).toBe(201);
       await expect(bodyResponse.json()).resolves.toEqual({
         body: { ok: true, source: 'node' },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('propagates x-correlation-id as the request id through the public Node adapter path', async () => {
+    @Controller('/request-id')
+    class RequestIdController {
+      @Get('/')
+      readRequestId(_input: undefined, context: RequestContext) {
+        return { requestId: context.request.requestId };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [RequestIdController] });
+
+    const port = await findAvailablePort();
+    const app = await FluoFactory.create(AppModule, {
+      adapter: createNodejsAdapter({ port }),
+    });
+
+    try {
+      await app.listen();
+
+      const response = await fetch(`http://127.0.0.1:${String(port)}/request-id`, {
+        headers: {
+          'x-correlation-id': 'correlation-platform-nodejs',
+        },
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        requestId: 'correlation-platform-nodejs',
       });
     } finally {
       await app.close();

@@ -58,7 +58,7 @@ const adapter = createNodejsAdapter({
 
 `maxBodySize` accepts a byte count number. It is enforced while the raw Node request body is still streaming, and the same limit becomes the default total multipart payload cap unless you override `multipart.maxTotalSize` during bootstrap.
 
-`createNodejsAdapter()` defaults to port `3000`, ignores `process.env.PORT`, and throws when `port` or `maxBodySize` are invalid. The default request body cap is `1 MiB`.
+`createNodejsAdapter()` defaults to port `3000`, ignores `process.env.PORT`, and throws when `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, or `shutdownTimeoutMs` are invalid. The default request body cap is `1 MiB`.
 
 ### Direct Application Execution
 You can use `runNodejsApplication` for a zero-boilerplate startup that includes graceful shutdown and logging.
@@ -87,16 +87,16 @@ await app.listen();
 
 - `createNodejsAdapter(options)` is the adapter-first entrypoint for running fluo directly on Node's built-in `http` or `https` server primitives.
 - `maxBodySize` accepts a non-negative integer byte count, is enforced while raw Node request bytes are still streaming, and becomes the default multipart total-size cap unless `multipart.maxTotalSize` is explicitly provided through the bootstrap/run helpers.
-- The raw Node adapter normalizes mixed-case JSON and multipart `content-type` values, returns `413` when request bodies exceed `maxBodySize`, and exposes a server-backed realtime capability through `getServer()` / `getRealtimeCapability()`.
+- The raw Node adapter normalizes mixed-case JSON and multipart `content-type` values, returns `413` when request bodies exceed `maxBodySize`, propagates `x-request-id` with `x-correlation-id` fallback into the request context and error responses, and exposes a server-backed realtime capability through `getServer()` / `getRealtimeCapability()`.
 - `bootstrapNodejsApplication(module, options)` creates an application with the raw Node adapter but does not start listening, so the caller owns the subsequent `app.listen()` and `app.close()` lifecycle.
-- `runNodejsApplication(module, options)` bootstraps, starts, and wires graceful shutdown. When signal-driven shutdown times out or fails, it logs the condition and sets `process.exitCode`; final process termination remains owned by the host process.
+- `runNodejsApplication(module, options)` bootstraps, starts, and wires graceful shutdown. Listen retries honor `retryLimit`/`retryDelayMs`, shutdown closes idle keep-alive connections before bounded drain, and when signal-driven shutdown times out or fails it logs the condition and sets `process.exitCode`; final process termination remains owned by the host process.
 - Advanced compression and shutdown utility functions remain on `@fluojs/runtime/node` or internal runtime seams rather than this primary platform startup surface.
 
 ## Conformance Coverage
 
 `packages/platform-nodejs/src/index.test.ts` is the package-local regression target for the documented Node.js contract. It runs the shared `createHttpAdapterPortabilityHarness(...)` checks for malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
 
-The same file also covers the package-specific public surface, type aliases, adapter-first startup, `maxBodySize` failures, mixed-case JSON and multipart content-type parsing, and server-backed realtime capability exposure. Keep README example pointers aligned with that test file and the Node.js chapter examples below when changing startup behavior.
+The same file also covers the package-specific public surface, type aliases, adapter-first startup, lifecycle option validation, listen retry behavior, idle keep-alive shutdown, `maxBodySize` failures, mixed-case JSON and multipart content-type parsing, `x-correlation-id` request ID fallback, and server-backed realtime capability exposure. Keep README example pointers aligned with that test file and the Node.js chapter examples below when changing startup behavior.
 
 ## Public API Overview
 

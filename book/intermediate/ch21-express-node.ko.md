@@ -229,6 +229,6 @@ await runExpressApplication(AppModule, {
 - `@fluojs/platform-express`를 사용하면 기존 Express 생태계와 운영 자산을 이어서 사용할 수 있습니다.
 - `@fluojs/platform-nodejs`는 최소한의 프레임워크 없는 HTTP 레이어를 제공합니다.
 - 대부분의 fluo 코드(컨트롤러, 프로바이더, 모듈)는 어떤 어댑터가 실행 중인지 전혀 알 필요가 없습니다.
-- 플랫폼 전용 기능이 필요한 경우에만 `getInstance()`로 하부 엔진에 접근하세요.
+- 플랫폼 전용 기능이 필요한 경우에만 `getServer()`로 하부 Node 서버에 접근하거나 `getRealtimeCapability()`를 확인하세요.
 - Runtime은 diagnostic snapshot과 issue 생산을 소유하고, Studio는 해당 artifact의 graph viewing 및 Mermaid rendering을 소유합니다.
 - 크로스 플랫폼 호환성을 유지하려면 fluo의 추상화(예: `MiddlewareConsumer`)를 먼저 검토하세요.

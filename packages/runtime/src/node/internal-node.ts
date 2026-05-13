@@ -160,6 +160,11 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
   ) {
+    validateNodeLifecycleOptions({
+      retryDelayMs: this.retryDelayMs,
+      retryLimit: this.retryLimit,
+      shutdownTimeoutMs: this.shutdownTimeoutMs,
+    });
     this.requestResponseFactory = createNodeRequestResponseFactory(
       compression,
       multipartOptions,
@@ -574,6 +579,18 @@ function formatHostForAuthority(host: string): string {
 
 function closeIdleConnections(server: import('node:http').Server): void {
   server.closeIdleConnections?.();
+}
+
+function validateNodeLifecycleOptions(options: Required<Pick<NodeHttpAdapterOptions, 'retryDelayMs' | 'retryLimit' | 'shutdownTimeoutMs'>>): void {
+  validateNonNegativeIntegerOption('retryDelayMs', options.retryDelayMs);
+  validateNonNegativeIntegerOption('retryLimit', options.retryLimit);
+  validateNonNegativeIntegerOption('shutdownTimeoutMs', options.shutdownTimeoutMs);
+}
+
+function validateNonNegativeIntegerOption(name: string, value: number): void {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid ${name} value: ${String(value)}. Expected a non-negative integer.`);
+  }
 }
 
 function forceCloseConnections(server: import('node:http').Server, sockets: ReadonlySet<Socket>): void {
