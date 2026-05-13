@@ -128,6 +128,7 @@ interface NodeListenRetryOptions {
   port: number;
   retryDelayMs: number;
   retryLimit: number;
+  signal?: AbortSignal;
 }
 
 type NodeServer = ReturnType<typeof createHttpServer> | ReturnType<typeof createHttpsServer>;
@@ -139,6 +140,7 @@ type NodeRequestListener = RequestListener;
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   private readonly server: NodeServer;
   private dispatcher?: Dispatcher;
+  private listenAbortController?: AbortController;
   private readonly requestResponseFactory: RequestResponseFactory<
     import('node:http').IncomingMessage,
     import('node:http').ServerResponse,
@@ -189,16 +191,28 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
   async listen(dispatcher: Dispatcher): Promise<void> {
     this.dispatcher = dispatcher;
-    await listenNodeServerWithRetry(this.server, {
-      host: this.host,
-      port: this.port,
-      retryDelayMs: this.retryDelayMs,
-      retryLimit: this.retryLimit,
-    });
+    this.listenAbortController?.abort();
+    const listenAbortController = new AbortController();
+    this.listenAbortController = listenAbortController;
+
+    try {
+      await listenNodeServerWithRetry(this.server, {
+        host: this.host,
+        port: this.port,
+        retryDelayMs: this.retryDelayMs,
+        retryLimit: this.retryLimit,
+        signal: listenAbortController.signal,
+      });
+    } finally {
+      if (this.listenAbortController === listenAbortController) {
+        this.listenAbortController = undefined;
+      }
+    }
   }
 
   async close(): Promise<void> {
     const server = this.server;
+    this.listenAbortController?.abort();
 
     if (!server.listening) {
       this.dispatcher = undefined;
@@ -363,23 +377,84 @@ function createNodeServer(
 
 function listenNodeServerWithRetry(server: NodeServer, options: NodeListenRetryOptions): Promise<void> {
   return new Promise<void>((resolve, reject) => {
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let onErrorListener: ((error: NodeJS.ErrnoException) => void) | undefined;
+    let onListeningListener: (() => void) | undefined;
+    let settled = false;
+
+    const cleanup = () => {
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = undefined;
+      }
+
+      if (onErrorListener) {
+        server.off('error', onErrorListener);
+        onErrorListener = undefined;
+      }
+
+      if (onListeningListener) {
+        server.off('listening', onListeningListener);
+        onListeningListener = undefined;
+      }
+
+      options.signal?.removeEventListener('abort', abortListen);
+    };
+
+    const settle = (callback: () => void) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+      callback();
+    };
+
+    const abortListen = () => {
+      settle(() => {
+        reject(new Error('Node HTTP adapter listen retry was cancelled during shutdown.'));
+      });
+    };
+
+    if (options.signal?.aborted) {
+      abortListen();
+      return;
+    }
+
+    options.signal?.addEventListener('abort', abortListen, { once: true });
+
     const tryListen = (attempt: number) => {
+      if (options.signal?.aborted) {
+        abortListen();
+        return;
+      }
+
       const onError = (error: NodeJS.ErrnoException) => {
         server.off('listening', onListening);
+        onErrorListener = undefined;
+        onListeningListener = undefined;
 
         if (error.code === 'EADDRINUSE' && attempt < options.retryLimit) {
-          scheduleNodeListenRetry(server, attempt, options.retryDelayMs, tryListen);
+          scheduleNodeListenRetry(server, attempt, options.retryDelayMs, tryListen, (timer) => {
+            retryTimer = timer;
+          });
           return;
         }
 
-        reject(error);
+        settle(() => {
+          reject(error);
+        });
       };
 
       const onListening = () => {
         server.off('error', onError);
-        resolve();
+        onErrorListener = undefined;
+        settle(resolve);
       };
 
+      onErrorListener = onError;
+      onListeningListener = onListening;
       server.once('error', onError);
       server.once('listening', onListening);
       server.listen({ host: options.host, port: options.port });
@@ -394,12 +469,19 @@ function scheduleNodeListenRetry(
   attempt: number,
   retryDelayMs: number,
   tryListen: (attempt: number) => void,
+  setTimer: (timer: ReturnType<typeof setTimeout>) => void,
 ): void {
-  server.close(() => {
-    setTimeout(() => {
+  const schedule = () => {
+    setTimer(setTimeout(() => {
       tryListen(attempt + 1);
-    }, retryDelayMs);
-  });
+    }, retryDelayMs));
+  };
+
+  try {
+    server.close(schedule);
+  } catch {
+    schedule();
+  }
 }
 
 function closeNodeServerWithDrain(

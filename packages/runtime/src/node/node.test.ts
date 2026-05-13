@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+
+import type { Dispatcher } from '@fluojs/http';
 
 import * as rootRuntimeApi from '../index.js';
 import * as publicNodeApi from '../node.js';
@@ -57,5 +61,43 @@ describe('createNodeHttpAdapter', () => {
     expect(() => Function.prototype.call.call(publicNodeApi.createNodeHttpAdapter, undefined, { maxBodySize: '1mb' })).toThrow(
       'Invalid maxBodySize value: 1mb. Expected a non-negative integer number of bytes.',
     );
+  });
+
+  it('cancels pending listen retries when the adapter closes during shutdown', async () => {
+    const blocker = createServer();
+    await new Promise<void>((resolve) => {
+      blocker.listen(0, '127.0.0.1', resolve);
+    });
+
+    const { port } = blocker.address() as AddressInfo;
+    const adapter = publicNodeApi.createNodeHttpAdapter({
+      host: '127.0.0.1',
+      port,
+      retryDelayMs: 10_000,
+      retryLimit: 2,
+    }) as NodeHttpApplicationAdapter;
+    const dispatcher: Dispatcher = {
+      async dispatch() {},
+    };
+
+    try {
+      const listenPromise = adapter.listen(dispatcher);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      await adapter.close();
+
+      await expect(listenPromise).rejects.toThrow('Node HTTP adapter listen retry was cancelled during shutdown.');
+    } finally {
+      await adapter.close();
+      await new Promise<void>((resolve, reject) => {
+        blocker.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    }
   });
 });
