@@ -187,6 +187,29 @@ describe('CacheService — general cache contract (outside HTTP interceptor)', (
       await expect(cache.get('key')).resolves.toEqual({ computed: true });
     });
 
+    it('deduplicates concurrent remember misses for the same key', async () => {
+      let resolveLoader: ((value: { computed: boolean }) => void) | undefined;
+      const cache = createCacheService(createStore());
+      const loader = vi.fn(
+        () =>
+          new Promise<{ computed: boolean }>((resolve) => {
+            resolveLoader = resolve;
+          }),
+      );
+
+      const first = cache.remember('key', loader);
+      const second = cache.remember('key', loader);
+
+      await vi.waitFor(() => {
+        expect(loader).toHaveBeenCalledTimes(1);
+      });
+      resolveLoader?.({ computed: true });
+
+      await expect(first).resolves.toEqual({ computed: true });
+      await expect(second).resolves.toEqual({ computed: true });
+      await expect(cache.get('key')).resolves.toEqual({ computed: true });
+    });
+
     it('remember uses provided TTL', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-03-24T00:00:00.000Z'));

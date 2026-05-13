@@ -32,7 +32,7 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 | Disabled writes | Non-finite TTL values or TTL values below `0` are ignored and produce no cache write. | `packages/cache-manager/src/service.ts` |
 | No-expiry entries | `ttl: 0` means no expiration. The memory store omits `expiresAt` for such entries, and the Redis store writes without `EX`. | `packages/cache-manager/src/service.ts`, `packages/cache-manager/src/stores/memory-store.ts`, `packages/cache-manager/src/stores/redis-store.ts` |
 | GET-only response caching | `CacheInterceptor` only performs read-through caching for `GET` requests. Non-GET requests skip cache reads and writes. | `packages/cache-manager/src/interceptor.ts` |
-| Cacheable response shape | The interceptor skips caching when the handler returns `undefined`, an `SseResponse`, or a response that is already committed. | `packages/cache-manager/src/interceptor.ts` |
+| Cacheable response shape | The interceptor caches only replayable successful GET results. It skips caching when the handler returns `undefined`, an `SseResponse`, a non-2xx status, or a response that is already committed. | `packages/cache-manager/src/interceptor.ts` |
 | Read-through deduplication | `CacheService.remember(...)` deduplicates concurrent misses per key through an in-flight promise map. | `packages/cache-manager/src/service.ts` |
 
 ## Invalidation Rules
@@ -40,7 +40,7 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 | Rule | Current contract | Source anchor |
 | --- | --- | --- |
 | Decorator path | `@CacheEvict(...)` stores one key, a key list, or a resolver function for post-write eviction. | `packages/cache-manager/src/decorators.ts` |
-| Eviction timing | For non-GET handlers, eviction runs only after the downstream handler succeeds. If the HTTP response is not yet committed, eviction is deferred until `response.send(...)` or a fallback timer fires. | `packages/cache-manager/src/interceptor.ts` |
+| Eviction timing | For non-GET handlers, eviction runs only after the downstream handler succeeds and the HTTP response successfully commits. If `response.send(...)` rejects, deferred eviction is cancelled; if the adapter never calls `response.send(...)`, a bounded fallback timer still evicts after a successful handler result. | `packages/cache-manager/src/interceptor.ts` |
 | Failure containment | `safeGet`, `safeSet`, and `safeDel` swallow store errors. Cache failures do not fail otherwise successful handlers. | `packages/cache-manager/src/interceptor.ts` |
 | In-flight invalidation | `CacheService.del(...)` marks keys that are still loading so `remember(...)` does not repopulate a key that was invalidated during the same load cycle. | `packages/cache-manager/src/service.ts` |
 | Full reset | `CacheService.reset()` increments an internal reset version, clears in-flight and pending load bookkeeping, clears in-flight invalidation markers, and resets the underlying store. | `packages/cache-manager/src/service.ts` |

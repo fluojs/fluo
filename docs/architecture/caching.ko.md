@@ -32,7 +32,7 @@
 | 쓰기 비활성화 | TTL이 유한하지 않거나 `0`보다 작으면 캐시 쓰기를 수행하지 않습니다. | `packages/cache-manager/src/service.ts` |
 | 무기한 엔트리 | `ttl: 0`은 만료 없음 의미입니다. 메모리 저장소는 이런 엔트리에 `expiresAt`을 두지 않고, Redis 저장소는 `EX` 없이 기록합니다. | `packages/cache-manager/src/service.ts`, `packages/cache-manager/src/stores/memory-store.ts`, `packages/cache-manager/src/stores/redis-store.ts` |
 | GET 전용 응답 캐싱 | `CacheInterceptor`는 `GET` 요청에 대해서만 read-through 캐싱을 수행합니다. GET이 아닌 요청은 캐시 읽기와 쓰기를 건너뜁니다. | `packages/cache-manager/src/interceptor.ts` |
-| 캐시 가능한 응답 형태 | 인터셉터는 핸들러가 `undefined`, `SseResponse`, 이미 커밋된 응답을 반환한 경우 캐싱하지 않습니다. | `packages/cache-manager/src/interceptor.ts` |
+| 캐시 가능한 응답 형태 | 인터셉터는 나중에 재생할 수 있는 성공한 GET 결과만 캐싱합니다. 핸들러가 `undefined`, `SseResponse`, 2xx가 아닌 status, 이미 커밋된 응답을 반환한 경우 캐싱하지 않습니다. | `packages/cache-manager/src/interceptor.ts` |
 | read-through 중복 제거 | `CacheService.remember(...)`는 key별 in-flight promise 맵으로 동시 miss를 중복 제거합니다. | `packages/cache-manager/src/service.ts` |
 
 ## 무효화 규칙
@@ -40,7 +40,7 @@
 | 규칙 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
 | 데코레이터 경로 | `@CacheEvict(...)`는 쓰기 후 eviction을 위한 단일 키, 키 목록, 또는 resolver 함수를 저장합니다. | `packages/cache-manager/src/decorators.ts` |
-| eviction 시점 | GET이 아닌 핸들러에서는 downstream 핸들러가 성공한 뒤에만 eviction이 실행됩니다. HTTP 응답이 아직 커밋되지 않았다면 `response.send(...)` 또는 fallback timer까지 eviction을 지연합니다. | `packages/cache-manager/src/interceptor.ts` |
+| eviction 시점 | GET이 아닌 핸들러에서는 downstream 핸들러가 성공하고 HTTP 응답이 성공적으로 commit된 뒤에만 eviction이 실행됩니다. `response.send(...)`가 reject되면 지연 eviction은 취소되며, 어댑터가 `response.send(...)`를 호출하지 않는 경우에는 성공한 핸들러 결과 이후 bounded fallback timer가 eviction을 수행합니다. | `packages/cache-manager/src/interceptor.ts` |
 | 실패 격리 | `safeGet`, `safeSet`, `safeDel`은 저장소 오류를 삼킵니다. 캐시 실패가 다른 정상 핸들러를 실패시키지 않습니다. | `packages/cache-manager/src/interceptor.ts` |
 | 진행 중 로드 무효화 | `CacheService.del(...)`은 아직 로딩 중인 키를 표시하여, 같은 로드 주기 중 무효화된 키가 `remember(...)`에 의해 다시 채워지지 않도록 합니다. | `packages/cache-manager/src/service.ts` |
 | 전체 reset | `CacheService.reset()`은 내부 reset version을 증가시키고, 진행 중/대기 중인 load bookkeeping과 진행 중 무효화 마커를 지운 뒤, 하위 저장소를 reset합니다. | `packages/cache-manager/src/service.ts` |
