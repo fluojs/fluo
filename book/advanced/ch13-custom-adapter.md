@@ -77,7 +77,7 @@ The `signal` property must be connected to the platform's request abort signal, 
 
 ## 13.4 In Practice: Analyzing the Core Fastify Adapter Logic
 
-How does the `@fluojs/platform-fastify` package implement this interface? Fastify already has a highly optimized routing and plugin system, but the Fluo adapter uses it only as the transport layer.
+How does the `@fluojs/platform-fastify` package implement this interface? Fastify already has a highly optimized routing and plugin system, and the production adapter now uses that system only where it can do so without taking ownership away from Fluo's dispatcher.
 
 ```typescript
 // packages/platform-fastify/src/adapter.ts (conceptual code)
@@ -85,7 +85,22 @@ export class FastifyAdapter implements HttpApplicationAdapter {
   constructor(private instance = fastify()) {}
 
   async listen(dispatcher: Dispatcher) {
-    // Delegate every route to the Fluo dispatcher
+    // Register safe native routes for Fastify's router.
+    for (const route of this.describeSafeRoutes(dispatcher)) {
+      this.instance.route({
+        method: route.method,
+        url: route.path,
+        handler: async (req, reply) => {
+          await dispatcher.dispatchNativeRoute?.(
+            { descriptor: route.descriptor, params: req.params },
+            this.mapRequest(req),
+            this.mapResponse(reply)
+          );
+        },
+      });
+    }
+
+    // Keep the wildcard fallback for unmatched or portability-sensitive cases.
     this.instance.all('*', async (req, reply) => {
       await dispatcher.dispatch(
         this.mapRequest(req),
@@ -101,7 +116,9 @@ export class FastifyAdapter implements HttpApplicationAdapter {
 }
 ```
 
-Using Fastify's wildcard handler, `all('*')`, to hand control of every route to the Fluo dispatcher is the typical pattern. Fastify owns networking and plugin execution, while Fluo owns the framework pipeline after route handoff, so the two responsibilities do not overlap.
+Fastify owns networking, plugin execution, and safe path selection for explicit routes. Fluo still owns the framework pipeline after route handoff: middleware, guards, interceptors, observers, body semantics, streaming, errors, and final dispatch behavior stay inside the shared dispatcher contract. The adapter keeps `all('*')` as a fallback for unmatched paths, `@All(...)`, version-sensitive routes, duplicate parameter shapes, multipart requests, duplicate-slash or trailing-slash variants, and any case where native registration could narrow Fluo's route ordering semantics.
+
+This split is covered by the shared `createHttpAdapterPortabilityHarness(...)` checks in `packages/platform-fastify/src/adapter.test.ts`, including malformed cookies, raw-body byte preservation, multipart raw-body exclusion, SSE framing, HTTPS startup, and shutdown signal cleanup. Fastify's raw-body pre-parsing hook also keeps Fastify's encoded-length accounting intact while it copies bytes, so `maxBodySize` enforcement remains owned by the adapter instead of being bypassed by the capture stream.
 
 ## 13.5 FrameworkResponse and Delegated Response Writing
 

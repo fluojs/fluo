@@ -1159,6 +1159,7 @@ function captureRawBodyPreParsingHook(
           : Buffer.from(String(chunk), 'utf8');
 
       chunks.push(bufferChunk);
+      capture.receivedEncodedLength += bufferChunk.byteLength;
       callback(null, chunk);
     },
     flush(callback) {
@@ -1168,7 +1169,8 @@ function captureRawBodyPreParsingHook(
 
       callback();
     },
-  });
+  }) as Transform & { receivedEncodedLength: number };
+  capture.receivedEncodedLength = 0;
 
   payload.on('error', (error) => {
     capture.destroy(error);
