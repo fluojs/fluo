@@ -238,6 +238,50 @@ export function createRuntimeDiagnosticsGraph(modules: readonly CompiledModule[]
 }
 
 /**
+ * Render runtime diagnostics mermaid.
+ *
+ * @param graph The graph.
+ * @returns The render runtime diagnostics mermaid result.
+ */
+export function renderRuntimeDiagnosticsMermaid(graph: RuntimeDiagnosticsGraph): string {
+  const lines: string[] = ['graph TD'];
+  const nodeByModule = new Map<string, string>();
+
+  for (const [index, module] of graph.modules.entries()) {
+    const nodeId = `M${String(index + 1)}`;
+    nodeByModule.set(module.name, nodeId);
+
+    const summary = [
+      module.name,
+      `providers: ${String(module.providers.length)}`,
+      `controllers: ${String(module.controllers.length)}`,
+      `exports: ${String(module.exports.length)}`,
+    ].join('\\n');
+
+    lines.push(`  ${nodeId}["${summary}"]`);
+  }
+
+  for (const relation of graph.relationships.moduleImports) {
+    const from = nodeByModule.get(relation.from);
+    const to = nodeByModule.get(relation.to);
+
+    if (!from || !to) {
+      continue;
+    }
+
+    lines.push(`  ${from} --> ${to}`);
+  }
+
+  const rootNodeId = nodeByModule.get(graph.rootModule);
+  if (rootNodeId) {
+    lines.push(`  class ${rootNodeId} rootModule`);
+    lines.push('  classDef rootModule stroke:#2563eb,stroke-width:2px');
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * Create bootstrap timing diagnostics.
  *
  * @param phases The phases.

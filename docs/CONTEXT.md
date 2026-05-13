@@ -39,6 +39,8 @@ Queue lifecycle discoverability is split across the package and governed docs: `
 
 HTTP adapter raw-body portability discoverability is split across the testing package and governed platform docs: `packages/testing/README.md` documents `createHttpAdapterPortabilityHarness(...)` and `assertPreservesExactRawBodyBytesForByteSensitivePayloads()` for byte-sensitive payloads; [`docs/contracts/platform-conformance-authoring-checklist.md`](./contracts/platform-conformance-authoring-checklist.md) requires HTTP adapters to preserve exact `rawBody` bytes without Unicode replacement, newline normalization, or re-encoding; and [`docs/contracts/testing-guide.md`](./contracts/testing-guide.md) identifies platform portability tests and governance commands to run when HTTP adapter byte preservation behavior changes.
 
+Release lane discoverability is governed by [`docs/contracts/release-governance.md`](./contracts/release-governance.md): `main` is the stable patch lane, `tooling/release/verify-changeset-release-lane.mjs` rejects minor/major changesets and generated package version deltas in PR CI and release automation, and minor/major intents stay on dedicated release or prerelease branches until maintainers intentionally promote them.
+
 ## File Structure
 
 | Path | Role |

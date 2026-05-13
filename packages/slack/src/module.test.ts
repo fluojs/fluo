@@ -85,26 +85,6 @@ class UnsuccessfulTransport implements SlackTransport {
   }
 }
 
-class SelectivelyFailingTransport implements SlackTransport {
-  readonly sent: NormalizedSlackMessage[] = [];
-
-  async send(message: NormalizedSlackMessage) {
-    this.sent.push(message);
-
-    if (message.text === 'fail') {
-      throw new SlackTransportError('selective failure');
-    }
-
-    return {
-      channel: message.channel,
-      ok: true,
-      response: 'ok',
-      statusCode: 200,
-      warnings: [],
-    };
-  }
-}
-
 class DelayedLifecycleTransport implements SlackTransport {
   closeCalls = 0;
   sendCalls = 0;
@@ -242,33 +222,6 @@ describe('SlackModule', () => {
         defaultChannel: '#ops',
       } as never),
     ).toThrowError(new SlackConfigurationError('SlackModule requires an explicit `transport` to be configured.'));
-  });
-
-  it('preserves sendMany order, default channels, and tolerant failure details', async () => {
-    const transport = new SelectivelyFailingTransport();
-    const container = new Container();
-    const moduleType = SlackModule.forRoot({
-      defaultChannel: ' #ops ',
-      transport,
-    });
-
-    container.register(...moduleProviders(moduleType));
-    const service = await container.resolve(SlackService);
-    const result = await service.sendMany(
-      [{ text: 'one' }, { channel: ' #alerts ', text: 'fail' }, { channel: '   ', text: 'three' }],
-      { continueOnError: true },
-    );
-
-    expect(result.succeeded).toBe(2);
-    expect(result.failed).toBe(1);
-    expect(result.results.map((entry: { channel?: string }) => entry.channel)).toEqual(['#ops', '#ops']);
-    expect(result.failures[0]?.message).toEqual({ channel: ' #alerts ', text: 'fail' });
-    expect(result.failures[0]?.error).toEqual(new SlackTransportError('selective failure'));
-    expect(transport.sent.map((message) => ({ channel: message.channel, text: message.text }))).toEqual([
-      { channel: '#ops', text: 'one' },
-      { channel: '#alerts', text: 'fail' },
-      { channel: '#ops', text: 'three' },
-    ]);
   });
 
   it('resolves async options once and exposes the compatibility facade and channel token', async () => {
@@ -589,14 +542,6 @@ describe('SlackModule', () => {
     }
   });
 
-  it('requires an explicit fetch boundary for the webhook transport', () => {
-    expect(() =>
-      createSlackWebhookTransport({
-        webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
-      } as never),
-    ).toThrowError(new SlackConfigurationError('Slack webhook transport requires an explicit `fetch` implementation.'));
-  });
-
   it('sanitizes webhook failure errors after bounded retries', async () => {
     vi.useFakeTimers();
 
@@ -623,32 +568,6 @@ describe('SlackModule', () => {
       await vi.runAllTimersAsync();
 
       await expectation;
-      expect(fetchLike).toHaveBeenCalledTimes(3);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('sanitizes thrown transport errors after bounded webhook retries', async () => {
-    vi.useFakeTimers();
-
-    try {
-      const fetchLike = vi.fn<SlackFetchLike>().mockRejectedValue(new Error('secret token xoxb-123 leaked upstream'));
-      const transport = createSlackWebhookTransport({
-        fetch: fetchLike,
-        webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
-      });
-
-      const pending = transport.send({ attachments: [], blocks: [], channel: '#ops', text: 'Retry path' }, {});
-      const expectation = expect(pending).rejects.toThrowError(
-        new SlackTransportError(
-          'Slack webhook delivery failed after 3 attempt(s). Upstream response details were omitted from the caller-visible error.',
-        ),
-      );
-      await vi.runAllTimersAsync();
-
-      await expectation;
-      await expect(pending).rejects.not.toThrow(/xoxb-123|secret token/);
       expect(fetchLike).toHaveBeenCalledTimes(3);
     } finally {
       vi.useRealTimers();

@@ -7,7 +7,7 @@ export interface UploadedFile {
   fieldname: string;
   originalname: string;
   mimetype: string;
-  buffer: Uint8Array;
+  buffer: Buffer;
   size: number;
 }
 
@@ -43,7 +43,6 @@ const DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024;
 const DEFAULT_MAX_FILES = 10;
 const DEFAULT_MAX_TOTAL_SIZE = 10 * 1024 * 1024;
 const MULTIPART_BODY_LIMIT_MESSAGE = 'Multipart body exceeds the maximum size of';
-const TEXT_ENCODER = new TextEncoder();
 
 /**
  * Parses a multipart request into string fields and in-memory uploaded files.
@@ -68,7 +67,7 @@ export async function parseMultipart(
 
   for (const [fieldname, value] of formData.entries()) {
     if (typeof value === 'string') {
-      totalSize += TEXT_ENCODER.encode(value).byteLength;
+      totalSize += Buffer.byteLength(value, 'utf8');
 
       if (totalSize > maxTotalSize) {
         throw new PayloadTooLargeException(`${MULTIPART_BODY_LIMIT_MESSAGE} ${String(maxTotalSize)} bytes.`);
@@ -93,7 +92,7 @@ export async function parseMultipart(
     }
 
     files.push({
-      buffer: new Uint8Array(await value.arrayBuffer()),
+      buffer: Buffer.from(await value.arrayBuffer()),
       fieldname,
       mimetype: value.type,
       originalname: value.name,

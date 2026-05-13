@@ -1,10 +1,12 @@
 import { Inject, InvariantError } from '@fluojs/core';
-import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runtime';
+import {
+  type OnApplicationBootstrap,
+} from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { DuplicateQueryHandlerError, QueryHandlerNotFoundException } from '../errors.js';
 import { getQueryHandlerMetadata } from '../metadata.js';
-import { CqrsBusBase, createDuplicateHandlerMessage, isSameDiscoveredProvider } from '../discovery.js';
+import { CqrsBusBase, createDuplicateHandlerMessage } from '../discovery.js';
 import type {
   IQuery,
   IQueryHandler,
@@ -28,19 +30,13 @@ function isQueryHandler(value: unknown): value is IQueryHandler<IQuery<unknown>,
  * and preserves the one-query-to-one-handler contract used by the CQRS surface.
  */
 @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
-export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, OnApplicationBootstrap, OnApplicationShutdown {
+export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, OnApplicationBootstrap {
   private descriptors = new Map<QueryType, QueryHandlerDescriptor>();
   private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
-  private stopped = false;
 
   async onApplicationBootstrap(): Promise<void> {
-    this.stopped = false;
     await this.ensureDiscovered();
-  }
-
-  async onApplicationShutdown(): Promise<void> {
-    this.stopped = true;
   }
 
   /**
@@ -53,7 +49,6 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
    * @throws {InvariantError} When the resolved provider does not implement `execute(query)`.
    */
   async execute<TQuery extends IQuery<TResult>, TResult = unknown>(query: TQuery): Promise<TResult> {
-    this.assertNotStopped('execute queries');
     await this.ensureDiscovered();
 
     const queryType = query.constructor as QueryType<TResult, TQuery>;
@@ -70,12 +65,6 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
     }
 
     return await instance.execute(query) as TResult;
-  }
-
-  private assertNotStopped(operation: string): void {
-    if (this.stopped) {
-      throw new InvariantError(`Cannot ${operation} after the CQRS query bus has stopped.`);
-    }
   }
 
   private async ensureDiscovered(): Promise<void> {
@@ -109,6 +98,8 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
 
   private discoverQueryDescriptors(): Map<QueryType, QueryHandlerDescriptor> {
     const descriptors = new Map<QueryType, QueryHandlerDescriptor>();
+    const seenByTarget = new WeakMap<Function, Set<QueryType>>();
+
     for (const candidate of this.discoveryCandidates()) {
       const metadata = getQueryHandlerMetadata(candidate.targetType);
 
@@ -124,9 +115,18 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
         continue;
       }
 
+      const seenQueryTypes = seenByTarget.get(candidate.targetType) ?? new Set<QueryType>();
+
+      if (seenQueryTypes.has(metadata.queryType)) {
+        continue;
+      }
+
+      seenQueryTypes.add(metadata.queryType);
+      seenByTarget.set(candidate.targetType, seenQueryTypes);
+
       const existing = descriptors.get(metadata.queryType);
 
-      if (existing && !isSameDiscoveredProvider(existing, candidate)) {
+      if (existing && existing.targetType !== candidate.targetType) {
         throw new DuplicateQueryHandlerError(
           createDuplicateHandlerMessage('query', metadata.queryType, existing, {
             moduleName: candidate.moduleName,

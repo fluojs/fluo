@@ -7,6 +7,7 @@ import { compileModuleGraph } from '../module-graph.js';
 import {
   createBootstrapTimingDiagnostics,
   createRuntimeDiagnosticsGraph,
+  renderRuntimeDiagnosticsMermaid,
 } from './diagnostics.js';
 
 describe('runtime diagnostics graph export', () => {
@@ -85,6 +86,23 @@ describe('runtime diagnostics graph export', () => {
     });
   });
 
+  it('renders module-level Mermaid output', () => {
+    class SharedModule {}
+    defineRuntimeModuleMetadata(SharedModule, {});
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      imports: [SharedModule],
+    });
+
+    const graph = createRuntimeDiagnosticsGraph(compileModuleGraph(AppModule), AppModule);
+    const mermaid = renderRuntimeDiagnosticsMermaid(graph);
+
+    expect(mermaid).toContain('graph TD');
+    expect(mermaid).toContain('AppModule');
+    expect(mermaid).toContain('SharedModule');
+    expect(mermaid).toContain('-->');
+  });
 });
 
 describe('bootstrap timing diagnostics', () => {
