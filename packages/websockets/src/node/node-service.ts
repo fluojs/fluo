@@ -45,6 +45,7 @@ interface ConnectionHandlerState {
   bufferedDisconnect: BufferedDisconnectEvent | undefined;
   bufferedMessages: RawData[];
   bufferedMessagesStartIndex: number;
+  cleanupScheduled: boolean;
   connectLifecyclePromise: Promise<void>;
   connectLifecycleSettled: boolean;
   disconnectLifecyclePromise: Promise<void>;
@@ -585,6 +586,7 @@ export class NodeWebSocketGatewayLifecycleService
       bufferedDisconnect: undefined,
       bufferedMessages: [],
       bufferedMessagesStartIndex: 0,
+      cleanupScheduled: false,
       connectLifecyclePromise: connectLifecycle.promise,
       connectLifecycleSettled: false,
       disconnectLifecyclePromise: disconnectLifecycle.promise,
@@ -806,21 +808,24 @@ export class NodeWebSocketGatewayLifecycleService
     });
 
     socket.on('error', (error: Error) => {
-      this.unregisterSocket(state.socketId);
+      this.unregisterSocket(state.socketId, { deleteState: false });
+      this.scheduleSocketStateCleanup(state);
       this.logger.error('WebSocket gateway socket emitted an error.', error, 'WebSocketGatewayLifecycleService');
     });
 
     socket.on('close', (code: number, reason: Buffer) => {
-      this.unregisterSocket(state.socketId);
+      this.unregisterSocket(state.socketId, { deleteState: false });
 
       const disconnectEvent: BufferedDisconnectEvent = { code, reason };
 
       if (!state.handlersReady) {
         state.bufferedDisconnect = disconnectEvent;
+        this.scheduleSocketStateCleanup(state);
         return;
       }
 
       this.enqueueDisconnectDispatch(state, socket, disconnectEvent);
+      this.scheduleSocketStateCleanup(state);
     });
   }
 
@@ -1358,6 +1363,17 @@ export class NodeWebSocketGatewayLifecycleService
     });
   }
 
+  private scheduleSocketStateCleanup(state: ConnectionHandlerState): void {
+    if (state.cleanupScheduled) {
+      return;
+    }
+
+    state.cleanupScheduled = true;
+    void Promise.all([state.connectLifecyclePromise, state.disconnectLifecyclePromise]).finally(() => {
+      this.socketStates.delete(state.socketId);
+    });
+  }
+
   private async closeGatewayAttachment(
     attachment: GatewayAttachment,
     shutdownTimeoutMs: number,
@@ -1519,9 +1535,11 @@ export class NodeWebSocketGatewayLifecycleService
     }, intervalMs);
   }
 
-  private unregisterSocket(socketId: string): void {
+  private unregisterSocket(socketId: string, options: { deleteState?: boolean } = {}): void {
     this.socketRegistry.delete(socketId);
-    this.socketStates.delete(socketId);
+    if (options.deleteState !== false) {
+      this.socketStates.delete(socketId);
+    }
     this.pingPending.delete(socketId);
     this.pingSentAt.delete(socketId);
 
