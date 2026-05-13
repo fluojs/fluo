@@ -132,7 +132,7 @@ export interface SlackFetchLike {
 
 /** Options accepted by {@link createSlackWebhookTransport}. */
 export interface SlackWebhookTransportOptions {
-  fetch: SlackFetchLike;
+  fetch?: SlackFetchLike;
   webhookUrl: string;
 }
 

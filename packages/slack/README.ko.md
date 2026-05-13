@@ -78,7 +78,7 @@ export class DeployNotifier {
 
 ### `createSlackProviders`를 이용한 수동 provider 조합
 
-애플리케이션-facing 등록에는 `SlackModule.forRoot(...)` 또는 `SlackModule.forRootAsync(...)`를 우선 사용하세요. `createSlackProviders(...)`는 동일하게 정규화된 provider를 직접 조합해야 하는 wrapper module을 위한 low-level compatibility helper로 유지됩니다.
+`createSlackProviders(...)`는 애플리케이션이 `SlackModule.forRoot(...)` 밖에서 동일한 provider 정규화 구성을 재사용해야 할 때 지원되는 manual-composition helper입니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -105,7 +105,6 @@ Behavioral contract 메모:
 - 이 helper는 `SlackModule.forRoot(...)`가 구성하는 `SLACK`, `SLACK_CHANNEL`, `SlackService` wiring을 동일하게 유지합니다.
 - `createSlackProviders(...)`는 trim된 기본 채널, notification 채널 fallback, transport 소유권 기본값을 포함해 `SlackModule.forRoot(...)`와 동일한 옵션 정규화를 적용합니다.
 - 이 helper도 여전히 명시적인 `transport`를 요구하며, 패키지의 runtime-portable·no-implicit-env 계약을 약화시키지 않습니다.
-- 새 애플리케이션 코드는 provider 조합이 wrapper module에 compatibility 수준 접근이 필요한 경우를 제외하고 구현 세부 사항으로 남도록 `SlackModule` namespace facade를 우선 사용해야 합니다.
 
 ### `SlackService`를 이용한 standalone 전달
 
@@ -181,7 +180,7 @@ Behavioral contract 메모:
 
 ### 명시적 fetch 주입을 사용하는 webhook-first 전달
 
-런타임에 독립적인 1st-party transport가 필요하다면 명시적으로 주입된 fetch-compatible HTTP 경계만 의존하는 `createSlackWebhookTransport(...)`를 사용합니다.
+런타임에 독립적인 1st-party transport가 필요하다면 fetch-compatible HTTP 경계만 의존하는 `createSlackWebhookTransport(...)`를 사용합니다.
 
 ```typescript
 const transport = createSlackWebhookTransport({
@@ -201,7 +200,6 @@ Behavioral contract 메모:
 
 - 내장 webhook transport는 `408`, `429`, `5xx` 같은 일시적 실패를 호출자에게 에러를 노출하기 전에 bounded exponential backoff로 재시도합니다.
 - 호출자에게 보이는 `SlackTransportError` 메시지는 기본적으로 raw upstream response body를 포함하지 않습니다.
-- 런타임이 `globalThis.fetch`를 제공하더라도 `fetch`는 필수입니다. 호출자가 런타임 경계를 선택하며, 패키지는 ambient global에 의존하지 않습니다.
 
 ### 의도적인 제한 사항
 
@@ -219,8 +217,6 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 ### 핵심
 
 - `SlackModule.forRoot(options)` / `SlackModule.forRootAsync(options)`
-- `SlackModuleOptions`
-- `SlackAsyncModuleOptions`
 - `createSlackProviders(options)`
 - `SlackService`
 - `SlackService.send(message, options)`
@@ -254,10 +250,7 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `SlackTransportReceipt`
 - `SlackFetchLike`
 - `SlackFetchResponse`
-- `SlackWebhookTransportOptions`
 - `SlackTemplateRenderer`
-- `SlackTemplateRenderInput`
-- `SlackTemplateRenderResult`
 - `createSlackWebhookTransport(options)`
 
 ### 상태 및 에러
