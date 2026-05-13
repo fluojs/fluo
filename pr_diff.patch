@@ -1,0 +1,406 @@
+diff --git a/.changeset/config-watch-contract.md b/.changeset/config-watch-contract.md
+new file mode 100644
+index 000000000..cbff2bd88
+--- /dev/null
++++ b/.changeset/config-watch-contract.md
+@@ -0,0 +1,5 @@
++---
++"@fluojs/config": patch
++---
++
++Keep ConfigModule watch bootstrap aligned with the injected ConfigService baseline, watch parent directories for atomic env-file replacements, and expose an onReloadError hook for automatic watch reload failures.
+diff --git a/book/beginner/ch11-config.ko.md b/book/beginner/ch11-config.ko.md
+index f9ecd2bee..e554ae1c2 100644
+--- a/book/beginner/ch11-config.ko.md
++++ b/book/beginner/ch11-config.ko.md
+@@ -51,7 +51,7 @@ FluoBlog이 몇 개의 파일에서 수십 개의 모듈로 성장하면 설정
+ ### Understanding the Internal Mechanism of Configuration
+ fluo 애플리케이션이 시작될 때, `ConfigModule`은 설정 소스를 명시적으로 조합합니다. 먼저, 제공된 `envFile` 경로를 식별합니다. 파일이 존재하면 파서를 사용하여 키-값 쌍을 읽어 비공개 메모리 맵에 저장합니다. 그다음 코드에 정의된 `defaults`, 그리고 필요하다면 `forRoot(...)`에 명시적으로 전달한 `processEnv` 스냅샷을 함께 병합합니다.
+ 
+-이 초기화 단계는 프레임워크 핵심의 "OnModuleInit" 라이프사이클 훅 동안 발생하기 때문에 매우 중요합니다. `AppModule`이 완전히 로드될 때쯤이면 `ConfigService`는 이미 설정의 최종 병합 상태로 채워져 있으며, 가장 필요한 곳에 주입될 준비가 된 상태입니다.
++이 초기화 단계는 `ConfigModule`이 module graph bootstrap 중 provider를 생성할 때 첫 snapshot을 로드하기 때문에 중요합니다. `AppModule`이 완전히 로드될 때쯤이면 `ConfigService`는 이미 설정의 최종 병합 상태로 채워져 있으며, 가장 필요한 곳에 주입될 준비가 된 상태입니다. `watch: true`를 활성화하면 file watching은 이후 application bootstrap 중에 시작되고, 같은 injected `ConfigService` instance를 성공한 reload와 계속 맞춰 둡니다.
+ 
+ ## 11.2 Setting up ConfigModule
+ 
+@@ -308,9 +308,9 @@ Docker나 Kubernetes와 같은 컨테이너 환경에서 fluo를 실행할 때
+ 예를 들어, "분석 트래킹"이라는 선택적 기능이 있다면 코드에서 이를 기본적으로 `false`로 설정할 수 있습니다. 이렇게 하면 서비스 레이어 곳곳에서 `undefined`나 `null`을 처리하는 대신 항상 불리언 값을 가지고 작업할 수 있게 됩니다. 이러한 "안전한 기본값(Safe Default)" 패턴은 코드를 단순화하고 더 견고하게 만듭니다.
+ 
+ ### Environment Variable Interpolation
+-때때로 하나의 설정값이 다른 설정값에 의존하는 경우가 있습니다. 예를 들어, `LOG_PATH`가 `APP_ROOT`에 상대적일 수 있습니다. 일부 dotenv 라이브러리는 `${APP_ROOT}/logs`와 같은 보간을 지원하지만, fluo는 이를 `ConfigModule` 팩토리나 검증 단계에서 명시적으로 처리할 것을 권장합니다. 이는 로직을 명확하게 하고 디버깅을 쉽게 만듭니다.
++때때로 하나의 설정값이 다른 설정값에 의존하는 경우가 있습니다. 예를 들어, `LOG_PATH`가 `APP_ROOT`에 상대적일 수 있습니다. 기본 dotenv 기반 parser는 env file 안의 `${APP_ROOT}/logs` 같은 보간을 확장하므로 단순한 dotenv-style 참조는 custom parsing 없이 동작합니다. 더 복잡한 파생 값은 `ConfigModule` 팩토리나 검증 단계에서 명시적으로 처리하는 편이 좋습니다. 이는 로직을 명확하게 하고 디버깅을 쉽게 만듭니다.
+ 
+-명시적 보간은 설정의 예측 가능성을 보장하며, 일부 라이브러리에서 사용하는 복잡한 정규식 기반 문자열 교체로 인한 문제를 방지합니다. TypeScript에서 이를 처리함으로써 완전한 타입 안정성을 누리고 표준 문자열 조작 함수를 사용할 수 있는 이점도 얻게 됩니다.
++복잡한 보간을 명시적으로 유지하면 설정의 예측 가능성을 지킬 수 있고, 디버깅하기 어려운 문자열 교체 규칙으로 인한 문제를 피할 수 있습니다. TypeScript에서 이런 변환을 처리하면 완전한 타입 안정성을 누리고 표준 문자열 조작 함수를 사용할 수 있는 이점도 얻게 됩니다.
+ 
+ ### Configuration Inheritance and Merging
+ 대규모 조직에서는 여러 마이크로서비스 간에 공통 설정을 공유해야 할 수도 있습니다. 이 경우에도 기본 entrypoint는 `ConfigModule.forRoot(...)`입니다. 예를 들어, 공유 JSON 파일이나 원격 설정 서버에서 전역 설정을 미리 읽어 `defaults`나 `processEnv`로 넘긴 다음 이를 로컬 `.env` 설정과 병합할 수 있습니다.
+@@ -318,7 +318,7 @@ Docker나 Kubernetes와 같은 컨테이너 환경에서 fluo를 실행할 때
+ 이러한 계층적 접근 방식은 전체 서비스 집합에 대해 일관성을 유지하면서도, 각 서비스가 자신의 특정 요구에 맞게 설정을 오버라이드할 수 있는 유연성을 제공합니다. 이는 규모에 맞는 인프라 관리를 위한 강력한 패턴입니다.
+ 
+ ### Dynamic Configuration Reloading
+-대부분의 설정은 시작 시점에 로드되지만, 일부 애플리케이션은 재시작 없이 설정을 변경해야 할 수도 있습니다. fluo의 `ConfigService`는 기본적으로 시작 시점 설정을 위해 설계되었지만, 파일 시스템 이벤트나 외부 트리거를 감시하고 서비스의 내부 상태를 업데이트함으로써 동적 리로딩을 구현할 수 있습니다.
++대부분의 설정은 시작 시점에 로드되지만, 일부 애플리케이션은 재시작 없이 설정을 변경해야 할 수도 있습니다. `ConfigModule.forRoot({ watch: true })`는 env file의 parent directory를 watch하고, 성공한 reload 뒤에는 같은 injected `ConfigService` instance를 갱신할 수 있습니다. 감시 중인 reload가 validation이나 listener 처리에서 실패할 수 있다면, 애플리케이션이 그 실패 경로를 소유하도록 `onReloadError`를 전달하세요.
+ 
+ 하지만 동적 리로딩은 경쟁 상태(race conditions)를 유발할 수 있고 애플리케이션의 상태를 추론하기 어렵게 만들 수 있으므로 주의해야 합니다. 대부분의 경우, 컨테이너를 롤링 재시작하는 것이 프로덕션 환경에서 설정 변경을 전파하는 더 안전하고 예측 가능한 방법입니다.
+ 
+diff --git a/book/beginner/ch11-config.md b/book/beginner/ch11-config.md
+index 4824fb032..fe26bbb09 100644
+--- a/book/beginner/ch11-config.md
++++ b/book/beginner/ch11-config.md
+@@ -51,7 +51,7 @@ Predictability means that by looking at `AppModule`, you can understand which ex
+ ### Understanding the Internal Mechanism of Configuration
+ When a fluo application starts, `ConfigModule` explicitly composes configuration sources. First, it identifies the provided `envFile` path. If the file exists, it uses a parser to read key-value pairs and stores them in a private in-memory map. Then it merges them with `defaults` defined in code and, if needed, a `processEnv` snapshot explicitly passed to `forRoot(...)`.
+ 
+-This initialization step is important because it happens during the framework core's `OnModuleInit` lifecycle hook. By the time `AppModule` has fully loaded, `ConfigService` is already populated with the final merged configuration state and ready to be injected where it's needed most.
++This initialization step is important because `ConfigModule` loads the first snapshot while the provider is created during module graph bootstrap. By the time `AppModule` has fully loaded, `ConfigService` is already populated with the final merged configuration state and ready to be injected where it's needed most. If `watch: true` is enabled, file watching starts later during application bootstrap and keeps the same injected `ConfigService` instance aligned with successful reloads.
+ 
+ ## 11.2 Setting up ConfigModule
+ 
+@@ -308,9 +308,9 @@ Sometimes you may want to provide a feature only when a specific configuration k
+ For example, if you have an optional feature called analytics tracking, you can set it to `false` by default in code. Then service layers can always work with a boolean value instead of handling `undefined` or `null` throughout the codebase. This Safe Default pattern simplifies code and makes it more resilient.
+ 
+ ### Environment Variable Interpolation
+-Sometimes one configuration value depends on another. For example, `LOG_PATH` may be relative to `APP_ROOT`. Some dotenv libraries support interpolation such as `${APP_ROOT}/logs`, but fluo recommends handling this explicitly in a `ConfigModule` factory or validation step. This keeps the logic clear and makes debugging easier.
++Sometimes one configuration value depends on another. For example, `LOG_PATH` may be relative to `APP_ROOT`. The default dotenv-backed parser expands interpolation such as `${APP_ROOT}/logs` inside env files, so simple dotenv-style references work without custom parsing. For more complex derived values, prefer handling the transformation explicitly in a `ConfigModule` factory or validation step. This keeps the logic clear and makes debugging easier.
+ 
+-Explicit interpolation preserves configuration predictability and avoids problems caused by complex regex-based string replacement in some libraries. Handling it in TypeScript also gives you full type safety and lets you use standard string manipulation functions.
++Keeping complex interpolation explicit preserves configuration predictability and avoids problems caused by hard-to-debug string replacement rules. Handling those transformations in TypeScript also gives you full type safety and lets you use standard string manipulation functions.
+ 
+ ### Configuration Inheritance and Merging
+ In large organizations, common configuration may need to be shared across multiple microservices. Even in this case, the basic entrypoint is `ConfigModule.forRoot(...)`. For example, you can read global settings ahead of time from a shared JSON file or remote configuration server, pass them through `defaults` or `processEnv`, and then merge them with local `.env` configuration.
+@@ -318,7 +318,7 @@ In large organizations, common configuration may need to be shared across multip
+ This layered approach preserves consistency across the full service set while still giving each service the flexibility to override settings for its own needs. It's a strong pattern for infrastructure management at scale.
+ 
+ ### Dynamic Configuration Reloading
+-Most configuration is loaded at startup, but some applications may need to change configuration without restarting. fluo's `ConfigService` is designed for startup configuration by default, but dynamic reloading can be implemented by watching file system events or external triggers and updating the service's internal state.
++Most configuration is loaded at startup, but some applications may need to change configuration without restarting. `ConfigModule.forRoot({ watch: true })` can watch the env file's parent directory and update the same injected `ConfigService` instance after successful reloads. If a watched reload can fail validation or listener handling, pass `onReloadError` so the application owns that failure path.
+ 
+ However, dynamic reloading should be used carefully because it can introduce race conditions and make application state harder to reason about. In most cases, rolling restarts of containers are a safer and more predictable way to propagate configuration changes in production.
+ 
+diff --git a/packages/config/README.ko.md b/packages/config/README.ko.md
+index fa541ab6e..8bb994a9f 100644
+--- a/packages/config/README.ko.md
++++ b/packages/config/README.ko.md
+@@ -97,7 +97,7 @@ class MyService {
+ 
+ `ConfigReloadManager.reload()`는 리로드 작업을 직렬화합니다. 현재 리로드가 listener 알림을 수행하는 동안 다른 리로드가 요청되면 후속 리로드는 큐에 들어가 활성 알림이 끝난 뒤 적용됩니다. 활성 알림이 실패하면 직전 snapshot을 복구하고 큐에 있던 리로드는 폐기합니다. 동일한 직렬화와 rollback 계약은 `createConfigReloader(...).reload()`에도 적용되며, watch로 시작된 알림 중 큐에 들어간 manual reload도 이 계약을 따릅니다.
+ 
+-Module registration과 reloader 생성은 caller-owned options를 저장하기 전에 snapshot으로 분리합니다. `ConfigModule.forRoot(...)`, `ConfigReloadModule.forRoot(...)`, `createConfigReloader(...)`에 넘긴 객체를 나중에 변경해도 bootstrap, manual reload, watch reload 입력은 바뀌지 않습니다. `ConfigModule.forRoot({ watch: true, ... })`를 사용하면 module은 application bootstrap 중 env-file watcher를 시작하고, watch reload가 성공한 뒤 같은 injected `ConfigService` instance를 갱신합니다. Watch mode에서 시작 시점에 env file이 없으면 빈 file snapshot처럼 취급하고 parent directory를 watch하므로, 나중에 env file을 생성해도 reload가 트리거될 수 있습니다. Watch reload는 reload 전에 최종 env file content를 마지막으로 commit된 watch baseline과 비교하므로, 내용이 바뀌지 않은 저장이나 변경 후 debounce 안에서 원래 내용으로 되돌린 burst는 인프로세스 config snapshot을 교체하지 않습니다.
++Module registration과 reloader 생성은 caller-owned options를 저장하기 전에 snapshot으로 분리합니다. `ConfigModule.forRoot(...)`, `ConfigReloadModule.forRoot(...)`, `createConfigReloader(...)`에 넘긴 객체를 나중에 변경해도 bootstrap, manual reload, watch reload 입력은 바뀌지 않습니다. `ConfigModule.forRoot({ watch: true, ... })`를 사용하면 module은 application bootstrap 중 env-file watcher를 시작하고, 먼저 injected `ConfigService`를 watch reloader baseline과 맞춘 다음 watch reload가 성공한 뒤 같은 injected `ConfigService` instance를 갱신합니다. `ConfigModule`의 automatic watch reload 실패를 애플리케이션이 소유해야 한다면 `onReloadError`를 전달하세요. Watch mode에서는 기존 env file과 누락된 env file 모두에 대해 parent directory를 watch하므로, 나중에 env file을 생성하거나 atomic replacement로 교체해도 reload가 트리거될 수 있습니다. Watch reload는 reload 전에 최종 env file content를 마지막으로 commit된 watch baseline과 비교하므로, 내용이 바뀌지 않은 저장이나 변경 후 debounce 안에서 원래 내용으로 되돌린 burst는 인프로세스 config snapshot을 교체하지 않습니다.
+ 
+ `ConfigReloadModule`은 명시적으로 주입 가능한 reload layer이며 standalone config source가 아닙니다. manual reload나 subscription을 위해 `CONFIG_RELOADER`가 필요한 caller는 `ConfigModule` 또는 다른 `ConfigService` provider와 함께 사용하세요. `ConfigModule` 또는 `ConfigReloadModule`이 만든 watcher는 `watch: true`일 때만 생성되며 module shutdown 중에 닫힙니다. 같은 env file에 대해서는 한 layer에서만 `watch: true`를 활성화하세요. 자동 `ConfigService` 갱신만 필요하면 `ConfigModule`을 사용하고, subscription/manual reload를 위한 injected reloader 계약이 필요하면 `ConfigReloadModule`을 사용합니다.
+ 
+diff --git a/packages/config/README.md b/packages/config/README.md
+index c9c05174a..f18e5ea6c 100644
+--- a/packages/config/README.md
++++ b/packages/config/README.md
+@@ -100,7 +100,7 @@ The `schema` option accepts a synchronous [Standard Schema](https://standardsche
+ 
+ `ConfigReloadManager.reload()` serializes reload work. If another reload is requested while the current reload is notifying listeners, the follow-up reload is queued and applied after the active notification finishes; if the active notification fails, the previous snapshot is restored and the queued reload is discarded. The same serialization and rollback contract applies to `createConfigReloader(...).reload()`, including manual reloads queued during watch-triggered notifications.
+ 
+-Module registration and reloader creation snapshot caller-owned options before storing them. Later mutations to objects passed to `ConfigModule.forRoot(...)`, `ConfigReloadModule.forRoot(...)`, or `createConfigReloader(...)` do not affect bootstrap, manual reloads, or watch reloads. When `ConfigModule.forRoot({ watch: true, ... })` is used, the module starts an env-file watcher during application bootstrap and updates the same injected `ConfigService` instance after successful watch reloads. In watch mode, a missing env file at startup is treated as an empty file snapshot while the parent directory is watched so creating the env file later can still trigger reload. Watch reloads compare the final env file content with the last committed watch baseline before reloading, so unchanged saves and change-then-revert bursts do not replace the in-process config snapshot.
++Module registration and reloader creation snapshot caller-owned options before storing them. Later mutations to objects passed to `ConfigModule.forRoot(...)`, `ConfigReloadModule.forRoot(...)`, or `createConfigReloader(...)` do not affect bootstrap, manual reloads, or watch reloads. When `ConfigModule.forRoot({ watch: true, ... })` is used, the module starts an env-file watcher during application bootstrap, first aligns the injected `ConfigService` with the watch reloader baseline, and then updates the same injected `ConfigService` instance after successful watch reloads. Pass `onReloadError` when the application needs ownership of automatic watch reload failures from `ConfigModule`. In watch mode, the parent directory is watched for both existing and missing env files, so creating or atomically replacing the env file can trigger reload. Watch reloads compare the final env file content with the last committed watch baseline before reloading, so unchanged saves and change-then-revert bursts do not replace the in-process config snapshot.
+ 
+ `ConfigReloadModule` is the explicit injectable reload layer, not a standalone config source. Pair it with `ConfigModule` or another `ConfigService` provider when callers need `CONFIG_RELOADER` for manual reloads or subscriptions. Watchers created by `ConfigModule` or `ConfigReloadModule` are created only when `watch: true`, and they are closed during module shutdown. Enable `watch: true` on one layer for a given env file: use `ConfigModule` for automatic `ConfigService` updates, or `ConfigReloadModule` when callers need the injected reloader contract for subscriptions/manual reloads.
+ 
+diff --git a/packages/config/src/load.test.ts b/packages/config/src/load.test.ts
+index a0b5d393d..9f360d033 100644
+--- a/packages/config/src/load.test.ts
++++ b/packages/config/src/load.test.ts
+@@ -1,4 +1,4 @@
+-import { mkdtempSync, writeFileSync } from 'node:fs';
++import { mkdtempSync, watch, writeFileSync } from 'node:fs';
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import { getModuleMetadata } from '@fluojs/core/internal';
+@@ -83,6 +83,44 @@ function getErrorCause(error: unknown): unknown {
+   return undefined;
+ }
+ 
++type WatchManagerInstance = {
++  onApplicationBootstrap(): void;
++  onModuleDestroy(): void;
++};
++
++type WatchManagerConstructor = new (config: ConfigService, options: ConfigModuleOptions) => WatchManagerInstance;
++
++function createConfigModuleWatchHarness(moduleRef: new () => ConfigModule): {
++  manager: WatchManagerInstance;
++  service: ConfigService;
++} {
++  const providers = getModuleMetadata(moduleRef)?.providers as
++    | Array<WatchManagerConstructor | { provide?: unknown; useFactory?: () => unknown; useValue?: ConfigModuleOptions }>
++    | undefined;
++  const configProvider = providers?.find(
++    (provider): provider is { provide: typeof ConfigService; useFactory: () => ConfigService } =>
++      typeof provider === 'object' && provider.provide === ConfigService && typeof provider.useFactory === 'function',
++  );
++  const optionsProvider = providers?.find(
++    (provider): provider is { useValue: ConfigModuleOptions } =>
++      typeof provider === 'object' && provider.useValue !== undefined,
++  );
++  const managerClass = providers?.find(
++    (provider): provider is WatchManagerConstructor => typeof provider === 'function',
++  );
++
++  if (!configProvider || !optionsProvider || !managerClass) {
++    throw new Error('Expected ConfigModule watch providers to be registered.');
++  }
++
++  const service = configProvider.useFactory();
++
++  return {
++    manager: new managerClass(service, optionsProvider.useValue),
++    service,
++  };
++}
++
+ beforeEach(() => {
+   watchCallbacks.clear();
+ });
+@@ -683,6 +721,44 @@ describe('loadConfig', () => {
+     }
+   });
+ 
++  it('watches the parent directory when the env file exists so atomic replacements trigger reloads', async () => {
++    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-watch-existing-parent-'));
++    const envPath = join(cwd, '.env.dev');
++
++    writeFileSync(envPath, 'PORT=4000\n');
++
++    const reloader = createConfigReloader({
++      cwd,
++      envFile: envPath,
++      processEnv: {},
++      watch: true,
++    });
++
++    try {
++      expect(vi.mocked(watch).mock.calls.at(-1)?.[0]).toBe(cwd);
++
++      const updates: string[] = [];
++      reloader.subscribe((snapshot, reason) => {
++        if (reason !== 'watch') {
++          return;
++        }
++
++        const port = snapshot['PORT'];
++        if (typeof port === 'string') {
++          updates.push(port);
++        }
++      });
++
++      writeFileSync(envPath, 'PORT=4100\n');
++      emitWatchChange();
++
++      await waitForCondition(() => updates.includes('4100'));
++      expect(reloader.current()['PORT']).toBe('4100');
++    } finally {
++      reloader.close();
++    }
++  });
++
+   it('keeps the previous snapshot when manual reload listeners throw', () => {
+     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-reload-ordering-'));
+     const envPath = join(cwd, '.env.dev');
+@@ -928,6 +1004,7 @@ describe('ConfigService', () => {
+     const service = new ConfigService({ PORT: '3000' });
+ 
+     expect(() => service.getOrThrow('MISSING' as never)).toThrow('Missing config key');
++    expect(() => service.getOrThrow('MISSING' as never)).toThrow(expect.objectContaining({ code: 'CONFIG_KEY_MISSING' }));
+   });
+ 
+   it('returns value with getOrThrow for existing key', () => {
+@@ -1014,6 +1091,73 @@ describe('ConfigService', () => {
+ });
+ 
+ describe('ConfigModule', () => {
++  it('keeps the injected service aligned with the watch reloader baseline at application bootstrap', async () => {
++    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-module-watch-baseline-'));
++    const envPath = join(cwd, '.env.dev');
++    let parseCalls = 0;
++
++    writeFileSync(envPath, 'PORT=4000\n');
++
++    const ConfigFeatureModule = ConfigModule.forRoot({
++      envFile: envPath,
++      parse: (content) => {
++        parseCalls += 1;
++        if (parseCalls === 1) {
++          writeFileSync(envPath, 'PORT=4100\n');
++        }
++
++        const [key, value] = content.trim().split('=');
++        return key && value ? { [key]: value } : {};
++      },
++      processEnv: {},
++      watch: true,
++    });
++
++    const { manager, service } = createConfigModuleWatchHarness(ConfigFeatureModule);
++
++    try {
++      manager.onApplicationBootstrap();
++
++      expect(service.get('PORT')).toBe('4100');
++      expect(parseCalls).toBe(2);
++    } finally {
++      manager.onModuleDestroy();
++    }
++  });
++
++  it('forwards ConfigModule watch reload failures to the configured owner', async () => {
++    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-module-watch-errors-'));
++    const envPath = join(cwd, '.env.dev');
++    const errors: string[] = [];
++
++    writeFileSync(envPath, 'PORT=4000\n');
++
++    const ConfigFeatureModule = ConfigModule.forRoot({
++      envFile: envPath,
++      onReloadError: (error, reason) => {
++        errors.push(`${reason}:${error instanceof Error ? error.message : String(error)}`);
++      },
++      processEnv: {},
++      schema: createPortSchema(),
++      watch: true,
++    });
++
++    const { manager, service } = createConfigModuleWatchHarness(ConfigFeatureModule);
++
++    try {
++      manager.onApplicationBootstrap();
++
++      writeFileSync(envPath, 'PORT=oops\n');
++      emitWatchChange();
++
++      await waitForCondition(() => errors.length > 0);
++      expect(errors[0]).toContain('watch:Invalid configuration.');
++      expect(service.get('PORT')).toBe(4000);
++    } finally {
++      manager.onModuleDestroy();
++    }
++  });
++
+   it('loads configuration once during provider creation and reuses the service snapshot', () => {
+     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-module-bootstrap-once-'));
+     const envPath = join(cwd, '.env.dev');
+diff --git a/packages/config/src/load.ts b/packages/config/src/load.ts
+index 8a61fa07d..aa96440ee 100644
+--- a/packages/config/src/load.ts
++++ b/packages/config/src/load.ts
+@@ -386,7 +386,7 @@ function startReloaderWatcher(
+     return undefined;
+   }
+ 
+-  const watchTarget = existsSync(normalized.envFile) ? normalized.envFile : dirname(normalized.envFile);
++  const watchTarget = dirname(normalized.envFile);
+   const watchedEnvFileName = basename(normalized.envFile);
+ 
+   if (!existsSync(watchTarget)) {
+@@ -394,7 +394,7 @@ function startReloaderWatcher(
+   }
+ 
+   return watch(watchTarget, { persistent: false }, (_eventType, filename) => {
+-    if (watchTarget !== normalized.envFile && filename !== null && filename.toString() !== watchedEnvFileName) {
++    if (filename !== null && filename.toString() !== watchedEnvFileName) {
+       return;
+     }
+ 
+diff --git a/packages/config/src/module.ts b/packages/config/src/module.ts
+index 780abfd75..deecc4623 100644
+--- a/packages/config/src/module.ts
++++ b/packages/config/src/module.ts
+@@ -16,6 +16,7 @@ const CONFIG_MODULE_WATCH_OPTIONS = Symbol('fluo.config.module-watch-options');
+ class ConfigModuleWatchManager {
+   private reloader: ConfigReloader | undefined;
+   private reloadForwarder: ConfigReloadSubscription | undefined;
++  private errorForwarder: ConfigReloadSubscription | undefined;
+ 
+   constructor(
+     private readonly config: ConfigService,
+@@ -32,6 +33,7 @@ class ConfigModuleWatchManager {
+     }
+ 
+     this.reloader = createConfigReloader(this.options);
++    replaceConfigServiceSnapshotUnchecked(this.config, this.reloader.current());
+     this.reloadForwarder = this.reloader.subscribe((snapshot) => {
+       const previousConfig = this.config.snapshot();
+ 
+@@ -42,11 +44,16 @@ class ConfigModuleWatchManager {
+         throw error;
+       }
+     });
++    if (this.options.onReloadError) {
++      this.errorForwarder = this.reloader.subscribeError(this.options.onReloadError);
++    }
+   }
+ 
+   onModuleDestroy(): void {
+     this.reloadForwarder?.unsubscribe();
+     this.reloadForwarder = undefined;
++    this.errorForwarder?.unsubscribe();
++    this.errorForwarder = undefined;
+     this.reloader?.close();
+     this.reloader = undefined;
+   }
+diff --git a/packages/config/src/reload-module.test.ts b/packages/config/src/reload-module.test.ts
+index bcc0e4df5..552ca530e 100644
+--- a/packages/config/src/reload-module.test.ts
++++ b/packages/config/src/reload-module.test.ts
+@@ -2,13 +2,41 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import { getModuleMetadata } from '@fluojs/core/internal';
++import { Container, type Provider } from '@fluojs/di';
+ import { describe, expect, it } from 'vitest';
+ 
++import { ConfigModule } from './module.js';
+ import { CONFIG_RELOADER, ConfigReloadManager, ConfigReloadModule } from './reload-module.js';
+ import { ConfigService } from './service.js';
+-import type { ConfigDictionary, ConfigLoadOptions } from './types.js';
++import type { ConfigDictionary, ConfigLoadOptions, ConfigReloader } from './types.js';
++
++function extractProviders(moduleRef: new () => unknown): Provider[] {
++  return (getModuleMetadata(moduleRef)?.providers ?? []) as Provider[];
++}
+ 
+ describe('ConfigReloadManager', () => {
++  it('resolves CONFIG_RELOADER in a production-shaped module graph with ConfigModule', async () => {
++    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-reload-module-graph-'));
++    const envPath = join(cwd, '.env.dev');
++
++    writeFileSync(envPath, 'PORT=4000\n');
++
++    const container = new Container();
++    container.register(
++      ...extractProviders(ConfigModule.forRoot({ envFile: envPath, processEnv: {} })),
++      ...extractProviders(ConfigReloadModule.forRoot({ envFile: envPath, processEnv: {} })),
++    );
++
++    const reloader = await container.resolve<ConfigReloader>(CONFIG_RELOADER);
++    const service = await container.resolve(ConfigService);
++
++    expect(reloader.current()['PORT']).toBe('4000');
++
++    writeFileSync(envPath, 'PORT=4100\n');
++    expect(reloader.reload()['PORT']).toBe('4100');
++    expect(service.get('PORT')).toBe('4100');
++  });
++
+   it('snapshots caller-owned options during ConfigReloadModule registration', () => {
+     const options: ConfigLoadOptions = {
+       defaults: { nested: { value: 'registered' }, PORT: '4000' },
+diff --git a/packages/config/src/types.ts b/packages/config/src/types.ts
+index 240aa73be..0732c052c 100644
+--- a/packages/config/src/types.ts
++++ b/packages/config/src/types.ts
+@@ -49,6 +49,8 @@ export interface ConfigModuleOptions {
+    *  returns a flat key-value record. Defaults to dotenv parsing. */
+   parse?: (content: string) => Record<string, string>;
+   watch?: boolean;
++  /** Receives automatic watch reload failures owned by `ConfigModule`. */
++  onReloadError?: ConfigReloadErrorListener;
+   /** Whether the module should expose `ConfigService` globally. Defaults to `true`. */
+   global?: boolean;
+ }

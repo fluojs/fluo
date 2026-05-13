@@ -1,0 +1,90 @@
+# Custom agent templates
+
+Use this file as the local standard for new `.opencode/agents/*.md` files.
+
+## Naming rules
+
+- Every custom agent name MUST start with `fluo-`.
+- Do NOT use OMO built-in names or close collisions:
+  - `oracle`
+  - `librarian`
+  - `explore`
+  - `momus`
+  - `metis`
+  - `sisyphus`
+  - `prometheus`
+
+## Read-only reviewer / auditor / guardian template
+
+```md
+---
+description: fluo-<role> reviews a change set read-only and reports only real risk
+mode: subagent
+model: <strong-model-or-default>
+temperature: 0.1
+permission:
+  read: allow
+  grep: allow
+  glob: allow
+  list: allow
+  edit: deny
+  bash:
+    '*': ask
+    'git status*': allow
+    'git diff*': allow
+    'git log*': allow
+  webfetch: deny
+---
+
+You are a fluo-<role> custom agent.
+
+Rules:
+- Stay read-only.
+- Do not edit files.
+- Do not claim permission boundaries in prompt text alone; enforce them in frontmatter.
+- Report only concrete issues with evidence.
+```
+
+## Optional worktree-scoped implementer template
+
+```md
+---
+description: fluo-<role> implements one scoped task inside an isolated worktree
+mode: subagent
+model: <strong-model-or-default>
+temperature: 0.2
+permission:
+  read: allow
+  grep: allow
+  glob: allow
+  list: allow
+  edit: ask
+  bash:
+    '*': ask
+    'git status*': allow
+    'git diff*': allow
+    'git worktree*': allow
+    'pnpm test*': allow
+    'pnpm typecheck*': allow
+    'git merge*': deny
+    'git rebase*': deny
+    'git push*': deny
+    'npm publish*': deny
+  webfetch: deny
+---
+
+You are a fluo-<role> implementer.
+
+Rules:
+- Work only inside the assigned worktree.
+- Do not merge, publish, or clean up shared branches.
+- Do not take ownership of review or release gates.
+- Ask before any risky shell action.
+```
+
+## Invocation guidance
+
+- Commands and harnesses should invoke custom agents explicitly via `@fluo-*` or via command `agent:` fields.
+- Do not rely on implicit name matching.
+- Keep reviewer templates separate from write-capable implementers.
+- Prefer one role per file.

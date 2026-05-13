@@ -1,0 +1,319 @@
+diff --git a/.changeset/websockets-conformance-docs.md b/.changeset/websockets-conformance-docs.md
+new file mode 100644
+index 000000000..ad5eca3b4
+--- /dev/null
++++ b/.changeset/websockets-conformance-docs.md
+@@ -0,0 +1,5 @@
++---
++"@fluojs/websockets": patch
++---
++
++Harden the WebSockets public docs, API overview, package metadata, and fetch-style runtime conformance coverage so consumers can rely on the documented Node, Bun, Deno, and Cloudflare Workers websocket subpath contracts.
+diff --git a/book/intermediate/ch23-deno.ko.md b/book/intermediate/ch23-deno.ko.md
+index 52abffaf0..38a6dbc24 100644
+--- a/book/intermediate/ch23-deno.ko.md
++++ b/book/intermediate/ch23-deno.ko.md
+@@ -94,12 +94,13 @@ Bun과 마찬가지로 Deno는 `Deno.upgradeWebSocket`을 통한 자체 WebSocke
+ import { Module } from '@fluojs/core';
+ import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
+ import { DenoWebSocketModule } from '@fluojs/websockets/deno';
++import type { DenoServerWebSocket } from '@fluojs/websockets/deno';
+ 
+ @WebSocketGateway({ path: '/ws' })
+ export class MyGateway {
+   @OnMessage('ping')
+-  handlePing() {
+-    return { event: 'pong', data: 'hello from deno' };
++  handlePing(_payload: unknown, socket: DenoServerWebSocket) {
++    socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));
+   }
+   // Deno 바인딩이 내부적으로 네이티브 업그레이드를 처리합니다.
+ }
+@@ -111,6 +112,8 @@ export class MyGateway {
+ export class RealtimeModule {}
+ ```
+ 
++게이트웨이 반환값은 WebSocket dispatcher에서 무시됩니다. 위 예시처럼 handler에 전달되는 런타임 socket을 통해 명시적으로 응답을 전송하세요.
++
+ ## 23.5 Handling Deno Permissions in FluoShop
+ 
+ Deno에서 마이크로서비스를 구축할 때는 최소 권한의 원칙을 따라야 합니다. 광범위한 플래그 대신 구체적인 권한을 지정하세요.
+diff --git a/book/intermediate/ch23-deno.md b/book/intermediate/ch23-deno.md
+index c5fe98435..4dbf5ff49 100644
+--- a/book/intermediate/ch23-deno.md
++++ b/book/intermediate/ch23-deno.md
+@@ -94,12 +94,13 @@ Like Bun, Deno provides its own WebSocket implementation through `Deno.upgradeWe
+ import { Module } from '@fluojs/core';
+ import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
+ import { DenoWebSocketModule } from '@fluojs/websockets/deno';
++import type { DenoServerWebSocket } from '@fluojs/websockets/deno';
+ 
+ @WebSocketGateway({ path: '/ws' })
+ export class MyGateway {
+   @OnMessage('ping')
+-  handlePing() {
+-    return { event: 'pong', data: 'hello from deno' };
++  handlePing(_payload: unknown, socket: DenoServerWebSocket) {
++    socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));
+   }
+   // The Deno binding handles native upgrades internally.
+ }
+@@ -111,6 +112,8 @@ export class MyGateway {
+ export class RealtimeModule {}
+ ```
+ 
++Gateway return values are ignored by the WebSocket dispatcher. Send replies explicitly through the runtime socket passed to the handler, as shown above.
++
+ ## 23.5 Handling Deno Permissions in FluoShop
+ 
+ When building microservices on Deno, follow the principle of least privilege. Specify concrete permissions instead of broad flags.
+diff --git a/packages/websockets/README.ko.md b/packages/websockets/README.ko.md
+index 0800237b8..7d3676406 100644
+--- a/packages/websockets/README.ko.md
++++ b/packages/websockets/README.ko.md
+@@ -117,6 +117,7 @@ Gateway `@OnMessage()` handler는 지원 런타임 전반에서 하나의 정규
+ - `WebSocketModule`: WebSocket 통합을 위한 루트 모듈입니다.
+ - `WebSocketModule.forRoot({ upgrade, limits, backpressure, buffer, heartbeat, shutdown })`: pre-upgrade guard와 bounded runtime default를 구성합니다.
+ - `WebSocketGatewayLifecycleService`: 기본 Node.js 기반 lifecycle service token을 위한 루트 alias입니다.
++- `WebSocketRoomService`: websocket room join, leave, broadcast, 조회를 위해 runtime lifecycle service가 구현하는 Room management contract입니다.
+ - Metadata helper와 symbol: `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, `webSocketHandlerMetadataSymbol`.
+ 
+ ## 런타임별 서브패스
+diff --git a/packages/websockets/README.md b/packages/websockets/README.md
+index 35c4a31bf..9c7573220 100644
+--- a/packages/websockets/README.md
++++ b/packages/websockets/README.md
+@@ -117,6 +117,7 @@ Gateway `@OnMessage()` handlers receive one normalized payload contract across s
+ - `WebSocketModule`: Root module for WebSocket integration.
+ - `WebSocketModule.forRoot({ upgrade, limits, backpressure, buffer, heartbeat, shutdown })`: Configures pre-upgrade guards and bounded runtime defaults.
+ - `WebSocketGatewayLifecycleService`: Root alias for the default Node.js-backed lifecycle service token.
++- `WebSocketRoomService`: Room management contract implemented by runtime lifecycle services for joining, leaving, broadcasting to, and inspecting websocket rooms.
+ - Metadata helpers and symbols: `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, `webSocketHandlerMetadataSymbol`.
+ 
+ ## Runtime-Specific Subpaths
+diff --git a/packages/websockets/package.json b/packages/websockets/package.json
+index 263e08bf5..f954e24f9 100644
+--- a/packages/websockets/package.json
++++ b/packages/websockets/package.json
+@@ -85,6 +85,7 @@
+     "@fluojs/platform-bun": "workspace:^",
+     "@fluojs/platform-express": "workspace:^",
+     "@fluojs/platform-fastify": "workspace:^",
++    "@fluojs/testing": "workspace:^",
+     "@types/ws": "^8.18.1",
+     "vitest": "^3.2.4"
+   }
+diff --git a/packages/websockets/src/bun/bun.test.ts b/packages/websockets/src/bun/bun.test.ts
+index 6423ac588..6c5911099 100644
+--- a/packages/websockets/src/bun/bun.test.ts
++++ b/packages/websockets/src/bun/bun.test.ts
+@@ -4,6 +4,7 @@ import { Inject } from '@fluojs/core';
+ import { getModuleMetadata } from '@fluojs/core/internal';
+ import type { HttpApplicationAdapter } from '@fluojs/http';
+ import { bootstrapApplication, defineModule } from '@fluojs/runtime';
++import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
+ 
+ import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
+ import * as bunPublicApi from './bun.js';
+@@ -24,6 +25,8 @@ type MockSocket = BunServerWebSocket<unknown> & {
+ 
+ const WEBSOCKET_CLOSED_READY_STATE = 3;
+ const WEBSOCKET_OPEN_READY_STATE = 1;
++const BUN_WEBSOCKET_CAPABILITY_REASON =
++  'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.';
+ 
+ class TestBunAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost {
+   private binding?: BunWebSocketBinding<unknown>;
+@@ -38,8 +41,7 @@ class TestBunAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost
+       contract: 'raw-websocket-expansion' as const,
+       kind: 'fetch-style' as const,
+       mode: 'request-upgrade' as const,
+-      reason:
+-        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.',
++      reason: BUN_WEBSOCKET_CAPABILITY_REASON,
+       support: 'supported' as const,
+       version: 1 as const,
+     };
+@@ -209,6 +211,17 @@ describe('@fluojs/websockets/bun', () => {
+     expect(optionsProvider).toHaveProperty('useValue', options);
+   });
+ 
++  it('reports the supported fetch-style websocket contract through the conformance harness', () => {
++    const harness = createFetchStyleWebSocketConformanceHarness({
++      createAdapter: () => new TestBunAdapter(),
++      expectedReason: BUN_WEBSOCKET_CAPABILITY_REASON,
++      expectedSupport: 'supported',
++      name: 'websockets bun test adapter',
++    });
++
++    expect(() => harness.assertExposesRawWebSocketExpansionContract()).not.toThrow();
++  });
++
+   it('rejects serverBacked gateway opt-in on the Bun fetch-style binding', async () => {
+     const adapter = new TestBunAdapter();
+ 
+diff --git a/packages/websockets/src/cloudflare-workers/cloudflare-workers.test.ts b/packages/websockets/src/cloudflare-workers/cloudflare-workers.test.ts
+index 732c8a287..e6886cdf5 100644
+--- a/packages/websockets/src/cloudflare-workers/cloudflare-workers.test.ts
++++ b/packages/websockets/src/cloudflare-workers/cloudflare-workers.test.ts
+@@ -4,6 +4,7 @@ import { Inject } from '@fluojs/core';
+ import { getModuleMetadata } from '@fluojs/core/internal';
+ import type { HttpApplicationAdapter } from '@fluojs/http';
+ import { bootstrapApplication, defineModule } from '@fluojs/runtime';
++import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
+ 
+ import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
+ import * as workerPublicApi from './cloudflare-workers.js';
+@@ -25,6 +26,8 @@ type MockSocketListenerMap = {
+ 
+ const WEBSOCKET_OPEN_READY_STATE = 1;
+ const WEBSOCKET_CLOSED_READY_STATE = 3;
++const CLOUDFLARE_WORKERS_WEBSOCKET_CAPABILITY_REASON =
++  'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @fluojs/websockets/cloudflare-workers for the official raw websocket binding.';
+ 
+ class MockWorkerSocket implements CloudflareWorkerWebSocket {
+   readonly #listeners: MockSocketListenerMap = {
+@@ -189,8 +192,7 @@ class TestWorkerAdapter implements HttpApplicationAdapter, CloudflareWorkerWebSo
+       contract: 'raw-websocket-expansion' as const,
+       kind: 'fetch-style' as const,
+       mode: 'request-upgrade' as const,
+-      reason:
+-        'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @fluojs/websockets/cloudflare-workers for the official raw websocket binding.',
++      reason: CLOUDFLARE_WORKERS_WEBSOCKET_CAPABILITY_REASON,
+       support: 'supported' as const,
+       version: 1 as const,
+     };
+@@ -245,6 +247,17 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
+     expect(optionsProvider).toHaveProperty('useValue', options);
+   });
+ 
++  it('reports the supported fetch-style websocket contract through the conformance harness', () => {
++    const harness = createFetchStyleWebSocketConformanceHarness({
++      createAdapter: () => new TestWorkerAdapter(),
++      expectedReason: CLOUDFLARE_WORKERS_WEBSOCKET_CAPABILITY_REASON,
++      expectedSupport: 'supported',
++      name: 'websockets cloudflare-workers test adapter',
++    });
++
++    expect(() => harness.assertExposesRawWebSocketExpansionContract()).not.toThrow();
++  });
++
+   it('rejects serverBacked gateway opt-in on the Cloudflare Workers fetch-style binding', async () => {
+     const adapter = new TestWorkerAdapter();
+ 
+diff --git a/packages/websockets/src/deno/deno.test.ts b/packages/websockets/src/deno/deno.test.ts
+index ee3cc4f5c..005aa4031 100644
+--- a/packages/websockets/src/deno/deno.test.ts
++++ b/packages/websockets/src/deno/deno.test.ts
+@@ -4,6 +4,7 @@ import { Inject } from '@fluojs/core';
+ import { getModuleMetadata } from '@fluojs/core/internal';
+ import type { HttpApplicationAdapter } from '@fluojs/http';
+ import { bootstrapApplication, defineModule } from '@fluojs/runtime';
++import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
+ 
+ import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
+ import * as denoPublicApi from './deno.js';
+@@ -25,6 +26,8 @@ type MockDenoSocketListenerMap = {
+ 
+ const WEBSOCKET_OPEN_READY_STATE = 1;
+ const WEBSOCKET_CLOSED_READY_STATE = 3;
++const DENO_WEBSOCKET_CAPABILITY_REASON =
++  'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.';
+ 
+ class MockDenoSocket implements DenoServerWebSocket {
+   readonly #listeners: MockDenoSocketListenerMap = {
+@@ -192,8 +195,7 @@ class TestDenoAdapter implements HttpApplicationAdapter, DenoWebSocketBindingHos
+       contract: 'raw-websocket-expansion' as const,
+       kind: 'fetch-style' as const,
+       mode: 'request-upgrade' as const,
+-      reason:
+-        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.',
++      reason: DENO_WEBSOCKET_CAPABILITY_REASON,
+       support: 'supported' as const,
+       version: 1 as const,
+     };
+@@ -283,6 +285,17 @@ describe('@fluojs/websockets/deno', () => {
+     expect(optionsProvider).toHaveProperty('useValue', options);
+   });
+ 
++  it('reports the supported fetch-style websocket contract through the conformance harness', () => {
++    const harness = createFetchStyleWebSocketConformanceHarness({
++      createAdapter: () => new TestDenoAdapter(),
++      expectedReason: DENO_WEBSOCKET_CAPABILITY_REASON,
++      expectedSupport: 'supported',
++      name: 'websockets deno test adapter',
++    });
++
++    expect(() => harness.assertExposesRawWebSocketExpansionContract()).not.toThrow();
++  });
++
+   it('rejects serverBacked gateway opt-in on the Deno fetch-style binding', async () => {
+     const adapter = new TestDenoAdapter();
+ 
+diff --git a/packages/websockets/src/tutorial-api-drift.test.ts b/packages/websockets/src/tutorial-api-drift.test.ts
+index 88c40d2e0..97c47d0c8 100644
+--- a/packages/websockets/src/tutorial-api-drift.test.ts
++++ b/packages/websockets/src/tutorial-api-drift.test.ts
+@@ -62,4 +62,27 @@ describe('@fluojs/websockets tutorial API alignment', () => {
+     expect(chapterKo).toContain("request.headers.get('authorization')");
+     expect(chapterKo).toContain('request.headers.authorization');
+   });
++
++  it('documents Deno websocket replies through explicit socket sends instead of ignored return values', () => {
++    const deno = readTutorial('../../../book/intermediate/ch23-deno.md');
++    const denoKo = readTutorial('../../../book/intermediate/ch23-deno.ko.md');
++
++    expect(deno).toContain('handlePing(_payload: unknown, socket: DenoServerWebSocket)');
++    expect(deno).toContain("socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));");
++    expect(deno).toContain('Gateway return values are ignored');
++    expect(deno).not.toContain("return { event: 'pong', data: 'hello from deno' };");
++
++    expect(denoKo).toContain('handlePing(_payload: unknown, socket: DenoServerWebSocket)');
++    expect(denoKo).toContain("socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));");
++    expect(denoKo).toContain('게이트웨이 반환값은 WebSocket dispatcher에서 무시됩니다');
++    expect(denoKo).not.toContain("return { event: 'pong', data: 'hello from deno' };");
++  });
++
++  it('keeps the README public API overview aligned with the room service export', () => {
++    const readme = readTutorial('../README.md');
++    const readmeKo = readTutorial('../README.ko.md');
++
++    expect(readme).toContain('`WebSocketRoomService`: Room management contract');
++    expect(readmeKo).toContain('`WebSocketRoomService`: websocket room join');
++  });
+ });
+diff --git a/packages/websockets/vitest.config.ts b/packages/websockets/vitest.config.ts
+index 5a36367cf..7608a031f 100644
+--- a/packages/websockets/vitest.config.ts
++++ b/packages/websockets/vitest.config.ts
+@@ -1,6 +1,16 @@
++import { fileURLToPath } from 'node:url';
++
+ import { createFluoVitestWorkspaceConfig } from '../../tooling/vitest/src';
+ 
+ export default createFluoVitestWorkspaceConfig(new URL('../../', import.meta.url), {
++  resolve: {
++    alias: [
++      {
++        find: '@fluojs/testing/fetch-style-websocket-conformance',
++        replacement: fileURLToPath(new URL('../testing/src/conformance/fetch-style-websocket-conformance.ts', import.meta.url)),
++      },
++    ],
++  },
+   test: {
+     include: ['src/**/*.test.ts'],
+   },
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index b6bcb8d92..a7e4da1c4 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -1073,6 +1073,9 @@ importers:
+       '@fluojs/platform-fastify':
+         specifier: workspace:^
+         version: link:../platform-fastify
++      '@fluojs/testing':
++        specifier: workspace:^
++        version: link:../testing
+       '@types/ws':
+         specifier: ^8.18.1
+         version: 8.18.1
