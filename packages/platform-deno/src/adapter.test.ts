@@ -14,6 +14,7 @@ import {
   type RequestContext,
 } from '@fluojs/http';
 import { defineModule, type Application, type ApplicationLogger, type ModuleType } from '@fluojs/runtime';
+import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 
 import {
@@ -249,6 +250,38 @@ function installDenoSignalMock() {
       listeners.get(signal)?.();
     },
     removeSignalListener,
+    restore() {
+      if (originalDeno === undefined) {
+        delete (globalThis as typeof globalThis & { Deno?: unknown }).Deno;
+        return;
+      }
+
+      (globalThis as typeof globalThis & { Deno?: unknown }).Deno = originalDeno;
+    },
+  };
+}
+
+function installDenoRuntimeMock(overrides: Partial<{
+  serve: DenoServeFunction;
+  upgradeWebSocket: DenoUpgradeWebSocketFunction;
+}> = {}) {
+  const originalDeno = (globalThis as typeof globalThis & { Deno?: unknown }).Deno;
+  const server = createServeStub();
+  const upgraded = createUpgradeWebSocketStub();
+
+  (globalThis as typeof globalThis & {
+    Deno?: {
+      serve: DenoServeFunction;
+      upgradeWebSocket: DenoUpgradeWebSocketFunction;
+    };
+  }).Deno = {
+    serve: overrides.serve ?? server.serve,
+    upgradeWebSocket: overrides.upgradeWebSocket ?? upgraded.upgrade,
+  };
+
+  return {
+    server,
+    upgraded,
     restore() {
       if (originalDeno === undefined) {
         delete (globalThis as typeof globalThis & { Deno?: unknown }).Deno;
@@ -623,6 +656,76 @@ describe('@fluojs/platform-deno', () => {
     expect(adapter.getServer()).toBeUndefined();
   });
 
+  it('starts graceful server shutdown before aborting the Deno serve signal', async () => {
+    const shutdownDeferred = createDeferred<void>();
+    const finishedDeferred = createDeferred<void>();
+    let signalAbortedWhenShutdownStarted: boolean | undefined;
+    const adapter = new DenoHttpApplicationAdapter({
+      hostname: '0.0.0.0',
+      port: 3000,
+      serve: vi.fn((options) => ({
+        finished: finishedDeferred.promise,
+        shutdown: async () => {
+          signalAbortedWhenShutdownStarted = options.signal?.aborted;
+          shutdownDeferred.resolve();
+        },
+      })),
+    });
+
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        response.setStatus(204);
+      },
+    });
+
+    const closePromise = adapter.close();
+
+    await shutdownDeferred.promise;
+
+    expect(signalAbortedWhenShutdownStarted).toBe(false);
+
+    finishedDeferred.resolve();
+    await closePromise;
+  });
+
+  it('returns a shutdown 503 while close is draining active requests', async () => {
+    const server = createServeStub();
+    const adapter = new DenoHttpApplicationAdapter({
+      hostname: '0.0.0.0',
+      port: 3000,
+      serve: server.serve,
+    });
+    const deferred = createDeferred<void>();
+
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        await deferred.promise;
+        response.setStatus(200);
+        await response.send({ ok: true });
+      },
+    });
+
+    const activeRequest = server.handler!(new Request('https://runtime.test/drain'));
+    const closePromise = adapter.close();
+
+    await Promise.resolve();
+
+    const shutdownResponse = await adapter.handle(new Request('https://runtime.test/new-request'));
+
+    expect(shutdownResponse.status).toBe(503);
+    await expect(shutdownResponse.json()).resolves.toEqual({
+      error: {
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'Server is shutting down.',
+        status: 503,
+      },
+    });
+
+    deferred.resolve();
+    await activeRequest;
+    await closePromise;
+  });
+
   it('keeps the Deno dispatcher until drain settles even when close() times out', async () => {
     vi.useFakeTimers();
 
@@ -717,18 +820,40 @@ describe('@fluojs/platform-deno', () => {
     });
   });
 
-  it('reports supported fetch-style websocket hosting for the official Deno binding seam', () => {
-    const adapter = createDenoAdapter();
+  it('falls back to global Deno.serve when no injectable serve seam is provided', async () => {
+    const deno = installDenoRuntimeMock();
 
-    expect(adapter.getRealtimeCapability()).toEqual({
-      contract: 'raw-websocket-expansion',
-      kind: 'fetch-style',
-      mode: 'request-upgrade',
-      reason:
+    try {
+      const adapter = createDenoAdapter({ port: 4321 });
+
+      await adapter.listen({
+        async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+          response.setStatus(204);
+        },
+      });
+
+      expect(deno.server.serve).toHaveBeenCalledTimes(1);
+      expect(deno.server.options).toMatchObject({
+        hostname: '0.0.0.0',
+        port: 4321,
+      });
+
+      await adapter.close();
+    } finally {
+      deno.restore();
+    }
+  });
+
+  it('reports supported fetch-style websocket hosting for the official Deno binding seam', () => {
+    const harness = createFetchStyleWebSocketConformanceHarness({
+      createAdapter: () => createDenoAdapter(),
+      expectedReason:
         'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.',
-      support: 'supported',
-      version: 1,
+      expectedSupport: 'supported',
+      name: 'deno',
     });
+
+    expect(() => harness.assertExposesRawWebSocketExpansionContract()).not.toThrow();
   });
 
   it('delegates websocket upgrade requests through a configured Deno websocket binding before HTTP dispatch', async () => {
@@ -764,5 +889,34 @@ describe('@fluojs/platform-deno', () => {
     expect(bindingFetch).toHaveBeenCalledTimes(1);
     expect(upgraded.upgrade).toHaveBeenCalledTimes(1);
     expect(httpResponse?.status).toBe(200);
+  });
+
+  it('falls back to global Deno.upgradeWebSocket for configured websocket bindings', async () => {
+    const deno = installDenoRuntimeMock();
+
+    try {
+      const adapter = createDenoAdapter();
+      const bindingFetch = vi.fn<DenoWebSocketBinding['fetch']>(async (request, host) => host.upgrade(request).response);
+
+      adapter.configureWebSocketBinding({
+        fetch: bindingFetch,
+      });
+
+      await adapter.listen({
+        dispatch: vi.fn(async () => undefined),
+      });
+
+      const response = await deno.server.handler?.(new Request('https://runtime.test/chat', {
+        headers: { upgrade: 'websocket' },
+      }));
+
+      expect(response?.status).toBe(200);
+      expect(bindingFetch).toHaveBeenCalledTimes(1);
+      expect(deno.upgraded.upgrade).toHaveBeenCalledTimes(1);
+
+      await adapter.close();
+    } finally {
+      deno.restore();
+    }
   });
 });
