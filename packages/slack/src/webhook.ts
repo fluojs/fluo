@@ -39,13 +39,7 @@ function resolveFetch(fetchLike: SlackFetchLike | undefined): SlackFetchLike {
     return fetchLike;
   }
 
-  if (typeof globalThis.fetch !== 'function') {
-    throw new SlackConfigurationError(
-      'Slack webhook transport requires an explicit fetch implementation when `globalThis.fetch` is unavailable.',
-    );
-  }
-
-  return (input, init) => globalThis.fetch(input, init as never) as Promise<SlackFetchResponse>;
+  throw new SlackConfigurationError('Slack webhook transport requires an explicit `fetch` implementation.');
 }
 
 async function readResponseBody(response: SlackFetchResponse): Promise<string> {
@@ -97,9 +91,9 @@ async function waitForRetry(delayMs: number, signal: AbortSignal | undefined): P
 /**
  * Creates a webhook-first Slack transport backed by an explicit fetch-compatible boundary.
  *
- * @param options Webhook URL plus an optional injected fetch implementation for portable runtimes.
+ * @param options Webhook URL plus the injected fetch implementation for portable runtimes.
  * @returns A Slack transport that posts JSON payloads to one Slack incoming webhook endpoint.
- * @throws {SlackConfigurationError} When the webhook url is empty or no fetch implementation is available.
+ * @throws {SlackConfigurationError} When the webhook url is empty or no explicit fetch implementation is provided.
  * @throws {SlackTransportError} When Slack responds with a non-success HTTP status.
  *
  * @example
