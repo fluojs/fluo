@@ -688,6 +688,65 @@ describe('@fluojs/platform-deno', () => {
     await closePromise;
   });
 
+  it('aborts the Deno serve signal when graceful shutdown rejects', async () => {
+    const shutdownError = new Error('shutdown failed');
+    let serveSignal: AbortSignal | undefined;
+    const adapter = new DenoHttpApplicationAdapter({
+      hostname: '0.0.0.0',
+      port: 3000,
+      serve: vi.fn((options) => {
+        serveSignal = options.signal;
+
+        return {
+          finished: Promise.resolve(),
+          shutdown: vi.fn(async () => {
+            throw shutdownError;
+          }),
+        };
+      }),
+    });
+
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        response.setStatus(204);
+      },
+    });
+
+    await expect(adapter.close()).rejects.toBe(shutdownError);
+    expect(serveSignal?.aborted).toBe(true);
+    expect(adapter.getServer()).toBeUndefined();
+  });
+
+  it('aborts the Deno serve signal when in-flight drain rejects', async () => {
+    const drainError = new Error('drain failed');
+    let serveSignal: AbortSignal | undefined;
+    const adapter = new DenoHttpApplicationAdapter({
+      hostname: '0.0.0.0',
+      port: 3000,
+      serve: vi.fn((options) => {
+        serveSignal = options.signal;
+
+        return {
+          finished: Promise.resolve(),
+          shutdown: vi.fn(async () => {}),
+        };
+      }),
+    });
+
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        response.setStatus(204);
+      },
+    });
+    Reflect.set(adapter, 'waitForInFlightRequests', vi.fn(async () => {
+      throw drainError;
+    }));
+
+    await expect(adapter.close()).rejects.toBe(drainError);
+    expect(serveSignal?.aborted).toBe(true);
+    expect(adapter.getServer()).toBeUndefined();
+  });
+
   it('returns a shutdown 503 while close is draining active requests', async () => {
     const server = createServeStub();
     const adapter = new DenoHttpApplicationAdapter({
