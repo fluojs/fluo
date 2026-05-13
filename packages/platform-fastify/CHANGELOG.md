@@ -1,5 +1,14 @@
 # @fluojs/platform-fastify
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1859](https://github.com/fluojs/fluo/pull/1859) [`5607dc0`](https://github.com/fluojs/fluo/commit/5607dc020c7e62fb1f3c0e64b0125df6abdf7f4a) Thanks [@ayden94](https://github.com/ayden94)! - Preserve Fastify raw-body portability and body-limit enforcement under the shared HTTP adapter harness.
+
+- Updated dependencies [[`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2)]:
+  - @fluojs/runtime@1.0.1
+
 ## 1.0.0
 
 ### Patch Changes

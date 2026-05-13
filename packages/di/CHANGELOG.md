@@ -1,5 +1,14 @@
 # @fluojs/di
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1837](https://github.com/fluojs/fluo/pull/1837) [`01ea60e`](https://github.com/fluojs/fluo/commit/01ea60eff7a8d3b30509aff8aaf21649178a9fad) Thanks [@ayden94](https://github.com/ayden94)! - Invalidate already-materialized request-scope child caches when parent or root providers are overridden so request-scoped resolutions cannot reuse stale instances after an override.
+
+- Updated dependencies [[`3aa93d9`](https://github.com/fluojs/fluo/commit/3aa93d9bbea28342f225b727f2ec0640acdf7986)]:
+  - @fluojs/core@1.0.1
+
 ## 1.0.0
 
 ### Minor Changes

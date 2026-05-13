@@ -1,5 +1,14 @@
 # @fluojs/platform-deno
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1858](https://github.com/fluojs/fluo/pull/1858) [`b61af63`](https://github.com/fluojs/fluo/commit/b61af63bd21c2f10aad91f4fa4d2005d4aa6a9e2) Thanks [@ayden94](https://github.com/ayden94)! - Preserve Deno adapter graceful shutdown by draining active requests before aborting the serve signal, and document the required Deno websocket binding setup with regression coverage for shutdown and global Deno seams.
+
+- Updated dependencies [[`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2)]:
+  - @fluojs/runtime@1.0.1
+
 ## 1.0.0
 
 ### Patch Changes

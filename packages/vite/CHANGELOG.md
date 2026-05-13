@@ -1,5 +1,11 @@
 # @fluojs/vite
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1843](https://github.com/fluojs/fluo/pull/1843) [`4591da9`](https://github.com/fluojs/fluo/commit/4591da979f0cc5bf16733b35ad90669b2788b73c) Thanks [@ayden94](https://github.com/ayden94)! - Preserve the documented Vite plugin `node_modules` skip boundary for Windows-style resolved module IDs that use backslash separators.
+
 ## 1.0.0
 
 ### Minor Changes

@@ -1,5 +1,16 @@
 # @fluojs/cron
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1852](https://github.com/fluojs/fluo/pull/1852) [`a8aa3b1`](https://github.com/fluojs/fluo/commit/a8aa3b1ca99e26be9c094e00987ff0828f8fc1dd) Thanks [@ayden94](https://github.com/ayden94)! - Make dynamic cron registration and cron expression updates rollback-safe when scheduler startup fails, and document scheduler dependency ownership plus public registry/type contracts.
+
+- Updated dependencies [[`01ea60e`](https://github.com/fluojs/fluo/commit/01ea60eff7a8d3b30509aff8aaf21649178a9fad), [`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2), [`3aa93d9`](https://github.com/fluojs/fluo/commit/3aa93d9bbea28342f225b727f2ec0640acdf7986)]:
+  - @fluojs/di@1.0.1
+  - @fluojs/runtime@1.0.1
+  - @fluojs/core@1.0.1
+
 ## 1.0.0
 
 ### Minor Changes

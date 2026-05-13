@@ -1,5 +1,14 @@
 # @fluojs/config
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1847](https://github.com/fluojs/fluo/pull/1847) [`34c840f`](https://github.com/fluojs/fluo/commit/34c840f3a1cd15e0399aa91467201d5b8f85a988) Thanks [@ayden94](https://github.com/ayden94)! - Keep ConfigModule watch bootstrap aligned with the injected ConfigService baseline, watch parent directories for atomic env-file replacements, and expose an onReloadError hook for automatic watch reload failures.
+
+- Updated dependencies [[`3aa93d9`](https://github.com/fluojs/fluo/commit/3aa93d9bbea28342f225b727f2ec0640acdf7986)]:
+  - @fluojs/core@1.0.1
+
 ## 1.0.0
 
 ### Minor Changes
