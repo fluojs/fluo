@@ -29,18 +29,34 @@ function createStoppedTransportError(): DiscordTransportError {
   return new DiscordTransportError('Discord transport is shutting down or already stopped.');
 }
 
+function createLifecycleReadinessError(lifecycleState: DiscordServiceLifecycleState): DiscordTransportError {
+  if (lifecycleState === 'failed') {
+    return new DiscordTransportError('Discord transport failed to initialize.');
+  }
+
+  return new DiscordTransportError('Discord transport is not ready for delivery.');
+}
+
 function normalizeOptionalString(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
 }
 
 function assertMessageContent(message: NormalizedDiscordMessage): void {
-  if (!message.content && message.embeds.length === 0 && message.components.length === 0 && message.attachments.length === 0) {
+  if (
+    !message.content &&
+    message.embeds.length === 0 &&
+    message.components.length === 0 &&
+    message.attachments.length === 0 &&
+    !message.poll
+  ) {
     throw new DiscordMessageValidationError(
-      'Discord messages require `content`, `embeds`, `components`, or `attachments` content.',
+      'Discord messages require `content`, `embeds`, `components`, `attachments`, or `poll` content.',
     );
   }
 }
+
+type DiscordServiceLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';
 
 /**
  * Injectable Discord delivery service for standalone and notifications-backed usage.
@@ -52,7 +68,7 @@ function assertMessageContent(message: NormalizedDiscordMessage): void {
  */
 @Inject(DISCORD_OPTIONS)
 export class DiscordService implements Discord, OnModuleInit, OnApplicationShutdown {
-  private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
+  private lifecycleState: DiscordServiceLifecycleState = 'created';
   private resolvedTransport: DiscordTransport | undefined;
   private transportPromise: Promise<DiscordTransport> | undefined;
 
@@ -259,6 +275,10 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
   private assertReadyForSend(): void {
     if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
       throw createStoppedTransportError();
+    }
+
+    if (this.lifecycleState !== 'ready') {
+      throw createLifecycleReadinessError(this.lifecycleState);
     }
   }
 
