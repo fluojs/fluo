@@ -94,12 +94,13 @@ Bun과 마찬가지로 Deno는 `Deno.upgradeWebSocket`을 통한 자체 WebSocke
 import { Module } from '@fluojs/core';
 import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
 import { DenoWebSocketModule } from '@fluojs/websockets/deno';
+import type { DenoServerWebSocket } from '@fluojs/websockets/deno';
 
 @WebSocketGateway({ path: '/ws' })
 export class MyGateway {
   @OnMessage('ping')
-  handlePing() {
-    return { event: 'pong', data: 'hello from deno' };
+  handlePing(_payload: unknown, socket: DenoServerWebSocket) {
+    socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));
   }
   // Deno 바인딩이 내부적으로 네이티브 업그레이드를 처리합니다.
 }
@@ -110,6 +111,8 @@ export class MyGateway {
 })
 export class RealtimeModule {}
 ```
+
+게이트웨이 반환값은 WebSocket dispatcher에서 무시됩니다. 위 예시처럼 handler에 전달되는 런타임 socket을 통해 명시적으로 응답을 전송하세요.
 
 ## 23.5 Handling Deno Permissions in FluoShop
 

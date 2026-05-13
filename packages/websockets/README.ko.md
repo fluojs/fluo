@@ -117,6 +117,7 @@ Gateway `@OnMessage()` handler는 지원 런타임 전반에서 하나의 정규
 - `WebSocketModule`: WebSocket 통합을 위한 루트 모듈입니다.
 - `WebSocketModule.forRoot({ upgrade, limits, backpressure, buffer, heartbeat, shutdown })`: pre-upgrade guard와 bounded runtime default를 구성합니다.
 - `WebSocketGatewayLifecycleService`: 기본 Node.js 기반 lifecycle service token을 위한 루트 alias입니다.
+- `WebSocketRoomService`: websocket room join, leave, broadcast, 조회를 위해 runtime lifecycle service가 구현하는 Room management contract입니다.
 - Metadata helper와 symbol: `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, `webSocketHandlerMetadataSymbol`.
 
 ## 런타임별 서브패스
