@@ -199,7 +199,7 @@ The adapter is intentionally explicit:
 - `setHttpLocale(ctx, locale, metadata)` stores locale metadata on the current `RequestContext` using `createContextKey(...)`.
 - `getHttpLocale(ctx)` reads the metadata without falling back to globals.
 - `parseAcceptLanguage(header)` parses valid `Accept-Language` ranges by q-value and ignores invalid or q=0 entries.
-- `createAcceptLanguageLocaleResolver(...)` selects the first supported locale from the request header.
+- `createAcceptLanguageLocaleResolver(...)` selects the first supported locale from the request header, matches language ranges case-insensitively, and returns the configured `supportedLocales` spelling when a match is found.
 - `createAcceptLanguageLocalePolicyResolver(...)` is opt-in and can normalize regional ranges such as `en-US` to supported `en` or select a wildcard fallback only after explicit supported ranges are exhausted.
 - `resolveHttpLocale(ctx, options)` runs application-provided resolvers in order, ignores invalid or unsupported resolver output, and stores `defaultLocale` with source `default` when nothing matches.
 
@@ -264,7 +264,7 @@ The generic adapter contract is intentionally explicit:
 - `resolveLocale(context, options)` runs application-provided resolvers in order, ignores empty, invalid, and unsupported resolver output, and returns `defaultLocale` with source `default` when nothing matches.
 - `bindLocale(context, { store, ...options })` resolves a locale and stores immutable metadata in an application-provided `LocaleAdapterStore`.
 - `createWeakMapLocaleStore()` provides per-object metadata storage for socket, call, session, or request objects without mutating those objects.
-- `createHeaderLocaleResolver(...)` parses `Accept-Language`-style values with the same q-value and wildcard behavior as the HTTP adapter.
+- `createHeaderLocaleResolver(...)` parses `Accept-Language`-style values with the same q-value, wildcard behavior, case-insensitive matching, and supported-locale spelling preservation as the HTTP adapter.
 - `createHeaderLocalePolicyResolver(...)` provides the same opt-in regional-locale normalization and wildcard fallback policy without importing HTTP types.
 - `createQueryLocaleResolver(...)`, `createCookieLocaleResolver(...)`, and `createStorageLocaleResolver(...)` read locale candidates from caller-owned abstractions and never access browser globals or framework internals.
 
@@ -420,7 +420,7 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 | Export | Description |
 |---|---|
 | `I18nModule` | Module facade for registering the core i18n service surface. |
-| `I18nService` | Core service that owns detached options/catalog snapshots and resolves translations. |
+| `I18nService` | Core service that owns detached options/catalog snapshots, resolves translations, and exposes explicit-locale `Intl` formatting helpers (`formatDateTime`, `formatNumber`, `formatCurrency`, `formatPercent`, `formatList`, `formatRelativeTime`). |
 | `createI18n(options)` | Creates a standalone `I18nService` without module registration. |
 | `I18nError` | Base i18n package error with a stable error code. |
 

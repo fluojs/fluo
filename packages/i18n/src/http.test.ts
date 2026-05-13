@@ -141,6 +141,32 @@ describe('@fluojs/i18n/http locale context adapter', () => {
     expect(locale).toEqual({ locale: 'ko', source: 'accept-language' });
   });
 
+  it('matches Accept-Language ranges case-insensitively while preserving supported locale spelling', () => {
+    const context = createMockContext({ 'accept-language': 'EN-us;q=1, KO;q=0.8' });
+
+    const locale = resolveHttpLocale(context, {
+      defaultLocale: 'ko-KR',
+      resolvers: [createAcceptLanguageLocaleResolver()],
+      supportedLocales: ['en-US', 'ko-KR'],
+    });
+
+    expect(locale).toEqual({ locale: 'en-US', source: 'accept-language' });
+    expect(getHttpLocale(context)).toEqual({ locale: 'en-US', source: 'accept-language' });
+  });
+
+  it('keeps custom resolver locale validation case-sensitive', () => {
+    const context = createMockContext({ 'accept-language': 'ko-KR;q=1' });
+    const wrongCase: HttpLocaleResolver = () => ({ locale: 'EN-us', source: 'custom' });
+
+    const locale = resolveHttpLocale(context, {
+      defaultLocale: 'ko-KR',
+      resolvers: [wrongCase, createAcceptLanguageLocaleResolver()],
+      supportedLocales: ['en-US', 'ko-KR'],
+    });
+
+    expect(locale).toEqual({ locale: 'ko-KR', source: 'accept-language' });
+  });
+
   it('uses custom Accept-Language header name and source options', () => {
     const context = createMockContext({ 'x-locale-preference': 'fr;q=1, ko;q=0.9' });
     const resolver = createAcceptLanguageLocaleResolver({
@@ -252,6 +278,20 @@ describe('@fluojs/i18n/http locale context adapter', () => {
         defaultLocale: 'fr',
         resolvers: [createAcceptLanguageLocaleResolver()],
         supportedLocales: ['en', 'ko'],
+      }),
+    ).toThrow(TypeError);
+
+    expect(getHttpLocale(context)).toBeUndefined();
+  });
+
+  it('rejects defaultLocale casing that does not exactly match supportedLocales', () => {
+    const context = createMockContext({ 'accept-language': 'EN-us;q=1' });
+
+    expect(() =>
+      resolveHttpLocale(context, {
+        defaultLocale: 'ko-kr',
+        resolvers: [createAcceptLanguageLocaleResolver()],
+        supportedLocales: ['en-US', 'ko-KR'],
       }),
     ).toThrow(TypeError);
 

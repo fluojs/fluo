@@ -118,6 +118,44 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
     expect(locale).toEqual({ locale: 'ko', source: 'grpc-metadata' });
   });
 
+  it('matches adapter Accept-Language ranges case-insensitively while preserving supported locale spelling', () => {
+    const context: TransportContext = {
+      headers: { metadata: 'EN-us;q=1, KO;q=0.8' },
+    };
+
+    const locale = resolveLocale(context, {
+      defaultLocale: 'ko-KR',
+      resolvers: [createHeaderLocaleResolver({ getHeader: (ctx) => ctx.headers?.metadata, source: 'grpc-metadata' })],
+      supportedLocales: ['en-US', 'ko-KR'],
+    });
+
+    expect(locale).toEqual({ locale: 'en-US', source: 'grpc-metadata' });
+  });
+
+  it('keeps query, cookie, storage, and custom resolver locale validation case-sensitive', () => {
+    const context: TransportContext = {
+      cookies: { locale: 'KO-kr' },
+      headers: { metadata: 'EN-us;q=1' },
+      query: { locale: 'EN-us' },
+      storage: { locale: 'ko-kr' },
+    };
+    const wrongCaseCustom: LocaleAdapterResolver<TransportContext> = () => ({ locale: 'en-us', source: 'custom' });
+
+    const locale = resolveLocale(context, {
+      defaultLocale: 'ko-KR',
+      resolvers: [
+        createQueryLocaleResolver({ getQueryValue: (ctx) => ctx.query?.locale }),
+        createCookieLocaleResolver({ getCookieValue: (ctx) => ctx.cookies?.locale }),
+        createStorageLocaleResolver({ getStoredLocale: (ctx) => ctx.storage?.locale }),
+        wrongCaseCustom,
+        createHeaderLocaleResolver({ getHeader: (ctx) => ctx.headers?.metadata, source: 'grpc-metadata' }),
+      ],
+      supportedLocales: ['en-US', 'ko-KR'],
+    });
+
+    expect(locale).toEqual({ locale: 'en-US', source: 'grpc-metadata' });
+  });
+
   it('ignores empty, invalid, and unsupported adapter output before using storage fallback', () => {
     const context: TransportContext = {
       cookies: { locale: '' },
@@ -219,6 +257,22 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
         supportedLocales: ['en', 'ko'],
       }),
     ).toThrow(TypeError);
+    expect(getAdapterLocale(store, context)).toBeUndefined();
+  });
+
+  it('rejects default locale casing that does not exactly match supportedLocales before storing metadata', () => {
+    const context: TransportContext = { headers: { metadata: 'EN-us;q=1' } };
+    const store = createWeakMapLocaleStore<TransportContext>();
+
+    expect(() =>
+      bindLocale(context, {
+        defaultLocale: 'ko-kr',
+        resolvers: [createHeaderLocaleResolver({ getHeader: (ctx) => ctx.headers?.metadata })],
+        store,
+        supportedLocales: ['en-US', 'ko-KR'],
+      }),
+    ).toThrow(TypeError);
+
     expect(getAdapterLocale(store, context)).toBeUndefined();
   });
 

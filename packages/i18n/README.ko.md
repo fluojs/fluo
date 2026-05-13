@@ -199,7 +199,7 @@ Adapter는 의도적으로 explicit합니다:
 - `setHttpLocale(ctx, locale, metadata)`는 `createContextKey(...)`를 사용해 현재 `RequestContext`에 locale metadata를 저장합니다.
 - `getHttpLocale(ctx)`는 global fallback 없이 metadata를 읽습니다.
 - `parseAcceptLanguage(header)`는 q-value 순서로 valid `Accept-Language` range를 parse하고 invalid 또는 q=0 entry를 무시합니다.
-- `createAcceptLanguageLocaleResolver(...)`는 request header에서 첫 번째 supported locale을 선택합니다.
+- `createAcceptLanguageLocaleResolver(...)`는 request header에서 첫 번째 supported locale을 선택하고, language range를 case-insensitive로 match하며, match되면 configured `supportedLocales` spelling을 반환합니다.
 - `createAcceptLanguageLocalePolicyResolver(...)`는 opt-in이며, `en-US` 같은 regional range를 supported `en`으로 normalize하거나 explicit supported range를 모두 확인한 뒤 wildcard fallback을 선택할 수 있습니다.
 - `resolveHttpLocale(ctx, options)`는 application-provided resolver를 배열 순서대로 실행하고 invalid 또는 unsupported resolver output을 무시하며, 아무 resolver도 match하지 않으면 `defaultLocale`을 source `default`로 저장합니다.
 
@@ -264,7 +264,7 @@ Generic adapter contract는 의도적으로 explicit합니다.
 - `resolveLocale(context, options)`는 application-provided resolver를 배열 순서대로 실행하고 empty, invalid, unsupported resolver output을 무시하며, 아무 것도 match하지 않으면 `defaultLocale`을 source `default`로 반환합니다.
 - `bindLocale(context, { store, ...options })`는 locale을 resolve한 뒤 application-provided `LocaleAdapterStore`에 immutable metadata를 저장합니다.
 - `createWeakMapLocaleStore()`는 socket, call, session, request object를 mutate하지 않고 per-object metadata storage를 제공합니다.
-- `createHeaderLocaleResolver(...)`는 HTTP adapter와 같은 q-value 및 wildcard 동작으로 `Accept-Language` style 값을 parse합니다.
+- `createHeaderLocaleResolver(...)`는 HTTP adapter와 같은 q-value, wildcard 동작, case-insensitive matching, supported-locale spelling preservation으로 `Accept-Language` style 값을 parse합니다.
 - `createHeaderLocalePolicyResolver(...)`는 HTTP type을 import하지 않고 동일한 opt-in regional-locale normalization 및 wildcard fallback policy를 제공합니다.
 - `createQueryLocaleResolver(...)`, `createCookieLocaleResolver(...)`, `createStorageLocaleResolver(...)`는 caller-owned abstraction에서 locale candidate를 읽고 browser global이나 framework internal에는 접근하지 않습니다.
 
@@ -420,7 +420,7 @@ typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en'
 | Export | 설명 |
 |---|---|
 | `I18nModule` | DI 등록을 위한 모듈입니다. |
-| `I18nService` | 번역 및 포맷팅을 위한 코어 서비스입니다. |
+| `I18nService` | Detached option/catalog snapshot을 소유하고 translation을 resolve하며 explicit-locale `Intl` formatting helper(`formatDateTime`, `formatNumber`, `formatCurrency`, `formatPercent`, `formatList`, `formatRelativeTime`)를 제공하는 core service입니다. |
 | `createI18n` | 독립형 서비스를 생성하기 위한 헬퍼입니다. |
 | `I18nError` | 패키지 전용 에러 클래스입니다. |
 
