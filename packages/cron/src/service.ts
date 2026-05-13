@@ -2,12 +2,12 @@ import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import { getRedisComponentId } from '@fluojs/redis';
 import { Cron as CronValidator } from 'croner';
-import {
-  type ApplicationLogger,
-  type CompiledModule,
-  type OnApplicationBootstrap,
-  type OnApplicationShutdown,
-  type OnModuleDestroy,
+import type {
+  ApplicationLogger,
+  CompiledModule,
+  OnApplicationBootstrap,
+  OnApplicationShutdown,
+  OnModuleDestroy,
 } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
@@ -221,12 +221,20 @@ export class CronLifecycleService
       return true;
     }
 
-    task.enabled = true;
-
     if (this.started) {
-      this.scheduleTask(task);
+      task.enabled = true;
+
+      try {
+        this.scheduleTask(task);
+      } catch (error) {
+        task.enabled = false;
+        throw error;
+      }
+
+      return true;
     }
 
+    task.enabled = true;
     return true;
   }
 
@@ -292,14 +300,28 @@ export class CronLifecycleService
       throw new Error(`updateCronExpression() supports only cron tasks. Received ${task.descriptor.kind} task "${name}".`);
     }
 
-    task.descriptor.expression = expression;
-
     if (!task.enabled || !this.started) {
+      task.descriptor.expression = expression;
       return;
     }
 
-    this.unscheduleTask(task);
-    this.scheduleTask(task);
+    const previousExpression = task.descriptor.expression;
+    const previousHandle = task.scheduledHandle;
+
+    task.descriptor.expression = expression;
+
+    try {
+      const nextHandle = this.createScheduledHandle(task);
+      task.scheduledHandle = nextHandle;
+
+      if (previousHandle) {
+        this.stopScheduledHandle(previousHandle);
+      }
+    } catch (error) {
+      task.descriptor.expression = previousExpression;
+      task.scheduledHandle = previousHandle;
+      throw error;
+    }
   }
 
   async onApplicationBootstrap(): Promise<void> {
@@ -454,11 +476,11 @@ export class CronLifecycleService
       source,
     };
 
-    this.tasks.set(descriptor.taskName, task);
-
     if (this.started) {
-      this.scheduleTask(task);
+      task.scheduledHandle = this.createScheduledHandle(task);
     }
+
+    this.tasks.set(descriptor.taskName, task);
   }
 
   private assertTaskNameAvailable(taskName: string): void {
@@ -480,55 +502,57 @@ export class CronLifecycleService
       return;
     }
 
+    task.scheduledHandle = this.createScheduledHandle(task);
+  }
+
+  private createScheduledHandle(task: RuntimeTaskState): RuntimeScheduledTask {
+    const taskName = task.descriptor.taskName;
+
     if (task.descriptor.kind === 'cron') {
       const expression = task.descriptor.expression;
 
       if (!expression) {
-        throw new Error(`Cron task "${task.descriptor.taskName}" is missing a cron expression.`);
+        throw new Error(`Cron task "${taskName}" is missing a cron expression.`);
       }
 
-      const scheduled = this.options.scheduler(
+      return this.options.scheduler(
         expression,
         {
-          name: task.descriptor.taskName,
+          name: taskName,
           protect: true,
           timezone: task.descriptor.timezone,
         },
         async () => {
-          await this.handleTaskTick(task.descriptor.taskName);
+          await this.handleTaskTick(taskName);
         },
       );
-
-      task.scheduledHandle = scheduled;
-      return;
     }
 
     const ms = task.descriptor.ms;
 
     if (!ms) {
-      throw new Error(`${task.descriptor.kind} task "${task.descriptor.taskName}" is missing interval duration.`);
+      throw new Error(`${task.descriptor.kind} task "${taskName}" is missing interval duration.`);
     }
 
     if (task.descriptor.kind === 'interval') {
       const timer = setInterval(() => {
-        void this.handleTaskTick(task.descriptor.taskName);
+        void this.handleTaskTick(taskName);
       }, ms);
 
-      task.scheduledHandle = {
+      return {
         stop: () => {
           clearInterval(timer);
         },
       };
-      return;
     }
 
     const timer = setTimeout(() => {
-      void this.handleTaskTick(task.descriptor.taskName).finally(() => {
-        this.completeTimeoutTask(task.descriptor.taskName);
+      void this.handleTaskTick(taskName).finally(() => {
+        this.completeTimeoutTask(taskName);
       });
     }, ms);
 
-    task.scheduledHandle = {
+    return {
       stop: () => {
         clearTimeout(timer);
       },
@@ -551,19 +575,23 @@ export class CronLifecycleService
       return;
     }
 
+    const scheduledHandle = task.scheduledHandle;
+    task.scheduledHandle = undefined;
+    this.stopScheduledHandle(scheduledHandle);
+  }
+
+  private stopScheduledHandle(scheduledHandle: RuntimeScheduledTask): void {
     try {
-      task.scheduledHandle.stop();
+      scheduledHandle.stop();
     } catch (error) {
-      this.logger.error('Failed to stop scheduled task during shutdown.', error, 'CronLifecycleService');
-    } finally {
-      task.scheduledHandle = undefined;
+      this.logger.error('Failed to stop scheduled task.', error, 'CronLifecycleService');
     }
   }
 
   private async handleTaskTick(taskName: string): Promise<void> {
     const taskState = this.tasks.get(taskName);
 
-    if (!taskState || !taskState.enabled || taskState.running) {
+    if (!taskState?.enabled || taskState.running) {
       return;
     }
 

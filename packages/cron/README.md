@@ -23,6 +23,8 @@ Decorator-based scheduling for fluo applications with lifecycle-managed startup/
 npm install @fluojs/cron croner
 ```
 
+`croner` is the scheduler engine used by `@fluojs/cron`. Install it alongside the package so lockfiles make the runtime scheduler dependency explicit for applications and deployment audits.
+
 ## When to Use
 
 - When you need to run periodic background tasks (e.g., database cleanup, report generation).
@@ -141,6 +143,8 @@ class TaskManager {
 
 The registry exposes `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, and `updateCronExpression`. Timeout tasks run once, then disable themselves while remaining in the registry so they can be re-enabled deliberately.
 
+Dynamic cron registration is atomic with scheduler startup: if the scheduler rejects a new cron job, the registry does not retain a half-registered task. Updating a running cron expression is also rollback-safe. If rescheduling fails, the previous expression and scheduled job remain active. Cron tasks use both scheduler-level no-overlap protection and fluo's in-process running guard, so the same task instance will not run overlapping ticks.
+
 ### Bounded Shutdown
 
 `CronModule` drains active task executions during application shutdown with a bounded timeout so one hung task cannot block process termination forever.
@@ -177,6 +181,7 @@ Only singleton providers/controllers are scheduled. Request-scoped and transient
 - `SCHEDULING_REGISTRY`: Injection token for the `SchedulingRegistry` service.
 - `normalizeCronModuleOptions(...)`: Normalizes module options and defaults.
 - `createCronPlatformStatusSnapshot(...)`: Creates a status snapshot for health/readiness integrations.
+- Public types: `CronModuleOptions`, `CronDistributedOptions`, `CronShutdownOptions`, `CronScheduleOptions`, `CronScheduler`, `CronScheduledJob`, `SchedulingRegistry`, `SchedulingTaskDescriptor`, `SchedulingTaskCallback`, `SchedulingTaskOptions`, `CronTaskOptions`, `IntervalTaskOptions`, and `TimeoutTaskOptions`.
 - Metadata helpers and symbols: `defineSchedulingTaskMetadata`, `defineCronTaskMetadata`, `getSchedulingTaskMetadata`, `getCronTaskMetadata`, `getSchedulingTaskMetadataEntries`, `getCronTaskMetadataEntries`, `schedulingMetadataSymbol`, `cronMetadataSymbol`.
 
 
