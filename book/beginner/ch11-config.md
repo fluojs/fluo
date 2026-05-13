@@ -51,7 +51,7 @@ Predictability means that by looking at `AppModule`, you can understand which ex
 ### Understanding the Internal Mechanism of Configuration
 When a fluo application starts, `ConfigModule` explicitly composes configuration sources. First, it identifies the provided `envFile` path. If the file exists, it uses a parser to read key-value pairs and stores them in a private in-memory map. Then it merges them with `defaults` defined in code and, if needed, a `processEnv` snapshot explicitly passed to `forRoot(...)`.
 
-This initialization step is important because it happens during the framework core's `OnModuleInit` lifecycle hook. By the time `AppModule` has fully loaded, `ConfigService` is already populated with the final merged configuration state and ready to be injected where it's needed most.
+This initialization step is important because `ConfigModule` loads the first snapshot while the provider is created during module graph bootstrap. By the time `AppModule` has fully loaded, `ConfigService` is already populated with the final merged configuration state and ready to be injected where it's needed most. If `watch: true` is enabled, file watching starts later during application bootstrap and keeps the same injected `ConfigService` instance aligned with successful reloads.
 
 ## 11.2 Setting up ConfigModule
 
@@ -308,9 +308,9 @@ Sometimes you may want to provide a feature only when a specific configuration k
 For example, if you have an optional feature called analytics tracking, you can set it to `false` by default in code. Then service layers can always work with a boolean value instead of handling `undefined` or `null` throughout the codebase. This Safe Default pattern simplifies code and makes it more resilient.
 
 ### Environment Variable Interpolation
-Sometimes one configuration value depends on another. For example, `LOG_PATH` may be relative to `APP_ROOT`. Some dotenv libraries support interpolation such as `${APP_ROOT}/logs`, but fluo recommends handling this explicitly in a `ConfigModule` factory or validation step. This keeps the logic clear and makes debugging easier.
+Sometimes one configuration value depends on another. For example, `LOG_PATH` may be relative to `APP_ROOT`. The default dotenv-backed parser expands interpolation such as `${APP_ROOT}/logs` inside env files, so simple dotenv-style references work without custom parsing. For more complex derived values, prefer handling the transformation explicitly in a `ConfigModule` factory or validation step. This keeps the logic clear and makes debugging easier.
 
-Explicit interpolation preserves configuration predictability and avoids problems caused by complex regex-based string replacement in some libraries. Handling it in TypeScript also gives you full type safety and lets you use standard string manipulation functions.
+Keeping complex interpolation explicit preserves configuration predictability and avoids problems caused by hard-to-debug string replacement rules. Handling those transformations in TypeScript also gives you full type safety and lets you use standard string manipulation functions.
 
 ### Configuration Inheritance and Merging
 In large organizations, common configuration may need to be shared across multiple microservices. Even in this case, the basic entrypoint is `ConfigModule.forRoot(...)`. For example, you can read global settings ahead of time from a shared JSON file or remote configuration server, pass them through `defaults` or `processEnv`, and then merge them with local `.env` configuration.
@@ -318,7 +318,7 @@ In large organizations, common configuration may need to be shared across multip
 This layered approach preserves consistency across the full service set while still giving each service the flexibility to override settings for its own needs. It's a strong pattern for infrastructure management at scale.
 
 ### Dynamic Configuration Reloading
-Most configuration is loaded at startup, but some applications may need to change configuration without restarting. fluo's `ConfigService` is designed for startup configuration by default, but dynamic reloading can be implemented by watching file system events or external triggers and updating the service's internal state.
+Most configuration is loaded at startup, but some applications may need to change configuration without restarting. `ConfigModule.forRoot({ watch: true })` can watch the env file's parent directory and update the same injected `ConfigService` instance after successful reloads. If a watched reload can fail validation or listener handling, pass `onReloadError` so the application owns that failure path.
 
 However, dynamic reloading should be used carefully because it can introduce race conditions and make application state harder to reason about. In most cases, rolling restarts of containers are a safer and more predictable way to propagate configuration changes in production.
 

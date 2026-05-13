@@ -386,7 +386,7 @@ function startReloaderWatcher(
     return undefined;
   }
 
-  const watchTarget = existsSync(normalized.envFile) ? normalized.envFile : dirname(normalized.envFile);
+  const watchTarget = dirname(normalized.envFile);
   const watchedEnvFileName = basename(normalized.envFile);
 
   if (!existsSync(watchTarget)) {
@@ -394,7 +394,7 @@ function startReloaderWatcher(
   }
 
   return watch(watchTarget, { persistent: false }, (_eventType, filename) => {
-    if (watchTarget !== normalized.envFile && filename !== null && filename.toString() !== watchedEnvFileName) {
+    if (filename !== null && filename.toString() !== watchedEnvFileName) {
       return;
     }
 

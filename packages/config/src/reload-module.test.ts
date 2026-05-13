@@ -2,13 +2,41 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getModuleMetadata } from '@fluojs/core/internal';
+import { Container, type Provider } from '@fluojs/di';
 import { describe, expect, it } from 'vitest';
 
+import { ConfigModule } from './module.js';
 import { CONFIG_RELOADER, ConfigReloadManager, ConfigReloadModule } from './reload-module.js';
 import { ConfigService } from './service.js';
-import type { ConfigDictionary, ConfigLoadOptions } from './types.js';
+import type { ConfigDictionary, ConfigLoadOptions, ConfigReloader } from './types.js';
+
+function extractProviders(moduleRef: new () => unknown): Provider[] {
+  return (getModuleMetadata(moduleRef)?.providers ?? []) as Provider[];
+}
 
 describe('ConfigReloadManager', () => {
+  it('resolves CONFIG_RELOADER in a production-shaped module graph with ConfigModule', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-reload-module-graph-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const container = new Container();
+    container.register(
+      ...extractProviders(ConfigModule.forRoot({ envFile: envPath, processEnv: {} })),
+      ...extractProviders(ConfigReloadModule.forRoot({ envFile: envPath, processEnv: {} })),
+    );
+
+    const reloader = await container.resolve<ConfigReloader>(CONFIG_RELOADER);
+    const service = await container.resolve(ConfigService);
+
+    expect(reloader.current()['PORT']).toBe('4000');
+
+    writeFileSync(envPath, 'PORT=4100\n');
+    expect(reloader.reload()['PORT']).toBe('4100');
+    expect(service.get('PORT')).toBe('4100');
+  });
+
   it('snapshots caller-owned options during ConfigReloadModule registration', () => {
     const options: ConfigLoadOptions = {
       defaults: { nested: { value: 'registered' }, PORT: '4000' },
