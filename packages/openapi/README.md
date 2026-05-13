@@ -69,6 +69,8 @@ await app.listen(3000);
 
 If you need to bypass controller discovery, create handler descriptors with `createHandlerMapping(...)` from `@fluojs/http` and pass them through `descriptors`. `OpenApiModule` does not infer handlers from `@Module({ controllers: [...] })` on its own.
 
+When a prebuilt descriptor and a discovered source resolve to the same OpenAPI path and HTTP method, the later descriptor wins. Because `OpenApiModule` composes discovered `sources` first and explicit `descriptors` second, explicit descriptors take precedence without emitting duplicate operations or silently leaving stale source metadata in the generated document.
+
 ## Core Capabilities
 
 ### Automated Specification Generation

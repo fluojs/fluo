@@ -232,6 +232,38 @@ function normalizeOperationId(descriptor: HandlerDescriptor): string {
   return `${tag}_${descriptor.methodName}_${descriptor.route.method.toLowerCase()}${path}`;
 }
 
+function createOperationDeduplicationKey(descriptor: HandlerDescriptor): string {
+  return `${descriptor.route.method.toLowerCase()}:${expressPathToOpenApi(descriptor.route.path)}`;
+}
+
+function resolveUniqueOperationId(operationId: string, usedOperationIds: Set<string>): string {
+  if (!usedOperationIds.has(operationId)) {
+    usedOperationIds.add(operationId);
+    return operationId;
+  }
+
+  let suffix = 2;
+  let candidate = `${operationId}_${suffix}`;
+
+  while (usedOperationIds.has(candidate)) {
+    suffix += 1;
+    candidate = `${operationId}_${suffix}`;
+  }
+
+  usedOperationIds.add(candidate);
+  return candidate;
+}
+
+function dedupeDescriptorsByOperation(descriptors: readonly HandlerDescriptor[]): HandlerDescriptor[] {
+  const descriptorsByOperation = new Map<string, HandlerDescriptor>();
+
+  for (const descriptor of descriptors) {
+    descriptorsByOperation.set(createOperationDeduplicationKey(descriptor), descriptor);
+  }
+
+  return Array.from(descriptorsByOperation.values());
+}
+
 type DtoBindingEntry = ReturnType<typeof getDtoBindingSchema>[number];
 type DtoValidationEntry = ReturnType<typeof getDtoValidationSchema>[number];
 
@@ -1121,6 +1153,7 @@ function createOperationObject(
   componentSchemas: Record<string, OpenApiSchemaObject>,
   security: OpenApiSecurityRequirementObject[] | undefined,
   context: BuildSchemaContext,
+  usedOperationIds: Set<string>,
 ): OpenApiOperationObject {
   const parameters = mergeOperationParameters(createParameters(descriptor.route.request, context), methodMeta?.parameters);
   const requestBody = mergeOperationRequestBody(
@@ -1129,7 +1162,7 @@ function createOperationObject(
   );
 
   return {
-    operationId: normalizeOperationId(descriptor),
+    operationId: resolveUniqueOperationId(normalizeOperationId(descriptor), usedOperationIds),
     responses,
     tags: resolveControllerTags(descriptor),
     ...(methodMeta?.operation?.summary !== undefined && { summary: methodMeta.operation.summary }),
@@ -1153,6 +1186,7 @@ function buildOperationEntry(
   componentSchemas: Record<string, OpenApiSchemaObject>,
   defaultErrorResponsesPolicy: DefaultErrorResponsesPolicy,
   context: BuildSchemaContext,
+  usedOperationIds: Set<string>,
 ): BuiltOperationEntry | undefined {
   const openApiPath = expressPathToOpenApi(descriptor.route.path);
   const method = descriptor.route.method.toLowerCase() as OpenApiOperationMethod;
@@ -1170,7 +1204,7 @@ function buildOperationEntry(
     context,
   );
   const security = createOperationSecurity(methodMeta);
-  const operation = createOperationObject(descriptor, methodMeta, responses, componentSchemas, security, context);
+  const operation = createOperationObject(descriptor, methodMeta, responses, componentSchemas, security, context, usedOperationIds);
 
   return {
     method,
@@ -1245,15 +1279,17 @@ export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): Open
     usedSchemaNames: new Set(defaultErrorResponsesPolicy === 'inject' ? ['ErrorResponse'] : []),
   };
   let hasBearerAuth = false;
+  const usedOperationIds = new Set<string>();
 
   registerExtraModels(options.extraModels, componentSchemas, context);
 
-  for (const descriptor of options.descriptors) {
+  for (const descriptor of dedupeDescriptorsByOperation(options.descriptors)) {
     const entry = buildOperationEntry(
       descriptor,
       componentSchemas,
       defaultErrorResponsesPolicy,
       context,
+      usedOperationIds,
     );
 
     if (!entry) {

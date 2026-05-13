@@ -2031,6 +2031,59 @@ describe('OpenApiModule', () => {
     );
   });
 
+  it('forRoot lets explicit descriptors take precedence over duplicate source operations', async () => {
+    @Controller('/duplicate-openapi')
+    class SourceController {
+      @ApiOperation({ summary: 'source summary' })
+      @Get('/')
+      read() {
+        return { source: true };
+      }
+    }
+
+    @Controller('/duplicate-openapi')
+    class ExplicitController {
+      @ApiOperation({ summary: 'explicit summary' })
+      @Get('/')
+      read() {
+        return { explicit: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      descriptors: createHandlerMapping([{ controllerToken: ExplicitController }]).descriptors,
+      sources: [{ controllerToken: SourceController }],
+      title: 'Duplicate API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [SourceController],
+      imports: [openApiModule],
+    });
+
+    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        paths: {
+          '/duplicate-openapi': {
+            get: expect.objectContaining({
+              operationId: 'ExplicitController_read_get_duplicate_openapi',
+              summary: 'explicit summary',
+            }),
+          },
+        },
+      }),
+    );
+  });
+
   it('keeps descriptor-only registration bounded to explicit descriptors', async () => {
     @Controller('/documented')
     class DocumentedController {
