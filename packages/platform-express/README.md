@@ -39,7 +39,7 @@ const app = await fluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-`createExpressAdapter()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit port values throw during adapter setup.
+`createExpressAdapter()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit numeric options such as `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` throw during adapter setup. `maxBodySize` and `shutdownTimeoutMs` are non-negative integer byte/time limits, so `0` is valid: `maxBodySize: 0` allows only empty request bodies, and `shutdownTimeoutMs: 0` force-closes connections as soon as shutdown yields to the timer queue.
 
 ## Common Patterns
 
@@ -90,7 +90,7 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 - **Versioning parity**: Header/media-type/custom version selection remains dispatcher-owned even when Express Router handles the initial path match.
 - **Middleware rewrite parity**: App middleware that rewrites method or path invalidates native handoff and rematches the rewritten request.
 - **Response serialization parity**: String responses default to `text/plain`, objects/arrays serialize as JSON, binary payloads default to `application/octet-stream`, and `set-cookie` values are merged.
-- **Startup and shutdown**: The adapter supports HTTP/HTTPS startup, retries `EADDRINUSE` according to retry options, drains sockets on close, and can force-close connections after shutdown timeout.
+- **Startup and shutdown**: The adapter supports HTTP/HTTPS startup, retries `EADDRINUSE` according to retry options, drains sockets on close, and can force-close connections after shutdown timeout, including immediate force-close when `shutdownTimeoutMs` is `0`.
 
 ## Public API Overview
 
@@ -101,7 +101,7 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 - `ExpressHttpApplicationAdapter`: The core adapter implementation class.
 - Option types: `ExpressAdapterOptions`, `BootstrapExpressApplicationOptions`, `RunExpressApplicationOptions`, `CorsInput`, `ExpressApplicationSignal`.
 
-`createExpressAdapter(options, multipartOptions?)` supports `host`, `https`, `maxBodySize`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs`. `bootstrapExpressApplication(...)` and `runExpressApplication(...)` also accept `cors`, `globalPrefix`, `globalPrefixExclude`, `logger`, `middleware`, `multipart`, `securityHeaders`, `forceExitTimeoutMs`, and `shutdownSignals`.
+`createExpressAdapter(options, multipartOptions?)` supports `host`, `https`, `maxBodySize`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs`. Direct `ExpressHttpApplicationAdapter` construction applies the same numeric validation as the factory. `bootstrapExpressApplication(...)` and `runExpressApplication(...)` also accept `cors`, `globalPrefix`, `globalPrefixExclude`, `logger`, `middleware`, `multipart`, `securityHeaders`, `forceExitTimeoutMs`, and `shutdownSignals`.
 
 ## Related Packages
 

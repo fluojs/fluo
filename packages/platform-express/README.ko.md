@@ -39,7 +39,7 @@ const app = await fluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-`createExpressAdapter()`는 기본 port로 `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. 잘못된 explicit port 값은 adapter setup 중 throw됩니다.
+`createExpressAdapter()`는 기본 port로 `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs` 같은 잘못된 explicit numeric option은 adapter setup 중 throw됩니다. `maxBodySize`와 `shutdownTimeoutMs`는 음수가 아닌 정수 byte/time limit이므로 `0`도 유효합니다. `maxBodySize: 0`은 빈 request body만 허용하고, `shutdownTimeoutMs: 0`은 shutdown이 timer queue로 양보되는 즉시 connection을 force-close합니다.
 
 ## 주요 패턴
 
@@ -90,7 +90,7 @@ const adapter = createExpressAdapter(
 - **버저닝 parity**: Express Router가 최초 path match를 하더라도 header/media-type/custom version 선택은 계속 dispatcher가 최종 결정합니다.
 - **Middleware rewrite parity**: App middleware가 method/path를 rewrite하면 native handoff는 무효화되고 rewrite된 요청을 기준으로 다시 매칭합니다.
 - **응답 serialization parity**: String response는 기본적으로 `text/plain`, object/array는 JSON, binary payload는 `application/octet-stream`으로 serialize되며 `set-cookie` 값은 병합됩니다.
-- **Startup과 shutdown**: 어댑터는 HTTP/HTTPS startup, retry option에 따른 `EADDRINUSE` 재시도, close 시 socket drain, shutdown timeout 이후 force-close를 지원합니다.
+- **Startup과 shutdown**: 어댑터는 HTTP/HTTPS startup, retry option에 따른 `EADDRINUSE` 재시도, close 시 socket drain, shutdown timeout 이후 force-close를 지원하며, `shutdownTimeoutMs`가 `0`이면 즉시 force-close합니다.
 
 ## 공개 API 개요
 
@@ -101,7 +101,7 @@ const adapter = createExpressAdapter(
 - `ExpressHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다.
 - Option type: `ExpressAdapterOptions`, `BootstrapExpressApplicationOptions`, `RunExpressApplicationOptions`, `CorsInput`, `ExpressApplicationSignal`.
 
-`createExpressAdapter(options, multipartOptions?)`는 `host`, `https`, `maxBodySize`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`를 지원합니다. `bootstrapExpressApplication(...)`과 `runExpressApplication(...)`은 `cors`, `globalPrefix`, `globalPrefixExclude`, `logger`, `middleware`, `multipart`, `securityHeaders`, `forceExitTimeoutMs`, `shutdownSignals`도 받습니다.
+`createExpressAdapter(options, multipartOptions?)`는 `host`, `https`, `maxBodySize`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`를 지원합니다. `ExpressHttpApplicationAdapter`를 직접 생성하는 경우에도 factory와 같은 numeric validation이 적용됩니다. `bootstrapExpressApplication(...)`과 `runExpressApplication(...)`은 `cors`, `globalPrefix`, `globalPrefixExclude`, `logger`, `middleware`, `multipart`, `securityHeaders`, `forceExitTimeoutMs`, `shutdownSignals`도 받습니다.
 
 ## 관련 패키지
 

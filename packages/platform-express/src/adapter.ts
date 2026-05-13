@@ -203,6 +203,11 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
   ) {
+    resolvePort(this.port);
+    resolveNonNegativeIntegerOption('retryDelayMs', this.retryDelayMs, 150);
+    resolveNonNegativeIntegerOption('retryLimit', this.retryLimit, 20);
+    resolveNonNegativeIntegerOption('maxBodySize', this.maxBodySize, DEFAULT_MAX_BODY_SIZE);
+    resolveNonNegativeIntegerOption('shutdownTimeoutMs', this.shutdownTimeoutMs, DEFAULT_SHUTDOWN_TIMEOUT_MS);
     this.app = express();
     this.requestResponseFactory = createExpressRequestResponseFactory(
       this.multipartOptions,
@@ -514,13 +519,13 @@ export function createExpressAdapter(
   return new ExpressHttpApplicationAdapter(
     resolvePort(options.port),
     options.host,
-    options.retryDelayMs,
-    options.retryLimit,
+    resolveNonNegativeIntegerOption('retryDelayMs', options.retryDelayMs, 150),
+    resolveNonNegativeIntegerOption('retryLimit', options.retryLimit, 20),
     options.https,
     multipartOptions,
-    options.maxBodySize,
+    resolveNonNegativeIntegerOption('maxBodySize', options.maxBodySize, DEFAULT_MAX_BODY_SIZE),
     options.rawBody,
-    options.shutdownTimeoutMs,
+    resolveNonNegativeIntegerOption('shutdownTimeoutMs', options.shutdownTimeoutMs, DEFAULT_SHUTDOWN_TIMEOUT_MS),
   );
 }
 
@@ -897,6 +902,16 @@ function resolvePort(value: number | undefined): number {
   }
 
   return port;
+}
+
+function resolveNonNegativeIntegerOption(name: string, value: number | undefined, defaultValue: number): number {
+  const resolved = value ?? defaultValue;
+
+  if (!Number.isInteger(resolved) || resolved < 0) {
+    throw new Error(`Invalid ${name} value: ${String(resolved)}. Expected a non-negative integer.`);
+  }
+
+  return resolved;
 }
 
 async function listenServer(server: ExpressServer, port: number, host: string | undefined): Promise<void> {
