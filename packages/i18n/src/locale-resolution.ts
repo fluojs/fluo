@@ -58,18 +58,18 @@ export function isValidLocale(locale: unknown): locale is I18nLocale {
 }
 
 /**
- * Checks whether a valid locale is allowed by an optional supported-locale list.
+ * Checks whether a valid locale exactly matches an optional supported-locale list.
  *
  * @param locale Locale identifier to check.
  * @param supportedLocales Optional list of supported locale identifiers.
- * @returns Whether the locale is supported, or `true` when no supported-locale list is configured.
+ * @returns Whether the locale is supported with identical spelling, or `true` when no supported-locale list is configured.
  */
 export function isSupportedLocale(locale: I18nLocale, supportedLocales: readonly I18nLocale[] | undefined): boolean {
-  return resolveSupportedLocale(locale, supportedLocales) !== undefined;
+  return supportedLocales === undefined || supportedLocales.length === 0 || supportedLocales.includes(locale);
 }
 
 /**
- * Resolves a valid locale candidate to the caller-configured supported locale spelling.
+ * Resolves a valid locale candidate to the caller-configured supported locale spelling with case-insensitive matching.
  *
  * @param locale Locale identifier to check.
  * @param supportedLocales Optional list of supported locale identifiers.
