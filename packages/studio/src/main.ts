@@ -10,7 +10,12 @@ import {
   type StudioPayload,
 } from './contracts.js';
 
-import type { PlatformDiagnosticIssue, PlatformShellSnapshot, PlatformSnapshot } from '@fluojs/runtime';
+import type { PlatformShellSnapshot, PlatformSnapshot } from '@fluojs/runtime';
+import {
+  escapeHtml,
+  renderDiagnostics,
+  renderGraphSvg,
+} from './viewer-rendering.js';
 
 interface StudioState {
   payload?: StudioPayload;
@@ -49,15 +54,6 @@ const state: StudioState = {
     severities: [],
   },
 };
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
 
 function downloadTextFile(filename: string, content: string): void {
   const blob = new Blob([content], { type: 'application/json' });
@@ -138,75 +134,6 @@ function computeFilteredSnapshot(): void {
   state.selectedComponentId = selected?.id;
 }
 
-function renderGraphSvg(snapshot: PlatformShellSnapshot, selectedComponentId: string | undefined): string {
-  const width = 900;
-  const height = 460;
-  const radius = Math.min(width, height) / 2 - 70;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const components = snapshot.components;
-  const positions = new Map<string, { x: number; y: number }>();
-
-  components.forEach((component: PlatformSnapshot, index: number) => {
-    const angle = (Math.PI * 2 * index) / Math.max(components.length, 1);
-    positions.set(component.id, {
-      x: centerX + radius * Math.cos(angle),
-      y: centerY + radius * Math.sin(angle),
-    });
-  });
-
-  const edgeLines = components
-    .flatMap((component: PlatformSnapshot) =>
-      component.dependencies.map((dependency: string) => {
-        const from = positions.get(component.id);
-        const to = positions.get(dependency);
-        if (!from || !to) {
-          return '';
-        }
-
-        return `<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" class="edge-line" marker-end="url(#arrow)" />`;
-      }))
-    .join('');
-
-  const nodeCircles = components
-    .map((component: PlatformSnapshot) => {
-      const point = positions.get(component.id);
-      if (!point) {
-        return '';
-      }
-
-      const readinessClass = component.readiness.status === 'not-ready'
-        ? 'component-not-ready'
-        : component.readiness.status === 'degraded'
-        ? 'component-degraded'
-        : 'component-ready';
-
-      const classes = [
-        'module-node',
-        readinessClass,
-        component.id === selectedComponentId ? 'module-selected' : '',
-      ]
-        .filter(Boolean)
-        .join(' ');
-
-      return `<g>
-  <circle cx="${point.x}" cy="${point.y}" r="34" class="${classes}" data-component="${escapeHtml(component.id)}" />
-  <text x="${point.x}" y="${point.y + 4}" text-anchor="middle" class="module-label">${escapeHtml(component.id)}</text>
-</g>`;
-    })
-    .join('');
-
-  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Platform component dependency graph">
-  <defs>
-    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" class="edge-arrow" />
-    </marker>
-  </defs>
-  ${edgeLines}
-  ${nodeCircles}
-</svg>`;
-}
-
 function renderDetails(component: PlatformSnapshot | undefined): string {
   if (!component) {
     return '<p class="muted">No component selected.</p>';
@@ -274,36 +201,6 @@ function renderSnapshotSummary(snapshot: PlatformShellSnapshot | undefined): str
       <span class="chip">ready/degraded/not-ready: ${counts.ready}/${counts.degraded}/${counts.notReady}</span>
     </div>
   `;
-}
-
-function renderDiagnostics(snapshot: PlatformShellSnapshot | undefined): string {
-  if (!snapshot) {
-    return '<p class="muted">No platform snapshot loaded.</p>';
-  }
-
-  if (snapshot.diagnostics.length === 0) {
-    return '<p class="muted">No diagnostics issues.</p>';
-  }
-
-  return `<div class="diagnostics-list">
-    ${snapshot.diagnostics
-      .map((issue: PlatformDiagnosticIssue) => {
-        const dependsOn = issue.dependsOn && issue.dependsOn.length > 0
-          ? `<div class="chips">${issue.dependsOn.map((dependency: string) => `<span class="chip">dependsOn: ${escapeHtml(dependency)}</span>`).join('')}</div>`
-          : '';
-
-        return `<article class="card issue severity-${escapeHtml(issue.severity)}">
-          <h3>${escapeHtml(issue.code)}</h3>
-          <p><strong>severity:</strong> ${escapeHtml(issue.severity)} · <strong>component:</strong> ${escapeHtml(issue.componentId)}</p>
-          <p>${escapeHtml(issue.message)}</p>
-          ${issue.cause ? `<p><strong>cause:</strong> ${escapeHtml(issue.cause)}</p>` : ''}
-          ${issue.fixHint ? `<p><strong>fix hint:</strong> ${escapeHtml(issue.fixHint)}</p>` : ''}
-          ${issue.docsUrl ? `<p><strong>docs:</strong> <a href="${escapeHtml(issue.docsUrl)}" target="_blank" rel="noreferrer">${escapeHtml(issue.docsUrl)}</a></p>` : ''}
-          ${dependsOn}
-        </article>`;
-      })
-      .join('')}
-  </div>`;
 }
 
 function renderApp(options: RenderAppOptions | string = {}): void {

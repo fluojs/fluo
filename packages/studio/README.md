@@ -69,6 +69,7 @@ Studio consumes JSON exports from the fluo CLI. Runtime produces snapshots, the 
 Use the **Diagnostics issues** section to see issues collected during the runtime bootstrap process.
 - Filter by severity (Error, Warning).
 - Use `fixHint` to get actionable advice on how to resolve the issue.
+- Use `docsUrl` to open linked documentation when it is an absolute `http:` or `https:` URL. Unsafe schemes and relative or non-URL strings are not clickable; Studio renders them as escaped text instead.
 - View `dependsOn` to see which components are blocking the failing one.
 
 ### Exporting Architecture Diagrams
