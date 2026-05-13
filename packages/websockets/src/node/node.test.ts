@@ -172,4 +172,51 @@ describe('@fluojs/websockets/node', () => {
 
     await app.close();
   });
+
+  it('waits for disconnect cleanup when a socket closes during shutdown drain', async () => {
+    const disconnectStarted = createDeferred<void>();
+    const disconnectRelease = createDeferred<void>();
+
+    @WebSocketGateway({ path: '/shutdown' })
+    class ShutdownGateway {
+      @OnDisconnect()
+      async onDisconnect() {
+        disconnectStarted.resolve();
+        await disconnectRelease.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [NodeWebSocketModule.forRoot({ shutdown: { timeoutMs: 500 } })],
+      providers: [ShutdownGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/shutdown`);
+    await onceOpen(socket);
+
+    const closed = onceClosed(socket);
+    socket.close();
+    await disconnectStarted.promise;
+
+    let appCloseSettled = false;
+    const appClose = app.close().then(() => {
+      appCloseSettled = true;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(appCloseSettled).toBe(false);
+
+    disconnectRelease.resolve();
+    await Promise.all([closed, appClose]);
+  });
 });
