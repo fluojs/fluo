@@ -83,8 +83,8 @@ export class MetricsModule {
       ? (options.endpointMiddleware ?? []).map((middlewareClass) => forRoutes(middlewareClass, metricsPath))
       : [];
     const middleware = [
-      ...endpointMiddleware,
       ...(httpOptions ? [new HttpMetricsMiddleware(registry, httpOptions)] : []),
+      ...endpointMiddleware,
       ...(options.middleware ?? []),
     ];
 

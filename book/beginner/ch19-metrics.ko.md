@@ -225,7 +225,7 @@ MetricsModule.forRoot({
 })
 ```
 
-`endpointMiddleware`는 scrape endpoint에만 적용되는 route-scoped middleware이며 `@fluojs/http`와 같은 class-based middleware 계약을 따릅니다. `handle(context, next)` 메서드에서 예외를 던지거나 반환하거나 `next()`를 `await`하는 middleware constructor를 전달하세요.
+`endpointMiddleware`는 scrape endpoint에만 적용되는 route-scoped middleware이며 `@fluojs/http`와 같은 class-based middleware 계약을 따릅니다. `handle(context, next)` 메서드에서 예외를 던지거나 반환하거나 `next()`를 `await`하는 middleware constructor를 전달하세요. HTTP 계측을 활성화한 경우 endpoint middleware 실패도 내장 HTTP request/error counter에 포함되므로 거부된 scrape 시도는 이후 성공한 scrape의 같은 metrics stream에서 확인할 수 있습니다.
 
 ### 19.6.1 IP Whitelisting
 프로덕션에서 흔히 쓰이는 패턴은 Prometheus 서버의 IP 주소만 `/metrics` 라우트에 접근할 수 있도록 허용하는 것입니다. 이는 모니터링 도구에 복잡한 인증 로직을 요구하지 않으면서도 강력한 보안 계층을 제공합니다. 대부분의 클라우드 제공업체는 보안 그룹이나 방화벽을 통해 네트워크 수준에서 이를 구현할 수 있게 해주지만, Fluo의 미들웨어 시스템은 코드에서도 이를 유연하게 처리할 수 있는 방법을 제공합니다.

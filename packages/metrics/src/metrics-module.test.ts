@@ -115,6 +115,49 @@ describe('MetricsModule', () => {
     await app.close();
   });
 
+  it('records endpoint middleware failures when HTTP instrumentation is enabled', async () => {
+    class MetricsAccessMiddleware {
+      async handle(context: MiddlewareContext, next: Next): Promise<void> {
+        if (context.request.headers['x-metrics-token'] !== 'secret-token') {
+          throw new ForbiddenException('Metrics endpoint requires x-metrics-token.');
+        }
+
+        await next();
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          endpointMiddleware: [MetricsAccessMiddleware],
+          http: true,
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    const forbiddenResponse = createResponse();
+    await app.dispatch(createRequest('/metrics'), forbiddenResponse);
+    expect(forbiddenResponse.statusCode).toBe(403);
+
+    const metricsResponse = createResponse();
+    await app.dispatch(createRequest('/metrics', { 'x-metrics-token': 'secret-token' }), metricsResponse);
+
+    const metricsText = String(metricsResponse.body);
+
+    expect(metricsResponse.statusCode).toBe(200);
+    expect(metricsText).toContain('http_requests_total{method="GET",path="/metrics",status="403"} 1');
+    expect(metricsText).toContain('http_errors_total{method="GET",path="/metrics",status="403"} 1');
+
+    await app.close();
+  });
+
   it('serves Prometheus text with Node/process metrics', async () => {
     class AppModule {}
 
@@ -436,6 +479,30 @@ describe('MetricsModule', () => {
     expect(metricsText).toContain('fluo_metrics_registry_mode{mode="shared"} 1');
 
     await app.close();
+  });
+
+  it('validates framework-owned HTTP collector label schemas before reuse', () => {
+    const sharedRegistry = new Registry();
+
+    MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a', registry: sharedRegistry });
+    const requestsCounter = sharedRegistry.getSingleMetric('http_requests_total') as Counter<string> & { labelNames: string[] };
+    requestsCounter.labelNames = ['method'];
+
+    expect(() => MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b', registry: sharedRegistry })).toThrow(
+      'Metric name "http_requests_total" is already registered with labels [method]. Built-in HTTP metrics require labels [method,path,status].',
+    );
+  });
+
+  it('validates framework-owned HTTP duration histogram label schemas before reuse', () => {
+    const sharedRegistry = new Registry();
+
+    MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a', registry: sharedRegistry });
+    const durationHistogram = sharedRegistry.getSingleMetric('http_request_duration_seconds') as Histogram<string> & { labelNames: string[] };
+    durationHistogram.labelNames = ['method', 'path'];
+
+    expect(() => MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b', registry: sharedRegistry })).toThrow(
+      'Metric name "http_request_duration_seconds" is already registered with labels [method,path]. Built-in HTTP metrics require labels [method,path,status].',
+    );
   });
 
   it('reuses framework-owned platform telemetry gauges when module instances share one registry', async () => {

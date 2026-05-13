@@ -190,6 +190,7 @@ function getOrCreateHttpCounter(
       );
     }
 
+    assertHttpMetricLabelSchema(existing, config);
     return existing;
   }
 
@@ -219,6 +220,7 @@ function getOrCreateHttpHistogram(
       );
     }
 
+    assertHttpMetricLabelSchema(existing, config);
     return existing;
   }
 
@@ -229,6 +231,23 @@ function getOrCreateHttpHistogram(
   });
   FRAMEWORK_HTTP_HISTOGRAMS.add(histogram);
   return histogram;
+}
+
+function assertHttpMetricLabelSchema(
+  metric: Counter<string> | Histogram<string>,
+  config: {
+    labelNames: readonly string[];
+    name: string;
+  },
+): void {
+  const registeredLabels = ((metric as (Counter<string> | Histogram<string>) & { labelNames?: string[] }).labelNames ?? []).join(',');
+  const expectedLabels = config.labelNames.join(',');
+
+  if (registeredLabels !== expectedLabels) {
+    throw new Error(
+      `Metric name "${config.name}" is already registered with labels [${registeredLabels}]. Built-in HTTP metrics require labels [${expectedLabels}].`,
+    );
+  }
 }
 
 function normalizePathToTemplate(path: string, params: Readonly<Record<string, string>>): string {
