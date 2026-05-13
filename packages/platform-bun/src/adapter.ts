@@ -316,6 +316,10 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
         this.server = server;
       }
 
+      if (this.closeInFlight) {
+        return createShutdownResponse();
+      }
+
       if (realtimeBinding) {
         const handled = await realtimeBinding.fetch(request, server);
 

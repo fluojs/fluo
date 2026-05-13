@@ -49,11 +49,15 @@ import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  const runtimeConfig = {
+    development: false, // derive this from your application config boundary
+  };
+
   const adapter = createBunAdapter({ 
     port: 3000,
     // Bun-specific options
     hostname: '0.0.0.0',
-    development: process.env.NODE_ENV !== 'production'
+    development: runtimeConfig.development
   });
 
   const app = await fluoFactory.create(AppModule, { adapter });
@@ -94,7 +98,7 @@ export class NotificationGateway {
 export class RealtimeModule {}
 ```
 
-Internally, the Bun adapter detects the `Upgrade` header and calls `server.upgrade(request)` as required by the Bun runtime. Application code stays inside the gateway contract, and upgrade details remain at the adapter boundary.
+Internally, the Bun-specific websocket binding handles Bun's `server.upgrade(request)` call through the adapter's configured realtime seam. Application code stays inside the gateway contract, and upgrade details remain at the adapter boundary.
 
 ## 22.4 Manual Fetch Handling
 
