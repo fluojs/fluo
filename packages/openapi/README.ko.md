@@ -69,6 +69,8 @@ await app.listen(3000);
 
 컨트롤러 탐색을 직접 건너뛰고 싶다면 `@fluojs/http`의 `createHandlerMapping(...)`으로 handler descriptor를 만들고 `descriptors`로 전달하세요. `OpenApiModule`은 `@Module({ controllers: [...] })`만으로 핸들러를 자동 추론하지 않습니다.
 
+미리 만든 descriptor와 탐색된 source가 같은 OpenAPI path 및 HTTP method로 해석되면 나중 descriptor가 우선합니다. `OpenApiModule`은 탐색된 `sources`를 먼저, 명시적 `descriptors`를 나중에 합성하므로 명시적 descriptor가 중복 operation을 만들거나 오래된 source metadata를 문서에 남기지 않고 우선합니다.
+
 ## 핵심 기능
 
 ### 자동 명세 생성

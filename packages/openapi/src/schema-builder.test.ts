@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { IsArray, IsEnum, IsOptional, IsString, MinLength, ValidateNested } from '@fluojs/validation';
 import { Controller, FromBody, Get, HttpCode, Post, Produces, RequestDto, createHandlerMapping } from '@fluojs/http';
 
-import { ApiBearerAuth, ApiBody, ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiSecurity } from './decorators.js';
+import { ApiBearerAuth, ApiBody, ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiSecurity, ApiTag } from './decorators.js';
 import { buildOpenApiDocument } from './schema-builder.js';
 
 describe('buildOpenApiDocument', () => {
@@ -480,6 +480,119 @@ describe('buildOpenApiDocument', () => {
     expect(withoutTransform.info.title).toBe('Health API');
     expect(withTransform.info.title).toBe('Health API (Transformed)');
     expect(withTransform.paths).toEqual(withoutTransform.paths);
+  });
+
+  it('dedupes duplicate path and method descriptors with later descriptor precedence', () => {
+    @Controller('/dedupe')
+    class SourceController {
+      @ApiOperation({ summary: 'source operation' })
+      @Get('/')
+      read() {
+        return { source: true };
+      }
+    }
+
+    @Controller('/dedupe')
+    class ExplicitController {
+      @ApiOperation({ summary: 'explicit operation' })
+      @Get('/')
+      read() {
+        return { explicit: true };
+      }
+    }
+
+    const sourceDescriptors = createHandlerMapping([{ controllerToken: SourceController }]).descriptors;
+    const explicitDescriptors = createHandlerMapping([{ controllerToken: ExplicitController }]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors: [...sourceDescriptors, ...explicitDescriptors],
+      title: 'Dedupe API',
+      version: '1.0.0',
+    });
+
+    expect(document.paths['/dedupe']?.get?.summary).toBe('explicit operation');
+    expect(document.paths['/dedupe']?.get?.operationId).toBe('ExplicitController_read_get_dedupe');
+  });
+
+  it('keeps operationIds unique when normalized operation names collide', () => {
+    @ApiTag('Reports')
+    @Controller('/reports-export')
+    class ReportsExportController {
+      @Get('/')
+      list() {
+        return [];
+      }
+    }
+
+    @ApiTag('Reports')
+    @Controller('/reports_export')
+    class ReportsUnderscoreController {
+      @Get('/')
+      list() {
+        return [];
+      }
+    }
+
+    const descriptors = createHandlerMapping([
+      { controllerToken: ReportsExportController },
+      { controllerToken: ReportsUnderscoreController },
+    ]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      title: 'Operation ID API',
+      version: '1.0.0',
+    });
+
+    expect(document.paths['/reports-export']?.get?.operationId).toBe('Reports_list_get_reports_export');
+    expect(document.paths['/reports_export']?.get?.operationId).toBe('Reports_list_get_reports_export_2');
+  });
+
+  it('preserves explicit multipart request-body content', () => {
+    @Controller('/uploads')
+    class UploadsController {
+      @ApiBody({
+        content: {
+          'multipart/form-data': {
+            schema: {
+              properties: {
+                file: { format: 'binary', type: 'string' },
+              },
+              required: ['file'],
+              type: 'object',
+            },
+          },
+        },
+        required: true,
+      })
+      @Post('/')
+      upload() {
+        return { ok: true };
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: UploadsController }]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      title: 'Multipart API',
+      version: '1.0.0',
+    });
+
+    expect(document.paths['/uploads']?.post?.requestBody).toEqual({
+      content: {
+        'multipart/form-data': {
+          schema: {
+            properties: {
+              file: { format: 'binary', type: 'string' },
+            },
+            required: ['file'],
+            type: 'object',
+          },
+        },
+      },
+      required: true,
+    });
   });
 
   it('emits explicit composition schemas from response and request decorators', () => {
