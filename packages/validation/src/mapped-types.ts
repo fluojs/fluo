@@ -52,6 +52,7 @@ function copyDtoMetadata(
   source: DtoConstructor,
   target: DtoConstructor,
   include: (propertyKey: MetadataPropertyKey) => boolean,
+  copyClassRules = false,
 ): void {
   for (const entry of getDtoBindingSchema(source)) {
     if (!include(entry.propertyKey)) {
@@ -71,8 +72,10 @@ function copyDtoMetadata(
     }
   }
 
-  for (const rule of getClassValidationRules(source)) {
-    appendClassValidationRule(target, rule);
+  if (copyClassRules) {
+    for (const rule of getClassValidationRules(source)) {
+      appendClassValidationRule(target, rule);
+    }
   }
 }
 
@@ -205,7 +208,7 @@ export function IntersectionType<TBaseDtos extends readonly [DtoConstructor, Dto
   );
 
   for (const BaseDto of baseDtos) {
-    copyDtoMetadata(BaseDto, IntersectionDto, () => true);
+    copyDtoMetadata(BaseDto, IntersectionDto, () => true, true);
   }
 
   return IntersectionDto as DtoConstructor<IntersectionInstance<TBaseDtos>>;
@@ -259,10 +262,5 @@ export function PartialType<TBase extends DtoConstructor>(BaseDto: TBase): DtoCo
       appendDtoFieldValidationRule(PartialDto.prototype, entry.propertyKey, { kind: 'optional' });
     }
   }
-
-  for (const rule of getClassValidationRules(BaseDto)) {
-    appendClassValidationRule(PartialDto, rule);
-  }
-
   return PartialDto as DtoConstructor<Partial<InstanceType<TBase>>>;
 }

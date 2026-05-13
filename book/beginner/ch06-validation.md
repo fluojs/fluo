@@ -178,7 +178,7 @@ This is a meaningful upgrade for FluoBlog. The create route now has explicit rul
 
 ### Why Mapped DTO Helpers Matter
 
-At first, it is easy to write similar DTOs by hand, and that works in the beginning. But it quickly becomes repetitive and prone to mistakes. Helpers such as `PartialType`, `PickType`, and `OmitType` reduce duplication while preserving validation metadata, so derived contracts can stay tied to one base DTO safely.
+At first, it is easy to write similar DTOs by hand, and that works in the beginning. But it quickly becomes repetitive and prone to mistakes. Helpers such as `PartialType`, `PickType`, and `OmitType` reduce duplication while preserving field-level validation metadata, so derived contracts can stay tied to one base DTO safely. Class-level validators are not copied onto subset or partial DTOs because they may depend on fields that were intentionally omitted or made optional.
 
 ### Creating Specific DTO Variations
 
