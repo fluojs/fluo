@@ -1212,6 +1212,46 @@ describe('@fluojs/platform-bun', () => {
     expect(process.listeners(signal).length).toBe(listenersBefore);
   });
 
+  it('forwards TLS options and reports the HTTPS listen target', async () => {
+    const loggerEvents: string[] = [];
+    const logger: ApplicationLogger = {
+      debug() {},
+      error() {},
+      log(message: string, context?: string) {
+        loggerEvents.push(`log:${context}:${message}`);
+      },
+      warn() {},
+    };
+    const mockBun = installMockBun();
+    const tls = { cert: 'test-cert', key: 'test-key' };
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [HealthController] });
+
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      logger,
+      port: 4314,
+      tls,
+    });
+
+    try {
+      expect(mockBun.lastOptions?.tls).toBe(tls);
+      expect(mockBun.lastServer?.url?.origin).toBe('https://127.0.0.1:4314');
+      expect(loggerEvents).toContain('log:FluoFactory:Listening on https://127.0.0.1:4314');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('marks shutdown timeout via exitCode without forcing process termination', async () => {
     vi.useFakeTimers();
 
@@ -1371,6 +1411,58 @@ describe('@fluojs/platform-bun', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('returns shutdown 503 before websocket binding delegation during close', async () => {
+    const mockBun = installMockBun();
+    const adapter = new BunHttpApplicationAdapter();
+    const deferred = createDeferred<void>();
+    const dispatcher = {
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        await deferred.promise;
+        response.setStatus(200);
+        await response.send({ ok: true });
+      },
+      describeRoutes: () => [createMockDispatcherRoute('/chat')],
+    };
+    const bindingFetch = vi.fn<BunWebSocketBinding['fetch']>(async (request, server) => {
+      if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+        const upgraded = server.upgrade(request, { data: { path: '/chat' } });
+        return upgraded ? undefined : new Response(null, { status: 400 });
+      }
+
+      return undefined;
+    });
+
+    adapter.configureWebSocketBinding({
+      fetch: bindingFetch,
+      websocket: {},
+    });
+
+    await adapter.listen(dispatcher);
+
+    const responsePromise = mockBun.lastServer!.fetch(new Request('http://127.0.0.1:3000/chat'));
+    await Promise.resolve();
+
+    const closePromise = adapter.close();
+    const upgradeResponse = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/chat', {
+      headers: { upgrade: 'websocket' },
+    }));
+
+    expect(upgradeResponse?.status).toBe(503);
+    await expect(upgradeResponse?.json()).resolves.toMatchObject({
+      error: {
+        code: 'SERVICE_UNAVAILABLE',
+        status: 503,
+      },
+    });
+    expect(mockBun.lastServer?.upgrade).not.toHaveBeenCalled();
+    expect(bindingFetch).toHaveBeenCalledTimes(1);
+
+    deferred.resolve();
+
+    await expect(responsePromise).resolves.toBeInstanceOf(Response);
+    await closePromise;
   });
 
   it('throws a clear error when Bun.serve() is unavailable', async () => {

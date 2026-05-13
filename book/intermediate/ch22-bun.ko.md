@@ -49,11 +49,15 @@ import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  const runtimeConfig = {
+    development: false, // 애플리케이션 config 경계에서 이 값을 도출하세요.
+  };
+
   const adapter = createBunAdapter({ 
     port: 3000,
     // Bun 전용 옵션
     hostname: '0.0.0.0',
-    development: process.env.NODE_ENV !== 'production'
+    development: runtimeConfig.development
   });
 
   const app = await fluoFactory.create(AppModule, { adapter });
@@ -94,7 +98,7 @@ export class NotificationGateway {
 export class RealtimeModule {}
 ```
 
-내부적으로 Bun 어댑터는 `Upgrade` 헤더를 감지하고 Bun 런타임에서 요구하는 대로 `server.upgrade(request)`를 호출합니다. 애플리케이션 코드는 게이트웨이 계약에 머물고, 업그레이드 세부 사항은 어댑터 경계에 남습니다.
+내부적으로 Bun 전용 websocket binding은 어댑터에 구성된 realtime seam을 통해 Bun의 `server.upgrade(request)` 호출을 처리합니다. 애플리케이션 코드는 게이트웨이 계약에 머물고, 업그레이드 세부 사항은 어댑터 경계에 남습니다.
 
 ## 22.4 Manual Fetch Handling
 

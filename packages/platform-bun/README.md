@@ -28,7 +28,7 @@ This package is intended to run on Bun. The published manifest intentionally doe
 
 Use this package when running fluo applications on the [Bun](https://bun.sh/) runtime. This adapter leverages Bun's high-performance `Request`/`Response` bridge and native `fetch`-style architecture, providing a seamless and fast experience for Bun users.
 
-During application shutdown, the adapter stops new ingress and gives active HTTP handlers a bounded drain window before Bun forcefully tears the server down. If signal-driven shutdown exceeds `forceExitTimeoutMs` or fails, fluo reports that condition through logging and `process.exitCode` while leaving final process termination to Bun or the surrounding host.
+During application shutdown, the adapter stops all new ingress, including websocket upgrade attempts, with a `503` shutdown response and gives active HTTP handlers a bounded drain window before Bun forcefully tears the server down. If signal-driven shutdown exceeds `forceExitTimeoutMs` or fails, fluo reports that condition through logging and `process.exitCode` while leaving final process termination to Bun or the surrounding host.
 
 ## Quick Start
 
@@ -102,13 +102,13 @@ The adapter also exports the typed Bun integration seams used by realtime packag
 - **Native route gate**: Native routes are enabled only on Bun `>=1.2.3`; versioned routes, `ALL` handlers, same-shape conflicts, normalization-sensitive paths, and `OPTIONS`/CORS preflight stay on the fetch/shared-dispatch path.
 - **Multipart behavior**: Multipart requests never expose `rawBody`, and multipart limits continue to flow through the shared runtime parser.
 - **Startup target**: `hostname`, `port`, and `tls` are forwarded to `Bun.serve()`. Startup logs report the configured HTTP or HTTPS listen URL.
-- **Shutdown ownership**: `close()` stops new ingress, waits for in-flight HTTP handlers, clears adapter state after drain settles, and removes signal listeners registered by `runBunApplication()`.
-- **Realtime seam**: Bun websocket bindings must be configured before `listen()` starts the server. Upgrade requests are offered to the configured binding before falling back to HTTP dispatch.
+- **Shutdown ownership**: `close()` stops new HTTP and websocket-upgrade ingress with a `503` shutdown response, waits for in-flight HTTP handlers, clears adapter state after drain settles, and removes signal listeners registered by `runBunApplication()`.
+- **Realtime seam**: Bun websocket bindings must be configured before `listen()` starts the server. Upgrade requests are offered to the configured binding before falling back to HTTP dispatch while the adapter is accepting new ingress.
 - **Adapter instance helpers**: `BunHttpApplicationAdapter` exposes `getServer()`, `getListenTarget()`, `getRealtimeCapability()`, `configureRealtimeBinding()`, `configureWebSocketBinding()`, `listen()`, and `close()`.
 
 ## Conformance Coverage
 
-`packages/platform-bun/src/adapter.test.ts` is the package-local regression target for the documented contract. It includes Bun fetch-style portability assertions for malformed cookies, JSON/text raw-body preservation, multipart raw-body exclusion, SSE framing, native-route param parity, same-path multi-method handoff, versioning fallback, normalization-sensitive fallback, OPTIONS/CORS ownership, and same-shape route fallback, plus focused tests for startup logging, shutdown listener cleanup, in-flight drain behavior, timeout reporting, and websocket binding delegation.
+`packages/platform-bun/src/adapter.test.ts` is the package-local regression target for the documented contract. It includes Bun fetch-style portability assertions for malformed cookies, JSON/text raw-body preservation, multipart raw-body exclusion, SSE framing, native-route param parity, same-path multi-method handoff, versioning fallback, normalization-sensitive fallback, OPTIONS/CORS ownership, same-shape route fallback, and TLS listen-target reporting, plus focused tests for startup logging, shutdown listener cleanup, in-flight drain behavior, timeout reporting, shutdown 503 ingress rejection, and websocket binding delegation.
 
 The broader repository suite also exercises Bun through `createWebRuntimeHttpAdapterPortabilityHarness(...)` alongside Deno and Cloudflare Workers in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`, keeping the shared web-runtime portability baseline aligned across fetch-style platforms.
 
