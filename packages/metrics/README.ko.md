@@ -91,7 +91,7 @@ MetricsModule.forRoot({
 });
 ```
 
-`endpointMiddleware`는 class-based `@fluojs/http` middleware constructor를 받으며 metrics scrape endpoint에만 바인딩됩니다. middleware function이나 global middleware declaration은 이 option의 패키지 계약이 아닙니다.
+`endpointMiddleware`는 class-based `@fluojs/http` middleware constructor를 받으며 metrics scrape endpoint에만 바인딩됩니다. middleware function이나 global middleware declaration은 이 option의 패키지 계약이 아닙니다. HTTP 계측이 활성화된 경우 endpoint middleware가 던진 실패도 내장 HTTP request/error collector에 기록됩니다.
 
 ### Framework metric과 app metric이 하나의 registry를 공유하기
 
@@ -171,7 +171,7 @@ MetricsModule.forRoot({
 - `path`의 기본값은 `'/metrics'`이며, `path: false`로 스크레이프 엔드포인트를 완전히 비활성화할 수 있습니다.
 - scrape response는 active Registry의 Prometheus content type과 Registry contents를 사용합니다.
 - `defaultMetrics`의 기본값은 `true`이며, `defaultMetrics: false`로 해당 Registry의 Prometheus 기본 프로세스/Node.js collector를 끌 수 있습니다.
-- `endpointMiddleware`는 class-based route-scoped middleware를 스크레이프 엔드포인트에만 바인딩합니다.
+- `endpointMiddleware`는 class-based route-scoped middleware를 스크레이프 엔드포인트에만 바인딩합니다. HTTP 계측이 활성화된 경우 endpoint middleware 실패는 내장 HTTP collector에 집계됩니다.
 - HTTP 메트릭은 `http: true` 또는 `http` 옵션 객체를 전달한 경우에만 설치되며, 설치된 뒤에는 기본적으로 템플릿 기반 경로 라벨 정규화를 사용합니다.
 - 내장 HTTP collector와 플랫폼 텔레메트리 Gauge는 같은 Registry를 공유하는 모듈 인스턴스 사이에서 framework-owned이고 예상 label schema를 가진 경우에만 재사용되며, 커스텀 애플리케이션 메트릭 이름 충돌은 Prometheus의 중복 이름 실패 동작을 유지합니다.
 - raw path 라벨은 `allowUnsafeRawPathLabelMode: true`를 명시한 bounded internal route에서만 사용해야 합니다.

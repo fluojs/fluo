@@ -225,7 +225,7 @@ MetricsModule.forRoot({
 })
 ```
 
-`endpointMiddleware` is route-scoped middleware for the scrape endpoint and follows the same class-based middleware contract as `@fluojs/http`: pass middleware constructors whose `handle(context, next)` method either throws, returns, or awaits `next()`.
+`endpointMiddleware` is route-scoped middleware for the scrape endpoint and follows the same class-based middleware contract as `@fluojs/http`: pass middleware constructors whose `handle(context, next)` method either throws, returns, or awaits `next()`. If HTTP instrumentation is enabled, endpoint middleware failures are included in the built-in HTTP request and error counters so rejected scrape attempts are visible in the same metrics stream after a later successful scrape.
 
 ### 19.6.1 IP Whitelisting
 A common production pattern is allowing only the Prometheus server IP address to access the `/metrics` route. This provides a strong security layer without requiring complex authentication logic in the monitoring tool. Most cloud providers let you implement this at the network level through security groups or firewalls, but Fluo's Middleware system also gives you a flexible way to handle it in code.

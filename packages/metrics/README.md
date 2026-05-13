@@ -91,7 +91,7 @@ MetricsModule.forRoot({
 });
 ```
 
-`endpointMiddleware` accepts class-based `@fluojs/http` middleware constructors and binds them only to the metrics scrape endpoint. Middleware functions or global middleware declarations are not the package contract for this option.
+`endpointMiddleware` accepts class-based `@fluojs/http` middleware constructors and binds them only to the metrics scrape endpoint. Middleware functions or global middleware declarations are not the package contract for this option. When HTTP instrumentation is enabled, failures thrown by endpoint middleware are recorded in the built-in HTTP request and error collectors.
 
 ### Share one registry for framework and app metrics
 
@@ -171,7 +171,7 @@ MetricsModule.forRoot({
 - `path` defaults to `'/metrics'`, and `path: false` disables the scrape endpoint entirely.
 - The scrape response uses the active registry's Prometheus content type and registry contents.
 - `defaultMetrics` defaults to `true`, and `defaultMetrics: false` disables Prometheus default process and Node.js collectors for that registry.
-- `endpointMiddleware` binds class-based route-scoped middleware only to the scrape endpoint.
+- `endpointMiddleware` binds class-based route-scoped middleware only to the scrape endpoint; with HTTP instrumentation enabled, endpoint middleware failures are counted by the built-in HTTP collectors.
 - HTTP metrics are installed only when `http: true` or an `http` options object is provided, and then default to template-normalized path labels.
 - Built-in HTTP collectors and platform telemetry gauges are reused when module instances share one registry only if they are framework-owned and have the expected label schema; custom application metric name collisions keep Prometheus' duplicate-name failure behavior.
 - Raw path labels require `allowUnsafeRawPathLabelMode: true` and should stay limited to bounded internal routes.
