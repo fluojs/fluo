@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 
 import { Inject, Scope } from '@fluojs/core';
+import type { MiddlewareContext, Next } from '@fluojs/http';
 import { IsInt, MinLength } from '@fluojs/validation';
 import { defineModule } from '@fluojs/runtime';
 import { bootstrapNodeApplication } from '@fluojs/runtime/node';
@@ -12,7 +13,7 @@ import { GraphQLObjectType, GraphQLSchema, GraphQLString, GraphQLUnionType } fro
 
 import { Arg, Mutation, Query, Resolver, Subscription } from './decorators.js';
 import { GraphqlModule } from './module.js';
-import { GRAPHQL_OPERATION_CONTAINER, listOf } from './types.js';
+import { GRAPHQL_OPERATION_CONTAINER, type GraphQLContext, listOf } from './types.js';
 
 type GraphqlInstanceOf = (value: unknown, constructor: { prototype?: { [Symbol.toStringTag]?: string } }) => boolean;
 
@@ -43,7 +44,11 @@ async function findAvailablePort(): Promise<number> {
   });
 }
 
-async function postGraphql(port: number, query: string, options?: { operationName?: string }): Promise<unknown> {
+async function postGraphql(
+  port: number,
+  query: string,
+  options?: { headers?: Record<string, string>; operationName?: string },
+): Promise<unknown> {
   const response = await fetch(`http://127.0.0.1:${String(port)}/graphql`, {
     body: JSON.stringify({
       ...(options?.operationName ? { operationName: options.operationName } : {}),
@@ -51,6 +56,7 @@ async function postGraphql(port: number, query: string, options?: { operationNam
     }),
     headers: {
       'content-type': 'application/json',
+      ...(options?.headers ?? {}),
     },
     method: 'POST',
   });
@@ -188,9 +194,9 @@ function onceGraphqlWebSocketMessage(socket: WebSocket): Promise<GraphqlWebSocke
   });
 }
 
-async function connectGraphqlWebSocket(port: number): Promise<WebSocket> {
+async function connectGraphqlWebSocket(port: number, connectionParams?: Record<string, unknown>): Promise<WebSocket> {
   const socket = await openGraphqlWebSocket(port);
-  socket.send(JSON.stringify({ type: 'connection_init' }));
+  socket.send(JSON.stringify({ payload: connectionParams, type: 'connection_init' }));
 
   await expect(onceGraphqlWebSocketMessage(socket)).resolves.toEqual({
     type: 'connection_ack',
@@ -1742,6 +1748,220 @@ describe('@fluojs/graphql — provider scopes', () => {
     firstSocket.close();
     secondSocket.close();
     await Promise.all([onceWebSocketClosed(firstSocket), onceWebSocketClosed(secondSocket)]);
+    await app.close();
+  });
+
+  it('exposes auth and custom context values to HTTP resolvers', async () => {
+    const authMiddleware = {
+      async handle(context: MiddlewareContext, next: Next): Promise<void> {
+        context.requestContext.principal = {
+          claims: {
+            tenant: context.request.headers['x-tenant-id'],
+          },
+          issuer: 'test-suite',
+          subject: 'user-1784',
+        };
+        await next();
+      },
+    };
+
+    @Inject()
+    @Resolver('HttpContextResolver')
+    class HttpContextResolver {
+      @Query()
+      contextSnapshot(_input: undefined, context: GraphQLContext): string {
+        return JSON.stringify({
+          principalSubject: context.principal?.subject,
+          requestHeader: context.request.headers['x-tenant-id'],
+          tenantId: context.tenantId,
+        });
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        GraphqlModule.forRoot({
+          context: ({ principal, request }) => ({
+            tenantId: principal?.claims.tenant ?? request.headers['x-tenant-id'],
+          }),
+          resolvers: [HttpContextResolver],
+        }),
+      ],
+      providers: [HttpContextResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, middleware: [authMiddleware], port });
+    await app.listen();
+
+    await expect(postGraphql(port, '{ contextSnapshot }', { headers: { 'x-tenant-id': 'tenant-a' } })).resolves.toEqual({
+      data: {
+        contextSnapshot: JSON.stringify({
+          principalSubject: 'user-1784',
+          requestHeader: 'tenant-a',
+          tenantId: 'tenant-a',
+        }),
+      },
+    });
+
+    await app.close();
+  });
+
+  it('exposes websocket connection params, socket, and custom context values to subscription resolvers', async () => {
+    @Inject()
+    @Resolver('WebSocketContextResolver')
+    class WebSocketContextResolver {
+      @Subscription()
+      async *contextSnapshots(_input: undefined, context: GraphQLContext): AsyncGenerator<string, void, void> {
+        yield JSON.stringify({
+          connectionToken: context.connectionParams?.token,
+          customToken: context.connectionToken,
+          hasSocket: Boolean(context.socket),
+          requestPath: context.request.path,
+        });
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        GraphqlModule.forRoot({
+          context: ({ connectionParams }) => ({
+            connectionToken: connectionParams?.token,
+          }),
+          resolvers: [WebSocketContextResolver],
+          subscriptions: {
+            websocket: {
+              enabled: true,
+            },
+          },
+        }),
+      ],
+      providers: [WebSocketContextResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
+    await app.listen();
+
+    const socket = await connectGraphqlWebSocket(port, { token: 'ws-token-1784' });
+    socket.send(JSON.stringify({
+      id: 'ctx',
+      payload: {
+        query: 'subscription { contextSnapshots }',
+      },
+      type: 'subscribe',
+    }));
+
+    await expect(readGraphqlWebSocketMessages(socket, 2)).resolves.toEqual([
+      {
+        id: 'ctx',
+        payload: {
+          data: {
+            contextSnapshots: JSON.stringify({
+              connectionToken: 'ws-token-1784',
+              customToken: 'ws-token-1784',
+              hasSocket: true,
+              requestPath: '/graphql',
+            }),
+          },
+        },
+        type: 'next',
+      },
+      {
+        id: 'ctx',
+        type: 'complete',
+      },
+    ]);
+
+    socket.close();
+    await onceWebSocketClosed(socket);
+    await app.close();
+  });
+
+  it('disposes request-scoped subscription providers when a websocket operation completes', async () => {
+    const destroyedIds: string[] = [];
+    let destroyedResolve: ((value: string) => void) | undefined;
+    const destroyed = new Promise<string>((resolve) => {
+      destroyedResolve = resolve;
+    });
+
+    @Inject()
+    @Scope('request')
+    class SubscriptionLifecycleProbe {
+      readonly id = 'subscription-probe-1784';
+
+      onDestroy(): void {
+        destroyedIds.push(this.id);
+        destroyedResolve?.(this.id);
+      }
+    }
+
+    @Inject(SubscriptionLifecycleProbe)
+    @Scope('request')
+    @Resolver('SubscriptionTeardownResolver')
+    class SubscriptionTeardownResolver {
+      constructor(private readonly probe: SubscriptionLifecycleProbe) {}
+
+      @Subscription()
+      async *trackedRequestIds(): AsyncGenerator<string, void, void> {
+        yield this.probe.id;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        GraphqlModule.forRoot({
+          resolvers: [SubscriptionTeardownResolver],
+          subscriptions: {
+            websocket: {
+              enabled: true,
+            },
+          },
+        }),
+      ],
+      providers: [SubscriptionLifecycleProbe, SubscriptionTeardownResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
+    await app.listen();
+
+    const socket = await connectGraphqlWebSocket(port);
+    socket.send(JSON.stringify({
+      id: 'tracked',
+      payload: {
+        query: 'subscription { trackedRequestIds }',
+      },
+      type: 'subscribe',
+    }));
+
+    await expect(readGraphqlWebSocketMessages(socket, 2)).resolves.toEqual([
+      {
+        id: 'tracked',
+        payload: {
+          data: {
+            trackedRequestIds: 'subscription-probe-1784',
+          },
+        },
+        type: 'next',
+      },
+      {
+        id: 'tracked',
+        type: 'complete',
+      },
+    ]);
+
+    await expect(Promise.race([
+      destroyed,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out waiting for websocket operation cleanup.')), 250)),
+    ])).resolves.toBe('subscription-probe-1784');
+    expect(destroyedIds).toEqual(['subscription-probe-1784']);
+
+    socket.close();
+    await onceWebSocketClosed(socket);
     await app.close();
   });
 
