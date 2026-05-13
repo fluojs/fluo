@@ -93,6 +93,17 @@ function createSignalTarget(): {
   };
 }
 
+function expectCliCommandSuccess(exitCode: number, stdoutBuffer: string[], stderrBuffer: string[]): void {
+  expect(
+    exitCode,
+    [
+      'Expected CLI command to exit successfully before parsing inspect output.',
+      `stdout: ${stdoutBuffer.join('')}`,
+      `stderr: ${stderrBuffer.join('')}`,
+    ].join('\n'),
+  ).toBe(0);
+}
+
 afterEach(() => {
   for (const directory of createdDirectories.splice(0)) {
     rmSync(directory, { force: true, recursive: true });
@@ -3212,6 +3223,8 @@ exit 7
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
 
+    expectCliCommandSuccess(exitCode, stdoutBuffer, stderrBuffer);
+
     const payload = JSON.parse(stdoutBuffer.join('')) as {
       components: unknown[];
       diagnostics: unknown[];
@@ -3219,7 +3232,6 @@ exit 7
       readiness: { status: string };
     };
 
-    expect(exitCode).toBe(0);
     expect(stderrBuffer.join('')).toBe('');
     expect(payload.components).toEqual([]);
     expect(payload.diagnostics).toEqual([]);
@@ -3340,13 +3352,14 @@ exit 7
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
 
+    expectCliCommandSuccess(exitCode, stdoutBuffer, stderrBuffer);
+
     const report = JSON.parse(readFileSync(outputPath, 'utf8')) as {
       snapshot: { diagnostics: unknown[] };
       summary: { healthStatus: string; readinessStatus: string };
       version: number;
     };
 
-    expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toBe('');
     expect(stderrBuffer.join('')).toBe('');
     expect(report.version).toBe(1);
