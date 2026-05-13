@@ -69,6 +69,7 @@ Studio는 fluo CLI에서 내보낸 JSON 파일을 소비합니다. 런타임은 
 **Diagnostics issues** 섹션을 사용하여 런타임 부트스트랩 과정에서 수집된 이슈들을 확인합니다.
 - 심각도(Error, Warning)별로 필터링합니다.
 - `fixHint`를 통해 문제를 해결하기 위한 구체적인 조치 방법을 확인합니다.
+- `docsUrl`은 절대 `http:` 또는 `https:` URL일 때만 연결된 문서를 열 수 있습니다. 안전하지 않은 scheme과 상대 경로 또는 URL이 아닌 문자열은 클릭할 수 없으며, Studio는 이를 escaped text로 렌더링합니다.
 - `dependsOn`을 통해 어떤 컴포넌트가 실패 지점을 차단하고 있는지 확인합니다.
 
 ### 아키텍처 다이어그램 내보내기
