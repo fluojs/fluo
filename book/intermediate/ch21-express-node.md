@@ -48,8 +48,8 @@ async function bootstrap() {
 
   const app = await fluoFactory.create(AppModule, { adapter });
   
-  // You can still access the underlying express instance when absolutely necessary.
-  const expressInstance = adapter.getInstance();
+  // You can still inspect the underlying Node server when absolutely necessary.
+  const nativeServer = adapter.getServer?.();
   
   await app.listen();
 }
@@ -61,10 +61,12 @@ bootstrap();
 One of the biggest reasons to choose Express is its proven middleware ecosystem. fluo's Express adapter lets you register that middleware globally or at Module boundaries, so you can migrate existing operational assets without throwing them away.
 
 ```typescript
-// Apply middleware directly to the underlying instance
+// Prefer registering Express-compatible middleware through the fluo bootstrap boundary.
 const adapter = createExpressAdapter();
-const instance = adapter.getInstance();
-instance.use(compression());
+const app = await fluoFactory.create(AppModule, {
+  adapter,
+  middleware: [compression()],
+});
 ```
 
 For long-term portability, however, it is better to register middleware inside the fluo Module system. That keeps the location of platform-specific code clear when you move to another runtime.
@@ -205,13 +207,11 @@ import { AppModule } from './app.module';
 await runExpressApplication(AppModule, {
   port: 3000,
   globalPrefix: 'api',
-  onShutdown: () => {
-    console.log('Cleaning up resources...');
-  }
+  shutdownSignals: ['SIGINT', 'SIGTERM'],
 });
 ```
 
-This helper helps clean up active connections before the process exits. In deployment environments, this shutdown boundary is important for reducing lost logs, interrupted requests, and resource leaks.
+This helper wires process signals to the standard fluo shutdown lifecycle and helps clean up active connections before the host exits. Put application cleanup in lifecycle-aware providers, such as `onApplicationShutdown(signal)`, so the same cleanup path works across platform adapters. In deployment environments, this shutdown boundary is important for reducing lost logs, interrupted requests, and resource leaks.
 
 ## 21.7 Comparison Summary
 
@@ -229,6 +229,6 @@ This helper helps clean up active connections before the process exits. In deplo
 - `@fluojs/platform-express` lets you continue using the existing Express ecosystem and operational assets.
 - `@fluojs/platform-nodejs` provides a minimal HTTP layer without a framework.
 - Most fluo code (Controllers, Providers, Modules) does not need to know which adapter is running at all.
-- Access the underlying Node server with `getServer()` or inspect `getRealtimeCapability()` only when you need platform-specific features.
+- Inspect the underlying Node server with `getServer?.()` or inspect `getRealtimeCapability()` only when you need platform-specific features.
 - Runtime owns diagnostic snapshot and issue production; Studio owns graph viewing and Mermaid rendering of those artifacts.
 - To maintain cross-platform compatibility, review fluo abstractions first, such as `MiddlewareConsumer`.

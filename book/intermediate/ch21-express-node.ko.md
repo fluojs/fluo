@@ -48,8 +48,8 @@ async function bootstrap() {
 
   const app = await fluoFactory.create(AppModule, { adapter });
   
-  // 절대적으로 필요한 경우 하부 express 인스턴스에 여전히 접근할 수 있습니다.
-  const expressInstance = adapter.getInstance();
+  // 절대적으로 필요한 경우 하부 Node server를 확인할 수 있습니다.
+  const nativeServer = adapter.getServer?.();
   
   await app.listen();
 }
@@ -61,10 +61,12 @@ bootstrap();
 Express를 선택하는 가장 큰 이유 중 하나는 이미 검증된 미들웨어 생태계입니다. fluo의 Express 어댑터는 이런 미들웨어를 전역 또는 모듈 경계에서 등록할 수 있게 해주며, 기존 운영 자산을 버리지 않고 이식할 수 있게 합니다.
 
 ```typescript
-// 하부 인스턴스에 직접 미들웨어 적용
+// Express 호환 미들웨어는 fluo bootstrap 경계를 통해 등록하는 편을 권장합니다.
 const adapter = createExpressAdapter();
-const instance = adapter.getInstance();
-instance.use(compression());
+const app = await fluoFactory.create(AppModule, {
+  adapter,
+  middleware: [compression()],
+});
 ```
 
 다만 장기 이식성을 생각한다면 미들웨어를 fluo 모듈 시스템 안에서 등록하는 편이 낫습니다. 그래야 다른 런타임으로 옮길 때 플랫폼 전용 코드의 위치가 명확해집니다.
@@ -205,13 +207,11 @@ import { AppModule } from './app.module';
 await runExpressApplication(AppModule, {
   port: 3000,
   globalPrefix: 'api',
-  onShutdown: () => {
-    console.log('Cleaning up resources...');
-  }
+  shutdownSignals: ['SIGINT', 'SIGTERM'],
 });
 ```
 
-이 헬퍼는 프로세스가 종료되기 전에 활성 연결을 정리하도록 도와줍니다. 배포 환경에서는 이런 종료 경계가 로그 유실, 요청 중단, 리소스 누수를 줄이는 데 중요합니다.
+이 헬퍼는 process signal을 표준 fluo shutdown lifecycle에 연결하고, host가 종료되기 전에 활성 연결을 정리하도록 돕습니다. 애플리케이션 cleanup은 `onApplicationShutdown(signal)` 같은 lifecycle-aware provider에 두어야 같은 cleanup 경로가 platform adapter 전반에서 동작합니다. 배포 환경에서는 이런 종료 경계가 로그 유실, 요청 중단, 리소스 누수를 줄이는 데 중요합니다.
 
 ## 21.7 Comparison Summary
 
@@ -229,6 +229,6 @@ await runExpressApplication(AppModule, {
 - `@fluojs/platform-express`를 사용하면 기존 Express 생태계와 운영 자산을 이어서 사용할 수 있습니다.
 - `@fluojs/platform-nodejs`는 최소한의 프레임워크 없는 HTTP 레이어를 제공합니다.
 - 대부분의 fluo 코드(컨트롤러, 프로바이더, 모듈)는 어떤 어댑터가 실행 중인지 전혀 알 필요가 없습니다.
-- 플랫폼 전용 기능이 필요한 경우에만 `getServer()`로 하부 Node 서버에 접근하거나 `getRealtimeCapability()`를 확인하세요.
+- 플랫폼 전용 기능이 필요한 경우에만 `getServer?.()`로 하부 Node server를 확인하거나 `getRealtimeCapability()`를 확인하세요.
 - Runtime은 diagnostic snapshot과 issue 생산을 소유하고, Studio는 해당 artifact의 graph viewing 및 Mermaid rendering을 소유합니다.
 - 크로스 플랫폼 호환성을 유지하려면 fluo의 추상화(예: `MiddlewareConsumer`)를 먼저 검토하세요.

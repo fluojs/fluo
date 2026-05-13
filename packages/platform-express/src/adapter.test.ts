@@ -260,6 +260,13 @@ describe('@fluojs/platform-express', () => {
     });
   });
 
+  it('rejects invalid explicit numeric adapter options during setup', () => {
+    expect(() => createExpressAdapter({ maxBodySize: 0 })).toThrow(/maxBodySize/i);
+    expect(() => createExpressAdapter({ retryDelayMs: -1 })).toThrow(/retryDelayMs/i);
+    expect(() => createExpressAdapter({ retryLimit: 1.5 })).toThrow(/retryLimit/i);
+    expect(() => createExpressAdapter({ shutdownTimeoutMs: Number.NaN })).toThrow(/shutdownTimeoutMs/i);
+  });
+
   it('preserves response parity for simple JSON and non-fast-path responses', async () => {
     @Controller('/responses')
     class ResponsesController {
@@ -1291,6 +1298,11 @@ describe('@fluojs/platform-express', () => {
         },
       });
       expect(lifecycle).toContain('observer:error:native route boom');
+      expect(lifecycle.indexOf('observer:start:GET')).toBeLessThan(lifecycle.indexOf('middleware:before:GET'));
+      expect(lifecycle.indexOf('middleware:before:GET')).toBeLessThan(lifecycle.indexOf('observer:matched:GET:/errors'));
+      expect(lifecycle.indexOf('observer:matched:GET:/errors')).toBeLessThan(lifecycle.indexOf('observer:error:native route boom'));
+      expect(lifecycle.indexOf('observer:error:native route boom')).toBeLessThan(lifecycle.indexOf('observer:finish:GET'));
+      expect(lifecycle).not.toContain('observer:success:object');
 
       const missingResponse = await requestHttp({
         method: 'GET',
@@ -1701,6 +1713,39 @@ describe('@fluojs/platform-express', () => {
     Reflect.set(adapter, 'dispatcher', { async dispatch() {} });
 
     await expect(adapter.close()).rejects.toThrow(/shutdown timeout/i);
+  });
+
+  it('force-closes active connections after the shutdown timeout', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const adapter = new ExpressHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, 20);
+      let closeCallback: ((error?: Error | null) => void) | undefined;
+      const closeAllConnections = vi.fn(() => {
+        closeCallback?.(undefined);
+      });
+      const server = {
+        close(callback: (error?: Error | null) => void) {
+          closeCallback = callback;
+          return this;
+        },
+        closeAllConnections,
+        closeIdleConnections: vi.fn(),
+        listening: true,
+      } as unknown as ReturnType<typeof createHttpServer>;
+
+      Reflect.set(adapter, 'server', server);
+      Reflect.set(adapter, 'dispatcher', { async dispatch() {} });
+
+      const closePromise = adapter.close();
+
+      await vi.advanceTimersByTimeAsync(20);
+      await closePromise;
+
+      expect(closeAllConnections).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('clears the express shutdown timer once close settles', async () => {

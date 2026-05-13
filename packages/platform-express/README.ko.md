@@ -39,7 +39,7 @@ const app = await fluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-`createExpressAdapter()`는 기본 port로 `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. 잘못된 explicit port 값은 adapter setup 중 throw됩니다.
+`createExpressAdapter()`는 기본 port로 `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs` 같은 잘못된 explicit numeric option은 adapter setup 중 throw됩니다.
 
 ## 주요 패턴
 
