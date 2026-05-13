@@ -37,6 +37,8 @@ Redis 통합의 discoverability는 책임별로 나뉜다. `packages/redis/READM
 
 Queue lifecycle discoverability도 패키지 문서와 governed docs로 나뉜다. `packages/queue/README.ko.md`는 `QueueModule.forRoot(...)`, Redis duplicate ownership, bootstrap-ready worker processor handoff, `workerShutdownTimeoutMs`를 통한 bounded worker shutdown, dead-letter retention, lifecycle status snapshot을 문서화한다. [`docs/contracts/behavioral-contract-policy.md`](./contracts/behavioral-contract-policy.md)는 readiness 및 shutdown ordering을 구현, 문서, regression test가 함께 바뀌어야 하는 behavioral contract로 다루며, [`docs/contracts/testing-guide.md`](./contracts/testing-guide.md)는 queue lifecycle behavior 변경 시 실행할 가까운 package test와 governance command를 안내한다.
 
+HTTP adapter raw-body portability discoverability도 testing package와 governed platform docs로 나뉜다. `packages/testing/README.md`는 byte-sensitive payload를 위한 `createHttpAdapterPortabilityHarness(...)`와 `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`를 문서화한다. [`docs/contracts/platform-conformance-authoring-checklist.ko.md`](./contracts/platform-conformance-authoring-checklist.ko.md)는 HTTP adapter가 Unicode replacement, newline normalization, re-encoding 없이 정확한 `rawBody` byte를 보존해야 한다고 요구하며, [`docs/contracts/testing-guide.ko.md`](./contracts/testing-guide.ko.md)는 HTTP adapter byte preservation behavior가 바뀔 때 실행할 platform portability test와 governance command를 안내한다.
+
 ## File Structure
 
 | Path | Role |

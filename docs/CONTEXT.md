@@ -37,6 +37,8 @@ Redis integration discoverability is split by responsibility: `packages/redis/RE
 
 Queue lifecycle discoverability is split across the package and governed docs: `packages/queue/README.md` documents `QueueModule.forRoot(...)`, Redis duplicate ownership, the bootstrap-ready worker processor handoff, bounded worker shutdown through `workerShutdownTimeoutMs`, dead-letter retention, and lifecycle status snapshots; [`docs/contracts/behavioral-contract-policy.md`](./contracts/behavioral-contract-policy.md) treats readiness and shutdown ordering as behavioral contracts that require implementation, docs, and regression tests to change together; and [`docs/contracts/testing-guide.md`](./contracts/testing-guide.md) identifies the nearest package tests and governance commands to run when queue lifecycle behavior changes.
 
+HTTP adapter raw-body portability discoverability is split across the testing package and governed platform docs: `packages/testing/README.md` documents `createHttpAdapterPortabilityHarness(...)` and `assertPreservesExactRawBodyBytesForByteSensitivePayloads()` for byte-sensitive payloads; [`docs/contracts/platform-conformance-authoring-checklist.md`](./contracts/platform-conformance-authoring-checklist.md) requires HTTP adapters to preserve exact `rawBody` bytes without Unicode replacement, newline normalization, or re-encoding; and [`docs/contracts/testing-guide.md`](./contracts/testing-guide.md) identifies platform portability tests and governance commands to run when HTTP adapter byte preservation behavior changes.
+
 ## File Structure
 
 | Path | Role |

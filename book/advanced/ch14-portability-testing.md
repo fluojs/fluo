@@ -62,10 +62,12 @@ export interface HttpAdapterPortabilityHarnessOptions<
 The harness covers several critical surfaces where runtimes often diverge. The purpose is to make sure the Fluo abstraction layer does not leak across different execution environments:
 
 1. **Cookie Handling**: Ensures malformed cookies do not crash the server or contaminate other headers.
-2. **Raw Body Preservation**: Verifies that `rawBody` is available for JSON and Text to save memory, but excluded for Multipart.
+2. **Raw Body Preservation**: Verifies that `rawBody` is available for JSON and text, preserves exact bytes for byte-sensitive payloads, and is excluded for multipart requests to save memory.
 3. **SSE (Server-Sent Events)**: Confirms proper streaming behavior that keeps the connection open without buffering.
 4. **Startup Logs**: Verifies that adapters correctly report the listening host and port through standardized hooks.
 5. **Shutdown Signals**: Ensures `SIGTERM` and `SIGINT` listeners are cleaned up correctly after shutdown to prevent memory leaks.
+
+If a harness bootstraps an app and setup or `listen()` fails before the assertion body runs, cleanup is still part of the contract: the partially bootstrapped app must be closed, and any `close()` failure is reported together with the original setup failure.
 
 ## 14.4 Implementation Deep Dive: Malformed Cookies
 

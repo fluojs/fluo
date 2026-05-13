@@ -96,6 +96,29 @@ async function captureOutcome(action: () => Promise<void>): Promise<{ ok: true }
   }
 }
 
+async function runCleanupWithAssertionContext(
+  cleanup: () => Promise<void>,
+  cleanupLabel: string,
+  assertionError?: unknown,
+): Promise<void> {
+  try {
+    await cleanup();
+  } catch (cleanupError) {
+    if (assertionError !== undefined) {
+      throw new AggregateError(
+        [assertionError, cleanupError],
+        `${cleanupLabel} failed while preserving the original conformance assertion failure.`,
+      );
+    }
+
+    throw new AggregateError([cleanupError], `${cleanupLabel} failed during platform conformance cleanup.`);
+  }
+
+  if (assertionError !== undefined) {
+    throw assertionError;
+  }
+}
+
 function collectForbiddenKeyPaths(
   value: unknown,
   patterns: readonly RegExp[],
@@ -164,25 +187,30 @@ export class PlatformConformanceHarness {
   async assertStartIsDeterministic(): Promise<void> {
     const component = this.options.createComponent();
     const compare = this.options.snapshot?.compare ?? defaultCompare;
+    let assertionError: unknown;
 
-    const firstStart = await captureOutcome(() => component.start());
-    const firstSnapshot = component.snapshot();
-    const secondStart = await captureOutcome(() => component.start());
-    const secondSnapshot = component.snapshot();
+    try {
+      const firstStart = await captureOutcome(() => component.start());
+      const firstSnapshot = component.snapshot();
+      const secondStart = await captureOutcome(() => component.start());
+      const secondSnapshot = component.snapshot();
 
-    if (firstStart.ok !== secondStart.ok) {
-      throw new Error('start() is not deterministic: first and second calls had different outcomes.');
+      if (firstStart.ok !== secondStart.ok) {
+        throw new Error('start() is not deterministic: first and second calls had different outcomes.');
+      }
+
+      if (!firstStart.ok && !secondStart.ok && firstStart.message !== secondStart.message) {
+        throw new Error('start() rejection messages changed across duplicate calls.');
+      }
+
+      if (firstStart.ok && secondStart.ok && !compare(firstSnapshot, secondSnapshot)) {
+        throw new Error('start() is not idempotent: duplicate calls changed component snapshot output.');
+      }
+    } catch (error) {
+      assertionError = error;
     }
 
-    if (!firstStart.ok && !secondStart.ok && firstStart.message !== secondStart.message) {
-      throw new Error('start() rejection messages changed across duplicate calls.');
-    }
-
-    if (firstStart.ok && secondStart.ok && !compare(firstSnapshot, secondSnapshot)) {
-      throw new Error('start() is not idempotent: duplicate calls changed component snapshot output.');
-    }
-
-    await captureOutcome(() => component.stop());
+    await runCleanupWithAssertionContext(() => component.stop(), 'stop() after start() determinism check', assertionError);
   }
 
   async assertStopIsIdempotent(): Promise<void> {
@@ -228,21 +256,30 @@ export class PlatformConformanceHarness {
 
     for (const scenario of [scenarios.degraded, scenarios.failed]) {
       const component = scenario.createComponent();
-      await scenario.enterState(component);
 
-      if (scenario.expectedState !== undefined && component.state() !== scenario.expectedState) {
-        throw new Error(
-          `Scenario "${scenario.name}" expected state "${scenario.expectedState}" but received "${component.state()}".`,
+      try {
+        await scenario.enterState(component);
+
+        if (scenario.expectedState !== undefined && component.state() !== scenario.expectedState) {
+          throw new Error(
+            `Scenario "${scenario.name}" expected state "${scenario.expectedState}" but received "${component.state()}".`,
+          );
+        }
+
+        component.snapshot();
+      } catch (error) {
+        const assertionError =
+          error instanceof Error && error.message.startsWith('Scenario ')
+            ? error
+            : new Error(`snapshot() must be safe in "${scenario.name}" state: ${toErrorMessage(error)}`);
+        await runCleanupWithAssertionContext(
+          () => component.stop(),
+          `stop() after "${scenario.name}" snapshot scenario`,
+          assertionError,
         );
       }
 
-      try {
-        component.snapshot();
-      } catch (error) {
-        throw new Error(`snapshot() must be safe in "${scenario.name}" state: ${toErrorMessage(error)}`);
-      } finally {
-        await captureOutcome(() => component.stop());
-      }
+      await runCleanupWithAssertionContext(() => component.stop(), `stop() after "${scenario.name}" snapshot scenario`);
     }
   }
 
@@ -261,11 +298,13 @@ export class PlatformConformanceHarness {
 
     for (const issue of diagnostics) {
       if (issue.code.trim().length === 0) {
-        throw new Error('Diagnostics must provide a stable non-empty code.');
+        throw new Error(`Diagnostics must provide a stable non-empty code. Received message: ${issue.message}`);
       }
 
       if (requiredFixHintSeverities.includes(issue.severity) && (!issue.fixHint || issue.fixHint.trim().length === 0)) {
-        throw new Error(`Diagnostic ${issue.code} (${issue.severity}) must provide a fixHint.`);
+        throw new Error(
+          `Diagnostic ${issue.code} (${issue.severity}) must provide a fixHint. Message: ${issue.message}`,
+        );
       }
     }
 
@@ -279,8 +318,11 @@ export class PlatformConformanceHarness {
     const normalizedExpectedCodes = normalizeCodes(expectedCodes);
 
     if (!defaultCompare(actualCodes, normalizedExpectedCodes)) {
+      const actualDetails = diagnostics
+        .map((diagnostic) => `${diagnostic.code}(${diagnostic.severity}): ${diagnostic.message}`)
+        .join('; ');
       throw new Error(
-        `Diagnostic code set changed. Expected [${normalizedExpectedCodes.join(', ')}] but received [${actualCodes.join(', ')}].`,
+        `Diagnostic code set changed. Expected [${normalizedExpectedCodes.join(', ')}] but received [${actualCodes.join(', ')}]. Actual diagnostics: ${actualDetails}`,
       );
     }
   }

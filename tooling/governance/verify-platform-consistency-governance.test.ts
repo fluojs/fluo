@@ -418,3 +418,18 @@ describe('Queue lifecycle discoverability', () => {
     }
   });
 });
+
+describe('HTTP adapter raw-body portability discoverability', () => {
+  const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+  const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const englishReadme = readFileSync(join(repoRoot, 'packages/testing/README.md'), 'utf8');
+  const koreanReadme = readFileSync(join(repoRoot, 'packages/testing/README.ko.md'), 'utf8');
+
+  it('keeps byte-sensitive raw-body portability docs discoverable from the context hub', () => {
+    for (const content of [englishContext, koreanContext, englishReadme, koreanReadme]) {
+      expect(content).toContain('assertPreservesExactRawBodyBytesForByteSensitivePayloads');
+      expect(content).toContain('byte-sensitive');
+      expect(content).toContain('rawBody');
+    }
+  });
+});

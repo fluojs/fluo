@@ -23,7 +23,7 @@ fluo 애플리케이션을 위한 기본 request-level 테스트 헬퍼, 모듈 
 pnpm add -D @fluojs/testing vitest
 ```
 
-`vitest`는 mock 헬퍼와 `@fluojs/testing/vitest` 엔트리포인트가 요구하는 peer dependency입니다.
+`vitest`는 mock 헬퍼와 `@fluojs/testing/vitest` 엔트리포인트가 요구하는 peer dependency입니다. `@babel/core`는 Vitest decorators plugin이 사용하는 워크스페이스의 Babel을 로드하기 때문에 peer로 선언되어 있습니다. 따라서 non-Vitest harness subpath만 사용하더라도 패키지 매니저가 해당 peer 경고를 표시할 수 있습니다.
 
 `@fluojs/testing/vitest`를 사용할 때는 `fluoBabelDecoratorsPlugin()`이 런타임에 Babel을 호출하므로, 사용하는 워크스페이스에 `@babel/core`도 함께 설치해야 합니다. Vitest 플러그인은 Vite query/hash suffix를 제거한 뒤 `.ts`, `.tsx`, `.mts`, `.cts` 소스 id를 변환하고, `node_modules`는 건너뛰며, 가장 가까운 root Babel config인 `babel.config.cjs`, `babel.config.mjs`, `babel.config.js`, `babel.config.json`을 해석합니다.
 
@@ -134,9 +134,11 @@ const mailer = createDeepMock(MailService);
 
 프레임워크 지향 플랫폼 패키지를 작성할 때는 `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, `@fluojs/testing/web-runtime-adapter-portability` 같은 서브패스를 사용해 적합성 및 이식성 검증을 수행합니다.
 
-이식성 하니스의 cleanup도 계약에 포함됩니다. `app.close()`가 실패하면 하니스는 cleanup 실패를 보고하며, assertion이 이미 실패한 경우에는 assertion 실패와 cleanup 실패를 모두 보존하는 aggregate error를 발생시킵니다.
+이식성 하니스의 cleanup도 계약에 포함됩니다. 앱이 bootstrap된 뒤 setup, `listen()`, assertion이 실패하면 하니스는 해당 partial app을 닫습니다. `app.close()`가 실패하면 하니스는 cleanup 실패를 보고하며, setup 또는 assertion이 이미 실패한 경우에는 원래 실패와 cleanup 실패를 모두 보존하는 aggregate error를 발생시킵니다.
 
-`HttpAdapterPortabilityHarness` 메서드는 공개 어댑터 계약 체크입니다. 직접 같은 검증을 다시 만들기보다 `assertPreservesMalformedCookieValues()`, `assertSupportsSseStreaming()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, `assertDefaultsMultipartTotalLimitToMaxBodySize()`, `assertSettlesStreamDrainWaitOnClose()`, `assertReportsConfiguredHostInStartupLogs()`, `assertReportsHttpsStartupUrl(...)`, `assertRemovesShutdownSignalListenersAfterClose()`처럼 초점이 분명한 assertion을 사용하세요.
+`HttpAdapterPortabilityHarness`와 web-runtime portability harness 메서드는 공개 어댑터 계약 체크입니다. 직접 같은 검증을 다시 만들기보다 `assertPreservesMalformedCookieValues()`, `assertSupportsSseStreaming()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, `assertDefaultsMultipartTotalLimitToMaxBodySize()`, `assertSettlesStreamDrainWaitOnClose()`, `assertReportsConfiguredHostInStartupLogs()`, `assertReportsHttpsStartupUrl(...)`, `assertRemovesShutdownSignalListenersAfterClose()`처럼 초점이 분명한 assertion을 사용하세요.
+
+HTTP 어댑터가 런타임 전반에서 `rawBody`의 byte-sensitive payload byte를 그대로 보존하는지 증명해야 할 때는 `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`를 사용하세요.
 
 ## canonical TDD ladder
 

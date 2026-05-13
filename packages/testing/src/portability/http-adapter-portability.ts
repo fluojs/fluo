@@ -141,6 +141,28 @@ async function runWithCleanup(app: AppLike, adapterName: string, assertion: () =
   }
 }
 
+async function prepareAndListenWithCleanup(
+  app: AppLike,
+  adapterName: string,
+  prepare?: () => Promise<void>,
+): Promise<void> {
+  try {
+    await prepare?.();
+    await app.listen();
+  } catch (setupError) {
+    try {
+      await app.close();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [setupError, cleanupError],
+        `${adapterName} adapter portability setup failed and app.close() also failed during harness cleanup.`,
+      );
+    }
+
+    throw setupError;
+  }
+}
+
 /**
  * A portability harness for testing HTTP adapters to ensure they behave
  * consistently across different environments.
@@ -185,7 +207,7 @@ export class HttpAdapterPortabilityHarness<
       port,
     } as TBootstrapOptions);
 
-    await app.listen();
+    await prepareAndListenWithCleanup(app, this.options.name);
 
     await runWithCleanup(app, this.options.name, async () => {
       const response = await fetch(`http://127.0.0.1:${String(port)}/cookies`, {
@@ -247,7 +269,7 @@ export class HttpAdapterPortabilityHarness<
       rawBody: true,
     } as TBootstrapOptions);
 
-    await app.listen();
+    await prepareAndListenWithCleanup(app, this.options.name);
 
     await runWithCleanup(app, this.options.name, async () => {
       const [jsonResponse, textResponse] = await Promise.all([
@@ -308,9 +330,9 @@ export class HttpAdapterPortabilityHarness<
       rawBody: true,
     } as TBootstrapOptions);
 
-    await this.options.prepareExactRawBodyByteTest?.(app);
-
-    await app.listen();
+    await prepareAndListenWithCleanup(app, this.options.name, async () => {
+      await this.options.prepareExactRawBodyByteTest?.(app);
+    });
 
     await runWithCleanup(app, this.options.name, async () => {
       const payload = Uint8Array.from([0xe9, 0x41]);
@@ -357,7 +379,7 @@ export class HttpAdapterPortabilityHarness<
       rawBody: true,
     } as TBootstrapOptions);
 
-    await app.listen();
+    await prepareAndListenWithCleanup(app, this.options.name);
 
     await runWithCleanup(app, this.options.name, async () => {
       const form = new FormData();
@@ -414,7 +436,7 @@ export class HttpAdapterPortabilityHarness<
       port,
     } as TBootstrapOptions);
 
-    await app.listen();
+    await prepareAndListenWithCleanup(app, this.options.name);
 
     await runWithCleanup(app, this.options.name, async () => {
       const form = new FormData();
@@ -469,7 +491,7 @@ export class HttpAdapterPortabilityHarness<
       port,
     } as TBootstrapOptions);
 
-    await app.listen();
+    await prepareAndListenWithCleanup(app, this.options.name);
 
     await runWithCleanup(app, this.options.name, async () => {
       const response = await fetch(`http://127.0.0.1:${String(port)}/events`, {
@@ -534,7 +556,7 @@ export class HttpAdapterPortabilityHarness<
       port,
     } as TBootstrapOptions);
 
-    await app.listen();
+    await prepareAndListenWithCleanup(app, this.options.name);
 
     await runWithCleanup(app, this.options.name, async () => {
       const response = await fetch(`http://127.0.0.1:${String(port)}/events`, {
