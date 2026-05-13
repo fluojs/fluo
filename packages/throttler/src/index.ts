@@ -1,4 +1,12 @@
-export { SkipThrottle, Throttle } from './decorators.js';
+export {
+  getClassSkipThrottleMetadata,
+  getClassThrottleMetadata,
+  getSkipThrottleMetadata,
+  getThrottleMetadata,
+  SkipThrottle,
+  Throttle,
+  throttleRouteMetadataKey,
+} from './decorators.js';
 export { ThrottlerGuard } from './guard.js';
 export * from './module.js';
 export { RedisThrottlerStore } from './redis-store.js';

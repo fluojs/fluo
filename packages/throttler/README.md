@@ -130,6 +130,7 @@ ThrottlerModule.forRoot({
 ### Decorators
 - `@Throttle({ ttl, limit })`: Sets a specific rate limit for a class or method.
 - `@SkipThrottle()`: Disables throttling for a class or method.
+- Existing root-barrel metadata helpers (`throttleRouteMetadataKey`, `getThrottleMetadata`, `getSkipThrottleMetadata`, `getClassThrottleMetadata`, and `getClassSkipThrottleMetadata`) remain exported for compatibility with advanced integrations that already inspect decorator metadata directly.
 
 ### Guards
 - `ThrottlerGuard`: The guard responsible for enforcing rate limits. `ThrottlerModule.forRoot()` makes it injectable; route handlers still activate it through Fluo guard metadata such as `@UseGuards(ThrottlerGuard)`.

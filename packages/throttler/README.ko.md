@@ -130,6 +130,7 @@ ThrottlerModule.forRoot({
 ### 데코레이터
 - `@Throttle({ ttl, limit })`: 클래스나 메서드에 특정 속도 제한을 설정합니다.
 - `@SkipThrottle()`: 클래스나 메서드에 대해 속도 제한을 비활성화합니다.
+- 기존 root-barrel metadata helper(`throttleRouteMetadataKey`, `getThrottleMetadata`, `getSkipThrottleMetadata`, `getClassThrottleMetadata`, `getClassSkipThrottleMetadata`)는 decorator metadata를 직접 검사하던 advanced integration과의 호환성을 위해 계속 export됩니다.
 
 ### 가드
 - `ThrottlerGuard`: 속도 제한을 강제하는 가드입니다. `ThrottlerModule.forRoot()`는 이를 주입 가능하게 만들며, 라우트 핸들러는 `@UseGuards(ThrottlerGuard)` 같은 Fluo guard metadata로 직접 활성화해야 합니다.

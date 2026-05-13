@@ -103,11 +103,11 @@ describe('@fluojs/throttler public entrypoints', () => {
   it('keeps ThrottlerModule.forRoot as the supported registration entrypoint without exporting internal provider helpers', () => {
     expect(throttlerExports).not.toHaveProperty('createThrottlerProviders');
     expect(throttlerExports).not.toHaveProperty('THROTTLER_OPTIONS');
-    expect(throttlerExports).not.toHaveProperty('throttleRouteMetadataKey');
-    expect(throttlerExports).not.toHaveProperty('getThrottleMetadata');
-    expect(throttlerExports).not.toHaveProperty('getSkipThrottleMetadata');
-    expect(throttlerExports).not.toHaveProperty('getClassThrottleMetadata');
-    expect(throttlerExports).not.toHaveProperty('getClassSkipThrottleMetadata');
+    expect(throttlerExports).toHaveProperty('throttleRouteMetadataKey');
+    expect(throttlerExports).toHaveProperty('getThrottleMetadata');
+    expect(throttlerExports).toHaveProperty('getSkipThrottleMetadata');
+    expect(throttlerExports).toHaveProperty('getClassThrottleMetadata');
+    expect(throttlerExports).toHaveProperty('getClassSkipThrottleMetadata');
     expect(throttlerExports.ThrottlerModule).toBe(ThrottlerModule);
     expect(typeof throttlerExports.ThrottlerModule.forRoot).toBe('function');
     expect(throttlerExports.Throttle).toBe(Throttle);
