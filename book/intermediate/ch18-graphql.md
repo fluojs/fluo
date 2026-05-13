@@ -23,7 +23,7 @@ This chapter covers how to add a query layer to FluoShop that differs from REST.
 fluo's philosophy of **Explicit Over Implicit** fits well with GraphQL's typed schema model. Using `@fluojs/graphql` gives you these benefits.
 
 - **Unified DI**: Resolvers are treated as top-level Providers inside the fluo container.
-- **Protocol Portability**: The same GraphQL API can run on Node.js, Bun, Deno, and Edge Workers without code changes.
+- **Protocol Portability**: HTTP queries/mutations and the default SSE subscription path use fluo's portable HTTP abstraction across Node.js, Bun, Deno, and Edge Workers; optional WebSocket subscriptions require an adapter that exposes Node HTTP/S upgrade listeners.
 - **Standard Decorators**: It does not depend on the legacy `experimentalDecorators` flag.
 - **Performance**: Direct integration with the runtime facade reduces unnecessary overhead.
 
@@ -71,6 +71,8 @@ export class ProductResolver {
 ```
 
 `@Arg(...)` is a field decorator for resolver input DTOs. Mark the DTO fields you want to expose as GraphQL arguments, then pass that DTO class through the operation's `input` option.
+
+Resolver methods can also receive `context: GraphQLContext`. That context carries the underlying fluo request, any authenticated `principal` set by HTTP middleware or guards, custom fields returned from `GraphqlModule.forRoot({ context })`, and websocket `connectionParams`/`socket` values when the operation arrives through the optional websocket transport.
 
 ### Registering the Module
 

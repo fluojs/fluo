@@ -107,6 +107,7 @@ class UserResolver {
 - Singleton resolver가 기본값이며, 각 operation에서 애플리케이션 컨테이너를 통해 resolve됩니다.
 - Request-scoped provider를 주입하는 resolver는 resolver 자체에도 `@Scope('request')`를 지정해야 합니다. 이렇게 해야 DI lifetime 규칙이 명시적으로 유지되고 singleton-to-request dependency mismatch를 피할 수 있습니다.
 - `@fluojs/graphql`은 HTTP GraphQL 요청 또는 WebSocket subscription operation마다 operation-scoped DI 컨테이너를 하나 만들고, 해당 operation 안의 resolver 호출들이 이를 공유하며, operation 완료 또는 WebSocket operation 종료 시 dispose합니다.
+- Resolver 메서드는 `GraphQLContext`를 받으며, 내장 필드에는 fluo `request`, middleware 또는 guard가 설정한 인증된 HTTP `principal`, WebSocket subscription의 `connectionParams`와 `socket`, 그리고 `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드가 포함됩니다.
 - Request-scoped DataLoader helper는 같은 `GraphQLContext` operation 경계를 사용하므로 loader cache는 하나의 GraphQL operation 안에서만 공유됩니다.
 
 ```typescript
@@ -136,6 +137,8 @@ class RequestResolver {
 - **HTTP**: 표준 GET/POST 쿼리 및 뮤테이션.
 - **SSE**: Server-Sent Events를 통한 구독(기본값).
 - **WebSockets**: 활성 adapter가 upgrade listener를 지원하는 Node HTTP/S 서버를 노출할 때(예: Node HTTP adapter) 사용할 수 있는 선택적 `graphql-ws` 실시간 구독 지원.
+
+HTTP query/mutation과 기본 SSE subscription 경로는 fluo의 portable HTTP 추상화를 통해 실행됩니다. 선택적 WebSocket transport는 의도적으로 더 좁은 범위를 가집니다. Server-backed Node HTTP/S adapter 표면이 필요하므로 Bun, Deno, Cloudflare Workers 배포에서는 adapter가 호환되는 upgrade listener를 노출하지 않는 한 기본 SSE 경로를 유지해야 합니다.
 
 ```typescript
 GraphqlModule.forRoot({

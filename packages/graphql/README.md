@@ -107,6 +107,7 @@ class UserResolver {
 - Singleton resolvers are the default and are resolved from the application container for every operation.
 - Resolvers that inject request-scoped providers must also be marked with `@Scope('request')`; this keeps DI lifetime rules explicit and avoids singleton-to-request dependency mismatches.
 - `@fluojs/graphql` creates one operation-scoped DI container for each HTTP GraphQL request or websocket subscription operation, shares it across resolver calls in that operation, and disposes it when the operation completes or the websocket operation disconnects.
+- Resolver methods receive a `GraphQLContext` whose built-in fields expose the underlying fluo `request`, the authenticated HTTP `principal` when middleware or guards set one, websocket `connectionParams` and `socket` for websocket subscriptions, and any custom fields returned from `GraphqlModule.forRoot({ context })`.
 - Request-scoped DataLoader helpers use the same `GraphQLContext` operation boundary, so loader caches are shared only within one GraphQL operation.
 
 ```typescript
@@ -136,6 +137,8 @@ class RequestResolver {
 - **HTTP**: Standard GET/POST queries and mutations.
 - **SSE**: Subscriptions over Server-Sent Events (default).
 - **WebSockets**: Optional `graphql-ws` support for real-time subscriptions when the active adapter exposes a Node HTTP/S server with upgrade listeners (for example, the Node HTTP adapter).
+
+HTTP queries/mutations and the default SSE subscription path run through fluo's portable HTTP abstraction. The optional websocket transport is intentionally narrower: it requires a server-backed Node HTTP/S adapter surface, so Bun, Deno, and Cloudflare Workers deployments should keep the default SSE path unless their adapter exposes compatible upgrade listeners.
 
 ```typescript
 GraphqlModule.forRoot({

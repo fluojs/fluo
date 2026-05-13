@@ -23,7 +23,7 @@
 **명시성이 암시성보다 낫다(Explicit Over Implicit)**는 fluo의 철학은 GraphQL의 타입 스키마 모델과 잘 맞습니다. `@fluojs/graphql`을 사용하면 다음과 같은 이점을 얻을 수 있습니다.
 
 - **통합된 DI**: 리졸버는 fluo 컨테이너 안의 최상위 프로바이더로 취급됩니다.
-- **프로토콜 이식성**: 같은 GraphQL API를 Node.js, Bun, Deno, Edge Workers에서 코드 변경 없이 실행할 수 있습니다.
+- **프로토콜 이식성**: HTTP query/mutation과 기본 SSE subscription 경로는 Node.js, Bun, Deno, Edge Workers 전반에서 fluo의 portable HTTP 추상화를 사용합니다. 선택적 WebSocket subscription은 Node HTTP/S upgrade listener를 노출하는 adapter가 필요합니다.
 - **표준 데코레이터**: 레거시 `experimentalDecorators` 플래그에 의존하지 않습니다.
 - **성능**: 런타임 퍼사드(facade)와 직접 통합해 불필요한 오버헤드를 줄입니다.
 
@@ -71,6 +71,8 @@ export class ProductResolver {
 ```
 
 `@Arg(...)`는 resolver input DTO용 필드 데코레이터입니다. GraphQL 인자로 노출할 DTO 필드에 표시한 뒤, operation의 `input` 옵션으로 해당 DTO 클래스를 전달합니다.
+
+Resolver 메서드는 `context: GraphQLContext`도 받을 수 있습니다. 이 context에는 기반 fluo request, HTTP middleware나 guard가 설정한 인증된 `principal`, `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드, 그리고 선택적 WebSocket transport로 들어온 operation의 `connectionParams`/`socket` 값이 포함됩니다.
 
 ### Registering the Module
 
