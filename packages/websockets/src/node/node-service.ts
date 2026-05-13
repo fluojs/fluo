@@ -45,12 +45,18 @@ interface ConnectionHandlerState {
   bufferedDisconnect: BufferedDisconnectEvent | undefined;
   bufferedMessages: RawData[];
   bufferedMessagesStartIndex: number;
+  connectLifecyclePromise: Promise<void>;
+  connectLifecycleSettled: boolean;
+  disconnectLifecyclePromise: Promise<void>;
+  disconnectLifecycleSettled: boolean;
   enqueuedMessageCount: number;
   handlerQueue: Promise<void>;
   handlersReady: boolean;
   processingMessageQueue: boolean;
   queuedMessages: RawData[];
   queuedMessagesStartIndex: number;
+  resolveConnectLifecycle: () => void;
+  resolveDisconnectLifecycle: () => void;
   resolved: ResolvedGatewayInstance[];
   socketId: string;
 }
@@ -227,6 +233,15 @@ function rejectUpgradeRequestWithStatus(socket: Duplex, rejection: WebSocketUpgr
   socket.destroy();
 }
 
+function createCompletionSignal(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((res) => {
+    resolve = res;
+  });
+
+  return { promise, resolve };
+}
+
 /**
  * Lifecycle service that discovers WebSocket gateways, attaches upgrade listeners, and manages room state.
  *
@@ -240,7 +255,9 @@ export class NodeWebSocketGatewayLifecycleService
 {
   private attachments: GatewayAttachment[] = [];
   private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+  private isShuttingDown = false;
   private ownedUpgradeServers: OwnedGatewayServerRegistration[] = [];
+  private readonly pendingUpgradeOperations = new Set<Promise<void>>();
   private pendingUpgradeReservations = 0;
   private readonly pingPending = new Set<string>();
   private readonly pingSentAt = new Map<string, number>();
@@ -248,6 +265,7 @@ export class NodeWebSocketGatewayLifecycleService
   private shutdownPromise: Promise<void> | undefined;
   private readonly socketRegistry = new Map<string, WebSocket>();
   private readonly socketRooms = new Map<string, Set<string>>();
+  private readonly socketStates = new Map<string, ConnectionHandlerState>();
   private upgradeListener: NodeUpgradeListener | undefined;
   private upgradeServer: NodeUpgradeServer | undefined;
 
@@ -440,7 +458,7 @@ export class NodeWebSocketGatewayLifecycleService
     return (request, socket, head) => {
       socket.pause();
 
-      void this.handleUpgradeRequest(upgradeServer, attachmentsByPath, request, socket, head)
+      void this.trackPendingUpgradeOperation(this.handleUpgradeRequest(upgradeServer, attachmentsByPath, request, socket, head))
         .catch((error) => {
           this.logger.error('WebSocket upgrade admission failed.', error, 'WebSocketGatewayLifecycleService');
           rejectUpgradeRequestWithStatus(socket, {
@@ -522,9 +540,22 @@ export class NodeWebSocketGatewayLifecycleService
     this.registerSocketConnection(state, socket);
     this.attachConnectionListeners(state, socket, request);
 
-    await this.resolveConnectionGateways(descriptors, state);
-    await this.runConnectHandlers(state, socket, request);
-    await this.finalizeConnectionBinding(state, socket, request);
+    try {
+      await this.resolveConnectionGateways(descriptors, state);
+      await this.runConnectHandlers(state, socket, request);
+      await this.finalizeConnectionBinding(state, socket, request);
+
+      if (this.isShuttingDown && socket.readyState === WebSocket.OPEN) {
+        socket.close(1001, 'Server shutting down');
+        await state.disconnectLifecyclePromise;
+      }
+    } finally {
+      if (!state.handlersReady && state.bufferedDisconnect) {
+        this.settleDisconnectLifecycle(state);
+      }
+
+      this.settleConnectLifecycle(state);
+    }
   }
 
   private registerSocketConnection(
@@ -533,6 +564,7 @@ export class NodeWebSocketGatewayLifecycleService
   ): void {
     this.releaseUpgradeReservation();
     this.socketRegistry.set(state.socketId, socket);
+    this.socketStates.set(state.socketId, state);
   }
 
   private async finalizeConnectionBinding(
@@ -546,19 +578,46 @@ export class NodeWebSocketGatewayLifecycleService
   }
 
   private createConnectionHandlerState(): ConnectionHandlerState {
+    const connectLifecycle = createCompletionSignal();
+    const disconnectLifecycle = createCompletionSignal();
+
     return {
       bufferedDisconnect: undefined,
       bufferedMessages: [],
       bufferedMessagesStartIndex: 0,
+      connectLifecyclePromise: connectLifecycle.promise,
+      connectLifecycleSettled: false,
+      disconnectLifecyclePromise: disconnectLifecycle.promise,
+      disconnectLifecycleSettled: false,
       enqueuedMessageCount: 0,
       handlerQueue: Promise.resolve(),
       handlersReady: false,
       processingMessageQueue: false,
       queuedMessages: [],
       queuedMessagesStartIndex: 0,
+      resolveConnectLifecycle: connectLifecycle.resolve,
+      resolveDisconnectLifecycle: disconnectLifecycle.resolve,
       resolved: [],
       socketId: randomUUID(),
     };
+  }
+
+  private settleConnectLifecycle(state: ConnectionHandlerState): void {
+    if (state.connectLifecycleSettled) {
+      return;
+    }
+
+    state.connectLifecycleSettled = true;
+    state.resolveConnectLifecycle();
+  }
+
+  private settleDisconnectLifecycle(state: ConnectionHandlerState): void {
+    if (state.disconnectLifecycleSettled) {
+      return;
+    }
+
+    state.disconnectLifecycleSettled = true;
+    state.resolveDisconnectLifecycle();
   }
 
   private getBufferedMessageCount(state: ConnectionHandlerState): number {
@@ -717,6 +776,9 @@ export class NodeWebSocketGatewayLifecycleService
       })
       .catch((error) => {
         this.logger.error('WebSocket gateway disconnect dispatch failed.', error, 'WebSocketGatewayLifecycleService');
+      })
+      .finally(() => {
+        this.settleDisconnectLifecycle(state);
       });
   }
 
@@ -886,6 +948,13 @@ export class NodeWebSocketGatewayLifecycleService
     request: IncomingMessage,
     path: string,
   ): Promise<WebSocketUpgradeRejection | undefined> {
+    if (this.isShuttingDown) {
+      return {
+        body: 'WebSocket server is shutting down.',
+        status: 503,
+      };
+    }
+
     if (!this.tryReserveUpgradeSlot()) {
       return {
         body: 'WebSocket connection limit exceeded.',
@@ -904,6 +973,14 @@ export class NodeWebSocketGatewayLifecycleService
         activeConnectionCount: this.resolveReservedConnectionCount() - 1,
         path,
       });
+
+      if (this.isShuttingDown) {
+        this.releaseUpgradeReservation();
+        return {
+          body: 'WebSocket server is shutting down.',
+          status: 503,
+        };
+      }
 
       if (result === false) {
         this.releaseUpgradeReservation();
@@ -1043,6 +1120,7 @@ export class NodeWebSocketGatewayLifecycleService
   }
 
   private async runShutdownLifecycle(): Promise<void> {
+    this.isShuttingDown = true;
     this.stopHeartbeat();
     this.detachUpgradeServerListener();
 
@@ -1050,9 +1128,69 @@ export class NodeWebSocketGatewayLifecycleService
     const ownedUpgradeServers = this.ownedUpgradeServers.splice(0);
     const shutdownTimeoutMs = this.resolveShutdownTimeoutMs();
 
+    await this.awaitPendingUpgradeOperations(shutdownTimeoutMs);
     await this.closeGatewayAttachments(attachments, shutdownTimeoutMs);
     await this.closeOwnedUpgradeServers(ownedUpgradeServers, shutdownTimeoutMs);
     this.clearConnectionTrackingState();
+  }
+
+  private trackPendingUpgradeOperation<T>(operation: Promise<T>): Promise<T> {
+    let trackedOperation: Promise<void> | undefined;
+
+    trackedOperation = operation
+      .then(() => undefined, () => undefined)
+      .finally(() => {
+        if (trackedOperation) {
+          this.pendingUpgradeOperations.delete(trackedOperation);
+        }
+      });
+
+    this.pendingUpgradeOperations.add(trackedOperation);
+    return operation;
+  }
+
+  private async awaitPendingUpgradeOperations(timeoutMs: number): Promise<void> {
+    if (this.pendingUpgradeOperations.size === 0) {
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        reject(new Error(`Timed out while waiting for in-flight Node websocket upgrades after ${String(timeoutMs)}ms.`));
+      }, timeoutMs);
+
+      Promise.all([...this.pendingUpgradeOperations])
+        .then(() => {
+          if (settled) {
+            return;
+          }
+
+          settled = true;
+          clearTimeout(timeout);
+          resolve();
+        })
+        .catch((error) => {
+          if (settled) {
+            return;
+          }
+
+          settled = true;
+          clearTimeout(timeout);
+          reject(error);
+        });
+    }).catch((error) => {
+      this.logger.error(
+        `Failed to wait for in-flight Node websocket upgrades within ${String(timeoutMs)}ms.`,
+        error,
+        'WebSocketGatewayLifecycleService',
+      );
+    });
   }
 
   private stopHeartbeat(): void {
@@ -1150,16 +1288,74 @@ export class NodeWebSocketGatewayLifecycleService
   ): Promise<void> {
     await Promise.all(
       attachments.map(async (attachment) => {
-        this.terminateAttachmentClients(attachment);
+        await this.closeAttachmentClients(attachment, shutdownTimeoutMs);
         await this.closeGatewayAttachment(attachment, shutdownTimeoutMs);
       }),
     );
   }
 
-  private terminateAttachmentClients(attachment: GatewayAttachment): void {
+  private async closeAttachmentClients(attachment: GatewayAttachment, timeoutMs: number): Promise<void> {
+    const states = [...this.socketStates.values()];
+
     for (const client of attachment.server.clients) {
-      client.terminate();
+      if (client.readyState === WebSocket.OPEN) {
+        client.close(1001, 'Server shutting down');
+      } else if (client.readyState === WebSocket.CONNECTING) {
+        client.terminate();
+      }
     }
+
+    await this.awaitHandlerQueueDrain(states, timeoutMs);
+  }
+
+  private async awaitHandlerQueueDrain(
+    states: readonly ConnectionHandlerState[],
+    timeoutMs: number,
+  ): Promise<void> {
+    if (states.length === 0) {
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        reject(new Error(`Timed out while closing Node websocket connections after ${String(timeoutMs)}ms.`));
+      }, timeoutMs);
+
+      Promise.all(states.map(async (state) => {
+        await state.connectLifecyclePromise;
+        await state.disconnectLifecyclePromise;
+      }))
+        .then(() => {
+          if (settled) {
+            return;
+          }
+
+          settled = true;
+          clearTimeout(timeout);
+          resolve();
+        })
+        .catch((error) => {
+          if (settled) {
+            return;
+          }
+
+          settled = true;
+          clearTimeout(timeout);
+          reject(error);
+        });
+    }).catch((error) => {
+      this.logger.error(
+        `Failed to close Node websocket connections within ${String(timeoutMs)}ms.`,
+        error,
+        'WebSocketGatewayLifecycleService',
+      );
+    });
   }
 
   private async closeGatewayAttachment(
@@ -1180,6 +1376,7 @@ export class NodeWebSocketGatewayLifecycleService
   private clearConnectionTrackingState(): void {
     this.socketRegistry.clear();
     this.socketRooms.clear();
+    this.socketStates.clear();
     this.roomSockets.clear();
     this.pingPending.clear();
     this.pingSentAt.clear();
@@ -1324,6 +1521,7 @@ export class NodeWebSocketGatewayLifecycleService
 
   private unregisterSocket(socketId: string): void {
     this.socketRegistry.delete(socketId);
+    this.socketStates.delete(socketId);
     this.pingPending.delete(socketId);
     this.pingSentAt.delete(socketId);
 

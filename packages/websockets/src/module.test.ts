@@ -152,7 +152,7 @@ function createUpgradeRequest(path: string): string {
     + 'Connection: Upgrade\r\n'
     + 'Upgrade: websocket\r\n'
     + 'Sec-WebSocket-Version: 13\r\n'
-    + 'Sec-WebSocket-Key: dGVzdC1rZXktMDAwMDAw\r\n'
+    + 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n'
     + '\r\n';
 }
 
@@ -1764,6 +1764,180 @@ describe('@fluojs/websockets', () => {
     expect((Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>).size).toBe(0);
     expect((Reflect.get(service, 'pingPending') as Set<string>).size).toBe(0);
     expect((Reflect.get(service, 'heartbeatTimer') as ReturnType<typeof setInterval> | undefined)).toBeUndefined();
+  });
+
+  it('rejects in-flight Node upgrades once shutdown begins during an async guard', async () => {
+    const guardGate = createDeferred<void>();
+
+    @WebSocketGateway({ path: '/shutdown-guard-race' })
+    class GuardedGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [WebSocketModule.forRoot({
+        upgrade: {
+          async guard() {
+            await guardGate.promise;
+            return true;
+          },
+        },
+      })],
+      providers: [GuardedGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+      shutdownTimeoutMs: 200,
+    });
+
+    await app.listen();
+    const service = await app.container.resolve(WebSocketGatewayLifecycleService);
+
+    const responsePromise = readUpgradeResponse(port, createUpgradeRequest('/shutdown-guard-race'));
+    await waitForAssertion(() => {
+      expect(Reflect.get(service, 'pendingUpgradeReservations')).toBe(1);
+    });
+
+    const closePromise = service.onApplicationShutdown();
+    guardGate.resolve();
+
+    const response = await responsePromise;
+
+    expect(response).toContain('HTTP/1.1 503 Service Unavailable');
+    expect(response).toContain('WebSocket server is shutting down.');
+
+    await closePromise;
+    await app.close();
+  });
+
+  it('waits for asynchronous Node disconnect cleanup before finishing shutdown', async () => {
+    const connected = createDeferred<void>();
+    const disconnectGate = createDeferred<void>();
+
+    class GatewayState {
+      disconnectCount = 0;
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/shutdown-async-disconnect' })
+    class ShutdownGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      onConnect() {
+        connected.resolve();
+      }
+
+      @OnDisconnect()
+      async onDisconnect() {
+        await disconnectGate.promise;
+        this.state.disconnectCount += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [WebSocketModule.forRoot({ shutdown: { timeoutMs: 200 } })],
+      providers: [GatewayState, ShutdownGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+      shutdownTimeoutMs: 200,
+    });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+
+    await app.listen();
+
+    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/shutdown-async-disconnect`);
+    await onceOpen(socket);
+    await connected.promise;
+
+    let closed = false;
+    const closePromise = app.close().then(() => {
+      closed = true;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(closed).toBe(false);
+    expect(state.disconnectCount).toBe(0);
+
+    disconnectGate.resolve();
+    await closePromise;
+
+    expect(closed).toBe(true);
+    expect(state.disconnectCount).toBe(1);
+  });
+
+  it('waits for in-flight Node connect handlers to replay buffered disconnects during shutdown', async () => {
+    const connectGate = createDeferred<void>();
+
+    class GatewayState {
+      connectCount = 0;
+      disconnectCount = 0;
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/shutdown-connect-in-flight' })
+    class ShutdownGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      async onConnect() {
+        await connectGate.promise;
+        this.state.connectCount += 1;
+      }
+
+      @OnDisconnect()
+      onDisconnect() {
+        this.state.disconnectCount += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [WebSocketModule.forRoot({ shutdown: { timeoutMs: 200 } })],
+      providers: [GatewayState, ShutdownGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+      shutdownTimeoutMs: 200,
+    });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+
+    await app.listen();
+
+    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/shutdown-connect-in-flight`);
+    await onceOpen(socket);
+
+    let closed = false;
+    const closePromise = app.close().then(() => {
+      closed = true;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(closed).toBe(false);
+    expect(state.connectCount).toBe(0);
+    expect(state.disconnectCount).toBe(0);
+
+    connectGate.resolve();
+    await closePromise;
+
+    expect(closed).toBe(true);
+    expect(state.connectCount).toBe(1);
+    expect(state.disconnectCount).toBe(1);
   });
 
   it('attaches a socket error listener so websocket error events do not escape', () => {
