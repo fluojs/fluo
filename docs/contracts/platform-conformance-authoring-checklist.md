@@ -27,6 +27,7 @@ Use this checklist when authoring or changing official platform-facing packages 
 - [ ] MUST: For HTTP adapters, run `createHttpAdapterPortabilityHarness(...)` from `@fluojs/testing/http-adapter-portability`.
 - [ ] MUST: Preserve malformed cookie values without crashing or normalizing them away.
 - [ ] MUST: Preserve `rawBody` for JSON and text requests when raw-body capture is enabled.
+- [ ] MUST: Verify `assertPreservesExactRawBodyBytesForByteSensitivePayloads()` for byte-sensitive payloads so adapters preserve exact `rawBody` bytes without Unicode replacement, newline normalization, or re-encoding.
 - [ ] MUST NOT: Preserve `rawBody` for multipart requests.
 - [ ] MUST: Support SSE streaming with `text/event-stream` content type and stable event framing.
 - [ ] MUST: Report the configured host in startup logs.
