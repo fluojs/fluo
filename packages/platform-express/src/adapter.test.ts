@@ -261,10 +261,18 @@ describe('@fluojs/platform-express', () => {
   });
 
   it('rejects invalid explicit numeric adapter options during setup', () => {
-    expect(() => createExpressAdapter({ maxBodySize: 0 })).toThrow(/maxBodySize/i);
+    expect(() => createExpressAdapter({ maxBodySize: -1 })).toThrow(/maxBodySize/i);
     expect(() => createExpressAdapter({ retryDelayMs: -1 })).toThrow(/retryDelayMs/i);
     expect(() => createExpressAdapter({ retryLimit: 1.5 })).toThrow(/retryLimit/i);
     expect(() => createExpressAdapter({ shutdownTimeoutMs: Number.NaN })).toThrow(/shutdownTimeoutMs/i);
+  });
+
+  it('rejects invalid numeric options through the public adapter constructor', () => {
+    expect(() => new ExpressHttpApplicationAdapter(-1, undefined, 150, 20, undefined)).toThrow(/PORT/i);
+    expect(() => new ExpressHttpApplicationAdapter(3000, undefined, -1, 20, undefined)).toThrow(/retryDelayMs/i);
+    expect(() => new ExpressHttpApplicationAdapter(3000, undefined, 150, 1.5, undefined)).toThrow(/retryLimit/i);
+    expect(() => new ExpressHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, -1)).toThrow(/maxBodySize/i);
+    expect(() => new ExpressHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, Number.NaN)).toThrow(/shutdownTimeoutMs/i);
   });
 
   it('preserves response parity for simple JSON and non-fast-path responses', async () => {
@@ -840,6 +848,54 @@ describe('@fluojs/platform-express', () => {
         error: {
           code: 'PAYLOAD_TOO_LARGE',
           message: 'Request body exceeds the size limit.',
+        },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('treats maxBodySize zero as a valid zero-byte body limit', async () => {
+    @Controller('/zero-body-limit')
+    class ZeroBodyLimitController {
+      @Post('/')
+      echo(_input: undefined, context: RequestContext) {
+        return { body: context.request.body ?? null };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [ZeroBodyLimitController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapExpressApplication(AppModule, {
+      cors: false,
+      maxBodySize: 0,
+      port,
+    });
+
+    await app.listen();
+
+    try {
+      const emptyResponse = await fetch(`http://127.0.0.1:${String(port)}/zero-body-limit`, {
+        body: '',
+        headers: { 'content-type': 'text/plain' },
+        method: 'POST',
+      });
+      const overflowResponse = await fetch(`http://127.0.0.1:${String(port)}/zero-body-limit`, {
+        body: '1',
+        headers: { 'content-type': 'text/plain' },
+        method: 'POST',
+      });
+
+      expect(emptyResponse.status).toBe(201);
+      await expect(emptyResponse.json()).resolves.toEqual({ body: null });
+      expect(overflowResponse.status).toBe(413);
+      await expect(overflowResponse.json()).resolves.toMatchObject({
+        error: {
+          code: 'PAYLOAD_TOO_LARGE',
         },
       });
     } finally {
@@ -1743,6 +1799,40 @@ describe('@fluojs/platform-express', () => {
       await closePromise;
 
       expect(closeAllConnections).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('treats shutdownTimeoutMs zero as an immediate force-close timeout', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const adapter = new ExpressHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, 0);
+      let closeCallback: ((error?: Error | null) => void) | undefined;
+      const closeAllConnections = vi.fn();
+      const server = {
+        close(callback: (error?: Error | null) => void) {
+          closeCallback = callback;
+          return this;
+        },
+        closeAllConnections,
+        closeIdleConnections: vi.fn(),
+        listening: true,
+      } as unknown as ReturnType<typeof createHttpServer>;
+
+      Reflect.set(adapter, 'server', server);
+      Reflect.set(adapter, 'dispatcher', { async dispatch() {} });
+
+      const closePromise = adapter.close();
+      const closeExpectation = expect(closePromise).rejects.toThrow(/shutdown timeout/i);
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      await closeExpectation;
+      expect(closeAllConnections).toHaveBeenCalledTimes(1);
+
+      closeCallback?.(undefined);
     } finally {
       vi.useRealTimers();
     }
