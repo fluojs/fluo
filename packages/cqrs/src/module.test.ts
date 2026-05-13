@@ -1143,6 +1143,65 @@ describe('@fluojs/cqrs', () => {
     expect(store.seen).toEqual([1, 2]);
   });
 
+  it('rejects command, query, and event dispatch after application shutdown', async () => {
+    class Store {
+      commandCount = 0;
+      eventCount = 0;
+    }
+
+    @Inject(Store)
+    @CommandHandler(CreateUserCommand)
+    class CreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
+      constructor(private readonly store: Store) {}
+
+      execute(command: CreateUserCommand): string {
+        this.store.commandCount += 1;
+        return command.name;
+      }
+    }
+
+    @Inject(Store)
+    @QueryHandler(GetUserCountQuery)
+    class GetUserHandler implements IQueryHandler<GetUserCountQuery, number> {
+      constructor(private readonly store: Store) {}
+
+      execute(_query: GetUserCountQuery): number {
+        return this.store.commandCount;
+      }
+    }
+
+    @Inject(Store)
+    @EventHandler(UserCreatedEvent)
+    class UserCreatedRecorder implements IEventHandler<UserCreatedEvent> {
+      constructor(private readonly store: Store) {}
+
+      handle(_event: UserCreatedEvent): void {
+        this.store.eventCount += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [Store, CreateUserHandler, GetUserHandler, UserCreatedRecorder],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
+    const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const store = await app.container.resolve(Store);
+
+    await app.close();
+
+    await expect(commandBus.execute(new CreateUserCommand('alice'))).rejects.toThrow('command bus has stopped');
+    await expect(queryBus.execute(new GetUserCountQuery('ignored'))).rejects.toThrow('query bus has stopped');
+    await expect(eventBus.publish(new UserCreatedEvent('alice'))).rejects.toThrow('event bus has stopped');
+
+    expect(store.commandCount).toBe(0);
+    expect(store.eventCount).toBe(0);
+  });
+
   it('wires command/query/event buses through CqrsModule.forRoot with bootstrapApplication', async () => {
     class Store {
       commandCount = 0;
