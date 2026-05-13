@@ -1288,9 +1288,35 @@ describe('FluoFactory.createApplicationContext', () => {
 
     expect(context.bootstrapTiming?.version).toBe(1);
     expect(context.bootstrapTiming?.totalMs ?? 0).toBeGreaterThanOrEqual(0);
-    expect(context.bootstrapTiming?.phases.some((phase) => phase.name === 'bootstrap_module')).toBe(true);
+    expect(context.bootstrapTiming?.phases.map((phase) => phase.name)).toEqual([
+      'bootstrap_module',
+      'register_runtime_tokens',
+      'resolve_lifecycle_instances',
+      'run_bootstrap_lifecycle',
+    ]);
 
     await context.close();
+  });
+
+  it('collects full application bootstrap timing diagnostics through dispatcher creation', async () => {
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {});
+
+    const app = await FluoFactory.create(AppModule, {
+      diagnostics: {
+        timing: true,
+      },
+    });
+
+    expect(app.bootstrapTiming?.phases.map((phase) => phase.name)).toEqual([
+      'bootstrap_module',
+      'register_runtime_tokens',
+      'resolve_lifecycle_instances',
+      'run_bootstrap_lifecycle',
+      'create_dispatcher',
+    ]);
+
+    await app.close();
   });
 
   it('surfaces shutdown hook failures from application context close()', async () => {
