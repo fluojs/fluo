@@ -29,7 +29,7 @@ pnpm add @fluojs/terminus
 
 - 외부 의존성(데이터베이스, Redis, API 등)의 상태를 애플리케이션 헬스 체크 결과에 포함해야 할 때.
 - 표준 모니터링 패턴에 맞는 구조화된 JSON 헬스 보고서가 필요할 때.
-- 핵심 하위 서비스에 접속할 수 없는 경우 `/ready` 체크가 실패하도록 설정해야 할 때.
+- 필요한 하위 readiness signal이 unavailable 상태일 때 `/ready` 체크가 rotation에서 빠지도록 설정해야 할 때.
 
 ## 빠른 시작
 
@@ -113,7 +113,7 @@ TerminusModule.forRoot({
 인디케이터가 실패하면 `HealthCheckError`를 던집니다. `TerminusHealthService`는 이 실패들을 모아 보고서를 작성합니다.
 
 - 하나 이상의 인디케이터가 실패하면 `/health`는 HTTP `503`을 반환합니다.
-- 준비 상태(readiness)와 관련된 인디케이터가 실패하면 `/ready`는 HTTP `503`을 반환합니다.
+- 등록된 indicator가 실패하거나, custom readiness check가 `false`를 반환하거나, runtime shutdown이 시작되었거나, platform readiness가 `ready`가 아닌 경우 `/ready`는 HTTP `503`을 반환합니다. Platform `critical` metadata는 diagnostics에 보존되지만 HTTP readiness endpoint 자체는 binary ready/unavailable gate이며 warning severity bucket을 노출하지 않습니다.
 - 응답 본문은 `status`, `contributors`, `info`, `error`, `details`를 포함한 구조화된 JSON 객체입니다.
 - 하나의 인디케이터가 여러 keyed entry를 반환할 수도 있으며, 이 경우 `/health`는 모든 entry를 `details`와 `contributors.up` / `contributors.down` 요약에 그대로 반영합니다.
 - 지원하지 않는 status, 빈 결과, 객체가 아닌 인디케이터 결과는 조용히 버려지지 않고 `down` 진단으로 보고됩니다.
@@ -151,7 +151,7 @@ TerminusModule.forRoot({
 
 ### `@fluojs/terminus/node`
 
-- `MemoryHealthIndicator`, `DiskHealthIndicator`, `createMemoryHealthIndicator()`, `createDiskHealthIndicator()`
+- `MemoryHealthIndicator`, `DiskHealthIndicator`, `createMemoryHealthIndicator()`, `createDiskHealthIndicator()`, `createMemoryHealthIndicatorProvider()`, `createDiskHealthIndicatorProvider()`
   - Node 전용 indicator helper는 호환성을 위해 root에서도 계속 export되며 이 전용 subpath에서도 export됩니다. Disk check의 filesystem access는 lazy-load되므로 root package import 시점에는 Node filesystem module을 load하지 않습니다.
 
 

@@ -127,9 +127,9 @@ Beyond external services, you should monitor server resource usage. Memory leaks
 ### 18.4.3 Dependency Priority and Cascading Failures
 In highly connected microservice architectures, the failure of a small service can cause a "cascading failure" that brings down the entire system. With differentiated monitoring, you can assign a **priority level** to each dependency.
 - **Critical Dependencies**: Core elements such as the primary database, where failure should immediately fail the readiness check.
-- **Non-Critical Dependencies**: Elements such as a nonessential search indexer, where failure can return a "warning" state from the readiness check while the application is still considered "ready" to handle most user requests.
+- **Non-Critical Dependencies**: Elements such as a nonessential search indexer, where failure should usually be reported through health details, metrics, or alerts instead of the binary `/ready` gate if the application can still handle most user requests.
 
-By strategically deciding which dependencies are fatal to application health, you can build a stronger system that degrades gracefully instead of failing completely. Fluo's Terminus configuration can express these thresholds and behaviors through indicator combinations, giving you the flexibility to handle complex real world failure scenarios precisely.
+By strategically deciding which dependencies are fatal to application health, you can build a stronger system that degrades gracefully instead of failing completely. Fluo's Terminus configuration composes indicator results, custom readiness checks, and runtime platform readiness into a binary `/ready` decision: any non-ready platform readiness result, including a non-critical degraded result, keeps the instance out of rotation while the diagnostic payload preserves severity context.
 
 ### 18.4.4 Disk Space and I/O Monitoring
 For applications that handle file uploads or heavy logging, **disk space** is a critical resource. If the disk fills up, the application can crash or stop responding just as it would with a memory leak. Terminus includes built in indicators for monitoring disk space and I/O performance. By setting thresholds, such as disk usage reaching 90%, you can take action before a production emergency occurs, such as cleaning temporary files or expanding storage.

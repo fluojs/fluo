@@ -32,6 +32,8 @@ describe('terminus public surface', () => {
     expect(terminusNode).toHaveProperty('DiskHealthIndicator');
     expect(terminusNode).toHaveProperty('MemoryHealthIndicator');
     expect(terminusNode).toHaveProperty('createDiskHealthIndicator');
+    expect(terminusNode).toHaveProperty('createDiskHealthIndicatorProvider');
     expect(terminusNode).toHaveProperty('createMemoryHealthIndicator');
+    expect(terminusNode).toHaveProperty('createMemoryHealthIndicatorProvider');
   });
 });

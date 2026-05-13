@@ -10,6 +10,20 @@ import type { HealthIndicator } from './types.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
 
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve(value: T | PromiseLike<T>): void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: Deferred<T>['resolve'];
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+
+  return { promise, resolve };
+}
+
 function createRequest(path: string): FrameworkRequest {
   return {
     body: undefined,
@@ -541,6 +555,126 @@ describe('TerminusModule.forRoot', () => {
     expect(readyResponse.body).toEqual({ status: 'unavailable' });
 
     await app.close();
+  });
+
+  it('treats non-critical degraded platform readiness as unavailable for the HTTP readiness gate', async () => {
+    const component: PlatformComponent = {
+      async health() {
+        return { status: 'healthy' };
+      },
+      id: 'search.optional',
+      kind: 'search',
+      async ready() {
+        return { critical: false, reason: 'search index warming', status: 'degraded' };
+      },
+      snapshot() {
+        return {
+          dependencies: [],
+          details: { mode: 'optional' },
+          health: { status: 'healthy' },
+          id: 'search.optional',
+          kind: 'search',
+          ownership: { externallyManaged: true, ownsResources: false },
+          readiness: { critical: false, reason: 'search index warming', status: 'degraded' },
+          state: 'degraded',
+          telemetry: { namespace: 'search', tags: {} },
+        };
+      },
+      async start() {},
+      state() {
+        return 'degraded';
+      },
+      async stop() {},
+      async validate() {
+        return { issues: [], ok: true };
+      },
+    };
+    const indicators: HealthIndicator[] = [
+      {
+        key: 'database',
+        check: async (key: string) => ({ [key]: { status: 'up' } }),
+      },
+    ];
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [TerminusModule.forRoot({ indicators })],
+    });
+
+    const app = await bootstrapApplication({
+      platform: {
+        components: [component],
+      },
+      rootModule: AppModule,
+    });
+
+    const healthResponse = createResponse();
+    await app.dispatch(createRequest('/health'), healthResponse);
+
+    expect(healthResponse.statusCode).toBe(503);
+    expect(healthResponse.body).toMatchObject({
+      error: {
+        'fluo-platform-readiness': {
+          critical: false,
+          message: 'search index warming',
+          platformStatus: 'degraded',
+          status: 'down',
+        },
+      },
+      status: 'error',
+    });
+
+    const readyResponse = createResponse();
+    await app.dispatch(createRequest('/ready'), readyResponse);
+
+    expect(readyResponse.statusCode).toBe(503);
+    expect(readyResponse.body).toEqual({ status: 'unavailable' });
+
+    await app.close();
+  });
+
+  it('keeps Terminus HTTP readiness out of rotation while shutdown is in progress', async () => {
+    const shutdownBlocker = createDeferred<void>();
+    const shutdownStarted = createDeferred<void>();
+
+    class BlockingShutdownService {
+      onApplicationShutdown() {
+        shutdownStarted.resolve();
+
+        return shutdownBlocker.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [TerminusModule.forRoot({
+        indicators: [
+          {
+            key: 'database',
+            check: async (key: string) => ({ [key]: { status: 'up' } }),
+          },
+        ],
+      })],
+      providers: [BlockingShutdownService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    const readyBeforeClose = createResponse();
+    await app.dispatch(createRequest('/ready'), readyBeforeClose);
+    expect(readyBeforeClose.statusCode).toBe(200);
+    expect(readyBeforeClose.body).toEqual({ status: 'ready' });
+
+    const closePromise = app.close('SIGTERM');
+    await shutdownStarted.promise;
+
+    const readyDuringClose = createResponse();
+    await app.dispatch(createRequest('/ready'), readyDuringClose);
+    expect(readyDuringClose.statusCode).toBe(503);
+    expect(readyDuringClose.body).toEqual({ status: 'starting' });
+
+    shutdownBlocker.resolve();
+    await closePromise;
   });
 
   it('reports platform health failures as explicit Terminus diagnostics', async () => {
