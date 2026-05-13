@@ -284,6 +284,9 @@ describe('scaffoldBootstrapApp', () => {
     };
 
     expect(packageJson.devDependencies?.['@fluojs/cli']).toBe(`^${cliManifest.version}`);
+
+    const scaffoldSource = readFileSync(join(packageRoot, 'src', 'new', 'scaffold.ts'), 'utf8');
+    expect(scaffoldSource).not.toContain("'@fluojs/cli': '^1.0.0'");
   });
 
   it('packs local starter tarballs from staged package manifests with published workspace caret semantics', async () => {

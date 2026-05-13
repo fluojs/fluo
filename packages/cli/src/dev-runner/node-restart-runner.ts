@@ -173,7 +173,7 @@ function getWatchTargets(projectDirectory: string): string[] {
 }
 
 function stopChild(child: ChildProcess | undefined, shutdownTimeoutMs = DEFAULT_CHILD_SHUTDOWN_TIMEOUT_MS): void {
-  if (child && child.exitCode === null && !child.killed) {
+  if (child && child.exitCode === null) {
     const forceKillTimer = setTimeout(() => {
       if (child.exitCode === null) {
         child.kill('SIGKILL');
@@ -184,7 +184,9 @@ function stopChild(child: ChildProcess | undefined, shutdownTimeoutMs = DEFAULT_
     child.once('close', () => {
       clearTimeout(forceKillTimer);
     });
-    child.kill('SIGTERM');
+    if (!child.killed) {
+      child.kill('SIGTERM');
+    }
   }
 }
 
@@ -356,10 +358,29 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   return new Promise((resolveExitCode) => {
     const watchers: FSWatcher[] = [];
     let cleanedUp = false;
+    let resolved = false;
+
+    const resolveOnce = (code: number) => {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      resolveExitCode(code);
+    };
 
     const stop = () => {
       stopping = true;
       cleanup();
+
+      const stoppingChild = child;
+      if (!stoppingChild || stoppingChild.exitCode !== null) {
+        resolveOnce(stoppingChild?.exitCode ?? 0);
+        return;
+      }
+
+      stoppingChild.once('close', (code) => {
+        resolveOnce(code ?? 0);
+      });
       stopChild(child, childShutdownTimeoutMs);
     };
 
