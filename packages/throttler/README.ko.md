@@ -125,7 +125,7 @@ ThrottlerModule.forRoot({
 - `ThrottlerModule.forRoot(options)`: 검증된 throttler 옵션과 `ThrottlerGuard`를 모듈 그래프에 제공합니다.
 - 패키지 수준 등록은 `ThrottlerModule.forRoot(options)`를 통해 지원합니다. 내부 프로바이더 조합 헬퍼와 DI 토큰은 공개 계약에 포함되지 않습니다.
 
-`ttl`과 `limit`은 양의 finite integer여야 합니다. `trustProxyHeaders`와 `keyGenerator`로 client identity를 조정할 수 있습니다. `store` 옵션을 제공하지 않으면 각 `ThrottlerGuard` 인스턴스가 자체 in-memory store를 소유합니다. 저장소를 공유하거나 외부에서 관리해야 한다면 `RedisThrottlerStore` 같은 `ThrottlerStore` 구현을 전달하세요.
+`ttl`과 `limit`은 양의 finite integer여야 합니다. `trustProxyHeaders`와 `keyGenerator`로 client identity를 조정할 수 있습니다. 모듈 옵션은 guard가 연결될 때 검증되고 값으로 캡처되므로, 호출자가 나중에 options 객체를 변경해도 실행 중인 throttling 정책은 바뀌지 않습니다. `store` 옵션을 제공하지 않으면 각 `ThrottlerGuard` 인스턴스가 자체 in-memory store를 소유합니다. 저장소를 공유하거나 외부에서 관리해야 한다면 `RedisThrottlerStore` 같은 `ThrottlerStore` 구현을 전달하세요.
 
 ### 데코레이터
 - `@Throttle({ ttl, limit })`: 클래스나 메서드에 특정 속도 제한을 설정합니다.
@@ -153,7 +153,7 @@ ThrottlerModule.forRoot({
 
 ## 예제 소스
 
-- `packages/throttler/src/module.test.ts`: 모듈 설정 및 데코레이터 오버라이드 테스트.
+- `packages/throttler/src/module.test.ts`: 모듈 설정, 데코레이터 오버라이드, `createTestApp(...)` 기반 HTTP guard 통합 테스트.
 - `packages/throttler/src/guard.ts`: 요청 제한 및 헤더 관리 코어 로직.
 - `packages/throttler/src/redis-store.test.ts`: Redis store 계약과 server-time 동작.
 - `packages/throttler/src/status.test.ts`: status 및 diagnostic helper 동작.

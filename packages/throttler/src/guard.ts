@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import { getStandardMetadataBag } from '@fluojs/core/internal';
-import { TooManyRequestsException, type Guard, type GuardContext, type MiddlewareContext } from '@fluojs/http';
+import { type Guard, type GuardContext, type MiddlewareContext, TooManyRequestsException } from '@fluojs/http';
 import { resolveClientIdentity } from '@fluojs/http/internal';
 
 import {
@@ -10,8 +10,8 @@ import {
   getThrottleMetadata,
   throttleRouteMetadataKey,
 } from './decorators.js';
-import { throttlerRetryAfterMsSymbol } from './store-internals.js';
 import { createMemoryThrottlerStore } from './store.js';
+import { throttlerRetryAfterMsSymbol } from './store-internals.js';
 import { THROTTLER_OPTIONS } from './tokens.js';
 import type { ThrottlerModuleOptions, ThrottlerStore, ThrottlerStoreEntry } from './types.js';
 import { validateThrottleOptions, validateThrottlerModuleOptions, validateThrottlerStoreEntry } from './validation.js';
@@ -73,11 +73,15 @@ function resolveRetryAfterSeconds(entry: ThrottlerStoreEntry, now: number): numb
  */
 @Inject(THROTTLER_OPTIONS)
 export class ThrottlerGuard implements Guard {
+  private readonly options: ThrottlerModuleOptions;
+
   private readonly store: ThrottlerStore;
 
-  constructor(private readonly options: ThrottlerModuleOptions) {
-    validateThrottlerModuleOptions(options);
-    this.store = options.store ?? createMemoryThrottlerStore();
+  constructor(options: ThrottlerModuleOptions) {
+    const validatedOptions = validateThrottlerModuleOptions(options);
+
+    this.options = validatedOptions;
+    this.store = validatedOptions.store ?? createMemoryThrottlerStore();
   }
 
   /**

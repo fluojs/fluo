@@ -1,7 +1,7 @@
-export * from './decorators.js';
+export { SkipThrottle, Throttle } from './decorators.js';
 export { ThrottlerGuard } from './guard.js';
-export { RedisThrottlerStore } from './redis-store.js';
 export * from './module.js';
+export { RedisThrottlerStore } from './redis-store.js';
 export * from './status.js';
 export { createMemoryThrottlerStore } from './store.js';
 export type {
