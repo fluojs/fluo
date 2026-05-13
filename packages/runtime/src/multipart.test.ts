@@ -4,6 +4,8 @@ import { PayloadTooLargeException } from '@fluojs/http';
 
 import { parseMultipart } from './multipart.js';
 
+const textBytes = (value: string) => new TextEncoder().encode(value);
+
 describe('parseMultipart', () => {
   it('parses fields and uploaded files from a web Request', async () => {
     const form = new FormData();
@@ -24,7 +26,7 @@ describe('parseMultipart', () => {
       },
       files: [
         {
-          buffer: Buffer.from('hello'),
+          buffer: textBytes('hello'),
           fieldname: 'payload',
           mimetype: 'text/plain',
           originalname: 'payload.txt',
@@ -55,7 +57,7 @@ describe('parseMultipart', () => {
       fields: { name: 'Ada' },
       files: [
         {
-          buffer: Buffer.from('hello'),
+          buffer: textBytes('hello'),
           fieldname: 'payload',
           mimetype: 'text/plain',
           originalname: 'payload.txt',

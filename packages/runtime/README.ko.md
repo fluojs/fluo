@@ -136,7 +136,7 @@ class UsersModule {}
 - 연결된 microservice는 부모 `Application`이 소유하는 child입니다. `startAllMicroservices()`는 순차적으로 시작하며 이후 child 시작이 실패하면 이미 시작된 child를 `bootstrap-failed`로 rollback하고, `Application.close(signal)`은 부모 lifecycle hook, adapter 종료, container dispose보다 먼저 연결된 child를 닫습니다.
 - `FluoFactory.createMicroservice()`는 cleanup이 실패해도 원래 bootstrap/runtime 해석 오류를 보존하고 cleanup 실패는 별도로 로그로 남깁니다.
 - Bootstrap은 독립적인 singleton lifecycle provider를 병렬로 해석한 뒤 lifecycle hook은 결정적인 provider 순서대로 실행합니다.
-- 멀티파트 파싱은 누적 바디 크기가 설정된 `multipart.maxTotalSize`를 넘으면 즉시 거부되며, 런타임 어댑터는 별도 재정의가 없으면 이 한도를 `maxBodySize`와 동일하게 맞춥니다.
+- 멀티파트 파싱은 누적 바디 크기가 설정된 `multipart.maxTotalSize`를 넘으면 즉시 거부되며, 런타임 어댑터는 별도 재정의가 없으면 이 한도를 `maxBodySize`와 동일하게 맞춥니다. 업로드된 파일 버퍼는 Web 표준 `Uint8Array` 값이므로 공유 Web 런타임 경로가 Bun, Deno, Cloudflare Workers 전반에서 portable하게 유지됩니다.
 - `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, `runNodeApplication(...)`는 `maxBodySize`를 0 이상의 정수 바이트 수로만 받으며, 값이 잘못되면 어댑터 생성/부트스트랩 단계에서 즉시 실패합니다.
 - 응답 스트림 백프레셔 헬퍼는 `drain`, `close`, `error` 중 어느 경우에도 `waitForDrain()`을 완료시켜 끊어진 연결에서 스트리밍 작성기가 멈추지 않도록 합니다.
 - 런타임 health 모듈은 bootstrap이 ready로 표시하기 전까지 `/ready`를 HTTP 503과 `starting`으로 보고하며, 애플리케이션/컨텍스트 종료가 시작되는 즉시, 종료 시도가 실패하더라도 다시 `starting`으로 내려갑니다.
@@ -151,6 +151,8 @@ class UsersModule {}
 - `FluoFactory`: 명시적 static 접근을 제공하는 클래스 기반 런타임 부트스트랩 파사드입니다.
 - `Application`: `ApplicationContext`를 확장하며 `listen()`, `dispatch()`, `state`를 포함합니다.
 - `ApplicationContext`: `get<T>(token)`, `close()` 기능을 제공하며 `container`, `modules`, bootstrap diagnostics에 접근할 수 있습니다.
+- `MicroserviceRuntime`: 설정된 microservice token에서 해석되는 transport contract입니다. Runtime은 `listen()`을 제공하고 필요에 따라 `send()`, `emit()`, `close(signal)`를 제공할 수 있습니다.
+- `MicroserviceApplication`: `state`, `listen()`, `send()`, `emit()`을 제공하는 context 기반 microservice shell입니다.
 - `LifecycleHooks`: `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`를 묶는 편의 union 타입입니다.
 - `HealthModule.forRoot(options)`: bootstrap 및 shutdown 라이프사이클 전이에 맞춰 readiness marker를 관리하는 런타임 소유 `/health`, `/ready` 모듈 파사드입니다.
 - `createHealthModule(options)`: 같은 런타임 health module 계약을 위한 deprecated compatibility helper입니다. 애플리케이션-facing module import에서는 `HealthModule.forRoot(...)`를 우선 사용하세요.

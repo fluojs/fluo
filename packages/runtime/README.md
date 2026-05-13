@@ -136,7 +136,7 @@ class UsersModule {}
 - Connected microservices are owned children of their parent `Application`: `startAllMicroservices()` starts them sequentially and rolls back already-started children with `bootstrap-failed` if a later child fails, while `Application.close(signal)` closes connected children before parent lifecycle hooks, adapter shutdown, and container disposal.
 - `FluoFactory.createMicroservice()` preserves the original bootstrap/runtime-resolution error when cleanup fails and logs cleanup failures separately.
 - Bootstrap resolves independent singleton lifecycle providers concurrently, then runs lifecycle hooks in deterministic provider order.
-- Multipart parsing rejects payloads when the cumulative body size exceeds the configured `multipart.maxTotalSize`; runtime adapters default that limit to `maxBodySize` unless you override it.
+- Multipart parsing rejects payloads when the cumulative body size exceeds the configured `multipart.maxTotalSize`; runtime adapters default that limit to `maxBodySize` unless you override it, and uploaded file buffers are Web-standard `Uint8Array` values so the shared Web runtime path stays portable across Bun, Deno, and Cloudflare Workers.
 - `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, and `runNodeApplication(...)` accept `maxBodySize` only as a non-negative integer byte count and fail fast during adapter creation/bootstrap when the value is invalid.
 - Response stream backpressure helpers settle `waitForDrain()` on `drain`, `close`, or `error` so streaming writers do not hang on dead connections.
 - Runtime health modules report `/ready` as `starting` with HTTP 503 until bootstrap marks them ready, and they return to `starting` as soon as application/context shutdown begins, including failed shutdown attempts.
@@ -151,6 +151,8 @@ class UsersModule {}
 - `FluoFactory`: Class-based runtime bootstrap facade with explicit static access.
 - `Application`: Extends `ApplicationContext` with `listen()`, `dispatch()`, and `state`.
 - `ApplicationContext`: Provides `get<T>(token)`, `close()`, and access to `container`, `modules`, and bootstrap diagnostics.
+- `MicroserviceRuntime`: Transport contract resolved from the configured microservice token; runtimes provide `listen()` and may provide `send()`, `emit()`, and `close(signal)`.
+- `MicroserviceApplication`: Context-backed microservice shell with `state`, `listen()`, `send()`, and `emit()`.
 - `LifecycleHooks`: Convenience union covering `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, and `OnApplicationShutdown`.
 - `HealthModule.forRoot(options)`: Runtime-owned `/health` and `/ready` module facade whose readiness marker follows bootstrap and shutdown lifecycle transitions.
 - `createHealthModule(options)`: Deprecated compatibility helper for the same runtime health module contract; prefer `HealthModule.forRoot(...)` in application-facing module imports.
