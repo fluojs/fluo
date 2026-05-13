@@ -25,7 +25,7 @@ function createMockRefreshTokenService(overrides: Partial<RefreshTokenService> =
 
 function createMockVerifier(subject = 'user-1'): DefaultJwtVerifier {
   return {
-    verifyAccessToken: vi.fn().mockResolvedValue({ claims: { sub: subject } }),
+    verifyAccessToken: vi.fn().mockResolvedValue({ claims: { sub: subject }, subject }),
     verifyRefreshToken: vi.fn().mockResolvedValue({ claims: { sub: subject } }),
   } as unknown as DefaultJwtVerifier;
 }
@@ -244,6 +244,23 @@ describe('RefreshTokenStrategy', () => {
       await expect(strategy.authenticate(context)).rejects.toThrow(
         'Refresh token service returned an access token without a valid subject claim.',
       );
+    });
+
+    it('uses the normalized verifier subject when rotated access token claims omit sub', async () => {
+      const service = createMockRefreshTokenService();
+      const verifier = createMockVerifier();
+      vi.mocked(verifier.verifyAccessToken).mockResolvedValue({
+        claims: { providerSubject: 'issuer-specific-id' },
+        subject: 'normalized-user-1',
+      });
+      const strategy = new RefreshTokenStrategy(service, verifier);
+      const context = createGuardContext({ refreshToken: 'valid-token' });
+
+      const result = await strategy.authenticate(context);
+
+      expect(result).toMatchObject({
+        subject: 'normalized-user-1',
+      });
     });
   });
 
