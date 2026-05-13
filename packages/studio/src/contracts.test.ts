@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { runWorkspaceBuildClosure } from '../../../tooling/scripts/run-workspace-build-closure.mjs';
 import { applyFilters, parseStudioPayload, renderMermaid } from './contracts.js';
 import * as studio from './index.js';
+import { renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './viewer-rendering.js';
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = resolve(packageDir, '..', '..');
@@ -548,6 +549,26 @@ describe('renderMermaid', () => {
     expect(output).toContain('  classDef notReady stroke:#ef4444,stroke-width:2px');
   });
 
+  it('escapes Mermaid label control characters without changing graph edges', () => {
+    const output = renderMermaid({
+      ...snapshotFixture,
+      components: [
+        {
+          ...snapshotFixture.components[0],
+          dependencies: ['cache\\primary'],
+          id: 'api\\gateway\nprimary',
+          kind: 'http "adapter"',
+        },
+      ],
+      diagnostics: [],
+    });
+
+    expect(output).toContain('api\\\\gateway\\nprimary');
+    expect(output).toContain('kind: http \\"adapter\\"');
+    expect(output).toContain('cache\\\\primary');
+    expect(output).not.toContain('api\\gateway\nprimary');
+  });
+
   it('uses distinct external node ids when dependency names sanitize to the same base', () => {
     const output = renderMermaid({
       ...snapshotFixture,
@@ -569,5 +590,54 @@ describe('renderMermaid', () => {
     expect(dotNodeId).not.toBe(dashNodeId);
     expect(output).toContain(`  C1 --> ${dotNodeId}`);
     expect(output).toContain(`  C1 --> ${dashNodeId}`);
+  });
+});
+
+describe('viewer rendering helpers', () => {
+  it('renders only http and https diagnostic docsUrl values as links', () => {
+    expect(renderDiagnosticDocsUrl('https://fluo.dev/docs/runtime')).toContain('href="https://fluo.dev/docs/runtime"');
+    expect(renderDiagnosticDocsUrl('javascript:alert(1)')).toBe('<p><strong>docs:</strong> <span>javascript:alert(1)</span></p>');
+    expect(renderDiagnosticDocsUrl('docs/runtime')).toBe('<p><strong>docs:</strong> <span>docs/runtime</span></p>');
+  });
+
+  it('escapes diagnostic docsUrl text even when no link is rendered', () => {
+    expect(renderDiagnosticDocsUrl('javascript:<script>alert(1)</script>')).toContain('javascript:&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(renderDiagnosticDocsUrl('javascript:<script>alert(1)</script>')).not.toContain('<script>');
+  });
+
+  it('uses sanitized docsUrl rendering inside diagnostic cards', () => {
+    const html = renderDiagnostics({
+      ...snapshotFixture,
+      diagnostics: [
+        {
+          code: 'UNSAFE_DOCS_URL',
+          componentId: 'queue.default',
+          docsUrl: 'javascript:alert(1)',
+          message: 'Invalid docs URL should not be clickable.',
+          severity: 'warning',
+        },
+      ],
+    });
+
+    expect(html).toContain('<span>javascript:alert(1)</span>');
+    expect(html).not.toContain('href="javascript:alert(1)"');
+  });
+
+  it('renders browser graph edges and nodes for external dependencies', () => {
+    const html = renderGraphSvg({
+      ...snapshotFixture,
+      components: [
+        {
+          ...snapshotFixture.components[0],
+          dependencies: ['aws.sqs.orders'],
+          id: 'queue.consumer',
+        },
+      ],
+      diagnostics: [],
+    }, undefined);
+
+    expect(html).toContain('aws.sqs.orders');
+    expect(html).toContain('component-external');
+    expect(html).toContain('class="edge-line"');
   });
 });

@@ -330,7 +330,12 @@ export function applyFilters(snapshot: PlatformShellSnapshot, filter: FilterStat
 }
 
 function escapeMermaidText(value: string): string {
-  return value.replaceAll('"', '\\"');
+  return value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('"', '\\"')
+    .replaceAll('\r\n', '\\n')
+    .replaceAll('\r', '\\n')
+    .replaceAll('\n', '\\n');
 }
 
 function sanitizeMermaidNodeIdSegment(value: string): string {

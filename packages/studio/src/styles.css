@@ -175,6 +175,11 @@ pre {
   fill: #7f1d1d;
 }
 
+.component-external {
+  fill: #312e81;
+  cursor: default;
+}
+
 .module-selected {
   stroke: #f59e0b;
   stroke-width: 3;
