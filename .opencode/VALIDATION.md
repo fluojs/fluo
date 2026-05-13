@@ -9,8 +9,8 @@
 ### 1.1 필수 파일 및 구조 확인
 - [ ] 에이전트 파일이 `.opencode/agents/`에 존재하며 `fluo-` 접두사로 시작하는가?
 - [ ] 커맨드 파일이 `.opencode/commands/`에 존재하며 `description`과 `argument-hint`가 포함된 frontmatter를 가지고 있는가?
-- [ ] 공유 지식 스킬(Knowledge Skills)이 `.opencode/skills/`에 적절히 위치해 있는가?
-- [ ] 6개의 레거시 스킬 스텁(`.opencode/skills/<name>/SKILL.md`)이 `migration_status: compatibility-stub` 및 `replaced_by` 필드를 포함하고 있는가?
+- [ ] 공유 지식 스킬(Knowledge Skills)이 `.opencode/skills/fluo-*/SKILL.md`에만 남아 있는가?
+- [ ] command와 같은 이름의 legacy skill entrypoint가 없는가? (`lane-supervisor`, `issue-to-pr`, `pr-to-merge`, `search-to-issue`, `docs-sync-guardian`, `package-publish`)
 
 ### 1.2 권한 및 경계 검증
 - [ ] **Reviewer/Guardian/Auditor 에이전트**: frontmatter에 `edit: deny`가 설정되어 있고 `bash` 허용 범위가 `git status|diff|log`, `gh pr view|diff` 등 읽기 전용으로 제한되어 있는가?
@@ -66,8 +66,16 @@ grep -r "edit: deny" .opencode/agents/
 # 커맨드-에이전트 참조 일치 확인
 grep -r "fluo-" .opencode/commands/
 
-# 레거시 스텁 상태 확인
-grep -r "migration_status: compatibility-stub" .opencode/skills/
+# command를 shadowing하는 legacy skill entrypoint가 없는지 확인
+test ! -f .opencode/skills/lane-supervisor/SKILL.md
+test ! -f .opencode/skills/issue-to-pr/SKILL.md
+test ! -f .opencode/skills/pr-to-merge/SKILL.md
+test ! -f .opencode/skills/search-to-issue/SKILL.md
+test ! -f .opencode/skills/docs-sync-guardian/SKILL.md
+test ! -f .opencode/skills/package-publish/SKILL.md
+
+# knowledge skill만 남았는지 확인
+find .opencode/skills -name SKILL.md
 
 # LSP diagnostics (프로젝트 내 도구 이용)
 # 에디터의 LSP 기능을 이용하거나, OpenCode의 lsp_diagnostics 도구를 사용하여 

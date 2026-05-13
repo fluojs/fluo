@@ -1,9 +1,9 @@
 # OpenCode Skill Migration Strategy
 
-This document defines the compatibility and staging strategy for the six existing procedural skills as we transition to the new agent and command structure.
+This document records the migration of the six former procedural skills to command-first OpenCode entrypoints.
 
 ## Overview
-To maintain stability and discoverability, old skill entrypoints will remain as compatibility stubs during the initial validation phase. Once the new commands and agents are fully validated, these stubs will be either converted into thin wrappers or deprecated in favor of the new structure.
+The old procedural skill entrypoints were removed after validation because their names shadowed slash commands in the current OpenCode resolver. The remaining `.opencode/skills/fluo-*` directories are knowledge-only skills used by commands and agents.
 
 ## Migration Map
 
@@ -19,23 +19,34 @@ To maintain stability and discoverability, old skill entrypoints will remain as 
 ## Staging & Compatibility Strategy
 
 ### Phase 1: Coexistence (Complete)
-- All existing `.opencode/skills/*/SKILL.md` files are preserved.
-- New commands and agents are developed in parallel.
-- Users can continue to invoke old skills.
+- New commands and agents were developed while old procedural skills still existed.
+- This phase ended after command/agent validation confirmed the replacements.
 
 ### Phase 2: Implementation & Validation (Complete)
 - Create new `.opencode/commands/*.md` and `.opencode/agents/*.md` files.
 - New commands should utilize shared knowledge skills (e.g., `fluo-docs-governance`).
 - Validation ensures parity between old and new workflows.
 
-### Phase 3: Compatibility Stubs (Complete — T14)
-- Old skill files have been refactored into **compatibility stubs**.
-- Each stub provides a clear message to the user pointing to the new command.
-- Stubs carry `migration_status: compatibility-stub` and `replaced_by` frontmatter fields.
+### Phase 3: Compatibility Stub Trial (Complete — T14)
+- Old skill files were briefly refactored into **compatibility stubs**.
+- This preserved discoverability during validation but exposed a resolver issue: same-name skills shadowed slash commands.
 
-### Phase 4: Deprecation
-- Deferred. Old skill entrypoints remain as compatibility stubs until maintainers choose a removal window.
-- Future documentation may exclusively reference new commands after that transition period.
+### Phase 4: Command-First Cutover (Complete)
+- Same-name legacy skill entrypoints were removed so `/lane-supervisor`, `/issue-to-pr`, `/pr-to-merge`, `/search-to-issue`, `/docs-sync-guardian`, and `/package-publish` resolve as commands.
+- Keep only knowledge skills whose names start with `fluo-`.
+
+## Removed Legacy Skill Entrypoints
+
+The following directories no longer contain `SKILL.md` entrypoints and should not be recreated with the same names, because they shadow commands:
+
+- `.opencode/skills/lane-supervisor/`
+- `.opencode/skills/issue-to-pr/`
+- `.opencode/skills/pr-to-merge/`
+- `.opencode/skills/search-to-issue/`
+- `.opencode/skills/docs-sync-guardian/`
+- `.opencode/skills/package-publish/`
+
+Use the matching slash command instead.
 
 ## Key Changes by Skill
 
