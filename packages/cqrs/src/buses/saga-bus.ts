@@ -116,9 +116,11 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
    * @returns A promise that resolves once all matching saga chains for the event complete.
    */
   async dispatch<TEvent extends IEvent>(event: TEvent, options: { allowStopped?: boolean } = {}): Promise<void> {
-    if (!options.allowStopped) {
-      this.assertNotStopped('dispatch sagas');
+    if (this.lifecycleState === 'stopped' && options.allowStopped) {
+      return;
     }
+
+    this.assertCanDispatch('dispatch sagas', options);
     await this.ensureDiscovered();
 
     const descriptors = this.matchSagaDescriptors(event);
@@ -130,8 +132,8 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     await Promise.all(descriptors.map((descriptor) => this.dispatchWithOrdering(descriptor, event)));
   }
 
-  private assertNotStopped(operation: string): void {
-    if (this.lifecycleState === 'stopped') {
+  private assertCanDispatch(operation: string, options: { allowStopped?: boolean }): void {
+    if (this.lifecycleState === 'stopped' || (this.lifecycleState === 'stopping' && !options.allowStopped)) {
       throw new InvariantError(`Cannot ${operation} after the CQRS saga bus has stopped.`);
     }
   }
