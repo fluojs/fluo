@@ -41,6 +41,8 @@ HTTP adapter raw-body portability discoverability도 testing package와 governed
 
 Release lane discoverability는 [`docs/contracts/release-governance.ko.md`](./contracts/release-governance.ko.md)가 관리한다. `main`은 stable patch lane이며, `tooling/release/verify-changeset-release-lane.mjs`는 PR CI와 release automation에서 minor/major changeset 및 generated package version delta를 거부하고, minor/major intent는 메인테이너가 의도적으로 승격하기 전까지 dedicated release 또는 prerelease branch에 보관한다.
 
+CLI inspect artifact discoverability는 CLI 패키지, Studio 패키지, governed tooling docs로 나뉜다. `packages/cli/README.ko.md`는 `fluo inspect`의 기본 JSON 출력, `--timing` snapshot-plus-timing envelope, `--report` support artifact, `--mermaid` Studio delegation, `--output <path>` artifact write를 문서화한다. [`docs/reference/toolchain-contract-matrix.ko.md`](./reference/toolchain-contract-matrix.ko.md)는 정식 CLI scaffolding 및 inspect artifact output contract를 담고, 명시적 output mode가 없을 때 `--timing`이 JSON을 기본값으로 삼는다는 계약도 포함한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 `@fluojs/cli` artifact emission과 `@fluojs/studio` artifact viewing/rendering 사이의 package responsibility split을 기록한다.
+
 ## File Structure
 
 | Path | Role |
@@ -63,6 +65,7 @@ Release lane discoverability는 [`docs/contracts/release-governance.ko.md`](./co
 | behavioral guarantee, Changesets 릴리스 흐름, 버전 정책 확인 | `docs/contracts/behavioral-contract-policy.md` | `docs/contracts/release-governance.md` |
 | 테스트 요구사항과 canonical fluo TDD ladder 확인 | `docs/contracts/testing-guide.md` | `packages/testing/README.md` 및 `book/beginner/ch20-testing.md` |
 | 공개 API 작성 기준과 문서화 기준 확인 | `docs/contracts/public-export-tsdoc-baseline.md` | `docs/contracts/platform-conformance-authoring-checklist.md` |
+| CLI inspect output mode와 artifact ownership 확인 | `docs/reference/toolchain-contract-matrix.ko.md` | `packages/cli/README.ko.md` 및 `docs/reference/package-surface.ko.md` |
 | 부트스트랩 경로나 시작 순서 사실 확인 | `docs/getting-started/quick-start.md` | `docs/architecture/lifecycle-and-shutdown.md` |
 | 사람용 학습 흐름이나 튜토리얼 자료 확인 | `book/README.md` | `book/` 아래 관련 챕터 |
 
