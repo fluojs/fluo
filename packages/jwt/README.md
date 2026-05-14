@@ -179,6 +179,7 @@ Verification fails closed on malformed time policy. `exp`, `nbf`, and `iat` clai
 - `JwtVerifierOptions`: Configuration for algorithms, keys, and validation policy.
 - `SignOptions` and `VerifyOptions`: Per-call signing and verification overrides.
 - `JwtClaims`, `JwtSigner`, `JwtVerifier`, `JwtKeyEntry`, `JwtAlgorithm`: Public signing and verification contracts.
+- `RefreshTokenOptions`, `RefreshTokenStore`, `RefreshTokenRecord`, `RefreshTokenConsumeInput`, `RefreshTokenRotateInput`, and `RefreshTokenConsumeResult`: Refresh-token storage, rotation, and replay-detection contracts.
 
 ### Errors and diagnostics
 - `JwtVerificationError`, `JwtInvalidTokenError`, `JwtExpiredTokenError`, `JwtConfigurationError`: Typed JWT failures.
