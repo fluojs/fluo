@@ -48,7 +48,7 @@ const connection = mongoose.createConnection('mongodb://localhost:27017/test');
 class AppModule {}
 ```
 
-`MongooseModule.forRootAsync(...)` accepts injected dependencies and a `useFactory` that may return options synchronously or asynchronously. Pass `global` on the top-level async registration when the providers should be visible globally. The resolved options are reused for the module instance, so connection setup and disposal hooks stay consistent across all providers.
+`MongooseModule.forRootAsync(...)` accepts injected dependencies and a `useFactory` that may return options synchronously or asynchronously. Use the exported `MongooseAsyncModuleOptions<TConnection>` type when sharing async registration helpers across modules. Pass `global` on the top-level async registration when the providers should be visible globally. The resolved options are reused for the module instance, so connection setup and disposal hooks stay consistent across all providers.
 
 ## Lifecycle and Shutdown
 
@@ -113,15 +113,17 @@ Use `MongooseConnection.requestTransaction(...)` directly when you need the same
 - `MongooseConnection`
 - `MongooseTransactionInterceptor`
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
-- `createMongooseProviders(options)`
+- `createMongooseProviders(options)` — compatibility/manual composition helper; prefer `MongooseModule.forRoot(...)` or `MongooseModule.forRootAsync(...)` for application-facing registration so module exports and provider visibility stay aligned.
 - `createMongoosePlatformStatusSnapshot(...)`
 
 ### Related exported types
 
 - `MongooseModuleOptions<TConnection>`
+- `MongooseAsyncModuleOptions<TConnection>`
 - `MongooseConnectionLike`
 - `MongooseSessionLike`
 - `MongooseHandleProvider`
+- `MongoosePlatformStatusSnapshotInput`
 
 ## Related Packages
 

@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import * as mongoosePublicApi from './index.js';
+import type {
+  MongooseAsyncModuleOptions,
+  MongooseConnectionLike,
+  MongoosePlatformStatusSnapshotInput,
+} from './index.js';
 
 describe('@fluojs/mongoose public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
@@ -18,5 +23,13 @@ describe('@fluojs/mongoose public API surface', () => {
     expect(mongoosePublicApi).not.toHaveProperty('MONGOOSE_NORMALIZED_OPTIONS');
     expect(mongoosePublicApi).not.toHaveProperty('normalizeMongooseModuleOptions');
     expect(mongoosePublicApi).not.toHaveProperty('createMongooseProvidersAsync');
+  });
+
+  it('keeps documented type-only inputs importable from the root barrel', () => {
+    expectTypeOf<MongooseAsyncModuleOptions<MongooseConnectionLike>>().toHaveProperty('useFactory');
+    expectTypeOf<MongooseAsyncModuleOptions<MongooseConnectionLike>>().toHaveProperty('global');
+    expectTypeOf<MongoosePlatformStatusSnapshotInput>().toHaveProperty('activeRequestTransactions');
+    expectTypeOf<MongoosePlatformStatusSnapshotInput>().toHaveProperty('lifecycleState');
+    expectTypeOf<MongoosePlatformStatusSnapshotInput>().toHaveProperty('supportsStartSession');
   });
 });
