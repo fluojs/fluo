@@ -9,7 +9,7 @@ This chapter explains the role of portability testing and conformance testing in
 - Understand which failures portability testing and conformance testing each catch.
 - Learn the structure and key verification surfaces of `HttpAdapterPortabilityHarness`.
 - See how boundary cases such as malformed cookies, raw bodies, and SSE are verified.
-- Analyze how the platform conformance suite checks lifecycle hooks and error boundaries.
+- Analyze how the platform conformance suite validates public component assertions such as deterministic start, idempotent stop, safe diagnostics and snapshots, and validation cleanup.
 - Summarize additional verification viewpoints needed at the Edge Runtime and WebSocket layers.
 - Learn the flow for applying the harness to a custom adapter and checking its Behavioral Contract.
 

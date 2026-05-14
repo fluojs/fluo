@@ -313,7 +313,7 @@ Fluo 테스트 유틸리티의 큰 장점 중 하나는 TypeScript와의 깊은 
 ## 20.7 Best Practices for FluoBlog Testing
 1.  **프레임워크를 테스트하지 마세요**: `@Get()`이 작동하는지가 아니라, 애플리케이션의 비즈니스 로직에 집중하세요. `fluo`가 라우팅을 처리한다고 전제하고, 해당 경로가 호출되었을 때 작성한 코드가 무엇을 하는지 테스트하세요.
 2.  **데이터베이스에는 가짜(Fake)를 사용하세요**: 통합 테스트는 실제 테스트용 데이터베이스(예: Docker의 PostgreSQL)를 사용할 수 있지만, 단위 테스트는 속도를 위해 항상 모의 객체나 가짜를 사용해야 합니다.
-3.  **리소스 정리**: 리소스를 해제하기 위해 항상 `await app.close()` 또는 `await module.close()`를 호출하세요. 이는 메모리 누수와 테스트 러너가 종료되지 않는 문제를 방지합니다.
+3.  **리소스 정리**: request 또는 application lifecycle 테스트에서는 `createTestApp()`으로 앱을 만들고 테스트 후 `await app.close()`를 호출하세요. `createTestingModule()` slice 테스트에서는 컴파일된 `TestingModuleRef`가 application lifecycle 소유자가 아니라 resolve 및 dispatch 표면이므로, 테스트 대상 provider나 fake 안에서 cleanup 기대치를 명시적으로 검증하세요.
 4.  **보안을 위한 통합 테스트**: 항상 가드와 RBAC 로직은 통합 테스트에서 테스트하세요. 단위 테스트는 대개 이를 우회하므로, 통합 테스트가 실제 보안을 검증하는 곳입니다.
 5.  **결정론적 테스트**: 테스트에서 `Date.now()`나 랜덤 숫자를 직접 사용하는 것을 피하세요. Vitest의 시간 여행 기능(`vi.useFakeTimers()`)을 사용하여 테스트가 실행될 때마다 동일하게 동작하도록 보장하세요.
 

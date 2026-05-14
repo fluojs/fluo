@@ -313,7 +313,7 @@ One of the biggest advantages of Fluo's testing utilities is their deep integrat
 ## 20.7 Best Practices for FluoBlog Testing
 1.  **Do not test the framework**: Focus on your application's business logic, not whether `@Get()` works. Assume `fluo` handles routing and test what your code does when that route is called.
 2.  **Use fakes for databases**: Integration tests can use a real test database, such as PostgreSQL in Docker, but unit tests should always use mocks or fakes for speed.
-3.  **Clean up resources**: Always call `await app.close()` or `await module.close()` to release resources. This prevents memory leaks and test runners that never exit.
+3.  **Clean up resources**: For request or application lifecycle tests, create the app with `createTestApp()` and call `await app.close()` after the test. For `createTestingModule()` slice tests, keep cleanup expectations explicit in the provider or fake you are testing because the compiled `TestingModuleRef` is a resolution and dispatch surface, not an application lifecycle owner.
 4.  **Integration tests for security**: Always test Guards and RBAC logic in integration tests. Unit tests usually bypass them, so integration tests are where real security gets verified.
 5.  **Deterministic tests**: Avoid using `Date.now()` or random numbers directly in tests. Use Vitest's time travel features, `vi.useFakeTimers()`, to make sure tests behave the same way every time they run.
 
