@@ -17,6 +17,7 @@
 - [ ] **Implementer 에이전트**: `edit: ask` 또는 `allow`인 경우에도 `git push`, `git merge`, `npm publish` 등이 `deny` 또는 명시적으로 gating(`ask`)되어 있는가?
 - [ ] **Command Harness**: 사용자가 직접 실행하는 `gh issue create`, `gh pr merge`, `npm publish` 등이 하네스 로직에 의해 보호되거나 금지되어 있는가?
 - [ ] **명시적 승인**: high-impact side-effect 실행 시 `authority` gate 또는 사용자 컨펌 단계를 거치는가?
+- [ ] **Full-auto 권한**: full-auto/auto mode가 있다면 명시 opt-in authority scope를 ledger에 기록하고, child command `block`/unresolved `needs-human-check`, local publish, dirty cleanup/root sync를 우회하지 않는가?
 
 ### 1.3 불변 정책 준수 (root AGENTS.md)
 - [ ] 모든 출력물에 **Korean First** 정책이 적용되었는가? (기술 식별자 제외)
@@ -44,6 +45,10 @@
 `package-publish` 실행 시 `plan` 모드를 사용하여 실제 릴리스 없이 절차만 시뮬레이션한다.
 - `/package-publish plan @fluojs/core 1.0.0-beta.1 beta`
 
+### 2.4 Full-auto 드라이런 (Authority Scope Check)
+`lane-supervisor`의 `auto` 또는 `execute --full-auto`는 실제 side effect가 발생하지 않는 가짜 issue/PR 번호와 dry-run 전제에서만 검증한다. ledger에 `authority_scope`, `retry_policy`, `decisions`가 기록되고, child command verdict가 `block` 또는 unresolved `needs-human-check`이면 merge/publish로 넘어가지 않는지 확인한다.
+- `/lane-supervisor 9999 auto main` (존재하지 않는 issue로 authority scope와 error handling만 확인)
+
 ---
 
 ## 3. 금지 사항 (Prohibited for Validation)
@@ -54,6 +59,7 @@
 - GitHub Actions workflow의 실제 `dispatch` 또는 `rerun`
 - 공유 브랜치(`main`)의 직접적인 cleanup 또는 삭제
 - 드라이런 중 실제 branch 생성 또는 worktree 추가 (상태 변경 방지)
+- full-auto 드라이런에서 실제 `gh issue create`, `gh pr merge`, cleanup, root sync 수행
 
 ---
 
