@@ -89,7 +89,7 @@ export class WelcomeService {
 }
 ```
 
-`NotificationsModule.forRoot(...)`와 `NotificationsModule.forRootAsync(...)`는 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`를 global provider로 export합니다. 애플리케이션 서비스는 fluo의 class-level `@Inject(...)` decorator로 의존성을 선언해야 standard-decorator DI container가 parameter decorator 없이 서비스를 resolve할 수 있습니다.
+`NotificationsModule.forRoot(...)`와 `NotificationsModule.forRootAsync(...)`는 기본적으로 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`를 global provider로 export합니다. 이 provider들이 notifications module을 import한 module 안에서만 보이도록 유지하려면 `global: false`를 설정합니다. 애플리케이션 서비스는 fluo의 class-level `@Inject(...)` decorator로 의존성을 선언해야 standard-decorator DI container가 parameter decorator 없이 서비스를 resolve할 수 있습니다.
 
 ## 일반적인 패턴
 
