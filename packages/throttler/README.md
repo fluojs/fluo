@@ -144,6 +144,11 @@ ThrottlerModule.forRoot({
 ### Status and diagnostics
 - `createThrottlerPlatformStatusSnapshot(...)`: Creates a platform status snapshot.
 - `createThrottlerPlatformDiagnosticIssues(...)`: Creates diagnostic issues for invalid throttler state.
+- `ThrottlerStatusAdapterInput`: Public input shape for status and diagnostic helpers. It carries store kind, ownership mode, operation mode, backing-store readiness, dependency linkage, and readiness criticality hints collected during bootstrap.
+- `ThrottlerPlatformStatusSnapshot`: Public output shape returned by `createThrottlerPlatformStatusSnapshot(...)`, containing readiness, health, ownership, and details sections compatible with runtime platform snapshots.
+- `ThrottlerStoreKind`: Store categories recognized by the status adapter: `memory`, `redis`, or `custom`.
+- `ThrottlerStoreOwnershipMode`: Ownership modes reported in status snapshots: `framework` for guard-owned resources or `external` for externally managed stores.
+- `ThrottlerOperationMode`: Operation modes reported in status details: `local-only`, `distributed`, `local-fallback`, or `custom`.
 
 Method-level `@Throttle(...)` overrides class-level settings, class-level settings override module defaults, and `@SkipThrottle()` bypasses throttling at either class or method level.
 

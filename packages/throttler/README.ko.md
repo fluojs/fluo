@@ -144,6 +144,11 @@ ThrottlerModule.forRoot({
 ### status와 diagnostics
 - `createThrottlerPlatformStatusSnapshot(...)`: 플랫폼 status snapshot을 생성합니다.
 - `createThrottlerPlatformDiagnosticIssues(...)`: 잘못된 throttler 상태에 대한 diagnostic issue를 생성합니다.
+- `ThrottlerStatusAdapterInput`: status 및 diagnostic helper의 공개 입력 shape입니다. 부트스트랩 중 수집한 store kind, ownership mode, operation mode, backing-store readiness, dependency linkage, readiness criticality 힌트를 전달합니다.
+- `ThrottlerPlatformStatusSnapshot`: `createThrottlerPlatformStatusSnapshot(...)`이 반환하는 공개 출력 shape입니다. 런타임 platform snapshot과 호환되는 readiness, health, ownership, details 섹션을 포함합니다.
+- `ThrottlerStoreKind`: status adapter가 인식하는 store category입니다: `memory`, `redis`, `custom`.
+- `ThrottlerStoreOwnershipMode`: status snapshot에 보고되는 ownership mode입니다: guard가 소유한 리소스는 `framework`, 외부에서 관리되는 store는 `external`입니다.
+- `ThrottlerOperationMode`: status details에 보고되는 operation mode입니다: `local-only`, `distributed`, `local-fallback`, `custom`.
 
 메서드 수준 `@Throttle(...)`은 클래스 수준 설정보다 우선하고, 클래스 수준 설정은 모듈 기본값보다 우선합니다. `@SkipThrottle()`은 클래스나 메서드 수준 모두에서 throttling을 우회합니다.
 

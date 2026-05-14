@@ -364,6 +364,29 @@ describe('package surface persistence responsibilities', () => {
   });
 });
 
+describe('package surface throttler responsibility discoverability', () => {
+  it('documents throttler status types and operation responsibility in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const englishReadme = readFileSync(join(repoRoot, 'packages/throttler/README.md'), 'utf8');
+    const koreanReadme = readFileSync(join(repoRoot, 'packages/throttler/README.ko.md'), 'utf8');
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface]) {
+      expect(markdown).toContain('@fluojs/throttler');
+      expect(markdown).toContain('backing-store readiness');
+      expect(markdown).toContain('ownership');
+    }
+
+    for (const markdown of [englishReadme, koreanReadme]) {
+      expect(markdown).toContain('ThrottlerStatusAdapterInput');
+      expect(markdown).toContain('ThrottlerPlatformStatusSnapshot');
+      expect(markdown).toContain('ThrottlerOperationMode');
+    }
+  });
+});
+
 describe('package surface microservices transport discoverability', () => {
   it('documents Redis Pub/Sub and Redis Streams in both package surface and AI context locales', () => {
     const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
