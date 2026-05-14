@@ -365,6 +365,22 @@ describe('package surface microservices transport discoverability', () => {
   });
 });
 
+describe('package surface CQRS responsibility discoverability', () => {
+  it('documents CQRS buses, handler discovery, sagas, and event-bus delegation in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface]) {
+      expect(markdown).toContain('@fluojs/cqrs');
+      expect(markdown).toContain('handler discovery');
+      expect(markdown).toContain('saga');
+      expect(markdown).toContain('event-bus');
+    }
+  });
+});
+
 describe('runtime subpath surface discoverability', () => {
   it('distinguishes application-facing helpers from internal package-integration seams in both locales', () => {
     const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
