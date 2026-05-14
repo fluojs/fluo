@@ -112,7 +112,7 @@ fluo new my-grpc-service --shape microservice --transport grpc --runtime node --
 
 지원되는 `--shape microservice --transport` 스타터 값은 정확히 `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, `grpc`입니다. 유지보수되는 Redis 기반 스타터가 필요하면 `redis-streams`를 사용하고, 더 넓은 Redis 통합 패턴이 필요하면 스캐폴딩 후 `@fluojs/redis`를 수동으로 추가하세요.
 
-NATS/Kafka/RabbitMQ 스타터 계약은 외부 broker와 caller-owned client library 의존성을 숨기지 않고 명시적으로 유지합니다. 생성된 프로젝트는 `src/app.ts`에서 `nats` + `JSONCodec()`, `kafkajs` producer/consumer collaborator, `amqplib` publisher/consumer collaborator를 직접 연결하므로, 기본 fluo 패키지가 그 의존성을 감춘 것처럼 가장하지 않는 runnable starter 계약이 됩니다.
+NATS/Kafka/RabbitMQ 스타터 계약은 외부 broker와 caller-owned client library 의존성을 숨기지 않고 명시적으로 유지합니다. 생성된 프로젝트는 `src/app.ts`에서 `nats` + `JSONCodec()`, `kafkajs` producer/consumer collaborator, `amqplib` publisher/consumer collaborator를 직접 연결하므로, 기본 fluo 패키지가 그 의존성을 감춘 것처럼 가장하지 않는 runnable starter 계약이 됩니다. 해당 broker client는 생성된 transport wrapper가 Fluo lifecycle에서 listen/send/emit을 시작할 때 lazy하게 생성합니다. 따라서 `fluo inspect`, 테스트, static tooling이 `src/app.ts`를 import하는 것만으로는 broker에 연결하거나 lifecycle이 teardown을 소유하기 전에 외부 리소스를 열지 않습니다.
 
 starter 매트릭스에는 mixed single-package starter도 포함됩니다. 하나의 Fastify HTTP 앱과 attached TCP microservice를 같은 생성 프로젝트 안에 함께 배치합니다.
 
@@ -155,7 +155,7 @@ fluo generate service users --dry-run
 
 `fluo generate module <name> --with-test`는 작성한 module을 `createTestingModule({ rootModule })`로 컴파일하는 `*.slice.test.ts`를 추가합니다. `fluo generate resource <name>`는 module, controller, service, repository, request DTO, response DTO, test를 포함하는 완전한 feature slice를 생성합니다. `--with-slice-test`를 추가하면 provider override와 service resolution을 보여 주는 resource-level slice test도 포함합니다. 생성된 resource module은 parent module에 자동으로 연결하지 않으므로, slice를 활성화할 준비가 되었을 때 직접 import하세요.
 
-`fluo generate e2e <name>`는 generated starter와 같은 app-level test 영역에 request-pipeline test를 두도록 `createTestApp({ rootModule: AppModule })`을 사용하는 `test/<name>.e2e.test.ts`를 작성합니다. 생성된 unit test는 직접 class 동작 검증에, slice test는 DI wiring과 override 검증에, e2e test는 virtual app을 통과하는 route, guard, interceptor, DTO validation, response writing 검증에 사용하세요.
+`fluo generate e2e <name>`는 generated starter와 같은 app-level test 영역에 request-pipeline test를 두도록 `createTestApp({ rootModule: AppModule })`을 사용하는 `test/<name>.e2e.test.ts`를 작성하고, 기본 starter root module인 `../src/app`에서 `AppModule`을 import합니다. 생성된 unit test는 직접 class 동작 검증에, slice test는 DI wiring과 override 검증에, e2e test는 virtual app을 통과하는 route, guard, interceptor, DTO validation, response writing 검증에 사용하세요.
 
 Request DTO 생성은 feature 디렉터리와 DTO 클래스 이름을 분리해서 받습니다. 따라서 `CreateUser`, `UpdateUser` 같은 여러 입력 계약을 같은 `src/users/` 슬라이스 안에 둘 수 있습니다.
 
@@ -259,7 +259,7 @@ fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 fluo inspect ./src/app.module.ts --export AdminModule --json
 ```
 
-런타임이 inspection snapshot을 생산합니다. `fluo inspect`는 output mode flag가 없을 때 기본적으로 그 snapshot을 JSON으로 직렬화하고, `fluo inspect --mermaid`는 snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. `--export <name>`은 bootstrap할 module export를 선택하며 기본값은 `AppModule`입니다. `--timing`은 JSON 출력에 bootstrap timing diagnostics를 기록하고, `--report`는 CI/support triage를 위해 런타임이 생산한 snapshot을 안정적인 요약과 함께 감쌉니다. `--timing`은 Mermaid 출력과 함께 사용할 수 없습니다. `--output <path>`는 선택한 inspect payload를 stdout 대신 명시적 artifact 경로에 씁니다. 이 동작은 검사 대상 애플리케이션을 writable하게 만들지 않으며, 일반 bootstrap/close cycle 외에 module graph state를 바꾸지 않습니다. Mermaid 출력이 필요하면 명령을 실행하는 프로젝트에 Studio를 설치하세요:
+런타임이 inspection snapshot을 생산합니다. `fluo inspect`는 `./src/app.ts` 또는 `./src/app.module.ts` 같은 생성된 TypeScript source module을 명시적 TypeScript loader boundary로 받아들이며, 기존 `.js`와 `.mjs` module path는 계속 Node.js native ESM으로 로드합니다. `fluo inspect`는 output mode flag가 없을 때 기본적으로 그 snapshot을 JSON으로 직렬화하고, `fluo inspect --mermaid`는 snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. `--export <name>`은 bootstrap할 module export를 선택하며 기본값은 `AppModule`입니다. `--timing`은 JSON 출력에 bootstrap timing diagnostics를 기록하고, `--report`는 CI/support triage를 위해 런타임이 생산한 snapshot을 안정적인 요약과 함께 감쌉니다. `--timing`은 Mermaid 출력과 함께 사용할 수 없습니다. `--output <path>`는 선택한 inspect payload를 stdout 대신 명시적 artifact 경로에 씁니다. 이 동작은 검사 대상 애플리케이션을 writable하게 만들지 않으며, 일반 bootstrap/close cycle 외에 module graph state를 바꾸지 않습니다. Mermaid 출력이 필요하면 명령을 실행하는 프로젝트에 Studio를 설치하세요:
 
 ```bash
 pnpm add -D @fluojs/studio

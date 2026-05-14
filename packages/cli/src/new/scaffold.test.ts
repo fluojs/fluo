@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -11,6 +12,7 @@ import { scaffoldBootstrapApp } from './scaffold.js';
 import { DEFAULT_BOOTSTRAP_SCHEMA } from './resolver.js';
 
 const temporaryDirectories: string[] = [];
+const require = createRequire(import.meta.url);
 const LOCAL_PACKAGE_DIRECTORY_BY_NAME = {
   '@fluojs/platform-bun': 'platform-bun',
   '@fluojs/cli': 'cli',
@@ -194,6 +196,73 @@ function expectPackedManifestUsesPublishedWorkspaceCaretPolicy(tarballPath: stri
   }
 }
 
+function writeStubPackage(projectDirectory: string, packageName: string, source: string): void {
+  const packageDirectory = join(projectDirectory, 'node_modules', ...packageName.split('/'));
+  mkdirSync(packageDirectory, { recursive: true });
+  writeFileSync(
+    join(packageDirectory, 'package.json'),
+    `${JSON.stringify({ exports: './index.js', name: packageName, type: 'module', version: '0.0.0-test' }, null, 2)}\n`,
+    'utf8',
+  );
+  writeFileSync(join(packageDirectory, 'index.js'), source, 'utf8');
+}
+
+function installImportSafeBrokerStarterStubs(projectDirectory: string): void {
+  writeStubPackage(
+    projectDirectory,
+    '@fluojs/core',
+    `export function Module() {\n  return () => undefined;\n}\n`,
+  );
+  writeStubPackage(
+    projectDirectory,
+    '@fluojs/config',
+    `export class ConfigModule {\n  static forRoot() {\n    return class ConfigModuleDefinition {};\n  }\n}\n`,
+  );
+  writeStubPackage(
+    projectDirectory,
+    '@fluojs/microservices',
+    `export function MessagePattern() {\n  return () => undefined;\n}\nexport class KafkaMicroserviceTransport {\n  constructor(options) {\n    this.options = options;\n  }\n  async close() {}\n  async emit() {}\n  async listen() {}\n  async send() {}\n}\nexport class NatsMicroserviceTransport extends KafkaMicroserviceTransport {}\nexport class RabbitMqMicroserviceTransport extends KafkaMicroserviceTransport {}\nexport class MicroservicesModule {\n  static forRoot(options) {\n    globalThis.__fluoGeneratedTransport = options.transport;\n    return class MicroservicesModuleDefinition {};\n  }\n}\n`,
+  );
+  writeStubPackage(
+    projectDirectory,
+    'nats',
+    `export function JSONCodec() {\n  return {\n    decode(value) {\n      return new TextDecoder().decode(value);\n    },\n    encode(value) {\n      return new TextEncoder().encode(value);\n    },\n  };\n}\nexport async function connect() {\n  throw new Error('NATS connect must not run during generated module import or inspect-style close.');\n}\n`,
+  );
+  writeStubPackage(
+    projectDirectory,
+    'kafkajs',
+    `export const logLevel = { NOTHING: 0 };\nexport class Kafka {\n  constructor() {\n    throw new Error('Kafka client construction must not run during generated module import or inspect-style close.');\n  }\n}\n`,
+  );
+  writeStubPackage(
+    projectDirectory,
+    'amqplib',
+    `export async function connect() {\n  throw new Error('RabbitMQ connect must not run during generated module import or inspect-style close.');\n}\n`,
+  );
+}
+
+function assertGeneratedBrokerStarterIsImportAndInspectSafe(projectDirectory: string): void {
+  installImportSafeBrokerStarterStubs(projectDirectory);
+  const scriptPath = join(projectDirectory, 'assert-import-safe.mjs');
+  const moduleUrl = pathToFileURL(join(projectDirectory, 'src', 'app.ts')).href;
+
+  writeFileSync(
+    scriptPath,
+    `const imported = await import(${JSON.stringify(moduleUrl)});\nif (typeof imported.AppModule !== 'function') {\n  throw new Error('Generated app module did not export AppModule.');\n}\nconst transport = globalThis.__fluoGeneratedTransport;\nif (!transport) {\n  throw new Error('Generated app module did not register a microservice transport.');\n}\nawait transport.close();\n`,
+    'utf8',
+  );
+
+  execFileSync(process.execPath, ['--import', require.resolve('tsx'), scriptPath], {
+    cwd: projectDirectory,
+    env: {
+      ...process.env,
+      KAFKA_BROKERS: '127.0.0.1:1',
+      NATS_SERVERS: 'nats://127.0.0.1:1',
+      RABBITMQ_URL: 'amqp://127.0.0.1:1',
+    },
+    stdio: 'pipe',
+  });
+}
+
 describe('scaffoldBootstrapApp', () => {
   it('generates TS6 starter configs without deprecated baseUrl aliases', async () => {
     const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-'));
@@ -220,6 +289,8 @@ describe('scaffoldBootstrapApp', () => {
     const greetingModuleFile = readFileSync(join(targetDirectory, 'src', 'greeting', 'greeting.module.ts'), 'utf8');
     const viteConfig = readFileSync(join(targetDirectory, 'vite.config.ts'), 'utf8');
     const vitestConfig = readFileSync(join(targetDirectory, 'vitest.config.ts'), 'utf8');
+    const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const cliManifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as { version: string };
 
     expect(packageJson.devDependencies?.typescript).toBe('^6.0.2');
     expect(packageJson.dependencies).toMatchObject({
@@ -232,7 +303,7 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/validation': '^1.0.0',
     });
     expect(packageJson.devDependencies).toMatchObject({
-      '@fluojs/cli': '^1.0.0',
+      '@fluojs/cli': `^${cliManifest.version}`,
       '@fluojs/testing': '^1.0.0',
       '@fluojs/vite': '^1.0.0',
       '@vitest/coverage-v8': '^3.0.8',
@@ -862,8 +933,9 @@ describe('scaffoldBootstrapApp', () => {
     expect(readme).toContain('caller-owned `nats` client plus `JSONCodec()`');
     expect(envFile).toContain('NATS_SERVERS=nats://127.0.0.1:4222');
     expect(envFile).toContain('NATS_MESSAGE_SUBJECT=fluo.microservices.messages');
-    expect(appFile).toContain("import { JSONCodec, connect } from 'nats';");
+    expect(appFile).toContain("import { JSONCodec, connect, type NatsConnection } from 'nats';");
     expect(appFile).toContain('new NatsMicroserviceTransport({');
+    expect(appFile).toContain('class LazyNatsTransport implements MicroserviceTransport');
     expect(appFile).toContain("name: 'fluo-microservice-starter'");
   });
 
@@ -902,8 +974,9 @@ describe('scaffoldBootstrapApp', () => {
     expect(readme).toContain('producer/consumer collaborators');
     expect(envFile).toContain('KAFKA_BROKERS=127.0.0.1:9092');
     expect(envFile).toContain('KAFKA_RESPONSE_TOPIC=fluo.microservices.responses');
-    expect(appFile).toContain("import { Kafka, logLevel } from 'kafkajs';");
+    expect(appFile).toContain("import { Kafka, logLevel, type Consumer, type Producer } from 'kafkajs';");
     expect(appFile).toContain('new KafkaMicroserviceTransport({');
+    expect(appFile).toContain('class LazyKafkaTransport implements MicroserviceTransport');
     expect(appFile).toContain('await Promise.all([producer.connect(), consumer.connect()]);');
   });
 
@@ -948,7 +1021,33 @@ describe('scaffoldBootstrapApp', () => {
     expect(envFile).toContain('RABBITMQ_RESPONSE_QUEUE=fluo.microservices.responses');
     expect(appFile).toContain("import { connect } from 'amqplib';");
     expect(appFile).toContain('new RabbitMqMicroserviceTransport({');
+    expect(appFile).toContain('class LazyRabbitMqTransport implements MicroserviceTransport');
     expect(appFile).toContain('createConfirmChannel()');
+  });
+
+  it('keeps generated broker starter modules import-safe for inspect-style tooling without a live broker', async () => {
+    for (const transport of ['nats', 'kafka', 'rabbitmq'] as const) {
+      const targetDirectory = mkdtempSync(join(tmpdir(), `fluo-scaffold-import-safe-${transport}-`));
+      temporaryDirectories.push(targetDirectory);
+
+      await scaffoldBootstrapApp({
+        packageManager: 'pnpm',
+        platform: 'none',
+        projectName: `starter-${transport}`,
+        runtime: 'node',
+        shape: 'microservice',
+        skipInstall: true,
+        targetDirectory,
+        tooling: 'standard',
+        topology: {
+          deferred: true,
+          mode: 'single-package',
+        },
+        transport,
+      });
+
+      assertGeneratedBrokerStarterIsImportAndInspectSafe(targetDirectory);
+    }
   });
 
   it('generates a mixed single-package scaffold with an attached TCP microservice', async () => {

@@ -349,17 +349,30 @@ export { PostModule };
     expect(sliceContent).toContain('await testingModule.resolve<UserService>(UserService)');
   });
 
-  it('generates e2e tests under the project test directory', () => {
+  it('generates e2e tests under the project test directory with the starter app import', () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-generate-'));
     tempDirectories.push(workspaceDirectory);
 
     const sourceDirectory = join(workspaceDirectory, 'src');
+    mkdirSync(sourceDirectory, { recursive: true });
+    writeFileSync(join(sourceDirectory, 'app.ts'), 'export class AppModule {}\n', 'utf8');
     const result = runGenerateCommand('e2e', 'Users', sourceDirectory);
     const e2ePath = join(workspaceDirectory, 'test', 'users.e2e.test.ts');
     const e2eContent = readFileSync(e2ePath, 'utf8');
 
     expect(result.generatedFiles).toEqual([e2ePath]);
-    expect(e2eContent).toContain("import { AppModule } from '../src/app.module';");
+    expect(e2eContent).toContain("import { AppModule } from '../src/app';");
     expect(e2eContent).toContain('createTestApp({ rootModule: AppModule })');
+  });
+
+  it('preserves explicit e2e root module import overrides', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-generate-'));
+    tempDirectories.push(workspaceDirectory);
+
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    runGenerateCommand('e2e', 'Users', sourceDirectory, { e2eRootModuleImport: '../src/custom-root.module' });
+    const e2eContent = readFileSync(join(workspaceDirectory, 'test', 'users.e2e.test.ts'), 'utf8');
+
+    expect(e2eContent).toContain("import { AppModule } from '../src/custom-root.module';");
   });
 });

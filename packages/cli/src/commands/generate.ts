@@ -77,7 +77,7 @@ function toImportSpecifier(path: string): string {
 }
 
 function resolveE2eRootModuleImport(domainDirectory: string, resolvedBase: string): string {
-  return toImportSpecifier(relative(domainDirectory, join(resolvedBase, 'app.module')));
+  return toImportSpecifier(relative(domainDirectory, join(resolvedBase, 'app')));
 }
 
 function resolveDomainDirectory(kind: GeneratorKind, resolvedBase: string, kebab: string, options: GenerateOptions): string {
