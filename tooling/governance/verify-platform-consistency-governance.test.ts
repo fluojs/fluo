@@ -436,6 +436,23 @@ describe('i18n subpath discoverability', () => {
   });
 });
 
+describe('serialization package discoverability', () => {
+  it('documents response serialization responsibility from the AI context and package references in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const englishChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
+    const koreanChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.ko.md'), 'utf8');
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface, englishChooser, koreanChooser]) {
+      expect(markdown).toContain('@fluojs/serialization');
+      expect(markdown).toContain('response');
+      expect(markdown).toContain('DTO');
+    }
+  });
+});
+
 describe('Terminus chooser discoverability', () => {
   it('documents Terminus subpaths and timeout guardrails from the AI context and package chooser in both locales', () => {
     const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
