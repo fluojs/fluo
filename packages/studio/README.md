@@ -89,7 +89,7 @@ Studio is primarily a web application, but the published package also exposes th
 | `PlatformDiagnosticIssue` | Schema for reporting and fixing platform errors. |
 | `parseStudioPayload(rawJson)` | Accepts raw snapshot JSON, standalone timing JSON, snapshot+timing envelopes, and `fluo inspect --report` artifacts; returns the parsed payload plus the original JSON string. |
 | `ParsedPayload` | Parsed Studio payload shape returned by `parseStudioPayload(...)`. |
-| `StudioPayload` | Accepted raw snapshot/timing/report input shapes. |
+| `StudioPayload` | Normalized parsed payload envelope returned by `parseStudioPayload(...)`, with optional `report`, `snapshot`, and `timing` fields. |
 | `StudioReportArtifact` | Preserved `fluo inspect --report` artifact with summary, snapshot, and timing data for CI/support automation. |
 | `StudioReportSummary` | Summary block included in report artifacts. |
 | `FilterState` | Filter configuration accepted by `applyFilters(...)`. |
