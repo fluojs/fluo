@@ -12,7 +12,7 @@ import { toKebabCase } from './utils.js';
  */
 export function generateE2eFiles(name: string, options: GenerateOptions = {}): GeneratedFile[] {
   const kebab = toKebabCase(name);
-  const rootModuleImport = options.e2eRootModuleImport ?? '../src/app.module';
+  const rootModuleImport = options.e2eRootModuleImport ?? '../src/app';
 
   return [
     {

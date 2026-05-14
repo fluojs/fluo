@@ -3677,7 +3677,7 @@ exit 7
     );
     expect(readFileSync(join(workspaceDirectory, 'src', 'users', 'user.slice.test.ts'), 'utf8')).toContain('overrideProvider(UserRepo');
     expect(readFileSync(join(workspaceDirectory, 'test', 'users.e2e.test.ts'), 'utf8')).toContain(
-      "import { AppModule } from '../src/app.module';",
+      "import { AppModule } from '../src/app';",
     );
   });
 

@@ -72,10 +72,10 @@ describe('CLI generators', () => {
   });
 
   it('emits e2e templates based on createTestApp', () => {
-    const content = generateE2eFiles('Users', { e2eRootModuleImport: '../src/app.module' })[0]?.content ?? '';
+    const content = generateE2eFiles('Users', { e2eRootModuleImport: '../src/app' })[0]?.content ?? '';
 
     expect(content).toContain("import { createTestApp } from '@fluojs/testing';");
-    expect(content).toContain("import { AppModule } from '../src/app.module';");
+    expect(content).toContain("import { AppModule } from '../src/app';");
     expect(content).toContain('createTestApp({ rootModule: AppModule })');
     expect(content).toContain("app.request('GET', '/users').send()");
   });
