@@ -301,10 +301,21 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 ### 계약과 헬퍼
 
+- `Email`: `address`와 선택적 display `name`을 포함하는 정규화된 이메일 주소 값입니다.
+- `EmailAddress` / `EmailAddressLike`: `EmailService`가 정규화하기 전에 허용하는 구조화 또는 축약 recipient 값입니다.
+- `EmailModuleOptions` / `EmailAsyncModuleOptions`: sender 기본값, renderer, lifecycle 검증, transport factory wiring을 포함하는 동기/비동기 모듈 등록 계약입니다.
 - `EmailMessage`
+- `EmailNotificationDispatchRequest` / `EmailNotificationPayload`: `EmailChannel`이 소비하는 notification channel payload 계약입니다.
+- `EmailSendOptions` / `EmailSendManyOptions`: abort signal과 batch failure 수집 같은 per-send 제어 옵션입니다.
+- `EmailSendResult` / `EmailSendBatchResult` / `EmailSendFailure`: accepted, pending, rejected, failed message를 보존하는 직접/배치 전달 결과 계약입니다.
+- `EmailTransportReceipt`: `EmailSendResult`에 보존되는 transport-level provider receipt입니다.
 - `EmailTransport`
+- `EmailTransportContext`
 - `EmailTransportFactory`
+- `EmailTemplateRenderInput`
 - `EmailTemplateRenderer`
+- `EmailTemplateRenderResult`
+- `NormalizedEmailAddressList` / `NormalizedEmailMessage`: typed integration과 테스트를 위해 노출되는 내부 정규화 message shape입니다.
 
 ### 통합 서브패스
 
@@ -313,6 +324,9 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 ### 상태 및 에러
 
 - `createEmailPlatformStatusSnapshot(...)`
+- `EmailLifecycleState`
+- `EmailPlatformStatusSnapshot`
+- `EmailStatusAdapterInput`
 - `EmailConfigurationError`
 - `EmailLifecycleError`: lifecycle로 차단된 전달, transport 초기화 또는 검증, 소유 리소스 shutdown 실패에서 발생합니다. 애플리케이션 teardown과 전송이 경합할 수 있다면 이 에러를 catch하세요.
 - `EmailMessageValidationError`

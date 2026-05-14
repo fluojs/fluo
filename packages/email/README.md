@@ -301,10 +301,21 @@ These limitations are part of the package contract so transport selection, templ
 
 ### Contracts and helpers
 
+- `Email`: Normalized email address value with an `address` and optional display `name`.
+- `EmailAddress` / `EmailAddressLike`: Structured or shorthand recipient values accepted by `EmailService` before normalization.
+- `EmailModuleOptions` / `EmailAsyncModuleOptions`: Synchronous and async module registration contracts, including sender defaults, renderer, lifecycle verification, and transport factory wiring.
 - `EmailMessage`
+- `EmailNotificationDispatchRequest` / `EmailNotificationPayload`: Notification channel payload contracts consumed by `EmailChannel`.
+- `EmailSendOptions` / `EmailSendManyOptions`: Per-send controls such as abort signals and batch failure collection.
+- `EmailSendResult` / `EmailSendBatchResult` / `EmailSendFailure`: Direct and batch delivery result contracts that preserve accepted, pending, rejected, and failed messages.
+- `EmailTransportReceipt`: Transport-level provider receipt preserved by `EmailSendResult`.
 - `EmailTransport`
+- `EmailTransportContext`
 - `EmailTransportFactory`
+- `EmailTemplateRenderInput`
 - `EmailTemplateRenderer`
+- `EmailTemplateRenderResult`
+- `NormalizedEmailAddressList` / `NormalizedEmailMessage`: Internal-normalized message shapes exposed for typed integrations and tests.
 
 ### Integration subpaths
 
@@ -313,6 +324,9 @@ These limitations are part of the package contract so transport selection, templ
 ### Status and errors
 
 - `createEmailPlatformStatusSnapshot(...)`
+- `EmailLifecycleState`
+- `EmailPlatformStatusSnapshot`
+- `EmailStatusAdapterInput`
 - `EmailConfigurationError`
 - `EmailLifecycleError`: thrown by lifecycle-gated delivery, transport initialization or verification, and owned-resource shutdown failures. Catch this error when sends can race with application teardown.
 - `EmailMessageValidationError`
