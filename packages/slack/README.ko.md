@@ -217,6 +217,8 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 ### 핵심
 
 - `SlackModule.forRoot(options)` / `SlackModule.forRootAsync(options)`
+- `SlackModuleOptions`
+- `SlackAsyncModuleOptions`
 - `createSlackProviders(options)`
 - `SlackService`
 - `SlackService.send(message, options)`
@@ -250,8 +252,11 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `SlackTransportReceipt`
 - `SlackFetchLike`
 - `SlackFetchResponse`
-- `SlackTemplateRenderer`
+- `SlackWebhookTransportOptions`
 - `createSlackWebhookTransport(options)`
+- `SlackTemplateRenderer`
+- `SlackTemplateRenderInput`
+- `SlackTemplateRenderResult`
 
 ### 상태 및 에러
 
