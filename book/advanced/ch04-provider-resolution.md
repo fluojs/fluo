@@ -3,10 +3,10 @@
 
 # Chapter 4. Provider Normalization and Resolution Algorithms
 
-This chapter analyzes how the Fluo DI container normalizes public Provider declarations into internal records, then resolves real instances from those records. Through Chapter 3, we focused on decorators and metadata recording. Now we look at the point where that information is consumed by runtime algorithms.
+This chapter analyzes how the Fluo DI container normalizes public Provider declarations into validated records, then resolves real instances from those records. Through Chapter 3, we focused on decorators and metadata recording. Now we look at the point where that information is consumed by runtime algorithms.
 
 ## Learning Objectives
-- Understand how public Provider syntax becomes an internal normalized record.
+- Understand how public Provider syntax becomes a validated normalized record.
 - Explain why duplicate checks and Scope guardrails are needed during registration.
 - Analyze the resolve pipeline from Token lookup to alias handling and instantiation.
 - Summarize how optional, `forwardRef`, and multi Provider handling sit on top of the same resolver.
@@ -19,11 +19,11 @@ This chapter analyzes how the Fluo DI container normalizes public Provider decla
 - Understand basic DI terms such as class Provider, factory Provider, and alias Provider.
 
 ## 4.1 From public provider syntax to normalized records
-Fluo's container doesn't interpret public Provider shapes as they are. The first step is always normalization. This decision keeps the actual resolve path small and predictable because the runtime only needs to handle one internal record shape instead of branching over five public APIs again and again.
+Fluo's container doesn't interpret public Provider shapes as they are. The first step is always normalization. This decision keeps the actual resolve path small and predictable because the runtime only needs to handle one validated record shape instead of branching over five public APIs again and again.
 
 The public surface is declared in `path:packages/di/src/types.ts:36-121`. At this boundary, Fluo accepts class constructors, `{ useClass }`, `{ useFactory }`, `{ useValue }`, and `{ useExisting }`. These forms are syntax for authoring convenience. They aren't the execution model itself.
 
-The public types show the separation between the shapes a Provider may accept and the internal shape after normalization.
+The public types show the separation between the shapes a Provider may accept and the normalized shape after validation.
 
 `path:packages/di/src/types.ts:36-54`
 ```typescript
@@ -47,7 +47,7 @@ export interface FactoryProvider<T = unknown> {
 
 This excerpt shows that class Providers and factory Providers share the same field language. `provide` is the public Token, while `inject`, `scope`, and `multi` are policy inputs read by later normalization and registration steps.
 
-The full public union, including `useValue` and `useExisting`, meets the internal `NormalizedProvider` like this.
+The full public union, including `useValue` and `useExisting`, meets `NormalizedProvider` like this.
 
 `path:packages/di/src/types.ts:56-121`
 ```typescript
@@ -75,7 +75,7 @@ export interface NormalizedProvider<T = unknown> {
 }
 ```
 
-The important difference is that public Providers are open across several syntaxes, but the internal record closes them into a combination of `type` and implementation fields. The later resolver only needs to inspect this internal shape.
+The important difference is that public Providers are open across several syntaxes, but the normalized record closes them into a combination of `type` and implementation fields. `NormalizedProvider` remains root-exported as a compatibility-only public type for consumers that already referenced this record shape; application code should still author providers with `Provider` or the specific provider interfaces, while the container owns normalized record construction.
 
 The actual normalization entry point is `normalizeProvider()` in `path:packages/di/src/container.ts:54-115`. This function is the first core algorithm in the chapter. It converts every input Provider into a `NormalizedProvider` with `type`, `provide`, `inject`, `scope`, and implementation fields.
 
@@ -127,7 +127,7 @@ function normalizeInjectToken(token: Token | ForwardRefFn | OptionalToken): Toke
 
 Only `null` and `undefined` are blocked immediately at this step. Ordinary Tokens, `forwardRef`, and `optional` wrappers are passed to the next step as they are. Normalization doesn't evaluate dependency entries. It first guarantees that they have an executable shape.
 
-Normalization is also where Fluo applies lazy defaults. If a Provider doesn't specify a Scope, `normalizeProvider` doesn't leave the field empty. It reads class metadata and fills in the framework default, `Scope.DEFAULT`, as shown in `path:packages/di/src/container.ts:102-114`. By the time a Provider is registered, its behavior contract is already explicit. This explicitness makes the internal record the final source of truth for Provider configuration.
+Normalization is also where Fluo applies lazy defaults. If a Provider doesn't specify a Scope, `normalizeProvider` doesn't leave the field empty. It reads class metadata and fills in the framework default, `Scope.DEFAULT`, as shown in `path:packages/di/src/container.ts:102-114`. By the time a Provider is registered, its behavior contract is already explicit. This explicitness makes the normalized record the container's final source of truth for Provider configuration.
 
 The factory and `{ provide, useClass }` branches make Scope precedence and inject precedence clearer.
 
@@ -207,7 +207,7 @@ The relationship with `@fluojs/core` matters here. `@Inject(...)` and `@Scope(..
 
 There is another hidden rule, inheritance. `getClassDiMetadata()` in `path:packages/core/src/metadata/class-di.ts:50-83` walks the constructor lineage from base to leaf and lets a subclass overwrite only the fields it actually redefined. Provider normalization therefore sees the final inherited contract, not only the class's local metadata.
 
-Operationally, the meaning of 4.1 is clear. Fluo's DI container looks simple at runtime because most complexity is digested early in normalization. By the time `resolve()` begins, the Provider has already been arranged into one internal shape.
+Operationally, the meaning of 4.1 is clear. Fluo's DI container looks simple at runtime because most complexity is digested early in normalization. By the time `resolve()` begins, the Provider has already been arranged into one validated shape.
 
 ## 4.2 Registration semantics, duplicate checks, and scope guardrails
 After normalization, `register()` applies policy. The implementation is in `path:packages/di/src/container.ts:152-191`. This method doesn't simply append to a map. It enforces graph rules so later resolution stays predictable.

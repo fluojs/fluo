@@ -157,7 +157,7 @@ const service = await container.resolve(DataService);
 
 ## 공개 API
 
-| 클래스/메서드 | 설명 |
+| Export | 설명 |
 |---|---|
 | `Container` | 메인 DI 컨테이너 클래스입니다. |
 | `register(...providers)` | 하나 이상의 프로바이더를 등록합니다. |
@@ -168,8 +168,15 @@ const service = await container.resolve(DataService);
 | `hasRequestScopedDependency(token)` | 토큰 해석 시 provider 그래프에 request-scoped 의존성이나 순환이 있어 request-scope 컨테이너가 필요할 수 있는지 확인합니다. |
 | `dispose()` | request child와 루트가 소유한 singleton instance를 정리합니다. |
 | `forwardRef(fn)` | 선언 순서 문제를 위해 조회를 지연하는 토큰 래퍼를 반환합니다. 실제 생성자 순환을 해석 가능하게 만들지는 않습니다. |
+| `isForwardRef(value)` | `forwardRef(...)`가 만든 값인지 확인하는 type guard입니다. 커스텀 provider tooling이 DI token wrapper와 통합될 때 사용할 수 있습니다. |
 | `optional(token)` | 하나의 의존성을 optional로 표시하는 토큰 래퍼를 반환합니다. 누락된 optional dependency는 `undefined`로 해석됩니다. |
+| `isOptionalToken(value)` | `optional(...)`이 만든 값인지 확인하는 type guard입니다. provider 수준 `inject` 배열을 검사할 때 사용할 수 있습니다. |
 | `Scope` | `DEFAULT`, `REQUEST`, `TRANSIENT` scope 상수를 제공합니다. |
+| Provider types | `Provider`, `ClassProvider`, `FactoryProvider`, `ValueProvider`, `ExistingProvider`는 `register(...)`와 `override(...)`가 받는 공개 registration shape를 설명합니다. |
+| Token wrapper types | `ForwardRefFn`과 `OptionalToken`은 `forwardRef(...)`와 `optional(...)`이 반환하는 wrapper 값을 설명합니다. |
+| Container helper types | `ClassType`, `Disposable`, `RequestScopeContainer`는 typed provider 선언, teardown hook, request-scope helper 경계를 지원합니다. |
+| `NormalizedProvider` | 컨테이너가 검증한 provider record shape를 위한 compatibility-only 공개 타입입니다. provider를 작성할 때는 `Provider`나 구체 provider interface를 우선 사용하세요. normalized record 생성은 컨테이너가 소유합니다. |
+| `DiErrorContext` | DI error에 붙는 구조화된 context입니다. 로그와 테스트가 token, scope, module, dependency chain, hint를 검사할 수 있게 합니다. |
 | 에러 클래스 | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |
 
 multi-provider 토큰을 resolve하면 등록 순서대로 해석된 값의 배열이 반환됩니다.

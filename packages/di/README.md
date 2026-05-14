@@ -157,7 +157,7 @@ Ensure all required providers are registered in the container. If you use `creat
 
 ## Public API
 
-| Class/Method | Description |
+| Export | Description |
 |---|---|
 | `Container` | The main DI container class. |
 | `register(...providers)` | Registers one or more providers. |
@@ -168,8 +168,15 @@ Ensure all required providers are registered in the container. If you use `creat
 | `hasRequestScopedDependency(token)` | Checks whether resolving a token may require a request-scope container because its provider graph contains request-scoped dependencies or is cyclic. |
 | `dispose()` | Disposes request children and root-owned singleton instances. |
 | `forwardRef(fn)` | Returns a token wrapper that defers lookup for declaration-order issues; it does not make constructor dependency cycles resolvable. |
+| `isForwardRef(value)` | Type guard for values produced by `forwardRef(...)`; useful when integrating custom provider tooling with DI token wrappers. |
 | `optional(token)` | Returns a token wrapper that marks one dependency as optional; missing optional dependencies resolve to `undefined`. |
+| `isOptionalToken(value)` | Type guard for values produced by `optional(...)`; useful when inspecting provider-level `inject` arrays. |
 | `Scope` | Exposes `DEFAULT`, `REQUEST`, and `TRANSIENT` scope constants. |
+| Provider types | `Provider`, `ClassProvider`, `FactoryProvider`, `ValueProvider`, and `ExistingProvider` describe the public registration shapes accepted by `register(...)` and `override(...)`. |
+| Token wrapper types | `ForwardRefFn` and `OptionalToken` describe the wrapper values returned by `forwardRef(...)` and `optional(...)`. |
+| Container helper types | `ClassType`, `Disposable`, and `RequestScopeContainer` support typed provider declarations, teardown hooks, and request-scope helper boundaries. |
+| `NormalizedProvider` | Compatibility-only public type for the container's validated provider record shape. Prefer authoring providers with `Provider` or the specific provider interfaces; the container owns normalized record construction. |
+| `DiErrorContext` | Structured context attached to DI errors so logs and tests can inspect tokens, scopes, modules, dependency chains, and hints. |
 | Error classes | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |
 
 Resolving a multi-provider token returns an array of resolved values in registration order.
