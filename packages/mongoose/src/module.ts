@@ -18,7 +18,14 @@ type ResolvedMongooseModuleOptions<TConnection extends MongooseConnectionLike> =
   strictTransactions: boolean;
 };
 
-type MongooseAsyncModuleOptions<TConnection extends MongooseConnectionLike> = AsyncModuleOptions<
+/**
+ * Async registration options accepted by `MongooseModule.forRootAsync(...)`.
+ *
+ * The factory resolves the same connection, disposal, and strict transaction
+ * options accepted by `MongooseModule.forRoot(...)`; `global` remains on the
+ * top-level async registration so callers can opt into global provider export.
+ */
+export type MongooseAsyncModuleOptions<TConnection extends MongooseConnectionLike> = AsyncModuleOptions<
   Omit<MongooseModuleOptions<TConnection>, 'global'>
 > & Pick<MongooseModuleOptions<TConnection>, 'global'>;
 
@@ -102,7 +109,12 @@ function createMongooseProvidersAsync<TConnection extends MongooseConnectionLike
 }
 
 /**
- * Creates Mongoose providers for manual module composition.
+ * Creates Mongoose providers for compatibility-oriented manual module composition.
+ *
+ * Prefer `MongooseModule.forRoot(...)` for application registration so module
+ * exports and provider visibility stay aligned with the documented namespace
+ * facade. Use this helper only when hand-assembling providers in advanced
+ * compatibility scenarios.
  *
  * @param options Mongoose module options with a connection handle, optional dispose hook, and strict transaction policy.
  * @returns Provider definitions equivalent to `MongooseModule.forRoot(...)`.
