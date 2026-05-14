@@ -142,7 +142,7 @@ export class ScalingService {
 
 ## 14.6 Bun engine details
 
-fluo는 Bun의 고성능 WebSocket 구현을 우선 지원합니다. Socket.IO는 보통 Node.js에서 `ws` 패키지를 사용하지만, Bun에서는 `@socket.io/bun-engine`을 사용할 수 있습니다. FluoShop을 Bun에서 실행하면 `@fluojs/socket.io` adapter는 자동으로 환경을 감지하고, 사용 가능한 경우 Bun engine으로 전환합니다. 이 선택은 FluoShop이 표준 Node.js 프로세스보다 낮은 메모리 오버헤드로 많은 동시 지원 채팅을 처리할 수 있게 합니다.
+fluo는 선택한 HTTP adapter 계약을 통해 Bun의 고성능 WebSocket 구현을 지원합니다. Socket.IO는 보통 Node.js에서 `ws` 패키지를 사용하지만, Bun에서는 활성 platform adapter가 Socket.IO adapter에 필요한 fetch-style realtime binding을 제공할 때 `@socket.io/bun-engine`을 사용할 수 있습니다. 따라서 FluoShop은 runtime auto-switching에 의존하지 말고 Bun 호환 platform adapter를 명시적으로 선택해야 합니다. 이 방식은 realtime boundary를 감사 가능한 상태로 유지하면서도 표준 Node.js 프로세스보다 낮은 메모리 오버헤드로 많은 동시 지원 채팅을 처리할 수 있게 합니다.
 
 ## 14.7 여러 room으로 브로드캐스트하기
 

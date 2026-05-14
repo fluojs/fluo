@@ -125,14 +125,14 @@ Socket.IO 등록은 소유 모듈의 import 경로에서 구성하여 namespace/
 ## 공개 API 개요
 
 - `SocketIoModule.forRoot(options)`
-- `SocketIoModule.forRoot({ auth, cors, engine, ... })`
+- `SocketIoModule.forRoot({ global, auth, cors, engine, ... })`: provider visibility, namespace/message guard, 명시적 CORS, Engine.IO payload bound를 구성합니다.
 - `SOCKETIO_SERVER`
 - `SOCKETIO_ROOM_SERVICE`
 - `SocketIoRoomService`: 공유 room 계약에 Socket.IO namespace-aware `joinRoom`, `leaveRoom`, `broadcastToRoom`, `getRooms` helper를 더한 타입입니다.
 - `SocketIoLifecycleService`: server와 room-service token 뒤에서 동작하는 lifecycle 기반 구현입니다. 애플리케이션 코드는 일반적으로 `SOCKETIO_SERVER` 또는 `SOCKETIO_ROOM_SERVICE`를 주입하세요.
 - 타입: `SocketIoModuleOptions`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
 
-`SocketIoModuleOptions`는 `auth`, `buffer`, `cors`, `engine`, `shutdown`, `transports`를 포함합니다. 지원되는 server-backed runtime adapter가 필요하며, unsupported/noop adapter는 bootstrap 중 빠르게 실패합니다.
+`SocketIoModuleOptions`는 `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, `transports`를 포함합니다. `global`의 기본값은 `true`이므로 `SOCKETIO_SERVER`와 `SOCKETIO_ROOM_SERVICE`가 앱 전체에서 보입니다. module-local provider visibility가 필요하면 `false`로 설정하세요. 지원되는 server-backed runtime adapter가 필요하며, unsupported/noop adapter는 bootstrap 중 빠르게 실패합니다.
 
 ## 지원 플랫폼
 
