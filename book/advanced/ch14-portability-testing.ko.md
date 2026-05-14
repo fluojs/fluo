@@ -115,21 +115,14 @@ Hono 프로젝트는 "표준" 미들웨어 및 어댑터 준수로 잘 알려져
 플랫폼 적합성 스위트는 숨겨진 라이프사이클 안무가 아니라 안정적인 공개 단언에 집중합니다. 모든 프로바이더 라이프사이클 훅이 특정 네트워크 준비 시점에 실행되었는지, 활성 연결이 drain되었는지, 부트스트랩 실패 뒤 프로세스가 종료되었는지를 증명하지는 않습니다. 그런 보장은 해당 동작을 소유한 어댑터나 런타임 패키지 테스트에 두어야 합니다. 공개 하네스는 어댑터 및 도구 작성자를 위해 재사용 가능한 공개 컴포넌트 계약 기준선을 제공합니다. 반복적인 start/stop 호출은 예측 가능해야 하고, 진단과 스냅샷은 안전하게 검사할 수 있어야 하며, 검증은 지속 상태를 남기면 안 됩니다.
 
 ```typescript
-// packages/testing/src/conformance/platform-conformance.ts
-export interface PlatformConformanceHarnessOptions {
-  createComponent: () => PlatformComponent;
-  // ...
-}
+import { createPlatformConformanceHarness } from '@fluojs/testing/platform-conformance';
 
-export async function runPlatformConformance(options: PlatformConformanceHarnessOptions) {
-  const harness = createPlatformConformanceHarness(options);
-  await harness.assertValidationHasNoLongLivedSideEffects();
-  await harness.assertStartIsDeterministic();
-  await harness.assertStopIsIdempotent();
-  await harness.assertSnapshotSafeInDegradedAndFailedStates();
-  await harness.assertStableDiagnostics();
-  await harness.assertSnapshotSanitized();
-}
+const harness = createPlatformConformanceHarness({
+  createComponent: () => myPlatformComponent,
+  // ...
+});
+
+await harness.assertAll();
 ```
 
 이는 플랫폼 지향 컴포넌트를 작성하는 사람이 공개 컴포넌트 계약에 대해 자신의 작업을 즉시 검증할 수 있게 합니다. 또한 어댑터 및 도구 작성자를 위한 기대 동작 문서 역할도 합니다.

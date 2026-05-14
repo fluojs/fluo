@@ -115,21 +115,14 @@ For example, `platform-conformance.ts` checks the public component-level contrac
 The platform conformance suite focuses on stable public assertions rather than hidden lifecycle choreography. It does not prove that every provider lifecycle hook fired at a particular network readiness moment, that active connections drained, or that a process exited after bootstrap failure. Those guarantees belong in the adapter or runtime package tests that own the behavior. The published harness gives adapter and tooling authors a reusable baseline for the public component contract: repeated start/stop calls must be predictable, diagnostics and snapshots must remain safe to inspect, and validation must not leave persistent state behind.
 
 ```typescript
-// packages/testing/src/conformance/platform-conformance.ts
-export interface PlatformConformanceHarnessOptions {
-  createComponent: () => PlatformComponent;
-  // ...
-}
+import { createPlatformConformanceHarness } from '@fluojs/testing/platform-conformance';
 
-export async function runPlatformConformance(options: PlatformConformanceHarnessOptions) {
-  const harness = createPlatformConformanceHarness(options);
-  await harness.assertValidationHasNoLongLivedSideEffects();
-  await harness.assertStartIsDeterministic();
-  await harness.assertStopIsIdempotent();
-  await harness.assertSnapshotSafeInDegradedAndFailedStates();
-  await harness.assertStableDiagnostics();
-  await harness.assertSnapshotSanitized();
-}
+const harness = createPlatformConformanceHarness({
+  createComponent: () => myPlatformComponent,
+  // ...
+});
+
+await harness.assertAll();
 ```
 
 This lets someone writing a platform-facing component immediately validate their work against the public component contract. It also acts as expected-behavior documentation for adapter and tooling authors.
