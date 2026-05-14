@@ -105,6 +105,8 @@ The shared edge portability suite in `packages/testing/src/portability/web-runti
 - `createCloudflareWorkerEntrypoint(module, options)`: Creates a lazy-bootstrapping Worker entrypoint.
 - `bootstrapCloudflareWorkerApplication(module, options)`: Async bootstrap helper for Workers.
 - `CloudflareWorkerHttpApplicationAdapter`: The core adapter implementation.
+- `CloudflareWorkerHandler`: Fetch handler interface shared by Worker application wrappers and lazy entrypoints.
+- `CloudflareWorkerApplication`: Fully bootstrapped Worker application wrapper with `adapter`, `app`, `fetch(...)`, and `close(...)`.
 - `CloudflareWorkerEntrypoint`: Lazy entrypoint with `fetch`, `ready()`, and `close()` lifecycle methods.
 - Options and types: `CloudflareWorkerAdapterOptions`, `BootstrapCloudflareWorkerApplicationOptions`, `CloudflareWorkerExecutionContext`, `CloudflareWorkerWebSocketBinding`, and Worker websocket pair/upgrade types.
 
