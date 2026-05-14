@@ -163,7 +163,7 @@ MetricsModule.forRoot({
 - `METER_PROVIDER`
 - `PrometheusMeterProvider`
 - `HttpMetricsMiddleware` and HTTP path-label option types
-- Module options including `provider` (currently only `'prometheus'`) and endpoint `middleware`
+- Module options including `provider` (currently only `'prometheus'`), module-level `middleware`, and endpoint-scoped `endpointMiddleware`
 - `Registry` from `prom-client`
 
 ### Operational defaults
