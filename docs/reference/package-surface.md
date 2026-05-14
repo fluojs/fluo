@@ -54,6 +54,7 @@
 - **`@fluojs/discord`**: Webhook-first Discord delivery core that can run standalone or register a first-party notifications channel.
 - **`@fluojs/websockets`**: WebSocket gateway authoring with runtime-specific subpaths `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`.
 - **`@fluojs/validation`**: Standard-decorator input validation, DTO materialization, and request-boundary safety.
+- **`@fluojs/serialization`**: Decorator-aware response serialization and output DTO shaping with `Expose`, `Exclude`, `Transform`, `serialize(value)`, and `SerializerInterceptor` for HTTP response-boundary integration.
 - **`@fluojs/prisma` / `@fluojs/drizzle`**: ORM lifecycle and ALS-backed transaction context.
 - **`@fluojs/redis`**: App-scoped Redis client registration, raw-client injection, JSON-aware `RedisService` facade, named-client tokens, lifecycle-owned connect/quit timeout guardrails, and documentation guidance that Pub/Sub subscribers use dedicated Redis connections rather than sharing the ordinary command client.
 - **`@fluojs/queue`**: Redis-backed BullMQ job processing with decorator-discovered singleton workers, queue-owned duplicate Redis connections, JSON-object payload serialization, dead-letter retention, bootstrap-ready worker startup, bounded worker shutdown through `workerShutdownTimeoutMs`, and lifecycle/readiness status snapshots.

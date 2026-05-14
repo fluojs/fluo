@@ -54,6 +54,7 @@
 - **`@fluojs/discord`**: standalone으로도 동작하고 공식 알림 채널로도 등록할 수 있는 webhook-first Discord 전달 코어.
 - **`@fluojs/websockets`**: 런타임별 서브패스 `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`를 제공하는 WebSocket 게이트웨이 작성 패키지.
 - **`@fluojs/validation`**: 표준 데코레이터 기반 입력 검증, DTO 실체화(materialization), request-boundary 안전성.
+- **`@fluojs/serialization`**: `Expose`, `Exclude`, `Transform`, `serialize(value)`, HTTP response-boundary 통합용 `SerializerInterceptor`를 제공하는 decorator-aware response serialization 및 output DTO shaping 패키지.
 - **`@fluojs/prisma` / `@fluojs/drizzle`**: ORM 라이프사이클 및 ALS 기반 트랜잭션 컨텍스트.
 - **`@fluojs/redis`**: App-scoped Redis client 등록, raw-client injection, JSON-aware `RedisService` facade, named-client token, lifecycle-owned connect/quit timeout guardrail, 그리고 Pub/Sub subscriber는 일반 command client를 공유하지 않고 전용 Redis 연결을 사용해야 한다는 문서 가이드를 담당합니다.
 - **`@fluojs/queue`**: decorator로 발견한 singleton worker, Queue가 소유하는 duplicate Redis connection, JSON-object payload serialization, dead-letter retention, bootstrap-ready worker startup, `workerShutdownTimeoutMs` 기반 bounded worker shutdown, lifecycle/readiness status snapshot을 제공하는 Redis-backed BullMQ job processing 패키지입니다.
