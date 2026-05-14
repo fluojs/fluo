@@ -59,6 +59,8 @@ Use `JwtModule.forRootAsync(...)` when your JWT settings must come from another 
 
 Async registration exports the same JWT provider surface as the synchronous path, including `RefreshTokenService`; resolving that service still requires `refreshToken` options to be configured.
 
+`forRootAsync(...)` resolves one module-level `JwtVerifierOptions` object from the providers listed in `inject`. It does not receive per-request state. For tenant-specific secrets or identity providers, keep tenant lookup in your application auth layer and use token metadata such as `kid` with configured `keys[]`, `jwksUri`, or `secretOrKeyProvider` to select verification material during token verification.
+
 ```typescript
 import { Module, type Token } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
@@ -152,6 +154,8 @@ const verifier = new DefaultJwtVerifier({
 
 When multiple compatible keys are configured, `kid` disambiguates the verification key. A single compatible static key can verify tokens without `kid`; JWKS-backed verification relies on the remote key set and its cache policy.
 
+For multi-tenant systems, prefer putting a tenant-specific `kid` in issued token headers and configuring compatible key sources up front. `secretOrKeyProvider` is called with the decoded token header only, so request headers, route params, or other request-context tenant hints must be handled by application-level strategy/guard code before calling the JWT verifier.
+
 ### Refresh tokens
 
 `RefreshTokenService` uses a dedicated HMAC refresh-token path. Configure `refreshToken.secret` separately from access-token signing keys. Rotation can use `RefreshTokenStore.rotate(...)` to atomically mark the current token as consumed and persist the replacement token in the same durable store operation, so a successful rotation never consumes the old token without a stored successor. Stores that only implement the older atomic `consume(...)` hook remain supported, but durable replacement persistence depends on the store-owned `rotate(...)` operation.
@@ -179,6 +183,7 @@ Verification fails closed on malformed time policy. `exp`, `nbf`, and `iat` clai
 - `JwtVerifierOptions`: Configuration for algorithms, keys, and validation policy.
 - `SignOptions` and `VerifyOptions`: Per-call signing and verification overrides.
 - `JwtClaims`, `JwtSigner`, `JwtVerifier`, `JwtKeyEntry`, `JwtAlgorithm`: Public signing and verification contracts.
+- `RefreshTokenOptions`, `RefreshTokenStore`, `RefreshTokenRecord`, `RefreshTokenConsumeInput`, `RefreshTokenRotateInput`, `RefreshTokenConsumeResult`: Refresh-token storage and rotation contracts.
 
 ### Errors and diagnostics
 - `JwtVerificationError`, `JwtInvalidTokenError`, `JwtExpiredTokenError`, `JwtConfigurationError`: Typed JWT failures.
