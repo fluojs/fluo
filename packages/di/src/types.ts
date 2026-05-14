@@ -106,7 +106,12 @@ export interface RequestScopeContainer {
 }
 
 /**
- * Internal normalized provider representation used after the container validates public provider inputs.
+ * Compatibility-only provider record shape produced after the container validates public provider inputs.
+ *
+ * @remarks
+ * This type remains root-exported for consumers that already reference the normalized DI record shape, but
+ * application code should author providers with {@link Provider}, {@link ClassProvider}, {@link FactoryProvider},
+ * {@link ValueProvider}, or {@link ExistingProvider}. The container owns construction of normalized records.
  */
 export interface NormalizedProvider<T = unknown> {
   inject: InjectionToken[];
