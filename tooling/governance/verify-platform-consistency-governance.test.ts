@@ -465,6 +465,31 @@ describe('HTTP adapter raw-body portability discoverability', () => {
   });
 });
 
+describe('Passport auth discoverability', () => {
+  const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+  const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const englishReadme = readFileSync(join(repoRoot, 'packages/passport/README.md'), 'utf8');
+  const koreanReadme = readFileSync(join(repoRoot, 'packages/passport/README.ko.md'), 'utf8');
+  const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+  const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+
+  it('keeps public helper and readiness docs discoverable from the context hub', () => {
+    for (const content of [englishContext, koreanContext, englishReadme, koreanReadme]) {
+      expect(content).toContain('@fluojs/passport');
+      expect(content).toContain('PassportModule.forRoot');
+      expect(content).toContain('AuthGuard');
+      expect(content).toContain('createPassportPlatformStatusSnapshot');
+    }
+
+    for (const content of [englishSurface, koreanSurface]) {
+      expect(content).toContain('@fluojs/passport');
+      expect(content).toContain('PassportModule');
+      expect(content).toMatch(/authentication guards|인증 가드/);
+      expect(content).toContain('platform status/diagnostic');
+    }
+  });
+});
+
 describe('CLI inspect artifact discoverability', () => {
   const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
   const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
