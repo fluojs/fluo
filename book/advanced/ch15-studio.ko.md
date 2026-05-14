@@ -124,7 +124,7 @@ Report는 CI triage와 support handoff에 가장 좋은 artifact입니다.
 fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 ```
 
-Report는 런타임이 생산한 snapshot을 stable summary와 timing data로 감쌉니다. Summary에는 components, diagnostics, errors, warnings, health, readiness, total timing count가 들어 있습니다. 그래서 CI job이나 reviewer가 전체 graph를 먼저 파싱하지 않아도 기본 질문에 답할 수 있습니다.
+Report는 런타임이 생산한 snapshot을 stable summary와 timing data로 감쌉니다. Summary에는 `componentCount`, `diagnosticCount`, `errorCount`, `warningCount`, `healthStatus`, `readinessStatus`, `timingTotalMs`가 들어 있습니다. 그래서 CI job이나 reviewer가 전체 graph를 먼저 파싱하지 않아도 기본 질문에 답할 수 있습니다.
 
 Report가 raw snapshot을 대체하는 것은 아닙니다. Report는 support와 automation이 보통 필요로 하는 추가 context와 함께 snapshot을 포장합니다. Studio는 여전히 snapshot 부분을 소비할 수 있고, script는 build를 실패시킬지 ticket에 artifact를 붙일지 결정하기 전에 summary를 먼저 읽을 수 있습니다.
 

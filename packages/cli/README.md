@@ -48,7 +48,7 @@ fluo -v
 
 When `fluo` runs in an interactive TTY, it checks the public npm `latest` dist-tag for `@fluojs/cli` using a local cache so every invocation does not hit the registry. If a newer version is available, the CLI asks whether to install it. Declining continues the current command with the installed version; accepting updates the global CLI with the package manager that appears to own the current installation (`npm install -g`, `pnpm add -g`, `bun add -g`, or `yarn global add`) and then restarts `fluo` with the same arguments under the updated binary. If the installer cannot be inferred, the CLI falls back to `npm install -g @fluojs/cli@<latest>` because npm owns the default Node.js global installation path.
 
-`fluo new` and its `fluo create` alias attempt a fresh interactive latest-version check before scaffolding, even when the normal update-check cache is still fresh. This keeps first-run project creation aligned with newly published starter behavior, while day-to-day commands such as `fluo dev`, `fluo build`, `fluo generate`, and `fluo inspect` continue to reuse the cached latest-version result until the normal TTL expires.
+`fluo new` and its `fluo create` alias attempt a fresh interactive latest-version check before scaffolding, even when the normal update-check cache is still fresh. This keeps first-run project creation aligned with newly published starter behavior, while day-to-day commands such as `fluo dev`, `fluo build`, `fluo generate`, and `fluo inspect` continue to reuse the cached latest-version result until the normal TTL expires. Pure help and version inspection paths (`fluo help <command>`, `<command> --help`, `fluo version`, `fluo --version`, and `fluo -v`) print immediately without running the interactive update check.
 
 The update check is skipped in CI, non-TTY output, npm-script contexts, rerun-after-update contexts, registry/network failures, and explicit opt-out paths. Use `--no-update-check` (or the compatibility alias `--no-update-notifier`) for one invocation, or set `FLUO_NO_UPDATE_CHECK=1` when automation must never prompt.
 
@@ -274,8 +274,10 @@ The package can be used programmatically to trigger CLI actions from within othe
 | Export | Description |
 |---|---|
 | `runCli(argv?, options?)` | Main entry point to execute any CLI command. |
+| `CliRuntimeOptions` | Type for `runCli(...)` runtime overrides such as streams, cwd, environment, registry metadata, and update-check hooks. |
 | `newUsage()` | Returns the current `fluo new` usage text for help surfaces and tests. |
 | `runNewCommand(argv, options?)` | Programmatic access to the project scaffolding logic. |
+| `NewCommandRuntimeOptions` | Type for `runNewCommand(...)` runtime overrides such as prompts, filesystem writes, dependency installation, and git initialization. |
 | `CliPromptCancelledError` | Stable sentinel that caller-supplied prompt hooks can throw to report normal cancellation. |
 | `GenerateOptions` | Type for programmatic generator options. |
 | `GeneratedFile` | Type describing generated file paths, content, and write status. |

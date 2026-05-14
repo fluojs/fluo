@@ -187,6 +187,10 @@ function isCreationCommand(value: string | undefined): boolean {
   return value === 'new' || value === 'create';
 }
 
+function isHelpInvocation(argv: string[]): boolean {
+  return argv[0] === 'help' || argv.some(isHelpFlag);
+}
+
 function readCliVersion(): string {
   const packageJsonPath = fileURLToPath(new URL('../package.json', import.meta.url));
   const manifest: unknown = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
@@ -490,21 +494,23 @@ export async function runCli(
       return 0;
     }
 
-    const updateCheckOptions = runtime.updateCheck === false ? undefined : runtime.updateCheck;
-    const updateCheckResult = await runCliUpdateCheck(commandArgv, {
-      ...updateCheckOptions,
-      ci: runtime.ci,
-      env,
-      bypassCache: isCreationCommand(commandArgv[0]),
-      interactive: runtime.interactive,
-      skip: updateFlagResult.skipUpdateCheck || runtime.updateCheck === false,
-      stderr,
-      stdin: runtime.stdin,
-      stdout,
-    });
+    if (!isHelpInvocation(commandArgv)) {
+      const updateCheckOptions = runtime.updateCheck === false ? undefined : runtime.updateCheck;
+      const updateCheckResult = await runCliUpdateCheck(commandArgv, {
+        ...updateCheckOptions,
+        ci: runtime.ci,
+        env,
+        bypassCache: isCreationCommand(commandArgv[0]),
+        interactive: runtime.interactive,
+        skip: updateFlagResult.skipUpdateCheck || runtime.updateCheck === false,
+        stderr,
+        stdin: runtime.stdin,
+        stdout,
+      });
 
-    if (updateCheckResult.action === 'reran') {
-      return updateCheckResult.exitCode;
+      if (updateCheckResult.action === 'reran') {
+        return updateCheckResult.exitCode;
+      }
     }
 
     if (commandArgv.length === 0) {
@@ -525,7 +531,7 @@ export async function runCli(
       }
 
       if (topic === 'doctor' || topic === 'info') {
-        stdout.write(`${diagnosticsUsage('doctor')}\n`);
+        stdout.write(`${diagnosticsUsage(topic)}\n`);
         return 0;
       }
 
@@ -574,7 +580,7 @@ export async function runCli(
     }
 
     if ((commandArgv[0] === 'doctor' || commandArgv[0] === 'info') && commandArgv.slice(1).some(isHelpFlag)) {
-      stdout.write(`${diagnosticsUsage('doctor')}\n`);
+      stdout.write(`${diagnosticsUsage(commandArgv[0])}\n`);
       return 0;
     }
 
