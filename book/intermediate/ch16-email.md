@@ -161,7 +161,7 @@ import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
 export class AppModule {}
 ```
 
-The queue adapter splits bulk notifications into individual background jobs and applies configurable retry and backoff policies to each job. Register `EmailNotificationsQueueWorker` as a provider in the same application module so those queued email jobs are actually consumed.
+The queue adapter splits bulk notifications into individual background jobs, and the built-in `EmailNotificationsQueueWorker` consumes them with the fixed defaults exported as `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`: 3 attempts, exponential backoff starting at 1 second, concurrency 5, a 50-per-second rate limiter, and the `fluo.email.notification` job name. Register `EmailNotificationsQueueWorker` as a provider in the same application module so those queued email jobs are actually consumed. If you replace the built-in worker with a custom queue adapter or worker, mirror those defaults explicitly when you need the same retry, backoff, concurrency, rate-limit, and job-name contract.
 
 ## 16.7 Template Rendering
 
@@ -218,7 +218,7 @@ async sendOrderConfirmation(order: Order) {
 }
 ```
 
-Going through the orchestration layer lets you apply background retry policies consistently, even when the SMTP server or an external provider is briefly unstable.
+Going through the orchestration layer lets queued email delivery use the built-in worker defaults consistently, even when the SMTP server or an external provider is briefly unstable. If FluoShop later swaps in a custom worker, it should mirror those defaults deliberately instead of assuming per-job retry or backoff configuration exists on the email API.
 
 ## Conclusion
 

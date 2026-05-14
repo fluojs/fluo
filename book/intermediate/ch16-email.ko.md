@@ -161,7 +161,7 @@ import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
 export class AppModule {}
 ```
 
-큐 어댑터는 대량 알림을 개별 백그라운드 작업으로 나누고, 각 작업에 설정 가능한 재시도와 백오프 정책을 적용합니다. 큐에 쌓인 이메일 작업이 실제로 소비되도록 같은 애플리케이션 모듈의 provider에 `EmailNotificationsQueueWorker`를 등록해야 합니다.
+큐 어댑터는 대량 알림을 개별 백그라운드 작업으로 나누고, 내장 `EmailNotificationsQueueWorker`는 `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`로 export되는 고정 기본값으로 이를 소비합니다. 기본값은 3회 시도, 1초부터 시작하는 exponential backoff, concurrency 5, 초당 50건 rate limiter, `fluo.email.notification` job name입니다. 큐에 쌓인 이메일 작업이 실제로 소비되도록 같은 애플리케이션 모듈의 provider에 `EmailNotificationsQueueWorker`를 등록해야 합니다. 내장 worker 대신 커스텀 queue adapter 또는 worker를 사용한다면 동일한 retry, backoff, concurrency, rate-limit, job-name 계약이 필요할 때 이 기본값을 명시적으로 미러링하세요.
 
 ## 16.7 Template Rendering
 
@@ -218,7 +218,7 @@ async sendOrderConfirmation(order: Order) {
 }
 ```
 
-오케스트레이션 계층을 거치면 SMTP 서버나 외부 공급자가 잠시 불안정해도 백그라운드 재시도 정책을 일관되게 적용할 수 있습니다. 주문 처리와 메일 전송 실패 대응이 분리되므로, 사용자의 결제 흐름을 불필요하게 지연시키지 않습니다.
+오케스트레이션 계층을 거치면 SMTP 서버나 외부 공급자가 잠시 불안정해도 queued email delivery가 내장 worker 기본값을 일관되게 사용할 수 있습니다. FluoShop이 나중에 커스텀 worker로 교체한다면 email API에 per-job retry 또는 backoff 설정이 있다고 가정하지 말고, 해당 기본값을 의도적으로 미러링해야 합니다. 주문 처리와 메일 전송 실패 대응이 분리되므로, 사용자의 결제 흐름을 불필요하게 지연시키지 않습니다.
 
 ## Conclusion
 
