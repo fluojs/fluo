@@ -14,7 +14,26 @@ permission:
     'git diff*': allow
     'git log*': allow
     'gh pr view*': allow
+    'gh pr diff*': allow
+    'gh pr checks*': allow
     'gh issue view*': allow
+    'gh issue list*': allow
+    'gh label list*': allow
+    'gh issue create*': deny
+    'gh issue edit*': deny
+    'gh issue comment*': deny
+    'gh issue close*': deny
+    'gh issue reopen*': deny
+    'gh pr merge*': deny
+    'gh pr edit*': deny
+    'gh pr review*': deny
+    'gh pr close*': deny
+    'gh pr reopen*': deny
+    'gh run cancel*': deny
+    'gh run rerun*': deny
+    'gh label create*': deny
+    'gh label edit*': deny
+    'gh label delete*': deny
   webfetch: deny
 ---
 

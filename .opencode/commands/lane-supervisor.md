@@ -12,7 +12,7 @@ argument-hint: "<문제 설명 | issue 목록 | run-id> [plan|register|execute|r
 - 단일 PR 중앙 리뷰 gate: `/pr-to-merge`
 - Changesets 릴리스 운영 handoff: `/package-publish`
 
-이 커맨드는 intake, lane planning, ledger, 권한 gate, child command 호출 순서, fix-back/merge/cleanup/main-sync policy만 소유한다. child command의 guardrail을 약화하거나 내부 auditor/reviewer/implementer logic을 복제하지 않는다.
+이 커맨드는 question-driven intake, lane planning, ledger, 권한 gate, child command 호출 순서, fix-back/merge/cleanup/main-sync policy만 소유한다. child command의 guardrail을 약화하거나 내부 auditor/reviewer/implementer logic을 복제하지 않는다.
 
 ## 사용법
 
@@ -34,6 +34,41 @@ argument-hint: "<문제 설명 | issue 목록 | run-id> [plan|register|execute|r
 - `resume` — `.sisyphus/lane-supervisor/<run-id>.json` ledger를 읽고 마지막 안전 checkpoint부터 재개한다.
 
 base branch 기본값은 `main`이다.
+
+## Interactive intake contract
+
+이 커맨드는 레거시 `lane-supervisor` skill과 동일하게 **질문 기반 intake가 기본 동작**이다. 실행자는 lane planning, issue 등록, worker dispatch, merge decision 전에 반드시 `question` tool로 사용자의 선택을 받는다.
+
+### 반드시 `question` tool을 쓰는 지점
+
+1. **Source choice** — 다음 중 하나를 고르게 한다.
+   - `기존 등록된 GitHub 이슈로 진행`
+   - `search-to-issue를 먼저 실행`
+2. **Search scope** — source가 `search-to-issue`이면 다음 중 하나를 고르게 한다.
+   - 특정 package
+   - package group
+   - all
+3. **Existing issue selection** — source가 existing issues이면 read-only issue 목록을 보여준 뒤 다음 중 하나를 고르게 한다.
+   - 일부 선택
+   - 전부 포함
+   - 없음
+4. **Suggested additions second pass** — confirmed issue set과 분리해 “같이 진행하면 좋은 issue”를 제안하고, 실제 포함 여부를 다시 묻는다.
+5. **Merge policy** — lane planning 전에 다음 중 하나를 고르게 한다.
+   - `developer-final`
+   - `supervisor-auto`
+   - `supervisor-with-human-escalation`
+
+사용자가 invocation 인자에서 source/mode/base branch를 이미 명확히 지정했더라도, side-effect 가능성이 있는 선택(`search-to-issue` issue creation, issue 포함 확정, merge policy, cleanup authority)은 `question` tool을 생략하지 않는다. 단, `resume` mode에서 ledger에 이미 기록된 선택을 재확인하는 경우에는 “기존 선택 유지 / 변경 / 중단” 질문으로 대체할 수 있다.
+
+### 권장 `question` 옵션 문구
+
+- Source choice header: `진행 방식`
+- Search scope header: `감사 범위`
+- Issue selection header: `포함할 이슈`
+- Suggested additions header: `추가 이슈`
+- Merge policy header: `머지 정책`
+
+질문 전에는 사용자가 이해할 수 있도록 현재 mode, base branch, 확인된 입력, 아직 확정되지 않은 항목을 1-2문장으로 요약한다. 질문 후에는 선택 결과를 ledger의 `source_mode`, `confirmed_issues`, `suggested_but_excluded`, `merge_policy`에 반영한다.
 
 ## 권한 경계
 
@@ -88,6 +123,8 @@ base branch 기본값은 `main`이다.
 
 lane planning이나 side effect 전에 아래 gate를 순서대로 통과한다.
 
+이 섹션의 gate는 단순 안내 문구가 아니라 `question` tool 기반 stop point다. `question` tool을 사용할 수 없는 런타임이면 side effect를 진행하지 말고, 필요한 선택지를 한국어로 제시한 뒤 사용자 응답을 기다린다.
+
 1. **Source choice gate** — `기존 등록된 GitHub 이슈로 진행` 또는 `search-to-issue를 먼저 실행` 중 하나를 사용자에게 확인한다.
 2. **Source-specific gate**
    - `search-to-issue`: package / package group / all 범위를 확인한 뒤 `/search-to-issue <scope>`를 호출한다. `/search-to-issue`의 severity summary와 사용자 선택 gate 전에는 `gh issue create`를 수행하지 않는다.
@@ -109,13 +146,14 @@ lane planning이나 side effect 전에 아래 gate를 순서대로 통과한다.
 
 - 사용자 목표, mode, base branch를 파싱한다.
 - 한 번에 unrelated goal이 여러 개면 진행하지 않는다.
-- source choice gate를 먼저 실행한다. source choice 없이 lane planning으로 넘어가지 않는다.
+- 현재 입력 요약을 한국어로 보고한다.
+- `question` tool로 source choice gate를 먼저 실행한다. source choice 없이 lane planning으로 넘어가지 않는다.
 
 ### 2. Source expansion
 
 #### `search-to-issue` path
 
-1. 감사 scope를 package / group / all 중 하나로 확정한다.
+1. `question` tool로 감사 scope를 package / group / all 중 하나로 확정한다.
 2. `/search-to-issue <scope>`를 호출한다.
 3. `/search-to-issue`가 생성한 draft, severity summary, 등록 승인 결과만 받아 confirmed issue set을 만든다.
 4. 이 커맨드에서 package auditor logic 또는 issue draft bundling logic을 다시 구현하지 않는다.
@@ -123,8 +161,9 @@ lane planning이나 side effect 전에 아래 gate를 순서대로 통과한다.
 #### `existing-issues` path
 
 1. `gh issue list --state open` 등 read-only 조회로 issue 제목/짧은 요약을 보여준다.
-2. 사용자가 선택한 issue만 confirmed issue set에 넣는다.
-3. 선택되지 않은 issue는 suggested additions gate 전까지 자동 포함하지 않는다.
+2. `question` tool로 이번 run에 포함할 issue를 묻는다.
+3. 사용자가 선택한 issue만 confirmed issue set에 넣는다.
+4. 선택되지 않은 issue는 suggested additions gate 전까지 자동 포함하지 않는다.
 
 ### 3. Suggested additions
 
@@ -134,11 +173,11 @@ confirmed issue set 기준으로 아래 조건 중 하나 이상을 만족하는
 - 같은 root cause 또는 fix theme를 공유한다.
 - 같은 lane에서 같이 처리하지 않으면 충돌 가능성이 높다.
 
-제안은 confirmed issue와 분리해 표시하고, 사용자 승인분만 ledger의 `confirmed_issues`에 추가한다. 거절분은 `suggested_but_excluded`에 기록한다.
+제안은 confirmed issue와 분리해 표시하고, `question` tool로 second-pass 승인을 받은 항목만 ledger의 `confirmed_issues`에 추가한다. 거절분은 `suggested_but_excluded`에 기록한다.
 
 ### 4. Merge policy
 
-merge policy를 확정하고 ledger에 기록한다. 확정 전에는 lane planning, `/issue-to-pr`, `/pr-to-merge`, merge decision을 시작하지 않는다.
+`question` tool로 merge policy를 확정하고 ledger에 기록한다. 확정 전에는 lane planning, `/issue-to-pr`, `/pr-to-merge`, merge decision을 시작하지 않는다.
 
 ### 5. Preflight
 
@@ -293,6 +332,7 @@ next recommended step: <text>
 ## Must NOT
 
 - Source choice 질문 없이 `search-to-issue` 또는 existing issue path를 임의 선택하지 않는다.
+- `question` tool을 생략하고 source choice, suggested additions, merge policy를 임의 확정하지 않는다.
 - Suggested issue를 second-pass 승인 없이 confirmed issue set에 넣지 않는다.
 - Merge policy 없이 lane planning, `/issue-to-pr`, `/pr-to-merge`, merge decision으로 넘어가지 않는다.
 - `/search-to-issue`, `/issue-to-pr`, `/pr-to-merge`, `/package-publish`의 내부 workflow를 verbatim 복제하지 않는다.
