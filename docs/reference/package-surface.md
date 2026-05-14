@@ -47,6 +47,7 @@
 - **`@fluojs/passport`**: Strategy-agnostic authentication guards, scopes, and Passport.js bridges.
 - **`@fluojs/microservices`**: Pattern-matching transport abstraction for TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC.
 - **`@fluojs/event-bus`**: In-process domain event fan-out with optional Redis Pub/Sub transport, inherited event channel fan-out, bounded publish cancellation/timeouts, and shutdown drain semantics for both local publishes and inbound transport callbacks.
+- **`@fluojs/cron`**: Decorator and registry scheduling for cron expressions, fixed intervals, and one-shot timeouts; optional Redis distributed locking with named-client selection, lock TTL/owner controls, and release/renewal status accounting; bootstrap-aware dynamic task startup; bounded scheduler shutdown; and health/readiness status snapshots for lifecycle, task, and lock ownership visibility.
 - **`@fluojs/notifications`**: Shared channel contract and orchestration layer for provider-specific notification packages.
 - **`@fluojs/email`**: Transport-agnostic email delivery core. It provides a first-party notifications channel and queue worker integration through `@fluojs/email/queue`.
 - **`@fluojs/email/node`**: Node.js specific subpath for `@fluojs/email` that provides first-party Nodemailer/SMTP transport.

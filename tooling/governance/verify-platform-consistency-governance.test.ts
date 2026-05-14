@@ -272,6 +272,21 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts cron package-surface guidance when context discoverability and governance tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/reference/package-surface.md',
+        'docs/reference/package-surface.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/cron/src/status.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('treats release governance publish-surface edits as contract-governing updates', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
@@ -446,6 +461,38 @@ describe('Queue lifecycle discoverability', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme]) {
       expect(content).toContain('bootstrap-ready');
       expect(content).toContain('workerShutdownTimeoutMs');
+    }
+  });
+});
+
+describe('Cron scheduling discoverability', () => {
+  const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+  const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const englishPackageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+  const koreanPackageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+  const englishReadme = readFileSync(join(repoRoot, 'packages/cron/README.md'), 'utf8');
+  const koreanReadme = readFileSync(join(repoRoot, 'packages/cron/README.ko.md'), 'utf8');
+  const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch12-cron.md'), 'utf8');
+  const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch12-cron.ko.md'), 'utf8');
+
+  it('keeps cron lifecycle, public API, and package-surface guidance discoverable from the context hub', () => {
+    for (const content of [englishContext, koreanContext]) {
+      expect(content).toContain('packages/cron/README');
+      expect(content).toContain('docs/reference/package-surface');
+      expect(content).toContain('book/intermediate/ch12-cron');
+      expect(content).toContain('dynamic-start lifecycle guarantee');
+    }
+
+    for (const content of [englishPackageSurface, koreanPackageSurface, englishReadme, koreanReadme]) {
+      expect(content).toContain('@fluojs/cron');
+      expect(content).toContain('distributed');
+      expect(content).toContain('status snapshot');
+    }
+
+    for (const content of [englishChapter, koreanChapter]) {
+      expect(content).toMatch(/five|다섯/);
+      expect(content).toMatch(/six|여섯/);
+      expect(content).toContain('dynamic');
     }
   });
 });
