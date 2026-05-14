@@ -155,7 +155,7 @@ Auto-registered generators are `controller`, `service`, `repo`, `guard`, `interc
 
 `fluo generate module <name> --with-test` adds a `*.slice.test.ts` that compiles the authored module with `createTestingModule({ rootModule })`. `fluo generate resource <name>` creates a complete feature slice with a module, controller, service, repository, request DTO, response DTO, and tests; add `--with-slice-test` to include a resource-level slice test that demonstrates provider override and service resolution. It does not wire the resource module into a parent module automatically; import the generated module when you are ready to activate the slice.
 
-`fluo generate e2e <name>` writes `test/<name>.e2e.test.ts` with `createTestApp({ rootModule: AppModule })` so request-pipeline tests live in the same app-level test area as generated starters. Use generated unit tests for direct class behavior, slice tests for DI wiring and overrides, and e2e tests for routes, guards, interceptors, DTO validation, and response writing through the virtual app.
+`fluo generate e2e <name>` writes `test/<name>.e2e.test.ts` with `createTestApp({ rootModule: AppModule })` and imports `AppModule` from the default starter root module at `../src/app`, so request-pipeline tests live in the same app-level test area as generated starters. Use generated unit tests for direct class behavior, slice tests for DI wiring and overrides, and e2e tests for routes, guards, interceptors, DTO validation, and response writing through the virtual app.
 
 Request DTO generation accepts the feature directory separately from the DTO class name, so multiple input contracts such as `CreateUser` and `UpdateUser` can live inside the same `src/users/` slice.
 
