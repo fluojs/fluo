@@ -44,7 +44,7 @@
 - **`@fluojs/http`**: 라우팅, 가드, 인터셉터, 예외 처리.
 - **`@fluojs/graphql`**: HTTP 추상화 위에서 동작하는 GraphQL 스키마 노출, 리졸버 실행, 구독 지원.
 - **`@fluojs/jwt`**: HTTP 비종속 JWT 서명, 검증, principal 정규화.
-- **`@fluojs/passport`**: 전략 비종속 인증 가드, scope 처리, Passport.js 브리지.
+- **`@fluojs/passport`**: 전략 비종속 인증 가드, optional auth 및 scope decorator, `PassportModule` strategy registry wiring, Passport.js strategy bridge, cookie-auth 및 refresh-token preset, account-linking policy helper, 공개 auth metadata helper, auth readiness를 위한 platform status/diagnostic helper.
 - **`@fluojs/microservices`**: TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC를 위한 패턴 매칭 전송 추상화.
 - **`@fluojs/event-bus`**: optional Redis Pub/Sub transport, inherited event channel fan-out, bounded publish cancellation/timeout, local publish와 inbound transport callback 모두에 대한 shutdown drain semantic을 갖춘 in-process domain event fan-out.
 - **`@fluojs/cron`**: cron expression, fixed interval, one-shot timeout을 위한 decorator 및 registry scheduling, named-client selection과 lock TTL/owner control 및 release/renewal status accounting을 포함한 optional Redis distributed locking, bootstrap-aware dynamic task startup, bounded scheduler shutdown, 그리고 lifecycle/task/lock ownership visibility를 위한 health/readiness status snapshot을 담당합니다.

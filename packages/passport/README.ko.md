@@ -216,21 +216,50 @@ Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(
 - `@UseOptionalAuth(strategyName)`: `AuthGuard`를 부착하지만 전략이 자격 증명 누락을 보고하면 스코프가 없는 라우트는 계속 진행할 수 있게 합니다.
 - `@RequireScopes(...scopes)`: 특정 권한(스코프) 요구 사항을 강제합니다.
 
-### 주요 클래스
+### 모듈 및 가드 진입점
 - `PassportModule`: passport 전략 wiring을 위한 모듈 진입점입니다.
-- `AuthGuard`: 전략 체인을 실행하는 HTTP 가드입니다.
-- `CookieAuthModule`: 내장 cookie-auth 프리셋의 모듈 진입점입니다.
-- `CookieManager`: HttpOnly 인증 쿠키 관리를 위한 유틸리티입니다.
-- `RefreshTokenModule`: 내장 refresh-token 프리셋의 모듈 진입점입니다.
-- `JwtRefreshTokenAdapter`: `@fluojs/jwt`의 리프레시 로직을 패스포트 인터페이스로 연결합니다.
-- `createPassportJsStrategyBridge(...)`: Passport.js strategy를 fluo `AuthStrategy`로 변환합니다.
-- Cookie helper: `createCookieAuthPreset`, `createCookieAuthStrategyRegistration`, `createCookieManager`, `normalizeCookieAuthOptions`.
-- Refresh helper: `createRefreshTokenStrategyRegistration`.
-- Status/diagnostics helper: `createPassportPlatformStatusSnapshot`, `createPassportPlatformDiagnosticIssues`.
+- `AuthGuard`: 전략 체인을 실행하고 required scope를 강제하는 HTTP 가드입니다.
+- `PassportModuleOptions`, `AuthStrategyRegistration`, `AuthStrategyRegistry`, `AuthGuardContract`: Strategy registry 및 guard wiring 계약입니다.
 
-### 인터페이스
+### 전략 계약 및 에러
 - `AuthStrategy`: 커스텀 인증 로직 구현을 위한 계약입니다.
-- `AccountLinkPolicy`: 계정 연결 결정 로직을 위한 확장 지점입니다.
+- `AuthRequirement`: 선택된 strategy, optional-auth mode, required scope를 담는 route-level metadata입니다.
+- `AuthStrategyResult`, `AuthOptionalResult`, `AuthHandledResult`: Principal, 의도적으로 누락된 credential, 이미 처리된 response를 표현하는 strategy return variant입니다.
+- `AuthStrategyResolutionError`, `AuthenticationRequiredError`, `AuthenticationFailedError`, `AuthenticationExpiredError`: Registry miss, 누락된 credential, 잘못된 credential, 만료된 credential에 대해 guard와 strategy adapter가 사용하는 공개 error입니다.
+
+### Metadata 및 scope helper
+- `defineAuthRequirement(...)`, `getOwnAuthRequirement(...)`, `getAuthRequirement(...)`: Custom decorator나 tooling을 `AuthGuard`와 통합할 때 auth requirement metadata를 읽고 쓰는 공개 helper입니다.
+- Scope requirement는 일반적으로 `@RequireScopes(...)`로 작성합니다. 더 낮은 수준의 scope normalization helper는 internal로 남아 있으며 package root export의 일부가 아닙니다.
+
+### Cookie auth preset
+- `CookieAuthModule`: 내장 cookie-auth preset의 모듈 진입점입니다.
+- `CookieAuthStrategy`, `COOKIE_AUTH_STRATEGY_NAME`, `COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_AUTH_OPTIONS`: Cookie strategy wiring token과 기본값입니다.
+- `CookieAuthOptions`, `CookieAuthPresetConfig`, `CookieManagerConfig`, `CookieOptions`, `SetCookieOptions`: Cookie strategy 및 response cookie 설정 타입입니다.
+- `CookieManager`: HttpOnly access/refresh token cookie를 설정하고 제거하는 유틸리티입니다.
+- Cookie helper: `createCookieAuthPreset`, `createCookieAuthStrategyRegistration`, `createCookieManager`, `normalizeCookieAuthOptions`.
+
+### Refresh token preset
+- `RefreshTokenModule`: 내장 refresh-token preset의 모듈 진입점입니다.
+- `RefreshTokenStrategy`, `REFRESH_TOKEN_STRATEGY_NAME`, `REFRESH_TOKEN_SERVICE`: Refresh-token strategy 및 service alias wiring입니다.
+- `RefreshTokenService`, `RefreshTokenInput`, `RefreshTokenAuthResult`: Application service contract와 exchange payload shape입니다.
+- `JwtRefreshTokenAdapter`: `@fluojs/jwt`의 refresh logic을 passport interface로 연결합니다.
+- `REFRESH_TOKEN_MODULE_OPTIONS`, `RefreshTokenModuleOptions`: 필수 `secret`과 `store` 계약을 포함하는 JWT 기반 refresh-token adapter 설정 token 및 option입니다.
+- Refresh helper: `createRefreshTokenStrategyRegistration`.
+
+### Passport.js bridge
+- `createPassportJsStrategyBridge(...)`: Passport.js strategy를 fluo `AuthStrategy`로 변환합니다.
+- `PassportJsAuthStrategy`, `PassportJsStrategyLike`, `PassportJsPrincipalMapperInput`, `PassportJsPrincipalMapper`, `PassportJsAuthStrategyOptions`, `PassportJsStrategyBridge`: Bridge strategy, mapper, 설정, provider bundle 계약입니다.
+
+### Account linking
+- `ACCOUNT_LINKING_POLICY`: Account-linking policy implementation을 등록하기 위한 DI token입니다.
+- `createConservativeAccountLinkPolicy(...)`, `resolveAccountLinking(...)`: Identity-link 결정을 위한 conservative default policy와 resolver입니다.
+- `AccountIdentity`, `AccountLinkCandidate`, `AccountLinkAttempt`, `AccountLinkContext`, `AccountLinkPolicy`, `AccountLinkPolicyDecision`, `AccountLinkingOptions`, `AccountLinkingResolution`: Account-linking input, policy, result 계약입니다.
+- `AccountLinkConflictError`, `AccountLinkRejectedError`: 모호하거나 거부된 account-linking attempt에서 발생하는 error입니다.
+
+### Status 및 diagnostics
+- `createPassportPlatformStatusSnapshot(...)`: Strategy registry, preset readiness, ownership, telemetry label을 위한 runtime platform snapshot을 생성합니다.
+- `createPassportPlatformDiagnosticIssues(...)`: Empty registry, 누락된 default strategy, cookie preset readiness, refresh-token backing store readiness 문제에 대한 diagnostic issue를 생성합니다.
+- `PassportPlatformStatusSnapshot`, `PassportStatusAdapterInput`: Status helper input/output 계약입니다.
 
 `UseOptionalAuth`는 scope가 필요 없는 route에서만 credential 누락을 우회합니다. Scoped route에는 여전히 principal이 필요합니다. Passport.js bridge의 `redirect()`는 response를 commit하고 protected handler를 건너뛰며, `pass()`와 Passport action 없이 완료된 strategy는 인증 실패입니다.
 
