@@ -202,6 +202,7 @@ defineModule(ManualCacheModule, {
 - `@CacheTTL(seconds)`: 특정 핸들러의 TTL을 설정합니다.
 - `@CacheKey(key)`: 특정 핸들러의 custom cache key 또는 key factory를 설정합니다.
 - `@CacheEvict(key)`: 성공적인 non-GET 핸들러가 완료된 뒤 하나 이상의 cache key를 삭제합니다.
+- `cacheRouteMetadataKey`, `getCacheKeyMetadata(...)`, `getCacheTtlMetadata(...)`, `getCacheEvictMetadata(...)`: 캐시 데코레이터 metadata key를 다시 구현하지 않고 cache decorator metadata를 검사해야 하는 first-party interceptor 통합, 진단, 고급 tooling을 위해 공개된 low-level metadata helper입니다.
 
 ### 인터셉터
 - `CacheInterceptor`: 자동 GET 응답 캐싱 및 삭제 로직을 처리합니다.
