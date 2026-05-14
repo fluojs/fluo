@@ -348,6 +348,20 @@ describe('package surface persistence responsibilities', () => {
     expect(koreanSurface).toContain('ALS/session 인지형 transaction boundary');
     expect(koreanSurface).toContain('명시적 `currentSession()` 접근');
   });
+
+  it('documents cache-manager configuration and helper responsibility in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface]) {
+      expect(markdown).toContain('@fluojs/cache-manager');
+      expect(markdown).toContain('CacheModule.forRoot(options)');
+      expect(markdown).toContain('metadata helper');
+      expect(markdown).toContain('status/diagnostic helper');
+    }
+  });
 });
 
 describe('package surface microservices transport discoverability', () => {
