@@ -199,7 +199,7 @@ GraphqlModule.forRoot({
 - `listOf`, `isGraphqlListTypeRef`: list output type reference helper.
 - `GraphQLContext` 및 export되는 option/metadata type: GraphQL 실행과 module 설정을 위한 타입 정의.
 
-지원되는 module option에는 `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `connectionInitWaitTimeoutMs`, `keepAliveMs`가 포함됩니다.
+지원되는 module option에는 `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, `subscriptions.websocket.keepAliveMs`가 포함됩니다.
 
 ## 관련 패키지
 

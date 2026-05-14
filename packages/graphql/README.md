@@ -199,7 +199,7 @@ GraphqlModule.forRoot({
 - `listOf`, `isGraphqlListTypeRef`: Helpers for list output type references.
 - `GraphQLContext` and exported option/metadata types: Type definitions for GraphQL execution and module configuration.
 
-Supported module options include `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `connectionInitWaitTimeoutMs`, and `keepAliveMs`.
+Supported module options include `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, and `subscriptions.websocket.keepAliveMs`.
 
 ## Related Packages
 
