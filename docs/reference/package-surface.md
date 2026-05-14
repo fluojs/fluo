@@ -46,6 +46,7 @@
 - **`@fluojs/jwt`**: HTTP-agnostic JWT signing, verification, and principal normalization.
 - **`@fluojs/passport`**: Strategy-agnostic authentication guards, scopes, and Passport.js bridges.
 - **`@fluojs/microservices`**: Pattern-matching transport abstraction for TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC.
+- **`@fluojs/cqrs`**: CQRS command/query buses with bootstrap-time singleton handler discovery, explicit command/query/event handler and saga decorators, in-process saga orchestration with topology guardrails, and delegated domain event publishing through `@fluojs/event-bus` after CQRS handlers and sagas settle.
 - **`@fluojs/event-bus`**: In-process domain event fan-out with optional Redis Pub/Sub transport, inherited event channel fan-out, bounded publish cancellation/timeouts, and shutdown drain semantics for both local publishes and inbound transport callbacks.
 - **`@fluojs/cron`**: Decorator and registry scheduling for cron expressions, fixed intervals, and one-shot timeouts; optional Redis distributed locking with named-client selection, lock TTL/owner controls, and release/renewal status accounting; bootstrap-aware dynamic task startup; bounded scheduler shutdown; and health/readiness status snapshots for lifecycle, task, and lock ownership visibility.
 - **`@fluojs/notifications`**: Shared channel contract and orchestration layer for provider-specific notification packages.
