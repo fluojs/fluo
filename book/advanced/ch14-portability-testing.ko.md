@@ -9,7 +9,7 @@
 - 이식성 테스트와 적합성 테스트가 각각 어떤 실패를 잡아내는지 이해합니다.
 - `HttpAdapterPortabilityHarness`의 구조와 핵심 검증 표면을 배웁니다.
 - 잘못된 형식의 쿠키, 원시 바디, SSE 같은 경계 사례를 어떻게 검증하는지 살펴봅니다.
-- 플랫폼 적합성 스위트가 생명주기 훅과 오류 경계를 어떻게 확인하는지 분석합니다.
+- 플랫폼 적합성 스위트가 결정론적 start, 멱등적 stop, 안전한 진단과 스냅샷, 검증 cleanup 같은 공개 컴포넌트 단언을 어떻게 검증하는지 분석합니다.
 - 엣지 런타임과 WebSocket 계층에서 추가로 필요한 검증 관점을 정리합니다.
 - 커스텀 어댑터에 하네스를 적용해 동작 계약을 확인하는 흐름을 익힙니다.
 
@@ -108,99 +108,55 @@ async assertPreservesMalformedCookieValues(): Promise<void> {
 
 Hono 프로젝트는 "표준" 미들웨어 및 어댑터 준수로 잘 알려져 있습니다. Fluo도 `packages/testing/src/conformance`에서 암시적인 가정보다 명시적인 계약에 집중하는 유사한 접근 방식을 취합니다.
 
-예를 들어 `platform-conformance.ts`는 플랫폼 어댑터가 모듈 그래프 초기화를 올바르게 처리하는지 확인합니다. 여기에는 모든 프로바이더가 올바른 순서로 인스턴스화되고, 생명주기 훅이 예상된 시점에 트리거되는지 검증하는 과정이 포함됩니다.
+예를 들어 `platform-conformance.ts`는 플랫폼 지향 패키지가 `createPlatformConformanceHarness(...)`를 통해 노출할 수 있는 공개 컴포넌트 수준 계약을 확인합니다. 검증은 오래 지속되는 부수 효과를 남기지 않아야 하며, 시작은 결정론적이어야 하고, 정지는 멱등적이어야 하며, degraded/failed 상태의 스냅샷은 안전해야 하고, 진단은 안정적이어야 하며, 스냅샷은 민감한 키를 제거해야 합니다.
 
 ### Platform Conformance Surface
 
-플랫폼 적합성 스위트는 어댑터와 런타임 사이의 핵심 핸드셰이크에 집중합니다. 어댑터가 자신의 기능을 올바르게 신호하고, 런타임이 자신의 디스패처를 어댑터의 리스너에 성공적으로 바인딩할 수 있는지 확인합니다.
-
-적합성의 핵심 부분은 `onModuleInit`, `onApplicationBootstrap`, `onApplicationShutdown` 훅이 어댑터 자체의 시작 및 종료 시퀀스와 맞물려 정확한 시점에 트리거되는지 확인하는 것입니다. 적합성 제품군은 "스파이(spy)" 프로바이더 세트를 사용해 이러한 이벤트의 정확한 순서를 기록합니다. 표준 Fluo 라이프사이클에서 벗어나면 테스트가 실패하며, 이는 프로덕션에서만 나타나는 미묘한 버그를 줄입니다.
-
-엄격한 라이프사이클 일관성을 유지하면 특정 시작 단계(예: 데이터베이스 연결 또는 메트릭 초기화)에 의존하는 플러그인과 인터셉터가 모든 환경에서 예측 가능하게 동작합니다. 어댑터가 실제 서버가 요청을 받을 준비가 되기 전에 `onApplicationBootstrap`을 실행하면, 웜업(warmup) 기간 동안 요청이 손실되는 레이스 컨디션이 발생할 수 있습니다. 적합성 하네스는 부트스트랩 신호가 방출된 직후 즉시 조사(probe) 요청을 보내 이러한 시나리오를 명시적으로 테스트합니다.
-
-이 신뢰성은 Fluo가 자원 정리를 처리하는 방식까지 이어집니다. 종료 단계에서 적합성 스위트는 어댑터가 모든 활성 연결을 우아하게 닫고 보류 중인 요청이 완료된 뒤 종료되는지 확인합니다. 이는 제로 다운타임 배포를 위해 SIGTERM 처리가 필수적인 Kubernetes 같은 컨테이너 환경에서 애플리케이션이 깨끗하게 종료되도록 보장합니다.
-
-또한 플랫폼 적합성 체크에는 어댑터의 오류 경계(Error boundary)에 대한 엄격한 평가가 포함됩니다. 부트스트랩 단계에서 처리되지 않은 예외가 발생하면, 어댑터는 표준 Fluo 진단 채널을 통해 오류를 보고하고 0이 아닌 종료 코드로 프로세스를 종료할 수 있음을 증명해야 합니다. 이러한 "실패 우선(fail-fast)" 동작은 트래픽을 처리할 수 없으면서 실행 중인 것처럼 보이는 "좀비" 프로세스를 막는 데 필요합니다.
+플랫폼 적합성 스위트는 숨겨진 라이프사이클 안무가 아니라 안정적인 공개 단언에 집중합니다. 모든 프로바이더 라이프사이클 훅이 특정 네트워크 준비 시점에 실행되었는지, 활성 연결이 drain되었는지, 부트스트랩 실패 뒤 프로세스가 종료되었는지를 증명하지는 않습니다. 그런 보장은 해당 동작을 소유한 어댑터나 런타임 패키지 테스트에 두어야 합니다. 공개 하네스는 어댑터 및 도구 작성자를 위해 재사용 가능한 공개 컴포넌트 계약 기준선을 제공합니다. 반복적인 start/stop 호출은 예측 가능해야 하고, 진단과 스냅샷은 안전하게 검사할 수 있어야 하며, 검증은 지속 상태를 남기면 안 됩니다.
 
 ```typescript
-// packages/testing/src/conformance/platform-conformance.ts
-export interface PlatformConformanceOptions {
-  adapter: HttpApplicationAdapter;
+import { createPlatformConformanceHarness } from '@fluojs/testing/platform-conformance';
+
+const harness = createPlatformConformanceHarness({
+  createComponent: () => myPlatformComponent,
   // ...
-}
+});
 
-export async function runPlatformConformance(options: PlatformConformanceOptions) {
-  // 1. 인스턴스 등록 확인
-  // 2. 생명주기 훅 실행 순서 확인
-  // 3. 부트스트랩 중 오류 처리 확인
-
-  it('실시간 기능을 올바르게 보고해야 함', async () => {
-    const caps = options.adapter.getRealtimeCapability?.();
-    expect(caps).toBeDefined();
-    // ... 추가 기능 확인 ...
-  });
-
-  it('listen() 실패를 우아하게 처리해야 함', async () => {
-    // ... 포트 충돌 등에 대한 테스트 로직 ...
-  });
-}
+await harness.assertAll();
 ```
 
-이는 누군가가 새로운 어댑터(예: 가상의 `AzureFunctionsAdapter`)를 작성할 때, 프레임워크의 내부 요구 사항에 대해 자신의 작업을 즉시 검증할 수 있게 합니다. 또한 새로운 어댑터 저자를 위한 기대 동작 문서 역할도 합니다.
+이는 플랫폼 지향 컴포넌트를 작성하는 사람이 공개 컴포넌트 계약에 대해 자신의 작업을 즉시 검증할 수 있게 합니다. 또한 어댑터 및 도구 작성자를 위한 기대 동작 문서 역할도 합니다.
 
 ### Conformance Testing for Library Authors
 
-커스텀 유효성 검사 파이프나 로깅 인터셉터처럼 fluo를 확장하는 라이브러리를 개발한다면 사용자에게 적합성 테스트를 제공해야 합니다. 이는 라이브러리가 fluo 생태계 안에서 예상대로 동작하고 부수 효과를 일으키지 않음을 보장합니다. `@fluojs/testing`은 platform, HTTP adapter, web-runtime adapter, fetch-style WebSocket 계약을 위한 구체적인 harness subpath를 배포합니다. 전용 library conformance harness가 배포되기 전까지 custom library 저자는 이 패턴을 자신의 패키지 테스트 안에서 따르세요.
+커스텀 유효성 검사 파이프나 로깅 인터셉터처럼 fluo를 확장하는 라이브러리를 개발한다면 사용자에게 게시하는 계약을 설명하는 테스트를 여전히 제공해야 합니다. `@fluojs/testing`은 현재 platform, HTTP adapter, web-runtime adapter, fetch-style WebSocket 계약을 위한 구체적인 harness subpath를 배포합니다. 전용 pipe/interceptor/library conformance harness는 아직 공개 표면에 포함되어 있지 않으므로, custom library 저자는 존재하지 않는 공유 하네스에 의존하지 말고 이러한 패턴을 참고해 자신의 패키지 테스트를 작성해야 합니다.
 
-커스텀 파이프의 경우 적합성 스위트는 유효하지 않은 입력을 처리하는 방식과 DI 컨테이너의 메타데이터를 올바르게 전파하는지에 집중합니다. 인터셉터의 경우 실행 순서와 동기 및 비동기 결과를 모두 올바르게 처리할 수 있는지에 집중합니다. 파이프 저자가 흔히 저지르는 실수는 중첩된 객체 변환을 누락하는 것입니다. 적합성 하네스에는 복잡한 DTO의 구조적 무결성을 준수하는지 확인하는 심층 검증 시나리오가 포함되어 있습니다.
-
-```typescript
-// packages/testing/src/conformance/library-conformance.ts
-export function runPipeConformance(pipe: Pipe, options: PipeOptions) {
-  it('유효하지 않은 입력에 대해 BadRequestException을 던져야 함', async () => {
-    // ... 테스트 로직 ...
-  });
-  
-  it('변환 중에 메타데이터를 유지해야 함', async () => {
-    // ... 테스트 로직 ...
-  });
-}
-```
-
-이러한 자동화된 검사는 fluo의 "플러그 가능한" 특성이 안정성을 희생하지 않도록 보장합니다. 프레임워크의 모든 확장 지점에는 라이브러리 저자가 안정적인 구현을 만들도록 안내하는 적합성 영역이 있습니다. 예를 들어, 커스텀 로깅 인터셉터는 요청 바디 스트림을 실수로 소비하지 않음을 증명해야 합니다. 그렇지 않으면 후속 컨트롤러가 페이로드를 읽지 못할 수 있습니다. 라이브러리 적합성 하네스에는 인터셉터가 헤더만 관찰해야 하는 경우 기본 `ReadableStream`이 올바르게 복제되거나 그대로 유지되는지 확인하는 "스트림 무결성" 테스트가 포함되어 있습니다.
-
-`@fluojs/testing/platform-conformance`와 다른 배포된 harness subpath에서 사용되는 패턴을 따르면 사용자에게 표준화된 통합 검증 방법을 제공할 수 있습니다. 이는 생태계의 신뢰성을 높이고 사용자와의 신뢰를 쌓는 데 도움이 됩니다. 테스트의 일관성은 동작의 일관성으로 이어지며, 이것이 fluo 프레임워크가 지향하는 핵심 목표입니다. 자체 도구와 라이브러리를 만들 때도 이러한 철학을 개발 프로세스의 우선순위에 두어야 합니다.
-
-기본 기능 외에도 라이브러리 저자를 위한 적합성 하네스는 메모리 효율성과 성능 오버헤드도 확인합니다. 예를 들어 인증을 수행하는 미들웨어는 큰 대기 시간을 만들거나 응답이 전송된 후에도 요청 객체에 대한 참조를 유지해서는 안 됩니다. 적합성 스위트에 통합된 내부 벤치마킹 도구는 라이브러리 저자에게 추상화 비용에 대한 즉각적인 피드백을 제공합니다.
-
-새로운 확장 패턴을 도입할 때는 라이브러리 저자가 Fluo RFC 프로세스에 참여하는 것이 좋습니다. 그래야 해당 패턴의 적합성 영역이 핵심 메인테이너와 함께 설계되고, 전체 프레임워크가 더 응집력 있고 예측 가능해집니다. 같은 신뢰성과 투명성 기준을 공유할 때 생태계는 안정적으로 성장합니다.
+`@fluojs/testing/platform-conformance`와 다른 배포된 harness subpath에서 사용하는 명시적 단언 스타일을 따르면 사용자에게 표준화된 통합 검증 방법을 제공할 수 있습니다. 이는 생태계의 신뢰성을 높이고 사용자와의 신뢰를 쌓는 데 도움이 됩니다. 테스트의 일관성은 동작의 일관성으로 이어지며, 이것이 fluo 프레임워크가 지향하는 핵심 목표입니다. 새로운 확장 패턴에 공유 적합성 영역이 필요하다면, 먼저 패키지 소유 테스트와 RFC에서 시작해 향후 공개 하네스의 범위를 명확하게 설계하세요.
 
 ## 14.6 Portability for Edge Runtimes
 
-Cloudflare Workers나 Vercel Edge Functions 같은 엣지 런타임은 Node의 레거시 `http` 모듈 대신 `Fetch API`를 사용합니다. 이는 `web-runtime-adapter-portability.ts`에서 볼 수 있는 다른 종류의 이식성 테스트를 요구합니다. 엣지 환경의 제약(메모리 제한 및 Node.js 전역 변수 부재 등)은 로컬 개발에서는 보이지 않던 버그를 자주 드러내기 때문에 이러한 테스트가 중요합니다.
+Cloudflare Workers나 Vercel Edge Functions 같은 엣지 런타임은 Node의 레거시 `http` 모듈 대신 `Fetch API`를 사용합니다. 이는 `web-runtime-adapter-portability.ts`에서 볼 수 있는 다른 종류의 이식성 테스트를 요구합니다. Fetch 형태의 요청/응답 처리는 Node의 스트림 우선 API와 다르기 때문에 이러한 테스트가 중요합니다.
 
 이 테스트들은 다음 사항에 집중합니다:
-- **글로벌 스코프(Global Scope)**: `fetch`, `Request`, `Response`, `Headers`의 가용성 및 올바른 동작.
-- **스트리밍(Streaming)**: 대용량 페이로드를 위한 `ReadableStream` 동작이 부분 읽기나 메모리 급증을 초래하지 않는지 확인.
-- **암호화(Crypto)**: JWT 서명이나 기타 암호화 작업을 위한 `crypto.subtle` 가용성 및 성능.
-- **실행 제한(Execution Limits)**: 어댑터가 프레임워크 생명주기 내에서 CPU 시간 제한과 비동기 작업 스케줄링(예: `waitUntil`)을 올바르게 처리하는지 검증.
+- **쿼리 디코딩(Query decoding)**: 반복 쿼리 파라미터와 잘못된 percent-encoding 동작 보존.
+- **쿠키 정규화(Cookie normalization)**: 유효한 쿠키 값은 디코딩하고 잘못된 값은 정확히 보존.
+- **Raw body 처리**: JSON/text raw body 및 바이트 민감 페이로드의 정확한 바이트 보존.
+- **Multipart 경계**: multipart 요청에서 `rawBody`를 제외하면서도 파싱된 필드와 파일 노출.
+- **SSE framing**: 안정적인 event/data framing을 가진 `text/event-stream` 응답 반환.
 
-이러한 표면을 검증하면 Fluo 애플리케이션이 실제로 이식 가능하다는 근거를 확보할 수 있습니다. 팀은 핵심 로직을 다시 작성하지 않고도 컴퓨팅을 엣지로 옮길 수 있습니다. 엣지 전용 하네스는 프레임워크의 초기화 오버헤드가 현대적인 서버리스 플랫폼이 부과하는 엄격한 제한 안에 머무는지 확인하기 위해 "콜드 스타트(cold start)" 시나리오도 시뮬레이션합니다.
+이러한 표면을 검증하면 HTTP 요청 의미론이 Fetch 스타일 런타임 사이에서 이식 가능하게 유지된다는 근거를 확보할 수 있습니다. 현재 web-runtime 하네스는 global-scope 가용성, `crypto.subtle` 성능, CPU 제한, `waitUntil`, cold-start budget을 확인하지 않습니다. 어댑터가 그런 항목을 문서화한다면 별도의 패키지 소유 테스트가 필요합니다.
 
 ## 14.7 Testing the WebSocket Layer
 
-WebSocket 적합성은 프로토콜이 구현체마다 크게 다르기 때문에 특히 까다롭습니다(표준 `ws` vs engine.io vs socket.io). Fluo의 `fetch-style-websocket-conformance.ts`는 Web API에서 사용되는 현대적인 `Upgrade` 헤더와 `WebSocketPair` 패턴에 집중합니다.
+WebSocket 적합성은 프로토콜이 구현체마다 크게 다르기 때문에 특히 까다롭습니다(표준 `ws` vs engine.io vs socket.io). 현재 Fluo의 `fetch-style-websocket-conformance.ts`는 의도적으로 좁은 범위를 가집니다. 어댑터가 raw WebSocket 확장 계약을 설명하는 안정적인 fetch-style realtime capability를 노출하는지 확인합니다.
 
 주요 검증 항목:
-- 연결 수립 및 프로토콜 협상
-- 메시지 에코 및 프레임 간 상태 유지
-- 이진 데이터 처리 (ArrayBuffer, Blob)
-- 우아한 종료 및 오류 전파
-- 하트비트 및 Keep-Alive: 어댑터가 자원을 누수하거나 너무 일찍 타임아웃되지 않고 장기 연결을 처리할 수 있는지 보장.
+- 어댑터가 `getRealtimeCapability()`를 제공하는지
+- capability가 `kind: 'fetch-style'`인지
+- capability가 `raw-websocket-expansion` 계약 태그, `request-upgrade` 모드, version `1`을 유지하는지
+- support level과 reason이 어댑터의 문서화된 WebSocket 지원과 일치하는지
 
-Web API의 WebSocket 의미론을 표준화함으로써 Fluo는 전통적인 Node.js 서버와 현대적인 엣지 런타임 사이의 가교를 제공합니다. 이는 Node.js Fastify 백엔드용으로 작성된 WebSocket 서비스가, 어댑터가 적합성 스위트를 만족하는 한 최소한의 변경으로 Cloudflare Workers로 이식될 수 있음을 의미합니다. 또한 테스트 스위트는 장기 연결에서 미묘한 버그의 원인이 되곤 하는 하트비트 메커니즘도 다룹니다.
-
-WebSocket 하네스에는 "백프레셔(backpressure)" 테스트도 포함되어 있습니다. 이는 클라이언트가 서버가 생성하는 것만큼 빠르게 메시지를 소비할 수 없는 상황을 어댑터가 올바르게 처리하는지 확인합니다. 하위 `WritableStream` 추상화를 활용해, Fluo는 높은 처리량의 실시간 통신 중 서버가 메모리 버퍼를 소진하지 않도록 보장합니다.
+이 단언은 Fluo의 raw WebSocket 계약이 발전하는 동안 어댑터 지원 주장이 정직하게 유지되도록 합니다. 소켓을 열거나, subprotocol을 협상하거나, 메시지를 echo하거나, binary frame을 검사하거나, 우아한 종료를 단언하거나, heartbeat 동작을 테스트하거나, backpressure를 적용하지는 않습니다. 어댑터가 오늘 그런 동작을 약속한다면 해당 어댑터 패키지의 자체 테스트에서 다뤄야 합니다.
 
 ## 14.8 Practical Exercise: Verifying Your Custom Adapter
 

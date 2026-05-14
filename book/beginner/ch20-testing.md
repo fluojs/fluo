@@ -164,7 +164,7 @@ This pattern, **Mock -> Compile -> Resolve -> Act -> Assert**, is the core of `c
 Asynchronous code is common in backend development. Fluo's `createTestingModule` and Vitest's `async/await` support let you test these operations in order. You can verify successful completion, expected rejections, and timing issues where several asynchronous operations must complete in a specific sequence. With `vi.useFakeTimers()`, you can test timeout or retry logic without actually waiting for time to pass.
 
 ### 20.3.3 Lifecycle Hooks in Tests
-Sometimes you need to test whether Providers handle lifecycle events such as `onModuleInit` or `onApplicationShutdown` correctly. Fluo's testing module triggers these hooks during the `compile()` and `close()` phases. This lets you verify initialization and cleanup logic, such as opening a mock database connection or clearing a cache, as part of the test suite.
+Sometimes you need to test whether Providers initialize correctly when a module graph is compiled. `createTestingModule()` is the slice-testing surface for compile-time module wiring, provider visibility, and provider/guard/interceptor overrides; its compiled `TestingModuleRef` exposes resolution and dispatch helpers rather than a separate `close()` lifecycle phase. Keep cleanup assertions explicit in the provider under test, or move request/application lifecycle coverage to `createTestApp()` where the returned app exposes `close()`.
 
 ## 20.4 Provider Overrides
 `fluo` provides several ways to replace real components with test doubles. This lets you remove instability from external systems while still verifying the DI wiring and execution flow of the Module you care about.
@@ -313,7 +313,7 @@ One of the biggest advantages of Fluo's testing utilities is their deep integrat
 ## 20.7 Best Practices for FluoBlog Testing
 1.  **Do not test the framework**: Focus on your application's business logic, not whether `@Get()` works. Assume `fluo` handles routing and test what your code does when that route is called.
 2.  **Use fakes for databases**: Integration tests can use a real test database, such as PostgreSQL in Docker, but unit tests should always use mocks or fakes for speed.
-3.  **Clean up resources**: Always call `await app.close()` or `await module.close()` to release resources. This prevents memory leaks and test runners that never exit.
+3.  **Clean up resources**: For request or application lifecycle tests, create the app with `createTestApp()` and call `await app.close()` after the test. For `createTestingModule()` slice tests, keep cleanup expectations explicit in the provider or fake you are testing because the compiled `TestingModuleRef` is a resolution and dispatch surface, not an application lifecycle owner.
 4.  **Integration tests for security**: Always test Guards and RBAC logic in integration tests. Unit tests usually bypass them, so integration tests are where real security gets verified.
 5.  **Deterministic tests**: Avoid using `Date.now()` or random numbers directly in tests. Use Vitest's time travel features, `vi.useFakeTimers()`, to make sure tests behave the same way every time they run.
 
