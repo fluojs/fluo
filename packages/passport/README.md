@@ -216,21 +216,50 @@ Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` 
 - `@UseOptionalAuth(strategyName)`: Attaches `AuthGuard` but allows routes without scopes to continue when the strategy reports missing credentials.
 - `@RequireScopes(...scopes)`: Enforces specific scope requirements.
 
-### Core Classes
+### Module and Guard Entry Points
 - `PassportModule`: Module entry point for passport strategy wiring.
-- `AuthGuard`: The HTTP guard that executes the strategy chain.
-- `CookieAuthModule`: Module entry point for the built-in cookie-auth preset.
-- `CookieManager`: Utility for managing HttpOnly auth cookies.
-- `RefreshTokenModule`: Module entry point for the built-in refresh-token preset.
-- `JwtRefreshTokenAdapter`: Bridges `@fluojs/jwt` refresh logic to the passport interface.
-- `createPassportJsStrategyBridge(...)`: Adapts Passport.js strategies to fluo `AuthStrategy`.
-- Cookie helpers: `createCookieAuthPreset`, `createCookieAuthStrategyRegistration`, `createCookieManager`, `normalizeCookieAuthOptions`.
-- Refresh helpers: `createRefreshTokenStrategyRegistration`.
-- Status/diagnostics helpers: `createPassportPlatformStatusSnapshot`, `createPassportPlatformDiagnosticIssues`.
+- `AuthGuard`: The HTTP guard that executes the strategy chain and enforces required scopes.
+- `PassportModuleOptions`, `AuthStrategyRegistration`, `AuthStrategyRegistry`, `AuthGuardContract`: Strategy registry and guard wiring contracts.
 
-### Interfaces
+### Strategy Contracts and Errors
 - `AuthStrategy`: The contract for implementing custom authentication logic.
-- `AccountLinkPolicy`: Extension point for identity-linking decisions.
+- `AuthRequirement`: Route-level metadata for the selected strategy, optional-auth mode, and required scopes.
+- `AuthStrategyResult`, `AuthOptionalResult`, `AuthHandledResult`: Strategy return variants for principals, intentionally missing credentials, and fully handled responses.
+- `AuthStrategyResolutionError`, `AuthenticationRequiredError`, `AuthenticationFailedError`, `AuthenticationExpiredError`: Public errors used by guards and strategy adapters for registry misses, missing credentials, invalid credentials, and expired credentials.
+
+### Metadata and Scope Helpers
+- `defineAuthRequirement(...)`, `getOwnAuthRequirement(...)`, `getAuthRequirement(...)`: Public helpers for reading and writing auth requirement metadata when integrating custom decorators or tooling with `AuthGuard`.
+- Scope requirements are normally authored with `@RequireScopes(...)`; lower-level scope normalization helpers remain internal and are not part of the package root export.
+
+### Cookie Auth Preset
+- `CookieAuthModule`: Module entry point for the built-in cookie-auth preset.
+- `CookieAuthStrategy`, `COOKIE_AUTH_STRATEGY_NAME`, `COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_AUTH_OPTIONS`: Cookie strategy wiring tokens and defaults.
+- `CookieAuthOptions`, `CookieAuthPresetConfig`, `CookieManagerConfig`, `CookieOptions`, `SetCookieOptions`: Cookie strategy and response cookie configuration types.
+- `CookieManager`: Utility for setting and clearing HttpOnly access/refresh token cookies.
+- Cookie helpers: `createCookieAuthPreset`, `createCookieAuthStrategyRegistration`, `createCookieManager`, `normalizeCookieAuthOptions`.
+
+### Refresh Token Preset
+- `RefreshTokenModule`: Module entry point for the built-in refresh-token preset.
+- `RefreshTokenStrategy`, `REFRESH_TOKEN_STRATEGY_NAME`, `REFRESH_TOKEN_SERVICE`: Refresh-token strategy and service alias wiring.
+- `RefreshTokenService`, `RefreshTokenInput`, `RefreshTokenAuthResult`: Application service contract and exchange payload shapes.
+- `JwtRefreshTokenAdapter`: Bridges `@fluojs/jwt` refresh logic to the passport interface.
+- `REFRESH_TOKEN_MODULE_OPTIONS`, `RefreshTokenModuleOptions`: JWT-backed refresh-token adapter configuration token and options, including the required `secret` and `store` contract.
+- Refresh helpers: `createRefreshTokenStrategyRegistration`.
+
+### Passport.js Bridge
+- `createPassportJsStrategyBridge(...)`: Adapts Passport.js strategies to fluo `AuthStrategy`.
+- `PassportJsAuthStrategy`, `PassportJsStrategyLike`, `PassportJsPrincipalMapperInput`, `PassportJsPrincipalMapper`, `PassportJsAuthStrategyOptions`, `PassportJsStrategyBridge`: Bridge strategy, mapper, configuration, and provider bundle contracts.
+
+### Account Linking
+- `ACCOUNT_LINKING_POLICY`: DI token for registering an account-linking policy implementation.
+- `createConservativeAccountLinkPolicy(...)`, `resolveAccountLinking(...)`: Conservative default policy and resolver for identity-link decisions.
+- `AccountIdentity`, `AccountLinkCandidate`, `AccountLinkAttempt`, `AccountLinkContext`, `AccountLinkPolicy`, `AccountLinkPolicyDecision`, `AccountLinkingOptions`, `AccountLinkingResolution`: Account-linking input, policy, and result contracts.
+- `AccountLinkConflictError`, `AccountLinkRejectedError`: Errors raised for ambiguous or rejected account-linking attempts.
+
+### Status and Diagnostics
+- `createPassportPlatformStatusSnapshot(...)`: Creates a runtime platform snapshot for strategy registry, preset readiness, ownership, and telemetry labels.
+- `createPassportPlatformDiagnosticIssues(...)`: Emits diagnostic issues for empty registries, missing default strategies, cookie preset readiness, and refresh-token backing store readiness.
+- `PassportPlatformStatusSnapshot`, `PassportStatusAdapterInput`: Status helper input/output contracts.
 
 `UseOptionalAuth` only bypasses missing credentials when no scopes are required; scoped routes still need a principal. Passport.js bridge `redirect()` commits the response and skips the protected handler, while `pass()` and strategy completion without a Passport action are authentication failures.
 

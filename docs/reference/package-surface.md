@@ -44,7 +44,7 @@
 - **`@fluojs/http`**: Routing, guards, interceptors, and exception handling.
 - **`@fluojs/graphql`**: GraphQL schema exposure, resolver execution, and subscriptions on top of the HTTP abstraction.
 - **`@fluojs/jwt`**: HTTP-agnostic JWT signing, verification, and principal normalization.
-- **`@fluojs/passport`**: Strategy-agnostic authentication guards, scopes, and Passport.js bridges.
+- **`@fluojs/passport`**: Strategy-agnostic authentication guards, optional auth and scope decorators, `PassportModule` strategy registry wiring, Passport.js strategy bridges, cookie-auth and refresh-token presets, account-linking policy helpers, public auth metadata helpers, and platform status/diagnostic helpers for auth readiness.
 - **`@fluojs/microservices`**: Pattern-matching transport abstraction for TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC.
 - **`@fluojs/event-bus`**: In-process domain event fan-out with optional Redis Pub/Sub transport, inherited event channel fan-out, bounded publish cancellation/timeouts, and shutdown drain semantics for both local publishes and inbound transport callbacks.
 - **`@fluojs/notifications`**: Shared channel contract and orchestration layer for provider-specific notification packages.
