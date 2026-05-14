@@ -76,9 +76,10 @@ export class AppModule {}
 `OpenApiModule.forRoot()` 메서드는 주요 진입점입니다. 다음과 같은 설정 객체를 받으며, 이 값들이 생성될 문서의 범위와 공개 표면을 결정합니다.
 - `title`: API의 인간 친화적인 이름입니다.
 - `version`: API의 시맨틱 버전입니다 (예: `1.0.0`).
-- `sources`: 가장 중요한 부분입니다. fluo는 명시성을 중시합니다. OpenAPI 빌더가 검사해야 할 컨트롤러를 직접 정의합니다. `controllerToken`을 직접 전달하거나 미리 설정된 descriptor 목록을 전달할 수도 있습니다.
+- `sources`: 가장 중요한 부분입니다. fluo는 명시성을 중시합니다. OpenAPI 빌더가 검사해야 할 컨트롤러를 `{ controllerToken: PostsController }` 같은 `HandlerSource[]` 항목으로 직접 정의합니다.
 - `ui: true`: 이 설정은 fluo가 특정 엔드포인트에서 멋진 Swagger UI를 제공하도록 합니다.
-- 더 고급 구성을 위해 `descriptors`, `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, `documentTransform`도 지원합니다.
+- `descriptors`: 더 고급 구성을 위해 컨트롤러 탐색을 건너뛰거나 명시적 handler mapping을 병합해야 할 때, 미리 만든 `HandlerDescriptor[]` 값을 `sources`와 별도로 전달합니다.
+- 또한 `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, `documentTransform`도 지원합니다.
 
 생성된 JSON 문서와 UI는 표준화된 경로에서 확인할 수 있습니다. 이 두 경로는 각각 자동화 도구와 사람이 읽는 문서를 위한 진입점입니다.
 - `/openapi.json`: 기계가 읽을 수 있는 원본 문서입니다.
