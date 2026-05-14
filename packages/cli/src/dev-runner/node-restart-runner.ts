@@ -136,6 +136,33 @@ function collectWatchedContentPaths(paths: Iterable<string>, projectDirectory: s
   return collected;
 }
 
+function collectWatchDirectories(directoryPath: string, projectDirectory: string, ignorePatterns: string[], directories: Set<string>): void {
+  if (shouldIgnorePath(directoryPath, projectDirectory, ignorePatterns)) {
+    return;
+  }
+
+  try {
+    const stats = statSync(directoryPath);
+    if (!stats.isDirectory()) {
+      return;
+    }
+
+    directories.add(directoryPath);
+    for (const entry of readdirSync(directoryPath)) {
+      collectWatchDirectories(join(directoryPath, entry), projectDirectory, ignorePatterns, directories);
+    }
+  } catch (_error: unknown) {
+    return;
+  }
+}
+
+function getFallbackWatchDirectories(directoryPath: string, projectDirectory: string, ignorePatterns: string[]): string[] {
+  const directories = new Set<string>();
+  collectWatchDirectories(directoryPath, projectDirectory, ignorePatterns, directories);
+
+  return [...directories];
+}
+
 /**
  * Creates a content-diff gate for fluo-owned dev restarts.
  *
@@ -265,7 +292,8 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   const appArgs = options.appArgs ?? [];
   const debounceMs = options.debounceMs ?? Number(env.FLUO_DEV_RELOAD_DEBOUNCE_MS ?? DEFAULT_DEBOUNCE_MS);
   const childShutdownTimeoutMs = Number(env.FLUO_DEV_CHILD_SHUTDOWN_TIMEOUT_MS ?? DEFAULT_CHILD_SHUTDOWN_TIMEOUT_MS);
-  const gate = createContentChangeGate(projectDirectory, parseIgnorePatterns(env));
+  const ignorePatterns = parseIgnorePatterns(env);
+  const gate = createContentChangeGate(projectDirectory, ignorePatterns);
   const watchTargets = getWatchTargets(projectDirectory);
   let child: ChildProcess | undefined;
   const pendingRestartPaths = new Set<string>();
@@ -404,6 +432,32 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
 
     startChild(resolveExitCode, cleanup);
 
+    const watchedFallbackDirectories = new Set<string>();
+
+    const watchFallbackDirectory = (directoryPath: string) => {
+      if (watchedFallbackDirectories.has(directoryPath) || shouldIgnorePath(directoryPath, projectDirectory, ignorePatterns)) {
+        return;
+      }
+
+      watchedFallbackDirectories.add(directoryPath);
+      const listener = (_event: string, filename: string | Buffer | null) => {
+        const fileName = filename ? String(filename) : basename(directoryPath);
+        const changedPath = filename ? join(directoryPath, fileName) : directoryPath;
+        scheduleRestart(changedPath, resolveExitCode, cleanup);
+
+        for (const nextDirectoryPath of getFallbackWatchDirectories(changedPath, projectDirectory, ignorePatterns)) {
+          watchFallbackDirectory(nextDirectoryPath);
+        }
+      };
+
+      try {
+        watchers.push(watchTarget(directoryPath, listener));
+      } catch (error: unknown) {
+        watchedFallbackDirectories.delete(directoryPath);
+        stderr.write(`[fluo] unable to watch ${directoryPath}: ${error instanceof Error ? error.message : String(error)}\n`);
+      }
+    };
+
     for (const target of watchTargets) {
       try {
         const stats = statSync(target);
@@ -418,7 +472,9 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
           if (!stats.isDirectory()) {
             throw error;
           }
-          watchers.push(watchTarget(target, listener));
+          for (const directoryPath of getFallbackWatchDirectories(target, projectDirectory, ignorePatterns)) {
+            watchFallbackDirectory(directoryPath);
+          }
         }
       } catch (error: unknown) {
         stderr.write(`[fluo] unable to watch ${target}: ${error instanceof Error ? error.message : String(error)}\n`);
