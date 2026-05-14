@@ -60,7 +60,7 @@ fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
 Use `--timing` when you need bootstrap timing alongside the snapshot.
 
 ```bash
-fluo inspect ./src/app.module.ts --json --timing --output artifacts/inspect-with-timing.json
+fluo inspect ./src/app.module.ts --timing --output artifacts/inspect-with-timing.json
 ```
 
 Use `--report` when you want a single CI-friendly support artifact with a summary, the full snapshot, diagnostics, and timing.
@@ -109,10 +109,10 @@ Studio can load this file directly. It parses the JSON with `parseStudioPayload(
 Timing data is opt-in because not every workflow needs bootstrap phase measurement.
 
 ```bash
-fluo inspect ./src/app.module.ts --json --timing --output artifacts/inspect-with-timing.json
+fluo inspect ./src/app.module.ts --timing --output artifacts/inspect-with-timing.json
 ```
 
-With `--json --timing`, the CLI writes an envelope with `snapshot` and `timing` keys. The `timing` value follows `BootstrapTimingDiagnostics`, including a `totalMs` value and a list of phases. Studio can use this data to explain where bootstrap time is spent, such as module graph construction, provider resolution, and lifecycle hooks.
+With `--timing`, the CLI keeps the default JSON snapshot mode and writes an envelope with `snapshot` and `timing` keys. The `timing` value follows `BootstrapTimingDiagnostics`, including a `totalMs` value and a list of phases. Studio can use this data to explain where bootstrap time is spent, such as module graph construction, provider resolution, and lifecycle hooks. `--json --timing` writes the same envelope when teams prefer to spell out the JSON mode explicitly.
 
 Timing is especially useful when a change does not break startup but makes it noticeably slower. Keeping timing beside the snapshot lets reviewers connect graph shape to bootstrap cost.
 

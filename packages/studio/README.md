@@ -41,7 +41,7 @@ The published package serves two caller-facing entrypoints:
 
 ## Quick Start
 
-Studio consumes JSON exports from the fluo CLI. Runtime produces snapshots, the CLI exports or delegates inspection data, and Studio owns the public helpers that parse, filter, view, and render those snapshots for viewer and automation callers. Supported inspect artifacts include raw snapshots, standalone timing diagnostics, snapshot-plus-timing envelopes, and report artifacts produced by `fluo inspect --report`.
+Studio consumes JSON exports from the fluo CLI. Runtime produces snapshots, the CLI exports or delegates inspection data, and Studio owns the public helpers that parse, filter, view, and render those snapshots for viewer and automation callers. Supported inspect artifacts include raw snapshots, snapshot-plus-timing envelopes, report artifacts produced by `fluo inspect --report`, and legacy standalone timing diagnostics.
 
 1. **Export a snapshot**:
    ```bash

@@ -26,23 +26,23 @@
 | **HTTP starter testing layout** | 생성된 non-Deno HTTP 애플리케이션 starter | 빠른 unit test는 `src/greeting/` 아래에 생성하고, slice/module graph test는 `src/greeting/greeting.slice.test.ts`에 두며, app dispatch test는 `src/app.test.ts`, 기본 e2e 스타일 suite는 `createTestApp({ rootModule })`와 `app.request(...).send()`를 사용하는 `test/app.e2e.test.ts`에 생성합니다. 생성된 Vitest config는 `src/**/*.test.ts`와 `test/**/*.test.ts`를 모두 포함하고, 지원되는 script는 `test`, `test:watch`, `test:cov`, `test:e2e`를 포함합니다. 기존 `src/app.e2e.test.ts` 사용자는 request helper를 바꾸지 않고 해당 test를 `test/app.e2e.test.ts`로 이동할 수 있습니다. |
 | **비-Node production lifecycle** | 생성된 Bun, Deno, Cloudflare Workers package script | Bun 생성 프로젝트는 `dev: fluo dev`를 유지한 뒤 `bun build ./src/main.ts --outdir ./dist --target bun`으로 빌드하고 `bun dist/main.js`로 시작합니다. Deno 생성 프로젝트는 `dev: fluo dev`를 유지한 뒤 `deno compile --allow-env --allow-net --output dist/app src/main.ts`로 빌드하고 `./dist/app`을 실행합니다. Cloudflare Workers 생성 프로젝트는 `dev: fluo dev`를 유지하고, `wrangler deploy --dry-run`으로 빌드 검증하며, `preview: wrangler dev --remote --show-interactive-dev-session=false`, `deploy: wrangler deploy`를 노출하고, Wrangler native publish flow를 사용하도록 의도적으로 `start`를 생략합니다. |
 | **리소스 생성** | `fluo g <type>` | 일관된 명명 접미사 (`.service.ts`, `.controller.ts`) 산출. Request DTO는 `fluo g req users CreateUser`처럼 명시적 feature 디렉터리를 대상으로 지정할 수 있습니다. `fluo g module User --with-test`는 `src/users/user.slice.test.ts`를 생성하고, `fluo g resource User --with-slice-test`는 resource-level provider override coverage를 `src/users/user.slice.test.ts`에 생성하며, `fluo g e2e users`는 `createTestApp({ rootModule })` 기반 `test/users.e2e.test.ts`를 생성합니다. |
-| **진단 (JSON)** | `fluo inspect <module-path> --json` | 런타임이 생산한 그래프, 준비성, 상태, 진단 snapshot 데이터를 JSON 형식으로 내보냅니다. 출력 모드를 고르지 않으면 JSON이 기본 출력 모드입니다. `--timing`은 `--json`과 함께 사용해 snapshot 옆에 bootstrap timing diagnostics를 포함할 수 있습니다. |
-| **진단 (timing)** | `fluo inspect <module-path> --timing --output artifacts/inspect-timing.json` | Standalone bootstrap timing diagnostics를 JSON artifact로 씁니다. `--output`이 없으면 같은 timing JSON을 stdout에 씁니다. |
+| **진단 (JSON)** | `fluo inspect <module-path> --json` | 런타임이 생산한 그래프, 준비성, 상태, 진단 snapshot 데이터를 JSON 형식으로 내보냅니다. 출력 모드를 고르지 않으면 JSON이 기본 출력 모드입니다. `--timing`은 명시적인 `--json` flag 유무와 관계없이 snapshot 옆에 bootstrap timing diagnostics를 포함할 수 있습니다. |
+| **진단 (timing)** | `fluo inspect <module-path> --timing --output artifacts/inspect-with-timing.json` | 기본 JSON snapshot과 bootstrap timing diagnostics를 `{ snapshot, timing }` artifact로 씁니다. `--output`이 없으면 같은 JSON envelope를 stdout에 씁니다. |
 | **진단 report** | `fluo inspect <module-path> --report --output artifacts/inspect-report.json` | 안정적인 요약, 런타임이 생산한 snapshot, diagnostics, bootstrap timing을 포함하는 CI/support triage JSON report를 씁니다. `--output <path>`는 명시적 artifact 경로이며 inspection이 애플리케이션 write를 소유하게 만들지 않습니다. |
 | **진단 (Mermaid)** | `fluo inspect <module-path> --mermaid` | snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. CLI는 Studio renderer를 로드하고 Mermaid text를 stdout 또는 `--output <path>`에 쓰며, 그래프 렌더링 의미론을 소유하지 않습니다. |
 
 ## inspect artifact output contract
 
-`fluo inspect`는 한 번에 하나의 주요 artifact 출력 모드만 지원합니다. 가능한 모드는 `--json`, `--mermaid`, `--report`, standalone `--timing`입니다. `--output <path>`는 선택된 payload를 요청한 경로에 쓰고, 필요한 parent directory를 생성하며, 해당 payload의 terminal 출력을 생략합니다. `--output`이 없으면 선택된 payload를 stdout에 쓰므로 CI artifact용 shell redirection도 계속 유효합니다.
+`fluo inspect`는 한 번에 하나의 주요 artifact 출력 모드만 지원합니다. 가능한 모드는 `--json`, `--mermaid`, `--report`입니다. `--timing`은 JSON 출력에 bootstrap timing diagnostics를 덧붙이며, 명시적인 출력 모드를 고르지 않으면 JSON을 기본값으로 사용합니다. `--output <path>`는 선택된 payload를 요청한 경로에 쓰고, 필요한 parent directory를 생성하며, 해당 payload의 terminal 출력을 생략합니다. `--output`이 없으면 선택된 payload를 stdout에 쓰므로 CI artifact용 shell redirection도 계속 유효합니다.
 
 | 모드 | payload | artifact 계약 |
 | --- | --- | --- |
 | `--json` | 런타임 platform shell이 생산한 `PlatformShellSnapshot` JSON. | Studio, script, support triage가 사용할 수 있는 안정적인 machine-readable snapshot입니다. `--timing`을 함께 쓰면 payload는 `{ snapshot, timing }`이 되며, `timing`은 versioned bootstrap timing diagnostics입니다. |
-| `--timing` | Versioned bootstrap timing diagnostics JSON. | 전체 snapshot 없이 bootstrap 작업을 profiling하기 위한 standalone timing artifact입니다. `--timing --output <path>`는 해당 timing JSON을 요청한 artifact 경로에 씁니다. |
+| `--timing` | `{ snapshot, timing }` JSON envelope. | 기본 snapshot 계약을 보존하면서 bootstrap 작업을 profiling하기 위한 timing augmentation입니다. `--timing --output <path>`는 snapshot-plus-timing envelope를 요청한 artifact 경로에 씁니다. |
 | `--mermaid` | 런타임 snapshot에서 `@fluojs/studio`가 렌더링한 Mermaid graph text. | 검사 대상 프로젝트나 CLI 패키지에서 `@fluojs/studio`를 resolve할 수 있어야 합니다. Non-interactive 실행에서 Studio가 없으면 설치 안내와 함께 빠르게 실패합니다. |
 | `--report` | `summary`, `snapshot`, `timing`, `generatedAt`을 포함한 versioned JSON report. | `artifacts/inspect-report.json` 같은 CI/support artifact에 쓰기 위한 형식입니다. Summary에는 component, diagnostic, warning, error, readiness, health, timing total이 포함됩니다. |
 
-`--timing`은 standalone timing JSON artifact로 또는 JSON/report workflow 옆에 bootstrap timing diagnostics를 기록합니다. Mermaid rendering은 timing artifact 형식이 아니라 Studio가 소유한 snapshot rendering 계약이므로 `--mermaid`와 함께 사용할 수 없습니다.
+`--timing`은 JSON/report workflow 옆에 bootstrap timing diagnostics를 기록합니다. Mermaid rendering은 timing artifact 형식이 아니라 Studio가 소유한 snapshot rendering 계약이므로 `--mermaid`와 함께 사용할 수 없습니다.
 
 ## 명명 규칙 (CLI 출력)
 
