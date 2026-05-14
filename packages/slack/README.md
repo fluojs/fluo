@@ -217,6 +217,8 @@ These limitations are part of the package contract so runtime choice, provider c
 ### Core
 
 - `SlackModule.forRoot(options)` / `SlackModule.forRootAsync(options)`
+- `SlackModuleOptions`
+- `SlackAsyncModuleOptions`
 - `createSlackProviders(options)`
 - `SlackService`
 - `SlackService.send(message, options)`
@@ -250,8 +252,11 @@ These limitations are part of the package contract so runtime choice, provider c
 - `SlackTransportReceipt`
 - `SlackFetchLike`
 - `SlackFetchResponse`
-- `SlackTemplateRenderer`
+- `SlackWebhookTransportOptions`
 - `createSlackWebhookTransport(options)`
+- `SlackTemplateRenderer`
+- `SlackTemplateRenderInput`
+- `SlackTemplateRenderResult`
 
 ### Status and errors
 
