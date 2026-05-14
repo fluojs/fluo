@@ -1,4 +1,4 @@
-<!-- packages: @fluojs/platform-deno, @fluojs/runtime, @fluojs/http -->
+<!-- packages: @fluojs/platform-deno, @fluojs/runtime, @fluojs/http, @fluojs/testing -->
 <!-- project-state: FluoShop v2.5.0 -->
 
 # Chapter 23. Porting to Deno
@@ -188,16 +188,22 @@ import { Client } from "https://deno.land/x/postgres/mod.ts";
 
 ## 23.9 Testing in Deno
 
-Deno의 내장 테스트 러너는 별도 Jest나 Vitest 의존성 없이 사용할 수 있습니다. fluo 테스트 유틸리티를 `Deno.test`와 함께 사용할 때는 권한 플래그와 임포트 경로까지 테스트 환경에 포함하세요. 운영 실행과 같은 권한 모델로 테스트하면 배포 전에 런타임 제약을 더 일찍 확인할 수 있습니다.
+Deno의 내장 테스트 러너는 별도 Jest나 Vitest 의존성 없이 사용할 수 있습니다. fluo 테스트 유틸리티를 `Deno.test`와 함께 사용할 때는 권한 플래그와 임포트 경로까지 테스트 환경에 포함하세요. 운영 실행과 같은 권한 모델로 테스트하면 배포 전에 런타임 제약을 더 일찍 확인할 수 있습니다. 라우트 수준 단언에는 `@fluojs/testing`의 `createTestApp({ rootModule })`을 사용하고, HTTP 디스패치 없이 DI와 lifecycle hook만 필요한 테스트에는 `fluoFactory.createApplicationContext(AppModule)`을 사용하세요.
 
 ```typescript
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+import { createTestApp } from "npm:@fluojs/testing";
+import { AppModule } from "./app.module.ts";
 
 Deno.test("ProductService should return products", async () => {
-  // fluo의 테스트 유틸리티를 사용한 테스트 코드
-  // const app = await fluoFactory.createTestContext(AppModule);
-  // ...
-  assertEquals(1, 1);
+  const app = await createTestApp({ rootModule: AppModule });
+
+  try {
+    const response = await app.request("GET", "/api/v1/products").send();
+    assertEquals(response.status, 200);
+  } finally {
+    await app.close();
+  }
 });
 ```
 
