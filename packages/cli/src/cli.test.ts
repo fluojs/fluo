@@ -2142,6 +2142,94 @@ void bootstrap();
     await expect(runPromise).resolves.toBe(0);
   });
 
+  it('watches nested source directories when recursive source watching falls back', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    const nestedDirectory = join(sourceDirectory, 'features', 'users');
+    mkdirSync(nestedDirectory, { recursive: true });
+    const sourceFile = join(nestedDirectory, 'users.service.ts');
+    writeFileSync(sourceFile, 'export const users = "one";\n');
+    const children: ChildProcess[] = [];
+    const watchListeners = new Map<string, (event: string, filename: string | Buffer | null) => void>();
+
+    const runPromise = runNodeRestartRunner({
+      debounceMs: 1,
+      env: {},
+      projectDirectory: workspaceDirectory,
+      signalTarget: createSignalTarget().target,
+      spawnChild: () => {
+        const child = createMockChild();
+        children.push(child);
+        return child;
+      },
+      watchTarget: (target, optionsOrListener, listener) => {
+        if (typeof optionsOrListener !== 'function') {
+          throw new Error('recursive watch unavailable');
+        }
+        watchListeners.set(target, listener ?? optionsOrListener);
+
+        return { close: () => undefined } as never;
+      },
+    });
+
+    expect([...watchListeners.keys()]).toEqual(expect.arrayContaining([sourceDirectory, join(sourceDirectory, 'features'), nestedDirectory]));
+
+    writeFileSync(sourceFile, 'export const users = "two";\n');
+    watchListeners.get(nestedDirectory)?.('change', 'users.service.ts');
+
+    await waitForCondition(() => children.length === 2);
+
+    children[1]?.emit('close', 0);
+    await expect(runPromise).resolves.toBe(0);
+  });
+
+  it('adds fallback watchers for source directories created after startup', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    mkdirSync(sourceDirectory, { recursive: true });
+    writeFileSync(join(sourceDirectory, 'main.ts'), 'export const app = "one";\n');
+    const children: ChildProcess[] = [];
+    const watchListeners = new Map<string, (event: string, filename: string | Buffer | null) => void>();
+
+    const runPromise = runNodeRestartRunner({
+      debounceMs: 1,
+      env: {},
+      projectDirectory: workspaceDirectory,
+      signalTarget: createSignalTarget().target,
+      spawnChild: () => {
+        const child = createMockChild();
+        children.push(child);
+        return child;
+      },
+      watchTarget: (target, optionsOrListener, listener) => {
+        if (typeof optionsOrListener !== 'function') {
+          throw new Error('recursive watch unavailable');
+        }
+        watchListeners.set(target, listener ?? optionsOrListener);
+
+        return { close: () => undefined } as never;
+      },
+    });
+
+    const createdDirectory = join(sourceDirectory, 'generated', 'admin');
+    mkdirSync(createdDirectory, { recursive: true });
+    const createdFile = join(createdDirectory, 'admin.module.ts');
+    writeFileSync(createdFile, 'export const admin = "one";\n');
+    watchListeners.get(sourceDirectory)?.('rename', 'generated');
+
+    await waitForCondition(() => watchListeners.has(createdDirectory));
+
+    writeFileSync(createdFile, 'export const admin = "two";\n');
+    watchListeners.get(createdDirectory)?.('change', 'admin.module.ts');
+
+    await waitForCondition(() => children.length === 2);
+
+    children[1]?.emit('close', 0);
+    await expect(runPromise).resolves.toBe(0);
+  });
+
   it('resolves terminal shutdown while a planned restart is waiting for the previous child to close', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
