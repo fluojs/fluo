@@ -108,99 +108,62 @@ As it supports more edge cases and platform features, the portability harness ac
 
 The Hono project is well known for compliance with "standard" middleware and adapters. Fluo takes a similar approach in `packages/testing/src/conformance`, focusing on explicit contracts rather than implicit assumptions.
 
-For example, `platform-conformance.ts` checks whether a Platform Adapter correctly handles Module Graph initialization. This includes verifying that every Provider is instantiated in the correct order and that lifecycle hooks are triggered at the expected moments.
+For example, `platform-conformance.ts` checks the public component-level contract that platform-facing packages can expose through `createPlatformConformanceHarness(...)`: validation must avoid long-lived side effects, start must be deterministic, stop must be idempotent, degraded/failed snapshots must remain safe, diagnostics must stay stable, and snapshots must be sanitized.
 
 ### Platform Conformance Surface
 
-The platform conformance suite focuses on the core handshake between the adapter and the Runtime. It checks whether the adapter correctly signals its capabilities and whether the Runtime can successfully bind its dispatcher to the adapter's listener.
-
-A central part of conformance is verifying that `onModuleInit`, `onApplicationBootstrap`, and `onApplicationShutdown` hooks fire at the exact moments that match the adapter's own startup and shutdown sequence. The conformance suite uses a set of "spy" Providers to record the exact order of these events. Any drift from the standard Fluo lifecycle fails the test, reducing subtle bugs that only appear in production.
-
-Strict lifecycle consistency keeps plugins and interceptors predictable across every environment when they depend on a specific startup phase, such as database connection or metrics initialization. If an adapter runs `onApplicationBootstrap` before the real server is ready to accept requests, a race condition can drop requests during warmup. The conformance harness explicitly tests this scenario by sending a probe request immediately after the bootstrap signal is emitted.
-
-This reliability extends to how Fluo handles resource cleanup. During shutdown, the conformance suite checks that the adapter gracefully closes all active connections and exits after pending requests complete. This ensures clean application shutdown in container environments such as Kubernetes, where SIGTERM handling is required for zero-downtime deployments.
-
-Platform conformance checks also include strict evaluation of the adapter's error boundary. If an unhandled exception occurs during bootstrap, the adapter must prove that it can report the error through the standard Fluo diagnostics channel and exit the process with a non-zero exit code. This "fail-fast" behavior is needed to prevent "zombie" processes that appear to be running even though they cannot handle traffic.
+The platform conformance suite focuses on stable public assertions rather than hidden lifecycle choreography. It does not prove that every provider lifecycle hook fired at a particular network readiness moment, that active connections drained, or that a process exited after bootstrap failure. Those guarantees belong in the adapter or runtime package tests that own the behavior. The published harness gives adapter and tooling authors a reusable baseline for the public component contract: repeated start/stop calls must be predictable, diagnostics and snapshots must remain safe to inspect, and validation must not leave persistent state behind.
 
 ```typescript
 // packages/testing/src/conformance/platform-conformance.ts
-export interface PlatformConformanceOptions {
-  adapter: HttpApplicationAdapter;
+export interface PlatformConformanceHarnessOptions {
+  createComponent: () => PlatformComponent;
   // ...
 }
 
-export async function runPlatformConformance(options: PlatformConformanceOptions) {
-  // 1. Check instance registration
-  // 2. Check lifecycle hook execution order
-  // 3. Check error handling during bootstrap
-
-  it('reports realtime capabilities correctly', async () => {
-    const caps = options.adapter.getRealtimeCapability?.();
-    expect(caps).toBeDefined();
-    // ... check additional capabilities ...
-  });
-
-  it('handles listen() failures gracefully', async () => {
-    // ... test logic for port conflicts and similar cases ...
-  });
+export async function runPlatformConformance(options: PlatformConformanceHarnessOptions) {
+  const harness = createPlatformConformanceHarness(options);
+  await harness.assertValidationHasNoLongLivedSideEffects();
+  await harness.assertStartIsDeterministic();
+  await harness.assertStopIsIdempotent();
+  await harness.assertSnapshotSafeInDegradedAndFailedStates();
+  await harness.assertStableDiagnostics();
+  await harness.assertSnapshotSanitized();
 }
 ```
 
-This lets someone writing a new adapter, such as a hypothetical `AzureFunctionsAdapter`, immediately validate their work against the framework's internal requirements. It also acts as expected-behavior documentation for new adapter authors.
+This lets someone writing a platform-facing component immediately validate their work against the public component contract. It also acts as expected-behavior documentation for adapter and tooling authors.
 
 ### Conformance Testing for Library Authors
 
-If you develop a library that extends fluo, such as a custom validation pipe or logging interceptor, you should provide conformance tests to users. This ensures the library behaves as expected inside the fluo ecosystem and does not cause side effects. `@fluojs/testing` publishes concrete harness subpaths for platform, HTTP adapter, web-runtime adapter, and fetch-style WebSocket contracts; custom library authors should follow those patterns in their own package tests until a dedicated library conformance harness is published.
+If you develop a library that extends fluo, such as a custom validation pipe or logging interceptor, you should still provide tests that describe the contract you publish to users. `@fluojs/testing` currently publishes concrete harness subpaths for platform, HTTP adapter, web-runtime adapter, and fetch-style WebSocket contracts. A dedicated pipe/interceptor/library conformance harness is not part of the public surface yet, so custom library authors should model their own package tests after these patterns instead of relying on a nonexistent shared harness.
 
-For custom pipes, the conformance suite focuses on how invalid input is handled and whether metadata from the DI container is propagated correctly. For interceptors, it focuses on execution order and correct handling of both synchronous and asynchronous results. A common mistake by pipe authors is missing nested object transformation. The conformance harness includes deep validation scenarios that check structural integrity for complex DTOs.
-
-```typescript
-// packages/testing/src/conformance/library-conformance.ts
-export function runPipeConformance(pipe: Pipe, options: PipeOptions) {
-  it('throws BadRequestException for invalid input', async () => {
-    // ... test logic ...
-  });
-  
-  it('preserves metadata during transformation', async () => {
-    // ... test logic ...
-  });
-}
-```
-
-These automated checks ensure fluo's "pluggable" nature does not trade away stability. Every extension point in the framework has a conformance area that guides library authors toward stable implementations. For example, a custom logging interceptor must prove that it does not accidentally consume the request body stream. Otherwise, later controllers may be unable to read the payload. The library conformance harness includes a "stream integrity" test that checks whether the underlying `ReadableStream` is cloned correctly or left intact when the interceptor only needs to observe headers.
-
-By following the patterns used in `@fluojs/testing/platform-conformance` and the other published harness subpaths, you can give users a standardized way to verify integrations. This improves ecosystem reliability and builds trust with users. Consistent tests lead to consistent behavior, which is the core goal of the fluo framework. When you create your own tools and libraries, you should make this philosophy a priority in your development process.
-
-Beyond basic functionality, conformance harnesses for library authors also check memory efficiency and performance overhead. For example, middleware that performs authentication must not add large latency or keep references to request objects after the response has been sent. Internal benchmarking tools integrated into the conformance suite give library authors immediate feedback about the cost of their abstractions.
-
-When introducing a new extension pattern, library authors are encouraged to participate in Fluo's RFC process. That way, the conformance area for the pattern can be designed together with core maintainers, making the whole framework more cohesive and predictable. The ecosystem grows safely when it shares the same standards for reliability and transparency.
+By following the explicit assertion style used in `@fluojs/testing/platform-conformance` and the other published harness subpaths, you can give users a standardized way to verify integrations. This improves ecosystem reliability and builds trust with users. Consistent tests lead to consistent behavior, which is the core goal of the fluo framework. When a new extension pattern needs a shared conformance area, start with package-owned tests and an RFC so the eventual public harness can be designed with clear scope.
 
 ## 14.6 Portability for Edge Runtimes
 
-Edge Runtimes such as Cloudflare Workers and Vercel Edge Functions use the `Fetch API` instead of Node's legacy `http` module. This requires a different kind of portability testing, visible in `web-runtime-adapter-portability.ts`. These tests matter because edge environment constraints, such as memory limits and the absence of Node.js globals, often reveal bugs that do not appear during local development.
+Edge Runtimes such as Cloudflare Workers and Vercel Edge Functions use the `Fetch API` instead of Node's legacy `http` module. This requires a different kind of portability testing, visible in `web-runtime-adapter-portability.ts`. These tests matter because Fetch-shaped request and response handling differs from Node's stream-first APIs.
 
 These tests focus on the following:
-- **Global Scope**: Availability and correct behavior of `fetch`, `Request`, `Response`, and `Headers`.
-- **Streaming**: Ensuring `ReadableStream` behavior for large payloads does not cause partial reads or memory spikes.
-- **Crypto**: Availability and performance of `crypto.subtle` for JWT signing or other cryptographic work.
-- **Execution Limits**: Verifying that the adapter correctly handles CPU time limits and asynchronous work scheduling, such as `waitUntil`, within the framework lifecycle.
+- **Query decoding**: preserving repeated query parameters and malformed percent-encoding behavior.
+- **Cookie normalization**: decoding valid cookie values while preserving malformed values exactly.
+- **Raw body handling**: preserving JSON/text raw bodies and exact bytes for byte-sensitive payloads.
+- **Multipart boundaries**: excluding `rawBody` for multipart requests while still exposing parsed fields and files.
+- **SSE framing**: returning `text/event-stream` responses with stable event and data framing.
 
-Verifying these surfaces gives teams evidence that Fluo applications are truly portable. They can move compute to the edge without rewriting core logic. The edge-specific harness also simulates "cold start" scenarios to ensure the framework's initialization overhead stays within the strict limits imposed by modern serverless platforms.
+Verifying these surfaces gives teams evidence that HTTP request semantics stay portable across Fetch-style runtimes. The current web-runtime harness does not check global-scope availability, `crypto.subtle` performance, CPU limits, `waitUntil`, or cold-start budgets; those concerns need separate package-owned tests if an adapter documents them.
 
 ## 14.7 Testing the WebSocket Layer
 
-WebSocket conformance is especially tricky because the protocol differs widely across implementations, such as standard `ws`, engine.io, and socket.io. Fluo's `fetch-style-websocket-conformance.ts` focuses on the modern `Upgrade` header and `WebSocketPair` pattern used by Web APIs.
+WebSocket conformance is especially tricky because the protocol differs widely across implementations, such as standard `ws`, engine.io, and socket.io. Fluo's current `fetch-style-websocket-conformance.ts` is intentionally narrow: it checks that an adapter exposes a stable fetch-style realtime capability describing the raw WebSocket expansion contract.
 
 Key verification items include:
-- Connection establishment and protocol negotiation
-- Message echoing and state preservation across frames
-- Binary data handling (ArrayBuffer, Blob)
-- Graceful shutdown and error propagation
-- Heartbeats and Keep-Alive: ensuring the adapter can handle long-lived connections without leaking resources or timing out too early.
+- the adapter provides `getRealtimeCapability()`
+- the capability has `kind: 'fetch-style'`
+- the capability keeps the `raw-websocket-expansion` contract tag, `request-upgrade` mode, and version `1`
+- the support level and reason match the adapter's documented WebSocket support
 
-By standardizing WebSocket semantics for Web APIs, Fluo provides a bridge between traditional Node.js servers and modern Edge Runtimes. This means a WebSocket service written for a Node.js Fastify backend can be ported to Cloudflare Workers with minimal changes as long as the adapter satisfies the conformance suite. The test suite also covers heartbeat mechanisms, which often cause subtle bugs in long-lived connections.
-
-The WebSocket harness also includes "backpressure" tests. These verify that the adapter correctly handles situations where the client cannot consume messages as quickly as the server produces them. By using the underlying `WritableStream` abstraction, Fluo ensures the server does not exhaust memory buffers during high-throughput realtime communication.
+This assertion keeps adapter support claims honest while Fluo's raw WebSocket contract evolves. It does not open a socket, negotiate subprotocols, echo messages, inspect binary frames, assert graceful shutdown, test heartbeat behavior, or apply backpressure. If an adapter promises those behaviors today, the adapter package should cover them in its own tests.
 
 ## 14.8 Practical Exercise: Verifying Your Custom Adapter
 

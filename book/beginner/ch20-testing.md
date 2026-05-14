@@ -164,7 +164,7 @@ This pattern, **Mock -> Compile -> Resolve -> Act -> Assert**, is the core of `c
 Asynchronous code is common in backend development. Fluo's `createTestingModule` and Vitest's `async/await` support let you test these operations in order. You can verify successful completion, expected rejections, and timing issues where several asynchronous operations must complete in a specific sequence. With `vi.useFakeTimers()`, you can test timeout or retry logic without actually waiting for time to pass.
 
 ### 20.3.3 Lifecycle Hooks in Tests
-Sometimes you need to test whether Providers handle lifecycle events such as `onModuleInit` or `onApplicationShutdown` correctly. Fluo's testing module triggers these hooks during the `compile()` and `close()` phases. This lets you verify initialization and cleanup logic, such as opening a mock database connection or clearing a cache, as part of the test suite.
+Sometimes you need to test whether Providers initialize correctly when a module graph is compiled. `createTestingModule()` is the slice-testing surface for compile-time module wiring, provider visibility, and provider/guard/interceptor overrides; its compiled `TestingModuleRef` exposes resolution and dispatch helpers rather than a separate `close()` lifecycle phase. Keep cleanup assertions explicit in the provider under test, or move request/application lifecycle coverage to `createTestApp()` where the returned app exposes `close()`.
 
 ## 20.4 Provider Overrides
 `fluo` provides several ways to replace real components with test doubles. This lets you remove instability from external systems while still verifying the DI wiring and execution flow of the Module you care about.
