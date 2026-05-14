@@ -161,6 +161,7 @@ export class AdvancedService {
 
 ### Types
 - `RedisModuleOptions`: Configuration options passed to the `ioredis` constructor after Fluo removes module-only `name`, `global`, and `lifecycle` fields.
+- `RedisClientOptions`: Redis constructor options after Fluo removes module-only fields and before it forces `lazyConnect: true` internally.
 - `RedisLifecycleOptions`: Optional timeout controls for Fluo-owned `connect()` and `quit()` lifecycle commands.
 - `PersistencePlatformStatusSnapshot`, `RedisStatusAdapterInput`: Status snapshot input/output types.
 

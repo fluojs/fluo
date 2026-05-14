@@ -181,13 +181,13 @@ This separation between "option production" and "service production" is an impor
 
 The normalization step is also an important stabilization boundary. `normalizePrismaModuleOptions()` in `path:packages/prisma/src/module.ts:63-76` preserves the client passed by the caller while turning the `strictTransactions` default into an explicit internal value. When this default fixing happens early in the Dynamic Module lifecycle, later Provider factories only need to deal with a complete internal shape rather than partial options.
 
-`RedisModule.forRoot()` shows a slightly different variant. `path:packages/redis/src/module.ts:31-83` builds a Provider set that includes the raw Redis client, the higher-level `RedisService`, and a lifecycle service. Then `path:packages/redis/src/module.ts:108-116` wraps that Provider set in a global Module export. Here too, the Module factory is fundamentally an orchestration layer for Provider assembly and metadata binding. Because it registers the lifecycle service too, Redis client disconnection during application shutdown is handled inside Fluo's standard lifecycle hook. In other words, the Dynamic Module is not limited to static object registration. It also participates in the runtime lifecycle.
+`RedisModule.forRoot()` shows a slightly different variant. `path:packages/redis/src/module.ts:31-53` normalizes caller options by separating module-only `name`, `global`, and `lifecycle` fields from the `ioredis` client options. Then `path:packages/redis/src/module.ts:56-116` builds a Provider set that includes the raw Redis client, the higher-level `RedisService`, and a lifecycle service configured with the normalized lifecycle timeout controls. Finally, `path:packages/redis/src/module.ts:143-153` binds that Provider set to a manufactured Module type, making the default registration global while keeping named registrations scoped. Here too, the Module factory is fundamentally an orchestration layer for Provider assembly and metadata binding. Because it registers the lifecycle service too, Redis client disconnection during application shutdown is handled inside Fluo's standard lifecycle hook. In other words, the Dynamic Module is not limited to static object registration. It also participates in the runtime lifecycle.
 
 Redis's default registration separates the Provider factory from global metadata binding.
 
-`path:packages/redis/src/module.ts:31-46`
+`path:packages/redis/src/module.ts:56-79`
 ```typescript
-function createRedisProviders(options: RedisModuleOptions, name?: string): Provider[] {
+function createRedisProviders(options: RedisClientOptions, lifecycleOptions: RedisLifecycleOptions, name?: string): Provider[] {
   const clientToken = getRedisClientToken(name);
 
   if (clientToken === REDIS_CLIENT) {
@@ -201,27 +201,38 @@ function createRedisProviders(options: RedisModuleOptions, name?: string): Provi
         }),
       },
       RedisService,
-      RedisLifecycleService,
+      {
+        inject: [REDIS_CLIENT],
+        provide: RedisLifecycleService,
+        scope: 'singleton',
+        useFactory: (...deps: unknown[]) => {
+          const [client] = deps as [Redis];
+          return new RedisLifecycleService(client, undefined, lifecycleOptions);
+        },
+      },
     ];
   }
 ```
 
-`path:packages/redis/src/module.ts:108-116`
+`path:packages/redis/src/module.ts:143-153`
 ```typescript
 static forRoot(options: RedisModuleOptions): ModuleType {
+  const normalized = normalizeRedisModuleOptions(options);
+  const clientToken = getRedisClientToken(normalized.name);
+  const serviceToken = getRedisServiceToken(normalized.name);
   class RedisModuleDefinition {}
 
   return defineModule(RedisModuleDefinition, {
-    global: true,
-    exports: [REDIS_CLIENT, RedisService],
-    providers: createRedisProviders(options),
+    global: normalized.global,
+    exports: normalized.name === undefined ? [REDIS_CLIENT, RedisService] : [clientToken, serviceToken],
+    providers: createRedisProviders(normalized.clientOptions, normalized.lifecycleOptions, normalized.name),
   });
 }
 ```
 
-The first excerpt shows where the client, facade, and lifecycle service are grouped into one Provider set. The second excerpt shows that Provider set being attached to global Module metadata while the public Token surface is limited to `REDIS_CLIENT` and `RedisService`.
+The first excerpt shows where the client, facade, and lifecycle service are grouped into one Provider set, including the normalized lifecycle timeout options. The second excerpt shows that Provider set being attached to Module metadata while the public Token surface is selected from the normalized registration name: default registrations export `REDIS_CLIENT` and `RedisService`, and named registrations export only the helper-derived named client and service Tokens.
 
-The named branch in `path:packages/redis/src/module.ts:55-82` shows the same Provider factory creating a named client Token, service Token, and lifecycle Token together. When these are registered inside a Dynamic Module, each `RedisModule` instance can create a service bound to a specific Token surface even if one application uses multiple Redis instances. This instance isolation is a core benefit of programmatic Module construction.
+The named branch in `path:packages/redis/src/module.ts:82-115` shows the same Provider factory creating a named client Token, service Token, and lifecycle Token together. When these are registered inside a Dynamic Module, each `RedisModule` instance can create a service bound to a specific Token surface even if one application uses multiple Redis instances. This instance isolation is a core benefit of programmatic Module construction.
 
 `QueueModule.forRoot()` is more explicit about the public boundary. `path:packages/queue/src/module.ts:9-77` normalizes options, assembles internal Providers, and exposes only the namespace facade as the application-facing registration API. Consumer code should call `QueueModule.forRoot(...)`; the lower-level provider assembly stays inside the package and is not a public teaching surface.
 
@@ -377,11 +388,11 @@ The sharing pattern also ensures that expensive asynchronous logic runs only onc
 ## 7.4 Global exports, named registrations, and alias-based public surfaces
 Fluo's Dynamic Modules are also a primary place where public API design becomes visible. A Module helper decides which Providers to hide as internal details and which Tokens to expose as the supported public surface.
 
-`RedisModule` is a good case study. `path:packages/redis/src/module.ts:108-116` makes the default registration global and exports the `REDIS_CLIENT` and `RedisService` Tokens. In contrast, `RedisModule.forRoot({ name, ... })` creates a non-global Module that exports specialized Token helpers derived from the user-provided `name`. Here, a Dynamic Module does more than create Providers. It designs a stable, addressable public Token surface.
+`RedisModule` is a good case study. `path:packages/redis/src/module.ts:143-153` makes the default registration global and exports the `REDIS_CLIENT` and `RedisService` Tokens. In contrast, `RedisModule.forRoot({ name, ... })` creates a non-global Module that exports specialized Tokens derived from the user-provided `name` through `getRedisClientToken(name)` and `getRedisServiceToken(name)`. Here, a Dynamic Module does more than create Providers. It designs a stable, addressable public Token surface.
 
 Named Redis registration uses the same Provider factory but derives export Tokens from the `name` option.
 
-`path:packages/redis/src/module.ts:108-116`
+`path:packages/redis/src/module.ts:143-153`
 ```typescript
 static forRoot(options: RedisModuleOptions): ModuleType {
   const normalized = normalizeRedisModuleOptions(options);
@@ -517,7 +528,7 @@ This gives us a useful design heuristic.
 
 The last item is exactly why `RedisModule.forRoot({ name, ... })` matters. It shows that you can create several independently addressable instances simply by deriving different Tokens, without inventing a new container concept.
 
-This named registration pattern is important in backends that need to talk to multiple instances of the same infrastructure, such as primary and secondary databases or a local cache and global session store. In `path:packages/redis/src/tokens.ts:5-15`, you can see how Fluo creates unique Tokens such as `REDIS_CLIENT_PRIMARY` and `REDIS_CLIENT_SECONDARY` through string concatenation or Symbol derivation. The Dynamic Module maps its internal service to this unique name.
+This named registration pattern is important in backends that need to talk to multiple instances of the same infrastructure, such as primary and secondary databases or a local cache and global session store. In `path:packages/redis/src/tokens.ts:25-65`, you can see how Fluo derives stable named Symbol Tokens through `getRedisClientToken(name)`, while `getRedisServiceToken(name)` provides the matching facade-service Token. The Dynamic Module maps its internal client and service Providers to those helper-derived names instead of exposing ad hoc constants such as `REDIS_CLIENT_PRIMARY`.
 
 With a `useExisting` alias, a Module can provide a "default" name for a resource while still leaving a route to the specific instance when needed. For example, `SocketIoModule` can export a general `SOCKET_SERVER` Token that points to the main server instance while also allowing `SOCKET_SERVER_CHAT` to be injected specifically. This layers canonical names on top of instance names.
 
