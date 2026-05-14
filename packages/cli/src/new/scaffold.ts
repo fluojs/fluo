@@ -572,14 +572,14 @@ function describeMicroserviceStarter(options: Pick<BootstrapOptions, 'transport'
           '- NATS broker: configure `NATS_SERVERS` in `.env` before you start the service',
           '- Subject contract: keep `NATS_MESSAGE_SUBJECT` and `NATS_EVENT_SUBJECT` aligned with the peer services that share the broker namespace',
         ],
-        entrypointNote: '`src/app.ts` opens one caller-owned `nats` client plus `JSONCodec()` and passes both into `NatsMicroserviceTransport` as the canonical starter bootstrap contract',
+        entrypointNote: '`src/app.ts` keeps the caller-owned `nats` client plus `JSONCodec()` contract explicit, but opens the client lazily from the generated transport wrapper when the Fluo lifecycle starts broker work',
         generatedProjectVerification: 'The generated-project verification path typechecks, builds, and tests the scaffold while asserting the NATS starter keeps the `nats` dependency, `.env` contract, and transport entrypoint wiring intact.',
         packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds the `nats` client because the NATS starter depends on an external broker plus a caller-owned client/bootstrap pair',
         pattern: 'math.sum',
         readmeTransportLabel: 'nats',
         runtimeDependencyNote: 'runtime dependency set: `@fluojs/microservices` plus `nats` for the broker client and codec that `NatsMicroserviceTransport` expects the caller to supply',
         starterNote: 'the NATS starter keeps TCP as the default microservice path when you omit `--transport`, but this scaffold becomes runnable as soon as `NATS_SERVERS` points at a reachable broker cluster',
-        testNote: '`src/app.test.ts` preserves a broker-free integration template via an in-memory transport, while generated-project verification still checks the NATS entrypoint/build contract and the caller-owned client bootstrap wiring.',
+        testNote: '`src/app.test.ts` preserves a broker-free integration template via an in-memory transport, while generated-project verification still checks the NATS entrypoint/build contract and import-safe lazy client bootstrap wiring.',
       };
     case 'kafka':
       return {
@@ -587,14 +587,14 @@ function describeMicroserviceStarter(options: Pick<BootstrapOptions, 'transport'
           '- Kafka brokers: configure `KAFKA_BROKERS` in `.env` before you start the service',
           '- Topic/group contract: `KAFKA_CLIENT_ID`, `KAFKA_CONSUMER_GROUP`, `KAFKA_MESSAGE_TOPIC`, `KAFKA_EVENT_TOPIC`, and `KAFKA_RESPONSE_TOPIC` stay explicit so the starter never hides its shared broker topology',
         ],
-        entrypointNote: '`src/app.ts` opens canonical `kafkajs` producer/consumer collaborators and passes them into `KafkaMicroserviceTransport`, keeping the response-topic contract explicit in starter-owned config',
+        entrypointNote: '`src/app.ts` keeps the canonical `kafkajs` producer/consumer collaborator contract explicit, but creates them lazily from the generated transport wrapper when the Fluo lifecycle starts broker work',
         generatedProjectVerification: 'The generated-project verification path typechecks, builds, and tests the scaffold while asserting the Kafka starter keeps the `kafkajs` dependency, `.env` contract, and transport entrypoint wiring intact.',
         packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds `kafkajs` because the Kafka starter depends on an external broker plus caller-owned producer/consumer collaborators',
         pattern: 'math.sum',
         readmeTransportLabel: 'kafka',
         runtimeDependencyNote: 'runtime dependency set: `@fluojs/microservices` plus `kafkajs` for the generated producer/consumer/bootstrap contract used by `KafkaMicroserviceTransport`',
         starterNote: 'the Kafka starter keeps TCP as the default microservice path when you omit `--transport`, but this scaffold becomes runnable as soon as `KAFKA_BROKERS` points at a reachable broker set',
-        testNote: '`src/app.test.ts` preserves a broker-free integration template via an in-memory transport, while generated-project verification still checks the Kafka entrypoint/build contract and the explicit topic/client bootstrap wiring.',
+        testNote: '`src/app.test.ts` preserves a broker-free integration template via an in-memory transport, while generated-project verification still checks the Kafka entrypoint/build contract and import-safe lazy topic/client bootstrap wiring.',
       };
     case 'rabbitmq':
       return {
@@ -602,14 +602,14 @@ function describeMicroserviceStarter(options: Pick<BootstrapOptions, 'transport'
           '- RabbitMQ broker: configure `RABBITMQ_URL` in `.env` before you start the service',
           '- Queue contract: `RABBITMQ_MESSAGE_QUEUE`, `RABBITMQ_EVENT_QUEUE`, and `RABBITMQ_RESPONSE_QUEUE` stay explicit so the starter advertises exactly which queues and reply path it owns',
         ],
-        entrypointNote: '`src/app.ts` opens a canonical `amqplib` connection/channel pair and passes caller-owned publisher/consumer collaborators into `RabbitMqMicroserviceTransport`',
+        entrypointNote: '`src/app.ts` keeps the canonical `amqplib` connection/channel pair and caller-owned publisher/consumer collaborator contract explicit, but opens them lazily from the generated transport wrapper when the Fluo lifecycle starts broker work',
         generatedProjectVerification: 'The generated-project verification path typechecks, builds, and tests the scaffold while asserting the RabbitMQ starter keeps the `amqplib` dependency, `.env` contract, and transport entrypoint wiring intact.',
         packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds `amqplib` because the RabbitMQ starter depends on an external broker plus caller-owned publisher/consumer collaborators',
         pattern: 'math.sum',
         readmeTransportLabel: 'rabbitmq',
         runtimeDependencyNote: 'runtime dependency set: `@fluojs/microservices`, `amqplib`, and `@types/amqplib` for the generated queue client/bootstrap contract used by `RabbitMqMicroserviceTransport`',
         starterNote: 'the RabbitMQ starter keeps TCP as the default microservice path when you omit `--transport`, but this scaffold becomes runnable as soon as `RABBITMQ_URL` points at a reachable broker',
-        testNote: '`src/app.test.ts` preserves a broker-free integration template via an in-memory transport, while generated-project verification still checks the RabbitMQ entrypoint/build contract and the explicit queue/bootstrap wiring.',
+        testNote: '`src/app.test.ts` preserves a broker-free integration template via an in-memory transport, while generated-project verification still checks the RabbitMQ entrypoint/build contract and import-safe lazy queue/bootstrap wiring.',
       };
     default:
       return {
@@ -1188,8 +1188,8 @@ export class AppModule {}
     case 'nats':
       return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { MicroservicesModule, NatsMicroserviceTransport } from '@fluojs/microservices';
-import { JSONCodec, connect } from 'nats';
+import { MicroservicesModule, NatsMicroserviceTransport, type MicroserviceTransport } from '@fluojs/microservices';
+import { JSONCodec, connect, type NatsConnection } from 'nats';
 
 import { MathHandler } from './math/math.handler';
 
@@ -1200,36 +1200,73 @@ const servers = (process.env.NATS_SERVERS ?? 'nats://127.0.0.1:4222')
 const eventSubject = process.env.NATS_EVENT_SUBJECT ?? 'fluo.microservices.events';
 const messageSubject = process.env.NATS_MESSAGE_SUBJECT ?? 'fluo.microservices.messages';
 const codec = JSONCodec();
-const connection = await connect({
-  name: 'fluo-microservice-starter',
-  servers,
-});
-const client = {
-  close() {
-    void connection.close();
-  },
-  publish(subject: string, payload: Uint8Array) {
-    connection.publish(subject, payload);
-  },
-  request(subject: string, payload: Uint8Array, options?: { timeout?: number }) {
-    return connection.request(subject, payload, options);
-  },
-  subscribe(subject: string, handler: (message: { data: Uint8Array; respond(data: Uint8Array): void }) => void) {
-    const subscription = connection.subscribe(subject);
 
-    void (async () => {
-      for await (const message of subscription) {
-        handler(message);
-      }
-    })();
+class LazyNatsTransport implements MicroserviceTransport {
+  private connection: NatsConnection | undefined;
+  private transport: NatsMicroserviceTransport | undefined;
 
-    return {
-      unsubscribe() {
-        subscription.unsubscribe();
+  async close() {
+    await this.transport?.close();
+    await this.connection?.close();
+    this.transport = undefined;
+    this.connection = undefined;
+  }
+
+  async emit(pattern: string, payload: unknown) {
+    await (await this.getTransport()).emit(pattern, payload);
+  }
+
+  async listen(handler: Parameters<MicroserviceTransport['listen']>[0]) {
+    await (await this.getTransport()).listen(handler);
+  }
+
+  async send(pattern: string, payload: unknown, signal?: AbortSignal) {
+    return await (await this.getTransport()).send(pattern, payload, signal);
+  }
+
+  private async getTransport() {
+    if (this.transport) {
+      return this.transport;
+    }
+
+    const connection = await connect({
+      name: 'fluo-microservice-starter',
+      servers,
+    });
+    this.connection = connection;
+    this.transport = new NatsMicroserviceTransport({
+      client: {
+        publish(subject: string, payload: Uint8Array) {
+          connection.publish(subject, payload);
+        },
+        request(subject: string, payload: Uint8Array, options?: { timeout?: number }) {
+          return connection.request(subject, payload, options);
+        },
+        subscribe(subject: string, handler: (message: { data: Uint8Array; respond(data: Uint8Array): void }) => void) {
+          const subscription = connection.subscribe(subject);
+
+          void (async () => {
+            for await (const message of subscription) {
+              handler(message);
+            }
+          })();
+
+          return {
+            unsubscribe() {
+              subscription.unsubscribe();
+            },
+          };
+        },
       },
-    };
-  },
-};
+      codec,
+      eventSubject,
+      messageSubject,
+      requestTimeoutMs: 3_000,
+    });
+
+    return this.transport;
+  }
+}
 
 @Module({
   imports: [
@@ -1238,13 +1275,7 @@ const client = {
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
-      transport: new NatsMicroserviceTransport({
-        client,
-        codec,
-        eventSubject,
-        messageSubject,
-        requestTimeoutMs: 3_000,
-      }),
+      transport: new LazyNatsTransport(),
     }),
   ],
   providers: [MathHandler],
@@ -1254,8 +1285,8 @@ export class AppModule {}
     case 'kafka':
       return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { Kafka, logLevel } from 'kafkajs';
-import { KafkaMicroserviceTransport, MicroservicesModule } from '@fluojs/microservices';
+import { Kafka, logLevel, type Consumer, type Producer } from 'kafkajs';
+import { KafkaMicroserviceTransport, MicroservicesModule, type MicroserviceTransport } from '@fluojs/microservices';
 
 import { MathHandler } from './math/math.handler';
 
@@ -1268,61 +1299,105 @@ const consumerGroup = process.env.KAFKA_CONSUMER_GROUP ?? 'fluo-handlers';
 const eventTopic = process.env.KAFKA_EVENT_TOPIC ?? 'fluo.microservices.events';
 const messageTopic = process.env.KAFKA_MESSAGE_TOPIC ?? 'fluo.microservices.messages';
 const responseTopic = process.env.KAFKA_RESPONSE_TOPIC ?? 'fluo.microservices.responses';
-const kafka = new Kafka({
-  brokers,
-  clientId,
-  logLevel: logLevel.NOTHING,
-});
-const producer = kafka.producer();
-const consumer = kafka.consumer({ groupId: consumerGroup });
-await Promise.all([producer.connect(), consumer.connect()]);
 
-const handlers = new Map<string, (message: string) => Promise<void> | void>();
-let consumerRunning = false;
+class LazyKafkaTransport implements MicroserviceTransport {
+  private consumer: Consumer | undefined;
+  private producer: Producer | undefined;
+  private transport: KafkaMicroserviceTransport | undefined;
 
-const producerClient = {
-  async publish(topic: string, message: string) {
-    await producer.send({
-      messages: [{ value: message }],
-      topic,
-    });
-  },
-};
+  async close() {
+    await this.transport?.close();
+    await Promise.all([
+      this.consumer?.disconnect().catch(() => undefined),
+      this.producer?.disconnect().catch(() => undefined),
+    ]);
+    this.consumer = undefined;
+    this.producer = undefined;
+    this.transport = undefined;
+  }
 
-const consumerClient = {
-  async subscribe(topic: string, handler: (message: string) => Promise<void> | void) {
-    handlers.set(topic, handler);
-    await consumer.subscribe({ fromBeginning: false, topic });
+  async emit(pattern: string, payload: unknown) {
+    await (await this.getTransport()).emit(pattern, payload);
+  }
 
-    if (consumerRunning) {
-      return;
+  async listen(handler: Parameters<MicroserviceTransport['listen']>[0]) {
+    await (await this.getTransport()).listen(handler);
+  }
+
+  async send(pattern: string, payload: unknown, signal?: AbortSignal) {
+    return await (await this.getTransport()).send(pattern, payload, signal);
+  }
+
+  private async getTransport() {
+    if (this.transport) {
+      return this.transport;
     }
 
-    consumerRunning = true;
-    void consumer.run({
-      eachMessage: async ({ topic, message }) => {
-        const value = message.value?.toString();
+    const kafka = new Kafka({
+      brokers,
+      clientId,
+      logLevel: logLevel.NOTHING,
+    });
+    const producer = kafka.producer();
+    const consumer = kafka.consumer({ groupId: consumerGroup });
+    await Promise.all([producer.connect(), consumer.connect()]);
 
-        if (!value) {
-          return;
-        }
+    const handlers = new Map<string, (message: string) => Promise<void> | void>();
+    let consumerRunning = false;
 
-        await handlers.get(topic)?.(value);
+    this.producer = producer;
+    this.consumer = consumer;
+    this.transport = new KafkaMicroserviceTransport({
+      consumer: {
+        async subscribe(topic: string, handler: (message: string) => Promise<void> | void) {
+          handlers.set(topic, handler);
+          await consumer.subscribe({ fromBeginning: false, topic });
+
+          if (consumerRunning) {
+            return;
+          }
+
+          consumerRunning = true;
+          void consumer.run({
+            eachMessage: async ({ topic, message }) => {
+              const value = message.value?.toString();
+
+              if (!value) {
+                return;
+              }
+
+              await handlers.get(topic)?.(value);
+            },
+          });
+        },
+        async unsubscribe(topic: string) {
+          handlers.delete(topic);
+
+          if (handlers.size > 0) {
+            return;
+          }
+
+          consumerRunning = false;
+          await consumer.stop();
+        },
       },
+      eventTopic,
+      messageTopic,
+      producer: {
+        async publish(topic: string, message: string) {
+          await producer.send({
+            messages: [{ value: message }],
+            topic,
+          });
+        },
+      },
+      requestTimeoutMs: 3_000,
+      responseTopic,
     });
-  },
-  async unsubscribe(topic: string) {
-    handlers.delete(topic);
 
-    if (handlers.size > 0) {
-      return;
-    }
-
-    consumerRunning = false;
-    await consumer.stop();
-    await Promise.all([consumer.disconnect(), producer.disconnect()]);
-  },
-};
+    return this.transport;
+  }
+}
 
 @Module({
   imports: [
@@ -1331,14 +1406,7 @@ const consumerClient = {
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
-      transport: new KafkaMicroserviceTransport({
-        consumer: consumerClient,
-        eventTopic,
-        messageTopic,
-        producer: producerClient,
-        requestTimeoutMs: 3_000,
-        responseTopic,
-      }),
+      transport: new LazyKafkaTransport(),
     }),
   ],
   providers: [MathHandler],
@@ -1350,7 +1418,7 @@ export class AppModule {}
 
 import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { MicroservicesModule, RabbitMqMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule, RabbitMqMicroserviceTransport, type MicroserviceTransport } from '@fluojs/microservices';
 
 import { MathHandler } from './math/math.handler';
 
@@ -1358,61 +1426,99 @@ const url = process.env.RABBITMQ_URL ?? 'amqp://127.0.0.1:5672';
 const eventQueue = process.env.RABBITMQ_EVENT_QUEUE ?? 'fluo.microservices.events';
 const messageQueue = process.env.RABBITMQ_MESSAGE_QUEUE ?? 'fluo.microservices.messages';
 const responseQueue = process.env.RABBITMQ_RESPONSE_QUEUE ?? 'fluo.microservices.responses';
-const connection = await connect(url);
-const channel = await connection.createConfirmChannel();
-const consumerTags = new Map<string, string>();
 
-const publisher = {
-  async publish(queue: string, message: string) {
-    await channel.assertQueue(queue, { durable: true });
-    await new Promise<void>((resolve, reject) => {
-      channel.sendToQueue(queue, Buffer.from(message), { persistent: true }, (error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
+class LazyRabbitMqTransport implements MicroserviceTransport {
+  private channel: Awaited<ReturnType<Awaited<ReturnType<typeof connect>>['createConfirmChannel']>> | undefined;
+  private connection: Awaited<ReturnType<typeof connect>> | undefined;
+  private transport: RabbitMqMicroserviceTransport | undefined;
 
-        resolve();
-      });
-    });
-  },
-};
+  async close() {
+    await this.transport?.close();
+    await this.channel?.close().catch(() => undefined);
+    await this.connection?.close().catch(() => undefined);
+    this.channel = undefined;
+    this.connection = undefined;
+    this.transport = undefined;
+  }
 
-const consumer = {
-  async cancel(queue: string) {
-    const consumerTag = consumerTags.get(queue);
+  async emit(pattern: string, payload: unknown) {
+    await (await this.getTransport()).emit(pattern, payload);
+  }
 
-    if (!consumerTag) {
-      return;
+  async listen(handler: Parameters<MicroserviceTransport['listen']>[0]) {
+    await (await this.getTransport()).listen(handler);
+  }
+
+  async send(pattern: string, payload: unknown, signal?: AbortSignal) {
+    return await (await this.getTransport()).send(pattern, payload, signal);
+  }
+
+  private async getTransport() {
+    if (this.transport) {
+      return this.transport;
     }
 
-    consumerTags.delete(queue);
-    await channel.cancel(consumerTag);
+    const connection = await connect(url);
+    const channel = await connection.createConfirmChannel();
+    const consumerTags = new Map<string, string>();
 
-    if (consumerTags.size === 0) {
-      await channel.close();
-      await connection.close();
-    }
-  },
-  async consume(queue: string, handler: (message: string) => Promise<void> | void) {
-    await channel.assertQueue(queue, { durable: true });
-    const result = await channel.consume(queue, (message) => {
-      if (!message) {
-        return;
-      }
+    this.connection = connection;
+    this.channel = channel;
+    this.transport = new RabbitMqMicroserviceTransport({
+      consumer: {
+        async cancel(queue: string) {
+          const consumerTag = consumerTags.get(queue);
 
-      void Promise.resolve(handler(message.content.toString()))
-        .then(() => {
-          channel.ack(message);
-        })
-        .catch(() => {
-          channel.nack(message, false, false);
-        });
+          if (!consumerTag) {
+            return;
+          }
+
+          consumerTags.delete(queue);
+          await channel.cancel(consumerTag);
+        },
+        async consume(queue: string, handler: (message: string) => Promise<void> | void) {
+          await channel.assertQueue(queue, { durable: true });
+          const result = await channel.consume(queue, (message) => {
+            if (!message) {
+              return;
+            }
+
+            void Promise.resolve(handler(message.content.toString()))
+              .then(() => {
+                channel.ack(message);
+              })
+              .catch(() => {
+                channel.nack(message, false, false);
+              });
+          });
+
+          consumerTags.set(queue, result.consumerTag);
+        },
+      },
+      eventQueue,
+      messageQueue,
+      publisher: {
+        async publish(queue: string, message: string) {
+          await channel.assertQueue(queue, { durable: true });
+          await new Promise<void>((resolve, reject) => {
+            channel.sendToQueue(queue, Buffer.from(message), { persistent: true }, (error) => {
+              if (error) {
+                reject(error);
+                return;
+              }
+
+              resolve();
+            });
+          });
+        },
+      },
+      requestTimeoutMs: 3_000,
+      responseQueue,
     });
 
-    consumerTags.set(queue, result.consumerTag);
-  },
-};
+    return this.transport;
+  }
+}
 
 @Module({
   imports: [
@@ -1421,14 +1527,7 @@ const consumer = {
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
-      transport: new RabbitMqMicroserviceTransport({
-        consumer,
-        eventQueue,
-        messageQueue,
-        publisher,
-        requestTimeoutMs: 3_000,
-        responseQueue,
-      }),
+      transport: new LazyRabbitMqTransport(),
     }),
   ],
   providers: [MathHandler],
