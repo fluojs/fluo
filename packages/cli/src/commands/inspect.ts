@@ -1,18 +1,19 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
+import { dirname, extname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import * as clack from '@clack/prompts';
 import {
-  FluoFactory,
   type BootstrapTimingDiagnostics,
+  FluoFactory,
   type ModuleType,
+  PLATFORM_SHELL,
   type PlatformDiagnosticIssue,
   type PlatformShell,
   type PlatformShellSnapshot,
-  PLATFORM_SHELL,
 } from '@fluojs/runtime';
+import { tsImport } from 'tsx/esm/api';
 
 import { renderAliasList, renderHelpTable } from '../help.js';
 import { CliPromptCancelledError, isCliPromptCancelledError } from '../prompt-cancel.js';
@@ -127,6 +128,7 @@ const INSPECT_OPTION_HELP: InspectOptionHelpEntry[] = [
 ];
 
 const STUDIO_CONTRACT_ENTRYPOINT = '@fluojs/studio/contracts';
+const TYPESCRIPT_MODULE_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
 const STUDIO_MISSING_MESSAGE = [
   'Mermaid graph rendering is owned by @fluojs/studio, but @fluojs/studio is not resolvable from this project.',
   'Install @fluojs/studio explicitly (for example: pnpm add -D @fluojs/studio) and rerun fluo inspect --mermaid.',
@@ -260,6 +262,16 @@ function resolveRootModule(exportedValue: unknown, exportName: string): ModuleTy
   }
 
   return exportedValue as ModuleType;
+}
+
+async function importInspectModule(modulePath: string): Promise<Record<string, unknown>> {
+  const moduleUrl = pathToFileURL(modulePath).href;
+
+  if (TYPESCRIPT_MODULE_EXTENSIONS.has(extname(modulePath))) {
+    return tsImport(moduleUrl, import.meta.url);
+  }
+
+  return import(moduleUrl) as Promise<Record<string, unknown>>;
 }
 
 function stringifyTiming(timing: BootstrapTimingDiagnostics | undefined): string {
@@ -429,7 +441,7 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
 
     const parsed = parseInspectArgs(argv);
     const modulePath = resolve(cwd, parsed.modulePath);
-    const importedModule = await import(pathToFileURL(modulePath).href);
+    const importedModule = await importInspectModule(modulePath);
     const rootModule = resolveRootModule(importedModule[parsed.exportName], parsed.exportName);
 
     if (parsed.timing && !parsed.json && !parsed.report) {

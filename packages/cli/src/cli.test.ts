@@ -1,4 +1,4 @@
-import { spawnSync, type ChildProcess } from 'node:child_process';
+import { type ChildProcess, spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -7,9 +7,9 @@ import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { createContentChangeGate, runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
 import { generatorManifest } from './generators/manifest.js';
 import { CliPromptCancelledError, runCli } from './index.js';
-import { createContentChangeGate, runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
 
 const createdDirectories: string[] = [];
 
@@ -17,6 +17,11 @@ const inspectFixtureModulePath = join(
   dirname(fileURLToPath(import.meta.url)),
   'fixtures',
   'inspect-app.module.mjs',
+);
+const inspectTypeScriptFixtureModulePath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  'fixtures',
+  'inspect-app.module.ts',
 );
 
 const updateCheckEnv: NodeJS.ProcessEnv = {
@@ -86,6 +91,17 @@ function createSignalTarget(): {
       },
     },
   };
+}
+
+function expectCliCommandSuccess(exitCode: number, stdoutBuffer: string[], stderrBuffer: string[]): void {
+  expect(
+    exitCode,
+    [
+      'Expected CLI command to exit successfully before parsing inspect output.',
+      `stdout: ${stdoutBuffer.join('')}`,
+      `stderr: ${stderrBuffer.join('')}`,
+    ].join('\n'),
+  ).toBe(0);
 }
 
 afterEach(() => {
@@ -3198,6 +3214,31 @@ exit 7
     expect(payload.health.status).toBe('healthy');
   });
 
+  it('loads TypeScript source modules for inspect without narrowing native JavaScript module support', async () => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    const exitCode = await runCli(['inspect', inspectTypeScriptFixtureModulePath, '--export', 'AdminModule', '--json'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expectCliCommandSuccess(exitCode, stdoutBuffer, stderrBuffer);
+
+    const payload = JSON.parse(stdoutBuffer.join('')) as {
+      components: unknown[];
+      diagnostics: unknown[];
+      health: { status: string };
+      readiness: { status: string };
+    };
+
+    expect(stderrBuffer.join('')).toBe('');
+    expect(payload.components).toEqual([]);
+    expect(payload.diagnostics).toEqual([]);
+    expect(payload.readiness.status).toBe('ready');
+    expect(payload.health.status).toBe('healthy');
+  });
+
   it('writes inspect JSON artifacts to an explicit output path without stdout payloads', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
@@ -3296,6 +3337,35 @@ exit 7
     expect(report.snapshot.diagnostics).toEqual([]);
     expect(report.timing.version).toBe(1);
     expect(report.timing.totalMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('writes TypeScript inspect report artifacts to an explicit output path', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    const outputPath = join(workspaceDirectory, 'artifacts', 'inspect-report.json');
+
+    const exitCode = await runCli(['inspect', inspectTypeScriptFixtureModulePath, '--report', '--output', outputPath], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expectCliCommandSuccess(exitCode, stdoutBuffer, stderrBuffer);
+
+    const report = JSON.parse(readFileSync(outputPath, 'utf8')) as {
+      snapshot: { diagnostics: unknown[] };
+      summary: { healthStatus: string; readinessStatus: string };
+      version: number;
+    };
+
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toBe('');
+    expect(report.version).toBe(1);
+    expect(report.snapshot.diagnostics).toEqual([]);
+    expect(report.summary.readinessStatus).toBe('ready');
+    expect(report.summary.healthStatus).toBe('healthy');
   });
 
   it('delegates inspect --mermaid output to Studio when resolvable', async () => {

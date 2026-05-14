@@ -259,7 +259,7 @@ fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 fluo inspect ./src/app.module.ts --export AdminModule --json
 ```
 
-런타임이 inspection snapshot을 생산합니다. `fluo inspect`는 output mode flag가 없을 때 기본적으로 그 snapshot을 JSON으로 직렬화하고, `fluo inspect --mermaid`는 snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. `--export <name>`은 bootstrap할 module export를 선택하며 기본값은 `AppModule`입니다. `--timing`은 JSON 출력에 bootstrap timing diagnostics를 기록하고, `--report`는 CI/support triage를 위해 런타임이 생산한 snapshot을 안정적인 요약과 함께 감쌉니다. `--timing`은 Mermaid 출력과 함께 사용할 수 없습니다. `--output <path>`는 선택한 inspect payload를 stdout 대신 명시적 artifact 경로에 씁니다. 이 동작은 검사 대상 애플리케이션을 writable하게 만들지 않으며, 일반 bootstrap/close cycle 외에 module graph state를 바꾸지 않습니다. Mermaid 출력이 필요하면 명령을 실행하는 프로젝트에 Studio를 설치하세요:
+런타임이 inspection snapshot을 생산합니다. `fluo inspect`는 `./src/app.ts` 또는 `./src/app.module.ts` 같은 생성된 TypeScript source module을 명시적 TypeScript loader boundary로 받아들이며, 기존 `.js`와 `.mjs` module path는 계속 Node.js native ESM으로 로드합니다. `fluo inspect`는 output mode flag가 없을 때 기본적으로 그 snapshot을 JSON으로 직렬화하고, `fluo inspect --mermaid`는 snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. `--export <name>`은 bootstrap할 module export를 선택하며 기본값은 `AppModule`입니다. `--timing`은 JSON 출력에 bootstrap timing diagnostics를 기록하고, `--report`는 CI/support triage를 위해 런타임이 생산한 snapshot을 안정적인 요약과 함께 감쌉니다. `--timing`은 Mermaid 출력과 함께 사용할 수 없습니다. `--output <path>`는 선택한 inspect payload를 stdout 대신 명시적 artifact 경로에 씁니다. 이 동작은 검사 대상 애플리케이션을 writable하게 만들지 않으며, 일반 bootstrap/close cycle 외에 module graph state를 바꾸지 않습니다. Mermaid 출력이 필요하면 명령을 실행하는 프로젝트에 Studio를 설치하세요:
 
 ```bash
 pnpm add -D @fluojs/studio
