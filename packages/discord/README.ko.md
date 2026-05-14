@@ -185,7 +185,10 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 ### 핵심
 
+- `Discord`
 - `DiscordModule.forRoot(options)` / `DiscordModule.forRootAsync(options)`
+- `DiscordModuleOptions`
+- `DiscordAsyncModuleOptions`
 - `DiscordService`
 - `DiscordChannel`
 - `DISCORD`
@@ -197,11 +200,11 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 - `DiscordMessage`
 - `NormalizedDiscordMessage`
-- `DiscordAsyncModuleOptions`
 - `DiscordWebhookTransportOptions`
 - `DiscordFetchLike`
 - `DiscordFetchResponse`
 - `DiscordSendResult`
+- `DiscordSendOptions`
 - `DiscordSendManyOptions`
 - `DiscordSendBatchResult`
 - `DiscordSendFailure`
@@ -213,7 +216,9 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `DiscordEmbed`
 - `DiscordPoll`
 - `DiscordTransport`
+- `DiscordTransportContext`
 - `DiscordTransportFactory`
+- `DiscordTransportReceipt`
 - `DiscordTemplateRenderInput`
 - `DiscordTemplateRenderResult`
 - `DiscordTemplateRenderer`
@@ -223,6 +228,8 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 - `createDiscordPlatformStatusSnapshot(...)`
 - `DiscordLifecycleState`
+- `DiscordPlatformStatusSnapshot`
+- `DiscordStatusAdapterInput`
 - `DiscordConfigurationError`
 - `DiscordMessageValidationError`
 - `DiscordTransportError`
