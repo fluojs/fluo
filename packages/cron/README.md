@@ -181,7 +181,9 @@ Only singleton providers/controllers are scheduled. Request-scoped and transient
 - `SCHEDULING_REGISTRY`: Injection token for the `SchedulingRegistry` service.
 - `normalizeCronModuleOptions(...)`: Normalizes module options and defaults.
 - `createCronPlatformStatusSnapshot(...)`: Creates a status snapshot for health/readiness integrations.
-- Public types: `CronModuleOptions`, `CronDistributedOptions`, `CronShutdownOptions`, `CronScheduleOptions`, `CronScheduler`, `CronScheduledJob`, `SchedulingRegistry`, `SchedulingTaskDescriptor`, `SchedulingTaskCallback`, `SchedulingTaskOptions`, `CronTaskOptions`, `IntervalTaskOptions`, and `TimeoutTaskOptions`.
+- Public scheduling types: `SchedulingTaskKind`, `SchedulingTaskCallback`, `SchedulingTaskOptions`, `CronTaskOptions`, `IntervalTaskOptions`, `TimeoutTaskOptions`, `CronTaskMetadata`, `IntervalTaskMetadata`, `TimeoutTaskMetadata`, `SchedulingTaskMetadata`, `CronTaskDescriptor`, `SchedulingTaskDescriptor`, and `SchedulingRegistry`.
+- Public module and scheduler types: `CronModuleOptions`, `NormalizedCronModuleOptions`, `CronDistributedOptions`, `CronShutdownOptions`, `CronScheduleOptions`, `CronScheduler`, and `CronScheduledJob`.
+- Public status types: `CronLifecycleState`, `CronStatusAdapterInput`, and `CronPlatformStatusSnapshot`.
 - Metadata helpers and symbols: `defineSchedulingTaskMetadata`, `defineCronTaskMetadata`, `getSchedulingTaskMetadata`, `getCronTaskMetadata`, `getSchedulingTaskMetadataEntries`, `getCronTaskMetadataEntries`, `schedulingMetadataSymbol`, `cronMetadataSymbol`.
 
 

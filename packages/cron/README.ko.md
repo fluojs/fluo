@@ -181,7 +181,9 @@ singleton provider/controller만 스케줄링됩니다. Request-scoped 및 trans
 - `SCHEDULING_REGISTRY`: `SchedulingRegistry` 서비스를 위한 주입 토큰입니다.
 - `normalizeCronModuleOptions(...)`: module option과 기본값을 정규화합니다.
 - `createCronPlatformStatusSnapshot(...)`: health/readiness 통합을 위한 status snapshot을 생성합니다.
-- 공개 타입: `CronModuleOptions`, `CronDistributedOptions`, `CronShutdownOptions`, `CronScheduleOptions`, `CronScheduler`, `CronScheduledJob`, `SchedulingRegistry`, `SchedulingTaskDescriptor`, `SchedulingTaskCallback`, `SchedulingTaskOptions`, `CronTaskOptions`, `IntervalTaskOptions`, `TimeoutTaskOptions`.
+- 공개 scheduling 타입: `SchedulingTaskKind`, `SchedulingTaskCallback`, `SchedulingTaskOptions`, `CronTaskOptions`, `IntervalTaskOptions`, `TimeoutTaskOptions`, `CronTaskMetadata`, `IntervalTaskMetadata`, `TimeoutTaskMetadata`, `SchedulingTaskMetadata`, `CronTaskDescriptor`, `SchedulingTaskDescriptor`, `SchedulingRegistry`.
+- 공개 module 및 scheduler 타입: `CronModuleOptions`, `NormalizedCronModuleOptions`, `CronDistributedOptions`, `CronShutdownOptions`, `CronScheduleOptions`, `CronScheduler`, `CronScheduledJob`.
+- 공개 status 타입: `CronLifecycleState`, `CronStatusAdapterInput`, `CronPlatformStatusSnapshot`.
 - 메타데이터 헬퍼와 심볼: `defineSchedulingTaskMetadata`, `defineCronTaskMetadata`, `getSchedulingTaskMetadata`, `getCronTaskMetadata`, `getSchedulingTaskMetadataEntries`, `getCronTaskMetadataEntries`, `schedulingMetadataSymbol`, `cronMetadataSymbol`.
 
 
