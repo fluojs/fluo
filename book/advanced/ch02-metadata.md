@@ -9,7 +9,7 @@ This chapter dissects how Fluo stores and reads metadata on top of Standard Deco
 - Understand the role of the `Reflect` API in Fluo's metadata system.
 - Explain how `Symbol.metadata` and internal symbol keys avoid collisions.
 - Analyze the memory safety and performance benefits of `WeakMap`-based storage.
-- Summarize type-safe metadata storage and defensive cloning strategies.
+- Summarize type-safe metadata storage, defensive cloning, and frozen snapshot strategies.
 - See how inheritance and lineage traversal are reflected in metadata interpretation.
 - Prepare a metadata model that will be reused in later custom Decorator chapters.
 
@@ -105,7 +105,7 @@ In this excerpt, `standardMetadataKeys` is the path for reading the Standard Dec
 This performance optimization goes beyond simply being fast. It is a core driver that enables delay-free Bootstrap and immediate dependency resolution even in large monolithic architectures with thousands of classes and dependencies. By choosing the static stability and speed of symbols over the dynamic flexibility of string-based keys, Fluo becomes a strong foundation for backend systems that realize economies of scale.
 
 ## 2.3 Type-safe metadata storage
-Metadata is useful only when retrieval is trustworthy. Fluo guarantees type safety by defining strict interfaces for every metadata record, such as `ModuleMetadata`, `ClassDiMetadata`, and `RouteMetadata`. These records are stored in `WeakMap`-based stores, which allow them to be garbage collected along with the class or object they describe and prevent memory leaks. By using strongly typed keys and defensive cloning during read and write operations, Fluo removes an entire class of runtime errors common in reflection-heavy systems.
+Metadata is useful only when retrieval is trustworthy. Fluo guarantees type safety by defining strict interfaces for every metadata record, such as `ModuleMetadata`, `ClassDiMetadata`, and `RouteMetadata`. Many metadata records are stored in `WeakMap`-based stores, which allow them to be garbage collected along with the class or object they describe and prevent memory leaks. Depending on the hot path, Fluo uses either defensive cloning at store boundaries or frozen snapshots that callers must treat as immutable. Both strategies remove an entire class of runtime errors common in reflection-heavy systems.
 
 `path:packages/core/src/metadata/store.ts:16-33`
 ```typescript
@@ -129,37 +129,40 @@ export function createClonedWeakMapStore<TKey extends object, TValue>(
 }
 ```
 
-The `createClonedWeakMapStore` utility is the driving force behind Fluo's immutable metadata management. By using the `cloneValue` routine, Fluo ensures every metadata value retrieved from storage is a copy, preventing unintended mutation of the central metadata registry. This is critical in multi-Module environments where different parts of the framework may read and interpret the same metadata.
+The `createClonedWeakMapStore` utility remains useful for metadata families that need defensive copies on both reads and writes. By using the `cloneValue` routine, those stores ensure every metadata value retrieved from storage is a copy, preventing unintended mutation of the central metadata registry. This is critical in multi-Module environments where different parts of the framework may read and interpret the same metadata.
 
-The cloning logic behaves closer to deep copy than shallow copy, so nested object and array metadata is also protected reliably. This is especially useful for Decorators such as `@Controller` and `@Module`, which handle complex configuration objects. Even if metadata from a specific Module is modified, the original registry and other Modules' resolution results remain unaffected. This isolation becomes a strong tool for blocking unexpected side effects in large collaborative projects.
+The cloning logic behaves closer to deep copy than shallow copy, so nested object and array metadata is also protected reliably for metadata families that use clone-on-read stores. Hot-path metadata readers such as `getModuleMetadata()`, `getOwnClassDiMetadata()`, `getInheritedClassDiMetadata()`, and `getClassDiMetadata()` now use a different but equally explicit contract: they return frozen snapshots and may reuse the same object reference between writes. Callers must therefore treat the returned object, its collection fields, module provider descriptor wrappers, and middleware route-config wrappers, including `routes` arrays, as immutable. This avoids repeated allocations in DI and module-graph hot paths while still blocking accidental caller-side mutation.
 
 The use of `WeakMap` is especially important for performance and memory management in long-running processes. Unlike a standard `Map` or global object, `WeakMap` does not prevent its keys, classes or objects, from being garbage collected. That means when a Module or Controller is dynamically unloaded, the related metadata is automatically cleaned up by the engine, keeping Fluo's memory use light over time.
 
 This provides a strong advantage in serverless environments and development environments where hot reloading happens often. By preventing unnecessary metadata from accumulating in memory, Fluo improves the overall predictability of the system and reduces the burden of manual memory management for developers. In this way, Fluo uses low-level language features intelligently, providing convenience to developers and stability to the runtime.
 
-Type safety is achieved through a combination of TypeScript generics and runtime validation. Every Fluo metadata store is connected to a specific type, and internal helpers such as `getModuleMetadata` in `path:packages/core/src/metadata/module.ts:60-62` use these types to provide a strongly typed API to the rest of the framework. This lets the DI container or HTTP runtime know exactly what shape to expect when reading metadata, reducing the need for defensive null checks and type casts.
+Type safety is achieved through a combination of TypeScript generics, frozen read contracts, and runtime validation. Every Fluo metadata store is connected to a specific type, and internal helpers such as `getModuleMetadata` in `path:packages/core/src/metadata/module.ts:123-125` use these types to provide a strongly typed API to the rest of the framework. This lets the DI container or HTTP runtime know exactly what shape to expect when reading metadata, reducing the need for defensive null checks and type casts.
 
 Module metadata helpers also sit on the same storage contract.
 
-`path:packages/core/src/metadata/module.ts:43-62`
+`path:packages/core/src/metadata/module.ts:103-125`
 ```typescript
 export function defineModuleMetadata(target: Function, metadata: ModuleMetadata): void {
-  moduleMetadataStore.update(target, (existing) => ({
+  const existing = moduleMetadataStore.get(target);
+
+  moduleMetadataStore.set(target, freezeModuleMetadata(cloneModuleMetadata({
     controllers: metadata.controllers ?? existing?.controllers,
     exports: metadata.exports ?? existing?.exports,
     global: metadata.global !== undefined ? metadata.global : existing?.global,
     imports: metadata.imports ?? existing?.imports,
     middleware: metadata.middleware ?? existing?.middleware,
     providers: metadata.providers ?? existing?.providers,
-  }));
+  })));
+  moduleMetadataVersion += 1;
 }
 
 export function getModuleMetadata(target: Function): ModuleMetadata | undefined {
-  return moduleMetadataStore.read(target);
+  return moduleMetadataStore.get(target);
 }
 ```
 
-`defineModuleMetadata` preserves `existing` values so partial Decorator passes do not erase existing fields, and `getModuleMetadata` uses the cloned store's `read()` path directly. As a result, values read by the Module Graph are not only typed, they are also copies that callers cannot use to mutate the original stored values directly.
+`defineModuleMetadata` preserves `existing` values so partial Decorator passes do not erase existing fields. It clones the incoming payload, freezes the resulting module metadata snapshot, stores that snapshot, and bumps a write version. `getModuleMetadata` then returns the stored frozen snapshot directly. As a result, values read by the Module Graph are typed, immutable, and allocation-friendly; they are not mutable copies. The caller-visible rule is to treat returned metadata as read-only and request a fresh value after metadata writes instead of mutating the snapshot.
 
 In advanced scenarios, Fluo also uses schema-based metadata validation, where the shape of metadata is checked by an internal Zod-like validator before it is stored. This prevents invalid configuration from polluting the Module Graph during early Bootstrap and provides clear error messages that point directly at the misconfigured Decorator. To minimize runtime overhead, this schema validation is designed to be enabled selectively only in development mode, or to run ahead of time during a build-time precompilation step, striking the best balance between performance and safety.
 
