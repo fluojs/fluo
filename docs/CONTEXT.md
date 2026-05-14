@@ -41,6 +41,8 @@ HTTP adapter raw-body portability discoverability is split across the testing pa
 
 Release lane discoverability is governed by [`docs/contracts/release-governance.md`](./contracts/release-governance.md): `main` is the stable patch lane, `tooling/release/verify-changeset-release-lane.mjs` rejects minor/major changesets and generated package version deltas in PR CI and release automation, and minor/major intents stay on dedicated release or prerelease branches until maintainers intentionally promote them.
 
+CLI inspect artifact discoverability is split across the CLI package, Studio package, and governed tooling docs: `packages/cli/README.md` documents `fluo inspect` default JSON output, `--timing` snapshot-plus-timing envelopes, `--report` support artifacts, `--mermaid` Studio delegation, and `--output <path>` artifact writes; [`docs/reference/toolchain-contract-matrix.md`](./reference/toolchain-contract-matrix.md) carries the canonical CLI scaffolding and inspect artifact output contracts, including that `--timing` defaults to JSON when no explicit output mode is selected; and [`docs/reference/package-surface.md`](./reference/package-surface.md) records the package responsibility split between `@fluojs/cli` artifact emission and `@fluojs/studio` artifact viewing/rendering.
+
 ## File Structure
 
 | Path | Role |
@@ -63,6 +65,7 @@ Release lane discoverability is governed by [`docs/contracts/release-governance.
 | Behavioral guarantees, Changesets release flow, and versioning policy | `docs/contracts/behavioral-contract-policy.md` | `docs/contracts/release-governance.md` |
 | Testing requirements and canonical fluo TDD ladder | `docs/contracts/testing-guide.md` | `packages/testing/README.md` and `book/beginner/ch20-testing.md` |
 | Public API authoring and documentation baseline | `docs/contracts/public-export-tsdoc-baseline.md` | `docs/contracts/platform-conformance-authoring-checklist.md` |
+| CLI inspect output modes and artifact ownership | `docs/reference/toolchain-contract-matrix.md` | `packages/cli/README.md` and `docs/reference/package-surface.md` |
 | Bootstrap path or startup sequence facts | `docs/getting-started/quick-start.md` | `docs/architecture/lifecycle-and-shutdown.md` |
 | Human learning flow or tutorial material | `book/README.md` | relevant chapters under `book/` |
 

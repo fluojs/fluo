@@ -250,7 +250,7 @@ fluo inspect ./src/app.module.ts --json > snapshot.json
 fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
 
 # Include bootstrap timing next to the runtime-produced snapshot
-fluo inspect ./src/app.module.ts --json --timing
+fluo inspect ./src/app.module.ts --timing
 
 # Emit a support triage report with summary, snapshot, diagnostics, and timing
 fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
@@ -259,7 +259,7 @@ fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 fluo inspect ./src/app.module.ts --export AdminModule --json
 ```
 
-The runtime produces the inspection snapshot. `fluo inspect` accepts generated TypeScript source modules such as `./src/app.ts` or `./src/app.module.ts` through an explicit TypeScript loader boundary, while existing `.js` and `.mjs` module paths continue to load through native Node.js ESM. `fluo inspect` serializes the snapshot as JSON by default when no output mode flag is provided, and `fluo inspect --mermaid` delegates snapshot-to-Mermaid rendering to the optional `@fluojs/studio` contract. `--export <name>` selects the module export to bootstrap and defaults to `AppModule`; `--timing` records bootstrap timing diagnostics for JSON output, and `--report` wraps the runtime-produced snapshot with a stable summary for CI/support triage. `--timing` cannot be combined with Mermaid output. `--output <path>` writes the selected inspect payload to an explicit artifact path instead of stdout; it does not make the inspected application writable or change module graph state beyond the normal bootstrap/close cycle. Install Studio in the project that runs the command when you need Mermaid output:
+The runtime produces the inspection snapshot. `fluo inspect` accepts generated TypeScript source modules such as `./src/app.ts` or `./src/app.module.ts` through an explicit TypeScript loader boundary, while existing `.js` and `.mjs` module paths continue to load through native Node.js ESM. `fluo inspect` serializes the snapshot as JSON by default when no output mode flag is provided, and `fluo inspect --mermaid` delegates snapshot-to-Mermaid rendering to the optional `@fluojs/studio` contract. `--export <name>` selects the module export to bootstrap and defaults to `AppModule`; `--timing` records bootstrap timing diagnostics next to the JSON snapshot output, including when `--timing` is provided without an explicit `--json` flag, and `--report` wraps the runtime-produced snapshot with a stable summary for CI/support triage. `--timing` cannot be combined with Mermaid output. `--output <path>` writes the selected inspect payload to an explicit artifact path instead of stdout; it does not make the inspected application writable or change module graph state beyond the normal bootstrap/close cycle. Install Studio in the project that runs the command when you need Mermaid output:
 
 ```bash
 pnpm add -D @fluojs/studio

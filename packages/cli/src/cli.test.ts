@@ -3575,7 +3575,7 @@ exit 7
     expect(stdoutBuffer.join('')).toBe('');
   });
 
-  it('emits bootstrap timing diagnostics for inspect --timing', async () => {
+  it('defaults inspect --timing to JSON snapshot output with timing diagnostics', async () => {
     const stdoutBuffer: string[] = [];
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--timing'], {
       cwd: process.cwd(),
@@ -3583,16 +3583,55 @@ exit 7
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
 
-    const timing = JSON.parse(stdoutBuffer.join('')) as {
-      phases: Array<{ durationMs: number; name: string }>;
-      totalMs: number;
-      version: number;
+    const payload = JSON.parse(stdoutBuffer.join('')) as {
+      snapshot: {
+        diagnostics: unknown[];
+        health: { status: string };
+        readiness: { status: string };
+      };
+      timing: {
+        phases: Array<{ durationMs: number; name: string }>;
+        totalMs: number;
+        version: number;
+      };
     };
 
     expect(exitCode).toBe(0);
-    expect(timing.version).toBe(1);
-    expect(timing.totalMs).toBeGreaterThanOrEqual(0);
-    expect(timing.phases.some((phase) => phase.name === 'bootstrap_module')).toBe(true);
+    expect(payload.snapshot.diagnostics).toEqual([]);
+    expect(payload.snapshot.readiness.status).toBe('ready');
+    expect(payload.snapshot.health.status).toBe('healthy');
+    expect(payload.timing.version).toBe(1);
+    expect(payload.timing.totalMs).toBeGreaterThanOrEqual(0);
+    expect(payload.timing.phases.some((phase) => phase.name === 'bootstrap_module')).toBe(true);
+  });
+
+  it('writes inspect --timing JSON envelope artifacts to an explicit output path', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    const outputPath = join(workspaceDirectory, 'artifacts', 'inspect-with-timing.json');
+
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--timing', '--output', outputPath], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const payload = JSON.parse(readFileSync(outputPath, 'utf8')) as {
+      snapshot: { diagnostics: unknown[]; health: { status: string }; readiness: { status: string } };
+      timing: { phases: Array<{ name: string }>; totalMs: number; version: number };
+    };
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toBe('');
+    expect(payload.snapshot.diagnostics).toEqual([]);
+    expect(payload.snapshot.readiness.status).toBe('ready');
+    expect(payload.snapshot.health.status).toBe('healthy');
+    expect(payload.timing.version).toBe(1);
+    expect(payload.timing.totalMs).toBeGreaterThanOrEqual(0);
+    expect(payload.timing.phases.some((phase) => phase.name === 'bootstrap_module')).toBe(true);
   });
 
   it('rejects conflicting inspect JSON and Mermaid output modes', async () => {

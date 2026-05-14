@@ -433,3 +433,18 @@ describe('HTTP adapter raw-body portability discoverability', () => {
     }
   });
 });
+
+describe('CLI inspect artifact discoverability', () => {
+  const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+  const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+
+  it('keeps inspect timing and default JSON output docs discoverable from the context hub', () => {
+    for (const content of [englishContext, koreanContext]) {
+      expect(content).toContain('docs/reference/toolchain-contract-matrix');
+      expect(content).toContain('packages/cli/README');
+      expect(content).toContain('--timing');
+      expect(content).toContain('JSON');
+      expect(content).toContain('@fluojs/studio');
+    }
+  });
+});

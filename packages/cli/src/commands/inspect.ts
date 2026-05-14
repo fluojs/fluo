@@ -102,7 +102,7 @@ const INSPECT_OPTION_HELP: InspectOptionHelpEntry[] = [
   },
   {
     aliases: [],
-    description: 'Bootstrap the application context and emit versioned timing diagnostics.',
+    description: 'Include bootstrap timing diagnostics next to JSON inspect output.',
     option: '--timing',
   },
   {
@@ -231,7 +231,7 @@ function parseInspectArgs(argv: string[]): ParsedInspectArgs {
     throw new Error(inspectUsage());
   }
 
-  if (!json && !mermaid && !timing && !report) {
+  if (!json && !mermaid && !report) {
     json = true;
   }
 
@@ -272,16 +272,6 @@ async function importInspectModule(modulePath: string): Promise<Record<string, u
   }
 
   return import(moduleUrl) as Promise<Record<string, unknown>>;
-}
-
-function stringifyTiming(timing: BootstrapTimingDiagnostics | undefined): string {
-  const value = timing ?? {
-    phases: [],
-    totalMs: 0,
-    version: 1 as const,
-  };
-
-  return JSON.stringify(value, null, 2);
 }
 
 function stringifySnapshot(snapshot: PlatformShellSnapshot): string {
@@ -443,26 +433,6 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
     const modulePath = resolve(cwd, parsed.modulePath);
     const importedModule = await importInspectModule(modulePath);
     const rootModule = resolveRootModule(importedModule[parsed.exportName], parsed.exportName);
-
-    if (parsed.timing && !parsed.json && !parsed.report) {
-      const context = await FluoFactory.createApplicationContext(rootModule, {
-        diagnostics: { timing: true },
-        logger: {
-          debug() {},
-          error() {},
-          log() {},
-          warn() {},
-        },
-      });
-
-      try {
-        await emitInspectPayload(stringifyTiming(context.bootstrapTiming), parsed, cwd, stdout);
-      } finally {
-        await context.close();
-      }
-
-      return 0;
-    }
 
     const context = await FluoFactory.createApplicationContext(rootModule, {
       diagnostics: parsed.timing || parsed.report ? { timing: true } : undefined,

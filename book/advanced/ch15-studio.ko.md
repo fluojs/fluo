@@ -60,7 +60,7 @@ fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
 snapshot 옆에 bootstrap timing이 필요하면 `--timing`을 사용합니다.
 
 ```bash
-fluo inspect ./src/app.module.ts --json --timing --output artifacts/inspect-with-timing.json
+fluo inspect ./src/app.module.ts --timing --output artifacts/inspect-with-timing.json
 ```
 
 summary, 전체 snapshot, diagnostics, timing이 함께 들어 있는 CI-friendly support artifact가 필요하면 `--report`를 사용합니다.
@@ -109,10 +109,10 @@ Studio는 이 파일을 직접 로드할 수 있습니다. `parseStudioPayload(r
 모든 workflow가 bootstrap phase 측정을 필요로 하지는 않으므로 timing data는 opt-in입니다.
 
 ```bash
-fluo inspect ./src/app.module.ts --json --timing --output artifacts/inspect-with-timing.json
+fluo inspect ./src/app.module.ts --timing --output artifacts/inspect-with-timing.json
 ```
 
-`--json --timing`을 사용하면 CLI는 `snapshot`과 `timing` key를 가진 envelope를 씁니다. `timing` 값은 `BootstrapTimingDiagnostics`를 따르며, `totalMs`와 phase list를 포함합니다. Studio는 이 데이터를 사용해 module graph construction, provider resolution, lifecycle hooks 같은 bootstrap 시간이 어디에 쓰였는지 설명할 수 있습니다.
+`--timing`을 사용하면 CLI는 기본 JSON snapshot mode를 유지하고 `snapshot`과 `timing` key를 가진 envelope를 씁니다. `timing` 값은 `BootstrapTimingDiagnostics`를 따르며, `totalMs`와 phase list를 포함합니다. Studio는 이 데이터를 사용해 module graph construction, provider resolution, lifecycle hooks 같은 bootstrap 시간이 어디에 쓰였는지 설명할 수 있습니다. 팀이 JSON mode를 명시하고 싶으면 `--json --timing`도 같은 envelope를 씁니다.
 
 Timing은 변경이 startup을 깨지는 않지만 눈에 띄게 느리게 만들 때 특히 유용합니다. snapshot 옆에 timing을 보관하면 reviewer가 graph shape와 bootstrap cost를 연결해서 볼 수 있습니다.
 
