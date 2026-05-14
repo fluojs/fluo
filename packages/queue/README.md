@@ -129,9 +129,16 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 
 
 ### Types
+- `Queue`: Compatibility facade with `enqueue(job)` for application code and the `QUEUE` token.
+- `QueueJobType`: Constructor type used to identify and rehydrate a job payload class.
 - `QueueModuleOptions`: Global queue settings (clientName, default attempts, `defaultBackoff`, concurrency, rate limiting, dead-letter retention).
 - `QueueWorkerOptions`: Per-job settings (attempts, backoff, concurrency, jobName, rate limiting).
+- `QueueBackoffType`: Supported retry backoff strategy names (`fixed`, `exponential`).
 - `QueueBackoffOptions`: Retry backoff settings (`type`, `delayMs`).
+- `QueueRateLimiterOptions`: Worker-level distributed rate limiter settings (`max`, `duration`).
+- `QueueLifecycleState`: Lifecycle states reported by Queue status adapters (`idle`, `starting`, `started`, `stopping`, `stopped`).
+- `QueueStatusAdapterInput`: Normalized queue metrics passed to `createQueuePlatformStatusSnapshot(...)`.
+- `QueuePlatformStatusSnapshot`: Queue-specific readiness, health, ownership, and detail snapshot returned by the status helper.
 
 `QueueModuleOptions` also includes lifecycle and dead-letter retention controls such as `workerShutdownTimeoutMs` and `defaultDeadLetterMaxEntries`.
 
