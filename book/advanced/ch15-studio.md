@@ -124,7 +124,7 @@ A report is the best artifact for CI triage and support handoff.
 fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 ```
 
-The report wraps the runtime-produced snapshot with a stable summary and timing data. Its summary includes counts for components, diagnostics, errors, warnings, health, readiness, and total timing. That lets a CI job or reviewer answer basic questions without parsing the whole graph first.
+The report wraps the runtime-produced snapshot with a stable summary and timing data. Its summary includes `componentCount`, `diagnosticCount`, `errorCount`, `warningCount`, `healthStatus`, `readinessStatus`, and `timingTotalMs`. That lets a CI job or reviewer answer basic questions without parsing the whole graph first.
 
 A report does not replace the raw snapshot. It packages the snapshot with the extra context that support and automation usually need. Studio can still consume the snapshot part, while scripts can read the summary first to decide whether to fail a build or attach the artifact to a ticket.
 

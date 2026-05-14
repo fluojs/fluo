@@ -160,7 +160,7 @@ describe('CLI command runner', () => {
     let confirmMessage = '';
     let confirmDefault = true;
 
-    const exitCode = await runCli(['help'], {
+    const exitCode = await runCli(['analyze'], {
       env: updateCheckEnv,
       stderr: createTtyBufferStream(stderrBuffer),
       stdin: { isTTY: true },
@@ -184,7 +184,7 @@ describe('CLI command runner', () => {
     expect(stderrBuffer.join('')).toContain('Continuing with @fluojs/cli@1.0.0-beta.1.');
     expect(confirmMessage).toBe('Install @fluojs/cli@1.0.0-beta.2 now and restart this command?');
     expect(confirmDefault).toBe(false);
-    expect(stdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
+    expect(stdoutBuffer.join('')).toContain('fluo analyze');
   });
 
   it('installs the accepted update and reruns the same CLI argv with update checks suppressed', async () => {
@@ -194,7 +194,7 @@ describe('CLI command runner', () => {
     const rerunArgv: string[][] = [];
     const rerunEnvValues: Array<string | undefined> = [];
 
-    const exitCode = await runCli(['help', 'new'], {
+    const exitCode = await runCli(['analyze'], {
       env: updateCheckEnv,
       stderr: createTtyBufferStream(stderrBuffer),
       stdin: { isTTY: true },
@@ -220,7 +220,7 @@ describe('CLI command runner', () => {
 
     expect(exitCode).toBe(42);
     expect(installCommands).toEqual(['npm install -g @fluojs/cli@1.0.0-beta.2']);
-    expect(rerunArgv).toEqual([['help', 'new']]);
+    expect(rerunArgv).toEqual([['analyze']]);
     expect(rerunEnvValues).toEqual(['1']);
     expect(stderrBuffer.join('')).toContain('Updated @fluojs/cli to 1.0.0-beta.2. Restarting fluo...');
     expect(stdoutBuffer.join('')).toBe('');
@@ -236,7 +236,7 @@ describe('CLI command runner', () => {
     const stderrBuffer: string[] = [];
     const installCommands: string[] = [];
 
-    const exitCode = await runCli(['help'], {
+    const exitCode = await runCli(['analyze'], {
       env: {
         ...updateCheckEnv,
         npm_config_user_agent: `${packageManager}/1.0.0 node/v20.0.0 darwin arm64`,
@@ -274,7 +274,7 @@ describe('CLI command runner', () => {
     const stderrBuffer: string[] = [];
     const installCommands: string[] = [];
 
-    const exitCode = await runCli(['help'], {
+    const exitCode = await runCli(['analyze'], {
       env: {
         ...updateCheckEnv,
         npm_execpath: npmExecPath,
@@ -312,7 +312,7 @@ describe('CLI command runner', () => {
     const stderrBuffer: string[] = [];
     const installCommands: string[] = [];
 
-    const exitCode = await runCli(['help'], {
+    const exitCode = await runCli(['analyze'], {
       env: updateCheckEnv,
       stderr: createTtyBufferStream(stderrBuffer),
       stdin: { isTTY: true },
@@ -343,7 +343,7 @@ describe('CLI command runner', () => {
     const stderrBuffer: string[] = [];
     const installCommands: string[] = [];
 
-    const exitCode = await runCli(['help'], {
+    const exitCode = await runCli(['analyze'], {
       env: {
         ...updateCheckEnv,
         npm_config_user_agent: 'npm/10.0.0 node/v20.0.0 darwin arm64',
@@ -377,7 +377,7 @@ describe('CLI command runner', () => {
     const stderrBuffer: string[] = [];
     let reran = false;
 
-    const exitCode = await runCli(['help'], {
+    const exitCode = await runCli(['analyze'], {
       env: updateCheckEnv,
       stderr: createTtyBufferStream(stderrBuffer),
       stdin: { isTTY: true },
@@ -400,7 +400,7 @@ describe('CLI command runner', () => {
     expect(exitCode).toBe(0);
     expect(reran).toBe(false);
     expect(stderrBuffer.join('')).toContain('Update install failed with exit code 7; continuing with @fluojs/cli@1.0.0-beta.1.');
-    expect(stdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
+    expect(stdoutBuffer.join('')).toContain('fluo analyze');
   });
 
   it('skips the update prompt in CI and non-TTY contexts', async () => {
@@ -411,7 +411,7 @@ describe('CLI command runner', () => {
     };
 
     const ciStdoutBuffer: string[] = [];
-    const ciExitCode = await runCli(['help'], {
+    const ciExitCode = await runCli(['analyze'], {
       ci: true,
       env: updateCheckEnv,
       stderr: createTtyBufferStream([]),
@@ -425,7 +425,7 @@ describe('CLI command runner', () => {
     });
 
     const nonTtyStdoutBuffer: string[] = [];
-    const nonTtyExitCode = await runCli(['help'], {
+    const nonTtyExitCode = await runCli(['analyze'], {
       env: updateCheckEnv,
       stderr: { write: () => undefined },
       stdin: { isTTY: false },
@@ -440,15 +440,15 @@ describe('CLI command runner', () => {
     expect(ciExitCode).toBe(0);
     expect(nonTtyExitCode).toBe(0);
     expect(fetchCount).toBe(0);
-    expect(ciStdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
-    expect(nonTtyStdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
+    expect(ciStdoutBuffer.join('')).toContain('fluo analyze');
+    expect(nonTtyStdoutBuffer.join('')).toContain('fluo analyze');
   });
 
   it('honors explicit update-check opt-out flags before command dispatch', async () => {
     let fetchCount = 0;
     const stdoutBuffer: string[] = [];
 
-    const exitCode = await runCli(['--no-update-check', 'help'], {
+    const exitCode = await runCli(['--no-update-check', 'analyze'], {
       env: updateCheckEnv,
       stderr: createTtyBufferStream([]),
       stdin: { isTTY: true },
@@ -465,8 +465,37 @@ describe('CLI command runner', () => {
 
     expect(exitCode).toBe(0);
     expect(fetchCount).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
-    expect(stdoutBuffer.join('')).toContain('--no-update-notifier');
+    expect(stdoutBuffer.join('')).toContain('fluo analyze');
+  });
+
+  it.each([
+    ['help'],
+    ['help', 'info'],
+    ['--help'],
+    ['new', '--help'],
+    ['create', '--help'],
+  ])('skips the update check for pure help invocation `%s`', async (...argv) => {
+    let fetchCount = 0;
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(argv, {
+      env: updateCheckEnv,
+      stderr: createTtyBufferStream([]),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async (): Promise<string> => {
+          fetchCount += 1;
+          return '1.0.0-beta.2';
+        },
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(fetchCount).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Usage: fluo');
   });
 
   it('uses the update-check cache instead of hitting npm on every invocation', async () => {
@@ -497,8 +526,8 @@ describe('CLI command runner', () => {
     const secondStdoutBuffer: string[] = [];
     const secondStderrBuffer: string[] = [];
 
-    await runCli(['help'], createRuntime(firstStdoutBuffer, firstStderrBuffer));
-    await runCli(['help'], createRuntime(secondStdoutBuffer, secondStderrBuffer));
+    await runCli(['analyze'], createRuntime(firstStdoutBuffer, firstStderrBuffer));
+    await runCli(['analyze'], createRuntime(secondStdoutBuffer, secondStderrBuffer));
 
     expect(fetchCount).toBe(1);
     expect(firstStderrBuffer.join('')).toContain('A newer @fluojs/cli version is available');
@@ -568,7 +597,7 @@ describe('CLI command runner', () => {
     const stderrBuffer: string[] = [];
     let fetchCount = 0;
 
-    const exitCode = await runCli(['help'], {
+    const exitCode = await runCli(['analyze'], {
       env: updateCheckEnv,
       stderr: createTtyBufferStream(stderrBuffer),
       stdin: { isTTY: true },
@@ -591,7 +620,7 @@ describe('CLI command runner', () => {
     expect(fetchCount).toBe(0);
     expect(stderrBuffer.join('')).toContain('A newer @fluojs/cli version is available: 1.0.0-beta.1 -> 1.0.0-beta.2.');
     expect(stderrBuffer.join('')).not.toContain('1.0.0-beta.3');
-    expect(stdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
+    expect(stdoutBuffer.join('')).toContain('fluo analyze');
   });
 
   it('continues fluo new when a forced update check cannot reach the registry', async () => {
@@ -642,7 +671,7 @@ describe('CLI command runner', () => {
     const stderrBuffer: string[] = [];
     let prompted = false;
 
-    const exitCode = await runCli(['help'], {
+    const exitCode = await runCli(['analyze'], {
       env: updateCheckEnv,
       stderr: createTtyBufferStream(stderrBuffer),
       stdin: { isTTY: true },
@@ -663,14 +692,14 @@ describe('CLI command runner', () => {
     expect(exitCode).toBe(0);
     expect(prompted).toBe(false);
     expect(stderrBuffer.join('')).toBe('');
-    expect(stdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
+    expect(stdoutBuffer.join('')).toContain('fluo analyze');
   });
 
   it('ignores registry failures so the original CLI command still runs', async () => {
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
 
-    const exitCode = await runCli(['help'], {
+    const exitCode = await runCli(['analyze'], {
       env: updateCheckEnv,
       stderr: createTtyBufferStream(stderrBuffer),
       stdin: { isTTY: true },
@@ -686,7 +715,7 @@ describe('CLI command runner', () => {
 
     expect(exitCode).toBe(0);
     expect(stderrBuffer.join('')).toBe('');
-    expect(stdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
+    expect(stdoutBuffer.join('')).toContain('fluo analyze');
   });
 
   it('passes migrate --json through the top-level dispatcher', async () => {
@@ -1648,6 +1677,25 @@ void bootstrap();
     expect(output).toContain('fluo doctor');
     expect(output).toContain('npm latest: 1.0.0-beta.5');
     expect(output).toContain('Project scripts: start');
+  });
+
+  it.each([
+    ['help', 'info'],
+    ['info', '--help'],
+  ])('prints info-branded usage for `%s`', async (...argv) => {
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(argv, {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const output = stdoutBuffer.join('');
+    expect(exitCode).toBe(0);
+    expect(output).toContain('Usage: fluo info [options]');
+    expect(output).toContain('Show help for the info command.');
+    expect(output).not.toContain('Usage: fluo doctor [options]');
   });
 
   it('prints analyze guidance without mutating the project', async () => {
