@@ -92,10 +92,10 @@ CacheModule.forRoot({
 });
 ```
 
-### 17.3.2 Async Configuration and Secret Management: Best Practices
-실제 애플리케이션에서는 캐시 자격 증명을 하드코딩해서는 안 됩니다. fluo에서는 먼저 Redis 클라이언트 등록을 명확하게 준비한 뒤, `CacheModule.forRoot(...)`가 그 등록을 바라보게 하는 방식을 권장합니다. 이렇게 하면 캐시 모듈 쪽 공개 표면은 단순하게 유지하면서도 환경별 연결 정보는 별도의 설정 계층에서 관리할 수 있습니다.
+### 17.3.2 Synchronous Configuration and Secret Management: Best Practices
+실제 애플리케이션에서는 캐시 자격 증명을 하드코딩해서는 안 됩니다. fluo에서 `CacheModule.forRoot(options)`는 동기 모듈 진입점입니다. 먼저 Redis 클라이언트 등록을 명확하게 준비한 뒤, `store: 'redis'`와 `redis.clientName`처럼 그 등록을 가리키는 일반 캐시 옵션을 전달하세요. 이렇게 하면 캐시 모듈 쪽 공개 표면은 단순하게 유지하면서도 환경별 연결 정보는 별도의 설정 계층에서 관리할 수 있습니다.
 
-또한 비동기 설정은 **동적 저장소 선택(Dynamic Store Selection)**을 가능하게 합니다. 환경이나 특정 설정 플래그에 따라 애플리케이션이 어떤 캐시 공급자를 초기화할지 결정할 수 있습니다. 예를 들어 프로덕션에서는 고성능 Redis 클러스터를 사용하지만, CI/CD 파이프라인에서는 빌드 환경을 가볍고 빠르게 유지하기 위해 단순한 메모리 저장소로 폴백할 수 있습니다. 이러한 유연성은 Fluo DI 시스템의 핵심 장점이며, 인프라가 실행 중인 컨텍스트에 맞게 적응할 수 있도록 해줍니다.
+이 명시적 설정 방식에서도 **환경 인식 저장소 선택(Environment-Aware Store Selection)**은 가능합니다. 애플리케이션 경계에서 필요한 설정을 읽고, 모듈 등록 전에 캐시 옵션을 선택한 뒤, 최종 객체를 `CacheModule.forRoot(...)`에 전달합니다. 예를 들어 프로덕션에서는 고성능 Redis 클러스터를 선택하고, CI/CD 파이프라인에서는 빌드 환경을 가볍고 빠르게 유지하기 위해 `store: 'memory'`를 전달할 수 있습니다. 중요한 경계는 현재 공개 API가 async factory가 아니라 이미 준비된 options 객체를 받는다는 점입니다.
 
 ### 17.3.3 Custom Store Options Beyond the Built-ins
 현재 공개 계약이 기본 제공하는 저장소는 메모리와 Redis뿐입니다. 둘 중 하나로 시작한 뒤, 요구 사항이 더 특수하다면 `CacheStore` 계약을 구현한 커스텀 저장소를 연결하는 방식으로 확장합니다. 즉, `CacheModule`이 여러 내장 백엔드를 전환해 주는 모델이 아니라, 검증된 기본 저장소 두 가지와 사용자 구현 저장소를 조합하는 모델로 이해하는 편이 정확합니다.

@@ -92,10 +92,10 @@ CacheModule.forRoot({
 });
 ```
 
-### 17.3.2 Async Configuration and Secret Management: Best Practices
-In real applications, you should not hardcode cache credentials. In fluo, the recommended approach is to prepare Redis client registration explicitly first, then have `CacheModule.forRoot(...)` point to that registration. This keeps the cache module's public surface simple while letting a separate configuration layer manage environment-specific connection details.
+### 17.3.2 Synchronous Configuration and Secret Management: Best Practices
+In real applications, you should not hardcode cache credentials. In fluo, `CacheModule.forRoot(options)` is the synchronous module entrypoint: prepare Redis client registration explicitly first, then pass ordinary cache options that point to that registration, such as `store: 'redis'` and `redis.clientName`. This keeps the cache module's public surface simple while letting a separate configuration layer manage environment-specific connection details.
 
-Async configuration also enables **dynamic store selection**. Depending on the environment or a specific configuration flag, the application can decide which cache provider to initialize. For example, production might use a high-performance Redis cluster, while a CI/CD pipeline can fall back to a simple memory store to keep the build environment light and fast. This flexibility is one of the core strengths of Fluo's DI system, and it lets infrastructure adapt to the context in which it is running.
+This explicit setup still enables **environment-aware store selection**. Read the needed configuration at the application boundary, choose the cache options before module registration, then pass the final object to `CacheModule.forRoot(...)`. For example, production might select a high-performance Redis cluster, while a CI/CD pipeline can pass `store: 'memory'` to keep the build environment light and fast. The important boundary is that the current public API receives already-prepared options rather than an async factory.
 
 ### 17.3.3 Custom Store Options Beyond the Built-ins
 The current public contract only provides memory and Redis as built-in stores. Start with one of them, then extend the system by connecting a custom store that implements the `CacheStore` contract if your requirements are more specialized. In other words, it is more accurate to understand `CacheModule` not as a model that switches between many built-in backends, but as a model that combines two verified default stores with user-implemented stores.
