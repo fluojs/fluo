@@ -30,14 +30,16 @@ permission:
   edit: deny
   bash:
     '*': ask
+    'find *': deny
+    'xargs *': deny
     'git status*': allow
     'git diff*': allow
     'git log*': allow
     'git ls-files*': allow
     # Prefer git ls-files for repeatable package file lists.
     # Add exact find commands only for observed safe read-only prompts.
-    'find /Users/tilda-frontend-jinho/Documents/fluo/packages/platform-fastify -type f | sort': allow
-    'sort': allow
+
+    'sort*': allow
     'gh pr view*': allow
     'gh pr diff*': allow
     'gh pr checks*': allow
@@ -69,6 +71,7 @@ Rules:
 - Stay read-only.
 - Do not edit files.
 - Do not claim permission boundaries in prompt text alone; enforce them in frontmatter.
+- Do not run `find`, `xargs`, broad shell pipelines, shell redirection, or `-exec`; use `read`, `grep`, `glob`, `list`, or `git ls-files*` instead.
 - Report only concrete issues with evidence.
 ```
 
@@ -88,14 +91,16 @@ permission:
   edit: ask
   bash:
     '*': ask
+    'find *': deny
+    'xargs *': deny
     'git status*': allow
     'git diff*': allow
     'git log*': allow
     'git ls-files*': allow
     # Prefer git ls-files for repeatable package file lists.
     # Add exact find commands only for observed safe read-only prompts.
-    'find /Users/tilda-frontend-jinho/Documents/fluo/packages/platform-fastify -type f | sort': allow
-    'sort': allow
+
+    'sort*': allow
     'git worktree*': allow
     'pnpm test*': allow
     'pnpm typecheck*': allow

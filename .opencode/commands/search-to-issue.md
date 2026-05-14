@@ -41,6 +41,7 @@ Audit target scope는 커맨드 시작 시 아래 우선순위로 **한 번만**
 3. **All**
    - explicit package도 group도 없거나 사용자가 `all`만 지정하면 `packages/*/package.json` 기준 workspace public packages 전체를 감사한다.
    - 기본값에는 `examples/*`와 `@fluojs-internal/*` tooling workspace를 포함하지 않는다. 사용자가 명시적으로 요청한 경우만 포함한다.
+   - package 목록은 하네스가 한 번만 확정한다. OpenCode `glob`/`read` 또는 허용된 `git ls-files*`만 사용하고, `find | xargs`, broad shell pipeline, shell redirection, `-exec`는 사용하지 않는다.
 
 Scope 확정 결과는 다음 형태로 기록하고 이후 모든 phase에서 그대로 사용한다.
 
@@ -101,6 +102,7 @@ scope_decision:
 - batch가 여러 개여도 Scope Resolution 결과의 package 목록만 사용한다.
 - 각 batch가 끝날 때마다 findings를 수집하고, 중복 후보와 package-level draft를 갱신한다.
 - 대규모 audit에서도 선택된 각 패키지마다 정확히 3개 auditor invocation을 유지한다.
+- auditor에게 `all` 범위를 직접 위임하지 않는다. 하네스가 확정한 단일 package 이름을 각 auditor invocation의 `package: <pkg>`로 전달한다.
 
 ## 5. Auditor Delegation
 
@@ -122,17 +124,19 @@ Audit package `<pkg>` within the already resolved scope.
 Return schema-compliant findings only.
 
 ## REQUIRED TOOLS
-Read/grep/glob only. Stay read-only.
+Read/grep/glob/list only. Stay read-only. Do not use bash package-discovery pipelines.
 
 ## MUST DO
 - Use file:line evidence.
 - Respect `docs/contracts/behavioral-contract-policy.md`.
 - Assess affected surfaces with canonical path reasons.
+- Audit only the assigned package `<pkg>` from `scope_decision.packages`.
 
 ## MUST NOT DO
 - Do not edit files.
 - Do not run `gh issue create`.
 - Do not audit outside your role scope.
+- Do not expand `all`, list every package, or run `find | xargs`, broad shell pipelines, shell redirection, or `-exec`.
 
 ## CONTEXT
 - scope_decision: <fixed scope_decision yaml>

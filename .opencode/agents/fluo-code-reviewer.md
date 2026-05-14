@@ -14,7 +14,6 @@ permission:
     'git diff*': allow
     'git log*': allow
     'git ls-files*': allow
-    'find /Users/tilda-frontend-jinho/Documents/fluo/packages/platform-fastify -type f | sort': allow
     'sort': allow
     'gh pr view*': allow
     'gh pr diff*': allow

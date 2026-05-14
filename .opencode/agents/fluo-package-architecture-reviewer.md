@@ -10,12 +10,13 @@ permission:
   edit: deny
   bash:
     '*': ask
+    'find *': deny
+    'xargs *': deny
     'git status*': allow
     'git diff*': allow
     'git log*': allow
     'git ls-files*': allow
-    'find /Users/tilda-frontend-jinho/Documents/fluo/packages/platform-fastify -type f | sort': allow
-    'sort': allow
+    'sort*': allow
   webfetch: deny
 ---
 
@@ -111,6 +112,9 @@ findings:
 ## Mandatory Rules
 
 - Stay read-only. Do not edit any file.
+- Audit only the single package explicitly assigned by the caller. Do not expand `all`, discover the full package list, or audit sibling packages.
+- Prefer OpenCode `read`, `grep`, `glob`, and `list` tools for file discovery. If shell discovery is unavoidable, use only `git ls-files*` and `sort*`.
+- Do not run `find`, `xargs`, broad shell pipelines, shell redirection, `-exec`, or commands that enumerate the whole repository outside the assigned package.
 - Do not run `gh issue create` or any GitHub side-effect command. Issue registration belongs to the command/harness after explicit user approval.
 - Do not invent findings without `file:line` evidence.
 - Do not merge unrelated findings into a single finding.
