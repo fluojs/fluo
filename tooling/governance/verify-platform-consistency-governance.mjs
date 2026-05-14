@@ -704,6 +704,20 @@ function enforceCanonicalRuntimeMatrixReferences() {
     'docs/CONTEXT.ko.md must point readers to the canonical runtime package matrix page.',
   );
   assert(
+    packageSurface.includes('@fluojs/runtime/internal*') &&
+      packageSurface.includes('package-integration seams') &&
+      docsContext.includes('@fluojs/runtime/internal*') &&
+      docsContext.includes('package-integration seam boundary'),
+    'docs/reference/package-surface.md and docs/CONTEXT.md must distinguish runtime application-facing helper subpaths from internal package-integration seams.',
+  );
+  assert(
+    packageSurfaceKo.includes('@fluojs/runtime/internal*') &&
+      packageSurfaceKo.includes('package-integration seam') &&
+      docsContextKo.includes('@fluojs/runtime/internal*') &&
+      docsContextKo.includes('package-integration seam 경계'),
+    'docs/reference/package-surface.ko.md and docs/CONTEXT.ko.md must distinguish runtime application-facing helper subpaths from internal package-integration seams.',
+  );
+  assert(
     docsContext.includes('docs/reference/package-chooser.md') && docsContext.includes('@fluojs/i18n'),
     'docs/CONTEXT.md must point readers to package chooser i18n discovery guidance.',
   );
