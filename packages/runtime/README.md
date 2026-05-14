@@ -164,6 +164,8 @@ class UsersModule {}
 
 ## Platform-Specific Subpaths
 
+Use `@fluojs/runtime/node` and `@fluojs/runtime/web` for application-facing runtime helpers. The published `internal*` subpaths are reserved package-integration seams for first-party adapters and runtime-aware packages; they are documented here so package authors can identify the boundary without treating those seams as application-level helper contracts.
+
 | Subpath | Purpose |
 | :--- | :--- |
 | `@fluojs/runtime/node` | Supported Node.js entrypoint for logger factories, Node adapter/bootstrap helpers, and shutdown signal registration. |

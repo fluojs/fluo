@@ -335,6 +335,22 @@ describe('package surface microservices transport discoverability', () => {
   });
 });
 
+describe('runtime subpath surface discoverability', () => {
+  it('distinguishes application-facing helpers from internal package-integration seams in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface]) {
+      expect(markdown).toContain('@fluojs/runtime/node');
+      expect(markdown).toContain('@fluojs/runtime/web');
+      expect(markdown).toContain('@fluojs/runtime/internal*');
+      expect(markdown).toContain('package-integration seam');
+    }
+  });
+});
+
 describe('event-bus transport discoverability', () => {
   it('documents event-bus transport fan-out and drain guidance from the AI context and package references in both locales', () => {
     const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');

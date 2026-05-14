@@ -164,6 +164,8 @@ class UsersModule {}
 
 ## 플랫폼 전용 서브경로
 
+애플리케이션-facing 런타임 헬퍼에는 `@fluojs/runtime/node`와 `@fluojs/runtime/web`를 사용하세요. 공개된 `internal*` 서브경로는 first-party adapter와 runtime-aware package를 위한 package-integration seam으로 예약되어 있습니다. 이 표는 패키지 작성자가 경계를 식별할 수 있도록 문서화하지만, 해당 seam을 애플리케이션 수준 helper 계약으로 취급하지는 않습니다.
+
 | 서브경로 | 용도 |
 | :--- | :--- |
 | `@fluojs/runtime/node` | 로거 팩토리, Node 어댑터/부트스트랩 헬퍼, 종료 시그널 등록을 위한 지원되는 Node.js 전용 진입점입니다. |
