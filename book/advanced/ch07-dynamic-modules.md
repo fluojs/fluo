@@ -314,7 +314,7 @@ The programmatic nature of `defineModule` also allows Module imports to be built
 ## 7.3 Async Module helpers are Factory Providers with memoized option resolution
 The asynchronous case is where many frameworks become opaque. They often hide the "how" behind a complicated state machine. Fluo stays surprisingly direct here too. An Async Module helper is still a Module factory. The only difference is that one options Provider is a **Factory Provider** whose execution is delayed and whose result is memoized.
 
-The shared contract comes from `AsyncModuleOptions<T>` in `path:packages/core/src/types.ts:29-37`. Its only fields are `inject?: Token[]` for dependency resolution and `useFactory` for the actual configuration logic.
+The shared contract comes from `AsyncModuleOptions<T>` in `path:packages/core/src/types.ts:64-67`. Its only fields are `inject?: InjectionToken[]` for dependency resolution and `useFactory` for the actual configuration logic. `InjectionToken` includes plain `Token` values plus documented `forwardRef(...)` and `optional(...)` wrappers, so async module factories can depend on the same explicit injection entries accepted by `@Inject(...)` and provider `inject` arrays.
 
 `EmailModule.forRootAsync()` is a very readable explicit-memoization example. `path:packages/email/src/module.ts:114-138` stores the user factory in a local variable, creates a `cachedResult` promise, defines `memoizedFactory(...deps)` that initializes the promise only once, and registers a singleton Factory Provider for `EMAIL_OPTIONS`.
 

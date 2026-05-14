@@ -9,7 +9,7 @@
 - Fluo 메타데이터 시스템에서 `Reflect` API가 맡는 역할을 이해합니다.
 - `Symbol.metadata`와 내부 심볼 키가 충돌을 어떻게 피하는지 설명합니다.
 - `WeakMap` 기반 저장소가 메모리 안전성과 성능에 주는 이점을 분석합니다.
-- 타입 안전한 메타데이터 저장과 방어적 복제 전략을 정리합니다.
+- 타입 안전한 메타데이터 저장, 방어적 복제, frozen snapshot 전략을 정리합니다.
 - 상속과 계보 탐색이 메타데이터 해석에 어떻게 반영되는지 살펴봅니다.
 - 이후 커스텀 데코레이터 장에서 재사용할 메타데이터 모델을 준비합니다.
 
@@ -105,7 +105,7 @@ export const metadataKeys = {
 이러한 성능 최적화는 단순히 "빠르다"는 것을 넘어, 수천 개의 클래스와 의존성이 얽힌 대규모 모놀리스 아키텍처에서도 지연 없는 부팅과 즉각적인 의존성 해결을 가능케 하는 핵심 동력입니다. 문자열 기반 키가 가진 동적인 유연성 대신 심볼이 주는 정적인 안정성과 속도를 선택함으로써, Fluo는 규모의 경제를 실현하는 백엔드 시스템의 든든한 기반이 됩니다.
 
 ## 2.3 Type-safe metadata storage
-메타데이터는 그 검색이 신뢰할 수 있을 때만 유용합니다. Fluo는 모든 메타데이터 레코드(예: `ModuleMetadata`, `ClassDiMetadata`, `RouteMetadata`)에 대해 엄격한 인터페이스를 정의하여 타입 안전성을 보장합니다. 이러한 레코드는 메타데이터가 설명하는 클래스나 객체와 함께 가비지 컬렉션될 수 있도록 하여 메모리 누수를 방지하는 `WeakMap` 기반 저장소에 저장됩니다. 강력한 타입의 키를 사용하고 읽기/쓰기 작업 시 방어적 복제를 수행함으로써, Fluo는 리플렉션이 과도한 시스템에서 흔히 발생하는 런타임 에러 부류 전체를 제거합니다.
+메타데이터는 그 검색이 신뢰할 수 있을 때만 유용합니다. Fluo는 모든 메타데이터 레코드(예: `ModuleMetadata`, `ClassDiMetadata`, `RouteMetadata`)에 대해 엄격한 인터페이스를 정의하여 타입 안전성을 보장합니다. 많은 레코드는 메타데이터가 설명하는 클래스나 객체와 함께 가비지 컬렉션될 수 있도록 하여 메모리 누수를 방지하는 `WeakMap` 기반 저장소에 저장됩니다. Hot path에 따라 Fluo는 저장소 경계의 방어적 복제 또는 호출자가 immutable로 취급해야 하는 frozen snapshot을 사용합니다. 두 전략 모두 리플렉션이 과도한 시스템에서 흔히 발생하는 런타임 에러 부류 전체를 제거합니다.
 
 `path:packages/core/src/metadata/store.ts:16-33`
 ```typescript
@@ -129,37 +129,40 @@ export function createClonedWeakMapStore<TKey extends object, TValue>(
 }
 ```
 
-`createClonedWeakMapStore` 유틸리티는 Fluo의 불변 메타데이터 관리의 원동력입니다. `cloneValue` 루틴을 사용함으로써 Fluo는 저장소에서 검색된 모든 메타데이터가 복사본임을 보장하며, 중앙 메타데이터 레지스트리의 의도하지 않은 수정을 방지합니다. 이는 프레임워크의 서로 다른 부분에서 동일한 메타데이터를 읽고 해석할 수 있는 멀티 모듈 환경에서 매우 중요합니다.
+`createClonedWeakMapStore` 유틸리티는 읽기와 쓰기 양쪽에서 방어적 복제가 필요한 메타데이터 계열에 계속 유용합니다. `cloneValue` 루틴을 사용함으로써 이러한 저장소는 저장소에서 검색된 모든 메타데이터가 복사본임을 보장하며, 중앙 메타데이터 레지스트리의 의도하지 않은 수정을 방지합니다. 이는 프레임워크의 서로 다른 부분에서 동일한 메타데이터를 읽고 해석할 수 있는 멀티 모듈 환경에서 매우 중요합니다.
 
-복제 로직은 얕은 복사(shallow copy)가 아닌 깊은 복사(deep copy)에 가까운 방식으로 동작하여, 중첩된 객체나 배열 형태의 메타데이터도 안정적으로 보호합니다. 이는 복잡한 설정 객체를 다루는 `@Controller`나 `@Module` 데코레이터에서 특히 유용합니다. 특정 모듈에서 가져온 메타데이터를 수정하더라도 원본 레지스트리나 다른 모듈의 해결 결과에 영향을 주지 않도록 보장하기 때문입니다. 이러한 격리는 대규모 협업 프로젝트에서 예기치 않은 부수 효과를 차단하는 강한 도구가 됩니다.
+복제 로직은 clone-on-read 저장소를 사용하는 메타데이터 계열에서 얕은 복사(shallow copy)가 아닌 깊은 복사(deep copy)에 가까운 방식으로 동작하여, 중첩된 객체나 배열 형태의 메타데이터도 안정적으로 보호합니다. `getModuleMetadata()`, `getOwnClassDiMetadata()`, `getInheritedClassDiMetadata()`, `getClassDiMetadata()` 같은 hot-path metadata reader는 이와 다르지만 마찬가지로 명시적인 계약을 사용합니다. 이들은 frozen snapshot을 반환하며 write 사이에는 같은 object reference를 재사용할 수 있습니다. 따라서 호출자는 반환된 객체, collection 필드, module provider descriptor wrapper와 middleware route-config wrapper(`routes` 배열 포함)를 immutable로 취급해야 합니다. 이 방식은 DI와 module graph hot path에서 반복 allocation을 피하면서도 호출자 쪽의 우발적 mutation을 차단합니다.
 
 `WeakMap`의 사용은 장기 실행 프로세스에서의 성능 및 메모리 관리에 특히 중요합니다. 표준 `Map`이나 전역 객체와 달리, `WeakMap`은 키(클래스 또는 객체)가 가비지 컬렉션되는 것을 방지하지 않습니다. 즉, 모듈이나 컨트롤러가 동적으로 언로드되면 관련 메타데이터도 엔진에 의해 자동으로 정리되어 Fluo의 메모리 사용량이 시간이 지나도 가볍게 유지되도록 보장합니다.
 
 이는 특히 서버리스 환경이나 핫 리로딩이 빈번하게 일어나는 개발 환경에서 강력한 이점을 제공합니다. 불필요한 메타데이터가 메모리에 쌓이는 것을 방지함으로써 시스템의 전체적인 예측 가능성을 높이고, 개발자가 수동으로 메모리를 관리해야 하는 부담을 덜어줍니다. Fluo는 이처럼 언어의 로우레벨 기능을 영리하게 활용하여 개발자에게는 편의성을, 런타임에는 안정성을 제공합니다.
 
-타입 안전성은 TypeScript 제네릭과 런타임 검증의 조합을 통해 달성됩니다. Fluo의 모든 메타데이터 저장소는 특정 타입과 연결되어 있으며, 우리의 내부 헬퍼(`path:packages/core/src/metadata/module.ts:60-62`의 `getModuleMetadata` 등)는 프레임워크의 나머지 부분에 강력한 타입의 API를 제공하기 위해 이러한 타입을 사용합니다. 이를 통해 DI 컨테이너나 HTTP 런타임이 메타데이터를 읽을 때 어떤 형태를 기대해야 할지 정확히 알 수 있어, 방어적인 널 체크나 타입 캐스팅의 필요성이 줄어듭니다.
+타입 안전성은 TypeScript 제네릭, frozen read contract, 런타임 검증의 조합을 통해 달성됩니다. Fluo의 모든 메타데이터 저장소는 특정 타입과 연결되어 있으며, 우리의 내부 헬퍼(`path:packages/core/src/metadata/module.ts:123-125`의 `getModuleMetadata` 등)는 프레임워크의 나머지 부분에 강력한 타입의 API를 제공하기 위해 이러한 타입을 사용합니다. 이를 통해 DI 컨테이너나 HTTP 런타임이 메타데이터를 읽을 때 어떤 형태를 기대해야 할지 정확히 알 수 있어, 방어적인 널 체크나 타입 캐스팅의 필요성이 줄어듭니다.
 
 모듈 메타데이터 헬퍼도 같은 저장소 계약 위에 올라갑니다.
 
-`path:packages/core/src/metadata/module.ts:43-62`
+`path:packages/core/src/metadata/module.ts:103-125`
 ```typescript
 export function defineModuleMetadata(target: Function, metadata: ModuleMetadata): void {
-  moduleMetadataStore.update(target, (existing) => ({
+  const existing = moduleMetadataStore.get(target);
+
+  moduleMetadataStore.set(target, freezeModuleMetadata(cloneModuleMetadata({
     controllers: metadata.controllers ?? existing?.controllers,
     exports: metadata.exports ?? existing?.exports,
     global: metadata.global !== undefined ? metadata.global : existing?.global,
     imports: metadata.imports ?? existing?.imports,
     middleware: metadata.middleware ?? existing?.middleware,
     providers: metadata.providers ?? existing?.providers,
-  }));
+  })));
+  moduleMetadataVersion += 1;
 }
 
 export function getModuleMetadata(target: Function): ModuleMetadata | undefined {
-  return moduleMetadataStore.read(target);
+  return moduleMetadataStore.get(target);
 }
 ```
 
-`defineModuleMetadata`는 부분 데코레이터 패스가 기존 필드를 지우지 않도록 `existing` 값을 보존하고, `getModuleMetadata`는 앞의 복제 저장소의 `read()` 경로를 그대로 사용합니다. 따라서 모듈 그래프가 읽는 값은 타입이 정해져 있을 뿐 아니라 호출자가 원본 저장 값을 직접 수정하지 못하는 복사본입니다.
+`defineModuleMetadata`는 부분 데코레이터 패스가 기존 필드를 지우지 않도록 `existing` 값을 보존합니다. 그런 다음 들어온 payload를 clone하고, 결과 module metadata snapshot을 freeze하여 저장한 뒤 write version을 올립니다. `getModuleMetadata`는 저장된 frozen snapshot을 직접 반환합니다. 따라서 module graph가 읽는 값은 타입이 정해져 있고 immutable이며 allocation에 유리합니다. 이는 mutable copy가 아닙니다. 호출자에게 보이는 규칙은 반환된 metadata를 read-only로 취급하고, snapshot을 직접 수정하는 대신 metadata write 이후 새 값을 다시 요청하는 것입니다.
 
 고급 시나리오에서는 메타데이터가 저장되기 전에 Zod와 유사한 내부 검증기를 통해 메타데이터의 형태를 확인하는 "스키마 기반" 메타데이터 검증도 사용합니다. 이는 잘못된 구성이 부팅 초기 단계에서 모듈 그래프를 오염시키는 것을 방지하며, 잘못 설정된 데코레이터를 직접 가리키는 명확한 에러 메시지를 제공합니다. 이러한 스키마 검증은 런타임 오버헤드를 최소화하기 위해 개발 모드에서만 선택적으로 활성화되거나, 빌드 타임 사전 컴파일 단계에서 미리 수행되도록 설계되어 성능과 안전성 사이의 최적의 균형점을 찾습니다.
 

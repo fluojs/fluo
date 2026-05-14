@@ -314,7 +314,7 @@ static forRoot(options?: ConfigModuleOptions): new () => ConfigModule {
 ## 7.3 Async module helpers are factory providers with memoized option resolution
 비동기 사례는 많은 프레임워크가 불투명해지는 지점입니다. 많은 경우 복잡한 상태 머신 뒤에 "어떻게"를 숨기곤 합니다. 하지만 Fluo는 여기서도 의외로 직접적입니다. async module helper도 여전히 module factory이며, 차이는 options provider 중 하나가 실행이 지연되고 결과가 메모이제이션(memoization)되는 **factory provider**라는 점뿐입니다.
 
-공유 계약은 `path:packages/core/src/types.ts:29-37`의 `AsyncModuleOptions<T>`에서 옵니다. 필드는 의존성 해결을 위한 `inject?: Token[]`와 실제 구성 로직을 담은 `useFactory`뿐입니다.
+공유 계약은 `path:packages/core/src/types.ts:64-67`의 `AsyncModuleOptions<T>`에서 옵니다. 필드는 의존성 해결을 위한 `inject?: InjectionToken[]`와 실제 구성 로직을 담은 `useFactory`뿐입니다. `InjectionToken`은 plain `Token` 값에 더해 문서화된 `forwardRef(...)`와 `optional(...)` wrapper를 포함하므로, async module factory는 `@Inject(...)`와 provider `inject` 배열이 받는 것과 같은 명시적 injection entry에 의존할 수 있습니다.
 
 `EmailModule.forRootAsync()`는 아주 읽기 좋은 명시적 메모이제이션 예시입니다. `path:packages/email/src/module.ts:114-138`은 user factory를 로컬 변수에 저장하고, `cachedResult` promise를 만들고, 처음 한 번만 promise를 초기화하는 `memoizedFactory(...deps)`를 정의한 뒤, `EMAIL_OPTIONS`에 대한 singleton factory provider를 등록합니다.
 
