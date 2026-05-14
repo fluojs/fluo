@@ -33,6 +33,11 @@ permission:
     'git status*': allow
     'git diff*': allow
     'git log*': allow
+    'git ls-files*': allow
+    # Prefer git ls-files for repeatable package file lists.
+    # Add exact find commands only for observed safe read-only prompts.
+    'find /Users/tilda-frontend-jinho/Documents/fluo/packages/platform-fastify -type f | sort': allow
+    'sort': allow
     'gh pr view*': allow
     'gh pr diff*': allow
     'gh pr checks*': allow
@@ -85,6 +90,12 @@ permission:
     '*': ask
     'git status*': allow
     'git diff*': allow
+    'git log*': allow
+    'git ls-files*': allow
+    # Prefer git ls-files for repeatable package file lists.
+    # Add exact find commands only for observed safe read-only prompts.
+    'find /Users/tilda-frontend-jinho/Documents/fluo/packages/platform-fastify -type f | sort': allow
+    'sort': allow
     'git worktree*': allow
     'pnpm test*': allow
     'pnpm typecheck*': allow
@@ -136,3 +147,11 @@ Rules:
 - Use `gh issue view*` for linked issue context collection; this covers commands such as `gh issue view 1876 --json number,title,state,body,url,labels`.
 - Keep mutating `gh` commands explicitly denied so agents fail closed instead of prompting for state-changing actions.
 - Do not allow `gh pr merge*`, `gh pr review*`, `gh issue comment*`, `gh issue close*`, `gh run cancel*`, or label mutation commands in reviewer/auditor/guardian agents.
+
+## Read-only shell discovery policy
+
+- Prefer OpenCode `read`, `grep`, `glob`, and `list` tools when available.
+- Prefer `git ls-files <path> | sort` over `find` for repeatable repository file lists.
+- Do not add wildcard-tailed `find` allow patterns such as `find * -type f*`; they can also match `-delete`, `-exec`, redirection, or `xargs` tails.
+- Add exact `find <absolute-path> -type f | sort` allow patterns only for observed safe read-only prompts.
+- Do not add broad `find *`, shell redirection, `xargs`, `-delete`, or `-exec` patterns to reviewer/auditor/guardian agents.
