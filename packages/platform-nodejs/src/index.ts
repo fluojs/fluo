@@ -75,7 +75,7 @@ export const bootstrapNodejsApplication: typeof bootstrapNodeApplication = boots
  * Use this factory for adapter-first startup through `fluoFactory.create(...)` when the application
  * should run directly on Node's built-in `http` or `https` server primitives.
  *
- * @param options Transport-level Node.js settings such as port, retries, multipart, and HTTPS options.
+ * @param options Transport-level Node.js settings such as port, retries, body-size limits, and HTTPS options.
  * @returns The Node.js HTTP adapter instance used by the Fluo runtime.
  *
  * @example
