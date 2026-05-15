@@ -74,6 +74,14 @@ function determineMiddlewareRequirement(
   return moduleMiddleware !== undefined && moduleMiddleware.length > 0;
 }
 
+/**
+ * Compiles the conservative fast-path eligibility decision for one handler.
+ *
+ * @param handler Handler descriptor being analyzed.
+ * @param options Dispatcher options that can introduce full-path requirements.
+ * @param adapter Human-readable adapter label used in observability metadata.
+ * @returns The compiled eligibility metadata and boolean eligibility flag.
+ */
 export function compileFastPathEligibility(
   handler: HandlerDescriptor,
   options: CreateDispatcherOptions,
@@ -87,6 +95,7 @@ export function compileFastPathEligibility(
   const hasRequestScopedDI = determineRequestScopeRequirement(handler, options);
   const hasMiddleware = determineMiddlewareRequirement(handler, options.appMiddleware ?? []);
   const hasContentNegotiation = options.contentNegotiation?.formatters !== undefined && options.contentNegotiation.formatters.length > 0;
+  const isSseRoute = handler.route.produces?.some((mediaType) => mediaType.toLowerCase().startsWith('text/event-stream')) === true;
 
   const eligibility: FastPathEligibility = {
     adapter,
@@ -129,6 +138,9 @@ export function compileFastPathEligibility(
   if (hasContentNegotiation) {
     blockingReasons.push('content negotiation');
   }
+  if (isSseRoute) {
+    blockingReasons.push('SSE streaming');
+  }
 
   const isEligible = blockingReasons.length === 0;
 
@@ -141,6 +153,12 @@ export function compileFastPathEligibility(
   return { eligibility, isEligible };
 }
 
+/**
+ * Reads fast-path eligibility metadata attached to a handler descriptor.
+ *
+ * @param handler Handler descriptor previously analyzed by the dispatcher.
+ * @returns The attached eligibility metadata, when present.
+ */
 export function getHandlerFastPathEligibility(
   handler: HandlerDescriptor,
 ): FastPathEligibility | undefined {
@@ -149,6 +167,12 @@ export function getHandlerFastPathEligibility(
   ];
 }
 
+/**
+ * Attaches fast-path eligibility metadata to a handler descriptor.
+ *
+ * @param handler Handler descriptor to annotate.
+ * @param eligibility Eligibility metadata to expose through dispatcher observability.
+ */
 export function setHandlerFastPathEligibility(
   handler: HandlerDescriptor,
   eligibility: FastPathEligibility,
@@ -157,11 +181,13 @@ export function setHandlerFastPathEligibility(
     eligibility;
 }
 
+/** Options shared by fast-path executor helpers. */
 export interface FastPathExecutorOptions {
   binder?: Binder;
   rootContainer: Container;
 }
 
+/** Result returned after attempting fast-path handler execution. */
 export interface FastPathExecutionResult {
   executed: boolean;
   result?: unknown;

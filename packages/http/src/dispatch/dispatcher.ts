@@ -2,7 +2,7 @@ import type { Token } from '@fluojs/core';
 import type { Container, RequestScopeContainer } from '@fluojs/di';
 import { getCompiledDtoBindingPlan } from '../adapters/dto-binding-plan.js';
 import { createRequestContext, runWithRequestContext } from '../context/request-context.js';
-import { SseResponse } from '../context/sse.js';
+import { SseResponse, isSseMessage, type SseSendOptions } from '../context/sse.js';
 import { RequestAbortedError } from '../errors.js';
 import { runGuardChain } from '../guards.js';
 import { runInterceptorChain } from '../interceptors.js';
@@ -15,6 +15,7 @@ import type {
   DispatcherLogger,
   FrameworkRequest,
   FrameworkResponse,
+  FrameworkResponseStream,
   GuardContext,
   GuardLike,
   HandlerDescriptor,
@@ -445,6 +446,164 @@ function isRequestAborted(request: FrameworkRequest): boolean {
   return request.isAborted?.() ?? request.signal?.aborted === true;
 }
 
+function isSseRoute(handler: HandlerDescriptor): boolean {
+  return handler.route.produces?.some((mediaType) => mediaType.toLowerCase().startsWith('text/event-stream')) === true;
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return typeof value === 'object'
+    && value !== null
+    && Symbol.asyncIterator in value
+    && typeof value[Symbol.asyncIterator] === 'function';
+}
+
+function createAbortPromise(request: FrameworkRequest): { promise: Promise<'aborted'>; cleanup: () => void } | undefined {
+  if (!request.signal) {
+    return undefined;
+  }
+
+  if (request.signal.aborted) {
+    return { cleanup: () => undefined, promise: Promise.resolve('aborted') };
+  }
+
+  let listener: (() => void) | undefined;
+  const promise = new Promise<'aborted'>((resolve) => {
+    listener = () => resolve('aborted');
+    request.signal?.addEventListener('abort', listener, { once: true });
+  });
+
+  return {
+    cleanup: () => {
+      if (listener) {
+        request.signal?.removeEventListener('abort', listener);
+      }
+    },
+    promise,
+  };
+}
+
+function createStreamClosePromise(stream: FrameworkResponseStream): { promise: Promise<'aborted'>; cleanup: () => void } | undefined {
+  if (stream.closed) {
+    return { cleanup: () => undefined, promise: Promise.resolve('aborted') };
+  }
+
+  if (!stream.onClose) {
+    return undefined;
+  }
+
+  let cleanup: (() => void) | undefined;
+  const promise = new Promise<'aborted'>((resolve) => {
+    cleanup = stream.onClose?.(() => resolve('aborted')) ?? undefined;
+  });
+
+  return {
+    cleanup: () => {
+      cleanup?.();
+    },
+    promise,
+  };
+}
+
+function createManagedSseStopPromise(
+  request: FrameworkRequest,
+  stream: FrameworkResponseStream,
+): { promise: Promise<'aborted'>; cleanup: () => void } | undefined {
+  const stops = [createAbortPromise(request), createStreamClosePromise(stream)]
+    .filter((entry): entry is { promise: Promise<'aborted'>; cleanup: () => void } => entry !== undefined);
+
+  if (stops.length === 0) {
+    return undefined;
+  }
+
+  return {
+    cleanup: () => {
+      for (const stop of stops) {
+        stop.cleanup();
+      }
+    },
+    promise: Promise.race(stops.map((stop) => stop.promise)),
+  };
+}
+
+function resolveManagedSseFrame(value: unknown): { data: unknown; options: SseSendOptions } {
+  if (isSseMessage(value)) {
+    const { data, event, id, retry } = value;
+    return {
+      data,
+      options: { event, id, retry },
+    };
+  }
+
+  return { data: value, options: {} };
+}
+
+async function closeAsyncIterator(iterator: AsyncIterator<unknown>): Promise<void> {
+  await iterator.return?.();
+}
+
+async function readManagedSseNext(
+  request: FrameworkRequest,
+  stream: FrameworkResponseStream,
+  iterator: AsyncIterator<unknown>,
+): Promise<IteratorResult<unknown> | 'aborted'> {
+  const abort = createManagedSseStopPromise(request, stream);
+
+  if (!abort) {
+    return iterator.next();
+  }
+
+  try {
+    return await Promise.race([iterator.next(), abort.promise]);
+  } finally {
+    abort.cleanup();
+  }
+}
+
+async function writeManagedSseIterable(
+  handler: HandlerDescriptor,
+  requestContext: RequestContext,
+  source: AsyncIterable<unknown>,
+): Promise<boolean> {
+  if (!isSseRoute(handler)) {
+    return false;
+  }
+
+  const sse = new SseResponse(requestContext);
+  const stream = requestContext.response.stream;
+
+  if (!stream) {
+    return true;
+  }
+
+  const iterator = source[Symbol.asyncIterator]();
+
+  try {
+    while (!isRequestAborted(requestContext.request)) {
+      const next = await readManagedSseNext(requestContext.request, stream, iterator);
+
+      if (next === 'aborted') {
+        await closeAsyncIterator(iterator);
+        break;
+      }
+
+      if (next.done === true) {
+        break;
+      }
+
+      const frame = resolveManagedSseFrame(next.value);
+      const accepted = sse.send(frame.data, frame.options);
+
+      if (!accepted) {
+        await requestContext.response.stream?.waitForDrain?.();
+      }
+    }
+  } finally {
+    sse.close();
+  }
+
+  return true;
+}
+
 function resolveFastPathHandlerRuntimeCache(
   handler: HandlerDescriptor,
   cache: WeakMap<HandlerDescriptor, FastPathHandlerRuntimeCache>,
@@ -588,7 +747,9 @@ async function dispatchMatchedHandler(
 
   ensureRequestNotAborted(requestContext.request);
 
-  if (!(result instanceof SseResponse) && !requestContext.response.committed) {
+  if (isAsyncIterable(result) && await writeManagedSseIterable(handler, requestContext, result)) {
+    // Managed SSE streams are already committed and closed by writeManagedSseIterable.
+  } else if (!(result instanceof SseResponse) && !requestContext.response.committed) {
     await writeSuccessResponse(handler, requestContext.request, requestContext.response, result, contentNegotiation);
   }
 

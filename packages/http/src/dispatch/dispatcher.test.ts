@@ -13,6 +13,7 @@ import type {
   Next,
   RequestContext,
   RequestObservationContext,
+  FrameworkResponseStream,
 } from '../index.js';
 import {
   type assertRequestContext,
@@ -36,6 +37,7 @@ import {
   Produces,
   Redirect,
   RequestDto,
+  Sse,
   SseResponse,
   UseGuards,
   UseInterceptors,
@@ -66,6 +68,61 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
     statusCode: undefined,
     statusSet: false,
   };
+}
+
+interface TestSseStream extends FrameworkResponseStream {
+  closeCalls: number;
+  drainCalls: number;
+  flushCalls: number;
+  writes: Array<string | Uint8Array>;
+  emitClose(): void;
+}
+
+function createStreamingResponse(options: { backpressure?: boolean } = {}): FrameworkResponse & { body?: unknown; stream: TestSseStream } {
+  const closeListeners: Array<() => void> = [];
+  let closed = false;
+  const response = createResponse() as FrameworkResponse & { body?: unknown; stream: TestSseStream };
+
+  response.stream = {
+    close() {
+      this.closeCalls += 1;
+      closed = true;
+    },
+    closeCalls: 0,
+    drainCalls: 0,
+    emitClose() {
+      for (const listener of [...closeListeners]) {
+        listener();
+      }
+    },
+    flush() {
+      this.flushCalls += 1;
+    },
+    flushCalls: 0,
+    get closed() {
+      return closed;
+    },
+    onClose(listener) {
+      closeListeners.push(listener);
+
+      return () => {
+        const index = closeListeners.indexOf(listener);
+        if (index >= 0) {
+          closeListeners.splice(index, 1);
+        }
+      };
+    },
+    async waitForDrain() {
+      this.drainCalls += 1;
+    },
+    write(chunk) {
+      this.writes.push(chunk);
+      return options.backpressure !== true;
+    },
+    writes: [],
+  };
+
+  return response;
 }
 
 function createFastPathResponse(): FrameworkResponse & {
@@ -1592,6 +1649,202 @@ describe('dispatcher runtime', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers['Content-Type']).toBe('text/event-stream; charset=utf-8');
     expect(writes).toEqual(['event: ready\nid: evt-1\ndata: {"ok":true}\n\n']);
+  });
+
+  it('streams AsyncIterable values returned from an @Sse handler as SSE frames', async () => {
+    @Controller('/managed-events')
+    class ManagedEventsController {
+      @Sse('/')
+      async *stream() {
+        yield { data: { ok: true }, event: 'ready', id: 'evt-1', retry: 1000 };
+        yield 'plain-message';
+      }
+    }
+
+    const root = new Container().register(ManagedEventsController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedEventsController }]),
+      rootContainer: root,
+    });
+    const response = createStreamingResponse();
+
+    await dispatcher.dispatch(createRequest('/managed-events', 'GET'), response);
+
+    expect(response.body).toBeUndefined();
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/event-stream; charset=utf-8');
+    expect(response.stream.writes).toEqual([
+      'event: ready\nid: evt-1\nretry: 1000\ndata: {"ok":true}\n\n',
+      'data: plain-message\n\n',
+    ]);
+    expect(response.stream.closeCalls).toBe(1);
+  });
+
+  it('stops consuming managed SSE AsyncIterable sources when the request aborts', async () => {
+    let cleanupCalled = false;
+    const controller = new AbortController();
+
+    @Controller('/managed-abort')
+    class ManagedAbortController {
+      @Sse('/')
+      async *stream() {
+        try {
+          yield 'first';
+          controller.abort(new Error('client disconnected'));
+          yield 'after-abort';
+        } finally {
+          cleanupCalled = true;
+        }
+      }
+    }
+
+    const root = new Container().register(ManagedAbortController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedAbortController }]),
+      rootContainer: root,
+    });
+    const request = createRequest('/managed-abort', 'GET');
+    request.signal = controller.signal;
+    const response = createStreamingResponse();
+
+    await dispatcher.dispatch(request, response);
+
+    expect(response.stream.writes).toEqual(['data: first\n\n']);
+    expect(response.stream.closeCalls).toBe(1);
+    expect(cleanupCalled).toBe(true);
+  });
+
+  it('stops consuming managed SSE AsyncIterable sources when the response stream closes', async () => {
+    let cleanupCalled = false;
+    let waitingForSecondRead = false;
+    const never = new Promise<IteratorResult<unknown>>(() => undefined);
+    const source: AsyncIterable<unknown> = {
+      [Symbol.asyncIterator]() {
+        let readCount = 0;
+
+        return {
+          next() {
+            readCount += 1;
+
+            if (readCount === 1) {
+              return Promise.resolve({ done: false, value: 'first' });
+            }
+
+            waitingForSecondRead = true;
+            return never;
+          },
+          return() {
+            cleanupCalled = true;
+            return Promise.resolve({ done: true, value: undefined });
+          },
+        };
+      },
+    };
+
+    @Controller('/managed-disconnect')
+    class ManagedDisconnectController {
+      @Sse('/')
+      stream() {
+        return source;
+      }
+    }
+
+    const root = new Container().register(ManagedDisconnectController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedDisconnectController }]),
+      rootContainer: root,
+    });
+    const response = createStreamingResponse();
+
+    const dispatch = dispatcher.dispatch(createRequest('/managed-disconnect', 'GET'), response);
+    await vi.waitFor(() => {
+      expect(waitingForSecondRead).toBe(true);
+    });
+    response.stream.emitClose();
+    await dispatch;
+
+    expect(response.stream.writes).toEqual(['data: first\n\n']);
+    expect(response.stream.closeCalls).toBe(1);
+    expect(cleanupCalled).toBe(true);
+  });
+
+  it('waits for drain when managed SSE writes report backpressure', async () => {
+    @Controller('/managed-backpressure')
+    class ManagedBackpressureController {
+      @Sse('/')
+      async *stream() {
+        yield 'one';
+        yield 'two';
+      }
+    }
+
+    const root = new Container().register(ManagedBackpressureController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedBackpressureController }]),
+      rootContainer: root,
+    });
+    const response = createStreamingResponse({ backpressure: true });
+
+    await dispatcher.dispatch(createRequest('/managed-backpressure', 'GET'), response);
+
+    expect(response.stream.writes).toEqual(['data: one\n\n', 'data: two\n\n']);
+    expect(response.stream.drainCalls).toBe(2);
+  });
+
+  it('closes managed SSE streams and notifies error observers when sources throw after commit', async () => {
+    const events: string[] = [];
+    const observer = {
+      onRequestError(_context: RequestObservationContext, error: unknown) {
+        events.push(error instanceof Error ? error.message : 'unknown');
+      },
+    };
+
+    @Controller('/managed-error')
+    class ManagedErrorController {
+      @Sse('/')
+      async *stream() {
+        yield 'first';
+        throw new Error('source failed');
+      }
+    }
+
+    const root = new Container().register(ManagedErrorController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedErrorController }]),
+      observers: [observer],
+      rootContainer: root,
+    });
+    const response = createStreamingResponse();
+
+    await dispatcher.dispatch(createRequest('/managed-error', 'GET'), response);
+
+    expect(response.stream.writes).toEqual(['data: first\n\n']);
+    expect(response.stream.closeCalls).toBe(1);
+    expect(events).toEqual(['source failed']);
+    expect(response.body).toBeUndefined();
+  });
+
+  it('keeps @Sse handlers on the full path instead of the simple JSON fast path', async () => {
+    @Controller('/managed-fast-path')
+    class ManagedFastPathController {
+      @Sse('/')
+      async *stream() {
+        yield { ok: true };
+      }
+    }
+
+    const root = new Container().register(ManagedFastPathController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedFastPathController }]),
+      rootContainer: root,
+    });
+    const response = createStreamingResponse();
+
+    await dispatcher.dispatch(createRequest('/managed-fast-path', 'GET'), response);
+
+    expect(response.stream.writes).toEqual(['data: {"ok":true}\n\n']);
+    expect(getDispatcherFastPathStats(dispatcher)?.fastPathRoutes).toBe(0);
+    expect(getDispatcherFastPathStats(dispatcher)?.fullPathRoutes).toBe(1);
   });
 
   it('dispatches a GET route through middleware, guards, interceptors, and controller', async () => {
