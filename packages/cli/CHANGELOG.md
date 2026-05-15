@@ -1,6 +1,6 @@
 # @fluojs/cli
 
-## 1.0.2
+## 1.0.3
 
 ### Patch Changes
 
@@ -24,7 +24,7 @@
 
 - Updated dependencies [[`92636ee`](https://github.com/fluojs/fluo/commit/92636eee23991859a04f4590871179508dee12fb), [`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2)]:
   - @fluojs/studio@1.0.1
-  - @fluojs/runtime@1.0.1
+  - @fluojs/runtime@1.1.0
 
 ## 1.0.0
 

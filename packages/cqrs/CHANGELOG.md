@@ -1,5 +1,18 @@
 # @fluojs/cqrs
 
+## 1.1.0
+
+### Minor Changes
+
+- [#1870](https://github.com/fluojs/fluo/pull/1870) [`7edcd4e`](https://github.com/fluojs/fluo/commit/7edcd4ed79be3f00676a61cbcdb6816ec5fedaa9) Thanks [@ayden94](https://github.com/ayden94)! - Reject CQRS command, query, event, and direct saga dispatch after shutdown has completed, preventing stopped applications from starting new local handler or saga work. Also detect aliased duplicate command/query handlers by provider token while preserving event-handler and saga fan-out for aliased providers.
+
+### Patch Changes
+
+- Updated dependencies [[`01ea60e`](https://github.com/fluojs/fluo/commit/01ea60eff7a8d3b30509aff8aaf21649178a9fad), [`d23049a`](https://github.com/fluojs/fluo/commit/d23049a59a49bdaea110a5f542ae18606c782db8), [`3aa93d9`](https://github.com/fluojs/fluo/commit/3aa93d9bbea28342f225b727f2ec0640acdf7986)]:
+  - @fluojs/di@1.0.2
+  - @fluojs/runtime@1.1.0
+  - @fluojs/core@1.0.2
+
 ## 1.0.0
 
 ### Minor Changes
@@ -50,7 +63,6 @@
 - Updated dependencies [35f60fd]
 - Updated dependencies [dc8fff1]
 - Updated dependencies [d3504c6]
-  - @fluojs/event-bus@1.0.0
   - @fluojs/core@1.0.0
   - @fluojs/runtime@1.0.0
   - @fluojs/di@1.0.0

@@ -1,5 +1,18 @@
 # @fluojs/slack
 
+## 1.1.0
+
+### Minor Changes
+
+- [#1869](https://github.com/fluojs/fluo/pull/1869) [`41b2e38`](https://github.com/fluojs/fluo/commit/41b2e3862380f8e823e542b2e2c0279b7e4e87c8) Thanks [@ayden94](https://github.com/ayden94)! - Require `fetch` when creating the built-in Slack webhook transport so delivery uses an explicit runtime boundary, and align the public API documentation with the exported option/template contracts.
+
+### Patch Changes
+
+- Updated dependencies [[`01ea60e`](https://github.com/fluojs/fluo/commit/01ea60eff7a8d3b30509aff8aaf21649178a9fad), [`d23049a`](https://github.com/fluojs/fluo/commit/d23049a59a49bdaea110a5f542ae18606c782db8), [`3aa93d9`](https://github.com/fluojs/fluo/commit/3aa93d9bbea28342f225b727f2ec0640acdf7986)]:
+  - @fluojs/di@1.0.2
+  - @fluojs/runtime@1.1.0
+  - @fluojs/core@1.0.2
+
 ## 1.0.0
 
 ### Minor Changes
@@ -52,7 +65,6 @@
   - @fluojs/core@1.0.0
   - @fluojs/runtime@1.0.0
   - @fluojs/di@1.0.0
-  - @fluojs/notifications@1.0.0
 
 ## 1.0.0-beta.5
 
