@@ -564,6 +564,108 @@ describe('Container', () => {
       expect(afterOverride.config).toBe('after-override');
     });
 
+    it('invalidates cached singleton consumers when an already-resolved dependency is overridden', async () => {
+      const CONFIG = Symbol('Config');
+
+      class Consumer {
+        constructor(readonly config: string) {}
+      }
+
+      const container = new Container().register(
+        { provide: CONFIG, useValue: 'before-override' },
+        { provide: Consumer, useClass: Consumer, inject: [CONFIG] },
+      );
+
+      const beforeOverride = await container.resolve<Consumer>(Consumer);
+
+      container.override({ provide: CONFIG, useValue: 'after-override' });
+
+      const afterOverride = await container.resolve<Consumer>(Consumer);
+
+      expect(beforeOverride.config).toBe('before-override');
+      expect(afterOverride.config).toBe('after-override');
+      expect(afterOverride).not.toBe(beforeOverride);
+    });
+
+    it('invalidates cached singleton consumers through alias dependencies when a target is overridden', async () => {
+      const CONFIG = Symbol('Config');
+      const CONFIG_ALIAS = Symbol('ConfigAlias');
+
+      class Consumer {
+        constructor(readonly config: string) {}
+      }
+
+      const container = new Container().register(
+        { provide: CONFIG, useValue: 'before-override' },
+        { provide: CONFIG_ALIAS, useExisting: CONFIG },
+        { provide: Consumer, useClass: Consumer, inject: [CONFIG_ALIAS] },
+      );
+
+      const beforeOverride = await container.resolve<Consumer>(Consumer);
+
+      container.override({ provide: CONFIG, useValue: 'after-override' });
+
+      const afterOverride = await container.resolve<Consumer>(Consumer);
+
+      expect(beforeOverride.config).toBe('before-override');
+      expect(afterOverride.config).toBe('after-override');
+      expect(afterOverride).not.toBe(beforeOverride);
+    });
+
+    it('invalidates cached singleton consumers through multi-provider dependencies when a target is overridden', async () => {
+      const CONFIG = Symbol('Config');
+      const PLUGINS = Symbol('Plugins');
+
+      class Plugin {
+        constructor(readonly config: string) {}
+      }
+
+      class Consumer {
+        constructor(readonly plugins: Plugin[]) {}
+      }
+
+      const container = new Container().register(
+        { provide: CONFIG, useValue: 'before-override' },
+        { provide: PLUGINS, useClass: Plugin, inject: [CONFIG], multi: true },
+        { provide: Consumer, useClass: Consumer, inject: [PLUGINS] },
+      );
+
+      const beforeOverride = await container.resolve<Consumer>(Consumer);
+
+      container.override({ provide: CONFIG, useValue: 'after-override' });
+
+      const afterOverride = await container.resolve<Consumer>(Consumer);
+
+      expect(beforeOverride.plugins[0]?.config).toBe('before-override');
+      expect(afterOverride.plugins[0]?.config).toBe('after-override');
+      expect(afterOverride).not.toBe(beforeOverride);
+      expect(afterOverride.plugins[0]).not.toBe(beforeOverride.plugins[0]);
+    });
+
+    it('invalidates materialized request-scope consumers when a parent dependency is overridden', async () => {
+      const CONFIG = Symbol('Config');
+
+      class RequestConsumer {
+        constructor(readonly config: string) {}
+      }
+
+      const root = new Container().register(
+        { provide: CONFIG, useValue: 'before-override' },
+        { provide: RequestConsumer, scope: Scope.REQUEST, useClass: RequestConsumer, inject: [CONFIG] },
+      );
+      const requestScope = root.createRequestScope();
+
+      const beforeOverride = await requestScope.resolve<RequestConsumer>(RequestConsumer);
+
+      root.override({ provide: CONFIG, useValue: 'after-override' });
+
+      const afterOverride = await requestScope.resolve<RequestConsumer>(RequestConsumer);
+
+      expect(beforeOverride.config).toBe('before-override');
+      expect(afterOverride.config).toBe('after-override');
+      expect(afterOverride).not.toBe(beforeOverride);
+    });
+
     it('replaces existing multi providers when overriding a token', async () => {
       const token = Symbol('plugins');
       const container = new Container().register(
@@ -1576,6 +1678,33 @@ describe('Container', () => {
       await container.dispose();
 
       expect(events).toEqual(['first', 'second']);
+    });
+
+    it('disposes stale singleton consumers invalidated by dependency overrides exactly once', async () => {
+      const events: string[] = [];
+      const CONFIG = Symbol('DisposableConsumerConfig');
+
+      class Consumer {
+        constructor(readonly config: string) {}
+
+        onDestroy() {
+          events.push(`consumer:${this.config}`);
+        }
+      }
+
+      const container = new Container().register(
+        { provide: CONFIG, useValue: 'before-override' },
+        { provide: Consumer, useClass: Consumer, inject: [CONFIG] },
+      );
+
+      await container.resolve(Consumer);
+
+      container.override({ provide: CONFIG, useValue: 'after-override' });
+      await Promise.resolve();
+      await container.resolve(Consumer);
+      await container.dispose();
+
+      expect(events).toEqual(['consumer:before-override', 'consumer:after-override']);
     });
 
     it('disposes stale overridden multi singleton instances immediately and exactly once', async () => {
