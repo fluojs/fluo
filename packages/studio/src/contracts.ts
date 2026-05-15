@@ -220,6 +220,27 @@ function validateReportSummary(value: unknown): StudioReportSummary {
   return value as unknown as StudioReportSummary;
 }
 
+function validateReportSummaryConsistency(
+  summary: StudioReportSummary,
+  snapshot: PlatformShellSnapshot,
+  timing: BootstrapTimingDiagnostics,
+): void {
+  const errorCount = snapshot.diagnostics.filter((diagnostic: PlatformDiagnosticIssue) => diagnostic.severity === 'error').length;
+  const warningCount = snapshot.diagnostics.filter((diagnostic: PlatformDiagnosticIssue) => diagnostic.severity === 'warning').length;
+
+  if (
+    summary.componentCount !== snapshot.components.length
+    || summary.diagnosticCount !== snapshot.diagnostics.length
+    || summary.errorCount !== errorCount
+    || summary.healthStatus !== snapshot.health.status
+    || summary.readinessStatus !== snapshot.readiness.status
+    || summary.timingTotalMs !== timing.totalMs
+    || summary.warningCount !== warningCount
+  ) {
+    throw new Error('Inspect report summary does not match snapshot and timing payload data.');
+  }
+}
+
 function isReportArtifactEnvelope(value: Record<string, unknown>): boolean {
   return value.summary !== undefined
     || (hasOwn(value, 'snapshot') && hasOwn(value, 'timing') && (hasOwn(value, 'generatedAt') || hasOwn(value, 'version')));
@@ -234,10 +255,13 @@ function validateReport(value: unknown, snapshot: PlatformShellSnapshot | null, 
     throw new Error('Invalid inspect report artifact payload.');
   }
 
+  const summary = validateReportSummary(value.summary);
+  validateReportSummaryConsistency(summary, snapshot, timing);
+
   return {
     generatedAt: value.generatedAt,
     snapshot,
-    summary: validateReportSummary(value.summary),
+    summary,
     timing,
     version: 1,
   };

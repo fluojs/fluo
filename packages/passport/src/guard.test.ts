@@ -528,6 +528,147 @@ describe('AuthGuard', () => {
     });
   });
 
+  it('maps Passport.js fail callbacks to the canonical 401 path', async () => {
+    class PassportLikeFailStrategy {
+      fail?: (challenge?: unknown, status?: number) => void;
+
+      authenticate() {
+        this.fail?.({ message: 'Google profile is required.' }, 401);
+      }
+    }
+
+    const bridge = createPassportJsStrategyBridge('google-fail', PassportLikeFailStrategy);
+
+    @Controller('/oauth')
+    class ProtectedController {
+      @Get('/profile')
+      @UseAuth('google-fail')
+      getProfile() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      PassportLikeFailStrategy,
+      ...bridge.providers,
+      ...createPassportModuleProviders({ defaultStrategy: 'google-fail' }, [bridge.strategy]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/oauth/profile', { 'x-request-id': 'req-passport-fail' }), response);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({
+      error: {
+        code: 'UNAUTHORIZED',
+        details: undefined,
+        message: 'Authentication required.',
+        meta: undefined,
+        requestId: 'req-passport-fail',
+        status: 401,
+      },
+    });
+  });
+
+  it('maps Passport.js pass callbacks to the canonical 401 path', async () => {
+    class PassportLikePassStrategy {
+      pass?: () => void;
+
+      authenticate() {
+        this.pass?.();
+      }
+    }
+
+    const bridge = createPassportJsStrategyBridge('google-pass', PassportLikePassStrategy);
+
+    @Controller('/oauth')
+    class ProtectedController {
+      @Get('/profile')
+      @UseAuth('google-pass')
+      getProfile() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      PassportLikePassStrategy,
+      ...bridge.providers,
+      ...createPassportModuleProviders({ defaultStrategy: 'google-pass' }, [bridge.strategy]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/oauth/profile', { 'x-request-id': 'req-passport-pass' }), response);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({
+      error: {
+        code: 'UNAUTHORIZED',
+        details: undefined,
+        message: 'Authentication required.',
+        meta: undefined,
+        requestId: 'req-passport-pass',
+        status: 401,
+      },
+    });
+  });
+
+  it('rethrows Passport.js error callbacks without converting infrastructure failures to auth failures', async () => {
+    const originalError = new Error('oauth provider unavailable');
+
+    class PassportLikeErrorStrategy {
+      error?: (error: unknown) => void;
+
+      authenticate() {
+        this.error?.(originalError);
+      }
+    }
+
+    const bridge = createPassportJsStrategyBridge('google-error', PassportLikeErrorStrategy);
+
+    @Controller('/oauth')
+    class ProtectedController {
+      @Get('/profile')
+      @UseAuth('google-error')
+      getProfile() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      PassportLikeErrorStrategy,
+      ...bridge.providers,
+      ...createPassportModuleProviders({ defaultStrategy: 'google-error' }, [bridge.strategy]),
+    );
+    const guardContext = {
+      handler: {
+        controllerToken: ProtectedController,
+        methodName: 'getProfile',
+      },
+      requestContext: {
+        container: root,
+        principal: undefined,
+        request: createRequest('/oauth/profile'),
+        requestId: 'req-passport-error-direct',
+        response: createResponse(),
+      },
+    } as unknown as GuardContext;
+
+    const guard = await root.resolve(AuthGuard);
+
+    await expect(guard.canActivate(guardContext)).rejects.toBe(originalError);
+  });
+
   it('settles Passport.js promise rejections as authentication failures', async () => {
     class PassportLikeAsyncFailureStrategy {
       async authenticate(): Promise<void> {

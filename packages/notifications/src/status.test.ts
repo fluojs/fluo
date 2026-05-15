@@ -15,7 +15,14 @@ describe('createNotificationsPlatformStatusSnapshot', () => {
     expect(snapshot.health).toEqual({ status: 'healthy' });
     expect(snapshot.details).toMatchObject({
       channelsRegistered: 2,
+      dependencies: ['notifications.queue-adapter', 'notifications.event-publisher'],
+      eventPublisherConfigured: true,
       operationMode: 'queue-backed-with-events',
+      queueConfigured: true,
+    });
+    expect(snapshot.ownership).toEqual({
+      externallyManaged: true,
+      ownsResources: false,
     });
   });
 
@@ -30,5 +37,49 @@ describe('createNotificationsPlatformStatusSnapshot', () => {
     expect(snapshot.readiness.status).toBe('not-ready');
     expect(snapshot.health.status).toBe('unhealthy');
     expect(snapshot.readiness.reason).toContain('No notification channels');
+    expect(snapshot.details).toMatchObject({
+      dependencies: [],
+      operationMode: 'unconfigured',
+    });
+    expect(snapshot.ownership).toEqual({
+      externallyManaged: false,
+      ownsResources: false,
+    });
+  });
+
+  it('reports event publisher dependency diagnostics without queue ownership', () => {
+    const snapshot = createNotificationsPlatformStatusSnapshot({
+      bulkQueueThreshold: 10,
+      channelsRegistered: 1,
+      eventPublisherConfigured: true,
+      queueConfigured: false,
+    });
+
+    expect(snapshot.details).toMatchObject({
+      dependencies: ['notifications.event-publisher'],
+      operationMode: 'direct-with-events',
+    });
+    expect(snapshot.ownership).toEqual({
+      externallyManaged: true,
+      ownsResources: false,
+    });
+  });
+
+  it('reports queue adapter dependency diagnostics without event publishing', () => {
+    const snapshot = createNotificationsPlatformStatusSnapshot({
+      bulkQueueThreshold: 10,
+      channelsRegistered: 1,
+      eventPublisherConfigured: false,
+      queueConfigured: true,
+    });
+
+    expect(snapshot.details).toMatchObject({
+      dependencies: ['notifications.queue-adapter'],
+      operationMode: 'queue-backed',
+    });
+    expect(snapshot.ownership).toEqual({
+      externallyManaged: true,
+      ownsResources: false,
+    });
   });
 });

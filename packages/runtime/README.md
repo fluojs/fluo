@@ -144,6 +144,7 @@ class UsersModule {}
 - Runtime health module readiness checks receive the current `RequestContext`, allowing public integrations to resolve runtime-exposed status providers without importing internal runtime tokens.
 - Signal-driven shutdown helpers preserve bounded drain semantics, log timeout/failure conditions, and set `process.exitCode` when shutdown does not finish cleanly, but they leave final process termination ownership to the surrounding host runtime.
 - Platform snapshot and diagnostic issue production stay in runtime; graph viewing, filtering presentation, and Mermaid rendering are Studio-owned contracts consumed by CLI and automation callers.
+- Platform component snapshots are runtime-owned contract payloads: each component reports `readiness`, `health`, dependency ids, telemetry tags, diagnostic issues, and resource ownership through `ownership.ownsResources` / `ownership.externallyManaged`. Runtime preserves those ownership flags in shell snapshots so adapters and package integrations can distinguish resources fluo must stop from externally managed resources the host owns.
 - Module graph compile-result caching is opt-in through `moduleGraphCache: true`; it keys entries by root module identity, runtime providers, validation tokens, core metadata versions, and the compile algorithm version, caches only successful compilations, and returns isolated graph copies so caller mutations cannot poison later bootstraps.
 
 ## Public API Overview
@@ -160,6 +161,7 @@ class UsersModule {}
 - `bootstrapApplication(options)`: Lower-level async bootstrap function.
 - `bootstrapModule(...)`: Lower-level module graph bootstrap helper.
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: Runtime-owned diagnostics snapshot helpers for CLI/support tooling. They produce machine-readable data; Studio owns viewer parsing, graph presentation, and Mermaid rendering.
+- `PlatformShell`, `PlatformComponent`, `PlatformShellSnapshot`, `PlatformSnapshot`, `PlatformDiagnosticIssue`, and related platform report types: Public lifecycle diagnostics and resource-ownership contracts used by runtime-aware packages. `RuntimePlatformShell` preserves component-provided ownership and emits validation/readiness/health diagnostics without requiring consumers to import internal runtime tokens.
 - `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: Request abort and active transaction helpers used by runtime-aware integrations.
 
 ## Platform-Specific Subpaths

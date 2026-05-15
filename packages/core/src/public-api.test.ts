@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import * as coreInternalApi from './internal.js';
@@ -26,6 +28,8 @@ describe('@fluojs/core public API surface', () => {
     expect(corePublicApi).not.toHaveProperty('ensureSymbolMetadataPolyfill');
     expect(corePublicApi).not.toHaveProperty('cloneWithFallback');
     expect(corePublicApi).not.toHaveProperty('fallbackClone');
+    expect(corePublicApi).not.toHaveProperty('forwardRef');
+    expect(corePublicApi).not.toHaveProperty('optional');
   });
 
   it('keeps internal metadata helpers available from the internal subpath', () => {
@@ -40,5 +44,12 @@ describe('@fluojs/core public API surface', () => {
     expect(coreInternalApi).toHaveProperty('ensureSymbolMetadataPolyfill');
     expect(coreInternalApi).toHaveProperty('cloneWithFallback');
     expect(coreInternalApi).toHaveProperty('fallbackClone');
+  });
+
+  it('documents that forwardRef and optional wrappers come from @fluojs/di', () => {
+    const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+
+    expect(readme).toContain("import { forwardRef, optional } from '@fluojs/di';");
+    expect(readme).toContain('@fluojs/core` only exports the shared wrapper types');
   });
 });

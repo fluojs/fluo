@@ -1,4 +1,3 @@
-import { createServer } from 'node:net';
 import { request as httpsRequest } from 'node:https';
 
 import { Controller, Get, Post, SseResponse, type RequestContext } from '@fluojs/http';
@@ -14,6 +13,14 @@ declare module '@fluojs/http' {
 type AppLike = {
   close(): Promise<void>;
   listen(): Promise<void>;
+};
+
+type ListenTargetLike = {
+  url: string;
+};
+
+type AdapterWithListenTarget = {
+  getListenTarget(): ListenTargetLike;
 };
 
 /**
@@ -62,29 +69,28 @@ export interface HttpAdapterPortabilityHarnessOptions<
   run: (rootModule: ModuleType, options: TRunOptions) => Promise<TApp>;
 }
 
-async function findAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
+function hasListenTarget(value: unknown): value is AdapterWithListenTarget {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'getListenTarget' in value &&
+    typeof value.getListenTarget === 'function'
+  );
+}
 
-    server.once('error', reject);
-    server.listen(0, () => {
-      const address = server.address();
+function resolveListeningUrl(app: AppLike, adapterName: string): string {
+  const adapter = Reflect.get(app, 'adapter');
 
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to resolve an available port.'));
-        return;
-      }
+  if (!hasListenTarget(adapter)) {
+    throw new Error(`${adapterName} adapter portability harness cannot resolve the listener URL after binding port 0.`);
+  }
 
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
+  const target = adapter.getListenTarget();
+  if (typeof target.url !== 'string' || target.url.length === 0) {
+    throw new Error(`${adapterName} adapter portability harness resolved an empty listener URL after binding port 0.`);
+  }
 
-        resolve(address.port);
-      });
-    });
-  });
+  return target.url;
 }
 
 async function requestHttps(url: string): Promise<{ body: string; statusCode: number }> {
@@ -139,6 +145,16 @@ async function runWithCleanup(app: AppLike, adapterName: string, assertion: () =
   if (hasAssertionError) {
     throw assertionError;
   }
+}
+
+async function runWithListeningUrlCleanup(
+  app: AppLike,
+  adapterName: string,
+  assertion: (baseUrl: string) => Promise<void>,
+): Promise<void> {
+  await runWithCleanup(app, adapterName, async () => {
+    await assertion(resolveListeningUrl(app, adapterName));
+  });
 }
 
 async function prepareAndListenWithCleanup(
@@ -201,16 +217,15 @@ export class HttpAdapterPortabilityHarness<
       controllers: [CookieController],
     });
 
-    const port = await findAvailablePort();
     const app = await this.options.bootstrap(AppModule, {
       cors: false,
-      port,
+      port: 0,
     } as TBootstrapOptions);
 
     await prepareAndListenWithCleanup(app, this.options.name);
 
-    await runWithCleanup(app, this.options.name, async () => {
-      const response = await fetch(`http://127.0.0.1:${String(port)}/cookies`, {
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/cookies`, {
         headers: {
           cookie: 'good=hello%20world; bad=%E0%A4%A',
         },
@@ -262,23 +277,22 @@ export class HttpAdapterPortabilityHarness<
       controllers: [WebhookController],
     });
 
-    const port = await findAvailablePort();
     const app = await this.options.bootstrap(AppModule, {
       cors: false,
-      port,
+      port: 0,
       rawBody: true,
     } as TBootstrapOptions);
 
     await prepareAndListenWithCleanup(app, this.options.name);
 
-    await runWithCleanup(app, this.options.name, async () => {
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
       const [jsonResponse, textResponse] = await Promise.all([
-        fetch(`http://127.0.0.1:${String(port)}/webhooks/json`, {
+        fetch(`${baseUrl}/webhooks/json`, {
           body: JSON.stringify({ provider: 'stripe' }),
           headers: { 'content-type': 'application/json' },
           method: 'POST',
         }),
-        fetch(`http://127.0.0.1:${String(port)}/webhooks/text`, {
+        fetch(`${baseUrl}/webhooks/text`, {
           body: 'ping=1',
           headers: { 'content-type': 'text/plain; charset=utf-8' },
           method: 'POST',
@@ -323,10 +337,9 @@ export class HttpAdapterPortabilityHarness<
       controllers: [WebhookController],
     });
 
-    const port = await findAvailablePort();
     const app = await this.options.bootstrap(AppModule, {
       cors: false,
-      port,
+      port: 0,
       rawBody: true,
     } as TBootstrapOptions);
 
@@ -334,10 +347,10 @@ export class HttpAdapterPortabilityHarness<
       await this.options.prepareExactRawBodyByteTest?.(app);
     });
 
-    await runWithCleanup(app, this.options.name, async () => {
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
       const payload = Uint8Array.from([0xe9, 0x41]);
       const contentType = this.options.exactRawBodyByteContentType ?? 'text/plain; charset=latin1';
-      const response = await fetch(`http://127.0.0.1:${String(port)}/webhooks/bytes`, {
+      const response = await fetch(`${baseUrl}/webhooks/bytes`, {
         body: payload,
         headers: { 'content-type': contentType },
         method: 'POST',
@@ -372,21 +385,20 @@ export class HttpAdapterPortabilityHarness<
       controllers: [UploadController],
     });
 
-    const port = await findAvailablePort();
     const app = await this.options.bootstrap(AppModule, {
       cors: false,
-      port,
+      port: 0,
       rawBody: true,
     } as TBootstrapOptions);
 
     await prepareAndListenWithCleanup(app, this.options.name);
 
-    await runWithCleanup(app, this.options.name, async () => {
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
       const form = new FormData();
       form.set('name', 'Ada');
       form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
 
-      const response = await fetch(`http://127.0.0.1:${String(port)}/uploads`, {
+      const response = await fetch(`${baseUrl}/uploads`, {
         body: form,
         method: 'POST',
       });
@@ -426,24 +438,23 @@ export class HttpAdapterPortabilityHarness<
       controllers: [UploadController],
     });
 
-    const port = await findAvailablePort();
     const app = await this.options.bootstrap(AppModule, {
       cors: false,
       maxBodySize: 8,
       multipart: {
         maxFileSize: 1024,
       },
-      port,
+      port: 0,
     } as TBootstrapOptions);
 
     await prepareAndListenWithCleanup(app, this.options.name);
 
-    await runWithCleanup(app, this.options.name, async () => {
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
       const form = new FormData();
       form.set('name', 'Ada');
       form.set('payload', new Blob(['12345678'], { type: 'text/plain' }), 'payload.txt');
 
-      const response = await fetch(`http://127.0.0.1:${String(port)}/uploads`, {
+      const response = await fetch(`${baseUrl}/uploads`, {
         body: form,
         method: 'POST',
       });
@@ -485,16 +496,15 @@ export class HttpAdapterPortabilityHarness<
       controllers: [EventsController],
     });
 
-    const port = await findAvailablePort();
     const app = await this.options.bootstrap(AppModule, {
       cors: false,
-      port,
+      port: 0,
     } as TBootstrapOptions);
 
     await prepareAndListenWithCleanup(app, this.options.name);
 
-    await runWithCleanup(app, this.options.name, async () => {
-      const response = await fetch(`http://127.0.0.1:${String(port)}/events`, {
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/events`, {
         headers: { accept: 'text/event-stream' },
       });
       const body = await response.text();
@@ -550,16 +560,15 @@ export class HttpAdapterPortabilityHarness<
       controllers: [EventsController],
     });
 
-    const port = await findAvailablePort();
     const app = await this.options.bootstrap(AppModule, {
       cors: false,
-      port,
+      port: 0,
     } as TBootstrapOptions);
 
     await prepareAndListenWithCleanup(app, this.options.name);
 
-    await runWithCleanup(app, this.options.name, async () => {
-      const response = await fetch(`http://127.0.0.1:${String(port)}/events`, {
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/events`, {
         headers: { accept: 'text/event-stream' },
       });
 
@@ -602,16 +611,15 @@ export class HttpAdapterPortabilityHarness<
       controllers: [HealthController],
     });
 
-    const port = await findAvailablePort();
     const app = await this.options.run(AppModule, {
       cors: false,
       host: '127.0.0.1',
       logger,
-      port,
+      port: 0,
     } as TRunOptions);
 
-    await runWithCleanup(app, this.options.name, async () => {
-      const response = await fetch(`http://127.0.0.1:${String(port)}/health`);
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/health`);
 
       if (response.status !== 200) {
         throw new Error(`${this.options.name} adapter changed host-bound health response semantics.`);
@@ -622,7 +630,7 @@ export class HttpAdapterPortabilityHarness<
         throw new Error(`${this.options.name} adapter changed host-bound response payload.`);
       }
 
-      const expectedLog = `log:FluoFactory:Listening on http://127.0.0.1:${String(port)}`;
+      const expectedLog = `log:FluoFactory:Listening on ${baseUrl}`;
       if (!loggerEvents.includes(expectedLog)) {
         throw new Error(`${this.options.name} adapter changed startup host logging.`);
       }
@@ -655,17 +663,16 @@ export class HttpAdapterPortabilityHarness<
       controllers: [HealthController],
     });
 
-    const port = await findAvailablePort();
     const app = await this.options.run(AppModule, {
       cors: false,
       host: '127.0.0.1',
       https,
       logger,
-      port,
+      port: 0,
     } as TRunOptions);
 
-    await runWithCleanup(app, this.options.name, async () => {
-      const response = await requestHttps(`https://127.0.0.1:${String(port)}/health`);
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
+      const response = await requestHttps(`${baseUrl}/health`);
 
       if (response.statusCode !== 200) {
         throw new Error(`${this.options.name} adapter changed HTTPS response status semantics.`);
@@ -675,7 +682,7 @@ export class HttpAdapterPortabilityHarness<
         throw new Error(`${this.options.name} adapter changed HTTPS response payload semantics.`);
       }
 
-      const expectedLog = `log:FluoFactory:Listening on https://127.0.0.1:${String(port)}`;
+      const expectedLog = `log:FluoFactory:Listening on ${baseUrl}`;
       if (!loggerEvents.includes(expectedLog)) {
         throw new Error(`${this.options.name} adapter changed HTTPS startup logging.`);
       }
@@ -705,11 +712,10 @@ export class HttpAdapterPortabilityHarness<
 
     const signal = 'SIGTERM' as const;
     const listenersBefore = new Set(process.listeners(signal));
-    const port = await findAvailablePort();
     const app = await this.options.run(AppModule, {
       cors: false,
       logger,
-      port,
+      port: 0,
       shutdownSignals: [signal],
     } as TRunOptions);
     const registeredListeners = process.listeners(signal).filter((listener) => !listenersBefore.has(listener));

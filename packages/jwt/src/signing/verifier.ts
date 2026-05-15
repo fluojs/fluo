@@ -290,7 +290,7 @@ export class DefaultJwtVerifier {
   constructor(private readonly options: JwtVerifierOptions) {
     assertJwtAlgorithms(options.algorithms, 'JWT verifier');
     this.jwksClient = options.jwksUri
-      ? new JwksClient(options.jwksUri, options.jwksCacheTtl, options.jwksRequestTimeoutMs)
+      ? new JwksClient(options.jwksUri, options.jwksCacheTtl, options.jwksRequestTimeoutMs, options.jwksCacheMaxEntries)
       : undefined;
     this.keyResolutionState = createKeyResolutionState(options.keys);
     this.refreshVerificationOptions =
@@ -302,6 +302,17 @@ export class DefaultJwtVerifier {
 
   async verifyAccessToken(token: string): Promise<JwtPrincipal> {
     return this.verifyToken(token, this.options, this.keyResolutionState, this.jwksClient);
+  }
+
+  /**
+   * Releases verifier-owned remote JWKS cache entries.
+   *
+   * Call this when disposing a manually managed verifier or replacing its remote
+   * identity-provider configuration. Static keys and provider callbacks are not
+   * owned by the verifier and are therefore left untouched.
+   */
+  dispose(): void {
+    this.jwksClient?.dispose();
   }
 
   /**
@@ -494,7 +505,7 @@ export class DefaultJwtVerifier {
 
     this.validateMaxAgeClaims(payload, options.maxAge, clockSkew, now);
 
-    if (typeof payload.exp === 'number' && payload.exp + clockSkew < now) {
+    if (typeof payload.exp === 'number' && payload.exp + clockSkew <= now) {
       throw new JwtExpiredTokenError();
     }
 
