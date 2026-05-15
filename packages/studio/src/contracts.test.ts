@@ -1,22 +1,39 @@
 // @vitest-environment happy-dom
 
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { PlatformShellSnapshot } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
-import { runWorkspaceBuildClosure } from '../../../tooling/scripts/run-workspace-build-closure.mjs';
 import { applyFilters, parseStudioPayload, renderMermaid } from './contracts.js';
 import * as studio from './index.js';
 import { renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './viewer-rendering.js';
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const repoRoot = resolve(packageDir, '..', '..');
-
-function runBuild(): void {
-  const result = runWorkspaceBuildClosure('@fluojs/studio', repoRoot);
+function runPackageCommand(args: string[]): void {
+  const result = spawnSync('pnpm', ['exec', ...args], {
+    cwd: packageDir,
+    encoding: 'utf8',
+  });
 
   expect(result.status, [result.stdout, result.stderr].filter(Boolean).join('\n')).toBe(0);
+}
+
+function runIsolatedBuild(outputDirectory: string): void {
+  runPackageCommand(['vite', 'build', '--outDir', outputDirectory, '--emptyOutDir']);
+  runPackageCommand([
+    'babel',
+    'src/contracts.ts',
+    'src/index.ts',
+    '--extensions',
+    '.ts',
+    '--out-dir',
+    outputDirectory,
+    '--config-file',
+    '../../tooling/babel/babel.config.cjs',
+  ]);
 }
 
 const snapshotFixture: PlatformShellSnapshot = {
@@ -297,6 +314,56 @@ describe('parseStudioPayload', () => {
     ).toThrow('Invalid inspect report summary payload.');
   });
 
+  it('rejects inspect report summaries that disagree with snapshot and timing payloads', () => {
+    expect(() =>
+      parseStudioPayload(
+        JSON.stringify({
+          generatedAt: snapshotFixture.generatedAt,
+          snapshot: snapshotFixture,
+          summary: {
+            componentCount: 1,
+            diagnosticCount: 1,
+            errorCount: 0,
+            healthStatus: 'degraded',
+            readinessStatus: 'degraded',
+            timingTotalMs: 4.56,
+            warningCount: 1,
+          },
+          timing: {
+            phases: [{ durationMs: 4.56, name: 'bootstrap_module' }],
+            totalMs: 4.56,
+            version: 1,
+          },
+          version: 1,
+        }),
+      )
+    ).toThrow('Inspect report summary does not match snapshot and timing payload data.');
+
+    expect(() =>
+      parseStudioPayload(
+        JSON.stringify({
+          generatedAt: snapshotFixture.generatedAt,
+          snapshot: snapshotFixture,
+          summary: {
+            componentCount: 2,
+            diagnosticCount: 1,
+            errorCount: 0,
+            healthStatus: 'degraded',
+            readinessStatus: 'degraded',
+            timingTotalMs: 1,
+            warningCount: 1,
+          },
+          timing: {
+            phases: [{ durationMs: 4.56, name: 'bootstrap_module' }],
+            totalMs: 4.56,
+            version: 1,
+          },
+          version: 1,
+        }),
+      )
+    ).toThrow('Inspect report summary does not match snapshot and timing payload data.');
+  });
+
   it('rejects inspect report artifacts missing the required summary', () => {
     expect(() =>
       parseStudioPayload(
@@ -414,14 +481,24 @@ describe('parseStudioPayload', () => {
     expect(restoredSeverityInput?.checked).toBe(true);
   });
 
-  it('build emits the published helper and viewer entrypoints', () => {
-    runBuild();
+  it('build emits isolated published helper and file-first viewer entrypoints', () => {
+    const outputDirectory = mkdtempSync(join(tmpdir(), 'fluo-studio-dist-'));
 
-    expect(existsSync(resolve(packageDir, 'dist', 'index.html')), 'viewer HTML entrypoint is missing').toBe(true);
-    expect(existsSync(resolve(packageDir, 'dist', 'index.js')), 'root helper barrel output is missing').toBe(true);
-    expect(existsSync(resolve(packageDir, 'dist', 'index.d.ts')), 'root helper barrel types are missing').toBe(true);
-    expect(existsSync(resolve(packageDir, 'dist', 'contracts.js')), 'contracts helper output is missing').toBe(true);
-    expect(existsSync(resolve(packageDir, 'dist', 'contracts.d.ts')), 'contracts helper types are missing').toBe(true);
+    try {
+      runIsolatedBuild(outputDirectory);
+
+      const html = readFileSync(resolve(outputDirectory, 'index.html'), 'utf8');
+
+      expect(existsSync(resolve(outputDirectory, 'index.html')), 'viewer HTML entrypoint is missing').toBe(true);
+      expect(existsSync(resolve(outputDirectory, 'index.js')), 'root helper barrel output is missing').toBe(true);
+      expect(existsSync(resolve(outputDirectory, 'contracts.js')), 'contracts helper output is missing').toBe(true);
+      expect(html).toContain('src="./assets/');
+      expect(html).toContain('href="./assets/');
+      expect(html).not.toContain('src="/assets/');
+      expect(html).not.toContain('href="/assets/');
+    } finally {
+      rmSync(outputDirectory, { force: true, recursive: true });
+    }
   }, 300_000);
 });
 
