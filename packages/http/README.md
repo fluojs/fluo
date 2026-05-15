@@ -107,15 +107,17 @@ function someDeepHelper() {
 ### Server-sent events
 
 ```ts
-import { Get, SseResponse, type RequestContext } from '@fluojs/http';
+import { Sse, SseResponse, type RequestContext } from '@fluojs/http';
 
-@Get('/events')
+@Sse('/events')
 stream(_input: undefined, ctx: RequestContext) {
   const sse = new SseResponse(ctx);
   sse.send({ message: 'hello' });
   return sse;
 }
 ```
+
+`@Sse(path)` is a Phase 1 thin route decorator: it registers a `GET` route and declares `text/event-stream` produced media type metadata. The handler is still responsible for creating and returning `SseResponse`. Automatic conversion from `AsyncIterable` or Observable values into SSE streams is out of scope.
 
 ### Versioning
 
@@ -143,7 +145,7 @@ Adapters should pass an `AbortSignal` on `FrameworkRequest.signal` when the plat
 
 ## Public API
 
-- **Routing decorators**: `Controller`, `Get`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
+- **Routing decorators**: `Controller`, `Get`, `Sse`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
 - **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **Core runtime types**: `RequestContext`, `FrameworkRequest`, `FrameworkResponse`, `SseResponse`, `Middleware`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardContext`, `Interceptor`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `DispatcherLogger`

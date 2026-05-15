@@ -9,6 +9,7 @@ describe('@fluojs/http public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(httpPublicApi).toHaveProperty('Controller');
     expect(httpPublicApi).toHaveProperty('Get');
+    expect(httpPublicApi).toHaveProperty('Sse');
     expect(httpPublicApi).toHaveProperty('Post');
     expect(httpPublicApi).toHaveProperty('Put');
     expect(httpPublicApi).toHaveProperty('Patch');

@@ -19,6 +19,7 @@ import {
   Optional,
   Produces,
   RequestDto,
+  Sse,
   HttpCode,
   Redirect,
   UseGuards,
@@ -276,6 +277,39 @@ describe('http decorators', () => {
     }
 
     expect(getRouteProducesMetadata(FeedController, 'getFeed')).toEqual(['application/json', 'text/plain']);
+  });
+
+  it('registers @Sse routes as GET handlers that produce text/event-stream', () => {
+    @Controller('/feeds')
+    class FeedController {
+      @Sse('/events')
+      streamEvents() {
+        return { ok: true };
+      }
+    }
+
+    expect(getRouteMetadata(FeedController.prototype, 'streamEvents')).toEqual({
+      method: 'GET',
+      path: '/events',
+    });
+    expect(getRouteProducesMetadata(FeedController, 'streamEvents')).toEqual(['text/event-stream']);
+  });
+
+  it('registers @Sse metadata when invoked by legacy decorator transforms', () => {
+    class LegacySseController {
+      streamEvents() {
+        return { ok: true };
+      }
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(LegacySseController.prototype, 'streamEvents') ?? {};
+    (Sse('/events') as unknown as LegacyMethodDecoratorFn)(LegacySseController.prototype, 'streamEvents', descriptor);
+
+    expect(getRouteMetadata(LegacySseController.prototype, 'streamEvents')).toEqual({
+      method: 'GET',
+      path: '/events',
+    });
+    expect(getRouteProducesMetadata(LegacySseController, 'streamEvents')).toEqual(['text/event-stream']);
   });
 
   it('rejects unsupported controller and route path syntax at decoration time', () => {

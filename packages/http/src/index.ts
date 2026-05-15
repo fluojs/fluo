@@ -23,6 +23,7 @@ export {
   Put,
   Redirect,
   RequestDto,
+  Sse,
   UseGuards,
   UseInterceptors,
   Version,
