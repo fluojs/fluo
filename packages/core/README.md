@@ -83,7 +83,15 @@ class UsesConfigValue {
 }
 ```
 
-Pass multiple constructor tokens as variadic arguments, such as `@Inject(A, B)`, so dependency metadata stays aligned with standard decorator usage. The array form `@Inject([A, B])` is also accepted, but new code should prefer the variadic form. If a token is unavailable at decoration time, wrap that one token with `forwardRef(...)`; if a dependency may be absent, wrap that token with `optional(...)`.
+Pass multiple constructor tokens as variadic arguments, such as `@Inject(A, B)`, so dependency metadata stays aligned with standard decorator usage. The array form `@Inject([A, B])` is also accepted, but new code should prefer the variadic form. If a token is unavailable at decoration time, wrap that one token with `forwardRef(...)`; if a dependency may be absent, wrap that token with `optional(...)`. The wrapper helpers are runtime DI helpers from `@fluojs/di`; `@fluojs/core` only exports the shared wrapper types accepted by `@Inject(...)`.
+
+```ts
+import { Inject } from '@fluojs/core';
+import { forwardRef, optional } from '@fluojs/di';
+
+@Inject(forwardRef(() => AuditLogger), optional(CacheClient))
+class UsesDeferredAndOptionalDeps {}
+```
 
 ### Shared metadata helpers for sibling packages
 
