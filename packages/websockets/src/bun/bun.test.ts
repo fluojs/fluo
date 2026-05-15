@@ -1027,4 +1027,63 @@ describe('@fluojs/websockets/bun', () => {
 
     await app.close();
   });
+
+  it('receives Bun ArrayBuffer payloads under the configured limit', async () => {
+    const adapter = new TestBunAdapter();
+
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/array-buffer-ok' })
+    class ArrayBufferPayloadGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({
+        limits: {
+          maxPayloadBytes: 64,
+        },
+      })],
+      providers: [GatewayState, ArrayBufferPayloadGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+    await app.listen();
+
+    const server = adapter.getServer();
+    await server?.fetch(new Request('http://127.0.0.1:3000/array-buffer-ok', {
+      headers: { upgrade: 'websocket' },
+    }));
+    await flushAsyncWork();
+
+    const socket = server?.lastSocket;
+
+    if (!server || !socket) {
+      throw new Error('Expected Bun test socket to be available after websocket upgrade.');
+    }
+
+    const encodedPayload = new TextEncoder().encode(JSON.stringify({ event: 'ping', data: { value: 'array-buffer' } }));
+    const arrayBufferPayload = encodedPayload.buffer.slice(
+      encodedPayload.byteOffset,
+      encodedPayload.byteOffset + encodedPayload.byteLength,
+    ) as ArrayBuffer;
+
+    await server.emitMessage(arrayBufferPayload);
+    await flushAsyncWork();
+
+    expect(socket.closeCalls).toEqual([]);
+    expect(state.messages).toEqual([{ value: 'array-buffer' }]);
+
+    await app.close();
+  });
 });
