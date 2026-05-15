@@ -59,6 +59,8 @@ JWT 설정이 다른 provider에서 와야 한다면, `JwtModule.forRootAsync(..
 
 비동기 등록도 동기 경로와 동일한 JWT provider surface를 export하며, 여기에는 `RefreshTokenService`가 포함됩니다. 단, 이 서비스를 실제로 resolve하려면 `refreshToken` 옵션이 구성되어 있어야 합니다.
 
+`forRootAsync(...)`는 `inject`에 나열된 provider에서 module-level `JwtVerifierOptions` 객체 하나를 resolve합니다. 이 factory는 요청별 상태를 받지 않습니다. 테넌트별 secret이나 identity provider가 필요한 경우 tenant lookup은 애플리케이션의 auth layer에 두고, token verification 중에는 `kid` 같은 token metadata와 미리 구성한 `keys[]`, `jwksUri`, 또는 `secretOrKeyProvider`를 사용해 검증 material을 선택하세요.
+
 ```typescript
 import { Module, type Token } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
@@ -151,6 +153,8 @@ const verifier = new DefaultJwtVerifier({
 `JwtService.verify(token, options)`는 호출 단위의 알고리즘/클레임 정책 재정의(`issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`)를 적용하더라도, 내부 JWKS client나 정적 key-resolution cache를 다시 만들지 않습니다. 호출 단위 검증은 `jwksUri`, `keys[]`, `publicKey`, `secret`, `secretOrKeyProvider` 같은 구성된 key source 자체를 교체하지는 않습니다.
 
 호환되는 키가 여러 개 설정되어 있으면 `kid`가 검증 키를 구분합니다. 호환되는 정적 키가 하나뿐이면 `kid` 없이도 토큰을 검증할 수 있고, JWKS 기반 검증은 원격 key set과 cache policy를 따릅니다.
+
+멀티테넌트 시스템에서는 발행된 토큰 header에 tenant-specific `kid`를 넣고 호환되는 key source를 미리 구성하는 방식을 권장합니다. `secretOrKeyProvider`는 decoded token header만 인자로 받으므로, request header, route param, 기타 request-context tenant hint는 JWT verifier 호출 전에 애플리케이션 수준 strategy/guard 코드에서 처리해야 합니다.
 
 ### 리프레시 토큰
 

@@ -59,6 +59,8 @@ Use `JwtModule.forRootAsync(...)` when your JWT settings must come from another 
 
 Async registration exports the same JWT provider surface as the synchronous path, including `RefreshTokenService`; resolving that service still requires `refreshToken` options to be configured.
 
+`forRootAsync(...)` resolves one module-level `JwtVerifierOptions` object from the providers listed in `inject`. It does not receive per-request state. For tenant-specific secrets or identity providers, keep tenant lookup in your application auth layer and use token metadata such as `kid` with configured `keys[]`, `jwksUri`, or `secretOrKeyProvider` to select verification material during token verification.
+
 ```typescript
 import { Module, type Token } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
@@ -151,6 +153,8 @@ const verifier = new DefaultJwtVerifier({
 `JwtService.verify(token, options)` applies per-call algorithm and claim-policy overrides (`issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`) without rebuilding the underlying JWKS client or static key-resolution cache. Per-call verification does not replace configured key sources such as `jwksUri`, `keys[]`, `publicKey`, `secret`, or `secretOrKeyProvider`.
 
 When multiple compatible keys are configured, `kid` disambiguates the verification key. A single compatible static key can verify tokens without `kid`; JWKS-backed verification relies on the remote key set and its cache policy.
+
+For multi-tenant systems, prefer putting a tenant-specific `kid` in issued token headers and configuring compatible key sources up front. `secretOrKeyProvider` is called with the decoded token header only, so request headers, route params, or other request-context tenant hints must be handled by application-level strategy/guard code before calling the JWT verifier.
 
 ### Refresh tokens
 
