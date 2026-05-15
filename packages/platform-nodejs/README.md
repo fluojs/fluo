@@ -58,12 +58,12 @@ const adapter = createNodejsAdapter({
 
 `maxBodySize` accepts a byte count number. It is enforced while the raw Node request body is still streaming, and the same limit becomes the default total multipart payload cap unless you override `multipart.maxTotalSize` during bootstrap.
 
-`createNodejsAdapter()` defaults to port `3000`, ignores `process.env.PORT`, and throws when `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, or `shutdownTimeoutMs` are invalid. The default request body cap is `1 MiB`.
+`createNodejsAdapter()` defaults to port `3000`, ignores `process.env.PORT`, and throws when `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, or adapter-level `shutdownTimeoutMs` are invalid. The default request body cap is `1 MiB`.
 
 ### Direct Application Execution
 You can use `runNodejsApplication` for a zero-boilerplate startup that includes graceful shutdown and logging.
 
-When signal-driven shutdown exceeds `forceExitTimeoutMs` or fails, the helper logs the condition and sets `process.exitCode`, but leaves final process termination to the host process owner.
+When signal-driven shutdown exceeds the run-helper `forceExitTimeoutMs` or fails, the helper logs the condition and sets `process.exitCode`, but leaves final process termination to the host process owner. Use adapter-level `shutdownTimeoutMs` for connection drain bounds and run-helper `forceExitTimeoutMs` for signal handler completion bounds.
 
 ```typescript
 import { runNodejsApplication } from '@fluojs/platform-nodejs';
