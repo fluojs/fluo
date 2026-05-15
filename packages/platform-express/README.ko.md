@@ -90,7 +90,7 @@ const adapter = createExpressAdapter(
 - **버저닝 parity**: Express Router가 최초 path match를 하더라도 header/media-type/custom version 선택은 계속 dispatcher가 최종 결정합니다.
 - **Middleware rewrite parity**: App middleware가 method/path를 rewrite하면 native handoff는 무효화되고 rewrite된 요청을 기준으로 다시 매칭합니다.
 - **응답 serialization parity**: String response는 기본적으로 `text/plain`, object/array는 JSON, binary payload는 `application/octet-stream`으로 serialize되며 `set-cookie` 값은 병합됩니다.
-- **Startup과 shutdown**: 어댑터는 HTTP/HTTPS startup, retry option에 따른 `EADDRINUSE` 재시도, close 시 socket drain, shutdown timeout 이후 force-close를 지원하며, `shutdownTimeoutMs`가 `0`이면 즉시 force-close합니다.
+- **Startup과 shutdown**: 어댑터는 HTTP/HTTPS startup, retry option에 따른 `EADDRINUSE` 재시도, close 시 socket drain, 동시에 들어온 `close()` 호출의 단일 in-flight close lifecycle 재사용, shutdown timeout 이후 force-close를 지원하며, `shutdownTimeoutMs`가 `0`이면 즉시 force-close합니다.
 
 ## 공개 API 개요
 

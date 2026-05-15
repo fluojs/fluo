@@ -58,12 +58,12 @@ const adapter = createNodejsAdapter({
 
 `maxBodySize`는 바이트 수를 나타내는 숫자만 받습니다. 이 값은 raw Node 요청 바디가 아직 스트리밍되는 동안 바로 강제되며, 부트스트랩 시 `multipart.maxTotalSize`를 따로 재정의하지 않으면 같은 값이 멀티파트 전체 페이로드 한도의 기본값으로도 사용됩니다.
 
-`createNodejsAdapter()`는 기본 port로 `3000`을 사용하고 `process.env.PORT`를 무시하며, `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`가 잘못되면 throw합니다. 기본 request body cap은 `1 MiB`입니다.
+`createNodejsAdapter()`는 기본 port로 `3000`을 사용하고 `process.env.PORT`를 무시하며, `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, adapter-level `shutdownTimeoutMs`가 잘못되면 throw합니다. 기본 request body cap은 `1 MiB`입니다.
 
 ### 직접 애플리케이션 실행
 `runNodejsApplication`을 사용하여 graceful shutdown 및 로깅이 포함된 보일러플레이트 없는 시작이 가능합니다.
 
-시그널 기반 종료가 `forceExitTimeoutMs`를 넘기거나 실패하면 헬퍼는 해당 상태를 로그와 `process.exitCode`로 보고하지만, 최종 프로세스 종료는 호스트 프로세스 소유자에게 맡깁니다.
+시그널 기반 종료가 run-helper `forceExitTimeoutMs`를 넘기거나 실패하면 헬퍼는 해당 상태를 로그와 `process.exitCode`로 보고하지만, 최종 프로세스 종료는 호스트 프로세스 소유자에게 맡깁니다. Connection drain bound에는 adapter-level `shutdownTimeoutMs`를, signal handler completion bound에는 run-helper `forceExitTimeoutMs`를 사용하세요.
 
 ```typescript
 import { runNodejsApplication } from '@fluojs/platform-nodejs';
