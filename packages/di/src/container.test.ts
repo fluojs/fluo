@@ -612,6 +612,36 @@ describe('Container', () => {
       expect(afterOverride).not.toBe(beforeOverride);
     });
 
+    it('invalidates cached singleton consumers through multi-provider dependencies when a target is overridden', async () => {
+      const CONFIG = Symbol('Config');
+      const PLUGINS = Symbol('Plugins');
+
+      class Plugin {
+        constructor(readonly config: string) {}
+      }
+
+      class Consumer {
+        constructor(readonly plugins: Plugin[]) {}
+      }
+
+      const container = new Container().register(
+        { provide: CONFIG, useValue: 'before-override' },
+        { provide: PLUGINS, useClass: Plugin, inject: [CONFIG], multi: true },
+        { provide: Consumer, useClass: Consumer, inject: [PLUGINS] },
+      );
+
+      const beforeOverride = await container.resolve<Consumer>(Consumer);
+
+      container.override({ provide: CONFIG, useValue: 'after-override' });
+
+      const afterOverride = await container.resolve<Consumer>(Consumer);
+
+      expect(beforeOverride.plugins[0]?.config).toBe('before-override');
+      expect(afterOverride.plugins[0]?.config).toBe('after-override');
+      expect(afterOverride).not.toBe(beforeOverride);
+      expect(afterOverride.plugins[0]).not.toBe(beforeOverride.plugins[0]);
+    });
+
     it('invalidates materialized request-scope consumers when a parent dependency is overridden', async () => {
       const CONFIG = Symbol('Config');
 

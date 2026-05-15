@@ -1351,8 +1351,15 @@ export class Container {
     }
 
     const provider = this.lookupProvider(cachedToken);
+    const multiProviders = this.collectMultiProviders(cachedToken);
 
-    return provider ? this.providerDependsOnToken(provider, overriddenToken, new Set<Token>([provider.provide])) : false;
+    if (provider && this.providerDependsOnToken(provider, overriddenToken, new Set<Token>([provider.provide]))) {
+      return true;
+    }
+
+    return multiProviders.some((multiProvider) =>
+      this.providerDependsOnToken(multiProvider, overriddenToken, new Set<Token>([multiProvider.provide])),
+    );
   }
 
   private shouldInvalidateCachedProvider(provider: NormalizedProvider, overriddenToken: Token): boolean {
@@ -1384,8 +1391,12 @@ export class Container {
 
     try {
       const provider = this.lookupProvider(depToken);
+      const multiProviders = this.collectMultiProviders(depToken);
 
-      return provider ? this.providerDependsOnToken(provider, token, visited) : false;
+      return (
+        (provider ? this.providerDependsOnToken(provider, token, visited) : false) ||
+        multiProviders.some((multiProvider) => this.providerDependsOnToken(multiProvider, token, visited))
+      );
     } finally {
       visited.delete(depToken);
     }
