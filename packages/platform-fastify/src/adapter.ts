@@ -1182,7 +1182,7 @@ function captureRawBodyPreParsingHook(
 
 function isMultipartRequestContentType(contentType: string | string[] | undefined): boolean {
   const primaryValue = Array.isArray(contentType) ? contentType[0] : contentType;
-  return typeof primaryValue === 'string' && primaryValue.includes('multipart/form-data');
+  return typeof primaryValue === 'string' && primaryValue.toLowerCase().includes('multipart/form-data');
 }
 
 function resolveListenTarget(
