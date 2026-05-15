@@ -94,6 +94,14 @@ function getHeaderCaseInsensitive(
   return undefined;
 }
 
+function toHeaderValues(value: string | string[] | undefined): string[] {
+  if (Array.isArray(value)) {
+    return [...value];
+  }
+
+  return value ? [value] : [];
+}
+
 /**
  * Represents the cookie manager.
  */
@@ -178,20 +186,17 @@ export class CookieManager {
 
   private appendSetCookie(response: FrameworkResponse, cookie: string): void {
     const existingHeader = getHeaderCaseInsensitive(response.headers, 'Set-Cookie');
-    const existingCookies = existingHeader?.value;
-    const cookies = Array.isArray(existingCookies)
-      ? existingCookies
-      : existingCookies
-        ? [existingCookies]
-        : [];
+    const cookies = [...toHeaderValues(existingHeader?.value), cookie];
 
-    cookies.push(cookie);
+    response.setHeader('Set-Cookie', cookie);
 
-    if (existingHeader && existingHeader.key !== 'Set-Cookie') {
-      delete response.headers[existingHeader.key];
+    const updatedHeader = getHeaderCaseInsensitive(response.headers, 'Set-Cookie');
+
+    if (updatedHeader?.key && updatedHeader.key !== 'Set-Cookie') {
+      delete response.headers[updatedHeader.key];
     }
 
-    response.setHeader('Set-Cookie', cookies.length === 1 ? cookies[0] : cookies);
+    response.headers['Set-Cookie'] = cookies.length === 1 ? cookies[0] : cookies;
   }
 }
 

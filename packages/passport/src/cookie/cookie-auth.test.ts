@@ -249,6 +249,25 @@ describe('CookieManager', () => {
     };
   }
 
+  function createAppendSetCookieResponse() {
+    return {
+      ...createMockResponse(),
+      setHeader(name: string, value: string | string[]) {
+        const headerKey = Object.keys(this.headers).find((key) => key.toLowerCase() === name.toLowerCase());
+        const current = headerKey ? this.headers[headerKey] : undefined;
+
+        if (name.toLowerCase() !== 'set-cookie' || current === undefined) {
+          this.headers[name] = value;
+          return;
+        }
+
+        const currentValues = Array.isArray(current) ? current : [current];
+        const nextValues = Array.isArray(value) ? value : [value];
+        this.headers[headerKey ?? name] = [...currentValues, ...nextValues];
+      },
+    };
+  }
+
   it('creates cookie header with correct format', async () => {
     const { CookieManager } = await import('./cookie-manager.js');
     const manager = new CookieManager();
@@ -309,6 +328,22 @@ describe('CookieManager', () => {
     expect(response.headers['Set-Cookie']).toEqual([
       'existing=session; Path=/',
       'access_token=access-jwt; Max-Age=3600; Path=/; Secure; HttpOnly; SameSite=Strict',
+    ]);
+    expect(response.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('does not duplicate existing cookies when the adapter appends set-cookie values', async () => {
+    const { CookieManager } = await import('./cookie-manager.js');
+    const manager = new CookieManager();
+    const response = createAppendSetCookieResponse();
+    response.headers['set-cookie'] = 'existing=session; Path=/';
+
+    manager.setAuthCookies(response, 'access-jwt', 3600, 'refresh-jwt', 604800);
+
+    expect(response.headers['Set-Cookie']).toEqual([
+      'existing=session; Path=/',
+      'access_token=access-jwt; Max-Age=3600; Path=/; Secure; HttpOnly; SameSite=Strict',
+      'refresh_token=refresh-jwt; Max-Age=604800; Path=/; Secure; HttpOnly; SameSite=Strict',
     ]);
     expect(response.headers['set-cookie']).toBeUndefined();
   });
