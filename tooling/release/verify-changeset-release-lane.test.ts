@@ -23,18 +23,20 @@ afterEach(() => {
 });
 
 describe('verifyChangesetReleaseLane', () => {
-  it('allows patch-only changesets on the stable lane', () => {
+  it('allows all semver bump intents on the stable lane', () => {
     const directory = createChangesetDirectory();
     writeChangeset(directory, 'fix-runtime.md', '"@fluojs/runtime": patch');
     writeChangeset(directory, 'fix-core.md', "'@fluojs/core': patch");
+    writeChangeset(directory, 'feature-http.md', '"@fluojs/http": minor');
+    writeChangeset(directory, 'breaking-slack.md', '"@fluojs/slack": major');
 
     const result = verifyChangesetReleaseLane({ changesetDirectory: directory, lane: 'stable' });
 
-    expect(result.checkedIntents).toHaveLength(2);
-    expect(result.allowedBumps).toEqual(['patch']);
+    expect(result.checkedIntents).toHaveLength(4);
+    expect(result.allowedBumps).toEqual(['patch', 'minor', 'major']);
   });
 
-  it('allows patch package version deltas on the stable lane', () => {
+  it('allows all semver package version deltas on the stable lane', () => {
     const directory = createChangesetDirectory();
 
     const result = verifyChangesetReleaseLane(
@@ -48,42 +50,25 @@ describe('verifyChangesetReleaseLane', () => {
             packageName: '@fluojs/runtime',
             previousVersion: '1.0.0',
           },
+          {
+            bump: 'minor',
+            filePath: 'packages/http/package.json',
+            nextVersion: '1.1.0',
+            packageName: '@fluojs/http',
+            previousVersion: '1.0.0',
+          },
+          {
+            bump: 'major',
+            filePath: 'packages/slack/package.json',
+            nextVersion: '2.0.0',
+            packageName: '@fluojs/slack',
+            previousVersion: '1.0.0',
+          },
         ],
       },
     );
 
-    expect(result.checkedVersionDeltas).toHaveLength(1);
-  });
-
-  it('rejects minor and major changesets on the stable lane', () => {
-    const directory = createChangesetDirectory();
-    writeChangeset(directory, 'feature-runtime.md', '"@fluojs/runtime": minor');
-    writeChangeset(directory, 'breaking-slack.md', '"@fluojs/slack": major');
-
-    expect(() => verifyChangesetReleaseLane({ changesetDirectory: directory, lane: 'stable' })).toThrow(
-      /@fluojs\/slack@major[\s\S]*@fluojs\/runtime@minor/,
-    );
-  });
-
-  it('rejects generated minor and major package version deltas on the stable lane', () => {
-    const directory = createChangesetDirectory();
-
-    expect(() =>
-      verifyChangesetReleaseLane(
-        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
-        {
-          collectPackageVersionDeltas: () => [
-            {
-              bump: 'major',
-              filePath: 'packages/runtime/package.json',
-              nextVersion: '2.0.0',
-              packageName: '@fluojs/runtime',
-              previousVersion: '1.0.0',
-            },
-          ],
-        },
-      ),
-    ).toThrow(/@fluojs\/runtime@major[\s\S]*1\.0\.0 -> 2\.0\.0/);
+    expect(result.checkedVersionDeltas).toHaveLength(3);
   });
 
   it('allows all semver bump intents on the prerelease lane', () => {

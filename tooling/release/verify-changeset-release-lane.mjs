@@ -8,7 +8,7 @@ const repoRoot = resolve(scriptDirectory, '..', '..');
 const defaultChangesetDirectory = join(repoRoot, '.changeset');
 const allowedBumpsByLane = {
   prerelease: new Set(['patch', 'minor', 'major']),
-  stable: new Set(['patch']),
+  stable: new Set(['patch', 'minor', 'major']),
 };
 const validBumps = new Set(['patch', 'minor', 'major']);
 
