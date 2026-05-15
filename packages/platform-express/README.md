@@ -90,7 +90,7 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 - **Versioning parity**: Header/media-type/custom version selection remains dispatcher-owned even when Express Router handles the initial path match.
 - **Middleware rewrite parity**: App middleware that rewrites method or path invalidates native handoff and rematches the rewritten request.
 - **Response serialization parity**: String responses default to `text/plain`, objects/arrays serialize as JSON, binary payloads default to `application/octet-stream`, and `set-cookie` values are merged.
-- **Startup and shutdown**: The adapter supports HTTP/HTTPS startup, retries `EADDRINUSE` according to retry options, drains sockets on close, and can force-close connections after shutdown timeout, including immediate force-close when `shutdownTimeoutMs` is `0`.
+- **Startup and shutdown**: The adapter supports HTTP/HTTPS startup, retries `EADDRINUSE` according to retry options, drains sockets on close, reuses one in-flight close lifecycle for concurrent `close()` calls, and can force-close connections after shutdown timeout, including immediate force-close when `shutdownTimeoutMs` is `0`.
 
 ## Public API Overview
 
