@@ -25,7 +25,7 @@ Drizzle is an ORM that combines a SQL-like authoring experience with TypeScript 
 - **Explicit type safety**: Drizzle generates TypeScript types directly from schema definitions.
 - **SQL-like performance characteristics**: Runtime overhead is small, and authored queries are translated into SQL strings.
 - **Integrated transaction model**: Like `@fluojs/prisma` and `@fluojs/mongoose`, the Drizzle integration module uses a `current()` seam that switches between the root handle and the active transaction handle.
-- **Runtime portability**: Drizzle broadly supports Node-Postgres, Bun SQL, Cloudflare D1, and more.
+- **Driver portability with a Node-scoped fluo wrapper**: Drizzle broadly supports Node-Postgres, Bun SQL, Cloudflare D1, and more, but the current `@fluojs/drizzle` wrapper uses Node's `node:async_hooks` transaction context. Treat this chapter's package integration as Node runtime guidance until a non-Node context adapter is documented.
 
 ## 20.2 Installation and Setup
 
@@ -152,6 +152,7 @@ Using `DrizzleDatabase` lets services coordinate complex multi-table insert oper
 
 The injected `DrizzleDatabase` wrapper exposes a snapshot method that matches the same public status contract used by diagnostics surfaces.
 During shutdown, active request transactions are aborted and drained before the configured dispose hook runs. Nested request transactions reuse the active Drizzle transaction handle; when they are opened inside a manual transaction, `activeRequestTransactions` reflects the nested request callback while it is still running and drops as soon as that callback settles.
+Open manual `transaction(...)` boundaries are also tracked during shutdown, so the dispose hook waits for their underlying Drizzle transaction runner to finish committing, rolling back, or cleaning up. New manual or request-scoped transaction boundaries are rejected after shutdown starts.
 
 ```typescript
 import { Inject } from '@fluojs/core';
