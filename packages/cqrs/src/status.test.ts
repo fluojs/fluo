@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { createCqrsPlatformStatusSnapshot } from './status.js';
+import { createCqrsPlatformStatusSnapshot, type CqrsLifecycleState, type CqrsStatusAdapterInput } from './status.js';
+
+function createCqrsInput(overrides: Partial<CqrsStatusAdapterInput> = {}): CqrsStatusAdapterInput {
+  return {
+    eventHandlersDiscovered: 0,
+    inFlightSagaExecutions: 0,
+    lifecycleState: 'created',
+    sagaLifecycleState: 'created',
+    sagaShutdownDrainTimeouts: 0,
+    sagasDiscovered: 0,
+    shutdownDrainTimeoutMs: 5000,
+    shutdownDrainTimeouts: 0,
+    ...overrides,
+  };
+}
 
 describe('createCqrsPlatformStatusSnapshot', () => {
   it('reports ready pipeline with explicit event-bus dependency edge', () => {
@@ -61,5 +75,54 @@ describe('createCqrsPlatformStatusSnapshot', () => {
       shutdownDrainTimeoutMs: 20,
       shutdownDrainTimeouts: 1,
     });
+  });
+
+  it.each<{
+    healthStatus: 'degraded' | 'healthy' | 'unhealthy';
+    lifecycleState: CqrsLifecycleState;
+    readinessStatus: 'degraded' | 'not-ready';
+  }>([
+    { healthStatus: 'healthy', lifecycleState: 'created', readinessStatus: 'not-ready' },
+    { healthStatus: 'degraded', lifecycleState: 'discovering', readinessStatus: 'degraded' },
+    { healthStatus: 'degraded', lifecycleState: 'stopping', readinessStatus: 'not-ready' },
+    { healthStatus: 'unhealthy', lifecycleState: 'stopped', readinessStatus: 'not-ready' },
+    { healthStatus: 'unhealthy', lifecycleState: 'failed', readinessStatus: 'not-ready' },
+  ])('reports $lifecycleState event-bus lifecycle readiness and health', ({
+    healthStatus,
+    lifecycleState,
+    readinessStatus,
+  }) => {
+    const snapshot = createCqrsPlatformStatusSnapshot(createCqrsInput({
+      lifecycleState,
+      sagaLifecycleState: 'ready',
+    }));
+
+    expect(snapshot.readiness.status).toBe(readinessStatus);
+    expect(snapshot.health.status).toBe(healthStatus);
+    expect(snapshot.details.lifecycleState).toBe(lifecycleState);
+  });
+
+  it.each<{
+    healthStatus: 'degraded' | 'unhealthy';
+    readinessStatus: 'degraded' | 'not-ready';
+    sagaLifecycleState: CqrsLifecycleState;
+  }>([
+    { healthStatus: 'degraded', readinessStatus: 'degraded', sagaLifecycleState: 'discovering' },
+    { healthStatus: 'degraded', readinessStatus: 'not-ready', sagaLifecycleState: 'stopping' },
+    { healthStatus: 'unhealthy', readinessStatus: 'not-ready', sagaLifecycleState: 'stopped' },
+    { healthStatus: 'unhealthy', readinessStatus: 'not-ready', sagaLifecycleState: 'failed' },
+  ])('reports $sagaLifecycleState saga lifecycle readiness and health', ({
+    healthStatus,
+    readinessStatus,
+    sagaLifecycleState,
+  }) => {
+    const snapshot = createCqrsPlatformStatusSnapshot(createCqrsInput({
+      lifecycleState: 'ready',
+      sagaLifecycleState,
+    }));
+
+    expect(snapshot.readiness.status).toBe(readinessStatus);
+    expect(snapshot.health.status).toBe(healthStatus);
+    expect(snapshot.details.sagaLifecycleState).toBe(sagaLifecycleState);
   });
 });

@@ -50,6 +50,39 @@ describe('TcpMicroserviceTransport', () => {
 
   });
 
+  it('rejects send when AbortSignal is already aborted', async () => {
+    const transport = createTransport({ port: 0, requestTimeoutMs: 1_000 });
+
+    await transport.listen(async () => 'ok');
+
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(transport.send('aborted.before.dispatch', {}, controller.signal)).rejects.toThrow(
+      'Microservice send aborted before dispatch.',
+    );
+  });
+
+  it('rejects in-flight send when AbortSignal aborts', async () => {
+    const transport = createTransport({ port: 0, requestTimeoutMs: 5_000 });
+
+    await transport.listen(async (packet) => {
+      if (packet.kind === 'message') {
+        await new Promise<void>(() => undefined);
+      }
+
+      return undefined;
+    });
+
+    const controller = new AbortController();
+    const pending = transport.send('aborted.inflight', {}, controller.signal);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    controller.abort();
+
+    await expect(pending).rejects.toThrow('Microservice send aborted.');
+  });
+
   it('rejects send and emit after close() stops the listener', async () => {
     const transport = createTransport({ port: 0, requestTimeoutMs: 1_000 });
 
