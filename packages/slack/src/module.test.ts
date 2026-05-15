@@ -85,6 +85,28 @@ class UnsuccessfulTransport implements SlackTransport {
   }
 }
 
+class SelectiveFailureSlackTransport implements SlackTransport {
+  readonly sent: string[] = [];
+
+  async send(message: NormalizedSlackMessage) {
+    const text = message.text ?? '';
+    this.sent.push(text);
+
+    if (text.includes('fail')) {
+      throw new Error(`provider rejected ${text}`);
+    }
+
+    return {
+      channel: message.channel,
+      messageTs: `selective-${this.sent.length}`,
+      ok: true,
+      response: 'ok',
+      statusCode: 200,
+      warnings: [],
+    };
+  }
+}
+
 class DelayedLifecycleTransport implements SlackTransport {
   closeCalls = 0;
   sendCalls = 0;
@@ -499,6 +521,96 @@ describe('SlackModule', () => {
     ).rejects.toThrowError(new SlackTransportError('Slack transport reported an unsuccessful delivery.'));
   });
 
+  it('delivers sendMany messages sequentially and returns ordered batch results', async () => {
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport: createRecordingTransportFactory({ responsePrefix: 'batch' }),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+
+    const result = await service.sendMany([{ text: 'one' }, { text: 'two' }, { text: 'three' }]);
+
+    expect(result).toMatchObject({ failed: 0, succeeded: 3 });
+    expect(result.results.map((entry) => entry.messageTs)).toEqual(['batch-1', 'batch-2', 'batch-3']);
+    expect(transportState.sent.map((entry) => entry.text)).toEqual(['one', 'two', 'three']);
+  });
+
+  it('stops sendMany at the first provider error by default', async () => {
+    const transport = new SelectiveFailureSlackTransport();
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+
+    await expect(service.sendMany([{ text: 'ok-1' }, { text: 'fail-2' }, { text: 'ok-3' }])).rejects.toThrowError(
+      'provider rejected fail-2',
+    );
+    expect(transport.sent).toEqual(['ok-1', 'fail-2']);
+  });
+
+  it('collects sendMany failures when continueOnError is enabled', async () => {
+    const transport = new SelectiveFailureSlackTransport();
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+
+    const result = await service.sendMany([{ text: 'ok-1' }, { text: 'fail-2' }, { text: 'ok-3' }], {
+      continueOnError: true,
+    });
+
+    expect(result).toMatchObject({ failed: 1, succeeded: 2 });
+    expect(result.failures[0]?.error).toMatchObject({ message: 'provider rejected fail-2' });
+    expect(result.results.map((entry) => entry.messageTs)).toEqual(['selective-1', 'selective-3']);
+    expect(transport.sent).toEqual(['ok-1', 'fail-2', 'ok-3']);
+  });
+
+  it('propagates sendMany abort signals between sequential deliveries', async () => {
+    const controller = new AbortController();
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport: {
+        async send(message: NormalizedSlackMessage) {
+          transportState.sent.push(message);
+          controller.abort();
+
+          return {
+            channel: message.channel,
+            messageTs: 'aborted-batch-1',
+            ok: true,
+            response: 'ok',
+            statusCode: 200,
+            warnings: [],
+          };
+        },
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+
+    const result = await service.sendMany([{ text: 'first' }, { text: 'second' }], {
+      continueOnError: true,
+      signal: controller.signal,
+    });
+
+    expect(result).toMatchObject({ failed: 1, succeeded: 1 });
+    expect(result.failures[0]?.error).toMatchObject({ name: 'AbortError' });
+    expect(transportState.sent.map((entry) => entry.text)).toEqual(['first']);
+  });
+
   it('retries transient webhook failures with exponential backoff before succeeding', async () => {
     vi.useFakeTimers();
 
@@ -537,6 +649,54 @@ describe('SlackModule', () => {
 
       await expect(pending).resolves.toMatchObject({ ok: true, response: 'ok', statusCode: 200 });
       expect(fetchLike).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('passes AbortSignal to webhook fetch and does not retry AbortError failures', async () => {
+    const controller = new AbortController();
+    const abortError = new DOMException('The operation was aborted.', 'AbortError');
+    const fetchLike = vi.fn<SlackFetchLike>().mockRejectedValue(abortError);
+    const transport = createSlackWebhookTransport({
+      fetch: fetchLike,
+      webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+    });
+
+    await expect(
+      transport.send({ attachments: [], blocks: [], channel: '#ops', text: 'Abort path' }, { signal: controller.signal }),
+    ).rejects.toBe(abortError);
+    expect(fetchLike).toHaveBeenCalledTimes(1);
+    expect(fetchLike.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+  });
+
+  it('stops webhook retry backoff when the signal is aborted', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const controller = new AbortController();
+      const reason = new DOMException('retry cancelled', 'AbortError');
+      const fetchLike = vi.fn<SlackFetchLike>().mockResolvedValue({
+        ok: false,
+        status: 429,
+        async text() {
+          controller.abort(reason);
+          return 'rate_limited';
+        },
+      });
+      const transport = createSlackWebhookTransport({
+        fetch: fetchLike,
+        webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+      });
+
+      const pending = transport.send({ attachments: [], blocks: [], channel: '#ops', text: 'Retry abort path' }, {
+        signal: controller.signal,
+      });
+      const expectation = expect(pending).rejects.toBe(reason);
+      await vi.runAllTimersAsync();
+
+      await expectation;
+      expect(fetchLike).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }

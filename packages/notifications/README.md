@@ -208,6 +208,7 @@ These limitations are part of the package contract so leaf packages can evolve i
 - `NotificationQueueNotConfiguredError`
 
 Status snapshots include `operationMode`, dependency diagnostics, ownership, readiness, and health fields for platform diagnostics.
+When a queue adapter is configured, `details.dependencies` includes `notifications.queue-adapter`; when lifecycle events are published through an event publisher, it includes `notifications.event-publisher`. Those optional integrations mark `ownership.externallyManaged: true` while the foundation package still reports `ownsResources: false` because it does not close concrete queue or event-bus resources.
 
 ## Related Packages
 

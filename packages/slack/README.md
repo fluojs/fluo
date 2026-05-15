@@ -127,6 +127,7 @@ Behavioral contract notes:
 
 - `SlackService.send(...)` resolves `defaultChannel` before delivery.
 - `SlackService.sendMany(...)` sends messages sequentially and supports `continueOnError` when callers need a batch result instead of fail-fast behavior.
+- `SlackService.send(...)`, `SlackService.sendMany(...)`, and `SlackService.sendNotification(...)` honor already-aborted signals before provider handoff, and the same signal is propagated to transport calls.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
 - Once shutdown starts, `SlackService.send(...)` and `SlackService.sendNotification(...)` fail with `SlackLifecycleError` instead of reusing or lazily creating transports; any in-flight factory-owned transport creation is awaited and closed by shutdown.
 - `SlackService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options.
@@ -199,6 +200,7 @@ For richer API integrations such as `chat.postMessage`, implement the exported `
 Behavioral contract notes:
 
 - The built-in webhook transport retries transient `408`, `429`, and `5xx` failures with bounded exponential backoff before surfacing an error.
+- Abort signals are passed to the injected `fetch` boundary and cancel retry backoff without wrapping `AbortError` values as `SlackTransportError`.
 - Caller-visible `SlackTransportError` messages omit raw upstream response bodies by default.
 
 ### Intentional limitations
