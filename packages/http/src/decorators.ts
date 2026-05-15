@@ -292,7 +292,7 @@ function mergeStandardDtoBinding(
   });
 }
 
-function createRouteDecorator(method: HttpMethod) {
+function createRouteDecorator(method: HttpMethod, produces?: readonly string[]) {
   return (path: string): MethodDecoratorLike => {
     validateRoutePath(path, `@${method}() path`);
 
@@ -301,11 +301,18 @@ function createRouteDecorator(method: HttpMethod) {
         const route = getStandardRouteRecord(contextOrPropertyKey.metadata, contextOrPropertyKey.name);
         route.method = method;
         route.path = path;
+        if (produces) {
+          route.produces = normalizeProducesMediaTypes(produces);
+        }
         return;
       }
 
       if (isMetadataPropertyKey(contextOrPropertyKey)) {
-        mergeLegacyRouteMetadata(valueOrTarget, contextOrPropertyKey, { method, path });
+        const routeMetadata: Partial<StandardRouteMetadataRecord> = { method, path };
+        if (produces) {
+          routeMetadata.produces = normalizeProducesMediaTypes(produces);
+        }
+        mergeLegacyRouteMetadata(valueOrTarget, contextOrPropertyKey, routeMetadata);
       }
     };
 
@@ -414,6 +421,16 @@ export function Version(version: string): ClassOrMethodDecoratorLike {
  * @returns A method decorator that registers a `GET` handler mapping.
  */
 export const Get = createRouteDecorator('GET');
+/**
+ * Registers a server-sent events route handler as `GET` with `text/event-stream` produces metadata.
+ *
+ * @param path Route path relative to the controller base path.
+ * @returns A method decorator that registers a `GET` SSE handler mapping.
+ *
+ * @remarks
+ * This Phase 1 decorator only declares route and produced media-type metadata. Handlers remain responsible for creating and returning `SseResponse`.
+ */
+export const Sse = createRouteDecorator('GET', ['text/event-stream']);
 /**
  * Registers a `POST` route handler.
  *
