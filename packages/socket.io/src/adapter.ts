@@ -1159,10 +1159,10 @@ export class SocketIoLifecycleService
   private async runShutdownLifecycle(): Promise<void> {
     const io = this.io;
 
-    this.attachments = [];
     this.wired = false;
 
     if (!io) {
+      this.attachments = [];
       this.socketRegistry.clear();
       return;
     }
@@ -1178,6 +1178,7 @@ export class SocketIoLifecycleService
     } finally {
       this.io = undefined;
       this.bunEngine = undefined;
+      this.attachments = [];
       if (hasBunRealtimeBindingHost(this.adapter)) {
         this.adapter.configureRealtimeBinding(undefined);
       }

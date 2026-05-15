@@ -1641,4 +1641,61 @@ describe('@fluojs/socket.io', () => {
       expect(['server shutting down', 'transport close']).toContain(await disconnected);
     });
   }
+
+  it('keeps namespace room helpers available while shutdown disconnect handlers run', async () => {
+    class GatewayState {
+      disconnectRooms: Array<ReadonlySet<string>> = [];
+      disconnects = 0;
+    }
+
+    @Inject(GatewayState, SOCKETIO_ROOM_SERVICE)
+    @WebSocketGateway({ path: '/shutdown-room-cleanup' })
+    class ShutdownRoomGateway {
+      constructor(
+        private readonly state: GatewayState,
+        private readonly rooms: SocketIoRoomService,
+      ) {}
+
+      @OnConnect()
+      onConnect(socket: Socket) {
+        this.rooms.joinRoom(socket.id, 'room:shutdown');
+      }
+
+      @OnDisconnect()
+      onDisconnect(socket: Socket) {
+        this.state.disconnectRooms.push(this.rooms.getRooms(socket.id));
+        this.rooms.leaveRoom(socket.id, 'room:shutdown');
+        this.rooms.broadcastToRoom('room:shutdown', 'shutdown:cleanup', 'done');
+        this.state.disconnects += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
+      providers: [GatewayState, ShutdownRoomGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+    const state = await app.container.resolve(GatewayState);
+
+    await app.listen();
+
+    const socket = createClient(`http://127.0.0.1:${String(port)}/shutdown-room-cleanup`, {
+      reconnection: false,
+      transports: ['websocket'],
+    });
+    await onceConnected(socket);
+
+    const disconnected = onceDisconnected(socket);
+    await app.close();
+
+    expect(['server shutting down', 'transport close']).toContain(await disconnected);
+    expect(state.disconnects).toBe(1);
+    expect(state.disconnectRooms).toEqual([expect.any(Set)]);
+  });
 });
