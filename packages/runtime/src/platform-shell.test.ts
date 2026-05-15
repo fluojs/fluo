@@ -173,6 +173,10 @@ describe('RuntimePlatformShell', () => {
     expect(snapshot.health.status).toBe('degraded');
     expect(snapshot.components.map((component) => component.id)).toEqual(['cache.default', 'search.default']);
     expect(snapshot.components.find((component) => component.id === 'search.default')?.dependencies).toEqual(['cache.default']);
+    expect(snapshot.components.find((component) => component.id === 'search.default')?.ownership).toEqual({
+      externallyManaged: false,
+      ownsResources: true,
+    });
 
     await shell.stop();
   });
