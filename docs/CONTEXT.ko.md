@@ -15,6 +15,17 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 - All public exports MUST have TSDoc.
 - Breaking changes in `1.0+` MUST trigger a major version bump.
 
+## Contribution Quickstart
+
+전체 contributor workflow는 [`CONTRIBUTING.ko.md`](../CONTRIBUTING.ko.md)를 읽고, PR을 준비할 때는 [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md)를 사용한다.
+
+- Codex나 Claude 같은 도구로 만든 AI-assisted PR도 원래 컨텍스트를 보존한다면 환영한다.
+- 논의가 필요한 문제에는 이슈를 권장하지만, 범위가 명확한 수정, 문서 업데이트, 작은 개선에는 이슈가 필수는 아니다. 이슈가 없다면 PR에 문제와 의도한 결과를 요약한다.
+- PR은 `main`을 대상으로 하고, 가능하면 PR을 열거나 업데이트하기 전에 `pnpm verify`를 실행한다.
+- `packages/*/src` 아래 public export 변경은 source TSDoc을 포함해야 하며 `pnpm lint`를 통해 `pnpm verify:public-export-tsdoc`를 통과해야 한다.
+- 공개 `@fluojs/*` 패키지의 behavior, API surface, package contents, release metadata에 소비자에게 보이는 변경이 있으면 committed `.changeset/*.md` 파일이 필요하다. Docs-only, test-only, internal-only 변경에는 보통 필요하지 않다.
+- Runtime behavior 또는 API 변경은 affected package README, governed docs, regression test를 [`docs/contracts/behavioral-contract-policy.ko.md`](./contracts/behavioral-contract-policy.ko.md)에 맞춰 함께 유지해야 한다.
+
 ## Package Families
 
 | Family | Purpose | Representative packages |
@@ -33,8 +44,6 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 
 Redis 통합의 discoverability는 책임별로 나뉜다. `packages/redis/README.ko.md`는 `RedisModule.forRoot({ lifecycle })`의 connect/quit timeout guardrail과 Pub/Sub subscriber에 전용 Redis 연결이 필요하다는 raw-client 규칙을 문서화한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 정식 `@fluojs/redis` surface 요약을 담고, [`book/intermediate/ch03-redis-transport.ko.md`](../book/intermediate/ch03-redis-transport.ko.md)는 Redis Pub/Sub과 Redis Streams 학습 경로를 설명하며 공유 command client를 subscribed Pub/Sub connection으로 재사용하면 안 되는 이유를 포함한다.
 
-Redis 통합의 discoverability는 책임별로 나뉜다. `packages/redis/README.ko.md`는 `RedisModule.forRoot({ lifecycle })`의 connect/quit timeout guardrail과 Pub/Sub subscriber에 전용 Redis 연결이 필요하다는 raw-client 규칙을 문서화한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 정식 `@fluojs/redis` surface 요약을 담고, [`book/intermediate/ch03-redis-transport.ko.md`](../book/intermediate/ch03-redis-transport.ko.md)는 Redis Pub/Sub과 Redis Streams 학습 경로를 설명하며 공유 command client를 subscribed Pub/Sub connection으로 재사용하면 안 되는 이유를 포함한다.
-
 Cache-manager discoverability는 패키지 문서, governed package-surface docs, cache contract, beginner book으로 나뉜다. `packages/cache-manager/README.ko.md`는 동기 `CacheModule.forRoot(options)`, store selection, `CacheService`, cache decorator, low-level metadata helper export, platform status/diagnostic helper를 문서화한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 정식 `@fluojs/cache-manager` responsibility boundary를 기록하고, [`docs/architecture/caching.ko.md`](./architecture/caching.ko.md)는 현재 cache behavior contract를 담으며, [`book/beginner/ch17-cache.ko.md`](../book/beginner/ch17-cache.ko.md)는 application-facing configuration flow를 설명한다.
 
 Throttler discoverability는 패키지 README와 governed package-surface docs로 나뉜다. `packages/throttler/README.ko.md`는 `ThrottlerModule.forRoot(options)`, `ThrottlerGuard`, route/class throttling decorator, memory 및 Redis/custom store 계약, status input/output type, platform status/diagnostic helper를 문서화한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 request rate limiting, backing-store readiness, ownership, local/distributed operation visibility에 대한 정식 `@fluojs/throttler` responsibility boundary를 기록한다.
@@ -49,7 +58,7 @@ Passport auth discoverability도 패키지 문서와 governed package-surface do
 
 HTTP adapter raw-body portability discoverability도 testing package와 governed platform docs로 나뉜다. `packages/testing/README.md`는 byte-sensitive payload를 위한 `createHttpAdapterPortabilityHarness(...)`와 `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`를 문서화한다. [`docs/contracts/platform-conformance-authoring-checklist.ko.md`](./contracts/platform-conformance-authoring-checklist.ko.md)는 HTTP adapter가 Unicode replacement, newline normalization, re-encoding 없이 정확한 `rawBody` byte를 보존해야 한다고 요구하며, [`docs/contracts/testing-guide.ko.md`](./contracts/testing-guide.ko.md)는 HTTP adapter byte preservation behavior가 바뀔 때 실행할 platform portability test와 governance command를 안내한다.
 
-Release lane discoverability는 [`docs/contracts/release-governance.ko.md`](./contracts/release-governance.ko.md)가 관리한다. `main`은 stable release lane이며, `tooling/release/verify-changeset-release-lane.mjs`는 malformed release metadata를 거부하면서 patch, minor, major semver intent를 허용하고, major changeset은 merge 전에 명시적인 maintainer approval과 consumer-facing migration note가 필요하다.
+Release lane discoverability는 [`docs/contracts/release-governance.ko.md`](./contracts/release-governance.ko.md)가 관리한다. Stable patch, minor, major release는 `main`을 통해 흐르고, `tooling/release/verify-changeset-release-lane.mjs`는 PR CI와 release automation에서 stable Changesets metadata를 검증하며, major changeset은 explicit maintainer approval과 consumer-facing migration note가 필요하다.
 
 CLI inspect artifact discoverability는 CLI 패키지, Studio 패키지, governed tooling docs로 나뉜다. `packages/cli/README.ko.md`는 `fluo inspect`의 기본 JSON 출력, `--timing` snapshot-plus-timing envelope, `--report` support artifact, `--mermaid` Studio delegation, `--output <path>` artifact write를 문서화한다. [`docs/reference/toolchain-contract-matrix.ko.md`](./reference/toolchain-contract-matrix.ko.md)는 정식 CLI scaffolding 및 inspect artifact output contract를 담고, 명시적 output mode가 없을 때 `--timing`이 JSON을 기본값으로 삼는다는 계약도 포함한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 `@fluojs/cli` artifact emission과 `@fluojs/studio` artifact viewing/rendering 사이의 package responsibility split을 기록한다.
 

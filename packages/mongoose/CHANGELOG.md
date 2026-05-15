@@ -1,5 +1,11 @@
 # @fluojs/mongoose
 
+## 1.0.3
+
+### Patch Changes
+
+- [#1927](https://github.com/fluojs/fluo/pull/1927) [`705f5df`](https://github.com/fluojs/fluo/commit/705f5df2b54f0318aaeedfa34c759d21392a082b) Thanks [@ayden94](https://github.com/ayden94)! - Export the documented async module options and platform status snapshot input types, and clarify that `createMongooseProviders(...)` is reserved for manual composition compatibility while `MongooseModule.forRoot(...)` / `forRootAsync(...)` remain the primary registration APIs.
+
 ## 1.0.1
 
 ### Patch Changes
@@ -8,7 +14,7 @@
 
 - Updated dependencies [[`01ea60e`](https://github.com/fluojs/fluo/commit/01ea60eff7a8d3b30509aff8aaf21649178a9fad), [`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2), [`3aa93d9`](https://github.com/fluojs/fluo/commit/3aa93d9bbea28342f225b727f2ec0640acdf7986)]:
   - @fluojs/di@1.0.1
-  - @fluojs/runtime@1.0.1
+  - @fluojs/runtime@1.1.0
   - @fluojs/core@1.0.1
 
 ## 1.0.0

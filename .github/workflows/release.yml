@@ -37,7 +37,7 @@ jobs:
       - name: Build packages
         run: pnpm build
 
-      - name: Verify stable release lane
+      - name: Verify changeset release lane
         run: pnpm verify:changeset-release-lane -- --lane=stable --base-ref=${{ github.event.before }}
 
       - name: Create Release Pull Request or Publish to npm

@@ -68,6 +68,8 @@ Release-readiness verification is now read-only by default:
 - `pnpm verify:release-readiness` validates release gates without dirtying the working tree.
 - `pnpm generate:release-readiness-drafts` explicitly refreshes `CHANGELOG.md` draft content plus the release-readiness summary artifacts when maintainers want writable outputs.
 
+Changesets are required when a PR affects the public behavior, API surface, package contents, or release metadata of published `@fluojs/*` packages. They are usually not required for docs-only edits, test-only coverage, examples that do not change published behavior, or internal refactors with no consumer-visible impact. When in doubt, explain the release impact in the PR and maintainers can help choose the right semver intent.
+
 ## maintainer workflows
 
 ### Supervised Release Orchestration
@@ -122,10 +124,14 @@ fluo maintains strict behavioral contracts. Before opening a PR, ensure you have
 
 - Use **Bug Report** for reproducible errors in the framework or CLI.
 - Use **DX/Maintainability Request** for developer experience improvements or refactoring suggestions.
-- For feature requests, start with an issue to discuss the design before implementation.
+- Opening an issue before a PR is encouraged when the problem needs discussion, but it is not required for focused fixes, documentation updates, or clearly scoped improvements.
+- AI-assisted contributions from tools such as Codex or Claude are welcome. Please keep the PR connected to the original context by linking the issue, discussion, or short problem statement that motivated the change.
+- For large feature proposals, open an issue or discussion first so maintainers can align on API shape, behavioral contracts, and release impact before implementation gets too deep.
 
 ## PR process
 
 - All PRs should target the `main` branch.
 - Follow the structure in `.github/PULL_REQUEST_TEMPLATE.md`.
+- Link related issues or discussions when they exist. If there is no issue, summarize the problem and intended outcome in the PR description.
+- Include a `.changeset/*.md` file only when the PR has consumer-visible release impact for public `@fluojs/*` packages.
 - Ensure all CI checks pass locally before pushing — run `pnpm verify`.

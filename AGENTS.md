@@ -20,6 +20,8 @@ This file defines the always-on project rules and behavioral contracts for all O
 - **Changesets ONLY**: The Changesets release workflow is the sole source of truth for versioning and changelogs.
 - **No Local Publish**: Running `npm publish` locally is strictly forbidden. All publishing must occur via GitHub Actions (canonical path: `.github/workflows/release.yml`).
 - **Release Readiness**: Any change affecting public `@fluojs/*` packages must include a `.changeset/*.md` file.
+- **Single Main Release Lane**: Stable patch, minor, and major releases flow through `main` and the canonical Changesets GitHub Actions workflow.
+- **Major Release Approval**: PRs carrying `major` changesets require explicit maintainer approval and consumer-facing migration notes before merge.
 
 ## Authority & Side-Effect Gates
 - **Explicit Approval**: High-impact side effects require explicit user approval or command harness authority:

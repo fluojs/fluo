@@ -1,5 +1,11 @@
 # @fluojs/validation
 
+## 1.0.3
+
+### Patch Changes
+
+- [#1923](https://github.com/fluojs/fluo/pull/1923) [`794ebf3`](https://github.com/fluojs/fluo/commit/794ebf3123f50165fb7a1c909c1c575dbd431a1b) Thanks [@ayden94](https://github.com/ayden94)! - Complete the public TSDoc baseline for validation decorator exports so generated API documentation includes matching parameter and return metadata.
+
 ## 1.0.1
 
 ### Patch Changes

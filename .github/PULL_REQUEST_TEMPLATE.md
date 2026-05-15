@@ -2,6 +2,8 @@
 
 <!-- Briefly describe the goal and context of these changes. -->
 
+Linked context: <!-- Link an issue/discussion if one exists. If not, summarize the problem this PR solves. AI-assisted PRs are welcome; keep the original context connected here. -->
+
 ## Changes
 
 <!-- List the key changes in this PR. -->
@@ -9,6 +11,13 @@
 ## Testing
 
 <!-- How did you verify these changes? Include test results or instructions. -->
+
+## Release impact
+
+<!-- Add a .changeset/*.md file when this PR changes public @fluojs/* package behavior, API surface, package contents, or release metadata. Docs-only, test-only, and internal-only changes usually do not need one. -->
+
+- [ ] This PR has consumer-visible release impact and includes a changeset.
+- [ ] This PR has no consumer-visible release impact.
 
 ## Public export documentation
 

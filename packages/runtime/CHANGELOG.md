@@ -1,6 +1,12 @@
 # @fluojs/runtime
 
-## 1.0.1
+## 1.1.0
+
+### Minor Changes
+
+- [#1854](https://github.com/fluojs/fluo/pull/1854) [`d23049a`](https://github.com/fluojs/fluo/commit/d23049a59a49bdaea110a5f542ae18606c782db8) Thanks [@ayden94](https://github.com/ayden94)! - Keep Web runtime multipart uploads portable across Web-standard hosts by returning `Uint8Array` file buffers, and make Node adapter listen retries cancellable during shutdown.
+
+  This release treats the multipart buffer portability change as part of the 1.x feature line for this train. Consumers that need Node-specific Buffer APIs can wrap uploaded file buffers with `Buffer.from(file.buffer)`.
 
 ### Patch Changes
 

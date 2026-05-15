@@ -257,7 +257,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     ].filter((section) => section.length > 0);
 
     throw new Error(
-      `Changeset release lane check failed: the ${lane} lane only allows ${[...allowedBumps].join(', ')} changesets and package version bumps. Move these release intents to a minor/major release branch or prerelease lane:\n${sections.join('\n')}`,
+      `Changeset release lane check failed: the ${lane} lane only allows ${[...allowedBumps].join(', ')} changesets and package version bumps:\n${sections.join('\n')}`,
     );
   }
 

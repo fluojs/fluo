@@ -15,6 +15,17 @@ fluo is a standard-first TypeScript backend framework built on TC39 standard dec
 - All public exports MUST have TSDoc.
 - Breaking changes in `1.0+` MUST trigger a major version bump.
 
+## Contribution Quickstart
+
+For the full contributor workflow, read [`CONTRIBUTING.md`](../CONTRIBUTING.md) and use [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md) when preparing a PR.
+
+- AI-assisted PRs from tools such as Codex or Claude are welcome when the PR preserves the original context.
+- Issues are encouraged when a problem needs discussion, but they are not required for focused fixes, documentation updates, or clearly scoped improvements. If there is no issue, summarize the problem and intended outcome in the PR.
+- Target `main` and run `pnpm verify` before opening or updating a PR when possible.
+- Public export changes under `packages/*/src` must include source TSDoc and pass `pnpm verify:public-export-tsdoc` through `pnpm lint`.
+- Consumer-visible changes to public `@fluojs/*` package behavior, API surface, package contents, or release metadata require a committed `.changeset/*.md` file. Docs-only, test-only, and internal-only changes usually do not need one.
+- Runtime behavior or API changes must keep affected package READMEs, governed docs, and regression tests aligned with [`docs/contracts/behavioral-contract-policy.md`](./contracts/behavioral-contract-policy.md).
+
 ## Package Families
 
 | Family | Purpose | Representative packages |
@@ -33,8 +44,6 @@ Canonical package and runtime coverage lives in [`docs/reference/package-surface
 
 Redis integration discoverability is split by responsibility: `packages/redis/README.md` documents `RedisModule.forRoot({ lifecycle })` connect/quit timeout guardrails and the raw-client rule that Pub/Sub subscribers need dedicated Redis connections; [`docs/reference/package-surface.md`](./reference/package-surface.md) carries the canonical `@fluojs/redis` surface summary; and [`book/intermediate/ch03-redis-transport.md`](../book/intermediate/ch03-redis-transport.md) explains the Redis Pub/Sub versus Redis Streams learning path, including why shared command clients should not be reused as subscribed Pub/Sub connections.
 
-Redis integration discoverability is split by responsibility: `packages/redis/README.md` documents `RedisModule.forRoot({ lifecycle })` connect/quit timeout guardrails and the raw-client rule that Pub/Sub subscribers need dedicated Redis connections; [`docs/reference/package-surface.md`](./reference/package-surface.md) carries the canonical `@fluojs/redis` surface summary; and [`book/intermediate/ch03-redis-transport.md`](../book/intermediate/ch03-redis-transport.md) explains the Redis Pub/Sub versus Redis Streams learning path, including why shared command clients should not be reused as subscribed Pub/Sub connections.
-
 Cache-manager discoverability is split across the package, governed package-surface docs, the cache contract, and the beginner book: `packages/cache-manager/README.md` documents synchronous `CacheModule.forRoot(options)`, store selection, `CacheService`, cache decorators, low-level metadata helper exports, and platform status/diagnostic helpers; [`docs/reference/package-surface.md`](./reference/package-surface.md) records the canonical `@fluojs/cache-manager` responsibility boundary; [`docs/architecture/caching.md`](./architecture/caching.md) carries current cache behavior contracts; and [`book/beginner/ch17-cache.md`](../book/beginner/ch17-cache.md) teaches the application-facing configuration flow.
 
 Throttler discoverability is split across the package README and governed package-surface docs: `packages/throttler/README.md` documents `ThrottlerModule.forRoot(options)`, `ThrottlerGuard`, route/class throttling decorators, memory and Redis/custom store contracts, status input/output types, and platform status/diagnostic helpers; [`docs/reference/package-surface.md`](./reference/package-surface.md) records the canonical `@fluojs/throttler` responsibility boundary for request rate limiting, backing-store readiness, ownership, and local or distributed operation visibility.
@@ -49,7 +58,7 @@ Passport auth discoverability is split across the package and governed package-s
 
 HTTP adapter raw-body portability discoverability is split across the testing package and governed platform docs: `packages/testing/README.md` documents `createHttpAdapterPortabilityHarness(...)` and `assertPreservesExactRawBodyBytesForByteSensitivePayloads()` for byte-sensitive payloads; [`docs/contracts/platform-conformance-authoring-checklist.md`](./contracts/platform-conformance-authoring-checklist.md) requires HTTP adapters to preserve exact `rawBody` bytes without Unicode replacement, newline normalization, or re-encoding; and [`docs/contracts/testing-guide.md`](./contracts/testing-guide.md) identifies platform portability tests and governance commands to run when HTTP adapter byte preservation behavior changes.
 
-Release lane discoverability is governed by [`docs/contracts/release-governance.md`](./contracts/release-governance.md): `main` is the stable release lane, `tooling/release/verify-changeset-release-lane.mjs` accepts patch, minor, and major semver intents while rejecting malformed release metadata, and major changesets require explicit maintainer approval plus consumer-facing migration notes before merge.
+Release lane discoverability is governed by [`docs/contracts/release-governance.md`](./contracts/release-governance.md): stable patch, minor, and major releases flow through `main`, `tooling/release/verify-changeset-release-lane.mjs` validates stable Changesets metadata in PR CI and release automation, and major changesets require explicit maintainer approval plus consumer-facing migration notes.
 
 CLI inspect artifact discoverability is split across the CLI package, Studio package, and governed tooling docs: `packages/cli/README.md` documents `fluo inspect` default JSON output, `--timing` snapshot-plus-timing envelopes, `--report` support artifacts, `--mermaid` Studio delegation, and `--output <path>` artifact writes; [`docs/reference/toolchain-contract-matrix.md`](./reference/toolchain-contract-matrix.md) carries the canonical CLI scaffolding and inspect artifact output contracts, including that `--timing` defaults to JSON when no explicit output mode is selected; and [`docs/reference/package-surface.md`](./reference/package-surface.md) records the package responsibility split between `@fluojs/cli` artifact emission and `@fluojs/studio` artifact viewing/rendering.
 
