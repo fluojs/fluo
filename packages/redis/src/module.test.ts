@@ -398,6 +398,32 @@ describe('@fluojs/redis', () => {
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
   });
 
+  it('forces disconnect for a named lifecycle-owned client when quit exceeds the configured timeout', async () => {
+    vi.useFakeTimers();
+    mockRedisState.quitHangs = true;
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        RedisModule.forRoot({
+          db: 1,
+          host: '127.0.0.1',
+          lifecycle: { quitTimeoutMs: 25 },
+          name: 'cache',
+          port: 6380,
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const closePromise = app.close();
+    const closeAssertion = expect(closePromise).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(25);
+
+    await closeAssertion;
+    expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
+  });
+
   it('rethrows quit failures when disconnect does not close the client', async () => {
     mockRedisState.disconnectLeavesOpen = true;
     mockRedisState.quitError = new Error('quit failed');
