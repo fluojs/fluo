@@ -91,6 +91,28 @@ class UnsuccessfulTransport implements DiscordTransport {
   }
 }
 
+class SelectiveFailureDiscordTransport implements DiscordTransport {
+  readonly sent: string[] = [];
+
+  async send(message: NormalizedDiscordMessage) {
+    const content = message.content ?? '';
+    this.sent.push(content);
+
+    if (content.includes('fail')) {
+      throw new Error(`provider rejected ${content}`);
+    }
+
+    return {
+      messageId: `selective-${this.sent.length}`,
+      ok: true,
+      response: 'ok',
+      statusCode: 200,
+      threadId: message.threadId,
+      warnings: [],
+    };
+  }
+}
+
 function createRecordingTransportFactory(
   overrides: Partial<Pick<DiscordTransportFactory, 'kind' | 'ownsResources'>> & { responsePrefix?: string } = {},
 ): DiscordTransportFactory {
@@ -460,6 +482,64 @@ describe('DiscordModule', () => {
         'Discord notifications accept exactly one target thread per dispatch. Use `sendMany(...)` for fan-out delivery.',
       ),
     );
+  });
+
+  it('delivers sendMany messages sequentially as direct Discord message batches', async () => {
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      defaultThreadId: 'thread-ops',
+      transport: createRecordingTransportFactory({ responsePrefix: 'batch' }),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    const result = await service.sendMany([{ content: 'one' }, { content: 'two' }, { content: 'three' }]);
+
+    expect(result).toMatchObject({ failed: 0, succeeded: 3 });
+    expect(result.results.map((entry) => entry.messageId)).toEqual(['batch-1', 'batch-2', 'batch-3']);
+    expect(transportState.sent.map((entry) => entry.content)).toEqual(['one', 'two', 'three']);
+  });
+
+  it('stops sendMany at the first provider error by default', async () => {
+    const transport = new SelectiveFailureDiscordTransport();
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      defaultThreadId: 'thread-ops',
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    await expect(service.sendMany([{ content: 'ok-1' }, { content: 'fail-2' }, { content: 'ok-3' }])).rejects.toThrowError(
+      'provider rejected fail-2',
+    );
+    expect(transport.sent).toEqual(['ok-1', 'fail-2']);
+  });
+
+  it('collects sendMany failures when continueOnError is enabled', async () => {
+    const transport = new SelectiveFailureDiscordTransport();
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      defaultThreadId: 'thread-ops',
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    const result = await service.sendMany([{ content: 'ok-1' }, { content: 'fail-2' }, { content: 'ok-3' }], {
+      continueOnError: true,
+    });
+
+    expect(result).toMatchObject({ failed: 1, succeeded: 2 });
+    expect(result.failures[0]?.error).toMatchObject({ message: 'provider rejected fail-2' });
+    expect(result.results.map((entry) => entry.messageId)).toEqual(['selective-1', 'selective-3']);
+    expect(transport.sent).toEqual(['ok-1', 'fail-2', 'ok-3']);
   });
 
   it('surfaces an unsuccessful transport receipt as a notifications channel failure', async () => {

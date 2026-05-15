@@ -64,6 +64,13 @@ function createDeliveryLifecycleError(state: EmailServiceLifecycleState): EmailL
   return new EmailLifecycleError(`Email delivery cannot start while the service lifecycle is ${state}.`);
 }
 
+function createCleanupFailureCause(originalError: unknown, cleanupError: unknown): unknown {
+  return new AggregateError(
+    [originalError, cleanupError],
+    'Email transport verification failed and the owned transport failed to close.',
+  );
+}
+
 type EmailServiceLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';
 
 function isShutdownLifecycleState(
@@ -169,7 +176,19 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
       }
 
       this.lifecycleState = 'failed';
-      throw createLifecycleError('Email transport failed to initialize.', error);
+
+      let cause: unknown = error;
+      const transport = this.resolvedTransport;
+
+      if (transport && this.options.transport.ownsResources && transport.close) {
+        try {
+          await transport.close();
+        } catch (cleanupError) {
+          cause = createCleanupFailureCause(error, cleanupError);
+        }
+      }
+
+      throw createLifecycleError('Email transport failed to initialize.', cause);
     }
   }
 

@@ -218,9 +218,13 @@ class PassiveTransport implements EmailTransport {
 }
 
 class FailingLifecycleTransport implements EmailTransport {
+  closeCalls = 0;
+
   constructor(private readonly failurePoint: 'verify' | 'close') {}
 
   async close(): Promise<void> {
+    this.closeCalls += 1;
+
     if (this.failurePoint === 'close') {
       throw new Error('provider close failed');
     }
@@ -239,6 +243,26 @@ class FailingLifecycleTransport implements EmailTransport {
     if (this.failurePoint === 'verify') {
       throw new Error('provider verify failed');
     }
+  }
+}
+
+class SelectiveFailureEmailTransport implements EmailTransport {
+  readonly sent: string[] = [];
+
+  async send(message: NormalizedEmailMessage): Promise<{ accepted: string[]; messageId: string; pending: []; rejected: [] }> {
+    const subject = message.subject ?? '';
+    this.sent.push(subject);
+
+    if (subject.includes('fail')) {
+      throw new Error(`provider rejected ${subject}`);
+    }
+
+    return {
+      accepted: message.to.map((entry) => entry.address),
+      messageId: `selective-${this.sent.length}`,
+      pending: [],
+      rejected: [],
+    };
   }
 }
 
@@ -647,6 +671,139 @@ describe('EmailModule', () => {
     expect(transportState.sent).toHaveLength(0);
   });
 
+  it('aborts direct email delivery before transport handoff', async () => {
+    const controller = new AbortController();
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: createRecordingTransportFactory(),
+    });
+
+    controller.abort();
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    await expect(
+      service.send(
+        {
+          subject: 'Abort direct',
+          text: 'hello',
+          to: ['user@example.com'],
+        },
+        { signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(transportState.sent).toHaveLength(0);
+  });
+
+  it('delivers sendMany messages sequentially and returns ordered batch results', async () => {
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: createRecordingTransportFactory({ messagePrefix: 'batch' }),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    const result = await service.sendMany([
+      { subject: 'One', text: 'first', to: ['one@example.com'] },
+      { subject: 'Two', text: 'second', to: ['two@example.com'] },
+      { subject: 'Three', text: 'third', to: ['three@example.com'] },
+    ]);
+
+    expect(result).toMatchObject({ failed: 0, succeeded: 3 });
+    expect(result.results.map((entry) => entry.messageId)).toEqual(['batch-1', 'batch-2', 'batch-3']);
+    expect(transportState.sent.map((entry) => entry.to[0]?.address)).toEqual([
+      'one@example.com',
+      'two@example.com',
+      'three@example.com',
+    ]);
+  });
+
+  it('stops sendMany at the first provider error by default', async () => {
+    const transport = new SelectiveFailureEmailTransport();
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    await expect(
+      service.sendMany([
+        { subject: 'ok-1', text: 'first', to: ['one@example.com'] },
+        { subject: 'fail-2', text: 'second', to: ['two@example.com'] },
+        { subject: 'ok-3', text: 'third', to: ['three@example.com'] },
+      ]),
+    ).rejects.toThrowError('provider rejected fail-2');
+    expect(transport.sent).toEqual(['ok-1', 'fail-2']);
+  });
+
+  it('collects sendMany failures when continueOnError is enabled', async () => {
+    const transport = new SelectiveFailureEmailTransport();
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    const result = await service.sendMany(
+      [
+        { subject: 'ok-1', text: 'first', to: ['one@example.com'] },
+        { subject: 'fail-2', text: 'second', to: ['two@example.com'] },
+        { subject: 'ok-3', text: 'third', to: ['three@example.com'] },
+      ],
+      { continueOnError: true },
+    );
+
+    expect(result).toMatchObject({ failed: 1, succeeded: 2 });
+    expect(result.failures[0]?.error).toMatchObject({ message: 'provider rejected fail-2' });
+    expect(result.results.map((entry) => entry.messageId)).toEqual(['selective-1', 'selective-3']);
+    expect(transport.sent).toEqual(['ok-1', 'fail-2', 'ok-3']);
+  });
+
+  it('propagates sendMany abort signals between sequential deliveries', async () => {
+    const controller = new AbortController();
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: {
+        async send(message: NormalizedEmailMessage) {
+          transportState.sent.push(message);
+          controller.abort();
+
+          return {
+            accepted: message.to.map((entry) => entry.address),
+            messageId: 'aborted-batch-1',
+            pending: [],
+            rejected: [],
+          };
+        },
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    const result = await service.sendMany(
+      [
+        { subject: 'first', text: 'first', to: ['one@example.com'] },
+        { subject: 'second', text: 'second', to: ['two@example.com'] },
+      ],
+      { continueOnError: true, signal: controller.signal },
+    );
+
+    expect(result).toMatchObject({ failed: 1, succeeded: 1 });
+    expect(result.failures[0]?.error).toMatchObject({ name: 'AbortError' });
+    expect(transportState.sent.map((entry) => entry.subject)).toEqual(['first']);
+  });
+
   it('aborts notification delivery before template rendering starts', async () => {
     const controller = new AbortController();
     const render = vi.fn(async () => ({ text: 'rendered' }));
@@ -709,11 +866,12 @@ describe('EmailModule', () => {
   });
 
   it('preserves provider errors as lifecycle failure causes', async () => {
+    const verifyTransport = new FailingLifecycleTransport('verify');
     const initContainer = new Container();
     const initModule = EmailModule.forRoot({
       defaultFrom: 'noreply@example.com',
       transport: {
-        create: async () => new FailingLifecycleTransport('verify'),
+        create: async () => verifyTransport,
         ownsResources: true,
       },
       verifyOnModuleInit: true,
@@ -726,12 +884,14 @@ describe('EmailModule', () => {
       cause: expect.objectContaining({ message: 'provider verify failed' }),
       message: 'Email transport failed to initialize.',
     });
+    expect(verifyTransport.closeCalls).toBe(1);
 
+    const closeTransport = new FailingLifecycleTransport('close');
     const shutdownContainer = new Container();
     const shutdownModule = EmailModule.forRoot({
       defaultFrom: 'noreply@example.com',
       transport: {
-        create: async () => new FailingLifecycleTransport('close'),
+        create: async () => closeTransport,
         ownsResources: true,
       },
     });
@@ -744,6 +904,7 @@ describe('EmailModule', () => {
       cause: expect.objectContaining({ message: 'provider close failed' }),
       message: 'Email transport failed to close cleanly.',
     });
+    expect(closeTransport.closeCalls).toBe(1);
   });
 
   it('blocks shutdown-time delivery from reusing or recreating transports', async () => {
