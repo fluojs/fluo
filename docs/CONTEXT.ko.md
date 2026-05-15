@@ -15,6 +15,17 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 - All public exports MUST have TSDoc.
 - Breaking changes in `1.0+` MUST trigger a major version bump.
 
+## Contribution Quickstart
+
+전체 contributor workflow는 [`CONTRIBUTING.ko.md`](../CONTRIBUTING.ko.md)를 읽고, PR을 준비할 때는 [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md)를 사용한다.
+
+- Codex나 Claude 같은 도구로 만든 AI-assisted PR도 원래 컨텍스트를 보존한다면 환영한다.
+- 논의가 필요한 문제에는 이슈를 권장하지만, 범위가 명확한 수정, 문서 업데이트, 작은 개선에는 이슈가 필수는 아니다. 이슈가 없다면 PR에 문제와 의도한 결과를 요약한다.
+- PR은 `main`을 대상으로 하고, 가능하면 PR을 열거나 업데이트하기 전에 `pnpm verify`를 실행한다.
+- `packages/*/src` 아래 public export 변경은 source TSDoc을 포함해야 하며 `pnpm lint`를 통해 `pnpm verify:public-export-tsdoc`를 통과해야 한다.
+- 공개 `@fluojs/*` 패키지의 behavior, API surface, package contents, release metadata에 소비자에게 보이는 변경이 있으면 committed `.changeset/*.md` 파일이 필요하다. Docs-only, test-only, internal-only 변경에는 보통 필요하지 않다.
+- Runtime behavior 또는 API 변경은 affected package README, governed docs, regression test를 [`docs/contracts/behavioral-contract-policy.ko.md`](./contracts/behavioral-contract-policy.ko.md)에 맞춰 함께 유지해야 한다.
+
 ## Package Families
 
 | Family | Purpose | Representative packages |
@@ -30,8 +41,6 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 | Tooling | CLI, 진단 도구, Vite 빌드 통합 | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
 정식 패키지 및 런타임 범위는 [`docs/reference/package-surface.md`](./reference/package-surface.md)에 있으며, fluo-native `@fluojs/i18n` package boundary, plural/select localization을 위한 `@fluojs/i18n/icu` ICU MessageFormat subpath, `@fluojs/i18n/http` HTTP locale helper 및 opt-in `Accept-Language` policy helper, opt-in non-HTTP locale resolution과 header policy helper를 위한 `@fluojs/i18n/adapters` subpath, `@fluojs/i18n/validation` validation localization, opt-in remote cache wrapper를 포함한 `@fluojs/i18n/loaders/fs` 및 `@fluojs/i18n/loaders/remote` catalog loader, `@fluojs/i18n/typegen` catalog key 및 typed translation helper declaration generation 같은 core 추가 항목, `@fluojs/runtime` application-facing helper subpath인 `@fluojs/runtime/node`와 `@fluojs/runtime/web` 및 `@fluojs/runtime/internal*` package-integration seam 경계, `@fluojs/serialization`의 decorator-aware response serialization, output DTO shaping, HTTP `SerializerInterceptor` response-boundary 통합 같은 request-pipeline 책임, TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC를 지원하는 `@fluojs/microservices` messaging 책임, bootstrap-time handler discovery를 갖춘 `@fluojs/cqrs` command/query bus, saga orchestration 및 event-bus delegation, optional Redis Pub/Sub transport, inherited event channel fan-out, bounded publish cancellation/timeout, local publish와 inbound transport callback 모두에 대한 shutdown drain semantic을 갖춘 `@fluojs/event-bus` in-process domain event fan-out, `@fluojs/mongoose`의 ALS/session transaction 책임 같은 persistence 책임도 포함한다. 작업 기반 패키지 발견성은 [`docs/reference/package-chooser.md`](./reference/package-chooser.md)에 있으며, `@fluojs/i18n`과 그 ICU, HTTP locale policy, adapters header policy, validation, loader/cache, typegen subpath를 위한 localization/i18n 선택 guidance, `@fluojs/serialization`을 위한 response serialization 및 output DTO shaping 선택 guidance, `@fluojs/event-bus/redis` 및 `@fluojs/redis`를 함께 쓰는 optional cross-process `@fluojs/event-bus` fan-out 선택 guidance, `@fluojs/terminus`, Node memory/disk indicator용 `@fluojs/terminus/node` subpath, Redis indicator용 `@fluojs/terminus/redis` subpath, `execution.indicatorTimeoutMs` slow-indicator timeout guardrail을 위한 operations guidance도 포함한다. NestJS i18n, i18next, next-intl, request/validation convenience glue에 대한 ecosystem bridge compatibility decision은 [`docs/reference/i18n-ecosystem-bridges.ko.md`](./reference/i18n-ecosystem-bridges.ko.md)에 있다.
-
-Redis 통합의 discoverability는 책임별로 나뉜다. `packages/redis/README.ko.md`는 `RedisModule.forRoot({ lifecycle })`의 connect/quit timeout guardrail과 Pub/Sub subscriber에 전용 Redis 연결이 필요하다는 raw-client 규칙을 문서화한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 정식 `@fluojs/redis` surface 요약을 담고, [`book/intermediate/ch03-redis-transport.ko.md`](../book/intermediate/ch03-redis-transport.ko.md)는 Redis Pub/Sub과 Redis Streams 학습 경로를 설명하며 공유 command client를 subscribed Pub/Sub connection으로 재사용하면 안 되는 이유를 포함한다.
 
 Redis 통합의 discoverability는 책임별로 나뉜다. `packages/redis/README.ko.md`는 `RedisModule.forRoot({ lifecycle })`의 connect/quit timeout guardrail과 Pub/Sub subscriber에 전용 Redis 연결이 필요하다는 raw-client 규칙을 문서화한다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 정식 `@fluojs/redis` surface 요약을 담고, [`book/intermediate/ch03-redis-transport.ko.md`](../book/intermediate/ch03-redis-transport.ko.md)는 Redis Pub/Sub과 Redis Streams 학습 경로를 설명하며 공유 command client를 subscribed Pub/Sub connection으로 재사용하면 안 되는 이유를 포함한다.
 
