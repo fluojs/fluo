@@ -7,7 +7,7 @@
 - [#1861](https://github.com/fluojs/fluo/pull/1861) [`92636ee`](https://github.com/fluojs/fluo/commit/92636eee23991859a04f4590871179508dee12fb) Thanks [@ayden94](https://github.com/ayden94)! - Harden Studio viewer rendering for diagnostic documentation links, Mermaid labels, and browser graph external dependency semantics.
 
 - Updated dependencies [[`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2)]:
-  - @fluojs/runtime@1.0.1
+  - @fluojs/runtime@1.1.0
 
 ## 1.0.0
 

@@ -7,7 +7,7 @@
 - [#1855](https://github.com/fluojs/fluo/pull/1855) [`b42c909`](https://github.com/fluojs/fluo/commit/b42c909a3679a1da6ad40e5b59f36bd72d55fbb5) Thanks [@ayden94](https://github.com/ayden94)! - Keep Cloudflare Worker websocket upgrades behind the same listen boundary as HTTP dispatch, return shutdown responses for follow-up requests after the adapter closes, and reject `listen()` with the Cloudflare Workers adapter shutdown-draining error while `close()` is still draining active requests.
 
 - Updated dependencies [[`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2)]:
-  - @fluojs/runtime@1.0.1
+  - @fluojs/runtime@1.1.0
 
 ## 1.0.0
 

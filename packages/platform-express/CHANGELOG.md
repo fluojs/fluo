@@ -7,7 +7,7 @@
 - [#1857](https://github.com/fluojs/fluo/pull/1857) [`a680f3a`](https://github.com/fluojs/fluo/commit/a680f3a4814b94184048847d88cb740aa28235e0) Thanks [@ayden94](https://github.com/ayden94)! - Validate Express adapter numeric options during setup and align Express runtime docs with the supported server/shutdown contract.
 
 - Updated dependencies [[`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2)]:
-  - @fluojs/runtime@1.0.1
+  - @fluojs/runtime@1.1.0
 
 ## 1.0.0
 

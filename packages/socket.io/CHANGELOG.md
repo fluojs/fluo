@@ -8,7 +8,7 @@
 
 - Updated dependencies [[`01ea60e`](https://github.com/fluojs/fluo/commit/01ea60eff7a8d3b30509aff8aaf21649178a9fad), [`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2), [`c02342c`](https://github.com/fluojs/fluo/commit/c02342c758a1bab8a8361fa1dc9c0d956e4d8fc7), [`3aa93d9`](https://github.com/fluojs/fluo/commit/3aa93d9bbea28342f225b727f2ec0640acdf7986), [`8e18b6b`](https://github.com/fluojs/fluo/commit/8e18b6bc24da15c947ba6b0d8817c99ae851efa5)]:
   - @fluojs/di@1.0.1
-  - @fluojs/runtime@1.0.1
+  - @fluojs/runtime@1.1.0
   - @fluojs/websockets@1.0.1
   - @fluojs/core@1.0.1
 
