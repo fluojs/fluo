@@ -65,9 +65,14 @@ describe('TcpMicroserviceTransport', () => {
 
   it('rejects in-flight send when AbortSignal aborts', async () => {
     const transport = createTransport({ port: 0, requestTimeoutMs: 5_000 });
+    let markHandlerEntered!: () => void;
+    const handlerEntered = new Promise<void>((resolve) => {
+      markHandlerEntered = resolve;
+    });
 
     await transport.listen(async (packet) => {
       if (packet.kind === 'message') {
+        markHandlerEntered();
         await new Promise<void>(() => undefined);
       }
 
@@ -77,7 +82,7 @@ describe('TcpMicroserviceTransport', () => {
     const controller = new AbortController();
     const pending = transport.send('aborted.inflight', {}, controller.signal);
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await handlerEntered;
     controller.abort();
 
     await expect(pending).rejects.toThrow('Microservice send aborted.');
