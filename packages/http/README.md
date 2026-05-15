@@ -107,17 +107,70 @@ function someDeepHelper() {
 ### Server-sent events
 
 ```ts
-import { Sse, SseResponse, type RequestContext } from '@fluojs/http';
+import { Controller, Sse, SseResponse, type RequestContext } from '@fluojs/http';
 
-@Sse('/events')
-stream(_input: undefined, ctx: RequestContext) {
-  const sse = new SseResponse(ctx);
-  sse.send({ message: 'hello' });
-  return sse;
+@Controller('/orders')
+export class OrdersEventsController {
+  @Sse('/events')
+  stream(_input: undefined, ctx: RequestContext) {
+    const sse = new SseResponse(ctx);
+
+    sse.send({ status: 'connected' }, { event: 'ready' });
+
+    const heartbeat = setInterval(() => {
+      sse.comment('heartbeat');
+    }, 15_000);
+
+    ctx.request.signal?.addEventListener(
+      'abort',
+      () => {
+        clearInterval(heartbeat);
+        sse.close();
+      },
+      { once: true },
+    );
+
+    return sse;
+  }
 }
 ```
 
 `@Sse(path)` is a Phase 1 thin route decorator: it registers a `GET` route and declares `text/event-stream` produced media type metadata. The handler is still responsible for creating and returning `SseResponse`. Automatic conversion from `AsyncIterable` or Observable values into SSE streams is out of scope.
+
+On the browser side, create the `EventSource` inside the React effect that owns it and always close it from the cleanup function so route changes, Strict Mode remounts, and component unmounts do not leave duplicate streams open:
+
+```tsx
+import { useEffect, useState } from 'react';
+
+export function OrderEvents({ orderId }: { orderId: string }) {
+  const [events, setEvents] = useState<string[]>([]);
+
+  useEffect(() => {
+    const source = new EventSource(`/orders/events?orderId=${encodeURIComponent(orderId)}`, {
+      withCredentials: true,
+    });
+
+    source.addEventListener('ready', (event) => {
+      setEvents((current) => [...current, event.data]);
+    });
+
+    source.onerror = () => {
+      // Browsers reconnect automatically unless the server closes with a terminal status.
+      console.warn('Order event stream disconnected; waiting for browser retry.');
+    };
+
+    return () => {
+      source.close();
+    };
+  }, [orderId]);
+
+  return <output>{events.join('\n')}</output>;
+}
+```
+
+Browser `EventSource` does not let callers attach arbitrary `Authorization` headers. Authenticate SSE endpoints with same-origin cookies, `withCredentials` plus explicit CORS credentials policy, or a short-lived signed URL/query token that your guard validates. Do not document a bearer-header browser example unless you are using a custom fetch-based SSE client instead of the built-in `EventSource` API.
+
+Operationally, keep SSE connections unbuffered and long-lived: allow credentials in CORS only for trusted origins, disable proxy buffering and response transforms (`SseResponse` sets `Cache-Control: no-cache, no-transform` and `X-Accel-Buffering: no`), avoid compression middleware that buffers `text/event-stream`, set load balancer or platform idle timeouts above your heartbeat interval, send comment heartbeats such as `sse.comment('heartbeat')`, and persist enough event history to honor `Last-Event-ID` when clients reconnect and need replay.
 
 ### Versioning
 

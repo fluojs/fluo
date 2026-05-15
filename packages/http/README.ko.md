@@ -105,17 +105,70 @@ function someDeepHelper() {
 ### 서버 전송 이벤트
 
 ```ts
-import { Sse, SseResponse, type RequestContext } from '@fluojs/http';
+import { Controller, Sse, SseResponse, type RequestContext } from '@fluojs/http';
 
-@Sse('/events')
-stream(_input: undefined, ctx: RequestContext) {
-  const sse = new SseResponse(ctx);
-  sse.send({ message: 'hello' });
-  return sse;
+@Controller('/orders')
+export class OrdersEventsController {
+  @Sse('/events')
+  stream(_input: undefined, ctx: RequestContext) {
+    const sse = new SseResponse(ctx);
+
+    sse.send({ status: 'connected' }, { event: 'ready' });
+
+    const heartbeat = setInterval(() => {
+      sse.comment('heartbeat');
+    }, 15_000);
+
+    ctx.request.signal?.addEventListener(
+      'abort',
+      () => {
+        clearInterval(heartbeat);
+        sse.close();
+      },
+      { once: true },
+    );
+
+    return sse;
+  }
 }
 ```
 
 `@Sse(path)`는 Phase 1 thin route decorator입니다. `GET` 라우트를 등록하고 `text/event-stream` produced media type metadata를 선언할 뿐입니다. Handler는 계속 `SseResponse`를 직접 만들고 반환해야 합니다. `AsyncIterable` 또는 Observable 값을 SSE stream으로 자동 변환하는 기능은 범위 밖입니다.
+
+브라우저 쪽에서는 해당 연결을 소유하는 React effect 안에서 `EventSource`를 만들고 cleanup 함수에서 항상 닫아야 합니다. 그래야 route 변경, Strict Mode remount, component unmount가 중복 stream을 남기지 않습니다.
+
+```tsx
+import { useEffect, useState } from 'react';
+
+export function OrderEvents({ orderId }: { orderId: string }) {
+  const [events, setEvents] = useState<string[]>([]);
+
+  useEffect(() => {
+    const source = new EventSource(`/orders/events?orderId=${encodeURIComponent(orderId)}`, {
+      withCredentials: true,
+    });
+
+    source.addEventListener('ready', (event) => {
+      setEvents((current) => [...current, event.data]);
+    });
+
+    source.onerror = () => {
+      // 서버가 terminal status로 닫지 않는 한 브라우저가 자동으로 재연결합니다.
+      console.warn('Order event stream disconnected; waiting for browser retry.');
+    };
+
+    return () => {
+      source.close();
+    };
+  }, [orderId]);
+
+  return <output>{events.join('\n')}</output>;
+}
+```
+
+브라우저 `EventSource`는 호출자가 임의의 `Authorization` 헤더를 붙일 수 없습니다. SSE 엔드포인트는 same-origin cookie, `withCredentials`와 명시적인 CORS credentials 정책, 또는 guard가 검증하는 짧은 수명의 signed URL/query token으로 인증하세요. 내장 `EventSource` API가 아니라 fetch 기반 custom SSE client를 쓰는 경우가 아니라면 bearer header 브라우저 예제를 문서화하지 마세요.
+
+운영 환경에서는 SSE 연결을 buffering 없이 오래 유지해야 합니다. 신뢰한 origin에 대해서만 CORS credentials를 허용하고, proxy buffering과 response transform을 비활성화하며(`SseResponse`는 `Cache-Control: no-cache, no-transform` 및 `X-Accel-Buffering: no`를 설정합니다), `text/event-stream`을 buffering하는 compression middleware를 피하고, load balancer 또는 platform idle timeout을 heartbeat interval보다 길게 두고, `sse.comment('heartbeat')` 같은 comment heartbeat를 보내며, 클라이언트가 재연결 후 replay가 필요할 때 `Last-Event-ID`를 처리할 수 있도록 충분한 event history를 보존하세요.
 
 ### Versioning
 

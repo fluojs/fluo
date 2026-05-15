@@ -118,24 +118,38 @@ async function bootstrap() {
 
 ### 21.3.1 SSE (Server-Sent Events) in Express
 
-Express 어댑터는 `SseResponse` 유틸리티를 통해 SSE를 지원합니다. 단방향 스트리밍이 필요한 알림이나 상태 업데이트에서는 WebSocket보다 단순한 운영 모델로 충분할 수 있습니다.
+Express 어댑터는 `@Sse()`와 `SseResponse` 유틸리티를 통해 SSE를 지원합니다. 단방향 스트리밍이 필요한 알림이나 상태 업데이트에서는 WebSocket보다 단순한 운영 모델로 충분할 수 있습니다. 현재 Phase 1 계약에서 `@Sse()`는 `GET` 라우트와 `text/event-stream` metadata만 등록합니다. `AsyncIterable` 또는 Observable 반환값을 stream frame으로 변환하지 않습니다.
 
 ```typescript
-import { Get, SseResponse, type RequestContext } from '@fluojs/http';
+import { Sse, SseResponse, type RequestContext } from '@fluojs/http';
 
-@Get('notifications')
+@Sse('notifications')
 async stream(_input: undefined, ctx: RequestContext) {
   const sse = new SseResponse(ctx);
-  
+
   const interval = setInterval(() => {
-    sse.send({ data: { message: 'New order received!' } });
+    sse.send({ message: 'New order received!' }, { event: 'order.created' });
   }, 5000);
 
-  ctx.request.signal?.addEventListener('abort', () => clearInterval(interval), { once: true });
-  
+  const heartbeat = setInterval(() => {
+    sse.comment('heartbeat');
+  }, 15_000);
+
+  ctx.request.signal?.addEventListener(
+    'abort',
+    () => {
+      clearInterval(interval);
+      clearInterval(heartbeat);
+      sse.close();
+    },
+    { once: true },
+  );
+
   return sse;
 }
 ```
+
+브라우저 `EventSource` client는 연결을 소유하는 React effect cleanup에서 연결을 닫아야 합니다. 내장 `EventSource` API는 임의의 `Authorization` 헤더를 붙일 수 없으므로 인증된 stream에는 same-origin cookie, 명시적인 CORS credentials 정책과 함께 쓰는 `withCredentials`, 또는 짧은 수명의 signed URL/query token을 선호하세요. 운영 환경에서는 `text/event-stream`에 대해 proxy buffering과 compression을 비활성화하고, idle timeout을 heartbeat interval보다 길게 유지하며, 재연결 후 `Last-Event-ID`부터 replay할 수 있을 만큼 event history를 저장하세요.
 
 ### 21.3.2 Using Raw Node streams
 
