@@ -298,6 +298,21 @@ describe('CookieManager', () => {
     expect(cookies[1]).toContain('refresh_token=refresh-jwt');
   });
 
+  it('appends cookies to an existing set-cookie header regardless of response header casing', async () => {
+    const { CookieManager } = await import('./cookie-manager.js');
+    const manager = new CookieManager();
+    const response = createMockResponse();
+    response.headers['set-cookie'] = 'existing=session; Path=/';
+
+    manager.setAccessTokenCookie(response, 'access-jwt', 3600);
+
+    expect(response.headers['Set-Cookie']).toEqual([
+      'existing=session; Path=/',
+      'access_token=access-jwt; Max-Age=3600; Path=/; Secure; HttpOnly; SameSite=Strict',
+    ]);
+    expect(response.headers['set-cookie']).toBeUndefined();
+  });
+
   it('uses custom cookie names', async () => {
     const { CookieManager } = await import('./cookie-manager.js');
     const manager = new CookieManager({
