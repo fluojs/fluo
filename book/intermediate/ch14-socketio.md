@@ -146,7 +146,7 @@ During shutdown, Socket.IO owns cleanup for connected Socket.IO clients. The und
 
 ## 14.6 Bun engine details
 
-fluo prioritizes support for Bun's high performance WebSocket implementation. Socket.IO usually uses the `ws` package on Node.js, but on Bun it can use `@socket.io/bun-engine`. When FluoShop runs on Bun, the `@fluojs/socket.io` adapter automatically detects the environment and switches to the Bun engine when available. This choice lets FluoShop handle many concurrent support chats with lower memory overhead than a standard Node.js process.
+fluo supports Bun's high performance WebSocket implementation through the selected HTTP adapter contract. Socket.IO usually uses the `ws` package on Node.js, but on Bun it can use `@socket.io/bun-engine` when the active platform adapter exposes the fetch-style realtime binding that the Socket.IO adapter requires. FluoShop should therefore choose a Bun-compatible platform adapter explicitly instead of relying on runtime auto-switching. This keeps the realtime boundary auditable while still allowing many concurrent support chats with lower memory overhead than a standard Node.js process.
 
 ## 14.7 Broadcasting across many rooms
 

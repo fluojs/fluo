@@ -164,7 +164,7 @@ describe('PostService', () => {
 비동기 코드는 백엔드 개발의 일반적인 형태입니다. Fluo의 `createTestingModule`과 Vitest의 `async/await` 지원을 사용하면 이러한 작업을 순서대로 테스트할 수 있습니다. 성공적인 완료, 예상된 거부(rejection), 그리고 여러 비동기 작업이 특정 순서대로 완료되어야 하는 타이밍 문제까지 검증할 수 있습니다. `vi.useFakeTimers()`를 사용하면 실제로 시간을 기다리지 않고도 타임아웃이나 재시도 로직을 테스트할 수 있습니다.
 
 ### 20.3.3 Lifecycle Hooks in Tests
-때로는 프로바이더가 `onModuleInit`이나 `onApplicationShutdown`과 같은 라이프사이클 이벤트를 올바르게 처리하는지 테스트해야 할 때가 있습니다. Fluo의 테스트 모듈은 `compile()` 및 `close()` 단계에서 이러한 훅들을 트리거합니다. 이를 통해 모의 데이터베이스 연결 수립이나 캐시 정리와 같은 초기화 및 정리 로직을 테스트 스위트의 일부로 검증할 수 있습니다.
+때로는 모듈 그래프가 컴파일될 때 프로바이더가 올바르게 초기화되는지 테스트해야 할 때가 있습니다. `createTestingModule()`은 컴파일 시점의 모듈 연결, 프로바이더 가시성, 프로바이더/가드/인터셉터 교체를 검증하는 슬라이스 테스트 표면입니다. 컴파일된 `TestingModuleRef`는 해결(resolve) 및 디스패치 헬퍼를 제공하지만 별도의 `close()` 라이프사이클 단계는 제공하지 않습니다. 정리(cleanup) 검증은 테스트 대상 프로바이더 안에서 명시적으로 수행하거나, 반환된 앱이 `close()`를 노출하는 `createTestApp()` 기반 요청/애플리케이션 라이프사이클 테스트로 옮기세요.
 
 ## 20.4 Provider Overrides
 `fluo`는 실제 컴포넌트를 테스트 대역(test double)으로 교체하는 여러 가지 방법을 제공합니다. 이 기능을 사용하면 외부 시스템의 불안정성은 제거하면서도, 테스트하려는 모듈의 DI 연결과 실행 흐름은 그대로 검증할 수 있습니다.
@@ -313,7 +313,7 @@ Fluo 테스트 유틸리티의 큰 장점 중 하나는 TypeScript와의 깊은 
 ## 20.7 Best Practices for FluoBlog Testing
 1.  **프레임워크를 테스트하지 마세요**: `@Get()`이 작동하는지가 아니라, 애플리케이션의 비즈니스 로직에 집중하세요. `fluo`가 라우팅을 처리한다고 전제하고, 해당 경로가 호출되었을 때 작성한 코드가 무엇을 하는지 테스트하세요.
 2.  **데이터베이스에는 가짜(Fake)를 사용하세요**: 통합 테스트는 실제 테스트용 데이터베이스(예: Docker의 PostgreSQL)를 사용할 수 있지만, 단위 테스트는 속도를 위해 항상 모의 객체나 가짜를 사용해야 합니다.
-3.  **리소스 정리**: 리소스를 해제하기 위해 항상 `await app.close()` 또는 `await module.close()`를 호출하세요. 이는 메모리 누수와 테스트 러너가 종료되지 않는 문제를 방지합니다.
+3.  **리소스 정리**: request 또는 application lifecycle 테스트에서는 `createTestApp()`으로 앱을 만들고 테스트 후 `await app.close()`를 호출하세요. `createTestingModule()` slice 테스트에서는 컴파일된 `TestingModuleRef`가 application lifecycle 소유자가 아니라 resolve 및 dispatch 표면이므로, 테스트 대상 provider나 fake 안에서 cleanup 기대치를 명시적으로 검증하세요.
 4.  **보안을 위한 통합 테스트**: 항상 가드와 RBAC 로직은 통합 테스트에서 테스트하세요. 단위 테스트는 대개 이를 우회하므로, 통합 테스트가 실제 보안을 검증하는 곳입니다.
 5.  **결정론적 테스트**: 테스트에서 `Date.now()`나 랜덤 숫자를 직접 사용하는 것을 피하세요. Vitest의 시간 여행 기능(`vi.useFakeTimers()`)을 사용하여 테스트가 실행될 때마다 동일하게 동작하도록 보장하세요.
 

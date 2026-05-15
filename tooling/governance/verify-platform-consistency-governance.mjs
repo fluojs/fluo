@@ -704,6 +704,20 @@ function enforceCanonicalRuntimeMatrixReferences() {
     'docs/CONTEXT.ko.md must point readers to the canonical runtime package matrix page.',
   );
   assert(
+    packageSurface.includes('@fluojs/runtime/internal*') &&
+      packageSurface.includes('package-integration seams') &&
+      docsContext.includes('@fluojs/runtime/internal*') &&
+      docsContext.includes('package-integration seam boundary'),
+    'docs/reference/package-surface.md and docs/CONTEXT.md must distinguish runtime application-facing helper subpaths from internal package-integration seams.',
+  );
+  assert(
+    packageSurfaceKo.includes('@fluojs/runtime/internal*') &&
+      packageSurfaceKo.includes('package-integration seam') &&
+      docsContextKo.includes('@fluojs/runtime/internal*') &&
+      docsContextKo.includes('package-integration seam 경계'),
+    'docs/reference/package-surface.ko.md and docs/CONTEXT.ko.md must distinguish runtime application-facing helper subpaths from internal package-integration seams.',
+  );
+  assert(
     docsContext.includes('docs/reference/package-chooser.md') && docsContext.includes('@fluojs/i18n'),
     'docs/CONTEXT.md must point readers to package chooser i18n discovery guidance.',
   );
@@ -763,6 +777,22 @@ function enforceCanonicalRuntimeMatrixReferences() {
   assert(
     packageSurfaceKo.includes('Pub/Sub subscriber') && docsContextKo.includes('Pub/Sub subscriber에 전용 Redis 연결'),
     'docs/CONTEXT.ko.md must mention dedicated Redis Pub/Sub subscriber connections when package-surface.ko.md documents them.',
+  );
+  assert(
+    packageSurface.includes('@fluojs/cron') &&
+      packageSurface.includes('health/readiness status snapshots') &&
+      docsContext.includes('packages/cron/README.md') &&
+      docsContext.includes('book/intermediate/ch12-cron.md') &&
+      docsContext.includes('dynamic-start lifecycle guarantees'),
+    'docs/CONTEXT.md must keep cron scheduling, status snapshot, and book lifecycle guidance discoverable when package-surface.md documents them.',
+  );
+  assert(
+    packageSurfaceKo.includes('@fluojs/cron') &&
+      packageSurfaceKo.includes('health/readiness status snapshot') &&
+      docsContextKo.includes('packages/cron/README.ko.md') &&
+      docsContextKo.includes('book/intermediate/ch12-cron.ko.md') &&
+      docsContextKo.includes('dynamic-start lifecycle guarantee'),
+    'docs/CONTEXT.ko.md must keep cron scheduling, status snapshot, and book lifecycle guidance discoverable when package-surface.ko.md documents them.',
   );
   assert(rootReadme.includes('docs/reference/package-surface.md'), 'README.md must point to the canonical runtime package matrix page.');
   assert(

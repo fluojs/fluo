@@ -89,7 +89,7 @@ export class WelcomeService {
 }
 ```
 
-`NotificationsModule.forRoot(...)` and `NotificationsModule.forRootAsync(...)` export `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS` as global providers. Application services should declare dependencies with fluo's class-level `@Inject(...)` decorator so the standard-decorator DI container can resolve the service without parameter decorators.
+`NotificationsModule.forRoot(...)` and `NotificationsModule.forRootAsync(...)` export `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS` as global providers by default. Set `global: false` when these providers should stay visible only to the module that imports the notifications module. Application services should declare dependencies with fluo's class-level `@Inject(...)` decorator so the standard-decorator DI container can resolve the service without parameter decorators.
 
 ## Common Patterns
 

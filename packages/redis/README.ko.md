@@ -161,6 +161,7 @@ export class AdvancedService {
 
 ### 타입
 - `RedisModuleOptions`: Fluo가 module-only `name`, `global`, `lifecycle` 필드를 제거한 뒤 `ioredis` 생성자에 전달하는 설정 옵션입니다.
+- `RedisClientOptions`: Fluo가 module-only field를 제거하고 내부에서 `lazyConnect: true`를 강제하기 전의 Redis constructor option입니다.
 - `RedisLifecycleOptions`: Fluo가 소유한 `connect()`와 `quit()` lifecycle command의 timeout을 조정하는 선택적 옵션입니다.
 - `PersistencePlatformStatusSnapshot`, `RedisStatusAdapterInput`: status snapshot input/output type입니다.
 

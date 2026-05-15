@@ -89,7 +89,7 @@ Studio는 주로 웹 애플리케이션이지만, 배포된 패키지는 도구/
 | `PlatformDiagnosticIssue` | 플랫폼 오류 보고 및 수정을 위한 스키마입니다. |
 | `parseStudioPayload(rawJson)` | raw snapshot JSON, standalone timing JSON, snapshot+timing envelope, `fluo inspect --report` artifact를 받아 parsed payload와 원본 JSON string을 반환합니다. |
 | `ParsedPayload` | `parseStudioPayload(...)`가 반환하는 parsed Studio payload shape입니다. |
-| `StudioPayload` | 허용되는 raw snapshot/timing/report input shape입니다. |
+| `StudioPayload` | `parseStudioPayload(...)`가 반환하는 정규화된 parsed payload envelope이며, 선택적 `report`, `snapshot`, `timing` 필드를 포함합니다. |
 | `StudioReportArtifact` | CI/support 자동화를 위해 summary, snapshot, timing 데이터를 함께 보존한 `fluo inspect --report` artifact입니다. |
 | `StudioReportSummary` | report artifact에 포함되는 summary block입니다. |
 | `FilterState` | `applyFilters(...)`가 받는 filter configuration입니다. |

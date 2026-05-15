@@ -76,9 +76,10 @@ export class AppModule {}
 The `OpenApiModule.forRoot()` method is the main entrypoint. It receives a configuration object with the following fields, and those values decide the generated document's scope and public surface.
 - `title`: The human-friendly name of the API.
 - `version`: The semantic version of the API, for example `1.0.0`.
-- `sources`: The most important part. fluo values explicitness. You directly define the Controllers the OpenAPI builder should inspect. You can pass `controllerToken` directly or pass a preconfigured descriptor list.
+- `sources`: The most important part. fluo values explicitness. You directly define the Controllers the OpenAPI builder should inspect as `HandlerSource[]` entries, such as `{ controllerToken: PostsController }`.
 - `ui: true`: This setting makes fluo serve a polished Swagger UI at a specific endpoint.
-- For advanced composition, the module also accepts `descriptors`, `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, and `documentTransform`.
+- `descriptors`: For advanced composition, pass prebuilt `HandlerDescriptor[]` values separately from `sources` when you need to bypass controller discovery or merge explicit handler mappings.
+- The module also accepts `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, and `documentTransform`.
 
 The generated JSON document and UI are available at standardized paths. These two paths serve automation tools and human readers respectively.
 - `/openapi.json`: The machine-readable source document.

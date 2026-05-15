@@ -3,10 +3,10 @@
 
 # Chapter 4. Provider Normalization and Resolution Algorithms
 
-이 장은 Fluo DI 컨테이너가 공개 provider 선언을 내부 레코드로 정규화하고, 그 레코드를 따라 실제 인스턴스를 해결하는 과정을 분석합니다. Chapter 3까지가 데코레이터와 메타데이터 기록에 집중했다면, 이제 그 정보가 런타임 알고리즘으로 소비되는 지점을 살펴봅니다.
+이 장은 Fluo DI 컨테이너가 공개 provider 선언을 검증된 레코드로 정규화하고, 그 레코드를 따라 실제 인스턴스를 해결하는 과정을 분석합니다. Chapter 3까지가 데코레이터와 메타데이터 기록에 집중했다면, 이제 그 정보가 런타임 알고리즘으로 소비되는 지점을 살펴봅니다.
 
 ## Learning Objectives
-- 공개 provider 문법이 내부 정규화 레코드로 바뀌는 과정을 이해합니다.
+- 공개 provider 문법이 검증된 정규화 레코드로 바뀌는 과정을 이해합니다.
 - 등록 단계에서 중복 검사와 스코프 가드레일이 왜 필요한지 설명합니다.
 - token 조회, alias 처리, 인스턴스화로 이어지는 resolve 파이프라인을 분석합니다.
 - optional, `forwardRef`, multi provider가 동일한 리졸버 위에서 어떻게 처리되는지 정리합니다.
@@ -19,11 +19,11 @@
 - 클래스 provider, factory provider, alias provider 같은 DI 기본 용어 이해.
 
 ## 4.1 From public provider syntax to normalized records
-Fluo의 컨테이너는 공개 provider 형태를 그대로 해석하지 않습니다. 첫 단계는 항상 정규화입니다. 이 결정 덕분에 실제 resolve 경로는 작고 예측 가능하게 유지됩니다. 런타임은 다섯 가지 공개 API를 반복 분기하는 대신 하나의 내부 레코드 형태만 다루면 되기 때문입니다.
+Fluo의 컨테이너는 공개 provider 형태를 그대로 해석하지 않습니다. 첫 단계는 항상 정규화입니다. 이 결정 덕분에 실제 resolve 경로는 작고 예측 가능하게 유지됩니다. 런타임은 다섯 가지 공개 API를 반복 분기하는 대신 하나의 검증된 레코드 형태만 다루면 되기 때문입니다.
 
 공개 surface는 `path:packages/di/src/types.ts:36-121`에 선언되어 있습니다. 이 경계에서 Fluo는 class constructor, `{ useClass }`, `{ useFactory }`, `{ useValue }`, `{ useExisting }`를 모두 받습니다. 이 형태들은 작성 편의성용 문법입니다. 실행 모델 자체는 아닙니다.
 
-공개 타입은 provider가 받아들일 수 있는 모양과 정규화 뒤의 내부 모양을 분리해서 보여 줍니다.
+공개 타입은 provider가 받아들일 수 있는 모양과 검증 뒤의 정규화 모양을 분리해서 보여 줍니다.
 
 `path:packages/di/src/types.ts:36-54`
 ```typescript
@@ -47,7 +47,7 @@ export interface FactoryProvider<T = unknown> {
 
 이 발췌는 class provider와 factory provider가 같은 필드 언어를 공유한다는 점을 보여 줍니다. `provide`는 public token이고, `inject`, `scope`, `multi`는 뒤의 정규화와 등록 단계가 읽는 정책 입력입니다.
 
-`useValue`와 `useExisting`까지 포함한 전체 public union은 아래처럼 내부 `NormalizedProvider`와 만납니다.
+`useValue`와 `useExisting`까지 포함한 전체 public union은 아래처럼 `NormalizedProvider`와 만납니다.
 
 `path:packages/di/src/types.ts:56-121`
 ```typescript
@@ -75,7 +75,7 @@ export interface NormalizedProvider<T = unknown> {
 }
 ```
 
-여기서 중요한 차이는 public provider가 여러 문법으로 열려 있어도, 내부 레코드는 `type`과 구현 필드의 조합으로 닫힌다는 점입니다. 뒤의 resolver는 이 내부 모양만 보면 됩니다.
+여기서 중요한 차이는 public provider가 여러 문법으로 열려 있어도, 정규화 레코드는 `type`과 구현 필드의 조합으로 닫힌다는 점입니다. `NormalizedProvider`는 이 record shape를 이미 참조하던 소비자를 위해 root export로 남아 있는 compatibility-only 공개 타입입니다. 애플리케이션 코드는 여전히 `Provider`나 구체 provider interface로 provider를 작성해야 하며, normalized record 생성은 컨테이너가 소유합니다.
 
 실제 정규화 진입점은 `path:packages/di/src/container.ts:54-115`의 `normalizeProvider()`입니다. 이 함수가 이 장의 첫 번째 핵심 알고리즘입니다. 모든 입력 provider를 `type`, `provide`, `inject`, `scope`, 구현 필드를 갖는 `NormalizedProvider`로 변환합니다.
 
@@ -127,7 +127,7 @@ function normalizeInjectToken(token: Token | ForwardRefFn | OptionalToken): Toke
 
 `null`과 `undefined`만 이 단계에서 즉시 차단하고, 일반 token, `forwardRef`, `optional` wrapper는 그대로 다음 단계로 넘깁니다. 따라서 정규화는 dependency entry를 평가하지 않고, 실행 가능한 모양인지 먼저 보장합니다.
 
-또한 정규화는 Fluo의 "지연된 기본값(lazy defaults)"이 적용되는 지점입니다. 프로바이더가 스코프를 지정하지 않으면 `normalizeProvider`는 필드를 비워 두지 않습니다. `path:packages/di/src/container.ts:102-114`처럼 클래스 메타데이터를 읽고 `Scope.DEFAULT`라는 프레임워크 기본값을 채웁니다. 따라서 provider가 등록될 때는 동작 계약이 이미 명시된 상태입니다. 이 명시성 때문에 내부 레코드가 provider 구성의 최종 기준이 됩니다.
+또한 정규화는 Fluo의 "지연된 기본값(lazy defaults)"이 적용되는 지점입니다. 프로바이더가 스코프를 지정하지 않으면 `normalizeProvider`는 필드를 비워 두지 않습니다. `path:packages/di/src/container.ts:102-114`처럼 클래스 메타데이터를 읽고 `Scope.DEFAULT`라는 프레임워크 기본값을 채웁니다. 따라서 provider가 등록될 때는 동작 계약이 이미 명시된 상태입니다. 이 명시성 때문에 정규화 레코드가 provider 구성에 대한 컨테이너의 최종 기준이 됩니다.
 
 factory와 `{ provide, useClass }` 분기는 scope 우선순위와 inject 우선순위를 더 분명히 드러냅니다.
 

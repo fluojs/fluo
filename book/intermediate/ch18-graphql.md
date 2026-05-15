@@ -173,7 +173,7 @@ GraphqlModule.forRoot({
 
 GraphQL APIs can be vulnerable to deeply nested or expensive queries. Fluo includes **operational guardrails** in the default configuration to reduce these risks.
 
-- **Introspection**: Disabled by default in production environments.
+- **Introspection**: Disabled by default unless `graphiql` is enabled or `introspection: true` is set explicitly.
 - **Complexity limits**: Configure `maxDepth`, `maxComplexity`, and `maxCost` at the `GraphqlModule.forRoot(...)` boundary to reduce excessive query cost and the possibility of denial-of-service (DoS) attacks. These limits are module-level guardrails; the current runtime contract does not expose per-field cost decorators.
 
 ```typescript

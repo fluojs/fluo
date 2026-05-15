@@ -1,4 +1,4 @@
-<!-- packages: @fluojs/platform-deno, @fluojs/runtime, @fluojs/http -->
+<!-- packages: @fluojs/platform-deno, @fluojs/runtime, @fluojs/http, @fluojs/testing -->
 <!-- project-state: FluoShop v2.5.0 -->
 
 # Chapter 23. Porting to Deno
@@ -194,16 +194,22 @@ import { Client } from "https://deno.land/x/postgres/mod.ts";
 
 ## 23.9 Testing in Deno
 
-Deno's built-in test runner can be used without separate Jest or Vitest dependencies. When using fluo testing utilities with `Deno.test`, include permission flags and import paths in the test environment as well.
+Deno's built-in test runner can be used without separate Jest or Vitest dependencies. When using fluo testing utilities with `Deno.test`, include permission flags and import paths in the test environment as well. Use `createTestApp({ rootModule })` from `@fluojs/testing` for route-level assertions, or `fluoFactory.createApplicationContext(AppModule)` when the test only needs DI and lifecycle hooks without HTTP dispatch.
 
 ```typescript
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+import { createTestApp } from "npm:@fluojs/testing";
+import { AppModule } from "./app.module.ts";
 
 Deno.test("ProductService should return products", async () => {
-  // Test code using fluo's testing utilities
-  // const app = await fluoFactory.createTestContext(AppModule);
-  // ...
-  assertEquals(1, 1);
+  const app = await createTestApp({ rootModule: AppModule });
+
+  try {
+    const response = await app.request("GET", "/api/v1/products").send();
+    assertEquals(response.status, 200);
+  } finally {
+    await app.close();
+  }
 });
 ```
 

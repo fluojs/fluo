@@ -185,7 +185,10 @@ These limitations are part of the package contract so runtime choice, provider c
 
 ### Core
 
+- `Discord`
 - `DiscordModule.forRoot(options)` / `DiscordModule.forRootAsync(options)`
+- `DiscordModuleOptions`
+- `DiscordAsyncModuleOptions`
 - `DiscordService`
 - `DiscordChannel`
 - `DISCORD`
@@ -197,11 +200,11 @@ Compose applications through `DiscordModule` and integrate notifications through
 
 - `DiscordMessage`
 - `NormalizedDiscordMessage`
-- `DiscordAsyncModuleOptions`
 - `DiscordWebhookTransportOptions`
 - `DiscordFetchLike`
 - `DiscordFetchResponse`
 - `DiscordSendResult`
+- `DiscordSendOptions`
 - `DiscordSendManyOptions`
 - `DiscordSendBatchResult`
 - `DiscordSendFailure`
@@ -213,7 +216,9 @@ Compose applications through `DiscordModule` and integrate notifications through
 - `DiscordEmbed`
 - `DiscordPoll`
 - `DiscordTransport`
+- `DiscordTransportContext`
 - `DiscordTransportFactory`
+- `DiscordTransportReceipt`
 - `DiscordTemplateRenderInput`
 - `DiscordTemplateRenderResult`
 - `DiscordTemplateRenderer`
@@ -223,6 +228,8 @@ Compose applications through `DiscordModule` and integrate notifications through
 
 - `createDiscordPlatformStatusSnapshot(...)`
 - `DiscordLifecycleState`
+- `DiscordPlatformStatusSnapshot`
+- `DiscordStatusAdapterInput`
 - `DiscordConfigurationError`
 - `DiscordMessageValidationError`
 - `DiscordTransportError`

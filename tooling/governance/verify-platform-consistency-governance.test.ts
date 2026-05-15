@@ -257,6 +257,36 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts mongoose package-surface guidance when context discoverability and governance tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/reference/package-surface.md',
+        'docs/reference/package-surface.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/mongoose/src/public-api.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts cron package-surface guidance when context discoverability and governance tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/reference/package-surface.md',
+        'docs/reference/package-surface.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/cron/src/status.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('treats release governance publish-surface edits as contract-governing updates', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
@@ -318,6 +348,43 @@ describe('package surface persistence responsibilities', () => {
     expect(koreanSurface).toContain('ALS/session 인지형 transaction boundary');
     expect(koreanSurface).toContain('명시적 `currentSession()` 접근');
   });
+
+  it('documents cache-manager configuration and helper responsibility in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface]) {
+      expect(markdown).toContain('@fluojs/cache-manager');
+      expect(markdown).toContain('CacheModule.forRoot(options)');
+      expect(markdown).toContain('metadata helper');
+      expect(markdown).toContain('status/diagnostic helper');
+    }
+  });
+});
+
+describe('package surface throttler responsibility discoverability', () => {
+  it('documents throttler status types and operation responsibility in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const englishReadme = readFileSync(join(repoRoot, 'packages/throttler/README.md'), 'utf8');
+    const koreanReadme = readFileSync(join(repoRoot, 'packages/throttler/README.ko.md'), 'utf8');
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface]) {
+      expect(markdown).toContain('@fluojs/throttler');
+      expect(markdown).toContain('backing-store readiness');
+      expect(markdown).toContain('ownership');
+    }
+
+    for (const markdown of [englishReadme, koreanReadme]) {
+      expect(markdown).toContain('ThrottlerStatusAdapterInput');
+      expect(markdown).toContain('ThrottlerPlatformStatusSnapshot');
+      expect(markdown).toContain('ThrottlerOperationMode');
+    }
+  });
 });
 
 describe('package surface microservices transport discoverability', () => {
@@ -331,6 +398,38 @@ describe('package surface microservices transport discoverability', () => {
       expect(markdown).toContain('@fluojs/microservices');
       expect(markdown).toContain('Redis Pub/Sub');
       expect(markdown).toContain('Redis Streams');
+    }
+  });
+});
+
+describe('package surface CQRS responsibility discoverability', () => {
+  it('documents CQRS buses, handler discovery, sagas, and event-bus delegation in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface]) {
+      expect(markdown).toContain('@fluojs/cqrs');
+      expect(markdown).toContain('handler discovery');
+      expect(markdown).toContain('saga');
+      expect(markdown).toContain('event-bus');
+    }
+  });
+});
+
+describe('runtime subpath surface discoverability', () => {
+  it('distinguishes application-facing helpers from internal package-integration seams in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface]) {
+      expect(markdown).toContain('@fluojs/runtime/node');
+      expect(markdown).toContain('@fluojs/runtime/web');
+      expect(markdown).toContain('@fluojs/runtime/internal*');
+      expect(markdown).toContain('package-integration seam');
     }
   });
 });
@@ -390,6 +489,23 @@ describe('i18n subpath discoverability', () => {
   });
 });
 
+describe('serialization package discoverability', () => {
+  it('documents response serialization responsibility from the AI context and package references in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const englishChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
+    const koreanChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.ko.md'), 'utf8');
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface, englishChooser, koreanChooser]) {
+      expect(markdown).toContain('@fluojs/serialization');
+      expect(markdown).toContain('response');
+      expect(markdown).toContain('DTO');
+    }
+  });
+});
+
 describe('Terminus chooser discoverability', () => {
   it('documents Terminus subpaths and timeout guardrails from the AI context and package chooser in both locales', () => {
     const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
@@ -419,6 +535,38 @@ describe('Queue lifecycle discoverability', () => {
   });
 });
 
+describe('Cron scheduling discoverability', () => {
+  const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+  const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const englishPackageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+  const koreanPackageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+  const englishReadme = readFileSync(join(repoRoot, 'packages/cron/README.md'), 'utf8');
+  const koreanReadme = readFileSync(join(repoRoot, 'packages/cron/README.ko.md'), 'utf8');
+  const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch12-cron.md'), 'utf8');
+  const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch12-cron.ko.md'), 'utf8');
+
+  it('keeps cron lifecycle, public API, and package-surface guidance discoverable from the context hub', () => {
+    for (const content of [englishContext, koreanContext]) {
+      expect(content).toContain('packages/cron/README');
+      expect(content).toContain('docs/reference/package-surface');
+      expect(content).toContain('book/intermediate/ch12-cron');
+      expect(content).toContain('dynamic-start lifecycle guarantee');
+    }
+
+    for (const content of [englishPackageSurface, koreanPackageSurface, englishReadme, koreanReadme]) {
+      expect(content).toContain('@fluojs/cron');
+      expect(content).toContain('distributed');
+      expect(content).toContain('status snapshot');
+    }
+
+    for (const content of [englishChapter, koreanChapter]) {
+      expect(content).toMatch(/five|다섯/);
+      expect(content).toMatch(/six|여섯/);
+      expect(content).toContain('dynamic');
+    }
+  });
+});
+
 describe('HTTP adapter raw-body portability discoverability', () => {
   const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
   const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
@@ -430,6 +578,31 @@ describe('HTTP adapter raw-body portability discoverability', () => {
       expect(content).toContain('assertPreservesExactRawBodyBytesForByteSensitivePayloads');
       expect(content).toContain('byte-sensitive');
       expect(content).toContain('rawBody');
+    }
+  });
+});
+
+describe('Passport auth discoverability', () => {
+  const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+  const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const englishReadme = readFileSync(join(repoRoot, 'packages/passport/README.md'), 'utf8');
+  const koreanReadme = readFileSync(join(repoRoot, 'packages/passport/README.ko.md'), 'utf8');
+  const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+  const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+
+  it('keeps public helper and readiness docs discoverable from the context hub', () => {
+    for (const content of [englishContext, koreanContext, englishReadme, koreanReadme]) {
+      expect(content).toContain('@fluojs/passport');
+      expect(content).toContain('PassportModule.forRoot');
+      expect(content).toContain('AuthGuard');
+      expect(content).toContain('createPassportPlatformStatusSnapshot');
+    }
+
+    for (const content of [englishSurface, koreanSurface]) {
+      expect(content).toContain('@fluojs/passport');
+      expect(content).toContain('PassportModule');
+      expect(content).toMatch(/authentication guards|인증 가드/);
+      expect(content).toContain('platform status/diagnostic');
     }
   });
 });

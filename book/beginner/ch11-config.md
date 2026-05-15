@@ -284,7 +284,7 @@ When debugging configuration issues, it's useful to check which values `ConfigSe
 If configuration doesn't behave as expected, check this list:
 1. Confirm that the `.env` file name is correct.
 2. Check for typos in environment variable names.
-3. Check whether system environment variables are overriding the `.env` file according to the precedence rules.
+3. Check whether the values you explicitly passed through `processEnv` or `runtimeOverrides` are overriding the `.env` file according to the precedence rules.
 4. Confirm that `ConfigModule` is placed at the top of `AppModule`'s `imports`, so configuration can load before other Modules initialize.
 
 ## 11.7 Summary
@@ -340,7 +340,7 @@ fluo's explicit configuration system makes feature toggles simple to implement. 
 ### Managing Configuration for Serverless
 Configuration management has unique constraints when running in serverless environments such as AWS Lambda or Cloudflare Workers. Cold start time matters, so configuration loading logic should be as fast as possible. fluo's lightweight `@fluojs/config` package is optimized for these environments, helping functions start quickly and efficiently.
 
-Many serverless platforms also have their own ways of injecting environment variables. fluo's precedence rules ensure that platform-injected variables always take priority, allowing serverless functions to adapt cleanly to the host environment without code changes.
+Many serverless platforms also have their own ways of injecting environment variables. fluo's precedence rules apply to those platform-injected values only after you map them into `ConfigModule.forRoot(...)` through an explicit `processEnv` snapshot or `runtimeOverrides`; once mapped, they take priority over `.env` input and let serverless functions adapt cleanly to the host environment without code changes.
 
 ### Final Thoughts on Configuration
 Skilled configuration management is the difference between fragile scripts and solid backend systems. By adopting fluo's explicit, verifiable, and layered approach, you build a foundation that can support your application from the first prototype to global production deployment.

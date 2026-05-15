@@ -202,6 +202,7 @@ For non-GET handlers decorated with `@CacheEvict(...)`, eviction is deferred unt
 - `@CacheTTL(seconds)`: Sets the TTL for a specific handler.
 - `@CacheKey(key)`: Sets a custom cache key or key factory for a specific handler.
 - `@CacheEvict(key)`: Clears one or more cache keys after a successful non-GET handler completes.
+- `cacheRouteMetadataKey`, `getCacheKeyMetadata(...)`, `getCacheTtlMetadata(...)`, and `getCacheEvictMetadata(...)`: Low-level metadata helpers exported for first-party interceptor integration, diagnostics, and advanced tooling that needs to inspect cache decorator metadata without reimplementing the metadata keys.
 
 ### Interceptors
 - `CacheInterceptor`: Handles automatic GET response caching and eviction logic.

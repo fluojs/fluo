@@ -127,14 +127,14 @@ Register Socket.IO through module imports in the owning module so namespace/mess
 ## Public API Overview
 
 - `SocketIoModule.forRoot(options)`: Main module for Socket.IO integration.
-- `SocketIoModule.forRoot({ auth, cors, engine, ... })`: Configures namespace/message guards plus explicit CORS and Engine.IO payload bounds.
+- `SocketIoModule.forRoot({ global, auth, cors, engine, ... })`: Configures provider visibility, namespace/message guards, explicit CORS, and Engine.IO payload bounds.
 - `SOCKETIO_SERVER`: Token to inject the raw Socket.IO `Server`.
 - `SOCKETIO_ROOM_SERVICE`: Token to inject the `SocketIoRoomService`.
 - `SocketIoRoomService`: Shared room contract plus Socket.IO namespace-aware `joinRoom`, `leaveRoom`, `broadcastToRoom`, and `getRooms` helpers.
 - `SocketIoLifecycleService`: Lifecycle-backed implementation behind the server and room-service tokens; application code should usually inject `SOCKETIO_SERVER` or `SOCKETIO_ROOM_SERVICE` instead.
 - Types: `SocketIoModuleOptions`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
 
-`SocketIoModuleOptions` covers `auth`, `buffer`, `cors`, `engine`, `shutdown`, and `transports`. A supported server-backed runtime adapter is required; unsupported/noop adapters fail fast during bootstrap.
+`SocketIoModuleOptions` covers `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, and `transports`. `global` defaults to `true`, which keeps `SOCKETIO_SERVER` and `SOCKETIO_ROOM_SERVICE` visible across the app; set it to `false` when you want module-local provider visibility. A supported server-backed runtime adapter is required; unsupported/noop adapters fail fast during bootstrap.
 
 ## Supported Platforms
 

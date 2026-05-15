@@ -163,7 +163,7 @@ MetricsModule.forRoot({
 - `METER_PROVIDER` (Token)
 - `PrometheusMeterProvider`
 - `HttpMetricsMiddleware` 및 HTTP path-label 옵션 타입
-- `provider`(현재는 `'prometheus'`만 지원)와 endpoint `middleware`를 포함한 module option
+- `provider`(현재는 `'prometheus'`만 지원), module-level `middleware`, endpoint-scoped `endpointMiddleware`를 포함한 module option
 - `prom-client`의 `Registry`
 
 ### 운영 기본값

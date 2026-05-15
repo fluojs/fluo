@@ -6,7 +6,10 @@ import type {
 
 type MongoosePlatformLifecycleState = 'ready' | 'shutting-down' | 'stopped';
 
-type MongoosePlatformStatusSnapshotInput = {
+/**
+ * Input values used to create a Mongoose persistence platform status snapshot.
+ */
+export type MongoosePlatformStatusSnapshotInput = {
   activeRequestTransactions: number;
   activeSessions: number;
   hasActiveSession: boolean;

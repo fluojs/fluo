@@ -34,7 +34,7 @@
 - **`@fluojs/di`**: 프로바이더 해결, 라이프사이클 스코프, 의존성 그래프 분석.
 - **`@fluojs/config`**: 환경 인식 설정 로딩 및 타입 안전 접근.
 - **`@fluojs/i18n`**: module registration, standalone service factory, reserved core option/error type, `@fluojs/i18n/icu`를 통한 ICU MessageFormat 지원, `@fluojs/i18n/http`를 통한 HTTP locale helper 및 opt-in `Accept-Language` policy helper, `@fluojs/i18n/adapters`를 통한 opt-in non-HTTP locale adapter 및 header policy helper, `@fluojs/i18n/validation`을 통한 validation localization, `@fluojs/i18n/loaders/fs`와 `@fluojs/i18n/loaders/remote`를 통한 Node filesystem/provider-backed catalog loader 및 opt-in remote cache wrapper, `@fluojs/i18n/typegen`을 통한 catalog key 및 typed translation helper declaration generation을 제공하는 framework-agnostic internationalization package boundary. NestJS i18n, i18next, next-intl, request/validation convenience glue와의 ecosystem parity는 [i18n ecosystem bridge decision record](./i18n-ecosystem-bridges.ko.md)가 관리하며, 향후 opt-in subpath가 bridge acceptance criteria를 만족하기 전까지 documentation-first로 유지합니다.
-- **`@fluojs/runtime`**: 애플리케이션 부트스트랩, 모듈 오케스트레이션, 플랫폼 셸 등록, 플랫폼 snapshot 생산. 공개 런타임 헬퍼는 `@fluojs/runtime/node`와 `@fluojs/runtime/web`에서 제공됩니다.
+- **`@fluojs/runtime`**: 애플리케이션 부트스트랩, 모듈 오케스트레이션, 플랫폼 셸 등록, 플랫폼 snapshot 생산. 애플리케이션-facing 런타임 헬퍼는 `@fluojs/runtime/node`와 `@fluojs/runtime/web`에서 제공됩니다. 공개된 `@fluojs/runtime/internal*` 서브경로는 first-party adapter와 runtime-aware package를 위한 package-integration seam이며, 애플리케이션 수준 helper 계약이 아닙니다.
 
 ### adapters
 - **`platform-*`**: 저장소 정책상 `PlatformAdapter`라고 부르는 접점을 구현합니다. HTTP 런타임 패키지는 `@fluojs/http`의 `HttpApplicationAdapter`로 이를 충족합니다. 추상 HTTP 호출을 런타임별 리스너에 연결합니다.
@@ -44,9 +44,11 @@
 - **`@fluojs/http`**: 라우팅, 가드, 인터셉터, 예외 처리.
 - **`@fluojs/graphql`**: HTTP 추상화 위에서 동작하는 GraphQL 스키마 노출, 리졸버 실행, 구독 지원.
 - **`@fluojs/jwt`**: HTTP 비종속 JWT 서명, 검증, principal 정규화.
-- **`@fluojs/passport`**: 전략 비종속 인증 가드, scope 처리, Passport.js 브리지.
+- **`@fluojs/passport`**: 전략 비종속 인증 가드, optional auth 및 scope decorator, `PassportModule` strategy registry wiring, Passport.js strategy bridge, cookie-auth 및 refresh-token preset, account-linking policy helper, 공개 auth metadata helper, auth readiness를 위한 platform status/diagnostic helper.
 - **`@fluojs/microservices`**: TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC를 위한 패턴 매칭 전송 추상화.
+- **`@fluojs/cqrs`**: bootstrap-time singleton handler discovery를 갖춘 CQRS command/query bus, 명시적인 command/query/event handler 및 saga decorator, topology guardrail을 포함한 in-process saga orchestration, 그리고 CQRS handler와 saga가 settle된 뒤 `@fluojs/event-bus`로 위임되는 domain event publishing을 담당합니다.
 - **`@fluojs/event-bus`**: optional Redis Pub/Sub transport, inherited event channel fan-out, bounded publish cancellation/timeout, local publish와 inbound transport callback 모두에 대한 shutdown drain semantic을 갖춘 in-process domain event fan-out.
+- **`@fluojs/cron`**: cron expression, fixed interval, one-shot timeout을 위한 decorator 및 registry scheduling, named-client selection과 lock TTL/owner control 및 release/renewal status accounting을 포함한 optional Redis distributed locking, bootstrap-aware dynamic task startup, bounded scheduler shutdown, 그리고 lifecycle/task/lock ownership visibility를 위한 health/readiness status snapshot을 담당합니다.
 - **`@fluojs/notifications`**: provider별 알림 패키지가 공유하는 채널 계약과 오케스트레이션 계층.
 - **`@fluojs/email`**: 전송 중립(transport-agnostic) 이메일 발송 코어. `@fluojs/email/queue`를 통해 알림 채널 및 큐 워커 통합을 제공합니다.
 - **`@fluojs/email/node`**: Nodemailer/SMTP 전송을 제공하는 `@fluojs/email`의 Node.js 전용 서브패스.
@@ -54,8 +56,11 @@
 - **`@fluojs/discord`**: standalone으로도 동작하고 공식 알림 채널로도 등록할 수 있는 webhook-first Discord 전달 코어.
 - **`@fluojs/websockets`**: 런타임별 서브패스 `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`를 제공하는 WebSocket 게이트웨이 작성 패키지.
 - **`@fluojs/validation`**: 표준 데코레이터 기반 입력 검증, DTO 실체화(materialization), request-boundary 안전성.
+- **`@fluojs/serialization`**: `Expose`, `Exclude`, `Transform`, `serialize(value)`, HTTP response-boundary 통합용 `SerializerInterceptor`를 제공하는 decorator-aware response serialization 및 output DTO shaping 패키지.
 - **`@fluojs/prisma` / `@fluojs/drizzle`**: ORM 라이프사이클 및 ALS 기반 트랜잭션 컨텍스트.
 - **`@fluojs/redis`**: App-scoped Redis client 등록, raw-client injection, JSON-aware `RedisService` facade, named-client token, lifecycle-owned connect/quit timeout guardrail, 그리고 Pub/Sub subscriber는 일반 command client를 공유하지 않고 전용 Redis 연결을 사용해야 한다는 문서 가이드를 담당합니다.
+- **`@fluojs/cache-manager`**: 동기 `CacheModule.forRoot(options)`를 통한 애플리케이션 캐시 모듈 등록, memory/Redis/custom store 선택, 데코레이터 기반 GET 응답 캐싱, 쓰기 후 캐시 eviction, 수동 `CacheService` 작업, low-level cache metadata helper export, cache readiness를 위한 platform status/diagnostic helper를 담당합니다.
+- **`@fluojs/throttler`**: `ThrottlerModule.forRoot(options)`, `ThrottlerGuard`, route/class override decorator, in-memory 및 Redis/custom store 계약, proxy-aware client identity control, 공유 route/client bucket semantic, backing-store readiness와 ownership 및 local/distributed operation visibility를 위한 platform status/diagnostic helper를 제공하는 decorator-driven request rate limiting 패키지입니다.
 - **`@fluojs/queue`**: decorator로 발견한 singleton worker, Queue가 소유하는 duplicate Redis connection, JSON-object payload serialization, dead-letter retention, bootstrap-ready worker startup, `workerShutdownTimeoutMs` 기반 bounded worker shutdown, lifecycle/readiness status snapshot을 제공하는 Redis-backed BullMQ job processing 패키지입니다.
 - **`@fluojs/mongoose`**: Mongoose 라이프사이클 통합과 ALS/session 인지형 transaction boundary, 요청 범위 transaction interceptor, 모델 작업을 위한 명시적 `currentSession()` 접근, 사용 가능한 경우 `connection.transaction(...)`을 통한 ambient-session 위임, 활성 요청/session drain 상태를 보고하는 shutdown snapshot을 담당합니다.
 
@@ -80,6 +85,6 @@
 
 모듈 및 provider 등록 API는 public `create*` factory 대신 namespace facade를 사용합니다. 애플리케이션-facing module entrypoint는 `XModule.forRoot(...)`, `XModule.forRootAsync(...)`, `XModule.register(...)`, `XModule.forFeature(...)` 형태로 노출해야 하며, provider assembly는 패키지 내부에 남겨 둡니다. 예를 들어 애플리케이션 코드는 저수준 provider/module factory helper를 직접 호출하는 대신 `HealthModule.forRoot(...)`, `QueueModule.forRoot(...)`, `TerminusModule.forRoot(...)`를 import해야 합니다.
 
-`create*`는 모듈이나 provider set을 직접 등록하지 않는, 의도적으로 문서화된 helper/builder API에서 계속 사용할 수 있습니다. 허용되는 예시는 `createFastifyAdapter(...)` 같은 runtime/platform adapter factory, `createNodeHttpAdapter(...)` 같은 Node runtime helper, `createTestingModule(...)` 같은 testing builder, health indicator factory 같은 value-level utility입니다. 모듈 등록 표면과 관련된 `create*` symbol을 호환성 목적으로 유지할 때는 docs와 generated code가 namespace facade를 우선 안내하고, 해당 helper는 compatibility-only로 설명해야 합니다.
+`create*`는 모듈이나 provider set을 직접 등록하지 않는, 의도적으로 문서화된 helper/builder API에서 계속 사용할 수 있습니다. 허용되는 예시는 `createFastifyAdapter(...)` 같은 runtime/platform adapter factory, `createNodeHttpAdapter(...)` 같은 Node runtime helper, `createTestingModule(...)` 같은 testing builder, health indicator factory 같은 value-level utility입니다. 모듈 등록 표면과 관련된 `create*` symbol을 호환성 목적으로 유지할 때는 docs와 generated code가 namespace facade를 우선 안내하고, 해당 helper는 compatibility-only로 설명해야 합니다. 예를 들어 `@fluojs/mongoose` 소비자는 애플리케이션 등록에 `MongooseModule.forRoot(...)` / `forRootAsync(...)`를 사용하고, `createMongooseProviders(...)`는 수동 provider composition 호환성 용도로만 남겨야 합니다.
 
 아키텍처 정의는 [glossary-and-mental-model.ko.md](./glossary-and-mental-model.ko.md)를 참조하세요.

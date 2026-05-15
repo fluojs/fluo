@@ -137,9 +137,9 @@ The `committed` property tells whether the response has already been sent. It is
 
 ## 13.6 Adapter Strategy in Serverless Environments
 
-In environments such as AWS Lambda or Cloudflare Workers, the `listen()` method does not run continuously. Instead, the dispatcher must be called whenever an event arrives.
+In environments such as AWS Lambda or Cloudflare Workers, the platform owns the long-running ingress loop. The application still calls `listen()` to bind the Fluo dispatcher, but exported Worker code reuses the adapter-backed `fetch` handler for each incoming event instead of opening a socket.
 
-In `packages/platform-cloudflare-workers/src/adapter.ts`, a short-lived adapter is created whenever a `fetch` event occurs. It runs `dispatcher.dispatch`, converts the response to a `Response` object, and returns it. In this way, the adapter pattern connects traditional server environments and modern edge runtimes through the same contract.
+In `packages/platform-cloudflare-workers/src/adapter.ts`, `listen()` stores the shared dispatcher once, and each `fetch` event delegates through that dispatcher to produce a Web `Response`. The lazy entrypoint helper follows the same lifecycle by bootstrapping once on first request and then reusing the resolved Worker application. In this way, the adapter pattern connects traditional server environments and modern edge runtimes through the same contract without implying a new adapter per request.
 
 ## 13.7 Reporting Realtime Capability
 

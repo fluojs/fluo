@@ -186,7 +186,6 @@ import { AppModule } from './app/app.module';
 async function bootstrap() {
   const adapter = createExpressAdapter({
     port: process.env.PORT ? parseInt(process.env.PORT) : 3000,
-    cors: true,
   });
 
   const app = await fluoFactory.create(AppModule, { adapter });

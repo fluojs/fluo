@@ -173,7 +173,7 @@ GraphqlModule.forRoot({
 
 GraphQL API는 깊게 중첩되거나 비용이 큰 쿼리에 취약할 수 있습니다. Fluo는 이런 위험을 줄이기 위해 **운영 가드레일**을 기본 설정에 포함합니다.
 
-- **인트로스펙션(Introspection)**: 프로덕션 환경에서는 기본적으로 비활성화됩니다.
+- **인트로스펙션(Introspection)**: `graphiql`을 활성화하거나 `introspection: true`를 명시적으로 설정하지 않으면 기본적으로 비활성화됩니다.
 - **복잡도 제한**: `GraphqlModule.forRoot(...)` 경계에서 `maxDepth`, `maxComplexity`, `maxCost`를 설정해 과도한 쿼리 비용과 서비스 거부(DoS) 공격 가능성을 줄입니다. 이 제한은 module-level guardrail이며, 현재 런타임 계약은 필드별 비용 데코레이터를 제공하지 않습니다.
 
 ```typescript

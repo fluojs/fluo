@@ -129,9 +129,16 @@ Job은 JSON으로 직렬화 가능한 plain object여야 합니다. Queue는 enq
 
 
 ### 타입
+- `Queue`: 애플리케이션 코드와 `QUEUE` 토큰에서 사용하는 `enqueue(job)` 호환성 facade입니다.
+- `QueueJobType`: job payload class를 식별하고 rehydrate하는 데 사용하는 constructor 타입입니다.
 - `QueueModuleOptions`: 전역 큐 설정(clientName, 기본 시도 횟수, `defaultBackoff`, 동시성, 전송률 제한, dead-letter retention 등)을 위한 타입입니다.
 - `QueueWorkerOptions`: 개별 작업 설정(시도 횟수, 백오프, 동시성, jobName, 전송률 제한 등)을 위한 타입입니다.
+- `QueueBackoffType`: 지원되는 retry backoff strategy 이름(`fixed`, `exponential`)입니다.
 - `QueueBackoffOptions`: 재시도 백오프 설정(`type`, `delayMs`)을 위한 타입입니다.
+- `QueueRateLimiterOptions`: worker 수준 distributed rate limiter 설정(`max`, `duration`)을 위한 타입입니다.
+- `QueueLifecycleState`: Queue status adapter가 보고하는 lifecycle state(`idle`, `starting`, `started`, `stopping`, `stopped`)입니다.
+- `QueueStatusAdapterInput`: `createQueuePlatformStatusSnapshot(...)`에 전달하는 normalized queue metrics 타입입니다.
+- `QueuePlatformStatusSnapshot`: status helper가 반환하는 Queue 전용 readiness, health, ownership, detail snapshot 타입입니다.
 
 `QueueModuleOptions`에는 `workerShutdownTimeoutMs`, `defaultDeadLetterMaxEntries` 같은 lifecycle 및 dead-letter retention 설정도 포함됩니다.
 
