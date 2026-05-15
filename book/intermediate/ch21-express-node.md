@@ -118,24 +118,38 @@ Sometimes you need to work a little more directly with fluo abstractions to hand
 
 ### 21.3.1 SSE (Server-Sent Events) in Express
 
-The Express Adapter supports SSE through the `SseResponse` utility. For notifications or status updates that only need one-way streaming, SSE can be enough with a simpler operational model than WebSockets.
+The Express Adapter supports SSE through `@Sse()` and the `SseResponse` utility. For notifications or status updates that only need one-way streaming, SSE can be enough with a simpler operational model than WebSockets. In the current Phase 1 contract, `@Sse()` only registers a `GET` route and `text/event-stream` metadata; it does not convert `AsyncIterable` or Observable return values into stream frames.
 
 ```typescript
-import { Get, SseResponse, type RequestContext } from '@fluojs/http';
+import { Sse, SseResponse, type RequestContext } from '@fluojs/http';
 
-@Get('notifications')
+@Sse('notifications')
 async stream(_input: undefined, ctx: RequestContext) {
   const sse = new SseResponse(ctx);
-  
+
   const interval = setInterval(() => {
-    sse.send({ data: { message: 'New order received!' } });
+    sse.send({ message: 'New order received!' }, { event: 'order.created' });
   }, 5000);
 
-  ctx.request.signal?.addEventListener('abort', () => clearInterval(interval), { once: true });
-  
+  const heartbeat = setInterval(() => {
+    sse.comment('heartbeat');
+  }, 15_000);
+
+  ctx.request.signal?.addEventListener(
+    'abort',
+    () => {
+      clearInterval(interval);
+      clearInterval(heartbeat);
+      sse.close();
+    },
+    { once: true },
+  );
+
   return sse;
 }
 ```
+
+Browser `EventSource` clients should close the connection from the owning React effect cleanup. Because the built-in `EventSource` API cannot attach arbitrary `Authorization` headers, prefer same-origin cookies, `withCredentials` with an explicit CORS credentials policy, or short-lived signed URL/query tokens for authenticated streams. In production, keep proxy buffering and compression disabled for `text/event-stream`, keep idle timeouts above your heartbeat interval, and store enough event history to replay from `Last-Event-ID` after reconnects.
 
 ### 21.3.2 Using Raw Node streams
 

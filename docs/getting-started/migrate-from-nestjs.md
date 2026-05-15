@@ -13,6 +13,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | `@Module({ imports, controllers, providers, exports })` | `@Module({ imports, controllers, providers, exports })` from `@fluojs/core` | Module boundaries and explicit exports remain the primary composition unit. |
 | `@Controller('/users')` | `@Controller('/users')` from `@fluojs/http` | Controller decoration is part of the HTTP package, not the core package. |
 | `@Get()`, `@Post()`, other route decorators | `@Get()`, `@Post()`, other route decorators from `@fluojs/http` | HTTP route decoration remains method-based. |
+| `@Sse()` | `@Sse()` from `@fluojs/http` plus an explicit `SseResponse` return | fluo's Phase 1 SSE decorator maps to a `GET` route with `text/event-stream` metadata. It does not automatically convert NestJS Observable or `AsyncIterable` return values. |
 | `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` from `@fluojs/runtime` | Bootstrap requires an explicit platform adapter such as `createFastifyAdapter()`. |
 | `@Injectable()` provider marker | provider class or provider definition listed in `@Module(...).providers` | fluo does not use `@Injectable()` as a required provider registration step. |
 | constructor type reflection via `emitDecoratorMetadata` | `@Inject(TokenA, TokenB)` from `@fluojs/core` | Constructor dependencies are declared explicitly in decorator argument order. |
@@ -26,6 +27,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Bootstrap is adapter-first. `FluoFactory.create(...)` REQUIRES an `adapter` option instead of selecting the HTTP platform implicitly.
 - Validation MUST be migrated to the Standard Schema direction instead of keeping a `class-validator`-first contract.
 - Controller decorators MUST be imported from `@fluojs/http`, while structural decorators such as `@Module` come from `@fluojs/core`.
+- NestJS `@Sse()` handlers that return Observables MUST be rewritten to construct `SseResponse`, call `send(...)` or `comment(...)`, and close the stream from request abort or application cleanup paths.
 
 ## Removed Concepts
 
