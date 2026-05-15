@@ -886,6 +886,9 @@ describe('EmailModule', () => {
     });
     expect(verifyTransport.closeCalls).toBe(1);
 
+    await initService.onApplicationShutdown();
+    expect(verifyTransport.closeCalls).toBe(1);
+
     const closeTransport = new FailingLifecycleTransport('close');
     const shutdownContainer = new Container();
     const shutdownModule = EmailModule.forRoot({

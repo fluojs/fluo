@@ -12,6 +12,7 @@ import { DISCORD, DISCORD_CHANNEL } from './tokens.js';
 import type {
   Discord,
   DiscordFetchLike,
+  DiscordSendOptions,
   DiscordTransport,
   DiscordTransportFactory,
   NormalizedDiscordMessage,
@@ -104,6 +105,27 @@ class SelectiveFailureDiscordTransport implements DiscordTransport {
 
     return {
       messageId: `selective-${this.sent.length}`,
+      ok: true,
+      response: 'ok',
+      statusCode: 200,
+      threadId: message.threadId,
+      warnings: [],
+    };
+  }
+}
+
+class AbortAfterFirstDiscordTransport implements DiscordTransport {
+  readonly sent: string[] = [];
+
+  constructor(private readonly controller: AbortController) {}
+
+  async send(message: NormalizedDiscordMessage, _options?: DiscordSendOptions) {
+    const content = message.content ?? '';
+    this.sent.push(content);
+    this.controller.abort();
+
+    return {
+      messageId: `abort-after-first-${this.sent.length}`,
       ok: true,
       response: 'ok',
       statusCode: 200,
@@ -540,6 +562,33 @@ describe('DiscordModule', () => {
     expect(result.failures[0]?.error).toMatchObject({ message: 'provider rejected fail-2' });
     expect(result.results.map((entry) => entry.messageId)).toEqual(['selective-1', 'selective-3']);
     expect(transport.sent).toEqual(['ok-1', 'fail-2', 'ok-3']);
+  });
+
+  it('propagates sendMany abort signals between sequential Discord deliveries', async () => {
+    const controller = new AbortController();
+    const transport = new AbortAfterFirstDiscordTransport(controller);
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      defaultThreadId: 'thread-ops',
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    const result = await service.sendMany([{ content: 'ok-1' }, { content: 'aborted-2' }, { content: 'aborted-3' }], {
+      continueOnError: true,
+      signal: controller.signal,
+    });
+
+    expect(result).toMatchObject({ failed: 2, succeeded: 1 });
+    expect(result.results[0]?.messageId).toBe('abort-after-first-1');
+    expect(result.failures.map((entry) => entry.error)).toEqual([
+      expect.objectContaining({ message: 'Discord delivery was aborted.', name: 'AbortError' }),
+      expect.objectContaining({ message: 'Discord delivery was aborted.', name: 'AbortError' }),
+    ]);
+    expect(transport.sent).toEqual(['ok-1']);
   });
 
   it('surfaces an unsuccessful transport receipt as a notifications channel failure', async () => {

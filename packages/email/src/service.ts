@@ -185,6 +185,8 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
           await transport.close();
         } catch (cleanupError) {
           cause = createCleanupFailureCause(error, cleanupError);
+        } finally {
+          this.clearResolvedTransport();
         }
       }
 
@@ -365,6 +367,11 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
     }
 
     return this.transportPromise;
+  }
+
+  private clearResolvedTransport(): void {
+    this.resolvedTransport = undefined;
+    this.transportPromise = undefined;
   }
 
   private async ensureReadyForDelivery(): Promise<void> {
