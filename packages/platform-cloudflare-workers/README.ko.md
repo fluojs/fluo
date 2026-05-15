@@ -27,7 +27,7 @@ npm install @fluojs/platform-cloudflare-workers
 
 fluo 애플리케이션을 [Cloudflare Workers](https://workers.cloudflare.com/)에 배포할 때 이 패키지를 사용합니다. 이 어댑터는 서버리스 엣지 환경에 맞게 설계되었으며, Worker isolate 제약 조건과 네이티브 Web API를 준수하는 가벼운 `fetch` 기반 어댑터를 제공합니다.
 
-이 어댑터는 각 요청 수명주기를 `executionContext.waitUntil(...)`에 연결하고, `close()` 중에도 진행 중인 디스패치를 유지하여 Worker 종료 도중 활성 작업이 중간에 잘리지 않도록 보장합니다.
+이 어댑터는 dispatcher가 binding된 뒤 각 요청 수명주기를 `executionContext.waitUntil(...)`에 연결하고, `close()` 중에도 진행 중인 디스패치를 유지하여 Worker 종료 도중 활성 작업이 중간에 잘리지 않도록 보장합니다.
 
 애플리케이션 종료 중에는 즉시 새 ingress 수락을 중단하고, 활성 HTTP 핸들러가 정리될 수 있도록 최대 10초의 bounded drain window를 제공합니다. 이 시간을 넘기면 `close()`는 무기한 대기하지 않고 timeout 오류로 종료됩니다. 해당 drain이 아직 진행 중일 때 동시에 `listen()`을 호출하면 Worker를 다시 열지 않고 `Cloudflare Workers adapter cannot listen while shutdown is still draining.` 오류로 reject됩니다. 닫힌 뒤에는 어댑터가 명시적으로 다시 `listen()`될 때까지 후속 HTTP 및 WebSocket upgrade request가 동일한 JSON `503` shutdown response를 받습니다.
 
@@ -87,7 +87,7 @@ const adapter = createCloudflareWorkerAdapter({
 
 ### 동작 참고
 
-- `fetch()`는 `listen()`이 dispatcher를 binding한 뒤 active work를 `executionContext.waitUntil(...)`에 등록합니다.
+- `fetch()`는 `listen()` 또는 lazy entrypoint가 dispatcher를 binding한 뒤 active work를 `executionContext.waitUntil(...)`에 등록합니다. 그 lifecycle boundary 전에는 upgrade request와 HTTP dispatch가 application handler에 도달하지 않습니다.
 - WebSocket upgrade는 HTTP dispatch와 같은 listen boundary가 소유합니다. `listen()` 전의 upgrade request는 설정된 binding에 도달하지 않습니다.
 - `close()`는 shutdown 중 및 shutdown 이후 새 요청에 JSON `503` response를 반환하고, active request가 끝나지 않으면 10초 뒤 timeout됩니다. 해당 close drain이 아직 활성 상태일 때 `listen()`을 호출하면 Cloudflare Workers adapter shutdown-draining 오류로 reject됩니다.
 - Multipart request는 `rawBody`를 보존하지 않습니다.
