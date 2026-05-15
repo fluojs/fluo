@@ -107,35 +107,23 @@ function someDeepHelper() {
 ### Server-sent events
 
 ```ts
-import { Controller, Sse, SseResponse, type RequestContext } from '@fluojs/http';
+import { Controller, Sse, type SseMessage } from '@fluojs/http';
 
 @Controller('/orders')
 export class OrdersEventsController {
   @Sse('/events')
-  stream(_input: undefined, ctx: RequestContext) {
-    const sse = new SseResponse(ctx);
+  async *stream(): AsyncIterable<SseMessage<{ status: string }> | { heartbeat: true }> {
+    yield { data: { status: 'connected' }, event: 'ready', id: 'orders-ready' };
 
-    sse.send({ status: 'connected' }, { event: 'ready' });
-
-    const heartbeat = setInterval(() => {
-      sse.comment('heartbeat');
-    }, 15_000);
-
-    ctx.request.signal?.addEventListener(
-      'abort',
-      () => {
-        clearInterval(heartbeat);
-        sse.close();
-      },
-      { once: true },
-    );
-
-    return sse;
+    while (true) {
+      await new Promise((resolve) => setTimeout(resolve, 15_000));
+      yield { heartbeat: true };
+    }
   }
 }
 ```
 
-`@Sse(path)` is a Phase 1 thin route decorator: it registers a `GET` route and declares `text/event-stream` produced media type metadata. The handler is still responsible for creating and returning `SseResponse`. Automatic conversion from `AsyncIterable` or Observable values into SSE streams is out of scope.
+`@Sse(path)` registers a `GET` route and declares `text/event-stream` produced media type metadata. Handlers may either return `SseResponse` for manual stream control or return `AsyncIterable<SseMessage<T> | T>` for managed streaming. Managed async iterables are converted with the same `encodeSseMessage(...)` behavior as `SseResponse`: plain yielded values become `data:` frames, while yielded objects with a `data` field may also provide `event`, `id`, and `retry`. The dispatcher stops consuming the source when `RequestContext.request.signal` aborts or the response stream closes, calls `FrameworkResponseStream.waitForDrain()` when a write reports backpressure, closes the stream on completion or source errors, and routes thrown source errors through the normal dispatcher error/observer seam after the already-committed SSE response is closed. Observable values remain out of scope and no RxJS dependency is required.
 
 On the browser side, create the `EventSource` inside the React effect that owns it and always close it from the cleanup function so route changes, Strict Mode remounts, and component unmounts do not leave duplicate streams open:
 
@@ -201,10 +189,10 @@ Adapters should pass an `AbortSignal` on `FrameworkRequest.signal` when the plat
 - **Routing decorators**: `Controller`, `Get`, `Sse`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
 - **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
-- **Core runtime types**: `RequestContext`, `FrameworkRequest`, `FrameworkResponse`, `SseResponse`, `Middleware`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardContext`, `Interceptor`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `DispatcherLogger`
+- **Core runtime types**: `RequestContext`, `FrameworkRequest`, `FrameworkResponse`, `SseResponse`, `SseMessage`, `Middleware`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardContext`, `Interceptor`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `DispatcherLogger`
 - **Adapter API**: `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
 - **Exceptions and errors**: `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `HandlerNotFoundError`, `RequestAbortedError`
-- **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`
+- **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`
 - **Option and store types**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 
 ## Internal Subpath (`@fluojs/http/internal`)

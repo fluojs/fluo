@@ -48,6 +48,7 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).toHaveProperty('SseResponse');
     expect(httpPublicApi).toHaveProperty('encodeSseComment');
     expect(httpPublicApi).toHaveProperty('encodeSseMessage');
+    expect(httpPublicApi).toHaveProperty('isSseMessage');
   });
 
   it('does not expose internal pipeline runners or implementation classes', () => {

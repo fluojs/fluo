@@ -10,6 +10,30 @@ export interface SseSendOptions {
   retry?: number;
 }
 
+/**
+ * Structured message emitted by a managed `@Sse()` async iterable handler.
+ *
+ * @remarks
+ * Returning `AsyncIterable<SseMessage<T> | T>` from an `@Sse()` route lets the
+ * dispatcher write each item as an SSE frame. Plain values become `data:`
+ * frames. Objects with a `data` field plus optional `event`, `id`, or `retry`
+ * fields use those SSE metadata fields for the frame.
+ */
+export interface SseMessage<T = unknown> extends SseSendOptions {
+  /** Payload encoded into the event frame's `data:` lines. */
+  data: T;
+}
+
+/**
+ * Runtime guard for structured managed SSE messages.
+ *
+ * @param value Candidate value yielded by an async iterable SSE source.
+ * @returns `true` when the value follows the public `SseMessage<T>` shape.
+ */
+export function isSseMessage<T = unknown>(value: unknown): value is SseMessage<T> {
+  return typeof value === 'object' && value !== null && 'data' in value;
+}
+
 function sanitizeSseField(value: string): string {
   return value.replace(/\r/g, '').replace(/\n/g, '');
 }

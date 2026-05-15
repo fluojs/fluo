@@ -428,7 +428,7 @@ export const Get = createRouteDecorator('GET');
  * @returns A method decorator that registers a `GET` SSE handler mapping.
  *
  * @remarks
- * This Phase 1 decorator only declares route and produced media-type metadata. Handlers remain responsible for creating and returning `SseResponse`.
+ * Handlers may return `SseResponse` for manual control or `AsyncIterable<SseMessage<T> | T>` for managed dispatcher streaming.
  */
 export const Sse = createRouteDecorator('GET', ['text/event-stream']);
 /**

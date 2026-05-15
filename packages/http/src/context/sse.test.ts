@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { FrameworkResponse, FrameworkResponseStream, RequestContext } from '../types.js';
-import { SseResponse, encodeSseComment, encodeSseMessage } from './sse.js';
+import { SseResponse, encodeSseComment, encodeSseMessage, isSseMessage } from './sse.js';
 
 interface MockSseStream extends FrameworkResponseStream {
   _closed: boolean;
@@ -132,6 +132,12 @@ describe('SseResponse', () => {
     const encoded = encodeSseMessage({ count: 1, ignore: () => 'ignored' });
 
     expect(encoded).toBe('data: {"count":1}\n\n');
+  });
+
+  it('identifies structured managed SSE messages by their data field', () => {
+    expect(isSseMessage({ data: { count: 1 }, event: 'update' })).toBe(true);
+    expect(isSseMessage({ count: 1 })).toBe(false);
+    expect(isSseMessage(null)).toBe(false);
   });
 
   it('commits SSE headers and keeps close idempotent', () => {
