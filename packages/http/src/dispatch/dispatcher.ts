@@ -537,8 +537,8 @@ function resolveManagedSseFrame(value: unknown): { data: unknown; options: SseSe
   return { data: value, options: {} };
 }
 
-async function closeAsyncIterator(iterator: AsyncIterator<unknown>): Promise<void> {
-  await iterator.return?.();
+function closeAsyncIteratorEventually(iterator: AsyncIterator<unknown>): void {
+  void iterator.return?.().catch(() => undefined);
 }
 
 async function readManagedSseNext(
@@ -582,7 +582,7 @@ async function writeManagedSseIterable(
       const next = await readManagedSseNext(requestContext.request, stream, iterator);
 
       if (next === 'aborted') {
-        await closeAsyncIterator(iterator);
+        closeAsyncIteratorEventually(iterator);
         break;
       }
 

@@ -1768,6 +1768,95 @@ describe('dispatcher runtime', () => {
     expect(cleanupCalled).toBe(true);
   });
 
+  it('does not await native async generator return when abort happens during a pending read', async () => {
+    const controller = new AbortController();
+    let waitingForSecondRead = false;
+    let generatorFinallyReached = false;
+    const never = new Promise<never>(() => undefined);
+
+    async function* source() {
+      try {
+        yield 'first';
+        waitingForSecondRead = true;
+        await never;
+        yield 'unreachable';
+      } finally {
+        generatorFinallyReached = true;
+      }
+    }
+
+    @Controller('/managed-pending-abort')
+    class ManagedPendingAbortController {
+      @Sse('/')
+      stream() {
+        return source();
+      }
+    }
+
+    const root = new Container().register(ManagedPendingAbortController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedPendingAbortController }]),
+      rootContainer: root,
+    });
+    const request = createRequest('/managed-pending-abort', 'GET');
+    request.signal = controller.signal;
+    const response = createStreamingResponse();
+
+    const dispatch = dispatcher.dispatch(request, response);
+    await vi.waitFor(() => {
+      expect(waitingForSecondRead).toBe(true);
+    });
+    controller.abort(new Error('client disconnected'));
+    await expect(dispatch).resolves.toBeUndefined();
+
+    expect(response.stream.writes).toEqual(['data: first\n\n']);
+    expect(response.stream.closeCalls).toBe(1);
+    expect(generatorFinallyReached).toBe(false);
+  });
+
+  it('does not await native async generator return when disconnect happens during a pending read', async () => {
+    let waitingForSecondRead = false;
+    let generatorFinallyReached = false;
+    const never = new Promise<never>(() => undefined);
+
+    async function* source() {
+      try {
+        yield 'first';
+        waitingForSecondRead = true;
+        await never;
+        yield 'unreachable';
+      } finally {
+        generatorFinallyReached = true;
+      }
+    }
+
+    @Controller('/managed-pending-disconnect')
+    class ManagedPendingDisconnectController {
+      @Sse('/')
+      stream() {
+        return source();
+      }
+    }
+
+    const root = new Container().register(ManagedPendingDisconnectController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedPendingDisconnectController }]),
+      rootContainer: root,
+    });
+    const response = createStreamingResponse();
+
+    const dispatch = dispatcher.dispatch(createRequest('/managed-pending-disconnect', 'GET'), response);
+    await vi.waitFor(() => {
+      expect(waitingForSecondRead).toBe(true);
+    });
+    response.stream.emitClose();
+    await expect(dispatch).resolves.toBeUndefined();
+
+    expect(response.stream.writes).toEqual(['data: first\n\n']);
+    expect(response.stream.closeCalls).toBe(1);
+    expect(generatorFinallyReached).toBe(false);
+  });
+
   it('waits for drain when managed SSE writes report backpressure', async () => {
     @Controller('/managed-backpressure')
     class ManagedBackpressureController {
