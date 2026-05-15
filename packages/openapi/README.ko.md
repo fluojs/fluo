@@ -97,7 +97,7 @@ HTTP 핸들러가 `@fluojs/http`의 `@Produces(...)`를 선언하면, 생성된 
 `ui: true`를 활성화하면 생성되는 `/docs` 페이지는 정확한 `swagger-ui-dist` 버전의 자산을 참조하여 패키지 릴리스마다 동일한 동작을 유지합니다. 오프라인 또는 CSP 제어 환경에서 자체 호스팅 자산이 필요하면 `swaggerUiAssets.cssUrl`과 `swaggerUiAssets.jsBundleUrl`을 설정하세요. 생성된 HTML은 해당 URL을 이스케이프하며 Swagger UI 인스턴스를 `window.ui`에 노출하지 않습니다.
 
 ### 모듈 옵션 결정성
-`OpenApiModule.forRoot(...)`는 등록 시점에 옵션을 스냅샷하고 freeze합니다. 등록 후 원본 options 객체, `sources`, `descriptors`, `securitySchemes`, `extraModels`, `swaggerUiAssets`를 변경해도 제공되는 OpenAPI 문서나 `/docs` HTML은 바뀌지 않습니다. `OpenApiModule.forRootAsync(...)`도 async factory가 resolve된 뒤 같은 스냅샷을 적용하며, factory 실패는 bootstrap 중 전파됩니다.
+`OpenApiModule.forRoot(...)`는 등록 시점에 옵션을 스냅샷하고 freeze합니다. 등록 후 원본 options 객체, `sources`, `descriptors`, `securitySchemes`, `extraModels`, `swaggerUiAssets`를 변경해도 제공되는 OpenAPI 문서나 `/docs` HTML은 바뀌지 않습니다. 생성된 singleton 문서도 defensive copy로 제공되므로 downstream response serialization이나 테스트가 이후 요청에 쓰이는 저장 문서를 변경할 수 없습니다. `OpenApiModule.forRootAsync(...)`도 async factory가 resolve된 뒤 같은 스냅샷을 적용하며, factory 실패는 bootstrap 중 전파됩니다.
 
 ### Async 등록과 옵션
 title/version/source 설정이 DI나 async setup에서 나오는 경우 `OpenApiModule.forRootAsync(...)`를 사용합니다. Module option에는 `sources`, `descriptors`, `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, `documentTransform`, `ui`, `swaggerUiAssets`가 포함됩니다. `defaultErrorResponsesPolicy`는 기본적으로 표준 error response와 `ErrorResponse` schema를 주입하며, `documentTransform`은 문서 생성 뒤 제공되기 전에 실행됩니다.

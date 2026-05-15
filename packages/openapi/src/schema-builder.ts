@@ -1,4 +1,4 @@
-import { type Constructor, type MetadataPropertyKey } from '@fluojs/core';
+import type { Constructor, MetadataPropertyKey } from '@fluojs/core';
 import { getDtoBindingSchema, getDtoValidationSchema, type DtoFieldValidationRule } from '@fluojs/core/internal';
 import type { HandlerDescriptor, HttpMethod } from '@fluojs/http';
 import {
@@ -8,6 +8,7 @@ import {
   type ApiResponseMetadata,
   type MethodApiMetadata,
 } from './decorators.js';
+import { cloneSnapshotValue } from './snapshot.js';
 
 type OpenApiOperationMethod = Lowercase<HttpMethod>;
 
@@ -1220,7 +1221,7 @@ function createOpenApiComponents(
   configuredSecuritySchemes: Record<string, OpenApiSecuritySchemeObject> | undefined,
 ): OpenApiComponentsObject {
   const securitySchemes = {
-    ...(configuredSecuritySchemes ?? {}),
+    ...(configuredSecuritySchemes ? cloneSnapshotValue(configuredSecuritySchemes) : {}),
     ...(hasBearerAuth && !(configuredSecuritySchemes && 'bearerAuth' in configuredSecuritySchemes)
       ? {
           bearerAuth: {

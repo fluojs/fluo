@@ -447,6 +447,41 @@ describe('buildOpenApiDocument', () => {
     ]);
   });
 
+  it('detaches configured security schemes from generated document output', () => {
+    @Controller('/security-snapshot')
+    class SecuritySnapshotController {
+      @ApiSecurity('apiKeyAuth')
+      @Get('/')
+      list() {
+        return { ok: true };
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: SecuritySnapshotController }]).descriptors;
+    const securitySchemes = {
+      apiKeyAuth: {
+        in: 'header' as const,
+        name: 'x-api-key',
+        type: 'apiKey' as const,
+      },
+    };
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      securitySchemes,
+      title: 'Security Snapshot API',
+      version: '1.0.0',
+    });
+
+    securitySchemes.apiKeyAuth.name = 'mutated-api-key';
+
+    expect(document.components?.securitySchemes?.apiKeyAuth).toEqual({
+      in: 'header',
+      name: 'x-api-key',
+      type: 'apiKey',
+    });
+  });
+
   it('applies documentTransform when provided and keeps defaults when absent', () => {
     @Controller('/health')
     class HealthController {

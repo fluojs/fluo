@@ -1,5 +1,7 @@
 import type { HandlerDescriptor } from '@fluojs/http';
 
+import { cloneSnapshotValue } from './snapshot.js';
+
 /**
  * Mutable registry used to snapshot handler descriptors before document generation.
  */
@@ -12,7 +14,7 @@ export class OpenApiHandlerRegistry {
    * @param descriptors Handler descriptors to retain for later document generation.
    */
   setDescriptors(descriptors: readonly HandlerDescriptor[]): void {
-    this.descriptors = [...descriptors];
+    this.descriptors = cloneSnapshotValue(descriptors) as HandlerDescriptor[];
   }
 
   /**
@@ -21,6 +23,6 @@ export class OpenApiHandlerRegistry {
    * @returns A defensive copy of the current handler descriptors.
    */
   getDescriptors(): HandlerDescriptor[] {
-    return [...this.descriptors];
+    return cloneSnapshotValue(this.descriptors);
   }
 }
