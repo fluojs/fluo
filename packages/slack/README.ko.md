@@ -127,6 +127,7 @@ Behavioral contract 메모:
 
 - `SlackService.send(...)`는 전달 전에 `defaultChannel`을 해석합니다.
 - `SlackService.sendMany(...)`는 메시지를 순차적으로 보내며, fail-fast 대신 batch result가 필요한 호출자를 위해 `continueOnError`를 지원합니다.
+- `SlackService.send(...)`, `SlackService.sendMany(...)`, `SlackService.sendNotification(...)`은 provider handoff 전에 이미 abort된 signal을 존중하며, 같은 signal을 transport 호출로 전달합니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
 - shutdown이 시작된 뒤에는 `SlackService.send(...)`와 `SlackService.sendNotification(...)`이 transport를 재사용하거나 lazy 생성하지 않고 `SlackLifecycleError`로 실패합니다. 진행 중인 factory 소유 transport 생성은 shutdown이 기다린 뒤 닫습니다.
 - `SlackService.createPlatformStatusSnapshot()`은 호출자가 내부 옵션에 접근하지 않아도 lifecycle, readiness, transport 소유권을 보고합니다.
@@ -199,6 +200,7 @@ await slack.send({
 Behavioral contract 메모:
 
 - 내장 webhook transport는 `408`, `429`, `5xx` 같은 일시적 실패를 호출자에게 에러를 노출하기 전에 bounded exponential backoff로 재시도합니다.
+- Abort signal은 주입된 `fetch` 경계로 전달되며, retry backoff를 취소할 때 `AbortError`를 `SlackTransportError`로 감싸지 않습니다.
 - 호출자에게 보이는 `SlackTransportError` 메시지는 기본적으로 raw upstream response body를 포함하지 않습니다.
 
 ### 의도적인 제한 사항

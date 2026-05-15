@@ -165,6 +165,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
     const transport = await this.ensureTransport();
     const normalized = this.normalizeMessage(message);
     assertMessageContent(normalized);
+    assertNotAborted(options.signal);
     this.assertCanDeliver();
     const result = await transport.send(normalized, options);
 
@@ -246,7 +247,9 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
     this.assertCanDeliver();
 
     const payload = notification.payload;
-    const rendered = await this.renderNotification(notification);
+    const rendered = await this.renderNotification(notification, options.signal);
+
+    assertNotAborted(options.signal);
 
     return this.send(
       {
@@ -338,10 +341,13 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
 
   private async renderNotification(
     notification: SlackNotificationDispatchRequest,
+    signal: AbortSignal | undefined,
   ): Promise<SlackTemplateRenderResult | undefined> {
     if (!notification.template || !this.options.renderer) {
       return undefined;
     }
+
+    assertNotAborted(signal);
 
     return this.options.renderer.render({
       locale: notification.locale,

@@ -77,6 +77,8 @@ const service = await module.resolve(UserService);
 
 The testing builder also supports `overrideGuard(...)`, `overrideInterceptor(...)`, and `overrideFilter(...)` for route-pipeline tests that need to replace cross-cutting behavior.
 
+`compile()` follows production module-bootstrap semantics for lifecycle-bearing singleton providers: it resolves the effective provider graph, runs `onModuleInit()` for each resolved instance, then runs `onApplicationBootstrap()` in the same provider order before the testing module is returned. `get()` keeps DI ownership semantics for synchronous singleton and multi-provider paths, so repeated sync reads reuse the same singleton contributions and `module.container.dispose()` can still clean them up.
+
 ### Preserve module identity with `overrideModule()`
 
 `createTestingModule({ rootModule })` requires an explicit root module so tests compile the same module graph shape that production bootstrap uses. When `overrideModule(source, replacement)` swaps imported modules, the compiled testing module preserves the original `rootModule` and compiled `modules[].type` identities while using the replacement imports for provider resolution. This keeps diagnostics, graph assertions, and module-introspection helpers tied to the application module classes you authored instead of synthetic test-only wrapper classes.
@@ -162,11 +164,11 @@ fluo differs from NestJS by requiring tests to name an explicit `rootModule`. Th
 ## Public API
 
 - **Root package**: `createTestingModule(...)`, `createTestApp(...)`, module introspection helpers, shared testing types
-- **Subpaths**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock`, `@fluojs/testing/types`, `@fluojs/testing/vitest`
+- **Subpaths**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock`, `@fluojs/testing/types`, `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
 - **Mock subpath**: `@fluojs/testing/mock`
 - **HTTP helpers**: `@fluojs/testing/http`
 - **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`
-- **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` (requires `vitest` and `@babel/core` in the consuming workspace)
+- **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` and `@fluojs/testing/vitest/tooling` with Vitest workspace config helpers (requires `vitest` and `@babel/core` in the consuming workspace)
 
 ## Related Packages
 

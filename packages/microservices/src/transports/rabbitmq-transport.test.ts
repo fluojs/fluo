@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { RabbitMqMicroserviceTransport } from './rabbitmq-transport.js';
 
@@ -288,6 +288,37 @@ describe('RabbitMqMicroserviceTransport', () => {
     await transport.close();
 
     await expect(Promise.all([first, second])).rejects.toThrow(/RabbitMQ microservice transport closed before/);
+  });
+
+  it('leaves caller-owned publisher and connection collaborators open during close()', async () => {
+    const bus = new InMemoryQueueBus();
+    const closeConnection = vi.fn();
+    const closePublisher = vi.fn();
+    const consumer = {
+      async cancel(queue: string) {
+        await bus.unsubscribe(queue);
+      },
+      closeConnection,
+      async consume(queue: string, handler: (message: string) => Promise<void> | void) {
+        await bus.subscribe(queue, handler);
+      },
+    };
+    const publisher = {
+      close: closePublisher,
+      async publish(queue: string, message: string) {
+        await bus.publish(queue, message);
+      },
+    };
+    const transport = new RabbitMqMicroserviceTransport({
+      consumer,
+      publisher,
+    });
+
+    await transport.listen(async () => undefined);
+    await transport.close();
+
+    expect(closeConnection).not.toHaveBeenCalled();
+    expect(closePublisher).not.toHaveBeenCalled();
   });
 
   it('still rejects pending requests when queue cancellation fails during close', async () => {

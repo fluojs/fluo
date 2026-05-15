@@ -150,6 +150,8 @@ const verifier = new DefaultJwtVerifier({
 
 `jwksRequestTimeoutMs` defaults to `5_000` and aborts the outbound JWKS fetch once that budget is exceeded.
 
+JWKS keys are cached for `jwksCacheTtl` milliseconds (`600_000` by default) and the in-memory cache is bounded by `jwksCacheMaxEntries` (`100` by default). Expired entries are pruned before lookups, the oldest retained key is evicted when the bound is exceeded, and `JwksClient.dispose()` / `DefaultJwtVerifier.dispose()` clears retained remote key material during manual shutdown or identity-provider reconfiguration. A `jwksCacheTtl` of `0` disables key retention while still using bounded fetch timeouts.
+
 `JwtService.verify(token, options)` applies per-call algorithm and claim-policy overrides (`issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`) without rebuilding the underlying JWKS client or static key-resolution cache. Per-call verification does not replace configured key sources such as `jwksUri`, `keys[]`, `publicKey`, `secret`, or `secretOrKeyProvider`.
 
 When multiple compatible keys are configured, `kid` disambiguates the verification key. A single compatible static key can verify tokens without `kid`; JWKS-backed verification relies on the remote key set and its cache policy.
@@ -166,7 +168,7 @@ JWT signing and verification require at least one supported algorithm in `algori
 
 Access-token TTL must also be a positive finite number. When `accessTokenTtlSeconds` is omitted, `DefaultJwtSigner` uses the documented `3600` second default. Fractional seconds are preserved in the JWT NumericDate `exp` claim; when the option is provided as `0`, a negative number, or a non-finite value, signing fails with `JwtConfigurationError` before a token is issued.
 
-Verification fails closed on malformed time policy. `exp`, `nbf`, and `iat` claims that participate in verification must be finite JWT NumericDate numbers, and `clockSkewSeconds` must be a non-negative finite number. Non-finite values are rejected instead of extending expiration, not-before, or age checks.
+Verification fails closed on malformed time policy. `exp`, `nbf`, and `iat` claims that participate in verification must be finite JWT NumericDate numbers, and `clockSkewSeconds` must be a non-negative finite number. Non-finite values are rejected instead of extending expiration, not-before, or age checks. A token is expired when verifier time reaches its `exp` NumericDate; equality is treated as expired unless positive clock skew still covers the boundary.
 
 ## Public API Overview
 

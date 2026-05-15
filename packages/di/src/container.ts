@@ -299,12 +299,9 @@ export class Container {
         throw new DuplicateProviderError(token);
       }
 
-      const existing = this.lookupProvider(token);
-      const existingMultiProviders = this.collectMultiProviders(token);
-
+      this.invalidateAffectedCachedEntriesInHierarchy(token);
       this.registrations.delete(token);
       this.multiRegistrations.delete(token);
-      this.invalidateCachedEntryInHierarchy(token, existing?.scope ?? existingMultiProviders[0]?.scope ?? firstProvider.scope);
 
       if (containsMultiProvider) {
         this.multiRegistrations.set(token, normalizedProviders);
@@ -1270,8 +1267,8 @@ export class Container {
     return deps;
   }
 
-  private invalidateCachedEntryInHierarchy(token: Token, scope: Scope): void {
-    this.invalidateCachedEntry(token, scope);
+  private invalidateAffectedCachedEntriesInHierarchy(token: Token): void {
+    this.invalidateAffectedCachedEntries(token);
 
     const childScopes = this.root().childScopes;
 
@@ -1281,7 +1278,7 @@ export class Container {
 
     for (const childScope of childScopes) {
       if (this.isAncestorOf(childScope)) {
-        childScope.invalidateCachedEntry(token, scope);
+        childScope.invalidateAffectedCachedEntries(token);
       }
     }
   }
@@ -1300,34 +1297,30 @@ export class Container {
     return false;
   }
 
-  private invalidateCachedEntry(token: Token, scope: Scope): void {
-    if (this.requestCache?.has(token)) {
-      const cached = this.requestCache.get(token);
-
-      if (cached) {
-        this.scheduleStaleDisposal(cached);
+  private invalidateAffectedCachedEntries(token: Token): void {
+    for (const [cachedToken, cached] of this.requestCache?.entries() ?? []) {
+      if (!this.shouldInvalidateCachedToken(cachedToken, token)) {
+        continue;
       }
 
-      this.requestCache.delete(token);
+      this.scheduleStaleDisposal(cached);
+      this.requestCache?.delete(cachedToken);
     }
 
-    if (!this.parent && scope === Scope.DEFAULT) {
-      const singletonCache = this.singletonCache;
-
-      if (singletonCache.has(token)) {
-        const cached = singletonCache.get(token);
-
-        if (cached) {
-          this.scheduleStaleDisposal(cached);
+    if (!this.parent) {
+      for (const [cachedToken, cached] of this.singletonCache.entries()) {
+        if (!this.shouldInvalidateCachedToken(cachedToken, token)) {
+          continue;
         }
 
-        singletonCache.delete(token);
+        this.scheduleStaleDisposal(cached);
+        this.singletonCache.delete(cachedToken);
       }
     }
 
     if (!this.parent) {
       for (const [provider, cached] of this.multiSingletonCache.entries()) {
-        if (provider.provide !== token) {
+        if (!this.shouldInvalidateCachedProvider(provider, token)) {
           continue;
         }
 
@@ -1343,12 +1336,69 @@ export class Container {
     }
 
     for (const [provider, cached] of multiRequestCache.entries()) {
-      if (provider.provide !== token) {
+      if (!this.shouldInvalidateCachedProvider(provider, token)) {
         continue;
       }
 
       this.scheduleStaleDisposal(cached);
       multiRequestCache.delete(provider);
+    }
+  }
+
+  private shouldInvalidateCachedToken(cachedToken: Token, overriddenToken: Token): boolean {
+    if (cachedToken === overriddenToken) {
+      return true;
+    }
+
+    const provider = this.lookupProvider(cachedToken);
+    const multiProviders = this.collectMultiProviders(cachedToken);
+
+    if (provider && this.providerDependsOnToken(provider, overriddenToken, new Set<Token>([provider.provide]))) {
+      return true;
+    }
+
+    return multiProviders.some((multiProvider) =>
+      this.providerDependsOnToken(multiProvider, overriddenToken, new Set<Token>([multiProvider.provide])),
+    );
+  }
+
+  private shouldInvalidateCachedProvider(provider: NormalizedProvider, overriddenToken: Token): boolean {
+    return provider.provide === overriddenToken || this.providerDependsOnToken(provider, overriddenToken, new Set<Token>([provider.provide]));
+  }
+
+  private providerDependsOnToken(provider: NormalizedProvider, token: Token, visited: Set<Token>): boolean {
+    if (provider.type === 'existing' && provider.useExisting !== undefined) {
+      return this.dependencyTokenReferencesToken(provider.useExisting, token, visited);
+    }
+
+    return provider.inject.some((depEntry) => this.dependencyEntryReferencesToken(depEntry, token, visited));
+  }
+
+  private dependencyEntryReferencesToken(depEntry: Token | ForwardRefFn | OptionalToken, token: Token, visited: Set<Token>): boolean {
+    return this.dependencyTokenReferencesToken(this.resolveProviderDependencyToken(depEntry), token, visited);
+  }
+
+  private dependencyTokenReferencesToken(depToken: Token, token: Token, visited: Set<Token>): boolean {
+    if (depToken === token) {
+      return true;
+    }
+
+    if (visited.has(depToken)) {
+      return false;
+    }
+
+    visited.add(depToken);
+
+    try {
+      const provider = this.lookupProvider(depToken);
+      const multiProviders = this.collectMultiProviders(depToken);
+
+      return (
+        (provider ? this.providerDependsOnToken(provider, token, visited) : false) ||
+        multiProviders.some((multiProvider) => this.providerDependsOnToken(multiProvider, token, visited))
+      );
+    } finally {
+      visited.delete(depToken);
     }
   }
 }

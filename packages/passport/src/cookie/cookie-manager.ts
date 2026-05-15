@@ -1,6 +1,6 @@
 import type { FrameworkResponse } from '@fluojs/http';
 
-import { DEFAULT_COOKIE_AUTH_OPTIONS, type CookieAuthOptions, normalizeCookieAuthOptions } from './cookie-auth.js';
+import { type CookieAuthOptions, normalizeCookieAuthOptions } from './cookie-auth.js';
 
 /**
  * Describes the cookie options contract.
@@ -79,6 +79,27 @@ function buildClearCookieHeader(name: string, options: NormalizedCookieOptions):
     ...options,
     maxAge: 0,
   });
+}
+
+function getHeaderCaseInsensitive(
+  headers: FrameworkResponse['headers'],
+  name: string,
+): { key: string; value: string | string[] } | undefined {
+  for (const [headerName, value] of Object.entries(headers)) {
+    if (headerName.toLowerCase() === name.toLowerCase() && (typeof value === 'string' || Array.isArray(value))) {
+      return { key: headerName, value };
+    }
+  }
+
+  return undefined;
+}
+
+function toHeaderValues(value: string | string[] | undefined): string[] {
+  if (Array.isArray(value)) {
+    return [...value];
+  }
+
+  return value ? [value] : [];
 }
 
 /**
@@ -164,15 +185,18 @@ export class CookieManager {
   }
 
   private appendSetCookie(response: FrameworkResponse, cookie: string): void {
-    const existingCookies = response.headers['Set-Cookie'];
-    const cookies = Array.isArray(existingCookies)
-      ? existingCookies
-      : existingCookies
-        ? [existingCookies]
-        : [];
+    const existingHeader = getHeaderCaseInsensitive(response.headers, 'Set-Cookie');
+    const cookies = [...toHeaderValues(existingHeader?.value), cookie];
 
-    cookies.push(cookie);
-    response.setHeader('Set-Cookie', cookies.length === 1 ? cookies[0] : cookies);
+    response.setHeader('Set-Cookie', cookie);
+
+    const updatedHeader = getHeaderCaseInsensitive(response.headers, 'Set-Cookie');
+
+    if (updatedHeader?.key && updatedHeader.key !== 'Set-Cookie') {
+      delete response.headers[updatedHeader.key];
+    }
+
+    response.headers['Set-Cookie'] = cookies.length === 1 ? cookies[0] : cookies;
   }
 }
 

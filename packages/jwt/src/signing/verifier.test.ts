@@ -212,6 +212,24 @@ describe('DefaultJwtVerifier', () => {
     await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtExpiredTokenError);
   });
 
+  it('rejects tokens whose exp exactly equals the verifier clock', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const verifier = new DefaultJwtVerifier({
+        algorithms: ['HS256'],
+        secret: 'secret',
+      });
+      const token = signToken({ exp: now, sub: 'expires-now' }, 'secret');
+
+      await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtExpiredTokenError);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('rejects non-finite exp NumericDate claims', async () => {
     const verifier = new DefaultJwtVerifier({
       algorithms: ['HS256'],

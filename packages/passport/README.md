@@ -144,6 +144,8 @@ Import `CookieAuthModule.forRoot(...)`, `JwtModule.forRoot(...)`, and `PassportM
 
 Cookie access tokens must be non-empty strings. Missing cookies can resolve to `{ authenticated: false }` only when `requireAccessToken: false`; malformed present cookie values always fail authentication before JWT verification.
 
+`CookieManager` appends access-token and refresh-token `Set-Cookie` values without overwriting cookies that were already placed on the response, even when the underlying adapter stores the existing header with different casing such as `set-cookie`.
+
 Protected routes must keep using `@UseAuth(...)`. If you configure `requireAccessToken: false`, a missing cookie resolves to an explicit unauthenticated result instead of an anonymous principal, so protected routes still reject the request.
 
 Use `@UseOptionalAuth(...)` only on routes that intentionally support both signed-in and guest callers:

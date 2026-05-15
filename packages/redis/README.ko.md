@@ -151,6 +151,7 @@ export class AdvancedService {
 ### 핵심 구성 요소
 - `RedisModule`: Redis 클라이언트 등록 및 수명 주기 훅을 관리합니다.
 - `RedisModule.forRoot(options)`: `name`을 생략하면 기본 Redis 클라이언트와 `RedisService` 파사드를 등록하고, `name`을 제공하면 추가 이름 있는 Redis 클라이언트를 등록합니다. 기본 등록은 기본적으로 global이고, 이름 있는 등록은 scoped입니다. `lifecycle.connectTimeoutMs`와 `lifecycle.quitTimeoutMs`로 Fluo가 소유한 연결 시작/종료 시간을 제한할 수 있습니다.
+- lifecycle hook은 `RedisModule.forRoot(...).lifecycle`로만 설정합니다. 내부 lifecycle service는 의도적으로 public API에 포함하지 않습니다.
 - `RedisService`: JSON 코덱 지원 및 `get`/`set`/`del` 메서드를 제공하는 파사드입니다.
 - `REDIS_CLIENT`: 내부 `ioredis` 인스턴스에 접근하기 위한 DI 토큰입니다.
 - `DEFAULT_REDIS_CLIENT_NAME`: 안정적인 기본 Redis client name입니다.

@@ -208,6 +208,7 @@ foundation 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `NotificationQueueNotConfiguredError`
 
 상태 snapshot은 platform diagnostics를 위해 `operationMode`, dependency diagnostics, ownership, readiness, health 필드를 포함합니다.
+Queue adapter가 구성되면 `details.dependencies`에 `notifications.queue-adapter`가 포함되고, lifecycle event가 event publisher를 통해 발행되면 `notifications.event-publisher`가 포함됩니다. 이러한 선택적 통합은 `ownership.externallyManaged: true`로 표시되지만, foundation 패키지가 concrete queue 또는 event-bus 리소스를 닫지 않으므로 `ownsResources: false`를 유지합니다.
 
 ## 관련 패키지
 

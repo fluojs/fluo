@@ -77,6 +77,10 @@ async function waitForRetry(delayMs: number, signal: AbortSignal | undefined): P
     return;
   }
 
+  if (signal?.aborted) {
+    throw signal.reason ?? new DOMException('The operation was aborted.', 'AbortError');
+  }
+
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       signal?.removeEventListener('abort', onAbort);
