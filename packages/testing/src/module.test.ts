@@ -722,6 +722,18 @@ describe('createMock', () => {
 
     expect(first).toBe(second);
   });
+
+  it('throws when strict mode reads an undeclared property', () => {
+    interface Greeter {
+      greet(): string;
+    }
+
+    const mock = createMock<Greeter>({}, { strict: true });
+
+    expect(() => mock.greet).toThrow(
+      'createMock: strict mode — property "greet" is not declared in the partial mock.',
+    );
+  });
 });
 
 describe('asMock', () => {

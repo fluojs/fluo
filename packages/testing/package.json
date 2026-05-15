@@ -68,6 +68,10 @@
     "./vitest": {
       "types": "./dist/vitest.d.ts",
       "import": "./dist/vitest.js"
+    },
+    "./vitest/tooling": {
+      "types": "./dist/vitest/tooling.d.ts",
+      "import": "./dist/vitest/tooling.js"
     }
   },
   "main": "./dist/index.js",
