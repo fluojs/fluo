@@ -168,6 +168,39 @@ describe('JwtService', () => {
     }
   });
 
+  it('parses short string expiresIn durations into whole-second exp claims', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+
+    try {
+      const service = createJwtService({
+        algorithms: ['HS256'],
+        issuer: 'jwt-service-tests',
+        secret: 'service-secret',
+      });
+      const now = Math.floor(Date.now() / 1000);
+
+      await expect(service.sign({ sub: 'duration-seconds' }, { expiresIn: '60s' }).then((token) => service.decode(token))).resolves.toMatchObject({
+        exp: now + 60,
+        sub: 'duration-seconds',
+      });
+      await expect(service.sign({ sub: 'duration-minutes' }, { expiresIn: '15m' }).then((token) => service.decode(token))).resolves.toMatchObject({
+        exp: now + 900,
+        sub: 'duration-minutes',
+      });
+      await expect(service.sign({ sub: 'duration-hours' }, { expiresIn: '1h' }).then((token) => service.decode(token))).resolves.toMatchObject({
+        exp: now + 3600,
+        sub: 'duration-hours',
+      });
+      await expect(service.sign({ sub: 'duration-days' }, { expiresIn: '7d' }).then((token) => service.decode(token))).resolves.toMatchObject({
+        exp: now + 604_800,
+        sub: 'duration-days',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('decodes payload without signature verification', async () => {
     const service = createJwtService({
       algorithms: ['HS256'],

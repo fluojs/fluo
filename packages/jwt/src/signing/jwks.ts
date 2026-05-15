@@ -11,6 +11,26 @@ interface JwksResponse {
   keys?: Jwk[];
 }
 
+const DEFAULT_JWKS_CACHE_MAX_ENTRIES = 100;
+
+function assertNonNegativeFiniteNumber(value: number, label: string): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new JwtConfigurationError(`${label} must be a non-negative finite number.`);
+  }
+}
+
+function assertPositiveFiniteNumber(value: number, label: string): void {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new JwtConfigurationError(`${label} must be a positive finite number.`);
+  }
+}
+
+function assertPositiveInteger(value: number, label: string): void {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new JwtConfigurationError(`${label} must be a positive integer.`);
+  }
+}
+
 /**
  * Represents the jwks client.
  */
@@ -21,7 +41,22 @@ export class JwksClient {
     private readonly uri: string,
     private readonly cacheTtl: number = 600_000,
     private readonly requestTimeoutMs: number = 5_000,
-  ) {}
+    private readonly cacheMaxEntries: number = DEFAULT_JWKS_CACHE_MAX_ENTRIES,
+  ) {
+    assertNonNegativeFiniteNumber(cacheTtl, 'JWKS cache ttl');
+    assertPositiveFiniteNumber(requestTimeoutMs, 'JWKS request timeout');
+    assertPositiveInteger(cacheMaxEntries, 'JWKS cache max entries');
+  }
+
+  /**
+   * Clears all cached JWKS key material held by this client.
+   *
+   * Call this during application shutdown when the verifier/client lifecycle is
+   * owned manually, or when rotating identity-provider configuration.
+   */
+  dispose(): void {
+    this.cache.clear();
+  }
 
   private isAbortError(error: unknown): boolean {
     return error instanceof Error && error.name === 'AbortError';
@@ -29,6 +64,8 @@ export class JwksClient {
 
   async getSigningKey(kid: string): Promise<KeyObject> {
     const now = Date.now();
+    this.pruneExpiredCacheEntries(now);
+
     const cached = this.cache.get(kid);
 
     if (cached && cached.expiresAt > now) {
@@ -50,12 +87,35 @@ export class JwksClient {
       throw new JwtConfigurationError('Unable to parse JWKS key into a public key.');
     }
 
-    this.cache.set(kid, {
-      expiresAt: now + this.cacheTtl,
-      key,
-    });
+    if (this.cacheTtl > 0) {
+      this.cache.set(kid, {
+        expiresAt: now + this.cacheTtl,
+        key,
+      });
+      this.evictOldestCacheEntries();
+    }
 
     return key;
+  }
+
+  private pruneExpiredCacheEntries(now: number): void {
+    for (const [kid, cached] of this.cache) {
+      if (cached.expiresAt <= now) {
+        this.cache.delete(kid);
+      }
+    }
+  }
+
+  private evictOldestCacheEntries(): void {
+    while (this.cache.size > this.cacheMaxEntries) {
+      const oldestKid = this.cache.keys().next().value as string | undefined;
+
+      if (oldestKid === undefined) {
+        return;
+      }
+
+      this.cache.delete(oldestKid);
+    }
   }
 
   private async fetchKeys(): Promise<Jwk[]> {
@@ -64,6 +124,7 @@ export class JwksClient {
     const timeout = setTimeout(() => {
       controller.abort();
     }, this.requestTimeoutMs);
+    timeout.unref?.();
 
     try {
       response = await fetch(this.uri, { signal: controller.signal });

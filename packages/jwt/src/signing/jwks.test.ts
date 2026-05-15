@@ -93,6 +93,70 @@ describe('JwksClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('bounds the JWKS cache and evicts the oldest retained key', async () => {
+    const { publicKey: publicKey1 } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const { publicKey: publicKey2 } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const { publicKey: publicKey3 } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const jwk1 = publicKey1.export({ format: 'jwk' });
+    const jwk2 = publicKey2.export({ format: 'jwk' });
+    const jwk3 = publicKey3.export({ format: 'jwk' });
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          keys: [
+            { ...jwk1, kid: 'key-1' },
+            { ...jwk2, kid: 'key-2' },
+            { ...jwk3, kid: 'key-3' },
+          ],
+        }),
+        {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        },
+      ),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const client = new JwksClient('https://example.test/.well-known/jwks.json', 30_000, 5_000, 2);
+    await client.getSigningKey('key-1');
+    await client.getSigningKey('key-2');
+    await client.getSigningKey('key-3');
+    await client.getSigningKey('key-1');
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('clears retained JWKS keys when disposed', async () => {
+    const { publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const jwk = publicKey.export({ format: 'jwk' });
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ keys: [{ ...jwk, kid: 'key-1' }] }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const client = new JwksClient('https://example.test/.well-known/jwks.json', 30_000);
+    await client.getSigningKey('key-1');
+    client.dispose();
+    await client.getSigningKey('key-1');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects invalid JWKS lifecycle budgets during client construction', () => {
+    expect(() => new JwksClient('https://example.test/.well-known/jwks.json', Number.NaN)).toThrow(
+      'JWKS cache ttl must be a non-negative finite number.',
+    );
+    expect(() => new JwksClient('https://example.test/.well-known/jwks.json', 30_000, 0)).toThrow(
+      'JWKS request timeout must be a positive finite number.',
+    );
+    expect(() => new JwksClient('https://example.test/.well-known/jwks.json', 30_000, 5_000, 1.5)).toThrow(
+      'JWKS cache max entries must be a positive integer.',
+    );
+  });
+
   it('fails fast when the jwks fetch exceeds the configured timeout budget', async () => {
     globalThis.fetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
       return new Promise((_, reject) => {
@@ -181,5 +245,63 @@ describe('DefaultJwtVerifier with jwksUri', () => {
     const token = createRs256Token(privateKey, 'key-1');
 
     await expect(verifier.verifyAccessToken(token)).rejects.toThrow('JWKS fetch timed out after 5ms.');
+  });
+
+  it('passes the jwks cache max entries through verifier options', async () => {
+    const { privateKey: privateKey1, publicKey: publicKey1 } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const { privateKey: privateKey2, publicKey: publicKey2 } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const jwk1 = publicKey1.export({ format: 'jwk' });
+    const jwk2 = publicKey2.export({ format: 'jwk' });
+    const token1 = createRs256Token(privateKey1, 'key-1');
+    const token2 = createRs256Token(privateKey2, 'key-2');
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          keys: [
+            { ...jwk1, kid: 'key-1' },
+            { ...jwk2, kid: 'key-2' },
+          ],
+        }),
+        {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        },
+      ),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['RS256'],
+      jwksCacheMaxEntries: 1,
+      jwksUri: 'https://example.test/.well-known/jwks.json',
+    });
+    await verifier.verifyAccessToken(token1);
+    await verifier.verifyAccessToken(token2);
+    await verifier.verifyAccessToken(token1);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('disposes verifier-owned jwks cache entries', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const jwk = publicKey.export({ format: 'jwk' });
+    const token = createRs256Token(privateKey, 'key-1');
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ keys: [{ ...jwk, kid: 'key-1' }] }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['RS256'],
+      jwksUri: 'https://example.test/.well-known/jwks.json',
+    });
+    await verifier.verifyAccessToken(token);
+    verifier.dispose();
+    await verifier.verifyAccessToken(token);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

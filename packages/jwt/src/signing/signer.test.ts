@@ -82,6 +82,27 @@ describe('DefaultJwtSigner', () => {
     }
   });
 
+  it('uses the documented 3600 second default access token ttl', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-26T20:00:00.000Z'));
+
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const signer = new DefaultJwtSigner({
+        algorithms: ['HS256'],
+        secret: 'secret',
+      });
+      const token = await signer.signAccessToken({ sub: 'default-ttl-user' });
+      const [, payloadSegment] = token.split('.');
+      const payload = JSON.parse(Buffer.from(payloadSegment, 'base64url').toString('utf8')) as { exp: number; iat: number };
+
+      expect(payload.iat).toBe(now);
+      expect(payload.exp).toBe(now + 3600);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('creates an access token that the verifier accepts (HS256)', async () => {
     const signer = new DefaultJwtSigner({
       accessTokenTtlSeconds: 120,
