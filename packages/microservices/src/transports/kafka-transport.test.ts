@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { KafkaMicroserviceTransport, type KafkaMicroserviceTransportOptions } from './kafka-transport.js';
 
@@ -237,6 +237,37 @@ describe('KafkaMicroserviceTransport', () => {
     await transport.close();
 
     await expect(pending).rejects.toThrow(/Kafka microservice transport closed before/);
+  });
+
+  it('leaves caller-owned producer and consumer collaborators open during close()', async () => {
+    const bus = new InMemoryTopicBus();
+    const disconnectConsumer = vi.fn();
+    const disconnectProducer = vi.fn();
+    const consumer = {
+      disconnect: disconnectConsumer,
+      subscribe: async (topic: string, handler: (message: string) => Promise<void> | void) => {
+        await bus.subscribe(topic, handler);
+      },
+      unsubscribe: async (topic: string) => {
+        await bus.unsubscribe(topic);
+      },
+    };
+    const producer = {
+      disconnect: disconnectProducer,
+      publish: async (topic: string, message: string) => {
+        await bus.publish(topic, message);
+      },
+    };
+    const transport = new KafkaMicroserviceTransport({
+      consumer,
+      producer,
+    });
+
+    await transport.listen(async () => undefined);
+    await transport.close();
+
+    expect(disconnectConsumer).not.toHaveBeenCalled();
+    expect(disconnectProducer).not.toHaveBeenCalled();
   });
 
   it('still rejects pending requests when unsubscribe fails during close', async () => {

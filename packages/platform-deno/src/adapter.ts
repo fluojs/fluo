@@ -131,6 +131,7 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
   private dispatcher?: Dispatcher;
   private inFlightDrain?: Deferred<void>;
   private inFlightRequestCount = 0;
+  private listenAddress?: DenoServeOnListenInfo;
   private server?: DenoServeController;
   private websocketBinding?: DenoWebSocketBinding<DenoServerWebSocket>;
   private readonly options: Required<Pick<DenoAdapterOptions, 'hostname' | 'port'>> & DenoAdapterOptions;
@@ -150,7 +151,11 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   getListenTarget(): HttpAdapterListenTarget {
-    return createListenTarget(this.options.hostname, this.options.port, this.options.https !== undefined);
+    return createListenTarget(
+      this.listenAddress?.hostname ?? this.options.hostname,
+      this.listenAddress?.port ?? this.options.port,
+      this.options.https !== undefined,
+    );
   }
 
   getRealtimeCapability() {
@@ -206,18 +211,25 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
 
     const abortController = new AbortController();
     const serve = resolveServe(this.options.serve);
+    const listenReady = this.options.port === 0 ? createDeferred<void>() : undefined;
 
     this.abortController = abortController;
     this.server = serve({
       cert: this.options.https?.cert,
       hostname: this.options.hostname,
       key: this.options.https?.key,
-      onListen: this.options.onListen,
+      onListen: (localAddr) => {
+        this.listenAddress = localAddr;
+        listenReady?.resolve();
+        this.options.onListen?.(localAddr);
+      },
       port: this.options.port,
       signal: abortController.signal,
     }, async (request) => {
       return await this.handle(request);
     });
+
+    await listenReady?.promise;
   }
 
   async close(): Promise<void> {
@@ -232,6 +244,7 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
     if (!server) {
       this.dispatcher = undefined;
       this.abortController = undefined;
+      this.listenAddress = undefined;
       return;
     }
 
@@ -251,6 +264,7 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
 
       this.closeInFlight = undefined;
       this.dispatcher = undefined;
+      this.listenAddress = undefined;
     });
 
     this.closeInFlight = closeInFlight;

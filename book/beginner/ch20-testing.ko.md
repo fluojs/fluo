@@ -52,11 +52,10 @@
 
 필요한 의존성을 설치합니다:
 ```bash
-pnpm add -g vitest
-pnpm add -D @fluojs/testing @babel/core
+pnpm add -D @fluojs/testing vitest @babel/core
 ```
 
-`@babel/core`가 필요한 이유는 `@fluojs/testing/vitest`가 테스트 실행 중에 표준 데코레이터를 처리하기 위해 Babel 플러그인을 사용하기 때문입니다. TypeScript가 타입을 처리하는 동안 Babel은 테스트 중에도 런타임과 동일한 표준 데코레이터 동작을 보장합니다.
+`vitest`는 global binary가 아니라 프로젝트 dev dependency로 설치하세요. `@fluojs/testing`은 mock 헬퍼와 `@fluojs/testing/vitest` 엔트리포인트를 위해 Vitest를 peer dependency로 선언하므로, 각 consuming workspace가 테스트에 사용할 로컬 버전을 제공해야 합니다. `@babel/core`가 필요한 이유는 `@fluojs/testing/vitest`가 테스트 실행 중에 표준 데코레이터를 처리하기 위해 Babel 플러그인을 사용하기 때문입니다. TypeScript가 타입을 처리하는 동안 Babel은 테스트 중에도 런타임과 동일한 표준 데코레이터 동작을 보장합니다.
 
 ### Vitest Configuration
 프로젝트 루트에 `vitest.config.ts` 파일을 생성합니다:

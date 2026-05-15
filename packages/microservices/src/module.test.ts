@@ -190,6 +190,53 @@ class InMemoryLoopbackTransport implements MicroserviceTransport {
   }
 }
 
+class SignalRecordingTransport implements MicroserviceTransport {
+  bidiStreamSignal: AbortSignal | undefined;
+  clientStreamSignal: AbortSignal | undefined;
+  sendSignal: AbortSignal | undefined;
+  serverStreamSignal: AbortSignal | undefined;
+
+  async listen(): Promise<void> {}
+
+  async close(): Promise<void> {}
+
+  async send(_pattern: string, _payload: unknown, signal?: AbortSignal): Promise<unknown> {
+    this.sendSignal = signal;
+    return 'ok';
+  }
+
+  async emit(): Promise<void> {}
+
+  serverStream(_pattern: string, _payload: unknown, signal?: AbortSignal): AsyncIterable<unknown> {
+    this.serverStreamSignal = signal;
+    return streamFrom([]);
+  }
+
+  clientStream(_pattern: string, signal?: AbortSignal): { writer: ServerStreamWriter; result: Promise<unknown> } {
+    this.clientStreamSignal = signal;
+    return {
+      result: Promise.resolve('ok'),
+      writer: createNoopWriter(),
+    };
+  }
+
+  bidiStream(_pattern: string, signal?: AbortSignal): { reader: AsyncIterable<unknown>; writer: ServerStreamWriter } {
+    this.bidiStreamSignal = signal;
+    return {
+      reader: streamFrom([]),
+      writer: createNoopWriter(),
+    };
+  }
+}
+
+function createNoopWriter(): ServerStreamWriter {
+  return {
+    end() {},
+    error() {},
+    write() {},
+  };
+}
+
 describe('@fluojs/microservices', () => {
   it('supports createMicroservice with message and event handlers', async () => {
     class Store {
@@ -250,6 +297,32 @@ describe('@fluojs/microservices', () => {
     expect(typeof microserviceByToken.close).toBe('function');
     expect(typeof microserviceByToken.send).toBe('function');
     expect(typeof microserviceByToken.emit).toBe('function');
+
+    await app.close();
+  });
+
+  it('forwards AbortSignal through the lifecycle facade transport operations', async () => {
+    const transport = new SignalRecordingTransport();
+    const controller = new AbortController();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [MicroservicesModule.forRoot({ transport })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const microservice = await app.container.resolve(MicroserviceLifecycleService);
+
+    await microservice.send('signal.send', { ok: true }, controller.signal);
+    const serverReader = microservice.serverStream('signal.server', { ok: true }, controller.signal);
+    await serverReader[Symbol.asyncIterator]().next();
+    microservice.clientStream('signal.client', controller.signal);
+    microservice.bidiStream('signal.bidi', controller.signal);
+
+    expect(transport.sendSignal).toBe(controller.signal);
+    expect(transport.serverStreamSignal).toBe(controller.signal);
+    expect(transport.clientStreamSignal).toBe(controller.signal);
+    expect(transport.bidiStreamSignal).toBe(controller.signal);
 
     await app.close();
   });

@@ -81,7 +81,15 @@ class UsesConfigValue {
 }
 ```
 
-여러 constructor 토큰은 `@Inject(A, B)`처럼 variadic 호출로 지정하면 dependency metadata가 표준 데코레이터 사용 방식과 맞게 유지됩니다. `@Inject([A, B])` 배열 형태도 허용되지만, 새 코드는 variadic 형태를 사용하는 것이 좋습니다. 데코레이션 시점에 아직 사용할 수 없는 토큰은 해당 토큰만 `forwardRef(...)`로 감싸고, 없어도 되는 의존성은 해당 토큰만 `optional(...)`로 감쌉니다.
+여러 constructor 토큰은 `@Inject(A, B)`처럼 variadic 호출로 지정하면 dependency metadata가 표준 데코레이터 사용 방식과 맞게 유지됩니다. `@Inject([A, B])` 배열 형태도 허용되지만, 새 코드는 variadic 형태를 사용하는 것이 좋습니다. 데코레이션 시점에 아직 사용할 수 없는 토큰은 해당 토큰만 `forwardRef(...)`로 감싸고, 없어도 되는 의존성은 해당 토큰만 `optional(...)`로 감쌉니다. 이 wrapper helper들은 `@fluojs/di`가 제공하는 runtime DI helper입니다. `@fluojs/core`는 `@Inject(...)`가 받는 공유 wrapper 타입만 export합니다.
+
+```ts
+import { Inject } from '@fluojs/core';
+import { forwardRef, optional } from '@fluojs/di';
+
+@Inject(forwardRef(() => AuditLogger), optional(CacheClient))
+class UsesDeferredAndOptionalDeps {}
+```
 
 ### 형제 패키지를 위한 공용 메타데이터 헬퍼
 

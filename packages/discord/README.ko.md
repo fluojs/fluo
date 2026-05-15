@@ -95,6 +95,7 @@ DiscordModule.forRootAsync({
 Behavioral contract 메모:
 
 - `DiscordService.send(...)`는 전달 전에 `defaultThreadId`를 해석합니다.
+- `DiscordService.sendMany(...)`는 `DiscordMessage[]`를 직접 순차 전송하는 batch API이며 `continueOnError`를 지원합니다. 이는 multi-recipient `@fluojs/notifications` dispatch shortcut이 아닙니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
 - send는 bootstrap이 transport를 `ready`로 표시한 뒤에만 허용됩니다. bootstrap 전, startup 중, bootstrap 실패 후, shutdown 중, shutdown 후 시도는 전달 전에 거부됩니다.
 - 서비스가 shutdown 중이거나 이미 stopped 상태라면 cached transport를 재사용하지 않고 send를 거부합니다.
@@ -144,7 +145,7 @@ Behavioral contract 메모:
 - 하나의 notification dispatch는 정확히 하나의 Discord thread 경로로 매핑됩니다. `payload.threadId` 또는 `recipients`의 단일 항목을 사용해야 합니다.
 - `payload.threadId`가 없으면 `DiscordService.sendNotification(...)`는 첫 번째 `recipients` 항목을 사용하고, 그것도 없으면 `defaultThreadId`로 폴백합니다.
 - notification metadata는 payload metadata, dispatch metadata, template/subject marker를 합쳐 구성됩니다. `template`은 renderer가 구성된 경우에만 렌더링됩니다.
-- 여러 Discord thread로 fan-out이 필요하다면 하나의 multi-recipient dispatch 대신 `sendMany(...)`를 사용해야 합니다.
+- 여러 Discord thread로 fan-out이 필요한 notification workflow라면 thread별 concrete Discord message를 만들어 `DiscordService.sendMany(...)`로 보내거나 별도 notification dispatch를 실행해야 합니다. 하나의 notification dispatch는 multi-recipient fan-out을 암묵적으로 확장하지 않습니다.
 
 ### 명시적 fetch 주입을 사용하는 webhook-first 전달
 

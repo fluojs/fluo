@@ -144,6 +144,8 @@ export class AuthModule {}
 
 Cookie access token은 비어 있지 않은 문자열이어야 합니다. `requireAccessToken: false`일 때만 누락된 cookie가 `{ authenticated: false }`로 resolve될 수 있으며, 존재하지만 malformed인 cookie 값은 JWT 검증 전에 항상 인증 실패로 처리됩니다.
 
+`CookieManager`는 underlying adapter가 기존 header를 `set-cookie`처럼 다른 casing으로 저장했더라도, response에 이미 설정된 cookie를 덮어쓰지 않고 access-token 및 refresh-token `Set-Cookie` 값을 append합니다.
+
 보호된 라우트는 계속 `@UseAuth(...)`를 사용해야 합니다. `requireAccessToken: false`를 설정해도 쿠키가 없을 때는 익명 principal이 아니라 명시적인 미인증 결과를 반환하므로, 보호된 라우트는 요청을 계속 거부합니다.
 
 로그인 사용자와 게스트 호출자를 모두 허용하려는 라우트에서만 `@UseOptionalAuth(...)`를 사용하세요.

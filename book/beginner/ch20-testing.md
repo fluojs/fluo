@@ -52,11 +52,10 @@ This chapter uses **Vitest** as the default test runner because it is fast, comp
 
 Install the required dependencies:
 ```bash
-pnpm add -g vitest
-pnpm add -D @fluojs/testing @babel/core
+pnpm add -D @fluojs/testing vitest @babel/core
 ```
 
-`@babel/core` is required because `@fluojs/testing/vitest` uses a Babel plugin to process standard Decorators during test execution. TypeScript handles types, while Babel makes sure tests use the same standard Decorator behavior as the runtime.
+Install `vitest` as a project dev dependency instead of a global binary. `@fluojs/testing` declares Vitest as a peer dependency for its mock helpers and `@fluojs/testing/vitest` entrypoint, so each consuming workspace must provide the local version used by its tests. `@babel/core` is required because `@fluojs/testing/vitest` uses a Babel plugin to process standard Decorators during test execution. TypeScript handles types, while Babel makes sure tests use the same standard Decorator behavior as the runtime.
 
 ### Vitest Configuration
 Create a `vitest.config.ts` file at the project root:

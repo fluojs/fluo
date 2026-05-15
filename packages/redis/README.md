@@ -151,6 +151,7 @@ export class AdvancedService {
 ### Core
 - `RedisModule`: Registers Redis clients and lifecycle hooks.
 - `RedisModule.forRoot(options)`: Registers the default Redis client plus `RedisService` facade when `name` is omitted, or an additional named Redis client when `name` is provided. The default registration is global by default; named registrations are scoped. Use `lifecycle.connectTimeoutMs` and `lifecycle.quitTimeoutMs` to bound Fluo-owned connection startup and shutdown.
+- Lifecycle hooks are configured only through `RedisModule.forRoot(...).lifecycle`; the internal lifecycle service is intentionally not part of the public API.
 - `RedisService`: Facade with JSON codec support and `get`/`set`/`del` methods.
 - `REDIS_CLIENT`: DI token for the underlying `ioredis` instance.
 - `DEFAULT_REDIS_CLIENT_NAME`: Stable default Redis client name.

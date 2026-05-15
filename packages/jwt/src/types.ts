@@ -29,6 +29,8 @@ export interface JwtVerifierOptions {
   global?: boolean;
   issuer?: string;
   jwksCacheTtl?: number;
+  /** Maximum number of remote JWKS public keys retained in the in-memory cache. Defaults to `100`. */
+  jwksCacheMaxEntries?: number;
   jwksRequestTimeoutMs?: number;
   jwksUri?: string;
   keys?: JwtKeyEntry[];
