@@ -5,6 +5,7 @@ import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 
 import {
   DRIZZLE_OPTIONS,
+  DRIZZLE_DATABASE,
   DrizzleModule,
   createDrizzlePlatformStatusSnapshot,
   DrizzleDatabase,
@@ -287,6 +288,112 @@ describe('@fluojs/drizzle', () => {
       'transaction:end',
       'dispose',
     ]);
+  });
+
+  it('waits for open manual transaction settlement before dispose on shutdown', async () => {
+    const events: string[] = [];
+    const transactionDatabase = {};
+    let releaseTransaction!: () => void;
+    const transactionBarrier = new Promise<void>((resolve) => {
+      releaseTransaction = resolve;
+    });
+    const database = {
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+        try {
+          return await callback(transactionDatabase);
+        } finally {
+          events.push('transaction:settle:pending');
+          await transactionBarrier;
+          events.push('transaction:settle:done');
+        }
+      },
+    };
+
+    const drizzleModule = DrizzleModule.forRoot<typeof database, typeof transactionDatabase>({
+      database,
+      dispose() {
+        events.push('dispose');
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [drizzleModule],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+    const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
+
+    const openTransaction = drizzle.transaction(async () => 'manual-result');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const shutdownPromise = app.close();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(events).toEqual(['transaction:start', 'transaction:settle:pending']);
+    expect(events).not.toContain('dispose');
+
+    releaseTransaction();
+
+    await expect(openTransaction).resolves.toBe('manual-result');
+    await shutdownPromise;
+
+    expect(events).toEqual([
+      'transaction:start',
+      'transaction:settle:pending',
+      'transaction:settle:done',
+      'dispose',
+    ]);
+  });
+
+  it('rejects new manual transactions once shutdown begins', async () => {
+    const events: string[] = [];
+    let releaseDispose!: () => void;
+    const disposeBarrier = new Promise<void>((resolve) => {
+      releaseDispose = resolve;
+    });
+    const database = {
+      async transaction<T>(callback: (value: Record<string, never>) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+        return callback({});
+      },
+    };
+
+    const drizzleModule = DrizzleModule.forRoot<typeof database, Record<string, never>>({
+      database,
+      async dispose() {
+        events.push('dispose:start');
+        await disposeBarrier;
+        events.push('dispose:end');
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [drizzleModule],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+    const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, Record<string, never>>);
+
+    const shutdownPromise = app.close();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await expect(drizzle.transaction(async () => 'late-manual')).rejects.toThrow(
+      'Drizzle transactions are not available during application shutdown.',
+    );
+    expect(events).toEqual(['dispose:start']);
+
+    releaseDispose();
+    await shutdownPromise;
+    expect(events).toEqual(['dispose:start', 'dispose:end']);
   });
 
   it('waits for transaction runner settlement before reporting late request aborts', async () => {
@@ -835,6 +942,65 @@ describe('DrizzleModule.forRootAsync', () => {
     expect(db).toBeInstanceOf(DrizzleDatabase);
 
     await app.close();
+  });
+
+  it('resolves async options independently for each application container', async () => {
+    type AsyncIsolationTransactionDatabase = { id: string };
+    type AsyncIsolationDatabase = {
+      id: string;
+      transaction<T>(callback: (tx: AsyncIsolationTransactionDatabase) => Promise<T>): Promise<T>;
+    };
+
+    const factoryEvents: string[] = [];
+    let factoryCalls = 0;
+
+    const drizzleModule = DrizzleModule.forRootAsync<AsyncIsolationDatabase, AsyncIsolationTransactionDatabase>({
+      useFactory: () => {
+        factoryCalls += 1;
+        const id = `database-${factoryCalls}`;
+        factoryEvents.push(`factory:${id}`);
+
+        return {
+          database: {
+            id,
+            async transaction<T>(callback: (tx: AsyncIsolationTransactionDatabase) => Promise<T>): Promise<T> {
+              return callback({ id: `${id}:tx` });
+            },
+          },
+          dispose: (database: { id: string }) => {
+            factoryEvents.push(`dispose:${database.id}`);
+          },
+        };
+      },
+    });
+
+    class FirstAppModule {}
+    class SecondAppModule {}
+
+    defineModule(FirstAppModule, { imports: [drizzleModule] });
+    defineModule(SecondAppModule, { imports: [drizzleModule] });
+
+    const firstApp = await bootstrapApplication({ rootModule: FirstAppModule });
+    const firstDatabase = await firstApp.container.resolve<{ id: string }>(DRIZZLE_DATABASE);
+    const firstDrizzle = await firstApp.container.resolve(DrizzleDatabase);
+
+    const secondApp = await bootstrapApplication({ rootModule: SecondAppModule });
+    const secondDatabase = await secondApp.container.resolve<{ id: string }>(DRIZZLE_DATABASE);
+    const secondDrizzle = await secondApp.container.resolve(DrizzleDatabase);
+
+    expect(firstDatabase).not.toBe(secondDatabase);
+    expect(firstDrizzle).not.toBe(secondDrizzle);
+    expect(factoryEvents).toEqual(['factory:database-1', 'factory:database-2']);
+
+    await firstApp.close();
+    await secondApp.close();
+
+    expect(factoryEvents).toEqual([
+      'factory:database-1',
+      'factory:database-2',
+      'dispose:database-1',
+      'dispose:database-2',
+    ]);
   });
 
   it('propagates factory errors during module initialization', async () => {
