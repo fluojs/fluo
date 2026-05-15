@@ -571,6 +571,31 @@ describe('@fluojs/platform-deno', () => {
     });
   });
 
+  it('uses host as a portability alias for Deno listen targets', () => {
+    const adapter = createDenoAdapter({
+      host: '0.0.0.0',
+      port: 3000,
+    });
+
+    expect(adapter.getListenTarget()).toEqual({
+      bindTarget: '0.0.0.0:3000',
+      url: 'http://localhost:3000',
+    });
+  });
+
+  it('prefers hostname over host when both Deno listen target options are provided', () => {
+    const adapter = createDenoAdapter({
+      host: '0.0.0.0',
+      hostname: '127.0.0.1',
+      port: 3000,
+    });
+
+    expect(adapter.getListenTarget()).toEqual({
+      bindTarget: '127.0.0.1:3000',
+      url: 'http://127.0.0.1:3000',
+    });
+  });
+
   it('registers and removes Deno shutdown signal listeners through the run helper', async () => {
     const signals = installDenoSignalMock();
 

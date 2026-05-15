@@ -27,7 +27,7 @@ This package is intended to run on Cloudflare Workers. The published manifest in
 
 Use this package when deploying fluo applications to [Cloudflare Workers](https://workers.cloudflare.com/). It is designed for the serverless edge environment, providing a lightweight `fetch`-based adapter that respects Worker isolate constraints and native Web APIs.
 
-The adapter binds each request lifecycle to `executionContext.waitUntil(...)` and keeps in-flight dispatches alive during `close()` so Worker shutdown does not drop active work mid-request.
+The adapter binds each request lifecycle to `executionContext.waitUntil(...)` after the dispatcher is bound and keeps in-flight dispatches alive during `close()` so Worker shutdown does not drop active work mid-request.
 
 During application shutdown, the adapter stops accepting new ingress immediately and gives active HTTP handlers a bounded 10-second drain window before `close()` fails with a timeout instead of hanging indefinitely. While that drain is still in progress, a concurrent `listen()` call rejects with `Cloudflare Workers adapter cannot listen while shutdown is still draining.` instead of reopening the Worker. Once closed, follow-up HTTP and WebSocket upgrade requests receive the same JSON `503` shutdown response until the adapter is explicitly listened again.
 
@@ -87,7 +87,7 @@ const adapter = createCloudflareWorkerAdapter({
 
 ### Behavior Notes
 
-- `fetch()` registers active work with `executionContext.waitUntil(...)` after `listen()` binds the dispatcher.
+- `fetch()` registers active work with `executionContext.waitUntil(...)` after `listen()` or the lazy entrypoint binds the dispatcher; before that lifecycle boundary, upgrade requests and HTTP dispatch do not reach application handlers.
 - WebSocket upgrades are owned by the same listen boundary as HTTP dispatch; upgrade requests before `listen()` do not reach the configured binding.
 - `close()` returns JSON `503` responses for new requests during and after shutdown and times out after 10 seconds if active requests never settle. Calling `listen()` while that close drain is still active rejects with the Cloudflare Workers adapter shutdown-draining error.
 - Multipart requests do not preserve `rawBody`.

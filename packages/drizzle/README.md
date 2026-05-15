@@ -22,7 +22,9 @@ Drizzle ORM integration for fluo with a transaction-aware database wrapper and a
 ## Installation
 
 ```bash
-npm install @fluojs/drizzle
+npm install @fluojs/drizzle drizzle-orm
+# Install the driver for your Drizzle adapter as well, for example:
+npm install pg
 ```
 
 ## When to Use
@@ -106,9 +108,9 @@ class UsersController {}
 
 ### Shutdown and status contracts
 
-`DrizzleTransactionInterceptor` runs each HTTP request through `DrizzleDatabase.requestTransaction(...)`. During application shutdown, `DrizzleDatabase` aborts any still-active request transaction, waits for its transaction callback to settle or roll back, and only then runs the optional `dispose(database)` hook. This ordering lets drivers finish rollback/cleanup work before pools or externally managed resources are closed.
+`DrizzleTransactionInterceptor` runs each HTTP request through `DrizzleDatabase.requestTransaction(...)`. During application shutdown, `DrizzleDatabase` aborts any still-active request transaction, waits for open request and manual transaction callbacks to settle or roll back, and only then runs the optional `dispose(database)` hook. This ordering lets drivers finish commit/rollback/cleanup work before pools or externally managed resources are closed.
 Nested `requestTransaction(...)` calls opened inside an existing request boundary observe the ambient request abort signal while still reusing the active Drizzle transaction. Nested `requestTransaction(...)` calls opened inside an existing manual transaction boundary also join shutdown settlement tracking without opening a second Drizzle transaction, and their settlement handle remains tracked until the outer manual transaction settles so shutdown drains that outer boundary before `dispose(database)` runs. The platform status activity count is intentionally shorter lived: once the nested request callback settles, `details.activeRequestTransactions` is decremented even if the outer manual transaction continues running.
-New `requestTransaction(...)` calls are rejected once shutdown begins, so disposal cannot overtake a late request transaction that starts after the shutdown boundary is crossed.
+New `transaction(...)` and `requestTransaction(...)` calls are rejected once shutdown begins, so disposal cannot overtake a late transaction that starts after the shutdown boundary is crossed.
 If the request signal aborts after the request callback has completed but before the underlying Drizzle transaction runner finishes committing or rolling back, `requestTransaction(...)` waits for that runner to settle first and then rejects with the abort reason. This keeps Drizzle cleanup serialized with request cancellation while making the late request abort visible to the caller instead of returning the completed callback result.
 
 `createDrizzlePlatformStatusSnapshot(...)` and `DrizzleDatabase.createPlatformStatusSnapshot()` expose the same contract to diagnostics surfaces:
@@ -156,6 +158,7 @@ defineModule(ManualDrizzleModule, {
 
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `forRootAsync(...)` accepts DI-aware Drizzle options whose factory returns the database/dispose/transaction settings; pass `global` on the top-level async registration when the providers should be visible globally.
+- `forRootAsync(...)` resolves options once per application container. Reusing the same module definition across tests or multi-app processes creates isolated database/dispose results for each container instead of sharing a memoized factory result.
 - Supports `strictTransactions: true` to throw if transaction support is missing.
 
 ## Related Packages

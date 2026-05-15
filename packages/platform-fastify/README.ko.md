@@ -48,7 +48,7 @@ await app.listen();
 ### 멀티파트 및 Raw Body
 Fastify 어댑터는 내부 Fastify 플러그인을 통해 멀티파트 form-data 및 raw body 파싱을 기본적으로 지원하며, 이는 표준 fluo 요청 인터페이스를 통해 노출됩니다. `rawBody: true`를 활성화하면 멀티파트가 아닌 요청에서 `FrameworkRequest.rawBody`가 원본 요청 바이트를 그대로 보존하므로 webhook 서명 검증이나 기타 바이트 민감한 흐름에서 정확한 payload를 다시 사용할 수 있습니다. 어댑터를 직접 생성할 때는 멀티파트 제한을 두 번째 인자로 전달하고, `bootstrapFastifyApplication(...)` 및 `runFastifyApplication(...)`에서는 같은 설정을 `options.multipart` 아래에 전달하면 됩니다.
 
-Multipart request에서는 raw-body capture를 건너뜁니다. `multipart.maxTotalSize`를 생략하면 `maxBodySize`가 기본값이 되어 HTTP adapter 간 size limit이 portable하게 유지됩니다.
+Multipart request에서는 `Multipart/Form-Data`처럼 대소문자가 섞인 `Content-Type` media 값도 포함해 raw-body capture를 건너뜁니다. `multipart.maxTotalSize`를 생략하면 `maxBodySize`가 기본값이 되어 HTTP adapter 간 size limit이 portable하게 유지됩니다.
 
 ```typescript
 const adapter = createFastifyAdapter(
@@ -152,7 +152,7 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 
 `packages/platform-fastify/src/adapter.test.ts`는 문서화된 Fastify 어댑터 계약을 위한 package-local regression target입니다. 이 파일은 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body 제외, multipart total-size 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 확인합니다.
 
-같은 파일은 Fastify 전용 native route registration과 wildcard fallback, duplicate shape route fallback, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, multipart limit handling도 함께 다룹니다. startup, routing, adapter portability behavior를 변경할 때는 README 예제 포인터를 이 테스트 파일 및 custom adapter book chapter와 맞추어 유지하세요.
+같은 파일은 Fastify 전용 native route registration과 wildcard fallback, duplicate shape route fallback, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, 대소문자 구분 없는 multipart detection, multipart limit handling도 함께 다룹니다. startup, routing, adapter portability behavior를 변경할 때는 README 예제 포인터를 이 테스트 파일 및 custom adapter book chapter와 맞추어 유지하세요.
 
 ## 공개 API 개요
 

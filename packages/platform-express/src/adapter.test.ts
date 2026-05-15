@@ -1756,6 +1756,35 @@ describe('@fluojs/platform-express', () => {
     expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
   });
 
+  it('reuses the same express close lifecycle for concurrent close() calls', async () => {
+    const adapter = new ExpressHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, 20);
+    const deferred = createDeferred<void>();
+    let closeCallCount = 0;
+    const server = {
+      close(callback: (error?: Error | null) => void) {
+        closeCallCount += 1;
+        void deferred.promise.then(() => {
+          callback(undefined);
+        });
+        return this;
+      },
+      listening: true,
+    } as unknown as ReturnType<typeof createHttpServer>;
+
+    Reflect.set(adapter, 'server', server);
+    Reflect.set(adapter, 'dispatcher', { async dispatch() {} });
+
+    const firstClose = adapter.close();
+    const secondClose = adapter.close();
+
+    deferred.resolve();
+
+    await Promise.all([firstClose, secondClose]);
+
+    expect(closeCallCount).toBe(1);
+    expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
+  });
+
   it('fails close() when the express server does not stop within the shutdown timeout', async () => {
     const adapter = new ExpressHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, 20);
     const server = {

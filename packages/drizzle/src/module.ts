@@ -82,30 +82,6 @@ function createDrizzleRuntimeProviders<
   ];
 }
 
-function createMemoizedDrizzleOptionsResolver<
-  TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
-  TTransactionDatabase,
-  TTransactionOptions,
->(
-  options: DrizzleAsyncModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>,
-): (...deps: unknown[]) => Promise<ResolvedDrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>> {
-  let cachedResult: Promise<ResolvedDrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>> | undefined;
-
-  return (...deps: unknown[]) => {
-    if (!cachedResult) {
-      cachedResult = Promise.resolve(options.useFactory(...deps)).then((resolved) =>
-        normalizeDrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>(resolved),
-      );
-    }
-
-    if (!cachedResult) {
-      throw new Error('Drizzle module options resolver initialization failed.');
-    }
-
-    return cachedResult;
-  };
-}
-
 function createDrizzleProvidersAsync<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
   TTransactionDatabase,
@@ -113,13 +89,14 @@ function createDrizzleProvidersAsync<
 >(
   options: DrizzleAsyncModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>,
 ): Provider[] {
-  const resolveOptions = createMemoizedDrizzleOptionsResolver(options);
-
   const normalizedOptionsProvider = {
     inject: options.inject,
     provide: DRIZZLE_NORMALIZED_OPTIONS,
     scope: 'singleton' as const,
-    useFactory: async (...deps: unknown[]) => resolveOptions(...deps),
+    useFactory: async (...deps: unknown[]) =>
+      normalizeDrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>(
+        await options.useFactory(...deps),
+      ),
   };
 
   return createDrizzleRuntimeProviders<TDatabase, TTransactionDatabase, TTransactionOptions>(normalizedOptionsProvider);

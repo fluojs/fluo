@@ -20,6 +20,7 @@ import type {
 const TRANSACTION_NOT_SUPPORTED_ERROR = 'Transaction not supported: Drizzle database does not implement transaction.';
 const NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR =
   'Nested Drizzle transaction options are not supported because the active transaction context is reused.';
+const TRANSACTION_UNAVAILABLE_ERROR = 'Drizzle transactions are not available during application shutdown.';
 const REQUEST_TRANSACTION_UNAVAILABLE_ERROR = 'Drizzle request transactions are not available during shutdown.';
 
 type ActiveRequestTransaction = {
@@ -31,6 +32,14 @@ type ActiveRequestTransactionHandle = {
   active: ActiveRequestTransaction;
   settle(): void;
   statusActive: boolean;
+};
+
+type ActiveTransactionScope = {
+  settled: Promise<void>;
+};
+
+type ActiveTransactionScopeHandle = {
+  settle(): void;
 };
 
 type DrizzleTransactionRunner<TTransactionDatabase, TTransactionOptions> = <T>(
@@ -102,6 +111,7 @@ export class DrizzleDatabase<
 {
   private readonly transactions = new AsyncLocalStorage<TransactionContext<TTransactionDatabase>>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
+  private readonly activeTransactionScopes = new Set<ActiveTransactionScope>();
   private activeRequestTransactionStatusCount = 0;
   private lifecycleState: 'ready' | 'shutting-down' | 'stopped' = 'ready';
 
@@ -134,7 +144,10 @@ export class DrizzleDatabase<
       transaction.abort(new Error('Application shutdown interrupted an open request transaction.'));
     }
 
-    await Promise.allSettled(activeRequestTransactions.map((transaction) => transaction.settled));
+    await Promise.allSettled([
+      ...activeRequestTransactions.map((transaction) => transaction.settled),
+      ...Array.from(this.activeTransactionScopes, (transaction) => transaction.settled),
+    ]);
 
     if (this.dispose) {
       await this.dispose(this.database);
@@ -208,6 +221,10 @@ export class DrizzleDatabase<
       return fn();
     }
 
+    if (!requestScoped) {
+      this.assertTransactionsAvailable();
+    }
+
     const transactionRunner = this.resolveTransactionRunner();
     if (!transactionRunner) {
       if (requestScoped) {
@@ -219,6 +236,7 @@ export class DrizzleDatabase<
 
     if (!requestScoped) {
       const deferredRequestTransactionSettlements = new Set<ActiveRequestTransactionHandle>();
+      const activeTransactionScope = this.trackActiveTransactionScope();
 
       try {
         return await transactionRunner(
@@ -233,6 +251,8 @@ export class DrizzleDatabase<
         for (const handle of deferredRequestTransactionSettlements) {
           this.untrackActiveRequestTransaction(handle);
         }
+
+        activeTransactionScope.settle();
       }
     }
 
@@ -338,6 +358,12 @@ export class DrizzleDatabase<
     }
   }
 
+  private assertTransactionsAvailable(): void {
+    if (this.lifecycleState !== 'ready') {
+      throw new Error(TRANSACTION_UNAVAILABLE_ERROR);
+    }
+  }
+
   private throwIfRequestAborted(signal: AbortSignal): void {
     if (signal.aborted) {
       throw createAbortError(signal.reason);
@@ -361,6 +387,24 @@ export class DrizzleDatabase<
       this.activeRequestTransactionStatusCount -= 1;
       handle.statusActive = false;
     }
+  }
+
+  private trackActiveTransactionScope(): ActiveTransactionScopeHandle {
+    let settle!: () => void;
+    const active: ActiveTransactionScope = {
+      settled: new Promise<void>((resolve) => {
+        settle = resolve;
+      }),
+    };
+
+    this.activeTransactionScopes.add(active);
+
+    return {
+      settle: () => {
+        this.activeTransactionScopes.delete(active);
+        settle();
+      },
+    };
   }
 
   private resolveTransactionRunner(): DrizzleTransactionRunner<TTransactionDatabase, TTransactionOptions> | undefined {
