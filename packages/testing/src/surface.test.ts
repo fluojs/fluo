@@ -13,16 +13,25 @@ import * as portability from './portability/http-adapter-portability.js';
 import * as webPortability from './portability/web-runtime-adapter-portability.js';
 import * as conformance from './conformance/platform-conformance.js';
 import * as fetchStyleWebsocket from './conformance/fetch-style-websocket-conformance.js';
+import * as vitestTooling from './vitest/tooling.js';
 
 const packageRoot = new URL('..', import.meta.url);
 const packageRootPath = fileURLToPath(packageRoot);
 const repoRootPath = fileURLToPath(new URL('../../..', import.meta.url));
 const packageJsonPath = new URL('../package.json', import.meta.url);
 const emittedHarnessSubpaths = [
+  '.',
+  './app',
+  './module',
+  './http',
+  './mock',
   './platform-conformance',
   './http-adapter-portability',
   './web-runtime-adapter-portability',
   './fetch-style-websocket-conformance',
+  './types',
+  './vitest',
+  './vitest/tooling',
 ] as const;
 
 async function runBuild(): Promise<void> {
@@ -80,6 +89,9 @@ describe('@fluojs/testing surface', () => {
     expect(portability.createHttpAdapterPortabilityHarness).toBeTypeOf('function');
     expect(webPortability.createWebRuntimeHttpAdapterPortabilityHarness).toBeTypeOf('function');
     expect(fetchStyleWebsocket.createFetchStyleWebSocketConformanceHarness).toBeTypeOf('function');
+    expect(vitestTooling.collectWorkspaceAliases).toBeTypeOf('function');
+    expect(vitestTooling.createFluoVitestWorkspaceConfig).toBeTypeOf('function');
+    expect(vitestTooling.defineFluoVitestConfig).toBeTypeOf('function');
   });
 
   it('keeps published subpath metadata aligned with the built surface', () => {
@@ -104,6 +116,10 @@ describe('@fluojs/testing surface', () => {
     expect(packageJson.exports['./fetch-style-websocket-conformance']).toEqual({
       types: './dist/conformance/fetch-style-websocket-conformance.d.ts',
       import: './dist/conformance/fetch-style-websocket-conformance.js',
+    });
+    expect(packageJson.exports['./vitest/tooling']).toEqual({
+      types: './dist/vitest/tooling.d.ts',
+      import: './dist/vitest/tooling.js',
     });
     expect(packageJson.peerDependencies['@babel/core']).toBe('>=7.0.0');
     expect(packageJson.peerDependencies.vitest).toBe('^3.0.8');
@@ -145,5 +161,54 @@ describe('@fluojs/testing surface', () => {
       expect(existsSync(resolve(packageRootPath, entry.import)), `${subpath} import output is missing`).toBe(true);
       expect(existsSync(resolve(packageRootPath, entry.types)), `${subpath} types output is missing`).toBe(true);
     }
+  }, 300_000);
+
+  it('imports every public package subpath through the published export map', async () => {
+    await runBuild();
+
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      exports: Record<string, { import: string; types: string }>;
+    };
+    const publicSubpaths = Object.keys(packageJson.exports);
+    const nodeSafeSubpaths = publicSubpaths.filter((subpath) => subpath !== './mock');
+    const importScript = `
+      const subpaths = ${JSON.stringify(nodeSafeSubpaths)};
+      await Promise.all(subpaths.map((subpath) => import(subpath === '.' ? '@fluojs/testing' : '@fluojs/testing/' + subpath.slice(2))));
+    `;
+
+    await new Promise<void>((resolvePromise, reject) => {
+      const child = spawn(process.execPath, ['--input-type=module', '--eval', importScript], {
+        cwd: packageRootPath,
+        env: process.env,
+        stdio: 'pipe',
+      });
+      const childEvents = child as unknown as NodeJS.EventEmitter;
+
+      let stderr = '';
+      let stdout = '';
+
+      child.stdout.on('data', (chunk) => {
+        stdout += String(chunk);
+      });
+
+      child.stderr.on('data', (chunk) => {
+        stderr += String(chunk);
+      });
+
+      void once(childEvents, 'error').then(([error]) => {
+        reject(error);
+      });
+
+      void once(childEvents, 'exit').then(([code, signal]) => {
+        if (code !== 0) {
+          reject(new Error([stdout, stderr, signal ? `signal: ${signal}` : ''].filter(Boolean).join('\n')));
+          return;
+        }
+
+        resolvePromise();
+      });
+    });
+
+    await expect(import('@fluojs/testing/mock')).resolves.toBeTypeOf('object');
   }, 300_000);
 });
