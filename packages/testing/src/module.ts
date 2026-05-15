@@ -7,6 +7,7 @@ import {
   type NormalizedProvider,
   type OptionalToken,
   type Provider,
+  Scope,
 } from '@fluojs/di';
 import type { BootstrapResult, ModuleDefinition, ModuleType } from '@fluojs/runtime';
 import { bootstrapModule, defineModule } from '@fluojs/runtime';
@@ -124,6 +125,7 @@ interface ContainerIntrospection {
   parent?: ContainerIntrospection;
   registrations: Map<Token, NormalizedProvider>;
   multiRegistrations: Map<Token, NormalizedProvider[]>;
+  multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>;
   requestScopeEnabled?: boolean;
   singletonCache: Map<Token, Promise<unknown>>;
 }
@@ -135,6 +137,7 @@ function isContainerIntrospection(value: unknown): value is ContainerIntrospecti
 
   const candidate = value as {
     multiRegistrations?: unknown;
+    multiSingletonCache?: unknown;
     parent?: unknown;
     registrations?: unknown;
     requestScopeEnabled?: unknown;
@@ -147,6 +150,7 @@ function isContainerIntrospection(value: unknown): value is ContainerIntrospecti
   return (
     candidate.registrations instanceof Map &&
     candidate.multiRegistrations instanceof Map &&
+    candidate.multiSingletonCache instanceof Map &&
     candidate.singletonCache instanceof Map &&
     parentValid &&
     requestScopeValid
@@ -172,9 +176,111 @@ function isPromiseLike<T>(value: unknown): value is PromiseLike<T> {
 interface SyncResolverState {
   factoryResolutionKinds: WeakMap<NormalizedProvider, 'async' | 'sync'>;
   introspection: ContainerIntrospection;
+  multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>;
   resolutionChain: Set<Token>;
   singletonCache: Map<Token, Promise<unknown>>;
+  syncMultiSingletonValues: Map<NormalizedProvider, unknown>;
   syncSingletonValues: Map<Token, unknown>;
+}
+
+interface SyncResolver {
+  get<T>(token: Token<T>): T;
+  syncFromContainer(): Promise<void>;
+}
+
+type LifecycleHookName = 'onModuleInit' | 'onApplicationBootstrap';
+
+function hasLifecycleHook(value: unknown, hookName: LifecycleHookName): value is Record<LifecycleHookName, () => MaybePromise<void>> {
+  return (
+    (typeof value === 'object' || typeof value === 'function') &&
+    value !== null &&
+    typeof (value as Record<LifecycleHookName, unknown>)[hookName] === 'function'
+  );
+}
+
+function hasAnyBootstrapLifecycleHook(value: unknown): boolean {
+  return hasLifecycleHook(value, 'onModuleInit') || hasLifecycleHook(value, 'onApplicationBootstrap');
+}
+
+function providerToken(provider: Provider): Token {
+  return isProviderDescriptor(provider) ? provider.provide : provider;
+}
+
+function isValueProvider(provider: Provider): provider is Extract<Provider, { useValue: unknown }> {
+  return isProviderDescriptor(provider) && 'useValue' in provider;
+}
+
+function isLifecycleValueProvider(provider: Provider): provider is Extract<Provider, { useValue: unknown }> {
+  return isValueProvider(provider) && hasAnyBootstrapLifecycleHook(provider.useValue);
+}
+
+function isDirectSingletonLifecycleProvider(provider: Provider): boolean {
+  if (isLifecycleValueProvider(provider)) {
+    return true;
+  }
+
+  if (isProviderDescriptor(provider)) {
+    return 'useClass' in provider ? (provider.scope ?? Scope.DEFAULT) === Scope.DEFAULT : false;
+  }
+
+  return isClassConstructor(provider);
+}
+
+async function resolveTestingLifecycleInstances(bootstrapped: BootstrapResult): Promise<unknown[]> {
+  const lifecycleProviders = [
+    ...bootstrapped.effectiveProviders.runtimeProviders,
+    ...bootstrapped.effectiveProviders.moduleProviders,
+  ];
+  const instances: unknown[] = [];
+  const seen = new Set<Token>();
+
+  for (const provider of lifecycleProviders) {
+    const token = providerToken(provider);
+
+    if (seen.has(token)) {
+      continue;
+    }
+
+    if (isLifecycleValueProvider(provider)) {
+      seen.add(token);
+      instances.push(provider.useValue);
+      continue;
+    }
+
+    if (!isDirectSingletonLifecycleProvider(provider)) {
+      continue;
+    }
+
+    seen.add(token);
+
+    try {
+      instances.push(await bootstrapped.container.resolve(token));
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('Request-scoped provider')) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  return instances;
+}
+
+async function runTestingBootstrapLifecycle(bootstrapped: BootstrapResult): Promise<void> {
+  const instances = await resolveTestingLifecycleInstances(bootstrapped);
+
+  for (const instance of instances) {
+    if (hasLifecycleHook(instance, 'onModuleInit')) {
+      await instance.onModuleInit();
+    }
+  }
+
+  for (const instance of instances) {
+    if (hasLifecycleHook(instance, 'onApplicationBootstrap')) {
+      await instance.onApplicationBootstrap();
+    }
+  }
 }
 
 function rootContainerIntrospection(target: ContainerIntrospection): ContainerIntrospection {
@@ -288,6 +394,28 @@ function canPromoteCachedSingleton(state: SyncResolverState, token: Token): bool
   return provider !== undefined && provider.scope !== 'request' && providerGraphIsSyncResolvable(state, token);
 }
 
+function providerGraphForProviderIsSyncResolvable(
+  state: SyncResolverState,
+  provider: NormalizedProvider,
+  visited = new Set<Token>(),
+): boolean {
+  if (provider.type === 'factory') {
+    return state.factoryResolutionKinds.get(provider) === 'sync';
+  }
+
+  if (provider.type === 'existing') {
+    return provider.useExisting !== undefined && providerGraphIsSyncResolvable(state, provider.useExisting, visited);
+  }
+
+  return provider.inject.every((entry) => {
+    if (isOptionalToken(entry) && !hasToken(state, entry.token)) {
+      return true;
+    }
+
+    return providerGraphIsSyncResolvable(state, dependencyToken(entry), visited);
+  });
+}
+
 function resolveSyncDependency(entry: Token | ForwardRefFn | OptionalToken, state: SyncResolverState): unknown {
   if (isOptionalToken(entry)) {
     if (!hasToken(state, entry.token)) {
@@ -371,6 +499,31 @@ function resolveSyncProvider(provider: NormalizedProvider, state: SyncResolverSt
   return instance;
 }
 
+function resolveSyncMultiProvider(provider: NormalizedProvider, state: SyncResolverState): unknown {
+  if (provider.scope === 'request' && !state.introspection.requestScopeEnabled) {
+    throw new Error(`Request-scoped provider ${String(provider.provide)} cannot be resolved outside request scope.`);
+  }
+
+  if (provider.scope === 'transient') {
+    return instantiateSyncProvider(provider, state);
+  }
+
+  if (state.syncMultiSingletonValues.has(provider)) {
+    return state.syncMultiSingletonValues.get(provider);
+  }
+
+  if (state.multiSingletonCache.has(provider)) {
+    throw new Error(
+      `Token ${String(provider.provide)} was already resolved asynchronously. Use resolve() instead of get() for this provider.`,
+    );
+  }
+
+  const instance = instantiateSyncProvider(provider, state);
+  state.syncMultiSingletonValues.set(provider, instance);
+  state.multiSingletonCache.set(provider, Promise.resolve(instance));
+  return instance;
+}
+
 function resolveSyncToken(token: Token, state: SyncResolverState): unknown {
   if (state.resolutionChain.has(token)) {
     throw new Error(`Circular dependency detected while resolving token ${String(token)} via get().`);
@@ -382,7 +535,7 @@ function resolveSyncToken(token: Token, state: SyncResolverState): unknown {
     const multiProviders = collectMultiProviders(state.introspection, token);
 
     if (multiProviders.length > 0) {
-      return multiProviders.map((provider) => instantiateSyncProvider(provider, state));
+      return multiProviders.map((provider) => resolveSyncMultiProvider(provider, state));
     }
 
     const provider = lookupProvider(state.introspection, token);
@@ -397,12 +550,7 @@ function resolveSyncToken(token: Token, state: SyncResolverState): unknown {
   }
 }
 
-function createSyncResolver(
-  container: BootstrapResult['container'],
-): {
-  get<T>(token: Token<T>): T;
-  syncFromContainer(): Promise<void>;
-} {
+function createSyncResolver(container: BootstrapResult['container']): SyncResolver {
   const introspection = toContainerIntrospection(container);
   const factoryResolutionKinds = new WeakMap<NormalizedProvider, 'async' | 'sync'>();
 
@@ -411,8 +559,10 @@ function createSyncResolver(
   const state: SyncResolverState = {
     factoryResolutionKinds,
     introspection,
+    multiSingletonCache: rootContainerIntrospection(introspection).multiSingletonCache,
     resolutionChain: new Set<Token>(),
     singletonCache: rootContainerIntrospection(introspection).singletonCache,
+    syncMultiSingletonValues: new Map<NormalizedProvider, unknown>(),
     syncSingletonValues: new Map<Token, unknown>(),
   };
 
@@ -425,6 +575,14 @@ function createSyncResolver(
         }
 
         state.syncSingletonValues.set(token, await promise);
+      }
+
+      for (const [provider, promise] of state.multiSingletonCache) {
+        if (!providerGraphForProviderIsSyncResolvable(state, provider)) {
+          continue;
+        }
+
+        state.syncMultiSingletonValues.set(provider, await promise);
       }
     },
   };
@@ -516,8 +674,12 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
 
   async compile(): Promise<TestingModuleRef> {
     const bootstrapped = this.bootstrapTestingModule();
+    const syncResolver = createSyncResolver(bootstrapped.container);
 
-    return this.createTestingModuleRef(bootstrapped);
+    await runTestingBootstrapLifecycle(bootstrapped);
+    await syncResolver.syncFromContainer();
+
+    return this.createTestingModuleRef(bootstrapped, syncResolver);
   }
 
   private bootstrapTestingModule(): BootstrapResult {
@@ -542,9 +704,8 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
     }
   }
 
-  private createTestingModuleRef(bootstrapped: BootstrapResult): TestingModuleRef {
+  private createTestingModuleRef(bootstrapped: BootstrapResult, syncResolver: SyncResolver): TestingModuleRef {
     const dispatcher = createTestingDispatcher(bootstrapped);
-    const syncResolver = createSyncResolver(bootstrapped.container);
 
     return {
       ...bootstrapped,

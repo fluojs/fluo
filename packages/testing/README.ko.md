@@ -79,6 +79,8 @@ const service = await module.resolve(UserService);
 
 Testing builder는 route-pipeline 테스트에서 cross-cutting behavior를 교체할 수 있도록 `overrideGuard(...)`, `overrideInterceptor(...)`, `overrideFilter(...)`도 지원합니다.
 
+`compile()`은 lifecycle hook이 있는 singleton provider에 대해 production module bootstrap과 같은 의미를 따릅니다. effective provider graph를 해석하고, testing module을 반환하기 전에 provider 순서대로 각 instance의 `onModuleInit()`을 실행한 뒤 `onApplicationBootstrap()`을 실행합니다. `get()`은 synchronous singleton 및 multi-provider 경로에서도 DI ownership 의미를 보존하므로, 반복 sync read는 같은 singleton contribution을 재사용하고 `module.container.dispose()`가 해당 instance를 계속 정리할 수 있습니다.
+
 ### `overrideModule()` 사용 시 모듈 identity 보존
 
 `createTestingModule({ rootModule })`에는 명시적인 루트 모듈이 필요합니다. 그래야 테스트가 프로덕션 bootstrap과 같은 모듈 그래프 형태를 컴파일합니다. `overrideModule(source, replacement)`로 import된 모듈을 교체해도, 컴파일된 testing module은 provider 해석에 replacement import를 사용하면서 원래 `rootModule`과 컴파일된 `modules[].type` identity를 보존합니다. 따라서 diagnostics, graph assertion, module introspection 헬퍼는 테스트 전용 synthetic wrapper 클래스가 아니라 사용자가 작성한 애플리케이션 모듈 클래스에 계속 연결됩니다.

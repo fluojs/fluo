@@ -78,6 +78,41 @@ describe('@fluojs/testing', () => {
     expect(service.logger.name).toBe('logger');
   });
 
+  it('runs bootstrap lifecycle hooks when compiling a testing module', async () => {
+    const events: string[] = [];
+
+    class LifecycleService {
+      onModuleInit() {
+        events.push('service:init');
+      }
+
+      onApplicationBootstrap() {
+        events.push('service:bootstrap');
+      }
+    }
+
+    @Inject(LifecycleService)
+    class LifecycleConsumer {
+      constructor(readonly service: LifecycleService) {}
+
+      onModuleInit() {
+        events.push('consumer:init');
+      }
+
+      onApplicationBootstrap() {
+        events.push('consumer:bootstrap');
+      }
+    }
+
+    @Module({ providers: [LifecycleService, LifecycleConsumer] })
+    class LifecycleModule {}
+
+    const testingModule = await createTestingModule({ rootModule: LifecycleModule }).compile();
+
+    expect(await testingModule.resolve(LifecycleConsumer)).toBeInstanceOf(LifecycleConsumer);
+    expect(events).toEqual(['service:init', 'consumer:init', 'service:bootstrap', 'consumer:bootstrap']);
+  });
+
   it('shares singleton identity between get() and resolve()', async () => {
     class CounterService {
       count = 0;
@@ -95,6 +130,55 @@ describe('@fluojs/testing', () => {
 
     expect(asyncService).toBe(syncService);
     expect(asyncService.count).toBe(7);
+  });
+
+  it('preserves singleton and disposal semantics for sync multi-provider get()', async () => {
+    const PLUGINS = Symbol('plugins');
+    const disposed: string[] = [];
+
+    class PluginA {
+      count = 0;
+
+      onDestroy() {
+        disposed.push('a');
+      }
+    }
+
+    class PluginB {
+      count = 0;
+
+      onDestroy() {
+        disposed.push('b');
+      }
+    }
+
+    @Module({
+      providers: [
+        { provide: PLUGINS, useClass: PluginA, multi: true },
+        { provide: PLUGINS, useClass: PluginB, multi: true },
+      ],
+    })
+    class MultiProviderModule {}
+
+    const testingModule = await createTestingModule({ rootModule: MultiProviderModule }).compile();
+
+    const first = testingModule.get<Array<PluginA | PluginB>>(PLUGINS);
+    first[0].count = 1;
+    first[1].count = 2;
+
+    const second = testingModule.get<Array<PluginA | PluginB>>(PLUGINS);
+    const resolved = await testingModule.resolve<Array<PluginA | PluginB>>(PLUGINS);
+
+    expect(second).not.toBe(first);
+    expect(second[0]).toBe(first[0]);
+    expect(second[1]).toBe(first[1]);
+    expect(resolved[0]).toBe(first[0]);
+    expect(resolved[1]).toBe(first[1]);
+    expect(resolved.map((plugin) => plugin.count)).toEqual([1, 2]);
+
+    await testingModule.container.dispose();
+
+    expect(disposed).toEqual(['b', 'a']);
   });
 
   it('overrides providers before resolution', async () => {
