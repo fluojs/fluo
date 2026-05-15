@@ -1,5 +1,21 @@
 # @fluojs/cli
 
+## 1.0.2
+
+### Patch Changes
+
+- [#1885](https://github.com/fluojs/fluo/pull/1885) [`acf0a8d`](https://github.com/fluojs/fluo/commit/acf0a8d5a0f881028caedf6f1001f1a1e89281f4) Thanks [@ayden94](https://github.com/ayden94)! - Align generated e2e test imports with the default `fluo new` starter root module at `src/app` while preserving explicit root module import overrides.
+
+- [#1886](https://github.com/fluojs/fluo/pull/1886) [`66179a9`](https://github.com/fluojs/fluo/commit/66179a93827fb4af969f26cd2ee6747fa75657fa) Thanks [@ayden94](https://github.com/ayden94)! - Harden the fluo-owned dev restart runner fallback so platforms without recursive `fs.watch` still restart on nested source-tree changes.
+
+- [#1884](https://github.com/fluojs/fluo/pull/1884) [`6f3fd14`](https://github.com/fluojs/fluo/commit/6f3fd142bde826706b6f6a458a7908b720646655) Thanks [@ayden94](https://github.com/ayden94)! - Keep generated NATS, Kafka, and RabbitMQ starters import-safe by lazily creating broker clients inside the Fluo-owned transport lifecycle instead of during module import.
+
+- [#1887](https://github.com/fluojs/fluo/pull/1887) [`3a13112`](https://github.com/fluojs/fluo/commit/3a13112624e3f089197c97a501c72b1592a16d92) Thanks [@ayden94](https://github.com/ayden94)! - Preserve default JSON snapshot output when `fluo inspect --timing` is used without an explicit output mode, emitting the same `{ snapshot, timing }` envelope as `--json --timing`.
+
+- [#1882](https://github.com/fluojs/fluo/pull/1882) [`c37a61a`](https://github.com/fluojs/fluo/commit/c37a61a9cdb12b02899de7ee18f42c5f109aa2b7) Thanks [@ayden94](https://github.com/ayden94)! - Support documented TypeScript source module paths in `fluo inspect` while preserving native `.js` and `.mjs` module loading.
+
+- [#1888](https://github.com/fluojs/fluo/pull/1888) [`43b3072`](https://github.com/fluojs/fluo/commit/43b3072bfa0bacf37145bcf647c07f93c280b2a0) Thanks [@ayden94](https://github.com/ayden94)! - Skip the interactive CLI update check for pure help invocations and print `fluo help info` with info-branded usage text.
+
 ## 1.0.1
 
 ### Patch Changes
