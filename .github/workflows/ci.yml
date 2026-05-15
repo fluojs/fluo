@@ -9,8 +9,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify-stable-release-lane:
-    name: Verify stable release lane
+  verify-changeset-release-lane:
+    name: Verify changeset release lane
     runs-on: ubuntu-latest
 
     steps:
@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Verify stable release lane
+      - name: Verify changeset release lane
         run: node tooling/release/verify-changeset-release-lane.mjs --lane=stable --base-ref=origin/${{ github.base_ref }}
 
   resolve-pr-verification-scope:
@@ -298,7 +298,7 @@ jobs:
     name: Verify
     if: github.event_name == 'pull_request'
     needs:
-      - verify-stable-release-lane
+      - verify-changeset-release-lane
       - build-and-typecheck
       - lint
       - test
