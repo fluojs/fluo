@@ -206,69 +206,76 @@ function providerToken(provider: Provider): Token {
   return isProviderDescriptor(provider) ? provider.provide : provider;
 }
 
-function isValueProvider(provider: Provider): provider is Extract<Provider, { useValue: unknown }> {
-  return isProviderDescriptor(provider) && 'useValue' in provider;
-}
+function effectiveProvidersForToken(introspection: ContainerIntrospection, token: Token): NormalizedProvider[] {
+  const multiProviders = collectMultiProviders(introspection, token);
 
-function isLifecycleValueProvider(provider: Provider): provider is Extract<Provider, { useValue: unknown }> {
-  return isValueProvider(provider) && hasAnyBootstrapLifecycleHook(provider.useValue);
-}
-
-function isDirectSingletonLifecycleProvider(provider: Provider): boolean {
-  if (isLifecycleValueProvider(provider)) {
-    return true;
+  if (multiProviders.length > 0) {
+    return multiProviders;
   }
 
-  if (isProviderDescriptor(provider)) {
-    return 'useClass' in provider ? (provider.scope ?? Scope.DEFAULT) === Scope.DEFAULT : false;
-  }
-
-  return isClassConstructor(provider);
+  const provider = lookupProvider(introspection, token);
+  return provider ? [provider] : [];
 }
 
-async function resolveTestingLifecycleInstances(bootstrapped: BootstrapResult): Promise<unknown[]> {
+function isSingletonLifecycleProvider(provider: NormalizedProvider): boolean {
+  if (provider.multi === true) {
+    return false;
+  }
+
+  if (provider.scope !== Scope.DEFAULT) {
+    return false;
+  }
+
+  return provider.type === 'class' || (provider.type === 'value' && hasAnyBootstrapLifecycleHook(provider.useValue));
+}
+
+async function resolveTestingLifecycleInstances(bootstrapped: BootstrapResult, overrides: readonly Provider[] = []): Promise<unknown[]> {
   const lifecycleProviders = [
     ...bootstrapped.effectiveProviders.runtimeProviders,
     ...bootstrapped.effectiveProviders.moduleProviders,
+    ...overrides,
   ];
   const instances: unknown[] = [];
-  const seen = new Set<Token>();
+  const seenProviders = new Set<NormalizedProvider>();
+  const introspection = toContainerIntrospection(bootstrapped.container);
 
   for (const provider of lifecycleProviders) {
     const token = providerToken(provider);
+    const effectiveProviders = effectiveProvidersForToken(introspection, token);
 
-    if (seen.has(token)) {
-      continue;
-    }
-
-    if (isLifecycleValueProvider(provider)) {
-      seen.add(token);
-      instances.push(provider.useValue);
-      continue;
-    }
-
-    if (!isDirectSingletonLifecycleProvider(provider)) {
-      continue;
-    }
-
-    seen.add(token);
-
-    try {
-      instances.push(await bootstrapped.container.resolve(token));
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('Request-scoped provider')) {
+    for (const effectiveProvider of effectiveProviders) {
+      if (seenProviders.has(effectiveProvider)) {
         continue;
       }
 
-      throw error;
+      seenProviders.add(effectiveProvider);
+
+      if (!isSingletonLifecycleProvider(effectiveProvider)) {
+        continue;
+      }
+
+      if (effectiveProvider.type === 'value') {
+        instances.push(effectiveProvider.useValue);
+        continue;
+      }
+
+      try {
+        instances.push(await bootstrapped.container.resolve(token));
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('Request-scoped provider')) {
+          continue;
+        }
+
+        throw error;
+      }
     }
   }
 
   return instances;
 }
 
-async function runTestingBootstrapLifecycle(bootstrapped: BootstrapResult): Promise<void> {
-  const instances = await resolveTestingLifecycleInstances(bootstrapped);
+async function runTestingBootstrapLifecycle(bootstrapped: BootstrapResult, overrides: readonly Provider[] = []): Promise<void> {
+  const instances = await resolveTestingLifecycleInstances(bootstrapped, overrides);
 
   for (const instance of instances) {
     if (hasLifecycleHook(instance, 'onModuleInit')) {
@@ -676,7 +683,7 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
     const bootstrapped = this.bootstrapTestingModule();
     const syncResolver = createSyncResolver(bootstrapped.container);
 
-    await runTestingBootstrapLifecycle(bootstrapped);
+    await runTestingBootstrapLifecycle(bootstrapped, this.overrides);
     await syncResolver.syncFromContainer();
 
     return this.createTestingModuleRef(bootstrapped, syncResolver);

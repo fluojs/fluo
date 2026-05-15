@@ -113,6 +113,103 @@ describe('@fluojs/testing', () => {
     expect(events).toEqual(['service:init', 'consumer:init', 'service:bootstrap', 'consumer:bootstrap']);
   });
 
+  it('runs bootstrap lifecycle hooks from the effective override provider', async () => {
+    const SERVICE_TOKEN = Symbol('service-token');
+    const events: string[] = [];
+
+    class ReplacementService {
+      onModuleInit() {
+        events.push('replacement:init');
+      }
+
+      onApplicationBootstrap() {
+        events.push('replacement:bootstrap');
+      }
+    }
+
+    @Module({ providers: [{ provide: SERVICE_TOKEN, useValue: { name: 'original' } }] })
+    class LifecycleOverrideModule {}
+
+    const testingModule = await createTestingModule({ rootModule: LifecycleOverrideModule })
+      .overrideProvider(SERVICE_TOKEN, { provide: SERVICE_TOKEN, useClass: ReplacementService })
+      .compile();
+
+    expect(await testingModule.resolve(SERVICE_TOKEN)).toBeInstanceOf(ReplacementService);
+    expect(events).toEqual(['replacement:init', 'replacement:bootstrap']);
+  });
+
+  it('runs bootstrap lifecycle hooks from lifecycle-bearing useValue overrides', async () => {
+    const SERVICE_TOKEN = Symbol('service-token');
+    const events: string[] = [];
+    const replacement = {
+      onModuleInit: () => events.push('value:init'),
+      onApplicationBootstrap: () => events.push('value:bootstrap'),
+    };
+
+    @Module({ providers: [{ provide: SERVICE_TOKEN, useFactory: () => ({ name: 'original' }) }] })
+    class LifecycleValueOverrideModule {}
+
+    const testingModule = await createTestingModule({ rootModule: LifecycleValueOverrideModule })
+      .overrideProvider(SERVICE_TOKEN, replacement)
+      .compile();
+
+    expect(await testingModule.resolve(SERVICE_TOKEN)).toBe(replacement);
+    expect(events).toEqual(['value:init', 'value:bootstrap']);
+  });
+
+  it('does not run bootstrap lifecycle hooks for decorated request or transient providers', async () => {
+    const events: string[] = [];
+
+    @ScopeDecorator('request')
+    class RequestLifecycleService {
+      onModuleInit() {
+        events.push('request:init');
+      }
+    }
+
+    @ScopeDecorator('transient')
+    class TransientLifecycleService {
+      onModuleInit() {
+        events.push('transient:init');
+      }
+    }
+
+    @Module({ providers: [RequestLifecycleService, TransientLifecycleService] })
+    class ScopedLifecycleModule {}
+
+    await createTestingModule({ rootModule: ScopedLifecycleModule }).compile();
+
+    expect(events).toEqual([]);
+  });
+
+  it('uses useClass decorator metadata when deciding bootstrap lifecycle scope', async () => {
+    const SERVICE_TOKEN = Symbol('service-token');
+    const events: string[] = [];
+
+    @ScopeDecorator('transient')
+    class TransientReplacementService {
+      onModuleInit() {
+        events.push('transient:init');
+      }
+    }
+
+    @ScopeDecorator('request')
+    class RequestReplacementService {
+      onModuleInit() {
+        events.push('request:init');
+      }
+    }
+
+    @Module({ providers: [{ provide: SERVICE_TOKEN, useClass: TransientReplacementService }] })
+    class UseClassScopedLifecycleModule {}
+
+    await createTestingModule({ rootModule: UseClassScopedLifecycleModule })
+      .overrideProvider(SERVICE_TOKEN, { provide: SERVICE_TOKEN, useClass: RequestReplacementService })
+      .compile();
+
+    expect(events).toEqual([]);
+  });
+
   it('shares singleton identity between get() and resolve()', async () => {
     class CounterService {
       count = 0;
