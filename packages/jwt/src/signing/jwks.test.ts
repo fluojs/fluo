@@ -145,6 +145,44 @@ describe('JwksClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('prevents in-flight JWKS fetches from repopulating cache after dispose', async () => {
+    const { publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const jwk = publicKey.export({ format: 'jwk' });
+    let resolveFetch: (response: Response) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const client = new JwksClient('https://example.test/.well-known/jwks.json', 30_000);
+    const pendingKey = client.getSigningKey('key-1');
+
+    client.dispose();
+    resolveFetch(
+      new Response(JSON.stringify({ keys: [{ ...jwk, kid: 'key-1' }] }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    );
+
+    await expect(pendingKey).rejects.toThrow('JWKS client was disposed while fetching keys.');
+
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ keys: [{ ...jwk, kid: 'key-1' }] }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    ) as typeof fetch;
+
+    await client.getSigningKey('key-1');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects invalid JWKS lifecycle budgets during client construction', () => {
     expect(() => new JwksClient('https://example.test/.well-known/jwks.json', Number.NaN)).toThrow(
       'JWKS cache ttl must be a non-negative finite number.',

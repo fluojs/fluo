@@ -36,6 +36,7 @@ function assertPositiveInteger(value: number, label: string): void {
  */
 export class JwksClient {
   private readonly cache = new Map<string, { expiresAt: number; key: KeyObject }>();
+  private lifecycleGeneration = 0;
 
   constructor(
     private readonly uri: string,
@@ -55,6 +56,7 @@ export class JwksClient {
    * owned manually, or when rotating identity-provider configuration.
    */
   dispose(): void {
+    this.lifecycleGeneration += 1;
     this.cache.clear();
   }
 
@@ -72,7 +74,13 @@ export class JwksClient {
       return cached.key;
     }
 
+    const fetchGeneration = this.lifecycleGeneration;
     const keys = await this.fetchKeys();
+
+    if (fetchGeneration !== this.lifecycleGeneration) {
+      throw new JwtConfigurationError('JWKS client was disposed while fetching keys.');
+    }
+
     const jwk = keys.find((entry) => entry.kid === kid);
 
     if (!jwk) {
@@ -87,7 +95,7 @@ export class JwksClient {
       throw new JwtConfigurationError('Unable to parse JWKS key into a public key.');
     }
 
-    if (this.cacheTtl > 0) {
+    if (this.cacheTtl > 0 && fetchGeneration === this.lifecycleGeneration) {
       this.cache.set(kid, {
         expiresAt: now + this.cacheTtl,
         key,
