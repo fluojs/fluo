@@ -48,6 +48,7 @@ await app.listen();
 
 ### Manual Fetch Handling
 If you prefer to manage the Bun server yourself, you can use the fetch handler directly.
+The `dispatcher` should come from the already bootstrapped application via `app.getHttpDispatcher()`, and the handler preserves the same raw-body, multipart, shutdown, and native handoff contracts as the managed adapter path.
 
 ```typescript
 import { createBunFetchHandler } from '@fluojs/platform-bun';
@@ -97,7 +98,7 @@ The adapter also exports the typed Bun integration seams used by realtime packag
 ## Adapter Contract
 
 - **Runtime host**: This package requires `globalThis.Bun.serve()` at listen time. Tests may provide a Bun-compatible test double, but production use is Bun-only.
-- **Request portability**: Fetch requests are translated through the shared web dispatcher, preserving malformed cookie values, query arrays, JSON/text raw bodies when `rawBody: true`, and SSE framing.
+- **Request portability**: Fetch requests are translated through the shared web dispatcher, preserving malformed cookie values, query arrays, JSON/text raw bodies when `rawBody: true`, byte-exact request handoff for custom `createBunFetchHandler(...)` setups, and SSE framing.
 - **Native route acceleration**: When Bun's `routes` object is available and a fluo route shape is semantically safe to pre-register, the adapter lets Bun short-circuit path matching before handing the request back to the shared dispatcher. Unsupported or ambiguous route shapes fall back to the regular `fetch` path, and stale handoffs are ignored if middleware rewrites method/path before handler matching.
 - **Native route gate**: Native routes are enabled only on Bun `>=1.2.3`; versioned routes, `ALL` handlers, same-shape conflicts, normalization-sensitive paths, and `OPTIONS`/CORS preflight stay on the fetch/shared-dispatch path.
 - **Multipart behavior**: Multipart requests never expose `rawBody`, and multipart limits continue to flow through the shared runtime parser.
