@@ -12,10 +12,15 @@ import * as studio from './index.js';
 import { renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './viewer-rendering.js';
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const packageCommandTimeoutMs = 120_000;
+const packageCommandKillSignal: NodeJS.Signals = 'SIGTERM';
+
 function runPackageCommand(args: string[]): void {
   const result = spawnSync('pnpm', ['exec', ...args], {
     cwd: packageDir,
     encoding: 'utf8',
+    killSignal: packageCommandKillSignal,
+    timeout: packageCommandTimeoutMs,
   });
 
   expect(result.status, [result.stdout, result.stderr].filter(Boolean).join('\n')).toBe(0);
@@ -113,6 +118,13 @@ const snapshotFixture: PlatformShellSnapshot = {
   },
 };
 
+async function loadStudioViewer(): Promise<void> {
+  vi.resetModules();
+  document.body.innerHTML = '<div id="app"></div>';
+
+  await import('./main.js');
+}
+
 describe('parseStudioPayload', () => {
   it('publishes contract helpers from the root package entrypoint', () => {
     expect(studio.parseStudioPayload).toBeTypeOf('function');
@@ -129,9 +141,11 @@ describe('parseStudioPayload', () => {
   });
 
   it('parses platform snapshot payload', () => {
-    const parsed = parseStudioPayload(JSON.stringify(snapshotFixture));
+    const rawJson = JSON.stringify(snapshotFixture);
+    const parsed = parseStudioPayload(rawJson);
     expect(parsed.payload.snapshot?.components[0]?.id).toBe('redis.default');
     expect(parsed.payload.snapshot?.diagnostics[0]?.code).toBe('QUEUE_DEPENDENCY_NOT_READY');
+    expect(parsed.rawJson).toBe(rawJson);
   });
 
   it('rejects arbitrary JSON objects that are not Studio inspect artifacts', () => {
@@ -430,9 +444,7 @@ describe('parseStudioPayload', () => {
   });
 
   it('keeps viewer filter controls focused across search, readiness, and severity rerenders', async () => {
-    document.body.innerHTML = '<div id="app"></div>';
-
-    await import('./main.js');
+    await loadStudioViewer();
 
     const fileInput = document.querySelector<HTMLInputElement>('#file-input');
     expect(fileInput).not.toBeNull();
@@ -479,6 +491,32 @@ describe('parseStudioPayload', () => {
     const restoredSeverityInput = document.querySelector<HTMLInputElement>('#severity-warning');
     expect(document.activeElement).toBe(restoredSeverityInput);
     expect(restoredSeverityInput?.checked).toBe(true);
+  });
+
+  it('loads a dropped Studio JSON file into graph, summary, and diagnostics views', async () => {
+    await loadStudioViewer();
+
+    const dropZone = document.querySelector<HTMLElement>('#drop-zone');
+    expect(dropZone).not.toBeNull();
+
+    const dropEvent = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(dropEvent, 'dataTransfer', {
+      configurable: true,
+      value: {
+        files: [new File([JSON.stringify(snapshotFixture)], 'snapshot.json', { type: 'application/json' })],
+      },
+    });
+
+    dropZone?.dispatchEvent(dropEvent);
+
+    await vi.waitFor(() => {
+      expect(document.querySelector('#graph-host')?.textContent).toContain('redis.default');
+    });
+
+    expect(document.querySelector('#drop-zone')?.textContent).toContain('Diagnostics file loaded successfully.');
+    expect(document.querySelector('section:nth-of-type(2)')?.textContent).toContain('components: 2');
+    expect(document.querySelector('section:nth-of-type(2)')?.textContent).toContain('diagnostics: 1');
+    expect(document.body.textContent).toContain('QUEUE_DEPENDENCY_NOT_READY');
   });
 
   it('build emits isolated published helper and file-first viewer entrypoints', () => {
