@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+import { Module } from '@fluojs/core';
+import { createTestingModule } from '@fluojs/testing';
+
 import { I18nError, I18nModule, createI18n } from './index.js';
+import { I18nService } from './service.js';
 import type {
   I18nErrorCode,
   I18nLocale,
@@ -47,6 +51,30 @@ describe('@fluojs/i18n root public surface', () => {
     expect(snapshot.supportedLocales).not.toBe(options.supportedLocales);
     expect(I18nModule.forRoot(options)).toBeInstanceOf(Function);
     expect(new I18nError('reserved i18n failure', code).code).toBe('I18N_ERROR');
+  });
+
+  it('resolves I18nModule.forRoot providers through a compiled testing module graph', async () => {
+    @Module({
+      imports: [
+        I18nModule.forRoot({
+          catalogs: {
+            en: { app: { title: 'Hello {{ name }}' } },
+            ko: { app: { title: '안녕하세요 {{ name }}' } },
+          },
+          defaultLocale: 'en',
+          fallbackLocales: { ko: ['en'] },
+          supportedLocales: ['en', 'ko'],
+        }),
+      ],
+    })
+    class AppModule {}
+
+    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const service = await testingModule.resolve<I18nService>(I18nService);
+
+    expect(service.translate('app.title', { locale: 'ko', values: { name: 'fluo' } })).toBe('안녕하세요 fluo');
+    expect(service.resolveLocales('ko')).toEqual(['ko', 'en']);
+    expect(testingModule.get(I18nService)).toBe(service);
   });
 
   it('resolves nested keys and namespace-prefixed keys with explicit locales', () => {

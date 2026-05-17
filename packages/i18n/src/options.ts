@@ -1,14 +1,6 @@
 import { I18nError } from './errors.js';
+import { isPlainObject, snapshotMessageTree } from './catalog.js';
 import type { I18nFallbackLocales, I18nFormatOptions, I18nMessageCatalogs, I18nMessageTree, I18nModuleOptions } from './types.js';
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
 
 function assertLocale(value: unknown, label: string): asserts value is string {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -77,34 +69,6 @@ function snapshotFormats(formats: I18nFormatOptions | undefined): I18nFormatOpti
     number: snapshotNamedIntlFormats(formats.number, 'formats.number') as I18nFormatOptions['number'],
     relativeTime: snapshotNamedIntlFormats(formats.relativeTime, 'formats.relativeTime') as I18nFormatOptions['relativeTime'],
   });
-}
-
-function snapshotMessageTree(value: unknown, path: string): I18nMessageTree {
-  if (!isPlainObject(value)) {
-    throw new I18nError(`${path} must be a plain object message tree.`, 'I18N_INVALID_CATALOG');
-  }
-
-  const snapshot: Record<string, string | I18nMessageTree> = {};
-
-  for (const [key, entry] of Object.entries(value)) {
-    if (key.trim() === '') {
-      throw new I18nError(`${path} contains an empty message key segment.`, 'I18N_INVALID_CATALOG');
-    }
-
-    if (typeof entry === 'string') {
-      snapshot[key] = entry;
-      continue;
-    }
-
-    if (isPlainObject(entry)) {
-      snapshot[key] = snapshotMessageTree(entry, `${path}.${key}`);
-      continue;
-    }
-
-    throw new I18nError(`${path}.${key} must be a string or nested message tree.`, 'I18N_INVALID_CATALOG');
-  }
-
-  return Object.freeze(snapshot);
 }
 
 function snapshotCatalogs(

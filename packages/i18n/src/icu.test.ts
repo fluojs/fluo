@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { I18nError, createI18n } from './index.js';
 import { IcuI18nService, createIcuI18n } from './icu.js';
+import type { I18nIcuValues } from './icu.js';
 
 function expectI18nCode(action: () => unknown, code: I18nError['code']): void {
   try {
@@ -131,6 +132,23 @@ describe('@fluojs/i18n/icu MessageFormat subpath', () => {
 
     expectI18nCode(() => service.translate('invalid', { locale: 'en', values: { count: 1 } }), 'I18N_INVALID_MESSAGE_FORMAT');
     expectI18nCode(() => service.translate('missingValue', { locale: 'en' }), 'I18N_INVALID_MESSAGE_FORMAT');
+  });
+
+  it('rejects non-string rich formatting results with the stable invalid format code', () => {
+    const service = createIcuI18n({
+      catalogs: {
+        en: {
+          rich: 'Click <link>here</link>',
+        },
+      },
+      defaultLocale: 'en',
+      supportedLocales: ['en'],
+    });
+    const richValues = {
+      link: (chunks: readonly string[]) => ({ chunks }),
+    } as unknown as I18nIcuValues;
+
+    expectI18nCode(() => service.translate('rich', { locale: 'en', values: richValues }), 'I18N_INVALID_MESSAGE_FORMAT');
   });
 
   it('can wrap an existing core service without changing core translation behavior', () => {
