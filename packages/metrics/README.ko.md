@@ -42,6 +42,16 @@ class AppModule {}
 
 Scrape endpoint는 active `prom-client` Registry output을 해당 Registry의 Prometheus content type으로 반환합니다. `MetricsModule.forRoot()`는 `registry` option을 전달하지 않는 한 격리된 Registry를 생성합니다. framework metric과 application-defined metric이 하나의 scrape surface를 의도적으로 공유해야 할 때만 shared `Registry`를 전달하세요.
 
+## 공개 책임
+
+| 표면 | 책임 | 경계 |
+| --- | --- | --- |
+| `MetricsModule.forRoot(...)` | Prometheus scrape endpoint, default metrics, optional HTTP instrumentation, platform telemetry, registry ownership을 wiring합니다. | `provider`는 현재 `'prometheus'`만 받습니다. `path: false`는 scrape route와 route-scoped endpoint middleware를 비활성화합니다. |
+| `MetricsService` | Active Registry 위에서 custom `Counter`, `Gauge`, `Histogram`을 만들기 위한 application-facing facade입니다. | 비즈니스/application metric은 package internals 대신 이 서비스를 사용하세요. |
+| `METER_PROVIDER` / `PrometheusMeterProvider` | Provider token이 필요한 first-party package integration용 low-level meter bridge입니다. | Application code는 package-level integration을 직접 조합하는 경우가 아니면 보통 이 token이 필요하지 않습니다. |
+| `middleware` | Framework HTTP metrics와 endpoint-scoped middleware 뒤의 module middleware chain에 참여하는 module-level middleware입니다. | Route-scoped가 아니므로 scrape route만 보호하려면 `endpointMiddleware`를 사용하세요. |
+| `endpointMiddleware` | 설정된 scrape endpoint에만 바인딩되는 class-based `@fluojs/http` middleware constructor입니다. | `path: false`일 때는 무시됩니다. 함수나 global middleware declaration은 이 option의 계약 밖입니다. |
+
 ## 공통 패턴
 
 ### HTTP path label 정규화
@@ -91,7 +101,7 @@ MetricsModule.forRoot({
 });
 ```
 
-`endpointMiddleware`는 class-based `@fluojs/http` middleware constructor를 받으며 metrics scrape endpoint에만 바인딩됩니다. middleware function이나 global middleware declaration은 이 option의 패키지 계약이 아닙니다. HTTP 계측이 활성화된 경우 endpoint middleware가 던진 실패도 내장 HTTP request/error collector에 기록됩니다.
+`endpointMiddleware`는 class-based `@fluojs/http` middleware constructor를 받으며 metrics scrape endpoint에만 바인딩됩니다. middleware function이나 global middleware declaration은 이 option의 패키지 계약이 아닙니다. `middleware`는 module-level middleware로 남아 endpoint-scoped middleware 뒤의 module chain에서 실행되고, `endpointMiddleware`는 `path: false`로 scrape route를 비활성화하면 완전히 건너뜁니다. HTTP 계측이 활성화된 경우 endpoint middleware가 던진 실패도 내장 HTTP request/error collector에 기록됩니다.
 
 ### Framework metric과 app metric이 하나의 registry를 공유하기
 

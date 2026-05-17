@@ -10,9 +10,11 @@
 | HTTP request metrics | `HttpMetricsMiddleware` inside `@fluojs/metrics` | Records `http_requests_total`, `http_errors_total`, and `http_request_duration_seconds` with `method`, `path`, and `status` labels. | HTTP metrics are enabled when `http` options resolve truthy. `pathLabelMode` defaults to `'template'`. |
 | Runtime platform telemetry | `RuntimePlatformTelemetry` inside `@fluojs/metrics` | Scrapes also emit `fluo_component_ready`, `fluo_component_health`, and `fluo_metrics_registry_mode`. | `platformTelemetry.env` and `platformTelemetry.instance` add fixed labels to platform gauge series. |
 | Custom application metrics | `MetricsService` or a shared Prometheus `Registry` | Custom counters, gauges, and histograms can share the same registry exposed by the scrape endpoint. | `registry` switches the module to shared-registry mode instead of creating an isolated registry. |
+| Package integration meters | `METER_PROVIDER` / `PrometheusMeterProvider` inside `@fluojs/metrics` | First-party integrations can resolve a provider bridge backed by the same active registry. | Application code should prefer `MetricsService`; the provider token is the low-level package-integration seam. |
 
 - `defaultMetrics` defaults to `true`, so Prometheus default process and Node.js collectors are registered once per registry unless `defaultMetrics: false` is set.
-- Route-scoped protection for the scrape endpoint is supported through `endpointMiddleware`, which binds middleware only to the configured metrics route.
+- Route-scoped protection for the scrape endpoint is supported through `endpointMiddleware`, which binds class-based middleware only to the configured metrics route and is skipped when `path: false` disables that route.
+- Module-level `middleware` is distinct from `endpointMiddleware`: it participates in the module middleware chain after framework HTTP metrics and endpoint-scoped middleware, and it is not the route-scoped protection contract.
 - Platform telemetry refreshes on each scrape by resolving `PLATFORM_SHELL` and reading its snapshot. If `PLATFORM_SHELL` is missing, the scrape succeeds without platform telemetry series. Non-missing resolution failures fail the scrape.
 
 ## Health Checks
@@ -27,6 +29,7 @@
 - `TerminusHealthService.check()` aggregates registered indicators into `info`, `error`, and `details` maps keyed by indicator result keys.
 - `execution.indicatorTimeoutMs` converts slow or hanging indicator probes into `down` results instead of waiting indefinitely.
 - Built-in indicator packages include HTTP, memory, disk, Prisma, Drizzle, and Redis variants, with Node-specific memory/disk indicators exported from `@fluojs/terminus/node` and Redis exported from `@fluojs/terminus/redis`.
+- `@fluojs/terminus/redis` keeps Redis peer imports on the dedicated subpath and maps `@fluojs/redis` client lifecycle state before issuing `PING`, so shutdown or disconnected Redis clients fail readiness even before a command probe runs.
 
 ## Readiness vs Liveness
 

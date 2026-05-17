@@ -158,6 +158,81 @@ describe('MetricsModule', () => {
     await app.close();
   });
 
+  it('composes endpoint middleware before module-level middleware on the scrape route', async () => {
+    const calls: string[] = [];
+
+    class EndpointMiddleware {
+      async handle(_context: MiddlewareContext, next: Next): Promise<void> {
+        calls.push('endpoint:before');
+        await next();
+        calls.push('endpoint:after');
+      }
+    }
+
+    const moduleMiddleware = {
+      async handle(_context: MiddlewareContext, next: Next): Promise<void> {
+        calls.push('module:before');
+        await next();
+        calls.push('module:after');
+      },
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          endpointMiddleware: [EndpointMiddleware],
+          middleware: [moduleMiddleware],
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    const response = createResponse();
+    await app.dispatch(createRequest('/metrics'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(calls).toEqual(['endpoint:before', 'module:before', 'module:after', 'endpoint:after']);
+
+    await app.close();
+  });
+
+  it('does not bind endpoint middleware when the scrape endpoint is disabled', async () => {
+    class DisabledEndpointMiddleware {
+      async handle(): Promise<void> {
+        throw new ForbiddenException('Disabled metrics endpoint middleware should not run.');
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          endpointMiddleware: [DisabledEndpointMiddleware],
+          path: false,
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    const response = createResponse();
+    await app.dispatch(createRequest('/metrics'), response);
+
+    expect(response.statusCode).toBe(404);
+
+    await app.close();
+  });
+
   it('serves Prometheus text with Node/process metrics', async () => {
     class AppModule {}
 

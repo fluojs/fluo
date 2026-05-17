@@ -15,9 +15,13 @@ import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.j
 
 /** HTTP-specific metric labeling options exposed by `MetricsModule.forRoot(...)`. */
 export interface MetricsHttpOptions {
+  /** How request paths are converted into Prometheus label values. Defaults to route templates. */
   pathLabelMode?: HttpMetricsPathLabelMode;
+  /** Custom path-label normalizer for bounded application-specific label values. */
   pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
+  /** Label value used when no normalized path can be derived. */
   unknownPathLabel?: string;
+  /** Explicit opt-in required before raw URL paths may be used as labels. */
   allowUnsafeRawPathLabelMode?: boolean;
 }
 
@@ -25,14 +29,23 @@ export interface MetricsHttpOptions {
  * Module options for exposing Prometheus metrics and runtime platform telemetry.
  */
 export interface MetricsModuleOptions {
+  /** Enables built-in HTTP request collectors when `true` or configured with path-label options. */
   http?: boolean | MetricsHttpOptions;
+  /** Scrape endpoint path. Defaults to `/metrics`; `false` disables the scrape endpoint and endpoint-scoped middleware. */
   path?: string | false;
+  /** Meter provider implementation. Currently only `prometheus` is supported. */
   provider?: 'prometheus';
+  /** Whether Prometheus process and Node.js default collectors are registered once per registry. Defaults to `true`. */
   defaultMetrics?: boolean;
+  /** Module-level middleware applied after framework HTTP metrics and endpoint-scoped middleware. */
   middleware?: MiddlewareLike[];
+  /** Class-based middleware bound only to the configured scrape endpoint. Ignored when `path: false`. */
   endpointMiddleware?: Array<new (...args: any[]) => Middleware>;
+  /** Fixed labels attached to built-in runtime platform telemetry gauges. */
   platformTelemetry?: {
+    /** Deployment environment label value. Defaults to `unknown`. */
     env?: string;
+    /** Instance label value. Defaults to `local`. */
     instance?: string;
   };
   /** External Prometheus registry to share between built-in and custom metrics. */

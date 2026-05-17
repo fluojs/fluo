@@ -42,6 +42,16 @@ class AppModule {}
 
 The scrape endpoint returns the active `prom-client` registry output with that registry's Prometheus content type. `MetricsModule.forRoot()` creates an isolated registry unless you pass a `registry` option; pass a shared `Registry` only when framework metrics and application-defined metrics intentionally share one scrape surface.
 
+## Public Responsibilities
+
+| Surface | Responsibility | Boundary |
+| --- | --- | --- |
+| `MetricsModule.forRoot(...)` | Wires the Prometheus scrape endpoint, default metrics, optional HTTP instrumentation, platform telemetry, and registry ownership. | `provider` currently accepts only `'prometheus'`; `path: false` disables the scrape route and route-scoped endpoint middleware. |
+| `MetricsService` | Application-facing facade for custom `Counter`, `Gauge`, and `Histogram` metrics on the active registry. | Use this for business/application metrics instead of reaching into package internals. |
+| `METER_PROVIDER` / `PrometheusMeterProvider` | Low-level meter bridge for first-party package integrations that need a provider token. | Application code usually does not need this token unless it is composing package-level integrations. |
+| `middleware` | Module-level middleware that participates in the module middleware chain after framework HTTP metrics and endpoint-scoped middleware. | It is not route-scoped; use `endpointMiddleware` when only the scrape route should be protected. |
+| `endpointMiddleware` | Class-based `@fluojs/http` middleware constructors bound only to the configured scrape endpoint. | Ignored when `path: false`; functions or global middleware declarations are outside this option's contract. |
+
 ## Common Patterns
 
 ### Normalize HTTP path labels
@@ -91,7 +101,7 @@ MetricsModule.forRoot({
 });
 ```
 
-`endpointMiddleware` accepts class-based `@fluojs/http` middleware constructors and binds them only to the metrics scrape endpoint. Middleware functions or global middleware declarations are not the package contract for this option. When HTTP instrumentation is enabled, failures thrown by endpoint middleware are recorded in the built-in HTTP request and error collectors.
+`endpointMiddleware` accepts class-based `@fluojs/http` middleware constructors and binds them only to the metrics scrape endpoint. Middleware functions or global middleware declarations are not the package contract for this option. `middleware` remains module-level middleware and runs as part of the module chain after endpoint-scoped middleware, while `endpointMiddleware` is skipped entirely when `path: false` disables the scrape route. When HTTP instrumentation is enabled, failures thrown by endpoint middleware are recorded in the built-in HTTP request and error collectors.
 
 ### Share one registry for framework and app metrics
 
