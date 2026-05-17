@@ -148,6 +148,18 @@ describe('@fluojs/testing surface', () => {
     expect(koreanReadme).toContain('호출자가 넘긴 middleware를 같은 app middleware chain 안에 보존합니다');
   });
 
+  it('documents the Test namespace facade and deduplicated subpath list in both README mirrors', () => {
+    const englishReadme = readFileSync(resolve(packageRootPath, 'README.md'), 'utf8');
+    const koreanReadme = readFileSync(resolve(packageRootPath, 'README.ko.md'), 'utf8');
+
+    expect(englishReadme).toContain('`Test.createTestingModule(...)`');
+    expect(koreanReadme).toContain('`Test.createTestingModule(...)`');
+    expect(englishReadme).not.toContain('**Mock subpath**');
+    expect(englishReadme).not.toContain('**HTTP helpers**');
+    expect(koreanReadme).not.toContain('**Mock 서브패스**');
+    expect(koreanReadme).not.toContain('**HTTP 헬퍼**');
+  });
+
   it('build emits the published harness subpath files without blocking the Vitest worker event loop', async () => {
     await runBuild();
 
