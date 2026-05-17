@@ -27,6 +27,12 @@
 | Deno 런타임 어댑터가 필요함 | `@fluojs/platform-deno` | 일치하는 `fluo new` runtime/platform 스타터 경로와 연결됩니다. |
 | Cloudflare Workers 어댑터가 필요함 | `@fluojs/platform-cloudflare-workers` | 일치하는 `fluo new` runtime/platform 스타터 경로와 연결됩니다. |
 
+## 빌드 도구 설정
+
+| 조건 | 패키지 선택 | 비고 |
+| --- | --- | --- |
+| TC39 표준 데코레이터가 포함된 TypeScript를 Vite로 빌드해야 함 | `@fluojs/vite` | `fluoDecoratorsPlugin()`을 사용해 Babel의 `@babel/plugin-proposal-decorators` transform을 `{ version: '2023-11' }`로 적용하면서 test, declaration, dependency, non-TypeScript 파일에 대한 fluo의 Vite 파일 경계 skip을 유지합니다. |
+
 ## 마이크로서비스 스타터 만들기
 
 | 조건 | 패키지 선택 | 비고 |

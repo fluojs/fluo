@@ -42,7 +42,7 @@ export default defineConfig({
 });
 ```
 
-이 플러그인은 `.ts` 애플리케이션 파일을 Babel로 변환하며 `2023-11` decorators proposal과 `@babel/preset-typescript`를 사용합니다. declaration 파일, `.test.` 또는 `.spec.` 파일, `node_modules`, `.ts`가 아닌 파일은 건너뛰므로 생성된 Vitest 테스트 파일은 계속 전용 `@fluojs/testing/vitest` transform 경로를 사용합니다.
+이 플러그인은 `.ts` 애플리케이션 파일을 Babel로 변환하며 `2023-11` decorators proposal과 `@babel/preset-typescript`를 사용합니다. 파일 경계를 판단하기 전에 Vite query suffix를 제거한 뒤 declaration 파일, `.test.` 또는 `.spec.` 파일, `node_modules`, `.ts`가 아닌 파일은 건너뛰므로 생성된 Vitest 테스트 파일은 계속 전용 `@fluojs/testing/vitest` transform 경로를 사용합니다.
 
 ## 공개 API
 
@@ -56,4 +56,5 @@ export default defineConfig({
 ## 예제 소스
 
 - `packages/vite/src/index.ts`
+- `packages/vite/src/internal/decorators-plugin.ts`
 - `packages/cli/src/new/scaffold.ts`
