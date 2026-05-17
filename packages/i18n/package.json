@@ -89,6 +89,7 @@
     }
   },
   "devDependencies": {
+    "@fluojs/testing": "workspace:^",
     "@fluojs/http": "workspace:^",
     "@fluojs/validation": "workspace:^",
     "intl-messageformat": "^11.2.4",
