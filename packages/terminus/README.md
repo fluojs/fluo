@@ -24,6 +24,12 @@ Health indicator toolkit for fluo applications. `@fluojs/terminus` layers on top
 pnpm add @fluojs/terminus
 ```
 
+Install the optional peer only when you use the Redis indicator subpath:
+
+```bash
+pnpm add @fluojs/redis ioredis
+```
+
 ## When to Use
 
 - When you need to monitor external dependencies (databases, Redis, APIs) as part of your application's health status.
@@ -90,6 +96,8 @@ TerminusModule.forRoot({
 });
 ```
 
+Redis indicators created through `@fluojs/terminus/redis` are lifecycle-aware when they receive a client from `@fluojs/redis`. Terminus maps the Redis connection state with `createRedisPlatformStatusSnapshot(...)` before sending `PING`, so clients in `wait`, `connecting`, `reconnecting`, `close`, or `end` states mark `/health` and `/ready` unavailable instead of relying on a raw ping alone. Custom `ping` callbacks remain supported for manual probes, but lifecycle metadata is only attached when a Redis client exposes its `status`.
+
 For Drizzle, `createDrizzleHealthIndicatorProvider()` prefers the lifecycle-aware `DrizzleDatabase` wrapper exported by `@fluojs/drizzle`. The indicator reports `down` before probing SQL whenever Drizzle is shutting down, stopped, or otherwise not ready according to `DrizzleDatabase.createPlatformStatusSnapshot()`. If only the legacy raw `DRIZZLE_DATABASE` handle is registered, the provider keeps the previous lightweight SQL probe behavior.
 
 Provider factories are repeatable. You may register multiple providers created by the same factory in one `indicatorProviders` array when each instance uses a distinct indicator key or dependency option; Terminus keeps every provider instance under its own DI token instead of letting later same-type providers overwrite earlier ones.
@@ -125,6 +133,7 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 - Platform health/readiness failures are surfaced as deterministic `fluo-platform-health` and `fluo-platform-readiness` contributors in `/health` responses.
 - `/health` responses may include a `platform` block with platform health/readiness details when runtime diagnostics are available.
 - Drizzle indicators created through the DI provider map Drizzle lifecycle readiness/health state before SQL probing, so shutdown or stopped integrations mark `/health` and `/ready` as unavailable even if the underlying driver still accepts a raw ping.
+- Redis indicators created through the Redis subpath map `@fluojs/redis` client lifecycle state before `PING`, so shutdown or disconnected Redis clients mark `/health` and `/ready` as unavailable even before command execution.
 
 ## Public API Overview
 
@@ -151,6 +160,7 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 
 - `RedisHealthIndicator`, `createRedisHealthIndicator()`, `createRedisHealthIndicatorProvider()`
   - Redis-specific indicator helpers are exported from the dedicated subpath so the root package stays import-safe without the optional Redis peer installed.
+  - The provider resolves the default `@fluojs/redis` client token by default, or a named token when `clientName` is supplied, and reuses Redis platform status semantics for readiness diagnostics.
 
 ### `@fluojs/terminus/node`
 
