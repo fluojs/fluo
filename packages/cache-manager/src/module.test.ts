@@ -249,6 +249,40 @@ describe('CacheModule.forRoot', () => {
     await app.close();
   });
 
+  it('passes keyPrefix through to the redis store namespace', async () => {
+    @Inject(CacheService)
+    class Consumer {
+      constructor(readonly cache: CacheService) {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CacheModule.forRoot({ keyPrefix: 'tenant-a:cache:', store: 'redis' })],
+      providers: [Consumer],
+    });
+
+    const redisClient = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redisClient }],
+      rootModule: AppModule,
+    });
+    const consumer = await app.container.resolve(Consumer);
+
+    redisClient.storage.set('tenant-b:cache:/users', JSON.stringify({ value: { count: 9 } }));
+    await consumer.cache.set('/users', { count: 3 }, 30);
+
+    expect(JSON.parse(redisClient.storage.get('tenant-a:cache:/users') ?? 'null')).toMatchObject({
+      value: { count: 3 },
+    });
+
+    await consumer.cache.reset();
+
+    expect(redisClient.storage.has('tenant-a:cache:/users')).toBe(false);
+    expect(redisClient.storage.has('tenant-b:cache:/users')).toBe(true);
+
+    await app.close();
+  });
+
   it('uses a named redis client when redis.clientName is configured', async () => {
     @Inject(CacheService)
     class Consumer {

@@ -109,6 +109,7 @@ class UserResolver {
 - `@fluojs/graphql` creates one operation-scoped DI container for each HTTP GraphQL request or websocket subscription operation, shares it across resolver calls in that operation, and disposes it when the operation completes or the websocket operation disconnects.
 - Resolver methods receive a `GraphQLContext` whose built-in fields expose the underlying fluo `request`, the authenticated HTTP `principal` when middleware or guards set one, websocket `connectionParams` and `socket` for websocket subscriptions, and any custom fields returned from `GraphqlModule.forRoot({ context })`.
 - Request-scoped DataLoader helpers use the same `GraphQLContext` operation boundary, so loader caches are shared only within one GraphQL operation.
+- Application shutdown unregisters the websocket transport, closes live websocket clients, and disposes any still-active websocket operation containers through the same request-scoped provider teardown path used when an operation completes normally.
 
 ```typescript
 import { Inject, Scope } from '@fluojs/core';
@@ -161,9 +162,12 @@ GraphqlModule.forRoot({
 
 - Schema introspection is disabled by default unless you explicitly enable `graphiql` or set `introspection: true`.
 - Request validation budgets are enabled by default with conservative limits for document depth, field complexity, and aggregate query cost.
+- `graphiql` defaults to `false`. `introspection` follows `graphiql` unless set explicitly, so production apps stay private by default while local GraphiQL sessions can opt in.
+- `limits` accepts request validation budgets or `false`; use `false` only when equivalent controls exist outside fluo.
 - Streaming GraphQL responses cancel the upstream fetch body when the downstream response stream closes or errors, so SSE subscription resources are released promptly.
 - Bootstrap failures after GraphQL schema resolution restore the package's temporary `graphql/jsutils/instanceOf` patch before rethrowing, so failed startups do not leak process-wide GraphQL behavior into later app attempts.
 - WebSocket subscriptions use separate transport budgets by default: `100` concurrent connections, `64 KiB` maximum payload size, and `25` active operations per connection.
+- `subscriptions.websocket.enabled` defaults to `false`; enabling it requires a Node HTTP/S adapter with upgrade support. `connectionInitWaitTimeoutMs` is forwarded to `graphql-ws` for connection initialization, and `keepAliveMs` controls websocket keepalive pings when configured.
 - Set `subscriptions.websocket.limits = false` only when you intentionally need unbounded websocket behavior and can enforce equivalent controls elsewhere.
 - Pass `limits: false` only when you intentionally need unbounded behavior and can compensate with external controls.
 

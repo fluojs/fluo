@@ -1965,6 +1965,86 @@ describe('@fluojs/graphql — provider scopes', () => {
     await app.close();
   });
 
+  it('disposes live websocket subscription providers when the application shuts down first', async () => {
+    const destroyedIds: string[] = [];
+    let destroyedResolve: ((value: string) => void) | undefined;
+    const destroyed = new Promise<string>((resolve) => {
+      destroyedResolve = resolve;
+    });
+
+    @Inject()
+    @Scope('request')
+    class LiveSubscriptionLifecycleProbe {
+      readonly id = 'live-subscription-probe-1967';
+
+      onDestroy(): void {
+        destroyedIds.push(this.id);
+        destroyedResolve?.(this.id);
+      }
+    }
+
+    @Inject(LiveSubscriptionLifecycleProbe)
+    @Scope('request')
+    @Resolver('LiveSubscriptionShutdownResolver')
+    class LiveSubscriptionShutdownResolver {
+      constructor(private readonly probe: LiveSubscriptionLifecycleProbe) {}
+
+      @Subscription()
+      async *liveRequestIds(): AsyncGenerator<string, void, void> {
+        yield this.probe.id;
+        await new Promise<void>(() => undefined);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        GraphqlModule.forRoot({
+          resolvers: [LiveSubscriptionShutdownResolver],
+          subscriptions: {
+            websocket: {
+              enabled: true,
+            },
+          },
+        }),
+      ],
+      providers: [LiveSubscriptionLifecycleProbe, LiveSubscriptionShutdownResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
+    await app.listen();
+
+    const socket = await connectGraphqlWebSocket(port);
+    socket.send(JSON.stringify({
+      id: 'live-tracked',
+      payload: {
+        query: 'subscription { liveRequestIds }',
+      },
+      type: 'subscribe',
+    }));
+
+    await expect(onceGraphqlWebSocketMessage(socket)).resolves.toEqual({
+      id: 'live-tracked',
+      payload: {
+        data: {
+          liveRequestIds: 'live-subscription-probe-1967',
+        },
+      },
+      type: 'next',
+    });
+
+    const socketClosed = onceWebSocketClosed(socket);
+    await app.close();
+
+    await expect(Promise.race([
+      destroyed,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out waiting for shutdown cleanup.')), 250)),
+    ])).resolves.toBe('live-subscription-probe-1967');
+    await expect(socketClosed).resolves.toBeUndefined();
+    expect(destroyedIds).toEqual(['live-subscription-probe-1967']);
+  });
+
   it('transient resolver receives a fresh instance per operation', async () => {
     @Inject()
     @Scope('transient')
