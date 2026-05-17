@@ -1,16 +1,14 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-
+import { Inject } from '@fluojs/core';
+import type { OnApplicationShutdown } from '@fluojs/runtime';
 import {
   createRequestAbortContext,
   raceWithAbort,
   trackActiveRequestTransaction,
   untrackActiveRequestTransaction,
 } from '@fluojs/runtime';
-import type { OnApplicationShutdown } from '@fluojs/runtime';
-import { Inject } from '@fluojs/core';
-
-import { MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS } from './tokens.js';
 import { createMongoosePlatformStatusSnapshot } from './status.js';
+import { MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS } from './tokens.js';
 import type {
   MongooseConnectionLike,
   MongooseHandleProvider,
@@ -188,10 +186,17 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
   async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     const currentSession = this.sessions.getStore();
     if (currentSession) {
-      if (signal) {
-        return raceWithAbort(fn, signal);
+      this.assertRequestTransactionsAvailable();
+
+      const abortContext = createRequestAbortContext(signal);
+      const active = this.trackActiveRequestTransaction(abortContext.controller);
+
+      try {
+        return await raceWithAbort(fn, abortContext.signal);
+      } finally {
+        abortContext.cleanup();
+        this.untrackActiveRequestTransaction(active);
       }
-      return fn();
     }
 
     this.assertRequestTransactionsAvailable();

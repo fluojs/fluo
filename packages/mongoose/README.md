@@ -48,7 +48,7 @@ const connection = mongoose.createConnection('mongodb://localhost:27017/test');
 class AppModule {}
 ```
 
-`MongooseModule.forRootAsync(...)` accepts injected dependencies and a `useFactory` that may return options synchronously or asynchronously. Use the exported `MongooseAsyncModuleOptions<TConnection>` type when sharing async registration helpers across modules. Pass `global` on the top-level async registration when the providers should be visible globally. The resolved options are reused for the module instance, so connection setup and disposal hooks stay consistent across all providers.
+`MongooseModule.forRootAsync(...)` accepts injected dependencies and a `useFactory` that may return options synchronously or asynchronously. Use the exported `MongooseAsyncModuleOptions<TConnection>` type when sharing async registration helpers across modules. Pass `global` on the top-level async registration when the providers should be visible globally. The resolved options are reused within one application container, so connection setup and disposal hooks stay consistent across that container's providers. Reusing the same async module definition across tests or multi-app processes resolves fresh options per application container instead of sharing a memoized connection.
 
 ## Lifecycle and Shutdown
 
@@ -62,6 +62,7 @@ Shutdown preserves transaction cleanup order and rejects new manual or request-s
 4. The configured `dispose(connection)` hook runs only after active request transactions and ambient session scopes have settled.
 
 `createMongoosePlatformStatusSnapshot(...)` reports `ready` while serving traffic, `shutting-down` while request transactions are draining, and `stopped` after the dispose hook completes. The status details include `sessionStrategy`, `transactionContext: 'als'`, active request/session counts, resource ownership, and strict/session support diagnostics. Manual `transaction()` calls still use the same explicit-session contract as request-scoped transactions: repository code must pass `conn.currentSession()` into Mongoose model operations that participate in the transaction. If the wrapped Mongoose connection exposes `connection.transaction(...)`, fluo delegates the transaction boundary to that API so Mongoose's own ambient-session scope is preserved while still exposing the same session through `currentSession()`. Request-scoped transactions observe the request `AbortSignal` while acquiring sessions and while starting delegated `connection.transaction(...)` work, so request cancellation can interrupt those startup phases before user callbacks run.
+Nested `requestTransaction(...)` calls opened inside an existing manual `transaction(...)` boundary reuse the ambient session, stay visible in `details.activeRequestTransactions`, and are aborted during shutdown so the outer manual transaction can roll back before `dispose(connection)` runs.
 
 ## Common Patterns
 
@@ -105,7 +106,7 @@ import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
 class UserController {}
 ```
 
-Use `MongooseConnection.requestTransaction(...)` directly when you need the same request-aware transaction boundary outside an HTTP interceptor. Nested service transactions reuse the active session boundary.
+Use `MongooseConnection.requestTransaction(...)` directly when you need the same request-aware transaction boundary outside an HTTP interceptor. Nested service transactions reuse the active session boundary, and nested request boundaries opened inside a manual transaction still participate in request abort and shutdown tracking.
 
 ## Public API
 

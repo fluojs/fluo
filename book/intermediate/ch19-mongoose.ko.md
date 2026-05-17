@@ -87,6 +87,8 @@ MongoDB 트랜잭션은 활성화된 **세션(Session)**을 필요로 합니다.
 
 제공된 Mongoose 연결이 `connection.transaction(...)`을 노출하면 fluo는 Mongoose 자체 ambient-session 범위와 정리 의미론을 보존하기 위해 그 API에 트랜잭션 경계를 위임합니다. 그렇지 않으면 `startSession()`, `startTransaction()`, `commitTransaction()` / `abortTransaction()`, `endSession()`을 직접 사용합니다. 요청 범위 트랜잭션은 session 획득 및 위임된 transaction 시작 중에도 request `AbortSignal`을 관찰하므로, 취소된 요청은 repository 작업 실행 전에 중단될 수 있습니다. 두 모드 모두 애플리케이션 종료 중에는 활성 요청 트랜잭션과 session cleanup이 settle될 때까지 `dispose(connection)`을 기다리며, 종료가 시작된 뒤에는 새 수동 또는 요청 범위 트랜잭션 경계를 거부합니다.
 
+Mongoose model 호출에는 명시적인 `{ session }` option이 필요하므로 request-scoped transaction이 repository 호출을 자동으로 다시 쓰지는 않습니다. 기존 수동 `transaction(...)` 안에서 열린 중첩 `requestTransaction(...)`은 ambient session을 재사용하고 활성 request boundary로 추적되며, 종료 중에는 abort되어 바깥 수동 transaction이 connection disposal 전에 rollback할 수 있습니다.
+
 ### Manual Transactions
 
 ```typescript
