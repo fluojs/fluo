@@ -103,7 +103,7 @@ class UsersController {
 
 ### Cycle-safe serialization
 
-The serializer cuts active cyclic references safely instead of recursing forever, so complex object graphs can still be turned into plain response-shaped objects without unbounded recursion. Completed shared references are reused in the serialized graph rather than dropped: if two sibling fields point at the same source object, both serialized fields point at the same serialized object. Only an object that is encountered again while it is already being serialized is cut to `undefined`.
+The serializer cuts active cyclic references safely instead of recursing forever, so complex object graphs can still be turned into plain response-shaped objects without unbounded recursion. The same reference tracker is shared across class instances, plain objects, arrays, and mixed object-array graphs. Self-referential arrays and object-array cycles are cut at the active back edge, while completed shared references are reused in the serialized graph rather than dropped: if two sibling fields, or an object field and an array entry, point at the same source object, both serialized fields point at the same serialized object. Only a value that is encountered again while it is already being serialized is cut to `undefined`.
 
 ### Inherited decorator contracts
 
@@ -124,8 +124,8 @@ Undecorated class instances are still traversed recursively, so decorated nested
 ## Public API Overview
 
 - **Decorators**: `Expose`, `Exclude`, `Transform`
-- **Engine**: `serialize(value)`
-- **HTTP integration**: `SerializerInterceptor`
+- **Engine**: `serialize(value)` recursively walks class instances, arrays, plain objects, and mixed graphs while preserving opaque built-ins and non-JSON leaf values unless you transform them
+- **HTTP integration**: `SerializerInterceptor` serializes uncommitted handler results and returns handler-owned values unchanged after the response has already been committed
 
 `Expose` can be applied to classes and fields. `Exclude` and `Transform` apply to fields.
 
