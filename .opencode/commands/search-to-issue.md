@@ -56,6 +56,7 @@ Header: `감사 범위`
 - `infra-messaging`
 - `protocol-adapters`
 - `persistence`
+- `operations`
 - `cli`
 
 `패키지 직접 지정`을 고르면 사용자가 입력한 값을 raw user args처럼 다루되, 실제 package 확정은 Scope Resolution 규칙을 따른다.
@@ -98,11 +99,14 @@ Audit target scope는 Intake Question Gate에서 확정한 `selected_scope_input
    - 사용자가 하나 이상의 package directory name 또는 public package name을 직접 지정하면, group/all 해석을 무시하고 해당 패키지만 감사한다.
    - 허용 예: `core`, `runtime`, `socket.io`, `@fluojs/core`, `@fluojs/runtime`
 2. **Package group**
-   - explicit package가 없고 지원 group명이 있으면 해당 group에 속한 패키지만 감사한다.
+    - explicit package가 없고 지원 group명이 있으면 해당 group에 속한 패키지만 감사한다.
 3. **All**
-   - explicit package도 group도 없거나 사용자가 `all`만 지정하면 `packages/*/package.json` 기준 workspace public packages 전체를 감사한다.
-   - 기본값에는 `examples/*`와 `@fluojs-internal/*` tooling workspace를 포함하지 않는다. 사용자가 명시적으로 요청한 경우만 포함한다.
-   - package 목록은 하네스가 한 번만 확정한다. OpenCode `glob`/`read` 또는 허용된 `git ls-files*`만 사용하고, `find | xargs`, broad shell pipeline, shell redirection, `-exec`는 사용하지 않는다.
+    - explicit package도 group도 없거나 사용자가 `all`만 지정하면 `packages/*/package.json` 기준 workspace public packages 전체를 감사한다.
+    - `all`은 package 이름이 아니라 예약된 scope keyword다. `all` 입력을 `core` 또는 foundation 대표 패키지로 치환하거나 sampling/대표 감사로 축소하면 안 된다.
+    - 기본값에는 `examples/*`와 `@fluojs-internal/*` tooling workspace를 포함하지 않는다. 사용자가 명시적으로 요청한 경우만 포함한다.
+    - package 목록은 하네스가 한 번만 확정한다. OpenCode `glob`/`read` 또는 허용된 `git ls-files*`만 사용하고, `find | xargs`, broad shell pipeline, shell redirection, `-exec`는 사용하지 않는다.
+    - `all` mode에서는 확정 직후 전체 package manifest를 사용자/ledger에 출력한다. 현재 기준 expected count는 `41`이며, count가 다르면 감사 시작 전에 `docs/reference/package-surface.md`, `packages/*/package.json`, 이 command의 group table 불일치로 보고하고 중단한다.
+    - `all` mode에서는 group table union이 확정 package 목록과 정확히 같아야 한다. 누락 또는 초과 package가 있으면 auditor를 호출하지 않고 mismatch 목록을 먼저 보고한다.
 
 Scope 확정 결과는 다음 형태로 기록하고 이후 모든 phase에서 그대로 사용한다.
 
@@ -118,14 +122,15 @@ scope_decision:
 
 ## 3. Supported Package Groups
 
-- `foundation`: `core`, `config`, `di`, `runtime`
-- `http-runtime`: `http`, `platform-fastify`, `platform-nodejs`, `platform-express`, `platform-bun`, `platform-deno`, `platform-cloudflare-workers`, `terminus`, `metrics`
-- `request-pipeline`: `validation`, `serialization`, `openapi`, `graphql`, `cache-manager`, `throttler`
+- `foundation`: `core`, `config`, `di`, `i18n`, `runtime`
+- `http-runtime`: `http`, `platform-fastify`, `platform-nodejs`, `platform-express`, `platform-bun`, `platform-deno`, `platform-cloudflare-workers`
+- `request-pipeline`: `validation`, `serialization`, `openapi`, `graphql`, `cache-manager`
 - `auth`: `jwt`, `passport`
 - `infra-messaging`: `redis`, `queue`, `cron`, `cqrs`, `event-bus`, `microservices`, `notifications`, `email`, `slack`, `discord`
 - `protocol-adapters`: `websockets`, `socket.io`
 - `persistence`: `prisma`, `drizzle`, `mongoose`
-- `cli`: `cli`, `studio`, `testing`
+- `operations`: `metrics`, `terminus`, `throttler`
+- `cli`: `cli`, `studio`, `testing`, `vite`
 
 ## 4. Preflight
 
@@ -163,9 +168,35 @@ scope_decision:
 
 - 권장 batch size는 4 packages다.
 - batch가 여러 개여도 Scope Resolution 결과의 package 목록과 Intake Question Gate의 audit purpose만 사용한다.
+- `all` mode의 41개 package는 4개 단위로 11개 batch를 만든다. 마지막 batch는 1개 package가 된다.
+- batch 시작 전 아래 manifest를 먼저 작성한다. manifest 없이 auditor를 호출하지 않는다.
+
+```yaml
+batch_plan:
+  batch_size: 4
+  package_count: <scope_decision.packages.length>
+  expected_auditor_invocations: <package_count * 3>
+  batches:
+    - id: 1
+      packages: [<pkg>, <pkg>, <pkg>, <pkg>]
+      expected_invocations: 12
+```
+
 - 각 batch가 끝날 때마다 findings를 수집하고, 중복 후보와 package-level draft를 갱신한다.
 - 대규모 audit에서도 선택된 각 패키지마다 정확히 3개 auditor invocation을 유지한다.
 - auditor에게 `all` 범위를 직접 위임하지 않는다. 하네스가 확정한 단일 package 이름을 각 auditor invocation의 `package: <pkg>`로 전달한다.
+- batch 완료 시 아래 ledger를 갱신한다. `actual_invocations`가 `expected_invocations`와 다르면 그 즉시 실패로 처리하고 다음 batch로 진행하지 않는다.
+
+```yaml
+batch_ledger:
+  batch_id: <n>
+  packages: [<pkg>, ...]
+  expected_invocations: <packages.length * 3>
+  actual_invocations: <number completed>
+  missing_invocations:
+    - package: <pkg>
+      auditor: fluo-package-contract-api-reviewer | fluo-package-architecture-reviewer | fluo-package-tests-edge-reviewer
+```
 
 ## 6. Auditor Delegation
 
@@ -176,6 +207,13 @@ scope_decision:
 3. `@fluo-package-tests-edge-reviewer`
 
 커맨드는 auditor role body를 재구현하지 않는다. 각 invocation은 다음 6개 섹션 구조로 최소 컨텍스트만 전달한다.
+
+하네스 self-check:
+
+- 단일 package당 auditor invocation set은 정확히 `{contract-api, architecture, tests-edge}`여야 한다.
+- 같은 package/auditor 조합을 중복 호출하지 않는다.
+- package 하나라도 3개 결과가 모두 없으면 finding intake, deduplication, issue draft 단계로 넘어가지 않는다.
+- auditor 결과가 `[]`이더라도 해당 invocation은 completed로 기록한다.
 
 ```md
 @fluo-package-contract-api-reviewer
@@ -221,6 +259,7 @@ package: <package directory name>
 evidence: <file:line one or more>
 problem: <one sentence>
 contract_impact: none | doc-only | behavior-change | breaking
+affected_surfaces:
   package: required | needs-check | not-required
   docs: required | needs-check | not-required
   book: required | needs-check | not-required
@@ -329,14 +368,14 @@ Severity summary와 draft 목록을 보여준 뒤, 무엇을 실제 issue로 등
 
 Package → area mapping:
 
-- `area:foundation`: `core`, `config`, `di`, `runtime`
+- `area:foundation`: `core`, `config`, `di`, `i18n`, `runtime`
 - `area:http-runtime`: `http`, `platform-fastify`, `platform-nodejs`, `platform-express`, `platform-bun`, `platform-deno`, `platform-cloudflare-workers`, `terminus`, `metrics`
 - `area:request-pipeline`: `validation`, `serialization`, `openapi`, `graphql`, `cache-manager`, `throttler`
 - `area:auth`: `jwt`, `passport`
 - `area:infra-messaging`: `redis`, `queue`, `cron`, `cqrs`, `event-bus`, `microservices`, `notifications`, `email`, `slack`, `discord`
 - `area:protocol-adapters`: `websockets`, `socket.io`
 - `area:persistence`: `prisma`, `drizzle`, `mongoose`
-- `area:cli`: `cli`, `studio`, `testing`
+- `area:cli`: `cli`, `studio`, `testing`, `vite`
 
 ## 13. Issue Registration
 

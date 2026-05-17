@@ -70,6 +70,7 @@ affected_surfaces:
   book: required | needs-check | not-required      # canonical: book/README.md or relevant chapter
   examples: required | needs-check | not-required  # canonical: examples/README.md
 docs_book_impact: none | needs-check | docs-required | book-required | docs-and-book-required
+purpose_alignment: primary | secondary | unrelated-critical
 preserve_contract_fix: <description of a fix that preserves the existing contract>
 contract_change_needed: <true/false and reason if true>
 ```
@@ -103,6 +104,7 @@ findings:
       book: not-required    # book/README.md does not reference SIGTERM test patterns
       examples: not-required  # examples do not test shutdown paths
     docs_book_impact: needs-check
+    purpose_alignment: primary
     preserve_contract_fix: "Add a test that sends SIGTERM and asserts onApplicationShutdown is called before process exit."
     contract_change_needed: false
 ```

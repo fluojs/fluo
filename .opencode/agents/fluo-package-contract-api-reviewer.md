@@ -65,6 +65,7 @@ affected_surfaces:
   book: required | needs-check | not-required      # canonical: book/README.md or relevant chapter
   examples: required | needs-check | not-required  # canonical: examples/README.md
 docs_book_impact: none | needs-check | docs-required | book-required | docs-and-book-required
+purpose_alignment: primary | secondary | unrelated-critical
 preserve_contract_fix: <description of a fix that preserves the existing contract>
 contract_change_needed: <true/false and reason if true>
 ```
@@ -98,6 +99,7 @@ findings:
       book: needs-check  # book/README.md
       examples: not-required  # no example references this hook
     docs_book_impact: docs-required
+    purpose_alignment: primary
     preserve_contract_fix: "Add onModuleDestroy to the TSDoc baseline without changing its behavior."
     contract_change_needed: false
 ```
