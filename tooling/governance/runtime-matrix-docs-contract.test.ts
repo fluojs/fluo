@@ -4,8 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-const packageRoot = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(packageRoot, '..', '..', '..');
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 function read(relativePath: string) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');

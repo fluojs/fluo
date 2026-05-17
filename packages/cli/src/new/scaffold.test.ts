@@ -98,7 +98,7 @@ function createLocalPackageCacheDirectory(repoRoot: string): string {
 
 function createFixtureLocalRepo(): string {
   const repoRoot = mkdtempSync(join(tmpdir(), 'fluo-local-repo-'));
-  temporaryDirectories.push(repoRoot);
+  temporaryDirectories.push(repoRoot, createLocalPackageCacheDirectory(repoRoot));
 
   for (const [packageName, packageDirectory] of Object.entries(LOCAL_PACKAGE_DIRECTORY_BY_NAME)) {
     const packageRoot = join(repoRoot, 'packages', packageDirectory);
