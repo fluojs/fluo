@@ -41,7 +41,7 @@ pnpm add @fluojs/studio
 
 ## 빠른 시작
 
-Studio는 fluo CLI에서 내보낸 JSON 파일을 소비합니다. 런타임은 snapshot을 생산하고, CLI는 검사 데이터를 내보내거나 위임하며, Studio는 뷰어와 자동화 호출자가 사용할 수 있도록 snapshot을 파싱, 필터링, 보기, 렌더링하는 공개 헬퍼를 소유합니다. 지원되는 inspect artifact에는 raw snapshot, snapshot-plus-timing envelope, `fluo inspect --report`가 생성한 report artifact, legacy standalone timing diagnostics가 포함됩니다.
+Studio는 fluo CLI에서 내보낸 JSON 파일을 소비합니다. 런타임은 snapshot을 생산하고, CLI는 artifact export/write/delegation을 소유하며, Studio는 사람과 자동화 호출자가 사용할 수 있도록 snapshot을 파싱, 필터링, 검사, 렌더링하는 공개 헬퍼와 viewer surface를 소유합니다. 지원되는 inspect artifact에는 raw snapshot, snapshot-plus-timing envelope, `fluo inspect --report`가 생성한 report artifact, legacy standalone timing diagnostics가 포함됩니다.
 
 1. **Snapshot 내보내기**:
    ```bash
@@ -61,7 +61,7 @@ Studio는 fluo CLI에서 내보낸 JSON 파일을 소비합니다. 런타임은 
    pnpm --dir packages/studio dev
    ```
 
-3. **파일 로드**: Studio 웹 인터페이스에 `snapshot.json` 파일을 드래그 앤 드롭합니다. Search와 filter control은 graph, diagnostics, summary가 갱신되는 동안 focus를 유지합니다.
+3. **파일 로드**: Studio 웹 인터페이스에 `snapshot.json` 파일을 드래그 앤 드롭합니다. Search와 filter control은 graph, connection explorer, diagnostics, summary가 갱신되는 동안 focus를 유지합니다.
 
 ## 주요 패턴
 
@@ -76,6 +76,9 @@ Studio는 fluo CLI에서 내보낸 JSON 파일을 소비합니다. 런타임은 
 1. **Platform dependency graph** 섹션을 사용합니다.
 2. 시각화하려는 모듈이나 컴포넌트를 선택합니다.
 3. **Copy Mermaid** 버튼을 사용하여 문서에 사용할 수 있는 텍스트 기반 다이어그램을 가져옵니다.
+
+### 컴포넌트 연결 탐색
+그래프 노드를 선택한 뒤 **Connection explorer**를 사용하면 선택한 컴포넌트의 내부 의존성, 외부 의존성, 역방향 dependent, 관련 diagnostics를 확인할 수 있습니다. 이 흐름은 snapshot 생산을 Studio로 옮기지 않고 Devtools 스타일 탐색을 제공합니다. 런타임은 계속 producer로 남고, CLI는 export boundary로 남으며, Studio는 inspection과 rendering surface로 남습니다.
 
 자동화에서는 `@fluojs/studio` 또는 `@fluojs/studio/contracts`에서 `renderMermaid(snapshot)`을 호출합니다. 이 헬퍼가 지원되는 snapshot-to-Mermaid 계약입니다. 런타임 패키지는 snapshot producer로 남고, Studio는 그래프 렌더링 시 내부 dependency edge와 외부 dependency node를 처리합니다.
 

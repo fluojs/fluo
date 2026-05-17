@@ -13,6 +13,7 @@ import {
 import type { PlatformShellSnapshot, PlatformSnapshot } from '@fluojs/runtime';
 import {
   escapeHtml,
+  inspectComponentConnections,
   renderDiagnostics,
   renderGraphSvg,
 } from './viewer-rendering.js';
@@ -25,8 +26,16 @@ interface StudioState {
   rawJson?: string;
 }
 
-interface FocusSnapshot {
+type FocusSnapshot = GraphFocusSnapshot | TextFocusSnapshot;
+
+interface GraphFocusSnapshot {
+  componentId: string;
+  kind: 'graph-node';
+}
+
+interface TextFocusSnapshot {
   id: string;
+  kind: 'text-control';
   selectionEnd: number | null;
   selectionStart: number | null;
 }
@@ -81,15 +90,27 @@ function isTextControl(element: Element | null): element is HTMLInputElement | H
   return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement;
 }
 
+function isFocusableElement(element: Element | null): element is HTMLElement | SVGElement {
+  return element instanceof HTMLElement || element instanceof SVGElement;
+}
+
 function captureFocusSnapshot(): FocusSnapshot | undefined {
   const activeElement = document.activeElement;
 
   if (!isTextControl(activeElement) || !activeElement.id) {
+    if (activeElement instanceof SVGElement && activeElement.dataset.component) {
+      return {
+        componentId: activeElement.dataset.component,
+        kind: 'graph-node',
+      };
+    }
+
     return undefined;
   }
 
   return {
     id: activeElement.id,
+    kind: 'text-control',
     selectionEnd: activeElement.selectionEnd,
     selectionStart: activeElement.selectionStart,
   };
@@ -97,6 +118,19 @@ function captureFocusSnapshot(): FocusSnapshot | undefined {
 
 function restoreFocusSnapshot(snapshot: FocusSnapshot | undefined): void {
   if (!snapshot) {
+    return;
+  }
+
+  if (snapshot.kind === 'graph-node') {
+    const target = Array.from(document.querySelectorAll<Element>('[data-component]')).find(
+      (element) => element instanceof SVGElement && element.dataset.component === snapshot.componentId,
+    );
+
+    const focusTarget = target ?? null;
+    if (isFocusableElement(focusTarget)) {
+      focusTarget.focus({ preventScroll: true });
+    }
+
     return;
   }
 
@@ -156,6 +190,63 @@ function renderDetails(component: PlatformSnapshot | undefined): string {
     <p class="muted">telemetry namespace: <code>${escapeHtml(component.telemetry.namespace)}</code></p>
     <h4>Sanitized details</h4>
     <pre>${escapeHtml(JSON.stringify(component.details, null, 2))}</pre>
+  `;
+}
+
+function renderConnectionButton(component: PlatformSnapshot, relation: string): string {
+  return `<button class="connection-button" data-select-component="${escapeHtml(component.id)}" type="button">
+    <span>${escapeHtml(component.id)}</span>
+    <small>${escapeHtml(relation)} · ${escapeHtml(component.kind)} · ${escapeHtml(component.readiness.status)}</small>
+  </button>`;
+}
+
+function renderConnectionList(heading: string, emptyText: string, content: string): string {
+  return `
+    <section class="connection-group">
+      <h4>${escapeHtml(heading)}</h4>
+      ${content || `<p class="muted">${escapeHtml(emptyText)}</p>`}
+    </section>
+  `;
+}
+
+function renderConnectionExplorer(snapshot: PlatformShellSnapshot | undefined, selectedId: string | undefined): string {
+  const summary = inspectComponentConnections(snapshot, selectedId);
+  if (!summary) {
+    return '<p class="muted">Load a platform snapshot to explore component connections.</p>';
+  }
+
+  const outgoing = summary.outgoing.map((component) => renderConnectionButton(component, 'dependency')).join('');
+  const incoming = summary.incoming.map((component) => renderConnectionButton(component, 'dependent')).join('');
+  const external = summary.externalDependencies
+    .map((dependency) => `<span class="connection-pill external-pill">${escapeHtml(dependency)}</span>`)
+    .join('');
+  const diagnostics = summary.diagnostics
+    .map((issue) => `<article class="connection-diagnostic severity-${escapeHtml(issue.severity)}">
+      <strong>${escapeHtml(issue.code)}</strong>
+      <span>${escapeHtml(issue.severity)} · ${escapeHtml(issue.componentId)}</span>
+      <p>${escapeHtml(issue.message)}</p>
+    </article>`)
+    .join('');
+
+  return `
+    <div class="connection-hero">
+      <div>
+        <p class="eyebrow">Selected component</p>
+        <h3>${escapeHtml(summary.component.id)}</h3>
+        <p class="muted">${escapeHtml(summary.component.kind)} · state ${escapeHtml(summary.component.state)}</p>
+      </div>
+      <div class="connection-metrics" aria-label="Selected component connection counts">
+        <span><strong>${String(summary.outgoing.length)}</strong> internal deps</span>
+        <span><strong>${String(summary.externalDependencies.length)}</strong> external deps</span>
+        <span><strong>${String(summary.incoming.length)}</strong> dependents</span>
+      </div>
+    </div>
+    <div class="connection-grid">
+      ${renderConnectionList('Depends on', 'No internal component dependencies.', outgoing)}
+      ${renderConnectionList('Required by', 'No components depend on this selection.', incoming)}
+      ${renderConnectionList('External dependencies', 'No external dependencies.', external)}
+      ${renderConnectionList('Related diagnostics', 'No related diagnostics.', diagnostics)}
+    </div>
   `;
 }
 
@@ -268,8 +359,14 @@ function renderApp(options: RenderAppOptions | string = {}): void {
 
       <section class="card">
         <h2>Platform dependency graph</h2>
-        <p class="muted">Component dependencies are rendered directly from the shared platform snapshot schema.</p>
+        <p class="muted">Component dependencies are rendered directly from the shared platform snapshot schema. Select a node to inspect its dependency neighborhood.</p>
         <div id="graph-host">${graphSvg}</div>
+      </section>
+
+      <section class="card inspector-card">
+        <h2>Connection explorer</h2>
+        <p class="muted">Studio owns snapshot inspection and rendering: use this panel to inspect incoming and outgoing component relationships without changing CLI export semantics.</p>
+        ${renderConnectionExplorer(snapshot, selectedComponent?.id)}
       </section>
 
       <section class="split-grid">
@@ -397,6 +494,30 @@ function renderApp(options: RenderAppOptions | string = {}): void {
   document.querySelectorAll<SVGCircleElement>('[data-component]').forEach((circle) => {
     circle.addEventListener('click', () => {
       const componentId = circle.dataset.component;
+      if (!componentId) {
+        return;
+      }
+      state.selectedComponentId = componentId;
+      renderApp({ preserveFocus: true });
+    });
+    circle.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return;
+      }
+
+      event.preventDefault();
+      const componentId = circle.dataset.component;
+      if (!componentId) {
+        return;
+      }
+      state.selectedComponentId = componentId;
+      renderApp({ preserveFocus: true });
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('[data-select-component]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const componentId = button.dataset.selectComponent;
       if (!componentId) {
         return;
       }

@@ -41,7 +41,7 @@ The published package serves two caller-facing entrypoints:
 
 ## Quick Start
 
-Studio consumes JSON exports from the fluo CLI. Runtime produces snapshots, the CLI exports or delegates inspection data, and Studio owns the public helpers that parse, filter, view, and render those snapshots for viewer and automation callers. Supported inspect artifacts include raw snapshots, snapshot-plus-timing envelopes, report artifacts produced by `fluo inspect --report`, and legacy standalone timing diagnostics.
+Studio consumes JSON exports from the fluo CLI. Runtime produces snapshots, the CLI owns artifact export/write/delegation, and Studio owns the public helpers and viewer surface that parse, filter, inspect, and render those snapshots for people and automation callers. Supported inspect artifacts include raw snapshots, snapshot-plus-timing envelopes, report artifacts produced by `fluo inspect --report`, and legacy standalone timing diagnostics.
 
 1. **Export a snapshot**:
    ```bash
@@ -61,7 +61,7 @@ Studio consumes JSON exports from the fluo CLI. Runtime produces snapshots, the 
    pnpm --dir packages/studio dev
    ```
 
-3. **Load the file**: Drag and drop `snapshot.json` into the Studio web interface. Search and filter controls preserve focus while the graph, diagnostics, and summary update.
+3. **Load the file**: Drag and drop `snapshot.json` into the Studio web interface. Search and filter controls preserve focus while the graph, connection explorer, diagnostics, and summary update.
 
 ## Common Patterns
 
@@ -76,6 +76,9 @@ Use the **Diagnostics issues** section to see issues collected during the runtim
 1. Use the **Platform dependency graph** section.
 2. Select the modules or components you want to visualize.
 3. Use the **Copy Mermaid** button to get a text-based diagram for your documentation.
+
+### Exploring Component Connections
+Use the **Connection explorer** after selecting a graph node to inspect the selected component's internal dependencies, external dependencies, reverse dependents, and related diagnostics. This mirrors the Devtools-style workflow without moving snapshot production into Studio: runtime remains the producer, CLI remains the export boundary, and Studio remains the inspection and rendering surface.
 
 For automation, call `renderMermaid(snapshot)` from `@fluojs/studio` or `@fluojs/studio/contracts`. The helper is the supported snapshot-to-Mermaid contract: runtime packages remain snapshot producers, and Studio handles internal dependency edges plus external dependency nodes when rendering the graph.
 

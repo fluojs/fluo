@@ -1,5 +1,13 @@
 import type { PlatformDiagnosticIssue, PlatformShellSnapshot, PlatformSnapshot } from '@fluojs/runtime';
 
+export interface ComponentConnectionSummary {
+  component: PlatformSnapshot;
+  diagnostics: PlatformDiagnosticIssue[];
+  externalDependencies: string[];
+  incoming: PlatformSnapshot[];
+  outgoing: PlatformSnapshot[];
+}
+
 /**
  * Escapes caller-provided text before inserting it into Studio-owned HTML templates.
  *
@@ -65,6 +73,54 @@ function collectExternalDependencies(components: PlatformSnapshot[]): string[] {
   return externalDependencies;
 }
 
+/**
+ * Builds the selected component's dependency neighborhood for the Studio inspector panel.
+ *
+ * @param snapshot - Filtered platform snapshot currently shown in the viewer.
+ * @param selectedComponentId - Component id selected by the user, or `undefined` to select the first component.
+ * @returns The selected component plus incoming, outgoing, external, and diagnostic context.
+ */
+export function inspectComponentConnections(
+  snapshot: PlatformShellSnapshot | undefined,
+  selectedComponentId: string | undefined,
+): ComponentConnectionSummary | undefined {
+  if (!snapshot || snapshot.components.length === 0) {
+    return undefined;
+  }
+
+  const componentById = new Map(snapshot.components.map((component) => [component.id, component]));
+  const component = selectedComponentId ? componentById.get(selectedComponentId) ?? snapshot.components[0] : snapshot.components[0];
+
+  if (!component) {
+    return undefined;
+  }
+
+  const outgoing: PlatformSnapshot[] = [];
+  const externalDependencies: string[] = [];
+
+  for (const dependency of component.dependencies) {
+    const dependencyComponent = componentById.get(dependency);
+    if (dependencyComponent) {
+      outgoing.push(dependencyComponent);
+    } else {
+      externalDependencies.push(dependency);
+    }
+  }
+
+  const incoming = snapshot.components.filter((candidate) => candidate.id !== component.id && candidate.dependencies.includes(component.id));
+  const diagnostics = snapshot.diagnostics.filter(
+    (issue) => issue.componentId === component.id || (issue.dependsOn?.includes(component.id) ?? false),
+  );
+
+  return {
+    component,
+    diagnostics,
+    externalDependencies,
+    incoming,
+    outgoing,
+  };
+}
+
 function resolveNodePositions(snapshot: PlatformShellSnapshot, width: number, height: number): Map<string, { x: number; y: number }> {
   const radius = Math.min(width, height) / 2 - 70;
   const centerX = width / 2;
@@ -100,6 +156,13 @@ export function renderGraphSvg(snapshot: PlatformShellSnapshot, selectedComponen
   const components = snapshot.components;
   const positions = resolveNodePositions(snapshot, width, height);
   const externalDependencies = collectExternalDependencies(components);
+  const selectedComponent = selectedComponentId ? components.find((component) => component.id === selectedComponentId) : undefined;
+  const selectedDependencyIds = new Set(selectedComponent?.dependencies ?? []);
+  const selectedIncomingIds = new Set(
+    selectedComponentId
+      ? components.filter((component) => component.dependencies.includes(selectedComponentId)).map((component) => component.id)
+      : [],
+  );
 
   const edgeLines = components
     .flatMap((component: PlatformSnapshot) =>
@@ -110,7 +173,8 @@ export function renderGraphSvg(snapshot: PlatformShellSnapshot, selectedComponen
           return '';
         }
 
-        return `<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" class="edge-line" marker-end="url(#arrow)" />`;
+        const isSelectedEdge = component.id === selectedComponentId || dependency === selectedComponentId;
+        return `<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" class="edge-line${isSelectedEdge ? ' edge-selected' : ''}" marker-end="url(#arrow)" />`;
       }))
     .join('');
 
@@ -131,12 +195,14 @@ export function renderGraphSvg(snapshot: PlatformShellSnapshot, selectedComponen
         'module-node',
         readinessClass,
         component.id === selectedComponentId ? 'module-selected' : '',
+        selectedDependencyIds.has(component.id) ? 'module-neighbor' : '',
+        selectedIncomingIds.has(component.id) ? 'module-dependent' : '',
       ]
         .filter(Boolean)
         .join(' ');
 
       return `<g>
-  <circle cx="${point.x}" cy="${point.y}" r="34" class="${classes}" data-component="${escapeHtml(component.id)}" />
+  <circle cx="${point.x}" cy="${point.y}" r="34" class="${classes}" data-component="${escapeHtml(component.id)}" tabindex="0" role="button" aria-label="Inspect ${escapeHtml(component.id)}" />
   <text x="${point.x}" y="${point.y + 4}" text-anchor="middle" class="module-label">${escapeHtml(component.id)}</text>
 </g>`;
     })
@@ -149,8 +215,16 @@ export function renderGraphSvg(snapshot: PlatformShellSnapshot, selectedComponen
         return '';
       }
 
+      const classes = [
+        'module-node',
+        'component-external',
+        selectedDependencyIds.has(dependency) ? 'module-neighbor' : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+
       return `<g>
-  <rect x="${point.x - 42}" y="${point.y - 20}" width="84" height="40" rx="10" class="module-node component-external" />
+  <rect x="${point.x - 42}" y="${point.y - 20}" width="84" height="40" rx="10" class="${classes}" />
   <text x="${point.x}" y="${point.y + 4}" text-anchor="middle" class="module-label">${escapeHtml(dependency)}</text>
 </g>`;
     })

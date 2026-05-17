@@ -147,6 +147,11 @@ pre {
   stroke-width: 1.6;
 }
 
+.edge-selected {
+  stroke: #f59e0b;
+  stroke-width: 2.6;
+}
+
 .edge-arrow {
   fill: #64748b;
 }
@@ -156,6 +161,12 @@ pre {
   stroke: #64748b;
   stroke-width: 1.5;
   cursor: pointer;
+}
+
+.module-node:focus-visible {
+  outline: none;
+  stroke: #60a5fa;
+  stroke-width: 3;
 }
 
 .module-root {
@@ -183,6 +194,16 @@ pre {
 .module-selected {
   stroke: #f59e0b;
   stroke-width: 3;
+}
+
+.module-neighbor {
+  stroke: #38bdf8;
+  stroke-width: 2.6;
+}
+
+.module-dependent {
+  stroke: #a78bfa;
+  stroke-width: 2.6;
 }
 
 .module-label {
@@ -214,4 +235,116 @@ pre {
 
 a {
   color: #93c5fd;
+}
+
+.inspector-card {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.96));
+}
+
+.connection-hero {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  background: #0f172a;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: #93c5fd;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.connection-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.connection-metrics span,
+.connection-pill {
+  border: 1px solid #334155;
+  border-radius: 999px;
+  background: #111827;
+  color: #cbd5e1;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.connection-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.connection-group h4 {
+  margin: 0 0 8px;
+}
+
+.connection-button {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e5e7eb;
+  text-align: left;
+}
+
+.connection-button:hover,
+.connection-button:focus-visible {
+  border-color: #60a5fa;
+  outline: none;
+}
+
+.connection-button span,
+.connection-button small {
+  display: block;
+}
+
+.connection-button small {
+  margin-top: 4px;
+  color: #94a3b8;
+}
+
+.external-pill {
+  display: inline-block;
+  margin: 0 6px 6px 0;
+}
+
+.connection-diagnostic {
+  border-left: 3px solid #64748b;
+  padding: 8px 0 8px 10px;
+  margin-bottom: 8px;
+}
+
+.connection-diagnostic.severity-error {
+  border-left-color: #ef4444;
+}
+
+.connection-diagnostic.severity-warning {
+  border-left-color: #f59e0b;
+}
+
+.connection-diagnostic.severity-info {
+  border-left-color: #3b82f6;
+}
+
+.connection-diagnostic span {
+  display: block;
+  color: #94a3b8;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.connection-diagnostic p {
+  margin: 6px 0 0;
 }
