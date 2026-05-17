@@ -218,15 +218,19 @@ function effectiveProvidersForToken(introspection: ContainerIntrospection, token
 }
 
 function isSingletonLifecycleProvider(provider: NormalizedProvider): boolean {
-  if (provider.multi === true) {
-    return false;
-  }
-
   if (provider.scope !== Scope.DEFAULT) {
     return false;
   }
 
   return provider.type === 'class' || (provider.type === 'value' && hasAnyBootstrapLifecycleHook(provider.useValue));
+}
+
+function assertResolvedMultiProviderInstances(value: unknown, token: Token): readonly unknown[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Expected multi-provider token ${String(token)} to resolve to an array.`);
+  }
+
+  return value;
 }
 
 async function resolveTestingLifecycleInstances(bootstrapped: BootstrapResult, overrides: readonly Provider[] = []): Promise<unknown[]> {
@@ -236,6 +240,7 @@ async function resolveTestingLifecycleInstances(bootstrapped: BootstrapResult, o
     ...overrides,
   ];
   const instances: unknown[] = [];
+  const multiProviderInstances = new Map<Token, readonly unknown[]>();
   const seenProviders = new Set<NormalizedProvider>();
   const introspection = toContainerIntrospection(bootstrapped.container);
 
@@ -243,7 +248,13 @@ async function resolveTestingLifecycleInstances(bootstrapped: BootstrapResult, o
     const token = providerToken(provider);
     const effectiveProviders = effectiveProvidersForToken(introspection, token);
 
-    for (const effectiveProvider of effectiveProviders) {
+    for (let index = 0; index < effectiveProviders.length; index += 1) {
+      const effectiveProvider = effectiveProviders[index];
+
+      if (!effectiveProvider) {
+        continue;
+      }
+
       if (seenProviders.has(effectiveProvider)) {
         continue;
       }
@@ -260,6 +271,18 @@ async function resolveTestingLifecycleInstances(bootstrapped: BootstrapResult, o
       }
 
       try {
+        if (effectiveProvider.multi === true) {
+          let resolvedMultiProviders = multiProviderInstances.get(token);
+
+          if (!resolvedMultiProviders) {
+            resolvedMultiProviders = assertResolvedMultiProviderInstances(await bootstrapped.container.resolve(token), token);
+            multiProviderInstances.set(token, resolvedMultiProviders);
+          }
+
+          instances.push(resolvedMultiProviders[index]);
+          continue;
+        }
+
         instances.push(await bootstrapped.container.resolve(token));
       } catch (error) {
         if (error instanceof Error && error.message.includes('Request-scoped provider')) {
