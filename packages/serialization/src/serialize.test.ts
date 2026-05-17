@@ -200,6 +200,52 @@ describe('serialize', () => {
     expect(() => JSON.stringify(serialized)).not.toThrow();
   });
 
+  it('cuts self-referential arrays to undefined', () => {
+    const input: unknown[] = ['root'];
+    input.push(input);
+
+    const serialized = serialize(input) as unknown[];
+
+    expect(serialized).toEqual(['root', undefined]);
+    expect(() => JSON.stringify(serialized)).not.toThrow();
+  });
+
+  it('handles mixed object-array cycles without recursion', () => {
+    const input: { id: string; children: unknown[] } = {
+      children: [],
+      id: 'root',
+    };
+    input.children.push({ id: 'child', parent: input });
+
+    const serialized = serialize(input) as {
+      children: Array<{ id: string; parent?: unknown }>;
+      id: string;
+    };
+
+    expect(serialized).toEqual({
+      children: [{ id: 'child', parent: undefined }],
+      id: 'root',
+    });
+    expect(() => JSON.stringify(serialized)).not.toThrow();
+  });
+
+  it('preserves shared references across array and object boundaries', () => {
+    const shared = { id: 'shared-node' };
+    const input = {
+      items: [shared],
+      primary: shared,
+    };
+
+    const serialized = serialize(input) as {
+      items: Array<{ id: string }>;
+      primary: { id: string };
+    };
+
+    expect(serialized.items[0]).toEqual({ id: 'shared-node' });
+    expect(serialized.primary).toEqual({ id: 'shared-node' });
+    expect(serialized.primary).toBe(serialized.items[0]);
+  });
+
   it('preserves shared references instead of dropping revisited objects', () => {
     const shared = { id: 'shared-node' };
     const input = {

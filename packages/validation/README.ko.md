@@ -136,6 +136,13 @@ class RestrictedUserDto {
 
 `ValidateClass(...)`는 custom class-level validator도 받을 수 있습니다. `Validate(...)`는 built-in decorator만으로 부족할 때 custom field-level validator를 붙이고, `ValidateIf(...)`는 predicate가 false를 반환하면 dependent validator를 short-circuit합니다.
 
+### 네트워크 검증기
+
+`@IsIP()`는 기본적으로 IPv4와 IPv6 문자열을 모두 검증합니다. 한 IP 버전으로
+제한하려면 `@IsIP('4')` 또는 `@IsIP('6')`을 전달하세요.
+`@IsIP('4_or_6')`은 `@IsIP()`와 같은 런타임 동작을 유지하면서 "IPv4 또는
+IPv6 모두 허용" 계약을 명시하고 싶을 때 사용할 수 있습니다.
+
 ### 중첩 검증
 
 `@ValidateNested(...)`는 객체 필드, 배열, `Set`, `Map`을 지원합니다. 중첩 DTO path는 validation issue에서 dot/index 표기법을 사용하며, cycle은 안전하게 감지되고 shared reference는 허용됩니다.

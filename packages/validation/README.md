@@ -140,6 +140,13 @@ class RestrictedUserDto {
 
 `ValidateClass(...)` also accepts custom class-level validators. `Validate(...)` attaches custom field-level validators when built-in decorators are not enough, and `ValidateIf(...)` short-circuits dependent validators when its predicate returns false.
 
+### Network validators
+
+`@IsIP()` validates IPv4 and IPv6 strings by default. Pass `@IsIP('4')` or
+`@IsIP('6')` to restrict a field to one IP version, or pass
+`@IsIP('4_or_6')` when you want to state the default "either IPv4 or IPv6"
+contract explicitly while still using the same runtime behavior as `@IsIP()`.
+
 ### Nested validation
 
 `@ValidateNested(...)` supports object fields, arrays, `Set`, and `Map`. Nested DTO paths use dot/index notation in validation issues, cycles are detected safely, and shared references are allowed.

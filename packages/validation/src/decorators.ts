@@ -1,6 +1,6 @@
-import {
-  type Constructor,
-  type MetadataPropertyKey,
+import type {
+  Constructor,
+  MetadataPropertyKey,
 } from '@fluojs/core';
 import {
   ensureMetadataSymbol,
@@ -611,14 +611,18 @@ export const IsLongitude = (options?: ValidationDecoratorOptions) => createValid
 export const IsLatLong = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('latLong')(undefined, options);
 
 /**
- *  Validates that a value is an IPv4/IPv6 address.
+ * Validates that a value is an IPv4 and/or IPv6 address.
  *
- * @param version The version.
- * @param options The options.
- * @returns The is ip result.
+ * Passing `'4_or_6'` preserves the default validator.js behavior and accepts
+ * either IP version. Passing `'4'` or `'6'` restricts validation to that
+ * version only.
+ *
+ * @param version Optional IP version filter (`'4'`, `'6'`, or `'4_or_6'`).
+ * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @returns A field decorator that registers an IP-address rule.
  */
 export function IsIP(version?: '4' | '6' | '4_or_6', options?: ValidationDecoratorOptions): FieldDecoratorFn {
-  return createValidatorJsDecorator('ip')(version ? [version] : undefined, options);
+  return createValidatorJsDecorator('ip')(version && version !== '4_or_6' ? [version] : undefined, options);
 }
 
 /**

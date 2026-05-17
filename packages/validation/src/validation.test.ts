@@ -5,7 +5,7 @@ import { z } from 'zod';
 
 import { DefaultValidator } from './validation.js';
 import { DtoValidationError } from './errors.js';
-import { ArrayUnique, IsDateString, IsEmail, IsLatitude, IsLongitude, IsNotEmpty, IsNumber, IsString, MinLength, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
+import { ArrayUnique, IsDateString, IsEmail, IsIP, IsLatitude, IsLongitude, IsNotEmpty, IsNumber, IsString, MinLength, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
 import type { StandardSchemaV1Like } from './index.js';
 
 describe('DefaultValidator', () => {
@@ -38,6 +38,54 @@ describe('DefaultValidator', () => {
       validator.validate(Object.assign(new CreateScheduleDto(), { scheduledAt: 'March 30, 2026' }), CreateScheduleDto),
     ).rejects.toMatchObject({
       issues: [{ field: 'scheduledAt', message: 'scheduledAt must be a valid ISO-8601 date string' }],
+    });
+  });
+
+  it('treats IsIP 4_or_6 as the default IPv4 or IPv6 contract', async () => {
+    class NetworkDto {
+      @IsIP('4_or_6', { message: 'address must be IPv4 or IPv6' })
+      address = '';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(Object.assign(new NetworkDto(), { address: '127.0.0.1' }), NetworkDto),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      validator.validate(Object.assign(new NetworkDto(), { address: '2001:db8::1' }), NetworkDto),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      validator.validate(Object.assign(new NetworkDto(), { address: 'not-an-ip-address' }), NetworkDto),
+    ).rejects.toMatchObject({
+      issues: [{ field: 'address', message: 'address must be IPv4 or IPv6' }],
+    });
+  });
+
+  it('restricts IsIP validation to IPv4 or IPv6 when a version is provided', async () => {
+    class NetworkDto {
+      @IsIP('4', { message: 'ipv4 must be IPv4' })
+      ipv4 = '';
+
+      @IsIP('6', { message: 'ipv6 must be IPv6' })
+      ipv6 = '';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(Object.assign(new NetworkDto(), { ipv4: '127.0.0.1', ipv6: '2001:db8::1' }), NetworkDto),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      validator.validate(Object.assign(new NetworkDto(), { ipv4: '2001:db8::1', ipv6: '127.0.0.1' }), NetworkDto),
+    ).rejects.toMatchObject({
+      issues: [
+        { field: 'ipv4', message: 'ipv4 must be IPv4' },
+        { field: 'ipv6', message: 'ipv6 must be IPv6' },
+      ],
     });
   });
 
@@ -358,16 +406,23 @@ describe('DefaultValidator', () => {
     }
 
     const validator = new DefaultValidator();
-    const payload = JSON.parse('{"child":{"city":"Seoul","__proto__":{"polluted":true}}}') as {
-      child: { city: string; __proto__: { polluted: boolean } };
-    };
+    const dangerousPayloads = [
+      JSON.parse('{"child":{"city":"Seoul","__proto__":{"polluted":true}}}') as Record<string, unknown>,
+      { child: { city: 'Seoul', constructor: { polluted: true } } },
+      { child: { city: 'Seoul', prototype: { polluted: true } } },
+    ];
 
-    const result = await validator.materialize<ParentDto>(payload, ParentDto);
+    for (const payload of dangerousPayloads) {
+      const result = await validator.materialize<ParentDto>(payload, ParentDto);
 
-    expect(result.child).toBeInstanceOf(ChildDto);
-    expect(result.child.city).toBe('Seoul');
-    expect(Object.getPrototypeOf(result.child)).toBe(ChildDto.prototype);
-    expect('polluted' in (result.child as object)).toBe(false);
+      expect(result.child).toBeInstanceOf(ChildDto);
+      expect(result.child.city).toBe('Seoul');
+      expect(Object.getPrototypeOf(result.child)).toBe(ChildDto.prototype);
+      expect(Object.hasOwn(result.child, '__proto__')).toBe(false);
+      expect(Object.hasOwn(result.child, 'constructor')).toBe(false);
+      expect(Object.hasOwn(result.child, 'prototype')).toBe(false);
+      expect('polluted' in (result.child as object)).toBe(false);
+    }
   });
 
   it('materialize throws DtoValidationError on invalid input', async () => {
@@ -797,6 +852,29 @@ describe('DefaultValidator', () => {
         { code: 'CUSTOM_PREFIX', field: 'entries[1]', message: 'entry must start with ok' },
         { code: 'CUSTOM_POSITIVE', field: 'counts[1]', message: 'count must be positive' },
       ],
+    });
+  });
+
+  it('supports custom validators on scalar fields', async () => {
+    class CustomScalarDto {
+      @Validate((value: unknown) => (
+        typeof value === 'string' && value.startsWith('token_')
+          ? true
+          : { code: 'CUSTOM_TOKEN', message: 'token must use the token_ prefix' }
+      ))
+      token = '';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(Object.assign(new CustomScalarDto(), { token: 'token_123' }), CustomScalarDto),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      validator.validate(Object.assign(new CustomScalarDto(), { token: 'bad' }), CustomScalarDto),
+    ).rejects.toMatchObject({
+      issues: [{ code: 'CUSTOM_TOKEN', field: 'token', message: 'token must use the token_ prefix' }],
     });
   });
 

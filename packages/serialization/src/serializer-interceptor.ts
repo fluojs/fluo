@@ -8,7 +8,9 @@ import { serialize } from './serialize.js';
  * @remarks
  * Use this at the controller or route level when handlers return class instances
  * and you want `@Expose()`, `@Exclude()`, and `@Transform()` metadata applied
- * automatically.
+ * automatically. If the handler already committed `RequestContext.response`,
+ * the interceptor returns the handler-owned value unchanged so streaming and
+ * manually written responses keep their response ownership.
  */
 export class SerializerInterceptor implements Interceptor {
   async intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {

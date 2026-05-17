@@ -103,7 +103,7 @@ class UsersController {
 
 ### 순환 참조 처리
 
-fluo의 직렬화 엔진은 활성 순환 참조를 자동으로 감지하고 `undefined`로 절단하여 무한 루프와 스택 오버플로를 방지합니다. 이미 직렬화가 끝난 공유 참조는 삭제하지 않고 직렬화된 그래프 안에서 재사용합니다. 예를 들어 두 sibling 필드가 같은 원본 객체를 가리키면 두 직렬화 결과도 같은 직렬화 객체를 가리키며, 현재 직렬화 중인 객체를 다시 만나는 활성 cycle만 `undefined`로 절단됩니다.
+fluo의 직렬화 엔진은 활성 순환 참조를 자동으로 감지하고 `undefined`로 절단하여 무한 루프와 스택 오버플로를 방지합니다. 같은 reference tracker가 class instance, plain object, 배열, mixed object-array graph 전체에서 공유됩니다. 자기 자신을 참조하는 배열과 object-array cycle은 활성 back edge에서 절단되고, 이미 직렬화가 끝난 공유 참조는 삭제하지 않고 직렬화된 그래프 안에서 재사용합니다. 예를 들어 두 sibling 필드 또는 객체 필드와 배열 항목이 같은 원본 객체를 가리키면 두 직렬화 결과도 같은 직렬화 객체를 가리키며, 현재 직렬화 중인 값을 다시 만나는 활성 cycle만 `undefined`로 절단됩니다.
 
 ### 상속된 데코레이터 계약
 
@@ -124,8 +124,8 @@ Decorated metadata가 없는 class instance도 재귀적으로 순회하므로, 
 ## 공개 API 개요
 
 - **데코레이터**: `Expose`, `Exclude`, `Transform`
-- **엔진**: `serialize(value)`
-- **HTTP 통합**: `SerializerInterceptor`
+- **엔진**: `serialize(value)`는 class instance, 배열, plain object, mixed graph를 재귀적으로 순회하며, 직접 transform하지 않은 opaque built-in 및 non-JSON leaf 값은 보존합니다.
+- **HTTP 통합**: `SerializerInterceptor`는 아직 commit되지 않은 handler 결과를 직렬화하고, response가 이미 commit된 뒤에는 handler 소유 값을 그대로 반환합니다.
 
 `Expose`는 class와 field에 적용할 수 있습니다. `Exclude`와 `Transform`은 field에 적용합니다.
 
