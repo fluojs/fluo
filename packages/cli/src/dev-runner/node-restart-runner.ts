@@ -309,7 +309,22 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
       env,
       stdio: 'inherit',
     });
+    let childSettled = false;
+    child.once('error', (error) => {
+      if (childSettled) {
+        return;
+      }
+      childSettled = true;
+      restarting = false;
+      stderr.write(`[fluo] failed to start app child: ${error.message}\n`);
+      cleanup();
+      resolveExitCode(1);
+    });
     child.once('close', (code) => {
+      if (childSettled) {
+        return;
+      }
+      childSettled = true;
       if (restarting) {
         return;
       }

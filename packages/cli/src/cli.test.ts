@@ -469,6 +469,36 @@ describe('CLI command runner', () => {
   });
 
   it.each([
+    ['--no-update-notifier flag', ['--no-update-notifier', 'analyze'], updateCheckEnv],
+    ['FLUO_NO_UPDATE_CHECK env', ['analyze'], { ...updateCheckEnv, FLUO_NO_UPDATE_CHECK: '1' }],
+    ['npm lifecycle event env', ['analyze'], { ...updateCheckEnv, npm_lifecycle_event: 'dev' }],
+    ['npm lifecycle script env', ['analyze'], { ...updateCheckEnv, npm_lifecycle_script: 'fluo dev' }],
+    ['rerun-after-update env', ['analyze'], { ...updateCheckEnv, FLUO_UPDATE_CHECK_REEXEC: '1' }],
+  ] as const)('skips update checks for %s', async (_caseName, argv, env) => {
+    let fetchCount = 0;
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli([...argv], {
+      env,
+      stderr: createTtyBufferStream([]),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async (): Promise<string> => {
+          fetchCount += 1;
+          return '1.0.0-beta.2';
+        },
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(fetchCount).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('fluo analyze');
+  });
+
+  it.each([
     ['help'],
     ['help', 'info'],
     ['--help'],
@@ -2074,6 +2104,41 @@ void bootstrap();
 
     children[1]?.emit('close', 0);
     await expect(runPromise).resolves.toBe(0);
+  });
+
+  it('cleans up and resolves with failure when spawning the app child fails', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'console.log("hello");\n');
+    const signalTarget = createSignalTarget();
+    const stderrBuffer: string[] = [];
+    let watcherClosed = false;
+
+    const runPromise = runNodeRestartRunner({
+      env: {},
+      projectDirectory: workspaceDirectory,
+      signalTarget: signalTarget.target,
+      spawnChild: () => {
+        const child = createMockChild();
+        queueMicrotask(() => {
+          child.emit('error', new Error('spawn ENOENT'));
+          child.emit('close', 0);
+        });
+        return child;
+      },
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      watchTarget: () => ({
+        close: () => {
+          watcherClosed = true;
+        },
+      }) as never,
+    });
+
+    await expect(runPromise).resolves.toBe(1);
+    expect(stderrBuffer.join('')).toContain('[fluo] failed to start app child: spawn ENOENT');
+    expect(watcherClosed).toBe(true);
+    expect(signalTarget.offCalls).toEqual(['SIGINT', 'SIGTERM']);
   });
 
   it('does not advance the restart content baseline while the previous child is still closing', async () => {
