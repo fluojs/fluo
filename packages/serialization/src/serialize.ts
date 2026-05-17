@@ -263,10 +263,13 @@ function serializeInternal<T = unknown>(value: T, context: SerializationContext)
 }
 
 /**
- * Serializes class instances and object graphs into plain response-shaped values.
+ * Serializes class instances, arrays, plain records, and mixed object graphs
+ * into plain response-shaped values.
  *
  * Serialization honors `@Expose()`, `@Exclude()`, and `@Transform()` metadata.
- * Cycles and repeated references are handled without unbounded recursion.
+ * Cycles and repeated references are handled without unbounded recursion across
+ * both object and array boundaries. Active cycles are cut to `undefined`, while
+ * completed shared references reuse the previously serialized value.
  * Opaque built-ins and non-JSON leaf values such as `Date`, `Map`, `Set`, `URL`, `Error`, `bigint`, functions, and symbols pass through unchanged unless you normalize them before or during serialization.
  *
  * @typeParam T Input value type.
