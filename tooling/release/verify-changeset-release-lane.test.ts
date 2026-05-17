@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -14,6 +14,12 @@ function createChangesetDirectory() {
 
 function writeChangeset(directory: string, fileName: string, frontmatter: string) {
   writeFileSync(join(directory, fileName), `---\n${frontmatter}\n---\n\nRelease note.\n`, 'utf8');
+}
+
+function writePackageChangelog(directory: string, packageDirectory: string, changelog: string) {
+  const targetDirectory = join(directory, packageDirectory);
+  mkdirSync(targetDirectory, { recursive: true });
+  writeFileSync(join(targetDirectory, 'CHANGELOG.md'), changelog, 'utf8');
 }
 
 afterEach(() => {
@@ -64,10 +70,64 @@ describe('verifyChangesetReleaseLane', () => {
             previousVersion: '1.0.0',
           },
         ],
+        collectDependencyOnlyMajorVersionDeltas: () => [],
       },
     );
 
     expect(result.checkedVersionDeltas).toMatchObject([{ bump: 'patch' }, { bump: 'minor' }, { bump: 'major' }]);
+  });
+
+  it('rejects major package version deltas without major changelog evidence', () => {
+    const directory = createChangesetDirectory();
+    writePackageChangelog(
+      directory,
+      'packages/i18n',
+      `# @fluojs/i18n\n\n## 2.0.0\n\n### Patch Changes\n\n- Updated dependencies:\n  - @fluojs/http@1.1.0\n`,
+    );
+
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        {
+          collectPackageVersionDeltas: () => [
+            {
+              bump: 'major',
+              filePath: 'packages/i18n/package.json',
+              nextVersion: '2.0.0',
+              packageName: '@fluojs/i18n',
+              previousVersion: '1.0.2',
+            },
+          ],
+          existsSync: (targetPath: string) => targetPath.endsWith('packages/i18n/CHANGELOG.md'),
+          readFileSync: () =>
+            `# @fluojs/i18n\n\n## 2.0.0\n\n### Patch Changes\n\n- Updated dependencies:\n  - @fluojs/http@1.1.0\n`,
+        },
+      ),
+    ).toThrow(/dependency-only major package version deltas/u);
+  });
+
+  it('allows major package version deltas with major changelog evidence', () => {
+    const directory = createChangesetDirectory();
+
+    const result = verifyChangesetReleaseLane(
+      { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+      {
+        collectPackageVersionDeltas: () => [
+          {
+            bump: 'major',
+            filePath: 'packages/runtime/package.json',
+            nextVersion: '2.0.0',
+            packageName: '@fluojs/runtime',
+            previousVersion: '1.0.0',
+          },
+        ],
+        existsSync: (targetPath: string) => targetPath.endsWith('packages/runtime/CHANGELOG.md'),
+        readFileSync: () =>
+          `# @fluojs/runtime\n\n## 2.0.0\n\n### Major Changes\n\n- Remove a deprecated public API.\n`,
+      },
+    );
+
+    expect(result.checkedDependencyOnlyMajorVersionDeltas).toEqual([]);
   });
 
   it('allows all semver bump intents on the prerelease lane', () => {

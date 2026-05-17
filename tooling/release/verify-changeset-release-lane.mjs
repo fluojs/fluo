@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -222,6 +222,67 @@ function collectPackageVersionDeltas(baseRef, dependencies = {}) {
   });
 }
 
+function packageChangelogPathForPackageJson(packageJsonPath) {
+  return join(dirname(packageJsonPath), 'CHANGELOG.md');
+}
+
+function changelogSectionForVersion(changelog, version) {
+  const heading = `## ${version}`;
+  const headingIndex = changelog.indexOf(heading);
+
+  if (headingIndex === -1) {
+    return null;
+  }
+
+  const nextHeadingIndex = changelog.indexOf('\n## ', headingIndex + heading.length);
+
+  return nextHeadingIndex === -1 ? changelog.slice(headingIndex) : changelog.slice(headingIndex, nextHeadingIndex);
+}
+
+function collectDependencyOnlyMajorVersionDeltas(versionDeltas, dependencies = {}) {
+  const { existsSync: pathExists = existsSync, readFileSync: readFile = readFileSync } = dependencies;
+
+  return versionDeltas.flatMap((delta) => {
+    if (delta.bump !== 'major') {
+      return [];
+    }
+
+    const changelogPath = packageChangelogPathForPackageJson(delta.filePath);
+
+    if (!pathExists(join(repoRoot, changelogPath))) {
+      return [
+        {
+          ...delta,
+          changelogPath,
+          reason: `missing ${changelogPath}`,
+        },
+      ];
+    }
+
+    const section = changelogSectionForVersion(readFile(join(repoRoot, changelogPath), 'utf8'), delta.nextVersion);
+
+    if (!section) {
+      return [
+        {
+          ...delta,
+          changelogPath,
+          reason: `missing changelog section for ${delta.nextVersion}`,
+        },
+      ];
+    }
+
+    return section.includes('### Major Changes')
+      ? []
+      : [
+          {
+            ...delta,
+            changelogPath,
+            reason: 'major version delta only has dependency/patch changelog entries',
+          },
+        ];
+  });
+}
+
 export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
   const baseRef = options.baseRef;
   const changesetDirectory = options.changesetDirectory ?? defaultChangesetDirectory;
@@ -240,8 +301,11 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
   const disallowedVersionDeltas = versionDeltas.filter(
     (delta) => validBumps.has(delta.bump) && !allowedBumps.has(delta.bump),
   );
+  const dependencyOnlyMajorVersionDeltas = typeof dependencies.collectDependencyOnlyMajorVersionDeltas === 'function'
+    ? dependencies.collectDependencyOnlyMajorVersionDeltas(versionDeltas)
+    : collectDependencyOnlyMajorVersionDeltas(versionDeltas, dependencies);
 
-  if (disallowed.length > 0 || disallowedVersionDeltas.length > 0) {
+  if (disallowed.length > 0 || disallowedVersionDeltas.length > 0 || dependencyOnlyMajorVersionDeltas.length > 0) {
     const details = disallowed
       .map((intent) => `${intent.packageName}@${intent.bump} (${intent.filePath})`)
       .join('\n  - ');
@@ -254,14 +318,28 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     const sections = [
       details.length > 0 ? `changesets:\n  - ${details}` : '',
       versionDetails.length > 0 ? `package version deltas:\n  - ${versionDetails}` : '',
+      dependencyOnlyMajorVersionDeltas.length > 0
+        ? `dependency-only major package version deltas:\n  - ${dependencyOnlyMajorVersionDeltas
+            .map(
+              (delta) =>
+                `${delta.packageName}@major (${delta.previousVersion} -> ${delta.nextVersion}, ${delta.filePath}, ${delta.changelogPath}: ${delta.reason})`,
+            )
+            .join('\n  - ')}`
+        : '',
     ].filter((section) => section.length > 0);
 
     throw new Error(
-      `Changeset release lane check failed: the ${lane} lane only allows ${[...allowedBumps].join(', ')} changesets and package version bumps:\n${sections.join('\n')}`,
+      `Changeset release lane check failed: the ${lane} lane only allows ${[...allowedBumps].join(', ')} changesets and package version bumps with matching major changelog evidence:\n${sections.join('\n')}`,
     );
   }
 
-  return { allowedBumps: [...allowedBumps], checkedIntents: intents, checkedVersionDeltas: versionDeltas, lane };
+  return {
+    allowedBumps: [...allowedBumps],
+    checkedDependencyOnlyMajorVersionDeltas: dependencyOnlyMajorVersionDeltas,
+    checkedIntents: intents,
+    checkedVersionDeltas: versionDeltas,
+    lane,
+  };
 }
 
 export function main(argv = process.argv.slice(2)) {
