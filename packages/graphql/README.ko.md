@@ -109,6 +109,7 @@ class UserResolver {
 - `@fluojs/graphql`은 HTTP GraphQL 요청 또는 WebSocket subscription operation마다 operation-scoped DI 컨테이너를 하나 만들고, 해당 operation 안의 resolver 호출들이 이를 공유하며, operation 완료 또는 WebSocket operation 종료 시 dispose합니다.
 - Resolver 메서드는 `GraphQLContext`를 받으며, 내장 필드에는 fluo `request`, middleware 또는 guard가 설정한 인증된 HTTP `principal`, WebSocket subscription의 `connectionParams`와 `socket`, 그리고 `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드가 포함됩니다.
 - Request-scoped DataLoader helper는 같은 `GraphQLContext` operation 경계를 사용하므로 loader cache는 하나의 GraphQL operation 안에서만 공유됩니다.
+- 애플리케이션 shutdown은 WebSocket transport를 등록 해제하고, 살아 있는 WebSocket client를 닫으며, 아직 활성 상태인 WebSocket operation container를 정상 operation 완료 때와 같은 request-scoped provider teardown 경로로 dispose합니다.
 
 ```typescript
 import { Inject, Scope } from '@fluojs/core';
@@ -161,9 +162,12 @@ GraphqlModule.forRoot({
 
 - `graphiql`을 명시적으로 켜거나 `introspection: true`를 설정하지 않으면 스키마 introspection은 기본적으로 비활성화됩니다.
 - 문서 depth, field complexity, aggregate query cost에 대한 request validation budget이 기본적으로 보수적인 값으로 활성화됩니다.
+- `graphiql` 기본값은 `false`입니다. `introspection`은 명시하지 않으면 `graphiql` 설정을 따르므로, production 앱은 기본적으로 비공개 상태를 유지하고 로컬 GraphiQL 세션만 opt in할 수 있습니다.
+- `limits`에는 request validation budget을 전달하거나 `false`를 전달할 수 있습니다. `false`는 fluo 밖에서 동등한 제어를 적용할 때만 사용하세요.
 - Streaming GraphQL 응답은 downstream response stream이 닫히거나 오류를 내면 upstream fetch body를 cancel하므로 SSE subscription 리소스를 즉시 해제합니다.
 - GraphQL 스키마 해석 이후 bootstrap이 실패하면 임시 `graphql/jsutils/instanceOf` 패치를 원복한 뒤 원래 오류를 다시 던지므로, 실패한 시작 시도가 이후 애플리케이션 시작의 process-wide GraphQL 동작을 오염시키지 않습니다.
 - WebSocket 구독 경로에는 별도의 전송 budget이 기본 적용됩니다: 동시 연결 `100`, 최대 payload 크기 `64 KiB`, 연결당 활성 operation `25`개입니다.
+- `subscriptions.websocket.enabled` 기본값은 `false`입니다. 활성화하려면 upgrade를 지원하는 Node HTTP/S adapter가 필요합니다. `connectionInitWaitTimeoutMs`는 연결 초기화를 위해 `graphql-ws`로 전달되고, `keepAliveMs`는 설정 시 WebSocket keepalive ping 주기를 제어합니다.
 - 무제한 WebSocket 동작이 정말 필요할 때만 `subscriptions.websocket.limits = false`를 사용하고, 그 경우에도 동일한 수준의 외부 제어 수단을 마련해야 합니다.
 - 무제한 동작이 꼭 필요할 때만 `limits: false`를 사용하고, 그 경우에는 외부 제어 수단을 함께 두어야 합니다.
 

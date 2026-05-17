@@ -104,6 +104,7 @@ Memory-only consumers can keep importing from `@fluojs/cache-manager` without in
 CacheModule.forRoot({
   store: 'redis',
   ttl: 600,
+  keyPrefix: 'myapp:cache:',
 })
 ```
 
@@ -124,7 +125,7 @@ The built-in `RedisStore` persists entries with `JSON.stringify(...)`. Cache val
 
 Positive Redis TTL values are accepted in seconds and may be fractional. Redis expiry is rounded up to the next whole second because Redis `EX` uses integer seconds, while fluo also records the millisecond-precision expiry timestamp in the stored entry and treats the value as expired once that timestamp is reached. Use `ttl: 0` when you intentionally want no Redis expiry.
 
-Redis reset ownership is scoped by `keyPrefix`, which defaults to `fluo:cache:`. `CacheService.reset()` deletes only keys under that prefix for Redis-backed stores, so application-owned Redis data outside the cache prefix is preserved. If you intentionally configure an empty `keyPrefix`, reset is limited to keys written by the current `RedisStore` instance instead of scanning `*`; use a non-empty, application-specific prefix when you need reset to cover cache entries across restarts or multiple processes.
+Redis reset ownership is scoped by the top-level `keyPrefix` option, which defaults to `fluo:cache:` and is passed through to the built-in `RedisStore` namespace. `CacheService.reset()` deletes only keys under that prefix for Redis-backed stores, so application-owned Redis data outside the cache prefix is preserved. If you intentionally configure an empty `keyPrefix`, reset is limited to keys written by the current `RedisStore` instance instead of scanning `*`; use a non-empty, application-specific prefix when you need reset to cover cache entries across restarts or multiple processes.
 
 ### Query-Sensitive Caching
 
@@ -191,12 +192,12 @@ For non-GET handlers decorated with `@CacheEvict(...)`, eviction is deferred unt
 ## Public API Overview
 
 ### Modules
-- `CacheModule.forRoot(options)`: Configures the cache store (memory/redis/custom), default TTL, key strategies, `global`, `principalScopeResolver`, and Redis options such as `redis.scanCount`.
+- `CacheModule.forRoot(options)`: Configures the cache store (memory/redis/custom), default TTL, key strategies, `global`, `principalScopeResolver`, the Redis namespace `keyPrefix`, and Redis options such as `redis.scanCount`.
   This is the primary package entrypoint for application modules.
 
 
 ### Services
-- `CacheService`: Main API for manual cache operations (`get`, `set`, `del`, `remember`, `reset`, `close`).
+- `CacheService`: Main API for manual cache operations (`get`, `set`, `del`, `remember`, `reset`, `close`). Application shutdown calls the same `close()` path, which forwards teardown to custom stores exposing `close()` or `dispose()`.
 
 ### Decorators
 - `@CacheTTL(seconds)`: Sets the TTL for a specific handler.

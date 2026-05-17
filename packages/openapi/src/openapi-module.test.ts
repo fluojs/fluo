@@ -2202,6 +2202,7 @@ describe('OpenApiModule', () => {
 
     const openApiModule = OpenApiModule.forRoot(options);
 
+    descriptors[0]!.route.path = '/descriptor-mutated';
     descriptors.push(...createHandlerMapping([{ controllerToken: DescriptorMutatedController }]).descriptors);
     extraModels.push(MutatedExtraModel);
     sources.push({ controllerToken: MutatedController });
@@ -2270,6 +2271,53 @@ describe('OpenApiModule', () => {
     expect(document.components?.schemas?.MutatedExtraModel).toBeUndefined();
     expect(docsResponse.body).toEqual(expect.stringContaining('https://assets.example.test/original.css'));
     expect(docsResponse.body).not.toEqual(expect.stringContaining('https://assets.example.test/mutated.css'));
+  });
+
+  it('serves defensive OpenAPI document copies so response mutation cannot alter the singleton document', async () => {
+    @Controller('/copy-stable')
+    class CopyStableController {
+      @Get('/')
+      getCopyStable() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [CopyStableController],
+      imports: [
+        OpenApiModule.forRoot({
+          sources: [{ controllerToken: CopyStableController }],
+          title: 'Copy Stable API',
+          version: '1.0.0',
+        }),
+      ],
+    });
+
+    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const firstResponse = createResponse();
+    const secondResponse = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), firstResponse);
+
+    const firstDocument = firstResponse.body as {
+      info: { title: string };
+      paths: Record<string, unknown>;
+    };
+    firstDocument.info.title = 'Mutated by caller';
+    firstDocument.paths['/copy-mutated'] = { get: {} };
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), secondResponse);
+
+    const secondDocument = secondResponse.body as {
+      info: { title: string };
+      paths: Record<string, unknown>;
+    };
+
+    expect(secondDocument.info.title).toBe('Copy Stable API');
+    expect(secondDocument.paths['/copy-stable']).toBeDefined();
+    expect(secondDocument.paths['/copy-mutated']).toBeUndefined();
   });
 
   it('snapshots resolved forRootAsync options before serving docs', async () => {

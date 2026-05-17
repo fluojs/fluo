@@ -7,7 +7,7 @@ import {
   type HandlerSource,
   type RequestContext,
 } from '@fluojs/http';
-import { Inject, type AsyncModuleOptions, type Constructor, type InjectionToken, type MaybePromise, type Token } from '@fluojs/core';
+import { Inject, type AsyncModuleOptions, type Constructor, type InjectionToken, type MaybePromise } from '@fluojs/core';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { OpenApiHandlerRegistry } from './handler-registry.js';
@@ -17,6 +17,7 @@ import {
   type OpenApiDocument,
   type OpenApiSecuritySchemeObject,
 } from './schema-builder.js';
+import { cloneSnapshotValue, createFrozenSnapshot } from './snapshot.js';
 
 const SWAGGER_UI_DIST_VERSION = '5.32.2';
 const SWAGGER_UI_DIST_BASE_URL = `https://unpkg.com/swagger-ui-dist@${SWAGGER_UI_DIST_VERSION}`;
@@ -85,42 +86,8 @@ function cloneRecord<T>(record: Record<string, T> | undefined): Record<string, T
   return clone;
 }
 
-function cloneSnapshotValue<T>(value: T): T {
-  if (value === null || value === undefined) {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((entry) => cloneSnapshotValue(entry)) as T;
-  }
-
-  if (typeof value !== 'object') {
-    return value;
-  }
-
-  const clone: Record<PropertyKey, unknown> = {};
-
-  for (const key of Reflect.ownKeys(value)) {
-    clone[key] = cloneSnapshotValue((value as Record<PropertyKey, unknown>)[key]);
-  }
-
-  return clone as T;
-}
-
-function deepFreeze<T>(value: T): T {
-  if (value === null || typeof value !== 'object') {
-    return value;
-  }
-
-  for (const key of Reflect.ownKeys(value)) {
-    deepFreeze((value as Record<PropertyKey, unknown>)[key]);
-  }
-
-  return Object.freeze(value);
-}
-
 function snapshotOpenApiModuleOptions(options: OpenApiModuleOptions): OpenApiModuleOptions {
-  return deepFreeze({
+  return createFrozenSnapshot({
     defaultErrorResponsesPolicy: options.defaultErrorResponsesPolicy,
     descriptors: options.descriptors ? cloneSnapshotValue(options.descriptors) : undefined,
     documentTransform: options.documentTransform,
@@ -255,7 +222,7 @@ export class OpenApiModule {
 
       @Get('/openapi.json')
       getDocument() {
-        return this.document;
+        return cloneSnapshotValue(this.document);
       }
 
       @Get('/docs')
@@ -294,7 +261,7 @@ export class OpenApiModule {
 
             registry.setDescriptors(resolveOpenApiDescriptors(options));
 
-            return buildOpenApiDocument({
+            return createFrozenSnapshot(buildOpenApiDocument({
               documentTransform: options.documentTransform,
               defaultErrorResponsesPolicy: options.defaultErrorResponsesPolicy,
               descriptors: registry.getDescriptors(),
@@ -302,7 +269,7 @@ export class OpenApiModule {
               securitySchemes: options.securitySchemes,
               title: options.title,
               version: options.version,
-            });
+            }));
           },
         },
       ],

@@ -104,6 +104,7 @@ memory-only 소비자는 `@fluojs/redis`나 `ioredis`를 설치하지 않아도 
 CacheModule.forRoot({
   store: 'redis',
   ttl: 600,
+  keyPrefix: 'myapp:cache:',
 })
 ```
 
@@ -124,7 +125,7 @@ CacheModule.forRoot({
 
 양수 Redis TTL 값은 초 단위로 받으며 소수도 허용됩니다. Redis `EX`는 정수 초를 사용하므로 Redis 만료 시간은 다음 정수 초로 올림하지만, fluo는 저장된 엔트리 안에 밀리초 정밀도의 만료 timestamp도 기록하고 해당 timestamp에 도달하면 값을 만료된 것으로 처리합니다. Redis 만료를 의도적으로 사용하지 않으려면 `ttl: 0`을 사용하세요.
 
-Redis reset 소유권은 기본값이 `fluo:cache:`인 `keyPrefix`로 제한됩니다. Redis 기반 저장소에서 `CacheService.reset()`은 해당 prefix 아래의 키만 삭제하므로, cache prefix 밖의 애플리케이션 소유 Redis 데이터는 유지됩니다. 의도적으로 빈 `keyPrefix`를 설정하면 reset은 `*`를 scan하지 않고 현재 `RedisStore` 인스턴스가 쓴 키로만 제한됩니다. 재시작 이후나 여러 프로세스에 걸친 캐시 엔트리까지 reset해야 한다면 비어 있지 않은 애플리케이션 전용 prefix를 사용하세요.
+Redis reset 소유권은 기본값이 `fluo:cache:`이며 내장 `RedisStore` namespace로 전달되는 top-level `keyPrefix` 옵션으로 제한됩니다. Redis 기반 저장소에서 `CacheService.reset()`은 해당 prefix 아래의 키만 삭제하므로, cache prefix 밖의 애플리케이션 소유 Redis 데이터는 유지됩니다. 의도적으로 빈 `keyPrefix`를 설정하면 reset은 `*`를 scan하지 않고 현재 `RedisStore` 인스턴스가 쓴 키로만 제한됩니다. 재시작 이후나 여러 프로세스에 걸친 캐시 엔트리까지 reset해야 한다면 비어 있지 않은 애플리케이션 전용 prefix를 사용하세요.
 
 ### 쿼리 매개변수 기반 캐싱
 
@@ -191,12 +192,12 @@ defineModule(ManualCacheModule, {
 ## 공개 API 개요
 
 ### 모듈
-- `CacheModule.forRoot(options)`: 캐시 저장소(memory/redis/custom), 기본 TTL, 키 전략, `global`, `principalScopeResolver`, `redis.scanCount` 같은 Redis 옵션을 설정합니다.
+- `CacheModule.forRoot(options)`: 캐시 저장소(memory/redis/custom), 기본 TTL, 키 전략, `global`, `principalScopeResolver`, Redis namespace `keyPrefix`, `redis.scanCount` 같은 Redis 옵션을 설정합니다.
   애플리케이션 모듈에서 사용하는 기본 패키지 진입점입니다.
 
 
 ### 서비스
-- `CacheService`: 수동 캐시 작업(`get`, `set`, `del`, `remember`, `reset`, `close`)을 위한 기본 API입니다.
+- `CacheService`: 수동 캐시 작업(`get`, `set`, `del`, `remember`, `reset`, `close`)을 위한 기본 API입니다. 애플리케이션 shutdown은 같은 `close()` 경로를 호출하며, 이 경로는 `close()` 또는 `dispose()`를 노출하는 custom store로 teardown을 전달합니다.
 
 ### 데코레이터
 - `@CacheTTL(seconds)`: 특정 핸들러의 TTL을 설정합니다.

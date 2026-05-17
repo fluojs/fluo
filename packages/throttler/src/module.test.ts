@@ -371,6 +371,54 @@ describe('ThrottlerGuard — in-memory store', () => {
     );
   });
 
+  it('method-level @Throttle overrides class-level settings before module defaults', async () => {
+    @Throttle({ limit: 1, ttl: 60 })
+    class TestController {
+      @Throttle({ limit: 2, ttl: 60 })
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard({ ...options, limit: 100 });
+    const ctx = createRequestContext();
+
+    await guard.canActivate(createGuardContext(TestController, 'action', ctx));
+    await guard.canActivate(createGuardContext(TestController, 'action', ctx));
+
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', ctx))).rejects.toThrow(
+      'Too Many Requests',
+    );
+  });
+
+  it('uses custom keyGenerator output as the client identity for store keys', async () => {
+    const store: ThrottlerStore = {
+      consume: vi.fn(async (_key: string, input: ThrottlerConsumeInput) => ({
+        count: 1,
+        resetAt: input.now + input.ttlSeconds * 1000,
+      })),
+    };
+    class TestController {
+      action() {}
+    }
+
+    const keyGenerator = vi.fn(() => 'tenant:alpha:user:42');
+    const guard = new ThrottlerGuard({ limit: 1, store, ttl: 60, keyGenerator });
+    const ctx = createRequestContext({
+      headers: { 'x-api-key': 'alpha' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+
+    await guard.canActivate(createGuardContext(TestController, 'action', ctx));
+
+    expect(keyGenerator).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: ctx.request,
+        requestContext: ctx,
+        response: ctx.response,
+      }),
+    );
+    expect(vi.mocked(store.consume).mock.calls[0]?.[0]).toContain(encodeURIComponent('tenant:alpha:user:42'));
+  });
+
   it('captures module options by value before request handling starts', async () => {
     class TestController {
       action() {}
