@@ -163,10 +163,8 @@ fluo differs from NestJS by requiring tests to name an explicit `rootModule`. Th
 
 ## Public API
 
-- **Root package**: `createTestingModule(...)`, `createTestApp(...)`, module introspection helpers, shared testing types
+- **Root package**: `createTestingModule(...)`, `Test.createTestingModule(...)`, `createTestApp(...)`, module introspection helpers, shared testing types
 - **Subpaths**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock`, `@fluojs/testing/types`, `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
-- **Mock subpath**: `@fluojs/testing/mock`
-- **HTTP helpers**: `@fluojs/testing/http`
 - **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`
 - **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` and `@fluojs/testing/vitest/tooling` with Vitest workspace config helpers (requires `vitest` and `@babel/core` in the consuming workspace)
 

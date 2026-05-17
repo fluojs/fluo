@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -16,6 +16,51 @@ type GitResult = { status: number; stdout: string };
 type RunCommand = (command: string, args: string[], options?: { allowFailure?: boolean }) => GitResult;
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const removedRuntimeModuleFactoryNames = [
+  'createMicroservicesModule',
+  'createCqrsModule',
+  'createEventBusModule',
+  'createRedisModule',
+] as const;
+
+function collectMarkdownFiles(relativeRoot: string): string[] {
+  const absoluteRoot = resolve(repoRoot, relativeRoot);
+  if (!existsSync(absoluteRoot)) {
+    return [];
+  }
+
+  const stack = [absoluteRoot];
+  const markdownFiles: string[] = [];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const fullPath = resolve(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        continue;
+      }
+
+      if (entry.name.endsWith('.md')) {
+        markdownFiles.push(fullPath);
+      }
+    }
+  }
+
+  return markdownFiles;
+}
+
+function requireWorkflowStepIndex(workflow: string, stepName: string): number {
+  const index = workflow.indexOf(`- name: ${stepName}`);
+
+  expect(index, `Expected workflow step "${stepName}" to exist`).toBeGreaterThanOrEqual(0);
+
+  return index;
+}
 
 async function loadGovernanceInternals() {
   return (await import('./verify-platform-consistency-governance.mjs')) as unknown as {
@@ -293,6 +338,125 @@ describe('enforceContractCompanionUpdates', () => {
     expect(() => enforceContractCompanionUpdates(['docs/contracts/release-governance.md'])).toThrowError(
       /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
     );
+  });
+});
+
+describe('repository governance contracts', () => {
+  it('keeps the websockets README shutdown contract scoped to fetch-style runtimes with linked regression evidence', () => {
+    const websocketsReadme = readFileSync(resolve(repoRoot, 'packages/websockets/README.md'), 'utf8');
+    const websocketsReadmeKo = readFileSync(resolve(repoRoot, 'packages/websockets/README.ko.md'), 'utf8');
+
+    expect(websocketsReadme).toContain('@fluojs/websockets/bun');
+    expect(websocketsReadme).toContain('@fluojs/websockets/deno');
+    expect(websocketsReadme).toContain('@fluojs/websockets/cloudflare-workers');
+    expect(websocketsReadme).toContain('close tracked websocket clients during application shutdown');
+    expect(websocketsReadme).toContain('bounded chance to finish within `shutdown.timeoutMs`');
+    expect(websocketsReadme).not.toContain('Across Node.js, Bun, Deno, and Cloudflare Workers');
+    expect(websocketsReadme).toContain('packages/websockets/src/bun/bun.test.ts');
+    expect(websocketsReadme).toContain('packages/websockets/src/deno/deno.test.ts');
+    expect(websocketsReadme).toContain('packages/websockets/src/cloudflare-workers/cloudflare-workers.test.ts');
+
+    expect(websocketsReadmeKo).toContain('@fluojs/websockets/bun');
+    expect(websocketsReadmeKo).toContain('@fluojs/websockets/deno');
+    expect(websocketsReadmeKo).toContain('@fluojs/websockets/cloudflare-workers');
+    expect(websocketsReadmeKo).toContain('애플리케이션 shutdown 시 추적 중인 websocket 클라이언트를 닫고');
+    expect(websocketsReadmeKo).toContain('`shutdown.timeoutMs` 범위 안에서 `@OnDisconnect()` cleanup');
+    expect(websocketsReadmeKo).not.toContain('Node.js, Bun, Deno, Cloudflare Workers 전반에서');
+    expect(websocketsReadmeKo).toContain('packages/websockets/src/bun/bun.test.ts');
+    expect(websocketsReadmeKo).toContain('packages/websockets/src/deno/deno.test.ts');
+    expect(websocketsReadmeKo).toContain('packages/websockets/src/cloudflare-workers/cloudflare-workers.test.ts');
+  });
+
+  it('keeps PR CI governance-gated', () => {
+    const ciWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/ci.yml'), 'utf8');
+    const vitestConfig = readFileSync(resolve(repoRoot, 'vitest.config.ts'), 'utf8');
+
+    expect(ciWorkflow).toContain('resolve-pr-verification-scope:');
+    expect(ciWorkflow).toContain('run: node tooling/ci/detect-pr-verification-scope.mjs');
+    expect(ciWorkflow).toContain("if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped'");
+    expect(ciWorkflow).toContain(
+      'run: pnpm vitest run $' + '{{ needs.resolve-pr-verification-scope.outputs.test_paths }}',
+    );
+    expect(ciWorkflow).toContain("if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'");
+    expect(ciWorkflow).toContain('run: pnpm vitest run --project packages');
+    expect(ciWorkflow).toContain('run: pnpm vitest run --project apps');
+    expect(ciWorkflow).toContain('run: pnpm vitest run --project examples');
+    expect(ciWorkflow).toContain('run: pnpm vitest run --project tooling');
+    expect(ciWorkflow).toContain('FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/packages');
+    expect(ciWorkflow).toContain('FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/tooling');
+    expect(ciWorkflow).toContain("hashFiles('.artifacts/vitest-shutdown-debug/**/*.json') != ''");
+    expect(vitestConfig).toContain('passWithNoTests: true');
+    expect(ciWorkflow).toContain('build-and-typecheck:');
+    expect(ciWorkflow).toContain("if: github.event_name == 'pull_request'");
+    expect(ciWorkflow).toContain('verify-platform-consistency-governance');
+    expect(ciWorkflow).toMatch(/resolve-pr-verification-scope:[\s\S]*?- name: Checkout[\s\S]*?fetch-depth: 0/u);
+    expect(ciWorkflow).toMatch(/verify-platform-consistency-governance:[\s\S]*?- name: Checkout[\s\S]*?fetch-depth: 0/u);
+  });
+
+  it('keeps Changesets release automation bound to main pushes and token-backed npm publish', () => {
+    const releaseWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/release.yml'), 'utf8');
+
+    expect(releaseWorkflow).toContain('name: Changesets Release');
+    expect(releaseWorkflow).toContain('push:');
+    expect(releaseWorkflow).toContain('- main');
+    expect(releaseWorkflow).toContain('id-token: write');
+    expect(releaseWorkflow).toContain('registry-url: https://registry.npmjs.org');
+    expect(releaseWorkflow).toMatch(/uses: actions\/checkout@[0-9a-f]{40} # v5/u);
+    expect(releaseWorkflow).toMatch(/uses: pnpm\/action-setup@[0-9a-f]{40} # v5/u);
+    expect(releaseWorkflow).toMatch(/uses: actions\/setup-node@[0-9a-f]{40} # v5/u);
+    expect(releaseWorkflow).toMatch(/uses: changesets\/action@[0-9a-f]{40} # v1/u);
+    expect(releaseWorkflow).toContain('version: pnpm version-packages');
+    expect(releaseWorkflow).toContain('publish: pnpm publish-packages');
+    expect(releaseWorkflow).toContain('createGithubReleases: true');
+    expect(releaseWorkflow).toContain('NPM_CONFIG_PROVENANCE: true');
+    expect(releaseWorkflow).toContain('NPM_TOKEN: ${{ secrets.NPM_TOKEN }}');
+    expect(releaseWorkflow).toContain('NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}');
+  });
+
+  it('keeps Changesets release safety gates before versioning or publish', () => {
+    const releaseWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/release.yml'), 'utf8');
+
+    const checkout = requireWorkflowStepIndex(releaseWorkflow, 'Checkout');
+    const installPnpm = requireWorkflowStepIndex(releaseWorkflow, 'Install pnpm');
+    const setupNode = requireWorkflowStepIndex(releaseWorkflow, 'Setup Node.js');
+    const installDependencies = requireWorkflowStepIndex(releaseWorkflow, 'Install dependencies');
+    const buildPackages = requireWorkflowStepIndex(releaseWorkflow, 'Build packages');
+    const releaseStep = requireWorkflowStepIndex(releaseWorkflow, 'Create Release Pull Request or Publish to npm');
+
+    expect(releaseWorkflow).toContain('fetch-depth: 0');
+    expect(releaseWorkflow).toContain('pnpm install --frozen-lockfile');
+    expect(releaseWorkflow).toContain('run: pnpm build');
+
+    expect(checkout).toBeLessThan(installPnpm);
+    expect(installPnpm).toBeLessThan(setupNode);
+    expect(setupNode).toBeLessThan(installDependencies);
+    expect(installDependencies).toBeLessThan(buildPackages);
+    expect(buildPackages).toBeLessThan(releaseStep);
+  });
+
+  it('keeps the legacy single-package workflow disabled for publish authority', () => {
+    const legacyReleaseWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/release-single-package.yml'), 'utf8');
+
+    expect(legacyReleaseWorkflow).toContain('name: Deprecated single-package release');
+    expect(legacyReleaseWorkflow).toContain('This workflow is deprecated and cannot publish packages');
+    expect(legacyReleaseWorkflow).toContain('exit 1');
+    expect(legacyReleaseWorkflow).not.toContain('pnpm publish');
+    expect(legacyReleaseWorkflow).not.toContain('gh release create');
+  });
+
+  it('blocks removed runtime module factory names from docs/prose surfaces', () => {
+    const markdownFiles = [
+      ...collectMarkdownFiles('docs'),
+      ...collectMarkdownFiles('packages'),
+      ...collectMarkdownFiles('examples'),
+    ];
+
+    for (const markdownFile of markdownFiles) {
+      const content = readFileSync(markdownFile, 'utf8');
+      for (const removedName of removedRuntimeModuleFactoryNames) {
+        expect(content).not.toContain(removedName);
+      }
+    }
   });
 });
 

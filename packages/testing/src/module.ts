@@ -218,15 +218,60 @@ function effectiveProvidersForToken(introspection: ContainerIntrospection, token
 }
 
 function isSingletonLifecycleProvider(provider: NormalizedProvider): boolean {
-  if (provider.multi === true) {
-    return false;
-  }
-
   if (provider.scope !== Scope.DEFAULT) {
     return false;
   }
 
   return provider.type === 'class' || (provider.type === 'value' && hasAnyBootstrapLifecycleHook(provider.useValue));
+}
+
+async function resolveLifecycleDependency(
+  entry: Token | ForwardRefFn | OptionalToken,
+  bootstrapped: BootstrapResult,
+  introspection: ContainerIntrospection,
+): Promise<unknown> {
+  if (isOptionalToken(entry) && !hasTokenInContainer(introspection, entry.token)) {
+    return undefined;
+  }
+
+  return bootstrapped.container.resolve(dependencyToken(entry));
+}
+
+async function instantiateLifecycleProvider(
+  provider: NormalizedProvider,
+  bootstrapped: BootstrapResult,
+  introspection: ContainerIntrospection,
+): Promise<unknown> {
+  if (provider.type !== 'class' || !provider.useClass) {
+    throw new Error(`Lifecycle provider ${String(provider.provide)} must use a class provider.`);
+  }
+
+  const dependencies = await Promise.all(
+    provider.inject.map((entry) => resolveLifecycleDependency(entry, bootstrapped, introspection)),
+  );
+
+  return new provider.useClass(...dependencies);
+}
+
+async function resolveMultiLifecycleProvider(
+  provider: NormalizedProvider,
+  bootstrapped: BootstrapResult,
+  introspection: ContainerIntrospection,
+): Promise<unknown> {
+  const cache = rootContainerIntrospection(introspection).multiSingletonCache;
+  const cached = cache.get(provider);
+
+  if (cached) {
+    return cached;
+  }
+
+  const instance = instantiateLifecycleProvider(provider, bootstrapped, introspection).catch((error: unknown) => {
+    cache.delete(provider);
+    throw error;
+  });
+
+  cache.set(provider, instance);
+  return instance;
 }
 
 async function resolveTestingLifecycleInstances(bootstrapped: BootstrapResult, overrides: readonly Provider[] = []): Promise<unknown[]> {
@@ -243,7 +288,13 @@ async function resolveTestingLifecycleInstances(bootstrapped: BootstrapResult, o
     const token = providerToken(provider);
     const effectiveProviders = effectiveProvidersForToken(introspection, token);
 
-    for (const effectiveProvider of effectiveProviders) {
+    for (let index = 0; index < effectiveProviders.length; index += 1) {
+      const effectiveProvider = effectiveProviders[index];
+
+      if (!effectiveProvider) {
+        continue;
+      }
+
       if (seenProviders.has(effectiveProvider)) {
         continue;
       }
@@ -260,6 +311,11 @@ async function resolveTestingLifecycleInstances(bootstrapped: BootstrapResult, o
       }
 
       try {
+        if (effectiveProvider.multi === true) {
+          instances.push(await resolveMultiLifecycleProvider(effectiveProvider, bootstrapped, introspection));
+          continue;
+        }
+
         instances.push(await bootstrapped.container.resolve(token));
       } catch (error) {
         if (error instanceof Error && error.message.includes('Request-scoped provider')) {
@@ -311,7 +367,11 @@ function lookupProvider(target: ContainerIntrospection, token: Token): Normalize
 }
 
 function hasToken(state: SyncResolverState, token: Token): boolean {
-  return lookupProvider(state.introspection, token) !== undefined || collectMultiProviders(state.introspection, token).length > 0;
+  return hasTokenInContainer(state.introspection, token);
+}
+
+function hasTokenInContainer(introspection: ContainerIntrospection, token: Token): boolean {
+  return lookupProvider(introspection, token) !== undefined || collectMultiProviders(introspection, token).length > 0;
 }
 
 function dependencyToken(entry: Token | ForwardRefFn | OptionalToken): Token {

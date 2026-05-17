@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
 import { Controller, Get, Post, type RequestContext } from '@fluojs/http';
-import type { Dispatcher, Middleware } from '@fluojs/http';
+import type { Dispatcher, Middleware, RequestObserver } from '@fluojs/http';
 
 import {
   createTestApp,
@@ -136,6 +136,83 @@ describe('@fluojs/testing', () => {
 
     expect(await testingModule.resolve(SERVICE_TOKEN)).toBeInstanceOf(ReplacementService);
     expect(events).toEqual(['replacement:init', 'replacement:bootstrap']);
+  });
+
+  it('runs bootstrap lifecycle hooks for each singleton multi-provider contribution', async () => {
+    const PLUGINS = Symbol('lifecycle-plugins');
+    const events: string[] = [];
+
+    class PluginA {
+      onModuleInit() {
+        events.push('a:init');
+      }
+
+      onApplicationBootstrap() {
+        events.push('a:bootstrap');
+      }
+    }
+
+    class PluginB {
+      onModuleInit() {
+        events.push('b:init');
+      }
+
+      onApplicationBootstrap() {
+        events.push('b:bootstrap');
+      }
+    }
+
+    @Module({
+      providers: [
+        { provide: PLUGINS, useClass: PluginA, multi: true },
+        { provide: PLUGINS, useClass: PluginB, multi: true },
+      ],
+    })
+    class MultiLifecycleModule {}
+
+    const testingModule = await createTestingModule({ rootModule: MultiLifecycleModule }).compile();
+    const plugins = await testingModule.resolve<Array<PluginA | PluginB>>(PLUGINS);
+
+    expect(plugins[0]).toBeInstanceOf(PluginA);
+    expect(plugins[1]).toBeInstanceOf(PluginB);
+    expect(events).toEqual(['a:init', 'b:init', 'a:bootstrap', 'b:bootstrap']);
+  });
+
+  it('runs singleton multi-provider lifecycle hooks when another contribution is request scoped', async () => {
+    const PLUGINS = Symbol('mixed-scope-lifecycle-plugins');
+    const events: string[] = [];
+
+    class SingletonPlugin {
+      onModuleInit() {
+        events.push('singleton:init');
+      }
+
+      onApplicationBootstrap() {
+        events.push('singleton:bootstrap');
+      }
+    }
+
+    class RequestPlugin {
+      onModuleInit() {
+        events.push('request:init');
+      }
+
+      onApplicationBootstrap() {
+        events.push('request:bootstrap');
+      }
+    }
+
+    @Module({
+      providers: [
+        { provide: PLUGINS, useClass: SingletonPlugin, multi: true },
+        { provide: PLUGINS, scope: 'request', useClass: RequestPlugin, multi: true },
+      ],
+    })
+    class MixedScopeMultiLifecycleModule {}
+
+    await expect(createTestingModule({ rootModule: MixedScopeMultiLifecycleModule }).compile()).resolves.toBeDefined();
+
+    expect(events).toEqual(['singleton:init', 'singleton:bootstrap']);
   });
 
   it('runs bootstrap lifecycle hooks from lifecycle-bearing useValue overrides', async () => {
@@ -820,6 +897,47 @@ describe('createTestApp', () => {
 
     expect(response.status).toBe(200);
     expect(middlewareCalls).toEqual(['caller']);
+
+    await app.close();
+  });
+
+  it('forwards provider and observer bootstrap options to the runtime app', async () => {
+    const MESSAGE_TOKEN = Symbol('message-token');
+    const observerEvents: string[] = [];
+    const observer: RequestObserver = {
+      onRequestStart() {
+        observerEvents.push('start');
+      },
+      onRequestSuccess() {
+        observerEvents.push('success');
+      },
+    };
+
+    @Inject(MESSAGE_TOKEN)
+    @Controller('/bootstrap-options')
+    class BootstrapOptionsController {
+      constructor(private readonly message: string) {}
+
+      @Get('/')
+      read() {
+        return { message: this.message };
+      }
+    }
+
+    @Module({ controllers: [BootstrapOptionsController] })
+    class BootstrapOptionsModule {}
+
+    const app = await createTestApp({
+      rootModule: BootstrapOptionsModule,
+      observers: [observer],
+      providers: [{ provide: MESSAGE_TOKEN, useValue: 'forwarded-provider' }],
+    });
+
+    const response = await app.request('GET', '/bootstrap-options').send();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ message: 'forwarded-provider' });
+    expect(observerEvents).toEqual(['start', 'success']);
 
     await app.close();
   });
