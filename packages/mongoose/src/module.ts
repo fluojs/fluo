@@ -32,9 +32,17 @@ export type MongooseAsyncModuleOptions<TConnection extends MongooseConnectionLik
 const MONGOOSE_NORMALIZED_OPTIONS = Symbol('fluo.mongoose.normalized-options');
 const MONGOOSE_MODULE_EXPORTS = [MongooseConnection, MongooseTransactionInterceptor];
 
+function isObjectLike(value: unknown): value is object {
+  return (typeof value === 'object' && value !== null) || typeof value === 'function';
+}
+
 function normalizeMongooseModuleOptions<TConnection extends MongooseConnectionLike>(
   options: MongooseModuleOptions<TConnection>,
 ): ResolvedMongooseModuleOptions<TConnection> {
+  if (!isObjectLike(options.connection)) {
+    throw new Error('MongooseModule requires a connection option.');
+  }
+
   return {
     ...options,
     strictTransactions: options.strictTransactions ?? false,
@@ -85,7 +93,10 @@ function createMongooseProvidersAsync<TConnection extends MongooseConnectionLike
     useFactory: async (...deps: unknown[]) => {
       const resolvedOptions = await factory(...deps);
 
-      return normalizeMongooseModuleOptions<TConnection>(resolvedOptions);
+      return normalizeMongooseModuleOptions<TConnection>({
+        ...resolvedOptions,
+        global: options.global,
+      });
     },
   };
 
