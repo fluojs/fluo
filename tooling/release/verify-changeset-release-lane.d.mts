@@ -16,6 +16,11 @@ export type PackageVersionDelta = {
   previousVersion: string;
 };
 
+export type DependencyOnlyMajorVersionDelta = PackageVersionDelta & {
+  changelogPath: string;
+  reason: string;
+};
+
 export type VerifyChangesetReleaseLaneOptions = {
   baseRef?: string;
   changesetDirectory?: string;
@@ -24,6 +29,7 @@ export type VerifyChangesetReleaseLaneOptions = {
 
 export type VerifyChangesetReleaseLaneResult = {
   allowedBumps: ChangesetReleaseBump[];
+  checkedDependencyOnlyMajorVersionDeltas: DependencyOnlyMajorVersionDelta[];
   checkedIntents: ChangesetReleaseIntent[];
   checkedVersionDeltas: PackageVersionDelta[];
   lane: ChangesetReleaseLane;
