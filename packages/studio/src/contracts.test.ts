@@ -9,7 +9,7 @@ import type { PlatformShellSnapshot } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 import { applyFilters, parseStudioPayload, renderMermaid } from './contracts.js';
 import * as studio from './index.js';
-import { renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './viewer-rendering.js';
+import { inspectComponentConnections, renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './viewer-rendering.js';
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageCommandTimeoutMs = 120_000;
@@ -519,6 +519,35 @@ describe('parseStudioPayload', () => {
     expect(document.body.textContent).toContain('QUEUE_DEPENDENCY_NOT_READY');
   });
 
+  it('supports keyboard graph node selection without mouse interaction', async () => {
+    await loadStudioViewer();
+
+    const fileInput = document.querySelector<HTMLInputElement>('#file-input');
+    expect(fileInput).not.toBeNull();
+
+    Object.defineProperty(fileInput, 'files', {
+      configurable: true,
+      value: [new File([JSON.stringify(snapshotFixture)], 'snapshot.json', { type: 'application/json' })],
+    });
+    fileInput?.dispatchEvent(new Event('change', { bubbles: true }));
+
+    await vi.waitFor(() => {
+      expect(document.querySelector('#graph-host')?.textContent).toContain('queue.default');
+    });
+
+    const queueNode = document.querySelector<SVGCircleElement>('[data-component="queue.default"]');
+    expect(queueNode).not.toBeNull();
+    queueNode?.focus();
+    queueNode?.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
+
+    await vi.waitFor(() => {
+      expect(document.querySelector('.connection-hero')?.textContent).toContain('queue.default');
+    });
+
+    const restoredQueueNode = document.querySelector<SVGCircleElement>('[data-component="queue.default"]');
+    expect(restoredQueueNode?.classList.contains('module-selected')).toBe(true);
+  });
+
   it('build emits isolated published helper and file-first viewer entrypoints', () => {
     const outputDirectory = mkdtempSync(join(tmpdir(), 'fluo-studio-dist-'));
 
@@ -709,6 +738,33 @@ describe('renderMermaid', () => {
 });
 
 describe('viewer rendering helpers', () => {
+  it('summarizes selected component connections for the Studio inspector', () => {
+    const summary = inspectComponentConnections(snapshotFixture, 'redis.default');
+
+    expect(summary?.component.id).toBe('redis.default');
+    expect(summary?.incoming.map((component) => component.id)).toEqual(['queue.default']);
+    expect(summary?.outgoing).toEqual([]);
+    expect(summary?.externalDependencies).toEqual([]);
+    expect(summary?.diagnostics.map((issue) => issue.code)).toEqual(['QUEUE_DEPENDENCY_NOT_READY']);
+  });
+
+  it('separates internal and external dependencies for the selected component', () => {
+    const summary = inspectComponentConnections({
+      ...snapshotFixture,
+      components: [
+        snapshotFixture.components[0],
+        {
+          ...snapshotFixture.components[1],
+          dependencies: ['redis.default', 'aws.sqs.orders'],
+        },
+      ],
+    }, 'queue.default');
+
+    expect(summary?.outgoing.map((component) => component.id)).toEqual(['redis.default']);
+    expect(summary?.externalDependencies).toEqual(['aws.sqs.orders']);
+    expect(summary?.incoming).toEqual([]);
+  });
+
   it('renders only http and https diagnostic docsUrl values as links', () => {
     expect(renderDiagnosticDocsUrl('https://fluo.dev/docs/runtime')).toContain('href="https://fluo.dev/docs/runtime"');
     expect(renderDiagnosticDocsUrl('javascript:alert(1)')).toBe('<p><strong>docs:</strong> <span>javascript:alert(1)</span></p>');
@@ -754,5 +810,15 @@ describe('viewer rendering helpers', () => {
     expect(html).toContain('aws.sqs.orders');
     expect(html).toContain('component-external');
     expect(html).toContain('class="edge-line"');
+  });
+
+  it('highlights selected graph neighborhoods for keyboard-friendly inspection', () => {
+    const html = renderGraphSvg(snapshotFixture, 'queue.default');
+
+    expect(html).toContain('edge-selected');
+    expect(html).toContain('module-neighbor');
+    expect(html).toContain('tabindex="0"');
+    expect(html).toContain('role="button"');
+    expect(html).toContain('aria-label="Inspect queue.default"');
   });
 });
