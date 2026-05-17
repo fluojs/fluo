@@ -332,6 +332,21 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts Vite package-chooser guidance when context discoverability and transform regression tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/reference/package-chooser.md',
+        'docs/reference/package-chooser.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/vite/src/index.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('treats release governance publish-surface edits as contract-governing updates', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 

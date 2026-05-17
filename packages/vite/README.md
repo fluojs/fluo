@@ -42,7 +42,7 @@ export default defineConfig({
 });
 ```
 
-The plugin transforms `.ts` application files with Babel using the `2023-11` decorators proposal and `@babel/preset-typescript`. It skips declaration files, `.test.` or `.spec.` files, `node_modules`, and non-`.ts` files so generated Vitest test files continue to use the dedicated `@fluojs/testing/vitest` transform path.
+The plugin transforms `.ts` application files with Babel using the `2023-11` decorators proposal and `@babel/preset-typescript`. It strips Vite query suffixes before deciding the file boundary, then skips declaration files, `.test.` or `.spec.` files, `node_modules`, and non-`.ts` files so generated Vitest test files continue to use the dedicated `@fluojs/testing/vitest` transform path.
 
 ## Public API
 
@@ -56,4 +56,5 @@ The plugin transforms `.ts` application files with Babel using the `2023-11` dec
 ## Example Sources
 
 - `packages/vite/src/index.ts`
+- `packages/vite/src/internal/decorators-plugin.ts`
 - `packages/cli/src/new/scaffold.ts`

@@ -27,6 +27,12 @@
 | Need a Deno runtime adapter | `@fluojs/platform-deno` | Maps to the matching `fluo new` runtime/platform starter path. |
 | Need a Cloudflare Workers adapter | `@fluojs/platform-cloudflare-workers` | Maps to the matching `fluo new` runtime/platform starter path. |
 
+## configure build tooling
+
+| condition | package choice | notes |
+| --- | --- | --- |
+| Need Vite to build TypeScript with TC39 standard decorators | `@fluojs/vite` | Use `fluoDecoratorsPlugin()` to apply Babel's `@babel/plugin-proposal-decorators` transform with `{ version: '2023-11' }` while preserving fluo's Vite file-boundary skips for tests, declarations, dependencies, and non-TypeScript files. |
+
 ## build a microservice starter
 
 | condition | package choice | notes |
