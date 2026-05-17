@@ -92,15 +92,20 @@ export class AppModule {}
 ### 19.3.3 Choosing a Registry Model
 기본 모델은 격리된 Registry ownership입니다. 하나의 `MetricsModule.forRoot()` 인스턴스가 자신이 소유한 collector를 등록하고 스크레이프합니다. framework metric과 application metric을 하나의 scrape surface에서 공유해야 한다면 직접 `Registry`를 만들고 제한된 custom metric을 등록한 뒤 `MetricsModule.forRoot({ registry })`에 전달하세요. 내장 HTTP collector와 플랫폼 텔레메트리 Gauge는 의도적으로 공유된 모듈 인스턴스 사이에서도 framework-owned이고 예상 label schema를 가진 경우에만 재사용되며, 애플리케이션이 직접 정의한 중복 메트릭 이름은 계속 빠르게 실패합니다.
 
-### 19.3.4 Integration with Cloud-Native Sidecars
+### 19.3.4 Public Responsibility Boundaries
+`MetricsModule.forRoot(...)`는 module option wiring을 소유합니다. 여기에는 scrape `path`, `provider`, `defaultMetrics`, optional HTTP collector, platform telemetry label, endpoint-scoped `endpointMiddleware`, module-level `middleware`, registry 선택이 포함됩니다. `provider`는 현재 `'prometheus'`만 지원하며, `path: false`는 scrape endpoint를 끄고 endpoint-scoped middleware도 건너뜁니다.
+
+Application-defined counter, gauge, histogram에는 `MetricsService`를 사용하세요. 더 낮은 수준의 `METER_PROVIDER` token과 `PrometheusMeterProvider`는 meter provider bridge가 필요한 package integration을 위한 것이며, 일반 tutorial code용 표면은 아닙니다. 이 경계는 business metric, framework-owned HTTP metric, package-integration metric이 같은 Registry 이름의 ownership을 두고 충돌하지 않게 합니다.
+
+### 19.3.5 Integration with Cloud-Native Sidecars
 Istio나 Linkerd와 같은 서비스 메쉬(Service Mesh) 환경에서 애플리케이션은 종종 "사이드카(Sidecar)" 프록시와 함께 실행됩니다. 이러한 프록시들은 자체 메트릭을 가지기도 하지만, Fluo 애플리케이션 메트릭을 합산하고 노출하도록 설정할 수도 있습니다. Fluo는 Prometheus 텍스트 스크레이프 형식을 노출하므로 이 데이터는 Prometheus-compatible 사이드카 관측성 패턴과 자연스럽게 연결됩니다.
 
-### 19.3.5 Metrics in Distributed Environments
+### 19.3.6 Metrics in Distributed Environments
 애플리케이션의 여러 인스턴스가 서로 다른 가용 영역(availability zones)이나 클라우드 제공업체에 걸쳐 실행되는 분산 시스템에서, `MetricsModule`은 지원되는 플랫폼 텔레메트리 라벨을 명시적으로 설정했을 때 각 인스턴스가 데이터를 일관되고 식별 가능한 방식으로 보고하도록 돕습니다. 현재 내장 플랫폼 텔레메트리 계약은 문서화된 `env`와 `instance` 라벨을 지원하며, pod 이름, host IP, zone, region 같은 인프라 라벨을 자동으로 추가하지 않습니다.
 
 이러한 명시적 라벨 접근 방식은 카디널리티를 예측 가능하게 유지하면서도 "합산 우선, 상세 분석 차선" 흐름을 지원합니다. `env`로 집계하고 설정한 `instance`로 상세 분석할 수 있으며, 더 높은 카디널리티의 인프라 정보는 `@fluojs/metrics`가 자동 주입한다고 가정하지 말고 배포 메타데이터, Prometheus relabeling, 또는 신중하게 제한한 커스텀 메트릭으로 추가하세요.
 
-### 19.3.6 Extending Prometheus with Custom Exporters
+### 19.3.7 Extending Prometheus with Custom Exporters
 Fluo는 기본적으로 여러 메트릭을 제공하지만, 제3자 **Prometheus Exporters**와 통합하여 모니터링 범위를 넓힐 수 있습니다. 예를 들어 Node.js 이벤트 루프에 대해 더 깊은 가시성을 얻기 위해 `process-exporter`를 사용하거나, 외부에서 API를 모니터링하기 위해 `blackbox-exporter`를 사용할 수 있습니다. Fluo의 메트릭 시스템은 이러한 외부 도구를 보완하며, 애플리케이션 스택을 여러 계층에서 관찰할 수 있게 합니다.
 
 ## 19.4 Automatic HTTP Instrumentation
@@ -225,7 +230,7 @@ MetricsModule.forRoot({
 })
 ```
 
-`endpointMiddleware`는 scrape endpoint에만 적용되는 route-scoped middleware이며 `@fluojs/http`와 같은 class-based middleware 계약을 따릅니다. `handle(context, next)` 메서드에서 예외를 던지거나 반환하거나 `next()`를 `await`하는 middleware constructor를 전달하세요. HTTP 계측을 활성화한 경우 endpoint middleware 실패도 내장 HTTP request/error counter에 포함되므로 거부된 scrape 시도는 이후 성공한 scrape의 같은 metrics stream에서 확인할 수 있습니다.
+`endpointMiddleware`는 scrape endpoint에만 적용되는 route-scoped middleware이며 `@fluojs/http`와 같은 class-based middleware 계약을 따릅니다. `handle(context, next)` 메서드에서 예외를 던지거나 반환하거나 `next()`를 `await`하는 middleware constructor를 전달하세요. Module-level `middleware`는 다릅니다. 이 middleware는 endpoint-scoped middleware 뒤의 module middleware chain에 참여하며 scrape route로 제한되지 않습니다. HTTP 계측을 활성화한 경우 endpoint middleware 실패도 내장 HTTP request/error counter에 포함되므로 거부된 scrape 시도는 이후 성공한 scrape의 같은 metrics stream에서 확인할 수 있습니다.
 
 ### 19.6.1 IP Whitelisting
 프로덕션에서 흔히 쓰이는 패턴은 Prometheus 서버의 IP 주소만 `/metrics` 라우트에 접근할 수 있도록 허용하는 것입니다. 이는 모니터링 도구에 복잡한 인증 로직을 요구하지 않으면서도 강력한 보안 계층을 제공합니다. 대부분의 클라우드 제공업체는 보안 그룹이나 방화벽을 통해 네트워크 수준에서 이를 구현할 수 있게 해주지만, Fluo의 미들웨어 시스템은 코드에서도 이를 유연하게 처리할 수 있는 방법을 제공합니다.

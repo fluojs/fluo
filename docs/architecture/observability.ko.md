@@ -10,9 +10,11 @@
 | HTTP request metrics | `@fluojs/metrics` 내부 `HttpMetricsMiddleware` | `method`, `path`, `status` 레이블로 `http_requests_total`, `http_errors_total`, `http_request_duration_seconds`를 기록한다. | `http` 옵션이 truthy로 해석되면 HTTP 메트릭이 활성화된다. `pathLabelMode` 기본값은 `'template'`다. |
 | Runtime platform telemetry | `@fluojs/metrics` 내부 `RuntimePlatformTelemetry` | 스크레이프는 `fluo_component_ready`, `fluo_component_health`, `fluo_metrics_registry_mode`도 함께 노출한다. | `platformTelemetry.env`, `platformTelemetry.instance`는 플랫폼 gauge 시계열에 고정 레이블을 추가한다. |
 | Custom application metrics | `MetricsService` 또는 공유 Prometheus `Registry` | 커스텀 counter, gauge, histogram은 스크레이프 엔드포인트가 노출하는 동일 레지스트리를 공유할 수 있다. | `registry`를 지정하면 모듈은 새 격리 레지스트리 대신 shared-registry 모드로 동작한다. |
+| Package integration meters | `@fluojs/metrics` 내부 `METER_PROVIDER` / `PrometheusMeterProvider` | First-party integration은 같은 active Registry를 사용하는 provider bridge를 resolve할 수 있다. | Application code는 `MetricsService`를 우선 사용해야 하며, provider token은 low-level package-integration seam이다. |
 
 - `defaultMetrics` 기본값은 `true`이므로 `defaultMetrics: false`를 주지 않으면 Prometheus 기본 process 및 Node.js collector가 레지스트리당 한 번 등록된다.
-- 스크레이프 엔드포인트의 route-scoped 보호는 `endpointMiddleware`로 지원되며, 이 middleware는 설정된 메트릭 경로에만 바인딩된다.
+- 스크레이프 엔드포인트의 route-scoped 보호는 `endpointMiddleware`로 지원되며, class-based middleware를 설정된 메트릭 경로에만 바인딩하고 `path: false`로 해당 경로가 꺼지면 건너뛴다.
+- Module-level `middleware`는 `endpointMiddleware`와 다르다. Framework HTTP metrics 및 endpoint-scoped middleware 뒤의 module middleware chain에 참여하며, route-scoped 보호 계약이 아니다.
 - 플랫폼 텔레메트리는 스크레이프마다 `PLATFORM_SHELL`을 resolve하고 snapshot을 읽어 갱신된다. `PLATFORM_SHELL`이 없으면 스크레이프는 성공하지만 플랫폼 텔레메트리 시계열은 빠진다. 토큰이 있는데 해석이 실패하면 스크레이프가 실패한다.
 
 ## Health Checks
@@ -27,6 +29,7 @@
 - `TerminusHealthService.check()`는 등록된 indicator를 indicator result key 기준으로 집계하여 `info`, `error`, `details` 맵을 만든다.
 - `execution.indicatorTimeoutMs`는 느리거나 멈춘 indicator probe를 무기한 대기하지 않고 `down` 결과로 바꾼다.
 - 기본 제공 indicator 패키지에는 HTTP, memory, disk, Prisma, Drizzle, Redis 변형이 포함되며 Node 전용 memory/disk indicator는 `@fluojs/terminus/node`, Redis는 `@fluojs/terminus/redis`에서 export된다.
+- `@fluojs/terminus/redis`는 Redis peer import를 dedicated subpath에 유지하고, `PING` 전에 `@fluojs/redis` client lifecycle state를 매핑하므로 종료 중이거나 연결이 끊긴 Redis client는 command probe 실행 전에도 readiness를 실패시킨다.
 
 ## Readiness vs Liveness
 

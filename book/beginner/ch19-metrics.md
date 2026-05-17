@@ -92,15 +92,20 @@ One important consideration is how often Prometheus should scrape the applicatio
 ### 19.3.3 Choosing a Registry Model
 The default model is isolated registry ownership: one `MetricsModule.forRoot()` instance registers and scrapes the collectors it owns. If you need framework metrics and application metrics to share a scrape surface, create a `Registry` yourself, register bounded custom metrics on it, and pass that registry to `MetricsModule.forRoot({ registry })`. Built-in HTTP collectors and platform telemetry gauges are reused across intentionally shared module instances only when they are framework-owned and have the expected label schema; application-defined duplicate metric names still fail fast.
 
-### 19.3.4 Integration with Cloud-Native Sidecars
+### 19.3.4 Public Responsibility Boundaries
+`MetricsModule.forRoot(...)` owns module option wiring: the scrape `path`, `provider`, `defaultMetrics`, optional HTTP collectors, platform telemetry labels, endpoint-scoped `endpointMiddleware`, module-level `middleware`, and registry selection. `provider` currently supports only `'prometheus'`; `path: false` disables the scrape endpoint and skips endpoint-scoped middleware.
+
+Use `MetricsService` for application-defined counters, gauges, and histograms. The lower-level `METER_PROVIDER` token and `PrometheusMeterProvider` exist for package integrations that need a meter provider bridge, not for ordinary tutorial code. This boundary keeps business metrics, framework-owned HTTP metrics, and package-integration metrics from competing for ownership of the same registry names.
+
+### 19.3.5 Integration with Cloud-Native Sidecars
 In service mesh environments such as Istio or Linkerd, applications often run with sidecar proxies. These proxies may have their own metrics, but they can also be configured to aggregate and expose Fluo application metrics. Because Fluo exposes the Prometheus text scrape format, this data connects naturally with Prometheus-compatible sidecar observability patterns.
 
-### 19.3.5 Metrics in Distributed Environments
+### 19.3.6 Metrics in Distributed Environments
 In distributed systems where multiple application instances run across different availability zones or cloud providers, `MetricsModule` helps each instance report data in a consistent and identifiable way when you configure the supported platform telemetry labels explicitly. The built-in platform telemetry contract supports the documented `env` and `instance` labels; it does not automatically add infrastructure labels such as pod names, host IPs, zones, or regions.
 
 This explicit-label approach keeps cardinality predictable while still supporting an "aggregate first, drill down second" workflow. You can aggregate by `env`, drill into a configured `instance`, and add any higher-cardinality infrastructure details through your deployment metadata, Prometheus relabeling, or carefully bounded custom metrics instead of assuming `@fluojs/metrics` injects those labels for you.
 
-### 19.3.6 Extending Prometheus with Custom Exporters
+### 19.3.7 Extending Prometheus with Custom Exporters
 Fluo provides several metrics by default, but you can expand monitoring coverage by integrating with third-party **Prometheus Exporters**. For example, you might use `process-exporter` for deeper visibility into the Node.js event loop, or `blackbox-exporter` to monitor APIs externally. Fluo's metrics system complements these external tools and lets you observe the application stack across multiple layers.
 
 ## 19.4 Automatic HTTP Instrumentation
@@ -225,7 +230,7 @@ MetricsModule.forRoot({
 })
 ```
 
-`endpointMiddleware` is route-scoped middleware for the scrape endpoint and follows the same class-based middleware contract as `@fluojs/http`: pass middleware constructors whose `handle(context, next)` method either throws, returns, or awaits `next()`. If HTTP instrumentation is enabled, endpoint middleware failures are included in the built-in HTTP request and error counters so rejected scrape attempts are visible in the same metrics stream after a later successful scrape.
+`endpointMiddleware` is route-scoped middleware for the scrape endpoint and follows the same class-based middleware contract as `@fluojs/http`: pass middleware constructors whose `handle(context, next)` method either throws, returns, or awaits `next()`. Module-level `middleware` is different: it participates in the module middleware chain after endpoint-scoped middleware and is not limited to the scrape route. If HTTP instrumentation is enabled, endpoint middleware failures are included in the built-in HTTP request and error counters so rejected scrape attempts are visible in the same metrics stream after a later successful scrape.
 
 ### 19.6.1 IP Whitelisting
 A common production pattern is allowing only the Prometheus server IP address to access the `/metrics` route. This provides a strong security layer without requiring complex authentication logic in the monitoring tool. Most cloud providers let you implement this at the network level through security groups or firewalls, but Fluo's Middleware system also gives you a flexible way to handle it in code.
