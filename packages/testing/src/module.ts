@@ -225,12 +225,53 @@ function isSingletonLifecycleProvider(provider: NormalizedProvider): boolean {
   return provider.type === 'class' || (provider.type === 'value' && hasAnyBootstrapLifecycleHook(provider.useValue));
 }
 
-function assertResolvedMultiProviderInstances(value: unknown, token: Token): readonly unknown[] {
-  if (!Array.isArray(value)) {
-    throw new Error(`Expected multi-provider token ${String(token)} to resolve to an array.`);
+async function resolveLifecycleDependency(
+  entry: Token | ForwardRefFn | OptionalToken,
+  bootstrapped: BootstrapResult,
+  introspection: ContainerIntrospection,
+): Promise<unknown> {
+  if (isOptionalToken(entry) && !hasTokenInContainer(introspection, entry.token)) {
+    return undefined;
   }
 
-  return value;
+  return bootstrapped.container.resolve(dependencyToken(entry));
+}
+
+async function instantiateLifecycleProvider(
+  provider: NormalizedProvider,
+  bootstrapped: BootstrapResult,
+  introspection: ContainerIntrospection,
+): Promise<unknown> {
+  if (provider.type !== 'class' || !provider.useClass) {
+    throw new Error(`Lifecycle provider ${String(provider.provide)} must use a class provider.`);
+  }
+
+  const dependencies = await Promise.all(
+    provider.inject.map((entry) => resolveLifecycleDependency(entry, bootstrapped, introspection)),
+  );
+
+  return new provider.useClass(...dependencies);
+}
+
+async function resolveMultiLifecycleProvider(
+  provider: NormalizedProvider,
+  bootstrapped: BootstrapResult,
+  introspection: ContainerIntrospection,
+): Promise<unknown> {
+  const cache = rootContainerIntrospection(introspection).multiSingletonCache;
+  const cached = cache.get(provider);
+
+  if (cached) {
+    return cached;
+  }
+
+  const instance = instantiateLifecycleProvider(provider, bootstrapped, introspection).catch((error: unknown) => {
+    cache.delete(provider);
+    throw error;
+  });
+
+  cache.set(provider, instance);
+  return instance;
 }
 
 async function resolveTestingLifecycleInstances(bootstrapped: BootstrapResult, overrides: readonly Provider[] = []): Promise<unknown[]> {
@@ -240,7 +281,6 @@ async function resolveTestingLifecycleInstances(bootstrapped: BootstrapResult, o
     ...overrides,
   ];
   const instances: unknown[] = [];
-  const multiProviderInstances = new Map<Token, readonly unknown[]>();
   const seenProviders = new Set<NormalizedProvider>();
   const introspection = toContainerIntrospection(bootstrapped.container);
 
@@ -272,14 +312,7 @@ async function resolveTestingLifecycleInstances(bootstrapped: BootstrapResult, o
 
       try {
         if (effectiveProvider.multi === true) {
-          let resolvedMultiProviders = multiProviderInstances.get(token);
-
-          if (!resolvedMultiProviders) {
-            resolvedMultiProviders = assertResolvedMultiProviderInstances(await bootstrapped.container.resolve(token), token);
-            multiProviderInstances.set(token, resolvedMultiProviders);
-          }
-
-          instances.push(resolvedMultiProviders[index]);
+          instances.push(await resolveMultiLifecycleProvider(effectiveProvider, bootstrapped, introspection));
           continue;
         }
 
@@ -334,7 +367,11 @@ function lookupProvider(target: ContainerIntrospection, token: Token): Normalize
 }
 
 function hasToken(state: SyncResolverState, token: Token): boolean {
-  return lookupProvider(state.introspection, token) !== undefined || collectMultiProviders(state.introspection, token).length > 0;
+  return hasTokenInContainer(state.introspection, token);
+}
+
+function hasTokenInContainer(introspection: ContainerIntrospection, token: Token): boolean {
+  return lookupProvider(introspection, token) !== undefined || collectMultiProviders(introspection, token).length > 0;
 }
 
 function dependencyToken(entry: Token | ForwardRefFn | OptionalToken): Token {

@@ -178,6 +178,43 @@ describe('@fluojs/testing', () => {
     expect(events).toEqual(['a:init', 'b:init', 'a:bootstrap', 'b:bootstrap']);
   });
 
+  it('runs singleton multi-provider lifecycle hooks when another contribution is request scoped', async () => {
+    const PLUGINS = Symbol('mixed-scope-lifecycle-plugins');
+    const events: string[] = [];
+
+    class SingletonPlugin {
+      onModuleInit() {
+        events.push('singleton:init');
+      }
+
+      onApplicationBootstrap() {
+        events.push('singleton:bootstrap');
+      }
+    }
+
+    class RequestPlugin {
+      onModuleInit() {
+        events.push('request:init');
+      }
+
+      onApplicationBootstrap() {
+        events.push('request:bootstrap');
+      }
+    }
+
+    @Module({
+      providers: [
+        { provide: PLUGINS, useClass: SingletonPlugin, multi: true },
+        { provide: PLUGINS, scope: 'request', useClass: RequestPlugin, multi: true },
+      ],
+    })
+    class MixedScopeMultiLifecycleModule {}
+
+    await expect(createTestingModule({ rootModule: MixedScopeMultiLifecycleModule }).compile()).resolves.toBeDefined();
+
+    expect(events).toEqual(['singleton:init', 'singleton:bootstrap']);
+  });
+
   it('runs bootstrap lifecycle hooks from lifecycle-bearing useValue overrides', async () => {
     const SERVICE_TOKEN = Symbol('service-token');
     const events: string[] = [];
