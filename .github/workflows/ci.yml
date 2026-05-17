@@ -139,6 +139,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build scoped test closure
+        if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped' && needs.resolve-pr-verification-scope.outputs.test_package_names != ''
+        run: pnpm -r --if-present ${{ needs.resolve-pr-verification-scope.outputs.build_filter_args }} run build
+
       - name: Test (scoped PR package scripts)
         if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped' && needs.resolve-pr-verification-scope.outputs.test_package_names != ''
         run: pnpm -r --if-present ${{ needs.resolve-pr-verification-scope.outputs.test_filter_args }} run test
