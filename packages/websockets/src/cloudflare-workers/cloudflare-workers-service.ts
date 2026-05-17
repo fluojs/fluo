@@ -1,18 +1,20 @@
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
+import type { HttpApplicationAdapter } from '@fluojs/http';
 import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
-import type { HttpApplicationAdapter } from '@fluojs/http';
 
 import {
+  assertNoFetchStyleServerBackedGatewayOptIn,
+  discoverGatewayDescriptors,
   dispatchGatewayDisconnect,
   dispatchGatewayMessage,
-  discoverGatewayDescriptors,
   isFinitePositiveInteger,
   normalizeGatewayPath,
-  resolveGatewayInstance,
-  runGatewayHandlers,
   type ResolvedGatewayInstance,
+  resolveGatewayInstance,
+  resolveSupportedFetchStyleRealtimeCapability,
+  runGatewayHandlers,
 } from '../internal/shared.js';
 import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
 import type { WebSocketGatewayDescriptor, WebSocketRoomService, WebSocketUpgradeRejection } from '../types.js';
@@ -58,61 +60,10 @@ const DEFAULT_WEBSOCKET_SHUTDOWN_TIMEOUT_MS = 5_000;
 const LIFECYCLE_LOG_CONTEXT = 'WebSocketGatewayLifecycleService';
 const WEBSOCKET_OPEN_READY_STATE = 1;
 
-type FetchStyleRealtimeCapability = {
-  contract: 'raw-websocket-expansion';
-  kind: 'fetch-style';
-  mode?: 'request-upgrade';
-  reason: string;
-  support?: 'contract-only' | 'supported';
-  version?: 1;
-};
-
-type RealtimeCapability =
-  | FetchStyleRealtimeCapability
-  | {
-      kind: 'server-backed';
-      reason?: string;
-    }
-  | {
-      kind: 'unsupported';
-      mode?: 'no-op';
-      reason: string;
-    };
-
-type RealtimeAwareHttpApplicationAdapter = HttpApplicationAdapter & {
-  getRealtimeCapability?: () => RealtimeCapability;
-};
-
 function hasCloudflareWorkerWebSocketBindingHost(
   adapter: HttpApplicationAdapter,
-): adapter is RealtimeAwareHttpApplicationAdapter & CloudflareWorkerWebSocketBindingHost {
+): adapter is HttpApplicationAdapter & CloudflareWorkerWebSocketBindingHost {
   return 'configureWebSocketBinding' in adapter && typeof adapter.configureWebSocketBinding === 'function';
-}
-
-function resolveSupportedFetchStyleRealtimeCapability(
-  adapter: RealtimeAwareHttpApplicationAdapter,
-): FetchStyleRealtimeCapability {
-  if (typeof adapter.getRealtimeCapability !== 'function') {
-    throw new Error(
-      'Cloudflare Workers WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability(). Use @fluojs/platform-cloudflare-workers together with @fluojs/websockets/cloudflare-workers.',
-    );
-  }
-
-  const capability = adapter.getRealtimeCapability();
-
-  if (capability.kind !== 'fetch-style' || capability.contract !== 'raw-websocket-expansion') {
-    throw new Error(
-      'Cloudflare Workers WebSocket gateway bootstrap requires a fetch-style raw-websocket-expansion realtime capability from the selected HTTP adapter.',
-    );
-  }
-
-  if (capability.support !== 'supported') {
-    throw new Error(
-      `Cloudflare Workers WebSocket gateway bootstrap requires supported fetch-style websocket hosting. ${capability.reason}`,
-    );
-  }
-
-  return capability;
 }
 
 function isWebSocketUpgradeRequest(request: Request): boolean {
@@ -175,9 +126,13 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
       return;
     }
 
-    this.assertNoServerBackedGatewayOptIn(descriptors);
+    assertNoFetchStyleServerBackedGatewayOptIn(descriptors, 'cloudflare-workers');
 
-    resolveSupportedFetchStyleRealtimeCapability(this.adapter);
+    resolveSupportedFetchStyleRealtimeCapability(this.adapter, {
+      packageSubpath: 'cloudflare-workers',
+      platformPackage: '@fluojs/platform-cloudflare-workers',
+      runtimeName: 'Cloudflare Workers',
+    });
 
     if (!hasCloudflareWorkerWebSocketBindingHost(this.adapter)) {
       throw new Error(
@@ -186,20 +141,6 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
     }
 
     this.adapter.configureWebSocketBinding(this.createBinding(descriptors));
-  }
-
-  private assertNoServerBackedGatewayOptIn(
-    descriptors: readonly WebSocketGatewayDescriptor[],
-  ): void {
-    const descriptor = descriptors.find((entry) => entry.serverBacked !== undefined);
-
-    if (!descriptor) {
-      return;
-    }
-
-    throw new Error(
-      `@WebSocketGateway({ serverBacked }) is not supported on @fluojs/websockets/cloudflare-workers. Gateway path ${descriptor.path} must use the default fetch-style request-upgrade host instead.`,
-    );
   }
 
   async onApplicationShutdown(): Promise<void> {

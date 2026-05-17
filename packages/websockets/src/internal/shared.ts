@@ -1,6 +1,7 @@
 import type { MetadataPropertyKey, Token } from '@fluojs/core';
 import { getClassDiMetadata } from '@fluojs/core/internal';
-import type { Provider, Container } from '@fluojs/di';
+import type { Container, Provider } from '@fluojs/di';
+import type { FetchStyleHttpAdapterRealtimeCapability, HttpApplicationAdapter } from '@fluojs/http';
 import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
 
 import { getWebSocketGatewayMetadata, getWebSocketHandlerMetadataEntries } from '../metadata.js';
@@ -52,6 +53,13 @@ export type SharedWebSocketIncomingMessage =
   | Uint8Array[]
   | string;
 
+/** Runtime metadata used to validate fetch-style websocket adapter boundaries. */
+export interface FetchStyleRealtimeBoundaryOptions {
+  packageSubpath: string;
+  platformPackage: string;
+  runtimeName: string;
+}
+
 /**
  * Is finite positive integer.
  *
@@ -76,6 +84,61 @@ export function normalizeGatewayPath(path: string): string {
   const normalized = `/${path.replace(/^\/+/, '').replace(/\/+$/, '')}`;
 
   return normalized === '' ? '/' : normalized;
+}
+
+/**
+ * Ensures a fetch-style websocket module is paired with the matching HTTP platform adapter capability.
+ *
+ * @param adapter The HTTP adapter selected by the application runtime.
+ * @param options Runtime-specific package names used in actionable diagnostics.
+ * @returns The supported fetch-style realtime capability exposed by the adapter.
+ */
+export function resolveSupportedFetchStyleRealtimeCapability(
+  adapter: HttpApplicationAdapter,
+  options: FetchStyleRealtimeBoundaryOptions,
+): FetchStyleHttpAdapterRealtimeCapability {
+  if (typeof adapter.getRealtimeCapability !== 'function') {
+    throw new Error(
+      `${options.runtimeName} WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability(). Use ${options.platformPackage} together with @fluojs/websockets/${options.packageSubpath}.`,
+    );
+  }
+
+  const capability = adapter.getRealtimeCapability();
+
+  if (capability.kind !== 'fetch-style' || capability.contract !== 'raw-websocket-expansion') {
+    throw new Error(
+      `${options.runtimeName} WebSocket gateway bootstrap requires a fetch-style raw-websocket-expansion realtime capability from the selected HTTP adapter.`,
+    );
+  }
+
+  if (capability.support !== 'supported') {
+    throw new Error(
+      `${options.runtimeName} WebSocket gateway bootstrap requires supported fetch-style websocket hosting. ${capability.reason}`,
+    );
+  }
+
+  return capability;
+}
+
+/**
+ * Rejects server-backed gateway opt-in on fetch-style websocket runtime modules.
+ *
+ * @param descriptors Discovered gateway descriptors for the application.
+ * @param packageSubpath Runtime subpath used in diagnostics.
+ */
+export function assertNoFetchStyleServerBackedGatewayOptIn(
+  descriptors: readonly WebSocketGatewayDescriptor[],
+  packageSubpath: string,
+): void {
+  const descriptor = descriptors.find((entry) => entry.serverBacked !== undefined);
+
+  if (!descriptor) {
+    return;
+  }
+
+  throw new Error(
+    `@WebSocketGateway({ serverBacked }) is not supported on @fluojs/websockets/${packageSubpath}. Gateway path ${descriptor.path} must use the default fetch-style request-upgrade host instead.`,
+  );
 }
 
 /**

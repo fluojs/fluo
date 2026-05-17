@@ -1,33 +1,33 @@
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
+import type { HttpApplicationAdapter } from '@fluojs/http';
 import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
-import type {
-  BunServerWebSocket,
-  BunWebSocketBinding,
-  BunWebSocketBindingHost,
-  BunWebSocketMessage,
-  BunServerLike,
-} from './bun-types.js';
-import type { HttpApplicationAdapter } from '@fluojs/http';
-
 import {
+  assertNoFetchStyleServerBackedGatewayOptIn,
+  discoverGatewayDescriptors,
   dispatchGatewayDisconnect,
   dispatchGatewayMessage,
-  discoverGatewayDescriptors,
   isFinitePositiveInteger,
   normalizeGatewayPath,
-  resolveGatewayInstance,
-  runGatewayHandlers,
   type ResolvedGatewayInstance,
+  resolveGatewayInstance,
+  resolveSupportedFetchStyleRealtimeCapability,
+  runGatewayHandlers,
 } from '../internal/shared.js';
 import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
 import type {
   WebSocketGatewayDescriptor,
-  WebSocketUpgradeRejection,
   WebSocketRoomService,
+  WebSocketUpgradeRejection,
 } from '../types.js';
-import type { WebSocketModuleOptions } from './bun-types.js';
+import type {
+  BunServerLike,
+  BunServerWebSocket,
+  BunWebSocketBinding,
+  BunWebSocketBindingHost,
+  BunWebSocketMessage,WebSocketModuleOptions 
+} from './bun-types.js';
 
 interface BufferedDisconnectEvent {
   code: number;
@@ -69,61 +69,10 @@ const DEFAULT_MAX_WEBSOCKET_PAYLOAD_BYTES = 1_048_576;
 const DEFAULT_WEBSOCKET_SHUTDOWN_TIMEOUT_MS = 5_000;
 const LIFECYCLE_LOG_CONTEXT = 'WebSocketGatewayLifecycleService';
 
-type FetchStyleRealtimeCapability = {
-  contract: 'raw-websocket-expansion';
-  kind: 'fetch-style';
-  mode?: 'request-upgrade';
-  reason: string;
-  support?: 'contract-only' | 'supported';
-  version?: 1;
-};
-
-type RealtimeCapability =
-  | FetchStyleRealtimeCapability
-  | {
-      kind: 'server-backed';
-      reason?: string;
-    }
-  | {
-      kind: 'unsupported';
-      mode?: 'no-op';
-      reason: string;
-    };
-
-type RealtimeAwareHttpApplicationAdapter = HttpApplicationAdapter & {
-  getRealtimeCapability?: () => RealtimeCapability;
-};
-
 function hasBunWebSocketBindingHost(
   adapter: HttpApplicationAdapter,
-): adapter is RealtimeAwareHttpApplicationAdapter & BunWebSocketBindingHost {
+): adapter is HttpApplicationAdapter & BunWebSocketBindingHost {
   return 'configureWebSocketBinding' in adapter && typeof adapter.configureWebSocketBinding === 'function';
-}
-
-function resolveSupportedFetchStyleRealtimeCapability(
-  adapter: RealtimeAwareHttpApplicationAdapter,
-): FetchStyleRealtimeCapability {
-  if (typeof adapter.getRealtimeCapability !== 'function') {
-    throw new Error(
-      'Bun WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability(). Use @fluojs/platform-bun together with @fluojs/websockets/bun.',
-    );
-  }
-
-  const capability = adapter.getRealtimeCapability();
-
-  if (capability.kind !== 'fetch-style' || capability.contract !== 'raw-websocket-expansion') {
-    throw new Error(
-      'Bun WebSocket gateway bootstrap requires a fetch-style raw-websocket-expansion realtime capability from the selected HTTP adapter.',
-    );
-  }
-
-  if (capability.support !== 'supported') {
-    throw new Error(
-      `Bun WebSocket gateway bootstrap requires supported fetch-style websocket hosting. ${capability.reason}`,
-    );
-  }
-
-  return capability;
 }
 
 function isHttpExceptionLike(error: unknown): error is { message: string; status: number } {
@@ -182,9 +131,13 @@ export class BunWebSocketGatewayLifecycleService
       return;
     }
 
-    this.assertNoServerBackedGatewayOptIn(descriptors);
+    assertNoFetchStyleServerBackedGatewayOptIn(descriptors, 'bun');
 
-    resolveSupportedFetchStyleRealtimeCapability(this.adapter);
+    resolveSupportedFetchStyleRealtimeCapability(this.adapter, {
+      packageSubpath: 'bun',
+      platformPackage: '@fluojs/platform-bun',
+      runtimeName: 'Bun',
+    });
 
     if (!hasBunWebSocketBindingHost(this.adapter)) {
       throw new Error(
@@ -194,20 +147,6 @@ export class BunWebSocketGatewayLifecycleService
 
     const bunAdapter = this.adapter as HttpApplicationAdapter & BunWebSocketBindingHost;
     bunAdapter.configureWebSocketBinding(this.createBinding(descriptors));
-  }
-
-  private assertNoServerBackedGatewayOptIn(
-    descriptors: readonly WebSocketGatewayDescriptor[],
-  ): void {
-    const descriptor = descriptors.find((entry) => entry.serverBacked !== undefined);
-
-    if (!descriptor) {
-      return;
-    }
-
-    throw new Error(
-      `@WebSocketGateway({ serverBacked }) is not supported on @fluojs/websockets/bun. Gateway path ${descriptor.path} must use the default fetch-style request-upgrade host instead.`,
-    );
   }
 
   async onApplicationShutdown(): Promise<void> {
