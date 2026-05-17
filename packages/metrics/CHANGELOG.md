@@ -1,5 +1,16 @@
 # @fluojs/metrics
 
+## 1.0.3
+
+### Patch Changes
+
+- [#1993](https://github.com/fluojs/fluo/pull/1993) [`d27a381`](https://github.com/fluojs/fluo/commit/d27a3810f7a0053ff490c21564f419af9f80e33f) Thanks [@ayden94](https://github.com/ayden94)! - Align Terminus Redis diagnostics and Metrics option responsibility contracts with lifecycle-aware tests, public documentation, and TSDoc coverage.
+
+- Updated dependencies [[`d675879`](https://github.com/fluojs/fluo/commit/d675879e7401c248baff4576974bc519c2aa6629), [`0c6f149`](https://github.com/fluojs/fluo/commit/0c6f1497db78d1d6c8175206df0f1cb5d1bc74f8), [`494c6f6`](https://github.com/fluojs/fluo/commit/494c6f667e0487c149124b5af28a720f22cd9016), [`3dddc88`](https://github.com/fluojs/fluo/commit/3dddc88748bd3fac07cc059ff79b2995fe9292b0)]:
+  - @fluojs/runtime@1.1.1
+  - @fluojs/di@1.0.3
+  - @fluojs/http@1.1.0
+
 ## 1.0.2
 
 ### Patch Changes

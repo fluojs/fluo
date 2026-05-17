@@ -1,5 +1,15 @@
 # @fluojs/platform-fastify
 
+## 1.0.3
+
+### Patch Changes
+
+- [#1985](https://github.com/fluojs/fluo/pull/1985) [`de839f2`](https://github.com/fluojs/fluo/commit/de839f24946638c0afe963d608f384dd5e354041) Thanks [@ayden94](https://github.com/ayden94)! - Treat multipart content-type media values case-insensitively before raw-body capture so Fastify skips rawBody for mixed-case `Multipart/Form-Data` requests.
+
+- Updated dependencies [[`d675879`](https://github.com/fluojs/fluo/commit/d675879e7401c248baff4576974bc519c2aa6629), [`494c6f6`](https://github.com/fluojs/fluo/commit/494c6f667e0487c149124b5af28a720f22cd9016), [`3dddc88`](https://github.com/fluojs/fluo/commit/3dddc88748bd3fac07cc059ff79b2995fe9292b0)]:
+  - @fluojs/runtime@1.1.1
+  - @fluojs/http@1.1.0
+
 ## 1.0.2
 
 ### Patch Changes

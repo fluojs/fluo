@@ -1,5 +1,14 @@
 # @fluojs/studio
 
+## 1.0.3
+
+### Patch Changes
+
+- [#1984](https://github.com/fluojs/fluo/pull/1984) [`8fe1869`](https://github.com/fluojs/fluo/commit/8fe1869b7c2f6ac26b50a04a50be707ac7ff93cb) Thanks [@ayden94](https://github.com/ayden94)! - Fix the packaged Studio viewer so built assets resolve from the exported HTML file path, validate `inspect --report` summaries against their snapshot and timing payloads, and keep Studio build contract tests isolated from repository `dist` artifacts.
+
+- Updated dependencies [[`d675879`](https://github.com/fluojs/fluo/commit/d675879e7401c248baff4576974bc519c2aa6629)]:
+  - @fluojs/runtime@1.1.1
+
 ## 1.0.2
 
 ### Patch Changes

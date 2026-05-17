@@ -1,5 +1,17 @@
 # @fluojs/mongoose
 
+## 1.0.4
+
+### Patch Changes
+
+- [#1995](https://github.com/fluojs/fluo/pull/1995) [`7c65940`](https://github.com/fluojs/fluo/commit/7c659407460caff40b4b3868a9f58c6d425ea1b6) Thanks [@ayden94](https://github.com/ayden94)! - Track nested Mongoose request transaction boundaries during manual transactions and isolate async module factory results per application container.
+
+- Updated dependencies [[`d675879`](https://github.com/fluojs/fluo/commit/d675879e7401c248baff4576974bc519c2aa6629), [`0c6f149`](https://github.com/fluojs/fluo/commit/0c6f1497db78d1d6c8175206df0f1cb5d1bc74f8), [`494c6f6`](https://github.com/fluojs/fluo/commit/494c6f667e0487c149124b5af28a720f22cd9016), [`3dddc88`](https://github.com/fluojs/fluo/commit/3dddc88748bd3fac07cc059ff79b2995fe9292b0)]:
+  - @fluojs/core@1.0.3
+  - @fluojs/runtime@1.1.1
+  - @fluojs/di@1.0.3
+  - @fluojs/http@1.1.0
+
 ## 1.0.3
 
 ### Patch Changes

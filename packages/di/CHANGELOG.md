@@ -1,5 +1,14 @@
 # @fluojs/di
 
+## 1.0.3
+
+### Patch Changes
+
+- [#1980](https://github.com/fluojs/fluo/pull/1980) [`0c6f149`](https://github.com/fluojs/fluo/commit/0c6f1497db78d1d6c8175206df0f1cb5d1bc74f8) Thanks [@ayden94](https://github.com/ayden94)! - Invalidate cached singleton and request-scope consumers when provider overrides replace one of their dependencies.
+
+- Updated dependencies [[`d675879`](https://github.com/fluojs/fluo/commit/d675879e7401c248baff4576974bc519c2aa6629)]:
+  - @fluojs/core@1.0.3
+
 ## 1.0.2
 
 ### Patch Changes

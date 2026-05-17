@@ -1,5 +1,19 @@
 # @fluojs/testing
 
+## 1.0.3
+
+### Patch Changes
+
+- [#1990](https://github.com/fluojs/fluo/pull/1990) [`ca0e46a`](https://github.com/fluojs/fluo/commit/ca0e46afeb370eed4c64c7c9bdc5286f2f9d367b) Thanks [@ayden94](https://github.com/ayden94)! - Align testing module compilation and synchronous resolution with production lifecycle and DI ownership semantics.
+
+- [#1992](https://github.com/fluojs/fluo/pull/1992) [`452bfb4`](https://github.com/fluojs/fluo/commit/452bfb44f80cb83d0f6bcf7aa6e333db07b4085f) Thanks [@ayden94](https://github.com/ayden94)! - Stabilize HTTP adapter portability tests by binding ephemeral ports directly, make the Deno adapter report actual `port: 0` listen targets before startup completes, document local Vitest peer installation, and publish the `@fluojs/testing/vitest/tooling` subpath with import regression coverage.
+
+- Updated dependencies [[`d675879`](https://github.com/fluojs/fluo/commit/d675879e7401c248baff4576974bc519c2aa6629), [`0c6f149`](https://github.com/fluojs/fluo/commit/0c6f1497db78d1d6c8175206df0f1cb5d1bc74f8), [`494c6f6`](https://github.com/fluojs/fluo/commit/494c6f667e0487c149124b5af28a720f22cd9016), [`3dddc88`](https://github.com/fluojs/fluo/commit/3dddc88748bd3fac07cc059ff79b2995fe9292b0)]:
+  - @fluojs/core@1.0.3
+  - @fluojs/runtime@1.1.1
+  - @fluojs/di@1.0.3
+  - @fluojs/http@1.1.0
+
 ## 1.0.2
 
 ### Patch Changes

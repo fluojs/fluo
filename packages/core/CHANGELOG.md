@@ -1,5 +1,11 @@
 # @fluojs/core
 
+## 1.0.3
+
+### Patch Changes
+
+- [#1988](https://github.com/fluojs/fluo/pull/1988) [`d675879`](https://github.com/fluojs/fluo/commit/d675879e7401c248baff4576974bc519c2aa6629) Thanks [@ayden94](https://github.com/ayden94)! - Align foundation package contracts with their documented public surfaces and lifecycle diagnostics guidance.
+
 ## 1.0.2
 
 ### Patch Changes
