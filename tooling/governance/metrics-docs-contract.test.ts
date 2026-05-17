@@ -30,4 +30,18 @@ describe('metrics documentation contract', () => {
     expect(docs).not.toContain('process.env.MONITORING_SECRET');
     expect(docs).not.toMatch(/endpointMiddleware:\s*\[\s*\(context, next\)/);
   });
+
+  it('documents metrics public responsibility boundaries and module option wiring', () => {
+    const docs = Object.values(files).map(read).join('\n');
+
+    expect(docs).toContain('MetricsService');
+    expect(docs).toContain('METER_PROVIDER');
+    expect(docs).toContain('PrometheusMeterProvider');
+    expect(docs).toContain('provider');
+    expect(docs).toContain('defaultMetrics');
+    expect(docs).toContain('path: false');
+    expect(docs).toContain('module-level `middleware`');
+    expect(docs).toContain('endpoint-scoped middleware');
+    expect(docs).toContain('Route-scoped가 아니므로');
+  });
 });
