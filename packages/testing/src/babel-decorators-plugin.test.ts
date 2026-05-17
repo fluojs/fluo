@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { transformAsync } from '@babel/core';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createFluoBabelDecoratorsPlugin, resolveNearestBabelConfigFile } from './babel-decorators-plugin.js';
 
@@ -15,9 +15,19 @@ vi.mock('@babel/core', () => ({
 }));
 
 const mockedTransformAsync = vi.mocked(transformAsync);
+const tempWorkspaceRoots = new Set<string>();
+
+afterEach(() => {
+  for (const root of tempWorkspaceRoots) {
+    rmSync(root, { force: true, recursive: true });
+  }
+
+  tempWorkspaceRoots.clear();
+});
 
 function createWorkspaceWithConfig(configFileName: string): { filePath: string; root: string } {
   const root = mkdtempSync(join(tmpdir(), 'fluo-testing-babel-'));
+  tempWorkspaceRoots.add(root);
   const sourceDirectory = join(root, 'src', 'feature');
   mkdirSync(sourceDirectory, { recursive: true });
   writeFileSync(join(root, configFileName), 'module.exports = {};');
