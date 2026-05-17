@@ -92,7 +92,7 @@ await this.conn.transaction(async () => {
 });
 ```
 
-If the wrapped connection does not implement `startSession()`, transactions fall back to direct execution by default. Set `strictTransactions: true` to throw `Transaction not supported: Mongoose connection does not implement startSession.` instead of falling back.
+If the wrapped connection implements `connection.transaction(...)`, fluo treats that as the strict transaction boundary even when `startSession()` is not exposed directly. Otherwise, when the connection does not implement `startSession()`, transactions fall back to direct execution by default. Set `strictTransactions: true` to throw `Transaction not supported: Mongoose connection does not implement startSession.` instead of falling back.
 
 Fluo never rewrites Mongoose operation options. If a model call passes an explicit `{ session }`, that option is left intact; if it omits one, repositories should not assume fluo will attach a session for them. Keep same-session parallel work and nested transaction expectations conservative: nested `MongooseConnection.transaction(...)` calls reuse the active boundary rather than opening a second MongoDB transaction on the same session.
 
@@ -116,6 +116,7 @@ Use `MongooseConnection.requestTransaction(...)` directly when you need the same
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
 - `createMongooseProviders(options)` — compatibility/manual composition helper; prefer `MongooseModule.forRoot(...)` or `MongooseModule.forRootAsync(...)` for application-facing registration so module exports and provider visibility stay aligned.
 - `createMongoosePlatformStatusSnapshot(...)`
+- `connection` must be a concrete object/function handle for both sync and async registration; missing handles are rejected during module registration or async bootstrap.
 
 ### Related exported types
 
