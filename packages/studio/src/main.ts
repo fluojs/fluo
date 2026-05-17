@@ -511,7 +511,7 @@ function renderApp(options: RenderAppOptions | string = {}): void {
         return;
       }
       state.selectedComponentId = componentId;
-      renderApp();
+      renderApp({ preserveFocus: true });
     });
   });
 
