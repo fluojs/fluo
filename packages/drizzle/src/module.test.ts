@@ -543,6 +543,26 @@ describe('@fluojs/drizzle', () => {
     await asyncApp.close();
   });
 
+  it('rejects missing Drizzle database handles from sync and async registration', async () => {
+    const invalidDatabase = null as unknown as Record<string, never>;
+
+    expect(() => DrizzleModule.forRoot({ database: invalidDatabase })).toThrow(
+      'DrizzleModule requires a database option.',
+    );
+
+    const drizzleModule = DrizzleModule.forRootAsync({
+      useFactory: () => ({ database: invalidDatabase }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, { imports: [drizzleModule] });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+      'DrizzleModule requires a database option.',
+    );
+  });
+
   it('awaits async dispose hooks registered through module entrypoints', async () => {
     const events: string[] = [];
     const database = {};
