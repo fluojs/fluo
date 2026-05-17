@@ -738,13 +738,13 @@ importers:
       '@fluojs/runtime':
         specifier: workspace:^
         version: link:../runtime
-      '@fluojs/validation':
-        specifier: workspace:^
-        version: link:../validation
       '@prisma/client':
         specifier: '>=5.0.0'
         version: 7.5.0(typescript@6.0.2)
     devDependencies:
+      '@fluojs/validation':
+        specifier: workspace:^
+        version: link:../validation
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.15)(happy-dom@20.9.0)(tsx@4.21.0)

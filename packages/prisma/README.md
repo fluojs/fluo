@@ -142,7 +142,7 @@ class UserController {
 
 `createPrismaPlatformStatusSnapshot(...)` and `PrismaService.createPlatformStatusSnapshot()` expose the same lifecycle contract to diagnostics surfaces:
 
-- `readiness.status` is `not-ready` while Prisma is shutting down or stopped, and when `strictTransactions` is enabled without `$transaction(...)` support.
+- `readiness.status` is `not-ready` before `onModuleInit()` connects the client, while Prisma is shutting down or stopped, and when `strictTransactions` is enabled without `$transaction(...)` support.
 - `health.status` is `degraded` while request transactions are draining during shutdown and `unhealthy` after disconnect.
 - `details.activeRequestTransactions`, `details.lifecycleState`, `details.strictTransactions`, `details.supportsTransaction`, and `details.transactionAbortSignalSupport` describe the current request transaction and transaction-capability state.
 - `details.transactionContext: 'als'` identifies the async-local transaction context used by request and service transaction boundaries.
