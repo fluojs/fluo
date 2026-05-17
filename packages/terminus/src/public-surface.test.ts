@@ -13,6 +13,8 @@ describe('terminus public surface', () => {
     expect(terminus).toHaveProperty('DiskHealthIndicator');
     expect(terminus).toHaveProperty('MemoryHealthIndicator');
     expect(terminus).not.toHaveProperty('RedisHealthIndicator');
+    expect(terminus).not.toHaveProperty('createRedisHealthIndicator');
+    expect(terminus).not.toHaveProperty('createRedisHealthIndicatorProvider');
   });
 
   it('exposes Nest-style canonical module entrypoint', () => {
