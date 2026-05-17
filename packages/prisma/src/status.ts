@@ -17,6 +17,14 @@ type PrismaPlatformStatusSnapshotInput = {
 };
 
 function createReadiness(input: PrismaPlatformStatusSnapshotInput): PlatformReadinessReport {
+  if (input.lifecycleState === 'created') {
+    return {
+      critical: true,
+      reason: 'Prisma integration has not connected yet.',
+      status: 'not-ready',
+    };
+  }
+
   if (input.lifecycleState === 'shutting-down') {
     return {
       critical: true,

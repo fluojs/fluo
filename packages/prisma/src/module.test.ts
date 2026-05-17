@@ -1,19 +1,17 @@
+import { Global, Inject, Module } from '@fluojs/core';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
-import { Inject } from '@fluojs/core';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
-import { Global, Module } from '@fluojs/core';
-
 import {
-  PrismaModule,
   createPrismaPlatformStatusSnapshot,
-  PRISMA_CLIENT,
-  PRISMA_OPTIONS,
   getPrismaClientToken,
   getPrismaOptionsToken,
   getPrismaServiceToken,
-  type PrismaTransactionClient,
+  PRISMA_CLIENT,
+  PRISMA_OPTIONS,
+  PrismaModule,
   PrismaService,
+  type PrismaTransactionClient,
   PrismaTransactionInterceptor,
 } from './index.js';
 
@@ -862,6 +860,36 @@ describe('@fluojs/prisma', () => {
       strictTransactions: false,
       transactionContext: 'als',
     });
+  });
+
+  it('marks created and pre-connect snapshots as not-ready', () => {
+    const createdSnapshot = createPrismaPlatformStatusSnapshot({
+      activeRequestTransactions: 0,
+      lifecycleState: 'created',
+      strictTransactions: false,
+      supportsConnect: true,
+      supportsDisconnect: true,
+      supportsTransaction: true,
+      transactionAbortSignalSupport: 'unknown',
+    });
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: Record<string, never>) => Promise<T>): Promise<T> {
+        return callback({});
+      },
+    };
+    const prisma = new PrismaService<typeof client>(client);
+    const preConnectSnapshot = prisma.createPlatformStatusSnapshot();
+
+    expect(createdSnapshot.readiness).toEqual({
+      critical: true,
+      reason: 'Prisma integration has not connected yet.',
+      status: 'not-ready',
+    });
+    expect(createdSnapshot.health).toEqual({ status: 'healthy' });
+    expect(preConnectSnapshot.readiness.status).toBe('not-ready');
+    expect(preConnectSnapshot.details).toMatchObject({ lifecycleState: 'created' });
   });
 
   it('marks strict transaction mismatch as not-ready', () => {

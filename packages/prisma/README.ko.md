@@ -142,7 +142,7 @@ class UserController {
 
 `createPrismaPlatformStatusSnapshot(...)`와 `PrismaService.createPlatformStatusSnapshot()`은 같은 라이프사이클 계약을 진단 surface에 노출합니다.
 
-- `readiness.status`는 Prisma가 종료 중이거나 stopped 상태일 때, 그리고 `strictTransactions`가 켜져 있는데 `$transaction(...)`을 지원하지 않을 때 `not-ready`입니다.
+- `readiness.status`는 `onModuleInit()`이 클라이언트를 연결하기 전, Prisma가 종료 중이거나 stopped 상태일 때, 그리고 `strictTransactions`가 켜져 있는데 `$transaction(...)`을 지원하지 않을 때 `not-ready`입니다.
 - `health.status`는 종료 중 요청 트랜잭션을 drain하는 동안 `degraded`, disconnect 이후 `unhealthy`입니다.
 - `details.activeRequestTransactions`, `details.lifecycleState`, `details.strictTransactions`, `details.supportsTransaction`, `details.transactionAbortSignalSupport`는 현재 요청 트랜잭션과 트랜잭션 capability 상태를 설명합니다.
 - `details.transactionContext: 'als'`는 요청 및 서비스 트랜잭션 경계가 사용하는 async-local transaction context를 식별합니다.
