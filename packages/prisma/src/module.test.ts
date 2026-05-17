@@ -237,6 +237,40 @@ describe('@fluojs/prisma', () => {
     await app.close();
   });
 
+  it('normalizes Prisma registration names before creating public tokens', async () => {
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot({ name: '  users  ', client })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    expect(await app.container.resolve(getPrismaClientToken('users'))).toBe(client);
+    expect(await app.container.resolve(getPrismaOptionsToken(' users '))).toEqual({ strictTransactions: false });
+
+    await app.close();
+  });
+
+  it('rejects blank names and missing Prisma clients at registration', () => {
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+    };
+
+    expect(() => PrismaModule.forRoot({ name: '   ', client })).toThrow(
+      'PrismaModule name must be a non-empty string when provided.',
+    );
+    expect(() =>
+      PrismaModule.forRoot({ client: null as unknown as typeof client }),
+    ).toThrow('PrismaModule requires a client option.');
+  });
+
   it('keeps named client lifecycle hooks isolated per registration', async () => {
     const events: string[] = [];
     const usersClient = {
@@ -1093,5 +1127,19 @@ describe('PrismaModule.forRootAsync', () => {
     defineModule(AppModule, { imports: [prismaModule] });
 
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('secret fetch failed');
+  });
+
+  it('rejects async factories that resolve without a Prisma client', async () => {
+    const prismaModule = PrismaModule.forRootAsync({
+      useFactory: () => ({ client: null as unknown as ReturnType<typeof makeFakeClient>['client'] }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, { imports: [prismaModule] });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+      'PrismaModule requires a client option.',
+    );
   });
 });
