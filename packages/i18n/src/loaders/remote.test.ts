@@ -102,6 +102,24 @@ describe('@fluojs/i18n/loaders/remote', () => {
     expect(providerCalls).toBe(2);
   });
 
+  it('separates default cache entries by caller-owned catalog version', async () => {
+    let providerCalls = 0;
+    const loader = new RemoteI18nLoader({
+      provider: () => {
+        providerCalls += 1;
+        return { title: `Welcome ${providerCalls}` };
+      },
+    });
+    const stableCatalog = createCachedRemoteI18nLoader({ loader, ttlMs: 1_000, version: 'stable' });
+    const canaryCatalog = createCachedRemoteI18nLoader({ loader, ttlMs: 1_000, version: 'canary' });
+
+    await expect(stableCatalog.load('en', 'common')).resolves.toEqual({ title: 'Welcome 1' });
+    await expect(stableCatalog.load('en', 'common')).resolves.toEqual({ title: 'Welcome 1' });
+    await expect(canaryCatalog.load('en', 'common')).resolves.toEqual({ title: 'Welcome 2' });
+    await expect(canaryCatalog.load('en', 'common')).resolves.toEqual({ title: 'Welcome 2' });
+    expect(providerCalls).toBe(2);
+  });
+
   it('supports caller-owned cache keys and explicit invalidation', async () => {
     let providerCalls = 0;
     const loader = new RemoteI18nLoader({

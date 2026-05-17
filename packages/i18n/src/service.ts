@@ -1,3 +1,4 @@
+import { isPlainObject, resolveCatalogMessage } from './catalog.js';
 import { snapshotI18nModuleOptions } from './options.js';
 import { I18nError } from './errors.js';
 import type {
@@ -6,25 +7,11 @@ import type {
   I18nFallbackLocales,
   I18nListFormatOptions,
   I18nLocale,
-  I18nMessageTree,
   I18nModuleOptions,
   I18nNumberFormatOptions,
   I18nRelativeTimeFormatOptions,
   I18nTranslateOptions,
 } from './types.js';
-
-function hasOwn(value: unknown, key: string): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && Object.hasOwn(value, key);
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
 
 function normalizeTranslationKey(key: unknown, namespace: unknown): string {
   if (typeof key !== 'string') {
@@ -119,29 +106,6 @@ function interpolate(message: string, values: I18nTranslateOptions['values']): s
     const value = values[name];
     return value === undefined || value === null ? '' : String(value);
   });
-}
-
-function resolveMessage(tree: I18nMessageTree | undefined, key: string): string | undefined {
-  if (tree === undefined) {
-    return undefined;
-  }
-
-  if (hasOwn(tree, key)) {
-    const direct = tree[key];
-    return typeof direct === 'string' ? direct : undefined;
-  }
-
-  let current: unknown = tree;
-
-  for (const part of key.split('.')) {
-    if (!hasOwn(current, part)) {
-      return undefined;
-    }
-
-    current = current[part];
-  }
-
-  return typeof current === 'string' ? current : undefined;
 }
 
 function pushUnique(locales: I18nLocale[], locale: I18nLocale | undefined): void {
@@ -376,7 +340,7 @@ export class I18nService {
     const locales = this.resolveLocales(options.locale);
 
     for (const locale of locales) {
-      const message = resolveMessage(this.options.catalogs?.[locale], resolvedKey);
+      const message = resolveCatalogMessage(this.options.catalogs?.[locale], resolvedKey);
 
       if (message !== undefined) {
         return interpolate(message, options.values);

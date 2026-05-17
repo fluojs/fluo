@@ -422,7 +422,7 @@ typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en'
 | `I18nModule` | DI 등록을 위한 모듈입니다. |
 | `I18nService` | Detached option/catalog snapshot을 소유하고 translation을 resolve하며 explicit-locale `Intl` formatting helper(`formatDateTime`, `formatNumber`, `formatCurrency`, `formatPercent`, `formatList`, `formatRelativeTime`)를 제공하는 core service입니다. |
 | `createI18n` | 독립형 서비스를 생성하기 위한 헬퍼입니다. |
-| `I18nError` | 패키지 전용 에러 클래스입니다. |
+| `I18nError` | 안정적인 에러 코드를 포함하는 기본 i18n 패키지 에러입니다. |
 
 **타입:** `I18nModuleOptions`, `I18nMessageCatalogs`, `I18nMessageTree`, `I18nTranslateOptions`, `I18nInterpolationValues`, `I18nMissingMessageHandler`, `I18nMissingMessageContext`, `I18nLocale`, `I18nTranslationKey`, `I18nErrorCode`, `I18nFallbackLocales`, `I18nFormatOptions`, `I18nFormatterOptions`, `I18nDateTimeFormatOptions`, `I18nNumberFormatOptions`, `I18nCurrencyFormatOptions`, `I18nListFormatOptions`, `I18nRelativeTimeFormatOptions`, `I18nNamedDateTimeFormats`, `I18nNamedNumberFormats`, `I18nNamedListFormats`, `I18nNamedRelativeTimeFormats`.
 
