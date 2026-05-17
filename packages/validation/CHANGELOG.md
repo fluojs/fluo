@@ -1,5 +1,14 @@
 # @fluojs/validation
 
+## 1.0.4
+
+### Patch Changes
+
+- [#1994](https://github.com/fluojs/fluo/pull/1994) [`45b50e6`](https://github.com/fluojs/fluo/commit/45b50e649b5f3a833555523c20b11d3bb0a07f5b) Thanks [@ayden94](https://github.com/ayden94)! - Align validation and serialization edge contracts with regression coverage for IP options, dangerous keys, custom scalar validators, cyclic arrays, and mixed object graphs.
+
+- Updated dependencies [[`d675879`](https://github.com/fluojs/fluo/commit/d675879e7401c248baff4576974bc519c2aa6629)]:
+  - @fluojs/core@1.0.3
+
 ## 1.0.3
 
 ### Patch Changes

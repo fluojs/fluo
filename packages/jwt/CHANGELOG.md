@@ -1,5 +1,16 @@
 # @fluojs/jwt
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1981](https://github.com/fluojs/fluo/pull/1981) [`6c6eb9a`](https://github.com/fluojs/fluo/commit/6c6eb9a89afdacc17daf4153fbe0012e4d114cb1) Thanks [@ayden94](https://github.com/ayden94)! - Harden JWT expiry boundary handling and bound JWKS cache lifecycle semantics with explicit disposal support.
+
+- Updated dependencies [[`d675879`](https://github.com/fluojs/fluo/commit/d675879e7401c248baff4576974bc519c2aa6629), [`0c6f149`](https://github.com/fluojs/fluo/commit/0c6f1497db78d1d6c8175206df0f1cb5d1bc74f8)]:
+  - @fluojs/core@1.0.3
+  - @fluojs/runtime@1.1.1
+  - @fluojs/di@1.0.3
+
 ## 1.0.0
 
 ### Minor Changes

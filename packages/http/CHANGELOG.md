@@ -1,5 +1,20 @@
 # @fluojs/http
 
+## 1.1.0
+
+### Minor Changes
+
+- [#1962](https://github.com/fluojs/fluo/pull/1962) [`494c6f6`](https://github.com/fluojs/fluo/commit/494c6f667e0487c149124b5af28a720f22cd9016) Thanks [@ayden94](https://github.com/ayden94)! - Support managed `AsyncIterable<SseMessage<T> | T>` return values from `@Sse()` handlers, including SSE framing, abort cleanup, backpressure drain handling, and documented stream error behavior without adding an RxJS dependency.
+
+- [#1957](https://github.com/fluojs/fluo/pull/1957) [`3dddc88`](https://github.com/fluojs/fluo/commit/3dddc88748bd3fac07cc059ff79b2995fe9292b0) Thanks [@ayden94](https://github.com/ayden94)! - Add the Phase 1 `@Sse(path)` route decorator that registers a GET route with `text/event-stream` produces metadata while keeping `SseResponse` creation in handlers.
+
+### Patch Changes
+
+- Updated dependencies [[`d675879`](https://github.com/fluojs/fluo/commit/d675879e7401c248baff4576974bc519c2aa6629), [`45b50e6`](https://github.com/fluojs/fluo/commit/45b50e649b5f3a833555523c20b11d3bb0a07f5b), [`0c6f149`](https://github.com/fluojs/fluo/commit/0c6f1497db78d1d6c8175206df0f1cb5d1bc74f8)]:
+  - @fluojs/core@1.0.3
+  - @fluojs/validation@1.0.4
+  - @fluojs/di@1.0.3
+
 ## 1.0.0
 
 ### Minor Changes

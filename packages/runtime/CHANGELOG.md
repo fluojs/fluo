@@ -1,5 +1,16 @@
 # @fluojs/runtime
 
+## 1.1.1
+
+### Patch Changes
+
+- [#1988](https://github.com/fluojs/fluo/pull/1988) [`d675879`](https://github.com/fluojs/fluo/commit/d675879e7401c248baff4576974bc519c2aa6629) Thanks [@ayden94](https://github.com/ayden94)! - Align foundation package contracts with their documented public surfaces and lifecycle diagnostics guidance.
+
+- Updated dependencies [[`d675879`](https://github.com/fluojs/fluo/commit/d675879e7401c248baff4576974bc519c2aa6629), [`0c6f149`](https://github.com/fluojs/fluo/commit/0c6f1497db78d1d6c8175206df0f1cb5d1bc74f8), [`494c6f6`](https://github.com/fluojs/fluo/commit/494c6f667e0487c149124b5af28a720f22cd9016), [`3dddc88`](https://github.com/fluojs/fluo/commit/3dddc88748bd3fac07cc059ff79b2995fe9292b0)]:
+  - @fluojs/core@1.0.3
+  - @fluojs/di@1.0.3
+  - @fluojs/http@1.1.0
+
 ## 1.1.0
 
 ### Minor Changes
