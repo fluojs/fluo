@@ -87,6 +87,8 @@ MongoDB transactions require an active **session**. Fluo reduces the caller's bu
 
 When the provided Mongoose connection exposes `connection.transaction(...)`, fluo delegates the transaction boundary to that API so Mongoose's own ambient-session scope and cleanup semantics remain intact. Otherwise it falls back to `startSession()`, `startTransaction()`, `commitTransaction()` / `abortTransaction()`, and `endSession()` directly. Request-scoped transactions observe the request `AbortSignal` during session acquisition and delegated transaction startup, so cancelled requests can stop before repository work runs. In both modes, `dispose(connection)` waits until active request transactions and session cleanup settle during application shutdown, and new manual or request-scoped transaction boundaries are rejected once shutdown begins.
 
+Because Mongoose model calls require explicit `{ session }` options, request-scoped transactions do not rewrite repository calls for you. A nested `requestTransaction(...)` opened inside an existing manual `transaction(...)` reuses the ambient session, remains tracked as an active request boundary, and is aborted during shutdown so the outer manual transaction can roll back before connection disposal.
+
 ### Manual Transactions
 
 ```typescript

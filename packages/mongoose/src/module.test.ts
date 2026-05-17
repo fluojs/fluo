@@ -1,15 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import { Global, Inject, Module } from '@fluojs/core';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
+  createMongoosePlatformStatusSnapshot,
   MONGOOSE_CONNECTION,
   MONGOOSE_OPTIONS,
+  MongooseConnection,
   MongooseModule,
   MongooseTransactionInterceptor,
-  createMongoosePlatformStatusSnapshot,
-  MongooseConnection,
 } from './index.js';
 import type { MongooseConnectionLike, MongooseSessionLike } from './types.js';
 
@@ -576,6 +575,77 @@ describe('@fluojs/mongoose', () => {
     expect(sessionCalls).toBe(1);
   });
 
+  it('tracks nested request transactions inside manual transactions through shutdown abort', async () => {
+    const events: string[] = [];
+    let resolveRequestStarted!: () => void;
+    const requestStarted = new Promise<void>((resolve) => {
+      resolveRequestStarted = resolve;
+    });
+    const session = createFakeSession(events);
+
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return session;
+      },
+    };
+
+    const mongooseModule = MongooseModule.forRoot<typeof connection>({
+      connection,
+      dispose() {
+        events.push('dispose');
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [mongooseModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
+
+    const openTransaction = mongoose.transaction(() =>
+      mongoose.requestTransaction(async () => {
+        events.push('request:open');
+        resolveRequestStarted();
+        return new Promise<never>(() => undefined);
+      }),
+    );
+
+    await requestStarted;
+
+    expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        activeRequestTransactions: 1,
+        activeSessions: 1,
+        lifecycleState: 'ready',
+      },
+    });
+
+    const closePromise = app.close();
+
+    await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+    await closePromise;
+
+    expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        activeRequestTransactions: 0,
+        activeSessions: 0,
+        lifecycleState: 'stopped',
+      },
+    });
+    expect(events).toEqual([
+      'connection:startSession',
+      'transaction:start',
+      'request:open',
+      'transaction:abort',
+      'session:end',
+      'dispose',
+    ]);
+  });
+
   it('uses Mongoose connection.transaction when available without overriding explicit session flow', async () => {
     const events: string[] = [];
     const session = createFakeSession(events);
@@ -1095,6 +1165,74 @@ describe('MongooseModule.forRootAsync', () => {
     expect(conn).toBeInstanceOf(MongooseConnection);
 
     await app.close();
+  });
+
+  it('resolves async options independently for each application container', async () => {
+    type AsyncIsolationConnection = MongooseConnectionLike & { id: string };
+
+    const factoryEvents: string[] = [];
+    let factoryCalls = 0;
+
+    const mongooseModule = MongooseModule.forRootAsync<AsyncIsolationConnection>({
+      useFactory: () => {
+        factoryCalls += 1;
+        const id = `connection-${factoryCalls}`;
+        factoryEvents.push(`factory:${id}`);
+
+        return {
+          connection: {
+            id,
+            async startSession() {
+              factoryEvents.push(`startSession:${id}`);
+              return createFakeSession(factoryEvents);
+            },
+          },
+          dispose(connection: AsyncIsolationConnection) {
+            factoryEvents.push(`dispose:${connection.id}`);
+          },
+        };
+      },
+    });
+
+    class FirstAppModule {}
+    class SecondAppModule {}
+
+    defineModule(FirstAppModule, { imports: [mongooseModule] });
+    defineModule(SecondAppModule, { imports: [mongooseModule] });
+
+    const firstApp = await bootstrapApplication({ rootModule: FirstAppModule });
+    const firstConnection = await firstApp.container.resolve<AsyncIsolationConnection>(MONGOOSE_CONNECTION);
+    const firstMongoose = await firstApp.container.resolve(MongooseConnection);
+
+    const secondApp = await bootstrapApplication({ rootModule: SecondAppModule });
+    const secondConnection = await secondApp.container.resolve<AsyncIsolationConnection>(MONGOOSE_CONNECTION);
+    const secondMongoose = await secondApp.container.resolve(MongooseConnection);
+
+    expect(firstConnection).not.toBe(secondConnection);
+    expect(firstMongoose).not.toBe(secondMongoose);
+    expect(firstConnection.id).toBe('connection-1');
+    expect(secondConnection.id).toBe('connection-2');
+    expect(factoryEvents).toEqual(['factory:connection-1', 'factory:connection-2']);
+
+    await expect(firstMongoose.transaction(async () => 'first')).resolves.toBe('first');
+    await expect(secondMongoose.transaction(async () => 'second')).resolves.toBe('second');
+    await firstApp.close();
+    await secondApp.close();
+
+    expect(factoryEvents).toEqual([
+      'factory:connection-1',
+      'factory:connection-2',
+      'startSession:connection-1',
+      'transaction:start',
+      'transaction:commit',
+      'session:end',
+      'startSession:connection-2',
+      'transaction:start',
+      'transaction:commit',
+      'session:end',
+      'dispose:connection-1',
+      'dispose:connection-2',
+    ]);
   });
 
   it('propagates factory errors during module initialization', async () => {

@@ -50,7 +50,7 @@ const connection = mongoose.createConnection('mongodb://localhost:27017/test');
 class AppModule {}
 ```
 
-`MongooseModule.forRootAsync(...)`는 주입된 의존성과 동기 또는 비동기로 옵션을 반환하는 `useFactory`를 지원합니다. 여러 모듈에서 async 등록 helper를 공유할 때는 export된 `MongooseAsyncModuleOptions<TConnection>` 타입을 사용하세요. provider를 전역으로 노출해야 할 때는 최상위 async 등록 옵션에 `global`을 전달하세요. 해석된 옵션은 모듈 인스턴스 안에서 재사용되므로 연결 설정과 dispose hook이 모든 provider에서 일관되게 유지됩니다.
+`MongooseModule.forRootAsync(...)`는 주입된 의존성과 동기 또는 비동기로 옵션을 반환하는 `useFactory`를 지원합니다. 여러 모듈에서 async 등록 helper를 공유할 때는 export된 `MongooseAsyncModuleOptions<TConnection>` 타입을 사용하세요. provider를 전역으로 노출해야 할 때는 최상위 async 등록 옵션에 `global`을 전달하세요. 해석된 옵션은 하나의 애플리케이션 container 안에서 재사용되므로 해당 container의 모든 provider에서 연결 설정과 dispose hook이 일관되게 유지됩니다. 테스트나 multi-app 프로세스에서 같은 async module definition을 재사용해도 memoize된 연결을 공유하지 않고 애플리케이션 container마다 새 옵션을 해석합니다.
 
 ## 라이프사이클과 종료
 
@@ -64,6 +64,7 @@ class AppModule {}
 4. 설정한 `dispose(connection)` 훅은 활성 요청 트랜잭션과 ambient session scope가 모두 settled된 뒤에만 실행됩니다.
 
 `createMongoosePlatformStatusSnapshot(...)`은 트래픽 처리 중에는 `ready`, 요청 트랜잭션 drain 중에는 `shutting-down`, dispose 훅 완료 뒤에는 `stopped`를 보고합니다. 상태 details에는 `sessionStrategy`, `transactionContext: 'als'`, 활성 요청/session 개수, 리소스 소유권, strict/session 지원 진단이 포함됩니다. 수동 `transaction()`도 요청 범위 트랜잭션과 같은 명시적 세션 계약을 사용하므로, 트랜잭션에 참여해야 하는 Mongoose 모델 작업에는 repository 코드가 `conn.currentSession()`을 전달해야 합니다. 감싼 Mongoose 연결이 `connection.transaction(...)`을 노출하면 fluo는 Mongoose 자체 ambient-session scope를 보존하기 위해 그 API에 transaction boundary를 위임하면서도 같은 session을 `currentSession()`으로 노출합니다. 요청 범위 트랜잭션은 session을 획득하는 동안과 위임된 `connection.transaction(...)` 작업을 시작하는 동안에도 request `AbortSignal`을 관찰하므로, 요청 취소가 사용자 callback 실행 전에 이러한 시작 단계를 중단할 수 있습니다.
+기존 수동 `transaction(...)` boundary 안에서 열린 중첩 `requestTransaction(...)` 호출은 ambient session을 재사용하고 `details.activeRequestTransactions`에 계속 표시되며, 종료 중에 abort되어 바깥 수동 transaction이 `dispose(connection)` 실행 전에 rollback할 수 있습니다.
 
 ## 공통 패턴
 
@@ -114,7 +115,7 @@ import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
 class UserController {}
 ```
 
-HTTP interceptor 밖에서 같은 request-aware transaction boundary가 필요하다면 `MongooseConnection.requestTransaction(...)`을 직접 사용할 수 있습니다. 중첩된 service transaction은 활성 session boundary를 재사용합니다.
+HTTP interceptor 밖에서 같은 request-aware transaction boundary가 필요하다면 `MongooseConnection.requestTransaction(...)`을 직접 사용할 수 있습니다. 중첩된 service transaction은 활성 session boundary를 재사용하며, 수동 transaction 안에서 열린 중첩 request boundary도 request abort와 shutdown tracking에 참여합니다.
 
 ## 공개 API
 

@@ -73,36 +73,20 @@ function createMongooseRuntimeProviders<TConnection extends MongooseConnectionLi
   ];
 }
 
-function createMemoizedMongooseOptionsResolver<TConnection extends MongooseConnectionLike>(
-  options: MongooseAsyncModuleOptions<TConnection>,
-): (...deps: unknown[]) => Promise<ResolvedMongooseModuleOptions<TConnection>> {
-  let cachedResult: Promise<ResolvedMongooseModuleOptions<TConnection>> | undefined;
-
-  return (...deps: unknown[]) => {
-    if (!cachedResult) {
-      cachedResult = Promise.resolve(options.useFactory(...deps)).then((resolved) =>
-        normalizeMongooseModuleOptions<TConnection>(resolved),
-      );
-    }
-
-    if (!cachedResult) {
-      throw new Error('Mongoose module options resolver initialization failed.');
-    }
-
-    return cachedResult;
-  };
-}
-
 function createMongooseProvidersAsync<TConnection extends MongooseConnectionLike>(
   options: MongooseAsyncModuleOptions<TConnection>,
 ): Provider[] {
-  const resolveOptions = createMemoizedMongooseOptionsResolver(options);
+  const factory = options.useFactory;
 
   const normalizedOptionsProvider = {
     inject: options.inject,
     provide: MONGOOSE_NORMALIZED_OPTIONS,
     scope: 'singleton' as const,
-    useFactory: async (...deps: unknown[]) => resolveOptions(...deps),
+    useFactory: async (...deps: unknown[]) => {
+      const resolvedOptions = await factory(...deps);
+
+      return normalizeMongooseModuleOptions<TConnection>(resolvedOptions);
+    },
   };
 
   return createMongooseRuntimeProviders<TConnection>(normalizedOptionsProvider);
@@ -158,12 +142,22 @@ function buildMongooseModuleAsync<TConnection extends MongooseConnectionLike>(
  * Module entrypoint for wiring a Mongoose connection into the Fluo runtime lifecycle.
  */
 export class MongooseModule {
-  /** Creates a module definition from static Mongoose options. */
+  /**
+   * Registers Mongoose providers from static options.
+   *
+   * @param options Mongoose module options with connection handle, optional dispose hook, and strict transaction mode.
+   * @returns A module definition that exports `MongooseConnection` and `MongooseTransactionInterceptor`.
+   */
   static forRoot<TConnection extends MongooseConnectionLike>(options: MongooseModuleOptions<TConnection>): ModuleType {
     return buildMongooseModule<TConnection>(options);
   }
 
-  /** Creates a module definition from DI-aware async Mongoose options. */
+  /**
+   * Registers Mongoose providers from an async DI factory.
+   *
+   * @param options Async module options that resolve Mongoose connection/module configuration.
+   * @returns A module definition that resolves async options once per application container.
+   */
   static forRootAsync<TConnection extends MongooseConnectionLike>(
     options: MongooseAsyncModuleOptions<TConnection>,
   ): ModuleType {
