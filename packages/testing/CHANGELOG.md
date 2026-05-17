@@ -1,5 +1,11 @@
 # @fluojs/testing
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2011](https://github.com/fluojs/fluo/pull/2011) [`4be19f0`](https://github.com/fluojs/fluo/commit/4be19f0e343e686ec84b5d15273e1b44241cbabb) Thanks [@ayden94](https://github.com/ayden94)! - Run testing-module bootstrap lifecycle hooks for singleton multi-provider contributions and document the Test namespace facade while covering createTestApp bootstrap option forwarding.
+
 ## 1.0.3
 
 ### Patch Changes

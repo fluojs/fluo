@@ -1,5 +1,11 @@
 # @fluojs/websockets
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2009](https://github.com/fluojs/fluo/pull/2009) [`b611545`](https://github.com/fluojs/fluo/commit/b6115450a8fbfcb00ace38ab5616c0c6130f71da) Thanks [@ayden94](https://github.com/ayden94)! - Deduplicate fetch-style runtime boundary validation for Bun, Deno, and Cloudflare Workers websocket adapters while preserving existing runtime diagnostics and lifecycle behavior.
+
 ## 1.0.3
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @fluojs/drizzle
 
+## 1.0.2
+
+### Patch Changes
+
+- [#2008](https://github.com/fluojs/fluo/pull/2008) [`225759e`](https://github.com/fluojs/fluo/commit/225759e3103d0e7581ceec93694980623c037a78) Thanks [@ayden94](https://github.com/ayden94)! - Tighten persistence module registration input validation and document strict transaction handling for Mongoose connection-level transaction boundaries.
+
 ## 1.0.1
 
 ### Patch Changes

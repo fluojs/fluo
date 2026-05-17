@@ -1,5 +1,11 @@
 # @fluojs/studio
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2014](https://github.com/fluojs/fluo/pull/2014) [`c87ab77`](https://github.com/fluojs/fluo/commit/c87ab770f57eecbc245f38bab186a65f9d957537) Thanks [@ayden94](https://github.com/ayden94)! - Add a Studio connection explorer for inspecting selected component dependencies, dependents, external links, and related diagnostics from inspect snapshots.
+
 ## 1.0.3
 
 ### Patch Changes
