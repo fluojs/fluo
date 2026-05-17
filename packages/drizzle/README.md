@@ -160,6 +160,7 @@ defineModule(ManualDrizzleModule, {
 - `forRootAsync(...)` accepts DI-aware Drizzle options whose factory returns the database/dispose/transaction settings; pass `global` on the top-level async registration when the providers should be visible globally.
 - `forRootAsync(...)` resolves options once per application container. Reusing the same module definition across tests or multi-app processes creates isolated database/dispose results for each container instead of sharing a memoized factory result.
 - Supports `strictTransactions: true` to throw if transaction support is missing.
+- `database` must be a concrete object/function handle for both sync and async registration; missing handles are rejected during module registration or async bootstrap.
 
 ## Related Packages
 

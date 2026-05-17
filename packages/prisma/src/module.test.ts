@@ -237,6 +237,40 @@ describe('@fluojs/prisma', () => {
     await app.close();
   });
 
+  it('normalizes Prisma registration names before creating public tokens', async () => {
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot({ name: '  users  ', client })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    expect(await app.container.resolve(getPrismaClientToken('users'))).toBe(client);
+    expect(await app.container.resolve(getPrismaOptionsToken(' users '))).toEqual({ strictTransactions: false });
+
+    await app.close();
+  });
+
+  it('rejects blank names and missing Prisma clients at registration', () => {
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+    };
+
+    expect(() => PrismaModule.forRoot({ name: '   ', client })).toThrow(
+      'PrismaModule name must be a non-empty string when provided.',
+    );
+    expect(() =>
+      PrismaModule.forRoot({ client: null as unknown as typeof client }),
+    ).toThrow('PrismaModule requires a client option.');
+  });
+
   it('keeps named client lifecycle hooks isolated per registration', async () => {
     const events: string[] = [];
     const usersClient = {
@@ -732,6 +766,75 @@ describe('@fluojs/prisma', () => {
     expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 0 });
   });
 
+  it('drains nested request transactions inside manual transactions before disconnecting on shutdown', async () => {
+    const events: string[] = [];
+    let releaseRollback!: () => void;
+    const rollbackBarrier = new Promise<void>((resolve) => {
+      releaseRollback = resolve;
+    });
+    const transactionClient = {
+      kind: 'transaction' as const,
+    };
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+
+        try {
+          return await callback(transactionClient);
+        } catch (error) {
+          events.push('transaction:rollback:pending');
+          await rollbackBarrier;
+          events.push('transaction:rollback:done');
+          throw error;
+        } finally {
+          events.push('transaction:end');
+        }
+      },
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot<typeof client, typeof transactionClient>({ client })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
+    const outerTransaction = prisma.transaction(async () =>
+      prisma.requestTransaction(async () => new Promise<never>(() => undefined)),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 1 });
+
+    const shutdown = app.close();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(events).toContain('transaction:rollback:pending');
+    expect(events).not.toContain('disconnect');
+
+    releaseRollback();
+
+    await expect(outerTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+    await shutdown;
+
+    expect(events).toEqual([
+      'connect',
+      'transaction:start',
+      'transaction:rollback:pending',
+      'transaction:rollback:done',
+      'transaction:end',
+      'disconnect',
+    ]);
+    expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 0 });
+  });
+
   it('rejects new request transactions while shutdown is draining or stopped', async () => {
     let releaseDisconnect!: () => void;
     const disconnectReady = new Promise<void>((resolve) => {
@@ -1093,5 +1196,19 @@ describe('PrismaModule.forRootAsync', () => {
     defineModule(AppModule, { imports: [prismaModule] });
 
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('secret fetch failed');
+  });
+
+  it('rejects async factories that resolve without a Prisma client', async () => {
+    const prismaModule = PrismaModule.forRootAsync({
+      useFactory: () => ({ client: null as unknown as ReturnType<typeof makeFakeClient>['client'] }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, { imports: [prismaModule] });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+      'PrismaModule requires a client option.',
+    );
   });
 });

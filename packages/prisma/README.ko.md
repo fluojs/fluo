@@ -196,7 +196,8 @@ defineModule(ManualPrismaModule, {
 - `forRootAsync(...)`는 애플리케이션 컨테이너마다 옵션을 한 번 resolve하여, 별도 bootstrap 사이에서 클라이언트 라이프사이클과 요청 트랜잭션 격리를 보존합니다.
 - `strictTransactions: true` 설정 시 트랜잭션 미지원 환경에서 즉시 예외를 발생시킵니다.
 - `strictTransactions`가 `false`이면 클라이언트가 interactive `$transaction`을 제공하지 않을 때 직접 실행으로 fallback합니다.
-- 이름 있는 등록의 `name`은 trim되며, 빈 이름은 거부됩니다.
+- sync 및 async 등록 모두에서 `client`는 실제 object/function handle이어야 하며, 누락된 handle은 모듈 등록 또는 async bootstrap 중 거부됩니다.
+- 이름 있는 등록의 `name`은 public token 생성 전에 trim되며, 빈 이름은 거부됩니다.
 
 ### `PrismaService<TClient>`
 

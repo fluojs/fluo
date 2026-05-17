@@ -196,7 +196,8 @@ defineModule(ManualPrismaModule, {
 - `forRootAsync(...)` resolves options once per application container, preserving client lifecycle and request transaction isolation across separate bootstraps.
 - Supports `strictTransactions: true` to throw if transaction support is missing.
 - When `strictTransactions` is `false`, PrismaService falls back to direct execution if the client does not expose interactive `$transaction`.
-- Names are trimmed for named registrations, and blank names are rejected.
+- `client` must be a concrete object/function handle for both sync and async registration; missing handles are rejected during module registration or async bootstrap.
+- Names are trimmed for named registrations, and blank names are rejected before public tokens are created.
 
 ### `PrismaService<TClient>`
 

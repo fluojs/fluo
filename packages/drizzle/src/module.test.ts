@@ -543,6 +543,26 @@ describe('@fluojs/drizzle', () => {
     await asyncApp.close();
   });
 
+  it('rejects missing Drizzle database handles from sync and async registration', async () => {
+    const invalidDatabase = null as unknown as Record<string, never>;
+
+    expect(() => DrizzleModule.forRoot({ database: invalidDatabase })).toThrow(
+      'DrizzleModule requires a database option.',
+    );
+
+    const drizzleModule = DrizzleModule.forRootAsync({
+      useFactory: () => ({ database: invalidDatabase }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, { imports: [drizzleModule] });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+      'DrizzleModule requires a database option.',
+    );
+  });
+
   it('awaits async dispose hooks registered through module entrypoints', async () => {
     const events: string[] = [];
     const database = {};
@@ -712,6 +732,73 @@ describe('@fluojs/drizzle', () => {
       'transaction:end',
       'dispose',
     ]);
+  });
+
+  it('drains nested request transaction rollback before dispose during shutdown', async () => {
+    const events: string[] = [];
+    let releaseRollback!: () => void;
+    const rollbackBarrier = new Promise<void>((resolve) => {
+      releaseRollback = resolve;
+    });
+    const transactionDatabase = {};
+    const database = {
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+
+        try {
+          return await callback(transactionDatabase);
+        } catch (error) {
+          events.push('transaction:rollback:pending');
+          await rollbackBarrier;
+          events.push('transaction:rollback:done');
+          throw error;
+        } finally {
+          events.push('transaction:end');
+        }
+      },
+    };
+
+    const drizzleModule = DrizzleModule.forRoot<typeof database, typeof transactionDatabase>({
+      database,
+      dispose() {
+        events.push('dispose');
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [drizzleModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
+    const outerTransaction = drizzle.transaction(async () =>
+      drizzle.requestTransaction(async () => new Promise<never>(() => undefined)),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(1);
+
+    const shutdown = app.close();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(events).toContain('transaction:rollback:pending');
+    expect(events).not.toContain('dispose');
+
+    releaseRollback();
+
+    await expect(outerTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+    await shutdown;
+
+    expect(events).toEqual([
+      'transaction:start',
+      'transaction:rollback:pending',
+      'transaction:rollback:done',
+      'transaction:end',
+      'dispose',
+    ]);
+    expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(0);
   });
 
   it('removes completed nested request transactions from active status before the outer transaction settles', async () => {

@@ -38,9 +38,17 @@ type PrismaAsyncModuleOptions<
 
 const PRISMA_NORMALIZED_OPTIONS = Symbol('fluo.prisma.normalized-options');
 
+function isObjectLike(value: unknown): value is object {
+  return (typeof value === 'object' && value !== null) || typeof value === 'function';
+}
+
 function normalizePrismaRegistrationName(name?: string): string | undefined {
   if (name === undefined) {
     return undefined;
+  }
+
+  if (typeof name !== 'string') {
+    throw new Error('PrismaModule name must be a string when provided.');
   }
 
   const normalizedName = name.trim();
@@ -67,6 +75,10 @@ function normalizePrismaModuleOptions<
 >(
   options: PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
 ): NormalizedPrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions> {
+  if (!isObjectLike(options.client)) {
+    throw new Error('PrismaModule requires a client option.');
+  }
+
   return {
     name: normalizePrismaRegistrationName(options.name),
     client: options.client,

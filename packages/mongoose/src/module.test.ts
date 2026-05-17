@@ -555,6 +555,51 @@ describe('@fluojs/mongoose', () => {
     await asyncApp.close();
   });
 
+  it('allows strictTransactions when connection.transaction owns the session boundary', async () => {
+    const events: string[] = [];
+    const session = createFakeSession(events);
+    const connection: MongooseConnectionLike = {
+      async transaction<T>(fn: (currentSession: MongooseSessionLike) => Promise<T>) {
+        events.push('connection:transaction');
+        return fn(session);
+      },
+    };
+
+    const mongoose = new MongooseConnection(connection, undefined, { strictTransactions: true });
+
+    await expect(mongoose.transaction(async () => mongoose.currentSession())).resolves.toBe(session);
+    expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        sessionStrategy: 'explicit-session',
+        strictTransactions: true,
+        supportsConnectionTransaction: true,
+        supportsStartSession: false,
+      },
+      readiness: { status: 'ready' },
+    });
+    expect(events).toEqual(['connection:transaction']);
+  });
+
+  it('rejects missing Mongoose connection handles from sync and async registration', async () => {
+    const invalidConnection = null as unknown as MongooseConnectionLike;
+
+    expect(() => MongooseModule.forRoot({ connection: invalidConnection })).toThrow(
+      'MongooseModule requires a connection option.',
+    );
+
+    const mongooseModule = MongooseModule.forRootAsync({
+      useFactory: () => ({ connection: invalidConnection }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, { imports: [mongooseModule] });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+      'MongooseModule requires a connection option.',
+    );
+  });
+
   it('runs nested request and service transactions through a single session boundary', async () => {
     let sessionCalls = 0;
     const events: string[] = [];

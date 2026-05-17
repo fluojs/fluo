@@ -29,6 +29,10 @@ type DrizzleAsyncModuleOptions<
 const DRIZZLE_NORMALIZED_OPTIONS = Symbol('fluo.drizzle.normalized-options');
 const DRIZZLE_MODULE_EXPORTS = [DrizzleDatabase, DrizzleTransactionInterceptor, DRIZZLE_HANDLE_PROVIDER];
 
+function isObjectLike(value: unknown): value is object {
+  return (typeof value === 'object' && value !== null) || typeof value === 'function';
+}
+
 function normalizeDrizzleModuleOptions<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
   TTransactionDatabase,
@@ -36,6 +40,10 @@ function normalizeDrizzleModuleOptions<
 >(
   options: DrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>,
 ): ResolvedDrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions> {
+  if (!isObjectLike(options.database)) {
+    throw new Error('DrizzleModule requires a database option.');
+  }
+
   return {
     ...options,
     strictTransactions: options.strictTransactions ?? false,
@@ -95,7 +103,10 @@ function createDrizzleProvidersAsync<
     scope: 'singleton' as const,
     useFactory: async (...deps: unknown[]) =>
       normalizeDrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>(
-        await options.useFactory(...deps),
+        {
+          ...(await options.useFactory(...deps)),
+          global: options.global,
+        },
       ),
   };
 
