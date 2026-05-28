@@ -1010,7 +1010,7 @@ void bootstrap();
     expect(stdoutBuffer.join('')).toContain('cd ./starter-app');
     expect(packageJson).toContain('@fluojs/platform-fastify');
     expect(packageJson).toContain('@fluojs/runtime');
-    expect(mainFile).toContain("createFastifyAdapter({ port })");
+    expect(mainFile).toContain('runFastifyApplication(AppModule, { port })');
   });
 
   it('scaffolds the Express HTTP starter when the Express platform is selected explicitly', async () => {
@@ -1047,7 +1047,7 @@ void bootstrap();
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(packageJson).toContain('@fluojs/platform-express');
-    expect(mainFile).toContain('createExpressAdapter({ port })');
+    expect(mainFile).toContain('runExpressApplication(AppModule, { port })');
   });
 
   it('scaffolds the raw Node.js HTTP starter when the nodejs platform is selected explicitly', async () => {
@@ -1084,7 +1084,7 @@ void bootstrap();
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(packageJson).toContain('@fluojs/platform-nodejs');
-    expect(mainFile).toContain('createNodejsAdapter({ port })');
+    expect(mainFile).toContain('runNodejsApplication(AppModule, { port })');
   });
 
   it('scaffolds the Bun HTTP starter when the bun runtime is selected explicitly', async () => {
@@ -1121,7 +1121,7 @@ void bootstrap();
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(packageJson).toContain('@fluojs/platform-bun');
-    expect(mainFile).toContain('createBunAdapter({ port })');
+    expect(mainFile).toContain('runBunApplication(AppModule, { port })');
   });
 
   it('scaffolds the Deno HTTP starter when the deno runtime is selected explicitly', async () => {
@@ -4310,16 +4310,15 @@ exit 7
     expect(existsSync(join(projectDirectory, 'src', 'greeting', 'greeting.slice.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'test', 'app.e2e.test.ts'))).toBe(true);
-    expect(readmeContent).toContain('Starter contract: `src/main.ts` wires the selected first-class application starter: Node.js runtime + Fastify HTTP via `createFastifyAdapter(...)`');
+    expect(readmeContent).toContain('Starter contract: `src/main.ts` boots the selected first-class application starter: Node.js runtime + Fastify HTTP via `runFastifyApplication(...)`');
     expect(readmeContent).toContain('Default baseline: when you omit `--platform`, `fluo new` still generates the Node.js + Fastify HTTP starter by default');
     expect(readmeContent).toContain('Broader runtime/adapter package coverage is documented in the fluo docs and package READMEs; this generated starter intentionally describes only the wired starter path above');
     expect(readmeContent).not.toContain('@fluojs/runtime/node');
     expect(readmeContent).not.toContain('@fluojs/platform-nodejs');
-    expect(readmeContent).toContain('createFastifyAdapter');
+    expect(readmeContent).toContain('runFastifyApplication');
     expect(readmeContent).toContain('runtime module entrypoints use governed canonical names');
     expect(mainContent).toContain("from '@fluojs/platform-fastify'");
-    expect(mainContent).toContain('adapter: createFastifyAdapter({ port })');
-    expect(mainContent).toContain('await app.listen();');
+    expect(mainContent).toContain('runFastifyApplication(AppModule, { port })');
     expect(appTestContent).toContain("createRequest('/health')");
     expect(appTestContent).toContain("createRequest('/ready')");
     expect(appTestContent).toContain("createRequest('/greeting/')");
