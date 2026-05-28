@@ -167,6 +167,8 @@ PrismaModule.forRootAsync({
 
 하나의 컴파일된 애플리케이션 안에서는 하위 provider가 동일하게 resolve된 `PrismaService`, ALS 트랜잭션 컨텍스트, 라이프사이클 관리 대상 클라이언트를 공유합니다. 서로 다른 애플리케이션 컨테이너는 독립된 factory 결과를 받으므로 `$connect` / `$disconnect` 소유권과 요청 트랜잭션 상태가 격리됩니다.
 
+트랜잭션 경계에는 호스트가 제공하는 `AsyncLocalStorage` 지원이 필요합니다. `@fluojs/prisma`는 런타임이 노출하는 `globalThis.AsyncLocalStorage` 또는 Node.js의 `process.getBuiltinModule('node:async_hooks')` 호스트 경계를 통해 이를 resolve합니다. 두 경로 모두 사용할 수 없으면 동기 stack fallback으로 async boundary 사이의 `current()`를 잃는 대신, Prisma 트랜잭션을 열기 전에 `transaction()`과 `requestTransaction()`이 예외를 던집니다. 이 상태는 `createPlatformStatusSnapshot().details.transactionContext`에 `unavailable`로 보고됩니다.
+
 ### 수동 모듈 조합
 
 `PrismaModule.forRoot(...)` / `forRootAsync(...)`를 사용해 Prisma를 등록합니다. 커스텀 `defineModule(...)` 등록 안에서 Prisma 지원을 조합해야 할 때도 동일한 모듈 entrypoint를 import해서 사용하세요.
