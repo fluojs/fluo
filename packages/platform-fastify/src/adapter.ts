@@ -4,22 +4,20 @@ import type { AddressInfo } from 'node:net';
 import { Transform } from 'node:stream';
 
 import multipart from '@fastify/multipart';
-import fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
-
 import {
-  createServerBackedHttpAdapterRealtimeCapability,
-  createErrorResponse,
-  HttpException,
-  type HandlerDescriptor,
-  InternalServerErrorException,
-  PayloadTooLargeException,
   type CorsOptions,
+  createErrorResponse,
+  createServerBackedHttpAdapterRealtimeCapability,
   type Dispatcher,
   type FrameworkRequest,
   type FrameworkResponse,
   type FrameworkResponseStream,
+  type HandlerDescriptor,
   type HttpApplicationAdapter,
+  HttpException,
+  InternalServerErrorException,
   type MiddlewareLike,
+  PayloadTooLargeException,
   type SecurityHeadersOptions,
 } from '@fluojs/http';
 import {
@@ -28,18 +26,22 @@ import {
   consumeRawRequestNativeRouteHandoff,
   isRoutePathNormalizationSensitive,
 } from '@fluojs/http/internal';
-import {
-  type Application,
-  type ApplicationLogger,
-  type CreateApplicationOptions,
-  type ModuleType,
-  type MultipartOptions,
-  type UploadedFile,
+import type {
+  Application,
+  CreateApplicationOptions,
+  ModuleType,
+  MultipartOptions,
+  UploadedFile,
 } from '@fluojs/runtime';
 import {
-  createNodeShutdownSignalRegistration,
-  defaultNodeShutdownSignals,
-} from '@fluojs/runtime/node';
+  bootstrapHttpAdapterApplication,
+  createConsoleApplicationLogger,
+  runHttpAdapterApplication,
+} from '@fluojs/runtime/internal/http-adapter';
+import {
+  dispatchWithRequestResponseFactory,
+  type RequestResponseFactory,
+} from '@fluojs/runtime/internal/request-response-factory';
 import {
   cloneHeaderValue,
   createDeferredFrameworkRequestShell,
@@ -50,13 +52,10 @@ import {
   splitRawRequestUrl,
 } from '@fluojs/runtime/internal-node';
 import {
-  bootstrapHttpAdapterApplication,
-  runHttpAdapterApplication,
-} from '@fluojs/runtime/internal/http-adapter';
-import {
-  dispatchWithRequestResponseFactory,
-  type RequestResponseFactory,
-} from '@fluojs/runtime/internal/request-response-factory';
+  createNodeShutdownSignalRegistration,
+  defaultNodeShutdownSignals,
+} from '@fluojs/runtime/node';
+import fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 
 declare module '@fluojs/http' {
   interface FrameworkRequest {
@@ -105,7 +104,6 @@ export interface BootstrapFastifyApplicationOptions extends Omit<CreateApplicati
   globalPrefixExclude?: readonly string[];
   host?: string;
   https?: HttpsServerOptions;
-  logger?: ApplicationLogger;
   maxBodySize?: number;
   middleware?: MiddlewareLike[];
   multipart?: MultipartOptions;
@@ -453,7 +451,7 @@ function readSimpleQueryRecord(query: unknown): Record<string, string | string[]
   const record = query as Record<string, unknown>;
 
   for (const key in record) {
-    if (!Object.prototype.hasOwnProperty.call(record, key)) {
+    if (!Object.hasOwn(record, key)) {
       continue;
     }
 
@@ -630,10 +628,13 @@ export async function bootstrapFastifyApplication(
   rootModule: ModuleType,
   options: BootstrapFastifyApplicationOptions,
 ): Promise<Application> {
+  const logger = createConsoleApplicationLogger();
+
   return bootstrapHttpAdapterApplication(
     rootModule,
     options,
     createFastifyAdapter(options, options.multipart),
+    logger,
   );
 }
 
@@ -651,13 +652,14 @@ export async function runFastifyApplication(
   rootModule: ModuleType,
   options: RunFastifyApplicationOptions,
 ): Promise<Application> {
+  const logger = createConsoleApplicationLogger();
   const adapter = createFastifyAdapter(options, options.multipart) as FastifyHttpApplicationAdapter;
   return runHttpAdapterApplication(rootModule, {
     ...options,
     shutdownRegistration: createNodeShutdownSignalRegistration(
       options.shutdownSignals ?? defaultNodeShutdownSignals(),
     ),
-  }, adapter);
+  }, adapter, logger);
 }
 
 class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
@@ -899,7 +901,7 @@ function normalizeNativeRouteParams(params: unknown): Readonly<Record<string, st
   let normalized: Record<string, string> | undefined;
 
   for (const key in params as Record<string, unknown>) {
-    if (!Object.prototype.hasOwnProperty.call(params, key)) {
+    if (!Object.hasOwn(params, key)) {
       continue;
     }
 
@@ -918,7 +920,7 @@ function normalizeNativeRouteParams(params: unknown): Readonly<Record<string, st
 
 function hasNativeRouteParamSeparators(params: Readonly<Record<string, string>>): boolean {
   for (const key in params) {
-    if (Object.prototype.hasOwnProperty.call(params, key) && params[key]?.includes('/')) {
+    if (Object.hasOwn(params, key) && params[key]?.includes('/')) {
       return true;
     }
   }

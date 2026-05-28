@@ -1,12 +1,12 @@
 import { createFetchStyleHttpAdapterRealtimeCapability, type Dispatcher, type HttpApplicationAdapter } from '@fluojs/http/internal';
 import type { Application, ApplicationLogger, ModuleType, MultipartOptions } from '@fluojs/runtime';
 import {
+  type BootstrapHttpAdapterApplicationOptions,
   bootstrapHttpAdapterApplication,
   createConsoleApplicationLogger,
-  runHttpAdapterApplication,
-  type BootstrapHttpAdapterApplicationOptions,
   type HttpAdapterListenTarget,
   type RunHttpAdapterApplicationOptions,
+  runHttpAdapterApplication,
 } from '@fluojs/runtime/internal/http-adapter';
 import { createWebRequestResponseFactory, dispatchWebRequest } from '@fluojs/runtime/web';
 
@@ -331,9 +331,9 @@ export async function bootstrapDenoApplication(
   rootModule: ModuleType,
   options: BootstrapDenoApplicationOptions = {},
 ): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
+  const logger = createConsoleApplicationLogger();
 
-  return await bootstrapHttpAdapterApplication(rootModule, { ...options, logger }, createDenoAdapter(options));
+  return await bootstrapHttpAdapterApplication(rootModule, options, createDenoAdapter(options), logger);
 }
 
 /**
@@ -347,15 +347,14 @@ export async function runDenoApplication(
   rootModule: ModuleType,
   options: RunDenoApplicationOptions = {},
 ): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
+  const logger = createConsoleApplicationLogger();
   const adapter = createDenoAdapter(options);
   return await runHttpAdapterApplication(rootModule, {
     ...options,
-    logger,
     shutdownRegistration: options.shutdownSignals === false
       ? undefined
       : createDenoShutdownSignalRegistration(options.shutdownSignals ?? defaultDenoShutdownSignals()),
-  }, adapter);
+  }, adapter, logger);
 }
 
 function defaultDenoShutdownSignals(): readonly DenoApplicationSignal[] {
