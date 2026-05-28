@@ -1,5 +1,11 @@
 # @fluojs/runtime
 
+## 1.1.3
+
+### Patch Changes
+
+- [#2032](https://github.com/fluojs/fluo/pull/2032) [`439d93e`](https://github.com/fluojs/fluo/commit/439d93eb1caa850574410811bac31e8668651192) Thanks [@ayden94](https://github.com/ayden94)! - Add the runtime-connected Studio devtool path with `fluo dev --studio`, a local sidecar live event bridge, runtime snapshot/request instrumentation, and a React/FSD Studio UI while preserving static report compatibility.
+
 ## 1.1.2
 
 ### Patch Changes
