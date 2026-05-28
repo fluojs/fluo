@@ -466,6 +466,29 @@ describe('@fluojs/platform-bun', () => {
     expect(source).not.toContain("from '@fluojs/runtime/node'");
   });
 
+  it('uses the console application logger by default for terminal Bun startup helpers', async () => {
+    installMockBun();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      port: 0,
+      shutdownSignals: false,
+    });
+
+    try {
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining(`[fluo] ${String(process.pid)} -`),
+      );
+      expect(log).not.toHaveBeenCalledWith('[fluo] LOG [FluoFactory] Listening on http://127.0.0.1:0');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('translates Bun-style Request semantics into the framework request contract', async () => {
     const fetch = createBunFetchHandler({
       dispatcher: {

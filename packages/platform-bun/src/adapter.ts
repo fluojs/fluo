@@ -23,6 +23,7 @@ import type {
 import { createWebRequestResponseFactory, dispatchWebRequest } from '@fluojs/runtime/web';
 import {
   bootstrapHttpAdapterApplication,
+  createConsoleApplicationLogger,
   runHttpAdapterApplication,
   type RunHttpAdapterApplicationOptions,
   type HttpAdapterListenTarget,
@@ -481,9 +482,11 @@ export async function bootstrapBunApplication(
   rootModule: ModuleType,
   options: BootstrapBunApplicationOptions,
 ): Promise<Application> {
+  const logger = options.logger ?? createConsoleApplicationLogger();
+
   return bootstrapHttpAdapterApplication(
     rootModule,
-    options,
+    { ...options, logger },
     createBunAdapter({
       development: options.development,
       hostname: options.hostname,
@@ -509,6 +512,7 @@ export async function runBunApplication(
   rootModule: ModuleType,
   options: RunBunApplicationOptions,
 ): Promise<Application> {
+  const logger = options.logger ?? createConsoleApplicationLogger();
   const adapter = createBunAdapter({
     development: options.development,
     hostname: options.hostname,
@@ -523,6 +527,7 @@ export async function runBunApplication(
 
   return runHttpAdapterApplication(rootModule, {
     ...options,
+    logger,
     shutdownRegistration: createBunShutdownSignalRegistration(options.shutdownSignals ?? defaultBunShutdownSignals()),
   }, adapter);
 }
