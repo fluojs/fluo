@@ -1,5 +1,11 @@
 # @fluojs/runtime
 
+## 1.1.4
+
+### Patch Changes
+
+- [#2035](https://github.com/fluojs/fluo/pull/2035) [`8e3b443`](https://github.com/fluojs/fluo/commit/8e3b44385c8c3adeaef26e3b492c842d30c19def) Thanks [@ayden94](https://github.com/ayden94)! - Restore console-style logger defaults for Bun and Deno terminal startup helpers while keeping shared/root and Worker bootstrap logging transport-neutral.
+
 ## 1.1.3
 
 ### Patch Changes
