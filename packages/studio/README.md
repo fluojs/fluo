@@ -2,16 +2,18 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-File-first shared platform snapshot viewer and canonical graph rendering provider for fluo runtime exports.
+Runtime-connected React devtool for fluo applications, with backward-compatible static/report artifact loading.
 
 ## Table of Contents
 
 - [Installation](#installation)
 - [Release Policy](#release-policy)
-- [When to Use](#when-to-use)
-- [Quick Start](#quick-start)
-- [Common Patterns](#common-patterns)
+- [Quick Start: Live Devtool](#quick-start-live-devtool)
+- [Static/Report Compatibility](#staticreport-compatibility)
+- [Local Security Model](#local-security-model)
+- [Runtime Support Matrix](#runtime-support-matrix)
 - [Public API](#public-api)
+- [Future Direction](#future-direction)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
 
@@ -21,27 +23,47 @@ File-first shared platform snapshot viewer and canonical graph rendering provide
 pnpm add @fluojs/studio
 ```
 
-The published package serves two caller-facing entrypoints:
+The published package serves these caller-facing entrypoints:
 
-- `@fluojs/studio` / `@fluojs/studio/contracts` for the canonical snapshot parsing, filtering, and Mermaid graph rendering helpers.
-- `@fluojs/studio/viewer` for the packaged browser viewer HTML entry file.
+- `@fluojs/studio` / `@fluojs/studio/contracts` for canonical snapshot parsing, filtering, Mermaid graph rendering helpers, and runtime-connected Studio live event contracts.
+- `@fluojs/studio/viewer` for the packaged React browser viewer HTML entry file.
 
 ## Release Policy
 
 - `@fluojs/studio` is part of the intended public publish surface for fluo.
 - The npm install contract for Studio is `pnpm add @fluojs/studio`; local repo development still uses `pnpm --dir packages/studio dev`.
-- Studio's public package surface in this release is the file-first viewer and its documented snapshot-consumption, filtering, and graph rendering contracts. Internal workspace wiring is not a supported install path.
+- The public package surface is additive: live devtool contracts are added while file-first parsing, filtering, graph rendering, and report artifacts remain supported.
 
-## When to Use
+## Quick Start: Live Devtool
 
-- **Visualization**: To explore your application's module graph and dependency chains.
-- **Diagnostics**: To identify and fix platform-level configuration issues using guided hints.
-- **Performance**: To analyze bootstrap timing and identify initialization bottlenecks.
-- **Documentation**: To generate Mermaid diagrams of your application architecture.
+Run a local app with the runtime-connected Studio sidecar:
 
-## Quick Start
+```bash
+fluo dev --studio
+```
 
-Studio consumes JSON exports from the fluo CLI. Runtime produces snapshots, the CLI owns artifact export/write/delegation, and Studio owns the public helpers and viewer surface that parse, filter, inspect, and render those snapshots for people and automation callers. Supported inspect artifacts include raw snapshots, snapshot-plus-timing envelopes, report artifacts produced by `fluo inspect --report`, and legacy standalone timing diagnostics.
+`fluo dev --studio` starts the normal dev process, starts a token-protected local sidecar, injects Studio runtime env into the app child process, and prints a URL such as:
+
+```text
+[fluo] Studio listening at http://127.0.0.1:51234/?token=...
+```
+
+Open that URL to inspect the live React Studio dashboard. The dashboard is built with Feature-Sliced Design layers under `src/app`, `src/pages`, `src/widgets`, `src/features`, `src/entities`, and `src/shared`.
+
+Live mode shows:
+
+- connection state (`connecting`, `connected`, `restarting`, `reconnecting`, `stale`, `disconnected`, `error`);
+- module/provider/controller/route graph nodes and import/export/ownership/dependency edges;
+- HTTP method/path/controller handler route descriptors;
+- recent request flow with route/handler correlation, success/error, status code, and duration;
+- bootstrap/restart/request timing summaries;
+- runtime/request diagnostics with severity, target, message, and fix hints where available.
+
+MVP request flow intentionally means route/handler and dependency-graph correlation, not full method-level service call-chain tracing.
+
+## Static/Report Compatibility
+
+Studio still accepts JSON exports from the fluo CLI. Runtime produces snapshots, the CLI owns artifact export/write/delegation, and Studio owns the public helpers and viewer surface that parse, filter, inspect, and render those snapshots for people and automation callers. Supported inspect artifacts include raw snapshots, snapshot-plus-timing envelopes, report artifacts produced by `fluo inspect --report`, and legacy standalone timing diagnostics.
 
 1. **Export a snapshot**:
    ```bash
@@ -54,68 +76,63 @@ Studio consumes JSON exports from the fluo CLI. Runtime produces snapshots, the 
    node -p "require.resolve('@fluojs/studio/viewer')"
    ```
 
-   Open the printed `dist/index.html` path in a browser. The packaged viewer entry is a static HTML artifact exported as `@fluojs/studio/viewer`; it does not start the monorepo development server.
-
-   For repo-local Studio development, use:
+   Open the printed `dist/index.html` path in a browser. For repo-local Studio development, use:
    ```bash
    pnpm --dir packages/studio dev
    ```
 
 3. **Load the file**: Drag and drop `snapshot.json` into the Studio web interface. Search and filter controls preserve focus while the graph, connection explorer, diagnostics, and summary update.
 
-## Common Patterns
+## Local Security Model
 
-### Troubleshooting Initialization
-Use the **Diagnostics issues** section to see issues collected during the runtime bootstrap process.
-- Filter by severity (Error, Warning).
-- Use `fixHint` to get actionable advice on how to resolve the issue.
-- Use `docsUrl` to open linked documentation when it is an absolute `http:` or `https:` URL. Unsafe schemes and relative or non-URL strings are not clickable; Studio renders them as escaped text instead.
-- View `dependsOn` to see which components are blocking the failing one.
+- The Studio sidecar binds `127.0.0.1` by default.
+- Runtime ingestion and browser state/SSE APIs require generated per-run tokens.
+- The sidecar does not enable CORS by default.
+- Request bodies are not captured by default. Live request events include method/path/url/request id/route/handler/status/duration/error metadata only.
+- Runtime Studio instrumentation is activated only by CLI-provided Studio env/config. Without that env/config, runtime behavior is a no-op.
 
-### Exporting Architecture Diagrams
-1. Use the **Platform dependency graph** section.
-2. Select the modules or components you want to visualize.
-3. Use the **Copy Mermaid** button to get a text-based diagram for your documentation.
+## Runtime Support Matrix
 
-### Exploring Component Connections
-Use the **Connection explorer** after selecting a graph node to inspect the selected component's internal dependencies, external dependencies, reverse dependents, and related diagnostics. This mirrors the Devtools-style workflow without moving snapshot production into Studio: runtime remains the producer, CLI remains the export boundary, and Studio remains the inspection and rendering surface.
-
-For automation, call `renderMermaid(snapshot)` from `@fluojs/studio` or `@fluojs/studio/contracts`. The helper is the supported snapshot-to-Mermaid contract: runtime packages remain snapshot producers, and Studio handles internal dependency edges plus external dependency nodes when rendering the graph.
+| Runtime target | MVP expectation |
+| --- | --- |
+| Node dev runner | Full support target through `fluo dev --studio`. |
+| Bun | Experimental/limited unless `--runner fluo` is used and verified for the project. |
+| Deno | Experimental/limited unless `--runner fluo` is used and verified for the project. |
+| Cloudflare Workers | Unsupported/limited for this MVP unless a dedicated worker bridge is implemented and tested. |
 
 ## Public API
 
-Studio is primarily a web application, but the published package also exposes the documented snapshot-consumption helpers used by tooling and automation. Treat `@fluojs/studio` as the canonical owner of snapshot parsing, filtering, and Mermaid graph rendering semantics.
+Studio is primarily a web application, but the published package also exposes documented contracts used by tooling and automation. Treat `@fluojs/studio` as the canonical owner of snapshot parsing, filtering, Mermaid graph rendering, and live Studio event validation semantics.
 
 | Contract | Description |
 |---|---|
-| `PlatformShellSnapshot` | The core data structure representing the application state. |
-| `PlatformDiagnosticIssue` | Schema for reporting and fixing platform errors. |
 | `parseStudioPayload(rawJson)` | Accepts raw snapshot JSON, standalone timing JSON, snapshot+timing envelopes, and `fluo inspect --report` artifacts; returns the parsed payload plus the original JSON string. |
-| `ParsedPayload` | Parsed Studio payload shape returned by `parseStudioPayload(...)`. |
-| `StudioPayload` | Normalized parsed payload envelope returned by `parseStudioPayload(...)`, with optional `report`, `snapshot`, and `timing` fields. |
-| `StudioReportArtifact` | Preserved `fluo inspect --report` artifact with summary, snapshot, and timing data for CI/support automation. |
-| `StudioReportSummary` | Summary block included in report artifacts. |
-| `FilterState` | Filter configuration accepted by `applyFilters(...)`. |
-| `PlatformReadinessStatus` | Readiness status union used by component filters. |
-| `PlatformDiagnosticSeverity` | Diagnostic severity union used by filters and issues. |
 | `applyFilters(snapshot, filter)` | Applies readiness/severity/query filters without mutating the source snapshot. |
 | `renderMermaid(snapshot)` | Produces Mermaid graph text from the loaded platform graph, including internal component dependency edges and external dependency nodes. |
+| `parseStudioLiveEvent(rawJson)` / `validateStudioLiveEvent(value)` | Validate runtime-connected sidecar/SSE envelopes before UI state consumes them. |
+| `StudioLiveSnapshot` | Live graph/routes/requests/timing/diagnostics snapshot consumed by the React UI. |
+| `StudioLiveEvent` | Versioned live event envelope for `snapshot`, `request`, `timing`, `diagnostic`, `restart`, `disconnect`, and `heartbeat`. |
+| `StudioPayload` / `StudioReportArtifact` / `StudioReportSummary` | Static/report compatibility contracts. |
 
 ### Published package entrypoints
 
-- `@fluojs/studio`: root helper barrel for snapshot parsing/filtering/rendering automation.
+- `@fluojs/studio`: root helper barrel for snapshot parsing/filtering/rendering and live contracts.
 - `@fluojs/studio/contracts`: explicit helper subpath for tooling that wants the contract helpers directly.
-- `@fluojs/studio/viewer`: packaged `dist/index.html` entrypoint for the browser viewer bundle.
+- `@fluojs/studio/viewer`: packaged `dist/index.html` entrypoint for the React browser viewer bundle.
 
-`@fluojs/studio` and `@fluojs/studio/contracts` expose equivalent helper barrels.
 `@fluojs/studio/viewer` is an asset-only manifest subpath: callers resolve the packaged HTML file path, not a JavaScript module or TypeScript declaration entrypoint.
+
+## Future Direction
+
+The MVP is local and runtime-connected. Future releases should consider, but do not yet ship, cloud-hosted Studio, accounts/auth, team sharing, production monitoring dashboards, richer bidirectional commands, and a possible VS Code extension.
 
 ## Related Packages
 
-- **[@fluojs/cli](../cli/README.md)**: Provides the `inspect` command to generate Studio-compatible exports.
-- **[@fluojs/runtime](../runtime/README.md)**: The engine that generates the diagnostic and snapshot data.
+- **[@fluojs/cli](../cli/README.md)**: Provides `fluo dev --studio` and inspect/export commands.
+- **[@fluojs/runtime](../runtime/README.md)**: Produces live snapshots, request traces, timing, and diagnostics.
 
 ## Example Sources
 
-- [main.ts](./src/main.ts) - Application entry point.
-- [contracts.ts](./src/contracts.ts) - Type definitions for snapshot consumption.
+- [main.ts](./src/main.ts) - Test-compatible application entry point.
+- [main.tsx](./src/main.tsx) - React browser viewer entry point.
+- [contracts.ts](./src/contracts.ts) - Static and live Studio contract definitions.

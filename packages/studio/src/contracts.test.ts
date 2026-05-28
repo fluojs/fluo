@@ -6,14 +6,19 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { PlatformShellSnapshot } from '@fluojs/runtime';
-import { describe, expect, it, vi } from 'vitest';
-import { applyFilters, parseStudioPayload, renderMermaid } from './contracts.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { applyFilters, isStudioLiveEvent, parseStudioLiveEvent, parseStudioPayload, renderMermaid } from './contracts.js';
 import * as studio from './index.js';
 import { inspectComponentConnections, renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './viewer-rendering.js';
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageCommandTimeoutMs = 120_000;
 const packageCommandKillSignal: NodeJS.Signals = 'SIGTERM';
+
+afterEach(() => {
+  delete (window as typeof window & { __FLUO_STUDIO__?: unknown }).__FLUO_STUDIO__;
+  vi.unstubAllGlobals();
+});
 
 function runPackageCommand(args: string[]): void {
   const result = spawnSync('pnpm', ['exec', ...args], {
@@ -124,6 +129,198 @@ async function loadStudioViewer(): Promise<void> {
 
   await import('./main.js');
 }
+
+
+
+describe('Studio live contracts', () => {
+  const liveSnapshot: studio.StudioLiveSnapshot = {
+    appId: 'app-test',
+    diagnostics: [
+      {
+        code: 'BOOTSTRAP_DEGRADED',
+        message: 'A bootstrap phase exceeded the expected local dev threshold.',
+        severity: 'warning',
+        targetId: 'module:AppModule',
+      },
+    ],
+    generatedAt: '2026-05-28T00:00:00.000Z',
+    graph: {
+      edges: [
+        {
+          from: 'module:AppModule',
+          id: 'owns_controller:module:AppModule->controller:AppModule:HealthController',
+          kind: 'owns_controller',
+          to: 'controller:AppModule:HealthController',
+        },
+      ],
+      nodes: [
+        {
+          id: 'module:AppModule',
+          kind: 'module',
+          label: 'AppModule',
+          status: 'active',
+        },
+        {
+          id: 'controller:AppModule:HealthController',
+          kind: 'controller',
+          label: 'HealthController',
+          metadata: { module: 'AppModule' },
+        },
+      ],
+    },
+    requests: [
+      {
+        controller: 'HealthController',
+        durationMs: 1.25,
+        handler: 'getHealth',
+        method: 'GET',
+        path: '/health',
+        requestId: 'req-1',
+        routeId: 'GET /health HealthController getHealth',
+        startedAt: '2026-05-28T00:00:01.000Z',
+        status: 'succeeded',
+        statusCode: 200,
+        url: '/health',
+      },
+    ],
+    routes: [
+      {
+        controller: 'HealthController',
+        handler: 'getHealth',
+        id: 'GET /health HealthController getHealth',
+        method: 'GET',
+        module: 'AppModule',
+        path: '/health',
+      },
+    ],
+    timing: {
+      phases: [{ durationMs: 1.25, name: 'bootstrap_module' }],
+      totalMs: 1.25,
+      version: 1,
+    },
+    version: 1,
+  };
+
+  it('parses runtime-connected Studio event envelopes', () => {
+    const event: studio.StudioLiveEvent = {
+      emittedAt: '2026-05-28T00:00:02.000Z',
+      epoch: 'epoch-1',
+      eventId: 'epoch-1:1',
+      payload: liveSnapshot,
+      sequence: 1,
+      source: {
+        appId: 'app-test',
+        runtime: 'node',
+      },
+      type: 'snapshot',
+      version: 1,
+    };
+
+    expect(parseStudioLiveEvent(JSON.stringify(event))).toEqual(event);
+    expect(isStudioLiveEvent(event)).toBe(true);
+    expect(studio.parseStudioLiveEvent(JSON.stringify(event))).toEqual(event);
+  });
+
+  it('rejects malformed runtime-connected Studio events before UI state consumes them', () => {
+    expect(() =>
+      parseStudioLiveEvent(
+        JSON.stringify({
+          emittedAt: '2026-05-28T00:00:02.000Z',
+          epoch: 'epoch-1',
+          eventId: 'epoch-1:1',
+          payload: {
+            ...liveSnapshot,
+            graph: {
+              ...liveSnapshot.graph,
+              nodes: [{ id: 'bad-node', kind: 'unknown', label: 'Bad' }],
+            },
+          },
+          sequence: 1,
+          source: { appId: 'app-test', runtime: 'node' },
+          type: 'snapshot',
+          version: 1,
+        }),
+      )
+    ).toThrow('Invalid Studio live graph node payload.');
+  });
+
+  it('renders runtime-connected live snapshot events through the React/FSD shell', async () => {
+    class FakeEventSource {
+      static instances: FakeEventSource[] = [];
+      onerror: ((event: Event) => void) | null = null;
+      onopen: ((event: Event) => void) | null = null;
+      private readonly listeners = new Map<string, Set<EventListener>>();
+
+      constructor(readonly url: string) {
+        FakeEventSource.instances.push(this);
+      }
+
+      addEventListener(type: string, listener: EventListener): void {
+        const listeners = this.listeners.get(type) ?? new Set<EventListener>();
+        listeners.add(listener);
+        this.listeners.set(type, listeners);
+      }
+
+      close(): void {}
+
+      emit(type: string, event: studio.StudioLiveEvent): void {
+        for (const listener of this.listeners.get(type) ?? []) {
+          listener(new MessageEvent(type, { data: JSON.stringify(event) }));
+        }
+      }
+
+      removeEventListener(type: string, listener: EventListener): void {
+        this.listeners.get(type)?.delete(listener);
+      }
+    }
+
+    vi.resetModules();
+    vi.stubGlobal('EventSource', FakeEventSource);
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      json: async () => ({ events: [], sequence: 7 }),
+      ok: true,
+      status: 200,
+    })));
+    (window as typeof window & { __FLUO_STUDIO__?: { eventsUrl: string; stateUrl: string } }).__FLUO_STUDIO__ = {
+      eventsUrl: '/api/events?token=test-token',
+      stateUrl: '/api/state?token=test-token',
+    };
+    document.body.innerHTML = '<div id="app"></div>';
+
+    await import('./main.js');
+
+    await vi.waitFor(() => {
+      expect(FakeEventSource.instances).toHaveLength(1);
+    });
+    const source = FakeEventSource.instances[0];
+    expect(source?.url).toBe('/api/events?token=test-token&after=7');
+    source?.onopen?.(new Event('open'));
+    source?.emit('snapshot', {
+      emittedAt: '2026-05-28T00:00:02.000Z',
+      epoch: 'epoch-1',
+      eventId: 'epoch-1:1',
+      payload: liveSnapshot,
+      sequence: 1,
+      source: {
+        appId: 'app-test',
+        runtime: 'node',
+      },
+      type: 'snapshot',
+      version: 1,
+    });
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('Runtime-connected live devtool');
+      expect(document.body.textContent).toContain('HealthController');
+      expect(document.body.textContent).toContain('GET /health');
+      expect(document.body.textContent).toContain('Live bootstrap timing');
+      expect(document.body.textContent).toContain('BOOTSTRAP_DEGRADED');
+    });
+
+    delete (window as typeof window & { __FLUO_STUDIO__?: unknown }).__FLUO_STUDIO__;
+    vi.unstubAllGlobals();
+  });
+});
 
 describe('parseStudioPayload', () => {
   it('publishes contract helpers from the root package entrypoint', () => {

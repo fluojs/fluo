@@ -12,6 +12,12 @@ import {
 
 import { DuplicateProviderError } from './errors.js';
 import { createBootstrapTimingDiagnostics, type BootstrapTimingPhase } from './health/diagnostics.js';
+import {
+  applyStudioDevtoolsApplicationOptions,
+  applyStudioDevtoolsContextOptions,
+  createStudioDevtoolsRuntimeFromEnv,
+  publishStudioBootstrapSnapshot,
+} from './devtools/studio-runtime.js';
 import { defineRuntimeModuleMetadata, getRuntimeClassDiMetadata } from './internal/core-metadata.js';
 import { RuntimeDefaultBinder } from './internal/http-runtime.js';
 import { createDefaultApplicationLogger } from './logging/default-logger.js';
@@ -1417,31 +1423,36 @@ function createRuntimeDispatcher(
  * @throws {Error} Propagates module-graph, lifecycle, or runtime initialization failures.
  */
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
-  const logger = options.logger ?? createDefaultApplicationLogger();
+  const studioDevtools = createStudioDevtoolsRuntimeFromEnv();
+  const effectiveOptions = applyStudioDevtoolsApplicationOptions(options, studioDevtools);
+  const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
   let lifecycleInstances: unknown[] = [];
   let bootstrappedContainer: Container | undefined;
   let bootstrappedModules: CompiledModule[] = [];
-  const hasHttpAdapter = options.adapter !== undefined;
-  const adapter = options.adapter ?? {
+  const hasHttpAdapter = effectiveOptions.adapter !== undefined;
+  const adapter = effectiveOptions.adapter ?? {
     async close() {},
     async listen() {},
   };
   const runtimeCleanup: Array<() => void> = [];
+  if (studioDevtools) {
+    runtimeCleanup.push(() => studioDevtools.close());
+  }
   const bootstrapReadySignal = createBootstrapReadySignal();
-  const platformShell = createRuntimePlatformShell(options.platform?.components);
-  const timingEnabled = options.diagnostics?.timing === true;
+  const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);
+  const timingEnabled = effectiveOptions.diagnostics?.timing === true;
   const timingStart = timingEnabled ? runtimePerformance.now() : 0;
   const timingPhases: BootstrapTimingPhase[] = [];
 
   try {
     logger.log('Starting fluo application...', 'FluoFactory');
-    const runtimeProviders = createRuntimeProviders(options, logger);
+    const runtimeProviders = createRuntimeProviders(effectiveOptions, logger);
 
     const moduleBootstrapStart = timingEnabled ? runtimePerformance.now() : 0;
-    const bootstrapped = bootstrapModule(options.rootModule, {
-      duplicateProviderPolicy: options.duplicateProviderPolicy,
+    const bootstrapped = bootstrapModule(effectiveOptions.rootModule, {
+      duplicateProviderPolicy: effectiveOptions.duplicateProviderPolicy,
       logger,
-      moduleGraphCache: options.moduleGraphCache,
+      moduleGraphCache: effectiveOptions.moduleGraphCache,
       providers: runtimeProviders,
       validationTokens: [
         RUNTIME_CONTAINER,
@@ -1494,7 +1505,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     }
 
     const dispatcherStart = timingEnabled ? runtimePerformance.now() : 0;
-    const dispatcher = createRuntimeDispatcher(bootstrapped, options, logger);
+    const dispatcher = createRuntimeDispatcher(bootstrapped, effectiveOptions, logger);
     if (timingEnabled) {
       timingPhases.push({
         durationMs: runtimePerformance.now() - dispatcherStart,
@@ -1506,10 +1517,17 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       ? createBootstrapTimingDiagnostics(timingPhases, runtimePerformance.now() - timingStart)
       : undefined;
 
+    publishStudioBootstrapSnapshot(studioDevtools, {
+      modules: bootstrapped.modules,
+      rootModule: effectiveOptions.rootModule,
+      routes: dispatcher.describeRoutes?.() ?? [],
+      timing: bootstrapTiming,
+    });
+
     return new FluoApplication(
       bootstrapped.container,
       bootstrapped.modules,
-      options.rootModule,
+      effectiveOptions.rootModule,
       dispatcher,
       bootstrapTiming,
       adapter,
@@ -1582,26 +1600,31 @@ export class FluoFactory {
     rootModule: ModuleType,
     options: CreateApplicationContextOptions = {},
   ): Promise<ApplicationContext> {
-    const logger = options.logger ?? createDefaultApplicationLogger();
+    const studioDevtools = createStudioDevtoolsRuntimeFromEnv();
+    const effectiveOptions = applyStudioDevtoolsContextOptions(options, studioDevtools);
+    const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
     let lifecycleInstances: unknown[] = [];
     let bootstrappedContainer: Container | undefined;
     let bootstrappedModules: CompiledModule[] = [];
     const runtimeCleanup: Array<() => void> = [];
+    if (studioDevtools) {
+      runtimeCleanup.push(() => studioDevtools.close());
+    }
     const bootstrapReadySignal = createBootstrapReadySignal();
-    const platformShell = createRuntimePlatformShell(options.platform?.components);
-    const timingEnabled = options.diagnostics?.timing === true;
+    const platformShell = createRuntimePlatformShell(effectiveOptions.platform?.components);
+    const timingEnabled = effectiveOptions.diagnostics?.timing === true;
     const timingStart = timingEnabled ? runtimePerformance.now() : 0;
     const timingPhases: BootstrapTimingPhase[] = [];
 
     try {
       logger.log('Starting fluo application context...', 'FluoFactory');
-      const runtimeProviders = createRuntimeProviders(options, logger);
+      const runtimeProviders = createRuntimeProviders(effectiveOptions, logger);
 
       const moduleBootstrapStart = timingEnabled ? runtimePerformance.now() : 0;
       const bootstrapped = bootstrapModule(rootModule, {
-        duplicateProviderPolicy: options.duplicateProviderPolicy,
+        duplicateProviderPolicy: effectiveOptions.duplicateProviderPolicy,
         logger,
-        moduleGraphCache: options.moduleGraphCache,
+        moduleGraphCache: effectiveOptions.moduleGraphCache,
         providers: runtimeProviders,
         validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, BOOTSTRAP_READY_SIGNAL],
       });
@@ -1650,6 +1673,12 @@ export class FluoFactory {
       const bootstrapTiming = timingEnabled
         ? createBootstrapTimingDiagnostics(timingPhases, runtimePerformance.now() - timingStart)
         : undefined;
+
+      publishStudioBootstrapSnapshot(studioDevtools, {
+        modules: bootstrapped.modules,
+        rootModule,
+        timing: bootstrapTiming,
+      });
 
       return new FluoApplicationContext(
         bootstrapped.container,

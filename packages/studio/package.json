@@ -1,6 +1,6 @@
 {
   "name": "@fluojs/studio",
-  "description": "File-first diagnostics viewer for Fluo runtime platform snapshot and timing JSON exports.",
+  "description": "Runtime-connected React devtool for Fluo apps with static diagnostics report compatibility.",
   "keywords": [
     "fluo",
     "studio",
@@ -50,10 +50,14 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@fluojs/runtime": "workspace:^"
+    "@fluojs/runtime": "workspace:^",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
   },
   "devDependencies": {
     "@fluojs-internal/tooling-vite": "workspace:^",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "happy-dom": "^20.9.0",
     "vitest": "^3.2.4"
   }
