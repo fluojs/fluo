@@ -119,6 +119,24 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     expect(source).not.toContain("} from '@fluojs/http';");
   });
 
+  it('keeps Worker bootstrap on the transport-neutral default logger', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const worker = await bootstrapCloudflareWorkerApplication(AppModule);
+
+    try {
+      expect(log).toHaveBeenCalledWith('[fluo] LOG [FluoFactory] Starting fluo application...');
+      expect(log).not.toHaveBeenCalledWith(
+        expect.stringContaining(`[fluo] ${String(process.pid)} -`),
+      );
+    } finally {
+      await worker.close();
+    }
+  });
+
   it('delegates Worker fetch handling to the shared web adapter core', async () => {
     const adapter = createCloudflareWorkerAdapter({ rawBody: true });
     const dispatcher = {
