@@ -111,14 +111,7 @@ await bootstrapFastifyApplication(AppModule, {
 ```
 
 ### 로깅 (Logging)
-fluo는 자체 로깅 시스템을 사용합니다. 어댑터는 Fastify 인스턴스를 생성할 때 네이티브 로거를 비활성화하며, 부트스트랩 옵션에 제공된 fluo 로거를 통해 로그를 기록합니다.
-
-```typescript
-await runFastifyApplication(AppModule, {
-  logger: myLogger,
-  port: 3000,
-});
-```
+fluo는 자체 로깅 시스템을 사용합니다. 어댑터는 Fastify 인스턴스를 생성할 때 네이티브 로거를 비활성화하며, `bootstrapFastifyApplication(...)` / `runFastifyApplication(...)`은 활성 런타임과 일관된 startup/shutdown diagnostics를 유지하도록 framework console logger를 내부에서 선택합니다.
 
 ### 미들웨어 (Middleware)
 요청이 핸들러에 도달하기 전에 실행되는 런타임 레벨의 미들웨어를 등록할 수 있습니다. 이는 Fastify 전용 플러그인이 아닌 표준 `MiddlewareLike` 함수라는 점에 유의하세요.
@@ -167,7 +160,7 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 
 - **CORS 오류**: `cors` 부트스트랩 옵션을 사용 중인지 확인하세요. Fastify의 네이티브 CORS 플러그인을 사용하지 않으므로 오직 fluo가 관리하는 CORS 로직만 적용됩니다.
 - **미들웨어 문제**: `middleware` 옵션은 런타임 레벨의 `MiddlewareLike[]` 함수 배열을 받습니다. 이는 Fastify 플러그인이 아니며 다른 fluo 어댑터들과 공통으로 사용되는 표준 인터페이스를 따릅니다.
-- **로깅 (Logging)**: 로그 스트림 중복을 방지하기 위해 Fastify의 네이티브 로거가 비활성화됩니다. 모든 로깅 설정은 `runFastifyApplication` 또는 `bootstrapFastifyApplication`의 `logger` 옵션을 통해 이루어져야 합니다.
+- **로깅 (Logging)**: 로그 스트림 중복을 방지하기 위해 Fastify의 네이티브 로거가 비활성화됩니다. `runFastifyApplication`과 `bootstrapFastifyApplication`은 framework console logger를 내부에서 선택하므로 application code가 이 helper들에 logger option을 전달하지 않아야 합니다.
 - **글로벌 접두사 (Global Prefix)**: 내부 경로 또는 헬스 체크 엔드포인트에 접두사가 붙지 않도록 `globalPrefixExclude`를 적절히 설정하세요.
 - **Malformed Cookie**: 잘못된 cookie header는 request 실패로 이어지지 않고 보존됩니다.
 
