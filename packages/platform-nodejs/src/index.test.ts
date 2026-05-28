@@ -1,6 +1,6 @@
 import { type AddressInfo, createServer } from 'node:net';
 import { Controller, type Dispatcher, FromBody, Get, Post, RequestDto, type RequestContext } from '@fluojs/http';
-import { defineModule, FluoFactory } from '@fluojs/runtime';
+import { type ApplicationLogger, defineModule, FluoFactory } from '@fluojs/runtime';
 import {
   type BootstrapNodeApplicationOptions,
   bootstrapNodeApplication,
@@ -318,6 +318,111 @@ describe('@fluojs/platform-nodejs', () => {
 
     for (const listener of registeredListeners) {
       expect(process.listeners(signal)).not.toContain(listener);
+    }
+  });
+
+  it('logs signal-driven shutdown failures and sets exitCode through the platform run helper', async () => {
+    const originalExitCode = process.exitCode;
+    const signal = 'SIGTERM' as const;
+    const listenersBefore = new Set(process.listeners(signal));
+    const shutdownFailure = new Error('shutdown failed');
+    let failureLogged!: () => void;
+    const loggedFailure = new Promise<void>((resolve) => {
+      failureLogged = resolve;
+    });
+
+    class FailingShutdownHook {
+      onModuleDestroy() {
+        throw shutdownFailure;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { providers: [FailingShutdownHook] });
+
+    const logger: ApplicationLogger = {
+      debug() {},
+      error(message: string, error: unknown) {
+        if (message === 'Failed to shut down the application cleanly.' && error === shutdownFailure) {
+          failureLogged();
+        }
+      },
+      log() {},
+      warn() {},
+    };
+    const port = await findAvailablePort();
+    const app = await runNodejsApplication(AppModule, {
+      logger,
+      port,
+      shutdownSignals: [signal],
+    });
+
+    try {
+      const registeredListener = process.listeners(signal).find((listener) => !listenersBefore.has(listener));
+      expect(registeredListener).toBeTypeOf('function');
+
+      (registeredListener as () => void)();
+      await loggedFailure;
+
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = originalExitCode;
+      await app.close().catch(() => undefined);
+    }
+  });
+
+  it('logs signal-driven shutdown timeouts and sets exitCode through the platform run helper', async () => {
+    const originalExitCode = process.exitCode;
+    const signal = 'SIGTERM' as const;
+    const listenersBefore = new Set(process.listeners(signal));
+    let releaseShutdown!: () => void;
+    let timeoutLogged!: () => void;
+    const shutdownGate = new Promise<void>((resolve) => {
+      releaseShutdown = resolve;
+    });
+    const loggedTimeout = new Promise<void>((resolve) => {
+      timeoutLogged = resolve;
+    });
+
+    class SlowShutdownHook {
+      async onModuleDestroy() {
+        await shutdownGate;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { providers: [SlowShutdownHook] });
+
+    const logger: ApplicationLogger = {
+      debug() {},
+      error(message: string) {
+        if (message === 'Shutdown timeout exceeded after 1ms; leaving process termination to the host.') {
+          timeoutLogged();
+        }
+      },
+      log() {},
+      warn() {},
+    };
+    const port = await findAvailablePort();
+    const app = await runNodejsApplication(AppModule, {
+      forceExitTimeoutMs: 1,
+      logger,
+      port,
+      shutdownSignals: [signal],
+    });
+
+    try {
+      const registeredListener = process.listeners(signal).find((listener) => !listenersBefore.has(listener));
+      expect(registeredListener).toBeTypeOf('function');
+
+      (registeredListener as () => void)();
+      await loggedTimeout;
+
+      expect(process.exitCode).toBe(1);
+    } finally {
+      releaseShutdown();
+      process.exitCode = originalExitCode;
+      await app.close().catch(() => undefined);
     }
   });
 

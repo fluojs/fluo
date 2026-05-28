@@ -43,7 +43,7 @@ await app.listen();
 ## Common Patterns
 
 ### Customizing Server Options
-The adapter accepts standard Node.js server options including HTTPS configuration and body size limits.
+The adapter exposes the documented Node.js transport options: host/port binding, HTTPS configuration, request body limits, raw-body preservation, listen retry settings, and shutdown drain bounds.
 
 ```typescript
 const adapter = createNodejsAdapter({

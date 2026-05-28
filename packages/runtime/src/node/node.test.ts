@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { defineModule } from '../bootstrap.js';
 import * as rootRuntimeApi from '../index.js';
 import * as publicNodeApi from '../node.js';
 import type { NodeHttpAdapterOptions, NodeHttpApplicationAdapter } from '../node.js';
@@ -57,6 +58,24 @@ describe('createNodeHttpAdapter', () => {
     expect(() => Function.prototype.call.call(publicNodeApi.createNodeHttpAdapter, undefined, { maxBodySize: '1mb' })).toThrow(
       'Invalid maxBodySize value: 1mb. Expected a non-negative integer number of bytes.',
     );
+  });
+
+  it('fails fast before bootstrap when maxBodySize is invalid', async () => {
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    await expect(
+      publicNodeApi.bootstrapNodeApplication(AppModule, { maxBodySize: -1 }),
+    ).rejects.toThrow('Invalid maxBodySize value: -1. Expected a non-negative integer number of bytes.');
+  });
+
+  it('fails fast before run helper startup when maxBodySize is invalid', async () => {
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    await expect(
+      publicNodeApi.runNodeApplication(AppModule, { maxBodySize: 1.5, shutdownSignals: false }),
+    ).rejects.toThrow('Invalid maxBodySize value: 1.5. Expected a non-negative integer number of bytes.');
   });
 
   it.each([

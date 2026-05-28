@@ -26,6 +26,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: "20"
+          package-manager-cache: false
 
       - name: Verify changeset release lane
         run: node tooling/release/verify-changeset-release-lane.mjs --lane=stable --base-ref=origin/${{ github.base_ref }}
