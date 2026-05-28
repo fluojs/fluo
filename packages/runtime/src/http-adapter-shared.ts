@@ -15,7 +15,7 @@ import {
 } from '@fluojs/http';
 
 import { bootstrapApplication } from './bootstrap.js';
-import { createConsoleApplicationLogger } from './logging/logger.js';
+import { createDefaultApplicationLogger } from './logging/default-logger.js';
 import type { Application, ApplicationLogger, CreateApplicationOptions, ModuleType } from './types.js';
 
 /**
@@ -98,7 +98,7 @@ export async function bootstrapHttpAdapterApplication(
   return bootstrapApplication({
     ...options,
     adapter,
-    logger: options.logger ?? createConsoleApplicationLogger(),
+    logger: options.logger ?? createDefaultApplicationLogger(),
     middleware: createHttpAdapterMiddleware(options),
     rootModule,
   });
@@ -156,7 +156,7 @@ export async function runHttpAdapterApplication(
   options: RunHttpAdapterApplicationOptions,
   adapter: ManagedHttpApplicationAdapter,
 ): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
+  const logger = options.logger ?? createDefaultApplicationLogger();
   const app = await bootstrapApplication({
     ...options,
     adapter,

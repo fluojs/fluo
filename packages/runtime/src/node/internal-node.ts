@@ -15,6 +15,7 @@ import {
   bootstrapHttpAdapterApplication,
   runHttpAdapterApplication,
 } from '../http-adapter-shared.js';
+import { createConsoleApplicationLogger } from '../logging/logger.js';
 import {
   createNodeResponseCompression,
   compressNodeResponse,
@@ -310,9 +311,11 @@ export async function bootstrapNodeApplication(
   rootModule: ModuleType,
   options: BootstrapNodeApplicationOptions,
 ): Promise<Application> {
+  const logger = options.logger ?? createConsoleApplicationLogger();
+
   return bootstrapHttpAdapterApplication(
     rootModule,
-    options,
+    { ...options, logger },
     createNodeHttpAdapter(options, options.compression ?? false, options.multipart),
   );
 }
@@ -328,9 +331,11 @@ export async function runNodeApplication(
   rootModule: ModuleType,
   options: RunNodeApplicationOptions,
 ): Promise<Application> {
+  const logger = options.logger ?? createConsoleApplicationLogger();
   const adapter = createNodeHttpAdapter(options, options.compression ?? false, options.multipart) as NodeHttpApplicationAdapter;
   return runHttpAdapterApplication(rootModule, {
     ...options,
+    logger,
     shutdownRegistration: createNodeShutdownSignalRegistration(
       options.shutdownSignals ?? defaultNodeShutdownSignals(),
     ),
