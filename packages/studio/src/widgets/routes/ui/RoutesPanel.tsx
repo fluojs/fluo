@@ -14,6 +14,9 @@ function routeGraphNodeId(route: StudioRouteDescriptor, state: StudioDashboardSt
   return state.liveSnapshot?.graph.nodes.find((node) => node.kind === 'route' && node.label === `${route.method} ${route.path}`)?.id;
 }
 
+/**
+ * Provides Routes Panel behavior for the Studio devtool.
+ */
 export function RoutesPanel({ dispatch, state }: RoutesPanelProps) {
   const routes = state.liveSnapshot?.routes ?? [];
   const selectedRoute = selectSelectedRoute(state);

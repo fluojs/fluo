@@ -12,6 +12,9 @@ import { RoutesPanel } from '../../widgets/routes/ui/RoutesPanel.js';
 import { StaticReportPanel } from '../../widgets/static-report/ui/StaticReportPanel.js';
 import { TimingPanel } from '../../widgets/timing/ui/TimingPanel.js';
 
+/**
+ * Provides Studio Page behavior for the Studio devtool.
+ */
 export function StudioPage() {
   const [state, dispatch] = useReducer(studioReducer, initialStudioState);
   useStudioLiveConnection(dispatch);

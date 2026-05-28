@@ -1,3 +1,6 @@
+/**
+ * Describes Studio Sidecar Config data used by the Studio devtool.
+ */
 export interface StudioSidecarConfig {
   eventsUrl: string;
   stateUrl?: string;
@@ -13,6 +16,12 @@ function normalizeInjectedUrl(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
+/**
+ * Provides resolve Studio Sidecar Config behavior for the Studio devtool.
+ *
+ * @param location location value used by resolve Studio Sidecar Config.
+ * @returns The resolve Studio Sidecar Config result.
+ */
 export function resolveStudioSidecarConfig(location: Location = window.location): StudioSidecarConfig | undefined {
   const injected = window.__FLUO_STUDIO__;
   const injectedEventsUrl = normalizeInjectedUrl(injected?.eventsUrl);

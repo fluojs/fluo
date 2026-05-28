@@ -5,13 +5,19 @@ import type { BootstrapApplicationOptions, CompiledModule, CreateApplicationCont
 import type { StudioLiveEvent, StudioLiveEventSource, StudioLiveSnapshot, StudioRequestTrace } from './contracts.js';
 import { createStudioLiveSnapshot, handlerToStudioRouteDescriptor } from './snapshot.js';
 
-const runtimePerformance = globalThis.performance;
+const runtimePerformance = globalThis.performance ?? { now: () => Date.now() };
 const processStart = runtimePerformance.now();
 
+/**
+ * Describes Studio Devtools Runtime Transport data used by the Studio devtool.
+ */
 export interface StudioDevtoolsRuntimeTransport {
   publish(event: StudioLiveEvent): Promise<void> | void;
 }
 
+/**
+ * Describes Studio Devtools Runtime Options data used by the Studio devtool.
+ */
 export interface StudioDevtoolsRuntimeOptions {
   appId: string;
   epoch?: string;
@@ -19,6 +25,9 @@ export interface StudioDevtoolsRuntimeOptions {
   transport: StudioDevtoolsRuntimeTransport;
 }
 
+/**
+ * Describes Studio Bootstrap Snapshot Input data used by the Studio devtool.
+ */
 export interface StudioBootstrapSnapshotInput {
   diagnostics?: StudioLiveSnapshot['diagnostics'];
   modules: readonly CompiledModule[];
@@ -39,7 +48,10 @@ interface MutableTrace {
   url: string;
 }
 
-interface StudioDevtoolsEnv {
+/**
+ * Describes Studio Devtools Config data used by the Studio devtool.
+ */
+export interface StudioDevtoolsConfig {
   FLUO_STUDIO?: string;
   FLUO_STUDIO_APP_ID?: string;
   FLUO_STUDIO_ENDPOINT?: string;
@@ -62,7 +74,7 @@ function createEpoch(): string {
 }
 
 function createAppId(): string {
-  return `app-${typeof process !== 'undefined' ? process.pid : 'unknown'}-${Date.now().toString(36)}`;
+  return `app-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 function createRequestId(): string {
@@ -77,7 +89,11 @@ function normalizeRuntime(value: string | undefined): StudioLiveEventSource['run
   return 'node';
 }
 
-function resolveEndpoint(env: StudioDevtoolsEnv): string | undefined {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function resolveEndpoint(env: StudioDevtoolsConfig): string | undefined {
   if (env.FLUO_STUDIO_ENDPOINT) {
     return env.FLUO_STUDIO_ENDPOINT;
   }
@@ -104,6 +120,15 @@ function toErrorPayload(error: unknown): StudioRequestTrace['error'] {
   return {
     message: String(error),
   };
+}
+
+function sanitizeRequestUrl(value: string): string {
+  try {
+    const parsed = new URL(value, 'http://fluo.local');
+    return parsed.pathname || '/';
+  } catch {
+    return value.split('#', 1)[0]?.split('?', 1)[0] || value;
+  }
 }
 
 function traceToPayload(trace: MutableTrace, statusCode?: number): StudioRequestTrace {
@@ -174,7 +199,7 @@ class StudioRequestObserver implements RequestObserver {
       startedAt: new Date().toISOString(),
       startMs: runtimePerformance.now(),
       status: 'started',
-      url: request.url,
+      url: sanitizeRequestUrl(request.url),
     };
 
     this.traces.set(context.requestContext, trace);
@@ -227,7 +252,7 @@ class StudioRequestObserver implements RequestObserver {
       startedAt: new Date().toISOString(),
       startMs: runtimePerformance.now(),
       status: 'started',
-      url: request.url,
+      url: sanitizeRequestUrl(request.url),
     };
     this.traces.set(context.requestContext, trace);
     return trace;
@@ -295,29 +320,69 @@ export class StudioDevtoolsRuntime {
   }
 }
 
+const STUDIO_DEVTOOLS_GLOBAL_CONFIG_KEY = '__FLUO_STUDIO_DEVTOOLS_CONFIG__';
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __FLUO_STUDIO_DEVTOOLS_CONFIG__: StudioDevtoolsConfig | undefined;
+}
+
+function isStudioDevtoolsConfig(value: unknown): value is StudioDevtoolsConfig {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return value.FLUO_STUDIO === undefined || typeof value.FLUO_STUDIO === 'string';
+}
+
+function readInjectedStudioDevtoolsConfig(): StudioDevtoolsConfig | undefined {
+  const value = globalThis[STUDIO_DEVTOOLS_GLOBAL_CONFIG_KEY as keyof typeof globalThis];
+  return isStudioDevtoolsConfig(value) ? value : undefined;
+}
+
 /**
- * Creates the Studio runtime bridge from CLI-injected environment variables.
+ * Creates the Studio runtime bridge from explicit CLI-injected config.
  * Returns `undefined` unless Studio is explicitly enabled and a token-protected endpoint is present.
+ *
+ * @param config Explicit Studio config injected by the application boundary.
+ * @returns Studio runtime bridge, or `undefined` when Studio is disabled or incomplete.
  */
-export function createStudioDevtoolsRuntimeFromEnv(env: StudioDevtoolsEnv = process.env): StudioDevtoolsRuntime | undefined {
-  if (!isEnabled(env.FLUO_STUDIO)) {
+export function createStudioDevtoolsRuntimeFromConfig(config: StudioDevtoolsConfig | undefined = readInjectedStudioDevtoolsConfig()): StudioDevtoolsRuntime | undefined {
+  if (!config || !isEnabled(config.FLUO_STUDIO)) {
     return undefined;
   }
 
-  const endpoint = resolveEndpoint(env);
-  if (!endpoint || !env.FLUO_STUDIO_TOKEN || typeof globalThis.fetch !== 'function') {
+  const endpoint = resolveEndpoint(config);
+  if (!endpoint || !config.FLUO_STUDIO_TOKEN || typeof globalThis.fetch !== 'function') {
     return undefined;
   }
 
-  const epoch = env.FLUO_STUDIO_EPOCH ?? createEpoch();
+  const epoch = config.FLUO_STUDIO_EPOCH ?? createEpoch();
   return new StudioDevtoolsRuntime({
-    appId: env.FLUO_STUDIO_APP_ID ?? createAppId(),
+    appId: config.FLUO_STUDIO_APP_ID ?? createAppId(),
     epoch,
-    runtime: normalizeRuntime(env.FLUO_STUDIO_RUNTIME),
-    transport: new FetchStudioTransport(endpoint, env.FLUO_STUDIO_TOKEN),
+    runtime: normalizeRuntime(config.FLUO_STUDIO_RUNTIME),
+    transport: new FetchStudioTransport(endpoint, config.FLUO_STUDIO_TOKEN),
   });
 }
 
+/**
+ * Compatibility helper for callers that already resolved env values at their application boundary.
+ *
+ * @param env Explicit Studio config resolved outside runtime package source.
+ * @returns Studio runtime bridge, or `undefined` when Studio is disabled or incomplete.
+ */
+export function createStudioDevtoolsRuntimeFromEnv(env: StudioDevtoolsConfig): StudioDevtoolsRuntime | undefined {
+  return createStudioDevtoolsRuntimeFromConfig(env);
+}
+
+/**
+ * Provides apply Studio Devtools Application Options behavior for the Studio devtool.
+ *
+ * @param options options value used by apply Studio Devtools Application Options.
+ * @param runtime runtime value used by apply Studio Devtools Application Options.
+ * @returns The apply Studio Devtools Application Options result.
+ */
 export function applyStudioDevtoolsApplicationOptions(
   options: BootstrapApplicationOptions,
   runtime: StudioDevtoolsRuntime | undefined,
@@ -336,6 +401,13 @@ export function applyStudioDevtoolsApplicationOptions(
   };
 }
 
+/**
+ * Provides apply Studio Devtools Context Options behavior for the Studio devtool.
+ *
+ * @param options options value used by apply Studio Devtools Context Options.
+ * @param runtime runtime value used by apply Studio Devtools Context Options.
+ * @returns The apply Studio Devtools Context Options result.
+ */
 export function applyStudioDevtoolsContextOptions(
   options: CreateApplicationContextOptions,
   runtime: StudioDevtoolsRuntime | undefined,
@@ -353,6 +425,12 @@ export function applyStudioDevtoolsContextOptions(
   };
 }
 
+/**
+ * Provides publish Studio Bootstrap Snapshot behavior for the Studio devtool.
+ *
+ * @param runtime runtime value used by publish Studio Bootstrap Snapshot.
+ * @param input input value used by publish Studio Bootstrap Snapshot.
+ */
 export function publishStudioBootstrapSnapshot(
   runtime: StudioDevtoolsRuntime | undefined,
   input: StudioBootstrapSnapshotInput,

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createStudioDevtoolsNodeImport } from '../studio/runtime-config.js';
 
 type RestartRunnerStream = {
   isTTY?: boolean;
@@ -286,8 +287,9 @@ function getPreserveColorTtyImport(): string {
 
 function buildNodeAppArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {
   const colorTtyImport = env[PRETTY_TTY_COLOR_ENV] === '1' ? ['--import', getPreserveColorTtyImport()] : [];
+  const studioDevtoolsImport = createStudioDevtoolsNodeImport(env);
 
-  return ['--env-file=.env', ...colorTtyImport, '--import', 'tsx', 'src/main.ts', ...appArgs];
+  return ['--env-file=.env', ...colorTtyImport, ...studioDevtoolsImport, '--import', 'tsx', 'src/main.ts', ...appArgs];
 }
 
 function buildBunAppArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {

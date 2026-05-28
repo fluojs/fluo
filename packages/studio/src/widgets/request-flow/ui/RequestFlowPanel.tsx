@@ -16,6 +16,9 @@ function statusTone(status: string): string {
   return 'muted';
 }
 
+/**
+ * Provides Request Flow Panel behavior for the Studio devtool.
+ */
 export function RequestFlowPanel({ dispatch, state }: RequestFlowPanelProps) {
   const requests = state.liveSnapshot?.requests ?? [];
   const selectedRequest = selectSelectedRequest(state);

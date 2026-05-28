@@ -1,8 +1,17 @@
 import type { BootstrapTimingDiagnostics } from '../health/diagnostics.js';
 
+/**
+ * Defines Studio Graph Node Kind values used by the Studio devtool.
+ */
 export type StudioGraphNodeKind = 'module' | 'provider' | 'controller' | 'route' | 'platform' | 'external';
+/**
+ * Defines Studio Graph Edge Kind values used by the Studio devtool.
+ */
 export type StudioGraphEdgeKind = 'imports' | 'owns_provider' | 'owns_controller' | 'exposes_route' | 'depends_on' | 'exports';
 
+/**
+ * Describes Studio Graph Node data used by the Studio devtool.
+ */
 export interface StudioGraphNode {
   id: string;
   kind: StudioGraphNodeKind;
@@ -11,6 +20,9 @@ export interface StudioGraphNode {
   status?: 'active' | 'idle' | 'warning' | 'error';
 }
 
+/**
+ * Describes Studio Graph Edge data used by the Studio devtool.
+ */
 export interface StudioGraphEdge {
   from: string;
   id: string;
@@ -20,6 +32,9 @@ export interface StudioGraphEdge {
   to: string;
 }
 
+/**
+ * Describes Studio Route Descriptor data used by the Studio devtool.
+ */
 export interface StudioRouteDescriptor {
   controller: string;
   handler: string;
@@ -30,8 +45,14 @@ export interface StudioRouteDescriptor {
   version?: string;
 }
 
+/**
+ * Defines Studio Request Status values used by the Studio devtool.
+ */
 export type StudioRequestStatus = 'started' | 'matched' | 'succeeded' | 'failed' | 'finished';
 
+/**
+ * Describes Studio Request Trace data used by the Studio devtool.
+ */
 export interface StudioRequestTrace {
   controller?: string;
   durationMs?: number;
@@ -51,6 +72,9 @@ export interface StudioRequestTrace {
   url: string;
 }
 
+/**
+ * Describes Studio Live Diagnostic data used by the Studio devtool.
+ */
 export interface StudioLiveDiagnostic {
   code: string;
   fixHint?: string;
@@ -60,6 +84,9 @@ export interface StudioLiveDiagnostic {
   targetId?: string;
 }
 
+/**
+ * Describes Studio Live Snapshot data used by the Studio devtool.
+ */
 export interface StudioLiveSnapshot {
   appId: string;
   diagnostics: StudioLiveDiagnostic[];
@@ -74,11 +101,17 @@ export interface StudioLiveSnapshot {
   version: 1;
 }
 
+/**
+ * Describes Studio Live Event Source data used by the Studio devtool.
+ */
 export interface StudioLiveEventSource {
   appId: string;
   runtime: 'node' | 'bun' | 'deno' | 'worker' | 'unknown';
 }
 
+/**
+ * Describes Studio Live Event Base data used by the Studio devtool.
+ */
 export interface StudioLiveEventBase<TType extends string, TPayload> {
   emittedAt: string;
   epoch: string;
@@ -90,19 +123,31 @@ export interface StudioLiveEventBase<TType extends string, TPayload> {
   version: 1;
 }
 
+/**
+ * Defines Studio Heartbeat Payload values used by the Studio devtool.
+ */
 export type StudioHeartbeatPayload = {
   uptimeMs?: number;
 };
 
+/**
+ * Describes Studio Restart Payload data used by the Studio devtool.
+ */
 export interface StudioRestartPayload {
   phase: 'scheduled' | 'starting' | 'started' | 'stopping' | 'stopped';
   reason?: string;
 }
 
+/**
+ * Describes Studio Disconnect Payload data used by the Studio devtool.
+ */
 export interface StudioDisconnectPayload {
   reason?: string;
 }
 
+/**
+ * Defines Studio Live Event values used by the Studio devtool.
+ */
 export type StudioLiveEvent =
   | StudioLiveEventBase<'disconnect', StudioDisconnectPayload>
   | StudioLiveEventBase<'diagnostic', StudioLiveDiagnostic>

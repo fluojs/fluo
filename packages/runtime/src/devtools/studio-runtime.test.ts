@@ -6,7 +6,7 @@ import { defineRuntimeClassDiMetadata, defineRuntimeModuleMetadata } from '../in
 import type { ApplicationLogger } from '../types.js';
 import type { StudioLiveEvent } from './contracts.js';
 import { createStudioLiveSnapshot } from './snapshot.js';
-import { StudioDevtoolsRuntime, createStudioDevtoolsRuntimeFromEnv } from './studio-runtime.js';
+import { StudioDevtoolsRuntime, createStudioDevtoolsRuntimeFromConfig, createStudioDevtoolsRuntimeFromEnv } from './studio-runtime.js';
 
 const logger: ApplicationLogger = {
   debug() {},
@@ -15,30 +15,14 @@ const logger: ApplicationLogger = {
   warn() {},
 };
 
-const studioEnvKeys = [
-  'FLUO_STUDIO',
-  'FLUO_STUDIO_APP_ID',
-  'FLUO_STUDIO_ENDPOINT',
-  'FLUO_STUDIO_EPOCH',
-  'FLUO_STUDIO_RUNTIME',
-  'FLUO_STUDIO_TOKEN',
-  'FLUO_STUDIO_URL',
-] as const;
-
-const originalEnv = new Map<string, string | undefined>();
-for (const key of studioEnvKeys) {
-  originalEnv.set(key, process.env[key]);
-}
+const studioGlobalConfigKey = '__FLUO_STUDIO_DEVTOOLS_CONFIG__';
+const originalStudioGlobalConfig = (globalThis as Record<string, unknown>)[studioGlobalConfigKey];
 
 afterEach(() => {
-  for (const key of studioEnvKeys) {
-    const value = originalEnv.get(key);
-    if (value === undefined) {
-      delete process.env[key];
-      continue;
-    }
-
-    process.env[key] = value;
+  if (originalStudioGlobalConfig === undefined) {
+    delete (globalThis as Record<string, unknown>)[studioGlobalConfigKey];
+  } else {
+    (globalThis as Record<string, unknown>)[studioGlobalConfigKey] = originalStudioGlobalConfig;
   }
 
   vi.restoreAllMocks();
@@ -46,6 +30,7 @@ afterEach(() => {
 
 describe('Studio devtools runtime bridge', () => {
   it('stays disabled unless Studio env injection includes a token-protected endpoint', () => {
+    expect(createStudioDevtoolsRuntimeFromConfig()).toBeUndefined();
     expect(createStudioDevtoolsRuntimeFromEnv({})).toBeUndefined();
     expect(createStudioDevtoolsRuntimeFromEnv({ FLUO_STUDIO: '1', FLUO_STUDIO_URL: 'http://127.0.0.1:49152' })).toBeUndefined();
     expect(createStudioDevtoolsRuntimeFromEnv({ FLUO_STUDIO: '1', FLUO_STUDIO_TOKEN: 'secret' })).toBeUndefined();
@@ -119,7 +104,7 @@ describe('Studio devtools runtime bridge', () => {
         query: {},
         raw: {},
         requestId: 'req-1',
-        url: '/login',
+        url: '/login?token=do-not-send#fragment',
       },
       response: {
         committed: false,
@@ -139,16 +124,19 @@ describe('Studio devtools runtime bridge', () => {
     expect(events.map((event) => event.sequence)).toEqual([1, 2]);
     expect(events[0]).toMatchObject({ type: 'request', payload: { requestId: 'req-1', status: 'started' } });
     expect(events[1]).toMatchObject({ type: 'request', payload: { requestId: 'req-1', status: 'succeeded', statusCode: 201 } });
+    expect(events[0]?.payload).toMatchObject({ url: '/login' });
     expect(JSON.stringify(events)).not.toContain('do-not-send');
   });
 
   it('auto-instruments bootstrap when fluo dev --studio injects Studio env', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 202 }));
-    process.env.FLUO_STUDIO = '1';
-    process.env.FLUO_STUDIO_URL = 'http://127.0.0.1:49152';
-    process.env.FLUO_STUDIO_TOKEN = 'studio-token';
-    process.env.FLUO_STUDIO_APP_ID = 'app-env-test';
-    process.env.FLUO_STUDIO_EPOCH = 'epoch-env-test';
+    (globalThis as Record<string, unknown>)[studioGlobalConfigKey] = {
+      FLUO_STUDIO: '1',
+      FLUO_STUDIO_APP_ID: 'app-env-test',
+      FLUO_STUDIO_EPOCH: 'epoch-env-test',
+      FLUO_STUDIO_TOKEN: 'studio-token',
+      FLUO_STUDIO_URL: 'http://127.0.0.1:49152',
+    };
 
     class AppModule {}
     defineRuntimeModuleMetadata(AppModule, {});

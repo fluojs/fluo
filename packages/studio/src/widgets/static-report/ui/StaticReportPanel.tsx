@@ -125,6 +125,9 @@ function ConnectionExplorer({ dispatch, selectedId, state }: StaticReportPanelPr
   );
 }
 
+/**
+ * Provides Static Report Panel behavior for the Studio devtool.
+ */
 export function StaticReportPanel({ dispatch, state }: StaticReportPanelProps) {
   const snapshot = selectStaticSnapshot(state);
   const selected = selectSelectedStaticComponent(state);

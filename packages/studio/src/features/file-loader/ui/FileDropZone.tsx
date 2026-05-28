@@ -28,6 +28,9 @@ async function copyToClipboard(text: string): Promise<void> {
   await navigator.clipboard.writeText(text);
 }
 
+/**
+ * Provides File Drop Zone behavior for the Studio devtool.
+ */
 export function FileDropZone({ dispatch, state }: FileDropZoneProps) {
   const snapshot = selectStaticSnapshot(state);
   const rawJson = state.staticReport.rawJson;

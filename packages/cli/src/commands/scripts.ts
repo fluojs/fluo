@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createStudioDevtoolsNodeImport } from '../studio/runtime-config.js';
 import { startStudioSidecar, type StudioSidecar, type StudioSidecarRuntime } from '../studio/sidecar.js';
 import { SUPPORTED_PACKAGE_MANAGERS } from './package-manager.js';
 
@@ -254,19 +255,17 @@ async function runProjectRunnerSteps(
   return 0;
 }
 
-function withPipedAppColorTtyBootstrap(steps: ProjectRunnerStep[], env: NodeJS.ProcessEnv): ProjectRunnerStep[] {
-  if (env[PRETTY_TTY_COLOR_ENV] !== '1') {
-    return steps;
-  }
-
+function withPipedAppBootstrapImports(steps: ProjectRunnerStep[], env: NodeJS.ProcessEnv): ProjectRunnerStep[] {
   return steps.map((step) => {
     const preserveColorTtyImport = getPreserveColorTtyImport();
+    const colorImport = env[PRETTY_TTY_COLOR_ENV] === '1' ? ['--import', preserveColorTtyImport] : [];
+    const studioDevtoolsImport = step.mode === 'fluo-restart' ? [] : createStudioDevtoolsNodeImport(env);
 
-    if (step.command === 'node' && step.mode !== 'fluo-restart') {
-      return { ...step, args: ['--import', preserveColorTtyImport, ...step.args] };
+    if (step.command === 'node') {
+      return { ...step, args: [...colorImport, ...studioDevtoolsImport, ...step.args] };
     }
 
-    if (step.command === 'bun' && (step.mode === 'runtime-native-watch' || step.args[0] === 'dist/main.js')) {
+    if (env[PRETTY_TTY_COLOR_ENV] === '1' && step.command === 'bun' && (step.mode === 'runtime-native-watch' || step.args[0] === 'dist/main.js')) {
       return { ...step, args: ['--preload', preserveColorTtyImport, ...step.args] };
     }
 
@@ -416,7 +415,7 @@ function projectDisplayName(project: { directory: string; manifest: JsonRecord }
     : project.directory.split(/[\\/]/).filter(Boolean).at(-1) ?? 'fluo-app';
 }
 
-function assertStudioSupport(command: ScriptCommand, studio: boolean, projectRuntime: ProjectRuntime, devRunner: DevRunnerPreference): void {
+function assertStudioSupport(command: ScriptCommand, studio: boolean, projectRuntime: ProjectRuntime, _devRunner: DevRunnerPreference): void {
   if (!studio) {
     return;
   }
@@ -425,12 +424,8 @@ function assertStudioSupport(command: ScriptCommand, studio: boolean, projectRun
     throw new Error('--studio is only supported for fluo dev.');
   }
 
-  if (projectRuntime === 'cloudflare-workers') {
-    throw new Error('fluo dev --studio does not support Cloudflare Workers yet. Run fluo dev without --studio for Workers projects.');
-  }
-
-  if (projectRuntime !== 'node' && devRunner !== 'fluo') {
-    throw new Error(`fluo dev --studio for ${projectRuntime} currently requires --runner fluo so the CLI sidecar can inject and preserve Studio runtime env across restarts.`);
+  if (projectRuntime !== 'node') {
+    throw new Error(`fluo dev --studio currently supports Node dev runner projects only. ${projectRuntime} Studio support remains experimental until a dedicated bridge is implemented and verified.`);
   }
 }
 
@@ -560,7 +555,7 @@ function createReporterStreams(
 }
 
 function colorizeRunnerSteps(steps: ProjectRunnerStep[], env: NodeJS.ProcessEnv): ProjectRunnerStep[] {
-  return withPipedAppColorTtyBootstrap(steps, env);
+  return withPipedAppBootstrapImports(steps, env);
 }
 
 async function executeRunnerStepsWithReporter(options: {

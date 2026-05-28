@@ -42,7 +42,7 @@ pnpm add @fluojs/studio
 fluo dev --studio
 ```
 
-`fluo dev --studio`는 일반 dev process를 실행하고, token-protected local sidecar를 시작하며, 앱 child process에 Studio runtime env를 주입하고 다음과 같은 URL을 출력합니다.
+`fluo dev --studio`는 일반 dev process를 실행하고, token-protected local sidecar를 시작하며, 앱이 `@fluojs/runtime`을 import하기 전에 명시적인 Studio runtime config를 Node 앱 child에 주입하고 다음과 같은 URL을 출력합니다.
 
 ```text
 [fluo] Studio listening at http://127.0.0.1:51234/?token=...
@@ -89,16 +89,16 @@ Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타
 - Runtime ingestion과 browser state/SSE API는 실행마다 생성되는 token을 요구합니다.
 - Sidecar는 기본적으로 CORS를 활성화하지 않습니다.
 - Request body는 기본적으로 수집하지 않습니다. Live request event는 method/path/url/request id/route/handler/status/duration/error metadata만 포함합니다.
-- Runtime Studio instrumentation은 CLI가 제공한 Studio env/config가 있을 때만 활성화됩니다. 해당 env/config가 없으면 runtime 동작은 no-op입니다.
+- Runtime Studio instrumentation은 CLI가 제공한 명시적 Studio config가 있을 때만 활성화됩니다. Runtime package source는 `process.env`를 직접 읽지 않으며, 유효한 injected config가 없으면 runtime 동작은 no-op입니다.
 
 ## 런타임 지원 매트릭스
 
 | Runtime target | MVP expectation |
 | --- | --- |
 | Node dev runner | `fluo dev --studio`를 통한 full support target입니다. |
-| Bun | `--runner fluo`를 사용하고 프로젝트에서 검증한 경우를 제외하면 experimental/limited입니다. |
-| Deno | `--runner fluo`를 사용하고 프로젝트에서 검증한 경우를 제외하면 experimental/limited입니다. |
-| Cloudflare Workers | 별도 worker bridge를 구현하고 검증하지 않는 한 이번 MVP에서는 unsupported/limited입니다. |
+| Bun | 이번 MVP에서는 활성화하지 않습니다. Dedicated bridge를 구현하고 검증하기 전까지 `fluo dev --studio`는 Bun 프로젝트를 거부합니다. |
+| Deno | 이번 MVP에서는 활성화하지 않습니다. Dedicated bridge를 구현하고 검증하기 전까지 `fluo dev --studio`는 Deno 프로젝트를 거부합니다. |
+| Cloudflare Workers | 별도 worker bridge를 구현하고 검증하지 않는 한 이번 MVP에서는 unsupported입니다. |
 
 ## 공개 API
 

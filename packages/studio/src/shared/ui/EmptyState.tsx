@@ -3,6 +3,9 @@ interface EmptyStateProps {
   title: string;
 }
 
+/**
+ * Provides Empty State behavior for the Studio devtool.
+ */
 export function EmptyState({ action, title }: EmptyStateProps) {
   return (
     <div className="empty-state">

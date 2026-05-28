@@ -11,6 +11,9 @@ const statusLabel: Record<StudioDashboardState['connection']['status'], string> 
   static: 'static',
 };
 
+/**
+ * Provides Connection Status Widget behavior for the Studio devtool.
+ */
 export function ConnectionStatusWidget({ state }: { state: StudioDashboardState }) {
   const snapshot = state.liveSnapshot;
   const counts = snapshot

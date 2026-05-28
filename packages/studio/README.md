@@ -42,7 +42,7 @@ Run a local app with the runtime-connected Studio sidecar:
 fluo dev --studio
 ```
 
-`fluo dev --studio` starts the normal dev process, starts a token-protected local sidecar, injects Studio runtime env into the app child process, and prints a URL such as:
+`fluo dev --studio` starts the normal dev process, starts a token-protected local sidecar, injects explicit Studio runtime config into the Node app child before it imports `@fluojs/runtime`, and prints a URL such as:
 
 ```text
 [fluo] Studio listening at http://127.0.0.1:51234/?token=...
@@ -89,16 +89,16 @@ Studio still accepts JSON exports from the fluo CLI. Runtime produces snapshots,
 - Runtime ingestion and browser state/SSE APIs require generated per-run tokens.
 - The sidecar does not enable CORS by default.
 - Request bodies are not captured by default. Live request events include method/path/url/request id/route/handler/status/duration/error metadata only.
-- Runtime Studio instrumentation is activated only by CLI-provided Studio env/config. Without that env/config, runtime behavior is a no-op.
+- Runtime Studio instrumentation is activated only by explicit CLI-provided Studio config. Runtime package source does not read `process.env` directly; without valid injected config, runtime behavior is a no-op.
 
 ## Runtime Support Matrix
 
 | Runtime target | MVP expectation |
 | --- | --- |
 | Node dev runner | Full support target through `fluo dev --studio`. |
-| Bun | Experimental/limited unless `--runner fluo` is used and verified for the project. |
-| Deno | Experimental/limited unless `--runner fluo` is used and verified for the project. |
-| Cloudflare Workers | Unsupported/limited for this MVP unless a dedicated worker bridge is implemented and tested. |
+| Bun | Not enabled for this MVP; `fluo dev --studio` rejects Bun projects until a dedicated bridge is implemented and verified. |
+| Deno | Not enabled for this MVP; `fluo dev --studio` rejects Deno projects until a dedicated bridge is implemented and verified. |
+| Cloudflare Workers | Unsupported for this MVP unless a dedicated worker bridge is implemented and tested. |
 
 ## Public API
 

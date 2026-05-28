@@ -15,6 +15,9 @@ import type {
   StudioRouteDescriptor,
 } from './contracts.js';
 
+/**
+ * Describes Studio Live Snapshot Input data used by the Studio devtool.
+ */
 export interface StudioLiveSnapshotInput {
   appId: string;
   diagnostics?: readonly StudioLiveDiagnostic[];
@@ -200,6 +203,9 @@ function routePath(descriptor: HandlerDescriptor): string {
 
 /**
  * Creates a stable route id shared by runtime request traces and Studio graph snapshots.
+ *
+ * @param descriptor HTTP handler descriptor to identify.
+ * @returns Stable Studio route id for the handler.
  */
 export function createStudioRouteId(descriptor: HandlerDescriptor): string {
   return [
@@ -212,6 +218,9 @@ export function createStudioRouteId(descriptor: HandlerDescriptor): string {
 
 /**
  * Converts an HTTP handler descriptor into the live Studio route contract.
+ *
+ * @param descriptor HTTP handler descriptor to expose to Studio.
+ * @returns Route descriptor consumed by the Studio UI and request traces.
  */
 export function handlerToStudioRouteDescriptor(descriptor: HandlerDescriptor): StudioRouteDescriptor {
   const route: StudioRouteDescriptor = {
@@ -237,6 +246,9 @@ export function handlerToStudioRouteDescriptor(descriptor: HandlerDescriptor): S
 
 /**
  * Builds the runtime-connected Studio snapshot from compiled modules and HTTP route descriptors.
+ *
+ * @param input Runtime module graph, route, diagnostic, and timing inputs.
+ * @returns Live Studio snapshot for graph, routes, diagnostics, requests, and timing.
  */
 export function createStudioLiveSnapshot(input: StudioLiveSnapshotInput): StudioLiveSnapshot {
   const diagnosticsGraph = createRuntimeDiagnosticsGraph(input.modules, input.rootModule);

@@ -15,7 +15,7 @@ import { createBootstrapTimingDiagnostics, type BootstrapTimingPhase } from './h
 import {
   applyStudioDevtoolsApplicationOptions,
   applyStudioDevtoolsContextOptions,
-  createStudioDevtoolsRuntimeFromEnv,
+  createStudioDevtoolsRuntimeFromConfig,
   publishStudioBootstrapSnapshot,
 } from './devtools/studio-runtime.js';
 import { defineRuntimeModuleMetadata, getRuntimeClassDiMetadata } from './internal/core-metadata.js';
@@ -1423,7 +1423,7 @@ function createRuntimeDispatcher(
  * @throws {Error} Propagates module-graph, lifecycle, or runtime initialization failures.
  */
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
-  const studioDevtools = createStudioDevtoolsRuntimeFromEnv();
+  const studioDevtools = createStudioDevtoolsRuntimeFromConfig();
   const effectiveOptions = applyStudioDevtoolsApplicationOptions(options, studioDevtools);
   const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
   let lifecycleInstances: unknown[] = [];
@@ -1600,7 +1600,7 @@ export class FluoFactory {
     rootModule: ModuleType,
     options: CreateApplicationContextOptions = {},
   ): Promise<ApplicationContext> {
-    const studioDevtools = createStudioDevtoolsRuntimeFromEnv();
+    const studioDevtools = createStudioDevtoolsRuntimeFromConfig();
     const effectiveOptions = applyStudioDevtoolsContextOptions(options, studioDevtools);
     const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
     let lifecycleInstances: unknown[] = [];

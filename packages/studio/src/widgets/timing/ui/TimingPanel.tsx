@@ -42,6 +42,9 @@ function TimingTable({ label, timing }: { label: string; timing?: BootstrapTimin
   );
 }
 
+/**
+ * Provides Timing Panel behavior for the Studio devtool.
+ */
 export function TimingPanel({ state }: TimingPanelProps) {
   return (
     <section className="card timing-card">

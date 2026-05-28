@@ -6,6 +6,9 @@ interface DiagnosticsPanelProps {
   state: StudioDashboardState;
 }
 
+/**
+ * Provides Diagnostics Panel behavior for the Studio devtool.
+ */
 export function DiagnosticsPanel({ state }: DiagnosticsPanelProps) {
   const diagnostics = selectLiveDiagnostics(state);
 

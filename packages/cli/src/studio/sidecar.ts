@@ -5,8 +5,14 @@ import { createRequire } from 'node:module';
 import { dirname, extname, join, normalize, relative, sep } from 'node:path';
 import { URL } from 'node:url';
 
+/**
+ * Defines Studio Sidecar Runtime values used by the Studio devtool.
+ */
 export type StudioSidecarRuntime = 'bun' | 'deno' | 'node' | 'unknown';
 
+/**
+ * Describes Studio Sidecar Options data used by the Studio devtool.
+ */
 export interface StudioSidecarOptions {
   appId?: string;
   heartbeatMs?: number;
@@ -15,6 +21,9 @@ export interface StudioSidecarOptions {
   runtime?: StudioSidecarRuntime;
 }
 
+/**
+ * Describes Studio Sidecar data used by the Studio devtool.
+ */
 export interface StudioSidecar {
   readonly appId: string;
   readonly epoch: string;
@@ -266,6 +275,12 @@ function renderStudioShell(options: { eventsUrl: string; stateUrl: string }): st
 </html>`;
 }
 
+/**
+ * Provides start Studio Sidecar behavior for the Studio devtool.
+ *
+ * @param options options value used by start Studio Sidecar.
+ * @returns The start Studio Sidecar result.
+ */
 export async function startStudioSidecar(options: StudioSidecarOptions = {}): Promise<StudioSidecar> {
   const host = options.host ?? DEFAULT_HOST;
   const appId = options.appId ?? createDefaultAppId();

@@ -23,9 +23,11 @@ export {
   StudioDevtoolsRuntime,
   applyStudioDevtoolsApplicationOptions,
   applyStudioDevtoolsContextOptions,
+  createStudioDevtoolsRuntimeFromConfig,
   createStudioDevtoolsRuntimeFromEnv,
   publishStudioBootstrapSnapshot,
   type StudioBootstrapSnapshotInput,
+  type StudioDevtoolsConfig,
   type StudioDevtoolsRuntimeOptions,
   type StudioDevtoolsRuntimeTransport,
 } from './studio-runtime.js';

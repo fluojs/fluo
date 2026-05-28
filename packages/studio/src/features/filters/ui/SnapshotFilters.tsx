@@ -11,6 +11,9 @@ interface SnapshotFiltersProps {
   filter: StudioDashboardState['filter'];
 }
 
+/**
+ * Provides Snapshot Filters behavior for the Studio devtool.
+ */
 export function SnapshotFilters({ dispatch, filter }: SnapshotFiltersProps) {
   return (
     <section className="card filter-card">

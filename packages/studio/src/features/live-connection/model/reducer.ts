@@ -8,6 +8,9 @@ import {
   upsertRequest,
 } from '../../../entities/studio/model.js';
 
+/**
+ * Defines Studio Action values used by the Studio devtool.
+ */
 export type StudioAction =
   | { type: 'connection'; connection: StudioConnectionState }
   | { type: 'file-error'; message: string }
@@ -25,10 +28,23 @@ function toggleValue<T extends string>(values: T[], value: T): T[] {
   return values.includes(value) ? values.filter((entry) => entry !== value) : [...values, value];
 }
 
+/**
+ * Provides parse Static Studio File behavior for the Studio devtool.
+ *
+ * @param rawJson raw Json value used by parse Static Studio File.
+ * @returns The parse Static Studio File result.
+ */
 export function parseStaticStudioFile(rawJson: string): ParsedPayload {
   return parseStudioPayload(rawJson);
 }
 
+/**
+ * Provides studio Reducer behavior for the Studio devtool.
+ *
+ * @param state state value used by studio Reducer.
+ * @param action action value used by studio Reducer.
+ * @returns The studio Reducer result.
+ */
 export function studioReducer(state: StudioDashboardState, action: StudioAction): StudioDashboardState {
   switch (action.type) {
     case 'connection':

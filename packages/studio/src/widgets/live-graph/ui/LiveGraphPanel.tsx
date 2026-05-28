@@ -45,6 +45,9 @@ function nodeTone(node: StudioGraphNode): string {
   return node.kind;
 }
 
+/**
+ * Provides Live Graph Panel behavior for the Studio devtool.
+ */
 export function LiveGraphPanel({ dispatch, state }: LiveGraphPanelProps) {
   const snapshot = state.liveSnapshot;
   if (!snapshot) {

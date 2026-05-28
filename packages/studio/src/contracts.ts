@@ -153,11 +153,17 @@ export interface StudioConnectionState {
   status: StudioConnectionStatus;
 }
 
+/**
+ * Describes Studio Live Event Source data used by the Studio devtool.
+ */
 export interface StudioLiveEventSource {
   appId: string;
   runtime: 'node' | 'bun' | 'deno' | 'worker' | 'unknown';
 }
 
+/**
+ * Describes Studio Live Event Base data used by the Studio devtool.
+ */
 export interface StudioLiveEventBase<TType extends string, TPayload> {
   emittedAt: string;
   epoch: string;
@@ -169,6 +175,9 @@ export interface StudioLiveEventBase<TType extends string, TPayload> {
   version: 1;
 }
 
+/**
+ * Defines Studio Heartbeat Payload values used by the Studio devtool.
+ */
 export type StudioHeartbeatPayload = {
   uptimeMs?: number;
 };

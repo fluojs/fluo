@@ -48,6 +48,11 @@ function withReplayCursor(eventsUrl: string, sequence: number | undefined): stri
     : `${url.pathname}${url.search}${url.hash}`;
 }
 
+/**
+ * Provides use Studio Live Connection behavior for the Studio devtool.
+ *
+ * @param dispatch dispatch value used by use Studio Live Connection.
+ */
 export function useStudioLiveConnection(dispatch: Dispatch<StudioAction>): void {
   useEffect(() => {
     const config = resolveStudioSidecarConfig();
