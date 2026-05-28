@@ -1,6 +1,6 @@
 import type { IncomingHttpHeaders } from 'node:http';
 import { request as httpRequest } from 'node:http';
-import { createServer } from 'node:net';
+import { type AddressInfo, createServer } from 'node:net';
 import { request as httpsRequest } from 'node:https';
 
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -34,7 +34,7 @@ import {
   type RequestContext,
   type RequestObserver,
 } from '@fluojs/http';
-import { createHealthModule, defineModule, fluoFactory, type Application, type ApplicationLogger } from '@fluojs/runtime';
+import { createHealthModule, defineModule, FluoFactory, fluoFactory, type Application, type ApplicationLogger } from '@fluojs/runtime';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 
 import {
@@ -60,6 +60,20 @@ function createDeferred<T>(): {
   });
 
   return { promise, reject, resolve };
+}
+
+function getBoundPort(server: unknown): number {
+  if (!server || typeof (server as { address?: unknown }).address !== 'function') {
+    throw new Error('Failed to resolve a bound test server.');
+  }
+
+  const address = (server as { address(): AddressInfo | string | null }).address();
+
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to resolve a bound test port.');
+  }
+
+  return address.port;
 }
 
 async function findAvailablePort(): Promise<number> {
@@ -504,7 +518,7 @@ describe('@fluojs/platform-fastify', () => {
       }
     });
 
-    const app = await fluoFactory.create(AppModule, { adapter });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     await app.listen();
 
@@ -594,41 +608,43 @@ describe('@fluojs/platform-fastify', () => {
       controllers: [WebhookController],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapFastifyApplication(AppModule, {
-      cors: false,
-      port,
+    const adapter = createFastifyAdapter({
+      port: 0,
       rawBody: true,
     });
+    const app = await fluoFactory.create(AppModule, { adapter });
 
-    await app.listen();
+    try {
+      await app.listen();
+      const port = getBoundPort((adapter as FastifyHttpApplicationAdapter).getServer());
 
-    const [jsonResponse, textResponse] = await Promise.all([
-      fetch(`http://127.0.0.1:${String(port)}/webhooks/json`, {
-        body: JSON.stringify({ provider: 'stripe' }),
-        headers: { 'content-type': 'application/json' },
-        method: 'POST',
-      }),
-      fetch(`http://127.0.0.1:${String(port)}/webhooks/text`, {
-        body: 'ping=1',
-        headers: { 'content-type': 'text/plain; charset=utf-8' },
-        method: 'POST',
-      }),
-    ]);
+      const [jsonResponse, textResponse] = await Promise.all([
+        fetch(`http://127.0.0.1:${String(port)}/webhooks/json`, {
+          body: JSON.stringify({ provider: 'stripe' }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        }),
+        fetch(`http://127.0.0.1:${String(port)}/webhooks/text`, {
+          body: 'ping=1',
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+          method: 'POST',
+        }),
+      ]);
 
-    expect(jsonResponse.status).toBe(201);
-    await expect(jsonResponse.json()).resolves.toEqual({
-      parsed: { provider: 'stripe' },
-      raw: '{"provider":"stripe"}',
-    });
+      expect(jsonResponse.status).toBe(201);
+      await expect(jsonResponse.json()).resolves.toEqual({
+        parsed: { provider: 'stripe' },
+        raw: '{"provider":"stripe"}',
+      });
 
-    expect(textResponse.status).toBe(201);
-    await expect(textResponse.json()).resolves.toEqual({
-      parsed: 'ping=1',
-      raw: 'ping=1',
-    });
-
-    await app.close();
+      expect(textResponse.status).toBe(201);
+      await expect(textResponse.json()).resolves.toEqual({
+        parsed: 'ping=1',
+        raw: 'ping=1',
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('keeps maxBodySize enforced while capturing raw body bytes', async () => {

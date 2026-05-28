@@ -455,38 +455,40 @@ describe('@fluojs/platform-cloudflare-workers', () => {
   it('bounds Worker close() while preserving shutdown responses for new requests', async () => {
     vi.useFakeTimers();
 
-    const adapter = createCloudflareWorkerAdapter();
-    const neverSettles = new Promise<void>(() => {});
+    try {
+      const adapter = createCloudflareWorkerAdapter();
+      const neverSettles = new Promise<void>(() => {});
 
-    await adapter.listen({
-      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
-        await neverSettles;
-        response.setStatus(200);
-        await response.send({ ok: true });
-      },
-    });
+      await adapter.listen({
+        async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+          await neverSettles;
+          response.setStatus(200);
+          await response.send({ ok: true });
+        },
+      });
 
-    void adapter.fetch(new Request('https://worker.test/stuck'), {}, createExecutionContext());
-    await Promise.resolve();
+      void adapter.fetch(new Request('https://worker.test/stuck'), {}, createExecutionContext());
+      await Promise.resolve();
 
-    const closePromise = adapter.close();
-    const shutdownResponse = await adapter.fetch(new Request('https://worker.test/closing'), {}, createExecutionContext());
+      const closePromise = adapter.close();
+      const shutdownResponse = await adapter.fetch(new Request('https://worker.test/closing'), {}, createExecutionContext());
 
-    expect(shutdownResponse.status).toBe(503);
-    await expect(shutdownResponse.json()).resolves.toMatchObject({
-      error: {
-        code: 'SERVICE_UNAVAILABLE',
-      },
-    });
+      expect(shutdownResponse.status).toBe(503);
+      await expect(shutdownResponse.json()).resolves.toMatchObject({
+        error: {
+          code: 'SERVICE_UNAVAILABLE',
+        },
+      });
 
-    const closeAssertion = expect(closePromise).rejects.toThrow(
-      'Cloudflare Workers adapter shutdown timeout exceeded 10000ms.',
-    );
+      const closeAssertion = expect(closePromise).rejects.toThrow(
+        'Cloudflare Workers adapter shutdown timeout exceeded 10000ms.',
+      );
 
-    await vi.advanceTimersByTimeAsync(10_000);
-    await closeAssertion;
-
-    vi.useRealTimers();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await closeAssertion;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('creates a lazy Worker entrypoint that bootstraps once and reuses the bound dispatcher', async () => {

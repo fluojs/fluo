@@ -1,4 +1,4 @@
-import { createServer } from 'node:net';
+import { type AddressInfo, createServer } from 'node:net';
 import { Controller, type Dispatcher, FromBody, Get, Post, RequestDto, type RequestContext } from '@fluojs/http';
 import { defineModule, FluoFactory } from '@fluojs/runtime';
 import {
@@ -24,29 +24,14 @@ import {
   runNodejsApplication,
 } from './index.js';
 
-async function findAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
+function getBoundPort(server: { address(): AddressInfo | string | null }): number {
+  const address = server.address();
 
-    server.once('error', reject);
-    server.listen(0, () => {
-      const address = server.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to resolve a bound test port.');
+  }
 
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to resolve an available port.'));
-        return;
-      }
-
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve(address.port);
-      });
-    });
-  });
+  return address.port;
 }
 
 type MultipartRequestWithFiles = RequestContext['request'] & {
@@ -200,13 +185,14 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [HealthController] });
 
-    const port = await findAvailablePort();
+    const adapter = createNodejsAdapter({ port: 0 });
     const app = await FluoFactory.create(AppModule, {
-      adapter: createNodejsAdapter({ port }),
+      adapter,
     });
 
     try {
       await app.listen();
+      const port = getBoundPort(adapter.getServer());
 
       const response = await fetch(`http://127.0.0.1:${String(port)}/health`);
 
@@ -244,13 +230,12 @@ describe('@fluojs/platform-nodejs', () => {
     const adapter = createNodejsAdapter({
       host: '127.0.0.1',
       port: address.port,
-      retryDelayMs: 10,
+      retryDelayMs: 0,
       retryLimit: 5,
     });
 
     try {
       const listenPromise = adapter.listen(dispatcher);
-      await new Promise((resolve) => setTimeout(resolve, 25));
       await new Promise<void>((resolve, reject) => {
         blocker.close((error) => {
           if (error) {
@@ -281,8 +266,7 @@ describe('@fluojs/platform-nodejs', () => {
   });
 
   it('closes idle keep-alive connections during package adapter shutdown', async () => {
-    const port = await findAvailablePort();
-    const adapter = createNodejsAdapter({ port });
+    const adapter = createNodejsAdapter({ port: 0 });
     const server = adapter.getServer();
     const closeIdleConnections = vi.spyOn(server, 'closeIdleConnections');
     const dispatcher: Dispatcher = {
@@ -314,7 +298,6 @@ describe('@fluojs/platform-nodejs', () => {
 
     const signal = 'SIGTERM' as const;
     const listenersBefore = new Set(process.listeners(signal));
-    const port = await findAvailablePort();
     const app = await runNodejsApplication(AppModule, {
       logger: {
         debug() {},
@@ -322,7 +305,7 @@ describe('@fluojs/platform-nodejs', () => {
         log() {},
         warn() {},
       },
-      port,
+      port: 0,
       shutdownSignals: [signal],
     });
     const registeredListeners = process.listeners(signal).filter((listener) => !listenersBefore.has(listener));
@@ -360,13 +343,14 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [BenchmarkController] });
 
-    const port = await findAvailablePort();
+    const adapter = createNodejsAdapter({ port: 0 });
     const app = await FluoFactory.create(AppModule, {
-      adapter: createNodejsAdapter({ port }),
+      adapter,
     });
 
     try {
       await app.listen();
+      const port = getBoundPort(adapter.getServer());
 
       const queryResponse = await fetch(`http://127.0.0.1:${String(port)}/query-one?tag=one&tag=two&encoded=hello+world`);
 
@@ -405,13 +389,14 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [RequestIdController] });
 
-    const port = await findAvailablePort();
+    const adapter = createNodejsAdapter({ port: 0 });
     const app = await FluoFactory.create(AppModule, {
-      adapter: createNodejsAdapter({ port }),
+      adapter,
     });
 
     try {
       await app.listen();
+      const port = getBoundPort(adapter.getServer());
 
       const response = await fetch(`http://127.0.0.1:${String(port)}/request-id`, {
         headers: {
@@ -464,13 +449,14 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [EchoController] });
 
-    const port = await findAvailablePort();
+    const adapter = createNodejsAdapter({ maxBodySize: 8, port: 0 });
     const app = await FluoFactory.create(AppModule, {
-      adapter: createNodejsAdapter({ maxBodySize: 8, port }),
+      adapter,
     });
 
     try {
       await app.listen();
+      const port = getBoundPort(adapter.getServer());
 
       const boundaryResponse = await fetch(`http://127.0.0.1:${String(port)}/echo/raw`, {
         body: '12345678',
@@ -524,13 +510,14 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [EchoController] });
 
-    const port = await findAvailablePort();
+    const adapter = createNodejsAdapter({ port: 0 });
     const app = await FluoFactory.create(AppModule, {
-      adapter: createNodejsAdapter({ port }),
+      adapter,
     });
 
     try {
       await app.listen();
+      const port = getBoundPort(adapter.getServer());
 
       const response = await fetch(`http://127.0.0.1:${String(port)}/echo/json`, {
         body: JSON.stringify({ ok: true }),
@@ -572,13 +559,14 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [UploadController] });
 
-    const port = await findAvailablePort();
+    const adapter = createNodejsAdapter({ port: 0 });
     const app = await FluoFactory.create(AppModule, {
-      adapter: createNodejsAdapter({ port }),
+      adapter,
     });
 
     try {
       await app.listen();
+      const port = getBoundPort(adapter.getServer());
 
       const form = new FormData();
       form.append('name', 'Ada');
