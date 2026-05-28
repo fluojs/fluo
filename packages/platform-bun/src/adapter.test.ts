@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { All, Controller, createDispatcher, createHandlerMapping, Get, Header, HttpCode, Post, Redirect, SseResponse, Version, VersioningType, type FrameworkRequest, type FrameworkResponse, type RequestContext } from '@fluojs/http';
@@ -447,6 +449,22 @@ function decodeUtf8(input: Uint8Array | undefined): string {
 
 describe('@fluojs/platform-bun', () => {
   registerBunWebRuntimePortabilitySuite();
+
+  it('rejects invalid explicit numeric adapter options during setup', () => {
+    expect(() => createBunAdapter({ idleTimeout: -1 })).toThrow(/idleTimeout/i);
+    expect(() => createBunAdapter({ maxBodySize: 1.5 })).toThrow(/maxBodySize/i);
+    expect(() => createBunAdapter({ port: 65_536 })).toThrow(/port/i);
+    expect(() => createBunFetchHandler({
+      dispatcher: { async dispatch() {} },
+      maxBodySize: Number.NaN,
+    })).toThrow(/maxBodySize/i);
+  });
+
+  it('keeps the Bun adapter runtime import path free of the Node runtime subpath', () => {
+    const source = readFileSync(new URL('./adapter.ts', import.meta.url), 'utf8');
+
+    expect(source).not.toContain("from '@fluojs/runtime/node'");
+  });
 
   it('translates Bun-style Request semantics into the framework request contract', async () => {
     const fetch = createBunFetchHandler({

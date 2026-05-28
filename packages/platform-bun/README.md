@@ -48,7 +48,7 @@ await app.listen();
 
 ### Manual Fetch Handling
 If you prefer to manage the Bun server yourself, you can use the fetch handler directly.
-The `dispatcher` should come from the already bootstrapped application via `app.getHttpDispatcher()`, and the handler preserves the same raw-body, multipart, shutdown, and native handoff contracts as the managed adapter path.
+The `dispatcher` should come from the already bootstrapped application via `app.getHttpDispatcher()`. The handler preserves raw-body and multipart request parsing, while shutdown ownership, websocket upgrades, and native `routes` acceleration remain responsibilities of the surrounding `Bun.serve(...)` host or the managed adapter path.
 
 ```typescript
 import { createBunFetchHandler } from '@fluojs/platform-bun';

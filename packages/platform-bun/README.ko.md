@@ -48,7 +48,7 @@ await app.listen();
 
 ### 수동 Fetch 처리
 Bun 서버를 직접 관리하려는 경우 fetch 핸들러를 직접 사용할 수 있습니다.
-`dispatcher`는 이미 bootstrap된 application의 `app.getHttpDispatcher()`에서 가져와야 하며, 이 handler는 managed adapter 경로와 동일한 raw-body, multipart, shutdown, native handoff 계약을 보존합니다.
+`dispatcher`는 이미 bootstrap된 application의 `app.getHttpDispatcher()`에서 가져와야 합니다. 이 handler는 raw-body와 multipart request parsing을 보존하지만, shutdown ownership, websocket upgrade, native `routes` acceleration은 주변 `Bun.serve(...)` host 또는 managed adapter 경로가 소유합니다.
 
 ```typescript
 import { createBunFetchHandler } from '@fluojs/platform-bun';
