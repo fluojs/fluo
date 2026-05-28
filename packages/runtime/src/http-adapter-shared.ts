@@ -1,16 +1,16 @@
 import {
+  type CorsOptions,
   createCorsMiddleware,
   createErrorResponse,
   createSecurityHeadersMiddleware,
-  matchRoutePattern,
-  normalizeRoutePattern,
-  NotFoundException,
-  type CorsOptions,
   type FrameworkResponse,
   type HttpApplicationAdapter,
   type MiddlewareContext,
   type MiddlewareLike,
+  matchRoutePattern,
   type Next,
+  NotFoundException,
+  normalizeRoutePattern,
   type SecurityHeadersOptions,
 } from '@fluojs/http';
 
@@ -53,10 +53,8 @@ export interface HttpAdapterMiddlewareOptions {
  * Options for bootstrapping an HTTP adapter application.
  */
 export interface BootstrapHttpAdapterApplicationOptions
-  extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'>,
+  extends Omit<CreateApplicationOptions, 'adapter' | 'middleware'>,
     HttpAdapterMiddlewareOptions {
-  /** Optional custom application logger. */
-  logger?: ApplicationLogger;
 }
 
 /**
@@ -94,11 +92,12 @@ export async function bootstrapHttpAdapterApplication(
   rootModule: ModuleType,
   options: BootstrapHttpAdapterApplicationOptions,
   adapter: HttpApplicationAdapter,
+  logger: ApplicationLogger = createDefaultApplicationLogger(),
 ): Promise<Application> {
   return bootstrapApplication({
     ...options,
     adapter,
-    logger: options.logger ?? createDefaultApplicationLogger(),
+    logger,
     middleware: createHttpAdapterMiddleware(options),
     rootModule,
   });
@@ -155,8 +154,8 @@ export async function runHttpAdapterApplication(
   rootModule: ModuleType,
   options: RunHttpAdapterApplicationOptions,
   adapter: ManagedHttpApplicationAdapter,
+  logger: ApplicationLogger = createDefaultApplicationLogger(),
 ): Promise<Application> {
-  const logger = options.logger ?? createDefaultApplicationLogger();
   const app = await bootstrapApplication({
     ...options,
     adapter,
