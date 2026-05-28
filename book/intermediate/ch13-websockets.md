@@ -165,7 +165,7 @@ Sometimes you need a WebSocket server that is independent from the main HTTP ser
 export class DedicatedGateway {}
 ```
 
-This setting starts a dedicated listener on port 3101. It is useful when you need to isolate realtime traffic from standard API traffic and apply different load-balancing rules or firewall policies. Operators can then observe connection costs separately from normal request processing costs.
+This setting starts a dedicated listener on port 3101 for server-backed Node adapters. It is useful when you need to isolate realtime traffic from standard API traffic and apply different load-balancing rules or firewall policies. Operators can then observe connection costs separately from normal request processing costs. Fetch-style runtimes (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) reject `serverBacked`; use the runtime's fetch-style upgrade surface instead of a dedicated listener there.
 
 ## 13.9 Shared path gateways
 

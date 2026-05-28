@@ -131,7 +131,7 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 ### Types
 - `Queue`: Compatibility facade with `enqueue(job)` for application code and the `QUEUE` token.
 - `QueueJobType`: Constructor type used to identify and rehydrate a job payload class.
-- `QueueModuleOptions`: Global queue settings (clientName, default attempts, `defaultBackoff`, concurrency, rate limiting, dead-letter retention).
+- `QueueModuleOptions`: Global queue settings (`global`, clientName, default attempts, `defaultBackoff`, concurrency, rate limiting, dead-letter retention).
 - `QueueWorkerOptions`: Per-job settings (attempts, backoff, concurrency, jobName, rate limiting).
 - `QueueBackoffType`: Supported retry backoff strategy names (`fixed`, `exponential`).
 - `QueueBackoffOptions`: Retry backoff settings (`type`, `delayMs`).
@@ -144,6 +144,7 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 
 `QueueModuleOptions` lifecycle/status controls:
 
+- `global`: whether the queue module registration is global. Defaults to `true`; set `false` when queue providers should stay scoped to the importing module graph.
 - `workerShutdownTimeoutMs`: maximum time to wait for active worker processors during shutdown before force-closing the BullMQ worker. Defaults to `30_000`.
 - `defaultDeadLetterMaxEntries`: maximum retained dead-letter records per job, or `false` to disable trimming. Defaults to `1_000`.
 

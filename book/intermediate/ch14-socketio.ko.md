@@ -53,7 +53,7 @@ import { SocketIoModule } from '@fluojs/socket.io';
 export class ChatModule {}
 ```
 
-기본적으로 fluo는 CORS를 deny-by-default, 즉 `origin: false` 상태로 유지합니다. Cross-origin 브라우저 클라이언트를 허용하려면 허용된 origin 목록을 명시적으로 작성해야 합니다. `engine` 설정은 Engine.IO에 직접 매핑되며, production 안정성을 위해 payload size를 제한할 수 있게 합니다. 이런 기본값은 실시간 연결이 브라우저에서 오래 유지되는 특성을 고려한 안전한 출발점입니다.
+기본적으로 fluo는 CORS를 deny-by-default, 즉 `origin: false` 상태로 유지합니다. Cross-origin 브라우저 클라이언트를 허용하려면 허용된 origin 목록을 명시적으로 작성해야 합니다. `engine` 설정은 Engine.IO에 직접 매핑되며, production 안정성을 위해 payload size를 제한할 수 있게 합니다. Bun에서는 adapter가 같은 `engine.maxHttpBufferSize` 값을 HTTP request body limit와 WebSocket payload limit 양쪽에 매핑합니다. Bun은 이 두 host contract를 별도로 노출하기 때문입니다. 이런 기본값은 실시간 연결이 브라우저에서 오래 유지되는 특성을 고려한 안전한 출발점입니다.
 
 ## 14.3 Room management with SocketIoRoomService
 
@@ -94,6 +94,8 @@ export class SupportChatGateway {
 ```
 
 `SocketIoRoomService`는 gateway에서 room 로직을 분리합니다. 이 구조 덕분에 원본 소켓 인스턴스에 접근할 수 없는 일반 서비스에서도 특정 room으로 브로드캐스트할 수 있습니다. 결과적으로 실시간 전달은 소켓 핸들러에 갇히지 않고 애플리케이션 서비스의 명시적인 협력 지점이 됩니다.
+
+`/support` 같은 gateway path는 fluo gateway discovery가 소유하는 static Socket.IO namespace입니다. Dynamic child namespace가 아니므로 fluo는 이 gateway path에 Socket.IO dynamic-child cleanup 동작을 적용하지 않습니다. 저수준 서비스가 `SOCKETIO_SERVER`를 통해 dynamic namespace를 만들면, 해당 서비스가 그에 맞는 cleanup policy도 함께 소유해야 합니다.
 
 ## 14.4 Guarding namespaces and messages
 

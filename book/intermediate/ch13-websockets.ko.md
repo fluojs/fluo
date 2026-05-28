@@ -165,7 +165,7 @@ WebSocket은 조용히 끊길 수 있습니다. 네트워크 중단이나 silent
 export class DedicatedGateway {}
 ```
 
-이 설정은 3101 포트에서 전용 listener를 시작합니다. 실시간 트래픽을 표준 API 트래픽과 격리하고, 서로 다른 load-balancing 규칙이나 방화벽 정책을 적용해야 할 때 유용합니다. 운영자는 이 분리를 통해 연결 유지 비용과 일반 요청 처리 비용을 따로 관찰할 수 있습니다.
+이 설정은 server-backed Node adapter에서 3101 포트의 전용 listener를 시작합니다. 실시간 트래픽을 표준 API 트래픽과 격리하고, 서로 다른 load-balancing 규칙이나 방화벽 정책을 적용해야 할 때 유용합니다. 운영자는 이 분리를 통해 연결 유지 비용과 일반 요청 처리 비용을 따로 관찰할 수 있습니다. Fetch-style runtime(`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`)은 `serverBacked`를 거부합니다. 그런 runtime에서는 전용 listener 대신 runtime의 fetch-style upgrade surface를 사용하십시오.
 
 ## 13.9 Shared path gateways
 

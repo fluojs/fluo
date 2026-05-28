@@ -357,6 +357,25 @@ describe('enforceContractCompanionUpdates', () => {
 });
 
 describe('repository governance contracts', () => {
+  it('keeps Redis status helpers and Queue global scope controls discoverable across governed docs', () => {
+    const docsContext = readFileSync(resolve(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const docsContextKo = readFileSync(resolve(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const packageSurface = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const packageSurfaceKo = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const queueReadme = readFileSync(resolve(repoRoot, 'packages/queue/README.md'), 'utf8');
+    const queueReadmeKo = readFileSync(resolve(repoRoot, 'packages/queue/README.ko.md'), 'utf8');
+
+    expect(packageSurface).toContain('platform health/readiness status snapshot helpers');
+    expect(packageSurfaceKo).toContain('platform health/readiness status snapshot helper');
+    expect(docsContext).toContain('platform health/readiness status snapshot helper responsibility');
+    expect(docsContextKo).toContain('platform health/readiness status snapshot helper 책임');
+
+    expect(queueReadme).toContain('`global`: whether the queue module registration is global');
+    expect(queueReadmeKo).toContain('`global`: queue module 등록을 global로 만들지 여부');
+    expect(docsContext).toContain('`QueueModuleOptions.global` module-scope control');
+    expect(docsContextKo).toContain('`QueueModuleOptions.global` module-scope control');
+  });
+
   it('keeps the websockets README shutdown contract scoped to fetch-style runtimes with linked regression evidence', () => {
     const websocketsReadme = readFileSync(resolve(repoRoot, 'packages/websockets/README.md'), 'utf8');
     const websocketsReadmeKo = readFileSync(resolve(repoRoot, 'packages/websockets/README.ko.md'), 'utf8');

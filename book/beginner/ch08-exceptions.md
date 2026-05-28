@@ -130,7 +130,7 @@ For example:
 - an invalid length,
 - an invalid payload shape.
 
-When `@fluojs/validation` finds an error, it doesn't simply stop. It throws a structured exception, usually in the `BadRequestException` family, and the HTTP layer turns it into a readable response. See `docs/architecture/error-responses.md`.
+When `@fluojs/validation` finds an error, it doesn't simply stop. It throws `DtoValidationError`, a structured validation exception owned by the validation package. The HTTP layer maps that validation error to a readable bad-request response at the request boundary. See `docs/architecture/error-responses.md`.
 
 The key point is ownership. The client should be able to fix the request and try again, which is different from an internal server problem. That is why validation failures should be expressed as clear, structured client errors whenever possible.
 
