@@ -18,6 +18,14 @@ describe('runtime export boundaries', () => {
     expect(runtime).not.toHaveProperty('bootstrapHttpAdapterApplication');
   });
 
+  it('keeps root bootstrap defaults detached from Node-only logger modules', () => {
+    const bootstrapSource = readFileSync(new URL('./bootstrap.ts', import.meta.url), 'utf8');
+
+    expect(bootstrapSource).not.toContain('./logging/logger.js');
+    expect(bootstrapSource).not.toContain('./logging/json-logger.js');
+    expect(bootstrapSource).toContain('./logging/default-logger.js');
+  });
+
   it('keeps only bootstrap-scoped operational helpers on the runtime root barrel', () => {
     expect(runtime.HealthModule).toBeTypeOf('function');
     expect(runtime.HealthModule.forRoot).toBeTypeOf('function');

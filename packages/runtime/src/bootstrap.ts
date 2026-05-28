@@ -14,7 +14,7 @@ import { DuplicateProviderError } from './errors.js';
 import { createBootstrapTimingDiagnostics, type BootstrapTimingPhase } from './health/diagnostics.js';
 import { defineRuntimeModuleMetadata, getRuntimeClassDiMetadata } from './internal/core-metadata.js';
 import { RuntimeDefaultBinder } from './internal/http-runtime.js';
-import { createConsoleApplicationLogger } from './logging/logger.js';
+import { createDefaultApplicationLogger } from './logging/default-logger.js';
 import { compileModuleGraph, providerToken } from './module-graph.js';
 import { createRuntimePlatformShell, type RuntimePlatformShell } from './platform-shell.js';
 import { APPLICATION_LOGGER, BOOTSTRAP_READY_SIGNAL, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
@@ -1417,7 +1417,7 @@ function createRuntimeDispatcher(
  * @throws {Error} Propagates module-graph, lifecycle, or runtime initialization failures.
  */
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
+  const logger = options.logger ?? createDefaultApplicationLogger();
   let lifecycleInstances: unknown[] = [];
   let bootstrappedContainer: Container | undefined;
   let bootstrappedModules: CompiledModule[] = [];
@@ -1582,7 +1582,7 @@ export class FluoFactory {
     rootModule: ModuleType,
     options: CreateApplicationContextOptions = {},
   ): Promise<ApplicationContext> {
-    const logger = options.logger ?? createConsoleApplicationLogger();
+    const logger = options.logger ?? createDefaultApplicationLogger();
     let lifecycleInstances: unknown[] = [];
     let bootstrappedContainer: Container | undefined;
     let bootstrappedModules: CompiledModule[] = [];
@@ -1703,7 +1703,7 @@ export class FluoFactory {
     rootModule: ModuleType,
     options: CreateMicroserviceOptions = {},
   ): Promise<MicroserviceApplication> {
-    const logger = options.logger ?? createConsoleApplicationLogger();
+    const logger = options.logger ?? createDefaultApplicationLogger();
     const microserviceToken = options.microserviceToken ?? DEFAULT_MICROSERVICE_TOKEN;
     const context = await FluoFactory.createApplicationContext(rootModule, options);
 
