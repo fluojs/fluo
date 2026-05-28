@@ -4,7 +4,7 @@ import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata, defineModuleMetadata } from '@fluojs/core/internal';
 import type { Provider } from '@fluojs/di';
 import { bootstrapApplication, FluoFactory } from '@fluojs/runtime';
-import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
+import type { CompiledModule } from '@fluojs/runtime';
 
 import { BidiStreamPattern, ClientStreamPattern, EventPattern, MessagePattern, ServerStreamPattern } from './decorators.js';
 import { KafkaMicroserviceTransport } from './transports/kafka-transport.js';
@@ -700,14 +700,9 @@ describe('@fluojs/microservices', () => {
 
   it('injects the framework logger into transports without changing non-fatal event semantics', async () => {
     const loggerEvents: string[] = [];
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message: string, error?: unknown, context?: string) {
-        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
-      },
-      log() {},
-      warn() {},
-    };
+    const errorLog = vi.spyOn(console, 'error').mockImplementation((message: unknown, error?: unknown) => {
+      loggerEvents.push(`${String(message)}:${error instanceof Error ? error.message : 'none'}`);
+    });
 
     class LoggerAwareTransport implements MicroserviceTransport {
       private logger: MicroserviceTransportLogger | undefined;
@@ -748,14 +743,19 @@ describe('@fluojs/microservices', () => {
       providers: [Handler],
     });
 
-    const microservice = await FluoFactory.createMicroservice(AppModule, { logger });
-    await microservice.listen();
+    const microservice = await FluoFactory.createMicroservice(AppModule);
 
-    await expect(microservice.emit('audit.fail', { ok: false })).resolves.toBeUndefined();
+    try {
+      await microservice.listen();
 
-    expect(loggerEvents).toContain('error:LoggerAwareTransport:Event handler failed.:event boom');
+      await expect(microservice.emit('audit.fail', { ok: false })).resolves.toBeUndefined();
 
-    await microservice.close();
+      expect(loggerEvents).toContain('[fluo] ERROR [LoggerAwareTransport] Event handler failed.:none');
+      expect(loggerEvents).toContain('Error: event boom:none');
+    } finally {
+      errorLog.mockRestore();
+      await microservice.close();
+    }
   });
 
   it('fails deterministically when multiple message handlers match the same pattern', async () => {
