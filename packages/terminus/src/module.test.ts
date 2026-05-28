@@ -530,32 +530,38 @@ describe('TerminusModule.forRoot', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    try {
+      const app = await bootstrapApplication({ rootModule: AppModule });
 
-    const healthResponse = createResponse();
-    await app.dispatch(createRequest('/health'), healthResponse);
+      try {
+        const healthResponse = createResponse();
+        await app.dispatch(createRequest('/health'), healthResponse);
 
-    expect(healthResponse.statusCode).toBe(200);
-    expect(healthResponse.body).toMatchObject({
-      contributors: {
-        down: [],
-      },
-      details: {
-        'primary-api': {
-          status: 'up',
-        },
-        'secondary-api': {
-          status: 'up',
-        },
-      },
-      status: 'ok',
-    });
-    expect((healthResponse.body as { contributors: { up: string[] } }).contributors.up).toEqual(
-      expect.arrayContaining(['primary-api', 'secondary-api']),
-    );
-    expect(fetch).toHaveBeenCalledTimes(2);
-
-    await app.close();
+        expect(healthResponse.statusCode).toBe(200);
+        expect(healthResponse.body).toMatchObject({
+          contributors: {
+            down: [],
+          },
+          details: {
+            'primary-api': {
+              status: 'up',
+            },
+            'secondary-api': {
+              status: 'up',
+            },
+          },
+          status: 'ok',
+        });
+        expect((healthResponse.body as { contributors: { up: string[] } }).contributors.up).toEqual(
+          expect.arrayContaining(['primary-api', 'secondary-api']),
+        );
+        expect(fetch).toHaveBeenCalledTimes(2);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      fetch.mockRestore();
+    }
   });
 
   it('aligns /health and /ready with runtime platform readiness semantics', async () => {
