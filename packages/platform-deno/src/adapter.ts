@@ -234,7 +234,7 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
 
   async close(): Promise<void> {
     if (this.closeInFlight) {
-      await waitForCloseWithTimeout(this.closeInFlight, DEFAULT_SHUTDOWN_TIMEOUT_MS);
+      await waitForCloseWithTimeout(this.closeInFlight, DEFAULT_SHUTDOWN_TIMEOUT_MS, () => this.abortController?.abort());
       return;
     }
 
@@ -270,7 +270,7 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
     this.closeInFlight = closeInFlight;
     void closeInFlight.catch(() => {});
 
-    await waitForCloseWithTimeout(closeInFlight, DEFAULT_SHUTDOWN_TIMEOUT_MS);
+    await waitForCloseWithTimeout(closeInFlight, DEFAULT_SHUTDOWN_TIMEOUT_MS, () => abortController?.abort());
   }
 
   private trackInFlightRequest(): () => void {
@@ -310,10 +310,12 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
  * @returns A Deno-backed `HttpApplicationAdapter`.
  */
 export function createDenoAdapter(options: DenoAdapterOptions = {}): DenoHttpApplicationAdapter {
+  validateNonNegativeIntegerOption('maxBodySize', options.maxBodySize);
+
   return new DenoHttpApplicationAdapter({
     ...options,
     hostname: options.hostname ?? options.host ?? DEFAULT_HOSTNAME,
-    port: options.port ?? DEFAULT_PORT,
+    port: resolveDenoPort(options.port),
   });
 }
 
@@ -402,6 +404,26 @@ function createListenTarget(hostname: string, port: number, usesHttps: boolean):
   };
 }
 
+function resolveDenoPort(value: number | undefined): number {
+  const port = value ?? DEFAULT_PORT;
+
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    throw new Error(`Invalid port value: ${String(port)}. Expected an integer between 0 and 65535.`);
+  }
+
+  return port;
+}
+
+function validateNonNegativeIntegerOption(name: string, value: number | undefined): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid ${name} value: ${String(value)}. Expected a non-negative integer.`);
+  }
+}
+
 function formatHostForAuthority(hostname: string): string {
   return hostname.includes(':') && !hostname.startsWith('[') ? `[${hostname}]` : hostname;
 }
@@ -483,9 +505,10 @@ function createShutdownResponse(): Response {
   });
 }
 
-function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number): Promise<void> {
+function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number, onTimeout?: () => void): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
+      onTimeout?.();
       reject(new Error(`Deno adapter shutdown timeout exceeded ${String(timeoutMs)}ms.`));
     }, timeoutMs);
 

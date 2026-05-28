@@ -344,6 +344,11 @@ function createMockDenoSocket(): DenoServerWebSocket {
 }
 
 describe('@fluojs/platform-deno', () => {
+  it('rejects invalid explicit numeric adapter options during setup', () => {
+    expect(() => createDenoAdapter({ maxBodySize: -1 })).toThrow(/maxBodySize/i);
+    expect(() => createDenoAdapter({ port: 1.5 })).toThrow(/port/i);
+  });
+
   it('keeps edge runtime README conformance coverage aligned across English and Korean docs', () => {
     const englishReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
     const koreanReadme = readFileSync(new URL('../README.ko.md', import.meta.url), 'utf8');
@@ -770,6 +775,41 @@ describe('@fluojs/platform-deno', () => {
     await expect(adapter.close()).rejects.toBe(drainError);
     expect(serveSignal?.aborted).toBe(true);
     expect(adapter.getServer()).toBeUndefined();
+  });
+
+  it('aborts the Deno serve signal when bounded close timeout elapses', async () => {
+    vi.useFakeTimers();
+
+    try {
+      let serveSignal: AbortSignal | undefined;
+      const adapter = new DenoHttpApplicationAdapter({
+        hostname: '0.0.0.0',
+        port: 3000,
+        serve: vi.fn((options) => {
+          serveSignal = options.signal;
+
+          return {
+            finished: new Promise<void>(() => {}),
+            shutdown: vi.fn(() => new Promise<void>(() => {})),
+          };
+        }),
+      });
+
+      await adapter.listen({
+        async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+          response.setStatus(204);
+        },
+      });
+
+      const closePromise = adapter.close();
+      const closeExpectation = expect(closePromise).rejects.toThrow(/shutdown timeout/i);
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      await closeExpectation;
+      expect(serveSignal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('returns a shutdown 503 while close is draining active requests', async () => {
