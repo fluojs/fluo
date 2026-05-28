@@ -295,4 +295,60 @@ describe('runHttpAdapterApplication', () => {
       'adapter:close:SIGTERM',
     ]);
   });
+
+  it('aggregates custom shutdown unregistration and application close failures', async () => {
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const events: string[] = [];
+    const unregisterFailure = new Error('unregister failed');
+    const closeFailure = new Error('close failed');
+    const logger: ApplicationLogger = {
+      debug() {},
+      error() {},
+      log() {},
+      warn() {},
+    };
+    const adapter = {
+      async close(signal?: string) {
+        events.push(`adapter:close:${signal ?? 'none'}`);
+        throw closeFailure;
+      },
+      getListenTarget() {
+        return {
+          bindTarget: 'runtime://test',
+          url: 'runtime://test',
+        };
+      },
+      async listen() {
+        events.push('adapter:listen');
+      },
+    };
+
+    const app = await runHttpAdapterApplication(AppModule, {
+      logger,
+      shutdownRegistration() {
+        return () => {
+          events.push('unregister');
+          throw unregisterFailure;
+        };
+      },
+    }, adapter);
+
+    try {
+      await app.close('SIGTERM');
+      expect.unreachable('close should aggregate unregister and close failures');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      if (error instanceof AggregateError) {
+        expect(error.errors).toEqual([unregisterFailure, closeFailure]);
+      }
+    }
+
+    expect(events).toEqual([
+      'adapter:listen',
+      'unregister',
+      'adapter:close:SIGTERM',
+    ]);
+  });
 });
