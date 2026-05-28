@@ -161,6 +161,8 @@ export class AdvancedService {
 - `createRedisPlatformStatusSnapshot(input)`: Redis 연결 상태를 Fluo 플랫폼 health/readiness 스냅샷으로 변환합니다.
 
 ### 타입
+- `DefaultRedisModuleOptions`: 이름 없는 기본 Redis 등록이 받는 옵션입니다. 선택적 global alias visibility와 lifecycle timeout control을 포함합니다.
+- `NamedRedisModuleOptions`: 추가 이름 있는 Redis 등록이 받는 옵션입니다. 필수 `name`과 scoped lifecycle timeout control을 포함합니다.
 - `RedisModuleOptions`: Fluo가 module-only `name`, `global`, `lifecycle` 필드를 제거한 뒤 `ioredis` 생성자에 전달하는 설정 옵션입니다.
 - `RedisClientOptions`: Fluo가 module-only field를 제거하고 내부에서 `lazyConnect: true`를 강제하기 전의 Redis constructor option입니다.
 - `RedisLifecycleOptions`: Fluo가 소유한 `connect()`와 `quit()` lifecycle command의 timeout을 조정하는 선택적 옵션입니다.
