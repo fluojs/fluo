@@ -125,6 +125,7 @@ export class CloudflareWorkerHttpApplicationAdapter
   private readonly webRequestResponseFactory;
 
   constructor(options: CloudflareWorkerAdapterOptions = {}) {
+    validateNonNegativeIntegerOption('maxBodySize', options.maxBodySize);
     this.options = options;
     this.webRequestResponseFactory = createWebRequestResponseFactory(options);
   }
@@ -402,6 +403,16 @@ function resolveWebSocketPairFactory(
   }
 
   throw new Error('Cloudflare Workers websocket support requires globalThis.WebSocketPair or options.createWebSocketPair().');
+}
+
+function validateNonNegativeIntegerOption(name: string, value: number | undefined): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid ${name} value: ${String(value)}. Expected a non-negative integer.`);
+  }
 }
 
 function isWebSocketUpgradeRequest(request: Request): boolean {

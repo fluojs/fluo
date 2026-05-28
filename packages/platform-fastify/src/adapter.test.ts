@@ -306,6 +306,21 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
+  it('rejects invalid explicit numeric adapter options during setup', () => {
+    expect(() => createFastifyAdapter({ maxBodySize: -1 })).toThrow(/maxBodySize/i);
+    expect(() => createFastifyAdapter({ retryDelayMs: -1 })).toThrow(/retryDelayMs/i);
+    expect(() => createFastifyAdapter({ retryLimit: 1.5 })).toThrow(/retryLimit/i);
+    expect(() => createFastifyAdapter({ shutdownTimeoutMs: Number.NaN })).toThrow(/shutdownTimeoutMs/i);
+  });
+
+  it('rejects invalid numeric options through the public adapter constructor', () => {
+    expect(() => new FastifyHttpApplicationAdapter(-1, undefined, 150, 20, undefined)).toThrow(/PORT/i);
+    expect(() => new FastifyHttpApplicationAdapter(3000, undefined, -1, 20, undefined)).toThrow(/retryDelayMs/i);
+    expect(() => new FastifyHttpApplicationAdapter(3000, undefined, 150, 1.5, undefined)).toThrow(/retryLimit/i);
+    expect(() => new FastifyHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, -1)).toThrow(/maxBodySize/i);
+    expect(() => new FastifyHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, Number.NaN)).toThrow(/shutdownTimeoutMs/i);
+  });
+
   it('exposes a server-backed realtime capability on the Fastify adapter', async () => {
     const adapter = createFastifyAdapter() as FastifyHttpApplicationAdapter;
 
@@ -1858,9 +1873,11 @@ describe('@fluojs/platform-fastify', () => {
     Reflect.set(adapter, 'dispatcher', { async dispatch() {} });
 
     const firstClose = adapter.close();
+    app.server.listening = false;
     const secondClose = adapter.close();
 
     expect(closeCallCount).toBe(1);
+    expect(Reflect.get(adapter, 'dispatcher')).toBeDefined();
 
     deferred.resolve();
     await Promise.all([firstClose, secondClose]);

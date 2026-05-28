@@ -20,14 +20,11 @@ import type {
   MultipartOptions,
   UploadedFile,
 } from '@fluojs/runtime';
-import {
-  createNodeShutdownSignalRegistration,
-  defaultNodeShutdownSignals,
-} from '@fluojs/runtime/node';
 import { createWebRequestResponseFactory, dispatchWebRequest } from '@fluojs/runtime/web';
 import {
   bootstrapHttpAdapterApplication,
   runHttpAdapterApplication,
+  type RunHttpAdapterApplicationOptions,
   type HttpAdapterListenTarget,
 } from '@fluojs/runtime/internal/http-adapter';
 
@@ -233,6 +230,7 @@ export interface RunBunApplicationOptions extends BootstrapBunApplicationOptions
 const DEFAULT_PORT = 3000;
 const DEFAULT_DISPATCHER_NOT_READY_MESSAGE = 'Bun adapter received a request before dispatcher binding completed.';
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const DEFAULT_FORCE_EXIT_TIMEOUT_MS = 30_000;
 const MINIMUM_BUN_NATIVE_ROUTES_VERSION = '1.2.3';
 const EMPTY_NATIVE_ROUTE_PARAMS: Readonly<Record<string, string>> = Object.freeze({});
 const BUN_WEBSOCKET_SUPPORT_REASON =
@@ -250,6 +248,9 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
   private readonly webRequestResponseFactory;
 
   constructor(options: BunAdapterOptions = {}) {
+    validateNonNegativeIntegerOption('idleTimeout', options.idleTimeout);
+    validateNonNegativeIntegerOption('maxBodySize', options.maxBodySize);
+    validatePortOption(options.port);
     this.options = options;
     this.webRequestResponseFactory = createWebRequestResponseFactory({
       consumeOriginalBody: true,
@@ -439,6 +440,8 @@ export function createBunFetchHandler({
   multipart,
   rawBody,
 }: CreateBunFetchHandlerOptions): (request: Request) => Promise<Response> {
+  validateNonNegativeIntegerOption('maxBodySize', maxBodySize);
+
   const factory = createWebRequestResponseFactory({
     consumeOriginalBody: true,
     maxBodySize,
@@ -520,10 +523,79 @@ export async function runBunApplication(
 
   return runHttpAdapterApplication(rootModule, {
     ...options,
-    shutdownRegistration: createNodeShutdownSignalRegistration(
-      options.shutdownSignals ?? defaultNodeShutdownSignals(),
-    ),
+    shutdownRegistration: createBunShutdownSignalRegistration(options.shutdownSignals ?? defaultBunShutdownSignals()),
   }, adapter);
+}
+
+function defaultBunShutdownSignals(): readonly BunApplicationSignal[] {
+  return ['SIGINT', 'SIGTERM'];
+}
+
+function createBunShutdownSignalRegistration(
+  signals: false | readonly BunApplicationSignal[],
+): NonNullable<RunHttpAdapterApplicationOptions['shutdownRegistration']> {
+  return (app: Application, logger: ApplicationLogger, forceExitTimeoutMs = DEFAULT_FORCE_EXIT_TIMEOUT_MS) => {
+    if (signals === false) {
+      return () => {};
+    }
+
+    const bindings: Array<{ handler: () => void; signal: BunApplicationSignal }> = [];
+
+    for (const signal of signals) {
+      const handler = () => {
+        void closeBunApplicationFromSignal(app, logger, signal, forceExitTimeoutMs);
+      };
+
+      bindings.push({ handler, signal });
+      process.once(signal, handler);
+    }
+
+    return () => {
+      for (const binding of bindings) {
+        process.off(binding.signal, binding.handler);
+      }
+    };
+  };
+}
+
+async function closeBunApplicationFromSignal(
+  app: Application,
+  logger: ApplicationLogger,
+  signal: BunApplicationSignal,
+  forceExitTimeoutMs: number,
+): Promise<void> {
+  if (app.state === 'closed') {
+    process.exitCode = 0;
+    return;
+  }
+
+  let timedOut = false;
+  const forceExitTimer = setTimeout(() => {
+    timedOut = true;
+    logger.error(
+      `Shutdown timeout exceeded after ${String(forceExitTimeoutMs)}ms; leaving process termination to the host.`,
+      undefined,
+      'FluoFactory',
+    );
+    process.exitCode = 1;
+  }, forceExitTimeoutMs);
+
+  if (forceExitTimer.unref) {
+    forceExitTimer.unref();
+  }
+
+  try {
+    await app.close(signal);
+    clearTimeout(forceExitTimer);
+
+    if (!timedOut) {
+      process.exitCode = 0;
+    }
+  } catch (error: unknown) {
+    clearTimeout(forceExitTimer);
+    logger.error('Failed to shut down the application cleanly.', error, 'FluoFactory');
+    process.exitCode = 1;
+  }
 }
 
 function requireBunGlobal(): BunGlobal {
@@ -537,7 +609,27 @@ function requireBunGlobal(): BunGlobal {
 }
 
 function resolvePort(port: number | undefined): number {
-  return typeof port === 'number' && Number.isFinite(port) ? port : DEFAULT_PORT;
+  return validatePortOption(port);
+}
+
+function validatePortOption(port: number | undefined): number {
+  const resolved = port ?? DEFAULT_PORT;
+
+  if (!Number.isInteger(resolved) || resolved < 0 || resolved > 65535) {
+    throw new Error(`Invalid port value: ${String(resolved)}. Expected an integer between 0 and 65535.`);
+  }
+
+  return resolved;
+}
+
+function validateNonNegativeIntegerOption(name: string, value: number | undefined): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid ${name} value: ${String(value)}. Expected a non-negative integer.`);
+  }
 }
 
 function createBunNativeRoutes(

@@ -76,10 +76,10 @@ export class MyGateway {}
 ```
 
 ### Edge-Native Middleware
-Standard fluo middleware (CORS, Global Prefix, etc.) is fully supported and optimized for the Cloudflare environment.
+Standard fluo middleware (CORS, Global Prefix, etc.) is fully supported through Worker bootstrap helpers and optimized for the Cloudflare environment. `createCloudflareWorkerAdapter(...)` only accepts adapter-owned parsing and websocket-pair options; pass routing and middleware options to `bootstrapCloudflareWorkerApplication(...)` or `createCloudflareWorkerEntrypoint(...)` instead.
 
 ```typescript
-const adapter = createCloudflareWorkerAdapter({
+const worker = createCloudflareWorkerEntrypoint(AppModule, {
   globalPrefix: 'api/v1',
   cors: true,
 });
@@ -88,6 +88,7 @@ const adapter = createCloudflareWorkerAdapter({
 ### Behavior Notes
 
 - `fetch()` registers active work with `executionContext.waitUntil(...)` after `listen()` or the lazy entrypoint binds the dispatcher; before that lifecycle boundary, upgrade requests and HTTP dispatch do not reach application handlers.
+- Adapter options such as `maxBodySize` are validated when the Worker adapter is created; bootstrap-only options such as `globalPrefix`, `cors`, `middleware`, and `securityHeaders` belong on Worker bootstrap helpers rather than `createCloudflareWorkerAdapter(...)`.
 - WebSocket upgrades are owned by the same listen boundary as HTTP dispatch; upgrade requests before `listen()` do not reach the configured binding.
 - `close()` returns JSON `503` responses for new requests during and after shutdown and times out after 10 seconds if active requests never settle. Calling `listen()` while that close drain is still active rejects with the Cloudflare Workers adapter shutdown-draining error.
 - Multipart requests do not preserve `rawBody`.

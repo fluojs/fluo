@@ -41,7 +41,7 @@ const app = await fluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-`createFastifyAdapter()`는 기본 port로 `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. 잘못된 explicit port 값은 adapter setup 중 throw됩니다.
+`createFastifyAdapter()`는 기본 port로 `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs` 같은 잘못된 explicit numeric option은 adapter setup 중 throw됩니다. `maxBodySize`와 `shutdownTimeoutMs`는 음수가 아닌 정수 byte/time limit이므로 `0`도 유효합니다. `maxBodySize: 0`은 빈 request body만 허용하고, `shutdownTimeoutMs: 0`은 다음 timer turn에 Fastify close가 timeout되도록 요청합니다.
 
 ## 주요 패턴
 
