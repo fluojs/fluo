@@ -418,6 +418,14 @@ describe('SlackModule', () => {
     ]);
   });
 
+  it('rejects webhook transport creation without an explicit fetch boundary', () => {
+    expect(() =>
+      createSlackWebhookTransport({
+        webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+      } as never),
+    ).toThrowError(SlackConfigurationError);
+  });
+
   it('serializes the documented Slack webhook payload fields through the built-in transport', async () => {
     const calls: Array<{ body?: string; input: string; method?: string }> = [];
     const fetchLike: SlackFetchLike = async (input, init) => {
