@@ -1,5 +1,14 @@
 # @fluojs/platform-bun
 
+## 1.0.5
+
+### Patch Changes
+
+- [#2038](https://github.com/fluojs/fluo/pull/2038) [`4403acd`](https://github.com/fluojs/fluo/commit/4403acdf90ed3335895c4eb43a304161476cff57) Thanks [@ayden94](https://github.com/ayden94)! - Restore generated Node starter runtime log colors by using platform startup helpers and internalizing runtime logger selection instead of accepting logger overrides in app options.
+
+- Updated dependencies [[`4403acd`](https://github.com/fluojs/fluo/commit/4403acdf90ed3335895c4eb43a304161476cff57)]:
+  - @fluojs/runtime@1.1.5
+
 ## 1.0.4
 
 ### Patch Changes
