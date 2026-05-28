@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createStudioDevtoolsNodeImport } from '../studio/runtime-config.js';
 
 type RestartRunnerStream = {
   isTTY?: boolean;
@@ -60,6 +61,69 @@ const DEFAULT_IGNORES = [
 const WATCH_FILES = ['.env', 'package.json', 'tsconfig.json', 'tsconfig.build.json'];
 const SHOW_NODE_RESTART_NOTICE_ENV = 'FLUO_DEV_SHOW_RESTART_NOTICE';
 const CLEAR_SCREEN = '\u001B[2J\u001B[3J\u001B[H';
+
+type StudioRuntimeName = 'bun' | 'deno' | 'node' | 'unknown' | 'worker';
+
+function isEnabledEnvironmentFlag(value: string | undefined): boolean {
+  return value === '1' || value === 'true' || value === 'yes';
+}
+
+function studioRuntimeName(runtime: DevRunnerRuntime): StudioRuntimeName {
+  if (runtime === 'cloudflare-workers') {
+    return 'worker';
+  }
+
+  return runtime;
+}
+
+function resolveStudioIngestEndpoint(env: NodeJS.ProcessEnv): string | undefined {
+  if (!isEnabledEnvironmentFlag(env.FLUO_STUDIO) || !env.FLUO_STUDIO_TOKEN) {
+    return undefined;
+  }
+
+  if (env.FLUO_STUDIO_ENDPOINT) {
+    return env.FLUO_STUDIO_ENDPOINT;
+  }
+
+  if (!env.FLUO_STUDIO_URL) {
+    return undefined;
+  }
+
+  try {
+    return new URL('/api/runtime/events', env.FLUO_STUDIO_URL).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function publishStudioLifecycleEvent(
+  env: NodeJS.ProcessEnv,
+  runtime: DevRunnerRuntime,
+  type: 'disconnect' | 'restart',
+  payload: Record<string, string>,
+): void {
+  const endpoint = resolveStudioIngestEndpoint(env);
+  if (!endpoint || typeof globalThis.fetch !== 'function') {
+    return;
+  }
+
+  void globalThis.fetch(endpoint, {
+    body: JSON.stringify({
+      payload,
+      source: {
+        appId: env.FLUO_STUDIO_APP_ID ?? basename(process.cwd()),
+        runtime: studioRuntimeName(runtime),
+      },
+      type,
+      version: 1,
+    }),
+    headers: {
+      authorization: `Bearer ${env.FLUO_STUDIO_TOKEN}`,
+      'content-type': 'application/json',
+    },
+    method: 'POST',
+  }).catch(() => undefined);
+}
 
 function normalizeIgnorePatterns(patterns: string[]): string[] {
   return patterns.map((pattern) => pattern.trim()).filter((pattern) => pattern.length > 0);
@@ -223,8 +287,9 @@ function getPreserveColorTtyImport(): string {
 
 function buildNodeAppArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {
   const colorTtyImport = env[PRETTY_TTY_COLOR_ENV] === '1' ? ['--import', getPreserveColorTtyImport()] : [];
+  const studioDevtoolsImport = createStudioDevtoolsNodeImport(env);
 
-  return ['--env-file=.env', ...colorTtyImport, '--import', 'tsx', 'src/main.ts', ...appArgs];
+  return ['--env-file=.env', ...colorTtyImport, ...studioDevtoolsImport, '--import', 'tsx', 'src/main.ts', ...appArgs];
 }
 
 function buildBunAppArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {
@@ -304,10 +369,18 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
 
   const startChild = (resolveExitCode: (code: number) => void, cleanup: () => void) => {
     const appCommand = buildAppCommand(runnerRuntime, env, appArgs);
+    publishStudioLifecycleEvent(env, runnerRuntime, 'restart', {
+      phase: 'starting',
+      reason: 'fluo dev runner starting app child',
+    });
     child = spawnChild(appCommand.command, appCommand.args, {
       cwd: projectDirectory,
       env,
       stdio: 'inherit',
+    });
+    publishStudioLifecycleEvent(env, runnerRuntime, 'restart', {
+      phase: 'started',
+      reason: 'fluo dev runner spawned app child',
     });
     let childSettled = false;
     child.once('error', (error) => {
@@ -329,10 +402,16 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
         return;
       }
       if (stopping) {
+        publishStudioLifecycleEvent(env, runnerRuntime, 'disconnect', {
+          reason: 'fluo dev runner stopped',
+        });
         cleanup();
         resolveExitCode(code ?? 0);
         return;
       }
+      publishStudioLifecycleEvent(env, runnerRuntime, 'disconnect', {
+        reason: `app child exited with code ${String(code ?? 1)}`,
+      });
       cleanup();
       resolveExitCode(code ?? 1);
     });
@@ -357,6 +436,10 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
       if (env[SHOW_NODE_RESTART_NOTICE_ENV] === '1') {
         stdout.write(`[fluo] restarting after content change: ${relative(projectDirectory, restartPaths[restartPaths.length - 1] ?? projectDirectory)}\n`);
       }
+      publishStudioLifecycleEvent(env, runnerRuntime, 'restart', {
+        phase: 'scheduled',
+        reason: `content changed: ${relative(projectDirectory, restartPaths[restartPaths.length - 1] ?? projectDirectory)}`,
+      });
       const previousChild = child;
       const startReplacementChild = () => {
         redrawDevScriptHeader(stdout, projectDirectory, env);
@@ -373,6 +456,10 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
         }
 
         restarting = true;
+        publishStudioLifecycleEvent(env, runnerRuntime, 'restart', {
+          phase: 'stopping',
+          reason: 'stopping previous app child before restart',
+        });
         previousChild.once('close', () => {
           const committedRestartPaths = [...restartAfterClosePaths];
           restartAfterClosePaths.clear();

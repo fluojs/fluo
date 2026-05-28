@@ -184,6 +184,29 @@ fluo start --dry-run
 
 `fluo dev --dry-run` also reports the watch boundary. Generated Node projects show `Watch mode: fluo-restart` by default, Node `--raw-watch` and `FLUO_DEV_RAW_WATCH=1` show `Watch mode: native-watch`, and Bun/Deno/Workers projects show `Watch mode: runtime-native-watch` by default. Use `--runner fluo` or `FLUO_DEV_RUNNER=fluo` in Bun/Deno/Workers projects to show `Watch mode: fluo-restart` and restore the fluo-owned restart runner.
 
+### Runtime-connected Studio devtool
+
+Use `fluo dev --studio` when you want the local React Studio devtool attached to the running app instead of exporting static HTML/JSON first:
+
+```bash
+fluo dev --studio
+fluo dev --studio --studio-port 51234
+fluo dev --studio --dry-run
+```
+
+The CLI starts a local Studio sidecar, prints a tokenized URL, keeps restart lifecycle events flowing through the sidecar, and injects an explicit Studio config into the Node app child before the app imports `@fluojs/runtime`. The sidecar serves the packaged `@fluojs/studio/viewer` React app when that optional package is installed. Runtime package source never reads `process.env` directly; it publishes live graph/routes/request/timing/diagnostic events only when CLI-injected Studio config is present.
+
+Security defaults are local-only: the sidecar binds `127.0.0.1`, runtime ingestion and browser state/SSE APIs require generated tokens, CORS is not enabled by default, and request bodies are not captured by default.
+
+Runtime support for the MVP is explicit:
+
+| Runtime target | `fluo dev --studio` status |
+| --- | --- |
+| Node dev runner | Full support target. |
+| Bun | Not enabled for this MVP; `fluo dev --studio` rejects Bun projects until a dedicated bridge is implemented and verified. |
+| Deno | Not enabled for this MVP; `fluo dev --studio` rejects Deno projects until a dedicated bridge is implemented and verified. |
+| Cloudflare Workers | Unsupported for this MVP unless a worker bridge is added and tested. |
+
 Use reporter flags when you need to tune the CLI process boundary rather than runtime app logging:
 
 ```bash

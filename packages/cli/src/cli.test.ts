@@ -1746,6 +1746,84 @@ void bootstrap();
     expect(output).toContain('fluo inspect <module-path> --report');
   });
 
+
+
+  it('prints Studio sidecar env in dev dry-runs without starting a server', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['dev', '--dry-run', '--studio', '--', '--port', '4000'], {
+      cwd: workspaceDirectory,
+      env: {},
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const output = stdoutBuffer.join('');
+    expect(exitCode).toBe(0);
+    expect(output).toContain('cli.js __dev-runner --runtime node -- --port 4000');
+    expect(output).toContain('Studio: enabled (sidecar binds 127.0.0.1 at runtime)');
+    expect(output).toContain('FLUO_STUDIO: 1');
+    expect(output).toContain('FLUO_STUDIO_URL: http://127.0.0.1:<auto>');
+  });
+
+  it('starts a token-protected Studio sidecar and injects env into dev child processes', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+    const stdoutBuffer: string[] = [];
+    const spawned: Array<{ env: NodeJS.ProcessEnv }> = [];
+
+    const exitCode = await runCli(['dev', '--studio'], {
+      cwd: workspaceDirectory,
+      env: {},
+      spawnCommand: async (_command, _args, options) => {
+        spawned.push({ env: options.env });
+        return 0;
+      },
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('[fluo] Studio listening at http://127.0.0.1:');
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0]?.env.FLUO_STUDIO).toBe('1');
+    expect(spawned[0]?.env.FLUO_STUDIO_APP_ID).toBe('test-app');
+    expect(spawned[0]?.env.FLUO_STUDIO_RUNTIME).toBe('node');
+    expect(spawned[0]?.env.FLUO_STUDIO_TOKEN).toBeTruthy();
+    expect(spawned[0]?.env.FLUO_STUDIO_URL).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+  });
+
+  it('keeps Studio dev support Node-only until non-Node bridges are verified', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ dependencies: { '@fluojs/platform-bun': '^1.0.0' }, name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2),
+    );
+    const stderrBuffer: string[] = [];
+
+    const nativeExitCode = await runCli(['dev', '--dry-run', '--studio'], {
+      cwd: workspaceDirectory,
+      env: {},
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+    const fluoExitCode = await runCli(['dev', '--dry-run', '--studio', '--runner', 'fluo'], {
+      cwd: workspaceDirectory,
+      env: {},
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(nativeExitCode).toBe(1);
+    expect(fluoExitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('fluo dev --studio currently supports Node dev runner projects only');
+  });
+
   it('prints development lifecycle dry-runs with Next.js-like env defaults', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
@@ -2061,6 +2139,46 @@ void bootstrap();
 
     writeFileSync(sourceFile, 'console.log("hello");\n');
     expect(gate.hasMeaningfulChange([sourceFile])).toBe(false);
+  });
+
+  it('injects Studio config into Node app children before runtime imports', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'console.log("hello");\n');
+    const signalTarget = createSignalTarget();
+    const children: ChildProcess[] = [];
+    const spawnedArgs: string[][] = [];
+
+    const runPromise = runNodeRestartRunner({
+      env: {
+        FLUO_STUDIO: '1',
+        FLUO_STUDIO_APP_ID: 'test-app',
+        FLUO_STUDIO_EPOCH: 'epoch-1',
+        FLUO_STUDIO_RUNTIME: 'node',
+        FLUO_STUDIO_TOKEN: 'studio-token',
+        FLUO_STUDIO_URL: 'http://127.0.0.1:49152',
+      },
+      projectDirectory: workspaceDirectory,
+      signalTarget: signalTarget.target,
+      spawnChild: (_command, args) => {
+        spawnedArgs.push(args);
+        const child = createMockChild();
+        children.push(child);
+        return child;
+      },
+      watchTarget: () => ({ close: () => undefined }) as never,
+    });
+
+    expect(spawnedArgs[0]?.slice(0, 4)).toEqual(['--env-file=.env', '--import', expect.stringMatching(/^data:text\/javascript,/), '--import']);
+    const injectedSource = decodeURIComponent(String(spawnedArgs[0]?.[2]).replace('data:text/javascript,', ''));
+    expect(injectedSource).toContain('__FLUO_STUDIO_DEVTOOLS_CONFIG__');
+    expect(injectedSource).toContain('studio-token');
+    expect(injectedSource).toContain('http://127.0.0.1:49152/api/runtime/events');
+    expect(spawnedArgs[0]?.slice(3)).toEqual(['--import', 'tsx', 'src/main.ts']);
+
+    children[0]?.emit('close', 0);
+    await expect(runPromise).resolves.toBe(0);
   });
 
   it('loads .env for each restarted app child instead of only for the supervisor', async () => {

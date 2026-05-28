@@ -80,6 +80,12 @@ await userService.doWork();
 await context.close();
 ```
 
+### Studio Devtools Bridge
+
+`@fluojs/runtime`은 live Studio snapshot과 request trace를 publish할 수 있지만 `process.env`를 직접 읽지 않습니다. `fluo dev --studio`가 애플리케이션 경계에서 sidecar를 시작하고 tokenized Studio config를 만든 뒤, 앱이 runtime을 import하기 전에 해당 명시적 config를 Node 앱 child에 주입합니다. CLI가 제공한 config가 없거나 잘못되었거나 tokenized endpoint가 없으면 Studio instrumentation은 no-op이며 bootstrap 동작은 바뀌지 않습니다.
+
+이 MVP에서 전체 지원 대상은 Node dev runner 프로젝트입니다. Bun, Deno, Cloudflare Workers의 live Studio는 dedicated bridge를 구현하고 검증하기 전까지 unsupported입니다. 해당 런타임에서도 Studio config가 없으면 bootstrap은 no-op이어야 합니다. Request trace는 body, cookie, 전체 header를 의도적으로 제외하며, runtime은 local token이 Studio event history에 남지 않도록 publish 전에 trace `url`에서 query string과 fragment를 제거합니다.
+
 ### 전역 예외 필터
 
 부트스트랩 시 필터를 등록하여 횡단 관심사 에러를 처리합니다.
@@ -144,6 +150,8 @@ class UsersModule {}
 - 런타임 health module readiness check는 현재 `RequestContext`를 받으므로, public integration이 internal runtime token을 import하지 않고도 runtime-exposed status provider를 해석할 수 있습니다.
 - 시그널 기반 종료 헬퍼는 bounded drain semantics를 유지하면서 timeout/실패 상황을 로그와 `process.exitCode`로 보고하지만, 최종 프로세스 종료 소유권은 주변 호스트 런타임에 남겨 둡니다.
 - 플랫폼 snapshot 및 diagnostic issue 생산은 런타임에 남아 있고, 그래프 보기, filtering 표현, Mermaid 렌더링은 CLI 및 자동화 호출자가 소비하는 Studio 소유 계약입니다.
+- Runtime-connected Studio instrumentation은 명시적인 CLI 주입 Studio config로만 활성화되며 runtime package source에서 `process.env`를 직접 읽지 않습니다. 유효한 config와 tokenized endpoint가 없으면 non-Node 런타임을 포함해 Studio 관점의 runtime bootstrap은 no-op입니다.
+- Studio request trace는 request/response body, cookie, 전체 header를 제외합니다. Trace `url`은 publish 전에 path-only 형태로 sanitize되어 query token과 fragment가 local Studio event history에 남지 않습니다.
 - 플랫폼 component snapshot은 런타임 소유 계약 payload입니다. 각 component는 `readiness`, `health`, dependency id, telemetry tag, diagnostic issue, 그리고 `ownership.ownsResources` / `ownership.externallyManaged`를 통해 리소스 소유권을 보고합니다. Runtime은 shell snapshot에서 이 ownership flag를 보존하므로 adapter와 package integration이 fluo가 종료해야 하는 리소스와 host가 소유한 외부 관리 리소스를 구분할 수 있습니다.
 - 모듈 그래프 컴파일 결과 캐시는 `moduleGraphCache: true`를 통한 opt-in입니다. 캐시 항목은 root module identity, runtime provider, validation token, core metadata version, compile algorithm version으로 식별되며, 성공한 컴파일만 저장하고 호출자 mutation이 이후 bootstrap을 오염시키지 않도록 격리된 그래프 복사본을 반환합니다.
 

@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createStudioDevtoolsNodeImport } from '../studio/runtime-config.js';
+import { startStudioSidecar, type StudioSidecar, type StudioSidecarRuntime } from '../studio/sidecar.js';
 import { SUPPORTED_PACKAGE_MANAGERS } from './package-manager.js';
 
 type CliStream = {
@@ -26,6 +28,7 @@ type ScriptRuntimeOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   spawnCommand?: (command: string, args: string[], options: SpawnCommandOptions) => Promise<number>;
+  startStudioSidecar?: typeof startStudioSidecar;
   stderr?: CliStream;
   stdout?: CliStream;
 };
@@ -252,19 +255,17 @@ async function runProjectRunnerSteps(
   return 0;
 }
 
-function withPipedAppColorTtyBootstrap(steps: ProjectRunnerStep[], env: NodeJS.ProcessEnv): ProjectRunnerStep[] {
-  if (env[PRETTY_TTY_COLOR_ENV] !== '1') {
-    return steps;
-  }
-
+function withPipedAppBootstrapImports(steps: ProjectRunnerStep[], env: NodeJS.ProcessEnv): ProjectRunnerStep[] {
   return steps.map((step) => {
     const preserveColorTtyImport = getPreserveColorTtyImport();
+    const colorImport = env[PRETTY_TTY_COLOR_ENV] === '1' ? ['--import', preserveColorTtyImport] : [];
+    const studioDevtoolsImport = step.mode === 'fluo-restart' ? [] : createStudioDevtoolsNodeImport(env);
 
-    if (step.command === 'node' && step.mode !== 'fluo-restart') {
-      return { ...step, args: ['--import', preserveColorTtyImport, ...step.args] };
+    if (step.command === 'node') {
+      return { ...step, args: [...colorImport, ...studioDevtoolsImport, ...step.args] };
     }
 
-    if (step.command === 'bun' && (step.mode === 'runtime-native-watch' || step.args[0] === 'dist/main.js')) {
+    if (env[PRETTY_TTY_COLOR_ENV] === '1' && step.command === 'bun' && (step.mode === 'runtime-native-watch' || step.args[0] === 'dist/main.js')) {
       return { ...step, args: ['--preload', preserveColorTtyImport, ...step.args] };
     }
 
@@ -272,12 +273,14 @@ function withPipedAppColorTtyBootstrap(steps: ProjectRunnerStep[], env: NodeJS.P
   });
 }
 
-function parseScriptArgs(argv: string[]): { devRunner?: DevRunnerPreference; dryRun: boolean; packageManager?: string; passThrough: string[]; rawWatch: boolean; reporter: LifecycleReporterMode; verbose: boolean } {
+function parseScriptArgs(argv: string[]): { devRunner?: DevRunnerPreference; dryRun: boolean; packageManager?: string; passThrough: string[]; rawWatch: boolean; reporter: LifecycleReporterMode; studio: boolean; studioPort?: number; verbose: boolean } {
   let devRunner: DevRunnerPreference | undefined;
   let dryRun = false;
   let packageManager: string | undefined;
   let rawWatch = false;
   let reporter: LifecycleReporterMode = 'auto';
+  let studio = false;
+  let studioPort: number | undefined;
   let verbose = false;
   const passThrough: string[] = [];
 
@@ -325,6 +328,26 @@ function parseScriptArgs(argv: string[]): { devRunner?: DevRunnerPreference; dry
       continue;
     }
 
+    if (arg === '--studio') {
+      studio = true;
+      continue;
+    }
+
+    if (arg === '--studio-port') {
+      const value = argv[index + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Expected --studio-port to have a value.');
+      }
+      const parsedPort = Number(value);
+      if (!Number.isInteger(parsedPort) || parsedPort < 0 || parsedPort > 65_535) {
+        throw new Error('Invalid --studio-port value. Use a TCP port between 0 and 65535.');
+      }
+      studio = true;
+      studioPort = parsedPort;
+      index += 1;
+      continue;
+    }
+
     if (arg === '--package-manager') {
       const value = argv[index + 1];
       if (!value || value.startsWith('-')) {
@@ -346,7 +369,7 @@ function parseScriptArgs(argv: string[]): { devRunner?: DevRunnerPreference; dry
     passThrough.push(arg);
   }
 
-  return { devRunner, dryRun, packageManager, passThrough, rawWatch, reporter, verbose };
+  return { devRunner, dryRun, packageManager, passThrough, rawWatch, reporter, studio, studioPort, verbose };
 }
 
 function isEnabledEnvironmentFlag(value: string | undefined): boolean {
@@ -376,6 +399,46 @@ function resolveDevRunnerPreference(parsed: { devRunner?: DevRunnerPreference },
   }
 
   throw new Error(`Invalid FLUO_DEV_RUNNER value "${configured}". Use one of: fluo, native.`);
+}
+
+function projectRuntimeToStudioRuntime(runtime: ProjectRuntime): StudioSidecarRuntime {
+  if (runtime === 'bun' || runtime === 'deno' || runtime === 'node') {
+    return runtime;
+  }
+
+  return 'unknown';
+}
+
+function projectDisplayName(project: { directory: string; manifest: JsonRecord }): string {
+  return typeof project.manifest.name === 'string' && project.manifest.name.length > 0
+    ? project.manifest.name
+    : project.directory.split(/[\\/]/).filter(Boolean).at(-1) ?? 'fluo-app';
+}
+
+function assertStudioSupport(command: ScriptCommand, studio: boolean, projectRuntime: ProjectRuntime, _devRunner: DevRunnerPreference): void {
+  if (!studio) {
+    return;
+  }
+
+  if (command !== 'dev') {
+    throw new Error('--studio is only supported for fluo dev.');
+  }
+
+  if (projectRuntime !== 'node') {
+    throw new Error(`fluo dev --studio currently supports Node dev runner projects only. ${projectRuntime} Studio support remains experimental until a dedicated bridge is implemented and verified.`);
+  }
+}
+
+function withStudioDryRunEnv(env: NodeJS.ProcessEnv, project: { directory: string; manifest: JsonRecord }, projectRuntime: ProjectRuntime): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    FLUO_STUDIO: '1',
+    FLUO_STUDIO_APP_ID: projectDisplayName(project),
+    FLUO_STUDIO_EPOCH: '<generated-at-runtime>',
+    FLUO_STUDIO_RUNTIME: projectRuntimeToStudioRuntime(projectRuntime),
+    FLUO_STUDIO_TOKEN: '<generated-at-runtime>',
+    FLUO_STUDIO_URL: 'http://127.0.0.1:<auto>',
+  };
 }
 
 function renderStep(step: ProjectRunnerStep): string {
@@ -491,6 +554,85 @@ function createReporterStreams(
   return { finalizeChildOutputBeforeStatus() {}, flushBufferedStdoutOnFailure() {}, stdio: 'inherit' };
 }
 
+function colorizeRunnerSteps(steps: ProjectRunnerStep[], env: NodeJS.ProcessEnv): ProjectRunnerStep[] {
+  return withPipedAppBootstrapImports(steps, env);
+}
+
+async function executeRunnerStepsWithReporter(options: {
+  childEnv: NodeJS.ProcessEnv;
+  command: ScriptCommand;
+  projectDirectory: string;
+  projectRuntime: ProjectRuntime;
+  reporterMode: EffectiveLifecycleReporterMode;
+  runnerSteps: ProjectRunnerStep[];
+  runtime: ScriptRuntimeOptions;
+  stderr: CliStream;
+  stdout: CliStream;
+  verbose: boolean;
+}): Promise<number> {
+  if (options.command === 'dev' && (options.reporterMode === 'pretty' || options.verbose)) {
+    options.childEnv[SHOW_NODE_RESTART_NOTICE_ENV] = '1';
+  }
+
+  if (options.reporterMode === 'pretty') {
+    options.stdout.write(`[fluo] ${options.command} ${options.projectRuntime} lifecycle starting\n`);
+    options.stdout.write(`[fluo] ${options.runnerSteps.map(renderStep).join(' && ')}\n`);
+  }
+
+  const reporterStreams = createReporterStreams(options.reporterMode, options.verbose, options.stdout, options.stderr);
+  const exitCode = await runProjectRunnerSteps(options.runnerSteps, { spawnCommand: options.runtime.spawnCommand ?? defaultSpawnCommand }, {
+    cwd: options.projectDirectory,
+    env: options.childEnv,
+    ...reporterStreams,
+  });
+
+  if (options.reporterMode === 'pretty') {
+    reporterStreams.finalizeChildOutputBeforeStatus();
+    if (exitCode === 0) {
+      options.stdout.write(`[fluo] ${options.command} lifecycle completed\n`);
+    } else {
+      reporterStreams.flushBufferedStdoutOnFailure();
+      options.stderr.write(`[fluo] ${options.command} lifecycle failed with exit code ${exitCode}\n`);
+    }
+  } else if (options.reporterMode === 'silent' && exitCode !== 0) {
+    reporterStreams.flushBufferedStdoutOnFailure();
+    options.stderr.write(`[fluo] ${options.command} lifecycle failed with exit code ${exitCode}\n`);
+  }
+
+  return exitCode;
+}
+
+async function runScriptWithStudioSidecar(
+  command: ScriptCommand,
+  projectDirectory: string,
+  projectRuntime: ProjectRuntime,
+  runnerSteps: ProjectRunnerStep[],
+  childEnv: NodeJS.ProcessEnv,
+  runtime: ScriptRuntimeOptions,
+  reporterMode: EffectiveLifecycleReporterMode,
+  verbose: boolean,
+  stdout: CliStream,
+  stderr: CliStream,
+  studioSidecar: StudioSidecar,
+): Promise<number> {
+  try {
+    return await executeRunnerStepsWithReporter({
+      childEnv,
+      command,
+      projectDirectory,
+      projectRuntime,
+      reporterMode,
+      runnerSteps,
+      runtime,
+      stderr,
+      stdout,
+      verbose,
+    });
+  } finally {
+    await studioSidecar.close();
+  }
+}
+
 /**
  * Renders lifecycle command help text.
  *
@@ -512,6 +654,8 @@ export function scriptUsage(command: ScriptCommand): string {
     '  --dry-run                              Print the command without running it.',
     command === 'dev' ? '  --raw-watch                            Use the runtime-native Node watcher instead of the fluo restart runner.' : undefined,
     command === 'dev' ? '  --runner <fluo|native>                 Select fluo restart supervision or runtime-native watch (default: fluo for Node, native for non-Node runtimes).' : undefined,
+    command === 'dev' ? '  --studio                              Start the local Fluo Studio sidecar and inject runtime devtool env.' : undefined,
+    command === 'dev' ? '  --studio-port <port>                  Bind the Studio sidecar to a specific local port (default: 0).' : undefined,
     '  --reporter <auto|pretty|stream|silent> Choose lifecycle reporter output mode (default: auto).',
     '  --verbose                             Expose raw child process output; also honored by FLUO_VERBOSE=1.',
     `  --help                                 Show help for the ${command} command.`,
@@ -549,11 +693,33 @@ export async function runScriptCommand(command: ScriptCommand, argv: string[], r
     throw new Error('--runner is only supported for fluo dev. Use -- to forward --runner to the child command.');
   }
   const devRunner = command === 'dev' ? resolveDevRunnerPreference(parsed, env, projectRuntime) : 'fluo';
+  assertStudioSupport(command, parsed.studio, projectRuntime, devRunner);
   const runnerSteps = buildProjectRunner(command, projectRuntime, parsed.passThrough, { devRunner, rawWatch });
   const reporterMode = resolveReporterMode(parsed, { ...runtime, env, stdout });
   const verbose = parsed.verbose || isEnabledEnvironmentFlag(env.FLUO_VERBOSE);
-  const childEnv = withPipedReporterColorEnv(withProjectLocalBin(withDefaultNodeEnv(env, defaultNodeEnv), project.directory), reporterMode, stdout, stderr);
-  const colorAwareRunnerSteps = withPipedAppColorTtyBootstrap(runnerSteps, childEnv);
+  let childEnv = withPipedReporterColorEnv(withProjectLocalBin(withDefaultNodeEnv(env, defaultNodeEnv), project.directory), reporterMode, stdout, stderr);
+
+  if (parsed.studio && parsed.dryRun) {
+    childEnv = withStudioDryRunEnv(childEnv, project, projectRuntime);
+  }
+
+  if (command === 'dev' && parsed.studio && !parsed.dryRun) {
+    const studioSidecarFactory = runtime.startStudioSidecar ?? startStudioSidecar;
+    const studioSidecar = await studioSidecarFactory({
+      appId: projectDisplayName(project),
+      port: parsed.studioPort,
+      runtime: projectRuntimeToStudioRuntime(projectRuntime),
+    });
+    childEnv = {
+      ...childEnv,
+      ...studioSidecar.env,
+    };
+    const studioUrl = `${studioSidecar.url}/?token=${encodeURIComponent(studioSidecar.token)}`;
+    stdout.write(`[fluo] Studio listening at ${studioUrl}\n`);
+    return await runScriptWithStudioSidecar(command, project.directory, projectRuntime, colorizeRunnerSteps(runnerSteps, childEnv), childEnv, runtime, reporterMode, verbose, stdout, stderr, studioSidecar);
+  }
+
+  const colorAwareRunnerSteps = colorizeRunnerSteps(runnerSteps, childEnv);
 
   if (command === 'dev' && (reporterMode === 'pretty' || verbose)) {
     childEnv[SHOW_NODE_RESTART_NOTICE_ENV] = '1';
@@ -569,34 +735,25 @@ export async function runScriptCommand(command: ScriptCommand, argv: string[], r
     stdout.write(`Reporter: ${reporterMode}\n`);
     if (command === 'dev') {
       stdout.write(`Watch mode: ${colorAwareRunnerSteps.map((step) => step.mode ?? 'single-run').join(', ')}\n`);
+      if (parsed.studio) {
+        stdout.write('Studio: enabled (sidecar binds 127.0.0.1 at runtime)\n');
+        stdout.write(`FLUO_STUDIO: ${childEnv.FLUO_STUDIO ?? ''}\n`);
+        stdout.write(`FLUO_STUDIO_URL: ${childEnv.FLUO_STUDIO_URL ?? ''}\n`);
+      }
     }
     return 0;
   }
 
-  if (reporterMode === 'pretty') {
-    stdout.write(`[fluo] ${command} ${projectRuntime} lifecycle starting\n`);
-    stdout.write(`[fluo] ${colorAwareRunnerSteps.map(renderStep).join(' && ')}\n`);
-  }
-
-  const reporterStreams = createReporterStreams(reporterMode, verbose, stdout, stderr);
-  const exitCode = await runProjectRunnerSteps(colorAwareRunnerSteps, { spawnCommand: runtime.spawnCommand ?? defaultSpawnCommand }, {
-    cwd: project.directory,
-    env: childEnv,
-    ...reporterStreams,
+  return await executeRunnerStepsWithReporter({
+    childEnv,
+    command,
+    projectDirectory: project.directory,
+    projectRuntime,
+    reporterMode,
+    runnerSteps: colorAwareRunnerSteps,
+    runtime,
+    stderr,
+    stdout,
+    verbose,
   });
-
-  if (reporterMode === 'pretty') {
-    reporterStreams.finalizeChildOutputBeforeStatus();
-    if (exitCode === 0) {
-      stdout.write(`[fluo] ${command} lifecycle completed\n`);
-    } else {
-      reporterStreams.flushBufferedStdoutOnFailure();
-      stderr.write(`[fluo] ${command} lifecycle failed with exit code ${exitCode}\n`);
-    }
-  } else if (reporterMode === 'silent' && exitCode !== 0) {
-    reporterStreams.flushBufferedStdoutOnFailure();
-    stderr.write(`[fluo] ${command} lifecycle failed with exit code ${exitCode}\n`);
-  }
-
-  return exitCode;
 }

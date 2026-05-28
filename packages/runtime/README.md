@@ -80,6 +80,12 @@ await userService.doWork();
 await context.close();
 ```
 
+### Studio Devtools Bridge
+
+`@fluojs/runtime` can publish live Studio snapshots and request traces, but it does not read `process.env` directly. `fluo dev --studio` is the application boundary that starts the sidecar, creates the tokenized Studio config, and injects that explicit config into the Node app child before the app imports runtime. If that CLI-provided config is absent, malformed, or missing a tokenized endpoint, Studio instrumentation is a no-op and bootstrap behavior remains unchanged.
+
+For this MVP, Node dev runner projects are the full support target. Bun, Deno, and Cloudflare Workers remain unsupported for live Studio until a dedicated bridge is implemented and verified; their runtime bootstraps still no-op when Studio config is absent. Request traces intentionally omit bodies, cookies, and full headers, and runtime strips query strings/fragments from the trace `url` before publishing events so local tokens are not copied into Studio event history.
+
 ### Global Exception Filters
 
 Handle cross-cutting errors by registering filters during bootstrap.
@@ -144,6 +150,8 @@ class UsersModule {}
 - Runtime health module readiness checks receive the current `RequestContext`, allowing public integrations to resolve runtime-exposed status providers without importing internal runtime tokens.
 - Signal-driven shutdown helpers preserve bounded drain semantics, log timeout/failure conditions, and set `process.exitCode` when shutdown does not finish cleanly, but they leave final process termination ownership to the surrounding host runtime.
 - Platform snapshot and diagnostic issue production stay in runtime; graph viewing, filtering presentation, and Mermaid rendering are Studio-owned contracts consumed by CLI and automation callers.
+- Runtime-connected Studio instrumentation is activated only by explicit CLI-injected Studio config, never by direct `process.env` reads inside runtime package source. Without valid config and tokenized endpoint, runtime bootstrap is a no-op for Studio, including non-Node runtimes.
+- Studio request traces omit request/response bodies, cookies, and full headers; the trace `url` is sanitized to path-only form before publish so query tokens and fragments are not retained in local Studio event history.
 - Platform component snapshots are runtime-owned contract payloads: each component reports `readiness`, `health`, dependency ids, telemetry tags, diagnostic issues, and resource ownership through `ownership.ownsResources` / `ownership.externallyManaged`. Runtime preserves those ownership flags in shell snapshots so adapters and package integrations can distinguish resources fluo must stop from externally managed resources the host owns.
 - Module graph compile-result caching is opt-in through `moduleGraphCache: true`; it keys entries by root module identity, runtime providers, validation tokens, core metadata versions, and the compile algorithm version, caches only successful compilations, and returns isolated graph copies so caller mutations cannot poison later bootstraps.
 

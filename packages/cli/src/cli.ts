@@ -10,6 +10,7 @@ import { type NewCommandRuntimeOptions, newUsage, runNewCommand } from './comman
 import { addUsage, runAddCommand, runUpgradeCommand, upgradeUsage } from './commands/package-workflow.js';
 import { runScriptCommand, scriptUsage } from './commands/scripts.js';
 import { type DevRunnerRuntime, runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
+import type { startStudioSidecar } from './studio/sidecar.js';
 import { builtInGeneratorCollection, generatorManifest, generatorOptionSchemas, resolveGeneratorKind } from './generators/manifest.js';
 import { renderAliasList, renderHelpTable } from './help.js';
 import type { GenerateOptions, GeneratorKind } from './types.js';
@@ -33,6 +34,7 @@ export interface CliRuntimeOptions {
   env?: NodeJS.ProcessEnv;
   fetchDistTags?: (packageName: string) => Promise<Record<string, string> | undefined>;
   spawnCommand?: (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; stderr?: CliStream; stdio: 'inherit' | 'pipe'; stdout?: CliStream }) => Promise<number>;
+  startStudioSidecar?: typeof startStudioSidecar;
   stderr?: CliStream;
   stdin?: CliReadableStream;
   stdout?: CliStream;

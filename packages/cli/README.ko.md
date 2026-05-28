@@ -184,6 +184,29 @@ fluo start --dry-run
 
 `fluo dev --dry-run`은 watch boundary도 함께 표시합니다. 생성된 Node 프로젝트는 기본적으로 `Watch mode: fluo-restart`를 보여 주며, Node의 `--raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`은 `Watch mode: native-watch`를 보여 줍니다. Bun/Deno/Workers 프로젝트는 기본적으로 `Watch mode: runtime-native-watch`를 보여 주며, `--runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용하면 `Watch mode: fluo-restart`로 fluo 소유 restart runner가 복원됩니다.
 
+### Runtime-connected Studio devtool
+
+실행 중인 앱에 local React Studio devtool을 붙이고 싶을 때는 static HTML/JSON을 먼저 내보내지 말고 `fluo dev --studio`를 사용합니다.
+
+```bash
+fluo dev --studio
+fluo dev --studio --studio-port 51234
+fluo dev --studio --dry-run
+```
+
+CLI는 local Studio sidecar를 시작하고, tokenized URL을 출력하며, restart lifecycle event를 sidecar로 계속 전달하고, 앱이 `@fluojs/runtime`을 import하기 전에 명시적인 Studio config를 Node 앱 child에 주입합니다. Optional package인 `@fluojs/studio`가 설치되어 있으면 sidecar는 패키징된 `@fluojs/studio/viewer` React app을 제공합니다. Runtime package source는 `process.env`를 직접 읽지 않으며, CLI가 주입한 Studio config가 있을 때만 live graph/routes/request/timing/diagnostic event를 전송합니다.
+
+보안 기본값은 local-only입니다. Sidecar는 `127.0.0.1`에 bind되고, runtime ingestion 및 browser state/SSE API는 generated token을 요구하며, CORS는 기본적으로 활성화하지 않고, request body는 기본적으로 수집하지 않습니다.
+
+MVP runtime support는 명시적으로 제한됩니다.
+
+| Runtime target | `fluo dev --studio` status |
+| --- | --- |
+| Node dev runner | Full support target입니다. |
+| Bun | 이번 MVP에서는 활성화하지 않습니다. Dedicated bridge를 구현하고 검증하기 전까지 `fluo dev --studio`는 Bun 프로젝트를 거부합니다. |
+| Deno | 이번 MVP에서는 활성화하지 않습니다. Dedicated bridge를 구현하고 검증하기 전까지 `fluo dev --studio`는 Deno 프로젝트를 거부합니다. |
+| Cloudflare Workers | worker bridge를 추가하고 테스트하지 않는 한 이번 MVP에서는 unsupported입니다. |
+
 CLI process boundary를 조정해야 할 때는 런타임 앱 로깅이 아니라 reporter flag를 사용하세요:
 
 ```bash

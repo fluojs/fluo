@@ -50,6 +50,159 @@ export interface StudioPayload {
   timing?: BootstrapTimingDiagnostics;
 }
 
+
+/** Live Studio graph node kinds emitted by runtime-connected devtools. */
+export type StudioGraphNodeKind = 'module' | 'provider' | 'controller' | 'route' | 'platform' | 'external';
+
+/** Live Studio graph edge kinds emitted by runtime-connected devtools. */
+export type StudioGraphEdgeKind = 'imports' | 'owns_provider' | 'owns_controller' | 'exposes_route' | 'depends_on' | 'exports';
+
+/** Serializable node in the runtime-connected Studio dependency graph. */
+export interface StudioGraphNode {
+  id: string;
+  kind: StudioGraphNodeKind;
+  label: string;
+  metadata?: Record<string, unknown>;
+  status?: 'active' | 'idle' | 'warning' | 'error';
+}
+
+/** Serializable edge in the runtime-connected Studio dependency graph. */
+export interface StudioGraphEdge {
+  from: string;
+  id: string;
+  kind: StudioGraphEdgeKind;
+  label?: string;
+  metadata?: Record<string, unknown>;
+  to: string;
+}
+
+/** Route descriptor projected into the live Studio UI. */
+export interface StudioRouteDescriptor {
+  controller: string;
+  handler: string;
+  id: string;
+  method: string;
+  module?: string;
+  path: string;
+  version?: string;
+}
+
+/** Request lifecycle status understood by the live Studio request-flow panel. */
+export type StudioRequestStatus = 'started' | 'matched' | 'succeeded' | 'failed' | 'finished';
+
+/** Request trace emitted by runtime observers without request/response bodies. */
+export interface StudioRequestTrace {
+  controller?: string;
+  durationMs?: number;
+  error?: {
+    message: string;
+    name?: string;
+  };
+  finishedAt?: string;
+  handler?: string;
+  method: string;
+  path: string;
+  requestId: string;
+  routeId?: string;
+  startedAt: string;
+  status: StudioRequestStatus;
+  statusCode?: number;
+  url: string;
+}
+
+/** Runtime diagnostic surfaced in the live Studio diagnostics panel. */
+export interface StudioLiveDiagnostic {
+  code: string;
+  fixHint?: string;
+  message: string;
+  scope?: string;
+  severity: PlatformDiagnosticSeverity;
+  targetId?: string;
+}
+
+/** Live snapshot consumed by the React Studio shell and sidecar replay cache. */
+export interface StudioLiveSnapshot {
+  appId: string;
+  diagnostics: StudioLiveDiagnostic[];
+  generatedAt: string;
+  graph: {
+    edges: StudioGraphEdge[];
+    nodes: StudioGraphNode[];
+  };
+  requests: StudioRequestTrace[];
+  routes: StudioRouteDescriptor[];
+  timing?: BootstrapTimingDiagnostics;
+  version: 1;
+}
+
+/** Studio connection status presented by the live UI. */
+export type StudioConnectionStatus =
+  | 'connected'
+  | 'connecting'
+  | 'disconnected'
+  | 'error'
+  | 'reconnecting'
+  | 'restarting'
+  | 'stale'
+  | 'static';
+
+/** Studio connection state used by sidecar/UI state machines. */
+export interface StudioConnectionState {
+  lastEventAt?: string;
+  message?: string;
+  status: StudioConnectionStatus;
+}
+
+/**
+ * Describes Studio Live Event Source data used by the Studio devtool.
+ */
+export interface StudioLiveEventSource {
+  appId: string;
+  runtime: 'node' | 'bun' | 'deno' | 'worker' | 'unknown';
+}
+
+/**
+ * Describes Studio Live Event Base data used by the Studio devtool.
+ */
+export interface StudioLiveEventBase<TType extends string, TPayload> {
+  emittedAt: string;
+  epoch: string;
+  eventId: string;
+  payload: TPayload;
+  sequence: number;
+  source: StudioLiveEventSource;
+  type: TType;
+  version: 1;
+}
+
+/**
+ * Defines Studio Heartbeat Payload values used by the Studio devtool.
+ */
+export type StudioHeartbeatPayload = {
+  uptimeMs?: number;
+};
+
+/** Runtime/app restart lifecycle hint emitted by CLI-owned dev supervision when available. */
+export interface StudioRestartPayload {
+  phase: 'scheduled' | 'starting' | 'started' | 'stopping' | 'stopped';
+  reason?: string;
+}
+
+/** Runtime/app disconnect lifecycle hint emitted when the local bridge loses the app process. */
+export interface StudioDisconnectPayload {
+  reason?: string;
+}
+
+/** Event envelope exchanged between runtime, CLI sidecar, and Studio UI. */
+export type StudioLiveEvent =
+  | StudioLiveEventBase<'disconnect', StudioDisconnectPayload>
+  | StudioLiveEventBase<'diagnostic', StudioLiveDiagnostic>
+  | StudioLiveEventBase<'heartbeat', StudioHeartbeatPayload>
+  | StudioLiveEventBase<'request', StudioRequestTrace>
+  | StudioLiveEventBase<'restart', StudioRestartPayload>
+  | StudioLiveEventBase<'snapshot', StudioLiveSnapshot>
+  | StudioLiveEventBase<'timing', BootstrapTimingDiagnostics>;
+
 /**
  * Filter state applied to the loaded platform snapshot inside Studio.
  */
@@ -89,6 +242,415 @@ function isHealthStatus(value: unknown): value is PlatformSnapshot['health']['st
 
 function isDiagnosticSeverity(value: unknown): value is PlatformDiagnosticSeverity {
   return value === 'error' || value === 'warning' || value === 'info';
+}
+
+function isNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function validateString(value: unknown, message: string): string {
+  if (typeof value !== 'string') {
+    throw new Error(message);
+  }
+
+  return value;
+}
+
+function validateOptionalString(value: unknown, message: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return validateString(value, message);
+}
+
+function validateOptionalNumber(value: unknown, message: string): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!isNumber(value)) {
+    throw new Error(message);
+  }
+
+  return value;
+}
+
+function validateMetadata(value: unknown, message: string): Record<string, unknown> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(value)) {
+    throw new Error(message);
+  }
+
+  return value;
+}
+
+function isStudioGraphNodeKind(value: unknown): value is StudioGraphNodeKind {
+  return value === 'module'
+    || value === 'provider'
+    || value === 'controller'
+    || value === 'route'
+    || value === 'platform'
+    || value === 'external';
+}
+
+function isStudioGraphEdgeKind(value: unknown): value is StudioGraphEdgeKind {
+  return value === 'imports'
+    || value === 'owns_provider'
+    || value === 'owns_controller'
+    || value === 'exposes_route'
+    || value === 'depends_on'
+    || value === 'exports';
+}
+
+function isStudioRequestStatus(value: unknown): value is StudioRequestStatus {
+  return value === 'started'
+    || value === 'matched'
+    || value === 'succeeded'
+    || value === 'failed'
+    || value === 'finished';
+}
+
+function validateStudioGraphNode(value: unknown): StudioGraphNode {
+  if (!isRecord(value) || !isStudioGraphNodeKind(value.kind)) {
+    throw new Error('Invalid Studio live graph node payload.');
+  }
+
+  const node: StudioGraphNode = {
+    id: validateString(value.id, 'Invalid Studio live graph node payload.'),
+    kind: value.kind,
+    label: validateString(value.label, 'Invalid Studio live graph node payload.'),
+  };
+
+  const metadata = validateMetadata(value.metadata, 'Invalid Studio live graph node metadata payload.');
+  if (metadata) {
+    node.metadata = metadata;
+  }
+
+  if (value.status !== undefined) {
+    if (value.status !== 'active' && value.status !== 'idle' && value.status !== 'warning' && value.status !== 'error') {
+      throw new Error('Invalid Studio live graph node status payload.');
+    }
+
+    node.status = value.status;
+  }
+
+  return node;
+}
+
+function validateStudioGraphEdge(value: unknown): StudioGraphEdge {
+  if (!isRecord(value) || !isStudioGraphEdgeKind(value.kind)) {
+    throw new Error('Invalid Studio live graph edge payload.');
+  }
+
+  const edge: StudioGraphEdge = {
+    from: validateString(value.from, 'Invalid Studio live graph edge payload.'),
+    id: validateString(value.id, 'Invalid Studio live graph edge payload.'),
+    kind: value.kind,
+    to: validateString(value.to, 'Invalid Studio live graph edge payload.'),
+  };
+
+  const label = validateOptionalString(value.label, 'Invalid Studio live graph edge label payload.');
+  if (label !== undefined) {
+    edge.label = label;
+  }
+
+  const metadata = validateMetadata(value.metadata, 'Invalid Studio live graph edge metadata payload.');
+  if (metadata) {
+    edge.metadata = metadata;
+  }
+
+  return edge;
+}
+
+function validateStudioRouteDescriptor(value: unknown): StudioRouteDescriptor {
+  if (!isRecord(value)) {
+    throw new Error('Invalid Studio live route descriptor payload.');
+  }
+
+  const route: StudioRouteDescriptor = {
+    controller: validateString(value.controller, 'Invalid Studio live route descriptor payload.'),
+    handler: validateString(value.handler, 'Invalid Studio live route descriptor payload.'),
+    id: validateString(value.id, 'Invalid Studio live route descriptor payload.'),
+    method: validateString(value.method, 'Invalid Studio live route descriptor payload.'),
+    path: validateString(value.path, 'Invalid Studio live route descriptor payload.'),
+  };
+
+  const moduleName = validateOptionalString(value.module, 'Invalid Studio live route descriptor module payload.');
+  if (moduleName !== undefined) {
+    route.module = moduleName;
+  }
+
+  const version = validateOptionalString(value.version, 'Invalid Studio live route descriptor version payload.');
+  if (version !== undefined) {
+    route.version = version;
+  }
+
+  return route;
+}
+
+function validateStudioRequestTrace(value: unknown): StudioRequestTrace {
+  if (!isRecord(value) || !isStudioRequestStatus(value.status)) {
+    throw new Error('Invalid Studio live request trace payload.');
+  }
+
+  const trace: StudioRequestTrace = {
+    method: validateString(value.method, 'Invalid Studio live request trace payload.'),
+    path: validateString(value.path, 'Invalid Studio live request trace payload.'),
+    requestId: validateString(value.requestId, 'Invalid Studio live request trace payload.'),
+    startedAt: validateString(value.startedAt, 'Invalid Studio live request trace payload.'),
+    status: value.status,
+    url: validateString(value.url, 'Invalid Studio live request trace payload.'),
+  };
+
+  for (const key of ['controller', 'finishedAt', 'handler', 'routeId'] as const) {
+    const stringValue = validateOptionalString(value[key], 'Invalid Studio live request trace optional string payload.');
+    if (stringValue !== undefined) {
+      trace[key] = stringValue;
+    }
+  }
+
+  const durationMs = validateOptionalNumber(value.durationMs, 'Invalid Studio live request trace duration payload.');
+  if (durationMs !== undefined) {
+    trace.durationMs = durationMs;
+  }
+
+  const statusCode = validateOptionalNumber(value.statusCode, 'Invalid Studio live request trace status code payload.');
+  if (statusCode !== undefined) {
+    trace.statusCode = statusCode;
+  }
+
+  if (value.error !== undefined) {
+    if (!isRecord(value.error)) {
+      throw new Error('Invalid Studio live request trace error payload.');
+    }
+
+    trace.error = {
+      message: validateString(value.error.message, 'Invalid Studio live request trace error payload.'),
+    };
+
+    const errorName = validateOptionalString(value.error.name, 'Invalid Studio live request trace error name payload.');
+    if (errorName !== undefined) {
+      trace.error.name = errorName;
+    }
+  }
+
+  return trace;
+}
+
+function validateStudioLiveDiagnostic(value: unknown): StudioLiveDiagnostic {
+  if (!isRecord(value) || !isDiagnosticSeverity(value.severity)) {
+    throw new Error('Invalid Studio live diagnostic payload.');
+  }
+
+  const diagnostic: StudioLiveDiagnostic = {
+    code: validateString(value.code, 'Invalid Studio live diagnostic payload.'),
+    message: validateString(value.message, 'Invalid Studio live diagnostic payload.'),
+    severity: value.severity,
+  };
+
+  for (const key of ['fixHint', 'scope', 'targetId'] as const) {
+    const stringValue = validateOptionalString(value[key], 'Invalid Studio live diagnostic optional field payload.');
+    if (stringValue !== undefined) {
+      diagnostic[key] = stringValue;
+    }
+  }
+
+  return diagnostic;
+}
+
+function validateStudioRestartPayload(value: unknown): StudioRestartPayload {
+  if (!isRecord(value)) {
+    throw new Error('Invalid Studio live restart payload.');
+  }
+
+  const phase = value.phase;
+  if (phase !== 'scheduled' && phase !== 'starting' && phase !== 'started' && phase !== 'stopping' && phase !== 'stopped') {
+    throw new Error('Invalid Studio live restart phase payload.');
+  }
+
+  const payload: StudioRestartPayload = { phase };
+  const reason = validateOptionalString(value.reason, 'Invalid Studio live restart reason payload.');
+  if (reason !== undefined) {
+    payload.reason = reason;
+  }
+
+  return payload;
+}
+
+function validateStudioDisconnectPayload(value: unknown): StudioDisconnectPayload {
+  if (!isRecord(value)) {
+    throw new Error('Invalid Studio live disconnect payload.');
+  }
+
+  const reason = validateOptionalString(value.reason, 'Invalid Studio live disconnect reason payload.');
+  return reason === undefined ? {} : { reason };
+}
+
+function validateStudioLiveSnapshot(value: unknown): StudioLiveSnapshot {
+  if (!isRecord(value) || value.version !== 1 || !isRecord(value.graph)) {
+    throw new Error('Invalid Studio live snapshot payload.');
+  }
+
+  if (!Array.isArray(value.graph.nodes) || !Array.isArray(value.graph.edges) || !Array.isArray(value.routes) || !Array.isArray(value.diagnostics) || !Array.isArray(value.requests)) {
+    throw new Error('Invalid Studio live snapshot payload.');
+  }
+
+  const timing = validateTiming(value.timing);
+  const snapshot: StudioLiveSnapshot = {
+    appId: validateString(value.appId, 'Invalid Studio live snapshot payload.'),
+    diagnostics: value.diagnostics.map((diagnostic) => validateStudioLiveDiagnostic(diagnostic)),
+    generatedAt: validateString(value.generatedAt, 'Invalid Studio live snapshot payload.'),
+    graph: {
+      edges: value.graph.edges.map((edge) => validateStudioGraphEdge(edge)),
+      nodes: value.graph.nodes.map((node) => validateStudioGraphNode(node)),
+    },
+    requests: value.requests.map((request) => validateStudioRequestTrace(request)),
+    routes: value.routes.map((route) => validateStudioRouteDescriptor(route)),
+    version: 1,
+  };
+
+  if (timing) {
+    snapshot.timing = timing;
+  }
+
+  return snapshot;
+}
+
+function validateStudioLiveEventSource(value: unknown): StudioLiveEventSource {
+  if (!isRecord(value)) {
+    throw new Error('Invalid Studio live event source payload.');
+  }
+
+  const runtime = value.runtime;
+  if (runtime !== 'node' && runtime !== 'bun' && runtime !== 'deno' && runtime !== 'worker' && runtime !== 'unknown') {
+    throw new Error('Invalid Studio live event runtime payload.');
+  }
+
+  return {
+    appId: validateString(value.appId, 'Invalid Studio live event source payload.'),
+    runtime,
+  };
+}
+
+function validateStudioLiveEventPayload(type: unknown, payload: unknown): StudioLiveEvent['payload'] {
+  if (type === 'snapshot') {
+    return validateStudioLiveSnapshot(payload);
+  }
+
+  if (type === 'request') {
+    return validateStudioRequestTrace(payload);
+  }
+
+  if (type === 'timing') {
+    const timing = validateTiming(payload);
+    if (!timing) {
+      throw new Error('Invalid Studio live timing event payload.');
+    }
+
+    return timing;
+  }
+
+  if (type === 'diagnostic') {
+    return validateStudioLiveDiagnostic(payload);
+  }
+
+  if (type === 'heartbeat') {
+    if (!isRecord(payload)) {
+      throw new Error('Invalid Studio live heartbeat payload.');
+    }
+
+    const uptimeMs = validateOptionalNumber(payload.uptimeMs, 'Invalid Studio live heartbeat uptime payload.');
+    return uptimeMs === undefined ? {} : { uptimeMs };
+  }
+
+  if (type === 'restart') {
+    return validateStudioRestartPayload(payload);
+  }
+
+  if (type === 'disconnect') {
+    return validateStudioDisconnectPayload(payload);
+  }
+
+  throw new Error('Invalid Studio live event type payload.');
+}
+
+/**
+ * Validates a runtime-connected Studio event envelope.
+ *
+ * @param value Candidate event parsed from JSON or received through SSE.
+ * @returns The typed Studio live event.
+ * @throws Error when the event does not match the live Studio contract.
+ */
+export function validateStudioLiveEvent(value: unknown): StudioLiveEvent {
+  if (!isRecord(value) || value.version !== 1 || !isNumber(value.sequence)) {
+    throw new Error('Invalid Studio live event payload.');
+  }
+
+  const type = value.type;
+  const payload = validateStudioLiveEventPayload(type, value.payload);
+  const eventBase = {
+    emittedAt: validateString(value.emittedAt, 'Invalid Studio live event payload.'),
+    epoch: validateString(value.epoch, 'Invalid Studio live event payload.'),
+    eventId: validateString(value.eventId, 'Invalid Studio live event payload.'),
+    sequence: value.sequence,
+    source: validateStudioLiveEventSource(value.source),
+    version: 1 as const,
+  };
+
+  if (type === 'snapshot') {
+    return { ...eventBase, payload: payload as StudioLiveSnapshot, type };
+  }
+
+  if (type === 'request') {
+    return { ...eventBase, payload: payload as StudioRequestTrace, type };
+  }
+
+  if (type === 'timing') {
+    return { ...eventBase, payload: payload as BootstrapTimingDiagnostics, type };
+  }
+
+  if (type === 'diagnostic') {
+    return { ...eventBase, payload: payload as StudioLiveDiagnostic, type };
+  }
+
+  if (type === 'restart') {
+    return { ...eventBase, payload: payload as StudioRestartPayload, type };
+  }
+
+  if (type === 'disconnect') {
+    return { ...eventBase, payload: payload as StudioDisconnectPayload, type };
+  }
+
+  return { ...eventBase, payload: payload as StudioHeartbeatPayload, type: 'heartbeat' };
+}
+
+/**
+ * Parses a live Studio event JSON envelope from the runtime sidecar stream.
+ *
+ * @param rawJson Raw JSON encoded event.
+ * @returns The validated Studio live event.
+ */
+export function parseStudioLiveEvent(rawJson: string): StudioLiveEvent {
+  return validateStudioLiveEvent(JSON.parse(rawJson) as unknown);
+}
+
+/**
+ * Runtime-safe type guard for Studio live event envelopes.
+ *
+ * @param value Candidate value.
+ * @returns `true` when the value matches the live Studio event contract.
+ */
+export function isStudioLiveEvent(value: unknown): value is StudioLiveEvent {
+  try {
+    validateStudioLiveEvent(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function validateSnapshot(value: unknown): PlatformShellSnapshot | null {

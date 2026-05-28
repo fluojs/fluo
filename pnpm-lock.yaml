@@ -892,10 +892,22 @@ importers:
       '@fluojs/runtime':
         specifier: workspace:^
         version: link:../runtime
+      react:
+        specifier: ^19.2.6
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.2.6
+        version: 19.2.6(react@19.2.6)
     devDependencies:
       '@fluojs-internal/tooling-vite':
         specifier: workspace:^
         version: link:../../tooling/vite
+      '@types/react':
+        specifier: ^19.2.14
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.14)
       happy-dom:
         specifier: ^20.9.0
         version: 20.9.0
