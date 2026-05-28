@@ -668,6 +668,27 @@ describe('@fluojs/socket.io', () => {
     );
   });
 
+  it('blocks raw server recreation after shutdown starts', async () => {
+    const service = new SocketIoLifecycleService(
+      {} as never,
+      [] as never,
+      createLogger([]),
+      {
+        async close() {},
+        getRealtimeCapability() {
+          return createServerBackedHttpAdapterRealtimeCapability({});
+        },
+      } as never,
+      {},
+    );
+
+    await service.onApplicationShutdown();
+
+    expect(() => service.getServer()).toThrow(
+      'Socket.IO server access is unavailable after application shutdown has started.',
+    );
+  });
+
   it('forwards configured engine payload bounds into Socket.IO server options', () => {
     const service = new SocketIoLifecycleService(
       {} as never,
@@ -789,6 +810,14 @@ describe('@fluojs/socket.io', () => {
       imports: [SocketIoModule.forRoot({
         auth: {
           message({ payload }) {
+            if (payload === 'false-rejected') {
+              return false;
+            }
+
+            if (payload === 'disconnect') {
+              return { disconnect: true, message: 'Disconnecting event.' };
+            }
+
             return payload === 'allowed'
               ? true
               : { data: { code: 'AUTH_REQUIRED' }, message: 'Forbidden event.' };
@@ -821,10 +850,25 @@ describe('@fluojs/socket.io', () => {
     expect(rejectedAck).toEqual({ data: { code: 'AUTH_REQUIRED' }, error: 'Forbidden event.' });
     expect(state.messages).toEqual([]);
 
+    const falseRejectedAck = await new Promise<unknown>((resolve) => {
+      socket.emit('ping', 'false-rejected', (response: unknown) => resolve(response));
+    });
+
+    expect(falseRejectedAck).toEqual({ data: undefined, error: 'Socket.IO message rejected.' });
+    expect(state.messages).toEqual([]);
+
     socket.emit('ping', 'allowed');
     await new Promise((resolve) => setTimeout(resolve, 25));
 
     expect(state.messages).toEqual(['allowed']);
+
+    const disconnected = new Promise((resolve) => socket.once('disconnect', resolve));
+    const disconnectAck = await new Promise<unknown>((resolve) => {
+      socket.emit('ping', 'disconnect', (response: unknown) => resolve(response));
+    });
+
+    expect(disconnectAck).toEqual({ data: undefined, error: 'Disconnecting event.' });
+    await disconnected;
 
     socket.close();
     await app.close();
