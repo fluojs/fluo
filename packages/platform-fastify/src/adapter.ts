@@ -184,6 +184,11 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
   ) {
+    resolvePort(this.port);
+    resolveNonNegativeIntegerOption('retryDelayMs', this.retryDelayMs, 150);
+    resolveNonNegativeIntegerOption('retryLimit', this.retryLimit, 20);
+    resolveNonNegativeIntegerOption('maxBodySize', this.maxBodySize, DEFAULT_MAX_BODY_SIZE);
+    resolveNonNegativeIntegerOption('shutdownTimeoutMs', this.shutdownTimeoutMs, DEFAULT_SHUTDOWN_TIMEOUT_MS);
     this.app = createFastifyApp(this.httpsOptions, this.maxBodySize);
     this.requestResponseFactory = createFastifyRequestResponseFactory(
       this.multipartOptions,
@@ -211,26 +216,23 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   async close(): Promise<void> {
+    if (this.closeInFlight) {
+      await waitForCloseWithTimeout(this.closeInFlight, this.shutdownTimeoutMs);
+      return;
+    }
+
     if (!this.app.server.listening) {
       this.dispatcher = undefined;
       return;
     }
 
-    if (!this.closeInFlight) {
-      const closePromise = this.app.close();
-      const closeInFlight = closePromise.finally(() => {
-        this.closeInFlight = undefined;
-        this.dispatcher = undefined;
-      });
-      this.closeInFlight = closeInFlight;
-      void closeInFlight.catch(() => {});
-    }
-
-    const closeInFlight = this.closeInFlight;
-
-    if (!closeInFlight) {
-      return;
-    }
+    const closePromise = this.app.close();
+    const closeInFlight = closePromise.finally(() => {
+      this.closeInFlight = undefined;
+      this.dispatcher = undefined;
+    });
+    this.closeInFlight = closeInFlight;
+    void closeInFlight.catch(() => {});
 
     await waitForCloseWithTimeout(closeInFlight, this.shutdownTimeoutMs);
   }
@@ -1221,6 +1223,16 @@ function resolvePort(value: number | undefined): number {
   }
 
   return port;
+}
+
+function resolveNonNegativeIntegerOption(name: string, value: number | undefined, defaultValue: number): number {
+  const resolved = value ?? defaultValue;
+
+  if (!Number.isInteger(resolved) || resolved < 0) {
+    throw new Error(`Invalid ${name} value: ${String(resolved)}. Expected a non-negative integer.`);
+  }
+
+  return resolved;
 }
 
 function toHttpException(error: unknown): HttpException {

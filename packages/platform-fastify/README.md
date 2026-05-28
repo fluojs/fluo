@@ -41,7 +41,7 @@ const app = await fluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-`createFastifyAdapter()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit port values throw during adapter setup.
+`createFastifyAdapter()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit numeric options such as `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` throw during adapter setup. `maxBodySize` and `shutdownTimeoutMs` are non-negative integer byte/time limits, so `0` is valid: `maxBodySize: 0` allows only empty request bodies, and `shutdownTimeoutMs: 0` asks Fastify to close on the next timer turn.
 
 ## Common Patterns
 
