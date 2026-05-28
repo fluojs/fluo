@@ -23,7 +23,7 @@ export type TypedOnMessageHandler<TEvents extends WebSocketEventMap, K extends k
  * Dedicated listener configuration for runtimes that can host a standalone WebSocket server.
  */
 export interface WebSocketGatewayServerBackedOptions {
-  /** TCP port used by the dedicated listener. */
+  /** TCP port used by the dedicated listener. Use `0` to let the host allocate an ephemeral port. */
   port: number;
 }
 

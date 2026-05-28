@@ -1,4 +1,4 @@
-import { type AddressInfo, createConnection, createServer } from 'node:net';
+import { type AddressInfo, createConnection } from 'node:net';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 
@@ -63,36 +63,28 @@ function getBoundPort(server: unknown): number {
   return address.port;
 }
 
-async function findAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
-
-    server.once('error', reject);
-    server.listen(0, () => {
-      const address = server.address();
-
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to resolve available port.'));
-        return;
-      }
-
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve(address.port);
-      });
-    });
-  });
-}
-
 function onceOpen(socket: WebSocket): Promise<void> {
   return new Promise((resolve, reject) => {
     socket.once('open', () => resolve());
     socket.once('error', reject);
   });
+}
+
+async function getApplicationPort(app: { container: { resolve<T>(token: unknown): Promise<T> } }): Promise<number> {
+  const adapter = await app.container.resolve<HttpApplicationAdapter>(HTTP_APPLICATION_ADAPTER);
+
+  return getBoundPort(adapter.getServer?.());
+}
+
+function getOwnedGatewayPort(service: WebSocketGatewayLifecycleService): number {
+  const registrations = Reflect.get(service, 'ownedUpgradeServers') as Array<{ port: number }>;
+  const port = registrations[0]?.port;
+
+  if (typeof port !== 'number') {
+    throw new Error('Failed to resolve an owned websocket listener port.');
+  }
+
+  return port;
 }
 
 function onceMessage(socket: WebSocket): Promise<string> {
@@ -487,14 +479,14 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, DedupeGateway, { provide: ALIAS_TOKEN, useClass: DedupeGateway }],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
     const state = await app.container.resolve(GatewayState);
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/dedupe`);
     await onceOpen(socket);
@@ -559,7 +551,7 @@ describe('@fluojs/websockets', () => {
 
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port: await findAvailablePort(),
+      port: 0,
     });
     const adapter = await app.container.resolve<HttpApplicationAdapter>(HTTP_APPLICATION_ADAPTER);
 
@@ -679,14 +671,14 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, ChatGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapFastifyApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
     const state = await app.container.resolve(GatewayState);
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
     await onceOpen(socket);
@@ -742,14 +734,14 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, ChatGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapExpressApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
     const state = await app.container.resolve(GatewayState);
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
     await onceOpen(socket);
@@ -814,20 +806,21 @@ describe('@fluojs/websockets', () => {
         providers: [GatewayState, ChatGateway],
       });
 
-      const appPort = await findAvailablePort();
-      const websocketPort = await findAvailablePort();
       defineWebSocketGatewayMetadata(ChatGateway, {
         path: '/chat',
-        serverBacked: { port: websocketPort },
+        serverBacked: { port: 0 },
       });
 
       const app = await scenario.bootstrap(AppModule, {
         cors: false,
-        port: appPort,
+        port: 0,
       });
       const state = await app.container.resolve(GatewayState);
+      const service = await app.container.resolve(WebSocketGatewayLifecycleService);
 
       await app.listen();
+      const appPort = await getApplicationPort(app);
+      const websocketPort = getOwnedGatewayPort(service);
 
       const socket = new WebSocket(`ws://127.0.0.1:${String(websocketPort)}/chat`);
       await onceOpen(socket);
@@ -893,14 +886,14 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, AsyncGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
     const state = await app.container.resolve(GatewayState);
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     // Connect, send a message, then close — all before onConnect resolves.
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/async-connect`);
@@ -946,13 +939,13 @@ describe('@fluojs/websockets', () => {
       providers: [GuardedGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const response = await readUpgradeResponse(port, createUpgradeRequest('/guarded'));
 
@@ -979,13 +972,13 @@ describe('@fluojs/websockets', () => {
       providers: [LimitedGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const firstSocket = new WebSocket(`ws://127.0.0.1:${String(port)}/limited`);
     await onceOpen(firstSocket);
@@ -1054,14 +1047,14 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, PayloadGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
     const state = await app.container.resolve(GatewayState);
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/payload-limit`);
     await onceOpen(socket);
@@ -1103,14 +1096,14 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, PayloadGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
     const state = await app.container.resolve(GatewayState);
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/binary-limit`);
     await onceOpen(socket);
@@ -1152,14 +1145,14 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, PayloadGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
     const state = await app.container.resolve(GatewayState);
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/binary-ok`);
     await onceOpen(socket);
@@ -1211,14 +1204,14 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, BufferedGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
     const state = await app.container.resolve(GatewayState);
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/buffer-cap`);
     await onceOpen(socket);
@@ -1272,14 +1265,14 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, AsyncGateway2],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
     const state = await app.container.resolve(GatewayState);
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/async-connect-then-message`);
     await onceOpen(socket);
@@ -1334,14 +1327,14 @@ describe('@fluojs/websockets', () => {
       providers: [SharedState, FirstGateway, SecondGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
     const state = await app.container.resolve(SharedState);
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/ordered`);
     await onceOpen(socket);
@@ -1707,13 +1700,13 @@ describe('@fluojs/websockets', () => {
       providers: [ChatGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const adapter = await app.container.resolve<HttpApplicationAdapter>(HTTP_APPLICATION_ADAPTER);
     const server = adapter.getServer?.() as {
@@ -1771,13 +1764,13 @@ describe('@fluojs/websockets', () => {
       providers: [ChatGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const response = await new Promise<string>((resolve, reject) => {
       const socket = createConnection({ host: '127.0.0.1', port }, () => {
@@ -1821,13 +1814,13 @@ describe('@fluojs/websockets', () => {
       providers: [ChatGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
     });
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const malformedResponse = await readUpgradeResponse(port, createUpgradeRequest('http://%zz'));
 
@@ -1857,15 +1850,15 @@ describe('@fluojs/websockets', () => {
       providers: [ShutdownGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
       shutdownTimeoutMs: 200,
     });
     const service = await app.container.resolve(WebSocketGatewayLifecycleService);
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/shutdown`);
     await onceOpen(socket);
@@ -1905,14 +1898,14 @@ describe('@fluojs/websockets', () => {
       providers: [GuardedGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
       shutdownTimeoutMs: 200,
     });
 
     await app.listen();
+    const port = await getApplicationPort(app);
     const service = await app.container.resolve(WebSocketGatewayLifecycleService);
 
     const responsePromise = readUpgradeResponse(port, createUpgradeRequest('/shutdown-guard-race'));
@@ -1963,15 +1956,15 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, ShutdownGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
       shutdownTimeoutMs: 200,
     });
     const state = await app.container.resolve<GatewayState>(GatewayState);
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/shutdown-async-disconnect`);
     await onceOpen(socket);
@@ -2025,15 +2018,15 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, ShutdownGateway],
     });
 
-    const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
       shutdownTimeoutMs: 200,
     });
     const state = await app.container.resolve<GatewayState>(GatewayState);
 
     await app.listen();
+    const port = await getApplicationPort(app);
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/shutdown-connect-in-flight`);
     await onceOpen(socket);
