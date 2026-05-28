@@ -1,5 +1,11 @@
 # @fluojs/vite
 
+## 1.0.3
+
+### Patch Changes
+
+- [#2012](https://github.com/fluojs/fluo/pull/2012) [`cc61938`](https://github.com/fluojs/fluo/commit/cc619386cefd7430a7959e70d63da7869c87138a) Thanks [@ayden94](https://github.com/ayden94)! - Lock the Vite decorator transform contract to Babel's `2023-11` decorators proposal and document the package discovery path.
+
 ## 1.0.2
 
 ### Patch Changes

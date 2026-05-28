@@ -1,5 +1,11 @@
 # @fluojs/validation
 
+## 1.0.5
+
+### Patch Changes
+
+- [#2023](https://github.com/fluojs/fluo/pull/2023) [`fc95494`](https://github.com/fluojs/fluo/commit/fc95494fdd3972c7bade7043c8031bbc55742f12) Thanks [@ayden94](https://github.com/ayden94)! - Avoid installing `Symbol.metadata` during validation and serialization imports, export the public `TransformFunction` type from serialization, and add regression coverage for documented validation and HTTP serialization contracts.
+
 ## 1.0.4
 
 ### Patch Changes
