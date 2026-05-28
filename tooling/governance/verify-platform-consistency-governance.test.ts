@@ -443,8 +443,8 @@ describe('repository governance contracts', () => {
     expect(releaseWorkflow).toContain('publish: pnpm publish-packages');
     expect(releaseWorkflow).toContain('createGithubReleases: true');
     expect(releaseWorkflow).toContain('NPM_CONFIG_PROVENANCE: true');
-    expect(releaseWorkflow).toContain('NPM_TOKEN: ${{ secrets.NPM_TOKEN }}');
-    expect(releaseWorkflow).toContain('NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}');
+    expect(releaseWorkflow).toContain(`NPM_TOKEN: \${{ secrets.NPM_TOKEN }}`);
+    expect(releaseWorkflow).toContain(`NODE_AUTH_TOKEN: \${{ secrets.NPM_TOKEN }}`);
   });
 
   it('keeps Changesets release safety gates before versioning or publish', () => {
