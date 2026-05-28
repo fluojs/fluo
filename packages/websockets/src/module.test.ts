@@ -1,4 +1,4 @@
-import { createConnection, createServer } from 'node:net';
+import { type AddressInfo, createConnection, createServer } from 'node:net';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 
@@ -11,7 +11,7 @@ import { Container } from '@fluojs/di';
 import { bootstrapExpressApplication } from '@fluojs/platform-express';
 import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
 import { bootstrapApplication, defineModule, type ApplicationLogger } from '@fluojs/runtime';
-import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { bootstrapNodeApplication, createNodeHttpAdapter } from '@fluojs/runtime/node';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
 import {
   Controller,
@@ -47,6 +47,20 @@ function createLogger(events: string[]): ApplicationLogger {
       events.push(`warn:${context ?? 'none'}:${message}`);
     },
   };
+}
+
+function getBoundPort(server: unknown): number {
+  if (!server || typeof (server as { address?: unknown }).address !== 'function') {
+    throw new Error('Failed to resolve a bound test server.');
+  }
+
+  const address = (server as { address(): AddressInfo | string | null }).address();
+
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to resolve a bound test port.');
+  }
+
+  return address.port;
 }
 
 async function findAvailablePort(): Promise<number> {
@@ -593,32 +607,41 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, ChatGateway],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
-      cors: false,
-      port,
+    const adapter = createNodeHttpAdapter({ port: 0 });
+    const app = await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
     });
     const state = await app.container.resolve(GatewayState);
 
-    await app.listen();
+    try {
+      await app.listen();
+      const port = getBoundPort((adapter as { getServer(): unknown }).getServer());
 
-    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
-    await onceOpen(socket);
-    socket.send(JSON.stringify({ event: 'ping', data: { value: 'hello' } }));
+      const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
+      try {
+        await onceOpen(socket);
+        socket.send(JSON.stringify({ event: 'ping', data: { value: 'hello' } }));
 
-    const incoming = await onceMessage(socket);
-    expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: 'hello' } });
+        const incoming = await onceMessage(socket);
+        expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: 'hello' } });
 
-    await closeWebSocket(socket);
+        await closeWebSocket(socket);
 
-    await waitForAssertion(() => {
-      expect(state.disconnectCount).toBe(1);
-    });
+        await waitForAssertion(() => {
+          expect(state.disconnectCount).toBe(1);
+        });
 
-    expect(state.connectCount).toBe(1);
-    expect(state.messages).toEqual([{ value: 'hello' }]);
-
-    await app.close();
+        expect(state.connectCount).toBe(1);
+        expect(state.messages).toEqual([{ value: 'hello' }]);
+      } finally {
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+          socket.close();
+        }
+      }
+    } finally {
+      await app.close();
+    }
   });
 
   it('boots a Fastify app, connects websocket client, handles message, and disconnects', async () => {
