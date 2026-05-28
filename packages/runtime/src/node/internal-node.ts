@@ -20,7 +20,7 @@ import {
 } from '../http-adapter-shared.js';
 import { createConsoleApplicationLogger } from '../logging/logger.js';
 import type { MultipartOptions, UploadedFile } from '../multipart.js';
-import type { Application, CreateApplicationOptions, ModuleType } from '../types.js';
+import type { Application, ApplicationLogger, CreateApplicationOptions, ModuleType } from '../types.js';
 import {
   compressNodeResponse,
   createNodeResponseCompression,
@@ -298,6 +298,15 @@ export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, comp
   );
 }
 
+function createNodeConsoleApplicationLogger(): ApplicationLogger {
+  return createConsoleApplicationLogger({
+    environment: {
+      forceColor: process.env.FORCE_COLOR,
+      noColor: process.env.NO_COLOR !== undefined,
+    },
+  });
+}
+
 /**
  * Bootstrap node application.
  *
@@ -309,7 +318,7 @@ export async function bootstrapNodeApplication(
   rootModule: ModuleType,
   options: BootstrapNodeApplicationOptions,
 ): Promise<Application> {
-  const logger = createConsoleApplicationLogger();
+  const logger = createNodeConsoleApplicationLogger();
 
   return bootstrapHttpAdapterApplication(
     rootModule,
@@ -330,7 +339,7 @@ export async function runNodeApplication(
   rootModule: ModuleType,
   options: RunNodeApplicationOptions,
 ): Promise<Application> {
-  const logger = createConsoleApplicationLogger();
+  const logger = createNodeConsoleApplicationLogger();
   const adapter = createNodeHttpAdapter(options, options.compression ?? false, options.multipart) as NodeHttpApplicationAdapter;
   return runHttpAdapterApplication(rootModule, {
     ...options,

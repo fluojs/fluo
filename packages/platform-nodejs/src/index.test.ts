@@ -324,12 +324,6 @@ describe('@fluojs/platform-nodejs', () => {
     const signal = 'SIGTERM' as const;
     const listenersBefore = new Set(process.listeners(signal));
     const app = await runNodejsApplication(AppModule, {
-      logger: {
-        debug() {},
-        error() {},
-        log() {},
-        warn() {},
-      },
       port: 0,
       shutdownSignals: [signal],
     });
@@ -343,6 +337,52 @@ describe('@fluojs/platform-nodejs', () => {
 
     for (const listener of registeredListeners) {
       expect(process.listeners(signal)).not.toContain(listener);
+    }
+  });
+
+  it('honors NO_COLOR when selecting the internal console logger', async () => {
+    const originalNoColor = process.env.NO_COLOR;
+    const originalForceColor = process.env.FORCE_COLOR;
+    const stdoutIsTtyDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    process.env.NO_COLOR = '1';
+    delete process.env.FORCE_COLOR;
+    Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: true });
+
+    const loggedMessages: string[] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation((message: unknown) => {
+      loggedMessages.push(String(message));
+    });
+
+    try {
+      const app = await bootstrapNodejsApplication(AppModule, { port: 0 });
+      await app.close();
+
+      expect(loggedMessages.some((message) => message.includes('LOG [FluoFactory]'))).toBe(true);
+      expect(loggedMessages.every((message) => !message.includes('\u001B['))).toBe(true);
+    } finally {
+      log.mockRestore();
+
+      if (originalNoColor === undefined) {
+        delete process.env.NO_COLOR;
+      } else {
+        process.env.NO_COLOR = originalNoColor;
+      }
+
+      if (originalForceColor === undefined) {
+        delete process.env.FORCE_COLOR;
+      } else {
+        process.env.FORCE_COLOR = originalForceColor;
+      }
+
+      if (stdoutIsTtyDescriptor) {
+        Object.defineProperty(process.stdout, 'isTTY', stdoutIsTtyDescriptor);
+      } else {
+        Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: undefined });
+      }
     }
   });
 
