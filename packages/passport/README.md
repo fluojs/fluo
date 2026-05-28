@@ -235,7 +235,7 @@ Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` 
 
 ### Cookie Auth Preset
 - `CookieAuthModule`: Module entry point for the built-in cookie-auth preset.
-- `CookieAuthStrategy`, `COOKIE_AUTH_STRATEGY_NAME`, `COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_AUTH_OPTIONS`: Cookie strategy wiring tokens and defaults.
+- `CookieAuthStrategy`, `COOKIE_AUTH_STRATEGY_NAME`, `COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_OPTIONS`: Cookie strategy wiring tokens, preset defaults, and response-cookie defaults.
 - `CookieAuthOptions`, `CookieAuthPresetConfig`, `CookieManagerConfig`, `CookieOptions`, `SetCookieOptions`: Cookie strategy and response cookie configuration types.
 - `CookieManager`: Utility for setting and clearing HttpOnly access/refresh token cookies.
 - Cookie helpers: `createCookieAuthPreset`, `createCookieAuthStrategyRegistration`, `createCookieManager`, `normalizeCookieAuthOptions`.
@@ -263,7 +263,7 @@ Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` 
 - `createPassportPlatformDiagnosticIssues(...)`: Emits diagnostic issues for empty registries, missing default strategies, cookie preset readiness, and refresh-token backing store readiness.
 - `PassportPlatformStatusSnapshot`, `PassportStatusAdapterInput`: Status helper input/output contracts.
 
-`UseOptionalAuth` only bypasses missing credentials when no scopes are required; scoped routes still need a principal. Passport.js bridge `redirect()` commits the response and skips the protected handler, while `pass()` and strategy completion without a Passport action are authentication failures.
+`UseOptionalAuth` only bypasses missing credentials when no scopes are required; scoped routes still need a principal. Passport.js bridge `redirect()` commits the response and skips the protected handler, while `pass()` and strategy completion without a Passport action are authentication failures. Refresh-token backing store status and diagnostic surfaces redact secret-like reason strings before exposing readiness, health, details, or diagnostic causes.
 
 ## Related Packages
 

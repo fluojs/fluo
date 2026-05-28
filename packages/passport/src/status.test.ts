@@ -68,6 +68,33 @@ describe('createPassportPlatformStatusSnapshot', () => {
       },
     });
   });
+
+  it('redacts sensitive refresh-token backing store details from status surfaces', () => {
+    const snapshot = createPassportPlatformStatusSnapshot({
+      defaultStrategy: 'refresh-token',
+      refreshTokenDependencyId: 'redis.auth-refresh',
+      refreshTokenEnabled: true,
+      refreshTokenStoreReady: false,
+      refreshTokenStoreReason: 'Redis refused password=hunter2 while loading refreshToken=raw-secret-token',
+      registeredStrategies: ['refresh-token'],
+    });
+
+    expect(snapshot.readiness.reason).toBe(
+      'Refresh token backing store is unavailable; sensitive diagnostic detail was redacted.',
+    );
+    expect(snapshot.health.reason).toBe(
+      'Refresh token backing store is unavailable; sensitive diagnostic detail was redacted.',
+    );
+    expect(snapshot.details).toMatchObject({
+      presets: {
+        refreshToken: {
+          backingStore: {
+            reason: 'Refresh token backing store is unavailable; sensitive diagnostic detail was redacted.',
+          },
+        },
+      },
+    });
+  });
 });
 
 describe('createPassportPlatformDiagnosticIssues', () => {
@@ -102,5 +129,19 @@ describe('createPassportPlatformDiagnosticIssues', () => {
 
     expect(issues).toHaveLength(2);
     expect(issues.every((issue) => issue.severity === 'error')).toBe(true);
+  });
+
+  it('redacts sensitive refresh-token backing store diagnostic causes', () => {
+    const issues = createPassportPlatformDiagnosticIssues({
+      refreshTokenEnabled: true,
+      refreshTokenStoreReady: false,
+      refreshTokenStoreReason: 'connection failed with authorization bearer secret-token',
+      registeredStrategies: ['refresh-token'],
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.cause).toBe(
+      'Refresh token backing store is unavailable; sensitive diagnostic detail was redacted.',
+    );
   });
 });
