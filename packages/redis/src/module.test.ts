@@ -223,6 +223,7 @@ describe('@fluojs/redis', () => {
 
     await bootstrapAssertion;
     expect(mockRedisState.events).toEqual(['connect', 'disconnect']);
+    expect(mockRedisState.instances[0]?.status).toBe('end');
   });
 
   it('uses global visibility only for unnamed default registrations', () => {

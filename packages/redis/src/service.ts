@@ -69,11 +69,7 @@ export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdow
       return;
     }
 
-    await withLifecycleTimeout(
-      this.client.connect(),
-      normalizeTimeoutMs(this.lifecycleOptions.connectTimeoutMs),
-      `Redis client ${this.describeClient()} connect timed out after ${String(normalizeTimeoutMs(this.lifecycleOptions.connectTimeoutMs))}ms.`,
-    );
+    await this.connectWithDisconnectFallback();
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -123,6 +119,20 @@ export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdow
       if (!isClosed(this.client.status)) {
         throw error;
       }
+    }
+  }
+
+  private async connectWithDisconnectFallback(): Promise<void> {
+    try {
+      await withLifecycleTimeout(
+        this.client.connect(),
+        normalizeTimeoutMs(this.lifecycleOptions.connectTimeoutMs),
+        `Redis client ${this.describeClient()} connect timed out after ${String(normalizeTimeoutMs(this.lifecycleOptions.connectTimeoutMs))}ms.`,
+      );
+    } catch (error: unknown) {
+      this.disconnectIfPossible(this.client.status);
+
+      throw error;
     }
   }
 
