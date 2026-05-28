@@ -170,7 +170,7 @@ Thanks to this reuse, FluoBlog can now automatically express the following. The 
 - **Response expectations**: Even if you do not explicitly write `@ApiResponse`, fluo can infer a default `200` or `201` response shape.
 - **Security requirements**: Protected routes appear in Swagger UI with a "lock" icon.
 
-When DTOs use validation Decorators such as `@IsString()` or `@IsEmail()`, `OpenApiModule` automatically converts them into OpenAPI constraints. For example, `@IsString({ minLength: 10 })` appears as `minLength: 10` in the generated JSON. This logic is thoroughly tested in `packages/openapi/src/schema-builder.test.ts`.
+When DTOs use validation Decorators such as `@IsString()`, `@IsEmail()`, or `@MinLength(10)`, `OpenApiModule` automatically converts them into OpenAPI constraints. For example, combine `@IsString()` with `@MinLength(10)` to emit a string schema with `minLength: 10` in the generated JSON. This logic is thoroughly tested in `packages/openapi/src/schema-builder.test.ts`.
 
 ### Protected Routes in the Docs
 

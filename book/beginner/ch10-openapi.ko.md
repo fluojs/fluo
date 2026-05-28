@@ -170,7 +170,7 @@ fluo 코드에서 OpenAPI를 생성하는 가장 강력한 이유는 **메타데
 - **응답 기대값**: `@ApiResponse`를 명시하지 않더라도 fluo는 기본적으로 `200` 또는 `201` 응답 형태를 추론할 수 있습니다.
 - **보안 요구사항**: 보호된 라우트는 Swagger UI에서 "자물쇠" 아이콘으로 표시됩니다.
 
-DTO에서 `@IsString()`이나 `@IsEmail()` 같은 유효성 검사 데코레이터를 사용하면, `OpenApiModule`은 이를 자동으로 OpenAPI 제약 조건으로 변환합니다. 예를 들어 `@IsString({ minLength: 10 })`은 생성된 JSON에서 `minLength: 10`으로 나타납니다. 이 로직은 `packages/openapi/src/schema-builder.test.ts`에서 철저하게 테스트됩니다.
+DTO에서 `@IsString()`, `@IsEmail()`, `@MinLength(10)` 같은 유효성 검사 데코레이터를 사용하면, `OpenApiModule`은 이를 자동으로 OpenAPI 제약 조건으로 변환합니다. 예를 들어 `@IsString()`과 `@MinLength(10)`을 함께 사용하면 생성된 JSON에 `minLength: 10`이 있는 문자열 schema가 나타납니다. 이 로직은 `packages/openapi/src/schema-builder.test.ts`에서 철저하게 테스트됩니다.
 
 ### Protected Routes in the Docs
 
