@@ -1,5 +1,4 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { IncomingMessage } from 'node:http';
 
 import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
 import { getClassDiMetadata } from '@fluojs/core/internal';
@@ -25,6 +24,7 @@ import { Server, type Namespace, type ServerOptions, type Socket } from 'socket.
 import { SOCKETIO_OPTIONS_INTERNAL } from './options-token.internal.js';
 import type {
   SocketIoGuardRejection,
+  SocketIoHandshakeRequest,
   SocketIoModuleOptions,
   SocketIoRoomService,
 } from './types.js';
@@ -343,6 +343,7 @@ export class SocketIoLifecycleService
   private readonly namespaceContext = new AsyncLocalStorage<string>();
   private readonly socketRegistry = new Map<string, Socket>();
   private shutdownPromise: Promise<void> | undefined;
+  private shutdownStarted = false;
   private wired = false;
 
   constructor(
@@ -360,6 +361,10 @@ export class SocketIoLifecycleService
    * @throws {Error} When the selected realtime capability cannot expose the server contract Socket.IO requires.
    */
   getServer(): Server {
+    if (this.shutdownStarted) {
+      throw new Error('Socket.IO server access is unavailable after application shutdown has started.');
+    }
+
     if (this.io) {
       return this.io;
     }
@@ -720,7 +725,7 @@ export class SocketIoLifecycleService
       await guard({
         activeConnectionCount: this.socketRegistry.size,
         namespacePath: path,
-        request: socket.request as IncomingMessage,
+        request: socket.request as SocketIoHandshakeRequest,
         socket,
       }),
       'Socket.IO connection rejected.',
@@ -732,7 +737,7 @@ export class SocketIoLifecycleService
   }
 
   private async bindConnectionHandlers(descriptors: WebSocketGatewayDescriptor[], socket: Socket): Promise<void> {
-    const request = socket.request as IncomingMessage;
+    const request = socket.request as SocketIoHandshakeRequest;
     const resolved = await this.resolveConnectionGateways(descriptors);
     const state = this.createConnectionHandlerState();
 
@@ -761,7 +766,7 @@ export class SocketIoLifecycleService
     state: ConnectionHandlerState,
     resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>,
     socket: Socket,
-    request: IncomingMessage,
+    request: SocketIoHandshakeRequest,
   ): void {
     socket.onAny((event: string, ...args: unknown[]) => {
       const ack = typeof args.at(-1) === 'function' ? (args.at(-1) as (...callbackArgs: unknown[]) => void) : undefined;
@@ -830,7 +835,7 @@ export class SocketIoLifecycleService
     state: ConnectionHandlerState,
     resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>,
     socket: Socket,
-    request: IncomingMessage,
+    request: SocketIoHandshakeRequest,
   ): Promise<void> {
     for (const message of state.bufferedMessages) {
       await this.handleMessage(resolved, socket, request, message.event, message.payload, message.acknowledgement);
@@ -870,7 +875,7 @@ export class SocketIoLifecycleService
   private async runConnectHandlers(
     resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>,
     socket: Socket,
-    request: IncomingMessage,
+    request: SocketIoHandshakeRequest,
   ): Promise<void> {
     for (const { descriptor, instance } of resolved) {
       await this.runHandlers(instance, descriptor, 'connect', socket, request);
@@ -880,7 +885,7 @@ export class SocketIoLifecycleService
   private async handleMessage(
     resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>,
     socket: Socket,
-    request: IncomingMessage,
+    request: SocketIoHandshakeRequest,
     event: string,
     payload: unknown,
     acknowledgement?: (...callbackArgs: unknown[]) => void,
@@ -920,7 +925,7 @@ export class SocketIoLifecycleService
 
   private async resolveMessageGuardRejection(
     socket: Socket,
-    request: IncomingMessage,
+    request: SocketIoHandshakeRequest,
     event: string,
     payload: unknown,
   ): Promise<SocketIoGuardRejection | undefined> {
@@ -1152,8 +1157,13 @@ export class SocketIoLifecycleService
       return;
     }
 
+    this.shutdownStarted = true;
     this.shutdownPromise = this.runShutdownLifecycle();
-    await this.shutdownPromise;
+    try {
+      await this.shutdownPromise;
+    } finally {
+      this.shutdownPromise = undefined;
+    }
   }
 
   private async runShutdownLifecycle(): Promise<void> {

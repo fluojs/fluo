@@ -4,6 +4,9 @@ import type { ServerOptions, Socket } from 'socket.io';
 
 import type { WebSocketRoomService } from '@fluojs/websockets';
 
+/** Runtime-specific Socket.IO handshake request surfaced to guard callbacks. */
+export type SocketIoHandshakeRequest = IncomingMessage | Request;
+
 /**
  * Room management contract exposed by `@fluojs/socket.io` gateways.
  *
@@ -63,8 +66,8 @@ export interface SocketIoConnectionGuardContext {
   /** Namespace path currently being connected, normalized to the Socket.IO gateway path contract. */
   namespacePath: string;
 
-  /** Raw HTTP handshake request exposed by the selected Socket.IO runtime. */
-  request: IncomingMessage;
+  /** Runtime-specific handshake request exposed by the selected Socket.IO runtime. */
+  request: SocketIoHandshakeRequest;
 
   /** Socket.IO socket instance under evaluation. */
   socket: Socket;
@@ -97,8 +100,8 @@ export interface SocketIoMessageGuardContext {
   /** Event payload extracted from the Socket.IO argument list. */
   payload: unknown;
 
-  /** Raw HTTP handshake request associated with the current socket. */
-  request: IncomingMessage;
+  /** Runtime-specific handshake request associated with the current socket. */
+  request: SocketIoHandshakeRequest;
 
   /** Socket.IO socket instance emitting the event. */
   socket: Socket;

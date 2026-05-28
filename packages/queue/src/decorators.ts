@@ -6,8 +6,6 @@ import type { QueueJobType, QueueWorkerMetadata, QueueWorkerOptions } from './ty
 type ClassDecoratorLike = (value: Function, context: ClassDecoratorContext) => void;
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 
-ensureMetadataSymbol();
-
 function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
   return metadata as StandardMetadataBag;
 }
@@ -45,6 +43,8 @@ function defineStandardQueueWorkerMetadata(metadata: unknown, workerMetadata: Qu
  */
 export function QueueWorker(jobType: QueueJobType, options: QueueWorkerOptions = {}): ClassDecoratorLike {
   const decorator = (_value: Function, context: ClassDecoratorContext): void => {
+    ensureMetadataSymbol();
+
     const metadata: QueueWorkerMetadata = {
       jobType,
       options: { ...options },

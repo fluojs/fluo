@@ -131,7 +131,10 @@ export class SlackModule {
    * @example
    * ```ts
    * SlackModule.forRoot({
-   *   transport: createSlackWebhookTransport({ webhookUrl: 'https://hooks.slack.com/services/...' }),
+   *   transport: createSlackWebhookTransport({
+   *     fetch: runtime.fetch,
+   *     webhookUrl: 'https://hooks.slack.com/services/...',
+   *   }),
    * });
    * ```
    */

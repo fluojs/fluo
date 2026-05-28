@@ -162,6 +162,7 @@ function providerToken(provider: Provider): unknown {
 
 describe('SlackModule', () => {
   beforeEach(() => {
+    vi.unstubAllGlobals();
     transportState.closeCalls = 0;
     transportState.sent.length = 0;
     transportState.sequence = 0;
@@ -416,6 +417,35 @@ describe('SlackModule', () => {
         method: 'POST',
       },
     ]);
+  });
+
+  it('preserves the ambient fetch fallback when no explicit fetch boundary is provided', async () => {
+    const fetchLike = vi.fn<SlackFetchLike>().mockResolvedValue({
+      ok: true,
+      status: 200,
+      async text() {
+        return 'ok';
+      },
+    });
+    vi.stubGlobal('fetch', fetchLike);
+
+    const transport = createSlackWebhookTransport({
+      webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+    });
+
+    await transport.send(
+      {
+        attachments: [],
+        blocks: [],
+        text: 'Ambient path',
+      },
+      {},
+    );
+
+    expect(fetchLike).toHaveBeenCalledWith(
+      'https://hooks.slack.test/services/T000/B000/XXXX',
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 
   it('serializes the documented Slack webhook payload fields through the built-in transport', async () => {
