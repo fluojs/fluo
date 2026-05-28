@@ -53,7 +53,7 @@ function createLogger(events: string[]): ApplicationLogger {
 }
 
 function stripAnsi(value: string): string {
-  return value.replace(/\u001B\[[\d;]*m/g, '');
+  return value.replace(new RegExp(String.raw`\u001B\[[\d;]*m`, 'g'), '');
 }
 
 function getBoundPort(server: { address(): AddressInfo | string | null }): number {

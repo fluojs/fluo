@@ -363,7 +363,8 @@ describe('@fluojs/platform-nodejs', () => {
       const app = await bootstrapNodejsApplication(AppModule, { port: 0 });
       await app.close();
 
-      const normalizedMessages = loggedMessages.map((message) => message.replace(/\u001B\[[\d;]*m/g, ''));
+      const ansiPattern = new RegExp(String.raw`\u001B\[[\d;]*m`, 'g');
+      const normalizedMessages = loggedMessages.map((message) => message.replace(ansiPattern, ''));
 
       expect(normalizedMessages.some((message) => message.includes('LOG [FluoFactory]'))).toBe(true);
       expect(loggedMessages.every((message) => !message.includes('\u001B['))).toBe(true);
