@@ -1,5 +1,5 @@
 import { createServer as createHttpServer, type IncomingMessage, type Server as NodeHttpServer, type ServerResponse } from 'node:http';
-import { createServer as createNetServer } from 'node:net';
+import { type AddressInfo, createServer as createNetServer } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
 import { Inject, Scope } from '@fluojs/core';
@@ -50,6 +50,16 @@ function createLogger(events: string[]): ApplicationLogger {
       events.push(`warn:${context ?? 'none'}:${message}`);
     },
   };
+}
+
+function getBoundPort(server: { address(): AddressInfo | string | null }): number {
+  const address = server.address();
+
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to resolve a bound test port.');
+  }
+
+  return address.port;
 }
 
 async function findAvailablePort(): Promise<number> {
@@ -940,29 +950,32 @@ describe('@fluojs/socket.io', () => {
       providers: [GatewayState, PayloadGateway],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
-      cors: false,
-      port,
-    });
+    const adapter = createNodejsAdapter({ port: 0 });
+    const app = await FluoFactory.create(AppModule, { adapter });
     const state = await app.container.resolve<GatewayState>(GatewayState);
 
-    await app.listen();
+    try {
+      await app.listen();
+      const port = getBoundPort(adapter.getServer());
 
-    const socket = createClient(`http://127.0.0.1:${String(port)}/payload-limit`, {
-      reconnection: false,
-      transports: ['websocket'],
-    });
-    await onceConnected(socket);
+      const socket = createClient(`http://127.0.0.1:${String(port)}/payload-limit`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      try {
+        await onceConnected(socket);
 
-    const disconnected = onceDisconnected(socket);
-    socket.emit('ping', 'x'.repeat(256));
+        const disconnected = onceDisconnected(socket);
+        socket.emit('ping', 'x'.repeat(256));
 
-    expect(['transport close', 'transport error']).toContain(await disconnected);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(state.messages).toEqual([]);
-
-    await app.close();
+        expect(['transport close', 'transport error']).toContain(await disconnected);
+        expect(state.messages).toEqual([]);
+      } finally {
+        socket.close();
+      }
+    } finally {
+      await app.close();
+    }
   });
 
   it('disconnects Bun-style sockets when inbound payloads exceed the configured engine limit', async () => {
@@ -1001,22 +1014,27 @@ describe('@fluojs/socket.io', () => {
     });
     const state = await app.container.resolve<GatewayState>(GatewayState);
 
-    await app.listen();
+    try {
+      await app.listen();
 
-    const socket = createClient(`http://127.0.0.1:${String(port)}/bun-payload-limit`, {
-      reconnection: false,
-      transports: ['polling'],
-    });
-    await onceConnected(socket);
+      const socket = createClient(`http://127.0.0.1:${String(port)}/bun-payload-limit`, {
+        reconnection: false,
+        transports: ['polling'],
+      });
+      try {
+        await onceConnected(socket);
 
-    const disconnected = onceDisconnected(socket);
-    socket.emit('ping', 'x'.repeat(256));
+        const disconnected = onceDisconnected(socket);
+        socket.emit('ping', 'x'.repeat(256));
 
-    expect(['transport close', 'transport error']).toContain(await disconnected);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(state.messages).toEqual([]);
-
-    await app.close();
+        expect(['transport close', 'transport error']).toContain(await disconnected);
+        expect(state.messages).toEqual([]);
+      } finally {
+        socket.close();
+      }
+    } finally {
+      await app.close();
+    }
   });
 
   for (const scenario of supportedSocketIoAdapterScenarios) {

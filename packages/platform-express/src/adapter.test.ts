@@ -3,7 +3,7 @@ import {
   request as httpRequest,
 } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { createServer as createNetServer } from 'node:net';
+import { type AddressInfo, createServer as createNetServer } from 'node:net';
 
 import type { Request as ExpressRequest, Response as ExpressResponse } from 'express';
 
@@ -38,6 +38,7 @@ import {
 import {
   createHealthModule,
   defineModule,
+  FluoFactory,
   fluoFactory,
   type ApplicationLogger,
 } from '@fluojs/runtime';
@@ -64,6 +65,20 @@ function createDeferred<T>(): {
   });
 
   return { promise, reject, resolve };
+}
+
+function getBoundPort(server: unknown): number {
+  if (!server || typeof (server as { address?: unknown }).address !== 'function') {
+    throw new Error('Failed to resolve a bound test server.');
+  }
+
+  const address = (server as { address(): AddressInfo | string | null }).address();
+
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to resolve a bound test port.');
+  }
+
+  return address.port;
 }
 
 async function findAvailablePort(): Promise<number> {
@@ -469,7 +484,7 @@ describe('@fluojs/platform-express', () => {
       next();
     });
 
-    const app = await fluoFactory.create(AppModule, { adapter });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     await app.listen();
 
@@ -518,7 +533,7 @@ describe('@fluojs/platform-express', () => {
       return 'express-native-serializer';
     });
 
-    const app = await fluoFactory.create(AppModule, { adapter });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     await app.listen();
 
@@ -675,41 +690,43 @@ describe('@fluojs/platform-express', () => {
       controllers: [WebhookController],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapExpressApplication(AppModule, {
-      cors: false,
-      port,
+    const adapter = createExpressAdapter({
+      port: 0,
       rawBody: true,
     });
+    const app = await fluoFactory.create(AppModule, { adapter });
 
-    await app.listen();
+    try {
+      await app.listen();
+      const port = getBoundPort((adapter as ExpressHttpApplicationAdapter).getServer());
 
-    const [jsonResponse, textResponse] = await Promise.all([
-      fetch(`http://127.0.0.1:${String(port)}/webhooks/json`, {
-        body: JSON.stringify({ provider: 'stripe' }),
-        headers: { 'content-type': 'application/json' },
-        method: 'POST',
-      }),
-      fetch(`http://127.0.0.1:${String(port)}/webhooks/text`, {
-        body: 'ping=1',
-        headers: { 'content-type': 'text/plain; charset=utf-8' },
-        method: 'POST',
-      }),
-    ]);
+      const [jsonResponse, textResponse] = await Promise.all([
+        fetch(`http://127.0.0.1:${String(port)}/webhooks/json`, {
+          body: JSON.stringify({ provider: 'stripe' }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        }),
+        fetch(`http://127.0.0.1:${String(port)}/webhooks/text`, {
+          body: 'ping=1',
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+          method: 'POST',
+        }),
+      ]);
 
-    expect(jsonResponse.status).toBe(201);
-    await expect(jsonResponse.json()).resolves.toEqual({
-      parsed: { provider: 'stripe' },
-      raw: '{"provider":"stripe"}',
-    });
+      expect(jsonResponse.status).toBe(201);
+      await expect(jsonResponse.json()).resolves.toEqual({
+        parsed: { provider: 'stripe' },
+        raw: '{"provider":"stripe"}',
+      });
 
-    expect(textResponse.status).toBe(201);
-    await expect(textResponse.json()).resolves.toEqual({
-      parsed: 'ping=1',
-      raw: 'ping=1',
-    });
-
-    await app.close();
+      expect(textResponse.status).toBe(201);
+      await expect(textResponse.json()).resolves.toEqual({
+        parsed: 'ping=1',
+        raw: 'ping=1',
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('does not preserve rawBody for multipart requests', async () => {
@@ -730,32 +747,34 @@ describe('@fluojs/platform-express', () => {
       controllers: [UploadController],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapExpressApplication(AppModule, {
-      cors: false,
-      port,
+    const adapter = createExpressAdapter({
+      port: 0,
       rawBody: true,
     });
+    const app = await fluoFactory.create(AppModule, { adapter });
 
-    await app.listen();
+    try {
+      await app.listen();
+      const port = getBoundPort((adapter as ExpressHttpApplicationAdapter).getServer());
 
-    const form = new FormData();
-    form.set('name', 'Ada');
-    form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
+      const form = new FormData();
+      form.set('name', 'Ada');
+      form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/uploads`, {
-      body: form,
-      method: 'POST',
-    });
+      const response = await fetch(`http://127.0.0.1:${String(port)}/uploads`, {
+        body: form,
+        method: 'POST',
+      });
 
-    expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toEqual({
-      body: { name: 'Ada' },
-      fileCount: 1,
-      hasRawBody: false,
-    });
-
-    await app.close();
+      expect(response.status).toBe(201);
+      await expect(response.json()).resolves.toEqual({
+        body: { name: 'Ada' },
+        fileCount: 1,
+        hasRawBody: false,
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('defaults multipart.maxTotalSize to maxBodySize when no explicit multipart total is provided', async () => {
