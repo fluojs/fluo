@@ -161,6 +161,8 @@ export class AdvancedService {
 - `createRedisPlatformStatusSnapshot(input)`: Adapts Redis connection state into Fluo's platform health/readiness snapshot contract.
 
 ### Types
+- `DefaultRedisModuleOptions`: Options accepted by the unnamed default Redis registration, including optional global alias visibility and lifecycle timeout controls.
+- `NamedRedisModuleOptions`: Options accepted by additional named Redis registrations, including required `name` and scoped lifecycle timeout controls.
 - `RedisModuleOptions`: Configuration options passed to the `ioredis` constructor after Fluo removes module-only `name`, `global`, and `lifecycle` fields.
 - `RedisClientOptions`: Redis constructor options after Fluo removes module-only fields and before it forces `lazyConnect: true` internally.
 - `RedisLifecycleOptions`: Optional timeout controls for Fluo-owned `connect()` and `quit()` lifecycle commands.
