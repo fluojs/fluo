@@ -1025,6 +1025,38 @@ describe('@fluojs/prisma', () => {
     expect(snapshot.readiness.status).toBe('not-ready');
     expect(snapshot.health.status).toBe('degraded');
   });
+
+  it('marks stopped state as not-ready and unhealthy after disconnect', async () => {
+    const events: string[] = [];
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+      async $transaction<T>(callback: (value: Record<string, never>) => Promise<T>): Promise<T> {
+        return callback({});
+      },
+    };
+    const prisma = new PrismaService<typeof client>(client);
+
+    await prisma.onModuleInit();
+    await prisma.onApplicationShutdown();
+
+    const snapshot = prisma.createPlatformStatusSnapshot();
+    expect(events).toEqual(['connect', 'disconnect']);
+    expect(snapshot.readiness).toEqual({
+      critical: true,
+      reason: 'Prisma integration is stopped.',
+      status: 'not-ready',
+    });
+    expect(snapshot.health).toEqual({
+      reason: 'Prisma integration has been disconnected.',
+      status: 'unhealthy',
+    });
+    expect(snapshot.details).toMatchObject({ lifecycleState: 'stopped' });
+  });
 });
 
 describe('PrismaModule.forRootAsync', () => {

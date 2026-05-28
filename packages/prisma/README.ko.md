@@ -208,6 +208,10 @@ defineModule(ManualPrismaModule, {
 - `requestTransaction(fn, signal?, options?): Promise<T>`
   - HTTP 요청 라이프사이클에 특화된 트랜잭션 경계를 실행합니다. Abort를 인식하고, shutdown 중에는 disconnect 전에 열린 요청 트랜잭션을 drain하며, Prisma client가 `signal` 옵션을 거부하면 해당 옵션 없이 재시도합니다. `transaction()`과 마찬가지로 중첩 호출은 활성 트랜잭션 컨텍스트를 재사용하고, 트랜잭션 설정을 조용히 무시하지 않도록 중첩 옵션을 거부합니다.
 
+### `PrismaTransactionInterceptor`
+
+- 기본 이름 없는 `PrismaService` 등록을 위한 HTTP interceptor입니다. 요청 handler를 `PrismaService.requestTransaction(...)`으로 감싸 downstream `current()` 호출이 같은 transaction client를 공유하게 합니다.
+
 ### `PRISMA_CLIENT` (Token)
 
 원시 `PrismaClient` 인스턴스를 위한 주입 토큰입니다.

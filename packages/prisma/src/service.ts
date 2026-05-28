@@ -1,5 +1,3 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
-
 import {
   createAbortError,
   createRequestAbortContext,
@@ -45,6 +43,67 @@ type TransactionContext<TTransactionClient> = {
   requestAbortSignal?: AbortSignal;
 };
 
+interface TransactionContextStore<TTransactionClient> {
+  getStore(): TransactionContext<TTransactionClient> | undefined;
+  run<T>(context: TransactionContext<TTransactionClient>, callback: () => T): T;
+}
+
+type AsyncContextStore<TContext> = {
+  getStore(): TContext | undefined;
+  run<T>(context: TContext, callback: () => T): T;
+};
+
+type AsyncLocalStorageConstructor = new <TContext>() => AsyncContextStore<TContext>;
+
+type NodeAsyncHooksModule = {
+  AsyncLocalStorage?: AsyncLocalStorageConstructor;
+};
+
+type AsyncLocalStorageResolutionHost = typeof globalThis & {
+  AsyncLocalStorage?: AsyncLocalStorageConstructor;
+  process?: {
+    getBuiltinModule?(id: 'node:async_hooks'): NodeAsyncHooksModule;
+  };
+};
+
+class StackTransactionContextStore<TTransactionClient> implements TransactionContextStore<TTransactionClient> {
+  private readonly contexts: Array<TransactionContext<TTransactionClient>> = [];
+
+  getStore(): TransactionContext<TTransactionClient> | undefined {
+    return this.contexts.at(-1);
+  }
+
+  run<T>(context: TransactionContext<TTransactionClient>, callback: () => T): T {
+    this.contexts.push(context);
+
+    try {
+      return callback();
+    } finally {
+      this.contexts.pop();
+    }
+  }
+}
+
+function resolveAsyncLocalStorageConstructor(
+  host: AsyncLocalStorageResolutionHost = globalThis,
+): AsyncLocalStorageConstructor | undefined {
+  if (typeof host.AsyncLocalStorage === 'function') {
+    return host.AsyncLocalStorage;
+  }
+
+  return host.process?.getBuiltinModule?.('node:async_hooks').AsyncLocalStorage;
+}
+
+function createTransactionContextStore<TTransactionClient>(): TransactionContextStore<TTransactionClient> {
+  const AsyncLocalStorage = resolveAsyncLocalStorageConstructor();
+
+  if (typeof AsyncLocalStorage === 'function') {
+    return new AsyncLocalStorage<TransactionContext<TTransactionClient>>();
+  }
+
+  return new StackTransactionContextStore<TTransactionClient>();
+}
+
 /**
  * Prisma runtime facade that owns lifecycle hooks and transaction context access.
  *
@@ -60,7 +119,7 @@ export class PrismaService<
 >
   implements PrismaHandleProvider<TClient, TTransactionClient, TTransactionOptions>, OnModuleInit, OnApplicationShutdown
 {
-  private readonly transactions = new AsyncLocalStorage<TransactionContext<TTransactionClient>>();
+  private readonly transactions = createTransactionContextStore<TTransactionClient>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
   private transactionAbortSignalSupport: TransactionAbortSignalSupport = 'unknown';
   private lifecycleState: 'created' | 'ready' | 'shutting-down' | 'stopped' = 'created';

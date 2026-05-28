@@ -208,6 +208,10 @@ defineModule(ManualPrismaModule, {
 - `requestTransaction(fn, signal?, options?): Promise<T>`
   - Specialized transaction boundary for HTTP request lifecycles. It is abort-aware, drains during shutdown before disconnect, and retries without `signal` when a Prisma client rejects that option. Like `transaction()`, nested calls reuse the active transaction context and reject nested options to avoid silently ignoring transaction settings.
 
+### `PrismaTransactionInterceptor`
+
+- HTTP interceptor for the default unnamed `PrismaService` registration. It wraps a request handler in `PrismaService.requestTransaction(...)` so downstream `current()` calls share the same transaction client.
+
 ### `PRISMA_CLIENT` (Token)
 
 Injectable token for the raw `PrismaClient` instance.
