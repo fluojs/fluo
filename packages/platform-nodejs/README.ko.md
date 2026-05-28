@@ -43,7 +43,7 @@ await app.listen();
 ## 주요 패턴
 
 ### 서버 옵션 커스텀
-어댑터는 HTTPS 설정 및 바디 크기 제한을 포함한 표준 Node.js 서버 옵션을 수용합니다.
+어댑터는 문서화된 Node.js transport 옵션인 host/port 바인딩, HTTPS 설정, request body 제한, raw-body 보존, listen retry 설정, shutdown drain bound를 제공합니다.
 
 ```typescript
 const adapter = createNodejsAdapter({
