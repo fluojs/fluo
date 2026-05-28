@@ -86,6 +86,7 @@ type ManagedHttpApplicationAdapter = HttpApplicationAdapter & {
  * @param rootModule The root application module class.
  * @param options Bootstrap configuration for middleware and logging.
  * @param adapter The HTTP platform adapter to use.
+ * @param logger Logger instance used for bootstrap diagnostics.
  * @returns A promise that resolves to the initialized application instance.
  */
 export async function bootstrapHttpAdapterApplication(
@@ -148,6 +149,7 @@ export function formatHttpAdapterListenMessage(target: HttpAdapterListenTarget):
  * @param rootModule - The root application module class.
  * @param options - Run configuration including shutdown and logging settings.
  * @param adapter - The managed HTTP platform adapter to use.
+ * @param logger - Logger instance used for runtime diagnostics.
  * @returns A promise that resolves to the running application instance.
  */
 export async function runHttpAdapterApplication(
