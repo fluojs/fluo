@@ -1,6 +1,6 @@
 import { type AddressInfo, createServer } from 'node:net';
-import { Controller, type Dispatcher, FromBody, Get, Post, RequestDto, type RequestContext } from '@fluojs/http';
-import { type ApplicationLogger, defineModule, FluoFactory } from '@fluojs/runtime';
+import { Controller, type Dispatcher, FromBody, Get, Post, type RequestContext, RequestDto } from '@fluojs/http';
+import { defineModule, FluoFactory } from '@fluojs/runtime';
 import {
   type BootstrapNodeApplicationOptions,
   bootstrapNodeApplication,
@@ -365,19 +365,13 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { providers: [FailingShutdownHook] });
 
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message: string, error: unknown) {
-        if (message === 'Failed to shut down the application cleanly.' && error === shutdownFailure) {
-          failureLogged();
-        }
-      },
-      log() {},
-      warn() {},
-    };
+    const errorLog = vi.spyOn(console, 'error').mockImplementation((message: unknown) => {
+      if (String(message).includes('Failed to shut down the application cleanly.')) {
+        failureLogged();
+      }
+    });
     const port = await findAvailablePort();
     const app = await runNodejsApplication(AppModule, {
-      logger,
       port,
       shutdownSignals: [signal],
     });
@@ -391,6 +385,7 @@ describe('@fluojs/platform-nodejs', () => {
 
       expect(process.exitCode).toBe(1);
     } finally {
+      errorLog.mockRestore();
       process.exitCode = originalExitCode;
       await app.close().catch(() => undefined);
     }
@@ -418,20 +413,14 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { providers: [SlowShutdownHook] });
 
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message: string) {
-        if (message === 'Shutdown timeout exceeded after 1ms; leaving process termination to the host.') {
-          timeoutLogged();
-        }
-      },
-      log() {},
-      warn() {},
-    };
+    const errorLog = vi.spyOn(console, 'error').mockImplementation((message: unknown) => {
+      if (String(message).includes('Shutdown timeout exceeded after 1ms; leaving process termination to the host.')) {
+        timeoutLogged();
+      }
+    });
     const port = await findAvailablePort();
     const app = await runNodejsApplication(AppModule, {
       forceExitTimeoutMs: 1,
-      logger,
       port,
       shutdownSignals: [signal],
     });
@@ -445,6 +434,7 @@ describe('@fluojs/platform-nodejs', () => {
 
       expect(process.exitCode).toBe(1);
     } finally {
+      errorLog.mockRestore();
       releaseShutdown();
       process.exitCode = originalExitCode;
       await app.close().catch(() => undefined);
