@@ -344,6 +344,7 @@ describe('@fluojs/platform-nodejs', () => {
     const originalNoColor = process.env.NO_COLOR;
     const originalForceColor = process.env.FORCE_COLOR;
     const stdoutIsTtyDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+    const stdoutHasColorsDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'hasColors');
 
     class AppModule {}
     defineModule(AppModule, {});
@@ -351,6 +352,7 @@ describe('@fluojs/platform-nodejs', () => {
     process.env.NO_COLOR = '1';
     delete process.env.FORCE_COLOR;
     Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: true });
+    Object.defineProperty(process.stdout, 'hasColors', { configurable: true, value: () => false });
 
     const loggedMessages: string[] = [];
     const log = vi.spyOn(console, 'log').mockImplementation((message: unknown) => {
@@ -361,7 +363,9 @@ describe('@fluojs/platform-nodejs', () => {
       const app = await bootstrapNodejsApplication(AppModule, { port: 0 });
       await app.close();
 
-      expect(loggedMessages.some((message) => message.includes('LOG [FluoFactory]'))).toBe(true);
+      const normalizedMessages = loggedMessages.map((message) => message.replace(/\u001B\[[\d;]*m/g, ''));
+
+      expect(normalizedMessages.some((message) => message.includes('LOG [FluoFactory]'))).toBe(true);
       expect(loggedMessages.every((message) => !message.includes('\u001B['))).toBe(true);
     } finally {
       log.mockRestore();
@@ -382,6 +386,12 @@ describe('@fluojs/platform-nodejs', () => {
         Object.defineProperty(process.stdout, 'isTTY', stdoutIsTtyDescriptor);
       } else {
         Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: undefined });
+      }
+
+      if (stdoutHasColorsDescriptor) {
+        Object.defineProperty(process.stdout, 'hasColors', stdoutHasColorsDescriptor);
+      } else {
+        Object.defineProperty(process.stdout, 'hasColors', { configurable: true, value: undefined });
       }
     }
   });
