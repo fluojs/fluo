@@ -14,6 +14,7 @@ type PrismaPlatformStatusSnapshotInput = {
   supportsDisconnect: boolean;
   supportsTransaction: boolean;
   transactionAbortSignalSupport: 'unknown' | 'supported' | 'unsupported';
+  transactionContext?: 'als' | 'unavailable';
 };
 
 function createReadiness(input: PrismaPlatformStatusSnapshotInput): PlatformReadinessReport {
@@ -45,6 +46,14 @@ function createReadiness(input: PrismaPlatformStatusSnapshotInput): PlatformRead
     return {
       critical: true,
       reason: 'Prisma strictTransactions is enabled but client.$transaction is unavailable.',
+      status: 'not-ready',
+    };
+  }
+
+  if (input.supportsTransaction && input.transactionContext === 'unavailable') {
+    return {
+      critical: true,
+      reason: 'Prisma transaction context requires AsyncLocalStorage support from the host runtime.',
       status: 'not-ready',
     };
   }
@@ -84,6 +93,8 @@ function createHealth(input: PrismaPlatformStatusSnapshotInput): PlatformHealthR
 export function createPrismaPlatformStatusSnapshot(
   input: PrismaPlatformStatusSnapshotInput,
 ): PersistencePlatformStatusSnapshot {
+  const transactionContext = input.transactionContext ?? 'als';
+
   return {
     details: {
       activeRequestTransactions: input.activeRequestTransactions,
@@ -93,7 +104,7 @@ export function createPrismaPlatformStatusSnapshot(
       supportsDisconnect: input.supportsDisconnect,
       supportsTransaction: input.supportsTransaction,
       transactionAbortSignalSupport: input.transactionAbortSignalSupport,
-      transactionContext: 'als',
+      transactionContext,
     },
     health: createHealth(input),
     ownership: {

@@ -379,6 +379,59 @@ describe('@fluojs/prisma', () => {
     await app.close();
   });
 
+  it('rejects transaction boundaries instead of using a synchronous context fallback when ALS is unavailable', async () => {
+    const host = globalThis as typeof globalThis & { AsyncLocalStorage?: unknown };
+    const originalAsyncLocalStorage = host.AsyncLocalStorage;
+    const originalGetBuiltinModule = process.getBuiltinModule.bind(process);
+    const getBuiltinModuleSpy = vi.spyOn(process, 'getBuiltinModule').mockImplementation(((id: string) => {
+      if (id === 'node:async_hooks') {
+        return {};
+      }
+
+      return originalGetBuiltinModule(id as never);
+    }) as typeof process.getBuiltinModule);
+    let transactionCalls = 0;
+    const transactionClient = { kind: 'transaction' as const };
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        transactionCalls += 1;
+        return callback(transactionClient);
+      },
+    };
+
+    host.AsyncLocalStorage = undefined;
+
+    try {
+      const prisma = new PrismaService<typeof client, typeof transactionClient>(client);
+      await prisma.onModuleInit();
+
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ transactionContext: 'unavailable' });
+      expect(prisma.createPlatformStatusSnapshot().readiness).toEqual({
+        critical: true,
+        reason: 'Prisma transaction context requires AsyncLocalStorage support from the host runtime.',
+        status: 'not-ready',
+      });
+      await expect(prisma.transaction(async () => prisma.current())).rejects.toThrow(
+        'Prisma transaction context requires AsyncLocalStorage support from the host runtime.',
+      );
+      await expect(prisma.requestTransaction(async () => prisma.current())).rejects.toThrow(
+        'Prisma transaction context requires AsyncLocalStorage support from the host runtime.',
+      );
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 0 });
+      expect(transactionCalls).toBe(0);
+    } finally {
+      if (originalAsyncLocalStorage === undefined) {
+        delete host.AsyncLocalStorage;
+      } else {
+        host.AsyncLocalStorage = originalAsyncLocalStorage;
+      }
+
+      getBuiltinModuleSpy.mockRestore();
+    }
+  });
+
   it('rolls back open request transactions before disconnect on shutdown', async () => {
     const events: string[] = [];
     const transactionClient = {};

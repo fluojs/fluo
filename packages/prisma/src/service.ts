@@ -20,6 +20,8 @@ import type {
 const NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR =
   'Nested Prisma transaction options are not supported because the active transaction context is reused.';
 const REQUEST_TRANSACTION_UNAVAILABLE_ERROR = 'Prisma request transactions are not available during shutdown.';
+const TRANSACTION_CONTEXT_UNAVAILABLE_ERROR =
+  'Prisma transaction context requires AsyncLocalStorage support from the host runtime.';
 
 interface PrismaServiceOptions {
   strictTransactions: boolean;
@@ -44,6 +46,7 @@ type TransactionContext<TTransactionClient> = {
 };
 
 interface TransactionContextStore<TTransactionClient> {
+  readonly kind: 'als' | 'unavailable';
   getStore(): TransactionContext<TTransactionClient> | undefined;
   run<T>(context: TransactionContext<TTransactionClient>, callback: () => T): T;
 }
@@ -66,21 +69,33 @@ type AsyncLocalStorageResolutionHost = typeof globalThis & {
   };
 };
 
-class StackTransactionContextStore<TTransactionClient> implements TransactionContextStore<TTransactionClient> {
-  private readonly contexts: Array<TransactionContext<TTransactionClient>> = [];
+class AsyncLocalStorageTransactionContextStore<TTransactionClient> implements TransactionContextStore<TTransactionClient> {
+  readonly kind = 'als' as const;
+
+  private readonly storage: AsyncContextStore<TransactionContext<TTransactionClient>>;
+
+  constructor(AsyncLocalStorage: AsyncLocalStorageConstructor) {
+    this.storage = new AsyncLocalStorage<TransactionContext<TTransactionClient>>();
+  }
 
   getStore(): TransactionContext<TTransactionClient> | undefined {
-    return this.contexts.at(-1);
+    return this.storage.getStore();
   }
 
   run<T>(context: TransactionContext<TTransactionClient>, callback: () => T): T {
-    this.contexts.push(context);
+    return this.storage.run(context, callback);
+  }
+}
 
-    try {
-      return callback();
-    } finally {
-      this.contexts.pop();
-    }
+class UnavailableTransactionContextStore<TTransactionClient> implements TransactionContextStore<TTransactionClient> {
+  readonly kind = 'unavailable' as const;
+
+  getStore(): TransactionContext<TTransactionClient> | undefined {
+    return undefined;
+  }
+
+  run<T>(_context: TransactionContext<TTransactionClient>, _callback: () => T): T {
+    throw new Error(TRANSACTION_CONTEXT_UNAVAILABLE_ERROR);
   }
 }
 
@@ -98,10 +113,10 @@ function createTransactionContextStore<TTransactionClient>(): TransactionContext
   const AsyncLocalStorage = resolveAsyncLocalStorageConstructor();
 
   if (typeof AsyncLocalStorage === 'function') {
-    return new AsyncLocalStorage<TransactionContext<TTransactionClient>>();
+    return new AsyncLocalStorageTransactionContextStore<TTransactionClient>(AsyncLocalStorage);
   }
 
-  return new StackTransactionContextStore<TTransactionClient>();
+  return new UnavailableTransactionContextStore<TTransactionClient>();
 }
 
 /**
@@ -167,6 +182,8 @@ export class PrismaService<
       return fn();
     }
 
+    this.assertTransactionContextAvailable();
+
     const deferredRequestTransactionHandles = new Set<ActiveRequestTransactionHandle>();
 
     try {
@@ -220,6 +237,7 @@ export class PrismaService<
       supportsDisconnect: typeof this.client.$disconnect === 'function',
       supportsTransaction: typeof this.client.$transaction === 'function',
       transactionAbortSignalSupport: this.transactionAbortSignalSupport,
+      transactionContext: this.transactions.kind,
     });
   }
 
@@ -319,6 +337,8 @@ export class PrismaService<
       return fn();
     }
 
+    this.assertTransactionContextAvailable();
+
     return run(
       (transactionClient) => this.transactions.run({ client: transactionClient, requestAbortSignal: signal }, fn),
       options,
@@ -365,6 +385,12 @@ export class PrismaService<
   private assertRequestTransactionsAvailable(): void {
     if (this.lifecycleState === 'shutting-down' || this.lifecycleState === 'stopped') {
       throw new Error(REQUEST_TRANSACTION_UNAVAILABLE_ERROR);
+    }
+  }
+
+  private assertTransactionContextAvailable(): void {
+    if (this.transactions.kind === 'unavailable') {
+      throw new Error(TRANSACTION_CONTEXT_UNAVAILABLE_ERROR);
     }
   }
 
