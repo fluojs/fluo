@@ -126,6 +126,7 @@ Undecorated class instances are still traversed recursively, so decorated nested
 - **Decorators**: `Expose`, `Exclude`, `Transform`
 - **Engine**: `serialize(value)` recursively walks class instances, arrays, plain objects, and mixed graphs while preserving opaque built-ins and non-JSON leaf values unless you transform them
 - **HTTP integration**: `SerializerInterceptor` serializes uncommitted handler results and returns handler-owned values unchanged after the response has already been committed
+- **Types**: `TransformFunction` is exported from the root entrypoint for callbacks passed to `Transform(...)`
 
 `Expose` can be applied to classes and fields. `Exclude` and `Transform` apply to fields.
 
