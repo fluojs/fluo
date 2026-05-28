@@ -34,6 +34,31 @@ function getBoundPort(server: { address(): AddressInfo | string | null }): numbe
   return address.port;
 }
 
+async function findAvailablePort(): Promise<number> {
+  return await new Promise<number>((resolve, reject) => {
+    const server = createServer();
+
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+
+      if (!address || typeof address === 'string') {
+        reject(new Error('Failed to resolve an available port.'));
+        return;
+      }
+
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(address.port);
+      });
+    });
+  });
+}
+
 type MultipartRequestWithFiles = RequestContext['request'] & {
   files?: Array<{
     fieldname: string;
