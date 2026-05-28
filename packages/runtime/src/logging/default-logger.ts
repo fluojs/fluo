@@ -4,6 +4,11 @@ function formatDefaultLog(level: 'DEBUG' | 'ERROR' | 'LOG' | 'WARN', context: st
   return `[fluo] ${level} [${context}] ${message}`;
 }
 
+/**
+ * Creates the transport-neutral runtime logger used by default root bootstrap flows.
+ *
+ * @returns Application logger that writes through `console` without Node-only process metadata.
+ */
 export function createDefaultApplicationLogger(): ApplicationLogger {
   return {
     debug(message, context = 'fluo') {
