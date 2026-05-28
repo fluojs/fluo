@@ -67,7 +67,7 @@ class MetricsGateway {
 ```
 
 ### Server-Backed Node Adapters
-For server-backed Node adapters (Node.js, Express, Fastify), you can opt into a dedicated listener port. Fetch-style runtimes (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) reject `serverBacked`.
+For server-backed Node adapters (Node.js, Express, Fastify), you can opt into a dedicated listener port. Use `serverBacked.port: 0` when tests or dynamic hosts should let the operating system allocate an ephemeral listener port atomically. Fetch-style runtimes (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) reject `serverBacked`.
 
 ```typescript
 @WebSocketGateway({ 
