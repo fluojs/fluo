@@ -49,10 +49,7 @@ base branch 기본값은 `main`이다.
 1. **Source choice** — 다음 중 하나를 고르게 한다.
    - `기존 등록된 GitHub 이슈로 진행`
    - `search-to-issue를 먼저 실행`
-2. **Search scope** — source가 `search-to-issue`이면 다음 중 하나를 고르게 한다.
-   - 특정 package
-   - package group
-   - all
+2. **Search command handoff** — source가 `search-to-issue`이면 scope를 상위 커맨드에서 받지 않고 무인자 `/search-to-issue`로 넘긴다. 감사 범위와 목적은 child command의 question gate가 소유한다.
 3. **Existing issue selection** — source가 existing issues이면 read-only issue 목록을 보여준 뒤 다음 중 하나를 고르게 한다.
    - 일부 선택
    - 전부 포함
@@ -201,7 +198,7 @@ lane planning이나 side effect 전에 아래 gate를 순서대로 통과한다.
 
 1. **Source choice gate** — `기존 등록된 GitHub 이슈로 진행` 또는 `search-to-issue를 먼저 실행` 중 하나를 사용자에게 확인한다.
 2. **Source-specific gate**
-   - `search-to-issue`: package / package group / all 범위를 확인한 뒤 `/search-to-issue <scope>`를 호출한다. `/search-to-issue`의 severity summary와 사용자 선택 gate 전에는 `gh issue create`를 수행하지 않는다.
+   - `search-to-issue`: scope/purpose를 상위 커맨드에서 확정하지 않고 무인자 `/search-to-issue`를 호출한다. `/search-to-issue`의 intake question gate, severity summary, 사용자 선택 gate 전에는 `gh issue create`를 수행하지 않는다.
    - `existing-issues`: 열린 issue 제목/요약을 read-only로 보여주고 이번 run에 포함할 issue를 사용자에게 선택하게 한다.
 3. **Suggested additions gate** — confirmed issue set과 분리해 “같이 진행하면 좋은 issue”만 제안한다. 사용자가 명시 승인하기 전에는 자동 포함하지 않는다.
 4. **Merge policy gate** — lane planning 전에 다음 중 하나를 확정한다.
@@ -229,10 +226,10 @@ lane planning이나 side effect 전에 아래 gate를 순서대로 통과한다.
 
 #### `search-to-issue` path
 
-1. `question` tool로 감사 scope를 package / group / all 중 하나로 확정한다.
-2. `/search-to-issue <scope>`를 호출한다.
+1. `/search-to-issue`를 무인자로 호출한다.
+2. 감사 scope와 purpose는 `/search-to-issue`의 question-only intake 결과를 그대로 사용한다.
 3. `/search-to-issue`가 생성한 draft, severity summary, 등록 승인 결과만 받아 confirmed issue set을 만든다.
-4. 이 커맨드에서 package auditor logic 또는 issue draft bundling logic을 다시 구현하지 않는다.
+4. 이 커맨드에서 package scope 선택, package auditor logic 또는 issue draft bundling logic을 다시 구현하지 않는다.
 
 #### `existing-issues` path
 

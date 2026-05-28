@@ -35,7 +35,7 @@
 실제 이슈나 PR 번호 대신 존재하지 않는 번호를 사용하여 에이전트의 데이터 수집 및 분석 단계(Error handling 포함)를 확인한다.
 - `/pr-to-merge 9999` (존재하지 않는 PR 번호로 에러 핸들링 및 읽기 시도 확인)
 - `/issue-to-pr 8888` (인자 파싱 및 컨텍스트 수집 단계까지만 확인. **실제 branch 생성이나 `git worktree add` 직전에 중단**)
-- `/search-to-issue @fluojs/core` (감사 수행 후 이슈 등록 승인 단계에서 '등록 안 함' 선택)
+- `/search-to-issue` (무인자 호출 직후 감사 범위/목적 question gate가 먼저 뜨는지 확인하고, 감사 수행 후 이슈 등록 승인 단계에서 '등록 안 함' 선택)
 
 ### 2.2 읽기 전용 모드 (Read-Only Check)
 검증용 에이전트(Auditor, Reviewer)를 실행할 때 `edit: deny` 상태에서 실제 파일을 읽고 분석 결과(markdown table 등)가 정상적으로 출력되는지 확인한다.

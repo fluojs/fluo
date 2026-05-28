@@ -8,3 +8,4 @@ coverage/
 .turbo/
 .sisyphus/
 .worktrees/
+.omo/

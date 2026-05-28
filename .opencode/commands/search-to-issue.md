@@ -1,24 +1,23 @@
 ---
-description: search-to-issue — fluo 패키지 감사 범위와 목적을 질문으로 확정하고, 패키지별 3개 auditor 결과를 묶어 사용자 승인 후 GitHub issue를 등록하는 커맨드 harness.
-argument-hint: "[패키지명... | 패키지 그룹명 | all] [audit-purpose]"
+description: search-to-issue — fluo 패키지 감사 범위와 목적을 question tool로만 확정하고, 패키지별 3개 auditor 결과를 묶어 사용자 승인 후 GitHub issue를 등록하는 무인자 command harness.
+argument-hint: ""
 ---
 
 # search-to-issue
 
 이 커맨드는 repo-local package audit의 **harness**다. 감사 역할 자체는 전용 read-only auditor 에이전트가 소유한다. 이 커맨드는 범위/목적 확정, batch orchestration, 결과 dedup/bundling, issue draft, 사용자 승인 gate, 등록 순서 추천만 담당한다.
 
+이 커맨드는 **무인자 전용**이다. `/search-to-issue` 뒤에 package, group, `all`, audit purpose를 받지 않는다. 모든 감사 범위와 목적은 question tool 응답으로만 확정한다.
+
 ## 사용법
 
 ```
-/search-to-issue [패키지명... | 패키지 그룹명 | all] [audit-purpose]
+/search-to-issue
 ```
 
 예시:
 
-- `/search-to-issue runtime http`
-- `/search-to-issue @fluojs/runtime @fluojs/http`
-- `/search-to-issue foundation`
-- `/search-to-issue all`
+- `/search-to-issue`
 
 ## 권한 경계
 
@@ -31,7 +30,21 @@ argument-hint: "[패키지명... | 패키지 그룹명 | all] [audit-purpose]"
 
 ## 1. Intake Question Gate — 감사 범위와 목적 확정
 
-커맨드 시작 시 audit target scope와 audit purpose를 `question` tool로 확정한다. 사용자가 invocation 인자에 package/group/all 또는 목적을 적었더라도, 감사 실행 전에 한 번은 확인 질문을 거쳐야 한다. 단, 이미 충분히 명확한 인자는 추천/default 선택지로 반영하고 불필요하게 재탐색하지 않는다.
+커맨드 시작 시 audit target scope와 audit purpose를 `question` tool로 확정한다. invocation 인자는 이 커맨드의 입력 계약이 아니며, package/group/all 또는 목적처럼 보이는 텍스트가 있어도 scope나 purpose로 사용하지 않는다. 질문 응답 없이 감사 실행, package manifest 조회, `gh` 조회, auditor 호출, `all` 확정, batch plan 작성을 시작하지 않는다.
+
+### Question-only 호출 계약
+
+사용자가 `/search-to-issue`를 호출하면 아래 규칙을 따른다.
+
+1. 첫 번째 실행 동작은 반드시 `question` tool 호출이다. package manifest 조회, `gh` 조회, auditor 호출, `all` 확정, batch plan 작성은 질문 응답 전까지 하지 않는다.
+2. 첫 `question` tool 호출에는 아래 두 질문을 함께 포함한다.
+   - `감사 범위`: 어떤 package, package group, 또는 전체 public packages를 감사할지 묻는다.
+   - `감사 목적`: 버그 찾기, 리팩터링 후보, 신기능 추가, 계약/API 정합성 등 어떤 목적의 finding을 우선할지 복수 선택으로 묻는다.
+3. `입력된 범위 사용` 또는 `입력된 목적 사용` 선택지는 제공하지 않는다. 이전 메시지나 invocation text를 default로 삼지 않는다.
+4. 사용자가 `패키지 그룹 선택`을 고르면 preflight 전에 즉시 후속 `question` tool로 group 이름을 확정한다.
+5. 사용자가 `패키지 직접 지정`을 고르고 custom answer에 package 이름을 쓰지 않았으면 preflight 전에 즉시 후속 `question` tool로 package directory name 또는 public package name을 입력받는다.
+6. 사용자가 `중단`을 고르거나 후속 질문 뒤에도 scope가 비어 있으면 auditor를 호출하지 않고 종료한다. 빈 입력을 `all`로 해석하지 않는다.
+7. raw invocation args가 비어 있지 않으면 해당 텍스트를 `audit_intake.raw_input_ignored`에 기록하고, 사용자에게 “이 커맨드는 인자를 사용하지 않으므로 질문으로 다시 확정한다”고 한 문장으로 알린 뒤 동일한 question-only flow를 진행한다.
 
 ### 1차 질문: 어떤 package scope를 감사할지
 
@@ -41,8 +54,7 @@ Header: `감사 범위`
 
 기본 선택지:
 
-- `입력된 범위 사용`: invocation 인자에서 해석 가능한 package/group/all이 있는 경우 첫 선택지로 둔다.
-- `패키지 직접 지정`: package directory name 또는 public package name을 직접 입력받는다. 예: `runtime http`, `@fluojs/runtime @fluojs/http`
+- `패키지 직접 지정`: package directory name 또는 public package name을 직접 입력받는다. 예: `runtime http`
 - `패키지 그룹 선택`: supported package group 중 하나를 고르게 한다.
 - `전체 public packages`: `packages/*/package.json` 기준 workspace public packages 전체를 대상으로 한다.
 - `중단`: audit을 시작하지 않는다.
@@ -59,33 +71,39 @@ Header: `감사 범위`
 - `operations`
 - `cli`
 
-`패키지 직접 지정`을 고르면 사용자가 입력한 값을 raw user args처럼 다루되, 실제 package 확정은 Scope Resolution 규칙을 따른다.
+`패키지 직접 지정`을 고르면 question custom answer 또는 후속 question 응답을 scope input으로 사용하되, 실제 package 확정은 Scope Resolution 규칙을 따른다.
 
 ### 2차 질문: 어떤 목적으로 findings를 찾을지
 
 Header: `감사 목적`
 
-질문: `이번 audit에서 어떤 목적의 문제를 우선 찾을까요?`
+질문: `이번 audit에서 어떤 목적의 문제를 우선 찾을까요? 여러 개를 선택할 수 있습니다.`
+
+`question` tool 호출 시 이 질문은 `multiple: true`로 설정한다. 사용자가 두 개 이상 선택하면 선택된 모든 목적을 `selected_purposes`에 보존한다. `종합 감사`가 다른 목적과 함께 선택되면 `selected_purposes`는 `comprehensive`로 정규화하고, 함께 선택한 목적은 `purpose_note`에 emphasis로 기록한다.
 
 기본 선택지:
 
+- `버그 찾기`: correctness, regression, security-adjacent risk, runtime failure 가능성 우선
+- `리팩터링 후보`: maintainability, duplication, package boundary cleanup, public API 정리 우선
+- `신기능 추가`: 새 기능을 추가하거나 확장할 때 필요한 contract/API/test/docs gap 우선
 - `계약/API 정합성`: README, public API, behavioral contract, docs/CONTEXT 불일치 우선
 - `아키텍처/패키지 경계`: layering, dependency direction, resource ownership, environment isolation 우선
 - `테스트/엣지 케이스`: regression coverage, edge case, teardown/flake, docs-test mismatch 우선
 - `문서/북 동기화`: docs/book/examples companion update 필요성 우선
 - `릴리스 영향`: changeset, changelog, release governance, breaking/behavior-change 영향 우선
-- `NestJS parity`: NestJS parity 또는 migration expectation 관련 gap 우선
+- `NestJS 차이/마이그레이션`: NestJS와 동일하거나 호환된다고 보지 않고, 표준 데코레이터 기반 fluo로 옮길 때 사용자가 오해하기 쉬운 차이와 migration gap 우선
 - `종합 감사`: 위 목적을 모두 열어두고 auditor별 기본 role scope로 감사
 
-선택된 목적은 auditor의 role scope를 축소하지 않는다. 각 package마다 3개 auditor invocation은 그대로 유지하되, auditor prompt의 `CONTEXT`에 `audit_purpose`로 전달하여 finding 우선순위, issue draft `Why Now`, affected surface 판단에 반영한다.
+선택된 목적들은 auditor의 role scope를 축소하지 않는다. 각 package마다 3개 auditor invocation은 그대로 유지하되, auditor prompt의 `CONTEXT`에 `audit_purposes`로 전달하여 finding 우선순위, issue draft `Why Now`, affected surface 판단에 반영한다.
 
 Intake 확정 결과는 다음 형태로 기록한다.
 
 ```yaml
 audit_intake:
-  raw_input: <raw invocation args>
+  raw_input_ignored: <raw invocation args if any | none>
   selected_scope_input: <question-confirmed package/group/all input>
-  selected_purpose: contract-api | architecture-boundary | tests-edge | docs-book-sync | release-impact | nestjs-parity | comprehensive
+  selected_purposes:
+    - bug-finding | refactoring | feature-addition | contract-api | architecture-boundary | tests-edge | docs-book-sync | release-impact | nestjs-migration-gap | comprehensive
   purpose_note: <optional user-entered purpose detail | none>
 ```
 
@@ -97,13 +115,14 @@ Audit target scope는 Intake Question Gate에서 확정한 `selected_scope_input
 
 1. **Explicit package names**
    - 사용자가 하나 이상의 package directory name 또는 public package name을 직접 지정하면, group/all 해석을 무시하고 해당 패키지만 감사한다.
-   - 허용 예: `core`, `runtime`, `socket.io`, `@fluojs/core`, `@fluojs/runtime`
+   - 허용 예: `core`, `runtime`, `socket.io`, scoped public package name
 2. **Package group**
     - explicit package가 없고 지원 group명이 있으면 해당 group에 속한 패키지만 감사한다.
 3. **All**
-    - explicit package도 group도 없거나 사용자가 `all`만 지정하면 `packages/*/package.json` 기준 workspace public packages 전체를 감사한다.
+    - 사용자가 `all` 또는 `전체 public packages`를 question gate에서 명시적으로 확정한 경우에만 `packages/*/package.json` 기준 workspace public packages 전체를 감사한다.
+    - raw invocation args, 이전 메시지, 빈 `selected_scope_input`은 `all`이 아니다. question gate 응답으로 확정되지 않은 경우 질문을 다시 하거나 종료한다.
     - `all`은 package 이름이 아니라 예약된 scope keyword다. `all` 입력을 `core` 또는 foundation 대표 패키지로 치환하거나 sampling/대표 감사로 축소하면 안 된다.
-    - 기본값에는 `examples/*`와 `@fluojs-internal/*` tooling workspace를 포함하지 않는다. 사용자가 명시적으로 요청한 경우만 포함한다.
+    - 기본값에는 `examples/*`와 internal tooling workspace를 포함하지 않는다. 사용자가 명시적으로 요청한 경우만 포함한다.
     - package 목록은 하네스가 한 번만 확정한다. OpenCode `glob`/`read` 또는 허용된 `git ls-files*`만 사용하고, `find | xargs`, broad shell pipeline, shell redirection, `-exec`는 사용하지 않는다.
     - `all` mode에서는 확정 직후 전체 package manifest를 사용자/ledger에 출력한다. 현재 기준 expected count는 `41`이며, count가 다르면 감사 시작 전에 `docs/reference/package-surface.md`, `packages/*/package.json`, 이 command의 group table 불일치로 보고하고 중단한다.
     - `all` mode에서는 group table union이 확정 package 목록과 정확히 같아야 한다. 누락 또는 초과 package가 있으면 auditor를 호출하지 않고 mismatch 목록을 먼저 보고한다.
@@ -116,7 +135,7 @@ scope_decision:
   input: <question-confirmed selected_scope_input>
   packages: [<pkg>, ...]
   excluded_reason: <group/all ignored because explicit packages were provided | none>
-  audit_purpose: <audit_intake.selected_purpose>
+  audit_purposes: <audit_intake.selected_purposes>
   purpose_note: <audit_intake.purpose_note>
 ```
 
@@ -167,7 +186,7 @@ scope_decision:
 ## 5. Batch Orchestration
 
 - 권장 batch size는 4 packages다.
-- batch가 여러 개여도 Scope Resolution 결과의 package 목록과 Intake Question Gate의 audit purpose만 사용한다.
+- batch가 여러 개여도 Scope Resolution 결과의 package 목록과 Intake Question Gate의 audit purposes만 사용한다.
 - `all` mode의 41개 package는 4개 단위로 11개 batch를 만든다. 마지막 batch는 1개 package가 된다.
 - batch 시작 전 아래 manifest를 먼저 작성한다. manifest 없이 auditor를 호출하지 않는다.
 
@@ -202,9 +221,11 @@ batch_ledger:
 
 선택된 각 package마다 아래 3개 에이전트를 각각 1회 호출한다.
 
-1. `@fluo-package-contract-api-reviewer`
-2. `@fluo-package-architecture-reviewer`
-3. `@fluo-package-tests-edge-reviewer`
+1. `fluo-package-contract-api-reviewer`
+2. `fluo-package-architecture-reviewer`
+3. `fluo-package-tests-edge-reviewer`
+
+호출은 subagent name을 명시해 수행한다. 커맨드 문서 안에서는 agent 이름 앞에 at-sign을 붙이지 않는다.
 
 커맨드는 auditor role body를 재구현하지 않는다. 각 invocation은 다음 6개 섹션 구조로 최소 컨텍스트만 전달한다.
 
@@ -216,7 +237,8 @@ batch_ledger:
 - auditor 결과가 `[]`이더라도 해당 invocation은 completed로 기록한다.
 
 ```md
-@fluo-package-contract-api-reviewer
+subagent_type: fluo-package-contract-api-reviewer
+load_skills: [fluo-package-audit]
 
 ## TASK
 Audit package `<pkg>` within the already resolved scope.
@@ -232,7 +254,7 @@ Read/grep/glob/list only. Stay read-only. Do not use bash package-discovery pipe
 - Respect `docs/contracts/behavioral-contract-policy.md`.
 - Assess affected surfaces with canonical path reasons.
 - Audit only the assigned package `<pkg>` from `scope_decision.packages`.
-- Prioritize findings that match `audit_purpose`, but do not suppress real P0/P1 findings outside that purpose.
+- Prioritize findings that match any selected `audit_purposes`, but do not suppress real P0/P1 findings outside those purposes.
 
 ## MUST NOT DO
 - Do not edit files.
@@ -242,12 +264,12 @@ Read/grep/glob/list only. Stay read-only. Do not use bash package-discovery pipe
 
 ## CONTEXT
 - scope_decision: <fixed scope_decision yaml>
-- audit_purpose: <audit_intake.selected_purpose and purpose_note>
+- audit_purposes: <audit_intake.selected_purposes and purpose_note>
 - package: <pkg>
 - canonical docs: <relevant preflight paths>
 ```
 
-동일한 6개 섹션 구조로 `@fluo-package-architecture-reviewer`와 `@fluo-package-tests-edge-reviewer`도 호출하되, role-specific 판단은 각 agent 파일의 정의에 맡긴다.
+동일한 6개 섹션 구조로 `fluo-package-architecture-reviewer`와 `fluo-package-tests-edge-reviewer`도 호출하되, role-specific 판단은 각 agent 파일의 정의에 맡긴다.
 
 ## 7. Finding Intake Schema
 
@@ -275,7 +297,7 @@ Rules:
 - 근거 없는 finding은 버린다.
 - `affected_surfaces`에는 canonical path 근거가 있어야 한다.
 - user-facing behavior 변경 가능성이 있으면 `docs`와 `book`은 기본 `needs-check`로 다룬다.
-- 공개 `@fluojs/*` package의 release impact 가능성이 있으면 changeset 필요성을 draft에 `required` / `needs-check` / `not-required`로 표시한다.
+- 공개 scoped fluojs package의 release impact 가능성이 있으면 changeset 필요성을 draft에 `required` / `needs-check` / `not-required`로 표시한다.
 - `purpose_alignment: unrelated-critical`은 선택된 audit purpose와 직접 맞지 않지만 P0/P1로 놓치면 안 되는 finding에만 사용한다.
 
 ## 8. Deduplication
@@ -286,7 +308,7 @@ Rules:
 - 같은 핵심 theme keyword
 - 같은 package 또는 같은 file evidence
 - 같은 `contract_impact`
-- 같은 `audit_purpose` 또는 같은 `purpose_alignment`
+- 겹치는 `audit_purposes` 또는 같은 `purpose_alignment`
 - 같은 `docs/` / `book` affected surface 또는 같은 user-facing workflow
 
 중복 후보는 새 issue로 바로 승격하지 않고, 기존 issue 번호/URL과 함께 보류 목록에 둔다.
@@ -365,6 +387,8 @@ Severity summary와 draft 목록을 보여준 뒤, 무엇을 실제 issue로 등
 - **scope**: `scope:security`, `scope:nestjs-parity`
 - **wave**: `wave:1`, `wave:2`, `wave:3`
 - **source**: `source:package-audit`
+
+`scope:nestjs-parity`는 기존 GitHub label 이름일 때만 사용한다. Issue title/body와 audit purpose 문구에서는 fluo가 NestJS와 동일하거나 호환된다고 쓰지 말고, `NestJS 차이/마이그레이션` 또는 `NestJS migration gap`으로 표현한다.
 
 Package → area mapping:
 

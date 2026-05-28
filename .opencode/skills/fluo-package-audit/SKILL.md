@@ -37,6 +37,8 @@ Only the following labels should be used when drafting or creating issues:
 - **wave**: `wave:1`, `wave:2`, `wave:3`
 - **source**: `source:package-audit` (Required for all audit findings)
 
+`scope:nestjs-parity` is a legacy GitHub label name only. Audit reports must not imply NestJS compatibility or one-to-one parity; phrase the finding as a NestJS migration gap or an unsupported NestJS assumption, especially around standard decorators versus legacy decorator metadata.
+
 ## Finding Schema
 
 Audit findings must include:
