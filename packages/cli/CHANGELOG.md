@@ -1,5 +1,14 @@
 # @fluojs/cli
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2006](https://github.com/fluojs/fluo/pull/2006) [`c0b88cc`](https://github.com/fluojs/fluo/commit/c0b88ccc012d5ff51c54938b70aa8bb9bca56145) Thanks [@ayden94](https://github.com/ayden94)! - Harden the development restart runner so child process spawn failures clean up watchers and resolve with a failure exit code.
+
+- Updated dependencies [[`01db179`](https://github.com/fluojs/fluo/commit/01db1796ee7af744c2e222f0c20da1a6973e3b6b)]:
+  - @fluojs/runtime@1.1.2
+
 ## 1.0.3
 
 ### Patch Changes

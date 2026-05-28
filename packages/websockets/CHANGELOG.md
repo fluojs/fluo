@@ -1,5 +1,16 @@
 # @fluojs/websockets
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2009](https://github.com/fluojs/fluo/pull/2009) [`b611545`](https://github.com/fluojs/fluo/commit/b6115450a8fbfcb00ace38ab5616c0c6130f71da) Thanks [@ayden94](https://github.com/ayden94)! - Deduplicate fetch-style runtime boundary validation for Bun, Deno, and Cloudflare Workers websocket adapters while preserving existing runtime diagnostics and lifecycle behavior.
+
+- [#2030](https://github.com/fluojs/fluo/pull/2030) [`76600fc`](https://github.com/fluojs/fluo/commit/76600fc9e435b8024760c86ebc627ba271c09776) Thanks [@ayden94](https://github.com/ayden94)! - Allow server-backed WebSocket gateways to use port 0 for atomic ephemeral listener allocation and harden network tests against reserve-then-listen races.
+
+- Updated dependencies [[`01db179`](https://github.com/fluojs/fluo/commit/01db1796ee7af744c2e222f0c20da1a6973e3b6b)]:
+  - @fluojs/runtime@1.1.2
+
 ## 1.0.3
 
 ### Patch Changes

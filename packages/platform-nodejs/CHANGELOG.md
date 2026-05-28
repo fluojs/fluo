@@ -1,5 +1,14 @@
 # @fluojs/platform-nodejs
 
+## 1.0.3
+
+### Patch Changes
+
+- [#2024](https://github.com/fluojs/fluo/pull/2024) [`01db179`](https://github.com/fluojs/fluo/commit/01db1796ee7af744c2e222f0c20da1a6973e3b6b) Thanks [@ayden94](https://github.com/ayden94)! - Keep root runtime bootstrap defaults transport-neutral while preserving Node-specific logger behavior on `@fluojs/runtime/node`, and add regression coverage for documented Node shutdown and lifecycle failure contracts.
+
+- Updated dependencies [[`01db179`](https://github.com/fluojs/fluo/commit/01db1796ee7af744c2e222f0c20da1a6973e3b6b)]:
+  - @fluojs/runtime@1.1.2
+
 ## 1.0.2
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @fluojs/platform-fastify
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2028](https://github.com/fluojs/fluo/pull/2028) [`625b8d4`](https://github.com/fluojs/fluo/commit/625b8d4229a9cfceae3e58d7b8cfc525bb0a56a7) Thanks [@ayden94](https://github.com/ayden94)! - Harden platform adapter option validation, shutdown lifecycle reuse, and contract documentation for Bun, Deno, Cloudflare Workers, Express, and Fastify.
+
+- Updated dependencies [[`01db179`](https://github.com/fluojs/fluo/commit/01db1796ee7af744c2e222f0c20da1a6973e3b6b)]:
+  - @fluojs/runtime@1.1.2
+
 ## 1.0.3
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @fluojs/redis
 
+## 1.0.1
+
+### Patch Changes
+
+- [#2029](https://github.com/fluojs/fluo/pull/2029) [`b80fa9e`](https://github.com/fluojs/fluo/commit/b80fa9e22414cd7c6f55903fd999707109695017) Thanks [@ayden94](https://github.com/ayden94)! - Disconnect lifecycle-owned Redis clients when bootstrap `connect()` times out so in-flight connection attempts are cleaned up before startup failure propagates, and document the exported default and named Redis module option types in the package README API lists.
+
+- Updated dependencies [[`01db179`](https://github.com/fluojs/fluo/commit/01db1796ee7af744c2e222f0c20da1a6973e3b6b)]:
+  - @fluojs/runtime@1.1.2
+
 ## 1.0.0
 
 ### Minor Changes

@@ -1,5 +1,16 @@
 # @fluojs/prisma
 
+## 1.0.2
+
+### Patch Changes
+
+- [#2022](https://github.com/fluojs/fluo/pull/2022) [`d69612a`](https://github.com/fluojs/fluo/commit/d69612a2fb13b884eacc7a4ef04cd37bf215c7aa) Thanks [@ayden94](https://github.com/ayden94)! - Redact sensitive refresh-token backing store diagnostics in passport status surfaces and remove Prisma's static Node async-hooks import while preserving transaction context behavior where host AsyncLocalStorage is available. Prisma now rejects transaction boundaries and reports `transactionContext: 'unavailable'` instead of using a synchronous fallback that can lose context across async boundaries when the host cannot provide AsyncLocalStorage.
+
+- [#2008](https://github.com/fluojs/fluo/pull/2008) [`225759e`](https://github.com/fluojs/fluo/commit/225759e3103d0e7581ceec93694980623c037a78) Thanks [@ayden94](https://github.com/ayden94)! - Tighten persistence module registration input validation and document strict transaction handling for Mongoose connection-level transaction boundaries.
+
+- Updated dependencies [[`01db179`](https://github.com/fluojs/fluo/commit/01db1796ee7af744c2e222f0c20da1a6973e3b6b)]:
+  - @fluojs/runtime@1.1.2
+
 ## 1.0.1
 
 ### Patch Changes

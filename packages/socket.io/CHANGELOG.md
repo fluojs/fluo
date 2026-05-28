@@ -1,5 +1,15 @@
 # @fluojs/socket.io
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2025](https://github.com/fluojs/fluo/pull/2025) [`223aa65`](https://github.com/fluojs/fluo/commit/223aa65135466d7c670186e3f18a6910fcab843a) Thanks [@ayden94](https://github.com/ayden94)! - Harden messaging and realtime lifecycle contracts by documenting Slack webhook ambient fetch fallback while preserving the existing optional fetch API, preventing Socket.IO raw server recreation after shutdown starts, preserving portable Socket.IO guard request typing, and deferring Queue metadata setup until decorator execution.
+
+- Updated dependencies [[`b611545`](https://github.com/fluojs/fluo/commit/b6115450a8fbfcb00ace38ab5616c0c6130f71da), [`01db179`](https://github.com/fluojs/fluo/commit/01db1796ee7af744c2e222f0c20da1a6973e3b6b), [`76600fc`](https://github.com/fluojs/fluo/commit/76600fc9e435b8024760c86ebc627ba271c09776)]:
+  - @fluojs/websockets@1.0.4
+  - @fluojs/runtime@1.1.2
+
 ## 1.0.3
 
 ### Patch Changes
