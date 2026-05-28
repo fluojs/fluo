@@ -34,6 +34,18 @@ argument-hint: "<pr-url|pr-number> [linked-issue-url|number] [base-branch]"
 - 파일을 수정하지 않는다.
 - 실제 merge authority는 사용자 또는 상위 `lane-supervisor`가 별도로 행사한다.
 
+## Reviewer read-only allowlist
+
+`@fluo-contract-reviewer`, `@fluo-code-reviewer`, `@fluo-verification-reviewer`는 같은 PR을 반복 검토할 때 아래 read-only 명령을 frontmatter permission에서 사전 허용해야 한다. 새 reviewer 권한을 추가할 때도 이 목록을 우선 갱신해 동일한 PR에서 같은 권한을 반복 요청하지 않도록 한다.
+
+- `gh pr view*`, `gh pr diff*`, `gh pr checks*`, `gh run view*`
+- `gh issue view*`, `gh issue list*`, `gh label list*`
+- `git status*`, `git diff*`, `git log*`, `git show*`, `git ls-files*`
+- `GIT_MASTER=1 git status*`, `GIT_MASTER=1 git diff*`, `GIT_MASTER=1 git log*`, `GIT_MASTER=1 git show*`, `GIT_MASTER=1 git ls-files*`
+- `sort*`
+
+Mutating commands such as `gh pr merge*`, `gh pr review*`, `gh pr edit*`, `gh issue comment*`, `gh run cancel*`, `gh run rerun*`, `git push*`, branch/worktree cleanup, and label mutation stay denied or unlisted.
+
 ## 컨텍스트 수집
 
 안전한 read-only 명령과 파일 읽기만 사용해 다음을 수집한다.
