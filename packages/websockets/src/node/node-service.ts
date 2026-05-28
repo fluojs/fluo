@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import type { IncomingMessage } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import type { Duplex } from 'node:stream';
 
 import { Inject } from '@fluojs/core';
@@ -136,6 +137,14 @@ function resolveMessageByteLength(data: RawData): number {
   return data.byteLength;
 }
 
+function resolveBoundGatewayPort(address: AddressInfo | string | null, fallbackPort: number): number {
+  if (!address || typeof address === 'string') {
+    return fallbackPort;
+  }
+
+  return address.port;
+}
+
 const DEFAULT_WEBSOCKET_SHUTDOWN_TIMEOUT_MS = 5_000;
 const DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET = 256;
 const DEFAULT_MAX_BUFFERED_AMOUNT_BYTES = 1_048_576;
@@ -155,7 +164,7 @@ type GatewayBindingTarget =
       kind: 'application-server';
     }
   | {
-      key: `owned-server:${number}`;
+      key: string;
       kind: 'owned-server';
       port: number;
     };
@@ -354,10 +363,10 @@ export class NodeWebSocketGatewayLifecycleService
     const listener = this.createUpgradeListener(server, group.attachmentsByPath);
 
     server.on('upgrade', listener);
-    await this.listenOwnedGatewayServer(server, group.target.port);
+    const port = await this.listenOwnedGatewayServer(server, group.target.port);
     this.ownedUpgradeServers.push({
       listener,
-      port: group.target.port,
+      port,
       server,
     });
   }
@@ -423,9 +432,12 @@ export class NodeWebSocketGatewayLifecycleService
     }
 
     const port = this.resolveServerBackedPort(descriptor.path, serverBacked);
+    const key = port === 0
+      ? `owned-server:ephemeral:${descriptor.path}`
+      : `owned-server:${String(port)}`;
 
     return {
-      key: `owned-server:${String(port)}` as `owned-server:${number}`,
+      key,
       kind: 'owned-server',
       port,
     };
@@ -435,9 +447,9 @@ export class NodeWebSocketGatewayLifecycleService
     path: string,
     options: WebSocketGatewayServerBackedOptions,
   ): number {
-    if (!isFinitePositiveInteger(options.port)) {
+    if (options.port !== 0 && !isFinitePositiveInteger(options.port)) {
       throw new Error(
-        `WebSocket gateway serverBacked.port for path ${path} must be a finite positive integer.`,
+        `WebSocket gateway serverBacked.port for path ${path} must be 0 or a finite positive integer.`,
       );
     }
 
@@ -1272,8 +1284,8 @@ export class NodeWebSocketGatewayLifecycleService
     });
   }
 
-  private listenOwnedGatewayServer(server: OwnedGatewayServer, port: number): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
+  private listenOwnedGatewayServer(server: OwnedGatewayServer, port: number): Promise<number> {
+    return new Promise<number>((resolve, reject) => {
       const httpServer = server as HttpServer;
       const onError = (error: Error) => {
         reject(error);
@@ -1282,7 +1294,7 @@ export class NodeWebSocketGatewayLifecycleService
       httpServer.once('error', onError);
       server.listen(port, () => {
         httpServer.off('error', onError);
-        resolve();
+        resolve(resolveBoundGatewayPort(httpServer.address(), port));
       });
     });
   }

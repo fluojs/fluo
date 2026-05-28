@@ -1,4 +1,4 @@
-import { type AddressInfo, createServer } from 'node:net';
+import type { AddressInfo } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
@@ -6,38 +6,13 @@ import { WebSocket } from 'ws';
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
-import { bootstrapNodeApplication, createNodeHttpAdapter } from '@fluojs/runtime/node';
+import { createNodeHttpAdapter } from '@fluojs/runtime/node';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as nodePublicApi from './node.js';
 import { NodeWebSocketModule } from './node.js';
 import { NodeWebSocketGatewayLifecycleService } from './node-service.js';
 import type { WebSocketModuleOptions } from './node-types.js';
-
-async function findAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
-
-    server.once('error', reject);
-    server.listen(0, () => {
-      const address = server.address();
-
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to resolve available port.'));
-        return;
-      }
-
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve(address.port);
-      });
-    });
-  });
-}
 
 function getBoundPort(server: unknown): number {
   if (!server || typeof (server as { address?: unknown }).address !== 'function') {
@@ -51,6 +26,10 @@ function getBoundPort(server: unknown): number {
   }
 
   return address.port;
+}
+
+function getAdapterPort(adapter: { getServer?: () => unknown }): number {
+  return getBoundPort(adapter.getServer?.());
 }
 
 function onceOpen(socket: WebSocket): Promise<void> {
@@ -170,7 +149,7 @@ describe('@fluojs/websockets/node', () => {
 
     try {
       await app.listen();
-      const port = getBoundPort((adapter as { getServer(): unknown }).getServer());
+      const port = getAdapterPort(adapter);
 
       const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
       try {
@@ -215,13 +194,14 @@ describe('@fluojs/websockets/node', () => {
       providers: [ShutdownGateway],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
-      cors: false,
-      port,
+    const adapter = createNodeHttpAdapter({ port: 0 });
+    const app = await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
     });
 
     await app.listen();
+    const port = getAdapterPort(adapter);
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/shutdown`);
     await onceOpen(socket);
