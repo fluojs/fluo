@@ -1,7 +1,7 @@
 import { createServer as createHttpServer, type IncomingMessage, type Server as NodeHttpServer, type ServerResponse } from 'node:http';
 import { type AddressInfo, createServer as createNetServer } from 'node:net';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Inject, Scope } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import {
@@ -50,6 +50,10 @@ function createLogger(events: string[]): ApplicationLogger {
       events.push(`warn:${context ?? 'none'}:${message}`);
     },
   };
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(new RegExp(String.raw`\u001B\[[\d;]*m`, 'g'), '');
 }
 
 function getBoundPort(server: { address(): AddressInfo | string | null }): number {
@@ -926,9 +930,11 @@ describe('@fluojs/socket.io', () => {
     });
 
     const port = await findAvailablePort();
+    const errorLog = vi.spyOn(console, 'error').mockImplementation((message: unknown, error?: unknown) => {
+      loggerEvents.push(`${String(message)}:${error instanceof Error ? error.message : 'none'}`);
+    });
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      logger: createLogger(loggerEvents),
       port,
     });
     const state = await app.container.resolve<GatewayState>(GatewayState);
@@ -955,12 +961,12 @@ describe('@fluojs/socket.io', () => {
       expect(unhandledRejections).toEqual([]);
       expect(
         loggerEvents.some((event) =>
-          event.includes(
-            'error:SocketIoLifecycleService:Socket.IO message guard for event ping on socket',
-          ) && event.endsWith(':Forbidden event.'),
+          stripAnsi(event).includes('[SocketIoLifecycleService] Socket.IO message guard for event ping on socket'),
         ),
       ).toBe(true);
+      expect(loggerEvents.some((event) => event.includes('Forbidden event.'))).toBe(true);
     } finally {
+      errorLog.mockRestore();
       process.off('unhandledRejection', onUnhandledRejection);
       socket.close();
       await app.close();
@@ -1163,6 +1169,9 @@ describe('@fluojs/socket.io', () => {
 
   it('warns and skips non-singleton gateways', async () => {
     const loggerEvents: string[] = [];
+    const warnLog = vi.spyOn(console, 'warn').mockImplementation((message: unknown) => {
+      loggerEvents.push(String(message));
+    });
 
     @Scope('request')
     @WebSocketGateway({ path: '/request-gateway' })
@@ -1179,19 +1188,19 @@ describe('@fluojs/socket.io', () => {
 
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      logger: createLogger(loggerEvents),
       port: await findAvailablePort(),
     });
 
-    expect(
-      loggerEvents.some((event) =>
-        event.includes(
-          'warn:SocketIoLifecycleService:RequestGateway in module AppModule declares @WebSocketGateway() but is registered with request scope.',
+    try {
+      expect(
+        loggerEvents.some((event) =>
+          stripAnsi(event).includes('[SocketIoLifecycleService] RequestGateway in module AppModule declares @WebSocketGateway() but is registered with request scope.'),
         ),
-      ),
-    ).toBe(true);
-
-    await app.close();
+      ).toBe(true);
+    } finally {
+      warnLog.mockRestore();
+      await app.close();
+    }
   });
 
   it('buffers messages and disconnects until async connect handlers complete', async () => {

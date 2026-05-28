@@ -169,11 +169,11 @@ export interface BootstrapApplicationOptions {
 }
 
 /** Options accepted by `FluoFactory.create(...)`. */
-export type CreateApplicationOptions = Omit<BootstrapApplicationOptions, 'rootModule'>;
+export type CreateApplicationOptions = Omit<BootstrapApplicationOptions, 'logger' | 'rootModule'>;
 
 /** Options accepted by `FluoFactory.createApplicationContext(...)`. */
 export interface CreateApplicationContextOptions
-  extends Omit<BootstrapApplicationOptions, 'adapter' | 'converters' | 'filters' | 'middleware' | 'observers' | 'rootModule'> {
+  extends Omit<BootstrapApplicationOptions, 'adapter' | 'converters' | 'filters' | 'logger' | 'middleware' | 'observers' | 'rootModule'> {
 }
 
 /** Runtime transport contract used by microservice application shells. */

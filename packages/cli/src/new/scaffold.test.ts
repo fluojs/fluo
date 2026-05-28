@@ -7,9 +7,8 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
-
-import { scaffoldBootstrapApp } from './scaffold.js';
 import { DEFAULT_BOOTSTRAP_SCHEMA } from './resolver.js';
+import { scaffoldBootstrapApp } from './scaffold.js';
 
 const temporaryDirectories: string[] = [];
 const require = createRequire(import.meta.url);
@@ -470,19 +469,17 @@ describe('scaffoldBootstrapApp', () => {
     const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
     const mainFile = readFileSync(join(targetDirectory, 'src', 'main.ts'), 'utf8');
 
-    expect(readme).toContain('Starter contract: `src/main.ts` wires the selected first-class application starter: Node.js runtime + Fastify HTTP via `createFastifyAdapter(...)`');
+    expect(readme).toContain('Starter contract: `src/main.ts` boots the selected first-class application starter: Node.js runtime + Fastify HTTP via `runFastifyApplication(...)`');
     expect(readme).toContain('Default baseline: when you omit `--platform`, `fluo new` still generates the Node.js + Fastify HTTP starter by default');
     expect(readme).toContain('Broader runtime/adapter package coverage is documented in the fluo docs and package READMEs; this generated starter intentionally describes only the wired starter path above');
     expect(readme).not.toContain('Bun');
     expect(readme).not.toContain('Deno');
     expect(readme).not.toContain('Cloudflare');
     expect(readme).not.toContain('@fluojs/platform-nodejs');
-    expect(mainFile).toContain('// The generated starter wires the selected first-class fluo new application path:');
-    expect(mainFile).toContain('// Node.js runtime + Fastify HTTP via createFastifyAdapter(...).');
-    expect(mainFile).toContain('// Application logging defaults to the pretty console logger when logger is omitted.');
-    expect(mainFile).toContain("// import { createJsonApplicationLogger } from '@fluojs/runtime/node';");
-    expect(mainFile).toContain('// Then pass `logger: createJsonApplicationLogger()` to FluoFactory.create(...).');
-    expect(mainFile).not.toContain('logger: createJsonApplicationLogger(),');
+    expect(mainFile).toContain("import { runFastifyApplication } from '@fluojs/platform-fastify';");
+    expect(mainFile).toContain('await runFastifyApplication(AppModule, { port });');
+    expect(mainFile).not.toContain('createConsoleApplicationLogger');
+    expect(mainFile).not.toContain('logger,');
     expect(mainFile).not.toContain('Bun');
     expect(mainFile).not.toContain('Deno');
     expect(mainFile).not.toContain('Cloudflare');
@@ -521,9 +518,11 @@ describe('scaffoldBootstrapApp', () => {
     });
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-nodejs');
-    expect(readme).toContain('Node.js runtime + Express HTTP via `createExpressAdapter(...)`');
-    expect(mainFile).toContain("import { createExpressAdapter } from '@fluojs/platform-express';");
-    expect(mainFile).toContain('adapter: createExpressAdapter({ port })');
+    expect(readme).toContain('Node.js runtime + Express HTTP via `runExpressApplication(...)`');
+    expect(mainFile).toContain("import { runExpressApplication } from '@fluojs/platform-express';");
+    expect(mainFile).toContain('await runExpressApplication(AppModule, { port });');
+    expect(mainFile).not.toContain('createConsoleApplicationLogger');
+    expect(mainFile).not.toContain('logger,');
   });
 
   it('generates the Bun application starter scaffold', async () => {
@@ -569,15 +568,17 @@ describe('scaffoldBootstrapApp', () => {
     expect(packageJson.scripts?.dev).toBe('fluo dev');
     expect(packageJson.scripts?.start).toBe('bun dist/main.js');
     expect(tsconfig.compilerOptions?.types).toEqual(['node', 'bun']);
-    expect(readme).toContain('Bun runtime + Bun native HTTP via `createBunAdapter(...)`');
+    expect(readme).toContain('Bun runtime + Bun native HTTP via `runBunApplication(...)`');
     expect(readme).toContain('defaulting to Bun\'s native watch loop');
     expect(readme).toContain('fluo dev --runner fluo');
     expect(readme).toContain('Bun-native production commands');
     expect(readme).toContain('bun dist/main.js');
     expect(appFile).toContain('processEnv: process.env');
     expect(appFile).not.toContain('Bun.env');
-    expect(mainFile).toContain("import { createBunAdapter } from '@fluojs/platform-bun';");
+    expect(mainFile).toContain("import { runBunApplication } from '@fluojs/platform-bun';");
     expect(mainFile).toContain("Bun.env.PORT ?? '3000'");
+    expect(mainFile).toContain('await runBunApplication(AppModule, { port });');
+    expect(mainFile).not.toContain('FluoFactory.create');
   });
 
   it('generates the raw Node.js application starter scaffold', async () => {
@@ -612,9 +613,11 @@ describe('scaffoldBootstrapApp', () => {
     });
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-express');
-    expect(readme).toContain('Node.js runtime + raw Node.js HTTP via `createNodejsAdapter(...)`');
-    expect(mainFile).toContain("import { createNodejsAdapter } from '@fluojs/platform-nodejs';");
-    expect(mainFile).toContain('adapter: createNodejsAdapter({ port })');
+    expect(readme).toContain('Node.js runtime + raw Node.js HTTP via `runNodejsApplication(...)`');
+    expect(mainFile).toContain("import { runNodejsApplication } from '@fluojs/platform-nodejs';");
+    expect(mainFile).toContain('await runNodejsApplication(AppModule, { port });');
+    expect(mainFile).not.toContain('createConsoleApplicationLogger');
+    expect(mainFile).not.toContain('logger,');
   });
 
   it('generates the Deno application starter scaffold', async () => {
@@ -1098,6 +1101,10 @@ describe('scaffoldBootstrapApp', () => {
     expect(appFile).toContain("import { HealthModule } from '@fluojs/runtime';");
     expect(appFile).toContain('HealthModule.forRoot()');
     expect(appFile).not.toContain('createHealthModule');
+    expect(mainFile).toContain("import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';");
+    expect(mainFile).toContain('const app = await bootstrapFastifyApplication(AppModule, { port });');
+    expect(mainFile).not.toContain('createConsoleApplicationLogger');
+    expect(mainFile).not.toContain('logger,');
     expect(mainFile).toContain('await app.connectMicroservice();');
     expect(mainFile).toContain('await app.startAllMicroservices();');
     expect(appTestFile).toContain('InMemoryLoopbackTransport');

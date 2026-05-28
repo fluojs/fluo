@@ -20,14 +20,14 @@ import type {
   MultipartOptions,
   UploadedFile,
 } from '@fluojs/runtime';
-import { createWebRequestResponseFactory, dispatchWebRequest } from '@fluojs/runtime/web';
 import {
   bootstrapHttpAdapterApplication,
   createConsoleApplicationLogger,
-  runHttpAdapterApplication,
-  type RunHttpAdapterApplicationOptions,
   type HttpAdapterListenTarget,
+  type RunHttpAdapterApplicationOptions,
+  runHttpAdapterApplication,
 } from '@fluojs/runtime/internal/http-adapter';
+import { createWebRequestResponseFactory, dispatchWebRequest } from '@fluojs/runtime/web';
 
 declare module '@fluojs/http' {
   interface FrameworkRequest {
@@ -200,8 +200,6 @@ export interface BootstrapBunApplicationOptions extends Omit<CreateApplicationOp
   hostname?: BunHostname;
   /** Idle timeout passed through to `Bun.serve()`. */
   idleTimeout?: number;
-  /** Application logger used for startup, shutdown, and failure reporting. */
-  logger?: ApplicationLogger;
   /** Maximum request body size forwarded as Bun's `maxRequestBodySize`. */
   maxBodySize?: number;
   /** Middleware applied by the shared HTTP bootstrap path. */
@@ -482,11 +480,11 @@ export async function bootstrapBunApplication(
   rootModule: ModuleType,
   options: BootstrapBunApplicationOptions,
 ): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
+  const logger = createConsoleApplicationLogger();
 
   return bootstrapHttpAdapterApplication(
     rootModule,
-    { ...options, logger },
+    options,
     createBunAdapter({
       development: options.development,
       hostname: options.hostname,
@@ -498,6 +496,7 @@ export async function bootstrapBunApplication(
       stopActiveConnections: options.stopActiveConnections,
       tls: options.tls,
     }),
+    logger,
   );
 }
 
@@ -512,7 +511,7 @@ export async function runBunApplication(
   rootModule: ModuleType,
   options: RunBunApplicationOptions,
 ): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
+  const logger = createConsoleApplicationLogger();
   const adapter = createBunAdapter({
     development: options.development,
     hostname: options.hostname,
@@ -527,9 +526,8 @@ export async function runBunApplication(
 
   return runHttpAdapterApplication(rootModule, {
     ...options,
-    logger,
     shutdownRegistration: createBunShutdownSignalRegistration(options.shutdownSignals ?? defaultBunShutdownSignals()),
-  }, adapter);
+  }, adapter, logger);
 }
 
 function defaultBunShutdownSignals(): readonly BunApplicationSignal[] {

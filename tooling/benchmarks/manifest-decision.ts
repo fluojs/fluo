@@ -3,16 +3,9 @@ import { performance } from 'node:perf_hooks';
 import { Module } from '../../packages/core/src/index';
 import { defineClassDiMetadata } from '../../packages/core/src/internal';
 import { Controller, Get } from '../../packages/http/src/index';
-import { FluoFactory, type ApplicationLogger, type ModuleType } from '../../packages/runtime/src/index';
+import { FluoFactory, type ModuleType } from '../../packages/runtime/src/index';
 
 type ConstructorToken = new (...args: never[]) => unknown;
-
-const silentLogger: ApplicationLogger = {
-  debug() {},
-  error() {},
-  log() {},
-  warn() {},
-};
 
 function createProvider(
   scenarioName: string,
@@ -117,9 +110,7 @@ async function measureScenario(name: string, rootModule: ModuleType, iterations 
 
   for (let iteration = 0; iteration < iterations; iteration += 1) {
     const startedAt = performance.now();
-    const app = await FluoFactory.create(rootModule, {
-      logger: silentLogger,
-    });
+    const app = await FluoFactory.create(rootModule);
     const bootstrapMs = performance.now() - startedAt;
 
     await app.close('benchmark');

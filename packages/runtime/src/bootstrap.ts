@@ -1602,7 +1602,7 @@ export class FluoFactory {
   ): Promise<ApplicationContext> {
     const studioDevtools = createStudioDevtoolsRuntimeFromConfig();
     const effectiveOptions = applyStudioDevtoolsContextOptions(options, studioDevtools);
-    const logger = effectiveOptions.logger ?? createDefaultApplicationLogger();
+    const logger = createDefaultApplicationLogger();
     let lifecycleInstances: unknown[] = [];
     let bootstrappedContainer: Container | undefined;
     let bootstrappedModules: CompiledModule[] = [];
@@ -1732,7 +1732,7 @@ export class FluoFactory {
     rootModule: ModuleType,
     options: CreateMicroserviceOptions = {},
   ): Promise<MicroserviceApplication> {
-    const logger = options.logger ?? createDefaultApplicationLogger();
+    const logger = createDefaultApplicationLogger();
     const microserviceToken = options.microserviceToken ?? DEFAULT_MICROSERVICE_TOKEN;
     const context = await FluoFactory.createApplicationContext(rootModule, options);
 

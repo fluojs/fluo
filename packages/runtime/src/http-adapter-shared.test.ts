@@ -1,6 +1,5 @@
-import { describe, expect, it } from 'vitest';
-
 import type { Middleware } from '@fluojs/http';
+import { describe, expect, it } from 'vitest';
 
 import { defineModule } from './bootstrap.js';
 import { createHttpAdapterMiddleware, runHttpAdapterApplication } from './http-adapter-shared.js';
@@ -182,14 +181,13 @@ describe('runHttpAdapterApplication', () => {
 
     const app = await runHttpAdapterApplication(AppModule, {
       forceExitTimeoutMs: 123,
-      logger,
       shutdownRegistration(application, _logger, forceExitTimeoutMs) {
         events.push(`register:${application.state}:${String(forceExitTimeoutMs)}`);
         return () => {
           events.push('unregister');
         };
       },
-    }, adapter);
+    }, adapter, logger);
 
     expect(events).toEqual([
       'adapter:listen',
@@ -236,11 +234,10 @@ describe('runHttpAdapterApplication', () => {
     };
 
     await expect(runHttpAdapterApplication(AppModule, {
-      logger,
       shutdownRegistration() {
         throw registrationFailure;
       },
-    }, adapter)).rejects.toBe(registrationFailure);
+    }, adapter, logger)).rejects.toBe(registrationFailure);
 
     expect(events).toEqual([
       'adapter:listen',
@@ -277,14 +274,13 @@ describe('runHttpAdapterApplication', () => {
     };
 
     const app = await runHttpAdapterApplication(AppModule, {
-      logger,
       shutdownRegistration() {
         return () => {
           events.push('unregister');
           throw unregisterFailure;
         };
       },
-    }, adapter);
+    }, adapter, logger);
 
     await expect(app.close('SIGTERM')).rejects.toBe(unregisterFailure);
 
@@ -326,14 +322,13 @@ describe('runHttpAdapterApplication', () => {
     };
 
     const app = await runHttpAdapterApplication(AppModule, {
-      logger,
       shutdownRegistration() {
         return () => {
           events.push('unregister');
           throw unregisterFailure;
         };
       },
-    }, adapter);
+    }, adapter, logger);
 
     try {
       await app.close('SIGTERM');

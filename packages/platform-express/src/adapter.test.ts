@@ -4,11 +4,6 @@ import {
 } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { type AddressInfo, createServer as createNetServer } from 'node:net';
-
-import type { Request as ExpressRequest, Response as ExpressResponse } from 'express';
-
-import { describe, expect, it, vi } from 'vitest';
-
 import { Container } from '@fluojs/di';
 import {
   All,
@@ -16,33 +11,34 @@ import {
   Controller,
   createDispatcher,
   createHandlerMapping,
+  type FrameworkRequest,
+  type FrameworkResponse,
   Get,
+  type GuardContext,
   Header,
   HttpCode,
+  type InterceptorContext,
+  type MiddlewareContext,
   Post,
   Redirect,
+  type RequestContext,
+  type RequestObservationContext,
+  type RequestObserver,
   SseResponse,
   UseGuards,
   UseInterceptors,
   Version,
   VersioningType,
-  type FrameworkRequest,
-  type FrameworkResponse,
-  type GuardContext,
-  type InterceptorContext,
-  type MiddlewareContext,
-  type RequestObservationContext,
-  type RequestContext,
-  type RequestObserver,
 } from '@fluojs/http';
 import {
   createHealthModule,
   defineModule,
   FluoFactory,
   fluoFactory,
-  type ApplicationLogger,
 } from '@fluojs/runtime';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
+import type { Request as ExpressRequest, Response as ExpressResponse } from 'express';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   bootstrapExpressApplication,
@@ -954,17 +950,9 @@ describe('@fluojs/platform-express', () => {
   });
 
   it('reports the configured host in startup logs', async () => {
-    const loggerEvents: string[] = [];
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message: string, error: unknown, context?: string) {
-        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
-      },
-      log(message: string, context?: string) {
-        loggerEvents.push(`log:${context}:${message}`);
-      },
-      warn() {},
-    };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const stdoutIsTTY = process.stdout.isTTY;
+    Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: true });
 
     @Controller('/health')
     class HealthController {
@@ -983,7 +971,6 @@ describe('@fluojs/platform-express', () => {
     const app = await runExpressApplication(AppModule, {
       cors: false,
       host: '127.0.0.1',
-      logger,
       port,
     });
 
@@ -991,19 +978,15 @@ describe('@fluojs/platform-express', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(loggerEvents).toContain(`log:FluoFactory:Listening on http://127.0.0.1:${String(port)}`);
+    expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on http://127.0.0.1:${String(port)}`))).toBe(true);
+    expect(log.mock.calls.some(([message]) => String(message).includes('\u001b['))).toBe(true);
 
     await app.close();
+    Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: stdoutIsTTY });
+    log.mockRestore();
   });
 
   it('removes registered shutdown signal listeners after close', async () => {
-    const logger: ApplicationLogger = {
-      debug() {},
-      error() {},
-      log() {},
-      warn() {},
-    };
-
     @Controller('/health')
     class HealthController {
       @Get('/')
@@ -1022,7 +1005,6 @@ describe('@fluojs/platform-express', () => {
     const port = await findAvailablePort();
     const app = await runExpressApplication(AppModule, {
       cors: false,
-      logger,
       port,
       shutdownSignals: [signal],
     });
@@ -1695,17 +1677,7 @@ describe('@fluojs/platform-express', () => {
   });
 
   it('supports https startup and reports the https listen URL', async () => {
-    const loggerEvents: string[] = [];
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message: string, error: unknown, context?: string) {
-        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
-      },
-      log(message: string, context?: string) {
-        loggerEvents.push(`log:${context}:${message}`);
-      },
-      warn() {},
-    };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     @Controller('/health')
     class HealthController {
@@ -1728,7 +1700,6 @@ describe('@fluojs/platform-express', () => {
         cert: TEST_TLS_CERTIFICATE,
         key: TEST_TLS_PRIVATE_KEY,
       },
-      logger,
       port,
     });
 
@@ -1736,9 +1707,10 @@ describe('@fluojs/platform-express', () => {
 
     expect(response.statusCode).toBe(200);
     expect(JSON.parse(response.body)).toEqual({ ok: true });
-    expect(loggerEvents).toContain(`log:FluoFactory:Listening on https://127.0.0.1:${String(port)}`);
+    expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on https://127.0.0.1:${String(port)}`))).toBe(true);
 
     await app.close();
+    log.mockRestore();
   });
 
   it('keeps dispatcher until express close settles even when close() times out', async () => {
@@ -1978,17 +1950,7 @@ describe('@fluojs/platform-express', () => {
   it('marks shutdown timeout via exitCode without forcing process termination', async () => {
     vi.useFakeTimers();
 
-    const loggerEvents: string[] = [];
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message: string, error: unknown, context?: string) {
-        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
-      },
-      log(message: string, context?: string) {
-        loggerEvents.push(`log:${context}:${message}`);
-      },
-      warn() {},
-    };
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     @Controller('/health')
     class HealthController {
@@ -2009,7 +1971,6 @@ describe('@fluojs/platform-express', () => {
     const app = await runExpressApplication(AppModule, {
       cors: false,
       forceExitTimeoutMs: 25,
-      logger,
       port,
       shutdownSignals: ['SIGTERM'],
     });
@@ -2023,13 +1984,12 @@ describe('@fluojs/platform-express', () => {
 
       expect(exitSpy).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
-      expect(loggerEvents).toContain(
-        'error:FluoFactory:Shutdown timeout exceeded after 25ms; leaving process termination to the host.:none',
-      );
+      expect(errorLog.mock.calls.some(([message]) => String(message).includes('Shutdown timeout exceeded after 25ms; leaving process termination to the host.'))).toBe(true);
     } finally {
       app.close = originalClose;
       await app.close();
       exitSpy.mockRestore();
+      errorLog.mockRestore();
       process.exitCode = originalExitCode;
       vi.useRealTimers();
     }

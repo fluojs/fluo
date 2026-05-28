@@ -85,6 +85,10 @@ function shouldUseColor(stream: NodeJS.WriteStream, environment: ConsoleApplicat
     return true;
   }
 
+  if (typeof stream.hasColors === 'function') {
+    return stream.hasColors();
+  }
+
   return Boolean(stream.isTTY);
 }
 

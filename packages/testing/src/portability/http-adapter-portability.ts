@@ -1,7 +1,7 @@
 import { request as httpsRequest } from 'node:https';
 
-import { Controller, Get, Post, SseResponse, type RequestContext } from '@fluojs/http';
-import { defineModule, type ApplicationLogger, type ModuleType, type UploadedFile } from '@fluojs/runtime';
+import { Controller, Get, Post, type RequestContext, SseResponse } from '@fluojs/http';
+import { type ApplicationLogger, defineModule, type ModuleType, type UploadedFile } from '@fluojs/runtime';
 
 declare module '@fluojs/http' {
   interface FrameworkRequest {
@@ -113,6 +113,22 @@ async function requestHttps(url: string): Promise<{ body: string; statusCode: nu
     request.on('error', reject);
     request.end();
   });
+}
+
+function createConsoleLogCapture(): { messages: string[]; restore(): void } {
+  const messages: string[] = [];
+  const originalLog = console.log;
+
+  console.log = (...args: unknown[]) => {
+    messages.push(args.map((arg) => String(arg)).join(' '));
+  };
+
+  return {
+    messages,
+    restore() {
+      console.log = originalLog;
+    },
+  };
 }
 
 async function runWithCleanup(app: AppLike, adapterName: string, assertion: () => Promise<void>): Promise<void> {
@@ -586,17 +602,7 @@ export class HttpAdapterPortabilityHarness<
   }
 
   async assertReportsConfiguredHostInStartupLogs(): Promise<void> {
-    const loggerEvents: string[] = [];
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message: string, error: unknown, context?: string) {
-        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
-      },
-      log(message: string, context?: string) {
-        loggerEvents.push(`log:${context}:${message}`);
-      },
-      warn() {},
-    };
+    const log = createConsoleLogCapture();
 
     @Controller('/health')
     class HealthController {
@@ -614,41 +620,33 @@ export class HttpAdapterPortabilityHarness<
     const app = await this.options.run(AppModule, {
       cors: false,
       host: '127.0.0.1',
-      logger,
       port: 0,
     } as TRunOptions);
 
-    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
-      const response = await fetch(`${baseUrl}/health`);
+    try {
+      await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/health`);
 
-      if (response.status !== 200) {
-        throw new Error(`${this.options.name} adapter changed host-bound health response semantics.`);
-      }
+        if (response.status !== 200) {
+          throw new Error(`${this.options.name} adapter changed host-bound health response semantics.`);
+        }
 
-      const body = await response.json();
-      if (JSON.stringify(body) !== JSON.stringify({ ok: true })) {
-        throw new Error(`${this.options.name} adapter changed host-bound response payload.`);
-      }
+        const body = await response.json();
+        if (JSON.stringify(body) !== JSON.stringify({ ok: true })) {
+          throw new Error(`${this.options.name} adapter changed host-bound response payload.`);
+        }
 
-      const expectedLog = `log:FluoFactory:Listening on ${baseUrl}`;
-      if (!loggerEvents.includes(expectedLog)) {
-        throw new Error(`${this.options.name} adapter changed startup host logging.`);
-      }
-    });
+        if (!log.messages.some((message) => message.includes(`Listening on ${baseUrl}`))) {
+          throw new Error(`${this.options.name} adapter changed startup host logging.`);
+        }
+      });
+    } finally {
+      log.restore();
+    }
   }
 
   async assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void> {
-    const loggerEvents: string[] = [];
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message: string, error: unknown, context?: string) {
-        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
-      },
-      log(message: string, context?: string) {
-        loggerEvents.push(`log:${context}:${message}`);
-      },
-      warn() {},
-    };
+    const log = createConsoleLogCapture();
 
     @Controller('/health')
     class HealthController {
@@ -667,26 +665,28 @@ export class HttpAdapterPortabilityHarness<
       cors: false,
       host: '127.0.0.1',
       https,
-      logger,
       port: 0,
     } as TRunOptions);
 
-    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
-      const response = await requestHttps(`${baseUrl}/health`);
+    try {
+      await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
+        const response = await requestHttps(`${baseUrl}/health`);
 
-      if (response.statusCode !== 200) {
-        throw new Error(`${this.options.name} adapter changed HTTPS response status semantics.`);
-      }
+        if (response.statusCode !== 200) {
+          throw new Error(`${this.options.name} adapter changed HTTPS response status semantics.`);
+        }
 
-      if (JSON.stringify(JSON.parse(response.body)) !== JSON.stringify({ ok: true })) {
-        throw new Error(`${this.options.name} adapter changed HTTPS response payload semantics.`);
-      }
+        if (JSON.stringify(JSON.parse(response.body)) !== JSON.stringify({ ok: true })) {
+          throw new Error(`${this.options.name} adapter changed HTTPS response payload semantics.`);
+        }
 
-      const expectedLog = `log:FluoFactory:Listening on ${baseUrl}`;
-      if (!loggerEvents.includes(expectedLog)) {
-        throw new Error(`${this.options.name} adapter changed HTTPS startup logging.`);
-      }
-    });
+        if (!log.messages.some((message) => message.includes(`Listening on ${baseUrl}`))) {
+          throw new Error(`${this.options.name} adapter changed HTTPS startup logging.`);
+        }
+      });
+    } finally {
+      log.restore();
+    }
   }
 
   async assertRemovesShutdownSignalListenersAfterClose(): Promise<void> {

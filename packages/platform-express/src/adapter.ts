@@ -9,28 +9,21 @@ import {
 } from 'node:https';
 import type { AddressInfo, Socket } from 'node:net';
 import { Readable } from 'node:stream';
-
-import express, {
-  type Express,
-  type Request as ExpressRequest,
-  type Response as ExpressResponse,
-} from 'express';
-
 import {
   BadRequestException,
-  createServerBackedHttpAdapterRealtimeCapability,
-  createErrorResponse,
-  HttpException,
-  InternalServerErrorException,
-  PayloadTooLargeException,
   type CorsOptions,
+  createErrorResponse,
+  createServerBackedHttpAdapterRealtimeCapability,
   type Dispatcher,
   type FrameworkRequest,
   type FrameworkResponse,
   type FrameworkResponseStream,
   type HandlerDescriptor,
   type HttpApplicationAdapter,
+  HttpException,
+  InternalServerErrorException,
   type MiddlewareLike,
+  PayloadTooLargeException,
   type SecurityHeadersOptions,
 } from '@fluojs/http';
 import {
@@ -41,16 +34,20 @@ import {
 } from '@fluojs/http/internal';
 import type {
   Application,
-  ApplicationLogger,
   CreateApplicationOptions,
   ModuleType,
   MultipartOptions,
   UploadedFile,
 } from '@fluojs/runtime';
 import {
-  createNodeShutdownSignalRegistration,
-  defaultNodeShutdownSignals,
-} from '@fluojs/runtime/node';
+  bootstrapHttpAdapterApplication,
+  createConsoleApplicationLogger,
+  runHttpAdapterApplication,
+} from '@fluojs/runtime/internal/http-adapter';
+import {
+  dispatchWithRequestResponseFactory,
+  type RequestResponseFactory,
+} from '@fluojs/runtime/internal/request-response-factory';
 import {
   cloneRequestHeaders,
   createDeferredFrameworkRequestShell,
@@ -63,15 +60,16 @@ import {
   snapshotSimpleQueryRecord,
   splitRawRequestUrl,
 } from '@fluojs/runtime/internal-node';
+import {
+  createNodeShutdownSignalRegistration,
+  defaultNodeShutdownSignals,
+} from '@fluojs/runtime/node';
 import { parseMultipart } from '@fluojs/runtime/web';
-import {
-  bootstrapHttpAdapterApplication,
-  runHttpAdapterApplication,
-} from '@fluojs/runtime/internal/http-adapter';
-import {
-  dispatchWithRequestResponseFactory,
-  type RequestResponseFactory,
-} from '@fluojs/runtime/internal/request-response-factory';
+import express, {
+  type Express,
+  type Request as ExpressRequest,
+  type Response as ExpressResponse,
+} from 'express';
 
 declare module '@fluojs/http' {
   interface FrameworkRequest {
@@ -122,7 +120,6 @@ export interface BootstrapExpressApplicationOptions extends Omit<CreateApplicati
   globalPrefixExclude?: readonly string[];
   host?: string;
   https?: HttpsServerOptions;
-  logger?: ApplicationLogger;
   maxBodySize?: number;
   middleware?: MiddlewareLike[];
   multipart?: MultipartOptions;
@@ -537,10 +534,13 @@ export async function bootstrapExpressApplication(
   rootModule: ModuleType,
   options: BootstrapExpressApplicationOptions,
 ): Promise<Application> {
+  const logger = createConsoleApplicationLogger();
+
   return bootstrapHttpAdapterApplication(
     rootModule,
     options,
     createExpressAdapter(options, options.multipart),
+    logger,
   );
 }
 
@@ -555,13 +555,14 @@ export async function runExpressApplication(
   rootModule: ModuleType,
   options: RunExpressApplicationOptions,
 ): Promise<Application> {
+  const logger = createConsoleApplicationLogger();
   const adapter = createExpressAdapter(options, options.multipart) as ExpressHttpApplicationAdapter;
   return runHttpAdapterApplication(rootModule, {
     ...options,
     shutdownRegistration: createNodeShutdownSignalRegistration(
       options.shutdownSignals ?? defaultNodeShutdownSignals(),
     ),
-  }, adapter);
+  }, adapter, logger);
 }
 
 function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkResponse {

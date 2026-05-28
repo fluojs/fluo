@@ -1,7 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import { Global, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
-import { Controller, Convert, FromQuery, Get, RequestDto, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
+import { Controller, Convert, type FrameworkRequest, type FrameworkResponse, FromQuery, Get, RequestDto } from '@fluojs/http';
+import { describe, expect, it, vi } from 'vitest';
 
 import { bootstrapApplication, bootstrapModule, FluoFactory } from './bootstrap.js';
 import { DuplicateProviderError, ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
@@ -698,10 +697,8 @@ describe('FluoFactory.createApplicationContext', () => {
         ],
       });
 
-      const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
       const context = await FluoFactory.createApplicationContext(AppModule, {
         duplicateProviderPolicy,
-        logger,
       });
 
       const first = await context.get<{ id: number }>(CACHE_TOKEN);
@@ -724,10 +721,8 @@ describe('FluoFactory.createApplicationContext', () => {
       class AppModule {}
       defineRuntimeModuleMetadata(AppModule, {});
 
-      const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
       const context = await FluoFactory.createApplicationContext(AppModule, {
         duplicateProviderPolicy,
-        logger,
         providers: [
           {
             provide: CACHE_TOKEN,
@@ -1089,10 +1084,8 @@ describe('FluoFactory.createApplicationContext', () => {
         ],
       });
 
-      const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
       const context = await FluoFactory.createApplicationContext(AppModule, {
         duplicateProviderPolicy,
-        logger,
       });
 
       expect(events).toEqual(['winning:init', 'winning:bootstrap']);
@@ -1117,10 +1110,8 @@ describe('FluoFactory.createApplicationContext', () => {
       class AppModule {}
       defineRuntimeModuleMetadata(AppModule, {});
 
-      const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
       const context = await FluoFactory.createApplicationContext(AppModule, {
         duplicateProviderPolicy,
-        logger,
         providers: [
           {
             provide: LIFECYCLE_VALUE,
@@ -1205,10 +1196,8 @@ describe('FluoFactory.createApplicationContext', () => {
         ],
       });
 
-      const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
       const context = await FluoFactory.createApplicationContext(AppModule, {
         duplicateProviderPolicy,
-        logger,
       });
 
       expect(events).toEqual([]);
@@ -1228,10 +1217,8 @@ describe('FluoFactory.createApplicationContext', () => {
       class AppModule {}
       defineRuntimeModuleMetadata(AppModule, {});
 
-      const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
       const context = await FluoFactory.createApplicationContext(AppModule, {
         duplicateProviderPolicy,
-        logger,
         providers: [
           {
             provide: LIFECYCLE_VALUE,
@@ -1659,7 +1646,7 @@ describe('FluoFactory.createMicroservice', () => {
   it('preserves the original microservice bootstrap error when cleanup fails', async () => {
     const MICROSERVICE_TOKEN = Symbol.for('fluo.microservices.service');
     const cleanupFailure = new Error('cleanup failed');
-    const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     class CleanupHook {
       onModuleDestroy() {
@@ -1678,14 +1665,12 @@ describe('FluoFactory.createMicroservice', () => {
       ],
     });
 
-    await expect(FluoFactory.createMicroservice(AppModule, { logger })).rejects.toThrow(
+    await expect(FluoFactory.createMicroservice(AppModule)).rejects.toThrow(
       'Resolved microservice token does not implement listen().',
     );
-    expect(logger.error).toHaveBeenCalledWith(
-      'Failed to clean up after microservice bootstrap failure.',
-      cleanupFailure,
-      'FluoFactory',
-    );
+    expect(errorLog.mock.calls.some(([message]) => String(message).includes('Failed to clean up after microservice bootstrap failure.'))).toBe(true);
+    expect(errorLog.mock.calls.some(([message]) => message === cleanupFailure)).toBe(true);
+    errorLog.mockRestore();
   });
 
   it('supports hybrid composition with FluoFactory.create()', async () => {

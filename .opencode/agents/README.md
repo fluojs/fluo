@@ -35,7 +35,13 @@ permission:
     'git status*': allow
     'git diff*': allow
     'git log*': allow
+    'git show*': allow
     'git ls-files*': allow
+    'GIT_MASTER=1 git status*': allow
+    'GIT_MASTER=1 git diff*': allow
+    'GIT_MASTER=1 git log*': allow
+    'GIT_MASTER=1 git show*': allow
+    'GIT_MASTER=1 git ls-files*': allow
     # Prefer git ls-files for repeatable package file lists.
     # Add exact find commands only for observed safe read-only prompts.
 
@@ -96,7 +102,13 @@ permission:
     'git status*': allow
     'git diff*': allow
     'git log*': allow
+    'git show*': allow
     'git ls-files*': allow
+    'GIT_MASTER=1 git status*': allow
+    'GIT_MASTER=1 git diff*': allow
+    'GIT_MASTER=1 git log*': allow
+    'GIT_MASTER=1 git show*': allow
+    'GIT_MASTER=1 git ls-files*': allow
     # Prefer git ls-files for repeatable package file lists.
     # Add exact find commands only for observed safe read-only prompts.
 

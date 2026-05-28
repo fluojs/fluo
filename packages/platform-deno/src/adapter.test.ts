@@ -1,37 +1,35 @@
 import { readFileSync } from 'node:fs';
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
-
+import {
+  Controller,
+  type FrameworkRequest,
+  type FrameworkResponse,
+  Get,
+  Post,
+  type RequestContext,
+  SseResponse,
+} from '@fluojs/http';
+import { type Application, defineModule, type ModuleType } from '@fluojs/runtime';
+import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
+import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  Controller,
-  Get,
-  Post,
-  SseResponse,
-  type FrameworkRequest,
-  type FrameworkResponse,
-  type RequestContext,
-} from '@fluojs/http';
-import { defineModule, type Application, type ApplicationLogger, type ModuleType } from '@fluojs/runtime';
-import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
-import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
-
-import {
-  bootstrapDenoApplication,
   type BootstrapDenoApplicationOptions,
-  DenoHttpApplicationAdapter,
+  bootstrapDenoApplication,
   createDenoAdapter,
-  runDenoApplication,
-  type RunDenoApplicationOptions,
+  DenoHttpApplicationAdapter,
   type DenoServeController,
   type DenoServeFunction,
   type DenoServeHandler,
-  type DenoServerWebSocket,
   type DenoServeOptions,
+  type DenoServerWebSocket,
+  type DenoUpgradeWebSocketFunction,
   type DenoWebSocketBinding,
   type DenoWebSocketMessage,
-  type DenoUpgradeWebSocketFunction,
+  type RunDenoApplicationOptions,
+  runDenoApplication,
 } from './adapter.js';
 
 const TEST_TLS_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
@@ -496,24 +494,16 @@ describe('@fluojs/platform-deno', () => {
     defineModule(AppModule, {});
 
     const server = createServeStub();
-    const logger: ApplicationLogger = {
-      debug() {},
-      error() {},
-      log: vi.fn(),
-      warn() {},
-    };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     const app = await runDenoApplication(AppModule, {
-      logger,
       serve: server.serve,
     });
 
-    expect(logger.log).toHaveBeenCalledWith(
-      'Listening on http://localhost:3000 (bound to 0.0.0.0:3000)',
-      'FluoFactory',
-    );
+    expect(log.mock.calls.some(([message]) => String(message).includes('Listening on http://localhost:3000 (bound to 0.0.0.0:3000)'))).toBe(true);
 
     await app.close();
+    log.mockRestore();
   });
 
   it('forwards HTTPS certificate options to Deno.serve and reports an HTTPS listen target', async () => {
@@ -521,12 +511,7 @@ describe('@fluojs/platform-deno', () => {
     defineModule(AppModule, {});
 
     const server = createServeStub();
-    const logger: ApplicationLogger = {
-      debug() {},
-      error() {},
-      log: vi.fn(),
-      warn() {},
-    };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     const app = await runDenoApplication(AppModule, {
       hostname: '127.0.0.1',
@@ -534,7 +519,6 @@ describe('@fluojs/platform-deno', () => {
         cert: TEST_TLS_CERTIFICATE,
         key: TEST_TLS_PRIVATE_KEY,
       },
-      logger,
       port: 3443,
       serve: server.serve,
     });
@@ -545,12 +529,10 @@ describe('@fluojs/platform-deno', () => {
       key: TEST_TLS_PRIVATE_KEY,
       port: 3443,
     });
-    expect(logger.log).toHaveBeenCalledWith(
-      'Listening on https://127.0.0.1:3443',
-      'FluoFactory',
-    );
+    expect(log.mock.calls.some(([message]) => String(message).includes('Listening on https://127.0.0.1:3443'))).toBe(true);
 
     await app.close();
+    log.mockRestore();
   });
 
   it('satisfies the shared HTTPS startup portability expectation', async () => {

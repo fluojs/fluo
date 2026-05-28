@@ -214,7 +214,7 @@ describe('changedPublicExportSourcePathsFromGit', () => {
       ' */',
       'export class ExampleService {',
       '  greet(name: string, locale: string): string {',
-      "    return `${locale}:${name}`;",
+      `    return \`\${locale}:\${name}\`;`,
       '  }',
       '}',
       '',

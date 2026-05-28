@@ -1,21 +1,19 @@
 import { readFileSync } from 'node:fs';
-
+import { All, Controller, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkResponse, Get, Header, HttpCode, Post, Redirect, type RequestContext, SseResponse, Version, VersioningType } from '@fluojs/http';
+import { defineModule } from '@fluojs/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { All, Controller, createDispatcher, createHandlerMapping, Get, Header, HttpCode, Post, Redirect, SseResponse, Version, VersioningType, type FrameworkRequest, type FrameworkResponse, type RequestContext } from '@fluojs/http';
-import { defineModule, type ApplicationLogger } from '@fluojs/runtime';
-
 import {
-  bootstrapBunApplication,
-  BunHttpApplicationAdapter,
-  createBunAdapter,
-  createBunFetchHandler,
-  runBunApplication,
   type BootstrapBunApplicationOptions,
+  BunHttpApplicationAdapter,
   type BunServeOptions,
   type BunServerLike,
   type BunServerWebSocket,
   type BunWebSocketBinding,
+  bootstrapBunApplication,
+  createBunAdapter,
+  createBunFetchHandler,
+  runBunApplication,
 } from './adapter.js';
 
 type MockBunServer = BunServerLike & {
@@ -1206,17 +1204,7 @@ describe('@fluojs/platform-bun', () => {
   });
 
   it('logs listen target and removes registered shutdown listeners on close', async () => {
-    const loggerEvents: string[] = [];
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message: string, error: unknown, context?: string) {
-        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
-      },
-      log(message: string, context?: string) {
-        loggerEvents.push(`log:${context}:${message}`);
-      },
-      warn() {},
-    };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const mockBun = installMockBun();
 
     @Controller('/health')
@@ -1234,7 +1222,6 @@ describe('@fluojs/platform-bun', () => {
     const listenersBefore = process.listeners(signal).length;
     const app = await runBunApplication(AppModule, {
       hostname: '127.0.0.1',
-      logger,
       port: 4312,
       shutdownSignals: [signal],
     });
@@ -1244,25 +1231,18 @@ describe('@fluojs/platform-bun', () => {
 
       expect(response?.status).toBe(200);
       await expect(response?.json()).resolves.toEqual({ ok: true });
-      expect(loggerEvents).toContain('log:FluoFactory:Listening on http://127.0.0.1:4312');
+      expect(log.mock.calls.some(([message]) => String(message).includes('Listening on http://127.0.0.1:4312'))).toBe(true);
       expect(process.listeners(signal).length).toBe(listenersBefore + 1);
     } finally {
       await app.close();
+      log.mockRestore();
     }
 
     expect(process.listeners(signal).length).toBe(listenersBefore);
   });
 
   it('forwards TLS options and reports the HTTPS listen target', async () => {
-    const loggerEvents: string[] = [];
-    const logger: ApplicationLogger = {
-      debug() {},
-      error() {},
-      log(message: string, context?: string) {
-        loggerEvents.push(`log:${context}:${message}`);
-      },
-      warn() {},
-    };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const mockBun = installMockBun();
     const tls = { cert: 'test-cert', key: 'test-key' };
 
@@ -1279,7 +1259,6 @@ describe('@fluojs/platform-bun', () => {
 
     const app = await runBunApplication(AppModule, {
       hostname: '127.0.0.1',
-      logger,
       port: 4314,
       tls,
     });
@@ -1287,24 +1266,17 @@ describe('@fluojs/platform-bun', () => {
     try {
       expect(mockBun.lastOptions?.tls).toBe(tls);
       expect(mockBun.lastServer?.url?.origin).toBe('https://127.0.0.1:4314');
-      expect(loggerEvents).toContain('log:FluoFactory:Listening on https://127.0.0.1:4314');
+      expect(log.mock.calls.some(([message]) => String(message).includes('Listening on https://127.0.0.1:4314'))).toBe(true);
     } finally {
       await app.close();
+      log.mockRestore();
     }
   });
 
   it('marks shutdown timeout via exitCode without forcing process termination', async () => {
     vi.useFakeTimers();
 
-    const loggerEvents: string[] = [];
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message: string, error: unknown, context?: string) {
-        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
-      },
-      log() {},
-      warn() {},
-    };
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const mockBun = installMockBun();
 
     @Controller('/health')
@@ -1323,7 +1295,6 @@ describe('@fluojs/platform-bun', () => {
     const app = await runBunApplication(AppModule, {
       forceExitTimeoutMs: 25,
       hostname: '127.0.0.1',
-      logger,
       port: 4313,
       shutdownSignals: ['SIGTERM'],
     });
@@ -1339,13 +1310,12 @@ describe('@fluojs/platform-bun', () => {
 
       expect(exitSpy).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
-      expect(loggerEvents).toContain(
-        'error:FluoFactory:Shutdown timeout exceeded after 25ms; leaving process termination to the host.:none',
-      );
+      expect(errorLog.mock.calls.some(([message]) => String(message).includes('Shutdown timeout exceeded after 25ms; leaving process termination to the host.'))).toBe(true);
     } finally {
       app.close = originalClose;
       await app.close();
       exitSpy.mockRestore();
+      errorLog.mockRestore();
       process.exitCode = originalExitCode;
       vi.useRealTimers();
     }

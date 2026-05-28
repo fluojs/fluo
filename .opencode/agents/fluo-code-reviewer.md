@@ -10,14 +10,23 @@ permission:
   edit: deny
   bash:
     '*': ask
+    'find *': deny
+    'xargs *': deny
     'git status*': allow
     'git diff*': allow
     'git log*': allow
+    'git show*': allow
     'git ls-files*': allow
-    'sort': allow
+    'GIT_MASTER=1 git status*': allow
+    'GIT_MASTER=1 git diff*': allow
+    'GIT_MASTER=1 git log*': allow
+    'GIT_MASTER=1 git show*': allow
+    'GIT_MASTER=1 git ls-files*': allow
+    'sort*': allow
     'gh pr view*': allow
     'gh pr diff*': allow
     'gh pr checks*': allow
+    'gh run view*': allow
     'gh issue view*': allow
     'gh issue list*': allow
     'gh label list*': allow

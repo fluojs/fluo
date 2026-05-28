@@ -1,29 +1,27 @@
-import { createServer } from 'node:net';
 import { request as httpsRequest } from 'node:https';
-
-import { afterEach, describe, expect, it, vi } from 'vitest';
-
+import { createServer } from 'node:net';
 import { Inject, Scope } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import {
   Controller,
-  FromBody,
-  FromQuery,
-  FromCookie,
-  Get,
-  Post,
-  Version,
-  VersioningType,
-  SseResponse,
+  type Converter,
   createSecurityHeadersMiddleware,
-  type RequestContext,
-  RequestDto,
   type FrameworkRequest,
   type FrameworkResponse,
+  FromBody,
+  FromCookie,
+  FromQuery,
+  Get,
   type HttpApplicationAdapter,
-  type Converter,
+  Post,
+  type RequestContext,
+  RequestDto,
+  SseResponse,
+  Version,
+  VersioningType,
 } from '@fluojs/http';
 import { Exclude, Expose, SerializerInterceptor } from '@fluojs/serialization';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapApplication, defineModule, FluoFactory } from './bootstrap.js';
 import { ModuleInjectionMetadataError } from './errors.js';
 import { createHealthModule } from './health/health.js';
@@ -1286,17 +1284,7 @@ describe('bootstrapApplication', () => {
   });
 
   it('runs node applications with runtime-owned defaults', async () => {
-    const loggerEvents: string[] = [];
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message, error, context) {
-        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
-      },
-      log(message, context) {
-        loggerEvents.push(`log:${context}:${message}`);
-      },
-      warn() {},
-    };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     @Controller('/health')
     class HealthController {
@@ -1313,7 +1301,6 @@ describe('bootstrapApplication', () => {
 
     const port = await findAvailablePort();
     const app = await runNodeApplication(AppModule, {
-      logger,
       port,
     });
 
@@ -1328,23 +1315,14 @@ describe('bootstrapApplication', () => {
     // CORS is opt-in — without explicit cors option, no CORS middleware is applied
     expect(corsPreflight.status).toBe(404);
     expect(corsPreflight.headers.get('access-control-allow-origin')).toBeNull();
-    expect(loggerEvents.some((event) => event.includes(`Listening on http://localhost:${String(port)}`))).toBe(true);
+    expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on http://localhost:${String(port)}`))).toBe(true);
 
     await app.close();
+    log.mockRestore();
   });
 
   it('reports the configured host in the startup log', async () => {
-    const loggerEvents: string[] = [];
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message, error, context) {
-        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
-      },
-      log(message, context) {
-        loggerEvents.push(`log:${context}:${message}`);
-      },
-      warn() {},
-    };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     @Controller('/health')
     class HealthController {
@@ -1363,7 +1341,6 @@ describe('bootstrapApplication', () => {
     const app = await runNodeApplication(AppModule, {
       cors: false,
       host: '127.0.0.1',
-      logger,
       port,
     });
 
@@ -1371,19 +1348,13 @@ describe('bootstrapApplication', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(loggerEvents).toContain(`log:FluoFactory:Listening on http://127.0.0.1:${String(port)}`);
+    expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on http://127.0.0.1:${String(port)}`))).toBe(true);
 
     await app.close();
+    log.mockRestore();
   });
 
   it('removes registered shutdown signal listeners after close', async () => {
-    const logger: ApplicationLogger = {
-      debug() {},
-      error() {},
-      log() {},
-      warn() {},
-    };
-
     @Controller('/health')
     class HealthController {
       @Get('/')
@@ -1402,7 +1373,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await runNodeApplication(AppModule, {
       cors: false,
-      logger,
       port,
       shutdownSignals: [signal],
     });
@@ -1417,15 +1387,7 @@ describe('bootstrapApplication', () => {
   it('marks signal-driven shutdown timeouts without terminating the host process directly', async () => {
     vi.useFakeTimers();
 
-    const loggerEvents: string[] = [];
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message, error, context) {
-        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
-      },
-      log() {},
-      warn() {},
-    };
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     @Controller('/health')
     class HealthController {
@@ -1445,7 +1407,6 @@ describe('bootstrapApplication', () => {
     const app = await runNodeApplication(AppModule, {
       cors: false,
       forceExitTimeoutMs: 25,
-      logger,
       port,
       shutdownSignals: ['SIGTERM'],
     });
@@ -1458,12 +1419,11 @@ describe('bootstrapApplication', () => {
       await vi.advanceTimersByTimeAsync(26);
 
       expect(process.exitCode).toBe(1);
-      expect(loggerEvents).toContain(
-        'error:FluoFactory:Shutdown timeout exceeded after 25ms; leaving process termination to the host.:none',
-      );
+      expect(errorLog.mock.calls.some(([message]) => String(message).includes('Shutdown timeout exceeded after 25ms; leaving process termination to the host.'))).toBe(true);
     } finally {
       app.close = originalClose;
       await app.close();
+      errorLog.mockRestore();
       process.exitCode = originalExitCode;
       vi.useRealTimers();
     }
@@ -1472,19 +1432,11 @@ describe('bootstrapApplication', () => {
   it('marks signal-driven shutdown failures without terminating the host process directly', async () => {
     const shutdownLogged = createDeferred<void>();
     const shutdownError = new Error('close failed');
-    const loggerEvents: string[] = [];
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message, error, context) {
-        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
-
-        if (message === 'Failed to shut down the application cleanly.') {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation((message: unknown) => {
+        if (String(message).includes('Failed to shut down the application cleanly.')) {
           shutdownLogged.resolve();
         }
-      },
-      log() {},
-      warn() {},
-    };
+      });
 
     @Controller('/health')
     class HealthController {
@@ -1503,7 +1455,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await runNodeApplication(AppModule, {
       cors: false,
-      logger,
       port,
       shutdownSignals: ['SIGTERM'],
     });
@@ -1520,26 +1471,17 @@ describe('bootstrapApplication', () => {
 
       expect(observedSignal).toBe('SIGTERM');
       expect(process.exitCode).toBe(1);
-      expect(loggerEvents).toContain('error:FluoFactory:Failed to shut down the application cleanly.:close failed');
+      expect(errorLog.mock.calls.some(([message]) => String(message).includes('Failed to shut down the application cleanly.'))).toBe(true);
     } finally {
       app.close = originalClose;
       await app.close();
+      errorLog.mockRestore();
       process.exitCode = originalExitCode;
     }
   });
 
   it('supports https startup and reports the https listen URL', async () => {
-    const loggerEvents: string[] = [];
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message, error, context) {
-        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
-      },
-      log(message, context) {
-        loggerEvents.push(`log:${context}:${message}`);
-      },
-      warn() {},
-    };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     @Controller('/health')
     class HealthController {
@@ -1562,7 +1504,6 @@ describe('bootstrapApplication', () => {
         cert: TEST_TLS_CERTIFICATE,
         key: TEST_TLS_PRIVATE_KEY,
       },
-      logger,
       port,
     });
 
@@ -1570,23 +1511,14 @@ describe('bootstrapApplication', () => {
 
     expect(response.statusCode).toBe(200);
     expect(JSON.parse(response.body)).toEqual({ ok: true });
-    expect(loggerEvents).toContain(`log:FluoFactory:Listening on https://127.0.0.1:${String(port)}`);
+    expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on https://127.0.0.1:${String(port)}`))).toBe(true);
 
     await app.close();
+    log.mockRestore();
   });
 
   it('reports both a friendly localhost URL and the bind target for wildcard hosts', async () => {
-    const loggerEvents: string[] = [];
-    const logger: ApplicationLogger = {
-      debug() {},
-      error(message, error, context) {
-        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
-      },
-      log(message, context) {
-        loggerEvents.push(`log:${context}:${message}`);
-      },
-      warn() {},
-    };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     @Controller('/health')
     class HealthController {
@@ -1605,7 +1537,6 @@ describe('bootstrapApplication', () => {
     const app = await runNodeApplication(AppModule, {
       cors: false,
       host: '0.0.0.0',
-      logger,
       port,
     });
 
@@ -1614,11 +1545,12 @@ describe('bootstrapApplication', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true });
 
-    const listenEvent = loggerEvents.find((event) => event.includes(`Listening on http://localhost:${String(port)}`));
+    const listenEvent = log.mock.calls.find(([message]) => String(message).includes(`Listening on http://localhost:${String(port)}`));
     expect(listenEvent).toBeDefined();
-    expect(listenEvent).toContain('bound to');
+    expect(String(listenEvent?.[0])).toContain('bound to');
 
     await app.close();
+    log.mockRestore();
   });
 
   it('applies a global prefix to application routes and runtime-owned paths by default', async () => {

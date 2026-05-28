@@ -436,12 +436,6 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
 
     const context = await FluoFactory.createApplicationContext(rootModule, {
       diagnostics: parsed.timing || parsed.report ? { timing: true } : undefined,
-      logger: {
-        debug() {},
-        error() {},
-        log() {},
-        warn() {},
-      },
     });
 
     try {

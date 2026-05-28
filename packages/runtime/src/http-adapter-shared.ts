@@ -1,16 +1,16 @@
 import {
+  type CorsOptions,
   createCorsMiddleware,
   createErrorResponse,
   createSecurityHeadersMiddleware,
-  matchRoutePattern,
-  normalizeRoutePattern,
-  NotFoundException,
-  type CorsOptions,
   type FrameworkResponse,
   type HttpApplicationAdapter,
   type MiddlewareContext,
   type MiddlewareLike,
+  matchRoutePattern,
   type Next,
+  NotFoundException,
+  normalizeRoutePattern,
   type SecurityHeadersOptions,
 } from '@fluojs/http';
 
@@ -53,10 +53,8 @@ export interface HttpAdapterMiddlewareOptions {
  * Options for bootstrapping an HTTP adapter application.
  */
 export interface BootstrapHttpAdapterApplicationOptions
-  extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'>,
+  extends Omit<CreateApplicationOptions, 'adapter' | 'middleware'>,
     HttpAdapterMiddlewareOptions {
-  /** Optional custom application logger. */
-  logger?: ApplicationLogger;
 }
 
 /**
@@ -88,17 +86,19 @@ type ManagedHttpApplicationAdapter = HttpApplicationAdapter & {
  * @param rootModule The root application module class.
  * @param options Bootstrap configuration for middleware and logging.
  * @param adapter The HTTP platform adapter to use.
+ * @param logger Logger instance used for bootstrap diagnostics.
  * @returns A promise that resolves to the initialized application instance.
  */
 export async function bootstrapHttpAdapterApplication(
   rootModule: ModuleType,
   options: BootstrapHttpAdapterApplicationOptions,
   adapter: HttpApplicationAdapter,
+  logger: ApplicationLogger = createDefaultApplicationLogger(),
 ): Promise<Application> {
   return bootstrapApplication({
     ...options,
     adapter,
-    logger: options.logger ?? createDefaultApplicationLogger(),
+    logger,
     middleware: createHttpAdapterMiddleware(options),
     rootModule,
   });
@@ -149,14 +149,15 @@ export function formatHttpAdapterListenMessage(target: HttpAdapterListenTarget):
  * @param rootModule - The root application module class.
  * @param options - Run configuration including shutdown and logging settings.
  * @param adapter - The managed HTTP platform adapter to use.
+ * @param logger - Logger instance used for runtime diagnostics.
  * @returns A promise that resolves to the running application instance.
  */
 export async function runHttpAdapterApplication(
   rootModule: ModuleType,
   options: RunHttpAdapterApplicationOptions,
   adapter: ManagedHttpApplicationAdapter,
+  logger: ApplicationLogger = createDefaultApplicationLogger(),
 ): Promise<Application> {
-  const logger = options.logger ?? createDefaultApplicationLogger();
   const app = await bootstrapApplication({
     ...options,
     adapter,

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { initializeGitRepository, installDependencies } from './install.js';
 import { resolvePackageSpecs } from './package-spec-resolver.js';
-import { resolveBootstrapPlan, type ResolvedBootstrapPlan } from './resolver.js';
+import { type ResolvedBootstrapPlan, resolveBootstrapPlan } from './resolver.js';
 import type { StarterScaffoldRecipeId } from './starter-profiles.js';
 import type { BootstrapOptions, PackageManager } from './types.js';
 
@@ -58,6 +58,7 @@ type ApplicationStarterDescriptor = {
   entrypoint: 'src/main.ts' | 'src/worker.ts';
   packageName?: '@fluojs/platform-bun' | '@fluojs/platform-cloudflare-workers' | '@fluojs/platform-deno' | '@fluojs/platform-express' | '@fluojs/platform-fastify' | '@fluojs/platform-nodejs';
   platformLabel: string;
+  runHelper?: string;
   runtimeLabel: string;
 };
 
@@ -69,6 +70,7 @@ function describeApplicationStarter(options: Pick<BootstrapOptions, 'platform' |
       entrypoint: 'src/main.ts',
       packageName: '@fluojs/platform-bun',
       platformLabel: 'Bun native HTTP',
+      runHelper: 'runBunApplication',
       runtimeLabel: 'Bun runtime',
     };
   }
@@ -99,6 +101,7 @@ function describeApplicationStarter(options: Pick<BootstrapOptions, 'platform' |
         entrypoint: 'src/main.ts',
         packageName: '@fluojs/platform-express',
         platformLabel: 'Express HTTP',
+        runHelper: 'runExpressApplication',
         runtimeLabel: 'Node.js runtime',
       };
     case 'nodejs':
@@ -108,6 +111,7 @@ function describeApplicationStarter(options: Pick<BootstrapOptions, 'platform' |
         entrypoint: 'src/main.ts',
         packageName: '@fluojs/platform-nodejs',
         platformLabel: 'raw Node.js HTTP',
+        runHelper: 'runNodejsApplication',
         runtimeLabel: 'Node.js runtime',
       };
     default:
@@ -117,6 +121,7 @@ function describeApplicationStarter(options: Pick<BootstrapOptions, 'platform' |
         entrypoint: 'src/main.ts',
         packageName: '@fluojs/platform-fastify',
         platformLabel: 'Fastify HTTP',
+        runHelper: 'runFastifyApplication',
         runtimeLabel: 'Node.js runtime',
       };
   }
@@ -465,7 +470,9 @@ function createHttpCommandsSection(options: BootstrapOptions): string {
 function createHttpProjectReadme(options: BootstrapOptions): string {
   const starter = describeApplicationStarter(options);
   const entrypointLabel = starter.entrypoint;
-  const starterContract = options.runtime === 'deno'
+  const starterContract = starter.runHelper
+    ? `\`${entrypointLabel}\` boots the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`${starter.runHelper}(...)\``
+    : options.runtime === 'deno'
     ? `\`${entrypointLabel}\` boots the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`runDenoApplication(...)\``
     : options.runtime === 'cloudflare-workers'
       ? `\`${entrypointLabel}\` exports the selected first-class application starter: ${starter.runtimeLabel} + ${starter.platformLabel} via \`createCloudflareWorkerEntrypoint(...)\``
@@ -474,7 +481,9 @@ function createHttpProjectReadme(options: BootstrapOptions): string {
     ? '- CORS: defaults to allowOrigin `*`; pass a `cors` option to `createCloudflareWorkerEntrypoint(..., { cors })` when you need edge-specific restrictions'
     : options.runtime === 'deno'
       ? '- CORS: defaults to allowOrigin `*`; configure it through the Deno HTTP bootstrap path before exposing the adapter in production'
-      : `- CORS: defaults to allowOrigin '*'; pass a \`cors\` option to \`FluoFactory.create(..., { cors, adapter: ${starter.adapterFactory}(...) })\` to restrict origins`;
+      : starter.runHelper
+        ? `- CORS: defaults to allowOrigin '*'; pass a \`cors\` option to \`${starter.runHelper}(..., { cors })\` to restrict origins`
+        : `- CORS: defaults to allowOrigin '*'; pass a \`cors\` option to \`FluoFactory.create(..., { cors, adapter: ${starter.adapterFactory}(...) })\` to restrict origins`;
   const testingSection = options.runtime === 'deno'
     ? `## Official generated testing templates\n\n- \`src/app.test.ts\` — Deno-native integration-style dispatch verification for the generated runtime + starter routes.\n\nUse this test when you need confidence that the generated Deno entrypoint and module graph still agree on the same HTTP contract.`
     : `## Official generated testing templates\n\n- \`src/greeting/greeting.repo.test.ts\`, \`src/greeting/greeting.service.test.ts\`, and \`src/greeting/greeting.controller.test.ts\` — unit templates for the starter-owned greeting slice.\n- \`src/greeting/greeting.slice.test.ts\` — module/slice template via \`createTestingModule\` for real DI graph confidence.\n- \`src/app.test.ts\` — integration-style dispatch template for runtime + starter routes.\n- \`test/app.e2e.test.ts\` — default HTTP/e2e-style template powered by \`createTestApp\` and \`app.request(...).send()\` from \`@fluojs/testing\`; older \`src/app.e2e.test.ts\` tests can be moved here without changing the request helper.\n- \`${createExecCommand(options.packageManager, 'fluo g repo User')}\` also adds:\n  - \`src/users/user.repo.test.ts\` (unit template)\n  - \`src/users/user.repo.slice.test.ts\` (slice/integration template via \`createTestingModule\`)\n\nUse unit templates for fast logic checks, \`${createRunCommand(options.packageManager, 'test:e2e')}\` for the dedicated request-level e2e suite, and \`${createRunCommand(options.packageManager, 'test:cov')}\` when your Vitest runtime supports coverage.`;
@@ -931,14 +940,18 @@ export default {
   const portExpression = options.runtime === 'bun'
     ? "Bun.env.PORT ?? '3000'"
     : "process.env.PORT ?? '3000'";
-  const loggerGuidance = options.runtime === 'node'
-    ? `
-// Application logging defaults to the pretty console logger when logger is omitted.
-// JSON logs are opt-in:
-// import { createJsonApplicationLogger } from '@fluojs/runtime/node';
-// Then pass \`logger: createJsonApplicationLogger()\` to FluoFactory.create(...).
-`
-    : '';
+
+  if (starter.runHelper) {
+    return `import { ${starter.runHelper} } from '${starter.packageName}';
+
+import { AppModule } from './app';
+
+const parsedPort = Number.parseInt(${portExpression}, 10);
+const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
+
+await ${starter.runHelper}(AppModule, { port });
+`;
+  }
 
   return `import { ${starter.adapterFactory} } from '${starter.packageName}';
 import { FluoFactory } from '@fluojs/runtime';
@@ -947,7 +960,6 @@ import { AppModule } from './app';
 
 // The generated starter wires the selected first-class fluo new application path:
 // ${starter.runtimeLabel} + ${starter.platformLabel} via ${starter.adapterFactory}(...).
-${loggerGuidance}
 
 const parsedPort = Number.parseInt(${portExpression}, 10);
 const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
@@ -1783,17 +1795,14 @@ export class AppModule {}
 }
 
 function createMixedMainFile(): string {
-  return `import { createFastifyAdapter } from '@fluojs/platform-fastify';
-import { FluoFactory } from '@fluojs/runtime';
+  return `import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
 
 import { AppModule } from './app';
 
 const parsedPort = Number.parseInt(process.env.PORT ?? '3000', 10);
 const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
 
-const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({ port }),
-});
+const app = await bootstrapFastifyApplication(AppModule, { port });
 await app.connectMicroservice();
 await app.startAllMicroservices();
 await app.listen();
