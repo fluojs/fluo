@@ -126,6 +126,7 @@ Decorated metadata가 없는 class instance도 재귀적으로 순회하므로, 
 - **데코레이터**: `Expose`, `Exclude`, `Transform`
 - **엔진**: `serialize(value)`는 class instance, 배열, plain object, mixed graph를 재귀적으로 순회하며, 직접 transform하지 않은 opaque built-in 및 non-JSON leaf 값은 보존합니다.
 - **HTTP 통합**: `SerializerInterceptor`는 아직 commit되지 않은 handler 결과를 직렬화하고, response가 이미 commit된 뒤에는 handler 소유 값을 그대로 반환합니다.
+- **타입**: `TransformFunction`은 `Transform(...)`에 전달하는 callback 타입으로 root entrypoint에서 export됩니다.
 
 `Expose`는 class와 field에 적용할 수 있습니다. `Exclude`와 `Transform`은 field에 적용합니다.
 

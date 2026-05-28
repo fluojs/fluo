@@ -2,14 +2,13 @@ import type {
   Constructor,
   MetadataPropertyKey,
 } from '@fluojs/core';
-import {
-  ensureMetadataSymbol,
-  type ClassValidationRule,
-  type CustomClassValidator,
-  type CustomFieldValidator,
-  type CustomValidationDecoratorOptions,
-  type DtoFieldValidationRule,
-  type ValidationDecoratorOptions,
+import type {
+  ClassValidationRule,
+  CustomClassValidator,
+  CustomFieldValidator,
+  CustomValidationDecoratorOptions,
+  DtoFieldValidationRule,
+  ValidationDecoratorOptions,
 } from '@fluojs/core/internal';
 
 import { createClassValidatorFromStandardSchema, isStandardSchemaLike, type StandardSchemaV1Like } from './standard-schema.js';
@@ -22,8 +21,6 @@ type ValidateClassInput = CustomClassValidator | StandardSchemaV1Like;
 
 const standardDtoValidationMetadataKey = Symbol.for('fluo.standard.dto-validation');
 const standardClassValidationMetadataKey = Symbol.for('fluo.standard.class-validation');
-
-ensureMetadataSymbol();
 
 function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
   if (metadata === null || metadata === undefined) {

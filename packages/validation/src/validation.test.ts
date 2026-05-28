@@ -2,10 +2,11 @@ import { type } from 'arktype';
 import { email, object, pipe, string } from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { defineDtoFieldBindingMetadata } from '@fluojs/core/internal';
 
 import { DefaultValidator } from './validation.js';
 import { DtoValidationError } from './errors.js';
-import { ArrayUnique, IsDateString, IsEmail, IsIP, IsLatitude, IsLongitude, IsNotEmpty, IsNumber, IsString, MinLength, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
+import { ArrayMinSize, ArrayNotEmpty, ArrayUnique, Contains, IsArray, IsBoolean, IsDateString, IsEmail, IsEnum, IsInt, IsIP, IsLatitude, IsLongitude, IsNotEmpty, IsNumber, IsNumberString, IsString, IsUrl, IsUUID, Length, Matches, Max, Min, MinLength, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
 import type { StandardSchemaV1Like } from './index.js';
 
 describe('DefaultValidator', () => {
@@ -142,6 +143,112 @@ describe('DefaultValidator', () => {
 
     expect(result).toBeInstanceOf(CreateUserDto);
     expect(result.email).toBe('hello@example.com');
+  });
+
+  it('validates plain root objects without scalar coercion', async () => {
+    class SearchDto {
+      @IsNumber({ message: 'page must be numeric' })
+      page = 0;
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(validator.validate({ page: 1 }, SearchDto)).resolves.toBeUndefined();
+    await expect(validator.validate({ page: '1' }, SearchDto)).rejects.toMatchObject({
+      issues: [{ field: 'page', message: 'page must be numeric' }],
+    });
+  });
+
+  it('propagates request binding sources into validation issues', async () => {
+    class SearchDto {
+      @IsEmail({ message: 'email must be valid' })
+      email = '';
+    }
+
+    defineDtoFieldBindingMetadata(SearchDto.prototype, 'email', {
+      key: 'email',
+      source: 'query',
+    });
+
+    const validator = new DefaultValidator();
+
+    await expect(validator.validate({ email: 'bad-email' }, SearchDto)).rejects.toMatchObject({
+      issues: [{ field: 'email', message: 'email must be valid', source: 'query' }],
+    });
+  });
+
+  it('covers representative documented validators with pass and fail contracts', async () => {
+    enum Role {
+      Admin = 'admin',
+      User = 'user',
+    }
+
+    class DocumentedValidatorsDto {
+      @IsBoolean({ message: 'active must be boolean' })
+      active = true;
+
+      @IsInt({ message: 'count must be integer' })
+      @Min(1, { message: 'count must be at least one' })
+      @Max(10, { message: 'count must be at most ten' })
+      count = 1;
+
+      @IsEnum(Role, { message: 'role must be supported' })
+      role = Role.User;
+
+      @Length(3, 8, { message: 'slug length must be bounded' })
+      @Contains('-', { message: 'slug must contain a dash' })
+      @Matches(/^[a-z-]+$/, { message: 'slug must be lowercase words' })
+      slug = 'fluo-api';
+
+      @IsUrl({ message: 'homepage must be a URL' })
+      homepage = 'https://fluo.dev';
+
+      @IsUUID('4', { message: 'id must be a UUID v4' })
+      id = '550e8400-e29b-41d4-a716-446655440000';
+
+      @IsNumberString({ message: 'port must be numeric text' })
+      port = '3000';
+
+      @IsArray({ message: 'tags must be an array' })
+      @ArrayNotEmpty({ message: 'tags must not be empty' })
+      @ArrayMinSize(2, { message: 'tags must include at least two entries' })
+      tags = ['api', 'http'];
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(validator.validate(new DocumentedValidatorsDto(), DocumentedValidatorsDto)).resolves.toBeUndefined();
+
+    await expect(
+      validator.validate(
+        Object.assign(new DocumentedValidatorsDto(), {
+          active: 'true',
+          count: 11.5,
+          homepage: 'not a url',
+          id: 'not-a-uuid',
+          port: 'abc',
+          role: 'owner',
+          slug: 'UP',
+          tags: [],
+        }),
+        DocumentedValidatorsDto,
+      ),
+    ).rejects.toMatchObject({
+      issues: [
+        { field: 'active', message: 'active must be boolean' },
+        { field: 'count', message: 'count must be at most ten' },
+        { field: 'count', message: 'count must be integer' },
+        { field: 'role', message: 'role must be supported' },
+        { field: 'slug', message: 'slug must be lowercase words' },
+        { field: 'slug', message: 'slug must contain a dash' },
+        { field: 'slug', message: 'slug length must be bounded' },
+        { field: 'homepage', message: 'homepage must be a URL' },
+        { field: 'id', message: 'id must be a UUID v4' },
+        { field: 'port', message: 'port must be numeric text' },
+        { field: 'tags', message: 'tags must include at least two entries' },
+        { field: 'tags', message: 'tags must not be empty' },
+      ],
+    });
   });
 
   it('validate rejects malformed roots with deterministic validation issues', async () => {

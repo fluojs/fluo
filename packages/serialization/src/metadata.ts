@@ -1,5 +1,5 @@
-import { type MetadataPropertyKey } from '@fluojs/core';
-import { ensureMetadataSymbol, getOwnStandardConstructorMetadataBag } from '@fluojs/core/internal';
+import type { MetadataPropertyKey } from '@fluojs/core';
+import { getOwnStandardConstructorMetadataBag } from '@fluojs/core/internal';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 
@@ -26,8 +26,6 @@ export interface SerializationFieldMetadata {
 
 const standardSerializationClassMetadataKey = Symbol.for('fluo.standard.serialization.class');
 const standardSerializationFieldMetadataKey = Symbol.for('fluo.standard.serialization.field');
-
-ensureMetadataSymbol();
 
 function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
   if (metadata === null || metadata === undefined) {
@@ -117,10 +115,13 @@ export function updateFieldSerializationMetadata(
  * @returns The get class serialization options result.
  */
 export function getClassSerializationOptions(constructor: Function): ClassSerializationOptions {
-  return getConstructorMetadataBags(constructor).reduce<ClassSerializationOptions>((options, bag) => ({
-    ...options,
-    ...(bag[standardSerializationClassMetadataKey] as ClassSerializationOptions | undefined),
-  }), {});
+  const options: ClassSerializationOptions = {};
+
+  for (const bag of getConstructorMetadataBags(constructor)) {
+    Object.assign(options, bag[standardSerializationClassMetadataKey] as ClassSerializationOptions | undefined);
+  }
+
+  return options;
 }
 
 /**
