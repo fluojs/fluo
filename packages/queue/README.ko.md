@@ -131,7 +131,7 @@ Job은 JSON으로 직렬화 가능한 plain object여야 합니다. Queue는 enq
 ### 타입
 - `Queue`: 애플리케이션 코드와 `QUEUE` 토큰에서 사용하는 `enqueue(job)` 호환성 facade입니다.
 - `QueueJobType`: job payload class를 식별하고 rehydrate하는 데 사용하는 constructor 타입입니다.
-- `QueueModuleOptions`: 전역 큐 설정(clientName, 기본 시도 횟수, `defaultBackoff`, 동시성, 전송률 제한, dead-letter retention 등)을 위한 타입입니다.
+- `QueueModuleOptions`: 전역 큐 설정(`global`, clientName, 기본 시도 횟수, `defaultBackoff`, 동시성, 전송률 제한, dead-letter retention 등)을 위한 타입입니다.
 - `QueueWorkerOptions`: 개별 작업 설정(시도 횟수, 백오프, 동시성, jobName, 전송률 제한 등)을 위한 타입입니다.
 - `QueueBackoffType`: 지원되는 retry backoff strategy 이름(`fixed`, `exponential`)입니다.
 - `QueueBackoffOptions`: 재시도 백오프 설정(`type`, `delayMs`)을 위한 타입입니다.
@@ -144,6 +144,7 @@ Job은 JSON으로 직렬화 가능한 plain object여야 합니다. Queue는 enq
 
 `QueueModuleOptions` 수명 주기/status 설정:
 
+- `global`: queue module 등록을 global로 만들지 여부입니다. 기본값은 `true`이며, queue provider를 importing module graph 안에만 scope하고 싶으면 `false`를 지정합니다.
 - `workerShutdownTimeoutMs`: 종료 중 active worker processor를 기다리는 최대 시간입니다. 시간이 지나면 BullMQ worker를 force-close합니다. 기본값은 `30_000`입니다.
 - `defaultDeadLetterMaxEntries`: job별로 유지할 dead-letter record의 최대 개수이며, trimming을 끄려면 `false`를 지정합니다. 기본값은 `1_000`입니다.
 

@@ -245,13 +245,13 @@ static forRoot(options: QueueModuleOptions = {}): ModuleType {
 
   return defineModule(QueueModuleDefinition, {
     exports: [QueueLifecycleService, QUEUE],
-    global: true,
+    global: options.global ?? true,
     providers: [/* normalized queue providers */],
   });
 }
 ```
 
-`QUEUE_OPTIONS` is fixed as a value Provider, and `QUEUE` becomes a Factory Provider derived from the lifecycle service. `forRoot()` is the public binder that attaches this result to Module metadata as-is.
+`QUEUE_OPTIONS` is fixed as a value Provider, and `QUEUE` becomes a Factory Provider derived from the lifecycle service. `forRoot()` is the public binder that attaches this result to Module metadata as-is. `QueueModuleOptions.global` is the only module-metadata control exposed at this boundary: queue registrations remain global by default, and callers can set `global: false` when they need the providers scoped to the importing module graph.
 
 The normalization logic in `path:packages/queue/src/module.ts:9-25` shapes attempts, concurrency, dead-letter retention count, and rate limiter defaults into an internal form. This is an example of a Dynamic Module not passing caller options through directly, but converting them before Bootstrap into a stable configuration object that Providers can read.
 

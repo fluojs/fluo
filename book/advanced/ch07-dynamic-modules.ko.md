@@ -245,13 +245,13 @@ static forRoot(options: QueueModuleOptions = {}): ModuleType {
 
   return defineModule(QueueModuleDefinition, {
     exports: [QueueLifecycleService, QUEUE],
-    global: true,
+    global: options.global ?? true,
     providers: [/* normalized queue providers */],
   });
 }
 ```
 
-`QUEUE_OPTIONS`는 값 provider로 고정되고, `QUEUE`는 lifecycle service에서 파생되는 factory provider가 됩니다. `forRoot()`는 이 결과를 그대로 module metadata에 붙이는 public binder입니다.
+`QUEUE_OPTIONS`는 값 provider로 고정되고, `QUEUE`는 lifecycle service에서 파생되는 factory provider가 됩니다. `forRoot()`는 이 결과를 그대로 module metadata에 붙이는 public binder입니다. `QueueModuleOptions.global`은 이 경계에서 노출되는 유일한 module-metadata control입니다. Queue 등록은 기본적으로 global이며, provider를 importing module graph 안에만 scope해야 할 때 caller가 `global: false`를 지정할 수 있습니다.
 
 `path:packages/queue/src/module.ts:9-25`의 정규화 로직은 attempts, concurrency, dead-letter 보존 개수, rate limiter 기본값을 내부 형태로 맞춥니다. 동적 모듈이 caller options를 그대로 흘려보내지 않고, bootstrap 전에 provider들이 읽을 안정적인 설정 객체로 바꾸는 사례입니다.
 
