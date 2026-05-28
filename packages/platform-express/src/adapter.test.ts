@@ -1794,7 +1794,10 @@ describe('@fluojs/platform-express', () => {
     Reflect.set(adapter, 'dispatcher', { async dispatch() {} });
 
     const firstClose = adapter.close();
+    Reflect.set(server, 'listening', false);
     const secondClose = adapter.close();
+
+    expect(Reflect.get(adapter, 'dispatcher')).toBeDefined();
 
     deferred.resolve();
 

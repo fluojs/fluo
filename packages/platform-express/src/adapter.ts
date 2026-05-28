@@ -246,26 +246,23 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   async close(): Promise<void> {
+    if (this.closeInFlight) {
+      await waitForCloseWithTimeout(this.closeInFlight, this.shutdownTimeoutMs);
+      return;
+    }
+
     if (!this.server.listening) {
       this.dispatcher = undefined;
       return;
     }
 
-    if (!this.closeInFlight) {
-      const closePromise = closeServerWithDrain(this.server, this.sockets, this.shutdownTimeoutMs);
-      const closeInFlight = closePromise.finally(() => {
-        this.closeInFlight = undefined;
-        this.dispatcher = undefined;
-      });
-      this.closeInFlight = closeInFlight;
-      void closeInFlight.catch(() => {});
-    }
-
-    const closeInFlight = this.closeInFlight;
-
-    if (!closeInFlight) {
-      return;
-    }
+    const closePromise = closeServerWithDrain(this.server, this.sockets, this.shutdownTimeoutMs);
+    const closeInFlight = closePromise.finally(() => {
+      this.closeInFlight = undefined;
+      this.dispatcher = undefined;
+    });
+    this.closeInFlight = closeInFlight;
+    void closeInFlight.catch(() => {});
 
     await waitForCloseWithTimeout(closeInFlight, this.shutdownTimeoutMs);
   }
