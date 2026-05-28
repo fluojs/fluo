@@ -2,6 +2,7 @@ import { createFetchStyleHttpAdapterRealtimeCapability, type Dispatcher, type Ht
 import type { Application, ApplicationLogger, ModuleType, MultipartOptions } from '@fluojs/runtime';
 import {
   bootstrapHttpAdapterApplication,
+  createConsoleApplicationLogger,
   runHttpAdapterApplication,
   type BootstrapHttpAdapterApplicationOptions,
   type HttpAdapterListenTarget,
@@ -330,7 +331,9 @@ export async function bootstrapDenoApplication(
   rootModule: ModuleType,
   options: BootstrapDenoApplicationOptions = {},
 ): Promise<Application> {
-  return await bootstrapHttpAdapterApplication(rootModule, options, createDenoAdapter(options));
+  const logger = options.logger ?? createConsoleApplicationLogger();
+
+  return await bootstrapHttpAdapterApplication(rootModule, { ...options, logger }, createDenoAdapter(options));
 }
 
 /**
@@ -344,9 +347,11 @@ export async function runDenoApplication(
   rootModule: ModuleType,
   options: RunDenoApplicationOptions = {},
 ): Promise<Application> {
+  const logger = options.logger ?? createConsoleApplicationLogger();
   const adapter = createDenoAdapter(options);
   return await runHttpAdapterApplication(rootModule, {
     ...options,
+    logger,
     shutdownRegistration: options.shutdownSignals === false
       ? undefined
       : createDenoShutdownSignalRegistration(options.shutdownSignals ?? defaultDenoShutdownSignals()),

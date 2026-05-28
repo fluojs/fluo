@@ -349,6 +349,28 @@ describe('@fluojs/platform-deno', () => {
     expect(() => createDenoAdapter({ port: 1.5 })).toThrow(/port/i);
   });
 
+  it('uses the console application logger by default for terminal Deno startup helpers', async () => {
+    const server = createServeStub();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = await runDenoApplication(AppModule, {
+      serve: server.serve,
+      shutdownSignals: false,
+    });
+
+    try {
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining(`[fluo] ${String(process.pid)} -`),
+      );
+      expect(log).not.toHaveBeenCalledWith('[fluo] LOG [FluoFactory] Listening on http://localhost:3000 (bound to 0.0.0.0:3000)');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('keeps edge runtime README conformance coverage aligned across English and Korean docs', () => {
     const englishReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
     const koreanReadme = readFileSync(new URL('../README.ko.md', import.meta.url), 'utf8');
