@@ -93,6 +93,11 @@ afterEach(() => {
 });
 
 describe('@fluojs/platform-cloudflare-workers', () => {
+  it('rejects invalid explicit numeric adapter options during setup', () => {
+    expect(() => createCloudflareWorkerAdapter({ maxBodySize: -1 })).toThrow(/maxBodySize/i);
+    expect(() => createCloudflareWorkerAdapter({ maxBodySize: 1.5 })).toThrow(/maxBodySize/i);
+  });
+
   it('keeps edge runtime README conformance coverage aligned across English and Korean docs', () => {
     const englishReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
     const koreanReadme = readFileSync(new URL('../README.ko.md', import.meta.url), 'utf8');

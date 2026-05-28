@@ -76,10 +76,10 @@ export class MyGateway {}
 ```
 
 ### 엣지 네이티브 미들웨어
-표준 fluo 미들웨어(CORS, Global Prefix 등)가 완전히 지원되며 Cloudflare 환경에 최적화되어 있습니다.
+표준 fluo 미들웨어(CORS, Global Prefix 등)는 Worker bootstrap helper를 통해 완전히 지원되며 Cloudflare 환경에 최적화되어 있습니다. `createCloudflareWorkerAdapter(...)`는 adapter가 소유하는 parsing 및 websocket-pair 옵션만 받습니다. Routing 및 middleware 옵션은 `bootstrapCloudflareWorkerApplication(...)` 또는 `createCloudflareWorkerEntrypoint(...)`에 전달하세요.
 
 ```typescript
-const adapter = createCloudflareWorkerAdapter({
+const worker = createCloudflareWorkerEntrypoint(AppModule, {
   globalPrefix: 'api/v1',
   cors: true,
 });
@@ -88,6 +88,7 @@ const adapter = createCloudflareWorkerAdapter({
 ### 동작 참고
 
 - `fetch()`는 `listen()` 또는 lazy entrypoint가 dispatcher를 binding한 뒤 active work를 `executionContext.waitUntil(...)`에 등록합니다. 그 lifecycle boundary 전에는 upgrade request와 HTTP dispatch가 application handler에 도달하지 않습니다.
+- `maxBodySize` 같은 adapter option은 Worker adapter 생성 시 검증됩니다. `globalPrefix`, `cors`, `middleware`, `securityHeaders` 같은 bootstrap 전용 옵션은 `createCloudflareWorkerAdapter(...)`가 아니라 Worker bootstrap helper에 전달해야 합니다.
 - WebSocket upgrade는 HTTP dispatch와 같은 listen boundary가 소유합니다. `listen()` 전의 upgrade request는 설정된 binding에 도달하지 않습니다.
 - `close()`는 shutdown 중 및 shutdown 이후 새 요청에 JSON `503` response를 반환하고, active request가 끝나지 않으면 10초 뒤 timeout됩니다. 해당 close drain이 아직 활성 상태일 때 `listen()`을 호출하면 Cloudflare Workers adapter shutdown-draining 오류로 reject됩니다.
 - Multipart request는 `rawBody`를 보존하지 않습니다.
