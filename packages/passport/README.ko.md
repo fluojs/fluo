@@ -235,7 +235,7 @@ Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(
 
 ### Cookie auth preset
 - `CookieAuthModule`: 내장 cookie-auth preset의 모듈 진입점입니다.
-- `CookieAuthStrategy`, `COOKIE_AUTH_STRATEGY_NAME`, `COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_AUTH_OPTIONS`: Cookie strategy wiring token과 기본값입니다.
+- `CookieAuthStrategy`, `COOKIE_AUTH_STRATEGY_NAME`, `COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_OPTIONS`: Cookie strategy wiring token, preset 기본값, response-cookie 기본값입니다.
 - `CookieAuthOptions`, `CookieAuthPresetConfig`, `CookieManagerConfig`, `CookieOptions`, `SetCookieOptions`: Cookie strategy 및 response cookie 설정 타입입니다.
 - `CookieManager`: HttpOnly access/refresh token cookie를 설정하고 제거하는 유틸리티입니다.
 - Cookie helper: `createCookieAuthPreset`, `createCookieAuthStrategyRegistration`, `createCookieManager`, `normalizeCookieAuthOptions`.
@@ -263,7 +263,7 @@ Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(
 - `createPassportPlatformDiagnosticIssues(...)`: Empty registry, 누락된 default strategy, cookie preset readiness, refresh-token backing store readiness 문제에 대한 diagnostic issue를 생성합니다.
 - `PassportPlatformStatusSnapshot`, `PassportStatusAdapterInput`: Status helper input/output 계약입니다.
 
-`UseOptionalAuth`는 scope가 필요 없는 route에서만 credential 누락을 우회합니다. Scoped route에는 여전히 principal이 필요합니다. Passport.js bridge의 `redirect()`는 response를 commit하고 protected handler를 건너뛰며, `pass()`와 Passport action 없이 완료된 strategy는 인증 실패입니다.
+`UseOptionalAuth`는 scope가 필요 없는 route에서만 credential 누락을 우회합니다. Scoped route에는 여전히 principal이 필요합니다. Passport.js bridge의 `redirect()`는 response를 commit하고 protected handler를 건너뛰며, `pass()`와 Passport action 없이 완료된 strategy는 인증 실패입니다. Refresh-token backing store status 및 diagnostic surface는 readiness, health, details, diagnostic cause를 노출하기 전에 secret처럼 보이는 reason 문자열을 redact합니다.
 
 ## 관련 패키지
 

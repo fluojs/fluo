@@ -167,6 +167,8 @@ PrismaModule.forRootAsync({
 
 Within one compiled application, downstream providers share the same resolved `PrismaService`, ALS transaction context, and lifecycle-managed client. Separate application containers receive independent factory results, so `$connect` / `$disconnect` ownership and request transaction state remain isolated.
 
+Transaction boundaries require host-provided `AsyncLocalStorage` support. `@fluojs/prisma` resolves it through `globalThis.AsyncLocalStorage` when a runtime exposes one, or through the host's `process.getBuiltinModule('node:async_hooks')` boundary on Node.js. If neither path is available, `transaction()` and `requestTransaction()` reject before opening a Prisma transaction instead of using a synchronous stack fallback that would lose `current()` across async boundaries; `createPlatformStatusSnapshot().details.transactionContext` reports `unavailable` in that state.
+
 ### Manual Module Composition
 
 Use `PrismaModule.forRoot(...)` / `forRootAsync(...)` to register Prisma. When you need to compose Prisma support inside a custom `defineModule(...)` registration, import the module entrypoint there as well.
@@ -207,6 +209,10 @@ defineModule(ManualPrismaModule, {
   - Runs a function within an interactive transaction. If a transaction context is already active, the callback reuses that context; nested transaction options are rejected because no new Prisma transaction boundary is opened.
 - `requestTransaction(fn, signal?, options?): Promise<T>`
   - Specialized transaction boundary for HTTP request lifecycles. It is abort-aware, drains during shutdown before disconnect, and retries without `signal` when a Prisma client rejects that option. Like `transaction()`, nested calls reuse the active transaction context and reject nested options to avoid silently ignoring transaction settings.
+
+### `PrismaTransactionInterceptor`
+
+- HTTP interceptor for the default unnamed `PrismaService` registration. It wraps a request handler in `PrismaService.requestTransaction(...)` so downstream `current()` calls share the same transaction client.
 
 ### `PRISMA_CLIENT` (Token)
 

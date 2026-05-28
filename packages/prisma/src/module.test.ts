@@ -379,6 +379,59 @@ describe('@fluojs/prisma', () => {
     await app.close();
   });
 
+  it('rejects transaction boundaries instead of using a synchronous context fallback when ALS is unavailable', async () => {
+    const host = globalThis as typeof globalThis & { AsyncLocalStorage?: unknown };
+    const originalAsyncLocalStorage = host.AsyncLocalStorage;
+    const originalGetBuiltinModule = process.getBuiltinModule.bind(process);
+    const getBuiltinModuleSpy = vi.spyOn(process, 'getBuiltinModule').mockImplementation(((id: string) => {
+      if (id === 'node:async_hooks') {
+        return {};
+      }
+
+      return originalGetBuiltinModule(id as never);
+    }) as typeof process.getBuiltinModule);
+    let transactionCalls = 0;
+    const transactionClient = { kind: 'transaction' as const };
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        transactionCalls += 1;
+        return callback(transactionClient);
+      },
+    };
+
+    host.AsyncLocalStorage = undefined;
+
+    try {
+      const prisma = new PrismaService<typeof client, typeof transactionClient>(client);
+      await prisma.onModuleInit();
+
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ transactionContext: 'unavailable' });
+      expect(prisma.createPlatformStatusSnapshot().readiness).toEqual({
+        critical: true,
+        reason: 'Prisma transaction context requires AsyncLocalStorage support from the host runtime.',
+        status: 'not-ready',
+      });
+      await expect(prisma.transaction(async () => prisma.current())).rejects.toThrow(
+        'Prisma transaction context requires AsyncLocalStorage support from the host runtime.',
+      );
+      await expect(prisma.requestTransaction(async () => prisma.current())).rejects.toThrow(
+        'Prisma transaction context requires AsyncLocalStorage support from the host runtime.',
+      );
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 0 });
+      expect(transactionCalls).toBe(0);
+    } finally {
+      if (originalAsyncLocalStorage === undefined) {
+        delete host.AsyncLocalStorage;
+      } else {
+        host.AsyncLocalStorage = originalAsyncLocalStorage;
+      }
+
+      getBuiltinModuleSpy.mockRestore();
+    }
+  });
+
   it('rolls back open request transactions before disconnect on shutdown', async () => {
     const events: string[] = [];
     const transactionClient = {};
@@ -1024,6 +1077,38 @@ describe('@fluojs/prisma', () => {
 
     expect(snapshot.readiness.status).toBe('not-ready');
     expect(snapshot.health.status).toBe('degraded');
+  });
+
+  it('marks stopped state as not-ready and unhealthy after disconnect', async () => {
+    const events: string[] = [];
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+      async $transaction<T>(callback: (value: Record<string, never>) => Promise<T>): Promise<T> {
+        return callback({});
+      },
+    };
+    const prisma = new PrismaService<typeof client>(client);
+
+    await prisma.onModuleInit();
+    await prisma.onApplicationShutdown();
+
+    const snapshot = prisma.createPlatformStatusSnapshot();
+    expect(events).toEqual(['connect', 'disconnect']);
+    expect(snapshot.readiness).toEqual({
+      critical: true,
+      reason: 'Prisma integration is stopped.',
+      status: 'not-ready',
+    });
+    expect(snapshot.health).toEqual({
+      reason: 'Prisma integration has been disconnected.',
+      status: 'unhealthy',
+    });
+    expect(snapshot.details).toMatchObject({ lifecycleState: 'stopped' });
   });
 });
 

@@ -55,6 +55,18 @@ function isRefreshTokenStoreReady(input: PassportStatusAdapterInput): boolean {
   return input.refreshTokenStoreReady ?? true;
 }
 
+function redactSensitiveDiagnosticReason(reason: string | undefined): string | undefined {
+  if (reason === undefined) {
+    return undefined;
+  }
+
+  if (/(accessToken|api[-_ ]?key|authorization|bearer|cookie|credential|password|passwd|refreshToken|secret|token\s*[:=])/i.test(reason)) {
+    return 'Refresh token backing store is unavailable; sensitive diagnostic detail was redacted.';
+  }
+
+  return reason;
+}
+
 function collectReadinessReasons(input: PassportStatusAdapterInput): string[] {
   const reasons: string[] = [];
 
@@ -71,7 +83,7 @@ function collectReadinessReasons(input: PassportStatusAdapterInput): string[] {
   }
 
   if (!isRefreshTokenStoreReady(input)) {
-    reasons.push(input.refreshTokenStoreReason ?? 'Refresh token backing store is unavailable.');
+    reasons.push(redactSensitiveDiagnosticReason(input.refreshTokenStoreReason) ?? 'Refresh token backing store is unavailable.');
   }
 
   return reasons;
@@ -142,7 +154,7 @@ export function createPassportPlatformStatusSnapshot(input: PassportStatusAdapte
         refreshToken: {
           backingStore: {
             dependencyId: input.refreshTokenDependencyId,
-            reason: input.refreshTokenStoreReason,
+            reason: redactSensitiveDiagnosticReason(input.refreshTokenStoreReason),
             ready: isRefreshTokenStoreReady(input),
           },
           enabled: input.refreshTokenEnabled ?? false,
@@ -218,7 +230,7 @@ export function createPassportPlatformDiagnosticIssues(input: PassportStatusAdap
     issues.push({
       code: 'AUTH_PASSPORT_REFRESH_TOKEN_BACKING_STORE_NOT_READY',
       componentId,
-      cause: input.refreshTokenStoreReason,
+      cause: redactSensitiveDiagnosticReason(input.refreshTokenStoreReason),
       dependsOn: input.refreshTokenDependencyId ? [input.refreshTokenDependencyId] : undefined,
       fixHint: 'Restore refresh token backing store readiness, or disable refresh-token strategy for this environment.',
       message: 'Refresh token strategy is enabled, but its backing dependency is not ready.',

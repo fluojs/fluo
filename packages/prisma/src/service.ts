@@ -1,5 +1,3 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
-
 import {
   createAbortError,
   createRequestAbortContext,
@@ -22,6 +20,8 @@ import type {
 const NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR =
   'Nested Prisma transaction options are not supported because the active transaction context is reused.';
 const REQUEST_TRANSACTION_UNAVAILABLE_ERROR = 'Prisma request transactions are not available during shutdown.';
+const TRANSACTION_CONTEXT_UNAVAILABLE_ERROR =
+  'Prisma transaction context requires AsyncLocalStorage support from the host runtime.';
 
 interface PrismaServiceOptions {
   strictTransactions: boolean;
@@ -45,6 +45,80 @@ type TransactionContext<TTransactionClient> = {
   requestAbortSignal?: AbortSignal;
 };
 
+interface TransactionContextStore<TTransactionClient> {
+  readonly kind: 'als' | 'unavailable';
+  getStore(): TransactionContext<TTransactionClient> | undefined;
+  run<T>(context: TransactionContext<TTransactionClient>, callback: () => T): T;
+}
+
+type AsyncContextStore<TContext> = {
+  getStore(): TContext | undefined;
+  run<T>(context: TContext, callback: () => T): T;
+};
+
+type AsyncLocalStorageConstructor = new <TContext>() => AsyncContextStore<TContext>;
+
+type NodeAsyncHooksModule = {
+  AsyncLocalStorage?: AsyncLocalStorageConstructor;
+};
+
+type AsyncLocalStorageResolutionHost = typeof globalThis & {
+  AsyncLocalStorage?: AsyncLocalStorageConstructor;
+  process?: {
+    getBuiltinModule?(id: 'node:async_hooks'): NodeAsyncHooksModule;
+  };
+};
+
+class AsyncLocalStorageTransactionContextStore<TTransactionClient> implements TransactionContextStore<TTransactionClient> {
+  readonly kind = 'als' as const;
+
+  private readonly storage: AsyncContextStore<TransactionContext<TTransactionClient>>;
+
+  constructor(AsyncLocalStorage: AsyncLocalStorageConstructor) {
+    this.storage = new AsyncLocalStorage<TransactionContext<TTransactionClient>>();
+  }
+
+  getStore(): TransactionContext<TTransactionClient> | undefined {
+    return this.storage.getStore();
+  }
+
+  run<T>(context: TransactionContext<TTransactionClient>, callback: () => T): T {
+    return this.storage.run(context, callback);
+  }
+}
+
+class UnavailableTransactionContextStore<TTransactionClient> implements TransactionContextStore<TTransactionClient> {
+  readonly kind = 'unavailable' as const;
+
+  getStore(): TransactionContext<TTransactionClient> | undefined {
+    return undefined;
+  }
+
+  run<T>(_context: TransactionContext<TTransactionClient>, _callback: () => T): T {
+    throw new Error(TRANSACTION_CONTEXT_UNAVAILABLE_ERROR);
+  }
+}
+
+function resolveAsyncLocalStorageConstructor(
+  host: AsyncLocalStorageResolutionHost = globalThis,
+): AsyncLocalStorageConstructor | undefined {
+  if (typeof host.AsyncLocalStorage === 'function') {
+    return host.AsyncLocalStorage;
+  }
+
+  return host.process?.getBuiltinModule?.('node:async_hooks').AsyncLocalStorage;
+}
+
+function createTransactionContextStore<TTransactionClient>(): TransactionContextStore<TTransactionClient> {
+  const AsyncLocalStorage = resolveAsyncLocalStorageConstructor();
+
+  if (typeof AsyncLocalStorage === 'function') {
+    return new AsyncLocalStorageTransactionContextStore<TTransactionClient>(AsyncLocalStorage);
+  }
+
+  return new UnavailableTransactionContextStore<TTransactionClient>();
+}
+
 /**
  * Prisma runtime facade that owns lifecycle hooks and transaction context access.
  *
@@ -60,7 +134,7 @@ export class PrismaService<
 >
   implements PrismaHandleProvider<TClient, TTransactionClient, TTransactionOptions>, OnModuleInit, OnApplicationShutdown
 {
-  private readonly transactions = new AsyncLocalStorage<TransactionContext<TTransactionClient>>();
+  private readonly transactions = createTransactionContextStore<TTransactionClient>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
   private transactionAbortSignalSupport: TransactionAbortSignalSupport = 'unknown';
   private lifecycleState: 'created' | 'ready' | 'shutting-down' | 'stopped' = 'created';
@@ -107,6 +181,8 @@ export class PrismaService<
 
       return fn();
     }
+
+    this.assertTransactionContextAvailable();
 
     const deferredRequestTransactionHandles = new Set<ActiveRequestTransactionHandle>();
 
@@ -161,6 +237,7 @@ export class PrismaService<
       supportsDisconnect: typeof this.client.$disconnect === 'function',
       supportsTransaction: typeof this.client.$transaction === 'function',
       transactionAbortSignalSupport: this.transactionAbortSignalSupport,
+      transactionContext: this.transactions.kind,
     });
   }
 
@@ -260,6 +337,8 @@ export class PrismaService<
       return fn();
     }
 
+    this.assertTransactionContextAvailable();
+
     return run(
       (transactionClient) => this.transactions.run({ client: transactionClient, requestAbortSignal: signal }, fn),
       options,
@@ -306,6 +385,12 @@ export class PrismaService<
   private assertRequestTransactionsAvailable(): void {
     if (this.lifecycleState === 'shutting-down' || this.lifecycleState === 'stopped') {
       throw new Error(REQUEST_TRANSACTION_UNAVAILABLE_ERROR);
+    }
+  }
+
+  private assertTransactionContextAvailable(): void {
+    if (this.transactions.kind === 'unavailable') {
+      throw new Error(TRANSACTION_CONTEXT_UNAVAILABLE_ERROR);
     }
   }
 
