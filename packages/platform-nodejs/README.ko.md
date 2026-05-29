@@ -65,6 +65,8 @@ const adapter = createNodejsAdapter({
 
 시그널 기반 종료가 run-helper `forceExitTimeoutMs`를 넘기거나 실패하면 헬퍼는 해당 상태를 로그와 `process.exitCode`로 보고하지만, 최종 프로세스 종료는 호스트 프로세스 소유자에게 맡깁니다. Connection drain bound에는 adapter-level `shutdownTimeoutMs`를, signal handler completion bound에는 run-helper `forceExitTimeoutMs`를 사용하세요.
 
+`bootstrapNodejsApplication(...)`과 `runNodejsApplication(...)`은 framework console logger를 기본으로 사용합니다. host나 portability test가 startup/shutdown diagnostics를 주입된 `ApplicationLogger`로 캡처해야 할 때는 `logger`를 전달하세요.
+
 ```typescript
 import { runNodejsApplication } from '@fluojs/platform-nodejs';
 import { AppModule } from './app.module';

@@ -3,8 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
 import { getClassDiMetadata } from '@fluojs/core/internal';
 import type { Container, Provider } from '@fluojs/di';
-import type { HttpApplicationAdapter, HttpAdapterRealtimeCapability } from '@fluojs/http';
-import { Server as BunEngineServer } from '@socket.io/bun-engine';
+import type { HttpAdapterRealtimeCapability, HttpApplicationAdapter } from '@fluojs/http';
 import type {
   ApplicationLogger,
   CompiledModule,
@@ -19,7 +18,8 @@ import {
   type WebSocketGatewayDescriptor,
   type WebSocketGatewayHandlerDescriptor,
 } from '@fluojs/websockets';
-import { Server, type Namespace, type ServerOptions, type Socket } from 'socket.io';
+import { Server as BunEngineServer } from '@socket.io/bun-engine';
+import { type Namespace, Server, type ServerOptions, type Socket } from 'socket.io';
 
 import { SOCKETIO_OPTIONS_INTERNAL } from './options-token.internal.js';
 import type {
@@ -1087,14 +1087,20 @@ export class SocketIoLifecycleService
   private createGatewayDescriptor(candidate: DiscoveryCandidate, path: string): WebSocketGatewayDescriptor {
     const metadata = getWebSocketGatewayMetadata(candidate.targetType);
     const entries = getWebSocketHandlerMetadataEntries(candidate.targetType.prototype);
+    const handlers = entries.map((entry: (typeof entries)[number]) => ({
+      event: entry.metadata.event,
+      methodKey: entry.propertyKey,
+      methodName: methodKeyToName(entry.propertyKey),
+      type: entry.metadata.type,
+    }));
+    const handlerIndex = createGatewayHandlerIndex(handlers);
 
     return {
-      handlers: entries.map((entry: (typeof entries)[number]) => ({
-        event: entry.metadata.event,
-        methodKey: entry.propertyKey,
-        methodName: methodKeyToName(entry.propertyKey),
-        type: entry.metadata.type,
-      })),
+      connectHandlers: handlerIndex.connectHandlers,
+      disconnectHandlers: handlerIndex.disconnectHandlers,
+      handlers,
+      messageHandlersByEvent: handlerIndex.messageHandlersByEvent,
+      wildcardMessageHandlers: handlerIndex.wildcardMessageHandlers,
       moduleName: candidate.moduleName,
       path: normalizeGatewayPath(path),
       serverBacked: metadata?.serverBacked,
@@ -1222,4 +1228,44 @@ export class SocketIoLifecycleService
       });
     });
   }
+}
+
+function createGatewayHandlerIndex(handlers: readonly WebSocketGatewayHandlerDescriptor[]): {
+  connectHandlers: readonly WebSocketGatewayHandlerDescriptor[];
+  disconnectHandlers: readonly WebSocketGatewayHandlerDescriptor[];
+  messageHandlersByEvent: ReadonlyMap<string, readonly WebSocketGatewayHandlerDescriptor[]>;
+  wildcardMessageHandlers: readonly WebSocketGatewayHandlerDescriptor[];
+} {
+  const connectHandlers: WebSocketGatewayHandlerDescriptor[] = [];
+  const disconnectHandlers: WebSocketGatewayHandlerDescriptor[] = [];
+  const messageHandlersByEvent = new Map<string, WebSocketGatewayHandlerDescriptor[]>();
+  const wildcardMessageHandlers: WebSocketGatewayHandlerDescriptor[] = [];
+
+  for (const handler of handlers) {
+    if (handler.type === 'connect') {
+      connectHandlers.push(handler);
+      continue;
+    }
+
+    if (handler.type === 'disconnect') {
+      disconnectHandlers.push(handler);
+      continue;
+    }
+
+    if (handler.event === undefined) {
+      wildcardMessageHandlers.push(handler);
+      continue;
+    }
+
+    const eventHandlers = messageHandlersByEvent.get(handler.event) ?? [];
+    eventHandlers.push(handler);
+    messageHandlersByEvent.set(handler.event, eventHandlers);
+  }
+
+  return {
+    connectHandlers,
+    disconnectHandlers,
+    messageHandlersByEvent,
+    wildcardMessageHandlers,
+  };
 }

@@ -184,11 +184,16 @@ describe('MyCustomAdapter Portability', () => {
   it('preserves malformed cookies', () => harness.assertPreservesMalformedCookieValues());
   it('handles SSE', () => harness.assertSupportsSseStreaming());
   it('preserves JSON and text raw bodies', () => harness.assertPreservesRawBodyForJsonAndText());
+  it('preserves exact raw body bytes', () => harness.assertPreservesExactRawBodyBytesForByteSensitivePayloads());
   it('excludes multipart raw bodies', () => harness.assertExcludesRawBodyForMultipart());
+  it('defaults multipart total limit to max body size', () => harness.assertDefaultsMultipartTotalLimitToMaxBodySize());
+  it('settles stream drain waits after close', () => harness.assertSettlesStreamDrainWaitOnClose());
+  it('reports configured host startup logs', () => harness.assertReportsConfiguredHostInStartupLogs());
+  it('removes shutdown signal listeners', () => harness.assertRemovesShutdownSignalListenersAfterClose());
 });
 ```
 
-When you run these tests, you should also inspect timing data. Slow tests in the portability suite can signal that a lower-level implementation of a platform primitive is not optimized. Use feedback from the harness to refine the adapter and check both correctness and performance.
+When you run these tests, keep the cleanup and performance-sensitive assertions enabled instead of copying only the first few examples. The harness checks partial-bootstrap cleanup, exact byte preservation, multipart memory boundaries, startup logging through the application logger, shutdown listener cleanup, and stream-drain settlement. You should also inspect timing data. Slow tests in the portability suite can signal that a lower-level implementation of a platform primitive is not optimized. Use feedback from the harness to refine the adapter and check both correctness and performance.
 
 ## 14.9 Why Line-by-Line Consistency Matters
 

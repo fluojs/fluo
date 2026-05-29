@@ -38,6 +38,7 @@ class MockWorkerSocket implements CloudflareWorkerWebSocket {
   #readyState: number = WEBSOCKET_OPEN_READY_STATE;
   #closeDeliveryPromise?: Promise<void>;
   accepted = false;
+  readonly closeCalls: Array<{ code?: number; reason?: string }> = [];
   readonly sentMessages: string[] = [];
 
   get readyState(): number {
@@ -72,6 +73,7 @@ class MockWorkerSocket implements CloudflareWorkerWebSocket {
 
   close(code?: number, reason?: string): void {
     this.#readyState = WEBSOCKET_CLOSED_READY_STATE;
+    this.closeCalls.push({ code, reason });
     const event = new Event('close') as Event & { code: number; reason: string };
     Object.defineProperties(event, {
       code: { value: code ?? 1000 },
@@ -877,6 +879,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       socket.emitMessage('hello');
       await flushAsyncWork();
 
+      expect(socket.closeCalls).toEqual([{ code: 1009, reason: 'Payload too large' }]);
       expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
       expect(state.messages).toEqual([]);
     } finally {
@@ -933,6 +936,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       socket.emitMessage(new Uint8Array([1, 2, 3, 4, 5]));
       await flushAsyncWork();
 
+      expect(socket.closeCalls).toEqual([{ code: 1009, reason: 'Payload too large' }]);
       expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
       expect(state.messages).toEqual([]);
     } finally {

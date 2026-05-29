@@ -30,8 +30,6 @@ Redis indicator subpath를 사용할 때만 선택적 peer를 설치하세요.
 pnpm add @fluojs/redis ioredis
 ```
 
-`path`로 health endpoint를 custom path 아래에 mount할 수 있고, `readinessChecks`로 애플리케이션별 readiness logic을 Terminus indicator 및 platform readiness check와 합성할 수 있습니다.
-
 ## 사용 시점
 
 - 외부 의존성(데이터베이스, Redis, API 등)의 상태를 애플리케이션 헬스 체크 결과에 포함해야 할 때.
@@ -74,7 +72,7 @@ class AppModule {}
 
 ### DI 기반 인디케이터
 
-Redis나 DB 클라이언트와 같이 DI 컨테이너의 의존성이 필요한 인디케이터를 사용할 때는, 모듈 로드 시점에 피어 의존성을 import하지 않도록 제공되는 provider 팩토리를 사용하세요.
+Redis나 DB 클라이언트와 같이 DI 컨테이너의 의존성이 필요한 인디케이터를 사용할 때는, 모듈 로드 시점에 피어 의존성을 import하지 않도록 문서화된 provider 팩토리를 사용하세요. 이 helper들은 `TerminusModule.forRoot({ indicatorProviders })`에 전달할 indicator provider entry를 만들며 module facade를 대체하지 않습니다.
 
 ```typescript
 import { TerminusModule } from '@fluojs/terminus';
@@ -119,6 +117,8 @@ TerminusModule.forRoot({
 });
 ```
 
+`path`로 health endpoint를 custom path 아래에 mount할 수 있고, `readinessChecks`로 애플리케이션별 readiness logic을 Terminus indicator 및 platform readiness check와 합성할 수 있습니다.
+
 ### 실패 시맨틱
 
 인디케이터가 실패하면 `HealthCheckError`를 던집니다. `TerminusHealthService`는 이 실패들을 모아 보고서를 작성합니다.
@@ -154,7 +154,7 @@ TerminusModule.forRoot({
 
 - `runHealthCheck(...)`, `assertHealthCheck(...)`: 직접 aggregation/testing helper입니다.
 - `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: 등록된 indicator와 provider token을 위한 DI token입니다.
-- Built-in indicator는 `create*HealthIndicator()` 및 `create*HealthIndicatorProvider()` helper도 노출합니다.
+- Built-in indicator는 `create*HealthIndicator()` 및 `create*HealthIndicatorProvider()` helper도 노출합니다. Provider helper는 `indicatorProviders`를 위한 의도적인 DI composition 예외이며, 애플리케이션 등록은 계속 `TerminusModule.forRoot(...)`를 사용해야 합니다.
 
 ### `@fluojs/terminus/redis`
 

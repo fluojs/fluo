@@ -1303,17 +1303,23 @@ export class NodeWebSocketGatewayLifecycleService
     attachments: readonly GatewayAttachment[],
     shutdownTimeoutMs: number,
   ): Promise<void> {
+    if (attachments.length === 0) {
+      return;
+    }
+
+    const states = [...this.socketStates.values()];
+
     await Promise.all(
       attachments.map(async (attachment) => {
-        await this.closeAttachmentClients(attachment, shutdownTimeoutMs);
+        this.closeAttachmentClients(attachment);
         await this.closeGatewayAttachment(attachment, shutdownTimeoutMs);
       }),
     );
+
+    await this.awaitHandlerQueueDrain(states, shutdownTimeoutMs);
   }
 
-  private async closeAttachmentClients(attachment: GatewayAttachment, timeoutMs: number): Promise<void> {
-    const states = [...this.socketStates.values()];
-
+  private closeAttachmentClients(attachment: GatewayAttachment): void {
     for (const client of attachment.server.clients) {
       if (client.readyState === WebSocket.OPEN) {
         client.close(1001, 'Server shutting down');
@@ -1321,8 +1327,6 @@ export class NodeWebSocketGatewayLifecycleService
         client.terminate();
       }
     }
-
-    await this.awaitHandlerQueueDrain(states, timeoutMs);
   }
 
   private async awaitHandlerQueueDrain(

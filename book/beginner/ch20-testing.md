@@ -79,6 +79,8 @@ export default defineConfig({
 
 `fluoBabelDecoratorsPlugin` acts as a bridge that lets Vitest understand `fluo` standard Decorators without complex configuration. This setup aligns the test environment with how the actual production runtime processes Decorators.
 
+Because the plugin resolves the nearest root Babel configuration at runtime, add one of `babel.config.cjs`, `babel.config.mjs`, `babel.config.js`, or `babel.config.json` at the project root. Without that file, the test transform fails early with an error that lists the supported root config names, which is safer than silently running tests with mismatched Decorator semantics.
+
 ### 20.2.1 Global Setup and Teardown
 Large projects may need work that runs before all tests, such as initializing a test database, and cleanup work after tests finish. Vitest lets you define a `setupFiles` array in the configuration. This is a good place to set global environment variables or register custom matchers that simplify assertions.
 
