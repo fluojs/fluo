@@ -106,10 +106,12 @@ export interface DenoAdapterOptions {
 
 /** Bootstrap options for creating a Deno-backed app without auto-running it. */
 export interface BootstrapDenoApplicationOptions extends BootstrapHttpAdapterApplicationOptions, DenoAdapterOptions {
+  logger?: ApplicationLogger;
 }
 
 /** Run-helper options for Deno apps, including optional signal wiring. */
 export interface RunDenoApplicationOptions extends RunHttpAdapterApplicationOptions, DenoAdapterOptions {
+  logger?: ApplicationLogger;
   shutdownSignals?: false | readonly DenoApplicationSignal[];
 }
 
@@ -331,7 +333,7 @@ export async function bootstrapDenoApplication(
   rootModule: ModuleType,
   options: BootstrapDenoApplicationOptions = {},
 ): Promise<Application> {
-  const logger = createConsoleApplicationLogger();
+  const logger = options.logger ?? createConsoleApplicationLogger();
 
   return await bootstrapHttpAdapterApplication(rootModule, options, createDenoAdapter(options), logger);
 }
@@ -347,7 +349,7 @@ export async function runDenoApplication(
   rootModule: ModuleType,
   options: RunDenoApplicationOptions = {},
 ): Promise<Application> {
-  const logger = createConsoleApplicationLogger();
+  const logger = options.logger ?? createConsoleApplicationLogger();
   const adapter = createDenoAdapter(options);
   return await runHttpAdapterApplication(rootModule, {
     ...options,
