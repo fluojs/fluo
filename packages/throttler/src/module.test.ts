@@ -389,6 +389,32 @@ describe('ThrottlerGuard — in-memory store', () => {
     );
   });
 
+  it('caches resolved handler policy after the first request while preserving method precedence', async () => {
+    @Throttle({ limit: 10, ttl: 60 })
+    class TestController {
+      @Throttle({ limit: 1, ttl: 60 })
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard({ ...options, limit: 100 });
+    const ctx = createRequestContext();
+    const guardContext = createGuardContext(TestController, 'action', ctx);
+
+    await guard.canActivate(guardContext);
+
+    const bag = (TestController as unknown as Record<symbol, unknown>)[metadataSymbol] as Record<PropertyKey, unknown>;
+    const routeMap = bag[Symbol.for('fluo.standard.route')] as Map<string, Record<PropertyKey, unknown>>;
+    const actionRecord = routeMap.get('action');
+
+    if (!actionRecord) {
+      throw new Error('Expected throttle metadata for TestController.action.');
+    }
+
+    actionRecord[Symbol.for('fluo.throttler.throttle')] = { limit: 100, ttl: 60 };
+
+    await expect(guard.canActivate(guardContext)).rejects.toThrow('Too Many Requests');
+  });
+
   it('uses custom keyGenerator output as the client identity for store keys', async () => {
     const store: ThrottlerStore = {
       consume: vi.fn(async (_key: string, input: ThrottlerConsumeInput) => ({
@@ -507,6 +533,25 @@ describe('ThrottlerGuard — in-memory store', () => {
     });
     const secondContext = createRequestContext({
       headers: { forwarded: 'for=198.51.100.11;proto=https' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', firstContext))).resolves.toBe(true);
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', secondContext))).resolves.toBe(true);
+  });
+
+  it('trusts X-Forwarded-For client identity when trustProxyHeaders is enabled', async () => {
+    class TestController {
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard({ ...options, limit: 1, trustProxyHeaders: true });
+    const firstContext = createRequestContext({
+      headers: { 'x-forwarded-for': '198.51.100.10, 10.0.0.10' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+    const secondContext = createRequestContext({
+      headers: { 'x-forwarded-for': '198.51.100.11, 10.0.0.10' },
       raw: { socket: { remoteAddress: '10.0.0.1' } },
     });
 
@@ -740,18 +785,22 @@ describe('ThrottlerGuard — Redis store mock', () => {
     const slowNodeContext = createRequestContext('10.0.0.2');
     const dateNowSpy = vi.spyOn(Date, 'now');
 
-    dateNowSpy.mockReturnValueOnce(1_710_000_045_000);
-    await expect(
-      fastNodeGuard.canActivate(createGuardContext(TestController, 'action', fastNodeContext)),
-    ).rejects.toThrow('Too Many Requests');
+    try {
+      dateNowSpy.mockReturnValueOnce(1_710_000_045_000);
+      await expect(
+        fastNodeGuard.canActivate(createGuardContext(TestController, 'action', fastNodeContext)),
+      ).rejects.toThrow('Too Many Requests');
 
-    dateNowSpy.mockReturnValueOnce(1_710_000_000_000);
-    await expect(
-      slowNodeGuard.canActivate(createGuardContext(TestController, 'action', slowNodeContext)),
-    ).rejects.toThrow('Too Many Requests');
+      dateNowSpy.mockReturnValueOnce(1_710_000_000_000);
+      await expect(
+        slowNodeGuard.canActivate(createGuardContext(TestController, 'action', slowNodeContext)),
+      ).rejects.toThrow('Too Many Requests');
 
-    expect(fastNodeContext.response.headers['Retry-After']).toBe('45');
-    expect(slowNodeContext.response.headers['Retry-After']).toBe('45');
+      expect(fastNodeContext.response.headers['Retry-After']).toBe('45');
+      expect(slowNodeContext.response.headers['Retry-After']).toBe('45');
+    } finally {
+      dateNowSpy.mockRestore();
+    }
   });
 
   it('builds store keys from route and token identity context', async () => {
