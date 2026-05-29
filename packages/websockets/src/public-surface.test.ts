@@ -1,10 +1,20 @@
-import { describe, expect, it } from 'vitest';
+import type { IncomingMessage } from 'node:http';
+
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import * as bun from './bun.js';
 import * as workers from './cloudflare-workers.js';
 import * as deno from './deno.js';
 import * as websockets from './index.js';
 import * as node from './node.js';
+import type { WebSocketModuleOptions as BunWebSocketModuleOptions } from './bun.js';
+import type { WebSocketModuleOptions as CloudflareWorkersWebSocketModuleOptions } from './cloudflare-workers.js';
+import type { WebSocketModuleOptions as DenoWebSocketModuleOptions } from './deno.js';
+import type { WebSocketModuleOptions as NodeWebSocketModuleOptions } from './node.js';
+
+type UpgradeGuardRequest<TOptions> = TOptions extends { upgrade?: { guard?: (request: infer TRequest, ...args: never[]) => unknown } }
+  ? TRequest
+  : never;
 
 describe('@fluojs/websockets public surface', () => {
   it('keeps the documented root barrel focused on module-first registration', () => {
@@ -43,5 +53,12 @@ describe('@fluojs/websockets public surface', () => {
       deno: Object.keys(deno).sort(),
       node: Object.keys(node).sort(),
     }).toMatchSnapshot('runtime-subpaths');
+  });
+
+  it('keeps fetch-style runtime upgrade guards scoped to Request inputs', () => {
+    expectTypeOf<UpgradeGuardRequest<BunWebSocketModuleOptions>>().toEqualTypeOf<Request>();
+    expectTypeOf<UpgradeGuardRequest<DenoWebSocketModuleOptions>>().toEqualTypeOf<Request>();
+    expectTypeOf<UpgradeGuardRequest<CloudflareWorkersWebSocketModuleOptions>>().toEqualTypeOf<Request>();
+    expectTypeOf<UpgradeGuardRequest<NodeWebSocketModuleOptions>>().toEqualTypeOf<IncomingMessage | Request>();
   });
 });
