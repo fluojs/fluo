@@ -18,6 +18,13 @@ import { validateThrottleOptions, validateThrottlerModuleOptions, validateThrott
 
 type MetadataBag = Record<PropertyKey, unknown>;
 
+interface ResolvedHandlerPolicy {
+  readonly encodedHandlerKey: string;
+  readonly limit: number;
+  readonly skip: boolean;
+  readonly ttlSeconds: number;
+}
+
 function getClassMetadataBag(target: object): MetadataBag | undefined {
   return getStandardMetadataBag(target);
 }
@@ -38,8 +45,7 @@ function defaultKeyGenerator(ctx: MiddlewareContext, trustProxyHeaders: boolean)
   return resolveClientIdentity(ctx.request, { trustProxyHeaders });
 }
 
-function buildStoreKey(handlerKey: string, clientKey: string): string {
-  const encodedHandlerKey = encodeURIComponent(handlerKey);
+function buildStoreKey(encodedHandlerKey: string, clientKey: string): string {
   const encodedClientKey = encodeURIComponent(clientKey);
 
   return `throttler:${encodedHandlerKey}:${encodedClientKey}`;
@@ -75,6 +81,8 @@ function resolveRetryAfterSeconds(entry: ThrottlerStoreEntry, now: number): numb
 export class ThrottlerGuard implements Guard {
   private readonly options: ThrottlerModuleOptions;
 
+  private readonly resolvedPolicies = new WeakMap<Function, Map<string, ResolvedHandlerPolicy>>();
+
   private readonly store: ThrottlerStore;
 
   constructor(options: ThrottlerModuleOptions) {
@@ -82,6 +90,45 @@ export class ThrottlerGuard implements Guard {
 
     this.options = validatedOptions;
     this.store = validatedOptions.store ?? createMemoryThrottlerStore();
+  }
+
+  private getResolvedPolicy(handler: GuardContext['handler']): ResolvedHandlerPolicy {
+    let controllerPolicies = this.resolvedPolicies.get(handler.controllerToken);
+
+    if (!controllerPolicies) {
+      controllerPolicies = new Map<string, ResolvedHandlerPolicy>();
+      this.resolvedPolicies.set(handler.controllerToken, controllerPolicies);
+    }
+
+    const version = handler.route.version ?? handler.metadata.effectiveVersion ?? 'unversioned';
+    const cacheKey = [handler.methodName, handler.route.method, handler.route.path, version].join('\u0000');
+    const cachedPolicy = controllerPolicies.get(cacheKey);
+
+    if (cachedPolicy) {
+      return cachedPolicy;
+    }
+
+    const classBag = getClassMetadataBag(handler.controllerToken);
+    const methodBag = getMethodMetadataBag(handler.controllerToken, handler.methodName);
+
+    const skip = (classBag ? getClassSkipThrottleMetadata(classBag) : false) ||
+      (methodBag ? getSkipThrottleMetadata(methodBag) : false);
+    const methodThrottle = methodBag ? getThrottleMetadata(methodBag) : undefined;
+    const classThrottle = classBag ? getClassThrottleMetadata(classBag) : undefined;
+    const resolvedThrottle = validateThrottleOptions({
+      limit: methodThrottle?.limit ?? classThrottle?.limit ?? this.options.limit,
+      ttl: methodThrottle?.ttl ?? classThrottle?.ttl ?? this.options.ttl,
+    });
+    const policy: ResolvedHandlerPolicy = {
+      encodedHandlerKey: encodeURIComponent(buildHandlerKey(handler)),
+      limit: resolvedThrottle.limit,
+      skip,
+      ttlSeconds: resolvedThrottle.ttl,
+    };
+
+    controllerPolicies.set(cacheKey, policy);
+
+    return policy;
   }
 
   /**
@@ -93,26 +140,11 @@ export class ThrottlerGuard implements Guard {
    */
   async canActivate(context: GuardContext): Promise<boolean> {
     const { handler, requestContext } = context;
+    const policy = this.getResolvedPolicy(handler);
 
-    const classBag = getClassMetadataBag(handler.controllerToken);
-    const methodBag = getMethodMetadataBag(handler.controllerToken, handler.methodName);
-
-    const classSkip = classBag ? getClassSkipThrottleMetadata(classBag) : false;
-    const methodSkip = methodBag ? getSkipThrottleMetadata(methodBag) : false;
-
-    if (classSkip || methodSkip) {
+    if (policy.skip) {
       return true;
     }
-
-    const methodThrottle = methodBag ? getThrottleMetadata(methodBag) : undefined;
-    const classThrottle = classBag ? getClassThrottleMetadata(classBag) : undefined;
-
-    const resolvedThrottle = validateThrottleOptions({
-      limit: methodThrottle?.limit ?? classThrottle?.limit ?? this.options.limit,
-      ttl: methodThrottle?.ttl ?? classThrottle?.ttl ?? this.options.ttl,
-    });
-    const ttlSeconds = resolvedThrottle.ttl;
-    const limit = resolvedThrottle.limit;
 
     const middlewareCtx: MiddlewareContext = {
       request: requestContext.request,
@@ -124,16 +156,15 @@ export class ThrottlerGuard implements Guard {
       ? this.options.keyGenerator(middlewareCtx)
       : defaultKeyGenerator(middlewareCtx, this.options.trustProxyHeaders ?? false);
 
-    const handlerKey = buildHandlerKey(handler);
-    const storeKey = buildStoreKey(handlerKey, clientKey);
+    const storeKey = buildStoreKey(policy.encodedHandlerKey, clientKey);
     const now = Date.now();
     const rawEntry = await this.store.consume(storeKey, {
       now,
-      ttlSeconds,
+      ttlSeconds: policy.ttlSeconds,
     });
     const entry = validateThrottlerStoreEntry(rawEntry);
 
-    if (entry.count > limit) {
+    if (entry.count > policy.limit) {
       const retryAfter = resolveRetryAfterSeconds(rawEntry, now);
       requestContext.response.setHeader('Retry-After', String(retryAfter));
       throw new TooManyRequestsException('Too Many Requests', { meta: { retryAfter } });

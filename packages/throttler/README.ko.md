@@ -125,7 +125,7 @@ ThrottlerModule.forRoot({
 - `ThrottlerModule.forRoot(options)`: 검증된 throttler 옵션과 `ThrottlerGuard`를 모듈 그래프에 제공합니다.
 - 패키지 수준 등록은 `ThrottlerModule.forRoot(options)`를 통해 지원합니다. 내부 프로바이더 조합 헬퍼와 DI 토큰은 공개 계약에 포함되지 않습니다.
 
-`ttl`과 `limit`은 양의 finite integer여야 합니다. `trustProxyHeaders`와 `keyGenerator`로 client identity를 조정할 수 있습니다. 모듈 옵션은 guard가 연결될 때 검증되고 값으로 캡처되므로, 호출자가 나중에 options 객체를 변경해도 실행 중인 throttling 정책은 바뀌지 않습니다. `store` 옵션을 제공하지 않으면 각 `ThrottlerGuard` 인스턴스가 자체 in-memory store를 소유합니다. 저장소를 공유하거나 외부에서 관리해야 한다면 `RedisThrottlerStore` 같은 `ThrottlerStore` 구현을 전달하세요.
+`ttl`과 `limit`은 양의 finite integer여야 합니다. `global`은 기본값이 `true`입니다. throttler provider를 가져온 모듈 범위에만 유지하려면 `global: false`를 설정하세요. `trustProxyHeaders`와 `keyGenerator`로 client identity를 조정할 수 있습니다. 모듈 옵션은 guard가 연결될 때 검증되고 값으로 캡처되므로, 호출자가 나중에 options 객체를 변경해도 실행 중인 throttling 정책은 바뀌지 않습니다. `store` 옵션을 제공하지 않으면 각 `ThrottlerGuard` 인스턴스가 자체 in-memory store를 소유합니다. 저장소를 공유하거나 외부에서 관리해야 한다면 `RedisThrottlerStore` 같은 `ThrottlerStore` 구현을 전달하세요.
 
 ### 데코레이터
 - `@Throttle({ ttl, limit })`: 클래스나 메서드에 특정 속도 제한을 설정합니다.
