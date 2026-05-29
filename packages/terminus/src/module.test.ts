@@ -1,6 +1,5 @@
-import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
-import { bootstrapApplication, defineModule, type PlatformComponent } from '@fluojs/runtime';
+import { defineModule, type PlatformComponent } from '@fluojs/runtime';
 import { createTestApp } from '@fluojs/testing';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -9,8 +8,6 @@ import { createMemoryHealthIndicatorProvider, MemoryHealthIndicator } from './in
 import { createRedisHealthIndicatorProvider, RedisHealthIndicator } from './indicators/redis.js';
 import { TerminusModule } from './module.js';
 import type { HealthIndicator } from './types.js';
-
-type TestResponse = FrameworkResponse & { body?: unknown };
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -26,45 +23,6 @@ function createDeferred<T>(): Deferred<T> {
   return { promise, resolve };
 }
 
-function createRequest(path: string): FrameworkRequest {
-  return {
-    body: undefined,
-    cookies: {},
-    headers: {},
-    method: 'GET',
-    params: {},
-    path,
-    query: {},
-    raw: {},
-    url: path,
-  };
-}
-
-function createResponse(): TestResponse {
-  return {
-    committed: false,
-    headers: {},
-    redirect(status: number, location: string) {
-      this.setStatus(status);
-      this.setHeader('location', location);
-      this.committed = true;
-    },
-    send(body: unknown) {
-      this.body = body;
-      this.committed = true;
-    },
-    setHeader(name: string, value: string | string[]) {
-      this.headers[name] = value;
-    },
-    setStatus(code: number) {
-      this.statusCode = code;
-      this.statusSet = true;
-    },
-    statusCode: undefined,
-    statusSet: false,
-  };
-}
-
 describe('TerminusModule.forRoot', () => {
   it('returns 200 health details and ready status when all indicators are healthy', async () => {
     const indicators: HealthIndicator[] = [new MemoryHealthIndicator({ key: 'database' })];
@@ -76,45 +34,45 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await createTestApp({ rootModule: AppModule });
 
-    const healthResponse = createResponse();
-    await app.dispatch(createRequest('/health'), healthResponse);
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
 
-    expect(healthResponse.statusCode).toBe(200);
-    expect(healthResponse.body).toMatchObject({
-      contributors: {
-        down: [],
-        up: ['database'],
-      },
-      details: {
-        database: {
-          status: 'up',
+      expect(healthResponse.status).toBe(200);
+      expect(healthResponse.body).toMatchObject({
+        contributors: {
+          down: [],
+          up: ['database'],
         },
-      },
-      info: {
-        database: {
-          status: 'up',
+        details: {
+          database: {
+            status: 'up',
+          },
         },
-      },
-      platform: {
-        health: {
-          status: 'healthy',
+        info: {
+          database: {
+            status: 'up',
+          },
         },
-        readiness: {
-          status: 'ready',
+        platform: {
+          health: {
+            status: 'healthy',
+          },
+          readiness: {
+            status: 'ready',
+          },
         },
-      },
-      status: 'ok',
-    });
+        status: 'ok',
+      });
 
-    const readyResponse = createResponse();
-    await app.dispatch(createRequest('/ready'), readyResponse);
+      const readyResponse = await app.request('GET', '/ready').send();
 
-    expect(readyResponse.statusCode).toBe(200);
-    expect(readyResponse.body).toEqual({ status: 'ready' });
-
-    await app.close();
+      expect(readyResponse.status).toBe(200);
+      expect(readyResponse.body).toEqual({ status: 'ready' });
+    } finally {
+      await app.close();
+    }
   });
 
   it('mounts /health and /ready under the configured custom path', async () => {
@@ -130,38 +88,36 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await createTestApp({ rootModule: AppModule });
 
-    const customHealthResponse = createResponse();
-    await app.dispatch(createRequest('/internal/health'), customHealthResponse);
+    try {
+      const customHealthResponse = await app.request('GET', '/internal/health').send();
 
-    expect(customHealthResponse.statusCode).toBe(200);
-    expect(customHealthResponse.body).toMatchObject({
-      details: {
-        database: {
-          status: 'up',
+      expect(customHealthResponse.status).toBe(200);
+      expect(customHealthResponse.body).toMatchObject({
+        details: {
+          database: {
+            status: 'up',
+          },
         },
-      },
-      status: 'ok',
-    });
+        status: 'ok',
+      });
 
-    const customReadyResponse = createResponse();
-    await app.dispatch(createRequest('/internal/ready'), customReadyResponse);
+      const customReadyResponse = await app.request('GET', '/internal/ready').send();
 
-    expect(customReadyResponse.statusCode).toBe(200);
-    expect(customReadyResponse.body).toEqual({ status: 'ready' });
+      expect(customReadyResponse.status).toBe(200);
+      expect(customReadyResponse.body).toEqual({ status: 'ready' });
 
-    const defaultHealthResponse = createResponse();
-    await app.dispatch(createRequest('/health'), defaultHealthResponse);
+      const defaultHealthResponse = await app.request('GET', '/health').send();
 
-    expect(defaultHealthResponse.statusCode).toBe(404);
+      expect(defaultHealthResponse.status).toBe(404);
 
-    const defaultReadyResponse = createResponse();
-    await app.dispatch(createRequest('/ready'), defaultReadyResponse);
+      const defaultReadyResponse = await app.request('GET', '/ready').send();
 
-    expect(defaultReadyResponse.statusCode).toBe(404);
-
-    await app.close();
+      expect(defaultReadyResponse.status).toBe(404);
+    } finally {
+      await app.close();
+    }
   });
 
   it('returns 503 on /health and /ready when indicators fail', async () => {
@@ -181,33 +137,33 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await createTestApp({ rootModule: AppModule });
 
-    const healthResponse = createResponse();
-    await app.dispatch(createRequest('/health'), healthResponse);
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
 
-    expect(healthResponse.statusCode).toBe(503);
-    expect(healthResponse.body).toMatchObject({
-      contributors: {
-        down: ['redis'],
-        up: [],
-      },
-      error: {
-        redis: {
-          message: 'redis down',
-          status: 'down',
+      expect(healthResponse.status).toBe(503);
+      expect(healthResponse.body).toMatchObject({
+        contributors: {
+          down: ['redis'],
+          up: [],
         },
-      },
-      status: 'error',
-    });
+        error: {
+          redis: {
+            message: 'redis down',
+            status: 'down',
+          },
+        },
+        status: 'error',
+      });
 
-    const readyResponse = createResponse();
-    await app.dispatch(createRequest('/ready'), readyResponse);
+      const readyResponse = await app.request('GET', '/ready').send();
 
-    expect(readyResponse.statusCode).toBe(503);
-    expect(readyResponse.body).toEqual({ status: 'unavailable' });
-
-    await app.close();
+      expect(readyResponse.status).toBe(503);
+      expect(readyResponse.body).toEqual({ status: 'unavailable' });
+    } finally {
+      await app.close();
+    }
   });
 
   it('applies execution timeouts through request-facing /health and /ready endpoints', async () => {
@@ -232,29 +188,31 @@ describe('TerminusModule.forRoot', () => {
 
     const app = await createTestApp({ rootModule: AppModule });
 
-    const healthResponse = await app.request('GET', '/health').send();
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
 
-    expect(healthResponse.status).toBe(503);
-    expect(healthResponse.body).toMatchObject({
-      contributors: {
-        down: ['database'],
-        up: [],
-      },
-      error: {
-        database: {
-          message: 'Health indicator timed out after 5ms.',
-          status: 'down',
+      expect(healthResponse.status).toBe(503);
+      expect(healthResponse.body).toMatchObject({
+        contributors: {
+          down: ['database'],
+          up: [],
         },
-      },
-      status: 'error',
-    });
+        error: {
+          database: {
+            message: 'Health indicator timed out after 5ms.',
+            status: 'down',
+          },
+        },
+        status: 'error',
+      });
 
-    const readyResponse = await app.request('GET', '/ready').send();
+      const readyResponse = await app.request('GET', '/ready').send();
 
-    expect(readyResponse.status).toBe(503);
-    expect(readyResponse.body).toEqual({ status: 'unavailable' });
-
-    await app.close();
+      expect(readyResponse.status).toBe(503);
+      expect(readyResponse.body).toEqual({ status: 'unavailable' });
+    } finally {
+      await app.close();
+    }
   });
 
   it('supports custom indicators that transition from up to down after bootstrap', async () => {
@@ -276,37 +234,36 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await createTestApp({ rootModule: AppModule });
 
-    const firstHealth = createResponse();
-    await app.dispatch(createRequest('/health'), firstHealth);
-    expect(firstHealth.statusCode).toBe(200);
+    try {
+      const firstHealth = await app.request('GET', '/health').send();
+      expect(firstHealth.status).toBe(200);
 
-    healthy = false;
+      healthy = false;
 
-    const secondHealth = createResponse();
-    await app.dispatch(createRequest('/health'), secondHealth);
-    expect(secondHealth.statusCode).toBe(503);
-    expect(secondHealth.body).toMatchObject({
-      contributors: {
-        down: ['custom'],
-        up: [],
-      },
-      error: {
-        custom: {
-          message: 'dependency degraded',
-          status: 'down',
+      const secondHealth = await app.request('GET', '/health').send();
+      expect(secondHealth.status).toBe(503);
+      expect(secondHealth.body).toMatchObject({
+        contributors: {
+          down: ['custom'],
+          up: [],
         },
-      },
-      status: 'error',
-    });
+        error: {
+          custom: {
+            message: 'dependency degraded',
+            status: 'down',
+          },
+        },
+        status: 'error',
+      });
 
-    const readyResponse = createResponse();
-    await app.dispatch(createRequest('/ready'), readyResponse);
-    expect(readyResponse.statusCode).toBe(503);
-    expect(readyResponse.body).toEqual({ status: 'unavailable' });
-
-    await app.close();
+      const readyResponse = await app.request('GET', '/ready').send();
+      expect(readyResponse.status).toBe(503);
+      expect(readyResponse.body).toEqual({ status: 'unavailable' });
+    } finally {
+      await app.close();
+    }
   });
 
   it('composes user-provided readiness checks with indicator readiness checks', async () => {
@@ -328,18 +285,18 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await createTestApp({ rootModule: AppModule });
 
-    const healthResponse = createResponse();
-    await app.dispatch(createRequest('/health'), healthResponse);
-    expect(healthResponse.statusCode).toBe(200);
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
+      expect(healthResponse.status).toBe(200);
 
-    const readyResponse = createResponse();
-    await app.dispatch(createRequest('/ready'), readyResponse);
-    expect(readyResponse.statusCode).toBe(503);
-    expect(readyResponse.body).toEqual({ status: 'unavailable' });
-
-    await app.close();
+      const readyResponse = await app.request('GET', '/ready').send();
+      expect(readyResponse.status).toBe(503);
+      expect(readyResponse.body).toEqual({ status: 'unavailable' });
+    } finally {
+      await app.close();
+    }
   });
 
   it('uses indicatorProviders for both /health and /ready checks', async () => {
@@ -370,31 +327,31 @@ describe('TerminusModule.forRoot', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await createTestApp({ rootModule: AppModule });
 
-    const healthResponse = createResponse();
-    await app.dispatch(createRequest('/health'), healthResponse);
-    expect(healthResponse.statusCode).toBe(503);
-    expect(healthResponse.body).toMatchObject({
-      contributors: {
-        down: ['redis'],
-        up: [],
-      },
-      error: {
-        redis: {
-          message: 'redis down',
-          status: 'down',
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
+      expect(healthResponse.status).toBe(503);
+      expect(healthResponse.body).toMatchObject({
+        contributors: {
+          down: ['redis'],
+          up: [],
         },
-      },
-      status: 'error',
-    });
+        error: {
+          redis: {
+            message: 'redis down',
+            status: 'down',
+          },
+        },
+        status: 'error',
+      });
 
-    const readyResponse = createResponse();
-    await app.dispatch(createRequest('/ready'), readyResponse);
-    expect(readyResponse.statusCode).toBe(503);
-    expect(readyResponse.body).toEqual({ status: 'unavailable' });
-
-    await app.close();
+      const readyResponse = await app.request('GET', '/ready').send();
+      expect(readyResponse.status).toBe(503);
+      expect(readyResponse.body).toEqual({ status: 'unavailable' });
+    } finally {
+      await app.close();
+    }
   });
 
   it('supports default and named redis indicator providers without token collisions', async () => {
@@ -434,37 +391,37 @@ describe('TerminusModule.forRoot', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await createTestApp({ rootModule: AppModule });
 
-    const healthResponse = createResponse();
-    await app.dispatch(createRequest('/health'), healthResponse);
-    expect(healthResponse.statusCode).toBe(200);
-    expect(healthResponse.body).toMatchObject({
-      details: {
-        'cache-redis': {
-          status: 'up',
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
+      expect(healthResponse.status).toBe(200);
+      expect(healthResponse.body).toMatchObject({
+        details: {
+          'cache-redis': {
+            status: 'up',
+          },
+          redis: {
+            status: 'up',
+          },
         },
-        redis: {
-          status: 'up',
+        status: 'ok',
+      });
+      expect(healthResponse.body).toMatchObject({
+        contributors: {
+          down: [],
         },
-      },
-      status: 'ok',
-    });
-    expect(healthResponse.body).toMatchObject({
-      contributors: {
-        down: [],
-      },
-    });
-    expect((healthResponse.body as { contributors: { up: string[] } }).contributors.up).toEqual(
-      expect.arrayContaining(['redis', 'cache-redis']),
-    );
+      });
+      expect((healthResponse.body as { contributors: { up: string[] } }).contributors.up).toEqual(
+        expect.arrayContaining(['redis', 'cache-redis']),
+      );
 
-    const readyResponse = createResponse();
-    await app.dispatch(createRequest('/ready'), readyResponse);
-    expect(readyResponse.statusCode).toBe(200);
-    expect(readyResponse.body).toEqual({ status: 'ready' });
-
-    await app.close();
+      const readyResponse = await app.request('GET', '/ready').send();
+      expect(readyResponse.status).toBe(200);
+      expect(readyResponse.body).toEqual({ status: 'ready' });
+    } finally {
+      await app.close();
+    }
   });
 
   it('supports repeatable same-type indicator providers without token collisions', async () => {
@@ -481,37 +438,37 @@ describe('TerminusModule.forRoot', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await createTestApp({ rootModule: AppModule });
 
-    const healthResponse = createResponse();
-    await app.dispatch(createRequest('/health'), healthResponse);
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
 
-    expect(healthResponse.statusCode).toBe(200);
-    expect(healthResponse.body).toMatchObject({
-      contributors: {
-        down: [],
-      },
-      details: {
-        heap: {
-          status: 'up',
+      expect(healthResponse.status).toBe(200);
+      expect(healthResponse.body).toMatchObject({
+        contributors: {
+          down: [],
         },
-        rss: {
-          status: 'up',
+        details: {
+          heap: {
+            status: 'up',
+          },
+          rss: {
+            status: 'up',
+          },
         },
-      },
-      status: 'ok',
-    });
-    expect((healthResponse.body as { contributors: { up: string[] } }).contributors.up).toEqual(
-      expect.arrayContaining(['heap', 'rss']),
-    );
+        status: 'ok',
+      });
+      expect((healthResponse.body as { contributors: { up: string[] } }).contributors.up).toEqual(
+        expect.arrayContaining(['heap', 'rss']),
+      );
 
-    const readyResponse = createResponse();
-    await app.dispatch(createRequest('/ready'), readyResponse);
+      const readyResponse = await app.request('GET', '/ready').send();
 
-    expect(readyResponse.statusCode).toBe(200);
-    expect(readyResponse.body).toEqual({ status: 'ready' });
-
-    await app.close();
+      expect(readyResponse.status).toBe(200);
+      expect(readyResponse.body).toEqual({ status: 'ready' });
+    } finally {
+      await app.close();
+    }
   });
 
   it('supports repeatable same-type HTTP indicator providers without token collisions', async () => {
@@ -531,13 +488,12 @@ describe('TerminusModule.forRoot', () => {
     });
 
     try {
-      const app = await bootstrapApplication({ rootModule: AppModule });
+      const app = await createTestApp({ rootModule: AppModule });
 
       try {
-        const healthResponse = createResponse();
-        await app.dispatch(createRequest('/health'), healthResponse);
+        const healthResponse = await app.request('GET', '/health').send();
 
-        expect(healthResponse.statusCode).toBe(200);
+        expect(healthResponse.status).toBe(200);
         expect(healthResponse.body).toMatchObject({
           contributors: {
             down: [],
@@ -609,49 +565,49 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot({ indicators })],
     });
 
-    const app = await bootstrapApplication({
+    const app = await createTestApp({
       platform: {
         components: [component],
       },
       rootModule: AppModule,
     });
 
-    const healthResponse = createResponse();
-    await app.dispatch(createRequest('/health'), healthResponse);
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
 
-    expect(healthResponse.statusCode).toBe(503);
-    expect(healthResponse.body).toMatchObject({
-      contributors: {
-        down: ['fluo-platform-readiness'],
-        up: ['database'],
-      },
-      error: {
-        'fluo-platform-readiness': {
-          critical: true,
-          message: 'redis not ready',
-          platformStatus: 'not-ready',
-          status: 'down',
+      expect(healthResponse.status).toBe(503);
+      expect(healthResponse.body).toMatchObject({
+        contributors: {
+          down: ['fluo-platform-readiness'],
+          up: ['database'],
         },
-      },
-      platform: {
-        health: {
-          status: 'healthy',
+        error: {
+          'fluo-platform-readiness': {
+            critical: true,
+            message: 'redis not ready',
+            platformStatus: 'not-ready',
+            status: 'down',
+          },
         },
-        readiness: {
-          reason: 'redis not ready',
-          status: 'not-ready',
+        platform: {
+          health: {
+            status: 'healthy',
+          },
+          readiness: {
+            reason: 'redis not ready',
+            status: 'not-ready',
+          },
         },
-      },
-      status: 'error',
-    });
+        status: 'error',
+      });
 
-    const readyResponse = createResponse();
-    await app.dispatch(createRequest('/ready'), readyResponse);
+      const readyResponse = await app.request('GET', '/ready').send();
 
-    expect(readyResponse.statusCode).toBe(503);
-    expect(readyResponse.body).toEqual({ status: 'unavailable' });
-
-    await app.close();
+      expect(readyResponse.status).toBe(503);
+      expect(readyResponse.body).toEqual({ status: 'unavailable' });
+    } finally {
+      await app.close();
+    }
   });
 
   it('treats non-critical degraded platform readiness as unavailable for the HTTP readiness gate', async () => {
@@ -698,36 +654,36 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot({ indicators })],
     });
 
-    const app = await bootstrapApplication({
+    const app = await createTestApp({
       platform: {
         components: [component],
       },
       rootModule: AppModule,
     });
 
-    const healthResponse = createResponse();
-    await app.dispatch(createRequest('/health'), healthResponse);
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
 
-    expect(healthResponse.statusCode).toBe(503);
-    expect(healthResponse.body).toMatchObject({
-      error: {
-        'fluo-platform-readiness': {
-          critical: false,
-          message: 'search index warming',
-          platformStatus: 'degraded',
-          status: 'down',
+      expect(healthResponse.status).toBe(503);
+      expect(healthResponse.body).toMatchObject({
+        error: {
+          'fluo-platform-readiness': {
+            critical: false,
+            message: 'search index warming',
+            platformStatus: 'degraded',
+            status: 'down',
+          },
         },
-      },
-      status: 'error',
-    });
+        status: 'error',
+      });
 
-    const readyResponse = createResponse();
-    await app.dispatch(createRequest('/ready'), readyResponse);
+      const readyResponse = await app.request('GET', '/ready').send();
 
-    expect(readyResponse.statusCode).toBe(503);
-    expect(readyResponse.body).toEqual({ status: 'unavailable' });
-
-    await app.close();
+      expect(readyResponse.status).toBe(503);
+      expect(readyResponse.body).toEqual({ status: 'unavailable' });
+    } finally {
+      await app.close();
+    }
   });
 
   it('keeps Terminus HTTP readiness out of rotation while shutdown is in progress', async () => {
@@ -755,23 +711,24 @@ describe('TerminusModule.forRoot', () => {
       providers: [BlockingShutdownService],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = await createTestApp({ rootModule: AppModule });
 
-    const readyBeforeClose = createResponse();
-    await app.dispatch(createRequest('/ready'), readyBeforeClose);
-    expect(readyBeforeClose.statusCode).toBe(200);
+    const readyBeforeClose = await app.request('GET', '/ready').send();
+    expect(readyBeforeClose.status).toBe(200);
     expect(readyBeforeClose.body).toEqual({ status: 'ready' });
 
-    const closePromise = app.close('SIGTERM');
-    await shutdownStarted.promise;
+    const closePromise = app.close();
 
-    const readyDuringClose = createResponse();
-    await app.dispatch(createRequest('/ready'), readyDuringClose);
-    expect(readyDuringClose.statusCode).toBe(503);
-    expect(readyDuringClose.body).toEqual({ status: 'starting' });
+    try {
+      await shutdownStarted.promise;
 
-    shutdownBlocker.resolve();
-    await closePromise;
+      const readyDuringClose = await app.request('GET', '/ready').send();
+      expect(readyDuringClose.status).toBe(503);
+      expect(readyDuringClose.body).toEqual({ status: 'starting' });
+    } finally {
+      shutdownBlocker.resolve();
+      await closePromise;
+    }
   });
 
   it('reports platform health failures as explicit Terminus diagnostics', async () => {
@@ -812,38 +769,38 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot()],
     });
 
-    const app = await bootstrapApplication({
+    const app = await createTestApp({
       platform: {
         components: [component],
       },
       rootModule: AppModule,
     });
 
-    const healthResponse = createResponse();
-    await app.dispatch(createRequest('/health'), healthResponse);
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
 
-    expect(healthResponse.statusCode).toBe(503);
-    expect(healthResponse.body).toMatchObject({
-      contributors: {
-        down: ['fluo-platform-health'],
-        up: [],
-      },
-      error: {
-        'fluo-platform-health': {
-          message: 'database pool exhausted',
-          platformStatus: 'unhealthy',
-          status: 'down',
+      expect(healthResponse.status).toBe(503);
+      expect(healthResponse.body).toMatchObject({
+        contributors: {
+          down: ['fluo-platform-health'],
+          up: [],
         },
-      },
-      status: 'error',
-    });
+        error: {
+          'fluo-platform-health': {
+            message: 'database pool exhausted',
+            platformStatus: 'unhealthy',
+            status: 'down',
+          },
+        },
+        status: 'error',
+      });
 
-    const readyResponse = createResponse();
-    await app.dispatch(createRequest('/ready'), readyResponse);
-    expect(readyResponse.statusCode).toBe(200);
-    expect(readyResponse.body).toEqual({ status: 'ready' });
-
-    await app.close();
+      const readyResponse = await app.request('GET', '/ready').send();
+      expect(readyResponse.status).toBe(200);
+      expect(readyResponse.body).toEqual({ status: 'ready' });
+    } finally {
+      await app.close();
+    }
   });
 
   it('does not overwrite user indicators that reuse fixed platform diagnostic keys', async () => {
@@ -893,40 +850,41 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot({ indicators })],
     });
 
-    const app = await bootstrapApplication({
+    const app = await createTestApp({
       platform: {
         components: [component],
       },
       rootModule: AppModule,
     });
 
-    const healthResponse = createResponse();
-    await app.dispatch(createRequest('/health'), healthResponse);
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
 
-    expect(healthResponse.statusCode).toBe(503);
-    expect(healthResponse.body).toMatchObject({
-      contributors: {
-        down: [
-          'fluo-platform-health-duplicate-key-error',
-          'fluo-platform-readiness-duplicate-key-error',
-        ],
-        up: ['fluo-platform-health', 'fluo-platform-readiness'],
-      },
-      details: {
-        'fluo-platform-health': { status: 'up' },
-        'fluo-platform-health-duplicate-key-error': {
-          message: 'Platform diagnostic key "fluo-platform-health" collided with an existing health result key.',
-          status: 'down',
+      expect(healthResponse.status).toBe(503);
+      expect(healthResponse.body).toMatchObject({
+        contributors: {
+          down: [
+            'fluo-platform-health-duplicate-key-error',
+            'fluo-platform-readiness-duplicate-key-error',
+          ],
+          up: ['fluo-platform-health', 'fluo-platform-readiness'],
         },
-        'fluo-platform-readiness': { status: 'up' },
-        'fluo-platform-readiness-duplicate-key-error': {
-          message: 'Platform diagnostic key "fluo-platform-readiness" collided with an existing health result key.',
-          status: 'down',
+        details: {
+          'fluo-platform-health': { status: 'up' },
+          'fluo-platform-health-duplicate-key-error': {
+            message: 'Platform diagnostic key "fluo-platform-health" collided with an existing health result key.',
+            status: 'down',
+          },
+          'fluo-platform-readiness': { status: 'up' },
+          'fluo-platform-readiness-duplicate-key-error': {
+            message: 'Platform diagnostic key "fluo-platform-readiness" collided with an existing health result key.',
+            status: 'down',
+          },
         },
-      },
-      status: 'error',
-    });
-
-    await app.close();
+        status: 'error',
+      });
+    } finally {
+      await app.close();
+    }
   });
 });
