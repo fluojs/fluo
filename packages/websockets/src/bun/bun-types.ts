@@ -1,4 +1,9 @@
-import type { WebSocketModuleOptions as SharedWebSocketModuleOptions } from '../types.js';
+import type {
+  WebSocketModuleOptions as SharedWebSocketModuleOptions,
+  WebSocketUpgradeContext,
+  WebSocketUpgradeGuard as SharedWebSocketUpgradeGuard,
+  WebSocketUpgradeRejection,
+} from '../types.js';
 
 /**
  * Defines the bun web socket message type.
@@ -97,6 +102,13 @@ export interface WebSocketGatewayContext {
 }
 
 /**
+ * Fetch-style request guard used before Bun websocket upgrades are accepted.
+ */
+export type WebSocketUpgradeGuard = SharedWebSocketUpgradeGuard<Request>;
+
+export type { WebSocketUpgradeContext, WebSocketUpgradeRejection };
+
+/**
  * Defines the web socket module options type.
  */
-export type WebSocketModuleOptions = SharedWebSocketModuleOptions;
+export type WebSocketModuleOptions = SharedWebSocketModuleOptions<Request>;

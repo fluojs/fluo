@@ -1,11 +1,9 @@
+import type { IncomingMessage } from 'node:http';
+
 import type { MetadataPropertyKey, Token } from '@fluojs/core';
 import type {
   TypedOnMessageHandler as NodeTypedOnMessageHandler,
   WebSocketGatewayContext as NodeWebSocketGatewayContext,
-  WebSocketModuleOptions as NodeWebSocketModuleOptions,
-  WebSocketUpgradeContext as NodeWebSocketUpgradeContext,
-  WebSocketUpgradeGuard as NodeWebSocketUpgradeGuard,
-  WebSocketUpgradeRejection as NodeWebSocketUpgradeRejection,
 } from './node/node-types.js';
 
 /**
@@ -89,6 +87,18 @@ export interface WebSocketGatewayDescriptor {
   /** Ordered handler descriptors discovered on the gateway. */
   handlers: WebSocketGatewayHandlerDescriptor[];
 
+  /** Connect handlers pre-indexed during discovery to avoid lifecycle hot-path filtering. */
+  connectHandlers: readonly WebSocketGatewayHandlerDescriptor[];
+
+  /** Disconnect handlers pre-indexed during discovery to avoid lifecycle hot-path filtering. */
+  disconnectHandlers: readonly WebSocketGatewayHandlerDescriptor[];
+
+  /** Event-specific message handlers pre-indexed during discovery. */
+  messageHandlersByEvent: ReadonlyMap<string, readonly WebSocketGatewayHandlerDescriptor[]>;
+
+  /** Message handlers without an event filter, invoked for every inbound message. */
+  wildcardMessageHandlers: readonly WebSocketGatewayHandlerDescriptor[];
+
   /** Module name that contributed this gateway. */
   moduleName: string;
 
@@ -113,17 +123,37 @@ export type WebSocketGatewayContext = NodeWebSocketGatewayContext;
 /**
  * Upgrade-time context shared with pre-upgrade websocket guards.
  */
-export type WebSocketUpgradeContext = NodeWebSocketUpgradeContext;
+export interface WebSocketUpgradeContext {
+  /** Current number of open websocket connections tracked by the lifecycle service. */
+  activeConnectionCount: number;
+
+  /** Normalized gateway path targeted by the upgrade request. */
+  path: string;
+}
 
 /**
  * Structured rejection returned by a pre-upgrade websocket guard.
  */
-export type WebSocketUpgradeRejection = NodeWebSocketUpgradeRejection;
+export interface WebSocketUpgradeRejection {
+  /** Optional plaintext response body sent with the rejection. */
+  body?: string;
+
+  /** Optional HTTP headers added to the rejection response. */
+  headers?: Record<string, string>;
+
+  /** HTTP status code returned instead of completing the websocket upgrade. */
+  status: number;
+}
 
 /**
  * Hook that can allow or reject a websocket upgrade before the adapter accepts it.
+ *
+ * @typeParam TRequest Request shape surfaced by the selected websocket runtime.
  */
-export type WebSocketUpgradeGuard = NodeWebSocketUpgradeGuard;
+export type WebSocketUpgradeGuard<TRequest = Request> = (
+  request: TRequest,
+  context: WebSocketUpgradeContext,
+) => Promise<boolean | WebSocketUpgradeRejection | void> | boolean | WebSocketUpgradeRejection | void;
 
 /**
  * Room management API shared by WebSocket protocol adapters.
@@ -164,6 +194,40 @@ export interface WebSocketRoomService {
 }
 
 /**
- * Runtime-agnostic module options that currently mirror the Node.js adapter options.
+ * Runtime-agnostic module options shared by websocket lifecycle services.
+ *
+ * @typeParam TRequest Request shape received by the runtime-specific pre-upgrade guard.
  */
-export type WebSocketModuleOptions = NodeWebSocketModuleOptions;
+export interface WebSocketModuleOptions<TRequest = IncomingMessage | Request> {
+  /** Limits that bound connection count and inbound payload size across runtime adapters. */
+  limits?: {
+    /** Maximum number of concurrently tracked websocket connections before new upgrades are rejected. */
+    maxConnections?: number;
+
+    /** Maximum inbound payload size in bytes before the connection is rejected or closed. */
+    maxPayloadBytes?: number;
+  };
+
+  /** Upgrade-time controls that run before the adapter completes the websocket handshake. */
+  upgrade?: {
+    /** Optional guard hook that can deny anonymous or otherwise invalid upgrade requests. */
+    guard?: WebSocketUpgradeGuard<TRequest>;
+  };
+
+  backpressure?: {
+    maxBufferedAmountBytes?: number;
+    policy?: 'close' | 'drop';
+  };
+  buffer?: {
+    maxPendingMessagesPerSocket?: number;
+    overflowPolicy?: 'close' | 'drop-newest' | 'drop-oldest';
+  };
+  heartbeat?: {
+    enabled?: boolean;
+    intervalMs?: number;
+    timeoutMs?: number;
+  };
+  shutdown?: {
+    timeoutMs?: number;
+  };
+}

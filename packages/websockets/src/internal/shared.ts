@@ -284,13 +284,17 @@ export async function dispatchGatewayMessage<TSocket, TRequest>(
   const parsed = parseIncomingMessage(data);
 
   for (const { descriptor, instance } of resolved) {
-    const handlers = descriptor.handlers.filter(
-      (handler) =>
-        handler.type === 'message' &&
-        (handler.event === undefined || handler.event === parsed.event),
-    );
+    for (const handler of descriptor.wildcardMessageHandlers) {
+      await invokeGatewayMethod(instance, descriptor, handler, [parsed.payload, socket, request], logger, loggerContext);
+    }
 
-    for (const handler of handlers) {
+    if (parsed.event === undefined) {
+      continue;
+    }
+
+    const eventHandlers = descriptor.messageHandlersByEvent.get(parsed.event) ?? [];
+
+    for (const handler of eventHandlers) {
       await invokeGatewayMethod(instance, descriptor, handler, [parsed.payload, socket, request], logger, loggerContext);
     }
   }
@@ -341,7 +345,7 @@ export async function runGatewayHandlers(
   logger: ApplicationLogger,
   loggerContext: string,
 ): Promise<void> {
-  const handlers = descriptor.handlers.filter((handler) => handler.type === type);
+  const handlers = type === 'connect' ? descriptor.connectHandlers : descriptor.disconnectHandlers;
 
   for (const handler of handlers) {
     await invokeGatewayMethod(instance, descriptor, handler, args, logger, loggerContext);
@@ -422,13 +426,20 @@ function createGatewayDescriptor(candidate: DiscoveryCandidate, path: string): W
     throw new Error(`Missing websocket gateway metadata for ${candidate.targetType.name}.`);
   }
 
+  const handlers = getWebSocketHandlerMetadataEntries(candidate.targetType.prototype).map((entry) => ({
+    event: entry.metadata.event,
+    methodKey: entry.propertyKey,
+    methodName: methodKeyToName(entry.propertyKey),
+    type: entry.metadata.type,
+  }));
+  const handlerIndex = createGatewayHandlerIndex(handlers);
+
   return {
-    handlers: getWebSocketHandlerMetadataEntries(candidate.targetType.prototype).map((entry) => ({
-      event: entry.metadata.event,
-      methodKey: entry.propertyKey,
-      methodName: methodKeyToName(entry.propertyKey),
-      type: entry.metadata.type,
-    })),
+    connectHandlers: handlerIndex.connectHandlers,
+    disconnectHandlers: handlerIndex.disconnectHandlers,
+    handlers,
+    messageHandlersByEvent: handlerIndex.messageHandlersByEvent,
+    wildcardMessageHandlers: handlerIndex.wildcardMessageHandlers,
     moduleName: candidate.moduleName,
     path: normalizeGatewayPath(path),
     serverBacked: gatewayMetadata.serverBacked
@@ -438,6 +449,46 @@ function createGatewayDescriptor(candidate: DiscoveryCandidate, path: string): W
       : undefined,
     targetName: candidate.targetType.name,
     token: candidate.token,
+  };
+}
+
+function createGatewayHandlerIndex(handlers: readonly WebSocketGatewayHandlerDescriptor[]): {
+  connectHandlers: readonly WebSocketGatewayHandlerDescriptor[];
+  disconnectHandlers: readonly WebSocketGatewayHandlerDescriptor[];
+  messageHandlersByEvent: ReadonlyMap<string, readonly WebSocketGatewayHandlerDescriptor[]>;
+  wildcardMessageHandlers: readonly WebSocketGatewayHandlerDescriptor[];
+} {
+  const connectHandlers: WebSocketGatewayHandlerDescriptor[] = [];
+  const disconnectHandlers: WebSocketGatewayHandlerDescriptor[] = [];
+  const messageHandlersByEvent = new Map<string, WebSocketGatewayHandlerDescriptor[]>();
+  const wildcardMessageHandlers: WebSocketGatewayHandlerDescriptor[] = [];
+
+  for (const handler of handlers) {
+    if (handler.type === 'connect') {
+      connectHandlers.push(handler);
+      continue;
+    }
+
+    if (handler.type === 'disconnect') {
+      disconnectHandlers.push(handler);
+      continue;
+    }
+
+    if (handler.event === undefined) {
+      wildcardMessageHandlers.push(handler);
+      continue;
+    }
+
+    const eventHandlers = messageHandlersByEvent.get(handler.event) ?? [];
+    eventHandlers.push(handler);
+    messageHandlersByEvent.set(handler.event, eventHandlers);
+  }
+
+  return {
+    connectHandlers,
+    disconnectHandlers,
+    messageHandlersByEvent,
+    wildcardMessageHandlers,
   };
 }
 
