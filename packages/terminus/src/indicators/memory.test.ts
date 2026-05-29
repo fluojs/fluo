@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import type { HealthCheckError } from '../errors.js';
 import { createMemoryHealthIndicator, MemoryHealthIndicator } from './memory.js';
@@ -14,20 +14,15 @@ function createMemoryUsage(overrides: Partial<NodeJS.MemoryUsage>): NodeJS.Memor
 }
 
 describe('MemoryHealthIndicator', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it('returns up when usage is below configured thresholds', async () => {
-    vi.spyOn(process, 'memoryUsage').mockReturnValue(createMemoryUsage({
-      heapTotal: 100,
-      heapUsed: 20,
-      rss: 80,
-    }));
-
     const indicator = new MemoryHealthIndicator({
       heapUsedThresholdBytes: 90,
       heapUsedThresholdRatio: 0.9,
+      memoryUsage: () => createMemoryUsage({
+        heapTotal: 100,
+        heapUsed: 20,
+        rss: 80,
+      }),
       rssThresholdBytes: 100,
     });
 
@@ -44,14 +39,15 @@ describe('MemoryHealthIndicator', () => {
   });
 
   it('throws HealthCheckError when byte or ratio thresholds are exceeded', async () => {
-    vi.spyOn(process, 'memoryUsage').mockReturnValue(createMemoryUsage({
+    const memoryUsage = () => createMemoryUsage({
       heapTotal: 100,
       heapUsed: 95,
       rss: 150,
-    }));
+    });
 
     const ratioIndicator = createMemoryHealthIndicator({
       heapUsedThresholdRatio: 0.9,
+      memoryUsage,
     });
 
     await expect(ratioIndicator.check('memory')).rejects.toMatchObject({
@@ -67,6 +63,7 @@ describe('MemoryHealthIndicator', () => {
 
     const rssIndicator = createMemoryHealthIndicator({
       heapUsedThresholdRatio: 0.99,
+      memoryUsage,
       rssThresholdBytes: 120,
     });
 

@@ -184,11 +184,16 @@ describe('MyCustomAdapter Portability', () => {
   it('잘못된 형식의 쿠키를 보존해야 함', () => harness.assertPreservesMalformedCookieValues());
   it('SSE를 처리해야 함', () => harness.assertSupportsSseStreaming());
   it('JSON 및 text 원시 바디를 보존해야 함', () => harness.assertPreservesRawBodyForJsonAndText());
+  it('정확한 원시 바디 바이트를 보존해야 함', () => harness.assertPreservesExactRawBodyBytesForByteSensitivePayloads());
   it('multipart 원시 바디를 제외해야 함', () => harness.assertExcludesRawBodyForMultipart());
+  it('multipart total limit을 max body size로 기본 설정해야 함', () => harness.assertDefaultsMultipartTotalLimitToMaxBodySize());
+  it('close 뒤 stream drain wait를 settle해야 함', () => harness.assertSettlesStreamDrainWaitOnClose());
+  it('설정된 host startup log를 보고해야 함', () => harness.assertReportsConfiguredHostInStartupLogs());
+  it('shutdown signal listener를 제거해야 함', () => harness.assertRemovesShutdownSignalListenersAfterClose());
 });
 ```
 
-이 테스트를 실행할 때는 타이밍 데이터도 함께 봐야 합니다. 이식성 스위트에서 느린 테스트는 플랫폼 프리미티브의 하위 구현이 최적화되지 않았다는 신호일 수 있습니다. 하네스의 피드백을 사용해 어댑터를 정제하면 정확성과 성능을 함께 확인할 수 있습니다.
+이 테스트를 실행할 때는 앞부분 예시 몇 개만 복사하지 말고 cleanup 및 performance-sensitive assertion도 유지하세요. 하네스는 partial-bootstrap cleanup, 정확한 byte 보존, multipart memory boundary, application logger를 통한 startup logging, shutdown listener cleanup, stream-drain settlement를 확인합니다. 또한 타이밍 데이터도 함께 봐야 합니다. 이식성 스위트에서 느린 테스트는 플랫폼 프리미티브의 하위 구현이 최적화되지 않았다는 신호일 수 있습니다. 하네스의 피드백을 사용해 어댑터를 정제하면 정확성과 성능을 함께 확인할 수 있습니다.
 
 ## 14.9 Why Line-by-Line Consistency Matters
 

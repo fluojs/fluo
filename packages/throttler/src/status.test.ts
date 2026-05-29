@@ -31,6 +31,59 @@ describe('createThrottlerPlatformStatusSnapshot', () => {
     });
   });
 
+  it('reports memory store operation as local-only with framework ownership by default', () => {
+    const snapshot = createThrottlerPlatformStatusSnapshot({
+      storeKind: 'memory',
+    });
+
+    expect(snapshot.ownership).toEqual({ externallyManaged: false, ownsResources: true });
+    expect(snapshot.readiness).toEqual({ critical: false, status: 'ready' });
+    expect(snapshot.health).toEqual({ status: 'healthy' });
+    expect(snapshot.details).toMatchObject({
+      operationMode: 'local-only',
+      storeKind: 'memory',
+      storeOwnershipMode: 'framework',
+    });
+  });
+
+  it('reports custom store operation with external ownership by default', () => {
+    const snapshot = createThrottlerPlatformStatusSnapshot({
+      componentId: 'throttler.custom-quota',
+      storeKind: 'custom',
+    });
+
+    expect(snapshot.ownership).toEqual({ externallyManaged: true, ownsResources: false });
+    expect(snapshot.details).toMatchObject({
+      operationMode: 'custom',
+      storeKind: 'custom',
+      storeOwnershipMode: 'external',
+    });
+  });
+
+  it('reports local-fallback operation mode when explicitly provided', () => {
+    const snapshot = createThrottlerPlatformStatusSnapshot({
+      backingStoreReady: false,
+      backingStoreReason: 'redis unavailable; using local memory fallback',
+      operationMode: 'local-fallback',
+      storeKind: 'memory',
+    });
+
+    expect(snapshot.readiness).toMatchObject({
+      critical: false,
+      reason: 'redis unavailable; using local memory fallback',
+      status: 'degraded',
+    });
+    expect(snapshot.health).toEqual({
+      reason: 'redis unavailable; using local memory fallback',
+      status: 'degraded',
+    });
+    expect(snapshot.details).toMatchObject({
+      operationMode: 'local-fallback',
+      storeKind: 'memory',
+      storeOwnershipMode: 'framework',
+    });
+  });
+
   it('marks non-critical throttler readiness as degraded when backing store is unavailable', () => {
     const snapshot = createThrottlerPlatformStatusSnapshot({
       backingStoreReady: false,

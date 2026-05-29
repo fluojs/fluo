@@ -101,7 +101,7 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 - `ExpressHttpApplicationAdapter`: The core adapter implementation class.
 - Option types: `ExpressAdapterOptions`, `BootstrapExpressApplicationOptions`, `RunExpressApplicationOptions`, `CorsInput`, `ExpressApplicationSignal`.
 
-`createExpressAdapter(options, multipartOptions?)` supports `host`, `https`, `maxBodySize`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs`. Direct `ExpressHttpApplicationAdapter` construction applies the same numeric validation as the factory. `bootstrapExpressApplication(...)` and `runExpressApplication(...)` also accept `cors`, `globalPrefix`, `globalPrefixExclude`, `middleware`, `multipart`, `securityHeaders`, `forceExitTimeoutMs`, and `shutdownSignals`, and select the framework console logger internally for startup and shutdown diagnostics.
+`createExpressAdapter(options, multipartOptions?)` supports `host`, `https`, `maxBodySize`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs`. Direct `ExpressHttpApplicationAdapter` construction applies the same numeric validation as the factory. `bootstrapExpressApplication(...)` and `runExpressApplication(...)` also accept `cors`, `globalPrefix`, `globalPrefixExclude`, `middleware`, `multipart`, `securityHeaders`, `forceExitTimeoutMs`, `shutdownSignals`, and `logger`; they use the framework console logger by default for startup and shutdown diagnostics and honor an injected `ApplicationLogger` when provided.
 
 ## Related Packages
 

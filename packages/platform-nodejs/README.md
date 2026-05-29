@@ -65,6 +65,8 @@ You can use `runNodejsApplication` for a zero-boilerplate startup that includes 
 
 When signal-driven shutdown exceeds the run-helper `forceExitTimeoutMs` or fails, the helper logs the condition and sets `process.exitCode`, but leaves final process termination to the host process owner. Use adapter-level `shutdownTimeoutMs` for connection drain bounds and run-helper `forceExitTimeoutMs` for signal handler completion bounds.
 
+`bootstrapNodejsApplication(...)` and `runNodejsApplication(...)` use the framework console logger by default. Pass `logger` when a host or portability test needs startup/shutdown diagnostics captured through an injected `ApplicationLogger`.
+
 ```typescript
 import { runNodejsApplication } from '@fluojs/platform-nodejs';
 import { AppModule } from './app.module';

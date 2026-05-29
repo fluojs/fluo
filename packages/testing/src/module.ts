@@ -3,6 +3,7 @@ import {
   isForwardRef,
   isOptionalToken,
   type ClassType,
+  type ContainerResolutionState,
   type ForwardRefFn,
   type NormalizedProvider,
   type OptionalToken,
@@ -121,48 +122,10 @@ function normalizeOverride<T>(token: Token<T>, value: Provider<T> | T): Provider
   return { provide: token, useValue: value };
 }
 
-interface ContainerIntrospection {
-  parent?: ContainerIntrospection;
-  registrations: Map<Token, NormalizedProvider>;
-  multiRegistrations: Map<Token, NormalizedProvider[]>;
-  multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>;
-  requestScopeEnabled?: boolean;
-  singletonCache: Map<Token, Promise<unknown>>;
-}
-
-function isContainerIntrospection(value: unknown): value is ContainerIntrospection {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  const candidate = value as {
-    multiRegistrations?: unknown;
-    multiSingletonCache?: unknown;
-    parent?: unknown;
-    registrations?: unknown;
-    requestScopeEnabled?: unknown;
-    singletonCache?: unknown;
-  };
-
-  const parentValid = candidate.parent === undefined || isContainerIntrospection(candidate.parent);
-  const requestScopeValid = candidate.requestScopeEnabled === undefined || typeof candidate.requestScopeEnabled === 'boolean';
-
-  return (
-    candidate.registrations instanceof Map &&
-    candidate.multiRegistrations instanceof Map &&
-    candidate.multiSingletonCache instanceof Map &&
-    candidate.singletonCache instanceof Map &&
-    parentValid &&
-    requestScopeValid
-  );
-}
+type ContainerIntrospection = ContainerResolutionState;
 
 function toContainerIntrospection(container: BootstrapResult['container']): ContainerIntrospection {
-  if (!isContainerIntrospection(container)) {
-    throw new Error('Testing container introspection is unavailable for the current container implementation.');
-  }
-
-  return container;
+  return container.inspectResolutionState();
 }
 
 function isPromiseLike<T>(value: unknown): value is PromiseLike<T> {

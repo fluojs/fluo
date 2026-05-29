@@ -20,7 +20,7 @@ import {
 } from '../http-adapter-shared.js';
 import { createConsoleApplicationLogger } from '../logging/logger.js';
 import type { MultipartOptions, UploadedFile } from '../multipart.js';
-import type { Application, CreateApplicationOptions, ModuleType } from '../types.js';
+import type { Application, ApplicationLogger, CreateApplicationOptions, ModuleType } from '../types.js';
 import {
   compressNodeResponse,
   createNodeResponseCompression,
@@ -98,6 +98,7 @@ export interface BootstrapNodeApplicationOptions extends Omit<CreateApplicationO
   globalPrefixExclude?: readonly string[];
   host?: string;
   https?: HttpsServerOptions;
+  logger?: ApplicationLogger;
   maxBodySize?: number;
   middleware?: MiddlewareLike[];
   multipart?: MultipartOptions;
@@ -309,7 +310,7 @@ export async function bootstrapNodeApplication(
   rootModule: ModuleType,
   options: BootstrapNodeApplicationOptions,
 ): Promise<Application> {
-  const logger = createConsoleApplicationLogger();
+  const logger = options.logger ?? createConsoleApplicationLogger();
 
   return bootstrapHttpAdapterApplication(
     rootModule,
@@ -330,7 +331,7 @@ export async function runNodeApplication(
   rootModule: ModuleType,
   options: RunNodeApplicationOptions,
 ): Promise<Application> {
-  const logger = createConsoleApplicationLogger();
+  const logger = options.logger ?? createConsoleApplicationLogger();
   const adapter = createNodeHttpAdapter(options, options.compression ?? false, options.multipart) as NodeHttpApplicationAdapter;
   return runHttpAdapterApplication(rootModule, {
     ...options,

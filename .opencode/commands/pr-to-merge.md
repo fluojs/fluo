@@ -62,7 +62,7 @@ Mutating commands such as `gh pr merge*`, `gh pr review*`, `gh pr edit*`, `gh is
 
 - linked issue가 없고 PR body/contract docs만으로 intent가 충분히 복원되지 않으면 `merge`를 주지 말고 `needs-human-check`로 결론낸다.
 - CI/checks 정보가 없거나 불완전하면 `merge`를 주지 말고 최소 `needs-human-check`로 결론낸다.
-- contract/code/verification reviewer 중 하나라도 `BLOCK`이면 최종 verdict는 `block`이다.
+- contract/code/verification reviewer 중 하나라도 `BLOCK`이면 최종 verdict는 `block`이다. 이때 `block`은 caller가 remediation에 사용할 수 있는 actionable input이어야 하며, 상위 `lane-supervisor`에게는 그 자체로 lane terminal 상태를 의미하지 않는다.
 - security/privacy ambiguity, unusual release tradeoff, cross-lane impact는 `needs-human-check`로 escalate 한다.
 
 ## 에이전트 위임
@@ -113,8 +113,12 @@ merge | block | needs-human-check
 ```
 
 - `merge`: 세 reviewer가 모두 `PASS`이고, linked issue/contract/PR template/checks가 충분하다.
-- `block`: 명확한 correctness, contract, release governance, verification hole이 있다.
+- `block`: 명확한 correctness, contract, release governance, verification hole이 있다. 이 verdict는 caller가 같은 PR/branch/worktree에서 보정할 수 있는 actionable remediation input이며, 그 자체로 `lane-supervisor`의 terminal lane 상태를 의미하지 않는다.
 - `needs-human-check`: intent/CI/security/release/cross-lane 판단이 불명확하거나 사람이 정책 판단해야 한다.
+
+`block` verdict를 반환할 때는 상위 caller가 bounded fix-back loop를 수행할 수 있도록 blocker마다 stable signature, evidence, expected fix target을 포함한다. `needs-human-check`는 code/docs/test 수정만으로 해소할 수 없는 정책 판단, 권한 문제, 또는 불충분한 intent에 사용한다.
+
+`block` verdict는 read-only gate의 결론일 뿐이며 branch/worktree/PR state를 변경하지 않는다. caller가 `lane-supervisor`이면 fixable blocker를 `/issue-to-pr --fix-back` 또는 동일 계약 worker에 전달해 같은 PR을 재검토해야 한다. maintainer 결정, scope 재정의, security/privacy 판단처럼 worker가 해결할 수 없는 blocker만 terminal escalation 후보가 된다.
 
 ## 출력 계약
 
@@ -125,5 +129,26 @@ merge | block | needs-human-check
 - linked issue
 - summary
 - blockers
+- blocker signatures: `<file-or-contract>:<reason>:<required-remediation>` 형식으로 가능한 한 구체적으로 작성
 - non-blocking notes
 - `merge only if...`
+
+`blockers` 항목은 다음 형태를 따른다.
+
+```yaml
+blockers:
+  - reviewer: <contract|code|verification>
+    signature: <stable blocker identifier>
+    evidence: <file/check/doc evidence>
+    expected fix target: <code|tests|docs|changeset|ci-evidence|human-policy-decision>
+    fix_back_eligible: <true|false>
+```
+
+`fix_back_eligible: false`는 maintainer 결정, scope 재정의, security/privacy 판단처럼 worker가 같은 PR head branch에서 해결할 수 없는 경우에만 사용한다.
+
+각 blocker는 다음 의미를 가져야 한다.
+
+- `category`: `contract | code | verification | release | docs | policy`
+- `evidence`: 파일 경로, diff hunk, check 이름, 문서 조항, 또는 reviewer finding 근거
+- `required remediation`: 같은 PR head branch에서 수행할 구체적 수정
+- `fixability`: `fixable-in-pr | needs-maintainer-decision | needs-new-scope`

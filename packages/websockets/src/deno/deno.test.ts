@@ -38,6 +38,7 @@ class MockDenoSocket implements DenoServerWebSocket {
   #readyState: number = WEBSOCKET_OPEN_READY_STATE;
   #closeDeliveryPromise?: Promise<void>;
 
+  readonly closeCalls: Array<{ code?: number; reason?: string }> = [];
   readonly sentMessages: string[] = [];
 
   get readyState(): number {
@@ -68,6 +69,7 @@ class MockDenoSocket implements DenoServerWebSocket {
 
   close(code?: number, reason?: string): void {
     this.#readyState = WEBSOCKET_CLOSED_READY_STATE;
+    this.closeCalls.push({ code, reason });
     const event = new Event('close') as Event & { code: number; reason: string };
     Object.defineProperties(event, {
       code: { value: code ?? 1000 },
@@ -967,11 +969,12 @@ describe('@fluojs/websockets/deno', () => {
         throw new Error('Expected Deno test socket to be available after websocket upgrade.');
       }
 
-      socket.emitMessage('hello');
-      await flushAsyncWork();
+        socket.emitMessage('hello');
+        await flushAsyncWork();
 
-      expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
-      expect(state.messages).toEqual([]);
+        expect(socket.closeCalls).toEqual([{ code: 1009, reason: 'Payload too large' }]);
+        expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
+        expect(state.messages).toEqual([]);
     } finally {
       await app.close();
     }
@@ -1028,6 +1031,7 @@ describe('@fluojs/websockets/deno', () => {
         socket.emitMessage(message);
         await flushAsyncWork();
 
+        expect(socket.closeCalls).toEqual([{ code: 1009, reason: 'Payload too large' }]);
         expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
         expect(state.messages).toEqual([]);
       } finally {
