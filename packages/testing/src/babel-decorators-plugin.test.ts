@@ -65,9 +65,12 @@ describe('fluoBabelDecoratorsPlugin', () => {
     await expect(plugin.transform('class Dependency {}', '/workspace/node_modules/pkg/index.ts?raw')).resolves.toBeNull();
   });
 
-  it('resolves supported Babel root config names from query-suffixed ids', () => {
-    const { filePath, root } = createWorkspaceWithConfig('babel.config.mjs');
+  it.each(['babel.config.cjs', 'babel.config.mjs', 'babel.config.js', 'babel.config.json'])(
+    'resolves supported Babel root config name %s from query-suffixed ids',
+    (configFileName) => {
+      const { filePath, root } = createWorkspaceWithConfig(configFileName);
 
-    expect(resolveNearestBabelConfigFile(`${filePath}?v=123`)).toBe(join(root, 'babel.config.mjs'));
-  });
+      expect(resolveNearestBabelConfigFile(`${filePath}?v=123`)).toBe(join(root, configFileName));
+    },
+  );
 });
