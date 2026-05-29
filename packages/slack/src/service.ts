@@ -72,13 +72,28 @@ function assertMessageContent(message: NormalizedSlackMessage): void {
 export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown {
   private lifecycleState: SlackServiceLifecycleState = 'created';
   private resolvedTransport: SlackTransport | undefined;
+  private shutdownPromise: Promise<void> | undefined;
   private transportPromise: Promise<SlackTransport> | undefined;
 
   constructor(private readonly options: NormalizedSlackModuleOptions) {}
 
   async onApplicationShutdown(): Promise<void> {
+    if (this.lifecycleState === 'stopped') {
+      return;
+    }
+
+    if (this.shutdownPromise) {
+      return this.shutdownPromise;
+    }
+
     this.lifecycleState = 'stopping';
 
+    this.shutdownPromise = this.closeOwnedTransport();
+
+    return this.shutdownPromise;
+  }
+
+  private async closeOwnedTransport(): Promise<void> {
     try {
       const transport = this.resolvedTransport ?? (this.transportPromise ? await this.transportPromise : undefined);
 
@@ -194,6 +209,8 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
    * ```
    */
   async sendMany(messages: readonly SlackMessage[], options: SlackSendManyOptions = {}): Promise<SlackSendBatchResult> {
+    assertNotAborted(options.signal);
+
     const results: SlackSendResult[] = [];
     const failures: SlackSendFailure[] = [];
 
