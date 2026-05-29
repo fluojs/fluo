@@ -805,6 +805,29 @@ describe('Passport auth discoverability', () => {
   });
 });
 
+describe('Slack delivery discoverability', () => {
+  const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+  const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const englishReadme = readFileSync(join(repoRoot, 'packages/slack/README.md'), 'utf8');
+  const koreanReadme = readFileSync(join(repoRoot, 'packages/slack/README.ko.md'), 'utf8');
+  const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+  const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+
+  it('keeps helper, abort, lifecycle, and status guidance discoverable from the context hub', () => {
+    for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
+      expect(content).toContain('@fluojs/slack');
+      expect(content).toContain('createSlackProviders(...)');
+    }
+
+    for (const content of [englishContext, koreanContext, englishReadme, koreanReadme]) {
+      expect(content).toContain('SlackModule.forRoot');
+      expect(content).toContain('abort');
+      expect(content).toContain('lifecycle');
+      expect(content).toMatch(/status|Status/);
+    }
+  });
+});
+
 describe('CLI inspect artifact discoverability', () => {
   const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
   const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
