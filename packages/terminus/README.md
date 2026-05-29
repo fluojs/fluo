@@ -72,7 +72,7 @@ The package provides several indicators out of the box:
 
 ### DI-Backed Indicators
 
-To use indicators that require dependencies from the DI container (like Redis or Database clients) without importing peer dependencies at module load time, use the provider factories.
+To use indicators that require dependencies from the DI container (like Redis or Database clients) without importing peer dependencies at module load time, use the documented provider factories. These helpers create indicator provider entries for `TerminusModule.forRoot({ indicatorProviders })`; they do not replace the module facade.
 
 ```typescript
 import { TerminusModule } from '@fluojs/terminus';
@@ -154,7 +154,7 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 
 - `runHealthCheck(...)`, `assertHealthCheck(...)`: Direct aggregation/testing helpers.
 - `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: DI tokens for registered indicators and provider tokens.
-- Built-in indicators also expose `create*HealthIndicator()` and `create*HealthIndicatorProvider()` helpers.
+- Built-in indicators also expose `create*HealthIndicator()` and `create*HealthIndicatorProvider()` helpers. Provider helpers are intentional DI-composition exceptions for `indicatorProviders`, while application registration should still go through `TerminusModule.forRoot(...)`.
 
 ### `@fluojs/terminus/redis`
 
