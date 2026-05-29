@@ -17,20 +17,22 @@ describe('@fluojs/terminus root import runtime safety', () => {
       };
     });
 
-    const terminus = await import('./index.js');
+    try {
+      const terminus = await import('./index.js');
 
-    expect(terminus).toHaveProperty('TerminusModule');
-    expect(filesystemMockState.loads).toBe(0);
-    await expect(new terminus.DiskHealthIndicator({ key: 'disk' }).check('disk')).rejects.toMatchObject({
-      causes: {
-        disk: {
-          message: 'disk check should lazy-load node filesystem modules',
-          status: 'down',
+      expect(terminus).toHaveProperty('TerminusModule');
+      expect(filesystemMockState.loads).toBe(0);
+      await expect(new terminus.DiskHealthIndicator({ key: 'disk' }).check('disk')).rejects.toMatchObject({
+        causes: {
+          disk: {
+            message: 'disk check should lazy-load node filesystem modules',
+            status: 'down',
+          },
         },
-      },
-    });
-    expect(filesystemMockState.loads).toBe(1);
-
-    vi.doUnmock('node:fs/promises');
+      });
+      expect(filesystemMockState.loads).toBe(1);
+    } finally {
+      vi.doUnmock('node:fs/promises');
+    }
   });
 });
