@@ -163,6 +163,7 @@ const service = await container.resolve(DataService);
 | `register(...providers)` | 하나 이상의 프로바이더를 등록합니다. |
 | `override(...providers)` | 기존 provider를 교체하고 cached instance를 무효화하며 오래된 instance를 dispose합니다. |
 | `resolve<T>(token)` | 토큰을 인스턴스로 비동기 해석합니다. |
+| `inspectResolutionState()` | cache ownership을 보존해야 하는 testing/tooling helper를 위한 지원 대상 framework-owned container introspection seam을 노출합니다. 애플리케이션 코드는 `has(...)`와 `resolve(...)`를 우선 사용하세요. |
 | `createRequestScope()` | 요청 스코프 의존성을 위한 자식 컨테이너를 생성합니다. |
 | `has(token)` | 컨테이너나 부모에 토큰이 등록되어 있는지 확인합니다. |
 | `hasRequestScopedDependency(token)` | 토큰 해석 시 provider 그래프에 request-scoped 의존성이나 순환이 있어 request-scope 컨테이너가 필요할 수 있는지 확인합니다. |
@@ -175,6 +176,7 @@ const service = await container.resolve(DataService);
 | Provider types | `Provider`, `ClassProvider`, `FactoryProvider`, `ValueProvider`, `ExistingProvider`는 `register(...)`와 `override(...)`가 받는 공개 registration shape를 설명합니다. |
 | Token wrapper types | `ForwardRefFn`과 `OptionalToken`은 `forwardRef(...)`와 `optional(...)`이 반환하는 wrapper 값을 설명합니다. |
 | Container helper types | `ClassType`, `Disposable`, `RequestScopeContainer`는 typed provider 선언, teardown hook, request-scope helper 경계를 지원합니다. |
+| `ContainerResolutionState` | framework testing/tooling integration을 위해 `inspectResolutionState()`가 반환하는 공개 introspection record입니다. |
 | `NormalizedProvider` | 컨테이너가 검증한 provider record shape를 위한 compatibility-only 공개 타입입니다. provider를 작성할 때는 `Provider`나 구체 provider interface를 우선 사용하세요. normalized record 생성은 컨테이너가 소유합니다. |
 | `DiErrorContext` | DI error에 붙는 구조화된 context입니다. 로그와 테스트가 token, scope, module, dependency chain, hint를 검사할 수 있게 합니다. |
 | 에러 클래스 | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |

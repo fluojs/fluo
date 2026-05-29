@@ -115,19 +115,16 @@ async function requestHttps(url: string): Promise<{ body: string; statusCode: nu
   });
 }
 
-function createConsoleLogCapture(): { messages: string[]; restore(): void } {
+function createLogCaptureLogger(): ApplicationLogger & { messages: string[] } {
   const messages: string[] = [];
-  const originalLog = console.log;
-
-  console.log = (...args: unknown[]) => {
-    messages.push(args.map((arg) => String(arg)).join(' '));
-  };
+  const capture = (...args: unknown[]) => messages.push(args.map((arg) => String(arg)).join(' '));
 
   return {
+    debug: capture,
+    error: capture,
+    log: capture,
     messages,
-    restore() {
-      console.log = originalLog;
-    },
+    warn: capture,
   };
 }
 
@@ -602,7 +599,7 @@ export class HttpAdapterPortabilityHarness<
   }
 
   async assertReportsConfiguredHostInStartupLogs(): Promise<void> {
-    const log = createConsoleLogCapture();
+    const logger = createLogCaptureLogger();
 
     @Controller('/health')
     class HealthController {
@@ -620,33 +617,30 @@ export class HttpAdapterPortabilityHarness<
     const app = await this.options.run(AppModule, {
       cors: false,
       host: '127.0.0.1',
+      logger,
       port: 0,
     } as TRunOptions);
 
-    try {
-      await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
-        const response = await fetch(`${baseUrl}/health`);
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/health`);
 
-        if (response.status !== 200) {
-          throw new Error(`${this.options.name} adapter changed host-bound health response semantics.`);
-        }
+      if (response.status !== 200) {
+        throw new Error(`${this.options.name} adapter changed host-bound health response semantics.`);
+      }
 
-        const body = await response.json();
-        if (JSON.stringify(body) !== JSON.stringify({ ok: true })) {
-          throw new Error(`${this.options.name} adapter changed host-bound response payload.`);
-        }
+      const body = await response.json();
+      if (JSON.stringify(body) !== JSON.stringify({ ok: true })) {
+        throw new Error(`${this.options.name} adapter changed host-bound response payload.`);
+      }
 
-        if (!log.messages.some((message) => message.includes(`Listening on ${baseUrl}`))) {
-          throw new Error(`${this.options.name} adapter changed startup host logging.`);
-        }
-      });
-    } finally {
-      log.restore();
-    }
+      if (!logger.messages.some((message) => message.includes(`Listening on ${baseUrl}`))) {
+        throw new Error(`${this.options.name} adapter changed startup host logging.`);
+      }
+    });
   }
 
   async assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void> {
-    const log = createConsoleLogCapture();
+    const logger = createLogCaptureLogger();
 
     @Controller('/health')
     class HealthController {
@@ -665,28 +659,25 @@ export class HttpAdapterPortabilityHarness<
       cors: false,
       host: '127.0.0.1',
       https,
+      logger,
       port: 0,
     } as TRunOptions);
 
-    try {
-      await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
-        const response = await requestHttps(`${baseUrl}/health`);
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
+      const response = await requestHttps(`${baseUrl}/health`);
 
-        if (response.statusCode !== 200) {
-          throw new Error(`${this.options.name} adapter changed HTTPS response status semantics.`);
-        }
+      if (response.statusCode !== 200) {
+        throw new Error(`${this.options.name} adapter changed HTTPS response status semantics.`);
+      }
 
-        if (JSON.stringify(JSON.parse(response.body)) !== JSON.stringify({ ok: true })) {
-          throw new Error(`${this.options.name} adapter changed HTTPS response payload semantics.`);
-        }
+      if (JSON.stringify(JSON.parse(response.body)) !== JSON.stringify({ ok: true })) {
+        throw new Error(`${this.options.name} adapter changed HTTPS response payload semantics.`);
+      }
 
-        if (!log.messages.some((message) => message.includes(`Listening on ${baseUrl}`))) {
-          throw new Error(`${this.options.name} adapter changed HTTPS startup logging.`);
-        }
-      });
-    } finally {
-      log.restore();
-    }
+      if (!logger.messages.some((message) => message.includes(`Listening on ${baseUrl}`))) {
+        throw new Error(`${this.options.name} adapter changed HTTPS startup logging.`);
+      }
+    });
   }
 
   async assertRemovesShutdownSignalListenersAfterClose(): Promise<void> {

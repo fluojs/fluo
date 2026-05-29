@@ -28,6 +28,7 @@ import {
 } from '@fluojs/http/internal';
 import type {
   Application,
+  ApplicationLogger,
   CreateApplicationOptions,
   ModuleType,
   MultipartOptions,
@@ -104,6 +105,7 @@ export interface BootstrapFastifyApplicationOptions extends Omit<CreateApplicati
   globalPrefixExclude?: readonly string[];
   host?: string;
   https?: HttpsServerOptions;
+  logger?: ApplicationLogger;
   maxBodySize?: number;
   middleware?: MiddlewareLike[];
   multipart?: MultipartOptions;
@@ -628,7 +630,7 @@ export async function bootstrapFastifyApplication(
   rootModule: ModuleType,
   options: BootstrapFastifyApplicationOptions,
 ): Promise<Application> {
-  const logger = createConsoleApplicationLogger();
+  const logger = options.logger ?? createConsoleApplicationLogger();
 
   return bootstrapHttpAdapterApplication(
     rootModule,
@@ -652,7 +654,7 @@ export async function runFastifyApplication(
   rootModule: ModuleType,
   options: RunFastifyApplicationOptions,
 ): Promise<Application> {
-  const logger = createConsoleApplicationLogger();
+  const logger = options.logger ?? createConsoleApplicationLogger();
   const adapter = createFastifyAdapter(options, options.multipart) as FastifyHttpApplicationAdapter;
   return runHttpAdapterApplication(rootModule, {
     ...options,

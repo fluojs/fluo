@@ -101,7 +101,7 @@ const adapter = createExpressAdapter(
 - `ExpressHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다.
 - Option type: `ExpressAdapterOptions`, `BootstrapExpressApplicationOptions`, `RunExpressApplicationOptions`, `CorsInput`, `ExpressApplicationSignal`.
 
-`createExpressAdapter(options, multipartOptions?)`는 `host`, `https`, `maxBodySize`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`를 지원합니다. `ExpressHttpApplicationAdapter`를 직접 생성하는 경우에도 factory와 같은 numeric validation이 적용됩니다. `bootstrapExpressApplication(...)`과 `runExpressApplication(...)`은 `cors`, `globalPrefix`, `globalPrefixExclude`, `middleware`, `multipart`, `securityHeaders`, `forceExitTimeoutMs`, `shutdownSignals`도 받으며, startup/shutdown diagnostics를 위해 framework console logger를 내부에서 선택합니다.
+`createExpressAdapter(options, multipartOptions?)`는 `host`, `https`, `maxBodySize`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`를 지원합니다. `ExpressHttpApplicationAdapter`를 직접 생성하는 경우에도 factory와 같은 numeric validation이 적용됩니다. `bootstrapExpressApplication(...)`과 `runExpressApplication(...)`은 `cors`, `globalPrefix`, `globalPrefixExclude`, `middleware`, `multipart`, `securityHeaders`, `forceExitTimeoutMs`, `shutdownSignals`, `logger`도 받습니다. startup/shutdown diagnostics에는 framework console logger를 기본으로 사용하며, `logger`가 제공되면 주입된 `ApplicationLogger`를 따릅니다.
 
 ## 관련 패키지
 

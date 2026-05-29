@@ -6,6 +6,8 @@ import { defineConfig, mergeConfig } from 'vitest/config';
 
 import { fluoBabelDecoratorsPlugin } from '../vitest.js';
 
+const workspaceAliasCache = new Map<string, Record<string, string>>();
+
 function collectSourceEntries(sourceRoot: string): string[] {
   const entries: string[] = [];
 
@@ -81,7 +83,17 @@ function collectWorkspaceAliasesFromRoot(repoRoot: string): Record<string, strin
  * @returns A Vite/Vitest alias map that points public package imports at workspace source files.
  */
 export function collectWorkspaceAliases(repoRootUrl: string | URL): Record<string, string> {
-  return collectWorkspaceAliasesFromRoot(fileURLToPath(repoRootUrl));
+  const repoRoot = fileURLToPath(repoRootUrl);
+  const cachedAliases = workspaceAliasCache.get(repoRoot);
+
+  if (cachedAliases) {
+    return { ...cachedAliases };
+  }
+
+  const aliases = collectWorkspaceAliasesFromRoot(repoRoot);
+  workspaceAliasCache.set(repoRoot, aliases);
+
+  return { ...aliases };
 }
 
 /**

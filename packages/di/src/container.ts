@@ -30,6 +30,20 @@ interface CachedResolutionPlan<T> {
   readonly value: T;
 }
 
+/**
+ * Public read/write seam for framework-owned testing and tooling that need to
+ * inspect a container's resolved provider graph without depending on private
+ * field names or structural casts.
+ */
+export interface ContainerResolutionState {
+  readonly parent?: ContainerResolutionState;
+  readonly registrations: Map<Token, NormalizedProvider>;
+  readonly multiRegistrations: Map<Token, NormalizedProvider[]>;
+  readonly multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>;
+  readonly requestScopeEnabled: boolean;
+  readonly singletonCache: Map<Token, Promise<unknown>>;
+}
+
 function isClassConstructor(value: Provider): value is ClassType {
   return typeof value === 'function';
 }
@@ -326,6 +340,27 @@ export class Container {
    */
   has(token: Token): boolean {
     return this.lookupProvider(token) !== undefined || this.hasMulti(token);
+  }
+
+  /**
+   * Returns the framework-owned resolution state for testing/tooling adapters.
+   *
+   * This method is the supported introspection seam for packages such as
+   * `@fluojs/testing`; callers should prefer ordinary `has(...)` and
+   * `resolve(...)` unless they need to preserve container cache ownership while
+   * implementing a framework-level helper.
+   *
+   * @returns Provider registrations and resolution caches for this container scope.
+   */
+  inspectResolutionState(): ContainerResolutionState {
+    return {
+      parent: this.parent?.inspectResolutionState(),
+      registrations: this.registrations,
+      multiRegistrations: this.multiRegistrations,
+      multiSingletonCache: this.multiSingletonCache,
+      requestScopeEnabled: this.requestScopeEnabled,
+      singletonCache: this.singletonCache,
+    };
   }
 
   /**

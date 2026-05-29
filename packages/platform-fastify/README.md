@@ -111,7 +111,7 @@ await bootstrapFastifyApplication(AppModule, {
 ```
 
 ### Logging
-fluo uses its own logging system. The adapter creates the Fastify instance with its native logger disabled, and `bootstrapFastifyApplication(...)` / `runFastifyApplication(...)` select the framework console logger internally so startup and shutdown diagnostics stay consistent with the active runtime.
+fluo uses its own logging system. The adapter creates the Fastify instance with its native logger disabled, and `bootstrapFastifyApplication(...)` / `runFastifyApplication(...)` select the framework console logger by default so startup and shutdown diagnostics stay consistent with the active runtime. Pass `logger` when a test harness or host application needs to capture those diagnostics through an injected `ApplicationLogger` instead of the default console logger.
 
 ### Middleware
 You can register runtime-level middleware that runs before the request reaches the handlers. Note that these are standard `MiddlewareLike` functions, not Fastify-specific plugins.
@@ -160,7 +160,7 @@ The same file also covers Fastify-specific native route registration with wildca
 
 - **CORS Errors**: Ensure you're using the `cors` bootstrap option. Since Fastify's native CORS plugin is not registered, only the fluo-managed CORS logic applies.
 - **Middleware Issues**: The `middleware` option accepts runtime-level `MiddlewareLike[]` functions. These are not Fastify plugins and follow the standard middleware interface used across fluo adapters.
-- **Logging**: The native Fastify logger is disabled to prevent duplicate log streams. `runFastifyApplication` and `bootstrapFastifyApplication` select the framework console logger internally; application code should not pass a logger option to these helpers.
+- **Logging**: The native Fastify logger is disabled to prevent duplicate log streams. `runFastifyApplication` and `bootstrapFastifyApplication` select the framework console logger by default and accept `logger` for hosts or tests that need an injected `ApplicationLogger`.
 - **Global Prefix**: Use `globalPrefixExclude` to prevent the prefix from being applied to internal routes or health check endpoints.
 - **Malformed Cookies**: Malformed cookie headers are preserved rather than failing the request.
 
