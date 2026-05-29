@@ -1,13 +1,27 @@
 import type { Provider } from '@fluojs/di';
 
 import { createDownResult, createUpResult, resolveIndicatorKey, throwHealthCheckError } from './utils.js';
+import { readNodeMemoryUsage } from '../node-runtime.js';
 import type { HealthIndicator, HealthIndicatorResult } from '../types.js';
+
+/** Snapshot returned by a memory usage sampler. */
+export interface MemoryUsageSnapshot {
+  arrayBuffers: number;
+  external: number;
+  heapTotal: number;
+  heapUsed: number;
+  rss: number;
+}
+
+/** Function that samples runtime memory usage for `MemoryHealthIndicator`. */
+export type MemoryUsageSampler = () => MemoryUsageSnapshot;
 
 /** Options for checking process heap and RSS thresholds. */
 export interface MemoryHealthIndicatorOptions {
   heapUsedThresholdBytes?: number;
   heapUsedThresholdRatio?: number;
   key?: string;
+  memoryUsage?: MemoryUsageSampler;
   rssThresholdBytes?: number;
 }
 
@@ -25,7 +39,7 @@ function exceedsRatioThreshold(used: number, total: number, threshold: number): 
  * Create a process-memory health indicator.
  *
  * @param options Optional heap and RSS thresholds plus an indicator key override.
- * @returns A health indicator backed by `process.memoryUsage()`.
+ * @returns A health indicator backed by the Node runtime memory sampler.
  */
 export function createMemoryHealthIndicator(options: MemoryHealthIndicatorOptions = {}): HealthIndicator {
   return new MemoryHealthIndicator(options);
@@ -58,7 +72,7 @@ export class MemoryHealthIndicator implements HealthIndicator {
     const indicatorKey = resolveIndicatorKey('memory', this.options.key ?? key);
     const heapRatioThreshold = this.options.heapUsedThresholdRatio ?? DEFAULT_HEAP_RATIO_THRESHOLD;
 
-    const usage = process.memoryUsage();
+    const usage = (this.options.memoryUsage ?? readNodeMemoryUsage)();
     const usageDetails = {
       arrayBuffers: usage.arrayBuffers,
       external: usage.external,
