@@ -1,9 +1,5 @@
+import type { Constructor } from '@fluojs/core';
 import type {
-  Constructor,
-  MetadataPropertyKey,
-} from '@fluojs/core';
-import type {
-  ClassValidationRule,
   CustomClassValidator,
   CustomFieldValidator,
   CustomValidationDecoratorOptions,
@@ -11,63 +7,11 @@ import type {
   ValidationDecoratorOptions,
 } from '@fluojs/core/internal';
 
+import { createArrayValidationDecorator, createFlagValidationDecorator, createValidationDecorator, createValidationOptionsWithConfigDecorator, createValidatorJsDecorator } from './internal/decorator-factories.js';
+import { appendStandardClassValidationRule, type ClassDecoratorFn, type FieldDecoratorFn } from './internal/decorator-metadata.js';
 import { createClassValidatorFromStandardSchema, isStandardSchemaLike, type StandardSchemaV1Like } from './standard-schema.js';
 
-type StandardMetadataBag = Record<PropertyKey, unknown>;
-type ClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
-type FieldDecoratorFn = <This, Value>(value: undefined, context: ClassFieldDecoratorContext<This, Value>) => void;
-type ValidatorJsRuleName = Extract<DtoFieldValidationRule, { kind: 'validatorjs' }>['validator'];
 type ValidateClassInput = CustomClassValidator | StandardSchemaV1Like;
-
-const standardDtoValidationMetadataKey = Symbol.for('fluo.standard.dto-validation');
-const standardClassValidationMetadataKey = Symbol.for('fluo.standard.class-validation');
-
-function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
-  if (metadata === null || metadata === undefined) {
-    throw new Error('Decorator metadata is not available. Ensure your environment supports TC39 decorator metadata (Stage 3).');
-  }
-
-  return metadata as StandardMetadataBag;
-}
-
-function getStandardDtoValidationMap(metadata: unknown): Map<MetadataPropertyKey, DtoFieldValidationRule[]> {
-  const bag = getStandardMetadataBag(metadata);
-  const current = bag[standardDtoValidationMetadataKey] as Map<MetadataPropertyKey, DtoFieldValidationRule[]> | undefined;
-
-  if (current) {
-    return current;
-  }
-
-  const created = new Map<MetadataPropertyKey, DtoFieldValidationRule[]>();
-  bag[standardDtoValidationMetadataKey] = created;
-  return created;
-}
-
-function getStandardClassValidationList(metadata: unknown): ClassValidationRule[] {
-  const bag = getStandardMetadataBag(metadata);
-  const current = bag[standardClassValidationMetadataKey] as ClassValidationRule[] | undefined;
-
-  if (current) {
-    return current;
-  }
-
-  const created: ClassValidationRule[] = [];
-  bag[standardClassValidationMetadataKey] = created;
-  return created;
-}
-
-function appendStandardDtoValidationRule(
-  metadata: unknown,
-  propertyKey: MetadataPropertyKey,
-  rule: DtoFieldValidationRule,
-): void {
-  const map = getStandardDtoValidationMap(metadata);
-  map.set(propertyKey, [...(map.get(propertyKey) ?? []), rule]);
-}
-
-function appendStandardClassValidationRule(metadata: unknown, rule: ClassValidationRule): void {
-  getStandardClassValidationList(metadata).push(rule);
-}
 
 function resolveClassValidator(validate: ValidateClassInput): CustomClassValidator {
   if (!isStandardSchemaLike(validate)) {
@@ -75,49 +19,6 @@ function resolveClassValidator(validate: ValidateClassInput): CustomClassValidat
   }
 
   return createClassValidatorFromStandardSchema(validate);
-}
-
-function createValidationDecorator(ruleFactory: () => DtoFieldValidationRule): FieldDecoratorFn {
-  const decorator = <This, Value>(_value: undefined, context: ClassFieldDecoratorContext<This, Value>) => {
-    appendStandardDtoValidationRule(context.metadata, context.name, ruleFactory());
-  };
-
-  return decorator as FieldDecoratorFn;
-}
-
-function createValidationOptionsWithConfigDecorator<T>(
-  ruleFactory: (value: T, options: ValidationDecoratorOptions | undefined) => DtoFieldValidationRule,
-) {
-  return (value: T, options?: ValidationDecoratorOptions): FieldDecoratorFn => {
-    return createValidationDecorator(() => ruleFactory(value, options));
-  };
-}
-
-function createFlagValidationDecorator(
-  ruleFactory: (options: ValidationDecoratorOptions | undefined) => DtoFieldValidationRule,
-) {
-  return (options?: ValidationDecoratorOptions): FieldDecoratorFn => {
-    return createValidationDecorator(() => ruleFactory(options));
-  };
-}
-
-function createArrayValidationDecorator<T>(
-  ruleFactory: (values: readonly T[], options: ValidationDecoratorOptions | undefined) => DtoFieldValidationRule,
-) {
-  return (values: readonly T[], options?: ValidationDecoratorOptions): FieldDecoratorFn => {
-    return createValidationDecorator(() => ruleFactory(values, options));
-  };
-}
-
-function createValidatorJsDecorator(validator: ValidatorJsRuleName) {
-  return (args?: readonly unknown[], options?: ValidationDecoratorOptions): FieldDecoratorFn => {
-    return createValidationDecorator(() => ({
-      args,
-      kind: 'validatorjs',
-      validator,
-      ...options,
-    }));
-  };
 }
 
 /**
