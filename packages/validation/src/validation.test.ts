@@ -6,7 +6,7 @@ import { defineDtoFieldBindingMetadata } from '@fluojs/core/internal';
 
 import { DefaultValidator } from './validation.js';
 import { DtoValidationError } from './errors.js';
-import { ArrayMinSize, ArrayNotEmpty, ArrayUnique, Contains, IsArray, IsBoolean, IsDateString, IsEmail, IsEnum, IsInt, IsIP, IsLatitude, IsLongitude, IsNotEmpty, IsNumber, IsNumberString, IsString, IsUrl, IsUUID, Length, Matches, Max, Min, MinLength, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
+import { ArrayContains, ArrayMaxSize, ArrayMinSize, ArrayNotContains, ArrayNotEmpty, ArrayUnique, Contains, Equals, IsArray, IsAscii, IsBase64, IsBoolean, IsBooleanString, IsCurrency, IsDate, IsDateString, IsDecimal, IsDivisibleBy, IsEmail, IsEmpty, IsEnum, IsFQDN, IsHexColor, IsHexadecimal, IsIn, IsInt, IsIP, IsISO8601, IsJSON, IsJWT, IsLatitude, IsLatLong, IsLocale, IsLongitude, IsLowercase, IsMagnetURI, IsMimeType, IsMongoId, IsNegative, IsNotEmpty, IsNotIn, IsNumber, IsNumberString, IsObject, IsPort, IsPositive, IsPostalCode, IsRFC3339, IsRgbColor, IsSemVer, IsString, IsUppercase, IsUrl, IsUUID, Length, Matches, Max, MaxDate, MaxLength, Min, MinDate, MinLength, NotContains, NotEquals, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
 import type { StandardSchemaV1Like } from './index.js';
 
 describe('DefaultValidator', () => {
@@ -248,6 +248,184 @@ describe('DefaultValidator', () => {
         { field: 'tags', message: 'tags must include at least two entries' },
         { field: 'tags', message: 'tags must not be empty' },
       ],
+    });
+  });
+
+  it('covers remaining documented built-in validators with direct pass and fail contracts', async () => {
+    class ExtendedValidatorsDto {
+      @Equals('fluo', { message: 'equalField must equal fluo' })
+      equalField = 'fluo';
+
+      @NotEquals('legacy', { message: 'notEqualField must not equal legacy' })
+      notEqualField = 'modern';
+
+      @IsEmpty({ message: 'emptyField must be empty' })
+      emptyField = '';
+
+      @IsIn(['api', 'http'], { message: 'inField must be allowed' })
+      inField = 'api';
+
+      @IsNotIn(['legacy'], { message: 'notInField must not be forbidden' })
+      notInField = 'standard';
+
+      @IsDate({ message: 'dateField must be a Date' })
+      dateField = new Date('2026-01-01T00:00:00.000Z');
+
+      @IsObject({ message: 'objectField must be a plain object' })
+      objectField = { ok: true };
+
+      @IsDivisibleBy(5, { message: 'divisibleField must be divisible by five' })
+      @IsPositive({ message: 'divisibleField must be positive' })
+      divisibleField = 10;
+
+      @IsNegative({ message: 'negativeField must be negative' })
+      negativeField = -1;
+
+      @MinDate(new Date('2026-01-01T00:00:00.000Z'), { message: 'dateRangeField must be on or after minimum' })
+      @MaxDate(new Date('2026-12-31T23:59:59.999Z'), { message: 'dateRangeField must be on or before maximum' })
+      dateRangeField = new Date('2026-06-01T00:00:00.000Z');
+
+      @MaxLength(4, { message: 'shortCode must be short' })
+      @NotContains('legacy', { message: 'shortCode must not contain legacy' })
+      shortCode = 'api';
+
+      @IsAscii({ message: 'asciiText must be ASCII' })
+      @IsLowercase({ message: 'asciiText must be lowercase' })
+      asciiText = 'fluo';
+
+      @IsUppercase({ message: 'upperText must be uppercase' })
+      upperText = 'FLUO';
+
+      @IsBase64({ message: 'base64Text must be base64' })
+      base64Text = 'Zmx1bw==';
+
+      @IsBooleanString({ message: 'booleanText must be boolean text' })
+      booleanText = 'true';
+
+      @IsDecimal({ message: 'decimalText must be decimal text' })
+      decimalText = '12.5';
+
+      @IsFQDN({ message: 'domainText must be a FQDN' })
+      domainText = 'example.com';
+
+      @IsHexColor({ message: 'hexColorText must be a hex color' })
+      hexColorText = '#ff00aa';
+
+      @IsHexadecimal({ message: 'hexadecimalText must be hexadecimal' })
+      hexadecimalText = 'ff00aa';
+
+      @IsJSON({ message: 'jsonText must be JSON' })
+      jsonText = '{"ok":true}';
+
+      @IsJWT({ message: 'jwtText must be JWT' })
+      jwtText = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmbHVvIn0.signature';
+
+      @IsLocale({ message: 'localeText must be locale' })
+      localeText = 'en-US';
+
+      @IsMagnetURI({ message: 'magnetText must be magnet URI' })
+      magnetText = 'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567';
+
+      @IsMimeType({ message: 'mimeText must be MIME type' })
+      mimeText = 'application/json';
+
+      @IsMongoId({ message: 'mongoIdText must be MongoDB ObjectId' })
+      mongoIdText = '507f1f77bcf86cd799439011';
+
+      @IsPort({ message: 'portText must be port' })
+      portText = '3000';
+
+      @IsRFC3339({ message: 'rfc3339Text must be RFC3339' })
+      rfc3339Text = '2026-01-01T00:00:00Z';
+
+      @IsSemVer({ message: 'semverText must be semver' })
+      semverText = '1.2.3';
+
+      @IsISO8601({ message: 'isoText must be ISO8601' })
+      isoText = '2026-01-01T00:00:00.000Z';
+
+      @IsLatLong({ message: 'latLongText must be lat,long' })
+      latLongText = '37.5665,126.9780';
+
+      @IsPostalCode('US', { message: 'postalText must be US postal code' })
+      postalText = '90210';
+
+      @IsRgbColor(false, { message: 'rgbText must be rgb color' })
+      rgbText = 'rgb(255,0,170)';
+
+      @IsCurrency({ message: 'currencyText must be currency' })
+      currencyText = '$12.50';
+
+      @ArrayContains(['api'], { message: 'arrayValues must contain api' })
+      @ArrayNotContains(['legacy'], { message: 'arrayValues must not contain legacy' })
+      @ArrayMaxSize(3, { message: 'arrayValues must contain at most three entries' })
+      arrayValues = ['api', 'http'];
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(validator.validate(new ExtendedValidatorsDto(), ExtendedValidatorsDto)).resolves.toBeUndefined();
+
+    await expect(
+      validator.validate(
+        Object.assign(new ExtendedValidatorsDto(), {
+          arrayValues: ['legacy', 'extra', 'overflow', 'api'],
+          asciiText: '한글',
+          base64Text: 'not base64',
+          booleanText: 'yes',
+          currencyText: 'not money',
+          dateField: '2026-01-01',
+          dateRangeField: new Date('2027-01-01T00:00:00.000Z'),
+          decimalText: 'abc',
+          divisibleField: -7,
+          domainText: 'not a domain',
+          emptyField: 'not empty',
+          equalField: 'other',
+          hexColorText: 'blue',
+          hexadecimalText: 'xyz',
+          inField: 'other',
+          isoText: 'January 1',
+          jsonText: 'not json',
+          jwtText: 'not jwt',
+          latLongText: 'not coordinates',
+          localeText: 'not_locale',
+          magnetText: 'https://example.com',
+          mimeText: 'not mime',
+          mongoIdText: 'not mongo id',
+          negativeField: 1,
+          notEqualField: 'legacy',
+          notInField: 'legacy',
+          objectField: [],
+          portText: '99999',
+          postalText: 'not postal',
+          rfc3339Text: '2026-01-01',
+          rgbText: 'not rgb',
+          semverText: 'v1',
+          shortCode: 'legacy-code',
+          upperText: 'fluo',
+        }),
+        ExtendedValidatorsDto,
+      ),
+    ).rejects.toMatchObject({
+      issues: expect.arrayContaining([
+        expect.objectContaining({ field: 'equalField', message: 'equalField must equal fluo' }),
+        expect.objectContaining({ field: 'notEqualField', message: 'notEqualField must not equal legacy' }),
+        expect.objectContaining({ field: 'emptyField', message: 'emptyField must be empty' }),
+        expect.objectContaining({ field: 'inField', message: 'inField must be allowed' }),
+        expect.objectContaining({ field: 'notInField', message: 'notInField must not be forbidden' }),
+        expect.objectContaining({ field: 'dateField', message: 'dateField must be a Date' }),
+        expect.objectContaining({ field: 'objectField', message: 'objectField must be a plain object' }),
+        expect.objectContaining({ field: 'divisibleField', message: 'divisibleField must be divisible by five' }),
+        expect.objectContaining({ field: 'divisibleField', message: 'divisibleField must be positive' }),
+        expect.objectContaining({ field: 'negativeField', message: 'negativeField must be negative' }),
+        expect.objectContaining({ field: 'dateRangeField', message: 'dateRangeField must be on or before maximum' }),
+        expect.objectContaining({ field: 'shortCode', message: 'shortCode must not contain legacy' }),
+        expect.objectContaining({ field: 'shortCode', message: 'shortCode must be short' }),
+        expect.objectContaining({ field: 'asciiText', message: 'asciiText must be ASCII' }),
+        expect.objectContaining({ field: 'upperText', message: 'upperText must be uppercase' }),
+        expect.objectContaining({ field: 'arrayValues', message: 'arrayValues must contain at most three entries' }),
+        expect.objectContaining({ field: 'arrayValues', message: 'arrayValues must not contain legacy' }),
+      ]),
     });
   });
 
