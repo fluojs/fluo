@@ -163,6 +163,7 @@ Ensure all required providers are registered in the container. If you use `creat
 | `register(...providers)` | Registers one or more providers. |
 | `override(...providers)` | Replaces existing providers, invalidates cached instances, and disposes stale instances. |
 | `resolve<T>(token)` | Asynchronously resolves a token to an instance. |
+| `inspectResolutionState()` | Exposes the supported framework-owned container introspection seam for testing/tooling helpers that must preserve cache ownership. Prefer `has(...)` and `resolve(...)` for application code. |
 | `createRequestScope()` | Creates a child container for request-scoped dependencies. |
 | `has(token)` | Checks if a token is registered in the container or its parents. |
 | `hasRequestScopedDependency(token)` | Checks whether resolving a token may require a request-scope container because its provider graph contains request-scoped dependencies or is cyclic. |
@@ -175,6 +176,7 @@ Ensure all required providers are registered in the container. If you use `creat
 | Provider types | `Provider`, `ClassProvider`, `FactoryProvider`, `ValueProvider`, and `ExistingProvider` describe the public registration shapes accepted by `register(...)` and `override(...)`. |
 | Token wrapper types | `ForwardRefFn` and `OptionalToken` describe the wrapper values returned by `forwardRef(...)` and `optional(...)`. |
 | Container helper types | `ClassType`, `Disposable`, and `RequestScopeContainer` support typed provider declarations, teardown hooks, and request-scope helper boundaries. |
+| `ContainerResolutionState` | Public introspection record returned by `inspectResolutionState()` for framework testing/tooling integrations. |
 | `NormalizedProvider` | Compatibility-only public type for the container's validated provider record shape. Prefer authoring providers with `Provider` or the specific provider interfaces; the container owns normalized record construction. |
 | `DiErrorContext` | Structured context attached to DI errors so logs and tests can inspect tokens, scopes, modules, dependency chains, and hints. |
 | Error classes | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |
