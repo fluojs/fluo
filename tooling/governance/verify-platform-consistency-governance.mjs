@@ -781,6 +781,20 @@ function enforceCanonicalRuntimeMatrixReferences() {
     'docs/CONTEXT.ko.md must mention dedicated Redis Pub/Sub subscriber connections when package-surface.ko.md documents them.',
   );
   assert(
+    packageSurface.includes('createSlackProviders(...)') &&
+      docsContext.includes('packages/slack/README.md') &&
+      docsContext.includes('abort-signal propagation') &&
+      docsContext.includes('platform status snapshots'),
+    'docs/CONTEXT.md must keep Slack manual provider composition, abort propagation, and status snapshot guidance discoverable when package-surface.md documents createSlackProviders(...).',
+  );
+  assert(
+    packageSurfaceKo.includes('createSlackProviders(...)') &&
+      docsContextKo.includes('packages/slack/README.ko.md') &&
+      docsContextKo.includes('abort-signal 전파') &&
+      docsContextKo.includes('platform status snapshot'),
+    'docs/CONTEXT.ko.md must keep Slack manual provider composition, abort propagation, and status snapshot guidance discoverable when package-surface.ko.md documents createSlackProviders(...).',
+  );
+  assert(
     packageSurface.includes('@fluojs/cron') &&
       packageSurface.includes('health/readiness status snapshots') &&
       docsContext.includes('packages/cron/README.md') &&

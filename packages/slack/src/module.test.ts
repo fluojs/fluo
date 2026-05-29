@@ -1,16 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
 import type { Constructor, Token } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
 import { NOTIFICATION_CHANNELS, NotificationsModule, NotificationsService } from '@fluojs/notifications';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SlackChannel } from './channel.js';
 import { SlackConfigurationError, SlackLifecycleError, SlackMessageValidationError, SlackTransportError } from './errors.js';
-import { SlackModule, createSlackProviders } from './module.js';
+import { createSlackProviders, SlackModule } from './module.js';
 import { SlackService } from './service.js';
 import { SLACK, SLACK_CHANNEL } from './tokens.js';
-import { createSlackWebhookTransport } from './webhook.js';
 import type {
   NormalizedSlackMessage,
   Slack,
@@ -18,6 +16,7 @@ import type {
   SlackTransport,
   SlackTransportFactory,
 } from './types.js';
+import { createSlackWebhookTransport } from './webhook.js';
 
 const transportState = vi.hoisted(() => ({
   closeCalls: 0,
@@ -247,6 +246,70 @@ describe('SlackModule', () => {
     ).toThrowError(new SlackConfigurationError('SlackModule requires an explicit `transport` to be configured.'));
   });
 
+  it('honors an already-aborted signal before direct provider handoff', async () => {
+    const controller = new AbortController();
+    const transport = new PassiveTransport();
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+    controller.abort();
+
+    await expect(service.send({ text: 'Already aborted' }, { signal: controller.signal })).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    expect(transport.sent).toEqual([]);
+  });
+
+  it('honors an already-aborted signal before notification rendering or provider handoff', async () => {
+    const controller = new AbortController();
+    const render = vi.fn(async () => ({ text: 'rendered' }));
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      renderer: { render },
+      transport: createRecordingTransportFactory(),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+    controller.abort();
+
+    await expect(
+      service.sendNotification(
+        {
+          channel: 'slack',
+          payload: { text: 'Already aborted' },
+          template: 'abort-template',
+        },
+        { signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(render).not.toHaveBeenCalled();
+    expect(transportState.sent).toEqual([]);
+  });
+
+  it('honors an already-aborted signal before returning an empty sendMany batch', async () => {
+    const controller = new AbortController();
+    const create = vi.fn(async () => new PassiveTransport());
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      transport: {
+        create,
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+    controller.abort();
+
+    await expect(service.sendMany([], { signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it('resolves async options once and exposes the compatibility facade and channel token', async () => {
     const SLACK_CONFIG = Symbol('slack-config');
     const factoryCalls: string[] = [];
@@ -365,6 +428,7 @@ describe('SlackModule', () => {
     const result = await channel.send(
       {
         channel: 'slack',
+        metadata: { dispatchId: 'dispatch-1' },
         payload: { userId: 'user-1' },
         recipients: ['#product'],
         subject: 'Welcome',
@@ -376,6 +440,11 @@ describe('SlackModule', () => {
     expect(result.externalId).toBe('channel-1');
     expect(transportState.sent[0]).toMatchObject({
       channel: '#product',
+      metadata: {
+        dispatchId: 'dispatch-1',
+        subject: 'Welcome',
+        template: 'welcome',
+      },
       text: 'Fallback Welcome',
     });
     expect(transportState.sent[0]?.blocks).toHaveLength(1);
@@ -445,6 +514,20 @@ describe('SlackModule', () => {
     expect(fetchLike).toHaveBeenCalledWith(
       'https://hooks.slack.test/services/T000/B000/XXXX',
       expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('fails fast when neither explicit fetch nor global fetch is available', () => {
+    vi.stubGlobal('fetch', undefined);
+
+    expect(() =>
+      createSlackWebhookTransport({
+        webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+      }),
+    ).toThrowError(
+      new SlackConfigurationError(
+        'Slack webhook transport requires an explicit fetch implementation when `globalThis.fetch` is unavailable.',
+      ),
     );
   });
 
@@ -645,29 +728,26 @@ describe('SlackModule', () => {
     vi.useFakeTimers();
 
     try {
+      const rateLimitedText = vi.fn(async () => 'rate_limited');
+      const outageText = vi.fn(async () => 'temporary outage');
+      const successText = vi.fn(async () => 'ok');
       const fetchLike = vi
         .fn<SlackFetchLike>()
         .mockResolvedValueOnce({
           ok: false,
           status: 429,
-          async text() {
-            return 'rate_limited';
-          },
+          text: rateLimitedText,
         })
         .mockResolvedValueOnce({
           ok: false,
           status: 503,
           statusText: 'Service Unavailable',
-          async text() {
-            return 'temporary outage';
-          },
+          text: outageText,
         })
         .mockResolvedValueOnce({
           ok: true,
           status: 200,
-          async text() {
-            return 'ok';
-          },
+          text: successText,
         });
       const transport = createSlackWebhookTransport({
         fetch: fetchLike,
@@ -679,6 +759,9 @@ describe('SlackModule', () => {
 
       await expect(pending).resolves.toMatchObject({ ok: true, response: 'ok', statusCode: 200 });
       expect(fetchLike).toHaveBeenCalledTimes(3);
+      expect(rateLimitedText).not.toHaveBeenCalled();
+      expect(outageText).not.toHaveBeenCalled();
+      expect(successText).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
     }
@@ -706,13 +789,18 @@ describe('SlackModule', () => {
     try {
       const controller = new AbortController();
       const reason = new DOMException('retry cancelled', 'AbortError');
-      const fetchLike = vi.fn<SlackFetchLike>().mockResolvedValue({
-        ok: false,
-        status: 429,
-        async text() {
+      const fetchLike = vi.fn<SlackFetchLike>().mockImplementation(async () => {
+        queueMicrotask(() => {
           controller.abort(reason);
-          return 'rate_limited';
-        },
+        });
+
+        return {
+          ok: false,
+          status: 429,
+          async text() {
+            return 'rate_limited';
+          },
+        };
       });
       const transport = createSlackWebhookTransport({
         fetch: fetchLike,
@@ -906,6 +994,71 @@ describe('SlackModule', () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(createdTransport.closeCalls).toBe(1);
     expect(createdTransport.sendCalls).toBe(0);
+  });
+
+  it('makes factory-owned shutdown idempotent after the transport is closed', async () => {
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      transport: createRecordingTransportFactory(),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+    await service.onModuleInit();
+    await service.onApplicationShutdown();
+    await service.onApplicationShutdown();
+
+    expect(transportState.closeCalls).toBe(1);
+  });
+
+  it('shares concurrent factory-owned shutdown work instead of closing repeatedly', async () => {
+    const transport = new DelayedLifecycleTransport();
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      transport: {
+        create: async () => transport,
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+    await service.onModuleInit();
+    await Promise.all([service.onApplicationShutdown(), service.onApplicationShutdown()]);
+
+    expect(transport.closeCalls).toBe(1);
+  });
+
+  it('wraps owned transport shutdown failures as lifecycle errors', async () => {
+    const closeError = new Error('close failed');
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      transport: {
+        create: async () => ({
+          async close() {
+            throw closeError;
+          },
+          async send(message: NormalizedSlackMessage) {
+            return {
+              channel: message.channel,
+              ok: true,
+              response: 'ok',
+              statusCode: 200,
+              warnings: [],
+            };
+          },
+        }),
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+    await service.onModuleInit();
+
+    await expect(service.onApplicationShutdown()).rejects.toThrowError(
+      new SlackLifecycleError('Slack transport failed to close cleanly.', { cause: closeError }),
+    );
   });
 
   it('does not mark the service ready when shutdown interrupts bootstrap verification', async () => {
