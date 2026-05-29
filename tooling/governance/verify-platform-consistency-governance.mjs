@@ -534,6 +534,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // Contract-governing docs must remain discoverable from the docs hub, and any
   // such discoverability updates should stay coupled to this governance rule so
   // future contract-boundary edits do not silently bypass the companion checks.
+  // Updating this script is the CI/tooling companion for branches that extend
+  // the contract-governing documentation surface.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
