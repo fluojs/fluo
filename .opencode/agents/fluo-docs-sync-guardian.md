@@ -12,6 +12,15 @@ permission:
   bash:
     '*': ask
     'git status*': allow
+    'git branch': allow
+    'git branch --show-current': allow
+    'git branch --list': allow
+    'git branch -a': allow
+    'git branch -r': allow
+    'git branch -vv': allow
+    'git remote': allow
+    'git remote -v': allow
+    'git remote --verbose': allow
     'git diff*': allow
     'git log*': allow
     'git ls-files*': allow

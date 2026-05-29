@@ -13,11 +13,29 @@ permission:
     'find *': deny
     'xargs *': deny
     'git status*': allow
+    'git branch': allow
+    'git branch --show-current': allow
+    'git branch --list': allow
+    'git branch -a': allow
+    'git branch -r': allow
+    'git branch -vv': allow
+    'git remote': allow
+    'git remote -v': allow
+    'git remote --verbose': allow
     'git diff*': allow
     'git log*': allow
     'git show*': allow
     'git ls-files*': allow
     'GIT_MASTER=1 git status*': allow
+    'GIT_MASTER=1 git branch': allow
+    'GIT_MASTER=1 git branch --show-current': allow
+    'GIT_MASTER=1 git branch --list': allow
+    'GIT_MASTER=1 git branch -a': allow
+    'GIT_MASTER=1 git branch -r': allow
+    'GIT_MASTER=1 git branch -vv': allow
+    'GIT_MASTER=1 git remote': allow
+    'GIT_MASTER=1 git remote -v': allow
+    'GIT_MASTER=1 git remote --verbose': allow
     'GIT_MASTER=1 git diff*': allow
     'GIT_MASTER=1 git log*': allow
     'GIT_MASTER=1 git show*': allow
