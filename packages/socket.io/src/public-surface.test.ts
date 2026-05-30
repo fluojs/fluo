@@ -3,7 +3,8 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { WebSocketRoomService } from '@fluojs/websockets';
 
 import * as socketIo from './index.js';
-import type { SocketIoRoomService } from './types.js';
+import type { SocketIoHandshakeRequest as RootSocketIoHandshakeRequest } from './index.js';
+import type { SocketIoHandshakeRequest, SocketIoRoomService } from './types.js';
 
 describe('@fluojs/socket.io public surface', () => {
   it('keeps the root barrel aligned with the documented module and room contract', () => {
@@ -43,5 +44,10 @@ describe('@fluojs/socket.io public surface', () => {
       namespacePath?: string,
     ]>();
     expectTypeOf<Parameters<SocketIoRoomService['broadcastToRoom']>[0]>().toEqualTypeOf<string>();
+  });
+
+  it('documents the exported handshake request type used by guard contexts', () => {
+    expectTypeOf<SocketIoHandshakeRequest>().toEqualTypeOf<import('node:http').IncomingMessage | Request>();
+    expectTypeOf<RootSocketIoHandshakeRequest>().toEqualTypeOf<SocketIoHandshakeRequest>();
   });
 });

@@ -28,6 +28,13 @@ import type {
   SocketIoModuleOptions,
   SocketIoRoomService,
 } from './types.js';
+import {
+  DEFAULT_SOCKETIO_ENGINE_PATH,
+  resolveSocketIoMaxHttpBufferSize,
+  resolveSocketIoMaxPendingMessagesPerSocket,
+  resolveSocketIoShutdownTimeoutMs,
+} from './config.internal.js';
+import { closeSocketIoServerWithTimeout, type SocketIoCloseResult } from './shutdown.internal.js';
 
 interface DiscoveryCandidate {
   moduleName: string;
@@ -123,15 +130,6 @@ type SocketIoBootstrapRuntime =
       capability: FetchStyleRealtimeCapability;
       kind: 'bun';
     };
-
-const DEFAULT_SOCKETIO_SHUTDOWN_TIMEOUT_MS = 5_000;
-const DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET = 128;
-const DEFAULT_SOCKETIO_ENGINE_PATH = '/socket.io/';
-const DEFAULT_SOCKETIO_MAX_HTTP_BUFFER_SIZE = 1_048_576;
-
-function isFinitePositiveInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && Number.isFinite(value) && value > 0;
-}
 
 function normalizeGuardRejection(
   result: boolean | SocketIoGuardRejection | void,
@@ -527,13 +525,7 @@ export class SocketIoLifecycleService
   }
 
   private resolveMaxHttpBufferSize(): number {
-    const configured = this.moduleOptions.engine?.maxHttpBufferSize;
-
-    if (!isFinitePositiveInteger(configured)) {
-      return DEFAULT_SOCKETIO_MAX_HTTP_BUFFER_SIZE;
-    }
-
-    return configured;
+    return resolveSocketIoMaxHttpBufferSize(this.moduleOptions);
   }
 
   private installBunSocketIoBinding(runtime: Extract<SocketIoBootstrapRuntime, { kind: 'bun' }>, io: Server): void {
@@ -757,9 +749,7 @@ export class SocketIoLifecycleService
   }
 
   private maxPendingMessagesPerSocket(): number {
-    return isFinitePositiveInteger(this.moduleOptions.buffer?.maxPendingMessagesPerSocket)
-      ? this.moduleOptions.buffer.maxPendingMessagesPerSocket
-      : DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET;
+    return resolveSocketIoMaxPendingMessagesPerSocket(this.moduleOptions);
   }
 
   private attachConnectionListeners(
@@ -1148,13 +1138,7 @@ export class SocketIoLifecycleService
   }
 
   private resolveShutdownTimeoutMs(): number {
-    const configured = this.moduleOptions.shutdown?.timeoutMs;
-
-    if (typeof configured !== 'number' || !Number.isFinite(configured) || configured <= 0) {
-      return DEFAULT_SOCKETIO_SHUTDOWN_TIMEOUT_MS;
-    }
-
-    return Math.floor(configured);
+    return resolveSocketIoShutdownTimeoutMs(this.moduleOptions);
   }
 
   private async shutdown(): Promise<void> {
@@ -1175,58 +1159,51 @@ export class SocketIoLifecycleService
   private async runShutdownLifecycle(): Promise<void> {
     const io = this.io;
 
-    this.wired = false;
-
     if (!io) {
-      this.attachments = [];
-      this.socketRegistry.clear();
+      this.clearManagedState();
       return;
     }
 
+    let shouldClearManagedState = false;
+    const timeoutMs = this.resolveShutdownTimeoutMs();
+
     try {
-      await this.closeServerWithTimeout(io, this.resolveShutdownTimeoutMs());
+      const result = await this.closeServerWithTimeout(io, timeoutMs);
+      shouldClearManagedState = true;
+
+      if (result.kind === 'forced') {
+        this.logger.error(
+          `Failed to close Socket.IO server within ${String(timeoutMs)}ms; force-disconnected managed Socket.IO clients before clearing lifecycle state.`,
+          result.timeoutError,
+          'SocketIoLifecycleService',
+        );
+      }
     } catch (error) {
       this.logger.error(
-        `Failed to close Socket.IO server within ${String(this.resolveShutdownTimeoutMs())}ms.`,
+        `Failed to close Socket.IO server within ${String(timeoutMs)}ms; retaining managed Socket.IO state for shutdown retry.`,
         error,
         'SocketIoLifecycleService',
       );
     } finally {
-      this.io = undefined;
-      this.bunEngine = undefined;
-      this.attachments = [];
-      if (hasBunRealtimeBindingHost(this.adapter)) {
-        this.adapter.configureRealtimeBinding(undefined);
+      if (shouldClearManagedState) {
+        this.clearManagedState();
       }
-      this.socketRegistry.clear();
     }
   }
 
-  private closeServerWithTimeout(io: Server, timeoutMs: number): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      let settled = false;
-      const timeout = setTimeout(() => {
-        if (settled) {
-          return;
-        }
+  private closeServerWithTimeout(io: Server, timeoutMs: number): Promise<SocketIoCloseResult> {
+    return closeSocketIoServerWithTimeout(io, timeoutMs);
+  }
 
-        settled = true;
-        reject(new Error(`Timed out while closing Socket.IO server after ${String(timeoutMs)}ms.`));
-      }, timeoutMs);
-
-      // Socket.IO owns client cleanup; the shared HTTP server remains owned by the platform adapter.
-      (io as Omit<Server, 'httpServer'> & { httpServer?: unknown }).httpServer = undefined;
-
-      io.close(() => {
-        if (settled) {
-          return;
-        }
-
-        settled = true;
-        clearTimeout(timeout);
-        resolve();
-      });
-    });
+  private clearManagedState(): void {
+    this.wired = false;
+    this.io = undefined;
+    this.bunEngine = undefined;
+    this.attachments = [];
+    if (hasBunRealtimeBindingHost(this.adapter)) {
+      this.adapter.configureRealtimeBinding(undefined);
+    }
+    this.socketRegistry.clear();
   }
 }
 
