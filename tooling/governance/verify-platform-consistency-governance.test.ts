@@ -780,6 +780,29 @@ describe('HTTP adapter raw-body portability discoverability', () => {
   });
 });
 
+describe('Socket.IO runtime limitation discoverability', () => {
+  const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+  const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const englishReadme = readFileSync(join(repoRoot, 'packages/socket.io/README.md'), 'utf8');
+  const koreanReadme = readFileSync(join(repoRoot, 'packages/socket.io/README.ko.md'), 'utf8');
+  const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+  const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+
+  it('keeps runtime limits, guard request typing, and shutdown retry docs discoverable from the context hub', () => {
+    for (const content of [englishContext, koreanContext, englishReadme, koreanReadme]) {
+      expect(content).toContain('@fluojs/socket.io');
+      expect(content).toContain('SocketIoHandshakeRequest');
+      expect(content).toContain('force-disconnect');
+    }
+
+    for (const content of [englishSurface, koreanSurface]) {
+      expect(content).toContain('@fluojs/socket.io');
+      expect(content).toContain('Bun');
+      expect(content).toMatch(/runtime limit|runtime limitation|런타임 제한/);
+    }
+  });
+});
+
 describe('Passport auth discoverability', () => {
   const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
   const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');

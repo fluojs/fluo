@@ -810,6 +810,22 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContextKo.includes('dynamic-start lifecycle guarantee'),
     'docs/CONTEXT.ko.md must keep cron scheduling, status snapshot, and book lifecycle guidance discoverable when package-surface.ko.md documents them.',
   );
+  assert(
+    packageSurface.includes('@fluojs/socket.io') &&
+      packageSurface.includes('runtime limits') &&
+      docsContext.includes('packages/socket.io/README.md') &&
+      docsContext.includes('SocketIoHandshakeRequest') &&
+      docsContext.includes('force-disconnect/retry semantics'),
+    'docs/CONTEXT.md must keep Socket.IO runtime limits, public guard request typing, and shutdown retry guidance discoverable when package-surface.md documents them.',
+  );
+  assert(
+    packageSurfaceKo.includes('@fluojs/socket.io') &&
+      packageSurfaceKo.includes('런타임 제한') &&
+      docsContextKo.includes('packages/socket.io/README.ko.md') &&
+      docsContextKo.includes('SocketIoHandshakeRequest') &&
+      docsContextKo.includes('force-disconnect/retry semantic'),
+    'docs/CONTEXT.ko.md must keep Socket.IO runtime limits, public guard request typing, and shutdown retry guidance discoverable when package-surface.ko.md documents them.',
+  );
   assert(rootReadme.includes('docs/reference/package-surface.md'), 'README.md must point to the canonical runtime package matrix page.');
   assert(
     rootReadmeKo.includes('docs/reference/package-surface.ko.md'),

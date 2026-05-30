@@ -103,11 +103,11 @@ SocketIoModule.forRoot({
 });
 ```
 
-`cors`를 생략하면 `@fluojs/socket.io`는 `{ credentials: false, origin: false }`를 기본값으로 사용하므로 cross-origin 노출은 명시적 opt-in이 필요합니다. `engine.maxHttpBufferSize`를 생략하면 어댑터가 1 MiB Engine.IO payload 상한을 적용합니다. 기본값에는 `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, `shutdown.timeoutMs: 5000`도 포함됩니다.
+`cors`를 생략하면 `@fluojs/socket.io`는 `{ credentials: false, origin: false }`를 기본값으로 사용하므로 cross-origin 노출은 명시적 opt-in이 필요합니다. `engine.maxHttpBufferSize`를 생략하면 어댑터가 1 MiB Engine.IO payload 상한을 적용합니다. 기본값에는 `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, `shutdown.timeoutMs: 5000`도 포함됩니다. 명시적인 `engine.maxHttpBufferSize`, `buffer.maxPendingMessagesPerSocket`, `shutdown.timeoutMs` 값은 양의 정수여야 하며, 잘못된 명시 값은 기본값으로 fallback하지 않고 모듈 등록 중 실패합니다.
 
 정적 `@WebSocketGateway({ path })` namespace는 fluo gateway discovery가 소유하며 Socket.IO dynamic child namespace로 취급하지 않습니다. 어댑터는 이러한 정적 namespace에 대해 Socket.IO의 `cleanupEmptyChildNamespaces` 동작을 비활성화합니다. 애플리케이션 코드가 raw `SOCKETIO_SERVER` 접근으로 dynamic child namespace를 만들면 해당 소유권과 cleanup 정책은 애플리케이션 수준 Socket.IO 통합이 담당합니다.
 
-애플리케이션 종료 중 Socket.IO client 정리는 Socket.IO가 소유하지만 underlying HTTP server는 이를 제공한 platform adapter 또는 shared HTTP server 통합이 계속 소유합니다. 어댑터는 `io.close(...)` 전에 해당 HTTP server 참조를 분리하므로 client cleanup은 실행되지만 Socket.IO가 adapter-owned/shared HTTP listener를 닫지는 않습니다. 동일한 managed Socket.IO instance 주변에 별도의 manual socket-disconnect 경로를 추가하지 마세요.
+애플리케이션 종료 중 Socket.IO client 정리는 Socket.IO가 소유하지만 underlying HTTP server는 이를 제공한 platform adapter 또는 shared HTTP server 통합이 계속 소유합니다. 어댑터는 `io.close(...)` 전에 해당 HTTP server 참조를 분리하므로 client cleanup은 실행되지만 Socket.IO가 adapter-owned/shared HTTP listener를 닫지는 않습니다. Graceful Socket.IO close가 `shutdown.timeoutMs`를 넘으면 어댑터는 lifecycle state를 정리하기 전에 managed Socket.IO client를 force-disconnect합니다. 해당 force cleanup도 실패하면 shutdown retry를 위해 managed server reference와 registry를 보존합니다. 동일한 managed Socket.IO instance 주변에 별도의 manual socket-disconnect 경로를 추가하지 마세요.
 
 ### Guard 계약
 
@@ -130,7 +130,7 @@ Socket.IO 등록은 소유 모듈의 import 경로에서 구성하여 namespace/
 - `SOCKETIO_ROOM_SERVICE`
 - `SocketIoRoomService`: 공유 room 계약에 Socket.IO namespace-aware `joinRoom`, `leaveRoom`, `broadcastToRoom`, `getRooms` helper를 더한 타입입니다.
 - `SocketIoLifecycleService`: server와 room-service token 뒤에서 동작하는 lifecycle 기반 구현입니다. 애플리케이션 코드는 일반적으로 `SOCKETIO_SERVER` 또는 `SOCKETIO_ROOM_SERVICE`를 주입하세요.
-- 타입: `SocketIoModuleOptions`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
+- 타입: `SocketIoModuleOptions`, `SocketIoHandshakeRequest`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
 
 `SocketIoModuleOptions`는 `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, `transports`를 포함합니다. `global`의 기본값은 `true`이므로 `SOCKETIO_SERVER`와 `SOCKETIO_ROOM_SERVICE`가 앱 전체에서 보입니다. module-local provider visibility가 필요하면 `false`로 설정하세요. 지원되는 server-backed runtime adapter가 필요하며, unsupported/noop adapter는 bootstrap 중 빠르게 실패합니다.
 

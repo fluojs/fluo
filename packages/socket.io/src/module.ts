@@ -1,5 +1,6 @@
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
+import { assertValidSocketIoModuleOptions } from './config.internal.js';
 import { SOCKETIO_OPTIONS_INTERNAL } from './options-token.internal.js';
 import { SocketIoLifecycleService } from './adapter.js';
 import {
@@ -52,6 +53,8 @@ export class SocketIoModule {
    * ```
    */
   static forRoot(options: SocketIoModuleOptions = {}): ModuleType {
+    assertValidSocketIoModuleOptions(options);
+
     class SocketIoRuntimeModule extends SocketIoModule {}
 
     return defineModule(SocketIoRuntimeModule, {
