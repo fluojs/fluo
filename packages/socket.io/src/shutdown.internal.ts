@@ -1,14 +1,17 @@
+/** Result of a bounded Socket.IO close attempt. */
 export interface SocketIoCloseResult {
   readonly kind: 'closed' | 'forced';
   readonly timeoutError?: SocketIoShutdownTimeoutError;
 }
 
+/** Minimal Socket.IO server surface required for lifecycle shutdown. */
 export interface SocketIoCloseTarget {
   close(callback?: () => void): unknown;
   disconnectSockets?: (close?: boolean) => unknown;
   httpServer?: unknown;
 }
 
+/** Error retained when Socket.IO shutdown exceeds the configured timeout. */
 export class SocketIoShutdownTimeoutError extends Error {
   constructor(readonly timeoutMs: number) {
     super(`Timed out while closing Socket.IO server after ${String(timeoutMs)}ms.`);
@@ -24,6 +27,13 @@ function forceDisconnectManagedClients(io: SocketIoCloseTarget): void {
   io.disconnectSockets?.(true);
 }
 
+/**
+ * Close a Socket.IO server while bounding graceful cleanup time.
+ *
+ * @param io Socket.IO close target managed by the lifecycle service.
+ * @param timeoutMs Maximum graceful close duration before managed clients are force-disconnected.
+ * @returns A close result that identifies graceful completion or forced client cleanup.
+ */
 export function closeSocketIoServerWithTimeout(io: SocketIoCloseTarget, timeoutMs: number): Promise<SocketIoCloseResult> {
   return new Promise<SocketIoCloseResult>((resolve, reject) => {
     let settled = false;

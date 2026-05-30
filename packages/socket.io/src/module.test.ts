@@ -1,7 +1,6 @@
 import { createServer as createHttpServer, type IncomingMessage, type Server as NodeHttpServer, type ServerResponse } from 'node:http';
-import { type AddressInfo, createServer as createNetServer } from 'node:net';
+import type { AddressInfo } from 'node:net';
 
-import { describe, expect, it, vi } from 'vitest';
 import { Inject, Scope } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import {
@@ -12,15 +11,16 @@ import {
 import { createExpressAdapter } from '@fluojs/platform-express';
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { createNodejsAdapter } from '@fluojs/platform-nodejs';
-import { bootstrapApplication, defineModule, FluoFactory, type Application, type ApplicationLogger, type ModuleType } from '@fluojs/runtime';
+import { type Application, type ApplicationLogger, bootstrapApplication, defineModule, FluoFactory, type ModuleType } from '@fluojs/runtime';
 import { bootstrapNodeApplication } from '@fluojs/runtime/node';
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@fluojs/websockets';
-import { io as createClient, type Socket as ClientSocket } from 'socket.io-client';
-import type { Namespace, Server as SocketIoServer, Socket } from 'socket.io';
+import type { Namespace, Socket, Server as SocketIoServer } from 'socket.io';
+import { type Socket as ClientSocket, io as createClient } from 'socket.io-client';
+import { describe, expect, it, vi } from 'vitest';
 
-import { SocketIoModule } from './module.js';
-import * as publicApi from './index.js';
 import { SocketIoLifecycleService } from './adapter.js';
+import * as publicApi from './index.js';
+import { SocketIoModule } from './module.js';
 import { SOCKETIO_ROOM_SERVICE, SOCKETIO_SERVER } from './tokens.js';
 import type { SocketIoRoomService } from './types.js';
 
@@ -53,7 +53,9 @@ function createLogger(events: string[]): ApplicationLogger {
 }
 
 function stripAnsi(value: string): string {
-  return value.replace(new RegExp(String.raw`\u001B\[[\d;]*m`, 'g'), '');
+  const ansiEscapePattern = `${String.fromCharCode(27)}\\[[\\d;]*m`;
+
+  return value.replace(new RegExp(ansiEscapePattern, 'g'), '');
 }
 
 function getBoundPort(server: { address(): AddressInfo | string | null }): number {
@@ -66,29 +68,18 @@ function getBoundPort(server: { address(): AddressInfo | string | null }): numbe
   return address.port;
 }
 
-async function findAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createNetServer();
+function isAddressableServer(value: unknown): value is { address(): AddressInfo | string | null } {
+  return typeof value === 'object' && value !== null && 'address' in value && typeof value.address === 'function';
+}
 
-    server.once('error', reject);
-    server.listen(0, () => {
-      const address = server.address();
+function getBoundPortFromAdapter(adapter: HttpApplicationAdapter): number {
+  const server = adapter.getServer?.();
 
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to resolve available port.'));
-        return;
-      }
+  if (!isAddressableServer(server)) {
+    throw new Error('Failed to resolve a bound test port from the HTTP adapter.');
+  }
 
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve(address.port);
-      });
-    });
-  });
+  return getBoundPort(server);
 }
 
 async function readRequestBody(request: IncomingMessage): Promise<string | undefined> {
@@ -175,6 +166,10 @@ class TestBunSocketIoAdapter implements HttpApplicationAdapter {
 
   constructor(private readonly port: number) {}
 
+  getServer(): NodeHttpServer | undefined {
+    return this.server;
+  }
+
   configureRealtimeBinding(binding: BunRealtimeBinding | undefined): void {
     if (this.server && binding !== undefined) {
       throw new Error('Test Bun Socket.IO binding must be configured before listen().');
@@ -217,11 +212,21 @@ class TestBunSocketIoAdapter implements HttpApplicationAdapter {
     });
 
     this.server = server;
-    this.bunServer = new TestBunServer(server, this.port);
 
     await new Promise<void>((resolve, reject) => {
-      server.once('error', reject);
-      server.listen(this.port, '127.0.0.1', () => resolve());
+      const onError = (error: Error) => {
+        server.off('listening', onListening);
+        reject(error);
+      };
+      const onListening = () => {
+        server.off('error', onError);
+        this.bunServer = new TestBunServer(server, getBoundPort(server));
+        resolve();
+      };
+
+      server.once('error', onError);
+      server.once('listening', onListening);
+      server.listen(this.port, '127.0.0.1');
     });
   }
 
@@ -291,7 +296,7 @@ async function waitForExpectation(assertion: () => void, timeoutMs = 250): Promi
 }
 
 interface SupportedSocketIoAdapterScenario {
-  createAdapter: (options: { port: number; shutdownTimeoutMs?: number }) => ReturnType<typeof createNodejsAdapter>;
+  createAdapter: (options: { port: number; shutdownTimeoutMs?: number }) => HttpApplicationAdapter;
   name: string;
 }
 
@@ -314,10 +319,26 @@ async function createSocketIoAdapterFirstApplication(
   rootModule: ModuleType,
   scenario: SupportedSocketIoAdapterScenario,
   options: { port: number; shutdownTimeoutMs?: number },
-): Promise<Application> {
-  return FluoFactory.create(rootModule, {
-    adapter: scenario.createAdapter(options),
-  });
+): Promise<{ app: Application; adapter: HttpApplicationAdapter }> {
+  const adapter = scenario.createAdapter(options);
+
+  return {
+    adapter,
+    app: await FluoFactory.create(rootModule, {
+      adapter,
+    }),
+  };
+}
+
+async function createNodejsSocketIoApplication(
+  rootModule: ModuleType,
+): Promise<{ app: Application; adapter: HttpApplicationAdapter }> {
+  const adapter = createNodejsAdapter({ port: 0 });
+
+  return {
+    adapter,
+    app: await FluoFactory.create(rootModule, { adapter }),
+  };
 }
 
 describe('@fluojs/socket.io', () => {
@@ -364,6 +385,26 @@ describe('@fluojs/socket.io', () => {
     expect(secondOptionsProvider?.useValue).toEqual({ shutdown: { timeoutMs: 2222 } });
   });
 
+  it('keeps Socket.IO providers module-local when global is false', async () => {
+    class SocketIoOwnerModule {}
+    defineModule(SocketIoOwnerModule, {
+      imports: [SocketIoModule.forRoot({ global: false })],
+    });
+
+    @Inject(SOCKETIO_SERVER)
+    class RootServerProbe {
+      constructor(readonly server: SocketIoServer) {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoOwnerModule],
+      providers: [RootServerProbe],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('not visible through a global module');
+  });
+
   it('injects the Socket.IO server token into singleton providers', async () => {
     @Inject(SOCKETIO_SERVER)
     class ServerProbe {
@@ -378,7 +419,7 @@ describe('@fluojs/socket.io', () => {
 
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port: await findAvailablePort(),
+      port: 0,
     });
     const probe = await app.container.resolve(ServerProbe);
 
@@ -409,7 +450,7 @@ describe('@fluojs/socket.io', () => {
   });
 
   it('rejects serverBacked gateway opt-in on the Bun Socket.IO engine path', async () => {
-    const adapter = new TestBunSocketIoAdapter(await findAvailablePort());
+    const adapter = new TestBunSocketIoAdapter(0);
 
     @WebSocketGateway({ path: '/chat', serverBacked: { port: 4101 } })
     class ChatGateway {
@@ -432,8 +473,7 @@ describe('@fluojs/socket.io', () => {
   });
 
   it('boots a Bun-style Socket.IO app through the official Bun engine path', async () => {
-    const port = await findAvailablePort();
-    const adapter = new TestBunSocketIoAdapter(port);
+    const adapter = new TestBunSocketIoAdapter(0);
 
     class GatewayState {
       connectCount = 0;
@@ -482,6 +522,7 @@ describe('@fluojs/socket.io', () => {
     const state = await app.container.resolve(GatewayState);
 
     await app.listen();
+    const port = getBoundPortFromAdapter(adapter);
 
     const socket = createClient(`http://127.0.0.1:${String(port)}/chat`, {
       reconnection: false,
@@ -509,8 +550,7 @@ describe('@fluojs/socket.io', () => {
   });
 
   it('configures the Bun realtime binding before listen when only the raw Socket.IO server is used', async () => {
-    const port = await findAvailablePort();
-    const adapter = new TestBunSocketIoAdapter(port);
+    const adapter = new TestBunSocketIoAdapter(0);
 
     class AppModule {}
     defineModule(AppModule, {
@@ -523,6 +563,7 @@ describe('@fluojs/socket.io', () => {
     });
 
     await app.listen();
+    const port = getBoundPortFromAdapter(adapter);
 
     const server = await app.container.resolve<SocketIoServer>(SOCKETIO_SERVER);
     server.on('connection', (socket: Socket) => {
@@ -765,42 +806,97 @@ describe('@fluojs/socket.io', () => {
       providers: [GatewayState, GuardedGateway],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
-      cors: false,
-      port,
-    });
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
     const state = await app.container.resolve<GatewayState>(GatewayState);
 
-    await app.listen();
+    let rejectedSocket: ClientSocket | undefined;
+    let allowedSocket: ClientSocket | undefined;
 
-    const rejectedSocket = createClient(`http://127.0.0.1:${String(port)}/guarded`, {
-      reconnection: false,
-      transports: ['websocket'],
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
+
+      rejectedSocket = createClient(`http://127.0.0.1:${String(port)}/guarded`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      const rejectedError = await onceConnectError(rejectedSocket);
+
+      expect(rejectedError.message).toBe('Authentication required.');
+      expect(rejectedError.data).toEqual({ code: 'AUTH_REQUIRED' });
+      expect(state.connectCount).toBe(0);
+
+      rejectedSocket.close();
+
+      allowedSocket = createClient(`http://127.0.0.1:${String(port)}/guarded`, {
+        auth: { token: 'demo-token' },
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      await onceConnected(allowedSocket);
+
+      allowedSocket.emit('ping', 'allowed');
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      expect(state.connectCount).toBe(1);
+      expect(state.messages).toEqual(['allowed']);
+    } finally {
+      rejectedSocket?.close();
+      allowedSocket?.close();
+      await app.close();
+    }
+  });
+
+  it('rejects connection guard false results before gateway handlers execute', async () => {
+    class GatewayState {
+      connectCount = 0;
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/connection-false' })
+    class GuardedGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      onConnect() {
+        this.state.connectCount += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({
+        auth: {
+          connection() {
+            return false;
+          },
+        },
+        transports: ['websocket'],
+      })],
+      providers: [GatewayState, GuardedGateway],
     });
-    const rejectedError = await onceConnectError(rejectedSocket);
 
-    expect(rejectedError.message).toBe('Authentication required.');
-    expect(rejectedError.data).toEqual({ code: 'AUTH_REQUIRED' });
-    expect(state.connectCount).toBe(0);
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+    let socket: ClientSocket | undefined;
 
-    rejectedSocket.close();
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
 
-    const allowedSocket = createClient(`http://127.0.0.1:${String(port)}/guarded`, {
-      auth: { token: 'demo-token' },
-      reconnection: false,
-      transports: ['websocket'],
-    });
-    await onceConnected(allowedSocket);
+      socket = createClient(`http://127.0.0.1:${String(port)}/connection-false`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      const error = await onceConnectError(socket);
 
-    allowedSocket.emit('ping', 'allowed');
-    await new Promise((resolve) => setTimeout(resolve, 25));
-
-    expect(state.connectCount).toBe(1);
-    expect(state.messages).toEqual(['allowed']);
-
-    allowedSocket.close();
-    await app.close();
+      expect(error.message).toBe('Socket.IO connection rejected.');
+      expect(error.data).toBeUndefined();
+      expect(state.connectCount).toBe(0);
+    } finally {
+      socket?.close();
+      await app.close();
+    }
   });
 
   it('rejects guarded message events without invoking gateway handlers', async () => {
@@ -842,50 +938,52 @@ describe('@fluojs/socket.io', () => {
       providers: [GatewayState, GuardedGateway],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
-      cors: false,
-      port,
-    });
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
     const state = await app.container.resolve<GatewayState>(GatewayState);
 
-    await app.listen();
+    let socket: ClientSocket | undefined;
 
-    const socket = createClient(`http://127.0.0.1:${String(port)}/message-guard`, {
-      reconnection: false,
-      transports: ['websocket'],
-    });
-    await onceConnected(socket);
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
 
-    const rejectedAck = await new Promise<unknown>((resolve) => {
-      socket.emit('ping', 'blocked', (response: unknown) => resolve(response));
-    });
+      const activeSocket = createClient(`http://127.0.0.1:${String(port)}/message-guard`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      socket = activeSocket;
+      await onceConnected(activeSocket);
 
-    expect(rejectedAck).toEqual({ data: { code: 'AUTH_REQUIRED' }, error: 'Forbidden event.' });
-    expect(state.messages).toEqual([]);
+      const rejectedAck = await new Promise<unknown>((resolve) => {
+        activeSocket.emit('ping', 'blocked', (response: unknown) => resolve(response));
+      });
 
-    const falseRejectedAck = await new Promise<unknown>((resolve) => {
-      socket.emit('ping', 'false-rejected', (response: unknown) => resolve(response));
-    });
+      expect(rejectedAck).toEqual({ data: { code: 'AUTH_REQUIRED' }, error: 'Forbidden event.' });
+      expect(state.messages).toEqual([]);
 
-    expect(falseRejectedAck).toEqual({ data: undefined, error: 'Socket.IO message rejected.' });
-    expect(state.messages).toEqual([]);
+      const falseRejectedAck = await new Promise<unknown>((resolve) => {
+        activeSocket.emit('ping', 'false-rejected', (response: unknown) => resolve(response));
+      });
 
-    socket.emit('ping', 'allowed');
-    await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(falseRejectedAck).toEqual({ data: undefined, error: 'Socket.IO message rejected.' });
+      expect(state.messages).toEqual([]);
 
-    expect(state.messages).toEqual(['allowed']);
+      activeSocket.emit('ping', 'allowed');
+      await new Promise((resolve) => setTimeout(resolve, 25));
 
-    const disconnected = new Promise((resolve) => socket.once('disconnect', resolve));
-    const disconnectAck = await new Promise<unknown>((resolve) => {
-      socket.emit('ping', 'disconnect', (response: unknown) => resolve(response));
-    });
+      expect(state.messages).toEqual(['allowed']);
 
-    expect(disconnectAck).toEqual({ data: undefined, error: 'Disconnecting event.' });
-    await disconnected;
+      const disconnected = new Promise((resolve) => activeSocket.once('disconnect', resolve));
+      const disconnectAck = await new Promise<unknown>((resolve) => {
+        activeSocket.emit('ping', 'disconnect', (response: unknown) => resolve(response));
+      });
 
-    socket.close();
-    await app.close();
+      expect(disconnectAck).toEqual({ data: undefined, error: 'Disconnecting event.' });
+      await disconnected;
+    } finally {
+      socket?.close();
+      await app.close();
+    }
   });
 
   it('contains async message-guard rejections inside adapter reporting flow', async () => {
@@ -929,17 +1027,14 @@ describe('@fluojs/socket.io', () => {
       providers: [GatewayState, GuardedGateway],
     });
 
-    const port = await findAvailablePort();
     const errorLog = vi.spyOn(console, 'error').mockImplementation((message: unknown, error?: unknown) => {
       loggerEvents.push(`${String(message)}:${error instanceof Error ? error.message : 'none'}`);
     });
-    const app = await bootstrapNodeApplication(AppModule, {
-      cors: false,
-      port,
-    });
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
     const state = await app.container.resolve<GatewayState>(GatewayState);
 
     await app.listen();
+    const port = getBoundPortFromAdapter(adapter);
     process.on('unhandledRejection', onUnhandledRejection);
 
     const socket = createClient(`http://127.0.0.1:${String(port)}/async-message-guard`, {
@@ -1029,8 +1124,7 @@ describe('@fluojs/socket.io', () => {
   });
 
   it('disconnects Bun-style sockets when inbound payloads exceed the configured engine limit', async () => {
-    const port = await findAvailablePort();
-    const adapter = new TestBunSocketIoAdapter(port);
+    const adapter = new TestBunSocketIoAdapter(0);
 
     class GatewayState {
       messages: unknown[] = [];
@@ -1066,6 +1160,7 @@ describe('@fluojs/socket.io', () => {
 
     try {
       await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
 
       const socket = createClient(`http://127.0.0.1:${String(port)}/bun-payload-limit`, {
         reconnection: false,
@@ -1131,39 +1226,49 @@ describe('@fluojs/socket.io', () => {
       providers: [GatewayState, ChatGateway],
     });
 
-      const port = await findAvailablePort();
-      const app = await createSocketIoAdapterFirstApplication(AppModule, scenario, { port });
+      const { adapter, app } = await createSocketIoAdapterFirstApplication(AppModule, scenario, { port: 0 });
       const state = await app.container.resolve(GatewayState);
       const roomService = await app.container.resolve<SocketIoRoomService>(SOCKETIO_ROOM_SERVICE);
 
-      await app.listen();
+      let socket: ClientSocket | undefined;
 
-      const socket = createClient(`http://127.0.0.1:${String(port)}/chat`, {
-        reconnection: false,
-        transports: ['websocket'],
-      });
-      await onceConnected(socket);
+      try {
+        await app.listen();
+        const port = getBoundPortFromAdapter(adapter);
 
-      socket.emit('ping', { value: 'hello' });
-      const broadcast = await onceEvent<{ value: string }>(socket, 'room:pong');
+        socket = createClient(`http://127.0.0.1:${String(port)}/chat`, {
+          reconnection: false,
+          transports: ['websocket'],
+        });
+        await onceConnected(socket);
 
-      expect(broadcast).toEqual({ value: 'hello' });
-      expect(state.messages).toEqual([{ value: 'hello' }]);
-      expect(state.connectCount).toBe(1);
-      expect(state.lastSocketId).toBeDefined();
-      expect(roomService.getRooms(state.lastSocketId!)).toEqual(new Set([state.lastSocketId!, 'room:chat']));
+        socket.emit('ping', { value: 'hello' });
+        const broadcast = await onceEvent<{ value: string }>(socket, 'room:pong');
 
-      const disconnected = onceDisconnected(socket);
-      socket.disconnect();
+        expect(broadcast).toEqual({ value: 'hello' });
+        expect(state.messages).toEqual([{ value: 'hello' }]);
+        expect(state.connectCount).toBe(1);
+        const socketId = state.lastSocketId;
 
-      expect(await disconnected).toBe('io client disconnect');
+        expect(socketId).toBeDefined();
+        if (socketId === undefined) {
+          throw new Error('Expected Socket.IO gateway to record a connected socket id.');
+        }
+        expect(roomService.getRooms(socketId)).toEqual(new Set([socketId, 'room:chat']));
 
-      await new Promise((resolve) => setTimeout(resolve, 25));
+        const disconnected = onceDisconnected(socket);
+        socket.disconnect();
 
-      expect(state.disconnectCount).toBe(1);
-      expect(state.disconnectReason).toBe('client namespace disconnect');
+        expect(await disconnected).toBe('io client disconnect');
 
-      await app.close();
+        await new Promise((resolve) => setTimeout(resolve, 25));
+
+        expect(state.disconnectCount).toBe(1);
+        expect(state.disconnectReason).toBe('client namespace disconnect');
+      } finally {
+        socket?.close();
+        await app.close();
+      }
     });
   }
 
@@ -1188,7 +1293,7 @@ describe('@fluojs/socket.io', () => {
 
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port: await findAvailablePort(),
+      port: 0,
     });
 
     try {
@@ -1238,33 +1343,36 @@ describe('@fluojs/socket.io', () => {
       providers: [GatewayState, AsyncGateway],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
-      cors: false,
-      port,
-    });
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
     const state = await app.container.resolve(GatewayState);
 
-    await app.listen();
+    let socket: ClientSocket | undefined;
 
-    const socket = createClient(`http://127.0.0.1:${String(port)}/async-connect`, {
-      reconnection: false,
-      transports: ['websocket'],
-    });
-    await onceConnected(socket);
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
 
-    const disconnected = onceDisconnected(socket);
-    socket.emit('ping', 'early');
-    socket.disconnect();
-    await disconnected;
+      socket = createClient(`http://127.0.0.1:${String(port)}/async-connect`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      await onceConnected(socket);
 
-    connected.resolve();
-    await new Promise((resolve) => setTimeout(resolve, 25));
+      const disconnected = onceDisconnected(socket);
+      socket.emit('ping', 'early');
+      socket.disconnect();
+      await disconnected;
 
-    expect(state.messages).toEqual(['early']);
-    expect(state.disconnects).toBe(1);
+      connected.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 25));
 
-    await app.close();
+      expect(state.messages).toEqual(['early']);
+      expect(state.disconnects).toBe(1);
+    } finally {
+      socket?.close();
+      connected.resolve();
+      await app.close();
+    }
   });
 
   it('runs message guards for buffered pre-connect events before replaying handlers', async () => {
@@ -1305,34 +1413,37 @@ describe('@fluojs/socket.io', () => {
       providers: [GatewayState, BufferedGuardGateway],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
-      cors: false,
-      port,
-    });
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
     const state = await app.container.resolve(GatewayState);
 
-    await app.listen();
+    let socket: ClientSocket | undefined;
 
-    const socket = createClient(`http://127.0.0.1:${String(port)}/buffered-message-guard`, {
-      reconnection: false,
-      transports: ['websocket'],
-    });
-    await onceConnected(socket);
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
 
-    const rejectedAck = new Promise<unknown>((resolve) => {
-      socket.emit('ping', 'blocked', (response: unknown) => resolve(response));
-    });
-    socket.emit('ping', 'allowed');
+      const activeSocket = createClient(`http://127.0.0.1:${String(port)}/buffered-message-guard`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      socket = activeSocket;
+      await onceConnected(activeSocket);
 
-    connected.resolve();
-    await new Promise((resolve) => setTimeout(resolve, 25));
+      const rejectedAck = new Promise<unknown>((resolve) => {
+        activeSocket.emit('ping', 'blocked', (response: unknown) => resolve(response));
+      });
+      activeSocket.emit('ping', 'allowed');
 
-    expect(await rejectedAck).toEqual({ data: { code: 'BUFFERED_REJECTED' }, error: 'Buffered event rejected.' });
-    expect(state.messages).toEqual(['allowed']);
+      connected.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 25));
 
-    socket.close();
-    await app.close();
+      expect(await rejectedAck).toEqual({ data: { code: 'BUFFERED_REJECTED' }, error: 'Buffered event rejected.' });
+      expect(state.messages).toEqual(['allowed']);
+    } finally {
+      socket?.close();
+      connected.resolve();
+      await app.close();
+    }
   });
 
   it('drops oldest pre-connect socket.io messages once the pending buffer limit is reached', () => {
@@ -1607,45 +1718,52 @@ describe('@fluojs/socket.io', () => {
       providers: [GatewayState, ChatGateway, AdminGateway],
     });
 
-      const port = await findAvailablePort();
-      const app = await createSocketIoAdapterFirstApplication(AppModule, scenario, { port });
+      const { adapter, app } = await createSocketIoAdapterFirstApplication(AppModule, scenario, { port: 0 });
       const state = await app.container.resolve(GatewayState);
 
-      await app.listen();
+      let chatSocket: ClientSocket | undefined;
+      let adminSocket: ClientSocket | undefined;
 
-      const chatSocket = createClient(`http://127.0.0.1:${String(port)}/chat`, {
-        reconnection: false,
-        transports: ['websocket'],
-      });
-      const adminSocket = createClient(`http://127.0.0.1:${String(port)}/admin`, {
-        reconnection: false,
-        transports: ['websocket'],
-      });
+      try {
+        await app.listen();
+        const port = getBoundPortFromAdapter(adapter);
 
-      await Promise.all([onceConnected(chatSocket), onceConnected(adminSocket)]);
+        chatSocket = createClient(`http://127.0.0.1:${String(port)}/chat`, {
+          reconnection: false,
+          transports: ['websocket'],
+        });
+        adminSocket = createClient(`http://127.0.0.1:${String(port)}/admin`, {
+          reconnection: false,
+          transports: ['websocket'],
+        });
 
-      const chatBroadcast = onceEvent<string>(chatSocket, 'chat:broadcast');
-      let adminReceivedChatBroadcast = false;
-      adminSocket.once('chat:broadcast', () => {
-        adminReceivedChatBroadcast = true;
-      });
+        await Promise.all([onceConnected(chatSocket), onceConnected(adminSocket)]);
 
-      chatSocket.emit('ping', 'chat-message');
+        const chatBroadcast = onceEvent<string>(chatSocket, 'chat:broadcast');
+        let adminReceivedChatBroadcast = false;
+        adminSocket.once('chat:broadcast', () => {
+          adminReceivedChatBroadcast = true;
+        });
 
-      expect(await chatBroadcast).toBe('chat-message');
-      await new Promise((resolve) => setTimeout(resolve, 25));
+        chatSocket.emit('ping', 'chat-message');
 
-      expect(adminReceivedChatBroadcast).toBe(false);
-      expect(state.chatMessages).toEqual(['chat-message']);
-      expect(state.adminMessages).toEqual([]);
+        expect(await chatBroadcast).toBe('chat-message');
+        await new Promise((resolve) => setTimeout(resolve, 25));
 
-      const chatDisconnected = onceDisconnected(chatSocket);
-      const adminDisconnected = onceDisconnected(adminSocket);
-      chatSocket.disconnect();
-      adminSocket.disconnect();
-      await Promise.all([chatDisconnected, adminDisconnected]);
+        expect(adminReceivedChatBroadcast).toBe(false);
+        expect(state.chatMessages).toEqual(['chat-message']);
+        expect(state.adminMessages).toEqual([]);
 
-      await app.close();
+        const chatDisconnected = onceDisconnected(chatSocket);
+        const adminDisconnected = onceDisconnected(adminSocket);
+        chatSocket.disconnect();
+        adminSocket.disconnect();
+        await Promise.all([chatDisconnected, adminDisconnected]);
+      } finally {
+        chatSocket?.close();
+        adminSocket?.close();
+        await app.close();
+      }
     });
   }
 
@@ -1664,18 +1782,20 @@ describe('@fluojs/socket.io', () => {
 
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port: await findAvailablePort(),
+      port: 0,
     });
     const rooms = await app.container.resolve<SocketIoRoomService>(SOCKETIO_ROOM_SERVICE);
 
-    await app.listen();
+    try {
+      await app.listen();
 
-    expect(() => rooms.broadcastToRoom('shared-room', 'chat:broadcast', 'payload')).toThrow(/namespace/i);
-    expect(() => rooms.joinRoom('missing-socket', 'shared-room')).toThrow(/namespace/i);
-    expect(() => rooms.leaveRoom('missing-socket', 'shared-room')).toThrow(/namespace/i);
-    expect(() => rooms.broadcastToRoom('shared-room', 'chat:broadcast', 'payload', '/')).not.toThrow();
-
-    await app.close();
+      expect(() => rooms.broadcastToRoom('shared-room', 'chat:broadcast', 'payload')).toThrow(/namespace/i);
+      expect(() => rooms.joinRoom('missing-socket', 'shared-room')).toThrow(/namespace/i);
+      expect(() => rooms.leaveRoom('missing-socket', 'shared-room')).toThrow(/namespace/i);
+      expect(() => rooms.broadcastToRoom('shared-room', 'chat:broadcast', 'payload', '/')).not.toThrow();
+    } finally {
+      await app.close();
+    }
   });
 
   for (const scenario of supportedSocketIoAdapterScenarios) {
@@ -1692,24 +1812,31 @@ describe('@fluojs/socket.io', () => {
       providers: [ShutdownGateway],
     });
 
-      const port = await findAvailablePort();
-      const app = await createSocketIoAdapterFirstApplication(AppModule, scenario, {
-        port,
+      const { adapter, app } = await createSocketIoAdapterFirstApplication(AppModule, scenario, {
+        port: 0,
         shutdownTimeoutMs: 200,
       });
 
-      await app.listen();
+      let socket: ClientSocket | undefined;
 
-      const socket = createClient(`http://127.0.0.1:${String(port)}/shutdown`, {
-        reconnection: false,
-        transports: ['websocket'],
-      });
-      await onceConnected(socket);
+      try {
+        await app.listen();
+        const port = getBoundPortFromAdapter(adapter);
 
-      const disconnected = onceDisconnected(socket);
-      await app.close();
+        socket = createClient(`http://127.0.0.1:${String(port)}/shutdown`, {
+          reconnection: false,
+          transports: ['websocket'],
+        });
+        await onceConnected(socket);
 
-      expect(['server shutting down', 'transport close']).toContain(await disconnected);
+        const disconnected = onceDisconnected(socket);
+        await app.close();
+
+        expect(['server shutting down', 'transport close']).toContain(await disconnected);
+      } finally {
+        socket?.close();
+        await app.close();
+      }
     });
   }
 
@@ -1747,26 +1874,30 @@ describe('@fluojs/socket.io', () => {
       providers: [GatewayState, ShutdownRoomGateway],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
-      cors: false,
-      port,
-    });
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
     const state = await app.container.resolve(GatewayState);
 
-    await app.listen();
+    let socket: ClientSocket | undefined;
 
-    const socket = createClient(`http://127.0.0.1:${String(port)}/shutdown-room-cleanup`, {
-      reconnection: false,
-      transports: ['websocket'],
-    });
-    await onceConnected(socket);
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
 
-    const disconnected = onceDisconnected(socket);
-    await app.close();
+      socket = createClient(`http://127.0.0.1:${String(port)}/shutdown-room-cleanup`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      await onceConnected(socket);
 
-    expect(['server shutting down', 'transport close']).toContain(await disconnected);
-    expect(state.disconnects).toBe(1);
-    expect(state.disconnectRooms).toEqual([expect.any(Set)]);
+      const disconnected = onceDisconnected(socket);
+      await app.close();
+
+      expect(['server shutting down', 'transport close']).toContain(await disconnected);
+      expect(state.disconnects).toBe(1);
+      expect(state.disconnectRooms).toEqual([expect.any(Set)]);
+    } finally {
+      socket?.close();
+      await app.close();
+    }
   });
 });
