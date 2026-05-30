@@ -5,6 +5,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { fluoDecoratorsPlugin } from './index.js';
 
+type MinimalResolvedViteConfig = {
+  readonly command: 'build' | 'serve';
+  readonly build: {
+    readonly sourcemap: boolean | 'hidden' | 'inline';
+  };
+};
+
 vi.mock('@babel/core', async (importOriginal) => {
   const babelCore = await importOriginal<typeof import('@babel/core')>();
 
@@ -57,6 +64,14 @@ function runTransform(plugin: Plugin, code: string, id: string): unknown {
   return Reflect.apply(plugin.transform, {}, [code, id]);
 }
 
+function runConfigResolved(plugin: Plugin, config: MinimalResolvedViteConfig): void {
+  if (typeof plugin.configResolved !== 'function') {
+    throw new Error('Expected fluoDecoratorsPlugin to expose a callable configResolved hook.');
+  }
+
+  Reflect.apply(plugin.configResolved, {}, [config]);
+}
+
 const transformAsyncMock = vi.mocked(transformAsync);
 
 describe('fluoDecoratorsPlugin', () => {
@@ -101,6 +116,41 @@ describe('fluoDecoratorsPlugin', () => {
     await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/component.ts?import')).resolves.toEqual(
       expect.objectContaining({ code: expect.any(String) }),
     );
+  });
+
+  it('transforms application TypeScript files whose names contain test or spec substrings', async () => {
+    const plugin = fluoDecoratorsPlugin();
+
+    await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/latest.service.ts')).resolves.toEqual(
+      expect.objectContaining({ code: expect.any(String) }),
+    );
+    await expect(
+      runTransform(plugin, 'export const value: number = 1;', '/app/src/features/order.spec.builder.ts'),
+    ).resolves.toEqual(expect.objectContaining({ code: expect.any(String) }));
+  });
+
+  it('omits Babel sourcemaps during builds when Vite build sourcemaps are disabled', async () => {
+    const plugin = fluoDecoratorsPlugin();
+    runConfigResolved(plugin, { command: 'build', build: { sourcemap: false } });
+
+    await runTransform(plugin, 'export const value: number = 1;', '/app/src/example.ts');
+
+    expect(transformAsyncMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ sourceMaps: false }));
+  });
+
+  it('requests Babel sourcemaps when Vite serves modules or build sourcemaps are enabled', async () => {
+    const servePlugin = fluoDecoratorsPlugin();
+    runConfigResolved(servePlugin, { command: 'serve', build: { sourcemap: false } });
+
+    await runTransform(servePlugin, 'export const value: number = 1;', '/app/src/dev.ts');
+
+    const buildPlugin = fluoDecoratorsPlugin();
+    runConfigResolved(buildPlugin, { command: 'build', build: { sourcemap: 'hidden' } });
+
+    await runTransform(buildPlugin, 'export const value: number = 1;', '/app/src/build.ts');
+
+    expect(transformAsyncMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ sourceMaps: true }));
+    expect(transformAsyncMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({ sourceMaps: true }));
   });
 
   it('transforms TypeScript files with standard decorators through Babel', async () => {
