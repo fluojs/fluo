@@ -1,1 +1,1 @@
-export { fluoDecoratorsPlugin } from './internal/decorators-plugin.js';
+export { fluoDecoratorsPlugin } from './decorators-plugin.js';

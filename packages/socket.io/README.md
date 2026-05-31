@@ -105,11 +105,11 @@ SocketIoModule.forRoot({
 });
 ```
 
-When `cors` is omitted, `@fluojs/socket.io` defaults to `{ credentials: false, origin: false }` so cross-origin exposure stays opt-in. When `engine.maxHttpBufferSize` is omitted, the adapter applies a bounded 1 MiB Engine.IO payload limit. Defaults also include `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, and `shutdown.timeoutMs: 5000`.
+When `cors` is omitted, `@fluojs/socket.io` defaults to `{ credentials: false, origin: false }` so cross-origin exposure stays opt-in. When `engine.maxHttpBufferSize` is omitted, the adapter applies a bounded 1 MiB Engine.IO payload limit. Defaults also include `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, and `shutdown.timeoutMs: 5000`. Explicit `engine.maxHttpBufferSize`, `buffer.maxPendingMessagesPerSocket`, and `shutdown.timeoutMs` values must be positive integers; invalid explicit values fail during module registration instead of falling back to defaults.
 
 Static `@WebSocketGateway({ path })` namespaces are owned by fluo's gateway discovery and are not treated as Socket.IO dynamic child namespaces. The adapter keeps Socket.IO's `cleanupEmptyChildNamespaces` behavior disabled for those static namespaces. If application code creates dynamic child namespaces through raw `SOCKETIO_SERVER` access, that ownership and cleanup policy stays with the application-level Socket.IO integration.
 
-During application shutdown, Socket.IO owns cleanup for connected Socket.IO clients, but the underlying HTTP server remains owned by the platform adapter or shared HTTP server integration that supplied it. The adapter detaches that HTTP server reference before `io.close(...)`, so client cleanup still runs while Socket.IO does not close adapter-owned/shared HTTP listeners. Do not add a second manual socket-disconnect path around the same managed Socket.IO instance.
+During application shutdown, Socket.IO owns cleanup for connected Socket.IO clients, but the underlying HTTP server remains owned by the platform adapter or shared HTTP server integration that supplied it. The adapter detaches that HTTP server reference before `io.close(...)`, so client cleanup still runs while Socket.IO does not close adapter-owned/shared HTTP listeners. If graceful Socket.IO close exceeds `shutdown.timeoutMs`, the adapter force-disconnects managed Socket.IO clients before clearing lifecycle state; if that force cleanup fails, the managed server reference and registries are retained for shutdown retry. Do not add a second manual socket-disconnect path around the same managed Socket.IO instance.
 
 ### Guard contracts
 
@@ -132,7 +132,7 @@ Register Socket.IO through module imports in the owning module so namespace/mess
 - `SOCKETIO_ROOM_SERVICE`: Token to inject the `SocketIoRoomService`.
 - `SocketIoRoomService`: Shared room contract plus Socket.IO namespace-aware `joinRoom`, `leaveRoom`, `broadcastToRoom`, and `getRooms` helpers.
 - `SocketIoLifecycleService`: Lifecycle-backed implementation behind the server and room-service tokens; application code should usually inject `SOCKETIO_SERVER` or `SOCKETIO_ROOM_SERVICE` instead.
-- Types: `SocketIoModuleOptions`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
+- Types: `SocketIoModuleOptions`, `SocketIoHandshakeRequest`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
 
 `SocketIoModuleOptions` covers `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, and `transports`. `global` defaults to `true`, which keeps `SOCKETIO_SERVER` and `SOCKETIO_ROOM_SERVICE` visible across the app; set it to `false` when you want module-local provider visibility. A supported server-backed runtime adapter is required; unsupported/noop adapters fail fast during bootstrap.
 

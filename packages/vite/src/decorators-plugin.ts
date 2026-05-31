@@ -1,10 +1,18 @@
 import { transformAsync } from '@babel/core';
-import type { Plugin } from 'vite';
+import type { Plugin, ResolvedConfig } from 'vite';
 
 function readViteFilePath(id: string): string {
-  const [filePath] = id.split('?', 1);
+  const filePath = id.split(/[?#]/, 1)[0] ?? id;
 
   return filePath;
+}
+
+function isNodeModulesPath(filePath: string): boolean {
+  return /(?:^|\/)node_modules(?:\/|$)/u.test(filePath);
+}
+
+function isTypeScriptTestFile(filePath: string): boolean {
+  return /\.(?:test|spec)\.ts$/u.test(filePath);
 }
 
 function shouldTransformTypeScriptApplicationFile(id: string): boolean {
@@ -14,11 +22,11 @@ function shouldTransformTypeScriptApplicationFile(id: string): boolean {
     return false;
   }
 
-  return (
-    !normalizedFilePath.includes('/node_modules/') &&
-    !normalizedFilePath.includes('.test.') &&
-    !normalizedFilePath.includes('.spec.')
-  );
+  return !isNodeModulesPath(normalizedFilePath) && !isTypeScriptTestFile(normalizedFilePath);
+}
+
+function shouldRequestBabelSourceMaps(config: Pick<ResolvedConfig, 'build' | 'command'>): boolean {
+  return config.command === 'serve' || Boolean(config.build.sourcemap);
 }
 
 /**
@@ -38,8 +46,13 @@ function shouldTransformTypeScriptApplicationFile(id: string): boolean {
  * ```
  */
 export function fluoDecoratorsPlugin(): Plugin {
+  let shouldGenerateSourceMaps = false;
+
   return {
     name: 'fluo-babel-decorators',
+    configResolved(config) {
+      shouldGenerateSourceMaps = shouldRequestBabelSourceMaps(config);
+    },
     async transform(code: string, id: string) {
       if (!shouldTransformTypeScriptApplicationFile(id)) {
         return null;
@@ -51,7 +64,7 @@ export function fluoDecoratorsPlugin(): Plugin {
         filename: readViteFilePath(id),
         plugins: [['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
         presets: [['@babel/preset-typescript', { allowDeclareFields: true }]],
-        sourceMaps: true,
+        sourceMaps: shouldGenerateSourceMaps,
       });
 
       if (!result?.code) {
