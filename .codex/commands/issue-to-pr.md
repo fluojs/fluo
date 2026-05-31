@@ -118,6 +118,25 @@ Rules:
 
 fallback executor를 사용할 때도 동일한 payload를 전달하고, executor가 할당 worktree 밖에서 파일을 수정하지 못하도록 명시한다.
 
+### Child completion contract
+
+`/issue-to-pr`는 implementer 또는 fallback executor의 **완료 보고**를 받은 뒤에만 PR 생성/갱신 단계로 넘어간다. worktree에 미커밋 변경이 있거나 일부 verifier가 통과했더라도, child가 running 상태이거나 최종 보고를 반환하지 않은 상태는 완료가 아니다.
+
+완료 보고에는 다음 값이 모두 필요하다.
+
+- issue URL/number
+- branch name
+- worktree path
+- changed files
+- commit hash 또는 명시적 blocker
+- 실행한 verifier와 pass/fail 결과
+- `.changeset/*.md` 추가 여부와 근거
+- remaining risks
+- mode: `new-pr | fix-back`
+- fix-back mode라면 `fix_back_result`
+
+완료 보고가 누락되면 같은 child session에 1회 이상 재보고를 요청한다. 그 뒤에도 보고가 없으면 하네스는 부분 변경을 대신 커밋하거나 PR을 만들지 말고 `blocked-child-contract-error`로 반환한다. 이미 존재하는 미커밋 변경은 되돌리지 않는다.
+
 ## 검증 게이트
 
 PR 생성 또는 fix-back 완료 보고 전에 하네스는 executor 보고와 repository state를 기준으로 다음을 확인한다.
