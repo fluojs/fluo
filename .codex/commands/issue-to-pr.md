@@ -16,7 +16,7 @@ argument-hint: "<github-issue-url|issue-number> [base-branch] [--fix-back <pr-ur
 /issue-to-pr <github-issue-url|issue-number> [base-branch] --fix-back <pr-url|pr-number> <branch-name> <worktree-path>
 ```
 
-상위 `lane-supervisor`의 fix-back 호출에서는 이미 열린 PR/branch/worktree를 재사용하는 보정 모드로 동작할 수 있다. 이 경우 호출 payload에 `EXISTING_PR`, `BRANCH_NAME`, `WORKTREE_PATH`, `BLOCKERS`, `FIX_BACK_ATTEMPT`가 반드시 포함되어야 하며 새 branch/worktree/PR을 만들지 않는다.
+상위 `execute-lane`/lane execution harness의 fix-back 호출에서는 이미 열린 PR/branch/worktree를 재사용하는 보정 모드로 동작할 수 있다. 이 경우 호출 payload에 `EXISTING_PR`, `BRANCH_NAME`, `WORKTREE_PATH`, `BLOCKERS`, `FIX_BACK_ATTEMPT`가 반드시 포함되어야 하며 새 branch/worktree/PR을 만들지 않는다.
 
 예시:
 
@@ -57,7 +57,7 @@ local-only base branch가 명시된 경우에만 `origin/${BASE_BRANCH}` 대신 
 
 ### Fix-back mode
 
-`lane-supervisor`가 `/pr-to-merge`의 `block` verdict를 remediation input으로 넘긴 경우 이 커맨드는 fix-back mode로 동작한다.
+`execute-lane`/lane execution harness가 `/pr-to-merge`의 `block` verdict를 remediation input으로 넘긴 경우 이 커맨드는 fix-back mode로 동작한다.
 
 필수 입력:
 
@@ -137,6 +137,17 @@ fallback executor를 사용할 때도 동일한 payload를 전달하고, executo
 
 완료 보고가 누락되면 같은 child session에 1회 이상 재보고를 요청한다. 그 뒤에도 보고가 없으면 하네스는 부분 변경을 대신 커밋하거나 PR을 만들지 말고 `blocked-child-contract-error`로 반환한다. 이미 존재하는 미커밋 변경은 되돌리지 않는다.
 
+### Supervisor takeover prohibition
+
+상위 `execute-lane`/lane execution harness가 호출자여도 child completion contract는 약화되지 않는다. 아래 조건이 모두 충족되지 않으면 harness는 worktree 변경을 직접 인계하지 않는다.
+
+- child 또는 fallback executor가 완료 보고를 반환했다.
+- 보고에 commit hash 또는 명시적 blocker가 있다.
+- 보고된 branch/worktree가 실제 repository state와 일치한다.
+- 보고된 verifier 결과가 PR body와 ledger에 반영 가능하다.
+
+예외적으로 lane execution harness가 직접 fix-back을 수행하려면 ledger에 `takeover-approved` decision과 이유를 남기고, 그 작업도 동일한 `fix-back` 출력 계약을 만족해야 한다. 단순히 worktree에 변경이 남아 있다는 이유만으로 commit, push, PR 생성, fix-back 완료 처리를 해서는 안 된다.
+
 ## 검증 게이트
 
 PR 생성 또는 fix-back 완료 보고 전에 하네스는 executor 보고와 repository state를 기준으로 다음을 확인한다.
@@ -172,6 +183,8 @@ PR body는 `.github/PULL_REQUEST_TEMPLATE.md` 축을 실질적으로 채우고, 
 - `## Platform consistency governance (SSOT)`
 
 해당 없음인 섹션도 비워두지 말고 “해당 없음”과 판단 근거를 적는다.
+
+fix-back mode에서 PR body의 `Remaining risks`, linked issue closure, testing summary가 blocker 해소 후 stale해졌다면 기존 PR body를 갱신해야 한다. stale PR body는 contract reviewer가 다시 `block`을 반환할 수 있는 merge blocker로 취급한다.
 
 ## merge/cleanup 권한 경계
 

@@ -43,7 +43,8 @@
     "generate:release-readiness-drafts": "node tooling/release/verify-release-readiness.mjs --write-drafts",
     "verify:public-export-tsdoc": "node tooling/governance/verify-public-export-tsdoc.mjs",
     "verify:public-export-tsdoc:baseline": "node tooling/governance/verify-public-export-tsdoc.mjs --mode=full",
-    "verify:platform-consistency-governance": "node tooling/governance/verify-platform-consistency-governance.mjs"
+    "verify:platform-consistency-governance": "node tooling/governance/verify-platform-consistency-governance.mjs",
+    "verify:lane-ledger": "node tooling/governance/verify-lane-ledger.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

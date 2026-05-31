@@ -1,65 +1,117 @@
 ---
-description: search-to-issue — fluo 패키지 감사 범위와 목적을 question tool로만 확정하고, 패키지별 3개 auditor 결과를 묶어 사용자 승인 후 GitHub issue를 등록하는 무인자 command harness.
+description: search-issue — fluo 패키지 감사 범위와 목적을 question tool로만 확정하고, 패키지별 3개 auditor 결과를 묶어 사용자 승인 후 GitHub issue를 등록하는 무인자 command harness.
 argument-hint: ""
 ---
 
-# search-to-issue
+# search-issue
 
 이 커맨드는 repo-local package audit의 **harness**다. 감사 역할 자체는 전용 read-only auditor 에이전트가 소유한다. 이 커맨드는 범위/목적 확정, batch orchestration, 결과 dedup/bundling, issue draft, 사용자 승인 gate, 등록 순서 추천만 담당한다.
 
-이 커맨드는 **무인자 전용**이다. `/search-to-issue` 뒤에 package, group, `all`, audit purpose를 받지 않는다. 모든 감사 범위와 목적은 question tool 응답으로만 확정한다.
+이 커맨드는 **무인자 전용**이다. `/search-issue` 뒤에 package, group, `all`, audit purpose를 받지 않는다. 모든 감사 범위와 목적은 question tool 응답으로만 확정한다.
+
+이 커맨드는 3단계 lane pipeline의 1단계다. lane planning, worker dispatch, PR 생성, review, merge, cleanup은 절대 수행하지 않는다. 후속 단계는 이 커맨드가 생성한 GitHub issue 번호 또는 search artifact를 `/create-lane`에 전달한다.
 
 ## 사용법
 
 ```
-/search-to-issue
+/search-issue
 ```
 
 예시:
 
-- `/search-to-issue`
+- `/search-issue`
 
 ## 권한 경계
 
+| 항목 | 내용 |
+| --- | --- |
+| Inputs | 없음. 감사 범위와 목적은 question tool 응답으로만 확정 |
+| Outputs | GitHub issue numbers and `.sisyphus/search-issue/<run-id>.json` |
+| Allowed | package audit orchestration, read-only auditor delegation, issue draft 작성, 사용자 승인 후 `gh issue create`, search artifact 기록 |
+| Forbidden | lane planning, `.sisyphus/lane/*.json` 작성, `/issue-to-pr`, branch/worktree/PR 생성, `/pr-to-merge`, merge, cleanup, publish |
+
 - 이 커맨드는 package audit issue의 **draft 생성 + 사용자 선택 + 선택된 issue 등록**까지만 담당한다.
 - auditor 에이전트는 read-only다. 구현, PR 생성, merge, release/publish는 이 커맨드의 범위 밖이다.
+- lane planning, `.sisyphus/lane/*.json` 작성, `/issue-to-pr`, `/pr-to-merge`, `gh pr merge`, worktree/branch cleanup은 금지한다.
 - 명시적 승인/선택 없이 `gh issue create`를 실행하지 않는다. issue draft와 severity summary를 사용자에게 보여준 뒤, 승인/선택된 초안에만 실행한다.
 - 사용자가 “조사만” 요청하거나 승인 결과가 0건이면 `gh issue create`를 실행하지 않는다.
 - 보안 취약점으로 보이는 내용은 public issue로 만들지 말고 `SECURITY.md` 경로를 안내한다.
 - 단순 지원/사용법 질문은 issue 대신 `SUPPORT.md`와 Discussions 경로를 안내한다.
 
+## Search artifact
+
+승인된 issue 등록 또는 선택 결과가 있으면 다음 artifact를 기록한다.
+
+```yaml
+artifact: .sisyphus/search-issue/<run-id>.json
+selected_issues:
+  - <issue-number>
+created_issues:
+  - <issue-number>
+excluded_drafts:
+  - title: <draft-title>
+    reason: <duplicate|user-excluded|security|support>
+audit_intake:
+  selected_scope_input: <question-confirmed scope>
+  selected_purposes: [<purpose>]
+```
+
+후속 `/create-lane`은 이 artifact의 `selected_issues` 또는 `created_issues`만 입력으로 사용할 수 있다.
+
 ## 1. Intake Question Gate — 감사 범위와 목적 확정
 
-커맨드 시작 시 audit target scope와 audit purpose를 `question` tool로 확정한다. invocation 인자는 이 커맨드의 입력 계약이 아니며, package/group/all 또는 목적처럼 보이는 텍스트가 있어도 scope나 purpose로 사용하지 않는다. 질문 응답 없이 감사 실행, package manifest 조회, `gh` 조회, auditor 호출, `all` 확정, batch plan 작성을 시작하지 않는다.
+커맨드 시작 시 audit target scope와 audit purpose를 `question` tool로 순차 확정한다. invocation 인자는 이 커맨드의 입력 계약이 아니며, package/group/all 또는 목적처럼 보이는 텍스트가 있어도 scope나 purpose로 사용하지 않는다. 질문 응답 없이 감사 실행, auditor 호출, `all` 확정, batch plan 작성을 시작하지 않는다.
 
 ### Question-only 호출 계약
 
-사용자가 `/search-to-issue`를 호출하면 아래 규칙을 따른다.
+사용자가 `/search-issue`를 호출하면 아래 규칙을 따른다.
 
 1. 첫 번째 실행 동작은 반드시 `question` tool 호출이다. package manifest 조회, `gh` 조회, auditor 호출, `all` 확정, batch plan 작성은 질문 응답 전까지 하지 않는다.
-2. 첫 `question` tool 호출에는 아래 두 질문을 함께 포함한다.
-   - `감사 범위`: 어떤 package, package group, 또는 전체 public packages를 감사할지 묻는다.
-   - `감사 목적`: 버그 찾기, 리팩터링 후보, 신기능 추가, 계약/API 정합성 등 어떤 목적의 finding을 우선할지 복수 선택으로 묻는다.
-3. `입력된 범위 사용` 또는 `입력된 목적 사용` 선택지는 제공하지 않는다. 이전 메시지나 invocation text를 default로 삼지 않는다.
-4. 사용자가 `패키지 그룹 선택`을 고르면 preflight 전에 즉시 후속 `question` tool로 group 이름을 확정한다.
-5. 사용자가 `패키지 직접 지정`을 고르고 custom answer에 package 이름을 쓰지 않았으면 preflight 전에 즉시 후속 `question` tool로 package directory name 또는 public package name을 입력받는다.
-6. 사용자가 `중단`을 고르거나 후속 질문 뒤에도 scope가 비어 있으면 auditor를 호출하지 않고 종료한다. 빈 입력을 `all`로 해석하지 않는다.
-7. raw invocation args가 비어 있지 않으면 해당 텍스트를 `audit_intake.raw_input_ignored`에 기록하고, 사용자에게 “이 커맨드는 인자를 사용하지 않으므로 질문으로 다시 확정한다”고 한 문장으로 알린 뒤 동일한 question-only flow를 진행한다.
+2. 첫 `question` tool 호출은 감사 범위 방식을 묻는 단일 질문만 포함한다.
+3. 사용자가 `특정 패키지`를 고르면 preflight 전에 즉시 후속 `question` tool로 package directory name 또는 public package name을 입력받는다.
+4. 사용자가 `패키지군`을 고르면 preflight 전에 즉시 후속 `question` tool로 package group을 고르게 한다.
+5. 사용자가 `전체 패키지`를 고른 경우에만 `all` scope로 확정한다.
+6. 사용자가 `알아서 추천`을 고르면 package manifest와 docs/reference/package-surface.md만 read-only로 살핀 뒤, audit 목적 질문 전에 좁은 후보 scope를 1개 이상 제안하고 사용자가 선택하게 한다. 자동 추천은 바로 audit을 시작하는 권한이 아니다.
+7. 범위가 확정된 뒤에만 audit purpose를 묻는다. 목적 질문은 여러 목적을 선택할 수 있다.
+8. `입력된 범위 사용` 또는 `입력된 목적 사용` 선택지는 제공하지 않는다. 이전 메시지나 invocation text를 default로 삼지 않는다.
+9. 사용자가 `중단`을 고르거나 후속 질문 뒤에도 scope가 비어 있으면 auditor를 호출하지 않고 종료한다. 빈 입력을 `all`로 해석하지 않는다.
+10. raw invocation args가 비어 있지 않으면 해당 텍스트를 `audit_intake.raw_input_ignored`에 기록하고, 사용자에게 “이 커맨드는 인자를 사용하지 않으므로 질문으로 다시 확정한다”고 한 문장으로 알린 뒤 동일한 question-only flow를 진행한다.
 
-### 1차 질문: 어떤 package scope를 감사할지
+### 1차 질문: 감사 범위 방식
 
 Header: `감사 범위`
 
-질문: `어떤 패키지 범위를 감사할까요?`
+질문: `어떤 방식으로 감사 대상을 고를까요?`
 
 기본 선택지:
 
-- `패키지 직접 지정`: package directory name 또는 public package name을 직접 입력받는다. 예: `runtime http`
-- `패키지 그룹 선택`: supported package group 중 하나를 고르게 한다.
-- `전체 public packages`: `packages/*/package.json` 기준 workspace public packages 전체를 대상으로 한다.
+- `특정 패키지`: package directory name 또는 public package name을 직접 입력받는다. 예: `runtime http`
+- `패키지군`: supported package group 중 하나를 고르게 한다.
+- `전체 패키지`: `packages/*/package.json` 기준 workspace public packages 전체를 대상으로 한다.
+- `알아서 추천`: repository package surface를 read-only로 살핀 뒤 좁은 후보 scope를 제안한다.
 - `중단`: audit을 시작하지 않는다.
 
-`패키지 그룹 선택`을 고르면 후속 질문으로 아래 group 중 하나를 고르게 한다.
+### 2차-A 질문: 특정 패키지 지정
+
+Header: `패키지`
+
+질문: `어떤 패키지를 감사할까요? package directory name 또는 public package name을 입력해주세요.`
+
+예:
+
+- `runtime`
+- `http validation`
+- `@fluojs/runtime`
+
+입력된 package는 Scope Resolution 규칙으로 실제 package directory에 매핑한다. 매핑되지 않는 값이 있으면 audit을 시작하지 말고 유효한 후보를 보여준 뒤 다시 묻는다.
+
+### 2차-B 질문: 패키지군 선택
+
+Header: `패키지군`
+
+질문: `어떤 패키지군을 감사할까요?`
+
+선택지:
 
 - `foundation`
 - `http-runtime`
@@ -71,9 +123,25 @@ Header: `감사 범위`
 - `operations`
 - `cli`
 
-`패키지 직접 지정`을 고르면 question custom answer 또는 후속 question 응답을 scope input으로 사용하되, 실제 package 확정은 Scope Resolution 규칙을 따른다.
+각 package group의 포함 패키지는 질문 선택지 설명에 짧게 보여준다.
 
-### 2차 질문: 어떤 목적으로 findings를 찾을지
+### 2차-C 질문: 자동 추천 후보 선택
+
+Header: `추천 범위`
+
+질문: `아래 후보 중 어떤 범위를 감사할까요?`
+
+`알아서 추천`을 고른 경우 하네스는 auditor를 호출하지 않고 먼저 package manifest, `docs/reference/package-surface.md`, 최근 관련 issue 제목 정도만 read-only로 확인해 후보를 만든다.
+
+후보 예:
+
+- `foundation`: core/config/di/i18n/runtime처럼 기반 계약 영향이 큰 영역
+- `http-runtime`: http/platform 계열처럼 user-facing runtime 영향이 큰 영역
+- `request-pipeline`: validation/serialization/openapi/graphql/cache-manager처럼 요청 처리 계약 영향이 큰 영역
+
+추천 후보를 선택하지 않으면 auditor를 호출하지 않는다. “알아서 추천”은 `전체 패키지`로 자동 확정하지 않는다.
+
+### 3차 질문: 어떤 목적으로 findings를 찾을지
 
 Header: `감사 목적`
 
@@ -119,7 +187,7 @@ Audit target scope는 Intake Question Gate에서 확정한 `selected_scope_input
 2. **Package group**
     - explicit package가 없고 지원 group명이 있으면 해당 group에 속한 패키지만 감사한다.
 3. **All**
-    - 사용자가 `all` 또는 `전체 public packages`를 question gate에서 명시적으로 확정한 경우에만 `packages/*/package.json` 기준 workspace public packages 전체를 감사한다.
+    - 사용자가 `all`, `전체 public packages`, 또는 `전체 패키지`를 question gate에서 명시적으로 확정한 경우에만 `packages/*/package.json` 기준 workspace public packages 전체를 감사한다.
     - raw invocation args, 이전 메시지, 빈 `selected_scope_input`은 `all`이 아니다. question gate 응답으로 확정되지 않은 경우 질문을 다시 하거나 종료한다.
     - `all`은 package 이름이 아니라 예약된 scope keyword다. `all` 입력을 `core` 또는 foundation 대표 패키지로 치환하거나 sampling/대표 감사로 축소하면 안 된다.
     - 기본값에는 `examples/*`와 internal tooling workspace를 포함하지 않는다. 사용자가 명시적으로 요청한 경우만 포함한다.
@@ -315,7 +383,7 @@ Rules:
 
 ## 9. Issue Draft Bundling
 
-- 기본 단위는 **패키지당 1개 issue**다.
+- 기본 단위는 **패키지당 최대 1개 issue**다. 단, finding이 없거나 중복/지원/보안 경로로 분류된 package는 issue를 만들지 않는다.
 - 같은 package 내부 findings는 P0 → P1 → P2 순서로 정리한다.
 - cross-package issue는 아래 4개 조건을 모두 만족할 때만 허용한다.
   1. 같은 root cause
@@ -323,6 +391,9 @@ Rules:
   3. 같은 `contract_impact`
   4. 실제 수정 ownership 공유
 - unrelated findings를 mega-issue로 합치지 않는다.
+- 너무 작은 finding을 각각 별도 issue로 쪼개지 않는다. 같은 package와 같은 fix theme 안에서 함께 해결 가능한 findings는 하나의 issue로 묶는다.
+- 너무 큰 issue도 만들지 않는다. 서로 다른 ownership, 서로 다른 behavioral contract, 서로 다른 release risk가 섞이면 별도 issue로 나눈다.
+- 목표는 “찾은 것을 모두 나열”이 아니라, 후속 `/create-lane`과 `/execute-lane`이 처리 가능한 적절한 수의 actionable GitHub issue로 정리하는 것이다.
 
 각 draft에는 stable ID를 붙인다: `D1`, `D2`, `D3` ...
 
@@ -413,7 +484,7 @@ gh issue create --title "<draft title>" --body "<draft body>" --label "source:pa
 
 ## 14. Execution Order Recommendation
 
-등록 후 권장 실행 순서를 제시한다.
+등록 후 권장 실행 순서와 다음 command를 제시한다.
 
 정렬 기준:
 
@@ -421,6 +492,20 @@ gh issue create --title "<draft title>" --body "<draft body>" --label "source:pa
 2. `wave:1` > `wave:2` > `wave:3`
 3. 기반 layer 우선: `foundation` → `http-runtime` / `request-pipeline` / `auth` → `infra-messaging` / `persistence` / `protocol-adapters` → `cli`
 4. 계약 risk 우선: `breaking` / `behavior-change` > `doc-only` / `none`
+
+등록된 issue가 1건 이상이면 마지막에 다음 단계 명령을 반드시 포함한다.
+
+```text
+다음 단계:
+/create-lane <issue-number> <issue-number> ...
+```
+
+search artifact를 기록했다면 artifact 기반 명령도 함께 제시한다.
+
+```text
+또는:
+/create-lane .sisyphus/search-issue/<run-id>.json
+```
 
 ## 15. Output Contract
 
@@ -434,3 +519,5 @@ gh issue create --title "<draft title>" --body "<draft body>" --label "source:pa
 - 등록된 이슈 표
 - 보류/중복 표
 - 권장 실행 순서 1..N과 근거
+- search artifact path: `.sisyphus/search-issue/<run-id>.json`
+- 다음 단계 명령: `/create-lane <registered issue numbers>` 또는 `/create-lane .sisyphus/search-issue/<run-id>.json`

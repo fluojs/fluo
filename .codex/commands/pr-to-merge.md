@@ -32,7 +32,7 @@ argument-hint: "<pr-url|pr-number> [linked-issue-url|number] [base-branch]"
 - `gh pr merge`를 실행하거나 승인하지 않는다.
 - `git push`, branch/worktree cleanup, PR close/reopen, label/comment/edit 등 PR state 변경을 하지 않는다.
 - 파일을 수정하지 않는다.
-- 실제 merge authority는 사용자 또는 상위 `lane-supervisor`가 별도로 행사한다.
+- 실제 merge authority는 사용자 또는 상위 `execute-lane`/lane execution harness가 별도로 행사한다.
 
 ## Reviewer read-only allowlist
 
@@ -62,7 +62,8 @@ Mutating commands such as `gh pr merge*`, `gh pr review*`, `gh pr edit*`, `gh is
 
 - linked issue가 없고 PR body/contract docs만으로 intent가 충분히 복원되지 않으면 `merge`를 주지 말고 `needs-human-check`로 결론낸다.
 - CI/checks 정보가 없거나 불완전하면 `merge`를 주지 말고 최소 `needs-human-check`로 결론낸다.
-- contract/code/verification reviewer 중 하나라도 `BLOCK`이면 최종 verdict는 `block`이다. 이때 `block`은 caller가 remediation에 사용할 수 있는 actionable input이어야 하며, 상위 `lane-supervisor`에게는 그 자체로 lane terminal 상태를 의미하지 않는다.
+- contract/code/verification reviewer 중 하나라도 `BLOCK`이면 최종 verdict는 `block`이다. 이때 `block`은 caller가 remediation에 사용할 수 있는 actionable input이어야 하며, 상위 `execute-lane`/lane execution harness에게는 그 자체로 lane terminal 상태를 의미하지 않는다.
+- PR body가 현재 diff와 linked issue scope를 stale하게 설명하면 `merge`를 주지 않는다. 특히 “remaining risk”가 이미 해소된 blocker를 남은 위험으로 말하거나, `Closes #<issue>`가 실제 구현/테스트 범위와 맞지 않으면 `block`으로 반환한다.
 - security/privacy ambiguity, unusual release tradeoff, cross-lane impact는 `needs-human-check`로 escalate 한다.
 
 ## 에이전트 위임
@@ -113,12 +114,16 @@ merge | block | needs-human-check
 ```
 
 - `merge`: 세 reviewer가 모두 `PASS`이고, linked issue/contract/PR template/checks가 충분하다.
-- `block`: 명확한 correctness, contract, release governance, verification hole이 있다. 이 verdict는 caller가 같은 PR/branch/worktree에서 보정할 수 있는 actionable remediation input이며, 그 자체로 `lane-supervisor`의 terminal lane 상태를 의미하지 않는다.
+- `block`: 명확한 correctness, contract, release governance, verification hole이 있다. 이 verdict는 caller가 같은 PR/branch/worktree에서 보정할 수 있는 actionable remediation input이며, 그 자체로 lane execution harness의 terminal lane 상태를 의미하지 않는다.
 - `needs-human-check`: intent/CI/security/release/cross-lane 판단이 불명확하거나 사람이 정책 판단해야 한다.
+
+`merge` verdict는 merge permission이 아니다. 이 커맨드는 read-only gate이며, caller가 최신 PR state/checks를 다시 확인하고 repository merge policy를 적용해야 한다. fluo repository의 caller-side merge method는 항상 squash다.
 
 `block` verdict를 반환할 때는 상위 caller가 bounded fix-back loop를 수행할 수 있도록 blocker마다 stable signature, evidence, expected fix target을 포함한다. `needs-human-check`는 code/docs/test 수정만으로 해소할 수 없는 정책 판단, 권한 문제, 또는 불충분한 intent에 사용한다.
 
-`block` verdict는 read-only gate의 결론일 뿐이며 branch/worktree/PR state를 변경하지 않는다. caller가 `lane-supervisor`이면 fixable blocker를 `/issue-to-pr --fix-back` 또는 동일 계약 worker에 전달해 같은 PR을 재검토해야 한다. maintainer 결정, scope 재정의, security/privacy 판단처럼 worker가 해결할 수 없는 blocker만 terminal escalation 후보가 된다.
+`block` verdict는 read-only gate의 결론일 뿐이며 branch/worktree/PR state를 변경하지 않는다. caller가 `execute-lane`/lane execution harness이면 fixable blocker를 `/issue-to-pr --fix-back` 또는 동일 계약 worker에 전달해 같은 PR을 재검토해야 한다. maintainer 결정, scope 재정의, security/privacy 판단처럼 worker가 해결할 수 없는 blocker만 terminal escalation 후보가 된다.
+
+after-fixback review에서는 이전 blocker signature가 실제로 닫혔는지 명시한다. 이전 blocker가 닫혔지만 PR body/check evidence가 stale하면 새 blocker로 기록한다.
 
 ## 출력 계약
 
