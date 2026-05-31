@@ -1,5 +1,15 @@
 # @fluojs/websockets
 
+## 1.0.5
+
+### Patch Changes
+
+- [#2052](https://github.com/fluojs/fluo/pull/2052) [`f4220a5`](https://github.com/fluojs/fluo/commit/f4220a59f222630b3f7d3efb832d277b47383bf2) Thanks [@ayden94](https://github.com/ayden94)! - Tighten fetch-style websocket runtime contracts by exposing `Request`-typed upgrade guards, pre-index gateway handlers to avoid hot-path dispatch filtering, keep Socket.IO descriptor handling aligned with the shared indexed handler contract, drain Node shutdown handlers once across attachments, and add close-code regression coverage for oversized fetch-style payloads.
+
+- Updated dependencies [[`6bbbf6a`](https://github.com/fluojs/fluo/commit/6bbbf6addd0f626db3bd8b0ddb442ae8f33236e1)]:
+  - @fluojs/di@1.1.0
+  - @fluojs/runtime@1.1.6
+
 ## 1.0.4
 
 ### Patch Changes

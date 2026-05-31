@@ -1,5 +1,11 @@
 # @fluojs/vite
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2057](https://github.com/fluojs/fluo/pull/2057) [`74eff1a`](https://github.com/fluojs/fluo/commit/74eff1a8d0b3ad92ff556de73144e53407320a84) Thanks [@ayden94](https://github.com/ayden94)! - Fix the Vite decorator plugin boundary so application files with `test` or `spec` substrings still transform, keep the public implementation out of `src/internal`, and avoid requesting Babel sourcemaps when Vite build sourcemaps are disabled.
+
 ## 1.0.3
 
 ### Patch Changes

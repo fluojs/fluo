@@ -1,5 +1,15 @@
 # @fluojs/throttler
 
+## 1.0.3
+
+### Patch Changes
+
+- [#2054](https://github.com/fluojs/fluo/pull/2054) [`c283031`](https://github.com/fluojs/fluo/commit/c2830312966a641e64dc653b3e61a81f5c180df9) Thanks [@ayden94](https://github.com/ayden94)! - Cache resolved throttler handler policies and route keys on the request hot path while adding regression coverage for trusted proxy headers and platform status modes.
+
+- Updated dependencies [[`6bbbf6a`](https://github.com/fluojs/fluo/commit/6bbbf6addd0f626db3bd8b0ddb442ae8f33236e1)]:
+  - @fluojs/di@1.1.0
+  - @fluojs/runtime@1.1.6
+
 ## 1.0.2
 
 ### Patch Changes

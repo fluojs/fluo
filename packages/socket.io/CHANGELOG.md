@@ -1,5 +1,20 @@
 # @fluojs/socket.io
 
+## 1.0.5
+
+### Patch Changes
+
+- [#2058](https://github.com/fluojs/fluo/pull/2058) [`2cd954a`](https://github.com/fluojs/fluo/commit/2cd954a7c2841d0c18ac9d30520c4110fde6d7d2) Thanks [@ayden94](https://github.com/ayden94)! - Reject invalid explicit Socket.IO numeric configuration and make shutdown timeout cleanup deterministic by force-disconnecting managed clients before lifecycle state is cleared.
+
+- [#2061](https://github.com/fluojs/fluo/pull/2061) [`df7197b`](https://github.com/fluojs/fluo/commit/df7197bf7f5b254029652811ce94c6a381bc0828) Thanks [@ayden94](https://github.com/ayden94)! - Defer the Bun engine dependency load until the Bun Socket.IO bootstrap path is actually selected, preventing Node server-backed applications from crashing during package import.
+
+- [#2052](https://github.com/fluojs/fluo/pull/2052) [`f4220a5`](https://github.com/fluojs/fluo/commit/f4220a59f222630b3f7d3efb832d277b47383bf2) Thanks [@ayden94](https://github.com/ayden94)! - Tighten fetch-style websocket runtime contracts by exposing `Request`-typed upgrade guards, pre-index gateway handlers to avoid hot-path dispatch filtering, keep Socket.IO descriptor handling aligned with the shared indexed handler contract, drain Node shutdown handlers once across attachments, and add close-code regression coverage for oversized fetch-style payloads.
+
+- Updated dependencies [[`6bbbf6a`](https://github.com/fluojs/fluo/commit/6bbbf6addd0f626db3bd8b0ddb442ae8f33236e1), [`f4220a5`](https://github.com/fluojs/fluo/commit/f4220a59f222630b3f7d3efb832d277b47383bf2)]:
+  - @fluojs/di@1.1.0
+  - @fluojs/runtime@1.1.6
+  - @fluojs/websockets@1.0.5
+
 ## 1.0.4
 
 ### Patch Changes

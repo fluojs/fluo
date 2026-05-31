@@ -1,5 +1,15 @@
 # @fluojs/terminus
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2050](https://github.com/fluojs/fluo/pull/2050) [`7228f64`](https://github.com/fluojs/fluo/commit/7228f64da296096ced9971b7926c2731d7177271) Thanks [@ayden94](https://github.com/ayden94)! - Clarify Terminus runtime-boundary documentation and route memory sampling through the Node runtime seam while preserving existing health indicator behavior.
+
+- Updated dependencies [[`6bbbf6a`](https://github.com/fluojs/fluo/commit/6bbbf6addd0f626db3bd8b0ddb442ae8f33236e1)]:
+  - @fluojs/di@1.1.0
+  - @fluojs/runtime@1.1.6
+
 ## 1.0.3
 
 ### Patch Changes
