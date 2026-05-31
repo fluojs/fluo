@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import type { WebSocketRoomService } from '@fluojs/websockets';
@@ -6,7 +10,15 @@ import * as socketIo from './index.js';
 import type { SocketIoHandshakeRequest as RootSocketIoHandshakeRequest } from './index.js';
 import type { SocketIoHandshakeRequest, SocketIoRoomService } from './types.js';
 
+const sourceDir = dirname(fileURLToPath(import.meta.url));
+
 describe('@fluojs/socket.io public surface', () => {
+  it('keeps the Bun engine dependency out of the Node module-load path', () => {
+    const adapterSource = readFileSync(resolve(sourceDir, 'adapter.ts'), 'utf8');
+
+    expect(adapterSource).not.toMatch(/^import\s+\{[^}]*BunEngineServer[^}]*\}\s+from\s+['"]@socket\.io\/bun-engine['"];$/m);
+  });
+
   it('keeps the root barrel aligned with the documented module and room contract', () => {
     expect(socketIo).toHaveProperty('SocketIoModule');
     expect((socketIo as { SocketIoModule: { forRoot: unknown } }).SocketIoModule).toHaveProperty('forRoot');

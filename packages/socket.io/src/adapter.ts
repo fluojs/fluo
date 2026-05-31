@@ -18,7 +18,7 @@ import {
   type WebSocketGatewayDescriptor,
   type WebSocketGatewayHandlerDescriptor,
 } from '@fluojs/websockets';
-import { Server as BunEngineServer } from '@socket.io/bun-engine';
+import type { Server as BunEngineServer } from '@socket.io/bun-engine';
 import { type Namespace, Server, type ServerOptions, type Socket } from 'socket.io';
 
 import { SOCKETIO_OPTIONS_INTERNAL } from './options-token.internal.js';
@@ -130,6 +130,12 @@ type SocketIoBootstrapRuntime =
       capability: FetchStyleRealtimeCapability;
       kind: 'bun';
     };
+
+type BunEngineServerConstructor = typeof import('@socket.io/bun-engine')['Server'];
+
+async function loadBunEngineServer(): Promise<BunEngineServerConstructor> {
+  return (await import('@socket.io/bun-engine')).Server;
+}
 
 function normalizeGuardRejection(
   result: boolean | SocketIoGuardRejection | void,
@@ -370,20 +376,31 @@ export class SocketIoLifecycleService
     const runtime = resolveSocketIoBootstrapRuntime(this.adapter);
 
     if (runtime.kind === 'server-backed') {
-      const httpServer = runtime.capability.server;
+      this.io = this.createNodeServer(runtime);
+      return this.io;
+    }
 
-      if (!isNodeHttpServerLike(httpServer)) {
-        throw new Error(
-          'Socket.IO bootstrap requires the selected realtime capability to expose a Node HTTP/S server instance.',
-        );
-      }
+    throw new Error('Socket.IO Bun engine bootstrap is asynchronous. Use getServerAsync() for Bun-style adapters.');
+  }
 
-      this.io = new Server(httpServer as never, this.createServerOptions());
+  async getServerAsync(): Promise<Server> {
+    if (this.shutdownStarted) {
+      throw new Error('Socket.IO server access is unavailable after application shutdown has started.');
+    }
+
+    if (this.io) {
+      return this.io;
+    }
+
+    const runtime = resolveSocketIoBootstrapRuntime(this.adapter);
+
+    if (runtime.kind === 'server-backed') {
+      this.io = this.createNodeServer(runtime);
       return this.io;
     }
 
     this.io = new Server(this.createServerOptions());
-    this.installBunSocketIoBinding(runtime, this.io);
+    await this.installBunSocketIoBinding(runtime, this.io);
     return this.io;
   }
 
@@ -398,13 +415,13 @@ export class SocketIoLifecycleService
     const descriptors = this.discoverGatewayDescriptors();
 
     if (descriptors.length === 0) {
-      this.ensureBunRealtimeBindingForRawServerAccess();
+      await this.ensureBunRealtimeBindingForRawServerAccess();
       return;
     }
 
     this.assertNoServerBackedGatewayOptIn(descriptors);
 
-    const io = this.getServer();
+    const io = await this.getServerAsync();
     const attachments = this.prepareNamespaceAttachments(io, descriptors);
 
     for (const attachment of attachments) {
@@ -509,6 +526,18 @@ export class SocketIoLifecycleService
     return options;
   }
 
+  private createNodeServer(runtime: Extract<SocketIoBootstrapRuntime, { kind: 'server-backed' }>): Server {
+    const httpServer = runtime.capability.server;
+
+    if (!isNodeHttpServerLike(httpServer)) {
+      throw new Error(
+        'Socket.IO bootstrap requires the selected realtime capability to expose a Node HTTP/S server instance.',
+      );
+    }
+
+    return new Server(httpServer as never, this.createServerOptions());
+  }
+
   private createBunEngineOptions(): BunEngineOptions {
     const options: BunEngineOptions = {
       path: DEFAULT_SOCKETIO_ENGINE_PATH,
@@ -528,11 +557,12 @@ export class SocketIoLifecycleService
     return resolveSocketIoMaxHttpBufferSize(this.moduleOptions);
   }
 
-  private installBunSocketIoBinding(runtime: Extract<SocketIoBootstrapRuntime, { kind: 'bun' }>, io: Server): void {
+  private async installBunSocketIoBinding(runtime: Extract<SocketIoBootstrapRuntime, { kind: 'bun' }>, io: Server): Promise<void> {
     if (this.bunEngine) {
       return;
     }
 
+    const BunEngineServer = await loadBunEngineServer();
     const engine = new BunEngineServer(this.createBunEngineOptions());
     io.bind(engine);
     runtime.bindingHost.configureRealtimeBinding(this.createBunSocketIoBinding(engine));
@@ -576,12 +606,12 @@ export class SocketIoLifecycleService
     return pathname === '/socket.io' || pathname === DEFAULT_SOCKETIO_ENGINE_PATH;
   }
 
-  private ensureBunRealtimeBindingForRawServerAccess(): void {
+  private async ensureBunRealtimeBindingForRawServerAccess(): Promise<void> {
     if (!hasBunRealtimeBindingHost(this.adapter)) {
       return;
     }
 
-    this.getServer();
+    await this.getServerAsync();
   }
 
   private assertNoServerBackedGatewayOptIn(descriptors: readonly WebSocketGatewayDescriptor[]): void {

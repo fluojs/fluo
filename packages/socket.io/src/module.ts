@@ -21,7 +21,7 @@ function createSocketIoProviderSet(options: SocketIoModuleOptions = {}) {
     },
     {
       provide: SOCKETIO_SERVER,
-      useFactory: (service: unknown) => (service as SocketIoLifecycleService).getServer(),
+      useFactory: async (service: unknown) => await (service as SocketIoLifecycleService).getServerAsync(),
       inject: [SocketIoLifecycleService],
     },
     {
