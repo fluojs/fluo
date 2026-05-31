@@ -1,5 +1,15 @@
 # @fluojs/slack
 
+## 1.1.3
+
+### Patch Changes
+
+- [#2049](https://github.com/fluojs/fluo/pull/2049) [`c21d4fa`](https://github.com/fluojs/fluo/commit/c21d4fa2011542818bb9ab19006a35d492021c46) Thanks [@ayden94](https://github.com/ayden94)! - Preserve Slack abort, shutdown, and webhook retry contracts by checking already-aborted empty batches, making owned transport shutdown idempotent, and avoiding transient retry response body reads before retry decisions.
+
+- Updated dependencies [[`6bbbf6a`](https://github.com/fluojs/fluo/commit/6bbbf6addd0f626db3bd8b0ddb442ae8f33236e1)]:
+  - @fluojs/di@1.1.0
+  - @fluojs/runtime@1.1.6
+
 ## 1.1.2
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @fluojs/studio
 
+## 1.0.6
+
+### Patch Changes
+
+- [#2059](https://github.com/fluojs/fluo/pull/2059) [`0892106`](https://github.com/fluojs/fluo/commit/0892106ff31f4156c8690e939adbb539058cb5e3) Thanks [@ayden94](https://github.com/ayden94)! - Expand Studio live event contract coverage, abort stale sidecar state replay during cleanup, document `isStudioLiveEvent(value)`, and align Studio docs with the shipped `fluo dev --studio` live devtool plus static artifact compatibility.
+
+- Updated dependencies [[`6bbbf6a`](https://github.com/fluojs/fluo/commit/6bbbf6addd0f626db3bd8b0ddb442ae8f33236e1)]:
+  - @fluojs/runtime@1.1.6
+
 ## 1.0.5
 
 ### Patch Changes
