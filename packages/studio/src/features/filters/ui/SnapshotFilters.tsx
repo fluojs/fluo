@@ -1,7 +1,7 @@
 import type { Dispatch } from 'react';
 import type { PlatformDiagnosticSeverity, PlatformReadinessStatus } from '../../../contracts.js';
+import type { StudioAction } from '../../../entities/studio/actions.js';
 import type { StudioDashboardState } from '../../../entities/studio/model.js';
-import type { StudioAction } from '../../live-connection/model/reducer.js';
 
 const readinessOptions: PlatformReadinessStatus[] = ['ready', 'degraded', 'not-ready'];
 const severityOptions: PlatformDiagnosticSeverity[] = ['error', 'warning', 'info'];

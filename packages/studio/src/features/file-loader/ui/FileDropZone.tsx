@@ -1,9 +1,8 @@
 import type { ChangeEvent, Dispatch, DragEvent } from 'react';
+import { parseStudioPayload, renderMermaid } from '../../../contracts.js';
+import type { StudioAction } from '../../../entities/studio/actions.js';
 import type { StudioDashboardState } from '../../../entities/studio/model.js';
 import { selectStaticSnapshot } from '../../../entities/studio/model.js';
-import { parseStaticStudioFile } from '../../live-connection/model/reducer.js';
-import { renderMermaid } from '../../../contracts.js';
-import type { StudioAction } from '../../live-connection/model/reducer.js';
 
 interface FileDropZoneProps {
   dispatch: Dispatch<StudioAction>;
@@ -40,7 +39,7 @@ export function FileDropZone({ dispatch, state }: FileDropZoneProps) {
     try {
       dispatch({
         message: 'Diagnostics file loaded successfully.',
-        parsed: parseStaticStudioFile(raw),
+        parsed: parseStudioPayload(raw),
         type: 'static-payload',
       });
     } catch (error) {

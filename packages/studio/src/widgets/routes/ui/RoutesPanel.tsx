@@ -1,8 +1,8 @@
 import type { Dispatch } from 'react';
 import type { StudioRouteDescriptor } from '../../../contracts.js';
+import type { StudioAction } from '../../../entities/studio/actions.js';
 import type { StudioDashboardState } from '../../../entities/studio/model.js';
 import { selectSelectedRoute } from '../../../entities/studio/model.js';
-import type { StudioAction } from '../../../features/live-connection/model/reducer.js';
 import { EmptyState } from '../../../shared/ui/EmptyState.js';
 
 interface RoutesPanelProps {

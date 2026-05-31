@@ -1,5 +1,4 @@
-import type { ParsedPayload, StudioConnectionState, StudioLiveEvent } from '../../../contracts.js';
-import { parseStudioPayload } from '../../../contracts.js';
+import type { StudioAction } from '../../../entities/studio/actions.js';
 import type { StudioDashboardState } from '../../../entities/studio/model.js';
 import {
   filterStaticSnapshot,
@@ -8,34 +7,8 @@ import {
   upsertRequest,
 } from '../../../entities/studio/model.js';
 
-/**
- * Defines Studio Action values used by the Studio devtool.
- */
-export type StudioAction =
-  | { type: 'connection'; connection: StudioConnectionState }
-  | { type: 'file-error'; message: string }
-  | { type: 'filter-readiness-toggle'; readiness: StudioDashboardState['filter']['readinessStatuses'][number] }
-  | { type: 'filter-query'; query: string }
-  | { type: 'filter-severity-toggle'; severity: StudioDashboardState['filter']['severities'][number] }
-  | { type: 'live-event'; event: StudioLiveEvent }
-  | { type: 'select-component'; componentId: string }
-  | { type: 'select-graph-node'; nodeId: string }
-  | { type: 'select-request'; requestId: string }
-  | { type: 'select-route'; routeId: string }
-  | { type: 'static-payload'; parsed: ParsedPayload; message: string };
-
 function toggleValue<T extends string>(values: T[], value: T): T[] {
   return values.includes(value) ? values.filter((entry) => entry !== value) : [...values, value];
-}
-
-/**
- * Provides parse Static Studio File behavior for the Studio devtool.
- *
- * @param rawJson raw Json value used by parse Static Studio File.
- * @returns The parse Static Studio File result.
- */
-export function parseStaticStudioFile(rawJson: string): ParsedPayload {
-  return parseStudioPayload(rawJson);
 }
 
 /**

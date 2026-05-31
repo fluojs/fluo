@@ -110,6 +110,7 @@ Studio is primarily a web application, but the published package also exposes do
 | `applyFilters(snapshot, filter)` | Applies readiness/severity/query filters without mutating the source snapshot. |
 | `renderMermaid(snapshot)` | Produces Mermaid graph text from the loaded platform graph, including internal component dependency edges and external dependency nodes. |
 | `parseStudioLiveEvent(rawJson)` / `validateStudioLiveEvent(value)` | Validate runtime-connected sidecar/SSE envelopes before UI state consumes them. |
+| `isStudioLiveEvent(value)` | Runtime-safe type guard for checking sidecar/SSE envelopes before parsing or dispatch. |
 | `StudioLiveSnapshot` | Live graph/routes/requests/timing/diagnostics snapshot consumed by the React UI. |
 | `StudioLiveEvent` | Versioned live event envelope for `snapshot`, `request`, `timing`, `diagnostic`, `restart`, `disconnect`, and `heartbeat`. |
 | `StudioPayload` / `StudioReportArtifact` / `StudioReportSummary` | Static/report compatibility contracts. |

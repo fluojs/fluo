@@ -1,8 +1,8 @@
-import { useEffect, type Dispatch } from 'react';
+import { type Dispatch, useEffect } from 'react';
 import type { StudioConnectionState, StudioLiveEvent } from '../../../contracts.js';
 import { validateStudioLiveEvent } from '../../../contracts.js';
+import type { StudioAction } from '../../../entities/studio/actions.js';
 import { resolveStudioSidecarConfig } from '../../../shared/lib/studio-config.js';
-import type { StudioAction } from './reducer.js';
 
 interface StudioStateResponse {
   events?: unknown[];
@@ -90,6 +90,10 @@ export function useStudioLiveConnection(dispatch: Dispatch<StudioAction>): void 
     });
 
     const handleMessage = (event: MessageEvent) => {
+      if (closed) {
+        return;
+      }
+
       try {
         lastEventAt = Date.now();
         dispatchLiveEvent(dispatch, eventPayloadFromMessage(event));
@@ -103,8 +107,16 @@ export function useStudioLiveConnection(dispatch: Dispatch<StudioAction>): void 
 
     let source: EventSource | undefined;
     const openSource = (eventsUrl: string) => {
+      if (closed) {
+        return;
+      }
+
       source = new EventSource(eventsUrl);
       source.onopen = () => {
+        if (closed) {
+          return;
+        }
+
         lastEventAt = Date.now();
         dispatchConnection(dispatch, {
           lastEventAt: new Date().toISOString(),
@@ -129,21 +141,31 @@ export function useStudioLiveConnection(dispatch: Dispatch<StudioAction>): void 
       }
     };
 
+    const abortController = typeof AbortController === 'undefined' ? undefined : new AbortController();
     if (config.stateUrl && typeof fetch === 'function') {
-      void fetch(config.stateUrl)
+      void fetch(config.stateUrl, abortController ? { signal: abortController.signal } : undefined)
         .then(async (response) => {
+          if (closed) {
+            return undefined;
+          }
+
           if (!response.ok) {
             throw new Error(`Studio state request failed with ${String(response.status)}.`);
           }
           return await response.json() as StudioStateResponse;
         })
         .then((state) => {
+          if (closed || !state) {
+            return;
+          }
+
           for (const event of state.events ?? []) {
+            if (closed) {
+              return;
+            }
             dispatchLiveEvent(dispatch, event);
           }
-          if (!closed) {
-            openSource(withReplayCursor(config.eventsUrl, state.sequence));
-          }
+          openSource(withReplayCursor(config.eventsUrl, state.sequence));
         })
         .catch((error: unknown) => {
           if (!closed) {
@@ -160,6 +182,9 @@ export function useStudioLiveConnection(dispatch: Dispatch<StudioAction>): void 
 
     return () => {
       closed = true;
+      if (config.stateUrl && typeof fetch === 'function') {
+        abortController?.abort();
+      }
       window.clearInterval(staleTimer);
       if (source) {
         for (const eventType of LIVE_EVENT_TYPES) {
