@@ -225,11 +225,11 @@ Studio artifacts can become architecture guards inside CI/CD pipelines. A guard 
 
 This approach catches architecture regressions before they reach production. It also gives reviewers the same evidence every time: the report for machine-readable facts, the Studio viewer for exploration, and Mermaid for discussion.
 
-### Future Directions: Live Studio
+### Live Studio
 
-The current Studio workflow is file-first. That is intentional. Files are easy to store in CI, attach to support tickets, and compare in reviews. The same contracts could later support live or streaming diagnostics, but this chapter treats artifacts as the stable learning path.
+The current Studio workflow has two supported paths. `fluo dev --studio` opens a runtime-connected local devtool that consumes sidecar events for snapshots, request traces, timing, diagnostics, restart/disconnect lifecycle, and heartbeats. Static inspect artifacts remain the compatibility path for CI, support tickets, and reviews.
 
-A future live workflow would not remove the need for inspect artifacts. Teams still need reproducible evidence for CI, support, and governance. File-first reports give that evidence today.
+Live Studio does not remove the need for inspect artifacts. Teams still need reproducible evidence for CI, support, and governance. File-first reports provide that evidence, while the live devtool gives developers immediate feedback while the app is running.
 
 ## 15.9 Why Heading Parity Matters
 

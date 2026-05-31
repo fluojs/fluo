@@ -225,11 +225,11 @@ Studio artifact는 CI/CD pipeline 안의 architecture guard가 될 수 있습니
 
 이 접근은 architecture regression이 production에 도달하기 전에 발견하게 합니다. 또한 reviewer에게 매번 같은 증거를 제공합니다. Machine-readable facts를 위한 report, exploration을 위한 Studio viewer, discussion을 위한 Mermaid입니다.
 
-### Future Directions: Live Studio
+### Live Studio
 
-현재 Studio workflow는 file-first입니다. 이는 의도적인 선택입니다. 파일은 CI에 저장하기 쉽고, support ticket에 첨부하기 쉽고, review에서 비교하기 쉽습니다. 같은 계약이 나중에 live 또는 streaming diagnostics를 지원할 수 있지만, 이 장은 artifact를 안정적인 학습 경로로 다룹니다.
+현재 Studio workflow에는 두 가지 supported path가 있습니다. `fluo dev --studio`는 snapshot, request trace, timing, diagnostic, restart/disconnect lifecycle, heartbeat를 위한 sidecar event를 소비하는 runtime-connected local devtool을 엽니다. Static inspect artifact는 CI, support ticket, review를 위한 compatibility path로 남습니다.
 
-미래의 live workflow가 생겨도 inspect artifact의 필요성은 사라지지 않습니다. 팀은 여전히 CI, support, governance를 위한 재현 가능한 증거가 필요합니다. File-first report는 그 증거를 지금 제공합니다.
+Live Studio가 inspect artifact의 필요성을 없애지는 않습니다. 팀은 여전히 CI, support, governance를 위한 재현 가능한 증거가 필요합니다. File-first report는 그 증거를 제공하고, live devtool은 앱이 실행되는 동안 개발자에게 즉각적인 피드백을 제공합니다.
 
 ## 15.9 Why Heading Parity Matters
 

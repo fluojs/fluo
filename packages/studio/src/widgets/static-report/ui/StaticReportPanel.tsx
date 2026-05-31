@@ -1,9 +1,9 @@
 import type { Dispatch, KeyboardEvent, MouseEvent } from 'react';
 import type { PlatformSnapshot } from '@fluojs/runtime';
 import { renderMermaid } from '../../../contracts.js';
+import type { StudioAction } from '../../../entities/studio/actions.js';
 import type { StudioDashboardState } from '../../../entities/studio/model.js';
 import { selectSelectedStaticComponent, selectStaticSnapshot } from '../../../entities/studio/model.js';
-import type { StudioAction } from '../../../features/live-connection/model/reducer.js';
 import { EmptyState } from '../../../shared/ui/EmptyState.js';
 import { inspectComponentConnections, renderDiagnostics, renderGraphSvg } from '../../../viewer-rendering.js';
 
