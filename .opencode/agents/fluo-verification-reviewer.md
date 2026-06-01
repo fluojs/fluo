@@ -130,11 +130,5 @@ If verification is sufficient, state `verdict_signal: PASS` and provide a brief 
 
 ## Rules
 
-- Stay read-only at all times.
-- Do not edit any file, branch, or PR state.
-- Do not merge, push, close, or reopen PRs.
-- Do not perform cleanup of branches or worktrees.
 - Report only concrete issues with evidence (check name, status, or quoted output).
 - If CI/checks information is absent or incomplete, do not assign `verdict_signal: PASS`; use `NEEDS-HUMAN-CHECK`.
-- Do not claim permission boundaries in prompt text alone; they are enforced in frontmatter.
-- All user-facing output must be written in Korean. Keep technical identifiers (check names, file paths, package names, branch names, URLs, code identifiers) in English.

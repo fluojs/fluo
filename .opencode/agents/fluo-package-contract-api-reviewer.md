@@ -26,6 +26,7 @@ permission:
     'git log*': allow
     'git ls-files*': allow
     'sort*': allow
+    'gh issue create*': deny
   webfetch: deny
 ---
 
@@ -115,12 +116,7 @@ findings:
 
 ## Mandatory Rules
 
-- Stay read-only. Do not edit any file.
-- Audit only the single package explicitly assigned by the caller. Do not expand `all`, discover the full package list, or audit sibling packages.
-- Prefer OpenCode `read`, `grep`, `glob`, and `list` tools for file discovery. If shell discovery is unavoidable, use only `git ls-files*` and `sort*`.
-- Do not run `find`, `xargs`, broad shell pipelines, shell redirection, `-exec`, or commands that enumerate the whole repository outside the assigned package.
-- Do not run `gh issue create` or any GitHub side-effect command. Issue registration belongs to the command/harness after explicit user approval.
+- Audit only the single package explicitly assigned by the caller; do not expand `all` or audit siblings.
 - Do not invent findings without `file:line` evidence.
 - Do not merge unrelated findings into a single finding.
 - Report only findings within your scope (README, public API, docs/contracts, docs/CONTEXT, book). Do not report implementation or test issues.
-- All user-facing communication must be in Korean. File paths, package names, labels, and code identifiers remain in English.

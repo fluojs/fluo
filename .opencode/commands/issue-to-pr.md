@@ -16,7 +16,7 @@ argument-hint: "<github-issue-url|issue-number> [base-branch] [--fix-back <pr-ur
 /issue-to-pr <github-issue-url|issue-number> [base-branch] --fix-back <pr-url|pr-number> <branch-name> <worktree-path>
 ```
 
-상위 `lane-supervisor`의 fix-back 호출에서는 이미 열린 PR/branch/worktree를 재사용하는 보정 모드로 동작할 수 있다. 이 경우 호출 payload에 `EXISTING_PR`, `BRANCH_NAME`, `WORKTREE_PATH`, `BLOCKERS`, `FIX_BACK_ATTEMPT`가 반드시 포함되어야 하며 새 branch/worktree/PR을 만들지 않는다.
+상위 `execute-lane`의 fix-back 호출에서는 이미 열린 PR/branch/worktree를 재사용하는 보정 모드로 동작할 수 있다. 이 경우 호출 payload에 `EXISTING_PR`, `BRANCH_NAME`, `WORKTREE_PATH`, `BLOCKERS`, `FIX_BACK_ATTEMPT`가 반드시 포함되어야 하며 새 branch/worktree/PR을 만들지 않는다.
 
 예시:
 
@@ -57,7 +57,7 @@ local-only base branch가 명시된 경우에만 `origin/${BASE_BRANCH}` 대신 
 
 ### Fix-back mode
 
-`lane-supervisor`가 `/pr-to-merge`의 `block` verdict를 remediation input으로 넘긴 경우 이 커맨드는 fix-back mode로 동작한다.
+`execute-lane`이 `/pr-to-merge`의 `block` verdict를 remediation input으로 넘긴 경우 이 커맨드는 fix-back mode로 동작한다.
 
 필수 입력:
 

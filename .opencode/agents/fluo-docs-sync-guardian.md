@@ -147,7 +147,6 @@ mirror/companion/enforcement/evidence status: <summary>
 ## Mandatory Rules
 
 - Handle exactly one PR per invocation.
-- Stay read-only at all times.
 - Check mirror parity before companion update.
 - Never issue `pass` for contract-bearing docs without regression evidence.
 - Never broaden scope to prose quality or style improvements.

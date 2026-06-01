@@ -25,7 +25,24 @@ Audits should categorize packages into the following functional groups:
 - **operations**: `metrics`, `terminus`, `throttler`
 - **cli**: `cli`, `studio`, `testing`, `vite`
 
-For `/search-to-issue all`, the command harness must expand `packages/*/package.json` public packages once, currently 41 packages, and must not treat `core` or any other package as a representative sample. The full package set must be split into batches of 4 packages, and every package must receive exactly these three read-only auditor invocations: `fluo-package-contract-api-reviewer`, `fluo-package-architecture-reviewer`, and `fluo-package-tests-edge-reviewer`.
+For `/search-issue`, all-package expansion, batching, and package-level `route_plan` creation belong to the command harness. Do not treat any package as a representative sample.
+
+## Purpose Routing
+
+`/search-issue` treats selected purposes as routing keys, not as prompt hints. Supported route targets:
+
+- `bug-finding`: `fluo-package-architecture-reviewer`, `fluo-package-tests-edge-reviewer`
+- `refactoring`: `fluo-package-architecture-reviewer`
+- `feature-addition`: `fluo-package-feature-rd-reviewer`
+- `contract-api`: `fluo-package-contract-api-reviewer`
+- `architecture-boundary`: `fluo-package-architecture-reviewer`
+- `tests-edge`: `fluo-package-tests-edge-reviewer`
+- `docs-book-sync`: `fluo-package-docs-book-reviewer`
+- `release-impact`: `fluo-package-release-impact-reviewer`
+- `nestjs-migration-gap`: `fluo-package-nestjs-migration-reviewer`
+- `comprehensive`: `fluo-package-contract-api-reviewer`, `fluo-package-architecture-reviewer`, `fluo-package-tests-edge-reviewer`, with specialist agents only on explicit trigger
+
+Reviewers and R&D agents audit only their assigned single package.
 
 ## Label Allowlist (Strict)
 
@@ -53,8 +70,23 @@ Audit findings must include:
 - `preserve_contract_fix`: Contract-preserving fix direction
 - `contract_change_needed`: Whether a contract change is needed and why
 
+Feature R&D routes must return `rd_brief` records instead of audit findings:
+
+- `package`: Package directory name
+- `purpose`: `feature-addition`
+- `user_problem`: User or developer problem the feature would solve
+- `evidence_basis`: README/docs/current limitation/open issue evidence
+- `current_surface`: Current API/docs behavior
+- `recommended_option`: Minimal viable direction
+- `contract_impact`: `none`, `doc-only`, `behavior-change`, or `breaking`
+- `tests_docs_release_plan`: Required tests, docs, examples, and changeset assessment
+- `issue_eligibility`: `candidate`, `defer`, or `reject`
+- `anti_speculation_reason`: Required when eligibility is `defer` or `reject`
+
 ## Issue Draft Constraints
 
 - **Unit of Issue**: Default to one issue per package.
 - **Cross-Package Issues**: Only allowed if the root cause and fix theme are identical across multiple packages.
-- **User Approval**: Audit findings must be presented as drafts and require explicit user approval before registration as GitHub issues.
+- **R&D Escalation**: `rd_brief` outputs become issue drafts only after documented gap evidence and must still pass registration triage. Speculative enhancements stay deferred.
+- **Registration Triage**: `/search-issue` must send draft issues through `fluo-package-issue-registration-reviewer` before any GitHub issue creation.
+- **No Unsafe Registration**: Duplicates, security-sensitive reports, support/usage questions, low-confidence P2 findings, speculative feature ideas, and label mismatches must be `defer` or `reject` instead of registered.

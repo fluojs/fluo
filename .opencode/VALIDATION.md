@@ -10,14 +10,14 @@
 - [ ] 에이전트 파일이 `.opencode/agents/`에 존재하며 `fluo-` 접두사로 시작하는가?
 - [ ] 커맨드 파일이 `.opencode/commands/`에 존재하며 `description`과 `argument-hint`가 포함된 frontmatter를 가지고 있는가?
 - [ ] 공유 지식 스킬(Knowledge Skills)이 `.opencode/skills/fluo-*/SKILL.md`에만 남아 있는가?
-- [ ] command와 같은 이름의 legacy skill entrypoint가 없는가? (`lane-supervisor`, `issue-to-pr`, `pr-to-merge`, `search-to-issue`, `docs-sync-guardian`, `package-publish`)
+- [ ] command와 같은 이름의 legacy skill entrypoint가 없는가? (`create-lane`, `execute-lane`, `issue-to-pr`, `pr-to-merge`, `search-issue`, `docs-sync-guardian`)
 
 ### 1.2 권한 및 경계 검증
 - [ ] **Reviewer/Guardian/Auditor 에이전트**: frontmatter에 `edit: deny`가 설정되어 있고 `bash` 허용 범위가 `git status|diff|log`, `gh pr view|diff` 등 읽기 전용으로 제한되어 있는가?
 - [ ] **Implementer 에이전트**: `edit: ask` 또는 `allow`인 경우에도 `git push`, `git merge`, `npm publish` 등이 `deny` 또는 명시적으로 gating(`ask`)되어 있는가?
 - [ ] **Command Harness**: 사용자가 직접 실행하는 `gh issue create`, `gh pr merge`, `npm publish` 등이 하네스 로직에 의해 보호되거나 금지되어 있는가?
-- [ ] **명시적 승인**: high-impact side-effect 실행 시 `authority` gate 또는 사용자 컨펌 단계를 거치는가?
-- [ ] **Full-auto 권한**: full-auto/auto mode가 있다면 명시 opt-in authority scope를 ledger에 기록하고, child command `block`/unresolved `needs-human-check`, local publish, dirty cleanup/root sync를 우회하지 않는가?
+- [ ] **명시적 승인/Authority**: high-impact side-effect 실행 시 command harness `authority` gate, registration triage, 또는 사용자 컨펌 단계를 거치는가?
+- [ ] **Full-auto 권한**: `execute-lane --full-auto`처럼 full-auto mode가 있다면 명시 opt-in authority scope를 lane ledger에 기록하고, child command `block`/unresolved `needs-human-check`, local publish, dirty cleanup/root sync를 우회하지 않는가?
 
 ### 1.3 불변 정책 준수 (root AGENTS.md)
 - [ ] 모든 출력물에 **Korean First** 정책이 적용되었는가? (기술 식별자 제외)
@@ -35,26 +35,28 @@
 실제 이슈나 PR 번호 대신 존재하지 않는 번호를 사용하여 에이전트의 데이터 수집 및 분석 단계(Error handling 포함)를 확인한다.
 - `/pr-to-merge 9999` (존재하지 않는 PR 번호로 에러 핸들링 및 읽기 시도 확인)
 - `/issue-to-pr 8888` (인자 파싱 및 컨텍스트 수집 단계까지만 확인. **실제 branch 생성이나 `git worktree add` 직전에 중단**)
-- `/search-to-issue` (무인자 호출 직후 감사 범위/목적 question gate가 먼저 뜨는지 확인하고, 감사 수행 후 이슈 등록 승인 단계에서 '등록 안 함' 선택)
+- `/search-issue` (무인자 호출 직후 감사 범위/목적 question gate가 먼저 뜨는지 확인하고, 감사 수행 후 registration triage가 `register/defer/reject`를 산출하는지 확인. 실제 등록은 dry-run/mock 또는 `register` 0건 시나리오로만 검증)
+- `/create-lane 8888` (존재하지 않는 issue로 read-only 조회 실패와 side-effect 없는 중단 확인)
+- `/execute-lane missing-lane-id` (존재하지 않는 lane ledger로 error handling 확인)
 
 ### 2.2 읽기 전용 모드 (Read-Only Check)
 검증용 에이전트(Auditor, Reviewer)를 실행할 때 `edit: deny` 상태에서 실제 파일을 읽고 분석 결과(markdown table 등)가 정상적으로 출력되는지 확인한다.
 - `/docs-sync-guardian 123` 실행 시 에이전트가 `edit: deny` 상태에서 분석 보고서만 생성하는지 확인.
 
-### 2.3 릴리스 플랜 모드 (Plan-Only Mode)
-`package-publish` 실행 시 `plan` 모드를 사용하여 실제 릴리스 없이 절차만 시뮬레이션한다.
-- `/package-publish plan @fluojs/core 1.0.0-beta.1 beta`
+### 2.3 릴리스 handoff 모드 (Release Handoff Check)
+release/publish 자체가 목표인 lane item은 OpenCode command가 publish를 실행하지 않고 GitHub Actions Changesets workflow로 handoff하는지 확인한다.
+- `/execute-lane missing-lane-id` (존재하지 않는 ledger로 error handling만 확인하고, 실제 release workflow를 trigger하지 않음)
 
 ### 2.4 Full-auto 드라이런 (Authority Scope Check)
-`lane-supervisor`의 `auto` 또는 `execute --full-auto`는 실제 side effect가 발생하지 않는 가짜 issue/PR 번호와 dry-run 전제에서만 검증한다. ledger에 `authority_scope`, `retry_policy`, `decisions`가 기록되고, child command verdict가 `block` 또는 unresolved `needs-human-check`이면 merge/publish로 넘어가지 않는지 확인한다.
-- `/lane-supervisor 9999 auto main` (존재하지 않는 issue로 authority scope와 error handling만 확인)
+`execute-lane --full-auto`는 실제 side effect가 발생하지 않는 가짜 lane ledger와 dry-run 전제에서만 검증한다. lane ledger에 `authority_scope`, `retry_policy`, `execution` 상태가 기록되고, child command verdict가 `block` 또는 unresolved `needs-human-check`이면 merge/publish로 넘어가지 않는지 확인한다.
+- `/execute-lane missing-lane-id --full-auto main` (존재하지 않는 ledger로 authority scope와 error handling만 확인)
 
 ---
 
 ## 3. 금지 사항 (Prohibited for Validation)
 
 다음 작업은 검증 과정에서 **절대** 수행하지 않는다.
-- 실제 `gh issue create` 또는 `gh pr merge` 실행 (사용자 승인 단계에서 중단)
+- 실제 `gh issue create` 또는 `gh pr merge` 실행 (dry-run에서는 registration triage 또는 authority gate 직전/0건 시나리오에서 중단)
 - 실제 `npm publish` 또는 `pnpm changeset publish` 실행
 - GitHub Actions workflow의 실제 `dispatch` 또는 `rerun`
 - 공유 브랜치(`main`)의 직접적인 cleanup 또는 삭제
@@ -74,11 +76,15 @@ grep -r "fluo-" .opencode/commands/
 
 # command를 shadowing하는 legacy skill entrypoint가 없는지 확인
 test ! -f .opencode/skills/lane-supervisor/SKILL.md
+test ! -f .opencode/skills/create-lane/SKILL.md
+test ! -f .opencode/skills/execute-lane/SKILL.md
 test ! -f .opencode/skills/issue-to-pr/SKILL.md
 test ! -f .opencode/skills/pr-to-merge/SKILL.md
 test ! -f .opencode/skills/search-to-issue/SKILL.md
+test ! -f .opencode/skills/search-issue/SKILL.md
 test ! -f .opencode/skills/docs-sync-guardian/SKILL.md
 test ! -f .opencode/skills/package-publish/SKILL.md
+test ! -f .opencode/commands/package-publish.md
 
 # knowledge skill만 남았는지 확인
 find .opencode/skills -name SKILL.md

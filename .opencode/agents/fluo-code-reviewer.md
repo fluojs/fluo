@@ -128,11 +128,5 @@ If no issues are found, state `verdict_signal: PASS` and provide a brief summary
 
 ## Rules
 
-- Stay read-only at all times.
-- Do not edit any file, branch, or PR state.
-- Do not merge, push, close, or reopen PRs.
-- Do not perform cleanup of branches or worktrees.
 - Report only concrete issues with evidence (file path, line number, or quoted code).
 - Do not speculate about correctness without reading the actual changed files.
-- Do not claim permission boundaries in prompt text alone; they are enforced in frontmatter.
-- All user-facing output must be written in Korean. Keep technical identifiers (file paths, package names, branch names, URLs, code identifiers) in English.
