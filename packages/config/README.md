@@ -20,7 +20,7 @@ Configuration loading, merging, validation, and typed runtime access for fluo ap
 npm install @fluojs/config
 ```
 
-The package supports Node.js 20.0.0 or newer. Env-file loading and watch mode resolve Node filesystem, path, and crypto builtins lazily through the host runtime boundary, requiring `process.getBuiltinModule(...)`; when that API is present but direct filesystem/path/crypto lookup is unavailable, a published-ESM-compatible `node:module` fallback is used. In-memory use of `ConfigService` and `loadConfig({ defaults, processEnv, runtimeOverrides })` does not require env-file access.
+The package supports Node.js 20.16.0 or newer. Env-file loading, default `.env` loading, and watch mode resolve Node filesystem, path, and crypto builtins lazily through the host runtime boundary, requiring `process.getBuiltinModule(...)`; when that API is present but direct filesystem/path/crypto lookup is unavailable, a published-ESM-compatible `node:module` fallback is used. In-memory use of `ConfigService` and `loadConfig({ defaults, processEnv, runtimeOverrides })` does not require env-file access, but it is still distributed under the package-level Node.js 20.16.0 engine contract.
 
 ## When to Use
 
@@ -89,7 +89,7 @@ Configuration is merged in the following order (highest precedence wins):
 
 `envFilePath` overrides `envFile`, and `parse` lets callers replace dotenv parsing with a custom parser for flat key/value files. Empty load/module options preserve the default `<cwd>/.env` behavior for `loadConfig({})` and `ConfigModule.forRoot()`. Missing env files are treated as empty input during load; watch mode also observes the parent directory so creating the file later can trigger a reload.
 
-Importing the root `@fluojs/config` package is safe for in-memory consumers that only need `ConfigService`, option types, or `loadConfig(...)` with explicit in-memory inputs: Node filesystem, path, and crypto builtins are resolved lazily only when env-file loading or watch mode actually runs. `loadConfig({ defaults, processEnv, runtimeOverrides })` does not resolve `process.cwd()`, a default `.env` path, or Node filesystem/path/crypto builtins. Because the published package engine is Node.js 20.0.0 or newer, env-file loading outside Node.js is not part of the supported package contract.
+Importing the root `@fluojs/config` package is safe for in-memory consumers that only need `ConfigService`, option types, or `loadConfig(...)` with explicit in-memory inputs: Node filesystem, path, and crypto builtins are resolved lazily only when env-file loading or watch mode actually runs. `loadConfig({ defaults, processEnv, runtimeOverrides })` does not resolve `process.cwd()`, a default `.env` path, or Node filesystem/path/crypto builtins. Because the published package engine is Node.js 20.16.0 or newer, Node.js 20.0.0 through 20.15.x and non-Node runtimes are outside the supported package contract for env-file, default `.env`, and watch execution paths.
 
 ### Deep Merging
 Plain objects are deep-merged by key. Arrays and primitive values from higher-precedence sources completely replace lower-precedence ones.
