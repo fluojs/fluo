@@ -144,7 +144,7 @@ function unquoteEnvValue(value: string): string {
   }
 
   const quote = value[0];
-  if ((quote !== '"' && quote !== "'") || value[value.length - 1] !== quote) {
+  if ((quote !== '"' && quote !== "'" && quote !== '`') || value[value.length - 1] !== quote) {
     return value;
   }
 
@@ -152,10 +152,44 @@ function unquoteEnvValue(value: string): string {
   return quote === '"' ? unquoted.replace(/\\n/g, '\n').replace(/\\r/g, '\r') : unquoted;
 }
 
+function stripInlineEnvComment(value: string): string {
+  const commentIndex = value.search(/\s#/);
+  return commentIndex === -1 ? value : value.slice(0, commentIndex);
+}
+
+function findClosingEnvQuote(value: string, quote: string): number {
+  for (let index = 1; index < value.length; index += 1) {
+    if (value[index] === quote && value[index - 1] !== '\\') {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function collectQuotedEnvValue(lines: readonly string[], startIndex: number, valueStart: string, quote: string): { nextIndex: number; value: string } {
+  let value = valueStart;
+  let currentIndex = startIndex;
+
+  while (currentIndex + 1 < lines.length && findClosingEnvQuote(value, quote) === -1) {
+    currentIndex += 1;
+    value += `\n${lines[currentIndex]}`;
+  }
+
+  const closingQuoteIndex = findClosingEnvQuote(value, quote);
+
+  return {
+    nextIndex: currentIndex,
+    value: closingQuoteIndex === -1 ? value : value.slice(0, closingQuoteIndex + 1),
+  };
+}
+
 function parseDotenvContent(content: string): Record<string, string> {
   const parsed: Record<string, string> = {};
+  const lines = content.split(/\r?\n/);
 
-  for (const rawLine of content.split(/\r?\n/)) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index];
     const line = rawLine.trim();
     if (line.length === 0 || line.startsWith('#')) {
       continue;
@@ -168,12 +202,17 @@ function parseDotenvContent(content: string): Record<string, string> {
     }
 
     const key = entry.slice(0, separatorIndex).trim();
-    const value = entry.slice(separatorIndex + 1).trim();
+    const rawValue = entry.slice(separatorIndex + 1).trim();
     if (!/^[\w.-]+$/.test(key)) {
       continue;
     }
 
-    parsed[key] = unquoteEnvValue(value);
+    const quote = rawValue[0];
+    const quotedValue = quote === '"' || quote === "'" || quote === '`';
+    const collected = quotedValue ? collectQuotedEnvValue(lines, index, rawValue, quote) : { nextIndex: index, value: stripInlineEnvComment(rawValue).trim() };
+
+    index = collected.nextIndex;
+    parsed[key] = unquoteEnvValue(collected.value);
   }
 
   return parsed;
@@ -183,8 +222,25 @@ function expandEnvVariables(parsed: Record<string, string>, safeProcessEnv: Reco
   const expanded: Record<string, string> = {};
   const source = { ...safeProcessEnv, ...parsed };
 
+  const expandValue = (value: string, visiting: ReadonlySet<string>): string =>
+    value.replace(/(^|[^\\])\$\{?([\w.-]+)\}?/g, (_match, prefix: string, variableName: string) => {
+      if (!(variableName in source)) {
+        return prefix;
+      }
+
+      if (visiting.has(variableName)) {
+        return prefix;
+      }
+
+      const replacement = variableName in expanded
+        ? expanded[variableName]
+        : expandValue(source[variableName] ?? '', new Set([...visiting, variableName]));
+
+      return `${prefix}${replacement}`;
+    }).replace(/\\\$/g, '$');
+
   for (const [key, value] of Object.entries(parsed)) {
-    expanded[key] = value.replace(/\$\{([\w.-]+)\}/g, (_match, variableName: string) => source[variableName] ?? '');
+    expanded[key] = expandValue(value, new Set([key]));
     source[key] = expanded[key];
   }
 

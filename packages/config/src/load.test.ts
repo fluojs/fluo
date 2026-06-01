@@ -404,6 +404,44 @@ describe('loadConfig', () => {
     expect(loaded['PRIVATE_KEY']).toContain('\n');
   });
 
+  it('preserves dotenv-compatible env file parsing semantics without eager dotenv imports', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-dotenv-parse-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(
+      envPath,
+      [
+        '# comments and empty lines are ignored',
+        'SIMPLE=value',
+        'WITH_SPACES=  trimmed value  ',
+        'EMPTY=',
+        'INLINE_COMMENT=value # removed',
+        'HASH_IN_DOUBLE="value#kept" # removed',
+        "HASH_IN_SINGLE='value#kept' # removed",
+        'BACKTICK=`allows "double" and \'single\' quotes` # removed',
+        'export EXPORTED_VAR=from-export',
+        'my.dotted-key=from-dotted-key',
+        'ACTUAL_NEWLINE="first line',
+        'second line"',
+      ].join('\n'),
+    );
+
+    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: {} });
+
+    expect(loaded).toMatchObject({
+      ACTUAL_NEWLINE: 'first line\nsecond line',
+      BACKTICK: 'allows "double" and \'single\' quotes',
+      EMPTY: '',
+      EXPORTED_VAR: 'from-export',
+      HASH_IN_DOUBLE: 'value#kept',
+      HASH_IN_SINGLE: 'value#kept',
+      INLINE_COMMENT: 'value',
+      SIMPLE: 'value',
+      WITH_SPACES: 'trimmed value',
+      'my.dotted-key': 'from-dotted-key',
+    });
+  });
+
   it('expands variable interpolation in env files', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-expand-'));
     const envPath = join(cwd, '.env.dev');
@@ -413,6 +451,34 @@ describe('loadConfig', () => {
     const loaded = loadConfig({ cwd, envFile: envPath, processEnv: {} });
 
     expect(loaded['DATABASE_URL']).toBe('localhost:5432/mydb');
+  });
+
+  it('preserves dotenv-expand-compatible variable interpolation semantics', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-expand-contract-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(
+      envPath,
+      [
+        'LOCAL_HOST=localhost',
+        'LOCAL_URL=postgres://${LOCAL_HOST}:5432/app',
+        'PROCESS_URL=https://$PUBLIC_HOST/api',
+        'FORWARD_REF=$LATER_VALUE',
+        'LATER_VALUE=available-later',
+        'ESCAPED=\\$LOCAL_HOST',
+        'UNKNOWN=${MISSING_VALUE}',
+      ].join('\n'),
+    );
+
+    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: { PUBLIC_HOST: 'example.com' } });
+
+    expect(loaded).toMatchObject({
+      ESCAPED: '$LOCAL_HOST',
+      FORWARD_REF: 'available-later',
+      LOCAL_URL: 'postgres://localhost:5432/app',
+      PROCESS_URL: 'https://example.com/api',
+      UNKNOWN: '',
+    });
   });
 
   it('uses a custom parse function when provided', () => {
