@@ -170,6 +170,8 @@ Access-token TTL must also be a positive finite number. When `accessTokenTtlSeco
 
 Verification fails closed on malformed time policy. `exp`, `nbf`, and `iat` claims that participate in verification must be finite JWT NumericDate numbers, and `clockSkewSeconds` must be a non-negative finite number. Non-finite values are rejected instead of extending expiration, not-before, or age checks. A token is expired when verifier time reaches its `exp` NumericDate; equality is treated as expired unless positive clock skew still covers the boundary.
 
+The root `@fluojs/jwt` import surface is safe to load before selecting a runtime-specific authentication path: Node.js `node:crypto` primitives are loaded lazily only when signing, verification, JWKS key parsing, or refresh-token id generation actually executes. This preserves the existing public exports while avoiding Node-specific crypto work at module import time.
+
 ## Public API Overview
 
 ### Core Classes

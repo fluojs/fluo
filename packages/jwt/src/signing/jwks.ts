@@ -1,4 +1,4 @@
-import { createPublicKey, type KeyObject } from 'node:crypto';
+import type { KeyObject } from 'node:crypto';
 
 import { JwtConfigurationError, JwtInvalidTokenError } from '../errors.js';
 
@@ -90,6 +90,7 @@ export class JwksClient {
     let key: KeyObject;
 
     try {
+      const { createPublicKey } = await import('node:crypto');
       key = createPublicKey({ format: 'jwk', key: jwk });
     } catch {
       throw new JwtConfigurationError('Unable to parse JWKS key into a public key.');
