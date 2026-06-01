@@ -1,11 +1,18 @@
 import { FluoError } from '@fluojs/core';
 
 import type { ContextKey, RequestContext } from '../types.js';
-import { resolveAsyncLocalStorageConstructor } from './request-context-node-store.js';
+import {
+  canResolveAsyncLocalStorageDynamically,
+  resolveAsyncLocalStorageConstructor,
+  resolveImmediateAsyncLocalStorageConstructor,
+} from './request-context-node-store.js';
 import { createStackRequestContextStore } from './request-context-stack-store.js';
 import type { RequestContextStore } from './request-context-store.js';
 
-const requestContextStore: RequestContextStore = await createRequestContextStore();
+let requestContextStore: RequestContextStore | undefined;
+let requestContextStoreResolution: Promise<RequestContextStore> | undefined;
+let fallbackRequestContextStore: RequestContextStore | undefined;
+const dynamicResolutionFallbackStack: RequestContext[] = [];
 
 /**
  * Runs a callback inside the request-scoped async context.
@@ -19,7 +26,21 @@ const requestContextStore: RequestContextStore = await createRequestContextStore
  * @returns The return value from `callback`.
  */
 export function runWithRequestContext<T>(context: RequestContext, callback: () => T): T {
-  return requestContextStore.run(context, callback);
+  const store = getResolvedRequestContextStore();
+
+  if (store) {
+    return store.run(context, callback);
+  }
+
+  if (!canResolveAsyncLocalStorageDynamically()) {
+    return getFallbackRequestContextStore().run(context, callback);
+  }
+
+  if (!isAsyncCallback(callback)) {
+    return runWithDynamicResolutionFallbackContext(context, callback);
+  }
+
+  return runWithResolvedRequestContextStore(context, callback) as T;
 }
 
 /**
@@ -28,7 +49,7 @@ export function runWithRequestContext<T>(context: RequestContext, callback: () =
  * @returns The active request context, or `undefined` when no request scope is bound.
  */
 export function getCurrentRequestContext(): RequestContext | undefined {
-  return requestContextStore.getStore();
+  return getRequestContextStore().getStore() ?? getDynamicResolutionFallbackContext();
 }
 
 /**
@@ -97,12 +118,107 @@ export function setContextValue<T>(context: RequestContext, key: ContextKey<T>, 
   context.metadata[key.id] = value;
 }
 
+function getRequestContextStore(): RequestContextStore {
+  return getResolvedRequestContextStore() ?? getFallbackRequestContextStore();
+}
+
+function getResolvedRequestContextStore(): RequestContextStore | undefined {
+  if (requestContextStore) {
+    return requestContextStore;
+  }
+
+  const AsyncLocalStorage = resolveImmediateAsyncLocalStorageConstructor();
+
+  if (typeof AsyncLocalStorage === 'function') {
+    requestContextStore = new AsyncLocalStorage();
+
+    return requestContextStore;
+  }
+
+  void resolveRequestContextStore();
+
+  return undefined;
+}
+
+async function runWithResolvedRequestContextStore<T>(
+  context: RequestContext,
+  callback: () => T,
+): Promise<Awaited<T>> {
+  const store = await resolveRequestContextStore();
+
+  return store.run(context, callback) as Awaited<T>;
+}
+
+async function resolveRequestContextStore(): Promise<RequestContextStore> {
+  requestContextStoreResolution ??= createRequestContextStore();
+
+  return requestContextStoreResolution;
+}
+
 async function createRequestContextStore(): Promise<RequestContextStore> {
   const AsyncLocalStorage = await resolveAsyncLocalStorageConstructor();
 
   if (typeof AsyncLocalStorage === 'function') {
-    return new AsyncLocalStorage();
+    requestContextStore = new AsyncLocalStorage();
+
+    return requestContextStore;
   }
 
-  return createStackRequestContextStore();
+  requestContextStore = getFallbackRequestContextStore();
+
+  return requestContextStore;
+}
+
+function getFallbackRequestContextStore(): RequestContextStore {
+  fallbackRequestContextStore ??= createStackRequestContextStore();
+
+  return fallbackRequestContextStore;
+}
+
+function runWithDynamicResolutionFallbackContext<T>(context: RequestContext, callback: () => T): T {
+  dynamicResolutionFallbackStack.push(context);
+
+  try {
+    const result = callback();
+
+    void resolveRequestContextStore();
+
+    if (isPromiseLike(result)) {
+      return result.finally(() => {
+        removeDynamicResolutionFallbackContext(context);
+      }) as T;
+    }
+
+    removeDynamicResolutionFallbackContext(context);
+
+    return result;
+  } catch (error) {
+    removeDynamicResolutionFallbackContext(context);
+
+    throw error;
+  }
+}
+
+function getDynamicResolutionFallbackContext(): RequestContext | undefined {
+  if (dynamicResolutionFallbackStack.length !== 1) {
+    return undefined;
+  }
+
+  return dynamicResolutionFallbackStack[0];
+}
+
+function removeDynamicResolutionFallbackContext(context: RequestContext): void {
+  const index = dynamicResolutionFallbackStack.lastIndexOf(context);
+
+  if (index >= 0) {
+    dynamicResolutionFallbackStack.splice(index, 1);
+  }
+}
+
+function isPromiseLike<T>(value: T): value is T & Promise<Awaited<T>> {
+  return typeof value === 'object' && value !== null && 'then' in value && 'finally' in value;
+}
+
+function isAsyncCallback<T>(callback: () => T): callback is () => T & Promise<Awaited<T>> {
+  return callback.constructor.name === 'AsyncFunction';
 }
