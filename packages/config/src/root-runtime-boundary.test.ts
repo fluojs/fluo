@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('@fluojs/config root runtime boundary', () => {
@@ -36,16 +39,15 @@ describe('@fluojs/config root runtime boundary', () => {
     expect(cwd).not.toHaveBeenCalled();
   });
 
-  it('guards env-file loading when the host cannot provide lazy Node builtins', async () => {
+  it('loads env files through a Node 20.0 compatible fallback when getBuiltinModule is unavailable', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-node20-fallback-'));
+    const envFilePath = join(cwd, '.env');
+
+    writeFileSync(envFilePath, 'PORT=4010\n');
     vi.spyOn(process, 'getBuiltinModule').mockImplementation((() => undefined) as typeof process.getBuiltinModule);
 
     const { loadConfig } = await import('./index.js');
 
-    expect(() => loadConfig({ envFilePath: '.env' })).toThrow(expect.objectContaining({
-      code: 'CONFIG_RUNTIME_UNAVAILABLE',
-      cause: expect.objectContaining({
-        message: expect.stringContaining('Node.js 20.16.0 or newer is required'),
-      }),
-    }));
+    expect(loadConfig({ envFilePath, processEnv: {} })).toMatchObject({ PORT: '4010' });
   });
 });

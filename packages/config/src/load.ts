@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import { FluoError } from '@fluojs/core';
 
 import { cloneConfigDictionary } from './clone.js';
@@ -54,6 +55,8 @@ type NodeBuiltinModuleHost = typeof globalThis & {
   };
 };
 
+type NodeBuiltinRequire = (id: 'node:crypto' | 'node:fs' | 'node:path') => NodeCryptoModule | NodeFsModule | NodePathModule;
+
 interface NormalizedLoadOptions {
   envFile: string | undefined;
   defaults: ConfigDictionary;
@@ -81,25 +84,31 @@ type ConfigSchemaSuccessResult = {
 };
 
 const reloadFailureReasons = new WeakMap<object, ConfigReloadReason>();
-const nodeBuiltinRuntimeRequirement = 'Node.js 20.16.0 or newer is required when @fluojs/config loads env files or starts watch mode.';
+const requireNodeBuiltin = createRequire(import.meta.url) as NodeBuiltinRequire;
+const nodeBuiltinRuntimeRequirement = 'Node.js 20.0.0 or newer is required when @fluojs/config loads env files or starts watch mode.';
+
+function requireNodeBuiltinFallback<TModule>(id: 'node:crypto' | 'node:fs' | 'node:path'): TModule {
+  try {
+    return requireNodeBuiltin(id) as TModule;
+  } catch (error: unknown) {
+    throw new FluoError('Node.js configuration loading is unavailable in this runtime.', {
+      code: 'CONFIG_RUNTIME_UNAVAILABLE',
+      cause: new Error(`${nodeBuiltinRuntimeRequirement} The host runtime could not load ${id}. Use in-memory config options or run env-file loading on Node.js.`, { cause: error }),
+    });
+  }
+}
 
 function resolveNodeBuiltin<TModule>(id: 'node:crypto' | 'node:fs' | 'node:path'): TModule {
   const getBuiltinModule = (globalThis as NodeBuiltinModuleHost).process?.getBuiltinModule;
 
   if (!getBuiltinModule) {
-    throw new FluoError('Node.js configuration loading requires a newer Node.js runtime.', {
-      code: 'CONFIG_RUNTIME_UNAVAILABLE',
-      cause: new Error(`${nodeBuiltinRuntimeRequirement} The host runtime did not expose process.getBuiltinModule(...). Use in-memory config options or run env-file loading on Node.js 20.16.0+.`),
-    });
+    return requireNodeBuiltinFallback<TModule>(id);
   }
 
   const module = getBuiltinModule(id);
 
   if (!module) {
-    throw new FluoError('Node.js configuration loading requires a newer Node.js runtime.', {
-      code: 'CONFIG_RUNTIME_UNAVAILABLE',
-      cause: new Error(`${nodeBuiltinRuntimeRequirement} The host runtime did not expose ${id}. Use in-memory config options or run env-file loading on Node.js 20.16.0+.`),
-    });
+    return requireNodeBuiltinFallback<TModule>(id);
   }
 
   return module as TModule;
