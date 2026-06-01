@@ -1,8 +1,3 @@
-import type { FSWatcher } from 'node:fs';
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, watch } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
-
 import { FluoError } from '@fluojs/core';
 import { parse as dotenvParse } from 'dotenv';
 import { expand as dotenvExpand } from 'dotenv-expand';
@@ -19,6 +14,47 @@ import type {
   ConfigReloadSubscription,
   ConfigSchema,
 } from './types.js';
+
+type ConfigFileWatcher = {
+  close(): void;
+};
+
+type NodeCryptoModule = {
+  createHash(algorithm: string): {
+    update(data: string | Uint8Array): { digest(encoding: 'hex'): string };
+    digest(encoding: 'hex'): string;
+  };
+};
+
+type NodeFsError = {
+  code?: string;
+};
+
+type NodeFsModule = {
+  existsSync(path: string): boolean;
+  readFileSync(path: string): string;
+  readFileSync(path: string, encoding: 'utf8'): string;
+  watch(
+    filename: string,
+    options: { persistent: boolean },
+    listener: (eventType: string, filename: string | Buffer | null) => void,
+  ): ConfigFileWatcher;
+};
+
+type NodePathModule = {
+  basename(path: string): string;
+  dirname(path: string): string;
+  join(...paths: string[]): string;
+};
+
+type NodeBuiltinModuleHost = typeof globalThis & {
+  process?: {
+    cwd?(): string;
+    getBuiltinModule?(id: 'node:crypto'): NodeCryptoModule;
+    getBuiltinModule?(id: 'node:fs'): NodeFsModule;
+    getBuiltinModule?(id: 'node:path'): NodePathModule;
+  };
+};
 
 interface NormalizedLoadOptions {
   envFile: string;
@@ -47,6 +83,48 @@ type ConfigSchemaSuccessResult = {
 };
 
 const reloadFailureReasons = new WeakMap<object, ConfigReloadReason>();
+
+function resolveNodeBuiltin<TModule>(id: 'node:crypto' | 'node:fs' | 'node:path'): TModule {
+  const module = (globalThis as NodeBuiltinModuleHost).process?.getBuiltinModule?.(id);
+
+  if (!module) {
+    throw new FluoError('Node.js configuration loading is unavailable in this runtime.', {
+      code: 'CONFIG_RUNTIME_UNAVAILABLE',
+      cause: new Error(`The host runtime did not expose ${id}. Use in-memory config options or call @fluojs/config from a Node.js runtime.`),
+    });
+  }
+
+  return module as TModule;
+}
+
+function nodeCrypto(): NodeCryptoModule {
+  return resolveNodeBuiltin<NodeCryptoModule>('node:crypto');
+}
+
+function nodeFs(): NodeFsModule {
+  return resolveNodeBuiltin<NodeFsModule>('node:fs');
+}
+
+function nodePath(): NodePathModule {
+  return resolveNodeBuiltin<NodePathModule>('node:path');
+}
+
+function resolveCurrentWorkingDirectory(): string {
+  const cwd = (globalThis as NodeBuiltinModuleHost).process?.cwd;
+
+  if (!cwd) {
+    throw new FluoError('Node.js configuration loading is unavailable in this runtime.', {
+      code: 'CONFIG_RUNTIME_UNAVAILABLE',
+      cause: new Error('The host runtime did not expose process.cwd(). Pass envFilePath or avoid env-file loading outside Node.js.'),
+    });
+  }
+
+  return cwd();
+}
+
+function isNodeFsError(error: unknown): error is NodeFsError {
+  return typeof error === 'object' && error !== null && 'code' in error;
+}
 
 function markReloadFailure(error: unknown, reason: ConfigReloadReason): void {
   if (typeof error === 'object' && error !== null) {
@@ -89,8 +167,8 @@ function rejectLegacyValidateOption(options: ConfigLoadOptions): void {
 function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions {
   rejectLegacyValidateOption(options);
 
-  const cwd = options.cwd ?? process.cwd();
-  const envFile = options.envFilePath ?? options.envFile ?? join(cwd, '.env');
+  const cwd = options.cwd ?? resolveCurrentWorkingDirectory();
+  const envFile = options.envFilePath ?? options.envFile ?? nodePath().join(cwd, '.env');
   const defaults = options.defaults ?? {};
   const processEnv = options.processEnv ?? {};
   const safeProcessEnv = sanitizeProcessEnv(processEnv);
@@ -108,9 +186,9 @@ function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions
 
 function readEnvFileValues(options: NormalizedLoadOptions): ConfigDictionary {
   try {
-    return parseEnvContent(readFileSync(options.envFile, 'utf8'), options.safeProcessEnv, options.parse);
+    return parseEnvContent(nodeFs().readFileSync(options.envFile, 'utf8'), options.safeProcessEnv, options.parse);
   } catch (error: unknown) {
-    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
+    if (isNodeFsError(error) && error.code === 'ENOENT') {
       return {};
     }
 
@@ -228,8 +306,8 @@ function createInvalidConfigError(cause: unknown, issues?: readonly ConfigSchema
   });
 }
 
-function isInvalidConfigError(error: unknown): error is FluoError {
-  return error instanceof FluoError && error.code === 'INVALID_CONFIG';
+function isInvalidConfigError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'INVALID_CONFIG';
 }
 
 function readConfigSchemaResult(result: unknown): ConfigDictionary {
@@ -285,14 +363,14 @@ type ReloaderState = {
   pendingReloadReason: ConfigReloadReason | undefined;
   reloading: boolean;
   watchedEnvFileHash: string | undefined;
-  watcher: FSWatcher | undefined;
+  watcher: ConfigFileWatcher | undefined;
 };
 
 function hashEnvFileContent(envFile: string): string | undefined {
   try {
-    return createHash('sha256').update(readFileSync(envFile)).digest('hex');
+    return nodeCrypto().createHash('sha256').update(nodeFs().readFileSync(envFile)).digest('hex');
   } catch (error: unknown) {
-    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
+    if (isNodeFsError(error) && error.code === 'ENOENT') {
       return undefined;
     }
 
@@ -381,19 +459,21 @@ function startReloaderWatcher(
   state: ReloaderState,
   listeners: ReadonlySet<ConfigReloadListener>,
   errorListeners: ReadonlySet<ConfigReloadErrorListener>,
-): FSWatcher | undefined {
+): ConfigFileWatcher | undefined {
   if (!options.watch) {
     return undefined;
   }
 
-  const watchTarget = dirname(normalized.envFile);
-  const watchedEnvFileName = basename(normalized.envFile);
+  const path = nodePath();
+  const fs = nodeFs();
+  const watchTarget = path.dirname(normalized.envFile);
+  const watchedEnvFileName = path.basename(normalized.envFile);
 
-  if (!existsSync(watchTarget)) {
+  if (!fs.existsSync(watchTarget)) {
     return undefined;
   }
 
-  return watch(watchTarget, { persistent: false }, (_eventType, filename) => {
+  return fs.watch(watchTarget, { persistent: false }, (_eventType, filename) => {
     if (filename !== null && filename.toString() !== watchedEnvFileName) {
       return;
     }

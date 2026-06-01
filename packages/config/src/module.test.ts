@@ -1,16 +1,45 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, watch, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { Constructor } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ConfigModule } from './module.js';
 import { ConfigService } from './service.js';
 import type { ConfigModuleOptions } from './types.js';
 
 const watchCallbacks = vi.hoisted(() => new Set<() => void>());
+
+const originalGetBuiltinModule = process.getBuiltinModule.bind(process);
+
+function installNodeBuiltinMock(): void {
+  vi.spyOn(process, 'getBuiltinModule').mockImplementation(((id: string) => {
+    if (id === 'node:crypto') {
+      return { createHash };
+    }
+
+    if (id === 'node:fs') {
+      return {
+        existsSync,
+        readFileSync,
+        watch,
+      };
+    }
+
+    if (id === 'node:path') {
+      return {
+        basename,
+        dirname,
+        join,
+      };
+    }
+
+    return originalGetBuiltinModule(id as Parameters<typeof process.getBuiltinModule>[0]);
+  }) as typeof process.getBuiltinModule);
+}
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
@@ -28,6 +57,14 @@ vi.mock('node:fs', async (importOriginal) => {
       };
     }),
   };
+});
+
+beforeEach(() => {
+  installNodeBuiltinMock();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 function emitWatchChange(): void {
