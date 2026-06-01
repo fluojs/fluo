@@ -81,6 +81,8 @@ class MyService {
 
 `envFilePath`는 `envFile`보다 우선하며, `parse`를 사용하면 flat key/value 파일을 위한 custom parser로 dotenv parsing을 대체할 수 있습니다. 누락된 env file은 load 시 빈 입력처럼 처리됩니다. watch mode에서는 parent directory도 관찰하므로 나중에 파일을 생성해도 reload를 트리거할 수 있습니다.
 
+Root `@fluojs/config` 패키지를 import하는 것만으로는 Node filesystem, path, crypto builtin을 해석하지 않습니다. `ConfigService`나 option type만 필요한 in-memory consumer는 root import를 안전하게 사용할 수 있고, Node builtin은 env-file load 또는 watch mode가 실제로 실행될 때 lazy하게 해석됩니다. Non-Node runtime에서는 in-memory `defaults`, `processEnv`, `runtimeOverrides` 값을 전달하고 env-file/watch 옵션은 피하세요.
+
 ### 객체 단위 딥 머지
 
 일반 객체는 키 기준으로 깊게 병합되고, 배열과 원시값은 더 높은 우선순위 소스가 전체를 덮어씁니다.

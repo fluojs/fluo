@@ -87,6 +87,8 @@ Configuration is merged in the following order (highest precedence wins):
 
 `envFilePath` overrides `envFile`, and `parse` lets callers replace dotenv parsing with a custom parser for flat key/value files. Missing env files are treated as empty input during load; watch mode also observes the parent directory so creating the file later can trigger a reload.
 
+Importing the root `@fluojs/config` package is safe for in-memory consumers that only need `ConfigService` or option types: Node filesystem, path, and crypto builtins are resolved lazily only when env-file loading or watch mode actually runs. Non-Node runtimes should pass in-memory `defaults`, `processEnv`, and `runtimeOverrides` values and avoid env-file/watch options.
+
 ### Deep Merging
 Plain objects are deep-merged by key. Arrays and primitive values from higher-precedence sources completely replace lower-precedence ones.
 
