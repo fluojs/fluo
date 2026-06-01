@@ -13,10 +13,27 @@ import type { ConfigModuleOptions } from './types.js';
 
 const watchCallbacks = vi.hoisted(() => new Set<() => void>());
 
-const originalGetBuiltinModule = process.getBuiltinModule.bind(process);
+type ProcessWithGetBuiltinModule = typeof process & {
+  getBuiltinModule?: typeof process.getBuiltinModule;
+};
+
+const processWithGetBuiltinModule = process as ProcessWithGetBuiltinModule;
+const originalGetBuiltinModule = processWithGetBuiltinModule.getBuiltinModule?.bind(process);
+
+function spyOnGetBuiltinModule(implementation: typeof process.getBuiltinModule): void {
+  if (!processWithGetBuiltinModule.getBuiltinModule) {
+    Object.defineProperty(processWithGetBuiltinModule, 'getBuiltinModule', {
+      configurable: true,
+      value: implementation,
+      writable: true,
+    });
+  }
+
+  vi.spyOn(processWithGetBuiltinModule as typeof process & { getBuiltinModule: typeof process.getBuiltinModule }, 'getBuiltinModule').mockImplementation(implementation);
+}
 
 function installNodeBuiltinMock(): void {
-  vi.spyOn(process, 'getBuiltinModule').mockImplementation(((id: string) => {
+  spyOnGetBuiltinModule(((id: string) => {
     if (id === 'node:crypto') {
       return { createHash };
     }
@@ -37,7 +54,7 @@ function installNodeBuiltinMock(): void {
       };
     }
 
-    return originalGetBuiltinModule(id as Parameters<typeof process.getBuiltinModule>[0]);
+    return originalGetBuiltinModule?.(id as Parameters<typeof process.getBuiltinModule>[0]);
   }) as typeof process.getBuiltinModule);
 }
 
