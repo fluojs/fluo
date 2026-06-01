@@ -29,6 +29,7 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
   private handler: TransportHandler | undefined;
   private listenPromise: Promise<void> | undefined;
   private server: Server | undefined;
+  private serverPromise: Promise<Server> | undefined;
   private readonly sockets = new Set<Socket>();
   private readonly host: string;
   private readonly maxFrameBytes: number;
@@ -58,18 +59,32 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
 
     this.handler = handler;
 
-    const server = await this.ensureServer();
-
-    if (server.listening) {
-      return;
-    }
-
     if (this.listenPromise) {
       await this.listenPromise;
       return;
     }
 
-    this.listenPromise = new Promise<void>((resolve, reject) => {
+    this.listenPromise = this.startListening();
+
+    try {
+      await this.listenPromise;
+    } finally {
+      this.listenPromise = undefined;
+    }
+  }
+
+  private async startListening(): Promise<void> {
+    const server = await this.ensureServer();
+
+    if (this.closing) {
+      throw new Error('TcpMicroserviceTransport is closing. Wait for close() to complete before listen().');
+    }
+
+    if (server.listening) {
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
       server.listen(this.options.port, this.host, () => {
         server.off('error', reject);
@@ -78,10 +93,8 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
       });
     });
 
-    try {
-      await this.listenPromise;
-    } finally {
-      this.listenPromise = undefined;
+    if (this.closing) {
+      throw new Error('TcpMicroserviceTransport is closing. Wait for close() to complete before listen().');
     }
   }
 
@@ -331,15 +344,24 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
       return this.server;
     }
 
-    const { createServer } = await import('node:net');
-    const server = createServer((socket) => {
-      this.sockets.add(socket);
-      this.bindSocketParser<TransportPacket>(socket, async (packet) => this.handleInboundPacket(socket, packet));
-      socket.once('close', () => this.sockets.delete(socket));
-    });
-    this.server = server;
+    this.serverPromise ??= (async () => {
+      const { createServer } = await import('node:net');
+      const server = createServer((socket) => {
+        this.sockets.add(socket);
+        this.bindSocketParser<TransportPacket>(socket, async (packet) => this.handleInboundPacket(socket, packet));
+        socket.once('close', () => this.sockets.delete(socket));
+      });
+      this.server = server;
 
-    return server;
+      return server;
+    })();
+
+    try {
+      return await this.serverPromise;
+    } catch (error) {
+      this.serverPromise = undefined;
+      throw error;
+    }
   }
 
   private bindSocketParser<TPacket>(socket: Socket, onPacket: (packet: TPacket) => void): void {
