@@ -182,9 +182,9 @@ scope_decision:
 
 ## 5. Purpose Router and Batch Orchestration
 
-- 권장 batch size는 4 packages다.
+- 권장 batch size는 8 packages다.
 - batch가 여러 개여도 Scope Resolution 결과의 package 목록과 Intake Question Gate의 audit purposes만 사용한다.
-- `all` mode의 41개 package는 4개 단위로 11개 batch를 만든다. 마지막 batch는 1개 package가 된다.
+- `all` mode의 41개 package는 8개 단위로 6개 batch를 만든다. 마지막 batch는 1개 package가 된다.
 - batch 시작 전 package별 `route_plan`을 먼저 작성한다. `route_plan`과 batch manifest 없이 reviewer/R&D agent를 호출하지 않는다.
 - `expected_agent_invocations`는 고정 `package_count * 3`이 아니다. 각 package의 `route_plan.primary_agents.length` 합계와 `conditional_agents` 중 실제 trigger된 호출 수를 기준으로 계산한다.
 
@@ -208,7 +208,7 @@ Conditional routing rules:
 - `comprehensive` starts with the existing 3 reviewer triad, then may call specialist agents only when triad findings identify a docs/book, release, or NestJS migration trigger.
 - `comprehensive` combined with any explicit purpose keeps that explicit route. For example, `comprehensive + feature-addition` runs the triad and `fluo-package-feature-rd-reviewer`.
 - If multiple selected purposes map to the same agent for the same package, call that agent once and pass all matching purposes in `audit_purposes`.
-- `feature-addition` must not use architecture/test findings as a substitute for R&D. It must produce `rd_brief` first; issue drafts from R&D require explicit human selection or documented gap evidence.
+- `feature-addition` must not use architecture/test findings as a substitute for R&D. It must produce `rd_brief` first; issue drafts from R&D require documented gap evidence and registration triage.
 - P0/P1 findings outside the selected purposes may be retained only as `purpose_alignment: unrelated-critical`.
 
 `route_plan` schema:
@@ -233,12 +233,12 @@ route_plan:
 
 ```yaml
 batch_plan:
-  batch_size: 4
+  batch_size: 8
   package_count: <scope_decision.packages.length>
   expected_agent_invocations: <sum(route_plan.primary_agents) + triggered conditional agents>
   batches:
     - id: 1
-      packages: [<pkg>, <pkg>, <pkg>, <pkg>]
+      packages: [<pkg>, ...]
       route_plans: [<route_plan>, ...]
       expected_invocations: <sum of route_plan primary agents plus triggered conditional agents>
 ```

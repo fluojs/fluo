@@ -20,7 +20,11 @@ Use this file as the local standard for new `.opencode/agents/*.md` files.
 ---
 description: fluo-<role> reviews a change set read-only and reports only real risk
 mode: subagent
-model: <strong-model-or-default>
+model: openai/<model-id>
+options:
+  reasoningEffort: high
+  reasoningSummary: auto
+  textVerbosity: low
 temperature: 0.1
 permission:
   read: allow
@@ -105,7 +109,11 @@ Rules:
 ---
 description: fluo-<role> implements one scoped task inside an isolated worktree
 mode: subagent
-model: <strong-model-or-default>
+model: openai/<model-id>
+options:
+  reasoningEffort: xhigh
+  reasoningSummary: auto
+  textVerbosity: low
 temperature: 0.2
 permission:
   read: allow
@@ -175,6 +183,8 @@ Rules:
 - Do not rely on implicit name matching.
 - Keep reviewer templates separate from write-capable implementers.
 - Prefer one role per file.
+- Use provider-qualified model IDs in agent frontmatter, e.g. `openai/gpt-5.5`, not bare model names such as `gpt-5.5`.
+- Put provider/model request tuning under `options:`. Do not add plugin-specific keys such as `fallback_models` unless the matching OpenCode plugin is installed and documented in this repository.
 
 ## GitHub CLI permission policy
 

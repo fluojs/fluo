@@ -1,6 +1,11 @@
 ---
 description: fluo-package-release-impact-reviewer audits a single package for release-governance, changeset, changelog, and public behavior impact read-only and returns schema-compliant findings only.
 mode: subagent
+model: openai/gpt-5.5
+options:
+  reasoningEffort: high
+  reasoningSummary: auto
+  textVerbosity: low
 temperature: 0.1
 permission:
   read: allow

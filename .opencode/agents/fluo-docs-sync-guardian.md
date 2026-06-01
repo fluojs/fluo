@@ -1,7 +1,11 @@
 ---
 description: fluo-docs-sync-guardian reviews docs changes read-only and reports EN/KO parity, companion update, tooling/CI enforcement, and regression evidence verdict
 mode: subagent
-model: claude-sonnet-4-5
+model: openai/gpt-5.5
+options:
+  reasoningEffort: high
+  reasoningSummary: auto
+  textVerbosity: low
 temperature: 0.1
 permission:
   read: allow

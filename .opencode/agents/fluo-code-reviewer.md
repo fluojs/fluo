@@ -1,6 +1,11 @@
 ---
 description: fluo-code-reviewer reviews a PR's changed files for correctness, architecture fit, and package boundary compliance read-only and reports only real risk
 mode: subagent
+model: openai/gpt-5.5
+options:
+  reasoningEffort: high
+  reasoningSummary: auto
+  textVerbosity: low
 temperature: 0.1
 permission:
   read: allow
