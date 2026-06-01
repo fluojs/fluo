@@ -1,14 +1,14 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import type { OnApplicationBootstrap } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
-
+import { CqrsBusBase, createDuplicateHandlerMessage } from '../discovery.js';
 import { CommandHandlerNotFoundException, DuplicateCommandHandlerError } from '../errors.js';
 import { getCommandHandlerMetadata } from '../metadata.js';
-import { CqrsBusBase, createDuplicateHandlerMessage } from '../discovery.js';
 import type {
   CommandBus,
   CommandHandlerDescriptor,
   CommandType,
+  CqrsDispatchContext,
   ICommand,
   ICommandHandler,
 } from '../types.js';
@@ -41,12 +41,13 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
    * Executes one command by dispatching it to the discovered handler for its constructor.
    *
    * @param command Command instance to execute.
+   * @param context Optional saga dispatch context to pass through nested CQRS calls.
    * @returns The resolved handler result.
    *
    * @throws {CommandHandlerNotFoundException} When no handler is registered for the command type.
    * @throws {InvariantError} When the resolved provider does not implement `execute(command)`.
    */
-  async execute<TCommand extends ICommand, TResult = void>(command: TCommand): Promise<TResult> {
+  async execute<TCommand extends ICommand, TResult = void>(command: TCommand, context?: CqrsDispatchContext): Promise<TResult> {
     await this.ensureDiscovered();
 
     const commandType = command.constructor as CommandType<TCommand>;
@@ -62,7 +63,7 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
       throw new InvariantError(`Command handler ${descriptor.targetType.name} must implement execute(command).`);
     }
 
-    return await instance.execute(command) as TResult;
+    return await instance.execute(command, context) as TResult;
   }
 
   private async ensureDiscovered(): Promise<void> {

@@ -9,6 +9,7 @@ import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
 import { COMMAND_BUS, CQRS_MODULE_OPTIONS, EVENT_BUS, QUERY_BUS } from './tokens.js';
 import type {
   CommandHandlerClass,
+  CqrsDispatchContext,
   EventHandlerClass,
   ICommand,
   IEvent,
@@ -54,6 +55,24 @@ function collectOptionHandlerProviders(options: CqrsModuleOptions): Provider[] {
   return providers;
 }
 
+function assertCommandBusService(service: unknown): asserts service is CommandBusLifecycleService {
+  if (!(service instanceof CommandBusLifecycleService)) {
+    throw new TypeError('CQRS command bus alias expected CommandBusLifecycleService.');
+  }
+}
+
+function assertQueryBusService(service: unknown): asserts service is QueryBusLifecycleService {
+  if (!(service instanceof QueryBusLifecycleService)) {
+    throw new TypeError('CQRS query bus alias expected QueryBusLifecycleService.');
+  }
+}
+
+function assertCqrsEventBusService(service: unknown): asserts service is CqrsEventBusService {
+  if (!(service instanceof CqrsEventBusService)) {
+    throw new TypeError('CQRS event bus alias expected CqrsEventBusService.');
+  }
+}
+
 /**
  * Creates the providers required for CQRS buses, compatibility aliases, and optional handler registration.
  *
@@ -70,27 +89,39 @@ export function createCqrsProviders(options: CqrsModuleOptions = {}): Provider[]
     {
       inject: [CommandBusLifecycleService],
       provide: COMMAND_BUS,
-      useFactory: (service: unknown) => ({
-        execute: (command: ICommand) => (service as CommandBusLifecycleService).execute(command),
-      }),
+      useFactory: (service: unknown) => {
+        assertCommandBusService(service);
+
+        return {
+          execute: (command: ICommand, context?: CqrsDispatchContext) => service.execute(command, context),
+        };
+      },
     },
     QueryBusLifecycleService,
     {
       inject: [QueryBusLifecycleService],
       provide: QUERY_BUS,
-      useFactory: (service: unknown) => ({
-        execute: (query: IQuery<unknown>) => (service as QueryBusLifecycleService).execute(query),
-      }),
+      useFactory: (service: unknown) => {
+        assertQueryBusService(service);
+
+        return {
+          execute: (query: IQuery<unknown>, context?: CqrsDispatchContext) => service.execute(query, context),
+        };
+      },
     },
     CqrsSagaLifecycleService,
     CqrsEventBusService,
     {
       inject: [CqrsEventBusService],
       provide: EVENT_BUS,
-      useFactory: (service: unknown) => ({
-        publish: (event: IEvent) => (service as CqrsEventBusService).publish(event),
-        publishAll: (events: readonly IEvent[]) => (service as CqrsEventBusService).publishAll(events),
-      }),
+      useFactory: (service: unknown) => {
+        assertCqrsEventBusService(service);
+
+        return {
+          publish: (event: IEvent, context?: CqrsDispatchContext) => service.publish(event, context),
+          publishAll: (events: readonly IEvent[], context?: CqrsDispatchContext) => service.publishAll(events, context),
+        };
+      },
     },
     ...collectOptionHandlerProviders(options),
   ];

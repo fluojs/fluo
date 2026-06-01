@@ -1,12 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import { Inject } from '@fluojs/core';
 import { Container } from '@fluojs/di';
-import { OnEvent, type EventBusTransport } from '@fluojs/event-bus';
-import { bootstrapApplication, defineModule, type ApplicationLogger } from '@fluojs/runtime';
-
-import { CommandHandler, EventHandler, QueryHandler, Saga } from './decorators.js';
+import { type EventBusTransport, OnEvent } from '@fluojs/event-bus';
+import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { describe, expect, it, vi } from 'vitest';
 import { CommandBusLifecycleService } from './buses/command-bus.js';
+import { CqrsEventBusService } from './buses/event-bus.js';
+import { QueryBusLifecycleService } from './buses/query-bus.js';
+import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
+import { CommandHandler, EventHandler, QueryHandler, Saga } from './decorators.js';
 import {
   CommandHandlerNotFoundException,
   DuplicateCommandHandlerError,
@@ -15,14 +16,12 @@ import {
   SagaExecutionError,
   SagaTopologyError,
 } from './errors.js';
-import { CqrsEventBusService } from './buses/event-bus.js';
 import { getCommandHandlerMetadata, getEventHandlerMetadata, getQueryHandlerMetadata, getSagaMetadata } from './metadata.js';
 import { CqrsModule } from './module.js';
-import { QueryBusLifecycleService } from './buses/query-bus.js';
-import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
 import { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
 import type {
   CommandBus,
+  CqrsDispatchContext,
   CqrsEventBus,
   ICommand,
   ICommandHandler,
@@ -406,9 +405,9 @@ describe('@fluojs/cqrs', () => {
         private readonly store: ProcessStore,
       ) {}
 
-      async execute(command: StartPaymentCommand): Promise<void> {
+      async execute(command: StartPaymentCommand, context?: CqrsDispatchContext): Promise<void> {
         this.store.commandLog.push(`start-payment:${command.orderId}`);
-        await this.eventBus.publish(new PaymentAuthorizedEvent(command.orderId));
+        await this.eventBus.publish(new PaymentAuthorizedEvent(command.orderId), context);
       }
     }
 
@@ -420,9 +419,9 @@ describe('@fluojs/cqrs', () => {
         private readonly store: ProcessStore,
       ) {}
 
-      async execute(command: ReserveInventoryCommand): Promise<void> {
+      async execute(command: ReserveInventoryCommand, context?: CqrsDispatchContext): Promise<void> {
         this.store.commandLog.push(`reserve-inventory:${command.orderId}`);
-        await this.eventBus.publish(new InventoryReservedEvent(command.orderId));
+        await this.eventBus.publish(new InventoryReservedEvent(command.orderId), context);
       }
     }
 
@@ -444,22 +443,22 @@ describe('@fluojs/cqrs', () => {
         private readonly store: ProcessStore,
       ) {}
 
-      async handle(event: IEvent): Promise<void> {
+      async handle(event: IEvent, context?: CqrsDispatchContext): Promise<void> {
         if (event instanceof OrderSubmittedEvent) {
           this.store.sagaLog.push(`submitted:${event.orderId}`);
-          await this.commandBus.execute(new StartPaymentCommand(event.orderId));
+          await this.commandBus.execute(new StartPaymentCommand(event.orderId), context);
           return;
         }
 
         if (event instanceof PaymentAuthorizedEvent) {
           this.store.sagaLog.push(`payment-authorized:${event.orderId}`);
-          await this.commandBus.execute(new ReserveInventoryCommand(event.orderId));
+          await this.commandBus.execute(new ReserveInventoryCommand(event.orderId), context);
           return;
         }
 
         if (event instanceof InventoryReservedEvent) {
           this.store.sagaLog.push(`inventory-reserved:${event.orderId}`);
-          await this.commandBus.execute(new CompleteOrderCommand(event.orderId));
+          await this.commandBus.execute(new CompleteOrderCommand(event.orderId), context);
         }
       }
     }
@@ -567,8 +566,8 @@ describe('@fluojs/cqrs', () => {
     class SelfTriggeringSaga implements ISaga<LoopEvent> {
       constructor(private readonly eventBus: CqrsEventBus) {}
 
-      async handle(event: LoopEvent): Promise<void> {
-        await this.eventBus.publish(new LoopEvent(event.loopId));
+      async handle(event: LoopEvent, context?: CqrsDispatchContext): Promise<void> {
+        await this.eventBus.publish(new LoopEvent(event.loopId), context);
       }
     }
 
@@ -601,8 +600,8 @@ describe('@fluojs/cqrs', () => {
     class StepOneSaga implements ISaga<StepOneEvent> {
       constructor(private readonly eventBus: CqrsEventBus) {}
 
-      async handle(event: StepOneEvent): Promise<void> {
-        await this.eventBus.publish(new StepTwoEvent(event.workflowId));
+      async handle(event: StepOneEvent, context?: CqrsDispatchContext): Promise<void> {
+        await this.eventBus.publish(new StepTwoEvent(event.workflowId), context);
       }
     }
 
@@ -611,8 +610,8 @@ describe('@fluojs/cqrs', () => {
     class StepTwoSaga implements ISaga<StepTwoEvent> {
       constructor(private readonly eventBus: CqrsEventBus) {}
 
-      async handle(event: StepTwoEvent): Promise<void> {
-        await this.eventBus.publish(new StepOneEvent(event.workflowId));
+      async handle(event: StepTwoEvent, context?: CqrsDispatchContext): Promise<void> {
+        await this.eventBus.publish(new StepOneEvent(event.workflowId), context);
       }
     }
 
@@ -652,9 +651,9 @@ describe('@fluojs/cqrs', () => {
       class DepthSaga implements ISaga<TEvent> {
         constructor(private readonly eventBus: CqrsEventBus) {}
 
-        async handle(): Promise<void> {
+        async handle(_event: TEvent, context?: CqrsDispatchContext): Promise<void> {
           if (NextEventType) {
-            await this.eventBus.publish(new NextEventType());
+            await this.eventBus.publish(new NextEventType(), context);
           }
         }
       }

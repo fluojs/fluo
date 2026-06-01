@@ -1,15 +1,15 @@
 import { Inject, InvariantError } from '@fluojs/core';
-import { EVENT_BUS as FLUO_EVENT_BUS, type EventBus } from '@fluojs/event-bus';
-import type { OnApplicationShutdown, OnApplicationBootstrap } from '@fluojs/runtime';
+import { type EventBus, EVENT_BUS as FLUO_EVENT_BUS } from '@fluojs/event-bus';
+import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { CqrsBusBase } from '../discovery.js';
 import { createIsolatedEvent } from '../event-clone.js';
 import { getEventHandlerMetadata } from '../metadata.js';
-import { CQRS_MODULE_OPTIONS } from '../tokens.js';
-import { createCqrsPlatformStatusSnapshot } from '../status.js';
 import type { CqrsModuleOptions } from '../module.js';
-import type { CqrsEventBus, CqrsEventType, EventHandlerDescriptor, IEvent, IEventHandler } from '../types.js';
+import { createCqrsPlatformStatusSnapshot } from '../status.js';
+import { CQRS_MODULE_OPTIONS } from '../tokens.js';
+import type { CqrsDispatchContext, CqrsEventBus, CqrsEventType, EventHandlerDescriptor, IEvent, IEventHandler } from '../types.js';
 import { CqrsSagaLifecycleService } from './saga-bus.js';
 
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
@@ -94,25 +94,27 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
    * Publishes one event to matching CQRS handlers, sagas, and the shared event bus.
    *
    * @param event Event instance to publish.
+   * @param context Optional saga dispatch context to pass through nested CQRS calls.
    * @returns A promise that resolves once all local CQRS side effects and delegated publication complete.
    *
    * @throws {InvariantError} When a discovered provider does not implement `handle(event)`.
    */
-  async publish<TEvent extends IEvent>(event: TEvent): Promise<void> {
-    await this.trackPublishPipeline(this.runPublishPipeline(event));
+  async publish<TEvent extends IEvent>(event: TEvent, context?: CqrsDispatchContext): Promise<void> {
+    await this.trackPublishPipeline(this.runPublishPipeline(event, context));
   }
 
   /**
    * Publishes a batch of events sequentially through the CQRS event pipeline.
    *
    * @param events Event instances to publish in order.
+   * @param context Optional saga dispatch context to pass through nested CQRS calls.
    * @returns A promise that resolves once all events are published.
    */
-  async publishAll<TEvent extends IEvent>(events: readonly TEvent[]): Promise<void> {
-    await this.trackPublishPipeline(this.runPublishAllPipeline(events));
+  async publishAll<TEvent extends IEvent>(events: readonly TEvent[], context?: CqrsDispatchContext): Promise<void> {
+    await this.trackPublishPipeline(this.runPublishAllPipeline(events, context));
   }
 
-  private async runPublishPipeline<TEvent extends IEvent>(event: TEvent): Promise<void> {
+  private async runPublishPipeline<TEvent extends IEvent>(event: TEvent, context?: CqrsDispatchContext): Promise<void> {
     await this.ensureDiscovered();
 
     for (const descriptor of this.matchEventDescriptors(event)) {
@@ -122,16 +124,16 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
         throw new InvariantError(`Event handler ${descriptor.targetType.name} must implement handle(event).`);
       }
 
-      await instance.handle(createIsolatedEvent(descriptor.eventType as CqrsEventType<TEvent>, event));
+      await instance.handle(createIsolatedEvent(descriptor.eventType as CqrsEventType<TEvent>, event), context);
     }
 
-    await this.sagaService.dispatch(event);
+    await this.sagaService.dispatch(event, context);
     await this.eventBus.publish(event);
   }
 
-  private async runPublishAllPipeline<TEvent extends IEvent>(events: readonly TEvent[]): Promise<void> {
+  private async runPublishAllPipeline<TEvent extends IEvent>(events: readonly TEvent[], context?: CqrsDispatchContext): Promise<void> {
     for (const event of events) {
-      await this.publish(event);
+      await this.publish(event, context);
     }
   }
 
