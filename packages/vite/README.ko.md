@@ -19,7 +19,7 @@ fluo 프로젝트를 위한 Vite 플러그인과 빌드 유틸리티입니다.
 npm install --save-dev @fluojs/vite vite @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript
 ```
 
-`@babel/core` `>=7.26.0`, `@babel/plugin-proposal-decorators` `>=7.28.0`, `@babel/preset-typescript` `>=7.27.0`, `vite` `>=6.2.0`은 peer dependency입니다. `fluoDecoratorsPlugin()`이 Vite transform 시점에 Babel decorator plugin과 TypeScript preset을 해석하기 때문입니다.
+`@babel/core` `>=7.26.0`, `@babel/plugin-proposal-decorators` `>=7.28.0`, `@babel/preset-typescript` `>=7.27.0`, `vite` `>=6.2.0`은 peer dependency입니다. `fluoDecoratorsPlugin()`이 Vite transform 시점에 Babel을 로드하고 Babel decorator plugin과 TypeScript preset을 해석하며, 누락된 peer dependency를 Vite `transform` hook의 진단으로 보고하기 때문입니다.
 
 ## 사용 시점
 
@@ -42,7 +42,7 @@ export default defineConfig({
 });
 ```
 
-이 플러그인은 `.ts` 애플리케이션 파일을 Babel로 변환하며 `2023-11` decorators proposal과 `@babel/preset-typescript`를 사용합니다. 파일 경계를 판단하기 전에 Vite query suffix를 제거한 뒤 declaration 파일, `*.test.ts` 또는 `*.spec.ts` 파일, `node_modules`, `.ts`가 아닌 파일은 건너뛰므로 생성된 Vitest 테스트 파일은 계속 전용 `@fluojs/testing/vitest` transform 경로를 사용합니다.
+이 플러그인은 `.ts` 애플리케이션 파일을 Babel로 변환하며 `2023-11` decorators proposal과 `@babel/preset-typescript`를 사용합니다. 파일 경계를 판단하기 전에 Vite query suffix를 제거한 뒤 declaration 파일, `*.test.ts` 또는 `*.spec.ts` 파일, `node_modules`, `.ts`가 아닌 파일은 건너뛰므로 생성된 Vitest 테스트 파일은 계속 전용 `@fluojs/testing/vitest` transform 경로를 사용합니다. `@fluojs/vite`를 import하거나 `fluoDecoratorsPlugin()`을 생성하는 시점에는 `@babel/core`를 로드하지 않으며, 누락된 Babel peer는 Vite가 변환 중인 소스 파일에 대한 transform-time 진단으로 표시됩니다.
 
 ## 공개 API
 
