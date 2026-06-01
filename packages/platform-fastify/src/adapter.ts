@@ -36,7 +36,6 @@ import type {
 } from '@fluojs/runtime';
 import {
   bootstrapHttpAdapterApplication,
-  createConsoleApplicationLogger,
   runHttpAdapterApplication,
 } from '@fluojs/runtime/internal/http-adapter';
 import {
@@ -53,6 +52,7 @@ import {
   splitRawRequestUrl,
 } from '@fluojs/runtime/internal-node';
 import {
+  createConsoleApplicationLogger,
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
 } from '@fluojs/runtime/node';
