@@ -1,4 +1,3 @@
-import { createRequire } from 'node:module';
 import { FluoError } from '@fluojs/core';
 
 import { cloneConfigDictionary } from './clone.js';
@@ -56,6 +55,9 @@ type NodeBuiltinModuleHost = typeof globalThis & {
 };
 
 type NodeBuiltinRequire = (id: 'node:crypto' | 'node:fs' | 'node:path') => NodeCryptoModule | NodeFsModule | NodePathModule;
+type NodeBuiltinRequireHost = typeof globalThis & {
+  require?: NodeBuiltinRequire;
+};
 
 interface NormalizedLoadOptions {
   envFile: string | undefined;
@@ -84,13 +86,35 @@ type ConfigSchemaSuccessResult = {
 };
 
 const reloadFailureReasons = new WeakMap<object, ConfigReloadReason>();
-const requireNodeBuiltin = createRequire(import.meta.url) as NodeBuiltinRequire;
 const nodeBuiltinRuntimeRequirement = 'Node.js 20.0.0 or newer is required when @fluojs/config loads env files or starts watch mode.';
+let requireNodeBuiltin: NodeBuiltinRequire | undefined;
+
+function resolveRequireNodeBuiltin(): NodeBuiltinRequire {
+  if (requireNodeBuiltin) {
+    return requireNodeBuiltin;
+  }
+
+  const requireFromRuntime = (globalThis as NodeBuiltinRequireHost).require
+    ?? Function('return typeof require === "function" ? require : undefined')() as NodeBuiltinRequire | undefined;
+  if (requireFromRuntime) {
+    requireNodeBuiltin = requireFromRuntime;
+    return requireFromRuntime;
+  }
+
+  throw new FluoError('Node.js configuration loading is unavailable in this runtime.', {
+    code: 'CONFIG_RUNTIME_UNAVAILABLE',
+    cause: new Error(`${nodeBuiltinRuntimeRequirement} The host runtime did not expose process.getBuiltinModule() or a CommonJS require fallback. Use in-memory config options or run env-file loading on Node.js.`),
+  });
+}
 
 function requireNodeBuiltinFallback<TModule>(id: 'node:crypto' | 'node:fs' | 'node:path'): TModule {
   try {
-    return requireNodeBuiltin(id) as TModule;
+    return resolveRequireNodeBuiltin()(id) as TModule;
   } catch (error: unknown) {
+    if (error instanceof FluoError) {
+      throw error;
+    }
+
     throw new FluoError('Node.js configuration loading is unavailable in this runtime.', {
       code: 'CONFIG_RUNTIME_UNAVAILABLE',
       cause: new Error(`${nodeBuiltinRuntimeRequirement} The host runtime could not load ${id}. Use in-memory config options or run env-file loading on Node.js.`, { cause: error }),

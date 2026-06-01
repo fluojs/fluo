@@ -1,16 +1,36 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+type ProcessWithGetBuiltinModule = typeof process & {
+  getBuiltinModule?: typeof process.getBuiltinModule;
+};
+
+const processWithGetBuiltinModule = process as ProcessWithGetBuiltinModule;
+
+function spyOnGetBuiltinModule(implementation: typeof process.getBuiltinModule) {
+  if (!processWithGetBuiltinModule.getBuiltinModule) {
+    Object.defineProperty(processWithGetBuiltinModule, 'getBuiltinModule', {
+      configurable: true,
+      value: implementation,
+      writable: true,
+    });
+  }
+
+  return vi.spyOn(processWithGetBuiltinModule as typeof process & { getBuiltinModule: typeof process.getBuiltinModule }, 'getBuiltinModule').mockImplementation(implementation);
+}
+
 describe('@fluojs/config root runtime boundary', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     vi.resetModules();
   });
 
   it('does not resolve Node builtins when importing the root public API', async () => {
-    const getBuiltinModule = vi.spyOn(process, 'getBuiltinModule').mockImplementation(((id: string) => {
+    const getBuiltinModule = spyOnGetBuiltinModule(((id: string) => {
       throw new Error(`Root import attempted to resolve ${id}.`);
     }) as typeof process.getBuiltinModule);
 
@@ -22,7 +42,7 @@ describe('@fluojs/config root runtime boundary', () => {
   });
 
   it('loads in-memory config without resolving cwd, env files, or Node builtins', async () => {
-    const getBuiltinModule = vi.spyOn(process, 'getBuiltinModule').mockImplementation(((id: string) => {
+    const getBuiltinModule = spyOnGetBuiltinModule(((id: string) => {
       throw new Error(`In-memory loading attempted to resolve ${id}.`);
     }) as typeof process.getBuiltinModule);
     const cwd = vi.spyOn(process, 'cwd').mockImplementation(() => {
@@ -44,7 +64,8 @@ describe('@fluojs/config root runtime boundary', () => {
     const envFilePath = join(cwd, '.env');
 
     writeFileSync(envFilePath, 'PORT=4010\n');
-    vi.spyOn(process, 'getBuiltinModule').mockImplementation((() => undefined) as typeof process.getBuiltinModule);
+    vi.stubGlobal('require', createRequire(import.meta.url));
+    spyOnGetBuiltinModule((() => undefined) as typeof process.getBuiltinModule);
 
     const { loadConfig } = await import('./index.js');
 

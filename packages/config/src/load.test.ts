@@ -12,10 +12,27 @@ import type { ConfigDictionary, ConfigLoadOptions, ConfigModuleOptions, ConfigSc
 
 const watchCallbacks = vi.hoisted(() => new Set<() => void>());
 
-const originalGetBuiltinModule = process.getBuiltinModule.bind(process);
+type ProcessWithGetBuiltinModule = typeof process & {
+  getBuiltinModule?: typeof process.getBuiltinModule;
+};
+
+const processWithGetBuiltinModule = process as ProcessWithGetBuiltinModule;
+const originalGetBuiltinModule = processWithGetBuiltinModule.getBuiltinModule?.bind(process);
+
+function spyOnGetBuiltinModule(implementation: typeof process.getBuiltinModule): void {
+  if (!processWithGetBuiltinModule.getBuiltinModule) {
+    Object.defineProperty(processWithGetBuiltinModule, 'getBuiltinModule', {
+      configurable: true,
+      value: implementation,
+      writable: true,
+    });
+  }
+
+  vi.spyOn(processWithGetBuiltinModule as typeof process & { getBuiltinModule: typeof process.getBuiltinModule }, 'getBuiltinModule').mockImplementation(implementation);
+}
 
 function installNodeBuiltinMock(): void {
-  vi.spyOn(process, 'getBuiltinModule').mockImplementation(((id: string) => {
+  spyOnGetBuiltinModule(((id: string) => {
     if (id === 'node:crypto') {
       return { createHash };
     }
@@ -36,7 +53,7 @@ function installNodeBuiltinMock(): void {
       };
     }
 
-    return originalGetBuiltinModule(id as Parameters<typeof process.getBuiltinModule>[0]);
+    return originalGetBuiltinModule?.(id as Parameters<typeof process.getBuiltinModule>[0]);
   }) as typeof process.getBuiltinModule);
 }
 
@@ -157,6 +174,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
@@ -854,6 +872,61 @@ describe('loadConfig', () => {
           updates.push(port);
         }
       });
+
+      writeFileSync(envPath, 'PORT=4100\n');
+      emitWatchChange();
+
+      await waitForCondition(() => updates.includes('4100'));
+      expect(reloader.current()['PORT']).toBe('4100');
+    } finally {
+      reloader.close();
+    }
+  });
+
+  it('starts watch mode through the Node 20 fallback when getBuiltinModule is unavailable', async () => {
+    vi.stubGlobal('require', ((id: string) => {
+      if (id === 'node:crypto') {
+        return { createHash };
+      }
+
+      if (id === 'node:fs') {
+        return { existsSync, readFileSync, watch };
+      }
+
+      if (id === 'node:path') {
+        return { basename, dirname, join };
+      }
+
+      throw new Error(`Unexpected Node builtin fallback request: ${id}.`);
+    }) as NodeRequire);
+    spyOnGetBuiltinModule((() => undefined) as typeof process.getBuiltinModule);
+
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-watch-node20-fallback-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const reloader = createConfigReloader({
+      envFile: envPath,
+      processEnv: {},
+      watch: true,
+    });
+
+    try {
+      const updates: string[] = [];
+      reloader.subscribe((snapshot, reason) => {
+        if (reason !== 'watch') {
+          return;
+        }
+
+        const port = snapshot['PORT'];
+        if (typeof port === 'string') {
+          updates.push(port);
+        }
+      });
+
+      expect(reloader.current()['PORT']).toBe('4000');
+      expect(watchCallbacks.size).toBe(1);
 
       writeFileSync(envPath, 'PORT=4100\n');
       emitWatchChange();
