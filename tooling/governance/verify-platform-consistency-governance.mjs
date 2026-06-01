@@ -15,6 +15,7 @@ const ssotPairs = [
   ['docs/contracts/public-export-tsdoc-baseline.md', 'docs/contracts/public-export-tsdoc-baseline.ko.md'],
   ['docs/contracts/release-governance.md', 'docs/contracts/release-governance.ko.md'],
   ['docs/contracts/platform-conformance-authoring-checklist.md', 'docs/contracts/platform-conformance-authoring-checklist.ko.md'],
+  ['docs/reference/package-folder-structure.md', 'docs/reference/package-folder-structure.ko.md'],
   ['docs/reference/package-surface.md', 'docs/reference/package-surface.ko.md'],
 ];
 
@@ -31,6 +32,8 @@ const contractGateTriggers = new Set([
   'docs/contracts/platform-conformance-authoring-checklist.ko.md',
   'docs/reference/package-chooser.md',
   'docs/reference/package-chooser.ko.md',
+  'docs/reference/package-folder-structure.md',
+  'docs/reference/package-folder-structure.ko.md',
   'docs/reference/package-surface.md',
   'docs/reference/package-surface.ko.md',
 ]);

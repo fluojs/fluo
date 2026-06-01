@@ -58,5 +58,6 @@ src/
 
 - `src/` 내부에서 파일을 이동해도 `index.ts`의 공개 re-export 계약은 바뀌면 안 됩니다.
 - 명확한 그룹화 이유 없이 단일 파일 폴더를 만들지 않습니다.
+- Root package entrypoint는 runtime-specific Node builtin을 eager import하면 안 됩니다. 해당 의존성은 `src/node/`에 두거나 runtime-specific 실행 경로 안에서 lazy resolution 뒤에 둡니다.
 - `__snapshots__/`는 해당 테스트 옆에 유지합니다.
 - 정식 패키지 목록은 [package-surface.ko.md](./package-surface.ko.md)를 따릅니다.
