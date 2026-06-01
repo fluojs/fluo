@@ -818,6 +818,32 @@ describe('Socket.IO runtime limitation discoverability', () => {
   });
 });
 
+describe('WebSockets runtime subpath discoverability', () => {
+  const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+  const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const englishReadme = readFileSync(join(repoRoot, 'packages/websockets/README.md'), 'utf8');
+  const koreanReadme = readFileSync(join(repoRoot, 'packages/websockets/README.ko.md'), 'utf8');
+  const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+  const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+  const englishChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
+  const koreanChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.ko.md'), 'utf8');
+
+  it('keeps fetch-style authoring primitives discoverable from the context hub', () => {
+    for (const content of [englishContext, koreanContext, englishReadme, koreanReadme]) {
+      expect(content).toContain('@fluojs/websockets/bun');
+      expect(content).toContain('@fluojs/websockets/deno');
+      expect(content).toContain('@fluojs/websockets/cloudflare-workers');
+      expect(content).toMatch(/metadata authoring primitive|metadata helper|Metadata helper/);
+    }
+
+    for (const content of [englishSurface, koreanSurface, englishChooser, koreanChooser]) {
+      expect(content).toContain('@fluojs/websockets/node');
+      expect(content).toContain('@fluojs/websockets/cloudflare-workers');
+      expect(content).toMatch(/shared .*metadata|공유 .*metadata/);
+    }
+  });
+});
+
 describe('Passport auth discoverability', () => {
   const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
   const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
