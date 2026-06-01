@@ -20,7 +20,7 @@ Configuration loading, merging, validation, and typed runtime access for fluo ap
 npm install @fluojs/config
 ```
 
-Env-file loading and watch mode require Node.js 20.16.0 or newer so the package can resolve Node builtins lazily through the host runtime boundary. In-memory use of `ConfigService` and `loadConfig({ defaults, processEnv, runtimeOverrides })` does not require env-file access.
+The package supports Node.js 20.0.0 or newer. Env-file loading and watch mode additionally require Node.js 20.16.0 or newer at runtime so the package can resolve Node builtins lazily through the host runtime boundary. In-memory use of `ConfigService` and `loadConfig({ defaults, processEnv, runtimeOverrides })` does not require env-file access.
 
 ## When to Use
 
