@@ -2,6 +2,7 @@ import { FluoError } from '@fluojs/core';
 
 import type { ContextKey, RequestContext } from '../types.js';
 import {
+  canResolveAsyncLocalStorageDynamically,
   resolveAsyncLocalStorageConstructor,
   resolveImmediateAsyncLocalStorageConstructor,
 } from './request-context-node-store.js';
@@ -24,7 +25,17 @@ let fallbackRequestContextStore: RequestContextStore | undefined;
  * @returns The return value from `callback`.
  */
 export function runWithRequestContext<T>(context: RequestContext, callback: () => T): T {
-  return getRequestContextStore().run(context, callback);
+  const store = getResolvedRequestContextStore();
+
+  if (store) {
+    return store.run(context, callback);
+  }
+
+  if (!canResolveAsyncLocalStorageDynamically()) {
+    return getFallbackRequestContextStore().run(context, callback);
+  }
+
+  return runWithResolvedRequestContextStore(context, callback) as T;
 }
 
 /**
@@ -103,6 +114,10 @@ export function setContextValue<T>(context: RequestContext, key: ContextKey<T>, 
 }
 
 function getRequestContextStore(): RequestContextStore {
+  return getResolvedRequestContextStore() ?? getFallbackRequestContextStore();
+}
+
+function getResolvedRequestContextStore(): RequestContextStore | undefined {
   if (requestContextStore) {
     return requestContextStore;
   }
@@ -117,7 +132,16 @@ function getRequestContextStore(): RequestContextStore {
 
   void resolveRequestContextStore();
 
-  return getFallbackRequestContextStore();
+  return undefined;
+}
+
+async function runWithResolvedRequestContextStore<T>(
+  context: RequestContext,
+  callback: () => T,
+): Promise<Awaited<T>> {
+  const store = await resolveRequestContextStore();
+
+  return store.run(context, callback) as Awaited<T>;
 }
 
 async function resolveRequestContextStore(): Promise<RequestContextStore> {

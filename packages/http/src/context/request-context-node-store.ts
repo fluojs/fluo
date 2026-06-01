@@ -80,6 +80,18 @@ export async function resolveAsyncLocalStorageConstructor(
   }
 }
 
+/**
+ * Reports whether the host can still resolve Node async-context storage asynchronously.
+ *
+ * @param host Host global-like object to inspect for Node runtime markers.
+ * @returns `true` when the host is Node.js and can use a lazy `node:async_hooks` import.
+ */
+export function canResolveAsyncLocalStorageDynamically(
+  host: AsyncLocalStorageResolutionHost = globalThis,
+): boolean {
+  return isNodeHost(host);
+}
+
 function isNodeHost(host: AsyncLocalStorageResolutionHost): boolean {
   return typeof host.process?.versions?.node === 'string';
 }

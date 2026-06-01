@@ -155,6 +155,58 @@ describe('request context store', () => {
     expect(AsyncLocalStorage).toBeUndefined();
   });
 
+  it('preserves context across awaited work on the first public helper call when getBuiltinModule is unavailable', async () => {
+    vi.resetModules();
+    const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
+
+    Object.defineProperty(process, 'getBuiltinModule', {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      const requestContext = await import('./request-context.js');
+      const context = requestContext.createRequestContext(createMockContext());
+
+      const requestId = await requestContext.runWithRequestContext(context, async () => {
+        await Promise.resolve();
+
+        return requestContext.assertRequestContext().requestId;
+      });
+
+      expect(requestId).toBe('req_123');
+    } finally {
+      if (getBuiltinModuleDescriptor) {
+        Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);
+      }
+      vi.resetModules();
+    }
+  });
+
+  it('preserves context across awaited work on the first public helper call when getBuiltinModule throws', async () => {
+    vi.resetModules();
+
+    const getBuiltinModule = vi.spyOn(process, 'getBuiltinModule').mockImplementation(() => {
+      throw new Error('async_hooks probe failed');
+    });
+
+    try {
+      const requestContext = await import('./request-context.js');
+      const context = requestContext.createRequestContext(createMockContext());
+
+      const requestId = await requestContext.runWithRequestContext(context, async () => {
+        await Promise.resolve();
+
+        return requestContext.assertRequestContext().requestId;
+      });
+
+      expect(requestId).toBe('req_123');
+    } finally {
+      getBuiltinModule.mockRestore();
+      vi.resetModules();
+    }
+  });
+
   it('does not probe async hooks while importing the HTTP root barrel', async () => {
     const getBuiltinModule = vi.spyOn(process, 'getBuiltinModule').mockImplementation(() => {
       throw new Error('async_hooks should not be probed during import');
