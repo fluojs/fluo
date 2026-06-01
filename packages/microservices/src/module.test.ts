@@ -698,6 +698,57 @@ describe('@fluojs/microservices', () => {
     await microservice.close();
   });
 
+  it('attempts transport cleanup when close() observes an in-flight listen failure', async () => {
+    let rejectListen!: (error: Error) => void;
+    let closeCalls = 0;
+
+    const transport: MicroserviceTransport = {
+      async close() {
+        closeCalls += 1;
+      },
+      async emit() {},
+      async listen() {
+        await new Promise<void>((_resolve, reject) => {
+          rejectListen = reject;
+        });
+      },
+      async send() {
+        return undefined;
+      },
+    };
+
+    class Handler {
+      @EventPattern('listen.cleanup')
+      onEvent() {}
+    }
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [MicroservicesModule.forRoot({ transport })],
+      providers: [Handler],
+    });
+
+    const microservice = await FluoFactory.createMicroservice(AppModule);
+    const lifecycleService = await microservice.container.resolve(MicroserviceLifecycleService);
+    const listenPromise = microservice.listen();
+    const closePromise = microservice.close();
+
+    rejectListen(new Error('listen failed after partial start'));
+
+    await expect(listenPromise).rejects.toThrow('listen failed after partial start');
+    await expect(closePromise).resolves.toBeUndefined();
+    expect(closeCalls).toBeGreaterThan(0);
+    expect(lifecycleService.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        lastListenError: 'listen failed after partial start',
+      },
+      health: {
+        reason: 'listen failed after partial start',
+        status: 'unhealthy',
+      },
+    });
+  });
+
   it('injects the framework logger into transports without changing non-fatal event semantics', async () => {
     const loggerEvents: string[] = [];
     const errorLog = vi.spyOn(console, 'error').mockImplementation((message: unknown, error?: unknown) => {
