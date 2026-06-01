@@ -118,6 +118,19 @@ describe('fluoDecoratorsPlugin', () => {
     );
   });
 
+  it('reports missing Babel peers from the transform hook instead of plugin creation', async () => {
+    const plugin = fluoDecoratorsPlugin();
+    const missingPeerError = Object.assign(new Error("Cannot find package '@babel/core' imported from vite.config.ts"), {
+      code: 'ERR_MODULE_NOT_FOUND',
+    });
+
+    transformAsyncMock.mockRejectedValueOnce(missingPeerError);
+
+    await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/component.ts')).rejects.toThrow(
+      '[fluo-babel-decorators] Failed to resolve a Babel peer dependency while transforming /app/src/component.ts.',
+    );
+  });
+
   it('transforms application TypeScript files whose names contain test or spec substrings', async () => {
     const plugin = fluoDecoratorsPlugin();
 
