@@ -1,3 +1,5 @@
+import { createRequire } from 'node:module';
+
 import { FluoError } from '@fluojs/core';
 
 import { cloneConfigDictionary } from './clone.js';
@@ -55,9 +57,6 @@ type NodeBuiltinModuleHost = typeof globalThis & {
 };
 
 type NodeBuiltinRequire = (id: 'node:crypto' | 'node:fs' | 'node:path') => NodeCryptoModule | NodeFsModule | NodePathModule;
-type NodeBuiltinRequireHost = typeof globalThis & {
-  require?: NodeBuiltinRequire;
-};
 
 interface NormalizedLoadOptions {
   envFile: string | undefined;
@@ -94,17 +93,8 @@ function resolveRequireNodeBuiltin(): NodeBuiltinRequire {
     return requireNodeBuiltin;
   }
 
-  const requireFromRuntime = (globalThis as NodeBuiltinRequireHost).require
-    ?? Function('return typeof require === "function" ? require : undefined')() as NodeBuiltinRequire | undefined;
-  if (requireFromRuntime) {
-    requireNodeBuiltin = requireFromRuntime;
-    return requireFromRuntime;
-  }
-
-  throw new FluoError('Node.js configuration loading is unavailable in this runtime.', {
-    code: 'CONFIG_RUNTIME_UNAVAILABLE',
-    cause: new Error(`${nodeBuiltinRuntimeRequirement} The host runtime did not expose process.getBuiltinModule() or a CommonJS require fallback. Use in-memory config options or run env-file loading on Node.js.`),
-  });
+  requireNodeBuiltin = createRequire(import.meta.url) as NodeBuiltinRequire;
+  return requireNodeBuiltin;
 }
 
 function requireNodeBuiltinFallback<TModule>(id: 'node:crypto' | 'node:fs' | 'node:path'): TModule {
@@ -318,7 +308,9 @@ function rejectLegacyValidateOption(options: ConfigLoadOptions): void {
 function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions {
   rejectLegacyValidateOption(options);
 
-  const shouldUseDefaultEnvFile = options.cwd !== undefined || options.watch === true;
+  const hasExplicitEnvFile = options.envFilePath !== undefined || options.envFile !== undefined;
+  const hasExplicitInMemorySource = options.defaults !== undefined || options.processEnv !== undefined || options.runtimeOverrides !== undefined;
+  const shouldUseDefaultEnvFile = !hasExplicitEnvFile && (options.cwd !== undefined || options.watch === true || !hasExplicitInMemorySource);
   const cwd = shouldUseDefaultEnvFile && options.envFilePath === undefined && options.envFile === undefined
     ? options.cwd ?? resolveCurrentWorkingDirectory()
     : options.cwd;

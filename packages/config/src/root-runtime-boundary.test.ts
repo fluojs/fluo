@@ -1,5 +1,4 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -64,7 +63,9 @@ describe('@fluojs/config root runtime boundary', () => {
     const envFilePath = join(cwd, '.env');
 
     writeFileSync(envFilePath, 'PORT=4010\n');
-    vi.stubGlobal('require', createRequire(import.meta.url));
+    vi.stubGlobal('require', () => {
+      throw new Error('Node 20 ESM fallback must not depend on global require.');
+    });
     spyOnGetBuiltinModule((() => undefined) as typeof process.getBuiltinModule);
 
     const { loadConfig } = await import('./index.js');

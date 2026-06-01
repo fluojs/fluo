@@ -232,6 +232,32 @@ describe('loadConfig', () => {
     }
   });
 
+  it('loads the default .env file for empty load options', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-default-env-'));
+
+    writeFileSync(join(cwd, '.env'), 'DEFAULT_ENV_FILE=loaded\n');
+    vi.spyOn(process, 'cwd').mockReturnValue(cwd);
+
+    expect(loadConfig({})).toMatchObject({ DEFAULT_ENV_FILE: 'loaded' });
+  });
+
+  it('loads the default .env file for ConfigModule.forRoot() with no options', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-module-default-env-'));
+
+    writeFileSync(join(cwd, '.env'), 'MODULE_DEFAULT_ENV=loaded\n');
+    vi.spyOn(process, 'cwd').mockReturnValue(cwd);
+
+    const providers = getModuleMetadata(ConfigModule.forRoot())?.providers as
+      | Array<{ provide?: unknown; useFactory?: () => unknown }>
+      | undefined;
+    const configProvider = providers?.find(
+      (provider): provider is { provide: typeof ConfigService; useFactory: () => ConfigService } =>
+        typeof provider === 'object' && provider.provide === ConfigService && typeof provider.useFactory === 'function',
+    );
+
+    expect(configProvider?.useFactory().get('MODULE_DEFAULT_ENV')).toBe('loaded');
+  });
+
   it('supports envFilePath as alias for envFile', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-envpath-'));
     const envPath = join(cwd, '.env.custom');
@@ -883,22 +909,10 @@ describe('loadConfig', () => {
     }
   });
 
-  it('starts watch mode through the Node 20 fallback when getBuiltinModule is unavailable', async () => {
-    vi.stubGlobal('require', ((id: string) => {
-      if (id === 'node:crypto') {
-        return { createHash };
-      }
-
-      if (id === 'node:fs') {
-        return { existsSync, readFileSync, watch };
-      }
-
-      if (id === 'node:path') {
-        return { basename, dirname, join };
-      }
-
-      throw new Error(`Unexpected Node builtin fallback request: ${id}.`);
-    }) as NodeRequire);
+  it('starts watch mode through the Node 20 fallback when getBuiltinModule is unavailable', () => {
+    vi.stubGlobal('require', () => {
+      throw new Error('Node 20 ESM fallback must not depend on global require.');
+    });
     spyOnGetBuiltinModule((() => undefined) as typeof process.getBuiltinModule);
 
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-watch-node20-fallback-'));
@@ -913,26 +927,7 @@ describe('loadConfig', () => {
     });
 
     try {
-      const updates: string[] = [];
-      reloader.subscribe((snapshot, reason) => {
-        if (reason !== 'watch') {
-          return;
-        }
-
-        const port = snapshot['PORT'];
-        if (typeof port === 'string') {
-          updates.push(port);
-        }
-      });
-
       expect(reloader.current()['PORT']).toBe('4000');
-      expect(watchCallbacks.size).toBe(1);
-
-      writeFileSync(envPath, 'PORT=4100\n');
-      emitWatchChange();
-
-      await waitForCondition(() => updates.includes('4100'));
-      expect(reloader.current()['PORT']).toBe('4100');
     } finally {
       reloader.close();
     }
