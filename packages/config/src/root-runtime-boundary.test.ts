@@ -35,4 +35,17 @@ describe('@fluojs/config root runtime boundary', () => {
     expect(getBuiltinModule).not.toHaveBeenCalled();
     expect(cwd).not.toHaveBeenCalled();
   });
+
+  it('guards env-file loading when the host cannot provide lazy Node builtins', async () => {
+    vi.spyOn(process, 'getBuiltinModule').mockImplementation((() => undefined) as typeof process.getBuiltinModule);
+
+    const { loadConfig } = await import('./index.js');
+
+    expect(() => loadConfig({ envFilePath: '.env' })).toThrow(expect.objectContaining({
+      code: 'CONFIG_RUNTIME_UNAVAILABLE',
+      cause: expect.objectContaining({
+        message: expect.stringContaining('Node.js 20.16.0 or newer is required'),
+      }),
+    }));
+  });
 });

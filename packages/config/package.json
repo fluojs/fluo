@@ -17,7 +17,7 @@
     "directory": "packages/config"
   },
   "engines": {
-    "node": ">=20.16.0"
+    "node": ">=20.0.0"
   },
   "publishConfig": {
     "access": "public"

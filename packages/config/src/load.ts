@@ -81,14 +81,24 @@ type ConfigSchemaSuccessResult = {
 };
 
 const reloadFailureReasons = new WeakMap<object, ConfigReloadReason>();
+const nodeBuiltinRuntimeRequirement = 'Node.js 20.16.0 or newer is required when @fluojs/config loads env files or starts watch mode.';
 
 function resolveNodeBuiltin<TModule>(id: 'node:crypto' | 'node:fs' | 'node:path'): TModule {
-  const module = (globalThis as NodeBuiltinModuleHost).process?.getBuiltinModule?.(id);
+  const getBuiltinModule = (globalThis as NodeBuiltinModuleHost).process?.getBuiltinModule;
+
+  if (!getBuiltinModule) {
+    throw new FluoError('Node.js configuration loading requires a newer Node.js runtime.', {
+      code: 'CONFIG_RUNTIME_UNAVAILABLE',
+      cause: new Error(`${nodeBuiltinRuntimeRequirement} The host runtime did not expose process.getBuiltinModule(...). Use in-memory config options or run env-file loading on Node.js 20.16.0+.`),
+    });
+  }
+
+  const module = getBuiltinModule(id);
 
   if (!module) {
-    throw new FluoError('Node.js configuration loading is unavailable in this runtime.', {
+    throw new FluoError('Node.js configuration loading requires a newer Node.js runtime.', {
       code: 'CONFIG_RUNTIME_UNAVAILABLE',
-      cause: new Error(`The host runtime did not expose ${id}. Use in-memory config options or call @fluojs/config from a Node.js runtime.`),
+      cause: new Error(`${nodeBuiltinRuntimeRequirement} The host runtime did not expose ${id}. Use in-memory config options or run env-file loading on Node.js 20.16.0+.`),
     });
   }
 
