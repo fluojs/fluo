@@ -1,8 +1,26 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
-import * as graphqlPublicApi from './index.js';
+let graphqlPublicApi: typeof import('./index.js');
+
+vi.doMock('graphql-ws', () => {
+  throw new Error('Root @fluojs/graphql imports must not load graphql-ws until websocket transport is enabled.');
+});
+vi.doMock('graphql-ws/lib/use/ws', () => {
+  throw new Error('Root @fluojs/graphql imports must not load graphql-ws/ws until websocket transport is enabled.');
+});
+vi.doMock('ws', () => {
+  throw new Error('Root @fluojs/graphql imports must not load ws until websocket transport is enabled.');
+});
+
+beforeAll(async () => {
+  graphqlPublicApi = await import('./index.js');
+});
 
 describe('@fluojs/graphql public API surface', () => {
+  it('keeps websocket transport dependencies behind the enabled websocket branch', () => {
+    expect(graphqlPublicApi.GraphqlModule).toHaveProperty('forRoot');
+  });
+
   it('keeps documented supported root-barrel exports', () => {
     expect(graphqlPublicApi).toHaveProperty('Arg');
     expect(graphqlPublicApi).toHaveProperty('Query');
