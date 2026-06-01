@@ -1,5 +1,14 @@
 # @fluojs/cron
 
+## 1.0.3
+
+### Patch Changes
+
+- [#2076](https://github.com/fluojs/fluo/pull/2076) [`035b94d`](https://github.com/fluojs/fluo/commit/035b94d2091cdb1e6cafda7cf0e4ae3288357111) Thanks [@ayden94](https://github.com/ayden94)! - Make Redis a distributed-lock-only dependency for `@fluojs/cron`. Non-distributed scheduling no longer loads the Redis peer during import, registration, bootstrap, or status snapshot creation.
+
+- Updated dependencies [[`e8f2844`](https://github.com/fluojs/fluo/commit/e8f284469a3b1bf5d5453ba005b8c63cc4ffdd65)]:
+  - @fluojs/runtime@1.1.7
+
 ## 1.0.2
 
 ### Patch Changes

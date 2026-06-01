@@ -1,5 +1,15 @@
 # @fluojs/graphql
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2075](https://github.com/fluojs/fluo/pull/2075) [`a0537cf`](https://github.com/fluojs/fluo/commit/a0537cf1a75a45b3392cc4558db32646ca7fb280) Thanks [@ayden94](https://github.com/ayden94)! - Keep the root GraphQL package import portable by loading websocket transport dependencies only when websocket subscriptions are enabled.
+
+- Updated dependencies [[`06f35cb`](https://github.com/fluojs/fluo/commit/06f35cbef3a0343a6745e658c120eb19d15d4480), [`e8f2844`](https://github.com/fluojs/fluo/commit/e8f284469a3b1bf5d5453ba005b8c63cc4ffdd65)]:
+  - @fluojs/http@1.1.1
+  - @fluojs/runtime@1.1.7
+
 ## 1.0.3
 
 ### Patch Changes

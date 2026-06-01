@@ -1,5 +1,14 @@
 # @fluojs/cqrs
 
+## 1.1.1
+
+### Patch Changes
+
+- [#2083](https://github.com/fluojs/fluo/pull/2083) [`9ca5e72`](https://github.com/fluojs/fluo/commit/9ca5e7276f3a1157954638865fd1e90bade4fe34) Thanks [@ayden94](https://github.com/ayden94)! - Remove the Node.js `node:async_hooks` root import from saga dispatch by threading an explicit runtime-agnostic CQRS dispatch context through nested command, query, event, and saga calls.
+
+- Updated dependencies [[`e8f2844`](https://github.com/fluojs/fluo/commit/e8f284469a3b1bf5d5453ba005b8c63cc4ffdd65)]:
+  - @fluojs/runtime@1.1.7
+
 ## 1.1.0
 
 ### Minor Changes

@@ -1,5 +1,14 @@
 # @fluojs/microservices
 
+## 1.0.3
+
+### Patch Changes
+
+- [#2084](https://github.com/fluojs/fluo/pull/2084) [`b5a3289`](https://github.com/fluojs/fluo/commit/b5a32890a3c3384d3e8511e81032b80bd8a054d1) Thanks [@ayden94](https://github.com/ayden94)! - Defer TCP `node:net` loading until listen or outbound socket construction paths and preserve transport cleanup when closing after failed in-flight listen attempts.
+
+- Updated dependencies [[`e8f2844`](https://github.com/fluojs/fluo/commit/e8f284469a3b1bf5d5453ba005b8c63cc4ffdd65)]:
+  - @fluojs/runtime@1.1.7
+
 ## 1.0.2
 
 ### Patch Changes

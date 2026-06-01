@@ -1,5 +1,15 @@
 # @fluojs/websockets
 
+## 1.0.6
+
+### Patch Changes
+
+- [#2078](https://github.com/fluojs/fluo/pull/2078) [`3c89876`](https://github.com/fluojs/fluo/commit/3c89876ab785d03dbaf14c16713d5b45b9407b8d) Thanks [@ayden94](https://github.com/ayden94)! - Expose shared gateway decorators and metadata helpers from websocket runtime subpaths so fetch-style Bun, Deno, and Cloudflare Workers users can author gateways without importing the root Node.js-backed entrypoint.
+
+- Updated dependencies [[`06f35cb`](https://github.com/fluojs/fluo/commit/06f35cbef3a0343a6745e658c120eb19d15d4480), [`e8f2844`](https://github.com/fluojs/fluo/commit/e8f284469a3b1bf5d5453ba005b8c63cc4ffdd65)]:
+  - @fluojs/http@1.1.1
+  - @fluojs/runtime@1.1.7
+
 ## 1.0.5
 
 ### Patch Changes

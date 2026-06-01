@@ -1,5 +1,11 @@
 # @fluojs/vite
 
+## 1.0.5
+
+### Patch Changes
+
+- [#2080](https://github.com/fluojs/fluo/pull/2080) [`5867a47`](https://github.com/fluojs/fluo/commit/5867a47ed8dc28128f55a143cfb88112ce93a9e7) Thanks [@ayden94](https://github.com/ayden94)! - Lazy-load Babel from the Vite transform hook so importing `@fluojs/vite` no longer fails before Vite reaches a transform, and report missing Babel peers as transform-time diagnostics.
+
 ## 1.0.4
 
 ### Patch Changes
