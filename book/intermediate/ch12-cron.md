@@ -34,6 +34,7 @@ These are scheduling concerns. They are not naturally expressed as one-time comm
 
 The README documents `CronModule.forRoot(...)` as the registration entrypoint. fluo supports cron expressions, fixed intervals, and one-time timeouts.
 Cron expressions can be written with five fields when minute-level scheduling is enough, or six fields when second-level scheduling is required. The built-in presets use six-field expressions for sub-minute schedules. Cron tasks start as part of the application bootstrap lifecycle rather than at decorator evaluation time, and dynamic registry cron tasks start when they are added to an already-started registry.
+Non-distributed scheduling does not load the Redis integration during import, registration, bootstrap, or status snapshot creation. The Redis peer is a distributed-lock dependency only.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -76,6 +77,7 @@ Some work should run after a certain amount of time has passed since boot. For e
 ## 12.4 Distributed locking across multiple instances
 
 The README highlights distributed mode as a core production feature. When multiple application instances run the same scheduled task, FluoShop usually wants only one instance to perform that cycle's work. Redis-backed distributed locking owns that responsibility.
+Enable `distributed.enabled` before adding `RedisModule`; that selection is the boundary that makes `@fluojs/cron` load and resolve `@fluojs/redis`.
 
 ```typescript
 import { Module } from '@fluojs/core';
