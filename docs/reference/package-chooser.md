@@ -75,7 +75,7 @@ Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `R
 | Need in-process domain events with optional cross-process fan-out | `@fluojs/event-bus` + optional `@fluojs/event-bus/redis` and `@fluojs/redis` | Use when one published domain fact should notify multiple local handlers, with Redis Pub/Sub fan-out only when reactions must cross process boundaries. |
 | Need message-pattern microservices | `@fluojs/microservices` | Use for transport-driven microservice handlers. |
 | Need background jobs | `@fluojs/queue` + `@fluojs/redis` | Queue workers depend on Redis. |
-| Need scheduled jobs | `@fluojs/cron` | Use for cron-style scheduling. |
+| Need scheduled jobs | `@fluojs/cron` | Use for cron-style scheduling; add `@fluojs/redis` only when enabling distributed locks. |
 | Need multi-channel notifications | `@fluojs/notifications` | Shared notification orchestration layer. |
 | Need portable email delivery | `@fluojs/email` | Transport-agnostic email core. |
 | Need Node.js SMTP delivery | `@fluojs/email/node` | Node-specific SMTP transport for `@fluojs/email`. |
