@@ -134,6 +134,8 @@ export interface BunServeOptions {
   websocket?: BunWebSocketHandler;
 }
 
+type BunServeOptionsWithoutRoutes = Omit<BunServeOptions, 'routes'>;
+
 /** Minimal Bun server handle used by fluo for fetch dispatch, upgrades, and shutdown. */
 export interface BunServerLike {
   fetch?(request: Request): Response | Promise<Response> | undefined | Promise<Response | undefined>;
@@ -321,27 +323,28 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
       }
 
       if (realtimeBinding) {
-        const handled = await realtimeBinding.fetch(request, server);
+        const realtimeResult = await dispatchRealtimeBindingRequest(realtimeBinding, request, server);
 
-        if (handled !== undefined || isWebSocketUpgradeRequest(request)) {
-          return handled;
+        if (realtimeResult.handled !== undefined || realtimeResult.upgraded) {
+          return realtimeResult.handled;
         }
       }
 
       return await this.dispatchHttpRequest(request);
     };
-
-    this.server = bun.serve({
+    const nativeRoutes = createBunNativeRoutes(dispatcher, handleRequest, bun);
+    const serveOptions: BunServeOptionsWithoutRoutes = {
       development: this.options.development,
       fetch: handleRequest,
       hostname: this.options.hostname,
       idleTimeout: realtimeBinding?.idleTimeout ?? this.options.idleTimeout,
       maxRequestBodySize: realtimeBinding?.maxRequestBodySize ?? this.options.maxBodySize,
       port: resolvePort(this.options.port),
-      routes: createBunNativeRoutes(dispatcher, handleRequest, bun),
       tls: this.options.tls,
       websocket: realtimeBinding?.websocket,
-    });
+    };
+
+    this.server = bun.serve(nativeRoutes ? { ...serveOptions, routes: nativeRoutes } : serveOptions);
   }
 
   /** Stops ingress, waits for in-flight HTTP handlers, and releases adapter state. */
@@ -635,6 +638,30 @@ function validateNonNegativeIntegerOption(name: string, value: number | undefine
   }
 }
 
+async function dispatchRealtimeBindingRequest(
+  binding: BunWebSocketBinding<unknown>,
+  request: Request,
+  server: BunServerLike,
+): Promise<{ handled: Response | undefined; upgraded: boolean }> {
+  let upgraded = false;
+  const trackedServer: BunServerLike = {
+    fetch: server.fetch ? (trackedRequest) => server.fetch?.(trackedRequest) : undefined,
+    hostname: server.hostname,
+    port: server.port,
+    stop: (closeActiveConnections) => server.stop(closeActiveConnections),
+    upgrade<TData = unknown>(upgradeRequest: Request, options?: { data?: TData; headers?: HeadersInit }): boolean {
+      const didUpgrade = server.upgrade(upgradeRequest, options);
+      upgraded ||= didUpgrade;
+      return didUpgrade;
+    },
+    url: server.url,
+  };
+
+  const handled = await binding.fetch(request, trackedServer);
+
+  return { handled, upgraded };
+}
+
 function createBunNativeRoutes(
   dispatcher: Dispatcher,
   handleRequest: BunRouteHandler,
@@ -871,10 +898,6 @@ function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number)
       },
     );
   });
-}
-
-function isWebSocketUpgradeRequest(request: Request): boolean {
-  return request.headers.get('upgrade')?.toLowerCase() === 'websocket';
 }
 
 const bunRouteMethods: readonly BunRouteMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'];
