@@ -1,8 +1,9 @@
-import { mkdtempSync, watch, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, watch, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { getModuleMetadata } from '@fluojs/core/internal';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createConfigReloader, loadConfig } from './load.js';
 import { ConfigModule } from './module.js';
@@ -10,6 +11,51 @@ import { ConfigService, replaceConfigServiceSnapshot } from './service.js';
 import type { ConfigDictionary, ConfigLoadOptions, ConfigModuleOptions, ConfigSchema } from './types.js';
 
 const watchCallbacks = vi.hoisted(() => new Set<() => void>());
+
+type ProcessWithGetBuiltinModule = typeof process & {
+  getBuiltinModule?: typeof process.getBuiltinModule;
+};
+
+const processWithGetBuiltinModule = process as ProcessWithGetBuiltinModule;
+const originalGetBuiltinModule = processWithGetBuiltinModule.getBuiltinModule?.bind(process);
+
+function spyOnGetBuiltinModule(implementation: typeof process.getBuiltinModule): void {
+  if (!processWithGetBuiltinModule.getBuiltinModule) {
+    Object.defineProperty(processWithGetBuiltinModule, 'getBuiltinModule', {
+      configurable: true,
+      value: implementation,
+      writable: true,
+    });
+  }
+
+  vi.spyOn(processWithGetBuiltinModule as typeof process & { getBuiltinModule: typeof process.getBuiltinModule }, 'getBuiltinModule').mockImplementation(implementation);
+}
+
+function installNodeBuiltinMock(): void {
+  spyOnGetBuiltinModule(((id: string) => {
+    if (id === 'node:crypto') {
+      return { createHash };
+    }
+
+    if (id === 'node:fs') {
+      return {
+        existsSync,
+        readFileSync,
+        watch,
+      };
+    }
+
+    if (id === 'node:path') {
+      return {
+        basename,
+        dirname,
+        join,
+      };
+    }
+
+    return originalGetBuiltinModule?.(id as Parameters<typeof process.getBuiltinModule>[0]);
+  }) as typeof process.getBuiltinModule);
+}
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
@@ -123,6 +169,12 @@ function createConfigModuleWatchHarness(moduleRef: new () => ConfigModule): {
 
 beforeEach(() => {
   watchCallbacks.clear();
+  installNodeBuiltinMock();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
@@ -178,6 +230,32 @@ describe('loadConfig', () => {
         process.env.FLUO_CONFIG_TEST_ONLY = previousValue;
       }
     }
+  });
+
+  it('loads the default .env file for empty load options', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-default-env-'));
+
+    writeFileSync(join(cwd, '.env'), 'DEFAULT_ENV_FILE=loaded\n');
+    vi.spyOn(process, 'cwd').mockReturnValue(cwd);
+
+    expect(loadConfig({})).toMatchObject({ DEFAULT_ENV_FILE: 'loaded' });
+  });
+
+  it('loads the default .env file for ConfigModule.forRoot() with no options', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-module-default-env-'));
+
+    writeFileSync(join(cwd, '.env'), 'MODULE_DEFAULT_ENV=loaded\n');
+    vi.spyOn(process, 'cwd').mockReturnValue(cwd);
+
+    const providers = getModuleMetadata(ConfigModule.forRoot())?.providers as
+      | Array<{ provide?: unknown; useFactory?: () => unknown }>
+      | undefined;
+    const configProvider = providers?.find(
+      (provider): provider is { provide: typeof ConfigService; useFactory: () => ConfigService } =>
+        typeof provider === 'object' && provider.provide === ConfigService && typeof provider.useFactory === 'function',
+    );
+
+    expect(configProvider?.useFactory().get('MODULE_DEFAULT_ENV')).toBe('loaded');
   });
 
   it('supports envFilePath as alias for envFile', () => {
@@ -370,6 +448,46 @@ describe('loadConfig', () => {
     expect(loaded['PRIVATE_KEY']).toContain('\n');
   });
 
+  it('preserves dotenv-compatible env file parsing semantics without eager dotenv imports', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-dotenv-parse-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(
+      envPath,
+      [
+        '# comments and empty lines are ignored',
+        'SIMPLE=value',
+        'WITH_SPACES=  trimmed value  ',
+        'EMPTY=',
+        'INLINE_COMMENT=value # removed',
+        'HASH_IN_DOUBLE="value#kept" # removed',
+        "HASH_IN_SINGLE='value#kept' # removed",
+        'BACKTICK=`allows "double" and \'single\' quotes` # removed',
+        'export EXPORTED_VAR=from-export',
+        'COLON_ASSIGNMENT: from-colon',
+        'my.dotted-key=from-dotted-key',
+        'ACTUAL_NEWLINE="first line',
+        'second line"',
+      ].join('\n'),
+    );
+
+    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: {} });
+
+    expect(loaded).toMatchObject({
+      ACTUAL_NEWLINE: 'first line\nsecond line',
+      BACKTICK: 'allows "double" and \'single\' quotes',
+      COLON_ASSIGNMENT: 'from-colon',
+      EMPTY: '',
+      EXPORTED_VAR: 'from-export',
+      HASH_IN_DOUBLE: 'value#kept',
+      HASH_IN_SINGLE: 'value#kept',
+      INLINE_COMMENT: 'value',
+      SIMPLE: 'value',
+      WITH_SPACES: 'trimmed value',
+      'my.dotted-key': 'from-dotted-key',
+    });
+  });
+
   it('expands variable interpolation in env files', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-expand-'));
     const envPath = join(cwd, '.env.dev');
@@ -379,6 +497,47 @@ describe('loadConfig', () => {
     const loaded = loadConfig({ cwd, envFile: envPath, processEnv: {} });
 
     expect(loaded['DATABASE_URL']).toBe('localhost:5432/mydb');
+  });
+
+  it('preserves dotenv-expand-compatible variable interpolation semantics', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-expand-contract-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(
+      envPath,
+      [
+        'LOCAL_HOST=localhost',
+        'LOCAL_URL=postgres://${LOCAL_HOST}:5432/app',
+        'PROCESS_URL=https://$PUBLIC_HOST/api',
+        'PROCESS_PRECEDENCE=from-file',
+        'USES_PROCESS_PRECEDENCE=$PROCESS_PRECEDENCE',
+        'FORWARD_REF=$LATER_VALUE',
+        'LATER_VALUE=available-later',
+        'ESCAPED=\\$LOCAL_HOST',
+        'UNKNOWN=${MISSING_VALUE}',
+        'MISSING_COLON_FALLBACK=${MISSING_VALUE:-from-colon-fallback}',
+        'MISSING_DASH_FALLBACK=${MISSING_VALUE-from-dash-fallback}',
+        'EMPTY_VALUE=',
+        'EMPTY_COLON_FALLBACK=${EMPTY_VALUE:-from-empty-colon-fallback}',
+        'EMPTY_DASH_FALLBACK=${EMPTY_VALUE-from-empty-dash-fallback}',
+      ].join('\n'),
+    );
+
+    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: { PROCESS_PRECEDENCE: 'from-process', PUBLIC_HOST: 'example.com' } });
+
+    expect(loaded).toMatchObject({
+      ESCAPED: '$LOCAL_HOST',
+      FORWARD_REF: 'available-later',
+      LOCAL_URL: 'postgres://localhost:5432/app',
+      MISSING_COLON_FALLBACK: 'from-colon-fallback',
+      MISSING_DASH_FALLBACK: 'from-dash-fallback',
+      EMPTY_COLON_FALLBACK: 'from-empty-colon-fallback',
+      EMPTY_DASH_FALLBACK: '',
+      PROCESS_PRECEDENCE: 'from-process',
+      PROCESS_URL: 'https://example.com/api',
+      UNKNOWN: '',
+      USES_PROCESS_PRECEDENCE: 'from-process',
+    });
   });
 
   it('uses a custom parse function when provided', () => {
@@ -754,6 +913,30 @@ describe('loadConfig', () => {
 
       await waitForCondition(() => updates.includes('4100'));
       expect(reloader.current()['PORT']).toBe('4100');
+    } finally {
+      reloader.close();
+    }
+  });
+
+  it('starts watch mode through the Node 20.16 getBuiltinModule fallback when direct filesystem builtin lookup is unavailable', () => {
+    vi.stubGlobal('require', () => {
+      throw new Error('Node 20.16 ESM fallback must not depend on global require.');
+    });
+    spyOnGetBuiltinModule(((id: string) => (id === 'node:module' ? originalGetBuiltinModule?.(id as Parameters<typeof process.getBuiltinModule>[0]) : undefined)) as typeof process.getBuiltinModule);
+
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-watch-node20-fallback-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const reloader = createConfigReloader({
+      envFile: envPath,
+      processEnv: {},
+      watch: true,
+    });
+
+    try {
+      expect(reloader.current()['PORT']).toBe('4000');
     } finally {
       reloader.close();
     }

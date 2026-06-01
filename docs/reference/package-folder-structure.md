@@ -58,5 +58,6 @@ src/
 
 - Moving files inside `src/` must not change the public re-export contract from `index.ts`.
 - Do not create single-file folders without a clear grouping need.
+- Root package entrypoints must not eagerly import runtime-specific Node builtins; keep those dependencies in `src/node/` or behind lazy resolution inside the runtime-specific execution path.
 - `__snapshots__/` stays next to the tests it supports.
 - Use [package-surface.md](./package-surface.md) for the canonical package inventory.

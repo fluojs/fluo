@@ -17,7 +17,7 @@
     "directory": "packages/config"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.16.0"
   },
   "publishConfig": {
     "access": "public"
@@ -43,9 +43,7 @@
   },
   "dependencies": {
     "@fluojs/core": "workspace:^",
-    "@standard-schema/spec": "^1.1.0",
-    "dotenv": "^16.0.0",
-    "dotenv-expand": "^11.0.0"
+    "@standard-schema/spec": "^1.1.0"
   },
   "devDependencies": {
     "@fluojs/di": "workspace:^",

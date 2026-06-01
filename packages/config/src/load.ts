@@ -1,11 +1,4 @@
-import type { FSWatcher } from 'node:fs';
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, watch } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
-
 import { FluoError } from '@fluojs/core';
-import { parse as dotenvParse } from 'dotenv';
-import { expand as dotenvExpand } from 'dotenv-expand';
 
 import { cloneConfigDictionary } from './clone.js';
 import { snapshotConfigLoadOptions } from './options.js';
@@ -20,8 +13,60 @@ import type {
   ConfigSchema,
 } from './types.js';
 
+type ConfigFileWatcher = {
+  close(): void;
+};
+
+type NodeCryptoModule = {
+  createHash(algorithm: string): {
+    update(data: string | Uint8Array): { digest(encoding: 'hex'): string };
+    digest(encoding: 'hex'): string;
+  };
+};
+
+type NodeFsError = {
+  code?: string;
+};
+
+type NodeFsModule = {
+  existsSync(path: string): boolean;
+  readFileSync(path: string): string;
+  readFileSync(path: string, encoding: 'utf8'): string;
+  watch(
+    filename: string,
+    options: { persistent: boolean },
+    listener: (eventType: string, filename: string | Buffer | null) => void,
+  ): ConfigFileWatcher;
+};
+
+type NodePathModule = {
+  basename(path: string): string;
+  dirname(path: string): string;
+  join(...paths: string[]): string;
+};
+
+type NodeModuleModule = {
+  createRequire(url: string | URL): NodeBuiltinRequire;
+};
+
+type NodeGetBuiltinModule = {
+  (id: 'node:crypto'): NodeCryptoModule;
+  (id: 'node:fs'): NodeFsModule;
+  (id: 'node:path'): NodePathModule;
+  (id: 'node:module'): NodeModuleModule;
+};
+
+type NodeBuiltinModuleHost = typeof globalThis & {
+  process?: {
+    cwd?(): string;
+    getBuiltinModule?: NodeGetBuiltinModule;
+  };
+};
+
+type NodeBuiltinRequire = (id: 'node:crypto' | 'node:fs' | 'node:path') => NodeCryptoModule | NodeFsModule | NodePathModule;
+
 interface NormalizedLoadOptions {
-  envFile: string;
+  envFile: string | undefined;
   defaults: ConfigDictionary;
   safeProcessEnv: Record<string, string>;
   runtimeOverrides: ConfigDictionary;
@@ -47,6 +92,86 @@ type ConfigSchemaSuccessResult = {
 };
 
 const reloadFailureReasons = new WeakMap<object, ConfigReloadReason>();
+const nodeBuiltinRuntimeRequirement = 'Node.js 20.16.0 or newer is required when @fluojs/config loads env files or starts watch mode.';
+let requireNodeBuiltin: NodeBuiltinRequire | undefined;
+
+function resolveRequireNodeBuiltin(): NodeBuiltinRequire {
+  if (requireNodeBuiltin) {
+    return requireNodeBuiltin;
+  }
+
+  const nodeModule = (globalThis as NodeBuiltinModuleHost).process?.getBuiltinModule?.('node:module');
+
+  if (!nodeModule?.createRequire) {
+    throw new FluoError('Node.js configuration loading is unavailable in this runtime.', {
+      code: 'CONFIG_RUNTIME_UNAVAILABLE',
+      cause: new Error(`${nodeBuiltinRuntimeRequirement} The host runtime did not expose a synchronous node:module loader. Use in-memory config options or run env-file loading on Node.js.`),
+    });
+  }
+
+  requireNodeBuiltin = nodeModule.createRequire(import.meta.url);
+  return requireNodeBuiltin;
+}
+
+function requireNodeBuiltinFallback<TModule>(id: 'node:crypto' | 'node:fs' | 'node:path'): TModule {
+  try {
+    return resolveRequireNodeBuiltin()(id) as TModule;
+  } catch (error: unknown) {
+    if (error instanceof FluoError) {
+      throw error;
+    }
+
+    throw new FluoError('Node.js configuration loading is unavailable in this runtime.', {
+      code: 'CONFIG_RUNTIME_UNAVAILABLE',
+      cause: new Error(`${nodeBuiltinRuntimeRequirement} The host runtime could not load ${id}. Use in-memory config options or run env-file loading on Node.js.`, { cause: error }),
+    });
+  }
+}
+
+function resolveNodeBuiltin<TModule>(id: 'node:crypto' | 'node:fs' | 'node:path'): TModule {
+  const getBuiltinModule = (globalThis as NodeBuiltinModuleHost).process?.getBuiltinModule;
+
+  if (!getBuiltinModule) {
+    return requireNodeBuiltinFallback<TModule>(id);
+  }
+
+  const module = getBuiltinModule(id);
+
+  if (!module) {
+    return requireNodeBuiltinFallback<TModule>(id);
+  }
+
+  return module as TModule;
+}
+
+function nodeCrypto(): NodeCryptoModule {
+  return resolveNodeBuiltin<NodeCryptoModule>('node:crypto');
+}
+
+function nodeFs(): NodeFsModule {
+  return resolveNodeBuiltin<NodeFsModule>('node:fs');
+}
+
+function nodePath(): NodePathModule {
+  return resolveNodeBuiltin<NodePathModule>('node:path');
+}
+
+function resolveCurrentWorkingDirectory(): string {
+  const cwd = (globalThis as NodeBuiltinModuleHost).process?.cwd;
+
+  if (!cwd) {
+    throw new FluoError('Node.js configuration loading is unavailable in this runtime.', {
+      code: 'CONFIG_RUNTIME_UNAVAILABLE',
+      cause: new Error('The host runtime did not expose process.cwd(). Pass envFilePath or avoid env-file loading outside Node.js.'),
+    });
+  }
+
+  return cwd();
+}
+
+function isNodeFsError(error: unknown): error is NodeFsError {
+  return typeof error === 'object' && error !== null && 'code' in error;
+}
 
 function markReloadFailure(error: unknown, reason: ConfigReloadReason): void {
   if (typeof error === 'object' && error !== null) {
@@ -62,13 +187,162 @@ function getReloadFailureReason(error: unknown): ConfigReloadReason | undefined 
   return reloadFailureReasons.get(error);
 }
 
+function unquoteEnvValue(value: string): string {
+  if (value.length < 2) {
+    return value;
+  }
+
+  const quote = value[0];
+  if ((quote !== '"' && quote !== "'" && quote !== '`') || value[value.length - 1] !== quote) {
+    return value;
+  }
+
+  const unquoted = value.slice(1, -1);
+  return quote === '"' ? unquoted.replace(/\\n/g, '\n').replace(/\\r/g, '\r') : unquoted;
+}
+
+function stripInlineEnvComment(value: string): string {
+  const commentIndex = value.search(/\s#/);
+  return commentIndex === -1 ? value : value.slice(0, commentIndex);
+}
+
+function findClosingEnvQuote(value: string, quote: string): number {
+  for (let index = 1; index < value.length; index += 1) {
+    if (value[index] === quote && value[index - 1] !== '\\') {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function collectQuotedEnvValue(lines: readonly string[], startIndex: number, valueStart: string, quote: string): { nextIndex: number; value: string } {
+  let value = valueStart;
+  let currentIndex = startIndex;
+
+  while (currentIndex + 1 < lines.length && findClosingEnvQuote(value, quote) === -1) {
+    currentIndex += 1;
+    value += `\n${lines[currentIndex]}`;
+  }
+
+  const closingQuoteIndex = findClosingEnvQuote(value, quote);
+
+  return {
+    nextIndex: currentIndex,
+    value: closingQuoteIndex === -1 ? value : value.slice(0, closingQuoteIndex + 1),
+  };
+}
+
+function parseDotenvContent(content: string): Record<string, string> {
+  const parsed: Record<string, string> = {};
+  const lines = content.split(/\r?\n/);
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index];
+    const line = rawLine.trim();
+    if (line.length === 0 || line.startsWith('#')) {
+      continue;
+    }
+
+    const entry = line.startsWith('export ') ? line.slice(7).trimStart() : line;
+    const separatorIndex = entry.search(/[:=]/);
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const key = entry.slice(0, separatorIndex).trim();
+    const rawValue = entry.slice(separatorIndex + 1).trim();
+    if (!/^[\w.-]+$/.test(key)) {
+      continue;
+    }
+
+    const quote = rawValue[0];
+    const quotedValue = quote === '"' || quote === "'" || quote === '`';
+    const collected = quotedValue ? collectQuotedEnvValue(lines, index, rawValue, quote) : { nextIndex: index, value: stripInlineEnvComment(rawValue).trim() };
+
+    index = collected.nextIndex;
+    parsed[key] = unquoteEnvValue(collected.value);
+  }
+
+  return parsed;
+}
+
+function expandEnvVariables(parsed: Record<string, string>, safeProcessEnv: Record<string, string>): Record<string, string> {
+  const expanded: Record<string, string> = {};
+  const source = { ...parsed, ...safeProcessEnv };
+
+  const parseBracedExpansion = (expression: string): { defaultOperator?: string; defaultValue?: string; variableName: string } => {
+    if (expression in source) {
+      return { variableName: expression };
+    }
+
+    const colonDefaultIndex = expression.indexOf(':-');
+    if (colonDefaultIndex !== -1) {
+      return {
+        defaultOperator: ':-',
+        defaultValue: expression.slice(colonDefaultIndex + 2),
+        variableName: expression.slice(0, colonDefaultIndex),
+      };
+    }
+
+    const defaultIndex = expression.indexOf('-');
+    if (defaultIndex !== -1) {
+      return {
+        defaultOperator: '-',
+        defaultValue: expression.slice(defaultIndex + 1),
+        variableName: expression.slice(0, defaultIndex),
+      };
+    }
+
+    return { variableName: expression };
+  };
+
+  const expandValue = (value: string, visiting: ReadonlySet<string>): string =>
+    value.replace(/(^|[^\\])\$(?:\{([^}]*)\}|([\w.-]+))/g, (match: string, prefix: string, bracedExpression: string | undefined, bareVariableName: string | undefined) => {
+      const expansion = bracedExpression === undefined
+        ? { variableName: bareVariableName ?? '' }
+        : parseBracedExpansion(bracedExpression);
+      const { defaultOperator, defaultValue, variableName } = expansion;
+
+      if (!variableName) {
+        return match;
+      }
+
+      const hasSourceValue = variableName in source;
+      const sourceValue = hasSourceValue ? source[variableName] ?? '' : undefined;
+      const shouldUseDefaultValue = defaultValue !== undefined && (!hasSourceValue || (defaultOperator === ':-' && sourceValue === ''));
+
+      if (shouldUseDefaultValue) {
+        return `${prefix}${expandValue(defaultValue, visiting)}`;
+      }
+
+      if (!hasSourceValue || visiting.has(variableName)) {
+        return prefix;
+      }
+
+      const replacement = variableName in safeProcessEnv
+        ? safeProcessEnv[variableName]
+        : variableName in expanded
+          ? expanded[variableName]
+          : expandValue(sourceValue ?? '', new Set([...visiting, variableName]));
+
+      return `${prefix}${replacement}`;
+    }).replace(/\\\$/g, '$');
+
+  for (const [key, value] of Object.entries(parsed)) {
+    expanded[key] = expandValue(value, new Set([key]));
+    source[key] = expanded[key];
+  }
+
+  return expanded;
+}
+
 function parseEnvContent(content: string, safeProcessEnv: Record<string, string>, customParser?: (content: string) => Record<string, string>): Record<string, string> {
   if (customParser) {
     return customParser(content);
   }
-  const parsed = dotenvParse(content);
-  const result = dotenvExpand({ parsed, processEnv: { ...safeProcessEnv } });
-  return result.parsed ?? {};
+
+  return expandEnvVariables(parseDotenvContent(content), safeProcessEnv);
 }
 
 function sanitizeProcessEnv(processEnv: NodeJS.ProcessEnv): Record<string, string> {
@@ -89,8 +363,13 @@ function rejectLegacyValidateOption(options: ConfigLoadOptions): void {
 function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions {
   rejectLegacyValidateOption(options);
 
-  const cwd = options.cwd ?? process.cwd();
-  const envFile = options.envFilePath ?? options.envFile ?? join(cwd, '.env');
+  const hasExplicitEnvFile = options.envFilePath !== undefined || options.envFile !== undefined;
+  const hasExplicitInMemorySource = options.defaults !== undefined || options.processEnv !== undefined || options.runtimeOverrides !== undefined;
+  const shouldUseDefaultEnvFile = !hasExplicitEnvFile && (options.cwd !== undefined || options.watch === true || !hasExplicitInMemorySource);
+  const cwd = shouldUseDefaultEnvFile && options.envFilePath === undefined && options.envFile === undefined
+    ? options.cwd ?? resolveCurrentWorkingDirectory()
+    : options.cwd;
+  const envFile = options.envFilePath ?? options.envFile ?? (cwd ? nodePath().join(cwd, '.env') : undefined);
   const defaults = options.defaults ?? {};
   const processEnv = options.processEnv ?? {};
   const safeProcessEnv = sanitizeProcessEnv(processEnv);
@@ -107,10 +386,14 @@ function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions
 }
 
 function readEnvFileValues(options: NormalizedLoadOptions): ConfigDictionary {
+  if (options.envFile === undefined) {
+    return {};
+  }
+
   try {
-    return parseEnvContent(readFileSync(options.envFile, 'utf8'), options.safeProcessEnv, options.parse);
+    return parseEnvContent(nodeFs().readFileSync(options.envFile, 'utf8'), options.safeProcessEnv, options.parse);
   } catch (error: unknown) {
-    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
+    if (isNodeFsError(error) && error.code === 'ENOENT') {
       return {};
     }
 
@@ -228,8 +511,8 @@ function createInvalidConfigError(cause: unknown, issues?: readonly ConfigSchema
   });
 }
 
-function isInvalidConfigError(error: unknown): error is FluoError {
-  return error instanceof FluoError && error.code === 'INVALID_CONFIG';
+function isInvalidConfigError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'INVALID_CONFIG';
 }
 
 function readConfigSchemaResult(result: unknown): ConfigDictionary {
@@ -285,14 +568,14 @@ type ReloaderState = {
   pendingReloadReason: ConfigReloadReason | undefined;
   reloading: boolean;
   watchedEnvFileHash: string | undefined;
-  watcher: FSWatcher | undefined;
+  watcher: ConfigFileWatcher | undefined;
 };
 
 function hashEnvFileContent(envFile: string): string | undefined {
   try {
-    return createHash('sha256').update(readFileSync(envFile)).digest('hex');
+    return nodeCrypto().createHash('sha256').update(nodeFs().readFileSync(envFile)).digest('hex');
   } catch (error: unknown) {
-    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
+    if (isNodeFsError(error) && error.code === 'ENOENT') {
       return undefined;
     }
 
@@ -381,25 +664,32 @@ function startReloaderWatcher(
   state: ReloaderState,
   listeners: ReadonlySet<ConfigReloadListener>,
   errorListeners: ReadonlySet<ConfigReloadErrorListener>,
-): FSWatcher | undefined {
+): ConfigFileWatcher | undefined {
   if (!options.watch) {
     return undefined;
   }
 
-  const watchTarget = dirname(normalized.envFile);
-  const watchedEnvFileName = basename(normalized.envFile);
-
-  if (!existsSync(watchTarget)) {
+  if (normalized.envFile === undefined) {
     return undefined;
   }
 
-  return watch(watchTarget, { persistent: false }, (_eventType, filename) => {
+  const path = nodePath();
+  const fs = nodeFs();
+  const envFile = normalized.envFile;
+  const watchTarget = path.dirname(envFile);
+  const watchedEnvFileName = path.basename(envFile);
+
+  if (!fs.existsSync(watchTarget)) {
+    return undefined;
+  }
+
+  return fs.watch(watchTarget, { persistent: false }, (_eventType, filename) => {
     if (filename !== null && filename.toString() !== watchedEnvFileName) {
       return;
     }
 
     try {
-      const nextEnvFileHash = hashEnvFileContent(normalized.envFile);
+      const nextEnvFileHash = hashEnvFileContent(envFile);
       if (nextEnvFileHash === state.watchedEnvFileHash) {
         return;
       }
@@ -453,7 +743,7 @@ export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader
     current: resolveConfig(normalized),
     pendingReloadReason: undefined,
     reloading: false,
-    watchedEnvFileHash: hashEnvFileContent(normalized.envFile),
+    watchedEnvFileHash: normalized.envFile === undefined ? undefined : hashEnvFileContent(normalized.envFile),
     watcher: undefined,
   };
   const listeners = new Set<ConfigReloadListener>();
