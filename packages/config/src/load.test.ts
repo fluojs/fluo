@@ -909,9 +909,9 @@ describe('loadConfig', () => {
     }
   });
 
-  it('starts watch mode through the Node 20 fallback when direct filesystem builtin lookup is unavailable', () => {
+  it('starts watch mode through the Node 20.16 getBuiltinModule fallback when direct filesystem builtin lookup is unavailable', () => {
     vi.stubGlobal('require', () => {
-      throw new Error('Node 20 ESM fallback must not depend on global require.');
+      throw new Error('Node 20.16 ESM fallback must not depend on global require.');
     });
     spyOnGetBuiltinModule(((id: string) => (id === 'node:module' ? originalGetBuiltinModule?.(id as Parameters<typeof process.getBuiltinModule>[0]) : undefined)) as typeof process.getBuiltinModule);
 

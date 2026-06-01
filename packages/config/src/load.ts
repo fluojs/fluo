@@ -92,7 +92,7 @@ type ConfigSchemaSuccessResult = {
 };
 
 const reloadFailureReasons = new WeakMap<object, ConfigReloadReason>();
-const nodeBuiltinRuntimeRequirement = 'Node.js 20.0.0 or newer is required when @fluojs/config loads env files or starts watch mode.';
+const nodeBuiltinRuntimeRequirement = 'Node.js 20.16.0 or newer is required when @fluojs/config loads env files or starts watch mode.';
 let requireNodeBuiltin: NodeBuiltinRequire | undefined;
 
 function resolveRequireNodeBuiltin(): NodeBuiltinRequire {
