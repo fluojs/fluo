@@ -271,13 +271,52 @@ function expandEnvVariables(parsed: Record<string, string>, safeProcessEnv: Reco
   const expanded: Record<string, string> = {};
   const source = { ...parsed, ...safeProcessEnv };
 
+  const parseBracedExpansion = (expression: string): { defaultOperator?: string; defaultValue?: string; variableName: string } => {
+    if (expression in source) {
+      return { variableName: expression };
+    }
+
+    const colonDefaultIndex = expression.indexOf(':-');
+    if (colonDefaultIndex !== -1) {
+      return {
+        defaultOperator: ':-',
+        defaultValue: expression.slice(colonDefaultIndex + 2),
+        variableName: expression.slice(0, colonDefaultIndex),
+      };
+    }
+
+    const defaultIndex = expression.indexOf('-');
+    if (defaultIndex !== -1) {
+      return {
+        defaultOperator: '-',
+        defaultValue: expression.slice(defaultIndex + 1),
+        variableName: expression.slice(0, defaultIndex),
+      };
+    }
+
+    return { variableName: expression };
+  };
+
   const expandValue = (value: string, visiting: ReadonlySet<string>): string =>
-    value.replace(/(^|[^\\])\$\{?([\w.-]+)\}?/g, (_match, prefix: string, variableName: string) => {
-      if (!(variableName in source)) {
-        return prefix;
+    value.replace(/(^|[^\\])\$(?:\{([^}]*)\}|([\w.-]+))/g, (match: string, prefix: string, bracedExpression: string | undefined, bareVariableName: string | undefined) => {
+      const expansion = bracedExpression === undefined
+        ? { variableName: bareVariableName ?? '' }
+        : parseBracedExpansion(bracedExpression);
+      const { defaultOperator, defaultValue, variableName } = expansion;
+
+      if (!variableName) {
+        return match;
       }
 
-      if (visiting.has(variableName)) {
+      const hasSourceValue = variableName in source;
+      const sourceValue = hasSourceValue ? source[variableName] ?? '' : undefined;
+      const shouldUseDefaultValue = defaultValue !== undefined && (!hasSourceValue || (defaultOperator === ':-' && sourceValue === ''));
+
+      if (shouldUseDefaultValue) {
+        return `${prefix}${expandValue(defaultValue, visiting)}`;
+      }
+
+      if (!hasSourceValue || visiting.has(variableName)) {
         return prefix;
       }
 
@@ -285,7 +324,7 @@ function expandEnvVariables(parsed: Record<string, string>, safeProcessEnv: Reco
         ? safeProcessEnv[variableName]
         : variableName in expanded
           ? expanded[variableName]
-          : expandValue(source[variableName] ?? '', new Set([...visiting, variableName]));
+          : expandValue(sourceValue ?? '', new Set([...visiting, variableName]));
 
       return `${prefix}${replacement}`;
     }).replace(/\\\$/g, '$');

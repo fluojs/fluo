@@ -515,6 +515,11 @@ describe('loadConfig', () => {
         'LATER_VALUE=available-later',
         'ESCAPED=\\$LOCAL_HOST',
         'UNKNOWN=${MISSING_VALUE}',
+        'MISSING_COLON_FALLBACK=${MISSING_VALUE:-from-colon-fallback}',
+        'MISSING_DASH_FALLBACK=${MISSING_VALUE-from-dash-fallback}',
+        'EMPTY_VALUE=',
+        'EMPTY_COLON_FALLBACK=${EMPTY_VALUE:-from-empty-colon-fallback}',
+        'EMPTY_DASH_FALLBACK=${EMPTY_VALUE-from-empty-dash-fallback}',
       ].join('\n'),
     );
 
@@ -524,6 +529,10 @@ describe('loadConfig', () => {
       ESCAPED: '$LOCAL_HOST',
       FORWARD_REF: 'available-later',
       LOCAL_URL: 'postgres://localhost:5432/app',
+      MISSING_COLON_FALLBACK: 'from-colon-fallback',
+      MISSING_DASH_FALLBACK: 'from-dash-fallback',
+      EMPTY_COLON_FALLBACK: 'from-empty-colon-fallback',
+      EMPTY_DASH_FALLBACK: '',
       PROCESS_PRECEDENCE: 'from-process',
       PROCESS_URL: 'https://example.com/api',
       UNKNOWN: '',
