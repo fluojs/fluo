@@ -20,7 +20,7 @@ Configuration loading, merging, validation, and typed runtime access for fluo ap
 npm install @fluojs/config
 ```
 
-The package supports Node.js 20.0.0 or newer. Env-file loading and watch mode resolve Node filesystem, path, and crypto builtins lazily through the host runtime boundary, using `process.getBuiltinModule(...)` when available and a published-ESM-compatible `node:module` fallback otherwise. In-memory use of `ConfigService` and `loadConfig({ defaults, processEnv, runtimeOverrides })` does not require env-file access.
+The package supports Node.js 20.0.0 or newer. Env-file loading and watch mode resolve Node filesystem, path, and crypto builtins lazily through the host runtime boundary, requiring `process.getBuiltinModule(...)`; when that API is present but direct filesystem/path/crypto lookup is unavailable, a published-ESM-compatible `node:module` fallback is used. In-memory use of `ConfigService` and `loadConfig({ defaults, processEnv, runtimeOverrides })` does not require env-file access.
 
 ## When to Use
 
