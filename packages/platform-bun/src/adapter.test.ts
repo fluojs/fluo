@@ -1088,6 +1088,7 @@ describe('@fluojs/platform-bun', () => {
 
     try {
       expect(mockBun.lastOptions?.routes).toBeUndefined();
+      expect(Object.prototype.hasOwnProperty.call(mockBun.lastOptions, 'routes')).toBe(false);
 
       const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4317/version-gate/legacy-runtime'));
 
@@ -1474,6 +1475,40 @@ describe('@fluojs/platform-bun', () => {
 
     await expect(responsePromise).resolves.toBeInstanceOf(Response);
     await closePromise;
+  });
+
+  it('falls back to HTTP dispatch when a websocket binding does not upgrade the request', async () => {
+    const mockBun = installMockBun();
+    const adapter = new BunHttpApplicationAdapter();
+    const dispatcher = {
+      dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
+        response.setStatus(200);
+        await response.send({ fallback: 'http' });
+      }),
+      describeRoutes: () => [createMockDispatcherRoute('/chat')],
+    };
+    const bindingFetch = vi.fn<BunWebSocketBinding['fetch']>(async () => undefined);
+
+    adapter.configureWebSocketBinding({
+      fetch: bindingFetch,
+      websocket: {},
+    });
+
+    await adapter.listen(dispatcher);
+
+    try {
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/chat', {
+        headers: { upgrade: 'websocket' },
+      }));
+
+      expect(response?.status).toBe(200);
+      await expect(response?.json()).resolves.toEqual({ fallback: 'http' });
+      expect(mockBun.lastServer?.upgrade).not.toHaveBeenCalled();
+      expect(bindingFetch).toHaveBeenCalledTimes(1);
+      expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
+    } finally {
+      await adapter.close();
+    }
   });
 
   it('throws a clear error when Bun.serve() is unavailable', async () => {
