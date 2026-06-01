@@ -778,6 +778,23 @@ describe('Cron scheduling discoverability', () => {
       expect(content).toContain('dynamic');
     }
   });
+
+  it('keeps the Cron Redis peer boundary discoverable across context, references, package docs, and book guidance', () => {
+    for (const content of [englishContext, koreanContext]) {
+      expect(content).toContain('distributed-only');
+      expect(content).toContain('distributed.enabled');
+    }
+
+    for (const content of [englishPackageSurface, koreanPackageSurface, englishReadme, koreanReadme]) {
+      expect(content).toContain('Redis peer');
+      expect(content).toContain('distributed.enabled');
+    }
+
+    for (const content of [englishChapter, koreanChapter]) {
+      expect(content).toContain('Redis peer');
+      expect(content).toContain('distributed-lock');
+    }
+  });
 });
 
 describe('HTTP adapter raw-body portability discoverability', () => {
