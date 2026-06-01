@@ -122,7 +122,9 @@ Gateway `@OnMessage()` handler는 지원 런타임 전반에서 하나의 정규
 
 ## 런타임별 서브패스
 
-기본 루트 Node.js alias 대신 런타임을 명시적으로 고정하고 싶다면 런타임별 서브패스를 사용하세요. 각 서브패스는 해당 `*WebSocketModule.forRoot(...)` 진입점과 일치하는 런타임 lifecycle service export를 제공합니다.
+기본 루트 Node.js alias 대신 런타임을 명시적으로 고정하고 싶다면 런타임별 서브패스를 사용하세요. 루트 `@fluojs/websockets` 진입점은 Node.js 기본 module과 lifecycle-service alias를 유지합니다. Fetch-style 애플리케이션은 게이트웨이 데코레이터와 metadata helper를 선택한 런타임 서브패스에서 import할 수 있으므로 authoring code가 루트 Node.js 기반 진입점을 로드할 필요가 없습니다.
+
+각 서브패스는 해당 `*WebSocketModule.forRoot(...)` 진입점, 일치하는 런타임 lifecycle service export, 그리고 공유 gateway authoring primitive인 `WebSocketGateway`, `OnConnect`, `OnMessage`, `OnDisconnect`, `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, `webSocketHandlerMetadataSymbol`을 제공합니다.
 
 | 런타임 | 서브패스 | 모듈 | Lifecycle service |
 | --- | --- | --- | --- |
@@ -130,6 +132,10 @@ Gateway `@OnMessage()` handler는 지원 런타임 전반에서 하나의 정규
 | Bun | `@fluojs/websockets/bun` | `BunWebSocketModule` | `BunWebSocketGatewayLifecycleService` |
 | Deno | `@fluojs/websockets/deno` | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
 | Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` | `CloudflareWorkersWebSocketGatewayLifecycleService` |
+
+```typescript
+import { BunWebSocketModule, OnMessage, WebSocketGateway } from '@fluojs/websockets/bun';
+```
 
 ## 예제 소스
 

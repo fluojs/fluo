@@ -70,7 +70,7 @@ Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `R
 | condition | package choice | notes |
 | --- | --- | --- |
 | Need transport-neutral WebSockets | `@fluojs/websockets` | Use for raw WebSocket gateway authoring. |
-| Need runtime-specific WebSocket lifecycle services | `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, or `@fluojs/websockets/cloudflare-workers` | Choose the subpath that matches the runtime boundary. |
+| Need runtime-specific WebSocket lifecycle services or fetch-style gateway authoring without the root Node.js default | `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, or `@fluojs/websockets/cloudflare-workers` | Choose the subpath that matches the runtime boundary; each subpath also exposes the shared gateway decorators and metadata helpers. |
 | Need Socket.IO semantics | `@fluojs/socket.io` | Use for Socket.IO-compatible integrations. |
 | Need in-process domain events with optional cross-process fan-out | `@fluojs/event-bus` + optional `@fluojs/event-bus/redis` and `@fluojs/redis` | Use when one published domain fact should notify multiple local handlers, with Redis Pub/Sub fan-out only when reactions must cross process boundaries. |
 | Need message-pattern microservices | `@fluojs/microservices` | Use for transport-driven microservice handlers. |

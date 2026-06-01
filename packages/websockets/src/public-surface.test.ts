@@ -55,6 +55,24 @@ describe('@fluojs/websockets public surface', () => {
     }).toMatchSnapshot('runtime-subpaths');
   });
 
+  it('exposes gateway authoring primitives from every runtime subpath', () => {
+    const runtimeSubpaths = [bun, deno, node, workers];
+
+    for (const runtimeSubpath of runtimeSubpaths) {
+      expect(runtimeSubpath).toHaveProperty('WebSocketGateway');
+      expect(runtimeSubpath).toHaveProperty('OnConnect');
+      expect(runtimeSubpath).toHaveProperty('OnDisconnect');
+      expect(runtimeSubpath).toHaveProperty('OnMessage');
+      expect(runtimeSubpath).toHaveProperty('defineWebSocketGatewayMetadata');
+      expect(runtimeSubpath).toHaveProperty('getWebSocketGatewayMetadata');
+      expect(runtimeSubpath).toHaveProperty('defineWebSocketHandlerMetadata');
+      expect(runtimeSubpath).toHaveProperty('getWebSocketHandlerMetadata');
+      expect(runtimeSubpath).toHaveProperty('getWebSocketHandlerMetadataEntries');
+      expect(runtimeSubpath).toHaveProperty('webSocketGatewayMetadataSymbol');
+      expect(runtimeSubpath).toHaveProperty('webSocketHandlerMetadataSymbol');
+    }
+  });
+
   it('keeps fetch-style runtime upgrade guards scoped to Request inputs', () => {
     expectTypeOf<UpgradeGuardRequest<BunWebSocketModuleOptions>>().toEqualTypeOf<Request>();
     expectTypeOf<UpgradeGuardRequest<DenoWebSocketModuleOptions>>().toEqualTypeOf<Request>();

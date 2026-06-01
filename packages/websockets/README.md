@@ -122,7 +122,9 @@ Gateway `@OnMessage()` handlers receive one normalized payload contract across s
 
 ## Runtime-Specific Subpaths
 
-Use the runtime subpaths when you want an explicit runtime binding instead of the default root Node.js alias. Each subpath exposes its `*WebSocketModule.forRoot(...)` entrypoint plus the matching runtime lifecycle service export.
+Use the runtime subpaths when you want an explicit runtime binding instead of the default root Node.js alias. The root `@fluojs/websockets` entrypoint preserves the Node.js default module and lifecycle-service aliases. Fetch-style applications can import gateway decorators and metadata helpers from their selected runtime subpath so authoring code does not need to load the root Node.js-backed entrypoint.
+
+Each subpath exposes its `*WebSocketModule.forRoot(...)` entrypoint, the matching runtime lifecycle service export, and the shared gateway authoring primitives: `WebSocketGateway`, `OnConnect`, `OnMessage`, `OnDisconnect`, `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, and `webSocketHandlerMetadataSymbol`.
 
 | Runtime | Subpath | Module | Lifecycle service |
 | --- | --- | --- | --- |
@@ -130,6 +132,10 @@ Use the runtime subpaths when you want an explicit runtime binding instead of th
 | Bun | `@fluojs/websockets/bun` | `BunWebSocketModule` | `BunWebSocketGatewayLifecycleService` |
 | Deno | `@fluojs/websockets/deno` | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
 | Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` | `CloudflareWorkersWebSocketGatewayLifecycleService` |
+
+```typescript
+import { BunWebSocketModule, OnMessage, WebSocketGateway } from '@fluojs/websockets/bun';
+```
 
 ## Example Sources
 
