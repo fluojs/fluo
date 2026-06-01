@@ -1,5 +1,16 @@
 # @fluojs/socket.io
 
+## 1.0.6
+
+### Patch Changes
+
+- [#2082](https://github.com/fluojs/fluo/pull/2082) [`894b20c`](https://github.com/fluojs/fluo/commit/894b20ccc1ac14d7c89262f37074ea4fb675d104) Thanks [@ayden94](https://github.com/ayden94)! - Fail fast when unsupported realtime adapters bootstrap Socket.IO without discovered gateways, while preserving the Bun binding installation path before listen.
+
+- Updated dependencies [[`06f35cb`](https://github.com/fluojs/fluo/commit/06f35cbef3a0343a6745e658c120eb19d15d4480), [`3c89876`](https://github.com/fluojs/fluo/commit/3c89876ab785d03dbaf14c16713d5b45b9407b8d), [`e8f2844`](https://github.com/fluojs/fluo/commit/e8f284469a3b1bf5d5453ba005b8c63cc4ffdd65)]:
+  - @fluojs/http@1.1.1
+  - @fluojs/websockets@1.0.6
+  - @fluojs/runtime@1.1.7
+
 ## 1.0.5
 
 ### Patch Changes

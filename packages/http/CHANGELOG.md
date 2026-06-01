@@ -1,5 +1,11 @@
 # @fluojs/http
 
+## 1.1.1
+
+### Patch Changes
+
+- [#2077](https://github.com/fluojs/fluo/pull/2077) [`06f35cb`](https://github.com/fluojs/fluo/commit/06f35cbef3a0343a6745e658c120eb19d15d4480) Thanks [@ayden94](https://github.com/ayden94)! - Guard request-context storage resolution so importing `@fluojs/http` does not crash when host `async_hooks` probes throw, while preserving lazy ALS resolution and synchronous fallback behavior.
+
 ## 1.1.0
 
 ### Minor Changes

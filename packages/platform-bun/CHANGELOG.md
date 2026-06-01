@@ -1,5 +1,17 @@
 # @fluojs/platform-bun
 
+## 1.0.6
+
+### Patch Changes
+
+- [#2086](https://github.com/fluojs/fluo/pull/2086) [`e8f2844`](https://github.com/fluojs/fluo/commit/e8f284469a3b1bf5d5453ba005b8c63cc4ffdd65) Thanks [@ayden94](https://github.com/ayden94)! - Keep the runtime internal HTTP adapter seam free of Node-specific console logger globals, and route platform defaults through either the transport-neutral logger or the explicit Node runtime subpath.
+
+- [#2085](https://github.com/fluojs/fluo/pull/2085) [`3b3331a`](https://github.com/fluojs/fluo/commit/3b3331a55ad99fde975f18b5907aeba5dbc72cc7) Thanks [@ayden94](https://github.com/ayden94)! - Harden Bun adapter startup so websocket upgrade requests fall back to HTTP dispatch unless the realtime binding actually upgrades the request, and omit the native `routes` option unless safe Bun routes are concretely enabled.
+
+- Updated dependencies [[`06f35cb`](https://github.com/fluojs/fluo/commit/06f35cbef3a0343a6745e658c120eb19d15d4480), [`e8f2844`](https://github.com/fluojs/fluo/commit/e8f284469a3b1bf5d5453ba005b8c63cc4ffdd65)]:
+  - @fluojs/http@1.1.1
+  - @fluojs/runtime@1.1.7
+
 ## 1.0.5
 
 ### Patch Changes

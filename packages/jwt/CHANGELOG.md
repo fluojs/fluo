@@ -1,5 +1,14 @@
 # @fluojs/jwt
 
+## 1.0.2
+
+### Patch Changes
+
+- [#2074](https://github.com/fluojs/fluo/pull/2074) [`8c9d97a`](https://github.com/fluojs/fluo/commit/8c9d97a39cda8d2bb8b0cee9055cb5cb9c2cc417) Thanks [@ayden94](https://github.com/ayden94)! - Load Node.js crypto primitives lazily so the root `@fluojs/jwt` import surface no longer pulls `node:crypto` before callers execute signing, verification, JWKS key parsing, or refresh-token generation.
+
+- Updated dependencies [[`e8f2844`](https://github.com/fluojs/fluo/commit/e8f284469a3b1bf5d5453ba005b8c63cc4ffdd65)]:
+  - @fluojs/runtime@1.1.7
+
 ## 1.0.1
 
 ### Patch Changes
