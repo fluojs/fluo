@@ -11,7 +11,7 @@
 | Precedence | Source | Entry point | Current rule |
 | --- | --- | --- | --- |
 | 1, lowest | `defaults` | `loadConfig(options)` 또는 `ConfigModule.forRoot(options)` | 기본 스냅샷 값입니다. |
-| 2 | env file | `envFile` 또는 `envFilePath` | 기본값은 `<cwd>/.env`이며, 설정된 파일 경로에서 파싱됩니다. |
+| 2 | env file | `envFile` 또는 `envFilePath` | 빈 `loadConfig({})` / `ConfigModule.forRoot()` option에서는 기본값이 `<cwd>/.env`이며, 설정된 파일 경로에서 파싱됩니다. |
 | 3 | `processEnv` snapshot | 명시적 `processEnv` option | 로더에 전달된 값만 병합에 참여합니다. 주변 `process.env`는 자동으로 읽지 않습니다. |
 | 4, highest | `runtimeOverrides` | 명시적 `runtimeOverrides` option | 명시적 런타임 값의 최종 override 계층입니다. |
 

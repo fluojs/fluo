@@ -11,7 +11,7 @@ This document defines the configuration source model implemented by `@fluojs/con
 | Precedence | Source | Entry point | Current rule |
 | --- | --- | --- | --- |
 | 1, lowest | `defaults` | `loadConfig(options)` or `ConfigModule.forRoot(options)` | Base snapshot values. |
-| 2 | env file | `envFile` or `envFilePath` | Parsed from the configured file path, defaulting to `<cwd>/.env`. |
+| 2 | env file | `envFile` or `envFilePath` | Parsed from the configured file path, defaulting to `<cwd>/.env` for empty `loadConfig({})` / `ConfigModule.forRoot()` options. |
 | 3 | `processEnv` snapshot | explicit `processEnv` option | Only values passed into the loader participate. Ambient `process.env` is not read automatically. |
 | 4, highest | `runtimeOverrides` | explicit `runtimeOverrides` option | Final override layer for explicit runtime values. |
 
