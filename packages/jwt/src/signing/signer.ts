@@ -1,5 +1,3 @@
-import { createHmac, createSign } from 'node:crypto';
-
 import { Inject } from '@fluojs/core';
 
 import { JwtConfigurationError } from '../errors.js';
@@ -155,6 +153,7 @@ export class DefaultJwtSigner {
         throw new JwtConfigurationError(`No hash mapping for asymmetric algorithm "${algorithm}".`);
       }
 
+      const { createSign } = await import('node:crypto');
       const signer = createSign(hash);
       signer.update(signingInput);
       const isEc = algorithm.startsWith('ES');
@@ -174,6 +173,7 @@ export class DefaultJwtSigner {
         throw new JwtConfigurationError(`No hash mapping for HMAC algorithm "${algorithm}".`);
       }
 
+      const { createHmac } = await import('node:crypto');
       signatureSegment = encodeBase64Url(createHmac(hash, secret).update(signingInput).digest());
     }
 

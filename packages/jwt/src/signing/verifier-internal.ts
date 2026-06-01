@@ -1,6 +1,6 @@
 import type { JwtPrincipal, JwtVerifierOptions } from '../types.js';
 
-import { DefaultJwtVerifier } from './verifier.js';
+import type { DefaultJwtVerifier } from './verifier.js';
 
 type AccessTokenVerificationOverrides = Pick<
   JwtVerifierOptions,

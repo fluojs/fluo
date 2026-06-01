@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
 import type { DefaultJwtSigner } from '../signing/signer.js';
 import type { JwtClaims } from '../types.js';
@@ -120,6 +118,7 @@ export class RefreshTokenService {
   }
 
   async issueRefreshToken(subject: string): Promise<string> {
+    const { randomUUID } = await import('node:crypto');
     const family = randomUUID();
 
     return this.issueRefreshTokenWithFamily(subject, family);
@@ -230,6 +229,7 @@ export class RefreshTokenService {
     family: string,
   ): Promise<{ record: RefreshTokenRecord; token: string }> {
     const now = Math.floor(Date.now() / 1000);
+    const { randomUUID } = await import('node:crypto');
     const tokenId = randomUUID();
     const expiresAt = new Date((now + this.options.expiresInSeconds) * 1000);
     const record = {

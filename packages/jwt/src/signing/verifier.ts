@@ -1,5 +1,4 @@
 import type { KeyObject } from 'node:crypto';
-import { createHmac, createVerify, timingSafeEqual } from 'node:crypto';
 
 import { Inject } from '@fluojs/core';
 
@@ -182,18 +181,19 @@ function resolveStaticPublicKey(
   return keyState.defaultPublicKey ?? options.publicKey;
 }
 
-function verifyHmacSignature(
+async function verifyHmacSignature(
   algorithm: JwtAlgorithm,
   secret: string,
   signingInput: string,
   signatureSegment: string,
-): void {
+): Promise<void> {
   const hash = HMAC_HASH[algorithm];
 
   if (!hash) {
     throw new JwtInvalidTokenError();
   }
 
+  const { createHmac, timingSafeEqual } = await import('node:crypto');
   const expected = encodeBase64Url(createHmac(hash, secret).update(signingInput).digest());
   const expectedBuf = Buffer.from(expected, 'base64url');
   const actualBuf = Buffer.from(signatureSegment, 'base64url');
@@ -203,18 +203,19 @@ function verifyHmacSignature(
   }
 }
 
-function verifyAsymmetricSignature(
+async function verifyAsymmetricSignature(
   algorithm: JwtAlgorithm,
   publicKey: string | KeyObject,
   signingInput: string,
   signatureSegment: string,
-): void {
+): Promise<void> {
   const hash = ASYMMETRIC_HASH[algorithm];
 
   if (!hash) {
     throw new JwtInvalidTokenError();
   }
 
+  const { createVerify } = await import('node:crypto');
   const verifier = createVerify(hash);
   verifier.update(signingInput);
   const isEc = algorithm.startsWith('ES');
@@ -456,7 +457,7 @@ export class DefaultJwtVerifier {
       throw new JwtConfigurationError('JWT secret is not configured.');
     }
 
-    verifyHmacSignature(header.alg, secret, signingInput, signatureSegment);
+    await verifyHmacSignature(header.alg, secret, signingInput, signatureSegment);
   }
 
   private async verifyAsymmetricTokenSignature(
@@ -478,7 +479,7 @@ export class DefaultJwtVerifier {
       throw new JwtConfigurationError('JWT public key is not configured.');
     }
 
-    verifyAsymmetricSignature(header.alg, publicKey, signingInput, signatureSegment);
+    await verifyAsymmetricSignature(header.alg, publicKey, signingInput, signatureSegment);
   }
 
   private async resolveProviderKey(
