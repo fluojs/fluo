@@ -3,7 +3,7 @@ import type { Application, ApplicationLogger, ModuleType, MultipartOptions } fro
 import {
   type BootstrapHttpAdapterApplicationOptions,
   bootstrapHttpAdapterApplication,
-  createConsoleApplicationLogger,
+  createDefaultApplicationLogger,
   type HttpAdapterListenTarget,
   type RunHttpAdapterApplicationOptions,
   runHttpAdapterApplication,
@@ -333,7 +333,7 @@ export async function bootstrapDenoApplication(
   rootModule: ModuleType,
   options: BootstrapDenoApplicationOptions = {},
 ): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
+  const logger = options.logger ?? createDefaultApplicationLogger();
 
   return await bootstrapHttpAdapterApplication(rootModule, options, createDenoAdapter(options), logger);
 }
@@ -349,7 +349,7 @@ export async function runDenoApplication(
   rootModule: ModuleType,
   options: RunDenoApplicationOptions = {},
 ): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
+  const logger = options.logger ?? createDefaultApplicationLogger();
   const adapter = createDenoAdapter(options);
   return await runHttpAdapterApplication(rootModule, {
     ...options,
