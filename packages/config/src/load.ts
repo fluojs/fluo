@@ -1,6 +1,4 @@
 import { FluoError } from '@fluojs/core';
-import { parse as dotenvParse } from 'dotenv';
-import { expand as dotenvExpand } from 'dotenv-expand';
 
 import { cloneConfigDictionary } from './clone.js';
 import { snapshotConfigLoadOptions } from './options.js';
@@ -57,7 +55,7 @@ type NodeBuiltinModuleHost = typeof globalThis & {
 };
 
 interface NormalizedLoadOptions {
-  envFile: string;
+  envFile: string | undefined;
   defaults: ConfigDictionary;
   safeProcessEnv: Record<string, string>;
   runtimeOverrides: ConfigDictionary;
@@ -140,13 +138,65 @@ function getReloadFailureReason(error: unknown): ConfigReloadReason | undefined 
   return reloadFailureReasons.get(error);
 }
 
+function unquoteEnvValue(value: string): string {
+  if (value.length < 2) {
+    return value;
+  }
+
+  const quote = value[0];
+  if ((quote !== '"' && quote !== "'") || value[value.length - 1] !== quote) {
+    return value;
+  }
+
+  const unquoted = value.slice(1, -1);
+  return quote === '"' ? unquoted.replace(/\\n/g, '\n').replace(/\\r/g, '\r') : unquoted;
+}
+
+function parseDotenvContent(content: string): Record<string, string> {
+  const parsed: Record<string, string> = {};
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line.length === 0 || line.startsWith('#')) {
+      continue;
+    }
+
+    const entry = line.startsWith('export ') ? line.slice(7).trimStart() : line;
+    const separatorIndex = entry.indexOf('=');
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const key = entry.slice(0, separatorIndex).trim();
+    const value = entry.slice(separatorIndex + 1).trim();
+    if (!/^[\w.-]+$/.test(key)) {
+      continue;
+    }
+
+    parsed[key] = unquoteEnvValue(value);
+  }
+
+  return parsed;
+}
+
+function expandEnvVariables(parsed: Record<string, string>, safeProcessEnv: Record<string, string>): Record<string, string> {
+  const expanded: Record<string, string> = {};
+  const source = { ...safeProcessEnv, ...parsed };
+
+  for (const [key, value] of Object.entries(parsed)) {
+    expanded[key] = value.replace(/\$\{([\w.-]+)\}/g, (_match, variableName: string) => source[variableName] ?? '');
+    source[key] = expanded[key];
+  }
+
+  return expanded;
+}
+
 function parseEnvContent(content: string, safeProcessEnv: Record<string, string>, customParser?: (content: string) => Record<string, string>): Record<string, string> {
   if (customParser) {
     return customParser(content);
   }
-  const parsed = dotenvParse(content);
-  const result = dotenvExpand({ parsed, processEnv: { ...safeProcessEnv } });
-  return result.parsed ?? {};
+
+  return expandEnvVariables(parseDotenvContent(content), safeProcessEnv);
 }
 
 function sanitizeProcessEnv(processEnv: NodeJS.ProcessEnv): Record<string, string> {
@@ -167,8 +217,11 @@ function rejectLegacyValidateOption(options: ConfigLoadOptions): void {
 function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions {
   rejectLegacyValidateOption(options);
 
-  const cwd = options.cwd ?? resolveCurrentWorkingDirectory();
-  const envFile = options.envFilePath ?? options.envFile ?? nodePath().join(cwd, '.env');
+  const shouldUseDefaultEnvFile = options.cwd !== undefined || options.watch === true;
+  const cwd = shouldUseDefaultEnvFile && options.envFilePath === undefined && options.envFile === undefined
+    ? options.cwd ?? resolveCurrentWorkingDirectory()
+    : options.cwd;
+  const envFile = options.envFilePath ?? options.envFile ?? (cwd ? nodePath().join(cwd, '.env') : undefined);
   const defaults = options.defaults ?? {};
   const processEnv = options.processEnv ?? {};
   const safeProcessEnv = sanitizeProcessEnv(processEnv);
@@ -185,6 +238,10 @@ function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions
 }
 
 function readEnvFileValues(options: NormalizedLoadOptions): ConfigDictionary {
+  if (options.envFile === undefined) {
+    return {};
+  }
+
   try {
     return parseEnvContent(nodeFs().readFileSync(options.envFile, 'utf8'), options.safeProcessEnv, options.parse);
   } catch (error: unknown) {
@@ -464,10 +521,15 @@ function startReloaderWatcher(
     return undefined;
   }
 
+  if (normalized.envFile === undefined) {
+    return undefined;
+  }
+
   const path = nodePath();
   const fs = nodeFs();
-  const watchTarget = path.dirname(normalized.envFile);
-  const watchedEnvFileName = path.basename(normalized.envFile);
+  const envFile = normalized.envFile;
+  const watchTarget = path.dirname(envFile);
+  const watchedEnvFileName = path.basename(envFile);
 
   if (!fs.existsSync(watchTarget)) {
     return undefined;
@@ -479,7 +541,7 @@ function startReloaderWatcher(
     }
 
     try {
-      const nextEnvFileHash = hashEnvFileContent(normalized.envFile);
+      const nextEnvFileHash = hashEnvFileContent(envFile);
       if (nextEnvFileHash === state.watchedEnvFileHash) {
         return;
       }
@@ -533,7 +595,7 @@ export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader
     current: resolveConfig(normalized),
     pendingReloadReason: undefined,
     reloading: false,
-    watchedEnvFileHash: hashEnvFileContent(normalized.envFile),
+    watchedEnvFileHash: normalized.envFile === undefined ? undefined : hashEnvFileContent(normalized.envFile),
     watcher: undefined,
   };
   const listeners = new Set<ConfigReloadListener>();

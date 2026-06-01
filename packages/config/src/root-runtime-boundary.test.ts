@@ -17,4 +17,22 @@ describe('@fluojs/config root runtime boundary', () => {
     expect(configPublicApi).toHaveProperty('loadConfig');
     expect(getBuiltinModule).not.toHaveBeenCalled();
   });
+
+  it('loads in-memory config without resolving cwd, env files, or Node builtins', async () => {
+    const getBuiltinModule = vi.spyOn(process, 'getBuiltinModule').mockImplementation(((id: string) => {
+      throw new Error(`In-memory loading attempted to resolve ${id}.`);
+    }) as typeof process.getBuiltinModule);
+    const cwd = vi.spyOn(process, 'cwd').mockImplementation(() => {
+      throw new Error('In-memory loading attempted to resolve process.cwd().');
+    });
+
+    const { loadConfig } = await import('./index.js');
+
+    expect(loadConfig({ defaults: { PORT: '3000' }, processEnv: {}, runtimeOverrides: { FEATURE: 'enabled' } })).toEqual({
+      FEATURE: 'enabled',
+      PORT: '3000',
+    });
+    expect(getBuiltinModule).not.toHaveBeenCalled();
+    expect(cwd).not.toHaveBeenCalled();
+  });
 });
