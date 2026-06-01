@@ -168,13 +168,45 @@ describe('request context store', () => {
       const requestContext = await import('./request-context.js');
       const context = requestContext.createRequestContext(createMockContext());
 
-      const requestId = await requestContext.runWithRequestContext(context, async () => {
+      const requestIdResult = requestContext.runWithRequestContext(context, async () => {
         await Promise.resolve();
 
         return requestContext.assertRequestContext().requestId;
       });
 
+      expect(requestIdResult).toBeInstanceOf(Promise);
+
+      const requestId = await requestIdResult;
+
       expect(requestId).toBe('req_123');
+    } finally {
+      if (getBuiltinModuleDescriptor) {
+        Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);
+      }
+      vi.resetModules();
+    }
+  });
+
+  it('returns a synchronous value on the first public helper call when dynamic storage resolution is pending', async () => {
+    vi.resetModules();
+    const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
+
+    Object.defineProperty(process, 'getBuiltinModule', {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      const requestContext = await import('./request-context.js');
+      const context = requestContext.createRequestContext(createMockContext());
+
+      const requestId = requestContext.runWithRequestContext(
+        context,
+        () => requestContext.assertRequestContext().requestId,
+      );
+
+      expect(requestId).toBe('req_123');
+      expect(requestId).not.toBeInstanceOf(Promise);
     } finally {
       if (getBuiltinModuleDescriptor) {
         Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);

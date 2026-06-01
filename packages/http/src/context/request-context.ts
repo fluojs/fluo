@@ -35,6 +35,12 @@ export function runWithRequestContext<T>(context: RequestContext, callback: () =
     return getFallbackRequestContextStore().run(context, callback);
   }
 
+  if (!isAsyncCallback(callback)) {
+    void resolveRequestContextStore();
+
+    return getFallbackRequestContextStore().run(context, callback);
+  }
+
   return runWithResolvedRequestContextStore(context, callback) as T;
 }
 
@@ -168,4 +174,8 @@ function getFallbackRequestContextStore(): RequestContextStore {
   fallbackRequestContextStore ??= createStackRequestContextStore();
 
   return fallbackRequestContextStore;
+}
+
+function isAsyncCallback<T>(callback: () => T): callback is () => T & Promise<Awaited<T>> {
+  return callback.constructor.name === 'AsyncFunction';
 }
