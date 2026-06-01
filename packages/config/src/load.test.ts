@@ -420,6 +420,7 @@ describe('loadConfig', () => {
         "HASH_IN_SINGLE='value#kept' # removed",
         'BACKTICK=`allows "double" and \'single\' quotes` # removed',
         'export EXPORTED_VAR=from-export',
+        'COLON_ASSIGNMENT: from-colon',
         'my.dotted-key=from-dotted-key',
         'ACTUAL_NEWLINE="first line',
         'second line"',
@@ -431,6 +432,7 @@ describe('loadConfig', () => {
     expect(loaded).toMatchObject({
       ACTUAL_NEWLINE: 'first line\nsecond line',
       BACKTICK: 'allows "double" and \'single\' quotes',
+      COLON_ASSIGNMENT: 'from-colon',
       EMPTY: '',
       EXPORTED_VAR: 'from-export',
       HASH_IN_DOUBLE: 'value#kept',
@@ -463,6 +465,8 @@ describe('loadConfig', () => {
         'LOCAL_HOST=localhost',
         'LOCAL_URL=postgres://${LOCAL_HOST}:5432/app',
         'PROCESS_URL=https://$PUBLIC_HOST/api',
+        'PROCESS_PRECEDENCE=from-file',
+        'USES_PROCESS_PRECEDENCE=$PROCESS_PRECEDENCE',
         'FORWARD_REF=$LATER_VALUE',
         'LATER_VALUE=available-later',
         'ESCAPED=\\$LOCAL_HOST',
@@ -470,14 +474,16 @@ describe('loadConfig', () => {
       ].join('\n'),
     );
 
-    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: { PUBLIC_HOST: 'example.com' } });
+    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: { PROCESS_PRECEDENCE: 'from-process', PUBLIC_HOST: 'example.com' } });
 
     expect(loaded).toMatchObject({
       ESCAPED: '$LOCAL_HOST',
       FORWARD_REF: 'available-later',
       LOCAL_URL: 'postgres://localhost:5432/app',
+      PROCESS_PRECEDENCE: 'from-process',
       PROCESS_URL: 'https://example.com/api',
       UNKNOWN: '',
+      USES_PROCESS_PRECEDENCE: 'from-process',
     });
   });
 

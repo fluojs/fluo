@@ -206,7 +206,7 @@ function parseDotenvContent(content: string): Record<string, string> {
     }
 
     const entry = line.startsWith('export ') ? line.slice(7).trimStart() : line;
-    const separatorIndex = entry.indexOf('=');
+    const separatorIndex = entry.search(/[:=]/);
     if (separatorIndex <= 0) {
       continue;
     }
@@ -230,7 +230,7 @@ function parseDotenvContent(content: string): Record<string, string> {
 
 function expandEnvVariables(parsed: Record<string, string>, safeProcessEnv: Record<string, string>): Record<string, string> {
   const expanded: Record<string, string> = {};
-  const source = { ...safeProcessEnv, ...parsed };
+  const source = { ...parsed, ...safeProcessEnv };
 
   const expandValue = (value: string, visiting: ReadonlySet<string>): string =>
     value.replace(/(^|[^\\])\$\{?([\w.-]+)\}?/g, (_match, prefix: string, variableName: string) => {
@@ -242,9 +242,11 @@ function expandEnvVariables(parsed: Record<string, string>, safeProcessEnv: Reco
         return prefix;
       }
 
-      const replacement = variableName in expanded
-        ? expanded[variableName]
-        : expandValue(source[variableName] ?? '', new Set([...visiting, variableName]));
+      const replacement = variableName in safeProcessEnv
+        ? safeProcessEnv[variableName]
+        : variableName in expanded
+          ? expanded[variableName]
+          : expandValue(source[variableName] ?? '', new Set([...visiting, variableName]));
 
       return `${prefix}${replacement}`;
     }).replace(/\\\$/g, '$');
