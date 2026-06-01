@@ -23,9 +23,26 @@ function spyOnGetBuiltinModule(implementation: typeof process.getBuiltinModule) 
 
 describe('@fluojs/config root runtime boundary', () => {
   afterEach(() => {
+    vi.doUnmock('node:crypto');
+    vi.doUnmock('node:fs');
+    vi.doUnmock('node:module');
+    vi.doUnmock('node:path');
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.resetModules();
+  });
+
+  it('does not statically resolve Node builtins from the root public API path', async () => {
+    for (const id of ['node:crypto', 'node:fs', 'node:module', 'node:path']) {
+      vi.doMock(id, () => {
+        throw new Error(`Root import statically resolved ${id}.`);
+      });
+    }
+
+    const configPublicApi = await import('./index.js');
+
+    expect(configPublicApi).toHaveProperty('ConfigService');
+    expect(configPublicApi).toHaveProperty('loadConfig');
   });
 
   it('does not resolve Node builtins when importing the root public API', async () => {
@@ -58,15 +75,16 @@ describe('@fluojs/config root runtime boundary', () => {
     expect(cwd).not.toHaveBeenCalled();
   });
 
-  it('loads env files through a Node 20.0 compatible fallback when getBuiltinModule is unavailable', async () => {
+  it('loads env files through a Node 20.0 compatible fallback when direct builtin lookup is unavailable', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-node20-fallback-'));
     const envFilePath = join(cwd, '.env');
+    const getBuiltinModule = processWithGetBuiltinModule.getBuiltinModule;
 
     writeFileSync(envFilePath, 'PORT=4010\n');
     vi.stubGlobal('require', () => {
       throw new Error('Node 20 ESM fallback must not depend on global require.');
     });
-    spyOnGetBuiltinModule((() => undefined) as typeof process.getBuiltinModule);
+    spyOnGetBuiltinModule(((id: string) => (id === 'node:module' ? getBuiltinModule?.('node:module') : undefined)) as typeof process.getBuiltinModule);
 
     const { loadConfig } = await import('./index.js');
 

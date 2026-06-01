@@ -909,11 +909,11 @@ describe('loadConfig', () => {
     }
   });
 
-  it('starts watch mode through the Node 20 fallback when getBuiltinModule is unavailable', () => {
+  it('starts watch mode through the Node 20 fallback when direct builtin lookup is unavailable', () => {
     vi.stubGlobal('require', () => {
       throw new Error('Node 20 ESM fallback must not depend on global require.');
     });
-    spyOnGetBuiltinModule((() => undefined) as typeof process.getBuiltinModule);
+    spyOnGetBuiltinModule(((id: string) => (id === 'node:module' ? originalGetBuiltinModule?.(id as Parameters<typeof process.getBuiltinModule>[0]) : undefined)) as typeof process.getBuiltinModule);
 
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-watch-node20-fallback-'));
     const envPath = join(cwd, '.env.dev');

@@ -1,5 +1,3 @@
-import { createRequire } from 'node:module';
-
 import { FluoError } from '@fluojs/core';
 
 import { cloneConfigDictionary } from './clone.js';
@@ -47,12 +45,21 @@ type NodePathModule = {
   join(...paths: string[]): string;
 };
 
+type NodeModuleModule = {
+  createRequire(url: string | URL): NodeBuiltinRequire;
+};
+
+type NodeGetBuiltinModule = {
+  (id: 'node:crypto'): NodeCryptoModule;
+  (id: 'node:fs'): NodeFsModule;
+  (id: 'node:path'): NodePathModule;
+  (id: 'node:module'): NodeModuleModule;
+};
+
 type NodeBuiltinModuleHost = typeof globalThis & {
   process?: {
     cwd?(): string;
-    getBuiltinModule?(id: 'node:crypto'): NodeCryptoModule;
-    getBuiltinModule?(id: 'node:fs'): NodeFsModule;
-    getBuiltinModule?(id: 'node:path'): NodePathModule;
+    getBuiltinModule?: NodeGetBuiltinModule;
   };
 };
 
@@ -93,7 +100,16 @@ function resolveRequireNodeBuiltin(): NodeBuiltinRequire {
     return requireNodeBuiltin;
   }
 
-  requireNodeBuiltin = createRequire(import.meta.url) as NodeBuiltinRequire;
+  const nodeModule = (globalThis as NodeBuiltinModuleHost).process?.getBuiltinModule?.('node:module');
+
+  if (!nodeModule?.createRequire) {
+    throw new FluoError('Node.js configuration loading is unavailable in this runtime.', {
+      code: 'CONFIG_RUNTIME_UNAVAILABLE',
+      cause: new Error(`${nodeBuiltinRuntimeRequirement} The host runtime did not expose a synchronous node:module loader. Use in-memory config options or run env-file loading on Node.js.`),
+    });
+  }
+
+  requireNodeBuiltin = nodeModule.createRequire(import.meta.url);
   return requireNodeBuiltin;
 }
 
