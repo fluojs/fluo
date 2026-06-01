@@ -8,6 +8,7 @@ type ProcessWithGetBuiltinModule = typeof process & {
 };
 
 const processWithGetBuiltinModule = process as ProcessWithGetBuiltinModule;
+const originalGetBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(processWithGetBuiltinModule, 'getBuiltinModule');
 
 function spyOnGetBuiltinModule(implementation: typeof process.getBuiltinModule) {
   if (!processWithGetBuiltinModule.getBuiltinModule) {
@@ -30,6 +31,12 @@ describe('@fluojs/config root runtime boundary', () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.resetModules();
+
+    if (originalGetBuiltinModuleDescriptor) {
+      Object.defineProperty(processWithGetBuiltinModule, 'getBuiltinModule', originalGetBuiltinModuleDescriptor);
+    } else {
+      Reflect.deleteProperty(processWithGetBuiltinModule, 'getBuiltinModule');
+    }
   });
 
   it('does not statically resolve Node builtins from the root public API path', async () => {
@@ -75,7 +82,7 @@ describe('@fluojs/config root runtime boundary', () => {
     expect(cwd).not.toHaveBeenCalled();
   });
 
-  it('loads env files through a Node 20.0 compatible fallback when direct builtin lookup is unavailable', async () => {
+  it('loads env files through a Node 20.0 compatible fallback when direct filesystem builtin lookup is unavailable', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-node20-fallback-'));
     const envFilePath = join(cwd, '.env');
     const getBuiltinModule = processWithGetBuiltinModule.getBuiltinModule;
@@ -89,5 +96,21 @@ describe('@fluojs/config root runtime boundary', () => {
     const { loadConfig } = await import('./index.js');
 
     expect(loadConfig({ envFilePath, processEnv: {} })).toMatchObject({ PORT: '4010' });
+  });
+
+  it('fails env-file loading when process.getBuiltinModule is unavailable', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-no-get-builtin-module-'));
+    const envFilePath = join(cwd, '.env');
+
+    writeFileSync(envFilePath, 'PORT=4010\n');
+    Object.defineProperty(processWithGetBuiltinModule, 'getBuiltinModule', {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
+
+    const { loadConfig } = await import('./index.js');
+
+    expect(() => loadConfig({ envFilePath, processEnv: {} })).toThrow('Node.js configuration loading is unavailable in this runtime.');
   });
 });
