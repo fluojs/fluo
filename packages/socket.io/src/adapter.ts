@@ -607,7 +607,9 @@ export class SocketIoLifecycleService
   }
 
   private async ensureBunRealtimeBindingForRawServerAccess(): Promise<void> {
-    if (!hasBunRealtimeBindingHost(this.adapter)) {
+    const runtime = resolveSocketIoBootstrapRuntime(this.adapter);
+
+    if (runtime.kind !== 'bun') {
       return;
     }
 

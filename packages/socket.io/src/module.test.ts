@@ -449,6 +449,20 @@ describe('@fluojs/socket.io', () => {
     ).rejects.toThrow('Socket.IO bootstrap requires a server-backed realtime capability');
   });
 
+  it('fails fast for unsupported adapters even when only the raw Socket.IO server is registered', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot()],
+    });
+
+    await expect(
+      bootstrapApplication({
+        adapter: createNoopHttpApplicationAdapter(),
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow('Socket.IO bootstrap requires a server-backed realtime capability');
+  });
+
   it('rejects serverBacked gateway opt-in on the Bun Socket.IO engine path', async () => {
     const adapter = new TestBunSocketIoAdapter(0);
 
