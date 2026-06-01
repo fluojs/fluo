@@ -187,6 +187,32 @@ describe('request context store', () => {
     }
   });
 
+  it('preserves context for promise-returning non-async callbacks when getBuiltinModule is unavailable', async () => {
+    vi.resetModules();
+    const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
+
+    Object.defineProperty(process, 'getBuiltinModule', {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      const requestContext = await import('./request-context.js');
+      const context = requestContext.createRequestContext(createMockContext());
+
+      const requestId = await requestContext.runWithRequestContext(context, () =>
+        Promise.resolve().then(() => requestContext.assertRequestContext().requestId),
+      );
+
+      expect(requestId).toBe('req_123');
+    } finally {
+      if (getBuiltinModuleDescriptor) {
+        Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);
+      }
+      vi.resetModules();
+    }
+  });
+
   it('returns a synchronous value on the first public helper call when dynamic storage resolution is pending', async () => {
     vi.resetModules();
     const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
@@ -231,6 +257,28 @@ describe('request context store', () => {
 
         return requestContext.assertRequestContext().requestId;
       });
+
+      expect(requestId).toBe('req_123');
+    } finally {
+      getBuiltinModule.mockRestore();
+      vi.resetModules();
+    }
+  });
+
+  it('preserves context for promise-returning non-async callbacks when getBuiltinModule throws', async () => {
+    vi.resetModules();
+
+    const getBuiltinModule = vi.spyOn(process, 'getBuiltinModule').mockImplementation(() => {
+      throw new Error('async_hooks probe failed');
+    });
+
+    try {
+      const requestContext = await import('./request-context.js');
+      const context = requestContext.createRequestContext(createMockContext());
+
+      const requestId = await requestContext.runWithRequestContext(context, () =>
+        Promise.resolve().then(() => requestContext.assertRequestContext().requestId),
+      );
 
       expect(requestId).toBe('req_123');
     } finally {
