@@ -20,6 +20,8 @@ Configuration loading, merging, validation, and typed runtime access for fluo ap
 npm install @fluojs/config
 ```
 
+Env-file loading and watch mode require Node.js 20.16.0 or newer so the package can resolve Node builtins lazily through the host runtime boundary. In-memory use of `ConfigService` and `loadConfig({ defaults, processEnv, runtimeOverrides })` does not require env-file access.
+
 ## When to Use
 
 Use this package when you need to:
@@ -87,7 +89,7 @@ Configuration is merged in the following order (highest precedence wins):
 
 `envFilePath` overrides `envFile`, and `parse` lets callers replace dotenv parsing with a custom parser for flat key/value files. Missing env files are treated as empty input during load; watch mode also observes the parent directory so creating the file later can trigger a reload.
 
-Importing the root `@fluojs/config` package is safe for in-memory consumers that only need `ConfigService` or option types: Node filesystem, path, and crypto builtins are resolved lazily only when env-file loading or watch mode actually runs. Non-Node runtimes should pass in-memory `defaults`, `processEnv`, and `runtimeOverrides` values and avoid env-file/watch options.
+Importing the root `@fluojs/config` package is safe for in-memory consumers that only need `ConfigService`, option types, or `loadConfig(...)` with explicit in-memory inputs: Node filesystem, path, and crypto builtins are resolved lazily only when env-file loading or watch mode actually runs. `loadConfig({ defaults, processEnv, runtimeOverrides })` does not resolve `process.cwd()`, a default `.env` path, or Node builtins. Non-Node runtimes should pass in-memory `defaults`, `processEnv`, and `runtimeOverrides` values and avoid `cwd`, `envFile`, `envFilePath`, and `watch` options.
 
 ### Deep Merging
 Plain objects are deep-merged by key. Arrays and primitive values from higher-precedence sources completely replace lower-precedence ones.
