@@ -92,8 +92,7 @@ Bun과 마찬가지로 Deno는 `Deno.upgradeWebSocket`을 통한 자체 WebSocke
 ```typescript
 // DenoWebSocketModule을 설정하면 게이트웨이가 Deno의 네이티브 업그레이드를 사용합니다.
 import { Module } from '@fluojs/core';
-import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
-import { DenoWebSocketModule } from '@fluojs/websockets/deno';
+import { DenoWebSocketModule, OnMessage, WebSocketGateway } from '@fluojs/websockets/deno';
 import type { DenoServerWebSocket } from '@fluojs/websockets/deno';
 
 @WebSocketGateway({ path: '/ws' })

@@ -113,8 +113,7 @@ Cloudflare supports `WebSocketPair` for server-side WebSockets. fluo's WebSocket
 ```typescript
 // When the adapter is active, gateways automatically use Cloudflare's WebSocketPair.
 import { Module } from '@fluojs/core';
-import { WebSocketGateway } from '@fluojs/websockets';
-import { CloudflareWorkersWebSocketModule } from '@fluojs/websockets/cloudflare-workers';
+import { CloudflareWorkersWebSocketModule, WebSocketGateway } from '@fluojs/websockets/cloudflare-workers';
 
 @WebSocketGateway({ path: '/ws' })
 export class EdgeGateway {

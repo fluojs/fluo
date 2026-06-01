@@ -54,7 +54,7 @@
 - **`@fluojs/email/node`**: Node.js specific subpath for `@fluojs/email` that provides first-party Nodemailer/SMTP transport.
 - **`@fluojs/slack`**: Webhook-first Slack delivery core that can run standalone or register a first-party notifications channel.
 - **`@fluojs/discord`**: Webhook-first Discord delivery core that can run standalone or register a first-party notifications channel.
-- **`@fluojs/websockets`**: WebSocket gateway authoring with runtime-specific subpaths `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`.
+- **`@fluojs/websockets`**: WebSocket gateway authoring with a root Node.js default and runtime-specific subpaths `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers` that also expose shared decorator and metadata authoring primitives.
 - **`@fluojs/validation`**: Standard-decorator input validation, DTO materialization, and request-boundary safety.
 - **`@fluojs/serialization`**: Decorator-aware response serialization and output DTO shaping with `Expose`, `Exclude`, `Transform`, `serialize(value)`, and `SerializerInterceptor` for HTTP response-boundary integration.
 - **`@fluojs/prisma` / `@fluojs/drizzle`**: ORM lifecycle and ALS-backed transaction context.

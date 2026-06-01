@@ -35,19 +35,19 @@ describe('@fluojs/websockets tutorial API alignment', () => {
     const workers = readTutorial('../../../book/intermediate/ch24-cloudflare.md');
     const workersKo = readTutorial('../../../book/intermediate/ch24-cloudflare.ko.md');
 
-    expect(bun).toContain("import { BunWebSocketModule } from '@fluojs/websockets/bun';");
+    expect(bun).toContain("import { BunWebSocketModule, OnConnect, WebSocketGateway } from '@fluojs/websockets/bun';");
     expect(bun).toContain('BunWebSocketModule.forRoot()');
-    expect(bunKo).toContain("import { BunWebSocketModule } from '@fluojs/websockets/bun';");
+    expect(bunKo).toContain("import { BunWebSocketModule, OnConnect, WebSocketGateway } from '@fluojs/websockets/bun';");
     expect(bunKo).toContain('BunWebSocketModule.forRoot()');
 
-    expect(deno).toContain("import { DenoWebSocketModule } from '@fluojs/websockets/deno';");
+    expect(deno).toContain("import { DenoWebSocketModule, OnMessage, WebSocketGateway } from '@fluojs/websockets/deno';");
     expect(deno).toContain('DenoWebSocketModule.forRoot()');
-    expect(denoKo).toContain("import { DenoWebSocketModule } from '@fluojs/websockets/deno';");
+    expect(denoKo).toContain("import { DenoWebSocketModule, OnMessage, WebSocketGateway } from '@fluojs/websockets/deno';");
     expect(denoKo).toContain('DenoWebSocketModule.forRoot()');
 
-    expect(workers).toContain("import { CloudflareWorkersWebSocketModule } from '@fluojs/websockets/cloudflare-workers';");
+    expect(workers).toContain("import { CloudflareWorkersWebSocketModule, WebSocketGateway } from '@fluojs/websockets/cloudflare-workers';");
     expect(workers).toContain('CloudflareWorkersWebSocketModule.forRoot()');
-    expect(workersKo).toContain("import { CloudflareWorkersWebSocketModule } from '@fluojs/websockets/cloudflare-workers';");
+    expect(workersKo).toContain("import { CloudflareWorkersWebSocketModule, WebSocketGateway } from '@fluojs/websockets/cloudflare-workers';");
     expect(workersKo).toContain('CloudflareWorkersWebSocketModule.forRoot()');
   });
 

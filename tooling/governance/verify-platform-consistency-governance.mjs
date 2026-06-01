@@ -826,6 +826,22 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContextKo.includes('force-disconnect/retry semantic'),
     'docs/CONTEXT.ko.md must keep Socket.IO runtime limits, public guard request typing, and shutdown retry guidance discoverable when package-surface.ko.md documents them.',
   );
+  assert(
+    packageSurface.includes('@fluojs/websockets/bun') &&
+      packageSurface.includes('shared decorator and metadata authoring primitives') &&
+      docsContext.includes('packages/websockets/README.md') &&
+      docsContext.includes('@fluojs/websockets/cloudflare-workers') &&
+      docsContext.includes('metadata authoring primitives'),
+    'docs/CONTEXT.md must keep WebSockets runtime subpaths and shared authoring primitives discoverable when package-surface.md documents them.',
+  );
+  assert(
+    packageSurfaceKo.includes('@fluojs/websockets/bun') &&
+      packageSurfaceKo.includes('metadata authoring primitive') &&
+      docsContextKo.includes('packages/websockets/README.ko.md') &&
+      docsContextKo.includes('@fluojs/websockets/cloudflare-workers') &&
+      docsContextKo.includes('metadata authoring primitive'),
+    'docs/CONTEXT.ko.md must keep WebSockets runtime subpaths and shared authoring primitives discoverable when package-surface.ko.md documents them.',
+  );
   assert(rootReadme.includes('docs/reference/package-surface.md'), 'README.md must point to the canonical runtime package matrix page.');
   assert(
     rootReadmeKo.includes('docs/reference/package-surface.ko.md'),
