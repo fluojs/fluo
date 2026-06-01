@@ -287,9 +287,6 @@ importers:
       '@fluojs/di':
         specifier: workspace:^
         version: link:../di
-      '@fluojs/redis':
-        specifier: workspace:^
-        version: link:../redis
       '@fluojs/runtime':
         specifier: workspace:^
         version: link:../runtime
@@ -297,6 +294,9 @@ importers:
         specifier: ^8.1.2
         version: 8.1.2
     devDependencies:
+      '@fluojs/redis':
+        specifier: workspace:^
+        version: link:../redis
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.15)(happy-dom@20.9.0)(tsx@4.21.0)

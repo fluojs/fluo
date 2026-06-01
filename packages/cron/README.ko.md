@@ -25,6 +25,8 @@ npm install @fluojs/cron croner
 
 `croner`는 `@fluojs/cron`이 사용하는 scheduler engine입니다. 애플리케이션과 배포 감사에서 runtime scheduler dependency ownership이 명확히 보이도록 패키지와 함께 설치하세요.
 
+`@fluojs/redis`는 Redis distributed locking을 활성화할 때만 필요합니다. Non-distributed scheduling 경로는 package import, module registration, bootstrap, status snapshot 생성 중 Redis integration을 로드하지 않습니다.
+
 ## 사용 시점
 
 - 정기적인 백그라운드 작업(예: 데이터베이스 정리, 리포트 생성)이 필요할 때 사용합니다.
@@ -71,7 +73,7 @@ class AppModule {}
 
 ### 분산 락 사용하기
 
-여러 서버 인스턴스에서 스케줄링된 작업이 동시에 실행되는 것을 방지하려면 분산 모드를 활성화하세요. 이 기능은 `@fluojs/redis`가 필요합니다.
+여러 서버 인스턴스에서 스케줄링된 작업이 동시에 실행되는 것을 방지하려면 분산 모드를 활성화하세요. 이 기능은 `@fluojs/redis`가 필요하며, Redis peer는 `distributed.enabled`가 `true`일 때만 로드되고 resolve됩니다.
 
 ```typescript
 import { Module } from '@fluojs/core';

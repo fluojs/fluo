@@ -1,6 +1,5 @@
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
-import { getRedisComponentId } from '@fluojs/redis';
 import { Cron as CronValidator } from 'croner';
 import type {
   ApplicationLogger,
@@ -63,6 +62,20 @@ function assertValidCronExpression(expression: string): void {
   } catch {
     throw new Error(`@Cron(): invalid cron expression "${expression}".`);
   }
+}
+
+function createRedisDependencyId(name?: string): string {
+  if (name === undefined) {
+    return 'redis.default';
+  }
+
+  const normalizedName = name.trim();
+
+  if (normalizedName.length === 0) {
+    throw new Error('Redis client name must be a non-empty string.');
+  }
+
+  return `redis.${normalizedName}`;
 }
 
 /**
@@ -365,7 +378,7 @@ export class CronLifecycleService
 
     return createCronPlatformStatusSnapshot({
       activeTicks: this.activeTasks.size,
-      dependencyId: this.options.distributed.enabled ? getRedisComponentId(this.options.distributed.clientName) : undefined,
+      dependencyId: this.options.distributed.enabled ? createRedisDependencyId(this.options.distributed.clientName) : undefined,
       distributedEnabled: this.options.distributed.enabled,
       enabledTasks,
       lifecycleState: this.lifecycleState,

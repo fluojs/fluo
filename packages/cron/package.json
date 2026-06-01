@@ -45,11 +45,19 @@
   "dependencies": {
     "@fluojs/core": "workspace:^",
     "@fluojs/di": "workspace:^",
-    "@fluojs/redis": "workspace:^",
     "@fluojs/runtime": "workspace:^",
     "croner": "^8.1.2"
   },
+  "peerDependencies": {
+    "@fluojs/redis": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@fluojs/redis": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@fluojs/redis": "workspace:^",
     "vitest": "^3.2.4"
   }
 }

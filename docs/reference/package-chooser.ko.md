@@ -75,7 +75,7 @@
 | optional cross-process fan-out이 있는 in-process domain event가 필요함 | `@fluojs/event-bus` + optional `@fluojs/event-bus/redis` 및 `@fluojs/redis` | 하나의 published domain fact가 여러 local handler를 알릴 때 사용하고, 반응이 process boundary를 넘어야 할 때만 Redis Pub/Sub fan-out을 추가합니다. |
 | 메시지 패턴 마이크로서비스가 필요함 | `@fluojs/microservices` | 전송 기반 마이크로서비스 핸들러에 사용합니다. |
 | 백그라운드 작업이 필요함 | `@fluojs/queue` + `@fluojs/redis` | 큐 워커는 Redis에 의존합니다. |
-| 스케줄 작업이 필요함 | `@fluojs/cron` | cron 스타일 스케줄링에 사용합니다. |
+| 스케줄 작업이 필요함 | `@fluojs/cron` | cron 스타일 스케줄링에 사용하고, distributed lock을 활성화할 때만 `@fluojs/redis`를 추가합니다. |
 | 다중 채널 알림이 필요함 | `@fluojs/notifications` | 공용 알림 오케스트레이션 계층입니다. |
 | 이식 가능한 이메일 전송이 필요함 | `@fluojs/email` | 전송 중립 이메일 코어입니다. |
 | Node.js SMTP 전송이 필요함 | `@fluojs/email/node` | `@fluojs/email`용 Node 전용 SMTP 전송입니다. |

@@ -1,4 +1,3 @@
-import { getRedisClientToken } from '@fluojs/redis';
 import type { Container } from '@fluojs/di';
 import type { ApplicationLogger } from '@fluojs/runtime';
 
@@ -25,11 +24,46 @@ interface LockRenewalState {
 }
 
 type LockRenewalOutcome = 'renewed' | 'ownership-lost' | 'renewal-failed';
+type RedisPeerModule = typeof import('@fluojs/redis');
 
 const RELEASE_LOCK_SCRIPT =
   'if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) else return 0 end';
 const RENEW_LOCK_SCRIPT =
   'if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("PEXPIRE", KEYS[1], ARGV[2]) else return 0 end';
+const REDIS_PEER_MODULE_SPECIFIER = '@fluojs/redis';
+
+const loadRedisPeerModule = async (): Promise<RedisPeerModule> => import(REDIS_PEER_MODULE_SPECIFIER);
+
+function isMissingRedisPeer(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const code = 'code' in error ? (error as { code?: unknown }).code : undefined;
+
+  return code === 'ERR_MODULE_NOT_FOUND' && error.message.includes(REDIS_PEER_MODULE_SPECIFIER);
+}
+
+function createRedisBootstrapError(): Error {
+  return new Error(
+    [
+      'Cron distributed mode requires @fluojs/redis to be installed and registered.',
+      'Install and import @fluojs/redis, or disable distributed locking with distributed.enabled: false.',
+    ].join(' '),
+  );
+}
+
+async function resolveRedisPeerModule(): Promise<RedisPeerModule> {
+  try {
+    return await loadRedisPeerModule();
+  } catch (error) {
+    if (isMissingRedisPeer(error)) {
+      throw createRedisBootstrapError();
+    }
+
+    throw error;
+  }
+}
 
 /** Coordinates Redis lock acquisition, renewal, and release for scheduled cron tasks. */
 export class CronDistributedLockManager {
@@ -65,6 +99,7 @@ export class CronDistributedLockManager {
       return;
     }
 
+    const { getRedisClientToken } = await resolveRedisPeerModule();
     const redisToken = getRedisClientToken(this.options.distributed.clientName);
 
     if (!this.runtimeContainer.has(redisToken)) {
