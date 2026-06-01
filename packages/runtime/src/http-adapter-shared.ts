@@ -18,6 +18,8 @@ import { bootstrapApplication } from './bootstrap.js';
 import { createDefaultApplicationLogger } from './logging/default-logger.js';
 import type { Application, ApplicationLogger, CreateApplicationOptions, ModuleType } from './types.js';
 
+export { createDefaultApplicationLogger };
+
 /**
  * Input type for configuring CORS in an HTTP adapter.
  */

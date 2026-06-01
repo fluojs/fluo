@@ -56,6 +56,8 @@ describe('runtime export boundaries', () => {
     expect(runtimeNode.createNodeShutdownSignalRegistration).toBeTypeOf('function');
     expect(runtimeNode.defaultNodeShutdownSignals).toBeTypeOf('function');
     expect(runtimeInternalHttpAdapter.bootstrapHttpAdapterApplication).toBeTypeOf('function');
+    expect(runtimeInternalHttpAdapter.createDefaultApplicationLogger).toBeTypeOf('function');
+    expect(runtimeInternalHttpAdapter).not.toHaveProperty('createConsoleApplicationLogger');
     expect(runtimeInternalHttpAdapter.runHttpAdapterApplication).toBeTypeOf('function');
     expect(runtimeInternalRequestResponseFactory.dispatchWithRequestResponseFactory).toBeTypeOf('function');
   });
