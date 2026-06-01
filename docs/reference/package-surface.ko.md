@@ -32,7 +32,7 @@
 ### core
 - **`@fluojs/core`**: 메타데이터 헬퍼 및 TC39 표준 데코레이터 지원.
 - **`@fluojs/di`**: 프로바이더 해결, 라이프사이클 스코프, 의존성 그래프 분석.
-- **`@fluojs/config`**: 환경 인식 설정 로딩 및 타입 안전 접근. Root import는 in-memory consumer에게 안전해야 하며, Node filesystem/path/crypto builtin은 env-file load 또는 watch mode가 실행될 때만 lazy하게 해석합니다.
+- **`@fluojs/config`**: 환경 인식 설정 로딩 및 타입 안전 접근. Root import는 in-memory consumer에게 안전해야 하며, Node filesystem/path/crypto builtin은 env-file load 또는 watch mode가 실행될 때만 lazy하게 해석합니다. 해당 env-file 경로는 Node.js 20.16.0 이상이 필요합니다.
 - **`@fluojs/i18n`**: module registration, standalone service factory, reserved core option/error type, `@fluojs/i18n/icu`를 통한 ICU MessageFormat 지원, `@fluojs/i18n/http`를 통한 HTTP locale helper 및 opt-in `Accept-Language` policy helper, `@fluojs/i18n/adapters`를 통한 opt-in non-HTTP locale adapter 및 header policy helper, `@fluojs/i18n/validation`을 통한 validation localization, `@fluojs/i18n/loaders/fs`와 `@fluojs/i18n/loaders/remote`를 통한 Node filesystem/provider-backed catalog loader 및 opt-in remote cache wrapper, `@fluojs/i18n/typegen`을 통한 catalog key 및 typed translation helper declaration generation을 제공하는 framework-agnostic internationalization package boundary. NestJS i18n, i18next, next-intl, request/validation convenience glue와의 ecosystem parity는 [i18n ecosystem bridge decision record](./i18n-ecosystem-bridges.ko.md)가 관리하며, 향후 opt-in subpath가 bridge acceptance criteria를 만족하기 전까지 documentation-first로 유지합니다.
 - **`@fluojs/runtime`**: 애플리케이션 부트스트랩, 모듈 오케스트레이션, 플랫폼 셸 등록, 플랫폼 snapshot 생산. 애플리케이션-facing 런타임 헬퍼는 `@fluojs/runtime/node`와 `@fluojs/runtime/web`에서 제공됩니다. 공개된 `@fluojs/runtime/internal*` 서브경로는 first-party adapter와 runtime-aware package를 위한 package-integration seam이며, 애플리케이션 수준 helper 계약이 아닙니다.
 
