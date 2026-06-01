@@ -44,6 +44,13 @@ function createFetchHeaders(request: FrameworkRequest): Headers {
   return headers;
 }
 
+function copyBytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const body = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(body).set(bytes);
+
+  return body;
+}
+
 function createFetchBody(request: FrameworkRequest, headers: Headers): BodyInit | undefined {
   const method = request.method.toUpperCase();
 
@@ -52,7 +59,7 @@ function createFetchBody(request: FrameworkRequest, headers: Headers): BodyInit 
   }
 
   if (request.rawBody) {
-    return Buffer.from(request.rawBody);
+    return copyBytesToArrayBuffer(request.rawBody);
   }
 
   if (request.body === undefined) {
@@ -64,11 +71,11 @@ function createFetchBody(request: FrameworkRequest, headers: Headers): BodyInit 
   }
 
   if (request.body instanceof Uint8Array) {
-    return Buffer.from(request.body);
+    return copyBytesToArrayBuffer(request.body);
   }
 
   if (request.body instanceof ArrayBuffer) {
-    return Buffer.from(request.body);
+    return request.body;
   }
 
   if (!headers.has('content-type')) {

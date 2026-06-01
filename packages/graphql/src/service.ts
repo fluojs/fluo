@@ -1,6 +1,4 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
 import type { IncomingMessage } from 'node:http';
-import { createRequire } from 'node:module';
 import type { Duplex } from 'node:stream';
 
 import { Controller, Get, Post, type FrameworkRequest, type HttpApplicationAdapter, type Middleware, type MiddlewareContext, type Next } from '@fluojs/http';
@@ -22,10 +20,9 @@ import type {
   DocumentNode,
   ExecutionArgs,
 } from 'graphql';
-import { handleProtocols, type CompleteMessage, type Context as GraphqlWsServerContext, type OperationResult, type SubscribeMessage } from 'graphql-ws';
-import { useServer } from 'graphql-ws/lib/use/ws';
+import type { CompleteMessage, Context as GraphqlWsServerContext, OperationResult, SubscribeMessage } from 'graphql-ws';
 import type { Extra as GraphqlWsExtra } from 'graphql-ws/lib/use/ws';
-import { WebSocketServer, type WebSocket } from 'ws';
+import type { WebSocket, WebSocketServer } from 'ws';
 
 import { discoverResolverDescriptors } from './discovery.js';
 import { createGraphqlValidationPlugin, resolveGraphqlRequestLimits } from './guardrails.js';
@@ -54,7 +51,11 @@ type YogaLike = {
   };
 };
 
-type GraphqlInstanceOf = (value: unknown, constructor: { prototype?: { [Symbol.toStringTag]?: string } }) => boolean;
+type GraphqlConstructor = Function & { prototype: { [Symbol.toStringTag]?: string } };
+type GraphqlInstanceOf = (value: unknown, constructor: GraphqlConstructor) => boolean;
+type GraphqlInstanceOfModule = {
+  instanceOf: GraphqlInstanceOf;
+};
 
 type NodeUpgradeListener = (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
 
@@ -160,11 +161,10 @@ interface GraphqlDeps {
   buildSchema: (source: string) => GraphQLSchemaType;
   createYoga: (options: Record<string, unknown>) => YogaLike;
   execute: (args: ExecutionArgs) => OperationResult;
+  instanceOfModule: GraphqlInstanceOfModule;
   subscribe: (args: ExecutionArgs) => OperationResult;
 }
 
-const graphqlRequestContextStorage = new AsyncLocalStorage<GraphqlRequestContext>();
-const runtimeRequire = createRequire(import.meta.url);
 let graphqlInstanceOfPatchRefCount = 0;
 let restoreGraphqlInstanceOfPatch: (() => void) | undefined;
 const allowedCrossRealmGraphqlObjects = new WeakSet<object>();
@@ -185,7 +185,7 @@ export class GraphqlEndpointController {
   }
 }
 
-function getCrossRealmGraphqlTag(value: unknown, constructor: { prototype?: { [Symbol.toStringTag]?: string } }): string | undefined {
+function getCrossRealmGraphqlTag(value: unknown, constructor: GraphqlConstructor): string | undefined {
   const className = constructor.prototype?.[Symbol.toStringTag];
 
   if (typeof className !== 'string' || !className.startsWith('GraphQL')) {
@@ -239,7 +239,7 @@ function markAllowedCrossRealmGraphqlObjects(value: unknown, visited = new WeakS
 
 function isAllowedCrossRealmGraphqlObject(
   value: unknown,
-  constructor: { prototype?: { [Symbol.toStringTag]?: string } },
+  constructor: GraphqlConstructor,
 ): boolean {
   if (typeof value !== 'object' || value === null) {
     return false;
@@ -248,11 +248,7 @@ function isAllowedCrossRealmGraphqlObject(
   return allowedCrossRealmGraphqlObjects.has(value) && getCrossRealmGraphqlTag(value, constructor) !== undefined;
 }
 
-function installGraphqlInstanceOfPatch(): () => void {
-  const instanceOfModule = runtimeRequire('graphql/jsutils/instanceOf.js') as {
-    instanceOf: GraphqlInstanceOf;
-  };
-
+function installGraphqlInstanceOfPatch(instanceOfModule: GraphqlInstanceOfModule): () => void {
   if (restoreGraphqlInstanceOfPatch) {
     graphqlInstanceOfPatchRefCount += 1;
     return releaseGraphqlInstanceOfPatch;
@@ -305,8 +301,11 @@ function releaseGraphqlInstanceOfPatch(): void {
 }
 
 async function loadGraphqlDeps(): Promise<GraphqlDeps> {
+  const { createRequire } = await import('node:module');
+  const runtimeRequire = createRequire(import.meta.url);
   const graphqlMod = runtimeRequire('graphql') as typeof import('graphql');
   const yogaMod = runtimeRequire('graphql-yoga') as typeof import('graphql-yoga');
+  const instanceOfModule = runtimeRequire('graphql/jsutils/instanceOf.js') as GraphqlInstanceOfModule;
 
   return {
     GraphQLError: graphqlMod.GraphQLError,
@@ -322,6 +321,7 @@ async function loadGraphqlDeps(): Promise<GraphqlDeps> {
     buildSchema: graphqlMod.buildSchema,
     createYoga: yogaMod.createYoga as (options: Record<string, unknown>) => YogaLike,
     execute: graphqlMod.execute,
+    instanceOfModule,
     subscribe: graphqlMod.subscribe,
   };
 }
@@ -334,6 +334,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
   private graphQLErrorConstructor: typeof GraphQLErrorType | undefined;
   private middlewareRegistered = false;
   private readonly operationContainers = new WeakMap<Request, Container>();
+  private readonly requestContexts = new WeakMap<Request, GraphqlRequestContext>();
   private readonly websocketOperationContainers = new Map<object, Map<string, Container>>();
   private websocketDisposable: { dispose(): Promise<void> | void } | undefined;
   private websocketServer: WebSocketServer | undefined;
@@ -364,17 +365,16 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
 
       try {
         const fetchRequest = toFetchRequest(context.request);
+        this.requestContexts.set(fetchRequest, {
+          principal: context.requestContext.principal,
+          request: context.request,
+        });
         try {
-          const fetchResponse = await graphqlRequestContextStorage.run(
-            {
-              principal: context.requestContext.principal,
-              request: context.request,
-            },
-            () => yoga.fetch(fetchRequest),
-          );
+          const fetchResponse = await yoga.fetch(fetchRequest);
 
           await writeFetchResponse(fetchResponse, context.response);
         } finally {
+          this.requestContexts.delete(fetchRequest);
           await this.disposeOperationContainer(fetchRequest);
         }
       } catch (error) {
@@ -431,7 +431,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
         schema,
       });
 
-      this.registerWebSocketTransport();
+      await this.registerWebSocketTransport();
 
       this.registerMiddleware();
       this.middlewareRegistered = true;
@@ -486,7 +486,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
   }
 
   private resolveSchema(deps: GraphqlDeps): GraphQLSchemaType {
-    this.releaseGraphqlInstanceOfPatch ??= installGraphqlInstanceOfPatch();
+    this.releaseGraphqlInstanceOfPatch ??= installGraphqlInstanceOfPatch(deps.instanceOfModule);
 
     return resolveSchema(deps, this.options.schema, () => this.createCodeFirstSchema(deps), markAllowedCrossRealmGraphqlObjects);
   }
@@ -540,7 +540,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
     requestContextOverride?: GraphqlRequestContext,
     operationContainerOverride?: Container,
   ): GraphQLContext {
-    const storedContext = graphqlRequestContextStorage.getStore();
+    const storedContext = this.requestContexts.get(request);
     const requestContext: GraphqlRequestContext = {
       connectionParams: requestContextOverride?.connectionParams,
       principal: requestContextOverride?.principal ?? storedContext?.principal,
@@ -560,11 +560,16 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
     };
   }
 
-  private registerWebSocketTransport(): void {
+  private async registerWebSocketTransport(): Promise<void> {
     if (!this.isWebSocketTransportEnabled() || this.yoga === undefined || this.websocketUpgradeListener !== undefined) {
       return;
     }
 
+    const [{ handleProtocols }, { useServer }, { WebSocketServer }] = await Promise.all([
+      import('graphql-ws'),
+      import('graphql-ws/lib/use/ws'),
+      import('ws'),
+    ]);
     const upgradeServer = this.resolveUpgradeServer();
     const websocketLimits = this.resolveWebSocketLimits();
     const websocketServer = new WebSocketServer({
@@ -784,7 +789,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
         `HTTP/1.1 ${String(statusCode)} ${statusCode === 503 ? 'Service Unavailable' : 'Bad Request'}`,
         'Connection: close',
         'Content-Type: text/plain; charset=utf-8',
-        `Content-Length: ${String(Buffer.byteLength(body))}`,
+        `Content-Length: ${String(new TextEncoder().encode(body).byteLength)}`,
         '',
         body,
       ].join('\r\n'),
