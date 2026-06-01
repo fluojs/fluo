@@ -97,7 +97,7 @@ export class NotificationGateway {
 export class RealtimeModule {}
 ```
 
-Internally, the Bun-specific websocket binding handles Bun's `server.upgrade(request)` call through the adapter's configured realtime seam. Application code stays inside the gateway contract, and upgrade details remain at the adapter boundary.
+Internally, the Bun-specific websocket binding handles Bun's `server.upgrade(request)` call through the adapter's configured realtime seam. Application code stays inside the gateway contract, and upgrade details remain at the adapter boundary. If a binding declines or cannot complete the native upgrade, the adapter keeps the request on the normal HTTP dispatch fallback path instead of treating the upgrade as handled.
 
 ## 22.4 Manual Fetch Handling
 
