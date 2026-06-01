@@ -31,7 +31,7 @@
 
 | condition | package choice | notes |
 | --- | --- | --- |
-| Need Vite to build TypeScript with TC39 standard decorators | `@fluojs/vite` | Use `fluoDecoratorsPlugin()` to apply Babel's `@babel/plugin-proposal-decorators` transform with `{ version: '2023-11' }` while preserving fluo's Vite file-boundary skips for tests, declarations, dependencies, and non-TypeScript files. |
+| Need Vite to build TypeScript with TC39 standard decorators | `@fluojs/vite` | Use `fluoDecoratorsPlugin()` to apply Babel's `@babel/plugin-proposal-decorators` transform with `{ version: '2023-11' }` while preserving fluo's Vite file-boundary skips for tests, declarations, dependencies, and non-TypeScript files. Babel peers are loaded only from the Vite `transform` hook so missing-peer failures report against the transformed source file instead of config import. |
 
 ## build a microservice starter
 
