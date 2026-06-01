@@ -1,12 +1,7 @@
 import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
 import { cloneWithFallback, getClassDiMetadata } from '@fluojs/core/internal';
 import type { Container, Provider } from '@fluojs/di';
-import {
-  type ApplicationLogger,
-  type CompiledModule,
-  type MicroserviceRuntime,
-  type OnApplicationShutdown,
-} from '@fluojs/runtime';
+import type { ApplicationLogger, CompiledModule, MicroserviceRuntime, OnApplicationShutdown } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { getHandlerMetadataEntries } from './metadata.js';
@@ -141,8 +136,14 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
    * @returns A promise that resolves once shutdown completes.
    */
   async close(): Promise<void> {
+    let listenError: unknown;
+
     if (this.listenPromise) {
-      await this.listenPromise;
+      try {
+        await this.listenPromise;
+      } catch (error) {
+        listenError = error;
+      }
     }
 
     this.lifecycleState = 'stopping';
@@ -150,6 +151,13 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     try {
       await this.moduleOptions.transport.close();
       this.listening = false;
+
+      if (listenError) {
+        this.lifecycleState = 'failed';
+        this.lastListenError = listenError instanceof Error ? listenError.message : String(listenError);
+        throw listenError;
+      }
+
       this.lifecycleState = 'stopped';
     } catch (error) {
       this.lifecycleState = 'failed';

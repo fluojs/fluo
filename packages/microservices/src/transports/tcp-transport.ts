@@ -1,4 +1,4 @@
-import { createServer, Socket } from 'node:net';
+import type { Server, Socket } from 'node:net';
 
 import type { MicroserviceTransport, TransportHandler, TransportPacket } from '../types.js';
 
@@ -28,15 +28,12 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
   private closing = false;
   private handler: TransportHandler | undefined;
   private listenPromise: Promise<void> | undefined;
+  private server: Server | undefined;
+  private serverPromise: Promise<Server> | undefined;
   private readonly sockets = new Set<Socket>();
   private readonly host: string;
   private readonly maxFrameBytes: number;
   private readonly requestTimeoutMs: number;
-  private readonly server = createServer((socket) => {
-    this.sockets.add(socket);
-    this.bindSocketParser<TransportPacket>(socket, async (packet) => this.handleInboundPacket(socket, packet));
-    socket.once('close', () => this.sockets.delete(socket));
-  });
 
   /**
    * Creates a TCP transport bound to one host/port pair.
@@ -62,28 +59,42 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
 
     this.handler = handler;
 
-    if (this.server.listening) {
-      return;
-    }
-
     if (this.listenPromise) {
       await this.listenPromise;
       return;
     }
 
-    this.listenPromise = new Promise<void>((resolve, reject) => {
-      this.server.once('error', reject);
-      this.server.listen(this.options.port, this.host, () => {
-        this.server.off('error', reject);
-        this.boundPort = this.resolveBoundPort();
-        resolve();
-      });
-    });
+    this.listenPromise = this.startListening();
 
     try {
       await this.listenPromise;
     } finally {
       this.listenPromise = undefined;
+    }
+  }
+
+  private async startListening(): Promise<void> {
+    const server = await this.ensureServer();
+
+    if (this.closing) {
+      throw new Error('TcpMicroserviceTransport is closing. Wait for close() to complete before listen().');
+    }
+
+    if (server.listening) {
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(this.options.port, this.host, () => {
+        server.off('error', reject);
+        this.boundPort = this.resolveBoundPort();
+        resolve();
+      });
+    });
+
+    if (this.closing) {
+      throw new Error('TcpMicroserviceTransport is closing. Wait for close() to complete before listen().');
     }
   }
 
@@ -120,9 +131,14 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
    */
   async close(): Promise<void> {
     this.closing = true;
+    let listenError: unknown;
 
     if (this.listenPromise) {
-      await this.listenPromise;
+      try {
+        await this.listenPromise;
+      } catch (error) {
+        listenError = error;
+      }
     }
 
     for (const socket of this.sockets) {
@@ -131,13 +147,17 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
 
     this.sockets.clear();
 
-    if (!this.server.listening) {
+    if (!this.server?.listening) {
       this.boundPort = undefined;
+      if (listenError) {
+        throw listenError;
+      }
+
       return;
     }
 
     await new Promise<void>((resolve, reject) => {
-      this.server.close((error) => {
+      this.server?.close((error) => {
         if (error) {
           reject(error);
           return;
@@ -148,6 +168,10 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
     });
 
     this.boundPort = undefined;
+
+    if (listenError) {
+      throw listenError;
+    }
   }
 
   private async handleInboundPacket(socket: Socket, packet: TransportPacket): Promise<void> {
@@ -182,6 +206,7 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
 
   private async sendWirePacket(packet: TransportPacket, signal?: AbortSignal): Promise<unknown> {
     const serializedPacket = this.serializeFrame(packet);
+    const { Socket } = await import('node:net');
 
     return await new Promise<unknown>((resolve, reject) => {
       const socket = new Socket();
@@ -291,7 +316,7 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
       throw new Error(`TcpMicroserviceTransport is closing. Wait for close() to complete before ${operation}().`);
     }
 
-    if (!this.server.listening || typeof this.boundPort !== 'number') {
+    if (!this.server?.listening || typeof this.boundPort !== 'number') {
       throw new Error(`TcpMicroserviceTransport is not listening. Call listen() before ${operation}().`);
     }
   }
@@ -305,13 +330,38 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
   }
 
   private resolveBoundPort(): number {
-    const address = this.server.address();
+    const address = this.server?.address();
 
     if (address && typeof address === 'object') {
       return address.port;
     }
 
     return this.options.port;
+  }
+
+  private async ensureServer(): Promise<Server> {
+    if (this.server) {
+      return this.server;
+    }
+
+    this.serverPromise ??= (async () => {
+      const { createServer } = await import('node:net');
+      const server = createServer((socket) => {
+        this.sockets.add(socket);
+        this.bindSocketParser<TransportPacket>(socket, async (packet) => this.handleInboundPacket(socket, packet));
+        socket.once('close', () => this.sockets.delete(socket));
+      });
+      this.server = server;
+
+      return server;
+    })();
+
+    try {
+      return await this.serverPromise;
+    } catch (error) {
+      this.serverPromise = undefined;
+      throw error;
+    }
   }
 
   private bindSocketParser<TPacket>(socket: Socket, onPacket: (packet: TPacket) => void): void {
