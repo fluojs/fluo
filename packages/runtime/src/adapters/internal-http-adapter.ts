@@ -1,5 +1,6 @@
 export {
   bootstrapHttpAdapterApplication,
+  createDefaultApplicationLogger,
   createHttpAdapterMiddleware,
   formatHttpAdapterListenMessage,
   runHttpAdapterApplication,
@@ -10,4 +11,3 @@ export {
   type HttpAdapterShutdownRegistration,
   type RunHttpAdapterApplicationOptions,
 } from '../http-adapter-shared.js';
-export { createConsoleApplicationLogger } from '../logging/logger.js';

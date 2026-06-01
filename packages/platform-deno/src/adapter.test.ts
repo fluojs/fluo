@@ -347,7 +347,7 @@ describe('@fluojs/platform-deno', () => {
     expect(() => createDenoAdapter({ port: 1.5 })).toThrow(/port/i);
   });
 
-  it('uses the console application logger by default for terminal Deno startup helpers', async () => {
+  it('uses the transport-neutral application logger by default for terminal Deno startup helpers', async () => {
     const server = createServeStub();
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
@@ -361,9 +361,11 @@ describe('@fluojs/platform-deno', () => {
 
     try {
       expect(log).toHaveBeenCalledWith(
+        '[fluo] LOG [FluoFactory] Listening on http://localhost:3000 (bound to 0.0.0.0:3000)',
+      );
+      expect(log).not.toHaveBeenCalledWith(
         expect.stringContaining(`[fluo] ${String(process.pid)} -`),
       );
-      expect(log).not.toHaveBeenCalledWith('[fluo] LOG [FluoFactory] Listening on http://localhost:3000 (bound to 0.0.0.0:3000)');
     } finally {
       await app.close();
     }

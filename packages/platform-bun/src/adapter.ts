@@ -22,7 +22,7 @@ import type {
 } from '@fluojs/runtime';
 import {
   bootstrapHttpAdapterApplication,
-  createConsoleApplicationLogger,
+  createDefaultApplicationLogger,
   type HttpAdapterListenTarget,
   type RunHttpAdapterApplicationOptions,
   runHttpAdapterApplication,
@@ -483,7 +483,7 @@ export async function bootstrapBunApplication(
   rootModule: ModuleType,
   options: BootstrapBunApplicationOptions,
 ): Promise<Application> {
-  const logger = createConsoleApplicationLogger();
+  const logger = createDefaultApplicationLogger();
 
   return bootstrapHttpAdapterApplication(
     rootModule,
@@ -514,7 +514,7 @@ export async function runBunApplication(
   rootModule: ModuleType,
   options: RunBunApplicationOptions,
 ): Promise<Application> {
-  const logger = createConsoleApplicationLogger();
+  const logger = createDefaultApplicationLogger();
   const adapter = createBunAdapter({
     development: options.development,
     hostname: options.hostname,
