@@ -1,13 +1,13 @@
 import { Inject, InvariantError } from '@fluojs/core';
-import {
-  type OnApplicationBootstrap,
+import type {
+  OnApplicationBootstrap,
 } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
-
+import { CqrsBusBase, createDuplicateHandlerMessage } from '../discovery.js';
 import { DuplicateQueryHandlerError, QueryHandlerNotFoundException } from '../errors.js';
 import { getQueryHandlerMetadata } from '../metadata.js';
-import { CqrsBusBase, createDuplicateHandlerMessage } from '../discovery.js';
 import type {
+  CqrsDispatchContext,
   IQuery,
   IQueryHandler,
   QueryBus,
@@ -43,12 +43,13 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
    * Executes one query by dispatching it to the discovered handler for its constructor.
    *
    * @param query Query instance to execute.
+   * @param context Optional saga dispatch context to pass through nested CQRS calls.
    * @returns The resolved handler result.
    *
    * @throws {QueryHandlerNotFoundException} When no handler is registered for the query type.
    * @throws {InvariantError} When the resolved provider does not implement `execute(query)`.
    */
-  async execute<TQuery extends IQuery<TResult>, TResult = unknown>(query: TQuery): Promise<TResult> {
+  async execute<TQuery extends IQuery<TResult>, TResult = unknown>(query: TQuery, context?: CqrsDispatchContext): Promise<TResult> {
     await this.ensureDiscovered();
 
     const queryType = query.constructor as QueryType<TResult, TQuery>;
@@ -64,7 +65,7 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
       throw new InvariantError(`Query handler ${descriptor.targetType.name} must implement execute(query).`);
     }
 
-    return await instance.execute(query) as TResult;
+    return await instance.execute(query, context) as TResult;
   }
 
   private async ensureDiscovered(): Promise<void> {

@@ -1,9 +1,12 @@
+export { CommandBusLifecycleService } from './buses/command-bus.js';
+export { CqrsEventBusService } from './buses/event-bus.js';
+export { QueryBusLifecycleService } from './buses/query-bus.js';
 export { CommandHandler, EventHandler, QueryHandler, Saga } from './decorators.js';
 export {
+  CommandHandlerNotFoundException,
   DuplicateCommandHandlerError,
   DuplicateEventHandlerError,
   DuplicateQueryHandlerError,
-  CommandHandlerNotFoundException,
   QueryHandlerNotFoundException,
   SagaExecutionError,
   SagaTopologyError,
@@ -13,22 +16,19 @@ export {
   defineCommandHandlerMetadata,
   defineEventHandlerMetadata,
   defineQueryHandlerMetadata,
+  defineSagaMetadata,
   eventHandlerMetadataSymbol,
   getCommandHandlerMetadata,
   getCommandHandlerMetadataEntry,
   getEventHandlerMetadata,
   getQueryHandlerMetadata,
   getQueryHandlerMetadataEntry,
-  queryHandlerMetadataSymbol,
-  defineSagaMetadata,
   getSagaMetadata,
+  queryHandlerMetadataSymbol,
   sagaMetadataSymbol,
 } from './metadata.js';
 export { CqrsModule, type CqrsModuleOptions } from './module.js';
 export * from './status.js';
-export { CommandBusLifecycleService } from './buses/command-bus.js';
-export { CqrsEventBusService } from './buses/event-bus.js';
-export { QueryBusLifecycleService } from './buses/query-bus.js';
 export { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
 export type {
   CommandBus,
@@ -36,10 +36,11 @@ export type {
   CommandHandlerDescriptor,
   CommandHandlerMetadata,
   CommandType,
+  CqrsDispatchContext,
   CqrsEventBus,
   CqrsEventType,
-  EventHandlerDescriptor,
   EventHandlerClass,
+  EventHandlerDescriptor,
   EventHandlerMetadata,
   ICommand,
   ICommandHandler,

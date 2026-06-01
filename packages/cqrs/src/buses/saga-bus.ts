@@ -1,6 +1,4 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
-
-import { Inject, InvariantError, FluoError, type Token } from '@fluojs/core';
+import { FluoError, Inject, InvariantError, type Token } from '@fluojs/core';
 import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
@@ -8,18 +6,12 @@ import { CqrsBusBase } from '../discovery.js';
 import { SagaExecutionError, SagaTopologyError } from '../errors.js';
 import { createIsolatedEvent } from '../event-clone.js';
 import { getSagaMetadata } from '../metadata.js';
-import { CQRS_MODULE_OPTIONS } from '../tokens.js';
 import type { CqrsModuleOptions } from '../module.js';
-import type { CqrsEventType, IEvent, ISaga, SagaDescriptor } from '../types.js';
+import { CQRS_MODULE_OPTIONS } from '../tokens.js';
+import type { CqrsDispatchContext, CqrsEventType, IEvent, ISaga, SagaDescriptor } from '../types.js';
 
 const MAX_NESTED_SAGA_DEPTH = 32;
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
-
-interface SagaDispatchContext {
-  activeRoutes: Array<{ eventType: CqrsEventType; token: Token }>;
-  depth: number;
-  path: string[];
-}
 
 function isSaga(value: unknown): value is ISaga<IEvent> {
   if (typeof value !== 'object' || value === null) {
@@ -51,7 +43,6 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   private readonly executionChains = new Map<Token, Promise<void>>();
   private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
   private readonly pendingDispatches = new Set<Promise<void>>();
-  private readonly dispatchContext = new AsyncLocalStorage<SagaDispatchContext>();
   private shutdownDrainTimeouts = 0;
 
   constructor(
@@ -115,7 +106,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
    * @param event Event instance that may trigger one or more sagas.
    * @returns A promise that resolves once all matching saga chains for the event complete.
    */
-  async dispatch<TEvent extends IEvent>(event: TEvent): Promise<void> {
+  async dispatch<TEvent extends IEvent>(event: TEvent, context?: CqrsDispatchContext): Promise<void> {
     await this.ensureDiscovered();
 
     const descriptors = this.matchSagaDescriptors(event);
@@ -124,7 +115,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
       return;
     }
 
-    await Promise.all(descriptors.map((descriptor) => this.dispatchWithOrdering(descriptor, event)));
+    await Promise.all(descriptors.map((descriptor) => this.dispatchWithOrdering(descriptor, event, context)));
   }
 
   private matchSagaDescriptors(event: IEvent): SagaDescriptor[] {
@@ -139,9 +130,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     return descriptors;
   }
 
-  private async dispatchWithOrdering<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent): Promise<void> {
-    const activeContext = this.dispatchContext.getStore();
-
+  private async dispatchWithOrdering<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent, activeContext?: CqrsDispatchContext): Promise<void> {
     const routeLabel = `${descriptor.targetType.name}(${descriptor.eventType.name})`;
     const isActiveRoute = activeContext?.activeRoutes.some(
       (route) => route.token === descriptor.token && route.eventType === descriptor.eventType,
@@ -163,17 +152,13 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     }
 
     if (isActiveToken) {
-      await this.runInDispatchContext(activeContext, descriptor, routeLabel, async () => {
-        await this.invokeSaga(descriptor, event);
-      });
+      await this.invokeSaga(descriptor, event, this.createDispatchContext(activeContext, descriptor, routeLabel));
       return;
     }
 
     const previous = this.executionChains.get(descriptor.token) ?? Promise.resolve();
     const current = previous.then(async () => {
-      await this.runInDispatchContext(activeContext, descriptor, routeLabel, async () => {
-        await this.invokeSaga(descriptor, event);
-      });
+      await this.invokeSaga(descriptor, event, this.createDispatchContext(activeContext, descriptor, routeLabel));
     });
 
     this.executionChains.set(descriptor.token, current.catch(() => undefined));
@@ -232,22 +217,19 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     return Math.floor(timeoutMs);
   }
 
-  private async runInDispatchContext(
-    activeContext: SagaDispatchContext | undefined,
+  private createDispatchContext(
+    activeContext: CqrsDispatchContext | undefined,
     descriptor: SagaDescriptor,
     routeLabel: string,
-    callback: () => Promise<void>,
-  ): Promise<void> {
-    const nextContext: SagaDispatchContext = {
+  ): CqrsDispatchContext {
+    return {
       activeRoutes: [...(activeContext?.activeRoutes ?? []), { eventType: descriptor.eventType, token: descriptor.token }],
       depth: (activeContext?.depth ?? 0) + 1,
       path: [...(activeContext?.path ?? []), routeLabel],
     };
-
-    await this.dispatchContext.run(nextContext, callback);
   }
 
-  private async invokeSaga<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent): Promise<void> {
+  private async invokeSaga<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent, context: CqrsDispatchContext): Promise<void> {
     const instance = await this.resolveHandlerInstance(descriptor.token);
 
     if (!isSaga(instance)) {
@@ -255,7 +237,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     }
 
     try {
-      await instance.handle(createIsolatedEvent(descriptor.eventType as CqrsEventType<TEvent>, event));
+      await instance.handle(createIsolatedEvent(descriptor.eventType as CqrsEventType<TEvent>, event), context);
     } catch (error) {
       if (error instanceof FluoError) {
         throw error;

@@ -85,7 +85,7 @@ Sagas allow you to listen for events and trigger new commands, enabling complex 
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { Saga, ISaga, IEvent, ICommand, CommandBusLifecycleService } from '@fluojs/cqrs';
+import { Saga, ISaga, IEvent, ICommand, CqrsDispatchContext, CommandBusLifecycleService } from '@fluojs/cqrs';
 
 class UserCreatedEvent implements IEvent {
   constructor(public readonly userId: string) {}
@@ -100,13 +100,15 @@ class SendWelcomeEmailCommand implements ICommand {
 class UserSaga implements ISaga<UserCreatedEvent> {
   constructor(private readonly commandBus: CommandBusLifecycleService) {}
 
-  async handle(event: UserCreatedEvent): Promise<void> {
-    await this.commandBus.execute(new SendWelcomeEmailCommand(event.userId));
+  async handle(event: UserCreatedEvent, context?: CqrsDispatchContext): Promise<void> {
+    await this.commandBus.execute(new SendWelcomeEmailCommand(event.userId), context);
   }
 }
 ```
 
 Saga execution fails fast with `SagaTopologyError` when an in-process publish chain re-enters the same saga route cyclically or exceeds 32 nested saga hops. Multi-stage sagas may still react to different event types in sequence, but in-process saga graphs must stay acyclic overall; move intentionally cyclic or long-running feedback loops behind an external transport, scheduler, or other bounded boundary.
+
+When a saga, command handler, query handler, or event handler performs another CQRS `execute(...)`, `publish(...)`, or `publishAll(...)` call, pass the optional `CqrsDispatchContext` argument through unchanged. CQRS uses this explicit runtime-agnostic context to keep saga topology checks intact across nested dispatch without relying on Node.js async-local APIs.
 
 ### Event Publishing Contracts
 
@@ -150,6 +152,7 @@ class TokenInjectedService {
 ### Interfaces
 - `ICommand`, `IQuery<T>`, `IEvent`: Marker interfaces for messages.
 - `ICommandHandler<C, R>`, `IQueryHandler<Q, R>`, `IEventHandler<E>`, `ISaga<E>`: Handler contracts.
+- `CqrsDispatchContext`: Opaque optional context value to pass through nested CQRS dispatch from handlers and sagas.
 
 ### Errors
 - `CommandHandlerNotFoundException`, `QueryHandlerNotFoundException`: Raised when a bus has no matching handler.

@@ -17,9 +17,10 @@ export interface ICommandHandler<TCommand extends ICommand, TResult = void> {
    * Executes one command instance.
    *
    * @param command Command payload to handle.
+   * @param context Optional saga dispatch context to pass through nested CQRS calls.
    * @returns The handler result returned to the command bus caller.
    */
-  execute(command: TCommand): TResult | Promise<TResult>;
+  execute(command: TCommand, context?: CqrsDispatchContext): TResult | Promise<TResult>;
 }
 
 /** Contract implemented by classes decorated with {@link QueryHandler}. */
@@ -28,9 +29,10 @@ export interface IQueryHandler<TQuery extends IQuery<TResult>, TResult = unknown
    * Executes one query instance.
    *
    * @param query Query payload to handle.
+   * @param context Optional saga dispatch context to pass through nested CQRS calls.
    * @returns The query result returned to the caller.
    */
-  execute(query: TQuery): TResult | Promise<TResult>;
+  execute(query: TQuery, context?: CqrsDispatchContext): TResult | Promise<TResult>;
 }
 
 /** Contract implemented by classes decorated with {@link EventHandler}. */
@@ -39,9 +41,10 @@ export interface IEventHandler<TEvent extends IEvent> {
    * Reacts to one isolated copy of a published event instance.
    *
    * @param event Event payload cloned for this handler before delegated event-bus publication.
+   * @param context Optional saga dispatch context to pass through nested CQRS calls.
    * @returns A promise or void once side effects complete.
    */
-  handle(event: TEvent): void | Promise<void>;
+  handle(event: TEvent, context?: CqrsDispatchContext): void | Promise<void>;
 }
 
 /** Contract implemented by classes decorated with {@link Saga}. */
@@ -50,9 +53,25 @@ export interface ISaga<TEvent extends IEvent = IEvent> {
    * Reacts to one isolated copy of an event and typically emits follow-up commands.
    *
    * @param event Event payload cloned for this saga route before delegated event-bus publication.
+   * @param context Optional saga dispatch context to pass through nested CQRS calls.
    * @returns A promise or void once orchestration side effects complete.
    */
-  handle(event: TEvent): void | Promise<void>;
+  handle(event: TEvent, context?: CqrsDispatchContext): void | Promise<void>;
+}
+
+/**
+ * Opaque dispatch context used to preserve saga topology guards across nested CQRS calls.
+ *
+ * Pass this value unchanged from handlers and sagas into nested `execute(...)`, `publish(...)`,
+ * or `publishAll(...)` calls. Application code should not inspect or construct it directly.
+ */
+export interface CqrsDispatchContext {
+  /** Saga routes currently active in the in-process CQRS dispatch chain. */
+  readonly activeRoutes: readonly Readonly<{ eventType: CqrsEventType; token: Token }>[];
+  /** Current nested saga depth for in-process topology guarding. */
+  readonly depth: number;
+  /** Human-readable saga route labels used when reporting topology failures. */
+  readonly path: readonly string[];
 }
 
 /** Constructor type used to identify a command message class. */
@@ -150,7 +169,7 @@ export interface CommandBus {
    * @param command Command instance to dispatch.
    * @returns The handler result.
    */
-  execute<TCommand extends ICommand, TResult = void>(command: TCommand): Promise<TResult>;
+  execute<TCommand extends ICommand, TResult = void>(command: TCommand, context?: CqrsDispatchContext): Promise<TResult>;
 }
 
 /** Query dispatch facade exposed by the CQRS module. */
@@ -161,7 +180,7 @@ export interface QueryBus {
    * @param query Query instance to dispatch.
    * @returns The handler result.
    */
-  execute<TQuery extends IQuery<TResult>, TResult = unknown>(query: TQuery): Promise<TResult>;
+  execute<TQuery extends IQuery<TResult>, TResult = unknown>(query: TQuery, context?: CqrsDispatchContext): Promise<TResult>;
 }
 
 /** Event publishing facade exposed by the CQRS module. */
@@ -173,14 +192,16 @@ export interface CqrsEventBus {
    * subscribers receive the original event after local CQRS side effects complete.
    *
    * @param event Event instance to publish.
+   * @param context Optional saga dispatch context to pass through nested CQRS calls.
    * @returns A promise that resolves once publication completes.
    */
-  publish<TEvent extends IEvent>(event: TEvent): Promise<void>;
+  publish<TEvent extends IEvent>(event: TEvent, context?: CqrsDispatchContext): Promise<void>;
   /**
    * Publishes a batch of events in order.
    *
    * @param events Event instances to publish.
+   * @param context Optional saga dispatch context to pass through nested CQRS calls.
    * @returns A promise that resolves once all events are published.
    */
-  publishAll<TEvent extends IEvent>(events: readonly TEvent[]): Promise<void>;
+  publishAll<TEvent extends IEvent>(events: readonly TEvent[], context?: CqrsDispatchContext): Promise<void>;
 }
