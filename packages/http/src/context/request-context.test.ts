@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-
 import { Container } from '@fluojs/di';
+import { describe, expect, it, vi } from 'vitest';
+import type { RequestContext } from '../types.js';
 
 import {
   assertRequestContext,
@@ -11,10 +11,12 @@ import {
   runWithRequestContext,
   setContextValue,
 } from './request-context.js';
-import { resolveAsyncLocalStorageConstructor } from './request-context-node-store.js';
+import {
+  resolveAsyncLocalStorageConstructor,
+  resolveImmediateAsyncLocalStorageConstructor,
+} from './request-context-node-store.js';
 import { createStackRequestContextStore } from './request-context-stack-store.js';
 import type { RequestContextStore } from './request-context-store.js';
-import type { RequestContext } from '../types.js';
 
 class MockAsyncLocalStorage implements RequestContextStore {
   readonly #store = createStackRequestContextStore();
@@ -121,6 +123,49 @@ describe('request context store', () => {
     );
 
     expect(AsyncLocalStorage).toBe(MockAsyncLocalStorage);
+  });
+
+  it('guards throwing getBuiltinModule probes and falls back to the dynamic Node loader', async () => {
+    const AsyncLocalStorage = await resolveAsyncLocalStorageConstructor(
+      {
+        process: {
+          getBuiltinModule() {
+            throw new Error('async_hooks probe failed');
+          },
+          versions: {
+            node: '20.0.0',
+          },
+        },
+      },
+      async () => ({ AsyncLocalStorage: MockAsyncLocalStorage }),
+    );
+
+    expect(AsyncLocalStorage).toBe(MockAsyncLocalStorage);
+  });
+
+  it('returns undefined from the immediate probe when getBuiltinModule throws', () => {
+    const AsyncLocalStorage = resolveImmediateAsyncLocalStorageConstructor({
+      process: {
+        getBuiltinModule() {
+          throw new Error('async_hooks probe failed');
+        },
+      },
+    });
+
+    expect(AsyncLocalStorage).toBeUndefined();
+  });
+
+  it('does not probe async hooks while importing the HTTP root barrel', async () => {
+    const getBuiltinModule = vi.spyOn(process, 'getBuiltinModule').mockImplementation(() => {
+      throw new Error('async_hooks should not be probed during import');
+    });
+
+    try {
+      await import('../index.js');
+      expect(getBuiltinModule).not.toHaveBeenCalled();
+    } finally {
+      getBuiltinModule.mockRestore();
+    }
   });
 
   it('does not load Node async hooks for non-Node hosts without async storage', async () => {

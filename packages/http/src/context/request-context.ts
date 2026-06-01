@@ -1,11 +1,16 @@
 import { FluoError } from '@fluojs/core';
 
 import type { ContextKey, RequestContext } from '../types.js';
-import { resolveAsyncLocalStorageConstructor } from './request-context-node-store.js';
+import {
+  resolveAsyncLocalStorageConstructor,
+  resolveImmediateAsyncLocalStorageConstructor,
+} from './request-context-node-store.js';
 import { createStackRequestContextStore } from './request-context-stack-store.js';
 import type { RequestContextStore } from './request-context-store.js';
 
-const requestContextStore: RequestContextStore = await createRequestContextStore();
+let requestContextStore: RequestContextStore | undefined;
+let requestContextStoreResolution: Promise<RequestContextStore> | undefined;
+let fallbackRequestContextStore: RequestContextStore | undefined;
 
 /**
  * Runs a callback inside the request-scoped async context.
@@ -19,7 +24,7 @@ const requestContextStore: RequestContextStore = await createRequestContextStore
  * @returns The return value from `callback`.
  */
 export function runWithRequestContext<T>(context: RequestContext, callback: () => T): T {
-  return requestContextStore.run(context, callback);
+  return getRequestContextStore().run(context, callback);
 }
 
 /**
@@ -28,7 +33,7 @@ export function runWithRequestContext<T>(context: RequestContext, callback: () =
  * @returns The active request context, or `undefined` when no request scope is bound.
  */
 export function getCurrentRequestContext(): RequestContext | undefined {
-  return requestContextStore.getStore();
+  return getRequestContextStore().getStore();
 }
 
 /**
@@ -97,12 +102,46 @@ export function setContextValue<T>(context: RequestContext, key: ContextKey<T>, 
   context.metadata[key.id] = value;
 }
 
+function getRequestContextStore(): RequestContextStore {
+  if (requestContextStore) {
+    return requestContextStore;
+  }
+
+  const AsyncLocalStorage = resolveImmediateAsyncLocalStorageConstructor();
+
+  if (typeof AsyncLocalStorage === 'function') {
+    requestContextStore = new AsyncLocalStorage();
+
+    return requestContextStore;
+  }
+
+  void resolveRequestContextStore();
+
+  return getFallbackRequestContextStore();
+}
+
+async function resolveRequestContextStore(): Promise<RequestContextStore> {
+  requestContextStoreResolution ??= createRequestContextStore();
+
+  return requestContextStoreResolution;
+}
+
 async function createRequestContextStore(): Promise<RequestContextStore> {
   const AsyncLocalStorage = await resolveAsyncLocalStorageConstructor();
 
   if (typeof AsyncLocalStorage === 'function') {
-    return new AsyncLocalStorage();
+    requestContextStore = new AsyncLocalStorage();
+
+    return requestContextStore;
   }
 
-  return createStackRequestContextStore();
+  requestContextStore = getFallbackRequestContextStore();
+
+  return requestContextStore;
+}
+
+function getFallbackRequestContextStore(): RequestContextStore {
+  fallbackRequestContextStore ??= createStackRequestContextStore();
+
+  return fallbackRequestContextStore;
 }
