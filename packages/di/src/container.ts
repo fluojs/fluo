@@ -190,6 +190,7 @@ export class Container {
   private readonly forwardRefTokenCache = new WeakMap<ForwardRefFn, Token>();
   private readonly providerLookupPlanCache = new Map<Token, CachedResolutionPlan<NormalizedProvider | undefined>>();
   private readonly multiProviderPlanCache = new Map<Token, CachedResolutionPlan<readonly NormalizedProvider[]>>();
+  private readonly resolvedMultiProviderPlanCache = new Map<Token, CachedResolutionPlan<Promise<readonly unknown[]>>>();
   private readonly requestScopeVerdictPlanCache = new Map<Token, CachedResolutionPlan<boolean>>();
   private readonly effectiveProviderPlanCache = new Map<Token, CachedResolutionPlan<NormalizedProvider | undefined>>();
   private childScopes: Set<Container> | undefined;
@@ -533,11 +534,11 @@ export class Container {
     return this.parent?.hasMultiRegistration(token) ?? false;
   }
 
-  private collectMultiProviders(token: Token): NormalizedProvider[] {
+  private collectMultiProviders(token: Token): readonly NormalizedProvider[] {
     const cached = this.readCachedPlan(this.multiProviderPlanCache, token);
 
     if (cached) {
-      return [...cached.value];
+      return cached.value;
     }
 
     const local = this.multiRegistrations.get(token);
@@ -552,7 +553,7 @@ export class Container {
     }
 
     this.writePlanCache(this.multiProviderPlanCache, token, providers);
-    return [...providers];
+    return providers;
   }
 
   private providerGraphRequiresRequestScope(token: Token, visited: Set<Token>): boolean {
@@ -641,11 +642,7 @@ export class Container {
       const multiProviders = this.collectMultiProviders(token);
 
       if (multiProviders.length > 0) {
-        const instances = await this.withTokenInChain(token, chain, activeTokens, async (c, at) =>
-          this.resolveMultiProviderInstances(multiProviders, c, at),
-        );
-
-        return instances as T;
+        return await this.resolveMultiProviderToken(token, multiProviders, chain, activeTokens) as T;
       }
     }
 
@@ -725,6 +722,45 @@ export class Container {
     }
 
     return instances;
+  }
+
+  private async resolveMultiProviderToken(
+    token: Token,
+    providers: readonly NormalizedProvider[],
+    chain: Token[],
+    activeTokens: Set<Token>,
+  ): Promise<unknown[]> {
+    if (!this.canCacheResolvedMultiProviderToken(providers)) {
+      return await this.withTokenInChain(token, chain, activeTokens, async (c, at) =>
+        this.resolveMultiProviderInstances(providers, c, at),
+      );
+    }
+
+    const cached = this.readCachedPlan(this.resolvedMultiProviderPlanCache, token);
+
+    if (cached) {
+      return [...await cached.value];
+    }
+
+    const promise = this.withTokenInChain(token, chain, activeTokens, async (c, at) => {
+      const instances = await this.resolveMultiProviderInstances(providers, c, at);
+      return Object.freeze([...instances]);
+    });
+
+    this.writePlanCache(this.resolvedMultiProviderPlanCache, token, promise);
+    promise.catch(() => {
+      const cachedPlan = this.resolvedMultiProviderPlanCache.get(token);
+
+      if (cachedPlan?.value === promise) {
+        this.resolvedMultiProviderPlanCache.delete(token);
+      }
+    });
+
+    return [...await promise];
+  }
+
+  private canCacheResolvedMultiProviderToken(providers: readonly NormalizedProvider[]): boolean {
+    return !this.requestScopeEnabled && providers.every((provider) => provider.scope === Scope.DEFAULT);
   }
 
   private async resolveMultiProviderInstance(
@@ -1065,6 +1101,7 @@ export class Container {
   private clearResolutionPlanCaches(): void {
     this.providerLookupPlanCache.clear();
     this.multiProviderPlanCache.clear();
+    this.resolvedMultiProviderPlanCache.clear();
     this.requestScopeVerdictPlanCache.clear();
     this.effectiveProviderPlanCache.clear();
   }

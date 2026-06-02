@@ -1,0 +1,455 @@
+
+ RUN  v3.2.4 /Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > preserves malformed cookie values
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > preserves malformed cookie values
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > preserves malformed cookie values
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] CookieController {/cookies}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/cookies, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > preserves malformed cookie values
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > preserves raw body for JSON and text requests when enabled
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > preserves raw body for JSON and text requests when enabled
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > preserves raw body for JSON and text requests when enabled
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] WebhookController {/webhooks}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/webhooks/json, POST} route
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/webhooks/text, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > preserves raw body for JSON and text requests when enabled
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > preserves exact raw body bytes for byte-sensitive payloads
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > preserves exact raw body bytes for byte-sensitive payloads
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > preserves exact raw body bytes for byte-sensitive payloads
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] WebhookController {/webhooks}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/webhooks/bytes, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > preserves exact raw body bytes for byte-sensitive payloads
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > does not preserve rawBody for multipart requests
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > does not preserve rawBody for multipart requests
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > does not preserve rawBody for multipart requests
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] UploadController {/uploads}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/uploads, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > does not preserve rawBody for multipart requests
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > defaults multipart.maxTotalSize to maxBodySize
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > defaults multipart.maxTotalSize to maxBodySize
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > defaults multipart.maxTotalSize to maxBodySize
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] UploadController {/uploads}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/uploads, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > defaults multipart.maxTotalSize to maxBodySize
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > supports SSE streaming
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > supports SSE streaming
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > supports SSE streaming
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] EventsController {/events}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/events, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > supports SSE streaming
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > settles stream drain waits when the stream closes first
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > settles stream drain waits when the stream closes first
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > settles stream drain waits when the stream closes first
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] EventsController {/events}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/events, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > settles stream drain waits when the stream closes first
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves response parity for simple JSON and non-fast-path responses
+[fluo] LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves response parity for simple JSON and non-fast-path responses
+[fluo] LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves response parity for simple JSON and non-fast-path responses
+[fluo] LOG [RoutesResolver] ResponsesController {/responses}
+[fluo] LOG [RouterExplorer] Mapped {/responses/object, GET} route
+[fluo] LOG [RouterExplorer] Mapped {/responses/array, GET} route
+[fluo] LOG [RouterExplorer] Mapped {/responses/string, GET} route
+[fluo] LOG [RouterExplorer] Mapped {/responses/bytes, GET} route
+[fluo] LOG [RouterExplorer] Mapped {/responses/buffer, GET} route
+[fluo] LOG [RouterExplorer] Mapped {/responses/headers, GET} route
+[fluo] LOG [RouterExplorer] Mapped {/responses/redirect, GET} route
+[fluo] LOG [RouterExplorer] Mapped {/responses/error, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves response parity for simple JSON and non-fast-path responses
+[fluo] LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves benchmark-style simple query and JSON body routes on the native request path
+[fluo] LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves benchmark-style simple query and JSON body routes on the native request path
+[fluo] LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves benchmark-style simple query and JSON body routes on the native request path
+[fluo] LOG [RoutesResolver] BenchmarkController {/}
+[fluo] LOG [RouterExplorer] Mapped {/query-one, GET} route
+[fluo] LOG [RouterExplorer] Mapped {/body-one, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves benchmark-style simple query and JSON body routes on the native request path
+[fluo] LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > falls back to raw URL parsing when Fastify host query values are unsafe or non-simple
+[fluo] LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > falls back to raw URL parsing when Fastify host query values are unsafe or non-simple
+[fluo] LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > falls back to raw URL parsing when Fastify host query values are unsafe or non-simple
+[fluo] LOG [RoutesResolver] QueryFallbackController {/query-fallback}
+[fluo] LOG [RouterExplorer] Mapped {/query-fallback/undefined, GET} route
+[fluo] LOG [RouterExplorer] Mapped {/query-fallback/object, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > falls back to raw URL parsing when Fastify host query values are unsafe or non-simple
+[fluo] LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > keeps the simple JSON fast path off Fastify reply serialization overrides
+[fluo] LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > keeps the simple JSON fast path off Fastify reply serialization overrides
+[fluo] LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > keeps the simple JSON fast path off Fastify reply serialization overrides
+[fluo] LOG [RoutesResolver] SerializerController {/serializer}
+[fluo] LOG [RouterExplorer] Mapped {/serializer/object, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > keeps the simple JSON fast path off Fastify reply serialization overrides
+[fluo] LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves raw body for JSON and text requests when enabled
+[fluo] LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves raw body for JSON and text requests when enabled
+[fluo] LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves raw body for JSON and text requests when enabled
+[fluo] LOG [RoutesResolver] WebhookController {/webhooks}
+[fluo] LOG [RouterExplorer] Mapped {/webhooks/json, POST} route
+[fluo] LOG [RouterExplorer] Mapped {/webhooks/text, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves raw body for JSON and text requests when enabled
+[fluo] LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > keeps maxBodySize enforced while capturing raw body bytes
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > keeps maxBodySize enforced while capturing raw body bytes
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > keeps maxBodySize enforced while capturing raw body bytes
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] WebhookController {/webhooks}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/webhooks/json, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > keeps maxBodySize enforced while capturing raw body bytes
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > bypasses raw-body capture for multipart requests at the Fastify hook layer
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > bypasses raw-body capture for multipart requests at the Fastify hook layer
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > bypasses raw-body capture for multipart requests at the Fastify hook layer
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] UploadController {/uploads}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/uploads, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > bypasses raw-body capture for multipart requests at the Fastify hook layer
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > treats multipart content-type values case-insensitively before raw-body capture
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > treats multipart content-type values case-insensitively before raw-body capture
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > treats multipart content-type values case-insensitively before raw-body capture
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] UploadController {/uploads}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/uploads, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > treats multipart content-type values case-insensitively before raw-body capture
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > supports SSE streaming
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > supports SSE streaming
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > supports SSE streaming
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] EventsController {/events}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/events, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > supports SSE streaming
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > registers native Fastify routes while preserving fluo matching, versioning, lifecycle, and fallback semantics
+[fluo] LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > registers native Fastify routes while preserving fluo matching, versioning, lifecycle, and fallback semantics
+[fluo] LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > registers native Fastify routes while preserving fluo matching, versioning, lifecycle, and fallback semantics
+[fluo] LOG [RoutesResolver] UsersController {/users}
+[fluo] LOG [RouterExplorer] Mapped {/users/:id, GET} route
+[fluo] LOG [RoutesResolver] VersionedController {/versions}
+[fluo] LOG [RouterExplorer] Mapped {/versions, GET} route
+[fluo] LOG [RouterExplorer] Mapped {/versions, GET} route
+[fluo] LOG [RoutesResolver] ErrorsController {/errors}
+[fluo] LOG [RouterExplorer] Mapped {/errors, GET} route
+[fluo] LOG [RoutesResolver] FallbackController {/fallback}
+[fluo] LOG [RouterExplorer] Mapped {/fallback, ALL} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > registers native Fastify routes while preserving fluo matching, versioning, lifecycle, and fallback semantics
+[fluo] LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > falls back to wildcard dispatch for overlapping same-shape param routes without changing fluo route order semantics
+[fluo] LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > falls back to wildcard dispatch for overlapping same-shape param routes without changing fluo route order semantics
+[fluo] LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > falls back to wildcard dispatch for overlapping same-shape param routes without changing fluo route order semantics
+[fluo] LOG [RoutesResolver] MatchesController {/matches}
+[fluo] LOG [RouterExplorer] Mapped {/matches/:id, GET} route
+[fluo] LOG [RouterExplorer] Mapped {/matches/:slug, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > falls back to wildcard dispatch for overlapping same-shape param routes without changing fluo route order semantics
+[fluo] LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > settles stream drain waits when the response stream closes before drain
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > settles stream drain waits when the response stream closes before drain
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > settles stream drain waits when the response stream closes before drain
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] EventsController {/events}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/events, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > settles stream drain waits when the response stream closes before drain
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not preserve rawBody for multipart requests
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not preserve rawBody for multipart requests
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not preserve rawBody for multipart requests
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] UploadController {/uploads}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/uploads, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not preserve rawBody for multipart requests
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > rejects multipart payloads once the cumulative body size exceeds multipart.maxTotalSize
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > rejects multipart payloads once the cumulative body size exceeds multipart.maxTotalSize
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > rejects multipart payloads once the cumulative body size exceeds multipart.maxTotalSize
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] UploadController {/uploads}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/uploads, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > rejects multipart payloads once the cumulative body size exceeds multipart.maxTotalSize
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > defaults multipart.maxTotalSize to maxBodySize when no explicit multipart total is provided
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > defaults multipart.maxTotalSize to maxBodySize when no explicit multipart total is provided
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > defaults multipart.maxTotalSize to maxBodySize when no explicit multipart total is provided
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] UploadController {/uploads}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/uploads, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > defaults multipart.maxTotalSize to maxBodySize when no explicit multipart total is provided
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > accepts a cors string and merges framework defaults
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > accepts a cors string and merges framework defaults
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > accepts a cors string and merges framework defaults
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] PingController {/ping}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/ping, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > accepts a cors string and merges framework defaults
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not add CORS headers or preflight handling when cors is false
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not add CORS headers or preflight handling when cors is false
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not add CORS headers or preflight handling when cors is false
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] PingController {/ping}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/ping, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not add CORS headers or preflight handling when cors is false
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > removes registered shutdown signal listeners after close
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > removes registered shutdown signal listeners after close
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > removes registered shutdown signal listeners after close
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] HealthController {/health}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/health, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > removes registered shutdown signal listeners after close
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > removes registered shutdown signal listeners after close
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Listening on http://[::1]:63506
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not leak global-prefix path rewrites to request observers
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not leak global-prefix path rewrites to request observers
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not leak global-prefix path rewrites to request observers
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] AppController {/app}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/app/info, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not leak global-prefix path rewrites to request observers
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > applies a global prefix to runtime-owned paths by default
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > applies a global prefix to runtime-owned paths by default
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] HealthModule dependencies initialized
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > applies a global prefix to runtime-owned paths by default
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] HealthController {/}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/health, GET} route
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/ready, GET} route
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] AppController {/app}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/app/info, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > applies a global prefix to runtime-owned paths by default
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves request header passthrough on native and fallback dispatch paths
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves request header passthrough on native and fallback dispatch paths
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves request header passthrough on native and fallback dispatch paths
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] HeaderController {/headers}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/headers/native, GET} route
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/headers/fallback, ALL} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > preserves request header passthrough on native and fallback dispatch paths
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > snapshots request headers before middleware can mutate raw headers
+[fluo] LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > snapshots request headers before middleware can mutate raw headers
+[fluo] LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > snapshots request headers before middleware can mutate raw headers
+[fluo] LOG [RoutesResolver] SnapshotController {/snapshot}
+[fluo] LOG [RouterExplorer] Mapped {/snapshot/headers, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > snapshots request headers before middleware can mutate raw headers
+[fluo] LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > marks shutdown timeout via exitCode without forcing process termination
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > marks shutdown timeout via exitCode without forcing process termination
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > marks shutdown timeout via exitCode without forcing process termination
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] HealthController {/health}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/health, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > marks shutdown timeout via exitCode without forcing process termination
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > marks shutdown timeout via exitCode without forcing process termination
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Listening on http://[::1]:63522
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > keeps malformed cookie values instead of failing the request
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > keeps malformed cookie values instead of failing the request
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > keeps malformed cookie values instead of failing the request
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] CookieController {/cookies}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/cookies, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > keeps malformed cookie values instead of failing the request
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > propagates abort signal when the client disconnects
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > propagates abort signal when the client disconnects
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > propagates abort signal when the client disconnects
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RoutesResolver] AbortController {/abort}
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [RouterExplorer] Mapped {/abort, GET} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > propagates abort signal when the client disconnects
+[fluo] 98834 - 6/2/2026, 2:14:50 PM LOG [FluoApplication] fluo application successfully started.
+
+ ✓ |packages| packages/platform-fastify/src/adapter.test.ts (55 tests) 387ms
+
+ Test Files  1 passed (1)
+      Tests  55 passed (55)
+   Start at  14:14:49
+   Duration  1.57s (transform 784ms, setup 209ms, collect 776ms, tests 387ms, environment 0ms, prepare 46ms)

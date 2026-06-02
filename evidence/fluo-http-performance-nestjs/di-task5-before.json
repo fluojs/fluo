@@ -1,0 +1,85 @@
+{
+  "generatedAt": "2026-06-02T05:29:12.419Z",
+  "results": [
+    {
+      "hz": 43755.44208310909,
+      "iterations": 5000,
+      "mode": "cold-plan",
+      "name": "resolve singleton dependency chain",
+      "totalMs": 114.2715,
+      "usPerIteration": 22.8543
+    },
+    {
+      "hz": 2204180.2719693957,
+      "iterations": 5000,
+      "mode": "warm-plan",
+      "name": "resolve singleton dependency chain",
+      "totalMs": 2.2684169999999995,
+      "usPerIteration": 0.4536833999999999
+    },
+    {
+      "hz": 1437263.1749603434,
+      "iterations": 5000,
+      "mode": "cold-plan",
+      "name": "hasRequestScopedDependency chain",
+      "totalMs": 3.478834000000006,
+      "usPerIteration": 0.6957668000000012
+    },
+    {
+      "hz": 7103534.008168669,
+      "iterations": 5000,
+      "mode": "warm-plan",
+      "name": "hasRequestScopedDependency chain",
+      "totalMs": 0.7038750000000391,
+      "usPerIteration": 0.1407750000000078
+    },
+    {
+      "hz": 207715.23338239707,
+      "iterations": 5000,
+      "mode": "cold-plan",
+      "name": "resolve alias chain",
+      "totalMs": 24.071416999999997,
+      "usPerIteration": 4.8142834
+    },
+    {
+      "hz": 330973.31706356845,
+      "iterations": 5000,
+      "mode": "warm-plan",
+      "name": "resolve alias chain",
+      "totalMs": 15.106957999999963,
+      "usPerIteration": 3.0213915999999923
+    },
+    {
+      "hz": 96487.68612571129,
+      "iterations": 5000,
+      "mode": "cold-plan",
+      "name": "resolve multi-provider token",
+      "totalMs": 51.820084000000065,
+      "usPerIteration": 10.364016800000014
+    },
+    {
+      "hz": 385388.6224183516,
+      "iterations": 5000,
+      "mode": "warm-plan",
+      "name": "resolve multi-provider token",
+      "totalMs": 12.973916999999915,
+      "usPerIteration": 2.594783399999983
+    },
+    {
+      "hz": 129829.10050218644,
+      "iterations": 5000,
+      "mode": "cold-plan",
+      "name": "resolve transient dependency chain",
+      "totalMs": 38.51216700000009,
+      "usPerIteration": 7.702433400000018
+    },
+    {
+      "hz": 239819.65561897398,
+      "iterations": 5000,
+      "mode": "warm-plan",
+      "name": "resolve transient dependency chain",
+      "totalMs": 20.849000000000046,
+      "usPerIteration": 4.169800000000009
+    }
+  ]
+}

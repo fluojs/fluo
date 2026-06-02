@@ -1,12 +1,14 @@
 import 'reflect-metadata';
 
-import { Body, Controller, Get, Injectable, Module, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Injectable, Module, Param, Post, Query, type Type } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { ExpressAdapter, type NestExpressApplication } from '@nestjs/platform-express';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 
 import { jsonCommandLocal, readSearchLocal, restRouteMixLocal, type QuoteInput } from '../shared/workloads';
 
 type AppShape = 'read-search-local' | 'json-command-local' | 'rest-route-mix-local';
+type NodeAdapter = 'fastify' | 'express';
 
 class ReadSearchQuery {
   role = '';
@@ -149,16 +151,39 @@ function readAppShape(): AppShape {
   throw new Error(`Unsupported BENCH_APP_SHAPE: ${raw}`);
 }
 
+function readNodeAdapter(): NodeAdapter {
+  const raw = process.env['BENCH_NODE_ADAPTER'] ?? 'fastify';
+  if (raw === 'fastify' || raw === 'express') {
+    return raw;
+  }
+
+  throw new Error(`Unsupported BENCH_NODE_ADAPTER: ${raw}`);
+}
+
+function createNestApplication(adapter: NodeAdapter, moduleType: Type<unknown>) {
+  switch (adapter) {
+    case 'fastify':
+      return NestFactory.create<NestFastifyApplication>(
+        moduleType,
+        new FastifyAdapter(),
+        { logger: false },
+      );
+    case 'express':
+      return NestFactory.create<NestExpressApplication>(
+        moduleType,
+        new ExpressAdapter(),
+        { logger: false },
+      );
+  }
+}
+
 async function main(): Promise<void> {
   const port = Number(process.env['PORT'] ?? 3002);
-  const app = await NestFactory.create<NestFastifyApplication>(
-    resolveAppModule(readAppShape()),
-    new FastifyAdapter(),
-    { logger: false },
-  );
+  const adapterName = readNodeAdapter();
+  const app = await createNestApplication(adapterName, resolveAppModule(readAppShape()));
 
   await app.listen(port, '0.0.0.0');
-  process.stdout.write(`NestJS listening on :${port}\n`);
+  process.stdout.write(`NestJS ${adapterName} listening on :${port}\n`);
 }
 
 main().catch((err) => {

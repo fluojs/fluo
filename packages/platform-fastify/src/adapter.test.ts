@@ -14,6 +14,7 @@ import {
   type FrameworkResponse,
   Get,
   type GuardContext,
+  type HandlerDescriptor,
   Header,
   HttpCode,
   type InterceptorContext,
@@ -43,6 +44,7 @@ import {
   type RunFastifyApplicationOptions,
   runFastifyApplication,
 } from './adapter.js';
+import { resolveFastifyNativeRouteRequest } from './native-route.js';
 
 function createDeferred<T>(): {
   promise: Promise<T>;
@@ -1130,6 +1132,361 @@ describe('@fluojs/platform-fastify', () => {
       });
     } finally {
       await app.close();
+    }
+  });
+
+  it('hands Fastify native routes to dispatchNativeRoute for benchmark-safe paths', async () => {
+    class BenchmarkNativeController {}
+    const descriptor = {
+      controllerToken: BenchmarkNativeController,
+      metadata: {
+        controllerPath: '/benchmark-fast-path',
+        effectivePath: '/benchmark-fast-path/users/:id',
+        moduleMiddleware: [],
+        pathParams: ['id'],
+      },
+      methodName: 'readUser',
+      route: {
+        method: 'GET',
+        path: '/benchmark-fast-path/users/:id',
+      },
+    } satisfies HandlerDescriptor;
+    const nativeCalls: Array<{
+      readonly matchParams: Readonly<Record<string, string>>;
+      readonly path: string;
+      readonly query: Readonly<Record<string, string | string[] | undefined>>;
+      readonly routePath: string;
+    }> = [];
+    const port = await findAvailablePort();
+    const adapter = createFastifyAdapter({ port }) as FastifyHttpApplicationAdapter;
+    const dispatcher: Dispatcher = {
+      async dispatch() {
+        throw new Error('benchmark-safe path should use dispatchNativeRoute');
+      },
+      async dispatchNativeRoute(match, request, response) {
+        nativeCalls.push({
+          matchParams: match.params,
+          path: request.path,
+          query: request.query,
+          routePath: match.descriptor.route.path,
+        });
+        response.setStatus(200);
+        await response.send({
+          id: match.params.id,
+          route: 'native',
+          search: request.query.search,
+        });
+        return true;
+      },
+      describeRoutes() {
+        return [descriptor];
+      },
+    };
+
+    await adapter.listen(dispatcher);
+
+    try {
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/benchmark-fast-path/users/u-1?search=ada',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({
+        id: 'u-1',
+        route: 'native',
+        search: 'ada',
+      });
+      expect(nativeCalls).toEqual([
+        {
+          matchParams: { id: 'u-1' },
+          path: '/benchmark-fast-path/users/u-1',
+          query: { search: 'ada' },
+          routePath: '/benchmark-fast-path/users/:id',
+        },
+      ]);
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('keeps static native Fastify routes on the fast request shell without params', async () => {
+    class StaticNativeController {}
+    const descriptor = {
+      controllerToken: StaticNativeController,
+      metadata: {
+        controllerPath: '/static-native',
+        effectivePath: '/static-native/quote',
+        moduleMiddleware: [],
+        pathParams: [],
+      },
+      methodName: 'quote',
+      route: {
+        method: 'POST',
+        path: '/static-native/quote',
+      },
+    } satisfies HandlerDescriptor;
+    const nativeCalls: Array<{
+      readonly body: unknown;
+      readonly matchParams: Readonly<Record<string, string>>;
+      readonly path: string;
+      readonly query: Readonly<Record<string, string | string[] | undefined>>;
+    }> = [];
+    const port = await findAvailablePort();
+    const adapter = createFastifyAdapter({ port }) as FastifyHttpApplicationAdapter;
+    const dispatcher: Dispatcher = {
+      async dispatch() {
+        throw new Error('static native route should not fall back to rematching.');
+      },
+      async dispatchNativeRoute(match, request, response) {
+        nativeCalls.push({
+          body: request.body,
+          matchParams: match.params,
+          path: request.path,
+          query: request.query,
+        });
+        response.setStatus(200);
+        await response.send({ ok: true });
+        return true;
+      },
+      describeRoutes() {
+        return [descriptor];
+      },
+    };
+
+    await adapter.listen(dispatcher);
+
+    try {
+      const response = await requestHttp({
+        body: JSON.stringify({ source: 'benchmark' }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+        path: '/static-native/quote?tag=one&tag=two',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ ok: true });
+      expect(nativeCalls).toEqual([
+        {
+          body: { source: 'benchmark' },
+          matchParams: {},
+          path: '/static-native/quote',
+          query: { tag: ['one', 'two'] },
+        },
+      ]);
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('resolves static native route URL parts from route metadata while preserving fallback guards', () => {
+    class StaticNativeController {}
+    const descriptor = {
+      controllerToken: StaticNativeController,
+      metadata: {
+        controllerPath: '/static-native',
+        effectivePath: '/static-native/quote',
+        moduleMiddleware: [],
+        pathParams: [],
+      },
+      methodName: 'quote',
+      route: {
+        method: 'GET',
+        path: '/static-native/quote',
+      },
+    } satisfies HandlerDescriptor;
+
+    const safe = resolveFastifyNativeRouteRequest({
+      descriptor,
+      hasPathParams: false,
+      method: 'GET',
+      path: '/static-native/quote',
+    }, '/static-native/quote?tag=one&tag=two#ignored', undefined);
+    const sensitive = resolveFastifyNativeRouteRequest({
+      descriptor,
+      hasPathParams: false,
+      method: 'GET',
+      path: '/static-native/quote',
+    }, '/static-native/quote/?tag=one', undefined);
+
+    expect(safe).toEqual({
+      canUseNativeRoute: true,
+      params: {},
+      urlParts: {
+        path: '/static-native/quote',
+        search: '?tag=one&tag=two',
+      },
+    });
+    expect(sensitive.canUseNativeRoute).toBe(false);
+  });
+
+  it('keeps params containing slash on the fallback dispatch path', async () => {
+    class SlashParamController {}
+    const descriptor = {
+      controllerToken: SlashParamController,
+      metadata: {
+        controllerPath: '/native-files',
+        effectivePath: '/native-files/:path',
+        moduleMiddleware: [],
+        pathParams: ['path'],
+      },
+      methodName: 'readFile',
+      route: {
+        method: 'GET',
+        path: '/native-files/:path',
+      },
+    } satisfies HandlerDescriptor;
+    const calls: string[] = [];
+    const port = await findAvailablePort();
+    const adapter = createFastifyAdapter({ port }) as FastifyHttpApplicationAdapter;
+    const dispatcher: Dispatcher = {
+      async dispatch(_request, response) {
+        calls.push('fallback');
+        response.setStatus(200);
+        await response.send({ route: 'fallback' });
+      },
+      async dispatchNativeRoute(_match, _request, response) {
+        calls.push('native');
+        response.setStatus(500);
+        await response.send({ route: 'native' });
+        return true;
+      },
+      describeRoutes() {
+        return [descriptor];
+      },
+    };
+
+    await adapter.listen(dispatcher);
+
+    try {
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/native-files/a%2Fb',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ route: 'fallback' });
+      expect(calls).toEqual(['fallback']);
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('keeps raw-body enabled requests on the fallback request factory', async () => {
+    class RawNativeController {}
+    const descriptor = {
+      controllerToken: RawNativeController,
+      metadata: {
+        controllerPath: '/raw-native',
+        effectivePath: '/raw-native/json',
+        moduleMiddleware: [],
+        pathParams: [],
+      },
+      methodName: 'readRaw',
+      route: {
+        method: 'POST',
+        path: '/raw-native/json',
+      },
+    } satisfies HandlerDescriptor;
+    const port = await findAvailablePort();
+    const adapter = createFastifyAdapter({ port, rawBody: true }) as FastifyHttpApplicationAdapter;
+    const dispatcher: Dispatcher = {
+      async dispatch(request, response) {
+        response.setStatus(200);
+        await response.send({
+          body: request.body,
+          raw: Buffer.from(request.rawBody ?? new Uint8Array()).toString('utf8'),
+        });
+      },
+      async dispatchNativeRoute(_match, _request, response) {
+        response.setStatus(500);
+        await response.send({ route: 'native' });
+        return true;
+      },
+      describeRoutes() {
+        return [descriptor];
+      },
+    };
+
+    await adapter.listen(dispatcher);
+
+    try {
+      const response = await requestHttp({
+        body: JSON.stringify({ ok: true }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+        path: '/raw-native/json',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({
+        body: { ok: true },
+        raw: '{"ok":true}',
+      });
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('keeps multipart native route requests on the fallback request factory', async () => {
+    class MultipartNativeController {}
+    const descriptor = {
+      controllerToken: MultipartNativeController,
+      metadata: {
+        controllerPath: '/multipart-native',
+        effectivePath: '/multipart-native/upload',
+        moduleMiddleware: [],
+        pathParams: [],
+      },
+      methodName: 'upload',
+      route: {
+        method: 'POST',
+        path: '/multipart-native/upload',
+      },
+    } satisfies HandlerDescriptor;
+    const port = await findAvailablePort();
+    const adapter = createFastifyAdapter({ port }) as FastifyHttpApplicationAdapter;
+    const dispatcher: Dispatcher = {
+      async dispatch(request, response) {
+        response.setStatus(200);
+        await response.send({
+          body: request.body,
+          fileCount: request.files?.length ?? 0,
+        });
+      },
+      async dispatchNativeRoute(_match, _request, response) {
+        response.setStatus(500);
+        await response.send({ route: 'native' });
+        return true;
+      },
+      describeRoutes() {
+        return [descriptor];
+      },
+    };
+
+    await adapter.listen(dispatcher);
+
+    try {
+      const form = new FormData();
+      form.set('name', 'Ada');
+      form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
+
+      const response = await fetch(`http://127.0.0.1:${String(port)}/multipart-native/upload`, {
+        body: form,
+        method: 'POST',
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        body: { name: 'Ada' },
+        fileCount: 1,
+      });
+    } finally {
+      await adapter.close();
     }
   });
 

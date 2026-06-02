@@ -1,0 +1,36 @@
+Task 3 verification summary.
+
+PIN / RED:
+- `pnpm exec vitest run packages/http/src/dispatch/dispatcher.test.ts -t "keeps async fast-path execution promise-based while preserving results"` passed before production edits.
+- `pnpm exec vitest run packages/http/src/dispatch/dispatcher.test.ts -t "returns sync fast-path execution results for benchmark-safe sync handlers"` failed before production edits because `executeFastPath(...)` returned a Promise for a benchmark-safe sync handler.
+
+GREEN / SURFACE:
+- `pnpm exec vitest run packages/http/src/dispatch/dispatcher.test.ts -t "returns sync fast-path execution results for benchmark-safe sync handlers"` passed after production edits.
+- `pnpm exec vitest run packages/http/src/dispatch/dispatcher.test.ts -t "keeps async fast-path execution promise-based while preserving results"` passed after production edits.
+- `pnpm --filter @fluojs/http typecheck` passed.
+- `pnpm --filter @fluojs/http build` passed.
+- `pnpm exec vitest run packages/http/src/dispatch/dispatcher.test.ts packages/http/src/dispatch/dispatch-routing-policy.test.ts` passed: 87 tests.
+- `pnpm exec vitest run packages/http/src/public-api.test.ts` passed: 4 tests.
+- `pnpm test -- --project packages packages/http/src/dispatch` passed: 237 files, 3295 tests.
+
+Manual HTTP channel:
+- `curl -i 'http://localhost:3103/tenants/t-001/users?role=admin&status=active&region=west&sort=createdAt&page=2&limit=25'` captured in `task-3-read-search-curl.txt`.
+- Saved response body matched `READ_SEARCH_RESPONSE` from `tooling/benchmarks/http-comparison/dist/fluo-fastify/shared/workloads.js`.
+- `curl -i 'http://localhost:3103/not-found'` captured in `task-3-not-found-curl.txt`.
+- Saved not-found response included `HTTP/1.1 404 Not Found` and `No handler registered for GET /not-found.`.
+
+Adversarial classes:
+- malformed input: probed by `/not-found`; response stayed documented 404 JSON and process did not crash.
+- stale state: `@fluojs/http` was rebuilt before the final dispatcher hot-path benchmark and manual server build.
+- dirty worktree: existing Task 1/2 changes and generated evidence were preserved; no unrelated edits were reverted.
+- hung or long commands: package-wide `pnpm test` completed; manual server was interrupted with Ctrl-C.
+- misleading success output: benchmark comparison records exact pre/post ops/sec values, not only "passed".
+- flaky tests: targeted RED/GREEN tests, dispatch policy suite, public API suite, and package-wide tests were run.
+- cancel/resume: not applicable; dispatcher fast-path execution has no persisted resumable workflow state.
+- prompt injection: not applicable; no prompt or LLM input surface in this task.
+- repeated interruptions: not applicable to runtime behavior; plan/ledger provide durable continuation state.
+
+Cleanup:
+- Manual QA server session on port 3103 stopped with Ctrl-C.
+- `lsof -nP -iTCP:3103 -sTCP:LISTEN` returned no listeners after cleanup.
+- Task 3 scout subagents returned no substantive reports before shutdown; recorded as inconclusive and not counted as approval.

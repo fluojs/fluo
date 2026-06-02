@@ -37,6 +37,7 @@ import {
   compileFastPathEligibility,
   getHandlerFastPathEligibility,
   setHandlerFastPathEligibility,
+  type FastPathExecutionResult,
   type FastPathEligibility,
   type FastPathStats,
   FAST_PATH_STATS_SYMBOL,
@@ -828,7 +829,10 @@ async function dispatchNativeFastRoute(
   await runWithRequestContext(phaseContext.requestContext, async () => {
     try {
       ensureRequestNotAborted(phaseContext.requestContext.request);
-      const fastPathSuccess = await tryFastPathExecution(match.descriptor, phaseContext);
+      const fastPathSuccessOrPromise = tryFastPathExecution(match.descriptor, phaseContext);
+      const fastPathSuccess = isPromiseLike(fastPathSuccessOrPromise)
+        ? await fastPathSuccessOrPromise
+        : fastPathSuccessOrPromise;
 
       if (!fastPathSuccess) {
         throw new Error(`Native route ${match.descriptor.route.method}:${match.descriptor.route.path} was not fast-path executable.`);
@@ -913,10 +917,10 @@ async function notifyRequestFinish(context: DispatchPhaseContext): Promise<void>
   );
 }
 
-async function tryFastPathExecution(
+function tryFastPathExecution(
   handler: HandlerDescriptor,
   context: DispatchPhaseContext,
-): Promise<boolean> {
+): boolean | Promise<boolean> {
   const eligibility = getHandlerFastPathEligibility(handler);
 
   if (!eligibility || eligibility.executionPath !== 'fast') {
@@ -932,9 +936,20 @@ async function tryFastPathExecution(
     context.fastPathRuntimeCache,
   );
   const controllerOrPromise = resolveFastPathController(handler, context.dispatchScope.container, runtimeCache);
-  const controller = isPromiseLike(controllerOrPromise) ? await controllerOrPromise : controllerOrPromise;
+  if (isPromiseLike(controllerOrPromise)) {
+    return controllerOrPromise.then((controller) => runResolvedFastPathExecution(handler, context, runtimeCache, controller));
+  }
 
-  const fastPathResult = await executeFastPath({
+  return runResolvedFastPathExecution(handler, context, runtimeCache, controllerOrPromise);
+}
+
+function runResolvedFastPathExecution(
+  handler: HandlerDescriptor,
+  context: DispatchPhaseContext,
+  runtimeCache: FastPathHandlerRuntimeCache,
+  controller: object,
+): boolean | Promise<boolean> {
+  const fastPathResult = executeFastPath({
     binder: context.options.binder,
     contentNegotiation: context.contentNegotiation,
     controller,
@@ -946,6 +961,14 @@ async function tryFastPathExecution(
     response: context.response,
   });
 
+  if (isPromiseLike(fastPathResult)) {
+    return fastPathResult.then(resolveFastPathExecutionResult);
+  }
+
+  return resolveFastPathExecutionResult(fastPathResult);
+}
+
+function resolveFastPathExecutionResult(fastPathResult: FastPathExecutionResult): boolean {
   if (fastPathResult.executed) {
     return true;
   }
@@ -985,7 +1008,10 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
     }
 
     if (shouldUseFastPathForRequest(eligibility, appMiddlewareContext.request)) {
-      const fastPathSuccess = await tryFastPathExecution(match.descriptor, context);
+      const fastPathSuccessOrPromise = tryFastPathExecution(match.descriptor, context);
+      const fastPathSuccess = isPromiseLike(fastPathSuccessOrPromise)
+        ? await fastPathSuccessOrPromise
+        : fastPathSuccessOrPromise;
 
       if (fastPathSuccess) {
         return;

@@ -1,0 +1,18 @@
+Task 1 Express smoke evidence
+
+Command:
+env BENCH_TARGETS=nestjs-express,fluo-express BENCH_FLUO_SOURCE=published BENCH_ARTIFACT_LABEL=published-baseline-express BENCH_RUNS=1 BENCH_WARMUP_SEC=1 BENCH_MEASURE_SEC=3 BENCH_CONNECTIONS=8 BENCH_OUTPUT_JSON=/Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs/evidence/fluo-http-performance-nestjs/published-baseline-express-smoke.json pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
+
+Result:
+Published-package Express smoke passed with errors=0, timeouts=0, non2xx=0, mismatches=0 for Nest+Express and fluo+Express.
+
+Command:
+env BENCH_TARGETS=nestjs-express,fluo-express BENCH_FLUO_SOURCE=local-tarball BENCH_ARTIFACT_LABEL=local-before-express BENCH_RUNS=1 BENCH_WARMUP_SEC=1 BENCH_MEASURE_SEC=3 BENCH_CONNECTIONS=8 BENCH_OUTPUT_JSON=/Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs/evidence/fluo-http-performance-nestjs/local-before-express-smoke.json pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
+
+Result:
+Local-tarball Express smoke passed with errors=0, timeouts=0, non2xx=0, mismatches=0 for Nest+Express and fluo+Express.
+
+Observed local-before req/sec:
+- read-search-local: Nest+Express 11855, fluo+Express 9300
+- json-command-local: Nest+Express 14119, fluo+Express 10828
+- rest-route-mix-local: Nest+Express 14929, fluo+Express 10769

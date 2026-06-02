@@ -1,0 +1,17 @@
+
+> fluo@ bench:runtime-module-graph /Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs
+> node tooling/benchmarks/runtime-module-graph/run.mjs
+
+Runtime module graph focused benchmark
+iterations=100 warmup=200
+HTTP stack is not involved; results isolate compileModuleGraph(...) repeated bootstrap inputs.
+
+small-root cache-off                              11.95 us/op  83,673.26 ops/sec  cacheSize=0
+small-root cache-on                               1.85 us/op  541,638.46 ops/sec  cacheSize=1
+wide-imports cache-off                            17.65 us/op  56,667.95 ops/sec  cacheSize=0
+wide-imports cache-on                             5.06 us/op  197,807.89 ops/sec  cacheSize=1
+runtime-providers cache-off                       12.35 us/op  80,985.3 ops/sec  cacheSize=0
+runtime-providers cache-on                        6.08 us/op  164,439.88 ops/sec  cacheSize=1
+validation-tokens cache-off                       11.76 us/op  85,024.98 ops/sec  cacheSize=0
+validation-tokens cache-on                        3.57 us/op  279,785.24 ops/sec  cacheSize=1
+metadata-invalidation cache-on-changing-metadata  22.25 us/op  44,939.62 ops/sec  cacheSize=0

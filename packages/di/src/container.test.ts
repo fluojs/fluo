@@ -1403,6 +1403,19 @@ describe('Container', () => {
       await expect(child.resolve<string[]>(PLUGINS)).resolves.toEqual(['root-a', 'root-b']);
     });
 
+    it('keeps resolved singleton multi-provider token arrays isolated across cache hits', async () => {
+      const PLUGINS = Symbol('Plugins');
+      const container = new Container().register(
+        { provide: PLUGINS, useValue: 'first', multi: true },
+        { provide: PLUGINS, useValue: 'second', multi: true },
+      );
+
+      const first = await container.resolve<string[]>(PLUGINS);
+      first.push('mutated');
+
+      await expect(container.resolve<string[]>(PLUGINS)).resolves.toEqual(['first', 'second']);
+    });
+
     it('keeps transient providers uncached while reusing the provider plan', async () => {
       let created = 0;
 

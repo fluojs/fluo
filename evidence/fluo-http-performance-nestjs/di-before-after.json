@@ -1,0 +1,85 @@
+{
+  "generatedAt": "2026-06-02T05:33:45.598Z",
+  "results": [
+    {
+      "hz": 42601.654769259934,
+      "iterations": 5000,
+      "mode": "cold-plan",
+      "name": "resolve singleton dependency chain",
+      "totalMs": 117.366333,
+      "usPerIteration": 23.4732666
+    },
+    {
+      "hz": 2892681.51576512,
+      "iterations": 5000,
+      "mode": "warm-plan",
+      "name": "resolve singleton dependency chain",
+      "totalMs": 1.7284999999999968,
+      "usPerIteration": 0.34569999999999934
+    },
+    {
+      "hz": 833895.1006661445,
+      "iterations": 5000,
+      "mode": "cold-plan",
+      "name": "hasRequestScopedDependency chain",
+      "totalMs": 5.99595800000003,
+      "usPerIteration": 1.199191600000006
+    },
+    {
+      "hz": 7154785.191883815,
+      "iterations": 5000,
+      "mode": "warm-plan",
+      "name": "hasRequestScopedDependency chain",
+      "totalMs": 0.698833000000036,
+      "usPerIteration": 0.1397666000000072
+    },
+    {
+      "hz": 209693.7917049498,
+      "iterations": 5000,
+      "mode": "cold-plan",
+      "name": "resolve alias chain",
+      "totalMs": 23.844291999999996,
+      "usPerIteration": 4.768858399999999
+    },
+    {
+      "hz": 330461.07581603323,
+      "iterations": 5000,
+      "mode": "warm-plan",
+      "name": "resolve alias chain",
+      "totalMs": 15.130374999999958,
+      "usPerIteration": 3.0260749999999916
+    },
+    {
+      "hz": 87576.21867781806,
+      "iterations": 5000,
+      "mode": "cold-plan",
+      "name": "resolve multi-provider token",
+      "totalMs": 57.093124999999986,
+      "usPerIteration": 11.418624999999997
+    },
+    {
+      "hz": 937565.981205934,
+      "iterations": 5000,
+      "mode": "warm-plan",
+      "name": "resolve multi-provider token",
+      "totalMs": 5.332957999999962,
+      "usPerIteration": 1.0665915999999924
+    },
+    {
+      "hz": 128843.70071164772,
+      "iterations": 5000,
+      "mode": "cold-plan",
+      "name": "resolve transient dependency chain",
+      "totalMs": 38.806708999999955,
+      "usPerIteration": 7.761341799999991
+    },
+    {
+      "hz": 231667.3838316644,
+      "iterations": 5000,
+      "mode": "warm-plan",
+      "name": "resolve transient dependency chain",
+      "totalMs": 21.582667000000015,
+      "usPerIteration": 4.3165334000000035
+    }
+  ]
+}

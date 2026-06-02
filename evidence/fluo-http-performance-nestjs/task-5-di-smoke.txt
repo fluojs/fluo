@@ -1,0 +1,18 @@
+
+> fluo@ bench:di-container /Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs
+> node tooling/benchmarks/di-container/run.mjs
+
+DI container focused benchmark
+iterations=250 warmup=1000
+HTTP stack is not involved; results isolate Container plan lookup/resolution paths.
+
+resolve singleton dependency chain cold-plan  22.65 us/op  44,149.46 ops/sec
+resolve singleton dependency chain warm-plan  0.39 us/op  2,591,801.61 ops/sec
+hasRequestScopedDependency chain cold-plan    0.57 us/op  1,767,821.41 ops/sec
+hasRequestScopedDependency chain warm-plan    0.13 us/op  7,936,507.94 ops/sec
+resolve alias chain cold-plan                 6.32 us/op  158,319.73 ops/sec
+resolve alias chain warm-plan                 2.76 us/op  362,472.23 ops/sec
+resolve multi-provider token cold-plan        11.53 us/op  86,705.21 ops/sec
+resolve multi-provider token warm-plan        1.14 us/op  875,273.52 ops/sec
+resolve transient dependency chain cold-plan  7.76 us/op  128,838.29 ops/sec
+resolve transient dependency chain warm-plan  4.55 us/op  219,917.29 ops/sec

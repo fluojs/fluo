@@ -1,0 +1,1 @@
+not applicable - no docs/book/README locale files changed in Task 8; evidence-only docs under evidence/ do not require EN/KO parity verification.

@@ -1,0 +1,86 @@
+{
+  "generatedAt": "2026-06-02T05:29:11.731Z",
+  "results": [
+    {
+      "cacheSize": 0,
+      "hz": 164217.66131388253,
+      "iterations": 2000,
+      "mode": "cache-off",
+      "name": "small-root",
+      "totalMs": 12.178957999999998,
+      "usPerIteration": 6.089478999999999
+    },
+    {
+      "cacheSize": 1,
+      "hz": 540181.6847078346,
+      "iterations": 2000,
+      "mode": "cache-on",
+      "name": "small-root",
+      "totalMs": 3.702458,
+      "usPerIteration": 1.851229
+    },
+    {
+      "cacheSize": 0,
+      "hz": 87832.45958334475,
+      "iterations": 2000,
+      "mode": "cache-off",
+      "name": "wide-imports",
+      "totalMs": 22.770625000000003,
+      "usPerIteration": 11.385312500000001
+    },
+    {
+      "cacheSize": 1,
+      "hz": 322227.6499679709,
+      "iterations": 2000,
+      "mode": "cache-on",
+      "name": "wide-imports",
+      "totalMs": 6.206791999999993,
+      "usPerIteration": 3.1033959999999965
+    },
+    {
+      "cacheSize": 0,
+      "hz": 89769.62869037337,
+      "iterations": 2000,
+      "mode": "cache-off",
+      "name": "runtime-providers",
+      "totalMs": 22.27924999999999,
+      "usPerIteration": 11.139624999999995
+    },
+    {
+      "cacheSize": 1,
+      "hz": 236243.73407791046,
+      "iterations": 2000,
+      "mode": "cache-on",
+      "name": "runtime-providers",
+      "totalMs": 8.465833000000003,
+      "usPerIteration": 4.232916500000002
+    },
+    {
+      "cacheSize": 0,
+      "hz": 91531.2579932532,
+      "iterations": 2000,
+      "mode": "cache-off",
+      "name": "validation-tokens",
+      "totalMs": 21.850458999999987,
+      "usPerIteration": 10.925229499999993
+    },
+    {
+      "cacheSize": 1,
+      "hz": 283174.132835853,
+      "iterations": 2000,
+      "mode": "cache-on",
+      "name": "validation-tokens",
+      "totalMs": 7.062792000000002,
+      "usPerIteration": 3.5313960000000004
+    },
+    {
+      "cacheSize": 0,
+      "hz": 50420.11552861911,
+      "iterations": 2000,
+      "mode": "cache-on-changing-metadata",
+      "name": "metadata-invalidation",
+      "totalMs": 39.666708,
+      "usPerIteration": 19.833354
+    }
+  ]
+}

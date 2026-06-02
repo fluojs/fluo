@@ -1,0 +1,229 @@
+{
+  "artifactLabel": "measurement",
+  "benchmark": "http-comparison",
+  "connections": 32,
+  "durationSeconds": 10,
+  "environment": {
+    "arch": "arm64",
+    "cpuCount": 12,
+    "cpuModel": "Apple M2 Max",
+    "node": "v22.19.0",
+    "platform": "darwin"
+  },
+  "fluoSource": "published",
+  "runs": 1,
+  "rawRuns": [
+    {
+      "run": 1,
+      "scenarios": [
+        {
+          "description": "Read-heavy tenant user search: path param + query parsing + DI service + deterministic in-memory filtering",
+          "name": "read-search-local",
+          "targets": [
+            {
+              "label": "Nest+Fastify",
+              "metrics": {
+                "errors": 0,
+                "latencyAverage": 0.59,
+                "latencyP50": 1,
+                "latencyP97_5": 1,
+                "latencyP99": 2,
+                "mismatches": 0,
+                "non2xx": 0,
+                "requestsAverage": 30448.73,
+                "throughputAverage": 59132834.91,
+                "timeouts": 0
+              }
+            },
+            {
+              "label": "fluo+Fastify",
+              "metrics": {
+                "errors": 0,
+                "latencyAverage": 1.14,
+                "latencyP50": 1,
+                "latencyP97_5": 2,
+                "latencyP99": 3,
+                "mismatches": 0,
+                "non2xx": 0,
+                "requestsAverage": 20070.55,
+                "throughputAverage": 38971578.19,
+                "timeouts": 0
+              }
+            }
+          ]
+        },
+        {
+          "description": "JSON command endpoint: body materialization + quote calculation + deterministic response serialization",
+          "name": "json-command-local",
+          "targets": [
+            {
+              "label": "Nest+Fastify",
+              "metrics": {
+                "errors": 0,
+                "latencyAverage": 0.25,
+                "latencyP50": 0,
+                "latencyP97_5": 2,
+                "latencyP99": 2,
+                "mismatches": 0,
+                "non2xx": 0,
+                "requestsAverage": 30726.55,
+                "throughputAverage": 10324526.55,
+                "timeouts": 0
+              }
+            },
+            {
+              "label": "fluo+Fastify",
+              "metrics": {
+                "errors": 0,
+                "latencyAverage": 0.76,
+                "latencyP50": 1,
+                "latencyP97_5": 2,
+                "latencyP99": 2,
+                "mismatches": 0,
+                "non2xx": 0,
+                "requestsAverage": 27734.4,
+                "throughputAverage": 9319219.2,
+                "timeouts": 0
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "description": "Read-heavy tenant user search: path param + query parsing + DI service + deterministic in-memory filtering",
+      "name": "read-search-local",
+      "targets": [
+        {
+          "label": "Nest+Fastify",
+          "metrics": {
+            "errors": 0,
+            "latencyAverage": 0.59,
+            "latencyP50": 1,
+            "latencyP97_5": 1,
+            "latencyP99": 2,
+            "mismatches": 0,
+            "non2xx": 0,
+            "requestsAverage": 30448.73,
+            "throughputAverage": 59132834.91,
+            "timeouts": 0
+          },
+          "samples": [
+            {
+              "errors": 0,
+              "latencyAverage": 0.59,
+              "latencyP50": 1,
+              "latencyP97_5": 1,
+              "latencyP99": 2,
+              "mismatches": 0,
+              "non2xx": 0,
+              "requestsAverage": 30448.73,
+              "throughputAverage": 59132834.91,
+              "timeouts": 0
+            }
+          ]
+        },
+        {
+          "label": "fluo+Fastify",
+          "metrics": {
+            "errors": 0,
+            "latencyAverage": 1.14,
+            "latencyP50": 1,
+            "latencyP97_5": 2,
+            "latencyP99": 3,
+            "mismatches": 0,
+            "non2xx": 0,
+            "requestsAverage": 20070.55,
+            "throughputAverage": 38971578.19,
+            "timeouts": 0
+          },
+          "samples": [
+            {
+              "errors": 0,
+              "latencyAverage": 1.14,
+              "latencyP50": 1,
+              "latencyP97_5": 2,
+              "latencyP99": 3,
+              "mismatches": 0,
+              "non2xx": 0,
+              "requestsAverage": 20070.55,
+              "throughputAverage": 38971578.19,
+              "timeouts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "description": "JSON command endpoint: body materialization + quote calculation + deterministic response serialization",
+      "name": "json-command-local",
+      "targets": [
+        {
+          "label": "Nest+Fastify",
+          "metrics": {
+            "errors": 0,
+            "latencyAverage": 0.25,
+            "latencyP50": 0,
+            "latencyP97_5": 2,
+            "latencyP99": 2,
+            "mismatches": 0,
+            "non2xx": 0,
+            "requestsAverage": 30726.55,
+            "throughputAverage": 10324526.55,
+            "timeouts": 0
+          },
+          "samples": [
+            {
+              "errors": 0,
+              "latencyAverage": 0.25,
+              "latencyP50": 0,
+              "latencyP97_5": 2,
+              "latencyP99": 2,
+              "mismatches": 0,
+              "non2xx": 0,
+              "requestsAverage": 30726.55,
+              "throughputAverage": 10324526.55,
+              "timeouts": 0
+            }
+          ]
+        },
+        {
+          "label": "fluo+Fastify",
+          "metrics": {
+            "errors": 0,
+            "latencyAverage": 0.76,
+            "latencyP50": 1,
+            "latencyP97_5": 2,
+            "latencyP99": 2,
+            "mismatches": 0,
+            "non2xx": 0,
+            "requestsAverage": 27734.4,
+            "throughputAverage": 9319219.2,
+            "timeouts": 0
+          },
+          "samples": [
+            {
+              "errors": 0,
+              "latencyAverage": 0.76,
+              "latencyP50": 1,
+              "latencyP97_5": 2,
+              "latencyP99": 2,
+              "mismatches": 0,
+              "non2xx": 0,
+              "requestsAverage": 27734.4,
+              "throughputAverage": 9319219.2,
+              "timeouts": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "selectedTargets": [
+    "nestjs-fastify",
+    "fluo-fastify"
+  ],
+  "warmupSeconds": 3
+}

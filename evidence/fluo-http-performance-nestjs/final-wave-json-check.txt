@@ -1,0 +1,73 @@
+{
+  "benchmark": "http-comparison",
+  "runs": 5,
+  "scenarioCount": 3,
+  "badCounters": 0,
+  "geomean": {
+    "nestFastify": 34806.243583863805,
+    "fluoFastify": 26125.60027016471,
+    "deltaPct": -24.939902787221335
+  },
+  "rows": [
+    {
+      "scenario": "read-search-local (5-run avg)",
+      "target": "Nest+Fastify",
+      "req": 29735.28,
+      "p99": 4.2,
+      "errors": 0,
+      "timeouts": 0,
+      "non2xx": 0,
+      "mismatches": 0
+    },
+    {
+      "scenario": "read-search-local (5-run avg)",
+      "target": "fluo+Fastify",
+      "req": 21403.522,
+      "p99": 6.6,
+      "errors": 0,
+      "timeouts": 0,
+      "non2xx": 0,
+      "mismatches": 0
+    },
+    {
+      "scenario": "json-command-local (5-run avg)",
+      "target": "Nest+Fastify",
+      "req": 31149.521999999997,
+      "p99": 5,
+      "errors": 0,
+      "timeouts": 0,
+      "non2xx": 0,
+      "mismatches": 0
+    },
+    {
+      "scenario": "json-command-local (5-run avg)",
+      "target": "fluo+Fastify",
+      "req": 26111.28,
+      "p99": 6,
+      "errors": 0,
+      "timeouts": 0,
+      "non2xx": 0,
+      "mismatches": 0
+    },
+    {
+      "scenario": "rest-route-mix-local (5-run avg)",
+      "target": "Nest+Fastify",
+      "req": 45524.8,
+      "p99": 3.4,
+      "errors": 0,
+      "timeouts": 0,
+      "non2xx": 0,
+      "mismatches": 0
+    },
+    {
+      "scenario": "rest-route-mix-local (5-run avg)",
+      "target": "fluo+Fastify",
+      "req": 31906.96,
+      "p99": 5,
+      "errors": 0,
+      "timeouts": 0,
+      "non2xx": 0,
+      "mismatches": 0
+    }
+  ]
+}

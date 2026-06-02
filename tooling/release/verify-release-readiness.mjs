@@ -857,17 +857,23 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
       contributing.includes('pnpm sandbox:test'),
     'The repo-local sandbox path is documented in CONTRIBUTING.md as monorepo verification support.',
   );
+  const importsFastifyAdapter = scaffoldSource.includes("import { createFastifyAdapter } from '@fluojs/platform-fastify';");
+  const importsFastifyBootstrapHelper = scaffoldSource.includes("import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';");
+  const usesExplicitFastifyAdapterBootstrap = importsFastifyAdapter &&
+    scaffoldSource.includes('const app = await FluoFactory.create(AppModule, {') &&
+    scaffoldSource.includes('adapter: createFastifyAdapter({ port })');
+  const usesFastifyBootstrapHelper = importsFastifyBootstrapHelper &&
+    scaffoldSource.includes('const app = await bootstrapFastifyApplication(AppModule, { port });');
+
   assertCheck(
     checks,
     'Starter shape and runtime ownership',
     scaffoldSource.includes("import { HealthModule } from '@fluojs/runtime';") &&
       scaffoldSource.includes('HealthModule.forRoot()') &&
       scaffoldSource.includes('@Controller(\'/greeting\')') &&
-      scaffoldSource.includes('const app = await FluoFactory.create(AppModule, {') &&
-      scaffoldSource.includes('adapter: createFastifyAdapter({ port })') &&
+      (usesExplicitFastifyAdapterBootstrap || usesFastifyBootstrapHelper) &&
       scaffoldSource.includes('await app.listen();') &&
       !scaffoldSource.includes('const RuntimeHealthModule = createHealthModule();') &&
-      scaffoldSource.includes('createFastifyAdapter') &&
       !scaffoldSource.includes('MetricsModule.forRoot') &&
       !scaffoldSource.includes('OpenApiModule.forRoot') &&
       !scaffoldSource.includes('src/node-http-adapter.ts'),

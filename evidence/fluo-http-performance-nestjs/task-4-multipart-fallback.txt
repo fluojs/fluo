@@ -1,0 +1,100 @@
+
+ RUN  v3.2.4 /Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > does not preserve rawBody for multipart requests
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > does not preserve rawBody for multipart requests
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > does not preserve rawBody for multipart requests
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [RoutesResolver] UploadController {/uploads}
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [RouterExplorer] Mapped {/uploads, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > does not preserve rawBody for multipart requests
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > defaults multipart.maxTotalSize to maxBodySize
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > defaults multipart.maxTotalSize to maxBodySize
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > defaults multipart.maxTotalSize to maxBodySize
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [RoutesResolver] UploadController {/uploads}
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [RouterExplorer] Mapped {/uploads, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > adapter portability > defaults multipart.maxTotalSize to maxBodySize
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > bypasses raw-body capture for multipart requests at the Fastify hook layer
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > bypasses raw-body capture for multipart requests at the Fastify hook layer
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > bypasses raw-body capture for multipart requests at the Fastify hook layer
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [RoutesResolver] UploadController {/uploads}
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [RouterExplorer] Mapped {/uploads, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > bypasses raw-body capture for multipart requests at the Fastify hook layer
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > treats multipart content-type values case-insensitively before raw-body capture
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > treats multipart content-type values case-insensitively before raw-body capture
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > treats multipart content-type values case-insensitively before raw-body capture
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [RoutesResolver] UploadController {/uploads}
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [RouterExplorer] Mapped {/uploads, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > treats multipart content-type values case-insensitively before raw-body capture
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not preserve rawBody for multipart requests
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not preserve rawBody for multipart requests
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not preserve rawBody for multipart requests
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [RoutesResolver] UploadController {/uploads}
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [RouterExplorer] Mapped {/uploads, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > does not preserve rawBody for multipart requests
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > rejects multipart payloads once the cumulative body size exceeds multipart.maxTotalSize
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > rejects multipart payloads once the cumulative body size exceeds multipart.maxTotalSize
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > rejects multipart payloads once the cumulative body size exceeds multipart.maxTotalSize
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [RoutesResolver] UploadController {/uploads}
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [RouterExplorer] Mapped {/uploads, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > rejects multipart payloads once the cumulative body size exceeds multipart.maxTotalSize
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [FluoApplication] fluo application successfully started.
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > defaults multipart.maxTotalSize to maxBodySize when no explicit multipart total is provided
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [FluoFactory] Starting fluo application...
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > defaults multipart.maxTotalSize to maxBodySize when no explicit multipart total is provided
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [InstanceLoader] AppModule dependencies initialized
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > defaults multipart.maxTotalSize to maxBodySize when no explicit multipart total is provided
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [RoutesResolver] UploadController {/uploads}
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [RouterExplorer] Mapped {/uploads, POST} route
+
+stdout | packages/platform-fastify/src/adapter.test.ts > @fluojs/platform-fastify > defaults multipart.maxTotalSize to maxBodySize when no explicit multipart total is provided
+[fluo] 7109 - 6/2/2026, 2:26:00 PM LOG [FluoApplication] fluo application successfully started.
+
+ ✓ |packages| packages/platform-fastify/src/adapter.test.ts (56 tests | 47 skipped) 98ms
+
+ Test Files  1 passed (1)
+      Tests  9 passed | 47 skipped (56)
+   Start at  14:25:59
+   Duration  1.09s (transform 666ms, setup 166ms, collect 651ms, tests 98ms, environment 0ms, prepare 35ms)

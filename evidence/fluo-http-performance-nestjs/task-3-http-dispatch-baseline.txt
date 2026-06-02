@@ -1,0 +1,13 @@
+Task 3 baseline captured before dispatcher fast-path production edits.
+
+Command:
+node tooling/benchmarks/http-dispatch-hot-path.mjs
+
+Key baseline results:
+- dispatch pre-matched native handoff GET /health (empty pipeline): 372488.61 ops/sec, 2.68 us/op
+- dispatch static GET /health (empty pipeline): 318488.87 ops/sec
+- dispatch singleton chain GET /chain: 389667.64 ops/sec
+
+Notes:
+- Baseline was captured after Task 2 debug/stat visibility work and before Task 3 synchronous fast-path executor changes.
+- This file records the pre-edit control values used for Task 3 regression comparison.

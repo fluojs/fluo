@@ -1,0 +1,24 @@
+Task 2 fast-path curl evidence
+
+Server command:
+env BENCH_FAST_PATH_DEBUG=1 PORT=3101 BENCH_APP_SHAPE=read-search-local BENCH_NODE_ADAPTER=fastify pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench:fluo
+
+Server observable:
+[fluo-fast-path]
+=== Fast Path Statistics ===
+Total routes: 1
+Fast path: 1 (100.0%)
+Full path: 0 (0.0%)
+Route breakdown:
+  [FAST] GET:/tenants/:tenantId/users
+
+Curl command:
+curl -i 'http://127.0.0.1:3101/tenants/t-001/users?role=admin&status=active&region=west&sort=createdAt&page=2&limit=25'
+
+Curl observable:
+HTTP/1.1 200 OK
+content-type: application/json; charset=utf-8
+Body included tenantId="t-001", page=2, limit=25, firstId="u-0690", lastId="u-0402", checksum=821554485.
+
+Cleanup:
+The long-running server exec session was stopped with Ctrl-C.

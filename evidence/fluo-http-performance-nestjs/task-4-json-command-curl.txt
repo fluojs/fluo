@@ -1,0 +1,8 @@
+HTTP/1.1 201 Created
+content-type: application/json; charset=utf-8
+content-length: 159
+Date: Tue, 02 Jun 2026 05:25:29 GMT
+Connection: keep-alive
+Keep-Alive: timeout=72
+
+{"customerId":"cust-001","itemCount":6,"subtotalCents":16000,"discountCents":1600,"taxCents":1188,"shippingCents":0,"totalCents":15588,"shippingRegion":"west"}

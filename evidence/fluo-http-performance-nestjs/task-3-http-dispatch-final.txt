@@ -1,0 +1,17 @@
+Task 3 final benchmark after dispatcher fast-path synchronous execution changes.
+
+Command:
+node tooling/benchmarks/http-dispatch-hot-path.mjs
+
+Key final results:
+- dispatch pre-matched native handoff GET /health (empty pipeline): 426114.80 ops/sec, 2.35 us/op
+- dispatch static GET /health (empty pipeline): 340489.76 ops/sec
+- dispatch singleton chain GET /chain: 445589.36 ops/sec
+
+Comparison:
+- Native pre-matched fast path: 426114.80 / 372488.61 = 1.1440x, +14.4% ops/sec over Task 3 baseline.
+- Target for this task was +10% ops/sec for native pre-matched fast path.
+
+Notes:
+- Benchmark was run after `pnpm --filter @fluojs/http build`.
+- This is a local hot-path benchmark for the dispatcher microbench; final multi-target HTTP comparison remains a later plan task.

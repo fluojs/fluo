@@ -62,8 +62,9 @@ function hasJsonCompatibleContentType(response: FrameworkResponse): boolean {
 
 function readHeader(headers: FrameworkResponse['headers'], name: string): string | undefined {
   const lowerName = name.toLowerCase();
-  const entry = Object.entries(headers).find(([headerName]) => headerName.toLowerCase() === lowerName);
-  const value = entry?.[1];
+  const value = lowerName === 'content-type'
+    ? headers['content-type'] ?? headers['Content-Type']
+    : headers[lowerName];
 
   return typeof value === 'string' ? value : undefined;
 }

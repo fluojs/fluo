@@ -1,0 +1,196 @@
+{
+  "artifactLabel": "task-2-fast-path-debug-all",
+  "benchmark": "http-comparison",
+  "connections": 1,
+  "durationSeconds": 1,
+  "environment": {
+    "arch": "arm64",
+    "cpuCount": 12,
+    "cpuModel": "Apple M2 Max",
+    "node": "v22.19.0",
+    "platform": "darwin"
+  },
+  "fluoSource": "local-tarball",
+  "runs": 1,
+  "rawRuns": [
+    {
+      "run": 1,
+      "scenarios": [
+        {
+          "description": "Read-heavy tenant user search: path param + query parsing + DI service + deterministic in-memory filtering",
+          "name": "read-search-local",
+          "targets": [
+            {
+              "label": "fluo+Fastify",
+              "metrics": {
+                "errors": 0,
+                "latencyAverage": 0.01,
+                "latencyP50": 0,
+                "latencyP97_5": 0,
+                "latencyP99": 0,
+                "mismatches": 0,
+                "non2xx": 0,
+                "requestsAverage": 13956,
+                "throughputAverage": 27107328,
+                "timeouts": 0
+              }
+            }
+          ]
+        },
+        {
+          "description": "JSON command endpoint: body materialization + quote calculation + deterministic response serialization",
+          "name": "json-command-local",
+          "targets": [
+            {
+              "label": "fluo+Fastify",
+              "metrics": {
+                "errors": 0,
+                "latencyAverage": 0.01,
+                "latencyP50": 0,
+                "latencyP97_5": 0,
+                "latencyP99": 0,
+                "mismatches": 0,
+                "non2xx": 0,
+                "requestsAverage": 13124,
+                "throughputAverage": 4409344,
+                "timeouts": 0
+              }
+            }
+          ]
+        },
+        {
+          "description": "Mixed REST surface: project detail, task list/detail, POST preview, and comment summary over one deterministic route cycle",
+          "name": "rest-route-mix-local",
+          "targets": [
+            {
+              "label": "fluo+Fastify",
+              "metrics": {
+                "errors": 0,
+                "latencyAverage": 0.01,
+                "latencyP50": 0,
+                "latencyP97_5": 0,
+                "latencyP99": 0,
+                "mismatches": 0,
+                "non2xx": 0,
+                "requestsAverage": 15532,
+                "throughputAverage": 4536320,
+                "timeouts": 0
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "description": "Read-heavy tenant user search: path param + query parsing + DI service + deterministic in-memory filtering",
+      "name": "read-search-local",
+      "targets": [
+        {
+          "label": "fluo+Fastify",
+          "metrics": {
+            "errors": 0,
+            "latencyAverage": 0.01,
+            "latencyP50": 0,
+            "latencyP97_5": 0,
+            "latencyP99": 0,
+            "mismatches": 0,
+            "non2xx": 0,
+            "requestsAverage": 13956,
+            "throughputAverage": 27107328,
+            "timeouts": 0
+          },
+          "samples": [
+            {
+              "errors": 0,
+              "latencyAverage": 0.01,
+              "latencyP50": 0,
+              "latencyP97_5": 0,
+              "latencyP99": 0,
+              "mismatches": 0,
+              "non2xx": 0,
+              "requestsAverage": 13956,
+              "throughputAverage": 27107328,
+              "timeouts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "description": "JSON command endpoint: body materialization + quote calculation + deterministic response serialization",
+      "name": "json-command-local",
+      "targets": [
+        {
+          "label": "fluo+Fastify",
+          "metrics": {
+            "errors": 0,
+            "latencyAverage": 0.01,
+            "latencyP50": 0,
+            "latencyP97_5": 0,
+            "latencyP99": 0,
+            "mismatches": 0,
+            "non2xx": 0,
+            "requestsAverage": 13124,
+            "throughputAverage": 4409344,
+            "timeouts": 0
+          },
+          "samples": [
+            {
+              "errors": 0,
+              "latencyAverage": 0.01,
+              "latencyP50": 0,
+              "latencyP97_5": 0,
+              "latencyP99": 0,
+              "mismatches": 0,
+              "non2xx": 0,
+              "requestsAverage": 13124,
+              "throughputAverage": 4409344,
+              "timeouts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "description": "Mixed REST surface: project detail, task list/detail, POST preview, and comment summary over one deterministic route cycle",
+      "name": "rest-route-mix-local",
+      "targets": [
+        {
+          "label": "fluo+Fastify",
+          "metrics": {
+            "errors": 0,
+            "latencyAverage": 0.01,
+            "latencyP50": 0,
+            "latencyP97_5": 0,
+            "latencyP99": 0,
+            "mismatches": 0,
+            "non2xx": 0,
+            "requestsAverage": 15532,
+            "throughputAverage": 4536320,
+            "timeouts": 0
+          },
+          "samples": [
+            {
+              "errors": 0,
+              "latencyAverage": 0.01,
+              "latencyP50": 0,
+              "latencyP97_5": 0,
+              "latencyP99": 0,
+              "mismatches": 0,
+              "non2xx": 0,
+              "requestsAverage": 15532,
+              "throughputAverage": 4536320,
+              "timeouts": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "selectedTargets": [
+    "fluo-fastify"
+  ],
+  "warmupSeconds": 1
+}

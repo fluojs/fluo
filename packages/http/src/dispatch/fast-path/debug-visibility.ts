@@ -8,6 +8,12 @@ interface PathDebugInfo {
   routeId: string;
 }
 
+/**
+ * Create the route debug payload used by adapter-visible fast-path diagnostics.
+ *
+ * @param eligibility Compiled fast-path eligibility metadata for a route.
+ * @returns A compact debug payload for headers or benchmark output.
+ */
 export function createPathDebugInfo(eligibility: FastPathEligibility): PathDebugInfo {
   return {
     executionPath: eligibility.executionPath,
@@ -16,6 +22,12 @@ export function createPathDebugInfo(eligibility: FastPathEligibility): PathDebug
   };
 }
 
+/**
+ * Attach the fast-path debug header for a matched route.
+ *
+ * @param setHeader Header writer provided by the active adapter.
+ * @param info Debug payload produced for the route.
+ */
 export function addPathDebugHeader(
   setHeader: (name: string, value: string) => void,
   info: PathDebugInfo,
@@ -27,6 +39,12 @@ export function addPathDebugHeader(
   setHeader(DEBUG_HEADER_NAME, value);
 }
 
+/**
+ * Summarize compiled route eligibility decisions for diagnostics.
+ *
+ * @param eligibilities Fast-path eligibility records compiled by the dispatcher.
+ * @returns Aggregate route counts and per-route eligibility details.
+ */
 export function createFastPathStats(eligibilities: readonly FastPathEligibility[]): FastPathStats {
   const fastPathRoutes = eligibilities.filter((e) => e.executionPath === 'fast').length;
 
@@ -63,7 +81,7 @@ export function formatFastPathStats(stats: FastPathStats): string {
   for (const route of stats.routes) {
     const status = route.executionPath === 'fast' ? 'FAST' : 'FULL';
     const reason = route.fallbackReason ? ` (${route.fallbackReason})` : '';
-    lines.push(`  [${status}] ${route.routeId}${reason}`);
+    lines.push(`  [${status}] ${route.routeId} adapter=${route.adapter} executionPath=${route.executionPath}${reason}`);
   }
 
   return lines.join('\n');

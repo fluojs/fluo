@@ -1,5 +1,14 @@
 import { ensureMetadataSymbol, Inject, Module } from '@fluojs/core';
-import { Controller, Get, Post, type RequestContext } from '@fluojs/http';
+import {
+  Controller,
+  formatFastPathStats,
+  Get,
+  getDispatcherFastPathStats,
+  Post,
+  type Dispatcher,
+  type RequestContext,
+} from '@fluojs/http';
+import { createExpressAdapter } from '@fluojs/platform-express';
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 
@@ -8,6 +17,7 @@ import { jsonCommandLocal, QUOTE_REQUEST, readSearchLocal, restRouteMixLocal, ty
 ensureMetadataSymbol();
 
 type AppShape = 'read-search-local' | 'json-command-local' | 'rest-route-mix-local';
+type NodeAdapter = 'fastify' | 'express';
 
 class UsersReadService {
   search(context: RequestContext) {
@@ -146,15 +156,45 @@ function readAppShape(): AppShape {
   throw new Error(`Unsupported BENCH_APP_SHAPE: ${raw}`);
 }
 
+function readNodeAdapter(): NodeAdapter {
+  const raw = process.env['BENCH_NODE_ADAPTER'] ?? 'fastify';
+  if (raw === 'fastify' || raw === 'express') return raw;
+  throw new Error(`Unsupported BENCH_NODE_ADAPTER: ${raw}`);
+}
+
+function createNodeAdapter(adapter: NodeAdapter, port: number) {
+  switch (adapter) {
+    case 'fastify': return createFastifyAdapter({ port });
+    case 'express': return createExpressAdapter({ port });
+  }
+}
+
+function isFastPathDebugEnabled(): boolean {
+  return process.env['BENCH_FAST_PATH_DEBUG'] === '1';
+}
+
+function writeFastPathStats(dispatcher: Dispatcher): void {
+  if (!isFastPathDebugEnabled()) {
+    return;
+  }
+
+  const stats = getDispatcherFastPathStats(dispatcher);
+  const formatted = stats
+    ? formatFastPathStats(stats)
+    : 'Fast path statistics are unavailable.';
+  process.stdout.write(`[fluo-fast-path]\n${formatted}\n`);
+}
+
 async function main(): Promise<void> {
   const port = Number(process.env['PORT'] ?? 3001);
+  const adapterName = readNodeAdapter();
   const app = await FluoFactory.create(resolveAppModule(readAppShape()), {
-    adapter: createFastifyAdapter({ port }),
-    logger: { debug() {}, error() {}, log() {}, warn() {} },
+    adapter: createNodeAdapter(adapterName, port),
   });
 
   await app.listen();
-  process.stdout.write(`fluo listening on :${port}\n`);
+  writeFastPathStats(app.dispatcher);
+  process.stdout.write(`fluo ${adapterName} listening on :${port}\n`);
 }
 
 main().catch((err) => {

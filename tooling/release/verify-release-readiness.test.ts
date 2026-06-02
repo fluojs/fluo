@@ -53,7 +53,7 @@ function createDependencies() {
     ['packages/cli/README.md', 'canonical CLI'],
     [
       'packages/cli/src/new/scaffold.ts',
-      "import { HealthModule } from '@fluojs/runtime';\nHealthModule.forRoot()\n@Controller('/greeting')\nconst app = await FluoFactory.create(AppModule, {\nadapter: createFastifyAdapter({ port })\nawait app.listen();\ncreateFastifyAdapter",
+      "import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';\nimport { HealthModule } from '@fluojs/runtime';\nHealthModule.forRoot()\n@Controller('/greeting')\nconst app = await bootstrapFastifyApplication(AppModule, { port });\nawait app.listen();",
     ],
     ['packages/cli/package.json', JSON.stringify({ bin: { fluo: './bin/fluo.mjs' }, main: './dist/index.js' })],
     ['CHANGELOG.md', changelog],
@@ -259,6 +259,23 @@ describe('runReleaseReadinessVerification', () => {
     expect(summaryContents).toContain('`pnpm vitest run --project examples`');
     expect(summaryContents).toContain('`pnpm vitest run --project tooling`');
     expect(summaryContents).not.toContain('`pnpm test`');
+  });
+
+  it('fails when the starter bootstrap helper is not imported from the Fastify platform package', () => {
+    const dependencies = createDependencies();
+    const baseRead = dependencies.read;
+
+    dependencies.read = vi.fn((relativePath) => {
+      if (relativePath === 'packages/cli/src/new/scaffold.ts') {
+        return "import { HealthModule } from '@fluojs/runtime';\nHealthModule.forRoot()\n@Controller('/greeting')\nconst app = await bootstrapFastifyApplication(AppModule, { port });\nawait app.listen();";
+      }
+
+      return baseRead(relativePath);
+    });
+
+    expect(() => runReleaseReadinessVerification({}, dependencies)).toThrowError(
+      'Release readiness check failed: Starter shape and runtime ownership.',
+    );
   });
 
   it.each(['workspace:*', 'workspace:~', 'workspace:^1.2.3'])('fails when a documented public package uses %s instead of workspace:^', (invalidRange) => {

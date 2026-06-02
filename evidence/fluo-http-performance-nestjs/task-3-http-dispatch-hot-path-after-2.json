@@ -1,0 +1,83 @@
+{
+  "benchmark": "http-dispatch-hot-path",
+  "note": "Route matching, generic JSON.stringify response baseline, and simple JSON fast-writer dispatcher scenarios measured against built dist artifacts on the current branch.",
+  "results": [
+    {
+      "durationMs": 40.76,
+      "iterations": 200000,
+      "name": "route-match static GET /health",
+      "opsPerSecond": 4906450.31,
+      "usPerOperation": 0.2
+    },
+    {
+      "durationMs": 78.23,
+      "iterations": 200000,
+      "name": "route-match param GET /users/42",
+      "opsPerSecond": 2556452.31,
+      "usPerOperation": 0.39
+    },
+    {
+      "durationMs": 103.26,
+      "iterations": 200000,
+      "name": "route-match mixed GET /reports/monthly/items/42",
+      "opsPerSecond": 1936940.48,
+      "usPerOperation": 0.52
+    },
+    {
+      "durationMs": 61.66,
+      "iterations": 20000,
+      "name": "dispatch static GET /health (empty pipeline)",
+      "opsPerSecond": 324351.72,
+      "usPerOperation": 3.08
+    },
+    {
+      "durationMs": 48.36,
+      "iterations": 20000,
+      "name": "dispatch static GET /health (generic JSON.stringify writer baseline)",
+      "opsPerSecond": 413527.16,
+      "usPerOperation": 2.42
+    },
+    {
+      "durationMs": 50.23,
+      "iterations": 20000,
+      "name": "dispatch static GET /health (simple JSON fast writer)",
+      "opsPerSecond": 398177.01,
+      "usPerOperation": 2.51
+    },
+    {
+      "durationMs": 46.87,
+      "iterations": 20000,
+      "name": "dispatch pre-matched native handoff GET /health (empty pipeline)",
+      "opsPerSecond": 426734.19,
+      "usPerOperation": 2.34
+    },
+    {
+      "durationMs": 46.1,
+      "iterations": 20000,
+      "name": "dispatch singleton chain GET /chain",
+      "opsPerSecond": 433823.79,
+      "usPerOperation": 2.31
+    },
+    {
+      "durationMs": 45.25,
+      "iterations": 20000,
+      "name": "dispatch singleton chain GET /chain (generic JSON.stringify writer baseline)",
+      "opsPerSecond": 441946.63,
+      "usPerOperation": 2.26
+    },
+    {
+      "durationMs": 47.67,
+      "iterations": 20000,
+      "name": "dispatch singleton chain GET /chain (simple JSON fast writer)",
+      "opsPerSecond": 419588.85,
+      "usPerOperation": 2.38
+    },
+    {
+      "durationMs": 310.34,
+      "iterations": 20000,
+      "name": "dispatch decorated GET /decorated",
+      "opsPerSecond": 64445.85,
+      "usPerOperation": 15.52
+    }
+  ]
+}

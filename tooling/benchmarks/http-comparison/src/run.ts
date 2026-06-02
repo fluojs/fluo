@@ -1,11 +1,17 @@
 import autocannon, { type Request as AutocannonRequest, type Result } from 'autocannon';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createConnection } from 'node:net';
 import { arch, cpus, platform } from 'node:os';
 import { join } from 'node:path';
 
 import { printReport, type EnvironmentSummary, type MetricSnapshot, type ScenarioResult, type TargetResult } from './report';
+import {
+  createBenchmarkMetadata,
+  resolveBenchmarkOptions,
+  type BenchmarkTargetConfig,
+  type FluoSource,
+} from './runner-options';
 import {
   QUOTE_REQUEST_BODY,
   QUOTE_RESPONSE,
@@ -19,12 +25,17 @@ import {
 const FLUO_FASTIFY_PORT = 3001;
 const NESTJS_PORT = 3002;
 const FLUO_BUN_PORT = 3003;
+const NESTJS_EXPRESS_PORT = 3004;
+const FLUO_EXPRESS_PORT = 3005;
 const WDIR = process.cwd();
 const FLUO_FASTIFY_BUILD_DIR = join(WDIR, 'dist/fluo-fastify');
 const FLUO_BUN_BUILD_DIR = join(WDIR, 'dist/fluo-bun');
 const NESTJS_BUILD_DIR = join(WDIR, 'dist/nestjs');
+const BENCH_PACKAGE_JSON = join(WDIR, 'package.json');
+const LOCAL_PACK_DIR = join(WDIR, '.local-packs');
+const REPO_ROOT = join(WDIR, '../../..');
 
-type TargetName = 'nestjs-fastify' | 'fluo-fastify' | 'fluo-bun';
+type TargetName = 'nestjs-fastify' | 'fluo-fastify' | 'nestjs-express' | 'fluo-express' | 'fluo-bun';
 type AppShape = 'read-search-local' | 'json-command-local' | 'rest-route-mix-local';
 
 interface ScenarioRequestTemplate {
@@ -34,12 +45,8 @@ interface ScenarioRequestTemplate {
   readonly path?: string;
 }
 
-interface TargetConfig {
-  name: TargetName;
-  label: string;
-  port: number;
-  command: string;
-  args: string[];
+interface TargetConfig extends BenchmarkTargetConfig<TargetName> {
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 interface ScenarioConfig {
@@ -53,13 +60,31 @@ interface ScenarioConfig {
   readonly requestSequence?: readonly ScenarioRequestTemplate[];
 }
 
-const TARGETS: TargetConfig[] = [
+interface LocalPackageTarball {
+  readonly name: string;
+  readonly path: string;
+}
+
+const LOCAL_FLUO_PACKAGES = [
+  { dir: 'packages/config', name: '@fluojs/config' },
+  { dir: 'packages/core', name: '@fluojs/core' },
+  { dir: 'packages/di', name: '@fluojs/di' },
+  { dir: 'packages/http', name: '@fluojs/http' },
+  { dir: 'packages/platform-bun', name: '@fluojs/platform-bun' },
+  { dir: 'packages/platform-express', name: '@fluojs/platform-express' },
+  { dir: 'packages/platform-fastify', name: '@fluojs/platform-fastify' },
+  { dir: 'packages/runtime', name: '@fluojs/runtime' },
+  { dir: 'packages/validation', name: '@fluojs/validation' },
+] as const;
+
+const TARGETS = [
   {
     name: 'nestjs-fastify',
     label: 'Nest+Fastify',
     port: NESTJS_PORT,
     command: 'node',
     args: ['dist/nestjs/nestjs/server.js'],
+    env: { BENCH_NODE_ADAPTER: 'fastify' },
   },
   {
     name: 'fluo-fastify',
@@ -67,6 +92,23 @@ const TARGETS: TargetConfig[] = [
     port: FLUO_FASTIFY_PORT,
     command: 'node',
     args: ['dist/fluo-fastify/fluo/server.js'],
+    env: { BENCH_NODE_ADAPTER: 'fastify' },
+  },
+  {
+    name: 'nestjs-express',
+    label: 'Nest+Express',
+    port: NESTJS_EXPRESS_PORT,
+    command: 'node',
+    args: ['dist/nestjs/nestjs/server.js'],
+    env: { BENCH_NODE_ADAPTER: 'express' },
+  },
+  {
+    name: 'fluo-express',
+    label: 'fluo+Express',
+    port: FLUO_EXPRESS_PORT,
+    command: 'node',
+    args: ['dist/fluo-fastify/fluo/server.js'],
+    env: { BENCH_NODE_ADAPTER: 'express' },
   },
   {
     name: 'fluo-bun',
@@ -75,7 +117,10 @@ const TARGETS: TargetConfig[] = [
     command: 'bun',
     args: ['run', 'dist/fluo-bun/fluo-bun/server.js'],
   },
-];
+] satisfies readonly TargetConfig[];
+
+const BENCHMARK_OPTIONS = resolveBenchmarkOptions(process.env, TARGETS);
+const ACTIVE_TARGETS = BENCHMARK_OPTIONS.targets;
 
 const SCENARIOS: readonly ScenarioConfig[] = [
   {
@@ -280,7 +325,7 @@ async function runScenario(s: ScenarioConfig, index: number): Promise<ScenarioRe
   const processes = startTargets(s.appShape);
 
   try {
-    await Promise.all(TARGETS.map((target) => waitForPort(target.port)));
+    await Promise.all(ACTIVE_TARGETS.map((target) => waitForPort(target.port)));
 
     const scenarioTargets = rotationFor(index).map((target) => ({
       target,
@@ -301,7 +346,7 @@ async function runScenario(s: ScenarioConfig, index: number): Promise<ScenarioRe
       });
     }
 
-    const targets = TARGETS.map((target) => {
+    const targets = ACTIVE_TARGETS.map((target) => {
       const result = measured.find((item) => item.label === target.label);
       if (!result) {
         throw new Error(`missing result for ${target.label}`);
@@ -315,15 +360,15 @@ async function runScenario(s: ScenarioConfig, index: number): Promise<ScenarioRe
   }
 }
 
-function rotationFor(index: number): TargetConfig[] {
-  const offset = index % TARGETS.length;
-  return [...TARGETS.slice(offset), ...TARGETS.slice(0, offset)];
+function rotationFor(index: number): readonly TargetConfig[] {
+  const offset = index % ACTIVE_TARGETS.length;
+  return [...ACTIVE_TARGETS.slice(offset), ...ACTIVE_TARGETS.slice(0, offset)];
 }
 
-function runCommand(command: string, args: string[]): Promise<void> {
+function runCommand(command: string, args: readonly string[], cwd = WDIR): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
-      cwd: WDIR,
+      cwd,
       stdio: ['ignore', 'inherit', 'inherit'],
     });
 
@@ -340,14 +385,17 @@ function runCommand(command: string, args: string[]): Promise<void> {
 }
 
 function startTargets(appShape: AppShape): ChildProcess[] {
-  return TARGETS.map((target) => {
+  return ACTIVE_TARGETS.map((target) => {
     const child = spawn(target.command, target.args, {
       cwd: WDIR,
       detached: true,
-      env: { ...process.env, BENCH_APP_SHAPE: appShape, PORT: String(target.port) },
+      env: { ...process.env, ...target.env, BENCH_APP_SHAPE: appShape, PORT: String(target.port) },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
+    if (process.env.BENCH_FAST_PATH_DEBUG === '1') {
+      child.stdout?.on('data', (d: Buffer) => process.stdout.write(`[${target.name}] ${String(d)}`));
+    }
     child.stderr?.on('data', (d: Buffer) => process.stderr.write(`[${target.name}] ${String(d)}`));
     return child;
   });
@@ -412,6 +460,8 @@ async function buildBunTarget(): Promise<void> {
     'ESNext',
     '--moduleResolution',
     'Bundler',
+    '--experimentalDecorators',
+    '--noCheck',
     '--strict',
     '--skipLibCheck',
     '--outDir',
@@ -431,6 +481,8 @@ async function buildFluoFastifyTarget(): Promise<void> {
     'ESNext',
     '--moduleResolution',
     'Bundler',
+    '--experimentalDecorators',
+    '--noCheck',
     '--strict',
     '--skipLibCheck',
     '--outDir',
@@ -442,6 +494,146 @@ async function buildNestTarget(): Promise<void> {
   await rm(NESTJS_BUILD_DIR, { force: true, recursive: true });
   await runCommand('pnpm', ['exec', 'tsc', '-p', 'nestjs/tsconfig.json', '--outDir', 'dist/nestjs']);
   await writeFile(join(NESTJS_BUILD_DIR, 'package.json'), '{"type":"commonjs"}\n');
+}
+
+async function prepareLocalTarballDependencies(fluoSource: FluoSource, targets: readonly BenchmarkTargetConfig<TargetName>[]): Promise<void> {
+  if (fluoSource !== 'local-tarball' || !targets.some((target) => target.name.startsWith('fluo-'))) {
+    return;
+  }
+
+  await rm(LOCAL_PACK_DIR, { force: true, recursive: true });
+  await mkdir(LOCAL_PACK_DIR, { recursive: true });
+
+  await runCommand('pnpm', [
+    '--dir',
+    REPO_ROOT,
+    ...LOCAL_FLUO_PACKAGES.flatMap((pkg) => ['--filter', pkg.name]),
+    '--if-present',
+    'run',
+    'build',
+  ]);
+
+  for (const pkg of LOCAL_FLUO_PACKAGES) {
+    await runCommand('pnpm', [
+      '--dir',
+      join(REPO_ROOT, pkg.dir),
+      'pack',
+      '--pack-destination',
+      LOCAL_PACK_DIR,
+    ]);
+  }
+
+  const tarballs = await resolveLocalPackageTarballs();
+
+  if (tarballs.length !== LOCAL_FLUO_PACKAGES.length) {
+    throw new Error(`Expected ${String(LOCAL_FLUO_PACKAGES.length)} local fluo tarballs, got ${String(tarballs.length)}`);
+  }
+
+  const packageJsonBeforeInstall = await readFile(BENCH_PACKAGE_JSON, 'utf8');
+  try {
+    await writeFile(BENCH_PACKAGE_JSON, createLocalTarballPackageJson(packageJsonBeforeInstall, tarballs));
+    await runCommand('pnpm', [
+      'install',
+      '--force',
+      '--ignore-workspace',
+      '--lockfile=false',
+      '--node-linker=hoisted',
+    ]);
+  } finally {
+    await writeFile(BENCH_PACKAGE_JSON, packageJsonBeforeInstall);
+  }
+}
+
+async function resolveLocalPackageTarballs(): Promise<readonly LocalPackageTarball[]> {
+  const entries = await readdir(LOCAL_PACK_DIR);
+  const tarballs: LocalPackageTarball[] = [];
+  for (const pkg of LOCAL_FLUO_PACKAGES) {
+    const manifest = parsePackageManifest(await readFile(join(REPO_ROOT, pkg.dir, 'package.json'), 'utf8'));
+    const fileName = `${manifest.name.replace('@', '').replace('/', '-')}-${manifest.version}.tgz`;
+    if (!entries.includes(fileName)) {
+      throw new Error(`Missing local tarball for ${manifest.name}: ${fileName}`);
+    }
+
+    tarballs.push({ name: manifest.name, path: join(LOCAL_PACK_DIR, fileName) });
+  }
+
+  return tarballs;
+}
+
+function createLocalTarballPackageJson(packageJsonSource: string, tarballs: readonly LocalPackageTarball[]): string {
+  const packageJson = parseJsonObject(packageJsonSource, BENCH_PACKAGE_JSON);
+  const dependencies = readObjectProperty(packageJson, 'dependencies');
+  const pnpmConfig = readObjectProperty(packageJson, 'pnpm');
+  const overrides = readObjectProperty(pnpmConfig, 'overrides');
+  const tarballSpecs = createTarballSpecRecord(tarballs);
+
+  return `${JSON.stringify({
+    ...packageJson,
+    dependencies: {
+      ...dependencies,
+      ...tarballSpecs,
+    },
+    pnpm: {
+      ...pnpmConfig,
+      overrides: {
+        ...overrides,
+        ...tarballSpecs,
+      },
+    },
+  }, null, 2)}\n`;
+}
+
+function createTarballSpecRecord(tarballs: readonly LocalPackageTarball[]): Record<string, string> {
+  const specs: Record<string, string> = {};
+  for (const tarball of tarballs) {
+    specs[tarball.name] = `file:${tarball.path}`;
+  }
+
+  return specs;
+}
+
+function parsePackageManifest(source: string): { readonly name: string; readonly version: string } {
+  const manifest = parseJsonObject(source, 'package manifest');
+  const name = manifest.name;
+  const version = manifest.version;
+  if (typeof name !== 'string' || typeof version !== 'string') {
+    throw new Error('Package manifest must contain string name and version fields.');
+  }
+
+  return { name, version };
+}
+
+function parseJsonObject(source: string, label: string): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(source);
+  if (!isObjectRecord(parsed)) {
+    throw new Error(`${label} must be a JSON object.`);
+  }
+
+  return parsed;
+}
+
+function readObjectProperty(record: Record<string, unknown>, key: string): Record<string, unknown> {
+  const value = record[key];
+  return isObjectRecord(value) ? value : {};
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+async function buildSelectedTargets(targets: readonly BenchmarkTargetConfig<TargetName>[]): Promise<void> {
+  const selectedNames = new Set(targets.map((target) => target.name));
+  if (selectedNames.has('nestjs-fastify') || selectedNames.has('nestjs-express')) {
+    await buildNestTarget();
+  }
+
+  if (selectedNames.has('fluo-fastify') || selectedNames.has('fluo-express')) {
+    await buildFluoFastifyTarget();
+  }
+
+  if (selectedNames.has('fluo-bun')) {
+    await buildBunTarget();
+  }
 }
 
 function average(values: readonly number[]): number {
@@ -533,6 +725,7 @@ function environmentSummary(): EnvironmentSummary {
 }
 
 async function writeBenchmarkOutput(rawRuns: readonly ScenarioResult[][], averaged: readonly ScenarioResult[], environment: EnvironmentSummary): Promise<void> {
+  const metadata = createBenchmarkMetadata(BENCHMARK_OPTIONS);
   const compactRuns = rawRuns.map((run, runIndex) => ({
     run: runIndex + 1,
     scenarios: run.map((scenario) => ({
@@ -556,21 +749,23 @@ async function writeBenchmarkOutput(rawRuns: readonly ScenarioResult[][], averag
   }));
 
   await writeFile(OUTPUT_JSON, `${JSON.stringify({
+    artifactLabel: metadata.artifactLabel,
     benchmark: 'http-comparison',
     connections: CONNECTIONS,
     durationSeconds: MEASURE_SEC,
     environment,
+    fluoSource: metadata.fluoSource,
     runs: RUNS,
     rawRuns: compactRuns,
     scenarios: compactAverage,
+    selectedTargets: metadata.selectedTargets,
     warmupSeconds: WARMUP_SEC,
   }, null, 2)}\n`);
 }
 
 async function main(): Promise<void> {
-  await buildNestTarget();
-  await buildFluoFastifyTarget();
-  await buildBunTarget();
+  await prepareLocalTarballDependencies(BENCHMARK_OPTIONS.fluoSource, ACTIVE_TARGETS);
+  await buildSelectedTargets(ACTIVE_TARGETS);
 
   const scenarios = selectedScenarios();
   const runs: ScenarioResult[][] = [];

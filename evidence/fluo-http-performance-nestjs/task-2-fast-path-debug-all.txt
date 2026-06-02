@@ -1,0 +1,19 @@
+Task 2 all benchmark routes fast-path debug evidence
+
+Command:
+env BENCH_TARGETS=fluo-fastify BENCH_FLUO_SOURCE=local-tarball BENCH_FAST_PATH_DEBUG=1 BENCH_ARTIFACT_LABEL=task-2-fast-path-debug-all BENCH_RUNS=1 BENCH_WARMUP_SEC=1 BENCH_MEASURE_SEC=1 BENCH_CONNECTIONS=1 BENCH_OUTPUT_JSON=/Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs/evidence/fluo-http-performance-nestjs/task-2-fast-path-debug-all.json pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
+
+Result:
+Passed with errors=0, timeouts=0, non2xx=0, mismatches=0 for every scenario.
+
+Debug observables:
+- read-search-local: [FAST] GET:/tenants/:tenantId/users adapter=default executionPath=fast
+- json-command-local: [FAST] POST:/orders/quote adapter=default executionPath=fast
+- rest-route-mix-local: [FAST] GET:/tenants/:tenantId/projects/:projectId adapter=default executionPath=fast
+- rest-route-mix-local: [FAST] GET:/tenants/:tenantId/projects/:projectId/tasks adapter=default executionPath=fast
+- rest-route-mix-local: [FAST] GET:/tenants/:tenantId/projects/:projectId/tasks/:taskId adapter=default executionPath=fast
+- rest-route-mix-local: [FAST] POST:/tenants/:tenantId/projects/:projectId/tasks/:taskId/preview adapter=default executionPath=fast
+- rest-route-mix-local: [FAST] GET:/tenants/:tenantId/projects/:projectId/tasks/:taskId/comments adapter=default executionPath=fast
+
+JSON summary:
+evidence/fluo-http-performance-nestjs/task-2-fast-path-debug-all.json

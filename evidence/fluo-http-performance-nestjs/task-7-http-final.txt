@@ -1,0 +1,631 @@
+
+> @fluojs-internal/tooling-benchmarks-http@0.0.0 bench /Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs/tooling/benchmarks/http-comparison
+> tsx src/run.ts
+
+Scope: 9 of 51 workspace projects
+packages/core prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/core prebuild: Done
+packages/core build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/core build: Successfully compiled 16 files with Babel (180ms).
+packages/core build: Done
+packages/validation prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/di prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/di prebuild: Done
+packages/di build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/validation prebuild: Done
+packages/validation build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/di build: Successfully compiled 4 files with Babel (148ms).
+packages/validation build: Successfully compiled 13 files with Babel (160ms).
+packages/di build: Done
+packages/validation build: Done
+packages/http prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/config prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/config prebuild: Done
+packages/config build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/http prebuild: Done
+packages/http build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/config build: Successfully compiled 8 files with Babel (159ms).
+packages/http build: Successfully compiled 38 files with Babel (227ms).
+packages/config build: Done
+packages/http build: Done
+packages/runtime prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/runtime prebuild: Done
+packages/runtime build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/runtime build: Successfully compiled 42 files with Babel (272ms).
+packages/runtime build: Done
+packages/platform-express prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/platform-fastify prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/platform-bun prebuild$ node ../../tooling/scripts/clean-dist.mjs
+packages/platform-express prebuild: Done
+packages/platform-bun prebuild: Done
+packages/platform-express build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/platform-bun build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/platform-fastify prebuild: Done
+packages/platform-fastify build$ pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json
+packages/platform-bun build: Successfully compiled 2 files with Babel (130ms).
+packages/platform-express build: Successfully compiled 3 files with Babel (146ms).
+packages/platform-fastify build: Successfully compiled 3 files with Babel (151ms).
+packages/platform-bun build: Done
+packages/platform-express build: Done
+packages/platform-fastify build: Done
+Tarball Contents
+dist/clone.d.ts
+dist/clone.d.ts.map
+dist/clone.js
+dist/index.d.ts
+dist/index.d.ts.map
+dist/index.js
+dist/load.d.ts
+dist/load.d.ts.map
+dist/load.js
+dist/module.d.ts
+dist/module.d.ts.map
+dist/module.js
+dist/options.d.ts
+dist/options.d.ts.map
+dist/options.js
+dist/reload-module.d.ts
+dist/reload-module.d.ts.map
+dist/reload-module.js
+dist/service.d.ts
+dist/service.d.ts.map
+dist/service.js
+dist/types.d.ts
+dist/types.d.ts.map
+dist/types.js
+package.json
+README.ko.md
+README.md
+
+Tarball Details
+/Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs/tooling/benchmarks/http-comparison/.local-packs/fluojs-config-1.0.2.tgz
+Tarball Contents
+dist/decorators.d.ts
+dist/decorators.d.ts.map
+dist/decorators.js
+dist/errors.d.ts
+dist/errors.d.ts.map
+dist/errors.js
+dist/index.d.ts
+dist/index.d.ts.map
+dist/index.js
+dist/internal.d.ts
+dist/internal.d.ts.map
+dist/internal.js
+dist/metadata.d.ts
+dist/metadata.d.ts.map
+dist/metadata.js
+dist/metadata/class-di.d.ts
+dist/metadata/class-di.d.ts.map
+dist/metadata/class-di.js
+dist/metadata/controller-route.d.ts
+dist/metadata/controller-route.d.ts.map
+dist/metadata/controller-route.js
+dist/metadata/injection.d.ts
+dist/metadata/injection.d.ts.map
+dist/metadata/injection.js
+dist/metadata/module.d.ts
+dist/metadata/module.d.ts.map
+dist/metadata/module.js
+dist/metadata/shared.d.ts
+dist/metadata/shared.d.ts.map
+dist/metadata/shared.js
+dist/metadata/store.d.ts
+dist/metadata/store.d.ts.map
+dist/metadata/store.js
+dist/metadata/symbol-metadata-polyfill.d.ts
+dist/metadata/symbol-metadata-polyfill.d.ts.map
+dist/metadata/symbol-metadata-polyfill.js
+dist/metadata/types.d.ts
+dist/metadata/types.d.ts.map
+dist/metadata/types.js
+dist/metadata/validation.d.ts
+dist/metadata/validation.d.ts.map
+dist/metadata/validation.js
+dist/types.d.ts
+dist/types.d.ts.map
+dist/types.js
+dist/utils.d.ts
+dist/utils.d.ts.map
+dist/utils.js
+package.json
+README.ko.md
+README.md
+
+Tarball Details
+/Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs/tooling/benchmarks/http-comparison/.local-packs/fluojs-core-1.0.3.tgz
+Tarball Contents
+dist/container.d.ts
+dist/container.d.ts.map
+dist/container.js
+dist/errors.d.ts
+dist/errors.d.ts.map
+dist/errors.js
+dist/index.d.ts
+dist/index.d.ts.map
+dist/index.js
+dist/types.d.ts
+dist/types.d.ts.map
+dist/types.js
+package.json
+README.ko.md
+README.md
+
+Tarball Details
+/Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs/tooling/benchmarks/http-comparison/.local-packs/fluojs-di-1.1.0.tgz
+Tarball Contents
+dist/adapter.d.ts
+dist/adapter.d.ts.map
+dist/adapter.js
+dist/adapters/binding.d.ts
+dist/adapters/binding.d.ts.map
+dist/adapters/binding.js
+dist/adapters/dto-binding-plan.d.ts
+dist/adapters/dto-binding-plan.d.ts.map
+dist/adapters/dto-binding-plan.js
+dist/adapters/dto-validation-adapter.d.ts
+dist/adapters/dto-validation-adapter.d.ts.map
+dist/adapters/dto-validation-adapter.js
+dist/client-identity.d.ts
+dist/client-identity.d.ts.map
+dist/client-identity.js
+dist/context/request-context-node-store.d.ts
+dist/context/request-context-node-store.d.ts.map
+dist/context/request-context-node-store.js
+dist/context/request-context-stack-store.d.ts
+dist/context/request-context-stack-store.d.ts.map
+dist/context/request-context-stack-store.js
+dist/context/request-context-store.d.ts
+dist/context/request-context-store.d.ts.map
+dist/context/request-context-store.js
+dist/context/request-context.d.ts
+dist/context/request-context.d.ts.map
+dist/context/request-context.js
+dist/context/sse.d.ts
+dist/context/sse.d.ts.map
+dist/context/sse.js
+dist/decorators.d.ts
+dist/decorators.d.ts.map
+dist/decorators.js
+dist/dispatch/dispatch-content-negotiation.d.ts
+dist/dispatch/dispatch-content-negotiation.d.ts.map
+dist/dispatch/dispatch-content-negotiation.js
+dist/dispatch/dispatch-error-policy.d.ts
+dist/dispatch/dispatch-error-policy.d.ts.map
+dist/dispatch/dispatch-error-policy.js
+dist/dispatch/dispatch-handler-policy.d.ts
+dist/dispatch/dispatch-handler-policy.d.ts.map
+dist/dispatch/dispatch-handler-policy.js
+dist/dispatch/dispatch-response-policy.d.ts
+dist/dispatch/dispatch-response-policy.d.ts.map
+dist/dispatch/dispatch-response-policy.js
+dist/dispatch/dispatch-routing-policy.d.ts
+dist/dispatch/dispatch-routing-policy.d.ts.map
+dist/dispatch/dispatch-routing-policy.js
+dist/dispatch/dispatcher.d.ts
+dist/dispatch/dispatcher.d.ts.map
+dist/dispatch/dispatcher.js
+dist/dispatch/fast-path/debug-visibility.d.ts
+dist/dispatch/fast-path/debug-visibility.d.ts.map
+dist/dispatch/fast-path/debug-visibility.js
+dist/dispatch/fast-path/eligibility-checker.d.ts
+dist/dispatch/fast-path/eligibility-checker.d.ts.map
+dist/dispatch/fast-path/eligibility-checker.js
+dist/dispatch/fast-path/eligibility.d.ts
+dist/dispatch/fast-path/eligibility.d.ts.map
+dist/dispatch/fast-path/eligibility.js
+dist/dispatch/fast-path/fast-path-executor.d.ts
+dist/dispatch/fast-path/fast-path-executor.d.ts.map
+dist/dispatch/fast-path/fast-path-executor.js
+dist/dispatch/fast-path/index.d.ts
+dist/dispatch/fast-path/index.d.ts.map
+dist/dispatch/fast-path/index.js
+dist/dispatch/native-route-handoff.d.ts
+dist/dispatch/native-route-handoff.d.ts.map
+dist/dispatch/native-route-handoff.js
+dist/errors.d.ts
+dist/errors.d.ts.map
+dist/errors.js
+dist/exceptions.d.ts
+dist/exceptions.d.ts.map
+dist/exceptions.js
+dist/guards.d.ts
+dist/guards.d.ts.map
+dist/guards.js
+dist/index.d.ts
+dist/index.d.ts.map
+dist/index.js
+dist/input-error-detail.d.ts
+dist/input-error-detail.d.ts.map
+dist/input-error-detail.js
+dist/interceptors.d.ts
+dist/interceptors.d.ts.map
+dist/interceptors.js
+dist/internal.d.ts
+dist/internal.d.ts.map
+dist/internal.js
+dist/mapping.d.ts
+dist/mapping.d.ts.map
+dist/mapping.js
+dist/middleware/correlation.d.ts
+dist/middleware/correlation.d.ts.map
+dist/middleware/correlation.js
+dist/middleware/cors.d.ts
+dist/middleware/cors.d.ts.map
+dist/middleware/cors.js
+dist/middleware/middleware.d.ts
+dist/middleware/middleware.d.ts.map
+dist/middleware/middleware.js
+dist/middleware/rate-limit.d.ts
+dist/middleware/rate-limit.d.ts.map
+dist/middleware/rate-limit.js
+dist/middleware/security-headers.d.ts
+dist/middleware/security-headers.d.ts.map
+dist/middleware/security-headers.js
+dist/route-path.d.ts
+dist/route-path.d.ts.map
+dist/route-path.js
+dist/types.d.ts
+dist/types.d.ts.map
+dist/types.js
+package.json
+README.ko.md
+README.md
+
+Tarball Details
+/Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs/tooling/benchmarks/http-comparison/.local-packs/fluojs-http-1.1.0.tgz
+Tarball Contents
+dist/adapter.d.ts
+dist/adapter.d.ts.map
+dist/adapter.js
+dist/index.d.ts
+dist/index.d.ts.map
+dist/index.js
+package.json
+README.ko.md
+README.md
+
+Tarball Details
+/Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs/tooling/benchmarks/http-comparison/.local-packs/fluojs-platform-bun-1.0.5.tgz
+Tarball Contents
+dist/adapter.d.ts
+dist/adapter.d.ts.map
+dist/adapter.js
+dist/index.d.ts
+dist/index.d.ts.map
+dist/index.js
+dist/testing-http-adapter-portability.d.js
+package.json
+README.ko.md
+README.md
+
+Tarball Details
+/Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs/tooling/benchmarks/http-comparison/.local-packs/fluojs-platform-express-1.0.5.tgz
+Tarball Contents
+dist/adapter.d.ts
+dist/adapter.d.ts.map
+dist/adapter.js
+dist/index.d.ts
+dist/index.d.ts.map
+dist/index.js
+dist/native-route.d.ts
+dist/native-route.d.ts.map
+dist/native-route.js
+package.json
+README.ko.md
+README.md
+
+Tarball Details
+/Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs/tooling/benchmarks/http-comparison/.local-packs/fluojs-platform-fastify-1.0.6.tgz
+Tarball Contents
+dist/abort.d.ts
+dist/abort.d.ts.map
+dist/abort.js
+dist/adapters/internal-http-adapter.d.ts
+dist/adapters/internal-http-adapter.d.ts.map
+dist/adapters/internal-http-adapter.js
+dist/adapters/internal-request-response-factory.d.ts
+dist/adapters/internal-request-response-factory.d.ts.map
+dist/adapters/internal-request-response-factory.js
+dist/adapters/request-response-factory.d.ts
+dist/adapters/request-response-factory.d.ts.map
+dist/adapters/request-response-factory.js
+dist/bootstrap.d.ts
+dist/bootstrap.d.ts.map
+dist/bootstrap.js
+dist/devtools/contracts.d.ts
+dist/devtools/contracts.d.ts.map
+dist/devtools/contracts.js
+dist/devtools/index.d.ts
+dist/devtools/index.d.ts.map
+dist/devtools/index.js
+dist/devtools/snapshot.d.ts
+dist/devtools/snapshot.d.ts.map
+dist/devtools/snapshot.js
+dist/devtools/studio-runtime.d.ts
+dist/devtools/studio-runtime.d.ts.map
+dist/devtools/studio-runtime.js
+dist/errors.d.ts
+dist/errors.d.ts.map
+dist/errors.js
+dist/health/diagnostics.d.ts
+dist/health/diagnostics.d.ts.map
+dist/health/diagnostics.js
+dist/health/health.d.ts
+dist/health/health.d.ts.map
+dist/health/health.js
+dist/http-adapter-shared.d.ts
+dist/http-adapter-shared.d.ts.map
+dist/http-adapter-shared.js
+dist/index.d.ts
+dist/index.d.ts.map
+dist/index.js
+dist/internal-http-adapter.d.ts
+dist/internal-http-adapter.d.ts.map
+dist/internal-http-adapter.js
+dist/internal-node.d.ts
+dist/internal-node.d.ts.map
+dist/internal-node.js
+dist/internal-request-response-factory.d.ts
+dist/internal-request-response-factory.d.ts.map
+dist/internal-request-response-factory.js
+dist/internal.d.ts
+dist/internal.d.ts.map
+dist/internal.js
+dist/internal/core-metadata.d.ts
+dist/internal/core-metadata.d.ts.map
+dist/internal/core-metadata.js
+dist/internal/http-runtime.d.ts
+dist/internal/http-runtime.d.ts.map
+dist/internal/http-runtime.js
+dist/logging/default-logger.d.ts
+dist/logging/default-logger.d.ts.map
+dist/logging/default-logger.js
+dist/logging/json-logger.d.ts
+dist/logging/json-logger.d.ts.map
+dist/logging/json-logger.js
+dist/logging/logger.d.ts
+dist/logging/logger.d.ts.map
+dist/logging/logger.js
+dist/module-graph.d.ts
+dist/module-graph.d.ts.map
+dist/module-graph.js
+dist/multipart.d.ts
+dist/multipart.d.ts.map
+dist/multipart.js
+dist/node.d.ts
+dist/node.d.ts.map
+dist/node.js
+dist/node/internal-node-compression.d.ts
+dist/node/internal-node-compression.d.ts.map
+dist/node/internal-node-compression.js
+dist/node/internal-node-request.d.ts
+dist/node/internal-node-request.d.ts.map
+dist/node/internal-node-request.js
+dist/node/internal-node-response.d.ts
+dist/node/internal-node-response.d.ts.map
+dist/node/internal-node-response.js
+dist/node/internal-node-shutdown.d.ts
+dist/node/internal-node-shutdown.d.ts.map
+dist/node/internal-node-shutdown.js
+dist/node/internal-node.d.ts
+dist/node/internal-node.d.ts.map
+dist/node/internal-node.js
+dist/node/node-compression.d.ts
+dist/node/node-compression.d.ts.map
+dist/node/node-compression.js
+dist/node/node-request.d.ts
+dist/node/node-request.d.ts.map
+dist/node/node-request.js
+dist/node/node-response.d.ts
+dist/node/node-response.d.ts.map
+dist/node/node-response.js
+dist/node/node-shutdown.d.ts
+dist/node/node-shutdown.d.ts.map
+dist/node/node-shutdown.js
+dist/node/node.d.ts
+dist/node/node.d.ts.map
+dist/node/node.js
+dist/platform-contract.d.ts
+dist/platform-contract.d.ts.map
+dist/platform-contract.js
+dist/platform-shell.d.ts
+dist/platform-shell.d.ts.map
+dist/platform-shell.js
+dist/request-transaction.d.ts
+dist/request-transaction.d.ts.map
+dist/request-transaction.js
+dist/tokens.d.ts
+dist/tokens.d.ts.map
+dist/tokens.js
+dist/types.d.ts
+dist/types.d.ts.map
+dist/types.js
+dist/web.d.ts
+dist/web.d.ts.map
+dist/web.js
+package.json
+README.ko.md
+README.md
+
+Tarball Details
+/Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs/tooling/benchmarks/http-comparison/.local-packs/fluojs-runtime-1.1.6.tgz
+Tarball Contents
+dist/decorators.d.ts
+dist/decorators.d.ts.map
+dist/decorators.js
+dist/errors.d.ts
+dist/errors.d.ts.map
+dist/errors.js
+dist/index.d.ts
+dist/index.d.ts.map
+dist/index.js
+dist/internal/decorator-factories.d.ts
+dist/internal/decorator-factories.d.ts.map
+dist/internal/decorator-factories.js
+dist/internal/decorator-metadata.d.ts
+dist/internal/decorator-metadata.d.ts.map
+dist/internal/decorator-metadata.js
+dist/internal/dto-metadata-cache.d.ts
+dist/internal/dto-metadata-cache.d.ts.map
+dist/internal/dto-metadata-cache.js
+dist/internal/object-utils.d.ts
+dist/internal/object-utils.d.ts.map
+dist/internal/object-utils.js
+dist/internal/rule-handlers.d.ts
+dist/internal/rule-handlers.d.ts.map
+dist/internal/rule-handlers.js
+dist/internal/validator-js-adapter.d.ts
+dist/internal/validator-js-adapter.d.ts.map
+dist/internal/validator-js-adapter.js
+dist/mapped-types.d.ts
+dist/mapped-types.d.ts.map
+dist/mapped-types.js
+dist/standard-schema.d.ts
+dist/standard-schema.d.ts.map
+dist/standard-schema.js
+dist/types.d.ts
+dist/types.d.ts.map
+dist/types.js
+dist/validation.d.ts
+dist/validation.d.ts.map
+dist/validation.js
+package.json
+README.ko.md
+README.md
+
+Tarball Details
+/Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs/tooling/benchmarks/http-comparison/.local-packs/fluojs-validation-1.0.5.tgz
+ WARN  using --force I sure hope you know what you are doing
+ WARN  A pnpm-lock.yaml file exists. The current configuration prohibits to read or write a lockfile
+Progress: resolved 1, reused 0, downloaded 0, added 0
+ WARN  1 deprecated subdependencies found: uuid@8.3.2
+
+Already up to date
+Progress: resolved 269, reused 3, downloaded 6, added 0, done
+Done in 633ms using pnpm v10.4.1
+Run 1 of 5
+Scenario: read-search-local
+  [read-search-local] warm-up (10s)... done
+  measuring Nest+Fastify (40s)... done
+  measuring fluo+Fastify (40s)... done
+Scenario: json-command-local
+  [json-command-local] warm-up (10s)... done
+  measuring fluo+Fastify (40s)... done
+  measuring Nest+Fastify (40s)... done
+Scenario: rest-route-mix-local
+  [rest-route-mix-local] warm-up (10s)... done
+  measuring Nest+Fastify (40s)... done
+  measuring fluo+Fastify (40s)... done
+Run 2 of 5
+Scenario: read-search-local
+  [read-search-local] warm-up (10s)... done
+  measuring fluo+Fastify (40s)... done
+  measuring Nest+Fastify (40s)... done
+Scenario: json-command-local
+  [json-command-local] warm-up (10s)... done
+  measuring Nest+Fastify (40s)... done
+  measuring fluo+Fastify (40s)... done
+Scenario: rest-route-mix-local
+  [rest-route-mix-local] warm-up (10s)... done
+  measuring fluo+Fastify (40s)... done
+  measuring Nest+Fastify (40s)... done
+Run 3 of 5
+Scenario: read-search-local
+  [read-search-local] warm-up (10s)... done
+  measuring Nest+Fastify (40s)... done
+  measuring fluo+Fastify (40s)... done
+Scenario: json-command-local
+  [json-command-local] warm-up (10s)... done
+  measuring fluo+Fastify (40s)... done
+  measuring Nest+Fastify (40s)... done
+Scenario: rest-route-mix-local
+  [rest-route-mix-local] warm-up (10s)... done
+  measuring Nest+Fastify (40s)... done
+  measuring fluo+Fastify (40s)... done
+Run 4 of 5
+Scenario: read-search-local
+  [read-search-local] warm-up (10s)... done
+  measuring fluo+Fastify (40s)... done
+  measuring Nest+Fastify (40s)... done
+Scenario: json-command-local
+  [json-command-local] warm-up (10s)... done
+  measuring Nest+Fastify (40s)... done
+  measuring fluo+Fastify (40s)... done
+Scenario: rest-route-mix-local
+  [rest-route-mix-local] warm-up (10s)... done
+  measuring fluo+Fastify (40s)... done
+  measuring Nest+Fastify (40s)... done
+Run 5 of 5
+Scenario: read-search-local
+  [read-search-local] warm-up (10s)... done
+  measuring Nest+Fastify (40s)... done
+  measuring fluo+Fastify (40s)... done
+Scenario: json-command-local
+  [json-command-local] warm-up (10s)... done
+  measuring fluo+Fastify (40s)... done
+  measuring Nest+Fastify (40s)... done
+Scenario: rest-route-mix-local
+  [rest-route-mix-local] warm-up (10s)... done
+  measuring Nest+Fastify (40s)... done
+  measuring fluo+Fastify (40s)... done
+
+
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  HTTP runtime benchmark  —  NestJS vs fluo across Fastify, Express, and Bun  —  c=100 warmup=10s d=40s runs=5
+  Environment  —  node=v22.19.0 platform=darwin/arm64 cpu=Apple M2 Max x12
+  JSON summary  —  evidence/fluo-http-performance-nestjs/http-final.json
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+  READ-SEARCH-LOCAL (5-RUN AVG)  —  Read-heavy tenant user search: path param + query parsing + DI service + deterministic in-memory filtering
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Target                  req/s             MB/s            p50 ms          p97.5 ms            Δ req/s vs peer
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Nest+Fastify            29,585            54.79           3               3.2                 [33m+0.0%[0m
+  fluo+Fastify            21,527            39.87           3.8             6                   [31m-27.2%[0m
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Target                  samples           req/s σ         p99 ms          errors              timeouts
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Nest+Fastify            5                 345.48          5.8 ([33m+0.0%[0m)  0 (0)               0
+  fluo+Fastify            5                 1,997.97        7.2 ([31m+24.1%[0m)  0 (0)               0
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Target                  non-2xx           mismatches
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Nest+Fastify            0                 0
+  fluo+Fastify            0                 0
+
+  JSON-COMMAND-LOCAL (5-RUN AVG)  —  JSON command endpoint: body materialization + quote calculation + deterministic response serialization
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Target                  req/s             MB/s            p50 ms          p97.5 ms            Δ req/s vs peer
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Nest+Fastify            31,268            10.02           2.6             4.4                 [33m+0.0%[0m
+  fluo+Fastify            26,032            8.34            3               5                   [31m-16.7%[0m
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Target                  samples           req/s σ         p99 ms          errors              timeouts
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Nest+Fastify            5                 2,384.44        5 ([33m+0.0%[0m)  0 (0)               0
+  fluo+Fastify            5                 1,119.03        6.2 ([31m+24.0%[0m)  0 (0)               0
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Target                  non-2xx           mismatches
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Nest+Fastify            0                 0
+  fluo+Fastify            0                 0
+
+  REST-ROUTE-MIX-LOCAL (5-RUN AVG)  —  Mixed REST surface: project detail, task list/detail, POST preview, and comment summary over one deterministic route cycle
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Target                  req/s             MB/s            p50 ms          p97.5 ms            Δ req/s vs peer
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Nest+Fastify            45,772            12.75           1.4             3                   [33m+0.0%[0m
+  fluo+Fastify            32,006            8.91            2.6             4                   [31m-30.1%[0m
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Target                  samples           req/s σ         p99 ms          errors              timeouts
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Nest+Fastify            5                 5,376.53        3.8 ([33m+0.0%[0m)  0 (0)               0
+  fluo+Fastify            5                 2,720.6         5 ([31m+31.6%[0m)  0 (0)               0
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Target                  non-2xx           mismatches
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Nest+Fastify            0                 0
+  fluo+Fastify            0                 0
+
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════

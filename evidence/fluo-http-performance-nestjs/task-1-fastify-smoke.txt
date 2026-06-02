@@ -1,0 +1,18 @@
+Task 1 Fastify smoke evidence
+
+Command:
+env BENCH_TARGETS=nestjs-fastify,fluo-fastify BENCH_FLUO_SOURCE=published BENCH_ARTIFACT_LABEL=published-baseline BENCH_RUNS=1 BENCH_WARMUP_SEC=1 BENCH_MEASURE_SEC=3 BENCH_CONNECTIONS=8 BENCH_OUTPUT_JSON=/Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs/evidence/fluo-http-performance-nestjs/published-baseline-fastify-smoke.json pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
+
+Result:
+Published-package Fastify smoke passed with errors=0, timeouts=0, non2xx=0, mismatches=0 for Nest+Fastify and fluo+Fastify.
+
+Command:
+env BENCH_TARGETS=nestjs-fastify,fluo-fastify BENCH_FLUO_SOURCE=local-tarball BENCH_ARTIFACT_LABEL=local-before BENCH_RUNS=1 BENCH_WARMUP_SEC=1 BENCH_MEASURE_SEC=3 BENCH_CONNECTIONS=8 BENCH_OUTPUT_JSON=/Users/tilda-frontend-jinho/Documents/fluo/.worktrees/fluo-http-performance-nestjs/evidence/fluo-http-performance-nestjs/local-before-fastify-smoke.json pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
+
+Result:
+Local-tarball Fastify smoke passed with errors=0, timeouts=0, non2xx=0, mismatches=0 for Nest+Fastify and fluo+Fastify.
+
+Observed local-before req/sec:
+- read-search-local: Nest+Fastify 30168, fluo+Fastify 22355
+- json-command-local: Nest+Fastify 35856, fluo+Fastify 28131
+- rest-route-mix-local: Nest+Fastify 49541, fluo+Fastify 37040

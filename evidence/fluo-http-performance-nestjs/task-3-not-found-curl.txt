@@ -1,0 +1,8 @@
+HTTP/1.1 404 Not Found
+content-type: application/json; charset=utf-8
+content-length: 97
+Date: Tue, 02 Jun 2026 05:01:25 GMT
+Connection: keep-alive
+Keep-Alive: timeout=72
+
+{"error":{"code":"NOT_FOUND","message":"No handler registered for GET /not-found.","status":404}}

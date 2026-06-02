@@ -70,6 +70,21 @@ function row(cols: string[], widths: number[]): string {
   return '  ' + cols.map((c, i) => c.padEnd(widths[i])).join('  ');
 }
 
+function selectComparisonBaseline(target: TargetResult, targets: readonly TargetResult[]): TargetResult {
+  const expressBaseline = targets.find((candidate) => candidate.label === 'Nest+Express');
+  const fastifyBaseline = targets.find((candidate) => candidate.label === 'Nest+Fastify');
+
+  if (target.label.includes('Express') && expressBaseline) {
+    return expressBaseline;
+  }
+
+  if (target.label.includes('Fastify') && fastifyBaseline) {
+    return fastifyBaseline;
+  }
+
+  return fastifyBaseline ?? targets[0] ?? target;
+}
+
 export interface ReportOptions {
   connections: number;
   duration: number;
@@ -93,19 +108,18 @@ export function printReport(results: ScenarioResult[], options: ReportOptions): 
   const W = [22, 16, 14, 14, 18, 18];
 
   console.log('\n\n' + bar);
-  console.log(`  HTTP runtime benchmark  —  NestJS vs fluo across Fastify and Bun  —  c=${options.connections} warmup=${options.warmup}s d=${options.duration}s runs=${options.runs}`);
+  console.log(`  HTTP runtime benchmark  —  NestJS vs fluo across Fastify, Express, and Bun  —  c=${options.connections} warmup=${options.warmup}s d=${options.duration}s runs=${options.runs}`);
   console.log(`  Environment  —  node=${options.environment.node} platform=${options.environment.platform}/${options.environment.arch} cpu=${options.environment.cpuModel} x${options.environment.cpuCount}`);
   console.log(`  JSON summary  —  ${options.outputJson}`);
   console.log(bar);
 
   for (const r of results) {
-    const baseline = r.targets.find((target) => target.label === 'Nest+Fastify') ?? r.targets[0];
-
     console.log(`\n  ${r.name.toUpperCase()}  —  ${r.description}`);
     console.log('  ' + sep);
-    console.log(row(['Target', 'req/s', 'MB/s', 'p50 ms', 'p97.5 ms', 'Δ req/s vs Nest'], W));
+    console.log(row(['Target', 'req/s', 'MB/s', 'p50 ms', 'p97.5 ms', 'Δ req/s vs peer'], W));
     console.log('  ' + sep);
     for (const target of r.targets) {
+      const baseline = selectComparisonBaseline(target, r.targets);
       console.log(row([
         target.label,
         n(target.result.requests.average),
@@ -121,6 +135,7 @@ export function printReport(results: ScenarioResult[], options: ReportOptions): 
     console.log('  ' + sep);
     for (const target of r.targets) {
       const samples = target.samples ?? [];
+      const baseline = selectComparisonBaseline(target, r.targets);
       console.log(row([
         target.label,
         String(samples.length || 1),

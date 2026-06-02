@@ -1,0 +1,7 @@
+# git diff --check main
+
+# new as any in changed diff
+
+# package export map diff
+
+# public entrypoint diff

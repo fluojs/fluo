@@ -1,0 +1,16 @@
+Task 2 middleware fallback evidence
+
+Command:
+pnpm exec vitest run packages/http/src/dispatch/dispatcher.test.ts -t "keeps middleware routes off fast path with explicit fallback reason"
+
+Result:
+The targeted test passed.
+
+Observable asserted by the test:
+- stats.fastPathRoutes=0
+- stats.fullPathRoutes=1
+- route executionPath=full
+- fallbackReason contains "middleware"
+- formatted stats contain "GET:/middleware-fast-path adapter=fastify executionPath=full"
+- response body remains { ok: true }
+- middleware events run in order: before, handler, after

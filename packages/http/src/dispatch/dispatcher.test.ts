@@ -43,6 +43,7 @@ import {
   UseInterceptors,
 } from '../index.js';
 import { forRoutes, runMiddlewareChain } from '../middleware/middleware.js';
+import { executeFastPath, type FastPathExecutionResult } from './fast-path/index.js';
 import { attachFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
 
 function createResponse(): FrameworkResponse & { body?: unknown } {
@@ -154,6 +155,25 @@ function createRequest(
     query: {},
     raw: {},
     url: path,
+  };
+}
+
+function isFastPathExecutionPromise(
+  value: FastPathExecutionResult | Promise<FastPathExecutionResult>,
+): value is Promise<FastPathExecutionResult> {
+  return typeof value === 'object' && value !== null && 'then' in value;
+}
+
+function createFastPathRequestContext(
+  request: FrameworkRequest,
+  response: FrameworkResponse,
+  container = new Container(),
+): RequestContext {
+  return {
+    container,
+    metadata: {},
+    request,
+    response,
   };
 }
 
@@ -865,6 +885,160 @@ describe('dispatcher runtime', () => {
     expect(response.simpleJsonBody).toEqual({ ok: true });
   });
 
+  it('keeps dispatcher fast-path stats visible when response debug headers stay disabled', async () => {
+    @Controller('/fast-path-stats-only')
+    class FastPathStatsOnlyController {
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(FastPathStatsOnlyController);
+    const dispatcher = createDispatcher({
+      adapter: 'fastify',
+      handlerMapping: createHandlerMapping([{ controllerToken: FastPathStatsOnlyController }]),
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/fast-path-stats-only'), response);
+
+    const stats = getDispatcherFastPathStats(dispatcher);
+    expect(stats?.routes).toEqual([
+      expect.objectContaining({
+        adapter: 'fastify',
+        executionPath: 'fast',
+        routeId: 'GET:/fast-path-stats-only',
+      }),
+    ]);
+    expect(response.headers['X-Fluo-Path']).toBeUndefined();
+  });
+
+  it("exposes fast path stats for benchmark-eligible singleton routes", async () => {
+    @Controller('/benchmark-fast-path')
+    class BenchmarkFastPathController {
+      @Get('/users')
+      readUsers(_input: undefined, context: RequestContext) {
+        return {
+          page: context.request.query.page,
+          role: context.request.query.role,
+        };
+      }
+
+      @Post('/orders')
+      quoteOrder(_input: undefined, context: RequestContext) {
+        return {
+          body: context.request.body,
+        };
+      }
+    }
+
+    const root = new Container().register(BenchmarkFastPathController);
+    const dispatcher = createDispatcher({
+      adapter: 'fastify',
+      handlerMapping: createHandlerMapping([{ controllerToken: BenchmarkFastPathController }]),
+      rootContainer: root,
+    });
+    const usersResponse = createFastPathResponse();
+    const usersRequest = createRequest('/benchmark-fast-path/users');
+    usersRequest.query = { page: '2', role: 'admin' };
+    const ordersResponse = createFastPathResponse();
+    const ordersRequest = createRequest('/benchmark-fast-path/orders', 'POST');
+    ordersRequest.body = { itemCount: 3 };
+
+    await dispatcher.dispatch(usersRequest, usersResponse);
+    await dispatcher.dispatch(ordersRequest, ordersResponse);
+
+    const stats = getDispatcherFastPathStats(dispatcher);
+    const output = stats ? formatFastPathStats(stats) : '';
+    expect(stats?.totalRoutes).toBe(2);
+    expect(stats?.fastPathRoutes).toBe(2);
+    expect(stats?.fullPathRoutes).toBe(0);
+    expect(stats?.routes).toEqual([
+      expect.objectContaining({
+        adapter: 'fastify',
+        executionPath: 'fast',
+        routeId: 'GET:/benchmark-fast-path/users',
+      }),
+      expect.objectContaining({
+        adapter: 'fastify',
+        executionPath: 'fast',
+        routeId: 'POST:/benchmark-fast-path/orders',
+      }),
+    ]);
+    expect(output).toContain('GET:/benchmark-fast-path/users adapter=fastify executionPath=fast');
+    expect(output).toContain('POST:/benchmark-fast-path/orders adapter=fastify executionPath=fast');
+    expect(usersResponse.headers['X-Fluo-Path']).toBeUndefined();
+    expect(ordersResponse.headers['X-Fluo-Path']).toBeUndefined();
+  });
+
+  it('returns sync fast-path execution results for benchmark-safe sync handlers', () => {
+    @Controller('/sync-fast-executor')
+    class SyncFastExecutorController {
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(SyncFastExecutorController);
+    const handler = createHandlerMapping([{ controllerToken: SyncFastExecutorController }]).descriptors[0];
+
+    if (!handler) {
+      throw new Error('Expected one sync fast-path descriptor.');
+    }
+
+    const request = createRequest('/sync-fast-executor');
+    const response = createFastPathResponse();
+    const controller = new SyncFastExecutorController();
+    const result = executeFastPath({
+      controller,
+      controllerContainer: root,
+      handler,
+      request,
+      requestContext: createFastPathRequestContext(request, response, root),
+      response,
+    });
+
+    expect(isFastPathExecutionPromise(result)).toBe(false);
+    expect(result).toEqual({ executed: true, result: { ok: true } });
+    expect(response.simpleJsonBody).toEqual({ ok: true });
+  });
+
+  it('keeps async fast-path execution promise-based while preserving results', async () => {
+    @Controller('/async-fast-executor')
+    class AsyncFastExecutorController {
+      @Get('/')
+      async getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(AsyncFastExecutorController);
+    const handler = createHandlerMapping([{ controllerToken: AsyncFastExecutorController }]).descriptors[0];
+
+    if (!handler) {
+      throw new Error('Expected one async fast-path descriptor.');
+    }
+
+    const request = createRequest('/async-fast-executor');
+    const response = createFastPathResponse();
+    const controller = new AsyncFastExecutorController();
+    const result = executeFastPath({
+      controller,
+      controllerContainer: root,
+      handler,
+      request,
+      requestContext: createFastPathRequestContext(request, response, root),
+      response,
+    });
+
+    expect(isFastPathExecutionPromise(result)).toBe(true);
+    await expect(result).resolves.toEqual({ executed: true, result: { ok: true } });
+    expect(response.simpleJsonBody).toEqual({ ok: true });
+  });
+
   it('emits fast-path debug headers when explicitly enabled', async () => {
     @Controller('/fast-path-debug-header')
     class FastPathDebugHeaderController {
@@ -956,6 +1130,48 @@ describe('dispatcher runtime', () => {
     expect(response.headers['X-Fluo-Path']).toContain('full; route=GET:/');
     expect(response.headers['X-Fluo-Path']).toContain('guards');
     expect(response.simpleJsonBody).toEqual({ ok: true });
+  });
+
+  it('keeps middleware routes off fast path with explicit fallback reason', async () => {
+    const middlewareEvents: string[] = [];
+    const routeMiddleware: Middleware = {
+      async handle(_context: MiddlewareContext, next: Next) {
+        middlewareEvents.push('before');
+        await next();
+        middlewareEvents.push('after');
+      },
+    };
+
+    @Controller('/middleware-fast-path')
+    class MiddlewareFastPathController {
+      @Get('/')
+      getValue() {
+        middlewareEvents.push('handler');
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(MiddlewareFastPathController);
+    const dispatcher = createDispatcher({
+      adapter: 'fastify',
+      appMiddleware: [routeMiddleware],
+      handlerMapping: createHandlerMapping([{ controllerToken: MiddlewareFastPathController }]),
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/middleware-fast-path'), response);
+
+    const stats = getDispatcherFastPathStats(dispatcher);
+    const output = stats ? formatFastPathStats(stats) : '';
+    expect(stats?.fastPathRoutes).toBe(0);
+    expect(stats?.fullPathRoutes).toBe(1);
+    expect(stats?.routes[0]?.executionPath).toBe('full');
+    expect(stats?.routes[0]?.fallbackReason).toContain('middleware');
+    expect(output).toContain('GET:/middleware-fast-path adapter=fastify executionPath=full');
+    expect(output).toContain('middleware');
+    expect(response.simpleJsonBody).toEqual({ ok: true });
+    expect(middlewareEvents).toEqual(['before', 'handler', 'after']);
   });
 
   it('falls back to full path when global interceptors are registered', async () => {

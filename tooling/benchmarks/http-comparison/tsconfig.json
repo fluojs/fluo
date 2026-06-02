@@ -8,5 +8,5 @@
     "esModuleInterop": true,
     "resolveJsonModule": true
   },
-  "include": ["src/fluo/**/*", "src/fluo-bun/**/*", "src/shared/**/*", "src/run.ts", "src/report.ts"]
+  "include": ["src/fluo/**/*", "src/fluo-bun/**/*", "src/shared/**/*", "src/run.ts", "src/runner-options.ts", "src/report.ts"]
 }

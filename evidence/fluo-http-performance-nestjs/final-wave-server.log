@@ -1,0 +1,6 @@
+[fluo] LOG [FluoFactory] Starting fluo application...
+[fluo] LOG [InstanceLoader] ReadSearchModule dependencies initialized
+[fluo] LOG [RoutesResolver] ReadSearchController {/tenants/:tenantId/users}
+[fluo] LOG [RouterExplorer] Mapped {/tenants/:tenantId/users, GET} route
+[fluo] LOG [FluoApplication] fluo application successfully started.
+fluo fastify listening on :3106

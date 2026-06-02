@@ -1,0 +1,8 @@
+Task 1 target selection error evidence
+
+Command:
+env BENCH_TARGETS=unknown BENCH_RUNS=1 BENCH_WARMUP_SEC=1 BENCH_MEASURE_SEC=1 pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
+
+Result:
+The command exited non-zero before building targets and stderr contained:
+Unknown BENCH_TARGETS entries: unknown
