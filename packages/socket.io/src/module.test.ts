@@ -350,12 +350,12 @@ describe('@fluojs/socket.io', () => {
     expect('SOCKETIO_OPTIONS' in publicApi).toBe(false);
   });
 
-  it('wires lifecycle dependencies through forRoot metadata internally', () => {
+  it('wires lifecycle dependencies through forRoot metadata internally', async () => {
     const providers = getModuleMetadata(SocketIoModule.forRoot())?.providers ?? [];
     const serverProvider = providers.find(
       (provider: unknown) =>
         typeof provider === 'object' && provider !== null && 'provide' in provider && provider.provide === SOCKETIO_SERVER,
-    ) as { inject?: unknown[] } | undefined;
+    ) as { inject?: unknown[]; useFactory?: (service: unknown) => unknown } | undefined;
     const roomProvider = providers.find(
       (provider: unknown) =>
         typeof provider === 'object' &&
@@ -363,8 +363,25 @@ describe('@fluojs/socket.io', () => {
         'provide' in provider &&
         provider.provide === SOCKETIO_ROOM_SERVICE,
     ) as { useExisting?: unknown } | undefined;
+    const rawServer = { marker: 'socketio-server' };
+    const fakeLifecycleService = {
+      getServer() {
+        throw new Error('Sync Socket.IO server access should not satisfy the provider factory.');
+      },
+      async getServerAsync() {
+        return rawServer;
+      },
+    };
+    const serverFactory = serverProvider?.useFactory;
 
     expect(serverProvider?.inject).toEqual([SocketIoLifecycleService]);
+    expect(serverFactory).toBeTypeOf('function');
+    if (!serverFactory) {
+      throw new Error('Expected Socket.IO server provider to define a factory.');
+    }
+    const resolvedServer = await serverFactory(fakeLifecycleService);
+
+    expect(resolvedServer).toBe(rawServer);
     expect(roomProvider?.useExisting).toBe(SocketIoLifecycleService);
   });
 

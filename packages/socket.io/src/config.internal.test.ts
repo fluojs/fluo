@@ -16,12 +16,28 @@ describe('Socket.IO module option validation', () => {
       options: { engine: { maxHttpBufferSize: 0 } },
     },
     {
+      expectedMessage: 'Socket.IO configuration engine.maxHttpBufferSize must be a positive integer when provided.',
+      options: { engine: { maxHttpBufferSize: -1 } },
+    },
+    {
+      expectedMessage: 'Socket.IO configuration engine.maxHttpBufferSize must be a positive integer when provided.',
+      options: { engine: { maxHttpBufferSize: 1.5 } },
+    },
+    {
       expectedMessage: 'Socket.IO configuration buffer.maxPendingMessagesPerSocket must be a positive integer when provided.',
       options: { buffer: { maxPendingMessagesPerSocket: 1.5 } },
     },
     {
+      expectedMessage: 'Socket.IO configuration buffer.maxPendingMessagesPerSocket must be a positive integer when provided.',
+      options: { buffer: { maxPendingMessagesPerSocket: Number.POSITIVE_INFINITY } },
+    },
+    {
       expectedMessage: 'Socket.IO configuration shutdown.timeoutMs must be a positive integer when provided.',
       options: { shutdown: { timeoutMs: Number.NaN } },
+    },
+    {
+      expectedMessage: 'Socket.IO configuration shutdown.timeoutMs must be a positive integer when provided.',
+      options: { shutdown: { timeoutMs: 0 } },
     },
   ] satisfies Array<{ readonly expectedMessage: string; readonly options: SocketIoModuleOptions }>)(
     'rejects invalid explicit numeric config: $expectedMessage',
