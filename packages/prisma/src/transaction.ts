@@ -4,6 +4,11 @@ type TransactionalPrismaService<TOptions = unknown> = {
 
 type TransactionAccessor<THost, TOptions> = (self: THost) => TransactionalPrismaService<TOptions>;
 
+type TransactionMethod<THost, TArgs extends unknown[], TResult> = (
+  this: THost,
+  ...args: TArgs
+) => Promise<TResult>;
+
 function hasTransaction(value: unknown): value is TransactionalPrismaService {
   return typeof value === 'object'
     && value !== null
@@ -74,15 +79,21 @@ function resolveTransactionInput<THost, TOptions>(
  */
 export function Transaction<THost, TOptions = unknown>(
   input?: TransactionAccessor<THost, TOptions> | TOptions,
-): (value: (this: THost, ...args: never[]) => Promise<unknown>, context: ClassMethodDecoratorContext) => unknown {
+): <TArgs extends unknown[], TResult>(
+  value: TransactionMethod<THost, TArgs, TResult>,
+  context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TResult>>,
+) => TransactionMethod<THost, TArgs, TResult> {
   const { accessor, options } = resolveTransactionInput(input);
 
-  return (value, context) => {
+  return function transactionDecorator<TArgs extends unknown[], TResult>(
+    value: TransactionMethod<THost, TArgs, TResult>,
+    context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TResult>>,
+  ) {
     if (context.kind !== 'method') {
       throw new Error('@Transaction() can only decorate methods.');
     }
 
-    return async function wrappedTransactionMethod(this: THost, ...args: never[]) {
+    return async function wrappedTransactionMethod(this: THost, ...args: TArgs): Promise<TResult> {
       const prisma = accessor?.(this) ?? resolveDefaultPrismaService(this);
 
       return prisma.transaction(() => value.apply(this, args), options);

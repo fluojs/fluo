@@ -154,7 +154,12 @@ export class PrismaService<
 
       Object.defineProperty(this, prop, {
         configurable: true,
-        get: () => Reflect.get(this.current() as object, prop),
+        get: () => {
+          const current = this.current() as object;
+          const value = Reflect.get(current, prop);
+
+          return typeof value === 'function' ? value.bind(current) : value;
+        },
       });
     }
   }
