@@ -142,7 +142,22 @@ export class PrismaService<
   constructor(
     private readonly client: TClient,
     private readonly serviceOptions: PrismaServiceOptions = { strictTransactions: false },
-  ) {}
+  ) {
+    this.installCurrentClientFacade();
+  }
+
+  private installCurrentClientFacade(): void {
+    for (const prop of Reflect.ownKeys(this.client as object)) {
+      if (prop in this) {
+        continue;
+      }
+
+      Object.defineProperty(this, prop, {
+        configurable: true,
+        get: () => Reflect.get(this.current() as object, prop),
+      });
+    }
+  }
 
   /**
    * Returns the active Prisma handle for the current async context.
