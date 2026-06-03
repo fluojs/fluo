@@ -120,7 +120,7 @@ class UserRegisteredEvent {
 - `EventBus`, `EventPublishOptions`, `EventBusModuleOptions`, `EventType`: 발행, 기본값, 트랜스포트, 안정적인 이벤트 키를 위한 타입 전용 계약입니다.
 - `EventBusLifecycleState`, `EventBusStatusAdapterInput`, `EventBusPlatformStatusSnapshot`: status snapshot 계약입니다.
 
-Transport bootstrap은 unique event channel마다 한 번만 subscribe합니다. `eventKey`가 있으면 transport channel 이름을 제어합니다. 잘못된 JSON transport message는 무시되며, shutdown 시작 뒤 도착한 inbound transport message는 local handler dispatch 전에 무시됩니다.
+Transport bootstrap은 unique event channel마다 한 번만 subscribe합니다. `eventKey`가 있으면 transport channel 이름을 제어합니다. Bootstrap 중 이후 transport subscription이 실패하면 이벤트 버스는 이미 열린 channel을 rollback하기 위해 subscription error를 다시 던지기 전에 transport를 닫습니다. 잘못된 JSON transport message는 무시되며, shutdown 시작 뒤 도착한 inbound transport message는 local handler dispatch 전에 무시됩니다.
 
 ## 런타임별 및 통합 서브패스
 

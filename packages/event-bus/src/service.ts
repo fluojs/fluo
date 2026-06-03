@@ -1,12 +1,7 @@
 import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
 import { cloneWithFallback, getClassDiMetadata } from '@fluojs/core/internal';
 import type { Container, Provider } from '@fluojs/di';
-import {
-  type ApplicationLogger,
-  type CompiledModule,
-  type OnApplicationBootstrap,
-  type OnApplicationShutdown,
-} from '@fluojs/runtime';
+import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { getEventHandlerMetadataEntries } from './metadata.js';
@@ -103,6 +98,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   private shutdownDrainTimeouts = 0;
   private readonly activeDispatches = new Set<Promise<void>>();
   private readonly transport: EventBusTransport | undefined;
+  private transportClosed = false;
 
   constructor(
     private readonly runtimeContainer: Container,
@@ -128,22 +124,17 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
 
   async onApplicationShutdown(): Promise<void> {
     this.lifecycleState = 'stopping';
+    let transportClosedCleanly = true;
 
     if (this.activeDispatches.size > 0) {
       await this.drainActiveDispatches();
     }
 
     if (this.transport) {
-      try {
-        await this.transport.close();
-      } catch (error) {
-        this.transportCloseFailures += 1;
-        this.lifecycleState = 'failed';
-        this.logger.error('EventBusTransport failed to close.', error, 'EventBusLifecycleService');
-      }
+      transportClosedCleanly = await this.closeTransportOrRecordFailure('EventBusTransport failed to close.');
     }
 
-    if (this.lifecycleState !== 'failed') {
+    if (transportClosedCleanly) {
       this.lifecycleState = 'stopped';
     }
   }
@@ -486,9 +477,43 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
       descriptorsByChannel.set(channel, channelDescriptors);
     }
 
-    for (const [channel, channelDescriptors] of descriptorsByChannel) {
-      await this.subscribeTransportChannel(channel, channelDescriptors);
+    try {
+      for (const [channel, channelDescriptors] of descriptorsByChannel) {
+        await this.subscribeTransportChannel(channel, channelDescriptors);
+      }
+    } catch (error) {
+      await this.rollbackTransportSubscriptionsAfterBootstrapFailure();
+      throw error;
     }
+  }
+
+  private async rollbackTransportSubscriptionsAfterBootstrapFailure(): Promise<void> {
+    await this.closeTransportOrRecordFailure('EventBusTransport failed to close after bootstrap subscription failure.');
+  }
+
+  private async closeTransportOrRecordFailure(message: string): Promise<boolean> {
+    try {
+      await this.closeTransport();
+      return true;
+    } catch (error) {
+      this.transportCloseFailures += 1;
+      this.lifecycleState = 'failed';
+      this.logger.error(message, error, 'EventBusLifecycleService');
+
+      return false;
+    }
+  }
+
+  private async closeTransport(): Promise<void> {
+    const transport = this.transport;
+
+    if (!transport || this.transportClosed) {
+      return;
+    }
+
+    await transport.close();
+    this.transportClosed = true;
+    this.subscribedChannels.clear();
   }
 
   private async subscribeTransportChannel(
