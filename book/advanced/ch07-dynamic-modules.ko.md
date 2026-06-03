@@ -409,11 +409,11 @@ static forRoot(options: RedisModuleOptions): ModuleType {
 
 이 발췌는 dynamic module이 단순히 provider를 계산하는 데서 끝나지 않는다는 점을 보여 줍니다. 호출자가 넘긴 `name` option이 raw client token과 facade service token을 바꾸고, 그 둘만 export 표면에 올라갑니다.
 
-`SocketIoModule.forRoot()`도 유사한 패턴을 따릅니다. `path:packages/socket.io/src/module.ts:11-31`은 내부 옵션 토큰, lifecycle service, 원시 서버를 위한 팩토리 프로바이더를 정의합니다. 그 다음 **alias provider** (`useExisting`)를 사용하여 `SOCKETIO_ROOM_SERVICE` 토큰을 노출합니다. 마지막으로 `path:packages/socket.io/src/module.ts:54-61`이 내부 구현 세부 사항은 숨긴 채 public room-service와 raw-server 토큰만 export합니다.
+`SocketIoModule.forRoot()`도 유사한 패턴을 따릅니다. `path:packages/socket.io/src/module.ts:12-31`은 내부 옵션 토큰, lifecycle service, 원시 서버를 위한 async factory provider를 정의합니다. 그 다음 **alias provider** (`useExisting`)를 사용하여 `SOCKETIO_ROOM_SERVICE` 토큰을 노출합니다. 마지막으로 `path:packages/socket.io/src/module.ts:55-64`가 내부 구현 세부 사항은 숨긴 채 public room-service와 raw-server 토큰만 export합니다.
 
 Socket.IO 사례는 내부 lifecycle service를 public room-service token으로 노출할 때 `useExisting`을 씁니다.
 
-`path:packages/socket.io/src/module.ts:11-31`
+`path:packages/socket.io/src/module.ts:12-31`
 ```typescript
 function createSocketIoProviderSet(options: SocketIoModuleOptions = {}) {
   return [
@@ -427,7 +427,7 @@ function createSocketIoProviderSet(options: SocketIoModuleOptions = {}) {
     },
     {
       provide: SOCKETIO_SERVER,
-      useFactory: (service: unknown) => (service as SocketIoLifecycleService).getServer(),
+      useFactory: async (service: unknown) => await (service as SocketIoLifecycleService).getServerAsync(),
       inject: [SocketIoLifecycleService],
     },
     {

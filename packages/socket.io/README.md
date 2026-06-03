@@ -147,5 +147,6 @@ Register Socket.IO through module imports in the owning module so namespace/mess
 
 ## Example Sources
 
+- `packages/socket.io/src/config.internal.test.ts`
 - `packages/socket.io/src/module.test.ts`
 - `packages/socket.io/src/public-surface.test.ts`

@@ -145,5 +145,6 @@ Socket.IO 등록은 소유 모듈의 import 경로에서 구성하여 namespace/
 
 ## 예제 소스
 
+- `packages/socket.io/src/config.internal.test.ts`
 - `packages/socket.io/src/module.test.ts`
 - `packages/socket.io/src/public-surface.test.ts`
