@@ -55,6 +55,7 @@ const bullmqState = vi.hoisted(() => {
   let sequence = 0;
   const failQueueCreation = new Set<string>();
   const failWorkerCreation = new Set<string>();
+  const failWorkerRun = new Set<string>();
 
   function attemptsFor(job: MockQueueJob): number {
     if (typeof job.opts.attempts === 'number' && Number.isFinite(job.opts.attempts) && job.opts.attempts > 0) {
@@ -110,6 +111,7 @@ const bullmqState = vi.hoisted(() => {
       workers.clear();
       failQueueCreation.clear();
       failWorkerCreation.clear();
+      failWorkerRun.clear();
       sequence = 0;
     },
     createQueue(name: string) {
@@ -150,6 +152,7 @@ const bullmqState = vi.hoisted(() => {
     },
     failQueueCreation,
     failWorkerCreation,
+    failWorkerRun,
     queues,
     workers,
     async dispatch(name: string, job: MockQueueJob) {
@@ -247,7 +250,17 @@ vi.mock('bullmq', () => ({
     }
 
     async run(): Promise<void> {
+      if (bullmqState.failWorkerRun.has(this.worker.name)) {
+        throw new Error(`worker run fail:${this.worker.name}`);
+      }
+
       await bullmqState.runWorker(this.worker);
+    }
+
+    async waitUntilReady(): Promise<void> {
+      if (bullmqState.failWorkerRun.has(this.worker.name)) {
+        throw new Error(`worker run fail:${this.worker.name}`);
+      }
     }
   },
 }));
@@ -936,6 +949,141 @@ describe('@fluojs/queue', () => {
     await waitForQueueWorkers();
     expect(workerStore.received).toEqual(['queued-before-later-hook']);
     expect(workerStore.receivedDuringLaterBootstrap).toBe(false);
+
+    await app.close();
+  });
+
+  it('reports workers as not ready until BullMQ processors start after bootstrap readiness', async () => {
+    const releaseBootstrapReady = createDeferred<void>();
+
+    class DeferredReadyJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(DeferredReadyJob)
+    class DeferredReadyWorker {
+      async handle(_job: DeferredReadyJob): Promise<void> {}
+    }
+
+    class AppModule {}
+
+    const redis = new MockRedisClient();
+    const container = {
+      has: (token: unknown) => token === REDIS_CLIENT,
+      resolve: async (token: unknown) => {
+        if (token === REDIS_CLIENT) {
+          return redis;
+        }
+
+        return new DeferredReadyWorker();
+      },
+    };
+    const service = new QueueLifecycleService(
+      {
+        defaultAttempts: 1,
+        defaultConcurrency: 1,
+        defaultDeadLetterMaxEntries: 1_000,
+        workerShutdownTimeoutMs: 30_000,
+      },
+      container as never,
+      [
+        {
+          definition: { providers: [DeferredReadyWorker] },
+          type: AppModule,
+        },
+      ] as never,
+      createLogger([]),
+      { wait: () => releaseBootstrapReady.promise },
+    );
+
+    await service.onApplicationBootstrap();
+
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        lifecycleState: 'started',
+        workerStartFailures: 0,
+        workersDiscovered: 1,
+        workersReady: 0,
+      },
+      health: {
+        reason: 'Queue workers are waiting for BullMQ processors to start.',
+        status: 'degraded',
+      },
+      readiness: {
+        reason: 'Queue workers are waiting for BullMQ processors to start.',
+        status: 'degraded',
+      },
+    });
+
+    releaseBootstrapReady.resolve();
+    await waitForQueueWorkers();
+
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        lifecycleState: 'started',
+        workersDiscovered: 1,
+        workersReady: 1,
+      },
+      health: { status: 'healthy' },
+      readiness: { status: 'ready' },
+    });
+
+    await service.onApplicationShutdown();
+  });
+
+  it('marks queue lifecycle failed when BullMQ worker run rejects', async () => {
+    const loggerEvents: string[] = [];
+
+    class RunFailureJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(RunFailureJob)
+    class RunFailureWorker {
+      async handle(_job: RunFailureJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [RunFailureWorker],
+    });
+
+    bullmqState.failWorkerRun.add('RunFailureJob');
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const service = await app.container.resolve(QueueLifecycleService);
+
+    await waitForQueueWorkers();
+
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        lastWorkerStartFailure: 'worker run fail:RunFailureJob',
+        lifecycleState: 'failed',
+        workerStartFailures: 1,
+        workersDiscovered: 1,
+        workersReady: 0,
+      },
+      health: {
+        reason: 'Queue worker startup failed.',
+        status: 'unhealthy',
+      },
+      readiness: {
+        reason: 'Queue worker startup failed.',
+        status: 'not-ready',
+      },
+    });
+    expect(
+      loggerEvents.some((event) =>
+        event.includes('error:QueueLifecycleService:Failed to start queue worker RunFailureWorker after application bootstrap.'),
+      ),
+    ).toBe(true);
+    await expect(service.enqueue(new RunFailureJob('after-failure'))).rejects.toThrow('Queue lifecycle state is failed.');
 
     await app.close();
   });

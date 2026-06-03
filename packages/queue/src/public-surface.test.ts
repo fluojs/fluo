@@ -27,11 +27,15 @@ describe('@fluojs/queue root barrel public surface', () => {
     );
     expect(readme).toContain('low-level provider assembly as an internal implementation detail');
     expect(readme).toContain('low-level provider helpers are not part of the documented root-barrel contract.');
+    expect(readme).toContain('`QueueLifecycleService.createPlatformStatusSnapshot()` uses the same public snapshot contract');
+    expect(readme).toContain('worker-start failures report not-ready/unhealthy with `workerStartFailures`');
     expect(koreanReadme).toContain(
       '`QueueModule.forRoot(...)`는 애플리케이션 수준 큐 등록을 위한 지원되는 루트 엔트리포인트입니다.',
     );
     expect(koreanReadme).toContain('저수준 provider 조합을 루트 barrel API의 일부가 아니라 내부 구현 세부사항으로 취급해야 합니다.');
     expect(koreanReadme).toContain('저수준 provider helper는 문서화된 루트 barrel 계약에 포함되지 않습니다.');
+    expect(koreanReadme).toContain('`QueueLifecycleService.createPlatformStatusSnapshot()`은 `createQueuePlatformStatusSnapshot(...)`과 같은 공개 snapshot 계약');
+    expect(koreanReadme).toContain('worker-start failure는 `workerStartFailures`와 `lastWorkerStartFailure` details를 포함해 not-ready/unhealthy');
   });
 
   it('keeps the README worker options aligned with the supported public contract', () => {

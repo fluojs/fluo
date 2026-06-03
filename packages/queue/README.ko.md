@@ -92,7 +92,7 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 ### 부트스트랩 및 종료 수명 주기
 
-Queue는 애플리케이션 부트스트랩 중 worker를 탐색하고 Queue가 소유하는 BullMQ 리소스를 만들지만, BullMQ worker processor는 runtime이 전체 애플리케이션 bootstrap/readiness sequence 완료를 표시한 뒤에만 시작합니다. 다른 `onApplicationBootstrap()` hook에서 enqueue한 job은 Queue 서비스가 초기화된 뒤에는 받을 수 있으며, processor는 뒤에 실행되는 async bootstrap hook이나 애플리케이션 readiness보다 앞서 실행되지 않고 bootstrap-ready handoff 이후 실행됩니다.
+Queue는 애플리케이션 부트스트랩 중 worker를 탐색하고 Queue가 소유하는 BullMQ 리소스를 만들지만, BullMQ worker processor는 runtime이 전체 애플리케이션 bootstrap/readiness sequence 완료를 표시한 뒤에만 시작합니다. 다른 `onApplicationBootstrap()` hook에서 enqueue한 job은 Queue 서비스가 초기화된 뒤에는 받을 수 있으며, processor는 뒤에 실행되는 async bootstrap hook이나 애플리케이션 readiness보다 앞서 실행되지 않고 bootstrap-ready handoff 이후 실행됩니다. Queue status는 해당 BullMQ processor가 실제로 시작될 때까지 degraded readiness를 보고합니다. Processor 시작에 실패하면 lifecycle이 `failed`로 이동하고, status snapshot은 worker를 ready로 숨기지 않고 실패를 노출합니다.
 
 애플리케이션 종료가 시작되면 Queue는 상태를 `stopping`으로 바꾸고 새 enqueue를 거부한 다음 Queue 소유 worker/queue/connection을 닫고 pending dead-letter write를 drain합니다. Worker 종료는 `workerShutdownTimeoutMs`로 bounded wait를 적용하므로 끝나지 않는 active processor가 애플리케이션 종료를 무기한 막을 수 없습니다. Timeout이 지나면 Queue는 로그를 남기고 BullMQ worker에 force-close를 요청한 뒤 나머지 리소스 정리를 계속합니다.
 
@@ -122,7 +122,7 @@ Job은 JSON으로 직렬화 가능한 plain object여야 합니다. Queue는 enq
 ### 핵심 구성 요소
 - `QueueModule`: 큐 기능을 위한 기본 모듈입니다.
 - `QueueModule.forRoot(options)`: 애플리케이션 수준 큐 등록을 구성합니다.
-- `QueueLifecycleService`: 작업을 큐에 추가(`enqueue(job)`)하기 위한 기본 서비스입니다.
+- `QueueLifecycleService`: 작업을 큐에 추가하고 lifecycle/status snapshot을 생성(`enqueue(job)`, `createPlatformStatusSnapshot()`)하기 위한 기본 서비스입니다.
 - `@QueueWorker(JobClass, options?)`: 특정 작업을 처리할 핸들러를 지정하는 데코레이터입니다.
 - `QUEUE`: queue facade를 위한 호환성 주입 토큰입니다.
 - `createQueuePlatformStatusSnapshot(...)`: lifecycle/readiness diagnostics를 위한 status snapshot helper입니다.
@@ -136,9 +136,9 @@ Job은 JSON으로 직렬화 가능한 plain object여야 합니다. Queue는 enq
 - `QueueBackoffType`: 지원되는 retry backoff strategy 이름(`fixed`, `exponential`)입니다.
 - `QueueBackoffOptions`: 재시도 백오프 설정(`type`, `delayMs`)을 위한 타입입니다.
 - `QueueRateLimiterOptions`: worker 수준 distributed rate limiter 설정(`max`, `duration`)을 위한 타입입니다.
-- `QueueLifecycleState`: Queue status adapter가 보고하는 lifecycle state(`idle`, `starting`, `started`, `stopping`, `stopped`)입니다.
-- `QueueStatusAdapterInput`: `createQueuePlatformStatusSnapshot(...)`에 전달하는 normalized queue metrics 타입입니다.
-- `QueuePlatformStatusSnapshot`: status helper가 반환하는 Queue 전용 readiness, health, ownership, detail snapshot 타입입니다.
+- `QueueLifecycleState`: Queue status adapter가 보고하는 lifecycle state(`idle`, `starting`, `started`, `stopping`, `stopped`, `failed`)입니다.
+- `QueueStatusAdapterInput`: `createQueuePlatformStatusSnapshot(...)`에 전달하는 normalized queue metrics와 worker-start diagnostics 타입입니다.
+- `QueuePlatformStatusSnapshot`: status helper와 `QueueLifecycleService.createPlatformStatusSnapshot()`이 반환하는 Queue 전용 readiness, health, ownership, detail snapshot 타입입니다.
 
 `QueueModuleOptions`에는 `workerShutdownTimeoutMs`, `defaultDeadLetterMaxEntries` 같은 lifecycle 및 dead-letter retention 설정도 포함됩니다.
 
@@ -148,7 +148,7 @@ Job은 JSON으로 직렬화 가능한 plain object여야 합니다. Queue는 enq
 - `workerShutdownTimeoutMs`: 종료 중 active worker processor를 기다리는 최대 시간입니다. 시간이 지나면 BullMQ worker를 force-close합니다. 기본값은 `30_000`입니다.
 - `defaultDeadLetterMaxEntries`: job별로 유지할 dead-letter record의 최대 개수이며, trimming을 끄려면 `false`를 지정합니다. 기본값은 `1_000`입니다.
 
-`createQueuePlatformStatusSnapshot(...)`은 Queue가 `started`에 도달한 뒤에만 readiness를 `ready`로 보고합니다. `starting`은 degraded readiness, `stopping`/`stopped`는 not-ready로 보고합니다. Snapshot details에는 Redis dependency id, lifecycle state, ready/discovered worker 수, pending dead-letter write 수, dead-letter drain timeout, `workerShutdownTimeoutMs`가 포함됩니다.
+`QueueLifecycleService.createPlatformStatusSnapshot()`은 `createQueuePlatformStatusSnapshot(...)`과 같은 공개 snapshot 계약을 사용합니다. Queue가 `started`에 도달하고 탐색된 모든 BullMQ worker processor가 시작된 뒤에만 readiness를 `ready`로 보고합니다. Processor가 아직 pending인 `started` resource와 `starting`은 degraded readiness, `stopping`/`stopped`는 not-ready, worker-start failure는 `workerStartFailures`와 `lastWorkerStartFailure` details를 포함해 not-ready/unhealthy로 보고합니다. Snapshot details에는 Redis dependency id, lifecycle state, ready/discovered worker 수, pending dead-letter write 수, dead-letter drain timeout, `workerShutdownTimeoutMs`가 포함됩니다.
 
 singleton `@QueueWorker()` provider/controller만 등록됩니다. request/transient worker는 discovery 중 건너뜁니다.
 
