@@ -11,6 +11,9 @@
 - [빠른 시작](#빠른-시작)
 - [라이프사이클과 종료](#라이프사이클과-종료)
 - [공통 패턴](#공통-패턴)
+  - [서비스 트랜잭션 경계 (@Transaction)](#서비스-트랜잭션-경계-transaction)
+  - [수동 트랜잭션과 currentSession()](#수동-트랜잭션과-currentsession)
+  - [요청 단위 트랜잭션 (인터셉터)](#요청-단위-트랜잭션-인터셉터)
 - [공개 API](#공개-api)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -68,54 +71,94 @@ class AppModule {}
 
 ## 공통 패턴
 
-### `MongooseConnection`을 통한 연결 접근
+### 서비스 트랜잭션 경계 (@Transaction)
 
-`MongooseConnection` 래퍼는 기본 Mongoose 연결에 대한 접근을 제공합니다.
+`@Transaction()` 데코레이터는 서비스 레이어에서 트랜잭션 경계를 정의하는 권장 방법입니다. 이 데코레이터가 적용된 메서드 내부에서 발생하는 모든 리포지토리 호출은 동일한 MongoDB 세션을 공유합니다.
 
-```typescript
-import { MongooseConnection } from '@fluojs/mongoose';
+```ts
+import { Transaction } from '@fluojs/mongoose';
+import { UserRepository } from './user.repository';
+
+export class UserService {
+  constructor(private readonly repo: UserRepository) {}
+
+  @Transaction()
+  async onboardUser(dto: CreateUserDto) {
+    const user = await this.repo.create(dto);
+    await this.repo.initProfile(user._id);
+    return user;
+  }
+}
 
 export class UserRepository {
   constructor(private readonly conn: MongooseConnection) {}
 
-  async findById(id: string) {
-    const User = this.conn.current().model('User');
-    return User.findById(id);
+  async create(data: any) {
+    // @Transaction() 내부에서 conn.model()은 세션 인지형 facade를 반환합니다.
+    // create, find, findOne, aggregate, bulkWrite 등의 작업은
+    // 자동으로 활성 트랜잭션에 참여합니다.
+    return this.conn.model('User').create(data);
+  }
+
+  async initProfile(userId: any) {
+    return this.conn.model('Profile').create({ userId });
   }
 }
 ```
 
-### 수동 트랜잭션과 세션
+`@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 MongoDB 세션 안에서 실행됩니다. 참고로 v1에서 `doc.save()`는 자동으로 세션을 주입하지 않으므로, 자동 트랜잭션 참여가 필요하다면 `model.create()` 또는 `model.findOneAndUpdate()` 등을 사용하세요.
 
-`conn.transaction()`으로 세션 경계를 만들고, Mongoose 모델 작업에는 세션을 명시적으로 전달합니다.
+### 수동 트랜잭션과 currentSession()
 
-```typescript
+`MongooseConnection`은 활성 MongoDB 세션에 접근하기 위한 `currentSession()`과 루트 연결 handle에 접근하기 위한 `current()` 메서드를 제공합니다. 외부 유틸리티에 세션을 전달하거나 복잡한 수동 처리가 필요한 경우 escape hatch로 사용하세요.
+
+```ts
+import { MongooseConnection } from '@fluojs/mongoose';
+
+export class AdvancedRepository {
+  constructor(private readonly conn: MongooseConnection) {}
+
+  async customOperation() {
+    const session = this.conn.currentSession();
+    const User = this.conn.current().model('User');
+    
+    // 명시적으로 세션 전달
+    return User.find({ status: 'active' }).session(session || null);
+  }
+}
+```
+
+수동 트랜잭션 블록에는 `conn.transaction()`을 사용하세요:
+
+```ts
 await this.conn.transaction(async () => {
-  const session = this.conn.currentSession();
-  const User = this.conn.current().model('User');
-  
-  // 작업에 세션을 명시적으로 전달
-  await User.create([{ name: 'Ada' }], { session });
+  const User = this.conn.model('User');
+  await User.create([{ name: 'Ada' }]);
 });
 ```
 
-감싼 연결이 `connection.transaction(...)`을 구현하면 `startSession()`이 직접 노출되지 않아도 fluo는 이를 strict transaction boundary로 취급합니다. 그렇지 않고 연결이 `startSession()`을 구현하지 않으면 트랜잭션은 기본적으로 직접 실행으로 fallback합니다. fallback 대신 예외를 던지려면 `strictTransactions: true`를 설정합니다. 이때 오류 메시지는 `Transaction not supported: Mongoose connection does not implement startSession.`입니다.
+래핑된 연결이 `connection.transaction(...)`을 구현하고 있다면 fluo는 이를 엄격한 트랜잭션 경계로 취급합니다. 그렇지 않고 `startSession()`이 없는 경우 트랜잭션은 기본적으로 직접 실행으로 fallback합니다. 트랜잭션 지원이 필수라면 `strictTransactions: true`를 설정하세요.
 
-Fluo는 Mongoose operation option을 다시 쓰지 않습니다. 모델 호출이 명시적인 `{ session }`을 전달하면 그 option은 그대로 유지되며, 생략한 경우 fluo가 session을 자동 부착한다고 가정하면 안 됩니다. 같은 session에서 병렬 작업이나 중첩 transaction 기대치는 보수적으로 유지하세요. 중첩된 `MongooseConnection.transaction(...)` 호출은 같은 session에 두 번째 MongoDB transaction을 여는 대신 활성 boundary를 재사용합니다.
+Fluo는 Mongoose 작업 옵션을 임의로 재작성하지 않습니다. 활성 트랜잭션 내부에서 명시적으로 `{ session: null }`을 전달하거나 다른 세션 객체를 사용하면, 의도치 않은 트랜잭션 탈출을 방지하기 위해 세션 충돌 에러를 발생시킵니다.
 
-### 요청 범위 트랜잭션
+### 요청 단위 트랜잭션 (인터셉터)
 
-컨트롤러나 메서드에 `MongooseTransactionInterceptor`를 적용하면 전체 요청을 MongoDB 세션으로 감쌉니다.
+컨트롤러나 메서드에 `MongooseTransactionInterceptor`를 적용하면 전체 요청을 자동으로 트랜잭션으로 감쌉니다. 간단한 CRUD 작업이나 특정 경로에 대해 "기본적으로 트랜잭션 적용" 정책을 유지하고 싶을 때 유용합니다.
 
-```typescript
+```ts
 import { UseInterceptors } from '@fluojs/http';
 import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
 
 @UseInterceptors(MongooseTransactionInterceptor)
-class UserController {}
+class UserController {
+  @Post()
+  async create() {
+    // 이후 발생하는 모든 리포지토리 호출은 이 세션을 공유합니다.
+  }
+}
 ```
 
-HTTP interceptor 밖에서 같은 request-aware transaction boundary가 필요하다면 `MongooseConnection.requestTransaction(...)`을 직접 사용할 수 있습니다. 중첩된 service transaction은 활성 session boundary를 재사용하며, 수동 transaction 안에서 열린 중첩 request boundary도 request abort와 shutdown tracking에 참여합니다.
+HTTP 인터셉터 외부에서 동일한 요청 인지형 트랜잭션 경계가 필요하다면 `MongooseConnection.requestTransaction(...)`을 직접 사용하세요.
 
 ## 공개 API
 

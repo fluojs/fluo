@@ -10,10 +10,10 @@ Prisma lifecycle and ALS-backed transaction context for fluo applications. Conne
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
-  - [PrismaService and current()](#prismaservice-and-current)
+  - [Service Transaction Boundary (@Transaction)](#service-transaction-boundary-transaction)
   - [Named Registrations for Multiple Clients](#named-registrations-for-multiple-clients)
-  - [Manual Transactions](#manual-transactions)
-  - [Automatic Request Transactions](#automatic-request-transactions)
+  - [Request-Wide Transactions (Interceptor)](#request-wide-transactions-interceptor)
+  - [Manual Transactions and current()](#manual-transactions-and-current)
   - [Shutdown and Status Contracts](#shutdown-and-status-contracts)
   - [Async Configuration and Isolation](#async-configuration-and-isolation)
   - [Manual Module Composition](#manual-module-composition)
@@ -56,33 +56,51 @@ class AppModule {}
 
 ## Common Patterns
 
-### PrismaService and current()
+### Service Transaction Boundary (@Transaction)
 
-The `PrismaService` is the primary way to interact with Prisma. Its `current()` method automatically returns the active transaction client if inside a transaction scope, or the root client otherwise.
+The `@Transaction()` decorator is the recommended way to define transaction boundaries in your service layer. It ensures that all repository calls made within the decorated method share the same Prisma transaction.
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { PrismaService } from '@fluojs/prisma';
-import { PrismaClient } from '@prisma/client';
+import { Transaction } from '@fluojs/prisma';
+import { UserRepository } from './user.repository';
+
+export class UserService {
+  constructor(private readonly repo: UserRepository) {}
+
+  @Transaction()
+  async onboardUser(dto: CreateUserDto) {
+    const user = await this.repo.create(dto);
+    await this.repo.initProfile(user.id);
+    return user;
+  }
+}
 
 @Inject(PrismaService)
 export class UserRepository {
-  constructor(private readonly prisma: PrismaService<PrismaClient>) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async findById(id: string) {
-    // current() preserves your generated Prisma types and autocomplete
-    return this.prisma.current().user.findUnique({ where: { id } });
+  async create(data: any) {
+    // Repository calls use standard PrismaClient methods.
+    // When called inside @Transaction(), they automatically participate in the ambient transaction.
+    return this.prisma.user.create({ data });
+  }
+
+  async initProfile(userId: string) {
+    return this.prisma.profile.create({ data: { userId } });
   }
 }
 ```
 
+Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying Prisma transaction.
+
 ### Named Registrations for Multiple Clients
 
-When one application container needs more than one Prisma client, register each client with an explicit `name` and inject the matching token with `getPrismaServiceToken(name)`.
+When one application container needs more than one Prisma client, register each client with an explicit `name` and inject the matching token with `getPrismaServiceToken(name)`. For named clients, pass an accessor to `@Transaction()` to target the correct service.
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { PrismaModule, PrismaService, getPrismaServiceToken } from '@fluojs/prisma';
+import { PrismaModule, PrismaService, getPrismaServiceToken, Transaction } from '@fluojs/prisma';
 
 const usersPrismaModule = PrismaModule.forRoot({ name: 'users', client: usersPrisma });
 const analyticsPrismaModule = PrismaModule.forRoot({ name: 'analytics', client: analyticsPrisma });
@@ -94,32 +112,21 @@ export class MultiDatabaseService {
     private readonly analytics: PrismaService<typeof analyticsPrisma>,
   ) {}
 
-  async loadDashboard(userId: string) {
-    const user = await this.users.current().user.findUnique({ where: { id: userId } });
-    const summary = await this.analytics.current().report.findMany();
-    return { summary, user };
+  @Transaction((self) => self.users)
+  async updateAndLog(userId: string, data: any) {
+    const user = await this.users.user.update({ where: { id: userId }, data });
+    // This call is outside the 'users' transaction unless 'analytics' also opens one
+    await this.analytics.report.create({ data: { event: 'update', userId } });
+    return user;
   }
 }
 ```
 
 Unnamed registration remains the default single-client path for `PrismaService`, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, and `PrismaTransactionInterceptor`. When you register multiple Prisma clients in the same container, use names for every additional client so token resolution stays explicit.
 
-### Manual Transactions
+### Request-Wide Transactions (Interceptor)
 
-Use `prisma.transaction()` to create an interactive transaction block. Any calls to `current()` inside the block will use the transaction-scoped client.
-
-```typescript
-await this.prisma.transaction(async () => {
-  const user = await this.prisma.current().user.create({ data });
-  await this.prisma.current().profile.create({ data: { userId: user.id } });
-});
-```
-
-When `transaction()` is called while a transaction context is already active, `PrismaService` reuses the active transaction client instead of opening a nested Prisma transaction. Nested calls must not pass transaction options such as isolation levels; providing options in an active context is rejected so the package does not silently drop caller intent while reusing the ambient transaction.
-
-### Automatic Request Transactions
-
-Apply the `PrismaTransactionInterceptor` to a controller or method to wrap the entire request in a transaction automatically.
+Apply the `PrismaTransactionInterceptor` to a controller or method to wrap the entire request in a transaction automatically. This is useful for simple CRUD operations or when you want a "transaction-by-default" policy for certain routes.
 
 ```typescript
 import { Post, UseInterceptors } from '@fluojs/http';
@@ -129,12 +136,45 @@ import { PrismaTransactionInterceptor } from '@fluojs/prisma';
 class UserController {
   @Post()
   async create() {
-    // All downstream repository calls via PrismaService.current() share this tx
+    // All downstream repository calls share this transaction client
   }
 }
 ```
 
 `PrismaTransactionInterceptor` targets the default unnamed `PrismaService`. For named multi-client registrations, inject the corresponding named `PrismaService` and open explicit `transaction()` / `requestTransaction()` boundaries where needed.
+
+### Manual Transactions and current()
+
+The `PrismaService` provides a `current()` method that returns the active transaction client if inside a transaction scope, or the root client otherwise. Use this as an escape hatch when you need to pass the client to external libraries or perform advanced manual transaction plumbing.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { PrismaService } from '@fluojs/prisma';
+import { PrismaClient } from '@prisma/client';
+
+@Inject(PrismaService)
+export class AdvancedRepository {
+  constructor(private readonly prisma: PrismaService<PrismaClient>) {}
+
+  async customOperation() {
+    const tx = this.prisma.current();
+    // Use tx for operations that fluo doesn't automatically wrap, 
+    // or when passing to an external utility that expects a PrismaClient.
+    return tx.user.findMany();
+  }
+}
+```
+
+Use `prisma.transaction()` for manual interactive transaction blocks:
+
+```typescript
+await this.prisma.transaction(async () => {
+  const user = await this.prisma.user.create({ data });
+  await this.prisma.profile.create({ data: { userId: user.id } });
+});
+```
+
+When `transaction()` is called while a transaction context is already active, `PrismaService` reuses the active transaction client instead of opening a nested Prisma transaction. Nested calls must not pass transaction options such as isolation levels; providing options in an active context is rejected so the package does not silently drop caller intent while reusing the ambient transaction.
 
 ### Shutdown and Status Contracts
 
