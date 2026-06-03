@@ -1,6 +1,7 @@
 import type { KeyObject } from 'node:crypto';
 
 import { Inject } from '@fluojs/core';
+import type { OnModuleDestroy } from '@fluojs/runtime';
 
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
 import { normalizeRefreshTokenOptions } from '../refresh/refresh-token.js';
@@ -282,7 +283,7 @@ function normalizePrincipal(claims: JwtClaims): JwtPrincipal {
  * Verifies JWT access and refresh tokens against the configured key sources.
  */
 @Inject(JWT_OPTIONS)
-export class DefaultJwtVerifier {
+export class DefaultJwtVerifier implements OnModuleDestroy {
   private readonly jwksClient: JwksClient | undefined;
   private readonly keyResolutionState: KeyResolutionState;
   private readonly refreshKeyResolutionState: KeyResolutionState;
@@ -314,6 +315,13 @@ export class DefaultJwtVerifier {
    */
   dispose(): void {
     this.jwksClient?.dispose();
+  }
+
+  /**
+   * Releases verifier-owned remote JWKS cache entries during module teardown.
+   */
+  onModuleDestroy(): void {
+    this.dispose();
   }
 
   /**

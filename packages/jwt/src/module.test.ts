@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Inject, Module, type Constructor, type Token } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
@@ -75,6 +75,26 @@ async function createJwtApplicationContext(jwtModule: Constructor) {
 describe('JwtModule', () => {
   it('does not expose createJwtCoreProviders from the package root', () => {
     expect(jwtRootExports).not.toHaveProperty('createJwtCoreProviders');
+  });
+
+  it('keeps refresh-token normalization as an explicit deprecated compatibility root export', () => {
+    expect(jwtRootExports).toHaveProperty('RefreshTokenService');
+    expect(jwtRootExports).toHaveProperty('normalizeRefreshTokenOptions');
+  });
+
+  it('disposes verifier-owned JWKS cache entries during module shutdown', async () => {
+    const disposeSpy = vi.spyOn(DefaultJwtVerifier.prototype, 'dispose');
+    const app = await createJwtApplicationContext(JwtModule.forRoot({
+      algorithms: ['RS256'],
+      jwksUri: 'https://issuer.example.test/.well-known/jwks.json',
+    }));
+
+    try {
+      await app.close();
+      expect(disposeSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      disposeSpy.mockRestore();
+    }
   });
 
   it('supports synchronous forRoot registration', async () => {
