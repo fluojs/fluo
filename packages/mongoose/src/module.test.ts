@@ -201,6 +201,62 @@ describe('@fluojs/mongoose', () => {
     expect(connection.model).toBe(originalModel);
   });
 
+  it('merges ambient sessions into projection-aware find and findOne options', async () => {
+    const events: string[] = [];
+    const session = createFakeSession(events);
+    const calls: Array<{
+      filter: unknown;
+      options: { session?: MongooseSessionLike } | undefined;
+      projection: unknown;
+      type: 'find' | 'findOne';
+    }> = [];
+
+    const UserModel = {
+      find(filter?: unknown, projection?: unknown, options?: { session?: MongooseSessionLike }) {
+        calls.push({ filter, options, projection, type: 'find' });
+
+        return [];
+      },
+      findOne(filter?: unknown, projection?: unknown, options?: { session?: MongooseSessionLike }) {
+        calls.push({ filter, options, projection, type: 'findOne' });
+
+        return null;
+      },
+    };
+
+    const connection = {
+      model(_name: string) {
+        return UserModel;
+      },
+      async startSession() {
+        return session;
+      },
+    };
+    const mongoose = new MongooseConnection(connection);
+
+    await mongoose.transaction(async () => {
+      const User = mongoose.model('User') as typeof UserModel;
+
+      User.find({ status: 'active' });
+      User.findOne({ _id: 'user-1' });
+    });
+
+    expect(calls).toEqual([
+      {
+        filter: { status: 'active' },
+        options: { session },
+        projection: undefined,
+        type: 'find',
+      },
+      {
+        filter: { _id: 'user-1' },
+        options: { session },
+        projection: undefined,
+        type: 'findOne',
+      },
+    ]);
+  });
+
   it('rolls back open request transactions before dispose on shutdown', async () => {
     const events: string[] = [];
     const session = createFakeSession(events);

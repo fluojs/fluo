@@ -138,6 +138,10 @@ function resolveOptionsIndex(operation: PropertyKey, operationArgs: unknown[]): 
     return 1;
   }
 
+  if (operationArgs.length <= 1) {
+    return 2;
+  }
+
   return operationArgs.length;
 }
 
