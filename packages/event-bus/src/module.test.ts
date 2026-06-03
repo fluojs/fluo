@@ -1201,6 +1201,56 @@ describe('@fluojs/event-bus', () => {
       ).toBe(true);
     });
 
+    it('rolls back opened transport subscriptions when later bootstrap wiring fails', async () => {
+      const loggerEvents: string[] = [];
+      const openedChannels = new Set<string>();
+      const subscribedChannels: string[] = [];
+      let closeCalls = 0;
+      const transport = {
+        async publish(_channel: string, _payload: unknown) {},
+        async subscribe(channel: string, _handler: (payload: unknown) => Promise<void>) {
+          subscribedChannels.push(channel);
+
+          if (subscribedChannels.length === 2) {
+            throw new Error('second subscribe failed');
+          }
+
+          openedChannels.add(channel);
+        },
+        async close() {
+          closeCalls += 1;
+          openedChannels.clear();
+        },
+      } satisfies EventBusTransport;
+
+      class UserCreatedHandler {
+        @OnEvent(UserCreatedEvent)
+        onUserCreated(_event: UserCreatedEvent) {}
+      }
+
+      class PasswordResetHandler {
+        @OnEvent(PasswordResetEvent)
+        onPasswordReset(_event: PasswordResetEvent) {}
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [EventBusModule.forRoot({ transport })],
+        providers: [UserCreatedHandler, PasswordResetHandler],
+      });
+
+      await expect(
+        bootstrapApplication({ logger: createLogger(loggerEvents), rootModule: AppModule }),
+      ).rejects.toThrow('second subscribe failed');
+
+      expect(subscribedChannels).toHaveLength(2);
+      expect(closeCalls).toBe(1);
+      expect(openedChannels.size).toBe(0);
+      expect(
+        loggerEvents.some((event) => event.includes('EventBusTransport failed to subscribe to channel "PasswordResetEvent".')),
+      ).toBe(true);
+    });
+
     it('dispatches incoming transport messages to local handlers', async () => {
       const transport = createMockTransport();
 
