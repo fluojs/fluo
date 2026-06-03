@@ -140,7 +140,31 @@ CacheModule.forRoot({
 })
 ```
 
-For fully custom keying, pass a function as `httpKeyStrategy` or use `@CacheKey(...)` with either a literal key or a key factory.
+For fully custom keying, pass a function as `httpKeyStrategy` or use `@CacheKey(...)` with either a literal key or a key factory. These function-based hooks are the supported extension path for request-aware keys; do not subclass `CacheInterceptor` just to replace cache-key generation.
+
+```typescript
+CacheModule.forRoot({
+  store: 'memory',
+  httpKeyStrategy: (context) => {
+    const path = context.requestContext.request.path;
+    const query = context.requestContext.request.query;
+    const q = String(query.q ?? '').trim().toLowerCase();
+
+    return q ? `${path}?q=${encodeURIComponent(q)}` : path;
+  },
+})
+```
+
+Handler-level keys can stay local to the route when only one endpoint needs custom behavior:
+
+```typescript
+@CacheKey((context) => {
+  const tenant = context.requestContext.principal?.subject ?? 'anonymous';
+  const slug = String(context.requestContext.request.query.slug ?? 'index');
+
+  return `tenant:${tenant}:page:${slug}`;
+})
+```
 
 The HTTP interceptor caches only successful, uncommitted GET handler results with a value that can be replayed later. It skips `undefined`, `SseResponse` streams, already committed responses, and responses whose status code is outside the `2xx` range, so redirects and error responses are not stored as cache hits.
 

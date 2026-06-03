@@ -140,7 +140,31 @@ CacheModule.forRoot({
 })
 ```
 
-완전히 다른 키 전략이 필요하다면 `httpKeyStrategy`에 함수를 전달하거나, literal key 또는 key factory를 받는 `@CacheKey(...)`를 사용하세요.
+완전히 다른 키 전략이 필요하다면 `httpKeyStrategy`에 함수를 전달하거나, literal key 또는 key factory를 받는 `@CacheKey(...)`를 사용하세요. 요청을 인식하는 cache key를 만들 때 지원되는 확장 경로는 이러한 function-based hook이며, cache key 생성만 바꾸기 위해 `CacheInterceptor`를 subclass하지 않습니다.
+
+```typescript
+CacheModule.forRoot({
+  store: 'memory',
+  httpKeyStrategy: (context) => {
+    const path = context.requestContext.request.path;
+    const query = context.requestContext.request.query;
+    const q = String(query.q ?? '').trim().toLowerCase();
+
+    return q ? `${path}?q=${encodeURIComponent(q)}` : path;
+  },
+})
+```
+
+특정 handler 하나만 custom 동작이 필요하다면 handler-level key를 route 가까이에 둘 수 있습니다.
+
+```typescript
+@CacheKey((context) => {
+  const tenant = context.requestContext.principal?.subject ?? 'anonymous';
+  const slug = String(context.requestContext.request.query.slug ?? 'index');
+
+  return `tenant:${tenant}:page:${slug}`;
+})
+```
 
 HTTP 인터셉터는 나중에 재사용할 수 있는 값이 있는 성공한, 아직 commit되지 않은 GET 핸들러 결과만 캐싱합니다. `undefined`, `SseResponse` 스트림, 이미 commit된 응답, 그리고 status code가 `2xx` 범위를 벗어난 응답은 건너뛰므로 redirect와 error 응답은 cache hit로 저장되지 않습니다.
 
