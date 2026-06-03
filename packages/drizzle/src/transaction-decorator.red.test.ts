@@ -7,7 +7,7 @@ import { DrizzleDatabase, DrizzleModule } from './index.js';
 describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 impl)', () => {
   it('exports Transaction and opens a transaction for current-less repository calls', async () => {
     // TODO: RED - will pass after Task 8 implementation
-    const drizzlePackage = await import('@fluojs/drizzle');
+      const drizzlePackage = await import('./index.js');
     const Transaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
 
     expect(Transaction).toBeTypeOf('function');
@@ -114,7 +114,7 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
 
   it('reuses an active transaction for nested @Transaction() calls', async () => {
     // TODO: RED - will pass after Task 8 implementation
-    const drizzlePackage = await import('@fluojs/drizzle');
+      const drizzlePackage = await import('./index.js');
     const Transaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
 
     expect(Transaction).toBeTypeOf('function');
@@ -196,7 +196,7 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
 
   it('rejects nested @Transaction() calls with options while a context is already active', async () => {
     // TODO: RED - will pass after Task 8 implementation
-    const drizzlePackage = await import('@fluojs/drizzle');
+      const drizzlePackage = await import('./index.js');
     const Transaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
 
     expect(Transaction).toBeTypeOf('function');
@@ -278,7 +278,7 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
 
 describe('@fluojs/drizzle Transaction decorator — named/accessor contract', () => {
   it('uses explicit accessor to select a specific DrizzleDatabase', async () => {
-    const drizzlePackage = await import('@fluojs/drizzle');
+      const drizzlePackage = await import('./index.js');
     const Transaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
 
     expect(Transaction).toBeTypeOf('function');
@@ -351,7 +351,7 @@ describe('@fluojs/drizzle Transaction decorator — named/accessor contract', ()
   });
 
   it('does not confuse two Drizzle databases when only one accessor is decorated', async () => {
-    const drizzlePackage = await import('@fluojs/drizzle');
+      const drizzlePackage = await import('./index.js');
     const Transaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
 
     expect(Transaction).toBeTypeOf('function');
