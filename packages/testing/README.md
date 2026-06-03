@@ -168,6 +168,8 @@ fluo differs from NestJS by requiring tests to name an explicit `rootModule`. Th
 - **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`
 - **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` and `@fluojs/testing/vitest/tooling` with Vitest workspace config helpers (requires `vitest` and `@babel/core` in the consuming workspace)
 
+`@fluojs/testing/vitest/tooling` maps workspace aliases only for each package's declared public `exports`. Private source files, internal helpers, and unexported source entrypoints are intentionally excluded so tests exercise the same import boundaries that consumers receive from published packages.
+
 ## Related Packages
 
 - `@fluojs/di`: powers provider resolution in compiled test containers
