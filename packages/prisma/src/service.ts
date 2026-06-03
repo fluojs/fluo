@@ -69,6 +69,21 @@ type AsyncLocalStorageResolutionHost = typeof globalThis & {
   };
 };
 
+function createCurrentClientPrismaFacade<TTarget extends { current(): unknown }>(target: TTarget): TTarget {
+  return new Proxy(target, {
+    get(service, prop, receiver) {
+      if (prop in service) {
+        return Reflect.get(service, prop, receiver);
+      }
+
+      const currentClient = service.current() as Record<PropertyKey, unknown>;
+      const value = Reflect.get(currentClient, prop, currentClient);
+
+      return typeof value === 'function' ? value.bind(currentClient) : value;
+    },
+  });
+}
+
 class AsyncLocalStorageTransactionContextStore<TTransactionClient> implements TransactionContextStore<TTransactionClient> {
   readonly kind = 'als' as const;
 
@@ -144,6 +159,31 @@ export class PrismaService<
     private readonly serviceOptions: PrismaServiceOptions = { strictTransactions: false },
   ) {
     this.installCurrentClientFacade();
+  }
+
+  /**
+   * Creates the low-level DI facade that forwards unknown Prisma API properties to the ambient `current()` client.
+   *
+   * @remarks
+   * This compatibility helper is used by `PrismaModule` provider wiring. Application code should prefer
+   * `PrismaModule.forRoot(...)` or `PrismaModule.forRootAsync(...)`, then type injected repository handles as
+   * `PrismaServiceFacade<TClient>` when direct generated Prisma delegates are needed.
+   *
+   * @param client Root Prisma client registered in the module.
+   * @param serviceOptions Runtime transaction options consumed by the Fluo wrapper.
+   * @returns A transaction-aware facade that exposes wrapper methods plus the root Prisma client surface.
+   */
+  static createFacade<
+    TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
+    TTransactionClient = InferPrismaTransactionClient<TClient>,
+    TTransactionOptions = InferPrismaTransactionOptions<TClient>,
+  >(
+    client: TClient,
+    serviceOptions: PrismaServiceOptions = { strictTransactions: false },
+  ): PrismaServiceFacade<TClient, TTransactionClient, TTransactionOptions> {
+    return createCurrentClientPrismaFacade(
+      new PrismaService<TClient, TTransactionClient, TTransactionOptions>(client, serviceOptions),
+    ) as PrismaServiceFacade<TClient, TTransactionClient, TTransactionOptions>;
   }
 
   private installCurrentClientFacade(): void {
@@ -506,3 +546,22 @@ export class PrismaService<
     untrackActiveRequestTransaction(this.activeRequestTransactions, handle);
   }
 }
+
+/**
+ * Injection-facing Prisma facade type that combines the Fluo wrapper methods with the registered Prisma client surface.
+ *
+ * @remarks
+ * `PrismaModule` resolves `PrismaService` to a facade that forwards unknown properties to `current()`. Use this type in
+ * repositories that call generated Prisma delegates directly, and use `PrismaService<TClient>` when only wrapper methods
+ * (`current()`, `transaction(...)`, `requestTransaction(...)`, and status snapshots) are needed.
+ *
+ * @typeParam TClient Root Prisma client shape registered in the module.
+ * @typeParam TTransactionClient Transaction-scoped client resolved inside `$transaction(...)` callbacks.
+ * @typeParam TTransactionOptions Options forwarded to Prisma interactive transactions.
+ */
+export type PrismaServiceFacade<
+  TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
+  TTransactionClient = InferPrismaTransactionClient<TClient>,
+  TTransactionOptions = InferPrismaTransactionOptions<TClient>,
+> = PrismaService<TClient, TTransactionClient, TTransactionOptions> &
+  Omit<TClient, keyof PrismaService<TClient, TTransactionClient, TTransactionOptions>>;

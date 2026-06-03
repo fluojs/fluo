@@ -11,6 +11,7 @@ import {
   PRISMA_OPTIONS,
   PrismaModule,
   PrismaService,
+  type PrismaServiceFacade,
   type PrismaTransactionClient,
 } from './index.js';
 
@@ -36,19 +37,26 @@ type GeneratedPrismaClient = {
 };
 
 type InferredPrismaService = PrismaService<GeneratedPrismaClient>;
+type InferredPrismaServiceFacade = PrismaServiceFacade<GeneratedPrismaClient>;
 type InferredCurrentHandle = ReturnType<InferredPrismaService['current']>;
 type InferredTransactionHandle = PrismaTransactionClient<GeneratedPrismaClient>;
+type InferredFacadeFindUniqueResult = ReturnType<InferredPrismaServiceFacade['user']['findUnique']>;
 
 type _PrismaServiceCurrentInference = Assert<
   IsEqual<InferredCurrentHandle, GeneratedPrismaClient | GeneratedTransactionClient>
 >;
 type _PrismaTransactionClientInference = Assert<IsEqual<InferredTransactionHandle, GeneratedTransactionClient>>;
+type _PrismaServiceFacadeDelegateInference = Assert<
+  IsEqual<InferredFacadeFindUniqueResult, Promise<{ id: string } | null>>
+>;
 
 const prismaServiceCurrentInferenceChecked: _PrismaServiceCurrentInference = true;
 const prismaTransactionClientInferenceChecked: _PrismaTransactionClientInference = true;
+const prismaServiceFacadeDelegateInferenceChecked: _PrismaServiceFacadeDelegateInference = true;
 
 void prismaServiceCurrentInferenceChecked;
 void prismaTransactionClientInferenceChecked;
+void prismaServiceFacadeDelegateInferenceChecked;
 
 describe('@fluojs/prisma', () => {
   it('connects, reuses transaction-scoped handles, and disconnects through lifecycle hooks', async () => {
