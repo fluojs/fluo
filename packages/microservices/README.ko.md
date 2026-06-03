@@ -93,6 +93,7 @@ await microservice.listen();
 - `AbortSignal`을 받는 요청-응답 transport는 이미 abort된 send를 publish 전에 reject하고, 나중에 abort된 in-flight send도 reject합니다. `close()`가 시작된 뒤에는 shutdown 중인 lifecycle에 새 작업을 publish하지 않고 `send()`/`emit()`을 reject합니다.
 - Root `@fluojs/microservices` barrel import와 `TcpMicroserviceTransport` 생성은 `node:net`을 load하지 않습니다. TCP는 `listen()`이 server를 시작하거나 outbound `send()`/`emit()`이 socket을 생성하는 경로에서만 Node networking을 lazy-load합니다. `close()`가 in-flight listen 시도를 기다리는 중 startup이 실패해도 microservice shutdown은 캡처한 listen error를 다시 surface하기 전에 transport cleanup을 시도합니다.
 - TCP는 테스트와 ephemeral listener를 위해 `port: 0`을 허용하고, listen 중에는 OS가 할당한 포트로 outbound `send()`/`emit()`을 라우팅합니다.
+- Platform status snapshot은 transport resource ownership을 보고합니다. TCP와 gRPC는 framework-owned listener/client resource로 보고하고, MQTT는 client를 직접 생성한 경우에만 framework ownership을 보고하며, caller-owned broker collaborator transport는 externally managed로 남습니다.
 - gRPC shutdown은 가능하면 server-level `tryShutdown()`을 사용하고, graceful shutdown을 제공하지 않는 런타임에서만 `forceShutdown()`으로 fallback합니다. Active unary/streaming call의 AbortSignal 취소는 call-level `cancel()` 또는 stream end 경로를 사용하며, stream이 end/error/early return으로 끝나면 abort listener를 제거합니다.
 - transport logger를 통해 이벤트 핸들러 실패를 기록하는 경로(`RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `MqttMicroserviceTransport`, gRPC event emit)는 끝까지 logger-driven observability를 유지합니다. transport logger를 주입하지 않으면 fluo는 해당 실패를 raw `console.error` fallback으로 복제하지 않습니다.
 
@@ -161,7 +162,7 @@ class ManualMicroserviceProvidersModule {}
 
 ### Type export
 
-Root barrel은 `Microservice`, `MicroserviceLifecycleState`, `MicroserviceHandlerCounts`, `MicroserviceModuleOptions`, `MicroserviceModuleRegistrationOptions`, `MicroservicePlatformStatusSnapshot`, `MicroserviceStatusAdapterInput`, `MicroserviceTransport`, `MicroserviceTransportCapabilities`, `Pattern`, `ServerStreamWriter`와 `GrpcMicroserviceTransportOptions`, `KafkaMicroserviceTransportOptions`, `MqttMicroserviceTransportOptions`, `NatsMicroserviceTransportOptions`, `RabbitMqMicroserviceTransportOptions`, `RedisPubSubMicroserviceTransportOptions`, `RedisStreamsMicroserviceTransportOptions`, `RedisStreamClientLike` 같은 transport option type을 export합니다.
+Root barrel은 `Microservice`, `MicroserviceLifecycleState`, `MicroserviceHandlerCounts`, `MicroserviceModuleOptions`, `MicroserviceModuleRegistrationOptions`, `MicroservicePlatformStatusSnapshot`, `MicroserviceStatusAdapterInput`, `MicroserviceTransport`, `MicroserviceTransportCapabilities`, `Pattern`, `ServerStreamWriter`와 `GrpcMicroserviceTransportOptions`, `KafkaMicroserviceTransportOptions`, `MqttMicroserviceTransportOptions`, `NatsMicroserviceTransportOptions`, `RabbitMqMicroserviceTransportOptions`, `RedisPubSubMicroserviceTransportOptions`, `RedisStreamsMicroserviceTransportOptions`, `RedisStreamClientLike`, `TcpMicroserviceTransportOptions` 같은 transport option type을 export합니다.
 
 ### 동작 계약
 
