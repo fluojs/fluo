@@ -13,6 +13,9 @@
  */
 export type TransactionAccessor<THost, TService> = (self: THost) => TService;
 
+/**
+ * Standard method decorator factory signature for Prisma service transaction boundaries.
+ */
 export type TransactionDecorator = <TService>(
   accessor?: TransactionAccessor<unknown, TService>,
 ) => (value: Function, context: ClassMethodDecoratorContext) => Function;
