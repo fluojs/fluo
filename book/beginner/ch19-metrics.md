@@ -143,44 +143,59 @@ Use `Counter` for values that only increase, such as total posts created, emails
 import { Inject } from '@fluojs/core';
 import { MetricsService } from '@fluojs/metrics';
 
+type CreatePostInput = {
+  content: string;
+  title: string;
+};
+
 @Inject(MetricsService)
 export class PostService {
-  constructor(private readonly metrics: MetricsService) {}
+  private readonly postsCreated: ReturnType<MetricsService['counter']>;
 
-  async create(data: any) {
-    const post = await this.prisma.post.create({ data });
-     
-     // Increment the counter each time a new post is created.
-    this.metrics.counter({
+  constructor(metrics: MetricsService) {
+    this.postsCreated = metrics.counter({
       name: 'blog_posts_created_total',
       help: 'Number of blog posts created',
-    }).inc();
-    
+    });
+  }
+
+  async create(data: CreatePostInput) {
+    const post = await this.prisma.post.create({ data });
+
+    // Reuse the existing counter each time a new post is created.
+    this.postsCreated.inc();
+
     return post;
   }
 }
 ```
 
+Create the counter once during service construction or application startup, then reuse the returned collector. Calling `MetricsService.counter(...)` repeatedly with the same metric name recreates a Prometheus collector and fails fast because metric names must stay unique inside a registry.
+
 ### Gauge: Measuring Current State
 Use `Gauge` for values that can go up or down, such as active WebSocket connections, items waiting in a queue, or currently logged-in users. A gauge represents a snapshot at a specific point in time.
 
 ```typescript
-// Set the current value directly.
-this.metrics.gauge({
+const activeSessions = metrics.gauge({
   name: 'active_sessions_count',
   help: 'Current number of active sessions',
-}).set(currentSessions);
+});
+
+// Later, set the current value directly.
+activeSessions.set(currentSessions);
 ```
 
 ### Histogram: Measuring Distributions
 Use `Histogram` for durations or sizes where you need to calculate percentiles, such as background job processing time, uploaded image size, or number of search result items.
 
 ```typescript
-// Observe the uploaded file size.
-this.metrics.histogram({
+const imageUploadSize = metrics.histogram({
   name: 'image_upload_size_bytes',
   help: 'Uploaded image size',
-}).observe(file.size);
+});
+
+// Later, observe the uploaded file size.
+imageUploadSize.observe(file.size);
 ```
 
 ### 19.5.1 Labels: Adding Dimension to Data
@@ -199,12 +214,12 @@ Naming conventions are very important for long-term maintainability. Follow the 
 Example: `fluoblog_posts_created_total`. A consistent naming convention makes it much easier to find and query metrics in Grafana even after an application grows to hundreds of different metrics.
 
 ### 19.5.4 Advanced Label Management: Dynamic Labels
-Sometimes label values are not known until runtime. Fluo's metrics service lets you pass labels dynamically when recording a value. For example, you can track the `error_code` for failed payments: `metrics.counter({ name: 'payment_failures_total', help: 'Number of failed payments', labelNames: ['code'] }).inc({ code: error.code })`.
+Sometimes label values are not known until runtime. Fluo's metrics service lets you pass labels dynamically when recording a value. For example, create `const paymentFailures = metrics.counter({ name: 'payment_failures_total', help: 'Number of failed payments', labelNames: ['code'] })` once, then record each failure with `paymentFailures.inc({ code: error.code })`.
 
 Be very careful with **cardinality** here. If the `code` label can have thousands of unique values, such as stack traces, it will overload Prometheus. Always make sure label values stay within a bounded range. If you need to track high-cardinality data, use logs instead of metrics.
 
 ### 19.5.5 Metric Initialization and "Zeroing"
-A common monitoring problem is that metrics do not appear in Prometheus until they are recorded for the first time. This can make dashboards look "empty" or break rate calculations. To solve this, it is a good idea to pre-register the required counters, gauges, and histograms during application startup.
+A common monitoring problem is that metrics do not appear in Prometheus until they are recorded for the first time. This can make dashboards look "empty" or break rate calculations. To solve this, it is a good idea to pre-register the required counters, gauges, and histograms during application startup. This startup or provider-construction phase is also where you should call `MetricsService.counter(...)`, `gauge(...)`, and `histogram(...)` once so later request handlers only reuse the collector objects.
 
 ## 19.6 Securing the Metrics Endpoint
 In production, you likely do not want to expose internal metrics to the general public. Metrics can reveal sensitive information about traffic patterns, user growth, and internal architecture. You can protect the endpoint with custom Middleware or Fluo's built-in security features.

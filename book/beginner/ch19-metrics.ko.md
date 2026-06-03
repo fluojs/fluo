@@ -143,44 +143,59 @@ MetricsModule.forRoot({
 import { Inject } from '@fluojs/core';
 import { MetricsService } from '@fluojs/metrics';
 
+type CreatePostInput = {
+  content: string;
+  title: string;
+};
+
 @Inject(MetricsService)
 export class PostService {
-  constructor(private readonly metrics: MetricsService) {}
+  private readonly postsCreated: ReturnType<MetricsService['counter']>;
 
-  async create(data: any) {
-    const post = await this.prisma.post.create({ data });
-     
-     // 새 포스트가 생성될 때마다 카운터를 증가시킵니다.
-    this.metrics.counter({
+  constructor(metrics: MetricsService) {
+    this.postsCreated = metrics.counter({
       name: 'blog_posts_created_total',
       help: '생성된 블로그 게시물 수',
-    }).inc();
-    
+    });
+  }
+
+  async create(data: CreatePostInput) {
+    const post = await this.prisma.post.create({ data });
+
+    // 새 포스트가 생성될 때마다 기존 카운터를 재사용합니다.
+    this.postsCreated.inc();
+
     return post;
   }
 }
 ```
 
+카운터는 service construction 또는 application startup 중 한 번만 생성하고, 반환된 collector를 재사용하세요. 같은 metric name으로 `MetricsService.counter(...)`를 반복 호출하면 Prometheus collector를 다시 만들려고 하며, Registry 안에서 metric name은 고유해야 하므로 빠르게 실패합니다.
+
 ### Gauge: Measuring Current State
 올라가거나 내려갈 수 있는 값(예: 활성 웹소켓 연결 수, 처리 대기 중인 큐의 아이템 수, 현재 로그인 중인 사용자 수)에는 `Gauge`를 사용하세요. 게이지는 특정 시점의 스냅샷을 나타냅니다.
 
 ```typescript
-// 현재 값을 직접 설정합니다.
-this.metrics.gauge({
+const activeSessions = metrics.gauge({
   name: 'active_sessions_count',
   help: '현재 활성 세션 수',
-}).set(currentSessions);
+});
+
+// 이후 현재 값을 직접 설정합니다.
+activeSessions.set(currentSessions);
 ```
 
 ### Histogram: Measuring Distributions
 퍼센타일을 계산해야 하는 기간이나 크기(예: 백그라운드 작업 처리 시간, 업로드된 이미지의 크기, 검색 결과의 아이템 수)에는 `Histogram`을 사용하세요.
 
 ```typescript
-// 업로드된 파일 크기를 관측합니다.
-this.metrics.histogram({
+const imageUploadSize = metrics.histogram({
   name: 'image_upload_size_bytes',
   help: '업로드된 이미지 크기',
-}).observe(file.size);
+});
+
+// 이후 업로드된 파일 크기를 관측합니다.
+imageUploadSize.observe(file.size);
 ```
 
 ### 19.5.1 Labels: Adding Dimension to Data
@@ -199,12 +214,12 @@ this.metrics.histogram({
 예: `fluoblog_posts_created_total`. 일관된 명명 규칙은 애플리케이션이 수백 개의 서로 다른 메트릭으로 성장하더라도 Grafana에서 메트릭을 찾고 쿼리하는 것을 훨씬 쉽게 만들어 줍니다.
 
 ### 19.5.4 Advanced Label Management: Dynamic Labels
-런타임 전까지 라벨 값을 알 수 없는 경우도 있습니다. Fluo의 메트릭 서비스는 값을 기록할 때 동적으로 라벨을 전달할 수 있게 합니다. 예를 들어 실패한 결제의 `error_code`를 추적할 수 있습니다: `metrics.counter({ name: 'payment_failures_total', help: '실패한 결제 수', labelNames: ['code'] }).inc({ code: error.code })`.
+런타임 전까지 라벨 값을 알 수 없는 경우도 있습니다. Fluo의 메트릭 서비스는 값을 기록할 때 동적으로 라벨을 전달할 수 있게 합니다. 예를 들어 `const paymentFailures = metrics.counter({ name: 'payment_failures_total', help: '실패한 결제 수', labelNames: ['code'] })`를 한 번 생성한 뒤, 각 실패를 `paymentFailures.inc({ code: error.code })`로 기록할 수 있습니다.
 
 여기서 **카디널리티(Cardinality)**를 매우 주의해야 합니다. 만약 `code` 라벨이 수천 개의 고유한 값(예: 스택 트레이스)을 가질 수 있다면 Prometheus에 과부하를 줄 것입니다. 항상 라벨 값이 제한된 범위 내에 있도록 보장하십시오. 고카디널리티 데이터를 추적해야 한다면 메트릭 대신 로그를 사용하세요.
 
 ### 19.5.5 Metric Initialization and "Zeroing"
-모니터링에서 흔히 발생하는 문제는 메트릭이 처음 기록되기 전까지 Prometheus에 나타나지 않는다는 점입니다. 이로 인해 대시보드가 "비어" 보이거나 비율(rate) 계산이 깨질 수 있습니다. 이를 해결하려면 애플리케이션 시작 중에 필요한 카운터, 게이지, 히스토그램을 미리 등록해 두는 것이 좋습니다.
+모니터링에서 흔히 발생하는 문제는 메트릭이 처음 기록되기 전까지 Prometheus에 나타나지 않는다는 점입니다. 이로 인해 대시보드가 "비어" 보이거나 비율(rate) 계산이 깨질 수 있습니다. 이를 해결하려면 애플리케이션 시작 중에 필요한 카운터, 게이지, 히스토그램을 미리 등록해 두는 것이 좋습니다. 이 startup 또는 provider-construction 단계에서 `MetricsService.counter(...)`, `gauge(...)`, `histogram(...)`을 한 번만 호출하고, 이후 request handler는 collector 객체만 재사용해야 합니다.
 
 ## 19.6 Securing the Metrics Endpoint
 프로덕션 환경에서는 일반 대중에게 내부 메트릭을 공개하고 싶지 않을 것입니다. 메트릭은 트래픽 패턴, 사용자 증가세, 내부 아키텍처에 대한 민감한 정보를 드러낼 수 있습니다. 커스텀 미들웨어나 Fluo의 내장 보안 기능을 사용하여 엔드포인트를 보호할 수 있습니다.
