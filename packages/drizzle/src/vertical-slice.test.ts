@@ -12,7 +12,7 @@ import {
   type FrameworkResponse,
 } from '@fluojs/http';
 
-import { DrizzleModule, DrizzleDatabase, Transaction } from './index.js';
+import { DrizzleModule, DrizzleDatabase, Transaction, type DrizzleDatabaseFacade } from './index.js';
 
 function createResponse(events?: string[]): FrameworkResponse & { body?: unknown } {
   return {
@@ -112,10 +112,10 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
 
     @Inject(DrizzleDatabase)
     class UserRepository {
-      constructor(private readonly db: DrizzleDatabase<typeof database, typeof transactionDatabase>) {}
+      constructor(private readonly db: DrizzleDatabaseFacade<typeof database, typeof transactionDatabase>) {}
 
       async create(input: CreateUserRequest) {
-        return (this.db as unknown as typeof database).insert('users').values({
+        return this.db.insert('users').values({
           email: input.email,
           name: input.name,
         });
@@ -207,10 +207,10 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
 
     @Inject(DrizzleDatabase)
     class UserRepository {
-      constructor(private readonly db: DrizzleDatabase<typeof database, typeof transactionDatabase>) {}
+      constructor(private readonly db: DrizzleDatabaseFacade<typeof database, typeof transactionDatabase>) {}
 
       async create(input: CreateUserRequest) {
-        return (this.db as unknown as typeof database).insert('users').values(input);
+        return this.db.insert('users').values(input);
       }
     }
 

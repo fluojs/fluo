@@ -142,7 +142,19 @@ export class DrizzleDatabase<
     private readonly databaseOptions: DrizzleRuntimeOptions = { strictTransactions: false },
   ) {}
 
-  /** Creates the DI-facing facade that forwards unknown Drizzle API properties to the ambient `current()` handle. */
+  /**
+   * Creates the low-level DI facade that forwards unknown Drizzle API properties to the ambient `current()` handle.
+   *
+   * @remarks
+   * This compatibility helper is used by `DrizzleModule` provider wiring. Application code should prefer
+   * `DrizzleModule.forRoot(...)` or `DrizzleModule.forRootAsync(...)`, then type injected repository handles as
+   * `DrizzleDatabaseFacade<TDatabase>` when direct Drizzle methods are needed.
+   *
+   * @param database Root Drizzle database handle registered in the module.
+   * @param dispose Optional shutdown hook used to close pools or driver resources.
+   * @param databaseOptions Runtime transaction options consumed by the Fluo wrapper.
+   * @returns A transaction-aware facade that exposes wrapper methods plus the root Drizzle handle surface.
+   */
   static createFacade<
     TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
     TTransactionDatabase = TDatabase,
@@ -151,10 +163,10 @@ export class DrizzleDatabase<
     database: TDatabase,
     dispose?: (database: TDatabase) => Promise<void> | void,
     databaseOptions: DrizzleRuntimeOptions = { strictTransactions: false },
-  ): DrizzleDatabase<TDatabase, TTransactionDatabase, TTransactionOptions> {
+  ): DrizzleDatabaseFacade<TDatabase, TTransactionDatabase, TTransactionOptions> {
     return createCurrentlessDrizzleFacade(
       new DrizzleDatabase<TDatabase, TTransactionDatabase, TTransactionOptions>(database, dispose, databaseOptions),
-    );
+    ) as DrizzleDatabaseFacade<TDatabase, TTransactionDatabase, TTransactionOptions>;
   }
 
   /**
@@ -455,3 +467,22 @@ export class DrizzleDatabase<
     return this.database.transaction.bind(this.database) as DrizzleTransactionRunner<TTransactionDatabase, TTransactionOptions>;
   }
 }
+
+/**
+ * Injection-facing Drizzle facade type that combines the Fluo wrapper methods with the registered database handle.
+ *
+ * @remarks
+ * `DrizzleModule` resolves `DrizzleDatabase` to a proxy that forwards unknown properties to `current()`. Use this type
+ * in repositories that call Drizzle query methods directly, and use `DrizzleDatabase<TDatabase>` when only the wrapper
+ * methods (`current()`, `transaction(...)`, `requestTransaction(...)`, and status snapshots) are needed.
+ *
+ * @typeParam TDatabase Root Drizzle database handle registered in the module.
+ * @typeParam TTransactionDatabase Transaction-scoped database handle resolved inside `database.transaction(...)` callbacks.
+ * @typeParam TTransactionOptions Options forwarded to the underlying Drizzle transaction runner.
+ */
+export type DrizzleDatabaseFacade<
+  TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
+  TTransactionDatabase = TDatabase,
+  TTransactionOptions = unknown,
+> = DrizzleDatabase<TDatabase, TTransactionDatabase, TTransactionOptions> &
+  Omit<TDatabase, keyof DrizzleDatabase<TDatabase, TTransactionDatabase, TTransactionOptions>>;
