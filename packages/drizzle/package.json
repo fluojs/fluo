@@ -44,7 +44,6 @@
   },
   "dependencies": {
     "@fluojs/core": "workspace:^",
-    "@fluojs/http": "workspace:^",
     "@fluojs/di": "workspace:^",
     "@fluojs/runtime": "workspace:^"
   },
@@ -57,6 +56,7 @@
     }
   },
   "devDependencies": {
+    "@fluojs/http": "workspace:^",
     "vitest": "^3.2.4"
   }
 }
