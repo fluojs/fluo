@@ -108,7 +108,7 @@ class UserSaga implements ISaga<UserCreatedEvent> {
 
 Saga execution fails fast with `SagaTopologyError` when an in-process publish chain re-enters the same saga route cyclically or exceeds 32 nested saga hops. Multi-stage sagas may still react to different event types in sequence, but in-process saga graphs must stay acyclic overall; move intentionally cyclic or long-running feedback loops behind an external transport, scheduler, or other bounded boundary.
 
-When a saga, command handler, query handler, or event handler performs another CQRS `execute(...)`, `publish(...)`, or `publishAll(...)` call, pass the optional `CqrsDispatchContext` argument through unchanged. CQRS uses this explicit runtime-agnostic context to keep saga topology checks intact across nested dispatch without relying on Node.js async-local APIs.
+When a saga, command handler, query handler, or event handler performs another CQRS `execute(...)`, `publish(...)`, or `publishAll(...)` call, pass the optional `CqrsDispatchContext` argument through unchanged. CQRS uses this explicit runtime-agnostic context to keep saga topology checks intact across nested dispatch without relying on Node.js async-local APIs. The context is opaque: do not construct it, inspect it, or depend on topology fields because those fields are internal runtime state.
 
 ### Event Publishing Contracts
 
@@ -152,7 +152,7 @@ class TokenInjectedService {
 ### Interfaces
 - `ICommand`, `IQuery<T>`, `IEvent`: Marker interfaces for messages.
 - `ICommandHandler<C, R>`, `IQueryHandler<Q, R>`, `IEventHandler<E>`, `ISaga<E>`: Handler contracts.
-- `CqrsDispatchContext`: Opaque optional context value to pass through nested CQRS dispatch from handlers and sagas.
+- `CqrsDispatchContext`: Opaque optional context value to pass through nested CQRS dispatch from handlers and sagas. It exposes no public fields; provider assembly remains behind `CqrsModule.forRoot(...)` rather than a public `createCqrsProviders(...)` helper.
 
 ### Errors
 - `CommandHandlerNotFoundException`, `QueryHandlerNotFoundException`: Raised when a bus has no matching handler.
