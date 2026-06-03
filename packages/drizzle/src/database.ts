@@ -62,6 +62,27 @@ type RequestAbortSignalView = {
   signal: AbortSignal;
 };
 
+function createCurrentlessDrizzleFacade<TTarget extends { current(): unknown }>(
+  target: TTarget,
+): TTarget {
+  return new Proxy(target, {
+    get(database, prop, receiver) {
+      if (prop in database) {
+        return Reflect.get(database, prop, receiver);
+      }
+
+      const currentDatabase = database.current() as Record<PropertyKey, unknown>;
+      const value = Reflect.get(currentDatabase, prop, currentDatabase);
+
+      if (typeof value === 'function') {
+        return value.bind(currentDatabase);
+      }
+
+      return value;
+    },
+  });
+}
+
 function createRequestAbortSignalView(parentSignal: AbortSignal, signal?: AbortSignal): RequestAbortSignalView {
   if (!signal) {
     return {
@@ -120,6 +141,21 @@ export class DrizzleDatabase<
     private readonly dispose?: (database: TDatabase) => Promise<void> | void,
     private readonly databaseOptions: DrizzleRuntimeOptions = { strictTransactions: false },
   ) {}
+
+  /** Creates the DI-facing facade that forwards unknown Drizzle API properties to the ambient `current()` handle. */
+  static createFacade<
+    TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
+    TTransactionDatabase = TDatabase,
+    TTransactionOptions = unknown,
+  >(
+    database: TDatabase,
+    dispose?: (database: TDatabase) => Promise<void> | void,
+    databaseOptions: DrizzleRuntimeOptions = { strictTransactions: false },
+  ): DrizzleDatabase<TDatabase, TTransactionDatabase, TTransactionOptions> {
+    return createCurrentlessDrizzleFacade(
+      new DrizzleDatabase<TDatabase, TTransactionDatabase, TTransactionOptions>(database, dispose, databaseOptions),
+    );
+  }
 
   /**
    * Returns the active transaction handle when present, otherwise the root Drizzle database handle.

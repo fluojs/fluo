@@ -81,7 +81,16 @@ function createDrizzleRuntimeProviders<
           (options as ResolvedDrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>).strictTransactions,
         ),
     },
-    DrizzleDatabase,
+    {
+      inject: [DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS],
+      provide: DrizzleDatabase,
+      useFactory: (database: unknown, dispose: unknown, databaseOptions: unknown) =>
+        DrizzleDatabase.createFacade<TDatabase, TTransactionDatabase, TTransactionOptions>(
+          database as TDatabase,
+          dispose as ((database: TDatabase) => Promise<void> | void) | undefined,
+          databaseOptions as DrizzleRuntimeOptions,
+        ),
+    },
     {
       provide: DRIZZLE_HANDLE_PROVIDER,
       useExisting: DrizzleDatabase,
