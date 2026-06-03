@@ -103,7 +103,7 @@ export class UserRepository {
 }
 ```
 
-Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying MongoDB session. Note that `doc.save()` is not automatically session-aware in v1; use `model.create()` or `model.findOneAndUpdate()` for automatic transaction participation.
+Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying MongoDB session. Note that `doc.save()` is not automatically session-aware in v1; use the supported facade operations (`model.create()`, `model.find()`, `model.findOne()`, `model.aggregate()`, or `model.bulkWrite()`) for automatic transaction participation.
 
 ### Manual Transactions and currentSession()
 
