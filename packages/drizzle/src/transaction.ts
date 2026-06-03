@@ -9,7 +9,7 @@ type TransactionAccessor<THost, TTransactionOptions> = (
 type TransactionMethod<THost, TArgs extends unknown[], TResult> = (
   this: THost,
   ...args: TArgs
-) => TResult | Promise<TResult>;
+) => Promise<TResult>;
 
 function isTransactionCapableDrizzle<TTransactionOptions>(
   value: unknown,
@@ -73,7 +73,7 @@ export function Transaction<THost, TTransactionOptions = unknown>(
   return function <TArgs extends unknown[], TResult>(
     value: TransactionMethod<THost, TArgs, TResult>,
     context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TResult>>,
-  ): TransactionMethod<THost, TArgs, Promise<TResult>> {
+  ): TransactionMethod<THost, TArgs, TResult> {
     if (context.kind !== 'method') {
       throw new Error('@Transaction() can only decorate methods.');
     }
@@ -82,7 +82,7 @@ export function Transaction<THost, TTransactionOptions = unknown>(
       const drizzleDatabase = accessor ? accessor(this) : resolveDefaultTransactionTarget<THost, TTransactionOptions>(this);
 
       return drizzleDatabase.transaction(
-        () => Promise.resolve(value.apply(this, args)),
+        () => value.apply(this, args),
         transactionOptions,
       );
     };

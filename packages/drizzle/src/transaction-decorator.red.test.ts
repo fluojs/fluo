@@ -2,15 +2,15 @@ import { Inject } from '@fluojs/core';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
-import { DrizzleDatabase, DrizzleModule } from './index.js';
+import { DrizzleDatabase, DrizzleModule, Transaction } from './index.js';
 
 describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 impl)', () => {
   it('exports Transaction and opens a transaction for current-less repository calls', async () => {
     // TODO: RED - will pass after Task 8 implementation
       const drizzlePackage = await import('./index.js');
-    const Transaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
+    const ExportedTransaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
 
-    expect(Transaction).toBeTypeOf('function');
+    expect(ExportedTransaction).toBeTypeOf('function');
 
     const events: string[] = [];
     const users = { name: 'users' };
@@ -78,7 +78,7 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
     class UserService {
       constructor(private readonly repo: UserRepository) {}
 
-      @((Transaction as any)())
+      @Transaction()
       async create(email: string) {
         await this.repo.findAll();
         return this.repo.create(email);
@@ -115,9 +115,9 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
   it('reuses an active transaction for nested @Transaction() calls', async () => {
     // TODO: RED - will pass after Task 8 implementation
       const drizzlePackage = await import('./index.js');
-    const Transaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
+    const ExportedTransaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
 
-    expect(Transaction).toBeTypeOf('function');
+    expect(ExportedTransaction).toBeTypeOf('function');
 
     const events: string[] = [];
     const users = { name: 'users' };
@@ -163,12 +163,12 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
     class UserService {
       constructor(private readonly repo: UserRepository) {}
 
-      @((Transaction as any)())
+      @Transaction()
       async outer(email: string) {
         return this.inner(email);
       }
 
-      @((Transaction as any)())
+      @Transaction()
       async inner(email: string) {
         return this.repo.create(email);
       }
@@ -197,9 +197,9 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
   it('rejects nested @Transaction() calls with options while a context is already active', async () => {
     // TODO: RED - will pass after Task 8 implementation
       const drizzlePackage = await import('./index.js');
-    const Transaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
+    const ExportedTransaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
 
-    expect(Transaction).toBeTypeOf('function');
+    expect(ExportedTransaction).toBeTypeOf('function');
 
     const events: string[] = [];
     const users = { name: 'users' };
@@ -245,14 +245,14 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
     class UserService {
       constructor(private readonly repo: UserRepository) {}
 
-      @((Transaction as any)())
+      @Transaction()
       async outer(email: string) {
         return this.inner(email);
       }
 
-      @((Transaction as any)({
+      @Transaction({
         isolationLevel: 'Serializable',
-      }))
+      })
       async inner(email: string) {
         return this.repo.create(email);
       }
@@ -279,9 +279,9 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
 describe('@fluojs/drizzle Transaction decorator — named/accessor contract', () => {
   it('uses explicit accessor to select a specific DrizzleDatabase', async () => {
       const drizzlePackage = await import('./index.js');
-    const Transaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
+    const ExportedTransaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
 
-    expect(Transaction).toBeTypeOf('function');
+    expect(ExportedTransaction).toBeTypeOf('function');
 
     const primaryEvents: string[] = [];
     const analyticsEvents: string[] = [];
@@ -325,7 +325,7 @@ describe('@fluojs/drizzle Transaction decorator — named/accessor contract', ()
 
       constructor(private readonly db: DrizzleDatabase<typeof primaryDatabase, typeof primaryTransactionDatabase>) {}
 
-      @((Transaction as any)((self: MultiDatabaseService) => self.analyticsDb))
+      @Transaction((self: MultiDatabaseService) => self.analyticsDb)
       async loadAnalytics() {
         return analyticsEvents.push('analytics:work');
       }
@@ -352,9 +352,9 @@ describe('@fluojs/drizzle Transaction decorator — named/accessor contract', ()
 
   it('does not confuse two Drizzle databases when only one accessor is decorated', async () => {
       const drizzlePackage = await import('./index.js');
-    const Transaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
+    const ExportedTransaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
 
-    expect(Transaction).toBeTypeOf('function');
+    expect(ExportedTransaction).toBeTypeOf('function');
 
     const primaryEvents: string[] = [];
     const analyticsEvents: string[] = [];
@@ -392,7 +392,7 @@ describe('@fluojs/drizzle Transaction decorator — named/accessor contract', ()
 
       constructor(private readonly db: DrizzleDatabase<typeof primaryDatabase, typeof primaryTransactionDatabase2>) {}
 
-      @((Transaction as any)((self: IsolatedService) => self.analyticsDb))
+      @Transaction((self: IsolatedService) => self.analyticsDb)
       async analyticsWork() {
         analyticsEvents.push('analytics:work');
       }
