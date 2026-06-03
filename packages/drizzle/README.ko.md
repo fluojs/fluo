@@ -173,6 +173,7 @@ defineModule(ManualDrizzleModule, {
 
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`
+- `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
 - `createDrizzlePlatformStatusSnapshot(...)`
 - `DrizzleDatabaseLike`
@@ -180,6 +181,8 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleHandleProvider`
 
 `DRIZZLE_HANDLE_PROVIDER`는 lifecycle-aware `DrizzleDatabase` wrapper를 가리키는 alias token입니다. `@fluojs/terminus` 같은 health integration은 이 token을 통해 raw database ping으로 fallback하기 전에 `createPlatformStatusSnapshot()`을 읽습니다.
+
+`Transaction`은 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 기본적으로 ambient `DrizzleDatabase`를 resolve하고, 명시적 client 선택에는 accessor를 받을 수 있으며, 외부 경계에는 Drizzle transaction option을 전달할 수 있습니다.
 
 ### `DrizzleModule`
 
