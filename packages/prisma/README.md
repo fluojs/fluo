@@ -228,6 +228,10 @@ defineModule(ManualPrismaModule, {
 - `requestTransaction(fn, signal?, options?): Promise<T>`
   - Specialized transaction boundary for HTTP request lifecycles. It is abort-aware, drains during shutdown before disconnect, and retries without `signal` when a Prisma client rejects that option. Like `transaction()`, nested calls reuse the active transaction context and reject nested options to avoid silently ignoring transaction settings.
 
+### `Transaction`
+
+- Standard TC39 method decorator for service-layer transaction boundaries. It resolves the ambient `PrismaService` by default, accepts an accessor for named clients, and can forward Prisma transaction options to the outer boundary.
+
 ### `PRISMA_CLIENT` (Token)
 
 Injectable token for the raw `PrismaClient` instance.

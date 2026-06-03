@@ -225,6 +225,10 @@ defineModule(ManualPrismaModule, {
 - `requestTransaction(fn, signal?, options?): Promise<T>`
   - HTTP 요청 라이프사이클에 특화된 트랜잭션 경계를 실행합니다. Abort를 인식하고, shutdown 중에는 disconnect 전에 열린 요청 트랜잭션을 drain하며, Prisma client가 `signal` 옵션을 거부하면 해당 옵션 없이 재시도합니다. `transaction()`과 마찬가지로 중첩 호출은 활성 트랜잭션 컨텍스트를 재사용하고, 트랜잭션 설정을 조용히 무시하지 않도록 중첩 옵션을 거부합니다.
 
+### `Transaction`
+
+- 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 기본적으로 ambient `PrismaService`를 resolve하고, 이름 있는 client에는 accessor를 받을 수 있으며, 외부 경계에는 Prisma transaction option을 전달할 수 있습니다.
+
 ### `PRISMA_CLIENT` (Token)
 
 원시 `PrismaClient` 인스턴스를 위한 주입 토큰입니다.
@@ -259,7 +263,7 @@ defineModule(ManualPrismaModule, {
 ## 관련 패키지
 
 - `@fluojs/runtime`: 애플리케이션 라이프사이클 훅을 관리합니다.
-- `@fluojs/http`: 인터셉터 시스템을 제공합니다.
+- `@fluojs/http`: 명시적 `requestTransaction(...)` 경계와 함께 사용할 수 있는 요청 라이프사이클 primitive를 제공합니다.
 - `@fluojs/terminus`: Prisma를 위한 헬스 인디케이터를 제공합니다.
 
 ## 예제 소스
