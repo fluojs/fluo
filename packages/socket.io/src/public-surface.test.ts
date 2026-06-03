@@ -8,7 +8,12 @@ import type { WebSocketRoomService } from '@fluojs/websockets';
 
 import * as socketIo from './index.js';
 import type { SocketIoHandshakeRequest as RootSocketIoHandshakeRequest } from './index.js';
-import type { SocketIoHandshakeRequest, SocketIoRoomService } from './types.js';
+import type {
+  SocketIoConnectionGuardContext,
+  SocketIoHandshakeRequest,
+  SocketIoMessageGuardContext,
+  SocketIoRoomService,
+} from './types.js';
 
 const sourceDir = dirname(fileURLToPath(import.meta.url));
 
@@ -61,5 +66,7 @@ describe('@fluojs/socket.io public surface', () => {
   it('documents the exported handshake request type used by guard contexts', () => {
     expectTypeOf<SocketIoHandshakeRequest>().toEqualTypeOf<import('node:http').IncomingMessage | Request>();
     expectTypeOf<RootSocketIoHandshakeRequest>().toEqualTypeOf<SocketIoHandshakeRequest>();
+    expectTypeOf<SocketIoConnectionGuardContext['request']>().toEqualTypeOf<SocketIoHandshakeRequest>();
+    expectTypeOf<SocketIoMessageGuardContext['request']>().toEqualTypeOf<SocketIoHandshakeRequest>();
   });
 });

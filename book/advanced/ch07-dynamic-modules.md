@@ -409,11 +409,11 @@ static forRoot(options: RedisModuleOptions): ModuleType {
 
 This excerpt shows that a Dynamic Module does not stop at calculating Providers. The caller's `name` option changes the raw client Token and facade service Token, and only those two go onto the export surface.
 
-`SocketIoModule.forRoot()` follows a similar pattern. `path:packages/socket.io/src/module.ts:11-31` defines an internal options Token, a lifecycle service, and a Factory Provider for the raw server. It then uses an **alias Provider** (`useExisting`) to expose the `SOCKETIO_ROOM_SERVICE` Token. Finally, `path:packages/socket.io/src/module.ts:54-61` exports only the public room-service and raw-server Tokens while hiding internal implementation details.
+`SocketIoModule.forRoot()` follows a similar pattern. `path:packages/socket.io/src/module.ts:12-31` defines an internal options Token, a lifecycle service, and an async Factory Provider for the raw server. It then uses an **alias Provider** (`useExisting`) to expose the `SOCKETIO_ROOM_SERVICE` Token. Finally, `path:packages/socket.io/src/module.ts:55-64` exports only the public room-service and raw-server Tokens while hiding internal implementation details.
 
 The Socket.IO case uses `useExisting` when exposing an internal lifecycle service through a public room-service Token.
 
-`path:packages/socket.io/src/module.ts:11-31`
+`path:packages/socket.io/src/module.ts:12-31`
 ```typescript
 function createSocketIoProviderSet(options: SocketIoModuleOptions = {}) {
   return [
@@ -427,7 +427,7 @@ function createSocketIoProviderSet(options: SocketIoModuleOptions = {}) {
     },
     {
       provide: SOCKETIO_SERVER,
-      useFactory: (service: unknown) => (service as SocketIoLifecycleService).getServer(),
+      useFactory: async (service: unknown) => await (service as SocketIoLifecycleService).getServerAsync(),
       inject: [SocketIoLifecycleService],
     },
     {
