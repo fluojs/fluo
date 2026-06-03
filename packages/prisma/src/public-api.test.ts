@@ -7,6 +7,7 @@ describe('@fluojs/prisma public API surface', () => {
     expect(prismaPublicApi).toHaveProperty('PrismaModule');
     expect(prismaPublicApi).toHaveProperty('PrismaService');
     expect(prismaPublicApi).toHaveProperty('PrismaTransactionInterceptor');
+    expect(prismaPublicApi).toHaveProperty('Transaction');
     expect(prismaPublicApi).toHaveProperty('createPrismaPlatformStatusSnapshot');
     expect(prismaPublicApi).toHaveProperty('PRISMA_CLIENT');
     expect(prismaPublicApi).toHaveProperty('PRISMA_OPTIONS');
