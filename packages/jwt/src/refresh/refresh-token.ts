@@ -61,7 +61,12 @@ export interface RefreshTokenOptions {
 }
 
 /**
- * Normalize refresh token options.
+ * Normalize refresh token options for legacy root-import callers.
+ *
+ * @deprecated This helper is retained only for compatibility with existing
+ * root `@fluojs/jwt` imports. Prefer configuring refresh tokens through
+ * `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)` and resolving
+ * `RefreshTokenService` instead of calling package normalization internals.
  *
  * @param options The options.
  * @returns The normalize refresh token options result.
