@@ -372,6 +372,36 @@ describe('enforceContractCompanionUpdates', () => {
 });
 
 describe('repository governance contracts', () => {
+  it('keeps Mongoose ambient-session facade scope discoverable across governed docs', () => {
+    const docsContext = readFileSync(resolve(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const docsContextKo = readFileSync(resolve(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const transactionsDoc = readFileSync(resolve(repoRoot, 'docs/architecture/transactions.md'), 'utf8');
+    const transactionsDocKo = readFileSync(resolve(repoRoot, 'docs/architecture/transactions.ko.md'), 'utf8');
+    const packageSurface = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const packageSurfaceKo = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const mongooseReadme = readFileSync(resolve(repoRoot, 'packages/mongoose/README.md'), 'utf8');
+    const mongooseReadmeKo = readFileSync(resolve(repoRoot, 'packages/mongoose/README.ko.md'), 'utf8');
+
+    for (const source of [docsContext, transactionsDoc, packageSurface, mongooseReadme]) {
+      expect(source).toContain('create`');
+      expect(source).toContain('findOne`');
+      expect(source).toContain('aggregate`');
+      expect(source).toContain('bulkWrite`');
+    }
+
+    for (const source of [docsContextKo, transactionsDocKo, packageSurfaceKo, mongooseReadmeKo]) {
+      expect(source).toContain('create`');
+      expect(source).toContain('findOne`');
+      expect(source).toContain('aggregate`');
+      expect(source).toContain('bulkWrite`');
+    }
+
+    expect(transactionsDoc).toContain('Unsupported model methods, `doc.save()`');
+    expect(transactionsDocKo).toContain('지원되지 않는 model 메서드, `doc.save()`');
+    expect(mongooseReadme).toContain('only merges the ambient `{ session }` into the correct options argument');
+    expect(mongooseReadmeKo).toContain('올바른 options 인자에 ambient `{ session }`만 병합');
+  });
+
   it('keeps Redis status helpers and Queue global scope controls discoverable across governed docs', () => {
     const docsContext = readFileSync(resolve(repoRoot, 'docs/CONTEXT.md'), 'utf8');
     const docsContextKo = readFileSync(resolve(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');

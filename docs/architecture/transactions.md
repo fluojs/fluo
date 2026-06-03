@@ -40,7 +40,7 @@ Any new ORM integration package added to the fluo ecosystem must export a `@Tran
 | --- | --- | --- |
 | Service -> Repository flow | Decorators on services establish the boundary; repositories consume the client without needing to pass sessions or access `current()` explicitly. | `packages/core/src/decorators/transaction.ts` (abstract), `packages/mongoose/src/connection.ts` (auto-session) |
 | Root vs ambient handle | Prisma and Drizzle persistence handles resolve the active transaction handle when one exists, otherwise the root client/database. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
-| Mongoose session auto-binding | Mongoose operations automatically attach the ambient transaction session. Explicit session passing is only required for advanced cross-connection scenarios. | `packages/mongoose/src/connection.ts` |
+| Mongoose session auto-binding | Supported `MongooseConnection.model(...)` facade operations (`create`, `find`, `findOne`, `aggregate`, `bulkWrite`) automatically attach the ambient transaction session. Unsupported model methods, `doc.save()`, and advanced cross-connection scenarios require explicit session passing. | `packages/mongoose/src/connection.ts` |
 | Nested boundary reuse | If a transaction is already active, `@Transaction()` reuses the existing boundary instead of opening a new one. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
 | Nested options restriction | Prisma and Drizzle reject nested transaction options while an ambient transaction is already active. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
 | Strict mode | Integration packages can be configured to throw when the registered client/connection does not support transactions. Without strict mode, transaction helpers fall back to direct execution. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
@@ -71,5 +71,5 @@ Any new ORM integration package added to the fluo ecosystem must export a `@Tran
 ## Constraints
 
 - The primary path for transaction management is the Service layer via `@Transaction()`.
-- Mongoose operations automatically participate in the ambient transaction session; explicit session passing is discouraged for standard flows.
+- Supported Mongoose facade operations automatically participate in the ambient transaction session; explicit session passing is discouraged for those standard flows and still required for unsupported model methods.
 - Rollback is exception-driven. If the method wrapped by `@Transaction()` throws, the transaction is aborted.

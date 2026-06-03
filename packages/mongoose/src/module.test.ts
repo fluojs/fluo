@@ -154,6 +154,53 @@ describe('@fluojs/mongoose', () => {
     await app.close();
   });
 
+  it('uses the owning wrapper session for shared raw model facades and unregisters owners on shutdown', async () => {
+    const events: string[] = [];
+    const firstSession = createFakeSession(events);
+    const secondSession = createFakeSession(events);
+    const createSessions: Array<MongooseSessionLike | undefined> = [];
+    let sessionCount = 0;
+
+    const UserModel = {
+      async create(_docs: unknown[], options?: { session?: MongooseSessionLike }) {
+        createSessions.push(options?.session);
+
+        return [];
+      },
+    };
+
+    const connection = {
+      model(_name: string) {
+        return UserModel;
+      },
+      async startSession() {
+        sessionCount += 1;
+
+        return sessionCount === 1 ? firstSession : secondSession;
+      },
+    };
+    const originalModel = connection.model;
+    const firstConnection = new MongooseConnection(connection);
+    const secondConnection = new MongooseConnection(connection);
+
+    expect(connection.model).not.toBe(originalModel);
+
+    await firstConnection.transaction(async () => {
+      await secondConnection.transaction(async () => {
+        const User = secondConnection.current().model('User');
+        await User.create([{ name: 'Grace' }]);
+      });
+    });
+
+    expect(createSessions).toEqual([secondSession]);
+
+    await firstConnection.onApplicationShutdown();
+    expect(connection.model).not.toBe(originalModel);
+
+    await secondConnection.onApplicationShutdown();
+    expect(connection.model).toBe(originalModel);
+  });
+
   it('rolls back open request transactions before dispose on shutdown', async () => {
     const events: string[] = [];
     const session = createFakeSession(events);

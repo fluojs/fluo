@@ -4,6 +4,7 @@ import * as mongoosePublicApi from './index.js';
 import type {
   MongooseAsyncModuleOptions,
   MongooseConnectionLike,
+  MongooseHandleProvider,
   MongoosePlatformStatusSnapshotInput,
 } from './index.js';
 
@@ -32,5 +33,6 @@ describe('@fluojs/mongoose public API surface', () => {
     expectTypeOf<MongoosePlatformStatusSnapshotInput>().toHaveProperty('activeRequestTransactions');
     expectTypeOf<MongoosePlatformStatusSnapshotInput>().toHaveProperty('lifecycleState');
     expectTypeOf<MongoosePlatformStatusSnapshotInput>().toHaveProperty('supportsStartSession');
+    expectTypeOf<MongooseHandleProvider<MongooseConnectionLike>>().toHaveProperty('model');
   });
 });

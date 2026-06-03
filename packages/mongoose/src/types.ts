@@ -53,6 +53,14 @@ export interface MongooseHandleProvider<TConnection extends MongooseConnectionLi
   /** Returns the ambient Mongoose session for the current async context, when one exists. */
   currentSession(): MongooseSessionLike | undefined;
   /**
+   * Returns a Mongoose model handle, or a session-aware facade inside an active transaction.
+   *
+   * @param name Model name passed to the underlying Mongoose connection.
+   * @param args Additional model resolver arguments forwarded unchanged.
+   * @returns The root model outside transactions, or a model facade inside an active transaction boundary.
+   */
+  model(name: string, ...args: unknown[]): Record<PropertyKey, unknown>;
+  /**
    * Opens a Mongoose session transaction boundary around `fn`.
    *
    * @param fn Callback executed within the transaction scope.
