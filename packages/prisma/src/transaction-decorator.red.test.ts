@@ -2,7 +2,7 @@ import { Inject } from '@fluojs/core';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
-import { PrismaModule, PrismaService, Transaction, getPrismaServiceToken } from './index.js';
+import { PrismaModule, PrismaService, Transaction, getPrismaServiceToken, type PrismaServiceFacade } from './index.js';
 
 describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 impl)', () => {
   it('exports Transaction and opens a transaction for current-less repository calls', async () => {
@@ -44,10 +44,10 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
 
     @Inject(PrismaService)
     class UserRepository {
-      constructor(private readonly prisma: PrismaService<typeof client, typeof transactionClient>) {}
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client, typeof transactionClient>) {}
 
       async create(email: string) {
-        return (this.prisma as unknown as typeof client).user.create({ data: { email } });
+        return this.prisma.user.create({ data: { email } });
       }
     }
 
@@ -120,10 +120,10 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
 
     @Inject(PrismaService)
     class UserRepository {
-      constructor(private readonly prisma: PrismaService<typeof client, typeof transactionClient>) {}
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client, typeof transactionClient>) {}
 
       async create(email: string) {
-        return (this.prisma as unknown as typeof client).user.create({ data: { email } });
+        return this.prisma.user.create({ data: { email } });
       }
     }
 
@@ -198,10 +198,10 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
 
     @Inject(PrismaService)
     class QueryRepository {
-      constructor(private readonly prisma: PrismaService<typeof client, typeof transactionClient>) {}
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client, typeof transactionClient>) {}
 
       async load() {
-        return (this.prisma as unknown as typeof client).$queryRaw('select 1');
+        return this.prisma.$queryRaw('select 1');
       }
     }
 
@@ -368,9 +368,11 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
     )
     class MultiDatabaseService {
       constructor(
-        private readonly usersPrisma: PrismaService<typeof usersClient, typeof usersTransactionClient>,
+        usersPrisma: PrismaService<typeof usersClient, typeof usersTransactionClient>,
         private readonly analyticsPrisma: PrismaService<typeof analyticsClient, typeof analyticsTransactionClient>,
-      ) {}
+      ) {
+        void usersPrisma;
+      }
 
       @Transaction((self: MultiDatabaseService) => self.analyticsPrisma)
       async loadAnalytics() {
@@ -448,9 +450,11 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
     )
     class DualClientService {
       constructor(
-        private readonly usersPrisma: PrismaService<typeof usersClient>,
+        usersPrisma: PrismaService<typeof usersClient>,
         private readonly analyticsPrisma: PrismaService<typeof analyticsClient, typeof analyticsTransactionClient>,
-      ) {}
+      ) {
+        void usersPrisma;
+      }
 
       @Transaction((self: DualClientService) => self.analyticsPrisma)
       async decoratedAnalytics() {

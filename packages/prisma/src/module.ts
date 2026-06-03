@@ -1,4 +1,4 @@
-import { Inject, type AsyncModuleOptions, type Token } from '@fluojs/core';
+import type { AsyncModuleOptions, Token } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
@@ -36,6 +36,10 @@ type PrismaAsyncModuleOptions<
 };
 
 const PRISMA_NORMALIZED_OPTIONS = Symbol('fluo.prisma.normalized-options');
+
+type PrismaRuntimeOptions = {
+  strictTransactions: boolean;
+};
 
 function isObjectLike(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
@@ -86,26 +90,20 @@ function normalizePrismaModuleOptions<
   };
 }
 
-function createNamedPrismaServiceProvider<
+function createPrismaServiceProvider<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
   TTransactionClient,
   TTransactionOptions,
->(name: string): Provider[] {
-  const clientToken = getPrismaClientToken(name);
-  const optionsToken = getPrismaOptionsToken(name);
-  const serviceToken = getPrismaServiceToken(name);
-
-  class NamedPrismaService extends PrismaService<TClient, TTransactionClient, TTransactionOptions> {}
-
-  Inject(clientToken, optionsToken)(NamedPrismaService, {} as ClassDecoratorContext);
-
-  return [
-    NamedPrismaService,
-    {
-      provide: serviceToken,
-      useExisting: NamedPrismaService,
-    },
-  ];
+>(provide: Token, clientToken: Token, optionsToken: Token): Provider {
+  return {
+    inject: [clientToken, optionsToken],
+    provide,
+    useFactory: (client: unknown, serviceOptions: unknown) =>
+      PrismaService.createFacade<TClient, TTransactionClient, TTransactionOptions>(
+        client as TClient,
+        serviceOptions as PrismaRuntimeOptions,
+      ),
+  };
 }
 
 function createPrismaRuntimeProviders<
@@ -138,13 +136,23 @@ function createPrismaRuntimeProviders<
     },
     ...(name === undefined
       ? [
-        PrismaService,
+        createPrismaServiceProvider<TClient, TTransactionClient, TTransactionOptions>(
+          PrismaService,
+          clientToken,
+          optionsToken,
+        ),
         {
           provide: getPrismaServiceToken(),
           useExisting: PrismaService,
         },
       ]
-      : createNamedPrismaServiceProvider<TClient, TTransactionClient, TTransactionOptions>(name)),
+      : [
+        createPrismaServiceProvider<TClient, TTransactionClient, TTransactionOptions>(
+          getPrismaServiceToken(name),
+          clientToken,
+          optionsToken,
+        ),
+      ]),
   ];
 }
 
