@@ -132,6 +132,9 @@ export interface GrpcMicroserviceTransportOptions {
  * and exposes matching unary/server-stream/client-stream/bidi-stream client calls through one transport surface.
  */
 export class GrpcMicroserviceTransport implements MicroserviceTransport {
+  /** Indicates that gRPC owns server shutdown and cached client cleanup. */
+  readonly ownsResources = true;
+
   private bidiStreamHandler: TransportBidiStreamHandler | undefined;
   private clientStreamHandler: TransportClientStreamHandler | undefined;
   private closing = false;

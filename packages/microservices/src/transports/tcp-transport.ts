@@ -8,10 +8,15 @@ interface WireResponse {
   requestId: string;
 }
 
-interface TcpMicroserviceTransportOptions {
+/** Options for configuring the TCP microservice transport. */
+export interface TcpMicroserviceTransportOptions {
+  /** Host interface used for listening and outbound loopback connections. */
   host?: string;
+  /** Maximum newline-delimited frame size accepted by the transport. */
   maxFrameBytes?: number;
+  /** TCP port to bind. Use `0` to request an ephemeral listener port. */
   port: number;
+  /** Request timeout for outbound request-response sends. */
   requestTimeoutMs?: number;
 }
 
@@ -24,6 +29,9 @@ const DEFAULT_MAX_FRAME_BYTES = 1_048_576;
  * simple first-party microservice setups where both sides can share the same framing contract.
  */
 export class TcpMicroserviceTransport implements MicroserviceTransport {
+  /** Indicates that TCP owns the listener server and active socket resources it closes. */
+  readonly ownsResources = true;
+
   private boundPort: number | undefined;
   private closing = false;
   private handler: TransportHandler | undefined;
