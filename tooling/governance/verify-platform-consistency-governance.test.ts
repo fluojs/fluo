@@ -914,6 +914,21 @@ describe('Passport auth discoverability', () => {
       expect(content).toContain('platform status/diagnostic');
     }
   });
+
+  it('keeps bridge and cookie compatibility provider bundles discoverable', () => {
+    for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
+      expect(content).toContain('createPassportJsStrategyBridge(...)');
+      expect(content).toContain('createCookieAuthPreset(...)');
+      expect(content).toContain('provider bundle');
+    }
+
+    for (const content of [englishReadme, koreanReadme]) {
+      expect(content).toContain('PassportModule.forRoot');
+      expect(content).toContain('CookieAuthModule.forRoot');
+      expect(content).toContain('AuthGuard');
+      expect(content).toMatch(/manual-composition|manual provider|manual provider composition/);
+    }
+  });
 });
 
 describe('Slack delivery discoverability', () => {
