@@ -7,7 +7,7 @@ import { PrismaModule, PrismaService, getPrismaServiceToken } from './index.js';
 describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 impl)', () => {
   it('exports Transaction and opens a transaction for current-less repository calls', async () => {
     // TODO: RED - will pass after Task 7 implementation
-    const prismaPackage = await import('@fluojs/prisma');
+    const prismaPackage = await import('./index.js');
     const Transaction = (prismaPackage as { Transaction?: unknown }).Transaction;
 
     expect(Transaction).toBeTypeOf('function');
@@ -83,7 +83,7 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
 
   it('reuses an active transaction for nested @Transaction() calls', async () => {
     // TODO: RED - will pass after Task 7 implementation
-    const prismaPackage = await import('@fluojs/prisma');
+    const prismaPackage = await import('./index.js');
     const Transaction = (prismaPackage as { Transaction?: unknown }).Transaction;
 
     expect(Transaction).toBeTypeOf('function');
@@ -164,7 +164,7 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
 
   it('rejects nested @Transaction() calls with options while a context is already active', async () => {
     // TODO: RED - will pass after Task 7 implementation
-    const prismaPackage = await import('@fluojs/prisma');
+    const prismaPackage = await import('./index.js');
     const Transaction = (prismaPackage as { Transaction?: unknown }).Transaction;
 
     expect(Transaction).toBeTypeOf('function');
@@ -245,7 +245,7 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
 
 describe('@fluojs/prisma Transaction decorator — named/accessor contract', () => {
   it('uses explicit accessor to select a named Prisma service', async () => {
-    const prismaPackage = await import('@fluojs/prisma');
+    const prismaPackage = await import('./index.js');
     const Transaction = (prismaPackage as { Transaction?: unknown }).Transaction;
 
     expect(Transaction).toBeTypeOf('function');
@@ -334,7 +334,7 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
   });
 
   it('does not confuse two clients when only one is decorated', async () => {
-    const prismaPackage = await import('@fluojs/prisma');
+    const prismaPackage = await import('./index.js');
     const Transaction = (prismaPackage as { Transaction?: unknown }).Transaction;
 
     expect(Transaction).toBeTypeOf('function');
