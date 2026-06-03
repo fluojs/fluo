@@ -133,9 +133,24 @@ export class PostsController {
 FluoBlog에서는 이를 **메인 피드**와 **검색 결과**에 적용합니다. 이러한 고비용 쿼리를 단 30초만 캐싱하더라도 피크 시간대에 Prisma 서비스에 가해지는 부하를 90% 이상 줄일 수 있습니다. 이러한 "단기 캐싱"은 데이터 최신성을 크게 희생하지 않으면서 트래픽 증가를 처리하는 실용적인 방법입니다. 100명에게만 항상 최신인 데이터를 제공하려다 서버가 마비되는 것보다, 10,000명에게 30초 전의 데이터를 제공하는 것이 더 나은 선택일 수 있습니다.
 
 ### 17.4.2 Dynamic Cache Keys: Precision at Scale
-가끔은 정적인 `@CacheKey()`만으로는 충분하지 않습니다. 쿼리 파라미터나 URL 세그먼트를 기반으로 응답을 캐싱하고 싶을 수 있습니다. `CacheInterceptor`를 확장하여 동적 키를 생성할 수 있습니다. 예를 들어 검색 라우트는 `search:${query_string}`과 같은 키를 사용할 수 있습니다. 이를 통해 인기 있는 검색어는 빠르게 응답하면서도, 고유한 검색어는 정확성을 희생하지 않고 독립적으로 캐싱할 수 있습니다.
+가끔은 정적인 `@CacheKey()`만으로는 충분하지 않습니다. 쿼리 파라미터나 URL 세그먼트를 기반으로 응답을 캐싱하고 싶을 수 있습니다. custom key가 handler 하나에만 필요하면 function-based `@CacheKey(...)` 경로를 사용하고, 같은 request-aware 규칙을 여러 handler에 적용해야 한다면 function-valued `httpKeyStrategy`를 설정하세요. 예를 들어 검색 라우트는 `CacheInterceptor`를 subclass하지 않고도 `search:${query_string}`과 같은 키를 사용할 수 있습니다.
 
-또한 애플리케이션이 여러 조직을 지원하는 경우 **테넌트 인식 캐싱(Tenant-Aware Caching)**을 구현할 수 있습니다. 캐시 키에 `tenantId`를 포함함으로써 한 조직의 데이터가 다른 조직으로 유출되지 않도록 보장합니다. Fluo의 DI 시스템을 사용하면 현재 요청의 컨텍스트를 커스텀 키 생성기에 쉽게 주입할 수 있어, 비즈니스 로직에 맞게 확장되는 정교하고 다차원적인 캐시 전략을 세울 수 있습니다.
+```typescript
+@Get('search')
+@CacheKey((context) => {
+  const q = String(context.requestContext.request.query.q ?? '').trim().toLowerCase();
+
+  return `search:${q}`;
+})
+@CacheTTL(30)
+async search() {
+  return this.postsService.search();
+}
+```
+
+애플리케이션 전체 정책이 필요하다면 같은 로직을 `CacheModule.forRoot({ httpKeyStrategy })`에 넣습니다. 그러면 인터셉터의 표준 GET 캐싱 및 eviction 동작은 유지하면서 key 계산만 바꿀 수 있습니다. 이를 통해 인기 있는 검색어는 빠르게 응답하면서도, 고유한 검색어는 정확성을 희생하지 않고 독립적으로 캐싱할 수 있습니다.
+
+또한 애플리케이션이 여러 조직을 지원하는 경우 **테넌트 인식 캐싱(Tenant-Aware Caching)**을 구현할 수 있습니다. 캐시 키에 `tenantId` 또는 다른 principal scope를 포함함으로써 한 조직의 데이터가 다른 조직으로 유출되지 않도록 보장합니다. `principalScopeResolver`, custom `httpKeyStrategy`, 또는 handler-local `@CacheKey(...)` factory로 현재 요청 컨텍스트에서 해당 scope를 계산하면, 비즈니스 로직에 맞게 확장되는 정교하고 다차원적인 캐시 전략을 세울 수 있습니다.
 
 ### 17.4.3 Handling Large Responses and Compression
 매우 큰 JSON 응답(수 메가바이트)을 캐싱하면 캐시 저장소의 메모리를 크게 소모할 수 있습니다. 이러한 경우 저장하기 전에 데이터를 압축하거나, 응답을 재구성하는 데 필요한 특정 데이터 조각만 캐싱하는 더 세분화된 전략을 고려하십시오. Fluo의 인터셉터 시스템은 이러한 커스텀 최적화 패턴을 처리할 수 있을 만큼 유연하므로, 속도와 메모리 효율성 사이의 균형을 애플리케이션 요구에 맞게 조정할 수 있습니다.
