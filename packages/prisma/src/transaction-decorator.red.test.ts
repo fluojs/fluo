@@ -2,7 +2,7 @@ import { Inject } from '@fluojs/core';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
-import { PrismaModule, PrismaService } from './index.js';
+import { PrismaModule, PrismaService, getPrismaServiceToken } from './index.js';
 
 describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 impl)', () => {
   it('exports Transaction and opens a transaction for current-less repository calls', async () => {
@@ -238,6 +238,174 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
     await expect(service.outer('linus@example.com')).rejects.toThrow();
 
     expect(events).toEqual(['connect', 'transaction:start']);
+
+    await app.close();
+  });
+});
+
+describe('@fluojs/prisma Transaction decorator — named/accessor contract', () => {
+  it('uses explicit accessor to select a named Prisma service', async () => {
+    const prismaPackage = await import('@fluojs/prisma');
+    const Transaction = (prismaPackage as { Transaction?: unknown }).Transaction;
+
+    expect(Transaction).toBeTypeOf('function');
+
+    const usersEvents: string[] = [];
+    const analyticsEvents: string[] = [];
+
+    const usersTransactionClient = {
+      report: {
+        async findMany() {
+          usersEvents.push('users-tx:findMany');
+          return [];
+        },
+      },
+    };
+
+    const analyticsTransactionClient = {
+      report: {
+        async findMany() {
+          analyticsEvents.push('analytics-tx:findMany');
+          return [{ id: 'r1' }];
+        },
+      },
+    };
+
+    const usersClient = {
+      async $connect() { usersEvents.push('users:connect'); },
+      async $disconnect() { usersEvents.push('users:disconnect'); },
+      async $transaction<T>(callback: (value: typeof usersTransactionClient) => Promise<T>): Promise<T> {
+        usersEvents.push('users:transaction:start');
+        const result = await callback(usersTransactionClient);
+        usersEvents.push('users:transaction:end');
+        return result;
+      },
+    };
+
+    const analyticsClient = {
+      async $connect() { analyticsEvents.push('analytics:connect'); },
+      async $disconnect() { analyticsEvents.push('analytics:disconnect'); },
+      async $transaction<T>(callback: (value: typeof analyticsTransactionClient) => Promise<T>): Promise<T> {
+        analyticsEvents.push('analytics:transaction:start');
+        const result = await callback(analyticsTransactionClient);
+        analyticsEvents.push('analytics:transaction:end');
+        return result;
+      },
+    };
+
+    @Inject(
+      getPrismaServiceToken('users'),
+      getPrismaServiceToken('analytics'),
+    )
+    class MultiDatabaseService {
+      constructor(
+        private readonly usersPrisma: PrismaService<typeof usersClient, typeof usersTransactionClient>,
+        private readonly analyticsPrisma: PrismaService<typeof analyticsClient, typeof analyticsTransactionClient>,
+      ) {}
+
+      @((Transaction as any)((self: MultiDatabaseService) => self.analyticsPrisma))
+      async loadAnalytics() {
+        return (this.analyticsPrisma.current() as typeof analyticsTransactionClient).report.findMany();
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        PrismaModule.forRoot({ name: 'users', client: usersClient }),
+        PrismaModule.forRoot({ name: 'analytics', client: analyticsClient }),
+      ],
+      providers: [MultiDatabaseService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const service = await app.container.resolve(MultiDatabaseService);
+
+    const result = await service.loadAnalytics();
+
+    expect(analyticsEvents).toContain('analytics:transaction:start');
+    expect(analyticsEvents).toContain('analytics:transaction:end');
+    expect(analyticsEvents).toContain('analytics-tx:findMany');
+    expect(usersEvents).not.toContain('users:transaction:start');
+    expect(result).toEqual([{ id: 'r1' }]);
+
+    await app.close();
+  });
+
+  it('does not confuse two clients when only one is decorated', async () => {
+    const prismaPackage = await import('@fluojs/prisma');
+    const Transaction = (prismaPackage as { Transaction?: unknown }).Transaction;
+
+    expect(Transaction).toBeTypeOf('function');
+
+    const usersEvents: string[] = [];
+    const analyticsEvents: string[] = [];
+
+    const analyticsTransactionClient = {
+      report: {
+        async findMany() {
+          analyticsEvents.push('analytics-tx:report:findMany');
+          return [{ id: 'r1' }];
+        },
+      },
+    };
+
+    const usersClient = {
+      async $connect() { usersEvents.push('users:connect'); },
+      async $disconnect() { usersEvents.push('users:disconnect'); },
+      async $transaction<T>(callback: (value: unknown) => Promise<T>): Promise<T> {
+        usersEvents.push('users:transaction:start');
+        const result = await callback({});
+        usersEvents.push('users:transaction:end');
+        return result;
+      },
+    };
+
+    const analyticsClient = {
+      async $connect() { analyticsEvents.push('analytics:connect'); },
+      async $disconnect() { analyticsEvents.push('analytics:disconnect'); },
+      async $transaction<T>(callback: (value: typeof analyticsTransactionClient) => Promise<T>): Promise<T> {
+        analyticsEvents.push('analytics:transaction:start');
+        const result = await callback(analyticsTransactionClient);
+        analyticsEvents.push('analytics:transaction:end');
+        return result;
+      },
+    };
+
+    @Inject(
+      getPrismaServiceToken('users'),
+      getPrismaServiceToken('analytics'),
+    )
+    class DualClientService {
+      constructor(
+        private readonly usersPrisma: PrismaService<typeof usersClient>,
+        private readonly analyticsPrisma: PrismaService<typeof analyticsClient, typeof analyticsTransactionClient>,
+      ) {}
+
+      @((Transaction as any)((self: DualClientService) => self.analyticsPrisma))
+      async decoratedAnalytics() {
+        return (this.analyticsPrisma.current() as typeof analyticsTransactionClient).report.findMany();
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        PrismaModule.forRoot({ name: 'users', client: usersClient }),
+        PrismaModule.forRoot({ name: 'analytics', client: analyticsClient }),
+      ],
+      providers: [DualClientService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const service = await app.container.resolve(DualClientService);
+
+    await service.decoratedAnalytics();
+
+    expect(analyticsEvents).toContain('analytics:transaction:start');
+    expect(usersEvents).not.toContain('users:transaction:start');
 
     await app.close();
   });

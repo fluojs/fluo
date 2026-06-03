@@ -569,9 +569,123 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       const app = await bootstrapApplication({ rootModule: AppModule });
       const service = await app.container.resolve(UserService);
 
-      await expect(service.create('Ada')).resolves.toBeDefined();
+    await expect(service.create('Ada')).resolves.toBeDefined();
 
-      await app.close();
+    await app.close();
+  });
+  });
+});
+
+describe('@fluojs/mongoose Transaction decorator — named/accessor contract', () => {
+  it('uses explicit accessor to select a specific MongooseConnection', async () => {
+    const mongoosePackage = await import('@fluojs/mongoose');
+    const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+    expect(Transaction).toBeTypeOf('function');
+
+    const primaryEvents: string[] = [];
+    const analyticsEvents: string[] = [];
+
+    const primarySession = createFakeSession(primaryEvents);
+    const primaryConnection = createFakeConnection(primaryEvents, primarySession);
+
+    const analyticsTransactionTarget = {
+      async transaction<T>(fn: () => Promise<T>): Promise<T> {
+        analyticsEvents.push('analytics:transaction:start');
+        const result = await fn();
+        analyticsEvents.push('analytics:transaction:end');
+        return result;
+      },
+    };
+
+    @Inject(MongooseConnection)
+    class MultiConnectionService {
+      readonly analyticsConn = analyticsTransactionTarget;
+
+      constructor(private readonly conn: MongooseConnection<typeof primaryConnection>) {}
+
+      @((Transaction as any)((self: MultiConnectionService) => self.analyticsConn))
+      async loadAnalytics() {
+        analyticsEvents.push('service:loadAnalytics');
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MongooseModule.forRoot({ connection: primaryConnection })],
+      providers: [MultiConnectionService],
     });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const service = await app.container.resolve(MultiConnectionService);
+
+    const result = await service.loadAnalytics();
+
+    expect(analyticsEvents).toContain('analytics:transaction:start');
+    expect(analyticsEvents).toContain('analytics:transaction:end');
+    expect(analyticsEvents).toContain('service:loadAnalytics');
+    expect(primaryEvents).not.toContain('connection:startSession');
+    expect(result).toEqual({ ok: true });
+
+    await app.close();
+  });
+
+  it('does not confuse two connections when only one accessor is decorated', async () => {
+    const mongoosePackage = await import('@fluojs/mongoose');
+    const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+    expect(Transaction).toBeTypeOf('function');
+
+    const primaryEvents: string[] = [];
+    const analyticsEvents: string[] = [];
+
+    const primarySession = createFakeSession(primaryEvents);
+    const primaryConnection = createFakeConnection(primaryEvents, primarySession);
+
+    const analyticsTransactionTarget = {
+      async transaction<T>(fn: () => Promise<T>): Promise<T> {
+        analyticsEvents.push('analytics:transaction:start');
+        const result = await fn();
+        analyticsEvents.push('analytics:transaction:end');
+        return result;
+      },
+    };
+
+    @Inject(MongooseConnection)
+    class DualConnectionService {
+      readonly analyticsConn = analyticsTransactionTarget;
+
+      constructor(private readonly conn: MongooseConnection<typeof primaryConnection>) {}
+
+      @((Transaction as any)((self: DualConnectionService) => self.analyticsConn))
+      async analyticsWork() {
+        analyticsEvents.push('service:analyticsWork');
+      }
+
+      async primaryWork() {
+        primaryEvents.push('service:primaryWork');
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MongooseModule.forRoot({ connection: primaryConnection })],
+      providers: [DualConnectionService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const service = await app.container.resolve(DualConnectionService);
+
+    await service.analyticsWork();
+    await service.primaryWork();
+
+    expect(analyticsEvents).toContain('analytics:transaction:start');
+    expect(primaryEvents).not.toContain('connection:startSession');
+    expect(primaryEvents).toContain('service:primaryWork');
+
+    await app.close();
   });
 });
