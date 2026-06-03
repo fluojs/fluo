@@ -51,8 +51,29 @@ type MongooseModelFacadeOwner = {
 };
 
 const MODEL_OPERATIONS_WITH_OPTIONS = new Set<PropertyKey>(['aggregate', 'bulkWrite', 'create', 'find', 'findOne']);
+const MODEL_OPERATIONS_WITH_PROJECTION = new Set<PropertyKey>(['find', 'findOne']);
 const ORIGINAL_MODEL = Symbol('fluo.mongoose.original-model');
 const modelFacadeOwners = new WeakMap<object, Set<MongooseModelFacadeOwner>>();
+
+function hasExplicitSessionOption(value: unknown): boolean {
+  return value !== null && typeof value === 'object' && 'session' in value;
+}
+
+function resolveOptionsIndex(operation: PropertyKey, operationArgs: unknown[]): number {
+  if (!MODEL_OPERATIONS_WITH_PROJECTION.has(operation)) {
+    return operationArgs.length > 1 ? 1 : operationArgs.length;
+  }
+
+  if (operationArgs.length >= 3) {
+    return 2;
+  }
+
+  if (operationArgs.length === 2 && hasExplicitSessionOption(operationArgs[1])) {
+    return 1;
+  }
+
+  return operationArgs.length;
+}
 
 function resolveSessionOptions(opts: unknown, ambient: MongooseSessionLike): Record<string, unknown> {
   const options = opts && typeof opts === 'object' ? opts as Record<string, unknown> : {};
@@ -79,7 +100,7 @@ function createAmbientSessionModelFacade<TModel extends MongooseModelLike>(model
 
       return (...args: unknown[]) => {
         const operationArgs = [...args];
-        const optionsIndex = operationArgs.length > 1 ? 1 : operationArgs.length;
+        const optionsIndex = resolveOptionsIndex(prop, operationArgs);
         operationArgs[optionsIndex] = resolveSessionOptions(operationArgs[optionsIndex], ambient);
 
         return value.apply(target, operationArgs);

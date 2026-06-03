@@ -29,8 +29,8 @@ function createFakeConnection(
 ): MongooseConnectionLike & {
   model(name: string): {
     create(docs: unknown[], opts?: { session?: MongooseSessionLike | null }): Promise<unknown[]>;
-    find(filter?: unknown, opts?: { session?: MongooseSessionLike | null }): Promise<unknown[]>;
-    findOne(filter?: unknown, opts?: { session?: MongooseSessionLike | null }): Promise<unknown>;
+    find(filter?: unknown, projection?: unknown, opts?: { session?: MongooseSessionLike | null }): Promise<unknown[]>;
+    findOne(filter?: unknown, projection?: unknown, opts?: { session?: MongooseSessionLike | null }): Promise<unknown>;
     aggregate(
       pipeline: unknown[],
       opts?: { session?: MongooseSessionLike | null },
@@ -52,11 +52,17 @@ function createFakeConnection(
           events.push(`model:${name}:create:session=${opts?.session != null ? 'set' : 'unset'}`);
           return docs;
         },
-        async find(_filter?: unknown, opts?: { session?: MongooseSessionLike | null }) {
+        async find(_filter?: unknown, projection?: unknown, opts?: { session?: MongooseSessionLike | null }) {
+          if (projection && typeof projection === 'object' && 'session' in projection) {
+            events.push(`model:${name}:find:projection-session=set`);
+          }
           events.push(`model:${name}:find:session=${opts?.session != null ? 'set' : 'unset'}`);
           return [];
         },
-        async findOne(_filter?: unknown, opts?: { session?: MongooseSessionLike | null }) {
+        async findOne(_filter?: unknown, projection?: unknown, opts?: { session?: MongooseSessionLike | null }) {
+          if (projection && typeof projection === 'object' && 'session' in projection) {
+            events.push(`model:${name}:findOne:projection-session=set`);
+          }
           events.push(`model:${name}:findOne:session=${opts?.session != null ? 'set' : 'unset'}`);
           return null;
         },
@@ -81,7 +87,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
   describe('decorator opens transaction boundary', () => {
     it('exports Transaction as a function', async () => {
       // TODO: RED - will pass after Task 9 implementation
-      const mongoosePackage = await import('@fluojs/mongoose');
+      const mongoosePackage = await import('./index.js');
       const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
       expect(Transaction).toBeTypeOf('function');
@@ -89,7 +95,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
 
     it('opens a session transaction when @Transaction() is applied to a service method', async () => {
       // TODO: RED - will pass after Task 9 implementation
-      const mongoosePackage = await import('@fluojs/mongoose');
+      const mongoosePackage = await import('./index.js');
       const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
       expect(Transaction).toBeTypeOf('function');
@@ -133,7 +139,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
 
     it('reuses the ambient session for nested @Transaction() calls', async () => {
       // TODO: RED - will pass after Task 9 implementation
-      const mongoosePackage = await import('@fluojs/mongoose');
+      const mongoosePackage = await import('./index.js');
       const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
       expect(Transaction).toBeTypeOf('function');
@@ -182,7 +188,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
   describe('model facade auto-session', () => {
     it('model.create() receives the ambient session inside @Transaction()', async () => {
       // TODO: RED - will pass after Task 9 implementation
-      const mongoosePackage = await import('@fluojs/mongoose');
+      const mongoosePackage = await import('./index.js');
       const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
       expect(Transaction).toBeTypeOf('function');
@@ -196,8 +202,8 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         constructor(private readonly conn: MongooseConnection<typeof connection>) {}
 
         async create(name: string) {
-          const ambientSession = this.conn.currentSession();
-          return this.conn.current().model('User').create([{ name }], { session: ambientSession });
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.create([{ name }]);
         }
       }
 
@@ -230,7 +236,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
 
     it('model.find() receives the ambient session inside @Transaction()', async () => {
       // TODO: RED - will pass after Task 9 implementation
-      const mongoosePackage = await import('@fluojs/mongoose');
+      const mongoosePackage = await import('./index.js');
       const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
       expect(Transaction).toBeTypeOf('function');
@@ -244,8 +250,8 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         constructor(private readonly conn: MongooseConnection<typeof connection>) {}
 
         async findAll() {
-          const ambientSession = this.conn.currentSession();
-          return this.conn.current().model('User').find({}, { session: ambientSession });
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.find({}, { name: 1 });
         }
       }
 
@@ -272,13 +278,14 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       await service.findAll();
 
       expect(events).toContain('model:User:find:session=set');
+      expect(events).not.toContain('model:User:find:projection-session=set');
 
       await app.close();
     });
 
     it('model.findOne() receives the ambient session inside @Transaction()', async () => {
       // TODO: RED - will pass after Task 9 implementation
-      const mongoosePackage = await import('@fluojs/mongoose');
+      const mongoosePackage = await import('./index.js');
       const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
       expect(Transaction).toBeTypeOf('function');
@@ -292,8 +299,8 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         constructor(private readonly conn: MongooseConnection<typeof connection>) {}
 
         async findOne(id: string) {
-          const ambientSession = this.conn.currentSession();
-          return this.conn.current().model('User').findOne({ _id: id }, { session: ambientSession });
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.findOne({ _id: id }, { name: 1 });
         }
       }
 
@@ -320,13 +327,14 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       await service.findOne('user-1');
 
       expect(events).toContain('model:User:findOne:session=set');
+      expect(events).not.toContain('model:User:findOne:projection-session=set');
 
       await app.close();
     });
 
     it('model.aggregate() receives the ambient session inside @Transaction()', async () => {
       // TODO: RED - will pass after Task 9 implementation
-      const mongoosePackage = await import('@fluojs/mongoose');
+      const mongoosePackage = await import('./index.js');
       const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
       expect(Transaction).toBeTypeOf('function');
@@ -340,11 +348,8 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         constructor(private readonly conn: MongooseConnection<typeof connection>) {}
 
         async aggregate(pipeline: unknown[]) {
-          const ambientSession = this.conn.currentSession();
-          return this.conn
-            .current()
-            .model('User')
-            .aggregate(pipeline, { session: ambientSession });
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.aggregate(pipeline);
         }
       }
 
@@ -377,7 +382,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
 
     it('model.bulkWrite() receives the ambient session inside @Transaction()', async () => {
       // TODO: RED - will pass after Task 9 implementation
-      const mongoosePackage = await import('@fluojs/mongoose');
+      const mongoosePackage = await import('./index.js');
       const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
       expect(Transaction).toBeTypeOf('function');
@@ -391,8 +396,8 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         constructor(private readonly conn: MongooseConnection<typeof connection>) {}
 
         async bulkWrite(ops: unknown[]) {
-          const ambientSession = this.conn.currentSession();
-          return this.conn.current().model('User').bulkWrite(ops, { session: ambientSession });
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.bulkWrite(ops);
         }
       }
 
@@ -433,7 +438,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
   describe('session conflict guardrails', () => {
     it('throws when { session: null } is passed inside an active @Transaction() boundary', async () => {
       // TODO: RED - will pass after Task 9 implementation
-      const mongoosePackage = await import('@fluojs/mongoose');
+      const mongoosePackage = await import('./index.js');
       const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
       expect(Transaction).toBeTypeOf('function');
@@ -448,7 +453,8 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
 
         async create(name: string) {
           // Passing { session: null } explicitly inside a transaction is a conflict
-          return this.conn.current().model('User').create([{ name }], { session: null });
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.create([{ name }], { session: null });
         }
       }
 
@@ -477,9 +483,55 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       await app.close();
     });
 
+    it('throws when model.find() receives { session: null } as the third options argument', async () => {
+      const mongoosePackage = await import('./index.js');
+      const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(Transaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async findAll() {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.find({}, { name: 1 }, { session: null });
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @((Transaction as any)())
+        async findAll() {
+          return this.repo.findAll();
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      await expect(service.findAll()).rejects.toThrow('Explicit session: null conflicts with ambient transaction session');
+      expect(events).not.toContain('model:User:find:projection-session=set');
+
+      await app.close();
+    });
+
     it('throws when a different explicit session is passed inside an active @Transaction() boundary', async () => {
       // TODO: RED - will pass after Task 9 implementation
-      const mongoosePackage = await import('@fluojs/mongoose');
+      const mongoosePackage = await import('./index.js');
       const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
       expect(Transaction).toBeTypeOf('function');
@@ -496,7 +548,8 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
 
         async create(name: string) {
           // Passing a different session object is a session conflict
-          return this.conn.current().model('User').create([{ name }], {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.create([{ name }], {
             session: differentSession as unknown as MongooseSessionLike,
           });
         }
@@ -529,7 +582,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
 
     it('allows passing the same ambient session explicitly inside an active @Transaction() boundary', async () => {
       // TODO: RED - will pass after Task 9 implementation
-      const mongoosePackage = await import('@fluojs/mongoose');
+      const mongoosePackage = await import('./index.js');
       const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
       expect(Transaction).toBeTypeOf('function');
@@ -578,7 +631,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
 
 describe('@fluojs/mongoose Transaction decorator — named/accessor contract', () => {
   it('uses explicit accessor to select a specific MongooseConnection', async () => {
-    const mongoosePackage = await import('@fluojs/mongoose');
+      const mongoosePackage = await import('./index.js');
     const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
     expect(Transaction).toBeTypeOf('function');
@@ -633,7 +686,7 @@ describe('@fluojs/mongoose Transaction decorator — named/accessor contract', (
   });
 
   it('does not confuse two connections when only one accessor is decorated', async () => {
-    const mongoosePackage = await import('@fluojs/mongoose');
+      const mongoosePackage = await import('./index.js');
     const Transaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
     expect(Transaction).toBeTypeOf('function');
