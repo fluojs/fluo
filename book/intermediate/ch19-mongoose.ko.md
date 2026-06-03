@@ -9,7 +9,6 @@
 - fluo에서 Mongoose 통합이 필요한 이유와 적용 지점을 구분합니다.
 - `MongooseModule` 구성과 연결 수명 주기 관리 방식을 정리합니다.
 - `MongooseConnection`을 사용하는 리포지토리 패턴을 구성합니다.
-- 수동 트랜잭션과 요청 스코프 트랜잭션의 차이를 비교합니다.
 - FluoShop 제품 카탈로그에 문서 모델을 적용하는 방식을 확인합니다.
 - 상태 스냅샷으로 MongoDB 연결을 관측하는 기준을 정리합니다.
 
@@ -22,9 +21,8 @@
 
 Mongoose는 Node.js 생태계에서 MongoDB를 다룰 때 널리 쓰이는 모델링 계층입니다. fluo 전용 통합 패키지를 사용하면 다음과 같은 이점을 얻을 수 있습니다.
 
-- **수명 주기 관리**: 제공된 연결을 애플리케이션 수명 주기에 등록하고, `dispose(connection)`를 제공한 경우 종료 시 요청 스코프 트랜잭션이 모두 정리된 뒤에만 그 정리 로직을 실행합니다.
-- **세션 인지(Session Awareness)**: `MongooseConnection` 서비스가 콜 스택 전체에서 MongoDB 세션을 추적해 트랜잭션 경계를 유지합니다.
-- **요청 스코프 트랜잭션**: `MongooseTransactionInterceptor`로 전체 HTTP 요청을 MongoDB 트랜잭션으로 묶을 수 있습니다.
+- **세션 인지(Session Awareness)**: `MongooseConnection` 서비스가 콜 스택 전체에서 MongoDB 세션을 추적합니다.
+- **앰비언트 세션 (v1)**: fluo는 지원되는 Mongoose 모델 작업(create, find, findOne, aggregate, bulkWrite)에 활성 트랜잭션 세션을 자동으로 연결합니다.
 
 ## 19.2 Installation and Setup
 
@@ -73,51 +71,46 @@ export class ProductRepository {
   constructor(private readonly conn: MongooseConnection) {}
 
   async findById(id: string) {
-    const Product = this.conn.current().model('Product');
+    // 기본 흐름: 모델을 직접 호출합니다.
+    const Product = this.conn.model('Product');
     return Product.findById(id);
   }
 }
-```
 
-`conn.current()` 메서드는 등록된 Mongoose 연결 자체를 반환합니다. 트랜잭션 상태는 `conn.currentSession()`으로 별도로 추적되므로, 트랜잭션에 참여해야 하는 리포지토리 메서드는 그 세션을 Mongoose 모델 작업에 명시적으로 전달해야 합니다.
+`MongooseConnection` 서비스는 컨텍스트 인지 프록시 역할을 합니다. `this.conn.model('Product')`를 호출하면, 활성 트랜잭션이 있을 때 자동으로 그 트랜잭션에 참여하는 버전의 모델을 반환합니다.
+
+### 앰비언트 세션 지원 (v1)
+버전 1에서 fluo의 Mongoose 통합은 다음 모델 메서드에 대해 자동 세션 주입을 지원합니다:
+- `create`
+- `find`
+- `findOne`
+- `aggregate`
+- `bulkWrite`
+
+`@Transaction()`이나 `transaction()` 경계 내부에서 이 메서드들이 호출되면, fluo는 앰비언트 세션을 옵션에 자동으로 붙여줍니다. 참고로 `doc.save()`는 현재 자동 세션 주입이 지원되지 않으므로, 트랜잭션 내에서 사용 시 여전히 수동으로 세션을 전달해야 합니다.
+
+트랜잭션이 활성화된 상태에서 옵션에 `session`을 명시적으로 제공했는데, 해당 세션이 앰비언트 트랜잭션 세션과 일치하지 않는 경우 fluo는 충돌 에러를 던집니다. 이는 의도치 않은 트랜잭션 간 데이터 유출을 방지하기 위함입니다.
 
 ## 19.5 Transaction Management
 
+
 MongoDB 트랜잭션은 활성화된 **세션(Session)**을 필요로 합니다. Fluo는 세션 생성, 실행, 정리를 하나의 트랜잭션 래퍼로 묶어 호출부의 부담을 줄입니다.
 
-제공된 Mongoose 연결이 `connection.transaction(...)`을 노출하면 fluo는 Mongoose 자체 ambient-session 범위와 정리 의미론을 보존하기 위해 그 API에 트랜잭션 경계를 위임합니다. 그렇지 않으면 `startSession()`, `startTransaction()`, `commitTransaction()` / `abortTransaction()`, `endSession()`을 직접 사용합니다. 요청 범위 트랜잭션은 session 획득 및 위임된 transaction 시작 중에도 request `AbortSignal`을 관찰하므로, 취소된 요청은 repository 작업 실행 전에 중단될 수 있습니다. 두 모드 모두 애플리케이션 종료 중에는 활성 요청 트랜잭션과 session cleanup이 settle될 때까지 `dispose(connection)`을 기다리며, 종료가 시작된 뒤에는 새 수동 또는 요청 범위 트랜잭션 경계를 거부합니다.
 
 Mongoose model 호출에는 명시적인 `{ session }` option이 필요하므로 request-scoped transaction이 repository 호출을 자동으로 다시 쓰지는 않습니다. 기존 수동 `transaction(...)` 안에서 열린 중첩 `requestTransaction(...)`은 ambient session을 재사용하고 활성 request boundary로 추적되며, 종료 중에는 abort되어 바깥 수동 transaction이 connection disposal 전에 rollback할 수 있습니다.
 
 ### Manual Transactions
+fluo에서 권장되는 트랜잭션 처리 방식은 서비스 메서드에 `@Transaction()` 데코레이터를 사용하는 것입니다. 수동 제어가 필요한 경우 블록 패턴을 사용하십시오:
 
 ```typescript
 await this.conn.transaction(async () => {
-  const session = this.conn.currentSession();
-  const Product = this.conn.current().model('Product');
-  const Inventory = this.conn.current().model('Inventory');
+  const Product = this.conn.model('Product');
+  const Inventory = this.conn.model('Inventory');
 
-  await Product.updateOne({ _id: pid }, { $set: { status: 'SOLD' } }, { session });
-  await Inventory.updateOne({ productId: pid }, { $inc: { stock: -1 } }, { session });
+  // 이 호출들에 세션이 자동으로 주입됩니다
+  await Product.updateOne({ _id: pid }, { $set: { status: 'SOLD' } });
+  await Inventory.updateOne({ productId: pid }, { $inc: { stock: -1 } });
 });
-```
-
-### Request-Scoped Transactions
-
-컨트롤러 단위에서는 `MongooseTransactionInterceptor`를 사용할 수 있습니다. 이 인터셉터는 HTTP 요청 시작 시 세션과 트랜잭션을 열고, 요청이 성공적으로 끝나면 커밋합니다. 다만 모든 Mongoose 모델 호출에 세션을 자동으로 붙여 주지는 않으므로, 저장소는 여전히 `conn.currentSession()`을 읽어 트랜잭션에 참여해야 하는 쓰기 작업에 전달해야 합니다.
-
-```typescript
-import { Controller, Post, UseInterceptors } from '@fluojs/http';
-import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
-
-@UseInterceptors(MongooseTransactionInterceptor)
-@Controller('orders')
-export class OrderController {
-  @Post('/')
-  async createOrder() {
-    // 저장소의 쓰기 작업은 여전히 conn.currentSession()을 명시적으로 전달해야 합니다.
-  }
-}
 ```
 
 ## 19.6 FluoShop Context: Product Catalog Persistence

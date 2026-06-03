@@ -8,7 +8,6 @@ import {
   getPrismaOptionsToken,
   getPrismaServiceToken,
 } from './tokens.js';
-import { PrismaTransactionInterceptor } from './transaction.js';
 import type {
   InferPrismaTransactionClient,
   InferPrismaTransactionOptions,
@@ -144,7 +143,6 @@ function createPrismaRuntimeProviders<
           provide: getPrismaServiceToken(),
           useExisting: PrismaService,
         },
-        PrismaTransactionInterceptor,
       ]
       : createNamedPrismaServiceProvider<TClient, TTransactionClient, TTransactionOptions>(name)),
   ];
@@ -166,7 +164,7 @@ function buildPrismaModule<
 
   return defineModule(PrismaRootModuleDefinition, {
     exports: normalizedOptions.name === undefined
-      ? [PrismaService, PrismaTransactionInterceptor, getPrismaServiceToken(), getPrismaClientToken(), getPrismaOptionsToken()]
+      ? [PrismaService, getPrismaServiceToken(), getPrismaClientToken(), getPrismaOptionsToken()]
       : [
         getPrismaServiceToken(normalizedOptions.name),
         getPrismaClientToken(normalizedOptions.name),
@@ -213,7 +211,7 @@ function buildPrismaModuleAsync<
 
   return defineModule(PrismaAsyncModuleDefinition, {
     exports: normalizedName === undefined
-      ? [PrismaService, PrismaTransactionInterceptor, getPrismaServiceToken(), getPrismaClientToken(), getPrismaOptionsToken()]
+      ? [PrismaService, getPrismaServiceToken(), getPrismaClientToken(), getPrismaOptionsToken()]
       : [getPrismaServiceToken(normalizedName), getPrismaClientToken(normalizedName), getPrismaOptionsToken(normalizedName)],
     global: normalizedName === undefined ? options.global ?? false : false,
     providers: createPrismaRuntimeProviders<TClient, TTransactionClient, TTransactionOptions>(normalizedOptionsProvider, normalizedName),
@@ -228,7 +226,7 @@ export class PrismaModule {
    * Registers Prisma providers from static options.
    *
    * @param options Prisma module options with client handle and strict transaction mode.
-   * @returns A module definition that exports `PrismaService` and `PrismaTransactionInterceptor`.
+   * @returns A module definition that exports `PrismaService` and related Prisma tokens.
    */
   static forRoot<
     TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,

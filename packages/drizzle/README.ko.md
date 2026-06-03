@@ -10,9 +10,8 @@
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
-  - [repository에서 `DrizzleDatabase.current()` 사용하기](#repository에서-drizzledatabasecurrent-사용하기)
-  - [수동 트랜잭션 경계](#수동-트랜잭션-경계)
-  - [인터셉터 기반 요청 단위 트랜잭션](#인터셉터-기반-요청-단위-트랜잭션)
+  - [서비스 트랜잭션 경계 (@Transaction)](#서비스-트랜잭션-경계-transaction)
+  - [수동 트랜잭션과 current()](#수동-트랜잭션과-current)
   - [종료와 상태 계약](#종료와-상태-계약)
 - [수동 모듈 구성](#수동-모듈-구성)
 - [공개 API 개요](#공개-api-개요)
@@ -66,29 +65,69 @@ export class AppModule {}
 
 ## 주요 패턴
 
-### repository에서 `DrizzleDatabase.current()` 사용하기
+### 서비스 트랜잭션 경계 (@Transaction)
+
+`@Transaction()` 데코레이터는 서비스 레이어에서 트랜잭션 경계를 정의하는 권장 방법입니다. 이 데코레이터가 적용된 메서드 내부에서 발생하는 모든 리포지토리 호출은 동일한 Drizzle 트랜잭션을 공유합니다.
+
+```ts
+import { Transaction, DrizzleDatabase } from '@fluojs/drizzle';
+import { users, profiles } from './schema';
+
+export class UserService {
+  constructor(private readonly repo: UserRepository) {}
+
+  @Transaction()
+  async onboardUser(dto: any) {
+    const user = await this.repo.create(dto);
+    await this.repo.initProfile(user.id);
+    return user;
+  }
+}
+
+export class UserRepository {
+  constructor(private readonly db: DrizzleDatabase) {}
+
+  async create(data: any) {
+    // 리포지토리 호출은 표준 Drizzle 메서드를 사용합니다.
+    // @Transaction() 내부에서 호출되면 자동으로 활성 트랜잭션에 참여합니다.
+    return this.db.insert(users).values(data);
+  }
+
+  async initProfile(userId: string) {
+    return this.db.insert(profiles).values({ userId });
+  }
+}
+```
+
+`@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 Drizzle 트랜잭션 안에서 실행됩니다.
+
+### 수동 트랜잭션과 current()
+
+`DrizzleDatabase`는 트랜잭션 범위 내에 있으면 자동으로 활성 트랜잭션 handle을, 그렇지 않으면 root handle을 반환하는 `current()` 메서드를 제공합니다. 외부 유틸리티에 handle을 전달하거나 복잡한 수동 트랜잭션 처리가 필요한 경우 escape hatch로 사용하세요.
 
 ```ts
 import { DrizzleDatabase } from '@fluojs/drizzle';
 import { eq } from 'drizzle-orm';
 import { users } from './schema';
 
-export class UserRepository {
+export class AdvancedRepository {
   constructor(private readonly db: DrizzleDatabase) {}
 
-  async findById(id: string) {
-    return this.db.current().select().from(users).where(eq(users.id, id));
+  async customOperation() {
+    const tx = this.db.current();
+    // fluo가 자동으로 감싸지 않는 작업을 수행하거나,
+    // Drizzle handle을 직접 기대하는 외부 유틸리티에 전달할 때 tx를 사용하세요.
+    return tx.select().from(users);
   }
 }
 ```
 
-### 수동 트랜잭션 경계
+수동 트랜잭션 블록에는 `db.transaction()`을 사용하세요:
 
 ```ts
 await this.db.transaction(async () => {
-  const tx = this.db.current();
-  await tx.insert(users).values(user);
-  await tx.insert(profiles).values(profile);
+  await this.db.insert(users).values(user);
+  await this.db.insert(profiles).values(profile);
 });
 ```
 
@@ -96,19 +135,9 @@ await this.db.transaction(async () => {
 
 `database.transaction(...)`을 사용할 수 없고 `strictTransactions`가 `false`이면 `transaction()`과 `requestTransaction()`은 직접 실행으로 fallback합니다. 요청 범위 호출은 이 경우에도 `AbortSignal`을 존중합니다.
 
-### 인터셉터 기반 요청 단위 트랜잭션
-
-```ts
-import { UseInterceptors } from '@fluojs/http';
-import { DrizzleTransactionInterceptor } from '@fluojs/drizzle';
-
-@UseInterceptors(DrizzleTransactionInterceptor)
-class UsersController {}
-```
-
 ### 종료와 상태 계약
 
-`DrizzleTransactionInterceptor`는 각 HTTP 요청을 `DrizzleDatabase.requestTransaction(...)`으로 실행합니다. 애플리케이션 종료 중에는 `DrizzleDatabase`가 아직 활성 상태인 요청 트랜잭션을 abort하고, 열린 요청 및 수동 transaction callback이 settle되거나 rollback될 때까지 기다린 뒤 선택적 `dispose(database)` hook을 실행합니다. 이 순서는 pool이나 외부 관리 리소스를 닫기 전에 driver가 commit/rollback/cleanup 작업을 끝낼 수 있게 보장합니다.
+애플리케이션 종료 중에는 `DrizzleDatabase`가 아직 활성 상태인 요청 트랜잭션을 abort하고, 열린 요청 및 수동 transaction callback이 settle되거나 rollback될 때까지 기다린 뒤 선택적 `dispose(database)` hook을 실행합니다. 이 순서는 pool이나 외부 관리 리소스를 닫기 전에 driver가 commit/rollback/cleanup 작업을 끝낼 수 있게 보장합니다.
 기존 요청 boundary 안에서 열린 중첩 `requestTransaction(...)` 호출은 활성 Drizzle transaction을 재사용하면서도 ambient request abort signal을 관찰합니다. 기존 수동 transaction boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 두 번째 Drizzle transaction을 열지 않고 shutdown settlement tracking에 참여하며, 해당 settlement handle은 바깥 수동 transaction이 settle될 때까지 tracking에 남아 shutdown이 `dispose(database)`를 실행하기 전에 그 바깥 경계까지 drain하게 합니다. 단, platform status activity count는 더 짧게 유지됩니다. 중첩 request callback이 settle되는 즉시, 바깥 수동 transaction이 계속 실행 중이어도 `details.activeRequestTransactions`는 감소합니다.
 종료가 시작된 뒤 새 `transaction(...)` 및 `requestTransaction(...)` 호출은 거부되므로, 종료 boundary를 지난 뒤 시작되는 늦은 트랜잭션보다 dispose가 먼저 실행되는 상황을 방지합니다.
 요청 callback이 완료된 뒤 underlying Drizzle transaction runner가 commit 또는 rollback을 끝내기 전에 request signal이 abort되면, `requestTransaction(...)`은 먼저 해당 runner가 settle될 때까지 기다린 다음 abort reason으로 reject합니다. 이 동작은 Drizzle cleanup을 request cancellation과 직렬화하면서, 완료된 callback 결과를 반환하는 대신 늦은 request abort를 caller에게 드러냅니다.
@@ -127,7 +156,7 @@ class UsersController {}
 
 ```ts
 import { defineModule } from '@fluojs/runtime';
-import { DrizzleDatabase, DrizzleModule, DrizzleTransactionInterceptor } from '@fluojs/drizzle';
+import { DrizzleModule } from '@fluojs/drizzle';
 
 const database = {
   transaction: async <T>(callback: (tx: typeof database) => Promise<T>) => callback(database),
@@ -136,7 +165,6 @@ const database = {
 class ManualDrizzleModule {}
 
 defineModule(ManualDrizzleModule, {
-  exports: [DrizzleDatabase, DrizzleTransactionInterceptor],
   imports: [DrizzleModule.forRoot({ database })],
 });
 ```
@@ -145,7 +173,7 @@ defineModule(ManualDrizzleModule, {
 
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`
-- `DrizzleTransactionInterceptor`
+- `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
 - `createDrizzlePlatformStatusSnapshot(...)`
 - `DrizzleDatabaseLike`
@@ -153,6 +181,8 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleHandleProvider`
 
 `DRIZZLE_HANDLE_PROVIDER`는 lifecycle-aware `DrizzleDatabase` wrapper를 가리키는 alias token입니다. `@fluojs/terminus` 같은 health integration은 이 token을 통해 raw database ping으로 fallback하기 전에 `createPlatformStatusSnapshot()`을 읽습니다.
+
+`Transaction`은 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 기본적으로 ambient `DrizzleDatabase`를 resolve하고, 명시적 client 선택에는 accessor를 받을 수 있으며, 외부 경계에는 Drizzle transaction option을 전달할 수 있습니다.
 
 ### `DrizzleModule`
 
@@ -165,7 +195,7 @@ defineModule(ManualDrizzleModule, {
 ## 관련 패키지
 
 - `@fluojs/runtime`: 모듈 시작과 종료 순서를 관리합니다.
-- `@fluojs/http`: 요청 단위 트랜잭션에 쓰이는 인터셉터 파이프라인을 제공합니다.
+- `@fluojs/http`: 명시적 `requestTransaction(...)` 경계와 함께 사용할 수 있는 요청 라이프사이클 primitive를 제공합니다.
 - `@fluojs/prisma`, `@fluojs/mongoose`: 같은 런타임 모델 위에서 동작하는 다른 데이터 통합 패키지입니다.
 
 ## 예제 소스

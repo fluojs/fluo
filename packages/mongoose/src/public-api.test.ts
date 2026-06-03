@@ -12,11 +12,12 @@ describe('@fluojs/mongoose public API surface', () => {
     expect(mongoosePublicApi).toHaveProperty('MongooseConnection');
     expect(mongoosePublicApi).toHaveProperty('MongooseModule');
     expect(mongoosePublicApi).toHaveProperty('createMongooseProviders');
-    expect(mongoosePublicApi).toHaveProperty('MongooseTransactionInterceptor');
+    expect(mongoosePublicApi).toHaveProperty('Transaction');
     expect(mongoosePublicApi).toHaveProperty('createMongoosePlatformStatusSnapshot');
     expect(mongoosePublicApi).toHaveProperty('MONGOOSE_CONNECTION');
     expect(mongoosePublicApi).toHaveProperty('MONGOOSE_DISPOSE');
     expect(mongoosePublicApi).toHaveProperty('MONGOOSE_OPTIONS');
+    expect(mongoosePublicApi).toHaveProperty('Transaction');
   });
 
   it('does not expose internal module wiring values from the root barrel', () => {

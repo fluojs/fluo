@@ -11,6 +11,8 @@ Mongoose integration for fluo with session-aware transaction handling and lifecy
 - [Quick Start](#quick-start)
 - [Lifecycle and Shutdown](#lifecycle-and-shutdown)
 - [Common Patterns](#common-patterns)
+  - [Service Transaction Boundary (@Transaction)](#service-transaction-boundary-transaction)
+  - [Manual Transactions and currentSession()](#manual-transactions-and-currentsession)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -26,7 +28,7 @@ pnpm add mongoose
 
 - when Mongoose should plug into the same DI and application lifecycle as the rest of the app
 - when MongoDB sessions and transactions need one shared wrapper instead of ad hoc session plumbing in every service
-- when request-scoped transactions should be opt-in through an interceptor
+- when request-scoped transactions need explicit `requestTransaction(...)` boundaries
 
 ## Quick Start
 
@@ -66,57 +68,86 @@ Nested `requestTransaction(...)` calls opened inside an existing manual `transac
 
 ## Common Patterns
 
-### Access the connection through `MongooseConnection`
+### Service Transaction Boundary (@Transaction)
+
+The `@Transaction()` decorator is the recommended way to define transaction boundaries in your service layer. It ensures that all repository calls made within the decorated method share the same MongoDB session.
 
 ```ts
-import { MongooseConnection } from '@fluojs/mongoose';
+import { Transaction } from '@fluojs/mongoose';
+import { UserRepository } from './user.repository';
+
+export class UserService {
+  constructor(private readonly repo: UserRepository) {}
+
+  @Transaction()
+  async onboardUser(dto: CreateUserDto) {
+    const user = await this.repo.create(dto);
+    await this.repo.initProfile(user._id);
+    return user;
+  }
+}
 
 export class UserRepository {
   constructor(private readonly conn: MongooseConnection) {}
 
-  async findById(id: string) {
-    const User = this.conn.current().model('User');
-    return User.findById(id);
+  async create(data: any) {
+    // model() returns a session-aware facade inside @Transaction().
+    // Operations like create, find, findOne, aggregate, and bulkWrite
+    // automatically participate in the ambient transaction.
+    return this.conn.model('User').create(data);
+  }
+
+  async initProfile(userId: any) {
+    return this.conn.model('Profile').create({ userId });
   }
 }
 ```
 
-### Manual transactions still need explicit sessions
+Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying MongoDB session. Note that `doc.save()` is not automatically session-aware in v1; use the supported facade operations (`model.create()`, `model.find()`, `model.findOne()`, `model.aggregate()`, or `model.bulkWrite()`) for automatic transaction participation.
+
+### Manual Transactions and currentSession()
+
+The `MongooseConnection` provides `currentSession()` to access the ambient MongoDB session and `current()` to access the root connection handle. Use these as escape hatches when you need to pass sessions to external utilities or perform advanced manual plumbing.
+
+```ts
+import { MongooseConnection } from '@fluojs/mongoose';
+
+export class AdvancedRepository {
+  constructor(private readonly conn: MongooseConnection) {}
+
+  async customOperation() {
+    const session = this.conn.currentSession();
+    const User = this.conn.current().model('User');
+    
+    // Explicitly passing the session
+    return User.find({ status: 'active' }).session(session || null);
+  }
+}
+```
+
+Use `conn.transaction()` for manual transaction blocks:
 
 ```ts
 await this.conn.transaction(async () => {
-  const session = this.conn.currentSession();
-  const User = this.conn.current().model('User');
-
-  await User.create([{ name: 'Ada' }], { session });
+  const User = this.conn.model('User');
+  await User.create([{ name: 'Ada' }]);
 });
 ```
 
-If the wrapped connection implements `connection.transaction(...)`, fluo treats that as the strict transaction boundary even when `startSession()` is not exposed directly. Otherwise, when the connection does not implement `startSession()`, transactions fall back to direct execution by default. Set `strictTransactions: true` to throw `Transaction not supported: Mongoose connection does not implement startSession.` instead of falling back.
+If the wrapped connection implements `connection.transaction(...)`, fluo treats that as the strict transaction boundary. Otherwise, when the connection does not implement `startSession()`, transactions fall back to direct execution by default. Set `strictTransactions: true` to throw if transaction support is missing.
 
-Fluo never rewrites Mongoose operation options. If a model call passes an explicit `{ session }`, that option is left intact; if it omits one, repositories should not assume fluo will attach a session for them. Keep same-session parallel work and nested transaction expectations conservative: nested `MongooseConnection.transaction(...)` calls reuse the active boundary rather than opening a second MongoDB transaction on the same session.
-
-### Request-scoped transactions
-
-```ts
-import { UseInterceptors } from '@fluojs/http';
-import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
-
-@UseInterceptors(MongooseTransactionInterceptor)
-class UserController {}
-```
-
-Use `MongooseConnection.requestTransaction(...)` directly when you need the same request-aware transaction boundary outside an HTTP interceptor. Nested service transactions reuse the active session boundary, and nested request boundaries opened inside a manual transaction still participate in request abort and shutdown tracking.
+Fluo never rewrites Mongoose operation options. If a model call passes an explicit `{ session: null }` or a different session object inside an ambient transaction, fluo throws a session conflict error to prevent accidental transaction escapes.
 
 ## Public API
 
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
 - `MongooseConnection`
-- `MongooseTransactionInterceptor`
+- `Transaction`
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
 - `createMongooseProviders(options)` — compatibility/manual composition helper; prefer `MongooseModule.forRoot(...)` or `MongooseModule.forRootAsync(...)` for application-facing registration so module exports and provider visibility stay aligned.
 - `createMongoosePlatformStatusSnapshot(...)`
 - `connection` must be a concrete object/function handle for both sync and async registration; missing handles are rejected during module registration or async bootstrap.
+- `Transaction` is a standard TC39 method decorator for service-layer session transaction boundaries. It resolves `this.conn` by default and accepts an accessor when the `MongooseConnection` lives under a different field.
 
 ### Related exported types
 
@@ -130,7 +161,7 @@ Use `MongooseConnection.requestTransaction(...)` directly when you need the same
 ## Related Packages
 
 - `@fluojs/runtime`: manages startup and shutdown hooks
-- `@fluojs/http`: provides the interceptor chain for request transactions
+- `@fluojs/http`: provides request lifecycle primitives that can be paired with explicit `requestTransaction(...)` boundaries
 - `@fluojs/prisma` and `@fluojs/drizzle`: alternate database integrations with different transaction models
 
 ## Example Sources

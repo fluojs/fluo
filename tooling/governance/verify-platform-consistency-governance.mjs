@@ -30,6 +30,8 @@ const contractGateTriggers = new Set([
   'docs/contracts/release-governance.ko.md',
   'docs/contracts/platform-conformance-authoring-checklist.md',
   'docs/contracts/platform-conformance-authoring-checklist.ko.md',
+  'docs/architecture/transactions.md',
+  'docs/architecture/transactions.ko.md',
   'docs/reference/package-chooser.md',
   'docs/reference/package-chooser.ko.md',
   'docs/reference/package-folder-structure.md',

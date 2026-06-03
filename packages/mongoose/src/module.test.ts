@@ -8,7 +8,6 @@ import {
   MONGOOSE_OPTIONS,
   MongooseConnection,
   MongooseModule,
-  MongooseTransactionInterceptor,
 } from './index.js';
 import type { MongooseConnectionLike, MongooseSessionLike } from './types.js';
 
@@ -125,7 +124,7 @@ describe('@fluojs/mongoose', () => {
     class ManualMongooseModule {}
 
     defineModule(ManualMongooseModule, {
-      exports: [MongooseConnection, MongooseTransactionInterceptor],
+      exports: [MongooseConnection],
       imports: [mongooseModule],
     });
 

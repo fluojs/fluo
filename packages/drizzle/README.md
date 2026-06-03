@@ -10,10 +10,9 @@ Drizzle ORM integration for fluo with a transaction-aware database wrapper and a
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
-  - [Use `DrizzleDatabase.current()` inside repositories](#use-drizzledatabasecurrent-inside-repositories)
-  - [Manual transaction boundaries](#manual-transaction-boundaries)
-  - [Request-scoped transactions with an interceptor](#request-scoped-transactions-with-an-interceptor)
-  - [Shutdown and status contracts](#shutdown-and-status-contracts)
+  - [Service Transaction Boundary (@Transaction)](#service-transaction-boundary-transaction)
+  - [Manual Transactions and current()](#manual-transactions-and-current)
+  - [Shutdown and Status Contracts](#shutdown-and-status-contracts)
 - [Manual Module Composition](#manual-module-composition)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
@@ -66,29 +65,69 @@ export class AppModule {}
 
 ## Common Patterns
 
-### Use `DrizzleDatabase.current()` inside repositories
+### Service Transaction Boundary (@Transaction)
+
+The `@Transaction()` decorator is the recommended way to define transaction boundaries in your service layer. It ensures that all repository calls made within the decorated method share the same Drizzle transaction.
+
+```ts
+import { Transaction, DrizzleDatabase } from '@fluojs/drizzle';
+import { users, profiles } from './schema';
+
+export class UserService {
+  constructor(private readonly repo: UserRepository) {}
+
+  @Transaction()
+  async onboardUser(dto: any) {
+    const user = await this.repo.create(dto);
+    await this.repo.initProfile(user.id);
+    return user;
+  }
+}
+
+export class UserRepository {
+  constructor(private readonly db: DrizzleDatabase) {}
+
+  async create(data: any) {
+    // Repository calls use standard Drizzle methods.
+    // When called inside @Transaction(), they automatically participate in the ambient transaction.
+    return this.db.insert(users).values(data);
+  }
+
+  async initProfile(userId: string) {
+    return this.db.insert(profiles).values({ userId });
+  }
+}
+```
+
+Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying Drizzle transaction.
+
+### Manual Transactions and current()
+
+The `DrizzleDatabase` provides a `current()` method that returns the active transaction handle if inside a transaction scope, or the root handle otherwise. Use this as an escape hatch when you need to pass the handle to external utilities or perform advanced manual transaction plumbing.
 
 ```ts
 import { DrizzleDatabase } from '@fluojs/drizzle';
 import { eq } from 'drizzle-orm';
 import { users } from './schema';
 
-export class UserRepository {
+export class AdvancedRepository {
   constructor(private readonly db: DrizzleDatabase) {}
 
-  async findById(id: string) {
-    return this.db.current().select().from(users).where(eq(users.id, id));
+  async customOperation() {
+    const tx = this.db.current();
+    // Use tx for operations that fluo doesn't automatically wrap,
+    // or when passing to an external utility that expects a Drizzle database handle.
+    return tx.select().from(users);
   }
 }
 ```
 
-### Manual transaction boundaries
+Use `db.transaction()` for manual transaction blocks:
 
 ```ts
 await this.db.transaction(async () => {
-  const tx = this.db.current();
-  await tx.insert(users).values(user);
-  await tx.insert(profiles).values(profile);
+  await this.db.insert(users).values(user);
+  await this.db.insert(profiles).values(profile);
 });
 ```
 
@@ -96,19 +135,9 @@ Nested calls reuse the active transaction boundary. If a nested call passes tran
 
 When `database.transaction(...)` is unavailable and `strictTransactions` is `false`, `transaction()` and `requestTransaction()` fall back to direct execution; request-scoped calls still honor `AbortSignal`.
 
-### Request-scoped transactions with an interceptor
-
-```ts
-import { UseInterceptors } from '@fluojs/http';
-import { DrizzleTransactionInterceptor } from '@fluojs/drizzle';
-
-@UseInterceptors(DrizzleTransactionInterceptor)
-class UsersController {}
-```
-
 ### Shutdown and status contracts
 
-`DrizzleTransactionInterceptor` runs each HTTP request through `DrizzleDatabase.requestTransaction(...)`. During application shutdown, `DrizzleDatabase` aborts any still-active request transaction, waits for open request and manual transaction callbacks to settle or roll back, and only then runs the optional `dispose(database)` hook. This ordering lets drivers finish commit/rollback/cleanup work before pools or externally managed resources are closed.
+During application shutdown, `DrizzleDatabase` aborts any still-active request transaction, waits for open request and manual transaction callbacks to settle or roll back, and only then runs the optional `dispose(database)` hook. This ordering lets drivers finish commit/rollback/cleanup work before pools or externally managed resources are closed.
 Nested `requestTransaction(...)` calls opened inside an existing request boundary observe the ambient request abort signal while still reusing the active Drizzle transaction. Nested `requestTransaction(...)` calls opened inside an existing manual transaction boundary also join shutdown settlement tracking without opening a second Drizzle transaction, and their settlement handle remains tracked until the outer manual transaction settles so shutdown drains that outer boundary before `dispose(database)` runs. The platform status activity count is intentionally shorter lived: once the nested request callback settles, `details.activeRequestTransactions` is decremented even if the outer manual transaction continues running.
 New `transaction(...)` and `requestTransaction(...)` calls are rejected once shutdown begins, so disposal cannot overtake a late transaction that starts after the shutdown boundary is crossed.
 If the request signal aborts after the request callback has completed but before the underlying Drizzle transaction runner finishes committing or rolling back, `requestTransaction(...)` waits for that runner to settle first and then rejects with the abort reason. This keeps Drizzle cleanup serialized with request cancellation while making the late request abort visible to the caller instead of returning the completed callback result.
@@ -127,7 +156,7 @@ Use `DrizzleModule.forRoot(...)` / `forRootAsync(...)` to register Drizzle. When
 
 ```ts
 import { defineModule } from '@fluojs/runtime';
-import { DrizzleDatabase, DrizzleModule, DrizzleTransactionInterceptor } from '@fluojs/drizzle';
+import { DrizzleModule } from '@fluojs/drizzle';
 
 const database = {
   transaction: async <T>(callback: (tx: typeof database) => Promise<T>) => callback(database),
@@ -136,7 +165,6 @@ const database = {
 class ManualDrizzleModule {}
 
 defineModule(ManualDrizzleModule, {
-  exports: [DrizzleDatabase, DrizzleTransactionInterceptor],
   imports: [DrizzleModule.forRoot({ database })],
 });
 ```
@@ -145,7 +173,7 @@ defineModule(ManualDrizzleModule, {
 
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`
-- `DrizzleTransactionInterceptor`
+- `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
 - `createDrizzlePlatformStatusSnapshot(...)`
 - `DrizzleDatabaseLike`
@@ -153,6 +181,8 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleHandleProvider`
 
 `DRIZZLE_HANDLE_PROVIDER` is an alias token for the lifecycle-aware `DrizzleDatabase` wrapper. Health integrations such as `@fluojs/terminus` use this token to read `createPlatformStatusSnapshot()` before falling back to raw database pings.
+
+`Transaction` is a standard TC39 method decorator for service-layer transaction boundaries. It resolves the ambient `DrizzleDatabase` by default, accepts an accessor for explicit client selection, and can forward Drizzle transaction options to the outer boundary.
 
 ### `DrizzleModule`
 
@@ -165,7 +195,7 @@ defineModule(ManualDrizzleModule, {
 ## Related Packages
 
 - `@fluojs/runtime`: owns module startup and shutdown sequencing
-- `@fluojs/http`: provides the interceptor pipeline used for request transactions
+- `@fluojs/http`: provides request lifecycle primitives that can be paired with explicit `requestTransaction(...)` boundaries
 - `@fluojs/prisma` and `@fluojs/mongoose`: alternate ORM/ODM integrations with the same fluo runtime model
 
 ## Example Sources

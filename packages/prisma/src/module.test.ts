@@ -12,7 +12,6 @@ import {
   PrismaModule,
   PrismaService,
   type PrismaTransactionClient,
-  PrismaTransactionInterceptor,
 } from './index.js';
 
 type Assert<T extends true> = T;
@@ -168,7 +167,7 @@ describe('@fluojs/prisma', () => {
     class ManualPrismaModule {}
 
     defineModule(ManualPrismaModule, {
-      exports: [PrismaService, PrismaTransactionInterceptor],
+      exports: [PrismaService],
       imports: [prismaModule],
     });
 
