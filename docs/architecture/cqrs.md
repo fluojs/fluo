@@ -17,7 +17,7 @@ This document defines the current CQRS contract implemented by `@fluojs/cqrs` an
 
 | Rule | Current contract | Source anchor |
 | --- | --- | --- |
-| Module entrypoint | Applications register CQRS through `CqrsModule.forRoot(...)`. The module is global and exports lifecycle services plus the `COMMAND_BUS`, `QUERY_BUS`, and `EVENT_BUS` compatibility tokens. | `packages/cqrs/src/module.ts` |
+| Module entrypoint | Applications register CQRS through `CqrsModule.forRoot(...)`. The module is global and exports lifecycle services plus the `COMMAND_BUS`, `QUERY_BUS`, and `EVENT_BUS` compatibility tokens. Low-level provider assembly remains internal to the module implementation. | `packages/cqrs/src/module.ts` |
 | Decorator metadata | `@CommandHandler(...)`, `@QueryHandler(...)`, `@EventHandler(...)`, and `@Saga(...)` store standard-decorator metadata on the target class. | `packages/cqrs/src/decorators.ts`, `packages/cqrs/src/metadata.ts` |
 | Optional eager registration | `CqrsModule.forRoot({ commandHandlers, queryHandlers, eventHandlers, sagas })` adds those classes to the provider list, but discovery still reads the same handler metadata. | `packages/cqrs/src/module.ts` |
 | Singleton-only discovery | Command handlers, query handlers, event handlers, and sagas are registered only when the provider scope is `singleton`. Non-singleton candidates are skipped with a logger warning. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
@@ -32,7 +32,7 @@ This document defines the current CQRS contract implemented by `@fluojs/cqrs` an
 | Command bus | Discovers handlers once, preloads handler instances, then dispatches one command to one handler. | `packages/cqrs/src/buses/command-bus.ts` |
 | Query bus | Discovers handlers once, preloads handler instances, then dispatches one query to one handler. | `packages/cqrs/src/buses/query-bus.ts` |
 | CQRS event bus | Publishes to matching local event handlers, then to the saga lifecycle service, then to the shared `@fluojs/event-bus` transport. `publishAll(...)` awaits each event's full CQRS pipeline before publishing the next event, preserving input order. | `packages/cqrs/src/buses/event-bus.ts` |
-| Saga runtime | Serializes execution per saga token, tracks active dispatch context with `AsyncLocalStorage`, and reports runtime snapshot data for diagnostics. | `packages/cqrs/src/buses/saga-bus.ts` |
+| Saga runtime | Serializes execution per saga token, threads an opaque `CqrsDispatchContext` through nested CQRS calls without Node.js async-local APIs, and reports runtime snapshot data for diagnostics. | `packages/cqrs/src/buses/saga-bus.ts` |
 | Shutdown behavior | The CQRS event bus waits for active `publish(...)` pipelines and `publishAll(...)` sequences to settle before marking itself stopped. The saga runtime also waits for in-flight dispatches during shutdown before clearing descriptors and cached handler instances. | `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
 
 ## Constraints
@@ -41,5 +41,6 @@ This document defines the current CQRS contract implemented by `@fluojs/cqrs` an
 - Event handling is in-process by default. `CqrsEventBusService` delegates the final publication step to `@fluojs/event-bus`, but the CQRS package itself does not provide a distributed broker contract.
 - Shutdown drain covers CQRS-local handler and saga work plus the delegated publication call. When `CqrsModule.forRoot({ eventBus: { publish: { waitForHandlers: false } } })` is configured, delegated `@OnEvent(...)` subscribers may still be running after delegated publication resolves, so `publish(...)`, `publishAll(...)`, and CQRS shutdown drain completion do not guarantee subscriber completion in that mode.
 - Saga orchestration is guarded against unsafe re-entry. Re-entering the same saga route or exceeding the nested depth limit of `32` fails with `SagaTopologyError`.
+- `CqrsDispatchContext` is a pass-through public type only. Applications should not construct or inspect topology state; CQRS trusts only internally branded context values it created during saga dispatch.
 - Sagas that throw non-Fluo errors are wrapped as `SagaExecutionError`.
 - The CQRS package relies on TC39 standard decorators and explicit metadata storage.
