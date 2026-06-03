@@ -142,10 +142,12 @@ Fluo never rewrites Mongoose operation options. If a model call passes an explic
 
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
 - `MongooseConnection`
+- `Transaction`
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
 - `createMongooseProviders(options)` — compatibility/manual composition helper; prefer `MongooseModule.forRoot(...)` or `MongooseModule.forRootAsync(...)` for application-facing registration so module exports and provider visibility stay aligned.
 - `createMongoosePlatformStatusSnapshot(...)`
 - `connection` must be a concrete object/function handle for both sync and async registration; missing handles are rejected during module registration or async bootstrap.
+- `Transaction` is a standard TC39 method decorator for service-layer session transaction boundaries. It resolves `this.conn` by default and accepts an accessor when the `MongooseConnection` lives under a different field.
 
 ### Related exported types
 

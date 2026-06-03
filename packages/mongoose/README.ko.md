@@ -144,10 +144,12 @@ Fluo는 Mongoose 작업 옵션을 임의로 재작성하지 않습니다. 활성
 
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
 - `MongooseConnection`
+- `Transaction`
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
 - `createMongooseProviders(options)` — 호환성/수동 composition helper입니다. 애플리케이션-facing 등록에서는 module export와 provider visibility가 문서화된 namespace facade와 맞도록 `MongooseModule.forRoot(...)` 또는 `MongooseModule.forRootAsync(...)`를 우선 사용하세요.
 - `createMongoosePlatformStatusSnapshot(...)`
 - sync 및 async 등록 모두에서 `connection`은 실제 object/function handle이어야 하며, 누락된 handle은 모듈 등록 또는 async bootstrap 중 거부됩니다.
+- `Transaction`은 서비스 계층 세션 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 기본적으로 `this.conn`을 resolve하고, `MongooseConnection`이 다른 필드에 있으면 accessor를 받을 수 있습니다.
 
 ### 관련 export 타입
 
