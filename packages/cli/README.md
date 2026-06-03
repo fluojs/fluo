@@ -302,12 +302,18 @@ The package can be used programmatically to trigger CLI actions from within othe
 | `runNewCommand(argv, options?)` | Programmatic access to the project scaffolding logic. |
 | `NewCommandRuntimeOptions` | Type for `runNewCommand(...)` runtime overrides such as prompts, filesystem writes, dependency installation, and git initialization. |
 | `CliPromptCancelledError` | Stable sentinel that caller-supplied prompt hooks can throw to report normal cancellation. |
+| `runGenerateCommand(kind, name, baseDirectory, options?)` | Programmatic access to the built-in schematic generator and module auto-registration planner. |
 | `GenerateOptions` | Type for programmatic generator options. |
-| `GeneratedFile` | Type describing generated file paths, content, and write status. |
+| `GenerateResult` | Type for generator results, including changed files, dry-run plan entries, module wiring metadata, and next-step hints. |
+| `GeneratePlanEntry` / `GeneratePlanAction` | Types for dry-run and write-plan path actions returned by `runGenerateCommand(...)`. |
+| `GeneratedFile` | Type describing generated file paths and in-memory content before writes. |
 | `GeneratorKind` | Union type of all supported generator types (e.g., `'controller'`, `'service'`). |
-| `ModuleRegistration` | Type describing module wiring results from generator runs. |
+| `ModuleRegistration` | Type describing controller, provider, or middleware module wiring metadata from generator runs. |
+| `inspectUsage()` | Returns the current `fluo inspect` usage text for help surfaces and tests. |
+| `runInspectCommand(argv, options?)` | Programmatic access to inspect orchestration, JSON/report emission, and Studio Mermaid delegation. |
+| `InspectCommandRuntimeOptions` | Type for `runInspectCommand(...)` and `runCli(...)` inspect runtime overrides such as cwd, streams, prompts, and Studio renderer loading. |
 
-Programmatic entry points preserve caller process ownership. `runCli(...)` and `runNewCommand(...)` return numeric exit codes instead of calling `process.exit(...)`; prompt cancellation resolves as exit code `0` through the command runner, and setup actions such as dependency installation or git initialization only run when the resolved `fluo new` options request them. Caller-supplied prompt hooks can throw `CliPromptCancelledError` from the public package entrypoint to express normal cancellation without depending on CLI-internal files.
+Programmatic entry points preserve caller process ownership. `runCli(...)`, `runNewCommand(...)`, and `runInspectCommand(...)` return numeric exit codes instead of calling `process.exit(...)`; prompt cancellation resolves as exit code `0` through the command runner, and setup actions such as dependency installation or git initialization only run when the resolved `fluo new` options request them. `runGenerateCommand(...)` returns a structured `GenerateResult`; pass `dryRun: true` to preview generated file and module-wiring actions without writing files. Caller-supplied prompt hooks can throw `CliPromptCancelledError` from the public package entrypoint to express normal cancellation without depending on CLI-internal files.
 
 ## Related Packages
 
