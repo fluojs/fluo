@@ -92,7 +92,7 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 ### Bootstrap and Shutdown Lifecycle
 
-Queue discovers workers and creates queue-owned BullMQ resources during application bootstrap, but BullMQ worker processors are started only after the runtime marks the full application bootstrap/readiness sequence complete. Jobs enqueued by other `onApplicationBootstrap()` hooks can be accepted once the Queue service is initialized, and their processors run after the bootstrap-ready handoff instead of racing ahead of later async bootstrap hooks or application readiness.
+Queue discovers workers and creates queue-owned BullMQ resources during application bootstrap, but BullMQ worker processors are started only after the runtime marks the full application bootstrap/readiness sequence complete. Jobs enqueued by other `onApplicationBootstrap()` hooks can be accepted once the Queue service is initialized, and their processors run after the bootstrap-ready handoff instead of racing ahead of later async bootstrap hooks or application readiness. Queue status reports degraded readiness until those BullMQ processors have actually started; if a processor fails to start, the lifecycle moves to `failed` and status snapshots expose the failure instead of reporting the workers as ready.
 
 Application shutdown marks Queue as `stopping`, rejects new enqueue attempts, closes queue-owned workers/queues/connections, and drains pending dead-letter writes. Worker shutdown is bounded by `workerShutdownTimeoutMs` so an active processor that never settles cannot block application shutdown indefinitely. When the timeout elapses, Queue logs the timeout and asks BullMQ to force-close the worker before continuing resource cleanup.
 
@@ -122,7 +122,7 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 ### Core
 - `QueueModule`: Main entry point for queue registration.
 - `QueueModule.forRoot(options)`: Registers queue support for an application module.
-- `QueueLifecycleService`: Primary service for enqueuing jobs (`enqueue(job)`).
+- `QueueLifecycleService`: Primary service for enqueuing jobs and creating lifecycle/status snapshots (`enqueue(job)`, `createPlatformStatusSnapshot()`).
 - `@QueueWorker(JobClass, options?)`: Decorator to mark a class as a job handler.
 - `QUEUE`: Compatibility injection token for the queue facade.
 - `createQueuePlatformStatusSnapshot(...)`: Status snapshot helper for lifecycle/readiness diagnostics.
@@ -136,9 +136,9 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 - `QueueBackoffType`: Supported retry backoff strategy names (`fixed`, `exponential`).
 - `QueueBackoffOptions`: Retry backoff settings (`type`, `delayMs`).
 - `QueueRateLimiterOptions`: Worker-level distributed rate limiter settings (`max`, `duration`).
-- `QueueLifecycleState`: Lifecycle states reported by Queue status adapters (`idle`, `starting`, `started`, `stopping`, `stopped`).
-- `QueueStatusAdapterInput`: Normalized queue metrics passed to `createQueuePlatformStatusSnapshot(...)`.
-- `QueuePlatformStatusSnapshot`: Queue-specific readiness, health, ownership, and detail snapshot returned by the status helper.
+- `QueueLifecycleState`: Lifecycle states reported by Queue status adapters (`idle`, `starting`, `started`, `stopping`, `stopped`, `failed`).
+- `QueueStatusAdapterInput`: Normalized queue metrics and worker-start diagnostics passed to `createQueuePlatformStatusSnapshot(...)`.
+- `QueuePlatformStatusSnapshot`: Queue-specific readiness, health, ownership, and detail snapshot returned by the status helper and `QueueLifecycleService.createPlatformStatusSnapshot()`.
 
 `QueueModuleOptions` also includes lifecycle and dead-letter retention controls such as `workerShutdownTimeoutMs` and `defaultDeadLetterMaxEntries`.
 
@@ -148,7 +148,7 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 - `workerShutdownTimeoutMs`: maximum time to wait for active worker processors during shutdown before force-closing the BullMQ worker. Defaults to `30_000`.
 - `defaultDeadLetterMaxEntries`: maximum retained dead-letter records per job, or `false` to disable trimming. Defaults to `1_000`.
 
-`createQueuePlatformStatusSnapshot(...)` reports readiness as `ready` only after Queue reaches `started`; `starting` reports degraded readiness, and `stopping`/`stopped` report not-ready. Snapshot details include the Redis dependency id, lifecycle state, ready/discovered worker counts, pending dead-letter writes, the dead-letter drain timeout, and `workerShutdownTimeoutMs`.
+`QueueLifecycleService.createPlatformStatusSnapshot()` uses the same public snapshot contract as `createQueuePlatformStatusSnapshot(...)`. It reports readiness as `ready` only after Queue reaches `started` and every discovered BullMQ worker processor has started. `started` resources with pending processors report degraded readiness, `starting` reports degraded readiness, `stopping`/`stopped` report not-ready, and worker-start failures report not-ready/unhealthy with `workerStartFailures` and `lastWorkerStartFailure` details. Snapshot details include the Redis dependency id, lifecycle state, ready/discovered worker counts, pending dead-letter writes, the dead-letter drain timeout, and `workerShutdownTimeoutMs`.
 
 Only singleton `@QueueWorker()` providers/controllers are registered. Request/transient workers are skipped during discovery.
 
