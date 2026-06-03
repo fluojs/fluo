@@ -23,21 +23,26 @@ function createFakeSession(events: string[]): MongooseSessionLike & { id: string
   };
 }
 
+type TestMongooseOperationOptions = {
+  session?: MongooseSessionLike | null;
+  timestamps?: boolean;
+};
+
 function createFakeConnection(
   events: string[],
   session: MongooseSessionLike,
 ): MongooseConnectionLike & {
   model(name: string): {
     create(...args: unknown[]): Promise<unknown[]>;
-    find(filter?: unknown, projection?: unknown, opts?: { session?: MongooseSessionLike | null }): Promise<unknown[]>;
-    findOne(filter?: unknown, projection?: unknown, opts?: { session?: MongooseSessionLike | null }): Promise<unknown>;
+    find(filter?: unknown, projection?: unknown, opts?: TestMongooseOperationOptions): Promise<unknown[]>;
+    findOne(filter?: unknown, projection?: unknown, opts?: TestMongooseOperationOptions): Promise<unknown>;
     aggregate(
       pipeline: unknown[],
-      opts?: { session?: MongooseSessionLike | null },
+      opts?: TestMongooseOperationOptions,
     ): Promise<unknown[]>;
     bulkWrite(
       ops: unknown[],
-      opts?: { session?: MongooseSessionLike | null },
+      opts?: TestMongooseOperationOptions,
     ): Promise<{ ok: boolean }>;
   };
 } {
@@ -50,36 +55,40 @@ function createFakeConnection(
       return {
         async create(...args: unknown[]) {
           const maybeOptions = args.at(-1);
-          const opts = maybeOptions && typeof maybeOptions === 'object' && 'session' in maybeOptions
-            ? maybeOptions as { session?: MongooseSessionLike | null }
-            : undefined;
+          const opts =
+            maybeOptions && typeof maybeOptions === 'object' && 'session' in maybeOptions
+              ? (maybeOptions as TestMongooseOperationOptions)
+              : undefined;
           const docs = opts ? args.slice(0, -1) : args;
 
           events.push(`model:${name}:create:session=${opts?.session != null ? 'set' : 'unset'}`);
           events.push(`model:${name}:create:docs=${docs.length}`);
+          if (opts && 'timestamps' in opts) {
+            events.push(`model:${name}:create:timestamps=${String(opts.timestamps)}`);
+          }
           return docs;
         },
-        async find(_filter?: unknown, projection?: unknown, opts?: { session?: MongooseSessionLike | null }) {
+        async find(_filter?: unknown, projection?: unknown, opts?: TestMongooseOperationOptions) {
           if (projection && typeof projection === 'object' && 'session' in projection) {
             events.push(`model:${name}:find:projection-session=set`);
           }
           events.push(`model:${name}:find:session=${opts?.session != null ? 'set' : 'unset'}`);
           return [];
         },
-        async findOne(_filter?: unknown, projection?: unknown, opts?: { session?: MongooseSessionLike | null }) {
+        async findOne(_filter?: unknown, projection?: unknown, opts?: TestMongooseOperationOptions) {
           if (projection && typeof projection === 'object' && 'session' in projection) {
             events.push(`model:${name}:findOne:projection-session=set`);
           }
           events.push(`model:${name}:findOne:session=${opts?.session != null ? 'set' : 'unset'}`);
           return null;
         },
-        async aggregate(_pipeline: unknown[], opts?: { session?: MongooseSessionLike | null }) {
+        async aggregate(_pipeline: unknown[], opts?: TestMongooseOperationOptions) {
           events.push(
             `model:${name}:aggregate:session=${opts?.session != null ? 'set' : 'unset'}`,
           );
           return [];
         },
-        async bulkWrite(_ops: unknown[], opts?: { session?: MongooseSessionLike | null }) {
+        async bulkWrite(_ops: unknown[], opts?: TestMongooseOperationOptions) {
           events.push(
             `model:${name}:bulkWrite:session=${opts?.session != null ? 'set' : 'unset'}`,
           );
@@ -284,6 +293,101 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       await expect(service.createMany()).resolves.toEqual([{ name: 'Ada' }, { name: 'Grace' }]);
       expect(events).toContain('model:User:create:session=set');
       expect(events).toContain('model:User:create:docs=2');
+
+      await app.close();
+    });
+
+    it('model.create(doc, options) merges the ambient session into existing single-document options', async () => {
+      const mongoosePackage = await import('./index.js');
+      const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(ExportedTransaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async createOne() {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.create({ name: 'Ada' }, { timestamps: false });
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @Transaction()
+        async createOne() {
+          return this.repo.createOne();
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      await expect(service.createOne()).resolves.toEqual([{ name: 'Ada' }]);
+      expect(events).toContain('model:User:create:session=set');
+      expect(events).toContain('model:User:create:docs=1');
+      expect(events).toContain('model:User:create:timestamps=false');
+
+      await app.close();
+    });
+
+    it('model.create(doc, {}) treats an empty second argument as single-document options', async () => {
+      const mongoosePackage = await import('./index.js');
+      const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(ExportedTransaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async createOne() {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.create({ name: 'Ada' }, {});
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @Transaction()
+        async createOne() {
+          return this.repo.createOne();
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      await expect(service.createOne()).resolves.toEqual([{ name: 'Ada' }]);
+      expect(events).toContain('model:User:create:session=set');
+      expect(events).toContain('model:User:create:docs=1');
 
       await app.close();
     });
@@ -713,6 +817,7 @@ describe('@fluojs/mongoose Transaction decorator — named/accessor contract', (
 
       @Transaction((self: MultiConnectionService) => self.analyticsConn)
       async loadAnalytics() {
+        void this.conn;
         analyticsEvents.push('service:loadAnalytics');
         return { ok: true };
       }
@@ -768,6 +873,7 @@ describe('@fluojs/mongoose Transaction decorator — named/accessor contract', (
 
       @Transaction((self: DualConnectionService) => self.analyticsConn)
       async analyticsWork() {
+        void this.conn;
         analyticsEvents.push('service:analyticsWork');
       }
 

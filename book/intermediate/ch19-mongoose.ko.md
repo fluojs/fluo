@@ -97,7 +97,7 @@ export class ProductRepository {
 MongoDB 트랜잭션은 활성화된 **세션(Session)**을 필요로 합니다. Fluo는 세션 생성, 실행, 정리를 하나의 트랜잭션 래퍼로 묶어 호출부의 부담을 줄입니다.
 
 
-Mongoose model 호출에는 명시적인 `{ session }` option이 필요하므로 request-scoped transaction이 repository 호출을 자동으로 다시 쓰지는 않습니다. 기존 수동 `transaction(...)` 안에서 열린 중첩 `requestTransaction(...)`은 ambient session을 재사용하고 활성 request boundary로 추적되며, 종료 중에는 abort되어 바깥 수동 transaction이 connection disposal 전에 rollback할 수 있습니다.
+`@Transaction()`, `transaction(...)`, `requestTransaction(...)` 경계 안에서 `conn.model(...)`은 `create`, `find`, `findOne`, `aggregate`, `bulkWrite`에 ambient session을 자동으로 바인딩하는 facade를 반환합니다. 지원되지 않는 model 메서드와 `doc.save()`에는 여전히 `conn.currentSession()`을 명시적으로 전달해야 합니다. 기존 수동 `transaction(...)` 안에서 열린 중첩 `requestTransaction(...)`은 ambient session을 재사용하고 활성 request boundary로 추적되며, 종료 중에는 abort되어 바깥 수동 transaction이 connection disposal 전에 rollback할 수 있습니다.
 
 ### Manual Transactions
 fluo에서 권장되는 트랜잭션 처리 방식은 서비스 메서드에 `@Transaction()` 데코레이터를 사용하는 것입니다. 수동 제어가 필요한 경우 블록 패턴을 사용하십시오:
@@ -107,9 +107,13 @@ await this.conn.transaction(async () => {
   const Product = this.conn.model('Product');
   const Inventory = this.conn.model('Inventory');
 
-  // 이 호출들에 세션이 자동으로 주입됩니다
-  await Product.updateOne({ _id: pid }, { $set: { status: 'SOLD' } });
-  await Inventory.updateOne({ productId: pid }, { $inc: { stock: -1 } });
+  // 지원되는 facade 호출에는 세션이 자동으로 주입됩니다.
+  const product = await Product.findOne({ _id: pid });
+  await Inventory.bulkWrite([
+    { updateOne: { filter: { productId: pid }, update: { $inc: { stock: -1 } } } },
+  ]);
+
+  return product;
 });
 ```
 

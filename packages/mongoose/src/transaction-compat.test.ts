@@ -76,4 +76,31 @@ describe('Transaction decorator method semantics', () => {
     const svc = new UserService();
     await expect(svc.getLabel()).resolves.toBe('hello');
   });
+
+  it('does not scan arbitrary host fields when the default this.conn boundary is absent', async () => {
+    const events: string[] = [];
+    const analyticsConn = {
+      async transaction<T>(fn: () => Promise<T>): Promise<T> {
+        events.push('analytics:transaction');
+
+        return fn();
+      },
+    };
+
+    class UserService {
+      readonly analyticsConn = analyticsConn;
+
+      @Transaction()
+      async loadAnalytics(): Promise<string> {
+        return 'analytics';
+      }
+    }
+
+    const svc = new UserService();
+
+    await expect(svc.loadAnalytics()).rejects.toThrow(
+      'Mongoose @Transaction() could not resolve a transaction-capable connection from this.conn.',
+    );
+    expect(events).toEqual([]);
+  });
 });

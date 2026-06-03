@@ -100,7 +100,7 @@ MongoDB transactions require an active **session**. Fluo reduces the caller's bu
 
 When the provided Mongoose connection exposes `connection.transaction(...)`, fluo delegates the transaction boundary to that API so Mongoose's own ambient-session scope and cleanup semantics remain intact. Otherwise it falls back to `startSession()`, `startTransaction()`, `commitTransaction()` / `abortTransaction()`, and `endSession()` directly. Request-scoped transactions observe the request `AbortSignal` during session acquisition and delegated transaction startup, so cancelled requests can stop before repository work runs. In both modes, `dispose(connection)` waits until active request transactions and session cleanup settle during application shutdown, and new manual or request-scoped transaction boundaries are rejected once shutdown begins.
 
-Because Mongoose model calls require explicit `{ session }` options, request-scoped transactions do not rewrite repository calls for you. A nested `requestTransaction(...)` opened inside an existing manual `transaction(...)` reuses the ambient session, remains tracked as an active request boundary, and is aborted during shutdown so the outer manual transaction can roll back before connection disposal.
+Within any `@Transaction()`, `transaction(...)`, or `requestTransaction(...)` boundary, `conn.model(...)` returns a facade that auto-binds the ambient session for `create`, `find`, `findOne`, `aggregate`, and `bulkWrite`. Unsupported model methods and `doc.save()` still require explicit `conn.currentSession()` plumbing. A nested `requestTransaction(...)` opened inside an existing manual `transaction(...)` reuses the ambient session, remains tracked as an active request boundary, and is aborted during shutdown so the outer manual transaction can roll back before connection disposal.
 
 ### Manual Transactions
 In fluo, the recommended way to handle transactions is using the `@Transaction()` decorator on service methods. For manual control, use the block pattern:
@@ -110,9 +110,13 @@ await this.conn.transaction(async () => {
   const Product = this.conn.model('Product');
   const Inventory = this.conn.model('Inventory');
 
-  // Sessions are automatically injected into these calls
-  await Product.updateOne({ _id: pid }, { $set: { status: 'SOLD' } });
-  await Inventory.updateOne({ productId: pid }, { $inc: { stock: -1 } });
+  // Sessions are automatically injected into supported facade calls.
+  const product = await Product.findOne({ _id: pid });
+  await Inventory.bulkWrite([
+    { updateOne: { filter: { productId: pid }, update: { $inc: { stock: -1 } } } },
+  ]);
+
+  return product;
 });
 ```
 

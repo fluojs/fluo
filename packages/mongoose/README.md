@@ -63,7 +63,7 @@ Shutdown preserves transaction cleanup order and rejects new manual or request-s
 3. Their Mongoose sessions finish `abortTransaction()` and `endSession()` cleanup.
 4. The configured `dispose(connection)` hook runs only after active request transactions and ambient session scopes have settled.
 
-`createMongoosePlatformStatusSnapshot(...)` reports `ready` while serving traffic, `shutting-down` while request transactions are draining, and `stopped` after the dispose hook completes. The status details include `sessionStrategy`, `transactionContext: 'als'`, active request/session counts, resource ownership, and strict/session support diagnostics. Manual `transaction()` calls still use the same explicit-session contract as request-scoped transactions: repository code must pass `conn.currentSession()` into Mongoose model operations that participate in the transaction. If the wrapped Mongoose connection exposes `connection.transaction(...)`, fluo delegates the transaction boundary to that API so Mongoose's own ambient-session scope is preserved while still exposing the same session through `currentSession()`. Request-scoped transactions observe the request `AbortSignal` while acquiring sessions and while starting delegated `connection.transaction(...)` work, so request cancellation can interrupt those startup phases before user callbacks run.
+`createMongoosePlatformStatusSnapshot(...)` reports `ready` while serving traffic, `shutting-down` while request transactions are draining, and `stopped` after the dispose hook completes. The status details include `sessionStrategy`, `transactionContext: 'als'`, active request/session counts, resource ownership, and strict/session support diagnostics. Manual `transaction()` calls and service `@Transaction()` methods expose the same ambient session to `conn.model(...)`; supported facade methods (`create`, `find`, `findOne`, `aggregate`, and `bulkWrite`) automatically attach that session. Use `conn.currentSession()` for unsupported model methods, `doc.save()`, or external utilities that need explicit session plumbing. If the wrapped Mongoose connection exposes `connection.transaction(...)`, fluo delegates the transaction boundary to that API so Mongoose's own ambient-session scope is preserved while still exposing the same session through `currentSession()`. Request-scoped transactions observe the request `AbortSignal` while acquiring sessions and while starting delegated `connection.transaction(...)` work, so request cancellation can interrupt those startup phases before user callbacks run.
 Nested `requestTransaction(...)` calls opened inside an existing manual `transaction(...)` boundary reuse the ambient session, stay visible in `details.activeRequestTransactions`, and are aborted during shutdown so the outer manual transaction can roll back before `dispose(connection)` runs.
 
 ## Common Patterns
@@ -136,18 +136,19 @@ await this.conn.transaction(async () => {
 
 If the wrapped connection implements `connection.transaction(...)`, fluo treats that as the strict transaction boundary. Otherwise, when the connection does not implement `startSession()`, transactions fall back to direct execution by default. Set `strictTransactions: true` to throw if transaction support is missing.
 
-Fluo never rewrites Mongoose operation options. If a model call passes an explicit `{ session: null }` or a different session object inside an ambient transaction, fluo throws a session conflict error to prevent accidental transaction escapes.
+For supported facade methods, fluo preserves existing Mongoose operation options and only merges the ambient `{ session }` into the correct options argument. If a model call passes an explicit `{ session: null }` or a different session object inside an ambient transaction, fluo throws a session conflict error to prevent accidental transaction escapes.
 
 ## Public API
 
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
 - `MongooseConnection`
+- `MongooseConnection.model(name, ...args)` — returns the raw model outside transactions or a session-aware facade for `create`, `find`, `findOne`, `aggregate`, and `bulkWrite` inside an active transaction.
 - `Transaction`
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
 - `createMongooseProviders(options)` — compatibility/manual composition helper; prefer `MongooseModule.forRoot(...)` or `MongooseModule.forRootAsync(...)` for application-facing registration so module exports and provider visibility stay aligned.
 - `createMongoosePlatformStatusSnapshot(...)`
 - `connection` must be a concrete object/function handle for both sync and async registration; missing handles are rejected during module registration or async bootstrap.
-- `Transaction` is a standard TC39 method decorator for service-layer session transaction boundaries. It resolves `this.conn` by default and accepts an accessor when the `MongooseConnection` lives under a different field.
+- `Transaction` is a standard TC39 method decorator for service-layer session transaction boundaries. It resolves `this.conn`, the decorated instance itself, or one unique nested `this.*.conn` collaborator by default; pass an accessor when the `MongooseConnection` lives under a different field or resolution would be ambiguous.
 
 ### Related exported types
 
