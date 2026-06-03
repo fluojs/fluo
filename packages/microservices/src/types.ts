@@ -93,6 +93,8 @@ export interface MicroserviceTransport {
   listenBidiStreaming?(handler: TransportBidiStreamHandler): void;
   listenClientStreaming?(handler: TransportClientStreamHandler): void;
   listenServerStreaming?(handler: TransportServerStreamHandler): void;
+  /** Whether this transport closes or destroys runtime resources it creates. */
+  readonly ownsResources?: boolean;
   setLogger?(logger: MicroserviceTransportLogger): void;
   send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown>;
   serverStream?(pattern: string, payload: unknown, signal?: AbortSignal): AsyncIterable<unknown>;

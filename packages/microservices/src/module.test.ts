@@ -749,6 +749,33 @@ describe('@fluojs/microservices', () => {
     });
   });
 
+  it('propagates transport resource ownership into platform status snapshots', async () => {
+    const transport: MicroserviceTransport = {
+      async close() {},
+      async emit() {},
+      async listen() {},
+      ownsResources: true,
+      async send() {
+        return undefined;
+      },
+    };
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [MicroservicesModule.forRoot({ transport })],
+    });
+
+    const microservice = await FluoFactory.createMicroservice(AppModule);
+    const lifecycleService = await microservice.container.resolve(MicroserviceLifecycleService);
+
+    expect(lifecycleService.createPlatformStatusSnapshot().ownership).toEqual({
+      externallyManaged: false,
+      ownsResources: true,
+    });
+
+    await microservice.close();
+  });
+
   it('injects the framework logger into transports without changing non-fatal event semantics', async () => {
     const loggerEvents: string[] = [];
     const errorLog = vi.spyOn(console, 'error').mockImplementation((message: unknown, error?: unknown) => {
