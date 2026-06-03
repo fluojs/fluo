@@ -10,6 +10,7 @@ export {
 export { ThrottlerGuard } from './guard.js';
 export * from './module.js';
 export { RedisThrottlerStore } from './redis-store.js';
+export type { RedisThrottlerClient } from './redis-store.js';
 export * from './status.js';
 export { createMemoryThrottlerStore } from './store.js';
 export type {

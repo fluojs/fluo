@@ -1,8 +1,26 @@
-import type Redis from 'ioredis';
-
 import { throttlerRetryAfterMsSymbol } from './store-internals.js';
 import type { ThrottlerConsumeInput, ThrottlerStore, ThrottlerStoreEntry } from './types.js';
 import { validateThrottlerStoreEntry } from './validation.js';
+
+/**
+ * Structural Redis command client accepted by `RedisThrottlerStore`.
+ *
+ * @remarks
+ * This package-local contract keeps the throttler root API independent of
+ * concrete Redis client packages while remaining compatible with `ioredis`,
+ * `@fluojs/redis`, and custom clients that expose Redis `EVAL`.
+ */
+export interface RedisThrottlerClient {
+  /**
+   * Evaluate a Redis Lua script.
+   *
+   * @param script Lua script to evaluate.
+   * @param numberOfKeys Number of key arguments Redis should treat as `KEYS`.
+   * @param args Key and argument values passed to Redis `EVAL`.
+   * @returns The raw Redis response for the script.
+   */
+  eval(script: string, numberOfKeys: number, ...args: string[]): unknown | Promise<unknown>;
+}
 
 const CONSUME_LUA = [
   "local key = KEYS[1]",
@@ -71,7 +89,12 @@ function parseConsumeResult(result: unknown): ThrottlerStoreEntry {
  * requests across instances observe the same counter and reset window.
  */
 export class RedisThrottlerStore implements ThrottlerStore {
-  constructor(private readonly client: Redis) {}
+  /**
+   * Create a Redis-backed throttler store.
+   *
+   * @param client Redis command client that supports `EVAL`.
+   */
+  constructor(private readonly client: RedisThrottlerClient) {}
 
   /**
    * Consume one throttle slot for the provided key.
