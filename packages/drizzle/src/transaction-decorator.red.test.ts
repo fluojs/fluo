@@ -2,7 +2,7 @@ import { Inject } from '@fluojs/core';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
-import { DrizzleDatabase, DrizzleModule, Transaction } from './index.js';
+import { DrizzleDatabase, DrizzleModule, Transaction, type DrizzleDatabaseFacade } from './index.js';
 
 describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 impl)', () => {
   it('exports Transaction and opens a transaction for current-less repository calls', async () => {
@@ -63,7 +63,7 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
 
     @Inject(DrizzleDatabase)
     class UserRepository {
-      constructor(private readonly db: DrizzleDatabase<typeof database, typeof transactionDatabase> & typeof database) {}
+      constructor(private readonly db: DrizzleDatabaseFacade<typeof database, typeof transactionDatabase>) {}
 
       async create(email: string) {
         return this.db.insert(users).values({ email });
@@ -152,7 +152,7 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
 
     @Inject(DrizzleDatabase)
     class UserRepository {
-      constructor(private readonly db: DrizzleDatabase<typeof database, typeof transactionDatabase> & typeof database) {}
+      constructor(private readonly db: DrizzleDatabaseFacade<typeof database, typeof transactionDatabase>) {}
 
       async create(email: string) {
         return this.db.insert(users).values({ email });
@@ -234,7 +234,7 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
 
     @Inject(DrizzleDatabase)
     class UserRepository {
-      constructor(private readonly db: DrizzleDatabase<typeof database, typeof transactionDatabase> & typeof database) {}
+      constructor(private readonly db: DrizzleDatabaseFacade<typeof database, typeof transactionDatabase>) {}
 
       async create(email: string) {
         return this.db.insert(users).values({ email });

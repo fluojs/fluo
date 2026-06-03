@@ -8,7 +8,7 @@
 ## Learning Objectives
 - fluo에서 Drizzle ORM을 사용할 때의 장점과 적용 위치를 구분합니다.
 - `DrizzleModule` 구성과 드라이버 리소스 수명 주기 관리 방식을 정리합니다.
-- `DrizzleDatabase`를 사용하는 리포지토리 흐름을 구성합니다.
+- 직접 Drizzle query 메서드를 호출하는 리포지토리에 `DrizzleDatabaseFacade`를 사용하는 흐름을 구성합니다.
 - FluoShop 주문 관리용 관계형 스키마를 설계하는 접근을 확인합니다.
 - 상태 스냅샷으로 SQL 연결 상태를 점검하는 운영 기준을 정리합니다.
 
@@ -70,10 +70,10 @@ export class PersistenceModule {}
 
 ## 20.4 Repositories and Connection Management
 
-Fluo에서는 리포지토리에 `DrizzleDatabase` 서비스를 주입합니다. 이는 컨텍스트 인식 프록시 역할을 하며, 쿼리가 루트 데이터베이스 핸들 또는 활성 트랜잭션 핸들 중 올바른 대상에서 실행되도록 맞춰 줍니다.
+Fluo에서는 리포지토리에 `DrizzleDatabase` 서비스를 주입합니다. 리포지토리가 Drizzle query 메서드를 직접 호출한다면 주입 값을 `DrizzleDatabaseFacade<TDatabase>`로 타입 지정하세요. 이 값은 컨텍스트 인식 프록시 역할을 하며, 쿼리가 루트 데이터베이스 핸들 또는 활성 트랜잭션 핸들 중 올바른 대상에서 실행되도록 맞춰 줍니다. `current()`, `transaction(...)`, `requestTransaction(...)`, 상태 스냅샷 같은 wrapper 메서드만 필요하면 `DrizzleDatabase<TDatabase>`를 사용합니다.
 
 ```typescript
-import { DrizzleDatabase } from '@fluojs/drizzle';
+import { DrizzleDatabase, type DrizzleDatabaseFacade } from '@fluojs/drizzle';
 import { Inject } from '@fluojs/core';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -83,10 +83,10 @@ type AppDatabase = ReturnType<typeof drizzle>;
 
 @Inject(DrizzleDatabase)
 export class ProductRepository {
-  constructor(private readonly db: DrizzleDatabase<AppDatabase>) {}
+  constructor(private readonly db: DrizzleDatabaseFacade<AppDatabase>) {}
 
   async findById(id: string) {
-    // 기본 흐름: 데이터베이스 핸들을 직접 호출합니다.
+    // 기본 흐름: facade 타입을 통해 Drizzle query 메서드를 호출합니다.
     return this.db
       .select()
       .from(products)
@@ -127,7 +127,7 @@ export const orders = pgTable('orders', {
 });
 ```
 
-`DrizzleDatabase`를 사용하면 서비스가 트랜잭션 핸들을 직접 넘기지 않아도 복잡한 다중 테이블 삽입 작업을 같은 경계 안에서 조율할 수 있습니다. 이 덕분에 checkout 흐름은 저장소 호출 순서에 집중하고, 트랜잭션 선택은 fluo 통합 계층에 맡길 수 있습니다.
+`DrizzleDatabaseFacade`를 사용하면 리포지토리가 트랜잭션 핸들을 직접 넘기지 않아도 복잡한 다중 테이블 삽입 작업을 같은 경계 안에서 조율할 수 있습니다. 이 덕분에 checkout 흐름은 저장소 호출 순서에 집중하고, 트랜잭션 선택은 fluo 통합 계층에 맡길 수 있습니다.
 
 ## 20.7 Observability and Health
 

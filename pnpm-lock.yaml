@@ -332,9 +332,6 @@ importers:
       '@fluojs/di':
         specifier: workspace:^
         version: link:../di
-      '@fluojs/http':
-        specifier: workspace:^
-        version: link:../http
       '@fluojs/runtime':
         specifier: workspace:^
         version: link:../runtime
@@ -342,6 +339,9 @@ importers:
         specifier: '>=0.30.0'
         version: 0.45.1(@opentelemetry/api@1.9.0)(@prisma/client@7.5.0(typescript@6.0.2))
     devDependencies:
+      '@fluojs/http':
+        specifier: workspace:^
+        version: link:../http
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.15)(happy-dom@20.9.0)(tsx@4.21.0)
