@@ -786,6 +786,22 @@ function enforceCanonicalRuntimeMatrixReferences() {
     'docs/CONTEXT.ko.md must mention dedicated Redis Pub/Sub subscriber connections when package-surface.ko.md documents them.',
   );
   assert(
+    packageSurface.includes('createPassportJsStrategyBridge(...)') &&
+      packageSurface.includes('createCookieAuthPreset(...)') &&
+      docsContext.includes('createPassportJsStrategyBridge(...)') &&
+      docsContext.includes('createCookieAuthPreset(...)') &&
+      docsContext.includes('provider bundle'),
+    'docs/CONTEXT.md must keep Passport bridge and cookie compatibility provider bundles discoverable when package-surface.md documents them.',
+  );
+  assert(
+    packageSurfaceKo.includes('createPassportJsStrategyBridge(...)') &&
+      packageSurfaceKo.includes('createCookieAuthPreset(...)') &&
+      docsContextKo.includes('createPassportJsStrategyBridge(...)') &&
+      docsContextKo.includes('createCookieAuthPreset(...)') &&
+      docsContextKo.includes('provider bundle'),
+    'docs/CONTEXT.ko.md must keep Passport bridge and cookie compatibility provider bundles discoverable when package-surface.ko.md documents them.',
+  );
+  assert(
     packageSurface.includes('createSlackProviders(...)') &&
       docsContext.includes('packages/slack/README.md') &&
       docsContext.includes('abort-signal propagation') &&

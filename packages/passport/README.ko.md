@@ -106,6 +106,20 @@ const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
 });
 ```
 
+`createPassportJsStrategyBridge(...)`는 의도적으로 문서화된 manual-composition compatibility helper입니다. 이 helper는 `PassportModule.forRoot(...)`가 소비하는 provider bundle과 대응하는 `AuthStrategyRegistration`을 반환합니다. 애플리케이션은 `PassportModule`을 import하는 같은 module에 bridge provider를 등록하고, `googleBridge.strategy`를 strategy registry에 전달해야 합니다.
+
+```typescript
+@Module({
+  imports: [
+    PassportModule.forRoot({ defaultStrategy: 'google' }, [googleBridge.strategy]),
+  ],
+  providers: [GoogleStrategy, ...googleBridge.providers],
+})
+export class AuthModule {}
+```
+
+이 bridge helper는 third-party Passport.js strategy instance를 `AuthGuard`가 실행하기 전에 provider로 바인딩해야 하므로 Passport.js adapter에 대해 공식적으로 허용되는 module-facade 예외입니다. 애플리케이션-facing 인증 표면은 계속 `PassportModule`, `@UseAuth(...)`, `AuthGuard`이며, 이 helper가 이를 대체하지 않습니다.
+
 브릿지는 각 Passport.js 전략 실행을 정확히 한 번만 정착(settle)시킵니다. 전략은 바인딩된 Passport 액션(`success`, `fail`, `redirect`, `pass`, `error`) 중 하나를 호출해야 하며, promise rejection, 액션 없이 완료된 promise, 그리고 제한된 action timeout을 초과한 callback-style 실행은 요청을 미해결 상태로 두지 않고 인증 실패로 처리됩니다. 커스텀 `mapPrincipal` 함수는 비어 있지 않은 `subject`와 객체 형태의 `claims`를 포함한 유효한 fluo `Principal`을 반환해야 합니다.
 
 ### 쿠키 인증 프리셋
@@ -139,6 +153,8 @@ export class AuthModule {}
 ```
 
 애플리케이션 모듈에서 cookie-auth 지원이 필요하면 `CookieAuthModule.forRoot(...)`, `JwtModule.forRoot(...)`, `PassportModule.forRoot(...)`를 함께 import 하세요. Cookie preset은 `CookieAuthStrategy`와 cookie option을 제공하고, JWT 검증은 여전히 `@fluojs/jwt`에서 오며, passport registry는 여전히 `PassportModule.forRoot(...)`에서 옵니다.
+
+`CookieAuthModule.forRoot(...)`는 애플리케이션 등록을 위한 canonical module-first entrypoint입니다. `createCookieAuthPreset(...)`은 provider graph를 직접 조립하는 host를 위한 compatibility bundle로 공개되어 있으며, 동일한 cookie-auth provider와 대응하는 strategy registration을 반환합니다. 애플리케이션 문서, generated code, 일반 app module에서는 module facade를 우선 사용하세요.
 
 `CookieAuthStrategy`는 `@fluojs/jwt`가 정규화한 JWT principal 계약을 보존하며, `subject`, `claims`, `issuer`, `audience`, `roles`, `scopes`를 그대로 전달합니다.
 
@@ -238,7 +254,7 @@ Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(
 - `CookieAuthStrategy`, `COOKIE_AUTH_STRATEGY_NAME`, `COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_OPTIONS`: Cookie strategy wiring token, preset 기본값, response-cookie 기본값입니다.
 - `CookieAuthOptions`, `CookieAuthPresetConfig`, `CookieManagerConfig`, `CookieOptions`, `SetCookieOptions`: Cookie strategy 및 response cookie 설정 타입입니다.
 - `CookieManager`: HttpOnly access/refresh token cookie를 설정하고 제거하는 유틸리티입니다.
-- Cookie helper: `createCookieAuthPreset`, `createCookieAuthStrategyRegistration`, `createCookieManager`, `normalizeCookieAuthOptions`.
+- Cookie helper: `createCookieAuthPreset`(compatibility-only manual provider bundle), `createCookieAuthStrategyRegistration`(low-level registration helper), `createCookieManager`, `normalizeCookieAuthOptions`.
 
 ### Refresh token preset
 - `RefreshTokenModule`: 내장 refresh-token preset의 모듈 진입점입니다.
@@ -249,7 +265,7 @@ Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(
 - Refresh helper: `createRefreshTokenStrategyRegistration`.
 
 ### Passport.js bridge
-- `createPassportJsStrategyBridge(...)`: Passport.js strategy를 fluo `AuthStrategy`로 변환합니다.
+- `createPassportJsStrategyBridge(...)`: Passport.js strategy를 fluo `AuthStrategy`로 변환하고 `PassportModule.forRoot(...)`용 provider와 대응하는 strategy registration을 반환하는 compatibility helper입니다.
 - `PassportJsAuthStrategy`, `PassportJsStrategyLike`, `PassportJsPrincipalMapperInput`, `PassportJsPrincipalMapper`, `PassportJsAuthStrategyOptions`, `PassportJsStrategyBridge`: Bridge strategy, mapper, 설정, provider bundle 계약입니다.
 
 ### Account linking
