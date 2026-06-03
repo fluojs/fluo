@@ -18,7 +18,7 @@
 - [ ] **Command Harness**: 사용자가 직접 실행하는 `gh issue create`, `gh pr merge`, `npm publish` 등이 하네스 로직에 의해 보호되거나 금지되어 있는가?
 - [ ] **명시적 승인/Authority**: high-impact side-effect 실행 시 command harness `authority` gate, registration triage, 또는 사용자 컨펌 단계를 거치는가?
 - [ ] **Full-auto 권한**: `execute-lane --full-auto`처럼 full-auto mode가 있다면 명시 opt-in authority scope를 lane ledger에 기록하고, child command `block`/unresolved `needs-human-check`, local publish, dirty cleanup/root sync를 우회하지 않는가?
-- [ ] **Lane-local progress**: `execute-lane`이 여러 unlocked lane을 dispatch하더라도 global batch barrier 없이 먼저 완료된 lane item부터 PR collection, `/pr-to-merge`, fix-back/merge gate를 진행한다고 명시하는가?
+- [ ] **Lane-local progress**: `execute-lane`이 여러 unlocked lane을 dispatch하더라도 global batch barrier 없이 먼저 완료된 lane item부터 PR collection, `/pr-to-merge`, fix-back/merge gate를 진행한다고 명시하고, 완료 알림 수신 시 `background_output` 수집 → ledger item 업데이트 → `/pr-to-merge` → verdict 처리 → fix-back/merge gate 순서를 즉시 수행하도록 고정하는가?
 
 ### 1.3 불변 정책 준수 (root AGENTS.md)
 - [ ] 모든 출력물에 **Korean First** 정책이 적용되었는가? (기술 식별자 제외)
