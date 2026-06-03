@@ -529,6 +529,41 @@ describe('@fluojs/cqrs', () => {
     await app.close();
   });
 
+  it('ignores caller-shaped dispatch context internals and only trusts CQRS-created context', async () => {
+    let handledCount = 0;
+
+    class ExternalContextEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    @Saga(ExternalContextEvent)
+    class ExternalContextSaga implements ISaga<ExternalContextEvent> {
+      handle(_event: ExternalContextEvent): void {
+        handledCount += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [ExternalContextSaga],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const callerShapedContext = {
+      activeRoutes: [{ eventType: ExternalContextEvent, token: ExternalContextSaga }],
+      depth: 32,
+      path: ['caller-shaped-context'],
+    };
+
+    await eventBus.publish(new ExternalContextEvent('ctx-1'), callerShapedContext);
+
+    expect(handledCount).toBe(1);
+
+    await app.close();
+  });
+
   it('wraps unexpected saga failures in SagaExecutionError', async () => {
     class PaymentFailedEvent implements IEvent {
       constructor(public readonly orderId: string) {}

@@ -79,7 +79,7 @@ function assertCqrsEventBusService(service: unknown): asserts service is CqrsEve
  * @param options CQRS module options including eager handler classes and event-bus configuration.
  * @returns Providers for the command, query, event, and saga runtimes plus compatibility tokens.
  */
-export function createCqrsProviders(options: CqrsModuleOptions = {}): Provider[] {
+function createCqrsProviders(options: CqrsModuleOptions = {}): Provider[] {
   return [
     {
       provide: CQRS_MODULE_OPTIONS,

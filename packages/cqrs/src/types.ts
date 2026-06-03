@@ -62,17 +62,12 @@ export interface ISaga<TEvent extends IEvent = IEvent> {
 /**
  * Opaque dispatch context used to preserve saga topology guards across nested CQRS calls.
  *
- * Pass this value unchanged from handlers and sagas into nested `execute(...)`, `publish(...)`,
- * or `publishAll(...)` calls. Application code should not inspect or construct it directly.
+ * CQRS passes this value to command handlers, query handlers, event handlers, and sagas when a
+ * nested dispatch chain is active. Application code should pass the value through unchanged to
+ * nested `execute(...)`, `publish(...)`, or `publishAll(...)` calls. The context intentionally
+ * exposes no public topology fields and should not be inspected or constructed by callers.
  */
-export interface CqrsDispatchContext {
-  /** Saga routes currently active in the in-process CQRS dispatch chain. */
-  readonly activeRoutes: readonly Readonly<{ eventType: CqrsEventType; token: Token }>[];
-  /** Current nested saga depth for in-process topology guarding. */
-  readonly depth: number;
-  /** Human-readable saga route labels used when reporting topology failures. */
-  readonly path: readonly string[];
-}
+export interface CqrsDispatchContext {}
 
 /** Constructor type used to identify a command message class. */
 export interface CommandType<TCommand extends ICommand = ICommand> {
