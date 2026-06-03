@@ -18,6 +18,7 @@
 - [ ] **Command Harness**: 사용자가 직접 실행하는 `gh issue create`, `gh pr merge`, `npm publish` 등이 하네스 로직에 의해 보호되거나 금지되어 있는가?
 - [ ] **명시적 승인/Authority**: high-impact side-effect 실행 시 command harness `authority` gate, registration triage, 또는 사용자 컨펌 단계를 거치는가?
 - [ ] **Full-auto 권한**: `execute-lane --full-auto`처럼 full-auto mode가 있다면 명시 opt-in authority scope를 lane ledger에 기록하고, child command `block`/unresolved `needs-human-check`, local publish, dirty cleanup/root sync를 우회하지 않는가?
+- [ ] **Lane-local progress**: `execute-lane`이 여러 unlocked lane을 dispatch하더라도 global batch barrier 없이 먼저 완료된 lane item부터 PR collection, `/pr-to-merge`, fix-back/merge gate를 진행한다고 명시하는가?
 
 ### 1.3 불변 정책 준수 (root AGENTS.md)
 - [ ] 모든 출력물에 **Korean First** 정책이 적용되었는가? (기술 식별자 제외)
@@ -51,6 +52,13 @@ release/publish 자체가 목표인 lane item은 OpenCode command가 publish를 
 `execute-lane --full-auto`는 실제 side effect가 발생하지 않는 가짜 lane ledger와 dry-run 전제에서만 검증한다. lane ledger에 `authority_scope`, `retry_policy`, `execution` 상태가 기록되고, child command verdict가 `block` 또는 unresolved `needs-human-check`이면 merge/publish로 넘어가지 않는지 확인한다.
 - `/execute-lane missing-lane-id --full-auto main` (존재하지 않는 ledger로 authority scope와 error handling만 확인)
 
+### 2.5 Lane-local progress contract check
+
+여러 lane을 동시에 dispatch하는 경우에도 모든 `/issue-to-pr` child 완료를 기다리는 전역 barrier가 없어야 한다. 먼저 완료된 lane item은 해당 lane item 단위로 ledger에 반영되고 즉시 `/pr-to-merge`로 넘어가야 한다.
+
+- `.opencode/commands/execute-lane.md`와 `.codex/commands/execute-lane.md`에 `Per-lane progress, no global batch barrier` 섹션이 있는지 확인한다.
+- `Child completion barrier`는 해당 child/lane item의 완료 보고를 요구하는 lane-local barrier로만 해석되고, 전체 lane batch join으로 해석되지 않는지 확인한다.
+
 ---
 
 ## 3. 금지 사항 (Prohibited for Validation)
@@ -62,6 +70,7 @@ release/publish 자체가 목표인 lane item은 OpenCode command가 publish를 
 - 공유 브랜치(`main`)의 직접적인 cleanup 또는 삭제
 - 드라이런 중 실제 branch 생성 또는 worktree 추가 (상태 변경 방지)
 - full-auto 드라이런에서 실제 `gh issue create`, `gh pr merge`, cleanup, root sync 수행
+- `execute-lane` 드라이런/구현에서 모든 lane worker 완료를 기다린 뒤 PR collection 또는 `/pr-to-merge`를 일괄 시작하는 global batch barrier 구성
 
 ---
 

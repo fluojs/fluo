@@ -50,6 +50,16 @@ preflight 실패 시 branch/worktree/PR state를 변경하지 않는다.
 5. 진짜 terminal 상태는 `done`, `blocked-terminal`, `needs-human-check-terminal`, `blocked-budget-exhausted`, `blocked-maintainer-decision`, `blocked-child-contract-error`, `blocked-ledger-conflict`뿐이다.
 6. `execute-lane`은 confirmed issue selection을 mutate하지 않고, issue scope를 expand하지 않는다.
 
+### Per-lane progress, no global batch barrier
+
+Lane 간 진행 판단은 독립적이다. 여러 unlocked lane head issue를 동시에 dispatch한 경우에도, 먼저 완료된 lane item은 다른 lane worker 완료를 기다리지 않고 즉시 PR collection → `/pr-to-merge` → fix-back/merge gate로 진행해야 한다.
+
+- 허용되는 barrier는 **같은 lane 내부**의 head issue barrier뿐이다. 같은 lane의 다음 issue는 현재 head issue가 merge되어 `completed_issues`에 기록되기 전까지 dispatch하지 않는다.
+- 금지되는 barrier는 **전체 lane batch barrier**다. 예를 들어 6개 lane을 dispatch했다면 6개 `/issue-to-pr`가 모두 끝날 때까지 기다린 뒤 한꺼번에 PR collection 또는 `/pr-to-merge`를 시작하지 않는다.
+- child completion barrier는 해당 child/lane item의 완료 보고 없이 그 item의 commit, push, PR 생성, fix-back 완료 처리를 진행하지 말라는 뜻이다. 다른 lane item의 완료를 막는 전역 join 조건으로 해석하지 않는다.
+- PR URL 또는 명시적 blocker가 수집된 lane item은 다른 dispatched item 상태와 무관하게 즉시 다음 gate를 평가한다.
+- runner는 background child 완료 이벤트 또는 수집 가능한 완료 보고를 발견할 때마다 해당 lane item만 ledger에 반영하고, 그 lane item의 다음 gate를 즉시 평가한다.
+
 ## Worker dispatch
 
 각 unlocked lane의 head issue에 대해 다음을 호출한다.
@@ -216,6 +226,7 @@ remaining backlog: [<issue-number>]
 - suggested additions를 제안하지 않는다.
 - `/pr-to-merge`의 `merge` verdict만 보고 merge하지 않는다.
 - squash 외 merge method를 사용하지 않는다.
+- 여러 lane의 `/issue-to-pr` 완료를 모두 기다리는 global batch barrier를 만들지 않는다. 먼저 끝난 lane item은 즉시 PR collection과 `/pr-to-merge`로 진행한다.
 - PR merge 및 linked issue close 확인 없이 cleanup하지 않는다.
 - root worktree가 dirty인 상태에서 main sync를 시도하지 않는다.
 - local publish를 실행하지 않는다.
