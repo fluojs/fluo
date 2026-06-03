@@ -158,7 +158,7 @@ Method-level `@Throttle(...)` overrides class-level settings, class-level settin
 ## Related Packages
 
 - `@fluojs/http`: Required for HTTP context and Exception handling.
-- `@fluojs/redis`: Required when using `RedisThrottlerStore`.
+- `@fluojs/redis`: Official Redis client integration for `RedisThrottlerStore`; `ioredis` and compatible structural clients are also supported.
 
 ## Example Sources
 

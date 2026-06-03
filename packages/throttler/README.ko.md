@@ -158,7 +158,7 @@ ThrottlerModule.forRoot({
 ## 관련 패키지
 
 - `@fluojs/http`: HTTP 컨텍스트 및 예외 처리를 위해 필요합니다.
-- `@fluojs/redis`: `RedisThrottlerStore` 사용 시 필요합니다.
+- `@fluojs/redis`: `RedisThrottlerStore`를 위한 공식 Redis client 통합입니다. `ioredis`와 호환되는 구조적 client도 지원합니다.
 
 ## 예제 소스
 
