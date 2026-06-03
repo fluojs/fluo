@@ -120,7 +120,7 @@ permission:
   grep: allow
   glob: allow
   list: allow
-  edit: ask
+  edit: allow
   bash:
     '*': ask
     'find *': deny
@@ -139,15 +139,38 @@ permission:
     # Add exact find commands only for observed safe read-only prompts.
 
     'sort*': allow
-    'git worktree*': allow
+    'git worktree list*': allow
+    'git worktree add*': allow
+    'git add*': allow
+    'git commit*': allow
+    'git fetch*': allow
+    'git push*': allow
+    'GIT_MASTER=1 git worktree list*': allow
+    'GIT_MASTER=1 git worktree add*': allow
+    'GIT_MASTER=1 git add*': allow
+    'GIT_MASTER=1 git commit*': allow
+    'GIT_MASTER=1 git fetch*': allow
+    'GIT_MASTER=1 git push*': allow
+    'pnpm install*': allow
+    'pnpm exec*': allow
+    'pnpm --filter*': allow
+    'pnpm --dir*': allow
     'pnpm test*': allow
     'pnpm typecheck*': allow
+    'pnpm build*': allow
+    'pnpm verify*': allow
+    'pnpm lint*': allow
+    'pnpm changeset*': allow
     'gh issue view*': allow
     'gh issue list*': allow
     'gh label list*': allow
+    'gh pr view*': allow
+    'gh pr list*': allow
+    'gh pr checks*': allow
+    'gh pr diff*': allow
+    'gh pr create*': allow
     'git merge*': deny
     'git rebase*': deny
-    'git push*': deny
     'npm publish*': deny
     'pnpm publish*': deny
     'gh issue create*': deny
@@ -172,9 +195,11 @@ You are a fluo-<role> implementer.
 
 Rules:
 - Work only inside the assigned worktree.
-- Do not merge, publish, or clean up shared branches.
+- Work only inside the assigned worktree.
+- You may create/push the assigned branch and open/update the issue PR when the command harness grants PR creation authority.
+- Do not merge, publish, close issues/PRs, edit/review PRs, rerun workflows, or clean up branches/worktrees.
 - Do not take ownership of review or release gates.
-- Ask before any risky shell action.
+- Ask before any risky shell action outside the explicit allowlist.
 ```
 
 ## Invocation guidance
