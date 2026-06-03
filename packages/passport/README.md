@@ -106,6 +106,20 @@ const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
 });
 ```
 
+`createPassportJsStrategyBridge(...)` is an intentionally documented manual-composition compatibility helper. It returns the provider bundle and matching `AuthStrategyRegistration` needed by `PassportModule.forRoot(...)`; applications should register the bridge providers in the same module that imports `PassportModule` and pass `googleBridge.strategy` to the strategy registry:
+
+```typescript
+@Module({
+  imports: [
+    PassportModule.forRoot({ defaultStrategy: 'google' }, [googleBridge.strategy]),
+  ],
+  providers: [GoogleStrategy, ...googleBridge.providers],
+})
+export class AuthModule {}
+```
+
+This bridge helper is the official exception to the module-facade rule for Passport.js adapters because third-party strategy instances must be bound as providers before `AuthGuard` can execute them. It does not replace `PassportModule`, `@UseAuth(...)`, or `AuthGuard` as the application-facing authentication surface.
+
 The bridge settles each Passport.js strategy execution exactly once. A strategy must call one of the bound Passport actions (`success`, `fail`, `redirect`, `pass`, or `error`); promise rejections, promise completion without an action, and callback-style executions that exceed the bounded action timeout become authentication failures instead of leaving the request unresolved. Custom `mapPrincipal` functions must return a valid fluo `Principal` with a non-empty `subject` and object `claims`.
 
 ### Cookie Auth Preset
@@ -139,6 +153,8 @@ export class AuthModule {}
 ```
 
 Import `CookieAuthModule.forRoot(...)`, `JwtModule.forRoot(...)`, and `PassportModule.forRoot(...)` together when you want cookie-auth support in an application module. The cookie preset provides `CookieAuthStrategy` and cookie options; JWT verification still comes from `@fluojs/jwt`, and the passport registry still comes from `PassportModule.forRoot(...)`.
+
+`CookieAuthModule.forRoot(...)` is the canonical module-first entrypoint for application registration. `createCookieAuthPreset(...)` remains public as a compatibility bundle for manual provider composition; it returns the same cookie-auth providers plus the matching strategy registration for hosts that assemble provider graphs themselves. Prefer the module facade in application docs, generated code, and ordinary app modules.
 
 `CookieAuthStrategy` preserves the normalized JWT principal contract from `@fluojs/jwt`, including `subject`, `claims`, `issuer`, `audience`, `roles`, and `scopes`.
 
@@ -238,7 +254,7 @@ Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` 
 - `CookieAuthStrategy`, `COOKIE_AUTH_STRATEGY_NAME`, `COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_OPTIONS`: Cookie strategy wiring tokens, preset defaults, and response-cookie defaults.
 - `CookieAuthOptions`, `CookieAuthPresetConfig`, `CookieManagerConfig`, `CookieOptions`, `SetCookieOptions`: Cookie strategy and response cookie configuration types.
 - `CookieManager`: Utility for setting and clearing HttpOnly access/refresh token cookies.
-- Cookie helpers: `createCookieAuthPreset`, `createCookieAuthStrategyRegistration`, `createCookieManager`, `normalizeCookieAuthOptions`.
+- Cookie helpers: `createCookieAuthPreset` (compatibility-only manual provider bundle), `createCookieAuthStrategyRegistration` (low-level registration helper), `createCookieManager`, `normalizeCookieAuthOptions`.
 
 ### Refresh Token Preset
 - `RefreshTokenModule`: Module entry point for the built-in refresh-token preset.
@@ -249,7 +265,7 @@ Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` 
 - Refresh helpers: `createRefreshTokenStrategyRegistration`.
 
 ### Passport.js Bridge
-- `createPassportJsStrategyBridge(...)`: Adapts Passport.js strategies to fluo `AuthStrategy`.
+- `createPassportJsStrategyBridge(...)`: Compatibility helper that adapts Passport.js strategies to fluo `AuthStrategy` and returns providers plus the matching strategy registration for `PassportModule.forRoot(...)`.
 - `PassportJsAuthStrategy`, `PassportJsStrategyLike`, `PassportJsPrincipalMapperInput`, `PassportJsPrincipalMapper`, `PassportJsAuthStrategyOptions`, `PassportJsStrategyBridge`: Bridge strategy, mapper, configuration, and provider bundle contracts.
 
 ### Account Linking
