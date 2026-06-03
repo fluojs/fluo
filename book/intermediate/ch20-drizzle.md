@@ -8,8 +8,8 @@ This chapter explains how to integrate Drizzle for relational data and SQL-cente
 ## Learning Objectives
 - Distinguish the advantages of using Drizzle ORM in fluo and where to apply it.
 - Outline `DrizzleModule` configuration and driver resource lifecycle management.
-- Build a repository flow that uses `DrizzleDatabase`.
-- Compare manual transactions with the request-scoped transaction Interceptor.
+- Build a repository flow that uses `DrizzleDatabaseFacade` for direct Drizzle query methods.
+- Compare service transactions with explicit `requestTransaction(...)` boundaries.
 - Review an approach to designing a relational schema for FluoShop order management.
 - Define operational standards for checking SQL connection status with status snapshots.
 
@@ -71,10 +71,10 @@ export class PersistenceModule {}
 
 ## 20.4 Repositories and Connection Management
 
-In Fluo, repositories receive the `DrizzleDatabase` service through injection. It acts as a context-aware proxy, ensuring that queries run against the correct target: either the root database handle or the active transaction handle.
+In Fluo, repositories receive the `DrizzleDatabase` service through injection. When repositories call Drizzle query methods directly, type the injected value as `DrizzleDatabaseFacade<TDatabase>`. It acts as a context-aware proxy, ensuring that queries run against the correct target: either the root database handle or the active transaction handle. Use `DrizzleDatabase<TDatabase>` for providers that only need wrapper methods such as `current()`, `transaction(...)`, `requestTransaction(...)`, or status snapshots.
 
 ```typescript
-import { DrizzleDatabase } from '@fluojs/drizzle';
+import { DrizzleDatabase, type DrizzleDatabaseFacade } from '@fluojs/drizzle';
 import { Inject } from '@fluojs/core';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -84,10 +84,10 @@ type AppDatabase = ReturnType<typeof drizzle>;
 
 @Inject(DrizzleDatabase)
 export class ProductRepository {
-  constructor(private readonly db: DrizzleDatabase<AppDatabase>) {}
+  constructor(private readonly db: DrizzleDatabaseFacade<AppDatabase>) {}
 
   async findById(id: string) {
-    // Primary flow: call the model directly.
+    // Primary flow: call Drizzle query methods through the facade type.
     return this.db
       .select()
       .from(products)
@@ -130,7 +130,7 @@ export const orders = pgTable('orders', {
 });
 ```
 
-Using `DrizzleDatabase` lets services coordinate complex multi-table insert operations inside the same boundary without passing transaction handles directly.
+Using `DrizzleDatabaseFacade` lets repositories coordinate complex multi-table insert operations inside the same boundary without passing transaction handles directly.
 
 ## 20.7 Observability and Health
 
