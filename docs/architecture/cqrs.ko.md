@@ -17,7 +17,7 @@
 
 | 규칙 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
-| 모듈 진입점 | 애플리케이션은 `CqrsModule.forRoot(...)`로 CQRS를 등록합니다. 이 모듈은 global이며 lifecycle service와 `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS` 호환 토큰을 export합니다. | `packages/cqrs/src/module.ts` |
+| 모듈 진입점 | 애플리케이션은 `CqrsModule.forRoot(...)`로 CQRS를 등록합니다. 이 모듈은 global이며 lifecycle service와 `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS` 호환 토큰을 export합니다. Low-level provider assembly는 모듈 구현 내부에 유지됩니다. | `packages/cqrs/src/module.ts` |
 | 데코레이터 메타데이터 | `@CommandHandler(...)`, `@QueryHandler(...)`, `@EventHandler(...)`, `@Saga(...)`는 표준 데코레이터 메타데이터를 대상 클래스에 저장합니다. | `packages/cqrs/src/decorators.ts`, `packages/cqrs/src/metadata.ts` |
 | 선택적 eager 등록 | `CqrsModule.forRoot({ commandHandlers, queryHandlers, eventHandlers, sagas })`는 해당 클래스를 프로바이더 목록에 추가하지만, 탐색은 동일한 핸들러 메타데이터를 읽습니다. | `packages/cqrs/src/module.ts` |
 | singleton 전용 탐색 | Command 핸들러, Query 핸들러, Event 핸들러, saga는 프로바이더 스코프가 `singleton`일 때만 등록됩니다. singleton이 아닌 후보는 logger 경고와 함께 건너뜁니다. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
@@ -32,7 +32,7 @@
 | Command 버스 | 핸들러를 한 번 탐색하고, 핸들러 인스턴스를 preload한 뒤, 하나의 Command를 하나의 핸들러에 디스패치합니다. | `packages/cqrs/src/buses/command-bus.ts` |
 | Query 버스 | 핸들러를 한 번 탐색하고, 핸들러 인스턴스를 preload한 뒤, 하나의 Query를 하나의 핸들러에 디스패치합니다. | `packages/cqrs/src/buses/query-bus.ts` |
 | CQRS 이벤트 버스 | 매칭되는 로컬 Event 핸들러에 게시한 뒤, saga lifecycle service로 전달하고, 마지막으로 공유 `@fluojs/event-bus` 전송 계층으로 위임합니다. `publishAll(...)`은 다음 Event를 발행하기 전에 각 Event의 전체 CQRS pipeline을 기다리므로 입력 순서를 보존합니다. | `packages/cqrs/src/buses/event-bus.ts` |
-| saga 런타임 | saga 토큰별 실행을 직렬화하고, `AsyncLocalStorage`로 활성 디스패치 문맥을 추적하며, 진단용 런타임 스냅샷 데이터를 제공합니다. | `packages/cqrs/src/buses/saga-bus.ts` |
+| saga 런타임 | saga 토큰별 실행을 직렬화하고, Node.js async-local API 없이 opaque `CqrsDispatchContext`를 nested CQRS 호출로 전달하며, 진단용 런타임 스냅샷 데이터를 제공합니다. | `packages/cqrs/src/buses/saga-bus.ts` |
 | 종료 동작 | CQRS 이벤트 버스는 진행 중인 `publish(...)` pipeline과 `publishAll(...)` sequence가 settle될 때까지 기다린 뒤 stopped 상태로 전환합니다. saga 런타임도 종료 시 진행 중인 디스패치를 기다린 뒤 descriptor와 캐시된 핸들러 인스턴스를 정리합니다. | `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
 
 ## 제약 사항
@@ -41,5 +41,6 @@
 - Event 처리는 기본적으로 in-process입니다. `CqrsEventBusService`는 최종 게시 단계를 `@fluojs/event-bus`에 위임하지만, CQRS 패키지 자체가 분산 브로커 계약을 제공하지는 않습니다.
 - Shutdown drain은 CQRS 로컬 handler와 saga 작업, 그리고 위임 발행 호출을 포함합니다. `CqrsModule.forRoot({ eventBus: { publish: { waitForHandlers: false } } })`로 설정한 경우 위임된 `@OnEvent(...)` subscriber는 위임 발행이 resolve된 뒤에도 실행 중일 수 있으므로, 이 모드에서 `publish(...)`, `publishAll(...)`, CQRS shutdown drain 완료는 subscriber 완료를 보장하지 않습니다.
 - Saga 오케스트레이션은 안전하지 않은 재진입을 방지합니다. 같은 saga 경로로 재진입하거나 중첩 깊이 제한 `32`를 초과하면 `SagaTopologyError`가 발생합니다.
+- `CqrsDispatchContext`는 pass-through 공개 타입일 뿐입니다. 애플리케이션은 topology state를 직접 생성하거나 검사하지 않아야 하며, CQRS는 saga dispatch 중 내부에서 생성한 branded context 값만 신뢰합니다.
 - Saga가 FluoError가 아닌 예외를 던지면 `SagaExecutionError`로 래핑됩니다.
 - CQRS 패키지는 TC39 표준 데코레이터와 명시적 메타데이터 저장에 의존합니다.

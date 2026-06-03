@@ -108,7 +108,7 @@ class UserSaga implements ISaga<UserCreatedEvent> {
 
 Saga 실행은 같은 프로세스 안에서 동일 saga route로 순환 재진입하거나 중첩 hop 수가 32를 넘으면 `SagaTopologyError`로 즉시 실패합니다. 서로 다른 이벤트 단계를 순차 처리하는 multi-stage saga는 계속 허용되지만, in-process saga graph 전체는 비순환(acyclic) 구조를 유지해야 하며, 의도적인 순환/피드백 루프나 더 긴 체인은 외부 transport, scheduler, 또는 다른 bounded boundary 뒤로 이동해야 합니다.
 
-Saga, command handler, query handler, event handler 안에서 다시 CQRS `execute(...)`, `publish(...)`, `publishAll(...)`를 호출할 때는 optional `CqrsDispatchContext` 인자를 그대로 전달하세요. CQRS는 이 명시적인 runtime-agnostic context로 Node.js async-local API에 의존하지 않고 nested dispatch 전반의 saga topology check를 유지합니다.
+Saga, command handler, query handler, event handler 안에서 다시 CQRS `execute(...)`, `publish(...)`, `publishAll(...)`를 호출할 때는 optional `CqrsDispatchContext` 인자를 그대로 전달하세요. CQRS는 이 명시적인 runtime-agnostic context로 Node.js async-local API에 의존하지 않고 nested dispatch 전반의 saga topology check를 유지합니다. 이 context는 opaque입니다. 직접 생성하거나 검사하거나 topology field에 의존하지 마세요. 해당 field는 내부 runtime state입니다.
 
 ### Event 발행 계약
 
@@ -152,7 +152,7 @@ class TokenInjectedService {
 ### 인터페이스
 - `ICommand`, `IQuery<T>`, `IEvent`: 메시지 마커 인터페이스입니다.
 - `ICommandHandler<C, R>`, `IQueryHandler<Q, R>`, `IEventHandler<E>`, `ISaga<E>`: 핸들러 계약입니다.
-- `CqrsDispatchContext`: handler와 saga에서 nested CQRS dispatch로 그대로 전달하는 opaque optional context 값입니다.
+- `CqrsDispatchContext`: handler와 saga에서 nested CQRS dispatch로 그대로 전달하는 opaque optional context 값입니다. 공개 field를 노출하지 않으며, provider assembly는 공개 `createCqrsProviders(...)` helper가 아니라 `CqrsModule.forRoot(...)` facade 뒤에 유지됩니다.
 
 ### 오류
 - `CommandHandlerNotFoundException`, `QueryHandlerNotFoundException`: bus에 일치하는 handler가 없을 때 발생합니다.

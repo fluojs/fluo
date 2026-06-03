@@ -651,12 +651,27 @@ describe('package surface CQRS responsibility discoverability', () => {
     const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
     const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
     const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const englishArchitecture = readFileSync(join(repoRoot, 'docs/architecture/cqrs.md'), 'utf8');
+    const koreanArchitecture = readFileSync(join(repoRoot, 'docs/architecture/cqrs.ko.md'), 'utf8');
+    const englishReadme = readFileSync(join(repoRoot, 'packages/cqrs/README.md'), 'utf8');
+    const koreanReadme = readFileSync(join(repoRoot, 'packages/cqrs/README.ko.md'), 'utf8');
 
     for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface]) {
       expect(markdown).toContain('@fluojs/cqrs');
       expect(markdown).toContain('handler discovery');
       expect(markdown).toContain('saga');
       expect(markdown).toContain('event-bus');
+    }
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface, englishArchitecture, koreanArchitecture, englishReadme, koreanReadme]) {
+      expect(markdown).toContain('CqrsDispatchContext');
+      expect(markdown).toContain('opaque');
+      expect(markdown).toContain('CqrsModule.forRoot(...)');
+    }
+
+    for (const markdown of [englishArchitecture, koreanArchitecture]) {
+      expect(markdown).not.toContain('AsyncLocalStorage');
+      expect(markdown).toContain('branded');
     }
   });
 });

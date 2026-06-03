@@ -12,6 +12,19 @@ import type { CqrsDispatchContext, CqrsEventType, IEvent, ISaga, SagaDescriptor 
 
 const MAX_NESTED_SAGA_DEPTH = 32;
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
+const cqrsDispatchContextStateBrand: unique symbol = Symbol('fluo.cqrs.dispatchContextState');
+
+interface CqrsDispatchRoute {
+  readonly eventType: CqrsEventType;
+  readonly token: Token;
+}
+
+interface CqrsDispatchContextState extends CqrsDispatchContext {
+  readonly [cqrsDispatchContextStateBrand]: true;
+  readonly activeRoutes: readonly CqrsDispatchRoute[];
+  readonly depth: number;
+  readonly path: readonly string[];
+}
 
 function isSaga(value: unknown): value is ISaga<IEvent> {
   if (typeof value !== 'object' || value === null) {
@@ -29,10 +42,18 @@ function toErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function isCqrsDispatchContextState(context: CqrsDispatchContext | undefined): context is CqrsDispatchContextState {
+  if (typeof context !== 'object' || context === null) {
+    return false;
+  }
+
+  return (context as { readonly [cqrsDispatchContextStateBrand]?: unknown })[cqrsDispatchContextStateBrand] === true;
+}
+
 /**
  * Runtime saga coordinator that discovers `@Saga()` providers and serializes execution per saga token.
  *
- * The service prevents re-entrant dispatch loops within the same async context and waits for
+ * The service prevents re-entrant dispatch loops within the same explicit dispatch context and waits for
  * in-flight saga chains during shutdown so lifecycle guarantees remain predictable.
  */
 @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, CQRS_MODULE_OPTIONS)
@@ -131,20 +152,21 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   }
 
   private async dispatchWithOrdering<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent, activeContext?: CqrsDispatchContext): Promise<void> {
+    const activeState = isCqrsDispatchContextState(activeContext) ? activeContext : undefined;
     const routeLabel = `${descriptor.targetType.name}(${descriptor.eventType.name})`;
-    const isActiveRoute = activeContext?.activeRoutes.some(
+    const isActiveRoute = activeState?.activeRoutes.some(
       (route) => route.token === descriptor.token && route.eventType === descriptor.eventType,
     );
-    const isActiveToken = activeContext?.activeRoutes.some((route) => route.token === descriptor.token) ?? false;
+    const isActiveToken = activeState?.activeRoutes.some((route) => route.token === descriptor.token) ?? false;
 
     if (isActiveRoute) {
       throw new SagaTopologyError(
         `Saga ${descriptor.targetType.name} re-entered an unsafe cycle while handling ${descriptor.eventType.name}. `
-          + `Active saga path: ${[...(activeContext?.path ?? []), routeLabel].join(' -> ')}.`,
+          + `Active saga path: ${[...(activeState?.path ?? []), routeLabel].join(' -> ')}.`,
       );
     }
 
-    if ((activeContext?.depth ?? 0) >= MAX_NESTED_SAGA_DEPTH) {
+    if ((activeState?.depth ?? 0) >= MAX_NESTED_SAGA_DEPTH) {
       throw new SagaTopologyError(
         `Saga ${descriptor.targetType.name} exceeded the maximum nested saga depth of ${MAX_NESTED_SAGA_DEPTH} while handling ${descriptor.eventType.name}. `
           + 'Keep in-process saga graphs acyclic and externally bounded.',
@@ -152,13 +174,13 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     }
 
     if (isActiveToken) {
-      await this.invokeSaga(descriptor, event, this.createDispatchContext(activeContext, descriptor, routeLabel));
+      await this.invokeSaga(descriptor, event, this.createDispatchContext(activeState, descriptor, routeLabel));
       return;
     }
 
     const previous = this.executionChains.get(descriptor.token) ?? Promise.resolve();
     const current = previous.then(async () => {
-      await this.invokeSaga(descriptor, event, this.createDispatchContext(activeContext, descriptor, routeLabel));
+      await this.invokeSaga(descriptor, event, this.createDispatchContext(activeState, descriptor, routeLabel));
     });
 
     this.executionChains.set(descriptor.token, current.catch(() => undefined));
@@ -218,18 +240,19 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   }
 
   private createDispatchContext(
-    activeContext: CqrsDispatchContext | undefined,
+    activeContext: CqrsDispatchContextState | undefined,
     descriptor: SagaDescriptor,
     routeLabel: string,
-  ): CqrsDispatchContext {
+  ): CqrsDispatchContextState {
     return {
+      [cqrsDispatchContextStateBrand]: true,
       activeRoutes: [...(activeContext?.activeRoutes ?? []), { eventType: descriptor.eventType, token: descriptor.token }],
       depth: (activeContext?.depth ?? 0) + 1,
       path: [...(activeContext?.path ?? []), routeLabel],
     };
   }
 
-  private async invokeSaga<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent, context: CqrsDispatchContext): Promise<void> {
+  private async invokeSaga<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent, context: CqrsDispatchContextState): Promise<void> {
     const instance = await this.resolveHandlerInstance(descriptor.token);
 
     if (!isSaga(instance)) {

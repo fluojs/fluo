@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
+import * as cqrsModuleSource from './module.js';
 import * as cqrsPublicApi from './index.js';
+import type { CqrsDispatchContext } from './index.js';
+
+type PublicDispatchContextInternalKeys = Extract<keyof CqrsDispatchContext, 'activeRoutes' | 'depth' | 'path'>;
 
 describe('@fluojs/cqrs public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
@@ -23,6 +27,14 @@ describe('@fluojs/cqrs public API surface', () => {
 
   it('hides low-level provider assembly from the root barrel', () => {
     expect(cqrsPublicApi).not.toHaveProperty('createCqrsProviders');
+  });
+
+  it('keeps low-level provider assembly private to the module implementation', () => {
+    expect(cqrsModuleSource).not.toHaveProperty('createCqrsProviders');
+  });
+
+  it('keeps dispatch context topology state out of the public type surface', () => {
+    expectTypeOf<PublicDispatchContextInternalKeys>().toEqualTypeOf<never>();
   });
 
   it('does not expose removed legacy error aliases', () => {
