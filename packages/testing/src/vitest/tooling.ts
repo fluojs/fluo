@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { extname, join, relative, sep } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { defineConfig, mergeConfig } from 'vitest/config';
@@ -8,23 +8,110 @@ import { fluoBabelDecoratorsPlugin } from '../vitest.js';
 
 const workspaceAliasCache = new Map<string, Record<string, string>>();
 
-function collectSourceEntries(sourceRoot: string): string[] {
-  const entries: string[] = [];
+const runtimeExportConditions = ['import', 'default', 'node', 'browser', 'worker'] as const;
+const typeOnlyExportConditions = new Set(['types', 'typings']);
+const javascriptExtensions = ['.js', '.mjs', '.cjs'] as const;
 
-  for (const directoryEntry of readdirSync(sourceRoot, { withFileTypes: true })) {
-    const entryPath = join(sourceRoot, directoryEntry.name);
+type WorkspacePackageManifest = {
+  exports?: unknown;
+  name?: string;
+};
 
-    if (directoryEntry.isDirectory()) {
-      entries.push(...collectSourceEntries(entryPath));
-      continue;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function collectExportEntries(exportsField: unknown): Array<[string, unknown]> {
+  if (typeof exportsField === 'string' || Array.isArray(exportsField)) {
+    return [['.', exportsField]];
+  }
+
+  if (!isRecord(exportsField)) {
+    return [];
+  }
+
+  const entries = Object.entries(exportsField);
+  const hasSubpathKeys = entries.some(([subpath]) => subpath === '.' || subpath.startsWith('./'));
+
+  if (!hasSubpathKeys) {
+    return [['.', exportsField]];
+  }
+
+  return entries.filter(([subpath]) => subpath === '.' || subpath.startsWith('./'));
+}
+
+function resolveRuntimeExportTarget(exportTarget: unknown): string | undefined {
+  if (typeof exportTarget === 'string') {
+    return exportTarget;
+  }
+
+  if (Array.isArray(exportTarget)) {
+    for (const candidate of exportTarget) {
+      const resolvedCandidate = resolveRuntimeExportTarget(candidate);
+
+      if (resolvedCandidate) {
+        return resolvedCandidate;
+      }
     }
 
-    if (directoryEntry.isFile()) {
-      entries.push(entryPath);
+    return undefined;
+  }
+
+  if (!isRecord(exportTarget)) {
+    return undefined;
+  }
+
+  for (const condition of runtimeExportConditions) {
+    const resolvedCondition = resolveRuntimeExportTarget(exportTarget[condition]);
+
+    if (resolvedCondition) {
+      return resolvedCondition;
     }
   }
 
-  return entries;
+  for (const [condition, nestedTarget] of Object.entries(exportTarget)) {
+    if (typeOnlyExportConditions.has(condition)) {
+      continue;
+    }
+
+    const resolvedNestedTarget = resolveRuntimeExportTarget(nestedTarget);
+
+    if (resolvedNestedTarget) {
+      return resolvedNestedTarget;
+    }
+  }
+
+  return undefined;
+}
+
+function resolveSourcePathFromExportTarget(packageRoot: string, exportTarget: unknown): string | undefined {
+  const runtimeTarget = resolveRuntimeExportTarget(exportTarget);
+
+  if (!runtimeTarget?.startsWith('./dist/')) {
+    return undefined;
+  }
+
+  for (const extension of javascriptExtensions) {
+    if (!runtimeTarget.endsWith(extension)) {
+      continue;
+    }
+
+    const sourcePath = join(packageRoot, 'src', `${runtimeTarget.slice('./dist/'.length, -extension.length)}.ts`);
+
+    if (existsSync(sourcePath)) {
+      return sourcePath;
+    }
+  }
+
+  return undefined;
+}
+
+function toAliasName(packageName: string, exportSubpath: string): string {
+  if (exportSubpath === '.') {
+    return packageName;
+  }
+
+  return `${packageName}/${exportSubpath.slice('./'.length)}`;
 }
 
 function collectWorkspaceAliasesFromRoot(repoRoot: string): Record<string, string> {
@@ -33,54 +120,36 @@ function collectWorkspaceAliasesFromRoot(repoRoot: string): Record<string, strin
 
   for (const packageDirectoryName of readdirSync(packagesRoot)) {
     const packageRoot = join(packagesRoot, packageDirectoryName);
-    const sourceRoot = join(packageRoot, 'src');
     const manifestPath = join(packageRoot, 'package.json');
 
-    if (!existsSync(sourceRoot) || !existsSync(manifestPath)) {
+    if (!existsSync(manifestPath)) {
       continue;
     }
 
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { name?: string };
-    const scopeName = manifest.name ?? `@fluojs/${packageDirectoryName}`;
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as WorkspacePackageManifest;
+    const packageName = manifest.name ?? `@fluojs/${packageDirectoryName}`;
+    const exportAliases = collectExportEntries(manifest.exports)
+      .map(([exportSubpath, exportTarget]) => {
+        const sourcePath = resolveSourcePathFromExportTarget(packageRoot, exportTarget);
 
-    for (const sourceEntryPath of collectSourceEntries(sourceRoot)) {
-      const relativeSourceEntry = relative(sourceRoot, sourceEntryPath);
+        return sourcePath ? { aliasName: toAliasName(packageName, exportSubpath), sourcePath } : undefined;
+      })
+      .filter((entry): entry is { aliasName: string; sourcePath: string } => entry !== undefined)
+      .sort((left, right) => right.aliasName.length - left.aliasName.length);
 
-      if (
-        extname(sourceEntryPath) !== '.ts' ||
-        relativeSourceEntry.endsWith('.test.ts') ||
-        relativeSourceEntry === 'index.ts'
-      ) {
-        continue;
-      }
-
-      const subpath = relativeSourceEntry.slice(0, -3).split(sep).join('/');
-      aliases[`${scopeName}/${subpath}`] = sourceEntryPath;
-    }
-
-    const indexPath = join(sourceRoot, 'index.ts');
-    if (existsSync(indexPath)) {
-      aliases[scopeName] = indexPath;
+    for (const { aliasName, sourcePath } of exportAliases) {
+      aliases[aliasName] = sourcePath;
     }
   }
 
-  return {
-    '@fluojs/runtime/internal/http-adapter': join(packagesRoot, 'runtime', 'src', 'internal-http-adapter.ts'),
-    '@fluojs/runtime/internal/request-response-factory': join(
-      packagesRoot,
-      'runtime',
-      'src',
-      'internal-request-response-factory.ts',
-    ),
-    ...aliases,
-  };
+  return aliases;
 }
 
 /**
- * Collects source-file aliases for a fluo monorepo checkout.
+ * Collects package-export aliases for a fluo monorepo checkout.
  *
  * @param repoRootUrl - Repository root as a file URL or absolute path URL string.
- * @returns A Vite/Vitest alias map that points public package imports at workspace source files.
+ * @returns A Vite/Vitest alias map that points exported package imports at workspace source files.
  */
 export function collectWorkspaceAliases(repoRootUrl: string | URL): Record<string, string> {
   const repoRoot = fileURLToPath(repoRootUrl);

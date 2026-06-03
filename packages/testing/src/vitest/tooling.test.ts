@@ -23,19 +23,49 @@ function createRepoRoot(): string {
 
   tempRepoRoots.add(repoRoot);
   mkdirSync(sourceRoot, { recursive: true });
-  writeFileSync(join(packageRoot, 'package.json'), JSON.stringify({ name: '@fluojs/demo' }));
+  writeFileSync(
+    join(packageRoot, 'package.json'),
+    JSON.stringify({
+      name: '@fluojs/demo',
+      exports: {
+        '.': {
+          types: './dist/index.d.ts',
+          import: './dist/index.js',
+        },
+        './feature': {
+          types: './dist/feature.d.ts',
+          import: './dist/feature.js',
+        },
+        './renamed': {
+          types: './dist/public-entry.d.ts',
+          import: './dist/public-entry.js',
+        },
+      },
+    }),
+  );
   writeFileSync(join(sourceRoot, 'index.ts'), 'export {}');
   writeFileSync(join(sourceRoot, 'feature.ts'), 'export const feature = true;');
+  writeFileSync(join(sourceRoot, 'public-entry.ts'), 'export const publicEntry = true;');
+  writeFileSync(join(sourceRoot, 'private-internal.ts'), 'export const privateInternal = true;');
 
   return repoRoot;
 }
 
 describe('collectWorkspaceAliases', () => {
-  it('caches package manifest scans per repository root and returns defensive copies', () => {
+  it('aliases only package exports and caches defensive copies per repository root', () => {
     const repoRoot = createRepoRoot();
     const firstAliases = collectWorkspaceAliases(new URL(`file://${repoRoot}/`));
 
+    expect(firstAliases['@fluojs/demo']).toBe(join(repoRoot, 'packages', 'demo', 'src', 'index.ts'));
     expect(firstAliases['@fluojs/demo/feature']).toBe(join(repoRoot, 'packages', 'demo', 'src', 'feature.ts'));
+    expect(firstAliases['@fluojs/demo/renamed']).toBe(
+      join(repoRoot, 'packages', 'demo', 'src', 'public-entry.ts'),
+    );
+    expect(firstAliases).not.toHaveProperty('@fluojs/demo/private-internal');
+    expect(firstAliases).not.toHaveProperty('@fluojs/demo/public-entry');
+    expect(Object.keys(firstAliases).indexOf('@fluojs/demo/feature')).toBeLessThan(
+      Object.keys(firstAliases).indexOf('@fluojs/demo'),
+    );
 
     firstAliases['@fluojs/demo/feature'] = 'mutated';
     rmSync(join(repoRoot, 'packages', 'demo'), { recursive: true });
