@@ -56,6 +56,16 @@ describe('@fluojs/microservices root barrel public surface', () => {
     expect(koreanReadme).toContain('`createMicroservicesProviders(...)`는 커스텀 모듈 조합에 low-level provider array 자체가 필요할 때만 사용하세요.');
   });
 
+  it('keeps transport status ownership and TCP option exports documented', () => {
+    const readme = readFileSync(resolve(import.meta.dirname, '../README.md'), 'utf8');
+    const koreanReadme = readFileSync(resolve(import.meta.dirname, '../README.ko.md'), 'utf8');
+
+    expect(readme).toContain('Platform status snapshots report transport resource ownership');
+    expect(readme).toContain('TcpMicroserviceTransportOptions');
+    expect(koreanReadme).toContain('Platform status snapshot은 transport resource ownership을 보고합니다.');
+    expect(koreanReadme).toContain('TcpMicroserviceTransportOptions');
+  });
+
   it('keeps package README example references limited to existing sources and generated starters', () => {
     const packageRoot = resolve(import.meta.dirname, '..');
     const repoRoot = resolve(packageRoot, '../..');

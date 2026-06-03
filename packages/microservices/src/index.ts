@@ -25,7 +25,7 @@ export {
   type RabbitMqMicroserviceTransportOptions,
 } from './transports/rabbitmq-transport.js';
 export * from './status.js';
-export { TcpMicroserviceTransport } from './transports/tcp-transport.js';
+export { TcpMicroserviceTransport, type TcpMicroserviceTransportOptions } from './transports/tcp-transport.js';
 export { MICROSERVICE } from './tokens.js';
 export type {
   Microservice,

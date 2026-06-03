@@ -16,6 +16,7 @@ import type {
   RedisStreamClientLike,
   RedisStreamsMicroserviceTransportOptions,
   ServerStreamWriter,
+  TcpMicroserviceTransportOptions,
 } from './index.js';
 
 describe('@fluojs/microservices public API surface', () => {
@@ -48,6 +49,7 @@ describe('@fluojs/microservices public API surface', () => {
     expectTypeOf<MicroserviceTransport>().toHaveProperty('listen');
     expectTypeOf<MicroserviceTransport>().toHaveProperty('send');
     expectTypeOf<MicroserviceTransport>().toHaveProperty('emit');
+    expectTypeOf<MicroserviceTransport>().toHaveProperty('ownsResources');
     expectTypeOf<Microservice>().toHaveProperty('listen');
     expectTypeOf<MicroserviceModuleOptions>().toMatchTypeOf<{ transport: MicroserviceTransport }>();
     expectTypeOf<MicroserviceModuleOptions>().toHaveProperty('module');
@@ -62,6 +64,7 @@ describe('@fluojs/microservices public API surface', () => {
     expectTypeOf<RedisPubSubMicroserviceTransportOptions>().toHaveProperty('subscribeClient');
     expectTypeOf<RedisStreamsMicroserviceTransportOptions>().toHaveProperty('readerClient');
     expectTypeOf<RedisStreamClientLike>().toHaveProperty('xreadgroup');
+    expectTypeOf<TcpMicroserviceTransportOptions>().toHaveProperty('port');
   });
 
   it('hides internal lifecycle and transport wire types from the root barrel', () => {
