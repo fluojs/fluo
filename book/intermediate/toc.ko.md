@@ -221,7 +221,7 @@
   - [20.1 왜 fluo에서 Drizzle을 사용할까?](ch20-drizzle.ko.md#201-why-drizzle-in-fluo)
   - [20.2 설치와 설정](ch20-drizzle.ko.md#202-installation-and-setup)
   - [20.3 DrizzleModule 구성하기](ch20-drizzle.ko.md#203-configuring-the-drizzlemodule)
-  - [20.4 리포지토리와 `current()` 경계](ch20-drizzle.ko.md#204-repositories-and-the-current-seam)
+  - [20.4 리포지토리와 커넥션 관리](ch20-drizzle.ko.md#204-repositories-and-connection-management)
   - [20.5 트랜잭션 관리](ch20-drizzle.ko.md#205-transaction-management)
   - [20.6 FluoShop 맥락: 관계형 스키마](ch20-drizzle.ko.md#206-fluoshop-context-relational-schema)
   - [20.7 관찰성과 헬스](ch20-drizzle.ko.md#207-observability-and-health)

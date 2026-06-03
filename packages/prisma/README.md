@@ -12,7 +12,6 @@ Prisma lifecycle and ALS-backed transaction context for fluo applications. Conne
 - [Common Patterns](#common-patterns)
   - [Service Transaction Boundary (@Transaction)](#service-transaction-boundary-transaction)
   - [Named Registrations for Multiple Clients](#named-registrations-for-multiple-clients)
-  - [Request-Wide Transactions (Interceptor)](#request-wide-transactions-interceptor)
   - [Manual Transactions and current()](#manual-transactions-and-current)
   - [Shutdown and Status Contracts](#shutdown-and-status-contracts)
   - [Async Configuration and Isolation](#async-configuration-and-isolation)
@@ -122,26 +121,6 @@ export class MultiDatabaseService {
 }
 ```
 
-Unnamed registration remains the default single-client path for `PrismaService`, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, and `PrismaTransactionInterceptor`. When you register multiple Prisma clients in the same container, use names for every additional client so token resolution stays explicit.
-
-### Request-Wide Transactions (Interceptor)
-
-Apply the `PrismaTransactionInterceptor` to a controller or method to wrap the entire request in a transaction automatically. This is useful for simple CRUD operations or when you want a "transaction-by-default" policy for certain routes.
-
-```typescript
-import { Post, UseInterceptors } from '@fluojs/http';
-import { PrismaTransactionInterceptor } from '@fluojs/prisma';
-
-@UseInterceptors(PrismaTransactionInterceptor)
-class UserController {
-  @Post()
-  async create() {
-    // All downstream repository calls share this transaction client
-  }
-}
-```
-
-`PrismaTransactionInterceptor` targets the default unnamed `PrismaService`. For named multi-client registrations, inject the corresponding named `PrismaService` and open explicit `transaction()` / `requestTransaction()` boundaries where needed.
 
 ### Manual Transactions and current()
 
@@ -215,7 +194,7 @@ Use `PrismaModule.forRoot(...)` / `forRootAsync(...)` to register Prisma. When y
 
 ```typescript
 import { defineModule } from '@fluojs/runtime';
-import { PrismaModule, PrismaService, PrismaTransactionInterceptor } from '@fluojs/prisma';
+import { PrismaModule } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -223,7 +202,6 @@ const prisma = new PrismaClient();
 class ManualPrismaModule {}
 
 defineModule(ManualPrismaModule, {
-  exports: [PrismaService, PrismaTransactionInterceptor],
   imports: [PrismaModule.forRoot({ client: prisma })],
 });
 ```
@@ -249,10 +227,6 @@ defineModule(ManualPrismaModule, {
   - Runs a function within an interactive transaction. If a transaction context is already active, the callback reuses that context; nested transaction options are rejected because no new Prisma transaction boundary is opened.
 - `requestTransaction(fn, signal?, options?): Promise<T>`
   - Specialized transaction boundary for HTTP request lifecycles. It is abort-aware, drains during shutdown before disconnect, and retries without `signal` when a Prisma client rejects that option. Like `transaction()`, nested calls reuse the active transaction context and reject nested options to avoid silently ignoring transaction settings.
-
-### `PrismaTransactionInterceptor`
-
-- HTTP interceptor for the default unnamed `PrismaService` registration. It wraps a request handler in `PrismaService.requestTransaction(...)` so downstream `current()` calls share the same transaction client.
 
 ### `PRISMA_CLIENT` (Token)
 
@@ -290,7 +264,7 @@ token are deliberately not exported.
 ## Related Packages
 
 - `@fluojs/runtime`: Manages the application lifecycle hooks.
-- `@fluojs/http`: Provides the interceptor system.
+- `@fluojs/http`: Provides request lifecycle primitives that can be paired with explicit `requestTransaction(...)` boundaries.
 - `@fluojs/terminus`: Provides a health indicator for Prisma.
 
 ## Example Sources

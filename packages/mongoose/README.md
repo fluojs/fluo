@@ -13,7 +13,6 @@ Mongoose integration for fluo with session-aware transaction handling and lifecy
 - [Common Patterns](#common-patterns)
   - [Service Transaction Boundary (@Transaction)](#service-transaction-boundary-transaction)
   - [Manual Transactions and currentSession()](#manual-transactions-and-currentsession)
-  - [Request-Wide Transactions (Interceptor)](#request-wide-transactions-interceptor)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -29,7 +28,7 @@ pnpm add mongoose
 
 - when Mongoose should plug into the same DI and application lifecycle as the rest of the app
 - when MongoDB sessions and transactions need one shared wrapper instead of ad hoc session plumbing in every service
-- when request-scoped transactions should be opt-in through an interceptor
+- when request-scoped transactions need explicit `requestTransaction(...)` boundaries
 
 ## Quick Start
 
@@ -139,30 +138,10 @@ If the wrapped connection implements `connection.transaction(...)`, fluo treats 
 
 Fluo never rewrites Mongoose operation options. If a model call passes an explicit `{ session: null }` or a different session object inside an ambient transaction, fluo throws a session conflict error to prevent accidental transaction escapes.
 
-### Request-Wide Transactions (Interceptor)
-
-Apply the `MongooseTransactionInterceptor` to a controller or method to wrap the entire request in a transaction automatically.
-
-```ts
-import { UseInterceptors } from '@fluojs/http';
-import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
-
-@UseInterceptors(MongooseTransactionInterceptor)
-class UserController {
-  @Post()
-  async create() {
-    // All downstream repository calls share this session
-  }
-}
-```
-
-Use `MongooseConnection.requestTransaction(...)` directly when you need the same request-aware transaction boundary outside an HTTP interceptor.
-
 ## Public API
 
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
 - `MongooseConnection`
-- `MongooseTransactionInterceptor`
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
 - `createMongooseProviders(options)` — compatibility/manual composition helper; prefer `MongooseModule.forRoot(...)` or `MongooseModule.forRootAsync(...)` for application-facing registration so module exports and provider visibility stay aligned.
 - `createMongoosePlatformStatusSnapshot(...)`
@@ -180,7 +159,7 @@ Use `MongooseConnection.requestTransaction(...)` directly when you need the same
 ## Related Packages
 
 - `@fluojs/runtime`: manages startup and shutdown hooks
-- `@fluojs/http`: provides the interceptor chain for request transactions
+- `@fluojs/http`: provides request lifecycle primitives that can be paired with explicit `requestTransaction(...)` boundaries
 - `@fluojs/prisma` and `@fluojs/drizzle`: alternate database integrations with different transaction models
 
 ## Example Sources

@@ -221,7 +221,7 @@
   - [20.1 Why Use Drizzle in fluo?](ch20-drizzle.md#201-why-drizzle-in-fluo)
   - [20.2 Installation and Setup](ch20-drizzle.md#202-installation-and-setup)
   - [20.3 Configuring DrizzleModule](ch20-drizzle.md#203-configuring-the-drizzlemodule)
-  - [20.4 Repositories and the `current()` Boundary](ch20-drizzle.md#204-repositories-and-the-current-seam)
+  - [20.4 Repositories and Connection Management](ch20-drizzle.md#204-repositories-and-connection-management)
   - [20.5 Transaction Management](ch20-drizzle.md#205-transaction-management)
   - [20.6 FluoShop Context: Relational Schema](ch20-drizzle.md#206-fluoshop-context-relational-schema)
   - [20.7 Observability and Health](ch20-drizzle.md#207-observability-and-health)

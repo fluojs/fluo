@@ -7,10 +7,10 @@ This chapter explains the transaction patterns that group multiple FluoBlog data
 
 ## Learning Objectives
 - Understand why atomicity, consistency, isolation, and durability (ACID) matter in database work.
-- Learn how `fluo` uses `AsyncLocalStorage` (ALS) to manage transaction context.
-- Implement manual transactions with the Prisma block pattern.
-- Use `PrismaTransactionInterceptor` for request-scoped transactions.
+- Learn how `@Transaction()` decorator manages service-level boundaries.
 - Design transaction-agnostic repositories that work smoothly inside and outside transactions.
+- Implement manual transactions with the Prisma block pattern for precise control.
+- Understand how `AsyncLocalStorage` (ALS) manages context internally.
 - Refactor FluoBlog to handle complex operations such as user registration with initial profile setup.
 
 ## Prerequisites
@@ -39,56 +39,60 @@ This permanence is a core requirement for applications where data loss is unacce
 ### Isolation: The "I" in ACID
 We'll cover this in more detail later, but it is important to introduce **Isolation** here. Isolation ensures that concurrently running transactions do not interfere with one another. When two users try to buy the last concert ticket at the exact same millisecond, isolation ensures that one succeeds and the other receives a "sold out" message, instead of charging both users for one ticket. Without isolation, the database's internal state would be confused by unfinished writes from multiple users, leading to unpredictable and severe failures in business logic.
 
-## 13.2 Fluo's Transaction Philosophy
-In many frameworks, transaction management requires passing a "transaction object" or "database client" through every function call. This is often called the "TX Injection" pattern.
+## 13.2 Service-Level Transactions: @Transaction()
+In fluo, the service layer is the primary place to define business boundaries. The easiest and most recommended way to manage transactions is using the `@Transaction()` decorator.
 
 ```typescript
-// Traditional/explicit pattern, difficult to maintain
-async createUser(data, tx?) {
-  const client = tx || this.db;
-  return client.user.create({ data });
-}
-```
+import { Inject } from '@fluojs/core';
+import { Transaction } from '@fluojs/prisma';
 
-This approach pollutes business logic with database concerns and makes refactoring harder. If you decide to add a third repository call deep in a service tree, you must walk the entire call chain and update it to pass the `tx` object. `fluo` takes a different approach with **AsyncLocalStorage (ALS)**. This lets Fluo maintain a transaction context that automatically travels along the asynchronous call stack, similar to ThreadLocal variables in other languages but adapted to Node.js's asynchronous environment.
+@Inject(UsersRepository, ProfilesRepository)
+export class UsersService {
+  constructor(
+    private readonly usersRepo: UsersRepository,
+    private readonly profilesRepo: ProfilesRepository,
+  ) {}
 
-### The Power of AsyncLocalStorage
-`AsyncLocalStorage` is a built-in Node.js feature that lets you store and access data during the lifecycle of an asynchronous operation. fluo uses it to create a "hidden" context for the database client. When a transaction starts, fluo stores the transaction-aware client in ALS. Every `.current()` call made inside the same asynchronous flow automatically finds the correct client, so you never have to pass it manually.
-
-This lets you write service and Repository methods that focus on the "what" of data access instead of the "how." Behind the scenes, Fluo manages the lifecycle of this store, ensuring the context is cleaned up when the request ends or the transaction completes. As a result, you avoid memory leaks and cross-request data pollution while greatly reducing the boilerplate that used to be common in the JavaScript ecosystem.
-
-### The Repository Rule: Transaction Agnosticism
-As you saw in the previous chapter, Fluo repositories always use `PrismaService.current()`.
-
-```typescript
-@Inject(PrismaService)
-export class UsersRepository {
-  constructor(private readonly prisma: PrismaService<any>) {}
-
-  async create(data) {
-    // .current() automatically detects whether we are in the current transaction context!
-    return this.prisma.current().user.create({ data });
+  @Transaction()
+  async registerUser(userData, profileData) {
+    // If any one of these throws an error, the whole method rolls back
+    const user = await this.usersRepo.create(userData);
+    await this.profilesRepo.create({ ...profileData, userId: user.id });
+    return user;
   }
 }
 ```
 
-Thanks to `.current()`, a Repository does not need to know whether it is being called as part of a transaction or as a standalone operation. This makes your code modular and easier to test. Whether you call `usersRepo.create()` from a simple script or from a complex multi-step transaction inside a service, the Repository code stays exactly the same. This "Transaction Agnosticism" is a core pillar of the Fluo architecture.
+By applying `@Transaction()`, you tell fluo that the entire method should run within a single database transaction. If the method returns successfully, the transaction commits. If it throws an error, fluo automatically rolls back every change made inside that method.
 
-### Transaction Agnosticism in Depth
-In many legacy systems, developers manually pass a "transaction object" or "database client" into every function call. This is error-prone and makes code harder to read. fluo's `PrismaService.current()` removes that burden completely. A transaction-agnostic Repository does not need to know whether it is part of a larger transaction. It simply asks the service for the "active client," and fluo handles the rest.
+This approach keeps your service methods clean. You don't need to manually open or close transactions; the decorator handles the lifecycle for you, allowing you to focus purely on business logic.
 
-This design pattern also simplifies unit testing, because you can easily mock `PrismaService` without worrying about complex state management for nested transactions. It also encourages small, focused repositories that can be composed into larger operations inside services. You do not need to worry that the Repository you are calling will "break" the transaction or use a different client. If it follows the `.current()` rule, it is guaranteed to participate in whichever context is currently active.
-
-### Hidden Complexity and Safety
-A natural question is, "What happens if I call `.current()` when no transaction is active?" If the current ALS context has no active transaction, `.current()` simply returns the standard non-transactional database client. That means the code behaves the same in both scenarios. The transaction context only steps in when you explicitly open a transaction. Otherwise, it acts like a standard Prisma setup. This optional complexity model lets both small projects and large services use the same Repository rule.
-
-## 13.3 Manual Transactions: The Block Pattern
-The most direct way to run a transaction in Fluo is to use a Prisma transaction block in the service layer.
+### The Repository Rule: Transaction Agnosticism
+Notice that in the example above, the service calls `usersRepo.create()` and `profilesRepo.create()` without passing any special transaction object. This works because Fluo repositories are designed to be **Transaction Agnostic**.
 
 ```typescript
 import { Inject } from '@fluojs/core';
 import { PrismaService } from '@fluojs/prisma';
+import { PrismaClient } from '@prisma/client';
 
+@Inject(PrismaService)
+export class UsersRepository {
+  constructor(private readonly prisma: PrismaService<PrismaClient>) {}
+
+  async create(data) {
+    // We don't need .current() anymore for primary flows!
+    // PrismaService automatically uses the active transaction if one exists.
+    return this.prisma.user.create({ data });
+  }
+}
+```
+
+Because `PrismaService` is context-aware, it automatically detects whether it is running inside an active `@Transaction()` boundary. If it is, it uses the transaction-aware client. If not, it uses the standard client. This means your Repository code stays exactly the same whether it's called as a standalone operation or as part of a complex service-level transaction.
+
+## 13.3 Manual Transactions: The Block Pattern
+While `@Transaction()` is perfect for most cases, sometimes you need more precise control over where a transaction starts and ends within a single method. For these scenarios, you can use the manual block pattern.
+
+```typescript
 @Inject(PrismaService, UsersRepository, ProfilesRepository)
 export class UsersService {
   constructor(
@@ -98,71 +102,44 @@ export class UsersService {
   ) {}
 
   async registerUser(userData, profileData) {
-    // Every operation inside this block is grouped into one transaction
-    return this.prisma.transaction(async () => {
-      // If any one of these throws an error, the whole block rolls back
+    // ... some non-transactional work ...
+
+    const result = await this.prisma.transaction(async () => {
       const user = await this.usersRepo.create(userData);
       await this.profilesRepo.create({ ...profileData, userId: user.id });
       return user;
     });
+
+    // ... some work after the transaction commits ...
+    return result;
   }
 }
 ```
 
-If `profilesRepo.create` throws an error, the database automatically rolls back the entire transaction, including user creation. This lets the service keep one clear success path, without bolting on cleanup code for half-finished states later.
+The block pattern is useful when you want to catch errors from specific steps or perform side effects (like logging or metrics) only after you are certain the database work has successfully committed.
 
-### Complex Transactions with Multiple Repositories
-One of the main strengths of the block pattern is that it easily expands to include multiple repositories. In the example above, `UsersRepository` and `ProfilesRepository` are both used inside the same transaction. Because both repositories rely on `prisma.current()`, they automatically share the transaction context created by `this.prisma.transaction`.
+### Nested Transactions and Reusability
+Fluo handles "nested" transactions by reusing the already-active transaction client. If `Service A` has a `@Transaction()` method that calls `Service B`'s `@Transaction()` method, they both share the same outer transaction. Everything is treated as part of one cohesive unit of work.
 
-This lets you build complex business operations across multiple domains while preserving absolute data integrity. You can also call other service methods inside a transaction block. If those services use repositories that follow the `.current()` rule, they all participate in the same atomic unit of work. This composability lets Fluo applications scale gracefully from a single service to hundreds of interacting modules without losing track of database boundaries.
+## 13.4 Advanced Patterns and Internals
 
-### Nested Transactions and Prisma
-It is worth noting that Prisma, and therefore Fluo, handles "nested" transactions by reusing the already-active transaction client and treating everything as part of the outermost transaction. Inner `transaction()` or request-scoped transaction calls can participate in that context, but they must not pass a second set of transaction options such as a different isolation level; Fluo rejects those options rather than silently dropping them. Some databases support true nested transactions through "savepoints," but the Fluo philosophy recommends keeping transaction blocks in the service layer to avoid confusion. If you find yourself calling `this.prisma.transaction` multiple times, it may be a sign that you should refactor the logic into one cohesive service method that coordinates the whole operation.
+### How it Works: AsyncLocalStorage (ALS)
+In many frameworks, you must pass a "transaction object" (`tx`) through every function call. This pollutes business logic and makes refactoring difficult.
 
-## 13.4 Request-Scoped Transactions with Interceptors
-Sometimes you want to wrap an entire HTTP request in one transaction. This is useful for simple CRUD operations where you want complete consistency across several database calls triggered by a single Controller action.
+Fluo solves this using **AsyncLocalStorage (ALS)**. ALS is a built-in Node.js feature that maintains a "hidden" context that automatically travels along the asynchronous call stack. When a transaction starts, fluo stores the transaction client in ALS. `PrismaService` simply looks up this context to find the active client.
 
-### Using @UseInterceptors
-Fluo provides `PrismaTransactionInterceptor` for this purpose.
+### Explicit Context: .current()
+If you ever need to bypass the automatic lookup or explicitly check if a transaction is active, you can use `.current()`:
 
 ```typescript
-import { Controller, Post, UseInterceptors } from '@fluojs/http';
-import { PrismaTransactionInterceptor } from '@fluojs/prisma';
-
-@Controller('users')
-export class UsersController {
-  @Post()
-  @UseInterceptors(PrismaTransactionInterceptor)
-  async signup(dto: CreateUserDto) {
-    // Every service/Repository call made by this Controller shares the same transaction
-    return this.authService.register(dto);
-  }
+async someMethod() {
+  const activeClient = this.prisma.current(); 
+  // Returns transaction client if in a TX, otherwise root client.
 }
 ```
 
-### The "Unit of Work" Pattern
-Using the Interceptor is a classic implementation of the **Unit of Work** pattern. It treats the entire request as one atomic operation. If the Controller action completes successfully, the transaction commits. If any part of the request throws an exception, from the Controller down to the deepest service, the entire transaction rolls back.
+In primary repository flows, you should prefer the direct call (`this.prisma.user.create`) as it is cleaner, but `.current()` remains available for advanced infrastructure logic or multi-tenant scenarios where you need to verify the exact handle being used.
 
-This is powerful for simple CRUD APIs where you want full consistency without manually writing transaction blocks in every service. In other words, it applies the same principle as the block pattern across the full request boundary.
-
-It provides a high level of safety for standard API actions and reduces the need to write error handling and manual rollback logic in every service method. It also ensures that if validation fails halfway through a request, or an external service call times out and throws an error, only part of the data will not be committed.
-
-Request-scoped transaction boundaries also participate in application shutdown. Once shutdown begins, fluo rejects new Prisma request transactions, aborts any still-active request transaction, waits for the transaction boundary to settle, and only then disconnects the Prisma client. If a request-scoped boundary is opened inside an existing manual transaction, it reuses the outer transaction client and remains visible to shutdown tracking until that outer manual block finishes.
-
-### When to use Interceptors vs. Blocks?
-- **Interceptors**: Best for the "unit of work" pattern, where the entire request is one logical change. They are ideal for standardizing behavior across a whole Controller or application. Use them when an endpoint has a binary outcome: everything succeeds, or nothing changes.
-- **Blocks**: Best when only a specific part of a complex method must be atomic, or when you need precise error handling for a specific step. They are also preferred when non-database side effects such as sending emails or pushing to a queue must happen only after database work has committed successfully. It is easier to wrap a block in try/catch than an Interceptor.
-
-### Handling Transaction Failures
-When a transaction fails, rolling back the database is not the whole story. You must also consider application state and the feedback users receive. Always write business logic so it provides clear, actionable error messages. If post creation fails because the author was deleted midway through a request, the user should receive a 404 or 400 error, not a generic 500 "Database Error." fluo's built-in exception filters work smoothly with transactions to provide these details, ensuring the API remains useful and descriptive even when something goes wrong internally.
-
-### Best Practice: Keep Transactions Short
-You may be tempted to wrap large chunks of business logic in a transaction, but remember that transactions hold database locks. If a transaction takes several seconds to complete, it can block other requests and slow down the entire application. Always aim to keep transactions as short and focused as possible. Include only the work that must succeed or fail together. Avoid heavy computation, image processing, or external API calls inside a transaction block, because they greatly increase how long locks are held.
-
-Now that you have seen how to create transactions, the next important piece is designing the data layer so FluoBlog stays both clean and efficient while using them. In many high-traffic applications, long-running transactions are a major cause of performance degradation. When a transaction holds a specific database row, every other process that wants to access that row has to wait, which creates cascading bottlenecks across the whole system. By keeping transactions concise, you maximize database concurrency and ensure FluoBlog keeps stable response times as its user base grows. Every millisecond saved inside a transaction block improves throughput across the entire system.
-
-### Advanced: Deadlocks and Retries
-In highly concurrent environments, **Deadlocks** can occur. A deadlock happens when two transactions are each waiting for the other to release a lock. The database engine eventually terminates one of the transactions to break the cycle, but the application must be ready to handle that error. The standard practice is to implement a "retry" mechanism for deadlock errors. Fluo does not automatically retry transactions by default, to prevent unintended side effects, but you can easily wrap a transaction block in retry logic with a library like `p-retry` or a simple `while` loop with exponential backoff.
 
 ## 13.5 Isolation Levels and Concurrency
 While Fluo handles the "when" of a transaction, sometimes you need to control the "how" for concurrency. Database isolation levels prevent issues such as "Dirty Read" and "Lost Update," which can happen when multiple users write the same data at the same time.
@@ -277,6 +254,7 @@ To maintain a high-performance system, you need to monitor transaction health in
 In addition to metrics, structured logging is essential. Every transaction should log a unique ID, the identifier provided by ALS, so you can trace exactly what happened when a request fails. This correlation between HTTP requests and database transactions makes Fluo applications much easier to debug under high-pressure production conditions. When you treat transactions as first-class citizens in your observability stack, the data layer never remains a "black box."
 
 ### Scaling Your Transactional Logic
-As your team grows, keeping transaction patterns consistent becomes a people problem too. Document transaction rules clearly, and use linting or architecture tests to confirm that every new Repository follows the `.current()` pattern. Enforcing these rules at the tooling level keeps technical debt from slowly creeping in and keeps the codebase as clean and trustworthy as it was when it was first created.
+As your team grows, keeping transaction patterns consistent becomes a people problem too. Document transaction rules clearly, and use linting or architecture tests to confirm that every new Repository follows the transaction-aware direct call pattern.
+ Enforcing these rules at the tooling level keeps technical debt from slowly creeping in and keeps the codebase as clean and trustworthy as it was when it was first created.
 
 Mastering data patterns is not just about writing code. It is about adopting a mindset of correctness and responsibility. Every byte you write to the database is a promise to your users. Using Fluo's transaction tools means you are choosing to keep that promise with confidence.

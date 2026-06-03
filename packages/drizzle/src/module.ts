@@ -4,7 +4,6 @@ import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { DrizzleDatabase } from './database.js';
 import { DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_HANDLE_PROVIDER, DRIZZLE_OPTIONS } from './tokens.js';
-import { DrizzleTransactionInterceptor } from './transaction.js';
 import type { DrizzleDatabaseLike, DrizzleModuleOptions } from './types.js';
 
 type DrizzleRuntimeOptions = {
@@ -27,7 +26,7 @@ type DrizzleAsyncModuleOptions<
   Pick<DrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>, 'global'>;
 
 const DRIZZLE_NORMALIZED_OPTIONS = Symbol('fluo.drizzle.normalized-options');
-const DRIZZLE_MODULE_EXPORTS = [DrizzleDatabase, DrizzleTransactionInterceptor, DRIZZLE_HANDLE_PROVIDER];
+const DRIZZLE_MODULE_EXPORTS = [DrizzleDatabase, DRIZZLE_HANDLE_PROVIDER];
 
 function isObjectLike(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
@@ -95,7 +94,6 @@ function createDrizzleRuntimeProviders<
       provide: DRIZZLE_HANDLE_PROVIDER,
       useExisting: DrizzleDatabase,
     },
-    DrizzleTransactionInterceptor,
   ];
 }
 

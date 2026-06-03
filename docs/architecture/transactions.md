@@ -6,11 +6,11 @@ This document defines the current transaction-context contract across `@fluojs/p
 
 ## Supported Integrations
 
-| Package | Ambient context carrier | Primary access API | Request interceptor | Current support scope |
+| Package | Ambient context carrier | Primary access API | Request boundary API | Current support scope |
 | --- | --- | --- | --- | --- |
-| `@fluojs/prisma` | `AsyncLocalStorage<TTransactionClient>` | `@Transaction()` on Services | `PrismaTransactionInterceptor` | Shares the active Prisma interactive transaction client when `$transaction(...)` is available. |
-| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | `@Transaction()` on Services | `DrizzleTransactionInterceptor` | Shares the active Drizzle transaction database handle when `database.transaction(...)` is available. |
-| `@fluojs/mongoose` | `AsyncLocalStorage<MongooseSessionLike>` | `@Transaction()` on Services | `MongooseTransactionInterceptor` | Shares the active Mongoose session when `connection.startSession()` or delegated `connection.transaction(...)` is available. |
+| `@fluojs/prisma` | `AsyncLocalStorage<TTransactionClient>` | `@Transaction()` on Services | Explicit `PrismaService.requestTransaction(...)` | Shares the active Prisma interactive transaction client when `$transaction(...)` is available. |
+| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | `@Transaction()` on Services | Explicit `DrizzleDatabase.requestTransaction(...)` | Shares the active Drizzle transaction database handle when `database.transaction(...)` is available. |
+| `@fluojs/mongoose` | `AsyncLocalStorage<MongooseSessionLike>` | `@Transaction()` on Services | Explicit `MongooseConnection.requestTransaction(...)` | Shares the active Mongoose session when `connection.startSession()` or delegated `connection.transaction(...)` is available. |
 
 ## Service Transaction Boundary (Primary)
 
@@ -73,4 +73,3 @@ Any new ORM integration package added to the fluo ecosystem must export a `@Tran
 - The primary path for transaction management is the Service layer via `@Transaction()`.
 - Mongoose operations automatically participate in the ambient transaction session; explicit session passing is discouraged for standard flows.
 - Rollback is exception-driven. If the method wrapped by `@Transaction()` throws, the transaction is aborted.
-

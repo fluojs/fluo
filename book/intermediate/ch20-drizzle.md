@@ -8,7 +8,7 @@ This chapter explains how to integrate Drizzle for relational data and SQL-cente
 ## Learning Objectives
 - Distinguish the advantages of using Drizzle ORM in fluo and where to apply it.
 - Outline `DrizzleModule` configuration and driver resource lifecycle management.
-- Build a repository flow that uses `DrizzleDatabase` and the `current()` seam.
+- Build a repository flow that uses `DrizzleDatabase`.
 - Compare manual transactions with the request-scoped transaction Interceptor.
 - Review an approach to designing a relational schema for FluoShop order management.
 - Define operational standards for checking SQL connection status with status snapshots.
@@ -24,7 +24,7 @@ Drizzle is an ORM that combines a SQL-like authoring experience with TypeScript 
 
 - **Explicit type safety**: Drizzle generates TypeScript types directly from schema definitions.
 - **SQL-like performance characteristics**: Runtime overhead is small, and authored queries are translated into SQL strings.
-- **Integrated transaction model**: Like `@fluojs/prisma` and `@fluojs/mongoose`, the Drizzle integration module uses a `current()` seam that switches between the root handle and the active transaction handle.
+- **Integrated transaction model**: Like `@fluojs/prisma` and `@fluojs/mongoose`, the Drizzle integration module ensures that operations automatically participate in the active transaction.
 - **Driver portability with a Node-scoped fluo wrapper**: Drizzle broadly supports Node-Postgres, Bun SQL, Cloudflare D1, and more, but the current `@fluojs/drizzle` wrapper uses Node's `node:async_hooks` transaction context. Treat this chapter's package integration as Node runtime guidance until a non-Node context adapter is documented.
 
 ## 20.2 Installation and Setup
@@ -69,9 +69,9 @@ import { Pool } from 'pg';
 export class PersistenceModule {}
 ```
 
-## 20.4 Repositories and the `current()` Seam
+## 20.4 Repositories and Connection Management
 
-In Fluo, repositories receive the `DrizzleDatabase` service through injection. Its core `current()` method ensures that queries run against the correct target: either the root database handle or the active transaction handle.
+In Fluo, repositories receive the `DrizzleDatabase` service through injection. It acts as a context-aware proxy, ensuring that queries run against the correct target: either the root database handle or the active transaction handle.
 
 ```typescript
 import { DrizzleDatabase } from '@fluojs/drizzle';
@@ -87,7 +87,8 @@ export class ProductRepository {
   constructor(private readonly db: DrizzleDatabase<AppDatabase>) {}
 
   async findById(id: string) {
-    return this.db.current()
+    // Primary flow: call the model directly.
+    return this.db
       .select()
       .from(products)
       .where(eq(products.id, id));
@@ -100,33 +101,16 @@ export class ProductRepository {
 Drizzle transaction management can be handled through fluo's integration interface. Repository code does not need to manage transaction handles directly, so services can focus on the atomicity of the business operation.
 
 ### Manual Transactions
+In fluo, the recommended way to handle transactions is using the `@Transaction()` decorator on service methods. For manual control, use the block pattern:
 
 ```typescript
 await this.db.transaction(async () => {
-  const tx = this.db.current();
-  
-  await tx.insert(orders).values(orderData);
-  await tx.update(inventory)
+  // Queries inside this block automatically use the transaction handle
+  await this.db.insert(orders).values(orderData);
+  await this.db.update(inventory)
     .set({ stock: newStock })
     .where(eq(inventory.productId, pid));
 });
-```
-
-### Request-Scoped Transactions
-
-With `DrizzleTransactionInterceptor`, you can wrap an entire Controller action in a transaction. This is a good fit for guaranteeing atomicity when multiple repository calls make up one business operation. If the request fails, changes inside the same boundary can roll back together, which is safer for flows such as checkout.
-
-```typescript
-import { Post, UseInterceptors } from '@fluojs/http';
-import { DrizzleTransactionInterceptor } from '@fluojs/drizzle';
-
-@UseInterceptors(DrizzleTransactionInterceptor)
-export class OrderController {
-  @Post('/checkout')
-  async checkout() {
-    // Every repository call inside this method shares a single transaction.
-  }
-}
 ```
 
 ## 20.6 FluoShop Context: Relational Schema

@@ -161,7 +161,6 @@ function buildPrismaModule<
 
   return defineModule(PrismaRootModuleDefinition, {
     exports: normalizedOptions.name === undefined
-      ? [PrismaService, PrismaTransactionInterceptor, getPrismaServiceToken(), getPrismaClientToken(), getPrismaOptionsToken()]
       : [
         getPrismaServiceToken(normalizedOptions.name),
         getPrismaClientToken(normalizedOptions.name),
@@ -588,7 +587,6 @@ const prismaModule = PrismaModule.forRoot({ client });
 class ManualPrismaModule {}
 
 defineModule(ManualPrismaModule, {
-  exports: [PrismaService, PrismaTransactionInterceptor],
   imports: [prismaModule],
 });
 

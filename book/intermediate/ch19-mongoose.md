@@ -23,8 +23,8 @@ This chapter covers how to integrate FluoShop's document-oriented data model int
 Mongoose is a widely used modeling layer for working with MongoDB in the Node.js ecosystem. Using the fluo-specific integration package gives you these benefits.
 
 - **Lifecycle Management**: It registers the provided connection in the application lifecycle and, when you supply `dispose(connection)`, runs that cleanup only after request-scoped transactions have drained during shutdown.
-- **Session Awareness**: The `MongooseConnection` service tracks MongoDB sessions across the call stack and through shutdown cleanup to preserve transaction boundaries.
-- **Request-Scoped Transactions**: `MongooseTransactionInterceptor` can wrap an entire HTTP request in a MongoDB transaction.
+- **Session Awareness**: The `MongooseConnection` service tracks MongoDB sessions across the call stack.
+- **Ambient Sessions (v1)**: fluo automatically attaches the active transaction session to supported Mongoose model operations (create, find, findOne, aggregate, bulkWrite).
 
 ## 19.2 Installation and Setup
 
@@ -73,15 +73,28 @@ export class ProductRepository {
   constructor(private readonly conn: MongooseConnection) {}
 
   async findById(id: string) {
-    const Product = this.conn.current().model('Product');
+    // Primary flow: call the model directly.
+    const Product = this.conn.model('Product');
     return Product.findById(id);
   }
 }
-```
 
-The `conn.current()` method always returns the registered Mongoose connection. Transaction state is tracked separately through `conn.currentSession()`, so repository methods that participate in a transaction still need to pass that session into Mongoose model operations explicitly. Fluo does not overwrite existing Mongoose operation options; an explicit `{ session }` stays under the repository's control.
+The `MongooseConnection` service acts as a context-aware proxy. When you call `this.conn.model('Product')`, it returns a version of the model that automatically participates in the ambient transaction if one is active.
+
+### Ambient Session Support (v1)
+In version 1, fluo's Mongoose integration supports automatic session injection for the following model methods:
+- `create`
+- `find`
+- `findOne`
+- `aggregate`
+- `bulkWrite`
+
+When these methods are called inside a `@Transaction()` or `transaction()` boundary, fluo attaches the ambient session to the options. Note that `doc.save()` is currently NOT supported for automatic session injection and still requires manual session passing if used inside a transaction.
+
+If you explicitly provide a `session` in the options while a transaction is active, fluo will throw a conflict error if the provided session does not match the ambient transaction session. This prevents accidental cross-transaction leaks.
 
 ## 19.5 Transaction Management
+
 
 MongoDB transactions require an active **session**. Fluo reduces the caller's burden by grouping session creation, execution, and cleanup into one transaction wrapper.
 
@@ -90,34 +103,17 @@ When the provided Mongoose connection exposes `connection.transaction(...)`, flu
 Because Mongoose model calls require explicit `{ session }` options, request-scoped transactions do not rewrite repository calls for you. A nested `requestTransaction(...)` opened inside an existing manual `transaction(...)` reuses the ambient session, remains tracked as an active request boundary, and is aborted during shutdown so the outer manual transaction can roll back before connection disposal.
 
 ### Manual Transactions
+In fluo, the recommended way to handle transactions is using the `@Transaction()` decorator on service methods. For manual control, use the block pattern:
 
 ```typescript
 await this.conn.transaction(async () => {
-  const session = this.conn.currentSession();
-  const Product = this.conn.current().model('Product');
-  const Inventory = this.conn.current().model('Inventory');
+  const Product = this.conn.model('Product');
+  const Inventory = this.conn.model('Inventory');
 
-  await Product.updateOne({ _id: pid }, { $set: { status: 'SOLD' } }, { session });
-  await Inventory.updateOne({ productId: pid }, { $inc: { stock: -1 } }, { session });
+  // Sessions are automatically injected into these calls
+  await Product.updateOne({ _id: pid }, { $set: { status: 'SOLD' } });
+  await Inventory.updateOne({ productId: pid }, { $inc: { stock: -1 } });
 });
-```
-
-### Request-Scoped Transactions
-
-At the Controller level, you can use `MongooseTransactionInterceptor`. This Interceptor opens a session and transaction when an HTTP request starts, then commits it when the request finishes successfully. It does **not** automatically attach the session to every Mongoose model call for you, so repositories still need to read `conn.currentSession()` and forward it to writes that should participate in the transaction.
-
-```typescript
-import { Controller, Post, UseInterceptors } from '@fluojs/http';
-import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
-
-@UseInterceptors(MongooseTransactionInterceptor)
-@Controller('orders')
-export class OrderController {
-  @Post('/')
-  async createOrder() {
-    // Repository writes still pass conn.currentSession() into Mongoose operations explicitly.
-  }
-}
 ```
 
 ## 19.6 FluoShop Context: Product Catalog Persistence

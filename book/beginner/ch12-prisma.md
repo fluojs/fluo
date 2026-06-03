@@ -199,12 +199,12 @@ export class PostsRepository {
   constructor(private readonly prisma: PrismaService<PrismaClient>) {}
 
   async createPost(data: { title: string; content?: string; authorId: number }) {
-    // .current() is the most important method in PrismaService.
-    return this.prisma.current().post.create({ data });
+    // Primary flow: call the model directly.
+    return this.prisma.post.create({ data });
   }
 
   async findMany() {
-    return this.prisma.current().post.findMany({
+    return this.prisma.post.findMany({
       include: { author: true },
     });
   }
@@ -213,14 +213,12 @@ export class PostsRepository {
 
 This example assumes that `PostsRepository` is registered in the `providers` array of its Module.
 
-### current() Pattern
-Notice the `this.prisma.current()` call. This pattern matters because the Repository can focus on the query itself without caring separately about the current execution context.
+### Transaction Awareness
+In fluo, `PrismaService` is context-aware. This means when you call `this.prisma.post.create()`, the service automatically determines whether it is running inside an active transaction (which we will cover in the next chapter) or as a standalone operation.
 
-`current()` returns the currently active database client. If the code is running inside a transaction, which we will cover in the next chapter, it returns a transaction-aware client. Otherwise, it returns the standard client.
+By calling the models directly on `PrismaService`, the Repository can focus on the query itself without caring about the execution context. This greatly improves reuse and testability. Even when multiple write operations are grouped together in a service-level transaction, you can keep using the same Repository code.
 
-By always using `current()`, the Repository can work whether or not a transaction is active, which greatly improves reuse and testability. It also leads naturally into the next chapter. Even when multiple write operations are grouped together, you can keep using the same Repository code.
-
-This pattern is especially useful when implementing advanced features such as Row-Level Security or request-scoped multi-tenancy. By trusting the `current()` client provided by fluo's DI system, you can be confident that the code stays safe and performs well.
+This pattern is a core part of fluo's "Transaction Agnostic" repository design. It ensures your data access layer stays clean, type-safe, and performs well under various transactional boundaries.
 
 ### Error Handling in Database Operations
 Database operations can fail in many ways, such as unique constraint violations, connection timeouts, and foreign key errors. Prisma provides specialized error classes for these cases. fluo recommends catching these errors early in the Repository or service layer and converting them into meaningful HTTP exceptions that give API users clear feedback, such as `ConflictException` for a unique constraint violation.
@@ -241,7 +239,7 @@ We learned the following:
 - The `schema.prisma` file is the source of truth for the database structure.
 - Migrations let you evolve the database safely over time.
 - `PrismaModule` integrates Prisma into Fluo's lifecycle.
-- `PrismaService` and the `current()` pattern enable flexible, transaction-aware data access.
+- `PrismaService` and its context-aware design enable flexible, transaction-aware data access.
 
 With the database in place, FluoBlog can now store and retrieve posts reliably. In this chapter, we built up configuration, schema definition, migrations, and runtime connection in order, which gives us a natural path to the next problem. In real data work, multiple steps often need to succeed or fail together, so in the next chapter we will learn how to handle those scenarios with transactions.
 
@@ -268,4 +266,5 @@ When using Prisma in a microservices architecture, each service should be design
 ### Final Thoughts on Database Integration
 Database integration does not end at connecting to tables. It means building a trustworthy and performant foundation for the whole application. Combining Prisma's features with fluo's structural explicitness gives you a data layer that remains easy to maintain over the long term.
 
-Treat database schemas and migrations as part of the core source code. Keep repositories small and focused, and always use the `current()` pattern so your code stays transaction-aware. If you follow these principles, FluoBlog can keep a stable data access flow as it grows.
+Treat database schemas and migrations as part of the core source code. Keep repositories small and focused, and always use direct calls on the service so your code stays transaction-aware.
+ If you follow these principles, FluoBlog can keep a stable data access flow as it grows.

@@ -6,7 +6,6 @@ describe('@fluojs/prisma public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(prismaPublicApi).toHaveProperty('PrismaModule');
     expect(prismaPublicApi).toHaveProperty('PrismaService');
-    expect(prismaPublicApi).toHaveProperty('PrismaTransactionInterceptor');
     expect(prismaPublicApi).toHaveProperty('Transaction');
     expect(prismaPublicApi).toHaveProperty('createPrismaPlatformStatusSnapshot');
     expect(prismaPublicApi).toHaveProperty('PRISMA_CLIENT');

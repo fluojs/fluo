@@ -13,7 +13,6 @@
 - [공통 패턴](#공통-패턴)
   - [서비스 트랜잭션 경계 (@Transaction)](#서비스-트랜잭션-경계-transaction)
   - [수동 트랜잭션과 currentSession()](#수동-트랜잭션과-currentsession)
-  - [요청 단위 트랜잭션 (인터셉터)](#요청-단위-트랜잭션-인터셉터)
 - [공개 API](#공개-api)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -29,7 +28,6 @@ pnpm add mongoose
 
 - Mongoose를 나머지 애플리케이션과 같은 DI 및 라이프사이클 모델에 연결하고 싶을 때.
 - 모든 서비스에서 MongoDB 세션과 트랜잭션을 임시 배관 코드 없이 하나의 wrapper로 다루고 싶을 때.
-- 요청 범위 트랜잭션을 interceptor로 명시적으로 켜고 싶을 때.
 
 ## 빠른 시작
 
@@ -59,14 +57,15 @@ class AppModule {}
 
 `MongooseModule`은 `MongooseConnection`을 fluo 애플리케이션 라이프사이클에 등록합니다. 이 패키지는 원본 Mongoose 연결을 직접 생성하거나 소유하지 않습니다. 애플리케이션 종료 시 외부 연결을 닫아야 한다면 `dispose` 훅을 전달하세요.
 
-종료 과정은 트랜잭션 정리 순서를 보존하며, 종료가 시작된 뒤에는 새 수동 또는 요청 범위 트랜잭션 경계를 거부합니다.
+종료 절차는 트랜잭션 정리 순서를 보존하고, 종료가 시작된 뒤에는 새로운 수동 또는 요청 단위 트랜잭션 경계를 거부합니다.
 
-1. 열려 있는 요청 범위 트랜잭션은 `Application shutdown interrupted an open request transaction.` 오류로 abort됩니다.
+1. 열린 요청 단위 트랜잭션은 `Application shutdown interrupted an open request transaction.`으로 abort됩니다.
 2. 활성 ambient session은 transaction callback과 session cleanup이 settle될 때까지 추적됩니다.
 3. 해당 Mongoose 세션은 `abortTransaction()`과 `endSession()` 정리를 끝냅니다.
 4. 설정한 `dispose(connection)` 훅은 활성 요청 트랜잭션과 ambient session scope가 모두 settled된 뒤에만 실행됩니다.
 
-`createMongoosePlatformStatusSnapshot(...)`은 트래픽 처리 중에는 `ready`, 요청 트랜잭션 drain 중에는 `shutting-down`, dispose 훅 완료 뒤에는 `stopped`를 보고합니다. 상태 details에는 `sessionStrategy`, `transactionContext: 'als'`, 활성 요청/session 개수, 리소스 소유권, strict/session 지원 진단이 포함됩니다. 수동 `transaction()`도 요청 범위 트랜잭션과 같은 명시적 세션 계약을 사용하므로, 트랜잭션에 참여해야 하는 Mongoose 모델 작업에는 repository 코드가 `conn.currentSession()`을 전달해야 합니다. 감싼 Mongoose 연결이 `connection.transaction(...)`을 노출하면 fluo는 Mongoose 자체 ambient-session scope를 보존하기 위해 그 API에 transaction boundary를 위임하면서도 같은 session을 `currentSession()`으로 노출합니다. 요청 범위 트랜잭션은 session을 획득하는 동안과 위임된 `connection.transaction(...)` 작업을 시작하는 동안에도 request `AbortSignal`을 관찰하므로, 요청 취소가 사용자 callback 실행 전에 이러한 시작 단계를 중단할 수 있습니다.
+`createMongoosePlatformStatusSnapshot(...)`은 serving 중에는 `ready`, 요청 트랜잭션을 drain하는 shutdown 중에는 `shutting-down`, dispose hook 완료 후에는 `stopped`를 보고합니다. status details에는 `sessionStrategy`, `transactionContext: 'als'`, 활성 요청/세션 수, 리소스 소유권, strict/session 지원 진단이 포함됩니다. 수동 `transaction()` 호출도 요청 단위 트랜잭션과 같은 명시적 세션 계약을 사용합니다. 리포지토리 코드는 트랜잭션에 참여해야 하는 Mongoose model 작업에 `conn.currentSession()`을 전달해야 합니다. 래핑된 Mongoose connection이 `connection.transaction(...)`을 제공하면 fluo는 Mongoose 자체 ambient-session scope를 보존하면서 동일한 세션을 `currentSession()`으로 노출하도록 해당 API에 트랜잭션 경계를 위임합니다.
+
 기존 수동 `transaction(...)` boundary 안에서 열린 중첩 `requestTransaction(...)` 호출은 ambient session을 재사용하고 `details.activeRequestTransactions`에 계속 표시되며, 종료 중에 abort되어 바깥 수동 transaction이 `dispose(connection)` 실행 전에 rollback할 수 있습니다.
 
 ## 공통 패턴
@@ -141,30 +140,10 @@ await this.conn.transaction(async () => {
 
 Fluo는 Mongoose 작업 옵션을 임의로 재작성하지 않습니다. 활성 트랜잭션 내부에서 명시적으로 `{ session: null }`을 전달하거나 다른 세션 객체를 사용하면, 의도치 않은 트랜잭션 탈출을 방지하기 위해 세션 충돌 에러를 발생시킵니다.
 
-### 요청 단위 트랜잭션 (인터셉터)
-
-컨트롤러나 메서드에 `MongooseTransactionInterceptor`를 적용하면 전체 요청을 자동으로 트랜잭션으로 감쌉니다. 간단한 CRUD 작업이나 특정 경로에 대해 "기본적으로 트랜잭션 적용" 정책을 유지하고 싶을 때 유용합니다.
-
-```ts
-import { UseInterceptors } from '@fluojs/http';
-import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
-
-@UseInterceptors(MongooseTransactionInterceptor)
-class UserController {
-  @Post()
-  async create() {
-    // 이후 발생하는 모든 리포지토리 호출은 이 세션을 공유합니다.
-  }
-}
-```
-
-HTTP 인터셉터 외부에서 동일한 요청 인지형 트랜잭션 경계가 필요하다면 `MongooseConnection.requestTransaction(...)`을 직접 사용하세요.
-
 ## 공개 API
 
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
 - `MongooseConnection`
-- `MongooseTransactionInterceptor`
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
 - `createMongooseProviders(options)` — 호환성/수동 composition helper입니다. 애플리케이션-facing 등록에서는 module export와 provider visibility가 문서화된 namespace facade와 맞도록 `MongooseModule.forRoot(...)` 또는 `MongooseModule.forRootAsync(...)`를 우선 사용하세요.
 - `createMongoosePlatformStatusSnapshot(...)`
@@ -182,7 +161,7 @@ HTTP 인터셉터 외부에서 동일한 요청 인지형 트랜잭션 경계가
 ## 관련 패키지
 
 - `@fluojs/runtime`: 애플리케이션 라이프사이클 및 종료 훅을 관리합니다.
-- `@fluojs/http`: 인터셉터 시스템을 제공합니다.
+- `@fluojs/http`: 명시적 `requestTransaction(...)` 경계와 함께 사용할 수 있는 요청 라이프사이클 primitive를 제공합니다.
 - `@fluojs/prisma` / `@fluojs/drizzle`: 대안 데이터베이스 통합 모듈입니다.
 
 ## 예제 소스
