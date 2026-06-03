@@ -50,7 +50,7 @@ The scrape endpoint returns the active `prom-client` registry output with that r
 | `MetricsService` | Application-facing facade for custom `Counter`, `Gauge`, and `Histogram` metrics on the active registry. | Use this for business/application metrics instead of reaching into package internals. |
 | `METER_PROVIDER` / `PrometheusMeterProvider` | Low-level meter bridge for first-party package integrations that need a provider token. | Application code usually does not need this token unless it is composing package-level integrations. |
 | `middleware` | Module-level middleware that participates in the module middleware chain after framework HTTP metrics and endpoint-scoped middleware. | It is not route-scoped; use `endpointMiddleware` when only the scrape route should be protected. |
-| `endpointMiddleware` | Class-based `@fluojs/http` middleware constructors bound only to the configured scrape endpoint. | Ignored when `path: false`; functions or global middleware declarations are outside this option's contract. |
+| `endpointMiddleware` | Class-based `@fluojs/http` middleware constructors bound only to the configured scrape endpoint. | Ignored only when `path: false`; any string `path`, including `''`, remains an active endpoint path. Functions or global middleware declarations are outside this option's contract. |
 
 ## Common Patterns
 
@@ -102,6 +102,33 @@ MetricsModule.forRoot({
 ```
 
 `endpointMiddleware` accepts class-based `@fluojs/http` middleware constructors and binds them only to the metrics scrape endpoint. Middleware functions or global middleware declarations are not the package contract for this option. `middleware` remains module-level middleware and runs as part of the module chain after endpoint-scoped middleware, while `endpointMiddleware` is skipped entirely when `path: false` disables the scrape route. When HTTP instrumentation is enabled, failures thrown by endpoint middleware are recorded in the built-in HTTP request and error collectors.
+
+### Create custom metrics once and reuse them
+
+`MetricsService.counter(...)`, `gauge(...)`, and `histogram(...)` create Prometheus collectors on the active registry. Create each custom metric once during provider construction or application startup, then reuse the returned collector when business actions occur.
+
+```ts
+import { Inject } from '@fluojs/core';
+import { MetricsService } from '@fluojs/metrics';
+
+@Inject(MetricsService)
+class OrdersService {
+  private readonly ordersCreated: ReturnType<MetricsService['counter']>;
+
+  constructor(metrics: MetricsService) {
+    this.ordersCreated = metrics.counter({
+      name: 'orders_created_total',
+      help: 'Total orders created',
+    });
+  }
+
+  recordOrderCreated(): void {
+    this.ordersCreated.inc();
+  }
+}
+```
+
+Calling `MetricsService.counter(...)` again with the same name recreates the collector and follows Prometheus' duplicate-name failure behavior. Store and reuse the collector instead of creating it inside each request or command handler.
 
 ### Share one registry for framework and app metrics
 
@@ -178,7 +205,7 @@ MetricsModule.forRoot({
 
 ### Operational defaults
 
-- `path` defaults to `'/metrics'`, and `path: false` disables the scrape endpoint entirely.
+- `path` defaults to `'/metrics'`, any string path including `''` exposes a scrape endpoint, and `path: false` disables the scrape endpoint entirely.
 - The scrape response uses the active registry's Prometheus content type and registry contents.
 - `defaultMetrics` defaults to `true`, and `defaultMetrics: false` disables Prometheus default process and Node.js collectors for that registry.
 - `endpointMiddleware` binds class-based route-scoped middleware only to the scrape endpoint; with HTTP instrumentation enabled, endpoint middleware failures are counted by the built-in HTTP collectors.

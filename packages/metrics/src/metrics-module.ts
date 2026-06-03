@@ -92,7 +92,7 @@ export class MetricsModule {
       collectDefaultMetrics({ register: registry });
     }
 
-    const endpointMiddleware = metricsPath
+    const endpointMiddleware = typeof metricsPath === 'string'
       ? (options.endpointMiddleware ?? []).map((middlewareClass) => forRoutes(middlewareClass, metricsPath))
       : [];
     const middleware = [

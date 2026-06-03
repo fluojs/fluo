@@ -115,6 +115,46 @@ describe('MetricsModule', () => {
     await app.close();
   });
 
+  it('binds endpoint middleware when the scrape endpoint path is empty', async () => {
+    class MetricsAccessMiddleware {
+      async handle(context: MiddlewareContext, next: Next): Promise<void> {
+        if (context.request.headers['x-metrics-token'] !== 'secret-token') {
+          throw new ForbiddenException('Metrics endpoint requires x-metrics-token.');
+        }
+
+        await next();
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          endpointMiddleware: [MetricsAccessMiddleware],
+          path: '',
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    const forbiddenResponse = createResponse();
+    await app.dispatch(createRequest(''), forbiddenResponse);
+    expect(forbiddenResponse.statusCode).toBe(403);
+
+    const metricsResponse = createResponse();
+    await app.dispatch(createRequest('', { 'x-metrics-token': 'secret-token' }), metricsResponse);
+
+    expect(metricsResponse.statusCode).toBe(200);
+    expect(String(metricsResponse.body)).toContain('fluo_metrics_registry_mode{mode="isolated"} 1');
+
+    await app.close();
+  });
+
   it('records endpoint middleware failures when HTTP instrumentation is enabled', async () => {
     class MetricsAccessMiddleware {
       async handle(context: MiddlewareContext, next: Next): Promise<void> {
