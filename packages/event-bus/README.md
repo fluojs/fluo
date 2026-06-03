@@ -120,7 +120,7 @@ Handlers are discovered from singleton providers and controllers across imported
 - `EventBus`, `EventPublishOptions`, `EventBusModuleOptions`, `EventType`: Type-only contracts for publishing, defaults, transports, and stable event keys.
 - `EventBusLifecycleState`, `EventBusStatusAdapterInput`, `EventBusPlatformStatusSnapshot`: Status snapshot contracts.
 
-Transport bootstrap subscribes once per unique event channel. `eventKey` controls the transport channel name when present. Invalid JSON transport messages are ignored, and inbound transport messages that arrive after shutdown starts are ignored before local handler dispatch.
+Transport bootstrap subscribes once per unique event channel. `eventKey` controls the transport channel name when present. If a later transport subscription fails during bootstrap, the event bus closes the transport to roll back any channels that were already opened before rethrowing the subscription error. Invalid JSON transport messages are ignored, and inbound transport messages that arrive after shutdown starts are ignored before local handler dispatch.
 
 ## Runtime-Specific and Integration Subpaths
 
