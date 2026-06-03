@@ -58,8 +58,8 @@ Any new ORM integration package added to the fluo ecosystem must export a `@Tran
 
 | Pattern | Behavior |
 | --- | --- |
-| Request-scoped boundary | Transaction interceptors wrap the downstream HTTP handler in `requestTransaction(...)`, using the request abort signal. |
-| Interceptor usage | Useful for legacy compatibility or when every single request must be transactional by default without service-level control. |
+| Explicit request boundary | Application code can call `requestTransaction(...)` at a controller, route adapter, or request orchestration boundary when an entire request must be transactional. |
+| Interceptor status | `*TransactionInterceptor` exports were removed; prefer service `@Transaction()` for business operations and explicit `requestTransaction(...)` for rare request-wide boundaries. |
 
 ## Advanced / Escape Hatch
 

@@ -3,8 +3,8 @@
  *
  * - Uses the 2023-11 standard decorator shape.
  * - Does not rely on `reflect-metadata` or legacy decorator emit.
- * - The factory accepts a direct accessor function only.
- * - Nested options objects are intentionally rejected.
+ * - The factory accepts a direct accessor function.
+ * - ORM packages that expose transaction options can also accept their package-specific options object.
  */
 
 /**
@@ -18,8 +18,9 @@
  * current call chain, the implementation should reuse that transaction context
  * instead of opening a nested one.
  *
- * Nested options objects are rejected on purpose; the API accepts only a direct
- * accessor function so the runtime shape stays explicit and auditable.
+ * Prisma and Drizzle may also accept package-specific transaction options at
+ * the outer boundary. Nested transaction helpers reject options while an
+ * ambient transaction already exists so option intent is not silently ignored.
  */
 export type TransactionAccessor<T> = (self: T) => {
   transaction: Function;
@@ -43,7 +44,8 @@ export type TransactionDecorator = (
  * Package-local API shape:
  * - `Transaction()` => default accessor using `this`
  * - `Transaction((self) => self.namedClient)` => explicit client selection
- * - nested options objects are rejected; no `Transaction({ accessor: ... })`
+ * - package-specific transaction options where the ORM wrapper supports them
+ * - no combined object shape such as `Transaction({ accessor: ... })`
  */
 export type TransactionDecoratorFactory<T> = (
   accessor?: TransactionAccessor<T>,
