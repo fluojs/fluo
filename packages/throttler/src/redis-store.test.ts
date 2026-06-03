@@ -1,13 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type Redis from 'ioredis';
-
-import { RedisThrottlerStore } from './redis-store.js';
+import { RedisThrottlerStore, type RedisThrottlerClient } from './redis-store.js';
 
 function createRedisClientMock(result: unknown) {
   return {
     eval: vi.fn(async () => result),
-  } as unknown as Pick<Redis, 'eval'>;
+  } satisfies RedisThrottlerClient;
 }
 
 function createRedisTimeAnchoredClient(baseNow: number) {
@@ -35,7 +33,7 @@ function createRedisTimeAnchoredClient(baseNow: number) {
 
         return [entry.count, entry.resetAt, entry.resetAt - redisNow];
       }),
-    } as unknown as Pick<Redis, 'eval'>,
+    } satisfies RedisThrottlerClient,
     setRedisNow(nextNow: number) {
       redisNow = nextNow;
     },
@@ -46,7 +44,7 @@ describe('RedisThrottlerStore', () => {
   it('persists the reset window at the TTL boundary with millisecond precision', async () => {
     const now = 1_710_000_000_000;
     const client = createRedisClientMock([1, now + 60_000, 60_000]);
-    const store = new RedisThrottlerStore(client as Redis);
+    const store = new RedisThrottlerStore(client);
 
     const entry = await store.consume('throttle:auth:127.0.0.1', {
       now,
@@ -71,7 +69,7 @@ describe('RedisThrottlerStore', () => {
   it('anchors Redis windows to Redis server time across skewed app nodes', async () => {
     const baseNow = 1_710_000_000_000;
     const { client, setRedisNow } = createRedisTimeAnchoredClient(baseNow);
-    const store = new RedisThrottlerStore(client as Redis);
+    const store = new RedisThrottlerStore(client);
 
     const first = await store.consume('throttle:auth:127.0.0.1', {
       now: baseNow - 30_000,
@@ -100,7 +98,7 @@ describe('RedisThrottlerStore', () => {
 
   it('rejects malformed consume-script responses', async () => {
     const client = createRedisClientMock(['not-a-number', 'still-not-a-number']);
-    const store = new RedisThrottlerStore(client as Redis);
+    const store = new RedisThrottlerStore(client);
 
     await expect(
       store.consume('throttle:auth:127.0.0.1', {

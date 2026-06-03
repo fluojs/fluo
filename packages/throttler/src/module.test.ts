@@ -3,11 +3,11 @@ import { metadataSymbol } from '@fluojs/core/internal';
 import type { GuardContext, HandlerDescriptor, RequestContext } from '@fluojs/http';
 import { Controller, Get, UseGuards } from '@fluojs/http';
 import { createTestApp } from '@fluojs/testing';
-import type Redis from 'ioredis';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getThrottleMetadata, SkipThrottle, Throttle } from './decorators.js';
 import { ThrottlerGuard } from './guard.js';
 import type {
+  RedisThrottlerClient,
   ThrottlerConsumeInput,
   ThrottlerModuleOptions,
   ThrottlerStore,
@@ -124,6 +124,20 @@ describe('@fluojs/throttler public entrypoints', () => {
       count: 60,
       resetAt: 61_000,
     });
+  });
+
+  it('accepts structural Redis clients from the root barrel without an ioredis constructor type', async () => {
+    const client = {
+      eval: vi.fn(async () => [1, 1_710_000_060_000, 60_000]),
+    } satisfies RedisThrottlerClient;
+    const store = new throttlerExports.RedisThrottlerStore(client);
+
+    await expect(
+      store.consume('throttle:auth:127.0.0.1', {
+        now: 1_710_000_000_000,
+        ttlSeconds: 60,
+      }),
+    ).resolves.toEqual({ count: 1, resetAt: 1_710_000_060_000 });
   });
 });
 
@@ -772,8 +786,8 @@ describe('ThrottlerGuard — Redis store mock', () => {
   it('keeps Retry-After consistent across skewed app clocks when Redis provides the shared window', async () => {
     const client = {
       eval: vi.fn(async () => [2, 1_710_000_090_000, 45_000]),
-    } as unknown as Pick<Redis, 'eval'>;
-    const store = new RedisThrottlerStore(client as Redis);
+    } satisfies RedisThrottlerClient;
+    const store = new RedisThrottlerStore(client);
 
     class TestController {
       action() {}

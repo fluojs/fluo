@@ -71,6 +71,8 @@ class AuthController {
 
 다중 인스턴스 배포 환경에서는 `RedisThrottlerStore`를 사용하여 모든 인스턴스 간에 속도 제한 상태를 공유하세요. Redis 기반 윈도우는 Redis 서버 시간을 기준으로 고정되므로, 애플리케이션 노드 간 시계 오차가 있어도 하나의 공통 reset 경계를 강제합니다.
 
+`RedisThrottlerStore`는 패키지 로컬 구조적 `RedisThrottlerClient` 계약을 받습니다. 이 계약은 `eval(script, numberOfKeys, ...args)` 메서드를 제공하는 Redis command client를 의미합니다. `@fluojs/redis`, `ioredis`, 호환 custom client를 전달할 수 있으며, root `@fluojs/throttler` import가 concrete `ioredis` constructor type에 의존하지 않습니다.
+
 ```typescript
 import { ThrottlerModule, RedisThrottlerStore } from '@fluojs/throttler';
 import { REDIS_CLIENT } from '@fluojs/redis';
@@ -138,6 +140,7 @@ ThrottlerModule.forRoot({
 ### 저장소(Store)
 - `createMemoryThrottlerStore()`: 간단한 메모리 내 저장소를 생성합니다 (기본값).
 - `RedisThrottlerStore`: Redis용 저장소 어댑터입니다.
+- `RedisThrottlerClient`: `RedisThrottlerStore`가 받는 구조적 Redis command client 계약입니다.
 - `ThrottlerStore`: custom store를 위한 공개 계약입니다.
 - `ThrottlerConsumeInput`: custom store가 guard의 현재 시간과 TTL window를 공유할 수 있도록 `ThrottlerStore.consume(key, input)`에 전달되는 공개 입력 shape입니다.
 
@@ -155,7 +158,7 @@ ThrottlerModule.forRoot({
 ## 관련 패키지
 
 - `@fluojs/http`: HTTP 컨텍스트 및 예외 처리를 위해 필요합니다.
-- `@fluojs/redis`: `RedisThrottlerStore` 사용 시 필요합니다.
+- `@fluojs/redis`: `RedisThrottlerStore`를 위한 공식 Redis client 통합입니다. `ioredis`와 호환되는 구조적 client도 지원합니다.
 
 ## 예제 소스
 

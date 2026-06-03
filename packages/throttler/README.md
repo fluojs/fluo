@@ -71,6 +71,8 @@ class AuthController {
 
 For multi-instance deployments, use `RedisThrottlerStore` to share the rate limit state across all instances. Redis-backed windows are anchored to Redis server time, so distributed app nodes with clock skew still enforce one shared reset boundary.
 
+`RedisThrottlerStore` accepts the package-local structural `RedisThrottlerClient` contract: a Redis command client with an `eval(script, numberOfKeys, ...args)` method. `@fluojs/redis`, `ioredis`, and compatible custom clients can be passed without making the root `@fluojs/throttler` import depend on a concrete `ioredis` constructor type.
+
 ```typescript
 import { ThrottlerModule, RedisThrottlerStore } from '@fluojs/throttler';
 import { REDIS_CLIENT } from '@fluojs/redis';
@@ -138,6 +140,7 @@ ThrottlerModule.forRoot({
 ### Stores
 - `createMemoryThrottlerStore()`: Creates a simple in-memory store (default).
 - `RedisThrottlerStore`: Store adapter for Redis.
+- `RedisThrottlerClient`: Structural Redis command client contract accepted by `RedisThrottlerStore`.
 - `ThrottlerStore`: Public contract for custom stores.
 - `ThrottlerConsumeInput`: Public input shape passed to `ThrottlerStore.consume(key, input)` so custom stores can share the guard's current time and TTL window.
 
@@ -155,7 +158,7 @@ Method-level `@Throttle(...)` overrides class-level settings, class-level settin
 ## Related Packages
 
 - `@fluojs/http`: Required for HTTP context and Exception handling.
-- `@fluojs/redis`: Required when using `RedisThrottlerStore`.
+- `@fluojs/redis`: Official Redis client integration for `RedisThrottlerStore`; `ioredis` and compatible structural clients are also supported.
 
 ## Example Sources
 
