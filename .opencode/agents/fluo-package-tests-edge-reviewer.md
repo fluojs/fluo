@@ -1,7 +1,7 @@
 ---
 description: fluo-package-tests-edge-reviewer audits a single package's test suite for regression coverage, edge-case gaps, flake risk, teardown issues, and docs-test mismatch. Read-only. Returns schema-compliant findings only.
 mode: subagent
-model: openai/gpt-5.5
+model: openai/gpt-5.4
 options:
   reasoningEffort: high
   reasoningSummary: auto

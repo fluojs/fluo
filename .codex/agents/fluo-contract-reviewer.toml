@@ -1,7 +1,7 @@
 name = "fluo-contract-reviewer"
 description = "fluo-contract-reviewer reviews a PR's contract intent, documentation alignment, and release governance compliance read-only and reports only real risk"
 nickname_candidates = ["fluo-contract-reviewer"]
-model = "gpt-5.5"
+model = "gpt-5.4"
 model_reasoning_effort = "high"
 
 developer_instructions = """# fluo-contract-reviewer

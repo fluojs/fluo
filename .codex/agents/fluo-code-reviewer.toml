@@ -1,7 +1,7 @@
 name = "fluo-code-reviewer"
 description = "fluo-code-reviewer reviews a PR's changed files for correctness, architecture fit, and package boundary compliance read-only and reports only real risk"
 nickname_candidates = ["fluo-code-reviewer"]
-model = "gpt-5.5"
+model = "gpt-5.4"
 model_reasoning_effort = "high"
 
 developer_instructions = """# fluo-code-reviewer

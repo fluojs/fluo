@@ -1,7 +1,7 @@
 name = "fluo-verification-reviewer"
 description = "fluo-verification-reviewer reviews a PR's CI status, test/build/typecheck diagnostics, and regression evidence read-only and reports only real risk"
 nickname_candidates = ["fluo-verification-reviewer"]
-model = "gpt-5.5"
+model = "gpt-5.4"
 model_reasoning_effort = "high"
 
 developer_instructions = """# fluo-verification-reviewer

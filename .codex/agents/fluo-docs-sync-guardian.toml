@@ -1,7 +1,7 @@
 name = "fluo-docs-sync-guardian"
 description = "fluo-docs-sync-guardian reviews docs changes read-only and reports EN/KO parity, companion update, tooling/CI enforcement, and regression evidence verdict"
 nickname_candidates = ["fluo-docs-sync-guardian"]
-model = "gpt-5.5"
+model = "gpt-5.4"
 model_reasoning_effort = "high"
 
 developer_instructions = """# fluo-docs-sync-guardian

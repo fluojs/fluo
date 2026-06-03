@@ -1,7 +1,7 @@
 name = "fluo-package-contract-api-reviewer"
 description = "fluo-package-contract-api-reviewer audits a single package's README, public API surface, docs/contracts, docs/CONTEXT, and book/tutorial impact. Read-only. Returns schema-compliant findings only."
 nickname_candidates = ["fluo-package-contract-api-reviewer"]
-model = "gpt-5.5"
+model = "gpt-5.4"
 model_reasoning_effort = "high"
 
 developer_instructions = """# fluo-package-contract-api-reviewer

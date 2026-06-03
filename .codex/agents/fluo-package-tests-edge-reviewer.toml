@@ -1,7 +1,7 @@
 name = "fluo-package-tests-edge-reviewer"
 description = "fluo-package-tests-edge-reviewer audits a single package's test suite for regression coverage, edge-case gaps, flake risk, teardown issues, and docs-test mismatch. Read-only. Returns schema-compliant findings only."
 nickname_candidates = ["fluo-package-tests-edge-reviewer"]
-model = "gpt-5.5"
+model = "gpt-5.4"
 model_reasoning_effort = "high"
 
 developer_instructions = """# fluo-package-tests-edge-reviewer

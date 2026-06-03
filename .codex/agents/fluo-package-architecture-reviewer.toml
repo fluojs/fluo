@@ -1,7 +1,7 @@
 name = "fluo-package-architecture-reviewer"
 description = "fluo-package-architecture-reviewer audits a single package's implementation code for layering violations, dependency direction, resource ownership, environment isolation, and configuration boundary issues. Read-only. Returns schema-compliant findings only."
 nickname_candidates = ["fluo-package-architecture-reviewer"]
-model = "gpt-5.5"
+model = "gpt-5.4"
 model_reasoning_effort = "high"
 
 developer_instructions = """# fluo-package-architecture-reviewer
