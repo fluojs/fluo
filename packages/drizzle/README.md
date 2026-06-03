@@ -70,8 +70,11 @@ export class AppModule {}
 The `@Transaction()` decorator is the recommended way to define transaction boundaries in your service layer. It ensures that all repository calls made within the decorated method share the same Drizzle transaction.
 
 ```ts
-import { Transaction, DrizzleDatabase } from '@fluojs/drizzle';
+import { Transaction, DrizzleDatabase, type DrizzleDatabaseFacade } from '@fluojs/drizzle';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import { users, profiles } from './schema';
+
+type AppDatabase = ReturnType<typeof drizzle>;
 
 export class UserService {
   constructor(private readonly repo: UserRepository) {}
@@ -85,10 +88,10 @@ export class UserService {
 }
 
 export class UserRepository {
-  constructor(private readonly db: DrizzleDatabase) {}
+  constructor(private readonly db: DrizzleDatabaseFacade<AppDatabase>) {}
 
   async create(data: any) {
-    // Repository calls use standard Drizzle methods.
+    // The facade type exposes standard Drizzle methods.
     // When called inside @Transaction(), they automatically participate in the ambient transaction.
     return this.db.insert(users).values(data);
   }
@@ -107,11 +110,13 @@ The `DrizzleDatabase` provides a `current()` method that returns the active tran
 
 ```ts
 import { DrizzleDatabase } from '@fluojs/drizzle';
-import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import { users } from './schema';
 
+type AppDatabase = ReturnType<typeof drizzle>;
+
 export class AdvancedRepository {
-  constructor(private readonly db: DrizzleDatabase) {}
+  constructor(private readonly db: DrizzleDatabase<AppDatabase>) {}
 
   async customOperation() {
     const tx = this.db.current();
@@ -126,8 +131,10 @@ Use `db.transaction()` for manual transaction blocks:
 
 ```ts
 await this.db.transaction(async () => {
-  await this.db.insert(users).values(user);
-  await this.db.insert(profiles).values(profile);
+  const current = this.db.current();
+
+  await current.insert(users).values(user);
+  await current.insert(profiles).values(profile);
 });
 ```
 
@@ -173,6 +180,7 @@ defineModule(ManualDrizzleModule, {
 
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`
+- `DrizzleDatabaseFacade<TDatabase>`
 - `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
 - `createDrizzlePlatformStatusSnapshot(...)`
@@ -181,6 +189,8 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleHandleProvider`
 
 `DRIZZLE_HANDLE_PROVIDER` is an alias token for the lifecycle-aware `DrizzleDatabase` wrapper. Health integrations such as `@fluojs/terminus` use this token to read `createPlatformStatusSnapshot()` before falling back to raw database pings.
+
+Use `DrizzleDatabase<TDatabase>` when a provider only needs wrapper methods such as `current()`, `transaction(...)`, `requestTransaction(...)`, or `createPlatformStatusSnapshot()`. Use `DrizzleDatabaseFacade<TDatabase>` for repository injections that call Drizzle query methods directly; the facade forwards those calls to the active transaction handle when one exists and to the root handle otherwise. `DrizzleDatabase.createFacade(...)` is retained as a low-level compatibility helper for module-provider wiring; application code should prefer `DrizzleModule.forRoot(...)` / `forRootAsync(...)`.
 
 `Transaction` is a standard TC39 method decorator for service-layer transaction boundaries. It resolves the ambient `DrizzleDatabase` by default, accepts an accessor for explicit client selection, and can forward Drizzle transaction options to the outer boundary.
 

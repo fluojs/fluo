@@ -70,8 +70,11 @@ export class AppModule {}
 `@Transaction()` 데코레이터는 서비스 레이어에서 트랜잭션 경계를 정의하는 권장 방법입니다. 이 데코레이터가 적용된 메서드 내부에서 발생하는 모든 리포지토리 호출은 동일한 Drizzle 트랜잭션을 공유합니다.
 
 ```ts
-import { Transaction, DrizzleDatabase } from '@fluojs/drizzle';
+import { Transaction, DrizzleDatabase, type DrizzleDatabaseFacade } from '@fluojs/drizzle';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import { users, profiles } from './schema';
+
+type AppDatabase = ReturnType<typeof drizzle>;
 
 export class UserService {
   constructor(private readonly repo: UserRepository) {}
@@ -85,10 +88,10 @@ export class UserService {
 }
 
 export class UserRepository {
-  constructor(private readonly db: DrizzleDatabase) {}
+  constructor(private readonly db: DrizzleDatabaseFacade<AppDatabase>) {}
 
   async create(data: any) {
-    // 리포지토리 호출은 표준 Drizzle 메서드를 사용합니다.
+    // facade 타입은 표준 Drizzle 메서드를 노출합니다.
     // @Transaction() 내부에서 호출되면 자동으로 활성 트랜잭션에 참여합니다.
     return this.db.insert(users).values(data);
   }
@@ -107,11 +110,13 @@ export class UserRepository {
 
 ```ts
 import { DrizzleDatabase } from '@fluojs/drizzle';
-import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import { users } from './schema';
 
+type AppDatabase = ReturnType<typeof drizzle>;
+
 export class AdvancedRepository {
-  constructor(private readonly db: DrizzleDatabase) {}
+  constructor(private readonly db: DrizzleDatabase<AppDatabase>) {}
 
   async customOperation() {
     const tx = this.db.current();
@@ -126,8 +131,10 @@ export class AdvancedRepository {
 
 ```ts
 await this.db.transaction(async () => {
-  await this.db.insert(users).values(user);
-  await this.db.insert(profiles).values(profile);
+  const current = this.db.current();
+
+  await current.insert(users).values(user);
+  await current.insert(profiles).values(profile);
 });
 ```
 
@@ -173,6 +180,7 @@ defineModule(ManualDrizzleModule, {
 
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`
+- `DrizzleDatabaseFacade<TDatabase>`
 - `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
 - `createDrizzlePlatformStatusSnapshot(...)`
@@ -181,6 +189,8 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleHandleProvider`
 
 `DRIZZLE_HANDLE_PROVIDER`는 lifecycle-aware `DrizzleDatabase` wrapper를 가리키는 alias token입니다. `@fluojs/terminus` 같은 health integration은 이 token을 통해 raw database ping으로 fallback하기 전에 `createPlatformStatusSnapshot()`을 읽습니다.
+
+provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createPlatformStatusSnapshot()` 같은 wrapper 메서드만 필요로 하면 `DrizzleDatabase<TDatabase>`를 사용하세요. 리포지토리 주입에서 Drizzle query 메서드를 직접 호출해야 한다면 `DrizzleDatabaseFacade<TDatabase>`를 사용합니다. 이 facade는 활성 트랜잭션 handle이 있으면 그 handle로, 없으면 root handle로 호출을 전달합니다. `DrizzleDatabase.createFacade(...)`는 module provider wiring을 위한 low-level compatibility helper로 유지됩니다. 애플리케이션 코드는 `DrizzleModule.forRoot(...)` / `forRootAsync(...)`를 우선 사용하세요.
 
 `Transaction`은 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 기본적으로 ambient `DrizzleDatabase`를 resolve하고, 명시적 client 선택에는 accessor를 받을 수 있으며, 외부 경계에는 Drizzle transaction option을 전달할 수 있습니다.
 
