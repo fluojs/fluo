@@ -184,19 +184,19 @@ You still use `forRoot` for the default application-wide Prisma client in `AppMo
 
 ## 12.6 Using PrismaService
 
-After registration, you need to decide how application code will talk to the database. The `@fluojs/prisma` package provides `PrismaService`, which wraps the generated Prisma Client.
+After registration, you need to decide how application code will talk to the database. The `@fluojs/prisma` package provides `PrismaService`, which wraps the generated Prisma Client, and `PrismaServiceFacade<TClient>` for repositories that call generated delegates directly.
 
 ### Data Access Object (DAO) Pattern
 It is best to separate database logic from business logic. Let's create `PostsRepository`.
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { PrismaService } from '@fluojs/prisma';
+import { PrismaService, type PrismaServiceFacade } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
 
 @Inject(PrismaService)
 export class PostsRepository {
-  constructor(private readonly prisma: PrismaService<PrismaClient>) {}
+  constructor(private readonly prisma: PrismaServiceFacade<PrismaClient>) {}
 
   async createPost(data: { title: string; content?: string; authorId: number }) {
     // Primary flow: call the model directly.

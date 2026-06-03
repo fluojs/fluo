@@ -71,12 +71,12 @@ export class UsersService {
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { PrismaService } from '@fluojs/prisma';
+import { PrismaService, type PrismaServiceFacade } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
 
 @Inject(PrismaService)
 export class UsersRepository {
-  constructor(private readonly prisma: PrismaService<PrismaClient>) {}
+  constructor(private readonly prisma: PrismaServiceFacade<PrismaClient>) {}
 
   async create(data) {
     // 이제 기본 흐름에서 .current()를 명시적으로 호출할 필요가 없습니다!

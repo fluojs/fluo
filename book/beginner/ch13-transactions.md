@@ -72,12 +72,12 @@ Notice that in the example above, the service calls `usersRepo.create()` and `pr
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { PrismaService } from '@fluojs/prisma';
+import { PrismaService, type PrismaServiceFacade } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
 
 @Inject(PrismaService)
 export class UsersRepository {
-  constructor(private readonly prisma: PrismaService<PrismaClient>) {}
+  constructor(private readonly prisma: PrismaServiceFacade<PrismaClient>) {}
 
   async create(data) {
     // We don't need .current() anymore for primary flows!
