@@ -60,6 +60,18 @@ function hasExplicitSessionOption(value: unknown): boolean {
 }
 
 function resolveOptionsIndex(operation: PropertyKey, operationArgs: unknown[]): number {
+  if (operation === 'create') {
+    if (operationArgs.length >= 2 && hasExplicitSessionOption(operationArgs[operationArgs.length - 1])) {
+      return operationArgs.length - 1;
+    }
+
+    if (operationArgs.length === 2 && Array.isArray(operationArgs[0])) {
+      return 1;
+    }
+
+    return operationArgs.length;
+  }
+
   if (!MODEL_OPERATIONS_WITH_PROJECTION.has(operation)) {
     return operationArgs.length > 1 ? 1 : operationArgs.length;
   }

@@ -140,7 +140,7 @@ describe('@fluojs/mongoose service boundary primary flow', () => {
     class UserService {
       constructor(private readonly repo: UserRepository) {}
 
-      @((Transaction as any)())
+      @Transaction()
       async create(input: CreateUserRequest) {
         return this.repo.create(input);
       }
@@ -270,7 +270,7 @@ describe('@fluojs/mongoose service boundary primary flow', () => {
       @RequestDto(CreateUserRequest)
       @HttpCode(201)
       @Post('/')
-      @((Transaction as any)())
+      @Transaction()
       async create(input: CreateUserRequest) {
         void this.conn;
 

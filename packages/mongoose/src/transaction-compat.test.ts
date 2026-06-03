@@ -3,8 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { Transaction } from './transaction.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const Tx = Transaction as any;
-
 function makeMockMongooseConnection() {
   return {
     async transaction<T>(fn: () => Promise<T>): Promise<T> {
@@ -20,7 +18,7 @@ describe('Transaction decorator method semantics', () => {
     class UserService {
       conn = conn;
 
-      @Tx()
+      @Transaction()
       async getValue(): Promise<number> {
         return 42;
       }
@@ -36,7 +34,7 @@ describe('Transaction decorator method semantics', () => {
     class UserService {
       conn = conn;
 
-      @Tx()
+      @Transaction()
       async failSync(): Promise<never> {
         throw new Error('boom');
       }
@@ -52,7 +50,7 @@ describe('Transaction decorator method semantics', () => {
     class UserService {
       conn = conn;
 
-      @Tx()
+      @Transaction()
       async failAsync(): Promise<never> {
         return Promise.reject(new Error('async-boom'));
       }
@@ -69,7 +67,7 @@ describe('Transaction decorator method semantics', () => {
       conn = conn;
       label = 'hello';
 
-      @Tx()
+      @Transaction()
       async getLabel(): Promise<string> {
         return this.label;
       }

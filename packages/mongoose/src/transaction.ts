@@ -2,7 +2,10 @@ type TransactionConnection = {
   transaction<T>(fn: () => Promise<T>): Promise<T>;
 };
 
-type TransactionMethod<THost> = (this: THost, ...args: unknown[]) => Promise<unknown>;
+type TransactionMethod<THost, TArgs extends unknown[], TResult> = (
+  this: THost,
+  ...args: TArgs
+) => Promise<TResult>;
 
 function resolveTransactionConnection<THost>(self: THost, accessor?: (self: THost) => TransactionConnection): TransactionConnection {
   if (accessor) {
@@ -47,9 +50,15 @@ function resolveTransactionConnection<THost>(self: THost, accessor?: (self: THos
  */
 export function Transaction<THost>(
   accessor?: (self: THost) => TransactionConnection,
-): (value: TransactionMethod<THost>, context: ClassMethodDecoratorContext<THost, TransactionMethod<THost>>) => TransactionMethod<THost> {
-  return (value, _context) => {
-    return async function transactionWrappedMethod(this: THost, ...args: unknown[]) {
+): <TArgs extends unknown[], TResult>(
+  value: TransactionMethod<THost, TArgs, TResult>,
+  context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TResult>>,
+) => TransactionMethod<THost, TArgs, TResult> {
+  return function transactionDecorator<TArgs extends unknown[], TResult>(
+    value: TransactionMethod<THost, TArgs, TResult>,
+    _context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TResult>>,
+  ) {
+    return async function transactionWrappedMethod(this: THost, ...args: TArgs): Promise<TResult> {
       const connection = resolveTransactionConnection(this, accessor);
 
       return connection.transaction(() => value.apply(this, args));
