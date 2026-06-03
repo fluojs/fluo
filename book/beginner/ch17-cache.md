@@ -133,9 +133,24 @@ Automatic caching is a good fit for read-heavy routes where data does not change
 In FluoBlog, this applies to the **main feed** and **search results**. Caching these expensive queries for only 30 seconds can still reduce load on the Prisma service by more than 90 percent during peak hours. This kind of "short-term caching" is a practical way to handle traffic growth without giving up much data freshness. Serving data that is 30 seconds old to 10,000 users may be a better choice than bringing the server down while trying to serve perfectly fresh data to only 100 users.
 
 ### 17.4.2 Dynamic Cache Keys: Precision at Scale
-Sometimes a static `@CacheKey()` is not enough. You may want to cache responses based on query parameters or URL segments. You can extend `CacheInterceptor` to generate dynamic keys. For example, a search route can use a key such as `search:${query_string}`. This lets popular search terms respond quickly while unique searches remain independently cached without sacrificing correctness.
+Sometimes a static `@CacheKey()` is not enough. You may want to cache responses based on query parameters or URL segments. Use the function-based `@CacheKey(...)` path when the custom key belongs to one handler, or configure a function-valued `httpKeyStrategy` when the same request-aware rule should apply across many handlers. For example, a search route can use a key such as `search:${query_string}` without subclassing `CacheInterceptor`.
 
-If the application supports multiple organizations, you can also implement **tenant-aware caching**. By including `tenantId` in the cache key, you ensure one organization's data cannot leak into another organization. Fluo's DI system makes it easy to inject the current request context into a custom key generator, so you can build sophisticated, multidimensional cache strategies that match your business logic.
+```typescript
+@Get('search')
+@CacheKey((context) => {
+  const q = String(context.requestContext.request.query.q ?? '').trim().toLowerCase();
+
+  return `search:${q}`;
+})
+@CacheTTL(30)
+async search() {
+  return this.postsService.search();
+}
+```
+
+For an application-wide policy, put the same logic in `CacheModule.forRoot({ httpKeyStrategy })` so the interceptor keeps its standard GET caching and eviction behavior while only the key calculation changes. This lets popular search terms respond quickly while unique searches remain independently cached without sacrificing correctness.
+
+If the application supports multiple organizations, you can also implement **tenant-aware caching**. By including `tenantId` or another principal scope in the cache key, you ensure one organization's data cannot leak into another organization. Use `principalScopeResolver`, a custom `httpKeyStrategy`, or a handler-local `@CacheKey(...)` factory to derive that scope from the current request context, so you can build sophisticated, multidimensional cache strategies that match your business logic.
 
 ### 17.4.3 Handling Large Responses and Compression
 Caching very large JSON responses, such as responses several megabytes in size, can consume a large amount of memory in the cache store. In these cases, consider compressing the data before storing it or using a more granular strategy that caches only the specific data fragments needed to reconstruct the response. Fluo's Interceptor system is flexible enough to support these custom optimization patterns, so you can tune the balance between speed and memory efficiency to the application's needs.
