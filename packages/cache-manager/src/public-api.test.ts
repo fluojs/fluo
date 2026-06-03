@@ -1,6 +1,31 @@
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import * as cacheManagerPublicApi from './index.js';
+import type {
+  CacheEvictDecoratorValue,
+  CacheEvictFactory,
+  CacheKeyDecoratorValue,
+  CacheKeyFactory,
+  CacheKeyStrategy,
+  CacheManagerPlatformStatusSnapshot,
+  CacheManagerStatusAdapterInput,
+  CacheManagerStoreKind,
+  CacheManagerStoreOwnershipMode,
+  CacheModuleOptions,
+  CacheStore,
+  PrincipalScopeResolver,
+  RedisCacheOptions,
+  RedisCompatibleClient,
+  RedisStoreOptions,
+} from './index.js';
+
+type RootCacheKeyStrategy =
+  | 'route'
+  | 'route+query'
+  | 'full'
+  | ((context: Parameters<CacheKeyFactory>[0]) => string);
 
 describe('@fluojs/cache-manager public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
@@ -23,5 +48,34 @@ describe('@fluojs/cache-manager public API surface', () => {
     expect(cacheManagerPublicApi).not.toHaveProperty('createCacheModule');
     expect(cacheManagerPublicApi).not.toHaveProperty('CACHE_MANAGER');
     expect(cacheManagerPublicApi).not.toHaveProperty('CACHE_INTERCEPTOR');
+  });
+
+  it('keeps documented root-barrel type exports available', () => {
+    expectTypeOf<CacheStore>().toHaveProperty('get');
+    expectTypeOf<CacheStore>().toHaveProperty('set');
+    expectTypeOf<CacheModuleOptions>().toHaveProperty('store');
+    expectTypeOf<CacheModuleOptions>().toHaveProperty('httpKeyStrategy');
+    expectTypeOf<RedisCacheOptions>().toHaveProperty('clientName');
+    expectTypeOf<RedisCompatibleClient>().toHaveProperty('scan');
+    expectTypeOf<RedisStoreOptions>().toHaveProperty('keyPrefix');
+    expectTypeOf<CacheKeyFactory>().toBeFunction();
+    expectTypeOf<CacheEvictFactory>().toBeFunction();
+    expectTypeOf<PrincipalScopeResolver>().toBeFunction();
+    expectTypeOf<CacheKeyDecoratorValue>().toEqualTypeOf<string | CacheKeyFactory>();
+    expectTypeOf<CacheEvictDecoratorValue>().toEqualTypeOf<
+      string | readonly string[] | CacheEvictFactory
+    >();
+    expectTypeOf<CacheKeyStrategy>().toEqualTypeOf<RootCacheKeyStrategy>();
+    expectTypeOf<CacheManagerPlatformStatusSnapshot>().toHaveProperty('readiness');
+    expectTypeOf<CacheManagerStatusAdapterInput>().toHaveProperty('storeKind');
+    expectTypeOf<CacheManagerStoreKind>().toEqualTypeOf<'memory' | 'redis' | 'custom'>();
+    expectTypeOf<CacheManagerStoreOwnershipMode>().toEqualTypeOf<'framework' | 'external'>();
+  });
+
+  it('does not re-export internal normalized option types through the root barrel', () => {
+    const indexSource = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+
+    expect(indexSource).not.toContain("export * from './types.js'");
+    expect(indexSource).not.toContain('NormalizedCacheModuleOptions');
   });
 });
