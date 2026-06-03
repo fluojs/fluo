@@ -20,7 +20,11 @@ import { Queue as BullQueue, Worker as BullWorker, type ConnectionOptions, type 
 
 import { QueueDeadLetterManager, type QueueRedisDeadLetterClient } from './dead-letter-manager.js';
 import { normalizePositiveInteger, withTimeout } from './helpers.js';
-import { createQueuePlatformStatusSnapshot } from './status.js';
+import {
+  createQueuePlatformStatusSnapshot,
+  type QueueLifecycleState,
+  type QueuePlatformStatusSnapshot,
+} from './status.js';
 import { QUEUE_OPTIONS } from './tokens.js';
 import { discoverQueueWorkerDescriptors } from './worker-discovery.js';
 import type {
@@ -34,8 +38,6 @@ import type {
 type QueuePayload = Record<string, unknown>;
 type QueueInstance = BullQueue;
 type WorkerInstance = BullWorker;
-
-type QueueLifecycleState = 'idle' | 'starting' | 'started' | 'stopping' | 'stopped';
 
 type QueueOwnedConnection = ConnectionOptions & {
   connect(): Promise<unknown>;
@@ -80,6 +82,17 @@ interface InitializedWorkerResources {
 interface ReadyWorker {
   descriptor: QueueWorkerDescriptor;
   worker: WorkerInstance;
+}
+
+interface RunnableWorkerControls {
+  run?: () => Promise<void> | void;
+  waitUntilReady?: () => Promise<unknown>;
+}
+
+interface WorkerStartFailure {
+  jobName: string;
+  message: string;
+  workerName: string;
 }
 
 interface ResolvedWorkerHandler {
@@ -160,6 +173,9 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   private readonly ownedConnections: QueueOwnedConnection[] = [];
   private readonly deadLetterManager: QueueDeadLetterManager;
   private readonly readyWorkers: ReadyWorker[] = [];
+  private readonly runningWorkerJobNames = new Set<string>();
+  private readonly failedWorkerJobNames = new Set<string>();
+  private readonly workerStartFailures: WorkerStartFailure[] = [];
   private lifecycleState: QueueLifecycleState = 'idle';
   private redisClient: QueueRedisClient | undefined;
   private startPromise: Promise<void> | undefined;
@@ -227,15 +243,19 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
    *
    * @returns A structured snapshot describing lifecycle state, discovered workers, and pending dead-letter writes.
    */
-  createPlatformStatusSnapshot() {
+  createPlatformStatusSnapshot(): QueuePlatformStatusSnapshot {
+    const lastWorkerStartFailure = this.workerStartFailures[this.workerStartFailures.length - 1];
+
     return createQueuePlatformStatusSnapshot({
       dependencyId: getRedisComponentId(this.options.clientName),
       lifecycleState: this.lifecycleState,
+      ...(lastWorkerStartFailure ? { lastWorkerStartFailure: lastWorkerStartFailure.message } : {}),
       pendingDeadLetterWrites: this.deadLetterManager.pendingWriteCount,
       queuesReady: this.queuesByJobName.size,
+      workerStartFailures: this.workerStartFailures.length,
       workerShutdownTimeoutMs: this.options.workerShutdownTimeoutMs,
       workersDiscovered: this.descriptorsByJobType.size,
-      workersReady: this.workersByJobName.size,
+      workersReady: this.runningWorkerJobNames.size,
     });
   }
 
@@ -244,7 +264,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       return;
     }
 
-    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+    if (this.lifecycleState === 'failed' || this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
       throw new Error(`Queue lifecycle state is ${this.lifecycleState}.`);
     }
 
@@ -431,6 +451,12 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
         return;
       }
 
+      this.lifecycleState = 'failed';
+      this.workerStartFailures.push({
+        jobName: '*',
+        message: this.toErrorMessage(error),
+        workerName: 'bootstrap-ready-signal',
+      });
       this.logger.error(
         'Failed to start queue workers after application bootstrap readiness.',
         error,
@@ -440,19 +466,84 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   }
 
   private runWorker(descriptor: QueueWorkerDescriptor, worker: WorkerInstance): void {
-    const runnableWorker = worker as WorkerInstance & { run?: () => Promise<void> | void };
+    const runnableWorker = worker as WorkerInstance & RunnableWorkerControls;
 
     if (typeof runnableWorker.run !== 'function') {
+      this.recordWorkerStartFailure(
+        descriptor,
+        new Error(`Queue worker ${descriptor.workerName} cannot start because BullMQ Worker.run() is unavailable.`),
+      );
       return;
     }
 
-    void Promise.resolve(runnableWorker.run()).catch((error: unknown) => {
-      this.logger.error(
-        `Failed to start queue worker ${descriptor.workerName} after application bootstrap.`,
-        error,
-        'QueueLifecycleService',
-      );
+    let runResult: Promise<void> | void;
+
+    try {
+      runResult = runnableWorker.run();
+    } catch (error) {
+      this.recordWorkerStartFailure(descriptor, error);
+      return;
+    }
+
+    const runPromise = Promise.resolve(runResult);
+
+    void runPromise.catch((error: unknown) => {
+      this.recordWorkerStartFailure(descriptor, error);
     });
+
+    void this.markWorkerReadyWhenStarted(descriptor, runnableWorker, runPromise).catch((error: unknown) => {
+      this.recordWorkerStartFailure(descriptor, error);
+    });
+  }
+
+  private async markWorkerReadyWhenStarted(
+    descriptor: QueueWorkerDescriptor,
+    worker: WorkerInstance & RunnableWorkerControls,
+    runPromise: Promise<void>,
+  ): Promise<void> {
+    if (typeof worker.waitUntilReady === 'function') {
+      await Promise.race([worker.waitUntilReady(), runPromise]);
+    } else {
+      await Promise.race([Promise.resolve(), runPromise]);
+    }
+
+    if (this.lifecycleState !== 'started' || this.failedWorkerJobNames.has(descriptor.jobName)) {
+      return;
+    }
+
+    this.runningWorkerJobNames.add(descriptor.jobName);
+  }
+
+  private recordWorkerStartFailure(descriptor: QueueWorkerDescriptor, error: unknown): void {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      return;
+    }
+
+    if (this.failedWorkerJobNames.has(descriptor.jobName)) {
+      return;
+    }
+
+    this.failedWorkerJobNames.add(descriptor.jobName);
+    this.runningWorkerJobNames.delete(descriptor.jobName);
+    this.workerStartFailures.push({
+      jobName: descriptor.jobName,
+      message: this.toErrorMessage(error),
+      workerName: descriptor.workerName,
+    });
+
+    if (this.lifecycleState === 'started' || this.lifecycleState === 'starting') {
+      this.lifecycleState = 'failed';
+    }
+
+    this.logger.error(
+      `Failed to start queue worker ${descriptor.workerName} after application bootstrap.`,
+      error,
+      'QueueLifecycleService',
+    );
+  }
+
+  private toErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   private async cleanupWorkerInitializationFailure(resources: WorkerInitializationResources): Promise<void> {
@@ -579,6 +670,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     this.workersByJobName.clear();
     this.queuesByJobName.clear();
     this.readyWorkers.splice(0);
+    this.runningWorkerJobNames.clear();
 
     for (const worker of workers) {
       await this.tryCloseWorker(worker);

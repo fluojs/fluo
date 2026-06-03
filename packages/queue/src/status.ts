@@ -1,14 +1,16 @@
 import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
 
 /** Lifecycle phases reported by the queue platform status adapter. */
-export type QueueLifecycleState = 'idle' | 'starting' | 'started' | 'stopping' | 'stopped';
+export type QueueLifecycleState = 'idle' | 'starting' | 'started' | 'stopping' | 'stopped' | 'failed';
 
 /** Input payload used to derive queue readiness, health, and dependency details. */
 export interface QueueStatusAdapterInput {
   dependencyId?: string;
+  lastWorkerStartFailure?: string;
   lifecycleState: QueueLifecycleState;
   pendingDeadLetterWrites: number;
   queuesReady: number;
+  workerStartFailures?: number;
   workerShutdownTimeoutMs: number;
   workersDiscovered: number;
   workersReady: number;
@@ -23,7 +25,25 @@ export interface QueuePlatformStatusSnapshot {
 }
 
 function createReadiness(input: QueueStatusAdapterInput): PlatformReadinessReport {
+  const workerStartFailures = input.workerStartFailures ?? 0;
+
+  if (input.lifecycleState === 'failed' || workerStartFailures > 0) {
+    return {
+      critical: true,
+      reason: 'Queue worker startup failed.',
+      status: 'not-ready',
+    };
+  }
+
   if (input.lifecycleState === 'started') {
+    if (input.workersReady < input.workersDiscovered) {
+      return {
+        critical: true,
+        reason: 'Queue workers are waiting for BullMQ processors to start.',
+        status: 'degraded',
+      };
+    }
+
     return {
       critical: true,
       status: 'ready',
@@ -62,6 +82,15 @@ function createReadiness(input: QueueStatusAdapterInput): PlatformReadinessRepor
 }
 
 function createHealth(input: QueueStatusAdapterInput): PlatformHealthReport {
+  const workerStartFailures = input.workerStartFailures ?? 0;
+
+  if (input.lifecycleState === 'failed' || workerStartFailures > 0) {
+    return {
+      reason: 'Queue worker startup failed.',
+      status: 'unhealthy',
+    };
+  }
+
   if (input.lifecycleState === 'stopped') {
     return {
       reason: 'Queue workers are stopped.',
@@ -79,6 +108,13 @@ function createHealth(input: QueueStatusAdapterInput): PlatformHealthReport {
   if (input.lifecycleState === 'stopping') {
     return {
       reason: 'Queue workers are draining during shutdown.',
+      status: 'degraded',
+    };
+  }
+
+  if (input.lifecycleState === 'started' && input.workersReady < input.workersDiscovered) {
+    return {
+      reason: 'Queue workers are waiting for BullMQ processors to start.',
       status: 'degraded',
     };
   }
@@ -109,13 +145,17 @@ function createHealth(input: QueueStatusAdapterInput): PlatformHealthReport {
  * @returns Readiness, health, ownership, and queue detail fields.
  */
 export function createQueuePlatformStatusSnapshot(input: QueueStatusAdapterInput): QueuePlatformStatusSnapshot {
+  const workerStartFailures = input.workerStartFailures ?? 0;
+
   return {
     details: {
       deadLetterDrainTimeoutMs: 5_000,
       dependencies: [input.dependencyId ?? 'redis.default'],
       lifecycleState: input.lifecycleState,
+      ...(input.lastWorkerStartFailure ? { lastWorkerStartFailure: input.lastWorkerStartFailure } : {}),
       pendingDeadLetterWrites: input.pendingDeadLetterWrites,
       queuesReady: input.queuesReady,
+      workerStartFailures,
       workerShutdownTimeoutMs: input.workerShutdownTimeoutMs,
       workersDiscovered: input.workersDiscovered,
       workersReady: input.workersReady,

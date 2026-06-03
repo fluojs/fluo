@@ -8,6 +8,7 @@ function createQueueInput(overrides: Partial<QueueStatusAdapterInput> = {}): Que
     lifecycleState: 'idle',
     pendingDeadLetterWrites: 0,
     queuesReady: 0,
+    workerStartFailures: 0,
     workerShutdownTimeoutMs: 30_000,
     workersDiscovered: 0,
     workersReady: 0,
@@ -22,6 +23,7 @@ describe('createQueuePlatformStatusSnapshot', () => {
       lifecycleState: 'started',
       pendingDeadLetterWrites: 0,
       queuesReady: 2,
+      workerStartFailures: 0,
       workerShutdownTimeoutMs: 30_000,
       workersDiscovered: 2,
       workersReady: 2,
@@ -80,6 +82,56 @@ describe('createQueuePlatformStatusSnapshot', () => {
     expect(snapshot.health).toEqual({
       reason: 'Queue dead-letter writes are still pending.',
       status: 'degraded',
+    });
+  });
+
+  it('keeps started queues degraded until discovered BullMQ processors have started', () => {
+    const snapshot = createQueuePlatformStatusSnapshot(createQueueInput({
+      lifecycleState: 'started',
+      queuesReady: 1,
+      workersDiscovered: 1,
+      workersReady: 0,
+    }));
+
+    expect(snapshot.readiness).toEqual({
+      critical: true,
+      reason: 'Queue workers are waiting for BullMQ processors to start.',
+      status: 'degraded',
+    });
+    expect(snapshot.health).toEqual({
+      reason: 'Queue workers are waiting for BullMQ processors to start.',
+      status: 'degraded',
+    });
+    expect(snapshot.details).toMatchObject({
+      workerStartFailures: 0,
+      workersDiscovered: 1,
+      workersReady: 0,
+    });
+  });
+
+  it('reports worker startup failures as not-ready and unhealthy status details', () => {
+    const snapshot = createQueuePlatformStatusSnapshot(createQueueInput({
+      lastWorkerStartFailure: 'worker run fail:EmailJob',
+      lifecycleState: 'failed',
+      queuesReady: 1,
+      workerStartFailures: 1,
+      workersDiscovered: 1,
+      workersReady: 0,
+    }));
+
+    expect(snapshot.readiness).toEqual({
+      critical: true,
+      reason: 'Queue worker startup failed.',
+      status: 'not-ready',
+    });
+    expect(snapshot.health).toEqual({
+      reason: 'Queue worker startup failed.',
+      status: 'unhealthy',
+    });
+    expect(snapshot.details).toMatchObject({
+      lastWorkerStartFailure: 'worker run fail:EmailJob',
+      lifecycleState: 'failed',
+      workerStartFailures: 1,
     });
   });
 });
