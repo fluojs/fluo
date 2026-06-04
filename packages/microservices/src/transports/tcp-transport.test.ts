@@ -18,6 +18,12 @@ describe('TcpMicroserviceTransport', () => {
     return transport;
   };
 
+  it('reports that TCP owns its listener and socket resources', () => {
+    const transport = createTransport({ port: 0 });
+
+    expect(transport.ownsResources).toBe(true);
+  });
+
   it('closes sockets that exceed the inbound frame buffer cap', async () => {
     const port = await reserveTcpPort();
     const handler = vi.fn(async () => undefined);

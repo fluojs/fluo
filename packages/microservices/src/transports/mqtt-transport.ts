@@ -94,6 +94,8 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
   private closing = false;
   private handler: TransportHandler | undefined;
   private readonly internallyOwnedClient: boolean;
+  /** Indicates whether MQTT owns the client instance it resolves and closes. */
+  readonly ownsResources: boolean;
   private logger: MicroserviceTransportLogger | undefined;
   private listening = false;
   private listenPromise: Promise<void> | undefined;
@@ -133,6 +135,7 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
     this.client = options.client;
     this.internallyOwnedClient = !options.client;
+    this.ownsResources = this.internallyOwnedClient;
   }
 
   setLogger(logger: MicroserviceTransportLogger): void {

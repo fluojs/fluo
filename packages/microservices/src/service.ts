@@ -193,6 +193,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
         send: typeof this.moduleOptions.transport.send === 'function',
         serverStream: typeof this.moduleOptions.transport.serverStream === 'function',
       },
+      transportOwnsResources: this.moduleOptions.transport.ownsResources === true,
     });
   }
 

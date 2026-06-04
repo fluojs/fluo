@@ -54,7 +54,21 @@ describe('createMicroservicePlatformStatusSnapshot', () => {
     expect(snapshot.details).toMatchObject({
       dependencies: ['transport.external'],
       lifecycleState: 'ready',
+      transportOwnsResources: false,
     });
+  });
+
+  it('reports framework-owned transport resources when the transport owns its listener resources', () => {
+    const snapshot = createMicroservicePlatformStatusSnapshot(createStatusInput({
+      lifecycleState: 'ready',
+      transportOwnsResources: true,
+    }));
+
+    expect(snapshot.ownership).toEqual({
+      externallyManaged: false,
+      ownsResources: true,
+    });
+    expect(snapshot.details.transportOwnsResources).toBe(true);
   });
 
   it('marks failed listener state as not-ready/unhealthy', () => {
@@ -121,6 +135,7 @@ describe('createMicroservicePlatformStatusSnapshot', () => {
       healthReason ? { reason: healthReason, status: healthStatus } : { status: healthStatus },
     );
     expect(snapshot.details.lifecycleState).toBe(lifecycleState);
+    expect(snapshot.details.transportOwnsResources).toBe(false);
     expect(snapshot.ownership).toEqual({
       externallyManaged: true,
       ownsResources: false,

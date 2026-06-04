@@ -35,6 +35,8 @@ export interface MicroserviceStatusAdapterInput {
   lastListenError?: string;
   lifecycleState: MicroserviceLifecycleState;
   transportCapabilities: MicroserviceTransportCapabilities;
+  /** Whether the configured transport owns listener/client resources it must close. */
+  transportOwnsResources?: boolean;
 }
 
 /**
@@ -123,6 +125,8 @@ function createHealth(input: MicroserviceStatusAdapterInput): PlatformHealthRepo
 export function createMicroservicePlatformStatusSnapshot(
   input: MicroserviceStatusAdapterInput,
 ): MicroservicePlatformStatusSnapshot {
+  const transportOwnsResources = input.transportOwnsResources ?? false;
+
   return {
     details: {
       dependencies: ['transport.external'],
@@ -134,11 +138,12 @@ export function createMicroservicePlatformStatusSnapshot(
       transportCapabilities: {
         ...input.transportCapabilities,
       },
+      transportOwnsResources,
     },
     health: createHealth(input),
     ownership: {
-      externallyManaged: true,
-      ownsResources: false,
+      externallyManaged: !transportOwnsResources,
+      ownsResources: transportOwnsResources,
     },
     readiness: createReadiness(input),
   };
