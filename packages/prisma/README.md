@@ -149,8 +149,9 @@ Use `prisma.transaction()` for manual interactive transaction blocks:
 
 ```typescript
 await this.prisma.transaction(async () => {
-  const user = await this.prisma.user.create({ data });
-  await this.prisma.profile.create({ data: { userId: user.id } });
+  const tx = this.prisma.current();
+  const user = await tx.user.create({ data });
+  await tx.profile.create({ data: { userId: user.id } });
 });
 ```
 

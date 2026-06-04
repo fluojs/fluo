@@ -270,10 +270,10 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
 
     @Inject(PrismaService)
     class UserRepository {
-      constructor(private readonly prisma: PrismaService<typeof client, typeof transactionClient>) {}
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client, typeof transactionClient>) {}
 
       async create(email: string) {
-        return (this.prisma as unknown as typeof client).user.create({ data: { email } });
+        return this.prisma.user.create({ data: { email } });
       }
     }
 
