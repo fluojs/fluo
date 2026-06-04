@@ -143,7 +143,7 @@ class TaskManager {
 }
 ```
 
-The registry exposes `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, and `updateCronExpression`. Timeout tasks run once, then disable themselves while remaining in the registry so they can be re-enabled deliberately.
+The registry exposes `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, and `updateCronExpression`. The first `name` argument is the default registry key; passing `options.name` overrides the actual registry key, scheduler metadata name, and default distributed lock key for dynamic tasks so dynamic registration matches decorator naming semantics. Timeout tasks run once, then disable themselves while remaining in the registry so they can be re-enabled deliberately.
 
 Dynamic cron registration is atomic with scheduler startup: if the scheduler rejects a new cron job, the registry does not retain a half-registered task. Updating a running cron expression is also rollback-safe. If rescheduling fails, the previous expression and scheduled job remain active. Cron tasks use both scheduler-level no-overlap protection and fluo's in-process running guard, so the same task instance will not run overlapping ticks.
 

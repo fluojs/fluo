@@ -1709,6 +1709,48 @@ describe('@fluojs/cron', () => {
     await closeApplication(app);
   });
 
+  it('honors dynamic task option names for registry keys and scheduler metadata', async () => {
+    const scheduled = createManualScheduler();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: false,
+            keyPrefix: 'dynamic-option-name',
+            lockTtlMs: 1_000,
+          },
+          scheduler: scheduled.scheduler,
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {}, { name: 'named-dynamic-cron' });
+    registry.addInterval('dynamic-interval', 1_000, () => {}, { name: 'named-dynamic-interval' });
+    registry.addTimeout('dynamic-timeout', 5_000, () => {}, { name: 'named-dynamic-timeout' });
+
+    expect(registry.get('dynamic-cron')).toBeUndefined();
+    expect(registry.get('named-dynamic-cron')).toMatchObject({
+      lockKey: 'dynamic-option-name:named-dynamic-cron',
+      name: 'named-dynamic-cron',
+    });
+    expect(registry.get('named-dynamic-interval')).toMatchObject({
+      lockKey: 'dynamic-option-name:named-dynamic-interval',
+      name: 'named-dynamic-interval',
+    });
+    expect(registry.get('named-dynamic-timeout')).toMatchObject({
+      lockKey: 'dynamic-option-name:named-dynamic-timeout',
+      name: 'named-dynamic-timeout',
+    });
+    expect(scheduled.records[0]?.options.name).toBe('named-dynamic-cron');
+
+    await closeApplication(app);
+  });
+
   it('rolls back dynamic cron registration when the scheduler rejects it', async () => {
     const scheduler: CronScheduler = () => {
       throw new Error('dynamic scheduler boom');
