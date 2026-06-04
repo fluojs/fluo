@@ -12,7 +12,7 @@ import {
   type FrameworkResponse,
 } from '@fluojs/http';
 
-import { PrismaModule, PrismaService, Transaction } from './index.js';
+import { PrismaModule, PrismaService, Transaction, type PrismaServiceFacade } from './index.js';
 
 function createResponse(events?: string[]): FrameworkResponse & { body?: unknown } {
   return {
@@ -120,10 +120,10 @@ describe('@fluojs/prisma service boundary primary flow', () => {
 
     @Inject(PrismaService)
     class UserRepository {
-      constructor(private readonly prisma: PrismaService<typeof client, typeof transactionClient>) {}
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client, typeof transactionClient>) {}
 
       async create(input: CreateUserRequest) {
-        return (this.prisma as unknown as typeof client).user.create({
+        return this.prisma.user.create({
           data: {
             email: input.email,
             name: input.name,
@@ -227,10 +227,10 @@ describe('@fluojs/prisma service boundary primary flow', () => {
 
     @Inject(PrismaService)
     class UserRepository {
-      constructor(private readonly prisma: PrismaService<typeof client, typeof transactionClient>) {}
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client, typeof transactionClient>) {}
 
       async create(input: CreateUserRequest) {
-        return (this.prisma as unknown as typeof client).user.create({ data: input });
+        return this.prisma.user.create({ data: input });
       }
     }
 

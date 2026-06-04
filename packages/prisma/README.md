@@ -61,7 +61,8 @@ The `@Transaction()` decorator is the recommended way to define transaction boun
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { Transaction } from '@fluojs/prisma';
+import { PrismaService, Transaction, type PrismaServiceFacade } from '@fluojs/prisma';
+import { PrismaClient } from '@prisma/client';
 import { UserRepository } from './user.repository';
 
 export class UserService {
@@ -77,10 +78,10 @@ export class UserService {
 
 @Inject(PrismaService)
 export class UserRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaServiceFacade<PrismaClient>) {}
 
   async create(data: any) {
-    // Repository calls use standard PrismaClient methods.
+    // The facade type exposes standard PrismaClient delegates.
     // When called inside @Transaction(), they automatically participate in the ambient transaction.
     return this.prisma.user.create({ data });
   }
@@ -99,7 +100,7 @@ When one application container needs more than one Prisma client, register each 
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { PrismaModule, PrismaService, getPrismaServiceToken, Transaction } from '@fluojs/prisma';
+import { PrismaModule, PrismaService, getPrismaServiceToken, Transaction, type PrismaServiceFacade } from '@fluojs/prisma';
 
 const usersPrismaModule = PrismaModule.forRoot({ name: 'users', client: usersPrisma });
 const analyticsPrismaModule = PrismaModule.forRoot({ name: 'analytics', client: analyticsPrisma });
@@ -107,8 +108,8 @@ const analyticsPrismaModule = PrismaModule.forRoot({ name: 'analytics', client: 
 @Inject(getPrismaServiceToken('users'), getPrismaServiceToken('analytics'))
 export class MultiDatabaseService {
   constructor(
-    private readonly users: PrismaService<typeof usersPrisma>,
-    private readonly analytics: PrismaService<typeof analyticsPrisma>,
+    private readonly users: PrismaServiceFacade<typeof usersPrisma>,
+    private readonly analytics: PrismaServiceFacade<typeof analyticsPrisma>,
   ) {}
 
   @Transaction((self) => self.users)
@@ -148,8 +149,9 @@ Use `prisma.transaction()` for manual interactive transaction blocks:
 
 ```typescript
 await this.prisma.transaction(async () => {
-  const user = await this.prisma.user.create({ data });
-  await this.prisma.profile.create({ data: { userId: user.id } });
+  const tx = this.prisma.current();
+  const user = await tx.user.create({ data });
+  await tx.profile.create({ data: { userId: user.id } });
 });
 ```
 
@@ -228,6 +230,8 @@ defineModule(ManualPrismaModule, {
 - `requestTransaction(fn, signal?, options?): Promise<T>`
   - Specialized transaction boundary for HTTP request lifecycles. It is abort-aware, drains during shutdown before disconnect, and retries without `signal` when a Prisma client rejects that option. Like `transaction()`, nested calls reuse the active transaction context and reject nested options to avoid silently ignoring transaction settings.
 
+Use `PrismaService<TClient>` when a provider only needs wrapper methods such as `current()`, `transaction(...)`, `requestTransaction(...)`, or `createPlatformStatusSnapshot()`. Use `PrismaServiceFacade<TClient>` for repository injections that call generated Prisma Client delegates directly; the facade forwards those calls to the active transaction client when one exists and to the root client otherwise. `PrismaService.createFacade(...)` is retained as a low-level compatibility helper for module-provider wiring; application code should prefer `PrismaModule.forRoot(...)` / `forRootAsync(...)`.
+
 ### `Transaction`
 
 - Standard TC39 method decorator for service-layer transaction boundaries. It resolves the ambient `PrismaService` by default, accepts an accessor for named clients, and can forward Prisma transaction options to the outer boundary.
@@ -261,6 +265,7 @@ token are deliberately not exported.
 - `PrismaModuleOptions`
 - `PrismaClientLike`
 - `PrismaHandleProvider`
+- `PrismaServiceFacade<TClient>`
 - `PrismaTransactionClient<TClient>`
 - `InferPrismaTransactionClient<TClient>`
 - `InferPrismaTransactionOptions<TClient>`

@@ -2,6 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+fluo 애플리케이션을 위한 Prisma lifecycle 및 ALS 기반 transaction context입니다. `PrismaClient`를 모듈 시스템에 연결하고 자동 연결 관리와 요청 범위 트랜잭션을 제공합니다.
 
 ## 목차
 
@@ -60,7 +61,8 @@ class AppModule {}
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { Transaction } from '@fluojs/prisma';
+import { PrismaService, Transaction, type PrismaServiceFacade } from '@fluojs/prisma';
+import { PrismaClient } from '@prisma/client';
 import { UserRepository } from './user.repository';
 
 export class UserService {
@@ -76,10 +78,10 @@ export class UserService {
 
 @Inject(PrismaService)
 export class UserRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaServiceFacade<PrismaClient>) {}
 
   async create(data: any) {
-    // 리포지토리 호출은 표준 PrismaClient 메서드를 사용합니다.
+    // facade 타입은 표준 PrismaClient delegate를 노출합니다.
     // @Transaction() 내부에서 호출되면 자동으로 활성 트랜잭션에 참여합니다.
     return this.prisma.user.create({ data });
   }
@@ -98,7 +100,7 @@ export class UserRepository {
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { PrismaModule, PrismaService, getPrismaServiceToken, Transaction } from '@fluojs/prisma';
+import { PrismaModule, PrismaService, getPrismaServiceToken, Transaction, type PrismaServiceFacade } from '@fluojs/prisma';
 
 const usersPrismaModule = PrismaModule.forRoot({ name: 'users', client: usersPrisma });
 const analyticsPrismaModule = PrismaModule.forRoot({ name: 'analytics', client: analyticsPrisma });
@@ -106,8 +108,8 @@ const analyticsPrismaModule = PrismaModule.forRoot({ name: 'analytics', client: 
 @Inject(getPrismaServiceToken('users'), getPrismaServiceToken('analytics'))
 export class MultiDatabaseService {
   constructor(
-    private readonly users: PrismaService<typeof usersPrisma>,
-    private readonly analytics: PrismaService<typeof analyticsPrisma>,
+    private readonly users: PrismaServiceFacade<typeof usersPrisma>,
+    private readonly analytics: PrismaServiceFacade<typeof analyticsPrisma>,
   ) {}
 
   @Transaction((self) => self.users)
@@ -146,8 +148,9 @@ export class AdvancedRepository {
 
 ```typescript
 await this.prisma.transaction(async () => {
-  const user = await this.prisma.user.create({ data });
-  await this.prisma.profile.create({ data: { userId: user.id } });
+  const tx = this.prisma.current();
+  const user = await tx.user.create({ data });
+  await tx.profile.create({ data: { userId: user.id } });
 });
 ```
 
@@ -155,6 +158,7 @@ await this.prisma.transaction(async () => {
 
 ### 종료와 status 계약
 
+`PrismaService.requestTransaction(...)`은 정상 serving 전과 중에는 사용할 수 있지만, 애플리케이션 shutdown이 시작된 뒤에는 새 요청 범위 트랜잭션을 거부합니다. 종료 중에는 열린 요청 트랜잭션을 abort하고, 가장 바깥 transaction boundary가 settle될 때까지 추적한 다음 `$disconnect()` 실행 전에 drain합니다. 기존 수동 `transaction(...)` boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 동일합니다. 해당 호출은 ambient Prisma transaction client를 재사용하고, 바깥 boundary가 끝날 때까지 `details.activeRequestTransactions`에 표시되며, 두 번째 Prisma transaction을 열지 않습니다.
 
 `createPrismaPlatformStatusSnapshot(...)`와 `PrismaService.createPlatformStatusSnapshot()`은 같은 라이프사이클 계약을 진단 surface에 노출합니다.
 
@@ -225,6 +229,8 @@ defineModule(ManualPrismaModule, {
 - `requestTransaction(fn, signal?, options?): Promise<T>`
   - HTTP 요청 라이프사이클에 특화된 트랜잭션 경계를 실행합니다. Abort를 인식하고, shutdown 중에는 disconnect 전에 열린 요청 트랜잭션을 drain하며, Prisma client가 `signal` 옵션을 거부하면 해당 옵션 없이 재시도합니다. `transaction()`과 마찬가지로 중첩 호출은 활성 트랜잭션 컨텍스트를 재사용하고, 트랜잭션 설정을 조용히 무시하지 않도록 중첩 옵션을 거부합니다.
 
+Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createPlatformStatusSnapshot()` 같은 wrapper 메서드만 필요로 한다면 `PrismaService<TClient>`를 사용하세요. 생성된 Prisma Client delegate를 직접 호출하는 repository 주입에는 `PrismaServiceFacade<TClient>`를 사용하세요. 이 facade는 활성 트랜잭션이 있으면 해당 트랜잭션 client로, 없으면 root client로 호출을 전달합니다. `PrismaService.createFacade(...)`는 module-provider wiring을 위한 저수준 compatibility helper로 유지되며, 애플리케이션 코드는 `PrismaModule.forRoot(...)` / `forRootAsync(...)`를 우선 사용해야 합니다.
+
 ### `Transaction`
 
 - 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 기본적으로 ambient `PrismaService`를 resolve하고, 이름 있는 client에는 accessor를 받을 수 있으며, 외부 경계에는 Prisma transaction option을 전달할 수 있습니다.
@@ -256,6 +262,7 @@ defineModule(ManualPrismaModule, {
 - `PrismaModuleOptions`
 - `PrismaClientLike`
 - `PrismaHandleProvider`
+- `PrismaServiceFacade<TClient>`
 - `PrismaTransactionClient<TClient>`
 - `InferPrismaTransactionClient<TClient>`
 - `InferPrismaTransactionOptions<TClient>`
