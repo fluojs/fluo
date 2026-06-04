@@ -50,6 +50,17 @@ function assertValidTaskName(name: string): void {
   }
 }
 
+function resolveDynamicTaskName(name: string, optionName?: string): string {
+  assertValidTaskName(name);
+
+  if (optionName !== undefined) {
+    assertValidTaskName(optionName);
+    return optionName;
+  }
+
+  return name;
+}
+
 function assertValidMs(ms: number, context: string): void {
   if (!Number.isFinite(ms) || !Number.isInteger(ms) || ms <= 0) {
     throw new Error(`${context}: ms must be a positive integer.`);
@@ -117,8 +128,8 @@ export class CronLifecycleService
    * @param options Optional hooks, distributed lock overrides, and timezone.
    */
   addCron(name: string, expression: string, callback: SchedulingTaskCallback, options: CronTaskOptions = {}): void {
-    assertValidTaskName(name);
     assertValidCronExpression(expression);
+    const taskName = resolveDynamicTaskName(name, options.name);
 
     this.registerTask(
       {
@@ -128,11 +139,11 @@ export class CronLifecycleService
         distributed: options.distributed ?? true,
         expression,
         kind: 'cron',
-        lockKey: createLockKey(this.options.distributed.keyPrefix, options.key ?? name),
+        lockKey: createLockKey(this.options.distributed.keyPrefix, options.key ?? taskName),
         lockTtlMs: options.lockTtlMs ?? this.options.distributed.lockTtlMs,
         onError: options.onError,
         onSuccess: options.onSuccess,
-        taskName: name,
+        taskName,
         timezone: options.timezone,
       },
       'dynamic',
@@ -148,8 +159,8 @@ export class CronLifecycleService
    * @param options Optional hooks and distributed lock overrides.
    */
   addInterval(name: string, ms: number, callback: SchedulingTaskCallback, options: IntervalTaskOptions = {}): void {
-    assertValidTaskName(name);
     assertValidMs(ms, 'scheduling registry');
+    const taskName = resolveDynamicTaskName(name, options.name);
 
     this.registerTask(
       {
@@ -158,12 +169,12 @@ export class CronLifecycleService
         callback,
         distributed: options.distributed ?? true,
         kind: 'interval',
-        lockKey: createLockKey(this.options.distributed.keyPrefix, options.key ?? name),
+        lockKey: createLockKey(this.options.distributed.keyPrefix, options.key ?? taskName),
         lockTtlMs: options.lockTtlMs ?? this.options.distributed.lockTtlMs,
         ms,
         onError: options.onError,
         onSuccess: options.onSuccess,
-        taskName: name,
+        taskName,
       },
       'dynamic',
     );
@@ -178,8 +189,8 @@ export class CronLifecycleService
    * @param options Optional hooks and distributed lock overrides.
    */
   addTimeout(name: string, ms: number, callback: SchedulingTaskCallback, options: TimeoutTaskOptions = {}): void {
-    assertValidTaskName(name);
     assertValidMs(ms, 'scheduling registry');
+    const taskName = resolveDynamicTaskName(name, options.name);
 
     this.registerTask(
       {
@@ -188,12 +199,12 @@ export class CronLifecycleService
         callback,
         distributed: options.distributed ?? true,
         kind: 'timeout',
-        lockKey: createLockKey(this.options.distributed.keyPrefix, options.key ?? name),
+        lockKey: createLockKey(this.options.distributed.keyPrefix, options.key ?? taskName),
         lockTtlMs: options.lockTtlMs ?? this.options.distributed.lockTtlMs,
         ms,
         onError: options.onError,
         onSuccess: options.onSuccess,
-        taskName: name,
+        taskName,
       },
       'dynamic',
     );
