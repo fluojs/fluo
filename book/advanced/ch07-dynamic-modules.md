@@ -389,7 +389,7 @@ Fluo's Dynamic Modules are also a primary place where public API design becomes 
 
 `RedisModule` is a good case study. `path:packages/redis/src/module.ts:143-153` makes the default registration global and exports the `REDIS_CLIENT` and `RedisService` Tokens. In contrast, `RedisModule.forRoot({ name, ... })` creates a non-global Module that exports specialized Tokens derived from the user-provided `name` through `getRedisClientToken(name)` and `getRedisServiceToken(name)`. Here, a Dynamic Module does more than create Providers. It designs a stable, addressable public Token surface.
 
-Named Redis registration uses the same Provider factory but derives export Tokens from the `name` option.
+Named Redis registration uses the same Provider factory but derives export Tokens from the `name` option. The normalized lifecycle options are passed into that factory as well, so the documented Redis `connect()` and `quit()` timeout contract applies equally to default and named clients.
 
 `path:packages/redis/src/module.ts:143-153`
 ```typescript
@@ -402,12 +402,12 @@ static forRoot(options: RedisModuleOptions): ModuleType {
   return defineModule(RedisModuleDefinition, {
     global: normalized.global,
     exports: normalized.name === undefined ? [REDIS_CLIENT, RedisService] : [clientToken, serviceToken],
-    providers: createRedisProviders(normalized.clientOptions, normalized.name),
+    providers: createRedisProviders(normalized.clientOptions, normalized.lifecycleOptions, normalized.name),
   });
 }
 ```
 
-This excerpt shows that a Dynamic Module does not stop at calculating Providers. The caller's `name` option changes the raw client Token and facade service Token, and only those two go onto the export surface.
+This excerpt shows that a Dynamic Module does not stop at calculating Providers. The caller's `name` option changes the raw client Token and facade service Token, and only those two go onto the export surface. The caller's `lifecycle` option stays inside the provider graph, where it configures the Fluo-owned Redis connect and quit timeout guardrails without becoming a public export Token.
 
 `SocketIoModule.forRoot()` follows a similar pattern. `path:packages/socket.io/src/module.ts:12-31` defines an internal options Token, a lifecycle service, and an async Factory Provider for the raw server. It then uses an **alias Provider** (`useExisting`) to expose the `SOCKETIO_ROOM_SERVICE` Token. Finally, `path:packages/socket.io/src/module.ts:55-64` exports only the public room-service and raw-server Tokens while hiding internal implementation details.
 
