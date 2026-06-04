@@ -143,7 +143,7 @@ class TaskManager {
 }
 ```
 
-Registry는 `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, `updateCronExpression`을 제공합니다. Timeout task는 한 번 실행된 뒤 비활성화되지만 registry에는 남아 있어 의도적으로 다시 활성화할 수 있습니다.
+Registry는 `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, `updateCronExpression`을 제공합니다. 첫 번째 `name` 인자는 기본 registry key이며, `options.name`을 전달하면 dynamic task의 실제 registry key, scheduler metadata name, 기본 distributed lock key가 이를 사용해 decorator naming semantics와 일치합니다. Timeout task는 한 번 실행된 뒤 비활성화되지만 registry에는 남아 있어 의도적으로 다시 활성화할 수 있습니다.
 
 Dynamic cron 등록은 scheduler startup과 원자적으로 처리됩니다. Scheduler가 새 cron job을 거부하면 registry는 half-registered task를 남기지 않습니다. 실행 중인 cron expression update도 rollback-safe합니다. Rescheduling이 실패하면 이전 expression과 scheduled job이 그대로 유지됩니다. Cron task는 scheduler-level no-overlap protection과 fluo의 in-process running guard를 함께 사용하므로 같은 task instance가 overlapping tick으로 실행되지 않습니다.
 
