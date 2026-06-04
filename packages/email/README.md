@@ -301,7 +301,7 @@ These limitations are part of the package contract so transport selection, templ
 
 ### Contracts and helpers
 
-- `Email`: Normalized email address value with an `address` and optional display `name`.
+- `Email`: Sending facade exposed by the `EMAIL` compatibility token, with `send(...)`, `sendMany(...)`, and `sendNotification(...)` methods backed by `EmailService`.
 - `EmailAddress` / `EmailAddressLike`: Structured or shorthand recipient values accepted by `EmailService` before normalization.
 - `EmailModuleOptions` / `EmailAsyncModuleOptions`: Synchronous and async module registration contracts, including sender defaults, renderer, lifecycle verification, and transport factory wiring.
 - `EmailMessage`
