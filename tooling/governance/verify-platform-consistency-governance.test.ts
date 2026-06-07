@@ -372,6 +372,44 @@ describe('enforceContractCompanionUpdates', () => {
 });
 
 describe('repository governance contracts', () => {
+  it('keeps Drizzle Node runtime and createFacade compatibility docs discoverable across governed docs', () => {
+    const docsContext = readFileSync(resolve(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const docsContextKo = readFileSync(resolve(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const packageSurface = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const packageSurfaceKo = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const packageChooser = readFileSync(resolve(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
+    const packageChooserKo = readFileSync(resolve(repoRoot, 'docs/reference/package-chooser.ko.md'), 'utf8');
+    const drizzleReadme = readFileSync(resolve(repoRoot, 'packages/drizzle/README.md'), 'utf8');
+    const drizzleReadmeKo = readFileSync(resolve(repoRoot, 'packages/drizzle/README.ko.md'), 'utf8');
+
+    for (const source of [docsContext, packageSurface, packageChooser, drizzleReadme]) {
+      expect(source).toContain('Node.js 20+');
+      expect(source).toContain('node:async_hooks');
+      expect(source).toContain('engines.node >=20.0.0');
+    }
+
+    for (const source of [docsContextKo, packageSurfaceKo, packageChooserKo, drizzleReadmeKo]) {
+      expect(source).toContain('Node.js 20+');
+      expect(source).toContain('node:async_hooks');
+      expect(source).toContain('engines.node >=20.0.0');
+    }
+
+    for (const source of [docsContext, packageSurface, drizzleReadme]) {
+      expect(source).toContain('DrizzleDatabase.createFacade(...)');
+      expect(source).toContain('compatibility-only');
+      expect(source).toContain('DrizzleModule.forRoot(...)');
+    }
+
+    for (const source of [docsContextKo, packageSurfaceKo, drizzleReadmeKo]) {
+      expect(source).toContain('DrizzleDatabase.createFacade(...)');
+      expect(source).toMatch(/compatibility-only|호환성 전용/u);
+      expect(source).toContain('DrizzleModule.forRoot(...)');
+    }
+
+    expect(packageChooser).toContain('Need Drizzle-based relational access on Node.js');
+    expect(packageChooserKo).toContain('Node.js에서 Drizzle 기반 관계형 접근이 필요함');
+  });
+
   it('keeps Mongoose ambient-session facade scope discoverable across governed docs', () => {
     const docsContext = readFileSync(resolve(repoRoot, 'docs/CONTEXT.md'), 'utf8');
     const docsContextKo = readFileSync(resolve(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
