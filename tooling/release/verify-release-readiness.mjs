@@ -864,7 +864,9 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
       scaffoldSource.includes('HealthModule.forRoot()') &&
       scaffoldSource.includes('@Controller(\'/greeting\')') &&
       scaffoldSource.includes('const app = await FluoFactory.create(AppModule, {') &&
-      scaffoldSource.includes('adapter: createFastifyAdapter({ port })') &&
+      (scaffoldSource.includes('adapter: createFastifyAdapter({ port })') ||
+        (scaffoldSource.includes("adapterCall: 'createFastifyAdapter({ port })'") &&
+          scaffoldSource.includes('adapter: ${starter.adapterCall}'))) &&
       scaffoldSource.includes('await app.listen();') &&
       !scaffoldSource.includes('const RuntimeHealthModule = createHealthModule();') &&
       scaffoldSource.includes('createFastifyAdapter') &&
