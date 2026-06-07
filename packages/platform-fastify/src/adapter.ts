@@ -369,27 +369,28 @@ function createNativeFastFrameworkRequest(
   maxBodySize: number,
   preserveRawBody: boolean,
 ): FastifyFrameworkRequest | undefined {
-  const contentType = request.headers['content-type'];
+  const rawHeaders = request.raw.headers;
+  const contentType = rawHeaders['content-type'];
 
-  if (preserveRawBody || isFastifyMultipartRequest(request) || isMultipartRequestContentType(contentType)) {
+  if (preserveRawBody || isMultipartRequestContentType(contentType) || (contentType !== undefined && isFastifyMultipartRequest(request))) {
     return undefined;
   }
 
-  const contentLength = Number(request.headers['content-length']);
+  const contentLength = Number(rawHeaders['content-length']);
 
   if (Number.isFinite(contentLength) && contentLength > maxBodySize) {
     throw new PayloadTooLargeException('Request body exceeds the size limit.');
   }
 
   const frameworkRequest = createDeferredFrameworkRequestShell({
-    cookieHeader: cloneHeaderValue(request.headers.cookie),
+    cookieHeader: cloneHeaderValue(rawHeaders.cookie),
     headersFactory: () => normalizeHeaders(cloneRequestHeaders(request.headers)),
     method: request.method,
     path: urlParts.path,
     query: readSimpleQueryRecord(request.query),
     queryFactory: () => parseQueryParamsFromSearch(urlParts.search),
     raw: request.raw,
-    requestId: resolvePrimaryRequestIdFromHeaders(request.raw.headers),
+    requestId: resolvePrimaryRequestIdFromHeaders(rawHeaders),
     signal: lazySignal.signal,
     url: urlParts.path + urlParts.search,
   }) as FastifyFrameworkRequest;

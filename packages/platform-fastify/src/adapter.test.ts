@@ -1655,6 +1655,67 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
+  it('keeps simple native Fastify requests off host header materialization', async () => {
+    @Controller('/native-shell')
+    class NativeShellController {
+      @Get('/query')
+      readQuery(_input: undefined, context: RequestContext) {
+        return { tag: context.request.query.tag };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [NativeShellController] });
+
+    const port = await findAvailablePort();
+    const adapter = createFastifyAdapter({ port }) as FastifyHttpApplicationAdapter;
+    const fastifyApp = Reflect.get(adapter, 'app') as {
+      addHook(
+        name: 'preHandler',
+        hook: (request: FastifyRequest, reply: FastifyReply) => Promise<void>,
+      ): void;
+    };
+    let headerReads = 0;
+    const headerReadStacks: string[] = [];
+
+    fastifyApp.addHook('preHandler', async (request, _reply) => {
+      const originalHeaders = request.headers;
+
+      Object.defineProperty(request, 'headers', {
+        configurable: true,
+        get() {
+          const stack = new Error().stack ?? '';
+
+          if (stack.includes('createNativeFastFrameworkRequest') || stack.includes('handleNativeRouteRequest')) {
+            headerReads += 1;
+            headerReadStacks.push(stack);
+          }
+
+          return originalHeaders;
+        },
+      });
+    });
+
+    const app = await fluoFactory.create(AppModule, { adapter });
+
+    await app.listen();
+
+    try {
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/native-shell/query?tag=one',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ tag: 'one' });
+      expect(headerReadStacks).toEqual([]);
+      expect(headerReads).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('preserves request header passthrough on native and fallback dispatch paths', async () => {
     @Controller('/headers')
     class HeaderController {

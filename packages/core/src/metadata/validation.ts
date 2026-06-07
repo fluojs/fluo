@@ -1,10 +1,12 @@
 import {
   appendPropertyMapValue,
   cloneMutableValue,
+  getGlobalMetadataWeakMap,
   getOrCreatePropertyMap,
   getStandardConstructorMetadataMap,
   getStandardMetadataBag,
   mergeMetadataPropertyKeys,
+  metadataKeys,
   standardMetadataKeys,
 } from './shared.js';
 import { createClonedWeakMapStore } from './store.js';
@@ -19,10 +21,11 @@ import type {
 } from './types.js';
 import type { Constructor, MetadataPropertyKey } from '../types.js';
 
-const dtoFieldBindingStore = new WeakMap<object, Map<MetadataPropertyKey, DtoFieldBindingMetadata>>();
-const dtoFieldValidationStore = new WeakMap<object, Map<MetadataPropertyKey, DtoFieldValidationRule[]>>();
-const classValidationStore = createClonedWeakMapStore<Function, ClassValidationRule[]>((rules) =>
-  rules.map((rule) => cloneMutableValue(rule))
+const dtoFieldBindingStore = getGlobalMetadataWeakMap<object, Map<MetadataPropertyKey, DtoFieldBindingMetadata>>(metadataKeys.dtoFieldBinding);
+const dtoFieldValidationStore = getGlobalMetadataWeakMap<object, Map<MetadataPropertyKey, DtoFieldValidationRule[]>>(metadataKeys.dtoFieldValidation);
+const classValidationStore = createClonedWeakMapStore<Function, ClassValidationRule[]>(
+  (rules) => rules.map((rule) => cloneMutableValue(rule)),
+  getGlobalMetadataWeakMap<Function, ClassValidationRule[]>(metadataKeys.classValidation),
 );
 
 function getInheritedTargets(target: object): object[] {

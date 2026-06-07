@@ -1,8 +1,15 @@
-import { getOrCreatePropertyMap, getStandardConstructorMetadataMap, mergeMetadataPropertyKeys, standardMetadataKeys } from './shared.js';
+import {
+  getGlobalMetadataWeakMap,
+  getOrCreatePropertyMap,
+  getStandardConstructorMetadataMap,
+  mergeMetadataPropertyKeys,
+  metadataKeys,
+  standardMetadataKeys,
+} from './shared.js';
 import type { InjectionMetadata, InjectionSchemaEntry, StandardInjectionRecord } from './types.js';
 import type { MetadataPropertyKey } from '../types.js';
 
-const injectionMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, InjectionMetadata>>();
+const injectionMetadataStore = getGlobalMetadataWeakMap<object, Map<MetadataPropertyKey, InjectionMetadata>>(metadataKeys.injection);
 
 function getStandardInjectionMap(target: object): Map<MetadataPropertyKey, StandardInjectionRecord> | undefined {
   return getStandardConstructorMetadataMap<StandardInjectionRecord>(target, standardMetadataKeys.injection);

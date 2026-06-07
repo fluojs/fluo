@@ -1,8 +1,12 @@
+import { getGlobalMetadataCounter, getGlobalMetadataWeakMap, metadataKeys } from './shared.js';
 import type { ClassDiMetadata } from './types.js';
 
-const classDiMetadataStore = new WeakMap<Function, ClassDiMetadata>();
-const inheritedClassDiMetadataCache = new WeakMap<Function, { metadata: ClassDiMetadata | null; version: number }>();
-let classDiMetadataVersion = 0;
+const classDiMetadataVersionKey = Symbol.for('fluo.metadata.version.class-di');
+const classDiMetadataStore = getGlobalMetadataWeakMap<Function, ClassDiMetadata>(metadataKeys.classDi);
+const inheritedClassDiMetadataCache = getGlobalMetadataWeakMap<Function, { metadata: ClassDiMetadata | null; version: number }>(
+  Symbol.for('fluo.metadata.cache.inherited-class-di'),
+);
+const classDiMetadataVersion = getGlobalMetadataCounter(classDiMetadataVersionKey);
 
 function freezeClassDiMetadata(metadata: ClassDiMetadata): ClassDiMetadata {
   return Object.freeze({
@@ -38,7 +42,7 @@ export function defineClassDiMetadata(target: Function, metadata: ClassDiMetadat
     inject: metadata.inject !== undefined ? metadata.inject : existing?.inject,
     scope: metadata.scope ?? existing?.scope,
   }));
-  classDiMetadataVersion += 1;
+  classDiMetadataVersion.value += 1;
 }
 
 /**
@@ -60,7 +64,7 @@ export function getOwnClassDiMetadata(target: Function): ClassDiMetadata | undef
 export function getInheritedClassDiMetadata(target: Function): ClassDiMetadata | undefined {
   const cached = inheritedClassDiMetadataCache.get(target);
 
-  if (cached?.version === classDiMetadataVersion) {
+  if (cached?.version === classDiMetadataVersion.value) {
     return cached.metadata ?? undefined;
   }
 
@@ -81,7 +85,7 @@ export function getInheritedClassDiMetadata(target: Function): ClassDiMetadata |
 
   inheritedClassDiMetadataCache.set(target, {
     metadata: effective ?? null,
-    version: classDiMetadataVersion,
+    version: classDiMetadataVersion.value,
   });
 
   return effective;
@@ -103,5 +107,5 @@ export function getClassDiMetadata(target: Function): ClassDiMetadata | undefine
  * @returns Monotonically increasing version bumped after each class-DI metadata write.
  */
 export function getClassDiMetadataVersion(): number {
-  return classDiMetadataVersion;
+  return classDiMetadataVersion.value;
 }

@@ -125,6 +125,15 @@ function readScenarioFilter(): Set<string> | undefined {
   return new Set(raw.split(',').map((name) => name.trim()).filter((name) => name.length > 0));
 }
 
+function readTargetFilter(): Set<string> | undefined {
+  const raw = process.env.BENCH_TARGETS;
+  if (raw === undefined || raw.trim() === '') {
+    return undefined;
+  }
+
+  return new Set(raw.split(',').map((name) => name.trim()).filter((name) => name.length > 0));
+}
+
 function selectedScenarios(): readonly ScenarioConfig[] {
   const filter = readScenarioFilter();
   if (!filter) {
@@ -139,6 +148,25 @@ function selectedScenarios(): readonly ScenarioConfig[] {
   }
   if (selected.length === 0) {
     throw new Error('BENCH_SCENARIOS did not select any scenarios.');
+  }
+
+  return selected;
+}
+
+function selectedTargets(): readonly TargetConfig[] {
+  const filter = readTargetFilter();
+  if (!filter) {
+    return TARGETS;
+  }
+
+  const selected = TARGETS.filter((target) => filter.has(target.name));
+  const knownNames = new Set<string>(TARGETS.map((target) => target.name));
+  const unknown = [...filter].filter((name) => !knownNames.has(name));
+  if (unknown.length > 0) {
+    throw new Error(`Unknown BENCH_TARGETS entries: ${unknown.join(', ')}`);
+  }
+  if (selected.length === 0) {
+    throw new Error('BENCH_TARGETS did not select any targets.');
   }
 
   return selected;
@@ -276,13 +304,13 @@ async function measure(
   return result;
 }
 
-async function runScenario(s: ScenarioConfig, index: number): Promise<ScenarioResult> {
-  const processes = startTargets(s.appShape);
+async function runScenario(s: ScenarioConfig, index: number, targets: readonly TargetConfig[]): Promise<ScenarioResult> {
+  const processes = startTargets(s.appShape, targets);
 
   try {
-    await Promise.all(TARGETS.map((target) => waitForPort(target.port)));
+    await Promise.all(targets.map((target) => waitForPort(target.port)));
 
-    const scenarioTargets = rotationFor(index).map((target) => ({
+    const scenarioTargets = rotationFor(index, targets).map((target) => ({
       target,
       url: `http://127.0.0.1:${target.port}${s.path ?? ''}`,
     }));
@@ -301,7 +329,7 @@ async function runScenario(s: ScenarioConfig, index: number): Promise<ScenarioRe
       });
     }
 
-    const targets = TARGETS.map((target) => {
+    const orderedTargets = targets.map((target) => {
       const result = measured.find((item) => item.label === target.label);
       if (!result) {
         throw new Error(`missing result for ${target.label}`);
@@ -309,15 +337,15 @@ async function runScenario(s: ScenarioConfig, index: number): Promise<ScenarioRe
       return result;
     });
 
-    return { name: s.name, description: s.description, targets };
+    return { name: s.name, description: s.description, targets: orderedTargets };
   } finally {
     await stopTargets(processes);
   }
 }
 
-function rotationFor(index: number): TargetConfig[] {
-  const offset = index % TARGETS.length;
-  return [...TARGETS.slice(offset), ...TARGETS.slice(0, offset)];
+function rotationFor(index: number, targets: readonly TargetConfig[]): TargetConfig[] {
+  const offset = index % targets.length;
+  return [...targets.slice(offset), ...targets.slice(0, offset)];
 }
 
 function runCommand(command: string, args: string[]): Promise<void> {
@@ -339,8 +367,8 @@ function runCommand(command: string, args: string[]): Promise<void> {
   });
 }
 
-function startTargets(appShape: AppShape): ChildProcess[] {
-  return TARGETS.map((target) => {
+function startTargets(appShape: AppShape, targets: readonly TargetConfig[]): ChildProcess[] {
+  return targets.map((target) => {
     const child = spawn(target.command, target.args, {
       cwd: WDIR,
       detached: true,
@@ -442,6 +470,20 @@ async function buildNestTarget(): Promise<void> {
   await rm(NESTJS_BUILD_DIR, { force: true, recursive: true });
   await runCommand('pnpm', ['exec', 'tsc', '-p', 'nestjs/tsconfig.json', '--outDir', 'dist/nestjs']);
   await writeFile(join(NESTJS_BUILD_DIR, 'package.json'), '{"type":"commonjs"}\n');
+}
+
+async function buildTarget(target: TargetConfig): Promise<void> {
+  switch (target.name) {
+    case 'nestjs-fastify':
+      await buildNestTarget();
+      return;
+    case 'fluo-fastify':
+      await buildFluoFastifyTarget();
+      return;
+    case 'fluo-bun':
+      await buildBunTarget();
+      return;
+  }
 }
 
 function average(values: readonly number[]): number {
@@ -568,9 +610,8 @@ async function writeBenchmarkOutput(rawRuns: readonly ScenarioResult[][], averag
 }
 
 async function main(): Promise<void> {
-  await buildNestTarget();
-  await buildFluoFastifyTarget();
-  await buildBunTarget();
+  const targets = selectedTargets();
+  await Promise.all(targets.map((target) => buildTarget(target)));
 
   const scenarios = selectedScenarios();
   const runs: ScenarioResult[][] = [];
@@ -582,7 +623,7 @@ async function main(): Promise<void> {
     const results: ScenarioResult[] = [];
     for (const [index, s] of scenarios.entries()) {
       console.log(`Scenario: ${s.name}`);
-      results.push(await runScenario(s, index + run));
+      results.push(await runScenario(s, index + run, targets));
     }
     runs.push(results);
   }
