@@ -219,6 +219,9 @@ For non-GET handlers decorated with `@CacheEvict(...)`, eviction is deferred unt
 - `CacheModule.forRoot(options)`: Configures the cache store (memory/redis/custom), default TTL, key strategies, `global`, `principalScopeResolver`, the Redis namespace `keyPrefix`, and Redis options such as `redis.scanCount`.
   This is the primary package entrypoint for application modules.
 
+### Public types
+- `CacheModuleOptions`: Application-facing configuration accepted by `CacheModule.forRoot(...)`.
+- `NormalizedCacheModuleOptions`: Compatibility-only type export matching the normalized configuration shape after defaults are applied. Prefer `CacheModuleOptions` for application code; this type remains public so consumers that referenced the previously shipped declaration surface can keep compiling.
 
 ### Services
 - `CacheService`: Main API for manual cache operations (`get`, `set`, `del`, `remember`, `reset`, `close`). Application shutdown calls the same `close()` path, which forwards teardown to custom stores exposing `close()` or `dispose()`.
