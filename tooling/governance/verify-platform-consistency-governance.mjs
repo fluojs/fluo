@@ -655,6 +655,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const docsContextKo = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
   const rootReadme = readFileSync(join(repoRoot, 'README.md'), 'utf8');
   const rootReadmeKo = readFileSync(join(repoRoot, 'README.ko.md'), 'utf8');
+  const cacheManagerReadme = readFileSync(join(repoRoot, 'packages/cache-manager/README.md'), 'utf8');
+  const cacheManagerReadmeKo = readFileSync(join(repoRoot, 'packages/cache-manager/README.ko.md'), 'utf8');
   const cliReadme = readFileSync(join(repoRoot, 'packages/cli/README.md'), 'utf8');
   const cliReadmeKo = readFileSync(join(repoRoot, 'packages/cli/README.ko.md'), 'utf8');
   const toolchainMatrix = readFileSync(join(repoRoot, 'docs/reference/toolchain-contract-matrix.md'), 'utf8');
@@ -784,6 +786,18 @@ function enforceCanonicalRuntimeMatrixReferences() {
   assert(
     packageSurfaceKo.includes('Pub/Sub subscriber') && docsContextKo.includes('Pub/Sub subscriber에 전용 Redis 연결'),
     'docs/CONTEXT.ko.md must mention dedicated Redis Pub/Sub subscriber connections when package-surface.ko.md documents them.',
+  );
+  assert(
+    packageSurface.includes('NormalizedCacheModuleOptions') &&
+      docsContext.includes('NormalizedCacheModuleOptions') &&
+      cacheManagerReadme.includes('NormalizedCacheModuleOptions'),
+    'cache-manager package-surface, docs/CONTEXT.md, and README.md must keep the NormalizedCacheModuleOptions compatibility export discoverable together.',
+  );
+  assert(
+    packageSurfaceKo.includes('NormalizedCacheModuleOptions') &&
+      docsContextKo.includes('NormalizedCacheModuleOptions') &&
+      cacheManagerReadmeKo.includes('NormalizedCacheModuleOptions'),
+    'cache-manager package-surface.ko.md, docs/CONTEXT.ko.md, and README.ko.md must keep the NormalizedCacheModuleOptions compatibility export discoverable together.',
   );
   assert(
     packageSurface.includes('createPassportJsStrategyBridge(...)') &&
