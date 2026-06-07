@@ -150,7 +150,6 @@ async function main(): Promise<void> {
   const port = Number(process.env['PORT'] ?? 3001);
   const app = await FluoFactory.create(resolveAppModule(readAppShape()), {
     adapter: createFastifyAdapter({ port }),
-    logger: { debug() {}, error() {}, log() {}, warn() {} },
   });
 
   await app.listen();

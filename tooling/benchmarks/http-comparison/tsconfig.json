@@ -6,7 +6,25 @@
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@fluojs/config": ["../../../packages/config/src/index.ts"],
+      "@fluojs/core": ["../../../packages/core/src/index.ts"],
+      "@fluojs/core/internal": ["../../../packages/core/src/internal.ts"],
+      "@fluojs/di": ["../../../packages/di/src/index.ts"],
+      "@fluojs/http": ["../../../packages/http/src/index.ts"],
+      "@fluojs/http/internal": ["../../../packages/http/src/internal.ts"],
+      "@fluojs/platform-bun": ["../../../packages/platform-bun/src/index.ts"],
+      "@fluojs/platform-fastify": ["../../../packages/platform-fastify/src/index.ts"],
+      "@fluojs/runtime": ["../../../packages/runtime/src/index.ts"],
+      "@fluojs/runtime/internal/http-adapter": ["../../../packages/runtime/src/internal-http-adapter.ts"],
+      "@fluojs/runtime/internal/request-response-factory": ["../../../packages/runtime/src/internal-request-response-factory.ts"],
+      "@fluojs/runtime/internal-node": ["../../../packages/runtime/src/internal-node.ts"],
+      "@fluojs/runtime/node": ["../../../packages/runtime/src/node.ts"],
+      "@fluojs/runtime/web": ["../../../packages/runtime/src/web.ts"],
+      "@fluojs/validation": ["../../../packages/validation/src/index.ts"]
+    }
   },
   "include": ["src/fluo/**/*", "src/fluo-bun/**/*", "src/shared/**/*", "src/run.ts", "src/report.ts"]
 }
