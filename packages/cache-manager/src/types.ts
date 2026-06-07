@@ -62,7 +62,12 @@ export interface CacheModuleOptions extends CacheModuleInternalOptions {
 }
 
 /**
- * Normalized cache-module configuration consumed internally after defaults are applied.
+ * Compatibility-only public type for normalized cache-module configuration after defaults are applied.
+ *
+ * @remarks
+ * Application configuration should use `CacheModuleOptions` with `CacheModule.forRoot(...)`.
+ * This type remains exported so consumers that referenced the previously shipped declaration
+ * surface can keep compiling, but runtime module registration still normalizes options internally.
  */
 export interface NormalizedCacheModuleOptions {
   global: boolean;

@@ -25,6 +25,7 @@ export type {
   CacheKeyStrategy,
   CacheModuleOptions,
   CacheStore,
+  NormalizedCacheModuleOptions,
   PrincipalScopeResolver,
   RedisCacheOptions,
   RedisCompatibleClient,

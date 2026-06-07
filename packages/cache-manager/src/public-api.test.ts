@@ -15,6 +15,7 @@ import type {
   CacheManagerStoreOwnershipMode,
   CacheModuleOptions,
   CacheStore,
+  NormalizedCacheModuleOptions,
   PrincipalScopeResolver,
   RedisCacheOptions,
   RedisCompatibleClient,
@@ -55,6 +56,8 @@ describe('@fluojs/cache-manager public API surface', () => {
     expectTypeOf<CacheStore>().toHaveProperty('set');
     expectTypeOf<CacheModuleOptions>().toHaveProperty('store');
     expectTypeOf<CacheModuleOptions>().toHaveProperty('httpKeyStrategy');
+    expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('keyPrefix');
+    expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('principalScopeResolver');
     expectTypeOf<RedisCacheOptions>().toHaveProperty('clientName');
     expectTypeOf<RedisCompatibleClient>().toHaveProperty('scan');
     expectTypeOf<RedisStoreOptions>().toHaveProperty('keyPrefix');
@@ -72,10 +75,10 @@ describe('@fluojs/cache-manager public API surface', () => {
     expectTypeOf<CacheManagerStoreOwnershipMode>().toEqualTypeOf<'framework' | 'external'>();
   });
 
-  it('does not re-export internal normalized option types through the root barrel', () => {
+  it('keeps the normalized options compatibility type on the explicit root barrel', () => {
     const indexSource = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
 
     expect(indexSource).not.toContain("export * from './types.js'");
-    expect(indexSource).not.toContain('NormalizedCacheModuleOptions');
+    expect(indexSource).toContain('NormalizedCacheModuleOptions');
   });
 });

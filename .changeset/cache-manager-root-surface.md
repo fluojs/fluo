@@ -1,5 +1,5 @@
 ---
-"@fluojs/cache-manager": minor
+"@fluojs/cache-manager": patch
 ---
 
-Remove the internal `NormalizedCacheModuleOptions` type from the root package export surface and document the supported function-based cache-key extension paths.
+Document the supported function-based cache-key extension paths while preserving the root `NormalizedCacheModuleOptions` type as a compatibility-only public export.
