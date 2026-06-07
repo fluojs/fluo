@@ -157,10 +157,13 @@ function createDispatchRequest(request: FrameworkRequest): FrameworkRequest {
     path: request.path,
     raw: request.raw,
     rawBody: request.rawBody,
-    requestId: request.requestId,
     signal: request.signal,
     url: request.url,
   };
+
+  if (Object.hasOwn(request, 'requestId')) {
+    dispatchRequest.requestId = request.requestId;
+  }
 
   const nativeRouteHandoff = readFrameworkRequestNativeRouteHandoff(request);
 
@@ -208,6 +211,10 @@ function cloneHandlerDescriptor(descriptor: HandlerDescriptor): HandlerDescripto
 }
 
 function readRequestId(request: FrameworkRequest): string | undefined {
+  if (Object.hasOwn(request, 'requestId')) {
+    return request.requestId;
+  }
+
   if (request.requestId) {
     return request.requestId;
   }
