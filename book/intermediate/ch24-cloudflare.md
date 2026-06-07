@@ -44,26 +44,23 @@ In the Worker environment, you do not open a long-running server socket like in 
 
 ```typescript
 // src/index.ts
-import { fluoFactory } from '@fluojs/runtime';
-import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
+import { bootstrapCloudflareWorkerApplication } from '@fluojs/platform-cloudflare-workers';
 import { AppModule } from './app.module';
 
-const adapter = createCloudflareWorkerAdapter({
+const worker = await bootstrapCloudflareWorkerApplication(AppModule, {
   globalPrefix: 'api/v1',
   cors: true,
 });
 
-// After bootstrapping once, listen() binds the dispatcher without opening a socket,
-// and the same application is reused by requests in the same Isolate.
-const app = await fluoFactory.create(AppModule, { adapter });
-await app.listen();
+// The bootstrap helper applies routing and middleware options, binds the dispatcher
+// without opening a socket, and reuses the same application in the same Isolate.
 
 export default {
-  fetch: (req, env, ctx) => adapter.fetch(req, env, ctx),
+  fetch: worker.fetch,
 };
 ```
 
-This structure lets the dependency injection container bootstrap be reused inside the same Isolate instead of repeating it for every request. At the edge, this initialization boundary directly affects response time and cost.
+This structure keeps adapter-owned transport options separate from bootstrap-owned routing and middleware options while letting the dependency injection container bootstrap be reused inside the same Isolate instead of repeating it for every request. At the edge, this initialization boundary directly affects response time and cost.
 
 ## 24.3 Lazy Bootstrapping (Zero-Config)
 
