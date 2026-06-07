@@ -834,7 +834,6 @@ async function dispatchNativeFastRoute(
 
   await runWithRequestContext(phaseContext.requestContext, async () => {
     try {
-      ensureRequestNotAborted(phaseContext.requestContext.request);
       const fastPathSuccess = await tryFastPathExecution(match.descriptor, phaseContext);
 
       if (!fastPathSuccess) {

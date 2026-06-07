@@ -16,6 +16,9 @@ type SimpleJsonFrameworkResponse = FrameworkResponse & {
   sendSimpleJson(body: SimpleJsonResponseBody): ReturnType<FrameworkResponse['send']>;
 };
 
+const CONTENT_TYPE_HEADER = 'Content-Type';
+const CONTENT_TYPE_HEADER_UPPER = 'CONTENT-TYPE';
+
 function resolveDefaultSuccessStatus(handler: HandlerDescriptor, value: unknown): number {
   switch (handler.route.method) {
     case 'POST':
@@ -62,10 +65,24 @@ function hasJsonCompatibleContentType(response: FrameworkResponse): boolean {
 
 function readHeader(headers: FrameworkResponse['headers'], name: string): string | undefined {
   const lowerName = name.toLowerCase();
-  const entry = Object.entries(headers).find(([headerName]) => headerName.toLowerCase() === lowerName);
-  const value = entry?.[1];
+  const value = lowerName === 'content-type'
+    ? headers['content-type'] ?? headers[CONTENT_TYPE_HEADER] ?? headers[CONTENT_TYPE_HEADER_UPPER]
+    : headers[lowerName] ?? headers[name];
 
-  return typeof value === 'string' ? value : undefined;
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  for (const headerName in headers) {
+    if (!Object.hasOwn(headers, headerName) || headerName.toLowerCase() !== lowerName) {
+      continue;
+    }
+
+    const candidate = headers[headerName];
+    return typeof candidate === 'string' ? candidate : undefined;
+  }
+
+  return undefined;
 }
 
 function isJsonContentType(contentType: string): boolean {
@@ -106,8 +123,11 @@ export function writeSuccessResponse(
   // Write route-level headers only after successful formatter negotiation so
   // that a negotiation failure does not leak success-only headers onto the
   // error response.
-  for (const header of handler.route.headers ?? []) {
-    response.setHeader(header.name, header.value);
+  const routeHeaders = handler.route.headers;
+  if (routeHeaders) {
+    for (const header of routeHeaders) {
+      response.setHeader(header.name, header.value);
+    }
   }
 
   if (formatter) {
