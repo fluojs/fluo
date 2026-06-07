@@ -1292,10 +1292,10 @@ describe('@fluojs/socket.io', () => {
 
         expect(await disconnected).toBe('io client disconnect');
 
-        await new Promise((resolve) => setTimeout(resolve, 25));
-
-        expect(state.disconnectCount).toBe(1);
-        expect(state.disconnectReason).toBe('client namespace disconnect');
+        await waitForExpectation(() => {
+          expect(state.disconnectCount).toBe(1);
+          expect(state.disconnectReason).toBe('client namespace disconnect');
+        });
       } finally {
         socket?.close();
         await app.close();
