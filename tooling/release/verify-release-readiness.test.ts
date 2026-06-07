@@ -202,6 +202,40 @@ describe('runReleaseReadinessVerification', () => {
     expect(dependencies.writeFileSync).not.toHaveBeenCalled();
   });
 
+  it('accepts split starter adapter shape in release-readiness checks', () => {
+    const dependencies = createDependencies();
+    const baseRead = dependencies.read;
+
+    dependencies.read = vi.fn((relativePath) => {
+      if (relativePath === 'packages/cli/src/new/scaffold.ts') {
+        return [
+          "import { HealthModule } from '@fluojs/runtime';",
+          'HealthModule.forRoot()',
+          "@Controller('/greeting')",
+          "const starter = { adapterCall: 'createFastifyAdapter({ port })' };",
+          'const app = await FluoFactory.create(AppModule, {',
+          'adapter: ${starter.adapterCall}',
+          '});',
+          'await app.listen();',
+          'createFastifyAdapter',
+        ].join('\n');
+      }
+
+      return baseRead(relativePath);
+    });
+
+    const result = runReleaseReadinessVerification({}, dependencies);
+
+    expect(result.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Starter shape and runtime ownership',
+          pass: true,
+        }),
+      ]),
+    );
+  });
+
   it('writes draft artifacts only when explicitly requested', () => {
     const dependencies = createDependencies();
 
