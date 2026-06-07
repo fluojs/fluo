@@ -472,6 +472,20 @@ async function buildNestTarget(): Promise<void> {
   await writeFile(join(NESTJS_BUILD_DIR, 'package.json'), '{"type":"commonjs"}\n');
 }
 
+async function buildTarget(target: TargetConfig): Promise<void> {
+  switch (target.name) {
+    case 'nestjs-fastify':
+      await buildNestTarget();
+      return;
+    case 'fluo-fastify':
+      await buildFluoFastifyTarget();
+      return;
+    case 'fluo-bun':
+      await buildBunTarget();
+      return;
+  }
+}
+
 function average(values: readonly number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
@@ -596,12 +610,10 @@ async function writeBenchmarkOutput(rawRuns: readonly ScenarioResult[][], averag
 }
 
 async function main(): Promise<void> {
-  await buildNestTarget();
-  await buildFluoFastifyTarget();
-  await buildBunTarget();
+  const targets = selectedTargets();
+  await Promise.all(targets.map((target) => buildTarget(target)));
 
   const scenarios = selectedScenarios();
-  const targets = selectedTargets();
   const runs: ScenarioResult[][] = [];
   for (let run = 0; run < RUNS; run += 1) {
     if (RUNS > 1) {

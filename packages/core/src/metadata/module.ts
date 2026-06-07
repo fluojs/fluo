@@ -1,8 +1,9 @@
-import { cloneCollection, cloneMutableValue } from './shared.js';
+import { cloneCollection, cloneMutableValue, getGlobalMetadataCounter, getGlobalMetadataWeakMap, metadataKeys } from './shared.js';
 import type { ModuleMetadata } from './types.js';
 
-const moduleMetadataStore = new WeakMap<Function, ModuleMetadata>();
-let moduleMetadataVersion = 0;
+const moduleMetadataVersionKey = Symbol.for('fluo.metadata.version.module');
+const moduleMetadataStore = getGlobalMetadataWeakMap<Function, ModuleMetadata>(metadataKeys.module);
+const moduleMetadataVersion = getGlobalMetadataCounter(moduleMetadataVersionKey);
 
 function isValueProvider(provider: unknown): provider is { useValue: unknown } {
   return typeof provider === 'object' && provider !== null && 'useValue' in provider;
@@ -111,7 +112,7 @@ export function defineModuleMetadata(target: Function, metadata: ModuleMetadata)
     middleware: metadata.middleware ?? existing?.middleware,
     providers: metadata.providers ?? existing?.providers,
   })));
-  moduleMetadataVersion += 1;
+  moduleMetadataVersion.value += 1;
 }
 
 /**
@@ -130,5 +131,5 @@ export function getModuleMetadata(target: Function): ModuleMetadata | undefined 
  * @returns Monotonically increasing version bumped after each module metadata write.
  */
 export function getModuleMetadataVersion(): number {
-  return moduleMetadataVersion;
+  return moduleMetadataVersion.value;
 }
