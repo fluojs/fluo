@@ -301,8 +301,9 @@ These limitations are part of the package contract so transport selection, templ
 
 ### Contracts and helpers
 
-- `Email`: Sending facade exposed by the `EMAIL` compatibility token, with `send(...)`, `sendMany(...)`, and `sendNotification(...)` methods backed by `EmailService`.
+- `Email`: Application-facing sending facade exposed by the `EMAIL` compatibility token, not an address value; it provides `send(...)`, `sendMany(...)`, and `sendNotification(...)` methods backed by `EmailService`.
 - `EmailAddress` / `EmailAddressLike`: Structured or shorthand recipient values accepted by `EmailService` before normalization.
+- `EmailAttachment`: File attachment payload accepted on `EmailMessage.attachments` and forwarded to the configured transport with `filename`, `content`, and optional `contentType` fields.
 - `EmailModuleOptions` / `EmailAsyncModuleOptions`: Synchronous and async module registration contracts, including sender defaults, renderer, lifecycle verification, and transport factory wiring.
 - `EmailMessage`
 - `EmailNotificationDispatchRequest` / `EmailNotificationPayload`: Notification channel payload contracts consumed by `EmailChannel`.

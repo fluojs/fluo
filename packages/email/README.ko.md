@@ -301,8 +301,9 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 ### 계약과 헬퍼
 
-- `Email`: `EMAIL` 호환성 토큰이 노출하는 전송 facade로, `EmailService`가 뒷받침하는 `send(...)`, `sendMany(...)`, `sendNotification(...)` 메서드를 제공합니다.
+- `Email`: `EMAIL` 호환성 토큰이 노출하는 애플리케이션용 전송 facade이며 address 값이 아닙니다. `EmailService`가 뒷받침하는 `send(...)`, `sendMany(...)`, `sendNotification(...)` 메서드를 제공합니다.
 - `EmailAddress` / `EmailAddressLike`: `EmailService`가 정규화하기 전에 허용하는 구조화 또는 축약 recipient 값입니다.
+- `EmailAttachment`: `EmailMessage.attachments`에서 허용되고 설정된 transport로 전달되는 file attachment payload입니다. `filename`, `content`, 선택적 `contentType` 필드를 포함합니다.
 - `EmailModuleOptions` / `EmailAsyncModuleOptions`: sender 기본값, renderer, lifecycle 검증, transport factory wiring을 포함하는 동기/비동기 모듈 등록 계약입니다.
 - `EmailMessage`
 - `EmailNotificationDispatchRequest` / `EmailNotificationPayload`: `EmailChannel`이 소비하는 notification channel payload 계약입니다.
