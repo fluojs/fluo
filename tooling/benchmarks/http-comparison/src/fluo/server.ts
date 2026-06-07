@@ -52,7 +52,7 @@ class ProjectService {
 class ReadSearchController {
   constructor(private readonly service: UsersReadService) {}
 
-  @Get('/')
+  @Get('')
   search(_input: undefined, context: RequestContext) {
     return this.service.search(context);
   }
@@ -63,7 +63,7 @@ class ReadSearchController {
 class QuoteController {
   constructor(private readonly service: QuoteService) {}
 
-  @Post('/')
+  @Post('')
   quote(_input: undefined, context: RequestContext) {
     return this.service.quote(toQuoteInput(context.request.body));
   }
