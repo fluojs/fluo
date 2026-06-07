@@ -2,11 +2,12 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Drizzle ORM integration for fluo with a transaction-aware database wrapper and an optional dispose hook.
+Node.js-only Drizzle ORM integration for fluo with a transaction-aware database wrapper and an optional dispose hook.
 
 ## Table of Contents
 
 - [Installation](#installation)
+- [Runtime Support](#runtime-support)
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
@@ -26,9 +27,15 @@ npm install @fluojs/drizzle drizzle-orm
 npm install pg
 ```
 
+## Runtime Support
+
+The root `@fluojs/drizzle` package is currently a Node.js 20+ integration. It imports Node's `node:async_hooks` module to maintain the ambient transaction context and the package manifest declares `engines.node >=20.0.0`.
+
+Drizzle ORM itself can target drivers such as Bun SQL or Cloudflare D1, but those driver runtimes are outside this fluo wrapper until a non-Node transaction-context adapter is documented.
+
 ## When to Use
 
-- when Drizzle should participate in the same module, DI, and lifecycle model as the rest of the app
+- when a Node.js 20+ application needs Drizzle to participate in the same module, DI, and lifecycle model as the rest of the app
 - when repositories need a single `current()` seam that switches between the root handle and the active transaction handle
 - when application shutdown should also run an explicit cleanup hook for the underlying driver resources
 
@@ -183,6 +190,7 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleDatabaseFacade<TDatabase>`
 - `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
+- `DrizzleDatabase.createFacade(...)` (compatibility-only provider wiring helper; prefer `DrizzleModule.forRoot(...)` / `forRootAsync(...)` for application registration)
 - `createDrizzlePlatformStatusSnapshot(...)`
 - `DrizzleDatabaseLike`
 - `DrizzleModuleOptions`

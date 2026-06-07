@@ -2,11 +2,12 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-트랜잭션 인지형 데이터베이스 래퍼와 선택적 dispose hook을 제공하는 fluo용 Drizzle ORM 통합 패키지입니다.
+Node.js 전용 트랜잭션 인지형 데이터베이스 래퍼와 선택적 dispose hook을 제공하는 fluo용 Drizzle ORM 통합 패키지입니다.
 
 ## 목차
 
 - [설치](#설치)
+- [런타임 지원](#런타임-지원)
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
@@ -26,9 +27,15 @@ npm install @fluojs/drizzle drizzle-orm
 npm install pg
 ```
 
+## 런타임 지원
+
+루트 `@fluojs/drizzle` 패키지는 현재 Node.js 20+ 통합입니다. ambient transaction context를 유지하기 위해 Node의 `node:async_hooks` 모듈을 import하고, package manifest는 `engines.node >=20.0.0`을 선언합니다.
+
+Drizzle ORM 자체는 Bun SQL이나 Cloudflare D1 같은 driver도 대상으로 할 수 있지만, 비 Node transaction-context adapter가 문서화되기 전까지 해당 driver runtime은 이 fluo wrapper 범위 밖입니다.
+
 ## 사용 시점
 
-- Drizzle을 다른 fluo 모듈과 같은 DI·모듈·라이프사이클 모델 안에 넣고 싶을 때
+- Node.js 20+ 애플리케이션에서 Drizzle을 다른 fluo 모듈과 같은 DI·모듈·라이프사이클 모델 안에 넣고 싶을 때
 - repository 코드가 root handle과 현재 트랜잭션 handle 사이를 `current()` 하나로 다루고 싶을 때
 - 애플리케이션 종료 시 underlying driver 정리 로직도 함께 실행해야 할 때
 
@@ -183,6 +190,7 @@ defineModule(ManualDrizzleModule, {
 - `DrizzleDatabaseFacade<TDatabase>`
 - `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
+- `DrizzleDatabase.createFacade(...)` (호환성 전용 provider wiring helper; 애플리케이션 등록은 `DrizzleModule.forRoot(...)` / `forRootAsync(...)`를 우선 사용)
 - `createDrizzlePlatformStatusSnapshot(...)`
 - `DrizzleDatabaseLike`
 - `DrizzleModuleOptions`
