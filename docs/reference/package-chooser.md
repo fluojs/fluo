@@ -50,7 +50,7 @@
 | condition | package choice | notes |
 | --- | --- | --- |
 | Need Prisma-based relational access | `@fluojs/prisma` | Use for Prisma ORM integration. |
-| Need Drizzle-based relational access | `@fluojs/drizzle` | Use for Drizzle ORM integration. |
+| Need Drizzle-based relational access on Node.js | `@fluojs/drizzle` | Use for Node.js 20+ Drizzle ORM integration. The root wrapper uses Node's `node:async_hooks` transaction context and `engines.node >=20.0.0`; Drizzle's Bun SQL, Cloudflare D1, and other non-Node drivers are outside the current fluo wrapper until a non-Node context adapter is documented. |
 | Need document database access | `@fluojs/mongoose` | Use for Mongoose integration. |
 | Need cache abstraction | `@fluojs/cache-manager` | Use for cache-backed reads and writes. |
 | Need a shared Redis client/service layer | `@fluojs/redis` | Use for default or named Redis registrations. |
