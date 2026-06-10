@@ -97,6 +97,37 @@ describe('runtime matrix docs contract', () => {
     expect(read('docs/reference/toolchain-contract-matrix.ko.md')).toContain('./package-surface.ko.md');
   });
 
+  it('keeps metrics runtime surface discoverable from package surface and context docs', () => {
+    expectAll(read('docs/reference/package-surface.md'), [
+      '@fluojs/metrics',
+      'Node.js 20+',
+      'endpoint-scoped `endpointMiddleware`',
+      'distinct module-level `middleware`',
+      'engines.node >=20.0.0',
+    ]);
+    expectAll(read('docs/CONTEXT.md'), [
+      'Node.js 20+ `@fluojs/metrics` boundary',
+      'opt-in HTTP request collectors',
+      'endpoint-scoped `endpointMiddleware`',
+      'distinct module-level `middleware`',
+      'engines.node >=20.0.0',
+    ]);
+    expectAll(read('docs/reference/package-surface.ko.md'), [
+      '@fluojs/metrics',
+      'Node.js 20+',
+      'endpoint-scoped `endpointMiddleware`',
+      'module-level `middleware`',
+      'engines.node >=20.0.0',
+    ]);
+    expectAll(read('docs/CONTEXT.ko.md'), [
+      'Node.js 20+ `@fluojs/metrics` 경계',
+      'opt-in HTTP request collector',
+      'endpoint-scoped `endpointMiddleware`',
+      'module-level `middleware`',
+      'engines.node >=20.0.0',
+    ]);
+  });
+
   it('keeps published fluo new v2 paths aligned across CLI and quick-start docs', () => {
     expectAll(read('packages/cli/README.md'), [
       '--shape application --transport http --runtime node --platform fastify',

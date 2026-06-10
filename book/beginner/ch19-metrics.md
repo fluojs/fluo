@@ -30,7 +30,7 @@ If health checks from Chapter 18 tell you whether an application is "alive," met
 Metrics provide the numerical data needed to build dashboards, configure alerts, and perform capacity planning, for example, "Based on the current growth rate, we need to double our server count before the end-of-year sale." They turn a vague feeling about performance into engineering evidence the team can review.
 
 ### 19.1.1 The Golden Signals
-Google's SRE handbook defines the "four golden signals" of monitoring as latency, traffic, errors, and saturation. Fluo's metrics system is designed to provide visibility into all four by default. Starting with these signals gives you a clear entry point when analyzing production issues. For example, a latency spike combined with high saturation usually signals that CPU or memory resources need to be scaled.
+Google's SRE handbook defines the "four golden signals" of monitoring as latency, traffic, errors, and saturation. Fluo's default scrape endpoint provides process and Node.js collector visibility, while request latency, traffic, and error metrics require the explicit `http: true` or `http` options opt-in shown later in this chapter. Starting with these signals gives you a clear entry point when analyzing production issues. For example, a latency spike combined with high saturation usually signals that CPU or memory resources need to be scaled.
 
 ### 19.1.2 Proactive vs. Reactive Monitoring
 Reactive monitoring means fixing problems after they occur, such as receiving an alert because a server crashed. Proactive monitoring means identifying trends before an outage occurs, such as noticing memory usage gradually increasing over several days. Fluo's metrics support this approach and create time for planned fixes instead of overnight incident response.
@@ -264,16 +264,16 @@ If the metric count is very high or the scrape frequency is very high, generatin
 This is especially useful during traffic spikes when the server is already under load. Keeping that cache outside `MetricsModule` makes ownership explicit while still reducing server CPU usage without significantly affecting monitoring data freshness. Keeping the monitoring system lightweight ensures that collecting observability data does not add more application load during important performance events.
 
 ## 19.7 Platform Telemetry
-`fluo` also exposes its internal state as metrics. This lets monitoring tools directly check which components have initialized and are healthy. This "self-monitoring" feature is a useful starting point when debugging problems related to application structure.
+`fluo` also exposes platform shell state as metrics. This lets monitoring tools see the readiness and health snapshot that the runtime reports for registered platform components. This "self-monitoring" feature is a useful starting point when debugging problems related to application structure.
 
-- `fluo_component_ready`: Tracks whether DI components have finished initialization. If a specific instance is stuck, this metric can tell you which Provider is the bottleneck.
-- `fluo_component_health`: Integrates the state of the Terminus indicators covered in Chapter 18 into the metrics stream. This lets you analyze performance degradation in relation to health state changes.
+- `fluo_component_ready`: Records `1` when a platform component is ready and `0` otherwise, using labels from the `PLATFORM_SHELL` snapshot.
+- `fluo_component_health`: Records `1` when a platform component is healthy and `0` otherwise, using labels from the `PLATFORM_SHELL` snapshot.
 - `fluo_metrics_registry_mode`: Exposes which mode the current metrics registry is operating in.
 
 ### 19.7.1 Built-in Platform Telemetry Boundaries
 You may want to see more detailed operational numbers beyond a simple "healthy/unhealthy" state, but the current built-in platform telemetry exposure focuses on framework-level signals such as readiness, health, and registry mode. For more granular dependency internals, such as database pool size, active connection count, and queued request count, it is more accurate to treat them as custom metrics exposed separately by the relevant library or application, rather than assuming they are part of this chapter's basic built-in metrics contract.
 
-Understanding this boundary also makes dashboards easier to interpret. The default metrics show whether the framework is ready, whether it is healthy, and how many requests are coming in, while deeper infrastructure analysis is left to instrumentation you add separately on top.
+Understanding this boundary also makes dashboards easier to interpret. The built-in platform telemetry shows whether registered platform components are ready and healthy, while HTTP traffic visibility appears only when HTTP instrumentation is enabled and deeper infrastructure analysis is left to instrumentation you add separately on top.
 
 ### 19.7.2 Tracking Framework Overhead
 You may want a more detailed view of framework overhead, but the current default HTTP metrics focus on request counts, error counts, and request latency. Do not assume that per-stage timings for Middleware, Guard, Interceptor, and Pipe execution are included as default built-in metrics. If you need that analysis, add application-specific instrumentation or a separate profiling strategy.
