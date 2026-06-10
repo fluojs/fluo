@@ -489,6 +489,9 @@ importers:
 
   packages/metrics:
     dependencies:
+      '@fluojs/core':
+        specifier: workspace:^
+        version: link:../core
       '@fluojs/di':
         specifier: workspace:^
         version: link:../di

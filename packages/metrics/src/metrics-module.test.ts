@@ -298,6 +298,51 @@ describe('MetricsModule', () => {
     await app.close();
   });
 
+  it('omits Prometheus default collectors when defaultMetrics is false', async () => {
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('/metrics'), response);
+
+    const metricsText = String(response.body);
+    expect(response.statusCode).toBe(200);
+    expect(metricsText).not.toContain('process_cpu_seconds_total');
+    expect(metricsText).not.toContain('nodejs_heap_size_total_bytes');
+
+    await app.close();
+  });
+
+  it('does not install HTTP collectors until HTTP instrumentation is opted in', async () => {
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('/metrics'), response);
+
+    const metricsText = String(response.body);
+    expect(response.statusCode).toBe(200);
+    expect(metricsText).not.toContain('http_requests_total');
+    expect(metricsText).not.toContain('http_errors_total');
+    expect(metricsText).not.toContain('http_request_duration_seconds');
+
+    await app.close();
+  });
+
   it('keeps default metrics registration once per shared registry', async () => {
     const sharedRegistry = new Registry();
 
@@ -596,26 +641,58 @@ describe('MetricsModule', () => {
     await app.close();
   });
 
-  it('validates framework-owned HTTP collector label schemas before reuse', () => {
+  it('validates framework-owned HTTP collector label schemas before reuse', async () => {
     const sharedRegistry = new Registry();
 
-    MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a', registry: sharedRegistry });
+    class FirstAppModule {}
+
+    defineModule(FirstAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a', registry: sharedRegistry })],
+    });
+
+    const firstApp = await bootstrapApplication({
+      rootModule: FirstAppModule,
+    });
     const requestsCounter = sharedRegistry.getSingleMetric('http_requests_total') as Counter<string> & { labelNames: string[] };
     requestsCounter.labelNames = ['method'];
 
-    expect(() => MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b', registry: sharedRegistry })).toThrow(
+    await firstApp.close();
+
+    class SecondAppModule {}
+
+    defineModule(SecondAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b', registry: sharedRegistry })],
+    });
+
+    await expect(bootstrapApplication({ rootModule: SecondAppModule })).rejects.toThrow(
       'Metric name "http_requests_total" is already registered with labels [method]. Built-in HTTP metrics require labels [method,path,status].',
     );
   });
 
-  it('validates framework-owned HTTP duration histogram label schemas before reuse', () => {
+  it('validates framework-owned HTTP duration histogram label schemas before reuse', async () => {
     const sharedRegistry = new Registry();
 
-    MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a', registry: sharedRegistry });
+    class FirstAppModule {}
+
+    defineModule(FirstAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a', registry: sharedRegistry })],
+    });
+
+    const firstApp = await bootstrapApplication({
+      rootModule: FirstAppModule,
+    });
     const durationHistogram = sharedRegistry.getSingleMetric('http_request_duration_seconds') as Histogram<string> & { labelNames: string[] };
     durationHistogram.labelNames = ['method', 'path'];
 
-    expect(() => MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b', registry: sharedRegistry })).toThrow(
+    await firstApp.close();
+
+    class SecondAppModule {}
+
+    defineModule(SecondAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b', registry: sharedRegistry })],
+    });
+
+    await expect(bootstrapApplication({ rootModule: SecondAppModule })).rejects.toThrow(
       'Metric name "http_request_duration_seconds" is already registered with labels [method,path]. Built-in HTTP metrics require labels [method,path,status].',
     );
   });
@@ -652,7 +729,7 @@ describe('MetricsModule', () => {
     await app.close();
   });
 
-  it('throws when an app predefines a built-in platform telemetry gauge name', () => {
+  it('throws when an app predefines a built-in platform telemetry gauge name', async () => {
     const sharedRegistry = new Registry();
 
     new Gauge({
@@ -662,19 +739,41 @@ describe('MetricsModule', () => {
       registers: [sharedRegistry],
     });
 
-    expect(() => MetricsModule.forRoot({ defaultMetrics: false, registry: sharedRegistry })).toThrow(
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, registry: sharedRegistry })],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
       'Metric name "fluo_component_ready" is already registered by the application. Built-in platform telemetry requires framework-owned gauges.',
     );
   });
 
-  it('validates framework-owned platform telemetry gauge label schemas before reuse', () => {
+  it('validates framework-owned platform telemetry gauge label schemas before reuse', async () => {
     const sharedRegistry = new Registry();
 
-    MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-a', registry: sharedRegistry });
+    class FirstAppModule {}
+
+    defineModule(FirstAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-a', registry: sharedRegistry })],
+    });
+
+    const firstApp = await bootstrapApplication({
+      rootModule: FirstAppModule,
+    });
     const readinessGauge = sharedRegistry.getSingleMetric('fluo_component_ready') as Gauge<string> & { labelNames: string[] };
     readinessGauge.labelNames = ['component_id'];
 
-    expect(() => MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-b', registry: sharedRegistry })).toThrow(
+    await firstApp.close();
+
+    class SecondAppModule {}
+
+    defineModule(SecondAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-b', registry: sharedRegistry })],
+    });
+
+    await expect(bootstrapApplication({ rootModule: SecondAppModule })).rejects.toThrow(
       'Metric name "fluo_component_ready" is already registered with labels [component_id]. Built-in platform telemetry requires labels [component_id,component_kind,operation,result,env,instance].',
     );
   });
@@ -736,7 +835,7 @@ describe('MetricsModule', () => {
 
   it('suppresses only missing platform shell registration errors during scrape refresh', async () => {
     const missingPlatformShellError = new ContainerResolutionError(
-      `No provider registered for token ${String(PLATFORM_SHELL)}.`,
+      'Structured missing provider context should not depend on message wording.',
       {
         hint: 'Ensure the provider is registered in a module\'s providers array, or that the module exporting it is imported by the consuming module.',
         token: PLATFORM_SHELL,
@@ -1057,7 +1156,7 @@ describe('MetricsModule', () => {
     await app.close();
   });
 
-  it('throws when an app predefines a built-in HTTP counter name', () => {
+  it('throws when an app predefines a built-in HTTP counter name', async () => {
     const sharedRegistry = new Registry();
 
     new Counter({
@@ -1066,12 +1165,18 @@ describe('MetricsModule', () => {
       registers: [sharedRegistry],
     });
 
-    expect(() => MetricsModule.forRoot({ defaultMetrics: false, http: true, registry: sharedRegistry })).toThrow(
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, registry: sharedRegistry })],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
       'Metric name "http_requests_total" is already registered by the application. Built-in HTTP metrics require framework-owned collectors.',
     );
   });
 
-  it('throws when an app predefines a built-in HTTP error counter name', () => {
+  it('throws when an app predefines a built-in HTTP error counter name', async () => {
     const sharedRegistry = new Registry();
 
     new Counter({
@@ -1080,12 +1185,18 @@ describe('MetricsModule', () => {
       registers: [sharedRegistry],
     });
 
-    expect(() => MetricsModule.forRoot({ defaultMetrics: false, http: true, registry: sharedRegistry })).toThrow(
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, registry: sharedRegistry })],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
       'Metric name "http_errors_total" is already registered by the application. Built-in HTTP metrics require framework-owned collectors.',
     );
   });
 
-  it('throws when an app predefines the built-in HTTP duration histogram name', () => {
+  it('throws when an app predefines the built-in HTTP duration histogram name', async () => {
     const sharedRegistry = new Registry();
 
     new Histogram({
@@ -1094,7 +1205,13 @@ describe('MetricsModule', () => {
       registers: [sharedRegistry],
     });
 
-    expect(() => MetricsModule.forRoot({ defaultMetrics: false, http: true, registry: sharedRegistry })).toThrow(
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, registry: sharedRegistry })],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
       'Metric name "http_request_duration_seconds" is already registered by the application. Built-in HTTP metrics require framework-owned collectors.',
     );
   });
@@ -1122,5 +1239,41 @@ describe('MetricsModule', () => {
     expect(metrics).toContain('isolated_counter_total');
 
     await app.close();
+  });
+
+  it('creates a fresh isolated registry for each bootstrap of a reused dynamic metrics module', async () => {
+    const MetricsRuntimeModule = MetricsModule.forRoot({ defaultMetrics: false });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsRuntimeModule],
+    });
+
+    const firstApp = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+    const firstMetricsService = (await firstApp.container.resolve(MetricsService)) as MetricsService;
+    const firstRegistry = firstMetricsService.getRegistry();
+
+    firstMetricsService.counter({
+      help: 'Counter scoped to the first bootstrap only',
+      name: 'bootstrap_local_counter_total',
+    });
+
+    expect(await firstRegistry.metrics()).toContain('bootstrap_local_counter_total');
+
+    await firstApp.close();
+
+    const secondApp = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+    const secondMetricsService = (await secondApp.container.resolve(MetricsService)) as MetricsService;
+    const secondRegistry = secondMetricsService.getRegistry();
+
+    expect(secondRegistry).not.toBe(firstRegistry);
+    expect(await secondRegistry.metrics()).not.toContain('bootstrap_local_counter_total');
+
+    await secondApp.close();
   });
 });

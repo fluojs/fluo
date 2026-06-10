@@ -1,3 +1,4 @@
+import { Inject, type Token } from '@fluojs/core';
 import { ContainerResolutionError, type Provider } from '@fluojs/di';
 import { Controller, Get, forRoutes, type Middleware, type MiddlewareLike, type RequestContext } from '@fluojs/http';
 import { defineModule, type ModuleType, PLATFORM_SHELL, type PlatformShellSnapshot } from '@fluojs/runtime';
@@ -78,51 +79,66 @@ export class MetricsModule {
 
     const httpOptions = resolveHttpOptions(options.http);
     const metricsPath = options.path === undefined ? '/metrics' : options.path;
-    const registry = options.registry ?? new PrometheusRegistry();
-    const metricsService = new MetricsService(registry);
-    const meterProvider = new PrometheusMeterProvider(registry);
-    const platformTelemetry = new RuntimePlatformTelemetry(
-      registry,
-      options.registry ? 'shared' : 'isolated',
-      options.platformTelemetry,
-    );
 
-    if (options.defaultMetrics !== false && !MetricsModule.registeredRegistries.has(registry)) {
-      MetricsModule.registeredRegistries.add(registry);
-      collectDefaultMetrics({ register: registry });
-    }
+    const registryToken: Token<Registry> = Symbol('MetricsModule.registry');
+    const platformTelemetryToken: Token<RuntimePlatformTelemetry> = Symbol('MetricsModule.platformTelemetry');
+    const httpMetricsMiddleware = httpOptions
+      ? createHttpMetricsMiddleware(registryToken, httpOptions)
+      : undefined;
 
     const endpointMiddleware = typeof metricsPath === 'string'
       ? (options.endpointMiddleware ?? []).map((middlewareClass) => forRoutes(middlewareClass, metricsPath))
       : [];
     const middleware = [
-      ...(httpOptions ? [new HttpMetricsMiddleware(registry, httpOptions)] : []),
+      ...(httpMetricsMiddleware ? [httpMetricsMiddleware] : []),
       ...endpointMiddleware,
       ...(options.middleware ?? []),
     ];
 
     const providers: Provider[] = [
+      ...(httpMetricsMiddleware ? [httpMetricsMiddleware] : []),
+      {
+        provide: registryToken,
+        useFactory: () => MetricsModule.createRegistry(options),
+      },
       {
         provide: MetricsService,
-        useValue: metricsService,
+        inject: [registryToken],
+        useFactory: (registry: unknown) => new MetricsService(assertPrometheusRegistry(registry)),
       },
       {
         provide: METER_PROVIDER,
-        useValue: meterProvider,
+        inject: [registryToken],
+        useFactory: (registry: unknown) => new PrometheusMeterProvider(assertPrometheusRegistry(registry)),
+      },
+      {
+        provide: platformTelemetryToken,
+        inject: [registryToken],
+        useFactory: (registry: unknown) => new RuntimePlatformTelemetry(
+          assertPrometheusRegistry(registry),
+          options.registry ? 'shared' : 'isolated',
+          options.platformTelemetry,
+        ),
       },
     ];
 
-    const controllers: Array<new () => object> = [];
+    const controllers: ModuleType[] = [];
 
     if (typeof metricsPath === 'string') {
       const metricsRoutePath = metricsPath;
 
+      @Inject(registryToken, platformTelemetryToken)
       @Controller('')
       class MetricsController {
+        constructor(
+          private readonly registry: Registry,
+          private readonly platformTelemetry: RuntimePlatformTelemetry,
+        ) {}
+
         @Get(metricsRoutePath)
         async getMetrics(_input: undefined, ctx: RequestContext): Promise<string> {
-          ctx.response.setHeader('content-type', registry.contentType);
-          return platformTelemetry.collectMetrics(ctx, registry);
+          ctx.response.setHeader('content-type', this.registry.contentType);
+          return this.platformTelemetry.collectMetrics(ctx, this.registry);
         }
       }
 
@@ -138,6 +154,17 @@ export class MetricsModule {
     });
 
     return MetricsRuntimeModule;
+  }
+
+  private static createRegistry(options: MetricsModuleOptions): Registry {
+    const registry = options.registry ?? new PrometheusRegistry();
+
+    if (options.defaultMetrics !== false && !MetricsModule.registeredRegistries.has(registry)) {
+      MetricsModule.registeredRegistries.add(registry);
+      collectDefaultMetrics({ register: registry });
+    }
+
+    return registry;
   }
 }
 
@@ -158,6 +185,34 @@ const HEALTH_STATUSES = ['healthy', 'unhealthy', 'degraded'] as const satisfies 
 const READINESS_STATUSES = ['ready', 'not-ready', 'degraded'] as const satisfies readonly PlatformReadinessStatus[];
 const PLATFORM_SHELL_TOKEN_NAME = 'PLATFORM_SHELL';
 const PLATFORM_SHELL_TOKEN_NAMES = new Set([PLATFORM_SHELL_TOKEN_NAME, String(PLATFORM_SHELL)]);
+
+function createHttpMetricsMiddleware(
+  registryToken: Token<Registry>,
+  httpOptions: HttpMetricsMiddlewareOptions,
+): new (registry: Registry) => Middleware {
+  @Inject(registryToken)
+  class MetricsHttpMiddleware implements Middleware {
+    private readonly delegate: HttpMetricsMiddleware;
+
+    constructor(registry: Registry) {
+      this.delegate = new HttpMetricsMiddleware(registry, httpOptions);
+    }
+
+    handle(context: Parameters<Middleware['handle']>[0], next: Parameters<Middleware['handle']>[1]): ReturnType<Middleware['handle']> {
+      return this.delegate.handle(context, next);
+    }
+  }
+
+  return MetricsHttpMiddleware;
+}
+
+function assertPrometheusRegistry(value: unknown): Registry {
+  if (!(value instanceof PrometheusRegistry)) {
+    throw new Error('MetricsModule registry provider resolved an invalid Prometheus registry.');
+  }
+
+  return value;
+}
 
 function toReadinessValue(status: PlatformShellSnapshot['readiness']['status']): number {
   return status === 'ready' ? 1 : 0;
@@ -428,19 +483,12 @@ function isMissingPlatformShellResolutionError(error: unknown): error is Contain
   }
 
   const containerError = error as ContainerResolutionError & { meta?: Record<string, unknown> };
-  const message = String((containerError as { message?: unknown }).message ?? '');
-  const token = typeof containerError.meta?.['token'] === 'string' ? containerError.meta['token'] : undefined;
-  if (token && PLATFORM_SHELL_TOKEN_NAMES.has(token)) {
-    return message.startsWith(`No provider registered for token ${token}.`);
-  }
+  const token = typeof containerError.meta?.token === 'string' ? containerError.meta.token : undefined;
+  const hint = typeof containerError.meta?.hint === 'string' ? containerError.meta.hint : undefined;
 
-  for (const tokenName of PLATFORM_SHELL_TOKEN_NAMES) {
-    if (message.startsWith(`No provider registered for token ${tokenName}.`)) {
-      return true;
-    }
-  }
-
-  return false;
+  return token !== undefined
+    && PLATFORM_SHELL_TOKEN_NAMES.has(token)
+    && hint === 'Ensure the provider is registered in a module\'s providers array, or that the module exporting it is imported by the consuming module.';
 }
 
 function resolveHttpOptions(http: MetricsModuleOptions['http']): HttpMetricsMiddlewareOptions | undefined {
@@ -450,6 +498,12 @@ function resolveHttpOptions(http: MetricsModuleOptions['http']): HttpMetricsMidd
 
   if (http === true) {
     return {};
+  }
+
+  if (http.pathLabelMode === 'raw' && http.allowUnsafeRawPathLabelMode !== true) {
+    throw new Error(
+      'HttpMetricsMiddleware pathLabelMode "raw" is disabled by default. Pass allowUnsafeRawPathLabelMode: true only when you have bounded path cardinality.',
+    );
   }
 
   return {
