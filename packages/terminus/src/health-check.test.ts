@@ -244,6 +244,47 @@ describe('runHealthCheck', () => {
     });
   });
 
+  it('does not start overlapping probes for the same indicator after a timeout', async () => {
+    let starts = 0;
+    let releaseProbe: (() => void) | undefined;
+    const indicator: HealthIndicator = {
+      key: 'database',
+      check: async (key: string) => {
+        starts += 1;
+
+        if (starts > 1) {
+          return { [key]: { status: 'up' } };
+        }
+
+        return new Promise<TestHealthIndicatorResult>((resolve) => {
+          releaseProbe = () => {
+            resolve({ [key]: { status: 'up' } });
+          };
+        });
+      },
+    };
+
+    const timedOutReport = await runHealthCheck([indicator], { indicatorTimeoutMs: 5 });
+    const overlappingReport = await runHealthCheck([indicator], { indicatorTimeoutMs: 5 });
+
+    expect(starts).toBe(1);
+    expect(timedOutReport.error.database).toEqual({
+      message: 'Health indicator timed out after 5ms.',
+      status: 'down',
+    });
+    expect(overlappingReport.error.database).toEqual({
+      message: 'A previous health indicator probe is still running; Terminus will not start an overlapping probe for the same indicator instance.',
+      status: 'down',
+    });
+
+    releaseProbe?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const recoveredReport = await runHealthCheck([indicator], { indicatorTimeoutMs: 5 });
+
+    expect(starts).toBe(2);
+    expect(recoveredReport.info.database).toEqual({ status: 'up' });
+  });
+
   it('fails deterministically when a later indicator reuses an existing result key', async () => {
     const report = await runHealthCheck([
       {

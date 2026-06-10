@@ -131,7 +131,7 @@ function createPlatformDiagnosticCollisionKey(
   diagnosticKey: string,
   seenKeys: ReadonlySet<string>,
 ): string {
-  const baseKey = `${diagnosticKey}-duplicate-key-error`;
+  const baseKey = `${diagnosticKey}-user-key-collision`;
 
   if (!seenKeys.has(baseKey)) {
     return baseKey;
@@ -150,7 +150,7 @@ function createPlatformDiagnosticCollisionKey(
 
 function appendPlatformDiagnostic(
   entries: Record<string, HealthIndicatorState>,
-  existingKeys: ReadonlySet<string>,
+  collisionEntries: Record<string, HealthIndicatorState>,
   diagnosticKey: string,
   diagnostic: HealthIndicatorState | undefined,
 ): void {
@@ -158,19 +158,33 @@ function appendPlatformDiagnostic(
     return;
   }
 
-  if (!existingKeys.has(diagnosticKey) && !(diagnosticKey in entries)) {
-    entries[diagnosticKey] = diagnostic;
-    return;
+  if (diagnosticKey in collisionEntries) {
+    const collisionKey = createPlatformDiagnosticCollisionKey(diagnosticKey, new Set([
+      ...Object.keys(entries),
+      ...Object.keys(collisionEntries),
+    ]));
+    entries[collisionKey] = {
+      message: `User health result key "${diagnosticKey}" is reserved for Terminus platform diagnostics; the platform diagnostic remains available under the reserved key.`,
+      status: 'down',
+    };
   }
 
-  const collisionKey = createPlatformDiagnosticCollisionKey(diagnosticKey, new Set([
-    ...existingKeys,
-    ...Object.keys(entries),
-  ]));
-  entries[collisionKey] = {
-    message: `Platform diagnostic key "${diagnosticKey}" collided with an existing health result key.`,
-    status: 'down',
-  };
+  entries[diagnosticKey] = diagnostic;
+}
+
+function withoutKeys(
+  entries: Record<string, HealthIndicatorState>,
+  keys: ReadonlySet<string>,
+): Record<string, HealthIndicatorState> {
+  return Object.fromEntries(Object.entries(entries).filter(([key]) => !keys.has(key)));
+}
+
+function remapContributors(
+  contributors: readonly string[],
+  reservedKeys: ReadonlySet<string>,
+  platformDiagnosticKeys: readonly string[],
+): string[] {
+  return contributors.filter((key) => !reservedKeys.has(key) && !platformDiagnosticKeys.includes(key));
 }
 
 function withPlatformDiagnostics(
@@ -181,27 +195,37 @@ function withPlatformDiagnostics(
   const platformDiagnostics: Record<string, HealthIndicatorState> = {};
   const healthDiagnostic = createPlatformHealthDiagnostic(health);
   const readinessDiagnostic = createPlatformReadinessDiagnostic(readiness);
-  const existingKeys = new Set(Object.keys(report.details));
 
-  appendPlatformDiagnostic(platformDiagnostics, existingKeys, 'fluo-platform-health', healthDiagnostic);
-  appendPlatformDiagnostic(platformDiagnostics, existingKeys, 'fluo-platform-readiness', readinessDiagnostic);
+  appendPlatformDiagnostic(platformDiagnostics, report.details, 'fluo-platform-health', healthDiagnostic);
+  appendPlatformDiagnostic(platformDiagnostics, report.details, 'fluo-platform-readiness', readinessDiagnostic);
 
   const platformDiagnosticKeys = Object.keys(platformDiagnostics);
+  const platformReservedKeys = new Set([
+    ...(healthDiagnostic ? ['fluo-platform-health'] : []),
+    ...(readinessDiagnostic ? ['fluo-platform-readiness'] : []),
+  ]);
+  const reportDetails = withoutKeys(report.details, platformReservedKeys);
+  const reportInfo = withoutKeys(report.info, platformReservedKeys);
+  const reportError = withoutKeys(report.error, platformReservedKeys);
 
   return {
     ...report,
     contributors: {
-      down: [...report.contributors.down, ...platformDiagnosticKeys],
-      up: [...report.contributors.up],
+      down: [
+        ...remapContributors(report.contributors.down, platformReservedKeys, platformDiagnosticKeys),
+        ...platformDiagnosticKeys,
+      ],
+      up: remapContributors(report.contributors.up, platformReservedKeys, platformDiagnosticKeys),
     },
     details: {
-      ...report.details,
+      ...reportDetails,
       ...platformDiagnostics,
     },
     error: {
-      ...report.error,
+      ...reportError,
       ...platformDiagnostics,
     },
+    info: reportInfo,
     platform: {
       health,
       readiness,

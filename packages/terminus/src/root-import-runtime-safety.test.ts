@@ -5,6 +5,22 @@ const filesystemMockState = vi.hoisted(() => ({
 }));
 
 describe('@fluojs/terminus root import runtime safety', () => {
+  it('does not load the optional Redis peer from the root entrypoint', async () => {
+    vi.resetModules();
+    vi.doMock('@fluojs/redis', () => {
+      throw new Error('optional Redis peer should only load through @fluojs/terminus/redis');
+    });
+
+    try {
+      const terminus = await import('./index.js');
+
+      expect(terminus).toHaveProperty('TerminusModule');
+      expect(terminus).not.toHaveProperty('RedisHealthIndicator');
+    } finally {
+      vi.doUnmock('@fluojs/redis');
+    }
+  });
+
   it('does not load Node filesystem modules until disk checks run', async () => {
     vi.resetModules();
     vi.doMock('node:fs/promises', () => {

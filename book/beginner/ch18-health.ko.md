@@ -136,7 +136,7 @@ return report;
 ### 18.4.4 Disk Space and I/O Monitoring
 파일 업로드를 처리하거나 집중적인 로깅을 수행하는 애플리케이션에서 **디스크 공간**은 매우 중요한 리소스입니다. 디스크가 가득 차면 메모리 누수와 마찬가지로 애플리케이션이 충돌하거나 응답하지 않게 될 수 있습니다. Terminus는 최소 free bytes 또는 최소 free ratio 같은 여유 공간 임계값을 점검하는 Node disk indicator를 제공합니다. 이 신호를 사용하면 프로덕션 비상 사태가 발생하기 전에 임시 파일 정리나 스토리지 확장과 같은 조치를 취할 수 있습니다. I/O latency나 throughput 모니터링도 필요하다면, 이를 Terminus disk indicator 출력으로 간주하지 말고 metrics 또는 host observability stack에서 수집하세요.
 
-Node.js resource indicator는 의도적으로 `@fluojs/terminus/node`에서 import하고, Redis indicator는 `@fluojs/terminus/redis`에서 import합니다. 이 subpath들은 마이그레이션 경계를 명시합니다. Node memory/disk probe와 Redis lifecycle-aware probe는 root `@fluojs/terminus` import에 자동으로 딸려오는 추가 동작이 아니라 opt-in runtime-specific integration입니다.
+Node.js resource indicator는 `@fluojs/terminus/node`에서 import하는 것을 권장하고, Redis indicator는 `@fluojs/terminus/redis`에서 import합니다. Node memory/disk indicator는 호환성을 위해 root에서도 계속 export되지만, subpath는 마이그레이션 경계를 명확히 합니다. Node probe는 runtime-specific이고 Redis lifecycle-aware probe는 Redis subpath를 통한 opt-in이며, root `@fluojs/terminus` import는 선택적 Redis peer 없이도 안전하게 유지됩니다.
 
 FluoBlog에서는 이미지 업로드가 처리되는 `/tmp` 디렉토리와 메인 로그 디렉토리를 모니터링합니다. 이를 통해 스토리지 소진으로 인해 사용자 데이터나 중요한 로그 이벤트를 잃지 않도록 보장합니다. 리소스 레벨의 헬스와 서비스 레벨의 헬스를 통합하면 애플리케이션의 운영 상태에 대한 종합적인 360도 뷰를 확보할 수 있습니다.
 
@@ -167,7 +167,7 @@ export class WorkerHealthIndicator implements HealthIndicator {
 ```
 
 ### 18.5.1 Implementing Custom Logic
-커스텀 인디케이터는 복잡한 내부 상태를 모니터링할 수 있는 힘을 줍니다. 파일 시스템에 쓰기가 가능한지, 특정 설정 파일이 존재하는지, 혹은 라이선스 키가 여전히 유효한지 등을 확인할 수 있습니다. 이러한 로직을 헬스 인디케이터로 감싸면 Fluo의 통합 모니터링 프레임워크로 가져올 수 있으며, 전체 운영 스택에서 가시성을 확보할 수 있습니다. 이를 통해 커스텀 비즈니스 레벨의 헬스 상태가 데이터베이스나 네트워크 헬스와 동일한 자동화된 복구 및 알림 워크플로우를 트리거할 수 있게 됩니다.
+커스텀 인디케이터는 복잡한 내부 상태를 모니터링할 수 있는 힘을 줍니다. 파일 시스템에 쓰기가 가능한지, 특정 설정 파일이 존재하는지, 혹은 라이선스 키가 여전히 유효한지 등을 확인할 수 있습니다. 이러한 로직을 `TerminusModule.forRoot({ indicators })`를 통해 등록하면 별도의 controller-owned route를 만들지 않고도 Fluo의 runtime-owned `/health`와 `/ready` aggregation에 합류시킬 수 있습니다. 이를 통해 커스텀 비즈니스 레벨의 헬스 상태가 데이터베이스나 네트워크 헬스와 동일한 자동화된 복구 및 알림 워크플로우를 트리거할 수 있게 됩니다.
 
 ### 18.5.2 Aggregating Health Data
 복잡한 시스템에서는 수십 개의 서브 인디케이터가 있을 수 있습니다. Fluo는 이러한 인디케이터들을 "서브 헬스 체크"로 그룹화하거나 하나의 점수로 합산할 수 있게 해줍니다. 이는 서로 다른 팀이 시스템의 서로 다른 부분에 책임을 지는 대규모 엔터프라이즈 애플리케이션에서 특히 유용합니다. 각 팀은 자체 헬스 인디케이터를 제공하고, 메인 `HealthController`는 이를 모두 취합하여 전체 플랫폼 상태에 대한 종합적인 뷰를 제공할 수 있습니다.
@@ -178,7 +178,7 @@ export class WorkerHealthIndicator implements HealthIndicator {
 이러한 접근 방식은 보안이 개발 및 운영 워크플로우에 직접 통합되는 **DevSecOps** 철학에 부합합니다. "보안 헬스 체크"는 침해된 인스턴스의 자동 격리를 트리거하거나 보안 팀에 실시간 알림을 보낼 수 있습니다. Fluo의 확장 가능한 헬스 프레임워크를 활용하면 애플리케이션이 단순히 "작동 중"인지뿐 아니라 "안전하게 작동 중"인지도 운영 신호로 다룰 수 있습니다.
 
 ### 18.5.4 Testing Custom Health Indicators
-애플리케이션의 다른 부분과 마찬가지로, 커스텀 헬스 인디케이터도 테스트해야 합니다. Fluo의 DI 시스템을 사용하면 인디케이터의 의존성을 쉽게 모킹(mocking)하고 다양한 실패 시나리오에서 그 동작을 검증할 수 있습니다. 기반 리소스가 건강할 때 올바른 `HealthIndicatorResult`를 반환하는지, 그리고 비정상일 때 적절한 메타데이터와 함께 `HealthCheckError`를 던지는지 확인하는 유닛 테스트를 작성해야 합니다.
+애플리케이션의 다른 부분과 마찬가지로, 커스텀 헬스 인디케이터도 테스트해야 합니다. Fluo의 DI 시스템을 사용하면 인디케이터의 의존성을 쉽게 모킹(mocking)하고 다양한 실패 시나리오에서 그 동작을 검증할 수 있습니다. 기반 리소스가 건강할 때 올바른 `HealthIndicatorResult`를 반환하는지, 예상 가능한 비정상 상태에서는 `down` 결과를 반환하는지, 그리고 throwing이 더 명확한 실패 경로일 때 구조화된 `HealthCheckError` 원인이 보존되는지 확인하는 유닛 테스트를 작성해야 합니다.
 
 헬스 로직을 테스트하는 것은 매우 중요합니다. 왜냐하면 잘못된 헬스 인디케이터는 "거짓 긍정(False Positive, 실제 실패를 놓침)"이나 "거짓 부정(False Negative, 불필요한 재시작 유발)"을 초래할 수 있기 때문입니다. 헬스 인디케이터를 자동화된 테스트 스위트에 포함함으로써, 신뢰성 모니터링 시스템 자체가 신뢰할 수 있음을 보장하고 프로덕션 운영을 위한 견고한 토대를 마련할 수 있습니다.
 
