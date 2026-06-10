@@ -307,11 +307,18 @@ describe('enforceContractCompanionUpdates', () => {
 
     expect(() =>
       enforceContractCompanionUpdates([
+        'packages/mongoose/README.md',
+        'packages/mongoose/README.ko.md',
+        'docs/architecture/transactions.md',
+        'docs/architecture/transactions.ko.md',
         'docs/reference/package-surface.md',
         'docs/reference/package-surface.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
-        'packages/mongoose/src/public-api.test.ts',
+        'book/intermediate/ch19-mongoose.md',
+        'book/intermediate/ch19-mongoose.ko.md',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -486,19 +493,23 @@ describe('repository governance contracts', () => {
     const docsContextKo = readFileSync(resolve(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
     const transactionsDoc = readFileSync(resolve(repoRoot, 'docs/architecture/transactions.md'), 'utf8');
     const transactionsDocKo = readFileSync(resolve(repoRoot, 'docs/architecture/transactions.ko.md'), 'utf8');
+    const nestMigrationDoc = readFileSync(resolve(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+    const nestMigrationDocKo = readFileSync(resolve(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+    const mongooseBook = readFileSync(resolve(repoRoot, 'book/intermediate/ch19-mongoose.md'), 'utf8');
+    const mongooseBookKo = readFileSync(resolve(repoRoot, 'book/intermediate/ch19-mongoose.ko.md'), 'utf8');
     const packageSurface = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
     const packageSurfaceKo = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
     const mongooseReadme = readFileSync(resolve(repoRoot, 'packages/mongoose/README.md'), 'utf8');
     const mongooseReadmeKo = readFileSync(resolve(repoRoot, 'packages/mongoose/README.ko.md'), 'utf8');
 
-    for (const source of [docsContext, transactionsDoc, packageSurface, mongooseReadme]) {
+    for (const source of [docsContext, transactionsDoc, nestMigrationDoc, mongooseBook, packageSurface, mongooseReadme]) {
       expect(source).toContain('create`');
       expect(source).toContain('findOne`');
       expect(source).toContain('aggregate`');
       expect(source).toContain('bulkWrite`');
     }
 
-    for (const source of [docsContextKo, transactionsDocKo, packageSurfaceKo, mongooseReadmeKo]) {
+    for (const source of [docsContextKo, transactionsDocKo, nestMigrationDocKo, mongooseBookKo, packageSurfaceKo, mongooseReadmeKo]) {
       expect(source).toContain('create`');
       expect(source).toContain('findOne`');
       expect(source).toContain('aggregate`');
@@ -507,6 +518,26 @@ describe('repository governance contracts', () => {
 
     expect(transactionsDoc).toContain('Unsupported model methods, `doc.save()`');
     expect(transactionsDocKo).toContain('지원되지 않는 model 메서드, `doc.save()`');
+    expect(nestMigrationDoc).toContain('Mongoose transaction migration is also not an interceptor-for-interceptor replacement');
+    expect(nestMigrationDocKo).toContain('Mongoose transaction migration도 interceptor-for-interceptor 치환이 아니다');
+    for (const source of [docsContext, transactionsDoc, nestMigrationDoc, mongooseBook, packageSurface, mongooseReadme]) {
+      expect(source).toMatch(/concrete (?:Mongoose )?connection/u);
+      expect(source).toContain('fail-open');
+      expect(source).toContain('strictTransactions');
+    }
+    for (const source of [docsContextKo, transactionsDocKo, nestMigrationDocKo, mongooseBookKo, packageSurfaceKo, mongooseReadmeKo]) {
+      expect(source).toMatch(/concrete (?:Mongoose )?connection/u);
+      expect(source).toContain('fail-open');
+      expect(source).toContain('strictTransactions');
+    }
+    for (const source of [docsContext, transactionsDoc, mongooseBook, mongooseReadme]) {
+      expect(source).toContain('MongooseConnection.createPlatformStatusSnapshot()');
+      expect(source).toContain('createMongoosePlatformStatusSnapshot(...)');
+    }
+    for (const source of [docsContextKo, transactionsDocKo, mongooseBookKo, mongooseReadmeKo]) {
+      expect(source).toContain('MongooseConnection.createPlatformStatusSnapshot()');
+      expect(source).toContain('createMongoosePlatformStatusSnapshot(...)');
+    }
     expect(mongooseReadme).toContain('only merges the ambient `{ session }` into the correct options argument');
     expect(mongooseReadmeKo).toContain('올바른 options 인자에 ambient `{ session }`만 병합');
   });
