@@ -162,6 +162,8 @@ merge는 아래 조건을 모두 만족할 때만 고려한다.
 5. PR head branch, worktree, linked issue, base branch가 ledger와 현재 GitHub/repo 상태 모두에서 일치한다.
 6. ledger `pr_merge_method`가 `squash`이고 repository merge policy와 일치한다.
 
+`merge_policy: "developer-final"`은 `authority_scope.pr_merge=true`를 유지하더라도 자동 merge 권한이 아니다. 이 정책에서는 위 gate를 모두 통과한 뒤에도 사용자 또는 상위 harness의 명시 human-final approval 없이는 `gh pr merge`를 실행하지 않는다.
+
 금지:
 
 - `/pr-to-merge`의 `merge` verdict만 보고 checks/current PR state 재확인 없이 merge하지 않는다.

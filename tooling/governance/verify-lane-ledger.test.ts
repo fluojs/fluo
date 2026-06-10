@@ -42,4 +42,8 @@ describe('verify-lane-ledger merge authority governance', () => {
   it('rejects ledgers that do not lock PR merges to squash', () => {
     expect(runInvalidValidator('invalid-merge-method.json')).toContain('pr_merge_method must be squash');
   });
+
+  it('rejects ledgers that omit the PR merge method decision', () => {
+    expect(runInvalidValidator('invalid-missing-merge-method.json')).toContain('pr_merge_method must be squash');
+  });
 });

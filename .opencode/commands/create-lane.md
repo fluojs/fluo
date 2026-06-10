@@ -107,9 +107,11 @@ base branch 기본값은 `main`이다.
 
 ```json
 {
+  "version": 1,
+  "run_id": "lane-2026-06-01-runtime-a",
+  "status": "ready",
   "lane_id": "lane-2026-06-01-runtime-a",
   "created_by": "create-lane",
-  "schema_version": 1,
   "base_branch": "main",
   "source": {
     "type": "search-issue|existing-issues",
@@ -133,24 +135,21 @@ base branch 기본값은 `main`이다.
     {
       "name": "runtime",
       "queue": [123],
-      "current_issue": null,
+      "current_issue": 123,
       "status": "queued",
-      "items": [
-        {
-          "issue": 123,
-          "status": "queued",
-          "branch": null,
-          "worktree": null,
-          "pr": null,
-          "retry_count": 0,
-          "blocker_signatures": []
-        }
-      ]
+      "branch": null,
+      "worktree": null,
+      "pr": null,
+      "retry_count": 0
     }
   ],
   "dependency_graph": {},
   "release_handoffs": [],
   "completed_issues": [],
+  "root_main_sync": {
+    "status": "not-started",
+    "sha": null
+  },
   "execution": {
     "status": "not-started",
     "last_command": null,

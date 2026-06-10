@@ -151,6 +151,8 @@ PR마다 다음을 호출한다.
 5. current checks가 통과했고 stale/pending/skipped required check가 없다.
 6. worktree에 uncommitted change나 unpushed remediation commit이 없다.
 
+`merge_policy: "developer-final"`은 `authority_scope.pr_merge: true`를 유지하더라도 자동 merge 권한이 아니다. 이 정책에서는 위 gate를 모두 통과한 뒤에도 사용자 또는 상위 harness의 명시 human-final approval 없이는 `gh pr merge`를 실행하지 않는다.
+
 fluo repository의 PR merge method는 항상 **squash merge**이며, `create-lane` ledger에는 `pr_merge_method: "squash"`가 기록되어 있어야 한다.
 
 ```bash

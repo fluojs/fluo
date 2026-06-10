@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "run_id": "lane-test-invalid-missing-merge-method",
+  "status": "ready",
+  "created_by": "create-lane",
+  "base_branch": "main",
+  "source": {
+    "type": "issues",
+    "artifact": null
+  },
+  "merge_policy": "supervisor-auto",
+  "authority_scope": {
+    "issue_selection": false,
+    "issue_creation": false,
+    "pr_merge": true,
+    "publish_via_github_actions": false,
+    "cleanup_command_worktrees": false,
+    "root_main_sync_ff_only": false
+  },
+  "retry_policy": {
+    "retry_count_is_terminal": true,
+    "max_same_failure_repeats": 3,
+    "max_wall_clock_minutes": 180,
+    "stop_on_child_contract_error": true
+  },
+  "confirmed_issues": [1],
+  "lanes": [
+    {
+      "name": "runtime",
+      "queue": [1],
+      "current_issue": 1,
+      "status": "queued",
+      "branch": null,
+      "worktree": null,
+      "pr": null,
+      "retry_count": 0
+    }
+  ],
+  "dependency_graph": {},
+  "completed_issues": [],
+  "release_handoffs": [],
+  "root_main_sync": {
+    "status": "not-started",
+    "sha": null
+  }
+}
