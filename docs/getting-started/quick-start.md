@@ -104,7 +104,7 @@ my-fluo-app/
         └── greeting.slice.test.ts
 ```
 
-The tree above describes the default Node.js + Fastify application starter. Other shipped starter recipes deliberately differ: Deno omits the Node/Vite/Babel/Vitest config files and keeps a Deno-native `src/app.test.ts`; Cloudflare Workers uses `src/worker.ts` plus `wrangler.jsonc`; gRPC microservices add `proto/math.proto`; and microservice or mixed starters emit `src/math/*` transport handlers instead of the HTTP-only greeting tree alone.
+The tree above describes the default Node.js + Fastify application starter. The `vite.config.ts` artifact imports `fluoDecoratorsPlugin()` from `@fluojs/vite` for application-file decorator transforms, while `vitest.config.ts` imports `@fluojs/testing/vitest` so generated test files keep their testing-specific transform path. Other shipped starter recipes deliberately differ: Deno omits the Node/Vite/Babel/Vitest config files and keeps a Deno-native `src/app.test.ts`; Cloudflare Workers uses `src/worker.ts` plus `wrangler.jsonc`; gRPC microservices add `proto/math.proto`; and microservice or mixed starters emit `src/math/*` transport handlers instead of the HTTP-only greeting tree alone.
 
 Authoritative starter matrix: [fluo new support matrix](../reference/fluo-new-support-matrix.md).
 

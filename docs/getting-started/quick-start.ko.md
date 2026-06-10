@@ -104,7 +104,7 @@ my-fluo-app/
         └── greeting.slice.test.ts
 ```
 
-위 트리는 기본 Node.js + Fastify 애플리케이션 스타터 기준입니다. 다른 shipped starter recipe는 의도적으로 다릅니다. Deno는 Node/Vite/Babel/Vitest 설정 파일을 생성하지 않고 Deno-native `src/app.test.ts`를 유지하며, Cloudflare Workers는 `src/worker.ts`와 `wrangler.jsonc`를 사용하고, gRPC microservice는 `proto/math.proto`를 추가하며, microservice 또는 mixed starter는 HTTP 전용 greeting tree만이 아니라 `src/math/*` transport handler도 생성합니다.
+위 트리는 기본 Node.js + Fastify 애플리케이션 스타터 기준입니다. `vite.config.ts` artifact는 애플리케이션 파일 데코레이터 변환을 위해 `@fluojs/vite`의 `fluoDecoratorsPlugin()`을 import하고, `vitest.config.ts`는 생성된 테스트 파일이 testing-specific transform 경로를 유지하도록 `@fluojs/testing/vitest`를 import합니다. 다른 shipped starter recipe는 의도적으로 다릅니다. Deno는 Node/Vite/Babel/Vitest 설정 파일을 생성하지 않고 Deno-native `src/app.test.ts`를 유지하며, Cloudflare Workers는 `src/worker.ts`와 `wrangler.jsonc`를 사용하고, gRPC microservice는 `proto/math.proto`를 추가하며, microservice 또는 mixed starter는 HTTP 전용 greeting tree만이 아니라 `src/math/*` transport handler도 생성합니다.
 
 기준 스타터 매트릭스: [fluo new 지원 매트릭스](../reference/fluo-new-support-matrix.ko.md).
 

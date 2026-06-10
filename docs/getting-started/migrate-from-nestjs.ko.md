@@ -36,6 +36,7 @@
 - Drizzle transaction migration은 interceptor-for-interceptor 치환이 아니다. `@fluojs/drizzle`은 서비스 `@Transaction()`을 기본 경계로 사용하고, 드문 controller/request-wide 호환성 사례에만 명시적 `DrizzleDatabase.requestTransaction(...)`을 사용한다.
 - Drizzle `@Transaction()`은 `this.db`, 직접 host property, 중첩 `.db` property에서 대상을 추론할 수 있다. Drizzle client가 둘 이상인 서비스는 property discovery에 의존하지 말고 `@Transaction((self) => self.ordersDb)` 같은 명시적 accessor를 반드시 사용한다.
 - Drizzle은 등록된 handle에 `database.transaction(...)`이 없고 `strictTransactions`가 `false`이면 fail-open direct execution을 기본값으로 사용한다. rollback 보장이 필요한 production migration 흐름에서는 `strictTransactions: true`를 설정해, transaction 지원 누락이 원자성 없이 조용히 실행되지 않고 readiness 및 helper 호출 실패로 드러나게 한다.
+- Vite build transform과 Vitest test transform은 의도적으로 분리되어 있다. 생성된 non-Deno `vite.config.ts`는 애플리케이션 `.ts` 파일에 Babel `{ version: '2023-11' }` decorator transform을 적용하기 위해 `@fluojs/vite`를 사용하고, 생성된 `vitest.config.ts`는 테스트에 `@fluojs/testing/vitest`를 사용한다. 레거시 decorator compiler flag를 다시 켜거나 하나의 transform config가 build와 test 파일을 모두 소유한다고 가정하지 않는다.
 - NestJS testing migration은 암묵적 imports-array 치환이 아니다. `createTestingModule({ rootModule })`을 사용하고, `compile()` 전에 `overrideModule(OriginalModule, ReplacementModule)`을 호출하며, adapter, provider, filter, lifecycle option을 runtime bootstrap으로 전달해야 하는 virtual request HTTP 테스트에서는 `createTestApp({ rootModule, ...options })`를 사용한다.
 - `TestingModuleRef`는 assertion, provider resolution, dispatch helper를 위한 컴파일된 module context를 노출하고, `createTestApp(...)`은 자체 `close()` lifecycle을 가진 request-driven app facade를 반환한다. NestJS-style 공유 application instance 소유권에 의존하지 말고 각 HTTP 테스트 뒤에 반환된 test app을 닫아야 한다.
 - NestJS Terminus의 controller-level `@HealthCheck()` handler는 `TerminusModule.forRoot(...)` 기반 indicator 및 readiness registration으로 옮기는 것이 좋다. 직접 `TerminusHealthService.check()` 호출은 test나 custom code에서 사용할 수 있지만, 기본 endpoint registration API는 아니다.
@@ -51,6 +52,7 @@
 - `reflect-metadata`를 통한 리플렉션 기반 생성자 해석.
 - emit된 디자인 타임 타입에 기대는 암묵적 DI.
 - 프레임워크 요구 사항으로서의 레거시 데코레이터 컴파일러 모드.
+- 생성된 `@fluojs/vite` 애플리케이션 transform과 `@fluojs/testing/vitest` 테스트 transform을 하나의 파일 경계로 합치는 방식.
 - 문서화된 모든 플랫폼이 `fluo new`에 포함된다고 가정하는 방식. 스타터 범위는 별도 지원 매트릭스에서 정의된다.
 - `@nestjs/terminus` controller decorator나 별도 default liveness route가 Terminus의 일대일 마이그레이션 대상이라고 가정하는 방식.
 - `@nestjs/throttler`의 named definition, global guard registration, proxy header trust가 명시적인 Fluo wiring 없이 그대로 유지된다고 가정하는 방식.
