@@ -1,5 +1,6 @@
 import type { PlatformDiagnosticIssue, PlatformShellSnapshot, PlatformSnapshot } from '@fluojs/runtime';
 
+/** Selected Studio component neighborhood rendered by the static report inspector. */
 export interface ComponentConnectionSummary {
   component: PlatformSnapshot;
   diagnostics: PlatformDiagnosticIssue[];
@@ -54,8 +55,8 @@ export function renderDiagnosticDocsUrl(docsUrl: string): string {
   return `<p><strong>docs:</strong> <a href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer">${label}</a></p>`;
 }
 
-function collectExternalDependencies(components: PlatformSnapshot[]): string[] {
-  const componentIds = new Set(components.map((component) => component.id));
+function collectExternalDependencies(components: PlatformSnapshot[], componentCatalog: readonly PlatformSnapshot[] = components): string[] {
+  const componentIds = new Set(componentCatalog.map((component) => component.id));
   const externalDependencies: string[] = [];
   const seen = new Set<string>();
 
@@ -78,17 +79,20 @@ function collectExternalDependencies(components: PlatformSnapshot[]): string[] {
  *
  * @param snapshot - Filtered platform snapshot currently shown in the viewer.
  * @param selectedComponentId - Component id selected by the user, or `undefined` to select the first component.
+ * @param componentCatalog - Unfiltered component list used to distinguish hidden internal dependencies from external dependencies.
  * @returns The selected component plus incoming, outgoing, external, and diagnostic context.
  */
 export function inspectComponentConnections(
   snapshot: PlatformShellSnapshot | undefined,
   selectedComponentId: string | undefined,
+  componentCatalog: readonly PlatformSnapshot[] = snapshot?.components ?? [],
 ): ComponentConnectionSummary | undefined {
   if (!snapshot || snapshot.components.length === 0) {
     return undefined;
   }
 
-  const componentById = new Map(snapshot.components.map((component) => [component.id, component]));
+  const componentById = new Map(componentCatalog.map((component) => [component.id, component]));
+  const visibleComponentById = new Map(snapshot.components.map((component) => [component.id, component]));
   const component = selectedComponentId ? componentById.get(selectedComponentId) ?? snapshot.components[0] : snapshot.components[0];
 
   if (!component) {
@@ -101,13 +105,13 @@ export function inspectComponentConnections(
   for (const dependency of component.dependencies) {
     const dependencyComponent = componentById.get(dependency);
     if (dependencyComponent) {
-      outgoing.push(dependencyComponent);
+      outgoing.push(visibleComponentById.get(dependency) ?? dependencyComponent);
     } else {
       externalDependencies.push(dependency);
     }
   }
 
-  const incoming = snapshot.components.filter((candidate) => candidate.id !== component.id && candidate.dependencies.includes(component.id));
+  const incoming = componentCatalog.filter((candidate) => candidate.id !== component.id && candidate.dependencies.includes(component.id));
   const diagnostics = snapshot.diagnostics.filter(
     (issue) => issue.componentId === component.id || (issue.dependsOn?.includes(component.id) ?? false),
   );
@@ -121,12 +125,17 @@ export function inspectComponentConnections(
   };
 }
 
-function resolveNodePositions(snapshot: PlatformShellSnapshot, width: number, height: number): Map<string, { x: number; y: number }> {
+function resolveNodePositions(
+  snapshot: PlatformShellSnapshot,
+  width: number,
+  height: number,
+  componentCatalog: readonly PlatformSnapshot[] = snapshot.components,
+): Map<string, { x: number; y: number }> {
   const radius = Math.min(width, height) / 2 - 70;
   const centerX = width / 2;
   const centerY = height / 2;
   const positions = new Map<string, { x: number; y: number }>();
-  const externalDependencies = collectExternalDependencies(snapshot.components);
+  const externalDependencies = collectExternalDependencies(snapshot.components, componentCatalog);
   const nodeIds = [
     ...snapshot.components.map((component) => component.id),
     ...externalDependencies,
@@ -148,14 +157,19 @@ function resolveNodePositions(snapshot: PlatformShellSnapshot, width: number, he
  *
  * @param snapshot - Filtered platform snapshot currently shown in the viewer.
  * @param selectedComponentId - Optional selected component id to highlight.
+ * @param componentCatalog - Unfiltered component list used to keep hidden internal dependencies from rendering as external nodes.
  * @returns SVG markup for the browser graph panel.
  */
-export function renderGraphSvg(snapshot: PlatformShellSnapshot, selectedComponentId: string | undefined): string {
+export function renderGraphSvg(
+  snapshot: PlatformShellSnapshot,
+  selectedComponentId: string | undefined,
+  componentCatalog: readonly PlatformSnapshot[] = snapshot.components,
+): string {
   const width = 900;
   const height = 460;
   const components = snapshot.components;
-  const positions = resolveNodePositions(snapshot, width, height);
-  const externalDependencies = collectExternalDependencies(components);
+  const positions = resolveNodePositions(snapshot, width, height, componentCatalog);
+  const externalDependencies = collectExternalDependencies(components, componentCatalog);
   const selectedComponent = selectedComponentId ? components.find((component) => component.id === selectedComponentId) : undefined;
   const selectedDependencyIds = new Set(selectedComponent?.dependencies ?? []);
   const selectedIncomingIds = new Set(

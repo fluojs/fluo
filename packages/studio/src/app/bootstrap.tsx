@@ -1,11 +1,13 @@
 import { flushSync } from 'react-dom';
-import { createRoot } from 'react-dom/client';
+import { createRoot, type Root } from 'react-dom/client';
 import { App } from './App.js';
 
 /**
  * Provides bootstrap Studio App behavior for the Studio devtool.
+ *
+ * @returns The mounted React root so tests and embedding callers can unmount the viewer cleanly.
  */
-export function bootstrapStudioApp(): void {
+export function bootstrapStudioApp(): Root {
   const app = document.querySelector<HTMLDivElement>('#app');
 
   if (!app) {
@@ -16,4 +18,6 @@ export function bootstrapStudioApp(): void {
   flushSync(() => {
     root.render(<App />);
   });
+
+  return root;
 }

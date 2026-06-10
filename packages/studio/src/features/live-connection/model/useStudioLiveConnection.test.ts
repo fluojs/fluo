@@ -32,6 +32,16 @@ class FakeEventSource {
     this.closed = true;
   }
 
+  emit(type: string, event: StudioLiveEvent): void {
+    this.emitRaw(type, JSON.stringify(event));
+  }
+
+  emitRaw(type: string, data: string): void {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener(new MessageEvent(type, { data }));
+    }
+  }
+
   removeEventListener(type: string, listener: EventListener): void {
     this.listeners.get(type)?.delete(listener);
   }
@@ -56,6 +66,32 @@ function liveSnapshotEvent(): StudioLiveEvent {
     sequence: 1,
     source: { appId: 'app-test', runtime: 'node' },
     type: 'snapshot',
+    version: 1,
+  };
+}
+
+function liveRestartEvent(phase: 'started' | 'stopping'): StudioLiveEvent {
+  return {
+    emittedAt: '2026-05-28T00:00:03.000Z',
+    epoch: 'epoch-1',
+    eventId: `epoch-1:restart-${phase}`,
+    payload: { phase, reason: phase === 'started' ? 'restart complete' : 'source changed' },
+    sequence: phase === 'started' ? 3 : 2,
+    source: { appId: 'app-test', runtime: 'node' },
+    type: 'restart',
+    version: 1,
+  };
+}
+
+function liveDisconnectEvent(): StudioLiveEvent {
+  return {
+    emittedAt: '2026-05-28T00:00:04.000Z',
+    epoch: 'epoch-1',
+    eventId: 'epoch-1:disconnect',
+    payload: { reason: 'dev server closed' },
+    sequence: 4,
+    source: { appId: 'app-test', runtime: 'node' },
+    type: 'disconnect',
     version: 1,
   };
 }
@@ -115,6 +151,77 @@ describe('useStudioLiveConnection', () => {
 
     expect(FakeEventSource.instances).toHaveLength(0);
     expect(observedStates.some((state) => state.events.length > 0)).toBe(false);
+  });
+
+  it('reports the full live connection lifecycle state set', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('EventSource', FakeEventSource);
+    (window as typeof window & { __FLUO_STUDIO__?: { eventsUrl: string } }).__FLUO_STUDIO__ = {
+      eventsUrl: '/api/events?token=test-token',
+    };
+
+    const observedStatuses: StudioDashboardState['connection']['status'][] = [];
+    function Harness() {
+      const [state, dispatch] = useReducer(studioReducer, initialStudioState);
+      observedStatuses.push(state.connection.status);
+      useStudioLiveConnection(dispatch);
+      return createElement('output', null, state.connection.status);
+    }
+
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root: Root = createRoot(container);
+    root.render(createElement(Harness));
+
+    await vi.waitFor(() => {
+      expect(observedStatuses).toContain('connecting');
+      expect(FakeEventSource.instances).toHaveLength(1);
+    });
+
+    const source = FakeEventSource.instances[0];
+    source?.onopen?.(new Event('open'));
+    await vi.waitFor(() => {
+      expect(observedStatuses).toContain('connected');
+    });
+
+    vi.advanceTimersByTime(25_001);
+    await vi.waitFor(() => {
+      expect(observedStatuses).toContain('stale');
+    });
+
+    source?.onerror?.(new Event('error'));
+    await vi.waitFor(() => {
+      expect(observedStatuses).toContain('reconnecting');
+    });
+
+    source?.emit('restart', liveRestartEvent('stopping'));
+    await vi.waitFor(() => {
+      expect(observedStatuses).toContain('restarting');
+    });
+    source?.emit('restart', liveRestartEvent('started'));
+    await vi.waitFor(() => {
+      expect(observedStatuses.at(-1)).toBe('connected');
+    });
+    source?.emit('disconnect', liveDisconnectEvent());
+    await vi.waitFor(() => {
+      expect(observedStatuses).toContain('disconnected');
+    });
+    source?.emitRaw('message', '{"type":"not-a-studio-event"}');
+
+    await vi.waitFor(() => {
+      expect(observedStatuses).toEqual(expect.arrayContaining([
+        'static',
+        'connecting',
+        'connected',
+        'stale',
+        'reconnecting',
+        'restarting',
+        'disconnected',
+        'error',
+      ]));
+    });
+
+    root.unmount();
   });
 
   it('closes the event source, listeners, and stale timer on unmount', async () => {

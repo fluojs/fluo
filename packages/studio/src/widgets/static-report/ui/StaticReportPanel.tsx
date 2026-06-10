@@ -3,7 +3,7 @@ import type { PlatformSnapshot } from '@fluojs/runtime';
 import { renderMermaid } from '../../../contracts.js';
 import type { StudioAction } from '../../../entities/studio/actions.js';
 import type { StudioDashboardState } from '../../../entities/studio/model.js';
-import { selectSelectedStaticComponent, selectStaticSnapshot } from '../../../entities/studio/model.js';
+import { selectOriginalStaticSnapshot, selectSelectedStaticComponent, selectStaticSnapshot } from '../../../entities/studio/model.js';
 import { EmptyState } from '../../../shared/ui/EmptyState.js';
 import { inspectComponentConnections, renderDiagnostics, renderGraphSvg } from '../../../viewer-rendering.js';
 
@@ -59,7 +59,8 @@ function renderDetails(component: PlatformSnapshot | undefined) {
 }
 
 function ConnectionExplorer({ dispatch, selectedId, state }: StaticReportPanelProps & { selectedId?: string }) {
-  const summary = inspectComponentConnections(selectStaticSnapshot(state), selectedId);
+  const originalSnapshot = selectOriginalStaticSnapshot(state);
+  const summary = inspectComponentConnections(selectStaticSnapshot(state), selectedId, originalSnapshot?.components);
   if (!summary) {
     return <p className="muted">Load a platform snapshot to explore component connections.</p>;
   }
@@ -130,10 +131,11 @@ function ConnectionExplorer({ dispatch, selectedId, state }: StaticReportPanelPr
  */
 export function StaticReportPanel({ dispatch, state }: StaticReportPanelProps) {
   const snapshot = selectStaticSnapshot(state);
+  const originalSnapshot = selectOriginalStaticSnapshot(state);
   const selected = selectSelectedStaticComponent(state);
   const mermaidText = snapshot ? renderMermaid(snapshot) : '';
   const graphSvg = snapshot && snapshot.components.length > 0
-    ? renderGraphSvg(snapshot, selected?.id)
+    ? renderGraphSvg(snapshot, selected?.id, originalSnapshot?.components)
     : '<p class="muted">No platform components loaded.</p>';
 
   function selectComponentFromEvent(event: MouseEvent<HTMLDivElement> | KeyboardEvent<HTMLDivElement>): void {

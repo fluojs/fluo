@@ -75,6 +75,16 @@ export function selectStaticSnapshot(state: StudioDashboardState): PlatformShell
 }
 
 /**
+ * Provides select Original Static Snapshot behavior for the Studio devtool.
+ *
+ * @param state state value used by select Original Static Snapshot.
+ * @returns The unfiltered static snapshot, when one has been loaded.
+ */
+export function selectOriginalStaticSnapshot(state: StudioDashboardState): PlatformShellSnapshot | undefined {
+  return state.staticReport.payload?.snapshot;
+}
+
+/**
  * Provides select Static Timing behavior for the Studio devtool.
  *
  * @param state state value used by select Static Timing.
