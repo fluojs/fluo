@@ -135,7 +135,7 @@ await this.conn.transaction(async () => {
 });
 ```
 
-If the wrapped connection implements `connection.transaction(...)`, fluo treats that as the strict transaction boundary. Otherwise, when the connection does not implement `startSession()`, transactions fail open to direct callback execution by default (`strictTransactions: false`), which is useful for local fakes and staged migrations but provides no rollback atomicity. Set `strictTransactions: true` for production flows that require MongoDB transaction guarantees; missing transaction support then makes readiness `not-ready` and causes transaction helpers to throw.
+If the wrapped connection implements `connection.transaction(...)`, fluo treats that as the strict transaction boundary. Otherwise, when the connection does not implement `startSession()`, transactions use fail-open direct callback execution by default (`strictTransactions: false`), which is useful for local fakes and staged migrations but provides no rollback atomicity. Set `strictTransactions: true` for production flows that require MongoDB transaction guarantees; missing transaction support then makes readiness `not-ready` and causes transaction helpers to throw.
 
 For supported facade methods, fluo preserves existing Mongoose operation options and only merges the ambient `{ session }` into the correct options argument. If a model call passes an explicit `{ session: null }` or a different session object inside an ambient transaction, fluo throws a session conflict error to prevent accidental transaction escapes.
 
