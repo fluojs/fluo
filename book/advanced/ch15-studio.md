@@ -8,6 +8,7 @@ This chapter covers the Studio ecosystem, which turns runtime-produced Module Gr
 ## Learning Objectives
 
 - Understand the role `@fluojs/studio` plays in architecture diagnostics and observability.
+- Use `fluo dev --studio` as the Node dev-runner live sidecar workflow and `fluo inspect` as the static/report fallback workflow.
 - Generate runtime snapshots, reports, Mermaid diagrams, and timing payloads through `fluo inspect`.
 - Distinguish raw JSON output, `--report` artifacts, `--output` files, and `--timing` diagnostics.
 - Learn what the `PlatformShellSnapshot` and `PlatformDiagnosticIssue` contracts contain at a learning level.
@@ -25,19 +26,20 @@ This chapter covers the Studio ecosystem, which turns runtime-produced Module Gr
 
 As an application grows, its dependency graph becomes too complex to keep in your head. Circular dependencies, scope mismatches, provider resolution failures, and slow bootstrap phases become harder to trace with terminal logs alone. In a microservice architecture, this complexity multiplies across many independent services, and each service has its own internal Module Graph.
 
-`@fluojs/studio` is fluo's diagnostic layer for managing that complexity. It receives inspect artifacts as files, validates their structure, and turns them into views that teams can review together. In other words, it exposes the DI container's "black box" as a structure you can inspect instead of guessing about it.
+`@fluojs/studio` is fluo's diagnostic layer for managing that complexity. In live development it is launched by the CLI as a local sidecar/viewer workflow; in static workflows it receives inspect artifacts as files, validates their structure, and turns them into views that teams can review together. In other words, it exposes the DI container's "black box" as a structure you can inspect instead of guessing about it.
 
-Studio focuses on static and bootstrap-time architecture. It helps you ask "why did this fail to start?" before you ask "why is this request slow?" Because inspect data comes from an inspection-safe bootstrap, teams can review graph shape, readiness, diagnostics, and timing before the application starts serving traffic.
+Studio focuses on local development diagnostics plus static and bootstrap-time architecture evidence. The live MVP targets the Node dev-runner, while Bun, Deno, and Cloudflare Workers users keep the inspect/static artifact path until dedicated live bridges exist. That lets teams ask "why did this fail to start?" before they ask "why is this request slow?" and still keep reproducible evidence for CI and support.
 
 ## 15.2 The Studio Ecosystem
 
-As defined in `packages/studio/README.md`, the inspection and Studio flow is made of three main layers.
+As defined in `packages/studio/README.md`, the inspection and Studio flow is made of four main layers.
 
 1. **Snapshot producer**: The fluo Runtime and platform shell compile the Module Graph and produce `PlatformShellSnapshot` data during inspection-safe bootstrap.
-2. **CLI exporter/delegator**: The `fluo inspect` command serializes runtime-produced data as JSON, wraps it as a report when requested, writes it to artifact paths through `--output`, and delegates Mermaid rendering to Studio when `--mermaid` is requested.
-3. **Studio contract and viewer**: The `@fluojs/studio` root export, `@fluojs/studio/contracts` subpath, and `@fluojs/studio/viewer` entrypoint own snapshot parsing, filtering, graph rendering, and browser viewing.
+2. **CLI sidecar/exporter/delegator**: `fluo dev --studio` starts the Node dev-runner with a token-protected local sidecar, while `fluo inspect` serializes runtime-produced data as JSON, wraps it as a report when requested, writes it to artifact paths through `--output`, and delegates Mermaid rendering to Studio when `--mermaid` is requested.
+3. **Studio contract surface**: The `@fluojs/studio` root export and `@fluojs/studio/contracts` subpath own snapshot parsing, filtering, Mermaid graph rendering, live event validation, and the exported types used by tooling.
+4. **Studio viewer**: The `@fluojs/studio/viewer` entrypoint exposes the packaged React browser viewer for live sidecar sessions and static inspect artifacts.
 
-This split matters. Runtime produces truth. The CLI chooses an artifact shape. Studio owns the viewer and Mermaid rendering semantics. The CLI does not duplicate graph rendering logic, and Studio does not need to bootstrap the application itself.
+This split matters. Runtime produces truth. The CLI owns the sidecar and chooses an artifact shape. Studio owns the viewer, public contracts, and Mermaid rendering semantics. The CLI does not duplicate graph rendering logic, and Studio does not need to bootstrap the application itself.
 
 ## 15.3 Generating Inspect Artifacts with `fluo inspect`
 
@@ -75,13 +77,13 @@ Use `--mermaid` when you need a text diagram for documentation or review.
 fluo inspect ./src/app.module.ts --mermaid --output artifacts/module-graph.mmd
 ```
 
-Mermaid rendering is delegated to `@fluojs/studio` through the `renderMermaid(snapshot)` contract. Install Studio in the project that runs the command when you need this output.
+Mermaid rendering is delegated to `@fluojs/studio` through the `renderMermaid(snapshot)` contract. Install Studio as a development-only dependency in the project that runs CLI Studio/viewer commands when you need this output.
 
 ```bash
 pnpm add -D @fluojs/studio
 ```
 
-In non-interactive runs, a missing Studio dependency fails fast with install guidance. Interactive runs may ask for confirmation, but `fluo inspect` does not silently install packages.
+Use a normal dependency instead only when a published package or runtime automation imports `@fluojs/studio` or `@fluojs/studio/contracts` at runtime. In non-interactive runs, a missing Studio dependency fails fast with install guidance. Interactive runs may ask for confirmation, but `fluo inspect` does not silently install packages.
 
 ## 15.4 Understanding the Snapshot and Report Shapes
 
@@ -130,7 +132,7 @@ A report does not replace the raw snapshot. It packages the snapshot with the ex
 
 ## 15.5 Using the Studio Viewer
 
-Studio Viewer is a standalone web application. Installed-package users can resolve the packaged static HTML entry and open it in a browser.
+Studio Viewer is a standalone web application. Installed-package users usually keep it as a development dependency, resolve the packaged static HTML entry, and open it in a browser.
 
 ```bash
 pnpm add -D @fluojs/studio
@@ -227,7 +229,9 @@ This approach catches architecture regressions before they reach production. It 
 
 ### Live Studio
 
-The current Studio workflow has two supported paths. `fluo dev --studio` opens a runtime-connected local devtool that consumes sidecar events for snapshots, request traces, timing, diagnostics, restart/disconnect lifecycle, and heartbeats. Static inspect artifacts remain the compatibility path for CI, support tickets, and reviews.
+The current Studio workflow has two supported paths. `fluo dev --studio` opens a runtime-connected local devtool that consumes sidecar events for snapshots, request traces, timing, diagnostics, restart/disconnect lifecycle, and heartbeats. The live MVP is intentionally scoped to the Node dev-runner because the CLI can inject explicit Studio runtime config into the Node app child before `@fluojs/runtime` is imported.
+
+Bun, Deno, and Cloudflare Workers are migration/static users for this MVP. Until dedicated bridges are implemented and verified, non-Node projects should generate `fluo inspect` JSON, timing, report, or Mermaid artifacts and open them with the packaged Studio viewer instead of expecting live sidecar streams.
 
 Live Studio does not remove the need for inspect artifacts. Teams still need reproducible evidence for CI, support, and governance. File-first reports provide that evidence, while the live devtool gives developers immediate feedback while the app is running.
 
