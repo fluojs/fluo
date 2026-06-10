@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { createServer } from 'node:http';
+
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { startStudioSidecar, type StudioSidecar } from './sidecar.js';
 
@@ -106,6 +108,30 @@ describe('Studio sidecar', () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({ error: 'Unauthorized Studio sidecar request.' });
+  });
+
+  it('does not start heartbeat timers when the sidecar fails to listen', async () => {
+    const occupiedServer = createServer((_request, response) => {
+      response.end('occupied');
+    });
+    await new Promise<void>((resolve, reject) => {
+      occupiedServer.once('error', reject);
+      occupiedServer.listen(0, '127.0.0.1', () => resolve());
+    });
+    const address = occupiedServer.address();
+    if (!address || typeof address === 'string') {
+      await new Promise<void>((resolve, reject) => occupiedServer.close((error) => error ? reject(error) : resolve()));
+      throw new Error('Failed to allocate occupied test port.');
+    }
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+
+    try {
+      await expect(startStudioSidecar({ appId: 'test-app', heartbeatMs: 1, port: address.port, runtime: 'node' })).rejects.toMatchObject({ code: 'EADDRINUSE' });
+      expect(setIntervalSpy).not.toHaveBeenCalled();
+    } finally {
+      setIntervalSpy.mockRestore();
+      await new Promise<void>((resolve, reject) => occupiedServer.close((error) => error ? reject(error) : resolve()));
+    }
   });
 
   it('moves to a new app epoch when restart lifecycle events arrive', async () => {
