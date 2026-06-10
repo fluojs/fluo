@@ -10,6 +10,7 @@ This chapter explains how to integrate Drizzle for relational data and SQL-cente
 - Outline `DrizzleModule` configuration and driver resource lifecycle management.
 - Build a repository flow that uses `DrizzleDatabaseFacade` for direct Drizzle query methods.
 - Compare service transactions with explicit `requestTransaction(...)` boundaries.
+- Decide when fail-open fallback is acceptable and when `strictTransactions` should be enabled.
 - Review an approach to designing a relational schema for FluoShop order management.
 - Define operational standards for checking SQL connection status with status snapshots.
 
@@ -58,6 +59,7 @@ import { Pool } from 'pg';
 
         return {
           database: drizzle(pool),
+          strictTransactions: true,
           dispose: async () => {
             await pool.end(); // Graceful shutdown
           },
@@ -68,6 +70,8 @@ import { Pool } from 'pg';
 })
 export class PersistenceModule {}
 ```
+
+`strictTransactions: true` is recommended for FluoShop's production order service because checkout needs rollback guarantees. If the registered Drizzle handle does not expose `database.transaction(...)` and `strictTransactions` is left at its default `false`, fluo fails open: `transaction(...)` and `requestTransaction(...)` run the callback directly against the root handle. That keeps local fakes and migration scaffolds usable, but it is not atomic and should not be treated as a real transaction.
 
 ## 20.4 Repositories and Connection Management
 
@@ -100,6 +104,41 @@ export class ProductRepository {
 
 Drizzle transaction management can be handled through fluo's integration interface. Repository code does not need to manage transaction handles directly, so services can focus on the atomicity of the business operation.
 
+Use service-level `@Transaction()` as the primary boundary:
+
+```typescript
+import { Transaction } from '@fluojs/drizzle';
+
+export class CheckoutService {
+  constructor(private readonly orders: OrderRepository) {}
+
+  @Transaction()
+  async placeOrder(input: PlaceOrderInput) {
+    const order = await this.orders.create(input);
+    await this.orders.reserveInventory(order.id);
+    return order;
+  }
+}
+```
+
+Without an accessor, Drizzle `@Transaction()` looks for a transaction target on the decorated host by checking `this.db`, then direct properties, then nested `.db` properties that expose `transaction(...)`. That heuristic matches small services, but a service with multiple Drizzle clients should choose explicitly:
+
+```typescript
+class ReportingService {
+  constructor(
+    private readonly ordersDb: DrizzleDatabase<OrderDatabase>,
+    private readonly analyticsDb: DrizzleDatabase<AnalyticsDatabase>,
+  ) {}
+
+  @Transaction((self) => self.analyticsDb)
+  async rebuildAnalytics() {
+    // Uses analyticsDb even though another Drizzle wrapper is also present.
+  }
+}
+```
+
+If you are migrating a NestJS controller/interceptor transaction pattern, do not look for a Drizzle transaction interceptor. Keep normal business atomicity on services. Use `requestTransaction(...)` at the controller or request orchestration boundary only when the whole request must share one transaction, and pass the request `AbortSignal` when your adapter exposes one.
+
 ### Manual Transactions
 In fluo, the recommended way to handle transactions is using the `@Transaction()` decorator on service methods. For manual control, use the block pattern:
 
@@ -111,6 +150,15 @@ await this.db.transaction(async () => {
     .set({ stock: newStock })
     .where(eq(inventory.productId, pid));
 });
+```
+
+Use `requestTransaction(...)` for request-wide compatibility instead of a NestJS-style interceptor:
+
+```typescript
+return this.db.requestTransaction(
+  () => this.checkout.placeOrder(input),
+  request.signal,
+);
 ```
 
 ## 20.6 FluoShop Context: Relational Schema

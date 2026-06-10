@@ -13,6 +13,7 @@ Node.js-only Drizzle ORM integration for fluo with a transaction-aware database 
 - [Common Patterns](#common-patterns)
   - [Service Transaction Boundary (@Transaction)](#service-transaction-boundary-transaction)
   - [Manual Transactions and current()](#manual-transactions-and-current)
+  - [Request-Wide Controller Boundaries](#request-wide-controller-boundaries)
   - [Shutdown and Status Contracts](#shutdown-and-status-contracts)
 - [Manual Module Composition](#manual-module-composition)
 - [Public API Overview](#public-api-overview)
@@ -111,6 +112,8 @@ export class UserRepository {
 
 Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying Drizzle transaction.
 
+By default, `@Transaction()` selects its target with a small host-object heuristic: it first checks `this.db`, then direct properties on the decorated instance, then a nested `.db` property on those values, and uses the first value that exposes a `transaction(...)` method. This keeps common `constructor(private readonly db: DrizzleDatabase<...>)` services concise, but services with more than one Drizzle wrapper should not rely on property order. Pass an explicit accessor such as `@Transaction((self) => self.ordersDb)` or `@Transaction((self) => self.analyticsDb, options)` whenever the decorated host owns multiple transaction-capable clients or wraps a repository that also exposes `.db`.
+
 ### Manual Transactions and current()
 
 The `DrizzleDatabase` provides a `current()` method that returns the active transaction handle if inside a transaction scope, or the root handle otherwise. Use this as an escape hatch when you need to pass the handle to external utilities or perform advanced manual transaction plumbing.
@@ -147,7 +150,37 @@ await this.db.transaction(async () => {
 
 Nested calls reuse the active transaction boundary. If a nested call passes transaction options while a boundary is already active, the package rejects those nested options instead of silently changing the existing transaction.
 
-When `database.transaction(...)` is unavailable and `strictTransactions` is `false`, `transaction()` and `requestTransaction()` fall back to direct execution; request-scoped calls still honor `AbortSignal`.
+When `database.transaction(...)` is unavailable and `strictTransactions` is `false` (the default), `transaction()` and `requestTransaction()` intentionally fail open (fail-open fallback) by running the callback directly against the root handle. This is useful for local fakes, read-only adapters, or gradual migrations, but it is not atomic and should not be treated as a real database transaction. Set `strictTransactions: true` in production paths that require rollback guarantees; startup and readiness diagnostics then surface missing `database.transaction(...)` support and transaction helpers throw instead of silently running without a transaction. Request-scoped fallback still honors `AbortSignal`, so a cancelled request can stop before or during direct execution even though no Drizzle transaction runner exists.
+
+### Request-Wide Controller Boundaries
+
+Prefer service-level `@Transaction()` for business operations. If you are migrating a NestJS controller/interceptor pattern where an entire request must be transactional, call `requestTransaction(...)` explicitly at the controller, route adapter, or request orchestration boundary and pass the request `AbortSignal` when one is available:
+
+```ts
+import { Controller, Post } from '@fluojs/http';
+import { DrizzleDatabase } from '@fluojs/drizzle';
+import { drizzle } from 'drizzle-orm/node-postgres';
+
+type AppDatabase = ReturnType<typeof drizzle>;
+
+@Controller('/checkout')
+export class CheckoutController {
+  constructor(
+    private readonly db: DrizzleDatabase<AppDatabase>,
+    private readonly checkout: CheckoutService,
+  ) {}
+
+  @Post()
+  create(input: CheckoutInput, requestSignal?: AbortSignal) {
+    return this.db.requestTransaction(
+      () => this.checkout.createOrder(input),
+      requestSignal,
+    );
+  }
+}
+```
+
+There is no Drizzle `*TransactionInterceptor` export to import. Existing NestJS interceptor designs should move most transaction boundaries to services and reserve explicit `requestTransaction(...)` for rare controller-level compatibility cases where all request work, not just a service method, must share the same boundary.
 
 ### Shutdown and status contracts
 
@@ -200,7 +233,7 @@ defineModule(ManualDrizzleModule, {
 
 Use `DrizzleDatabase<TDatabase>` when a provider only needs wrapper methods such as `current()`, `transaction(...)`, `requestTransaction(...)`, or `createPlatformStatusSnapshot()`. Use `DrizzleDatabaseFacade<TDatabase>` for repository injections that call Drizzle query methods directly; the facade forwards those calls to the active transaction handle when one exists and to the root handle otherwise. `DrizzleDatabase.createFacade(...)` is retained as a low-level compatibility helper for module-provider wiring; application code should prefer `DrizzleModule.forRoot(...)` / `forRootAsync(...)`.
 
-`Transaction` is a standard TC39 method decorator for service-layer transaction boundaries. It resolves the ambient `DrizzleDatabase` by default, accepts an accessor for explicit client selection, and can forward Drizzle transaction options to the outer boundary.
+`Transaction` is a standard TC39 method decorator for service-layer transaction boundaries. It resolves a transaction-capable target from the decorated host by checking `this.db`, then direct properties, then nested `.db` properties, accepts an accessor for explicit client selection, and can forward Drizzle transaction options to the outer boundary.
 
 ### `DrizzleModule`
 
