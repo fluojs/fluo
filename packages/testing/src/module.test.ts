@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
-import { Controller, Get, Post, type RequestContext } from '@fluojs/http';
-import type { Dispatcher, Middleware, RequestObserver } from '@fluojs/http';
+import { getModuleMetadata, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
+import { Controller, Get, Post, Version, VersioningType, type RequestContext } from '@fluojs/http';
+import type { Dispatcher, Interceptor, Middleware, RequestObserver } from '@fluojs/http';
+import type { ExceptionFilterHandler } from '@fluojs/runtime';
 
 import {
   createTestApp,
@@ -901,7 +902,7 @@ describe('createTestApp', () => {
     await app.close();
   });
 
-  it('forwards provider and observer bootstrap options to the runtime app', async () => {
+  it('forwards provider, observer, interceptor, and versioning bootstrap options to the runtime app', async () => {
     const MESSAGE_TOKEN = Symbol('message-token');
     const observerEvents: string[] = [];
     const observer: RequestObserver = {
@@ -912,14 +913,29 @@ describe('createTestApp', () => {
         observerEvents.push('success');
       },
     };
+    const interceptor: Interceptor = {
+      async intercept(_context, next) {
+        observerEvents.push('interceptor');
+        const result = await next.handle();
+
+        return { wrapped: result };
+      },
+    };
 
     @Inject(MESSAGE_TOKEN)
     @Controller('/bootstrap-options')
     class BootstrapOptionsController {
       constructor(private readonly message: string) {}
 
+      @Version('1')
       @Get('/')
-      read() {
+      readV1() {
+        return { message: 'v1' };
+      }
+
+      @Version('2')
+      @Get('/')
+      readV2() {
         return { message: this.message };
       }
     }
@@ -929,15 +945,55 @@ describe('createTestApp', () => {
 
     const app = await createTestApp({
       rootModule: BootstrapOptionsModule,
+      interceptors: [interceptor],
       observers: [observer],
       providers: [{ provide: MESSAGE_TOKEN, useValue: 'forwarded-provider' }],
+      versioning: { header: 'x-api-version', type: VersioningType.HEADER },
     });
 
-    const response = await app.request('GET', '/bootstrap-options').send();
+    const response = await app.request('GET', '/bootstrap-options').header('x-api-version', '2').send();
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ message: 'forwarded-provider' });
-    expect(observerEvents).toEqual(['start', 'success']);
+    expect(response.body).toEqual({ wrapped: { message: 'forwarded-provider' } });
+    expect(observerEvents).toEqual(['start', 'interceptor', 'success']);
+
+    await app.close();
+  });
+
+  it('forwards global exception filters to the runtime app', async () => {
+    const caughtErrors: unknown[] = [];
+
+    @Controller('/filtered')
+    class FilteredController {
+      @Get('/boom')
+      boom() {
+        throw new Error('handled by filter');
+      }
+    }
+
+    @Module({ controllers: [FilteredController] })
+    class FilteredModule {}
+
+    const filter: ExceptionFilterHandler = {
+      async catch(error, context) {
+        caughtErrors.push(error);
+        context.response.setStatus(418);
+        await context.response.send({ handled: true });
+
+        return true;
+      },
+    };
+
+    const app = await createTestApp({
+      rootModule: FilteredModule,
+      filters: [filter],
+    });
+
+    const response = await app.request('GET', '/filtered/boom').send();
+
+    expect(response.status).toBe(418);
+    expect(response.body).toEqual({ handled: true });
+    expect(caughtErrors).toHaveLength(1);
 
     await app.close();
   });
@@ -1247,19 +1303,28 @@ describe('overrideModule', () => {
     @Module({ imports: [FeatureModule] })
     class RootModule {}
 
+    const beforeFeatureMetadata = getModuleMetadata(FeatureModule);
+    const beforeRootMetadata = getModuleMetadata(RootModule);
+
     const testingModule = await createTestingModule({ rootModule: RootModule })
       .overrideModule(RealModule, FakeModule)
       .compile();
 
     const moduleTypes = testingModule.modules.map((compiledModule) => compiledModule.type);
     const featureModule = testingModule.modules.find((compiledModule) => compiledModule.type === FeatureModule);
+    const realModule = testingModule.modules.find((compiledModule) => compiledModule.type === RealModule);
     const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
 
     expect(testingModule.rootModule).toBe(RootModule);
     expect(moduleTypes).toContain(FeatureModule);
+    expect(moduleTypes).toContain(RealModule);
+    expect(moduleTypes).not.toContain(FakeModule);
     expect(moduleTypes).not.toContainEqual(expect.objectContaining({ name: 'PatchedModule' }));
-    expect(featureModule?.definition.imports).toEqual([FakeModule]);
+    expect(featureModule?.definition.imports).toEqual([RealModule]);
+    expect(realModule?.definition.providers).toEqual([{ provide: RealService, useClass: FakeService }]);
     expect(extractModuleImports(FeatureModule)).toEqual([RealModule]);
+    expect(getModuleMetadata(FeatureModule)).toBe(beforeFeatureMetadata);
+    expect(getModuleMetadata(RootModule)).toBe(beforeRootMetadata);
     expect(consumer.dep.value()).toBe('fake');
   });
 
@@ -1287,6 +1352,8 @@ describe('overrideModule', () => {
     @Module({ imports: [FeatureModule] })
     class RootModule {}
 
+    const beforeFeatureMetadata = getModuleMetadata(FeatureModule);
+
     await expect(
       createTestingModule({ rootModule: RootModule })
         .overrideModule(RealModule, InvalidFakeModule)
@@ -1294,11 +1361,37 @@ describe('overrideModule', () => {
     ).rejects.toThrow(/cannot export token/);
 
     expect(extractModuleImports(FeatureModule)).toEqual([RealModule]);
+    expect(getModuleMetadata(FeatureModule)).toBe(beforeFeatureMetadata);
 
     const testingModule = await createTestingModule({ rootModule: RootModule }).compile();
     const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
 
     expect(consumer.dep.value()).toBe('real');
+  });
+
+  it('validates cycles introduced by replacement metadata without mutating source metadata', async () => {
+    @Module({})
+    class RealModule {}
+
+    @Module({ imports: [RealModule] })
+    class FeatureModule {}
+
+    @Module({ imports: [FeatureModule] })
+    class FakeModule {}
+
+    @Module({ imports: [FeatureModule] })
+    class RootModule {}
+
+    const beforeFeatureMetadata = getModuleMetadata(FeatureModule);
+
+    await expect(
+      createTestingModule({ rootModule: RootModule })
+        .overrideModule(RealModule, FakeModule)
+        .compile(),
+    ).rejects.toThrow(/Circular module import detected for FeatureModule/);
+
+    expect(extractModuleImports(FeatureModule)).toEqual([RealModule]);
+    expect(getModuleMetadata(FeatureModule)).toBe(beforeFeatureMetadata);
   });
 });
 

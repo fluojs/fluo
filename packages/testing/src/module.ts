@@ -10,13 +10,27 @@ import {
   type Provider,
   Scope,
 } from '@fluojs/di';
-import type { BootstrapResult, ModuleDefinition, ModuleType } from '@fluojs/runtime';
-import { bootstrapModule, defineModule } from '@fluojs/runtime';
+import type {
+  BootstrapModuleOptions,
+  BootstrapResult,
+  ModuleType,
+} from '@fluojs/runtime';
+import { bootstrapModule } from '@fluojs/runtime';
 
 import { createDispatcher, createHandlerMapping } from '@fluojs/http';
 import type { Guard, HandlerSource, Interceptor } from '@fluojs/http';
 import { createTestRequestContextMiddleware, makeRequest, type TestRequestWithOptions } from './http.js';
 import type { OverrideProviderBuilder, TestingModuleBuilder, TestingModuleOptions, TestingModuleRef } from './types.js';
+
+type ModuleReplacementMap = ReadonlyMap<ModuleType, ModuleType>;
+
+interface BootstrapModuleOptionsWithReplacements extends BootstrapModuleOptions {
+  moduleReplacements?: ModuleReplacementMap;
+}
+
+interface TestingModuleOptionsWithReplacements extends TestingModuleOptions {
+  moduleReplacements?: ModuleReplacementMap;
+}
 
 /**
  * Returns providers declared on a module metadata definition.
@@ -651,9 +665,8 @@ class DefaultOverrideProviderBuilder<T> implements OverrideProviderBuilder<T> {
 class DefaultTestingModuleBuilder implements TestingModuleBuilder {
   private readonly overrides: Provider[] = [];
   private readonly moduleReplacements = new Map<ModuleType, ModuleType>();
-  private readonly originalModuleDefinitions = new Map<ModuleType, ModuleDefinition>();
 
-  constructor(private readonly options: TestingModuleOptions) {}
+  constructor(private readonly options: TestingModuleOptionsWithReplacements) {}
 
   addOverride(provider: Provider): void {
     this.overrides.push(provider);
@@ -713,7 +726,7 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
   }
 
   private bootstrapTestingModule(): BootstrapResult {
-    const bootstrapped = this.bootstrapWithPatchedModuleImports();
+    const bootstrapped = this.bootstrapWithModuleReplacements();
 
     if (this.overrides.length > 0) {
       bootstrapped.container.override(...this.overrides);
@@ -722,16 +735,8 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
     return bootstrapped;
   }
 
-  private bootstrapWithPatchedModuleImports(): BootstrapResult {
-    try {
-      const rootModule = this._applyModuleReplacements(this.options.rootModule);
-
-      return bootstrapModule(rootModule, {
-        providers: this.options.providers,
-      });
-    } finally {
-      this.restorePatchedModuleImports();
-    }
+  private bootstrapWithModuleReplacements(): BootstrapResult {
+    return bootstrapModule(this.options.rootModule, this.createBootstrapModuleOptions());
   }
 
   private createTestingModuleRef(bootstrapped: BootstrapResult, syncResolver: SyncResolver): TestingModuleRef {
@@ -778,56 +783,31 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
     };
   }
 
-  private _applyModuleReplacements(module: ModuleType): ModuleType {
-    if (this.moduleReplacements.size === 0) {
-      return module;
-    }
+  private createBootstrapModuleOptions(): BootstrapModuleOptionsWithReplacements {
+    const moduleReplacements = this.createModuleReplacements();
 
-    const replacement = this.moduleReplacements.get(module);
-    if (replacement) {
-      return replacement;
-    }
-
-    const metadata = getModuleMetadata(module);
-    if (!metadata?.imports || metadata.imports.length === 0) {
-      return module;
-    }
-
-    const rewrittenImports = this.rewriteModuleImports(metadata.imports as ModuleType[]);
-    const hasChange = rewrittenImports.some(
-      (imp, i) => imp !== (metadata.imports as ModuleType[])[i],
-    );
-
-    if (!hasChange) {
-      return module;
-    }
-
-    this.patchModuleImports(module, metadata as ModuleDefinition, rewrittenImports);
-
-    return module;
+    return {
+      duplicateProviderPolicy: this.options.duplicateProviderPolicy,
+      logger: this.options.logger,
+      moduleGraphCache: this.options.moduleGraphCache,
+      moduleReplacements,
+      providers: this.options.providers,
+      validationTokens: this.options.validationTokens,
+    };
   }
 
-  private rewriteModuleImports(imports: ModuleType[]): ModuleType[] {
-    return imports.map((moduleImport) => this._applyModuleReplacements(moduleImport));
-  }
-
-  private patchModuleImports(module: ModuleType, metadata: ModuleDefinition, imports: ModuleType[]): void {
-    if (!this.originalModuleDefinitions.has(module)) {
-      this.originalModuleDefinitions.set(module, metadata);
+  private createModuleReplacements(): ModuleReplacementMap | undefined {
+    if (!this.options.moduleReplacements && this.moduleReplacements.size === 0) {
+      return undefined;
     }
 
-    defineModule(module, {
-      ...metadata,
-      imports,
-    });
-  }
+    const moduleReplacements = new Map<ModuleType, ModuleType>(this.options.moduleReplacements);
 
-  private restorePatchedModuleImports(): void {
-    for (const [module, metadata] of this.originalModuleDefinitions) {
-      defineModule(module, metadata);
+    for (const [moduleType, replacement] of this.moduleReplacements) {
+      moduleReplacements.set(moduleType, replacement);
     }
 
-    this.originalModuleDefinitions.clear();
+    return moduleReplacements;
   }
 }
 

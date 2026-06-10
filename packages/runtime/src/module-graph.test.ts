@@ -4,7 +4,11 @@ import { Inject } from '@fluojs/core';
 import { forwardRef, optional } from '@fluojs/di';
 import type { MiddlewareRouteConfig } from '@fluojs/http';
 
-import { defineRuntimeClassDiMetadata, defineRuntimeModuleMetadata } from './internal/core-metadata.js';
+import {
+  defineRuntimeClassDiMetadata,
+  defineRuntimeModuleMetadata,
+  getRuntimeModuleMetadata,
+} from './internal/core-metadata.js';
 import {
   clearModuleGraphCompileCacheForTesting,
   compileModuleGraph,
@@ -45,6 +49,28 @@ describe('module graph cache-key prerequisites', () => {
 
     const firstKey = createModuleGraphCacheKey(AppModule, { validationTokens: [FIRST_TOKEN] });
     const secondKey = createModuleGraphCacheKey(AppModule, { validationTokens: [SECOND_TOKEN] });
+
+    expect(secondKey).not.toBe(firstKey);
+  });
+
+  it('changes when module replacements change', () => {
+    class RealModule {}
+    class FirstReplacementModule {}
+    class SecondReplacementModule {}
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      imports: [RealModule],
+    });
+    defineRuntimeModuleMetadata(RealModule, {});
+    defineRuntimeModuleMetadata(FirstReplacementModule, {});
+    defineRuntimeModuleMetadata(SecondReplacementModule, {});
+
+    const firstKey = createModuleGraphCacheKey(AppModule, {
+      moduleReplacements: new Map([[RealModule, FirstReplacementModule]]),
+    });
+    const secondKey = createModuleGraphCacheKey(AppModule, {
+      moduleReplacements: new Map([[RealModule, SecondReplacementModule]]),
+    });
 
     expect(secondKey).not.toBe(firstKey);
   });
@@ -273,5 +299,127 @@ describe('module graph cache-key prerequisites', () => {
 
     expect(getModuleGraphCompileCacheSizeForTesting()).toBe(1);
     expect(compileModuleGraph(AppModule)[0]?.providerTokens.has(Logger)).toBe(true);
+  });
+
+  it('compiles replacement metadata under the original logical module identity', () => {
+    class RealService {
+      value() {
+        return 'real';
+      }
+    }
+
+    class FakeService {
+      value() {
+        return 'fake';
+      }
+    }
+
+    class RealModule {}
+    class FakeModule {}
+    class FeatureModule {}
+    class AppModule {}
+
+    defineRuntimeModuleMetadata(RealModule, {
+      providers: [RealService],
+      exports: [RealService],
+    });
+    defineRuntimeModuleMetadata(FakeModule, {
+      providers: [{ provide: RealService, useClass: FakeService }],
+      exports: [RealService],
+    });
+    defineRuntimeModuleMetadata(FeatureModule, {
+      imports: [RealModule],
+    });
+    defineRuntimeModuleMetadata(AppModule, {
+      imports: [FeatureModule],
+    });
+
+    const modules = compileModuleGraph(AppModule, {
+      moduleReplacements: new Map([[RealModule, FakeModule]]),
+    });
+    const moduleTypes = modules.map((compiledModule) => compiledModule.type);
+    const featureModule = modules.find((compiledModule) => compiledModule.type === FeatureModule);
+    const realModule = modules.find((compiledModule) => compiledModule.type === RealModule);
+
+    expect(moduleTypes).toContain(RealModule);
+    expect(moduleTypes).not.toContain(FakeModule);
+    expect(featureModule?.definition.imports).toEqual([RealModule]);
+    expect(realModule?.definition.providers).toEqual([{ provide: RealService, useClass: FakeService }]);
+    expect(realModule?.providerTokens.has(RealService)).toBe(true);
+  });
+
+  it('does not mutate module metadata while applying replacements', () => {
+    class RealService {}
+    class FakeService {}
+    class RealModule {}
+    class FakeModule {}
+    class FeatureModule {}
+    class AppModule {}
+
+    defineRuntimeModuleMetadata(RealModule, {
+      providers: [RealService],
+      exports: [RealService],
+    });
+    defineRuntimeModuleMetadata(FakeModule, {
+      providers: [{ provide: RealService, useClass: FakeService }],
+      exports: [RealService],
+    });
+    defineRuntimeModuleMetadata(FeatureModule, {
+      imports: [RealModule],
+    });
+    defineRuntimeModuleMetadata(AppModule, {
+      imports: [FeatureModule],
+    });
+
+    compileModuleGraph(AppModule, {
+      moduleReplacements: new Map([[RealModule, FakeModule]]),
+    });
+
+    expect(getRuntimeModuleMetadata(RealModule).providers).toEqual([RealService]);
+    expect(getRuntimeModuleMetadata(FeatureModule).imports).toEqual([RealModule]);
+    expect(getRuntimeModuleMetadata(AppModule).imports).toEqual([FeatureModule]);
+  });
+
+  it('validates replacement cycles before compiling replacement metadata', () => {
+    class FirstModule {}
+    class SecondModule {}
+    class AppModule {}
+    defineRuntimeModuleMetadata(FirstModule, {});
+    defineRuntimeModuleMetadata(SecondModule, {});
+    defineRuntimeModuleMetadata(AppModule, {
+      imports: [FirstModule],
+    });
+
+    expect(() =>
+      compileModuleGraph(AppModule, {
+        moduleReplacements: new Map([
+          [FirstModule, SecondModule],
+          [SecondModule, FirstModule],
+        ]),
+      }),
+    ).toThrow('Circular module replacement detected: FirstModule -> SecondModule -> FirstModule.');
+  });
+
+  it('validates import cycles introduced by replacement metadata under logical identities', () => {
+    class RealModule {}
+    class FakeModule {}
+    class FeatureModule {}
+    class AppModule {}
+    defineRuntimeModuleMetadata(RealModule, {});
+    defineRuntimeModuleMetadata(FakeModule, {
+      imports: [FeatureModule],
+    });
+    defineRuntimeModuleMetadata(FeatureModule, {
+      imports: [RealModule],
+    });
+    defineRuntimeModuleMetadata(AppModule, {
+      imports: [FeatureModule],
+    });
+
+    expect(() =>
+      compileModuleGraph(AppModule, {
+        moduleReplacements: new Map([[RealModule, FakeModule]]),
+      }),
+    ).toThrow('Circular module import detected for FeatureModule.');
   });
 });

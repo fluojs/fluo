@@ -153,7 +153,8 @@ class UsersModule {}
 - Runtime-connected Studio instrumentation is activated only by explicit CLI-injected Studio config, never by direct `process.env` reads inside runtime package source. Without valid config and tokenized endpoint, runtime bootstrap is a no-op for Studio, including non-Node runtimes.
 - Studio request traces omit request/response bodies, cookies, and full headers; the trace `url` is sanitized to path-only form before publish so query tokens and fragments are not retained in local Studio event history.
 - Platform component snapshots are runtime-owned contract payloads: each component reports `readiness`, `health`, dependency ids, telemetry tags, diagnostic issues, and resource ownership through `ownership.ownsResources` / `ownership.externallyManaged`. Runtime preserves those ownership flags in shell snapshots so adapters and package integrations can distinguish resources fluo must stop from externally managed resources the host owns.
-- Module graph compile-result caching is opt-in through `moduleGraphCache: true`; it keys entries by root module identity, runtime providers, validation tokens, core metadata versions, and the compile algorithm version, caches only successful compilations, and returns isolated graph copies so caller mutations cannot poison later bootstraps.
+- Module graph compile-result caching is opt-in through `moduleGraphCache: true`; it keys entries by root module identity, runtime providers, validation tokens, module replacement pairs, core metadata versions, and the compile algorithm version, caches only successful compilations, and returns isolated graph copies so caller mutations cannot poison later bootstraps.
+- `moduleReplacements` is a low-level testing seam on `bootstrapModule(...)` / `BootstrapModuleOptions`. It compiles replacement module metadata while preserving the original logical module identity, rejects replacement cycles through the normal module graph validation path, and does not mutate source module metadata.
 
 ## Public API Overview
 
@@ -167,7 +168,7 @@ class UsersModule {}
 - `ReadinessCheck`: Function type used by runtime health modules. Checks receive the `/ready` request context and return a boolean or promise.
 - `defineModule(cls, metadata)`: Programmatic module definition helper.
 - `bootstrapApplication(options)`: Lower-level async bootstrap function.
-- `bootstrapModule(...)`: Lower-level module graph bootstrap helper.
+- `bootstrapModule(...)`: Lower-level module graph bootstrap helper. Its `BootstrapModuleOptions` include `moduleGraphCache` for opt-in compile-result caching and `moduleReplacements` / `ModuleReplacementMap` for testing-only module replacement compilation that keeps authored module identities stable.
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: Runtime-owned diagnostics snapshot helpers for CLI/support tooling. They produce machine-readable data; Studio owns viewer parsing, graph presentation, and Mermaid rendering.
 - `PlatformShell`, `PlatformComponent`, `PlatformShellSnapshot`, `PlatformSnapshot`, `PlatformDiagnosticIssue`, and related platform report types: Public lifecycle diagnostics and resource-ownership contracts used by runtime-aware packages. `RuntimePlatformShell` preserves component-provided ownership and emits validation/readiness/health diagnostics without requiring consumers to import internal runtime tokens.
 - `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: Request abort and active transaction helpers used by runtime-aware integrations.

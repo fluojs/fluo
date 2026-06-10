@@ -16,6 +16,8 @@
 - 패키지 선택기: [`reference/package-chooser.ko.md`](./reference/package-chooser.ko.md)
 - Behavioral contract: [`contracts/behavioral-contract-policy.ko.md`](./contracts/behavioral-contract-policy.ko.md)
 - 테스트 가이드: [`contracts/testing-guide.ko.md`](./contracts/testing-guide.ko.md)
+- Testing package 계약: [`../packages/testing/README.ko.md`](../packages/testing/README.ko.md)
+- Testing 학습 경로: [`../book/beginner/ch20-testing.ko.md`](../book/beginner/ch20-testing.ko.md)
 
 웹사이트는 거버넌스가 적용되는 패키지나 런타임 사실을 요약할 때 source of truth를 중복하지 말고 이 정식 파일로 연결해야 합니다.
 

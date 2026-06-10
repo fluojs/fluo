@@ -153,7 +153,8 @@ class UsersModule {}
 - Runtime-connected Studio instrumentation은 명시적인 CLI 주입 Studio config로만 활성화되며 runtime package source에서 `process.env`를 직접 읽지 않습니다. 유효한 config와 tokenized endpoint가 없으면 non-Node 런타임을 포함해 Studio 관점의 runtime bootstrap은 no-op입니다.
 - Studio request trace는 request/response body, cookie, 전체 header를 제외합니다. Trace `url`은 publish 전에 path-only 형태로 sanitize되어 query token과 fragment가 local Studio event history에 남지 않습니다.
 - 플랫폼 component snapshot은 런타임 소유 계약 payload입니다. 각 component는 `readiness`, `health`, dependency id, telemetry tag, diagnostic issue, 그리고 `ownership.ownsResources` / `ownership.externallyManaged`를 통해 리소스 소유권을 보고합니다. Runtime은 shell snapshot에서 이 ownership flag를 보존하므로 adapter와 package integration이 fluo가 종료해야 하는 리소스와 host가 소유한 외부 관리 리소스를 구분할 수 있습니다.
-- 모듈 그래프 컴파일 결과 캐시는 `moduleGraphCache: true`를 통한 opt-in입니다. 캐시 항목은 root module identity, runtime provider, validation token, core metadata version, compile algorithm version으로 식별되며, 성공한 컴파일만 저장하고 호출자 mutation이 이후 bootstrap을 오염시키지 않도록 격리된 그래프 복사본을 반환합니다.
+- 모듈 그래프 컴파일 결과 캐시는 `moduleGraphCache: true`를 통한 opt-in입니다. 캐시 항목은 root module identity, runtime provider, validation token, module replacement pair, core metadata version, compile algorithm version으로 식별되며, 성공한 컴파일만 저장하고 호출자 mutation이 이후 bootstrap을 오염시키지 않도록 격리된 그래프 복사본을 반환합니다.
+- `moduleReplacements`는 `bootstrapModule(...)` / `BootstrapModuleOptions`의 저수준 testing seam입니다. 원래 logical module identity를 보존하면서 replacement module metadata로 컴파일하고, replacement cycle은 일반 module graph validation 경로에서 거부하며, source module metadata를 mutate하지 않습니다.
 
 ## 공개 API 개요
 
@@ -167,7 +168,7 @@ class UsersModule {}
 - `ReadinessCheck`: runtime health module이 사용하는 function type입니다. Check는 `/ready` request context를 받고 boolean 또는 promise를 반환합니다.
 - `defineModule(cls, metadata)`: 프로그래밍 방식의 모듈 정의 헬퍼입니다.
 - `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다.
-- `bootstrapModule(...)`: 저수준 module graph bootstrap helper입니다.
+- `bootstrapModule(...)`: 저수준 module graph bootstrap helper입니다. `BootstrapModuleOptions`에는 opt-in compile-result cache를 위한 `moduleGraphCache`와 authored module identity를 안정적으로 유지하는 testing-only module replacement compilation을 위한 `moduleReplacements` / `ModuleReplacementMap`이 포함됩니다.
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: CLI/support tooling을 위한 runtime 소유 diagnostics snapshot helper입니다. 이 helper들은 기계 읽기 가능한 데이터를 생산하며, Studio가 viewer parsing, graph presentation, Mermaid rendering을 소유합니다.
 - `PlatformShell`, `PlatformComponent`, `PlatformShellSnapshot`, `PlatformSnapshot`, `PlatformDiagnosticIssue` 및 관련 platform report 타입: runtime-aware package가 사용하는 공개 lifecycle diagnostics 및 resource-ownership 계약입니다. `RuntimePlatformShell`은 component가 제공한 ownership을 보존하고, consumer가 internal runtime token을 import하지 않아도 validation/readiness/health diagnostics를 내보냅니다.
 - `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: runtime-aware integration이 사용하는 request abort 및 active transaction helper입니다.

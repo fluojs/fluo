@@ -13,6 +13,7 @@ import * as portability from './portability/http-adapter-portability.js';
 import * as webPortability from './portability/web-runtime-adapter-portability.js';
 import * as conformance from './conformance/platform-conformance.js';
 import * as fetchStyleWebsocket from './conformance/fetch-style-websocket-conformance.js';
+import * as vitestEntry from './vitest.js';
 import * as vitestTooling from './vitest/tooling.js';
 
 const packageRoot = new URL('..', import.meta.url);
@@ -89,6 +90,7 @@ describe('@fluojs/testing surface', () => {
     expect(portability.createHttpAdapterPortabilityHarness).toBeTypeOf('function');
     expect(webPortability.createWebRuntimeHttpAdapterPortabilityHarness).toBeTypeOf('function');
     expect(fetchStyleWebsocket.createFetchStyleWebSocketConformanceHarness).toBeTypeOf('function');
+    expect(vitestEntry.fluoBabelDecoratorsPlugin).toBeTypeOf('function');
     expect(vitestTooling.collectWorkspaceAliases).toBeTypeOf('function');
     expect(vitestTooling.createFluoVitestWorkspaceConfig).toBeTypeOf('function');
     expect(vitestTooling.defineFluoVitestConfig).toBeTypeOf('function');
@@ -116,6 +118,10 @@ describe('@fluojs/testing surface', () => {
     expect(packageJson.exports['./fetch-style-websocket-conformance']).toEqual({
       types: './dist/conformance/fetch-style-websocket-conformance.d.ts',
       import: './dist/conformance/fetch-style-websocket-conformance.js',
+    });
+    expect(packageJson.exports['./vitest']).toEqual({
+      types: './dist/vitest.d.ts',
+      import: './dist/vitest.js',
     });
     expect(packageJson.exports['./vitest/tooling']).toEqual({
       types: './dist/vitest/tooling.d.ts',

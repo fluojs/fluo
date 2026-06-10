@@ -22,6 +22,8 @@ This three-volume series is the official learning path for learning fluo step by
 
 This book teaches the core fluo model while building **FluoBlog**. It covers Modules, Providers, Controllers, TC39 Standard Decorators, routing, DTO validation, serialization, exception handling, Guards, Interceptors, OpenAPI, configuration management, Prisma, transactions, authentication, throttling, caching, health checks, metrics, and testing.
 
+The testing chapter covers the canonical `@fluojs/testing` path: `@fluojs/testing/vitest` decorator transforms, `createTestingModule({ rootModule })` slice tests with isolated module/provider overrides, and `createTestApp({ rootModule })` request-pipeline tests that forward runtime bootstrap options.
+
 ### [fluo for Intermediate Users](./intermediate/toc.md)
 
 This book develops **FluoShop** into a distributed application. It covers microservice architecture, TCP, Redis, RabbitMQ, Kafka, NATS, MQTT, gRPC, domain events, CQRS, sagas, queues, scheduling, distributed locks, WebSockets, Socket.IO, notifications, email, Slack and Discord integrations, GraphQL, Mongoose, Drizzle, and runtime portability across adapters.

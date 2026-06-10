@@ -11,7 +11,13 @@ import {
 } from './internal/core-metadata.js';
 
 import { ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
-import type { BootstrapModuleOptions, CompiledModule, ModuleDefinition, ModuleType } from './types.js';
+import type {
+  BootstrapModuleOptions,
+  CompiledModule,
+  ModuleDefinition,
+  ModuleReplacementMap,
+  ModuleType,
+} from './types.js';
 
 /**
  * Returns the public token represented by a provider declaration.
@@ -41,6 +47,7 @@ const symbolTokenIds = new Map<symbol, number>();
 let nextTokenId = 0;
 const MODULE_GRAPH_COMPILE_ALGORITHM_VERSION = 1;
 const moduleGraphCompileCache = new Map<string, readonly CompiledModule[]>();
+const EMPTY_MODULE_REPLACEMENTS: ModuleReplacementMap = new Map<ModuleType, ModuleType>();
 
 /** Clears the process-local module graph compile cache for isolated regression tests. */
 export function clearModuleGraphCompileCacheForTesting(): void {
@@ -134,6 +141,17 @@ function describeProviderForCacheKey(provider: Provider): string {
   return `useValue:${provide}:${multi}`;
 }
 
+function describeModuleReplacementsForCacheKey(moduleReplacements: ModuleReplacementMap | undefined): string {
+  if (!moduleReplacements || moduleReplacements.size === 0) {
+    return '';
+  }
+
+  return [...moduleReplacements]
+    .map(([moduleType, replacement]) => `${describeTokenForCacheKey(moduleType)}>${describeTokenForCacheKey(replacement)}`)
+    .sort()
+    .join('|');
+}
+
 /**
  * Builds the key used for opt-in module graph compile caching.
  *
@@ -144,6 +162,7 @@ function describeProviderForCacheKey(provider: Provider): string {
 export function createModuleGraphCacheKey(rootModule: ModuleType, options: BootstrapModuleOptions = {}): string {
   const runtimeProviders = (options.providers ?? []).map(describeProviderForCacheKey).join('|');
   const validationTokens = (options.validationTokens ?? []).map(describeTokenForCacheKey).join('|');
+  const moduleReplacements = describeModuleReplacementsForCacheKey(options.moduleReplacements);
 
   return [
     `root:${describeTokenForCacheKey(rootModule)}`,
@@ -152,6 +171,7 @@ export function createModuleGraphCacheKey(rootModule: ModuleType, options: Boots
     `algorithm:${MODULE_GRAPH_COMPILE_ALGORITHM_VERSION}`,
     `runtime:${runtimeProviders}`,
     `validation:${validationTokens}`,
+    `replacements:${moduleReplacements}`,
   ].join(';');
 }
 
@@ -533,9 +553,43 @@ function normalizeModuleDefinition(rawDefinition: ReturnType<typeof getRuntimeMo
   };
 }
 
+function formatModulePath(modules: readonly ModuleType[]): string {
+  return modules.map((moduleType) => moduleType.name || '<anonymous>').join(' -> ');
+}
+
+function resolveReplacementMetadataSource(
+  moduleType: ModuleType,
+  moduleReplacements: ModuleReplacementMap,
+  path: ModuleType[] = [],
+): ModuleType {
+  const replacement = moduleReplacements.get(moduleType);
+
+  if (!replacement) {
+    return moduleType;
+  }
+
+  const cycleStart = path.indexOf(moduleType);
+
+  if (cycleStart !== -1) {
+    const cycle = [...path.slice(cycleStart), moduleType];
+
+    throw new ModuleGraphError(
+      `Circular module replacement detected: ${formatModulePath(cycle)}.`,
+      {
+        module: moduleType.name,
+        phase: 'module replacement validation',
+        hint: 'Remove the replacement cycle so each logical module resolves to one concrete module metadata source.',
+      },
+    );
+  }
+
+  return resolveReplacementMetadataSource(replacement, moduleReplacements, [...path, moduleType]);
+}
+
 function compileModule(
   moduleType: ModuleType,
   runtimeProviderTokens: Set<Token>,
+  moduleReplacements: ModuleReplacementMap,
   compiled = new Map<ModuleType, CompiledModule>(),
   visiting = new Set<ModuleType>(),
   ordered: CompiledModule[] = [],
@@ -561,10 +615,11 @@ function compileModule(
 
   visiting.add(moduleType);
 
-  const definition = normalizeModuleDefinition(getRuntimeModuleMetadata(moduleType));
+  const metadataSource = resolveReplacementMetadataSource(moduleType, moduleReplacements);
+  const definition = normalizeModuleDefinition(getRuntimeModuleMetadata(metadataSource));
 
   for (const imported of definition.imports ?? []) {
-    compileModule(imported, runtimeProviderTokens, compiled, visiting, ordered);
+    compileModule(imported, runtimeProviderTokens, moduleReplacements, compiled, visiting, ordered);
   }
 
   const providerTokens = new Set((definition.providers ?? []).map((provider) => providerToken(provider)));
@@ -791,8 +846,9 @@ export function compileModuleGraph(rootModule: ModuleType, options: BootstrapMod
   const ordered: CompiledModule[] = [];
   const runtimeProviders = options.providers ?? [];
   const runtimeProviderTokens = mergeRuntimeTokenSets(runtimeProviders, options.validationTokens ?? []);
+  const moduleReplacements = options.moduleReplacements ?? EMPTY_MODULE_REPLACEMENTS;
 
-  compileModule(rootModule, runtimeProviderTokens, new Map(), new Set(), ordered);
+  compileModule(rootModule, runtimeProviderTokens, moduleReplacements, new Map(), new Set(), ordered);
   validateCompiledModules(ordered, runtimeProviders, runtimeProviderTokens);
 
   if (cacheKey !== undefined) {

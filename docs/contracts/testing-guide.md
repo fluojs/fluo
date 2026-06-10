@@ -46,6 +46,10 @@ Keep manual `FrameworkRequest`/`FrameworkResponse` stubs, `makeRequest(...)`, ra
 
 `createTestApp(...)` follows the runtime HTTP bootstrap option surface for request-facing tests. When callers pass app-level middleware, the testing helper adds its request-context middleware without dropping the caller middleware chain.
 
+`overrideModule(source, replacement)` is a test-only module graph rewrite. It must not mutate the source module's decorator metadata, and the compiled testing module must keep the original `rootModule` and `modules[].type` identities for diagnostics and graph assertions while resolving providers from the replacement module definition.
+
+`@fluojs/testing/vitest` is the supported Vitest entrypoint for `fluoBabelDecoratorsPlugin()`. Keep it in package export-map and build-surface checks whenever testing package exports change.
+
 ## Commands
 
 | Command | Use |

@@ -216,6 +216,8 @@ const module = await createTestingModule({ rootModule: PostTestModule })
 ### 20.4.4 Dynamic Module Overrides
 Sometimes you need to replace an entire Module, not just a single Provider. Fluo's testing framework lets you replace imported Modules with test versions. This is especially useful when testing external integration Modules such as `MailModule` or `StripeModule`, where you want to replace the whole Provider set with a consistent set of mocks or fakes for tests.
 
+`overrideModule(source, replacement)` keeps the compiled testing graph recognizable. Provider resolution uses the replacement module definition, but `module.rootModule`, `module.modules[].type`, and the original module metadata still point to the modules you authored. This isolation means one test can replace `StripeModule` without leaving patched imports behind for later tests or for diagnostics that inspect the original module graph.
+
 ## 20.5 E2E-Style HTTP Testing with createTestApp
 `createTestApp` is an E2E-style HTTP test surface that runs the real HTTP pipeline, including request dispatch, Guards, Interceptors, DTO validation, and response writing. It does not open a real network socket, but it verifies the request handling stack itself in the same way as the production path.
 
