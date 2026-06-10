@@ -46,16 +46,6 @@ type MongooseModelFactoryConnection = MongooseConnectionLike & {
   model?(name: string, ...args: unknown[]): MongooseModelLike;
 };
 
-type MongooseModelFacadeOwner = {
-  currentSession(): MongooseSessionLike | undefined;
-};
-
-type MongooseModelFacadeRegistry = {
-  facadeModel: MongooseModelFactoryConnection['model'];
-  originalModel: MongooseModelFactoryConnection['model'];
-  owners: Set<MongooseModelFacadeOwner>;
-};
-
 const MODEL_OPERATIONS_WITH_OPTIONS = new Set<PropertyKey>(['aggregate', 'bulkWrite', 'create', 'find', 'findOne']);
 const MODEL_OPERATIONS_WITH_PROJECTION = new Set<PropertyKey>(['find', 'findOne']);
 const MONGOOSE_CREATE_OPTION_KEYS = new Set<PropertyKey>([
@@ -73,9 +63,6 @@ const MONGOOSE_CREATE_OPTION_KEYS = new Set<PropertyKey>([
   'writeConcern',
   'wtimeout',
 ]);
-const modelFacadeRegistries = new WeakMap<object, MongooseModelFacadeRegistry>();
-const modelFacadeOwnerStorage = new AsyncLocalStorage<readonly MongooseModelFacadeOwner[]>();
-
 function hasExplicitSessionOption(value: unknown): boolean {
   return value !== null && typeof value === 'object' && 'session' in value;
 }
@@ -179,113 +166,14 @@ function createAmbientSessionModelFacade<TModel extends MongooseModelLike>(model
   });
 }
 
-function runWithModelFacadeOwner<T>(owner: MongooseModelFacadeOwner, fn: () => T): T {
-  const owners = modelFacadeOwnerStorage.getStore() ?? [];
-
-  return modelFacadeOwnerStorage.run([...owners, owner], fn);
-}
-
-function findAmbientSession(connection: object): MongooseSessionLike | undefined {
-  const registry = modelFacadeRegistries.get(connection);
-  if (!registry) {
-    return undefined;
-  }
-
-  const activeOwners = modelFacadeOwnerStorage.getStore();
-  if (activeOwners) {
-    for (let index = activeOwners.length - 1; index >= 0; index -= 1) {
-      const owner = activeOwners[index];
-      if (!registry.owners.has(owner)) {
-        continue;
-      }
-
-      const session = owner.currentSession();
-      if (session) {
-        return session;
-      }
-    }
-  }
-
-  let ambientSession: MongooseSessionLike | undefined;
-  for (const owner of registry.owners) {
-    const session = owner.currentSession();
-    if (session) {
-      ambientSession = session;
-    }
-  }
-
-  return ambientSession;
-}
-
-function installModelFacade(owner: MongooseModelFacadeOwner, connection: MongooseConnectionLike): () => void {
-  if (!isObjectLike(connection)) {
-    return () => undefined;
-  }
-
-  const modelConnection = connection as MongooseModelFactoryConnection;
-
-  if (typeof modelConnection.model !== 'function') {
-    return () => undefined;
-  }
-
-  let registry = modelFacadeRegistries.get(modelConnection);
-  if (!registry) {
-    const originalModel = modelConnection.model;
-    const facadeModel = function modelWithAmbientSession(
-      this: MongooseModelFactoryConnection,
-      name: string,
-      ...args: unknown[]
-    ) {
-      const model = originalModel.call(this, name, ...args);
-      const ambient = findAmbientSession(modelConnection);
-
-      return ambient ? createAmbientSessionModelFacade(model, ambient) : model;
-    };
-
-    registry = {
-      facadeModel,
-      originalModel,
-      owners: new Set<MongooseModelFacadeOwner>(),
-    };
-    modelFacadeRegistries.set(modelConnection, registry);
-    modelConnection.model = facadeModel;
-  }
-
-  registry.owners.add(owner);
-
-  return () => {
-    uninstallModelFacade(owner, modelConnection);
-  };
-}
-
-function uninstallModelFacade(owner: MongooseModelFacadeOwner, connection: MongooseModelFactoryConnection): void {
-  const registry = modelFacadeRegistries.get(connection);
-  if (!registry) {
-    return;
-  }
-
-  registry.owners.delete(owner);
-
-  if (registry.owners.size > 0) {
-    return;
-  }
-
-  if (connection.model === registry.facadeModel) {
-    connection.model = registry.originalModel;
-  }
-
-  modelFacadeRegistries.delete(connection);
-}
-
 function resolveModelFactory(connection: MongooseConnectionLike): MongooseModelFactoryConnection['model'] | undefined {
   if (!isObjectLike(connection)) {
     return undefined;
   }
 
   const modelConnection = connection as MongooseModelFactoryConnection;
-  const registry = modelFacadeRegistries.get(modelConnection);
 
-  return registry?.originalModel ?? modelConnection.model;
+  return modelConnection.model;
 }
 
 async function executeSessionTransaction<T>(session: MongooseSessionLike, fn: () => Promise<T>): Promise<T> {
@@ -317,16 +205,13 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
   private readonly sessions = new AsyncLocalStorage<MongooseSessionLike>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
   private readonly activeSessions = new Set<ActiveSessionScope>();
-  private readonly uninstallModelFacade: () => void;
   private lifecycleState: 'ready' | 'shutting-down' | 'stopped' = 'ready';
 
   constructor(
     private readonly connection: TConnection,
     private readonly dispose?: (connection: TConnection) => Promise<void> | void,
     private readonly connectionOptions: MongooseRuntimeOptions = { strictTransactions: false },
-  ) {
-    this.uninstallModelFacade = installModelFacade(this, connection);
-  }
+  ) {}
 
   /**
    * Returns the root Mongoose connection handle.
@@ -389,8 +274,6 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       ...Array.from(this.activeSessions, (session) => session.settled),
     ]);
 
-    this.uninstallModelFacade();
-
     if (this.dispose) {
       await this.dispose(this.connection);
     }
@@ -425,12 +308,12 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
    * @returns The callback result after the session transaction finishes or the direct-execution fallback completes.
    */
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    this.assertTransactionsAvailable();
+
     const currentSession = this.sessions.getStore();
     if (currentSession) {
       return fn();
     }
-
-    this.assertTransactionsAvailable();
 
     if (typeof this.connection.transaction === 'function') {
       return this.runConnectionTransaction(fn);
@@ -519,9 +402,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     const activeSession = this.trackActiveSession();
 
     try {
-      return await this.sessions.run(session, () =>
-        runWithModelFacadeOwner(this, () => executeSessionTransaction(session, fn)),
-      );
+      return await this.sessions.run(session, () => executeSessionTransaction(session, fn));
     } finally {
       try {
         await session.endSession();
@@ -567,9 +448,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
         throw new Error('Mongoose connection transaction resolver initialization failed.');
       }
 
-      return await this.connection.transaction((session) =>
-        this.sessions.run(session, () => runWithModelFacadeOwner(this, fn)),
-      );
+      return await this.connection.transaction((session) => this.sessions.run(session, fn));
     } finally {
       activeSession.settle();
     }
