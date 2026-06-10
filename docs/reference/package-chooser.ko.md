@@ -50,7 +50,7 @@
 | 조건 | 패키지 선택 | 비고 |
 | --- | --- | --- |
 | Prisma 기반 관계형 접근이 필요함 | `@fluojs/prisma` | Prisma ORM 통합에 사용합니다. |
-| Node.js에서 Drizzle 기반 관계형 접근이 필요함 | `@fluojs/drizzle` | Node.js 20+용 Drizzle ORM 통합에 사용합니다. Root wrapper는 Node의 `node:async_hooks` transaction context와 `engines.node >=20.0.0` 계약을 사용하므로, Bun SQL, Cloudflare D1 같은 비 Node Drizzle driver는 비 Node context adapter가 문서화되기 전까지 현재 fluo wrapper 범위 밖입니다. |
+| Node.js에서 Drizzle 기반 관계형 접근이 필요함 | `@fluojs/drizzle` | Node.js 20+용 Drizzle ORM 통합에 사용합니다. Root wrapper는 Node의 `node:async_hooks` transaction context와 `engines.node >=20.0.0` 계약을 사용하므로, Bun SQL, Cloudflare D1 같은 비 Node Drizzle driver는 비 Node context adapter가 문서화되기 전까지 현재 fluo wrapper 범위 밖입니다. 그런 런타임에서는 이 wrapper를 import하지 말고 raw Drizzle driver handle을 런타임별 fluo provider(`useFactory` 또는 `useValue`) 뒤에 등록하세요. |
 | 도큐먼트 데이터베이스 접근이 필요함 | `@fluojs/mongoose` | Mongoose 통합에 사용합니다. |
 | 캐시 추상화가 필요함 | `@fluojs/cache-manager` | 캐시 기반 읽기와 쓰기에 사용합니다. |
 | 공유 Redis 클라이언트/서비스 계층이 필요함 | `@fluojs/redis` | 기본 또는 이름 있는 Redis 등록에 사용합니다. |
