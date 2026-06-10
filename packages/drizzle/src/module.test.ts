@@ -396,6 +396,44 @@ describe('@fluojs/drizzle', () => {
     expect(events).toEqual(['dispose:start', 'dispose:end']);
   });
 
+  it('rejects nested manual transactions once shutdown begins', async () => {
+    let releaseNestedAttempt!: () => void;
+    const nestedAttemptBarrier = new Promise<void>((resolve) => {
+      releaseNestedAttempt = resolve;
+    });
+    let transactionCalls = 0;
+    const transactionDatabase = {};
+    const database = {
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        transactionCalls += 1;
+        return callback(transactionDatabase);
+      },
+    };
+    const drizzle = new DrizzleDatabase<typeof database, typeof transactionDatabase>(database);
+
+    const outerTransaction = drizzle.transaction(async () => {
+      await nestedAttemptBarrier;
+
+      await expect(drizzle.transaction(async () => 'late-nested')).rejects.toThrow(
+        'Drizzle transactions are not available during application shutdown.',
+      );
+
+      return 'outer-complete';
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(transactionCalls).toBe(1);
+
+    const shutdown = drizzle.onApplicationShutdown();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    releaseNestedAttempt();
+
+    await expect(outerTransaction).resolves.toBe('outer-complete');
+    await shutdown;
+    expect(transactionCalls).toBe(1);
+  });
+
   it('waits for transaction runner settlement before reporting late request aborts', async () => {
     const events: string[] = [];
     const transactionDatabase = {};
