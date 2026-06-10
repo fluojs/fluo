@@ -28,6 +28,8 @@ Drizzle is an ORM that combines a SQL-like authoring experience with TypeScript 
 - **Integrated transaction model**: Like `@fluojs/prisma` and `@fluojs/mongoose`, the Drizzle integration module ensures that operations automatically participate in the active transaction.
 - **Driver portability with a Node-scoped fluo wrapper**: Drizzle broadly supports Node-Postgres, Bun SQL, Cloudflare D1, and more, but the current `@fluojs/drizzle` wrapper uses Node's `node:async_hooks` transaction context. Treat this chapter's package integration as Node runtime guidance until a non-Node context adapter is documented.
 
+If FluoShop later moves this SQL layer to Bun SQL, Cloudflare D1, or another non-Node Drizzle driver, keep the raw Drizzle handle behind a normal fluo provider such as the `DATABASE` token examples in Chapters 22 and 24 instead of importing `@fluojs/drizzle`. You can keep repository tokens and schema types stable, but this package's ALS-backed `@Transaction()` decorator and request transaction helpers remain Node.js 20+ only until a non-Node context adapter exists.
+
 ## 20.2 Installation and Setup
 
 Install Drizzle ORM and the fluo integration package. If you use PostgreSQL, you also need a driver such as `pg`.
