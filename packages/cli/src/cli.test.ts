@@ -2181,6 +2181,79 @@ void bootstrap();
     await expect(runPromise).resolves.toBe(0);
   });
 
+  it('reinjects the current Studio epoch into restarted app children', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    const sourceFile = join(sourceDirectory, 'main.ts');
+    mkdirSync(sourceDirectory, { recursive: true });
+    writeFileSync(sourceFile, 'console.log("one");\n');
+    const signalTarget = createSignalTarget();
+    const children: ChildProcess[] = [];
+    const injectedEpochs: Array<string | undefined> = [];
+    const lifecycleEpochs: Array<string | undefined> = [];
+    const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (_input, init) => {
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) as { payload?: { epoch?: string } } : {};
+      lifecycleEpochs.push(body.payload?.epoch);
+
+      return new Response(JSON.stringify({ accepted: true, epoch: body.payload?.epoch ?? 'missing-epoch', sequence: lifecycleEpochs.length }), {
+        headers: { 'content-type': 'application/json' },
+        status: 202,
+      });
+    };
+
+    try {
+      const runPromise = runNodeRestartRunner({
+        debounceMs: 1,
+        env: {
+          FLUO_STUDIO: '1',
+          FLUO_STUDIO_APP_ID: 'test-app',
+          FLUO_STUDIO_EPOCH: 'epoch-1',
+          FLUO_STUDIO_RUNTIME: 'node',
+          FLUO_STUDIO_TOKEN: 'studio-token',
+          FLUO_STUDIO_URL: 'http://127.0.0.1:49152',
+        },
+        projectDirectory: workspaceDirectory,
+        signalTarget: signalTarget.target,
+        spawnChild: (_command, args) => {
+          const injectedSource = decodeURIComponent(String(args[2]).replace('data:text/javascript,', ''));
+          const match = /"FLUO_STUDIO_EPOCH":"([^"]+)"/.exec(injectedSource);
+          injectedEpochs.push(match?.[1]);
+          const child = createMockChild();
+          children.push(child);
+          return child;
+        },
+        watchTarget: (_target, optionsOrListener, listener) => {
+          watchListeners.push(typeof optionsOrListener === 'function' ? optionsOrListener : listener ?? (() => undefined));
+          return { close: () => undefined } as never;
+        },
+      });
+
+      expect(injectedEpochs).toEqual(['epoch-1']);
+
+      writeFileSync(sourceFile, 'console.log("two");\n');
+      for (const listener of watchListeners) {
+        listener('change', 'main.ts');
+      }
+
+      await waitForCondition(() => children[0]?.killed === true);
+      children[0]?.emit('close', 0);
+      await waitForCondition(() => children.length === 2);
+
+      expect(injectedEpochs[1]).toBeDefined();
+      expect(injectedEpochs[1]).not.toBe('epoch-1');
+      expect(lifecycleEpochs).toContain(injectedEpochs[1]);
+
+      children[1]?.emit('close', 0);
+      await expect(runPromise).resolves.toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('loads .env for each restarted app child instead of only for the supervisor', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);

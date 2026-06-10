@@ -39,6 +39,10 @@ describe('Studio sidecar', () => {
     const unauthorized = await fetch(`${sidecar.url}/api/state`);
     expect(unauthorized.status).toBe(401);
 
+    const unauthorizedEvents = await fetch(`${sidecar.url}/api/events`);
+    expect(unauthorizedEvents.status).toBe(401);
+    await expect(unauthorizedEvents.json()).resolves.toMatchObject({ error: 'Unauthorized Studio sidecar request.' });
+
     const accepted = await fetch(`${sidecar.url}/api/runtime/events`, {
       body: JSON.stringify({ payload: { ok: true }, source: { appId: 'test-app', runtime: 'node' }, type: 'snapshot', version: 1 }),
       headers: {
@@ -124,5 +128,25 @@ describe('Studio sidecar', () => {
       epoch: sidecar.epoch,
       events: [expect.objectContaining({ epoch: sidecar.epoch, type: 'restart' })],
     });
+  });
+
+  it('honors CLI-provided restart epochs for subsequent child injection', async () => {
+    const sidecar = await startTestSidecar();
+    const initialEpoch = sidecar.epoch;
+    const nextEpoch = 'cli-restart-epoch';
+
+    const accepted = await fetch(`${sidecar.url}/api/runtime/events`, {
+      body: JSON.stringify({ payload: { epoch: nextEpoch, phase: 'scheduled', reason: 'content changed' }, source: { appId: 'test-app', runtime: 'node' }, type: 'restart', version: 1 }),
+      headers: {
+        authorization: `Bearer ${sidecar.token}`,
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    });
+
+    expect(accepted.status).toBe(202);
+    expect(sidecar.epoch).not.toBe(initialEpoch);
+    expect(sidecar.epoch).toBe(nextEpoch);
+    expect(sidecar.env.FLUO_STUDIO_EPOCH).toBe(nextEpoch);
   });
 });
