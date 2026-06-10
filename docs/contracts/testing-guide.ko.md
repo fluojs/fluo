@@ -46,6 +46,10 @@ fluo의 테스트 설정은 런타임 모델과 같습니다. 표준 decorator, 
 
 `createTestApp(...)`은 request-facing 테스트에서 runtime HTTP bootstrap option surface를 따릅니다. 호출자가 app-level middleware를 넘기면, 테스트 헬퍼는 request-context middleware를 추가하면서 호출자의 middleware chain을 제거하지 않습니다.
 
+`overrideModule(source, replacement)`는 테스트 전용 module graph rewrite입니다. source module의 decorator metadata를 변경하면 안 되며, 컴파일된 testing module은 provider 해석에는 replacement module definition을 사용하더라도 diagnostics와 graph assertion을 위해 원래 `rootModule`과 `modules[].type` identity를 유지해야 합니다.
+
+`@fluojs/testing/vitest`는 `fluoBabelDecoratorsPlugin()`을 위한 지원 Vitest 엔트리포인트입니다. testing package export가 바뀔 때는 package export-map과 build surface 검증에 이 엔트리포인트를 계속 포함하세요.
+
 ## 명령어 (Commands)
 
 | 명령어 | 용도 |
