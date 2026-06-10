@@ -20,6 +20,10 @@ HTTP metric과 platform telemetry를 포함해 fluo 애플리케이션을 위한
 pnpm add @fluojs/metrics
 ```
 
+## 요구 사항
+
+`@fluojs/metrics`는 Node.js 20 이상에서 실행됩니다. package manifest는 `engines.node >=20.0.0`을 선언합니다.
+
 ## 사용 시점
 
 - 애플리케이션이 Prometheus-compatible scraping을 위한 `/metrics` endpoint를 노출해야 할 때
@@ -136,6 +140,7 @@ class OrdersService {
 ### Framework metric과 app metric이 하나의 registry를 공유하기
 
 ```ts
+import { Module } from '@fluojs/core';
 import { Counter, Registry } from 'prom-client';
 import { MetricsModule } from '@fluojs/metrics';
 

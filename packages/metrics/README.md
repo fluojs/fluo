@@ -20,6 +20,10 @@ Prometheus metrics exposure for fluo applications, including framework-aware HTT
 pnpm add @fluojs/metrics
 ```
 
+## Requirements
+
+`@fluojs/metrics` runs on Node.js 20 or newer; the package manifest declares `engines.node >=20.0.0`.
+
 ## When to Use
 
 - when your app should expose a `/metrics` endpoint for Prometheus-compatible scraping
@@ -136,6 +140,7 @@ Calling `MetricsService.counter(...)` again with the same name recreates the col
 ### Share one registry for framework and app metrics
 
 ```ts
+import { Module } from '@fluojs/core';
 import { Counter, Registry } from 'prom-client';
 import { MetricsModule } from '@fluojs/metrics';
 
