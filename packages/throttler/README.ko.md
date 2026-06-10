@@ -12,6 +12,7 @@
 - [공통 패턴](#공통-패턴)
   - [Redis 저장소 사용](#redis-저장소-사용)
   - [커스텀 키 생성](#커스텀-키-생성)
+- [NestJS 마이그레이션 경계](#nestjs-마이그레이션-경계)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -120,6 +121,15 @@ ThrottlerModule.forRoot({
   },
 });
 ```
+
+## NestJS 마이그레이션 경계
+
+`@nestjs/throttler`에서 마이그레이션할 때 `@fluojs/throttler`는 drop-in 전역 limiter가 아니라 명시적인 guard-stage 패키지로 다뤄야 합니다:
+
+- `ThrottlerModule.forRoot(...)`는 검증된 옵션과 provider를 등록하지만, 모든 route에 throttling을 자동으로 강제하지 않습니다. 보호가 필요한 곳마다 `@UseGuards(ThrottlerGuard)` 같은 Fluo guard metadata로 `ThrottlerGuard`를 활성화하세요.
+- 공개 정책 shape는 하나의 module default와 class 또는 method 수준 `@Throttle({ ttl, limit })` override입니다. burst와 sustained limit을 함께 두는 named multi-window definition은 HTTP middleware, custom `ThrottlerStore`, 또는 애플리케이션이 소유한 guard wrapper로 명시적으로 조합해야 합니다.
+- Forwarded client IP header는 기본적으로 무시됩니다. `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰 가능한 proxy가 덮어쓰는 배포에서만 `trustProxyHeaders: true`를 활성화하세요.
+- 제한 초과 시 보장되는 응답 계약은 HTTP `429`와 `Retry-After`입니다. 추가 rate-limit header나 response body는 exception filter 같은 애플리케이션 경계에서 더하세요.
 
 ## 공개 API 개요
 
