@@ -405,6 +405,43 @@ describe('enforceContractCompanionUpdates', () => {
 });
 
 describe('repository governance contracts', () => {
+  it('keeps Throttler guard activation and backing-store clock docs discoverable across governed docs', () => {
+    const docsContext = readFileSync(resolve(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const docsContextKo = readFileSync(resolve(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const packageSurface = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const packageSurfaceKo = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const throttlerReadme = readFileSync(resolve(repoRoot, 'packages/throttler/README.md'), 'utf8');
+    const throttlerReadmeKo = readFileSync(resolve(repoRoot, 'packages/throttler/README.ko.md'), 'utf8');
+
+    for (const source of [docsContext, packageSurface]) {
+      expect(source).toContain('explicit `ThrottlerGuard` activation');
+      expect(source).toContain('proxy-aware client identity controls');
+      expect(source).toContain('shared route/client bucket semantics');
+      expect(source).toContain('custom-store `retryAfterMs` support');
+      expect(source).toContain('backing-store clocks');
+    }
+
+    expect(throttlerReadme).toContain('Activate `ThrottlerGuard`');
+    expect(throttlerReadme).toContain('trusted reverse proxy');
+    expect(throttlerReadme).toContain('route identity and client identity');
+    expect(throttlerReadme).toContain('optional `retryAfterMs`');
+    expect(throttlerReadme).toContain('authoritative clock');
+
+    for (const source of [docsContextKo, packageSurfaceKo]) {
+      expect(source).toContain('명시적 `ThrottlerGuard` 활성화');
+      expect(source).toContain('proxy-aware client identity control');
+      expect(source).toContain('공유 route/client bucket semantic');
+      expect(source).toContain('custom-store `retryAfterMs` 지원');
+      expect(source).toContain('backing-store clock');
+    }
+
+    expect(throttlerReadmeKo).toContain('`ThrottlerGuard`를 활성화');
+    expect(throttlerReadmeKo).toContain('신뢰 가능한 리버스 프록시');
+    expect(throttlerReadmeKo).toContain('route identity와 client identity');
+    expect(throttlerReadmeKo).toContain('선택적 `retryAfterMs`');
+    expect(throttlerReadmeKo).toContain('authoritative');
+  });
+
   it('keeps Drizzle runtime, facade, and transaction migration docs discoverable across governed docs', () => {
     const docsContext = readFileSync(resolve(repoRoot, 'docs/CONTEXT.md'), 'utf8');
     const docsContextKo = readFileSync(resolve(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
