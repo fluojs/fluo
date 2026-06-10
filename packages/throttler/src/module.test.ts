@@ -1,7 +1,8 @@
-import { Module } from '@fluojs/core';
-import { metadataSymbol } from '@fluojs/core/internal';
+import { Inject, Module } from '@fluojs/core';
+import { getModuleMetadata, metadataSymbol } from '@fluojs/core/internal';
 import type { GuardContext, HandlerDescriptor, RequestContext } from '@fluojs/http';
 import { Controller, Get, UseGuards } from '@fluojs/http';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { createTestApp } from '@fluojs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getThrottleMetadata, SkipThrottle, Throttle } from './decorators.js';
@@ -138,6 +139,65 @@ describe('@fluojs/throttler public entrypoints', () => {
         ttlSeconds: 60,
       }),
     ).resolves.toEqual({ count: 1, resetAt: 1_710_000_060_000 });
+  });
+});
+
+describe('ThrottlerModule.forRoot', () => {
+  it('marks ThrottlerGuard globally visible by default and honors global=false metadata', () => {
+    const defaultModule = ThrottlerModule.forRoot({ limit: 1, ttl: 60 });
+    const localModule = ThrottlerModule.forRoot({ global: false, limit: 1, ttl: 60 });
+
+    expect(getModuleMetadata(defaultModule)?.global).toBe(true);
+    expect(getModuleMetadata(defaultModule)?.exports).toContain(ThrottlerGuard);
+    expect(getModuleMetadata(localModule)?.global).toBe(false);
+    expect(getModuleMetadata(localModule)?.exports).toContain(ThrottlerGuard);
+  });
+
+  it('exposes ThrottlerGuard across modules only when provider visibility is global', async () => {
+    @Inject(ThrottlerGuard)
+    class GlobalGuardConsumer {
+      constructor(readonly guard: ThrottlerGuard) {}
+    }
+
+    class ThrottlerOwnerModule {}
+    defineModule(ThrottlerOwnerModule, {
+      imports: [ThrottlerModule.forRoot({ limit: 1, ttl: 60 })],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [ThrottlerOwnerModule],
+      providers: [GlobalGuardConsumer],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const consumer = await app.container.resolve(GlobalGuardConsumer);
+      expect(consumer.guard).toBeInstanceOf(ThrottlerGuard);
+    } finally {
+      await app.close();
+    }
+
+    @Inject(ThrottlerGuard)
+    class LocalGuardConsumer {
+      constructor(readonly guard: ThrottlerGuard) {}
+    }
+
+    class LocalThrottlerOwnerModule {}
+    defineModule(LocalThrottlerOwnerModule, {
+      imports: [ThrottlerModule.forRoot({ global: false, limit: 1, ttl: 60 })],
+    });
+
+    class LocalAppModule {}
+    defineModule(LocalAppModule, {
+      imports: [LocalThrottlerOwnerModule],
+      providers: [LocalGuardConsumer],
+    });
+
+    await expect(bootstrapApplication({ rootModule: LocalAppModule })).rejects.toThrow(
+      /not visible through a global module|ThrottlerGuard/,
+    );
   });
 });
 
@@ -367,6 +427,34 @@ describe('ThrottlerGuard — in-memory store', () => {
     expect(result).toBe(true);
   });
 
+  it('lets method-level @SkipThrottle bypass class-level @Throttle settings', async () => {
+    @Throttle({ limit: 1, ttl: 60 })
+    class TestController {
+      @SkipThrottle()
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard({ ...options, limit: 1 });
+    const ctx = createRequestContext();
+
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', ctx))).resolves.toBe(true);
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', ctx))).resolves.toBe(true);
+  });
+
+  it('lets class-level @SkipThrottle bypass method-level @Throttle settings', async () => {
+    @SkipThrottle()
+    class TestController {
+      @Throttle({ limit: 1, ttl: 60 })
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard({ ...options, limit: 1 });
+    const ctx = createRequestContext();
+
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', ctx))).resolves.toBe(true);
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', ctx))).resolves.toBe(true);
+  });
+
   it('method-level @Throttle overrides module-level defaults', async () => {
     class TestController {
       @Throttle({ limit: 5, ttl: 60 })
@@ -493,6 +581,27 @@ describe('ThrottlerGuard — in-memory store', () => {
     await guard.canActivate(createGuardContext(TestController, 'action', ctx));
 
     await expect(guard.canActivate(createGuardContext(TestController, 'action', ctx))).rejects.toThrow(
+      'Too Many Requests',
+    );
+  });
+
+  it('creates isolated default in-memory stores for each guard instance when no store option is supplied', async () => {
+    class TestController {
+      action() {}
+    }
+
+    const firstGuard = new ThrottlerGuard({ limit: 1, ttl: 60 });
+    const secondGuard = new ThrottlerGuard({ limit: 1, ttl: 60 });
+    const firstContext = createRequestContext('10.0.0.1');
+    const secondContext = createRequestContext('10.0.0.1');
+
+    await expect(firstGuard.canActivate(createGuardContext(TestController, 'action', firstContext))).resolves.toBe(
+      true,
+    );
+    await expect(secondGuard.canActivate(createGuardContext(TestController, 'action', secondContext))).resolves.toBe(
+      true,
+    );
+    await expect(firstGuard.canActivate(createGuardContext(TestController, 'action', firstContext))).rejects.toThrow(
       'Too Many Requests',
     );
   });
