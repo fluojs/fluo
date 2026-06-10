@@ -111,6 +111,8 @@ export class AuthController {
 
 클러스터 전체 총량 제한처럼 더 높은 수준의 보호가 필요하다면, 내장된 앱 전체 quota 레이어가 있다고 가정하지 말고 애플리케이션 middleware, 커스텀 store, 또는 커스텀 guard wrapper로 명시적으로 모델링하십시오.
 
+이 차이는 NestJS 마이그레이션에서 특히 중요합니다. 기존 `@nestjs/throttler` 전역 설정이 있었다고 해서 모든 fluo route가 보호된다고 보지 말고, `ThrottlerGuard` 활성화 여부를 확인하세요. Forwarded header는 신뢰 가능한 proxy 뒤에서만 `trustProxyHeaders`로 opt-in하고, multi-window 정책은 middleware, store, 또는 guard-wrapper 조합으로 명시적으로 설계해야 합니다. Throttling된 응답에서 보장되는 metadata는 `429` status와 `Retry-After`이며, 추가 header나 JSON body 규칙은 애플리케이션의 error handling layer에서 더하십시오.
+
 전역 규칙이 생기면 이제 경로 성격에 맞게 조정할 수 있습니다. 글로벌 설정을 재정의하거나 특정 컨트롤러나 메서드에 대해 속도 제한을 건너뛸 수 있습니다.
 
 ### 16.3.2 Multiple Throttling Definitions

@@ -111,6 +111,8 @@ export class AuthController {
 
 If you need aggregate cluster-wide quotas or other higher-level protection, model that explicitly with application middleware, a custom store, or a custom guard wrapper instead of assuming one built-in app-wide quota layer.
 
+This distinction is especially important during NestJS migrations. Do not treat a previous `@nestjs/throttler` global setup as proof that every fluo route is protected: confirm `ThrottlerGuard` activation, opt in to forwarded headers with `trustProxyHeaders` only behind a trusted proxy, and plan any multi-window policy as explicit middleware, store, or guard-wrapper composition. The guaranteed throttled response metadata is the `429` status plus `Retry-After`; add any extra headers or JSON body conventions in your application error handling layer.
+
 Once you have global rules, you can tune them for each route's character. You can override global settings or skip rate limiting for specific Controllers or methods.
 
 ### 16.3.2 Multiple Throttling Definitions
