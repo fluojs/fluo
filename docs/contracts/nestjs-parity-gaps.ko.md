@@ -15,13 +15,14 @@
 | Validation integration | `@fluojs/validation`으로 구현되어 있고, 현재 문서는 Standard Schema 지원을 기준으로 정리되어 있습니다. | `docs/getting-started/migrate-from-nestjs.md`, `docs/architecture/decorators-and-metadata.md` |
 | HTTP platform coverage | Fastify, Express, raw Node.js, Bun, Deno, Cloudflare Workers용 1차 어댑터로 구현되어 있습니다. | `docs/reference/package-surface.md`, `docs/reference/fluo-new-support-matrix.md` |
 | Microservice transports | `@fluojs/microservices`로 TCP, Redis, NATS, Kafka, RabbitMQ, MQTT, gRPC 지원이 구현되어 있고, gRPC streaming 데코레이터도 포함됩니다. | `packages/microservices/README.md`, `docs/reference/fluo-new-support-matrix.md` |
+| Starter scaffolding for maintained baselines | 정확한 `fluo new` starter recipe로 구현되어 있습니다. Node.js HTTP는 Fastify/Express/raw Node.js, Bun/Deno/Cloudflare Workers는 HTTP, Node.js microservice는 TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC, mixed는 Fastify HTTP + attached TCP starter 하나를 제공합니다. | `packages/cli/README.md`, `docs/reference/fluo-new-support-matrix.md`, `docs/getting-started/migrate-from-nestjs.md` |
 
 ## Not Implemented
 
 | NestJS-facing surface | Current fluo state | Repo grounding |
 | --- | --- | --- |
-| CLI generator breadth comparable to `nest g res` and related schematic families | 아직 구현되지 않았습니다. 현재 CLI는 `new`, `generate`, `inspect`, `migrate`에 집중하며, NestJS와 같은 schematic 폭을 문서화하지 않습니다. | 기존 parity gap 문서, `packages/cli/README.md` |
-| NestJS-style hybrid application ergonomics as a primary documented bootstrap path | 아직 구현되지 않았습니다. fluo는 mixed starter와 명시적 microservice 전송 wiring을 문서화하지만, NestJS식 hybrid 조합을 주된 추상화로 제시하지는 않습니다. | 기존 parity gap 문서, `docs/reference/fluo-new-support-matrix.md`, `packages/microservices/README.md` |
+| CLI generator breadth comparable to `nest g res` and related schematic families | 아직 구현되지 않았습니다. `fluo generate`에는 built-in resource generator가 있지만, 파일만 생성하고 수동 활성화를 요구하며 bundled `@fluojs/cli/builtin` collection만 사용합니다. NestJS schematic 폭, app-local collection, package-owned collection, resource slice의 parent-module 자동 활성화를 주장하지 않습니다. | `packages/cli/README.md`, `docs/getting-started/generator-workflow.md`, `docs/getting-started/migrate-from-nestjs.md` |
+| NestJS-style hybrid application ergonomics as a primary documented bootstrap path | 아직 구현되지 않았습니다. fluo는 mixed starter 하나와 명시적 microservice transport wiring을 문서화하지만, NestJS식 hybrid 조합을 주된 추상화로 제시하거나 임의 hybrid transport/topology 조합을 스캐폴딩하지는 않습니다. | `docs/reference/fluo-new-support-matrix.md`, `docs/getting-started/migrate-from-nestjs.md`, `packages/microservices/README.md` |
 | `1.0+` stability tier and long-term ecosystem maturity expected by conservative NestJS adopters | 아직 구현되지 않았습니다. release governance는 여전히 Official `1.0+` 졸업 전의 `0.x` 규칙을 기준으로 합니다. | `docs/contracts/release-governance.md` |
 | Public showcase depth and community proof comparable to NestJS ecosystem visibility | 현재 repo 문서 기준으로는 구현되지 않았습니다. governed 문서 어디에도 production showcase 표면이나 Awesome 스타일 인덱스를 주장하지 않습니다. | 기존 parity gap 문서, 현재 docs 집합 |
 

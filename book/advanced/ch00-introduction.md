@@ -236,7 +236,7 @@ When we talk about the "Module Graph," we mean a directed graph that represents 
 
 ## Interactive Exploration
 
-We recommend using the fluo CLI's `debug` command alongside this book. Seeing the framework's internal state in your local environment while reading quickly closes the gap between theory and practice.
+We recommend using the fluo CLI's current diagnostics commands alongside this book. Use `fluo inspect ./src/app.ts --json` or `fluo inspect ./src/app.ts --report --output artifacts/inspect-report.json` to export runtime-produced module snapshots and support reports, and use `fluo dev --studio` in supported Node dev-runner projects when you want the local Studio sidecar attached while you read. Seeing the framework's internal state in your local environment quickly closes the gap between theory and practice.
 
 If you maintain another framework or write libraries, Part 6, the ecosystem section, will be especially useful. It explains in detail how to manage dependencies between packages and how to ensure Behavioral Contracts do not break even during fast iteration.
 

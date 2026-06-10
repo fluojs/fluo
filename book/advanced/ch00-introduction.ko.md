@@ -61,7 +61,7 @@ export function createClonedWeakMapStore<TKey extends object, TValue>(
 
 이 패턴 덕분에 호출자가 읽은 메타데이터를 수정해도 내부 캐시가 바로 오염되지 않습니다. 뒤에서 다시 등장하는 `path:packages/core/src/metadata/store.ts` 참조도 같은 clone-on-read/write 규칙을 가리키는 통합 참조로 읽으면 됩니다.
 
-이 태도는 고급 환경에서 특히 중요합니다. 가장 강력한 디버깅 도구는 `debugger` 문과 `node_modules/@fluojs` 디렉토리 내부로 코드를 추적하는 능력이기 때문입니다. 이 책은 그 디렉토리를 낯선 내부 구현이 아니라 읽을 수 있는 시스템으로 다루게 만듭니다.
+이 태도는 고급 환경에서 특히 중요합니다. 가장 강력한 디버깅 도구는 `debugger` 문, `node_modules/@fluojs` 디렉토리 내부로 코드를 추적하는 능력, 그리고 현재 CLI 진단 명령을 함께 사용하는 능력이기 때문입니다. 이 책은 그 디렉토리를 낯선 내부 구현이 아니라 읽을 수 있는 시스템으로 다루게 만듭니다.
 
 ## What This Volume Covers
 
@@ -236,7 +236,7 @@ export function ensureMetadataSymbol(): symbol {
 
 ## Interactive Exploration
 
-이 책과 함께 fluo CLI의 `debug` 명령을 사용하는 것을 권장합니다. 책을 읽는 동안 로컬 환경에서 프레임워크의 내부 상태를 확인하면 이론과 실제 사이의 간극을 빠르게 줄일 수 있습니다.
+이 책을 읽을 때는 현재 fluo CLI 진단 명령을 함께 사용하는 것을 권장합니다. Runtime이 생성한 module snapshot과 support report를 내보내려면 `fluo inspect ./src/app.ts --json` 또는 `fluo inspect ./src/app.ts --report --output artifacts/inspect-report.json`를 사용하고, 지원되는 Node dev-runner 프로젝트에서 local Studio sidecar를 붙여 보려면 `fluo dev --studio`를 사용하세요. 로컬 환경에서 프레임워크 내부 상태를 보면서 읽으면 이론과 실제 사이의 간격이 빠르게 줄어듭니다.
 
 다른 프레임워크의 유지 관리자이거나 라이브러리 작성자라면 파트 6(생태계)이 특히 유용합니다. 여기서는 패키지 간 의존성을 관리하는 방법과 빠른 반복 중에도 행동 계약이 깨지지 않도록 보장하는 방법을 자세히 설명합니다.
 

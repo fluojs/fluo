@@ -153,7 +153,7 @@ Supported generator kinds and aliases are `controller`/`co`, `e2e`, `guard`/`gu`
 
 Auto-registered generators are `controller`, `service`, `repo`, `guard`, `interceptor`, and `middleware`. Files-only generators are `e2e`, `module`, `request-dto`, `response-dto`, and `resource`.
 
-`fluo generate module <name> --with-test` adds a `*.slice.test.ts` that compiles the authored module with `createTestingModule({ rootModule })`. `fluo generate resource <name>` creates a complete feature slice with a module, controller, service, repository, request DTO, response DTO, and tests; add `--with-slice-test` to include a resource-level slice test that demonstrates provider override and service resolution. It does not wire the resource module into a parent module automatically; import the generated module when you are ready to activate the slice.
+`fluo generate module <name> --with-test` adds a `*.slice.test.ts` that compiles the authored module with `createTestingModule({ rootModule })`. `fluo generate resource <name>` creates a complete feature slice with a module, controller, service, repository, request DTO, response DTO, and tests; add `--with-slice-test` to include a resource-level slice test that demonstrates provider override and service resolution. It is a files-only/manual-activation generator: it does not wire the resource module into a parent module automatically, and it should not be treated as a `nest g resource` equivalent that activates routes for you. Import the generated module when you are ready to activate the slice.
 
 `fluo generate e2e <name>` writes `test/<name>.e2e.test.ts` with `createTestApp({ rootModule: AppModule })` and imports `AppModule` from the default starter root module at `../src/app`, so request-pipeline tests live in the same app-level test area as generated starters. Use generated unit tests for direct class behavior, slice tests for DI wiring and overrides, and e2e tests for routes, guards, interceptors, DTO validation, and response writing through the virtual app.
 
@@ -161,7 +161,7 @@ Request DTO generation accepts the feature directory separately from the DTO cla
 
 Add `--dry-run` to preview the same target resolution, skipped or overwritten file decisions, module auto-registration plan, files-only wiring status, and next-step hint without creating directories, writing files, or updating modules. `--force` still changes existing-file plan entries from `SKIP` to `OVERWRITE` when content would change, and `--target-directory` scopes the preview to that source directory exactly as it does for a real run.
 
-Generator discovery is intentionally limited to the built-in `@fluojs/cli/builtin` collection. External package-owned or app-local generator collections are deferred: `fluo generate` does not scan config files, load arbitrary packages, or execute workspace-owned collection code. This keeps generator metadata, option schemas, help output, and file-write boundaries deterministic and testable while preserving the shipped generator contract.
+Generator discovery is intentionally limited to the built-in `@fluojs/cli/builtin` collection. External package-owned or app-local generator collections are deferred: `fluo generate` does not scan config files, load arbitrary packages, follow package discovery conventions, or execute workspace-owned collection code. This keeps generator metadata, option schemas, help output, and file-write boundaries deterministic and testable while preserving the shipped generator contract.
 
 ## Common Patterns
 

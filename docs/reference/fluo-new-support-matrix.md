@@ -27,6 +27,13 @@
 - `--shape microservice --transport` supports exactly `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, and `grpc`.
 - Supported `fluo new --transport` starter values exclude `redis`; use `redis-streams` for the maintained Redis-backed starter, or add `@fluojs/redis` after scaffolding when you need broader Redis integration choices.
 - `--shape mixed` supports the single published starter combination `--transport tcp --runtime node --platform fastify`.
+- `--topology` is currently a single-package starter contract for application, microservice, and mixed shapes. Multi-package monorepo generation is not part of `fluo new` today.
+- `--tooling` currently resolves to the maintained `standard` preset. Other build/test presets are broader roadmap items, not accepted starter contracts.
+- Runtime/platform pairs are exact. For example, Node.js application starters use `--runtime node --platform fastify|express|nodejs`; Bun, Deno, and Cloudflare Workers application starters use their matching runtime/platform pairs and are not mix-and-match aliases for Node platforms.
+
+## NestJS migration reading
+
+When migrating from NestJS, treat this matrix as the boundary between what the CLI can scaffold and what you must wire manually. `fluo new` can create the starter recipes listed above, but it does not scaffold every NestJS platform, hybrid topology, monorepo layout, or schematic family. After scaffolding, adopt broader packages from the package docs and wire modules explicitly in application code.
 
 ## authoritative sources
 
