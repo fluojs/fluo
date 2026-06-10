@@ -16,6 +16,7 @@
 | HTTP platform coverage | Fastify, Express, raw Node.js, Bun, Deno, Cloudflare Workers용 1차 어댑터로 구현되어 있습니다. | `docs/reference/package-surface.md`, `docs/reference/fluo-new-support-matrix.md` |
 | Microservice transports | `@fluojs/microservices`로 TCP, Redis, NATS, Kafka, RabbitMQ, MQTT, gRPC 지원이 구현되어 있고, gRPC streaming 데코레이터도 포함됩니다. | `packages/microservices/README.md`, `docs/reference/fluo-new-support-matrix.md` |
 | Starter scaffolding for maintained baselines | 정확한 `fluo new` starter recipe로 구현되어 있습니다. Node.js HTTP는 Fastify/Express/raw Node.js, Bun/Deno/Cloudflare Workers는 HTTP, Node.js microservice는 TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC, mixed는 Fastify HTTP + attached TCP starter 하나를 제공합니다. | `packages/cli/README.md`, `docs/reference/fluo-new-support-matrix.md`, `docs/getting-started/migrate-from-nestjs.md` |
+| Cache manager module, service, decorators, and metadata helpers | `@fluojs/cache-manager`의 동기 `CacheModule.forRoot(...)`, 주입 가능한 `CacheService`, response-cache decorator, function-valued `httpKeyStrategy`, `@CacheKey(...)`, exported cache metadata helper function으로 구현되어 있습니다. | `packages/cache-manager/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/beginner/ch17-cache.md` |
 
 ## Not Implemented
 
@@ -35,3 +36,4 @@
 | `@Injectable()` as the default provider marker | 의도적으로 요구하지 않습니다. 프로바이더 등록은 모듈 메타데이터를 통해 이뤄집니다. | `docs/getting-started/migrate-from-nestjs.md` |
 | Implicit platform bootstrap through `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` 기반 adapter-first bootstrap으로 의도적으로 대체합니다. | `docs/getting-started/migrate-from-nestjs.md`, `docs/reference/package-surface.md` |
 | `class-validator` and reflection-first DTO contracts as the default validation model | 기본 검증 모델은 문서화된 `@fluojs/validation`의 현재 Standard Schema 방향으로 의도적으로 대체합니다. | `docs/getting-started/migrate-from-nestjs.md` |
+| `@nestjs/cache-manager` async registration and interceptor subclassing as migration defaults | 동기 `CacheModule.forRoot(...)`, application-boundary client preparation, 명시적 `CacheService` injection, 그리고 `httpKeyStrategy`, `@CacheKey(...)`, exported metadata helper를 통한 문서화된 key seam으로 의도적으로 대체합니다. | `packages/cache-manager/README.md`, `docs/getting-started/migrate-from-nestjs.md`, `book/beginner/ch17-cache.md` |
