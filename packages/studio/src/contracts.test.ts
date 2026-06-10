@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +9,9 @@ import type { PlatformShellSnapshot } from '@fluojs/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { applyFilters, isStudioLiveEvent, parseStudioLiveEvent, parseStudioPayload, renderMermaid } from './contracts.js';
 import * as studio from './index.js';
+import { bootstrapStudioApp } from './app/bootstrap.js';
 import { inspectComponentConnections, renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './viewer-rendering.js';
+import { initialStudioState, selectSelectedStaticComponent } from './entities/studio/model.js';
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageCommandTimeoutMs = 120_000;
@@ -319,6 +321,60 @@ describe('Studio live contracts', () => {
 
     delete (window as typeof window & { __FLUO_STUDIO__?: unknown }).__FLUO_STUDIO__;
     vi.unstubAllGlobals();
+  });
+
+  it('unmounts the packaged viewer and cleans up live sidecar listeners', async () => {
+    class FakeEventSource {
+      static instances: FakeEventSource[] = [];
+      closed = false;
+      onerror: ((event: Event) => void) | null = null;
+      onopen: ((event: Event) => void) | null = null;
+      private readonly listeners = new Map<string, Set<EventListener>>();
+
+      constructor(readonly url: string) {
+        FakeEventSource.instances.push(this);
+      }
+
+      addEventListener(type: string, listener: EventListener): void {
+        const listeners = this.listeners.get(type) ?? new Set<EventListener>();
+        listeners.add(listener);
+        this.listeners.set(type, listeners);
+      }
+
+      close(): void {
+        this.closed = true;
+      }
+
+      listenerCount(type: string): number {
+        return this.listeners.get(type)?.size ?? 0;
+      }
+
+      removeEventListener(type: string, listener: EventListener): void {
+        this.listeners.get(type)?.delete(listener);
+      }
+    }
+
+    vi.resetModules();
+    vi.stubGlobal('EventSource', FakeEventSource);
+    (window as typeof window & { __FLUO_STUDIO__?: { eventsUrl: string } }).__FLUO_STUDIO__ = {
+      eventsUrl: '/api/events?token=test-token',
+    };
+    document.body.innerHTML = '<div id="app"></div>';
+
+    const root = bootstrapStudioApp();
+
+    await vi.waitFor(() => {
+      expect(FakeEventSource.instances).toHaveLength(1);
+    });
+    const source = FakeEventSource.instances[0];
+    expect(source?.listenerCount('message')).toBe(1);
+    expect(source?.listenerCount('snapshot')).toBe(1);
+
+    root.unmount();
+
+    expect(source?.closed).toBe(true);
+    expect(source?.listenerCount('message')).toBe(0);
+    expect(source?.listenerCount('snapshot')).toBe(0);
   });
 });
 
@@ -760,6 +816,32 @@ describe('parseStudioPayload', () => {
       expect(html).toContain('href="./assets/');
       expect(html).not.toContain('src="/assets/');
       expect(html).not.toContain('href="/assets/');
+
+      const consumerRoot = resolve(outputDirectory, 'consumer');
+      const packageInstallRoot = resolve(consumerRoot, 'node_modules/@fluojs/studio');
+      mkdirSync(resolve(packageInstallRoot, 'dist'), { recursive: true });
+      writeFileSync(resolve(consumerRoot, 'package.json'), '{"type":"module"}\n');
+      writeFileSync(
+        resolve(packageInstallRoot, 'package.json'),
+        JSON.stringify({
+          exports: {
+            '.': { import: './dist/index.js', types: './dist/index.d.ts' },
+            './contracts': { import: './dist/contracts.js', types: './dist/contracts.d.ts' },
+            './viewer': './dist/index.html',
+          },
+          name: '@fluojs/studio',
+          type: 'module',
+        }),
+      );
+      cpSync(resolve(outputDirectory, 'index.js'), resolve(packageInstallRoot, 'dist/index.js'));
+      cpSync(resolve(outputDirectory, 'contracts.js'), resolve(packageInstallRoot, 'dist/contracts.js'));
+
+      const directSubpathImport = spawnSync(
+        process.execPath,
+        ['--input-type=module', '--eval', "import { parseStudioPayload, renderMermaid } from '@fluojs/studio/contracts'; if (typeof parseStudioPayload !== 'function' || typeof renderMermaid !== 'function') process.exit(1);"],
+        { cwd: consumerRoot, encoding: 'utf8' },
+      );
+      expect(directSubpathImport.status, [directSubpathImport.stdout, directSubpathImport.stderr].filter(Boolean).join('\n')).toBe(0);
     } finally {
       rmSync(outputDirectory, { force: true, recursive: true });
     }
@@ -805,6 +887,82 @@ describe('applyFilters', () => {
     expect(filteredByHint.components).toEqual([]);
     expect(filteredByHint.diagnostics.map((issue: { code: string }) => issue.code)).toEqual(['QUEUE_DEPENDENCY_NOT_READY']);
     expect(filteredByBlocker.diagnostics.map((issue: { componentId: string }) => issue.componentId)).toEqual(['queue.default']);
+  });
+
+  it('preserves hidden internal component identity when static filters remove a dependency node', () => {
+    const snapshotWithHiddenInternalDependency: PlatformShellSnapshot = {
+      ...snapshotFixture,
+      components: [
+        snapshotFixture.components[0],
+        snapshotFixture.components[1],
+        {
+          ...snapshotFixture.components[0],
+          dependencies: ['queue.default', 'aws.lambda.orders'],
+          id: 'api.gateway',
+          kind: 'http',
+          readiness: {
+            critical: true,
+            status: 'ready',
+          },
+        },
+      ],
+    };
+
+    const filtered = applyFilters(snapshotWithHiddenInternalDependency, {
+      query: '',
+      readinessStatuses: ['ready'],
+      severities: [],
+    });
+    const mermaid = renderMermaid(filtered);
+    const graphSvg = renderGraphSvg(filtered, 'api.gateway', snapshotWithHiddenInternalDependency.components);
+    const summary = inspectComponentConnections(filtered, 'api.gateway', snapshotWithHiddenInternalDependency.components);
+
+    expect(filtered.components.map((component) => component.id)).toEqual(['redis.default', 'api.gateway']);
+    expect(mermaid).not.toContain('["queue.default"]');
+    expect(mermaid).not.toMatch(/C\d+ --> EXT_queue_default_/);
+    expect(mermaid).toContain('aws.lambda.orders');
+    expect(graphSvg).not.toContain('component-external">\n   <text x="');
+    expect(graphSvg).not.toContain('>queue.default</text>');
+    expect(graphSvg).toContain('aws.lambda.orders');
+    expect(summary?.outgoing.map((component) => component.id)).toEqual(['queue.default']);
+    expect(summary?.externalDependencies).toEqual(['aws.lambda.orders']);
+  });
+
+  it('keeps selected hidden internal components available to the static inspector', () => {
+    const snapshotWithHiddenInternalDependency: PlatformShellSnapshot = {
+      ...snapshotFixture,
+      components: [
+        snapshotFixture.components[0],
+        snapshotFixture.components[1],
+        {
+          ...snapshotFixture.components[0],
+          dependencies: ['queue.default'],
+          id: 'api.gateway',
+          kind: 'http',
+          readiness: {
+            critical: true,
+            status: 'ready',
+          },
+        },
+      ],
+    };
+    const filtered = applyFilters(snapshotWithHiddenInternalDependency, {
+      query: '',
+      readinessStatuses: ['ready'],
+      severities: [],
+    });
+
+    const selected = selectSelectedStaticComponent({
+      ...initialStudioState,
+      staticReport: {
+        filteredSnapshot: filtered,
+        payload: { snapshot: snapshotWithHiddenInternalDependency },
+        selectedComponentId: 'queue.default',
+      },
+    });
+
+    expect(filtered.components.map((component) => component.id)).toEqual(['redis.default', 'api.gateway']);
+    expect(selected?.id).toBe('queue.default');
   });
 
   it('returns empty component and diagnostic lists when filters match nothing', () => {
