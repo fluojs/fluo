@@ -132,6 +132,7 @@ ThrottlerModule.forRoot({
 ### Decorators
 - `@Throttle({ ttl, limit })`: Sets a specific rate limit for a class or method.
 - `@SkipThrottle()`: Disables throttling for a class or method.
+- `ThrottlerHandlerOptions`: Public `{ ttl, limit }` policy shape accepted by `@Throttle(...)`. Both values must be positive finite integers; method-level policies override class-level policies, which override module defaults.
 - Existing root-barrel metadata helpers (`throttleRouteMetadataKey`, `getThrottleMetadata`, `getSkipThrottleMetadata`, `getClassThrottleMetadata`, and `getClassSkipThrottleMetadata`) remain exported for compatibility with advanced integrations that already inspect decorator metadata directly.
 
 ### Guards
@@ -143,6 +144,7 @@ ThrottlerModule.forRoot({
 - `RedisThrottlerClient`: Structural Redis command client contract accepted by `RedisThrottlerStore`.
 - `ThrottlerStore`: Public contract for custom stores.
 - `ThrottlerConsumeInput`: Public input shape passed to `ThrottlerStore.consume(key, input)` so custom stores can share the guard's current time and TTL window.
+- `ThrottlerStoreEntry`: Public result shape returned by `ThrottlerStore.consume(...)`; `count` is the post-consume request count for the active window and `resetAt` is the epoch-millisecond reset boundary used for `Retry-After` calculation.
 
 ### Status and diagnostics
 - `createThrottlerPlatformStatusSnapshot(...)`: Creates a platform status snapshot.

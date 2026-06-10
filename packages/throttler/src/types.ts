@@ -1,10 +1,17 @@
 import type { MiddlewareContext } from '@fluojs/http';
 
 /**
- * Snapshot of a client's current rate-limit window state.
+ * Snapshot of a client's current rate-limit window state returned by a throttler store.
+ *
+ * @remarks
+ * Stores return this value after a `consume(...)` operation. `ThrottlerGuard`
+ * compares `count` with the resolved request limit and uses `resetAt` to compute
+ * the `Retry-After` value when the limit is exceeded.
  */
 export interface ThrottlerStoreEntry {
+  /** Number of requests recorded in the active window after the current consume operation. */
   count: number;
+  /** Epoch time in milliseconds when the active rate-limit window resets. */
   resetAt: number;
 }
 
@@ -30,7 +37,11 @@ export interface ThrottlerStore {
 }
 
 /**
- * Per-handler or per-controller throttle override.
+ * Per-handler or per-controller throttle policy accepted by `@Throttle(...)`.
+ *
+ * @remarks
+ * Method-level policies override class-level policies, and class-level policies
+ * override module defaults. Both values must be positive finite integers.
  */
 export interface ThrottlerHandlerOptions {
   /** Seconds in the rate-limit window. */
