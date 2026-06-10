@@ -441,6 +441,21 @@ describe('repository governance contracts', () => {
     expect(packageChooser).toContain('Need Drizzle-based relational access on Node.js');
     expect(packageChooserKo).toContain('Node.js에서 Drizzle 기반 관계형 접근이 필요함');
 
+    for (const source of [docsContext, packageSurface, packageChooser, drizzleBook, drizzleReadme]) {
+      expect(source).toMatch(/raw Drizzle (?:driver handle|provider guidance|handle)/u);
+      expect(source).toMatch(/Bun|Cloudflare/u);
+    }
+
+    for (const source of [docsContextKo, packageSurfaceKo, packageChooserKo, drizzleBookKo, drizzleReadmeKo]) {
+      expect(source).toMatch(/raw Drizzle (?:driver handle|provider guidance|handle)/u);
+      expect(source).toMatch(/Bun|Cloudflare/u);
+    }
+
+    expect(drizzleReadme).toContain('{ provide, useFactory }');
+    expect(drizzleReadmeKo).toContain('{ provide, useFactory }');
+    expect(drizzleBook).toContain('`DATABASE` token examples');
+    expect(drizzleBookKo).toContain('`DATABASE` token 예시');
+
     for (const source of [docsContext, transactionsDoc, nestMigrationDoc, drizzleBook, drizzleReadme]) {
       expect(source).toContain('strictTransactions');
       expect(source).toContain('fail-open');

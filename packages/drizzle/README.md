@@ -34,6 +34,8 @@ The root `@fluojs/drizzle` package is currently a Node.js 20+ integration. It im
 
 Drizzle ORM itself can target drivers such as Bun SQL or Cloudflare D1, but those driver runtimes are outside this fluo wrapper until a non-Node transaction-context adapter is documented.
 
+Non-Node runtimes should not import the root package. For Bun, Deno, Cloudflare Workers, or other non-Node Drizzle drivers, register the raw Drizzle driver handle behind application-owned fluo providers such as `{ provide, useFactory }` or `{ provide, useValue }`, then inject that application token into repositories. The canonical package chooser/surface docs and the Bun/Cloudflare book chapters show those raw-provider patterns.
+
 ## When to Use
 
 - when a Node.js 20+ application needs Drizzle to participate in the same module, DI, and lifecycle model as the rest of the app
