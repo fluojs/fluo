@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-The smallest runnable fluo application. This example follows the same adapter-first bootstrap path as the default `fluo new` Node.js + Fastify HTTP starter, stripped down to a smaller `/hello` route and a compact test set.
+The smallest runnable fluo application. This example follows the same adapter-first bootstrap path as the default and explicit HTTP v2 starter for `fluo new` Node.js + Fastify, stripped down to a smaller `/hello` route and a compact test set.
 
 ## what this example demonstrates
 
