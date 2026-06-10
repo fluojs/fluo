@@ -47,8 +47,9 @@ Scrape endpoint는 active `prom-client` Registry output을 해당 Registry의 Pr
 | 표면 | 책임 | 경계 |
 | --- | --- | --- |
 | `MetricsModule.forRoot(...)` | Prometheus scrape endpoint, default metrics, optional HTTP instrumentation, platform telemetry, registry ownership을 wiring합니다. | `provider`는 현재 `'prometheus'`만 받습니다. `path: false`는 scrape route와 route-scoped endpoint middleware를 비활성화합니다. |
-| `MetricsService` | Active Registry 위에서 custom `Counter`, `Gauge`, `Histogram`을 만들기 위한 application-facing facade입니다. | 비즈니스/application metric은 package internals 대신 이 서비스를 사용하세요. |
-| `METER_PROVIDER` / `PrometheusMeterProvider` | Provider token이 필요한 first-party package integration용 low-level meter bridge입니다. | Application code는 package-level integration을 직접 조합하는 경우가 아니면 보통 이 token이 필요하지 않습니다. |
+| `MetricsService` | Active Registry 위에서 custom `Counter`, `Gauge`, `Histogram`을 만드는 application-facing facade이며, 고급 Registry 공유를 위한 `getRegistry()`도 제공합니다. | 비즈니스/application metric은 collector helper를 사용하세요. `getRegistry()`는 active `prom-client` Registry를 `MetricsModule.forRoot({ registry })`로 직접 받을 수 없는 integration에 넘겨야 할 때만 사용하세요. |
+| `Registry` | Shared-registry setup을 위한 `prom-client` `Registry` constructor re-export입니다. | 같은 Prometheus Registry 구현체이므로 중복 metric name은 Prometheus semantics에 따라 계속 실패합니다. |
+| `METER_PROVIDER` / `PrometheusMeterProvider` / meter type | Provider token 또는 backend-neutral counter/gauge/histogram facade가 필요한 first-party package integration용 low-level meter bridge입니다. | Application code는 package-level integration을 직접 조합하는 경우가 아니면 보통 이 token이 필요하지 않습니다. 현재 bundled provider backend는 Prometheus뿐입니다. |
 | `middleware` | Framework HTTP metrics와 endpoint-scoped middleware 뒤의 module middleware chain에 참여하는 module-level middleware입니다. | Route-scoped가 아니므로 scrape route만 보호하려면 `endpointMiddleware`를 사용하세요. |
 | `endpointMiddleware` | 설정된 scrape endpoint에만 바인딩되는 class-based `@fluojs/http` middleware constructor입니다. | `path: false`일 때만 무시됩니다. `''`를 포함한 모든 문자열 `path`는 활성 endpoint path입니다. 함수나 global middleware declaration은 이 option의 계약 밖입니다. |
 
@@ -130,6 +131,8 @@ class OrdersService {
 
 같은 이름으로 `MetricsService.counter(...)`를 다시 호출하면 collector를 다시 만들려고 하므로 Prometheus의 duplicate-name failure behavior를 따릅니다. 요청이나 command handler마다 새로 만들지 말고 collector를 저장해 재사용하세요.
 
+`MetricsService.getRegistry()`는 module scrape endpoint, 내장 HTTP collector, platform telemetry, service를 통해 만든 custom collector가 함께 사용하는 동일한 active `prom-client` Registry를 반환합니다. Bootstrap을 직접 소유한다면 `MetricsModule.forRoot({ registry })`에 명시적 `registry`를 전달하는 방식을 우선하세요. `getRegistry()`는 DI로 `MetricsService`를 받은 advanced integration이 이미 활성화된 Registry에 third-party Prometheus collector를 등록해야 할 때 사용합니다.
+
 ### Framework metric과 app metric이 하나의 registry를 공유하기
 
 ```ts
@@ -196,9 +199,10 @@ MetricsModule.forRoot({
 ## 공개 API
 
 - `MetricsModule.forRoot(options)`
-- `MetricsService`
+- `MetricsService` 및 `counter(...)`, `gauge(...)`, `histogram(...)`, `getRegistry()`
 - `METER_PROVIDER` (Token)
 - `PrometheusMeterProvider`
+- Meter abstraction type: `MeterProvider`, `MeterCounter`, `MeterGauge`, `MeterHistogram`
 - `HttpMetricsMiddleware` 및 HTTP path-label 옵션 타입
 - `provider`(현재는 `'prometheus'`만 지원), module-level `middleware`, endpoint-scoped `endpointMiddleware`를 포함한 module option
 - `prom-client`의 `Registry`

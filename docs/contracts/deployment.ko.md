@@ -30,7 +30,8 @@
 | `GET /health` | `HealthModule.forRoot(...)`가 제공하는 runtime health endpoint입니다. `TerminusModule.forRoot(...)`를 사용하면 응답에 `checkedAt`, `contributors`, `details`, `error`, `info`, `platform`, `status`가 포함됩니다. HTTP 200은 aggregate status `ok`, HTTP 503은 aggregate status `error`를 의미합니다. | `packages/terminus/src/module.ts`, `docs/architecture/observability.md` |
 | `GET /ready` | `HealthModule.forRoot(...)`가 제공하는 runtime readiness endpoint입니다. 앱이 준비되기 전과 애플리케이션/컨텍스트 종료가 시작된 뒤에는 HTTP 503과 `{"status":"starting"}`, readiness check 실패 시 HTTP 503과 `{"status":"unavailable"}`, 준비 완료 시 HTTP 200과 `{"status":"ready"}`를 반환합니다. | `docs/architecture/observability.md` |
 | Prefix가 붙은 health route | health module에 base path를 설정하면 runtime contract는 `{path}/health`, `{path}/ready`가 됩니다. | `docs/architecture/observability.md` |
-| 저장소 예제 검증 | `examples/ops-metrics-terminus/src/app.test.ts`는 현재 example app 설정에서 `/health`와 `/ready`가 HTTP 200을 반환하는지 검증합니다. | `examples/ops-metrics-terminus/src/app.test.ts` |
+| Metrics scrape endpoint | `MetricsModule.forRoot(...)`가 scrape path를 노출하면 `GET /metrics`는 active `prom-client` Registry content type으로 Prometheus text를 반환합니다. 운영 배포에서는 이 route를 endpoint middleware로 보호하거나 ingress boundary가 준비될 때까지 `path: false`로 비활성화해야 합니다. | `packages/metrics/README.md`, `docs/architecture/observability.md` |
+| 저장소 예제 검증 | `examples/ops-metrics-terminus/src/app.test.ts`는 현재 example app 설정에서 `/health`, `/ready`, `/metrics`, `GET /ops/jobs/trigger`가 HTTP 200을 반환하는지 검증합니다. | `examples/ops-metrics-terminus/src/app.test.ts` |
 
 - `TerminusModule.forRoot(...)`는 `/health` 응답 계산 시 indicator health, `platformShell.health()`, `platformShell.ready()`를 함께 결합합니다.
 - `execution.indicatorTimeoutMs`를 설정하면 느린 indicator는 무기한 대기 대신 `down`으로 처리됩니다.
