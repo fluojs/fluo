@@ -24,6 +24,7 @@
 | `HealthCheckService.check([...])`를 호출하는 `@HealthCheck()` 컨트롤러 메서드 | `@fluojs/terminus`의 `TerminusModule.forRoot({ indicators, indicatorProviders, readinessChecks })` | Module-level registration이 기본 API이므로 runtime `/health`와 `/ready` route가 indicator 및 platform diagnostics를 일관되게 포함한다. |
 | NestJS Terminus memory/disk 또는 Redis check | `@fluojs/terminus/node`와 `@fluojs/terminus/redis` | Node.js memory/disk helper와 Redis helper는 전용 subpath에 있다. Root package는 Redis peer나 Node filesystem access를 기본 import 경계에 포함하지 않는다. |
 | `@nestjs/throttler` 전역 throttler 설정 | `@fluojs/throttler` / `@fluojs/http`의 `ThrottlerModule.forRoot(...)`와 명시적 `@UseGuards(ThrottlerGuard)` | Module registration은 정책과 guard provider를 제공한다. Route enforcement는 guard를 붙인 위치에서만 시작된다. |
+| `@WebSocketGateway()`와 `@SubscribeMessage()` 및 parameter decorator | `@fluojs/websockets`의 `@WebSocketGateway()`와 `@OnMessage(event?)`, positional handler argument, 선택적 `WebSocketRoomService` | fluo websocket handler는 `(payload, socket, request)`를 직접 받습니다. Nest-style `@MessageBody()`, `@ConnectedSocket()`, `@SubscribeMessage()` parameter/decorator rewrite는 없습니다. |
 
 ## Breaking Differences
 
@@ -49,6 +50,7 @@
 - `@fluojs/throttler`는 하나의 module default와 class/method `@Throttle({ ttl, limit })` override를 제공한다. burst와 sustained limit 같은 multi-window 정책은 HTTP middleware, custom `ThrottlerStore`, 또는 애플리케이션이 소유한 guard wrapper로 명시적으로 구현해야 한다.
 - Forwarded client IP header는 `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰 가능한 proxy가 덮어쓰는 배포에서 `trustProxyHeaders: true`를 설정한 경우에만 사용된다.
 - Throttling된 응답에서 보장되는 metadata는 HTTP `429`와 `Retry-After`다. 추가 rate-limit header나 body shape는 애플리케이션 경계에서 더한다.
+- WebSocket migration은 decorator-for-decorator 치환이 아닙니다. `@fluojs/websockets`의 `@OnMessage(event?)`를 사용하고, handler 입력은 `(payload, socket, request)` positional argument로 읽으며, room membership 또는 broadcast에는 NestJS gateway server injection이나 parameter decorator가 그대로 이어진다고 가정하지 말고 `WebSocketRoomService`를 사용합니다.
 
 ## Removed Concepts
 
@@ -61,6 +63,7 @@
 - `@nestjs/terminus` controller decorator나 별도 default liveness route가 Terminus의 일대일 마이그레이션 대상이라고 가정하는 방식.
 - `@nestjs/throttler`의 named definition, global guard registration, proxy header trust가 명시적인 Fluo wiring 없이 그대로 유지된다고 가정하는 방식.
 - NestJS/Mongoose request interceptor나 암묵적 connection ownership이 그대로 유지된다고 가정하는 방식. fluo는 Mongoose connection ownership을 애플리케이션 쪽에 두고 서비스 `@Transaction()`과 명시적 `requestTransaction(...)` 경계를 사용한다.
+- NestJS `@SubscribeMessage()`, `@MessageBody()`, `@ConnectedSocket()`, 또는 암묵적 gateway server injection이 fluo websocket gateway에도 있다고 가정하는 방식.
 
 ## CLI Starter and Generator Limits
 
