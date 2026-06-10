@@ -19,6 +19,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | constructor type reflection via `emitDecoratorMetadata` | `@Inject(TokenA, TokenB)` from `@fluojs/core` | Constructor dependencies are declared explicitly in decorator argument order. |
 | `class-validator` / decorator-driven DTO validation | `@fluojs/validation` with Standard Schema support | Current validation direction is Standard Schema based, including Zod and Valibot support. |
 | `createApplicationContext()` standalone bootstrap | `FluoFactory.createApplicationContext(AppModule)` | Standalone application context exists in `@fluojs/runtime`. |
+| NestJS request transaction interceptor | Service `@Transaction()` from the persistence package, or explicit `requestTransaction(...)` at the controller/request boundary | fluo does not provide Drizzle `*TransactionInterceptor` exports. Keep business transactions on services; use `DrizzleDatabase.requestTransaction(...)` only when the entire request must share one boundary. |
 
 ## Breaking Differences
 
@@ -28,6 +29,9 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Validation MUST be migrated to the Standard Schema direction instead of keeping a `class-validator`-first contract.
 - Controller decorators MUST be imported from `@fluojs/http`, while structural decorators such as `@Module` come from `@fluojs/core`.
 - NestJS `@Sse()` handlers that return Observables MUST be rewritten to construct `SseResponse`, call `send(...)` or `comment(...)`, and close the stream from request abort or application cleanup paths.
+- Drizzle transaction migration is not an interceptor-for-interceptor replacement. `@fluojs/drizzle` uses service `@Transaction()` as the primary boundary and explicit `DrizzleDatabase.requestTransaction(...)` for rare controller/request-wide compatibility cases.
+- Drizzle `@Transaction()` can infer a target from `this.db`, direct host properties, or nested `.db` properties. Services with multiple Drizzle clients MUST use an explicit accessor such as `@Transaction((self) => self.ordersDb)` instead of relying on property discovery.
+- Drizzle defaults to fail-open direct execution when the registered handle lacks `database.transaction(...)` and `strictTransactions` is `false`. Set `strictTransactions: true` for migrated production flows that require rollback guarantees so missing transaction support fails readiness and helper calls instead of silently running without atomicity.
 
 ## Removed Concepts
 

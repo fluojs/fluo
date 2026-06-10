@@ -13,6 +13,7 @@ Node.js 전용 트랜잭션 인지형 데이터베이스 래퍼와 선택적 dis
 - [주요 패턴](#주요-패턴)
   - [서비스 트랜잭션 경계 (@Transaction)](#서비스-트랜잭션-경계-transaction)
   - [수동 트랜잭션과 current()](#수동-트랜잭션과-current)
+  - [요청 전체 컨트롤러 경계](#요청-전체-컨트롤러-경계)
   - [종료와 상태 계약](#종료와-상태-계약)
 - [수동 모듈 구성](#수동-모듈-구성)
 - [공개 API 개요](#공개-api-개요)
@@ -111,6 +112,8 @@ export class UserRepository {
 
 `@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 Drizzle 트랜잭션 안에서 실행됩니다.
 
+기본적으로 `@Transaction()`은 작은 host-object heuristic으로 대상을 고릅니다. 먼저 `this.db`를 확인하고, 그다음 데코레이터가 붙은 인스턴스의 직접 property, 마지막으로 그 값들의 중첩 `.db` property 중 `transaction(...)` 메서드를 노출하는 첫 값을 사용합니다. 이 덕분에 `constructor(private readonly db: DrizzleDatabase<...>)` 같은 일반 서비스는 간결하게 유지할 수 있지만, 하나의 서비스가 Drizzle wrapper를 둘 이상 소유한다면 property 순서에 의존하지 마세요. 데코레이터가 붙은 host가 여러 transaction-capable client를 갖거나 `.db`를 노출하는 repository를 감싸는 경우에는 `@Transaction((self) => self.ordersDb)` 또는 `@Transaction((self) => self.analyticsDb, options)`처럼 명시적 accessor를 전달하세요.
+
 ### 수동 트랜잭션과 current()
 
 `DrizzleDatabase`는 트랜잭션 범위 내에 있으면 자동으로 활성 트랜잭션 handle을, 그렇지 않으면 root handle을 반환하는 `current()` 메서드를 제공합니다. 외부 유틸리티에 handle을 전달하거나 복잡한 수동 트랜잭션 처리가 필요한 경우 escape hatch로 사용하세요.
@@ -147,7 +150,37 @@ await this.db.transaction(async () => {
 
 중첩 호출은 활성 transaction boundary를 재사용합니다. 이미 boundary가 활성화되어 있는데 중첩 호출이 transaction option을 전달하면, 기존 transaction을 조용히 바꾸지 않고 해당 중첩 option을 거부합니다.
 
-`database.transaction(...)`을 사용할 수 없고 `strictTransactions`가 `false`이면 `transaction()`과 `requestTransaction()`은 직접 실행으로 fallback합니다. 요청 범위 호출은 이 경우에도 `AbortSignal`을 존중합니다.
+`database.transaction(...)`을 사용할 수 없고 `strictTransactions`가 `false`(기본값)이면 `transaction()`과 `requestTransaction()`은 의도적으로 fail-open(fail-open fallback)하여 callback을 root handle에서 직접 실행합니다. 이는 local fake, read-only adapter, 점진적 migration에는 유용하지만 원자적이지 않으므로 실제 데이터베이스 transaction으로 취급하면 안 됩니다. rollback 보장이 필요한 production 경로에서는 `strictTransactions: true`를 설정하세요. 그러면 startup 및 readiness 진단에서 누락된 `database.transaction(...)` 지원을 드러내고, transaction helper는 트랜잭션 없이 조용히 실행하는 대신 예외를 던집니다. 요청 범위 fallback은 그래도 `AbortSignal`을 존중하므로, Drizzle transaction runner가 없어도 취소된 요청은 직접 실행 전이나 도중에 중단될 수 있습니다.
+
+### 요청 전체 컨트롤러 경계
+
+비즈니스 작업에는 서비스 레벨 `@Transaction()`을 우선 사용하세요. 전체 요청을 하나의 transaction으로 감싸던 NestJS controller/interceptor 패턴을 마이그레이션해야 한다면 controller, route adapter, request orchestration 경계에서 `requestTransaction(...)`을 명시적으로 호출하고 가능한 경우 request `AbortSignal`을 전달하세요.
+
+```ts
+import { Controller, Post } from '@fluojs/http';
+import { DrizzleDatabase } from '@fluojs/drizzle';
+import { drizzle } from 'drizzle-orm/node-postgres';
+
+type AppDatabase = ReturnType<typeof drizzle>;
+
+@Controller('/checkout')
+export class CheckoutController {
+  constructor(
+    private readonly db: DrizzleDatabase<AppDatabase>,
+    private readonly checkout: CheckoutService,
+  ) {}
+
+  @Post()
+  create(input: CheckoutInput, requestSignal?: AbortSignal) {
+    return this.db.requestTransaction(
+      () => this.checkout.createOrder(input),
+      requestSignal,
+    );
+  }
+}
+```
+
+import할 수 있는 Drizzle `*TransactionInterceptor` export는 없습니다. 기존 NestJS interceptor 설계는 대부분의 transaction boundary를 서비스로 옮기고, 전체 request 작업이 서비스 메서드 하나가 아니라 같은 boundary를 공유해야 하는 드문 controller-level 호환성 사례에만 명시적 `requestTransaction(...)`을 남기세요.
 
 ### 종료와 상태 계약
 
@@ -200,7 +233,7 @@ defineModule(ManualDrizzleModule, {
 
 provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createPlatformStatusSnapshot()` 같은 wrapper 메서드만 필요로 하면 `DrizzleDatabase<TDatabase>`를 사용하세요. 리포지토리 주입에서 Drizzle query 메서드를 직접 호출해야 한다면 `DrizzleDatabaseFacade<TDatabase>`를 사용합니다. 이 facade는 활성 트랜잭션 handle이 있으면 그 handle로, 없으면 root handle로 호출을 전달합니다. `DrizzleDatabase.createFacade(...)`는 module provider wiring을 위한 low-level compatibility helper로 유지됩니다. 애플리케이션 코드는 `DrizzleModule.forRoot(...)` / `forRootAsync(...)`를 우선 사용하세요.
 
-`Transaction`은 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 기본적으로 ambient `DrizzleDatabase`를 resolve하고, 명시적 client 선택에는 accessor를 받을 수 있으며, 외부 경계에는 Drizzle transaction option을 전달할 수 있습니다.
+`Transaction`은 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 데코레이터가 붙은 host에서 `this.db`, 직접 property, 중첩 `.db` property 순서로 transaction-capable 대상을 resolve하고, 명시적 client 선택에는 accessor를 받을 수 있으며, 외부 경계에는 Drizzle transaction option을 전달할 수 있습니다.
 
 ### `DrizzleModule`
 

@@ -19,6 +19,7 @@
 | `emitDecoratorMetadata`를 통한 생성자 타입 리플렉션 | `@fluojs/core`의 `@Inject(TokenA, TokenB)` | 생성자 의존성은 데코레이터 인자 순서대로 명시한다. |
 | `class-validator` / 데코레이터 중심 DTO 검증 | Standard Schema를 지원하는 `@fluojs/validation` | 현재 검증 방향은 Zod, Valibot 등을 포함한 Standard Schema 기반이다. |
 | `createApplicationContext()` 단독 부트스트랩 | `FluoFactory.createApplicationContext(AppModule)` | `@fluojs/runtime`에 standalone application context가 존재한다. |
+| NestJS 요청 transaction interceptor | 영속성 패키지의 서비스 `@Transaction()` 또는 controller/request 경계의 명시적 `requestTransaction(...)` | fluo는 Drizzle `*TransactionInterceptor` export를 제공하지 않는다. 비즈니스 transaction은 서비스에 두고, 전체 요청이 하나의 경계를 공유해야 할 때만 `DrizzleDatabase.requestTransaction(...)`을 사용한다. |
 
 ## Breaking Differences
 
@@ -28,6 +29,9 @@
 - 검증은 `class-validator` 우선 계약을 유지하지 않고 Standard Schema 방향으로 반드시 옮겨야 한다.
 - 컨트롤러 데코레이터는 반드시 `@fluojs/http`에서 가져오고, `@Module` 같은 구조 데코레이터는 `@fluojs/core`에서 가져온다.
 - Observable을 반환하는 NestJS `@Sse()` 핸들러는 반드시 `SseResponse`를 만들고, `send(...)` 또는 `comment(...)`를 호출하며, request abort 또는 application cleanup 경로에서 stream을 닫도록 재작성해야 한다.
+- Drizzle transaction migration은 interceptor-for-interceptor 치환이 아니다. `@fluojs/drizzle`은 서비스 `@Transaction()`을 기본 경계로 사용하고, 드문 controller/request-wide 호환성 사례에만 명시적 `DrizzleDatabase.requestTransaction(...)`을 사용한다.
+- Drizzle `@Transaction()`은 `this.db`, 직접 host property, 중첩 `.db` property에서 대상을 추론할 수 있다. Drizzle client가 둘 이상인 서비스는 property discovery에 의존하지 말고 `@Transaction((self) => self.ordersDb)` 같은 명시적 accessor를 반드시 사용한다.
+- Drizzle은 등록된 handle에 `database.transaction(...)`이 없고 `strictTransactions`가 `false`이면 fail-open direct execution을 기본값으로 사용한다. rollback 보장이 필요한 production migration 흐름에서는 `strictTransactions: true`를 설정해, transaction 지원 누락이 원자성 없이 조용히 실행되지 않고 readiness 및 helper 호출 실패로 드러나게 한다.
 
 ## Removed Concepts
 

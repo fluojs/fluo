@@ -398,9 +398,15 @@ describe('enforceContractCompanionUpdates', () => {
 });
 
 describe('repository governance contracts', () => {
-  it('keeps Drizzle Node runtime and createFacade compatibility docs discoverable across governed docs', () => {
+  it('keeps Drizzle runtime, facade, and transaction migration docs discoverable across governed docs', () => {
     const docsContext = readFileSync(resolve(repoRoot, 'docs/CONTEXT.md'), 'utf8');
     const docsContextKo = readFileSync(resolve(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const transactionsDoc = readFileSync(resolve(repoRoot, 'docs/architecture/transactions.md'), 'utf8');
+    const transactionsDocKo = readFileSync(resolve(repoRoot, 'docs/architecture/transactions.ko.md'), 'utf8');
+    const nestMigrationDoc = readFileSync(resolve(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+    const nestMigrationDocKo = readFileSync(resolve(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+    const drizzleBook = readFileSync(resolve(repoRoot, 'book/intermediate/ch20-drizzle.md'), 'utf8');
+    const drizzleBookKo = readFileSync(resolve(repoRoot, 'book/intermediate/ch20-drizzle.ko.md'), 'utf8');
     const packageSurface = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
     const packageSurfaceKo = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
     const packageChooser = readFileSync(resolve(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
@@ -434,6 +440,30 @@ describe('repository governance contracts', () => {
 
     expect(packageChooser).toContain('Need Drizzle-based relational access on Node.js');
     expect(packageChooserKo).toContain('Node.js에서 Drizzle 기반 관계형 접근이 필요함');
+
+    for (const source of [docsContext, transactionsDoc, nestMigrationDoc, drizzleBook, drizzleReadme]) {
+      expect(source).toContain('strictTransactions');
+      expect(source).toContain('fail-open');
+      expect(source).toContain('requestTransaction(...)');
+      expect(source).toContain('@Transaction((self) => self.');
+    }
+
+    for (const source of [docsContextKo, transactionsDocKo, nestMigrationDocKo, drizzleBookKo, drizzleReadmeKo]) {
+      expect(source).toContain('strictTransactions');
+      expect(source).toContain('fail-open');
+      expect(source).toContain('requestTransaction(...)');
+      expect(source).toContain('@Transaction((self) => self.');
+    }
+
+    for (const source of [transactionsDoc, nestMigrationDoc, drizzleBook, drizzleReadme]) {
+      expect(source).toMatch(/interceptor/i);
+      expect(source).toContain('controller');
+    }
+
+    for (const source of [transactionsDocKo, nestMigrationDocKo, drizzleBookKo, drizzleReadmeKo]) {
+      expect(source).toMatch(/interceptor/i);
+      expect(source).toMatch(/controller|컨트롤러/u);
+    }
   });
 
   it('keeps Mongoose ambient-session facade scope discoverable across governed docs', () => {

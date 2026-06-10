@@ -9,6 +9,8 @@
 - fluo에서 Drizzle ORM을 사용할 때의 장점과 적용 위치를 구분합니다.
 - `DrizzleModule` 구성과 드라이버 리소스 수명 주기 관리 방식을 정리합니다.
 - 직접 Drizzle query 메서드를 호출하는 리포지토리에 `DrizzleDatabaseFacade`를 사용하는 흐름을 구성합니다.
+- 서비스 transaction과 명시적 `requestTransaction(...)` 경계를 비교합니다.
+- fail-open fallback을 허용할 수 있는 시점과 `strictTransactions`를 켜야 하는 시점을 판단합니다.
 - FluoShop 주문 관리용 관계형 스키마를 설계하는 접근을 확인합니다.
 - 상태 스냅샷으로 SQL 연결 상태를 점검하는 운영 기준을 정리합니다.
 
@@ -57,6 +59,7 @@ import { Pool } from 'pg';
 
         return {
           database: drizzle(pool),
+          strictTransactions: true,
           dispose: async () => {
             await pool.end(); // 안전한 종료(Graceful shutdown)
           },
@@ -67,6 +70,8 @@ import { Pool } from 'pg';
 })
 export class PersistenceModule {}
 ```
+
+FluoShop production 주문 서비스에는 `strictTransactions: true`를 권장합니다. checkout에는 rollback 보장이 필요하기 때문입니다. 등록된 Drizzle handle이 `database.transaction(...)`을 노출하지 않고 `strictTransactions`를 기본값 `false`로 두면 fluo는 fail-open합니다. 즉 `transaction(...)`과 `requestTransaction(...)`이 callback을 root handle에서 직접 실행합니다. 이 동작은 local fake와 migration scaffold를 계속 사용할 수 있게 하지만 원자적이지 않으므로 실제 transaction으로 취급하면 안 됩니다.
 
 ## 20.4 Repositories and Connection Management
 
@@ -99,6 +104,41 @@ export class ProductRepository {
 
 Drizzle의 트랜잭션 관리는 fluo의 통합 인터페이스를 통해 다룰 수 있습니다. 저장소 코드가 직접 트랜잭션 핸들을 관리하지 않아도 되므로, 서비스는 비즈니스 작업의 원자성에 집중할 수 있습니다.
 
+서비스 레벨 `@Transaction()`을 기본 경계로 사용하세요.
+
+```typescript
+import { Transaction } from '@fluojs/drizzle';
+
+export class CheckoutService {
+  constructor(private readonly orders: OrderRepository) {}
+
+  @Transaction()
+  async placeOrder(input: PlaceOrderInput) {
+    const order = await this.orders.create(input);
+    await this.orders.reserveInventory(order.id);
+    return order;
+  }
+}
+```
+
+accessor가 없으면 Drizzle `@Transaction()`은 데코레이터가 붙은 host에서 `this.db`, 직접 property, 중첩 `.db` property 순서로 `transaction(...)`을 노출하는 대상을 찾습니다. 이 heuristic은 작은 서비스에는 잘 맞지만, Drizzle client가 여러 개인 서비스는 명시적으로 선택해야 합니다.
+
+```typescript
+class ReportingService {
+  constructor(
+    private readonly ordersDb: DrizzleDatabase<OrderDatabase>,
+    private readonly analyticsDb: DrizzleDatabase<AnalyticsDatabase>,
+  ) {}
+
+  @Transaction((self) => self.analyticsDb)
+  async rebuildAnalytics() {
+    // 다른 Drizzle wrapper가 있어도 analyticsDb를 사용합니다.
+  }
+}
+```
+
+NestJS controller/interceptor transaction 패턴을 마이그레이션한다면 Drizzle transaction interceptor를 찾지 마세요. 일반적인 비즈니스 원자성은 서비스에 둡니다. 전체 request가 하나의 transaction을 공유해야 할 때만 controller 또는 request orchestration 경계에서 `requestTransaction(...)`을 사용하고, adapter가 제공한다면 request `AbortSignal`을 전달하세요.
+
 ### Manual Transactions
 fluo에서 권장되는 트랜잭션 처리 방식은 서비스 메서드에 `@Transaction()` 데코레이터를 사용하는 것입니다. 수동 제어가 필요한 경우 블록 패턴을 사용하십시오:
 
@@ -110,6 +150,15 @@ await this.db.transaction(async () => {
     .set({ stock: newStock })
     .where(eq(inventory.productId, pid));
 });
+```
+
+NestJS-style interceptor 대신 요청 전체 호환성에는 `requestTransaction(...)`을 사용하세요.
+
+```typescript
+return this.db.requestTransaction(
+  () => this.checkout.placeOrder(input),
+  request.signal,
+);
 ```
 
 ## 20.6 FluoShop Context: Relational Schema

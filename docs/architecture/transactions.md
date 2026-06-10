@@ -44,6 +44,7 @@ Any new ORM integration package added to the fluo ecosystem must export a `@Tran
 | Nested boundary reuse | If a transaction is already active, `@Transaction()` reuses the existing boundary instead of opening a new one. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
 | Nested options restriction | Prisma and Drizzle reject nested transaction options while an ambient transaction is already active. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
 | Strict mode | Integration packages can be configured to throw when the registered client/connection does not support transactions. Without strict mode, transaction helpers fall back to direct execution. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
+| Drizzle decorator target selection | Drizzle `@Transaction()` checks the decorated host for `this.db`, then direct properties, then nested `.db` properties that expose `transaction(...)`; use an explicit accessor such as `@Transaction((self) => self.ordersDb)` when more than one target is possible. | `packages/drizzle/src/transaction.ts` |
 
 ## Boundary Semantics
 
@@ -54,12 +55,16 @@ Any new ORM integration package added to the fluo ecosystem must export a `@Tran
 | Manual Drizzle boundary | `DrizzleDatabase.transaction(fn, options?)` runs `fn` inside `database.transaction(...)` and binds the transaction database into ALS. | `packages/drizzle/src/database.ts` |
 | Manual Mongoose boundary | `MongooseConnection.transaction(fn)` delegates to `connection.transaction(...)` or manages a manual `startTransaction()` cycle. | `packages/mongoose/src/connection.ts` |
 
+Drizzle fail-open fallback applies only when the registered database handle does not expose `database.transaction(...)` and `strictTransactions` is `false`. In that mode, `transaction(...)` and `requestTransaction(...)` run the callback directly against the root handle, so the code path stays usable for local fakes or gradual migrations but has no rollback atomicity. Set `strictTransactions: true` for production flows that require transaction guarantees; readiness becomes `not-ready` and helpers throw when `database.transaction(...)` is unavailable.
+
 ## Request-Wide Compatibility
 
 | Pattern | Behavior |
 | --- | --- |
 | Explicit request boundary | Application code can call `requestTransaction(...)` at a controller, route adapter, or request orchestration boundary when an entire request must be transactional. |
 | Interceptor status | `*TransactionInterceptor` exports were removed; prefer service `@Transaction()` for business operations and explicit `requestTransaction(...)` for rare request-wide boundaries. |
+
+When migrating NestJS controller or interceptor transaction patterns, do not look for a replacement Drizzle interceptor. Keep normal business atomicity on service `@Transaction()` methods, and wrap controllers with `requestTransaction(...)` only when the complete request lifecycle must share one Drizzle transaction. Pass the request `AbortSignal` when available so cancellation remains visible during both real transaction execution and fail-open fallback.
 
 ## Advanced / Escape Hatch
 
