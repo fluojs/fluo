@@ -832,6 +832,49 @@ describe('runtime subpath surface discoverability', () => {
   });
 });
 
+describe('Vite decorator tooling discoverability', () => {
+  it('keeps Vite app and Vitest test transform boundaries discoverable in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const englishChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
+    const englishToolchainMatrix = readFileSync(join(repoRoot, 'docs/reference/toolchain-contract-matrix.md'), 'utf8');
+    const englishViteReadme = readFileSync(join(repoRoot, 'packages/vite/README.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const koreanChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.ko.md'), 'utf8');
+    const koreanToolchainMatrix = readFileSync(join(repoRoot, 'docs/reference/toolchain-contract-matrix.ko.md'), 'utf8');
+    const koreanViteReadme = readFileSync(join(repoRoot, 'packages/vite/README.ko.md'), 'utf8');
+    const englishDocs = [
+      englishContext,
+      englishChooser,
+      englishToolchainMatrix,
+      readFileSync(join(repoRoot, 'docs/getting-started/quick-start.md'), 'utf8'),
+      readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8'),
+      englishViteReadme,
+    ];
+    const koreanDocs = [
+      koreanContext,
+      koreanChooser,
+      koreanToolchainMatrix,
+      readFileSync(join(repoRoot, 'docs/getting-started/quick-start.ko.md'), 'utf8'),
+      readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8'),
+      koreanViteReadme,
+    ];
+
+    for (const markdown of [...englishDocs, ...koreanDocs]) {
+      expect(markdown).toContain('@fluojs/vite');
+      expect(markdown).toContain('@fluojs/testing/vitest');
+      expect(markdown).toContain('vite.config.ts');
+      expect(markdown).toContain('vitest.config.ts');
+    }
+
+    for (const markdown of [englishContext, englishChooser, englishToolchainMatrix, englishViteReadme]) {
+      expect(markdown).toMatch(/lazy|lazily/u);
+    }
+    for (const markdown of [koreanContext, koreanChooser, koreanToolchainMatrix, koreanViteReadme]) {
+      expect(markdown).toContain('lazy');
+    }
+  });
+});
+
 describe('event-bus transport discoverability', () => {
   it('documents event-bus transport fan-out and drain guidance from the AI context and package references in both locales', () => {
     const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');

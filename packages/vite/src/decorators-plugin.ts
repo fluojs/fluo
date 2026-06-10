@@ -1,6 +1,7 @@
 import type { Plugin, ResolvedConfig } from 'vite';
 
 type BabelCoreModule = Pick<typeof import('@babel/core'), 'transformAsync'>;
+type BabelCoreImporter = () => Promise<BabelCoreModule>;
 
 const BABEL_PEER_DEPENDENCIES = [
   '@babel/core',
@@ -46,9 +47,13 @@ function createBabelTransformDiagnostic(error: unknown, filePath: string): Error
   );
 }
 
-async function loadBabelCore(filePath: string): Promise<BabelCoreModule> {
+async function importBabelCore(): Promise<BabelCoreModule> {
+  return await import('@babel/core');
+}
+
+async function loadBabelCore(filePath: string, importBabelCoreModule: BabelCoreImporter): Promise<BabelCoreModule> {
   try {
-    return await import('@babel/core');
+    return await importBabelCoreModule();
   } catch (error) {
     throw createBabelTransformDiagnostic(error, filePath);
   }
@@ -98,7 +103,7 @@ function shouldRequestBabelSourceMaps(config: Pick<ResolvedConfig, 'build' | 'co
  * });
  * ```
  */
-export function fluoDecoratorsPlugin(): Plugin {
+function createFluoDecoratorsPlugin(importBabelCoreModule: BabelCoreImporter): Plugin {
   let shouldGenerateSourceMaps = false;
   let babelCorePromise: Promise<BabelCoreModule> | undefined;
 
@@ -113,7 +118,7 @@ export function fluoDecoratorsPlugin(): Plugin {
       }
 
       const filePath = readViteFilePath(id);
-      babelCorePromise ??= loadBabelCore(filePath);
+      babelCorePromise ??= loadBabelCore(filePath, importBabelCoreModule);
 
       const babelCore = await babelCorePromise;
       const result = await babelCore
@@ -136,4 +141,12 @@ export function fluoDecoratorsPlugin(): Plugin {
       return { code: result.code, map: result.map ?? null };
     },
   };
+}
+
+export function fluoDecoratorsPlugin(): Plugin {
+  return createFluoDecoratorsPlugin(importBabelCore);
+}
+
+export function createFluoDecoratorsPluginForTesting(importBabelCoreModule: BabelCoreImporter): Plugin {
+  return createFluoDecoratorsPlugin(importBabelCoreModule);
 }

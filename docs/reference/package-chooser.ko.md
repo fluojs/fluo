@@ -31,7 +31,7 @@
 
 | 조건 | 패키지 선택 | 비고 |
 | --- | --- | --- |
-| TC39 표준 데코레이터가 포함된 TypeScript를 Vite로 빌드해야 함 | `@fluojs/vite` | `fluoDecoratorsPlugin()`을 사용해 Babel의 `@babel/plugin-proposal-decorators` transform을 `{ version: '2023-11' }`로 적용하면서 test, declaration, dependency, non-TypeScript 파일에 대한 fluo의 Vite 파일 경계 skip을 유지합니다. |
+| TC39 표준 데코레이터가 포함된 TypeScript를 Vite로 빌드해야 함 | `@fluojs/vite` | `vite.config.ts`에서 `fluoDecoratorsPlugin()`을 사용해 Babel의 `@babel/plugin-proposal-decorators` transform을 `{ version: '2023-11' }`로 적용하면서 test, declaration, dependency, non-TypeScript 파일에 대한 fluo의 Vite 파일 경계 skip을 유지합니다. `vitest.config.ts`는 `@fluojs/testing/vitest` 경로에 두세요. Vite 플러그인은 eligible 애플리케이션 파일에서만 Babel을 lazy load하고 누락된 Babel peer를 transform hook에서 진단합니다. |
 
 ## 마이크로서비스 스타터 만들기
 

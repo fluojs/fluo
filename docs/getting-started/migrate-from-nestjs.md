@@ -36,6 +36,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Drizzle transaction migration is not an interceptor-for-interceptor replacement. `@fluojs/drizzle` uses service `@Transaction()` as the primary boundary and explicit `DrizzleDatabase.requestTransaction(...)` for rare controller/request-wide compatibility cases.
 - Drizzle `@Transaction()` can infer a target from `this.db`, direct host properties, or nested `.db` properties. Services with multiple Drizzle clients MUST use an explicit accessor such as `@Transaction((self) => self.ordersDb)` instead of relying on property discovery.
 - Drizzle defaults to fail-open direct execution when the registered handle lacks `database.transaction(...)` and `strictTransactions` is `false`. Set `strictTransactions: true` for migrated production flows that require rollback guarantees so missing transaction support fails readiness and helper calls instead of silently running without atomicity.
+- Vite build transforms and Vitest test transforms are intentionally split. Generated non-Deno `vite.config.ts` files use `@fluojs/vite` for Babel's `{ version: '2023-11' }` decorator transform on application `.ts` files, while generated `vitest.config.ts` files use `@fluojs/testing/vitest` for tests. Do not re-enable legacy decorator compiler flags or assume one transform config owns both build and test files.
 - Mongoose transaction migration is also not an interceptor-for-interceptor replacement. Use service `@Transaction()` from `@fluojs/mongoose` for business atomicity, and use `MongooseConnection.requestTransaction(...)` only for rare controller/request-wide boundaries that must share one MongoDB session.
 - `@fluojs/mongoose` requires the application to provide a concrete connection from Mongoose; it does not create the connection, own model compilation, or close the connection unless a `dispose(connection)` hook is supplied.
 - `MongooseConnection.model(...)` auto-binds ambient sessions only for `create`, `find`, `findOne`, `aggregate`, and `bulkWrite`. Unsupported model methods, `doc.save()`, raw `conn.current().model(...)` usage, and external utilities require explicit `conn.currentSession()` plumbing.
@@ -55,6 +56,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Reflection-driven constructor resolution through `reflect-metadata`.
 - Implicit DI based on emitted design-time types.
 - Legacy decorator compiler mode as a framework requirement.
+- Collapsing the generated `@fluojs/vite` application transform and `@fluojs/testing/vitest` test transform into one file boundary.
 - Assuming every documented platform is part of `fluo new`; starter coverage is defined separately in the support matrix.
 - Assuming `@nestjs/terminus` controller decorators or a separate default liveness route are one-to-one Terminus migration targets.
 - Assuming `@nestjs/throttler` named definitions, global guard registration, or proxy header trust carry over without explicit Fluo wiring.
