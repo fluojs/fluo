@@ -34,6 +34,8 @@ npm install pg
 
 Drizzle ORM 자체는 Bun SQL이나 Cloudflare D1 같은 driver도 대상으로 할 수 있지만, 비 Node transaction-context adapter가 문서화되기 전까지 해당 driver runtime은 이 fluo wrapper 범위 밖입니다.
 
+비 Node 런타임에서는 루트 패키지를 import하지 마세요. Bun, Deno, Cloudflare Workers 또는 다른 비 Node Drizzle driver에서는 raw Drizzle driver handle을 `{ provide, useFactory }`나 `{ provide, useValue }` 같은 애플리케이션 소유 fluo provider 뒤에 등록하고, repository에는 해당 애플리케이션 토큰을 주입하세요. Canonical package chooser/surface 문서와 Bun/Cloudflare book 장에서 이런 raw-provider 패턴을 보여 줍니다.
+
 ## 사용 시점
 
 - Node.js 20+ 애플리케이션에서 Drizzle을 다른 fluo 모듈과 같은 DI·모듈·라이프사이클 모델 안에 넣고 싶을 때
