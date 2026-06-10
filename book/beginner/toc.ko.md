@@ -199,7 +199,7 @@
   - [16.8 스로틀링 모범 사례](ch16-throttler.ko.md#168-best-practices-for-throttling)
   - [16.9 요약](ch16-throttler.ko.md#169-summary)
   - [16.10 심화: 마이크로서비스에서의 스로틀링](ch16-throttler.ko.md#1610-deep-dive-throttling-in-microservices)
-  - [16.11 "토큰 버킷" 알고리즘 구현하기](ch16-throttler.ko.md#1611-implementing-a-token-bucket-algorithm)
+  - [16.11 커스텀 토큰 버킷 저장소 구현하기](ch16-throttler.ko.md#1611-implementing-custom-token-bucket-stores)
   - [16.12 모니터링과 관찰성](ch16-throttler.ko.md#1612-monitoring-and-observability)
   - [16.13 HTTP를 넘어서는 스로틀링](ch16-throttler.ko.md#1613-throttling-beyond-http)
   - [16.14 흔한 함정과 피하는 방법](ch16-throttler.ko.md#1614-common-pitfalls-and-how-to-avoid-them)

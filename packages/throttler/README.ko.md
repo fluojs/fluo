@@ -132,6 +132,7 @@ ThrottlerModule.forRoot({
 ### 데코레이터
 - `@Throttle({ ttl, limit })`: 클래스나 메서드에 특정 속도 제한을 설정합니다.
 - `@SkipThrottle()`: 클래스나 메서드에 대해 속도 제한을 비활성화합니다.
+- `ThrottlerHandlerOptions`: `@Throttle(...)`이 받는 공개 `{ ttl, limit }` 정책 shape입니다. 두 값은 모두 양의 finite integer여야 하며, 메서드 수준 정책은 클래스 수준 정책보다 우선하고 클래스 수준 정책은 모듈 기본값보다 우선합니다.
 - 기존 root-barrel metadata helper(`throttleRouteMetadataKey`, `getThrottleMetadata`, `getSkipThrottleMetadata`, `getClassThrottleMetadata`, `getClassSkipThrottleMetadata`)는 decorator metadata를 직접 검사하던 advanced integration과의 호환성을 위해 계속 export됩니다.
 
 ### 가드
@@ -143,6 +144,7 @@ ThrottlerModule.forRoot({
 - `RedisThrottlerClient`: `RedisThrottlerStore`가 받는 구조적 Redis command client 계약입니다.
 - `ThrottlerStore`: custom store를 위한 공개 계약입니다.
 - `ThrottlerConsumeInput`: custom store가 guard의 현재 시간과 TTL window를 공유할 수 있도록 `ThrottlerStore.consume(key, input)`에 전달되는 공개 입력 shape입니다.
+- `ThrottlerStoreEntry`: `ThrottlerStore.consume(...)`이 반환하는 공개 결과 shape입니다. `count`는 현재 consume 이후 활성 window의 요청 수이고, `resetAt`은 `Retry-After` 계산에 사용하는 epoch millisecond reset 경계입니다.
 
 ### status와 diagnostics
 - `createThrottlerPlatformStatusSnapshot(...)`: 플랫폼 status snapshot을 생성합니다.

@@ -11,7 +11,7 @@ This chapter explains rate limiting strategies that protect the FluoBlog API fro
 - Compare in-memory and Redis storage strategies.
 - Adjust limiting rules based on user ID or IP address.
 - Learn how to handle `429 Too Many Requests` responses.
-- Explore patterns such as burst control and sliding windows.
+- Understand the default fixed-window counter and when to provide a custom `ThrottlerStore` for token-bucket or burst-control policies.
 - Design rate limiting architecture for distributed environments.
 
 ## Prerequisites
@@ -300,7 +300,7 @@ In multi-region deployments, such as US-East and EU-West, using a single global 
 ### 16.10.4 Resilience and the "Thundering Herd"
 Also consider the thundering herd problem, which happens when many clients retry at the same time after a service outage. On the client side, you should implement advanced retry patterns such as **exponential backoff with jitter**, while the server uses throttling to smooth the resulting traffic spike. This holistic view of the full request lifecycle, from the client's first attempt to the final service response, is what separates a basic app from a professional and resilient system. Combining server-side throttling with client-side intelligence ensures the system can recover gracefully even from the most severe failure modes.
 
-## 16.11 Implementing a "Token Bucket" Algorithm
+## 16.11 Implementing Custom Token-Bucket Stores
 The default throttler uses a fixed-window counter, but some high-performance scenarios need the **token bucket** algorithm. In this model, tokens are added to a "bucket" at a steady rate. Each request consumes one token. If the bucket is empty, the request is blocked. This allows controlled burst traffic while preserving the average rate.
 
 In Fluo, you can implement this by providing a custom `ThrottlerStore`. In the `consume` method, track the `lastUpdated` timestamp and calculate how many tokens should have been added since the last request. This approach is very effective for smoothing temporary traffic spikes instead of simply rejecting all of them.

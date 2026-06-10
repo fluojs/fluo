@@ -199,7 +199,7 @@
   - [16.8 Best Practices for Throttling](ch16-throttler.md#168-best-practices-for-throttling)
   - [16.9 Summary](ch16-throttler.md#169-summary)
   - [16.10 Deep Dive: Throttling in Microservices](ch16-throttler.md#1610-deep-dive-throttling-in-microservices)
-  - [16.11 Implementing a "Token Bucket" Algorithm](ch16-throttler.md#1611-implementing-a-token-bucket-algorithm)
+  - [16.11 Implementing Custom Token-Bucket Stores](ch16-throttler.md#1611-implementing-custom-token-bucket-stores)
   - [16.12 Monitoring and Observability](ch16-throttler.md#1612-monitoring-and-observability)
   - [16.13 Throttling Beyond HTTP](ch16-throttler.md#1613-throttling-beyond-http)
   - [16.14 Common Pitfalls and How to Avoid Them](ch16-throttler.md#1614-common-pitfalls-and-how-to-avoid-them)
