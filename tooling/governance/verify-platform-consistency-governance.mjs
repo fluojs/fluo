@@ -54,6 +54,7 @@ const removedRuntimeModuleFactoryNames = [
 const officialTransportDocsPackages = [
   '@fluojs/platform-fastify',
   '@fluojs/platform-express',
+  '@fluojs/websockets',
   '@fluojs/socket.io',
   '@fluojs/platform-bun',
   '@fluojs/platform-deno',
