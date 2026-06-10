@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,6 +61,7 @@ const DEFAULT_IGNORES = [
 const WATCH_FILES = ['.env', 'package.json', 'tsconfig.json', 'tsconfig.build.json'];
 const SHOW_NODE_RESTART_NOTICE_ENV = 'FLUO_DEV_SHOW_RESTART_NOTICE';
 const CLEAR_SCREEN = '\u001B[2J\u001B[3J\u001B[H';
+const STUDIO_EPOCH_ENV = 'FLUO_STUDIO_EPOCH';
 
 type StudioRuntimeName = 'bun' | 'deno' | 'node' | 'unknown' | 'worker';
 
@@ -96,6 +97,39 @@ function resolveStudioIngestEndpoint(env: NodeJS.ProcessEnv): string | undefined
   }
 }
 
+function hasStudioDevtoolsConfig(env: NodeJS.ProcessEnv): boolean {
+  return isEnabledEnvironmentFlag(env.FLUO_STUDIO) && Boolean(env.FLUO_STUDIO_TOKEN);
+}
+
+function createStudioEpoch(): string {
+  return randomUUID();
+}
+
+function ensureStudioEpoch(env: NodeJS.ProcessEnv): string | undefined {
+  if (!hasStudioDevtoolsConfig(env)) {
+    return undefined;
+  }
+
+  env[STUDIO_EPOCH_ENV] ??= createStudioEpoch();
+  return env[STUDIO_EPOCH_ENV];
+}
+
+function advanceStudioEpoch(env: NodeJS.ProcessEnv): string | undefined {
+  if (!hasStudioDevtoolsConfig(env)) {
+    return undefined;
+  }
+
+  const epoch = createStudioEpoch();
+  env[STUDIO_EPOCH_ENV] = epoch;
+  return epoch;
+}
+
+function withStudioEpoch(env: NodeJS.ProcessEnv, payload: Record<string, string>): Record<string, string> {
+  const epoch = ensureStudioEpoch(env);
+
+  return epoch ? { ...payload, epoch } : payload;
+}
+
 function publishStudioLifecycleEvent(
   env: NodeJS.ProcessEnv,
   runtime: DevRunnerRuntime,
@@ -109,7 +143,7 @@ function publishStudioLifecycleEvent(
 
   void globalThis.fetch(endpoint, {
     body: JSON.stringify({
-      payload,
+      payload: withStudioEpoch(env, payload),
       source: {
         appId: env.FLUO_STUDIO_APP_ID ?? basename(process.cwd()),
         runtime: studioRuntimeName(runtime),
@@ -368,6 +402,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   let stopping = false;
 
   const startChild = (resolveExitCode: (code: number) => void, cleanup: () => void) => {
+    ensureStudioEpoch(env);
     const appCommand = buildAppCommand(runnerRuntime, env, appArgs);
     publishStudioLifecycleEvent(env, runnerRuntime, 'restart', {
       phase: 'starting',
@@ -436,6 +471,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
       if (env[SHOW_NODE_RESTART_NOTICE_ENV] === '1') {
         stdout.write(`[fluo] restarting after content change: ${relative(projectDirectory, restartPaths[restartPaths.length - 1] ?? projectDirectory)}\n`);
       }
+      advanceStudioEpoch(env);
       publishStudioLifecycleEvent(env, runnerRuntime, 'restart', {
         phase: 'scheduled',
         reason: `content changed: ${relative(projectDirectory, restartPaths[restartPaths.length - 1] ?? projectDirectory)}`,

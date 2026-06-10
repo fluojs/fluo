@@ -72,6 +72,28 @@ function isRestartEpochBoundary(incoming: { payload?: unknown; type?: unknown })
   return incoming.payload.phase === 'scheduled' || incoming.payload.phase === 'starting';
 }
 
+function resolveRestartEpoch(incoming: { payload?: unknown; type?: unknown }): string | undefined {
+  if (!isRestartEpochBoundary(incoming)) {
+    return undefined;
+  }
+
+  const payload = isRecord(incoming.payload) ? incoming.payload : undefined;
+  const requestedEpoch = payload?.epoch;
+
+  return typeof requestedEpoch === 'string' && requestedEpoch.length > 0 ? requestedEpoch : createEpoch();
+}
+
+function createStudioSidecarEnv(options: { appId: string; epoch: string; runtime: StudioSidecarRuntime; token: string; url: string }): NodeJS.ProcessEnv {
+  return {
+    FLUO_STUDIO: '1',
+    FLUO_STUDIO_APP_ID: options.appId,
+    FLUO_STUDIO_EPOCH: options.epoch,
+    FLUO_STUDIO_RUNTIME: options.runtime,
+    FLUO_STUDIO_TOKEN: options.token,
+    FLUO_STUDIO_URL: options.url,
+  };
+}
+
 function createToken(): string {
   return randomBytes(24).toString('base64url');
 }
@@ -293,8 +315,9 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
   const startedAt = performance.now();
 
   const publish = (incoming: { payload?: unknown; source?: unknown; type?: unknown }): StoredStudioEvent => {
-    if (isRestartEpochBoundary(incoming)) {
-      epoch = createEpoch();
+    const restartEpoch = resolveRestartEpoch(incoming);
+    if (restartEpoch) {
+      epoch = restartEpoch;
     }
 
     sequence += 1;
@@ -442,13 +465,14 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
     get epoch() {
       return epoch;
     },
-    env: {
-      FLUO_STUDIO: '1',
-      FLUO_STUDIO_APP_ID: appId,
-      FLUO_STUDIO_EPOCH: epoch,
-      FLUO_STUDIO_RUNTIME: runtime,
-      FLUO_STUDIO_TOKEN: token,
-      FLUO_STUDIO_URL: url,
+    get env() {
+      return createStudioSidecarEnv({
+        appId,
+        epoch,
+        runtime,
+        token,
+        url,
+      });
     },
     host,
     port: address.port,
