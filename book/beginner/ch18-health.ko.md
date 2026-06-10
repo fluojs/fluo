@@ -93,6 +93,8 @@ export class AppModule {}
 ### 18.3.1 The Response Format
 `/health` 엔드포인트에 요청을 보내면 Terminus는 표준화된 JSON 응답을 반환합니다. 모든 인디케이터가 통과하면 `200 OK` 상태를 반환합니다. 만약 하나라도 실패하면(예: 데이터베이스 연결 불가) `503 Service Unavailable` 상태와 함께 무엇이 잘못되었는지에 대한 상세 보고서를 반환합니다. 이 형식은 사람뿐만 아니라 Prometheus, Grafana, Datadog과 같은 자동화된 모니터링 도구도 쉽게 해석할 수 있습니다. 애플리케이션이 나머지 프로덕션 인프라와 같은 상태 언어로 소통하게 되는 셈입니다.
 
+NestJS Terminus에서 마이그레이션한다면 `@HealthCheck()`로 장식한 controller method가 `HealthCheckService.check([...])`를 호출하는 구조를 먼저 재현하지 마세요. Fluo의 기본 API는 위에서 본 module registration입니다. Indicator, indicator provider, readiness check, execution guardrail은 `TerminusModule.forRoot(...)`에 두어 runtime-owned `GET /health`와 `GET /ready` route가 platform diagnostics와 정렬되게 해야 합니다. `TerminusHealthService.check()`는 test나 custom application flow에서 여전히 유용하지만, 기본 route authoring pattern은 아닙니다.
+
 ### 18.3.2 Securing the Health Endpoint
 헬스 체크는 운영에 필수적이지만, 아키텍처의 내부 세부 정보를 공용 인터넷에 노출하고 싶지 않을 수 있습니다. `/health` 엔드포인트에 대한 액세스를 내부 IP 주소로 제한하거나 특정 비밀 헤더를 요구하는 것이 일반적인 베스트 프랙티스입니다. Fluo의 가드 시스템을 사용하면 이러한 보안 계층을 추가할 수 있으며, 서비스의 생체 신호가 이를 볼 필요가 있는 시스템과 사람들에게만 보이도록 제한할 수 있습니다.
 
@@ -133,6 +135,8 @@ return report;
 
 ### 18.4.4 Disk Space and I/O Monitoring
 파일 업로드를 처리하거나 집중적인 로깅을 수행하는 애플리케이션에서 **디스크 공간**은 매우 중요한 리소스입니다. 디스크가 가득 차면 메모리 누수와 마찬가지로 애플리케이션이 충돌하거나 응답하지 않게 될 수 있습니다. Terminus는 최소 free bytes 또는 최소 free ratio 같은 여유 공간 임계값을 점검하는 Node disk indicator를 제공합니다. 이 신호를 사용하면 프로덕션 비상 사태가 발생하기 전에 임시 파일 정리나 스토리지 확장과 같은 조치를 취할 수 있습니다. I/O latency나 throughput 모니터링도 필요하다면, 이를 Terminus disk indicator 출력으로 간주하지 말고 metrics 또는 host observability stack에서 수집하세요.
+
+Node.js resource indicator는 의도적으로 `@fluojs/terminus/node`에서 import하고, Redis indicator는 `@fluojs/terminus/redis`에서 import합니다. 이 subpath들은 마이그레이션 경계를 명시합니다. Node memory/disk probe와 Redis lifecycle-aware probe는 root `@fluojs/terminus` import에 자동으로 딸려오는 추가 동작이 아니라 opt-in runtime-specific integration입니다.
 
 FluoBlog에서는 이미지 업로드가 처리되는 `/tmp` 디렉토리와 메인 로그 디렉토리를 모니터링합니다. 이를 통해 스토리지 소진으로 인해 사용자 데이터나 중요한 로그 이벤트를 잃지 않도록 보장합니다. 리소스 레벨의 헬스와 서비스 레벨의 헬스를 통합하면 애플리케이션의 운영 상태에 대한 종합적인 360도 뷰를 확보할 수 있습니다.
 
