@@ -18,8 +18,10 @@ fluo 런타임을 위한 데코레이터 기반 WebSocket 게이트웨이 작성
 ## 설치
 
 ```bash
-npm install @fluojs/websockets ws
+npm install @fluojs/websockets
 ```
+
+Root Node.js entrypoint는 패키지가 직접 소유한 `ws` dependency를 사용합니다. 애플리케이션 코드에서 `ws`를 직접 사용하지 않는 한 별도 설치가 필요하지 않습니다.
 
 ## 사용 시점
 
@@ -90,9 +92,7 @@ WebSocketModule.forRoot({
   },
   upgrade: {
     guard(request) {
-      const authorization = request instanceof Request
-        ? request.headers.get('authorization')
-        : request.headers.authorization;
+      const authorization = request.headers.authorization;
 
       if (authorization !== 'Bearer demo-token') {
         throw new UnauthorizedException('Authentication required.');
@@ -102,7 +102,24 @@ WebSocketModule.forRoot({
 });
 ```
 
-옵션을 생략하면 `@fluojs/websockets`는 동시 연결 수, inbound payload 크기, pending message buffer, shutdown cleanup에 bounded default를 적용합니다. 기본값은 `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, Node backpressure `maxBufferedAmountBytes: 1 MiB`와 drop behavior입니다. 또한 server-backed Node listener는 `heartbeat.enabled`를 명시적으로 `false`로 두지 않는 한 heartbeat timer를 활성화합니다. Node shutdown은 shutdown이 시작된 뒤 in-flight async upgrade를 거절하고, 애플리케이션 shutdown 시 추적 중인 websocket 클라이언트를 닫고, `shutdown.timeoutMs` 범위 안에서 `@OnDisconnect()` cleanup이 마무리될 수 있도록 bounded 기회를 제공합니다. 공식 fetch-style runtime module(`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`)은 `Request` typed upgrade guard를 노출하며, 애플리케이션 shutdown 중 동일한 bounded close와 disconnect cleanup 동작을 제공합니다.
+옵션을 생략하면 `@fluojs/websockets`는 동시 연결 수, inbound payload 크기, pending message buffer, shutdown cleanup에 bounded default를 적용합니다. 기본값은 `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, Node backpressure `maxBufferedAmountBytes: 1 MiB`와 drop behavior입니다. 또한 server-backed Node listener는 `heartbeat.enabled`를 명시적으로 `false`로 두지 않는 한 heartbeat timer를 활성화합니다. Node shutdown은 shutdown이 시작된 뒤 in-flight async upgrade를 거절하고, 애플리케이션 shutdown 시 추적 중인 websocket 클라이언트를 닫고, `shutdown.timeoutMs` 범위 안에서 `@OnDisconnect()` cleanup이 마무리될 수 있도록 bounded 기회를 제공합니다. 해결되지 않은 cleanup은 shutdown을 무기한 막지 않고 해당 timeout 안에서 로그로 남습니다. 공식 fetch-style runtime module(`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`)은 `Request` typed upgrade guard를 노출하며, 애플리케이션 shutdown 중 동일한 bounded close와 disconnect cleanup 동작을 제공합니다.
+
+Root `@fluojs/websockets` / `@fluojs/websockets/node` guard는 Node의 `IncomingMessage`를 받습니다. Fetch-style subpath는 Web standard `Request`를 받으므로, 재사용 가능한 옵션 객체를 작성할 때는 subpath별 `WebSocketModuleOptions` 타입을 선택하세요.
+
+### Room
+`WebSocketRoomService`를 사용하면 gateway 또는 application service가 adapter 내부에 접근하지 않고도 가벼운 room membership state를 유지할 수 있습니다. Runtime lifecycle service는 `joinRoom(socketId, room)`, `leaveRoom(socketId, room)`, `broadcastToRoom(room, event, data)`, `getRooms(socketId)`를 구현합니다. `broadcastToRoom(...)`은 현재 room에 있는 열린 socket에 `{ event, data }` 형태의 JSON frame을 보내며, 전송 전에 설정된 backpressure policy를 적용합니다.
+
+```typescript
+import { WebSocketRoomService } from '@fluojs/websockets';
+
+class OrderStatusPublisher {
+  constructor(private readonly rooms: WebSocketRoomService) {}
+
+  publish(orderId: string, status: string) {
+    this.rooms.broadcastToRoom(`order:${orderId}`, 'order.status', { status });
+  }
+}
+```
 
 ## 바이너리 페이로드
 
@@ -123,6 +140,8 @@ Gateway `@OnMessage()` handler는 지원 런타임 전반에서 하나의 정규
 ## 런타임별 서브패스
 
 기본 루트 Node.js alias 대신 런타임을 명시적으로 고정하고 싶다면 런타임별 서브패스를 사용하세요. 루트 `@fluojs/websockets` 진입점은 Node.js 기본 module과 lifecycle-service alias를 유지합니다. Fetch-style 애플리케이션은 게이트웨이 데코레이터와 metadata helper를 선택한 런타임 서브패스에서 import할 수 있으므로 authoring code가 루트 Node.js 기반 진입점을 로드할 필요가 없습니다.
+
+Package manifest의 `engines.node >=20.0.0` 선언은 published package와 기본 Node.js entrypoint 기준입니다. Bun, Deno, Cloudflare Workers 지원은 아래 전용 fetch-style subpath를 통해 노출되며, 해당 subpath는 request/handler type을 web-standard로 유지하고 application code가 root Node.js lifecycle-service alias에 의존하지 않게 합니다.
 
 각 서브패스는 해당 `*WebSocketModule.forRoot(...)` 진입점, 일치하는 런타임 lifecycle service export, 그리고 공유 gateway authoring primitive인 `WebSocketGateway`, `OnConnect`, `OnMessage`, `OnDisconnect`, `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, `webSocketHandlerMetadataSymbol`을 제공합니다.
 

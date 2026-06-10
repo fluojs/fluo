@@ -18,8 +18,10 @@ Decorator-based WebSocket gateway authoring for the fluo runtime.
 ## Installation
 
 ```bash
-npm install @fluojs/websockets ws
+npm install @fluojs/websockets
 ```
+
+The root Node.js entrypoint uses the package-owned `ws` dependency. Applications do not need to install `ws` separately unless they use it directly in their own code.
 
 ## When to Use
 
@@ -90,9 +92,7 @@ WebSocketModule.forRoot({
   },
   upgrade: {
     guard(request) {
-      const authorization = request instanceof Request
-        ? request.headers.get('authorization')
-        : request.headers.authorization;
+      const authorization = request.headers.authorization;
 
       if (authorization !== 'Bearer demo-token') {
         throw new UnauthorizedException('Authentication required.');
@@ -102,7 +102,24 @@ WebSocketModule.forRoot({
 });
 ```
 
-When omitted, `@fluojs/websockets` applies bounded defaults for concurrent connections, inbound payload size, pending message buffers, and shutdown cleanup. Default settings are `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, and Node backpressure `maxBufferedAmountBytes: 1 MiB` with drop behavior. Server-backed Node listeners enable heartbeat timers unless you explicitly set `heartbeat.enabled` to `false`. Node shutdown rejects in-flight async upgrades once shutdown begins, will close tracked websocket clients during application shutdown, and gives `@OnDisconnect()` cleanup a bounded chance to finish within `shutdown.timeoutMs`. The official fetch-style runtime modules (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) expose `Request`-typed upgrade guards and provide the same bounded close and disconnect cleanup behavior during application shutdown.
+When omitted, `@fluojs/websockets` applies bounded defaults for concurrent connections, inbound payload size, pending message buffers, and shutdown cleanup. Default settings are `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, and Node backpressure `maxBufferedAmountBytes: 1 MiB` with drop behavior. Server-backed Node listeners enable heartbeat timers unless you explicitly set `heartbeat.enabled` to `false`. Node shutdown rejects in-flight async upgrades once shutdown begins, will close tracked websocket clients during application shutdown, and gives `@OnDisconnect()` cleanup a bounded chance to finish within `shutdown.timeoutMs`; unresolved cleanup is logged and bounded by that timeout instead of blocking shutdown indefinitely. The official fetch-style runtime modules (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) expose `Request`-typed upgrade guards and provide the same bounded close and disconnect cleanup behavior during application shutdown.
+
+The root `@fluojs/websockets` / `@fluojs/websockets/node` guard receives Node's `IncomingMessage`. Fetch-style subpaths receive a Web-standard `Request`, so choose the subpath-specific `WebSocketModuleOptions` type when authoring reusable option objects.
+
+### Rooms
+`WebSocketRoomService` lets gateway or application services keep lightweight room membership state without reaching into adapter internals. Runtime lifecycle services implement `joinRoom(socketId, room)`, `leaveRoom(socketId, room)`, `broadcastToRoom(room, event, data)`, and `getRooms(socketId)`. `broadcastToRoom(...)` sends a JSON frame shaped as `{ event, data }` to currently open sockets in the room and applies the configured backpressure policy before sending.
+
+```typescript
+import { WebSocketRoomService } from '@fluojs/websockets';
+
+class OrderStatusPublisher {
+  constructor(private readonly rooms: WebSocketRoomService) {}
+
+  publish(orderId: string, status: string) {
+    this.rooms.broadcastToRoom(`order:${orderId}`, 'order.status', { status });
+  }
+}
+```
 
 ## Binary Payloads
 
@@ -123,6 +140,8 @@ Gateway `@OnMessage()` handlers receive one normalized payload contract across s
 ## Runtime-Specific Subpaths
 
 Use the runtime subpaths when you want an explicit runtime binding instead of the default root Node.js alias. The root `@fluojs/websockets` entrypoint preserves the Node.js default module and lifecycle-service aliases. Fetch-style applications can import gateway decorators and metadata helpers from their selected runtime subpath so authoring code does not need to load the root Node.js-backed entrypoint.
+
+The package manifest declares `engines.node >=20.0.0` for the published package and default Node.js entrypoint. Bun, Deno, and Cloudflare Workers support is exposed through the dedicated fetch-style subpaths listed below; those subpaths keep request/handler types web-standard and avoid the root Node.js lifecycle-service alias in application code.
 
 Each subpath exposes its `*WebSocketModule.forRoot(...)` entrypoint, the matching runtime lifecycle service export, and the shared gateway authoring primitives: `WebSocketGateway`, `OnConnect`, `OnMessage`, `OnDisconnect`, `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, and `webSocketHandlerMetadataSymbol`.
 
