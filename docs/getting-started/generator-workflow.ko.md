@@ -27,7 +27,7 @@ fluo g e2e <name> [--target-directory <path>] [--force] [--dry-run]
 | Request DTO | `request-dto`, `req` | `fluo generate request-dto billing CreateBilling` | 파일만 생성 | 요청 DTO 파일 |
 | Response DTO | `response-dto`, `res` | `fluo generate response-dto Billing` | 파일만 생성 | 응답 DTO 파일 |
 
-자동 등록 생성기는 슬라이스 모듈을 생성하거나 갱신한 뒤 생성된 클래스를 `controllers`, `providers`, `middleware` 배열에 추가합니다. 파일만 생성하는 생성기는 부모 모듈 등록 없이 파일만 산출합니다. `resource`는 완전한 slice를 만들지만 parent-module import wiring은 호출자에게 남깁니다.
+자동 등록 생성기는 슬라이스 모듈을 생성하거나 갱신한 뒤 생성된 클래스를 `controllers`, `providers`, `middleware` 배열에 추가합니다. 파일만 생성하는 생성기는 부모 모듈 등록 없이 파일만 산출합니다. `resource`는 완전한 slice를 만들지만 parent-module import wiring은 호출자에게 남깁니다. NestJS 관점에서 `fluo generate resource`는 `nest g resource`와 같은 활성화까지 수행하는 대체 명령이 아닙니다. slice 파일과 테스트를 작성한 뒤, 해당 라우트 표면을 활성화할 준비가 되었을 때 생성된 모듈을 parent/root module에서 직접 import해야 합니다.
 
 ## Generated Artifacts
 
@@ -43,7 +43,7 @@ fluo g e2e <name> [--target-directory <path>] [--force] [--dry-run]
 | Guard | `post.guard.ts` | `post.module.ts`를 생성하거나 갱신하고 `PostGuard`를 `providers`에 추가합니다. |
 | Interceptor | `post.interceptor.ts` | `post.module.ts`를 생성하거나 갱신하고 `PostInterceptor`를 `providers`에 추가합니다. |
 | Middleware | `post.middleware.ts` | `post.module.ts`를 생성하거나 갱신하고 `PostMiddleware`를 `middleware`에 추가합니다. |
-| Resource | `post.module.ts`, `post.controller.ts`, `post.controller.test.ts`, `post.service.ts`, `post.service.test.ts`, `post.repo.ts`, `post.repo.test.ts`, `post.repo.slice.test.ts`, `create-post.request.dto.ts`, `post.response.dto.ts`; `--with-slice-test`를 추가하면 `post.slice.test.ts` | 상위 모듈에는 영향 없음. 생성된 모듈은 별도로 import합니다. |
+| Resource | `post.module.ts`, `post.controller.ts`, `post.controller.test.ts`, `post.service.ts`, `post.service.test.ts`, `post.repo.ts`, `post.repo.test.ts`, `post.repo.slice.test.ts`, `create-post.request.dto.ts`, `post.response.dto.ts`; `--with-slice-test`를 추가하면 `post.slice.test.ts` | 상위 모듈에는 영향 없음. slice를 활성화하려면 생성된 모듈을 별도로 import합니다. |
 | Request DTO | `fluo g req posts CreatePost` 사용 시 `posts/` 안의 `create-post.request.dto.ts` | 없음. 컨트롤러에서 수동 import가 필요합니다. |
 | Response DTO | `post.response.dto.ts` | 없음. 컨트롤러 반환 타입으로 수동 사용이 필요합니다. |
 
@@ -84,7 +84,7 @@ Dry-run 모드는 `Dry run: no files were written.`를 출력한 뒤 각 예정 
 
 ## Generator Collections
 
-`fluo generate`는 현재 결정적인 단일 collection인 `@fluojs/cli/builtin`만 discovery합니다. 이 collection은 `@fluojs/cli`에 함께 포함되며, 위에 나열된 generator metadata와 CLI help output, option schema, alias, wiring behavior, test의 기준입니다.
+`fluo generate`는 현재 결정적인 단일 collection인 `@fluojs/cli/builtin`만 discovery합니다. 이 collection은 `@fluojs/cli`에 함께 포함되며, 위에 나열된 generator metadata와 CLI help output, option schema, alias, wiring behavior, test의 기준입니다. 현재 명령 표면에는 config file search path, app-local collection hook, package discovery convention, workspace schematic 실행 경로가 없습니다.
 
 외부 package-owned 또는 app-local generator collection은 의도적으로 보류합니다. CLI는 local config file을 스캔하거나, 임의 package를 import하거나, application workspace의 collection code를 실행하지 않습니다. 향후 collection 지원은 계속 명시적이고 검토 가능해야 합니다. 호출자는 알려진 collection source를 선택해야 하며, metadata와 option schema는 테스트 가능해야 하고, file write는 해석된 target directory 아래에서 검증된 generator output으로 제한되어야 합니다.
 

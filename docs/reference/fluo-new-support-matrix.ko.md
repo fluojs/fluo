@@ -27,6 +27,13 @@
 - `--shape microservice --transport`는 정확히 `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, `grpc`만 지원합니다.
 - 지원되는 `fluo new --transport` 스타터 값에는 `redis`가 포함되지 않습니다. 유지보수되는 Redis 기반 스타터가 필요하면 `redis-streams`를 사용하고, 더 넓은 Redis 통합 선택지가 필요하면 스캐폴딩 후 `@fluojs/redis`를 추가하세요.
 - `--shape mixed`는 `--transport tcp --runtime node --platform fastify` 조합 하나만 공식 지원합니다.
+- `--topology`는 현재 application, microservice, mixed shape 모두에서 single-package starter 계약입니다. Multi-package monorepo 생성은 현재 `fluo new` 범위가 아닙니다.
+- `--tooling`은 현재 유지보수되는 `standard` preset으로 해석됩니다. 다른 build/test preset은 더 넓은 로드맵 항목이며 accepted starter contract가 아닙니다.
+- Runtime/platform 쌍은 정확해야 합니다. 예를 들어 Node.js application starter는 `--runtime node --platform fastify|express|nodejs`를 사용하고, Bun, Deno, Cloudflare Workers application starter는 각각 matching runtime/platform 쌍을 사용하며 Node platform과 섞어 쓰는 alias가 아닙니다.
+
+## NestJS 마이그레이션에서 읽는 법
+
+NestJS에서 마이그레이션할 때는 이 매트릭스를 CLI가 스캐폴딩할 수 있는 범위와 직접 배선해야 하는 범위의 경계로 읽으세요. `fluo new`는 위에 나열된 starter recipe를 만들 수 있지만, 모든 NestJS platform, hybrid topology, monorepo layout, schematic family를 스캐폴딩하지는 않습니다. 스캐폴딩 이후에는 package 문서를 따라 더 넓은 패키지를 채택하고 application code에서 module을 명시적으로 배선하세요.
 
 ## 기준 출처
 

@@ -75,15 +75,36 @@ fluo new my-mixed-app --shape mixed --transport tcp --runtime node --platform fa
 
 ```text
 my-fluo-app/
+├── .env
+├── .gitignore
+├── README.md
+├── babel.config.cjs
 ├── package.json
 ├── pnpm-lock.yaml
 ├── tsconfig.json
+├── tsconfig.build.json
+├── vite.config.ts
+├── vitest.config.ts
+├── test/
+│   └── app.e2e.test.ts
 └── src/
     ├── app.ts
-    ├── hello.controller.ts
-    ├── hello.service.ts
-    └── main.ts
+    ├── app.test.ts
+    ├── main.ts
+    └── greeting/
+        ├── greeting.controller.ts
+        ├── greeting.controller.test.ts
+        ├── greeting.module.ts
+        ├── greeting.repo.ts
+        ├── greeting.repo.test.ts
+        ├── greeting.repo.slice.test.ts
+        ├── greeting.response.dto.ts
+        ├── greeting.service.ts
+        ├── greeting.service.test.ts
+        └── greeting.slice.test.ts
 ```
+
+위 트리는 기본 Node.js + Fastify 애플리케이션 스타터 기준입니다. 다른 shipped starter recipe는 의도적으로 다릅니다. Deno는 Node/Vite/Babel/Vitest 설정 파일을 생성하지 않고 Deno-native `src/app.test.ts`를 유지하며, Cloudflare Workers는 `src/worker.ts`와 `wrangler.jsonc`를 사용하고, gRPC microservice는 `proto/math.proto`를 추가하며, microservice 또는 mixed starter는 HTTP 전용 greeting tree만이 아니라 `src/math/*` transport handler도 생성합니다.
 
 기준 스타터 매트릭스: [fluo new 지원 매트릭스](../reference/fluo-new-support-matrix.ko.md).
 

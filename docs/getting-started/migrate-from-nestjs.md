@@ -37,6 +37,16 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Legacy decorator compiler mode as a framework requirement.
 - Assuming every documented platform is part of `fluo new`; starter coverage is defined separately in the support matrix.
 
+## CLI Starter and Generator Limits
+
+Use the CLI to create a known-good fluo baseline, then finish NestJS migration with explicit module wiring and package adoption:
+
+- `fluo new` application starters are limited to HTTP projects for exact runtime/platform pairs: Node.js with `fastify`, `express`, or `nodejs`; Bun with `bun`; Deno with `deno`; and Cloudflare Workers with `cloudflare-workers`.
+- `fluo new` microservice starters are limited to Node.js + `--platform none` for `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, and `grpc`. The CLI does not accept `redis` as a transport alias; use `redis-streams` or add `@fluojs/redis` manually after scaffolding.
+- `fluo new --shape mixed` is the single-package Fastify HTTP + attached TCP microservice starter only. It is not a NestJS-style hybrid application generator for arbitrary transports or monorepo topologies.
+- `fluo generate resource` is files-only/manual activation. It writes the generated slice and tests, but it does not import that module into a parent/root module automatically.
+- `fluo generate` loads only the built-in `@fluojs/cli/builtin` collection. It does not scan NestJS schematics, app-local collections, workspace config files, or package-owned generator collections.
+
 ## tsconfig Changes
 
 Migration MUST remove legacy NestJS-era decorator assumptions from `tsconfig.json`.

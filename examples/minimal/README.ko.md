@@ -2,7 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-가장 작은 실행 가능한 fluo 애플리케이션입니다. 이 예제는 `fluo new`의 기본/명시적 HTTP v2 스타터와 같은 bootstrap 경로를 따르되, 더 작은 `/hello` 경로만 남겼습니다.
+가장 작은 실행 가능한 fluo 애플리케이션입니다. 이 예제는 기본 `fluo new` Node.js + Fastify HTTP starter와 같은 adapter-first bootstrap 경로를 따르되, 더 작은 `/hello` 경로와 간결한 테스트만 남겼습니다.
 
 ## 이 예제가 보여주는 것
 
@@ -41,7 +41,7 @@ examples/minimal/
 
 ## 스타터 스캐폴드와의 관계
 
-이 예제는 전체 `fluo new` HTTP 스타터 출력보다 의도적으로 작습니다. config, runtime health endpoint, 생성된 greeting feature slice, 생성된 테스트, 빌드 도구가 포함된 전체 스타터 경험을 원한다면 기본 명령 또는 명시적 HTTP v2 계약을 사용하세요.
+이 예제는 전체 `fluo new` HTTP 스타터 출력보다 의도적으로 작습니다. 현재 CLI starter는 controller/service/repository 파일이 들어 있는 `src/greeting/` feature slice, unit test, slice test, `src/app.test.ts`, `test/app.e2e.test.ts`, build/test tooling config를 생성합니다. 그 전체 스타터 경험이 필요하면 기본 명령 또는 명시적 Node.js + Fastify HTTP 계약을 사용하세요.
 
 ```sh
 pnpm add -g @fluojs/cli
@@ -49,12 +49,13 @@ fluo new my-app
 fluo new my-app --shape application --transport http --runtime node --platform fastify
 ```
 
-이 예제는 TCP microservice 스타터나 mixed single-package 스타터까지 다루지는 않습니다. 해당 계약은 `../../packages/cli/README.ko.md` 및 `../../docs/reference/toolchain-contract-matrix.ko.md`를 기준으로 확인하세요.
+이 예제는 Express/raw Node.js/Bun/Deno/Cloudflare Workers application starter, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservice starter, mixed single-package starter까지 다루지는 않습니다. 해당 계약은 `../../packages/cli/README.ko.md`, `../../docs/reference/fluo-new-support-matrix.ko.md`, `../../docs/reference/toolchain-contract-matrix.ko.md`를 기준으로 확인하세요.
 
 ## 관련 문서
 
 - `../README.ko.md` — 공식 examples 인덱스
 - `../../docs/getting-started/quick-start.ko.md` — 표준 시작 가이드
 - `../../docs/getting-started/first-feature-path.ko.md` — 스타터 앱에서 첫 기능까지 가는 경로
+- `../../docs/reference/fluo-new-support-matrix.ko.md` — 정확한 `fluo new` starter matrix
 - `../../docs/reference/package-chooser.ko.md` — 작업별 패키지 선택
 - `../../docs/contracts/testing-guide.ko.md` — 테스트 패턴 및 레시피

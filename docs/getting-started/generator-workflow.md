@@ -27,7 +27,7 @@ fluo g e2e <name> [--target-directory <path>] [--force] [--dry-run]
 | Request DTO | `request-dto`, `req` | `fluo generate request-dto billing CreateBilling` | Files only | Request DTO file |
 | Response DTO | `response-dto`, `res` | `fluo generate response-dto Billing` | Files only | Response DTO file |
 
-Auto-registered generators create or update the slice module and append the generated class to `controllers`, `providers`, or `middleware`. Files-only generators emit files without parent-module registration; `resource` creates a complete slice but still leaves parent-module import wiring to the caller.
+Auto-registered generators create or update the slice module and append the generated class to `controllers`, `providers`, or `middleware`. Files-only generators emit files without parent-module registration; `resource` creates a complete slice but still leaves parent-module import wiring to the caller. In NestJS terms, `fluo generate resource` is not an activation-equivalent replacement for `nest g resource`: it writes the slice files and tests, then expects you to import the generated module from the parent/root module when that route surface should become active.
 
 ## Generated Artifacts
 
@@ -43,7 +43,7 @@ Most generator outputs are written under `<resolved-target>/<plural-resource>/`.
 | Guard | `post.guard.ts` | Creates or updates `post.module.ts`, adds `PostGuard` to `providers`. |
 | Interceptor | `post.interceptor.ts` | Creates or updates `post.module.ts`, adds `PostInterceptor` to `providers`. |
 | Middleware | `post.middleware.ts` | Creates or updates `post.module.ts`, adds `PostMiddleware` to `middleware`. |
-| Resource | `post.module.ts`, `post.controller.ts`, `post.controller.test.ts`, `post.service.ts`, `post.service.test.ts`, `post.repo.ts`, `post.repo.test.ts`, `post.repo.slice.test.ts`, `create-post.request.dto.ts`, `post.response.dto.ts`; add `post.slice.test.ts` with `--with-slice-test` | None for parent modules. Import the generated module separately. |
+| Resource | `post.module.ts`, `post.controller.ts`, `post.controller.test.ts`, `post.service.ts`, `post.service.test.ts`, `post.repo.ts`, `post.repo.test.ts`, `post.repo.slice.test.ts`, `create-post.request.dto.ts`, `post.response.dto.ts`; add `post.slice.test.ts` with `--with-slice-test` | None for parent modules. Import the generated module separately to activate the slice. |
 | Request DTO | `create-post.request.dto.ts` in `posts/` when using `fluo g req posts CreatePost` | None. Import into controllers manually. |
 | Response DTO | `post.response.dto.ts` | None. Use as a controller return type manually. |
 
@@ -84,7 +84,7 @@ Auto-registered generators still resolve the module plan during dry-run. Files-o
 
 ## Generator Collections
 
-`fluo generate` currently discovers exactly one deterministic collection: `@fluojs/cli/builtin`. It is bundled with `@fluojs/cli`, contains the generator metadata listed above, and is the source of truth for CLI help output, option schemas, aliases, wiring behavior, and tests.
+`fluo generate` currently discovers exactly one deterministic collection: `@fluojs/cli/builtin`. It is bundled with `@fluojs/cli`, contains the generator metadata listed above, and is the source of truth for CLI help output, option schemas, aliases, wiring behavior, and tests. There is no config-file search path, app-local collection hook, package discovery convention, or workspace schematic execution path in the current command surface.
 
 External package-owned or app-local generator collections are intentionally deferred. The CLI does not scan local config files, import arbitrary packages, or execute collection code from the application workspace. Future collection support must remain explicit and reviewable: callers should opt into a known collection source, metadata and option schemas must be testable, and file writes must stay constrained to validated generator outputs under the resolved target directory.
 

@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-The smallest runnable fluo application. This example follows the same bootstrap path that `fluo new` generates for the default and explicit HTTP v2 starter, stripped down to a smaller `/hello` route.
+The smallest runnable fluo application. This example follows the same adapter-first bootstrap path as the default `fluo new` Node.js + Fastify HTTP starter, stripped down to a smaller `/hello` route and a compact test set.
 
 ## what this example demonstrates
 
@@ -41,7 +41,7 @@ examples/minimal/
 
 ## relationship to the starter scaffold
 
-This example is intentionally smaller than the full `fluo new` HTTP starter output. If you want the complete starter experience with config, runtime health endpoints, the generated greeting feature slice, generated tests, and build tooling, run either the default command or the explicit HTTP v2 contract:
+This example is intentionally smaller than the full `fluo new` HTTP starter output. The CLI starter now emits a `src/greeting/` feature slice with controller/service/repository files, unit tests, slice tests, `src/app.test.ts`, `test/app.e2e.test.ts`, and build/test tooling config. If you want that complete starter experience, run either the default command or the explicit Node.js + Fastify HTTP contract:
 
 ```sh
 pnpm add -g @fluojs/cli
@@ -49,12 +49,13 @@ fluo new my-app
 fluo new my-app --shape application --transport http --runtime node --platform fastify
 ```
 
-This example does not cover the TCP microservice starter or the mixed single-package starter. Those contracts are documented in `../../packages/cli/README.md` and `../../docs/reference/toolchain-contract-matrix.md`.
+This example does not cover Express/raw Node.js/Bun/Deno/Cloudflare Workers application starters, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservice starters, or the mixed single-package starter. Those contracts are documented in `../../packages/cli/README.md`, `../../docs/reference/fluo-new-support-matrix.md`, and `../../docs/reference/toolchain-contract-matrix.md`.
 
 ## related docs
 
 - `../README.md` — official examples index
 - `../../docs/getting-started/quick-start.md` — canonical first-run guide
 - `../../docs/getting-started/first-feature-path.md` — path from starter app to first feature
+- `../../docs/reference/fluo-new-support-matrix.md` — exact `fluo new` starter matrix
 - `../../docs/reference/package-chooser.md` — pick packages by task
 - `../../docs/contracts/testing-guide.md` — testing patterns and recipes
