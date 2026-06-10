@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, join, sep } from 'node:path';
 import { createInterface } from 'node:readline/promises';
+import type { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
 type CliStream = {
@@ -98,6 +99,30 @@ const UPDATE_PACKAGE_MANAGERS = new Set<UpdatePackageManager>(['bun', 'npm', 'pn
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function isReadableStream(value: CliReadableStream | undefined): value is CliReadableStream & Readable {
+  if (!value || !isRecord(value)) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.on === 'function'
+    && typeof candidate.pause === 'function'
+    && typeof candidate.resume === 'function';
+}
+
+function isWritableStream(value: CliStream | undefined): value is CliStream & Writable {
+  if (!value || !isRecord(value)) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.write === 'function'
+    && typeof candidate.on === 'function'
+    && typeof candidate.once === 'function'
+    && typeof candidate.emit === 'function'
+    && typeof candidate.removeListener === 'function';
 }
 
 function isTruthyEnvValue(value: string | undefined): boolean {
@@ -474,11 +499,11 @@ function resolveInstallCommand(
   };
 }
 
-async function defaultPromptConfirm(message: string, defaultValue: boolean): Promise<boolean> {
+async function defaultPromptConfirm(message: string, defaultValue: boolean, io: { stdin?: CliReadableStream; stdout?: CliStream } = {}): Promise<boolean> {
   const promptSuffix = defaultValue ? 'Y/n' : 'y/N';
   const readline = createInterface({
-    input: process.stdin,
-    output: process.stdout,
+    input: isReadableStream(io.stdin) ? io.stdin : process.stdin,
+    output: isWritableStream(io.stdout) ? io.stdout : process.stdout,
   });
 
   try {
@@ -609,7 +634,7 @@ export async function runCliUpdateCheck(argv: string[], options: CliUpdateCheckR
   }
 
   stderr.write(`A newer ${packageName} version is available: ${currentVersion} -> ${latestVersion}.\n`);
-  const prompt = options.prompt ?? { confirm: defaultPromptConfirm };
+  const prompt = options.prompt ?? { confirm: (message, defaultValue) => defaultPromptConfirm(message, defaultValue, { stdin: options.stdin, stdout }) };
   const shouldInstall = await prompt.confirm(`Install ${packageName}@${latestVersion} now and restart this command?`, false);
 
   if (!shouldInstall) {

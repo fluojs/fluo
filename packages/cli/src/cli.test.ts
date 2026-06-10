@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -185,6 +186,34 @@ describe('CLI command runner', () => {
     expect(confirmMessage).toBe('Install @fluojs/cli@1.0.0-beta.2 now and restart this command?');
     expect(confirmDefault).toBe(false);
     expect(stdoutBuffer.join('')).toContain('fluo analyze');
+  });
+
+  it('routes the default update-check prompt through injected TTY streams', async () => {
+    const stdout = Object.assign(new PassThrough(), { isTTY: true as const });
+    const stdin = Object.assign(new PassThrough(), { isTTY: true as const });
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    stdout.on('data', (chunk: Buffer) => stdoutBuffer.push(chunk.toString('utf8')));
+
+    const runPromise = runCli(['analyze'], {
+      env: updateCheckEnv,
+      stderr: createTtyBufferStream(stderrBuffer),
+      stdin,
+      stdout,
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async () => '1.0.0-beta.2',
+      },
+    });
+    stdin.write('n\n');
+
+    const exitCode = await runPromise;
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Install @fluojs/cli@1.0.0-beta.2 now and restart this command? (y/N)');
+    expect(stdoutBuffer.join('')).toContain('fluo analyze');
+    expect(stderrBuffer.join('')).toContain('Continuing with @fluojs/cli@1.0.0-beta.1.');
   });
 
   it('installs the accepted update and reruns the same CLI argv with update checks suppressed', async () => {
