@@ -1,14 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import { Global, Inject, Module } from '@fluojs/core';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
-  DRIZZLE_OPTIONS,
-  DRIZZLE_DATABASE,
-  DrizzleModule,
   createDrizzlePlatformStatusSnapshot,
+  DRIZZLE_DATABASE,
+  DRIZZLE_HANDLE_PROVIDER,
+  DRIZZLE_OPTIONS,
   DrizzleDatabase,
+  DrizzleModule,
 } from './index.js';
 
 describe('@fluojs/drizzle', () => {
@@ -997,6 +997,25 @@ describe('@fluojs/drizzle', () => {
     expect(snapshot.readiness.status).toBe('not-ready');
     expect(snapshot.health.status).toBe('degraded');
   });
+
+  it('marks stopped state as not-ready and unhealthy', () => {
+    const snapshot = createDrizzlePlatformStatusSnapshot({
+      activeRequestTransactions: 0,
+      lifecycleState: 'stopped',
+      strictTransactions: false,
+      supportsTransaction: true,
+    });
+
+    expect(snapshot.readiness).toEqual({
+      critical: true,
+      reason: 'Drizzle integration is stopped.',
+      status: 'not-ready',
+    });
+    expect(snapshot.health).toEqual({
+      reason: 'Drizzle integration has been disposed.',
+      status: 'unhealthy',
+    });
+  });
 });
 
 describe('DrizzleModule.forRootAsync', () => {
@@ -1046,6 +1065,27 @@ describe('DrizzleModule.forRootAsync', () => {
 
     void db;
     void events;
+
+    await app.close();
+  });
+
+  it('resolves DRIZZLE_HANDLE_PROVIDER as the lifecycle-aware DrizzleDatabase alias', async () => {
+    const { database, transactionDatabase } = makeFakeDatabase();
+
+    const drizzleModule = DrizzleModule.forRoot<typeof database, typeof transactionDatabase>({ database });
+
+    class AppModule {}
+
+    defineModule(AppModule, { imports: [drizzleModule] });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const drizzle = await app.container.resolve(DrizzleDatabase);
+    const handleProvider = await app.container.resolve(DRIZZLE_HANDLE_PROVIDER);
+
+    expect(handleProvider).toBe(drizzle);
+    expect((handleProvider as DrizzleDatabase<typeof database, typeof transactionDatabase>).createPlatformStatusSnapshot()).toEqual(
+      drizzle.createPlatformStatusSnapshot(),
+    );
 
     await app.close();
   });

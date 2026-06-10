@@ -2,7 +2,7 @@ import { Inject } from '@fluojs/core';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
-import { DrizzleDatabase, DrizzleModule, Transaction, type DrizzleDatabaseFacade } from './index.js';
+import { DrizzleDatabase, type DrizzleDatabaseFacade, DrizzleModule, Transaction } from './index.js';
 
 describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 impl)', () => {
   it('exports Transaction and opens a transaction for current-less repository calls', async () => {
@@ -274,6 +274,45 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
 
     await app.close();
   });
+
+  it('forwards @Transaction(...) options to the outer transaction boundary', async () => {
+    const optionsCalls: Array<{ isolationLevel: string } | undefined> = [];
+    const transactionDatabase = { kind: 'transaction' as const };
+    const database = {
+      async transaction<T>(
+        callback: (value: typeof transactionDatabase) => Promise<T>,
+        options?: { isolationLevel: string },
+      ): Promise<T> {
+        optionsCalls.push(options);
+        return callback(transactionDatabase);
+      },
+    };
+
+    @Inject(DrizzleDatabase)
+    class UserService {
+      constructor(private readonly db: DrizzleDatabase<typeof database, typeof transactionDatabase, { isolationLevel: string }>) {}
+
+      @Transaction({ isolationLevel: 'Serializable' })
+      async create() {
+        return this.db.current();
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [DrizzleModule.forRoot<typeof database, typeof transactionDatabase, { isolationLevel: string }>({ database })],
+      providers: [UserService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const service = await app.container.resolve(UserService);
+
+    await expect(service.create()).resolves.toBe(transactionDatabase);
+    expect(optionsCalls).toEqual([{ isolationLevel: 'Serializable' }]);
+
+    await app.close();
+  });
 });
 
 describe('@fluojs/drizzle Transaction decorator — named/accessor contract', () => {
@@ -323,7 +362,7 @@ describe('@fluojs/drizzle Transaction decorator — named/accessor contract', ()
     class MultiDatabaseService {
       readonly analyticsDb = analyticsDatabase;
 
-      constructor(private readonly db: DrizzleDatabase<typeof primaryDatabase, typeof primaryTransactionDatabase>) {}
+      constructor(readonly _db: DrizzleDatabase<typeof primaryDatabase, typeof primaryTransactionDatabase>) {}
 
       @Transaction((self: MultiDatabaseService) => self.analyticsDb)
       async loadAnalytics() {
@@ -390,7 +429,7 @@ describe('@fluojs/drizzle Transaction decorator — named/accessor contract', ()
     class IsolatedService {
       readonly analyticsDb = analyticsDatabase;
 
-      constructor(private readonly db: DrizzleDatabase<typeof primaryDatabase, typeof primaryTransactionDatabase2>) {}
+      constructor(readonly _db: DrizzleDatabase<typeof primaryDatabase, typeof primaryTransactionDatabase2>) {}
 
       @Transaction((self: IsolatedService) => self.analyticsDb)
       async analyticsWork() {
