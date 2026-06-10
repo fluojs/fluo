@@ -107,6 +107,8 @@ Provider factories are repeatable. You may register multiple providers created b
 
 Use `execution.indicatorTimeoutMs` when custom indicators might hang or depend on slow downstreams. When a probe exceeds the configured timeout, Terminus marks that indicator as `down` instead of waiting forever.
 
+Terminus also serializes checks per indicator instance. If a timed-out or otherwise slow probe is still running when another `/health` or `/ready` request arrives, Terminus reports that indicator as `down` for the new request instead of starting an overlapping probe against the same downstream. Built-in HTTP indicators abort their `fetch` request when their own timeout expires; other drivers and custom callbacks may not expose cancellation, so they are protected from overlap until the original promise settles.
+
 ```typescript
 TerminusModule.forRoot({
   execution: {
@@ -122,7 +124,7 @@ Use `path` to mount the health endpoints under a custom path, and `readinessChec
 
 ### Failure Semantics
 
-When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthService` aggregates these failures into a report:
+When an indicator returns a `down` result or throws a `HealthCheckError`, the `TerminusHealthService` aggregates the failure into a report:
 
 - `/health` returns HTTP `503` if any indicator fails.
 - `/ready` returns HTTP `503` when registered indicators fail, a custom readiness check returns `false`, runtime shutdown has begun, or platform readiness is anything other than `ready`. Platform `critical` metadata is preserved in diagnostics, but the HTTP readiness endpoint itself is a binary ready/unavailable gate and does not expose warning severity buckets.
@@ -131,7 +133,7 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 - Unsupported, empty, or non-object indicator results are reported as `down` diagnostics instead of being silently discarded.
 - Blank indicator result keys are reported as `down` diagnostics instead of contributing healthy entries.
 - If an indicator reuses a key that was already reported earlier in the same run, Terminus keeps the first entry and adds a deterministic `*-duplicate-key-error` contributor instead of silently overwriting data.
-- Platform health/readiness failures are surfaced as deterministic `fluo-platform-health` and `fluo-platform-readiness` contributors in `/health` responses.
+- Platform health/readiness failures are surfaced as deterministic `fluo-platform-health` and `fluo-platform-readiness` contributors in `/health` responses. These keys are reserved for platform diagnostics; if a user indicator returns one of them during a platform failure, Terminus keeps the platform payload under the reserved key and adds a deterministic `*-user-key-collision` diagnostic instead of dropping runtime state.
 - `/health` responses may include a `platform` block with platform health/readiness details when runtime diagnostics are available.
 - Drizzle indicators created through the DI provider map Drizzle lifecycle readiness/health state before SQL probing, so shutdown or stopped integrations mark `/health` and `/ready` as unavailable even if the underlying driver still accepts a raw ping.
 - Redis indicators created through the Redis subpath map `@fluojs/redis` client lifecycle state before `PING`, so shutdown or disconnected Redis clients mark `/health` and `/ready` as unavailable even before command execution.

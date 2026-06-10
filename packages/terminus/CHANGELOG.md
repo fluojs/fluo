@@ -1,5 +1,11 @@
 # @fluojs/terminus
 
+## [Unreleased]
+
+### Patch Changes
+
+- Harden health/readiness diagnostics so timed-out indicator probes do not overlap later checks for the same indicator instance, platform diagnostic keys preserve runtime payloads on user-key collisions, and Terminus docs/tests align with the runtime-owned endpoint contract.
+
 ## 1.0.4
 
 ### Patch Changes
