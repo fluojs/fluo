@@ -651,7 +651,8 @@ class DefaultOverrideProviderBuilder<T> implements OverrideProviderBuilder<T> {
 class DefaultTestingModuleBuilder implements TestingModuleBuilder {
   private readonly overrides: Provider[] = [];
   private readonly moduleReplacements = new Map<ModuleType, ModuleType>();
-  private readonly originalModuleDefinitions = new Map<ModuleType, ModuleDefinition>();
+  private readonly shadowModuleIdentities = new Map<ModuleType, ModuleType>();
+  private readonly shadowModules = new Map<ModuleType, ModuleType>();
 
   constructor(private readonly options: TestingModuleOptions) {}
 
@@ -723,15 +724,12 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
   }
 
   private bootstrapWithPatchedModuleImports(): BootstrapResult {
-    try {
-      const rootModule = this._applyModuleReplacements(this.options.rootModule);
+    const rootModule = this.createReplacementModuleGraph(this.options.rootModule);
+    const bootstrapped = bootstrapModule(rootModule, {
+      providers: this.options.providers,
+    });
 
-      return bootstrapModule(rootModule, {
-        providers: this.options.providers,
-      });
-    } finally {
-      this.restorePatchedModuleImports();
-    }
+    return this.remapShadowModuleIdentities(bootstrapped);
   }
 
   private createTestingModuleRef(bootstrapped: BootstrapResult, syncResolver: SyncResolver): TestingModuleRef {
@@ -778,19 +776,33 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
     };
   }
 
-  private _applyModuleReplacements(module: ModuleType): ModuleType {
+  private createReplacementModuleGraph(module: ModuleType): ModuleType {
+    this.shadowModuleIdentities.clear();
+    this.shadowModules.clear();
+
+    return this.createReplacementModule(module);
+  }
+
+  private createReplacementModule(module: ModuleType): ModuleType {
     if (this.moduleReplacements.size === 0) {
       return module;
     }
 
-    const replacement = this.moduleReplacements.get(module);
-    if (replacement) {
-      return replacement;
+    const cached = this.shadowModules.get(module);
+    if (cached) {
+      return cached;
     }
 
-    const metadata = getModuleMetadata(module);
+    const replacement = this.moduleReplacements.get(module);
+    const metadataSource = replacement ?? module;
+    const metadata = getModuleMetadata(metadataSource) ?? {};
+
     if (!metadata?.imports || metadata.imports.length === 0) {
-      return module;
+      if (!replacement) {
+        return module;
+      }
+
+      return this.createShadowModule(module, metadata as ModuleDefinition, []);
     }
 
     const rewrittenImports = this.rewriteModuleImports(metadata.imports as ModuleType[]);
@@ -798,36 +810,53 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
       (imp, i) => imp !== (metadata.imports as ModuleType[])[i],
     );
 
-    if (!hasChange) {
+    if (!replacement && !hasChange) {
       return module;
     }
 
-    this.patchModuleImports(module, metadata as ModuleDefinition, rewrittenImports);
-
-    return module;
+    return this.createShadowModule(module, metadata as ModuleDefinition, rewrittenImports);
   }
 
   private rewriteModuleImports(imports: ModuleType[]): ModuleType[] {
-    return imports.map((moduleImport) => this._applyModuleReplacements(moduleImport));
+    return imports.map((moduleImport) => this.createReplacementModule(moduleImport));
   }
 
-  private patchModuleImports(module: ModuleType, metadata: ModuleDefinition, imports: ModuleType[]): void {
-    if (!this.originalModuleDefinitions.has(module)) {
-      this.originalModuleDefinitions.set(module, metadata);
-    }
+  private createShadowModule(module: ModuleType, metadata: ModuleDefinition, imports: ModuleType[]): ModuleType {
+    const shadowModule = {
+      [module.name || 'TestingOverrideModule']: class {},
+    }[module.name || 'TestingOverrideModule'] as ModuleType;
 
-    defineModule(module, {
+    this.shadowModules.set(module, shadowModule);
+    this.shadowModuleIdentities.set(shadowModule, module);
+
+    defineModule(shadowModule, {
       ...metadata,
       imports,
     });
+
+    return shadowModule;
   }
 
-  private restorePatchedModuleImports(): void {
-    for (const [module, metadata] of this.originalModuleDefinitions) {
-      defineModule(module, metadata);
+  private remapShadowModuleIdentities(bootstrapped: BootstrapResult): BootstrapResult {
+    if (this.shadowModuleIdentities.size === 0) {
+      return bootstrapped;
     }
 
-    this.originalModuleDefinitions.clear();
+    const remapModule = (module: ModuleType): ModuleType => this.shadowModuleIdentities.get(module) ?? module;
+    const modules = bootstrapped.modules.map((compiledModule) => ({
+      ...compiledModule,
+      definition: {
+        ...compiledModule.definition,
+        imports: compiledModule.definition.imports?.map(remapModule),
+      },
+      type: remapModule(compiledModule.type),
+    }));
+
+    return {
+      ...bootstrapped,
+      modules,
+      rootModule: remapModule(bootstrapped.rootModule),
+    };
   }
 }
 
