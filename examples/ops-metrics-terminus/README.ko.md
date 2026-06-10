@@ -37,10 +37,12 @@ examples/ops-metrics-terminus/
 │   ├── main.ts
 │   ├── app.test.ts
 │   └── ops/
+│       ├── metrics-registry.ts
 │       ├── ops.module.ts
 │       ├── ops.controller.ts
 │       └── ops-metrics.service.ts
-└── README.md
+├── README.md
+└── README.ko.md
 ```
 
 ## 권장 읽기 순서
