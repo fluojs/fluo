@@ -17,18 +17,8 @@ permission:
     '*': ask
     'find *': deny
     'xargs *': deny
-    'git status*': allow
-    'git branch': allow
-    'git branch --show-current': allow
-    'git branch --list': allow
-    'git branch -a': allow
-    'git branch -r': allow
-    'git branch -vv': allow
-    'git remote*': allow
-    'git diff*': allow
-    'git log*': allow
-    'git show*': allow
-    'git ls-files*': allow
+    'git *': allow
+    'GIT_MASTER=1 git *': allow
     'sort*': allow
     'git worktree list*': allow
     'git worktree add*': allow
@@ -36,13 +26,6 @@ permission:
     'git commit*': allow
     'git fetch*': allow
     'git push*': allow
-    'GIT_MASTER=1 git status*': allow
-    'GIT_MASTER=1 git branch*': allow
-    'GIT_MASTER=1 git remote*': allow
-    'GIT_MASTER=1 git diff*': allow
-    'GIT_MASTER=1 git log*': allow
-    'GIT_MASTER=1 git show*': allow
-    'GIT_MASTER=1 git ls-files*': allow
     'GIT_MASTER=1 git worktree list*': allow
     'GIT_MASTER=1 git worktree add*': allow
     'GIT_MASTER=1 git add*': allow
@@ -69,9 +52,34 @@ permission:
     'gh pr create*': allow
     'git merge*': deny
     'git rebase*': deny
-    'git branch -d*': deny
-    'git branch -D*': deny
+    'git reset': deny
+    'git reset *': deny
+    'git clean*': deny
+    'git rm*': deny
+    'git branch -d *': deny
+    'git branch -D *': deny
+    'git branch --delete *': deny
     'git worktree remove*': deny
+    'git push --force*': deny
+    'git push * --force*': deny
+    'git push -f*': deny
+    'git push * -f*': deny
+    'git push * +*': deny
+    'GIT_MASTER=1 git merge*': deny
+    'GIT_MASTER=1 git rebase*': deny
+    'GIT_MASTER=1 git reset': deny
+    'GIT_MASTER=1 git reset *': deny
+    'GIT_MASTER=1 git clean*': deny
+    'GIT_MASTER=1 git rm*': deny
+    'GIT_MASTER=1 git branch -d *': deny
+    'GIT_MASTER=1 git branch -D *': deny
+    'GIT_MASTER=1 git branch --delete *': deny
+    'GIT_MASTER=1 git worktree remove*': deny
+    'GIT_MASTER=1 git push --force*': deny
+    'GIT_MASTER=1 git push * --force*': deny
+    'GIT_MASTER=1 git push -f*': deny
+    'GIT_MASTER=1 git push * -f*': deny
+    'GIT_MASTER=1 git push * +*': deny
     'npm publish*': deny
     'pnpm publish*': deny
     'gh issue create*': deny
