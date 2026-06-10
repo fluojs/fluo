@@ -30,7 +30,7 @@ import {
 } from './metadata.js';
 import { WebSocketModule } from './module.js';
 import { WebSocketGatewayLifecycleService } from './service.js';
-import type { WebSocketModuleOptions } from './types.js';
+import type { WebSocketModuleOptions } from './node/node-types.js';
 
 function createLogger(events: string[]): ApplicationLogger {
   return {
@@ -274,6 +274,7 @@ function createMockSocket(): {
   const listeners: MockSocketListeners = {};
   const ping = vi.fn();
   const send = vi.fn();
+  const close = vi.fn();
   const terminate = vi.fn();
 
   const socketObject = {
@@ -290,6 +291,7 @@ function createMockSocket(): {
 
       return this;
     },
+    close,
     ping,
     readyState: WebSocket.OPEN,
     send,
@@ -922,17 +924,11 @@ describe('@fluojs/websockets', () => {
       imports: [WebSocketModule.forRoot({
         upgrade: {
           guard(request) {
-            if ('headers' in request && typeof request.headers === 'object') {
-              const authorization = 'get' in request.headers && typeof request.headers.get === 'function'
-                ? request.headers.get('authorization')
-                : (request.headers as Record<string, string | string[] | undefined>).authorization;
+            const authorization = request.headers.authorization;
 
-              return authorization === 'Bearer node'
-                ? true
-                : { body: 'Authentication required.', status: 401 };
-            }
-
-            return { body: 'Authentication required.', status: 401 };
+            return authorization === 'Bearer node'
+              ? true
+              : { body: 'Authentication required.', status: 401 };
           },
         },
       })],
@@ -1159,9 +1155,58 @@ describe('@fluojs/websockets', () => {
 
     socket.send(new Uint8Array([1, 2, 3, 4]));
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitForAssertion(() => {
+      expect(state.messages).toEqual(['\x01\x02\x03\x04']);
+    });
 
-    expect(state.messages).toEqual(['\x01\x02\x03\x04']);
+    socket.close();
+    await onceCloseDetails(socket);
+    await app.close();
+  });
+
+  it('receives plain text payloads under the configured limit', async () => {
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/text-ok' })
+    class PayloadGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage()
+      onMessage(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [WebSocketModule.forRoot({
+        limits: {
+          maxPayloadBytes: 10,
+        },
+      })],
+      providers: [GatewayState, PayloadGateway],
+    });
+
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port: 0,
+    });
+    const state = await app.container.resolve(GatewayState);
+
+    await app.listen();
+    const port = await getApplicationPort(app);
+
+    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/text-ok`);
+    await onceOpen(socket);
+
+    socket.send('hello');
+
+    await waitForAssertion(() => {
+      expect(state.messages).toEqual(['hello']);
+    });
 
     socket.close();
     await onceCloseDetails(socket);
@@ -1604,6 +1649,35 @@ describe('@fluojs/websockets', () => {
     expect(terminate).not.toHaveBeenCalled();
   });
 
+  it('joins, leaves, broadcasts, and reads normal room membership', () => {
+    const service = createTestLifecycleService();
+    const first = createMockSocket();
+    const second = createMockSocket();
+    const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
+
+    socketRegistry.set('socket-1', first.socket);
+    socketRegistry.set('socket-2', second.socket);
+
+    service.joinRoom('socket-1', 'room-a');
+    service.joinRoom('socket-2', 'room-a');
+    service.joinRoom('socket-2', 'room-b');
+
+    expect(Array.from(service.getRooms('socket-1'))).toEqual(['room-a']);
+    expect(Array.from(service.getRooms('socket-2')).sort()).toEqual(['room-a', 'room-b']);
+
+    service.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_1' });
+
+    expect(first.send).toHaveBeenCalledWith(JSON.stringify({ data: { orderId: 'ord_1' }, event: 'order.updated' }));
+    expect(second.send).toHaveBeenCalledWith(JSON.stringify({ data: { orderId: 'ord_1' }, event: 'order.updated' }));
+
+    service.leaveRoom('socket-2', 'room-a');
+    service.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_2' });
+
+    expect(first.send).toHaveBeenCalledTimes(2);
+    expect(second.send).toHaveBeenCalledTimes(1);
+    expect(Array.from(service.getRooms('socket-2'))).toEqual(['room-b']);
+  });
+
   it('terminates sockets on backpressure when policy is close', async () => {
     const service = createTestLifecycleService({
       backpressure: {
@@ -1650,6 +1724,19 @@ describe('@fluojs/websockets', () => {
     const nextSnapshot = service.getRooms('socket-1');
 
     expect(Array.from(nextSnapshot).sort()).toEqual(['room-a', 'room-b']);
+  });
+
+  it('does not start heartbeat timers when heartbeat is explicitly disabled', () => {
+    const service = createTestLifecycleService({
+      heartbeat: {
+        enabled: false,
+      },
+    });
+    const startHeartbeatIfEnabled = Reflect.get(service, 'startHeartbeatIfEnabled') as () => void;
+
+    startHeartbeatIfEnabled.call(service);
+
+    expect(Reflect.get(service, 'heartbeatTimer')).toBeUndefined();
   });
 
   it('logs and continues shutdown when websocket server close exceeds timeout', async () => {
@@ -1985,6 +2072,57 @@ describe('@fluojs/websockets', () => {
 
     expect(closed).toBe(true);
     expect(state.disconnectCount).toBe(1);
+  });
+
+  it('bounds unresolved Node disconnect cleanup during shutdown and logs the timeout', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const loggerEvents: string[] = [];
+      const service = createTestLifecycleService({ shutdown: { timeoutMs: 25 } }, loggerEvents);
+      const { socket } = createMockSocket();
+      const state = createTrackedSocketState('socket-timeout', {
+        disconnect: new Promise<void>(() => {}),
+      });
+      const socketStates = Reflect.get(service, 'socketStates') as Map<string, ReturnType<typeof createTrackedSocketState>>;
+      const closeGatewayAttachments = Reflect.get(service, 'closeGatewayAttachments') as (
+        attachments: ReadonlyArray<{
+          descriptors: readonly unknown[];
+          path: string;
+          server: {
+            clients: Set<WebSocket>;
+            close(callback?: (error?: Error) => void): void;
+          };
+        }>,
+        shutdownTimeoutMs: number,
+      ) => Promise<void>;
+
+      socketStates.set(state.socketId, state);
+
+      const closePromise = closeGatewayAttachments.call(service, [
+        {
+          descriptors: [],
+          path: '/disconnect-timeout',
+          server: {
+            clients: new Set([socket]),
+            close(callback?: (error?: Error) => void) {
+              callback?.();
+            },
+          },
+        },
+      ], 25);
+
+      await vi.advanceTimersByTimeAsync(25);
+      await closePromise;
+
+      expect(
+        loggerEvents.some((event) =>
+          event.includes('error:WebSocketGatewayLifecycleService:Failed to close Node websocket connections within 25ms.'),
+        ),
+      ).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('waits for in-flight Node connect handlers to replay buffered disconnects during shutdown', async () => {
