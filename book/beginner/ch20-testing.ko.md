@@ -216,6 +216,8 @@ const module = await createTestingModule({ rootModule: PostTestModule })
 ### 20.4.4 Dynamic Module Overrides
 때로는 단일 프로바이더가 아닌 모듈 전체를 교체해야 할 때가 있습니다. Fluo의 테스트 프레임워크는 임포트된 모듈을 테스트용 버전으로 교체할 수 있게 합니다. 이는 `MailModule`이나 `StripeModule`과 같은 외부 통합 모듈을 테스트할 때 특히 유용한데, 프로바이더 세트 전체를 테스트를 위한 일관된 모의 객체나 가짜 객체 세트로 교체하고 싶을 때 사용합니다.
 
+`overrideModule(source, replacement)`는 컴파일된 testing graph를 알아보기 쉬운 상태로 유지합니다. Provider 해석에는 replacement module definition을 사용하지만 `module.rootModule`, `module.modules[].type`, 원본 module metadata는 사용자가 작성한 모듈을 계속 가리킵니다. 이 격리 덕분에 한 테스트가 `StripeModule`을 교체해도 이후 테스트나 원본 module graph를 검사하는 diagnostics에 patched import가 남지 않습니다.
+
 ## 20.5 E2E-Style HTTP Testing with createTestApp
 `createTestApp`은 요청 디스패치, 가드, 인터셉터, DTO 검증, 응답 작성을 포함한 실제 HTTP 파이프라인을 실행하는 E2E 스타일 HTTP 테스트 표면입니다. 실제 네트워크 소켓만 열지 않을 뿐, 요청 처리 스택 자체는 프로덕션 경로와 같은 방식으로 검증합니다.
 
