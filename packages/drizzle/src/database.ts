@@ -258,6 +258,12 @@ export class DrizzleDatabase<
     const current = this.transactions.getStore();
 
     if (current) {
+      if (requestScoped) {
+        this.assertRequestTransactionsAvailable();
+      } else {
+        this.assertTransactionsAvailable();
+      }
+
       if (options !== undefined) {
         throw new Error(NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR);
       }
