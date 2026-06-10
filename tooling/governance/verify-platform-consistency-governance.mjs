@@ -659,6 +659,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const docsContextKo = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
   const rootReadme = readFileSync(join(repoRoot, 'README.md'), 'utf8');
   const rootReadmeKo = readFileSync(join(repoRoot, 'README.ko.md'), 'utf8');
+  const drizzleReadme = readFileSync(join(repoRoot, 'packages/drizzle/README.md'), 'utf8');
+  const drizzleReadmeKo = readFileSync(join(repoRoot, 'packages/drizzle/README.ko.md'), 'utf8');
   const cacheManagerReadme = readFileSync(join(repoRoot, 'packages/cache-manager/README.md'), 'utf8');
   const cacheManagerReadmeKo = readFileSync(join(repoRoot, 'packages/cache-manager/README.ko.md'), 'utf8');
   const cliReadme = readFileSync(join(repoRoot, 'packages/cli/README.md'), 'utf8');
@@ -790,6 +792,24 @@ function enforceCanonicalRuntimeMatrixReferences() {
   assert(
     packageSurfaceKo.includes('Pub/Sub subscriber') && docsContextKo.includes('Pub/Sub subscriber에 전용 Redis 연결'),
     'docs/CONTEXT.ko.md must mention dedicated Redis Pub/Sub subscriber connections when package-surface.ko.md documents them.',
+  );
+  assert(
+    packageSurface.includes('@fluojs/drizzle') &&
+      packageSurface.includes('node:async_hooks') &&
+      packageChooser.includes('raw Drizzle driver handle') &&
+      docsContext.includes('raw Drizzle provider guidance') &&
+      drizzleReadme.includes('raw Drizzle driver handle') &&
+      drizzleReadme.includes('{ provide, useFactory }'),
+    'Drizzle README, package-surface, package-chooser, and docs/CONTEXT.md must keep the Node-only runtime boundary and raw-provider fallback discoverable together.',
+  );
+  assert(
+    packageSurfaceKo.includes('@fluojs/drizzle') &&
+      packageSurfaceKo.includes('node:async_hooks') &&
+      packageChooserKo.includes('raw Drizzle driver handle') &&
+      docsContextKo.includes('raw Drizzle provider guidance') &&
+      drizzleReadmeKo.includes('raw Drizzle driver handle') &&
+      drizzleReadmeKo.includes('{ provide, useFactory }'),
+    'Drizzle README.ko, package-surface.ko, package-chooser.ko, and docs/CONTEXT.ko.md must keep the Node-only runtime boundary and raw-provider fallback discoverable together.',
   );
   assert(
     packageSurface.includes('NormalizedCacheModuleOptions') &&
