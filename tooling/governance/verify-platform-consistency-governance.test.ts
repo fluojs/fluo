@@ -332,6 +332,27 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('treats observability and deployment docs as contract-governing updates', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() => enforceContractCompanionUpdates(['docs/architecture/observability.md'])).toThrowError(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
+    );
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/architecture/observability.md',
+        'docs/architecture/observability.ko.md',
+        'docs/contracts/deployment.md',
+        'docs/contracts/deployment.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/metrics/src/public-surface.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('accepts Vite package-chooser guidance when context discoverability and transform regression tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
