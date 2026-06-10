@@ -9,6 +9,7 @@
 - fluo에서 Mongoose 통합이 필요한 이유와 적용 지점을 구분합니다.
 - `MongooseModule` 구성과 연결 수명 주기 관리 방식을 정리합니다.
 - `MongooseConnection`을 사용하는 리포지토리 패턴을 구성합니다.
+- 수동 트랜잭션과 요청 단위 트랜잭션을 비교합니다.
 - FluoShop 제품 카탈로그에 문서 모델을 적용하는 방식을 확인합니다.
 - 상태 스냅샷으로 MongoDB 연결을 관측하는 기준을 정리합니다.
 
@@ -21,8 +22,10 @@
 
 Mongoose는 Node.js 생태계에서 MongoDB를 다룰 때 널리 쓰이는 모델링 계층입니다. fluo 전용 통합 패키지를 사용하면 다음과 같은 이점을 얻을 수 있습니다.
 
+- **수명 주기 관리**: 제공된 연결을 애플리케이션 라이프사이클에 등록하고, `dispose(connection)`을 제공한 경우 종료 중 요청 단위 트랜잭션이 drain된 뒤에만 정리를 실행합니다.
 - **세션 인지(Session Awareness)**: `MongooseConnection` 서비스가 콜 스택 전체에서 MongoDB 세션을 추적합니다.
 - **앰비언트 세션 (v1)**: fluo는 지원되는 Mongoose 모델 작업(create, find, findOne, aggregate, bulkWrite)에 활성 트랜잭션 세션을 자동으로 연결합니다.
+- **애플리케이션 소유 연결**: fluo는 애플리케이션이 제공한 concrete Mongoose connection을 관측합니다. `dispose(connection)`을 제공하지 않는 한 연결을 생성하거나, model을 compile하거나, 닫지 않습니다.
 
 ## 19.2 Installation and Setup
 
@@ -32,7 +35,7 @@ Mongoose와 fluo 통합 패키지를 설치합니다.
 pnpm add mongoose @fluojs/mongoose
 ```
 
-일부 데이터베이스 통합과 달리 fluo는 애플리케이션이 직접 Mongoose `Connection` 객체를 생성해 제공하는 방식을 사용합니다. 이 구조는 연결 문자열, 풀 옵션, 플러그인 구성 같은 세부 설정을 호출 측에서 명확히 통제하게 합니다.
+일부 데이터베이스 통합과 달리 fluo는 애플리케이션이 직접 concrete Mongoose `Connection` 객체를 생성해 제공하는 방식을 사용합니다. 이 구조는 연결 문자열, pool 옵션, plugin 구성, model compilation 같은 세부 설정을 호출 측에서 명확히 통제하게 합니다. `MongooseModule`은 연결을 fluo 라이프사이클에 등록하지만 ownership은 애플리케이션에 남아 있습니다. 종료 시 외부 handle을 닫아야 한다면 `dispose(connection)`을 제공하세요.
 
 ## 19.3 Configuring the MongooseModule
 
@@ -87,7 +90,7 @@ export class ProductRepository {
 - `aggregate`
 - `bulkWrite`
 
-`@Transaction()`이나 `transaction()` 경계 내부에서 이 메서드들이 호출되면, fluo는 앰비언트 세션을 옵션에 자동으로 붙여줍니다. 참고로 `doc.save()`는 현재 자동 세션 주입이 지원되지 않으므로, 트랜잭션 내에서 사용 시 여전히 수동으로 세션을 전달해야 합니다.
+`MongooseConnection.model(...)`을 통해 `@Transaction()`, `transaction()`, `requestTransaction()` 경계 내부에서 이 메서드들이 호출되면, fluo는 앰비언트 세션을 옵션에 자동으로 붙여줍니다. `conn.current().model(...)`이 반환한 raw model은 wrapper가 아니며, `doc.save()`도 현재 자동 세션 주입이 지원되지 않습니다. 두 경로 모두 트랜잭션 안에서 사용할 때는 수동으로 세션을 전달해야 합니다.
 
 트랜잭션이 활성화된 상태에서 옵션에 `session`을 명시적으로 제공했는데, 해당 세션이 앰비언트 트랜잭션 세션과 일치하지 않는 경우 fluo는 충돌 에러를 던집니다. 이는 의도치 않은 트랜잭션 간 데이터 유출을 방지하기 위함입니다.
 
@@ -96,6 +99,7 @@ export class ProductRepository {
 
 MongoDB 트랜잭션은 활성화된 **세션(Session)**을 필요로 합니다. Fluo는 세션 생성, 실행, 정리를 하나의 트랜잭션 래퍼로 묶어 호출부의 부담을 줄입니다.
 
+제공된 Mongoose connection이 `connection.transaction(...)`을 노출하면 fluo는 Mongoose 자체 ambient-session scope와 cleanup semantics가 유지되도록 트랜잭션 경계를 해당 API에 위임합니다. 그렇지 않으면 `startSession()`, `startTransaction()`, `commitTransaction()` / `abortTransaction()`, `endSession()`을 직접 사용합니다. connection에 `connection.transaction(...)`과 `startSession()`이 모두 없고 `strictTransactions`가 `false`이면 fluo는 rollback 원자성 없이 callback을 직접 실행하는 fail-open mode로 동작합니다. 이 모드는 local fake나 staged migration에만 사용하세요. MongoDB transaction 보장이 필요한 production 경로에서는 `strictTransactions: true`를 설정해 지원 누락이 readiness와 transaction helper 실패로 드러나게 하세요. 요청 단위 트랜잭션은 session acquisition과 delegated transaction startup 중 request `AbortSignal`을 관찰하므로, 취소된 request는 repository work가 실행되기 전에 멈출 수 있습니다. 실제 transaction mode에서는 application shutdown 중 active request transaction과 session cleanup이 settled될 때까지 `dispose(connection)` 실행을 기다리며, shutdown이 시작된 뒤에는 새로운 수동 또는 요청 단위 transaction boundary가 거부됩니다.
 
 `@Transaction()`, `transaction(...)`, `requestTransaction(...)` 경계 안에서 `conn.model(...)`은 `create`, `find`, `findOne`, `aggregate`, `bulkWrite`에 ambient session을 자동으로 바인딩하는 facade를 반환합니다. 지원되지 않는 model 메서드와 `doc.save()`에는 여전히 `conn.currentSession()`을 명시적으로 전달해야 합니다. 기존 수동 `transaction(...)` 안에서 열린 중첩 `requestTransaction(...)`은 ambient session을 재사용하고 활성 request boundary로 추적되며, 종료 중에는 abort되어 바깥 수동 transaction이 connection disposal 전에 rollback할 수 있습니다.
 
@@ -135,7 +139,7 @@ const Apparel = Product.discriminator('Apparel', new mongoose.Schema({ size: Str
 
 ## 19.7 Health and Observability
 
-데이터베이스 연결 상태는 백엔드 운영에서 빠르게 확인해야 하는 핵심 지표입니다. `MongooseConnection.createPlatformStatusSnapshot()`을 사용하면 Mongoose 연결 상태를 헬스 체크에 연결할 수 있습니다.
+데이터베이스 연결 상태는 백엔드 운영에서 빠르게 확인해야 하는 핵심 지표입니다. `MongooseConnection.createPlatformStatusSnapshot()`을 사용하면 Mongoose 연결 상태를 헬스 체크에 연결할 수 있습니다. 더 낮은 수준의 composition을 위해 `@fluojs/mongoose`는 `createMongoosePlatformStatusSnapshot(...)`도 export하지만, 애플리케이션 코드는 일반적으로 instance method를 호출해 live request/session drain 수와 strict transaction 진단이 포함된 snapshot을 얻습니다.
 
 ```typescript
 import { Inject } from '@fluojs/core';

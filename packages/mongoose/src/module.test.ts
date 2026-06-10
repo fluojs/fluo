@@ -904,6 +904,108 @@ describe('@fluojs/mongoose', () => {
     resolveTransaction();
   });
 
+  it('skips late delegated request callbacks and finishes delegated cleanup after startup abort', async () => {
+    const events: string[] = [];
+    const controller = new AbortController();
+    let resolveTransaction!: () => void;
+    let resolveEndSessionStarted!: () => void;
+    let resolveEndSession!: () => void;
+    const transactionReady = new Promise<void>((resolve) => {
+      resolveTransaction = resolve;
+    });
+    const endSessionStarted = new Promise<void>((resolve) => {
+      resolveEndSessionStarted = resolve;
+    });
+    const endSessionDeferred = new Promise<void>((resolve) => {
+      resolveEndSession = resolve;
+    });
+    const session: MongooseSessionLike = {
+      abortTransaction() {
+        events.push('transaction:abort');
+      },
+      commitTransaction() {
+        events.push('transaction:commit');
+      },
+      async endSession() {
+        events.push('session:end:start');
+        resolveEndSessionStarted();
+        await endSessionDeferred;
+        events.push('session:end:done');
+      },
+      startTransaction() {
+        events.push('transaction:start');
+      },
+    };
+
+    const connection: MongooseConnectionLike = {
+      async transaction(fn) {
+        events.push('connection:transaction:start');
+        await transactionReady;
+        await session.startTransaction();
+
+        try {
+          const result = await fn(session);
+          await session.commitTransaction();
+
+          return result;
+        } catch (error) {
+          await session.abortTransaction();
+          throw error;
+        } finally {
+          await session.endSession();
+        }
+      },
+    };
+
+    const mongoose = new MongooseConnection<typeof connection>(connection);
+    const requestTransaction = mongoose.requestTransaction(async () => {
+      events.push('request:work');
+
+      return 'ok';
+    }, controller.signal);
+
+    controller.abort(new Error('client aborted during delegated transaction startup'));
+
+    await expect(requestTransaction).rejects.toThrow('client aborted during delegated transaction startup');
+    expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        activeRequestTransactions: 0,
+        activeSessions: 1,
+      },
+    });
+    expect(events).toEqual(['connection:transaction:start']);
+
+    resolveTransaction();
+    await endSessionStarted;
+
+    expect(events).toEqual([
+      'connection:transaction:start',
+      'transaction:start',
+      'transaction:abort',
+      'session:end:start',
+    ]);
+
+    resolveEndSession();
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(events).toEqual([
+      'connection:transaction:start',
+      'transaction:start',
+      'transaction:abort',
+      'session:end:start',
+      'session:end:done',
+    ]);
+    expect(events).not.toContain('request:work');
+    expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        activeRequestTransactions: 0,
+        activeSessions: 0,
+      },
+    });
+  });
+
   it('rejects new manual and request transactions after shutdown begins', async () => {
     const events: string[] = [];
     let resolveDisposeStarted!: () => void;
@@ -1334,6 +1436,42 @@ describe('MongooseModule.forRootAsync', () => {
 
     return { connection, events, session };
   }
+
+  it('makes forRootAsync({ global: true }) providers visible to sibling modules', async () => {
+    const { connection } = makeFakeConnection();
+
+    @Inject(MongooseConnection)
+    class ConsumerService {
+      constructor(readonly mongoose: MongooseConnection<typeof connection>) {}
+
+      currentConnection() {
+        return this.mongoose.current();
+      }
+    }
+
+    class FeatureModule {}
+    defineModule(FeatureModule, {
+      exports: [ConsumerService],
+      providers: [ConsumerService],
+    });
+
+    const mongooseModule = MongooseModule.forRootAsync<typeof connection>({
+      global: true,
+      useFactory: () => ({ connection }),
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [mongooseModule, FeatureModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const consumer = await app.container.resolve(ConsumerService);
+
+    expect(consumer.currentConnection()).toBe(connection);
+
+    await app.close();
+  });
 
   it('factory receives injected token and resolves MongooseConnection', async () => {
     const { connection, events } = makeFakeConnection();
