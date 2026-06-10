@@ -77,6 +77,6 @@ describe('@fluojs/websockets public surface', () => {
     expectTypeOf<UpgradeGuardRequest<BunWebSocketModuleOptions>>().toEqualTypeOf<Request>();
     expectTypeOf<UpgradeGuardRequest<DenoWebSocketModuleOptions>>().toEqualTypeOf<Request>();
     expectTypeOf<UpgradeGuardRequest<CloudflareWorkersWebSocketModuleOptions>>().toEqualTypeOf<Request>();
-    expectTypeOf<UpgradeGuardRequest<NodeWebSocketModuleOptions>>().toEqualTypeOf<IncomingMessage | Request>();
+    expectTypeOf<UpgradeGuardRequest<NodeWebSocketModuleOptions>>().toEqualTypeOf<IncomingMessage>();
   });
 });

@@ -1,10 +1,4 @@
-import type { IncomingMessage } from 'node:http';
-
 import type { MetadataPropertyKey, Token } from '@fluojs/core';
-import type {
-  TypedOnMessageHandler as NodeTypedOnMessageHandler,
-  WebSocketGatewayContext as NodeWebSocketGatewayContext,
-} from './node/node-types.js';
 
 /**
  * Event-name-to-payload map used to type `@OnMessage(...)` handlers.
@@ -12,10 +6,19 @@ import type {
 export type WebSocketEventMap = Record<string, unknown>;
 
 /**
- * Strongly typed message handler signature resolved from one {@link WebSocketEventMap} entry.
+ * Runtime-neutral message handler signature resolved from one {@link WebSocketEventMap} entry.
+ *
+ * @typeParam TEvents Event-name-to-payload map used by the gateway.
+ * @typeParam K Event key handled by this callback.
+ * @typeParam TSocket Socket shape surfaced by the selected runtime subpath.
+ * @typeParam TRequest Request shape surfaced by the selected runtime subpath.
  */
-export type TypedOnMessageHandler<TEvents extends WebSocketEventMap, K extends keyof TEvents> =
-  NodeTypedOnMessageHandler<TEvents, K>;
+export type TypedOnMessageHandler<
+  TEvents extends WebSocketEventMap,
+  K extends keyof TEvents,
+  TSocket = unknown,
+  TRequest = Request,
+> = (payload: TEvents[K], socket: TSocket, request: TRequest) => void | Promise<void>;
 
 /**
  * Dedicated listener configuration for runtimes that can host a standalone WebSocket server.
@@ -116,9 +119,18 @@ export interface WebSocketGatewayDescriptor {
 }
 
 /**
- * Runtime context passed to gateway handlers on the default Node.js adapter surface.
+ * Runtime-neutral context passed to gateway handlers.
+ *
+ * @typeParam TSocket Socket shape surfaced by the selected runtime subpath.
+ * @typeParam TRequest Request shape surfaced by the selected runtime subpath.
  */
-export type WebSocketGatewayContext = NodeWebSocketGatewayContext;
+export interface WebSocketGatewayContext<TSocket = unknown, TRequest = Request> {
+  /** Request object associated with the accepted websocket upgrade. */
+  request: TRequest;
+
+  /** Socket object accepted by the selected runtime. */
+  socket: TSocket;
+}
 
 /**
  * Upgrade-time context shared with pre-upgrade websocket guards.
@@ -198,7 +210,7 @@ export interface WebSocketRoomService {
  *
  * @typeParam TRequest Request shape received by the runtime-specific pre-upgrade guard.
  */
-export interface WebSocketModuleOptions<TRequest = IncomingMessage | Request> {
+export interface WebSocketModuleOptions<TRequest = Request> {
   /** Limits that bound connection count and inbound payload size across runtime adapters. */
   limits?: {
     /** Maximum number of concurrently tracked websocket connections before new upgrades are rejected. */
