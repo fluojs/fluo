@@ -47,8 +47,9 @@ The scrape endpoint returns the active `prom-client` registry output with that r
 | Surface | Responsibility | Boundary |
 | --- | --- | --- |
 | `MetricsModule.forRoot(...)` | Wires the Prometheus scrape endpoint, default metrics, optional HTTP instrumentation, platform telemetry, and registry ownership. | `provider` currently accepts only `'prometheus'`; `path: false` disables the scrape route and route-scoped endpoint middleware. |
-| `MetricsService` | Application-facing facade for custom `Counter`, `Gauge`, and `Histogram` metrics on the active registry. | Use this for business/application metrics instead of reaching into package internals. |
-| `METER_PROVIDER` / `PrometheusMeterProvider` | Low-level meter bridge for first-party package integrations that need a provider token. | Application code usually does not need this token unless it is composing package-level integrations. |
+| `MetricsService` | Application-facing facade for custom `Counter`, `Gauge`, and `Histogram` metrics on the active registry, plus `getRegistry()` for deliberate advanced registry sharing. | Use collector helpers for business/application metrics. Use `getRegistry()` only when an integration must hand the active `prom-client` Registry to code that cannot receive `MetricsModule.forRoot({ registry })` directly. |
+| `Registry` | Re-export of `prom-client`'s `Registry` constructor for shared-registry setups. | It is the same Prometheus registry implementation; duplicate metric names still fail according to Prometheus semantics. |
+| `METER_PROVIDER` / `PrometheusMeterProvider` / meter types | Low-level meter bridge for first-party package integrations that need a provider token or backend-neutral counter/gauge/histogram facade. | Application code usually does not need this token unless it is composing package-level integrations; the only bundled provider backend today is Prometheus. |
 | `middleware` | Module-level middleware that participates in the module middleware chain after framework HTTP metrics and endpoint-scoped middleware. | It is not route-scoped; use `endpointMiddleware` when only the scrape route should be protected. |
 | `endpointMiddleware` | Class-based `@fluojs/http` middleware constructors bound only to the configured scrape endpoint. | Ignored only when `path: false`; any string `path`, including `''`, remains an active endpoint path. Functions or global middleware declarations are outside this option's contract. |
 
@@ -130,6 +131,8 @@ class OrdersService {
 
 Calling `MetricsService.counter(...)` again with the same name recreates the collector and follows Prometheus' duplicate-name failure behavior. Store and reuse the collector instead of creating it inside each request or command handler.
 
+`MetricsService.getRegistry()` returns the same active `prom-client` Registry used by the module scrape endpoint, built-in HTTP collectors, platform telemetry, and custom collectors created through the service. Prefer passing an explicit `registry` to `MetricsModule.forRoot({ registry })` when you own the bootstrap. Use `getRegistry()` for advanced integrations that receive `MetricsService` through DI and need to register a third-party Prometheus collector on the already active registry.
+
 ### Share one registry for framework and app metrics
 
 ```ts
@@ -196,9 +199,10 @@ MetricsModule.forRoot({
 ## Public API
 
 - `MetricsModule.forRoot(options)`
-- `MetricsService`
+- `MetricsService`, including `counter(...)`, `gauge(...)`, `histogram(...)`, and `getRegistry()`
 - `METER_PROVIDER`
 - `PrometheusMeterProvider`
+- Meter abstraction types: `MeterProvider`, `MeterCounter`, `MeterGauge`, and `MeterHistogram`
 - `HttpMetricsMiddleware` and HTTP path-label option types
 - Module options including `provider` (currently only `'prometheus'`), module-level `middleware`, and endpoint-scoped `endpointMiddleware`
 - `Registry` from `prom-client`
