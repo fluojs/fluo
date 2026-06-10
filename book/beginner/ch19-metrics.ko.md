@@ -1,11 +1,11 @@
 <!-- packages: @fluojs/metrics -->
 <!-- project-state: FluoBlog v1.16 -->
 
-# Chapter 19. Metrics and Monitoring
+# Chapter 19. Metrics and Monitoring (메트릭과 모니터링)
 
 이 장은 FluoBlog의 실행 상태를 수치로 관찰하기 위한 메트릭 수집과 모니터링 흐름을 설명합니다. Chapter 18이 서비스의 생존 여부를 점검했다면, 이 장은 성능과 트래픽 변화를 지속적으로 읽는 방법으로 확장합니다.
 
-## Learning Objectives
+## Learning Objectives (학습 목표)
 - 관측성(Observability) 스택에서 Prometheus와 Grafana의 역할을 이해합니다.
 - `/metrics` 엔드포인트를 노출하도록 `MetricsModule`을 설정합니다.
 - HTTP 요청 횟수와 지연 시간을 자동으로 모니터링합니다.
@@ -14,12 +14,12 @@
 - 라벨과 태깅을 사용해 데이터를 세분화합니다.
 - 임계값 기반 알림 규칙을 설계합니다.
 
-## Prerequisites
+## Prerequisites (사전 준비)
 - Chapter 18 완료.
 - Prometheus 스타일 시계열 메트릭의 기본 개념 이해.
 - HTTP 요청 지연 시간과 에러율 같은 운영 지표에 대한 기초 이해.
 
-## 19.1 Beyond Status: Measuring Performance
+## 19.1 Beyond Status: Measuring Performance (상태를 넘어 성능 측정하기)
 헬스 체크(18장)가 애플리케이션이 "살아 있는지"를 알려준다면, 메트릭(Metrics)은 "얼마나 잘" 작동하고 있는지를 알려줍니다. 메트릭을 모니터링하면 문제가 터진 뒤 로그만 뒤지는 흐름에서 벗어나, 성능 저하와 트래픽 변화를 더 일찍 읽을 수 있습니다. 메트릭이 없으면 서버가 실행 중이라는 사실은 알 수 있어도, 부하가 어디에서 커지는지, 지연 시간이 어느 구간에서 늘어나는지, 리소스 사용이 어느 방향으로 움직이는지는 판단하기 어렵습니다.
 
 - **처리량(Throughput)**: FluoBlog가 초당 몇 개의 요청(RPS)을 처리하고 있는가? 부하가 모든 인스턴스에 고르게 분산되고 있는가?
@@ -29,32 +29,32 @@
 
 메트릭은 대시보드를 구축하고, 알림을 설정하고, 용량 계획(Capacity Planning, 예: "현재 성장률을 바탕으로 볼 때 연말 세일 전에 서버 수를 두 배로 늘려야겠군")을 수행하는 데 필요한 수치 데이터를 제공합니다. 성능에 대한 "막연한 느낌"을 팀이 검토할 수 있는 엔지니어링 근거로 바꾸는 역할을 합니다.
 
-### 19.1.1 The Golden Signals
+### 19.1.1 The Golden Signals (네 가지 황금 신호)
 Google의 SRE 핸드북은 모니터링의 "네 가지 황금 신호"로 지연 시간(Latency), 트래픽(Traffic), 에러(Errors), 포화도(Saturation)를 정의합니다. Fluo의 메트릭 시스템은 기본적으로 이 네 가지 모두에 대한 가시성을 제공하도록 설계되었습니다. 이 신호를 먼저 보면 프로덕션 문제를 분석할 때 출발점이 분명해집니다. 예를 들어 높은 포화도와 결합된 지연 시간 급증은 대개 CPU나 메모리 리소스를 확장해야 한다는 신호입니다.
 
-### 19.1.2 Proactive vs. Reactive Monitoring
+### 19.1.2 Proactive vs. Reactive Monitoring (선제적 모니터링과 사후 대응)
 사후 반응적 모니터링은 문제가 발생한 후(예: 서버 크래시로 인한 알림 발생) 이를 수정하는 것입니다. 선제적 모니터링은 장애가 발생하기 전에 추세를 식별하는 것입니다(예: 며칠에 걸쳐 메모리 사용량이 서서히 증가하는 것을 발견함). Fluo의 메트릭은 이런 접근을 돕고, 야간 장애 대응보다 계획된 수정 배포가 가능한 시간을 만들어 줍니다.
 
-### 19.1.3 Metrics vs. Logs: Choosing the Right Tool
+### 19.1.3 Metrics vs. Logs: Choosing the Right Tool (메트릭과 로그 중 올바른 도구 선택하기)
 **메트릭(Metrics)**과 **로그(Logs)**의 차이를 이해하는 것이 중요합니다. 로그는 특정 이벤트(예: "사용자 123이 오전 10시 5분에 로그인함")를 기록하는 고카디널리티(high-cardinality) 데이터입니다. 메트릭은 이러한 이벤트들을 수치 데이터로 합산(예: "지난 1분 동안 50번의 로그인이 있었음")하는 저카디널리티(low-cardinality) 데이터입니다.
 
 로그는 "이 특정 요청이 왜 실패했는가?"를 디버깅하는 데 유용하며, 메트릭은 "시스템 전체가 올바르게 작동하고 있는가?"라는 질문에 답하는 데 최적입니다. 잘 설계된 Fluo 애플리케이션에서는 두 가지를 모두 사용합니다. 메트릭 알림이 발생(예: 높은 에러율)하면, 로그를 사용하여 특정 에러들을 심층 분석하고 근본 원인을 찾습니다. 메트릭과 로그 사이의 이러한 "상관관계(Correlation)"가 빠른 사고 대응의 핵심입니다.
 
-### 19.1.4 The Business Value of Monitoring
+### 19.1.4 The Business Value of Monitoring (모니터링의 비즈니스 가치)
 기술적인 상태를 넘어, 메트릭은 비즈니스 이해관계자에게도 판단 근거를 제공합니다. "구매 완료", "검색 쿼리", "콘텐츠 조회"와 같은 이벤트를 추적하면 기능이 어떻게 사용되는지 실시간에 가깝게 확인할 수 있습니다. 이 데이터는 제품 관리자가 어떤 기능에 투자하고 어떤 기능을 폐기할지에 대해 증거 기반의 결정을 내릴 수 있게 해줍니다. `@fluojs/metrics`는 백엔드가 엔지니어와 비즈니스 리더 모두에게 일관된 소스 오브 트루스(Source of Truth)를 제공하도록 돕습니다.
 
-### 19.1.5 Metrics and Capacity Planning
+### 19.1.5 Metrics and Capacity Planning (메트릭과 용량 계획)
 흔히 간과되지만 중요한 모니터링의 한 측면은 **용량 계획(Capacity Planning)**입니다. 메트릭의 장기적인 추세(예: 지난 6개월 동안의 CPU 사용량)를 분석하면 현재 인프라가 언제 한계에 도달할지 예측할 수 있습니다. 이런 접근은 사용자가 성능 저하를 겪기 *전에* 새로운 리소스를 프로비저닝하거나 비효율적인 코드를 최적화할 시간을 줍니다.
 
 Fluo의 메트릭 시스템은 데이터를 Thanos나 Cortex와 같은 장기 저장 솔루션으로 쉽게 내보낼 수 있게 하여 수년간의 이력 분석을 가능하게 합니다. 메트릭을 운영 자산으로 다루면, 사용자 층이 수백 명에서 수백만 명으로 성장하는 동안 FluoBlog 애플리케이션의 확장 방향을 더 예측 가능하게 관리할 수 있습니다.
 
-### 19.1.6 The Psychology of Monitoring
+### 19.1.6 The Psychology of Monitoring (모니터링의 심리학)
 마지막으로, 모니터링 설정의 **심리학(Psychology)**도 고려해야 합니다. 너무 복잡한 대시보드나 너무 시끄러운 알림 시스템은 결국 "알림 피로(Alert Fatigue)"를 유발하고 개발자 생산성을 떨어뜨립니다. 잘 설계된 메트릭 스택은 정상 상태와 조치가 필요한 상태를 분명히 구분해야 합니다. 메트릭에서 명확성과 조치 가능성을 우선하면 엔지니어링 팀이 더 안정적인 환경에서 운영 결정을 내릴 수 있습니다.
 
-## 19.2 Introducing @fluojs/metrics
+## 19.2 Introducing @fluojs/metrics (@fluojs/metrics 소개)
 `@fluojs/metrics` 패키지는 Prometheus를 `fluo`에 통합합니다. Prometheus는 정기적인 간격으로 애플리케이션에서 메트릭을 "스크랩(Scrape, 가져오기)"하는 업계 표준 모니터링 시스템입니다. 이 데이터를 시계열(Time-series)로 저장하므로, 특정 기간 동안의 값 변화를 쿼리하고 속도, 평균, 퍼센타일을 쉽게 계산할 수 있습니다.
 
-### Why Prometheus?
+### Why Prometheus? (왜 Prometheus인가?)
 Prometheus는 클라우드 네이티브 환경의 동적인 특성에 맞춰 구축되었습니다. 애플리케이션이 중앙 서버로 데이터를 "푸시"할 필요가 없어 네트워크 설정이 단순해지고, 트래픽 급증 시 모니터링 시스템이 병목 지점이 되는 것을 방지합니다. 또한 강력한 쿼리 언어(PromQL)와 데이터베이스, 캐시, 운영 체제를 위한 거대한 익스포터(exporter) 생태계를 갖추고 있습니다.
 
 ## 19.3 Basic Setup
@@ -95,7 +95,7 @@ export class AppModule {}
 ### 19.3.4 Public Responsibility Boundaries
 `MetricsModule.forRoot(...)`는 module option wiring을 소유합니다. 여기에는 scrape `path`, `provider`, `defaultMetrics`, optional HTTP collector, platform telemetry label, endpoint-scoped `endpointMiddleware`, module-level `middleware`, registry 선택이 포함됩니다. `provider`는 현재 `'prometheus'`만 지원하며, `path: false`는 scrape endpoint를 끄고 endpoint-scoped middleware도 건너뜁니다.
 
-Application-defined counter, gauge, histogram에는 `MetricsService`를 사용하세요. 더 낮은 수준의 `METER_PROVIDER` token과 `PrometheusMeterProvider`는 meter provider bridge가 필요한 package integration을 위한 것이며, 일반 tutorial code용 표면은 아닙니다. 이 경계는 business metric, framework-owned HTTP metric, package-integration metric이 같은 Registry 이름의 ownership을 두고 충돌하지 않게 합니다.
+Application-defined counter, gauge, histogram에는 `MetricsService`를 사용하세요. `getRegistry()` method는 DI로 받은 service에서 같은 active `prom-client` Registry에 third-party collector를 등록해야 하는 advanced integration을 위해 제공됩니다. Bootstrap path를 직접 소유한다면 명시적 `MetricsModule.forRoot({ registry })` shared-registry setup을 우선하세요. 더 낮은 수준의 `METER_PROVIDER` token, `PrometheusMeterProvider`, `MeterProvider` / `MeterCounter` / `MeterGauge` / `MeterHistogram` abstraction type은 meter provider bridge가 필요한 package integration을 위한 것이며, 일반 tutorial code용 표면은 아닙니다. 이 경계는 business metric, framework-owned HTTP metric, package-integration metric이 같은 Registry 이름의 ownership을 두고 충돌하지 않게 합니다.
 
 ### 19.3.5 Integration with Cloud-Native Sidecars
 Istio나 Linkerd와 같은 서비스 메쉬(Service Mesh) 환경에서 애플리케이션은 종종 "사이드카(Sidecar)" 프록시와 함께 실행됩니다. 이러한 프록시들은 자체 메트릭을 가지기도 하지만, Fluo 애플리케이션 메트릭을 합산하고 노출하도록 설정할 수도 있습니다. Fluo는 Prometheus 텍스트 스크레이프 형식을 노출하므로 이 데이터는 Prometheus-compatible 사이드카 관측성 패턴과 자연스럽게 연결됩니다.
