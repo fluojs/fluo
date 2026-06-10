@@ -9,6 +9,7 @@ fluo 프로젝트를 위한 Vite 플러그인과 빌드 유틸리티입니다.
 - [설치](#설치)
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
+- [데코레이터 변환 경계](#데코레이터-변환-경계)
 - [공개 API](#공개-api)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -43,6 +44,16 @@ export default defineConfig({
 ```
 
 이 플러그인은 `.ts` 애플리케이션 파일을 Babel로 변환하며 `2023-11` decorators proposal과 `@babel/preset-typescript`를 사용합니다. 파일 경계를 판단하기 전에 Vite query suffix를 제거한 뒤 declaration 파일, `*.test.ts` 또는 `*.spec.ts` 파일, `node_modules`, `.ts`가 아닌 파일은 건너뛰므로 생성된 Vitest 테스트 파일은 계속 전용 `@fluojs/testing/vitest` transform 경로를 사용합니다. `@fluojs/vite`를 import하거나 `fluoDecoratorsPlugin()`을 생성하는 시점에는 `@babel/core`를 로드하지 않으며, 누락된 Babel peer는 Vite가 변환 중인 소스 파일에 대한 transform-time 진단으로 표시됩니다.
+
+## 데코레이터 변환 경계
+
+`@fluojs/vite`는 Vitest 테스트 변환이 아니라 애플리케이션 빌드 변환을 소유합니다. 생성된 non-Deno starter는 파일 경계 분리를 명시적으로 유지합니다:
+
+1. `vite.config.ts`는 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import합니다.
+2. Vite 플러그인은 query suffix를 제거하고 애플리케이션 `.ts` 파일만 허용하며, 첫 eligible transform 시점에 Babel을 lazy load한 뒤 `@babel/plugin-proposal-decorators`의 `{ version: '2023-11' }` 설정과 `@babel/preset-typescript`를 실행합니다.
+3. `vitest.config.ts`는 `@fluojs/testing/vitest`에서 `fluoBabelDecoratorsPlugin()`을 import하므로 `*.test.ts`와 `*.spec.ts` 파일은 testing-specific transform 경로에 남습니다.
+
+생성 프로젝트를 커스터마이즈할 때도 이 경계를 분리하세요. `experimentalDecorators`를 다시 활성화하거나, direct esbuild decorator handling에 의존하거나, 테스트 파일을 Vite 애플리케이션 transform으로 보내는 방식은 문서화된 fluo 지원 계약 밖에 있습니다.
 
 ## 공개 API
 
