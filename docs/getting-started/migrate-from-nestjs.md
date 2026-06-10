@@ -64,7 +64,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Assuming every documented platform is part of `fluo new`; starter coverage is defined separately in the support matrix.
 - Assuming `@nestjs/terminus` controller decorators or a separate default liveness route are one-to-one Terminus migration targets.
 - Assuming `@nestjs/throttler` named definitions, global guard registration, or proxy header trust carry over without explicit Fluo wiring.
-- Assuming `@nestjs/cache-manager` async registration, implicit global cache enforcement, or interceptor subclassing carries over. fluo keeps cache setup on synchronous `CacheModule.forRoot(...)`, explicit interceptor/guard placement, and documented key strategy hooks.
+- Assuming `@nestjs/cache-manager` async registration, implicit global cache enforcement, or interceptor subclassing carries over. fluo keeps cache setup on synchronous `CacheModule.forRoot(...)`, explicit `CacheInterceptor` placement, and documented key strategy hooks.
 - Assuming NestJS/Mongoose request interceptors or implicit connection ownership carry over. fluo keeps Mongoose connection ownership application-side and uses service `@Transaction()` plus explicit `requestTransaction(...)` boundaries.
 
 ## CLI Starter and Generator Limits

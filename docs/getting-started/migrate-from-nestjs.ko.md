@@ -64,7 +64,7 @@
 - 문서화된 모든 플랫폼이 `fluo new`에 포함된다고 가정하는 방식. 스타터 범위는 별도 지원 매트릭스에서 정의된다.
 - `@nestjs/terminus` controller decorator나 별도 default liveness route가 Terminus의 일대일 마이그레이션 대상이라고 가정하는 방식.
 - `@nestjs/throttler`의 named definition, global guard registration, proxy header trust가 명시적인 Fluo wiring 없이 그대로 유지된다고 가정하는 방식.
-- `@nestjs/cache-manager`의 async registration, implicit global cache enforcement, interceptor subclassing이 그대로 유지된다고 가정하는 방식. fluo는 cache setup을 동기 `CacheModule.forRoot(...)`, 명시적 interceptor/guard placement, 문서화된 key strategy hook에 둔다.
+- `@nestjs/cache-manager`의 async registration, implicit global cache enforcement, interceptor subclassing이 그대로 유지된다고 가정하는 방식. fluo는 cache setup을 동기 `CacheModule.forRoot(...)`, 명시적 `CacheInterceptor` placement, 문서화된 key strategy hook에 둔다.
 - NestJS/Mongoose request interceptor나 암묵적 connection ownership이 그대로 유지된다고 가정하는 방식. fluo는 Mongoose connection ownership을 애플리케이션 쪽에 두고 서비스 `@Transaction()`과 명시적 `requestTransaction(...)` 경계를 사용한다.
 
 ## CLI Starter and Generator Limits
