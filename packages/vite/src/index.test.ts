@@ -1,9 +1,15 @@
 import { readFile } from 'node:fs/promises';
-import { transformAsync } from '@babel/core';
 import type { Plugin } from 'vite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { fluoDecoratorsPlugin } from './index.js';
+
+type BabelTransformAsync = typeof import('@babel/core').transformAsync;
+
+const babelCoreMockState = vi.hoisted(() => ({
+  loadCount: 0,
+  transformAsyncMock: vi.fn<BabelTransformAsync>(),
+}));
 
 type MinimalResolvedViteConfig = {
   readonly command: 'build' | 'serve';
@@ -13,11 +19,13 @@ type MinimalResolvedViteConfig = {
 };
 
 vi.mock('@babel/core', async (importOriginal) => {
+  babelCoreMockState.loadCount += 1;
   const babelCore = await importOriginal<typeof import('@babel/core')>();
+  babelCoreMockState.transformAsyncMock.mockImplementation(babelCore.transformAsync);
 
   return {
     ...babelCore,
-    transformAsync: vi.fn(babelCore.transformAsync),
+    transformAsync: babelCoreMockState.transformAsyncMock,
   };
 });
 
@@ -72,11 +80,29 @@ function runConfigResolved(plugin: Plugin, config: MinimalResolvedViteConfig): v
   Reflect.apply(plugin.configResolved, {}, [config]);
 }
 
-const transformAsyncMock = vi.mocked(transformAsync);
+function createMissingPeerError(dependencyName: string, code: string): Error & { code: string } {
+  return Object.assign(new Error(`Cannot find package '${dependencyName}' imported from vite.config.ts`), { code });
+}
+
+const transformAsyncMock = babelCoreMockState.transformAsyncMock;
 
 describe('fluoDecoratorsPlugin', () => {
   afterEach(() => {
     transformAsyncMock.mockClear();
+  });
+
+  it('loads Babel lazily only after an eligible source transform', async () => {
+    const initialBabelLoadCount = babelCoreMockState.loadCount;
+    const plugin = fluoDecoratorsPlugin();
+
+    expect(babelCoreMockState.loadCount).toBe(initialBabelLoadCount);
+    await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/app.test.ts')).resolves.toBeNull();
+    expect(babelCoreMockState.loadCount).toBe(initialBabelLoadCount);
+
+    await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/component.ts')).resolves.toEqual(
+      expect.objectContaining({ code: expect.any(String) }),
+    );
+    expect(babelCoreMockState.loadCount).toBe(initialBabelLoadCount + 1);
   });
 
   it('skips generated test files', async () => {
@@ -118,16 +144,18 @@ describe('fluoDecoratorsPlugin', () => {
     );
   });
 
-  it('reports missing Babel peers from the transform hook instead of plugin creation', async () => {
+  it.each([
+    ['@babel/core', 'ERR_MODULE_NOT_FOUND'],
+    ['@babel/plugin-proposal-decorators', 'MODULE_NOT_FOUND'],
+    ['@babel/preset-typescript', 'ERR_MODULE_NOT_FOUND'],
+  ])('reports missing %s peer from the transform hook instead of plugin creation', async (dependencyName, code) => {
     const plugin = fluoDecoratorsPlugin();
-    const missingPeerError = Object.assign(new Error("Cannot find package '@babel/core' imported from vite.config.ts"), {
-      code: 'ERR_MODULE_NOT_FOUND',
-    });
+    const missingPeerError = createMissingPeerError(dependencyName, code);
 
     transformAsyncMock.mockRejectedValueOnce(missingPeerError);
 
     await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/component.ts')).rejects.toThrow(
-      '[fluo-babel-decorators] Failed to resolve a Babel peer dependency while transforming /app/src/component.ts.',
+      `[fluo-babel-decorators] Failed to resolve a Babel peer dependency while transforming /app/src/component.ts. Install @babel/core, @babel/plugin-proposal-decorators, and @babel/preset-typescript in the Vite project. Original error: Cannot find package '${dependencyName}' imported from vite.config.ts`,
     );
   });
 
