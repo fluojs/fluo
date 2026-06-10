@@ -1368,6 +1368,31 @@ describe('overrideModule', () => {
 
     expect(consumer.dep.value()).toBe('real');
   });
+
+  it('validates cycles introduced by replacement metadata without mutating source metadata', async () => {
+    @Module({})
+    class RealModule {}
+
+    @Module({ imports: [RealModule] })
+    class FeatureModule {}
+
+    @Module({ imports: [FeatureModule] })
+    class FakeModule {}
+
+    @Module({ imports: [FeatureModule] })
+    class RootModule {}
+
+    const beforeFeatureMetadata = getModuleMetadata(FeatureModule);
+
+    await expect(
+      createTestingModule({ rootModule: RootModule })
+        .overrideModule(RealModule, FakeModule)
+        .compile(),
+    ).rejects.toThrow(/Circular module import detected for FeatureModule/);
+
+    expect(extractModuleImports(FeatureModule)).toEqual([RealModule]);
+    expect(getModuleMetadata(FeatureModule)).toBe(beforeFeatureMetadata);
+  });
 });
 
 describe('createDeepMock', () => {

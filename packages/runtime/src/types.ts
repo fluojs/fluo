@@ -19,6 +19,8 @@ import type { PlatformComponentInput } from './platform-contract.js';
 export type ModuleType = Constructor & { definition?: ModuleDefinition };
 /** Controller class discovered inside one compiled module definition. */
 export type ControllerType = Constructor;
+/** Low-level module replacement map used by testing compile seams. */
+export type ModuleReplacementMap = ReadonlyMap<ModuleType, ModuleType>;
 
 /** Programmatic module definition consumed by `defineModule()` and bootstrap. */
 export interface ModuleDefinition {
@@ -39,10 +41,15 @@ export interface BootstrapModuleOptions {
    *
    * The cache is disabled by default. When enabled, successful graph compiles are
    * keyed by root module identity, runtime provider inputs, validation tokens,
-   * core metadata write versions, and the runtime compile algorithm version.
+   * module replacement pairs, core metadata write versions, and the runtime compile algorithm version.
    * Failed compilations are never cached.
    */
   moduleGraphCache?: boolean;
+  /**
+   * Low-level testing seam for compiling a module with replacement metadata while
+   * preserving the original logical module identity in the compiled graph.
+   */
+  moduleReplacements?: ModuleReplacementMap;
   providers?: Provider[];
   validationTokens?: Token[];
 }
