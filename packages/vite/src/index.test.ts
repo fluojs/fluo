@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import type { Plugin } from 'vite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { createFluoDecoratorsPluginForTesting } from './decorators-plugin.js';
 import { fluoDecoratorsPlugin } from './index.js';
 
 type BabelTransformAsync = typeof import('@babel/core').transformAsync;
@@ -230,6 +231,16 @@ export { Example };
         plugins: [['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
         presets: [['@babel/preset-typescript', { allowDeclareFields: true }]],
       }),
+    );
+  });
+
+  it('reports missing @babel/core peer from the lazy dynamic import branch', async () => {
+    const plugin = createFluoDecoratorsPluginForTesting(async () => {
+      throw createMissingPeerError('@babel/core', 'ERR_MODULE_NOT_FOUND');
+    });
+
+    await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/component.ts')).rejects.toThrow(
+      `[fluo-babel-decorators] Failed to resolve a Babel peer dependency while transforming /app/src/component.ts. Install @babel/core, @babel/plugin-proposal-decorators, and @babel/preset-typescript in the Vite project. Original error: Cannot find package '@babel/core' imported from vite.config.ts`,
     );
   });
 });
