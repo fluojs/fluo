@@ -14,7 +14,7 @@
 | **Persistence** | Database and cache. | `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose`, `@fluojs/redis`, `@fluojs/cache-manager` |
 | **Patterns** | Messaging and architecture. | `@fluojs/microservices`, `@fluojs/cqrs`, `@fluojs/event-bus`, `@fluojs/cron`, `@fluojs/queue`, `@fluojs/notifications`, `@fluojs/email`, `@fluojs/slack`, `@fluojs/discord` |
 | **Operations** | Health and monitoring. | `@fluojs/metrics`, `@fluojs/terminus`, `@fluojs/throttler` |
-| **Tooling** | CLI inspection export, inspect artifact viewing/rendering through Studio, testing diagnostics, and Vite build integration. | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
+| **Tooling** | CLI inspection export, CLI-launched Studio sidecar/viewer diagnostics, inspect artifact rendering, testing diagnostics, and Vite build integration. | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
 ## canonical runtime package matrix
 
@@ -69,13 +69,13 @@
 
 ### tooling
 - **`@fluojs/cli`**: Project scaffolding, generation, codemods, and inspection export/delegation for runtime-produced snapshots. `fluo inspect` owns CLI argument validation, application bootstrap/close, JSON snapshot serialization, report artifact writing, `--output <path>` file emission, and the handoff to Studio for Mermaid rendering.
-- **`@fluojs/studio`**: Runtime-connected local devtool for `fluo dev --studio` plus static snapshot/report/timing compatibility. Studio owns the responsibility boundary for consuming sidecar live events (`snapshot`, `request`, `timing`, `diagnostic`, `restart`, `disconnect`, and `heartbeat`), validating live event envelopes, reading `fluo inspect --json` snapshots, `--timing` and `--json --timing` snapshot-plus-timing envelopes, `--report` artifacts, and Mermaid graph rendering through `renderMermaid(snapshot)`.
+- **`@fluojs/studio`**: CLI sidecar/viewer package for the Node dev-runner `fluo dev --studio` live MVP plus static snapshot/report/timing compatibility for CI, support, architecture review, and non-Node runtime fallback workflows. Studio owns the responsibility boundary for consuming sidecar live events (`snapshot`, `request`, `timing`, `diagnostic`, `restart`, `disconnect`, and `heartbeat`), validating live event envelopes through `parseStudioLiveEvent(...)`, `validateStudioLiveEvent(...)`, and `isStudioLiveEvent(...)`, reading `fluo inspect --json` snapshots, `--timing` and `--json --timing` snapshot-plus-timing envelopes, `--report` artifacts through `parseStudioPayload(...)`, filtering with `applyFilters(...)`, Mermaid graph rendering through `renderMermaid(snapshot)`, and exporting root Studio contract types such as `StudioLiveEvent`, `StudioLiveSnapshot`, and `StudioRequestTrace` for tooling.
 - **`@fluojs/testing`**: Conformance and integration helpers for verifying application and platform contracts.
 - **`@fluojs/vite`**: Vite-facing build utilities for fluo projects, including the maintained `fluoDecoratorsPlugin()` used by generated starter `vite.config.ts` files.
 
 ## Studio inspect artifact ownership
 
-Runtime packages remain the source of inspection snapshots, timing diagnostics, request traces, route descriptors, live diagnostics, and sidecar events. The CLI either streams those values to Studio through `fluo dev --studio` or turns them into transportable artifacts: raw JSON, a snapshot-plus-timing envelope, a report artifact, or Mermaid text when Studio is installed. Studio is responsible for reading, validating, filtering, viewing, and rendering both live sidecar state and inspect artifacts for humans and automation callers.
+Runtime packages remain the source of inspection snapshots, timing diagnostics, request traces, route descriptors, live diagnostics, and sidecar events. The CLI either streams those values to Studio through the Node dev-runner `fluo dev --studio` sidecar or turns them into transportable artifacts: raw JSON, a snapshot-plus-timing envelope, a report artifact, or Mermaid text when Studio is installed. Bun, Deno, and Cloudflare Workers projects use the inspect/static artifact path as the MVP fallback until dedicated live bridges are implemented and verified. Studio is responsible for reading, validating, filtering, viewing, and rendering both live sidecar state and inspect artifacts for humans and automation callers.
 
 This boundary keeps graph semantics out of `@fluojs/cli`: the CLI may locate `@fluojs/studio/contracts` and call `renderMermaid(snapshot)`, but Studio defines how internal dependency edges and external dependency nodes become Mermaid output. Consumers that need a persistent artifact should use `fluo inspect --json --output <path>` for raw snapshots, `fluo inspect --timing --output <path>` or `fluo inspect --json --timing --output <path>` for snapshot-plus-timing envelopes, or `fluo inspect --report --output <path>` for support reports.
 
