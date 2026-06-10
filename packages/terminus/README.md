@@ -14,6 +14,7 @@ Health indicator toolkit for fluo applications. `@fluojs/terminus` layers on top
   - [DI-Backed Indicators](#di-backed-indicators)
   - [Execution Guardrails](#execution-guardrails)
   - [Failure Semantics](#failure-semantics)
+- [NestJS Migration Boundaries](#nestjs-migration-boundaries)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -134,6 +135,14 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 - `/health` responses may include a `platform` block with platform health/readiness details when runtime diagnostics are available.
 - Drizzle indicators created through the DI provider map Drizzle lifecycle readiness/health state before SQL probing, so shutdown or stopped integrations mark `/health` and `/ready` as unavailable even if the underlying driver still accepts a raw ping.
 - Redis indicators created through the Redis subpath map `@fluojs/redis` client lifecycle state before `PING`, so shutdown or disconnected Redis clients mark `/health` and `/ready` as unavailable even before command execution.
+
+## NestJS Migration Boundaries
+
+When migrating from `@nestjs/terminus`, treat `TerminusModule.forRoot(...)` as the primary fluo API. fluo does not model controller-level `@HealthCheck()` methods that call `HealthCheckService.check([...])` as the main application contract. You can still call `TerminusHealthService.check()` directly from tests or custom application code, but production endpoint registration should keep indicators and readiness hooks in module options so the runtime `/health` and `/ready` routes include platform diagnostics consistently.
+
+Terminus also does not create a separate process-only liveness route by default. The default route model remains `GET /health` for aggregated health and `GET /ready` for readiness. If your deployment requires a narrow process liveness probe, define that probe at the application or deployment layer instead of assuming Terminus will add a NestJS-style extra route.
+
+Runtime-specific indicators are split by subpath. Use `@fluojs/terminus/node` for Node.js memory and disk checks, and use `@fluojs/terminus/redis` for Redis checks. The root package keeps Redis optional-peer imports out of the root entrypoint and keeps Node disk filesystem access lazy so applications opt into runtime-specific probes explicitly.
 
 ## Public API Overview
 

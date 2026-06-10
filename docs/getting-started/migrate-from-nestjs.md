@@ -19,6 +19,8 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | constructor type reflection via `emitDecoratorMetadata` | `@Inject(TokenA, TokenB)` from `@fluojs/core` | Constructor dependencies are declared explicitly in decorator argument order. |
 | `class-validator` / decorator-driven DTO validation | `@fluojs/validation` with Standard Schema support | Current validation direction is Standard Schema based, including Zod and Valibot support. |
 | `createApplicationContext()` standalone bootstrap | `FluoFactory.createApplicationContext(AppModule)` | Standalone application context exists in `@fluojs/runtime`. |
+| `@HealthCheck()` controller method with `HealthCheckService.check([...])` | `TerminusModule.forRoot({ indicators, indicatorProviders, readinessChecks })` from `@fluojs/terminus` | Module-level registration is the primary API so runtime `/health` and `/ready` routes include indicator and platform diagnostics consistently. |
+| NestJS Terminus memory/disk or Redis checks | `@fluojs/terminus/node` and `@fluojs/terminus/redis` | Node.js memory/disk helpers and Redis helpers live on dedicated subpaths. The root package does not make Redis peers or Node filesystem access part of the default import boundary. |
 
 ## Breaking Differences
 
@@ -28,6 +30,8 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Validation MUST be migrated to the Standard Schema direction instead of keeping a `class-validator`-first contract.
 - Controller decorators MUST be imported from `@fluojs/http`, while structural decorators such as `@Module` come from `@fluojs/core`.
 - NestJS `@Sse()` handlers that return Observables MUST be rewritten to construct `SseResponse`, call `send(...)` or `comment(...)`, and close the stream from request abort or application cleanup paths.
+- NestJS Terminus controller-level `@HealthCheck()` handlers SHOULD be migrated to `TerminusModule.forRoot(...)` indicator and readiness registration. Direct `TerminusHealthService.check()` calls are available for tests or custom code, but they are not the primary endpoint registration API.
+- `@fluojs/terminus` does not create a separate process-only liveness route by default. Keep the default `GET /health` aggregated health route and `GET /ready` readiness gate, and define any narrower process probe at the application or deployment layer.
 
 ## Removed Concepts
 
@@ -36,6 +40,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Implicit DI based on emitted design-time types.
 - Legacy decorator compiler mode as a framework requirement.
 - Assuming every documented platform is part of `fluo new`; starter coverage is defined separately in the support matrix.
+- Assuming `@nestjs/terminus` controller decorators or a separate default liveness route are one-to-one Terminus migration targets.
 
 ## CLI Starter and Generator Limits
 

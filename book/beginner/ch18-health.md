@@ -93,6 +93,8 @@ export class AppModule {}
 ### 18.3.1 The Response Format
 When a request is sent to the `/health` endpoint, Terminus returns a standardized JSON response. If every indicator passes, it returns a `200 OK` status. If even one indicator fails, such as when the database connection is unavailable, it returns `503 Service Unavailable` with a detailed report about what went wrong. This format is easy for humans to read and easy for automated monitoring tools such as Prometheus, Grafana, and Datadog to interpret. The application is speaking the same state language as the rest of the production infrastructure.
 
+If you are migrating from NestJS Terminus, do not start by recreating a controller method decorated with `@HealthCheck()` that calls `HealthCheckService.check([...])`. In Fluo, the primary API is the module registration shown above: indicators, indicator providers, readiness checks, and execution guardrails belong in `TerminusModule.forRoot(...)` so the runtime-owned `GET /health` and `GET /ready` routes stay aligned with platform diagnostics. `TerminusHealthService.check()` is still useful in tests or custom application flows, but it is not the default route authoring pattern.
+
 ### 18.3.2 Securing the Health Endpoint
 Health checks are essential for operations, but you may not want to expose internal architectural details to the public internet. A common best practice is to restrict access to the `/health` endpoint to internal IP addresses or require a specific secret header. Fluo's Guard system lets you add this security layer, limiting the service's vital signs to only the systems and people that need to see them.
 
@@ -133,6 +135,8 @@ By strategically deciding which dependencies are fatal to application health, yo
 
 ### 18.4.4 Disk Space and I/O Monitoring
 For applications that handle file uploads or heavy logging, **disk space** is a critical resource. If the disk fills up, the application can crash or stop responding just as it would with a memory leak. Terminus includes a Node disk indicator for free-space thresholds, such as minimum free bytes or minimum free ratio. Use that signal to take action before a production emergency occurs, such as cleaning temporary files or expanding storage. If you also need I/O latency or throughput monitoring, collect those metrics through your metrics or host observability stack rather than treating them as Terminus disk-indicator output.
+
+Node.js resource indicators are intentionally imported from `@fluojs/terminus/node`; Redis indicators are imported from `@fluojs/terminus/redis`. These subpaths make the migration boundary explicit: Node memory/disk probes and Redis lifecycle-aware probes are opt-in runtime-specific integrations, not extra behavior pulled into the root `@fluojs/terminus` import.
 
 In FluoBlog, you monitor the `/tmp` directory where image uploads are processed and the main log directory. This helps ensure that storage exhaustion does not cause you to lose user data or important log events. Combining resource level health with service level health gives you a comprehensive 360 degree view of the application's operational state.
 
