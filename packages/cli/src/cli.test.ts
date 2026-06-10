@@ -1797,6 +1797,40 @@ void bootstrap();
     expect(spawned[0]?.env.FLUO_STUDIO_URL).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
   });
 
+  it('rejects Studio dev when the Node restart runner is bypassed', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+    const stderrBuffer: string[] = [];
+    const spawnedCommands: string[] = [];
+
+    const rawWatchExitCode = await runCli(['dev', '--dry-run', '--studio', '--raw-watch'], {
+      cwd: workspaceDirectory,
+      env: {},
+      spawnCommand: async (command) => {
+        spawnedCommands.push(command);
+        return 0;
+      },
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+    const nativeRunnerExitCode = await runCli(['dev', '--dry-run', '--studio', '--runner', 'native'], {
+      cwd: workspaceDirectory,
+      env: {},
+      spawnCommand: async (command) => {
+        spawnedCommands.push(command);
+        return 0;
+      },
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(rawWatchExitCode).toBe(1);
+    expect(nativeRunnerExitCode).toBe(1);
+    expect(spawnedCommands).toEqual([]);
+    expect(stderrBuffer.join('')).toContain('fluo dev --studio requires the fluo-owned Node restart runner.');
+  });
+
   it('keeps Studio dev support Node-only until non-Node bridges are verified', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);

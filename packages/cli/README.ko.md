@@ -32,7 +32,7 @@ pnpm dlx @fluojs/cli new my-app
 
 - `@fluojs/cli`는 intended publish surface에 포함되는 공개 패키지입니다.
 - 지원되는 설치 경로는 전역 패키지(`npm install -g @fluojs/cli`, `pnpm add -g @fluojs/cli`, `bun add -g @fluojs/cli`, `yarn global add @fluojs/cli`)와 무설치 실행 경로(`pnpm dlx @fluojs/cli ...`)입니다.
-- 배포되는 `fluo` bin은 `package.json`에 선언된 dist 빌드 CLI 엔트리포인트를 기준으로 동작합니다.
+- 배포되는 `fluo` bin은 `package.json`에 선언된 `./bin/fluo.mjs` wrapper이며, 이 wrapper가 dist 빌드 CLI 엔트리포인트인 `../dist/cli.js`를 로드합니다.
 
 ## 버전 확인
 
@@ -194,7 +194,7 @@ fluo dev --studio --studio-port 51234
 fluo dev --studio --dry-run
 ```
 
-CLI는 local Studio sidecar를 시작하고, tokenized URL을 출력하며, restart lifecycle event를 sidecar로 계속 전달하고, 앱이 `@fluojs/runtime`을 import하기 전에 명시적인 Studio config를 Node 앱 child에 주입합니다. Optional package인 `@fluojs/studio`가 설치되어 있으면 sidecar는 패키징된 `@fluojs/studio/viewer` React app을 제공합니다. Runtime package source는 `process.env`를 직접 읽지 않으며, CLI가 주입한 Studio config가 있을 때만 live graph/routes/request/timing/diagnostic event를 전송합니다.
+CLI는 local Studio sidecar를 시작하고, tokenized URL을 출력하며, restart lifecycle event를 sidecar로 계속 전달하고, 앱이 `@fluojs/runtime`을 import하기 전에 명시적인 Studio config를 Node 앱 child에 주입합니다. Studio live mode는 fluo가 소유한 Node restart runner를 요구합니다. 따라서 lifecycle event가 CLI restart boundary와 분리되지 않도록 `fluo dev --studio`는 `--raw-watch`, `--runner native`, `FLUO_DEV_RUNNER=native`를 거부합니다. Optional package인 `@fluojs/studio`가 설치되어 있으면 sidecar는 패키징된 `@fluojs/studio/viewer` React app을 제공합니다. Runtime package source는 `process.env`를 직접 읽지 않으며, CLI가 주입한 Studio config가 있을 때만 live graph/routes/request/timing/diagnostic event를 전송합니다.
 
 보안 기본값은 local-only입니다. Sidecar는 `127.0.0.1`에 bind되고, runtime ingestion 및 browser state/SSE API는 generated token을 요구하며, CORS는 기본적으로 활성화하지 않고, request body는 기본적으로 수집하지 않습니다.
 
