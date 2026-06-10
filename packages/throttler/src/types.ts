@@ -6,13 +6,17 @@ import type { MiddlewareContext } from '@fluojs/http';
  * @remarks
  * Stores return this value after a `consume(...)` operation. `ThrottlerGuard`
  * compares `count` with the resolved request limit and uses `resetAt` to compute
- * the `Retry-After` value when the limit is exceeded.
+ * the `Retry-After` value when the limit is exceeded. Custom stores that have
+ * a more authoritative server-side clock may return `retryAfterMs` to override
+ * that calculation without relying on a private package symbol.
  */
 export interface ThrottlerStoreEntry {
   /** Number of requests recorded in the active window after the current consume operation. */
   count: number;
   /** Epoch time in milliseconds when the active rate-limit window resets. */
   resetAt: number;
+  /** Optional authoritative milliseconds until retry, usually from a backing store server clock. */
+  retryAfterMs?: number;
 }
 
 /**

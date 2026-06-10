@@ -35,7 +35,7 @@
 - **CORS 활성화**: API에 접근할 수 있는 도메인을 제한합니다. `@fluojs/http` 설정을 사용하여 프론트엔드 프로덕션 도메인만 허용하도록 하세요.
 - **보안 헤더 설정**: XSS(Cross-Site Scripting) 및 클릭재킹(Clickjacking)과 같은 일반적인 공격으로부터 보호하기 위해 helmet 스타일의 헤더를 사용합니다. 이러한 헤더는 브라우저가 API와 상호작용할 때 안전한 동작을 선택하도록 지시합니다.
 - **HTTPS 강제 적용**: 프로덕션 트래픽을 일반 HTTP로 처리하지 마세요. 로드 밸런서나 게이트웨이가 SSL/TLS를 처리하도록 설정해야 합니다.
-- **속도 제한(Rate Limiting)**: 무차별 대입(brute-force) 및 DDoS 공격을 방지하기 위해 `ThrottlerModule`을 사용합니다. 이는 단일 악성 사용자가 서버 리소스를 고갈시키는 것을 방지합니다.
+- **속도 제한(Rate Limiting)**: 정책과 provider 등록에는 `ThrottlerModule`을 사용하고, 보호가 필요한 route에는 `ThrottlerGuard`를 활성화합니다. 이 명시적인 guard-stage 구성이 무차별 대입(brute-force) 및 DDoS 공격 방어에 도움이 되며, module 등록만으로 모든 route가 자동 throttling된다고 암시하지 않습니다.
 - **비밀 정보 관리(Secrets Management)**: `.env` 파일이나 하드코딩된 키를 절대 커밋하지 마세요. 환경 변수나 전용 비밀 관리자(예: AWS Secrets Manager, HashiCorp Vault)를 사용하여 런타임에 민감한 데이터를 주입하세요.
 - **인증(Authentication)**: 모든 민감한 경로가 `AuthGuard`나 `JwtGuard`로 보호되고 있는지 다시 한번 확인하세요.
 

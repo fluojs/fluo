@@ -1,5 +1,11 @@
 # @fluojs/throttler
 
+## [Unreleased]
+
+### Patch Changes
+
+- Align guard-stage documentation, custom-store retry timing, and validation contracts for the next release.
+
 ## 1.0.3
 
 ### Patch Changes

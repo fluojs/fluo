@@ -19,6 +19,8 @@
 
 ## 설치
 
+`@fluojs/throttler`는 배포 package manifest에서 `engines.node >=20.0.0`을 선언합니다.
+
 ```bash
 npm install @fluojs/throttler
 ```
@@ -89,7 +91,7 @@ ThrottlerModule.forRoot({
 });
 ```
 
-`ThrottlerStore` 계약을 구현한 객체도 `store` 옵션으로 직접 전달할 수 있습니다.
+`ThrottlerStore` 계약을 구현한 객체도 `store` 옵션으로 직접 전달할 수 있습니다. `ThrottlerModule.forRoot(...)`는 요청 처리 전에 custom store가 `consume(...)` 함수를 노출하는지 검증합니다.
 
 ### 커스텀 키 생성
 
@@ -137,7 +139,7 @@ ThrottlerModule.forRoot({
 - `ThrottlerModule.forRoot(options)`: 검증된 throttler 옵션과 `ThrottlerGuard`를 모듈 그래프에 제공합니다.
 - 패키지 수준 등록은 `ThrottlerModule.forRoot(options)`를 통해 지원합니다. 내부 프로바이더 조합 헬퍼와 DI 토큰은 공개 계약에 포함되지 않습니다.
 
-`ttl`과 `limit`은 양의 finite integer여야 합니다. `global`은 기본값이 `true`입니다. throttler provider를 가져온 모듈 범위에만 유지하려면 `global: false`를 설정하세요. `trustProxyHeaders`와 `keyGenerator`로 client identity를 조정할 수 있습니다. 모듈 옵션은 guard가 연결될 때 검증되고 값으로 캡처되므로, 호출자가 나중에 options 객체를 변경해도 실행 중인 throttling 정책은 바뀌지 않습니다. `store` 옵션을 제공하지 않으면 각 `ThrottlerGuard` 인스턴스가 자체 in-memory store를 소유합니다. 저장소를 공유하거나 외부에서 관리해야 한다면 `RedisThrottlerStore` 같은 `ThrottlerStore` 구현을 전달하세요.
+`ttl`과 `limit`은 양의 finite integer여야 합니다. `global`은 기본값이 `true`입니다. throttler provider를 가져온 모듈 범위에만 유지하려면 `global: false`를 설정하세요. `trustProxyHeaders`와 `keyGenerator`로 client identity를 조정할 수 있으며, `keyGenerator`를 제공할 때는 함수여야 합니다. 모듈 옵션은 guard가 연결될 때 검증되고 값으로 캡처되므로, 호출자가 나중에 options 객체를 변경해도 실행 중인 throttling 정책은 바뀌지 않습니다. `store` 옵션을 제공하지 않으면 각 `ThrottlerGuard` 인스턴스가 자체 in-memory store를 소유합니다. 저장소를 공유하거나 외부에서 관리해야 한다면 `RedisThrottlerStore` 같은 `ThrottlerStore` 구현을 전달하세요.
 
 ### 데코레이터
 - `@Throttle({ ttl, limit })`: 클래스나 메서드에 특정 속도 제한을 설정합니다.
@@ -154,7 +156,7 @@ ThrottlerModule.forRoot({
 - `RedisThrottlerClient`: `RedisThrottlerStore`가 받는 구조적 Redis command client 계약입니다.
 - `ThrottlerStore`: custom store를 위한 공개 계약입니다.
 - `ThrottlerConsumeInput`: custom store가 guard의 현재 시간과 TTL window를 공유할 수 있도록 `ThrottlerStore.consume(key, input)`에 전달되는 공개 입력 shape입니다.
-- `ThrottlerStoreEntry`: `ThrottlerStore.consume(...)`이 반환하는 공개 결과 shape입니다. `count`는 현재 consume 이후 활성 window의 요청 수이고, `resetAt`은 `Retry-After` 계산에 사용하는 epoch millisecond reset 경계입니다.
+- `ThrottlerStoreEntry`: `ThrottlerStore.consume(...)`이 반환하는 공개 결과 shape입니다. `count`는 현재 consume 이후 활성 window의 요청 수이고, `resetAt`은 `Retry-After` 계산에 사용하는 epoch millisecond reset 경계입니다. Custom store는 backing store clock이 애플리케이션 프로세스보다 더 authoritative할 때 선택적 `retryAfterMs`를 반환할 수 있으며, guard는 limit 초과 시 이를 `Retry-After` 계산에 사용합니다.
 
 ### status와 diagnostics
 - `createThrottlerPlatformStatusSnapshot(...)`: 플랫폼 status snapshot을 생성합니다.

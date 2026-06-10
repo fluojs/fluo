@@ -58,7 +58,7 @@ A professional API should always tell clients about the current rate limiting st
 Providing this header lets well-designed clients time their retries and slow themselves down. That reduces repeated 429 errors for users and creates a better developer ecosystem overall. This cooperative behavior between client and server is a foundation of scalable distributed systems.
 
 ### 16.2.4 Asynchronous Throttling Logic
-Unlike traditional middleware that may block the main execution thread while waiting for database checks, `@fluojs/throttler` is built on Fluo's native asynchronous execution model. Whether you use a simple memory store or a high-performance Redis cluster, the throttler never blocks the event loop. This keeps the API responsive even when hundreds of concurrent requests are being processed for hundreds of different tracker keys.
+Unlike traditional middleware that may block the main execution thread while waiting for database checks, `@fluojs/throttler` is built around Fluo's native asynchronous execution model. The built-in memory and Redis stores keep request overhead low, while custom `ThrottlerStore.consume(...)` implementations may be synchronous or asynchronous depending on the storage backend you provide. This keeps the package contract honest: responsiveness depends on choosing a non-blocking store for production traffic.
 
 The throttler also uses advanced concurrency patterns to reduce the risk of race conditions. In high-traffic environments, multiple requests from the same user can reach different server instances at the same time. Fluo's Redis storage Provider uses atomic increments and Lua scripts to ensure every request is counted accurately, even under the heaviest traffic. This precision makes the Fluo throttler suitable for financial services and other high-trust environments.
 
@@ -144,7 +144,7 @@ The throttler needs somewhere to store each tracker's request count. Choosing th
 - **Redis**: The production standard for distributed systems. It preserves counts across server restarts and lets multiple server instances share the same throttling state. Redis's native support for key expiration and atomic operations fits rate limiting implementations well.
 
 ### 16.4.1 The Role of the Storage Provider Interface
-Fluo defines the standard `ThrottlerStore` interface that every store adapter must implement. This abstraction lets you swap the storage backend without changing Guard or decorator logic. If you decide to move from Redis to another distributed store, such as Memcached or DynamoDB, you provide a new store with the same `consume(...)` contract.
+Fluo defines the standard `ThrottlerStore` interface that every store adapter must implement. This abstraction lets you swap the storage backend without changing Guard or decorator logic. If you decide to move from Redis to another distributed store, such as Memcached or DynamoDB, you provide a new store with the same `consume(...)` contract. Custom stores can return `retryAfterMs` when their backing store has a more authoritative clock than the application process.
 
 ```typescript
 export interface ThrottlerStore {

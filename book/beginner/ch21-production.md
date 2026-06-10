@@ -35,7 +35,7 @@ Before exposing an application to the internet, make sure the following security
 - **Enable CORS**: Restrict which domains can access your API. Use the `@fluojs/http` configuration so only the production frontend domain is allowed.
 - **Set security headers**: Use helmet-style headers to protect against common attacks such as XSS, Cross-Site Scripting, and clickjacking. These headers instruct the browser to choose safer behavior when it interacts with the API.
 - **Enforce HTTPS**: Do not serve production traffic over plain HTTP. Configure your load balancer or gateway to handle SSL/TLS.
-- **Rate Limiting**: Use `ThrottlerModule` to prevent brute-force and DDoS attacks. This prevents a single malicious user from exhausting server resources.
+- **Rate Limiting**: Register `ThrottlerModule` for policy/providers and activate `ThrottlerGuard` on the routes that need protection. This explicit guard-stage setup helps prevent brute-force and DDoS attacks without implying that module registration alone throttles every route.
 - **Secrets Management**: Never commit `.env` files or hardcoded keys. Use environment variables or a dedicated secrets manager, such as AWS Secrets Manager or HashiCorp Vault, to inject sensitive data at runtime.
 - **Authentication**: Check once more that every sensitive route is protected by `AuthGuard` or `JwtGuard`.
 
