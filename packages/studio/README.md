@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Runtime-connected React devtool for fluo applications, with backward-compatible static/report artifact loading.
+CLI sidecar and React viewer workflow for fluo diagnostics, with a Node dev-runner live MVP and backward-compatible static/report artifact loading.
 
 ## Table of Contents
 
@@ -19,6 +19,14 @@ Runtime-connected React devtool for fluo applications, with backward-compatible 
 
 ## Installation
 
+Most application projects install Studio as a development-only dependency. The CLI resolves it for `fluo dev --studio`, `fluo inspect --mermaid`, and packaged viewer access, while the application runtime itself does not import Studio.
+
+```bash
+pnpm add -D @fluojs/studio
+```
+
+Use a regular dependency only when a published package or runtime automation imports `@fluojs/studio` or `@fluojs/studio/contracts` at runtime:
+
 ```bash
 pnpm add @fluojs/studio
 ```
@@ -31,7 +39,7 @@ The published package serves these caller-facing entrypoints:
 ## Release Policy
 
 - `@fluojs/studio` is part of the intended public publish surface for fluo.
-- The npm install contract for Studio is `pnpm add @fluojs/studio`; local repo development still uses `pnpm --dir packages/studio dev`.
+- The app-side CLI/viewer contract is development-only installation (`pnpm add -D @fluojs/studio`); runtime tooling that imports Studio helpers should declare a normal dependency (`pnpm add @fluojs/studio`). Local repo development still uses `pnpm --dir packages/studio dev`.
 - The public package surface is additive: live devtool contracts are added while file-first parsing, filtering, graph rendering, and report artifacts remain supported.
 
 ## Quick Start: Live Devtool
@@ -50,6 +58,8 @@ fluo dev --studio
 
 Open that URL to inspect the live React Studio dashboard. The dashboard is built with Feature-Sliced Design layers under `src/app`, `src/pages`, `src/widgets`, `src/features`, `src/entities`, and `src/shared`.
 
+Studio is launched as a CLI-owned sidecar/viewer workflow. It is not an application module to mount inside your fluo runtime. The live MVP targets the Node dev-runner path; non-Node projects should use the static/report inspect workflow until dedicated Bun, Deno, or Workers bridges are implemented and verified.
+
 Live mode shows:
 
 - connection state (`connecting`, `connected`, `restarting`, `reconnecting`, `stale`, `disconnected`, `error`);
@@ -64,6 +74,8 @@ MVP request flow intentionally means route/handler and dependency-graph correlat
 ## Static/Report Compatibility
 
 Studio still accepts JSON exports from the fluo CLI. Runtime produces snapshots, the CLI owns artifact export/write/delegation, and Studio owns the public helpers and viewer surface that parse, filter, inspect, and render those snapshots for people and automation callers. Supported inspect artifacts include raw snapshots, snapshot-plus-timing envelopes, report artifacts produced by `fluo inspect --report`, and legacy standalone timing diagnostics.
+
+This file-first path is the compatibility and migration fallback for CI, support handoffs, architecture reviews, and non-Node runtime targets. Bun, Deno, and Cloudflare Workers projects should generate inspect/static artifacts and open them with the packaged viewer instead of expecting live sidecar events in the MVP.
 
 1. **Export a snapshot**:
    ```bash
@@ -95,14 +107,14 @@ Studio still accepts JSON exports from the fluo CLI. Runtime produces snapshots,
 
 | Runtime target | MVP expectation |
 | --- | --- |
-| Node dev runner | Full support target through `fluo dev --studio`. |
-| Bun | Not enabled for this MVP; `fluo dev --studio` rejects Bun projects until a dedicated bridge is implemented and verified. |
-| Deno | Not enabled for this MVP; `fluo dev --studio` rejects Deno projects until a dedicated bridge is implemented and verified. |
-| Cloudflare Workers | Unsupported for this MVP unless a dedicated worker bridge is implemented and tested. |
+| Node dev-runner | Live sidecar support target through `fluo dev --studio`; the CLI injects explicit Studio runtime config into the Node app child and streams snapshot/request/timing/diagnostic lifecycle events. Static inspect artifacts remain supported. |
+| Bun | Live sidecar events are not enabled for this MVP; `fluo dev --studio` rejects Bun projects until a dedicated bridge is implemented and verified. Use `fluo inspect` JSON/report artifacts, Mermaid output, and the packaged viewer as the migration fallback. |
+| Deno | Live sidecar events are not enabled for this MVP; `fluo dev --studio` rejects Deno projects until a dedicated bridge is implemented and verified. Use `fluo inspect` JSON/report artifacts, Mermaid output, and the packaged viewer as the migration fallback. |
+| Cloudflare Workers | Live sidecar events are unsupported for this MVP unless a dedicated worker bridge is implemented and tested. Use static inspect/report artifacts and the packaged viewer as the migration fallback. |
 
 ## Public API
 
-Studio is primarily a web application, but the published package also exposes documented contracts used by tooling and automation. Treat `@fluojs/studio` as the canonical owner of snapshot parsing, filtering, Mermaid graph rendering, and live Studio event validation semantics.
+Studio is primarily a CLI-launched sidecar and browser viewer, but the published package also exposes documented contracts used by tooling and automation. Treat `@fluojs/studio` as the canonical owner of snapshot parsing, filtering, Mermaid graph rendering, and live Studio event validation semantics. The root `@fluojs/studio` export re-exports the helper functions and public types from `@fluojs/studio/contracts`.
 
 | Contract | Description |
 |---|---|
@@ -114,6 +126,37 @@ Studio is primarily a web application, but the published package also exposes do
 | `StudioLiveSnapshot` | Live graph/routes/requests/timing/diagnostics snapshot consumed by the React UI. |
 | `StudioLiveEvent` | Versioned live event envelope for `snapshot`, `request`, `timing`, `diagnostic`, `restart`, `disconnect`, and `heartbeat`. |
 | `StudioPayload` / `StudioReportArtifact` / `StudioReportSummary` | Static/report compatibility contracts. |
+
+### Root type exports
+
+| Type export | Description |
+|---|---|
+| `FilterState` | Query, readiness status, and diagnostic severity filters applied by Studio without mutating the source snapshot. |
+| `ParsedPayload` | Return shape from `parseStudioPayload(rawJson)`, including the parsed `StudioPayload` and original JSON string. |
+| `PlatformDiagnosticIssue` | Runtime diagnostic issue type re-exported from `@fluojs/runtime` for Studio consumers. |
+| `PlatformDiagnosticSeverity` | Diagnostic severity union used by filters and live diagnostics. |
+| `PlatformReadinessStatus` | Readiness status union used by filters and graph annotations. |
+| `PlatformShellSnapshot` | Runtime-produced snapshot type re-exported from `@fluojs/runtime` for inspect artifacts. |
+| `StudioPayload` | Static artifact envelope containing a snapshot, timing diagnostics, and/or report artifact. |
+| `StudioReportArtifact` | CI/support report artifact produced by `fluo inspect --report`. |
+| `StudioReportSummary` | Stable summary fields embedded in a report artifact. |
+| `StudioConnectionState` | UI-side connection state for live or static Studio sessions. |
+| `StudioConnectionStatus` | Connection status union, including live lifecycle states and `static`. |
+| `StudioDisconnectPayload` | Live disconnect lifecycle payload. |
+| `StudioGraphEdge` | Serializable edge in the runtime-connected Studio dependency graph. |
+| `StudioGraphEdgeKind` | Edge kind union for imports, ownership, route exposure, dependency, and export relationships. |
+| `StudioGraphNode` | Serializable node in the runtime-connected Studio dependency graph. |
+| `StudioGraphNodeKind` | Node kind union for modules, providers, controllers, routes, platform nodes, and external dependencies. |
+| `StudioHeartbeatPayload` | Live heartbeat payload used to keep sidecar/UI sessions fresh. |
+| `StudioLiveDiagnostic` | Runtime diagnostic shape surfaced by the live diagnostics panel. |
+| `StudioLiveEvent` | Versioned sidecar/SSE event union for snapshots, requests, timing, diagnostics, restarts, disconnects, and heartbeats. |
+| `StudioLiveEventBase` | Generic base envelope shared by all live Studio events. |
+| `StudioLiveEventSource` | App/runtime source metadata attached to live Studio events. |
+| `StudioLiveSnapshot` | Live graph/routes/requests/timing/diagnostics snapshot consumed by the React UI. |
+| `StudioRequestStatus` | Request lifecycle status union used by live request traces. |
+| `StudioRequestTrace` | Request trace metadata emitted without request or response bodies. |
+| `StudioRestartPayload` | Runtime/app restart lifecycle payload emitted by CLI-owned dev supervision. |
+| `StudioRouteDescriptor` | Route descriptor projected into the live Studio UI. |
 
 ### Published package entrypoints
 
