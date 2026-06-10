@@ -156,16 +156,16 @@ Rules:
 merge는 아래 조건을 모두 만족할 때만 고려한다.
 
 1. `/pr-to-merge` verdict가 `merge`다.
-2. ledger `authority_scope.pr_merge`가 true이거나 사용자가 해당 PR merge를 명시 승인했다.
+2. ledger `authority_scope.pr_merge`가 true다. 사용자 명시 승인은 누락된 ledger authority를 대체하지 않으며, 필요한 경우 별도 정책 gate로만 추가된다.
 3. CI/checks/diagnostics/tests/build/typecheck가 해당 변경 성격에 맞게 실제 통과했다.
 4. dependency graph 상 선행 issue가 완료 상태다.
 5. PR head branch, worktree, linked issue, base branch가 ledger와 현재 GitHub/repo 상태 모두에서 일치한다.
-6. merge method가 repository policy나 사용자 승인으로 명확하다.
+6. ledger `pr_merge_method`가 `squash`이고 repository merge policy와 일치한다.
 
 금지:
 
 - `/pr-to-merge`의 `merge` verdict만 보고 checks/current PR state 재확인 없이 merge하지 않는다.
-- merge method가 불명확한데 임의로 `--squash`, `--merge`, `--rebase` 중 하나를 선택하지 않는다.
+- ledger `pr_merge_method`가 없거나 `squash`가 아니면 임의로 `--squash`, `--merge`, `--rebase` 중 하나를 선택하지 않고 `needs-human-check-terminal`로 멈춘다.
 - PR이 merge되지 않았거나 linked issue close 상태가 확인되지 않은 상태에서 cleanup하지 않는다.
 - command-owned 여부가 불명확한 branch/worktree를 삭제하지 않는다.
 

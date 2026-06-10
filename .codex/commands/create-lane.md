@@ -5,7 +5,7 @@ argument-hint: "<issue-number|issue-url|search-artifact> [...] [base-branch] [--
 
 # create-lane
 
-`create-lane`은 3단계 lane pipeline의 2단계다. 입력으로 받은 기존 GitHub issue set을 검증하고 semantic lane으로 묶어 `.sisyphus/lane/<run-id>.json` ledger를 작성한다.
+`create-lane`은 3단계 lane pipeline의 2단계다. 입력으로 받은 기존 GitHub issue set을 검증하고 semantic lane으로 묶어 `.sisyphus/lane/<run-id>.json` ledger를 작성한다. 이 단계에서 후속 실행의 PR merge authority와 merge method를 ledger에 고정한다.
 
 이 커맨드는 실행자가 아니다. issue 생성, branch/worktree 생성, PR 생성, review, merge, cleanup을 하지 않는다.
 
@@ -24,7 +24,7 @@ base branch 기본값은 `main`이다.
 | --- | --- |
 | Inputs | issue number, issue URL, 또는 `.sisyphus/search-issue/<run-id>.json` |
 | Outputs | `.sisyphus/lane/<run-id>.json` with `status: ready` |
-| Allowed | read-only GitHub issue 조회, dependency/surface 분석, lane grouping, merge policy 기록, authority scope 기록, ledger validation |
+| Allowed | read-only GitHub issue 조회, dependency/surface 분석, lane grouping, merge policy 기록, PR merge authority 기록, squash merge method 기록, authority scope 기록, ledger validation |
 | Forbidden | `gh issue create`, `/issue-to-pr`, `git worktree add`, branch 생성, PR 생성, `/pr-to-merge`, `gh pr merge`, cleanup, publish |
 
 ## 입력 규칙
@@ -65,6 +65,15 @@ confirmed issue를 semantic lane에 배정한다. lane identity는 session id가
 3. 한 lane은 실행 시점에 issue 1개만 진행한다고 가정한다.
 4. ordering은 `priority:p0`, `priority:p1`, 기반 레이어, contract risk, 공통 surface 순서로 정한다.
 
+## Merge authority and method
+
+`create-lane`은 lane ledger 작성 시 merge 권한과 merge 방식을 명시적으로 결정해 기록한다.
+
+1. 기본값은 `authority_scope.pr_merge: true`다. 이는 `/pr-to-merge`가 `merge` verdict를 반환하고 `execute-lane`의 current-state/check gate를 모두 통과한 PR에 한해 lane execution harness가 merge authority를 행사할 수 있음을 뜻한다.
+2. PR merge method는 항상 `pr_merge_method: "squash"`로 기록한다.
+3. `developer-final` 정책을 선택하더라도 ledger에는 기본 merge authority를 기록하되, `execute-lane`은 해당 정책의 human-final gate를 함께 적용해야 한다.
+4. cleanup, root main sync, publish 권한은 PR merge authority와 별개이며 기본값은 `false`다.
+
 ## Ledger schema
 
 ledger는 다음 shape를 따른다.
@@ -81,10 +90,11 @@ ledger는 다음 shape를 따른다.
     "artifact": ".sisyphus/search-issue/<run-id>.json"
   },
   "merge_policy": "developer-final|supervisor-auto|supervisor-with-human-escalation|supervisor-full-auto",
+  "pr_merge_method": "squash",
   "authority_scope": {
     "issue_selection": false,
     "issue_creation": false,
-    "pr_merge": false,
+    "pr_merge": true,
     "publish_via_github_actions": false,
     "cleanup_command_worktrees": false,
     "root_main_sync_ff_only": false
@@ -134,6 +144,8 @@ result: lane ledger ready
 ledger: .sisyphus/lane/<run-id>.json
 base branch: main
 merge policy: <policy>
+merge method: squash
+PR merge authority: authority_scope.pr_merge=true
 confirmed issues: [<issue-number>]
 lanes:
   - name: <lane-name>

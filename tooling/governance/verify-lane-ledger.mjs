@@ -102,6 +102,8 @@ function validateLedger(path) {
   assert(typeof ledger.run_id === 'string' && ledger.run_id.length > 0, path, 'run_id is required');
   assert(allowedMergePolicies.has(ledger.merge_policy), path, `invalid merge_policy: ${String(ledger.merge_policy)}`);
   assert(isObject(ledger.authority_scope), path, 'authority_scope is required');
+  assert(ledger.authority_scope.pr_merge === true, path, 'authority_scope.pr_merge must be true');
+  assert(ledger.pr_merge_method === 'squash', path, 'pr_merge_method must be squash');
   assert(Array.isArray(ledger.confirmed_issues), path, 'confirmed_issues must be an array');
   assert(Array.isArray(ledger.completed_issues), path, 'completed_issues must be an array');
   assert(Array.isArray(ledger.lanes), path, 'lanes must be an array');

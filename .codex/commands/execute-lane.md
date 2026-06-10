@@ -145,13 +145,13 @@ PR마다 다음을 호출한다.
 필수 gate:
 
 1. `/pr-to-merge` verdict가 `merge`다.
-2. merge policy와 authority scope가 PR merge를 허용한다.
+2. merge policy, `authority_scope.pr_merge: true`, `pr_merge_method: "squash"`가 PR merge를 허용한다.
 3. PR이 open, non-draft이고 base branch가 ledger와 일치한다.
 4. PR head branch와 worktree가 ledger와 일치한다.
 5. current checks가 통과했고 stale/pending/skipped required check가 없다.
 6. worktree에 uncommitted change나 unpushed remediation commit이 없다.
 
-fluo repository의 PR merge method는 항상 **squash merge**다.
+fluo repository의 PR merge method는 항상 **squash merge**이며, `create-lane` ledger에는 `pr_merge_method: "squash"`가 기록되어 있어야 한다.
 
 ```bash
 gh pr merge <pr> --squash

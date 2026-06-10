@@ -32,7 +32,7 @@ base branch 기본값은 `main`이다.
 2. **issue set 확정** — read-only `gh issue view|list`와 search ledger를 기준으로 후보 issue를 요약한다.
 3. **사용자 포함 gate** — 이번 lane에 포함할 issue를 `question` tool로 확정한다.
 4. **Suggested additions gate** — 같이 처리하면 좋은 issue를 confirmed set과 분리해 제안하고, 명시 승인된 항목만 포함한다.
-5. **Merge/cleanup authority 계획** — 실제 merge/cleanup 권한을 행사하지 않고 lane ledger에 기본 authority scope만 기록한다.
+5. **Merge/cleanup authority 계획** — 실제 merge/cleanup 권한을 행사하지 않지만, lane ledger에 후속 실행의 PR merge authority와 merge method를 고정하고 cleanup 권한은 별도로 기록한다.
 6. **semantic lane planning** — issue를 logical lane에 배치하고 dependency/order를 정한다.
 7. **lane ledger 생성** — `.sisyphus/lanes/<lane-id>.json`을 생성하고 다음 `/execute-lane <lane-id>` handoff를 출력한다.
 
@@ -61,6 +61,15 @@ base branch 기본값은 `main`이다.
 3. **Lane plan review gate** — lane 이름, queue 순서, dependency graph, release handoff 후보, authority scope를 보여주고 ledger 생성을 승인받는다.
 
 `question` tool을 사용할 수 없는 런타임이면 `.sisyphus/lanes/` 파일을 만들지 말고 선택지를 한국어로 제시한 뒤 사용자 응답을 기다린다.
+
+## Merge authority and method
+
+`create-lane`은 lane ledger 생성 시 후속 `/execute-lane`이 사용할 PR merge authority와 merge method를 결정한다.
+
+1. 기본값은 `authority_scope.pr_merge: true`다. 이는 `/pr-to-merge`의 `merge` verdict, 최신 PR/check 검증, dependency gate를 모두 통과한 PR에 한해 `/execute-lane`이 merge authority를 행사할 수 있음을 뜻한다.
+2. PR merge method는 항상 `pr_merge_method: "squash"`로 기록한다.
+3. `developer-final` 정책은 사람의 최종 확인 gate를 추가하는 정책일 뿐, ledger의 기본 merge authority를 `false`로 낮추지 않는다.
+4. cleanup, root main sync, publish 권한은 PR merge authority와 별개이며 기본값은 `false`다.
 
 ## Lane planning rules
 
@@ -107,10 +116,12 @@ base branch 기본값은 `main`이다.
     "search_run_id": null,
     "search_ledger": null
   },
+  "merge_policy": "developer-final|supervisor-auto|supervisor-with-human-escalation|supervisor-full-auto",
+  "pr_merge_method": "squash",
   "authority_scope": {
     "issue_creation": false,
     "pr_creation": true,
-    "pr_merge": false,
+    "pr_merge": true,
     "cleanup_command_worktrees": false,
     "root_main_sync_ff_only": false,
     "publish_via_github_actions": false
@@ -160,6 +171,9 @@ lane id: <lane-id>
 ledger: .sisyphus/lanes/<lane-id>.json
 base branch: <base-branch>
 source: <search-issue|existing-issues>
+merge policy: <policy>
+merge method: squash
+PR merge authority: authority_scope.pr_merge=true
 confirmed issues: [<issue-number>]
 suggested but excluded: [<issue-number>]
 lanes:
