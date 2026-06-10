@@ -12,6 +12,7 @@ Decorator-based rate limiting for fluo applications with in-memory and Redis sto
 - [Common Patterns](#common-patterns)
   - [Redis Storage](#redis-storage)
   - [Custom Key Generation](#custom-key-generation)
+- [NestJS Migration Boundaries](#nestjs-migration-boundaries)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -120,6 +121,15 @@ ThrottlerModule.forRoot({
   },
 });
 ```
+
+## NestJS Migration Boundaries
+
+When migrating from `@nestjs/throttler`, treat `@fluojs/throttler` as an explicit guard-stage package rather than a drop-in global limiter:
+
+- `ThrottlerModule.forRoot(...)` registers validated options and providers, but it does not automatically enforce throttling on every route. Activate `ThrottlerGuard` with Fluo guard metadata such as `@UseGuards(ThrottlerGuard)` wherever enforcement is required.
+- The public policy shape is one module default plus class- or method-level `@Throttle({ ttl, limit })` overrides. Named multi-window definitions such as burst plus sustained limits require explicit composition through HTTP middleware, a custom `ThrottlerStore`, or an application-owned guard wrapper.
+- Forwarded client IP headers are ignored by default. Enable `trustProxyHeaders: true` only behind a trusted proxy that overwrites `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`.
+- The guaranteed limit-exceeded response contract is HTTP `429` with `Retry-After`. Additional rate-limit headers or response bodies should be added at the application boundary, for example with an exception filter.
 
 ## Public API Overview
 
