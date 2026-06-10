@@ -665,6 +665,12 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const cacheManagerReadmeKo = readFileSync(join(repoRoot, 'packages/cache-manager/README.ko.md'), 'utf8');
   const cliReadme = readFileSync(join(repoRoot, 'packages/cli/README.md'), 'utf8');
   const cliReadmeKo = readFileSync(join(repoRoot, 'packages/cli/README.ko.md'), 'utf8');
+  const viteReadme = readFileSync(join(repoRoot, 'packages/vite/README.md'), 'utf8');
+  const viteReadmeKo = readFileSync(join(repoRoot, 'packages/vite/README.ko.md'), 'utf8');
+  const quickStart = readFileSync(join(repoRoot, 'docs/getting-started/quick-start.md'), 'utf8');
+  const quickStartKo = readFileSync(join(repoRoot, 'docs/getting-started/quick-start.ko.md'), 'utf8');
+  const migrateFromNestjs = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+  const migrateFromNestjsKo = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
   const toolchainMatrix = readFileSync(join(repoRoot, 'docs/reference/toolchain-contract-matrix.md'), 'utf8');
   const toolchainMatrixKo = readFileSync(join(repoRoot, 'docs/reference/toolchain-contract-matrix.ko.md'), 'utf8');
 
@@ -708,6 +714,38 @@ function enforceCanonicalRuntimeMatrixReferences() {
   assert(
     packageSurfaceKo.includes('typed translation helper declaration') && packageChooserKo.includes('typed translation helper declaration'),
     'docs/reference package-surface.ko.md and package-chooser.ko.md must keep @fluojs/i18n/typegen typed helper declarations discoverable.',
+  );
+
+  for (const markdown of [packageChooser, toolchainMatrix, docsContext, viteReadme, quickStart, migrateFromNestjs]) {
+    assert(
+      markdown.includes('@fluojs/vite') &&
+        markdown.includes('@fluojs/testing/vitest') &&
+        markdown.includes('vite.config.ts') &&
+        markdown.includes('vitest.config.ts'),
+      'Vite decorator tooling docs must keep @fluojs/vite, @fluojs/testing/vitest, vite.config.ts, and vitest.config.ts discoverable together.',
+    );
+  }
+
+  for (const markdown of [packageChooserKo, toolchainMatrixKo, docsContextKo, viteReadmeKo, quickStartKo, migrateFromNestjsKo]) {
+    assert(
+      markdown.includes('@fluojs/vite') &&
+        markdown.includes('@fluojs/testing/vitest') &&
+        markdown.includes('vite.config.ts') &&
+        markdown.includes('vitest.config.ts'),
+      'Korean Vite decorator tooling docs must keep @fluojs/vite, @fluojs/testing/vitest, vite.config.ts, and vitest.config.ts discoverable together.',
+    );
+  }
+
+  assert(
+    packageChooser.includes('lazy') && toolchainMatrix.includes('lazy') && docsContext.includes('lazy') && viteReadme.includes('lazily loads Babel'),
+    'Vite decorator tooling docs must preserve lazy Babel loading discoverability.',
+  );
+  assert(
+    packageChooserKo.includes('lazy') &&
+      toolchainMatrixKo.includes('lazy') &&
+      docsContextKo.includes('lazy') &&
+      viteReadmeKo.includes('Babel을 lazy load'),
+    'Korean Vite decorator tooling docs must preserve lazy Babel loading discoverability.',
   );
 
   assert(
