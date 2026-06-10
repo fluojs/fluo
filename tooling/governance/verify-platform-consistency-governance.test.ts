@@ -1092,3 +1092,37 @@ describe('CLI inspect artifact discoverability', () => {
     }
   });
 });
+
+describe('Studio public docs and migration expectations', () => {
+  const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+  const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const englishReadme = readFileSync(join(repoRoot, 'packages/studio/README.md'), 'utf8');
+  const koreanReadme = readFileSync(join(repoRoot, 'packages/studio/README.ko.md'), 'utf8');
+  const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+  const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+
+  it('keeps Studio sidecar, fallback, dependency, and exported type docs discoverable', () => {
+    for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
+      expect(content).toContain('@fluojs/studio');
+      expect(content).toContain('Node dev-runner');
+      expect(content).toContain('Bun');
+      expect(content).toContain('Deno');
+      expect(content).toContain('Cloudflare Workers');
+      expect(content).toContain('StudioLiveEvent');
+      expect(content).toContain('StudioLiveSnapshot');
+      expect(content).toContain('StudioRequestTrace');
+    }
+
+    for (const content of [englishReadme, koreanReadme]) {
+      expect(content).toContain('pnpm add -D @fluojs/studio');
+      expect(content).toContain('pnpm add @fluojs/studio');
+      expect(content).toContain('Root type export');
+    }
+
+    for (const content of [englishSurface, koreanSurface]) {
+      expect(content).toContain('parseStudioPayload(...)');
+      expect(content).toContain('applyFilters(...)');
+      expect(content).toContain('renderMermaid(snapshot)');
+    }
+  });
+});

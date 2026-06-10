@@ -14,7 +14,7 @@
 | **Persistence** | 데이터베이스 및 캐시. | `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose`, `@fluojs/redis`, `@fluojs/cache-manager` |
 | **Patterns** | 메시징 및 아키텍처. | `@fluojs/microservices`, `@fluojs/cqrs`, `@fluojs/event-bus`, `@fluojs/cron`, `@fluojs/queue`, `@fluojs/notifications`, `@fluojs/email`, `@fluojs/slack`, `@fluojs/discord` |
 | **Operations** | 헬스 및 모니터링. | `@fluojs/metrics`, `@fluojs/terminus`, `@fluojs/throttler` |
-| **Tooling** | CLI 검사 내보내기, Studio를 통한 inspect artifact 보기/렌더링, 테스트 진단, Vite 빌드 통합. | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
+| **Tooling** | CLI 검사 내보내기, CLI가 실행하는 Studio sidecar/viewer 진단, inspect artifact 렌더링, 테스트 진단, Vite 빌드 통합. | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
 ## canonical runtime package matrix
 
@@ -69,13 +69,13 @@
 
 ### tooling
 - **`@fluojs/cli`**: 프로젝트 스캐폴딩, 생성, codemod, 런타임이 생산한 snapshot에 대한 inspection 내보내기/위임. `fluo inspect`는 CLI argument validation, application bootstrap/close, JSON snapshot serialization, report artifact 쓰기, `--output <path>` file emission, Mermaid rendering을 위한 Studio handoff를 소유합니다.
-- **`@fluojs/studio`**: `fluo dev --studio`용 runtime-connected local devtool과 static snapshot/report/timing 호환성. Studio는 sidecar live event(`snapshot`, `request`, `timing`, `diagnostic`, `restart`, `disconnect`, `heartbeat`) 소비, live event envelope 검증, `fluo inspect --json` snapshot, `--timing` 및 `--json --timing` snapshot-plus-timing envelope, `--report` artifact, `renderMermaid(snapshot)`을 통한 Mermaid graph rendering 책임 경계를 소유합니다.
+- **`@fluojs/studio`**: Node dev-runner `fluo dev --studio` live MVP와 CI, support, architecture review, non-Node runtime fallback workflow용 static snapshot/report/timing 호환성을 제공하는 CLI sidecar/viewer 패키지입니다. Studio는 sidecar live event(`snapshot`, `request`, `timing`, `diagnostic`, `restart`, `disconnect`, `heartbeat`) 소비, `parseStudioLiveEvent(...)`, `validateStudioLiveEvent(...)`, `isStudioLiveEvent(...)`를 통한 live event envelope 검증, `fluo inspect --json` snapshot, `--timing` 및 `--json --timing` snapshot-plus-timing envelope, `--report` artifact를 `parseStudioPayload(...)`로 읽기, `applyFilters(...)` filtering, `renderMermaid(snapshot)`을 통한 Mermaid graph rendering, tooling이 사용하는 `StudioLiveEvent`, `StudioLiveSnapshot`, `StudioRequestTrace` 같은 root Studio contract type export 책임 경계를 소유합니다.
 - **`@fluojs/testing`**: 애플리케이션 및 플랫폼 계약을 검증하기 위한 conformance 및 통합 헬퍼.
 - **`@fluojs/vite`**: 생성된 starter `vite.config.ts` 파일이 사용하는 유지보수형 `fluoDecoratorsPlugin()`을 포함한 fluo 프로젝트용 Vite 빌드 유틸리티.
 
 ## Studio inspect artifact ownership
 
-런타임 패키지는 inspection snapshot, timing diagnostics, request trace, route descriptor, live diagnostic, sidecar event의 원천으로 남습니다. CLI는 `fluo dev --studio`를 통해 이 값을 Studio로 stream하거나 raw JSON, snapshot-plus-timing envelope, report artifact, 또는 Studio가 설치된 경우 Mermaid text 같은 이동 가능한 artifact로 바꿉니다. Studio는 사람과 자동화 호출자를 위해 live sidecar state와 inspect artifact를 읽고, 검증하고, 필터링하고, 보여주고, 렌더링하는 책임을 맡습니다.
+런타임 패키지는 inspection snapshot, timing diagnostics, request trace, route descriptor, live diagnostic, sidecar event의 원천으로 남습니다. CLI는 Node dev-runner `fluo dev --studio` sidecar를 통해 이 값을 Studio로 stream하거나 raw JSON, snapshot-plus-timing envelope, report artifact, 또는 Studio가 설치된 경우 Mermaid text 같은 이동 가능한 artifact로 바꿉니다. Bun, Deno, Cloudflare Workers 프로젝트는 dedicated live bridge가 구현되고 검증될 때까지 inspect/static artifact 경로를 MVP fallback으로 사용합니다. Studio는 사람과 자동화 호출자를 위해 live sidecar state와 inspect artifact를 읽고, 검증하고, 필터링하고, 보여주고, 렌더링하는 책임을 맡습니다.
 
 이 경계는 graph semantics를 `@fluojs/cli` 밖에 둡니다. CLI는 `@fluojs/studio/contracts`를 찾아 `renderMermaid(snapshot)`을 호출할 수 있지만, 내부 dependency edge와 외부 dependency node를 Mermaid output으로 바꾸는 방식은 Studio가 정의합니다. 지속 보관할 artifact가 필요한 소비자는 raw snapshot에는 `fluo inspect --json --output <path>`, snapshot-plus-timing envelope에는 `fluo inspect --timing --output <path>` 또는 `fluo inspect --json --timing --output <path>`, support report에는 `fluo inspect --report --output <path>`를 사용해야 합니다.
 
