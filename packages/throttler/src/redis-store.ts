@@ -64,10 +64,16 @@ function parseConsumeResult(result: unknown): ThrottlerStoreEntry {
     throw new Error('Redis throttler consume script returned non-numeric counters.');
   }
 
-  const entry = validateThrottlerStoreEntry({
-    count,
-    resetAt,
-  });
+  const entry = Number.isFinite(retryAfterMs)
+    ? validateThrottlerStoreEntry({
+        count,
+        resetAt,
+        retryAfterMs,
+      })
+    : validateThrottlerStoreEntry({
+        count,
+        resetAt,
+      });
 
   if (Number.isFinite(retryAfterMs)) {
     Object.defineProperty(entry, throttlerRetryAfterMsSymbol, {
