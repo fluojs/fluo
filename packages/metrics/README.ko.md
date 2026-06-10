@@ -40,7 +40,7 @@ class AppModule {}
 
 `MetricsModule.forRoot()`는 기본적으로 `GET /metrics`를 노출합니다. HTTP request instrumentation middleware를 설치하려면 `http: true` 또는 `http` option object를 전달하세요. HTTP 계측이 활성화되면 request total, error count, request duration을 기록합니다. 운영 환경에서는 scrape endpoint boundary를 명시적으로 다루세요. platform-level proxy가 준비될 때까지 `path: false`로 끄거나 dedicated endpoint middleware를 연결할 수 있습니다.
 
-Scrape endpoint는 active `prom-client` Registry output을 해당 Registry의 Prometheus content type으로 반환합니다. `MetricsModule.forRoot()`는 `registry` option을 전달하지 않는 한 격리된 Registry를 생성합니다. framework metric과 application-defined metric이 하나의 scrape surface를 의도적으로 공유해야 할 때만 shared `Registry`를 전달하세요.
+Scrape endpoint는 active `prom-client` Registry output을 해당 Registry의 Prometheus content type으로 반환합니다. `MetricsModule.forRoot()`는 `registry` option을 전달하지 않는 한 application bootstrap마다 격리된 Registry를 생성합니다. 같은 dynamic module class를 다른 bootstrap에서 재사용해도 격리된 metric state는 새로 만들어집니다. framework metric과 application-defined metric이 하나의 scrape surface를 의도적으로 공유해야 할 때만 shared `Registry`를 전달하세요.
 
 ## 공개 책임
 
@@ -206,6 +206,7 @@ MetricsModule.forRoot({
 ### 운영 기본값
 
 - `path`의 기본값은 `'/metrics'`입니다. `''`를 포함한 모든 문자열 path는 scrape endpoint를 노출하며, `path: false`로만 scrape endpoint를 완전히 비활성화할 수 있습니다.
+- `registry`를 생략하면 application bootstrap마다 fresh isolated Registry, `MetricsService`, meter provider, telemetry collector set을 소유합니다.
 - scrape response는 active Registry의 Prometheus content type과 Registry contents를 사용합니다.
 - `defaultMetrics`의 기본값은 `true`이며, `defaultMetrics: false`로 해당 Registry의 Prometheus 기본 프로세스/Node.js collector를 끌 수 있습니다.
 - `endpointMiddleware`는 class-based route-scoped middleware를 스크레이프 엔드포인트에만 바인딩합니다. HTTP 계측이 활성화된 경우 endpoint middleware 실패는 내장 HTTP collector에 집계됩니다.

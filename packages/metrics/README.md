@@ -40,7 +40,7 @@ class AppModule {}
 
 `MetricsModule.forRoot()` exposes `GET /metrics` by default. Pass `http: true` (or an `http` options object) when you want the module to install HTTP request instrumentation middleware. When HTTP instrumentation is enabled, the module records request totals, error counts, and request duration. For production deployments, make the scrape endpoint boundary explicit: either disable it with `path: false` until a platform-level proxy is in place, or attach dedicated endpoint middleware.
 
-The scrape endpoint returns the active `prom-client` registry output with that registry's Prometheus content type. `MetricsModule.forRoot()` creates an isolated registry unless you pass a `registry` option; pass a shared `Registry` only when framework metrics and application-defined metrics intentionally share one scrape surface.
+The scrape endpoint returns the active `prom-client` registry output with that registry's Prometheus content type. `MetricsModule.forRoot()` creates an isolated registry for each application bootstrap unless you pass a `registry` option; reusing the same dynamic module class for another bootstrap receives fresh isolated metrics state. Pass a shared `Registry` only when framework metrics and application-defined metrics intentionally share one scrape surface.
 
 ## Public Responsibilities
 
@@ -206,6 +206,7 @@ MetricsModule.forRoot({
 ### Operational defaults
 
 - `path` defaults to `'/metrics'`, any string path including `''` exposes a scrape endpoint, and `path: false` disables the scrape endpoint entirely.
+- When `registry` is omitted, each application bootstrap owns a fresh isolated registry, `MetricsService`, meter provider, and telemetry collector set.
 - The scrape response uses the active registry's Prometheus content type and registry contents.
 - `defaultMetrics` defaults to `true`, and `defaultMetrics: false` disables Prometheus default process and Node.js collectors for that registry.
 - `endpointMiddleware` binds class-based route-scoped middleware only to the scrape endpoint; with HTTP instrumentation enabled, endpoint middleware failures are counted by the built-in HTTP collectors.
