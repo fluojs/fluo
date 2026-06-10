@@ -154,16 +154,16 @@ describe('@fluojs/mongoose', () => {
     await app.close();
   });
 
-  it('uses the owning wrapper session for shared raw model facades and unregisters owners on shutdown', async () => {
+  it('scopes ambient model facades to MongooseConnection.model without mutating the raw connection', async () => {
     const events: string[] = [];
     const firstSession = createFakeSession(events);
     const secondSession = createFakeSession(events);
-    const createSessions: Array<MongooseSessionLike | undefined> = [];
+    const createSessions: Array<{ source: string; session: MongooseSessionLike | undefined }> = [];
     let sessionCount = 0;
 
     const UserModel = {
       async create(_docs: unknown[], options?: { session?: MongooseSessionLike }) {
-        createSessions.push(options?.session);
+        createSessions.push({ source: 'create', session: options?.session });
 
         return [];
       },
@@ -183,21 +183,26 @@ describe('@fluojs/mongoose', () => {
     const firstConnection = new MongooseConnection(connection);
     const secondConnection = new MongooseConnection(connection);
 
-    expect(connection.model).not.toBe(originalModel);
+    expect(connection.model).toBe(originalModel);
 
     await firstConnection.transaction(async () => {
+      const RawUser = firstConnection.current().model('User');
+      await RawUser.create([{ name: 'Raw' }]);
+
+      const FirstUser = firstConnection.model('User') as typeof UserModel;
+      await FirstUser.create([{ name: 'Ada' }]);
+
       await secondConnection.transaction(async () => {
-        const User = secondConnection.current().model('User');
-        await User.create([{ name: 'Grace' }]);
+        const SecondUser = secondConnection.model('User') as typeof UserModel;
+        await SecondUser.create([{ name: 'Grace' }]);
       });
     });
 
-    expect(createSessions).toEqual([secondSession]);
-
-    await firstConnection.onApplicationShutdown();
-    expect(connection.model).not.toBe(originalModel);
-
-    await secondConnection.onApplicationShutdown();
+    expect(createSessions).toEqual([
+      { source: 'create', session: undefined },
+      { source: 'create', session: firstSession },
+      { source: 'create', session: secondSession },
+    ]);
     expect(connection.model).toBe(originalModel);
   });
 
@@ -951,6 +956,77 @@ describe('@fluojs/mongoose', () => {
     resolveDispose();
     await closePromise;
     expect(events).toEqual(['dispose:start', 'dispose:end']);
+  });
+
+  it('checks shutdown before reusing an ambient manual transaction session', async () => {
+    const events: string[] = [];
+    let resolveTransactionStarted!: () => void;
+    let releaseTransaction!: () => void;
+    const transactionStarted = new Promise<void>((resolve) => {
+      resolveTransactionStarted = resolve;
+    });
+    const transactionReleased = new Promise<void>((resolve) => {
+      releaseTransaction = resolve;
+    });
+    const session = createFakeSession(events);
+
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return session;
+      },
+    };
+
+    const mongooseModule = MongooseModule.forRoot<typeof connection>({
+      connection,
+      dispose() {
+        events.push('dispose');
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [mongooseModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
+
+    const transaction = mongoose.transaction(async () => {
+      resolveTransactionStarted();
+      await transactionReleased;
+
+      await expect(mongoose.transaction(async () => 'late-reuse')).rejects.toThrow(
+        'Mongoose transactions are unavailable during application shutdown.',
+      );
+    });
+
+    await transactionStarted;
+    const closePromise = app.close();
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        activeSessions: 1,
+        lifecycleState: 'shutting-down',
+      },
+    });
+
+    releaseTransaction();
+
+    await transaction;
+    await closePromise;
+
+    expect(events).toEqual([
+      'connection:startSession',
+      'transaction:start',
+      'transaction:commit',
+      'session:end',
+      'dispose',
+    ]);
   });
 
   it('waits for connection.transaction request session cleanup before dispose on shutdown', async () => {

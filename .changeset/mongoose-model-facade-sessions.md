@@ -2,4 +2,4 @@
 '@fluojs/mongoose': patch
 ---
 
-Fix Mongoose model facade session injection for single-document create options, shared raw connection owner cleanup, and explicit transaction decorator resolution boundaries.
+Fix Mongoose transaction shutdown ordering and model facade ownership so shutdown is checked before ambient manual transaction reuse, automatic model session injection stays scoped to `MongooseConnection.model(...)`, and raw Mongoose connection objects are not mutated.
