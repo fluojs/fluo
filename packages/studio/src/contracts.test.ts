@@ -11,6 +11,7 @@ import { applyFilters, isStudioLiveEvent, parseStudioLiveEvent, parseStudioPaylo
 import * as studio from './index.js';
 import { bootstrapStudioApp } from './app/bootstrap.js';
 import { inspectComponentConnections, renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './viewer-rendering.js';
+import { initialStudioState, selectSelectedStaticComponent } from './entities/studio/model.js';
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageCommandTimeoutMs = 120_000;
@@ -925,6 +926,43 @@ describe('applyFilters', () => {
     expect(graphSvg).toContain('aws.lambda.orders');
     expect(summary?.outgoing.map((component) => component.id)).toEqual(['queue.default']);
     expect(summary?.externalDependencies).toEqual(['aws.lambda.orders']);
+  });
+
+  it('keeps selected hidden internal components available to the static inspector', () => {
+    const snapshotWithHiddenInternalDependency: PlatformShellSnapshot = {
+      ...snapshotFixture,
+      components: [
+        snapshotFixture.components[0],
+        snapshotFixture.components[1],
+        {
+          ...snapshotFixture.components[0],
+          dependencies: ['queue.default'],
+          id: 'api.gateway',
+          kind: 'http',
+          readiness: {
+            critical: true,
+            status: 'ready',
+          },
+        },
+      ],
+    };
+    const filtered = applyFilters(snapshotWithHiddenInternalDependency, {
+      query: '',
+      readinessStatuses: ['ready'],
+      severities: [],
+    });
+
+    const selected = selectSelectedStaticComponent({
+      ...initialStudioState,
+      staticReport: {
+        filteredSnapshot: filtered,
+        payload: { snapshot: snapshotWithHiddenInternalDependency },
+        selectedComponentId: 'queue.default',
+      },
+    });
+
+    expect(filtered.components.map((component) => component.id)).toEqual(['redis.default', 'api.gateway']);
+    expect(selected?.id).toBe('queue.default');
   });
 
   it('returns empty component and diagnostic lists when filters match nothing', () => {

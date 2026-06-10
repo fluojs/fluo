@@ -146,8 +146,10 @@ export function selectSelectedStaticComponent(state: StudioDashboardState): Plat
     return undefined;
   }
 
+  const originalSnapshot = selectOriginalStaticSnapshot(state);
   const selected = state.staticReport.selectedComponentId
     ? snapshot.components.find((component) => component.id === state.staticReport.selectedComponentId)
+      ?? originalSnapshot?.components.find((component) => component.id === state.staticReport.selectedComponentId)
     : undefined;
   return selected ?? snapshot.components[0];
 }
