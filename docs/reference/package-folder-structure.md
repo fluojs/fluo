@@ -59,5 +59,6 @@ src/
 - Moving files inside `src/` must not change the public re-export contract from `index.ts`.
 - Do not create single-file folders without a clear grouping need.
 - Root package entrypoints must not eagerly import runtime-specific Node builtins; keep those dependencies in `src/node/` or behind lazy resolution inside the runtime-specific execution path.
+- Shared public type files such as `src/types.ts` must stay runtime-neutral when a package also ships Bun, Deno, Workers, or other non-Node subpaths; put Node socket/request types in `src/node/*-types.ts` and re-export them from the Node subpath.
 - `__snapshots__/` stays next to the tests it supports.
 - Use [package-surface.md](./package-surface.md) for the canonical package inventory.
