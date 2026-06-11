@@ -3,20 +3,23 @@
 
 # Chapter 15. Notification Orchestration
 
-This chapter explains how to build a channel-independent notification orchestration layer on top of FluoShop's events and workflows. Chapter 14 covered realtime interaction. Now we'll bind follow-up delivery channels such as email, Slack, and Discord behind one explicit dispatch boundary.
+This chapter explains how to build a channel-independent notification orchestration layer on top of FluoShop's events and workflows. Chapter 14 covered realtime interaction. Now we'll bind follow-up delivery channels such as email, Slack, and Discord behind one explicit dispatch boundary that matches the current `@fluojs/notifications` public API.
 
 ## Learning Objectives
 - Understand why notification orchestration is safer than scattering direct channel SDK calls across the codebase.
 - Explain the difference between the `NotificationChannel` contract and the role of `NotificationsService`.
-- Learn how to register channels and dispatch configuration with `NotificationsModule.forRoot()`.
-- Analyze why queue-backed delivery moves bulk delivery outside the request path.
-- Summarize how lifecycle event publishing helps notification observability and failure tracking.
+- Register channels and dispatch configuration with `NotificationsModule.forRoot(...)` and `NotificationsModule.forRootAsync(...)`.
+- Describe default global provider visibility and when `global: false` keeps notification providers module-local.
+- Dispatch one notification with `dispatch(...)`, dispatch batches with `dispatchMany(...)`, and interpret `NotificationDispatchBatchResult` summaries.
+- Analyze how queue-backed delivery moves bulk delivery outside the request path while leaving concrete queue implementations outside the foundation package.
+- Summarize how lifecycle event publication helps notification observability and failure tracking without coupling the package to a concrete event bus.
+- Produce and read status snapshots through `NotificationsService.createPlatformStatusSnapshot()` and `createNotificationsPlatformStatusSnapshot(...)`.
 - Explain the follow-up responsibilities notification dispatch takes in FluoShop's order success flow.
 
 ## Prerequisites
 - Completion of Chapter 1, Chapter 2, Chapter 3, Chapter 4, Chapter 5, Chapter 6, Chapter 7, Chapter 8, Chapter 9, Chapter 10, Chapter 11, Chapter 12, Chapter 13, and Chapter 14.
 - Basic understanding of event-driven follow-up processing and channel-based delivery.
-- Operational awareness of asynchronous delivery using queues and observability.
+- Operational awareness of asynchronous delivery using queues, lifecycle events, and status diagnostics.
 
 ## 15.1 The Orchestration Pattern
 
@@ -25,7 +28,8 @@ In a typical microservice environment, many services need to send notifications.
 ### Why Orchestrate?
 - **Shared Contract**: Every channel follows the same interface.
 - **Dependency Inversion**: Application logic depends on `NotificationsService`, not on vendor SDKs.
-- **Observability**: Lifecycle events are published for every delivery attempt.
+- **Batch Semantics**: `dispatchMany(...)` gives callers one batch summary for successful, queued, and failed work.
+- **Observability**: Lifecycle events and status snapshots describe every delivery attempt and optional integration seam.
 - **Resilience**: Optional queue support keeps notification bursts from blocking the main request path.
 
 ## 15.2 Defining a Notification Channel
@@ -48,11 +52,11 @@ const logChannel: NotificationChannel = {
 };
 ```
 
-The `send` method is the core of the contract. It receives a standardized notification object and returns a delivery receipt, so callers do not need to interpret channel-specific responses from Slack, email, Discord, or any other provider.
+The `send` method is the core of the contract. It receives a standardized notification object and returns a delivery receipt, so callers do not need to interpret channel-specific responses from Slack, email, Discord, or any other provider. Channels can set `status: 'queued'` when a provider-specific integration already delegated work to its own queue, otherwise the orchestrator records direct delivery as `delivered`.
 
 ## 15.3 Registering the Notifications Module
 
-To use the orchestration layer, register `NotificationsModule`. This registration gathers the available channels and dispatch behavior in one place during application startup.
+To use the orchestration layer, register `NotificationsModule`. This registration gathers channels, queue options, lifecycle event publication, and provider visibility in one place during application startup.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -68,7 +72,54 @@ import { NotificationsModule } from '@fluojs/notifications';
 export class AppModule {}
 ```
 
-After this registration, you can inject `NotificationsService`. The service uses the registered channel list to pass each notification to the right transport or queue boundary.
+After this registration, you can inject `NotificationsService`. The service uses the registered channel list to pass each notification to the right transport or queue boundary. `NotificationsModule.forRoot(...)` and `NotificationsModule.forRootAsync(...)` export `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS` globally by default. Set `global: false` when those providers should stay visible only to the module that imports the notifications module.
+
+Use `forRootAsync(...)` when channels or optional seams come from DI-resolved settings instead of static module options:
+
+```typescript
+import { ConfigService } from '@fluojs/config';
+import { Module } from '@fluojs/core';
+import {
+  NotificationsModule,
+  type NotificationChannel,
+} from '@fluojs/notifications';
+
+type NotificationConfig = {
+  notifications: {
+    emailChannelName?: string;
+  };
+};
+
+function createEmailChannel(config: ConfigService<NotificationConfig>): NotificationChannel {
+  const channelName = config.get('notifications.emailChannelName') ?? 'email';
+
+  return {
+    channel: channelName,
+    async send(notification) {
+      console.log('sending email notification', notification.subject);
+
+      return {
+        metadata: { provider: channelName },
+      };
+    },
+  };
+}
+
+@Module({
+  imports: [
+    NotificationsModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<NotificationConfig>) => ({
+        channels: [createEmailChannel(config)],
+      }),
+      global: false,
+    }),
+  ],
+})
+export class NotificationsFeatureModule {}
+```
+
+`forRootAsync(...)` follows fluo's explicit injected-factory style: application-owned providers produce the final options object, and the notifications package never reads `process.env` directly.
 
 ## 15.4 Dispatching Notifications
 
@@ -96,11 +147,44 @@ export class WelcomeService {
 }
 ```
 
-The `dispatch` method is asynchronous. It completes when the notification has been successfully handed to the channel or queue, and callers use the same contract even when the final external delivery happens behind a queue.
+The `dispatch(...)` method is asynchronous. It completes when the notification has been successfully handed to the channel or queue, and callers use the same contract even when the final external delivery happens behind a queue. Single dispatch remains direct by default even when a queue adapter is configured; pass `{ queue: true }` to enqueue a single notification explicitly or `{ queue: false }` to force direct delivery.
 
-## 15.5 Queue-Backed Delivery
+## 15.5 Batch Dispatch with `dispatchMany(...)`
 
-In bulk delivery scenarios, you may need to offload delivery work to a background worker. The `@fluojs/notifications` package provides a built-in queue seam.
+Use `dispatchMany(...)` when one workflow emits several notifications. It returns a `NotificationDispatchBatchResult` with ordered success results, queued counts, and captured failures when tolerant error handling is enabled.
+
+```typescript
+@Inject(NotificationsService)
+export class CampaignNotifications {
+  constructor(private readonly notifications: NotificationsService) {}
+
+  async sendLaunchDigest(recipients: readonly string[]) {
+    const result = await this.notifications.dispatchMany(
+      recipients.map((email) => ({
+        channel: 'email',
+        recipients: [email],
+        subject: 'FluoShop launch digest',
+        payload: {
+          template: 'launch-digest',
+        },
+      })),
+      { continueOnError: true },
+    );
+
+    if (result.failed > 0) {
+      console.warn('Some launch notifications failed', result.failures);
+    }
+
+    return result;
+  }
+}
+```
+
+Without `continueOnError`, direct batch dispatch throws on the first failed notification. With `continueOnError: true`, the service continues through direct delivery and sequential queue fallback paths, keeping successful results in `results` and failed attempts in `failures`. An empty batch resolves to zero `succeeded`, `failed`, and `queued` counts.
+
+## 15.6 Queue-Backed Delivery
+
+In bulk delivery scenarios, you may need to offload delivery work to a background worker. The `@fluojs/notifications` package provides a queue seam, but it does not depend on `@fluojs/queue` or any other concrete queue implementation.
 
 ```typescript
 NotificationsModule.forRoot({
@@ -108,11 +192,11 @@ NotificationsModule.forRoot({
   queue: {
     adapter: {
       async enqueue(job) {
-        // Integration with @fluojs/queue
+        // Integration with @fluojs/queue or another application-owned queue
         return queue.enqueue(job);
       },
       async enqueueMany(jobs) {
-        return Promise.all(jobs.map(j => queue.enqueue(j)));
+        return Promise.all(jobs.map((job) => queue.enqueue(job)));
       },
     },
     bulkThreshold: 50,
@@ -120,11 +204,11 @@ NotificationsModule.forRoot({
 });
 ```
 
-When `bulkThreshold` is reached, or when options explicitly request it, the service uses the queue adapter instead of direct delivery. Each queued job carries a stable idempotency key: `notification.id` is preserved when supplied, otherwise the key is derived from the notification envelope so repeated requests can be deduplicated by queue backends that support idempotent enqueue operations. If an adapter does not implement `enqueueMany()`, fluo enqueues jobs one by one in input order; `continueOnError: true` preserves successful queued results while returning failed enqueue attempts in the batch failures list.
+When `dispatchMany(...)` reaches `bulkThreshold`, or when options explicitly request `{ queue: true }`, the service uses the queue adapter instead of direct delivery. Each queued job carries a stable idempotency key: `notification.id` is preserved when supplied, otherwise the key is derived from the notification envelope so repeated requests can be deduplicated by queue backends that support idempotent enqueue operations. If an adapter does not implement `enqueueMany(...)`, fluo enqueues jobs one by one in input order; `continueOnError: true` preserves successful queued results while returning failed enqueue attempts in the batch failures list. Queue-backed delivery throws `NotificationQueueNotConfiguredError` when queue delivery is requested but no queue adapter is registered.
 
-## 15.6 Lifecycle Events
+## 15.7 Lifecycle Events
 
-Reliability needs observability. The orchestration layer can publish lifecycle events through an event publisher. When send attempts, successes, and failures are recorded as events, operators can trace missing notifications faster and connect retry policy to the same flow.
+Reliability needs observability. The orchestration layer can publish lifecycle events through an event publisher. When send attempts, successes, and failures are recorded as events, operators can trace missing notifications faster and connect retry policy to the same flow. The foundation package owns the lifecycle event contract, while concrete event-bus delivery stays application-owned.
 
 ```typescript
 NotificationsModule.forRoot({
@@ -133,7 +217,7 @@ NotificationsModule.forRoot({
     publishLifecycleEvents: true,
     publisher: {
       async publish(event) {
-        // Integration with @fluojs/event-bus
+        // Integration with @fluojs/event-bus or another application-owned publisher
         await eventBus.publish(event);
       },
     },
@@ -142,16 +226,46 @@ NotificationsModule.forRoot({
 ```
 
 ### Published Events:
-- `notification.dispatch.requested`: When `dispatch()` is called.
-- `notification.dispatch.queued`: When a notification moves to the background queue.
-- `notification.dispatch.delivered`: When the channel confirms successful delivery.
+- `notification.dispatch.requested`: When `dispatch(...)` or `dispatchMany(...)` starts processing a notification.
+- `notification.dispatch.queued`: When a notification moves to the background queue or a channel reports queued delivery.
+- `notification.dispatch.delivered`: When the channel confirms successful direct delivery.
 - `notification.dispatch.failed`: When channel resolution, queue enqueue, or provider delivery fails.
 
-Channel resolution failures are permanent configuration errors: the service publishes `requested`, then `failed`, and throws `NotificationChannelNotFoundError` without enqueueing or calling a provider. Queue enqueue and provider delivery failures also publish `failed`, but retry policy should be based on the underlying queue or provider error. Queued bulk dispatch publishes a terminal `queued` or `failed` event for every notification that emitted `requested`, including queue-missing, channel-resolution, and sequential fallback enqueue failures. When a channel omits `externalId`, the service creates a deterministic fallback delivery id from the notification envelope rather than using time or random data.
+If `events.publisher` is configured, lifecycle publication defaults to enabled unless `publishLifecycleEvents: false` is set at module registration or dispatch time. Channel resolution failures are permanent configuration errors: the service publishes `requested`, then `failed`, and throws `NotificationChannelNotFoundError` without enqueueing or calling a provider. Queue enqueue and provider delivery failures also publish `failed`, but retry policy should be based on the underlying queue or provider error. Queued bulk dispatch publishes a terminal `queued` or `failed` event for every notification that emitted `requested`, including queue-missing, channel-resolution, and sequential fallback enqueue failures. When a channel omits `externalId`, the service creates a deterministic fallback delivery id from the notification envelope rather than using time or random data.
 
 Publication failures for success events are best-effort so they do not turn a completed delivery into an application failure. Publication failures for `notification.dispatch.failed` are different: the caller receives an `AggregateError` containing both the original dispatch error and the publisher error so failed notification reporting is never silently swallowed.
 
-## 15.7 FluoShop Context: Order Success Flow
+## 15.8 Status Snapshots and Diagnostics
+
+Notifications also expose platform diagnostics so health/readiness endpoints can describe notification wiring without owning concrete queue or event-bus resources.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import {
+  NotificationsService,
+  createNotificationsPlatformStatusSnapshot,
+} from '@fluojs/notifications';
+
+@Inject(NotificationsService)
+export class NotificationsDiagnostics {
+  constructor(private readonly notifications: NotificationsService) {}
+
+  currentStatus() {
+    return this.notifications.createPlatformStatusSnapshot();
+  }
+}
+
+const standaloneStatus = createNotificationsPlatformStatusSnapshot({
+  bulkQueueThreshold: 50,
+  channelsRegistered: 2,
+  eventPublisherConfigured: true,
+  queueConfigured: true,
+});
+```
+
+`NotificationsService.createPlatformStatusSnapshot()` reads the active module wiring. `createNotificationsPlatformStatusSnapshot(...)` is a value-level helper for callers that already have counts and integration flags. Snapshots include `readiness`, `health`, `ownership`, `operationMode`, dependency diagnostics such as `notifications.queue-adapter` and `notifications.event-publisher`, and `ownsResources: false` because the foundation package does not close concrete queue or event-bus resources.
+
+## 15.9 FluoShop Context: Order Success Flow
 
 FluoShop uses notifications for order confirmations. This sits on top of the event-driven work built in Part 2. When `OrderPlacedEvent` is captured by `OrderSaga`, notification dispatch is triggered, and order processing and user notification become loosely connected follow-up responsibilities.
 
@@ -172,27 +286,44 @@ async onOrderPlaced(event: OrderPlacedEvent) {
 
 This decoupling means the order processing logic doesn't need to know about SMTP servers or email templates. The order domain publishes events, while the notification layer focuses on how those events reach users.
 
-## 15.8 Intentional Limitations
+## 15.10 Intentional Limitations
 
 The base package follows fluo's **Explicit Boundaries** philosophy. Channel selection and transport configuration appear through Module settings and Provider contracts, not hidden global state.
 
-1. **No Default Implementations**: It doesn't provide built-in email or Slack providers. Those live in their dedicated packages.
-2. **No Implicit Env**: It doesn't read `process.env`. Every setting must be passed explicitly.
-3. **Transport Agnostic**: It works on Node.js, Bun, Deno, and Workers.
+1. **No Default Implementations**: It doesn't provide built-in email, Slack, Discord, queue, or event-bus implementations. Those live in dedicated packages or application code.
+2. **No Implicit Env**: It doesn't read `process.env`. Every setting must be passed explicitly through static options or `forRootAsync(...)`.
+3. **Transport Agnostic**: It works on Node.js, Bun, Deno, and Workers because queue and event publication are abstract seams.
+4. **No Resource Ownership**: Status snapshots report queue/event-bus integrations as externally managed; the foundation package does not close those resources.
 
-These limitations keep the orchestration layer stable even when the underlying transport changes. When an extension is needed, a new channel or transport can be added through the same contract without changing existing callers much.
+These limitations keep the orchestration layer stable even when the underlying transport changes. When an extension is needed, a new channel, queue adapter, or event publisher can be added through the same contract without changing existing callers much.
 
-## 15.9 Public API Summary
+## 15.11 Public API Summary
 
-### Services
-- `NotificationsService`: The primary API for dispatch.
-- `NOTIFICATIONS`: Token for service injection.
+### Module Registration
+- `NotificationsModule.forRoot(options)`: Registers static channels, optional queue/event seams, and provider visibility.
+- `NotificationsModule.forRootAsync(options)`: Resolves module options from DI through `{ inject, useFactory, global? }`.
 
-### Interfaces
+### Services and Tokens
+- `NotificationsService`: The primary API for `dispatch(...)`, `dispatchMany(...)`, and `createPlatformStatusSnapshot()`.
+- `NOTIFICATIONS`: Compatibility facade token exposing `dispatch(...)` and `dispatchMany(...)`.
+- `NOTIFICATION_CHANNELS`: Token for the normalized channel list.
+
+### Dispatch and Channel Contracts
 - `NotificationChannel`: Contract for a new delivery Provider.
 - `NotificationDispatchRequest`: Schema for a dispatch attempt.
-- `NotificationsQueueAdapter`: Interface for background processing.
+- `NotificationDispatchOptions`: Single-dispatch controls for queue preference, abort signal, and lifecycle publication.
+- `NotificationDispatchManyOptions`: Batch controls, including `continueOnError`.
+- `NotificationDispatchResult`: Normalized result for one direct or queued notification.
+- `NotificationDispatchBatchResult`: Summary returned by `dispatchMany(...)`.
+- `NotificationDispatchFailure`: Failure entry returned by tolerant batch operations.
+
+### Queue, Events, Status, and Errors
+- `NotificationsQueueAdapter`, `NotificationsQueueJob`, `NotificationsQueueOptions`: Abstract queue seam and job contract.
+- `NotificationsEventPublisher`, `NotificationsEventsOptions`, `NotificationLifecycleEvent`, `NotificationLifecycleEventName`: Lifecycle publication seam and event contract.
+- `NotificationsModuleOptions`, `NotificationsAsyncModuleOptions`: Static and async module option contracts.
+- `createNotificationsPlatformStatusSnapshot(...)`, `NotificationsPlatformStatusSnapshot`, `NotificationsStatusAdapterInput`: Status snapshot helper and types.
+- `NotificationsConfigurationError`, `NotificationChannelNotFoundError`, `NotificationQueueNotConfiguredError`: Configuration, channel lookup, and queue misconfiguration errors.
 
 ## Conclusion
 
-The orchestration layer is central to fluo's messaging strategy. By centralizing dispatch logic, you gain observability, resilience, and a clear separation of concerns. In FluoShop, this structure becomes the basis for handling user notifications and operational notifications with the same model. The next chapter implements the most common notification channel: **Email**.
+The orchestration layer is central to fluo's messaging strategy. By centralizing dispatch logic, you gain observability, resilience, batch visibility, and a clear separation of concerns. In FluoShop, this structure becomes the basis for handling user notifications and operational notifications with the same model. The next chapter implements the most common notification channel: **Email**.
