@@ -389,7 +389,7 @@ function createNativeFastFrameworkRequest(
     query: readSimpleQueryRecord(request.query),
     queryFactory: () => parseQueryParamsFromSearch(urlParts.search),
     raw: request.raw,
-    requestId: resolvePrimaryRequestIdFromHeaders(request.raw.headers),
+    requestId: resolveRequestIdFromHeaders(request.raw.headers),
     signal: lazySignal.signal,
     url: urlParts.path + urlParts.search,
   }) as FastifyFrameworkRequest;
@@ -874,7 +874,7 @@ function createDeferredFrameworkRequest(
     query: querySnapshot,
     queryFactory: () => parseQueryParamsFromSearch(urlParts.search),
     raw: request.raw,
-    requestId: resolvePrimaryRequestIdFromHeaders(headerSnapshot),
+    requestId: resolveRequestIdFromHeaders(headerSnapshot),
     signal,
     url: urlParts.path + urlParts.search,
   }) as FastifyFrameworkRequest;
@@ -1111,11 +1111,6 @@ function resolveRequestIdFromHeaders(headers: IncomingHttpHeaders): string | und
   return Array.isArray(requestId) ? requestId[0] : requestId;
 }
 
-function resolvePrimaryRequestIdFromHeaders(headers: IncomingHttpHeaders): string | undefined {
-  const requestId = headers['x-request-id'];
-  return Array.isArray(requestId) ? requestId[0] : requestId;
-}
-
 function createFastifyApp(
   httpsOptions: HttpsServerOptions | undefined,
   maxBodySize: number,
@@ -1157,12 +1152,15 @@ function captureRawBodyPreParsingHook(
 
   const chunks: Buffer[] = [];
   const capture = new Transform({
-    transform(chunk, _encoding, callback) {
-      const bufferChunk = Buffer.isBuffer(chunk)
-        ? chunk
-        : chunk instanceof Uint8Array
-          ? Buffer.from(chunk)
-          : Buffer.from(String(chunk), 'utf8');
+    transform(chunk, encoding, callback) {
+      let bufferChunk: Buffer;
+
+      try {
+        bufferChunk = createRawBodyBufferChunk(chunk, encoding);
+      } catch (error: unknown) {
+        callback(error instanceof Error ? error : new Error(String(error)));
+        return;
+      }
 
       chunks.push(bufferChunk);
       capture.receivedEncodedLength += bufferChunk.byteLength;
@@ -1184,6 +1182,22 @@ function captureRawBodyPreParsingHook(
 
   payload.pipe(capture);
   done(null, capture);
+}
+
+function createRawBodyBufferChunk(chunk: unknown, encoding: BufferEncoding): Buffer {
+  if (Buffer.isBuffer(chunk)) {
+    return chunk;
+  }
+
+  if (chunk instanceof Uint8Array) {
+    return Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  }
+
+  if (typeof chunk === 'string') {
+    return Buffer.from(chunk, encoding);
+  }
+
+  throw new TypeError(`Fastify raw-body capture received unsupported ${typeof chunk} stream chunk.`);
 }
 
 function isMultipartRequestContentType(contentType: string | string[] | undefined): boolean {

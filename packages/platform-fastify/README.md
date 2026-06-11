@@ -149,7 +149,7 @@ The same file also covers Fastify-specific native route registration with wildca
 
 ## Public API Overview
 
-- `createFastifyAdapter(options)`: Recommended factory for the Fastify adapter.
+- `createFastifyAdapter(options, multipartOptions?)`: Recommended factory for the Fastify adapter. The optional second argument configures multipart limits such as `maxFileSize`, `maxFiles`, and `maxTotalSize` for direct adapter construction.
 - `bootstrapFastifyApplication(module, options)`: advanced bootstrap without implicit listening.
 - `runFastifyApplication(module, options)`: Quick-start helper with lifecycle management. On timeout/failure it reports the condition through logging and `process.exitCode`, while leaving final process termination to the surrounding host.
 - `isFastifyMultipartTooLargeError(error)`: Detects multipart limit errors across Fastify error shapes.

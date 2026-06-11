@@ -1655,6 +1655,73 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
+  it('rematches a native Fastify handoff when middleware rewrites the framework path', async () => {
+    const lifecycle: string[] = [];
+    const rewriteMiddleware = {
+      async handle(context: MiddlewareContext, next: () => Promise<void>) {
+        lifecycle.push(`middleware:${context.request.path}`);
+
+        if (context.request.path === '/rewrite-source/42') {
+          context.request.path = '/rewrite-target/42';
+          context.request.url = '/rewrite-target/42';
+        }
+
+        await next();
+      },
+    };
+
+    @Controller('/rewrite-source')
+    class RewriteSourceController {
+      @Get('/:id')
+      source(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'source' };
+      }
+    }
+
+    @Controller('/rewrite-target')
+    class RewriteTargetController {
+      @Get('/:id')
+      target(_input: undefined, context: RequestContext) {
+        lifecycle.push(`target:${context.request.params.id}`);
+        return { id: context.request.params.id, path: context.request.path, route: 'target' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [RewriteSourceController, RewriteTargetController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await fluoFactory.create(AppModule, {
+      adapter: createFastifyAdapter({ port }),
+      middleware: [rewriteMiddleware],
+    });
+
+    await app.listen();
+
+    try {
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/rewrite-source/42',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({
+        id: '42',
+        path: '/rewrite-target/42',
+        route: 'target',
+      });
+      expect(lifecycle).toEqual([
+        'middleware:/rewrite-source/42',
+        'target:42',
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('preserves request header passthrough on native and fallback dispatch paths', async () => {
     @Controller('/headers')
     class HeaderController {
@@ -1704,6 +1771,60 @@ describe('@fluojs/platform-fastify', () => {
       expect(JSON.parse(nativeResponse.body)).toEqual({ requestId: 'native-req' });
       expect(fallbackResponse.statusCode).toBe(200);
       expect(JSON.parse(fallbackResponse.body)).toEqual({ requestId: 'fallback-req' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('uses x-correlation-id as request id fallback on native and fallback dispatch paths', async () => {
+    @Controller('/correlation')
+    class CorrelationController {
+      @Get('/native')
+      getNative(_input: undefined, context: RequestContext) {
+        return {
+          requestId: context.request.requestId,
+        };
+      }
+
+      @All('/fallback')
+      getFallback(_input: undefined, context: RequestContext) {
+        return {
+          requestId: context.request.requestId,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [CorrelationController] });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    try {
+      const [nativeResponse, fallbackResponse] = await Promise.all([
+        requestHttp({
+          headers: { 'x-correlation-id': 'native-correlation' },
+          method: 'GET',
+          path: '/correlation/native',
+          port,
+        }),
+        requestHttp({
+          headers: { 'x-correlation-id': 'fallback-correlation' },
+          method: 'PATCH',
+          path: '/correlation/fallback',
+          port,
+        }),
+      ]);
+
+      expect(nativeResponse.statusCode).toBe(200);
+      expect(JSON.parse(nativeResponse.body)).toEqual({ requestId: 'native-correlation' });
+      expect(fallbackResponse.statusCode).toBe(200);
+      expect(JSON.parse(fallbackResponse.body)).toEqual({ requestId: 'fallback-correlation' });
     } finally {
       await app.close();
     }
