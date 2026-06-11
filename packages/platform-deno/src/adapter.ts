@@ -376,26 +376,40 @@ function createDenoShutdownSignalRegistration(
     const bindings: Array<{ handler: () => void; signal: DenoApplicationSignal }> = [];
     const seen = new Set<DenoApplicationSignal>();
 
-    for (const signal of signals) {
-      if (seen.has(signal)) {
-        continue;
+    try {
+      for (const signal of signals) {
+        if (seen.has(signal)) {
+          continue;
+        }
+
+        seen.add(signal);
+        const handler = () => {
+          void closeDenoApplicationFromSignal(app, logger, signal);
+        };
+
+        denoGlobal.addSignalListener(signal, handler);
+        bindings.push({ handler, signal });
       }
-
-      seen.add(signal);
-      const handler = () => {
-        void closeDenoApplicationFromSignal(app, logger, signal);
-      };
-
-      bindings.push({ handler, signal });
-      denoGlobal.addSignalListener(signal, handler);
+    } catch (error: unknown) {
+      removeDenoSignalBindings(denoGlobal, bindings);
+      throw error;
     }
 
     return () => {
-      for (const binding of bindings) {
-        denoGlobal.removeSignalListener(binding.signal, binding.handler);
-      }
+      removeDenoSignalBindings(denoGlobal, bindings);
     };
   };
+}
+
+function removeDenoSignalBindings(
+  denoGlobal: {
+    removeSignalListener: (signal: DenoApplicationSignal, handler: () => void) => void;
+  },
+  bindings: readonly { handler: () => void; signal: DenoApplicationSignal }[],
+): void {
+  for (const binding of bindings) {
+    denoGlobal.removeSignalListener(binding.signal, binding.handler);
+  }
 }
 
 function createListenTarget(hostname: string, port: number, usesHttps: boolean): HttpAdapterListenTarget {
