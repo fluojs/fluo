@@ -31,8 +31,15 @@ describe('createQueuePlatformStatusSnapshot', () => {
 
     expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
     expect(snapshot.health).toEqual({ status: 'healthy' });
+    expect(snapshot.ownership).toEqual({
+      externallyManaged: false,
+      ownsResources: true,
+    });
     expect(snapshot.details).toMatchObject({
+      deadLetterDrainTimeoutMs: 5_000,
       dependencies: ['redis.jobs'],
+      queuesReady: 2,
+      workerStartFailures: 0,
       workerShutdownTimeoutMs: 30_000,
       workersDiscovered: 2,
       workersReady: 2,

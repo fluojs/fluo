@@ -374,11 +374,65 @@ function createDeferred<T = void>() {
   return { promise, reject, resolve };
 }
 
-async function waitForQueueWorkers(): Promise<void> {
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, 0);
-  });
-  await Promise.resolve();
+function snapshotDetailNumber(service: QueueLifecycleService, key: string): number {
+  const value = service.createPlatformStatusSnapshot().details[key];
+
+  return typeof value === 'number' ? value : 0;
+}
+
+async function waitForQueueWorkers(service: QueueLifecycleService): Promise<void> {
+  const expectedReady = snapshotDetailNumber(service, 'workersDiscovered');
+
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const snapshot = service.createPlatformStatusSnapshot();
+    const workersReady = snapshotDetailNumber(service, 'workersReady');
+    const workerStartFailures = snapshotDetailNumber(service, 'workerStartFailures');
+
+    if (snapshot.details.lifecycleState === 'started' && workersReady === expectedReady && workerStartFailures === 0) {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  }
+
+  throw new Error('Queue workers did not reach started readiness.');
+}
+
+async function waitForApplicationQueueWorkers(app: { container: { resolve<T>(token: unknown): Promise<T> } }): Promise<void> {
+  await waitForQueueWorkers(await app.container.resolve(QueueLifecycleService));
+}
+
+async function waitForFailedQueueRollback(service: QueueLifecycleService): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const snapshot = service.createPlatformStatusSnapshot();
+    const queuesReady = snapshotDetailNumber(service, 'queuesReady');
+
+    if (snapshot.details.lifecycleState === 'failed' && queuesReady === 0) {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  }
+
+  throw new Error('Queue startup failure did not roll back initialized resources.');
+}
+
+async function waitForRedisDuplicatesClosed(redis: MockRedisClient): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (redis.duplicates.length > 0 && redis.duplicates.every((connection) => connection.status === 'end')) {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  }
+
+  throw new Error('Queue-owned Redis duplicates did not close.');
 }
 
 describe('@fluojs/queue', () => {
@@ -492,7 +546,7 @@ describe('@fluojs/queue', () => {
     });
     const userService = await app.container.resolve(UserService);
     const workerStore = await app.container.resolve(WorkerStore);
-    await waitForQueueWorkers();
+    await waitForApplicationQueueWorkers(app);
 
     const jobId = await userService.register('user-1');
 
@@ -546,7 +600,7 @@ describe('@fluojs/queue', () => {
     });
     const userService = await app.container.resolve(UserService);
     const workerStore = await app.container.resolve(WorkerStore);
-    await waitForQueueWorkers();
+    await waitForApplicationQueueWorkers(app);
 
     await expect(userService.enqueue('user-9')).resolves.toBe('1');
     expect(workerStore.handled).toEqual(['user-9']);
@@ -585,11 +639,24 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
+    const service = await app.container.resolve(QueueLifecycleService);
     const workerStore = await app.container.resolve(WorkerStore);
-    await waitForQueueWorkers();
+    await waitForApplicationQueueWorkers(app);
 
     await expect(queue.enqueue(new BullMqStartupJob('ready'))).resolves.toBe('1');
     expect(workerStore.handled).toEqual(['ready']);
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        dependencies: ['redis.default'],
+        queuesReady: 1,
+        workersDiscovered: 1,
+        workersReady: 1,
+      },
+      ownership: {
+        externallyManaged: false,
+        ownsResources: true,
+      },
+    });
     expect(redis.duplicateOptions).toEqual([
       { maxRetriesPerRequest: null },
       { maxRetriesPerRequest: null },
@@ -599,6 +666,73 @@ describe('@fluojs/queue', () => {
     await app.close();
 
     expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+  });
+
+  it('restricts non-global queue worker discovery to modules that can see the queue provider', async () => {
+    class VisibleJob {
+      constructor(public readonly id: string) {}
+    }
+
+    class HiddenJob {
+      constructor(public readonly id: string) {}
+    }
+
+    class WorkerStore {
+      handled: string[] = [];
+    }
+
+    @Inject(WorkerStore)
+    @QueueWorker(VisibleJob)
+    class VisibleWorker {
+      constructor(private readonly store: WorkerStore) {}
+
+      async handle(job: VisibleJob): Promise<void> {
+        this.store.handled.push(`visible:${job.id}`);
+      }
+    }
+
+    @QueueWorker(HiddenJob)
+    class HiddenWorker {
+      async handle(_job: HiddenJob): Promise<void> {}
+    }
+
+    class VisibleModule {}
+    defineModule(VisibleModule, {
+      imports: [QueueModule.forRoot({ global: false })],
+      providers: [VisibleWorker, WorkerStore],
+    });
+
+    class HiddenModule {}
+    defineModule(HiddenModule, {
+      providers: [HiddenWorker],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [VisibleModule, HiddenModule],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const queue = await app.container.resolve<Queue>(QUEUE);
+    const service = await app.container.resolve(QueueLifecycleService);
+    const workerStore = await app.container.resolve(WorkerStore);
+    await waitForApplicationQueueWorkers(app);
+
+    await expect(queue.enqueue(new VisibleJob('1'))).resolves.toBe('1');
+    await expect(queue.enqueue(new HiddenJob('2'))).rejects.toThrow('No @QueueWorker() registered for job type HiddenJob.');
+    expect(workerStore.handled).toEqual(['visible:1']);
+    expect(service.createPlatformStatusSnapshot().details).toMatchObject({
+      queuesReady: 1,
+      workersDiscovered: 1,
+      workersReady: 1,
+    });
+    expect(bullmqState.workers.has('HiddenJob')).toBe(false);
+
+    await app.close();
   });
 
   it('warns and skips @QueueWorker() classes registered with non-singleton scopes', async () => {
@@ -687,7 +821,7 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
-    await waitForQueueWorkers();
+    await waitForApplicationQueueWorkers(app);
 
     const jobId = await queue.enqueue(new FailingJob('invoice-1'));
 
@@ -745,7 +879,7 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
-    await waitForQueueWorkers();
+    await waitForApplicationQueueWorkers(app);
 
     await queue.enqueue(new MutableFailingJob({ role: 'original' }));
 
@@ -786,7 +920,7 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
-    await waitForQueueWorkers();
+    await waitForApplicationQueueWorkers(app);
 
     await queue.enqueue(new TrimmedDeadLetterJob('job-1'));
     await queue.enqueue(new TrimmedDeadLetterJob('job-2'));
@@ -824,7 +958,7 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
-    await waitForQueueWorkers();
+    await waitForApplicationQueueWorkers(app);
 
     await queue.enqueue(new UnboundedDeadLetterJob('job-1'));
     await queue.enqueue(new UnboundedDeadLetterJob('job-2'));
@@ -884,7 +1018,7 @@ describe('@fluojs/queue', () => {
     });
     const workerStore = await app.container.resolve(WorkerStore);
 
-    await waitForQueueWorkers();
+    await waitForApplicationQueueWorkers(app);
     expect(workerStore.received).toEqual(['bootstrapped']);
     expect(workerStore.receivedDuringBootstrap).toBe(false);
 
@@ -946,7 +1080,7 @@ describe('@fluojs/queue', () => {
     });
     const workerStore = await app.container.resolve(WorkerStore);
 
-    await waitForQueueWorkers();
+    await waitForApplicationQueueWorkers(app);
     expect(workerStore.received).toEqual(['queued-before-later-hook']);
     expect(workerStore.receivedDuringLaterBootstrap).toBe(false);
 
@@ -983,6 +1117,7 @@ describe('@fluojs/queue', () => {
         defaultAttempts: 1,
         defaultConcurrency: 1,
         defaultDeadLetterMaxEntries: 1_000,
+        global: true,
         workerShutdownTimeoutMs: 30_000,
       },
       container as never,
@@ -1016,7 +1151,7 @@ describe('@fluojs/queue', () => {
     });
 
     releaseBootstrapReady.resolve();
-    await waitForQueueWorkers();
+    await waitForQueueWorkers(service);
 
     expect(service.createPlatformStatusSnapshot()).toMatchObject({
       details: {
@@ -1059,12 +1194,13 @@ describe('@fluojs/queue', () => {
     });
     const service = await app.container.resolve(QueueLifecycleService);
 
-    await waitForQueueWorkers();
+    await waitForFailedQueueRollback(service);
 
     expect(service.createPlatformStatusSnapshot()).toMatchObject({
       details: {
         lastWorkerStartFailure: 'worker run fail:RunFailureJob',
         lifecycleState: 'failed',
+        queuesReady: 0,
         workerStartFailures: 1,
         workersDiscovered: 1,
         workersReady: 0,
@@ -1083,6 +1219,10 @@ describe('@fluojs/queue', () => {
         event.includes('error:QueueLifecycleService:Failed to start queue worker RunFailureWorker after application bootstrap.'),
       ),
     ).toBe(true);
+    expect(bullmqState.queues.get('RunFailureJob')?.closeCalls).toBe(1);
+    expect(bullmqState.workers.get('RunFailureJob')?.closeCalls).toBe(1);
+    await waitForRedisDuplicatesClosed(redis);
+    expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
     await expect(service.enqueue(new RunFailureJob('after-failure'))).rejects.toThrow('Queue lifecycle state is failed.');
 
     await app.close();
@@ -1124,7 +1264,7 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
-    await waitForQueueWorkers();
+    await waitForApplicationQueueWorkers(app);
 
     const enqueuePromise = queue.enqueue(new ShutdownFailingJob('job-1'));
     await Promise.resolve();
@@ -1233,6 +1373,7 @@ describe('@fluojs/queue', () => {
         defaultAttempts: 1,
         defaultConcurrency: 1,
         defaultDeadLetterMaxEntries: 1_000,
+        global: true,
         workerShutdownTimeoutMs: 30_000,
       },
       container as never,
@@ -1306,6 +1447,7 @@ describe('@fluojs/queue', () => {
         defaultAttempts: 1,
         defaultConcurrency: 1,
         defaultDeadLetterMaxEntries: 1_000,
+        global: true,
         workerShutdownTimeoutMs: 30_000,
       },
       container as never,
@@ -1437,13 +1579,18 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
+    const service = await app.container.resolve(QueueLifecycleService);
     await vi.advanceTimersByTimeAsync(0);
 
     void queue.enqueue(new HangingProcessorJob('job-1'));
     await Promise.resolve();
 
     const closePromise = app.close();
-    await vi.advanceTimersByTimeAsync(25);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(service.createPlatformStatusSnapshot().details).toMatchObject({ lifecycleState: 'stopping' });
+    await expect(queue.enqueue(new HangingProcessorJob('job-while-stopping'))).rejects.toThrow('Queue lifecycle state is stopping.');
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(26);
     await closePromise;
 
     const worker = bullmqState.workers.get('hanging-processor-job');
@@ -1475,7 +1622,7 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
-    await waitForQueueWorkers();
+    await waitForApplicationQueueWorkers(app);
 
     await expect(queue.enqueue(new ArrayPayloadJob())).rejects.toThrow(
       'Queue payload must be a plain object after JSON serialization.',
@@ -1504,7 +1651,7 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
-    await waitForQueueWorkers();
+    await waitForApplicationQueueWorkers(app);
 
     await expect(queue.enqueue(new MissingHandleJob('job-1'))).resolves.toBe('1');
 
@@ -1669,7 +1816,7 @@ describe('@fluojs/queue', () => {
       rootModule: AppModule,
     });
     const queue = await app.container.resolve<Queue>(QUEUE);
-    await waitForQueueWorkers();
+    await waitForApplicationQueueWorkers(app);
 
     await queue.enqueue(new DefaultedJob('ok'));
 
