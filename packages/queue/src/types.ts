@@ -56,6 +56,7 @@ export interface NormalizedQueueModuleOptions {
   defaultConcurrency: number;
   defaultDeadLetterMaxEntries: number | false;
   defaultRateLimiter?: QueueRateLimiterOptions;
+  global: boolean;
   workerShutdownTimeoutMs: number;
 }
 

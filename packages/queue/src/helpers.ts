@@ -20,6 +20,9 @@ export interface DiscoveryCandidate {
   token: Token;
 }
 
+/** Selects whether one compiled module participates in worker discovery. */
+export type DiscoveryModuleFilter = (compiledModule: CompiledModule) => boolean;
+
 /**
  * Scope from provider.
  *
@@ -54,10 +57,17 @@ export function isClassProvider(provider: Provider): provider is Extract<Provide
  * @param compiledModules The compiled modules.
  * @returns The collect discovery candidates result.
  */
-export function collectDiscoveryCandidates(compiledModules: readonly CompiledModule[]): DiscoveryCandidate[] {
+export function collectDiscoveryCandidates(
+  compiledModules: readonly CompiledModule[],
+  moduleFilter: DiscoveryModuleFilter = () => true,
+): DiscoveryCandidate[] {
   const candidates: DiscoveryCandidate[] = [];
 
   for (const compiledModule of compiledModules) {
+    if (!moduleFilter(compiledModule)) {
+      continue;
+    }
+
     for (const provider of compiledModule.definition.providers ?? []) {
       if (typeof provider === 'function') {
         candidates.push({

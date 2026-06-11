@@ -1,7 +1,7 @@
 import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
 
 import { getQueueWorkerMetadata } from './metadata.js';
-import { collectDiscoveryCandidates, normalizePositiveInteger, normalizeRateLimiter } from './helpers.js';
+import { collectDiscoveryCandidates, type DiscoveryModuleFilter, normalizePositiveInteger, normalizeRateLimiter } from './helpers.js';
 import type { NormalizedQueueModuleOptions, QueueJobType, QueueWorkerDescriptor, QueueWorkerMetadata } from './types.js';
 
 /**
@@ -16,11 +16,12 @@ export function discoverQueueWorkerDescriptors(
   compiledModules: readonly CompiledModule[],
   options: NormalizedQueueModuleOptions,
   logger: ApplicationLogger,
+  moduleFilter?: DiscoveryModuleFilter,
 ): Map<QueueJobType, QueueWorkerDescriptor> {
   const descriptorsByJobType = new Map<QueueJobType, QueueWorkerDescriptor>();
   const seenJobNames = new Set<string>();
 
-  for (const candidate of collectDiscoveryCandidates(compiledModules)) {
+  for (const candidate of collectDiscoveryCandidates(compiledModules, moduleFilter)) {
     const metadata = getQueueWorkerMetadata(candidate.targetType);
 
     if (!metadata) {
