@@ -43,6 +43,11 @@ class CreateUserDto {
   name!: string;
 }
 
+class FindUserParamsDto {
+  @FromPath('id')
+  id!: string;
+}
+
 @Controller('/users')
 export class UserController {
   @Post('/')
@@ -52,8 +57,9 @@ export class UserController {
   }
 
   @Get('/:id')
-  getById(@FromPath('id') id: string) {
-    return { id, name: 'John Doe' };
+  @RequestDto(FindUserParamsDto)
+  getById(input: FindUserParamsDto) {
+    return { id: input.id, name: 'John Doe' };
   }
 }
 ```
@@ -98,7 +104,7 @@ function someDeepHelper() {
 }
 ```
 
-`runWithRequestContext(...)` preserves the active context across awaited work when the host provides `AsyncLocalStorage` through `globalThis.AsyncLocalStorage` or Node's built-in `node:async_hooks` module. The root `@fluojs/http` import does not probe or instantiate async-context storage; helpers resolve storage lazily on first use, guard `process.getBuiltinModule(...)` failures, and can still resolve `node:async_hooks` dynamically for Node hosts that do not expose the synchronous probe. Non-Node hosts without an async-context primitive use a synchronous stack fallback that clears the context before awaited continuations resume, avoiding cross-request leaks instead of pretending to isolate overlapping async work.
+`runWithRequestContext(...)` preserves the active context across awaited work when the host provides `AsyncLocalStorage` through `globalThis.AsyncLocalStorage` or Node's built-in `node:async_hooks` module. The root `@fluojs/http` import does not probe or instantiate async-context storage; helpers resolve storage lazily on first use, guard `process.getBuiltinModule(...)` failures, and defer the first callback until `node:async_hooks` resolves on Node hosts that do not expose the synchronous probe so overlapping promise-returning callbacks keep isolated context instead of falling through a shared stack. Non-Node hosts without an async-context primitive use a synchronous stack fallback that clears the context before awaited continuations resume, avoiding cross-request leaks instead of pretending to isolate overlapping async work.
 
 ### Rate limiting behind proxies
 
@@ -182,7 +188,7 @@ This compatibility path is an execution fallback for Bun bundle output; applicat
 
 The dispatcher binds `RequestContext` with host async-context storage for the active dispatch only. On hosts with `AsyncLocalStorage`, including supported Node 20+ runtimes, the context remains available across awaited work. On non-Node hosts without an async-context primitive, the fallback context is synchronous-only and intentionally unavailable after `await` so overlapping requests cannot observe one another's context. When a request may use request-scoped DI through its controller graph, middleware, guards, interceptors, observers, DTO converters, a custom binder, or manual `getCurrentRequestContext()` / `assertRequestContext()` container access, the dispatcher creates and disposes an isolated request-scoped DI container from its `finally` path after request observers finish. Singleton-only routes skip that container lifecycle until `RequestContext.container` is accessed, so the baseline path avoids unnecessary per-request allocation while preserving request-scoped provider isolation whenever the graph is ambiguous or request-scoped. Public `RequestContext.container` reads are therefore always safe for resolving request-scoped providers; the singleton-only fast path is an internal dispatcher optimization, not a promise that the public context exposes the root container.
 
-Adapters should pass an `AbortSignal` on `FrameworkRequest.signal` when the platform exposes one. For SSE, adapters should also expose `FrameworkResponse.stream.onClose(...)` when possible; `SseResponse` listens to both request abort and raw stream close, closes idempotently, and removes registered listeners when either side terminates first.
+Adapters should pass an `AbortSignal` on `FrameworkRequest.signal` when the platform exposes one, or an `isAborted()` probe when allocating a signal is not practical. The dispatcher preserves both abort surfaces on its per-dispatch request clone and checks them before and after handler work so adapters without `AbortSignal` can still stop abandoned requests. For SSE, adapters should also expose `FrameworkResponse.stream.onClose(...)` when possible; `SseResponse` listens to both request abort and raw stream close, closes idempotently, and removes registered listeners when either side terminates first.
 
 ## Public API
 
