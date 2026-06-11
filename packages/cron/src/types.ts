@@ -228,4 +228,11 @@ export interface SchedulingRegistry {
    * @param expression New cron expression validated before rescheduling.
    */
   updateCronExpression(name: string, expression: string): void;
+  /**
+   * Replaces the millisecond cadence for an existing interval task.
+   *
+   * @param name Task name to update.
+   * @param ms New positive interval in milliseconds.
+   */
+  updateIntervalMs(name: string, ms: number): void;
 }
