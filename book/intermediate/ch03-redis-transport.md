@@ -49,6 +49,41 @@ Redis requires a dedicated connection for subscribe mode. For that reason, subsc
 
 If the same app also registers `@fluojs/redis`, keep that package's shared `REDIS_CLIENT` for ordinary commands such as cache reads, pipelines, Lua scripts, and queue helpers. Do not reuse it as the Pub/Sub subscriber connection: a subscribed Redis connection enters subscribe mode and can no longer safely serve normal command traffic. Give the Pub/Sub transport a dedicated subscriber via `duplicate()` or a separate named Redis registration, and let `@fluojs/redis` own connect/quit timeouts for the clients it creates.
 
+The ownership boundary depends on how you create the subscriber. A `redisClient.duplicate()` subscriber is not automatically tracked by `RedisModule`; the application that duplicated it must connect it, pass it to the transport, and close it during shutdown. If you want fluo's Redis lifecycle options to cover both the command client and the subscriber, register a named client and inject it with `getRedisClientToken(name)`:
+
+```typescript
+import { Inject, Module } from '@fluojs/core';
+import { getRedisClientToken, RedisModule } from '@fluojs/redis';
+import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices';
+import type Redis from 'ioredis';
+
+const COMMAND_REDIS = getRedisClientToken();
+const SUBSCRIBER_REDIS = getRedisClientToken('subscriber');
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRoot({ name: 'subscriber', host: 'localhost', port: 6379 }),
+  ],
+})
+export class RedisConnectionsModule {}
+
+@Inject(COMMAND_REDIS, SUBSCRIBER_REDIS)
+export class NotificationTransportFactory {
+  constructor(
+    private readonly commandClient: Redis,
+    private readonly subscriberClient: Redis,
+  ) {}
+
+  createTransport() {
+    return new RedisPubSubMicroserviceTransport({
+      publishClient: this.commandClient,
+      subscribeClient: this.subscriberClient,
+    });
+  }
+}
+```
+
 ## 3.2 Redis Streams for Durable Delivery
 
 Persistence is essential for important work such as order processing or payment coordination. `RedisStreamsMicroserviceTransport` uses Redis Streams and consumer groups to provide at-least-once delivery. In **FluoShop**, this is the right choice for the Order to Payment handoff. When an order is created, the requirement is not just a fast response. You need a guarantee that the Payment Service can eventually see that order, even if it is restarting. Streams are therefore a better fit when eventual completion matters more than immediate response time. FluoShop reaches exactly that point the moment money becomes involved. It is unacceptable for order intent to disappear silently. By contrast, it is much safer if payment events can be reclaimed and retried.
