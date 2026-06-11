@@ -395,6 +395,25 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts testing-guide and package-surface guidance when context, testing regressions, and governance tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/contracts/testing-guide.md',
+        'docs/contracts/testing-guide.ko.md',
+        'docs/reference/package-surface.md',
+        'docs/reference/package-surface.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/testing/src/module.test.ts',
+        'packages/testing/src/portability/http-adapter-portability.test.ts',
+        'packages/testing/src/conformance/platform-conformance.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('accepts Studio live package-surface guidance when context discoverability and live contract tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 

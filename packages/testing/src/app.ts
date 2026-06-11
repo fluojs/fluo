@@ -59,6 +59,7 @@ export async function createTestApp(options: TestingApplicationOptions): Promise
     ...options,
     middleware: [createTestRequestContextMiddleware(), ...(options.middleware ?? [])],
   });
+  let closePromise: Promise<void> | undefined;
 
   const request: TestApp['request'] = (
     methodOrRequest: string | TestRequest,
@@ -76,7 +77,8 @@ export async function createTestApp(options: TestingApplicationOptions): Promise
     request,
     dispatch,
     close: async () => {
-      await app.close();
+      closePromise ??= app.close();
+      await closePromise;
     },
   };
 }

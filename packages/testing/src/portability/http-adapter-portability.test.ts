@@ -71,6 +71,11 @@ interface PortabilityAssertions {
   assertSupportsSseStreaming(): Promise<void>;
 }
 
+interface CleanupTrackedApp {
+  close(): Promise<void>;
+  listen(): Promise<void>;
+}
+
 function registerPortabilitySuite(
   name: string,
   harness: PortabilityAssertions,
@@ -127,6 +132,69 @@ function registerPortabilitySuite(
 }
 
 describe('http adapter portability cleanup reporting', () => {
+  it('closes partially bootstrapped apps surfaced by rejected run callbacks', async () => {
+    const close = vi.fn(async () => {});
+    const app = {
+      close,
+      async listen() {},
+    };
+    class RunFailure extends Error {
+      constructor(readonly app: CleanupTrackedApp) {
+        super('run exploded');
+      }
+    }
+    const runError = new RunFailure(app);
+    const harness = createHttpAdapterPortabilityHarness({
+      async bootstrap() {
+        throw new Error('bootstrap should not be used');
+      },
+      name: 'run-cleanup',
+      async run() {
+        throw runError;
+      },
+    });
+
+    await expect(harness.assertReportsConfiguredHostInStartupLogs()).rejects.toBe(runError);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves run and cleanup failures when rejected run callback cleanup fails', async () => {
+    const closeError = new Error('close exploded');
+    const app = {
+      async close() {
+        throw closeError;
+      },
+      async listen() {},
+    };
+    class RunFailure extends Error {
+      constructor(readonly app: CleanupTrackedApp) {
+        super('run exploded');
+      }
+    }
+    const runError = new RunFailure(app);
+    const harness = createHttpAdapterPortabilityHarness({
+      async bootstrap() {
+        throw new Error('bootstrap should not be used');
+      },
+      name: 'run-cleanup-fails',
+      async run() {
+        throw runError;
+      },
+    });
+
+    try {
+      await harness.assertReportsConfiguredHostInStartupLogs();
+      throw new Error('Expected run cleanup failure to be reported.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      if (!(error instanceof AggregateError)) {
+        throw error;
+      }
+      expect(error.message).toContain('run() rejected and app.close() also failed');
+      expect(error.errors).toEqual([runError, closeError]);
+    }
+  });
+
   it('closes partially bootstrapped apps when listen fails before assertion cleanup registration', async () => {
     const listenError = new Error('listen exploded');
     const close = vi.fn(async () => {});

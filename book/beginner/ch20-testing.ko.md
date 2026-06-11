@@ -55,7 +55,7 @@
 pnpm add -D @fluojs/testing vitest @babel/core
 ```
 
-`vitest`는 global binary가 아니라 프로젝트 dev dependency로 설치하세요. `@fluojs/testing`은 mock 헬퍼와 `@fluojs/testing/vitest` 엔트리포인트를 위해 Vitest를 peer dependency로 선언하므로, 각 consuming workspace가 테스트에 사용할 로컬 버전을 제공해야 합니다. `@babel/core`가 필요한 이유는 `@fluojs/testing/vitest`가 테스트 실행 중에 표준 데코레이터를 처리하기 위해 Babel 플러그인을 사용하기 때문입니다. TypeScript가 타입을 처리하는 동안 Babel은 테스트 중에도 런타임과 동일한 표준 데코레이터 동작을 보장합니다.
+`vitest`는 global binary가 아니라 프로젝트 dev dependency로 설치하세요. `@fluojs/testing`은 mock 헬퍼와 `@fluojs/testing/vitest` 엔트리포인트를 위해 Vitest를 peer dependency로 선언하므로, 각 consuming workspace가 테스트에 사용할 로컬 버전을 제공해야 합니다. `@babel/core`가 필요한 이유는 `@fluojs/testing/vitest`가 테스트 실행 중에 표준 데코레이터를 처리하기 위해 Babel 플러그인을 사용하기 때문입니다. TypeScript가 타입을 처리하는 동안 Babel은 테스트 중에도 런타임과 동일한 표준 데코레이터 동작을 보장합니다. 이 패키지 자체는 Node.js 20+ engine floor를 선언합니다. Node/Vitest 경로로 실행하지 않는 runtime-native Deno/Bun 테스트 예제는 각 어댑터 장의 지침을 따르세요.
 
 ### Vitest Configuration
 프로젝트 루트에 `vitest.config.ts` 파일을 생성합니다:
@@ -168,10 +168,11 @@ describe('PostService', () => {
 때로는 모듈 그래프가 컴파일될 때 프로바이더가 올바르게 초기화되는지 테스트해야 할 때가 있습니다. `createTestingModule()`은 컴파일 시점의 모듈 연결, 프로바이더 가시성, 프로바이더/가드/인터셉터 교체를 검증하는 슬라이스 테스트 표면입니다. 컴파일된 `TestingModuleRef`는 해결(resolve) 및 디스패치 헬퍼를 제공하지만 별도의 `close()` 라이프사이클 단계는 제공하지 않습니다. 정리(cleanup) 검증은 테스트 대상 프로바이더 안에서 명시적으로 수행하거나, 반환된 앱이 `close()`를 노출하는 `createTestApp()` 기반 요청/애플리케이션 라이프사이클 테스트로 옮기세요.
 
 ## 20.4 Provider Overrides
-`fluo`는 실제 컴포넌트를 테스트 대역(test double)으로 교체하는 여러 가지 방법을 제공합니다. 이 기능을 사용하면 외부 시스템의 불안정성은 제거하면서도, 테스트하려는 모듈의 DI 연결과 실행 흐름은 그대로 검증할 수 있습니다.
+`fluo`는 실제 컴포넌트를 테스트 대역(test double)으로 교체하는 여러 가지 방법을 제공합니다. 이 기능을 사용하면 외부 시스템의 불안정성은 제거하면서도, 테스트하려는 모듈의 DI 연결과 실행 흐름은 그대로 검증할 수 있습니다. Request-facing guard와 interceptor는 `TestingModuleRef.dispatch(...)` 또는 `createTestApp(...)` 기반 request-path assertion을 추가해 애플리케이션이 사용하는 동일한 pipeline에서 override가 검증되도록 하세요.
 
 - **`overrideProvider(token, value)`**: 특정 토큰을 값(객체 또는 인스턴스)으로 교체합니다.
 - **`overrideProviders([[token, value], ...])`**: 여러 토큰을 한 번에 교체합니다.
+- **`overrideGuard(...)`, `overrideInterceptor(...)`, `overrideFilter(...)`**: 컴파일 전에 cross-cutting request pipeline token을 교체합니다. Filter 동작 자체가 계약이면 runtime app registration과 함께 검증하세요.
 
 ### Mocks vs Fakes
 - **모의 객체(Mock)**: 호출 기록을 남기고 반환 값을 제어할 수 있는 객체입니다(예: `vi.fn()`). 상호작용을 검증하고 "연결 상태를 확인"할 때 좋습니다.
@@ -316,7 +317,7 @@ Fluo 테스트 유틸리티의 큰 장점 중 하나는 TypeScript와의 깊은 
 ## 20.7 Best Practices for FluoBlog Testing
 1.  **프레임워크를 테스트하지 마세요**: `@Get()`이 작동하는지가 아니라, 애플리케이션의 비즈니스 로직에 집중하세요. `fluo`가 라우팅을 처리한다고 전제하고, 해당 경로가 호출되었을 때 작성한 코드가 무엇을 하는지 테스트하세요.
 2.  **데이터베이스에는 가짜(Fake)를 사용하세요**: 통합 테스트는 실제 테스트용 데이터베이스(예: Docker의 PostgreSQL)를 사용할 수 있지만, 단위 테스트는 속도를 위해 항상 모의 객체나 가짜를 사용해야 합니다.
-3.  **리소스 정리**: request 또는 application lifecycle 테스트에서는 `createTestApp()`으로 앱을 만들고 테스트 후 `await app.close()`를 호출하세요. `createTestingModule()` slice 테스트에서는 컴파일된 `TestingModuleRef`가 application lifecycle 소유자가 아니라 resolve 및 dispatch 표면이므로, 테스트 대상 provider나 fake 안에서 cleanup 기대치를 명시적으로 검증하세요.
+3.  **리소스 정리**: request 또는 application lifecycle 테스트에서는 `createTestApp()`으로 앱을 만들고 테스트 후 `finally`에서 `await app.close()`를 호출하세요. `createTestingModule()` slice 테스트에서는 컴파일된 `TestingModuleRef`가 application lifecycle 소유자가 아니라 resolve 및 dispatch 표면이므로, 테스트 대상 provider나 fake 안에서 cleanup 기대치를 명시적으로 검증하세요.
 4.  **보안을 위한 통합 테스트**: 항상 가드와 RBAC 로직은 통합 테스트에서 테스트하세요. 단위 테스트는 대개 이를 우회하므로, 통합 테스트가 실제 보안을 검증하는 곳입니다.
 5.  **결정론적 테스트**: 테스트에서 `Date.now()`나 랜덤 숫자를 직접 사용하는 것을 피하세요. Vitest의 시간 여행 기능(`vi.useFakeTimers()`)을 사용하여 테스트가 실행될 때마다 동일하게 동작하도록 보장하세요.
 

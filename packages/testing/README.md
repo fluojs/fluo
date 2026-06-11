@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Default request-level testing helpers, testing module construction, and provider overrides for fluo applications.
+Node.js 20+ request-level testing helpers, testing module construction, and provider overrides for fluo applications.
 
 ## Table of Contents
 
@@ -18,7 +18,7 @@ Default request-level testing helpers, testing module construction, and provider
 ## Installation
 
 ```bash
-npm install --save-dev @fluojs/testing vitest
+pnpm add -D @fluojs/testing vitest
 ```
 
 `vitest` is a required peer dependency for the mock helpers and the `@fluojs/testing/vitest` entrypoint. `@babel/core` is declared as a peer because the Vitest decorators plugin loads Babel from the consuming workspace; package managers may surface that peer even when you only use the non-Vitest harness subpaths.
@@ -26,7 +26,7 @@ npm install --save-dev @fluojs/testing vitest
 If you use `@fluojs/testing/vitest`, install `@babel/core` in the consuming workspace as well because `fluoBabelDecoratorsPlugin()` invokes Babel at runtime. The Vitest plugin transforms `.ts`, `.tsx`, `.mts`, and `.cts` source ids after removing Vite query/hash suffixes, skips `node_modules`, and resolves the nearest root Babel config named `babel.config.cjs`, `babel.config.mjs`, `babel.config.js`, or `babel.config.json`:
 
 ```bash
-npm install --save-dev @babel/core
+pnpm add -D @babel/core
 ```
 
 ## When to Use
@@ -43,17 +43,19 @@ import { createTestApp } from '@fluojs/testing';
 
 const app = await createTestApp({ rootModule: AppModule });
 
-const response = await app
-  .request('POST', '/users/')
-  .header('x-request-id', 'test-request-1')
-  .query('include', 'profile')
-  .principal({ subject: 'user-1', roles: ['admin'] })
-  .body({ name: 'Ada' })
-  .send();
+try {
+  const response = await app
+    .request('POST', '/users/')
+    .header('x-request-id', 'test-request-1')
+    .query('include', 'profile')
+    .principal({ subject: 'user-1', roles: ['admin'] })
+    .body({ name: 'Ada' })
+    .send();
 
-expect(response.status).toBe(201);
-
-await app.close();
+  expect(response.status).toBe(201);
+} finally {
+  await app.close();
+}
 ```
 
 Use `createTestApp({ rootModule })` as the default HTTP/e2e-style path for application routes, guards, interceptors, DTO validation, request bodies, query parameters, headers, synthetic principals, and serialized responses. Reach for `createTestingModule(...)` when the contract is module wiring, provider visibility, or provider/guard/interceptor overrides inside one slice.
@@ -75,7 +77,7 @@ const module = await createTestingModule({ rootModule: AppModule })
 const service = await module.resolve(UserService);
 ```
 
-The testing builder also supports `overrideGuard(...)`, `overrideInterceptor(...)`, and `overrideFilter(...)` for route-pipeline tests that need to replace cross-cutting behavior.
+The testing builder also supports `overrideProviders([[token, value], ...])`, `overrideGuard(...)`, `overrideInterceptor(...)`, and `overrideFilter(...)` for route-pipeline tests that need to replace cross-cutting behavior. Guard and interceptor overrides are request-path safe when the route references the same token via `@UseGuards(...)` or `@UseInterceptors(...)`; filter overrides replace the token in the compiled module graph and should be paired with request-level coverage where that filter is registered in the runtime app surface.
 
 `compile()` follows production module-bootstrap semantics for lifecycle-bearing singleton providers: it resolves the effective provider graph, runs `onModuleInit()` for each resolved instance, then runs `onApplicationBootstrap()` in the same provider order before the testing module is returned. `get()` keeps DI ownership semantics for synchronous singleton and multi-provider paths, so repeated sync reads reuse the same singleton contributions and `module.container.dispose()` can still clean them up.
 
@@ -99,20 +101,22 @@ import { createTestApp } from '@fluojs/testing';
 
 const app = await createTestApp({ rootModule: AppModule });
 
-const response = await app
-  .request('POST', '/users/')
-  .header('authorization', 'Bearer test-token')
-  .query('include', ['profile', 'settings'])
-  .principal({ subject: 'user-1', roles: ['member'] })
-  .body({ name: 'Ada' })
-  .send();
+try {
+  const response = await app
+    .request('POST', '/users/')
+    .header('authorization', 'Bearer test-token')
+    .query('include', ['profile', 'settings'])
+    .principal({ subject: 'user-1', roles: ['member'] })
+    .body({ name: 'Ada' })
+    .send();
 
-expect(response.status).toBe(201);
-
-await app.close();
+  expect(response.status).toBe(201);
+} finally {
+  await app.close();
+}
 ```
 
-`app.request(...).send()` is the preferred app-developer path because it keeps tests close to HTTP semantics without manual `FrameworkRequest`/`FrameworkResponse` stubs. Keep `app.dispatch(...)`, `makeRequest(...)`, and raw `FluoFactory.create(...)` tests for adapter/runtime contracts, framework internals, or compatibility cases where the low-level dispatch boundary itself is what the test must prove.
+`app.request(...).send()` is the preferred app-developer path because it keeps tests close to HTTP semantics without manual `FrameworkRequest`/`FrameworkResponse` stubs. Close the returned app from a `finally` block so assertion failures do not leak runtime resources. Keep `app.dispatch(...)`, `makeRequest(...)`, and raw `FluoFactory.create(...)` tests for adapter/runtime contracts, framework internals, or compatibility cases where the low-level dispatch boundary itself is what the test must prove.
 
 `createTestApp(...)` accepts the same application bootstrap options as the runtime HTTP bootstrap, including `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, and diagnostics options. The testing helper prepends its request-context middleware while preserving caller-provided middleware in the same app middleware chain.
 
@@ -126,7 +130,7 @@ const repo = createMock<UserRepository>({ findById: vi.fn() });
 const mailer = createDeepMock(MailService);
 ```
 
-`asMock(value)` narrows an existing value to a mock-friendly type, and `mockToken(token, value)` creates a provider override tuple for token-based dependencies. `createMock(..., { strict: true })` rejects access to unspecified members.
+`asMock(value)` narrows an existing value to a mock-friendly type, and `mockToken(token, value)` creates a provider override tuple for token-based dependencies. `createMock(..., { strict: true })` rejects access to unspecified members. `DeepMocked<T>` is exposed from the shared testing types for compatibility and intentionally reflects the Vitest mock type boundary; consumers that do not use Vitest should import only non-mock helpers from `@fluojs/testing/app`, `@fluojs/testing/module`, or the harness subpaths.
 
 Install `vitest` in the consuming workspace before using the mock helpers so the published runtime import resolves consistently.
 
@@ -134,7 +138,7 @@ Install `vitest` in the consuming workspace before using the mock helpers so the
 
 Use subpaths like `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, and `@fluojs/testing/web-runtime-adapter-portability` when authoring framework-facing platform packages.
 
-Portability harness cleanup is part of the contract: if setup, `listen()`, or an assertion fails after an app has been bootstrapped, the harness closes that partial app. If `app.close()` fails, the harness reports that cleanup failure, and when setup or an assertion already failed it raises an aggregate error that preserves both the original failure and the cleanup failure.
+Portability harness cleanup is part of the contract: if setup, `listen()`, a run callback that surfaces a partial app, or an assertion fails after an app has been bootstrapped, the harness closes that partial app. If `app.close()` fails, the harness reports that cleanup failure, and when setup or an assertion already failed it raises an aggregate error that preserves both the original failure and the cleanup failure.
 
 `HttpAdapterPortabilityHarness` and web-runtime portability harness methods are the public adapter contract checks. Prefer focused assertions such as `assertPreservesMalformedCookieValues()`, `assertSupportsSseStreaming()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, `assertDefaultsMultipartTotalLimitToMaxBodySize()`, `assertSettlesStreamDrainWaitOnClose()`, `assertReportsConfiguredHostInStartupLogs()`, `assertReportsHttpsStartupUrl(...)`, and `assertRemovesShutdownSignalListenersAfterClose()` instead of hand-rolled equivalents.
 
@@ -167,6 +171,8 @@ fluo differs from NestJS by requiring tests to name an explicit `rootModule`. Th
 - **Subpaths**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock`, `@fluojs/testing/types`, `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
 - **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`
 - **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` and `@fluojs/testing/vitest/tooling` with Vitest workspace config helpers (requires `vitest` and `@babel/core` in the consuming workspace)
+
+The package manifest declares `engines.node >=20.0.0`. Non-Node runtime application tests can still use runtime-native tools where documented, but the published `@fluojs/testing` package itself is governed by that Node.js engine floor.
 
 `@fluojs/testing/vitest/tooling` maps workspace aliases only for each package's declared public `exports`. Private source files, internal helpers, and unexported source entrypoints are intentionally excluded so tests exercise the same import boundaries that consumers receive from published packages.
 

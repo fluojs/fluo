@@ -158,29 +158,41 @@ export class PlatformConformanceHarness {
 
   async assertValidationHasNoLongLivedSideEffects(): Promise<void> {
     const component = this.options.createComponent();
-    const beforeState = component.state();
-    const beforeEffects = this.options.captureValidationSideEffects
-      ? await this.options.captureValidationSideEffects(component)
-      : undefined;
+    let assertionError: unknown;
 
-    await component.validate();
+    try {
+      const beforeState = component.state();
+      const beforeEffects = this.options.captureValidationSideEffects
+        ? await this.options.captureValidationSideEffects(component)
+        : undefined;
 
-    const afterState = component.state();
-    if (beforeState !== afterState) {
-      throw new Error(
-        `validate() must not transition component state. Expected "${beforeState}" but received "${afterState}".`,
+      await component.validate();
+
+      const afterState = component.state();
+      if (beforeState !== afterState) {
+        throw new Error(
+          `validate() must not transition component state. Expected "${beforeState}" but received "${afterState}".`,
+        );
+      }
+
+      if (!this.options.captureValidationSideEffects) {
+        return;
+      }
+
+      const compare = this.options.snapshot?.compare ?? defaultCompare;
+      const afterEffects = await this.options.captureValidationSideEffects(component);
+
+      if (!compare(beforeEffects, afterEffects)) {
+        throw new Error('validate() introduced long-lived side effects.');
+      }
+    } catch (error) {
+      assertionError = error;
+    } finally {
+      await runCleanupWithAssertionContext(
+        () => component.stop(),
+        'stop() after validation side-effect check',
+        assertionError,
       );
-    }
-
-    if (!this.options.captureValidationSideEffects) {
-      return;
-    }
-
-    const compare = this.options.snapshot?.compare ?? defaultCompare;
-    const afterEffects = await this.options.captureValidationSideEffects(component);
-
-    if (!compare(beforeEffects, afterEffects)) {
-      throw new Error('validate() introduced long-lived side effects.');
     }
   }
 
@@ -216,34 +228,41 @@ export class PlatformConformanceHarness {
   async assertStopIsIdempotent(): Promise<void> {
     const component = this.options.createComponent();
     const compare = this.options.snapshot?.compare ?? defaultCompare;
+    let assertionError: unknown;
 
-    const startOutcome = await captureOutcome(() => component.start());
-    if (!startOutcome.ok) {
-      throw new Error(`stop() idempotency check requires a startable component: ${startOutcome.message}`);
-    }
+    try {
+      const startOutcome = await captureOutcome(() => component.start());
+      if (!startOutcome.ok) {
+        throw new Error(`stop() idempotency check requires a startable component: ${startOutcome.message}`);
+      }
 
-    const firstStop = await captureOutcome(() => component.stop());
-    if (!firstStop.ok) {
-      throw new Error(`first stop() call failed: ${firstStop.message}`);
-    }
+      const firstStop = await captureOutcome(() => component.stop());
+      if (!firstStop.ok) {
+        throw new Error(`first stop() call failed: ${firstStop.message}`);
+      }
 
-    const firstState = component.state();
-    const firstSnapshot = component.snapshot();
+      const firstState = component.state();
+      const firstSnapshot = component.snapshot();
 
-    const secondStop = await captureOutcome(() => component.stop());
-    if (!secondStop.ok) {
-      throw new Error(`stop() is not idempotent: second call failed with "${secondStop.message}".`);
-    }
+      const secondStop = await captureOutcome(() => component.stop());
+      if (!secondStop.ok) {
+        throw new Error(`stop() is not idempotent: second call failed with "${secondStop.message}".`);
+      }
 
-    const secondState = component.state();
-    const secondSnapshot = component.snapshot();
+      const secondState = component.state();
+      const secondSnapshot = component.snapshot();
 
-    if (firstState !== secondState) {
-      throw new Error(`stop() changed state across duplicate calls (${firstState} -> ${secondState}).`);
-    }
+      if (firstState !== secondState) {
+        throw new Error(`stop() changed state across duplicate calls (${firstState} -> ${secondState}).`);
+      }
 
-    if (!compare(firstSnapshot, secondSnapshot)) {
-      throw new Error('stop() is not idempotent: duplicate calls changed component snapshot output.');
+      if (!compare(firstSnapshot, secondSnapshot)) {
+        throw new Error('stop() is not idempotent: duplicate calls changed component snapshot output.');
+      }
+    } catch (error) {
+      assertionError = error;
+    } finally {
+      await runCleanupWithAssertionContext(() => component.stop(), 'final stop() after stop() idempotency check', assertionError);
     }
   }
 
@@ -285,61 +304,77 @@ export class PlatformConformanceHarness {
 
   async assertStableDiagnostics(): Promise<void> {
     const component = this.options.createComponent();
-    const validation = await component.validate();
-    const diagnostics: PlatformDiagnosticIssue[] = [...validation.issues, ...(validation.warnings ?? [])];
+    let assertionError: unknown;
 
-    if (this.options.diagnostics?.collect) {
-      const extra = await this.options.diagnostics.collect(component, validation);
-      diagnostics.push(...extra);
-    }
+    try {
+      const validation = await component.validate();
+      const diagnostics: PlatformDiagnosticIssue[] = [...validation.issues, ...(validation.warnings ?? [])];
 
-    const requiredFixHintSeverities =
-      this.options.diagnostics?.requireFixHintForSeverities ?? DEFAULT_REQUIRED_FIX_HINT_SEVERITIES;
-
-    for (const issue of diagnostics) {
-      if (issue.code.trim().length === 0) {
-        throw new Error(`Diagnostics must provide a stable non-empty code. Received message: ${issue.message}`);
+      if (this.options.diagnostics?.collect) {
+        const extra = await this.options.diagnostics.collect(component, validation);
+        diagnostics.push(...extra);
       }
 
-      if (requiredFixHintSeverities.includes(issue.severity) && (!issue.fixHint || issue.fixHint.trim().length === 0)) {
+      const requiredFixHintSeverities =
+        this.options.diagnostics?.requireFixHintForSeverities ?? DEFAULT_REQUIRED_FIX_HINT_SEVERITIES;
+
+      for (const issue of diagnostics) {
+        if (issue.code.trim().length === 0) {
+          throw new Error(`Diagnostics must provide a stable non-empty code. Received message: ${issue.message}`);
+        }
+
+        if (requiredFixHintSeverities.includes(issue.severity) && (!issue.fixHint || issue.fixHint.trim().length === 0)) {
+          throw new Error(
+            `Diagnostic ${issue.code} (${issue.severity}) must provide a fixHint. Message: ${issue.message}`,
+          );
+        }
+      }
+
+      const expectedCodes = this.options.diagnostics?.expectedCodes;
+      if (!expectedCodes) {
+        return;
+      }
+
+      const normalizeCodes = (codes: readonly string[]): string[] => [...new Set(codes)].sort();
+      const actualCodes = normalizeCodes(diagnostics.map((diagnostic) => diagnostic.code));
+      const normalizedExpectedCodes = normalizeCodes(expectedCodes);
+
+      if (!defaultCompare(actualCodes, normalizedExpectedCodes)) {
+        const actualDetails = diagnostics
+          .map((diagnostic) => `${diagnostic.code}(${diagnostic.severity}): ${diagnostic.message}`)
+          .join('; ');
         throw new Error(
-          `Diagnostic ${issue.code} (${issue.severity}) must provide a fixHint. Message: ${issue.message}`,
+          `Diagnostic code set changed. Expected [${normalizedExpectedCodes.join(', ')}] but received [${actualCodes.join(', ')}]. Actual diagnostics: ${actualDetails}`,
         );
       }
-    }
-
-    const expectedCodes = this.options.diagnostics?.expectedCodes;
-    if (!expectedCodes) {
-      return;
-    }
-
-    const normalizeCodes = (codes: readonly string[]): string[] => [...new Set(codes)].sort();
-    const actualCodes = normalizeCodes(diagnostics.map((diagnostic) => diagnostic.code));
-    const normalizedExpectedCodes = normalizeCodes(expectedCodes);
-
-    if (!defaultCompare(actualCodes, normalizedExpectedCodes)) {
-      const actualDetails = diagnostics
-        .map((diagnostic) => `${diagnostic.code}(${diagnostic.severity}): ${diagnostic.message}`)
-        .join('; ');
-      throw new Error(
-        `Diagnostic code set changed. Expected [${normalizedExpectedCodes.join(', ')}] but received [${actualCodes.join(', ')}]. Actual diagnostics: ${actualDetails}`,
-      );
+    } catch (error) {
+      assertionError = error;
+    } finally {
+      await runCleanupWithAssertionContext(() => component.stop(), 'stop() after stable diagnostics check', assertionError);
     }
   }
 
   async assertSnapshotSanitized(): Promise<void> {
     const component = this.options.createComponent();
-    const snapshot = component.snapshot();
-    const sanitize = this.options.snapshot?.sanitize;
-    const candidate = sanitize ? sanitize(snapshot) : snapshot;
+    let assertionError: unknown;
 
-    const forbiddenPatterns = this.options.snapshot?.forbiddenKeyPatterns ?? DEFAULT_FORBIDDEN_KEY_PATTERNS;
-    const allowPatterns = this.options.snapshot?.allowKeyPatterns ?? [];
-    const violations: string[] = [];
-    collectForbiddenKeyPaths(candidate, forbiddenPatterns, allowPatterns, '', violations);
+    try {
+      const snapshot = component.snapshot();
+      const sanitize = this.options.snapshot?.sanitize;
+      const candidate = sanitize ? sanitize(snapshot) : snapshot;
 
-    if (violations.length > 0) {
-      throw new Error(`snapshot() contains unsanitized keys: ${violations.join(', ')}`);
+      const forbiddenPatterns = this.options.snapshot?.forbiddenKeyPatterns ?? DEFAULT_FORBIDDEN_KEY_PATTERNS;
+      const allowPatterns = this.options.snapshot?.allowKeyPatterns ?? [];
+      const violations: string[] = [];
+      collectForbiddenKeyPaths(candidate, forbiddenPatterns, allowPatterns, '', violations);
+
+      if (violations.length > 0) {
+        throw new Error(`snapshot() contains unsanitized keys: ${violations.join(', ')}`);
+      }
+    } catch (error) {
+      assertionError = error;
+    } finally {
+      await runCleanupWithAssertionContext(() => component.stop(), 'stop() after snapshot sanitization check', assertionError);
     }
   }
 

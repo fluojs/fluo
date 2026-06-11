@@ -55,7 +55,7 @@ Install the required dependencies:
 pnpm add -D @fluojs/testing vitest @babel/core
 ```
 
-Install `vitest` as a project dev dependency instead of a global binary. `@fluojs/testing` declares Vitest as a peer dependency for its mock helpers and `@fluojs/testing/vitest` entrypoint, so each consuming workspace must provide the local version used by its tests. `@babel/core` is required because `@fluojs/testing/vitest` uses a Babel plugin to process standard Decorators during test execution. TypeScript handles types, while Babel makes sure tests use the same standard Decorator behavior as the runtime.
+Install `vitest` as a project dev dependency instead of a global binary. `@fluojs/testing` declares Vitest as a peer dependency for its mock helpers and `@fluojs/testing/vitest` entrypoint, so each consuming workspace must provide the local version used by its tests. `@babel/core` is required because `@fluojs/testing/vitest` uses a Babel plugin to process standard Decorators during test execution. TypeScript handles types, while Babel makes sure tests use the same standard Decorator behavior as the runtime. The package itself declares a Node.js 20+ engine floor; runtime-native Deno/Bun test examples should follow their own adapter chapters when they are not executing through Node/Vitest.
 
 ### Vitest Configuration
 Create a `vitest.config.ts` file at the project root:
@@ -168,10 +168,11 @@ Asynchronous code is common in backend development. Fluo's `createTestingModule`
 Sometimes you need to test whether Providers initialize correctly when a module graph is compiled. `createTestingModule()` is the slice-testing surface for compile-time module wiring, provider visibility, and provider/guard/interceptor overrides; its compiled `TestingModuleRef` exposes resolution and dispatch helpers rather than a separate `close()` lifecycle phase. Keep cleanup assertions explicit in the provider under test, or move request/application lifecycle coverage to `createTestApp()` where the returned app exposes `close()`.
 
 ## 20.4 Provider Overrides
-`fluo` provides several ways to replace real components with test doubles. This lets you remove instability from external systems while still verifying the DI wiring and execution flow of the Module you care about.
+`fluo` provides several ways to replace real components with test doubles. This lets you remove instability from external systems while still verifying the DI wiring and execution flow of the Module you care about. For request-facing guards and interceptors, add a request-path assertion with `TestingModuleRef.dispatch(...)` or `createTestApp(...)` so the override is proven through the same pipeline the application uses.
 
 - **`overrideProvider(token, value)`**: Replaces a specific Token with a value, object, or instance.
 - **`overrideProviders([[token, value], ...])`**: Replaces several Tokens at once.
+- **`overrideGuard(...)`, `overrideInterceptor(...)`, `overrideFilter(...)`**: Replaces cross-cutting request pipeline tokens before compilation; keep filters paired with runtime app registration when the filter behavior itself is the contract.
 
 ### Mocks vs Fakes
 - **Mock**: An object that records calls and lets you control return values, for example, `vi.fn()`. It is useful for verifying interactions and "checking the wiring."
@@ -316,7 +317,7 @@ One of the biggest advantages of Fluo's testing utilities is their deep integrat
 ## 20.7 Best Practices for FluoBlog Testing
 1.  **Do not test the framework**: Focus on your application's business logic, not whether `@Get()` works. Assume `fluo` handles routing and test what your code does when that route is called.
 2.  **Use fakes for databases**: Integration tests can use a real test database, such as PostgreSQL in Docker, but unit tests should always use mocks or fakes for speed.
-3.  **Clean up resources**: For request or application lifecycle tests, create the app with `createTestApp()` and call `await app.close()` after the test. For `createTestingModule()` slice tests, keep cleanup expectations explicit in the provider or fake you are testing because the compiled `TestingModuleRef` is a resolution and dispatch surface, not an application lifecycle owner.
+3.  **Clean up resources**: For request or application lifecycle tests, create the app with `createTestApp()` and call `await app.close()` from `finally` after the test. For `createTestingModule()` slice tests, keep cleanup expectations explicit in the provider or fake you are testing because the compiled `TestingModuleRef` is a resolution and dispatch surface, not an application lifecycle owner.
 4.  **Integration tests for security**: Always test Guards and RBAC logic in integration tests. Unit tests usually bypass them, so integration tests are where real security gets verified.
 5.  **Deterministic tests**: Avoid using `Date.now()` or random numbers directly in tests. Use Vitest's time travel features, `vi.useFakeTimers()`, to make sure tests behave the same way every time they run.
 

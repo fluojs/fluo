@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type {
   PlatformComponent,
@@ -171,6 +171,26 @@ describe('platform conformance harness', () => {
     });
 
     await expect(harness.assertValidationHasNoLongLivedSideEffects()).rejects.toThrow('must not transition component state');
+  });
+
+  it('cleans up components created for validation, diagnostics, and snapshot assertions', async () => {
+    const stop = vi.fn(async () => {});
+    class CleanupTrackedComponent extends TestPlatformComponent {
+      async stop(): Promise<void> {
+        await stop();
+        await super.stop();
+      }
+    }
+
+    const harness = createPlatformConformanceHarness({
+      createComponent: () => new CleanupTrackedComponent('redis.default', 'redis'),
+    });
+
+    await expect(harness.assertValidationHasNoLongLivedSideEffects()).resolves.toBeUndefined();
+    await expect(harness.assertStableDiagnostics()).resolves.toBeUndefined();
+    await expect(harness.assertSnapshotSanitized()).resolves.toBeUndefined();
+
+    expect(stop).toHaveBeenCalledTimes(3);
   });
 
   it('fails when duplicate start calls are not idempotent', async () => {

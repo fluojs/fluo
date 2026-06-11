@@ -55,6 +55,21 @@ describe('fluoBabelDecoratorsPlugin', () => {
     }));
   });
 
+  it('normalizes Vite hash-suffixed TypeScript ids before transforming', async () => {
+    mockedTransformAsync.mockClear();
+    const plugin = createFluoBabelDecoratorsPlugin((filePath) => `${filePath}.config.cjs`);
+
+    await expect(plugin.transform('@Module({}) class AppModule {}', '/workspace/src/app.ts#decorators')).resolves.toEqual({
+      code: 'transformed();',
+      map: { mappings: '' },
+    });
+
+    expect(mockedTransformAsync).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      configFile: '/workspace/src/app.ts.config.cjs',
+      filename: '/workspace/src/app.ts',
+    }));
+  });
+
   it('transforms TS variants while skipping dependencies', async () => {
     mockedTransformAsync.mockClear();
     const plugin = createFluoBabelDecoratorsPlugin((filePath) => `${filePath}.config.cjs`);
@@ -70,7 +85,7 @@ describe('fluoBabelDecoratorsPlugin', () => {
     (configFileName) => {
       const { filePath, root } = createWorkspaceWithConfig(configFileName);
 
-      expect(resolveNearestBabelConfigFile(`${filePath}?v=123`)).toBe(join(root, configFileName));
+      expect(resolveNearestBabelConfigFile(`${filePath}?v=123#decorators`)).toBe(join(root, configFileName));
     },
   );
 });
