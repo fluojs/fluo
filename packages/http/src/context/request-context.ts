@@ -12,7 +12,6 @@ import type { RequestContextStore } from './request-context-store.js';
 let requestContextStore: RequestContextStore | undefined;
 let requestContextStoreResolution: Promise<RequestContextStore> | undefined;
 let fallbackRequestContextStore: RequestContextStore | undefined;
-const dynamicResolutionFallbackStack: RequestContext[] = [];
 
 /**
  * Runs a callback inside the request-scoped async context.
@@ -36,10 +35,6 @@ export function runWithRequestContext<T>(context: RequestContext, callback: () =
     return getFallbackRequestContextStore().run(context, callback);
   }
 
-  if (!isAsyncCallback(callback)) {
-    return runWithDynamicResolutionFallbackContext(context, callback);
-  }
-
   return runWithResolvedRequestContextStore(context, callback) as T;
 }
 
@@ -49,7 +44,7 @@ export function runWithRequestContext<T>(context: RequestContext, callback: () =
  * @returns The active request context, or `undefined` when no request scope is bound.
  */
 export function getCurrentRequestContext(): RequestContext | undefined {
-  return getRequestContextStore().getStore() ?? getDynamicResolutionFallbackContext();
+  return getRequestContextStore().getStore();
 }
 
 /**
@@ -173,52 +168,4 @@ function getFallbackRequestContextStore(): RequestContextStore {
   fallbackRequestContextStore ??= createStackRequestContextStore();
 
   return fallbackRequestContextStore;
-}
-
-function runWithDynamicResolutionFallbackContext<T>(context: RequestContext, callback: () => T): T {
-  dynamicResolutionFallbackStack.push(context);
-
-  try {
-    const result = callback();
-
-    void resolveRequestContextStore();
-
-    if (isPromiseLike(result)) {
-      return result.finally(() => {
-        removeDynamicResolutionFallbackContext(context);
-      }) as T;
-    }
-
-    removeDynamicResolutionFallbackContext(context);
-
-    return result;
-  } catch (error) {
-    removeDynamicResolutionFallbackContext(context);
-
-    throw error;
-  }
-}
-
-function getDynamicResolutionFallbackContext(): RequestContext | undefined {
-  if (dynamicResolutionFallbackStack.length !== 1) {
-    return undefined;
-  }
-
-  return dynamicResolutionFallbackStack[0];
-}
-
-function removeDynamicResolutionFallbackContext(context: RequestContext): void {
-  const index = dynamicResolutionFallbackStack.lastIndexOf(context);
-
-  if (index >= 0) {
-    dynamicResolutionFallbackStack.splice(index, 1);
-  }
-}
-
-function isPromiseLike<T>(value: T): value is T & Promise<Awaited<T>> {
-  return typeof value === 'object' && value !== null && 'then' in value && 'finally' in value;
-}
-
-function isAsyncCallback<T>(callback: () => T): callback is () => T & Promise<Awaited<T>> {
-  return callback.constructor.name === 'AsyncFunction';
 }
