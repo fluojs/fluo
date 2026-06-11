@@ -85,6 +85,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Assuming Socket.IO gateway return values become implicit client replies. fluo requires explicit ACK callbacks or raw `SOCKETIO_SERVER` emits.
 - Assuming NestJS-style Redis async module factories or shared Pub/Sub command/subscriber clients carry over. fluo keeps Redis registration synchronous and requires dedicated subscriber ownership for Pub/Sub connections.
 - Passing raw Express/Connect middleware directly to fluo application middleware. fluo middleware receives `MiddlewareContext`, so native `(req, res, next)` functions need an explicit wrapper or platform-owned integration boundary.
+- Assuming NestJS HTTP adapter lifecycle hooks map to Bun by mutating a live server after startup. `@fluojs/platform-bun` binds the dispatcher and realtime seam before `listen()` starts, keeps duplicate `listen()` calls idempotent, and exposes synchronous `createBunFetchHandler(...)` for externally owned `Bun.serve(...)` hosts rather than NestJS-style late host mutation.
 - Assuming NestJS `SchedulerRegistry` returns mutable `CronJob` handles or that private scheduled methods are valid decorator targets. fluo exposes descriptor-based scheduling controls and requires scheduled decorators on public instance methods.
 - Assuming `EmailModule.forRootAsync(...)` accepts NestJS `imports`, `useClass`, or `useExisting`, or assuming email providers are module-local by default. fluo email uses injected factory registration and defaults to global visibility unless `global: false` is set.
 
@@ -114,6 +115,7 @@ Migration MUST remove legacy NestJS-era decorator assumptions from `tsconfig.jso
 - `experimentalDecorators` is not part of the required fluo baseline and MUST remain disabled.
 - `emitDecoratorMetadata` is not used for DI wiring and MUST remain disabled.
 - Code that depended on metadata emission or `reflect-metadata` MUST be migrated to explicit tokens and explicit registration.
+- Bun migrations keep the same metadata rule: runtime-specific fetch hosting does not restore NestJS reflection metadata assumptions, so controllers, providers, and gateways must stay on fluo's standard decorator metadata stores plus explicit module/provider registration.
 
 ## CLI Migration Preview
 
