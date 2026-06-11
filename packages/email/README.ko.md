@@ -240,7 +240,7 @@ export class AppModule {}
 
 Behavioral contract 메모:
 
-- `EmailChannel`은 `pending` 또는 `rejected` 수신자가 하나라도 있으면 전달을 성공으로 보고하지 않고 notification dispatch를 실패로 처리합니다.
+- `EmailChannel`은 수락된 수신자가 0명인 경우(`accepted.length === 0`) 또는 `pending`/`rejected` 수신자가 하나라도 있으면 전달을 성공으로 보고하지 않고 notification dispatch를 실패로 처리합니다.
 - `EmailService.sendNotification(...)`은 렌더링된 template output을 payload 및 notification metadata와 병합합니다. payload 필드는 notification fallback보다 우선합니다.
 - Template rendering에는 notification `payload`, `metadata`, `locale`, `subject`, `template`이 전달되며, payload `text`, `html`과 notification `subject`가 렌더링된 fallback보다 우선합니다.
 
