@@ -1,4 +1,4 @@
-import { Inject } from '@fluojs/core';
+import { Inject, InvariantError } from '@fluojs/core';
 import { Container } from '@fluojs/di';
 import { type EventBusTransport, OnEvent } from '@fluojs/event-bus';
 import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
@@ -1175,6 +1175,137 @@ describe('@fluojs/cqrs', () => {
     await closePromise;
 
     expect(store.seen).toEqual([1, 2]);
+  });
+
+  it('rejects new CQRS event publishes after shutdown starts while draining active work', async () => {
+    const releaseHandler = createDeferred<void>();
+
+    class GuardedShutdownEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    @EventHandler(GuardedShutdownEvent)
+    class GuardedShutdownEventHandler implements IEventHandler<GuardedShutdownEvent> {
+      async handle(_event: GuardedShutdownEvent): Promise<void> {
+        await releaseHandler.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [GuardedShutdownEventHandler],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBusService = await app.container.resolve(CqrsEventBusService);
+    const publishPromise = eventBus.publish(new GuardedShutdownEvent('active'));
+
+    await Promise.resolve();
+
+    const closePromise = app.close();
+
+    await vi.waitFor(() => {
+      expect(eventBusService.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopping');
+    });
+
+    await expect(eventBus.publish(new GuardedShutdownEvent('late'))).rejects.toBeInstanceOf(InvariantError);
+    await expect(eventBus.publishAll([new GuardedShutdownEvent('late-batch')])).rejects.toBeInstanceOf(InvariantError);
+
+    releaseHandler.resolve();
+
+    await publishPromise;
+    await closePromise;
+
+    await expect(eventBus.publish(new GuardedShutdownEvent('stopped'))).rejects.toBeInstanceOf(InvariantError);
+  });
+
+  it('rejects direct saga dispatch after shutdown starts', async () => {
+    const releaseSaga = createDeferred<void>();
+
+    class GuardedSagaEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    @Saga(GuardedSagaEvent)
+    class GuardedSaga implements ISaga<GuardedSagaEvent> {
+      async handle(_event: GuardedSagaEvent): Promise<void> {
+        await releaseSaga.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [GuardedSaga],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const sagaBus = await app.container.resolve(CqrsSagaLifecycleService);
+    const dispatchPromise = sagaBus.dispatch(new GuardedSagaEvent('active'));
+
+    await Promise.resolve();
+
+    const closePromise = app.close();
+
+    await vi.waitFor(() => {
+      expect(sagaBus.getRuntimeSnapshot().lifecycleState).toBe('stopping');
+    });
+
+    await expect(sagaBus.dispatch(new GuardedSagaEvent('late'))).rejects.toBeInstanceOf(InvariantError);
+
+    releaseSaga.resolve();
+
+    await dispatchPromise;
+    await closePromise;
+
+    await expect(sagaBus.dispatch(new GuardedSagaEvent('stopped'))).rejects.toBeInstanceOf(InvariantError);
+  });
+
+  it('does not wait for delegated event-bus subscribers when waitForHandlers is false', async () => {
+    const releaseSubscriber = createDeferred<void>();
+    const subscriberStarted = createDeferred<void>();
+    const subscriberCompleted = createDeferred<void>();
+
+    class DelegatedEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    class DelegatedSubscriber {
+      @OnEvent(DelegatedEvent)
+      async onDelegatedEvent(_event: DelegatedEvent): Promise<void> {
+        subscriberStarted.resolve();
+        await releaseSubscriber.promise;
+        subscriberCompleted.resolve();
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot({ eventBus: { publish: { waitForHandlers: false } } })],
+      providers: [DelegatedSubscriber],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    await eventBus.publish(new DelegatedEvent('delegated'));
+    await subscriberStarted.promise;
+
+    let subscriberFinished = false;
+    subscriberCompleted.promise.then(() => {
+      subscriberFinished = true;
+    });
+    await Promise.resolve();
+
+    expect(subscriberFinished).toBe(false);
+
+    releaseSubscriber.resolve();
+    await subscriberCompleted.promise;
+    expect(subscriberFinished).toBe(true);
+
+    await app.close();
   });
 
   it('wires command/query/event buses through CqrsModule.forRoot with bootstrapApplication', async () => {
