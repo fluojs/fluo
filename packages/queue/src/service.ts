@@ -458,7 +458,15 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       }
 
       for (const { descriptor, worker } of workers) {
+        if (this.lifecycleState !== 'started') {
+          break;
+        }
+
         this.runWorker(descriptor, worker);
+
+        if (this.lifecycleState !== 'started') {
+          break;
+        }
       }
     }).catch((error: unknown) => {
       if (this.lifecycleState !== 'started') {

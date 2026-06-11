@@ -158,17 +158,15 @@ const bullmqState = vi.hoisted(() => {
     async dispatch(name: string, job: MockQueueJob) {
       await dispatch(name, job);
     },
-    async runWorker(worker: MockWorkerState) {
+    runWorker(worker: MockWorkerState): Promise<void> {
       worker.running = true;
       const queue = queues.get(worker.name);
 
       if (!queue) {
-        return;
+        return Promise.resolve();
       }
 
-      for (const job of queue.jobs) {
-        await dispatch(worker.name, job);
-      }
+      return Promise.all(queue.jobs.map((job) => dispatch(worker.name, job))).then(() => undefined);
     },
   };
 });
@@ -249,12 +247,12 @@ vi.mock('bullmq', () => ({
       this.worker.closed = true;
     }
 
-    async run(): Promise<void> {
+    run(): Promise<void> {
       if (bullmqState.failWorkerRun.has(this.worker.name)) {
         throw new Error(`worker run fail:${this.worker.name}`);
       }
 
-      await bullmqState.runWorker(this.worker);
+      return bullmqState.runWorker(this.worker);
     }
 
     async waitUntilReady(): Promise<void> {
@@ -1224,6 +1222,63 @@ describe('@fluojs/queue', () => {
     await waitForRedisDuplicatesClosed(redis);
     expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
     await expect(service.enqueue(new RunFailureJob('after-failure'))).rejects.toThrow('Queue lifecycle state is failed.');
+
+    await app.close();
+  });
+
+  it('does not start later workers after an earlier worker startup failure', async () => {
+    const loggerEvents: string[] = [];
+
+    class FirstFailureJob {
+      constructor(public readonly id: string) {}
+    }
+
+    class LaterStartJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(FirstFailureJob)
+    class FirstFailureWorker {
+      async handle(_job: FirstFailureJob): Promise<void> {}
+    }
+
+    @QueueWorker(LaterStartJob)
+    class LaterStartWorker {
+      async handle(_job: LaterStartJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [FirstFailureWorker, LaterStartWorker],
+    });
+
+    bullmqState.failWorkerRun.add('FirstFailureJob');
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const service = await app.container.resolve(QueueLifecycleService);
+
+    await waitForFailedQueueRollback(service);
+
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        lastWorkerStartFailure: 'worker run fail:FirstFailureJob',
+        lifecycleState: 'failed',
+        queuesReady: 0,
+        workerStartFailures: 1,
+        workersDiscovered: 2,
+        workersReady: 0,
+      },
+    });
+    expect(bullmqState.workers.get('FirstFailureJob')?.running).toBe(false);
+    expect(bullmqState.workers.get('LaterStartJob')?.running).toBe(false);
+    expect(bullmqState.workers.get('FirstFailureJob')?.closeCalls).toBe(1);
+    expect(bullmqState.workers.get('LaterStartJob')?.closeCalls).toBe(1);
 
     await app.close();
   });
