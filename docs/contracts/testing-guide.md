@@ -7,7 +7,7 @@
 | Test type | Required surface | Repo-grounded tools and patterns |
 | --- | --- | --- |
 | Unit | Pure provider logic, helpers, and failure branches with no network or external process dependency. | Use Vitest directly. `@fluojs/testing/mock` exposes `createMock(...)` and `createDeepMock(...)` for explicit doubles. |
-| Integration | Real module graph compilation, provider overrides, and DI visibility checks inside one application slice. | Use `createTestingModule({ rootModule })`, then `overrideProvider(...)`, `overrideGuard(...)`, `overrideInterceptor(...)`, or `overrideProviders(...)` before `.compile()`. |
+| Integration | Real module graph compilation, provider overrides, and DI visibility checks inside one application slice. | Use `createTestingModule({ rootModule })`, then `overrideProvider(...)`, `overrideProviders(...)`, `overrideGuard(...)`, `overrideInterceptor(...)`, or `overrideFilter(...)` before `.compile()`. Guard and interceptor overrides should be covered through `dispatch(...)` or `createTestApp(...)` when the contract is request-facing. |
 | E2E-style HTTP | Request dispatch, guards, interceptors, DTO validation, and response writing through the real HTTP stack. | Use `createTestApp({ rootModule })` from `@fluojs/testing`, then prefer `app.request(method, path).header(...).query(...).principal(...).body(...).send()` for app-level route assertions. Repository examples exercise `/health`, `/ready`, `/metrics`, auth, and CRUD routes this way. |
 | Platform conformance | Framework-facing platform packages and portability-sensitive adapters. | Use `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, `@fluojs/testing/web-runtime-adapter-portability`, or `@fluojs/testing/fetch-style-websocket-conformance` when the change affects runtime or adapter contracts. |
 
@@ -17,7 +17,7 @@ Use this ladder when building a fluo feature with test-driven development:
 
 1. **Unit**: keep fast service, controller, helper, and failure-branch tests near the source under `src/**`. Construct classes directly and pass explicit fakes, or use `@fluojs/testing/mock` helpers such as `createMock(...)`, `createDeepMock(...)`, `asMock(...)`, and `mockToken(...)` when typed doubles keep setup clear.
 2. **Slice/module integration**: add role-specific slice tests that compile the production-shaped module graph with `createTestingModule({ rootModule })` or `Test.createTestingModule({ rootModule })`. Use this layer for DI wiring, provider visibility, lifecycle hooks, and explicit provider, guard, interceptor, filter, or module overrides before `.compile()`.
-3. **HTTP e2e-style**: put request-pipeline tests in a dedicated app-level test area and build the virtual app with `createTestApp({ rootModule })`. Use `app.request(...).send()` as the default route assertion helper for headers, query parameters, request bodies, principals, and response assertions. Use `app.dispatch(...)` only when a lower-level dispatch path is the contract being exercised.
+3. **HTTP e2e-style**: put request-pipeline tests in a dedicated app-level test area and build the virtual app with `createTestApp({ rootModule })`. Use `app.request(...).send()` as the default route assertion helper for headers, query parameters, request bodies, principals, and response assertions, and close the app from `finally` so failed assertions still release resources. Use `app.dispatch(...)` only when a lower-level dispatch path is the contract being exercised.
 4. **Platform/conformance**: reserve `@fluojs/testing/*-conformance` and portability harness subpaths for adapter/runtime packages. Application feature tests should not use those harnesses unless they are proving platform-facing contracts.
 
 Recommended project shape:
@@ -40,7 +40,7 @@ If you come from NestJS, map the concepts explicitly rather than expecting metad
 | Supertest e2e against an initialized Nest app | `createTestApp({ rootModule })`, then `app.request(method, path).send()` without opening a network socket. |
 | `.spec.ts` as the default suffix | `.test.ts` as the default suffix, with role-specific names such as `.slice.test.ts` and `.e2e.test.ts` when the test scope matters. |
 
-fluo's test setup follows its runtime model: standard decorators, explicit DI tokens, and authored module graphs. Tests must name the `rootModule` they compile; fluo does not infer dependencies from TypeScript design metadata or legacy reflection flags.
+fluo's test setup follows its runtime model: standard decorators, explicit DI tokens, and authored module graphs. Tests must name the `rootModule` they compile; fluo does not infer dependencies from TypeScript design metadata or legacy reflection flags. NestJS migration should treat request-level tests as explicit route dispatch through `createTestApp(...)` or `TestingModuleRef.dispatch(...)`, not as a shared application instance hidden behind metadata-driven module imports.
 
 Keep manual `FrameworkRequest`/`FrameworkResponse` stubs, `makeRequest(...)`, raw `FluoFactory.create(...)`, and direct `app.dispatch(...)` tests for framework-internal, adapter/runtime, or compatibility contracts. They are intentionally lower-level than the default app-developer HTTP path.
 
@@ -49,6 +49,8 @@ Keep manual `FrameworkRequest`/`FrameworkResponse` stubs, `makeRequest(...)`, ra
 `overrideModule(source, replacement)` is a test-only module graph rewrite. It must not mutate the source module's decorator metadata, and the compiled testing module must keep the original `rootModule` and `modules[].type` identities for diagnostics and graph assertions while resolving providers from the replacement module definition.
 
 `@fluojs/testing/vitest` is the supported Vitest entrypoint for `fluoBabelDecoratorsPlugin()`. Keep it in package export-map and build-surface checks whenever testing package exports change.
+
+`@fluojs/testing` declares `engines.node >=20.0.0`. Its mock helpers and shared `DeepMocked<T>` type intentionally use Vitest's mock type boundary; consumers that do not run Vitest should prefer non-mock entrypoints such as `@fluojs/testing/app`, `@fluojs/testing/module`, or harness subpaths.
 
 ## Commands
 
