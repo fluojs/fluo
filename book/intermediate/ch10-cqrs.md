@@ -132,7 +132,7 @@ After a customer completes an order, FluoShop must reserve inventory. This is a 
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { CommandBusLifecycleService, ISaga, Saga } from '@fluojs/cqrs';
+import { CommandBusLifecycleService, CqrsDispatchContext, ISaga, Saga } from '@fluojs/cqrs';
 
 export class ReserveInventoryCommand {
   constructor(public readonly orderId: string) {}
@@ -143,8 +143,8 @@ export class ReserveInventoryCommand {
 export class OrderFulfillmentSaga implements ISaga<OrderPlacedEvent> {
   constructor(private readonly commandBus: CommandBusLifecycleService) {}
 
-  async handle(event: OrderPlacedEvent): Promise<void> {
-    await this.commandBus.execute(new ReserveInventoryCommand(event.orderId));
+  async handle(event: OrderPlacedEvent, context?: CqrsDispatchContext): Promise<void> {
+    await this.commandBus.execute(new ReserveInventoryCommand(event.orderId), context);
   }
 }
 ```

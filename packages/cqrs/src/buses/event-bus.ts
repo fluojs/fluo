@@ -100,6 +100,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
    * @throws {InvariantError} When a discovered provider does not implement `handle(event)`.
    */
   async publish<TEvent extends IEvent>(event: TEvent, context?: CqrsDispatchContext): Promise<void> {
+    this.assertAcceptingNewWork('publish');
     await this.trackPublishPipeline(this.runPublishPipeline(event, context));
   }
 
@@ -111,6 +112,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
    * @returns A promise that resolves once all events are published.
    */
   async publishAll<TEvent extends IEvent>(events: readonly TEvent[], context?: CqrsDispatchContext): Promise<void> {
+    this.assertAcceptingNewWork('publishAll');
     await this.trackPublishPipeline(this.runPublishAllPipeline(events, context));
   }
 
@@ -127,13 +129,19 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
       await instance.handle(createIsolatedEvent(descriptor.eventType as CqrsEventType<TEvent>, event), context);
     }
 
-    await this.sagaService.dispatch(event, context);
+    await this.sagaService.dispatch(event, context, { allowDuringShutdown: true });
     await this.eventBus.publish(event);
   }
 
   private async runPublishAllPipeline<TEvent extends IEvent>(events: readonly TEvent[], context?: CqrsDispatchContext): Promise<void> {
     for (const event of events) {
-      await this.publish(event, context);
+      await this.runPublishPipeline(event, context);
+    }
+  }
+
+  private assertAcceptingNewWork(operation: 'publish' | 'publishAll'): void {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      throw new InvariantError(`CQRS event bus cannot ${operation} after shutdown has started.`);
     }
   }
 

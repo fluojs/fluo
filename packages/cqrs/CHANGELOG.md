@@ -1,5 +1,7 @@
 # @fluojs/cqrs
 
+## [Unreleased]
+
 ## 1.1.1
 
 ### Patch Changes

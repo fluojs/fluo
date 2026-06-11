@@ -14,6 +14,10 @@ const MAX_NESTED_SAGA_DEPTH = 32;
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
 const cqrsDispatchContextStateBrand: unique symbol = Symbol('fluo.cqrs.dispatchContextState');
 
+interface SagaDispatchOptions {
+  readonly allowDuringShutdown?: boolean;
+}
+
 interface CqrsDispatchRoute {
   readonly eventType: CqrsEventType;
   readonly token: Token;
@@ -127,7 +131,8 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
    * @param event Event instance that may trigger one or more sagas.
    * @returns A promise that resolves once all matching saga chains for the event complete.
    */
-  async dispatch<TEvent extends IEvent>(event: TEvent, context?: CqrsDispatchContext): Promise<void> {
+  async dispatch<TEvent extends IEvent>(event: TEvent, context?: CqrsDispatchContext, options: SagaDispatchOptions = {}): Promise<void> {
+    this.assertAcceptingNewWork(options);
     await this.ensureDiscovered();
 
     const descriptors = this.matchSagaDescriptors(event);
@@ -137,6 +142,16 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     }
 
     await Promise.all(descriptors.map((descriptor) => this.dispatchWithOrdering(descriptor, event, context)));
+  }
+
+  private assertAcceptingNewWork(options: SagaDispatchOptions): void {
+    if (options.allowDuringShutdown) {
+      return;
+    }
+
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      throw new InvariantError('CQRS saga bus cannot dispatch after shutdown has started.');
+    }
   }
 
   private matchSagaDescriptors(event: IEvent): SagaDescriptor[] {
