@@ -20,6 +20,7 @@ const releaseReadinessVerificationCommands = [
   '`pnpm verify:platform-consistency-governance`',
   '`pnpm verify:release-readiness`',
 ];
+const toolingReleaseMetadataPackages = ['@fluojs/cli', '@fluojs/studio', '@fluojs/testing', '@fluojs/vite'];
 
 function resolveSummaryOutputPaths(outputDirectory = scriptDirectory) {
   return {
@@ -193,6 +194,30 @@ function publicWorkspacePackageNamesFromManifests(packageManifests) {
       )
       .map((manifest) => manifest.name),
   );
+}
+
+function collectPackageChangelogBaselineViolations(packageNames, dependencies = {}) {
+  const { existsSync: pathExists = existsSync, read: readText = read } = dependencies;
+
+  return packageNames.flatMap((packageName) => {
+    const packagePath = packageRelativePath(packageName);
+
+    if (!packagePath) {
+      return [`${packageName} does not map to a packages/* changelog path.`];
+    }
+
+    const changelogRelativePath = `${packagePath}/CHANGELOG.md`;
+
+    if (!pathExists(join(repoRoot, changelogRelativePath))) {
+      return [`${changelogRelativePath} is missing.`];
+    }
+
+    const changelog = readText(changelogRelativePath);
+
+    return changelog.includes('## [Unreleased]')
+      ? []
+      : [`${changelogRelativePath} must keep an \`## [Unreleased]\` section.`];
+  });
 }
 
 function isValidSemver(version) {
@@ -834,6 +859,10 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     packageManifests,
     governancePackageList,
   );
+  const toolingChangelogBaselineViolations = collectPackageChangelogBaselineViolations(
+    governancePackageList.filter((packageName) => toolingReleaseMetadataPackages.includes(packageName)),
+    { existsSync: pathExists, read: readText },
+  );
 
   assertCheck(
     checks,
@@ -924,6 +953,14 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     'Public changelog baseline',
     changelog.includes('# Changelog') && changelog.includes('## [Unreleased]') && changelog.includes('## [0.0.0]'),
     'CHANGELOG.md exists with Keep a Changelog baseline sections for Unreleased and current 0.x history.',
+  );
+  assertCheck(
+    checks,
+    'Tooling package changelog baseline',
+    toolingChangelogBaselineViolations.length === 0,
+    toolingChangelogBaselineViolations.length === 0
+      ? '`@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, and `@fluojs/vite` package changelogs keep `## [Unreleased]` placeholders for release metadata review.'
+      : toolingChangelogBaselineViolations.join('; '),
   );
   assertCheck(
     checks,

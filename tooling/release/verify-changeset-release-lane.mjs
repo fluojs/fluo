@@ -6,11 +6,28 @@ import { fileURLToPath } from 'node:url';
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
 const defaultChangesetDirectory = join(repoRoot, '.changeset');
+const cliReadmePath = join(repoRoot, 'packages', 'cli', 'README.md');
 const allowedBumpsByLane = {
   prerelease: new Set(['patch', 'minor', 'major']),
   stable: new Set(['patch', 'minor', 'major']),
 };
 const validBumps = new Set(['patch', 'minor', 'major']);
+const publicCliFeatureAdditionVerbs = /\b(adds?|added|allows?|allowed|introduces?|introduced|exposes?|exposed|supports?|supported|enables?|enabled|provides?|provided|implements?|implemented|ships?|shipped|expands?|expanded)\b/iu;
+const nonBehaviorAdditionPhrases = /\b(adds?|added)\s+(?:(?:regression\s+)?(?:tests?|coverage|docs?|documentation)|(?:validation|guardrails?|checks?)\s+for)\b/giu;
+const documentedCliSurfacePhraseMarkers = [
+  {
+    readme: /\b(?:generated|starter|template|lifecycle)\b/iu,
+    release: /\b(?:generated\s+)?(?:project|projects|starter|starters|script|scripts|template|templates)\b|\bstarter\s+(?:contract|contracts|lifecycle|lifecycles|matrix|mode|modes|script|scripts|template|templates)\b|\blifecycle\s+(?:commands?|scripts?|workflows?)\b/iu,
+  },
+  {
+    readme: /\binspect\b/iu,
+    release: /\binspect\s+(?:artifact|artifacts|mode|modes|output|outputs|report|reports|snapshot|snapshots|workflow|workflows)\b/iu,
+  },
+  {
+    readme: /\b(?:Public API|runCli|runNewCommand|runInspectCommand)\b/u,
+    release: /\bprogrammatic\s+(?:api|apis|entry\s*point|entry\s*points|entrypoint|entrypoints|export|exports|surface|surfaces)\b|\b(?:runCli|runNewCommand|runInspectCommand)\b/u,
+  },
+];
 
 function parseCliOptions(argv = process.argv.slice(2)) {
   let baseRef;
@@ -103,8 +120,16 @@ function frontmatterBlock(contents, filePath) {
   return match[1];
 }
 
+function changesetBody(contents) {
+  const normalized = contents.replace(/^\uFEFF/, '');
+  const match = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)([\s\S]*)$/u.exec(normalized);
+
+  return match ? match[1].trim() : '';
+}
+
 function parseChangesetReleaseIntents(contents, filePath) {
   const block = frontmatterBlock(contents, filePath);
+  const body = changesetBody(contents);
   const intents = [];
 
   for (const rawLine of block.split(/\r?\n/)) {
@@ -120,7 +145,7 @@ function parseChangesetReleaseIntents(contents, filePath) {
       throw new Error(`Changeset release lane check failed: ${filePath} has unsupported frontmatter line: ${rawLine}`);
     }
 
-    intents.push({ bump: match[2], packageName: match[1].trim() });
+    intents.push({ body, bump: match[2], packageName: match[1].trim() });
   }
 
   if (intents.length === 0) {
@@ -283,6 +308,122 @@ function collectDependencyOnlyMajorVersionDeltas(versionDeltas, dependencies = {
   });
 }
 
+function normalizeReleaseText(text) {
+  return String(text).replace(/\s+/gu, ' ').trim();
+}
+
+function escapeRegexLiteral(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}
+
+function readDocumentedCliReadme(dependencies = {}) {
+  if (typeof dependencies.readCliReadme === 'function') {
+    return dependencies.readCliReadme(cliReadmePath);
+  }
+
+  return readFileSync(cliReadmePath, 'utf8');
+}
+
+function collectDocumentedCliSurfaceTerms(readme) {
+  const terms = new Set();
+
+  for (const match of readme.matchAll(/\bfluo\s+([a-z][a-z0-9:-]*)\b/giu)) {
+    terms.add(`fluo ${match[1].toLowerCase()}`);
+  }
+
+  for (const match of readme.matchAll(/(?<![\w-])--[a-z][a-z0-9-]*/giu)) {
+    terms.add(match[0].toLowerCase());
+  }
+
+  for (const match of readme.matchAll(/`([A-Za-z_$][\w$]+)(?:\([^`]*\))?`/gu)) {
+    const identifier = match[1];
+
+    if (/^(?:run[A-Z]|newUsage|inspectUsage|Cli|New|Generate|Inspect)/u.test(identifier)) {
+      terms.add(identifier);
+    }
+  }
+
+  return terms;
+}
+
+function documentedCliSurfaceTermPattern(term) {
+  const escaped = escapeRegexLiteral(term).replace(/\\ /gu, '\\s+');
+
+  if (term.startsWith('--')) {
+    return new RegExp(`(^|[^\\w-])${escaped}(?=$|[^\\w-])`, 'iu');
+  }
+
+  if (term.startsWith('fluo ')) {
+    return new RegExp(`\\b${escaped}\\b`, 'iu');
+  }
+
+  return new RegExp(`(^|[^\\w$])${escaped}(?=$|[^\\w$])`, 'u');
+}
+
+function describesReadmeDocumentedCliSurface(text, dependencies = {}) {
+  const readme = readDocumentedCliReadme(dependencies);
+  const terms = collectDocumentedCliSurfaceTerms(readme);
+
+  return [...terms].some((term) => documentedCliSurfaceTermPattern(term).test(text)) ||
+    documentedCliSurfacePhraseMarkers.some(({ readme: readmePattern, release }) => readmePattern.test(readme) && release.test(text));
+}
+
+function describesPublicCliFeatureAddition(text, dependencies = {}) {
+  const normalized = normalizeReleaseText(text).replace(nonBehaviorAdditionPhrases, '');
+
+  return publicCliFeatureAdditionVerbs.test(normalized) &&
+    describesReadmeDocumentedCliSurface(normalized, dependencies);
+}
+
+function collectPatchCliFeatureDowngradesFromChangesets(intents, dependencies = {}) {
+  return intents
+    .filter(
+      (intent) =>
+        intent.packageName === '@fluojs/cli' &&
+        intent.bump === 'patch' &&
+        describesPublicCliFeatureAddition(intent.body, dependencies),
+    )
+    .map((intent) => ({
+      filePath: intent.filePath,
+      packageName: intent.packageName,
+      releaseText: normalizeReleaseText(intent.body),
+      source: 'changeset',
+    }));
+}
+
+function collectPatchCliFeatureDowngradesFromVersionDeltas(versionDeltas, dependencies = {}) {
+  const { existsSync: pathExists = existsSync, readFileSync: readFile = readFileSync } = dependencies;
+
+  return versionDeltas.flatMap((delta) => {
+    if (delta.packageName !== '@fluojs/cli' || delta.bump !== 'patch') {
+      return [];
+    }
+
+    const changelogPath = packageChangelogPathForPackageJson(delta.filePath);
+    const absoluteChangelogPath = join(repoRoot, changelogPath);
+
+    if (!pathExists(absoluteChangelogPath)) {
+      return [];
+    }
+
+    const section = changelogSectionForVersion(readFile(absoluteChangelogPath, 'utf8'), delta.nextVersion);
+
+    if (!section || !describesPublicCliFeatureAddition(section, dependencies)) {
+      return [];
+    }
+
+    return [
+      {
+        changelogPath,
+        nextVersion: delta.nextVersion,
+        packageName: delta.packageName,
+        releaseText: normalizeReleaseText(section),
+        source: 'package-changelog',
+      },
+    ];
+  });
+}
+
 export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
   const baseRef = options.baseRef;
   const changesetDirectory = options.changesetDirectory ?? defaultChangesetDirectory;
@@ -304,8 +445,17 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
   const dependencyOnlyMajorVersionDeltas = typeof dependencies.collectDependencyOnlyMajorVersionDeltas === 'function'
     ? dependencies.collectDependencyOnlyMajorVersionDeltas(versionDeltas)
     : collectDependencyOnlyMajorVersionDeltas(versionDeltas, dependencies);
+  const patchCliFeatureDowngrades = [
+    ...collectPatchCliFeatureDowngradesFromChangesets(intents, dependencies),
+    ...collectPatchCliFeatureDowngradesFromVersionDeltas(versionDeltas, dependencies),
+  ];
 
-  if (disallowed.length > 0 || disallowedVersionDeltas.length > 0 || dependencyOnlyMajorVersionDeltas.length > 0) {
+  if (
+    disallowed.length > 0 ||
+    disallowedVersionDeltas.length > 0 ||
+    dependencyOnlyMajorVersionDeltas.length > 0 ||
+    patchCliFeatureDowngrades.length > 0
+  ) {
     const details = disallowed
       .map((intent) => `${intent.packageName}@${intent.bump} (${intent.filePath})`)
       .join('\n  - ');
@@ -326,10 +476,20 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
             )
             .join('\n  - ')}`
         : '',
+      patchCliFeatureDowngrades.length > 0
+        ? `public CLI feature additions classified as patch:\n  - ${patchCliFeatureDowngrades
+            .map((downgrade) => {
+              const location = downgrade.source === 'changeset'
+                ? downgrade.filePath
+                : `${downgrade.changelogPath} ${downgrade.nextVersion}`;
+              return `${downgrade.packageName}@patch (${location}): ${downgrade.releaseText}`;
+            })
+            .join('\n  - ')}`
+        : '',
     ].filter((section) => section.length > 0);
 
     throw new Error(
-      `Changeset release lane check failed: the ${lane} lane only allows ${[...allowedBumps].join(', ')} changesets and package version bumps with matching major changelog evidence:\n${sections.join('\n')}`,
+      `Changeset release lane check failed: the ${lane} lane only allows ${[...allowedBumps].join(', ')} changesets, package version bumps with matching major changelog evidence, and public CLI feature additions classified as minor metadata:\n${sections.join('\n')}`,
     );
   }
 
@@ -337,6 +497,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     allowedBumps: [...allowedBumps],
     checkedDependencyOnlyMajorVersionDeltas: dependencyOnlyMajorVersionDeltas,
     checkedIntents: intents,
+    checkedPatchCliFeatureDowngrades: patchCliFeatureDowngrades,
     checkedVersionDeltas: versionDeltas,
     lane,
   };

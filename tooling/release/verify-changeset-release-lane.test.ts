@@ -12,8 +12,8 @@ function createChangesetDirectory() {
   return directory;
 }
 
-function writeChangeset(directory: string, fileName: string, frontmatter: string) {
-  writeFileSync(join(directory, fileName), `---\n${frontmatter}\n---\n\nRelease note.\n`, 'utf8');
+function writeChangeset(directory: string, fileName: string, frontmatter: string, body = 'Release note.') {
+  writeFileSync(join(directory, fileName), `---\n${frontmatter}\n---\n\n${body}\n`, 'utf8');
 }
 
 function writePackageChangelog(directory: string, packageDirectory: string, changelog: string) {
@@ -104,6 +104,129 @@ describe('verifyChangesetReleaseLane', () => {
         },
       ),
     ).toThrow(/dependency-only major package version deltas/u);
+  });
+
+  it('rejects patch changesets that describe public CLI feature additions', () => {
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'cli-studio-live-mode.md',
+      '"@fluojs/cli": patch',
+      'Add the runtime-connected Studio devtool path with `fluo dev --studio` and sidecar lifecycle events.',
+    );
+
+    expect(() => verifyChangesetReleaseLane({ changesetDirectory: directory, lane: 'stable' })).toThrow(
+      /public CLI feature additions classified as patch.*fluo dev --studio/us,
+    );
+  });
+
+  it('allows patch changesets that preserve existing CLI behavior without additive feature language', () => {
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'cli-report-fix.md',
+      '"@fluojs/cli": patch',
+      'Fix `fluo inspect --report` summary validation without changing the documented artifact contract.',
+    );
+
+    const result = verifyChangesetReleaseLane({ changesetDirectory: directory, lane: 'stable' });
+
+    expect(result.checkedIntents).toMatchObject([{ bump: 'patch', packageName: '@fluojs/cli' }]);
+    expect(result.checkedPatchCliFeatureDowngrades).toEqual([]);
+  });
+
+  it('allows patch changesets that add validation for documented CLI artifact parity without changing the contract', () => {
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'cli-report-validation.md',
+      '"@fluojs/cli": patch',
+      'Add validation for `fluo inspect --report` output parity without changing the documented artifact contract.',
+    );
+
+    const result = verifyChangesetReleaseLane({ changesetDirectory: directory, lane: 'stable' });
+
+    expect(result.checkedIntents).toMatchObject([{ bump: 'patch', packageName: '@fluojs/cli' }]);
+    expect(result.checkedPatchCliFeatureDowngrades).toEqual([]);
+  });
+
+  it('rejects patch changesets that add README-documented CLI commands outside the prior fixed marker list', () => {
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'cli-static-preview-serve.md',
+      '"@fluojs/cli": patch',
+      'Add `fluo serve` command for README-documented static preview workflows.',
+    );
+
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { changesetDirectory: directory, lane: 'stable' },
+        {
+          readCliReadme: () =>
+            '# @fluojs/cli\n\n## Static Preview\n\n```bash\nfluo serve ./dist --static-preview\n```\n\nUse `fluo serve` for README-documented static preview workflows.\n',
+        },
+      ),
+    ).toThrow(/public CLI feature additions classified as patch.*fluo serve/us);
+  });
+
+  it('rejects patch changesets that allow README-documented CLI commands', () => {
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'cli-static-preview-serve.md',
+      '"@fluojs/cli": patch',
+      'Allow `fluo serve` command for README-documented static preview workflows.',
+    );
+
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { changesetDirectory: directory, lane: 'stable' },
+        {
+          readCliReadme: () =>
+            '# @fluojs/cli\n\n## Static Preview\n\n```bash\nfluo serve ./dist --static-preview\n```\n\nUse `fluo serve` for README-documented static preview workflows.\n',
+        },
+      ),
+    ).toThrow(/public CLI feature additions classified as patch.*fluo serve/us);
+  });
+
+  it('allows patch changesets that add lifecycle guardrails without changing documented behavior', () => {
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'cli-lifecycle-guardrails.md',
+      '"@fluojs/cli": patch',
+      'Added lifecycle guardrails to avoid duplicate restart loops without changing the documented behavior.',
+    );
+
+    const result = verifyChangesetReleaseLane({ changesetDirectory: directory, lane: 'stable' });
+
+    expect(result.checkedIntents).toMatchObject([{ bump: 'patch', packageName: '@fluojs/cli' }]);
+    expect(result.checkedPatchCliFeatureDowngrades).toEqual([]);
+  });
+
+  it('rejects generated patch changelog sections that describe public CLI feature additions', () => {
+    const directory = createChangesetDirectory();
+
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        {
+          collectPackageVersionDeltas: () => [
+            {
+              bump: 'patch',
+              filePath: 'packages/cli/package.json',
+              nextVersion: '1.0.7',
+              packageName: '@fluojs/cli',
+              previousVersion: '1.0.6',
+            },
+          ],
+          existsSync: (targetPath: string) => targetPath.endsWith('packages/cli/CHANGELOG.md'),
+          readFileSync: () =>
+            '# @fluojs/cli\n\n## 1.0.7\n\n### Patch Changes\n\n- Support documented TypeScript source module paths in `fluo inspect`.\n',
+        },
+      ),
+    ).toThrow(/public CLI feature additions classified as patch.*fluo inspect/us);
   });
 
   it('allows major package version deltas with major changelog evidence', () => {

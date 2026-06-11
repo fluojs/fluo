@@ -3,6 +3,7 @@ export type ChangesetReleaseBump = 'patch' | 'minor' | 'major';
 export type ChangesetReleaseLane = 'stable' | 'prerelease';
 
 export type ChangesetReleaseIntent = {
+  body: string;
   bump: ChangesetReleaseBump;
   filePath: string;
   packageName: string;
@@ -21,6 +22,15 @@ export type DependencyOnlyMajorVersionDelta = PackageVersionDelta & {
   reason: string;
 };
 
+export type PatchCliFeatureDowngrade = {
+  changelogPath?: string;
+  filePath?: string;
+  nextVersion?: string;
+  packageName: '@fluojs/cli';
+  releaseText: string;
+  source: 'changeset' | 'package-changelog';
+};
+
 export type VerifyChangesetReleaseLaneOptions = {
   baseRef?: string;
   changesetDirectory?: string;
@@ -31,6 +41,7 @@ export type VerifyChangesetReleaseLaneResult = {
   allowedBumps: ChangesetReleaseBump[];
   checkedDependencyOnlyMajorVersionDeltas: DependencyOnlyMajorVersionDelta[];
   checkedIntents: ChangesetReleaseIntent[];
+  checkedPatchCliFeatureDowngrades: PatchCliFeatureDowngrade[];
   checkedVersionDeltas: PackageVersionDelta[];
   lane: ChangesetReleaseLane;
 };

@@ -16,6 +16,7 @@
 - `major`는 `1.0+`에서 파괴적 변경이 있을 때 필요합니다.
 - `minor`는 하위 호환 기능 추가에 사용하며, `0.x` 단계의 파괴적 변경에도 같은 증가 규칙을 사용합니다.
 - `patch`는 문서화된 동작을 유지하는 하위 호환 수정, 보안 수정, 문서 또는 툴링 변경에만 사용합니다.
+- 공개 tooling 패키지에서 README에 문서화되는 CLI command, flag, 생성 starter mode 또는 script, inspect artifact/output mode, programmatic entrypoint 추가는 소비자에게 보이는 feature work이므로 `minor` release metadata가 필요합니다. `patch`는 새 caller path를 추가하지 않고 이미 문서화된 계약을 수정하거나 보존하는 경우에만 해당 surface를 언급할 수 있습니다.
 - 프리릴리스 버전은 하이픈 접미사가 있는 버전입니다. 이런 버전은 `next`, `beta`, `rc` 같은 non-`latest` dist-tag로 배포해야 합니다.
 - 프리릴리스 접미사가 없는 안정 버전은 `latest` dist-tag로 배포해야 합니다.
 - 공개 배포 대상 패키지의 매니페스트는 내부 `@fluojs/*` 의존성에 대해 dependency, optional dependency, peer dependency, dev dependency 전부에서 `workspace:^`를 사용해야 합니다.
@@ -47,6 +48,8 @@ Changesets(`.changeset/*.md`)는 canonical release metadata 도구입니다. 기
 1. 영향받는 패키지 이름, published `@fluojs/*` package name을 사용합니다.
 2. 패키지별 semver intent, `major`, `minor`, `patch` 중 하나입니다.
 3. 변경 사항을 설명하는 summary.
+
+Release reviewer는 semver metadata를 승인하기 전에 `.changeset/*.md`, generated package `CHANGELOG.md` section, 영향받은 package `README.md` 계약을 비교해야 합니다. `@fluojs/cli` entry가 README에 문서화된 공개 CLI, starter, inspect, programmatic surface를 add, expose, support, introduce, enable, provide한다고 설명하면 해당 entry는 `minor`여야 하며, Version Packages PR을 merge하기 전에 patch metadata를 수정해야 합니다.
 
 changeset에 없는 패키지는 해당 릴리스에서 version이 올라가거나 publish되지 않습니다. Downstream dependent 패키지는 Changesets의 내부 dependency graph를 통해 평가되며, dependent 버전 bump는 versioning 단계에서 자동으로 계산됩니다.
 
