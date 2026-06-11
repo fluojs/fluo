@@ -59,6 +59,8 @@ import { SlackModule, createSlackWebhookTransport } from '@fluojs/slack';
 export class AppModule {}
 ```
 
+Slack registration is global by default: `SlackModule.forRoot(...)` and `SlackModule.forRootAsync(...)` export `SlackService`, `SlackChannel`, `SLACK`, and `SLACK_CHANNEL` with `global: options.global ?? true`. Use the fluo option `global?: boolean`—not NestJS `isGlobal`—and set `global: false` only when the migrated module must keep Slack providers local to modules that explicitly import it. The package exposes singleton compatibility tokens only; it does not provide `forFeature(...)`, named registration, named client token factories, or per-client custom token surfaces. If FluoShop grows multiple Slack clients, compose app-owned modules/providers or facades around separate transports instead of expecting package-level named multi-client registration.
+
 Slack also supports bootstrap verification for transports that can prove readiness before the application starts serving traffic. Set `verifyOnModuleInit: true` when the resolved `SlackTransport` exposes `verify()`; `SlackService.onModuleInit()` awaits that optional method and reports initialization failures as `SlackLifecycleError`. A transport that does not implement `verify()` is still valid and simply skips this capability-based check.
 
 ```typescript

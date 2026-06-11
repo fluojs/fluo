@@ -1398,6 +1398,8 @@ describe('Slack delivery discoverability', () => {
   const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
   const englishBook = readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.md'), 'utf8');
   const koreanBook = readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.ko.md'), 'utf8');
+  const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+  const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
 
   it('keeps helper, abort, lifecycle, status, verification, and template guidance discoverable', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
@@ -1420,6 +1422,21 @@ describe('Slack delivery discoverability', () => {
       expect(content).toContain('SlackTemplateRenderer');
       expect(content).toContain('template');
       expect(content).toContain('payload');
+    }
+  });
+
+  it('keeps singleton and global module migration boundaries discoverable', () => {
+    for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
+      expect(content).toContain('SLACK');
+      expect(content).toContain('SLACK_CHANNEL');
+      expect(content).toContain('global: false');
+      expect(content).toContain('forFeature(...)');
+    }
+
+    for (const content of [englishReadme, koreanReadme, englishBook, koreanBook, englishMigration, koreanMigration]) {
+      expect(content).toContain('global?: boolean');
+      expect(content).toContain('isGlobal');
+      expect(content).toContain('named');
     }
   });
 });
