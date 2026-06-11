@@ -34,7 +34,7 @@
 
 ## 15.2 Defining a Notification Channel
 
-채널은 `NotificationChannel` 인터페이스를 구현하는 공급자입니다. 이는 fluo orchestrator와 외부 서비스 사이의 다리 역할을 하며, 각 채널이 서로 다른 전송 방식을 쓰더라도 애플리케이션에는 같은 모양의 계약을 제공합니다.
+채널은 애플리케이션이 소유한 `NotificationChannel` 값입니다. 보통 provider나 SDK를 감싸지만, `@fluojs/notifications`는 `channels`로 전달된 object만 받으며 NestJS provider metadata나 decorator에서 channel class를 discovery하지 않습니다. 채널은 fluo orchestrator와 외부 서비스 사이의 다리 역할을 하며, 각 채널이 서로 다른 전송 방식을 쓰더라도 애플리케이션에는 같은 모양의 계약을 제공합니다.
 
 ```typescript
 import { type NotificationChannel } from '@fluojs/notifications';
@@ -56,7 +56,7 @@ const logChannel: NotificationChannel = {
 
 ## 15.3 Registering the Notifications Module
 
-오케스트레이션 계층을 사용하려면 `NotificationsModule`을 등록해야 합니다. 이 등록은 채널, queue option, lifecycle event publication, provider visibility를 애플리케이션 시작 시점에 한곳에서 고정하는 역할을 합니다.
+오케스트레이션 계층을 사용하려면 `NotificationsModule`을 등록해야 합니다. 이 등록은 명시적인 `NotificationChannel` 값, queue option, lifecycle event publication, provider visibility를 애플리케이션 시작 시점에 한곳에서 고정하는 역할을 합니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -119,7 +119,7 @@ function createEmailChannel(config: ConfigService<NotificationConfig>): Notifica
 export class NotificationsFeatureModule {}
 ```
 
-`forRootAsync(...)`는 fluo의 명시적 injected-factory 스타일을 따릅니다. 애플리케이션이 소유한 provider가 최종 options object를 만들고, notifications 패키지는 `process.env`를 직접 읽지 않습니다.
+`forRootAsync(...)`는 fluo의 명시적 injected-factory 스타일을 따릅니다. 애플리케이션이 소유한 provider가 `channels` 배열을 포함한 최종 options object를 만들고, notifications 패키지는 `process.env`를 직접 읽지 않습니다. Async registration 형태는 `forRootAsync({ inject, useFactory, global? })`이며, NestJS provider-discovery 또는 decorator-metadata scan이 아닙니다.
 
 ## 15.4 Dispatching Notifications
 
@@ -184,7 +184,7 @@ export class CampaignNotifications {
 
 ## 15.6 Queue-Backed Delivery
 
-대량 전송 시나리오에서는 전송 작업을 background worker로 offload해야 할 수 있습니다. `@fluojs/notifications` 패키지는 queue seam을 제공하지만, `@fluojs/queue` 또는 다른 concrete queue 구현에 의존하지 않습니다.
+대량 전송 시나리오에서는 전송 작업을 background worker로 offload해야 할 수 있습니다. `@fluojs/notifications` 패키지는 queue seam을 제공하지만, `@fluojs/queue` 또는 다른 concrete queue 구현에 의존하지 않습니다. Queue adapter는 애플리케이션 소유 integration입니다. Foundation 패키지는 queue client나 worker를 create/import/close/drain하지 않습니다.
 
 ```typescript
 NotificationsModule.forRoot({
@@ -208,7 +208,7 @@ NotificationsModule.forRoot({
 
 ## 15.7 Lifecycle Events
 
-신뢰성을 위해서는 관측 가능성이 필요합니다. 오케스트레이션 계층은 event publisher를 통해 lifecycle event를 발행할 수 있습니다. 전송 시작, 성공, 실패가 이벤트로 남으면 운영자는 알림 누락을 더 빨리 추적할 수 있고, 재시도 정책도 같은 흐름에 연결할 수 있습니다. Foundation 패키지는 lifecycle event contract를 소유하지만, concrete event-bus delivery는 애플리케이션 소유로 남깁니다.
+신뢰성을 위해서는 관측 가능성이 필요합니다. 오케스트레이션 계층은 event publisher를 통해 lifecycle event를 발행할 수 있습니다. 전송 시작, 성공, 실패가 이벤트로 남으면 운영자는 알림 누락을 더 빨리 추적할 수 있고, 재시도 정책도 같은 흐름에 연결할 수 있습니다. Foundation 패키지는 lifecycle event contract를 소유하지만, concrete event-bus delivery는 애플리케이션 소유로 남깁니다. Publisher가 감싼 event-bus resource를 foundation 패키지가 create/import/close/drain하지 않습니다.
 
 ```typescript
 NotificationsModule.forRoot({
@@ -263,7 +263,7 @@ const standaloneStatus = createNotificationsPlatformStatusSnapshot({
 });
 ```
 
-`NotificationsService.createPlatformStatusSnapshot()`은 active module wiring을 읽습니다. `createNotificationsPlatformStatusSnapshot(...)`은 caller가 이미 count와 integration flag를 갖고 있을 때 사용할 수 있는 value-level helper입니다. Snapshot은 `readiness`, `health`, `ownership`, `operationMode`, `notifications.queue-adapter`와 `notifications.event-publisher` 같은 dependency diagnostics, 그리고 foundation 패키지가 concrete queue 또는 event-bus resource를 닫지 않음을 나타내는 `ownsResources: false`를 포함합니다.
+`NotificationsService.createPlatformStatusSnapshot()`은 active module wiring을 읽습니다. `createNotificationsPlatformStatusSnapshot(...)`은 caller가 이미 count와 integration flag를 갖고 있을 때 사용할 수 있는 value-level helper입니다. Snapshot은 `readiness`, `health`, `ownership`, `operationMode`, `notifications.queue-adapter`와 `notifications.event-publisher` 같은 dependency diagnostics, 해당 seam이 구성된 경우의 `ownership.externallyManaged: true`, 그리고 foundation 패키지가 concrete queue 또는 event-bus resource를 create/close/drain하지 않음을 나타내는 `ownsResources: false`를 포함합니다.
 
 ## 15.9 FluoShop Context: Order Success Flow
 
@@ -290,10 +290,10 @@ async onOrderPlaced(event: OrderPlacedEvent) {
 
 기초 패키지는 fluo의 **명시적 경계(Explicit Boundaries)** 철학을 따릅니다. 따라서 채널 선택과 transport 구성은 숨겨진 전역 상태가 아니라 모듈 설정과 provider 계약으로 드러납니다.
 
-1. **기본 구현 없음(No Default Implementations)**: 내장된 email, Slack, Discord, queue, event-bus 구현을 제공하지 않습니다. 이들은 전용 패키지나 애플리케이션 코드에 존재합니다.
+1. **기본 구현 또는 discovery 없음(No Default Implementations or Discovery)**: 내장된 email, Slack, Discord, queue, event-bus 구현을 제공하지 않고, provider decorator나 emitted metadata에서 channel을 discovery하지 않습니다. 이들은 전용 패키지나 애플리케이션 코드에 존재하며 명시적인 `NotificationChannel` 값으로 전달됩니다.
 2. **암시적 환경 변수 없음(No Implicit Env)**: `process.env`를 읽지 않습니다. 모든 설정은 static option 또는 `forRootAsync(...)`를 통해 명시적으로 전달되어야 합니다.
 3. **트랜스포트 불가지론(Transport Agnostic)**: queue와 event publication이 abstract seam이기 때문에 Node.js, Bun, Deno, Workers에서 작동합니다.
-4. **리소스 소유 없음(No Resource Ownership)**: Status snapshot은 queue/event-bus integration을 externally managed로 보고하며, foundation 패키지는 해당 resource를 닫지 않습니다.
+4. **리소스 소유 없음(No Resource Ownership)**: Status snapshot은 queue/event-bus integration을 externally managed로 보고하며, foundation 패키지는 해당 resource를 create/import/close/drain하지 않습니다.
 
 이 제한은 기본 transport가 변경되더라도 orchestration 계층이 안정적으로 유지되도록 합니다. 확장이 필요할 때도 새 채널, queue adapter, event publisher를 같은 계약으로 추가하면 되므로 기존 호출부를 크게 바꿀 필요가 없습니다.
 

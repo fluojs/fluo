@@ -34,7 +34,7 @@ In a typical microservice environment, many services need to send notifications.
 
 ## 15.2 Defining a Notification Channel
 
-A channel is a Provider that implements the `NotificationChannel` interface. It acts as the bridge between the fluo orchestrator and an external service, giving the application the same contract even when each channel uses a different delivery mechanism.
+A channel is an application-owned `NotificationChannel` value. It often wraps a provider or SDK, but `@fluojs/notifications` only receives the object passed through `channels`; it does not discover channel classes from NestJS provider metadata or decorators. The channel acts as the bridge between the fluo orchestrator and an external service, giving the application the same contract even when each channel uses a different delivery mechanism.
 
 ```typescript
 import { type NotificationChannel } from '@fluojs/notifications';
@@ -56,7 +56,7 @@ The `send` method is the core of the contract. It receives a standardized notifi
 
 ## 15.3 Registering the Notifications Module
 
-To use the orchestration layer, register `NotificationsModule`. This registration gathers channels, queue options, lifecycle event publication, and provider visibility in one place during application startup.
+To use the orchestration layer, register `NotificationsModule`. This registration gathers explicit `NotificationChannel` values, queue options, lifecycle event publication, and provider visibility in one place during application startup.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -119,7 +119,7 @@ function createEmailChannel(config: ConfigService<NotificationConfig>): Notifica
 export class NotificationsFeatureModule {}
 ```
 
-`forRootAsync(...)` follows fluo's explicit injected-factory style: application-owned providers produce the final options object, and the notifications package never reads `process.env` directly.
+`forRootAsync(...)` follows fluo's explicit injected-factory style: application-owned providers produce the final options object, including the `channels` array, and the notifications package never reads `process.env` directly. The async registration shape is `forRootAsync({ inject, useFactory, global? })`; it is not a NestJS provider-discovery or decorator-metadata scan.
 
 ## 15.4 Dispatching Notifications
 
@@ -184,7 +184,7 @@ Without `continueOnError`, direct batch dispatch throws on the first failed noti
 
 ## 15.6 Queue-Backed Delivery
 
-In bulk delivery scenarios, you may need to offload delivery work to a background worker. The `@fluojs/notifications` package provides a queue seam, but it does not depend on `@fluojs/queue` or any other concrete queue implementation.
+In bulk delivery scenarios, you may need to offload delivery work to a background worker. The `@fluojs/notifications` package provides a queue seam, but it does not depend on `@fluojs/queue` or any other concrete queue implementation. Queue adapters are application-owned integrations: the foundation package does not create, import, close, or drain queue clients or workers.
 
 ```typescript
 NotificationsModule.forRoot({
@@ -208,7 +208,7 @@ When `dispatchMany(...)` reaches `bulkThreshold`, or when options explicitly req
 
 ## 15.7 Lifecycle Events
 
-Reliability needs observability. The orchestration layer can publish lifecycle events through an event publisher. When send attempts, successes, and failures are recorded as events, operators can trace missing notifications faster and connect retry policy to the same flow. The foundation package owns the lifecycle event contract, while concrete event-bus delivery stays application-owned.
+Reliability needs observability. The orchestration layer can publish lifecycle events through an event publisher. When send attempts, successes, and failures are recorded as events, operators can trace missing notifications faster and connect retry policy to the same flow. The foundation package owns the lifecycle event contract, while concrete event-bus delivery stays application-owned. It does not create, import, close, or drain the event-bus resource that the publisher wraps.
 
 ```typescript
 NotificationsModule.forRoot({
@@ -263,7 +263,7 @@ const standaloneStatus = createNotificationsPlatformStatusSnapshot({
 });
 ```
 
-`NotificationsService.createPlatformStatusSnapshot()` reads the active module wiring. `createNotificationsPlatformStatusSnapshot(...)` is a value-level helper for callers that already have counts and integration flags. Snapshots include `readiness`, `health`, `ownership`, `operationMode`, dependency diagnostics such as `notifications.queue-adapter` and `notifications.event-publisher`, and `ownsResources: false` because the foundation package does not close concrete queue or event-bus resources.
+`NotificationsService.createPlatformStatusSnapshot()` reads the active module wiring. `createNotificationsPlatformStatusSnapshot(...)` is a value-level helper for callers that already have counts and integration flags. Snapshots include `readiness`, `health`, `ownership`, `operationMode`, dependency diagnostics such as `notifications.queue-adapter` and `notifications.event-publisher`, `ownership.externallyManaged: true` when those seams are configured, and `ownsResources: false` because the foundation package does not create, close, or drain concrete queue or event-bus resources.
 
 ## 15.9 FluoShop Context: Order Success Flow
 
@@ -290,10 +290,10 @@ This decoupling means the order processing logic doesn't need to know about SMTP
 
 The base package follows fluo's **Explicit Boundaries** philosophy. Channel selection and transport configuration appear through Module settings and Provider contracts, not hidden global state.
 
-1. **No Default Implementations**: It doesn't provide built-in email, Slack, Discord, queue, or event-bus implementations. Those live in dedicated packages or application code.
+1. **No Default Implementations or Discovery**: It doesn't provide built-in email, Slack, Discord, queue, or event-bus implementations, and it does not discover channels from provider decorators or emitted metadata. Those live in dedicated packages or application code and are passed as explicit `NotificationChannel` values.
 2. **No Implicit Env**: It doesn't read `process.env`. Every setting must be passed explicitly through static options or `forRootAsync(...)`.
 3. **Transport Agnostic**: It works on Node.js, Bun, Deno, and Workers because queue and event publication are abstract seams.
-4. **No Resource Ownership**: Status snapshots report queue/event-bus integrations as externally managed; the foundation package does not close those resources.
+4. **No Resource Ownership**: Status snapshots report queue/event-bus integrations as externally managed; the foundation package does not create, import, close, or drain those resources.
 
 These limitations keep the orchestration layer stable even when the underlying transport changes. When an extension is needed, a new channel, queue adapter, or event publisher can be added through the same contract without changing existing callers much.
 
