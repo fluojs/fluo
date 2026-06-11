@@ -1,5 +1,7 @@
 # @fluojs/event-bus
 
+## [Unreleased]
+
 ## 1.0.0
 
 ### Minor Changes

@@ -346,6 +346,114 @@ describe('@fluojs/event-bus', () => {
     await closeApplication(app);
   });
 
+  it('drains timed-out local handler work before closing the transport', async () => {
+    vi.useFakeTimers();
+    const gate = createDeferred<void>();
+    const started = createDeferred<void>();
+    const transport = {
+      closeCalls: 0,
+      async publish(_channel: string, _payload: unknown) {},
+      async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {},
+      async close() {
+        this.closeCalls += 1;
+      },
+    } satisfies EventBusTransport & { closeCalls: number };
+
+    class SlowHandler {
+      @OnEvent(UserCreatedEvent)
+      async onUserCreated(_event: UserCreatedEvent) {
+        started.resolve();
+        await gate.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [EventBusModule.forRoot({ publish: { timeoutMs: 15 }, transport })],
+      providers: [SlowHandler],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const publishPromise = eventBus.publish(new UserCreatedEvent('user-local-timeout-drain'));
+
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(15);
+    await expect(publishPromise).resolves.toBeUndefined();
+
+    let closeResolved = false;
+    const closePromise = app.close().then(() => {
+      closeResolved = true;
+    });
+
+    await flushAsyncWork();
+
+    expect(closeResolved).toBe(false);
+    expect(transport.closeCalls).toBe(0);
+
+    gate.resolve();
+    await closePromise;
+    await settleEventBusTeardown();
+
+    expect(closeResolved).toBe(true);
+    expect(transport.closeCalls).toBe(1);
+  });
+
+  it('drains aborted local handler work before closing the transport', async () => {
+    const gate = createDeferred<void>();
+    const started = createDeferred<void>();
+    const transport = {
+      closeCalls: 0,
+      async publish(_channel: string, _payload: unknown) {},
+      async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {},
+      async close() {
+        this.closeCalls += 1;
+      },
+    } satisfies EventBusTransport & { closeCalls: number };
+
+    class SlowHandler {
+      @OnEvent(UserCreatedEvent)
+      async onUserCreated(_event: UserCreatedEvent) {
+        started.resolve();
+        await gate.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [EventBusModule.forRoot({ transport })],
+      providers: [SlowHandler],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const controller = new AbortController();
+    const publishPromise = eventBus.publish(new UserCreatedEvent('user-local-abort-drain'), {
+      signal: controller.signal,
+    });
+
+    await started.promise;
+    controller.abort();
+    await expect(publishPromise).resolves.toBeUndefined();
+
+    let closeResolved = false;
+    const closePromise = app.close().then(() => {
+      closeResolved = true;
+    });
+
+    await flushAsyncWork();
+
+    expect(closeResolved).toBe(false);
+    expect(transport.closeCalls).toBe(0);
+
+    gate.resolve();
+    await closePromise;
+    await settleEventBusTeardown();
+
+    expect(closeResolved).toBe(true);
+    expect(transport.closeCalls).toBe(1);
+  });
+
   it('supports non-blocking publish option without waiting for handler completion', async () => {
     const gate = createDeferred<void>();
     const started = createDeferred<void>();
@@ -735,7 +843,7 @@ describe('@fluojs/event-bus', () => {
     ).toBe(true);
   });
 
-  it('deduplicates handlers when the same class is registered under two different tokens', async () => {
+  it('keeps distinct singleton provider identities when the same handler class is registered under two tokens', async () => {
     class EventStore {
       calls = 0;
     }
@@ -768,7 +876,7 @@ describe('@fluojs/event-bus', () => {
 
     await eventBus.publish(new UserCreatedEvent('user-10'));
 
-    expect(store.calls).toBe(1);
+    expect(store.calls).toBe(2);
 
     await app.close();
   });

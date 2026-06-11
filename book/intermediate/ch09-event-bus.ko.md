@@ -180,7 +180,7 @@ v1.8.0에서 가장 단순한 mental model은 다음과 같습니다.
 
 ## 9.7 Operational rules for domain events
 
-Domain event에는 규율이 필요합니다. FluoShop은 몇 가지 실용적인 규칙을 따릅니다. 첫째, event name은 완료된 사실을 설명해야 합니다. 둘째, payload는 downstream handler가 동작할 만큼 충분한 문맥을 담되 기본적으로 aggregate 전체를 누출하지 않아야 합니다. 셋째, versioned event key는 계약이 깨질 때만 의도적으로 바뀌어야 합니다. 넷째, duplicate distributed delivery가 가능하면 handler는 idempotent해야 합니다. 다섯째, event가 숨겨진 synchronous dependency의 뒷문이 되어서는 안 됩니다. 이 규칙들이 이벤트 버스를 모호한 장치가 아니라 운영 가능한 도구로 유지합니다.
+Domain event에는 규율이 필요합니다. FluoShop은 몇 가지 실용적인 규칙을 따릅니다. 첫째, event name은 완료된 사실을 설명해야 합니다. 둘째, payload는 downstream handler가 동작할 만큼 충분한 문맥을 담되 기본적으로 aggregate 전체를 누출하지 않아야 합니다. 셋째, versioned event key는 계약이 깨질 때만 의도적으로 바뀌어야 합니다. 넷째, duplicate distributed delivery가 가능하면 handler는 idempotent해야 합니다. 다섯째, event가 숨겨진 synchronous dependency의 뒷문이 되어서는 안 됩니다. 느리거나 retry가 필요한 작업은 Chapter 11의 queue boundary로 handoff하고, event handler는 그 handoff를 한 번 기록하며 duplicate delivery를 견뎌야 합니다. 이 규칙들이 이벤트 버스를 모호한 장치가 아니라 운영 가능한 도구로 유지합니다.
 
 ## 9.8 FluoShop v1.8.0 progression
 
