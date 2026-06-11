@@ -94,6 +94,37 @@ EventBusModule.forRoot({
 })
 ```
 
+Redis Pub/Sub is a fan-out transport, not a durable work queue. When multiple application instances subscribe to the same event channel, each instance can see the same published fact. Handlers that mutate state, send notifications, or call external systems should therefore be idempotent: carry a stable event identifier or business key in the payload, record which reactions have already been applied, and make repeat deliveries converge to the same result instead of performing the side effect twice.
+
+Keep `@OnEvent(...)` handlers small and bounded. They are a good fit for fast local projections, cache invalidation, lightweight notifications, and other reactions that can finish within the publish timeout and shutdown drain window. If a reaction is slow, failure-prone, retryable, or needs operator-visible dead-letter handling, hand off a durable job to `@fluojs/queue` from the event handler instead of doing the work inline.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { OnEvent } from '@fluojs/event-bus';
+import { QueueLifecycleService } from '@fluojs/queue';
+
+export class GenerateInvoiceJob {
+  constructor(public readonly orderId: string) {}
+}
+
+@Inject(QueueLifecycleService)
+export class BillingEventsHandler {
+  constructor(private readonly queue: QueueLifecycleService) {}
+
+  @OnEvent(OrderPlacedEvent)
+  async enqueueInvoice(event: OrderPlacedEvent) {
+    if (await this.reactions.hasProcessed(event.eventId, 'invoice')) {
+      return;
+    }
+
+    await this.reactions.markProcessed(event.eventId, 'invoice');
+    await this.queue.enqueue(new GenerateInvoiceJob(event.orderId));
+  }
+}
+```
+
+Use the event bus to state that a business fact happened. Use Queue when the reaction needs retry, backoff, workload isolation, or dead-letter inspection.
+
 ### Versioned Event Keys
 
 Use static `eventKey` to ensure stable channel names regardless of class minification or renames.

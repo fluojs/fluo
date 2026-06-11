@@ -94,6 +94,37 @@ EventBusModule.forRoot({
 })
 ```
 
+Redis Pub/Sub은 durable work queue가 아니라 fan-out transport입니다. 여러 애플리케이션 인스턴스가 같은 이벤트 채널을 구독하면 각 인스턴스가 같은 published fact를 볼 수 있습니다. 따라서 상태를 변경하거나 알림을 보내거나 외부 시스템을 호출하는 handler는 idempotent해야 합니다. Payload에 안정적인 event identifier 또는 business key를 담고, 이미 적용한 reaction을 기록하며, 반복 전달이 side effect를 두 번 실행하는 대신 같은 결과로 수렴하도록 만드세요.
+
+`@OnEvent(...)` handler는 작고 bounded하게 유지하세요. 빠른 local projection, cache invalidation, 가벼운 notification처럼 publish timeout과 shutdown drain window 안에 끝낼 수 있는 reaction에 적합합니다. Reaction이 느리거나, failure-prone이거나, retry 가능하거나, operator-visible dead-letter handling이 필요하다면 해당 작업을 inline으로 수행하지 말고 event handler에서 `@fluojs/queue`의 durable job으로 hand off하세요.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { OnEvent } from '@fluojs/event-bus';
+import { QueueLifecycleService } from '@fluojs/queue';
+
+export class GenerateInvoiceJob {
+  constructor(public readonly orderId: string) {}
+}
+
+@Inject(QueueLifecycleService)
+export class BillingEventsHandler {
+  constructor(private readonly queue: QueueLifecycleService) {}
+
+  @OnEvent(OrderPlacedEvent)
+  async enqueueInvoice(event: OrderPlacedEvent) {
+    if (await this.reactions.hasProcessed(event.eventId, 'invoice')) {
+      return;
+    }
+
+    await this.reactions.markProcessed(event.eventId, 'invoice');
+    await this.queue.enqueue(new GenerateInvoiceJob(event.orderId));
+  }
+}
+```
+
+비즈니스 사실이 발생했음을 표현할 때는 event bus를 사용하세요. Reaction에 retry, backoff, workload isolation, dead-letter inspection이 필요하면 Queue를 사용하세요.
+
 ### 버전이 명시된 이벤트 키
 
 `static eventKey`를 사용하여 클래스 이름 변경이나 코드 압축(minification)과 관계없이 안정적인 채널 이름을 유지할 수 있습니다.

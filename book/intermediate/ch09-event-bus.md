@@ -182,6 +182,39 @@ This flow is intentionally asymmetric. One write expands into multiple reactions
 
 Domain events need discipline. FluoShop follows a few practical rules. First, the event name should describe a completed fact. Second, the payload should carry enough context for downstream handlers to act, but it generally shouldn't leak the whole aggregate. Third, a versioned event key should change intentionally only when the contract breaks. Fourth, if duplicate distributed delivery is possible, handlers must be idempotent. Fifth, an event must not become a back door for hidden synchronous dependencies. Slow or retryable work should hand off to the queue boundary from Chapter 11, while the event handler records that handoff once and tolerates duplicate delivery. These rules keep the event bus an operational tool, not a vague mechanism.
 
+### 9.7.1 Idempotent handlers under Redis fan-out
+
+Redis fan-out means more than "send the event somewhere else." Each subscribed process can receive the same business fact, and a reconnecting or retried publisher can make duplicate delivery possible at the application boundary. FluoShop treats handler idempotency as part of the event contract. A handler that sends a receipt, writes an audit row, or updates a projection should use a stable event id or business key, record the reaction it has already applied, and make repeated delivery converge to the same state.
+
+For example, an order receipt handler can key its reaction by `OrderPlacedEvent.eventId` plus the reaction name `receipt-email`. If the marker already exists, the handler returns. If not, it records the marker and performs the side effect. The exact storage choice belongs to the application, but the rule belongs to the domain-event design.
+
+### 9.7.2 Hand slow reactions to Queue
+
+An event handler should not become a hidden worker. Fast local reactions are fine inside `@OnEvent(...)`, but slow or retryable work needs a stronger operational boundary. FluoShop hands invoice generation, marketplace catalog syncs, and other failure-prone follow-up tasks to `@fluojs/queue` from the event reaction. The event still explains why the work exists, while the queue owns retry, backoff, workload isolation, and dead-letter evidence.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { OnEvent } from '@fluojs/event-bus';
+import { QueueLifecycleService } from '@fluojs/queue';
+
+@Inject(QueueLifecycleService)
+export class BillingEventsHandler {
+  constructor(private readonly queue: QueueLifecycleService) {}
+
+  @OnEvent(OrderPlacedEvent)
+  async enqueueInvoice(event: OrderPlacedEvent) {
+    if (await this.reactions.hasProcessed(event.eventId, 'invoice')) {
+      return;
+    }
+
+    await this.reactions.markProcessed(event.eventId, 'invoice');
+    await this.queue.enqueue(new GenerateInvoiceJob(event.orderId));
+  }
+}
+```
+
+This keeps the domain event explicit without stretching the publish path into a long-running background processor. Chapter 11 returns to the queue side of this boundary and explains retry, backoff, and dead-letter handling in more detail.
+
 ## 9.8 FluoShop v1.8.0 progression
 
 Part 1 organized how FluoShop communicates across boundaries. This chapter covers how to organize reactions inside and outside a bounded context. This is the bridge into event-driven architecture. The system is no longer defined only by request paths. Increasingly, it is defined by the facts it emits and the reactions those facts trigger. That makes the next patterns possible. CQRS is built on top of this. Queues are built on top of this. Scheduled background orchestration is built on top of this.
@@ -192,6 +225,7 @@ Part 1 organized how FluoShop communicates across boundaries. This chapter cover
 - An event class should represent a completed business fact, not future intent.
 - Stable `eventKey` values help preserve routing contracts across refactors.
 - In-process publish and subscribe is the default, while Redis transport extends the same model beyond process boundaries.
+- Redis fan-out requires idempotent handlers, and slow or retryable reactions should hand durable work to Queue.
 - FluoShop v1.8.0 now publishes order and fulfillment facts that multiple modules can react to independently.
 
 The deeper lesson is architectural. When one write creates several legitimate follow-up actions, the right design usually isn't a longer service chain. It is an explicit event with explicit subscribers.
