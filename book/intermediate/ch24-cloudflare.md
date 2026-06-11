@@ -162,7 +162,7 @@ In FluoShop, you can review KV for session management and D1 for relational data
 
 Cloudflare's WAF and bot management features can serve as the protection layer in front of the FluoShop API. If fluo owns application-level logic while Cloudflare owns edge-level routing and defense, you can reduce the infrastructure surface that operators must manage directly.
 
-Another key point is the execution context. In Workers, `ctx.waitUntil()` lets you register asynchronous work with the runtime after the response. The fluo adapter uses this boundary for request lifecycle tracking, including streaming responses that may continue after the `Response` object is returned, and it matters for work separated from the request response, such as sending analytics data or triggering webhooks.
+Another key point is the execution context. In Workers, `ctx.waitUntil()` lets you register asynchronous work with the runtime after the response. The fluo adapter uses this boundary for request lifecycle tracking, including SSE (`text/event-stream`) responses that may continue after the `Response` object is returned, so the adapter drain matches the SSE body lifecycle instead of a generic stream contract.
 
 ## 24.8 Advanced: Durable Objects and State
 
@@ -212,7 +212,7 @@ export class DatabaseModule {}
 - Native edge features such as KV, D1, and WebSockets can be connected through dedicated fluo bindings and Provider boundaries.
 - Read Worker bindings from `context.request.cloudflare?.env` only at the application boundary, then map them before service code reads them through providers such as `ConfigService`.
 - Use `wrangler` to keep deployment and environment management consistent.
-- `ctx.waitUntil` is handled by fluo to ensure background work completes successfully at the edge.
+- `ctx.waitUntil` is handled by fluo to keep request lifecycle tracking and SSE (`text/event-stream`) response drains alive at the edge.
 - The edge is not just a hosting platform; it is a different way to think about global application architecture.
 
 ## 24.12 Future-Proofing with Cloudflare and Fluo
