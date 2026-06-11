@@ -1441,6 +1441,45 @@ describe('Slack delivery discoverability', () => {
   });
 });
 
+describe('Discord delivery discoverability', () => {
+  const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+  const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const englishReadme = readFileSync(join(repoRoot, 'packages/discord/README.md'), 'utf8');
+  const koreanReadme = readFileSync(join(repoRoot, 'packages/discord/README.ko.md'), 'utf8');
+  const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+  const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+  const englishBook = readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.md'), 'utf8');
+  const koreanBook = readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.ko.md'), 'utf8');
+
+  it('keeps service status, standalone usage, and hub paths discoverable', () => {
+    for (const content of [englishReadme, koreanReadme]) {
+      expect(content).toContain('DiscordService.createPlatformStatusSnapshot()');
+      expect(content).toContain('createDiscordPlatformStatusSnapshot(...)');
+      expect(content).toContain('transport');
+      expect(content).toContain('notifications');
+    }
+
+    for (const content of [englishContext, koreanContext, englishSurface, koreanSurface]) {
+      expect(content).toContain('@fluojs/discord');
+      expect(content).toContain('DiscordService.createPlatformStatusSnapshot()');
+      expect(content).toContain('createDiscordPlatformStatusSnapshot(...)');
+    }
+
+    for (const content of [englishContext, koreanContext]) {
+      expect(content).toContain('packages/discord/README');
+      expect(content).toContain('docs/reference/package-surface');
+      expect(content).toContain('book/intermediate/ch17-slack-discord');
+    }
+
+    for (const content of [englishBook, koreanBook]) {
+      expect(content).toContain('DiscordService');
+      expect(content).toContain('DiscordService.createPlatformStatusSnapshot()');
+      expect(content).toContain('notifications.discord.offline');
+      expect(content).toContain('await this.discord.send');
+    }
+  });
+});
+
 describe('CLI inspect artifact discoverability', () => {
   const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
   const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
