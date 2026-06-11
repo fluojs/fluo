@@ -31,6 +31,7 @@
 | NestJS Redis async module registration 또는 shared Redis Pub/Sub client | `@fluojs/redis`의 `RedisModule.forRoot(...)`, named `RedisModule.forRoot({ name, ... })`, `getRedisClientToken(name)` | fluo Redis registration은 동기 방식이다. 환경별 option이나 외부에서 만든 client는 registration 전에 해석하고, Pub/Sub subscriber는 일반 command client를 재사용하지 말고 전용 duplicate 또는 named client로 분리한다. |
 | `@nestjs/schedule` decorator, `SchedulerRegistry`, 또는 `CronJob` handle | `@fluojs/cron`의 `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, `SCHEDULING_REGISTRY` | fluo는 decorator로 발견한 task를 application bootstrap 중 시작하고, 이미 시작된 registry에 dynamic task가 추가되면 즉시 시작하며, live scheduler handle 대신 read-only task descriptor를 노출한다. |
 | `imports`, `useClass`, `useExisting`를 사용하는 NestJS-style email async module registration | `@fluojs/email`의 `EmailModule.forRootAsync({ inject, useFactory, global? })` | fluo email async registration은 injected factory option만 지원한다. 필요한 의존성은 application module graph에 먼저 등록하고 token을 `inject`에 나열하며, 기본 global provider visibility에서 벗어나야 할 때만 `global: false`를 설정한다. |
+| NestJS-style notification module, decorator-discovered channel provider, 또는 implicit queue/event integration | `@fluojs/notifications`의 `NotificationsModule.forRoot({ channels, queue?, events?, global? })` 또는 `NotificationsModule.forRootAsync({ inject, useFactory, global? })` | fluo notifications registration은 `channels`에 전달된 명시적 `NotificationChannel` 값을 사용한다. Queue adapter와 event publisher는 module-owned resource가 아니라 애플리케이션 소유 seam이며, `global: false`를 설정하지 않으면 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`가 기본 global로 export된다. |
 
 ## Breaking Differences
 
@@ -68,6 +69,9 @@
 - Redis Pub/Sub migration은 subscriber 소유권을 명시적으로 유지해야 한다. `client.duplicate()` subscriber는 애플리케이션 소유이므로 만든 코드가 직접 connect, subscribe, close를 책임진다. Subscriber client lifecycle timeout까지 fluo가 소유해야 한다면 named `RedisModule.forRoot({ name: 'subscriber', ... })`와 `getRedisClientToken('subscriber')`를 사용한다.
 - Cron migration은 `SchedulerRegistry`/`CronJob` handle을 그대로 보존하는 치환이 아니다. `@Cron`, `@Interval`, `@Timeout`은 public instance method에 사용하고, private 또는 static scheduled work는 공개 provider method 뒤로 옮기며, live `CronJob` handle을 mutate하는 대신 `SCHEDULING_REGISTRY.get(...)` / `getAll()`의 `SchedulingTaskDescriptor` snapshot을 사용한다.
 - Email migration은 NestJS dynamic-module 형태를 그대로 복제하지 않는다. `EmailModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`는 소비하지 않는다. `EmailModule`은 기본적으로 global이므로 migrated code에 module-local visibility가 필요할 때만 `global: false`를 설정한다.
+- Notifications migration은 provider-discovery 또는 decorator-metadata clone이 아니다. 명시적인 `NotificationChannel` 값을 `NotificationsModule.forRoot(...)`에 전달하거나 `NotificationsModule.forRootAsync({ inject, useFactory, global? })`에서 반환해야 한다. 이 패키지는 channel 등록을 위해 NestJS provider, `@Injectable()` metadata, emitted design type을 scan하지 않는다.
+- `@fluojs/notifications`는 concrete queue 또는 event-bus resource를 create/import/close/drain하지 않는다. Queue adapter와 event publisher는 애플리케이션 소유 integration이며, status snapshot은 이를 `ownsResources: false`인 externally managed dependency로 보고한다.
+- `NotificationsModule`은 기본적으로 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`에 대해 global이다. Migrated code에 module-local visibility가 필요할 때는 `global: false`를 사용한다.
 
 ## Removed Concepts
 
@@ -87,6 +91,7 @@
 - Raw Express/Connect middleware를 fluo application middleware에 직접 전달하는 방식. fluo middleware는 `MiddlewareContext`를 받으므로 native `(req, res, next)` function에는 명시적 wrapper나 platform-owned integration boundary가 필요하다.
 - NestJS `SchedulerRegistry`가 mutable `CronJob` handle을 반환하거나 private scheduled method가 유효한 decorator target이라고 가정하는 방식. fluo는 descriptor 기반 scheduling control을 노출하고 scheduled decorator는 public instance method에 요구한다.
 - `EmailModule.forRootAsync(...)`가 NestJS `imports`, `useClass`, `useExisting`를 받거나 email provider가 기본적으로 module-local이라고 가정하는 방식. fluo email은 injected factory registration을 사용하며, `global: false`가 설정되지 않으면 기본 global visibility를 사용한다.
+- Notification channel이 NestJS provider decorator/metadata에서 discovery되거나, queue/event-bus resource를 notifications module이 소유한다고 가정하는 방식. fluo는 명시적 `channels`와 애플리케이션 소유 queue adapter/event publisher lifecycle을 요구한다.
 
 ## CLI Starter and Generator Limits
 
