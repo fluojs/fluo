@@ -371,6 +371,24 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('treats Cron lifecycle and NestJS migration docs as contract-governing updates', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const cronLifecycleTriggers = [
+      'docs/architecture/lifecycle-and-shutdown.md',
+      'docs/architecture/lifecycle-and-shutdown.ko.md',
+      'docs/contracts/nestjs-parity-gaps.md',
+      'docs/contracts/nestjs-parity-gaps.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+    ];
+
+    for (const trigger of cronLifecycleTriggers) {
+      expect(() => enforceContractCompanionUpdates([trigger])).toThrowError(
+        /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
+      );
+    }
+  });
+
   it('accepts Studio package-surface privacy and artifact guidance when paired with package tests', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
