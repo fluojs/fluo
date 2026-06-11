@@ -119,4 +119,23 @@ describe('createCronPlatformStatusSnapshot', () => {
       status: 'unhealthy',
     });
   });
+
+  it('keeps existing status adapter callers compatible when Redis lock I/O is omitted', () => {
+    const snapshot = createCronPlatformStatusSnapshot({
+      activeTicks: 0,
+      distributedEnabled: true,
+      enabledTasks: 1,
+      lifecycleState: 'ready',
+      lockOwnershipLosses: 0,
+      lockRenewalFailures: 0,
+      ownedLocks: 0,
+      redisDependencyResolved: true,
+      runningTasks: 0,
+      totalTasks: 1,
+    });
+
+    expect(snapshot.details.redisLockIoAvailable).toBe(true);
+    expect(snapshot.readiness.status).toBe('ready');
+    expect(snapshot.health.status).toBe('healthy');
+  });
 });

@@ -14,7 +14,7 @@ export interface CronStatusAdapterInput {
   lockRenewalFailures: number;
   ownedLocks: number;
   redisDependencyResolved: boolean;
-  redisLockIoAvailable: boolean;
+  redisLockIoAvailable?: boolean;
   runningTasks: number;
   totalTasks: number;
 }
@@ -28,8 +28,10 @@ export interface CronPlatformStatusSnapshot {
 }
 
 function createReadiness(input: CronStatusAdapterInput): PlatformReadinessReport {
+  const redisLockIoAvailable = resolveRedisLockIoAvailable(input);
+
   if (input.lifecycleState === 'ready') {
-    if (input.distributedEnabled && (!input.redisDependencyResolved || !input.redisLockIoAvailable)) {
+    if (input.distributedEnabled && (!input.redisDependencyResolved || !redisLockIoAvailable)) {
       return {
         critical: true,
         reason: 'Distributed cron mode requires a ready Redis lock client.',
@@ -83,6 +85,8 @@ function createReadiness(input: CronStatusAdapterInput): PlatformReadinessReport
 }
 
 function createHealth(input: CronStatusAdapterInput): PlatformHealthReport {
+  const redisLockIoAvailable = resolveRedisLockIoAvailable(input);
+
   if (input.lifecycleState === 'failed' || input.lifecycleState === 'stopped') {
     return {
       reason: 'Cron scheduler is unavailable.',
@@ -97,7 +101,7 @@ function createHealth(input: CronStatusAdapterInput): PlatformHealthReport {
     };
   }
 
-  if (input.distributedEnabled && (!input.redisDependencyResolved || !input.redisLockIoAvailable)) {
+  if (input.distributedEnabled && (!input.redisDependencyResolved || !redisLockIoAvailable)) {
     return {
       reason: 'Distributed cron Redis lock I/O is unavailable.',
       status: 'unhealthy',
@@ -116,6 +120,14 @@ function createHealth(input: CronStatusAdapterInput): PlatformHealthReport {
   };
 }
 
+function resolveRedisLockIoAvailable(input: CronStatusAdapterInput): boolean {
+  if (!input.distributedEnabled) {
+    return true;
+  }
+
+  return input.redisLockIoAvailable ?? input.redisDependencyResolved;
+}
+
 /**
  * Creates the cron platform snapshot consumed by status reporters.
  *
@@ -123,6 +135,8 @@ function createHealth(input: CronStatusAdapterInput): PlatformHealthReport {
  * @returns Readiness, health, ownership, and cron detail fields.
  */
 export function createCronPlatformStatusSnapshot(input: CronStatusAdapterInput): CronPlatformStatusSnapshot {
+  const redisLockIoAvailable = resolveRedisLockIoAvailable(input);
+
   return {
     details: {
       activeTicks: input.activeTicks,
@@ -134,7 +148,7 @@ export function createCronPlatformStatusSnapshot(input: CronStatusAdapterInput):
       lockRenewalFailures: input.lockRenewalFailures,
       ownedLocks: input.ownedLocks,
       redisDependencyResolved: input.redisDependencyResolved,
-      redisLockIoAvailable: input.redisLockIoAvailable,
+      redisLockIoAvailable,
       runningTasks: input.runningTasks,
       totalTasks: input.totalTasks,
     },
