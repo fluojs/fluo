@@ -397,6 +397,7 @@ export class CronLifecycleService
       lockRenewalFailures: this.distributedLocks.renewalFailures,
       ownedLocks: this.distributedLocks.ownedLocks,
       redisDependencyResolved: this.distributedLocks.resolvedClient !== undefined,
+      redisLockIoAvailable: this.distributedLocks.lockIoAvailable,
       runningTasks,
       totalTasks: this.tasks.size,
     });
@@ -423,12 +424,21 @@ export class CronLifecycleService
   private async shutdown(): Promise<void> {
     if (this.shutdownPromise) {
       await this.shutdownPromise;
+      await this.retryReleasedDistributedLocksAfterShutdown();
       return;
     }
 
     this.shutdownPromise = this.runShutdownLifecycle();
 
     await this.shutdownPromise;
+  }
+
+  private async retryReleasedDistributedLocksAfterShutdown(): Promise<void> {
+    if (this.lifecycleState !== 'stopped' || this.activeTasks.size > 0) {
+      return;
+    }
+
+    await this.distributedLocks.releaseOwnedLocks();
   }
 
   private async startLifecycle(): Promise<void> {
@@ -661,8 +671,12 @@ export class CronLifecycleService
       });
     } finally {
       lockRenewalMonitor.stop();
-      await this.distributedLocks.releaseLock(descriptor);
       this.runningDistributedLockKeys.delete(descriptor.lockKey);
+      const released = await this.distributedLocks.releaseLock(descriptor);
+
+      if (!released && this.lifecycleState === 'stopped') {
+        await this.distributedLocks.releaseOwnedLocks();
+      }
     }
   }
 

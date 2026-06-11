@@ -31,6 +31,10 @@ class InMemoryLockRedisClient {
   private readonly locks = new Map<string, string>();
   renewalCalls = 0;
 
+  hasLock(key: string): boolean {
+    return this.locks.has(key);
+  }
+
   async set(key: string, value: string, _mode: 'PX', _ttl: number, _existence: 'NX'): Promise<'OK' | null> {
     if (this.locks.has(key)) {
       return null;
@@ -167,7 +171,7 @@ class ReleaseErrorOnceRedisClient extends InMemoryLockRedisClient {
   releaseAttempts = 0;
 
   override async eval(script: string, keysLength: number, key: string, owner: string, ttl?: string): Promise<number> {
-    if (script.includes('DEL')) {
+    if (script.includes('DEL') && !key.includes('__probe')) {
       this.releaseAttempts += 1;
 
       if (this.releaseAttempts === 1) {
@@ -176,6 +180,26 @@ class ReleaseErrorOnceRedisClient extends InMemoryLockRedisClient {
     }
 
     return await super.eval(script, keysLength, key, owner, ttl);
+  }
+}
+
+class AcquireFailureAfterProbeRedisClient extends InMemoryLockRedisClient {
+  lockAcquireAttempts = 0;
+  failNextAcquire = true;
+
+  override async set(key: string, value: string, mode: 'PX', ttl: number, existence: 'NX'): Promise<'OK' | null> {
+    if (key.includes('__probe')) {
+      return await super.set(key, value, mode, ttl, existence);
+    }
+
+    this.lockAcquireAttempts += 1;
+
+    if (this.failNextAcquire) {
+      this.failNextAcquire = false;
+      throw new Error('redis unavailable');
+    }
+
+    return await super.set(key, value, mode, ttl, existence);
   }
 }
 
@@ -679,6 +703,74 @@ describe('@fluojs/cron', () => {
     await appTwo.close();
   });
 
+  it('reports distributed Redis lock I/O outages as not-ready and unhealthy', async () => {
+    const scheduled = createManualScheduler();
+    const redis = new AcquireFailureAfterProbeRedisClient();
+
+    class Store {
+      runs = 0;
+    }
+
+    @Inject(Store)
+    class DistributedTaskService {
+      constructor(private readonly store: Store) {}
+
+      @Cron(CronExpression.EVERY_SECOND, { name: 'distributed-io-status' })
+      run() {
+        this.store.runs += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-io-status',
+            lockTtlMs: 60_000,
+          },
+          scheduler: scheduled.scheduler,
+        }),
+      ],
+      providers: [DistributedTaskService, Store],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const registry = await app.container.resolve(SCHEDULING_REGISTRY);
+    const statusService = registry as CronLifecycleService;
+
+    expect(statusService.createPlatformStatusSnapshot().readiness.status).toBe('ready');
+
+    await scheduled.records[0]!.tick();
+
+    const snapshot = statusService.createPlatformStatusSnapshot();
+    expect(redis.lockAcquireAttempts).toBe(1);
+    expect(snapshot.details.redisDependencyResolved).toBe(true);
+    expect(snapshot.details.redisLockIoAvailable).toBe(false);
+    expect(snapshot.readiness.status).toBe('not-ready');
+    expect(snapshot.health.status).toBe('unhealthy');
+    expect((await app.container.resolve(Store)).runs).toBe(0);
+
+    const attemptsAfterFailure = redis.lockAcquireAttempts;
+    await redis.set('cron-io-status:distributed-io-status', 'other-owner', 'PX', 60_000, 'NX');
+    const attemptsAfterSeedingContention = redis.lockAcquireAttempts;
+    await scheduled.records[0]!.tick();
+
+    const recoveredSnapshot = statusService.createPlatformStatusSnapshot();
+    expect(attemptsAfterFailure).toBe(1);
+    expect(redis.lockAcquireAttempts).toBe(attemptsAfterSeedingContention + 1);
+    expect(recoveredSnapshot.details.redisLockIoAvailable).toBe(true);
+    expect(recoveredSnapshot.readiness.status).toBe('ready');
+    expect(recoveredSnapshot.health.status).toBe('healthy');
+    expect((await app.container.resolve(Store)).runs).toBe(0);
+
+    await closeApplication(app);
+  });
+
   it('fails bootstrap before scheduling jobs when the configured Redis client is missing', async () => {
     const scheduler = createManualScheduler();
 
@@ -1069,6 +1161,57 @@ describe('@fluojs/cron', () => {
     await scheduled.records[0]!.tick();
 
     expect(events).toEqual(['before', 'run', 'error:hook boom', 'after']);
+
+    await closeApplication(app);
+  });
+
+  it('releases distributed locks from the finally path when the task body throws', async () => {
+    const scheduled = createManualScheduler();
+    const redis = new InMemoryLockRedisClient();
+    const events: string[] = [];
+
+    class DistributedFailingTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        distributed: true,
+        lockTtlMs: 60_000,
+        name: 'distributed-throw-release',
+        onError: (error) => {
+          events.push(`error:${error instanceof Error ? error.message : 'unknown'}`);
+        },
+      })
+      run() {
+        events.push('run');
+        throw new Error('task body boom');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-throw-release',
+            lockTtlMs: 60_000,
+          },
+          scheduler: scheduled.scheduler,
+        }),
+      ],
+      providers: [DistributedFailingTaskService],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const registry = await app.container.resolve(SCHEDULING_REGISTRY);
+    const statusService = registry as CronLifecycleService;
+
+    await scheduled.records[0]!.tick();
+
+    expect(events).toEqual(['run', 'error:task body boom']);
+    expect(redis.hasLock('cron-throw-release:distributed-throw-release')).toBe(false);
+    expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(0);
 
     await closeApplication(app);
   });
@@ -1709,6 +1852,80 @@ describe('@fluojs/cron', () => {
     await closeApplication(app);
   });
 
+  it('stops and resumes dynamic cron execution while cleaning up old scheduler handles', async () => {
+    const scheduled = createManualScheduler();
+    const events: string[] = [];
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    registry.addCron('dynamic-execution-control', CronExpression.EVERY_SECOND, () => {
+      events.push('run');
+    });
+
+    const firstRecord = scheduled.records[0]!;
+    await firstRecord.tick();
+    expect(events).toEqual(['run']);
+
+    expect(registry.disable('dynamic-execution-control')).toBe(true);
+    expect(firstRecord.stop).toHaveBeenCalledTimes(1);
+    await firstRecord.tick();
+    expect(events).toEqual(['run']);
+
+    expect(registry.enable('dynamic-execution-control')).toBe(true);
+    const secondRecord = scheduled.records[1]!;
+    expect(secondRecord.options.name).toBe('dynamic-execution-control');
+    await secondRecord.tick();
+    expect(events).toEqual(['run', 'run']);
+
+    expect(registry.remove('dynamic-execution-control')).toBe(true);
+    expect(secondRecord.stop).toHaveBeenCalledTimes(1);
+    await secondRecord.tick();
+    expect(events).toEqual(['run', 'run']);
+    expect(registry.get('dynamic-execution-control')).toBeUndefined();
+
+    await closeApplication(app);
+  });
+
+  it('cleans up dynamic interval and timeout timers when disabled or removed', async () => {
+    vi.useFakeTimers();
+    const events: string[] = [];
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot()],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    registry.addInterval('dynamic-interval-cleanup', 100, () => {
+      events.push('interval');
+    });
+    registry.addTimeout('dynamic-timeout-cleanup', 250, () => {
+      events.push('timeout');
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(events).toEqual(['interval']);
+
+    expect(registry.disable('dynamic-interval-cleanup')).toBe(true);
+    expect(registry.remove('dynamic-timeout-cleanup')).toBe(true);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(events).toEqual(['interval']);
+
+    expect(registry.enable('dynamic-interval-cleanup')).toBe(true);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(events).toEqual(['interval', 'interval']);
+
+    await app.close();
+  });
+
   it('honors dynamic task option names for registry keys and scheduler metadata', async () => {
     const scheduled = createManualScheduler();
 
@@ -1775,13 +1992,16 @@ describe('@fluojs/cron', () => {
 
   it('rolls back cron expression updates when rescheduling fails', async () => {
     const firstStop = vi.fn();
-    const scheduler = vi.fn<CronScheduler>((_expression, _options, _callback) => {
+    let firstCallback: (() => Promise<void>) | undefined;
+    const scheduler = vi.fn<CronScheduler>((_expression, _options, callback) => {
       if (scheduler.mock.calls.length === 1) {
+        firstCallback = callback;
         return { stop: firstStop };
       }
 
       throw new Error('reschedule failed');
     });
+    const events: string[] = [];
 
     class AppModule {}
     defineModule(AppModule, {
@@ -1791,13 +2011,23 @@ describe('@fluojs/cron', () => {
     const app = await bootstrapApplication({ rootModule: AppModule });
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
-    registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {});
+    registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {
+      events.push('previous-schedule-run');
+    });
 
     expect(() => registry.updateCronExpression('dynamic-cron', CronExpression.EVERY_5_SECONDS)).toThrow(
       'reschedule failed',
     );
     expect(registry.get('dynamic-cron')?.expression).toBe(CronExpression.EVERY_SECOND);
     expect(firstStop).not.toHaveBeenCalled();
+    expect(firstCallback).toBeDefined();
+
+    if (!firstCallback) {
+      throw new Error('expected previous cron callback to remain registered');
+    }
+
+    await firstCallback();
+    expect(events).toEqual(['previous-schedule-run']);
 
     await closeApplication(app);
     expect(firstStop).toHaveBeenCalledTimes(1);
@@ -2056,6 +2286,65 @@ describe('@fluojs/cron', () => {
     expect(secondStore.count).toBe(1);
 
     await appTwo.close();
+  });
+
+  it('retries distributed lock release on a later shutdown call after a timed-out task settles', async () => {
+    const scheduled = createManualScheduler();
+    const redis = new ReleaseErrorOnceRedisClient();
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+    const loggerEvents: string[] = [];
+
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, { name: 'distributed-timeout-release-retry' })
+      async run() {
+        started.resolve();
+        await release.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-timeout-release-retry',
+            lockTtlMs: 60_000,
+          },
+          scheduler: scheduled.scheduler,
+          shutdown: {
+            timeoutMs: 1,
+          },
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const registry = await app.container.resolve(SCHEDULING_REGISTRY);
+    const statusService = registry as CronLifecycleService;
+
+    const tickPromise = scheduled.records[0]!.tick();
+    await started.promise;
+    await app.close();
+    expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(1);
+
+    release.resolve();
+    await tickPromise;
+
+    expect(redis.releaseAttempts).toBe(2);
+    expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(0);
+    expect(loggerEvents.some((event) => event.includes('Failed to release distributed cron lock for distributed-timeout-release-retry.'))).toBe(true);
+
+    await app.close();
+
+    expect(redis.releaseAttempts).toBe(2);
+    expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(0);
   });
 
   it('preserves active dynamic distributed locks after remove when bounded shutdown times out', async () => {
