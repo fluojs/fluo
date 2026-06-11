@@ -31,6 +31,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | NestJS Redis async module registration or shared Redis Pub/Sub clients | `RedisModule.forRoot(...)`, named `RedisModule.forRoot({ name, ... })`, and `getRedisClientToken(name)` from `@fluojs/redis` | fluo Redis registration is synchronous. Resolve environment-specific options or externally created clients before registration, and keep Pub/Sub subscribers on a dedicated duplicate or named client instead of reusing the ordinary command client. |
 | `@nestjs/schedule` decorators, `SchedulerRegistry`, or `CronJob` handles | `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, and `SCHEDULING_REGISTRY` from `@fluojs/cron` | fluo starts decorator-discovered tasks during application bootstrap, starts dynamic registry tasks when added to a started registry, and exposes read-only task descriptors instead of live scheduler handles. |
 | NestJS-style email async module registration with `imports`, `useClass`, or `useExisting` | `EmailModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/email` | fluo email async registration supports injected factory options only. Register dependencies in the application module graph first, list tokens in `inject`, and set `global: false` only when opting out of the default global provider visibility. |
+| NestJS-style notification modules, decorator-discovered channel providers, or implicit queue/event integrations | `NotificationsModule.forRoot({ channels, queue?, events?, global? })` or `NotificationsModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/notifications` | fluo notifications registration uses explicit `NotificationChannel` values passed in `channels`. Queue adapters and event publishers are application-owned seams, not module-owned resources, and `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS` are global by default unless `global: false` is set. |
 
 ## Breaking Differences
 
@@ -68,6 +69,9 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Redis Pub/Sub migration must keep subscriber ownership explicit. A `client.duplicate()` subscriber is application-owned and must be connected, subscribed, and closed by the code that created it; use named `RedisModule.forRoot({ name: 'subscriber', ... })` plus `getRedisClientToken('subscriber')` when fluo should own the subscriber client's lifecycle timeouts.
 - Cron migration is not a `SchedulerRegistry`/`CronJob` handle-preserving replacement. Use public instance methods for `@Cron`, `@Interval`, and `@Timeout`; move private or static scheduled work behind a public provider method; and use `SCHEDULING_REGISTRY.get(...)` / `getAll()` for `SchedulingTaskDescriptor` snapshots rather than mutating live `CronJob` handles.
 - Email migration is not a NestJS dynamic-module shape clone. `EmailModule.forRootAsync(...)` accepts `inject` plus `useFactory`; it does not consume `imports`, `useClass`, or `useExisting`. `EmailModule` is global by default, so set `global: false` only when migrated code requires module-local visibility.
+- Notifications migration is not a provider-discovery or decorator-metadata clone. Pass explicit `NotificationChannel` values to `NotificationsModule.forRoot(...)` or return them from `NotificationsModule.forRootAsync({ inject, useFactory, global? })`; the package does not scan NestJS providers, `@Injectable()` metadata, or emitted design types for channels.
+- `@fluojs/notifications` does not create, import, close, or drain concrete queue or event-bus resources. Queue adapters and event publishers are application-owned integrations, and status snapshots report them as externally managed dependencies with `ownsResources: false`.
+- `NotificationsModule` is global by default for `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS`; use `global: false` when migrated code requires module-local visibility.
 
 ## Removed Concepts
 
@@ -87,6 +91,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Passing raw Express/Connect middleware directly to fluo application middleware. fluo middleware receives `MiddlewareContext`, so native `(req, res, next)` functions need an explicit wrapper or platform-owned integration boundary.
 - Assuming NestJS `SchedulerRegistry` returns mutable `CronJob` handles or that private scheduled methods are valid decorator targets. fluo exposes descriptor-based scheduling controls and requires scheduled decorators on public instance methods.
 - Assuming `EmailModule.forRootAsync(...)` accepts NestJS `imports`, `useClass`, or `useExisting`, or assuming email providers are module-local by default. fluo email uses injected factory registration and defaults to global visibility unless `global: false` is set.
+- Assuming notification channels are discovered from NestJS provider decorators/metadata, or assuming queue/event-bus resources are owned by the notifications module. fluo requires explicit `channels` and application-owned queue adapter/event publisher lifecycles.
 
 ## CLI Starter and Generator Limits
 

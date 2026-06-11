@@ -406,6 +406,24 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts Notifications migration boundary guidance when context and governance tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/notifications/README.md',
+        'packages/notifications/README.ko.md',
+        'book/intermediate/ch15-notifications.md',
+        'book/intermediate/ch15-notifications.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('keeps Email async-registration and visibility guidance present in governed docs', () => {
     const englishEmailReadme = readFileSync(join(repoRoot, 'packages/email/README.md'), 'utf8');
     const koreanEmailReadme = readFileSync(join(repoRoot, 'packages/email/README.ko.md'), 'utf8');
@@ -1176,6 +1194,8 @@ describe('Notifications discoverability', () => {
   const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
   const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch15-notifications.md'), 'utf8');
   const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch15-notifications.ko.md'), 'utf8');
+  const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+  const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
 
   it('keeps async registration, batch dispatch, queue, lifecycle, and status APIs discoverable across governed docs', () => {
     for (const content of [englishSurface, koreanSurface, englishContext, koreanContext, englishReadme, koreanReadme, englishChapter, koreanChapter]) {
@@ -1194,6 +1214,24 @@ describe('Notifications discoverability', () => {
     for (const content of [englishChapter, koreanChapter]) {
       expect(content).toContain('NotificationDispatchBatchResult');
       expect(content).toContain('NotificationQueueNotConfiguredError');
+    }
+  });
+
+  it('keeps explicit channel registration and externally managed resource boundaries discoverable for NestJS migrations', () => {
+    for (const content of [englishContext, englishReadme, englishChapter, englishMigration]) {
+      expect(content).toContain('NotificationChannel');
+      expect(content).toContain('channels');
+      expect(content).toContain('global: false');
+      expect(content).toMatch(/provider[- ]discovery|provider metadata|decorator[- ]metadata|emitted metadata|emitDecoratorMetadata/u);
+      expect(content).toMatch(/application-owned|externally managed|outside the foundation package/u);
+    }
+
+    for (const content of [koreanContext, koreanReadme, koreanChapter, koreanMigration]) {
+      expect(content).toContain('NotificationChannel');
+      expect(content).toContain('channels');
+      expect(content).toContain('global: false');
+      expect(content).toContain('metadata');
+      expect(content).toMatch(/애플리케이션 소유|foundation 패키지 밖|externally managed/u);
     }
   });
 });
