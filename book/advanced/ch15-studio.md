@@ -139,7 +139,7 @@ pnpm add -D @fluojs/studio
 node -p "require.resolve('@fluojs/studio/viewer')"
 ```
 
-The printed path points at the packaged `dist/index.html` artifact. Open that file in a browser, then load your inspect artifact. Repository contributors who are developing the Studio app itself can run the local dev server instead.
+The printed path points at the packaged `dist/index.html` artifact. Open that file in a browser, then load your inspect artifact. This viewer resolution step is Node package-resolution based even when the artifact itself came from a Bun, Deno, or Cloudflare Workers static/report fallback workflow. Repository contributors who are developing the Studio app itself can run the local dev server instead.
 
 ```bash
 pnpm --dir packages/studio dev
