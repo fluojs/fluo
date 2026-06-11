@@ -23,6 +23,10 @@ type AdapterWithListenTarget = {
   getListenTarget(): ListenTargetLike;
 };
 
+type RunRejectionWithApp = {
+  app: AppLike;
+};
+
 /**
  * Options for configuring the HTTP adapter portability harness.
  *
@@ -75,6 +79,22 @@ function hasListenTarget(value: unknown): value is AdapterWithListenTarget {
     value !== null &&
     'getListenTarget' in value &&
     typeof value.getListenTarget === 'function'
+  );
+}
+
+function hasRejectedApp(value: unknown): value is RunRejectionWithApp {
+  if (typeof value !== 'object' || value === null || !('app' in value)) {
+    return false;
+  }
+
+  const app = Reflect.get(value, 'app');
+  return (
+    typeof app === 'object' &&
+    app !== null &&
+    'close' in app &&
+    typeof Reflect.get(app, 'close') === 'function' &&
+    'listen' in app &&
+    typeof Reflect.get(app, 'listen') === 'function'
   );
 }
 
@@ -189,6 +209,30 @@ async function prepareAndListenWithCleanup(
     }
 
     throw setupError;
+  }
+}
+
+async function runApplicationWithRejectedAppCleanup<TApp extends AppLike>(
+  run: () => Promise<TApp>,
+  adapterName: string,
+): Promise<TApp> {
+  try {
+    return await run();
+  } catch (runError) {
+    if (!hasRejectedApp(runError)) {
+      throw runError;
+    }
+
+    try {
+      await runError.app.close();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [runError, cleanupError],
+        `${adapterName} adapter run() rejected and app.close() also failed during portability harness cleanup.`,
+      );
+    }
+
+    throw runError;
   }
 }
 
@@ -614,12 +658,16 @@ export class HttpAdapterPortabilityHarness<
       controllers: [HealthController],
     });
 
-    const app = await this.options.run(AppModule, {
-      cors: false,
-      host: '127.0.0.1',
-      logger,
-      port: 0,
-    } as TRunOptions);
+    const app = await runApplicationWithRejectedAppCleanup(
+      () =>
+        this.options.run(AppModule, {
+          cors: false,
+          host: '127.0.0.1',
+          logger,
+          port: 0,
+        } as TRunOptions),
+      this.options.name,
+    );
 
     await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
       const response = await fetch(`${baseUrl}/health`);
@@ -655,13 +703,17 @@ export class HttpAdapterPortabilityHarness<
       controllers: [HealthController],
     });
 
-    const app = await this.options.run(AppModule, {
-      cors: false,
-      host: '127.0.0.1',
-      https,
-      logger,
-      port: 0,
-    } as TRunOptions);
+    const app = await runApplicationWithRejectedAppCleanup(
+      () =>
+        this.options.run(AppModule, {
+          cors: false,
+          host: '127.0.0.1',
+          https,
+          logger,
+          port: 0,
+        } as TRunOptions),
+      this.options.name,
+    );
 
     await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
       const response = await requestHttps(`${baseUrl}/health`);
@@ -703,12 +755,16 @@ export class HttpAdapterPortabilityHarness<
 
     const signal = 'SIGTERM' as const;
     const listenersBefore = new Set(process.listeners(signal));
-    const app = await this.options.run(AppModule, {
-      cors: false,
-      logger,
-      port: 0,
-      shutdownSignals: [signal],
-    } as TRunOptions);
+    const app = await runApplicationWithRejectedAppCleanup(
+      () =>
+        this.options.run(AppModule, {
+          cors: false,
+          logger,
+          port: 0,
+          shutdownSignals: [signal],
+        } as TRunOptions),
+      this.options.name,
+    );
     const registeredListeners = process.listeners(signal).filter((listener) => !listenersBefore.has(listener));
 
     await runWithCleanup(app, this.options.name, async () => {
