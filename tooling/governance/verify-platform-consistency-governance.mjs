@@ -670,6 +670,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const rootReadmeKo = readFileSync(join(repoRoot, 'README.ko.md'), 'utf8');
   const drizzleReadme = readFileSync(join(repoRoot, 'packages/drizzle/README.md'), 'utf8');
   const drizzleReadmeKo = readFileSync(join(repoRoot, 'packages/drizzle/README.ko.md'), 'utf8');
+  const expressReadme = readFileSync(join(repoRoot, 'packages/platform-express/README.md'), 'utf8');
+  const expressReadmeKo = readFileSync(join(repoRoot, 'packages/platform-express/README.ko.md'), 'utf8');
   const cacheManagerReadme = readFileSync(join(repoRoot, 'packages/cache-manager/README.md'), 'utf8');
   const cacheManagerReadmeKo = readFileSync(join(repoRoot, 'packages/cache-manager/README.ko.md'), 'utf8');
   const cliReadme = readFileSync(join(repoRoot, 'packages/cli/README.md'), 'utf8');
@@ -780,6 +782,28 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContextKo.includes('@fluojs/runtime/internal*') &&
       docsContextKo.includes('package-integration seam 경계'),
     'docs/reference/package-surface.ko.md and docs/CONTEXT.ko.md must distinguish runtime application-facing helper subpaths from internal package-integration seams.',
+  );
+  assert(
+    expressReadme.includes('Express compatibility does not mean that native Express/Connect') &&
+      expressReadme.includes('Do not pass an Express/Connect function') &&
+      packageSurface.includes('native Express/Connect `(req, res, next)` functions are not portable fluo middleware') &&
+      packageChooser.includes('Use fluo `Middleware` for the application pipeline') &&
+      migrateFromNestjs.includes('Native Express/Connect `(req, res, next)` middleware') &&
+      docsContext.includes('Express host compatibility boundary') &&
+      docsContext.includes('getServer()') &&
+      docsContext.includes('getRealtimeCapability()'),
+    'Express platform docs must keep host compatibility, native middleware limits, and infrastructure helper boundaries discoverable together.',
+  );
+  assert(
+    expressReadmeKo.includes('Express 호환성은 native Express/Connect') &&
+      expressReadmeKo.includes('Express/Connect function을 fluo middleware로 직접 전달하지 마세요') &&
+      packageSurfaceKo.includes('native Express/Connect `(req, res, next)` function은 portable fluo middleware가 아닙니다') &&
+      packageChooserKo.includes('Application pipeline에는 fluo `Middleware`를 사용') &&
+      migrateFromNestjsKo.includes('native Express/Connect `(req, res, next)` middleware') &&
+      docsContextKo.includes('Express host compatibility boundary') &&
+      docsContextKo.includes('getServer()') &&
+      docsContextKo.includes('getRealtimeCapability()'),
+    'Korean Express platform docs must keep host compatibility, native middleware limits, and infrastructure helper boundaries discoverable together.',
   );
   assert(
     docsContext.includes('docs/reference/package-chooser.md') && docsContext.includes('@fluojs/i18n'),
