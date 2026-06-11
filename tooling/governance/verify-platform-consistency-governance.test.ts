@@ -389,6 +389,23 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts Notifications package-surface and Chapter 15 guidance when context and governance tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'book/intermediate/ch15-notifications.md',
+        'book/intermediate/ch15-notifications.ko.md',
+        'docs/reference/package-surface.md',
+        'docs/reference/package-surface.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.mjs',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('keeps Email async-registration and visibility guidance present in governed docs', () => {
     const englishEmailReadme = readFileSync(join(repoRoot, 'packages/email/README.md'), 'utf8');
     const koreanEmailReadme = readFileSync(join(repoRoot, 'packages/email/README.ko.md'), 'utf8');
@@ -1146,6 +1163,37 @@ describe('Queue lifecycle discoverability', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme]) {
       expect(content).toContain('bootstrap-ready');
       expect(content).toContain('workerShutdownTimeoutMs');
+    }
+  });
+});
+
+describe('Notifications discoverability', () => {
+  const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+  const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const englishReadme = readFileSync(join(repoRoot, 'packages/notifications/README.md'), 'utf8');
+  const koreanReadme = readFileSync(join(repoRoot, 'packages/notifications/README.ko.md'), 'utf8');
+  const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+  const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+  const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch15-notifications.md'), 'utf8');
+  const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch15-notifications.ko.md'), 'utf8');
+
+  it('keeps async registration, batch dispatch, queue, lifecycle, and status APIs discoverable across governed docs', () => {
+    for (const content of [englishSurface, koreanSurface, englishContext, koreanContext, englishReadme, koreanReadme, englishChapter, koreanChapter]) {
+      expect(content).toContain('NotificationsModule.forRoot');
+      expect(content).toContain('forRootAsync');
+      expect(content).toContain('global: false');
+      expect(content).toContain('dispatchMany(...)');
+      expect(content).toContain('createNotificationsPlatformStatusSnapshot(...)');
+    }
+
+    for (const content of [englishSurface, koreanSurface, englishContext, koreanContext, englishChapter, koreanChapter]) {
+      expect(content).toContain('NotificationsService.createPlatformStatusSnapshot()');
+      expect(content).toMatch(/queue.*event-bus|event-bus.*queue/u);
+    }
+
+    for (const content of [englishChapter, koreanChapter]) {
+      expect(content).toContain('NotificationDispatchBatchResult');
+      expect(content).toContain('NotificationQueueNotConfiguredError');
     }
   });
 });
