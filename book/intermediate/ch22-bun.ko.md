@@ -108,7 +108,7 @@ import { createBunFetchHandler } from '@fluojs/platform-bun';
 
 // ... 앱 부트스트랩 ...
 
-const handler = await createBunFetchHandler({
+const handler = createBunFetchHandler({
   dispatcher: app.getHttpDispatcher(),
 });
 
@@ -118,7 +118,7 @@ Bun.serve({
 });
 ```
 
-이 방식은 fluo API 옆에 정적 파일 서빙이나 커스텀 라우팅 같은 Bun 기능을 함께 배치해야 할 때 유용합니다.
+이 방식은 fluo API 옆에 정적 파일 서빙이나 커스텀 라우팅 같은 Bun 기능을 함께 배치해야 할 때 유용합니다. `createBunFetchHandler(...)`는 동기적으로 fetch bridge만 생성하며, 서버를 직접 관리하는 경우 shutdown, websocket upgrade, native `routes` acceleration은 주변 `Bun.serve(...)` host가 소유합니다.
 
 ## 22.5 Portability Checklist
 

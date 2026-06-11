@@ -108,7 +108,7 @@ import { createBunFetchHandler } from '@fluojs/platform-bun';
 
 // ... app bootstrap ...
 
-const handler = await createBunFetchHandler({
+const handler = createBunFetchHandler({
   dispatcher: app.getHttpDispatcher(),
 });
 
@@ -118,7 +118,7 @@ Bun.serve({
 });
 ```
 
-This approach is useful when you need to place Bun features such as static file serving or custom routing alongside the fluo API.
+This approach is useful when you need to place Bun features such as static file serving or custom routing alongside the fluo API. `createBunFetchHandler(...)` is synchronous and only creates the fetch bridge; the surrounding `Bun.serve(...)` host owns shutdown, websocket upgrades, and native `routes` acceleration when you manage the server yourself.
 
 ## 22.5 Portability Checklist
 
