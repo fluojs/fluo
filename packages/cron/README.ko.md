@@ -41,6 +41,8 @@ npm install @fluojs/cron croner
 애플리케이션 모듈의 스케줄링 등록은 `CronModule.forRoot(...)`로 구성합니다.
 Cron 표현식은 다섯 필드(`minute hour day month weekday`) 또는 여섯 필드(`second minute hour day month weekday`)를 사용할 수 있습니다. 내장 `CronExpression` preset은 sub-minute 정밀도가 필요할 때 여섯 필드 표현식을 사용합니다. Cron task는 application bootstrap 이후에만 시작되고, 이미 시작된 registry에 동적으로 등록한 cron task는 등록 시점에 시작되며, fluo는 `timezone`과 no-overlap 보호를 scheduler에 전달해 같은 task instance가 자기 자신과 겹쳐 실행되지 않게 합니다.
 
+Scheduling decorator는 public instance method에만 적용됩니다. NestJS에서 사용하던 private scheduled method, static helper, legacy decorator metadata 가정 뒤에 숨은 method name을 그대로 옮기지 마세요. 공개 provider/controller method를 노출하고 private 구현 세부사항은 그 method 뒤에 두세요.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { CronModule, Cron, CronExpression, Interval, Timeout } from '@fluojs/cron';
@@ -143,7 +145,7 @@ class TaskManager {
 }
 ```
 
-Registry는 `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, `updateCronExpression`을 제공합니다. 첫 번째 `name` 인자는 기본 registry key이며, `options.name`을 전달하면 dynamic task의 실제 registry key, scheduler metadata name, 기본 distributed lock key가 이를 사용해 decorator naming semantics와 일치합니다. Timeout task는 한 번 실행된 뒤 비활성화되지만 registry에는 남아 있어 의도적으로 다시 활성화할 수 있습니다.
+Registry는 `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, `updateCronExpression`을 제공합니다. 첫 번째 `name` 인자는 기본 registry key이며, `options.name`을 전달하면 dynamic task의 실제 registry key, scheduler metadata name, 기본 distributed lock key가 이를 사용해 decorator naming semantics와 일치합니다. `get`과 `getAll`은 live `CronJob` handle이 아니라 read-only `SchedulingTaskDescriptor` 값을 반환합니다. Timeout task는 한 번 실행된 뒤 비활성화되지만 registry에는 남아 있어 의도적으로 다시 활성화할 수 있습니다.
 
 Dynamic cron 등록은 scheduler startup과 원자적으로 처리됩니다. Scheduler가 새 cron job을 거부하면 registry는 half-registered task를 남기지 않습니다. 실행 중인 cron expression update도 rollback-safe합니다. Rescheduling이 실패하면 이전 expression과 scheduled job이 그대로 유지됩니다. Cron task는 scheduler-level no-overlap protection과 fluo의 in-process running guard를 함께 사용하므로 같은 task instance가 overlapping tick으로 실행되지 않습니다.
 

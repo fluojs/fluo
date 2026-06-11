@@ -36,6 +36,8 @@ The README documents `CronModule.forRoot(...)` as the registration entrypoint. f
 Cron expressions can be written with five fields when minute-level scheduling is enough, or six fields when second-level scheduling is required. The built-in presets use six-field expressions for sub-minute schedules. Cron tasks start as part of the application bootstrap lifecycle rather than at decorator evaluation time, and dynamic registry cron tasks start when they are added to an already-started registry.
 Non-distributed scheduling does not load the Redis integration during import, registration, bootstrap, or status snapshot creation. The Redis peer is a distributed-lock dependency only.
 
+Decorated schedules belong on public instance methods. If you are migrating code that hid scheduled work behind private methods or static helper functions, keep those helpers as implementation details and expose a public provider method for `@Cron`, `@Interval`, or `@Timeout`.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { CronModule } from '@fluojs/cron';
@@ -140,7 +142,7 @@ export class CampaignWindowService {
 }
 ```
 
-This feature is powerful, so it should be used with care. A dynamic schedule is the right fit when business timing truly changes at runtime. It does not mean ordinary static maintenance tasks should be hidden behind registry calls.
+This feature is powerful, so it should be used with care. A dynamic schedule is the right fit when business timing truly changes at runtime. It does not mean ordinary static maintenance tasks should be hidden behind registry calls. The registry is descriptor-based: `get()` and `getAll()` describe tasks through `SchedulingTaskDescriptor` values instead of returning live scheduler handles. That keeps runtime controls explicit while preventing application code from depending on scheduler-engine internals.
 
 ## 12.7 Bounded shutdown
 
