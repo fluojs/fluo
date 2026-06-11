@@ -12,12 +12,12 @@ const allowedBumpsByLane = {
   stable: new Set(['patch', 'minor', 'major']),
 };
 const validBumps = new Set(['patch', 'minor', 'major']);
-const publicCliFeatureAdditionVerbs = /\b(adds?|added|introduces?|introduced|exposes?|exposed|supports?|supported|enables?|enabled|provides?|provided|implements?|implemented|ships?|shipped|expands?|expanded)\b/iu;
+const publicCliFeatureAdditionVerbs = /\b(adds?|added|allows?|allowed|introduces?|introduced|exposes?|exposed|supports?|supported|enables?|enabled|provides?|provided|implements?|implemented|ships?|shipped|expands?|expanded)\b/iu;
 const nonBehaviorAdditionPhrases = /\b(adds?|added)\s+(?:(?:regression\s+)?(?:tests?|coverage|docs?|documentation)|(?:validation|guardrails?|checks?)\s+for)\b/giu;
 const documentedCliSurfacePhraseMarkers = [
   {
     readme: /\b(?:generated|starter|template|lifecycle)\b/iu,
-    release: /\b(?:generated\s+)?(?:project|projects|starter|starters|script|scripts|template|templates|lifecycle|lifecycles)\b|\bstarter\s+(?:contract|contracts|lifecycle|lifecycles|matrix|mode|modes|script|scripts|template|templates)\b/iu,
+    release: /\b(?:generated\s+)?(?:project|projects|starter|starters|script|scripts|template|templates)\b|\bstarter\s+(?:contract|contracts|lifecycle|lifecycles|matrix|mode|modes|script|scripts|template|templates)\b|\blifecycle\s+(?:commands?|scripts?|workflows?)\b/iu,
   },
   {
     readme: /\binspect\b/iu,

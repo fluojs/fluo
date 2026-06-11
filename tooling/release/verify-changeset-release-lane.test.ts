@@ -170,6 +170,41 @@ describe('verifyChangesetReleaseLane', () => {
     ).toThrow(/public CLI feature additions classified as patch.*fluo serve/us);
   });
 
+  it('rejects patch changesets that allow README-documented CLI commands', () => {
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'cli-static-preview-serve.md',
+      '"@fluojs/cli": patch',
+      'Allow `fluo serve` command for README-documented static preview workflows.',
+    );
+
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { changesetDirectory: directory, lane: 'stable' },
+        {
+          readCliReadme: () =>
+            '# @fluojs/cli\n\n## Static Preview\n\n```bash\nfluo serve ./dist --static-preview\n```\n\nUse `fluo serve` for README-documented static preview workflows.\n',
+        },
+      ),
+    ).toThrow(/public CLI feature additions classified as patch.*fluo serve/us);
+  });
+
+  it('allows patch changesets that add lifecycle guardrails without changing documented behavior', () => {
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'cli-lifecycle-guardrails.md',
+      '"@fluojs/cli": patch',
+      'Added lifecycle guardrails to avoid duplicate restart loops without changing the documented behavior.',
+    );
+
+    const result = verifyChangesetReleaseLane({ changesetDirectory: directory, lane: 'stable' });
+
+    expect(result.checkedIntents).toMatchObject([{ bump: 'patch', packageName: '@fluojs/cli' }]);
+    expect(result.checkedPatchCliFeatureDowngrades).toEqual([]);
+  });
+
   it('rejects generated patch changelog sections that describe public CLI feature additions', () => {
     const directory = createChangesetDirectory();
 
