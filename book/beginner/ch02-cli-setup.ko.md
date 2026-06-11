@@ -218,14 +218,20 @@ fluo-blog/
 ├── package.json              # Scripts and dependencies
 ├── pnpm-lock.yaml            # Locked dependency versions
 ├── tsconfig.json             # TypeScript configuration
+├── vitest.config.ts          # Unit, slice, e2e test configuration
+├── test/                     # Request-pipeline/e2e tests
+│   └── app.e2e.test.ts
 └── src/                      # Application source
     ├── app.ts                # App assembly
+    ├── app.test.ts           # App dispatch test
     ├── greeting/             # Default greeting feature slice
     │   ├── greeting.controller.ts      # Default HTTP route
     │   ├── greeting.module.ts          # Feature assembly
     │   ├── greeting.repo.ts            # Response payload source
     │   ├── greeting.response.dto.ts    # Response DTO
-    │   └── greeting.service.ts         # Route logic
+    │   ├── greeting.service.ts         # Route logic
+    │   ├── greeting.service.test.ts    # Fast unit test
+    │   └── greeting.slice.test.ts      # Module/provider wiring test
     └── main.ts               # Bootstrap entrypoint
 ```
 
@@ -234,6 +240,7 @@ fluo-blog/
 - 앱은 어디서 시작되는가?
 - 기본 앱은 어디서 조립되는가?
 - 첫 HTTP 응답은 어떤 파일이 담당하는가?
+- 앱 조립, feature slice, request pipeline은 어떤 테스트가 검증하는가?
 - 가장 자주 실행할 스크립트는 무엇인가?
 
 ### src/main.ts
@@ -303,12 +310,16 @@ CLI는 fluo에 최적화된 설정으로 `tsconfig.json`을 대신 구성해 줍
 
 디렉터리 구조를 살펴봤다면, 이제는 이 프로젝트 안에서 매일 어떤 명령으로 작업하게 되는지 이해할 차례입니다.
 
-생성된 프로젝트에는 초기 개발 워크플로 전체를 받쳐 주는 소수의 스크립트가 보통 포함됩니다.
+생성된 Node HTTP 프로젝트에는 초기 개발 워크플로 전체를 받쳐 주는 소수의 스크립트가 포함됩니다.
 
 - **`dev`**: 빠른 피드백을 위한 개발 모드 실행.
 - **`build`**: TypeScript를 프로덕션용 출력으로 컴파일.
 - **`start`**: 빌드된 결과를 실행.
-- **`lint`**: 스타터가 제공하는 경우 코드 품질 점검.
+- **`test`**: 기본 Vitest suite 실행.
+- **`test:watch`**: Vitest watch mode 실행.
+- **`test:cov`**: coverage를 켠 Vitest suite 실행.
+- **`test:e2e`**: `test/**/*.e2e.test.ts` 아래의 request-pipeline test 실행.
+- **`typecheck`**: 파일을 emit하지 않고 TypeScript 검사.
 
 ### Why `dev` matters most right now
 
@@ -363,7 +374,7 @@ fluo restart runner가 process boundary를 소유할 때 `fluo dev`는 `fluo sta
 
 이 CLI reporter는 애플리케이션/런타임 로깅과 별개입니다. 부트스트랩 이후 앱이 내보내는 로그를 조정하려면 코드에서 `ApplicationLogger`를 설정하세요. 예를 들어 `@fluojs/runtime/node`의 `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })` 또는 `createJsonApplicationLogger()`를 사용할 수 있습니다.
 
-처음 실행하면 이런 흐름으로 보입니다. 다음과 비슷한 시작 로그를 기대할 수 있습니다.
+처음 실행할 때 기본 CLI reporter는 애플리케이션 stdout/stderr만 전달합니다. `--reporter pretty`로 opt-in하지 않으면 별도의 fluo lifecycle UI를 추가하지 않습니다. 그래도 다음과 비슷한 런타임 시작 로그를 기대할 수 있습니다.
 
 ```text
 [Fluo] Starting application...

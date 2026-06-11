@@ -218,14 +218,20 @@ fluo-blog/
 ├── package.json              # Scripts and dependencies
 ├── pnpm-lock.yaml            # Locked dependency versions
 ├── tsconfig.json             # TypeScript configuration
+├── vitest.config.ts          # Unit, slice, and e2e test configuration
+├── test/                     # Request-pipeline/e2e tests
+│   └── app.e2e.test.ts
 └── src/                      # Application source
     ├── app.ts                # App assembly
+    ├── app.test.ts           # App dispatch test
     ├── greeting/             # Default greeting feature slice
     │   ├── greeting.controller.ts      # Default HTTP route
     │   ├── greeting.module.ts          # Feature assembly
     │   ├── greeting.repo.ts            # Response payload source
     │   ├── greeting.response.dto.ts    # Response DTO
-    │   └── greeting.service.ts         # Route logic
+    │   ├── greeting.service.ts         # Route logic
+    │   ├── greeting.service.test.ts    # Fast unit test
+    │   └── greeting.slice.test.ts      # Module/provider wiring test
     └── main.ts               # Bootstrap entrypoint
 ```
 
@@ -234,6 +240,7 @@ At this stage, each file answers questions that naturally come up when opening a
 - Where does the app start?
 - Where is the default app assembled?
 - Which file handles the first HTTP response?
+- Which tests cover the app assembly, feature slice, and request pipeline?
 - Which scripts will you run most often?
 
 ### src/main.ts
@@ -303,12 +310,16 @@ The CLI configures `tsconfig.json` for you with settings optimized for fluo. As 
 
 After looking through the directory structure, the next step is to understand which commands you will use every day inside this project.
 
-The generated project usually includes a small set of scripts that support the full initial development workflow.
+The generated Node HTTP project includes a small set of scripts that support the full initial development workflow.
 
 - **`dev`**: Runs development mode for fast feedback.
 - **`build`**: Compiles TypeScript into production output.
 - **`start`**: Runs the built result.
-- **`lint`**: Checks code quality when the starter provides it.
+- **`test`**: Runs the default Vitest suite.
+- **`test:watch`**: Runs Vitest in watch mode.
+- **`test:cov`**: Runs the Vitest suite with coverage enabled.
+- **`test:e2e`**: Runs the request-pipeline tests under `test/**/*.e2e.test.ts`.
+- **`typecheck`**: Checks TypeScript without emitting compiled files.
 
 ### Why `dev` matters most right now
 
@@ -363,7 +374,7 @@ When the fluo restart runner owns the process boundary, `fluo dev` shows the sam
 
 That CLI reporter is different from application/runtime logging. To tune logs emitted by your app after bootstrap, configure `ApplicationLogger` in code, for example with `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })` or `createJsonApplicationLogger()` from `@fluojs/runtime/node`.
 
-On the first run, the flow looks like this. You can expect startup logs similar to the following.
+On the first run, the default CLI reporter forwards application stdout and stderr only; it does not add a separate fluo lifecycle UI unless you opt in with `--reporter pretty`. You can still expect runtime startup logs similar to the following.
 
 ```text
 [Fluo] Starting application...
