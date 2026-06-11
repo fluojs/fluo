@@ -139,10 +139,14 @@ export class CampaignWindowService {
       await this.campaigns.closeFlashSale();
     });
   }
+
+  speedUpInventoryPolling() {
+    this.registry.updateIntervalMs('inventory.poll', 5_000);
+  }
 }
 ```
 
-이 기능은 강력한 만큼 신중하게 써야 합니다. Dynamic schedule은 비즈니스 타이밍이 실제로 runtime에 바뀔 때 가장 적합합니다. 평범한 static maintenance task를 registry call 뒤에 숨기라는 뜻은 아닙니다. Registry는 descriptor 기반입니다. `get()`과 `getAll()`은 live scheduler handle을 반환하지 않고 `SchedulingTaskDescriptor` 값으로 task를 설명합니다. 이를 통해 runtime control은 명시적으로 유지하면서 애플리케이션 코드가 scheduler engine 내부에 의존하지 않게 합니다.
+이 기능은 강력한 만큼 신중하게 써야 합니다. Dynamic schedule은 비즈니스 타이밍이 실제로 runtime에 바뀔 때 가장 적합합니다. 평범한 static maintenance task를 registry call 뒤에 숨기라는 뜻은 아닙니다. Registry는 descriptor 기반입니다. `get()`과 `getAll()`은 live scheduler handle을 반환하지 않고 `SchedulingTaskDescriptor` 값으로 task를 설명합니다. `updateCronExpression()`은 cron timing을 바꾸고, `updateIntervalMs()`는 같은 rollback-safe reschedule contract로 fixed-interval cadence를 바꿉니다. Scheduler가 새 cadence를 거부하면 이전 descriptor와 scheduled handle이 계속 active 상태로 남습니다. 이를 통해 runtime control은 명시적으로 유지하면서 애플리케이션 코드가 scheduler engine 내부에 의존하지 않게 합니다.
 
 ## 12.7 Bounded shutdown
 
