@@ -22,7 +22,7 @@
 
 **FluoBlog**를 만들면서 fluo의 핵심 모델을 익히는 책입니다. 모듈, 프로바이더, 컨트롤러, TC39 표준 데코레이터, 라우팅, DTO 검증, 직렬화, 예외 처리, 가드, 인터셉터, OpenAPI, 설정 관리, Prisma, 트랜잭션, 인증, 스로틀링, 캐싱, 헬스 체크, 메트릭, 테스트를 다룹니다.
 
-Testing 장은 정식 `@fluojs/testing` 경로를 다룹니다. 여기에는 `@fluojs/testing/vitest` decorator transform, 격리된 module/provider override를 사용하는 `createTestingModule({ rootModule })` slice test, runtime bootstrap option을 전달하는 `createTestApp({ rootModule })` request-pipeline test가 포함됩니다.
+Testing 장은 정식 Node.js 20+ `@fluojs/testing` 경로를 다룹니다. 여기에는 `@fluojs/testing/vitest` decorator transform, 격리된 module/provider override를 사용하는 `createTestingModule({ rootModule })` slice test, runtime bootstrap option을 전달하고 app을 안정적으로 닫는 `createTestApp({ rootModule })` request-pipeline test가 포함됩니다.
 
 ### [중수를 위한 fluo](./intermediate/toc.ko.md)
 
