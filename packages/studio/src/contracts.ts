@@ -403,6 +403,21 @@ function validateStudioRequestTrace(value: unknown): StudioRequestTrace {
     throw new Error('Invalid Studio live request trace payload.');
   }
 
+  const privateRequestFieldNames = [
+    'body',
+    'headers',
+    'payload',
+    'rawBody',
+    'requestBody',
+    'responseBody',
+  ];
+
+  for (const fieldName of privateRequestFieldNames) {
+    if (hasOwn(value, fieldName)) {
+      throw new Error('Studio live request traces must not include request or response body payload fields.');
+    }
+  }
+
   const trace: StudioRequestTrace = {
     method: validateString(value.method, 'Invalid Studio live request trace payload.'),
     path: validateString(value.path, 'Invalid Studio live request trace payload.'),

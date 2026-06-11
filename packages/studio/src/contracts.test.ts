@@ -257,6 +257,40 @@ describe('Studio live contracts', () => {
     ).toThrow('Invalid Studio live graph node payload.');
   });
 
+  it('rejects request events with body-like fields before UI state consumes them', () => {
+    const event = {
+      emittedAt: '2026-05-28T00:00:02.000Z',
+      epoch: 'epoch-1',
+      eventId: 'epoch-1:2',
+      payload: {
+        body: '{"password":"secret"}',
+        controller: 'HealthController',
+        durationMs: 1.25,
+        handler: 'getHealth',
+        method: 'POST',
+        path: '/login',
+        requestId: 'req-privacy',
+        routeId: 'POST /login AuthController login',
+        startedAt: '2026-05-28T00:00:01.000Z',
+        status: 'failed',
+        statusCode: 401,
+        url: '/login',
+      },
+      sequence: 2,
+      source: {
+        appId: 'app-test',
+        runtime: 'node',
+      },
+      type: 'request',
+      version: 1,
+    };
+
+    expect(isStudioLiveEvent(event)).toBe(false);
+    expect(() => parseStudioLiveEvent(JSON.stringify(event))).toThrow(
+      'Studio live request traces must not include request or response body payload fields.',
+    );
+  });
+
   it('renders runtime-connected live snapshot events through the React/FSD shell', async () => {
     class FakeEventSource {
       static instances: FakeEventSource[] = [];

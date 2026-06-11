@@ -86,6 +86,25 @@ describe('Studio live event contracts', () => {
     }
   });
 
+  it('rejects body-like request fields before Studio state can retain them', () => {
+    const bodyLikeFields = ['body', 'headers', 'payload', 'rawBody', 'requestBody', 'responseBody'] as const;
+
+    for (const fieldName of bodyLikeFields) {
+      const requestEvent = {
+        ...liveEvents[1],
+        payload: {
+          ...liveEvents[1].payload,
+          [fieldName]: fieldName === 'headers' ? { authorization: 'Bearer secret' } : 'private-content',
+        },
+      };
+
+      expect(isStudioLiveEvent(requestEvent)).toBe(false);
+      expect(() => parseStudioLiveEvent(JSON.stringify(requestEvent))).toThrow(
+        'Studio live request traces must not include request or response body payload fields.',
+      );
+    }
+  });
+
   it('maps restart and disconnect events to documented connection states', () => {
     const restarting = studioReducer(initialStudioState, { event: liveEvents[5], type: 'live-event' });
     expect(restarting.connection.status).toBe('restarting');
