@@ -9,6 +9,7 @@ In this chapter, we separate commands, queries, and sagas on top of FluoShop's e
 - Understand why CQRS separates write, read, and orchestration concerns.
 - Explain why each command and query should have exactly one handler.
 - Learn how to connect the command bus and query bus to the FluoShop write side.
+- Build a read projection from `OrderPlacedEvent` with `@EventHandler(...)` and serve it with `@QueryHandler(...)`.
 - Analyze the flow where a Saga receives an event and dispatches the next command.
 - Explain why in-process saga topology limits lead to other boundary choices such as queues or schedulers.
 - Describe the design principle of evolving read models and write models separately.
@@ -94,7 +95,66 @@ This keeps the read side honest. It can optimize for view assembly, and it doesn
 
 Once queries are explicit, projections become easier to discuss. FluoShop can create a support timeline table. It can create a fulfillment dashboard table too. It can also create a finance summary table. Each read model exists because a user or operator actually needs it. That structure is better than forcing every consumer to read the write store directly.
 
-## 10.4 CQRS wiring in fluo
+## 10.4 Updating a read projection from an event
+
+A projection needs a source fact. In FluoShop, the write side emits `OrderPlacedEvent` after checkout stores the order. The read side should not reach back into the write aggregate to assemble dashboard data. Instead, an event handler updates the projection store, and a query handler serves the view.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { EventHandler, IEventHandler } from '@fluojs/cqrs';
+
+export class OrderPlacedEvent {
+  constructor(
+    public readonly orderId: string,
+    public readonly customerId: string,
+    public readonly total: number,
+  ) {}
+}
+
+@Inject(OrderTimelineStore)
+@EventHandler(OrderPlacedEvent)
+export class OrderTimelineProjectionHandler
+  implements IEventHandler<OrderPlacedEvent>
+{
+  constructor(private readonly timelineStore: OrderTimelineStore) {}
+
+  async handle(event: OrderPlacedEvent): Promise<void> {
+    await this.timelineStore.upsertPlacedOrder({
+      orderId: event.orderId,
+      customerId: event.customerId,
+      total: event.total,
+      status: 'placed',
+    });
+  }
+}
+```
+
+The projection handler is not the write owner. It listens to a completed business fact and updates a read-optimized shape. That distinction keeps checkout rules on the write side while letting support, fulfillment, and finance screens evolve their own tables or documents.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { IQuery, IQueryHandler, QueryHandler } from '@fluojs/cqrs';
+
+export class GetOrderTimelineQuery implements IQuery<OrderTimelineView> {
+  constructor(public readonly orderId: string) {}
+}
+
+@Inject(OrderTimelineStore)
+@QueryHandler(GetOrderTimelineQuery)
+export class GetOrderTimelineHandler
+  implements IQueryHandler<GetOrderTimelineQuery, OrderTimelineView>
+{
+  constructor(private readonly timelineStore: OrderTimelineStore) {}
+
+  async execute(query: GetOrderTimelineQuery): Promise<OrderTimelineView> {
+    return this.timelineStore.get(query.orderId);
+  }
+}
+```
+
+This is the minimal CQRS read path: `OrderPlacedEvent` records the write-side fact, `@EventHandler(...)` updates the projection, and `@QueryHandler(...)` returns the read model. Keep the projection update idempotent so replay, retry, or cross-process delivery does not duplicate timeline rows.
+
+## 10.5 CQRS wiring in fluo
 
 The package README documents `CqrsModule.forRoot(...)` as the supported root entrypoint. This Module registers the command, query, and event buses and performs discovery during bootstrap.
 
@@ -106,6 +166,7 @@ import { CqrsModule } from '@fluojs/cqrs';
   imports: [CqrsModule.forRoot()],
   providers: [
     PlaceOrderHandler,
+    OrderTimelineProjectionHandler,
     GetOrderTimelineHandler,
     ReserveInventoryHandler,
     OrderFulfillmentSaga,
@@ -116,17 +177,17 @@ export class CommerceApplicationModule {}
 
 This keeps the entrypoint concise. As with earlier fluo packages, lifecycle and discovery happen through Module registration instead of manually assembling buses in each feature.
 
-## 10.5 Event publishing from CQRS
+## 10.6 Event publishing from CQRS
 
 The concept docs draw a clear boundary. `@fluojs/cqrs` is the orchestrator. `@fluojs/event-bus` is the engine underneath it that handles event distribution. This layering matters. CQRS does not replace the event bus. It structures how the application uses the event bus. In FluoShop, after a command handler stores a write, it can publish a domain event through the CQRS event bus service. That event can fan out to every matching `@EventHandler(...)` provider in discovery order, then matching Sagas, then delegated `@fluojs/event-bus` subscribers. The write side stays explicit, and the reaction side stays decoupled.
 
 The CQRS event bus also has a lifecycle contract. `publishAll(...)` awaits each event's CQRS pipeline before moving to the next event, so input order is preserved. During application shutdown, active `publish(...)` pipelines and `publishAll(...)` sequences are drained before the CQRS event bus reaches `stopped`. If an application configures delegated event-bus publishing with `waitForHandlers: false`, that drain only proves the delegated publication call resolved; `@OnEvent(...)` subscribers may still be running behind the event-bus boundary.
 
-## 10.6 Saga flow for long-running fulfillment
+## 10.7 Saga flow for long-running fulfillment
 
 Sagas are where CQRS becomes visibly event-driven. A Saga listens to one event and emits the next command. In other words, it is a process manager, not a magical workflow engine.
 
-### 10.6.1 OrderPlacedEvent to ReserveInventoryCommand
+### 10.7.1 OrderPlacedEvent to ReserveInventoryCommand
 
 After a customer completes an order, FluoShop must reserve inventory. This is a natural Saga step.
 
@@ -151,46 +212,48 @@ export class OrderFulfillmentSaga implements ISaga<OrderPlacedEvent> {
 
 This example is intentionally small. A good Saga step is usually simple. It reacts to one fact and chooses the next command.
 
-### 10.6.2 Reserve inventory, then dispatch shipment
+### 10.7.2 Reserve inventory, then dispatch shipment
 
 A Saga can continue through additional event types. `InventoryReservedEvent` can cause `DispatchShipmentCommand`. `ShipmentDispatchedEvent` can cause `SendShipmentNotificationCommand`. The important design point is that each step crosses an event boundary. That lets FluoShop observe, retry, and reschedule at each boundary instead of treating the entire fulfillment flow as one invisible block.
 
-## 10.7 Saga topology limits
+## 10.8 Saga topology limits
 
 The package README includes an operationally important rule. If an in-process publish chain re-enters the same saga route cyclically or exceeds 32 nested saga hops, saga execution fails immediately with `SagaTopologyError`. This is not an implementation detail. It is an architecture guide. FluoShop must keep its in-process saga graph acyclic. If a workflow is intentionally cyclic or becomes too long-running, it should move behind a different boundary. That boundary might be an external transport. It might be a queue. It might be a scheduler. But it should not remain an endlessly re-entering in-process saga chain.
 
-### 10.7.1 What this means for FluoShop
+### 10.8.1 What this means for FluoShop
 
 For example, suppose payment review can move back and forth between fraud analysis and manual approval several times. That should not be modeled as a tight in-process saga loop. Instead, the system should emit an event and hand the next step to a queue worker or scheduled retry path. That keeps the saga topology readable and preserves the documented fluo contract.
 
-## 10.8 A full CQRS and saga flow in FluoShop
+## 10.9 A full CQRS and saga flow in FluoShop
 
 In v1.9.0, the order path now looks like this:
 
 1. The API dispatches `PlaceOrderCommand`.
 2. `PlaceOrderHandler` validates and stores the order.
 3. The write side publishes `OrderPlacedEvent`.
-4. `OrderFulfillmentSaga` receives the event.
-5. The Saga dispatches `ReserveInventoryCommand`.
-6. Inventory stores the reservation and publishes `InventoryReservedEvent`.
-7. Another Saga step dispatches `DispatchShipmentCommand`.
-8. Shipment publishes `ShipmentDispatchedEvent`.
-9. Notification and read-model handlers react.
+4. `OrderTimelineProjectionHandler` updates the support timeline read model.
+5. `OrderFulfillmentSaga` receives the event.
+6. The Saga dispatches `ReserveInventoryCommand`.
+7. Inventory stores the reservation and publishes `InventoryReservedEvent`.
+8. Another Saga step dispatches `DispatchShipmentCommand`.
+9. Shipment publishes `ShipmentDispatchedEvent`.
+10. Notification and additional read-model handlers react.
 
 This is the CQRS and Saga flow seen from one view. Writes are explicit. Reads are explicit. Cross-domain orchestration is explicit too. That clarity matters more than the pattern name.
 
-## 10.9 Read and write models should evolve separately
+## 10.10 Read and write models should evolve separately
 
 CQRS does not require separate databases. But it does require separate thinking. The write model must protect correctness. The read model must satisfy consumer needs. In FluoShop, a support agent may need one denormalized view. Finance may need another view. Operations may need a third view. Trying to satisfy all of them with one aggregate shape usually creates accidental complexity. CQRS gives the team permission not to do that.
 
-## 10.10 FluoShop v1.9.0 progression
+## 10.11 FluoShop v1.9.0 progression
 
 At this stage, FluoShop has moved beyond simply publishing domain events after writes. It now has formal models for commands, queries, and long-running orchestration. That is a meaningful increase in maturity. The platform can express business intent more precisely. It can expose read models shaped for user needs. It can connect fulfillment steps without pretending everything belongs to one transaction. This prepares the next two chapters. Queues will move slow work out of the immediate flow. Schedulers will manage periodic and delayed reactions inside a clear operational boundary.
 
-## 10.11 Summary
+## 10.12 Summary
 
 - `@fluojs/cqrs` separates writes, reads, and orchestration into explicit buses and handlers.
 - Commands and queries are point-to-point and should have exactly one handler.
+- Read projections use `@EventHandler(...)` to update query-shaped stores from write-side facts.
 - Matching `@EventHandler(...)` providers fan out; duplicate event handlers are valid unlike duplicate command or query handlers.
 - A Saga listens to events and dispatches the next command in a long-running workflow.
 - `CqrsEventBusService` delegates event distribution through `@fluojs/event-bus`, so CQRS is built on top of the event bus instead of replacing it.
