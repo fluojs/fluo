@@ -240,7 +240,7 @@ Supported notification payload fields:
 
 Behavioral contract notes:
 
-- `EmailChannel` treats any `pending` or `rejected` recipients as a failed notification dispatch instead of reporting the delivery as successful.
+- `EmailChannel` treats zero accepted recipients (`accepted.length === 0`) or any `pending`/`rejected` recipients as a failed notification dispatch instead of reporting the delivery as successful.
 - `EmailService.sendNotification(...)` merges rendered template output with payload and notification metadata; payload fields override notification fallbacks.
 - Template rendering receives notification `payload`, `metadata`, `locale`, `subject`, and `template`; payload `text`, `html`, and notification `subject` override rendered fallbacks.
 
