@@ -51,6 +51,10 @@ function createDependencies() {
     ['docs/reference/package-surface.md', '## public package families\n| Core | `@fluojs/cli` `@fluojs/core` |'],
     ['docs/reference/toolchain-contract-matrix.md', '## generated app baseline\n## CLI & scaffolding contracts\n## naming conventions (CLI output)\nfluo new\nfluo inspect'],
     ['packages/cli/README.md', 'canonical CLI'],
+    ['packages/cli/CHANGELOG.md', '# @fluojs/cli\n\n## [Unreleased]\n\n## 1.0.0\n'],
+    ['packages/studio/CHANGELOG.md', '# @fluojs/studio\n\n## [Unreleased]\n\n## 1.0.0\n'],
+    ['packages/testing/CHANGELOG.md', '# @fluojs/testing\n\n## [Unreleased]\n\n## 1.0.0\n'],
+    ['packages/vite/CHANGELOG.md', '# @fluojs/vite\n\n## [Unreleased]\n\n## 1.0.0\n'],
     [
       'packages/cli/src/new/scaffold.ts',
       "import { HealthModule } from '@fluojs/runtime';\nHealthModule.forRoot()\n@Controller('/greeting')\nconst app = await FluoFactory.create(AppModule, {\nadapter: createFastifyAdapter({ port })\nawait app.listen();\ncreateFastifyAdapter",
@@ -321,6 +325,23 @@ describe('runReleaseReadinessVerification', () => {
 
     expect(() => runReleaseReadinessVerification({}, dependencies)).toThrowError(
       'Release readiness check failed: Public internal dependency ranges use workspace:^.',
+    );
+  });
+
+  it('fails when a public tooling package changelog drops the Unreleased placeholder', () => {
+    const dependencies = createDependencies();
+    const baseRead = dependencies.read;
+
+    dependencies.read = vi.fn((relativePath) => {
+      if (relativePath === 'packages/cli/CHANGELOG.md') {
+        return '# @fluojs/cli\n\n## 1.0.0\n';
+      }
+
+      return baseRead(relativePath);
+    });
+
+    expect(() => runReleaseReadinessVerification({}, dependencies)).toThrowError(
+      /Tooling package changelog baseline.*packages\/cli\/CHANGELOG\.md must keep an `## \[Unreleased\]` section/u,
     );
   });
 

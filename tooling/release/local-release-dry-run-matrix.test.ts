@@ -98,6 +98,10 @@ function docsFor(publicPackageNames: string[], changelog = packageScopedChangelo
       '## generated app baseline\n## CLI & scaffolding contracts\n## naming conventions (CLI output)\nfluo new\nfluo inspect',
     ],
     ['packages/cli/README.md', 'canonical CLI'],
+    ['packages/cli/CHANGELOG.md', '# @fluojs/cli\n\n## [Unreleased]\n\n## 1.0.0\n'],
+    ['packages/studio/CHANGELOG.md', '# @fluojs/studio\n\n## [Unreleased]\n\n## 1.0.0\n'],
+    ['packages/testing/CHANGELOG.md', '# @fluojs/testing\n\n## [Unreleased]\n\n## 1.0.0\n'],
+    ['packages/vite/CHANGELOG.md', '# @fluojs/vite\n\n## [Unreleased]\n\n## 1.0.0\n'],
     [
       'packages/cli/src/new/scaffold.ts',
       "import { HealthModule } from '@fluojs/runtime';\nHealthModule.forRoot()\n@Controller('/greeting')\nconst app = await FluoFactory.create(AppModule, {\nadapter: createFastifyAdapter({ port })\nawait app.listen();\ncreateFastifyAdapter",

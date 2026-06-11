@@ -16,6 +16,7 @@
 - `major` is required for breaking changes in `1.0+`.
 - `minor` is used for backward-compatible feature work, and it is also the required bump for breaking changes during `0.x`.
 - `patch` is limited to backward-compatible fixes, security fixes, and documentation or tooling updates that preserve documented behavior.
+- For public tooling packages, README-documented CLI command, flag, generated starter mode or script, inspect artifact/output mode, and programmatic entrypoint additions are consumer-visible feature work and require `minor` release metadata. `patch` may reference those surfaces only when it fixes or preserves an already documented contract without adding a new caller path.
 - Prerelease versions are versions with a hyphen suffix. They must publish under a non-`latest` dist-tag such as `next`, `beta`, or `rc`.
 - Stable versions without a prerelease suffix must publish under the `latest` dist-tag.
 - Intended public package manifests must use `workspace:^` for internal `@fluojs/*` dependencies across dependency, optional dependency, peer dependency, and dev dependency fields.
@@ -47,6 +48,8 @@ Each changeset must include:
 1. Affected package names, using the published `@fluojs/*` package name.
 2. Semver intent per package, one of `major`, `minor`, or `patch`.
 3. A summary describing the change for consumers and release reviewers.
+
+Release reviewers must compare `.changeset/*.md`, generated package `CHANGELOG.md` sections, and affected package `README.md` contracts before accepting semver metadata. If a `@fluojs/cli` entry says it adds, exposes, supports, introduces, enables, or provides a public CLI, starter, inspect, or programmatic surface documented in the README, the entry must be `minor`; patch metadata must be corrected before the Version Packages PR is merged.
 
 Packages that are not listed in a changeset are not versioned or published for that release. Downstream dependent packages are evaluated through Changesets' internal dependency graph; dependent version bumps are computed automatically during versioning.
 
