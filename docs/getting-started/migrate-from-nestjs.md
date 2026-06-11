@@ -32,6 +32,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | `@nestjs/schedule` decorators, `SchedulerRegistry`, or `CronJob` handles | `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, and `SCHEDULING_REGISTRY` from `@fluojs/cron` | fluo starts decorator-discovered tasks during application bootstrap, starts dynamic registry tasks when added to a started registry, and exposes read-only task descriptors instead of live scheduler handles. |
 | NestJS-style email async module registration with `imports`, `useClass`, or `useExisting` | `EmailModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/email` | fluo email async registration supports injected factory options only. Register dependencies in the application module graph first, list tokens in `inject`, and set `global: false` only when opting out of the default global provider visibility. |
 | NestJS-style notification modules, decorator-discovered channel providers, or implicit queue/event integrations | `NotificationsModule.forRoot({ channels, queue?, events?, global? })` or `NotificationsModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/notifications` | fluo notifications registration uses explicit `NotificationChannel` values passed in `channels`. Queue adapters and event publishers are application-owned seams, not module-owned resources, and `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS` are global by default unless `global: false` is set. |
+| NestJS Slack modules that assume named clients, `forFeature(...)`, custom client tokens, or `isGlobal` | `SlackModule.forRoot({ ..., global? })` or `SlackModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/slack` | fluo Slack registration is singleton-oriented. The package exports `SlackService`, `SlackChannel`, `SLACK`, and `SLACK_CHANNEL` globally by default unless `global: false` is set; compose app-owned modules/providers or facades for multiple Slack clients. |
 
 ## Breaking Differences
 
@@ -72,6 +73,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Notifications migration is not a provider-discovery or decorator-metadata clone. Pass explicit `NotificationChannel` values to `NotificationsModule.forRoot(...)` or return them from `NotificationsModule.forRootAsync({ inject, useFactory, global? })`; the package does not scan NestJS providers, `@Injectable()` metadata, or emitted design types for channels.
 - `@fluojs/notifications` does not create, import, close, or drain concrete queue or event-bus resources. Queue adapters and event publishers are application-owned integrations, and status snapshots report them as externally managed dependencies with `ownsResources: false`.
 - `NotificationsModule` is global by default for `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS`; use `global: false` when migrated code requires module-local visibility.
+- Slack migration is not a named multi-client registration clone. `@fluojs/slack` exposes singleton compatibility tokens `SLACK` and `SLACK_CHANNEL`, does not expose `forFeature(...)`, named registration, named client token factories, or per-client custom token surfaces, and uses `global?: boolean` with default global visibility instead of NestJS `isGlobal`.
 
 ## Removed Concepts
 
@@ -93,6 +95,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Assuming NestJS `SchedulerRegistry` returns mutable `CronJob` handles or that private scheduled methods are valid decorator targets. fluo exposes descriptor-based scheduling controls and requires scheduled decorators on public instance methods.
 - Assuming `EmailModule.forRootAsync(...)` accepts NestJS `imports`, `useClass`, or `useExisting`, or assuming email providers are module-local by default. fluo email uses injected factory registration and defaults to global visibility unless `global: false` is set.
 - Assuming notification channels are discovered from NestJS provider decorators/metadata, or assuming queue/event-bus resources are owned by the notifications module. fluo requires explicit `channels` and application-owned queue adapter/event publisher lifecycles.
+- Assuming Slack `forFeature(...)`, named registrations, named client token factories, per-client custom token surfaces, or a NestJS `isGlobal` option exist. fluo Slack uses singleton `SLACK` / `SLACK_CHANNEL` tokens and `global?: boolean` for the default-global module visibility opt-out.
 
 ## CLI Starter and Generator Limits
 
