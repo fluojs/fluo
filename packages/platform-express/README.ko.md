@@ -107,7 +107,7 @@ const app = await fluoFactory.create(AppModule, {
 ## 어댑터 계약
 
 - **공유 dispatcher 소유권 유지**: Native Express Router 매치 이후에도 실제 요청은 공유 fluo dispatcher가 처리하므로 middleware, guards, interceptors, observers, params, error envelope 계약은 그대로 유지됩니다.
-- **Middleware compatibility 경계**: Express는 host engine이지만 fluo는 native Express/Connect middleware를 fluo middleware로 재해석하지 않습니다. Application-level middleware는 공유 `Middleware` 계약을 구현해야 합니다.
+- **Host engine 경계**: Express는 host/platform HTTP engine이지만 fluo는 native Express/Connect middleware를 fluo middleware로 재해석하지 않습니다. Application-level middleware는 공유 `Middleware` 계약을 구현해야 합니다.
 - **안전한 fallback 범위**: `@All(...)` 핸들러와 shape가 겹치는 파라미터 라우트는 Express Router에 강제 등록하지 않고 의도적으로 catch-all fallback 경로에 둡니다.
 - **OPTIONS 소유권 parity**: 어댑터는 native route에 대해 Express Router가 `OPTIONS`를 자동 응답하지 못하게 막아, 미지원 메서드도 계속 fluo dispatcher semantics로 흘러가고 `@All(...)` 핸들러가 정의된 경우 `OPTIONS`도 그대로 소유할 수 있게 합니다.
 - **경로 정규화 parity**: duplicate slash 변형처럼 Express Router와 fluo의 정규화 방식이 다를 수 있는 요청도 fallback dispatch를 통해 fluo의 normalized route contract를 유지합니다.
@@ -136,4 +136,4 @@ const app = await fluoFactory.create(AppModule, {
 ## 예제 소스
 
 - `packages/platform-express/src/adapter.test.ts`
-- `examples/minimal/src/main.ts` (Fastify 기반이지만 공유 `fluoFactory` 패턴을 보여줌)
+- 이 패키지는 아직 전용 `examples/platform-express` 앱을 제공하지 않습니다. Express bootstrap 형태는 이 README의 빠른 시작을 사용하고, 실행 가능한 Express adapter coverage는 `packages/platform-express/src/adapter.test.ts`를 사용하세요. `examples/minimal/src/main.ts`는 Fastify 기반이므로 Express 예제 소스로 취급하지 않아야 합니다.

@@ -107,7 +107,7 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 ## Adapter Contract
 
 - **Shared dispatcher ownership**: Native Express Router matches still hand off to the shared fluo dispatcher, so middleware, guards, interceptors, observers, params, and error envelopes remain framework-defined.
-- **Middleware compatibility boundary**: Express is the host engine, but fluo does not reinterpret native Express/Connect middleware as fluo middleware; application-level middleware must implement the shared `Middleware` contract.
+- **Host engine boundary**: Express is the host/platform HTTP engine, but fluo does not reinterpret native Express/Connect middleware as fluo middleware; application-level middleware must implement the shared `Middleware` contract.
 - **Safe fallback scope**: `@All(...)` handlers and overlapping same-shape param routes intentionally stay on the catch-all fallback path instead of being force-registered through Express Router.
 - **OPTIONS ownership parity**: The adapter prevents Express Router from auto-answering `OPTIONS` for native routes, so unsupported methods still fall through to fluo dispatcher semantics and `@All(...)` handlers can continue to own `OPTIONS` when defined.
 - **Path normalization parity**: Requests that Express Router does not normalize the same way as fluo, such as duplicate-slash variants, still resolve through fallback dispatch so fluo's normalized route contract is preserved.
@@ -136,4 +136,4 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 ## Example Sources
 
 - `packages/platform-express/src/adapter.test.ts`
-- `examples/minimal/src/main.ts` (Fastify-based, but demonstrates the shared `fluoFactory` pattern)
+- This package does not currently ship a dedicated `examples/platform-express` app. Use the Quick Start in this README for Express bootstrap shape and `packages/platform-express/src/adapter.test.ts` for executable Express adapter coverage. `examples/minimal/src/main.ts` is Fastify-based and should not be treated as an Express example source.
