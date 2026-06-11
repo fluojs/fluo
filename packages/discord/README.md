@@ -4,6 +4,8 @@
 
 Webhook-first, transport-agnostic Discord delivery core for fluo. It provides a Nest-like module API, an injectable `DiscordService` for standalone usage, and a first-party `DiscordChannel` for `@fluojs/notifications` integration without assuming a Node-only Discord SDK.
 
+Migration boundary: the module API is intentionally Nest-like but not a NestJS dynamic-module clone. `DiscordModule` is global by default through `global: options.global ?? true`, `forRootAsync(...)` supports only `inject` plus `useFactory`, and internal provider helpers/tokens stay private so applications compose Discord through the module facade and exported service/channel tokens.
+
 ## Table of Contents
 
 - [Installation](#installation)
@@ -92,8 +94,11 @@ DiscordModule.forRootAsync({
 });
 ```
 
+`forRootAsync(...)` accepts the fluo async shape only: register dependencies elsewhere in the application graph, list their tokens in `inject`, and return final `DiscordModuleOptions` from `useFactory`. It does not consume NestJS `imports`, `useClass`, or `useExisting` variants, so migrate those patterns to application-owned providers before passing resolved options to Discord.
+
 Behavioral contract notes:
 
+- `DiscordModule.forRoot(...)` and `DiscordModule.forRootAsync(...)` export `DiscordService`, `DiscordChannel`, `DISCORD`, and `DISCORD_CHANNEL` globally by default. Use the fluo `global?: boolean` option and set `global: false` only when migrated code must keep Discord providers local to importing modules; NestJS `isGlobal` is not supported.
 - `DiscordService.send(...)` resolves `defaultThreadId` before delivery.
 - `DiscordService.sendMany(...)` is a direct `DiscordMessage[]` batch API that sends messages sequentially and supports `continueOnError`; it is not a multi-recipient `@fluojs/notifications` dispatch shortcut.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
@@ -179,6 +184,7 @@ The Discord package intentionally does **not**:
 - read credentials or webhook URLs from `process.env`
 - ship a Node-only Discord SDK inside the shared root package boundary
 - force one provider strategy beyond the webhook-first helper and exported transport contract
+- expose internal provider helpers, normalized option tokens, or NestJS-style custom provider replacement seams for application imports
 - translate one notification into multi-thread fan-out inside a single dispatch call
 
 These limitations are part of the package contract so runtime choice, provider capability, and rollout strategy stay explicit at the application boundary.
@@ -201,6 +207,8 @@ These limitations are part of the package contract so runtime choice, provider c
 - `DISCORD_CHANNEL`
 
 Compose applications through `DiscordModule` and integrate notifications through `DISCORD_CHANNEL` plus the exported transport contracts.
+
+The package intentionally keeps `createDiscordProviders(...)`, `DISCORD_OPTIONS`, and `NormalizedDiscordModuleOptions` out of the public root barrel. If a migration previously customized NestJS internals or provider tokens, wrap `DiscordModule.forRoot(...)` / `forRootAsync(...)` in an app-owned module instead of importing private helpers.
 
 ### Contracts and helpers
 

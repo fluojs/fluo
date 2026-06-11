@@ -108,6 +108,8 @@ import { DiscordModule, createDiscordWebhookTransport } from '@fluojs/discord';
 export class AppModule {}
 ```
 
+Discord registration is also global by default: `DiscordModule.forRoot(...)` and `DiscordModule.forRootAsync(...)` export `DiscordService`, `DiscordChannel`, `DISCORD`, and `DISCORD_CHANNEL` with `global: options.global ?? true`. Use the fluo option `global?: boolean`—not NestJS `isGlobal`—and set `global: false` only when the migrated module must keep Discord providers local to modules that explicitly import it. Async registration supports the fluo injected factory shape only: `DiscordModule.forRootAsync({ inject, useFactory, global? })`. Move NestJS `imports`, `useClass`, or `useExisting` patterns into app-owned providers before returning final Discord options, and wrap the module facade instead of importing private provider helpers such as `createDiscordProviders(...)`, `DISCORD_OPTIONS`, or `NormalizedDiscordModuleOptions`.
+
 ## 17.3 Standalone Usage: SlackService & DiscordService
 
 When orchestration would be too much, such as operational log records or custom alerts, you can use the services directly.
