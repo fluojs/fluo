@@ -108,6 +108,8 @@ import { DiscordModule, createDiscordWebhookTransport } from '@fluojs/discord';
 export class AppModule {}
 ```
 
+Discord registration도 기본적으로 global입니다. `DiscordModule.forRoot(...)`와 `DiscordModule.forRootAsync(...)`는 `global: options.global ?? true`로 `DiscordService`, `DiscordChannel`, `DISCORD`, `DISCORD_CHANNEL`을 export합니다. fluo 옵션은 NestJS `isGlobal`이 아니라 `global?: boolean`이며, migrated module이 Discord provider를 명시적으로 import한 module 안에만 유지해야 할 때만 `global: false`를 설정합니다. Async registration은 fluo injected factory 형태인 `DiscordModule.forRootAsync({ inject, useFactory, global? })`만 지원합니다. NestJS `imports`, `useClass`, `useExisting` 패턴은 최종 Discord option을 반환하기 전에 app-owned provider로 옮기고, `createDiscordProviders(...)`, `DISCORD_OPTIONS`, `NormalizedDiscordModuleOptions` 같은 private provider helper를 import하지 말고 module facade를 감싸세요.
+
 ## 17.3 Standalone Usage: SlackService & DiscordService
 
 운영 로그 기록이나 맞춤 알림처럼 오케스트레이션이 과한 경우에는 서비스를 직접 사용할 수 있습니다.
