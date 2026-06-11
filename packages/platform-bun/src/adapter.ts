@@ -291,7 +291,7 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
 
   /** Configures the official realtime binding before the Bun server starts. */
   configureRealtimeBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void {
-    if (this.server && binding !== undefined) {
+    if (this.server) {
       throw new Error('Bun websocket binding must be configured before Bun adapter listen() starts the server.');
     }
 
@@ -305,11 +305,11 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
 
   /** Starts the Bun server and binds framework dispatch to native fetch requests. */
   async listen(dispatcher: Dispatcher): Promise<void> {
-    this.dispatcher = dispatcher;
-
     if (this.server) {
       return;
     }
+
+    this.dispatcher = dispatcher;
 
     const bun = requireBunGlobal();
     const realtimeBinding = this.realtimeBinding;
@@ -514,6 +514,8 @@ export async function runBunApplication(
   rootModule: ModuleType,
   options: RunBunApplicationOptions,
 ): Promise<Application> {
+  validateNonNegativeIntegerOption('forceExitTimeoutMs', options.forceExitTimeoutMs);
+
   const logger = createDefaultApplicationLogger();
   const adapter = createBunAdapter({
     development: options.development,
@@ -541,6 +543,8 @@ function createBunShutdownSignalRegistration(
   signals: false | readonly BunApplicationSignal[],
 ): NonNullable<RunHttpAdapterApplicationOptions['shutdownRegistration']> {
   return (app: Application, logger: ApplicationLogger, forceExitTimeoutMs = DEFAULT_FORCE_EXIT_TIMEOUT_MS) => {
+    validateNonNegativeIntegerOption('forceExitTimeoutMs', forceExitTimeoutMs);
+
     if (signals === false) {
       return () => {};
     }

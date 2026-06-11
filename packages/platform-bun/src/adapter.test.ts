@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { All, Controller, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkResponse, Get, Header, HttpCode, Post, Redirect, type RequestContext, SseResponse, Version, VersioningType } from '@fluojs/http';
+import { All, Controller, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Redirect, type RequestContext, SseResponse, Version, VersioningType } from '@fluojs/http';
 import { defineModule } from '@fluojs/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -354,6 +354,39 @@ function registerBunWebRuntimePortabilitySuite(): void {
       }
     });
 
+    it('preserves byte-exact rawBody values for byte-sensitive text payloads', async () => {
+      const mockBun = installMockBun();
+      const bytes = Uint8Array.from([0, 10, 13, 195, 40, 255]);
+
+      @Controller('/byte-sensitive')
+      class ByteSensitiveController {
+        @Post('/')
+        handle(_input: undefined, context: RequestContext) {
+          return {
+            raw: Array.from(context.request.rawBody ?? new Uint8Array()),
+          };
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, { controllers: [ByteSensitiveController] });
+
+      const app = await bootstrapAndListenBunApplication(AppModule, { cors: false, rawBody: true });
+
+      try {
+        const response = await dispatchMockBunRequest(mockBun, new Request('https://runtime.test/byte-sensitive', {
+          body: bytes,
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+          method: 'POST',
+        }));
+
+        expect(response.status).toBe(201);
+        await expect(response.json()).resolves.toEqual({ raw: [0, 10, 13, 195, 40, 255] });
+      } finally {
+        await app.close();
+      }
+    });
+
     it('does not preserve rawBody for multipart requests', async () => {
       const mockBun = installMockBun();
 
@@ -456,6 +489,18 @@ describe('@fluojs/platform-bun', () => {
       dispatcher: { async dispatch() {} },
       maxBodySize: Number.NaN,
     })).toThrow(/maxBodySize/i);
+  });
+
+  it('rejects invalid signal shutdown timeout options before registering Bun signal handlers', async () => {
+    installMockBun();
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    await expect(runBunApplication(AppModule, {
+      forceExitTimeoutMs: Number.NaN,
+      shutdownSignals: false,
+    })).rejects.toThrow(/forceExitTimeoutMs/i);
   });
 
   it('keeps the Bun adapter runtime import path free of the Node runtime subpath', () => {
@@ -862,6 +907,73 @@ describe('@fluojs/platform-bun', () => {
       expect(postResponse?.status).toBe(201);
       await expect(getResponse?.json()).resolves.toEqual({ id: 'read', method: 'GET' });
       await expect(postResponse?.json()).resolves.toEqual({ id: 'write', method: 'POST' });
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('rematches stale Bun native route handoffs after app middleware rewrites the request path', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/native')
+    class NativeController {
+      @Get('/:id')
+      getNative(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'native' };
+      }
+    }
+
+    @Controller('/rewritten')
+    class RewrittenController {
+      @Get('/:id')
+      getRewritten(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'rewritten' };
+      }
+    }
+
+    const baseMapping = createHandlerMapping([
+      { controllerToken: NativeController },
+      { controllerToken: RewrittenController },
+    ]);
+    const handlerMapping = {
+      descriptors: baseMapping.descriptors,
+      match: vi.fn(baseMapping.match),
+    };
+    const dispatcher = createDispatcher({
+      appMiddleware: [
+        {
+          async handle(context: MiddlewareContext, next: Next) {
+            context.request.path = '/rewritten/456';
+            context.request.url = '/rewritten/456';
+            await next();
+          },
+        } satisfies Middleware,
+      ],
+      handlerMapping,
+      rootContainer: {
+        createRequestScope() {
+          return {
+            async dispose() {},
+            resolve(token: unknown) {
+              return token === NativeController ? new NativeController() : new RewrittenController();
+            },
+          };
+        },
+      } as never,
+    });
+    const adapter = createBunAdapter({
+      hostname: '127.0.0.1',
+      port: 4326,
+    }) as BunHttpApplicationAdapter;
+
+    await adapter.listen(dispatcher);
+
+    try {
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4326/native/123'));
+
+      expect(response?.status).toBe(200);
+      expect(handlerMapping.match).toHaveBeenCalledTimes(1);
+      await expect(response?.json()).resolves.toEqual({ id: '456', route: 'rewritten' });
     } finally {
       await adapter.close();
     }
@@ -1355,6 +1467,58 @@ describe('@fluojs/platform-bun', () => {
 
     expect(closeSettled).toBe(true);
     expect(adapter.getServer()).toBeUndefined();
+  });
+
+  it('does not rebind the live dispatcher when listen() is called more than once', async () => {
+    const mockBun = installMockBun();
+    const adapter = createBunAdapter() as BunHttpApplicationAdapter;
+    const firstDispatcher = {
+      dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
+        response.setStatus(200);
+        await response.send({ dispatcher: 'first' });
+      }),
+    };
+    const secondDispatcher = {
+      dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
+        response.setStatus(200);
+        await response.send({ dispatcher: 'second' });
+      }),
+    };
+
+    await adapter.listen(firstDispatcher);
+    await adapter.listen(secondDispatcher);
+
+    try {
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/dispatcher'));
+
+      expect(mockBun.serve).toHaveBeenCalledTimes(1);
+      expect(firstDispatcher.dispatch).toHaveBeenCalledTimes(1);
+      expect(secondDispatcher.dispatch).not.toHaveBeenCalled();
+      await expect(response?.json()).resolves.toEqual({ dispatcher: 'first' });
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('rejects realtime binding mutations after listen starts the Bun server', async () => {
+    installMockBun();
+    const adapter = new BunHttpApplicationAdapter();
+
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        response.setStatus(204);
+      },
+    });
+
+    try {
+      expect(() => adapter.configureRealtimeBinding(undefined)).toThrow(/before Bun adapter listen\(\) starts/i);
+      expect(() => adapter.configureWebSocketBinding({
+        fetch: async () => undefined,
+        websocket: {},
+      })).toThrow(/before Bun adapter listen\(\) starts/i);
+    } finally {
+      await adapter.close();
+    }
   });
 
   it('clears the shutdown timeout handle after close resolves', async () => {

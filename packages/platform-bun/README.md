@@ -53,7 +53,7 @@ The `dispatcher` should come from the already bootstrapped application via `app.
 ```typescript
 import { createBunFetchHandler } from '@fluojs/platform-bun';
 
-const handler = await createBunFetchHandler({
+const handler = createBunFetchHandler({
   dispatcher: app.getHttpDispatcher(),
 });
 
@@ -103,13 +103,14 @@ The adapter also exports the typed Bun integration seams used by realtime packag
 - **Native route gate**: Native routes are enabled only on Bun `>=1.2.3`; the adapter omits the `routes` option entirely unless safe native-route entries are concretely enabled. Versioned routes, `ALL` handlers, same-shape conflicts, normalization-sensitive paths, and `OPTIONS`/CORS preflight stay on the fetch/shared-dispatch path.
 - **Multipart behavior**: Multipart requests never expose `rawBody`, and multipart limits continue to flow through the shared runtime parser.
 - **Startup target**: `hostname`, `port`, and `tls` are forwarded to `Bun.serve()`. Startup logs report the configured HTTP or HTTPS listen URL.
+- **Lifecycle guards**: `listen()` is idempotent for an already-started adapter and keeps the original live dispatcher binding. Realtime/websocket bindings must be configured before `listen()` starts; later attempts to set or clear the binding fail fast instead of being accepted without affecting live wiring.
 - **Shutdown ownership**: `close()` stops new HTTP and websocket-upgrade ingress with a `503` shutdown response, waits for in-flight HTTP handlers, clears adapter state after drain settles, and removes signal listeners registered by `runBunApplication()`.
 - **Realtime seam**: Bun websocket bindings must be configured before `listen()` starts the server. Upgrade requests are offered to the configured binding before falling back to HTTP dispatch while the adapter is accepting new ingress; HTTP fallback is suppressed only after the binding returns a response or successfully upgrades the request.
 - **Adapter instance helpers**: `BunHttpApplicationAdapter` exposes `getServer()`, `getListenTarget()`, `getRealtimeCapability()`, `configureRealtimeBinding()`, `configureWebSocketBinding()`, `listen()`, and `close()`.
 
 ## Conformance Coverage
 
-`packages/platform-bun/src/adapter.test.ts` is the package-local regression target for the documented contract. It includes Bun fetch-style portability assertions for malformed cookies, JSON/text raw-body preservation, multipart raw-body exclusion, SSE framing, native-route param parity, same-path multi-method handoff, versioning fallback, normalization-sensitive fallback, OPTIONS/CORS ownership, same-shape route fallback, and TLS listen-target reporting, plus focused tests for startup logging, shutdown listener cleanup, in-flight drain behavior, timeout reporting, shutdown 503 ingress rejection, and websocket binding delegation.
+`packages/platform-bun/src/adapter.test.ts` is the package-local regression target for the documented contract. It includes Bun fetch-style portability assertions for malformed cookies, byte-exact JSON/text raw-body preservation, multipart raw-body exclusion, SSE framing, native-route param parity, same-path multi-method handoff, stale native handoff rematching after middleware rewrites, versioning fallback, normalization-sensitive fallback, OPTIONS/CORS ownership, same-shape route fallback, and TLS listen-target reporting, plus focused tests for startup logging, duplicate listen idempotency, shutdown listener cleanup, in-flight drain behavior, timeout validation/reporting, shutdown 503 ingress rejection, and websocket binding delegation.
 
 The broader repository suite also exercises Bun through `createWebRuntimeHttpAdapterPortabilityHarness(...)` alongside Deno and Cloudflare Workers in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`, keeping the shared web-runtime portability baseline aligned across fetch-style platforms.
 
