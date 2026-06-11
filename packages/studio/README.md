@@ -56,7 +56,7 @@ fluo dev --studio
 [fluo] Studio listening at http://127.0.0.1:51234/?token=...
 ```
 
-Open that URL to inspect the live React Studio dashboard. The dashboard is built with Feature-Sliced Design layers under `src/app`, `src/pages`, `src/widgets`, `src/features`, `src/entities`, and `src/shared`.
+Open that URL to inspect the live React Studio dashboard. The dashboard is built with Feature-Sliced Design layers under `src/app`, `src/pages`, `src/widgets`, `src/features`, `src/entities`, and `src/shared`; cross-widget rendering helpers used by the static/report viewer live in `src/shared/lib` rather than root-level viewer files.
 
 Studio is launched as a CLI-owned sidecar/viewer workflow. It is not an application module to mount inside your fluo runtime. The live MVP targets the Node dev-runner path; non-Node projects should use the static/report inspect workflow until dedicated Bun, Deno, or Workers bridges are implemented and verified.
 
@@ -75,7 +75,7 @@ MVP request flow intentionally means route/handler and dependency-graph correlat
 
 Studio still accepts JSON exports from the fluo CLI. Runtime produces snapshots, the CLI owns artifact export/write/delegation, and Studio owns the public helpers and viewer surface that parse, filter, inspect, and render those snapshots for people and automation callers. Supported inspect artifacts include raw snapshots, snapshot-plus-timing envelopes, report artifacts produced by `fluo inspect --report`, and legacy standalone timing diagnostics.
 
-This file-first path is the compatibility and migration fallback for CI, support handoffs, architecture reviews, and non-Node runtime targets. Bun, Deno, and Cloudflare Workers projects should generate inspect/static artifacts and open them with the packaged viewer instead of expecting live sidecar events in the MVP.
+This file-first path is the compatibility and migration fallback for CI, support handoffs, architecture reviews, and non-Node runtime targets. Bun, Deno, and Cloudflare Workers projects should generate inspect/static artifacts and open them with the packaged viewer instead of expecting live sidecar events in the MVP. The packaged viewer is resolved through the Node-based package entrypoint (`node -p "require.resolve('@fluojs/studio/viewer')"`), even when the inspected artifact came from a non-Node runtime fallback workflow.
 
 1. **Export a snapshot**:
    ```bash
@@ -101,6 +101,7 @@ This file-first path is the compatibility and migration fallback for CI, support
 - Runtime ingestion and browser state/SSE APIs require generated per-run tokens.
 - The sidecar does not enable CORS by default.
 - Request bodies are not captured by default. Live request events include method/path/url/request id/route/handler/status/duration/error metadata only.
+- Live request event validation rejects body-like payload fields such as `body`, `rawBody`, `requestBody`, and `responseBody` before Studio UI state can retain them.
 - Runtime Studio instrumentation is activated only by explicit CLI-provided Studio config. Runtime package source does not read `process.env` directly; without valid injected config, runtime behavior is a no-op.
 
 ## Runtime Support Matrix
