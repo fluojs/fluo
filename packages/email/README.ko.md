@@ -10,6 +10,7 @@ fluo를 위한 transport-agnostic 이메일 코어 패키지입니다. Nest-like
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [일반적인 패턴](#일반적인-패턴)
+  - [등록 범위와 async factory](#등록-범위와-async-factory)
   - [`@fluojs/email/node`를 이용한 Node 전용 SMTP](#fluojs-email-node를-이용한-node-전용-smtp)
   - [`EmailService`를 이용한 standalone 전달](#emailservice를-이용한-standalone-전달)
   - [`@fluojs/notifications`와의 통합](#fluojs-notifications와의-통합)
@@ -104,6 +105,29 @@ export class WelcomeService {
 
 ## 일반적인 패턴
 
+### 등록 범위와 async factory
+
+`EmailModule.forRoot(...)`와 `EmailModule.forRootAsync(...)`는 기본적으로 global module을 반환합니다. 한 번 import하면 export된 `EmailService`, `EmailChannel`, `EMAIL`, `EMAIL_CHANNEL` provider가 애플리케이션 module graph에 표시됩니다. 이메일 provider를 반환된 module을 명시적으로 import한 module에만 보이게 해야 할 때만 `global: false`를 전달합니다.
+
+Async 등록은 의도적으로 fluo의 명시적 factory 형태를 사용합니다:
+
+```typescript
+EmailModule.forRootAsync({
+  global: false,
+  inject: [ConfigService],
+  useFactory: (config) => ({
+    defaultFrom: config.mail.from,
+    transport: {
+      kind: config.mail.transportKind,
+      create: () => config.mail.transport,
+      ownsResources: false,
+    },
+  }),
+});
+```
+
+`global`은 factory result가 아니라 `forRootAsync(...)` options object의 최상위에 둡니다. 지원되는 async 등록 형태는 `inject`와 `useFactory`뿐입니다. NestJS dynamic-module 형태인 `imports`, `useClass`, `useExisting`는 `@fluojs/email` 계약에 포함되지 않습니다. 필요한 의존성은 주변 애플리케이션 module graph에 먼저 등록한 뒤, factory가 필요로 하는 token을 `inject`에 나열하세요.
+
 ### `@fluojs/email/node`를 이용한 Node 전용 SMTP
 
 런타임 이식 가능한 루트 패키지 계약을 약화시키지 않으면서 1st-party Nodemailer/SMTP 전달이 필요하다면 전용 Node 서브패스를 사용합니다.
@@ -174,6 +198,8 @@ Behavioral contract 메모:
 - shutdown이 시작된 뒤에는 `EmailService.send(...)`와 `EmailService.sendNotification(...)`이 transport를 재사용하거나 lazy 생성하지 않고 `EmailLifecycleError`로 실패합니다. 진행 중인 factory 소유 transport 생성은 shutdown이 기다린 뒤 닫습니다.
 - transport `verify()`와 `close()`에서 발생한 provider error는 diagnostics를 위해 lifecycle failure의 `cause`로 보존됩니다.
 - 모듈 옵션은 provider wiring 전에 trim 및 normalize됩니다. 여기에는 sender 기본값, notification channel 이름, transport factory 소유권이 포함됩니다.
+- `EmailModule.forRoot(...)`와 `EmailModule.forRootAsync(...)`는 기본적으로 global입니다. module-local visibility가 필요할 때만 `global: false`를 사용합니다.
+- `EmailModule.forRootAsync(...)`는 `inject`와 `useFactory`만 지원합니다. NestJS `imports`, `useClass`, `useExisting` 등록 형태는 factory 호출 전에 애플리케이션 module boundary에서 해석해야 합니다.
 - 이 패키지는 절대로 `process.env`를 직접 읽지 않습니다. 모든 설정은 명시적인 옵션 또는 DI를 통해 들어와야 합니다.
 
 ### `@fluojs/notifications`와의 통합
@@ -304,7 +330,7 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `Email`: `EMAIL` 호환성 토큰이 노출하는 애플리케이션용 전송 facade이며 address 값이 아닙니다. `EmailService`가 뒷받침하는 `send(...)`, `sendMany(...)`, `sendNotification(...)` 메서드를 제공합니다.
 - `EmailAddress` / `EmailAddressLike`: `EmailService`가 정규화하기 전에 허용하는 구조화 또는 축약 recipient 값입니다.
 - `EmailAttachment`: `EmailMessage.attachments`에서 허용되고 설정된 transport로 전달되는 file attachment payload입니다. `filename`, `content`, 선택적 `contentType` 필드를 포함합니다.
-- `EmailModuleOptions` / `EmailAsyncModuleOptions`: sender 기본값, renderer, lifecycle 검증, transport factory wiring을 포함하는 동기/비동기 모듈 등록 계약입니다.
+- `EmailModuleOptions` / `EmailAsyncModuleOptions`: sender 기본값, renderer, lifecycle 검증, transport factory wiring, 최상위 `global` visibility control, async `inject` + `useFactory` 형태를 포함하는 동기/비동기 모듈 등록 계약입니다.
 - `EmailMessage`
 - `EmailNotificationDispatchRequest` / `EmailNotificationPayload`: `EmailChannel`이 소비하는 notification channel payload 계약입니다.
 - `EmailSendOptions` / `EmailSendManyOptions`: abort signal과 batch failure 수집 같은 per-send 제어 옵션입니다.

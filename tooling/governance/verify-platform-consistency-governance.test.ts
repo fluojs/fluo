@@ -368,6 +368,44 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts Email async-registration migration guidance when context, package, and governance tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/email/README.md',
+        'packages/email/README.ko.md',
+        'book/intermediate/ch16-email.md',
+        'book/intermediate/ch16-email.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/reference/package-surface.md',
+        'docs/reference/package-surface.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/email/src/module.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('keeps Email async-registration and visibility guidance present in governed docs', () => {
+    const englishEmailReadme = readFileSync(join(repoRoot, 'packages/email/README.md'), 'utf8');
+    const koreanEmailReadme = readFileSync(join(repoRoot, 'packages/email/README.ko.md'), 'utf8');
+    const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+    const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+
+    for (const document of [englishEmailReadme, koreanEmailReadme, englishMigration, koreanMigration]) {
+      expect(document).toContain('EmailModule.forRootAsync');
+      expect(document).toContain('inject');
+      expect(document).toContain('useFactory');
+      expect(document).toContain('global: false');
+      expect(document).toContain('imports');
+      expect(document).toContain('useClass');
+      expect(document).toContain('useExisting');
+    }
+  });
+
   it('accepts Cron lifecycle and NestJS migration guidance when context and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 

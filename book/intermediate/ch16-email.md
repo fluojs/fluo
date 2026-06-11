@@ -7,7 +7,7 @@ This chapter covers how to connect an email channel reliably to FluoShop's notif
 
 ## Learning Objectives
 - Distinguish the core components and responsibilities of the `@fluojs/email` package.
-- Outline how to register EmailModule and configure a delivery transport.
+- Outline how to register EmailModule, configure a delivery transport, and choose its global-by-default visibility boundary.
 - Understand the boundary and benefits of the Node-only SMTP subpath.
 - Use `EmailService` to build standalone email sending flows.
 - See how to connect the email channel to notification orchestration.
@@ -49,6 +49,25 @@ import { EmailModule } from '@fluojs/email';
 })
 export class AppModule {}
 ```
+
+`EmailModule` is global by default. After `EmailModule.forRoot(...)` or `EmailModule.forRootAsync(...)` is imported once, `EmailService`, `EmailChannel`, `EMAIL`, and `EMAIL_CHANNEL` are available to the application module graph. Set `global: false` only when you want email providers to remain local to modules that explicitly import the returned module.
+
+When configuration depends on another provider such as a config service, use the fluo async factory shape:
+
+```typescript
+EmailModule.forRootAsync({
+  inject: [ConfigService],
+  useFactory: (config) => ({
+    defaultFrom: config.mail.from,
+    transport: {
+      kind: config.mail.transportKind,
+      create: () => config.mail.transport,
+    },
+  }),
+});
+```
+
+This migration boundary is intentionally narrower than NestJS dynamic modules: `EmailModule.forRootAsync(...)` supports `inject` plus `useFactory`, not `imports`, `useClass`, or `useExisting`. Register the dependencies in your application module graph first, then list the required tokens in `inject`; put `global: false` on the top-level options object when you need local module visibility.
 
 ### verifyOnModuleInit
 Setting `verifyOnModuleInit: true` lets you confirm during application bootstrap that the transport is actually usable. This is useful when deployment should surface failures early, such as SMTP credential validation. Catching the problem at startup reduces the chance that the first order confirmation email is where you discover a bad setting.
