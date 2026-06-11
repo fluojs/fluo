@@ -11,6 +11,8 @@ This chapter covers how to extend FluoShop's notification system into team commu
 - See how to use `SlackService` and `DiscordService` for standalone usage.
 - Implement chat channel connections through `@fluojs/notifications`.
 - Build structured messages with Block Kit and Embed.
+- Configure Slack bootstrap verification when a transport exposes a readiness check.
+- Render Slack notification templates and reason about payload-versus-rendered merge precedence.
 - Operate chat integrations around retry policies and status snapshots.
 
 ## Prerequisites
@@ -56,6 +58,35 @@ import { SlackModule, createSlackWebhookTransport } from '@fluojs/slack';
 })
 export class AppModule {}
 ```
+
+Slack also supports bootstrap verification for transports that can prove readiness before the application starts serving traffic. Set `verifyOnModuleInit: true` when the resolved `SlackTransport` exposes `verify()`; `SlackService.onModuleInit()` awaits that optional method and reports initialization failures as `SlackLifecycleError`. A transport that does not implement `verify()` is still valid and simply skips this capability-based check.
+
+```typescript
+import type { SlackTransport } from '@fluojs/slack';
+
+const slackApiTransport: SlackTransport = {
+  async verify() {
+    await slackApi.authTest();
+  },
+  async send(message, { signal }) {
+    const response = await slackApi.postMessage(message, { signal });
+
+    return {
+      channel: response.channel,
+      messageTs: response.ts,
+      ok: response.ok,
+    };
+  },
+};
+
+SlackModule.forRoot({
+  defaultChannel: '#ops-alerts',
+  transport: slackApiTransport,
+  verifyOnModuleInit: true,
+});
+```
+
+Status snapshots include `verifiedOnModuleInit` so your readiness dashboard can show whether this startup gate was requested. If `verify()` fails, the Slack lifecycle moves to `failed` and readiness remains not ready instead of deferring discovery to the first production alert.
 
 ### Discord Registration
 ```typescript
@@ -123,6 +154,54 @@ await this.notifications.dispatch({
   },
 });
 ```
+
+### Slack Template Rendering
+When a team wants consistent Slack copy for repeated events, register a `SlackTemplateRenderer` on `SlackModule.forRoot(...)` and dispatch notifications with `template`. The renderer receives `{ template, payload, subject, locale, metadata }` and returns Slack `text`, `blocks`, or `attachments`.
+
+```typescript
+import type { SlackTemplateRenderer } from '@fluojs/slack';
+
+const renderer: SlackTemplateRenderer = {
+  async render(input) {
+    return {
+      blocks: [
+        {
+          text: {
+            text: `*Ticket ${String(input.payload.ticketId)}* needs attention`,
+            type: 'mrkdwn',
+          },
+          type: 'section',
+        },
+      ],
+      text: input.subject,
+    };
+  },
+};
+
+SlackModule.forRoot({
+  defaultChannel: '#customer-support',
+  renderer,
+  transport: createSlackWebhookTransport({
+    fetch: runtime.fetch,
+    webhookUrl: config.slackWebhookUrl,
+  }),
+});
+
+await this.notifications.dispatch({
+  channel: 'slack',
+  locale: 'en',
+  metadata: { source: 'support' },
+  payload: {
+    metadata: { ticketId: '456' },
+    text: 'Ticket 456 was opened.',
+  },
+  recipients: ['#customer-support'],
+  subject: 'New Ticket Received',
+  template: 'support.ticket.opened',
+});
+```
+
+`sendNotification(...)` only calls the renderer when both `notification.template` and `renderer` are present. Explicit payload fields win over rendered fields for `attachments`, `blocks`, and `text`; text falls back from payload text to rendered text and then to `subject`. Metadata is merged from payload metadata, dispatch metadata, a subject marker, and a template marker in that order, so the final Slack message preserves the operational routing context.
 
 ## 17.5 Rich Formatting: Blocks and Embeds
 

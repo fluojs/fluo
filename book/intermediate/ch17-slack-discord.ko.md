@@ -11,6 +11,8 @@
 - `SlackService`와 `DiscordService`를 독립적으로 사용하는 흐름을 확인합니다.
 - `@fluojs/notifications`에 채팅 채널을 연결하는 방식을 구현합니다.
 - Block Kit과 Embed로 구조화된 메시지를 구성합니다.
+- transport가 readiness check를 노출할 때 Slack bootstrap 검증을 설정합니다.
+- Slack notification template을 렌더링하고 payload와 rendered 결과의 merge precedence를 판단합니다.
 - 재시도 정책과 상태 스냅샷을 기준으로 채팅 연동을 운영합니다.
 
 ## Prerequisites
@@ -56,6 +58,35 @@ import { SlackModule, createSlackWebhookTransport } from '@fluojs/slack';
 })
 export class AppModule {}
 ```
+
+Slack은 애플리케이션이 traffic을 받기 전에 readiness를 증명할 수 있는 transport를 위한 bootstrap 검증도 지원합니다. 해석된 `SlackTransport`가 `verify()`를 노출할 때 `verifyOnModuleInit: true`를 설정하면 `SlackService.onModuleInit()`이 그 optional method를 기다리고, 초기화 실패를 `SlackLifecycleError`로 보고합니다. `verify()`를 구현하지 않는 transport도 유효하며, 이 capability-based check만 건너뜁니다.
+
+```typescript
+import type { SlackTransport } from '@fluojs/slack';
+
+const slackApiTransport: SlackTransport = {
+  async verify() {
+    await slackApi.authTest();
+  },
+  async send(message, { signal }) {
+    const response = await slackApi.postMessage(message, { signal });
+
+    return {
+      channel: response.channel,
+      messageTs: response.ts,
+      ok: response.ok,
+    };
+  },
+};
+
+SlackModule.forRoot({
+  defaultChannel: '#ops-alerts',
+  transport: slackApiTransport,
+  verifyOnModuleInit: true,
+});
+```
+
+상태 스냅샷은 `verifiedOnModuleInit`을 포함하므로 readiness dashboard에서 이 startup gate가 요청되었는지 확인할 수 있습니다. `verify()`가 실패하면 Slack lifecycle은 `failed`로 이동하고 readiness는 not ready로 남아, 첫 운영 알림이 실패한 뒤에야 문제를 발견하는 상황을 줄입니다.
 
 ### Discord Registration
 ```typescript
@@ -123,6 +154,54 @@ await this.notifications.dispatch({
   },
 });
 ```
+
+### Slack Template Rendering
+반복되는 이벤트에 일관된 Slack 문구를 적용하려면 `SlackModule.forRoot(...)`에 `SlackTemplateRenderer`를 등록하고 notification을 `template`과 함께 dispatch합니다. Renderer는 `{ template, payload, subject, locale, metadata }`를 받아 Slack `text`, `blocks`, `attachments`를 반환합니다.
+
+```typescript
+import type { SlackTemplateRenderer } from '@fluojs/slack';
+
+const renderer: SlackTemplateRenderer = {
+  async render(input) {
+    return {
+      blocks: [
+        {
+          text: {
+            text: `*Ticket ${String(input.payload.ticketId)}* needs attention`,
+            type: 'mrkdwn',
+          },
+          type: 'section',
+        },
+      ],
+      text: input.subject,
+    };
+  },
+};
+
+SlackModule.forRoot({
+  defaultChannel: '#customer-support',
+  renderer,
+  transport: createSlackWebhookTransport({
+    fetch: runtime.fetch,
+    webhookUrl: config.slackWebhookUrl,
+  }),
+});
+
+await this.notifications.dispatch({
+  channel: 'slack',
+  locale: 'en',
+  metadata: { source: 'support' },
+  payload: {
+    metadata: { ticketId: '456' },
+    text: 'Ticket 456 was opened.',
+  },
+  recipients: ['#customer-support'],
+  subject: 'New Ticket Received',
+  template: 'support.ticket.opened',
+});
+```
+
+`sendNotification(...)`은 `notification.template`과 `renderer`가 모두 있을 때에만 renderer를 호출합니다. 명시적인 payload 필드는 `attachments`, `blocks`, `text`에서 rendered 필드보다 우선하며, text는 payload text에서 rendered text, 그리고 `subject` 순서로 fallback합니다. Metadata는 payload metadata, dispatch metadata, subject marker, template marker 순서로 merge되므로 최종 Slack 메시지는 운영 routing context를 보존합니다.
 
 ## 17.5 Rich Formatting: Blocks and Embeds
 

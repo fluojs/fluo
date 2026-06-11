@@ -12,7 +12,9 @@ Webhook-first, transport-agnostic Slack delivery core for fluo. It provides a Ne
 - [Common Patterns](#common-patterns)
   - [Manual provider composition with `createSlackProviders`](#manual-provider-composition-with-createslackproviders)
   - [Standalone delivery with `SlackService`](#standalone-delivery-with-slackservice)
+  - [Bootstrap verification with `verifyOnModuleInit`](#bootstrap-verification-with-verifyonmoduleinit)
   - [Integration with `@fluojs/notifications`](#integration-with-fluojs-notifications)
+  - [Template rendering and merge precedence](#template-rendering-and-merge-precedence)
   - [Webhook-first delivery with explicit fetch injection](#webhook-first-delivery-with-explicit-fetch-injection)
   - [Intentional limitations](#intentional-limitations)
 - [Public API Overview](#public-api-overview)
@@ -133,6 +135,71 @@ Behavioral contract notes:
 - `SlackService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
+### Bootstrap verification with `verifyOnModuleInit`
+
+Set `SlackModuleOptions.verifyOnModuleInit?: boolean` to `true` when the selected transport can verify its own readiness during application bootstrap. `SlackService.onModuleInit()` always resolves the configured transport first; if `verifyOnModuleInit` is enabled **and** the resolved transport exposes an optional `verify()` method, the service awaits `transport.verify()` before marking the Slack provider ready. Transports that do not implement `verify` are still valid and simply skip the verification step.
+
+```typescript
+import { Module } from '@fluojs/core';
+import {
+  SlackModule,
+  type SlackTemplateRenderer,
+  type SlackTransport,
+} from '@fluojs/slack';
+
+const renderer: SlackTemplateRenderer = {
+  render({ template, payload, subject }) {
+    if (template === 'deploy.finished') {
+      return {
+        blocks: [
+          {
+            text: { text: `*${String(payload.version)}* is live`, type: 'mrkdwn' },
+            type: 'section',
+          },
+        ],
+        text: subject,
+      };
+    }
+
+    return { text: subject };
+  },
+};
+
+const slackApiTransport: SlackTransport = {
+  async verify() {
+    await slackApi.authTest();
+  },
+  async send(message, { signal }) {
+    const receipt = await slackApi.postMessage(message, { signal });
+
+    return {
+      channel: receipt.channel,
+      messageTs: receipt.ts,
+      ok: receipt.ok,
+    };
+  },
+};
+
+@Module({
+  imports: [
+    SlackModule.forRoot({
+      defaultChannel: '#ops',
+      renderer,
+      transport: slackApiTransport,
+      verifyOnModuleInit: true,
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+Behavioral contract notes:
+
+- `verifyOnModuleInit` is optional and defaults to `false`.
+- Verification is capability-based: only transports that expose `verify()` are called, so webhook-only or app-owned transports do not have to add a no-op verifier.
+- If `transport.verify()` rejects, bootstrap fails with `SlackLifecycleError` wrapping the initialization failure, the service lifecycle moves to `failed`, and readiness/status snapshots report the provider as not ready.
+- `SlackService.createPlatformStatusSnapshot()` includes `verifiedOnModuleInit` so health/readiness tooling can tell whether bootstrap verification was requested.
+
 ### Integration with `@fluojs/notifications`
 
 Inject `SLACK_CHANNEL` into `NotificationsModule.forRootAsync(...)` so the Slack package remains the only place that understands Slack-specific payload fields and recipient-to-channel translation.
@@ -178,6 +245,51 @@ Behavioral contract notes:
 - If `payload.channel` is omitted, `SlackService.sendNotification(...)` uses the first `recipients` entry or falls back to `defaultChannel`.
 - Notification metadata is merged from payload metadata, dispatch metadata, and subject/template markers before delivery.
 - If a notification needs fan-out across multiple Slack destinations, call `sendMany(...)` instead of one multi-recipient dispatch.
+
+### Template rendering and merge precedence
+
+Provide a `SlackTemplateRenderer` when notification templates should turn shared `@fluojs/notifications` envelopes into Slack-specific text, blocks, or attachments. `SlackService.sendNotification(...)` calls `renderer.render(input)` only when both `notification.template` and `SlackModuleOptions.renderer` are present. The render input includes `template`, `payload`, optional `subject`, optional `locale`, and optional dispatch `metadata`.
+
+```typescript
+import type { SlackTemplateRenderer } from '@fluojs/slack';
+
+const renderer: SlackTemplateRenderer = {
+  async render(input) {
+    return {
+      blocks: [
+        {
+          text: {
+            text: `*${String(input.payload.releaseId)}* deployed for ${input.locale ?? 'default'}`,
+            type: 'mrkdwn',
+          },
+          type: 'section',
+        },
+      ],
+      text: input.subject,
+    };
+  },
+};
+
+await notifications.dispatch({
+  channel: 'slack',
+  locale: 'en',
+  metadata: { source: 'ci' },
+  payload: {
+    metadata: { releaseId: 'rel-42' },
+    text: 'Deploy rel-42 finished.',
+  },
+  recipients: ['#ops'],
+  subject: 'Deploy finished',
+  template: 'deploy.finished',
+});
+```
+
+Merge precedence is deterministic:
+
+- `payload.attachments`, `payload.blocks`, and `payload.text` win over rendered `attachments`, `blocks`, and `text` when those payload fields are defined.
+- Text falls back from `payload.text` to rendered `text`, then to `notification.subject`.
+- Metadata is merged as payload metadata, dispatch metadata, subject marker, then template marker. Later entries win on duplicate keys, so the final message records the dispatch `subject` and `template` markers when present.
+- If no `template` is set or no renderer is registered, no template rendering occurs; the notification is adapted from its payload and subject only.
 
 ### Webhook-first delivery with explicit fetch injection
 
