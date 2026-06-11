@@ -532,7 +532,7 @@ class FakeGrpcRuntime {
   }
 }
 
-function createGrpcTransport(): { runtime: FakeGrpcRuntime; transport: GrpcMicroserviceTransport } {
+function createGrpcTransport(options: { useSuppliedServer?: boolean } = {}): { runtime: FakeGrpcRuntime; server: FakeGrpcServer | undefined; transport: GrpcMicroserviceTransport } {
   const mathService = class FakeMathService {
     static readonly service = {
       Notify: { requestStream: false, responseStream: false },
@@ -552,6 +552,7 @@ function createGrpcTransport(): { runtime: FakeGrpcRuntime; transport: GrpcMicro
   };
 
   const runtime = new FakeGrpcRuntime(packageDefinition);
+  const server = options.useSuppliedServer ? new FakeGrpcServer(runtime) : undefined;
   const transport = new GrpcMicroserviceTransport({
     grpc: runtime,
     packageName: 'fluo.microservices',
@@ -562,10 +563,11 @@ function createGrpcTransport(): { runtime: FakeGrpcRuntime; transport: GrpcMicro
     },
     protoPath: '/virtual/microservices.proto',
     requestTimeoutMs: 120,
+    server,
     url: '127.0.0.1:50051',
   });
 
-  return { runtime, transport };
+  return { runtime, server, transport };
 }
 
 describe('GrpcMicroserviceTransport', () => {
@@ -588,6 +590,17 @@ describe('GrpcMicroserviceTransport', () => {
     expect(events).toEqual(['ok']);
 
     await transport.close();
+  });
+
+  it('does not shut down caller-supplied gRPC servers during close()', async () => {
+    const { server, transport } = createGrpcTransport({ useSuppliedServer: true });
+
+    expect(transport.ownsResources).toBe(false);
+
+    await transport.listen(async () => undefined);
+    await transport.close();
+
+    expect(server?.shutdownCount).toBe(0);
   });
 
   it('preserves handler failure messages from unary RPCs', async () => {
@@ -756,7 +769,7 @@ describe('GrpcMicroserviceTransport', () => {
     );
   });
 
-  it('rolls back startup when bindAsync fails during listen()', async () => {
+  it('does not shut down caller-supplied servers when bindAsync fails during listen()', async () => {
     const mathService = class FakeMathService {
       static readonly service = {
         Sum: { requestStream: false, responseStream: false },
@@ -786,7 +799,7 @@ describe('GrpcMicroserviceTransport', () => {
     });
 
     await expect(transport.listen(async () => undefined)).rejects.toThrow('bind failed');
-    expect(server.shutdownCount).toBe(1);
+    expect(server.shutdownCount).toBe(0);
   });
 
   it('registers server-streaming handlers and streams data to client via serverStream()', async () => {

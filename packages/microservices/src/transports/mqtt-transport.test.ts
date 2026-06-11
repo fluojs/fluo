@@ -225,6 +225,31 @@ describe('MqttMicroserviceTransport', () => {
     await transport.close();
   });
 
+  it('does not publish when AbortSignal fires before deferred dispatch', async () => {
+    const broker = new InMemoryMqttBroker();
+    const client = new InMemoryMqttClient(broker);
+    const transport = new MqttMicroserviceTransport({
+      client,
+      requestTimeoutMs: 120,
+    });
+
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const pending = transport.send('aborted.deferred', {}, controller.signal);
+    controller.abort();
+
+    await expect(pending).rejects.toThrow('MQTT request aborted.');
+
+    const requestFrames = client.published.filter((entry) => {
+      const frame = JSON.parse(entry.message) as { kind?: string };
+      return frame.kind === 'message';
+    });
+    expect(requestFrames).toHaveLength(0);
+
+    await transport.close();
+  });
+
   it('rejects send() with AbortSignal after publish', async () => {
     const broker = new InMemoryMqttBroker();
     const transport = new MqttMicroserviceTransport({

@@ -91,6 +91,7 @@ export interface MqttMicroserviceTransportOptions {
  */
 export class MqttMicroserviceTransport implements MicroserviceTransport {
   private client: MqttClientLike | undefined;
+  private closePromise: Promise<void> | undefined;
   private closing = false;
   private handler: TransportHandler | undefined;
   private readonly internallyOwnedClient: boolean;
@@ -149,7 +150,14 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once all subscriptions are active.
    */
   async listen(handler: TransportHandler): Promise<void> {
-    this.closing = false;
+    if (this.closing) {
+      if (this.closePromise) {
+        throw new Error('MqttMicroserviceTransport is closing. Wait for close() to complete before listen().');
+      }
+
+      this.closing = false;
+    }
+
     this.handler = handler;
 
     if (this.listening) {
@@ -280,12 +288,36 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
       }
 
       void Promise.resolve().then(async () => {
+        if (!this.pending.has(requestId)) {
+          return;
+        }
+
+        if (signal?.aborted) {
+          entry.reject(new Error('MQTT request aborted before publish.'));
+          return;
+        }
+
         if (this.closing) {
           entry.reject(new Error('MQTT microservice transport closed before response.'));
           return;
         }
 
         const client = await this.resolveClient();
+
+        if (!this.pending.has(requestId)) {
+          return;
+        }
+
+        if (signal?.aborted) {
+          entry.reject(new Error('MQTT request aborted before publish.'));
+          return;
+        }
+
+        if (this.closing) {
+          entry.reject(new Error('MQTT microservice transport closed before response.'));
+          return;
+        }
+
         await this.publish(client, this.messageTopic, frame, {
           qos: this.messageQos,
           retain: this.messageRetain,
@@ -327,52 +359,65 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once shutdown cleanup completes.
    */
   async close(): Promise<void> {
-    this.closing = true;
-    let closeError: unknown;
-
-    if (this.listenPromise) {
-      await this.listenPromise;
+    if (this.closePromise) {
+      await this.closePromise;
+      return;
     }
 
-    try {
-      const client = this.client;
+    this.closing = true;
+    this.closePromise = (async () => {
+      let closeError: unknown;
 
-      if (client && this.listening) {
-        for (const topic of [this.eventTopic, this.messageTopic, this.replyTopic]) {
-          try {
-            await this.unsubscribeTopic(client, topic);
-          } catch (error) {
-            closeError ??= error;
-          }
-        }
+      if (this.listenPromise) {
+        await this.listenPromise;
       }
 
-      if (client) {
-        client.off?.('message', this.messageListener);
+      try {
+        const client = this.client;
+
+        if (client && this.listening) {
+          for (const topic of [this.eventTopic, this.messageTopic, this.replyTopic]) {
+            try {
+              await this.unsubscribeTopic(client, topic);
+            } catch (error) {
+              closeError ??= error;
+            }
+          }
+        }
+
+        if (client) {
+          client.off?.('message', this.messageListener);
+
+          if (this.internallyOwnedClient) {
+            try {
+              await this.endClient(client);
+            } catch (error) {
+              closeError ??= error;
+            }
+          }
+        }
+      } finally {
+        this.handler = undefined;
+        this.listening = false;
 
         if (this.internallyOwnedClient) {
-          try {
-            await this.endClient(client);
-          } catch (error) {
-            closeError ??= error;
-          }
+          this.client = undefined;
+        }
+
+        for (const pending of [...this.pending.values()]) {
+          pending.reject(new Error('MQTT microservice transport closed before response.'));
         }
       }
+
+      if (closeError) {
+        throw closeError;
+      }
+    })();
+
+    try {
+      await this.closePromise;
     } finally {
-      this.handler = undefined;
-      this.listening = false;
-
-      if (this.internallyOwnedClient) {
-        this.client = undefined;
-      }
-
-      for (const pending of [...this.pending.values()]) {
-        pending.reject(new Error('MQTT microservice transport closed before response.'));
-      }
-    }
-
-    if (closeError) {
-      throw closeError;
+      this.closePromise = undefined;
     }
   }
 

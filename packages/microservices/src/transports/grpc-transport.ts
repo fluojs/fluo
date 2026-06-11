@@ -132,11 +132,12 @@ export interface GrpcMicroserviceTransportOptions {
  * and exposes matching unary/server-stream/client-stream/bidi-stream client calls through one transport surface.
  */
 export class GrpcMicroserviceTransport implements MicroserviceTransport {
-  /** Indicates that gRPC owns server shutdown and cached client cleanup. */
-  readonly ownsResources = true;
+  /** Indicates whether gRPC owns server shutdown in addition to cached client cleanup. */
+  readonly ownsResources: boolean;
 
   private bidiStreamHandler: TransportBidiStreamHandler | undefined;
   private clientStreamHandler: TransportClientStreamHandler | undefined;
+  private closePromise: Promise<void> | undefined;
   private closing = false;
   private readonly clients = new Map<string, ServiceRuntime>();
   private grpc: GrpcJsLike | undefined;
@@ -148,6 +149,7 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
   private packageRoot: Readonly<Record<string, unknown>> | undefined;
   private readonly requestTimeoutMs: number;
   private readonly server: GrpcServerLike | undefined;
+  private readonly ownsServer: boolean;
   private resolvedServer: GrpcServerLike | undefined;
   private serverStreamHandler: TransportServerStreamHandler | undefined;
 
@@ -159,6 +161,8 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
   constructor(private readonly options: GrpcMicroserviceTransportOptions) {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
     this.server = options.server;
+    this.ownsServer = !options.server;
+    this.ownsResources = this.ownsServer;
   }
 
   setLogger(logger: MicroserviceTransportLogger): void {
@@ -172,7 +176,14 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once the gRPC server is bound and ready.
    */
   async listen(handler: TransportHandler): Promise<void> {
-    this.closing = false;
+    if (this.closing) {
+      if (this.closePromise) {
+        throw new Error('GrpcMicroserviceTransport is closing. Wait for close() to complete before listen().');
+      }
+
+      this.closing = false;
+    }
+
     this.handler = handler;
 
     if (this.listening) {
@@ -212,7 +223,9 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
 
         await this.bindServer(server, grpc);
       } catch (error) {
-        await this.shutdownServer(server);
+        if (this.ownsServer) {
+          await this.shutdownServer(server);
+        }
         throw error;
       }
 
@@ -369,44 +382,57 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once shutdown cleanup completes.
    */
   async close(): Promise<void> {
-    this.closing = true;
-    let closeError: unknown;
-
-    if (this.listenPromise) {
-      await this.listenPromise;
+    if (this.closePromise) {
+      await this.closePromise;
+      return;
     }
 
-    try {
-      if (this.resolvedServer) {
-        await this.shutdownServer(this.resolvedServer);
+    this.closing = true;
+    this.closePromise = (async () => {
+      let closeError: unknown;
+
+      if (this.listenPromise) {
+        await this.listenPromise;
       }
 
-      for (const service of this.clients.values()) {
-        try {
-          service.client.close?.();
-        } catch (error) {
-          closeError ??= error;
+      try {
+        if (this.resolvedServer && this.ownsServer) {
+          await this.shutdownServer(this.resolvedServer);
+        }
+
+        for (const service of this.clients.values()) {
+          try {
+            service.client.close?.();
+          } catch (error) {
+            closeError ??= error;
+          }
+        }
+      } catch (error) {
+        closeError ??= error;
+      } finally {
+        this.handler = undefined;
+        this.serverStreamHandler = undefined;
+        this.clientStreamHandler = undefined;
+        this.bidiStreamHandler = undefined;
+        this.listening = false;
+        this.resolvedServer = undefined;
+        this.clients.clear();
+        this.packageRoot = undefined;
+
+        for (const pending of [...this.pending.values()]) {
+          pending.reject(new Error('gRPC microservice transport closed before response.'));
         }
       }
-    } catch (error) {
-      closeError ??= error;
-    } finally {
-      this.handler = undefined;
-      this.serverStreamHandler = undefined;
-      this.clientStreamHandler = undefined;
-      this.bidiStreamHandler = undefined;
-      this.listening = false;
-      this.resolvedServer = undefined;
-      this.clients.clear();
-      this.packageRoot = undefined;
 
-      for (const pending of [...this.pending.values()]) {
-        pending.reject(new Error('gRPC microservice transport closed before response.'));
+      if (closeError) {
+        throw closeError;
       }
-    }
+    })();
 
-    if (closeError) {
-      throw closeError;
+    try {
+      await this.closePromise;
+    } finally {
+      this.closePromise = undefined;
     }
   }
 
@@ -703,6 +729,15 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
       }
 
       void Promise.resolve().then(() => {
+        if (!this.pending.has(requestId)) {
+          return;
+        }
+
+        if (signal?.aborted) {
+          entry.reject(new Error('gRPC request aborted before dispatch.'));
+          return;
+        }
+
         if (this.closing) {
           entry.reject(new Error('gRPC microservice transport closed before response.'));
           return;

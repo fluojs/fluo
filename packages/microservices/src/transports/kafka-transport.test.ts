@@ -167,6 +167,29 @@ describe('KafkaMicroserviceTransport', () => {
     await transport.close();
   });
 
+  it('does not publish when AbortSignal fires before deferred dispatch', async () => {
+    const bus = new InMemoryTopicBus();
+    const { published, transport } = createTransport(bus, {
+      requestTimeoutMs: 1_000,
+    });
+
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const pending = transport.send('aborted.deferred', {}, controller.signal);
+    controller.abort();
+
+    await expect(pending).rejects.toThrow('Kafka request aborted.');
+
+    const requestFrames = published.filter(({ message }) => {
+      const frame = JSON.parse(message) as { kind?: string };
+      return frame.kind === 'message';
+    });
+    expect(requestFrames).toHaveLength(0);
+
+    await transport.close();
+  });
+
   it('rejects send() with AbortSignal after publish', async () => {
     const bus = new InMemoryTopicBus();
     const { transport } = createTransport(bus, {
