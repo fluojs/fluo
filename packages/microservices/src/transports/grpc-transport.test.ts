@@ -81,6 +81,11 @@ class FakeGrpcServer {
 
   tryShutdown(callback: (error?: Error) => void): void {
     this.shutdownCount += 1;
+    if (this.runtime.shutdownGate) {
+      void this.runtime.shutdownGate.then(() => callback(this.shutdownError));
+      return;
+    }
+
     callback(this.shutdownError);
   }
 
@@ -203,6 +208,8 @@ class FakeGrpcRuntime {
 
   readonly Metadata = FakeGrpcMetadata;
   readonly Server: new () => FakeGrpcServer;
+  shutdownGate: Promise<void> | undefined;
+  unaryDispatchCount = 0;
 
   private readonly boundServers = new Map<string, FakeGrpcServer>();
 
@@ -398,6 +405,8 @@ class FakeGrpcRuntime {
     callback: (error: { code?: number; message?: string } | null, response: unknown) => void,
   ): Promise<void> {
     void serviceName;
+
+    this.unaryDispatchCount += 1;
 
     const server = this.boundServers.get(address);
 
@@ -659,6 +668,20 @@ describe('GrpcMicroserviceTransport', () => {
     await transport.close();
   });
 
+  it('does not dispatch unary RPCs when AbortSignal fires before deferred dispatch', async () => {
+    const { runtime, transport } = createGrpcTransport();
+    await transport.listen(async () => 1);
+
+    const controller = new AbortController();
+    const pending = transport.send('MathService.Sum', { a: 1, b: 2 }, controller.signal);
+    controller.abort();
+
+    await expect(pending).rejects.toThrow('gRPC request aborted.');
+    expect(runtime.unaryDispatchCount).toBe(0);
+
+    await transport.close();
+  });
+
   it('rejects in-flight request on AbortSignal cancelation', async () => {
     const { transport } = createGrpcTransport();
     await transport.listen(async () => {
@@ -752,6 +775,28 @@ describe('GrpcMicroserviceTransport', () => {
     await transport.close();
 
     await expect(pending).rejects.toThrow('gRPC microservice transport closed before response.');
+  });
+
+  it('rejects listen() during close() without reopening the shutdown state', async () => {
+    const { runtime, transport } = createGrpcTransport();
+    let releaseShutdown: (() => void) | undefined;
+    runtime.shutdownGate = new Promise<void>((resolve) => {
+      releaseShutdown = resolve;
+    });
+
+    await transport.listen(async () => undefined);
+
+    const closing = transport.close();
+
+    await expect(transport.listen(async () => undefined)).rejects.toThrow(
+      'GrpcMicroserviceTransport is closing. Wait for close() to complete before listen().',
+    );
+    await expect(transport.emit('MathService.Notify', { value: 'still-closing' })).rejects.toThrow(
+      'GrpcMicroserviceTransport is closing. Wait for close() to complete before emit().',
+    );
+
+    releaseShutdown?.();
+    await closing;
   });
 
   it('loads optional peers lazily and reports missing grpc peer clearly', async () => {

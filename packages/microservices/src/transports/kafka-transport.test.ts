@@ -356,6 +356,44 @@ describe('KafkaMicroserviceTransport', () => {
     expect(requestFrames).toHaveLength(0);
   });
 
+  it('rejects listen() during close() without reopening the shutdown state', async () => {
+    const bus = new InMemoryTopicBus();
+    let releaseUnsubscribe: (() => void) | undefined;
+    const unsubscribeGate = new Promise<void>((resolve) => {
+      releaseUnsubscribe = resolve;
+    });
+    const transport = new KafkaMicroserviceTransport({
+      consumer: {
+        subscribe: async (topic, handler) => {
+          await bus.subscribe(topic, handler);
+        },
+        unsubscribe: async (topic) => {
+          await bus.unsubscribe(topic);
+          await unsubscribeGate;
+        },
+      },
+      producer: {
+        publish: async (topic, message) => {
+          await bus.publish(topic, message);
+        },
+      },
+    });
+
+    await transport.listen(async () => undefined);
+
+    const closing = transport.close();
+
+    await expect(transport.listen(async () => undefined)).rejects.toThrow(
+      'KafkaMicroserviceTransport is closing. Wait for close() to complete before listen().',
+    );
+    await expect(transport.emit('still.closing', {})).rejects.toThrow(
+      'KafkaMicroserviceTransport is closing. Wait for close() to complete before emit().',
+    );
+
+    releaseUnsubscribe?.();
+    await closing;
+  });
+
   it('rejects emit() after close() starts', async () => {
     const bus = new InMemoryTopicBus();
     const { transport } = createTransport(bus);
