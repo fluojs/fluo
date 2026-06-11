@@ -112,6 +112,8 @@ export class AppModule {}
 
 운영 로그 기록이나 맞춤 알림처럼 오케스트레이션이 과한 경우에는 서비스를 직접 사용할 수 있습니다.
 
+이미 Slack 목적지를 알고 있는 내부 팀 메시지에는 `SlackService`를 직접 사용합니다.
+
 ```typescript
 import { Inject } from '@fluojs/core';
 import { SlackService } from '@fluojs/slack';
@@ -123,6 +125,30 @@ export class LoggerService {
   async logError(error: Error) {
     await this.slack.send({
       text: `🚨 *Critical Error*: ${error.message}`,
+    });
+  }
+}
+```
+
+커뮤니티 공지, release thread, 공유 notifications 정책을 우회해야 하는 Discord 전용 payload에는 `DiscordService`도 같은 방식으로 사용할 수 있습니다.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { DiscordService } from '@fluojs/discord';
+
+@Inject(DiscordService)
+export class CommunityAnnouncementService {
+  constructor(private readonly discord: DiscordService) {}
+
+  async publishRelease(version: string) {
+    await this.discord.send({
+      content: `🚀 FluoShop ${version} is live!`,
+      embeds: [
+        {
+          description: 'Release notes are available in the community thread.',
+          title: 'Release published',
+        },
+      ],
     });
   }
 }
@@ -286,7 +312,14 @@ const slackStatus = slackService.createPlatformStatusSnapshot();
 if (slackStatus.readiness.status !== 'ready') {
   metrics.increment('notifications.slack.offline');
 }
+
+const discordStatus = discordService.createPlatformStatusSnapshot();
+if (discordStatus.readiness.status !== 'ready') {
+  metrics.increment('notifications.discord.offline');
+}
 ```
+
+`DiscordService.createPlatformStatusSnapshot()`은 `createDiscordPlatformStatusSnapshot(...)`과 같은 운영 shape를 반환합니다. 즉 lifecycle/readiness, transport ownership과 kind, 기본 thread 구성, bootstrap verification 상태, notifications channel dependency가 들어가므로 FluoShop은 package internals를 읽지 않고도 Discord wiring을 관찰할 수 있습니다.
 
 ## Conclusion
 

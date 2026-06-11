@@ -112,6 +112,8 @@ export class AppModule {}
 
 When orchestration would be too much, such as operational log records or custom alerts, you can use the services directly.
 
+Use `SlackService` for internal team messages that already know their Slack destination.
+
 ```typescript
 import { Inject } from '@fluojs/core';
 import { SlackService } from '@fluojs/slack';
@@ -123,6 +125,30 @@ export class LoggerService {
   async logError(error: Error) {
     await this.slack.send({
       text: `🚨 *Critical Error*: ${error.message}`,
+    });
+  }
+}
+```
+
+Use `DiscordService` the same way for community announcements, release threads, or provider-specific Discord payloads that should bypass the shared notifications policy.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { DiscordService } from '@fluojs/discord';
+
+@Inject(DiscordService)
+export class CommunityAnnouncementService {
+  constructor(private readonly discord: DiscordService) {}
+
+  async publishRelease(version: string) {
+    await this.discord.send({
+      content: `🚀 FluoShop ${version} is live!`,
+      embeds: [
+        {
+          description: 'Release notes are available in the community thread.',
+          title: 'Release published',
+        },
+      ],
     });
   }
 }
@@ -288,7 +314,14 @@ const slackStatus = slackService.createPlatformStatusSnapshot();
 if (slackStatus.readiness.status !== 'ready') {
   metrics.increment('notifications.slack.offline');
 }
+
+const discordStatus = discordService.createPlatformStatusSnapshot();
+if (discordStatus.readiness.status !== 'ready') {
+  metrics.increment('notifications.discord.offline');
+}
 ```
+
+`DiscordService.createPlatformStatusSnapshot()` returns the same operational shape as `createDiscordPlatformStatusSnapshot(...)`: lifecycle/readiness, transport ownership and kind, default thread configuration, bootstrap verification state, and the notifications channel dependency. That lets FluoShop observe Discord wiring without reading package internals.
 
 ## Conclusion
 
