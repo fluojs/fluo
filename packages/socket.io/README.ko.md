@@ -152,10 +152,10 @@ Socket.IO 등록은 소유 모듈의 import 경로에서 구성하여 namespace/
 
 ## 공개 API 개요
 
-- `SocketIoModule.forRoot(options)`
+- `SocketIoModule.forRoot(options)`: Socket.IO 통합의 기본 모듈입니다.
 - `SocketIoModule.forRoot({ global, auth, cors, engine, ... })`: provider visibility, namespace/message guard, 명시적 CORS, Engine.IO payload bound를 구성합니다.
-- `SOCKETIO_SERVER`
-- `SOCKETIO_ROOM_SERVICE`
+- `SOCKETIO_SERVER`: raw Socket.IO `Server`를 주입하기 위한 토큰입니다.
+- `SOCKETIO_ROOM_SERVICE`: `SocketIoRoomService`를 주입하기 위한 토큰입니다.
 - `SocketIoRoomService`: 공유 room 계약에 Socket.IO namespace-aware `joinRoom`, `leaveRoom`, `broadcastToRoom`, `getRooms` helper를 더한 타입입니다.
 - `SocketIoLifecycleService`: server와 room-service token 뒤에서 동작하는 lifecycle 기반 구현입니다. 애플리케이션 코드는 일반적으로 `SOCKETIO_SERVER` 또는 `SOCKETIO_ROOM_SERVICE`를 주입하세요.
 - 타입: `SocketIoModuleOptions`, `SocketIoHandshakeRequest`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.

@@ -181,7 +181,7 @@ class UsersModule {}
 | :--- | :--- |
 | `@fluojs/runtime/node` | 로거 팩토리, Node 어댑터/부트스트랩 헬퍼, 종료 시그널 등록을 위한 지원되는 Node.js 전용 진입점입니다. |
 | `@fluojs/runtime/web` | Bun, Deno, Cloudflare Workers를 위한 공유 Web 표준 요청/응답 유틸리티입니다. `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, `parseMultipart`를 포함합니다. |
-| `@fluojs/runtime/internal` | package integration을 위한 token-only internal seam입니다. |
+| `@fluojs/runtime/internal` | runtime wiring token과, compiled module graph의 provider scope와 정렬되어야 하는 first-party adapter가 사용하는 runtime-owned class metadata reader를 위한 internal package-integration seam입니다. |
 | `@fluojs/runtime/internal-node` | adapter/runtime plumbing을 위한 Node 전용 internal seam이며, 애플리케이션 코드에서는 `@fluojs/runtime/node`를 우선 사용하세요. |
 | `@fluojs/runtime/internal/http-adapter` | platform package를 위한 internal HTTP adapter seam입니다. |
 | `@fluojs/runtime/internal/request-response-factory` | platform package를 위한 internal request/response factory seam입니다. |
