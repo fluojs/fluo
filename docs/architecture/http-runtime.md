@@ -6,8 +6,8 @@ This document defines the current request execution contract implemented by `@fl
 
 ## Request Lifecycle
 
-1. The adapter supplies a normalized `FrameworkRequest` and `FrameworkResponse` to `Dispatcher.dispatch(...)`.
-2. The dispatcher clones request params and builds a `RequestContext` with request metadata and an optional `x-request-id`. It starts on the root container and promotes to an isolated request-scoped container only when the matched graph, active middleware, observers, DTO conversion, binder, guard, interceptor, controller dependency graph, or manual `RequestContext.container.resolve(...)` access may need request scope.
+1. The adapter supplies a normalized `FrameworkRequest` and `FrameworkResponse` to `Dispatcher.dispatch(...)`, including `signal` or `isAborted()` when the host exposes request cancellation.
+2. The dispatcher clones request params and abort metadata, then builds a `RequestContext` with request metadata and an optional `x-request-id`. It starts on the root container and promotes to an isolated request-scoped container only when the matched graph, active middleware, observers, DTO conversion, binder, guard, interceptor, controller dependency graph, or manual `RequestContext.container.resolve(...)` access may need request scope.
 3. Registered request observers receive `onRequestStart` before route matching.
 4. Global application middleware runs first through `runMiddlewareChain(...)`.
 5. `matchHandlerOrThrow(...)` resolves one handler from the `HandlerMapping` or throws `HandlerNotFoundError`.
@@ -17,7 +17,7 @@ This document defines the current request execution contract implemented by `@fl
 9. The interceptor chain is composed from global interceptors followed by route interceptors.
 10. `invokeControllerHandler(...)` resolves the controller from the request container, binds the declared DTO through the binder, and validates DTO input through `HttpDtoValidationAdapter` when the route declares `request` metadata.
 11. The controller method receives `(input, requestContext)` and returns the handler result.
-12. Successful non-SSE results are written through `writeSuccessResponse(...)`, which applies redirect metadata, route headers, formatter selection, and default success status rules.
+12. Successful non-SSE results are written through `writeSuccessResponse(...)`, which applies redirect metadata, route headers, formatter selection, and default success status rules. The dispatcher checks `signal` and `isAborted()` before and after handler execution so aborted requests do not commit late success responses.
 13. If any stage throws, the dispatcher runs `onError` when configured, otherwise `writeErrorResponse(...)` writes the default error response.
 14. The dispatcher always emits `onRequestFinish`. When a request scope was created or lazily promoted, it disposes that isolated request-scoped container before the request ends; singleton-only fast-path requests that never promote do not dispose the root container.
 
