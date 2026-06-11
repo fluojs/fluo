@@ -118,7 +118,7 @@ async function bootstrap() {
 
 ### 21.3.1 SSE (Server-Sent Events) in Express
 
-Express 어댑터는 `@Sse()`와 `SseResponse` 유틸리티를 통해 SSE를 지원합니다. 단방향 스트리밍이 필요한 알림이나 상태 업데이트에서는 WebSocket보다 단순한 운영 모델로 충분할 수 있습니다. 현재 Phase 1 계약에서 `@Sse()`는 `GET` 라우트와 `text/event-stream` metadata만 등록합니다. `AsyncIterable` 또는 Observable 반환값을 stream frame으로 변환하지 않습니다.
+Express 어댑터는 `@Sse()`와 `SseResponse` 유틸리티를 통해 SSE를 지원합니다. 단방향 스트리밍이 필요한 알림이나 상태 업데이트에서는 WebSocket보다 단순한 운영 모델로 충분할 수 있습니다. `@Sse()`는 `GET` 라우트와 `text/event-stream` metadata를 등록합니다. 수동 stream 소유권이 필요하면 `SseResponse`를 반환하고, dispatcher가 yield된 값을 SSE frame으로 encode해야 한다면 `AsyncIterable`을 반환하세요. Observable 반환값은 자동 변환되지 않습니다.
 
 ```typescript
 import { Sse, SseResponse, type RequestContext } from '@fluojs/http';

@@ -118,7 +118,7 @@ Sometimes you need to work a little more directly with fluo abstractions to hand
 
 ### 21.3.1 SSE (Server-Sent Events) in Express
 
-The Express Adapter supports SSE through `@Sse()` and the `SseResponse` utility. For notifications or status updates that only need one-way streaming, SSE can be enough with a simpler operational model than WebSockets. In the current Phase 1 contract, `@Sse()` only registers a `GET` route and `text/event-stream` metadata; it does not convert `AsyncIterable` or Observable return values into stream frames.
+The Express Adapter supports SSE through `@Sse()` and the `SseResponse` utility. For notifications or status updates that only need one-way streaming, SSE can be enough with a simpler operational model than WebSockets. `@Sse()` registers a `GET` route with `text/event-stream` metadata. Return `SseResponse` when you need manual stream ownership, or return an `AsyncIterable` when the dispatcher should encode yielded values as SSE frames. Observable return values are not converted automatically.
 
 ```typescript
 import { Sse, SseResponse, type RequestContext } from '@fluojs/http';
