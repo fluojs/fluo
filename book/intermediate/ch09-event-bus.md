@@ -180,7 +180,7 @@ This flow is intentionally asymmetric. One write expands into multiple reactions
 
 ## 9.7 Operational rules for domain events
 
-Domain events need discipline. FluoShop follows a few practical rules. First, the event name should describe a completed fact. Second, the payload should carry enough context for downstream handlers to act, but it generally shouldn't leak the whole aggregate. Third, a versioned event key should change intentionally only when the contract breaks. Fourth, if duplicate distributed delivery is possible, handlers must be idempotent. Fifth, an event must not become a back door for hidden synchronous dependencies. These rules keep the event bus an operational tool, not a vague mechanism.
+Domain events need discipline. FluoShop follows a few practical rules. First, the event name should describe a completed fact. Second, the payload should carry enough context for downstream handlers to act, but it generally shouldn't leak the whole aggregate. Third, a versioned event key should change intentionally only when the contract breaks. Fourth, if duplicate distributed delivery is possible, handlers must be idempotent. Fifth, an event must not become a back door for hidden synchronous dependencies. Slow or retryable work should hand off to the queue boundary from Chapter 11, while the event handler records that handoff once and tolerates duplicate delivery. These rules keep the event bus an operational tool, not a vague mechanism.
 
 ## 9.8 FluoShop v1.8.0 progression
 

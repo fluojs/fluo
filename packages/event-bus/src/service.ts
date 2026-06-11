@@ -237,6 +237,19 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     }
   }
 
+  private trackActiveDispatchWork(dispatchWork: Promise<void>): Promise<void> {
+    const trackedWork = dispatchWork.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.activeDispatches.add(trackedWork);
+    void trackedWork.finally(() => {
+      this.activeDispatches.delete(trackedWork);
+    });
+
+    return dispatchWork;
+  }
+
   private async awaitShutdownDrain(activePublishes: Promise<void>[], timeoutMs: number): Promise<boolean> {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<false>((resolve) => {
@@ -422,7 +435,11 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
       }
 
       try {
-        await this.awaitInvocationBounds(this.transport!.publish(channel, payload), publishOptions);
+        const publishWork = this.transport!.publish(channel, payload);
+        const boundedPublishWork = publishOptions.waitForHandlers
+          ? this.trackActiveDispatchWork(publishWork)
+          : publishWork;
+        await this.awaitInvocationBounds(boundedPublishWork, publishOptions);
       } catch (error) {
         this.transportPublishFailures += 1;
         this.logBoundedTransportPublishError(channel, error);
@@ -592,7 +609,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
       return;
     }
 
-    const invocation = this.invokeHandler(descriptor, event);
+    const invocation = this.trackActiveDispatchWork(this.invokeHandler(descriptor, event));
 
     try {
       await this.awaitInvocationBounds(invocation, publishOptions);
@@ -713,7 +730,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   }
 
   private discoverHandlerDescriptors(): EventHandlerDescriptor[] {
-    const seen = new WeakMap<Function, Map<MetadataPropertyKey, Set<EventType>>>();
+    const seen = new Map<Token, Map<MetadataPropertyKey, Set<EventType>>>();
     const descriptors: EventHandlerDescriptor[] = [];
 
     for (const candidate of this.discoveryCandidates()) {
@@ -726,7 +743,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
       for (const entry of entries) {
         const eventType = entry.metadata.eventType;
 
-        if (this.isDuplicateHandlerRegistration(seen, candidate.targetType, entry.propertyKey, eventType)) {
+        if (this.isDuplicateHandlerRegistration(seen, candidate.token, entry.propertyKey, eventType)) {
           continue;
         }
 
@@ -753,16 +770,16 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   }
 
   private isDuplicateHandlerRegistration(
-    seen: WeakMap<Function, Map<MetadataPropertyKey, Set<EventType>>>,
-    targetType: Function,
+    seen: Map<Token, Map<MetadataPropertyKey, Set<EventType>>>,
+    token: Token,
     methodKey: MetadataPropertyKey,
     eventType: EventType,
   ): boolean {
-    let methodsByKey = seen.get(targetType);
+    let methodsByKey = seen.get(token);
 
     if (!methodsByKey) {
       methodsByKey = new Map<MetadataPropertyKey, Set<EventType>>();
-      seen.set(targetType, methodsByKey);
+      seen.set(token, methodsByKey);
     }
 
     let seenEventTypes = methodsByKey.get(methodKey);
