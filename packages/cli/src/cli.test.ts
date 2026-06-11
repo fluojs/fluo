@@ -1,6 +1,6 @@
 import { type ChildProcess, spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, type FSWatcher, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -1853,9 +1853,20 @@ void bootstrap();
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: () => undefined },
     });
+    const nativeEnvExitCode = await runCli(['dev', '--dry-run', '--studio'], {
+      cwd: workspaceDirectory,
+      env: { FLUO_DEV_RUNNER: 'native' },
+      spawnCommand: async (command) => {
+        spawnedCommands.push(command);
+        return 0;
+      },
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
 
     expect(rawWatchExitCode).toBe(1);
     expect(nativeRunnerExitCode).toBe(1);
+    expect(nativeEnvExitCode).toBe(1);
     expect(spawnedCommands).toEqual([]);
     expect(stderrBuffer.join('')).toContain('fluo dev --studio requires the fluo-owned Node restart runner.');
   });
@@ -2184,6 +2195,59 @@ void bootstrap();
     gate.commitBaseline([sourceFile]);
     expect(gate.hasMeaningfulChange([sourceFile])).toBe(false);
     expect(gate.hasMeaningfulChange([ignoredFile])).toBe(false);
+  });
+
+  it('honors FLUO_DEV_WATCH_IGNORE before restarting the fluo Node child', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    const ignoredDirectory = join(sourceDirectory, 'generated');
+    mkdirSync(ignoredDirectory, { recursive: true });
+    const sourceFile = join(sourceDirectory, 'main.ts');
+    const ignoredFile = join(ignoredDirectory, 'schema.ts');
+    writeFileSync(sourceFile, 'console.log("hello");\n');
+    writeFileSync(ignoredFile, 'console.log("ignored");\n');
+    const children: ChildProcess[] = [];
+    const watchedTargets: Array<{ listener: (event: string, filename: string | Buffer | null) => void; target: string }> = [];
+
+    const runPromise = runNodeRestartRunner({
+      debounceMs: 5,
+      env: { FLUO_DEV_WATCH_IGNORE: 'generated' },
+      projectDirectory: workspaceDirectory,
+      spawnChild: () => {
+        const child = createMockChild();
+        children.push(child);
+        return child;
+      },
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+      watchTarget: (target, optionsOrListener, maybeListener) => {
+        const listener = typeof optionsOrListener === 'function' ? optionsOrListener : maybeListener;
+        if (!listener) {
+          throw new Error('Expected watch listener to be registered.');
+        }
+        watchedTargets.push({ listener, target });
+        const watcher = new EventEmitter() as FSWatcher;
+        watcher.close = () => undefined;
+        return watcher;
+      },
+    });
+
+    await waitForCondition(() => children.length === 1 && watchedTargets.length > 0);
+    const sourceWatcher = watchedTargets.find((entry) => entry.target === sourceDirectory);
+    expect(sourceWatcher).toBeDefined();
+
+    writeFileSync(ignoredFile, 'console.log("ignored changed");\n');
+    sourceWatcher?.listener('change', join('generated', 'schema.ts'));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(children).toHaveLength(1);
+
+    writeFileSync(sourceFile, 'console.log("hello changed");\n');
+    sourceWatcher?.listener('change', 'main.ts');
+    await waitForCondition(() => children.length === 2);
+
+    children.at(-1)?.kill();
+    await expect(runPromise).resolves.toBe(0);
   });
 
   it('dedupes change-then-revert bursts until the debounce baseline is committed', () => {
@@ -3836,6 +3900,25 @@ exit 7
     expect(stdoutBuffer.join('')).toBe('graph TD\n  STUDIO["components: 0"]\n');
   });
 
+  it('writes inspect --mermaid output to explicit artifact paths', async () => {
+    const outputDirectory = mkdtempSync(join(tmpdir(), 'fluo-inspect-'));
+    createdDirectories.push(outputDirectory);
+    const outputPath = join(outputDirectory, 'artifacts', 'graph.mmd');
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid', '--output', outputPath], {
+      cwd: process.cwd(),
+      loadStudioMermaidRenderer: async () => (snapshot) => `graph TD\n  STUDIO["components: ${snapshot.components.length}"]`,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expectCliCommandSuccess(exitCode, stdoutBuffer, stderrBuffer);
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(readFileSync(outputPath, 'utf8')).toBe('graph TD\n  STUDIO["components: 0"]\n');
+  });
+
   it('fails inspect --mermaid without prompting when Studio is missing in non-interactive mode', async () => {
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
@@ -3888,6 +3971,40 @@ exit 7
     expect(promptMessages).toEqual(['Install @fluojs/studio before rendering Mermaid output?']);
     expect(stdoutBuffer.join('')).toBe('');
     expect(stderrBuffer.join('')).toContain('Installation declined; no package-manager command was run.');
+  });
+
+  it('fails inspect --mermaid without installing when Studio installation is approved', async () => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    const promptMessages: string[] = [];
+
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid'], {
+      ci: true,
+      cwd: process.cwd(),
+      interactive: true,
+      loadStudioMermaidRenderer: async () => undefined,
+      prompt: {
+        confirm: async (message) => {
+          promptMessages.push(message);
+          return true;
+        },
+        select: async () => {
+          throw new Error('inspect should not request select prompts');
+        },
+        text: async () => {
+          throw new Error('inspect should not request text prompts');
+        },
+      },
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdin: { isTTY: true },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(promptMessages).toEqual(['Install @fluojs/studio before rendering Mermaid output?']);
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain('Automatic installation is not run by fluo inspect.');
+    expect(stderrBuffer.join('')).toContain('Install @fluojs/studio explicitly, then rerun the command.');
   });
 
   it('returns success for cancelled inspect prompts without terminating the host process', async () => {
