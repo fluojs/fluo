@@ -6,21 +6,27 @@ import { fileURLToPath } from 'node:url';
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
 const defaultChangesetDirectory = join(repoRoot, '.changeset');
+const cliReadmePath = join(repoRoot, 'packages', 'cli', 'README.md');
 const allowedBumpsByLane = {
   prerelease: new Set(['patch', 'minor', 'major']),
   stable: new Set(['patch', 'minor', 'major']),
 };
 const validBumps = new Set(['patch', 'minor', 'major']);
 const publicCliFeatureAdditionVerbs = /\b(adds?|added|introduces?|introduced|exposes?|exposed|supports?|supported|enables?|enabled|provides?|provided|implements?|implemented|ships?|shipped|expands?|expanded)\b/iu;
-const nonBehaviorAdditionPhrases = /\b(adds?|added)\s+(?:regression\s+)?(?:tests?|coverage|docs?|documentation)\b/giu;
-const publicCliSurfaceMarkers = [
-  /\bfluo\s+(?:add|analyze|build|create|dev|doctor|generate|info|inspect|migrate|new|start|upgrade|version)\b/iu,
-  /`--(?:dry-run|export|json|mermaid|no-update-check|no-update-notifier|output|print-plan|raw-watch|report|reporter|runner|studio|studio-port|timing|verbose)\b/iu,
-  /\b--(?:dry-run|export|json|mermaid|no-update-check|no-update-notifier|output|print-plan|raw-watch|report|reporter|runner|studio|studio-port|timing|verbose)\b/iu,
-  /\bgenerated\s+(?:project|projects|starter|starters|script|scripts|template|templates|lifecycle|lifecycles)\b/iu,
-  /\bstarter\s+(?:contract|contracts|lifecycle|lifecycles|matrix|mode|modes|script|scripts|template|templates)\b/iu,
-  /\binspect\s+(?:artifact|artifacts|mode|modes|output|outputs|report|reports|snapshot|snapshots)\b/iu,
-  /\bprogrammatic\s+(?:api|apis|entrypoint|entrypoints|export|exports|surface|surfaces)\b/iu,
+const nonBehaviorAdditionPhrases = /\b(adds?|added)\s+(?:(?:regression\s+)?(?:tests?|coverage|docs?|documentation)|(?:validation|guardrails?|checks?)\s+for)\b/giu;
+const documentedCliSurfacePhraseMarkers = [
+  {
+    readme: /\b(?:generated|starter|template|lifecycle)\b/iu,
+    release: /\b(?:generated\s+)?(?:project|projects|starter|starters|script|scripts|template|templates|lifecycle|lifecycles)\b|\bstarter\s+(?:contract|contracts|lifecycle|lifecycles|matrix|mode|modes|script|scripts|template|templates)\b/iu,
+  },
+  {
+    readme: /\binspect\b/iu,
+    release: /\binspect\s+(?:artifact|artifacts|mode|modes|output|outputs|report|reports|snapshot|snapshots|workflow|workflows)\b/iu,
+  },
+  {
+    readme: /\b(?:Public API|runCli|runNewCommand|runInspectCommand)\b/u,
+    release: /\bprogrammatic\s+(?:api|apis|entry\s*point|entry\s*points|entrypoint|entrypoints|export|exports|surface|surfaces)\b|\b(?:runCli|runNewCommand|runInspectCommand)\b/u,
+  },
 ];
 
 function parseCliOptions(argv = process.argv.slice(2)) {
@@ -306,20 +312,76 @@ function normalizeReleaseText(text) {
   return String(text).replace(/\s+/gu, ' ').trim();
 }
 
-function describesPublicCliFeatureAddition(text) {
+function escapeRegexLiteral(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}
+
+function readDocumentedCliReadme(dependencies = {}) {
+  if (typeof dependencies.readCliReadme === 'function') {
+    return dependencies.readCliReadme(cliReadmePath);
+  }
+
+  return readFileSync(cliReadmePath, 'utf8');
+}
+
+function collectDocumentedCliSurfaceTerms(readme) {
+  const terms = new Set();
+
+  for (const match of readme.matchAll(/\bfluo\s+([a-z][a-z0-9:-]*)\b/giu)) {
+    terms.add(`fluo ${match[1].toLowerCase()}`);
+  }
+
+  for (const match of readme.matchAll(/(?<![\w-])--[a-z][a-z0-9-]*/giu)) {
+    terms.add(match[0].toLowerCase());
+  }
+
+  for (const match of readme.matchAll(/`([A-Za-z_$][\w$]+)(?:\([^`]*\))?`/gu)) {
+    const identifier = match[1];
+
+    if (/^(?:run[A-Z]|newUsage|inspectUsage|Cli|New|Generate|Inspect)/u.test(identifier)) {
+      terms.add(identifier);
+    }
+  }
+
+  return terms;
+}
+
+function documentedCliSurfaceTermPattern(term) {
+  const escaped = escapeRegexLiteral(term).replace(/\\ /gu, '\\s+');
+
+  if (term.startsWith('--')) {
+    return new RegExp(`(^|[^\\w-])${escaped}(?=$|[^\\w-])`, 'iu');
+  }
+
+  if (term.startsWith('fluo ')) {
+    return new RegExp(`\\b${escaped}\\b`, 'iu');
+  }
+
+  return new RegExp(`(^|[^\\w$])${escaped}(?=$|[^\\w$])`, 'u');
+}
+
+function describesReadmeDocumentedCliSurface(text, dependencies = {}) {
+  const readme = readDocumentedCliReadme(dependencies);
+  const terms = collectDocumentedCliSurfaceTerms(readme);
+
+  return [...terms].some((term) => documentedCliSurfaceTermPattern(term).test(text)) ||
+    documentedCliSurfacePhraseMarkers.some(({ readme: readmePattern, release }) => readmePattern.test(readme) && release.test(text));
+}
+
+function describesPublicCliFeatureAddition(text, dependencies = {}) {
   const normalized = normalizeReleaseText(text).replace(nonBehaviorAdditionPhrases, '');
 
   return publicCliFeatureAdditionVerbs.test(normalized) &&
-    publicCliSurfaceMarkers.some((pattern) => pattern.test(normalized));
+    describesReadmeDocumentedCliSurface(normalized, dependencies);
 }
 
-function collectPatchCliFeatureDowngradesFromChangesets(intents) {
+function collectPatchCliFeatureDowngradesFromChangesets(intents, dependencies = {}) {
   return intents
     .filter(
       (intent) =>
         intent.packageName === '@fluojs/cli' &&
         intent.bump === 'patch' &&
-        describesPublicCliFeatureAddition(intent.body),
+        describesPublicCliFeatureAddition(intent.body, dependencies),
     )
     .map((intent) => ({
       filePath: intent.filePath,
@@ -346,7 +408,7 @@ function collectPatchCliFeatureDowngradesFromVersionDeltas(versionDeltas, depend
 
     const section = changelogSectionForVersion(readFile(absoluteChangelogPath, 'utf8'), delta.nextVersion);
 
-    if (!section || !describesPublicCliFeatureAddition(section)) {
+    if (!section || !describesPublicCliFeatureAddition(section, dependencies)) {
       return [];
     }
 
@@ -384,7 +446,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     ? dependencies.collectDependencyOnlyMajorVersionDeltas(versionDeltas)
     : collectDependencyOnlyMajorVersionDeltas(versionDeltas, dependencies);
   const patchCliFeatureDowngrades = [
-    ...collectPatchCliFeatureDowngradesFromChangesets(intents),
+    ...collectPatchCliFeatureDowngradesFromChangesets(intents, dependencies),
     ...collectPatchCliFeatureDowngradesFromVersionDeltas(versionDeltas, dependencies),
   ];
 

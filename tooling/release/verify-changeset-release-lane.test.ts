@@ -135,6 +135,41 @@ describe('verifyChangesetReleaseLane', () => {
     expect(result.checkedPatchCliFeatureDowngrades).toEqual([]);
   });
 
+  it('allows patch changesets that add validation for documented CLI artifact parity without changing the contract', () => {
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'cli-report-validation.md',
+      '"@fluojs/cli": patch',
+      'Add validation for `fluo inspect --report` output parity without changing the documented artifact contract.',
+    );
+
+    const result = verifyChangesetReleaseLane({ changesetDirectory: directory, lane: 'stable' });
+
+    expect(result.checkedIntents).toMatchObject([{ bump: 'patch', packageName: '@fluojs/cli' }]);
+    expect(result.checkedPatchCliFeatureDowngrades).toEqual([]);
+  });
+
+  it('rejects patch changesets that add README-documented CLI commands outside the prior fixed marker list', () => {
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'cli-static-preview-serve.md',
+      '"@fluojs/cli": patch',
+      'Add `fluo serve` command for README-documented static preview workflows.',
+    );
+
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { changesetDirectory: directory, lane: 'stable' },
+        {
+          readCliReadme: () =>
+            '# @fluojs/cli\n\n## Static Preview\n\n```bash\nfluo serve ./dist --static-preview\n```\n\nUse `fluo serve` for README-documented static preview workflows.\n',
+        },
+      ),
+    ).toThrow(/public CLI feature additions classified as patch.*fluo serve/us);
+  });
+
   it('rejects generated patch changelog sections that describe public CLI feature additions', () => {
     const directory = createChangesetDirectory();
 
