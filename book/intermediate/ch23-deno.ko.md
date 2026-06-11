@@ -113,6 +113,25 @@ export class RealtimeModule {}
 
 게이트웨이 반환값은 WebSocket dispatcher에서 무시됩니다. 위 예시처럼 handler에 전달되는 런타임 socket을 통해 명시적으로 응답을 전송하세요.
 
+`DenoWebSocketModule.forRoot()`를 설정하지 않았다면 `Upgrade: websocket`을 포함한 HTTP 요청도 암묵적으로 upgrade되지 않습니다. 해당 요청은 일반 HTTP dispatch 경로를 계속 따르므로, gateway 활성화는 명시적인 opt-in으로 유지되고 애플리케이션이 Deno websocket binding을 선택하기 전에 플랫폼 네이티브 websocket 동작이 나타나지 않습니다.
+
+### 23.4.1 HTTPS, host alias, shutdown signal
+
+Deno 어댑터는 Deno 네이티브 `hostname`과 이식성 alias인 `host`를 모두 허용합니다. 둘 다 설정하면 `Deno.serve(...)` bind target과 fluo가 보고하는 listen URL에는 `hostname`이 우선합니다. Deno process가 HTTPS startup을 소유해야 한다면 TLS 자료를 `https` option으로 전달하세요.
+
+```typescript
+await runDenoApplication(AppModule, {
+  hostname: '127.0.0.1',
+  https: {
+    cert: await Deno.readTextFile('./cert.pem'),
+    key: await Deno.readTextFile('./key.pem'),
+  },
+  port: 3443,
+});
+```
+
+`runDenoApplication(...)`은 Deno signal API를 사용할 수 있을 때 기본적으로 `SIGINT`와 `SIGTERM` listener를 등록합니다. Host가 process signal을 직접 소유한다면 `shutdownSignals: false`를 사용하고, 배포 profile이 더 좁은 lifecycle contract를 요구한다면 custom signal list를 전달하세요. 한 signal listener를 이미 연결한 뒤 다음 signal 등록이 실패하면 fluo는 실패를 전달하기 전에 앞서 연결한 listener를 제거합니다. Close 중에는 새 유입을 중단하고 active handler가 최대 10초 동안 drain되도록 기다린 다음, shutdown이 아직 끝나지 않았으면 underlying Deno serve signal을 abort합니다.
+
 ## 23.5 Handling Deno Permissions in FluoShop
 
 Deno에서 마이크로서비스를 구축할 때는 최소 권한의 원칙을 따라야 합니다. 광범위한 플래그 대신 구체적인 권한을 지정하세요.
@@ -157,15 +176,21 @@ Deno 네이티브한 저장소가 필요하다면 Deno의 내장 KV 저장소를
 ```typescript
 import { OnModuleInit } from '@fluojs/runtime';
 
+declare const Deno: {
+  openKv(): Promise<{
+    set(key: string[], value: unknown): Promise<void>;
+    get(key: string[]): Promise<{ value: unknown }>;
+  }>;
+};
+
 export class CacheService implements OnModuleInit {
-  private kv: any; // Deno.Kv 타입
+  private kv!: Awaited<ReturnType<typeof Deno.openKv>>;
 
   async onModuleInit() {
-    // @ts-ignore: Deno 전역 객체
     this.kv = await Deno.openKv();
   }
 
-  async set(key: string, value: any) {
+  async set(key: string, value: unknown) {
     await this.kv.set([key], value);
   }
 
