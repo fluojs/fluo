@@ -1,5 +1,11 @@
 # @fluojs/websockets
 
+## [Unreleased]
+
+### Patch Changes
+
+- Align websocket runtime contracts, docs, and regression coverage for room service behavior, bounded shutdown cleanup, payload normalization, and runtime-specific upgrade guard typing.
+
 ## 1.0.6
 
 ### Patch Changes

@@ -72,6 +72,8 @@ export class OrderStatusGateway {
 
 The `@OnConnect`, `@OnMessage`, and `@OnDisconnect` decorators map directly to the WebSocket lifecycle. This structure follows the same line as the existing fluo handler model and uses the same declarative pattern as HTTP `@Get` and Event `@OnEvent` handlers. As a result, realtime connection code still reads like familiar fluo code.
 
+If you are migrating from NestJS, do not look for legacy message, body, or connected-socket decorator equivalents. fluo keeps the handler contract explicit: `@OnMessage(event?)` selects the event, then the runtime calls the method with positional arguments `(payload, socket, request)`. This keeps gateway inputs visible without legacy parameter metadata.
+
 ## 13.4 Bounded defaults and guards
 
 In production, you cannot leave WebSockets open without limits. WebSockets consume persistent server resources, namely memory and file descriptors. The `@fluojs/websockets` package automatically applies bounded defaults for concurrent connections and payload size, and you can tune these settings at the Module level. Starting from bounded defaults and adjusting only what the workload needs helps keep realtime features scalable and predictable.
@@ -136,6 +138,20 @@ export class OrderStatusGateway {
 
 This connection bridges the asynchronous domain and the real-time surface. The Gateway listens to internal events and transforms them into external socket messages, so domain logic does not need to know about socket details while clients still receive state changes immediately.
 
+For fan-out use cases, inject the package's room contract instead of keeping every socket in a custom map. `WebSocketRoomService` supports `joinRoom(socketId, room)`, `leaveRoom(socketId, room)`, `broadcastToRoom(room, event, data)`, and `getRooms(socketId)`. Broadcasts send a JSON frame shaped as `{ event, data }` and still respect backpressure limits before writing to sockets.
+
+```typescript
+import { WebSocketRoomService } from '@fluojs/websockets';
+
+export class OrderStatusGateway {
+  constructor(private readonly rooms: WebSocketRoomService) {}
+
+  publishStatus(orderId: string, status: string) {
+    this.rooms.broadcastToRoom(`order:${orderId}`, 'order.status', { status });
+  }
+}
+```
+
 ## 13.6 Cross-runtime websocket surfaces
 
 fluo is designed around portability. The default `WebSocketModule` targets Node.js, but you may need to run FluoShop on Bun, Deno, or Cloudflare Workers. Each runtime handles WebSockets differently at the engine level, so the `@fluojs/websockets` package handles this difference through runtime-specific subpaths. Keeping runtime differences at the import boundary helps the gateway's business logic remain stable.
@@ -148,6 +164,8 @@ fluo is designed around portability. The default `WebSocketModule` targets Node.
 | Workers | `@fluojs/websockets/cloudflare-workers` |
 
 When you import from the correct subpath, the backend adapter can change to match the host environment while the gateway logic stays the same. In other words, portability is expressed through package boundaries and import choices, not only through a broad architectural promise.
+
+The root and Node entrypoints type upgrade guards with Node's `IncomingMessage`. Bun, Deno, and Cloudflare Workers subpaths use Web-standard `Request` guards. Text frames are delivered as strings unless they parse as JSON event envelopes, and binary frames are decoded as UTF-8 before the same dispatch step, so payload handling stays consistent across supported runtimes.
 
 ## 13.7 Heartbeats and connection health
 
@@ -206,6 +224,8 @@ This flow reduces repeated polling by users and gives them an experience where t
 - `@WebSocketGateway` classes manage the connection lifecycle and message routing.
 - You can use `upgrade.guard` to reject unauthenticated handshakes before they consume server resources.
 - Runtime-specific subpaths ensure realtime logic stays portable across Node, Bun, Deno, and Cloudflare Workers.
+- `WebSocketRoomService` gives gateways a documented room membership and broadcast contract.
+- Text and binary payloads are normalized before `@OnMessage()` handlers run.
 - Heartbeat and bounded defaults prevent resource leaks and ghost connections.
 
 The practical lesson is that WebSockets should be just as structured as REST APIs.

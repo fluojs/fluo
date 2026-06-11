@@ -54,7 +54,7 @@
 - **`@fluojs/email/node`**: Nodemailer/SMTP 전송을 제공하는 `@fluojs/email`의 Node.js 전용 서브패스.
 - **`@fluojs/slack`**: standalone으로도 동작하고 공식 알림 채널로도 등록할 수 있는 webhook-first Slack 전달 코어.
 - **`@fluojs/discord`**: standalone으로도 동작하고 공식 알림 채널로도 등록할 수 있는 webhook-first Discord 전달 코어.
-- **`@fluojs/websockets`**: 루트 Node.js 기본값과 런타임별 서브패스 `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`를 제공하는 WebSocket 게이트웨이 작성 패키지. 각 런타임 서브패스도 공유 decorator와 metadata authoring primitive를 노출합니다.
+- **`@fluojs/websockets`**: 루트 Node.js 기본값과 런타임별 서브패스 `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`를 제공하는 WebSocket 게이트웨이 작성 패키지. 각 런타임 서브패스도 공유 decorator와 metadata authoring primitive를 노출합니다. `WebSocketRoomService` room membership/broadcast semantic, text 및 binary `@OnMessage()` payload normalization, root/Node entrypoint의 Node `IncomingMessage` guard typing, Bun/Deno/Workers subpath의 fetch-style `Request` guard typing, 해결되지 않은 disconnect handler를 위한 bounded shutdown cleanup도 이 패키지의 계약입니다.
 - **`@fluojs/validation`**: 표준 데코레이터 기반 입력 검증, DTO 실체화(materialization), request-boundary 안전성.
 - **`@fluojs/serialization`**: `Expose`, `Exclude`, `Transform`, `serialize(value)`, HTTP response-boundary 통합용 `SerializerInterceptor`를 제공하는 decorator-aware response serialization 및 output DTO shaping 패키지.
 - **`@fluojs/prisma`**: Prisma ORM lifecycle 및 ALS 기반 transaction context. 서비스 계층의 transaction boundary를 위한 `@Transaction()` 데코레이터를 노출합니다.

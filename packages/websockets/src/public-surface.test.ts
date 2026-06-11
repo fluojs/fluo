@@ -11,6 +11,7 @@ import type { WebSocketModuleOptions as BunWebSocketModuleOptions } from './bun.
 import type { WebSocketModuleOptions as CloudflareWorkersWebSocketModuleOptions } from './cloudflare-workers.js';
 import type { WebSocketModuleOptions as DenoWebSocketModuleOptions } from './deno.js';
 import type { WebSocketModuleOptions as NodeWebSocketModuleOptions } from './node.js';
+import type { WebSocketModuleOptions as RootWebSocketModuleOptions } from './index.js';
 
 type UpgradeGuardRequest<TOptions> = TOptions extends { upgrade?: { guard?: (request: infer TRequest, ...args: never[]) => unknown } }
   ? TRequest
@@ -74,9 +75,10 @@ describe('@fluojs/websockets public surface', () => {
   });
 
   it('keeps fetch-style runtime upgrade guards scoped to Request inputs', () => {
+    expectTypeOf<UpgradeGuardRequest<RootWebSocketModuleOptions>>().toEqualTypeOf<IncomingMessage>();
     expectTypeOf<UpgradeGuardRequest<BunWebSocketModuleOptions>>().toEqualTypeOf<Request>();
     expectTypeOf<UpgradeGuardRequest<DenoWebSocketModuleOptions>>().toEqualTypeOf<Request>();
     expectTypeOf<UpgradeGuardRequest<CloudflareWorkersWebSocketModuleOptions>>().toEqualTypeOf<Request>();
-    expectTypeOf<UpgradeGuardRequest<NodeWebSocketModuleOptions>>().toEqualTypeOf<IncomingMessage | Request>();
+    expectTypeOf<UpgradeGuardRequest<NodeWebSocketModuleOptions>>().toEqualTypeOf<IncomingMessage>();
   });
 });

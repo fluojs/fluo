@@ -31,9 +31,9 @@ export type { WebSocketUpgradeContext, WebSocketUpgradeRejection };
 /**
  * Hook that can allow or reject a websocket upgrade before the adapter accepts it.
  */
-export type WebSocketUpgradeGuard = SharedWebSocketUpgradeGuard<IncomingMessage | Request>;
+export type WebSocketUpgradeGuard = SharedWebSocketUpgradeGuard<IncomingMessage>;
 
 /**
  * Runtime options shared by the Node websocket lifecycle service.
  */
-export type WebSocketModuleOptions = SharedWebSocketModuleOptions<IncomingMessage | Request>;
+export type WebSocketModuleOptions = SharedWebSocketModuleOptions<IncomingMessage>;

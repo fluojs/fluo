@@ -1,7 +1,7 @@
 import type { ModuleType } from '@fluojs/runtime';
 
 import { NodeWebSocketModule } from './node.js';
-import type { WebSocketModuleOptions } from './types.js';
+import type { WebSocketModuleOptions } from './node/node-types.js';
 
 /**
  * Root module entry point that defaults to the Node.js WebSocket adapter.
