@@ -113,6 +113,25 @@ export class RealtimeModule {}
 
 Gateway return values are ignored by the WebSocket dispatcher. Send replies explicitly through the runtime socket passed to the handler, as shown above.
 
+If `DenoWebSocketModule.forRoot()` is not configured, an HTTP request that carries `Upgrade: websocket` is not upgraded implicitly. It continues through normal HTTP dispatch, which keeps gateway activation explicit and prevents platform-native websocket behavior from appearing before the application opts into the Deno websocket binding.
+
+### 23.4.1 HTTPS, host aliases, and shutdown signals
+
+The Deno adapter accepts Deno-native `hostname` and a portable `host` alias. When both are set, `hostname` wins for the `Deno.serve(...)` bind target and the listen URL reported by fluo. Pass TLS material through the `https` option when the Deno process should own HTTPS startup:
+
+```typescript
+await runDenoApplication(AppModule, {
+  hostname: '127.0.0.1',
+  https: {
+    cert: await Deno.readTextFile('./cert.pem'),
+    key: await Deno.readTextFile('./key.pem'),
+  },
+  port: 3443,
+});
+```
+
+`runDenoApplication(...)` registers `SIGINT` and `SIGTERM` listeners by default when the Deno signal APIs are available. Use `shutdownSignals: false` for hosts that own process signals themselves, or pass a custom signal list when a deployment profile needs a narrower lifecycle contract. If one signal registration fails after another listener was already attached, fluo removes the earlier listener before surfacing the failure. During close, the adapter stops new ingress, lets active handlers drain for up to 10 seconds, and then aborts the underlying Deno serve signal if shutdown has not settled.
+
 ## 23.5 Handling Deno Permissions in FluoShop
 
 When building microservices on Deno, follow the principle of least privilege. Specify concrete permissions instead of broad flags.

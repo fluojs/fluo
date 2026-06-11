@@ -49,6 +49,7 @@ await runDenoApplication(AppModule, {
 테스트나 커스텀 `Deno.serve` 구현을 위해 어댑터의 `handle` 메서드를 사용하여 네이티브 웹 요청을 수동으로 디스패치할 수 있습니다. 다만 `handle(...)`은 런타임 dispatcher가 바인딩된 뒤에만 동작하므로, 먼저 `app.listen()`(또는 `runDenoApplication(...)`)으로 부트스트랩을 완료해야 합니다.
 
 ```typescript
+import { createDenoAdapter } from '@fluojs/platform-deno';
 import { fluoFactory } from '@fluojs/runtime';
 
 const adapter = createDenoAdapter({ port: 3000 });
@@ -94,11 +95,11 @@ await runDenoApplication(AppModule, {
 
 `hostname`은 Deno 네이티브 옵션 이름으로 유지됩니다. 공유 HTTP 어댑터 테스트와 교차 런타임 설정 헬퍼를 위해 `host`도 이식성 alias로 허용하며, 둘 다 제공하면 `Deno.serve(...)` bind target과 보고되는 listen URL에는 `hostname`이 우선합니다.
 
-Advanced option에는 test 또는 non-hosted runtime을 위한 injectable `serve`, `upgradeWebSocket` seam, `rawBody`, `maxBodySize`, `multipart`, `shutdownSignals`가 포함됩니다. Seam을 주입하지 않으면 어댑터는 listen/upgrade 시점에 `globalThis.Deno.serve`와 `globalThis.Deno.upgradeWebSocket`으로 fallback합니다. `runDenoApplication(...)`은 기본적으로 `SIGINT`/`SIGTERM`을 연결하고, `shutdownSignals: false`는 signal registration을 끕니다. Close는 Deno serve signal을 abort하기 전에 active request drain을 최대 10초 기다립니다. `handle(...)`은 `listen()`이 dispatcher를 bind하기 전에는 JSON `500`, shutdown 진행 중에는 JSON `503`을 반환합니다.
+Advanced option에는 test 또는 non-hosted runtime을 위한 injectable `serve`, `upgradeWebSocket` seam, `rawBody`, `maxBodySize`, `multipart`, `shutdownSignals`가 포함됩니다. Seam을 주입하지 않으면 어댑터는 listen/upgrade 시점에 `globalThis.Deno.serve`와 `globalThis.Deno.upgradeWebSocket`으로 fallback합니다. `runDenoApplication(...)`은 기본적으로 `SIGINT`/`SIGTERM`을 연결하고, `shutdownSignals: false`는 signal registration을 끄며, 여러 signal을 등록하다 실패하면 이미 연결한 listener를 rollback합니다. Close는 Deno serve signal을 abort하기 전에 active request drain을 최대 10초 기다립니다. `handle(...)`은 `listen()`이 dispatcher를 bind하기 전에는 JSON `500`, shutdown 진행 중에는 JSON `503`을 반환합니다.
 
 ## Conformance 커버리지
 
-`packages/platform-deno/src/adapter.test.ts`는 문서화된 Deno 계약을 검증하는 package-local regression 대상입니다. 이 파일은 shared Web dispatch delegation, HTTPS startup forwarding, `host` alias 및 `hostname` 우선순위 listen-target handling, `SIGINT`/`SIGTERM` signal listener 등록과 정리, websocket upgrade binding, global Deno serve/upgrade fallback seam, listen 전 `500` 처리, shutdown 중 `503` 처리, serve-signal abort 전 in-flight request drain, bounded 10초 close timeout을 검증합니다.
+`packages/platform-deno/src/adapter.test.ts`는 문서화된 Deno 계약을 검증하는 package-local regression 대상입니다. 이 파일은 shared Web dispatch delegation, HTTPS startup forwarding, `host` alias 및 `hostname` 우선순위 listen-target handling, 기본 `SIGINT`/`SIGTERM` signal listener 등록, `shutdownSignals: false`, partial signal-registration failure 이후 listener rollback, websocket upgrade binding 및 no-binding HTTP fallback, global Deno serve/upgrade fallback seam, listen 전 `500` 처리, shutdown 중 `503` 처리, serve-signal abort 전 in-flight request drain, bounded 10초 close timeout을 검증합니다.
 
 공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Deno를 Bun 및 Cloudflare Workers와 함께 실행해 malformed cookie 보존, query decoding, JSON/text raw-body capture, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트의 README parity assertion은 이 edge-runtime 커버리지 문서가 한국어 mirror와 계속 동기화되도록 확인합니다.
 

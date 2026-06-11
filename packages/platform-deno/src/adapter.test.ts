@@ -220,10 +220,14 @@ function createUpgradeWebSocketStub() {
   };
 }
 
-function installDenoSignalMock() {
+function installDenoSignalMock(options: { throwOnAdd?: string } = {}) {
   const originalDeno = (globalThis as typeof globalThis & { Deno?: unknown }).Deno;
   const listeners = new Map<string, () => void>();
   const addSignalListener = vi.fn((signal: string, handler: () => void) => {
+    if (signal === options.throwOnAdd) {
+      throw new Error(`failed to register ${signal}`);
+    }
+
     listeners.set(signal, handler);
   });
   const removeSignalListener = vi.fn((signal: string, handler: () => void) => {
@@ -630,6 +634,73 @@ describe('@fluojs/platform-deno', () => {
     }
   });
 
+  it('registers default Deno shutdown signals through the run helper', async () => {
+    const signals = installDenoSignalMock();
+
+    try {
+      class AppModule {}
+      defineModule(AppModule, {});
+
+      const server = createServeStub();
+      const app = await runDenoApplication(AppModule, {
+        serve: server.serve,
+      });
+
+      expect(signals.addSignalListener).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+      expect(signals.addSignalListener).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+
+      await app.close();
+
+      expect(signals.removeSignalListener).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+      expect(signals.removeSignalListener).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+    } finally {
+      signals.restore();
+    }
+  });
+
+  it('skips Deno shutdown signal registration when shutdownSignals is false', async () => {
+    const signals = installDenoSignalMock();
+
+    try {
+      class AppModule {}
+      defineModule(AppModule, {});
+
+      const server = createServeStub();
+      const app = await runDenoApplication(AppModule, {
+        serve: server.serve,
+        shutdownSignals: false,
+      });
+
+      expect(signals.addSignalListener).not.toHaveBeenCalled();
+      await app.close();
+      expect(signals.removeSignalListener).not.toHaveBeenCalled();
+    } finally {
+      signals.restore();
+    }
+  });
+
+  it('rolls back already registered Deno signal listeners when later registration fails', async () => {
+    const signals = installDenoSignalMock({ throwOnAdd: 'SIGTERM' });
+
+    try {
+      class AppModule {}
+      defineModule(AppModule, {});
+
+      const server = createServeStub();
+
+      await expect(runDenoApplication(AppModule, {
+        serve: server.serve,
+      })).rejects.toThrow(/failed to register SIGTERM/);
+
+      expect(signals.addSignalListener).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+      expect(signals.addSignalListener).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+      expect(signals.removeSignalListener).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+      expect(signals.removeSignalListener).not.toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+    } finally {
+      signals.restore();
+    }
+  });
+
   it('closes the Deno application when a registered shutdown signal fires', async () => {
     const signals = installDenoSignalMock();
 
@@ -1019,6 +1090,34 @@ describe('@fluojs/platform-deno', () => {
     expect(bindingFetch).toHaveBeenCalledTimes(1);
     expect(upgraded.upgrade).toHaveBeenCalledTimes(1);
     expect(httpResponse?.status).toBe(200);
+  });
+
+  it('keeps websocket upgrade requests on HTTP dispatch when no Deno websocket binding is configured', async () => {
+    const server = createServeStub();
+    const upgraded = createUpgradeWebSocketStub();
+    const adapter = new DenoHttpApplicationAdapter({
+      hostname: '0.0.0.0',
+      port: 3000,
+      serve: server.serve,
+      upgradeWebSocket: upgraded.upgrade,
+    });
+    const dispatcher = {
+      dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
+        response.setStatus(204);
+      }),
+    };
+
+    await adapter.listen(dispatcher);
+
+    const response = await server.handler?.(new Request('https://runtime.test/chat', {
+      headers: { upgrade: 'websocket' },
+    }));
+
+    expect(response?.status).toBe(204);
+    expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
+    expect(upgraded.upgrade).not.toHaveBeenCalled();
+
+    await adapter.close();
   });
 
   it('falls back to global Deno.upgradeWebSocket for configured websocket bindings', async () => {
