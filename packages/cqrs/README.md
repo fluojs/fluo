@@ -10,6 +10,7 @@ CQRS primitives for fluo applications with bootstrap-time handler discovery, com
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+  - [Read Projections](#read-projections)
   - [Saga Process Managers](#saga-process-managers)
   - [Event Publishing Contracts](#event-publishing-contracts)
   - [Symbol Tokens](#symbol-tokens)
@@ -78,6 +79,67 @@ class AppModule {}
 ```
 
 ## Common Patterns
+
+### Read Projections
+
+Read projections keep query-shaped data separate from the write model. Publish a domain event after the write succeeds, update the projection from an `@EventHandler(...)`, and serve that denormalized view from a `@QueryHandler(...)`.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import {
+  EventHandler,
+  IEvent,
+  IEventHandler,
+  IQuery,
+  IQueryHandler,
+  QueryHandler,
+} from '@fluojs/cqrs';
+
+interface OrderSummaryView {
+  id: string;
+  customerId: string;
+  status: 'placed';
+}
+
+class OrderPlacedEvent implements IEvent {
+  constructor(
+    public readonly orderId: string,
+    public readonly customerId: string,
+  ) {}
+}
+
+class GetOrderSummaryQuery implements IQuery<OrderSummaryView | undefined> {
+  constructor(public readonly orderId: string) {}
+}
+
+@Inject(OrderSummaryProjectionStore)
+@EventHandler(OrderPlacedEvent)
+class OrderSummaryProjectionHandler implements IEventHandler<OrderPlacedEvent> {
+  constructor(private readonly store: OrderSummaryProjectionStore) {}
+
+  async handle(event: OrderPlacedEvent): Promise<void> {
+    await this.store.upsert({
+      id: event.orderId,
+      customerId: event.customerId,
+      status: 'placed',
+    });
+  }
+}
+
+@Inject(OrderSummaryProjectionStore)
+@QueryHandler(GetOrderSummaryQuery)
+class GetOrderSummaryHandler
+  implements IQueryHandler<GetOrderSummaryQuery, OrderSummaryView | undefined>
+{
+  constructor(private readonly store: OrderSummaryProjectionStore) {}
+
+  async execute(query: GetOrderSummaryQuery): Promise<OrderSummaryView | undefined> {
+    return this.store.findById(query.orderId);
+  }
+}
+```
+
+Register the projection handler, query handler, and projection store as singleton providers in the same application module that imports `CqrsModule.forRoot(...)`. `CqrsEventBusService.publish(new OrderPlacedEvent(...))` runs matching `@EventHandler(...)` providers before sagas and delegated `@fluojs/event-bus` publication, so the read model observes the write-side fact through the documented CQRS event pipeline. Keep projection handlers idempotent because event replay, retries, or external transports can deliver the same business fact more than once.
 
 ### Saga Process Managers
 
