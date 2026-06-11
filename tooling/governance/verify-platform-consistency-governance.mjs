@@ -674,6 +674,10 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const expressReadmeKo = readFileSync(join(repoRoot, 'packages/platform-express/README.ko.md'), 'utf8');
   const cacheManagerReadme = readFileSync(join(repoRoot, 'packages/cache-manager/README.md'), 'utf8');
   const cacheManagerReadmeKo = readFileSync(join(repoRoot, 'packages/cache-manager/README.ko.md'), 'utf8');
+  const notificationsReadme = readFileSync(join(repoRoot, 'packages/notifications/README.md'), 'utf8');
+  const notificationsReadmeKo = readFileSync(join(repoRoot, 'packages/notifications/README.ko.md'), 'utf8');
+  const notificationsChapter = readFileSync(join(repoRoot, 'book/intermediate/ch15-notifications.md'), 'utf8');
+  const notificationsChapterKo = readFileSync(join(repoRoot, 'book/intermediate/ch15-notifications.ko.md'), 'utf8');
   const cliReadme = readFileSync(join(repoRoot, 'packages/cli/README.md'), 'utf8');
   const cliReadmeKo = readFileSync(join(repoRoot, 'packages/cli/README.ko.md'), 'utf8');
   const studioReadme = readFileSync(join(repoRoot, 'packages/studio/README.md'), 'utf8');
@@ -925,6 +929,32 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContextKo.includes('abort-signal 전파') &&
       docsContextKo.includes('platform status snapshot'),
     'docs/CONTEXT.ko.md must keep Slack manual provider composition, abort propagation, and status snapshot guidance discoverable when package-surface.ko.md documents createSlackProviders(...).',
+  );
+  assert(
+    packageSurface.includes('NotificationsModule.forRootAsync({ inject, useFactory, global? })') &&
+      packageSurface.includes('dispatchMany(...)') &&
+      packageSurface.includes('NotificationsService.createPlatformStatusSnapshot()') &&
+      docsContext.includes('packages/notifications/README.md') &&
+      docsContext.includes('book/intermediate/ch15-notifications.md') &&
+      docsContext.includes('concrete queue/event-bus ownership') &&
+      notificationsReadme.includes('dispatchMany(...)') &&
+      notificationsReadme.includes('createNotificationsPlatformStatusSnapshot(...)') &&
+      notificationsChapter.includes('NotificationDispatchBatchResult') &&
+      notificationsChapter.includes('global: false'),
+    'Notifications package-surface, README, docs/CONTEXT.md, and Chapter 15 must keep async registration, batch dispatch, status diagnostics, and concrete queue/event-bus ownership discoverable together.',
+  );
+  assert(
+    packageSurfaceKo.includes('NotificationsModule.forRootAsync({ inject, useFactory, global? })') &&
+      packageSurfaceKo.includes('dispatchMany(...)') &&
+      packageSurfaceKo.includes('NotificationsService.createPlatformStatusSnapshot()') &&
+      docsContextKo.includes('packages/notifications/README.ko.md') &&
+      docsContextKo.includes('book/intermediate/ch15-notifications.ko.md') &&
+      docsContextKo.includes('concrete queue/event-bus ownership') &&
+      notificationsReadmeKo.includes('dispatchMany(...)') &&
+      notificationsReadmeKo.includes('createNotificationsPlatformStatusSnapshot(...)') &&
+      notificationsChapterKo.includes('NotificationDispatchBatchResult') &&
+      notificationsChapterKo.includes('global: false'),
+    'Notifications package-surface.ko.md, README.ko.md, docs/CONTEXT.ko.md, and Chapter 15 KO must keep async registration, batch dispatch, status diagnostics, and concrete queue/event-bus ownership discoverable together.',
   );
   assert(
     packageSurface.includes('@fluojs/cron') &&
