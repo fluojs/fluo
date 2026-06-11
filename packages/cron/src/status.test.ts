@@ -12,6 +12,7 @@ function createCronInput(overrides: Partial<CronStatusAdapterInput> = {}): CronS
     lockRenewalFailures: 0,
     ownedLocks: 0,
     redisDependencyResolved: false,
+    redisLockIoAvailable: false,
     runningTasks: 0,
     totalTasks: 0,
     ...overrides,
@@ -30,6 +31,7 @@ describe('createCronPlatformStatusSnapshot', () => {
       lockRenewalFailures: 0,
       ownedLocks: 1,
       redisDependencyResolved: true,
+      redisLockIoAvailable: true,
       runningTasks: 1,
       totalTasks: 3,
     });
@@ -54,6 +56,7 @@ describe('createCronPlatformStatusSnapshot', () => {
       lockRenewalFailures: 1,
       ownedLocks: 0,
       redisDependencyResolved: true,
+      redisLockIoAvailable: true,
       runningTasks: 0,
       totalTasks: 1,
     });
@@ -92,6 +95,28 @@ describe('createCronPlatformStatusSnapshot', () => {
       reason: 'Distributed cron mode requires a ready Redis lock client.',
       status: 'not-ready',
     });
-    expect(snapshot.health).toEqual({ status: 'healthy' });
+    expect(snapshot.health).toEqual({
+      reason: 'Distributed cron Redis lock I/O is unavailable.',
+      status: 'unhealthy',
+    });
+  });
+
+  it('marks distributed cron not-ready and unhealthy when Redis lock I/O is unavailable', () => {
+    const snapshot = createCronPlatformStatusSnapshot(createCronInput({
+      distributedEnabled: true,
+      lifecycleState: 'ready',
+      redisDependencyResolved: true,
+      redisLockIoAvailable: false,
+    }));
+
+    expect(snapshot.readiness).toEqual({
+      critical: true,
+      reason: 'Distributed cron mode requires a ready Redis lock client.',
+      status: 'not-ready',
+    });
+    expect(snapshot.health).toEqual({
+      reason: 'Distributed cron Redis lock I/O is unavailable.',
+      status: 'unhealthy',
+    });
   });
 });

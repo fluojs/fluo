@@ -68,6 +68,7 @@ async function resolveRedisPeerModule(): Promise<RedisPeerModule> {
 /** Coordinates Redis lock acquisition, renewal, and release for scheduled cron tasks. */
 export class CronDistributedLockManager {
   private readonly ownedLockKeys = new Set<string>();
+  private lockIoError: Error | undefined;
   private redisClient: RedisLockClient | undefined;
   private lockOwnershipLosses = 0;
   private lockRenewalFailures = 0;
@@ -84,6 +85,14 @@ export class CronDistributedLockManager {
 
   get ownedLocks(): number {
     return this.ownedLockKeys.size;
+  }
+
+  get lockIoAvailable(): boolean {
+    if (!this.options.distributed.enabled) {
+      return true;
+    }
+
+    return this.redisClient !== undefined && this.lockIoError === undefined;
   }
 
   get ownershipLosses(): number {
@@ -113,9 +122,11 @@ export class CronDistributedLockManager {
     }
 
     this.redisClient = redisClient;
+    await this.verifyLockIoAvailability();
   }
 
   reset(): void {
+    this.lockIoError = undefined;
     this.redisClient = undefined;
   }
 
@@ -135,12 +146,15 @@ export class CronDistributedLockManager {
         'NX',
       );
 
+      this.markLockIoAvailable();
+
       if (result === 'OK') {
         this.ownedLockKeys.add(descriptor.lockKey);
       }
 
       return result === 'OK';
     } catch (error) {
+      this.markLockIoUnavailable(error);
       this.logger.error(
         `Failed to acquire distributed cron lock for ${descriptor.taskName}.`,
         error,
@@ -180,8 +194,8 @@ export class CronDistributedLockManager {
     };
   }
 
-  async releaseLock(descriptor: CronTaskDescriptor): Promise<void> {
-    await this.releaseLockKey(descriptor.lockKey, descriptor.taskName);
+  async releaseLock(descriptor: CronTaskDescriptor): Promise<boolean> {
+    return await this.releaseLockKey(descriptor.lockKey, descriptor.taskName);
   }
 
   async releaseOwnedLocks(excludedLockKeys: ReadonlySet<string> = new Set()): Promise<void> {
@@ -278,6 +292,7 @@ export class CronDistributedLockManager {
       );
 
       if (typeof result === 'number' && result <= 0) {
+        this.markLockIoAvailable();
         this.logger.warn(
           `Distributed cron lock ownership was lost for ${descriptor.taskName}.`,
           'CronLifecycleService',
@@ -285,6 +300,7 @@ export class CronDistributedLockManager {
         return 'ownership-lost';
       }
 
+      this.markLockIoAvailable();
       this.logger.log(
         `Renewed distributed cron lock for ${descriptor.taskName}.`,
         'CronLifecycleService',
@@ -292,6 +308,7 @@ export class CronDistributedLockManager {
 
       return 'renewed';
     } catch (error) {
+      this.markLockIoUnavailable(error);
       this.logger.error(
         `Failed to renew distributed cron lock for ${descriptor.taskName}.`,
         error,
@@ -301,37 +318,69 @@ export class CronDistributedLockManager {
     }
   }
 
-  private async releaseLockKey(lockKey: string, taskName: string): Promise<void> {
+  private async releaseLockKey(lockKey: string, taskName: string): Promise<boolean> {
     const redis = this.redisClient;
 
     if (!redis) {
-      return;
+      return true;
     }
 
     try {
       const result = await redis.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, this.options.distributed.ownerId);
 
       if (typeof result === 'number' && result <= 0) {
+        this.markLockIoAvailable();
         this.logger.warn(
           `Distributed cron lock for ${taskName} was already released or owned by another node.`,
           'CronLifecycleService',
         );
         this.ownedLockKeys.delete(lockKey);
-        return;
+        return true;
       }
 
+      this.markLockIoAvailable();
       this.logger.log(
         `Released distributed cron lock for ${taskName}.`,
         'CronLifecycleService',
       );
       this.ownedLockKeys.delete(lockKey);
+      return true;
     } catch (error) {
+      this.markLockIoUnavailable(error);
       this.logger.error(
         `Failed to release distributed cron lock for ${taskName}.`,
         error,
         'CronLifecycleService',
       );
+      return false;
     }
+  }
+
+  private async verifyLockIoAvailability(): Promise<void> {
+    const redis = this.redisClient;
+
+    if (!redis) {
+      return;
+    }
+
+    const probeKey = `${this.options.distributed.keyPrefix}:__probe:${this.options.distributed.ownerId}`;
+
+    try {
+      await redis.set(probeKey, this.options.distributed.ownerId, 'PX', 1_000, 'NX');
+      await redis.eval(RELEASE_LOCK_SCRIPT, 1, probeKey, this.options.distributed.ownerId);
+      this.markLockIoAvailable();
+    } catch (error) {
+      this.markLockIoUnavailable(error);
+      throw new Error('Cron distributed mode requires Redis lock I/O to be available.');
+    }
+  }
+
+  private markLockIoAvailable(): void {
+    this.lockIoError = undefined;
+  }
+
+  private markLockIoUnavailable(error: unknown): void {
+    this.lockIoError = error instanceof Error ? error : new Error('Redis lock I/O failed.');
   }
 }
 

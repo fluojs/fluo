@@ -14,6 +14,7 @@ export interface CronStatusAdapterInput {
   lockRenewalFailures: number;
   ownedLocks: number;
   redisDependencyResolved: boolean;
+  redisLockIoAvailable: boolean;
   runningTasks: number;
   totalTasks: number;
 }
@@ -28,7 +29,7 @@ export interface CronPlatformStatusSnapshot {
 
 function createReadiness(input: CronStatusAdapterInput): PlatformReadinessReport {
   if (input.lifecycleState === 'ready') {
-    if (input.distributedEnabled && !input.redisDependencyResolved) {
+    if (input.distributedEnabled && (!input.redisDependencyResolved || !input.redisLockIoAvailable)) {
       return {
         critical: true,
         reason: 'Distributed cron mode requires a ready Redis lock client.',
@@ -96,6 +97,13 @@ function createHealth(input: CronStatusAdapterInput): PlatformHealthReport {
     };
   }
 
+  if (input.distributedEnabled && (!input.redisDependencyResolved || !input.redisLockIoAvailable)) {
+    return {
+      reason: 'Distributed cron Redis lock I/O is unavailable.',
+      status: 'unhealthy',
+    };
+  }
+
   if (input.lockRenewalFailures > 0 || input.lockOwnershipLosses > 0) {
     return {
       reason: 'Distributed cron lock renewal reported recoverable failures.',
@@ -126,6 +134,7 @@ export function createCronPlatformStatusSnapshot(input: CronStatusAdapterInput):
       lockRenewalFailures: input.lockRenewalFailures,
       ownedLocks: input.ownedLocks,
       redisDependencyResolved: input.redisDependencyResolved,
+      redisLockIoAvailable: input.redisLockIoAvailable,
       runningTasks: input.runningTasks,
       totalTasks: input.totalTasks,
     },
