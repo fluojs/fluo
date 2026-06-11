@@ -16,10 +16,13 @@ import {
   createWebRequestResponseFactory,
   dispatchWebRequest,
   type CreateWebRequestResponseFactoryOptions,
+  type WebFrameworkResponse,
 } from '@fluojs/runtime/web';
+import type { RequestResponseFactory } from '@fluojs/runtime/internal/request-response-factory';
 
 declare module '@fluojs/http' {
   interface FrameworkRequest {
+    cloudflare?: CloudflareWorkerRequestContext;
     files?: UploadedFile[];
     rawBody?: Uint8Array;
   }
@@ -33,6 +36,12 @@ const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 export interface CloudflareWorkerExecutionContext {
   passThroughOnException?(): void;
   waitUntil(promise: Promise<unknown>): void;
+}
+
+/** Worker-specific request context attached to fluo HTTP requests by the Cloudflare adapter. */
+export interface CloudflareWorkerRequestContext<Env = unknown> {
+  readonly env: Env;
+  readonly executionContext?: CloudflareWorkerExecutionContext;
 }
 
 /** Message payloads accepted by Cloudflare Worker websockets. */
@@ -167,7 +176,7 @@ export class CloudflareWorkerHttpApplicationAdapter
 
   async fetch<Env = unknown>(
     request: Request,
-    _env?: Env,
+    env?: Env,
     executionContext?: CloudflareWorkerExecutionContext,
   ): Promise<Response> {
     if (this.closeInFlight || this.isClosed) {
@@ -175,30 +184,45 @@ export class CloudflareWorkerHttpApplicationAdapter
     }
 
     const release = this.trackInFlightRequest();
-    const responsePromise = (async () => {
+    const dispatcher = this.dispatcher;
+
+    if (dispatcher && this.websocketBinding && isWebSocketUpgradeRequest(request)) {
       try {
-        const dispatcher = this.dispatcher;
-
-        if (dispatcher && this.websocketBinding && isWebSocketUpgradeRequest(request)) {
-          return await this.websocketBinding.fetch(request, {
-            upgrade: (upgradeRequest) => this.upgradeWebSocket(upgradeRequest),
-          });
-        }
-
-        return await dispatchWebRequest({
-          dispatcher,
-          dispatcherNotReadyMessage: WORKER_DISPATCHER_NOT_READY_MESSAGE,
-          factory: this.webRequestResponseFactory,
-          request,
+        const response = await this.websocketBinding.fetch(request, {
+          upgrade: (upgradeRequest) => this.upgradeWebSocket(upgradeRequest),
         });
+
+        executionContext?.waitUntil(Promise.resolve());
+        return response;
       } finally {
         release();
       }
+    }
+
+    const responsePromise = (async () => {
+      return await dispatchWebRequest({
+        dispatcher,
+        dispatcherNotReadyMessage: WORKER_DISPATCHER_NOT_READY_MESSAGE,
+        factory: this.createRequestResponseFactory(env, executionContext),
+        request,
+      });
     })();
 
-    executionContext?.waitUntil(responsePromise.then(() => undefined, () => undefined));
+    const trackedResponsePromise = responsePromise.then(
+      (response) => createLifecycleTrackedResponse(response, release),
+      (error: unknown) => {
+        release();
+        throw error;
+      },
+    );
 
-    return await responsePromise;
+    executionContext?.waitUntil(
+      trackedResponsePromise
+        .then(({ lifecycle }) => lifecycle)
+        .then(() => undefined, () => undefined),
+    );
+
+    return (await trackedResponsePromise).response;
   }
 
   async listen(dispatcher: Dispatcher): Promise<void> {
@@ -248,6 +272,22 @@ export class CloudflareWorkerHttpApplicationAdapter
     }
 
     await this.inFlightDrain?.promise;
+  }
+
+  private createRequestResponseFactory<Env>(
+    env: Env | undefined,
+    executionContext: CloudflareWorkerExecutionContext | undefined,
+  ): RequestResponseFactory<Request, AbortSignal | undefined, WebFrameworkResponse> {
+    const baseFactory = this.webRequestResponseFactory;
+
+    return {
+      ...baseFactory,
+      async createRequest(request, signal) {
+        const frameworkRequest = await baseFactory.createRequest(request, signal);
+        frameworkRequest.cloudflare = { env, executionContext };
+        return frameworkRequest;
+      },
+    };
   }
 }
 
@@ -443,6 +483,63 @@ function createShutdownResponse(): Response {
     },
     status: 503,
   });
+}
+
+function createLifecycleTrackedResponse(
+  response: Response,
+  release: () => void,
+): { lifecycle: Promise<void>; response: Response } {
+  if (!isLifecycleTrackedStreamingResponse(response)) {
+    release();
+    return { lifecycle: Promise.resolve(), response };
+  }
+
+  const lifecycle = createDeferred<void>();
+  const responseBody = response.body;
+
+  if (!responseBody) {
+    release();
+    return { lifecycle: Promise.resolve(), response };
+  }
+
+  const reader = responseBody.getReader();
+  const trackedBody = new ReadableStream<Uint8Array>({
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+        lifecycle.resolve();
+      } catch (error) {
+        lifecycle.reject(error);
+        throw error;
+      }
+    },
+    async pull(controller) {
+      try {
+        const result = await reader.read();
+
+        if (result.done) {
+          controller.close();
+          lifecycle.resolve();
+          return;
+        }
+
+        controller.enqueue(result.value);
+      } catch (error) {
+        controller.error(error);
+        lifecycle.reject(error);
+      }
+    },
+  });
+
+  return {
+    lifecycle: lifecycle.promise.finally(release),
+    response: new Response(trackedBody, response),
+  };
+}
+
+function isLifecycleTrackedStreamingResponse(response: Response): boolean {
+  return response.body !== null
+    && response.headers.get('content-type')?.toLowerCase().includes('text/event-stream') === true;
 }
 
 function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number): Promise<void> {

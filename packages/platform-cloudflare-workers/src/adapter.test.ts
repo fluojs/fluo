@@ -333,6 +333,96 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     await fetchPromise;
   });
 
+  it('passes Worker env and execution context through the framework request boundary', async () => {
+    const adapter = createCloudflareWorkerAdapter();
+    const env = { API_KEY: 'worker-secret' };
+    const executionContext = createExecutionContext();
+
+    await adapter.listen({
+      async dispatch(request: FrameworkRequest, response: FrameworkResponse) {
+        expect(request.cloudflare?.env).toBe(env);
+        expect(request.cloudflare?.executionContext).toBe(executionContext);
+        response.setStatus(200);
+        await response.send({ ok: true });
+      },
+    });
+
+    const response = await adapter.fetch(
+      new Request('https://worker.test/env'),
+      env,
+      executionContext,
+    );
+
+    expect(response.status).toBe(200);
+    await adapter.close();
+  });
+
+  it('keeps waitUntil and close drains open until streaming response bodies finish', async () => {
+    const adapter = createCloudflareWorkerAdapter();
+    const waitUntilPromises: Array<Promise<unknown>> = [];
+    let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
+    let closeSettled = false;
+    const streamingResponse = new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        streamController = controller;
+        controller.enqueue(new Uint8Array([1]));
+      },
+    }), {
+      headers: { 'content-type': 'text/event-stream' },
+    });
+    const dispatchSpy = vi
+      .spyOn(runtimeWeb, 'dispatchWebRequest')
+      .mockResolvedValue(streamingResponse);
+
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        response.setStatus(200);
+      },
+    });
+
+    const response = await adapter.fetch(
+      new Request('https://worker.test/stream'),
+      {},
+      { waitUntil: (promise) => { waitUntilPromises.push(promise); } },
+    );
+    const closePromise = adapter.close().then(() => {
+      closeSettled = true;
+    });
+    let waitUntilSettled = false;
+    void waitUntilPromises[0]?.then(() => {
+      waitUntilSettled = true;
+    });
+
+    await Promise.resolve();
+
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(200);
+    expect(waitUntilPromises).toHaveLength(1);
+    expect(waitUntilSettled).toBe(false);
+    expect(closeSettled).toBe(false);
+
+    if (!response.body) {
+      throw new Error('Expected a streaming response body.');
+    }
+
+    const reader = response.body.getReader();
+
+    await expect(reader.read()).resolves.toMatchObject({ done: false });
+    expect(closeSettled).toBe(false);
+
+    if (!streamController) {
+      throw new Error('Expected the streaming response controller to be initialized.');
+    }
+
+    streamController.close();
+    await expect(reader.read()).resolves.toMatchObject({ done: true });
+    await waitUntilPromises[0];
+    await closePromise;
+
+    expect(waitUntilSettled).toBe(true);
+    expect(closeSettled).toBe(true);
+  });
+
   it('keeps the dispatcher until an in-flight Worker request settles during close', async () => {
     const adapter = createCloudflareWorkerAdapter();
     const deferred = createDeferred<void>();

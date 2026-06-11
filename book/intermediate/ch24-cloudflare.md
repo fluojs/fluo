@@ -43,7 +43,7 @@ npm install @fluojs/platform-cloudflare-workers
 In the Worker environment, you do not open a long-running server socket like in traditional Node.js. Instead, you export a `fetch` handler that the Cloudflare runtime calls for each request. The fluo adapter maps between this handler and the application Dispatcher.
 
 ```typescript
-// src/index.ts
+// src/worker.ts
 import { bootstrapCloudflareWorkerApplication } from '@fluojs/platform-cloudflare-workers';
 import { AppModule } from './app.module';
 
@@ -88,7 +88,7 @@ Cloudflare Workers have constraints that differ from traditional Node.js environ
 
 ### 24.4.1 Integrating Worker Env into fluo
 
-fluo's Cloudflare adapter passes the Worker `env` object through the `fetch` entrypoint boundary but does not read or merge it into package configuration by itself. Keep config ownership in the application: map the Worker bindings you need into explicit providers or into `@fluojs/config` at bootstrap, so service code never reads Cloudflare globals directly.
+fluo's Cloudflare adapter attaches the Worker `env` object to each request as `context.request.cloudflare?.env` and exposes the Worker execution context as `context.request.cloudflare?.executionContext`, but it does not read or merge those bindings into package configuration by itself. Keep config ownership in the application: map the Worker bindings you need into explicit providers or into `@fluojs/config` at bootstrap, so service code never reads Cloudflare globals directly.
 
 ```typescript
 import { ConfigService } from '@fluojs/config';
@@ -126,16 +126,19 @@ export class RealtimeModule {}
 
 ## 24.6 Deployment with Wrangler
 
-Deploy the fluo application with Cloudflare's CLI tool, `wrangler`. The Worker name, entrypoint, compatibility date, and environment variables are managed in `wrangler.toml`. This file describes the edge execution contract separately from code, so deployment settings become reviewable artifacts too.
+Deploy the fluo application with Cloudflare's CLI tool, `wrangler`. The generated starter uses `wrangler.jsonc` with `src/worker.ts` as the Worker entrypoint. The Worker name, entrypoint, compatibility date, and environment variables are managed in that config file, which describes the edge execution contract separately from code so deployment settings become reviewable artifacts too.
 
-```toml
-# wrangler.toml
-name = "fluoshop-api"
-main = "src/index.ts"
-compatibility_date = "2024-04-01"
-
-[vars]
-API_KEY = "secret-value"
+```jsonc
+// wrangler.jsonc
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fluoshop-api",
+  "main": "src/worker.ts",
+  "compatibility_date": "2024-04-01",
+  "vars": {
+    "API_KEY": "secret-value"
+  }
+}
 ```
 
 Deployment command:
@@ -159,7 +162,7 @@ In FluoShop, you can review KV for session management and D1 for relational data
 
 Cloudflare's WAF and bot management features can serve as the protection layer in front of the FluoShop API. If fluo owns application-level logic while Cloudflare owns edge-level routing and defense, you can reduce the infrastructure surface that operators must manage directly.
 
-Another key point is the execution context. In Workers, `ctx.waitUntil()` lets you register asynchronous work with the runtime after the response. The fluo adapter can use this boundary during background work or event propagation, and it matters for work separated from the request response, such as sending analytics data or triggering webhooks.
+Another key point is the execution context. In Workers, `ctx.waitUntil()` lets you register asynchronous work with the runtime after the response. The fluo adapter uses this boundary for request lifecycle tracking, including SSE (`text/event-stream`) responses that may continue after the `Response` object is returned, so the adapter drain matches the SSE body lifecycle instead of a generic stream contract.
 
 ## 24.8 Advanced: Durable Objects and State
 
@@ -207,9 +210,9 @@ export class DatabaseModule {}
 - `@fluojs/platform-cloudflare-workers` provides a standard `fetch`-based adapter integrated with the fluo lifecycle.
 - Export a `fetch` handler instead of opening a server socket; `app.listen()` still binds the fluo dispatcher before the Worker handler receives traffic.
 - Native edge features such as KV, D1, and WebSockets can be connected through dedicated fluo bindings and Provider boundaries.
-- Map variables and bindings from the Worker `env` object at the application boundary before reading them through providers such as `ConfigService`.
+- Read Worker bindings from `context.request.cloudflare?.env` only at the application boundary, then map them before service code reads them through providers such as `ConfigService`.
 - Use `wrangler` to keep deployment and environment management consistent.
-- `ctx.waitUntil` is handled by fluo to ensure background work completes successfully at the edge.
+- `ctx.waitUntil` is handled by fluo to keep request lifecycle tracking and SSE (`text/event-stream`) response drains alive at the edge.
 - The edge is not just a hosting platform; it is a different way to think about global application architecture.
 
 ## 24.12 Future-Proofing with Cloudflare and Fluo
