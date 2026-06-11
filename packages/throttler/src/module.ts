@@ -22,18 +22,19 @@ function createThrottlerProviders(options: ThrottlerModuleOptions): Provider[] {
 }
 
 /**
- * Runtime module entrypoint for global throttling.
+ * Runtime module entrypoint for throttler policy and guard provider registration.
  *
  * @remarks
- * The module wires one global `ThrottlerGuard`; route-level overrides still come
- * from `@Throttle(...)` and `@SkipThrottle()` metadata.
+ * The module registers validated throttler options and makes `ThrottlerGuard`
+ * injectable. Routes still opt in to enforcement explicitly with guard metadata
+ * such as `@UseGuards(ThrottlerGuard)`.
  */
 export class ThrottlerModule {
   /**
-   * Register the global throttling guard with validated module options.
+   * Register throttler providers with validated module options.
    *
    * @param options Module-wide throttling policy.
-   * @returns A runtime module exporting `ThrottlerGuard`.
+   * @returns A runtime module exporting `ThrottlerGuard` for explicit route activation.
    *
    * @example
    * ```ts

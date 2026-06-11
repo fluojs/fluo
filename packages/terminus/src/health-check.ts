@@ -14,6 +14,8 @@ type ExecutedIndicatorResult = {
   indicatorKey: string;
 };
 
+const runningIndicatorChecks = new WeakMap<HealthIndicator, Promise<HealthIndicatorResult>>();
+
 function normalizeIndicatorTimeoutMs(value: number | undefined): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
     return undefined;
@@ -24,6 +26,40 @@ function normalizeIndicatorTimeoutMs(value: number | undefined): number | undefi
 
 function createTimeoutMessage(timeoutMs: number): string {
   return `Health indicator timed out after ${String(timeoutMs)}ms.`;
+}
+
+function createInFlightResult(key: string): HealthIndicatorResult {
+  return {
+    [key]: {
+      message: 'A previous health indicator probe is still running; Terminus will not start an overlapping probe for the same indicator instance.',
+      status: 'down',
+    },
+  };
+}
+
+function startSerializedIndicatorCheck(indicator: HealthIndicator, key: string): Promise<HealthIndicatorResult> | undefined {
+  const runningCheck = runningIndicatorChecks.get(indicator);
+
+  if (runningCheck) {
+    return undefined;
+  }
+
+  const check = Promise.resolve().then(() => indicator.check(key));
+  runningIndicatorChecks.set(indicator, check);
+  check.then(
+    () => {
+      if (runningIndicatorChecks.get(indicator) === check) {
+        runningIndicatorChecks.delete(indicator);
+      }
+    },
+    () => {
+      if (runningIndicatorChecks.get(indicator) === check) {
+        runningIndicatorChecks.delete(indicator);
+      }
+    },
+  );
+
+  return check;
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -216,11 +252,19 @@ async function runIndicator(
 ): Promise<ExecutedIndicatorResult> {
   const key = inferIndicatorKey(indicator, index);
   const indicatorTimeoutMs = normalizeIndicatorTimeoutMs(executionOptions.indicatorTimeoutMs);
+  const runningCheck = startSerializedIndicatorCheck(indicator, key);
+
+  if (!runningCheck) {
+    return {
+      entries: Object.entries(createInFlightResult(key)),
+      indicatorKey: key,
+    };
+  }
 
   try {
     const result = indicatorTimeoutMs === undefined
-      ? await indicator.check(key)
-      : await withTimeout(indicator.check(key), indicatorTimeoutMs);
+      ? await runningCheck
+      : await withTimeout(runningCheck, indicatorTimeoutMs);
 
     return {
       entries: normalizeIndicatorResult(key, result),

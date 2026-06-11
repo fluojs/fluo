@@ -12,6 +12,12 @@ function assertFiniteInteger(value: number, field: string): void {
   }
 }
 
+function assertNonNegativeFiniteInteger(value: number, field: string): void {
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid throttler ${field}: expected a non-negative finite integer.`);
+  }
+}
+
 function assertOptionalBoolean(value: boolean | undefined, field: string): void {
   if (value !== undefined && typeof value !== 'boolean') {
     throw new Error(`Invalid throttler ${field}: expected a boolean when provided.`);
@@ -44,6 +50,14 @@ export function validateThrottlerModuleOptions(options: ThrottlerModuleOptions):
   assertOptionalBoolean(options.global, 'global');
   assertOptionalBoolean(options.trustProxyHeaders, 'trustProxyHeaders');
 
+  if (options.keyGenerator !== undefined && typeof options.keyGenerator !== 'function') {
+    throw new Error('Invalid throttler keyGenerator: expected a function when provided.');
+  }
+
+  if (options.store !== undefined && (options.store === null || typeof options.store.consume !== 'function')) {
+    throw new Error('Invalid throttler store.consume: expected a function when store is provided.');
+  }
+
   return {
     global: options.global,
     keyGenerator: options.keyGenerator,
@@ -64,8 +78,18 @@ export function validateThrottlerStoreEntry(entry: ThrottlerStoreEntry): Throttl
   assertPositiveFiniteInteger(entry.count, 'store count');
   assertFiniteInteger(entry.resetAt, 'store resetAt');
 
-  return {
+  if (entry.retryAfterMs !== undefined) {
+    assertNonNegativeFiniteInteger(entry.retryAfterMs, 'store retryAfterMs');
+  }
+
+  const validatedEntry: ThrottlerStoreEntry = {
     count: entry.count,
     resetAt: entry.resetAt,
   };
+
+  if (entry.retryAfterMs !== undefined) {
+    validatedEntry.retryAfterMs = entry.retryAfterMs;
+  }
+
+  return validatedEntry;
 }

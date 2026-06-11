@@ -1,3 +1,4 @@
+import { getModuleMetadata } from '@fluojs/core';
 import { ContainerResolutionError } from '@fluojs/di';
 import {
   ForbiddenException,
@@ -194,8 +195,38 @@ describe('MetricsModule', () => {
     expect(metricsResponse.statusCode).toBe(200);
     expect(metricsText).toContain('http_requests_total{method="GET",path="/metrics",status="403"} 1');
     expect(metricsText).toContain('http_errors_total{method="GET",path="/metrics",status="403"} 1');
+    expect(metricsText).toContain('http_request_duration_seconds_count{method="GET",path="/metrics",status="403"} 1');
 
     await app.close();
+  });
+
+  it('keeps endpoint middleware route-scoped while module-level middleware remains unfiltered', () => {
+    class EndpointMiddleware {
+      async handle(_context: MiddlewareContext, next: Next): Promise<void> {
+        await next();
+      }
+    }
+
+    const moduleMiddleware = {
+      async handle(_context: MiddlewareContext, next: Next): Promise<void> {
+        await next();
+      },
+    };
+
+    const metricsRuntimeModule = MetricsModule.forRoot({
+      defaultMetrics: false,
+      endpointMiddleware: [EndpointMiddleware],
+      middleware: [moduleMiddleware],
+    });
+
+    const metadata = getModuleMetadata(metricsRuntimeModule);
+
+    expect(metadata?.middleware).toHaveLength(2);
+    expect(metadata?.middleware?.[0]).toMatchObject({
+      middleware: EndpointMiddleware,
+      routes: ['/metrics'],
+    });
+    expect(metadata?.middleware?.[1]).toBe(moduleMiddleware);
   });
 
   it('composes endpoint middleware before module-level middleware on the scrape route', async () => {

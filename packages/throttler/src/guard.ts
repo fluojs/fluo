@@ -63,9 +63,8 @@ function buildHandlerKey(handler: GuardContext['handler']): string {
 }
 
 function resolveRetryAfterSeconds(entry: ThrottlerStoreEntry, now: number): number {
-  const retryAfterMs = (entry as ThrottlerStoreEntry & { [throttlerRetryAfterMsSymbol]?: number })[
-    throttlerRetryAfterMsSymbol
-  ];
+  const retryAfterMs = entry.retryAfterMs ??
+    (entry as ThrottlerStoreEntry & { [throttlerRetryAfterMsSymbol]?: number })[throttlerRetryAfterMsSymbol];
 
   if (typeof retryAfterMs === 'number' && Number.isFinite(retryAfterMs)) {
     return Math.max(1, Math.ceil(retryAfterMs / 1000));
@@ -165,7 +164,7 @@ export class ThrottlerGuard implements Guard {
     const entry = validateThrottlerStoreEntry(rawEntry);
 
     if (entry.count > policy.limit) {
-      const retryAfter = resolveRetryAfterSeconds(rawEntry, now);
+      const retryAfter = resolveRetryAfterSeconds(entry, now);
       requestContext.response.setHeader('Retry-After', String(retryAfter));
       throw new TooManyRequestsException('Too Many Requests', { meta: { retryAfter } });
     }

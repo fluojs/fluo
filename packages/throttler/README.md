@@ -19,6 +19,8 @@ Decorator-based rate limiting for fluo applications with in-memory and Redis sto
 
 ## Installation
 
+`@fluojs/throttler` declares `engines.node >=20.0.0` in its published package manifest.
+
 ```bash
 npm install @fluojs/throttler
 ```
@@ -89,7 +91,7 @@ ThrottlerModule.forRoot({
 });
 ```
 
-You can also pass any object that implements the `ThrottlerStore` contract through the `store` option.
+You can also pass any object that implements the `ThrottlerStore` contract through the `store` option. `ThrottlerModule.forRoot(...)` validates that a custom store exposes a `consume(...)` function before request handling starts.
 
 ### Custom Key Generation
 
@@ -137,7 +139,7 @@ When migrating from `@nestjs/throttler`, treat `@fluojs/throttler` as an explici
 - `ThrottlerModule.forRoot(options)`: Provides validated throttler options and `ThrottlerGuard` to the module graph.
 - Package-level registration is supported through `ThrottlerModule.forRoot(options)`. Internal provider-composition helpers and DI tokens are not part of the public contract.
 
-`ttl` and `limit` must be positive finite integers. `global` defaults to `true`; set `global: false` when the throttler providers should stay scoped to the importing module. `trustProxyHeaders` and `keyGenerator` customize client identity. Module options are validated and captured by value when the guard is wired so later mutation of the caller's options object does not change live throttling policy. If no `store` option is supplied, each `ThrottlerGuard` instance owns its own in-memory store; pass a `ThrottlerStore` implementation such as `RedisThrottlerStore` when storage must be shared or externally managed.
+`ttl` and `limit` must be positive finite integers. `global` defaults to `true`; set `global: false` when the throttler providers should stay scoped to the importing module. `trustProxyHeaders` and `keyGenerator` customize client identity; `keyGenerator`, when provided, must be a function. Module options are validated and captured by value when the guard is wired so later mutation of the caller's options object does not change live throttling policy. If no `store` option is supplied, each `ThrottlerGuard` instance owns its own in-memory store; pass a `ThrottlerStore` implementation such as `RedisThrottlerStore` when storage must be shared or externally managed.
 
 ### Decorators
 - `@Throttle({ ttl, limit })`: Sets a specific rate limit for a class or method.
@@ -154,7 +156,7 @@ When migrating from `@nestjs/throttler`, treat `@fluojs/throttler` as an explici
 - `RedisThrottlerClient`: Structural Redis command client contract accepted by `RedisThrottlerStore`.
 - `ThrottlerStore`: Public contract for custom stores.
 - `ThrottlerConsumeInput`: Public input shape passed to `ThrottlerStore.consume(key, input)` so custom stores can share the guard's current time and TTL window.
-- `ThrottlerStoreEntry`: Public result shape returned by `ThrottlerStore.consume(...)`; `count` is the post-consume request count for the active window and `resetAt` is the epoch-millisecond reset boundary used for `Retry-After` calculation.
+- `ThrottlerStoreEntry`: Public result shape returned by `ThrottlerStore.consume(...)`; `count` is the post-consume request count for the active window and `resetAt` is the epoch-millisecond reset boundary used for `Retry-After` calculation. Custom stores may return optional `retryAfterMs` when a backing store has a more authoritative clock than the application process; the guard uses it for `Retry-After` when the limit is exceeded.
 
 ### Status and diagnostics
 - `createThrottlerPlatformStatusSnapshot(...)`: Creates a platform status snapshot.

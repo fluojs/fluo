@@ -138,7 +138,7 @@ describe('@fluojs/throttler public entrypoints', () => {
         now: 1_710_000_000_000,
         ttlSeconds: 60,
       }),
-    ).resolves.toEqual({ count: 1, resetAt: 1_710_000_060_000 });
+    ).resolves.toEqual({ count: 1, resetAt: 1_710_000_060_000, retryAfterMs: 60_000 });
   });
 });
 
@@ -330,6 +330,18 @@ describe('ThrottlerGuard — in-memory store', () => {
     expect(() => ThrottlerModule.forRoot({ limit: 0, ttl: 60 })).toThrow(/limit/i);
     expect(() => ThrottlerModule.forRoot({ limit: 1, ttl: -1 })).toThrow(/ttl/i);
     expect(() => ThrottlerModule.forRoot({ limit: Number.POSITIVE_INFINITY, ttl: 60 })).toThrow(/limit/i);
+  });
+
+  it('rejects malformed keyGenerator and store.consume options before request handling starts', () => {
+    const malformedKeyGeneratorOptions = { keyGenerator: 'api-key', limit: 1, ttl: 60 };
+    const malformedStoreOptions = { limit: 1, store: { consume: 'missing' }, ttl: 60 };
+
+    expect(() => Reflect.apply(ThrottlerModule.forRoot, ThrottlerModule, [malformedKeyGeneratorOptions])).toThrow(
+      /keyGenerator/i,
+    );
+    expect(() => Reflect.apply(ThrottlerModule.forRoot, ThrottlerModule, [malformedStoreOptions])).toThrow(
+      /store\.consume/i,
+    );
   });
 
   it('allows requests up to the limit', async () => {
@@ -682,6 +694,25 @@ describe('ThrottlerGuard — in-memory store', () => {
     await expect(guard.canActivate(createGuardContext(TestController, 'action', secondContext))).resolves.toBe(true);
   });
 
+  it('trusts X-Real-IP client identity over raw socket identity when trustProxyHeaders is enabled', async () => {
+    class TestController {
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard({ ...options, limit: 1, trustProxyHeaders: true });
+    const firstContext = createRequestContext({
+      headers: { 'x-real-ip': '198.51.100.10' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+    const secondContext = createRequestContext({
+      headers: { 'x-real-ip': '198.51.100.11' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', firstContext))).resolves.toBe(true);
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', secondContext))).resolves.toBe(true);
+  });
+
   it('normalizes forwarded client identity ports before building throttler keys when trustProxyHeaders is enabled', async () => {
     class TestController {
       action() {}
@@ -814,6 +845,35 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
       await app.close();
     }
   });
+
+  it('does not throttle routes that omit ThrottlerGuard even when ThrottlerModule is registered', async () => {
+    @Controller('/unguarded')
+    class UnguardedController {
+      @Get('/open')
+      getOpen() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      controllers: [UnguardedController],
+      imports: [ThrottlerModule.forRoot({ limit: 1, ttl: 60, trustProxyHeaders: true })],
+    })
+    class UnguardedAppModule {}
+
+    const app = await createTestApp({ rootModule: UnguardedAppModule });
+
+    try {
+      const firstResponse = await app.request('GET', '/unguarded/open').header('x-real-ip', '198.51.100.10').send();
+      const secondResponse = await app.request('GET', '/unguarded/open').header('x-real-ip', '198.51.100.10').send();
+
+      expect(firstResponse.status).toBe(200);
+      expect(secondResponse.status).toBe(200);
+      expect(secondResponse.body).toEqual({ ok: true });
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 describe('ThrottlerGuard — Redis store mock', () => {
@@ -871,6 +931,54 @@ describe('ThrottlerGuard — Redis store mock', () => {
     await expect(
       guard.canActivate(createGuardContext(TestController, 'action', ctx)),
     ).rejects.toThrow(/store count/i);
+  });
+
+  it('uses public custom-store retryAfterMs when store time is more authoritative than app time', async () => {
+    const store: ThrottlerStore = {
+      consume: vi.fn(async () => ({
+        count: 2,
+        resetAt: 1_710_000_090_000,
+        retryAfterMs: 12_000,
+      })),
+    };
+
+    class TestController {
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard({ limit: 1, store, ttl: 60 });
+    const ctx = createRequestContext();
+    const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_710_000_000_000);
+
+    try {
+      await expect(guard.canActivate(createGuardContext(TestController, 'action', ctx))).rejects.toThrow(
+        'Too Many Requests',
+      );
+      expect(ctx.response.headers['Retry-After']).toBe('12');
+    } finally {
+      dateNowSpy.mockRestore();
+    }
+  });
+
+  it('rejects invalid public retryAfterMs values from custom stores', async () => {
+    const store: ThrottlerStore = {
+      consume: vi.fn(async () => ({
+        count: 2,
+        resetAt: 1_710_000_090_000,
+        retryAfterMs: Number.NaN,
+      })),
+    };
+
+    class TestController {
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard({ limit: 1, store, ttl: 60 });
+    const ctx = createRequestContext();
+
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', ctx))).rejects.toThrow(
+      /store retryAfterMs/i,
+    );
   });
 
   it('propagates store failures without emitting rate-limit retry headers', async () => {

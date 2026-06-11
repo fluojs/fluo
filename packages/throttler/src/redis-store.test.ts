@@ -51,7 +51,7 @@ describe('RedisThrottlerStore', () => {
       ttlSeconds: 60,
     });
 
-    expect(entry).toEqual({ count: 1, resetAt: now + 60_000 });
+    expect(entry).toEqual({ count: 1, resetAt: now + 60_000, retryAfterMs: 60_000 });
     expect(client.eval).toHaveBeenCalledWith(
       expect.stringContaining("redis.call('TIME')"),
       1,
@@ -90,9 +90,9 @@ describe('RedisThrottlerStore', () => {
       ttlSeconds: 60,
     });
 
-    expect(first).toEqual({ count: 1, resetAt: baseNow + 60_000 });
-    expect(second).toEqual({ count: 2, resetAt: baseNow + 60_000 });
-    expect(third).toEqual({ count: 1, resetAt: baseNow + 120_001 });
+    expect(first).toEqual({ count: 1, resetAt: baseNow + 60_000, retryAfterMs: 60_000 });
+    expect(second).toEqual({ count: 2, resetAt: baseNow + 60_000, retryAfterMs: 1_000 });
+    expect(third).toEqual({ count: 1, resetAt: baseNow + 120_001, retryAfterMs: 60_000 });
     expect(client.eval).toHaveBeenCalledTimes(3);
   });
 

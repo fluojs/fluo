@@ -803,7 +803,7 @@ describe('TerminusModule.forRoot', () => {
     }
   });
 
-  it('does not overwrite user indicators that reuse fixed platform diagnostic keys', async () => {
+  it('keeps platform diagnostic payloads under reserved keys when user indicators reuse them', async () => {
     const component: PlatformComponent = {
       async health() {
         return { reason: 'runtime unhealthy', status: 'unhealthy' };
@@ -864,20 +864,31 @@ describe('TerminusModule.forRoot', () => {
       expect(healthResponse.body).toMatchObject({
         contributors: {
           down: [
-            'fluo-platform-health-duplicate-key-error',
-            'fluo-platform-readiness-duplicate-key-error',
+            'fluo-platform-health-user-key-collision',
+            'fluo-platform-health',
+            'fluo-platform-readiness-user-key-collision',
+            'fluo-platform-readiness',
           ],
-          up: ['fluo-platform-health', 'fluo-platform-readiness'],
+          up: [],
         },
         details: {
-          'fluo-platform-health': { status: 'up' },
-          'fluo-platform-health-duplicate-key-error': {
-            message: 'Platform diagnostic key "fluo-platform-health" collided with an existing health result key.',
+          'fluo-platform-health': {
+            message: 'runtime unhealthy',
+            platformStatus: 'unhealthy',
             status: 'down',
           },
-          'fluo-platform-readiness': { status: 'up' },
-          'fluo-platform-readiness-duplicate-key-error': {
-            message: 'Platform diagnostic key "fluo-platform-readiness" collided with an existing health result key.',
+          'fluo-platform-health-user-key-collision': {
+            message: 'User health result key "fluo-platform-health" is reserved for Terminus platform diagnostics; the platform diagnostic remains available under the reserved key.',
+            status: 'down',
+          },
+          'fluo-platform-readiness': {
+            critical: true,
+            message: 'runtime not ready',
+            platformStatus: 'not-ready',
+            status: 'down',
+          },
+          'fluo-platform-readiness-user-key-collision': {
+            message: 'User health result key "fluo-platform-readiness" is reserved for Terminus platform diagnostics; the platform diagnostic remains available under the reserved key.',
             status: 'down',
           },
         },
