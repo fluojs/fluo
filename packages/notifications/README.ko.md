@@ -2,7 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-fluo를 위한 채널 중립(notification channel-agnostic) 알림 오케스트레이션 패키지입니다. 알림 채널의 공통 계약을 고정하고, Nest-like 모듈 API를 제공하며, 선택적인 큐 기반 전달 심(seam)과 라이프사이클 이벤트 발행 심을 노출합니다.
+fluo를 위한 채널 중립(notification channel-agnostic) 알림 오케스트레이션 패키지입니다. 알림 채널의 공통 계약을 고정하고, 친숙한 dynamic-module 사용감을 가진 명시적 모듈 등록 API를 제공하며, 선택적인 큐 기반 전달 심(seam)과 라이프사이클 이벤트 발행 심을 노출합니다.
 
 ## 목차
 
@@ -34,7 +34,7 @@ npm install @fluojs/notifications
 
 ### 1. foundation 모듈 등록
 
-알림 모듈 등록은 `NotificationsModule.forRoot(...)` 또는 `NotificationsModule.forRootAsync(...)`로 구성합니다.
+알림 모듈 등록은 `channels`에 명시적인 `NotificationChannel` 값을 전달하는 `NotificationsModule.forRoot(...)` 또는 `NotificationsModule.forRootAsync(...)`로 구성합니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -91,11 +91,13 @@ export class WelcomeService {
 
 `NotificationsModule.forRoot(...)`와 `NotificationsModule.forRootAsync(...)`는 기본적으로 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`를 global provider로 export합니다. 이 provider들이 notifications module을 import한 module 안에서만 보이도록 유지하려면 `global: false`를 설정합니다. 애플리케이션 서비스는 fluo의 class-level `@Inject(...)` decorator로 의존성을 선언해야 standard-decorator DI container가 parameter decorator 없이 서비스를 resolve할 수 있습니다.
 
+Migration boundary: channel registration은 metadata 기반이 아니라 value 기반입니다. NestJS provider discovery, `@Injectable()` metadata, `emitDecoratorMetadata`에 기대어 channel이 등록된다고 가정하지 마세요. 애플리케이션 코드에서 `NotificationChannel` object를 만들거나 `NotificationsModule.forRootAsync({ inject, useFactory, global? })`에서 반환한 뒤, `channels` option으로 전달합니다.
+
 ## 일반적인 패턴
 
 ### 큐 기반 대량 전달
 
-많은 알림을 백그라운드 워커로 넘기고 싶다면 선택적인 queue seam을 사용합니다.
+많은 알림을 백그라운드 워커로 넘기고 싶다면 선택적인 queue seam을 사용합니다. Queue adapter는 애플리케이션 소유 integration이며, `@fluojs/notifications`는 abstract adapter contract만 호출합니다.
 
 ```typescript
 NotificationsModule.forRoot({
@@ -124,11 +126,11 @@ Behavioral contract 메모:
 - `dispatchMany(..., { continueOnError: true })`는 direct delivery 또는 순차 queue fallback enqueue에서 첫 실패를 던지는 대신 실패들을 수집합니다.
 - queue enqueue가 실패하면 서비스는 enqueue 에러를 다시 던지기 전에 결정적인 `notification.dispatch.failed` 라이프사이클 이벤트를 발행합니다. queued bulk dispatch는 queue 미구성, channel 해석, provider/adapter failure 경로를 포함해 이미 `requested`를 발행한 모든 notification에 대해 terminal `queued` 또는 `failed` 이벤트도 발행합니다.
 - `enqueueMany(...)`가 없으면 대량 queue delivery는 input order대로 각 job을 개별 enqueue하는 방식으로 fallback합니다. `continueOnError: true`이면 성공한 enqueue는 `results`에 남고 실패한 enqueue는 `failures`로 반환됩니다. 그렇지 않으면 첫 enqueue failure를 다시 던지기 전에 아직 terminal 상태가 없는 나머지 requested fallback job에 `failed` 라이프사이클 이벤트를 발행합니다.
-- foundation 패키지는 특정 큐 구현을 가정하거나 import하지 않습니다.
+- foundation 패키지는 특정 큐 구현을 가정하거나 import하지 않고, queue client/worker를 만들거나 애플리케이션 소유 queue resource를 close/drain하지 않습니다.
 
 ### 이벤트 발행자를 통한 라이프사이클 발행
 
-foundation 패키지를 `@fluojs/event-bus` 구현에 직접 결합하지 않고도 caller-visible 라이프사이클 이벤트를 발행할 수 있습니다.
+foundation 패키지를 `@fluojs/event-bus` 구현에 직접 결합하지 않고도 caller-visible 라이프사이클 이벤트를 발행할 수 있습니다. Event publisher 역시 애플리케이션 소유이며, foundation 패키지는 concrete event bus를 create/import/close/drain하지 않습니다.
 
 ```typescript
 NotificationsModule.forRoot({
@@ -160,6 +162,7 @@ foundation 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - 내장 email, Slack, Discord 구현
 - 직접적인 `process.env` 접근
 - `@fluojs/queue` 또는 `@fluojs/event-bus`의 concrete runtime 타입 의존성
+- concrete queue 또는 event-bus resource를 create/import/close/drain하는 것. Queue adapter와 event publisher는 애플리케이션 소유 integration입니다.
 - provider별 payload 의미를 공유 계약에 인코딩하는 것
 
 이 제한 사항은 leaf 패키지가 하나의 안정적인 오케스트레이션 계층 위에서 독립적으로 진화할 수 있도록 하는 package contract의 일부입니다.
@@ -208,7 +211,7 @@ foundation 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `NotificationQueueNotConfiguredError`
 
 상태 snapshot은 platform diagnostics를 위해 `operationMode`, dependency diagnostics, ownership, readiness, health 필드를 포함합니다.
-Queue adapter가 구성되면 `details.dependencies`에 `notifications.queue-adapter`가 포함되고, lifecycle event가 event publisher를 통해 발행되면 `notifications.event-publisher`가 포함됩니다. 이러한 선택적 통합은 `ownership.externallyManaged: true`로 표시되지만, foundation 패키지가 concrete queue 또는 event-bus 리소스를 닫지 않으므로 `ownsResources: false`를 유지합니다.
+Queue adapter가 구성되면 `details.dependencies`에 `notifications.queue-adapter`가 포함되고, lifecycle event가 event publisher를 통해 발행되면 `notifications.event-publisher`가 포함됩니다. 이러한 선택적 통합은 `ownership.externallyManaged: true`로 표시되지만, foundation 패키지가 concrete queue 또는 event-bus 리소스를 create/close/drain하지 않으므로 `ownsResources: false`를 유지합니다.
 
 ## 관련 패키지
 

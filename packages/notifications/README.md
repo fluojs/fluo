@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Channel-agnostic notification orchestration for fluo. It freezes the shared contract for notification channels, provides a Nest-like module API, and exposes optional queue-backed delivery and lifecycle event publication seams.
+Channel-agnostic notification orchestration for fluo. It freezes the shared contract for notification channels, provides explicit module registration with familiar dynamic-module ergonomics, and exposes optional queue-backed delivery and lifecycle event publication seams.
 
 ## Table of Contents
 
@@ -34,7 +34,7 @@ npm install @fluojs/notifications
 
 ### 1. Register the foundation module
 
-Register notifications with `NotificationsModule.forRoot(...)` or `NotificationsModule.forRootAsync(...)`.
+Register notifications with `NotificationsModule.forRoot(...)` or `NotificationsModule.forRootAsync(...)` by passing explicit `NotificationChannel` values in `channels`.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -91,11 +91,13 @@ export class WelcomeService {
 
 `NotificationsModule.forRoot(...)` and `NotificationsModule.forRootAsync(...)` export `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS` as global providers by default. Set `global: false` when these providers should stay visible only to the module that imports the notifications module. Application services should declare dependencies with fluo's class-level `@Inject(...)` decorator so the standard-decorator DI container can resolve the service without parameter decorators.
 
+Migration boundary: channel registration is value-based, not metadata-based. Do not rely on NestJS provider discovery, `@Injectable()` metadata, or `emitDecoratorMetadata` to register channels. Build `NotificationChannel` objects in application code or return them from `NotificationsModule.forRootAsync({ inject, useFactory, global? })`, then pass them through the `channels` option.
+
 ## Common Patterns
 
 ### Queue-backed bulk delivery
 
-Use the optional queue seam when many notifications should be deferred to background workers.
+Use the optional queue seam when many notifications should be deferred to background workers. The queue adapter is an application-owned integration; `@fluojs/notifications` only calls the abstract adapter contract.
 
 ```typescript
 NotificationsModule.forRoot({
@@ -124,11 +126,11 @@ Behavioral contract notes:
 - `dispatchMany(..., { continueOnError: true })` collects failures instead of throwing on the first failed direct delivery or sequential queue fallback enqueue.
 - When queue enqueue fails, the service emits deterministic `notification.dispatch.failed` lifecycle events before rethrowing the enqueue error to the caller. Queued bulk dispatch also publishes a terminal `queued` or `failed` event for every notification that already emitted `requested`, including queue-missing, channel-resolution, and provider/adapter failure paths.
 - If `enqueueMany(...)` is unavailable, bulk queue delivery falls back to enqueueing each job individually in input order. With `continueOnError: true`, successful enqueues remain visible in `results` while failed enqueues are returned in `failures`; without it, the first enqueue failure is rethrown after the remaining requested fallback jobs receive `failed` lifecycle events.
-- The foundation package does not assume or import a concrete queue implementation.
+- The foundation package does not assume or import a concrete queue implementation, create queue clients/workers, or close/drain application-owned queue resources.
 
 ### Lifecycle publication through an event publisher
 
-Publish caller-visible lifecycle events without coupling the foundation package to `@fluojs/event-bus` directly.
+Publish caller-visible lifecycle events without coupling the foundation package to `@fluojs/event-bus` directly. The event publisher is also application-owned; the foundation package does not create, import, close, or drain a concrete event bus.
 
 ```typescript
 NotificationsModule.forRoot({
@@ -160,6 +162,7 @@ The foundation package intentionally does **not**:
 - ship built-in email, Slack, or Discord implementations
 - inspect `process.env` directly
 - depend on `@fluojs/queue` or `@fluojs/event-bus` concrete runtime types
+- create, import, close, or drain concrete queue or event-bus resources; queue adapters and event publishers are application-owned integrations
 - encode provider-specific payload semantics into the shared contract
 
 These limitations are part of the package contract so leaf packages can evolve independently while sharing one stable orchestration layer.
@@ -208,7 +211,7 @@ These limitations are part of the package contract so leaf packages can evolve i
 - `NotificationQueueNotConfiguredError`
 
 Status snapshots include `operationMode`, dependency diagnostics, ownership, readiness, and health fields for platform diagnostics.
-When a queue adapter is configured, `details.dependencies` includes `notifications.queue-adapter`; when lifecycle events are published through an event publisher, it includes `notifications.event-publisher`. Those optional integrations mark `ownership.externallyManaged: true` while the foundation package still reports `ownsResources: false` because it does not close concrete queue or event-bus resources.
+When a queue adapter is configured, `details.dependencies` includes `notifications.queue-adapter`; when lifecycle events are published through an event publisher, it includes `notifications.event-publisher`. Those optional integrations mark `ownership.externallyManaged: true` while the foundation package still reports `ownsResources: false` because it does not create, close, or drain concrete queue or event-bus resources.
 
 ## Related Packages
 
