@@ -10,6 +10,7 @@ Transport-agnostic email delivery core for fluo. It provides a Nest-like module 
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+  - [Registration scope and async factories](#registration-scope-and-async-factories)
   - [Node-only SMTP with `@fluojs/email/node`](#node-only-smtp-with-fluojs-email-node)
   - [Standalone delivery with `EmailService`](#standalone-delivery-with-emailservice)
   - [Integration with `@fluojs/notifications`](#integration-with-fluojs-notifications)
@@ -104,6 +105,29 @@ The root `@fluojs/email` surface is intentionally module-first. Register email d
 
 ## Common Patterns
 
+### Registration scope and async factories
+
+`EmailModule.forRoot(...)` and `EmailModule.forRootAsync(...)` return a global module by default. After one import, the exported `EmailService`, `EmailChannel`, `EMAIL`, and `EMAIL_CHANNEL` providers are visible to the application module graph. Pass `global: false` only when email providers should stay visible to modules that explicitly import the returned module.
+
+Async registration intentionally uses fluo's explicit factory shape:
+
+```typescript
+EmailModule.forRootAsync({
+  global: false,
+  inject: [ConfigService],
+  useFactory: (config) => ({
+    defaultFrom: config.mail.from,
+    transport: {
+      kind: config.mail.transportKind,
+      create: () => config.mail.transport,
+      ownsResources: false,
+    },
+  }),
+});
+```
+
+`global` belongs on the top-level `forRootAsync(...)` options object, not in the factory result. The supported async registration shape is `inject` plus `useFactory`; NestJS dynamic-module forms such as `imports`, `useClass`, and `useExisting` are not part of the `@fluojs/email` contract. Register dependencies in the surrounding application module graph first, then list the tokens the factory needs in `inject`.
+
 ### Node-only SMTP with `@fluojs/email/node`
 
 Use the dedicated Node subpath when you want first-party Nodemailer/SMTP delivery without weakening the runtime-portable root package contract.
@@ -174,6 +198,8 @@ Behavioral contract notes:
 - Once shutdown starts, `EmailService.send(...)` and `EmailService.sendNotification(...)` fail with `EmailLifecycleError` instead of reusing or lazily creating transports; any in-flight factory-owned transport creation is awaited and closed by shutdown.
 - Transport `verify()` and `close()` provider errors are preserved as the `cause` of lifecycle failures for diagnostics.
 - Module options are trimmed and normalized before provider wiring, including sender defaults, notification channel names, and transport factory ownership.
+- `EmailModule.forRoot(...)` and `EmailModule.forRootAsync(...)` are global by default. Use `global: false` to opt into module-local visibility.
+- `EmailModule.forRootAsync(...)` supports `inject` plus `useFactory` only; NestJS `imports`, `useClass`, and `useExisting` registration shapes must be resolved at the application module boundary before calling the factory.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
 ### Integration with `@fluojs/notifications`
@@ -304,7 +330,7 @@ These limitations are part of the package contract so transport selection, templ
 - `Email`: Application-facing sending facade exposed by the `EMAIL` compatibility token, not an address value; it provides `send(...)`, `sendMany(...)`, and `sendNotification(...)` methods backed by `EmailService`.
 - `EmailAddress` / `EmailAddressLike`: Structured or shorthand recipient values accepted by `EmailService` before normalization.
 - `EmailAttachment`: File attachment payload accepted on `EmailMessage.attachments` and forwarded to the configured transport with `filename`, `content`, and optional `contentType` fields.
-- `EmailModuleOptions` / `EmailAsyncModuleOptions`: Synchronous and async module registration contracts, including sender defaults, renderer, lifecycle verification, and transport factory wiring.
+- `EmailModuleOptions` / `EmailAsyncModuleOptions`: Synchronous and async module registration contracts, including sender defaults, renderer, lifecycle verification, transport factory wiring, top-level `global` visibility control, and the async `inject` + `useFactory` shape.
 - `EmailMessage`
 - `EmailNotificationDispatchRequest` / `EmailNotificationPayload`: Notification channel payload contracts consumed by `EmailChannel`.
 - `EmailSendOptions` / `EmailSendManyOptions`: Per-send controls such as abort signals and batch failure collection.

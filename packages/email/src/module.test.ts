@@ -356,6 +356,28 @@ describe('EmailModule', () => {
     expect(transportState.closeCalls).toBe(1);
   });
 
+  it('defaults module visibility to global and lets async registration opt out', () => {
+    const syncMetadata = getModuleMetadata(
+      EmailModule.forRoot({
+        defaultFrom: 'noreply@example.com',
+        transport: createRecordingTransportFactory(),
+      }),
+    );
+    const asyncMetadata = getModuleMetadata(
+      EmailModule.forRootAsync({
+        global: false,
+        inject: [],
+        useFactory: () => ({
+          defaultFrom: 'async@example.com',
+          transport: createRecordingTransportFactory({ messagePrefix: 'async' }),
+        }),
+      }),
+    );
+
+    expect(syncMetadata?.global).toBe(true);
+    expect(asyncMetadata?.global).toBe(false);
+  });
+
   it('normalizes module registration options before exposing facade and channel tokens', async () => {
     const options = {
       defaultFrom: ' noreply@example.com ',

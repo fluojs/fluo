@@ -50,7 +50,7 @@
 - **`@fluojs/event-bus`**: optional Redis Pub/Sub transport, inherited event channel fan-out, bounded publish cancellation/timeout, local publish와 inbound transport callback 모두에 대한 shutdown drain semantic을 갖춘 in-process domain event fan-out.
 - **`@fluojs/cron`**: cron expression, fixed interval, one-shot timeout을 위한 decorator 및 registry scheduling, rollback-safe dynamic cron expression 및 interval cadence update, named-client selection과 lock TTL/owner control, release/renewal status accounting, `distributed.enabled`가 `true`일 때만 Redis peer를 로드하는 경계를 포함한 optional Redis distributed locking, bootstrap-aware dynamic task startup, bounded scheduler shutdown, 그리고 lifecycle/task/lock ownership visibility를 위한 health/readiness status snapshot을 담당합니다.
 - **`@fluojs/notifications`**: provider별 알림 패키지가 공유하는 채널 계약과 오케스트레이션 계층.
-- **`@fluojs/email`**: 전송 중립(transport-agnostic) 이메일 발송 코어. `@fluojs/email/queue`를 통해 알림 채널 및 큐 워커 통합을 제공합니다.
+- **`@fluojs/email`**: 전송 중립(transport-agnostic) 이메일 발송 코어. 애플리케이션 등록은 `EmailModule.forRoot(...)` 또는 `EmailModule.forRootAsync({ inject, useFactory, global? })`에 남겨 둡니다. Async 등록은 NestJS `imports`, `useClass`, `useExisting`를 지원하지 않으며, export된 email provider는 `global: false`로 module-local visibility를 선택하지 않는 한 기본적으로 global입니다. `@fluojs/email/queue`를 통해 알림 채널 및 큐 워커 통합을 제공합니다.
 - **`@fluojs/email/node`**: Nodemailer/SMTP 전송을 제공하는 `@fluojs/email`의 Node.js 전용 서브패스.
 - **`@fluojs/slack`**: standalone으로도 동작하고 공식 알림 채널로도 등록할 수 있는 webhook-first Slack 전달 코어.
 - **`@fluojs/discord`**: standalone으로도 동작하고 공식 알림 채널로도 등록할 수 있는 webhook-first Discord 전달 코어.

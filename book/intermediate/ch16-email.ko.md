@@ -7,7 +7,7 @@
 
 ## Learning Objectives
 - `@fluojs/email` 패키지의 핵심 구성 요소와 책임을 구분합니다.
-- EmailModule 등록 방식과 전송 트랜스포트 구성 절차를 정리합니다.
+- EmailModule 등록 방식, 전송 트랜스포트 구성 절차, 기본 global visibility 경계를 정리합니다.
 - Node 전용 SMTP 서브패스가 필요한 경계와 이점을 파악합니다.
 - `EmailService`를 사용해 독립적인 이메일 발송 흐름을 구성합니다.
 - 알림 오케스트레이션에 이메일 채널을 연결하는 방식을 확인합니다.
@@ -49,6 +49,25 @@ import { EmailModule } from '@fluojs/email';
 })
 export class AppModule {}
 ```
+
+`EmailModule`은 기본적으로 global입니다. `EmailModule.forRoot(...)` 또는 `EmailModule.forRootAsync(...)`를 한 번 import하면 `EmailService`, `EmailChannel`, `EMAIL`, `EMAIL_CHANNEL`이 애플리케이션 module graph에서 사용할 수 있게 됩니다. 이메일 provider를 반환된 module을 명시적으로 import한 module에만 남겨야 할 때만 `global: false`를 설정합니다.
+
+설정이 config service 같은 다른 provider에 의존한다면 fluo async factory 형태를 사용합니다:
+
+```typescript
+EmailModule.forRootAsync({
+  inject: [ConfigService],
+  useFactory: (config) => ({
+    defaultFrom: config.mail.from,
+    transport: {
+      kind: config.mail.transportKind,
+      create: () => config.mail.transport,
+    },
+  }),
+});
+```
+
+이 migration boundary는 NestJS dynamic module보다 의도적으로 좁습니다. `EmailModule.forRootAsync(...)`는 `inject`와 `useFactory`를 지원하며, `imports`, `useClass`, `useExisting`는 지원하지 않습니다. 필요한 의존성은 애플리케이션 module graph에 먼저 등록한 뒤 필요한 token을 `inject`에 나열하세요. module-local visibility가 필요하면 최상위 options object에 `global: false`를 둡니다.
 
 ### verifyOnModuleInit
 `verifyOnModuleInit: true`를 설정하면 애플리케이션 부트스트랩 중 트랜스포트가 실제로 사용 가능한지 확인할 수 있습니다. SMTP 자격 증명 검증처럼 배포 초기에 실패를 드러내야 하는 경우에 유용합니다. 이렇게 시작 단계에서 문제를 확인하면 첫 주문 확인 메일이 실패한 뒤에야 설정 오류를 발견하는 상황을 줄일 수 있습니다.
