@@ -666,6 +666,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const cacheManagerReadmeKo = readFileSync(join(repoRoot, 'packages/cache-manager/README.ko.md'), 'utf8');
   const cliReadme = readFileSync(join(repoRoot, 'packages/cli/README.md'), 'utf8');
   const cliReadmeKo = readFileSync(join(repoRoot, 'packages/cli/README.ko.md'), 'utf8');
+  const studioReadme = readFileSync(join(repoRoot, 'packages/studio/README.md'), 'utf8');
+  const studioReadmeKo = readFileSync(join(repoRoot, 'packages/studio/README.ko.md'), 'utf8');
   const viteReadme = readFileSync(join(repoRoot, 'packages/vite/README.md'), 'utf8');
   const viteReadmeKo = readFileSync(join(repoRoot, 'packages/vite/README.ko.md'), 'utf8');
   const quickStart = readFileSync(join(repoRoot, 'docs/getting-started/quick-start.md'), 'utf8');
@@ -939,6 +941,24 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContextKo.includes('@fluojs/websockets/cloudflare-workers') &&
       docsContextKo.includes('metadata authoring primitive'),
     'docs/CONTEXT.ko.md must keep WebSockets runtime subpaths and shared authoring primitives discoverable when package-surface.ko.md documents them.',
+  );
+  assert(
+    packageSurface.includes('legacy standalone timing diagnostics') &&
+      packageSurface.includes('rejecting body-like fields') &&
+      docsContext.includes('legacy standalone timing diagnostics') &&
+      docsContext.includes('live request event privacy validation') &&
+      studioReadme.includes('body-like payload fields') &&
+      studioReadme.includes('Node-based package entrypoint'),
+    'Studio package-surface, docs/CONTEXT.md, and README.md must keep timing diagnostics, request privacy, and packaged viewer fallback guidance discoverable together.',
+  );
+  assert(
+    packageSurfaceKo.includes('legacy standalone timing diagnostics') &&
+      packageSurfaceKo.includes('body-like field') &&
+      docsContextKo.includes('legacy standalone timing diagnostics') &&
+      docsContextKo.includes('live request event privacy validation') &&
+      studioReadmeKo.includes('body-like payload field') &&
+      studioReadmeKo.includes('Node 기반 package entrypoint'),
+    'Studio package-surface.ko.md, docs/CONTEXT.ko.md, and README.ko.md must keep timing diagnostics, request privacy, and packaged viewer fallback guidance discoverable together.',
   );
   assert(rootReadme.includes('docs/reference/package-surface.md'), 'README.md must point to the canonical runtime package matrix page.');
   assert(
