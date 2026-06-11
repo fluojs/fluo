@@ -1450,6 +1450,8 @@ describe('Discord delivery discoverability', () => {
   const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
   const englishBook = readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.md'), 'utf8');
   const koreanBook = readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.ko.md'), 'utf8');
+  const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+  const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
 
   it('keeps service status, standalone usage, and hub paths discoverable', () => {
     for (const content of [englishReadme, koreanReadme]) {
@@ -1476,6 +1478,25 @@ describe('Discord delivery discoverability', () => {
       expect(content).toContain('DiscordService.createPlatformStatusSnapshot()');
       expect(content).toContain('notifications.discord.offline');
       expect(content).toContain('await this.discord.send');
+    }
+  });
+
+  it('keeps async, global, and internal-provider migration boundaries discoverable', () => {
+    for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
+      expect(content).toContain('DISCORD');
+      expect(content).toContain('DISCORD_CHANNEL');
+      expect(content).toContain('global: false');
+      expect(content).toContain('private');
+    }
+
+    for (const content of [englishReadme, koreanReadme, englishBook, koreanBook, englishMigration, koreanMigration]) {
+      expect(content).toContain('global?: boolean');
+      expect(content).toContain('isGlobal');
+      expect(content).toContain('useClass');
+      expect(content).toContain('useExisting');
+      expect(content).toContain('createDiscordProviders(...)');
+      expect(content).toContain('DISCORD_OPTIONS');
+      expect(content).toContain('NormalizedDiscordModuleOptions');
     }
   });
 });
