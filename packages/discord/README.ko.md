@@ -4,6 +4,8 @@
 
 fluo를 위한 webhook-first, transport-agnostic Discord 전달 코어 패키지입니다. Nest-like 모듈 API, standalone 사용을 위한 주입 가능한 `DiscordService`, 그리고 Node 전용 Discord SDK를 가정하지 않는 `@fluojs/notifications` 연동용 1st-party `DiscordChannel`을 제공합니다.
 
+마이그레이션 경계: 이 모듈 API는 의도적으로 Nest-like이지만 NestJS dynamic-module clone은 아닙니다. `DiscordModule`은 `global: options.global ?? true`로 기본 global이며, `forRootAsync(...)`는 `inject`와 `useFactory`만 지원하고, 내부 provider helper/token은 private으로 유지되어 애플리케이션은 module facade와 export된 service/channel token으로 Discord를 조합해야 합니다.
+
 ## 목차
 
 - [설치](#설치)
@@ -92,8 +94,11 @@ DiscordModule.forRootAsync({
 });
 ```
 
+`forRootAsync(...)`는 fluo async 형태만 받습니다. 필요한 의존성은 애플리케이션 module graph에 먼저 등록하고, token을 `inject`에 나열한 뒤, `useFactory`에서 최종 `DiscordModuleOptions`를 반환하세요. NestJS `imports`, `useClass`, `useExisting` 변형은 소비하지 않으므로 그런 패턴은 Discord에 option을 넘기기 전에 application-owned provider로 옮겨야 합니다.
+
 Behavioral contract 메모:
 
+- `DiscordModule.forRoot(...)`와 `DiscordModule.forRootAsync(...)`는 `DiscordService`, `DiscordChannel`, `DISCORD`, `DISCORD_CHANNEL`을 기본 global로 export합니다. fluo 옵션인 `global?: boolean`을 사용하고, migrated code가 Discord provider를 importing module 안에만 유지해야 할 때만 `global: false`를 설정하세요. NestJS `isGlobal`은 지원하지 않습니다.
 - `DiscordService.send(...)`는 전달 전에 `defaultThreadId`를 해석합니다.
 - `DiscordService.sendMany(...)`는 `DiscordMessage[]`를 직접 순차 전송하는 batch API이며 `continueOnError`를 지원합니다. 이는 multi-recipient `@fluojs/notifications` dispatch shortcut이 아닙니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
@@ -179,6 +184,7 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - 자격 증명이나 webhook URL을 `process.env`에서 직접 읽는 동작
 - 공유 루트 패키지 경계에 Node 전용 Discord SDK를 내장하는 것
 - webhook helper와 export된 transport 계약 이상으로 하나의 provider 전략을 강제하는 것
+- 애플리케이션 import용 내부 provider helper, normalized option token, 또는 NestJS-style custom provider replacement seam을 노출하는 것
 - 하나의 dispatch 호출 안에서 multi-thread fan-out을 자동 변환하는 것
 
 이 제한 사항은 런타임 선택, provider capability, rollout 전략이 애플리케이션 경계에서 명시적으로 결정되도록 하기 위한 package contract의 일부입니다.
@@ -201,6 +207,8 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `DISCORD_CHANNEL`
 
 애플리케이션 구성은 `DiscordModule`로, notifications 연동은 `DISCORD_CHANNEL`과 export된 transport 계약으로 조합합니다.
+
+이 패키지는 `createDiscordProviders(...)`, `DISCORD_OPTIONS`, `NormalizedDiscordModuleOptions`를 public root barrel에 의도적으로 노출하지 않습니다. 기존 migration이 NestJS 내부 provider token이나 custom provider seam을 바꾸고 있었다면 private helper를 import하지 말고 `DiscordModule.forRoot(...)` / `forRootAsync(...)`를 감싸는 app-owned module을 구성하세요.
 
 ### 계약과 헬퍼
 
