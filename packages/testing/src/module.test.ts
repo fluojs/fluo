@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { getModuleMetadata, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
-import { Controller, Get, Post, Version, VersioningType, type RequestContext } from '@fluojs/http';
-import type { Dispatcher, Interceptor, Middleware, RequestObserver } from '@fluojs/http';
+import { Controller, Get, Post, UseGuards, UseInterceptors, Version, VersioningType, type RequestContext } from '@fluojs/http';
+import type { CallHandler, Dispatcher, Guard, Interceptor, InterceptorContext, Middleware, RequestObserver } from '@fluojs/http';
 import type { ExceptionFilterHandler } from '@fluojs/runtime';
 
 import {
@@ -862,21 +862,30 @@ describe('createTestApp', () => {
   it('provides request builder helpers and closes cleanly', async () => {
     const app = await createTestApp({ rootModule: AppModule });
 
-    const response = await app
-      .request('POST', '/users')
-      .header('x-test-id', 'k1')
-      .query('page', '1')
-      .query('tag', ['a', 'b'])
-      .body({ name: 'Alice' })
-      .send();
+    try {
+      const response = await app
+        .request('POST', '/users')
+        .header('x-test-id', 'k1')
+        .query('page', '1')
+        .query('tag', ['a', 'b'])
+        .body({ name: 'Alice' })
+        .send();
 
-    expect(response.status).toBe(201);
-    expect(response.body).toEqual({
-      body: { name: 'Alice' },
-      headers: { 'x-test-id': 'k1' },
-      query: { page: '1', tag: ['a', 'b'] },
-    });
+      expect(response.status).toBe(201);
+      expect(response.body).toEqual({
+        body: { name: 'Alice' },
+        headers: { 'x-test-id': 'k1' },
+        query: { page: '1', tag: ['a', 'b'] },
+      });
+    } finally {
+      await expect(app.close()).resolves.toBeUndefined();
+    }
+  });
 
+  it('makes close idempotent when cleanup is called more than once', async () => {
+    const app = await createTestApp({ rootModule: AppModule });
+
+    await expect(app.close()).resolves.toBeUndefined();
     await expect(app.close()).resolves.toBeUndefined();
   });
 
@@ -894,12 +903,14 @@ describe('createTestApp', () => {
       middleware: [callerMiddleware],
     });
 
-    const response = await app.request('GET', '/users/me').send();
+    try {
+      const response = await app.request('GET', '/users/me').send();
 
-    expect(response.status).toBe(200);
-    expect(middlewareCalls).toEqual(['caller']);
-
-    await app.close();
+      expect(response.status).toBe(200);
+      expect(middlewareCalls).toEqual(['caller']);
+    } finally {
+      await app.close();
+    }
   });
 
   it('forwards provider, observer, interceptor, and versioning bootstrap options to the runtime app', async () => {
@@ -951,13 +962,15 @@ describe('createTestApp', () => {
       versioning: { header: 'x-api-version', type: VersioningType.HEADER },
     });
 
-    const response = await app.request('GET', '/bootstrap-options').header('x-api-version', '2').send();
+    try {
+      const response = await app.request('GET', '/bootstrap-options').header('x-api-version', '2').send();
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({ wrapped: { message: 'forwarded-provider' } });
-    expect(observerEvents).toEqual(['start', 'interceptor', 'success']);
-
-    await app.close();
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ wrapped: { message: 'forwarded-provider' } });
+      expect(observerEvents).toEqual(['start', 'interceptor', 'success']);
+    } finally {
+      await app.close();
+    }
   });
 
   it('forwards global exception filters to the runtime app', async () => {
@@ -989,104 +1002,112 @@ describe('createTestApp', () => {
       filters: [filter],
     });
 
-    const response = await app.request('GET', '/filtered/boom').send();
+    try {
+      const response = await app.request('GET', '/filtered/boom').send();
 
-    expect(response.status).toBe(418);
-    expect(response.body).toEqual({ handled: true });
-    expect(caughtErrors).toHaveLength(1);
-
-    await app.close();
+      expect(response.status).toBe(418);
+      expect(response.body).toEqual({ handled: true });
+      expect(caughtErrors).toHaveLength(1);
+    } finally {
+      await app.close();
+    }
   });
 
   it('injects principal into request context for e2e-style calls', async () => {
     const app = await createTestApp({ rootModule: AppModule });
 
-    const response = await app
-      .request('GET', '/users/me')
-      .principal({
-        id: 'user-1',
+    try {
+      const response = await app
+        .request('GET', '/users/me')
+        .principal({
+          id: 'user-1',
+          roles: ['admin'],
+        })
+        .send();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        subject: 'user-1',
         roles: ['admin'],
-      })
-      .send();
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({
-      subject: 'user-1',
-      roles: ['admin'],
-      claims: { id: 'user-1' },
-    });
-
-    await app.close();
+        claims: { id: 'user-1' },
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('dispatches a request directly through the app helper and injects subject-based principal', async () => {
     const app = await createTestApp({ rootModule: AppModule });
 
-    const response = await app.dispatch({
-      method: 'GET',
-      path: '/users/me',
-      principal: {
+    try {
+      const response = await app.dispatch({
+        method: 'GET',
+        path: '/users/me',
+        principal: {
+          subject: 'dispatch-subject',
+          roles: ['ops'],
+          claims: { tenant: 'edge' },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
         subject: 'dispatch-subject',
         roles: ['ops'],
         claims: { tenant: 'edge' },
-      },
-    });
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({
-      subject: 'dispatch-subject',
-      roles: ['ops'],
-      claims: { tenant: 'edge' },
-    });
-
-    await app.close();
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('prioritizes subject over id and falls back to default subject when missing', async () => {
     const app = await createTestApp({ rootModule: AppModule });
 
-    const subjectResponse = await app
-      .request('GET', '/users/me')
-      .principal({
+    try {
+      const subjectResponse = await app
+        .request('GET', '/users/me')
+        .principal({
+          subject: 'subject-win',
+          id: 'ignored-id',
+        })
+        .send();
+
+      expect(subjectResponse.body).toEqual({
         subject: 'subject-win',
-        id: 'ignored-id',
-      })
-      .send();
+        claims: { id: 'ignored-id' },
+      });
 
-    expect(subjectResponse.body).toEqual({
-      subject: 'subject-win',
-      claims: { id: 'ignored-id' },
-    });
+      const idResponse = await app
+        .request('GET', '/users/me')
+        .principal({
+          id: 'legacy-id',
+          roles: ['support'],
+        })
+        .send();
 
-    const idResponse = await app
-      .request('GET', '/users/me')
-      .principal({
-        id: 'legacy-id',
+      expect(idResponse.body).toEqual({
+        subject: 'legacy-id',
         roles: ['support'],
-      })
-      .send();
+        claims: { id: 'legacy-id' },
+      });
 
-    expect(idResponse.body).toEqual({
-      subject: 'legacy-id',
-      roles: ['support'],
-      claims: { id: 'legacy-id' },
-    });
+      const fallbackResponse = await app
+        .request('GET', '/users/me')
+        .principal({
+          roles: ['defaulted'],
+        })
+        .send();
 
-    const fallbackResponse = await app
-      .request('GET', '/users/me')
-      .principal({
+      expect(fallbackResponse.status).toBe(200);
+      expect(fallbackResponse.body).toEqual({
+        subject: 'test',
         roles: ['defaulted'],
-      })
-      .send();
-
-    expect(fallbackResponse.status).toBe(200);
-    expect(fallbackResponse.body).toEqual({
-      subject: 'test',
-      roles: ['defaulted'],
-      claims: {},
-    });
-
-    await app.close();
+        claims: {},
+      });
+    } finally {
+      await app.close();
+    }
   });
 });
 
@@ -1200,6 +1221,36 @@ describe('overrideGuard', () => {
     expect(guard.canActivate()).toBe(false);
     expect(canActivate).toHaveBeenCalledOnce();
   });
+
+  it('applies the guard override through the request dispatch path', async () => {
+    const GUARD_TOKEN = Symbol('DeniedRouteGuard');
+
+    @UseGuards(GUARD_TOKEN)
+    @Controller('/guarded')
+    class GuardedController {
+      @Get('/')
+      read() {
+        return { allowed: true };
+      }
+    }
+
+    const denyingGuard: Guard = {
+      canActivate: () => false,
+    };
+
+    @Module({
+      controllers: [GuardedController],
+      providers: [{ provide: GUARD_TOKEN, useValue: denyingGuard }],
+    })
+    class GuardedModule {}
+
+    const testingModule = await createTestingModule({ rootModule: GuardedModule }).overrideGuard(GUARD_TOKEN).compile();
+
+    const response = await testingModule.dispatch({ method: 'GET', path: '/guarded' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ allowed: true });
+  });
 });
 
 describe('overrideInterceptor', () => {
@@ -1219,6 +1270,44 @@ describe('overrideInterceptor', () => {
 
     expect(result).toBe('result');
     expect(next.handle).toHaveBeenCalledOnce();
+  });
+
+  it('applies the interceptor override through the request dispatch path', async () => {
+    const INTERCEPTOR_TOKEN = Symbol('ResponseWrappingInterceptor');
+
+    @UseInterceptors(INTERCEPTOR_TOKEN)
+    @Controller('/intercepted')
+    class InterceptedController {
+      @Get('/')
+      read() {
+        return { value: 'controller' };
+      }
+    }
+
+    const failingInterceptor: Interceptor = {
+      intercept: () => {
+        throw new Error('original interceptor should be replaced');
+      },
+    };
+
+    @Module({
+      controllers: [InterceptedController],
+      providers: [{ provide: INTERCEPTOR_TOKEN, useValue: failingInterceptor }],
+    })
+    class InterceptedModule {}
+
+    const testingModule = await createTestingModule({ rootModule: InterceptedModule })
+      .overrideInterceptor(INTERCEPTOR_TOKEN, {
+        async intercept(_context: InterceptorContext, next: CallHandler) {
+          return { wrapped: await next.handle() };
+        },
+      })
+      .compile();
+
+    const response = await testingModule.dispatch({ method: 'GET', path: '/intercepted' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ wrapped: { value: 'controller' } });
   });
 });
 
