@@ -29,6 +29,7 @@
 | `@nestjs/cache-manager` / `CacheModule.register(...)` | `@fluojs/cache-manager`의 `CacheModule.forRoot(...)`, `CacheService`, cache decorators | fluo cache registration은 동기 방식이다. Redis 또는 custom store는 module registration 전에 준비하고, manual cache operation에는 `CacheService`를 주입하며, request-aware response-cache key에는 `httpKeyStrategy` 또는 `@CacheKey(...)`를 사용한다. |
 | `@nestjs/event-emitter` / `@OnEvent()` handler | `@fluojs/event-bus`의 `EventBusModule.forRoot(...)`, `EventBusLifecycleService`, `@OnEvent(EventClass)` | Event routing은 class 기반이고, handler는 singleton provider/controller에서만 discovery되며, bounded awaited publish는 caller promise가 먼저 settle되어도 underlying handler/transport work를 shutdown drain tracking에 유지한다. |
 | NestJS Redis async module registration 또는 shared Redis Pub/Sub client | `@fluojs/redis`의 `RedisModule.forRoot(...)`, named `RedisModule.forRoot({ name, ... })`, `getRedisClientToken(name)` | fluo Redis registration은 동기 방식이다. 환경별 option이나 외부에서 만든 client는 registration 전에 해석하고, Pub/Sub subscriber는 일반 command client를 재사용하지 말고 전용 duplicate 또는 named client로 분리한다. |
+| `@nestjs/schedule` decorator, `SchedulerRegistry`, 또는 `CronJob` handle | `@fluojs/cron`의 `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, `SCHEDULING_REGISTRY` | fluo는 decorator로 발견한 task를 application bootstrap 중 시작하고, 이미 시작된 registry에 dynamic task가 추가되면 즉시 시작하며, live scheduler handle 대신 read-only task descriptor를 노출한다. |
 
 ## Breaking Differences
 
@@ -63,6 +64,7 @@
 - Event-bus migration은 string pattern 기반이 아니라 class 기반이다. `@OnEvent(EventClass)`를 사용하고, retry 가능하거나 느린 side effect는 idempotent하게 유지하며, 오래 실행되거나 retry가 중요한 작업은 awaited event handler 안에 숨기지 말고 명시적인 queue handoff로 옮겨야 한다.
 - Redis migration은 async dynamic-module 치환이 아니다. `@fluojs/redis`는 동기 `RedisModule.forRoot(...)`를 제공한다. Secret, host, TLS option, 외부에서 만든 client는 application boundary에서 먼저 해석한 뒤 최종 option을 module에 전달한다.
 - Redis Pub/Sub migration은 subscriber 소유권을 명시적으로 유지해야 한다. `client.duplicate()` subscriber는 애플리케이션 소유이므로 만든 코드가 직접 connect, subscribe, close를 책임진다. Subscriber client lifecycle timeout까지 fluo가 소유해야 한다면 named `RedisModule.forRoot({ name: 'subscriber', ... })`와 `getRedisClientToken('subscriber')`를 사용한다.
+- Cron migration은 `SchedulerRegistry`/`CronJob` handle을 그대로 보존하는 치환이 아니다. `@Cron`, `@Interval`, `@Timeout`은 public instance method에 사용하고, private 또는 static scheduled work는 공개 provider method 뒤로 옮기며, live `CronJob` handle을 mutate하는 대신 `SCHEDULING_REGISTRY.get(...)` / `getAll()`의 `SchedulingTaskDescriptor` snapshot을 사용한다.
 
 ## Removed Concepts
 
@@ -79,6 +81,7 @@
 - NestJS `@SubscribeMessage()`, `@MessageBody()`, `@ConnectedSocket()`, 또는 암묵적 gateway server injection이 fluo websocket gateway에도 있다고 가정하는 방식.
 - Socket.IO gateway return value가 암묵적인 client reply가 된다고 가정하는 방식. fluo에서는 명시적 ACK callback 또는 raw `SOCKETIO_SERVER` emit이 필요합니다.
 - NestJS-style Redis async module factory나 Pub/Sub command/subscriber client 공유가 그대로 유지된다고 가정하는 방식. fluo는 Redis registration을 동기 방식으로 유지하고 Pub/Sub 연결에는 전용 subscriber 소유권을 요구한다.
+- NestJS `SchedulerRegistry`가 mutable `CronJob` handle을 반환하거나 private scheduled method가 유효한 decorator target이라고 가정하는 방식. fluo는 descriptor 기반 scheduling control을 노출하고 scheduled decorator는 public instance method에 요구한다.
 
 ## CLI Starter and Generator Limits
 

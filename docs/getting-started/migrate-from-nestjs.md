@@ -29,6 +29,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | `@nestjs/cache-manager` / `CacheModule.register(...)` | `CacheModule.forRoot(...)`, `CacheService`, and cache decorators from `@fluojs/cache-manager` | fluo cache registration is synchronous. Prepare Redis or custom stores before module registration, inject `CacheService` for manual cache operations, and use `httpKeyStrategy` or `@CacheKey(...)` for request-aware response-cache keys. |
 | `@nestjs/event-emitter` / `@OnEvent()` handlers | `EventBusModule.forRoot(...)`, `EventBusLifecycleService`, and `@OnEvent(EventClass)` from `@fluojs/event-bus` | Event routing is class-based, handlers are discovered only from singleton providers/controllers, and bounded awaited publishes still keep underlying handler/transport work in shutdown drain tracking. |
 | NestJS Redis async module registration or shared Redis Pub/Sub clients | `RedisModule.forRoot(...)`, named `RedisModule.forRoot({ name, ... })`, and `getRedisClientToken(name)` from `@fluojs/redis` | fluo Redis registration is synchronous. Resolve environment-specific options or externally created clients before registration, and keep Pub/Sub subscribers on a dedicated duplicate or named client instead of reusing the ordinary command client. |
+| `@nestjs/schedule` decorators, `SchedulerRegistry`, or `CronJob` handles | `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, and `SCHEDULING_REGISTRY` from `@fluojs/cron` | fluo starts decorator-discovered tasks during application bootstrap, starts dynamic registry tasks when added to a started registry, and exposes read-only task descriptors instead of live scheduler handles. |
 
 ## Breaking Differences
 
@@ -63,6 +64,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Event-bus migration is class-based rather than string-pattern based. Use `@OnEvent(EventClass)`, keep retryable or slow side effects idempotent, and move long-running/retry-heavy work to an explicit queue handoff instead of hiding it in an awaited event handler.
 - Redis migration is not an async dynamic-module replacement. `@fluojs/redis` exposes synchronous `RedisModule.forRoot(...)`; resolve secrets, hosts, TLS options, or externally created clients at the application boundary before passing final options into the module.
 - Redis Pub/Sub migration must keep subscriber ownership explicit. A `client.duplicate()` subscriber is application-owned and must be connected, subscribed, and closed by the code that created it; use named `RedisModule.forRoot({ name: 'subscriber', ... })` plus `getRedisClientToken('subscriber')` when fluo should own the subscriber client's lifecycle timeouts.
+- Cron migration is not a `SchedulerRegistry`/`CronJob` handle-preserving replacement. Use public instance methods for `@Cron`, `@Interval`, and `@Timeout`; move private or static scheduled work behind a public provider method; and use `SCHEDULING_REGISTRY.get(...)` / `getAll()` for `SchedulingTaskDescriptor` snapshots rather than mutating live `CronJob` handles.
 
 ## Removed Concepts
 
@@ -79,6 +81,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Assuming NestJS `@SubscribeMessage()`, `@MessageBody()`, `@ConnectedSocket()`, or implicit gateway server injection exists in fluo websocket gateways.
 - Assuming Socket.IO gateway return values become implicit client replies. fluo requires explicit ACK callbacks or raw `SOCKETIO_SERVER` emits.
 - Assuming NestJS-style Redis async module factories or shared Pub/Sub command/subscriber clients carry over. fluo keeps Redis registration synchronous and requires dedicated subscriber ownership for Pub/Sub connections.
+- Assuming NestJS `SchedulerRegistry` returns mutable `CronJob` handles or that private scheduled methods are valid decorator targets. fluo exposes descriptor-based scheduling controls and requires scheduled decorators on public instance methods.
 
 ## CLI Starter and Generator Limits
 

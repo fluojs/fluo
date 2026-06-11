@@ -41,6 +41,8 @@ Register the `CronModule` and use decorators to schedule your methods.
 Use `CronModule.forRoot(...)` to register scheduling for an application module.
 Cron expressions may use either five fields (`minute hour day month weekday`) or six fields (`second minute hour day month weekday`). The built-in `CronExpression` presets use six-field expressions when sub-minute precision is needed. Cron tasks start only after application bootstrap, dynamically registered cron tasks start when added to a started registry, and fluo forwards `timezone` plus no-overlap protection to the scheduler so one task instance does not overlap itself.
 
+Scheduling decorators apply to public instance methods only. Do not migrate NestJS private scheduled methods, static helpers, or method names that are hidden behind legacy decorator metadata assumptions as-is; expose a public provider/controller method and keep any private implementation details behind that method.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { CronModule, Cron, CronExpression, Interval, Timeout } from '@fluojs/cron';
@@ -143,7 +145,7 @@ class TaskManager {
 }
 ```
 
-The registry exposes `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, and `updateCronExpression`. The first `name` argument is the default registry key; passing `options.name` overrides the actual registry key, scheduler metadata name, and default distributed lock key for dynamic tasks so dynamic registration matches decorator naming semantics. Timeout tasks run once, then disable themselves while remaining in the registry so they can be re-enabled deliberately.
+The registry exposes `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, and `updateCronExpression`. The first `name` argument is the default registry key; passing `options.name` overrides the actual registry key, scheduler metadata name, and default distributed lock key for dynamic tasks so dynamic registration matches decorator naming semantics. `get` and `getAll` return read-only `SchedulingTaskDescriptor` values, not live `CronJob` handles. Timeout tasks run once, then disable themselves while remaining in the registry so they can be re-enabled deliberately.
 
 Dynamic cron registration is atomic with scheduler startup: if the scheduler rejects a new cron job, the registry does not retain a half-registered task. Updating a running cron expression is also rollback-safe. If rescheduling fails, the previous expression and scheduled job remain active. Cron tasks use both scheduler-level no-overlap protection and fluo's in-process running guard, so the same task instance will not run overlapping ticks.
 
