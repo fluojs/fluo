@@ -32,6 +32,8 @@ npm install @fluojs/redis ioredis
 
 Use `RedisModule.forRoot(options)` to register the default Redis client and `RedisService` facade.
 
+`RedisModule.forRoot(...)` is intentionally synchronous. When migrating from NestJS async dynamic modules such as `forRootAsync(...)`, resolve secrets, environment-specific hosts, or externally constructed clients at the application boundary first, then pass the final Redis options into `forRoot(...)`. fluo does not defer Redis module wiring to an async factory hidden inside the module graph.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { RedisModule } from '@fluojs/redis';
@@ -131,6 +133,8 @@ If you already injected `RedisService`, call `redis.getRawClient()` to access th
 
 Redis Pub/Sub is the exception to ordinary shared-client reuse: Redis switches subscribed connections into subscribe mode, so do not use the lifecycle-managed `REDIS_CLIENT` or a `RedisService.getRawClient()` result as both publisher and subscriber. Create a dedicated subscriber connection with `client.duplicate()` (or an explicitly named `RedisModule.forRoot({ name: 'subscriber', ... })` registration) and let that connection have its own lifecycle owner.
 
+If you use `client.duplicate()`, the duplicate is application-owned: connect it, subscribe with it, and close it from your own shutdown path. If you want fluo to own subscriber startup/shutdown timeouts, prefer a named registration and inject it with `getRedisClientToken(name)`.
+
 ```typescript
 import { Inject } from '@fluojs/core';
 import { REDIS_CLIENT } from '@fluojs/redis';
@@ -142,6 +146,39 @@ export class AdvancedService {
 
   async executeComplex() {
     return await this.client.pipeline().set('foo', 'bar').get('foo').exec();
+  }
+}
+```
+
+```typescript
+import { Inject, Module } from '@fluojs/core';
+import { getRedisClientToken, RedisModule } from '@fluojs/redis';
+import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices';
+import type Redis from 'ioredis';
+
+const COMMAND_REDIS = getRedisClientToken();
+const SUBSCRIBER_REDIS = getRedisClientToken('subscriber');
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRoot({ name: 'subscriber', host: 'localhost', port: 6379 }),
+  ],
+})
+export class RedisConnectionsModule {}
+
+@Inject(COMMAND_REDIS, SUBSCRIBER_REDIS)
+export class PubSubTransportFactory {
+  constructor(
+    private readonly commandClient: Redis,
+    private readonly subscriberClient: Redis,
+  ) {}
+
+  createTransport() {
+    return new RedisPubSubMicroserviceTransport({
+      publishClient: this.commandClient,
+      subscribeClient: this.subscriberClient,
+    });
   }
 }
 ```

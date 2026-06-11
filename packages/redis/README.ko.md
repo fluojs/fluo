@@ -32,6 +32,8 @@ npm install @fluojs/redis ioredis
 
 `RedisModule.forRoot(options)`는 기본 Redis 클라이언트와 `RedisService` 파사드를 등록하는 지원되는 root entrypoint입니다.
 
+`RedisModule.forRoot(...)`는 의도적으로 동기 방식입니다. NestJS의 `forRootAsync(...)` 같은 async dynamic module에서 마이그레이션할 때는 secret, 환경별 host, 외부에서 만든 client를 애플리케이션 경계에서 먼저 해석한 뒤 최종 Redis 옵션을 `forRoot(...)`에 전달하세요. fluo는 Redis module wiring을 module graph 안의 숨겨진 async factory로 미루지 않습니다.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { RedisModule } from '@fluojs/redis';
@@ -131,6 +133,8 @@ export class AnalyticsStore {
 
 Redis Pub/Sub은 일반적인 shared-client 재사용의 예외입니다. Redis는 구독한 연결을 subscribe mode로 전환하므로, lifecycle-managed `REDIS_CLIENT`나 `RedisService.getRawClient()` 결과를 publisher와 subscriber로 동시에 사용하지 마세요. `client.duplicate()`로 전용 subscriber 연결을 만들거나 명시적인 `RedisModule.forRoot({ name: 'subscriber', ... })` 등록을 사용하고, 그 연결도 별도 lifecycle owner를 갖게 하세요.
 
+`client.duplicate()`를 사용한다면 그 duplicate는 애플리케이션이 소유합니다. 직접 연결하고, subscribe에 사용하며, 자체 shutdown 경로에서 닫아야 합니다. Subscriber 시작/종료 timeout을 fluo가 소유하게 하려면 named registration을 선호하고 `getRedisClientToken(name)`으로 주입하세요.
+
 ```typescript
 import { Inject } from '@fluojs/core';
 import { REDIS_CLIENT } from '@fluojs/redis';
@@ -142,6 +146,39 @@ export class AdvancedService {
 
   async executeComplex() {
     return await this.client.pipeline().set('foo', 'bar').get('foo').exec();
+  }
+}
+```
+
+```typescript
+import { Inject, Module } from '@fluojs/core';
+import { getRedisClientToken, RedisModule } from '@fluojs/redis';
+import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices';
+import type Redis from 'ioredis';
+
+const COMMAND_REDIS = getRedisClientToken();
+const SUBSCRIBER_REDIS = getRedisClientToken('subscriber');
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRoot({ name: 'subscriber', host: 'localhost', port: 6379 }),
+  ],
+})
+export class RedisConnectionsModule {}
+
+@Inject(COMMAND_REDIS, SUBSCRIBER_REDIS)
+export class PubSubTransportFactory {
+  constructor(
+    private readonly commandClient: Redis,
+    private readonly subscriberClient: Redis,
+  ) {}
+
+  createTransport() {
+    return new RedisPubSubMicroserviceTransport({
+      publishClient: this.commandClient,
+      subscribeClient: this.subscriberClient,
+    });
   }
 }
 ```
