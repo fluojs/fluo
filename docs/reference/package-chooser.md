@@ -12,7 +12,7 @@
 | Need HTTP routing | `@fluojs/http` | Required for controller and route execution. |
 | Need GraphQL endpoints | `@fluojs/graphql` | Add on top of the HTTP stack. |
 | Need the default Node.js adapter | `@fluojs/platform-fastify` | Recommended starter path for most projects. |
-| Need Express middleware compatibility | `@fluojs/platform-express` | Also available as a first-class `fluo new` application starter on Node.js. |
+| Need Express host compatibility | `@fluojs/platform-express` | Also available as a first-class `fluo new` application starter on Node.js. Use fluo `Middleware` for the application pipeline; keep native Express/Connect middleware in platform-specific integration code or wrap it behind the fluo contract. |
 | Need direct Node.js HTTP control | `@fluojs/platform-nodejs` | Also available as a first-class `fluo new` application starter on Node.js. |
 | Need request validation | `@fluojs/validation` | Add when DTO binding and validation are required. |
 | Need response serialization or output DTO shaping | `@fluojs/serialization` | Add when response DTOs need controlled field exposure, sensitive-field exclusion, synchronous value transforms, or HTTP interceptor-based response-boundary shaping. |

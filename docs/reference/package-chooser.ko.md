@@ -12,7 +12,7 @@
 | HTTP 라우팅이 필요함 | `@fluojs/http` | 컨트롤러와 라우트 실행에 필요합니다. |
 | GraphQL 엔드포인트가 필요함 | `@fluojs/graphql` | HTTP 스택 위에 추가합니다. |
 | 기본 Node.js 어댑터가 필요함 | `@fluojs/platform-fastify` | 대부분의 프로젝트에 권장되는 시작 경로입니다. |
-| Express 미들웨어 호환이 필요함 | `@fluojs/platform-express` | Node.js에서 first-class `fluo new` 애플리케이션 스타터로도 제공됩니다. |
+| Express host 호환이 필요함 | `@fluojs/platform-express` | Node.js에서 first-class `fluo new` 애플리케이션 스타터로도 제공됩니다. Application pipeline에는 fluo `Middleware`를 사용하고, native Express/Connect middleware는 platform-specific integration code에 두거나 fluo 계약 뒤에 감싸세요. |
 | Node.js HTTP를 직접 제어해야 함 | `@fluojs/platform-nodejs` | Node.js에서 first-class `fluo new` 애플리케이션 스타터로도 제공됩니다. |
 | 요청 유효성 검사가 필요함 | `@fluojs/validation` | DTO 바인딩과 검증이 필요할 때 추가합니다. |
 | 응답 직렬화 또는 output DTO shaping이 필요함 | `@fluojs/serialization` | 응답 DTO의 제어된 field exposure, sensitive-field exclusion, synchronous value transform, HTTP interceptor 기반 response-boundary shaping이 필요할 때 추가합니다. |
