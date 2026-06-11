@@ -28,6 +28,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | NestJS Socket.IO gateway return values or `@WebSocketServer()` | `@fluojs/socket.io` with `@OnMessage(...)`, explicit acknowledgement callbacks, and `@Inject(SOCKETIO_SERVER)` | Socket.IO handlers do not turn return values into implicit emits or ACK replies. Inject `SOCKETIO_SERVER` when migrating gateway-server access, multi-room emits, or volatile delivery. |
 | `@nestjs/cache-manager` / `CacheModule.register(...)` | `CacheModule.forRoot(...)`, `CacheService`, and cache decorators from `@fluojs/cache-manager` | fluo cache registration is synchronous. Prepare Redis or custom stores before module registration, inject `CacheService` for manual cache operations, and use `httpKeyStrategy` or `@CacheKey(...)` for request-aware response-cache keys. |
 | `@nestjs/event-emitter` / `@OnEvent()` handlers | `EventBusModule.forRoot(...)`, `EventBusLifecycleService`, and `@OnEvent(EventClass)` from `@fluojs/event-bus` | Event routing is class-based, handlers are discovered only from singleton providers/controllers, and bounded awaited publishes still keep underlying handler/transport work in shutdown drain tracking. |
+| NestJS Redis async module registration or shared Redis Pub/Sub clients | `RedisModule.forRoot(...)`, named `RedisModule.forRoot({ name, ... })`, and `getRedisClientToken(name)` from `@fluojs/redis` | fluo Redis registration is synchronous. Resolve environment-specific options or externally created clients before registration, and keep Pub/Sub subscribers on a dedicated duplicate or named client instead of reusing the ordinary command client. |
 
 ## Breaking Differences
 
@@ -60,6 +61,8 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - NestJS-style cache-key customization should move to fluo's documented key seams instead of subclassing the interceptor. Use a function-valued `httpKeyStrategy` for an application-wide request-aware policy, or `@CacheKey(...)` with a literal key or key factory for handler-local behavior.
 - Custom cache tooling should read exported cache metadata helpers such as `getCacheKeyMetadata(...)`, `getCacheTtlMetadata(...)`, and `getCacheEvictMetadata(...)` rather than reimplementing private metadata keys.
 - Event-bus migration is class-based rather than string-pattern based. Use `@OnEvent(EventClass)`, keep retryable or slow side effects idempotent, and move long-running/retry-heavy work to an explicit queue handoff instead of hiding it in an awaited event handler.
+- Redis migration is not an async dynamic-module replacement. `@fluojs/redis` exposes synchronous `RedisModule.forRoot(...)`; resolve secrets, hosts, TLS options, or externally created clients at the application boundary before passing final options into the module.
+- Redis Pub/Sub migration must keep subscriber ownership explicit. A `client.duplicate()` subscriber is application-owned and must be connected, subscribed, and closed by the code that created it; use named `RedisModule.forRoot({ name: 'subscriber', ... })` plus `getRedisClientToken('subscriber')` when fluo should own the subscriber client's lifecycle timeouts.
 
 ## Removed Concepts
 
@@ -75,6 +78,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Assuming NestJS/Mongoose request interceptors or implicit connection ownership carry over. fluo keeps Mongoose connection ownership application-side and uses service `@Transaction()` plus explicit `requestTransaction(...)` boundaries.
 - Assuming NestJS `@SubscribeMessage()`, `@MessageBody()`, `@ConnectedSocket()`, or implicit gateway server injection exists in fluo websocket gateways.
 - Assuming Socket.IO gateway return values become implicit client replies. fluo requires explicit ACK callbacks or raw `SOCKETIO_SERVER` emits.
+- Assuming NestJS-style Redis async module factories or shared Pub/Sub command/subscriber clients carry over. fluo keeps Redis registration synchronous and requires dedicated subscriber ownership for Pub/Sub connections.
 
 ## CLI Starter and Generator Limits
 
