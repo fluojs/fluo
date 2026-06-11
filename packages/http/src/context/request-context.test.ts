@@ -213,6 +213,36 @@ describe('request context store', () => {
     }
   });
 
+  it('preserves async IIFE continuation context for promise-returning non-async callbacks when getBuiltinModule is unavailable', async () => {
+    vi.resetModules();
+    const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
+
+    Object.defineProperty(process, 'getBuiltinModule', {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      const requestContext = await import('./request-context.js');
+      const context = requestContext.createRequestContext(createMockContext());
+
+      const requestId = await requestContext.runWithRequestContext(context, () =>
+        (async () => {
+          await Promise.resolve();
+
+          return requestContext.assertRequestContext().requestId;
+        })(),
+      );
+
+      expect(requestId).toBe('req_123');
+    } finally {
+      if (getBuiltinModuleDescriptor) {
+        Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);
+      }
+      vi.resetModules();
+    }
+  });
+
   it('returns a synchronous value on the first public helper call when dynamic storage resolution is pending', async () => {
     vi.resetModules();
     const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
@@ -233,6 +263,30 @@ describe('request context store', () => {
 
       expect(requestId).toBe('req_123');
       expect(requestId).not.toBeInstanceOf(Promise);
+    } finally {
+      if (getBuiltinModuleDescriptor) {
+        Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);
+      }
+      vi.resetModules();
+    }
+  });
+
+  it('throws synchronously on the first public helper call when callback throws', async () => {
+    vi.resetModules();
+    const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
+
+    Object.defineProperty(process, 'getBuiltinModule', {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      const requestContext = await import('./request-context.js');
+      const context = requestContext.createRequestContext(createMockContext());
+
+      expect(() => requestContext.runWithRequestContext(context, () => {
+        throw new Error('sync failure');
+      })).toThrow('sync failure');
     } finally {
       if (getBuiltinModuleDescriptor) {
         Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);
@@ -283,6 +337,50 @@ describe('request context store', () => {
       expect(requestId).toBe('req_123');
     } finally {
       getBuiltinModule.mockRestore();
+      vi.resetModules();
+    }
+  });
+
+  it('preserves overlapping promise-returning callback contexts while dynamic storage resolves', async () => {
+    vi.resetModules();
+    const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
+
+    Object.defineProperty(process, 'getBuiltinModule', {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      const requestContext = await import('./request-context.js');
+      const contextA = requestContext.createRequestContext({
+        ...createMockContext(),
+        requestId: 'req_a',
+      });
+      const contextB = requestContext.createRequestContext({
+        ...createMockContext(),
+        requestId: 'req_b',
+      });
+      const releaseA = createDeferred<void>();
+      const releaseB = createDeferred<void>();
+
+      const requestA = requestContext.runWithRequestContext(contextA, () =>
+        releaseA.promise.then(() => requestContext.assertRequestContext().requestId),
+      );
+      const requestB = requestContext.runWithRequestContext(contextB, () => {
+        releaseA.resolve();
+
+        return releaseB.promise.then(() => requestContext.assertRequestContext().requestId);
+      });
+
+      await Promise.resolve();
+      releaseB.resolve();
+
+      await expect(requestA).resolves.toBe('req_a');
+      await expect(requestB).resolves.toBe('req_b');
+    } finally {
+      if (getBuiltinModuleDescriptor) {
+        Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);
+      }
       vi.resetModules();
     }
   });

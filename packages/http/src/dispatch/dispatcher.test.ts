@@ -1116,6 +1116,33 @@ describe('dispatcher runtime', () => {
     expect(response.simpleJsonBody).toBeUndefined();
   });
 
+  it('preserves adapter abort probes on cloned dispatch requests', async () => {
+    let aborted = false;
+
+    @Controller('/abort-probe')
+    class AbortProbeController {
+      @Get('/')
+      getValue() {
+        aborted = true;
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(AbortProbeController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: AbortProbeController }]),
+      rootContainer: root,
+    });
+    const request = createRequest('/abort-probe');
+    request.isAborted = () => aborted;
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(request, response);
+
+    expect(response.committed).toBe(false);
+    expect(response.simpleJsonBody).toBeUndefined();
+  });
+
   it('formats empty fast-path statistics without NaN output', () => {
     const output = formatFastPathStats({
       fastPathRoutes: 0,

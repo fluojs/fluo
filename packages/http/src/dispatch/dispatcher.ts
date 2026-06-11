@@ -158,6 +158,7 @@ function createDispatchRequest(request: FrameworkRequest): FrameworkRequest {
     raw: request.raw,
     rawBody: request.rawBody,
     requestId: request.requestId,
+    isAborted: request.isAborted,
     signal: request.signal,
     url: request.url,
   };
