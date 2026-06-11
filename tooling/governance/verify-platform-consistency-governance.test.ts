@@ -1396,11 +1396,15 @@ describe('Slack delivery discoverability', () => {
   const koreanReadme = readFileSync(join(repoRoot, 'packages/slack/README.ko.md'), 'utf8');
   const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
   const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+  const englishBook = readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.md'), 'utf8');
+  const koreanBook = readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.ko.md'), 'utf8');
 
-  it('keeps helper, abort, lifecycle, and status guidance discoverable from the context hub', () => {
+  it('keeps helper, abort, lifecycle, status, verification, and template guidance discoverable', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
       expect(content).toContain('@fluojs/slack');
       expect(content).toContain('createSlackProviders(...)');
+      expect(content).toContain('verifyOnModuleInit');
+      expect(content).toContain('SlackTemplateRenderer');
     }
 
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme]) {
@@ -1408,6 +1412,14 @@ describe('Slack delivery discoverability', () => {
       expect(content).toContain('abort');
       expect(content).toContain('lifecycle');
       expect(content).toMatch(/status|Status/);
+    }
+
+    for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishBook, koreanBook]) {
+      expect(content).toContain('SlackModule.forRoot');
+      expect(content).toContain('verifyOnModuleInit');
+      expect(content).toContain('SlackTemplateRenderer');
+      expect(content).toContain('template');
+      expect(content).toContain('payload');
     }
   });
 });
