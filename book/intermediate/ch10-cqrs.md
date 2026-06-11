@@ -166,6 +166,7 @@ import { CqrsModule } from '@fluojs/cqrs';
   imports: [CqrsModule.forRoot()],
   providers: [
     PlaceOrderHandler,
+    OrderTimelineProjectionHandler,
     GetOrderTimelineHandler,
     ReserveInventoryHandler,
     OrderFulfillmentSaga,
