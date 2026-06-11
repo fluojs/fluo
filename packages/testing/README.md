@@ -43,17 +43,19 @@ import { createTestApp } from '@fluojs/testing';
 
 const app = await createTestApp({ rootModule: AppModule });
 
-const response = await app
-  .request('POST', '/users/')
-  .header('x-request-id', 'test-request-1')
-  .query('include', 'profile')
-  .principal({ subject: 'user-1', roles: ['admin'] })
-  .body({ name: 'Ada' })
-  .send();
+try {
+  const response = await app
+    .request('POST', '/users/')
+    .header('x-request-id', 'test-request-1')
+    .query('include', 'profile')
+    .principal({ subject: 'user-1', roles: ['admin'] })
+    .body({ name: 'Ada' })
+    .send();
 
-expect(response.status).toBe(201);
-
-await app.close();
+  expect(response.status).toBe(201);
+} finally {
+  await app.close();
+}
 ```
 
 Use `createTestApp({ rootModule })` as the default HTTP/e2e-style path for application routes, guards, interceptors, DTO validation, request bodies, query parameters, headers, synthetic principals, and serialized responses. Reach for `createTestingModule(...)` when the contract is module wiring, provider visibility, or provider/guard/interceptor overrides inside one slice.
@@ -99,17 +101,19 @@ import { createTestApp } from '@fluojs/testing';
 
 const app = await createTestApp({ rootModule: AppModule });
 
-const response = await app
-  .request('POST', '/users/')
-  .header('authorization', 'Bearer test-token')
-  .query('include', ['profile', 'settings'])
-  .principal({ subject: 'user-1', roles: ['member'] })
-  .body({ name: 'Ada' })
-  .send();
+try {
+  const response = await app
+    .request('POST', '/users/')
+    .header('authorization', 'Bearer test-token')
+    .query('include', ['profile', 'settings'])
+    .principal({ subject: 'user-1', roles: ['member'] })
+    .body({ name: 'Ada' })
+    .send();
 
-expect(response.status).toBe(201);
-
-await app.close();
+  expect(response.status).toBe(201);
+} finally {
+  await app.close();
+}
 ```
 
 `app.request(...).send()` is the preferred app-developer path because it keeps tests close to HTTP semantics without manual `FrameworkRequest`/`FrameworkResponse` stubs. Close the returned app from a `finally` block so assertion failures do not leak runtime resources. Keep `app.dispatch(...)`, `makeRequest(...)`, and raw `FluoFactory.create(...)` tests for adapter/runtime contracts, framework internals, or compatibility cases where the low-level dispatch boundary itself is what the test must prove.

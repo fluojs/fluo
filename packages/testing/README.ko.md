@@ -45,17 +45,19 @@ import { createTestApp } from '@fluojs/testing';
 
 const app = await createTestApp({ rootModule: AppModule });
 
-const response = await app
-  .request('POST', '/users/')
-  .header('x-request-id', 'test-request-1')
-  .query('include', 'profile')
-  .principal({ subject: 'user-1', roles: ['admin'] })
-  .body({ name: 'Ada' })
-  .send();
+try {
+  const response = await app
+    .request('POST', '/users/')
+    .header('x-request-id', 'test-request-1')
+    .query('include', 'profile')
+    .principal({ subject: 'user-1', roles: ['admin'] })
+    .body({ name: 'Ada' })
+    .send();
 
-expect(response.status).toBe(201);
-
-await app.close();
+  expect(response.status).toBe(201);
+} finally {
+  await app.close();
+}
 ```
 
 애플리케이션 route, guard, interceptor, DTO validation, request body, query parameter, header, synthetic principal, serialized response를 검증하는 기본 HTTP/e2e 스타일 경로로는 `createTestApp({ rootModule })`을 사용하세요. 하나의 slice 안에서 module wiring, provider visibility, provider/guard/interceptor override가 계약일 때는 `createTestingModule(...)`을 사용합니다.
@@ -101,17 +103,19 @@ import { createTestApp } from '@fluojs/testing';
 
 const app = await createTestApp({ rootModule: AppModule });
 
-const response = await app
-  .request('POST', '/users/')
-  .header('authorization', 'Bearer test-token')
-  .query('include', ['profile', 'settings'])
-  .principal({ subject: 'user-1', roles: ['member'] })
-  .body({ name: 'Ada' })
-  .send();
+try {
+  const response = await app
+    .request('POST', '/users/')
+    .header('authorization', 'Bearer test-token')
+    .query('include', ['profile', 'settings'])
+    .principal({ subject: 'user-1', roles: ['member'] })
+    .body({ name: 'Ada' })
+    .send();
 
-expect(response.status).toBe(201);
-
-await app.close();
+  expect(response.status).toBe(201);
+} finally {
+  await app.close();
+}
 ```
 
 `app.request(...).send()`는 수동 `FrameworkRequest`/`FrameworkResponse` stub 없이 HTTP 의미에 가까운 테스트를 작성하게 해 주므로 애플리케이션 개발자의 기본 경로입니다. Assertion 실패가 runtime resource 누수로 이어지지 않도록 반환된 app은 `finally` 블록에서 닫으세요. `app.dispatch(...)`, `makeRequest(...)`, raw `FluoFactory.create(...)` 테스트는 adapter/runtime contract, framework internal, 또는 low-level dispatch boundary 자체를 증명해야 하는 compatibility case에 남겨 둡니다.
