@@ -21,4 +21,14 @@ describe('Studio FSD boundaries', () => {
       expect(source).not.toContain('live-connection/model/reducer.js');
     }
   });
+
+  it('keeps static viewer rendering helpers in the documented shared layer', () => {
+    const staticReportSource = readFileSync(join(packageRoot.pathname, 'src/widgets/static-report/ui/StaticReportPanel.tsx'), 'utf8');
+    const contractTestSource = readFileSync(join(packageRoot.pathname, 'src/contracts.test.ts'), 'utf8');
+
+    expect(staticReportSource).toContain('shared/lib/viewer-rendering.js');
+    expect(contractTestSource).toContain('shared/lib/viewer-rendering.js');
+    expect(staticReportSource).not.toContain('../../../viewer-rendering.js');
+    expect(contractTestSource).not.toContain('./viewer-rendering.js');
+  });
 });

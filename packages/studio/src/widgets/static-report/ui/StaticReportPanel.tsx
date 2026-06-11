@@ -5,7 +5,7 @@ import type { StudioAction } from '../../../entities/studio/actions.js';
 import type { StudioDashboardState } from '../../../entities/studio/model.js';
 import { selectOriginalStaticSnapshot, selectSelectedStaticComponent, selectStaticSnapshot } from '../../../entities/studio/model.js';
 import { EmptyState } from '../../../shared/ui/EmptyState.js';
-import { inspectComponentConnections, renderDiagnostics, renderGraphSvg } from '../../../viewer-rendering.js';
+import { inspectComponentConnections, renderDiagnostics, renderGraphSvg } from '../../../shared/lib/viewer-rendering.js';
 
 interface StaticReportPanelProps {
   dispatch: Dispatch<StudioAction>;
