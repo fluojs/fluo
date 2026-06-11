@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | Default Node.js HTTP application | Use the recommended high-performance Node.js adapter | `@fluojs/platform-fastify` |
 | Node.js application needs direct control over the HTTP listener | Use the bare Node adapter | `@fluojs/platform-nodejs` |
-| Node.js application must keep Express middleware compatibility | Use the Express adapter | `@fluojs/platform-express` |
+| Node.js application must use Express as the host/platform HTTP engine while application middleware stays on the fluo `Middleware` contract | Use the Express adapter | `@fluojs/platform-express` |
 | Bun-native fetch-style runtime target | Use the Bun adapter | `@fluojs/platform-bun` |
 | Deno `serve()` runtime target | Use the Deno adapter | `@fluojs/platform-deno` |
 | Cloudflare Workers isolate target | Use the Workers adapter | `@fluojs/platform-cloudflare-workers` |

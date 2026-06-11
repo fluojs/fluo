@@ -58,7 +58,7 @@ bootstrap();
 
 ### 21.1.3 Handling Middleware
 
-Express를 선택하는 가장 큰 이유 중 하나는 이미 검증된 운영 생태계입니다. fluo의 애플리케이션 레벨 `middleware` 옵션은 여전히 공유 `MiddlewareContext` 위에서 `handle(context, next)`를 구현한 fluo 미들웨어 객체나 provider를 기대합니다. `compression()` 같은 Express/Connect `(req, res, next)` 함수는 `fluoFactory.create(...)`에 직접 전달하지 마세요. 해당 동작을 fluo 계약 뒤에 감싸거나 Express가 소유하는 통합 계층에 두어야 합니다.
+Express를 선택하는 가장 큰 이유 중 하나는 이미 검증된 운영 생태계입니다. fluo에서 이 호환성은 adapter와 hosting boundary입니다. Express는 underlying Node.js request listener를 소유하지만 application pipeline은 계속 dispatcher가 소유합니다. fluo의 애플리케이션 레벨 `middleware` 옵션은 여전히 공유 `MiddlewareContext` 위에서 `handle(context, next)`를 구현한 fluo 미들웨어 객체나 provider를 기대합니다. `compression()` 같은 Express/Connect `(req, res, next)` 함수는 `fluoFactory.create(...)`에 직접 전달하지 마세요. 해당 동작을 fluo 계약 뒤에 감싸거나 Express가 소유하는 통합 계층에 두어야 합니다.
 
 ```typescript
 import type { Middleware } from '@fluojs/http';
@@ -77,7 +77,7 @@ const app = await fluoFactory.create(AppModule, {
 });
 ```
 
-장기 이식성을 생각한다면 fluo 계약으로 작성한 미들웨어를 사용하거나 fluo 모듈 시스템 안에서 등록하는 편이 낫습니다. 그래야 다른 런타임으로 옮길 때 플랫폼 전용 코드의 위치가 명확해집니다.
+장기 이식성을 생각한다면 fluo 계약으로 작성한 미들웨어를 사용하거나 fluo 모듈 시스템 안에서 등록하는 편이 낫습니다. Migration 중 native Express middleware를 유지해야 한다면 platform-specific bootstrap code에 격리하고 request context mutation, auth, route behavior는 fluo middleware, guard, interceptor에 두세요. 그래야 다른 런타임으로 옮길 때 플랫폼 전용 코드의 위치가 명확해집니다.
 
 ## 21.2 The Raw Node.js Adapter
 

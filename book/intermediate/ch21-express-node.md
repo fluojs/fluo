@@ -58,7 +58,7 @@ bootstrap();
 
 ### 21.1.3 Handling Middleware
 
-One of the biggest reasons to choose Express is its proven operational ecosystem. fluo's application-level `middleware` option still expects fluo middleware: an object or provider that implements `handle(context, next)` over the shared `MiddlewareContext`. Do not pass an Express/Connect `(req, res, next)` function such as `compression()` directly to `fluoFactory.create(...)`; wrap that behavior behind the fluo contract or keep it in an Express-owned integration layer.
+One of the biggest reasons to choose Express is its proven operational ecosystem. In fluo, that compatibility is an adapter and hosting boundary: Express owns the underlying Node.js request listener, but the application pipeline remains dispatcher-owned. fluo's application-level `middleware` option still expects fluo middleware: an object or provider that implements `handle(context, next)` over the shared `MiddlewareContext`. Do not pass an Express/Connect `(req, res, next)` function such as `compression()` directly to `fluoFactory.create(...)`; wrap that behavior behind the fluo contract or keep it in an Express-owned integration layer.
 
 ```typescript
 import type { Middleware } from '@fluojs/http';
@@ -77,7 +77,7 @@ const app = await fluoFactory.create(AppModule, {
 });
 ```
 
-For long-term portability, prefer middleware written to the fluo contract or registered through the fluo Module system. That keeps the location of platform-specific code clear when you move to another runtime.
+For long-term portability, prefer middleware written to the fluo contract or registered through the fluo Module system. If you must keep native Express middleware during a migration, isolate it in platform-specific bootstrap code and keep request context mutation, auth, and route behavior in fluo middleware, guards, or interceptors. That keeps the location of platform-specific code clear when you move to another runtime.
 
 ## 21.2 The Raw Node.js Adapter
 

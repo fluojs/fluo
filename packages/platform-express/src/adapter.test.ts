@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import {
   createServer as createHttpServer,
   request as httpRequest,
@@ -226,6 +227,23 @@ const expressPortabilityHarness = createHttpAdapterPortabilityHarness({
 });
 
 describe('@fluojs/platform-express', () => {
+  it('documents Express host compatibility without promising native middleware translation', () => {
+    const packageReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    const packageReadmeKo = readFileSync(new URL('../README.ko.md', import.meta.url), 'utf8');
+    const packageSurface = readFileSync(new URL('../../../docs/reference/package-surface.md', import.meta.url), 'utf8');
+    const packageSurfaceKo = readFileSync(new URL('../../../docs/reference/package-surface.ko.md', import.meta.url), 'utf8');
+    const migrationGuide = readFileSync(new URL('../../../docs/getting-started/migrate-from-nestjs.md', import.meta.url), 'utf8');
+
+    expect(packageReadme).toContain('Express compatibility does not mean that native Express/Connect');
+    expect(packageReadme).toContain('Do not pass an Express/Connect function such as `compression()` directly as fluo middleware.');
+    expect(packageReadme).toContain('`getServer()` exposes the underlying Node HTTP/HTTPS server');
+    expect(packageReadmeKo).toContain('Express 호환성은 native Express/Connect');
+    expect(packageReadmeKo).toContain('`getServer()`는 좁은 platform integration을 위해 underlying Node HTTP/HTTPS server를 노출');
+    expect(packageSurface).toContain('native Express/Connect `(req, res, next)` functions are not portable fluo middleware');
+    expect(packageSurfaceKo).toContain('native Express/Connect `(req, res, next)` function은 portable fluo middleware가 아닙니다');
+    expect(migrationGuide).toContain('Native Express/Connect `(req, res, next)` middleware from a NestJS or Express migration');
+  });
+
   describe('adapter portability', () => {
     it('preserves malformed cookie values', async () => {
       await expressPortabilityHarness.assertPreservesMalformedCookieValues();
