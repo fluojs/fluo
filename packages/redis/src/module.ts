@@ -36,6 +36,7 @@ function normalizeRedisModuleOptions(options: RedisModuleOptions): {
 } {
   const { global, lifecycle, name, ...clientOptions } = options;
   const normalizedName = name?.trim();
+  const lifecycleOptions = normalizeRedisLifecycleOptions(lifecycle);
 
   if (normalizedName !== undefined && normalizedName.length === 0) {
     throw new Error('Redis client name must be a non-empty string when provided.');
@@ -48,9 +49,30 @@ function normalizeRedisModuleOptions(options: RedisModuleOptions): {
   return {
     clientOptions,
     global: normalizedName === undefined ? global ?? true : false,
-    lifecycleOptions: lifecycle ?? {},
+    lifecycleOptions,
     name: normalizedName,
   };
+}
+
+function normalizeRedisLifecycleOptions(lifecycle: RedisLifecycleOptions | undefined): RedisLifecycleOptions {
+  if (lifecycle === undefined) {
+    return {};
+  }
+
+  assertValidLifecycleTimeoutMs('connectTimeoutMs', lifecycle.connectTimeoutMs);
+  assertValidLifecycleTimeoutMs('quitTimeoutMs', lifecycle.quitTimeoutMs);
+
+  return lifecycle;
+}
+
+function assertValidLifecycleTimeoutMs(fieldName: keyof RedisLifecycleOptions, value: number | undefined): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`Redis lifecycle.${fieldName} must be a finite non-negative number.`);
+  }
 }
 
 function createRedisProviders(options: RedisClientOptions, lifecycleOptions: RedisLifecycleOptions, name?: string): Provider[] {

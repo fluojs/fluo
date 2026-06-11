@@ -14,6 +14,10 @@ function isClosed(status: string): boolean {
   return status === 'end';
 }
 
+function isOpen(status: string): boolean {
+  return QUITTABLE_STATUSES.has(status);
+}
+
 function isConnectable(status: string): boolean {
   return status === 'wait';
 }
@@ -116,7 +120,7 @@ export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdow
     } catch (error: unknown) {
       this.disconnectIfPossible(this.client.status);
 
-      if (!isClosed(this.client.status)) {
+      if (isOpen(this.client.status)) {
         throw error;
       }
     }
