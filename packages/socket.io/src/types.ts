@@ -1,8 +1,6 @@
 import type { IncomingMessage } from 'node:http';
-
-import type { ServerOptions, Socket } from 'socket.io';
-
 import type { WebSocketRoomService } from '@fluojs/websockets';
+import type { ServerOptions, Socket } from 'socket.io';
 
 /** Runtime-specific Socket.IO handshake request surfaced to guard callbacks. */
 export type SocketIoHandshakeRequest = IncomingMessage | Request;
@@ -40,6 +38,14 @@ export interface SocketIoRoomService extends WebSocketRoomService {
    * @param namespacePath Optional namespace path when targeting a non-default namespace.
    */
   leaveRoom(socketId: string, room: string, namespacePath?: string): void;
+
+  /**
+   * Returns a snapshot of rooms currently joined by one connected socket.
+   *
+   * @param socketId Socket identifier to inspect.
+   * @returns Current room names for the socket, or an empty set when the socket is not registered.
+   */
+  getRooms(socketId: string): ReadonlySet<string>;
 }
 
 /**

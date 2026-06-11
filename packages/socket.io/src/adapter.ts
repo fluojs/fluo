@@ -1,7 +1,6 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
+import type { AsyncLocalStorage } from 'node:async_hooks';
 
 import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
-import { getClassDiMetadata } from '@fluojs/core/internal';
 import type { Container, Provider } from '@fluojs/di';
 import type { HttpAdapterRealtimeCapability, HttpApplicationAdapter } from '@fluojs/http';
 import type {
@@ -11,7 +10,13 @@ import type {
   OnApplicationShutdown,
   OnModuleDestroy,
 } from '@fluojs/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
+import {
+  APPLICATION_LOGGER,
+  COMPILED_MODULES,
+  getRuntimeClassDiMetadata,
+  HTTP_APPLICATION_ADAPTER,
+  RUNTIME_CONTAINER,
+} from '@fluojs/runtime/internal';
 import {
   getWebSocketGatewayMetadata,
   getWebSocketHandlerMetadataEntries,
@@ -20,21 +25,20 @@ import {
 } from '@fluojs/websockets';
 import type { Server as BunEngineServer } from '@socket.io/bun-engine';
 import { type Namespace, Server, type ServerOptions, type Socket } from 'socket.io';
-
-import { SOCKETIO_OPTIONS_INTERNAL } from './options-token.internal.js';
-import type {
-  SocketIoGuardRejection,
-  SocketIoHandshakeRequest,
-  SocketIoModuleOptions,
-  SocketIoRoomService,
-} from './types.js';
 import {
   DEFAULT_SOCKETIO_ENGINE_PATH,
   resolveSocketIoMaxHttpBufferSize,
   resolveSocketIoMaxPendingMessagesPerSocket,
   resolveSocketIoShutdownTimeoutMs,
 } from './config.internal.js';
+import { SOCKETIO_OPTIONS_INTERNAL } from './options-token.internal.js';
 import { closeSocketIoServerWithTimeout, type SocketIoCloseResult } from './shutdown.internal.js';
+import type {
+  SocketIoGuardRejection,
+  SocketIoHandshakeRequest,
+  SocketIoModuleOptions,
+  SocketIoRoomService,
+} from './types.js';
 
 interface DiscoveryCandidate {
   moduleName: string;
@@ -184,12 +188,12 @@ function normalizeRejectedGuardError(error: unknown, defaultMessage: string): So
 
 function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'transient' {
   if (typeof provider === 'function') {
-    return getClassDiMetadata(provider)?.scope ?? 'singleton';
+    return getRuntimeClassDiMetadata(provider)?.scope ?? 'singleton';
   }
 
   if ('useClass' in provider) {
     const classProvider = provider as ClassProviderLike;
-    return classProvider.scope ?? getClassDiMetadata(classProvider.useClass)?.scope ?? 'singleton';
+    return classProvider.scope ?? getRuntimeClassDiMetadata(classProvider.useClass)?.scope ?? 'singleton';
   }
 
   return 'scope' in provider ? provider.scope ?? 'singleton' : 'singleton';
@@ -344,7 +348,7 @@ export class SocketIoLifecycleService
   private attachments: NamespaceAttachment[] = [];
   private bunEngine: BunEngineServer | undefined;
   private io: Server | undefined;
-  private readonly namespaceContext = new AsyncLocalStorage<string>();
+  private namespaceContext: AsyncLocalStorage<string> | undefined;
   private readonly socketRegistry = new Map<string, Socket>();
   private shutdownPromise: Promise<void> | undefined;
   private shutdownStarted = false;
@@ -660,7 +664,7 @@ export class SocketIoLifecycleService
   }
 
   private resolveContextNamespace(): Namespace | undefined {
-    const namespaceName = this.namespaceContext.getStore();
+    const namespaceName = this.namespaceContext?.getStore();
 
     if (!namespaceName) {
       return undefined;
@@ -1046,7 +1050,9 @@ export class SocketIoLifecycleService
     }
 
     try {
-      await this.namespaceContext.run(
+      const namespaceContext = await this.resolveNamespaceContext();
+
+      await namespaceContext.run(
         descriptor.path,
         async () => await Promise.resolve((value as (this: unknown, ...handlerArgs: unknown[]) => unknown).call(instance, ...args)),
       );
@@ -1057,6 +1063,15 @@ export class SocketIoLifecycleService
         'SocketIoLifecycleService',
       );
     }
+  }
+
+  private async resolveNamespaceContext(): Promise<AsyncLocalStorage<string>> {
+    if (!this.namespaceContext) {
+      const { AsyncLocalStorage } = await import('node:async_hooks');
+      this.namespaceContext = new AsyncLocalStorage<string>();
+    }
+
+    return this.namespaceContext;
   }
 
   private async resolveGatewayInstance(descriptor: WebSocketGatewayDescriptor): Promise<unknown | undefined> {

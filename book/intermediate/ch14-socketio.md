@@ -11,6 +11,7 @@ This chapter explains how to add a Socket.IO layer on top of raw WebSocket and c
 - Explain a structure that separates room joins from broadcasts with `SocketIoRoomService`.
 - Analyze how namespaces and message Guards refine realtime security boundaries.
 - Summarize the extension points provided by raw `Server` access and Bun engine support.
+- Explain why Socket.IO handler return values are ignored and when to use ACK callbacks or raw `SOCKETIO_SERVER` emits.
 - Explain how to keep multiple room flows such as support chat testable.
 
 ## Prerequisites
@@ -144,6 +145,20 @@ This boundary lets fluo provide a decorator based surface without blocking the e
 
 During shutdown, Socket.IO owns cleanup for connected Socket.IO clients. The underlying HTTP server still belongs to the platform adapter or shared HTTP server integration that supplied it, so fluo detaches that server reference before `io.close(...)` and leaves HTTP listener shutdown to the platform owner.
 
+Handler return values are not a reply channel. fluo awaits a Socket.IO gateway handler so thrown errors can be logged and handler ordering stays deterministic, but the returned value is ignored. If a migrated NestJS `@SubscribeMessage()` handler used `return { ... }` as an ACK payload, accept the acknowledgement callback positionally and call it explicitly. For native Socket.IO fan-out, `.volatile`, or advanced ACK orchestration, keep that logic in a service that injects `SOCKETIO_SERVER`.
+
+```typescript
+@OnMessage('ticket_status')
+handleTicketStatus(
+  payload: { ticketId: string },
+  _socket: Socket,
+  _request: SocketIoHandshakeRequest,
+  ack?: (response: { status: string; ticketId: string }) => void,
+) {
+  ack?.({ status: 'open', ticketId: payload.ticketId });
+}
+```
+
 ## 14.6 Bun engine details
 
 fluo supports Bun's high performance WebSocket implementation through the selected HTTP adapter contract. Socket.IO usually uses the `ws` package on Node.js, but on Bun it can use `@socket.io/bun-engine` when the active platform adapter exposes the fetch-style realtime binding that the Socket.IO adapter requires. FluoShop should therefore choose a Bun-compatible platform adapter explicitly instead of relying on runtime auto-switching. This keeps the realtime boundary auditable while still allowing many concurrent support chats with lower memory overhead than a standard Node.js process.
@@ -218,8 +233,8 @@ fluo gateways are plain classes, so they are easy to test. By mocking `SocketIoR
 ```typescript
 describe('SupportChatGateway', () => {
   it('joins the correct ticket room', () => {
-    const mockRoomService = { joinRoom: vi.fn() };
-    const gateway = new SupportChatGateway(mockRoomService as any);
+    const mockRoomService: Pick<SocketIoRoomService, 'joinRoom'> = { joinRoom: vi.fn() };
+    const gateway = new SupportChatGateway(mockRoomService);
     
     gateway.handleJoin({ ticketId: '123' }, { id: 'socket_abc' });
     

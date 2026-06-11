@@ -22,7 +22,7 @@ import { SocketIoLifecycleService } from './adapter.js';
 import * as publicApi from './index.js';
 import { SocketIoModule } from './module.js';
 import { SOCKETIO_ROOM_SERVICE, SOCKETIO_SERVER } from './tokens.js';
-import type { SocketIoRoomService } from './types.js';
+import type { SocketIoModuleOptions, SocketIoRoomService } from './types.js';
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -552,32 +552,37 @@ describe('@fluojs/socket.io', () => {
     });
     const state = await app.container.resolve(GatewayState);
 
-    await app.listen();
-    const port = getBoundPortFromAdapter(adapter);
+    let socket: ClientSocket | undefined;
 
-    const socket = createClient(`http://127.0.0.1:${String(port)}/chat`, {
-      reconnection: false,
-      transports: ['polling'],
-    });
-    await onceConnected(socket);
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
 
-    socket.emit('ping', { value: 'hello' });
-    const broadcast = await onceEvent<{ value: string }>(socket, 'room:pong');
+      socket = createClient(`http://127.0.0.1:${String(port)}/chat`, {
+        reconnection: false,
+        transports: ['polling'],
+      });
+      await onceConnected(socket);
 
-    expect(broadcast).toEqual({ value: 'hello' });
-    expect(state.messages).toEqual([{ value: 'hello' }]);
-    expect(state.connectCount).toBe(1);
+      socket.emit('ping', { value: 'hello' });
+      const broadcast = await onceEvent<{ value: string }>(socket, 'room:pong');
 
-    const disconnected = onceDisconnected(socket);
-    socket.disconnect();
+      expect(broadcast).toEqual({ value: 'hello' });
+      expect(state.messages).toEqual([{ value: 'hello' }]);
+      expect(state.connectCount).toBe(1);
 
-    expect(await disconnected).toBe('io client disconnect');
-    await waitForExpectation(() => {
-      expect(state.disconnectCount).toBe(1);
-      expect(state.disconnectReason).toBe('client namespace disconnect');
-    });
+      const disconnected = onceDisconnected(socket);
+      socket.disconnect();
 
-    await app.close();
+      expect(await disconnected).toBe('io client disconnect');
+      await waitForExpectation(() => {
+        expect(state.disconnectCount).toBe(1);
+        expect(state.disconnectReason).toBe('client namespace disconnect');
+      });
+    } finally {
+      socket?.close();
+      await app.close();
+    }
   });
 
   it('configures the Bun realtime binding before listen when only the raw Socket.IO server is used', async () => {
@@ -593,23 +598,27 @@ describe('@fluojs/socket.io', () => {
       rootModule: AppModule,
     });
 
-    await app.listen();
-    const port = getBoundPortFromAdapter(adapter);
+    let socket: ClientSocket | undefined;
 
-    const server = await app.container.resolve<SocketIoServer>(SOCKETIO_SERVER);
-    server.on('connection', (socket: Socket) => {
-      socket.emit('raw:ready', 'ok');
-    });
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
 
-    const socket = createClient(`http://127.0.0.1:${String(port)}`, {
-      reconnection: false,
-      transports: ['polling'],
-    });
+      const server = await app.container.resolve<SocketIoServer>(SOCKETIO_SERVER);
+      server.on('connection', (connectedSocket: Socket) => {
+        connectedSocket.emit('raw:ready', 'ok');
+      });
 
-    expect(await onceEvent<string>(socket, 'raw:ready')).toBe('ok');
+      socket = createClient(`http://127.0.0.1:${String(port)}`, {
+        reconnection: false,
+        transports: ['polling'],
+      });
 
-    socket.close();
-    await app.close();
+      expect(await onceEvent<string>(socket, 'raw:ready')).toBe('ok');
+    } finally {
+      socket?.close();
+      await app.close();
+    }
   });
 
   it('uses safe CORS, bounded engine defaults, and static namespace cleanup ownership when options are omitted', () => {
@@ -686,6 +695,57 @@ describe('@fluojs/socket.io', () => {
     expect(binding.websocket.maxPayloadLength).toBe(256);
   });
 
+  it('rejects Bun CORS delegate functions before binding the Bun engine', () => {
+    const corsDelegate: NonNullable<SocketIoModuleOptions['cors']> = (
+      _request: unknown,
+      callback: (error: Error | null, options?: { origin: boolean }) => void,
+    ) => {
+      callback(null, { origin: true });
+    };
+    const service = new SocketIoLifecycleService(
+      {} as never,
+      [] as never,
+      createLogger([]),
+      {
+        async close() {},
+        getRealtimeCapability() {
+          return createServerBackedHttpAdapterRealtimeCapability({});
+        },
+      } as never,
+      {
+        cors: corsDelegate,
+      },
+    );
+
+    expect(() => Reflect.get(service, 'createBunEngineOptions').call(service)).toThrow(
+      'Socket.IO Bun bootstrap does not support CORS delegate functions.',
+    );
+  });
+
+  it('rejects function and boolean-array Bun CORS origins before binding the Bun engine', () => {
+    for (const cors of [
+      { origin: (_origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) => callback(null, true) },
+      { origin: ['https://app.example.com', false] },
+    ]) {
+      const service = new SocketIoLifecycleService(
+        {} as never,
+        [] as never,
+        createLogger([]),
+        {
+          async close() {},
+          getRealtimeCapability() {
+            return createServerBackedHttpAdapterRealtimeCapability({});
+          },
+        } as never,
+        { cors },
+      );
+
+      expect(() => Reflect.get(service, 'createBunEngineOptions').call(service)).toThrow(
+        'Socket.IO Bun bootstrap does not support',
+      );
+    }
+  });
+
   it('lets io.close clean clients without closing the adapter-owned shared HTTP server', async () => {
     const service = new SocketIoLifecycleService(
       {} as never,
@@ -728,6 +788,37 @@ describe('@fluojs/socket.io', () => {
     await Reflect.get(service, 'closeServerWithTimeout').call(service, io, 100);
 
     expect(calls).toEqual(['client-cleanup']);
+  });
+
+  it('awaits gateway handler return values without treating them as implicit ACK replies', async () => {
+    const acknowledgements: unknown[] = [];
+    const service = new SocketIoLifecycleService(
+      {} as never,
+      [] as never,
+      createLogger([]),
+      {
+        async close() {},
+        getRealtimeCapability() {
+          return createServerBackedHttpAdapterRealtimeCapability({});
+        },
+      } as never,
+      {},
+    );
+    const gateway = {
+      async ping() {
+        return { event: 'pong' };
+      },
+    };
+
+    await Reflect.get(service, 'invokeGatewayMethod').call(
+      service,
+      gateway,
+      { path: '/chat', targetName: 'ReturnValueGateway' },
+      { methodKey: 'ping', methodName: 'ping' },
+      [undefined, {}, {}, (value: unknown) => acknowledgements.push(value)],
+    );
+
+    expect(acknowledgements).toEqual([]);
   });
 
   it('rejects incomplete server-like bridge objects before constructing Socket.IO', () => {
@@ -867,10 +958,11 @@ describe('@fluojs/socket.io', () => {
       await onceConnected(allowedSocket);
 
       allowedSocket.emit('ping', 'allowed');
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await waitForExpectation(() => {
+        expect(state.messages).toEqual(['allowed']);
+      });
 
       expect(state.connectCount).toBe(1);
-      expect(state.messages).toEqual(['allowed']);
     } finally {
       rejectedSocket?.close();
       allowedSocket?.close();
@@ -1000,9 +1092,10 @@ describe('@fluojs/socket.io', () => {
       expect(state.messages).toEqual([]);
 
       activeSocket.emit('ping', 'allowed');
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await waitForExpectation(() => {
+        expect(state.messages).toEqual(['allowed']);
+      });
 
-      expect(state.messages).toEqual(['allowed']);
 
       const disconnected = new Promise((resolve) => activeSocket.once('disconnect', resolve));
       const disconnectAck = await new Promise<unknown>((resolve) => {
@@ -1080,17 +1173,17 @@ describe('@fluojs/socket.io', () => {
         socket.emit('ping', 'blocked', (response: unknown) => resolve(response));
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 25));
-
       expect(rejectedAck).toEqual({ data: { code: 'AUTH_REQUIRED' }, error: 'Forbidden event.' });
       expect(state.messages).toEqual([]);
       expect(unhandledRejections).toEqual([]);
-      expect(
-        loggerEvents.some((event) =>
-          stripAnsi(event).includes('[SocketIoLifecycleService] Socket.IO message guard for event ping on socket'),
-        ),
-      ).toBe(true);
-      expect(loggerEvents.some((event) => event.includes('Forbidden event.'))).toBe(true);
+      await waitForExpectation(() => {
+        expect(
+          loggerEvents.some((event) =>
+            stripAnsi(event).includes('[SocketIoLifecycleService] Socket.IO message guard for event ping on socket'),
+          ),
+        ).toBe(true);
+        expect(loggerEvents.some((event) => event.includes('Forbidden event.'))).toBe(true);
+      });
     } finally {
       errorLog.mockRestore();
       process.off('unhandledRejection', onUnhandledRejection);
@@ -1395,10 +1488,11 @@ describe('@fluojs/socket.io', () => {
       await disconnected;
 
       connected.resolve();
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await waitForExpectation(() => {
+        expect(state.messages).toEqual(['early']);
+        expect(state.disconnects).toBe(1);
+      });
 
-      expect(state.messages).toEqual(['early']);
-      expect(state.disconnects).toBe(1);
     } finally {
       socket?.close();
       connected.resolve();
@@ -1466,10 +1560,11 @@ describe('@fluojs/socket.io', () => {
       activeSocket.emit('ping', 'allowed');
 
       connected.resolve();
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await waitForExpectation(() => {
+        expect(state.messages).toEqual(['allowed']);
+      });
 
       expect(await rejectedAck).toEqual({ data: { code: 'BUFFERED_REJECTED' }, error: 'Buffered event rejected.' });
-      expect(state.messages).toEqual(['allowed']);
     } finally {
       socket?.close();
       connected.resolve();

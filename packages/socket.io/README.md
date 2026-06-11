@@ -79,6 +79,34 @@ class MyService {
 }
 ```
 
+Keep raw server access narrow and use it for Socket.IO-specific semantics that the shared room contract intentionally does not wrap, such as multi-room native emits or volatile delivery:
+
+```typescript
+@Inject(SOCKETIO_SERVER)
+class SupportBroadcasts {
+  constructor(private readonly io: Server) {}
+
+  broadcastUrgent(message: string) {
+    this.io.of('/support').to(['ticket:active', 'staff:updates']).emit('announcement', { message });
+  }
+
+  sendTyping(ticketId: string, userId: string) {
+    this.io.of('/support').volatile.to(`ticket:${ticketId}`).emit('typing', { userId });
+  }
+}
+```
+
+### Handler return values and ACK replies
+
+Socket.IO gateway handlers use the shared `@fluojs/websockets` positional handler model: `(payload, socket, request, acknowledgement)`. Return values are awaited for error containment and ordering, but they are ignored; fluo does not convert a returned value into an implicit Socket.IO emit or ACK reply. When a migrated NestJS `@SubscribeMessage()` handler previously returned an ACK payload, rewrite it to call the `acknowledgement` callback explicitly or inject `SOCKETIO_SERVER` and emit through the raw server boundary.
+
+```typescript
+@OnMessage('ping')
+handlePing(payload: unknown, _socket: Socket, _request: SocketIoHandshakeRequest, ack?: (response: unknown) => void) {
+  ack?.({ event: 'pong', payload });
+}
+```
+
 ### Auth guards, safe CORS defaults, and bounded payloads
 Use `SocketIoModule.forRoot(...)` to require explicit namespace/message auth, keep CORS in a deny-by-default posture, and cap inbound Engine.IO payload size.
 
@@ -134,7 +162,7 @@ Register Socket.IO through module imports in the owning module so namespace/mess
 - `SocketIoLifecycleService`: Lifecycle-backed implementation behind the server and room-service tokens; application code should usually inject `SOCKETIO_SERVER` or `SOCKETIO_ROOM_SERVICE` instead.
 - Types: `SocketIoModuleOptions`, `SocketIoHandshakeRequest`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
 
-`SocketIoModuleOptions` covers `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, and `transports`. `global` defaults to `true`, which keeps `SOCKETIO_SERVER` and `SOCKETIO_ROOM_SERVICE` visible across the app; set it to `false` when you want module-local provider visibility. A supported server-backed runtime adapter is required; unsupported/noop adapters fail fast during bootstrap.
+`SocketIoModuleOptions` covers `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, and `transports`. `global` defaults to `true`, which keeps `SOCKETIO_SERVER` and `SOCKETIO_ROOM_SERVICE` visible across the app; set it to `false` when you want module-local provider visibility. A supported Node.js server-backed runtime adapter or the official Bun engine host is required; unsupported/noop adapters fail fast during bootstrap.
 
 ## Supported Platforms
 

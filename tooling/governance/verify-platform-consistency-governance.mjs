@@ -34,6 +34,8 @@ const contractGateTriggers = new Set([
   'docs/architecture/observability.ko.md',
   'docs/contracts/deployment.md',
   'docs/contracts/deployment.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
   'docs/architecture/transactions.md',
   'docs/architecture/transactions.ko.md',
   'docs/reference/package-chooser.md',
