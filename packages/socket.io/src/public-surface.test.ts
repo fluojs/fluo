@@ -25,7 +25,8 @@ describe('@fluojs/socket.io public surface', () => {
     const adapterSource = readFileSync(resolve(sourceDir, 'adapter.ts'), 'utf8');
 
     expect(adapterSource).not.toMatch(/^import\s+\{[^}]*AsyncLocalStorage[^}]*\}\s+from\s+['"]node:async_hooks['"];$/m);
-    expect(adapterSource).toContain("await import('node:async_hooks')");
+    expect(adapterSource).toContain("import('node:async_hooks')");
+    expect(adapterSource).toContain('namespaceContextPromise ??=');
   });
 
   it('keeps the root barrel aligned with the documented module and room contract', () => {
