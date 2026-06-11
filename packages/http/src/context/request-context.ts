@@ -23,9 +23,11 @@ type PromiseRejected<TResult> = ((reason: unknown) => TResult | PromiseLike<TRes
 /**
  * Runs a callback inside the request-scoped async context.
  *
- * Hosts with `AsyncLocalStorage` preserve the context across awaited work. Hosts without an async
- * context primitive use a stack fallback that keeps the context only for the synchronous callback
- * frame and clears it before awaited continuations resume.
+ * Hosts with `AsyncLocalStorage` preserve the context across awaited work. During lazy
+ * `AsyncLocalStorage` resolution, promise continuations registered before the store resolves keep
+ * their request context until the returned promise settles. Hosts without an async context primitive
+ * use a stack fallback that keeps the context only for the synchronous callback frame and clears it
+ * before awaited continuations resume.
  *
  * @param context Request context snapshot to bind to the current async execution chain.
  * @param callback Callback executed with `context` available through request-context helpers.
@@ -184,22 +186,41 @@ function getFallbackRequestContextStore(): RequestContextStore {
 function runWithDynamicResolutionFallbackContext<T>(context: RequestContext, callback: () => T): T {
   dynamicResolutionFallbackStack.push(context);
   installPromiseThenContextBridge();
+  let cleanedUp = false;
 
-  try {
-    return callback();
-  } finally {
+  const cleanup = () => {
+    if (cleanedUp) {
+      return;
+    }
+
+    cleanedUp = true;
     removeDynamicResolutionFallbackContext(context);
     restorePromiseThenContextBridge();
     void resolveRequestContextStore();
+  };
+
+  try {
+    const result = callback();
+
+    if (isPromise(result)) {
+      const then = originalPromiseThen ?? Promise.prototype.then;
+      void then.call(result, cleanup, cleanup);
+
+      return result;
+    }
+
+    cleanup();
+
+    return result;
+  } catch (error) {
+    cleanup();
+
+    throw error;
   }
 }
 
 function getDynamicResolutionFallbackContext(): RequestContext | undefined {
-  if (dynamicResolutionFallbackStack.length !== 1) {
-    return undefined;
-  }
-
-  return dynamicResolutionFallbackStack[0];
+  return dynamicResolutionFallbackStack.at(-1);
 }
 
 function removeDynamicResolutionFallbackContext(context: RequestContext): void {
@@ -261,6 +282,10 @@ function wrapPromiseCallback<TValue, TResult>(
   }
 
   return (value) => runWithDynamicResolutionFallbackContext(context, () => callback(value));
+}
+
+function isPromise<T>(value: T): value is T & Promise<Awaited<T>> {
+  return value instanceof Promise;
 }
 
 function isAsyncCallback<T>(callback: () => T): callback is () => T & Promise<Awaited<T>> {

@@ -213,6 +213,36 @@ describe('request context store', () => {
     }
   });
 
+  it('preserves async IIFE continuation context for promise-returning non-async callbacks when getBuiltinModule is unavailable', async () => {
+    vi.resetModules();
+    const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
+
+    Object.defineProperty(process, 'getBuiltinModule', {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      const requestContext = await import('./request-context.js');
+      const context = requestContext.createRequestContext(createMockContext());
+
+      const requestId = await requestContext.runWithRequestContext(context, () =>
+        (async () => {
+          await Promise.resolve();
+
+          return requestContext.assertRequestContext().requestId;
+        })(),
+      );
+
+      expect(requestId).toBe('req_123');
+    } finally {
+      if (getBuiltinModuleDescriptor) {
+        Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);
+      }
+      vi.resetModules();
+    }
+  });
+
   it('returns a synchronous value on the first public helper call when dynamic storage resolution is pending', async () => {
     vi.resetModules();
     const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
