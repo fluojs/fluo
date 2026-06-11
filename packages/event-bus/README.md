@@ -96,7 +96,9 @@ EventBusModule.forRoot({
 
 Redis Pub/Sub is a fan-out transport, not a durable work queue. When multiple application instances subscribe to the same event channel, each instance can see the same published fact. Handlers that mutate state, send notifications, or call external systems should therefore be idempotent: carry a stable event identifier or business key in the payload, record which reactions have already been applied, and make repeat deliveries converge to the same result instead of performing the side effect twice.
 
-Keep `@OnEvent(...)` handlers small and bounded. They are a good fit for fast local projections, cache invalidation, lightweight notifications, and other reactions that can finish within the publish timeout and shutdown drain window. If a reaction is slow, failure-prone, retryable, or needs operator-visible dead-letter handling, hand off a durable job to `@fluojs/queue` from the event handler instead of doing the work inline. Use an application-owned unique claim or Queue job deduplication key for the handoff, then mark the handoff as enqueued only after `queue.enqueue(...)` succeeds; if enqueue fails, release the pending claim so a later duplicate event can retry safely.
+Keep `@OnEvent(...)` handlers small and bounded. They are a good fit for fast local projections, cache invalidation, lightweight notifications, and other reactions that can finish within the publish timeout and shutdown drain window. If a reaction is slow, failure-prone, retryable, or needs operator-visible dead-letter handling, hand off a durable job to `@fluojs/queue` from the event handler instead of doing the work inline. Use an application-owned unique claim for the handoff, then mark the handoff as enqueued only after `queue.enqueue(...)` succeeds; if enqueue fails, release the pending claim so a later duplicate event can retry safely.
+
+The `this.reactions` helper in the example below represents an application-owned claim store, not an API from `@fluojs/event-bus` or `@fluojs/queue`. Back it with storage that can atomically claim a business key and recover stale pending claims according to your application's retry policy.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -130,7 +132,7 @@ export class BillingEventsHandler {
 }
 ```
 
-Use the event bus to state that a business fact happened. Use Queue when the reaction needs retry, backoff, workload isolation, or dead-letter inspection. If the process can crash while a claim is pending, make the claim store recover stale pending records according to your application's retry policy.
+Use the event bus to state that a business fact happened. Use Queue when the reaction needs retry, backoff, workload isolation, or dead-letter inspection. If the process can crash while a claim is pending, make the application-owned claim store recover stale pending records according to your application's retry policy.
 
 ### Versioned Event Keys
 

@@ -96,7 +96,9 @@ EventBusModule.forRoot({
 
 Redis Pub/Sub은 durable work queue가 아니라 fan-out transport입니다. 여러 애플리케이션 인스턴스가 같은 이벤트 채널을 구독하면 각 인스턴스가 같은 published fact를 볼 수 있습니다. 따라서 상태를 변경하거나 알림을 보내거나 외부 시스템을 호출하는 handler는 idempotent해야 합니다. Payload에 안정적인 event identifier 또는 business key를 담고, 이미 적용한 reaction을 기록하며, 반복 전달이 side effect를 두 번 실행하는 대신 같은 결과로 수렴하도록 만드세요.
 
-`@OnEvent(...)` handler는 작고 bounded하게 유지하세요. 빠른 local projection, cache invalidation, 가벼운 notification처럼 publish timeout과 shutdown drain window 안에 끝낼 수 있는 reaction에 적합합니다. Reaction이 느리거나, failure-prone이거나, retry 가능하거나, operator-visible dead-letter handling이 필요하다면 해당 작업을 inline으로 수행하지 말고 event handler에서 `@fluojs/queue`의 durable job으로 hand off하세요. Handoff에는 애플리케이션이 소유한 unique claim 또는 Queue job deduplication key를 사용하고, `queue.enqueue(...)`가 성공한 뒤에만 handoff를 enqueued로 표시하세요. Enqueue가 실패하면 pending claim을 해제해 이후 duplicate event가 안전하게 다시 시도할 수 있게 합니다.
+`@OnEvent(...)` handler는 작고 bounded하게 유지하세요. 빠른 local projection, cache invalidation, 가벼운 notification처럼 publish timeout과 shutdown drain window 안에 끝낼 수 있는 reaction에 적합합니다. Reaction이 느리거나, failure-prone이거나, retry 가능하거나, operator-visible dead-letter handling이 필요하다면 해당 작업을 inline으로 수행하지 말고 event handler에서 `@fluojs/queue`의 durable job으로 hand off하세요. Handoff에는 애플리케이션이 소유한 unique claim을 사용하고, `queue.enqueue(...)`가 성공한 뒤에만 handoff를 enqueued로 표시하세요. Enqueue가 실패하면 pending claim을 해제해 이후 duplicate event가 안전하게 다시 시도할 수 있게 합니다.
+
+아래 예제의 `this.reactions` helper는 `@fluojs/event-bus`나 `@fluojs/queue` API가 아니라 애플리케이션이 소유한 claim store를 나타냅니다. Business key를 atomic하게 claim하고 stale pending claim을 애플리케이션의 retry policy에 따라 복구할 수 있는 저장소로 구현하세요.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -130,7 +132,7 @@ export class BillingEventsHandler {
 }
 ```
 
-비즈니스 사실이 발생했음을 표현할 때는 event bus를 사용하세요. Reaction에 retry, backoff, workload isolation, dead-letter inspection이 필요하면 Queue를 사용하세요. Claim이 pending인 동안 프로세스가 종료될 수 있다면 애플리케이션의 retry policy에 맞게 stale pending record를 복구하도록 claim store를 설계하세요.
+비즈니스 사실이 발생했음을 표현할 때는 event bus를 사용하세요. Reaction에 retry, backoff, workload isolation, dead-letter inspection이 필요하면 Queue를 사용하세요. Claim이 pending인 동안 프로세스가 종료될 수 있다면 애플리케이션의 retry policy에 맞게 stale pending record를 복구하도록 애플리케이션 소유 claim store를 설계하세요.
 
 ### 버전이 명시된 이벤트 키
 

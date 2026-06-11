@@ -190,7 +190,7 @@ For example, an order receipt handler can key its reaction by the business key `
 
 ### 9.7.2 Hand slow reactions to Queue
 
-An event handler should not become a hidden worker. Fast local reactions are fine inside `@OnEvent(...)`, but slow or retryable work needs a stronger operational boundary. FluoShop hands invoice generation, marketplace catalog syncs, and other failure-prone follow-up tasks to `@fluojs/queue` from the event reaction. The event still explains why the work exists, while the queue owns retry, backoff, workload isolation, and dead-letter evidence. The handoff uses an application-owned unique claim, marks that claim as enqueued only after Queue accepts the job, and releases the claim when enqueue fails so the next duplicate delivery can retry.
+An event handler should not become a hidden worker. Fast local reactions are fine inside `@OnEvent(...)`, but slow or retryable work needs a stronger operational boundary. FluoShop hands invoice generation, marketplace catalog syncs, and other failure-prone follow-up tasks to `@fluojs/queue` from the event reaction. The event still explains why the work exists, while the queue owns retry, backoff, workload isolation, and dead-letter evidence. The handoff uses an application-owned unique claim store, marks that claim as enqueued only after Queue accepts the job, and releases the claim when enqueue fails so the next duplicate delivery can retry. In this example, `this.reactions` is FluoShop application code, not an `@fluojs/event-bus` or `@fluojs/queue` API.
 
 ```typescript
 import { Inject } from '@fluojs/core';
