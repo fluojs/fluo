@@ -90,11 +90,11 @@ await microservice.listen();
 - `messageRetentionMaxLen`과 `eventRetentionMaxLen`은 고급 opt-in 설정으로 남아 있습니다. 이를 켜면 Redis가 ACK 전 pending live-stream 엔트리를 먼저 trim할 수 있으므로 broker-managed recovery 보장을 일부 포기하는 운영 판단이 됩니다.
 - RabbitMQ 요청-응답은 기본적으로 인스턴스별 response queue를 사용합니다. 공유 reply topology를 의도적으로 운영할 때만 `responseQueue`를 명시적으로 지정하세요.
 - caller-owned broker collaborator는 shutdown 중에도 caller-owned로 유지됩니다. NATS, Kafka, RabbitMQ transport는 subscription/consumer를 분리하고 in-flight 요청을 reject하지만, 애플리케이션이 넘긴 client, producer, consumer, publisher, 외부 connection 객체를 close/disconnect하지 않습니다.
-- `AbortSignal`을 받는 요청-응답 transport는 이미 abort된 send를 publish 전에 reject하고, 나중에 abort된 in-flight send도 reject합니다. `close()`가 시작된 뒤에는 shutdown 중인 lifecycle에 새 작업을 publish하지 않고 `send()`/`emit()`을 reject합니다.
+- `AbortSignal`을 받는 요청-응답 transport는 이미 abort된 send를 publish 전에 reject하고, deferred broker/RPC dispatch 직전 cancellation을 다시 확인하며, 나중에 abort된 in-flight send도 reject합니다. `close()`가 시작된 뒤에는 shutdown 중인 lifecycle에 새 작업을 publish하지 않고 `send()`/`emit()`을 reject하며, 동시 `listen()` 호출은 아직 진행 중인 shutdown 상태를 reset할 수 없습니다.
 - Root `@fluojs/microservices` barrel import와 `TcpMicroserviceTransport` 생성은 `node:net`을 load하지 않습니다. TCP는 `listen()`이 server를 시작하거나 outbound `send()`/`emit()`이 socket을 생성하는 경로에서만 Node networking을 lazy-load합니다. `close()`가 in-flight listen 시도를 기다리는 중 startup이 실패해도 microservice shutdown은 캡처한 listen error를 다시 surface하기 전에 transport cleanup을 시도합니다.
 - TCP는 테스트와 ephemeral listener를 위해 `port: 0`을 허용하고, listen 중에는 OS가 할당한 포트로 outbound `send()`/`emit()`을 라우팅합니다.
-- Platform status snapshot은 transport resource ownership을 보고합니다. TCP와 gRPC는 framework-owned listener/client resource로 보고하고, MQTT는 client를 직접 생성한 경우에만 framework ownership을 보고하며, caller-owned broker collaborator transport는 externally managed로 남습니다.
-- gRPC shutdown은 가능하면 server-level `tryShutdown()`을 사용하고, graceful shutdown을 제공하지 않는 런타임에서만 `forceShutdown()`으로 fallback합니다. Active unary/streaming call의 AbortSignal 취소는 call-level `cancel()` 또는 stream end 경로를 사용하며, stream이 end/error/early return으로 끝나면 abort listener를 제거합니다.
+- Platform status snapshot은 transport resource ownership을 보고합니다. TCP와 internally-created gRPC server는 framework-owned listener/client resource로 보고하고, MQTT는 client를 직접 생성한 경우에만 framework ownership을 보고하며, caller-supplied gRPC server와 caller-owned broker collaborator transport는 externally managed로 남습니다.
+- gRPC shutdown은 transport가 server를 직접 생성한 경우 server-level `tryShutdown()`을 사용하고, graceful shutdown을 제공하지 않는 런타임에서만 `forceShutdown()`으로 fallback합니다. Caller-supplied `GrpcMicroserviceTransportOptions.server` 인스턴스는 `close()` 중에도 caller-owned로 유지되며, fluo는 cached outbound client만 닫고 해당 server는 shutdown하지 않습니다. Active unary/streaming call의 AbortSignal 취소는 call-level `cancel()` 또는 stream end 경로를 사용하며, stream이 end/error/early return으로 끝나면 abort listener를 제거합니다.
 - transport logger를 통해 이벤트 핸들러 실패를 기록하는 경로(`RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `MqttMicroserviceTransport`, gRPC event emit)는 끝까지 logger-driven observability를 유지합니다. transport logger를 주입하지 않으면 fluo는 해당 실패를 raw `console.error` fallback으로 복제하지 않습니다.
 
 ## 공통 패턴
@@ -127,6 +127,7 @@ class FeatureModule {}
 Behavioral contract notes:
 
 - 이 모듈 경로는 기본 `MicroservicesModule.forRoot(...)` 호출과 동일한 `MICROSERVICE_OPTIONS`, `MicroserviceLifecycleService`, `MICROSERVICE` wiring을 그대로 설치합니다.
+- Top-level `MicroservicesModule.forRoot({ global })`은 built-in module visibility를 제어하고, `module.global`은 module customization object를 사용할 때 같은 visibility 선택을 적용합니다.
 - `module.providers`는 내장 런타임 wiring 뒤에 추가 provider를 붙이고, `module.additionalExports`는 기본 export 토큰을 교체하지 않고 확장합니다.
 - `module.global`을 사용하면 등록 범위를 로컬로 제한할 수 있습니다.
 

@@ -237,6 +237,15 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
       }
 
       void Promise.resolve().then(async () => {
+        if (!this.pending.has(requestId)) {
+          return;
+        }
+
+        if (signal?.aborted) {
+          entry.reject(new Error('Redis Streams request aborted before publish.'));
+          return;
+        }
+
         if (this.closing) {
           entry.reject(new Error('Redis Streams microservice transport closed before request dispatch.'));
           return;

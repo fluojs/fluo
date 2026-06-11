@@ -225,6 +225,31 @@ describe('MqttMicroserviceTransport', () => {
     await transport.close();
   });
 
+  it('does not publish when AbortSignal fires before deferred dispatch', async () => {
+    const broker = new InMemoryMqttBroker();
+    const client = new InMemoryMqttClient(broker);
+    const transport = new MqttMicroserviceTransport({
+      client,
+      requestTimeoutMs: 120,
+    });
+
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const pending = transport.send('aborted.deferred', {}, controller.signal);
+    controller.abort();
+
+    await expect(pending).rejects.toThrow('MQTT request aborted.');
+
+    const requestFrames = client.published.filter((entry) => {
+      const frame = JSON.parse(entry.message) as { kind?: string };
+      return frame.kind === 'message';
+    });
+    expect(requestFrames).toHaveLength(0);
+
+    await transport.close();
+  });
+
   it('rejects send() with AbortSignal after publish', async () => {
     const broker = new InMemoryMqttBroker();
     const transport = new MqttMicroserviceTransport({
@@ -287,6 +312,41 @@ describe('MqttMicroserviceTransport', () => {
     await transport.close();
 
     await expect(pending).rejects.toThrow('MQTT microservice transport closed before response.');
+  });
+
+  it('rejects listen() during close() without reopening the shutdown state', async () => {
+    const broker = new InMemoryMqttBroker();
+    const client = new InMemoryMqttClient(broker);
+    let releaseUnsubscribe: (() => void) | undefined;
+    const unsubscribeGate = new Promise<void>((resolve) => {
+      releaseUnsubscribe = resolve;
+    });
+    const originalUnsubscribe = client.unsubscribe.bind(client);
+    client.unsubscribe = (topic, callback) => {
+      originalUnsubscribe(topic, (error) => {
+        if (error) {
+          callback?.(error);
+          return;
+        }
+
+        void unsubscribeGate.then(() => callback?.());
+      });
+    };
+    const transport = new MqttMicroserviceTransport({ client });
+
+    await transport.listen(async () => undefined);
+
+    const closing = transport.close();
+
+    await expect(transport.listen(async () => undefined)).rejects.toThrow(
+      'MqttMicroserviceTransport is closing. Wait for close() to complete before listen().',
+    );
+    await expect(transport.emit('still.closing', {})).rejects.toThrow(
+      'MqttMicroserviceTransport is closing. Wait for close() to complete before emit().',
+    );
+
+    releaseUnsubscribe?.();
+    await closing;
   });
 
   it('unsubscribes already-subscribed topics when a later subscribe fails during listen()', async () => {

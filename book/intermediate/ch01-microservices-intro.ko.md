@@ -113,7 +113,7 @@ export class AppModule {}
 
 ## 1.5 The Philosophy of "No Magic"
 
-편의성에도 불구하고 fluo는 "no magic" 철학을 고수합니다. 모든 컴포넌트는 명시적인 프로바이더입니다. 예를 들어 `MICROSERVICE` 토큰은 클라이언트 프록시를 주입할 때 사용됩니다. 분산 시스템에서 모호함은 비싼 대가를 치르게 합니다. 재시도 동작이나 의존성 생명주기가 프레임워크 마법 뒤에 숨어 있으면 프로세스 간 디버깅은 급격히 어려워집니다. fluo의 명시적 설정은 패턴 해석이 멈추거나 클라이언트 타임아웃이 발생했을 때 유지보수자가 어디를 봐야 하는지 좁혀 줍니다.
+편의성에도 불구하고 fluo는 "no magic" 철학을 고수합니다. 모든 컴포넌트는 명시적인 프로바이더입니다. 예를 들어 `MICROSERVICE` 토큰은 숨겨진 NestJS-style broker bootstrap이나 `ClientProxy` 추상화가 아니라 fluo의 programmatic microservice facade를 노출합니다. 분산 시스템에서 모호함은 비싼 대가를 치르게 합니다. 재시도 동작이나 의존성 생명주기가 프레임워크 마법 뒤에 숨어 있으면 프로세스 간 디버깅은 급격히 어려워집니다. fluo의 명시적 설정은 패턴 해석이 멈추거나 클라이언트 타임아웃이 발생했을 때 유지보수자가 어디를 봐야 하는지 좁혀 줍니다.
 
 ## 1.6 Why Microservices with fluo?
 

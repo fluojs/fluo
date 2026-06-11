@@ -20,6 +20,10 @@ class InMemoryStreamBus implements RedisStreamClientLike {
   private readonly streams = new Map<string, InMemoryStreamEntry[]>();
   private readonly values = new Map<string, string>();
 
+  countStreamEntries(stream: string): number {
+    return (this.streams.get(stream) ?? []).filter((entry) => !entry.deleted).length;
+  }
+
   async xadd(stream: string, fields: Record<string, string>, options?: RedisStreamWriteOptions): Promise<string> {
     const entries = this.streams.get(stream) ?? [];
     const next = (this.streamCounters.get(stream) ?? 0) + 1;
@@ -968,6 +972,25 @@ describe('RedisStreamsMicroserviceTransport', () => {
     await expect(transport.send('aborted.before.publish', {}, controller.signal)).rejects.toThrow(
       'Redis Streams request aborted before publish.',
     );
+
+    await transport.close();
+  });
+
+  it('does not publish when AbortSignal fires before deferred dispatch', async () => {
+    const bus = new InMemoryStreamBus();
+    const { transport } = createTransport(bus, {
+      namespace: 'fluo:test:abort-deferred',
+      requestTimeoutMs: 1_000,
+    });
+
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const pending = transport.send('aborted.deferred', {}, controller.signal);
+    controller.abort();
+
+    await expect(pending).rejects.toThrow('Redis Streams request aborted.');
+    expect(bus.countStreamEntries('fluo:test:abort-deferred:messages')).toBe(0);
 
     await transport.close();
   });

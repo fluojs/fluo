@@ -40,6 +40,7 @@ export interface KafkaMicroserviceTransportOptions {
  * replies without leaking cross-request state through the shared producer/consumer pair.
  */
 export class KafkaMicroserviceTransport implements MicroserviceTransport {
+  private closePromise: Promise<void> | undefined;
   private closing = false;
   private handler: TransportHandler | undefined;
   private listening = false;
@@ -69,7 +70,14 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once all subscriptions are active.
    */
   async listen(handler: TransportHandler): Promise<void> {
-    this.closing = false;
+    if (this.closing) {
+      if (this.closePromise) {
+        throw new Error('KafkaMicroserviceTransport is closing. Wait for close() to complete before listen().');
+      }
+
+      this.closing = false;
+    }
+
     this.handler = handler;
 
     if (this.listening) {
@@ -190,6 +198,15 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
       }
 
       void Promise.resolve().then(async () => {
+        if (!this.pending.has(requestId)) {
+          return;
+        }
+
+        if (signal?.aborted) {
+          entry.reject(new Error('Kafka request aborted before publish.'));
+          return;
+        }
+
         if (this.closing) {
           entry.reject(new Error('Kafka microservice transport closed before request dispatch.'));
           return;
@@ -229,34 +246,47 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once shutdown cleanup completes.
    */
   async close(): Promise<void> {
-    this.closing = true;
-    let closeError: unknown;
-
-    if (this.listenPromise) {
-      await this.listenPromise;
+    if (this.closePromise) {
+      await this.closePromise;
+      return;
     }
 
-    try {
-      if (this.listening) {
-        for (const topic of new Set([this.eventTopic, this.messageTopic, this.responseTopic])) {
-          try {
-            await this.options.consumer.unsubscribe(topic);
-          } catch (error) {
-            closeError ??= error;
+    this.closing = true;
+    this.closePromise = (async () => {
+      let closeError: unknown;
+
+      if (this.listenPromise) {
+        await this.listenPromise;
+      }
+
+      try {
+        if (this.listening) {
+          for (const topic of new Set([this.eventTopic, this.messageTopic, this.responseTopic])) {
+            try {
+              await this.options.consumer.unsubscribe(topic);
+            } catch (error) {
+              closeError ??= error;
+            }
           }
         }
+      } finally {
+        this.handler = undefined;
+        this.listening = false;
+
+        for (const pending of [...this.pending.values()]) {
+          pending.reject(new Error('Kafka microservice transport closed before response.'));
+        }
       }
+
+      if (closeError) {
+        throw closeError;
+      }
+    })();
+
+    try {
+      await this.closePromise;
     } finally {
-      this.handler = undefined;
-      this.listening = false;
-
-      for (const pending of [...this.pending.values()]) {
-        pending.reject(new Error('Kafka microservice transport closed before response.'));
-      }
-    }
-
-    if (closeError) {
-      throw closeError;
+      this.closePromise = undefined;
     }
   }
 

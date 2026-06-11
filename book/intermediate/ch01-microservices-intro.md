@@ -113,7 +113,7 @@ This configuration binds the app to a transport. fluo finds `@MessagePattern` me
 
 ## 1.5 The Philosophy of "No Magic"
 
-Despite its convenience, fluo sticks to a "no magic" philosophy. Every component is an explicit Provider. For example, the `MICROSERVICE` Token is used when injecting a client proxy.
+Despite its convenience, fluo sticks to a "no magic" philosophy. Every component is an explicit Provider. For example, the `MICROSERVICE` Token exposes fluo's programmatic microservice facade rather than a hidden NestJS-style broker bootstrap or `ClientProxy` abstraction.
 
 Ambiguity is expensive in distributed systems. If retry behavior or dependency lifecycles are hidden behind framework magic, debugging across processes becomes sharply harder. fluo's explicit configuration narrows where maintainers need to look when pattern resolution stops or client timeouts happen.
 
