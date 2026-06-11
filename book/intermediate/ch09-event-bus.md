@@ -186,11 +186,11 @@ Domain events need discipline. FluoShop follows a few practical rules. First, th
 
 Redis fan-out means more than "send the event somewhere else." Each subscribed process can receive the same business fact, and a reconnecting or retried publisher can make duplicate delivery possible at the application boundary. FluoShop treats handler idempotency as part of the event contract. A handler that sends a receipt, writes an audit row, or updates a projection should use a stable event id or business key, record the reaction it has already applied, and make repeated delivery converge to the same state.
 
-For example, an order receipt handler can key its reaction by `OrderPlacedEvent.eventId` plus the reaction name `receipt-email`. If the marker already exists, the handler returns. If not, it records the marker and performs the side effect. The exact storage choice belongs to the application, but the rule belongs to the domain-event design.
+For example, an order receipt handler can key its reaction by the business key `OrderPlacedEvent.orderId` plus the reaction name `receipt-email`. If the marker already exists, the handler returns. If not, it records the marker and performs the side effect. The exact storage choice belongs to the application, but the rule belongs to the domain-event design.
 
 ### 9.7.2 Hand slow reactions to Queue
 
-An event handler should not become a hidden worker. Fast local reactions are fine inside `@OnEvent(...)`, but slow or retryable work needs a stronger operational boundary. FluoShop hands invoice generation, marketplace catalog syncs, and other failure-prone follow-up tasks to `@fluojs/queue` from the event reaction. The event still explains why the work exists, while the queue owns retry, backoff, workload isolation, and dead-letter evidence.
+An event handler should not become a hidden worker. Fast local reactions are fine inside `@OnEvent(...)`, but slow or retryable work needs a stronger operational boundary. FluoShop hands invoice generation, marketplace catalog syncs, and other failure-prone follow-up tasks to `@fluojs/queue` from the event reaction. The event still explains why the work exists, while the queue owns retry, backoff, workload isolation, and dead-letter evidence. The handoff uses an application-owned unique claim, marks that claim as enqueued only after Queue accepts the job, and releases the claim when enqueue fails so the next duplicate delivery can retry.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -203,12 +203,19 @@ export class BillingEventsHandler {
 
   @OnEvent(OrderPlacedEvent)
   async enqueueInvoice(event: OrderPlacedEvent) {
-    if (await this.reactions.hasProcessed(event.eventId, 'invoice')) {
+    const handoffKey = `${event.orderId}:invoice`;
+
+    if (!(await this.reactions.claimPending(handoffKey))) {
       return;
     }
 
-    await this.reactions.markProcessed(event.eventId, 'invoice');
-    await this.queue.enqueue(new GenerateInvoiceJob(event.orderId));
+    try {
+      await this.queue.enqueue(new GenerateInvoiceJob(event.orderId));
+      await this.reactions.markEnqueued(handoffKey);
+    } catch (error) {
+      await this.reactions.releasePending(handoffKey);
+      throw error;
+    }
   }
 }
 ```
