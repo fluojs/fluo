@@ -40,6 +40,7 @@ const contractGateTriggers = new Set([
   'docs/contracts/deployment.ko.md',
   'docs/contracts/nestjs-parity-gaps.md',
   'docs/contracts/nestjs-parity-gaps.ko.md',
+  // Includes Bun fetch-style lifecycle and metadata migration boundaries.
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
   'docs/architecture/transactions.md',
