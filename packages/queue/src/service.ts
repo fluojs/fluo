@@ -25,7 +25,7 @@ import {
   type QueueLifecycleState,
   type QueuePlatformStatusSnapshot,
 } from './status.js';
-import { QUEUE_OPTIONS } from './tokens.js';
+import { QUEUE, QUEUE_OPTIONS } from './tokens.js';
 import { discoverQueueWorkerDescriptors } from './worker-discovery.js';
 import type {
   NormalizedQueueModuleOptions,
@@ -180,6 +180,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   private redisClient: QueueRedisClient | undefined;
   private startPromise: Promise<void> | undefined;
   private shutdownPromise: Promise<void> | undefined;
+  private startupFailureRollbackPromise: Promise<void> | undefined;
 
   constructor(
     private readonly options: NormalizedQueueModuleOptions,
@@ -288,7 +289,12 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     this.redisClient = redis;
     this.descriptorsByJobType.clear();
 
-    for (const [jobType, descriptor] of discoverQueueWorkerDescriptors(this.compiledModules, this.options, this.logger)) {
+    for (const [jobType, descriptor] of discoverQueueWorkerDescriptors(
+      this.compiledModules,
+      this.options,
+      this.logger,
+      (compiledModule) => this.shouldDiscoverWorkersInModule(compiledModule),
+    )) {
       this.descriptorsByJobType.set(jobType, descriptor);
     }
 
@@ -297,6 +303,14 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       this.lifecycleState = 'started';
       this.scheduleReadyWorkers();
     }
+  }
+
+  private shouldDiscoverWorkersInModule(compiledModule: CompiledModule): boolean {
+    if (this.options.global) {
+      return true;
+    }
+
+    return compiledModule.accessibleTokens.has(QueueLifecycleService) || compiledModule.accessibleTokens.has(QUEUE);
   }
 
   private async handleStartupFailure(): Promise<void> {
@@ -444,7 +458,15 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       }
 
       for (const { descriptor, worker } of workers) {
+        if (this.lifecycleState !== 'started') {
+          break;
+        }
+
         this.runWorker(descriptor, worker);
+
+        if (this.lifecycleState !== 'started') {
+          break;
+        }
       }
     }).catch((error: unknown) => {
       if (this.lifecycleState !== 'started') {
@@ -462,6 +484,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
         error,
         'QueueLifecycleService',
       );
+      this.rollbackAfterWorkerStartupFailure();
     });
   }
 
@@ -540,6 +563,23 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       error,
       'QueueLifecycleService',
     );
+    this.rollbackAfterWorkerStartupFailure();
+  }
+
+  private rollbackAfterWorkerStartupFailure(): void {
+    if (!this.startupFailureRollbackPromise) {
+      this.startupFailureRollbackPromise = this.closeInitializedResources()
+        .then(() => {
+          this.redisClient = undefined;
+        })
+        .catch((rollbackError: unknown) => {
+          this.logger.error(
+            'Failed to roll back queue resources after worker startup failure.',
+            rollbackError,
+            'QueueLifecycleService',
+          );
+        });
+    }
   }
 
   private toErrorMessage(error: unknown): string {
@@ -635,6 +675,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
 
     this.shutdownPromise = (async () => {
       await this.waitForInFlightStartup();
+      await this.waitForStartupFailureRollback();
 
       await this.closeInitializedResources();
       await this.deadLetterManager.drainPendingWrites();
@@ -644,6 +685,15 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     })();
 
     await this.shutdownPromise;
+  }
+
+  private async waitForStartupFailureRollback(): Promise<void> {
+    if (!this.startupFailureRollbackPromise) {
+      return;
+    }
+
+    await this.startupFailureRollbackPromise;
+    this.startupFailureRollbackPromise = undefined;
   }
 
   private async waitForInFlightStartup(): Promise<void> {
