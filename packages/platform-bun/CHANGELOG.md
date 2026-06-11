@@ -1,5 +1,7 @@
 # @fluojs/platform-bun
 
+## [Unreleased]
+
 ## 1.0.6
 
 ### Patch Changes
