@@ -4,9 +4,9 @@ type RedisConnectionOptions = Omit<RedisOptions, 'lazyConnect'>;
 
 /** Lifecycle timeout controls for Redis connections owned by Fluo. */
 export interface RedisLifecycleOptions {
-  /** Maximum time to wait for bootstrap `connect()` before failing startup. Defaults to `10_000`. */
+  /** Maximum finite non-negative time to wait for bootstrap `connect()` before failing startup. Defaults to `10_000`; `0` disables the timeout. */
   connectTimeoutMs?: number;
-  /** Maximum time to wait for graceful shutdown `quit()` before forcing `disconnect()`. Defaults to `10_000`. */
+  /** Maximum finite non-negative time to wait for graceful shutdown `quit()` before forcing `disconnect()`. Defaults to `10_000`; `0` disables the timeout. */
   quitTimeoutMs?: number;
 }
 

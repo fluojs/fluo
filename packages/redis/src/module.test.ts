@@ -14,15 +14,41 @@ interface MockRedisInstance {
   del(key: string): Promise<number>;
 }
 
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve(value: T): void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolveDeferred: ((value: T) => void) | undefined;
+  const promise = new Promise<T>((resolve) => {
+    resolveDeferred = resolve;
+  });
+
+  return {
+    promise,
+    resolve(value) {
+      if (resolveDeferred === undefined) {
+        throw new Error('Deferred resolver was not initialized.');
+      }
+
+      resolveDeferred(value);
+    },
+  };
+}
+
 const mockRedisState = vi.hoisted(() => ({
   connectError: undefined as Error | undefined,
+  connectDeferred: undefined as Deferred<void> | undefined,
   connectHangs: false,
   delError: undefined as Error | undefined,
   disconnectLeavesOpen: false,
   events: [] as string[],
   getError: undefined as Error | undefined,
   instances: [] as MockRedisInstance[],
+  disconnectStatus: undefined as string | undefined,
   quitError: undefined as Error | undefined,
+  quitDeferred: undefined as Deferred<'OK'> | undefined,
   quitHangs: false,
   setError: undefined as Error | undefined,
   setCalls: [] as Array<{ args: unknown[]; key: string; value: string }>,
@@ -47,6 +73,10 @@ vi.mock('ioredis', () => ({
         return;
       }
 
+      if (mockRedisState.connectDeferred) {
+        await mockRedisState.connectDeferred.promise;
+      }
+
       if (mockRedisState.connectError) {
         throw mockRedisState.connectError;
       }
@@ -56,7 +86,9 @@ vi.mock('ioredis', () => ({
 
     disconnect(): void {
       mockRedisState.events.push('disconnect');
-      if (!mockRedisState.disconnectLeavesOpen) {
+      if (mockRedisState.disconnectStatus !== undefined) {
+        this.status = mockRedisState.disconnectStatus;
+      } else if (!mockRedisState.disconnectLeavesOpen) {
         this.status = 'end';
       }
     }
@@ -67,6 +99,12 @@ vi.mock('ioredis', () => ({
       if (mockRedisState.quitHangs) {
         await new Promise(() => {});
         return 'OK';
+      }
+
+      if (mockRedisState.quitDeferred) {
+        const result = await mockRedisState.quitDeferred.promise;
+        this.status = 'end';
+        return result;
       }
 
       if (mockRedisState.quitError) {
@@ -119,13 +157,16 @@ import {
 describe('@fluojs/redis', () => {
   beforeEach(() => {
     mockRedisState.connectError = undefined;
+    mockRedisState.connectDeferred = undefined;
     mockRedisState.connectHangs = false;
     mockRedisState.delError = undefined;
     mockRedisState.disconnectLeavesOpen = false;
     mockRedisState.events.length = 0;
     mockRedisState.getError = undefined;
     mockRedisState.instances.length = 0;
+    mockRedisState.disconnectStatus = undefined;
     mockRedisState.quitError = undefined;
+    mockRedisState.quitDeferred = undefined;
     mockRedisState.quitHangs = false;
     mockRedisState.setError = undefined;
     mockRedisState.setCalls.length = 0;
@@ -146,6 +187,20 @@ describe('@fluojs/redis', () => {
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('connect failed');
 
     expect(mockRedisState.events).toEqual(['connect', 'disconnect']);
+  });
+
+  it('fails bootstrap when a named client connect throws and disconnects that wait-state client', async () => {
+    mockRedisState.connectError = new Error('named connect failed');
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [RedisModule.forRoot({ name: 'cache', host: '127.0.0.1', port: 6380 })],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('named connect failed');
+
+    expect(mockRedisState.events).toEqual(['connect', 'disconnect']);
+    expect(mockRedisState.instances[0]?.status).toBe('end');
   });
 
   it('registers a global Redis client, connects on bootstrap, and quits on shutdown', async () => {
@@ -226,6 +281,69 @@ describe('@fluojs/redis', () => {
     expect(mockRedisState.instances[0]?.status).toBe('end');
   });
 
+  it('fails bootstrap when a named lifecycle-owned connect exceeds the configured timeout', async () => {
+    vi.useFakeTimers();
+    mockRedisState.connectHangs = true;
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        RedisModule.forRoot({
+          host: '127.0.0.1',
+          lifecycle: { connectTimeoutMs: 25 },
+          name: 'cache',
+          port: 6380,
+        }),
+      ],
+    });
+
+    const bootstrapPromise = bootstrapApplication({ rootModule: AppModule });
+    const bootstrapAssertion = expect(bootstrapPromise).rejects.toThrow('Redis client cache connect timed out after 25ms.');
+    await vi.advanceTimersByTimeAsync(25);
+
+    await bootstrapAssertion;
+    expect(mockRedisState.events).toEqual(['connect', 'disconnect']);
+    expect(mockRedisState.instances[0]?.status).toBe('end');
+  });
+
+  it('preserves connect timeout sentinel 0 for intentional unbounded waits', async () => {
+    vi.useFakeTimers();
+    const connectDeferred = createDeferred<void>();
+    mockRedisState.connectDeferred = connectDeferred;
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        RedisModule.forRoot({
+          host: '127.0.0.1',
+          lifecycle: { connectTimeoutMs: 0 },
+          port: 6379,
+        }),
+      ],
+    });
+
+    let bootstrapSettled = false;
+    const bootstrapPromise = bootstrapApplication({ rootModule: AppModule });
+    bootstrapPromise.then(
+      () => {
+        bootstrapSettled = true;
+      },
+      () => {
+        bootstrapSettled = true;
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(bootstrapSettled).toBe(false);
+
+    connectDeferred.resolve(undefined);
+    const app = await bootstrapPromise;
+
+    expect(mockRedisState.events).toEqual(['connect']);
+
+    await app.close();
+  });
+
   it('uses global visibility only for unnamed default registrations', () => {
     const defaultModule = RedisModule.forRoot({ host: '127.0.0.1', port: 6379 });
     const localDefaultModule = RedisModule.forRoot({ global: false, host: '127.0.0.1', port: 6379 });
@@ -242,10 +360,17 @@ describe('@fluojs/redis', () => {
     );
   });
 
-  it('does not forward module-only name and global fields to ioredis', async () => {
+  it('does not forward module-only name, global, and lifecycle fields to ioredis', async () => {
     class AppModule {}
     defineModule(AppModule, {
-      imports: [RedisModule.forRoot({ name: 'cache', host: '127.0.0.1', port: 6380 })],
+      imports: [
+        RedisModule.forRoot({
+          name: 'cache',
+          host: '127.0.0.1',
+          lifecycle: { connectTimeoutMs: 25, quitTimeoutMs: 30 },
+          port: 6380,
+        }),
+      ],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -257,8 +382,22 @@ describe('@fluojs/redis', () => {
     });
     expect(mockRedisState.instances[0]?.options).not.toHaveProperty('name');
     expect(mockRedisState.instances[0]?.options).not.toHaveProperty('global');
+    expect(mockRedisState.instances[0]?.options).not.toHaveProperty('lifecycle');
 
     await app.close();
+  });
+
+  it.each([
+    ['connectTimeoutMs', -1],
+    ['connectTimeoutMs', Number.NaN],
+    ['connectTimeoutMs', Number.POSITIVE_INFINITY],
+    ['quitTimeoutMs', -1],
+    ['quitTimeoutMs', Number.NaN],
+    ['quitTimeoutMs', Number.POSITIVE_INFINITY],
+  ] as const)('rejects invalid lifecycle.%s value %s', (fieldName, value) => {
+    expect(() => RedisModule.forRoot({ host: '127.0.0.1', lifecycle: { [fieldName]: value }, port: 6379 })).toThrow(
+      `Redis lifecycle.${fieldName} must be a finite non-negative number.`,
+    );
   });
 
   it('registers named Redis clients without changing the default aliases', async () => {
@@ -358,6 +497,22 @@ describe('@fluojs/redis', () => {
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
   });
 
+  it('does not rethrow quit failures after fallback disconnect reaches a close transition state', async () => {
+    mockRedisState.disconnectStatus = 'close';
+    mockRedisState.quitError = new Error('quit failed');
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    await expect(app.close()).resolves.toBeUndefined();
+    expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
+    expect(mockRedisState.instances[0]?.status).toBe('close');
+  });
+
   it('falls back to disconnect for each named client when quit fails after bootstrap', async () => {
     mockRedisState.quitError = new Error('quit failed');
 
@@ -423,6 +578,43 @@ describe('@fluojs/redis', () => {
 
     await closeAssertion;
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
+  });
+
+  it('preserves quit timeout sentinel 0 for intentional unbounded waits', async () => {
+    vi.useFakeTimers();
+    const quitDeferred = createDeferred<'OK'>();
+    mockRedisState.quitDeferred = quitDeferred;
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        RedisModule.forRoot({
+          host: '127.0.0.1',
+          lifecycle: { quitTimeoutMs: 0 },
+          port: 6379,
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    let closeSettled = false;
+    const closePromise = app.close();
+    closePromise.then(
+      () => {
+        closeSettled = true;
+      },
+      () => {
+        closeSettled = true;
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(closeSettled).toBe(false);
+
+    quitDeferred.resolve('OK');
+    await closePromise;
+
+    expect(mockRedisState.events).toEqual(['connect', 'quit']);
   });
 
   it('rethrows quit failures when disconnect does not close the client', async () => {
