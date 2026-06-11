@@ -1,9 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
 import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata } from '@fluojs/core/internal';
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
-import { bootstrapApplication, defineModule, type ApplicationLogger } from '@fluojs/runtime';
+import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Cron, Interval, Timeout } from './decorators.js';
 import { CronExpression } from './expressions.js';
@@ -11,7 +10,7 @@ import { getCronTaskMetadataEntries, getSchedulingTaskMetadataEntries } from './
 import { CronModule, normalizeCronModuleOptions } from './module.js';
 import type { CronLifecycleService } from './service.js';
 import { SCHEDULING_REGISTRY } from './tokens.js';
-import type { CronScheduleOptions, CronScheduledJob, CronScheduler, SchedulingRegistry } from './types.js';
+import type { CronScheduledJob, CronScheduleOptions, CronScheduler, SchedulingRegistry } from './types.js';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -369,6 +368,7 @@ describe('@fluojs/cron', () => {
     expect(() => {
       class InvalidIntervalTask {
         @Interval(1_000)
+        // biome-ignore lint/correctness/noUnusedPrivateClassMembers: private decorator targets are the validation fixture under test.
         #run() {}
       }
 
@@ -378,6 +378,7 @@ describe('@fluojs/cron', () => {
     expect(() => {
       class InvalidTimeoutTask {
         @Timeout(1_000)
+        // biome-ignore lint/correctness/noUnusedPrivateClassMembers: private decorator targets are the validation fixture under test.
         #run() {}
       }
 
@@ -1802,6 +1803,8 @@ describe('@fluojs/cron', () => {
   });
 
   it('exposes scheduling registry runtime controls and rejects updateCronExpression for non-cron tasks', async () => {
+    vi.useFakeTimers();
+
     const scheduled = createManualScheduler();
     const events: string[] = [];
 
@@ -1826,6 +1829,24 @@ describe('@fluojs/cron', () => {
     registry.addInterval('dynamic-interval', 1_000, () => {
       events.push('interval');
     });
+    await vi.advanceTimersByTimeAsync(999);
+    expect(events).toEqual([]);
+
+    registry.updateIntervalMs('dynamic-interval', 250);
+    expect(registry.get('dynamic-interval')?.ms).toBe(250);
+
+    expect(() => registry.updateIntervalMs('dynamic-interval', 0)).toThrow(/ms must be a positive integer/i);
+    expect(registry.get('dynamic-interval')?.ms).toBe(250);
+
+    await vi.advanceTimersByTimeAsync(249);
+    expect(events).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(events).toEqual(['interval']);
+
+    await vi.advanceTimersByTimeAsync(250);
+    expect(events).toEqual(['interval', 'interval']);
+
     registry.addTimeout('dynamic-timeout', 5_000, () => {
       events.push('timeout');
     });
@@ -1839,6 +1860,7 @@ describe('@fluojs/cron', () => {
     expect(() => registry.updateCronExpression('dynamic-interval', CronExpression.EVERY_10_SECONDS)).toThrow(
       /supports only cron tasks/i,
     );
+    expect(() => registry.updateIntervalMs('dynamic-cron', 1_000)).toThrow(/supports only interval tasks/i);
 
     expect(registry.disable('dynamic-cron')).toBe(true);
     expect(registry.get('dynamic-cron')?.enabled).toBe(false);
@@ -1849,6 +1871,37 @@ describe('@fluojs/cron', () => {
     expect(registry.remove('dynamic-timeout')).toBe(true);
     expect(registry.get('dynamic-timeout')).toBeUndefined();
 
+    await closeApplication(app);
+  });
+
+  it('rolls back interval reschedules when the next handle cannot be created', async () => {
+    vi.useFakeTimers();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot()],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+    const events: string[] = [];
+
+    registry.addInterval('dynamic-interval', 1_000, () => {
+      events.push('interval');
+    });
+
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    setIntervalSpy.mockImplementationOnce(() => {
+      throw new Error('interval scheduler rejected cadence');
+    });
+
+    expect(() => registry.updateIntervalMs('dynamic-interval', 250)).toThrow(/scheduler rejected cadence/i);
+    expect(registry.get('dynamic-interval')?.ms).toBe(1_000);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(events).toEqual(['interval']);
+
+    setIntervalSpy.mockRestore();
     await closeApplication(app);
   });
 

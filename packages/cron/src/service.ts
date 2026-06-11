@@ -1,6 +1,5 @@
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
-import { Cron as CronValidator } from 'croner';
 import type {
   ApplicationLogger,
   CompiledModule,
@@ -9,6 +8,7 @@ import type {
   OnModuleDestroy,
 } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
+import { Cron as CronValidator } from 'croner';
 
 import { CronDistributedLockManager } from './distributed-lock-manager.js';
 import { createCronPlatformStatusSnapshot } from './status.js';
@@ -343,6 +343,49 @@ export class CronLifecycleService
       }
     } catch (error) {
       task.descriptor.expression = previousExpression;
+      task.scheduledHandle = previousHandle;
+      throw error;
+    }
+  }
+
+  /**
+   * Replaces the millisecond cadence of one existing interval task.
+   *
+   * @param name Name of the interval task to update.
+   * @param ms New positive interval in milliseconds.
+   */
+  updateIntervalMs(name: string, ms: number): void {
+    assertValidMs(ms, 'scheduling registry');
+
+    const task = this.tasks.get(name);
+
+    if (!task) {
+      throw new Error(`Scheduling task "${name}" does not exist.`);
+    }
+
+    if (task.descriptor.kind !== 'interval') {
+      throw new Error(`updateIntervalMs() supports only interval tasks. Received ${task.descriptor.kind} task "${name}".`);
+    }
+
+    if (!task.enabled || !this.started) {
+      task.descriptor.ms = ms;
+      return;
+    }
+
+    const previousMs = task.descriptor.ms;
+    const previousHandle = task.scheduledHandle;
+
+    task.descriptor.ms = ms;
+
+    try {
+      const nextHandle = this.createScheduledHandle(task);
+      task.scheduledHandle = nextHandle;
+
+      if (previousHandle) {
+        this.stopScheduledHandle(previousHandle);
+      }
+    } catch (error) {
+      task.descriptor.ms = previousMs;
       task.scheduledHandle = previousHandle;
       throw error;
     }

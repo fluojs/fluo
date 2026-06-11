@@ -139,10 +139,14 @@ export class CampaignWindowService {
       await this.campaigns.closeFlashSale();
     });
   }
+
+  speedUpInventoryPolling() {
+    this.registry.updateIntervalMs('inventory.poll', 5_000);
+  }
 }
 ```
 
-This feature is powerful, so it should be used with care. A dynamic schedule is the right fit when business timing truly changes at runtime. It does not mean ordinary static maintenance tasks should be hidden behind registry calls. The registry is descriptor-based: `get()` and `getAll()` describe tasks through `SchedulingTaskDescriptor` values instead of returning live scheduler handles. That keeps runtime controls explicit while preventing application code from depending on scheduler-engine internals.
+This feature is powerful, so it should be used with care. A dynamic schedule is the right fit when business timing truly changes at runtime. It does not mean ordinary static maintenance tasks should be hidden behind registry calls. The registry is descriptor-based: `get()` and `getAll()` describe tasks through `SchedulingTaskDescriptor` values instead of returning live scheduler handles. `updateCronExpression()` changes cron timing, and `updateIntervalMs()` changes fixed-interval cadence with the same rollback-safe reschedule contract: if the scheduler rejects the new cadence, the previous descriptor and scheduled handle stay active. That keeps runtime controls explicit while preventing application code from depending on scheduler-engine internals.
 
 ## 12.7 Bounded shutdown
 
