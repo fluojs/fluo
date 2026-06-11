@@ -99,6 +99,7 @@ Behavioral contract 메모:
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
 - send는 bootstrap이 transport를 `ready`로 표시한 뒤에만 허용됩니다. bootstrap 전, startup 중, bootstrap 실패 후, shutdown 중, shutdown 후 시도는 전달 전에 거부됩니다.
 - 서비스가 shutdown 중이거나 이미 stopped 상태라면 cached transport를 재사용하지 않고 send를 거부합니다.
+- `DiscordService.createPlatformStatusSnapshot()`은 `createDiscordPlatformStatusSnapshot(...)`과 같은 status 계약을 노출합니다. 여기에는 lifecycle/readiness, health, transport kind와 ownership, 기본 thread 구성, bootstrap verification 상태, notifications channel dependency details가 포함되어, 호출자가 내부 옵션에 접근하지 않고도 Discord wiring을 관찰할 수 있습니다.
 - 빈 `defaultThreadId`와 `notifications.channel` 값은 trim 후 무시됩니다. notifications channel은 기본적으로 `discord`입니다.
 - 이 패키지는 절대로 `process.env`를 직접 읽지 않습니다. 모든 설정은 명시적인 옵션 또는 DI를 통해 들어와야 합니다.
 
@@ -191,6 +192,10 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `DiscordModuleOptions`
 - `DiscordAsyncModuleOptions`
 - `DiscordService`
+- `DiscordService.send(message, options)`
+- `DiscordService.sendMany(messages, options)`
+- `DiscordService.sendNotification(notification, options)`
+- `DiscordService.createPlatformStatusSnapshot()`
 - `DiscordChannel`
 - `DISCORD`
 - `DISCORD_CHANNEL`
@@ -227,6 +232,7 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 ### 상태 및 에러
 
+- `DiscordService.createPlatformStatusSnapshot()`
 - `createDiscordPlatformStatusSnapshot(...)`
 - `DiscordLifecycleState`
 - `DiscordPlatformStatusSnapshot`
