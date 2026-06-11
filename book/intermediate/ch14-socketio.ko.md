@@ -11,6 +11,7 @@
 - `SocketIoRoomService`를 사용해 room 참여와 브로드캐스트를 분리하는 구조를 설명합니다.
 - namespace와 message guard가 실시간 보안 경계를 어떻게 세분화하는지 분석합니다.
 - raw `Server` 접근과 Bun engine 지원이 어떤 확장 지점을 제공하는지 정리합니다.
+- Socket.IO handler return value가 왜 무시되는지, 언제 ACK callback 또는 raw `SOCKETIO_SERVER` emit을 사용해야 하는지 설명합니다.
 - support chat 같은 다중 room 흐름을 테스트 가능하게 유지하는 방법을 설명합니다.
 
 ## Prerequisites
@@ -142,6 +143,20 @@ export class ScalingService {
 
 이 경계는 fluo가 decorator-based surface를 제공하면서도, 하부 라이브러리의 확장 지점을 막지 않도록 합니다. 평소에는 fluo의 선언적 gateway를 쓰고, 운영상 필요한 예외만 raw server 경계로 모을 수 있습니다.
 
+Handler return value는 reply channel이 아닙니다. fluo는 thrown error를 로깅하고 handler ordering을 결정적으로 유지하기 위해 Socket.IO gateway handler를 await하지만, 반환값은 무시합니다. NestJS `@SubscribeMessage()` handler가 `return { ... }`로 ACK payload를 보내던 경우에는 acknowledgement callback을 positional argument로 받고 명시적으로 호출하세요. Native Socket.IO fan-out, `.volatile`, 고급 ACK orchestration은 `SOCKETIO_SERVER`를 주입하는 서비스에 둡니다.
+
+```typescript
+@OnMessage('ticket_status')
+handleTicketStatus(
+  payload: { ticketId: string },
+  _socket: Socket,
+  _request: SocketIoHandshakeRequest,
+  ack?: (response: { status: string; ticketId: string }) => void,
+) {
+  ack?.({ status: 'open', ticketId: payload.ticketId });
+}
+```
+
 ## 14.6 Bun engine details
 
 fluo는 선택한 HTTP adapter 계약을 통해 Bun의 고성능 WebSocket 구현을 지원합니다. Socket.IO는 보통 Node.js에서 `ws` 패키지를 사용하지만, Bun에서는 활성 platform adapter가 Socket.IO adapter에 필요한 fetch-style realtime binding을 제공할 때 `@socket.io/bun-engine`을 사용할 수 있습니다. 따라서 FluoShop은 runtime auto-switching에 의존하지 말고 Bun 호환 platform adapter를 명시적으로 선택해야 합니다. 이 방식은 realtime boundary를 감사 가능한 상태로 유지하면서도 표준 Node.js 프로세스보다 낮은 메모리 오버헤드로 많은 동시 지원 채팅을 처리할 수 있게 합니다.
@@ -216,8 +231,8 @@ fluo gateway는 단순한 클래스이므로 테스트하기 쉽습니다. `Sock
 ```typescript
 describe('SupportChatGateway', () => {
   it('올바른 티켓 room에 참여해야 합니다', () => {
-    const mockRoomService = { joinRoom: vi.fn() };
-    const gateway = new SupportChatGateway(mockRoomService as any);
+    const mockRoomService: Pick<SocketIoRoomService, 'joinRoom'> = { joinRoom: vi.fn() };
+    const gateway = new SupportChatGateway(mockRoomService);
     
     gateway.handleJoin({ ticketId: '123' }, { id: 'socket_abc' });
     

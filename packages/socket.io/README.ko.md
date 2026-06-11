@@ -77,6 +77,34 @@ class MyService {
 }
 ```
 
+Raw server 접근은 좁게 유지하고, 공유 room 계약이 의도적으로 감싸지 않는 Socket.IO 전용 의미론에 사용하세요. 예를 들어 native multi-room emit이나 volatile delivery는 raw server 경계에 둡니다:
+
+```ts
+@Inject(SOCKETIO_SERVER)
+class SupportBroadcasts {
+  constructor(private readonly io: Server) {}
+
+  broadcastUrgent(message: string) {
+    this.io.of('/support').to(['ticket:active', 'staff:updates']).emit('announcement', { message });
+  }
+
+  sendTyping(ticketId: string, userId: string) {
+    this.io.of('/support').volatile.to(`ticket:${ticketId}`).emit('typing', { userId });
+  }
+}
+```
+
+### Handler return value와 ACK reply
+
+Socket.IO gateway handler는 공유 `@fluojs/websockets` positional handler 모델인 `(payload, socket, request, acknowledgement)`를 사용합니다. 반환값은 오류 격리와 순서를 위해 await되지만 무시됩니다. fluo는 handler 반환값을 암묵적인 Socket.IO emit 또는 ACK reply로 변환하지 않습니다. NestJS `@SubscribeMessage()` handler가 반환값으로 ACK payload를 보내던 경우에는 `acknowledgement` callback을 명시적으로 호출하거나 `SOCKETIO_SERVER`를 주입해 raw server 경계에서 emit하도록 재작성하세요.
+
+```ts
+@OnMessage('ping')
+handlePing(payload: unknown, _socket: Socket, _request: SocketIoHandshakeRequest, ack?: (response: unknown) => void) {
+  ack?.({ event: 'pong', payload });
+}
+```
+
 ### auth guard, 안전한 CORS 기본값, bounded payload
 `SocketIoModule.forRoot(...)`로 namespace/message 인증을 명시하고, CORS를 deny-by-default로 유지하며, 인바운드 Engine.IO payload 크기를 제한할 수 있습니다.
 
@@ -124,15 +152,15 @@ Socket.IO 등록은 소유 모듈의 import 경로에서 구성하여 namespace/
 
 ## 공개 API 개요
 
-- `SocketIoModule.forRoot(options)`
+- `SocketIoModule.forRoot(options)`: Socket.IO 통합의 기본 모듈입니다.
 - `SocketIoModule.forRoot({ global, auth, cors, engine, ... })`: provider visibility, namespace/message guard, 명시적 CORS, Engine.IO payload bound를 구성합니다.
-- `SOCKETIO_SERVER`
-- `SOCKETIO_ROOM_SERVICE`
+- `SOCKETIO_SERVER`: raw Socket.IO `Server`를 주입하기 위한 토큰입니다.
+- `SOCKETIO_ROOM_SERVICE`: `SocketIoRoomService`를 주입하기 위한 토큰입니다.
 - `SocketIoRoomService`: 공유 room 계약에 Socket.IO namespace-aware `joinRoom`, `leaveRoom`, `broadcastToRoom`, `getRooms` helper를 더한 타입입니다.
 - `SocketIoLifecycleService`: server와 room-service token 뒤에서 동작하는 lifecycle 기반 구현입니다. 애플리케이션 코드는 일반적으로 `SOCKETIO_SERVER` 또는 `SOCKETIO_ROOM_SERVICE`를 주입하세요.
 - 타입: `SocketIoModuleOptions`, `SocketIoHandshakeRequest`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
 
-`SocketIoModuleOptions`는 `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, `transports`를 포함합니다. `global`의 기본값은 `true`이므로 `SOCKETIO_SERVER`와 `SOCKETIO_ROOM_SERVICE`가 앱 전체에서 보입니다. module-local provider visibility가 필요하면 `false`로 설정하세요. 지원되는 server-backed runtime adapter가 필요하며, unsupported/noop adapter는 bootstrap 중 빠르게 실패합니다.
+`SocketIoModuleOptions`는 `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, `transports`를 포함합니다. `global`의 기본값은 `true`이므로 `SOCKETIO_SERVER`와 `SOCKETIO_ROOM_SERVICE`가 앱 전체에서 보입니다. module-local provider visibility가 필요하면 `false`로 설정하세요. 지원되는 Node.js server-backed runtime adapter 또는 공식 Bun engine host가 필요하며, unsupported/noop adapter는 bootstrap 중 빠르게 실패합니다.
 
 ## 지원 플랫폼
 

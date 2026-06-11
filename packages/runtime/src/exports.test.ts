@@ -1,11 +1,10 @@
 import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
-
-import * as runtime from './index.js';
-import * as runtimeInternal from './internal.js';
 import * as runtimeInternalHttpAdapter from './adapters/internal-http-adapter.js';
 import * as runtimeInternalRequestResponseFactory from './adapters/internal-request-response-factory.js';
+import * as runtime from './index.js';
+import * as runtimeInternal from './internal.js';
 import * as runtimeNode from './node.js';
 import * as runtimeWeb from './web.js';
 
@@ -39,7 +38,7 @@ describe('runtime export boundaries', () => {
     expect(runtime).not.toHaveProperty('TerminusModule');
   });
 
-  it('keeps internal root focused on wiring tokens', () => {
+  it('keeps internal root focused on wiring tokens and runtime-owned metadata seams', () => {
     expect(Object.keys(runtimeInternal).sort()).toEqual([
       'APPLICATION_LOGGER',
       'BOOTSTRAP_READY_SIGNAL',
@@ -48,6 +47,7 @@ describe('runtime export boundaries', () => {
       'PLATFORM_SHELL',
       'RUNTIME_CLEANUP_REGISTRATION',
       'RUNTIME_CONTAINER',
+      'getRuntimeClassDiMetadata',
     ]);
   });
 

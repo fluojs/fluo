@@ -1,13 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-import { describe, expect, expectTypeOf, it } from 'vitest';
-
 import type { WebSocketRoomService } from '@fluojs/websockets';
-
-import * as socketIo from './index.js';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { SocketIoHandshakeRequest as RootSocketIoHandshakeRequest } from './index.js';
+import * as socketIo from './index.js';
 import type {
   SocketIoConnectionGuardContext,
   SocketIoHandshakeRequest,
@@ -22,6 +19,14 @@ describe('@fluojs/socket.io public surface', () => {
     const adapterSource = readFileSync(resolve(sourceDir, 'adapter.ts'), 'utf8');
 
     expect(adapterSource).not.toMatch(/^import\s+\{[^}]*BunEngineServer[^}]*\}\s+from\s+['"]@socket\.io\/bun-engine['"];$/m);
+  });
+
+  it('keeps Node async context loading deferred until gateway invocation', () => {
+    const adapterSource = readFileSync(resolve(sourceDir, 'adapter.ts'), 'utf8');
+
+    expect(adapterSource).not.toMatch(/^import\s+\{[^}]*AsyncLocalStorage[^}]*\}\s+from\s+['"]node:async_hooks['"];$/m);
+    expect(adapterSource).toContain("import('node:async_hooks')");
+    expect(adapterSource).toContain('namespaceContextPromise ??=');
   });
 
   it('keeps the root barrel aligned with the documented module and room contract', () => {

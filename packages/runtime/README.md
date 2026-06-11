@@ -181,7 +181,7 @@ Use `@fluojs/runtime/node` and `@fluojs/runtime/web` for application-facing runt
 | :--- | :--- |
 | `@fluojs/runtime/node` | Supported Node.js entrypoint for logger factories, Node adapter/bootstrap helpers, and shutdown signal registration. |
 | `@fluojs/runtime/web` | Shared Web-standard request/response utilities for Bun, Deno, and Cloudflare Workers, including `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, and `parseMultipart`. |
-| `@fluojs/runtime/internal` | Token-only internal seam for package integrations. |
+| `@fluojs/runtime/internal` | Internal package-integration seam for runtime wiring tokens and the runtime-owned class metadata reader used by first-party adapters that must align provider scope with the compiled module graph. |
 | `@fluojs/runtime/internal-node` | Node-only internal seam for adapter/runtime plumbing; prefer `@fluojs/runtime/node` in application code. |
 | `@fluojs/runtime/internal/http-adapter` | Internal HTTP adapter seam for platform packages. |
 | `@fluojs/runtime/internal/request-response-factory` | Internal request/response factory seam for platform packages. |
