@@ -12,6 +12,13 @@ import type { RequestContextStore } from './request-context-store.js';
 let requestContextStore: RequestContextStore | undefined;
 let requestContextStoreResolution: Promise<RequestContextStore> | undefined;
 let fallbackRequestContextStore: RequestContextStore | undefined;
+let originalPromiseThen: PromiseThen | undefined;
+let promiseThenPatchDepth = 0;
+const dynamicResolutionFallbackStack: RequestContext[] = [];
+
+type PromiseThen = typeof Promise.prototype.then;
+type PromiseFulfilled<T, TResult> = ((value: T) => TResult | PromiseLike<TResult>) | null | undefined;
+type PromiseRejected<TResult> = ((reason: unknown) => TResult | PromiseLike<TResult>) | null | undefined;
 
 /**
  * Runs a callback inside the request-scoped async context.
@@ -35,6 +42,10 @@ export function runWithRequestContext<T>(context: RequestContext, callback: () =
     return getFallbackRequestContextStore().run(context, callback);
   }
 
+  if (!isAsyncCallback(callback)) {
+    return runWithDynamicResolutionFallbackContext(context, callback);
+  }
+
   return runWithResolvedRequestContextStore(context, callback) as T;
 }
 
@@ -44,7 +55,7 @@ export function runWithRequestContext<T>(context: RequestContext, callback: () =
  * @returns The active request context, or `undefined` when no request scope is bound.
  */
 export function getCurrentRequestContext(): RequestContext | undefined {
-  return getRequestContextStore().getStore();
+  return getRequestContextStore().getStore() ?? getDynamicResolutionFallbackContext();
 }
 
 /**
@@ -168,4 +179,90 @@ function getFallbackRequestContextStore(): RequestContextStore {
   fallbackRequestContextStore ??= createStackRequestContextStore();
 
   return fallbackRequestContextStore;
+}
+
+function runWithDynamicResolutionFallbackContext<T>(context: RequestContext, callback: () => T): T {
+  dynamicResolutionFallbackStack.push(context);
+  installPromiseThenContextBridge();
+
+  try {
+    return callback();
+  } finally {
+    removeDynamicResolutionFallbackContext(context);
+    restorePromiseThenContextBridge();
+    void resolveRequestContextStore();
+  }
+}
+
+function getDynamicResolutionFallbackContext(): RequestContext | undefined {
+  if (dynamicResolutionFallbackStack.length !== 1) {
+    return undefined;
+  }
+
+  return dynamicResolutionFallbackStack[0];
+}
+
+function removeDynamicResolutionFallbackContext(context: RequestContext): void {
+  const index = dynamicResolutionFallbackStack.lastIndexOf(context);
+
+  if (index >= 0) {
+    dynamicResolutionFallbackStack.splice(index, 1);
+  }
+}
+
+function installPromiseThenContextBridge(): void {
+  if (promiseThenPatchDepth === 0) {
+    originalPromiseThen = Promise.prototype.then;
+    Object.defineProperty(Promise.prototype, 'then', {
+      configurable: true,
+      value: createContextBridgePromiseThen(originalPromiseThen),
+      writable: true,
+    });
+  }
+
+  promiseThenPatchDepth += 1;
+}
+
+function restorePromiseThenContextBridge(): void {
+  promiseThenPatchDepth -= 1;
+
+  if (promiseThenPatchDepth === 0 && originalPromiseThen) {
+    Object.defineProperty(Promise.prototype, 'then', {
+      configurable: true,
+      value: originalPromiseThen,
+      writable: true,
+    });
+    originalPromiseThen = undefined;
+  }
+}
+
+function createContextBridgePromiseThen(originalThen: PromiseThen): PromiseThen {
+  return function contextBridgePromiseThen<T, TResult1 = T, TResult2 = never>(
+    this: Promise<T>,
+    onfulfilled?: PromiseFulfilled<T, TResult1>,
+    onrejected?: PromiseRejected<TResult2>,
+  ): Promise<TResult1 | TResult2> {
+    const context = getDynamicResolutionFallbackContext();
+
+    return originalThen.call(
+      this,
+      wrapPromiseCallback(context, onfulfilled),
+      wrapPromiseCallback(context, onrejected),
+    ) as Promise<TResult1 | TResult2>;
+  } as PromiseThen;
+}
+
+function wrapPromiseCallback<TValue, TResult>(
+  context: RequestContext | undefined,
+  callback: PromiseFulfilled<TValue, TResult>,
+): PromiseFulfilled<TValue, TResult> {
+  if (!context || typeof callback !== 'function') {
+    return callback;
+  }
+
+  return (value) => runWithDynamicResolutionFallbackContext(context, () => callback(value));
+}
+
+function isAsyncCallback<T>(callback: () => T): callback is () => T & Promise<Awaited<T>> {
+  return callback.constructor.name === 'AsyncFunction';
 }

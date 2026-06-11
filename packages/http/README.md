@@ -104,7 +104,7 @@ function someDeepHelper() {
 }
 ```
 
-`runWithRequestContext(...)` preserves the active context across awaited work when the host provides `AsyncLocalStorage` through `globalThis.AsyncLocalStorage` or Node's built-in `node:async_hooks` module. The root `@fluojs/http` import does not probe or instantiate async-context storage; helpers resolve storage lazily on first use, guard `process.getBuiltinModule(...)` failures, and defer the first callback until `node:async_hooks` resolves on Node hosts that do not expose the synchronous probe so overlapping promise-returning callbacks keep isolated context instead of falling through a shared stack. Non-Node hosts without an async-context primitive use a synchronous stack fallback that clears the context before awaited continuations resume, avoiding cross-request leaks instead of pretending to isolate overlapping async work.
+`runWithRequestContext(...)` preserves the active context across awaited work when the host provides `AsyncLocalStorage` through `globalThis.AsyncLocalStorage` or Node's built-in `node:async_hooks` module. The root `@fluojs/http` import does not probe or instantiate async-context storage; helpers resolve storage lazily on first use, guard `process.getBuiltinModule(...)` failures, and keep the first-call synchronous callback return and throw behavior unchanged while isolating promise continuations registered before Node async storage finishes resolving. Non-Node hosts without an async-context primitive use a synchronous stack fallback that clears the context before awaited continuations resume, avoiding cross-request leaks instead of pretending to isolate overlapping async work.
 
 ### Rate limiting behind proxies
 

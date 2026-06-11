@@ -102,7 +102,7 @@ function someDeepHelper() {
 }
 ```
 
-`runWithRequestContext(...)`는 호스트가 `globalThis.AsyncLocalStorage` 또는 Node 내장 `node:async_hooks` 모듈로 `AsyncLocalStorage`를 제공할 때 활성 컨텍스트를 `await` 이후까지 보존합니다. 루트 `@fluojs/http` import는 async-context storage를 probe하거나 instantiate하지 않습니다. Helper가 처음 사용될 때 storage를 lazy하게 해석하고, `process.getBuiltinModule(...)` 실패를 guard하며, 동기 probe를 노출하지 않는 Node host에서는 `node:async_hooks` 해석이 끝날 때까지 첫 callback을 지연해 겹치는 promise 반환 callback도 공유 stack으로 떨어지지 않고 격리된 context를 유지합니다. 비동기 컨텍스트 primitive가 없는 비 Node 호스트에서는 동기 stack fallback을 사용하며, 겹치는 비동기 요청이 서로의 컨텍스트를 관찰하지 않도록 awaited continuation이 재개되기 전에 컨텍스트를 비웁니다.
+`runWithRequestContext(...)`는 호스트가 `globalThis.AsyncLocalStorage` 또는 Node 내장 `node:async_hooks` 모듈로 `AsyncLocalStorage`를 제공할 때 활성 컨텍스트를 `await` 이후까지 보존합니다. 루트 `@fluojs/http` import는 async-context storage를 probe하거나 instantiate하지 않습니다. Helper가 처음 사용될 때 storage를 lazy하게 해석하고, `process.getBuiltinModule(...)` 실패를 guard하며, Node async storage 해석이 끝나기 전에 등록된 promise continuation도 격리하면서 첫 호출의 동기 callback 반환 및 throw 동작은 그대로 유지합니다. 비동기 컨텍스트 primitive가 없는 비 Node 호스트에서는 동기 stack fallback을 사용하며, 겹치는 비동기 요청이 서로의 컨텍스트를 관찰하지 않도록 awaited continuation이 재개되기 전에 컨텍스트를 비웁니다.
 
 ### 프록시 뒤의 속도 제한
 

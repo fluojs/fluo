@@ -34,6 +34,8 @@ const contractGateTriggers = new Set([
   'docs/architecture/observability.ko.md',
   'docs/architecture/lifecycle-and-shutdown.md',
   'docs/architecture/lifecycle-and-shutdown.ko.md',
+  'docs/architecture/http-runtime.md',
+  'docs/architecture/http-runtime.ko.md',
   'docs/contracts/deployment.md',
   'docs/contracts/deployment.ko.md',
   'docs/contracts/nestjs-parity-gaps.md',
