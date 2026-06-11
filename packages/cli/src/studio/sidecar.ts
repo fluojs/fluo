@@ -433,17 +433,6 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
     writeJson(response, 404, { error: 'Unknown Studio sidecar route.' });
   });
 
-  const heartbeat = options.heartbeatMs === 0
-    ? undefined
-    : setInterval(() => {
-        publish({
-          payload: { uptimeMs: Number((performance.now() - startedAt).toFixed(3)) },
-          source: { appId, runtime },
-          type: 'heartbeat',
-        });
-      }, options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS);
-  heartbeat?.unref();
-
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(options.port ?? 0, host, () => {
@@ -454,11 +443,22 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
 
   const address = server.address();
   if (!address || typeof address === 'string') {
-    await closeServer(server, clients, heartbeat);
+    await closeServer(server, clients, undefined);
     throw new Error('Failed to resolve Studio sidecar address.');
   }
 
   const url = `http://${host}:${String(address.port)}`;
+
+  const heartbeat = options.heartbeatMs === 0
+    ? undefined
+    : setInterval(() => {
+        publish({
+          payload: { uptimeMs: Number((performance.now() - startedAt).toFixed(3)) },
+          source: { appId, runtime },
+          type: 'heartbeat',
+        });
+      }, options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS);
+  heartbeat?.unref();
 
   return {
     appId,

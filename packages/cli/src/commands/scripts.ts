@@ -415,7 +415,7 @@ function projectDisplayName(project: { directory: string; manifest: JsonRecord }
     : project.directory.split(/[\\/]/).filter(Boolean).at(-1) ?? 'fluo-app';
 }
 
-function assertStudioSupport(command: ScriptCommand, studio: boolean, projectRuntime: ProjectRuntime, _devRunner: DevRunnerPreference): void {
+function assertStudioSupport(command: ScriptCommand, studio: boolean, projectRuntime: ProjectRuntime, devRunner: DevRunnerPreference, rawWatch: boolean): void {
   if (!studio) {
     return;
   }
@@ -426,6 +426,10 @@ function assertStudioSupport(command: ScriptCommand, studio: boolean, projectRun
 
   if (projectRuntime !== 'node') {
     throw new Error(`fluo dev --studio currently supports Node dev runner projects only. ${projectRuntime} Studio support remains experimental until a dedicated bridge is implemented and verified.`);
+  }
+
+  if (devRunner !== 'fluo' || rawWatch) {
+    throw new Error('fluo dev --studio requires the fluo-owned Node restart runner. Remove --raw-watch and use --runner fluo so Studio lifecycle events stay attached to the CLI restart boundary.');
   }
 }
 
@@ -693,7 +697,7 @@ export async function runScriptCommand(command: ScriptCommand, argv: string[], r
     throw new Error('--runner is only supported for fluo dev. Use -- to forward --runner to the child command.');
   }
   const devRunner = command === 'dev' ? resolveDevRunnerPreference(parsed, env, projectRuntime) : 'fluo';
-  assertStudioSupport(command, parsed.studio, projectRuntime, devRunner);
+  assertStudioSupport(command, parsed.studio, projectRuntime, devRunner, rawWatch);
   const runnerSteps = buildProjectRunner(command, projectRuntime, parsed.passThrough, { devRunner, rawWatch });
   const reporterMode = resolveReporterMode(parsed, { ...runtime, env, stdout });
   const verbose = parsed.verbose || isEnabledEnvironmentFlag(env.FLUO_VERBOSE);

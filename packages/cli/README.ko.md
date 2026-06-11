@@ -32,7 +32,7 @@ pnpm dlx @fluojs/cli new my-app
 
 - `@fluojs/cli`는 intended publish surface에 포함되는 공개 패키지입니다.
 - 지원되는 설치 경로는 전역 패키지(`npm install -g @fluojs/cli`, `pnpm add -g @fluojs/cli`, `bun add -g @fluojs/cli`, `yarn global add @fluojs/cli`)와 무설치 실행 경로(`pnpm dlx @fluojs/cli ...`)입니다.
-- 배포되는 `fluo` bin은 `package.json`에 선언된 dist 빌드 CLI 엔트리포인트를 기준으로 동작합니다.
+- 배포되는 `fluo` bin은 `package.json`에 선언된 `./bin/fluo.mjs` wrapper이며, 이 wrapper가 dist 빌드 CLI 엔트리포인트인 `../dist/cli.js`를 로드합니다.
 
 ## 버전 확인
 
@@ -194,7 +194,7 @@ fluo dev --studio --studio-port 51234
 fluo dev --studio --dry-run
 ```
 
-CLI는 local Studio sidecar를 시작하고, tokenized URL을 출력하며, restart lifecycle event를 sidecar로 계속 전달하고, 앱이 `@fluojs/runtime`을 import하기 전에 명시적인 Studio config를 Node 앱 child에 주입합니다. Optional package인 `@fluojs/studio`가 설치되어 있으면 sidecar는 패키징된 `@fluojs/studio/viewer` React app을 제공합니다. Runtime package source는 `process.env`를 직접 읽지 않으며, CLI가 주입한 Studio config가 있을 때만 live graph/routes/request/timing/diagnostic event를 전송합니다.
+CLI는 local Studio sidecar를 시작하고, tokenized URL을 출력하며, restart lifecycle event를 sidecar로 계속 전달하고, 앱이 `@fluojs/runtime`을 import하기 전에 명시적인 Studio config를 Node 앱 child에 주입합니다. Studio live mode는 fluo가 소유한 Node restart runner를 요구합니다. 따라서 lifecycle event가 CLI restart boundary와 분리되지 않도록 `fluo dev --studio`는 `--raw-watch`, `--runner native`, `FLUO_DEV_RUNNER=native`를 거부합니다. Optional package인 `@fluojs/studio`가 설치되어 있으면 sidecar는 패키징된 `@fluojs/studio/viewer` React app을 제공합니다. Runtime package source는 `process.env`를 직접 읽지 않으며, CLI가 주입한 Studio config가 있을 때만 live graph/routes/request/timing/diagnostic event를 전송합니다.
 
 보안 기본값은 local-only입니다. Sidecar는 `127.0.0.1`에 bind되고, runtime ingestion 및 browser state/SSE API는 generated token을 요구하며, CORS는 기본적으로 활성화하지 않고, request body는 기본적으로 수집하지 않습니다.
 
@@ -250,6 +250,8 @@ fluo migrate ./src --skip tests
 ```
 
 CI 작업, 대시보드, migration report에서 안정적인 machine-readable 결과가 필요하면 `--json`을 사용하세요. 사람을 위한 출력은 기본값으로 유지됩니다. JSON 모드는 성공 시 stdout에 structured report만 기록하고, parser 오류나 잘못된 flag 조합은 기존처럼 stderr에 메시지를 기록한 뒤 exit code `1`을 반환하며 partial JSON을 출력하지 않습니다. Report에는 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화된 `transforms`, `scannedFiles`, `changedFiles`, 전체 `warningCount`, 그리고 `filePath`, `changed`, `appliedTransforms`, `warningCount`, category label과 source line number가 포함된 warnings per-file metadata가 포함됩니다.
+
+`--apply`로 다시 실행하기 전에는 모든 warning을 검토하세요. Warning은 자동 rewrite를 그대로 수락해도 된다는 뜻이 아니라 수동 follow-up 항목입니다. Warning category별 post-codemod checklist는 [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.ko.md)를 기준으로 확인하세요.
 
 **주요 변환 사항:**
 - `@nestjs/common` 임포트를 `@fluojs/core` 또는 `@fluojs/http`로 재작성합니다.
