@@ -10,6 +10,7 @@ Webhook-first, transport-agnostic Slack delivery core for fluo. It provides a Ne
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+  - [Module visibility and migration boundaries](#module-visibility-and-migration-boundaries)
   - [Manual provider composition with `createSlackProviders`](#manual-provider-composition-with-createslackproviders)
   - [Standalone delivery with `SlackService`](#standalone-delivery-with-slackservice)
   - [Bootstrap verification with `verifyOnModuleInit`](#bootstrap-verification-with-verifyonmoduleinit)
@@ -77,6 +78,12 @@ export class DeployNotifier {
 ```
 
 ## Common Patterns
+
+### Module visibility and migration boundaries
+
+`SlackModule.forRoot(...)` and `SlackModule.forRootAsync(...)` return a global module by default. The module exports `SlackService`, `SlackChannel`, `SLACK`, and `SLACK_CHANNEL`; pass `global: false` only when migrated code needs those providers to remain visible only to modules that explicitly import the returned module. The option is `global?: boolean`, not NestJS `isGlobal`.
+
+The package-level registration surface is intentionally singleton-oriented. `SLACK` and `SLACK_CHANNEL` are compatibility tokens for the one configured Slack service and notifications channel; `@fluojs/slack` does not expose `forFeature(...)`, named registration, named client token factories, or per-client custom token surfaces. Applications that need multiple Slack clients should compose their own modules/providers around distinct `SlackTransport` instances or expose app-owned facades, instead of assuming package-level named multi-client registration.
 
 ### Manual provider composition with `createSlackProviders`
 
@@ -323,6 +330,7 @@ The Slack package intentionally does **not**:
 - read credentials or webhook URLs from `process.env`
 - ship a Node-only Slack SDK inside the shared root package boundary
 - force one provider strategy beyond the webhook-first helper and exported transport contract
+- provide `forFeature(...)`, named Slack client registration, named client token factories, or per-client custom token surfaces
 - translate one notification into multi-channel fan-out inside a single dispatch call
 
 These limitations are part of the package contract so runtime choice, provider capability, and rollout strategy stay explicit at the application boundary.
