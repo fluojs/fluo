@@ -349,6 +349,7 @@ export class SocketIoLifecycleService
   private bunEngine: BunEngineServer | undefined;
   private io: Server | undefined;
   private namespaceContext: AsyncLocalStorage<string> | undefined;
+  private namespaceContextPromise: Promise<AsyncLocalStorage<string>> | undefined;
   private readonly socketRegistry = new Map<string, Socket>();
   private shutdownPromise: Promise<void> | undefined;
   private shutdownStarted = false;
@@ -1066,12 +1067,21 @@ export class SocketIoLifecycleService
   }
 
   private async resolveNamespaceContext(): Promise<AsyncLocalStorage<string>> {
-    if (!this.namespaceContext) {
-      const { AsyncLocalStorage } = await import('node:async_hooks');
-      this.namespaceContext = new AsyncLocalStorage<string>();
+    if (this.namespaceContext) {
+      return this.namespaceContext;
     }
 
-    return this.namespaceContext;
+    this.namespaceContextPromise ??= import('node:async_hooks')
+      .then(({ AsyncLocalStorage }) => {
+        this.namespaceContext = new AsyncLocalStorage<string>();
+        return this.namespaceContext;
+      })
+      .catch((error: unknown) => {
+        this.namespaceContextPromise = undefined;
+        throw error;
+      });
+
+    return this.namespaceContextPromise;
   }
 
   private async resolveGatewayInstance(descriptor: WebSocketGatewayDescriptor): Promise<unknown | undefined> {

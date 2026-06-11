@@ -1,8 +1,10 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createServer as createHttpServer, type IncomingMessage, type Server as NodeHttpServer, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import { Inject, Scope } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
+import type { Container } from '@fluojs/di';
 import {
   createNoopHttpApplicationAdapter,
   createServerBackedHttpAdapterRealtimeCapability,
@@ -13,7 +15,14 @@ import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { createNodejsAdapter } from '@fluojs/platform-nodejs';
 import { type Application, type ApplicationLogger, bootstrapApplication, defineModule, FluoFactory, type ModuleType } from '@fluojs/runtime';
 import { bootstrapNodeApplication } from '@fluojs/runtime/node';
-import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@fluojs/websockets';
+import {
+  OnConnect,
+  OnDisconnect,
+  OnMessage,
+  WebSocketGateway,
+  type WebSocketGatewayDescriptor,
+  type WebSocketGatewayHandlerDescriptor,
+} from '@fluojs/websockets';
 import type { Namespace, Socket, Server as SocketIoServer } from 'socket.io';
 import { type Socket as ClientSocket, io as createClient } from 'socket.io-client';
 import { describe, expect, it, vi } from 'vitest';
@@ -1922,6 +1931,91 @@ describe('@fluojs/socket.io', () => {
     } finally {
       await app.close();
     }
+  });
+
+  it('keeps lazy namespace context stable across concurrent first handler invocations', async () => {
+    const events: string[] = [];
+    const joinedRooms: string[] = [];
+    const bothHandlersEntered = createDeferred();
+    const releaseHandlers = createDeferred();
+    const enteredSocketIds: string[] = [];
+    const service = new SocketIoLifecycleService(
+      {} as Container,
+      [],
+      createLogger(events),
+      createNoopHttpApplicationAdapter(),
+      {},
+    );
+    const namespace = {
+      in(socketId: string) {
+        return {
+          socketsJoin(room: string) {
+            joinedRooms.push(`${socketId}:${room}`);
+          },
+        };
+      },
+      sockets: new Map<string, Socket>(),
+      to(room: string) {
+        return {
+          emit(event: string, data: unknown) {
+            joinedRooms.push(`${room}:${event}:${String(data)}`);
+          },
+        };
+      },
+    } as unknown as Namespace;
+
+    Reflect.set(service, 'attachments', [{ descriptors: [], namespace, path: '/chat' }]);
+
+    class ConcurrentGateway {
+      async handle(socketId: string) {
+        enteredSocketIds.push(socketId);
+
+        if (enteredSocketIds.length === 2) {
+          bothHandlersEntered.resolve();
+        }
+
+        await releaseHandlers.promise;
+        service.joinRoom(socketId, 'race-room');
+      }
+    }
+
+    const handler: WebSocketGatewayHandlerDescriptor = {
+      methodKey: 'handle',
+      methodName: 'handle',
+      type: 'message',
+    };
+    const descriptor: WebSocketGatewayDescriptor = {
+      connectHandlers: [],
+      disconnectHandlers: [],
+      handlers: [handler],
+      messageHandlersByEvent: new Map<string, readonly WebSocketGatewayHandlerDescriptor[]>(),
+      moduleName: 'TestModule',
+      path: '/chat',
+      targetName: 'ConcurrentGateway',
+      token: ConcurrentGateway,
+      wildcardMessageHandlers: [],
+    };
+    const invokeGatewayMethod = Reflect.get(service, 'invokeGatewayMethod') as (
+      instance: unknown,
+      descriptor: WebSocketGatewayDescriptor,
+      handler: WebSocketGatewayHandlerDescriptor,
+      args: unknown[],
+    ) => Promise<void>;
+    const gateway = new ConcurrentGateway();
+    const firstInvocation = invokeGatewayMethod.call(service, gateway, descriptor, handler, ['socket-1']);
+    const secondInvocation = invokeGatewayMethod.call(service, gateway, descriptor, handler, ['socket-2']);
+
+    await bothHandlersEntered.promise;
+
+    const namespaceContext = Reflect.get(service, 'namespaceContext');
+    expect(namespaceContext).toBeInstanceOf(AsyncLocalStorage);
+    await expect(Reflect.get(service, 'namespaceContextPromise')).resolves.toBe(namespaceContext);
+
+    releaseHandlers.resolve();
+    await Promise.all([firstInvocation, secondInvocation]);
+
+    expect(joinedRooms).toEqual(['socket-1:race-room', 'socket-2:race-room']);
+    expect(events.filter((event) => event.startsWith('error:SocketIoLifecycleService'))).toEqual([]);
   });
 
   for (const scenario of supportedSocketIoAdapterScenarios) {
