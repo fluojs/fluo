@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { applyFilters, isStudioLiveEvent, parseStudioLiveEvent, parseStudioPayload, renderMermaid } from './contracts.js';
 import * as studio from './index.js';
 import { bootstrapStudioApp } from './app/bootstrap.js';
-import { inspectComponentConnections, renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './viewer-rendering.js';
+import { inspectComponentConnections, renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './shared/lib/viewer-rendering.js';
 import { initialStudioState, selectSelectedStaticComponent } from './entities/studio/model.js';
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -132,6 +132,17 @@ async function loadStudioViewer(): Promise<void> {
   await import('./main.js');
 }
 
+function loadViewerFile(content: string, filename: string): void {
+  const fileInput = document.querySelector<HTMLInputElement>('#file-input');
+  expect(fileInput).not.toBeNull();
+
+  Object.defineProperty(fileInput, 'files', {
+    configurable: true,
+    value: [new File([content], filename, { type: 'application/json' })],
+  });
+  fileInput?.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
 
 
 describe('Studio live contracts', () => {
@@ -244,6 +255,40 @@ describe('Studio live contracts', () => {
         }),
       )
     ).toThrow('Invalid Studio live graph node payload.');
+  });
+
+  it('rejects request events with body-like fields before UI state consumes them', () => {
+    const event = {
+      emittedAt: '2026-05-28T00:00:02.000Z',
+      epoch: 'epoch-1',
+      eventId: 'epoch-1:2',
+      payload: {
+        body: '{"password":"secret"}',
+        controller: 'HealthController',
+        durationMs: 1.25,
+        handler: 'getHealth',
+        method: 'POST',
+        path: '/login',
+        requestId: 'req-privacy',
+        routeId: 'POST /login AuthController login',
+        startedAt: '2026-05-28T00:00:01.000Z',
+        status: 'failed',
+        statusCode: 401,
+        url: '/login',
+      },
+      sequence: 2,
+      source: {
+        appId: 'app-test',
+        runtime: 'node',
+      },
+      type: 'request',
+      version: 1,
+    };
+
+    expect(isStudioLiveEvent(event)).toBe(false);
+    expect(() => parseStudioLiveEvent(JSON.stringify(event))).toThrow(
+      'Studio live request traces must not include request or response body payload fields.',
+    );
   });
 
   it('renders runtime-connected live snapshot events through the React/FSD shell', async () => {
@@ -698,15 +743,7 @@ describe('parseStudioPayload', () => {
 
   it('keeps viewer filter controls focused across search, readiness, and severity rerenders', async () => {
     await loadStudioViewer();
-
-    const fileInput = document.querySelector<HTMLInputElement>('#file-input');
-    expect(fileInput).not.toBeNull();
-
-    Object.defineProperty(fileInput, 'files', {
-      configurable: true,
-      value: [new File([JSON.stringify(snapshotFixture)], 'snapshot.json', { type: 'application/json' })],
-    });
-    fileInput?.dispatchEvent(new Event('change', { bubbles: true }));
+    loadViewerFile(JSON.stringify(snapshotFixture), 'snapshot.json');
 
     await vi.waitFor(() => {
       expect(document.querySelector('#graph-host')?.textContent).toContain('redis.default');
@@ -774,15 +811,7 @@ describe('parseStudioPayload', () => {
 
   it('supports keyboard graph node selection without mouse interaction', async () => {
     await loadStudioViewer();
-
-    const fileInput = document.querySelector<HTMLInputElement>('#file-input');
-    expect(fileInput).not.toBeNull();
-
-    Object.defineProperty(fileInput, 'files', {
-      configurable: true,
-      value: [new File([JSON.stringify(snapshotFixture)], 'snapshot.json', { type: 'application/json' })],
-    });
-    fileInput?.dispatchEvent(new Event('change', { bubbles: true }));
+    loadViewerFile(JSON.stringify(snapshotFixture), 'snapshot.json');
 
     await vi.waitFor(() => {
       expect(document.querySelector('#graph-host')?.textContent).toContain('queue.default');
@@ -798,7 +827,85 @@ describe('parseStudioPayload', () => {
     });
 
     const restoredQueueNode = document.querySelector<SVGCircleElement>('[data-component="queue.default"]');
-    expect(restoredQueueNode?.classList.contains('module-selected')).toBe(true);
+      expect(restoredQueueNode?.classList.contains('module-selected')).toBe(true);
+  });
+
+  it('loads snapshot-plus-timing artifacts into static graph and timing views', async () => {
+    await loadStudioViewer();
+    loadViewerFile(
+      JSON.stringify({
+        snapshot: snapshotFixture,
+        timing: {
+          phases: [{ durationMs: 3.21, name: 'bootstrap_module' }],
+          totalMs: 3.21,
+          version: 1,
+        },
+      }),
+      'snapshot-with-timing.json',
+    );
+
+    await vi.waitFor(() => {
+      expect(document.querySelector('#graph-host')?.textContent).toContain('redis.default');
+    });
+
+    expect(document.body.textContent).toContain('Static/report timing');
+    expect(document.body.textContent).toContain('3.210ms');
+    expect(document.body.textContent).toContain('bootstrap_module');
+  });
+
+  it('loads report artifacts into static graph, summary, diagnostics, and timing views', async () => {
+    await loadStudioViewer();
+    loadViewerFile(
+      JSON.stringify({
+        generatedAt: snapshotFixture.generatedAt,
+        snapshot: snapshotFixture,
+        summary: {
+          componentCount: 2,
+          diagnosticCount: 1,
+          errorCount: 0,
+          healthStatus: 'degraded',
+          readinessStatus: 'degraded',
+          timingTotalMs: 4.56,
+          warningCount: 1,
+        },
+        timing: {
+          phases: [{ durationMs: 4.56, name: 'bootstrap_module' }],
+          totalMs: 4.56,
+          version: 1,
+        },
+        version: 1,
+      }),
+      'inspect-report.json',
+    );
+
+    await vi.waitFor(() => {
+      expect(document.querySelector('#graph-host')?.textContent).toContain('queue.default');
+    });
+
+    expect(document.body.textContent).toContain('QUEUE_DEPENDENCY_NOT_READY');
+    expect(document.body.textContent).toContain('components: 2');
+    expect(document.body.textContent).toContain('Static/report timing');
+    expect(document.body.textContent).toContain('4.560ms');
+  });
+
+  it('loads standalone timing diagnostics without requiring a static graph', async () => {
+    await loadStudioViewer();
+    loadViewerFile(
+      JSON.stringify({
+        phases: [{ durationMs: 1.23, name: 'bootstrap_module' }],
+        totalMs: 1.23,
+        version: 1,
+      }),
+      'timing.json',
+    );
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('Diagnostics file loaded successfully.');
+    });
+
+    expect(document.querySelector('#graph-host')?.textContent).toContain('No platform components loaded.');
+    expect(document.body.textContent).toContain('Static/report timing');
+    expect(document.body.textContent).toContain('1.230ms');
   });
 
   it('build emits isolated published helper and file-first viewer entrypoints', () => {

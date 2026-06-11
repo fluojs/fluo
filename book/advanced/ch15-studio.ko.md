@@ -139,7 +139,7 @@ pnpm add -D @fluojs/studio
 node -p "require.resolve('@fluojs/studio/viewer')"
 ```
 
-출력된 경로는 패키징된 `dist/index.html` artifact를 가리킵니다. 해당 파일을 브라우저에서 연 다음 inspect artifact를 로드합니다. Studio 앱 자체를 개발하는 저장소 기여자는 대신 로컬 dev server를 실행할 수 있습니다.
+출력된 경로는 패키징된 `dist/index.html` artifact를 가리킵니다. 해당 파일을 브라우저에서 연 다음 inspect artifact를 로드합니다. Artifact 자체가 Bun, Deno, Cloudflare Workers의 static/report fallback workflow에서 생성된 경우에도 이 viewer resolution 단계는 Node package resolution에 기반합니다. Studio 앱 자체를 개발하는 저장소 기여자는 대신 로컬 dev server를 실행할 수 있습니다.
 
 ```bash
 pnpm --dir packages/studio dev

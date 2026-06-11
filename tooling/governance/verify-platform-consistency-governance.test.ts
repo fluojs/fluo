@@ -339,6 +339,21 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts Studio package-surface privacy and artifact guidance when paired with package tests', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/reference/package-surface.md',
+        'docs/reference/package-surface.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/studio/src/contracts.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('treats observability and deployment docs as contract-governing updates', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const observabilityAndDeploymentTriggers = [
