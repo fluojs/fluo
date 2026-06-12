@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Constructor, Token } from '@fluojs/core';
-import { getModuleMetadata } from '@fluojs/core/internal';
+import { ensureMetadataSymbol, getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
 import { NotificationsModule, NotificationsService } from '@fluojs/notifications';
 import type { Queue } from '@fluojs/queue';
@@ -143,6 +143,7 @@ vi.mock('bullmq', () => ({
 }));
 
 import { EmailChannel } from './channel.js';
+import { DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS } from './constants.js';
 import { EmailNotificationQueueJob, EmailNotificationsQueueWorker, createEmailNotificationsQueueAdapter } from './queue.js';
 import { EmailModule } from './module.js';
 import { EmailService } from './service.js';
@@ -524,6 +525,154 @@ describe('EmailModule', () => {
     expect(transportState.sent[0]).toMatchObject({
       subject: 'Rendered welcome',
       text: 'Hello user-1',
+    });
+  });
+
+  it('passes the full notification envelope to renderers and lets explicit payload fields override rendered fallbacks', async () => {
+    const renderInputs: object[] = [];
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      renderer: {
+        async render(input) {
+          renderInputs.push(input);
+
+          return {
+            html: '<p>rendered html</p>',
+            subject: 'Rendered fallback subject',
+            text: 'rendered text',
+          };
+        },
+      },
+      transport: createRecordingTransportFactory({ messagePrefix: 'renderer' }),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    const result = await service.sendNotification({
+      channel: 'email',
+      locale: 'ko-KR',
+      metadata: { campaign: 'summer' },
+      payload: {
+        html: '<p>payload html</p>',
+        metadata: { source: 'payload' },
+        templateData: { name: 'Ada' },
+        text: 'payload text',
+        to: ['payload-recipient@example.com'],
+      },
+      recipients: ['fallback-recipient@example.com'],
+      subject: 'Payload subject',
+      template: 'welcome',
+    });
+
+    expect(result.messageId).toBe('renderer-1');
+    expect(renderInputs).toEqual([
+      {
+        locale: 'ko-KR',
+        metadata: { campaign: 'summer' },
+        payload: {
+          html: '<p>payload html</p>',
+          metadata: { source: 'payload' },
+          templateData: { name: 'Ada' },
+          text: 'payload text',
+          to: ['payload-recipient@example.com'],
+        },
+        subject: 'Payload subject',
+        template: 'welcome',
+      },
+    ]);
+    expect(transportState.sent[0]).toMatchObject({
+      html: '<p>payload html</p>',
+      metadata: {
+        campaign: 'summer',
+        source: 'payload',
+        template: 'welcome',
+      },
+      subject: 'Payload subject',
+      text: 'payload text',
+      to: [{ address: 'payload-recipient@example.com' }],
+    });
+  });
+
+  it('uses rendered notification fallbacks when payload fields and notification subject are absent', async () => {
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      renderer: {
+        async render() {
+          return {
+            html: '<p>rendered html</p>',
+            subject: 'Rendered subject',
+            text: 'rendered text',
+          };
+        },
+      },
+      transport: createRecordingTransportFactory({ messagePrefix: 'fallback' }),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    await service.sendNotification({
+      channel: 'email',
+      payload: {},
+      recipients: ['fallback-recipient@example.com'],
+      template: 'digest',
+    });
+
+    expect(transportState.sent[0]).toMatchObject({
+      html: '<p>rendered html</p>',
+      subject: 'Rendered subject',
+      text: 'rendered text',
+      to: [{ address: 'fallback-recipient@example.com' }],
+    });
+  });
+
+  it('preserves accepted, pending, and rejected recipients for direct sends', async () => {
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: new PartialDeliveryTransport(),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    await expect(
+      service.send({
+        subject: 'Direct partial receipt',
+        text: 'caller must see every recipient bucket',
+        to: ['user@example.com'],
+      }),
+    ).resolves.toEqual({
+      accepted: ['accepted@example.com'],
+      messageId: 'partial-1',
+      metadata: undefined,
+      pending: ['pending@example.com'],
+      rejected: ['rejected@example.com'],
+      response: undefined,
+    });
+  });
+
+  it('locks the documented default queue worker options and worker decorator metadata together', () => {
+    const standardMetadata = (EmailNotificationsQueueWorker as unknown as Record<symbol, Record<PropertyKey, unknown>>)[
+      ensureMetadataSymbol()
+    ];
+    const workerMetadata = standardMetadata?.[
+      Symbol.for('fluo.queue.standard.worker')
+    ];
+
+    expect(DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS).toEqual({
+      attempts: 3,
+      backoff: { type: 'exponential', delayMs: 1000 },
+      concurrency: 5,
+      jobName: 'fluo.email.notification',
+      rateLimiter: { max: 50, duration: 1000 },
+    });
+    expect(workerMetadata).toEqual({
+      jobType: EmailNotificationQueueJob,
+      options: DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS,
     });
   });
 
