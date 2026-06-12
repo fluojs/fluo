@@ -1,5 +1,7 @@
 # @fluojs/email
 
+## [Unreleased]
+
 ## 1.0.1
 
 ### Patch Changes
