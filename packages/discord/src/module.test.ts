@@ -81,6 +81,23 @@ class PassiveTransport implements DiscordTransport {
   }
 }
 
+class DeferredCloseTransport extends PassiveTransport {
+  private resolveClose: (() => void) | undefined;
+
+  readonly closeStarted = new Promise<void>((resolve) => {
+    this.resolveClose = resolve;
+  });
+
+  async close(): Promise<void> {
+    this.closeCalls += 1;
+    await this.closeStarted;
+  }
+
+  finishClose(): void {
+    this.resolveClose?.();
+  }
+}
+
 class UnsuccessfulTransport implements DiscordTransport {
   async send() {
     return {
@@ -657,6 +674,72 @@ describe('DiscordModule', () => {
     }
   });
 
+  it('retries transport-level webhook exceptions before succeeding', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fetchLike = vi
+        .fn<DiscordFetchLike>()
+        .mockRejectedValueOnce(new Error('socket reset with secret token'))
+        .mockRejectedValueOnce(new Error('temporary dns failure'))
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({ channel_id: 'chan-1', guild_id: 'guild-1', id: 'msg-1' });
+          },
+        });
+      const transport = createDiscordWebhookTransport({
+        fetch: fetchLike,
+        webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+      });
+
+      const pending = transport.send(
+        { attachments: [], components: [], content: 'Retry exception path', embeds: [], threadId: 'thread-ops' },
+        {},
+      );
+      await vi.runAllTimersAsync();
+
+      await expect(pending).resolves.toMatchObject({
+        messageId: 'msg-1',
+        ok: true,
+        statusCode: 200,
+        threadId: 'thread-ops',
+      });
+      expect(fetchLike).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sanitizes transport-level webhook exception errors after bounded retries', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fetchLike = vi.fn<DiscordFetchLike>().mockRejectedValue(new Error('socket reset with secret token'));
+      const transport = createDiscordWebhookTransport({
+        fetch: fetchLike,
+        webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+      });
+
+      const pending = transport.send(
+        { attachments: [], components: [], content: 'Retry exception failure', embeds: [], threadId: 'thread-ops' },
+        {},
+      );
+      const expectation = expect(pending).rejects.toThrowError(
+        new DiscordTransportError(
+          'Discord webhook delivery failed after 3 attempt(s). Upstream response details were omitted from the caller-visible error.',
+        ),
+      );
+      await vi.runAllTimersAsync();
+
+      await expectation;
+      expect(fetchLike).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('sanitizes webhook failure errors after bounded retries', async () => {
     vi.useFakeTimers();
 
@@ -782,6 +865,41 @@ describe('DiscordModule', () => {
       new DiscordTransportError('Discord transport is shutting down or already stopped.'),
     );
     expect(transport.sent).toEqual(['App-owned transport']);
+  });
+
+  it('rejects sends while a concurrent shutdown is still closing the transport', async () => {
+    const transport = new DeferredCloseTransport();
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      transport: {
+        create: async () => transport,
+        kind: 'deferred-close-factory',
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    const shutdown = service.onApplicationShutdown();
+
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'stopping' },
+      readiness: {
+        reason: 'Discord transport is shutting down or already stopped.',
+        status: 'not-ready',
+      },
+    });
+    await expect(service.send({ content: 'During shutdown' })).rejects.toThrowError(
+      new DiscordTransportError('Discord transport is shutting down or already stopped.'),
+    );
+
+    transport.finishClose();
+    await shutdown;
+
+    expect(transport.closeCalls).toBe(1);
+    expect(transport.sent).toEqual([]);
   });
 
   it('keeps shutdown state when startup resolves after shutdown begins', async () => {
@@ -911,6 +1029,33 @@ describe('DiscordModule', () => {
       name: 'AbortError',
     });
     expect(render).not.toHaveBeenCalled();
+  });
+
+  it('normalizes blank-only defaultThreadId and notifications channel to documented defaults', async () => {
+    const transport = new PassiveTransport();
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      defaultThreadId: '   ',
+      notifications: { channel: ' \t ' },
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    const channel = await container.resolve(DiscordChannel);
+    await service.onModuleInit();
+
+    const result = await service.send({ content: 'No default thread' });
+
+    expect(result.threadId).toBeUndefined();
+    expect(channel.channel).toBe('discord');
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        channelName: 'discord',
+        defaultThreadConfigured: false,
+      },
+    });
+    expect(transport.sent).toEqual(['No default thread']);
   });
 
   it('rejects module registration without an explicit transport contract', () => {
