@@ -101,7 +101,7 @@ Behavioral contract 메모:
 - `DiscordModule.forRoot(...)`와 `DiscordModule.forRootAsync(...)`는 `DiscordService`, `DiscordChannel`, `DISCORD`, `DISCORD_CHANNEL`을 기본 global로 export합니다. fluo 옵션인 `global?: boolean`을 사용하고, migrated code가 Discord provider를 importing module 안에만 유지해야 할 때만 `global: false`를 설정하세요. NestJS `isGlobal`은 지원하지 않습니다.
 - `DiscordService.send(...)`는 전달 전에 `defaultThreadId`를 해석합니다.
 - `DiscordService.sendMany(...)`는 `DiscordMessage[]`를 직접 순차 전송하는 batch API이며 `continueOnError`를 지원합니다. 이는 multi-recipient `@fluojs/notifications` dispatch shortcut이 아닙니다.
-- 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
+- 서비스는 모듈 bootstrap 시 transport를 초기화하고, shutdown 전에 시작된 factory 생성 transport가 아직 완료되지 않았더라도 이를 기다린 뒤 factory가 소유한 리소스를 애플리케이션 shutdown 시 닫습니다.
 - send는 bootstrap이 transport를 `ready`로 표시한 뒤에만 허용됩니다. bootstrap 전, startup 중, bootstrap 실패 후, shutdown 중, shutdown 후 시도는 전달 전에 거부됩니다.
 - 서비스가 shutdown 중이거나 이미 stopped 상태라면 cached transport를 재사용하지 않고 send를 거부합니다.
 - `DiscordService.createPlatformStatusSnapshot()`은 `createDiscordPlatformStatusSnapshot(...)`과 같은 status 계약을 노출합니다. 여기에는 lifecycle/readiness, health, transport kind와 ownership, 기본 thread 구성, bootstrap verification 상태, notifications channel dependency details가 포함되어, 호출자가 내부 옵션에 접근하지 않고도 Discord wiring을 관찰할 수 있습니다.

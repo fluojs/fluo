@@ -101,7 +101,7 @@ Behavioral contract notes:
 - `DiscordModule.forRoot(...)` and `DiscordModule.forRootAsync(...)` export `DiscordService`, `DiscordChannel`, `DISCORD`, and `DISCORD_CHANNEL` globally by default. Use the fluo `global?: boolean` option and set `global: false` only when migrated code must keep Discord providers local to importing modules; NestJS `isGlobal` is not supported.
 - `DiscordService.send(...)` resolves `defaultThreadId` before delivery.
 - `DiscordService.sendMany(...)` is a direct `DiscordMessage[]` batch API that sends messages sequentially and supports `continueOnError`; it is not a multi-recipient `@fluojs/notifications` dispatch shortcut.
-- The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
+- The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown, including any in-flight factory-created transport before shutdown began.
 - Sends are accepted only after bootstrap marks the transport `ready`; attempts before bootstrap, during startup, after failed bootstrap, while shutting down, or after shutdown are rejected before delivery.
 - Sends attempted while the service is shutting down or already stopped are rejected before reusing the cached transport.
 - `DiscordService.createPlatformStatusSnapshot()` exposes the same status contract as `createDiscordPlatformStatusSnapshot(...)`: lifecycle/readiness, health, transport kind and ownership, default thread configuration, bootstrap verification state, and notifications channel dependency details, so callers can observe Discord wiring without reaching into internal options.
