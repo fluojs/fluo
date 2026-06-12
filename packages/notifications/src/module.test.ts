@@ -256,6 +256,35 @@ describe('NotificationsModule', () => {
     });
   });
 
+  it('forces single dispatch through direct delivery when queue is explicitly disabled', async () => {
+    const queue = new RecordingQueueAdapter();
+    const deliveries: string[] = [];
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send(notification: NotificationDispatchRequest) {
+            deliveries.push(String(notification.payload.template));
+            return { externalId: 'direct-disabled-queue' };
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 1,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const result = await service.dispatch({ channel: 'email', payload: { template: 'single-direct' } }, { queue: false });
+
+    expect(result).toMatchObject({ deliveryId: 'direct-disabled-queue', queued: false, status: 'delivered' });
+    expect(deliveries).toEqual(['single-direct']);
+    expect(queue.jobs).toHaveLength(0);
+  });
+
   it('uses stable queue job ids so queue adapters can deduplicate repeated requests', async () => {
     const queue = new RecordingQueueAdapter();
     const container = new Container();
@@ -406,6 +435,34 @@ describe('NotificationsModule', () => {
       'notification.dispatch.requested',
       'notification.dispatch.delivered',
     ]);
+  });
+
+  it('does not publish lifecycle events when module configuration opts out', async () => {
+    const publisher = new RecordingPublisher();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            return { externalId: 'delivery-events-disabled' };
+          },
+        },
+      ],
+      events: {
+        publishLifecycleEvents: false,
+        publisher,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await expect(service.dispatch({ channel: 'email', payload: { template: 'events-disabled' } })).resolves.toMatchObject({
+      deliveryId: 'delivery-events-disabled',
+      status: 'delivered',
+    });
+    expect(publisher.events).toEqual([]);
   });
 
   it('publishes requested and failed lifecycle events for direct missing-channel dispatch', async () => {
@@ -1314,5 +1371,58 @@ describe('NotificationsModule', () => {
     expect(result.succeeded).toBe(1);
     expect(result.failed).toBe(1);
     expect(result.failures[0]?.error).toBeInstanceOf(NotificationChannelNotFoundError);
+  });
+
+  it('collects provider errors during tolerant direct bulk dispatch', async () => {
+    const providerError = new Error('provider delivery failed');
+    const deliveredPayloads: string[] = [];
+    const queue = new RecordingQueueAdapter();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send(notification: NotificationDispatchRequest) {
+            const template = String(notification.payload.template);
+
+            if (template === 'broken') {
+              throw providerError;
+            }
+
+            deliveredPayloads.push(template);
+            return { externalId: `delivered:${template}` };
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+    });
+
+    const notifications = [
+      { channel: 'email', payload: { template: 'first' } },
+      { channel: 'email', payload: { template: 'broken' } },
+      { channel: 'email', payload: { template: 'third' } },
+    ];
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const result = await service.dispatchMany(notifications, { continueOnError: true, queue: false });
+
+    expect(queue.jobs).toHaveLength(0);
+    expect(deliveredPayloads).toEqual(['first', 'third']);
+    expect(result).toMatchObject({
+      failed: 1,
+      queued: 0,
+      succeeded: 2,
+    });
+    expect(result.results.map((entry: NotificationDispatchResult) => entry.deliveryId)).toEqual([
+      'delivered:first',
+      'delivered:third',
+    ]);
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]?.notification).toBe(notifications[1]);
+    expect(result.failures[0]?.error).toBe(providerError);
   });
 });
