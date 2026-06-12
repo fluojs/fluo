@@ -784,6 +784,78 @@ describe('DiscordModule', () => {
     expect(transport.sent).toEqual(['App-owned transport']);
   });
 
+  it('keeps shutdown state when startup resolves after shutdown begins', async () => {
+    const transport = new PassiveTransport();
+    let resolveTransport: (transport: DiscordTransport) => void = () => {};
+    const transportPromise = new Promise<DiscordTransport>((resolve) => {
+      resolveTransport = resolve;
+    });
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      transport: {
+        create: () => transportPromise,
+        kind: 'deferred-factory',
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    const startup = service.onModuleInit();
+    const shutdown = service.onApplicationShutdown();
+
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'stopping' },
+      readiness: {
+        reason: 'Discord transport is shutting down or already stopped.',
+        status: 'not-ready',
+      },
+    });
+
+    resolveTransport(transport);
+
+    await expect(startup).resolves.toBeUndefined();
+    await shutdown;
+
+    expect(transport.closeCalls).toBe(1);
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'stopped' },
+      readiness: {
+        reason: 'Discord transport is shutting down or already stopped.',
+        status: 'not-ready',
+      },
+    });
+    await expect(service.send({ content: 'After shutdown' })).rejects.toThrowError(
+      new DiscordTransportError('Discord transport is shutting down or already stopped.'),
+    );
+    expect(transport.sent).toEqual([]);
+  });
+
+  it('closes a factory-owned transport exactly once across repeated shutdown hooks', async () => {
+    const transport = new PassiveTransport();
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      transport: {
+        create: async () => transport,
+        kind: 'owned-factory',
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    await Promise.all([service.onApplicationShutdown(), service.onApplicationShutdown()]);
+    await service.onApplicationShutdown();
+
+    expect(transport.closeCalls).toBe(1);
+    await expect(service.send({ content: 'After shutdown' })).rejects.toThrowError(
+      new DiscordTransportError('Discord transport is shutting down or already stopped.'),
+    );
+    expect(transport.sent).toEqual([]);
+  });
+
   it('preserves the cause when bootstrap verification fails', async () => {
     const cause = new Error('webhook credentials revoked');
     const transport: DiscordTransport = {
