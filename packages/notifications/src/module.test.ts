@@ -710,6 +710,35 @@ describe('NotificationsModule', () => {
     ).rejects.toThrow('Notifications queue adapter returned an invalid enqueueMany() result: queue id at index 1 must be a non-empty string.');
   });
 
+  it('rejects sparse enqueueMany results without substituting fallback delivery ids', async () => {
+    const queue = new MalformedEnqueueManyQueueAdapter(new Array<string>(2));
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await expect(
+      service.dispatchMany([
+        { channel: 'email', payload: { template: 'digest', userId: 'u1' } },
+        { channel: 'email', payload: { template: 'digest', userId: 'u2' } },
+      ]),
+    ).rejects.toThrow('Notifications queue adapter returned an invalid enqueueMany() result: queue id at index 0 must be present.');
+  });
+
   it('falls back to per-job enqueue calls when the queue adapter omits enqueueMany', async () => {
     const queue = new EnqueueOnlyQueueAdapter();
     const publisher = new RecordingPublisher();
@@ -1250,10 +1279,13 @@ describe('NotificationsModule', () => {
     await service.dispatch({ channel: 'email', payload: { attributes: new Map([['tier', 'silver']]) } }, { queue: true });
     await service.dispatch({ channel: 'email', payload: { callbackUrl: new URL('https://example.com/orders/one') } }, { queue: true });
     await service.dispatch({ channel: 'email', payload: { callbackUrl: new URL('https://example.com/orders/two') } }, { queue: true });
+    await service.dispatch({ channel: 'email', payload: { query: new URLSearchParams('a=1') } }, { queue: true });
+    await service.dispatch({ channel: 'email', payload: { query: new URLSearchParams('a=2') } }, { queue: true });
     await service.dispatch({ channel: 'email', payload: { segmentPattern: /vip-.+/i } }, { queue: true });
+    await service.dispatch({ channel: 'email', payload: { segmentPattern: /vip-.+/g } }, { queue: true });
     await service.dispatch({ channel: 'email', payload: { segmentPattern: /trial-.+/i } }, { queue: true });
 
-    expect(new Set(queue.jobs.map((job) => job.id)).size).toBe(10);
+    expect(new Set(queue.jobs.map((job) => job.id)).size).toBe(13);
   });
 
   it('captures missing-channel failures during tolerant bulk dispatch', async () => {

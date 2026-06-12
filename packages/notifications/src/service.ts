@@ -503,13 +503,23 @@ function validateQueueBatchDeliveryIds(value: unknown, expectedCount: number): r
     throw createQueueBatchResultIntegrityError(`expected ${expectedCount} queue ids but received ${value.length}`);
   }
 
-  return value.map((entry, index) => {
+  const ids: string[] = [];
+
+  for (let index = 0; index < value.length; index += 1) {
+    if (!Object.hasOwn(value, index)) {
+      throw createQueueBatchResultIntegrityError(`queue id at index ${index} must be present`);
+    }
+
+    const entry = value[index];
+
     if (typeof entry !== 'string' || entry.length === 0) {
       throw createQueueBatchResultIntegrityError(`queue id at index ${index} must be a non-empty string`);
     }
 
-    return entry;
-  });
+    ids.push(entry);
+  }
+
+  return ids;
 }
 
 function createQueueBatchResultIntegrityError(message: string): Error {
@@ -551,6 +561,10 @@ function stableStringify(value: unknown): string {
 
   if (value instanceof URL) {
     return `URL:${JSON.stringify(value.href)}`;
+  }
+
+  if (value instanceof URLSearchParams) {
+    return `URLSearchParams:${JSON.stringify(value.toString())}`;
   }
 
   if (value instanceof RegExp) {
