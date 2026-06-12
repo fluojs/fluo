@@ -109,6 +109,7 @@ function assertMessageContent(message: NormalizedEmailMessage): void {
 export class EmailService implements Email, OnModuleInit, OnApplicationShutdown {
   private lifecycleState: EmailServiceLifecycleState = 'created';
   private bootstrapPromise: Promise<void> | undefined;
+  private readonly inFlightOperations = new Set<Promise<unknown>>();
   private resolvedTransport: EmailTransport | undefined;
   private transportPromise: Promise<EmailTransport> | undefined;
 
@@ -119,6 +120,8 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
 
     try {
       const transport = this.resolvedTransport ?? (this.transportPromise ? await this.transportPromise : undefined);
+
+      await this.drainInFlightOperations();
 
       if (transport && this.options.transport.ownsResources && transport.close) {
         await transport.close();
@@ -162,7 +165,7 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
       }
 
       if (this.options.verifyOnModuleInit && transport.verify) {
-        await transport.verify();
+        await this.trackInFlightOperation(Promise.resolve(transport.verify()));
       }
 
       if (this.lifecycleState !== 'starting') {
@@ -246,7 +249,7 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
     } else {
       this.assertCanDeliver();
     }
-    const result = await transport.send(normalized, options);
+    const result = await this.trackInFlightOperation(Promise.resolve(transport.send(normalized, options)));
 
     return {
       accepted: result.accepted ?? [],
@@ -372,6 +375,22 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
   private clearResolvedTransport(): void {
     this.resolvedTransport = undefined;
     this.transportPromise = undefined;
+  }
+
+  private async drainInFlightOperations(): Promise<void> {
+    while (this.inFlightOperations.size > 0) {
+      await Promise.allSettled(Array.from(this.inFlightOperations));
+    }
+  }
+
+  private async trackInFlightOperation<T>(operation: Promise<T>): Promise<T> {
+    this.inFlightOperations.add(operation);
+
+    try {
+      return await operation;
+    } finally {
+      this.inFlightOperations.delete(operation);
+    }
   }
 
   private async ensureReadyForDelivery(): Promise<void> {

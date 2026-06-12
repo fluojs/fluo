@@ -271,7 +271,11 @@ class DelayedLifecycleTransport implements EmailTransport {
   sendCalls = 0;
   verifyCalls = 0;
 
-  constructor(private readonly verifyDelay: Promise<void> | undefined = undefined) {}
+  constructor(
+    private readonly verifyDelay: Promise<void> | undefined = undefined,
+    private readonly sendDelay: Promise<void> | undefined = undefined,
+    private readonly onSendStarted: (() => void) | undefined = undefined,
+  ) {}
 
   async close(): Promise<void> {
     this.closeCalls += 1;
@@ -279,6 +283,8 @@ class DelayedLifecycleTransport implements EmailTransport {
 
   async send(): Promise<{ accepted: string[]; messageId: string; pending: []; rejected: [] }> {
     this.sendCalls += 1;
+    this.onSendStarted?.();
+    await this.sendDelay;
 
     return {
       accepted: ['user@example.com'],
@@ -958,7 +964,7 @@ describe('EmailModule', () => {
     resolveTransport(createdTransport);
 
     await expect(sendDuringCreate).rejects.toThrowError(
-      new EmailLifecycleError('Email delivery cannot start while the service lifecycle is stopped.'),
+      new EmailLifecycleError('Email delivery cannot start while the service lifecycle is stopping.'),
     );
     await shutdown;
     await expect(
@@ -969,7 +975,7 @@ describe('EmailModule', () => {
     expect(createdTransport.sendCalls).toBe(0);
   });
 
-  it('does not mark the service ready when shutdown interrupts bootstrap verification', async () => {
+  it('drains bootstrap verification before closing owned transports during shutdown', async () => {
     let resolveVerify!: () => void;
     let resolveVerifyStarted!: () => void;
     const verifyDelay = new Promise<void>((resolve) => {
@@ -1001,9 +1007,12 @@ describe('EmailModule', () => {
     const bootstrap = service.onModuleInit();
     await verifyStarted;
     const shutdown = service.onApplicationShutdown();
+    await Promise.resolve();
 
-    await shutdown;
+    expect(createdTransport.closeCalls).toBe(0);
+
     resolveVerify();
+    await shutdown;
     await bootstrap;
 
     expect(service.createPlatformStatusSnapshot()).toMatchObject({
@@ -1022,6 +1031,42 @@ describe('EmailModule', () => {
     expect(createdTransport.verifyCalls).toBe(1);
     expect(verify).toHaveBeenCalledOnce();
     expect(createdTransport.sendCalls).toBe(0);
+  });
+
+  it('drains in-flight sends before closing owned transports during shutdown', async () => {
+    let resolveSend!: () => void;
+    let resolveSendStarted!: () => void;
+    const sendDelay = new Promise<void>((resolve) => {
+      resolveSend = resolve;
+    });
+    const sendStarted = new Promise<void>((resolve) => {
+      resolveSendStarted = resolve;
+    });
+    const createdTransport = new DelayedLifecycleTransport(undefined, sendDelay, resolveSendStarted);
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: {
+        create: async () => createdTransport,
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+    const delivery = service.send({ subject: 'Drain send', text: 'hello', to: ['user@example.com'] });
+    await sendStarted;
+    const shutdown = service.onApplicationShutdown();
+    await Promise.resolve();
+
+    expect(createdTransport.sendCalls).toBe(1);
+    expect(createdTransport.closeCalls).toBe(0);
+
+    resolveSend();
+
+    await expect(delivery).resolves.toMatchObject({ messageId: 'delayed-1' });
+    await shutdown;
+    expect(createdTransport.closeCalls).toBe(1);
   });
 
   it('waits for bootstrap transport verification before delivery proceeds', async () => {
