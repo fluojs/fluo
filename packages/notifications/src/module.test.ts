@@ -1248,8 +1248,12 @@ describe('NotificationsModule', () => {
     await service.dispatch({ channel: 'email', payload: { tags: new Set(['three', 'two']) } }, { queue: true });
     await service.dispatch({ channel: 'email', payload: { attributes: new Map([['tier', 'gold']]) } }, { queue: true });
     await service.dispatch({ channel: 'email', payload: { attributes: new Map([['tier', 'silver']]) } }, { queue: true });
+    await service.dispatch({ channel: 'email', payload: { callbackUrl: new URL('https://example.com/orders/one') } }, { queue: true });
+    await service.dispatch({ channel: 'email', payload: { callbackUrl: new URL('https://example.com/orders/two') } }, { queue: true });
+    await service.dispatch({ channel: 'email', payload: { segmentPattern: /vip-.+/i } }, { queue: true });
+    await service.dispatch({ channel: 'email', payload: { segmentPattern: /trial-.+/i } }, { queue: true });
 
-    expect(new Set(queue.jobs.map((job) => job.id)).size).toBe(6);
+    expect(new Set(queue.jobs.map((job) => job.id)).size).toBe(10);
   });
 
   it('captures missing-channel failures during tolerant bulk dispatch', async () => {

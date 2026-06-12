@@ -549,6 +549,14 @@ function stableStringify(value: unknown): string {
     return Number.isNaN(value.getTime()) ? 'Date:Invalid' : `Date:${JSON.stringify(value.toISOString())}`;
   }
 
+  if (value instanceof URL) {
+    return `URL:${JSON.stringify(value.href)}`;
+  }
+
+  if (value instanceof RegExp) {
+    return `RegExp:${JSON.stringify(value.source)}/${value.flags}`;
+  }
+
   if (value instanceof Map) {
     const entries = Array.from(value.entries())
       .map(([key, entry]) => `[${stableStringify(key)},${stableStringify(entry)}]`)
