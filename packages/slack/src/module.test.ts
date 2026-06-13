@@ -238,6 +238,37 @@ describe('SlackModule', () => {
     expect(transportState.closeCalls).toBe(1);
   });
 
+  it('normalizes missing notification channel fallbacks for module and manual provider registration', async () => {
+    const moduleContainer = new Container();
+    const helperContainer = new Container();
+
+    moduleContainer.register(
+      ...moduleProviders(
+        SlackModule.forRoot({
+          defaultChannel: '#ops',
+          transport: createRecordingTransportFactory(),
+        }),
+      ),
+    );
+    helperContainer.register(
+      ...createSlackProviders({
+        defaultChannel: '#ops',
+        notifications: { channel: '   ' },
+        transport: createRecordingTransportFactory(),
+      }),
+    );
+
+    const moduleChannel = await moduleContainer.resolve(SlackChannel);
+    const moduleChannelToken = await moduleContainer.resolve(SLACK_CHANNEL);
+    const helperChannel = await helperContainer.resolve(SlackChannel);
+    const helperChannelToken = await helperContainer.resolve(SLACK_CHANNEL);
+
+    expect(moduleChannel.channel).toBe('slack');
+    expect(moduleChannelToken).toBe(moduleChannel);
+    expect(helperChannel.channel).toBe('slack');
+    expect(helperChannelToken).toBe(helperChannel);
+  });
+
   it('rejects helper-based registration without an explicit transport contract', () => {
     expect(() =>
       createSlackProviders({
@@ -307,6 +338,27 @@ describe('SlackModule', () => {
     controller.abort();
 
     await expect(service.sendMany([], { signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('honors an already-aborted signal before sending a non-empty sendMany batch', async () => {
+    const controller = new AbortController();
+    const create = vi.fn(async () => new PassiveTransport());
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      transport: {
+        create,
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+    controller.abort();
+
+    await expect(service.sendMany([{ text: 'Already aborted batch item' }], { signal: controller.signal })).rejects.toMatchObject({
+      name: 'AbortError',
+    });
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -761,6 +813,42 @@ describe('SlackModule', () => {
       expect(fetchLike).toHaveBeenCalledTimes(3);
       expect(rateLimitedText).not.toHaveBeenCalled();
       expect(outageText).not.toHaveBeenCalled();
+      expect(successText).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries request-timeout webhook failures before succeeding', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const requestTimeoutText = vi.fn(async () => 'request timeout');
+      const successText = vi.fn(async () => 'ok');
+      const fetchLike = vi
+        .fn<SlackFetchLike>()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 408,
+          statusText: 'Request Timeout',
+          text: requestTimeoutText,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: successText,
+        });
+      const transport = createSlackWebhookTransport({
+        fetch: fetchLike,
+        webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+      });
+
+      const pending = transport.send({ attachments: [], blocks: [], channel: '#ops', text: 'Request timeout retry path' }, {});
+      await vi.runAllTimersAsync();
+
+      await expect(pending).resolves.toMatchObject({ ok: true, response: 'ok', statusCode: 200 });
+      expect(fetchLike).toHaveBeenCalledTimes(2);
+      expect(requestTimeoutText).not.toHaveBeenCalled();
       expect(successText).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
