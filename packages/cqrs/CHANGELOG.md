@@ -1,5 +1,17 @@
 # @fluojs/cqrs
 
+## 1.1.2
+
+### Patch Changes
+
+- [#2119](https://github.com/fluojs/fluo/pull/2119) [`4fd0631`](https://github.com/fluojs/fluo/commit/4fd063145ad8ac7df823751aaa11f63a6e31c572) Thanks [@ayden94](https://github.com/ayden94)! - Align the CQRS source and generated declaration surface with the documented runtime-agnostic dispatch context contract by keeping `CqrsDispatchContext` opaque, ignoring caller-shaped topology internals unless CQRS created the context, and keeping low-level provider assembly behind `CqrsModule.forRoot(...)`.
+
+- [#2231](https://github.com/fluojs/fluo/pull/2231) [`5372401`](https://github.com/fluojs/fluo/commit/5372401b1842947717d816ac9fe8fda08cdd86dd) Thanks [@ayden94](https://github.com/ayden94)! - Reject new CQRS event publishes and direct saga dispatches once shutdown has started while still draining already active publish and saga work.
+
+- Updated dependencies [[`7cb2070`](https://github.com/fluojs/fluo/commit/7cb2070549382319349e03a0309f527c70673b6e), [`f6bd63b`](https://github.com/fluojs/fluo/commit/f6bd63b94044260643704ad2ed4f5486a2db6e64), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/event-bus@1.0.1
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ## 1.1.1

@@ -1,5 +1,15 @@
 # @fluojs/email
 
+## 1.0.2
+
+### Patch Changes
+
+- [#2261](https://github.com/fluojs/fluo/pull/2261) [`50330a6`](https://github.com/fluojs/fluo/commit/50330a64491adea44655df16d3285dca9c113007) Thanks [@ayden94](https://github.com/ayden94)! - Drain in-flight transport verify and send operations before closing owned email transports during shutdown.
+
+- Updated dependencies [[`78a7ade`](https://github.com/fluojs/fluo/commit/78a7adea4a6dc5e5996af6ca1244c789dab377af), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/notifications@1.0.2
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ## 1.0.1

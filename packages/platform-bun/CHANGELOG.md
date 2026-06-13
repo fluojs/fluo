@@ -1,5 +1,15 @@
 # @fluojs/platform-bun
 
+## 1.0.7
+
+### Patch Changes
+
+- [#2250](https://github.com/fluojs/fluo/pull/2250) [`77445cf`](https://github.com/fluojs/fluo/commit/77445cf982821e6b823cacedfd354fabd18bb11b) Thanks [@ayden94](https://github.com/ayden94)! - Guard Bun adapter lifecycle mutations by keeping duplicate `listen()` calls bound to the original live dispatcher, rejecting realtime binding changes after startup, validating signal shutdown timeouts before registration, and documenting the synchronous fetch-handler contract.
+
+- Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/http@1.1.2
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ## 1.0.6

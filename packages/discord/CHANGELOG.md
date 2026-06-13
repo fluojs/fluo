@@ -1,5 +1,15 @@
 # @fluojs/discord
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2263](https://github.com/fluojs/fluo/pull/2263) [`82d0498`](https://github.com/fluojs/fluo/commit/82d0498672428b99318e38fca69a1b4e7eaaeb86) Thanks [@ayden94](https://github.com/ayden94)! - Serialize Discord startup and shutdown transport lifecycle transitions so shutdown drains in-flight factory-owned transport creation and closes owned resources exactly once.
+
+- Updated dependencies [[`78a7ade`](https://github.com/fluojs/fluo/commit/78a7adea4a6dc5e5996af6ca1244c789dab377af), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/notifications@1.0.2
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ## 1.0.3

@@ -1,5 +1,15 @@
 # @fluojs/platform-fastify
 
+## 1.0.8
+
+### Patch Changes
+
+- [#2247](https://github.com/fluojs/fluo/pull/2247) [`4496288`](https://github.com/fluojs/fluo/commit/4496288c9b26eae38b8219e1a536b7db048adce5) Thanks [@ayden94](https://github.com/ayden94)! - Harden Fastify request correlation and raw-body capture by honoring `x-correlation-id` as the request id fallback on native and wildcard paths, preserving raw-body byte chunks without UTF-8 re-encoding, and documenting direct multipart option configuration.
+
+- Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/http@1.1.2
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ## 1.0.7

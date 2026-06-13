@@ -1,5 +1,22 @@
 # @fluojs/drizzle
 
+## 1.1.0
+
+### Minor Changes
+
+- [#2089](https://github.com/fluojs/fluo/pull/2089) [`b790a67`](https://github.com/fluojs/fluo/commit/b790a67a80236518bb625e860656c0e934973dcf) Thanks [@ayden94](https://github.com/ayden94)! - Add the Drizzle service `Transaction` decorator and current-less database facade.
+
+  Remove the previously exported `DrizzleTransactionInterceptor`; use `@Transaction()` or explicit `requestTransaction()` boundaries instead.
+
+### Patch Changes
+
+- [#2118](https://github.com/fluojs/fluo/pull/2118) [`d655c6c`](https://github.com/fluojs/fluo/commit/d655c6c35a55da70d723231e3436e54f4d707cfc) Thanks [@ayden94](https://github.com/ayden94)! - Align the Drizzle direct-method facade type and documentation, classify `DrizzleDatabase.createFacade(...)` as a low-level compatibility helper, and remove the stale `@fluojs/http` runtime dependency.
+
+- [#2158](https://github.com/fluojs/fluo/pull/2158) [`c4d0852`](https://github.com/fluojs/fluo/commit/c4d08520ccbdaa356d1eb244fd7b9b8d0a1f6e2d) Thanks [@ayden94](https://github.com/ayden94)! - Reject nested Drizzle transaction calls once application shutdown begins so ambient transaction reuse cannot bypass the documented shutdown boundary.
+
+- Updated dependencies [[`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/runtime@1.1.8
+
 ## 1.0.2
 
 ### Patch Changes

@@ -1,5 +1,19 @@
 # @fluojs/testing
 
+## 1.0.6
+
+### Patch Changes
+
+- [#2172](https://github.com/fluojs/fluo/pull/2172) [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451) Thanks [@ayden94](https://github.com/ayden94)! - Harden `overrideModule()` so testing module replacements preserve authored module identities without mutating source module metadata, add the runtime module replacement compile seam used by testing, and document the testing module, `createTestApp`, Vitest entrypoint, and NestJS migration contracts.
+
+- [#2113](https://github.com/fluojs/fluo/pull/2113) [`1fab5ce`](https://github.com/fluojs/fluo/commit/1fab5ced669a02141c12760afc387ab88da1e1bf) Thanks [@ayden94](https://github.com/ayden94)! - Restrict the Vitest workspace alias helper to package exports so private source files are not exposed as importable `@fluojs/*` subpaths.
+
+- [#2233](https://github.com/fluojs/fluo/pull/2233) [`b038b4c`](https://github.com/fluojs/fluo/commit/b038b4c6014a092c321289358a3f5e965d452461) Thanks [@ayden94](https://github.com/ayden94)! - Harden testing harness cleanup by closing platform conformance components after validation, diagnostics, and snapshot checks, making `createTestApp().close()` idempotent, and preserving cleanup failures for portability `run()` callbacks that surface a partially bootstrapped app.
+
+- Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/http@1.1.2
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ## 1.0.5

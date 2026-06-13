@@ -1,5 +1,11 @@
 # @fluojs/http
 
+## 1.1.2
+
+### Patch Changes
+
+- [#2244](https://github.com/fluojs/fluo/pull/2244) [`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4) Thanks [@ayden94](https://github.com/ayden94)! - Preserve adapter `isAborted()` probes on dispatch request clones and keep lazy Node request context resolution isolated for overlapping promise-returning callbacks.
+
 ## [Unreleased]
 
 ## 1.1.1
