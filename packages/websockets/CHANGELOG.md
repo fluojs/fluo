@@ -1,5 +1,15 @@
 # @fluojs/websockets
 
+## 1.0.7
+
+### Patch Changes
+
+- [#2194](https://github.com/fluojs/fluo/pull/2194) [`957444b`](https://github.com/fluojs/fluo/commit/957444b02069fb9396d872439edf3a25e38babe4) Thanks [@ayden94](https://github.com/ayden94)! - Align websocket runtime contracts by keeping shared root types runtime-neutral, tightening Node upgrade guard typing to `IncomingMessage`, documenting room service and payload normalization behavior, and adding package-local regression coverage for room operations, bounded shutdown cleanup, heartbeat opt-out, and under-limit text payload dispatch.
+
+- Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/http@1.1.2
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ### Patch Changes

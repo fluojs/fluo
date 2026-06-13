@@ -1,5 +1,19 @@
 # @fluojs/queue
 
+## 1.0.2
+
+### Patch Changes
+
+- [#2235](https://github.com/fluojs/fluo/pull/2235) [`9735d6d`](https://github.com/fluojs/fluo/commit/9735d6d560525c7e9345a7a1deb221469c56c07d) Thanks [@ayden94](https://github.com/ayden94)! - Fix non-global queue worker discovery so scoped registrations only start workers visible to the importing module graph, and roll back queue-owned BullMQ resources immediately when worker startup fails after bootstrap readiness.
+
+- [#2110](https://github.com/fluojs/fluo/pull/2110) [`4d64d75`](https://github.com/fluojs/fluo/commit/4d64d758fb0f31c499cc5ea98cf802b8f0ec938b) Thanks [@ayden94](https://github.com/ayden94)! - Fix queue readiness snapshots so workers are only reported ready after BullMQ processors start, and expose worker start failures through lifecycle/status diagnostics.
+
+  This is a readiness bug fix: status snapshots now distinguish worker startup failure from healthy startup and avoid reporting ready before BullMQ processors are actually running.
+
+- Updated dependencies [[`050620e`](https://github.com/fluojs/fluo/commit/050620e22d83ccd45c35bf091a813e7445bb74ed), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/redis@1.0.2
+  - @fluojs/runtime@1.1.8
+
 ## 1.0.1
 
 ### Patch Changes

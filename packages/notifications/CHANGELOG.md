@@ -1,5 +1,14 @@
 # @fluojs/notifications
 
+## 1.0.2
+
+### Patch Changes
+
+- [#2259](https://github.com/fluojs/fluo/pull/2259) [`78a7ade`](https://github.com/fluojs/fluo/commit/78a7adea4a6dc5e5996af6ca1244c789dab377af) Thanks [@ayden94](https://github.com/ayden94)! - Preserve lifecycle publication failure ordering, reject malformed bulk queue adapter results, and keep deterministic notification IDs distinct for Date, Map, and Set payload values.
+
+- Updated dependencies [[`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ## 1.0.1

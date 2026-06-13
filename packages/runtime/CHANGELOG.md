@@ -1,5 +1,16 @@
 # @fluojs/runtime
 
+## 1.1.8
+
+### Patch Changes
+
+- [#2172](https://github.com/fluojs/fluo/pull/2172) [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451) Thanks [@ayden94](https://github.com/ayden94)! - Harden `overrideModule()` so testing module replacements preserve authored module identities without mutating source module metadata, add the runtime module replacement compile seam used by testing, and document the testing module, `createTestApp`, Vitest entrypoint, and NestJS migration contracts.
+
+- [#2229](https://github.com/fluojs/fluo/pull/2229) [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed) Thanks [@ayden94](https://github.com/ayden94)! - Align Socket.IO lifecycle internals and documentation with the audited runtime contracts: defer Node async-context loading until gateway invocation, route provider-scope metadata through the runtime integration seam, document explicit ACK/raw-server migration paths, and add deterministic Bun CORS/test coverage.
+
+- Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4)]:
+  - @fluojs/http@1.1.2
+
 ## 1.1.7
 
 ### Patch Changes

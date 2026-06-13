@@ -1,5 +1,11 @@
 # @fluojs/vite
 
+## 1.0.6
+
+### Patch Changes
+
+- [#2175](https://github.com/fluojs/fluo/pull/2175) [`2230091`](https://github.com/fluojs/fluo/commit/22300918e9141c20793d59b44187ec4d8bfc7486) Thanks [@ayden94](https://github.com/ayden94)! - Document the generated Vite/Vitest decorator transform boundary and add regression coverage for lazy Babel loading plus peer dependency diagnostics.
+
 ## [Unreleased]
 
 ## 1.0.5

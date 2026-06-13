@@ -1,5 +1,14 @@
 # @fluojs/jwt
 
+## 1.0.3
+
+### Patch Changes
+
+- [#2109](https://github.com/fluojs/fluo/pull/2109) [`10b55fc`](https://github.com/fluojs/fluo/commit/10b55fc84db86805eba1d1e727fb579f03c3ee09) Thanks [@ayden94](https://github.com/ayden94)! - Dispose `JwtModule`-managed verifier JWKS caches during module shutdown and mark `normalizeRefreshTokenOptions(...)` as a deprecated root-import compatibility helper.
+
+- Updated dependencies [[`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/runtime@1.1.8
+
 ## 1.0.2
 
 ### Patch Changes

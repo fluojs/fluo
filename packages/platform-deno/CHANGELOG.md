@@ -1,5 +1,15 @@
 # @fluojs/platform-deno
 
+## 1.0.8
+
+### Patch Changes
+
+- [#2252](https://github.com/fluojs/fluo/pull/2252) [`ce510eb`](https://github.com/fluojs/fluo/commit/ce510eb460fc5a55a87d53a56dcb0d430de269ac) Thanks [@ayden94](https://github.com/ayden94)! - Roll back already registered Deno shutdown signal listeners when later signal registration fails, and document the tightened Deno lifecycle and websocket fallback contracts.
+
+- Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/http@1.1.2
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ## 1.0.7

@@ -1,5 +1,17 @@
 # @fluojs/throttler
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2226](https://github.com/fluojs/fluo/pull/2226) [`001aa51`](https://github.com/fluojs/fluo/commit/001aa5125859d12e731a907db6a7e339fa0102c1) Thanks [@ayden94](https://github.com/ayden94)! - Align throttler guard-stage contracts by failing fast on malformed custom seams and exposing `retryAfterMs` for custom stores with authoritative backing-store clocks.
+
+- [#2112](https://github.com/fluojs/fluo/pull/2112) [`379d39b`](https://github.com/fluojs/fluo/commit/379d39b34c962519852d12e0f2621c208bf46e5e) Thanks [@ayden94](https://github.com/ayden94)! - Expose a structural Redis client contract for `RedisThrottlerStore` so the root `@fluojs/throttler` API no longer leaks the concrete `ioredis` constructor type while remaining compatible with `ioredis` and `@fluojs/redis` clients.
+
+- Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/http@1.1.2
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ### Patch Changes

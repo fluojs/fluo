@@ -1,5 +1,16 @@
 # @fluojs/event-bus
 
+## 1.0.1
+
+### Patch Changes
+
+- [#2121](https://github.com/fluojs/fluo/pull/2121) [`7cb2070`](https://github.com/fluojs/fluo/commit/7cb2070549382319349e03a0309f527c70673b6e) Thanks [@ayden94](https://github.com/ayden94)! - Close the configured event-bus transport when bootstrap subscription wiring fails after partially opening transport channels.
+
+- [#2234](https://github.com/fluojs/fluo/pull/2234) [`f6bd63b`](https://github.com/fluojs/fluo/commit/f6bd63b94044260643704ad2ed4f5486a2db6e64) Thanks [@ayden94](https://github.com/ayden94)! - Keep bounded awaited handler and transport work in shutdown drain tracking after publish timeout or abort bounds settle the caller promise, and preserve distinct singleton provider identities during event handler discovery.
+
+- Updated dependencies [[`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ## 1.0.0

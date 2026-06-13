@@ -1,5 +1,17 @@
 # @fluojs/metrics
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2159](https://github.com/fluojs/fluo/pull/2159) [`c57e4d0`](https://github.com/fluojs/fluo/commit/c57e4d0106cb1d9ac061f7d36f86d17d5da2bda9) Thanks [@ayden94](https://github.com/ayden94)! - Harden metrics lifecycle ownership so isolated registries, services, meter providers, and platform telemetry are created at application bootstrap boundaries instead of dynamic module definition time, while preserving shared-registry scrape collision guards.
+
+- [#2114](https://github.com/fluojs/fluo/pull/2114) [`23eeea1`](https://github.com/fluojs/fluo/commit/23eeea1c0276e8dd9696215f5be35bbd67c7ad06) Thanks [@ayden94](https://github.com/ayden94)! - Ensure `endpointMiddleware` remains bound when `MetricsModule.forRoot({ path: '' })` exposes an empty-string metrics endpoint.
+
+- Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/http@1.1.2
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ### Patch Changes
