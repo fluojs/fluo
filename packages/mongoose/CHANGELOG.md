@@ -1,5 +1,21 @@
 # @fluojs/mongoose
 
+## 1.1.0
+
+### Minor Changes
+
+- [#2089](https://github.com/fluojs/fluo/pull/2089) [`e1ad29d`](https://github.com/fluojs/fluo/commit/e1ad29dfe7b5d976da852d652a9861ce8248aa7e) Thanks [@ayden94](https://github.com/ayden94)! - Add a Mongoose service `Transaction` decorator and conservative model auto-session facade.
+
+  Remove the previously exported `MongooseTransactionInterceptor`; use `@Transaction()` or explicit `requestTransaction()` boundaries instead.
+
+### Patch Changes
+
+- [#2115](https://github.com/fluojs/fluo/pull/2115) [`08b07de`](https://github.com/fluojs/fluo/commit/08b07de6c5d93af078e1cf6f310e5f8049f53107) Thanks [@ayden94](https://github.com/ayden94)! - Fix Mongoose transaction shutdown ordering and model facade ownership so shutdown is checked before ambient manual transaction reuse, automatic model session injection stays scoped to `MongooseConnection.model(...)`, and raw Mongoose connection objects are not mutated.
+
+- Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/http@1.1.2
+  - @fluojs/runtime@1.1.8
+
 ## 1.0.5
 
 ### Patch Changes

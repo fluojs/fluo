@@ -1,5 +1,16 @@
 # @fluojs/studio
 
+## 1.0.7
+
+### Patch Changes
+
+- [#2230](https://github.com/fluojs/fluo/pull/2230) [`a82e1be`](https://github.com/fluojs/fluo/commit/a82e1be012df5e8315ba0d0efa509d9c3bc988ac) Thanks [@ayden94](https://github.com/ayden94)! - Harden Studio live request trace validation so body-like request/response payload fields are rejected before viewer state can retain them, and extend static/report artifact coverage for snapshot-plus-timing, report, and standalone timing workflows.
+
+- [#2164](https://github.com/fluojs/fluo/pull/2164) [`c87216f`](https://github.com/fluojs/fluo/commit/c87216f246ca840b896f5f7c1ff5efdcdd31aa26) Thanks [@ayden94](https://github.com/ayden94)! - Preserve internal component identity when static Studio snapshots are filtered so hidden internal dependencies are not reclassified as external nodes in graph rendering or connection inspection.
+
+- Updated dependencies [[`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ## 1.0.6

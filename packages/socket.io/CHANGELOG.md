@@ -1,5 +1,18 @@
 # @fluojs/socket.io
 
+## 1.0.7
+
+### Patch Changes
+
+- [#2111](https://github.com/fluojs/fluo/pull/2111) [`b3e5ec4`](https://github.com/fluojs/fluo/commit/b3e5ec456f038c6a65fd26586df44be6a717920a) Thanks [@ayden94](https://github.com/ayden94)! - Republish the Socket.IO runtime and declaration contract so generated package output preserves fail-fast positive-integer option validation, the portable `SocketIoHandshakeRequest` request union, and bounded shutdown force-disconnect/retry semantics.
+
+- [#2229](https://github.com/fluojs/fluo/pull/2229) [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed) Thanks [@ayden94](https://github.com/ayden94)! - Align Socket.IO lifecycle internals and documentation with the audited runtime contracts: defer Node async-context loading until gateway invocation, route provider-scope metadata through the runtime integration seam, document explicit ACK/raw-server migration paths, and add deterministic Bun CORS/test coverage.
+
+- Updated dependencies [[`957444b`](https://github.com/fluojs/fluo/commit/957444b02069fb9396d872439edf3a25e38babe4), [`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/websockets@1.0.7
+  - @fluojs/http@1.1.2
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ## 1.0.6

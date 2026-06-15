@@ -1,5 +1,20 @@
 # @fluojs/cli
 
+## 1.1.0
+
+### Minor Changes
+
+- [#2116](https://github.com/fluojs/fluo/pull/2116) [`78b5ab0`](https://github.com/fluojs/fluo/commit/78b5ab0d0c2d9ea2057a02682b2c2c6a9202f624) Thanks [@ayden94](https://github.com/ayden94)! - Expose the CLI generator and inspect programmatic APIs from the root package entrypoint, including generator result/plan types and middleware module registration metadata.
+
+### Patch Changes
+
+- [#2160](https://github.com/fluojs/fluo/pull/2160) [`2873577`](https://github.com/fluojs/fluo/commit/2873577f3f40acdc160b93a5ee8dc3448d5811fe) Thanks [@ayden94](https://github.com/ayden94)! - Keep Studio dev-runner restarts aligned with the current sidecar epoch and lazy-load the full CLI dispatcher from the package root programmatic entrypoint.
+
+- [#2225](https://github.com/fluojs/fluo/pull/2225) [`8979f7a`](https://github.com/fluojs/fluo/commit/8979f7acad128d6b3665685ddf3c1f4b4b0e7f59) Thanks [@ayden94](https://github.com/ayden94)! - Harden CLI Studio dev-runner contracts by rejecting native/raw-watch Studio combinations, preventing sidecar heartbeat timers from starting on listen failures, and routing fallback update-check prompts through injected IO streams.
+
+- Updated dependencies [[`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ## 1.0.6

@@ -1,5 +1,15 @@
 # @fluojs/cache-manager
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2120](https://github.com/fluojs/fluo/pull/2120) [`0ad7e55`](https://github.com/fluojs/fluo/commit/0ad7e5501994e73fa4ac073262c9bc9c8e45e454) Thanks [@ayden94](https://github.com/ayden94)! - Document the supported function-based cache-key extension paths while preserving the root `NormalizedCacheModuleOptions` type as a compatibility-only public export.
+
+- Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/http@1.1.2
+  - @fluojs/runtime@1.1.8
+
 ## 1.0.3
 
 ### Patch Changes

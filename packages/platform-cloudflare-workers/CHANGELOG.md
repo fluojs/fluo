@@ -1,5 +1,15 @@
 # @fluojs/platform-cloudflare-workers
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2254](https://github.com/fluojs/fluo/pull/2254) [`3640bc1`](https://github.com/fluojs/fluo/commit/3640bc1c96197c83d59887fb6e3c92e7f4c6d7e1) Thanks [@ayden94](https://github.com/ayden94)! - Attach Cloudflare Worker `env` and execution context to framework requests, and keep Worker `waitUntil`/shutdown drains open until SSE (`text/event-stream`) response bodies finish.
+
+- Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/http@1.1.2
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ## 1.0.3

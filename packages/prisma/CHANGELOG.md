@@ -1,5 +1,21 @@
 # @fluojs/prisma
 
+## 1.1.0
+
+### Minor Changes
+
+- [#2089](https://github.com/fluojs/fluo/pull/2089) [`0e0348b`](https://github.com/fluojs/fluo/commit/0e0348b11ec2ad1e33b7aef26b3af40a3b5ac50d) Thanks [@ayden94](https://github.com/ayden94)! - Add a Prisma service `Transaction` decorator and current-less client delegate facade.
+
+  Remove the previously exported `PrismaTransactionInterceptor`; use `@Transaction()` or explicit `requestTransaction()` boundaries instead.
+
+### Patch Changes
+
+- [#2123](https://github.com/fluojs/fluo/pull/2123) [`50b282f`](https://github.com/fluojs/fluo/commit/50b282f569b1a0b2d2dbf3822f8c5d3f78f37ed5) Thanks [@ayden94](https://github.com/ayden94)! - Expose a typed Prisma service facade for direct generated delegate calls and align Prisma documentation with the runtime facade contract.
+
+- Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/http@1.1.2
+  - @fluojs/runtime@1.1.8
+
 ## 1.0.2
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @fluojs/redis
 
+## 1.0.2
+
+### Patch Changes
+
+- [#2232](https://github.com/fluojs/fluo/pull/2232) [`050620e`](https://github.com/fluojs/fluo/commit/050620e22d83ccd45c35bf091a813e7445bb74ed) Thanks [@ayden94](https://github.com/ayden94)! - Harden Redis lifecycle timeout validation and shutdown fallback handling so invalid timeout values fail fast and disconnect fallback only rethrows when the client remains open.
+
+- Updated dependencies [[`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/runtime@1.1.8
+
 ## 1.0.1
 
 ### Patch Changes

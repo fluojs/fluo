@@ -1,5 +1,16 @@
 # @fluojs/microservices
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2122](https://github.com/fluojs/fluo/pull/2122) [`6285f26`](https://github.com/fluojs/fluo/commit/6285f26f84bfcddb11018ff25e137bbb7c0b0005) Thanks [@ayden94](https://github.com/ayden94)! - Align microservice transport status metadata with actual resource ownership and export `TcpMicroserviceTransportOptions` from the root barrel so the public constructor surface is documented and type-accessible.
+
+- [#2236](https://github.com/fluojs/fluo/pull/2236) [`120a2ee`](https://github.com/fluojs/fluo/commit/120a2eed817c80101ba7393f92a952d3f11d1619) Thanks [@ayden94](https://github.com/ayden94)! - Tighten microservice transport lifecycle and abort contracts so Kafka, MQTT, Redis Streams, and gRPC re-check cancellation before deferred dispatch, close/listen races cannot reopen an in-progress shutdown, and caller-supplied gRPC servers remain caller-owned during close.
+
+- Updated dependencies [[`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/runtime@1.1.8
+
 ## Unreleased
 
 ## 1.0.3

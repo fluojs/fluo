@@ -1,5 +1,20 @@
 # @fluojs/cron
 
+## 1.1.0
+
+### Minor Changes
+
+- [#2243](https://github.com/fluojs/fluo/pull/2243) [`a8594c6`](https://github.com/fluojs/fluo/commit/a8594c694d1674be80f407978a64155b2ab990cb) Thanks [@ayden94](https://github.com/ayden94)! - Add `SchedulingRegistry.updateIntervalMs(name, ms)` for rollback-safe runtime interval cadence updates.
+
+### Patch Changes
+
+- [#2124](https://github.com/fluojs/fluo/pull/2124) [`ae7a414`](https://github.com/fluojs/fluo/commit/ae7a4149b2b903e9f73a7428194804060635f191) Thanks [@ayden94](https://github.com/ayden94)! - Honor `options.name` as the registry key, scheduler metadata name, and default distributed lock key for dynamically registered cron, interval, and timeout tasks.
+
+- [#2240](https://github.com/fluojs/fluo/pull/2240) [`1ee8874`](https://github.com/fluojs/fluo/commit/1ee8874317678e0a5dc41443456463a959e8be89) Thanks [@ayden94](https://github.com/ayden94)! - Harden distributed lock readiness and shutdown retry semantics so Redis lock I/O outages no longer report ready/healthy and timed-out task lock releases can be retried after the task settles.
+
+- Updated dependencies [[`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/runtime@1.1.8
+
 ## 1.0.3
 
 ### Patch Changes

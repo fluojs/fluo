@@ -1,5 +1,17 @@
 # @fluojs/discord
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2263](https://github.com/fluojs/fluo/pull/2263) [`82d0498`](https://github.com/fluojs/fluo/commit/82d0498672428b99318e38fca69a1b4e7eaaeb86) Thanks [@ayden94](https://github.com/ayden94)! - Serialize Discord startup and shutdown transport lifecycle transitions so shutdown drains in-flight factory-owned transport creation and closes owned resources exactly once.
+
+- Updated dependencies [[`78a7ade`](https://github.com/fluojs/fluo/commit/78a7adea4a6dc5e5996af6ca1244c789dab377af), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/notifications@1.0.2
+  - @fluojs/runtime@1.1.8
+
+## [Unreleased]
+
 ## 1.0.3
 
 ### Patch Changes
@@ -14,9 +26,11 @@
 
 ## 1.0.2
 
-### Patch Changes
+### Major Changes
 
 - [#1867](https://github.com/fluojs/fluo/pull/1867) [`8afb45e`](https://github.com/fluojs/fluo/commit/8afb45ee9a8cbaa21a611079768196e6be0df801) Thanks [@ayden94](https://github.com/ayden94)! - Reject Discord sends until module bootstrap marks the transport ready, preserve failed-bootstrap readiness failures, and allow documented poll-only notification payloads while keeping webhook response exposure documented.
+
+### Patch Changes
 
 - Updated dependencies [[`01ea60e`](https://github.com/fluojs/fluo/commit/01ea60eff7a8d3b30509aff8aaf21649178a9fad), [`5fa7b54`](https://github.com/fluojs/fluo/commit/5fa7b549e760cb6b1be82a7e7e7c1f7e011b0ea2), [`3aa93d9`](https://github.com/fluojs/fluo/commit/3aa93d9bbea28342f225b727f2ec0640acdf7986)]:
   - @fluojs/di@1.0.1

@@ -1,5 +1,15 @@
 # @fluojs/terminus
 
+## 1.0.5
+
+### Patch Changes
+
+- [#2227](https://github.com/fluojs/fluo/pull/2227) [`54d99c4`](https://github.com/fluojs/fluo/commit/54d99c4ddb0318767a9fa774eb76bd895739e41b) Thanks [@ayden94](https://github.com/ayden94)! - Harden Terminus health/readiness diagnostics by preventing overlapping probes for the same timed-out indicator instance and preserving platform diagnostic payloads when user indicator keys collide with reserved platform keys.
+
+- Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
+  - @fluojs/http@1.1.2
+  - @fluojs/runtime@1.1.8
+
 ## [Unreleased]
 
 ### Patch Changes
