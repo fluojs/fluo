@@ -66,10 +66,11 @@ base branch 기본값은 `main`이다.
 
 `create-lane`은 lane ledger 생성 시 후속 `/execute-lane`이 사용할 PR merge authority와 merge method를 결정한다.
 
-1. 기본값은 `authority_scope.pr_merge: true`다. 이는 `/pr-to-merge`의 `merge` verdict, 최신 PR/check 검증, dependency gate를 모두 통과한 PR에 한해 `/execute-lane`이 merge authority를 행사할 수 있음을 뜻한다.
-2. PR merge method는 항상 `pr_merge_method: "squash"`로 기록한다.
-3. `developer-final` 정책은 사람의 최종 확인 gate를 추가하는 정책일 뿐, ledger의 기본 merge authority를 `false`로 낮추지 않는다.
-4. cleanup, root main sync, publish 권한은 PR merge authority와 별개이며 기본값은 `false`다.
+1. 기본 merge policy는 `merge_policy: "supervisor-auto"`다. 이는 `/pr-to-merge`의 `merge` verdict, 최신 PR/check 검증, dependency gate를 모두 통과한 PR에 한해 `/execute-lane`이 merge authority를 행사할 수 있음을 뜻한다.
+2. 기본값은 `authority_scope.pr_merge: true`다.
+3. PR merge method는 항상 `pr_merge_method: "squash"`로 기록한다.
+4. `developer-final` 정책을 명시적으로 선택한 경우에만 사람의 최종 확인 gate를 추가하며, 이때도 ledger의 기본 merge authority를 `false`로 낮추지 않는다.
+5. cleanup, root main sync, publish 권한은 PR merge authority와 별개이며 기본값은 `false`다.
 
 ## Lane planning rules
 
@@ -118,7 +119,7 @@ base branch 기본값은 `main`이다.
     "search_run_id": null,
     "search_ledger": null
   },
-  "merge_policy": "developer-final|supervisor-auto|supervisor-with-human-escalation|supervisor-full-auto",
+  "merge_policy": "supervisor-auto",
   "pr_merge_method": "squash",
   "authority_scope": {
     "issue_creation": false,

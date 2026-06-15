@@ -1,6 +1,6 @@
 ---
 description: create-lane — 기존 GitHub issue 목록 또는 search artifact를 실행 가능한 lane ledger로 변환하는 read-only planning command.
-argument-hint: "<issue-number|issue-url|search-artifact> [...] [base-branch] [--merge-policy developer-final|supervisor-auto|supervisor-with-human-escalation|supervisor-full-auto]"
+argument-hint: "<issue-number|issue-url|search-artifact> [...] [base-branch] [--merge-policy supervisor-auto|developer-final|supervisor-with-human-escalation|supervisor-full-auto]"
 ---
 
 # create-lane
@@ -13,10 +13,10 @@ argument-hint: "<issue-number|issue-url|search-artifact> [...] [base-branch] [--
 
 ```text
 /create-lane 2046 2045 2041 --merge-policy supervisor-auto
-/create-lane .sisyphus/search-issue/<run-id>.json --merge-policy developer-final
+/create-lane .sisyphus/search-issue/<run-id>.json
 ```
 
-base branch 기본값은 `main`이다.
+base branch 기본값은 `main`이고 merge policy 기본값은 `supervisor-auto`다.
 
 ## 책임 경계
 
@@ -69,10 +69,11 @@ confirmed issue를 semantic lane에 배정한다. lane identity는 session id가
 
 `create-lane`은 lane ledger 작성 시 merge 권한과 merge 방식을 명시적으로 결정해 기록한다.
 
-1. 기본값은 `authority_scope.pr_merge: true`다. 이는 `/pr-to-merge`가 `merge` verdict를 반환하고 `execute-lane`의 current-state/check gate를 모두 통과한 PR에 한해 lane execution harness가 merge authority를 행사할 수 있음을 뜻한다.
-2. PR merge method는 항상 `pr_merge_method: "squash"`로 기록한다.
-3. `developer-final` 정책을 선택하더라도 ledger에는 기본 merge authority를 기록하되, `execute-lane`은 해당 정책의 human-final gate를 함께 적용해야 한다.
-4. cleanup, root main sync, publish 권한은 PR merge authority와 별개이며 기본값은 `false`다.
+1. 기본 merge policy는 `merge_policy: "supervisor-auto"`다. 이는 `/pr-to-merge`가 `merge` verdict를 반환하고 `execute-lane`의 current-state/check gate를 모두 통과한 PR에 한해 lane execution harness가 merge authority를 행사할 수 있음을 뜻한다.
+2. 기본값은 `authority_scope.pr_merge: true`다.
+3. PR merge method는 항상 `pr_merge_method: "squash"`로 기록한다.
+4. `developer-final` 정책을 명시적으로 선택한 경우에만 ledger에는 기본 merge authority를 유지하되, `execute-lane`은 해당 정책의 human-final gate를 함께 적용해야 한다.
+5. cleanup, root main sync, publish 권한은 PR merge authority와 별개이며 기본값은 `false`다.
 
 ## Ledger schema
 
@@ -89,7 +90,7 @@ ledger는 다음 shape를 따른다.
     "type": "issues|search-artifact",
     "artifact": ".sisyphus/search-issue/<run-id>.json"
   },
-  "merge_policy": "developer-final|supervisor-auto|supervisor-with-human-escalation|supervisor-full-auto",
+  "merge_policy": "supervisor-auto",
   "pr_merge_method": "squash",
   "authority_scope": {
     "issue_selection": false,
