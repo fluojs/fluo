@@ -567,6 +567,30 @@ describe('@fluojs/platform-bun', () => {
     await expect(response.text()).resolves.toBe('');
   });
 
+  it('preserves byte-exact rawBody values for byte-sensitive custom fetch handlers', async () => {
+    const bytes = Uint8Array.from([0, 10, 13, 195, 40, 255]);
+    const fetch = createBunFetchHandler({
+      dispatcher: {
+        async dispatch(request: FrameworkRequest, response: FrameworkResponse) {
+          expect(request.method).toBe('POST');
+          expect(request.path).toBe('/hooks/binary');
+          expect(Array.from(request.rawBody ?? new Uint8Array())).toEqual([0, 10, 13, 195, 40, 255]);
+
+          response.setStatus(204);
+        },
+      },
+      rawBody: true,
+    });
+
+    const response = await fetch(new Request('https://runtime.test/hooks/binary', {
+      body: bytes,
+      headers: { 'content-type': 'text/plain; charset=utf-8' },
+      method: 'POST',
+    }));
+
+    expect(response.status).toBe(204);
+  });
+
   it('preserves response parity for simple JSON and non-fast-path responses', async () => {
     @Controller('/responses')
     class ResponsesController {
@@ -1202,7 +1226,7 @@ describe('@fluojs/platform-bun', () => {
 
     try {
       expect(mockBun.lastOptions?.routes).toBeUndefined();
-      expect(Object.prototype.hasOwnProperty.call(mockBun.lastOptions, 'routes')).toBe(false);
+      expect(Object.hasOwn(mockBun.lastOptions ?? {}, 'routes')).toBe(false);
 
       const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4317/version-gate/legacy-runtime'));
 
@@ -1436,6 +1460,65 @@ describe('@fluojs/platform-bun', () => {
     }
   });
 
+  it('uses forceExitTimeoutMs as the signal-driven Bun close drain budget', async () => {
+    vi.useFakeTimers();
+
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const mockBun = installMockBun();
+    const deferred = createDeferred<void>();
+    const originalExitCode = process.exitCode;
+    let app: Awaited<ReturnType<typeof runBunApplication>> | undefined;
+
+    @Controller('/drain')
+    class DrainController {
+      @Get('/')
+      async drain() {
+        await deferred.promise;
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [DrainController] });
+
+    try {
+      app = await runBunApplication(AppModule, {
+        forceExitTimeoutMs: 20_000,
+        hostname: '127.0.0.1',
+        port: 4315,
+        shutdownSignals: ['SIGTERM'],
+      });
+
+      const responsePromise = mockBun.lastServer!.fetch(new Request('http://127.0.0.1:4315/drain'));
+      await Promise.resolve();
+
+      process.emit('SIGTERM', 'SIGTERM');
+      await vi.advanceTimersByTimeAsync(10_001);
+
+      expect(process.exitCode).toBe(originalExitCode);
+      expect(errorLog.mock.calls.some(([message]) => String(message).includes('Failed to shut down the application cleanly.'))).toBe(false);
+      expect(errorLog.mock.calls.some(([message]) => String(message).includes('Shutdown timeout exceeded after 20000ms'))).toBe(false);
+
+      deferred.resolve();
+      const response = await responsePromise;
+      await vi.advanceTimersByTimeAsync(0);
+      await Promise.resolve();
+
+      expect(response?.status).toBe(200);
+      expect(process.exitCode).toBe(0);
+    } finally {
+      deferred.resolve();
+
+      if (app?.state !== 'closed') {
+        await app?.close();
+      }
+
+      errorLog.mockRestore();
+      process.exitCode = originalExitCode;
+      vi.useRealTimers();
+    }
+  });
+
   it('drains in-flight requests before Bun close resolves', async () => {
     const mockBun = installMockBun();
     const adapter = createBunAdapter() as BunHttpApplicationAdapter;
@@ -1467,6 +1550,41 @@ describe('@fluojs/platform-bun', () => {
 
     expect(closeSettled).toBe(true);
     expect(adapter.getServer()).toBeUndefined();
+  });
+
+  it('returns shutdown 503 for ordinary HTTP ingress during close', async () => {
+    const mockBun = installMockBun();
+    const adapter = createBunAdapter() as BunHttpApplicationAdapter;
+    const deferred = createDeferred<void>();
+    const dispatcher = {
+      dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
+        await deferred.promise;
+        response.setStatus(200);
+        await response.send({ ok: true });
+      }),
+    };
+
+    await adapter.listen(dispatcher);
+
+    const responsePromise = mockBun.lastServer!.fetch(new Request('http://127.0.0.1:3000/drain'));
+    await Promise.resolve();
+
+    const closePromise = adapter.close();
+    const shutdownResponse = await mockBun.lastServer!.fetch(new Request('http://127.0.0.1:3000/new-request'));
+
+    expect(shutdownResponse?.status).toBe(503);
+    await expect(shutdownResponse?.json()).resolves.toMatchObject({
+      error: {
+        code: 'SERVICE_UNAVAILABLE',
+        status: 503,
+      },
+    });
+    expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
+
+    deferred.resolve();
+
+    await expect(responsePromise).resolves.toBeInstanceOf(Response);
+    await closePromise;
   });
 
   it('does not rebind the live dispatcher when listen() is called more than once', async () => {
