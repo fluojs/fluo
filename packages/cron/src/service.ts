@@ -403,7 +403,7 @@ export class CronLifecycleService
       this.lifecycleState = 'ready';
     } catch (error) {
       this.lifecycleState = 'failed';
-      this.handleStartupFailure();
+      await this.handleStartupFailure();
       throw error;
     }
   }
@@ -500,11 +500,41 @@ export class CronLifecycleService
     assertValidLockTtlMs(this.options.distributed.lockTtlMs);
   }
 
-  private handleStartupFailure(): void {
+  private async handleStartupFailure(): Promise<void> {
     this.started = false;
     this.stopAllScheduledTasks();
+    const startupRollbackTimedOut = await this.waitForActiveTasks();
+
+    if (startupRollbackTimedOut) {
+      this.logger.warn(
+        `Cron startup rollback timed out after ${String(this.options.shutdown.timeoutMs)}ms with ${String(this.activeTasks.size)} active task(s) still pending.`,
+        'CronLifecycleService',
+      );
+    }
+
+    await this.distributedLocks.releaseOwnedLocks(
+      startupRollbackTimedOut ? this.getRunningDistributedLockKeys() : new Set(),
+    );
     this.tasks.clear();
-    this.distributedLocks.reset();
+
+    if (this.activeTasks.size > 0) {
+      void this.completeStartupFailureCleanupAfterActiveTasks();
+      return;
+    }
+
+    this.resetDistributedLocksAfterStartupFailure();
+  }
+
+  private async completeStartupFailureCleanupAfterActiveTasks(): Promise<void> {
+    await this.drainActiveTasks();
+    await this.distributedLocks.releaseOwnedLocks();
+    this.resetDistributedLocksAfterStartupFailure();
+  }
+
+  private resetDistributedLocksAfterStartupFailure(): void {
+    if (this.distributedLocks.ownedLocks === 0) {
+      this.distributedLocks.reset();
+    }
   }
 
   private async runShutdownLifecycle(): Promise<void> {

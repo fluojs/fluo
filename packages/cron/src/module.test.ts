@@ -539,6 +539,72 @@ describe('@fluojs/cron', () => {
     expect(firstStop).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps distributed lock clients alive while startup rollback drains active tasks', async () => {
+    const redis = new InMemoryLockRedisClient();
+    const taskStarted = createDeferred<void>();
+    const releaseTask = createDeferred<void>();
+    const firstStop = vi.fn();
+    let scheduleCount = 0;
+    const scheduler: CronScheduler = (_expression, _options, callback) => {
+      scheduleCount += 1;
+
+      if (scheduleCount === 1) {
+        void callback();
+        return {
+          stop: firstStop,
+        };
+      }
+
+      throw new Error('scheduler boom');
+    };
+
+    class StartupRollbackTaskService {
+      @Cron(CronExpression.EVERY_SECOND, { name: 'startup-lock-drain' })
+      async runLocked() {
+        taskStarted.resolve();
+        await releaseTask.promise;
+      }
+
+      @Cron(CronExpression.EVERY_SECOND, { name: 'startup-lock-fail' })
+      runAfterFailure() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-startup-failure',
+            lockTtlMs: 60_000,
+          },
+          scheduler,
+        }),
+      ],
+      providers: [StartupRollbackTaskService],
+    });
+
+    const bootstrapResult = bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    await taskStarted.promise;
+    expect(redis.hasLock('cron-startup-failure:startup-lock-drain')).toBe(true);
+
+    releaseTask.resolve();
+
+    const error = await bootstrapResult;
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe('scheduler boom');
+    expect(firstStop).toHaveBeenCalledTimes(1);
+    expect(redis.hasLock('cron-startup-failure:startup-lock-drain')).toBe(false);
+  });
+
   it('warns when @Cron() is declared on a non-singleton provider and skips scheduling', async () => {
     const scheduled = createManualScheduler();
     const loggerEvents: string[] = [];
