@@ -1,4 +1,4 @@
-import type { DtoFieldValidationRule } from '@fluojs/core/internal';
+import type { DtoFieldValidationRule } from '@fluojs/core/request-pipeline';
 
 import { isPlainObject } from './object-utils.js';
 import { runValidatorJs } from './validator-js-adapter.js';

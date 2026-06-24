@@ -1,6 +1,6 @@
 import validator from 'validator';
 
-import type { DtoFieldValidationRule } from '@fluojs/core/internal';
+import type { DtoFieldValidationRule } from '@fluojs/core/request-pipeline';
 
 export function runValidatorJs(rule: Extract<DtoFieldValidationRule, { kind: 'validatorjs' }>, value: unknown): boolean {
   if (rule.validator === 'latitude') {
