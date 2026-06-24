@@ -32,6 +32,17 @@ import {
   standardMetadataKeys,
   type StandardMetadataBag,
 } from './metadata/shared.js';
+import type { Token } from './types.js';
+
+type MutableForwardRefToken<T = unknown> = {
+  __forwardRef__: true;
+  forwardRef: () => Token<T>;
+};
+
+type MutableOptionalInjectToken<T = unknown> = {
+  __optional__: true;
+  token: Token<T>;
+};
 
 describe('metadata helpers', () => {
   it('round-trips module metadata', () => {
@@ -800,6 +811,61 @@ describe('metadata helpers', () => {
       inject: ['LOGGER'],
       scope: 'request',
     });
+  });
+
+  it('deep-copies and freezes wrapper tokens across partial class DI writes', () => {
+    class ExampleService {}
+    class Logger {}
+    class MutatedLogger {}
+    class Cache {}
+    class MutatedCache {}
+
+    const forwardLoggerRef = () => Logger;
+    const forwardLogger: MutableForwardRefToken<Logger | MutatedLogger> = {
+      __forwardRef__: true,
+      forwardRef: forwardLoggerRef,
+    };
+    const optionalCache: MutableOptionalInjectToken<Cache | MutatedCache> = {
+      __optional__: true,
+      token: Cache,
+    };
+
+    defineClassDiMetadata(ExampleService, {
+      inject: [forwardLogger, optionalCache],
+    });
+
+    forwardLogger.forwardRef = () => MutatedLogger;
+    optionalCache.token = MutatedCache;
+
+    defineClassDiMetadata(ExampleService, {
+      scope: 'request',
+    });
+
+    const metadata = getOwnClassDiMetadata(ExampleService);
+    const storedForwardToken = metadata?.inject?.[0];
+    const storedOptionalToken = metadata?.inject?.[1];
+
+    expect(metadata).toEqual({
+      inject: [
+        {
+          __forwardRef__: true,
+          forwardRef: forwardLoggerRef,
+        },
+        {
+          __optional__: true,
+          token: Cache,
+        },
+      ],
+      scope: 'request',
+    });
+    expect(storedForwardToken).not.toBe(forwardLogger);
+    expect(storedOptionalToken).not.toBe(optionalCache);
+    expect(Object.isFrozen(storedForwardToken)).toBe(true);
+    expect(Object.isFrozen(storedOptionalToken)).toBe(true);
+    if (typeof storedForwardToken !== 'object' || storedForwardToken === null || !('__forwardRef__' in storedForwardToken)) {
+      throw new Error('Expected stored forwardRef metadata wrapper');
+    }
+    expect(storedForwardToken.forwardRef()).toBe(Logger);
   });
 
   it('falls back to inherited DI metadata while keeping own lookups explicit', () => {

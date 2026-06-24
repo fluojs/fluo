@@ -2,7 +2,17 @@ import { describe, expect, it } from 'vitest';
 
 import { Global, Inject, Module, Scope } from './decorators.js';
 import { getClassDiMetadata, getModuleMetadata, getOwnClassDiMetadata } from './metadata.js';
-import type { ForwardRefToken, OptionalInjectToken } from './types.js';
+import type { ForwardRefToken, OptionalInjectToken, Token } from './types.js';
+
+type MutableForwardRefToken<T = unknown> = {
+  __forwardRef__: true;
+  forwardRef: () => Token<T>;
+};
+
+type MutableOptionalInjectToken<T = unknown> = {
+  __optional__: true;
+  token: Token<T>;
+};
 
 describe('core decorators', () => {
   it('writes module metadata through decorators', () => {
@@ -134,6 +144,51 @@ describe('core decorators', () => {
       inject: [forwardLogger, optionalCache],
       scope: undefined,
     });
+  });
+
+  it('snapshots wrapper tokens before post-decoration wrapper mutations can affect metadata', () => {
+    class Logger {}
+    class MutatedLogger {}
+    class Cache {}
+    class MutatedCache {}
+
+    const forwardLoggerRef = () => Logger;
+    const forwardLogger: MutableForwardRefToken<Logger | MutatedLogger> = {
+      __forwardRef__: true,
+      forwardRef: forwardLoggerRef,
+    };
+    const optionalCache: MutableOptionalInjectToken<Cache | MutatedCache> = {
+      __optional__: true,
+      token: Cache,
+    };
+
+    @Inject(forwardLogger, optionalCache)
+    class WrappedTokenService {}
+
+    forwardLogger.forwardRef = () => MutatedLogger;
+    optionalCache.token = MutatedCache;
+
+    const metadata = getClassDiMetadata(WrappedTokenService);
+    const storedForwardToken = metadata?.inject?.[0];
+    const storedOptionalToken = metadata?.inject?.[1];
+
+    expect(storedForwardToken).toEqual({
+      __forwardRef__: true,
+      forwardRef: forwardLoggerRef,
+    });
+    expect(storedForwardToken).not.toBe(forwardLogger);
+    expect(Object.isFrozen(storedForwardToken)).toBe(true);
+    if (typeof storedForwardToken !== 'object' || storedForwardToken === null || !('__forwardRef__' in storedForwardToken)) {
+      throw new Error('Expected stored forwardRef metadata wrapper');
+    }
+    expect(storedForwardToken.forwardRef()).toBe(Logger);
+
+    expect(storedOptionalToken).toEqual({
+      __optional__: true,
+      token: Cache,
+    });
+    expect(storedOptionalToken).not.toBe(optionalCache);
+    expect(Object.isFrozen(storedOptionalToken)).toBe(true);
   });
 
   it('keeps wrapper tokens type-compatible with the legacy array syntax', () => {
