@@ -13,12 +13,13 @@ import {
 import { type Application, defineModule, type ModuleType } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   type BootstrapDenoApplicationOptions,
   bootstrapDenoApplication,
   createDenoAdapter,
+  type DenoApplicationSignal,
   DenoHttpApplicationAdapter,
   type DenoServeController,
   type DenoServeFunction,
@@ -220,17 +221,35 @@ function createUpgradeWebSocketStub() {
   };
 }
 
-function installDenoSignalMock(options: { throwOnAdd?: string } = {}) {
+function installDenoSignalMock(options: {
+  throwOnAdd?: DenoApplicationSignal;
+  throwOnRemove?: DenoApplicationSignal | readonly DenoApplicationSignal[];
+} = {}) {
   const originalDeno = (globalThis as typeof globalThis & { Deno?: unknown }).Deno;
-  const listeners = new Map<string, () => void>();
-  const addSignalListener = vi.fn((signal: string, handler: () => void) => {
+  const listeners = new Map<DenoApplicationSignal, () => void>();
+  const throwOnRemoveSignals = new Set<DenoApplicationSignal>();
+  const throwOnRemove = options.throwOnRemove;
+
+  if (typeof throwOnRemove === 'string') {
+    throwOnRemoveSignals.add(throwOnRemove);
+  } else if (throwOnRemove !== undefined) {
+    for (const signal of throwOnRemove) {
+      throwOnRemoveSignals.add(signal);
+    }
+  }
+
+  const addSignalListener = vi.fn((signal: DenoApplicationSignal, handler: () => void) => {
     if (signal === options.throwOnAdd) {
       throw new Error(`failed to register ${signal}`);
     }
 
     listeners.set(signal, handler);
   });
-  const removeSignalListener = vi.fn((signal: string, handler: () => void) => {
+  const removeSignalListener = vi.fn((signal: DenoApplicationSignal, handler: () => void) => {
+    if (throwOnRemoveSignals.has(signal)) {
+      throw new Error(`failed to remove ${signal}`);
+    }
+
     if (listeners.get(signal) === handler) {
       listeners.delete(signal);
     }
@@ -248,8 +267,11 @@ function installDenoSignalMock(options: { throwOnAdd?: string } = {}) {
 
   return {
     addSignalListener,
-    emit(signal: string) {
+    emit(signal: DenoApplicationSignal) {
       listeners.get(signal)?.();
+    },
+    hasListener(signal: DenoApplicationSignal) {
+      return listeners.has(signal);
     },
     removeSignalListener,
     restore() {
@@ -346,6 +368,10 @@ function createMockDenoSocket(): DenoServerWebSocket {
 }
 
 describe('@fluojs/platform-deno', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('rejects invalid explicit numeric adapter options during setup', () => {
     expect(() => createDenoAdapter({ maxBodySize: -1 })).toThrow(/maxBodySize/i);
     expect(() => createDenoAdapter({ port: 1.5 })).toThrow(/port/i);
@@ -354,16 +380,17 @@ describe('@fluojs/platform-deno', () => {
   it('uses the transport-neutral application logger by default for terminal Deno startup helpers', async () => {
     const server = createServeStub();
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let app: Application | undefined;
 
     class AppModule {}
     defineModule(AppModule, {});
 
-    const app = await runDenoApplication(AppModule, {
-      serve: server.serve,
-      shutdownSignals: false,
-    });
-
     try {
+      app = await runDenoApplication(AppModule, {
+        serve: server.serve,
+        shutdownSignals: false,
+      });
+
       expect(log).toHaveBeenCalledWith(
         '[fluo] LOG [FluoFactory] Listening on http://localhost:3000 (bound to 0.0.0.0:3000)',
       );
@@ -371,7 +398,11 @@ describe('@fluojs/platform-deno', () => {
         expect.stringContaining(`[fluo] ${String(process.pid)} -`),
       );
     } finally {
-      await app.close();
+      try {
+        await app?.close();
+      } finally {
+        log.mockRestore();
+      }
     }
   });
 
@@ -501,15 +532,21 @@ describe('@fluojs/platform-deno', () => {
 
     const server = createServeStub();
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let app: Application | undefined;
 
-    const app = await runDenoApplication(AppModule, {
-      serve: server.serve,
-    });
+    try {
+      app = await runDenoApplication(AppModule, {
+        serve: server.serve,
+      });
 
-    expect(log.mock.calls.some(([message]) => String(message).includes('Listening on http://localhost:3000 (bound to 0.0.0.0:3000)'))).toBe(true);
-
-    await app.close();
-    log.mockRestore();
+      expect(log.mock.calls.some(([message]) => String(message).includes('Listening on http://localhost:3000 (bound to 0.0.0.0:3000)'))).toBe(true);
+    } finally {
+      try {
+        await app?.close();
+      } finally {
+        log.mockRestore();
+      }
+    }
   });
 
   it('forwards HTTPS certificate options to Deno.serve and reports an HTTPS listen target', async () => {
@@ -518,27 +555,33 @@ describe('@fluojs/platform-deno', () => {
 
     const server = createServeStub();
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let app: Application | undefined;
 
-    const app = await runDenoApplication(AppModule, {
-      hostname: '127.0.0.1',
-      https: {
+    try {
+      app = await runDenoApplication(AppModule, {
+        hostname: '127.0.0.1',
+        https: {
+          cert: TEST_TLS_CERTIFICATE,
+          key: TEST_TLS_PRIVATE_KEY,
+        },
+        port: 3443,
+        serve: server.serve,
+      });
+
+      expect(server.options).toMatchObject({
         cert: TEST_TLS_CERTIFICATE,
+        hostname: '127.0.0.1',
         key: TEST_TLS_PRIVATE_KEY,
-      },
-      port: 3443,
-      serve: server.serve,
-    });
-
-    expect(server.options).toMatchObject({
-      cert: TEST_TLS_CERTIFICATE,
-      hostname: '127.0.0.1',
-      key: TEST_TLS_PRIVATE_KEY,
-      port: 3443,
-    });
-    expect(log.mock.calls.some(([message]) => String(message).includes('Listening on https://127.0.0.1:3443'))).toBe(true);
-
-    await app.close();
-    log.mockRestore();
+        port: 3443,
+      });
+      expect(log.mock.calls.some(([message]) => String(message).includes('Listening on https://127.0.0.1:3443'))).toBe(true);
+    } finally {
+      try {
+        await app?.close();
+      } finally {
+        log.mockRestore();
+      }
+    }
   });
 
   it('satisfies the shared HTTPS startup portability expectation', async () => {
@@ -701,8 +744,8 @@ describe('@fluojs/platform-deno', () => {
     }
   });
 
-  it('closes the Deno application when a registered shutdown signal fires', async () => {
-    const signals = installDenoSignalMock();
+  it('attempts every registered Deno signal listener removal when one removal fails', async () => {
+    const signals = installDenoSignalMock({ throwOnRemove: 'SIGINT' });
 
     try {
       class AppModule {}
@@ -711,20 +754,92 @@ describe('@fluojs/platform-deno', () => {
       const server = createServeStub();
       const app = await runDenoApplication(AppModule, {
         serve: server.serve,
-        shutdownSignals: ['SIGTERM'],
       });
-      const closeSpy = vi.spyOn(app, 'close');
 
-      signals.emit('SIGTERM');
-      await Promise.resolve();
-      await Promise.resolve();
+      await expect(app.close()).rejects.toThrow(/failed to remove SIGINT/);
 
-      expect(closeSpy).toHaveBeenCalledWith('SIGTERM');
-      await app.close();
+      expect(signals.removeSignalListener).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+      expect(signals.removeSignalListener).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+      expect(signals.hasListener('SIGTERM')).toBe(false);
     } finally {
       signals.restore();
     }
   });
+
+  it('preserves registration and rollback errors when Deno signal registration cleanup fails', async () => {
+    const signals = installDenoSignalMock({
+      throwOnAdd: 'SIGTERM',
+      throwOnRemove: 'SIGINT',
+    });
+
+    try {
+      class AppModule {}
+      defineModule(AppModule, {});
+
+      const server = createServeStub();
+      let caughtError: unknown;
+
+      try {
+        await runDenoApplication(AppModule, {
+          serve: server.serve,
+        });
+      } catch (error: unknown) {
+        caughtError = error;
+      }
+
+      expect(caughtError).toBeInstanceOf(AggregateError);
+
+      if (!(caughtError instanceof AggregateError)) {
+        throw new Error('Expected Deno signal rollback failure to aggregate startup and cleanup errors.');
+      }
+
+      expect(caughtError.errors).toHaveLength(2);
+      expect(caughtError.errors.map((error) => String(error))).toEqual([
+        'Error: failed to register SIGTERM',
+        'Error: failed to remove SIGINT',
+      ]);
+      expect(signals.removeSignalListener).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+    } finally {
+      signals.restore();
+    }
+  });
+
+  for (const shutdownSignal of ['SIGINT', 'SIGTERM'] as const) {
+    it(`removes default Deno shutdown signal listeners when ${shutdownSignal} initiates shutdown`, async () => {
+      const signals = installDenoSignalMock();
+      let app: Application | undefined;
+
+      try {
+        class AppModule {}
+        defineModule(AppModule, {});
+
+        const server = createServeStub();
+        app = await runDenoApplication(AppModule, {
+          serve: server.serve,
+        });
+        const closeSpy = vi.spyOn(app, 'close');
+
+        signals.emit(shutdownSignal);
+
+        expect(closeSpy).toHaveBeenCalledWith(shutdownSignal);
+        expect(signals.removeSignalListener).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+        expect(signals.removeSignalListener).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+        expect(signals.hasListener('SIGINT')).toBe(false);
+        expect(signals.hasListener('SIGTERM')).toBe(false);
+
+        await Promise.resolve();
+        await Promise.resolve();
+      } finally {
+        try {
+          if (app?.state !== 'closed') {
+            await app?.close();
+          }
+        } finally {
+          signals.restore();
+        }
+      }
+    });
+  }
 
   it('drains in-flight requests before Deno close resolves', async () => {
     const server = createServeStub();

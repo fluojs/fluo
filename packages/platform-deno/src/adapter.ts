@@ -391,7 +391,15 @@ function createDenoShutdownSignalRegistration(
         bindings.push({ handler, signal });
       }
     } catch (error: unknown) {
-      removeDenoSignalBindings(denoGlobal, bindings);
+      try {
+        removeDenoSignalBindings(denoGlobal, bindings);
+      } catch (cleanupError: unknown) {
+        throw new AggregateError(
+          [error, cleanupError],
+          'Failed to register Deno shutdown signals and roll back registered listeners.',
+        );
+      }
+
       throw error;
     }
 
@@ -407,8 +415,22 @@ function removeDenoSignalBindings(
   },
   bindings: readonly { handler: () => void; signal: DenoApplicationSignal }[],
 ): void {
+  const errors: unknown[] = [];
+
   for (const binding of bindings) {
-    denoGlobal.removeSignalListener(binding.signal, binding.handler);
+    try {
+      denoGlobal.removeSignalListener(binding.signal, binding.handler);
+    } catch (error: unknown) {
+      errors.push(error);
+    }
+  }
+
+  if (errors.length === 1) {
+    throw errors[0];
+  }
+
+  if (errors.length > 1) {
+    throw new AggregateError(errors, 'Failed to remove Deno shutdown signal listeners.');
   }
 }
 
