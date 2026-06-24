@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import type { CustomClassValidator } from '@fluojs/core/internal';
+import type { CustomClassValidator } from '@fluojs/core/request-pipeline';
 
 import type { ValidationIssue } from './types.js';
 

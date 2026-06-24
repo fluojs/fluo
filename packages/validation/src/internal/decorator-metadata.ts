@@ -1,5 +1,5 @@
 import type { MetadataPropertyKey } from '@fluojs/core';
-import type { ClassValidationRule, DtoFieldValidationRule } from '@fluojs/core/internal';
+import type { ClassValidationRule, DtoFieldValidationRule } from '@fluojs/core/request-pipeline';
 
 export type ClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
 export type FieldDecoratorFn = <This, Value>(value: undefined, context: ClassFieldDecoratorContext<This, Value>) => void;

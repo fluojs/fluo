@@ -5,7 +5,7 @@ import {
   getDtoValidationSchema,
   type DtoFieldBindingMetadata,
   type DtoFieldValidationRule,
-} from '@fluojs/core/internal';
+} from '@fluojs/core/request-pipeline';
 
 function isClassConstructor(dto: Constructor | (() => Constructor)): dto is Constructor {
   return typeof dto === 'function' && Function.prototype.toString.call(dto).startsWith('class ');

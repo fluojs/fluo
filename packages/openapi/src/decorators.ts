@@ -1,5 +1,5 @@
-import { type Constructor, type MetadataPropertyKey } from '@fluojs/core';
-import { ensureMetadataSymbol, getStandardMetadataBag } from '@fluojs/core/internal';
+import type { Constructor, MetadataPropertyKey } from '@fluojs/core';
+import { ensureRequestPipelineMetadataSymbol, getRequestPipelineMetadataBag } from '@fluojs/core/request-pipeline';
 import type { OpenApiSchemaObject } from './schema-builder.js';
 
 /**
@@ -111,10 +111,10 @@ const openApiMethodExcludeEndpointKey = Symbol.for('fluo.openapi.method-exclude-
 
 type MetadataBag = Record<PropertyKey, unknown>;
 
-ensureMetadataSymbol();
+ensureRequestPipelineMetadataSymbol();
 
 function getMetadataBag(target: object): MetadataBag | undefined {
-  return getStandardMetadataBag(target);
+  return getRequestPipelineMetadataBag(target);
 }
 
 function cloneUnknown<T>(value: T): T {

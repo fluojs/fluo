@@ -95,7 +95,7 @@ class UsesDeferredAndOptionalDeps {}
 
 ### Shared metadata helpers for sibling packages
 
-`getModuleMetadata()` is available from the public root entrypoint for read-only module inspection in tests and tooling. Broader internal readers and writers live under `@fluojs/core/internal`, which is how packages like `@fluojs/di`, `@fluojs/http`, and `@fluojs/runtime` consume the same metadata model.
+`getModuleMetadata()` is available from the public root entrypoint for read-only module inspection in tests and tooling. Request-pipeline packages such as `@fluojs/validation`, `@fluojs/serialization`, and `@fluojs/openapi` use the documented `@fluojs/core/request-pipeline` metadata integration seam for DTO validation, binding, and standard decorator metadata-bag access. Broader internal readers and writers live under `@fluojs/core/internal`, which is how packages like `@fluojs/di`, `@fluojs/http`, and `@fluojs/runtime` consume the same metadata model.
 
 Application code should import public decorators, `ensureMetadataSymbol()`, and read-only module metadata inspection from `@fluojs/core`. The `@fluojs/core/internal` subpath is reserved for fluo packages that need metadata records, controller/route helpers, injection and validation helpers, or clone utilities. Standard metadata bag helpers handle mixed-era lookups across current/native `Symbol.metadata` and the fallback symbol: own metadata from either era overrides inherited metadata from either era for the same key, while inherited keys from parent constructors remain visible when the child owns a different key. To reduce DI and module-graph hot-path allocations, `getModuleMetadata()`, `getOwnClassDiMetadata()`, `getInheritedClassDiMetadata()`, and `getClassDiMetadata()` return frozen snapshots and may reuse the same reference between writes. Treat those results, their collection fields, class DI wrapper-token entries (`ForwardRefToken` / `OptionalInjectToken`), module provider descriptor wrappers, and middleware route-config wrappers (including their `routes` arrays) as immutable. Mutating caller-owned dependency wrapper objects after decoration cannot rewrite stored class DI metadata. `useValue` payload objects and runtime middleware/guard/interceptor instances remain mutable references and are not frozen by these snapshots. Other metadata readers keep their existing defensive-read behavior unless their own tests document stable-reference reuse.
 
@@ -171,7 +171,8 @@ Standard decorators cannot automatically infer types for abstract classes or int
 - **Errors**: `FluoError`, `InvariantError`, `FluoCodeError`, `FluoErrorOptions`, `formatTokenName`
 - **Metadata runtime**: `ensureMetadataSymbol`, `getModuleMetadata`
 - **Types**: `Constructor<T>`, `Token<T>`, `InjectionToken<T>`, `ForwardRefToken<T>`, `OptionalInjectToken<T>`, `MaybePromise<T>`, `AsyncModuleOptions`, `MetadataPropertyKey`, `MetadataSource`
-- **Internal subpath**: metadata helpers, controller/route helpers, injection helpers, validation helpers, and clone utilities via `@fluojs/core/internal`
+- **Request-pipeline integration seam**: DTO validation/binding metadata helpers plus standard decorator metadata-bag readers via `@fluojs/core/request-pipeline`
+- **Internal subpath**: broader metadata helpers, controller/route helpers, injection helpers, and clone utilities via `@fluojs/core/internal`
 
 ## Related Packages
 

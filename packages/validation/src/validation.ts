@@ -2,7 +2,7 @@ import type {
   Constructor,
   MetadataPropertyKey,
 } from '@fluojs/core';
-import type { ClassValidationRule, DtoFieldBindingMetadata, DtoFieldValidationRule, ValidationIssueMetadata, ValidationRuleResult } from '@fluojs/core/internal';
+import type { ClassValidationRule, DtoFieldBindingMetadata, DtoFieldValidationRule, ValidationIssueMetadata, ValidationRuleResult } from '@fluojs/core/request-pipeline';
 
 import { DtoValidationError } from './errors.js';
 import { getCachedDtoMetadata, resolveNestedDto } from './internal/dto-metadata-cache.js';

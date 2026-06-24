@@ -5,7 +5,7 @@ import type {
   CustomValidationDecoratorOptions,
   DtoFieldValidationRule,
   ValidationDecoratorOptions,
-} from '@fluojs/core/internal';
+} from '@fluojs/core/request-pipeline';
 
 import { createArrayValidationDecorator, createFlagValidationDecorator, createValidationDecorator, createValidationOptionsWithConfigDecorator, createValidatorJsDecorator } from './internal/decorator-factories.js';
 import { appendStandardClassValidationRule, type ClassDecoratorFn, type FieldDecoratorFn } from './internal/decorator-metadata.js';

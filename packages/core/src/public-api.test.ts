@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as coreInternalApi from './internal.js';
 import * as corePublicApi from './index.js';
+import * as coreRequestPipelineApi from './request-pipeline.js';
 import type {
   AsyncModuleOptions,
   Constructor,
@@ -162,6 +163,19 @@ describe('@fluojs/core public API surface', () => {
     const internalTypeExport: keyof InternalSubpathTypeExports = 'moduleMetadata';
 
     expect(internalTypeExport).toBe('moduleMetadata');
+  });
+
+  it('keeps request-pipeline metadata helpers available from the documented integration seam', () => {
+    expect(coreRequestPipelineApi).toHaveProperty('ensureRequestPipelineMetadataSymbol');
+    expect(coreRequestPipelineApi).toHaveProperty('getRequestPipelineMetadataBag');
+    expect(coreRequestPipelineApi).toHaveProperty('getOwnConstructorRequestPipelineMetadataBag');
+    expect(coreRequestPipelineApi).toHaveProperty('defineDtoFieldBindingMetadata');
+    expect(coreRequestPipelineApi).toHaveProperty('getDtoBindingSchema');
+    expect(coreRequestPipelineApi).toHaveProperty('getDtoValidationSchema');
+    expect(coreRequestPipelineApi).not.toHaveProperty('defineModuleMetadata');
+    expect(coreRequestPipelineApi).not.toHaveProperty('defineControllerMetadata');
+    expect(coreRequestPipelineApi).not.toHaveProperty('getClassDiMetadata');
+    expect(coreRequestPipelineApi).not.toHaveProperty('cloneWithFallback');
   });
 
   it('documents that forwardRef and optional wrappers come from @fluojs/di', () => {
