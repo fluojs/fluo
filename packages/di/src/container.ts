@@ -33,7 +33,7 @@ type ProviderObjectInput = {
 
 type ValidatedProviderObject = ProviderObjectInput & { readonly provide: Token };
 
-type FactoryResolutionKind = 'async' | 'sync';
+export type FactoryResolutionKind = 'async' | 'sync';
 
 interface CachedResolutionPlan<T> {
   readonly lineageRevision: string;
@@ -47,6 +47,7 @@ interface CachedResolutionPlan<T> {
 export interface ContainerResolutionCacheOwner {
   readonly deleteMultiSingleton: (provider: NormalizedProvider) => void;
   readonly deleteSingleton: (token: Token) => void;
+  readonly recordFactoryResolution: (provider: NormalizedProvider, kind: FactoryResolutionKind) => void;
   readonly setMultiSingleton: (provider: NormalizedProvider, promise: Promise<unknown>) => void;
   readonly setSingleton: (token: Token, promise: Promise<unknown>) => void;
 }
@@ -502,6 +503,9 @@ export class Container {
       },
       deleteSingleton: (token: Token) => {
         this.singletonCache.delete(token);
+      },
+      recordFactoryResolution: (provider: NormalizedProvider, kind: FactoryResolutionKind) => {
+        this.root().factoryResolutionKinds.set(provider, kind);
       },
       setMultiSingleton: (provider: NormalizedProvider, promise: Promise<unknown>) => {
         this.multiSingletonCache.set(provider, promise);

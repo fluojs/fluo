@@ -468,6 +468,7 @@ function instantiateSyncProvider(provider: NormalizedProvider, state: SyncResolv
         );
       }
 
+      state.cacheOwner.recordFactoryResolution(provider, 'sync');
       return value;
     }
     case 'class': {
@@ -711,8 +712,8 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
       ...bootstrapped,
       has: (token) => bootstrapped.container.has(token),
       get: (token) => syncResolver.get(token),
-      resolve: async (token) => {
-        const value = await bootstrapped.container.resolve(token);
+      resolve: async <T>(token: Token<T>) => {
+        const value = await bootstrapped.container.resolve<T>(token);
         await syncResolver.syncFromContainer();
         return value;
       },

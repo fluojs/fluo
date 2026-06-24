@@ -532,6 +532,37 @@ describe('@fluojs/testing', () => {
     expect(syncConsumer).toBe(resolved);
   });
 
+  it('preserves sync factory promotion when the dependency is first materialized through get()', async () => {
+    const TOKEN = Symbol('sync-first-factory-dependency-token');
+    const dependency = { name: 'sync-first-dependency' };
+
+    @Inject(TOKEN)
+    class SyncFirstFactoryConsumer {
+      constructor(readonly value: typeof dependency) {}
+    }
+
+    @Module({
+      providers: [
+        {
+          provide: TOKEN,
+          useFactory: () => dependency,
+        },
+        SyncFirstFactoryConsumer,
+      ],
+    })
+    class SyncFirstFactoryConsumerModule {}
+
+    const testingModule = await createTestingModule({ rootModule: SyncFirstFactoryConsumerModule }).compile();
+
+    const syncDependency = testingModule.get<typeof dependency>(TOKEN);
+    const resolved = await testingModule.resolve<SyncFirstFactoryConsumer>(SyncFirstFactoryConsumer);
+    const syncConsumer = testingModule.get<SyncFirstFactoryConsumer>(SyncFirstFactoryConsumer);
+
+    expect(syncDependency).toBe(dependency);
+    expect(resolved.value).toBe(syncDependency);
+    expect(syncConsumer).toBe(resolved);
+  });
+
   it('keeps classes depending on useExisting aliases to async factories resolve-only after resolve()', async () => {
     const SOURCE = Symbol('async-factory-source-token');
     const ALIAS = Symbol('async-factory-alias-token');
