@@ -114,15 +114,15 @@ export interface RequestScopeContainer {
  * {@link ValueProvider}, or {@link ExistingProvider}. The container owns construction of normalized records.
  */
 export interface NormalizedProvider<T = unknown> {
-  inject: InjectionToken[];
-  provide: Token<T>;
-  scope: Scope;
-  type: 'class' | 'factory' | 'value' | 'existing';
-  useClass?: ClassType<T>;
-  useFactory?: (...deps: unknown[]) => MaybePromise<T>;
-  useValue?: T;
-  useExisting?: Token;
-  multi?: boolean;
+  readonly inject: readonly InjectionToken[];
+  readonly provide: Token<T>;
+  readonly scope: Scope;
+  readonly type: 'class' | 'factory' | 'value' | 'existing';
+  readonly useClass?: ClassType<T>;
+  readonly useFactory?: (...deps: unknown[]) => MaybePromise<T>;
+  readonly useValue?: T;
+  readonly useExisting?: Token;
+  readonly multi?: boolean;
 }
 
 /**
