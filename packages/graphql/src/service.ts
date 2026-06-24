@@ -1,6 +1,3 @@
-import type { IncomingMessage } from 'node:http';
-import type { Duplex } from 'node:stream';
-
 import { Controller, Get, Post, type FrameworkRequest, type HttpApplicationAdapter, type Middleware, type MiddlewareContext, type Next } from '@fluojs/http';
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
@@ -19,14 +16,14 @@ import type {
   GraphQLUnionType as GraphQLUnionTypeType,
   DocumentNode,
   ExecutionArgs,
+  execute as executeGraphql,
+  subscribe as subscribeGraphql,
 } from 'graphql';
-import type { CompleteMessage, Context as GraphqlWsServerContext, OperationResult, SubscribeMessage } from 'graphql-ws';
-import type { Extra as GraphqlWsExtra } from 'graphql-ws/lib/use/ws';
-import type { WebSocket, WebSocketServer } from 'ws';
 
 import { discoverResolverDescriptors } from './discovery.js';
 import { createGraphqlValidationPlugin, resolveGraphqlRequestLimits } from './guardrails.js';
 import { GRAPHQL_INTERNAL_MODULE_OPTIONS_TOKEN } from './internal-tokens.js';
+import type { GraphqlNodeWebSocketSubscribeRequest, GraphqlNodeWebSocketTransport } from './node/graphql-websocket-transport.js';
 import { createCodeFirstSchema, resolveSchema } from './schema/schema.js';
 import { isGraphqlPath, toFetchRequest, writeFetchResponse } from './transport/transport.js';
 import { GRAPHQL_OPERATION_CONTAINER } from './types.js';
@@ -57,21 +54,6 @@ type GraphqlInstanceOfModule = {
   instanceOf: GraphqlInstanceOf;
 };
 
-type NodeUpgradeListener = (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
-
-interface NodeUpgradeServer {
-  off(event: 'upgrade', listener: NodeUpgradeListener): this;
-  on(event: 'upgrade', listener: NodeUpgradeListener): this;
-}
-
-type GraphqlWebSocketContext = GraphqlWsServerContext<Record<string, unknown>, GraphqlWsExtra>;
-
-interface GraphqlSubscribePayload {
-  operationName?: string | null;
-  query: string;
-  variables?: Record<string, unknown> | null;
-}
-
 interface GraphqlWebSocketLimits {
   maxConnections: number;
   maxOperationsPerConnection: number;
@@ -83,16 +65,6 @@ const DEFAULT_GRAPHQL_WEBSOCKET_LIMITS: GraphqlWebSocketLimits = {
   maxOperationsPerConnection: 25,
   maxPayloadBytes: 64 * 1024,
 };
-
-function hasNodeUpgradeServer(value: unknown): value is NodeUpgradeServer {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  const server = value as { off?: unknown; on?: unknown };
-
-  return typeof server.on === 'function' && typeof server.off === 'function';
-}
 
 function buildFrameworkRequestFromFetchRequest(request: Request): FrameworkRequest {
   const requestUrl = new URL(request.url);
@@ -110,43 +82,6 @@ function buildFrameworkRequestFromFetchRequest(request: Request): FrameworkReque
   };
 }
 
-function buildFrameworkRequestFromIncomingMessage(request: IncomingMessage): FrameworkRequest {
-  const requestUrl = new URL(request.url ?? '/graphql', 'http://localhost');
-
-  return {
-    cookies: {},
-    headers: request.headers,
-    method: request.method ?? 'GET',
-    params: {},
-    path: requestUrl.pathname,
-    query: Object.fromEntries(requestUrl.searchParams.entries()),
-    raw: request,
-    url: requestUrl.pathname + requestUrl.search,
-  };
-}
-
-function isConnectionParamsRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function closeWebSocketServer(server: WebSocketServer): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    server.close((error?: Error) => {
-      if (error?.message === 'The server is not running') {
-        resolve();
-        return;
-      }
-
-      if (error) {
-        reject(error);
-        return;
-      }
-
-      resolve();
-    });
-  });
-}
-
 interface GraphqlDeps {
   GraphQLError: typeof GraphQLErrorType;
   GraphQLBoolean: typeof GraphQLBooleanType;
@@ -159,10 +94,11 @@ interface GraphqlDeps {
   GraphQLString: typeof GraphQLStringType;
   GraphQLUnionType: typeof GraphQLUnionTypeType;
   buildSchema: (source: string) => GraphQLSchemaType;
+  createGraphQLError: (message: string, options: { extensions?: Record<string, unknown> }) => GraphQLErrorType;
   createYoga: (options: Record<string, unknown>) => YogaLike;
-  execute: (args: ExecutionArgs) => OperationResult;
+  execute: typeof executeGraphql;
   instanceOfModule: GraphqlInstanceOfModule;
-  subscribe: (args: ExecutionArgs) => OperationResult;
+  subscribe: typeof subscribeGraphql;
 }
 
 let graphqlInstanceOfPatchRefCount = 0;
@@ -186,7 +122,8 @@ export class GraphqlEndpointController {
 }
 
 function getCrossRealmGraphqlTag(value: unknown, constructor: GraphqlConstructor): string | undefined {
-  const className = constructor.prototype?.[Symbol.toStringTag];
+  const prototypeTag = constructor.prototype?.[Symbol.toStringTag];
+  const className = typeof prototypeTag === 'string' ? prototypeTag : constructor.name;
 
   if (typeof className !== 'string' || !className.startsWith('GraphQL')) {
     return undefined;
@@ -196,10 +133,10 @@ function getCrossRealmGraphqlTag(value: unknown, constructor: GraphqlConstructor
     return undefined;
   }
 
-  if (Symbol.toStringTag in value) {
-    const valueClassName = (value as { [Symbol.toStringTag]?: unknown })[Symbol.toStringTag];
+  const valueTag = (value as { [Symbol.toStringTag]?: unknown })[Symbol.toStringTag];
 
-    return valueClassName === className ? className : undefined;
+  if (typeof valueTag === 'string') {
+    return valueTag === className ? className : undefined;
   }
 
   const valueClassName = (value as { constructor?: { name?: string } }).constructor?.name;
@@ -219,8 +156,12 @@ function markAllowedCrossRealmGraphqlObjects(value: unknown, visited = new WeakS
   visited.add(value);
 
   const tag = (value as { [Symbol.toStringTag]?: unknown })[Symbol.toStringTag];
+  const constructorName = (value as { constructor?: { name?: unknown } }).constructor?.name;
 
-  if (typeof tag === 'string' && tag.startsWith('GraphQL')) {
+  if (
+    (typeof tag === 'string' && tag.startsWith('GraphQL')) ||
+    (typeof constructorName === 'string' && constructorName.startsWith('GraphQL'))
+  ) {
     allowedCrossRealmGraphqlObjects.add(value);
   }
 
@@ -301,11 +242,14 @@ function releaseGraphqlInstanceOfPatch(): void {
 }
 
 async function loadGraphqlDeps(): Promise<GraphqlDeps> {
-  const { createRequire } = await import('node:module');
-  const runtimeRequire = createRequire(import.meta.url);
-  const graphqlMod = runtimeRequire('graphql') as typeof import('graphql');
-  const yogaMod = runtimeRequire('graphql-yoga') as typeof import('graphql-yoga');
-  const instanceOfModule = runtimeRequire('graphql/jsutils/instanceOf.js') as GraphqlInstanceOfModule;
+  const graphqlSpecifier = 'graphql';
+  const yogaSpecifier = 'graphql-yoga';
+  const instanceOfSpecifier = 'graphql/jsutils/instanceOf.js';
+  const [graphqlMod, yogaMod, instanceOfModule] = await Promise.all([
+    import(/* @vite-ignore */ graphqlSpecifier) as Promise<typeof import('graphql')>,
+    import(/* @vite-ignore */ yogaSpecifier) as Promise<typeof import('graphql-yoga')>,
+    import(/* @vite-ignore */ instanceOfSpecifier) as Promise<GraphqlInstanceOfModule>,
+  ]);
 
   return {
     GraphQLError: graphqlMod.GraphQLError,
@@ -319,6 +263,10 @@ async function loadGraphqlDeps(): Promise<GraphqlDeps> {
     GraphQLString: graphqlMod.GraphQLString,
     GraphQLUnionType: graphqlMod.GraphQLUnionType,
     buildSchema: graphqlMod.buildSchema,
+    createGraphQLError: yogaMod.createGraphQLError as (
+      message: string,
+      options: { extensions?: Record<string, unknown> },
+    ) => GraphQLErrorType,
     createYoga: yogaMod.createYoga as (options: Record<string, unknown>) => YogaLike,
     execute: graphqlMod.execute,
     instanceOfModule,
@@ -336,13 +284,10 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
   private readonly operationContainers = new WeakMap<Request, Container>();
   private readonly requestContexts = new WeakMap<Request, GraphqlRequestContext>();
   private readonly websocketOperationContainers = new Map<object, Map<string, Container>>();
-  private websocketDisposable: { dispose(): Promise<void> | void } | undefined;
-  private websocketServer: WebSocketServer | undefined;
-  private websocketUpgradeListener: NodeUpgradeListener | undefined;
-  private websocketUpgradeServer: NodeUpgradeServer | undefined;
-  private executeGraphqlOperation: ((args: ExecutionArgs) => OperationResult) | undefined;
+  private websocketTransport: GraphqlNodeWebSocketTransport | undefined;
+  private executeGraphqlOperation: typeof executeGraphql | undefined;
   private releaseGraphqlInstanceOfPatch: (() => void) | undefined;
-  private subscribeGraphqlOperation: ((args: ExecutionArgs) => OperationResult) | undefined;
+  private subscribeGraphqlOperation: typeof subscribeGraphql | undefined;
   private yoga: YogaLike | undefined;
 
   private readonly middleware: Middleware = {
@@ -561,114 +506,47 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
   }
 
   private async registerWebSocketTransport(): Promise<void> {
-    if (!this.isWebSocketTransportEnabled() || this.yoga === undefined || this.websocketUpgradeListener !== undefined) {
+    if (!this.isWebSocketTransportEnabled() || this.yoga === undefined || this.websocketTransport !== undefined) {
       return;
     }
 
-    const [{ handleProtocols }, { useServer }, { WebSocketServer }] = await Promise.all([
-      import('graphql-ws'),
-      import('graphql-ws/lib/use/ws'),
-      import('ws'),
-    ]);
-    const upgradeServer = this.resolveUpgradeServer();
-    const websocketLimits = this.resolveWebSocketLimits();
-    const websocketServer = new WebSocketServer({
-      handleProtocols: (protocols: Set<string>) => handleProtocols(protocols),
-      maxPayload: websocketLimits?.maxPayloadBytes ?? 0,
-      noServer: true,
-    });
-    const upgradeListener: NodeUpgradeListener = (request, socket, head) => {
-      const targetPath = new URL(request.url ?? '/', 'http://localhost').pathname;
+    const { createNodeGraphqlWebSocketTransport } = await import('./node/graphql-websocket-transport.js');
 
-      if (!isGraphqlPath(targetPath)) {
-        return;
-      }
+    this.websocketTransport = await createNodeGraphqlWebSocketTransport({
+      adapter: this.adapter,
+      connectionInitWaitTimeoutMs: this.options.subscriptions?.websocket?.connectionInitWaitTimeoutMs,
+      execute: (args: ExecutionArgs) => {
+        if (!this.executeGraphqlOperation) {
+          throw new Error('GraphQL execute function not initialized.');
+        }
 
-      if (websocketLimits && websocketServer.clients.size >= websocketLimits.maxConnections) {
-        this.rejectWebSocketUpgrade(
-          socket,
-          503,
-          'GraphQL websocket connection count exceeds the configured limit.',
-        );
-        return;
-      }
-
-      websocketServer.handleUpgrade(request, socket, head, (websocket: WebSocket) => {
-        websocketServer.emit('connection', websocket, request);
-      });
-    };
-
-    const websocketDisposable = useServer(
-      {
-        connectionInitWaitTimeout: this.options.subscriptions?.websocket?.connectionInitWaitTimeoutMs,
-        execute: (args: ExecutionArgs) => {
-          if (!this.executeGraphqlOperation) {
-            throw new Error('GraphQL execute function not initialized.');
-          }
-
-          return this.executeGraphqlOperation(args);
-        },
-        onComplete: async (context: GraphqlWebSocketContext, message: CompleteMessage) => {
-          await this.disposeWebSocketOperationContainer(context.extra.socket, message.id);
-        },
-        onDisconnect: async (context: GraphqlWebSocketContext) => {
-          await this.disposeAllWebSocketOperationContainers(context.extra.socket);
-        },
-        onSubscribe: async (context: GraphqlWebSocketContext, message: SubscribeMessage) =>
-          this.handleWebSocketSubscribe(context, message.id, message.payload),
-        subscribe: (args: ExecutionArgs) => {
-          if (!this.subscribeGraphqlOperation) {
-            throw new Error('GraphQL subscribe function not initialized.');
-          }
-
-          return this.subscribeGraphqlOperation(args);
-        },
+        return this.executeGraphqlOperation(args);
       },
-      websocketServer,
-      this.options.subscriptions?.websocket?.keepAliveMs,
-    );
+      keepAliveMs: this.options.subscriptions?.websocket?.keepAliveMs,
+      limits: this.resolveWebSocketLimits(),
+      onComplete: (socketKey, operationId) => this.disposeWebSocketOperationContainer(socketKey, operationId),
+      onDisconnect: (socketKey) => this.disposeAllWebSocketOperationContainers(socketKey),
+      onSubscribe: (request) => this.handleWebSocketSubscribe(request),
+      subscribe: (args: ExecutionArgs) => {
+        if (!this.subscribeGraphqlOperation) {
+          throw new Error('GraphQL subscribe function not initialized.');
+        }
 
-    upgradeServer.on('upgrade', upgradeListener);
-
-    this.websocketDisposable = websocketDisposable;
-    this.websocketServer = websocketServer;
-    this.websocketUpgradeListener = upgradeListener;
-    this.websocketUpgradeServer = upgradeServer;
+        return this.subscribeGraphqlOperation(args);
+      },
+    });
   }
 
   private async unregisterWebSocketTransport(): Promise<void> {
-    if (this.websocketUpgradeListener && this.websocketUpgradeServer) {
-      this.websocketUpgradeServer.off('upgrade', this.websocketUpgradeListener);
-    }
-
-    this.websocketUpgradeListener = undefined;
-    this.websocketUpgradeServer = undefined;
-
-    if (this.websocketServer) {
-      for (const client of this.websocketServer.clients) {
-        client.terminate();
-      }
-    }
-
-    if (this.websocketDisposable) {
+    if (this.websocketTransport) {
       try {
-        await this.websocketDisposable.dispose();
+        await this.websocketTransport.dispose();
       } catch (error) {
         this.logger.error('Failed to dispose GraphQL websocket transport.', error, 'GraphqlLifecycleService');
       }
     }
 
-    this.websocketDisposable = undefined;
-
-    if (this.websocketServer) {
-      try {
-        await closeWebSocketServer(this.websocketServer);
-      } catch (error) {
-        this.logger.error('Failed to close GraphQL websocket server.', error, 'GraphqlLifecycleService');
-      }
-    }
-
-    this.websocketServer = undefined;
+    this.websocketTransport = undefined;
 
     for (const socketKey of this.websocketOperationContainers.keys()) {
       await this.disposeAllWebSocketOperationContainers(socketKey);
@@ -679,50 +557,27 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
     return this.options.subscriptions?.websocket?.enabled === true;
   }
 
-  private resolveUpgradeServer(): NodeUpgradeServer {
-    if (typeof this.adapter.getServer !== 'function') {
-      throw new Error(
-        'GraphQL websocket subscriptions require an HTTP adapter with getServer(). Use the Node HTTP adapter or provide a compatible adapter implementation.',
-      );
-    }
-
-    const server = this.adapter.getServer();
-
-    if (!hasNodeUpgradeServer(server)) {
-      throw new Error(
-        'GraphQL websocket subscriptions require adapter.getServer() to return a Node HTTP/S server that supports upgrade listeners.',
-      );
-    }
-
-    return server;
-  }
-
-  private async handleWebSocketSubscribe(
-    context: GraphqlWsServerContext<Record<string, unknown>, GraphqlWsExtra>,
-    operationId: string,
-    payload: GraphqlSubscribePayload,
-  ): Promise<ExecutionArgs | readonly GraphQLErrorType[]> {
+  private async handleWebSocketSubscribe(request: GraphqlNodeWebSocketSubscribeRequest): Promise<ExecutionArgs | readonly GraphQLErrorType[]> {
     const yoga = this.yoga;
 
     if (!yoga) {
       throw new Error('GraphQL server not initialized.');
     }
 
-    const websocketLimitError = this.createWebSocketOperationLimitError(context.extra.socket, operationId);
+    const websocketLimitError = this.createWebSocketOperationLimitError(request.socket, request.operationId);
 
     if (websocketLimitError) {
       return [websocketLimitError];
     }
 
-    const frameworkRequest = buildFrameworkRequestFromIncomingMessage(context.extra.request);
-    const fetchRequest = toFetchRequest(frameworkRequest);
-    const operationContainer = this.getOrCreateWebSocketOperationContainer(context.extra.socket, operationId);
+    const fetchRequest = toFetchRequest(request.request);
+    const operationContainer = this.getOrCreateWebSocketOperationContainer(request.socket, request.operationId);
     const graphqlContext = this.buildGraphqlContext(
       fetchRequest,
       {
-        connectionParams: isConnectionParamsRecord(context.connectionParams) ? context.connectionParams : undefined,
-        request: frameworkRequest,
-        socket: context.extra.socket,
+        connectionParams: request.connectionParams,
+        request: request.request,
+        socket: request.socket,
       },
       operationContainer,
     );
@@ -732,23 +587,23 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
         request: fetchRequest,
         [GRAPHQL_CONTEXT_OVERRIDE]: graphqlContext,
       });
-      const document = parse(payload.query);
+      const document = parse(request.payload.query);
       const validationErrors = validate(schema, document);
 
       if (validationErrors.length > 0) {
-        await this.disposeWebSocketOperationContainer(context.extra.socket, operationId);
+        await this.disposeWebSocketOperationContainer(request.socket, request.operationId);
         return validationErrors;
       }
 
       return {
         contextValue: await contextFactory(),
         document,
-        operationName: payload.operationName ?? undefined,
+        operationName: request.payload.operationName ?? undefined,
         schema,
-        variableValues: payload.variables,
+        variableValues: request.payload.variables,
       };
     } catch (error) {
-      await this.disposeWebSocketOperationContainer(context.extra.socket, operationId);
+      await this.disposeWebSocketOperationContainer(request.socket, request.operationId);
       throw error;
     }
   }
@@ -775,26 +630,6 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
     return new GraphQLError(
       `GraphQL websocket active operation count exceeds the configured limit of ${String(limits.maxOperationsPerConnection)}.`,
     );
-  }
-
-  private rejectWebSocketUpgrade(socket: Duplex, statusCode: number, message: string): void {
-    if (!socket.writable) {
-      socket.destroy();
-      return;
-    }
-
-    const body = `${message}\n`;
-    socket.write(
-      [
-        `HTTP/1.1 ${String(statusCode)} ${statusCode === 503 ? 'Service Unavailable' : 'Bad Request'}`,
-        'Connection: close',
-        'Content-Type: text/plain; charset=utf-8',
-        `Content-Length: ${String(new TextEncoder().encode(body).byteLength)}`,
-        '',
-        body,
-      ].join('\r\n'),
-    );
-    socket.destroy();
   }
 
   private getOrCreateWebSocketOperationContainer(socketKey: object, operationId: string): Container {

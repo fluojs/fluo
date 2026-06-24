@@ -40,6 +40,7 @@ type YogaGraphqlDeps = {
   GraphQLString: GraphQLScalarType;
   GraphQLUnionType: typeof GraphQLUnionTypeType;
   buildSchema: (source: string) => GraphQLSchemaType;
+  createGraphQLError: (message: string, options: { extensions?: Record<string, unknown> }) => GraphQLErrorType;
 };
 
 function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
@@ -56,7 +57,6 @@ function scalarByName(deps: YogaGraphqlDeps, scalar: 'string' | 'int' | 'float' 
       return deps.GraphQLBoolean;
     case 'id':
       return deps.GraphQLID;
-    case 'string':
     default:
       return deps.GraphQLString;
   }
@@ -343,25 +343,34 @@ function isGraphQLSchemaLike(value: unknown): boolean {
   );
 }
 
-function toGraphqlValidationError(deps: YogaGraphqlDeps, error: DtoValidationError): GraphQLErrorType {
-  return new deps.GraphQLError('Validation failed.', {
+function toGraphqlValidationError(
+  deps: YogaGraphqlDeps,
+  error: DtoValidationError,
+  markAllowedCrossRealmGraphqlObjects: (value: unknown) => void,
+): GraphQLErrorType {
+  const graphqlError = deps.createGraphQLError('Validation failed.', {
     extensions: {
       code: 'BAD_USER_INPUT',
       issues: error.issues,
     },
   });
+
+  markAllowedCrossRealmGraphqlObjects(graphqlError);
+
+  return graphqlError;
 }
 
 async function createResolverInput(
   deps: YogaGraphqlDeps,
   handler: ResolverHandlerDescriptor,
   args: Record<string, unknown>,
+  markAllowedCrossRealmGraphqlObjects: (value: unknown) => void,
 ): Promise<unknown> {
   try {
     return await createGraphqlInput(handler.inputClass, args, handler.argFields);
   } catch (error) {
     if (error instanceof DtoValidationError) {
-      throw toGraphqlValidationError(deps, error);
+      throw toGraphqlValidationError(deps, error, markAllowedCrossRealmGraphqlObjects);
     }
 
     throw error;
@@ -385,6 +394,7 @@ function resolveResolverMethod(
 function createResolverInvoker(
   deps: YogaGraphqlDeps,
   runtimeContainer: Container,
+  markAllowedCrossRealmGraphqlObjects: (value: unknown) => void,
 ): (
   descriptor: ResolverDescriptor,
   handler: ResolverHandlerDescriptor,
@@ -400,7 +410,7 @@ function createResolverInvoker(
     if (descriptor.scope === 'singleton') {
       const instance = await runtimeContainer.resolve(descriptor.token);
       const resolverMethod = resolveResolverMethod(instance, descriptor, handler);
-      const input = await createResolverInput(deps, handler, args);
+      const input = await createResolverInput(deps, handler, args, markAllowedCrossRealmGraphqlObjects);
       return resolverMethod.call(instance, input, contextValue);
     }
 
@@ -410,7 +420,7 @@ function createResolverInvoker(
     try {
       const instance = await operationContainer.resolve(descriptor.token);
       const resolverMethod = resolveResolverMethod(instance, descriptor, handler);
-      const input = await createResolverInput(deps, handler, args);
+      const input = await createResolverInput(deps, handler, args, markAllowedCrossRealmGraphqlObjects);
       return await resolverMethod.call(instance, input, contextValue);
     } finally {
       if (disposeOperationContainer) {
@@ -503,7 +513,7 @@ export function createCodeFirstSchema(
     throw new Error('GraphQL module requires either schema or at least one resolver decorated with @Resolver().');
   }
 
-  const invokeResolver = createResolverInvoker(deps, runtimeContainer);
+  const invokeResolver = createResolverInvoker(deps, runtimeContainer, markAllowedCrossRealmGraphqlObjects);
   const outputTypeCache = new Map<string, GraphQLOutputType>();
 
   const queryFields = pickFieldsByType(
@@ -535,9 +545,13 @@ export function createCodeFirstSchema(
   const mutationType = createOptionalRootType(deps, 'Mutation', mutationFields);
   const subscriptionType = createOptionalRootType(deps, 'Subscription', subscriptionFields);
 
-  return new deps.GraphQLSchema({
+  const schema = new deps.GraphQLSchema({
     mutation: mutationType,
     query: queryType,
     subscription: subscriptionType,
   });
+
+  markAllowedCrossRealmGraphqlObjects(schema);
+
+  return schema;
 }

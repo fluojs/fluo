@@ -31,6 +31,7 @@ const deps = {
   GraphQLString,
   GraphQLUnionType,
   buildSchema,
+  createGraphQLError: (message: string, options: { extensions?: Record<string, unknown> }) => new GraphQLError(message, options),
 };
 
 const fakeContainer = {} as unknown as Container;
