@@ -1087,6 +1087,91 @@ describe('EmailModule', () => {
     expect(closeTransport.closeCalls).toBe(1);
   });
 
+  it('normalizes lazy transport factory rejections and clears rejected state before shutdown', async () => {
+    const create = vi.fn(async (): Promise<EmailTransport> => {
+      throw new Error('provider create failed');
+    });
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: {
+        create,
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    await expect(
+      service.send({
+        subject: 'Lazy failure',
+        text: 'hello',
+        to: ['user@example.com'],
+      }),
+    ).rejects.toMatchObject({
+      cause: expect.objectContaining({ message: 'provider create failed' }),
+      message: 'Email transport failed to initialize.',
+      name: 'EmailLifecycleError',
+    });
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'failed' },
+      readiness: { status: 'not-ready' },
+    });
+
+    await expect(service.onApplicationShutdown()).resolves.toBeUndefined();
+    await expect(
+      service.sendNotification({
+        channel: 'email',
+        payload: { text: 'after failed lazy create' },
+        recipients: ['user@example.com'],
+        subject: 'After lazy failure',
+      }),
+    ).rejects.toThrowError(new EmailLifecycleError('Email delivery cannot start while the service lifecycle is stopped.'));
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports pending lazy factory rejection during shutdown as initialization failure', async () => {
+    let rejectTransport!: (error: Error) => void;
+    const create = vi.fn(
+      () =>
+        new Promise<EmailTransport>((_resolve, reject) => {
+          rejectTransport = reject;
+        }),
+    );
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: {
+        create,
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+    const delivery = service.send({ subject: 'Shutdown lazy failure', text: 'hello', to: ['user@example.com'] });
+    const shutdown = service.onApplicationShutdown();
+
+    rejectTransport(new Error('provider create failed during shutdown'));
+
+    await expect(delivery).rejects.toMatchObject({
+      cause: expect.objectContaining({ message: 'provider create failed during shutdown' }),
+      message: 'Email transport failed to initialize.',
+      name: 'EmailLifecycleError',
+    });
+    await expect(shutdown).rejects.toMatchObject({
+      cause: expect.objectContaining({ message: 'provider create failed during shutdown' }),
+      message: 'Email transport failed to initialize.',
+      name: 'EmailLifecycleError',
+    });
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'failed' },
+      readiness: { status: 'not-ready' },
+    });
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
   it('blocks shutdown-time delivery from reusing or recreating transports', async () => {
     let resolveTransport!: (transport: DelayedLifecycleTransport) => void;
     const createdTransport = new DelayedLifecycleTransport();
