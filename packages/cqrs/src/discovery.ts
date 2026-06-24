@@ -1,4 +1,4 @@
-import { type Token } from '@fluojs/core';
+import { formatTokenName, type Token } from '@fluojs/core';
 import { getClassDiMetadata } from '@fluojs/core/internal';
 import type { Container, Provider } from '@fluojs/di';
 import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
@@ -41,10 +41,28 @@ function isClassProvider(provider: Provider): provider is Extract<Provider, { pr
 export function createDuplicateHandlerMessage(
   kind: 'command' | 'query' | 'event',
   messageType: Function,
-  first: { moduleName: string; targetType: Function },
-  second: { moduleName: string; targetType: Function },
+  first: { moduleName: string; targetType: Function; token: Token },
+  second: { moduleName: string; targetType: Function; token: Token },
 ): string {
-  return `Duplicate ${kind} handler for ${messageType.name} was discovered in ${first.moduleName}.${first.targetType.name} and ${second.moduleName}.${second.targetType.name}.`;
+  return `Duplicate ${kind} handler for ${messageType.name} was discovered in ${describeHandlerRegistration(first)} and ${describeHandlerRegistration(second)}.`;
+}
+
+function describeHandlerRegistration(registration: { moduleName: string; targetType: Function; token: Token }): string {
+  return `${registration.moduleName}.${registration.targetType.name} [token: ${formatTokenName(registration.token)}]`;
+}
+
+/**
+ * Checks whether two discovered handler candidates refer to the same provider registration.
+ *
+ * @param first The first handler registration.
+ * @param second The second handler registration.
+ * @returns Whether both target type and provider token match.
+ */
+export function isSameHandlerRegistration(
+  first: { targetType: Function; token: Token },
+  second: { targetType: Function; token: Token },
+): boolean {
+  return first.targetType === second.targetType && first.token === second.token;
 }
 
 /**
