@@ -112,6 +112,24 @@ describe('RedisStore', () => {
     expect(client.storage.get('external:owned-by-app')).toBe(JSON.stringify({ value: 'keep' }));
   });
 
+  it('limits empty keyPrefix reset ownership to each recreated RedisStore instance', async () => {
+    const client = new MockRedisClient();
+    const firstStore = new RedisStore(client, { keyPrefix: '' });
+
+    await firstStore.set('cache:first-instance', { value: 'preserve' });
+    client.storage.set('external:owned-by-app', JSON.stringify({ value: 'keep' }));
+
+    const recreatedStore = new RedisStore(client, { keyPrefix: '' });
+    await recreatedStore.set('cache:recreated-instance', { value: 'remove' });
+
+    await recreatedStore.reset();
+
+    expect(client.scanCalls).toEqual([]);
+    await expect(firstStore.get('cache:first-instance')).resolves.toEqual({ value: 'preserve' });
+    await expect(recreatedStore.get('cache:recreated-instance')).resolves.toBeUndefined();
+    expect(client.storage.get('external:owned-by-app')).toBe(JSON.stringify({ value: 'keep' }));
+  });
+
   it('deletes an owned empty-string key when keyPrefix is empty', async () => {
     const client = new MockRedisClient();
     const store = new RedisStore(client, { keyPrefix: '' });

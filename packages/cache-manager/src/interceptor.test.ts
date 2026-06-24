@@ -311,6 +311,29 @@ describe('CacheInterceptor', () => {
     await expect(cacheService.get('/events')).resolves.toBeUndefined();
   });
 
+  it('does not cache undefined GET handler results', async () => {
+    class ProductController {
+      @CacheTTL(120)
+      optional() {}
+    }
+
+    const { interceptor, cacheService } = createInterceptor({ ttl: 120 });
+    const firstContext = createContext(ProductController, 'optional', createRequestContext('GET', '/products/optional', '/products/optional'));
+    const secondContext = createContext(ProductController, 'optional', createRequestContext('GET', '/products/optional', '/products/optional'));
+    const next: CallHandler = {
+      handle: vi
+        .fn<CallHandler['handle']>()
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined),
+    };
+
+    await expect(interceptor.intercept(firstContext, next)).resolves.toBeUndefined();
+    await expect(interceptor.intercept(secondContext, next)).resolves.toBeUndefined();
+
+    expect(next.handle).toHaveBeenCalledTimes(2);
+    await expect(cacheService.get('/products/optional')).resolves.toBeUndefined();
+  });
+
   it('does not cache non-success HTTP responses returned by GET handlers', async () => {
     class ProductController {
       @CacheTTL(120)
@@ -520,28 +543,30 @@ describe('CacheInterceptor', () => {
     const unhandledRejection = vi.fn();
     process.once('unhandledRejection', unhandledRejection);
 
-    class ProductController {
-      @CacheEvict(async () => {
-        throw new Error('evict metadata failed');
-      })
-      refresh() {}
+    try {
+      class ProductController {
+        @CacheEvict(async () => {
+          throw new Error('evict metadata failed');
+        })
+        refresh() {}
+      }
+
+      const { interceptor } = createInterceptor();
+      const requestContext = createRequestContext('POST', '/products/refresh');
+      const context = createContext(ProductController, 'refresh', requestContext, 'POST');
+      const next: CallHandler = {
+        handle: vi.fn(async () => ({ refreshed: true })),
+      };
+
+      const value = await interceptor.intercept(context, next);
+      await expect(requestContext.response.send(value)).resolves.toBeUndefined();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(value).toEqual({ refreshed: true });
+      expect(unhandledRejection).not.toHaveBeenCalled();
+    } finally {
+      process.removeListener('unhandledRejection', unhandledRejection);
     }
-
-    const { interceptor } = createInterceptor();
-    const requestContext = createRequestContext('POST', '/products/refresh');
-    const context = createContext(ProductController, 'refresh', requestContext, 'POST');
-    const next: CallHandler = {
-      handle: vi.fn(async () => ({ refreshed: true })),
-    };
-
-    const value = await interceptor.intercept(context, next);
-    await expect(requestContext.response.send(value)).resolves.toBeUndefined();
-    await new Promise<void>((resolve) => setImmediate(resolve));
-
-    expect(value).toEqual({ refreshed: true });
-    expect(unhandledRejection).not.toHaveBeenCalled();
-
-    process.removeListener('unhandledRejection', unhandledRejection);
   });
 
   it('evicts immediately when the handler already committed the response before returning', async () => {
@@ -590,6 +615,38 @@ describe('CacheInterceptor', () => {
 
     await vi.advanceTimersByTimeAsync(1);
     await expect(cacheService.get('GET:/products')).resolves.toBeUndefined();
+  });
+
+  it('contains fallback-timer deferred eviction failures', async () => {
+    vi.useFakeTimers();
+    const unhandledRejection = vi.fn();
+    process.once('unhandledRejection', unhandledRejection);
+
+    try {
+      class ProductController {
+        @CacheEvict('GET:/products')
+        refresh() {}
+      }
+
+      const { cacheService, interceptor } = createInterceptor();
+      await cacheService.set('GET:/products', { count: 1 }, 120);
+      vi.spyOn(cacheService, 'del').mockRejectedValueOnce(new Error('redis down during fallback eviction'));
+
+      const requestContext = createRequestContext('POST', '/products/refresh');
+      const context = createContext(ProductController, 'refresh', requestContext, 'POST');
+      const next: CallHandler = {
+        handle: vi.fn(async () => ({ refreshed: true })),
+      };
+
+      await expect(interceptor.intercept(context, next)).resolves.toEqual({ refreshed: true });
+      await vi.advanceTimersByTimeAsync(5_000);
+      await Promise.resolve();
+
+      expect(unhandledRejection).not.toHaveBeenCalled();
+      await expect(cacheService.get('GET:/products')).resolves.toEqual({ count: 1 });
+    } finally {
+      process.removeListener('unhandledRejection', unhandledRejection);
+    }
   });
 
   it('cancels deferred eviction when response.send rejects', async () => {
