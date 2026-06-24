@@ -1,13 +1,13 @@
+import { defineDtoFieldBindingMetadata } from '@fluojs/core/request-pipeline';
 import { type } from 'arktype';
 import { email, object, pipe, string } from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { defineDtoFieldBindingMetadata } from '@fluojs/core/request-pipeline';
 
-import { DefaultValidator } from './validation.js';
+import { ArrayContains, ArrayMaxSize, ArrayMinSize, ArrayNotContains, ArrayNotEmpty, ArrayUnique, Contains, Equals, IsArray, IsAscii, IsBase64, IsBoolean, IsBooleanString, IsCurrency, IsDate, IsDateString, IsDecimal, IsDivisibleBy, IsEmail, IsEmpty, IsEnum, IsFQDN, IsHexadecimal, IsHexColor, IsIn, IsInt, IsIP, IsISO8601, IsJSON, IsJWT, IsLatitude, IsLatLong, IsLocale, IsLongitude, IsLowercase, IsMagnetURI, IsMimeType, IsMongoId, IsNegative, IsNotEmpty, IsNotIn, IsNumber, IsNumberString, IsObject, IsPort, IsPositive, IsPostalCode, IsRFC3339, IsRgbColor, IsSemVer, IsString, IsUppercase, IsUrl, IsUUID, Length, Matches, Max, MaxDate, MaxLength, Min, MinDate, MinLength, NotContains, NotEquals, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
 import { DtoValidationError } from './errors.js';
-import { ArrayContains, ArrayMaxSize, ArrayMinSize, ArrayNotContains, ArrayNotEmpty, ArrayUnique, Contains, Equals, IsArray, IsAscii, IsBase64, IsBoolean, IsBooleanString, IsCurrency, IsDate, IsDateString, IsDecimal, IsDivisibleBy, IsEmail, IsEmpty, IsEnum, IsFQDN, IsHexColor, IsHexadecimal, IsIn, IsInt, IsIP, IsISO8601, IsJSON, IsJWT, IsLatitude, IsLatLong, IsLocale, IsLongitude, IsLowercase, IsMagnetURI, IsMimeType, IsMongoId, IsNegative, IsNotEmpty, IsNotIn, IsNumber, IsNumberString, IsObject, IsPort, IsPositive, IsPostalCode, IsRFC3339, IsRgbColor, IsSemVer, IsString, IsUppercase, IsUrl, IsUUID, Length, Matches, Max, MaxDate, MaxLength, Min, MinDate, MinLength, NotContains, NotEquals, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
 import type { StandardSchemaV1Like } from './index.js';
+import { DefaultValidator } from './validation.js';
 
 describe('DefaultValidator', () => {
   it('validates basic rules without HTTP bindings', async () => {
@@ -62,6 +62,29 @@ describe('DefaultValidator', () => {
       validator.validate(Object.assign(new NetworkDto(), { address: 'not-an-ip-address' }), NetworkDto),
     ).rejects.toMatchObject({
       issues: [{ field: 'address', message: 'address must be IPv4 or IPv6' }],
+    });
+  });
+
+  it('treats no-argument IsIP as the default IPv4 or IPv6 contract', async () => {
+    class NetworkDto {
+      @IsIP()
+      address = '';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(Object.assign(new NetworkDto(), { address: '127.0.0.1' }), NetworkDto),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      validator.validate(Object.assign(new NetworkDto(), { address: '2001:db8::1' }), NetworkDto),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      validator.validate(Object.assign(new NetworkDto(), { address: 'not-an-ip-address' }), NetworkDto),
+    ).rejects.toMatchObject({
+      issues: [{ code: 'IP', field: 'address', message: 'address is invalid.' }],
     });
   });
 
@@ -143,6 +166,67 @@ describe('DefaultValidator', () => {
 
     expect(result).toBeInstanceOf(CreateUserDto);
     expect(result.email).toBe('hello@example.com');
+  });
+
+  it('materialize accepts an existing target DTO instance', async () => {
+    class CreateUserDto {
+      @IsEmail()
+      email = '';
+    }
+
+    const validator = new DefaultValidator();
+    const input = Object.assign(new CreateUserDto(), { email: 'hello@example.com' });
+    const result = await validator.materialize<CreateUserDto>(input, CreateUserDto);
+
+    expect(result).toBe(input);
+    expect(result).toBeInstanceOf(CreateUserDto);
+    expect(result.email).toBe('hello@example.com');
+  });
+
+  it('materialize hydrates fields from DTO binding metadata', async () => {
+    class BoundSearchDto {
+      @IsString()
+      userId = '';
+
+      @IsEmail({ message: 'email must be valid' })
+      email = '';
+    }
+
+    defineDtoFieldBindingMetadata(BoundSearchDto.prototype, 'userId', {
+      key: 'id',
+      source: 'path',
+    });
+    defineDtoFieldBindingMetadata(BoundSearchDto.prototype, 'email', {
+      key: 'contactEmail',
+      source: 'query',
+    });
+
+    const validator = new DefaultValidator();
+    const result = await validator.materialize<BoundSearchDto>(
+      {
+        id: 'user-123',
+        userId: 'direct-user-id',
+        contactEmail: 'hello@example.com',
+        email: 'direct@example.com',
+      },
+      BoundSearchDto,
+    );
+
+    expect(result).toBeInstanceOf(BoundSearchDto);
+    expect(result.userId).toBe('user-123');
+    expect(result.email).toBe('hello@example.com');
+
+    await expect(
+      validator.materialize(
+        {
+          id: 'user-123',
+          contactEmail: 'not-an-email',
+        },
+        BoundSearchDto,
+      ),
+    ).rejects.toMatchObject({
+      issues: [{ field: 'email', message: 'email must be valid', source: 'query' }],
+    });
   });
 
   it('validates plain root objects without scalar coercion', async () => {
