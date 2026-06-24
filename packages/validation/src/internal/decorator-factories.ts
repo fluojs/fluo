@@ -1,4 +1,4 @@
-import type { DtoFieldValidationRule, ValidationDecoratorOptions } from '@fluojs/core/internal';
+import type { DtoFieldValidationRule, ValidationDecoratorOptions } from '@fluojs/core/request-pipeline';
 
 import { appendStandardDtoValidationRule, type FieldDecoratorFn } from './decorator-metadata.js';
 
