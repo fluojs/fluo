@@ -669,6 +669,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const docsContextKo = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
   const rootReadme = readFileSync(join(repoRoot, 'README.md'), 'utf8');
   const rootReadmeKo = readFileSync(join(repoRoot, 'README.ko.md'), 'utf8');
+  const coreReadme = readFileSync(join(repoRoot, 'packages/core/README.md'), 'utf8');
+  const coreReadmeKo = readFileSync(join(repoRoot, 'packages/core/README.ko.md'), 'utf8');
   const drizzleReadme = readFileSync(join(repoRoot, 'packages/drizzle/README.md'), 'utf8');
   const drizzleReadmeKo = readFileSync(join(repoRoot, 'packages/drizzle/README.ko.md'), 'utf8');
   const expressReadme = readFileSync(join(repoRoot, 'packages/platform-express/README.md'), 'utf8');
@@ -787,6 +789,20 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContextKo.includes('@fluojs/runtime/internal*') &&
       docsContextKo.includes('package-integration seam 경계'),
     'docs/reference/package-surface.ko.md and docs/CONTEXT.ko.md must distinguish runtime application-facing helper subpaths from internal package-integration seams.',
+  );
+  assert(
+    coreReadme.includes('@fluojs/core/request-pipeline') &&
+      packageSurface.includes('@fluojs/core/request-pipeline') &&
+      docsContext.includes('@fluojs/core/request-pipeline') &&
+      docsContext.includes('@fluojs/core/internal'),
+    'Core README, package-surface, and docs/CONTEXT.md must keep the request-pipeline metadata seam discoverable apart from @fluojs/core/internal.',
+  );
+  assert(
+    coreReadmeKo.includes('@fluojs/core/request-pipeline') &&
+      packageSurfaceKo.includes('@fluojs/core/request-pipeline') &&
+      docsContextKo.includes('@fluojs/core/request-pipeline') &&
+      docsContextKo.includes('@fluojs/core/internal'),
+    'Core README.ko, package-surface.ko, and docs/CONTEXT.ko.md must keep the request-pipeline metadata seam discoverable apart from @fluojs/core/internal.',
   );
   assert(
     expressReadme.includes('Express compatibility does not mean that native Express/Connect') &&
