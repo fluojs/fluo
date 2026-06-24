@@ -1,7 +1,7 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import type { OnApplicationBootstrap } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
-import { CqrsBusBase, createDuplicateHandlerMessage } from '../discovery.js';
+import { CqrsBusBase, createDuplicateHandlerMessage, isSameHandlerRegistration } from '../discovery.js';
 import { CommandHandlerNotFoundException, DuplicateCommandHandlerError } from '../errors.js';
 import { getCommandHandlerMetadata } from '../metadata.js';
 import type {
@@ -97,7 +97,6 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
 
   private discoverCommandDescriptors(): Map<CommandType, CommandHandlerDescriptor> {
     const descriptors = new Map<CommandType, CommandHandlerDescriptor>();
-    const seenByTarget = new WeakMap<Function, Set<CommandType>>();
 
     for (const candidate of this.discoveryCandidates()) {
       const metadata = getCommandHandlerMetadata(candidate.targetType);
@@ -114,34 +113,27 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
         continue;
       }
 
-      const seenCommandTypes = seenByTarget.get(candidate.targetType) ?? new Set<CommandType>();
-
-      if (seenCommandTypes.has(metadata.commandType)) {
-        continue;
-      }
-
-      seenCommandTypes.add(metadata.commandType);
-      seenByTarget.set(candidate.targetType, seenCommandTypes);
-
       const existing = descriptors.get(metadata.commandType);
+      const nextDescriptor = {
+        moduleName: candidate.moduleName,
+        targetType: candidate.targetType,
+        token: candidate.token,
+      };
 
-      if (existing && existing.targetType !== candidate.targetType) {
+      if (existing) {
+        if (isSameHandlerRegistration(existing, nextDescriptor)) {
+          continue;
+        }
+
         throw new DuplicateCommandHandlerError(
-          createDuplicateHandlerMessage('command', metadata.commandType, existing, {
-            moduleName: candidate.moduleName,
-            targetType: candidate.targetType,
-          }),
+          createDuplicateHandlerMessage('command', metadata.commandType, existing, nextDescriptor),
         );
       }
 
-      if (!existing) {
-        descriptors.set(metadata.commandType, {
-          commandType: metadata.commandType,
-          moduleName: candidate.moduleName,
-          targetType: candidate.targetType,
-          token: candidate.token,
-        });
-      }
+      descriptors.set(metadata.commandType, {
+        commandType: metadata.commandType,
+        ...nextDescriptor,
+      });
     }
 
     return descriptors;
