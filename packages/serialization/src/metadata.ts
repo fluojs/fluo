@@ -1,5 +1,5 @@
 import type { MetadataPropertyKey } from '@fluojs/core';
-import { getOwnStandardConstructorMetadataBag } from '@fluojs/core/internal';
+import { getOwnConstructorRequestPipelineMetadataBag } from '@fluojs/core/request-pipeline';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 
@@ -62,7 +62,7 @@ function getClassMetadataObject(metadata: unknown): ClassSerializationOptions {
 }
 
 function getOwnMetadataBagFromConstructor(constructor: Function): StandardMetadataBag | undefined {
-  return getOwnStandardConstructorMetadataBag(constructor);
+  return getOwnConstructorRequestPipelineMetadataBag(constructor);
 }
 
 function getConstructorMetadataBags(constructor: Function): StandardMetadataBag[] {
