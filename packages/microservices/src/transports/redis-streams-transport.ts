@@ -311,14 +311,25 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     this.closing = true;
     this.closePromise = (async () => {
       let closeError: unknown;
+      let listenError: unknown;
 
       if (this.listenPromise) {
-        await this.listenPromise;
+        try {
+          await this.listenPromise;
+        } catch (error) {
+          listenError = error;
+        }
       }
 
       try {
         const settled = await Promise.allSettled(this.pollPromises);
-        const shouldDestroyMessageGroup = await this.releaseMessageGroupLease();
+        let shouldDestroyMessageGroup = false;
+
+        try {
+          shouldDestroyMessageGroup = await this.releaseMessageGroupLease();
+        } catch (error) {
+          closeError ??= error;
+        }
 
         for (const result of settled) {
           if (result.status === 'rejected') {
@@ -361,6 +372,10 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
         for (const pending of [...this.pending.values()]) {
           pending.reject(new Error('Redis Streams microservice transport closed before response.'));
         }
+      }
+
+      if (listenError) {
+        throw listenError;
       }
 
       if (closeError) {

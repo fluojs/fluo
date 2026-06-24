@@ -35,6 +35,7 @@ export interface RabbitMqMicroserviceTransportOptions {
  * a queue-oriented topology while still consuming the generic Fluo transport API.
  */
 export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
+  private closePromise: Promise<void> | undefined;
   private closing = false;
   private handler: TransportHandler | undefined;
   private listening = false;
@@ -69,7 +70,14 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once queue consumers are registered.
    */
   async listen(handler: TransportHandler): Promise<void> {
-    this.closing = false;
+    if (this.closing) {
+      if (this.closePromise) {
+        throw new Error('RabbitMqMicroserviceTransport is closing. Wait for close() to complete before listen().');
+      }
+
+      this.closing = false;
+    }
+
     this.handler = handler;
 
     if (this.listening) {
@@ -256,32 +264,54 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once shutdown cleanup completes.
    */
   async close(): Promise<void> {
-    this.closing = true;
-    let closeError: unknown;
-
-    if (this.listenPromise) {
-      await this.listenPromise;
+    if (this.closePromise) {
+      await this.closePromise;
+      return;
     }
 
-    try {
-      if (this.listening) {
-        for (const queue of this.subscribedQueues) {
-          try {
-            await this.options.consumer.cancel(queue);
-          } catch (error) {
-            closeError ??= error;
-          }
+    this.closing = true;
+    this.closePromise = (async () => {
+      let closeError: unknown;
+      let listenError: unknown;
+
+      if (this.listenPromise) {
+        try {
+          await this.listenPromise;
+        } catch (error) {
+          listenError = error;
         }
       }
-    } finally {
-      this.subscribedQueues.clear();
-      this.rejectPendingRequests(new Error('RabbitMQ microservice transport closed before response.'));
-      this.listening = false;
-      this.handler = undefined;
-    }
 
-    if (closeError) {
-      throw closeError;
+      try {
+        if (this.listening) {
+          for (const queue of this.subscribedQueues) {
+            try {
+              await this.options.consumer.cancel(queue);
+            } catch (error) {
+              closeError ??= error;
+            }
+          }
+        }
+      } finally {
+        this.subscribedQueues.clear();
+        this.rejectPendingRequests(new Error('RabbitMQ microservice transport closed before response.'));
+        this.listening = false;
+        this.handler = undefined;
+      }
+
+      if (listenError) {
+        throw listenError;
+      }
+
+      if (closeError) {
+        throw closeError;
+      }
+    })();
+
+    try {
+      await this.closePromise;
+    } finally {
+      this.closePromise = undefined;
     }
   }
 

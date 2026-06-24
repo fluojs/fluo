@@ -53,6 +53,7 @@ interface PendingRequest {
  * preserving JSON framing and NATS request timeout behavior.
  */
 export class NatsMicroserviceTransport implements MicroserviceTransport {
+  private closePromise: Promise<void> | undefined;
   private closing = false;
   private handler: TransportHandler | undefined;
   private logger: MicroserviceTransportLogger | undefined;
@@ -95,7 +96,14 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once subscriptions are active.
    */
   async listen(handler: TransportHandler): Promise<void> {
-    this.closing = false;
+    if (this.closing) {
+      if (this.closePromise) {
+        throw new Error('NATS microservice transport is closing. Wait for close() to complete before listen().');
+      }
+
+      this.closing = false;
+    }
+
     this.handler = handler;
 
     if (this.listening) {
@@ -243,28 +251,41 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
    * @returns A promise that resolves once shutdown cleanup completes.
    */
   async close(): Promise<void> {
-    this.closing = true;
-    let closeError: unknown;
-
-    try {
-      for (const subscription of this.subscriptions) {
-        subscription.unsubscribe();
-      }
-
-    } catch (error) {
-      closeError = error;
-    } finally {
-      this.subscriptions = [];
-      this.listening = false;
-      this.handler = undefined;
-
-      for (const pending of [...this.pending.values()]) {
-        pending.reject(new Error('NATS microservice transport closed before response.'));
-      }
+    if (this.closePromise) {
+      await this.closePromise;
+      return;
     }
 
-    if (closeError) {
-      throw closeError;
+    this.closing = true;
+    this.closePromise = (async () => {
+      let closeError: unknown;
+
+      try {
+        for (const subscription of this.subscriptions) {
+          subscription.unsubscribe();
+        }
+
+      } catch (error) {
+        closeError = error;
+      } finally {
+        this.subscriptions = [];
+        this.listening = false;
+        this.handler = undefined;
+
+        for (const pending of [...this.pending.values()]) {
+          pending.reject(new Error('NATS microservice transport closed before response.'));
+        }
+      }
+
+      if (closeError) {
+        throw closeError;
+      }
+    })();
+
+    try {
+      await this.closePromise;
+    } finally {
+      this.closePromise = undefined;
     }
   }
 

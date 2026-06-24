@@ -521,6 +521,54 @@ describe('RabbitMqMicroserviceTransport', () => {
     expect(published.filter((message) => (JSON.parse(message) as { kind?: string }).kind === 'message')).toHaveLength(0);
   });
 
+  it('rejects listen() during close() without reopening the shutdown state', async () => {
+    const bus = new InMemoryQueueBus();
+    let releaseCancel: (() => void) | undefined;
+    let resolveCancelStarted: (() => void) | undefined;
+    let cancelBlocked = false;
+    const cancelStarted = new Promise<void>((resolve) => {
+      resolveCancelStarted = resolve;
+    });
+    const transport = new RabbitMqMicroserviceTransport({
+      consumer: {
+        async cancel(queue) {
+          if (!cancelBlocked) {
+            cancelBlocked = true;
+            resolveCancelStarted?.();
+            await new Promise<void>((resolve) => {
+              releaseCancel = resolve;
+            });
+          }
+
+          await bus.unsubscribe(queue);
+        },
+        async consume(queue, handler) {
+          await bus.subscribe(queue, handler);
+        },
+      },
+      publisher: {
+        async publish(queue, message) {
+          await bus.publish(queue, message);
+        },
+      },
+    });
+
+    await transport.listen(async () => 'ok');
+
+    const closing = transport.close();
+    await cancelStarted;
+
+    await expect(transport.listen(async () => undefined)).rejects.toThrow(
+      'RabbitMqMicroserviceTransport is closing. Wait for close() to complete before listen().',
+    );
+    await expect(transport.emit('still.closing', {})).rejects.toThrow(
+      'RabbitMqMicroserviceTransport is closing. Wait for close() to complete before emit().',
+    );
+
+    releaseCancel?.();
+    await closing;
+  });
+
   it('rejects emit() after close() starts', async () => {
     const bus = new InMemoryQueueBus();
     const transport = new RabbitMqMicroserviceTransport({

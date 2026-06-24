@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  RedisStreamsMicroserviceTransport,
-  type RedisStreamWriteOptions,
-  type RedisStreamsMicroserviceTransportOptions,
   type RedisStreamClientLike,
+  RedisStreamsMicroserviceTransport,
+  type RedisStreamsMicroserviceTransportOptions,
+  type RedisStreamWriteOptions,
 } from './redis-streams-transport.js';
 
 interface InMemoryStreamEntry {
@@ -1160,6 +1160,65 @@ describe('RedisStreamsMicroserviceTransport', () => {
 
     releaseDestroy?.();
     await closing;
+  });
+
+  it('cleans up stream resources before rethrowing a failed in-flight listen during close()', async () => {
+    const bus = new InMemoryStreamBus();
+    const namespace = 'fluo:streams:listen-close-failure';
+    const startupError = new Error('response group failed');
+    const values = new Map<string, string>();
+    const destroyedGroups: string[] = [];
+    const deletedKeys: string[] = [];
+    let releaseResponseCreate: (() => void) | undefined;
+    let resolveResponseCreateStarted: (() => void) | undefined;
+    const responseCreateStarted = new Promise<void>((resolve) => {
+      resolveResponseCreateStarted = resolve;
+    });
+    const leaseAwareClient = createLeaseAwareClient(bus, values, destroyedGroups);
+    const readerClient = {
+      ...leaseAwareClient,
+      del: async (key: string) => {
+        deletedKeys.push(key);
+
+        if (leaseAwareClient.del) {
+          await leaseAwareClient.del(key);
+        }
+      },
+      xgroupCreate: async (stream: string, group: string, startId: string, mkstream: boolean) => {
+        if (stream.startsWith(`${namespace}:responses:`)) {
+          resolveResponseCreateStarted?.();
+          await new Promise<void>((resolve) => {
+            releaseResponseCreate = resolve;
+          });
+          throw startupError;
+        }
+
+        await leaseAwareClient.xgroupCreate(stream, group, startId, mkstream);
+      },
+    } satisfies RedisStreamClientLike;
+    const { transport } = createTransport(bus, {
+      namespace,
+      readerClient,
+    });
+
+    const listening = transport.listen(async () => undefined);
+    const listenResult = listening.catch((error: unknown) => error);
+    await responseCreateStarted;
+
+    const closing = transport.close();
+    releaseResponseCreate?.();
+
+    await expect(closing).rejects.toBe(startupError);
+    await expect(listenResult).resolves.toBe(startupError);
+    expect(values.get(`${namespace}:groups:fluo-handlers:owner`)).toBeUndefined();
+    expect(values.get(`${namespace}:groups:fluo-handlers:listeners`)).toBeUndefined();
+    expect(destroyedGroups.some((entry) => entry.startsWith(`${namespace}:events::fluo-handlers:events:`))).toBe(true);
+    expect(
+      destroyedGroups.some((entry) => (
+        entry.startsWith(`${namespace}:responses:`) && entry.includes('::fluo-handlers:responses:')
+      )),
+    ).toBe(true);
+    expect(deletedKeys.some((key) => key.startsWith(`${namespace}:responses:`))).toBe(true);
   });
 
   it('still rejects pending requests when group destroy fails during close', async () => {
