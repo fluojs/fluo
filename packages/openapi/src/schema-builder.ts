@@ -1,5 +1,5 @@
 import type { Constructor, MetadataPropertyKey } from '@fluojs/core';
-import { getDtoBindingSchema, getDtoValidationSchema, type DtoFieldValidationRule } from '@fluojs/core/internal';
+import { getDtoBindingSchema, getDtoValidationSchema, type DtoFieldValidationRule } from '@fluojs/core/request-pipeline';
 import type { HandlerDescriptor, HttpMethod } from '@fluojs/http';
 import {
   type ApiParameterMetadata,
