@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import { ensureMetadataSymbol } from './metadata.js';
 
+const originalMetadataDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
 const metadataSymbol =
   (Symbol as typeof Symbol & { metadata?: symbol }).metadata ??
   Symbol.for('fluo.test.metadata');
@@ -9,6 +10,14 @@ const metadataSymbol =
 Object.defineProperty(Symbol, 'metadata', {
   configurable: true,
   value: metadataSymbol,
+});
+
+afterAll(() => {
+  if (originalMetadataDescriptor) {
+    Object.defineProperty(Symbol, 'metadata', originalMetadataDescriptor);
+  } else {
+    delete (Symbol as typeof Symbol & { metadata?: symbol }).metadata;
+  }
 });
 
 function tagged(tag: string) {

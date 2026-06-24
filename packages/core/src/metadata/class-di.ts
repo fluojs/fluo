@@ -1,12 +1,43 @@
+import type { ForwardRefToken, InjectionToken, OptionalInjectToken } from '../types.js';
 import type { ClassDiMetadata } from './types.js';
 
 const classDiMetadataStore = new WeakMap<Function, ClassDiMetadata>();
 const inheritedClassDiMetadataCache = new WeakMap<Function, { metadata: ClassDiMetadata | null; version: number }>();
 let classDiMetadataVersion = 0;
 
+function isForwardRefToken(token: InjectionToken): token is ForwardRefToken {
+  return typeof token === 'object' && token !== null && '__forwardRef__' in token && token.__forwardRef__ === true;
+}
+
+function isOptionalInjectToken(token: InjectionToken): token is OptionalInjectToken {
+  return typeof token === 'object' && token !== null && '__optional__' in token && token.__optional__ === true;
+}
+
+function freezeInjectionToken(token: InjectionToken): InjectionToken {
+  if (isForwardRefToken(token)) {
+    return Object.freeze({
+      __forwardRef__: true,
+      forwardRef: token.forwardRef,
+    });
+  }
+
+  if (isOptionalInjectToken(token)) {
+    return Object.freeze({
+      __optional__: true,
+      token: token.token,
+    });
+  }
+
+  return token;
+}
+
+function freezeInjectMetadata(inject: ClassDiMetadata['inject']): ClassDiMetadata['inject'] {
+  return inject ? Object.freeze(inject.map(freezeInjectionToken)) : undefined;
+}
+
 function freezeClassDiMetadata(metadata: ClassDiMetadata): ClassDiMetadata {
   return Object.freeze({
-    inject: metadata.inject ? Object.freeze([...metadata.inject]) as ClassDiMetadata['inject'] : undefined,
+    inject: freezeInjectMetadata(metadata.inject),
     scope: metadata.scope,
   }) as ClassDiMetadata;
 }
