@@ -371,4 +371,30 @@ describe('NatsMicroserviceTransport', () => {
       'NATS microservice transport is closing. Wait for close() to complete before emit().',
     );
   });
+
+  it('rejects listen() while close() is still finalizing', async () => {
+    const nats = new InMemoryNatsClient();
+    const codec = {
+      decode(data: Uint8Array) {
+        return new TextDecoder().decode(data);
+      },
+      encode(value: string) {
+        return new TextEncoder().encode(value);
+      },
+    };
+
+    const transport = new NatsMicroserviceTransport({ client: nats, codec });
+    await transport.listen(async () => undefined);
+
+    const closing = transport.close();
+
+    await expect(transport.listen(async () => undefined)).rejects.toThrow(
+      'NATS microservice transport is closing. Wait for close() to complete before listen().',
+    );
+    await expect(transport.emit('still.closing', {})).rejects.toThrow(
+      'NATS microservice transport is closing. Wait for close() to complete before emit().',
+    );
+
+    await closing;
+  });
 });
