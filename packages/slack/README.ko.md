@@ -204,7 +204,7 @@ Behavioral contract 메모:
 
 - `verifyOnModuleInit`은 선택 사항이며 기본값은 `false`입니다.
 - 검증은 capability 기반입니다. `verify()`를 노출하는 transport만 호출하므로 webhook-only 또는 애플리케이션이 소유한 transport가 no-op verifier를 추가할 필요는 없습니다.
-- `transport.verify()`가 reject되면 bootstrap은 초기화 실패를 감싼 `SlackLifecycleError`로 실패하고, service lifecycle은 `failed`로 이동하며, readiness/status snapshot은 provider를 not ready로 보고합니다.
+- `transport.verify()`가 reject되면 bootstrap은 초기화 실패를 감싼 `SlackLifecycleError`로 실패하고, service lifecycle은 `failed`로 이동하며, readiness/status snapshot은 provider를 not ready로 보고하고, 이미 해석된 factory 소유 transport는 오류를 다시 던지기 전에 닫습니다.
 - `SlackService.createPlatformStatusSnapshot()`은 bootstrap 검증 요청 여부를 health/readiness tooling이 확인할 수 있도록 `verifiedOnModuleInit`을 포함합니다.
 
 ### `@fluojs/notifications`와의 통합
