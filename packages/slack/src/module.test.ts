@@ -72,6 +72,19 @@ class PassiveTransport implements SlackTransport {
   }
 }
 
+class FailingVerificationTransport extends PassiveTransport {
+  verifyCalls = 0;
+
+  constructor(private readonly failure: Error) {
+    super();
+  }
+
+  async verify(): Promise<void> {
+    this.verifyCalls += 1;
+    throw this.failure;
+  }
+}
+
 class UnsuccessfulTransport implements SlackTransport {
   async send(message: NormalizedSlackMessage) {
     return {
@@ -1199,6 +1212,43 @@ describe('SlackModule', () => {
     expect(createdTransport.verifyCalls).toBe(1);
     expect(verify).toHaveBeenCalledOnce();
     expect(createdTransport.sendCalls).toBe(0);
+  });
+
+  it('closes factory-owned transports when bootstrap verification fails', async () => {
+    const verificationError = new Error('slack auth failed');
+    const transport = new FailingVerificationTransport(verificationError);
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport: {
+        create: async () => transport,
+        ownsResources: true,
+      },
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+
+    await expect(service.onModuleInit()).rejects.toThrowError(
+      new SlackLifecycleError('Slack transport failed to initialize.', { cause: verificationError }),
+    );
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'failed', verifiedOnModuleInit: true },
+      readiness: {
+        reason: 'Slack transport failed to initialize.',
+        status: 'not-ready',
+      },
+    });
+    await expect(service.send({ text: 'After failed bootstrap' })).rejects.toThrowError(
+      new SlackLifecycleError('Slack delivery cannot start while the service lifecycle is failed.'),
+    );
+
+    await service.onApplicationShutdown();
+
+    expect(transport.verifyCalls).toBe(1);
+    expect(transport.closeCalls).toBe(1);
+    expect(transport.sent).toEqual([]);
   });
 
   it('checks notification lifecycle before renderer or validation errors after shutdown', async () => {

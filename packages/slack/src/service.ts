@@ -37,6 +37,13 @@ function createLifecycleError(message: string, cause: unknown): SlackLifecycleEr
   return new SlackLifecycleError(message, { cause });
 }
 
+function createCleanupFailureCause(originalError: unknown, cleanupError: unknown): unknown {
+  return new AggregateError(
+    [originalError, cleanupError],
+    'Slack transport verification failed and the owned transport failed to close.',
+  );
+}
+
 function createDeliveryLifecycleError(state: SlackServiceLifecycleState): SlackLifecycleError {
   return new SlackLifecycleError(`Slack delivery cannot start while the service lifecycle is ${state}.`);
 }
@@ -132,12 +139,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
 
       this.lifecycleState = 'ready';
     } catch (error) {
-      if (isShutdownLifecycleState(this.lifecycleState)) {
-        throw error;
-      }
-
-      this.lifecycleState = 'failed';
-      throw createLifecycleError('Slack transport failed to initialize.', error);
+      await this.handleTransportInitializationFailure(error);
     }
   }
 
@@ -308,6 +310,34 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
     }
 
     return this.transportPromise;
+  }
+
+  private clearResolvedTransport(): void {
+    this.resolvedTransport = undefined;
+    this.transportPromise = undefined;
+  }
+
+  private async handleTransportInitializationFailure(error: unknown): Promise<never> {
+    if (isShutdownLifecycleState(this.lifecycleState)) {
+      throw error;
+    }
+
+    this.lifecycleState = 'failed';
+
+    let cause: unknown = error;
+    const transport = this.resolvedTransport;
+
+    if (transport && this.options.transport.ownsResources && transport.close) {
+      try {
+        await transport.close();
+      } catch (cleanupError) {
+        cause = createCleanupFailureCause(error, cleanupError);
+      }
+    }
+
+    this.clearResolvedTransport();
+
+    throw createLifecycleError('Slack transport failed to initialize.', cause);
   }
 
   private assertCanCreateOrUseTransport(): void {
