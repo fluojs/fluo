@@ -234,7 +234,7 @@ export interface InjectionMetadata {
  * Describes the class di metadata contract.
  */
 export interface ClassDiMetadata {
-  inject?: InjectionToken[];
+  inject?: readonly InjectionToken[];
   scope?: 'singleton' | 'request' | 'transient';
 }
 

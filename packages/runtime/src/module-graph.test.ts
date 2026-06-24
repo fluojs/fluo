@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { Inject } from '@fluojs/core';
+import type { Token } from '@fluojs/core';
 import { forwardRef, optional } from '@fluojs/di';
 import type { MiddlewareRouteConfig } from '@fluojs/http';
 
@@ -15,6 +16,15 @@ import {
   createModuleGraphCacheKey,
   getModuleGraphCompileCacheSizeForTesting,
 } from './module-graph.js';
+
+type MutableRuntimeForwardRef = {
+  __forwardRef__: true;
+  forwardRef: () => Token;
+};
+
+function isMutableRuntimeForwardRef(value: unknown): value is MutableRuntimeForwardRef {
+  return typeof value === 'object' && value !== null && '__forwardRef__' in value && value.__forwardRef__ === true;
+}
 
 describe('module graph cache-key prerequisites', () => {
   beforeEach(() => {
@@ -187,7 +197,7 @@ describe('module graph cache-key prerequisites', () => {
     factoryProvider.provide = POISONED_TOKEN;
     factoryProvider.inject.splice(0, factoryProvider.inject.length, forwardRef(() => MissingDependency));
     const poisonedWrapper = factoryProvider.inject[0];
-    if (typeof poisonedWrapper === 'object' && poisonedWrapper !== null && '__forwardRef__' in poisonedWrapper) {
+    if (isMutableRuntimeForwardRef(poisonedWrapper)) {
       poisonedWrapper.forwardRef = () => MissingDependency;
     }
 

@@ -25,8 +25,8 @@ export type Token<T = unknown> = string | symbol | Constructor<T>;
  * record tokens that are not available at decoration time without widening provider tokens.
  */
 export interface ForwardRefToken<T = unknown> {
-  __forwardRef__: true;
-  forwardRef: () => Token<T>;
+  readonly __forwardRef__: true;
+  readonly forwardRef: () => Token<T>;
 }
 
 /**
@@ -36,8 +36,8 @@ export interface ForwardRefToken<T = unknown> {
  * constructor dependencies can share the same class-level `@Inject(...)` list.
  */
 export interface OptionalInjectToken<T = unknown> {
-  __optional__: true;
-  token: Token<T>;
+  readonly __optional__: true;
+  readonly token: Token<T>;
 }
 
 /**
