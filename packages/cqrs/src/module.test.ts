@@ -251,6 +251,33 @@ describe('@fluojs/cqrs', () => {
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateCommandHandlerError);
   });
 
+  it('fails bootstrap when one command handler class is registered under different singleton tokens', async () => {
+    const FIRST_CREATE_USER_HANDLER = Symbol('FIRST_CREATE_USER_HANDLER');
+    const SECOND_CREATE_USER_HANDLER = Symbol('SECOND_CREATE_USER_HANDLER');
+
+    @CommandHandler(CreateUserCommand)
+    class SharedCreateUserHandler {
+      execute(_command: CreateUserCommand) {
+        return 'shared';
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [
+        { provide: FIRST_CREATE_USER_HANDLER, useClass: SharedCreateUserHandler },
+        { provide: SECOND_CREATE_USER_HANDLER, useClass: SharedCreateUserHandler },
+      ],
+    });
+
+    const error = await bootstrapApplication({ rootModule: AppModule }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(DuplicateCommandHandlerError);
+    expect(error).toEqual(expect.objectContaining({ message: expect.stringContaining('Symbol(FIRST_CREATE_USER_HANDLER)') }));
+    expect(error).toEqual(expect.objectContaining({ message: expect.stringContaining('Symbol(SECOND_CREATE_USER_HANDLER)') }));
+  });
+
   it('fails bootstrap when duplicate query handlers are registered for one query type', async () => {
     @QueryHandler(GetUserQuery)
     class FirstGetUserHandler {
@@ -273,6 +300,33 @@ describe('@fluojs/cqrs', () => {
     });
 
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateQueryHandlerError);
+  });
+
+  it('fails bootstrap when one query handler class is registered under different singleton tokens', async () => {
+    const FIRST_GET_USER_HANDLER = Symbol('FIRST_GET_USER_HANDLER');
+    const SECOND_GET_USER_HANDLER = Symbol('SECOND_GET_USER_HANDLER');
+
+    @QueryHandler(GetUserQuery)
+    class SharedGetUserHandler {
+      execute(_query: GetUserQuery) {
+        return 'shared';
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [
+        { provide: FIRST_GET_USER_HANDLER, useClass: SharedGetUserHandler },
+        { provide: SECOND_GET_USER_HANDLER, useClass: SharedGetUserHandler },
+      ],
+    });
+
+    const error = await bootstrapApplication({ rootModule: AppModule }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(DuplicateQueryHandlerError);
+    expect(error).toEqual(expect.objectContaining({ message: expect.stringContaining('Symbol(FIRST_GET_USER_HANDLER)') }));
+    expect(error).toEqual(expect.objectContaining({ message: expect.stringContaining('Symbol(SECOND_GET_USER_HANDLER)') }));
   });
 
   it('delegates publish and publishAll to the underlying event bus when no CQRS event handlers are registered', async () => {
