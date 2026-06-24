@@ -32,6 +32,7 @@ import {
   VersioningType,
 } from '@fluojs/http';
 import {
+  type Application,
   createHealthModule,
   defineModule,
   FluoFactory,
@@ -131,7 +132,7 @@ async function requestHttp(options: {
   method?: string;
   path: string;
   port: number;
-}): Promise<{ body: string; headers: Headers; statusCode: number }> {
+}): Promise<{ body: string; headers: Headers; setCookieHeaders: string[]; statusCode: number }> {
   return await new Promise((resolve, reject) => {
     const request = httpRequest({
       headers: options.headers,
@@ -146,9 +147,17 @@ async function requestHttp(options: {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       });
       response.on('end', () => {
+        const rawSetCookieHeader = response.headers['set-cookie'];
+        const setCookieHeaders = Array.isArray(rawSetCookieHeader)
+          ? rawSetCookieHeader
+          : rawSetCookieHeader === undefined
+            ? []
+            : [rawSetCookieHeader];
+
         resolve({
           body: Buffer.concat(chunks).toString('utf8'),
           headers: new Headers(response.headers as Record<string, string>),
+          setCookieHeaders,
           statusCode: response.statusCode ?? 0,
         });
       });
@@ -339,6 +348,17 @@ describe('@fluojs/platform-express', () => {
         return { ok: true };
       }
 
+      @Get('/cookies')
+      getCookies(_input: undefined, context: RequestContext) {
+        context.response.setHeader('Set-Cookie', [
+          'session=alpha; Path=/; HttpOnly',
+          'theme=dark; Path=/',
+        ]);
+        context.response.setHeader('set-cookie', 'locale=en-US; Path=/');
+
+        return { ok: true };
+      }
+
       @Redirect('/responses/object', 302)
       @Get('/redirect')
       getRedirect() {
@@ -368,6 +388,7 @@ describe('@fluojs/platform-express', () => {
       const bytesResponse = await requestHttp({ path: '/responses/bytes', port });
       const bufferResponse = await requestHttp({ path: '/responses/buffer', port });
       const headerResponse = await requestHttp({ path: '/responses/headers', port });
+      const cookieResponse = await requestHttp({ path: '/responses/cookies', port });
       const redirectResponse = await requestHttp({ path: '/responses/redirect', port });
       const errorResponse = await requestHttp({ path: '/responses/error', port });
 
@@ -386,6 +407,13 @@ describe('@fluojs/platform-express', () => {
       expect(headerResponse.statusCode).toBe(202);
       expect(headerResponse.headers.get('x-contract')).toBe('preserved');
       expect(JSON.parse(headerResponse.body)).toEqual({ ok: true });
+      expect(cookieResponse.statusCode).toBe(200);
+      expect(JSON.parse(cookieResponse.body)).toEqual({ ok: true });
+      expect(cookieResponse.setCookieHeaders).toEqual([
+        'session=alpha; Path=/; HttpOnly',
+        'theme=dark; Path=/',
+        'locale=en-US; Path=/',
+      ]);
       expect(redirectResponse.statusCode).toBe(302);
       expect(redirectResponse.headers.get('location')).toBe('/responses/object');
       expect(errorResponse.statusCode).toBe(500);
@@ -818,25 +846,27 @@ describe('@fluojs/platform-express', () => {
       port,
     });
 
-    await app.listen();
+    try {
+      await app.listen();
 
-    const form = new FormData();
-    form.set('name', 'Ada');
-    form.set('payload', new Blob(['12345678'], { type: 'text/plain' }), 'payload.txt');
+      const form = new FormData();
+      form.set('name', 'Ada');
+      form.set('payload', new Blob(['12345678'], { type: 'text/plain' }), 'payload.txt');
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/uploads`, {
-      body: form,
-      method: 'POST',
-    });
+      const response = await fetch(`http://127.0.0.1:${String(port)}/uploads`, {
+        body: form,
+        method: 'POST',
+      });
 
-    expect(response.status).toBe(413);
-    await expect(response.json()).resolves.toMatchObject({
-      error: {
-        code: 'PAYLOAD_TOO_LARGE',
-      },
-    });
-
-    await app.close();
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: 'PAYLOAD_TOO_LARGE',
+        },
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('accepts raw bodies at maxBodySize and rejects the first byte over the Express limit', async () => {
@@ -954,23 +984,26 @@ describe('@fluojs/platform-express', () => {
       port,
     });
 
-    await app.listen();
+    try {
+      await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/ping`, {
-      headers: { origin: 'https://my-frontend.com' },
-    });
+      const response = await fetch(`http://127.0.0.1:${String(port)}/ping`, {
+        headers: { origin: 'https://my-frontend.com' },
+      });
 
-    expect(response.headers.get('access-control-allow-origin')).toBe('https://my-frontend.com');
-    expect(response.headers.get('access-control-allow-headers')).toContain('Authorization');
-    expect(response.headers.get('access-control-expose-headers')).toContain('X-Request-Id');
-
-    await app.close();
+      expect(response.headers.get('access-control-allow-origin')).toBe('https://my-frontend.com');
+      expect(response.headers.get('access-control-allow-headers')).toContain('Authorization');
+      expect(response.headers.get('access-control-expose-headers')).toContain('X-Request-Id');
+    } finally {
+      await app.close();
+    }
   });
 
   it('reports the configured host in startup logs', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    const stdoutIsTTY = process.stdout.isTTY;
+    const stdoutIsTTYDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
     Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: true });
+    let app: Application | undefined;
 
     @Controller('/health')
     class HealthController {
@@ -985,23 +1018,33 @@ describe('@fluojs/platform-express', () => {
       controllers: [HealthController],
     });
 
-    const port = await findAvailablePort();
-    const app = await runExpressApplication(AppModule, {
-      cors: false,
-      host: '127.0.0.1',
-      port,
-    });
+    try {
+      const port = await findAvailablePort();
+      app = await runExpressApplication(AppModule, {
+        cors: false,
+        host: '127.0.0.1',
+        port,
+      });
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/health`);
+      const response = await fetch(`http://127.0.0.1:${String(port)}/health`);
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on http://127.0.0.1:${String(port)}`))).toBe(true);
-    expect(log.mock.calls.some(([message]) => String(message).includes('\u001b['))).toBe(true);
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ok: true });
+      expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on http://127.0.0.1:${String(port)}`))).toBe(true);
+      expect(log.mock.calls.some(([message]) => String(message).includes('\u001b['))).toBe(true);
+    } finally {
+      try {
+        await app?.close();
+      } finally {
+        if (stdoutIsTTYDescriptor) {
+          Object.defineProperty(process.stdout, 'isTTY', stdoutIsTTYDescriptor);
+        } else {
+          Reflect.deleteProperty(process.stdout, 'isTTY');
+        }
 
-    await app.close();
-    Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: stdoutIsTTY });
-    log.mockRestore();
+        log.mockRestore();
+      }
+    }
   });
 
   it('removes registered shutdown signal listeners after close', async () => {
@@ -1028,9 +1071,12 @@ describe('@fluojs/platform-express', () => {
     });
 
     const registeredListeners = process.listeners(signal).filter((listener) => !listenersBefore.has(listener));
-    expect(registeredListeners.length).toBeGreaterThan(0);
 
-    await app.close();
+    try {
+      expect(registeredListeners.length).toBeGreaterThan(0);
+    } finally {
+      await app.close();
+    }
 
     for (const listener of registeredListeners) {
       expect(process.listeners(signal)).not.toContain(listener);
@@ -1067,15 +1113,17 @@ describe('@fluojs/platform-express', () => {
       port,
     });
 
-    await app.listen();
+    try {
+      await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/api/app/info`);
+      const response = await fetch(`http://127.0.0.1:${String(port)}/api/app/info`);
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true, route: 'app-info' });
-    expect(observedPaths).toEqual(['/api/app/info']);
-
-    await app.close();
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ok: true, route: 'app-info' });
+      expect(observedPaths).toEqual(['/api/app/info']);
+    } finally {
+      await app.close();
+    }
   });
 
   it('applies a global prefix to runtime-owned paths by default', async () => {
@@ -1102,21 +1150,23 @@ describe('@fluojs/platform-express', () => {
       port,
     });
 
-    await app.listen();
+    try {
+      await app.listen();
 
-    const [prefixedApp, prefixedHealth, health] = await Promise.all([
-      fetch(`http://127.0.0.1:${String(port)}/api/app/info`),
-      fetch(`http://127.0.0.1:${String(port)}/api/health`),
-      fetch(`http://127.0.0.1:${String(port)}/health`),
-    ]);
+      const [prefixedApp, prefixedHealth, health] = await Promise.all([
+        fetch(`http://127.0.0.1:${String(port)}/api/app/info`),
+        fetch(`http://127.0.0.1:${String(port)}/api/health`),
+        fetch(`http://127.0.0.1:${String(port)}/health`),
+      ]);
 
-    expect(prefixedApp.status).toBe(200);
-    await expect(prefixedApp.json()).resolves.toEqual({ ok: true, route: 'app-info' });
-    expect(prefixedHealth.status).toBe(200);
-    await expect(prefixedHealth.json()).resolves.toEqual({ status: 'ok' });
-    expect(health.status).toBe(404);
-
-    await app.close();
+      expect(prefixedApp.status).toBe(200);
+      await expect(prefixedApp.json()).resolves.toEqual({ ok: true, route: 'app-info' });
+      expect(prefixedHealth.status).toBe(200);
+      await expect(prefixedHealth.json()).resolves.toEqual({ status: 'ok' });
+      expect(health.status).toBe(404);
+    } finally {
+      await app.close();
+    }
   });
 
   it('supports SSE streaming', async () => {
@@ -1147,19 +1197,21 @@ describe('@fluojs/platform-express', () => {
       port,
     });
 
-    await app.listen();
+    try {
+      await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/events`, {
-      headers: { accept: 'text/event-stream' },
-    });
-    const body = await response.text();
+      const response = await fetch(`http://127.0.0.1:${String(port)}/events`, {
+        headers: { accept: 'text/event-stream' },
+      });
+      const body = await response.text();
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toContain('text/event-stream');
-    expect(body).toContain('event: ready');
-    expect(body).toContain('data: {"ready":true}');
-
-    await app.close();
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toContain('text/event-stream');
+      expect(body).toContain('event: ready');
+      expect(body).toContain('data: {"ready":true}');
+    } finally {
+      await app.close();
+    }
   });
 
   it('registers native Express router routes while preserving fluo matching, versioning, lifecycle, and fallback semantics', async () => {
@@ -1652,6 +1704,81 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
+  it('rematches a native Express handoff when middleware rewrites the framework method and path', async () => {
+    const lifecycle: string[] = [];
+    const rewriteMiddleware = {
+      async handle(context: MiddlewareContext, next: () => Promise<void>) {
+        lifecycle.push(`middleware:${context.request.method}:${context.request.path}`);
+
+        if (context.request.method === 'GET' && context.request.path === '/rewrite-method-source/42') {
+          context.request.method = 'POST';
+          context.request.path = '/rewrite-method-target/42';
+          context.request.url = '/rewrite-method-target/42';
+        }
+
+        await next();
+      },
+    };
+
+    @Controller('/rewrite-method-source')
+    class RewriteMethodSourceController {
+      @Get('/:id')
+      source(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'source' };
+      }
+    }
+
+    @Controller('/rewrite-method-target')
+    class RewriteMethodTargetController {
+      @Post('/:id')
+      target(_input: undefined, context: RequestContext) {
+        lifecycle.push(`target:${context.request.method}:${context.request.params.id}`);
+
+        return {
+          id: context.request.params.id,
+          method: context.request.method,
+          path: context.request.path,
+          route: 'target',
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [RewriteMethodSourceController, RewriteMethodTargetController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await fluoFactory.create(AppModule, {
+      adapter: createExpressAdapter({ port }),
+      middleware: [rewriteMiddleware],
+    });
+
+    try {
+      await app.listen();
+
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/rewrite-method-source/42',
+        port,
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(JSON.parse(response.body)).toEqual({
+        id: '42',
+        method: 'POST',
+        path: '/rewrite-method-target/42',
+        route: 'target',
+      });
+      expect(lifecycle).toEqual([
+        'middleware:GET:/rewrite-method-source/42',
+        'target:POST:42',
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('preserves raw handoff fallback when dispatchers do not expose native route dispatch', async () => {
     @Controller('/native-legacy')
     class NativeLegacyController {
@@ -1696,6 +1823,7 @@ describe('@fluojs/platform-express', () => {
 
   it('supports https startup and reports the https listen URL', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let app: Application | undefined;
 
     @Controller('/health')
     class HealthController {
@@ -1710,25 +1838,30 @@ describe('@fluojs/platform-express', () => {
       controllers: [HealthController],
     });
 
-    const port = await findAvailablePort();
-    const app = await runExpressApplication(AppModule, {
-      cors: false,
-      host: '127.0.0.1',
-      https: {
-        cert: TEST_TLS_CERTIFICATE,
-        key: TEST_TLS_PRIVATE_KEY,
-      },
-      port,
-    });
+    try {
+      const port = await findAvailablePort();
+      app = await runExpressApplication(AppModule, {
+        cors: false,
+        host: '127.0.0.1',
+        https: {
+          cert: TEST_TLS_CERTIFICATE,
+          key: TEST_TLS_PRIVATE_KEY,
+        },
+        port,
+      });
 
-    const response = await requestHttps(`https://127.0.0.1:${String(port)}/health`);
+      const response = await requestHttps(`https://127.0.0.1:${String(port)}/health`);
 
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toEqual({ ok: true });
-    expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on https://127.0.0.1:${String(port)}`))).toBe(true);
-
-    await app.close();
-    log.mockRestore();
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ ok: true });
+      expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on https://127.0.0.1:${String(port)}`))).toBe(true);
+    } finally {
+      try {
+        await app?.close();
+      } finally {
+        log.mockRestore();
+      }
+    }
   });
 
   it('keeps dispatcher until express close settles even when close() times out', async () => {
@@ -1985,18 +2118,21 @@ describe('@fluojs/platform-express', () => {
 
     const originalExitCode = process.exitCode;
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((_code?: number | string | null) => undefined as never) as typeof process.exit);
-    const port = await findAvailablePort();
-    const app = await runExpressApplication(AppModule, {
-      cors: false,
-      forceExitTimeoutMs: 25,
-      port,
-      shutdownSignals: ['SIGTERM'],
-    });
-
-    const originalClose = app.close.bind(app);
-    app.close = () => new Promise<void>(() => {});
+    let app: Application | undefined;
+    let originalClose: (() => Promise<void>) | undefined;
 
     try {
+      const port = await findAvailablePort();
+      app = await runExpressApplication(AppModule, {
+        cors: false,
+        forceExitTimeoutMs: 25,
+        port,
+        shutdownSignals: ['SIGTERM'],
+      });
+
+      originalClose = app.close.bind(app);
+      app.close = () => new Promise<void>(() => {});
+
       process.emit('SIGTERM', 'SIGTERM');
       await vi.advanceTimersByTimeAsync(26);
 
@@ -2004,12 +2140,17 @@ describe('@fluojs/platform-express', () => {
       expect(process.exitCode).toBe(1);
       expect(errorLog.mock.calls.some(([message]) => String(message).includes('Shutdown timeout exceeded after 25ms; leaving process termination to the host.'))).toBe(true);
     } finally {
-      app.close = originalClose;
-      await app.close();
-      exitSpy.mockRestore();
-      errorLog.mockRestore();
-      process.exitCode = originalExitCode;
-      vi.useRealTimers();
+      try {
+        if (app && originalClose) {
+          app.close = originalClose;
+          await app.close();
+        }
+      } finally {
+        exitSpy.mockRestore();
+        errorLog.mockRestore();
+        process.exitCode = originalExitCode;
+        vi.useRealTimers();
+      }
     }
   });
 
@@ -2033,21 +2174,23 @@ describe('@fluojs/platform-express', () => {
       port,
     });
 
-    await app.listen();
+    try {
+      await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/cookies`, {
-      headers: {
-        cookie: 'good=hello%20world; bad=%E0%A4%A',
-      },
-    });
+      const response = await fetch(`http://127.0.0.1:${String(port)}/cookies`, {
+        headers: {
+          cookie: 'good=hello%20world; bad=%E0%A4%A',
+        },
+      });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      bad: '%E0%A4%A',
-      good: 'hello world',
-    });
-
-    await app.close();
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        bad: '%E0%A4%A',
+        good: 'hello world',
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('classifies only explicit multipart limit errors as payload-too-large', () => {
@@ -2087,30 +2230,48 @@ describe('@fluojs/platform-express', () => {
       port,
     });
 
-    await app.listen();
+    let request: ReturnType<typeof httpRequest> | undefined;
+    let destroyTimer: ReturnType<typeof setTimeout> | undefined;
+    let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
 
-    const request = httpRequest({
-      host: '127.0.0.1',
-      method: 'GET',
-      path: '/abort',
-      port,
-    });
-    request.on('error', () => {});
-    request.end();
+    try {
+      await app.listen();
 
-    setTimeout(() => {
-      request.destroy();
-    }, 20);
+      request = httpRequest({
+        host: '127.0.0.1',
+        method: 'GET',
+        path: '/abort',
+        port,
+      });
+      request.on('error', (error) => {
+        if (!request?.destroyed) {
+          aborted.reject(error);
+        }
+      });
+      request.end();
 
-    await expect(Promise.race([
-      aborted.promise,
-      new Promise<void>((_resolve, reject) => {
-        setTimeout(() => {
-          reject(new Error('Abort signal was not propagated.'));
-        }, 2_000);
-      }),
-    ])).resolves.toBeUndefined();
+      destroyTimer = setTimeout(() => {
+        request?.destroy();
+      }, 20);
 
-    await app.close();
+      await expect(Promise.race([
+        aborted.promise,
+        new Promise<void>((_resolve, reject) => {
+          watchdogTimer = setTimeout(() => {
+            reject(new Error('Abort signal was not propagated.'));
+          }, 2_000);
+        }),
+      ])).resolves.toBeUndefined();
+    } finally {
+      if (destroyTimer) {
+        clearTimeout(destroyTimer);
+      }
+      if (watchdogTimer) {
+        clearTimeout(watchdogTimer);
+      }
+
+      request?.destroy();
+      await app.close();
+    }
   });
 });
