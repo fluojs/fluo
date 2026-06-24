@@ -1337,6 +1337,98 @@ describe('@fluojs/queue', () => {
     expect(deadLetters).toHaveLength(1);
   });
 
+  it('drains dead-letter writes during worker startup rollback before Redis state is released', async () => {
+    vi.useFakeTimers();
+    const loggerEvents: string[] = [];
+    const releaseBootstrapReady = createDeferred<void>();
+
+    class StartupRollbackDeadLetterJob {
+      constructor(public readonly id: string) {}
+    }
+
+    class StartupRollbackFailureJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(StartupRollbackDeadLetterJob, { attempts: 1, jobName: 'startup-rollback-dead-letter-job' })
+    class StartupRollbackDeadLetterWorker {
+      async handle(_job: StartupRollbackDeadLetterJob): Promise<void> {
+        throw new Error('startup rollback terminal failure');
+      }
+    }
+
+    @QueueWorker(StartupRollbackFailureJob, { jobName: 'startup-rollback-failing-start-job' })
+    class StartupRollbackFailureWorker {
+      async handle(_job: StartupRollbackFailureJob): Promise<void> {}
+    }
+
+    class AppModule {}
+
+    const redis = new MockRedisClient();
+    redis.rpush = () => new Promise<number>(() => undefined);
+
+    const container = {
+      has: (token: unknown) => token === REDIS_CLIENT,
+      resolve: async (token: unknown) => {
+        if (token === REDIS_CLIENT) {
+          return redis;
+        }
+
+        if (token === StartupRollbackDeadLetterWorker) {
+          return new StartupRollbackDeadLetterWorker();
+        }
+
+        return new StartupRollbackFailureWorker();
+      },
+    };
+    const service = new QueueLifecycleService(
+      {
+        defaultAttempts: 1,
+        defaultConcurrency: 1,
+        defaultDeadLetterMaxEntries: 1_000,
+        global: true,
+        workerShutdownTimeoutMs: 30_000,
+      },
+      container as never,
+      [
+        {
+          definition: { providers: [StartupRollbackDeadLetterWorker, StartupRollbackFailureWorker] },
+          type: AppModule,
+        },
+      ] as never,
+      createLogger(loggerEvents),
+      { wait: () => releaseBootstrapReady.promise },
+    );
+
+    bullmqState.failWorkerRun.add('startup-rollback-failing-start-job');
+
+    await service.onApplicationBootstrap();
+    await service.enqueue(new StartupRollbackDeadLetterJob('job-1'));
+
+    releaseBootstrapReady.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(service.createPlatformStatusSnapshot().details).toMatchObject({
+      lifecycleState: 'failed',
+      pendingDeadLetterWrites: 1,
+      queuesReady: 0,
+    });
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(
+      loggerEvents.filter((event) =>
+        event.includes('error:QueueLifecycleService:Dead-letter write did not complete within shutdown timeout.'),
+      ),
+    ).toHaveLength(1);
+    expect(service.createPlatformStatusSnapshot().details).toMatchObject({
+      lifecycleState: 'failed',
+      pendingDeadLetterWrites: 0,
+      queuesReady: 0,
+    });
+  });
+
   it('rolls back partially initialized workers, queues, and connections when startup fails', async () => {
     class StartupFirstJob {
       constructor(public readonly id: string) {}

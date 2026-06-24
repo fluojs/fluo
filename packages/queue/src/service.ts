@@ -315,6 +315,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
 
   private async handleStartupFailure(): Promise<void> {
     await this.closeInitializedResources();
+    await this.deadLetterManager.drainPendingWrites();
     if (this.lifecycleState === 'starting') {
       this.lifecycleState = 'idle';
     }
@@ -568,10 +569,11 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
 
   private rollbackAfterWorkerStartupFailure(): void {
     if (!this.startupFailureRollbackPromise) {
-      this.startupFailureRollbackPromise = this.closeInitializedResources()
-        .then(() => {
-          this.redisClient = undefined;
-        })
+      this.startupFailureRollbackPromise = (async () => {
+        await this.closeInitializedResources();
+        await this.deadLetterManager.drainPendingWrites();
+        this.redisClient = undefined;
+      })()
         .catch((rollbackError: unknown) => {
           this.logger.error(
             'Failed to roll back queue resources after worker startup failure.',
