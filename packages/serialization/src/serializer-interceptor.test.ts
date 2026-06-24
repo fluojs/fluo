@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
-
+import type {
+  CallHandler,
+  FrameworkRequest,
+  FrameworkResponse,
+  InterceptorContext,
+  RequestContext,
+} from '@fluojs/http';
 import {
   Controller,
   createDispatcher,
@@ -7,7 +12,7 @@ import {
   Get,
   UseInterceptors,
 } from '@fluojs/http';
-import type { CallHandler, FrameworkRequest, FrameworkResponse, InterceptorContext, RequestContext } from '@fluojs/http';
+import { describe, expect, it } from 'vitest';
 
 import { Exclude } from './decorators/exclude.js';
 import { SerializerInterceptor } from './serializer-interceptor.js';
@@ -150,6 +155,46 @@ describe('SerializerInterceptor', () => {
     };
 
     await expect(interceptor.intercept(context, next)).resolves.toBe(owner);
+  });
+
+  it('preserves handler-owned responses committed through RequestContext.response in the real HTTP request pipeline', async () => {
+    class StreamOwner {
+      id = 'stream-1';
+
+      @Exclude()
+      internalState = 'owned-by-handler';
+    }
+
+    const owner = new StreamOwner();
+    let observedSuccess: unknown;
+    const observer = {
+      onRequestSuccess(_context: unknown, value: unknown) {
+        observedSuccess = value;
+      },
+    };
+
+    @Controller('/streams')
+    @UseInterceptors(SerializerInterceptor)
+    class StreamsController {
+      @Get('/owned')
+      async getOwned(_input: undefined, context: RequestContext) {
+        await context.response.send(owner);
+        return owner;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: StreamsController }]),
+      observers: [observer],
+      rootContainer: createTestContainer() as never,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/streams/owned'), response);
+
+    expect(response.committed).toBe(true);
+    expect(response.body).toBe(owner);
+    expect(observedSuccess).toBe(owner);
   });
 
   it('serializes responses through the real HTTP request pipeline', async () => {
