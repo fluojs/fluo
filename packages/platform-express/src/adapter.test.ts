@@ -2232,6 +2232,7 @@ describe('@fluojs/platform-express', () => {
 
     let request: ReturnType<typeof httpRequest> | undefined;
     let destroyTimer: ReturnType<typeof setTimeout> | undefined;
+    let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
 
     try {
       await app.listen();
@@ -2256,7 +2257,7 @@ describe('@fluojs/platform-express', () => {
       await expect(Promise.race([
         aborted.promise,
         new Promise<void>((_resolve, reject) => {
-          setTimeout(() => {
+          watchdogTimer = setTimeout(() => {
             reject(new Error('Abort signal was not propagated.'));
           }, 2_000);
         }),
@@ -2264,6 +2265,9 @@ describe('@fluojs/platform-express', () => {
     } finally {
       if (destroyTimer) {
         clearTimeout(destroyTimer);
+      }
+      if (watchdogTimer) {
+        clearTimeout(watchdogTimer);
       }
 
       request?.destroy();
