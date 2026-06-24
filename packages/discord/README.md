@@ -104,7 +104,7 @@ Behavioral contract notes:
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown, including any in-flight factory-created transport before shutdown began.
 - Sends are accepted only after bootstrap marks the transport `ready`; attempts before bootstrap, during startup, after failed bootstrap, while shutting down, or after shutdown are rejected before delivery.
 - Sends attempted while the service is shutting down or already stopped are rejected before reusing the cached transport.
-- `DiscordService.createPlatformStatusSnapshot()` exposes the same status contract as `createDiscordPlatformStatusSnapshot(...)`: lifecycle/readiness, health, transport kind and ownership, default thread configuration, bootstrap verification state, and notifications channel dependency details, so callers can observe Discord wiring without reaching into internal options.
+- `DiscordService.createPlatformStatusSnapshot()` exposes the same status contract as `createDiscordPlatformStatusSnapshot(...)`: lifecycle/readiness, health, transport kind and ownership, default thread configuration, bootstrap verification state, distinct bootstrap initialization versus shutdown cleanup failure diagnostics, and notifications channel dependency details, so callers can observe Discord wiring without reaching into internal options.
 - Blank `defaultThreadId` and `notifications.channel` values are trimmed and ignored; the notifications channel defaults to `discord`.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
