@@ -1,6 +1,4 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-
-import * as discordPublicApi from './index.js';
 import type {
   Discord,
   DiscordFetchLike,
@@ -13,6 +11,7 @@ import type {
   DiscordTransportFactory,
   DiscordWebhookTransportOptions,
 } from './index.js';
+import * as discordPublicApi from './index.js';
 
 describe('@fluojs/discord public API surface', () => {
   it('keeps documented root-barrel exports stable', () => {
@@ -43,6 +42,7 @@ describe('@fluojs/discord public API surface', () => {
     expectTypeOf<DiscordFetchLike>().toBeFunction();
     expectTypeOf<DiscordTemplateRenderer>().toHaveProperty('render');
     expectTypeOf<DiscordStatusAdapterInput>().toHaveProperty('channelName');
+    expectTypeOf<DiscordStatusAdapterInput>().toHaveProperty('lifecycleFailurePhase');
     expectTypeOf<DiscordStatusAdapterInput>().toHaveProperty('transportKind');
   });
 
