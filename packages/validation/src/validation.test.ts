@@ -2,7 +2,7 @@ import { type } from 'arktype';
 import { email, object, pipe, string } from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { defineDtoFieldBindingMetadata } from '@fluojs/core/internal';
+import { defineDtoFieldBindingMetadata } from '@fluojs/core/request-pipeline';
 
 import { DefaultValidator } from './validation.js';
 import { DtoValidationError } from './errors.js';
