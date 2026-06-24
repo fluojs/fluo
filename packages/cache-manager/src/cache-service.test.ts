@@ -101,6 +101,29 @@ class PaginatedRedisClient extends MockRedisClient {
   }
 }
 
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve(value: T): void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolveDeferred: ((value: T) => void) | undefined;
+  const promise = new Promise<T>((resolve) => {
+    resolveDeferred = resolve;
+  });
+
+  return {
+    promise,
+    resolve(value: T) {
+      if (!resolveDeferred) {
+        throw new Error('Deferred resolver was not initialized.');
+      }
+
+      resolveDeferred(value);
+    },
+  };
+}
+
 function createCacheService(store: CacheStore, options: Partial<NormalizedCacheModuleOptions> = {}) {
   const mergedOptions: NormalizedCacheModuleOptions = {
     ...baseOptions,
@@ -520,5 +543,124 @@ describe('CacheService — general cache contract (outside HTTP interceptor)', (
     await cache.close();
 
     expect(store.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not write a remember value after close starts while the loader is in flight', async () => {
+    const loaderDeferred = createDeferred<{ computed: boolean }>();
+    const store: CacheStore = {
+      close: vi.fn(async () => undefined),
+      del: vi.fn(async () => undefined),
+      get: vi.fn(async () => undefined),
+      reset: vi.fn(async () => undefined),
+      set: vi.fn(async () => undefined),
+    };
+    const cache = createCacheService(store);
+    const pending = cache.remember('key', () => loaderDeferred.promise);
+
+    await vi.waitFor(() => {
+      expect(store.get).toHaveBeenCalledTimes(1);
+    });
+
+    await cache.close();
+    loaderDeferred.resolve({ computed: true });
+
+    await expect(pending).resolves.toEqual({ computed: true });
+    expect(store.close).toHaveBeenCalledTimes(1);
+    expect(store.set).not.toHaveBeenCalled();
+    expect(store.del).not.toHaveBeenCalled();
+    await expect(cache.get('key')).resolves.toBeUndefined();
+    await cache.set('key', { ignored: true });
+    await cache.del('key');
+    await cache.reset();
+    expect(store.get).toHaveBeenCalledTimes(1);
+    expect(store.set).not.toHaveBeenCalled();
+    expect(store.del).not.toHaveBeenCalled();
+    expect(store.reset).not.toHaveBeenCalled();
+  });
+
+  it('serializes reset between already-started and later store operations', async () => {
+    const events: string[] = [];
+    const getDeferred = createDeferred<void>();
+    const store: CacheStore = {
+      async del() {
+        events.push('del');
+      },
+      async get<T>() {
+        events.push('get:start');
+        await getDeferred.promise;
+        events.push('get:end');
+        return 'before-reset' as T;
+      },
+      async reset() {
+        events.push('reset');
+      },
+      async set() {
+        events.push('set');
+      },
+    };
+    const cache = createCacheService(store);
+    const pendingGet = cache.get('key');
+
+    await vi.waitFor(() => {
+      expect(events).toEqual(['get:start']);
+    });
+
+    const pendingReset = cache.reset();
+    const pendingSet = cache.set('key', 'after-reset');
+
+    await Promise.resolve();
+    expect(events).toEqual(['get:start']);
+
+    getDeferred.resolve();
+
+    await expect(pendingGet).resolves.toBe('before-reset');
+    await pendingReset;
+    await pendingSet;
+    expect(events).toEqual(['get:start', 'get:end', 'reset', 'set']);
+  });
+
+  it('does not let a reset-interrupted remember register stale inflight work for later callers', async () => {
+    const events: string[] = [];
+    const getDeferred = createDeferred<void>();
+    const oldLoaderDeferred = createDeferred<{ source: 'old' }>();
+    const store: CacheStore = {
+      async del() {
+        events.push('del');
+      },
+      async get<T>() {
+        events.push('get:start');
+        await getDeferred.promise;
+        events.push('get:end');
+        return undefined as T | undefined;
+      },
+      async reset() {
+        events.push('reset');
+      },
+      async set() {
+        events.push('set');
+      },
+    };
+    const cache = createCacheService(store);
+    const oldLoader = vi.fn(() => oldLoaderDeferred.promise);
+    const newLoader = vi.fn(async () => ({ source: 'new' as const }));
+
+    const oldPending = cache.remember('key', oldLoader);
+
+    await vi.waitFor(() => {
+      expect(events).toEqual(['get:start']);
+    });
+
+    const pendingReset = cache.reset();
+
+    getDeferred.resolve();
+    await pendingReset;
+
+    await expect(cache.remember('key', newLoader)).resolves.toEqual({ source: 'new' });
+    expect(newLoader).toHaveBeenCalledTimes(1);
+    expect(oldLoader).toHaveBeenCalledTimes(1);
+
+    oldLoaderDeferred.resolve({ source: 'old' });
+    await expect(oldPending).resolves.toEqual({ source: 'old' });
+    expect(events).toEqual(['get:start', 'get:end', 'reset', 'get:start', 'get:end', 'set']);
   });
 });

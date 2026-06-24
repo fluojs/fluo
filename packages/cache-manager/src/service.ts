@@ -20,6 +20,18 @@ export class CacheService {
   private readonly invalidatedInflight = new Set<string>();
   private closed = false;
   private resetVersion = 0;
+  private storeOperationTail: Promise<void> = Promise.resolve();
+
+  private async runStoreOperation<T>(operation: () => Promise<T> | T): Promise<T> {
+    const result = this.storeOperationTail.then(operation, operation);
+
+    this.storeOperationTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    return result;
+  }
 
   private beginPendingLoad(key: string, generation: number): void {
     const generations = this.pendingLoads.get(key) ?? new Map<number, number>();
@@ -61,7 +73,17 @@ export class CacheService {
    * @returns The cached value, or `undefined` when the key is missing or expired.
    */
   get<T = unknown>(key: string): Promise<T | undefined> {
-    return Promise.resolve(this.store.get<T>(key));
+    if (this.closed) {
+      return Promise.resolve(undefined);
+    }
+
+    return this.runStoreOperation(() => {
+      if (this.closed) {
+        return undefined;
+      }
+
+      return this.store.get<T>(key);
+    });
   }
 
   /**
@@ -75,11 +97,17 @@ export class CacheService {
   async set<T = unknown>(key: string, value: T, ttlSeconds?: number): Promise<void> {
     const resolvedTtl = ttlSeconds ?? this.options.ttl;
 
-    if (!Number.isFinite(resolvedTtl) || resolvedTtl < 0) {
+    if (this.closed || !Number.isFinite(resolvedTtl) || resolvedTtl < 0) {
       return;
     }
 
-    await this.store.set<T>(key, value, resolvedTtl);
+    await this.runStoreOperation(async () => {
+      if (this.closed) {
+        return;
+      }
+
+      await this.store.set<T>(key, value, resolvedTtl);
+    });
   }
 
   /**
@@ -95,6 +123,10 @@ export class CacheService {
     loader: () => Promise<T>,
     ttlSeconds?: number,
   ): Promise<T> {
+    if (this.closed) {
+      return loader();
+    }
+
     const resetVersion = this.resetVersion;
     this.beginPendingLoad(key, resetVersion);
 
@@ -105,10 +137,18 @@ export class CacheService {
         return cached;
       }
 
+      if (this.closed || this.resetVersion !== resetVersion) {
+        return loader();
+      }
+
       const existing = this.inflight.get(key) as InflightLoad<T> | undefined;
 
-      if (existing) {
+      if (existing && existing.generation === resetVersion) {
         return existing.promise;
+      }
+
+      if (existing) {
+        this.inflight.delete(key);
       }
 
       const entry: InflightLoad<T> = {
@@ -118,14 +158,14 @@ export class CacheService {
       };
 
       const promise = loader().then(async (value) => {
-        if (entry.invalidated || this.resetVersion !== resetVersion) {
+        if (this.closed || entry.invalidated || this.resetVersion !== resetVersion) {
           return value;
         }
 
         await this.set(key, value, ttlSeconds);
 
-        if (entry.invalidated || this.resetVersion !== resetVersion) {
-          await this.store.del(key);
+        if (!this.closed && (entry.invalidated || this.resetVersion !== resetVersion)) {
+          await this.deleteFromStore(key);
         }
 
         return value;
@@ -155,6 +195,10 @@ export class CacheService {
    * @returns A promise that resolves after the entry is removed.
    */
   async del(key: string): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+
     const entry = this.inflight.get(key);
 
     if (entry) {
@@ -165,7 +209,7 @@ export class CacheService {
       this.invalidatedInflight.add(key);
     }
 
-    await this.store.del(key);
+    await this.deleteFromStore(key);
   }
 
   /**
@@ -174,12 +218,22 @@ export class CacheService {
    * @returns A promise that resolves after the store reset completes.
    */
   async reset(): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+
     this.resetVersion += 1;
     this.inflight.clear();
     this.pendingLoads.clear();
     this.pendingInvalidations.clear();
     this.invalidatedInflight.clear();
-    await this.store.reset();
+    await this.runStoreOperation(async () => {
+      if (this.closed) {
+        return;
+      }
+
+      await this.store.reset();
+    });
   }
 
   /**
@@ -193,19 +247,32 @@ export class CacheService {
     }
 
     this.closed = true;
+    this.resetVersion += 1;
     this.inflight.clear();
     this.pendingLoads.clear();
     this.pendingInvalidations.clear();
     this.invalidatedInflight.clear();
 
-    if (this.store.close) {
-      await this.store.close();
-      return;
-    }
+    await this.runStoreOperation(async () => {
+      if (this.store.close) {
+        await this.store.close();
+        return;
+      }
 
-    if (this.store.dispose) {
-      await this.store.dispose();
-    }
+      if (this.store.dispose) {
+        await this.store.dispose();
+      }
+    });
+  }
+
+  private async deleteFromStore(key: string): Promise<void> {
+    await this.runStoreOperation(async () => {
+      if (this.closed) {
+        return;
+      }
+
+      await this.store.del(key);
+    });
   }
 
   /**
