@@ -228,7 +228,11 @@ describe('@fluojs/platform-nodejs', () => {
     }
   });
 
-  it('fails fast when Node lifecycle options are invalid through the platform adapter', () => {
+  it('fails fast when documented Node adapter options are invalid through the platform adapter', () => {
+    expect(() => createNodejsAdapter({ port: -1 })).toThrow('Invalid PORT value: -1.');
+    expect(() => createNodejsAdapter({ maxBodySize: -1 })).toThrow(
+      'Invalid maxBodySize value: -1. Expected a non-negative integer number of bytes.',
+    );
     expect(() => createNodejsAdapter({ retryDelayMs: -1 })).toThrow(
       'Invalid retryDelayMs value: -1. Expected a non-negative integer.',
     );
@@ -363,7 +367,7 @@ describe('@fluojs/platform-nodejs', () => {
       const app = await bootstrapNodejsApplication(AppModule, { port: 0 });
       await app.close();
 
-      const ansiPattern = new RegExp(String.raw`\u001B\[[\d;]*m`, 'g');
+      const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[\\d;]*m`, 'g');
       const normalizedMessages = loggedMessages.map((message) => message.replace(ansiPattern, ''));
 
       expect(normalizedMessages.some((message) => message.includes('LOG [FluoFactory]'))).toBe(true);
@@ -584,6 +588,43 @@ describe('@fluojs/platform-nodejs', () => {
     }
   });
 
+  it('prefers x-request-id over x-correlation-id through the public Node adapter path', async () => {
+    @Controller('/request-id')
+    class RequestIdController {
+      @Get('/')
+      readRequestId(_input: undefined, context: RequestContext) {
+        return { requestId: context.request.requestId };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [RequestIdController] });
+
+    const adapter = createNodejsAdapter({ port: 0 });
+    const app = await FluoFactory.create(AppModule, {
+      adapter,
+    });
+
+    try {
+      await app.listen();
+      const port = getBoundPort(adapter.getServer());
+
+      const response = await fetch(`http://127.0.0.1:${String(port)}/request-id`, {
+        headers: {
+          'x-correlation-id': 'correlation-platform-nodejs',
+          'x-request-id': 'request-platform-nodejs',
+        },
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        requestId: 'request-platform-nodejs',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('exposes a server-backed realtime capability on the raw Node adapter', async () => {
     const adapter = createNodejsAdapter();
 
@@ -644,6 +685,8 @@ describe('@fluojs/platform-nodejs', () => {
         body: '0123456789',
         headers: {
           'content-type': 'text/plain',
+          'x-correlation-id': 'correlation-platform-nodejs-error',
+          'x-request-id': 'request-platform-nodejs-error',
         },
         method: 'POST',
       });
@@ -651,7 +694,54 @@ describe('@fluojs/platform-nodejs', () => {
       expect(response.status).toBe(413);
       await expect(response.json()).resolves.toMatchObject({
         error: {
+          code: 'PAYLOAD_TOO_LARGE',
           message: 'Request body exceeds the size limit.',
+          requestId: 'request-platform-nodejs-error',
+          status: 413,
+        },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('uses the documented default 1 MiB body cap through the public Node adapter path', async () => {
+    @Controller('/default-body-cap')
+    class DefaultBodyCapController {
+      @Post('/')
+      readBody(_input: undefined, context: RequestContext) {
+        return context.request.body;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [DefaultBodyCapController] });
+
+    const adapter = createNodejsAdapter({ port: 0 });
+    const app = await FluoFactory.create(AppModule, {
+      adapter,
+    });
+
+    try {
+      await app.listen();
+      const port = getBoundPort(adapter.getServer());
+      const oversizedBody = 'x'.repeat(1 * 1024 * 1024 + 1);
+
+      const response = await fetch(`http://127.0.0.1:${String(port)}/default-body-cap`, {
+        body: oversizedBody,
+        headers: {
+          'content-type': 'text/plain',
+          'x-request-id': 'request-platform-nodejs-default-cap',
+        },
+        method: 'POST',
+      });
+
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: 'PAYLOAD_TOO_LARGE',
+          message: 'Request body exceeds the size limit.',
+          requestId: 'request-platform-nodejs-default-cap',
           status: 413,
         },
       });
