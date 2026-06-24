@@ -60,6 +60,10 @@ function createLifecycleError(message: string, cause: unknown): Error {
   return new EmailLifecycleError(message, { cause });
 }
 
+function isTransportInitializationLifecycleError(error: unknown): error is EmailLifecycleError {
+  return error instanceof EmailLifecycleError && error.message === 'Email transport failed to initialize.';
+}
+
 function createDeliveryLifecycleError(state: EmailServiceLifecycleState): EmailLifecycleError {
   return new EmailLifecycleError(`Email delivery cannot start while the service lifecycle is ${state}.`);
 }
@@ -118,9 +122,15 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
   async onApplicationShutdown(): Promise<void> {
     this.lifecycleState = 'stopping';
 
-    try {
-      const transport = this.resolvedTransport ?? (this.transportPromise ? await this.transportPromise : undefined);
+    let transport: EmailTransport | undefined;
 
+    try {
+      transport = this.resolvedTransport ?? (this.transportPromise ? await this.transportPromise : undefined);
+    } catch (error) {
+      await this.handleTransportInitializationFailure(error);
+    }
+
+    try {
       await this.drainInFlightOperations();
 
       if (transport && this.options.transport.ownsResources && transport.close) {
@@ -174,26 +184,7 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
 
       this.lifecycleState = 'ready';
     } catch (error) {
-      if (isShutdownLifecycleState(this.lifecycleState)) {
-        throw error;
-      }
-
-      this.lifecycleState = 'failed';
-
-      let cause: unknown = error;
-      const transport = this.resolvedTransport;
-
-      if (transport && this.options.transport.ownsResources && transport.close) {
-        try {
-          await transport.close();
-        } catch (cleanupError) {
-          cause = createCleanupFailureCause(error, cleanupError);
-        } finally {
-          this.clearResolvedTransport();
-        }
-      }
-
-      throw createLifecycleError('Email transport failed to initialize.', cause);
+      await this.handleTransportInitializationFailure(error, { preserveShutdownState: true });
     }
   }
 
@@ -369,12 +360,46 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
       });
     }
 
-    return this.transportPromise;
+    try {
+      return await this.transportPromise;
+    } catch (error) {
+      return await this.handleTransportInitializationFailure(error);
+    }
   }
 
   private clearResolvedTransport(): void {
     this.resolvedTransport = undefined;
     this.transportPromise = undefined;
+  }
+
+  private async handleTransportInitializationFailure(
+    error: unknown,
+    options: { preserveShutdownState?: boolean } = {},
+  ): Promise<never> {
+    if (isTransportInitializationLifecycleError(error)) {
+      throw error;
+    }
+
+    if (options.preserveShutdownState && isShutdownLifecycleState(this.lifecycleState)) {
+      throw error;
+    }
+
+    this.lifecycleState = 'failed';
+
+    let cause: unknown = error;
+    const transport = this.resolvedTransport;
+
+    if (transport && this.options.transport.ownsResources && transport.close) {
+      try {
+        await transport.close();
+      } catch (cleanupError) {
+        cause = createCleanupFailureCause(error, cleanupError);
+      }
+    }
+
+    this.clearResolvedTransport();
+
+    throw createLifecycleError('Email transport failed to initialize.', cause);
   }
 
   private async drainInFlightOperations(): Promise<void> {
