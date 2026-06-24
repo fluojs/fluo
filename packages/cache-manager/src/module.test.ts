@@ -1,15 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
-import { Controller, Get, Post, UseInterceptors, getCurrentRequestContext, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
+import { Controller, type FrameworkRequest, type FrameworkResponse, Get, getCurrentRequestContext, Post, UseInterceptors } from '@fluojs/http';
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { describe, expect, it, vi } from 'vitest';
 
 import { CacheEvict } from './decorators.js';
 import { CacheInterceptor } from './interceptor.js';
-import { CacheService } from './service.js';
 import { CacheModule } from './module.js';
+import { CacheService } from './service.js';
 import { CACHE_OPTIONS } from './tokens.js';
 import type { CacheStore, RedisCompatibleClient } from './types.js';
 
@@ -210,6 +209,115 @@ describe('CacheModule.forRoot', () => {
     await app.close();
 
     expect(store.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes custom stores through CacheService and CacheInterceptor operations', async () => {
+    type StoreOperation =
+      | { key: string; ttlSeconds?: number; type: 'set' }
+      | { key: string; type: 'get' | 'del' }
+      | { type: 'reset' };
+
+    class OperationStore implements CacheStore {
+      readonly operations: StoreOperation[] = [];
+      private readonly entries = new Map<string, unknown>();
+
+      clearOperations(): void {
+        this.operations.length = 0;
+      }
+
+      async get<T>(key: string): Promise<T | undefined> {
+        this.operations.push({ key, type: 'get' });
+        return this.entries.get(key) as T | undefined;
+      }
+
+      async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
+        this.operations.push({ key, ttlSeconds, type: 'set' });
+        this.entries.set(key, value);
+      }
+
+      async del(key: string): Promise<void> {
+        this.operations.push({ key, type: 'del' });
+        this.entries.delete(key);
+      }
+
+      async reset(): Promise<void> {
+        this.operations.push({ type: 'reset' });
+        this.entries.clear();
+      }
+    }
+
+    @Inject(CacheService)
+    class Consumer {
+      constructor(readonly cache: CacheService) {}
+    }
+
+    const listHandler = vi.fn(() => ({ count: 1 }));
+
+    @Controller('/custom-store')
+    class ProductController {
+      @Get('/')
+      @UseInterceptors(CacheInterceptor)
+      list() {
+        return listHandler();
+      }
+
+      @Post('/refresh')
+      @UseInterceptors(CacheInterceptor)
+      @CacheEvict('/custom-store')
+      refresh() {
+        return { refreshed: true };
+      }
+    }
+
+    const store = new OperationStore();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [ProductController],
+      imports: [CacheModule.forRoot({ store, ttl: 120 })],
+      providers: [Consumer],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const consumer = await app.container.resolve(Consumer);
+
+      await consumer.cache.set('/manual', { ok: true }, 45);
+      await expect(consumer.cache.get('/manual')).resolves.toEqual({ ok: true });
+      await consumer.cache.reset();
+
+      expect(store.operations).toEqual([
+        { key: '/manual', ttlSeconds: 45, type: 'set' },
+        { key: '/manual', type: 'get' },
+        { type: 'reset' },
+      ]);
+
+      store.clearOperations();
+
+      const firstGetResponse = createResponse();
+      await app.dispatch(createRequest('/custom-store', 'GET'), firstGetResponse);
+
+      const secondGetResponse = createResponse();
+      await app.dispatch(createRequest('/custom-store', 'GET'), secondGetResponse);
+
+      expect(firstGetResponse.body).toEqual({ count: 1 });
+      expect(secondGetResponse.body).toEqual(firstGetResponse.body);
+      expect(listHandler).toHaveBeenCalledTimes(1);
+
+      const refreshResponse = createResponse();
+      await app.dispatch(createRequest('/custom-store/refresh', 'POST'), refreshResponse);
+
+      expect(refreshResponse.body).toEqual({ refreshed: true });
+      expect(store.operations).toEqual([
+        { key: '/custom-store', type: 'get' },
+        { key: '/custom-store', ttlSeconds: 120, type: 'set' },
+        { key: '/custom-store', type: 'get' },
+        { key: '/custom-store', type: 'del' },
+      ]);
+    } finally {
+      await app.close();
+    }
   });
 
   it('fails fast at bootstrap when redis store is selected but redis client is unavailable', async () => {
