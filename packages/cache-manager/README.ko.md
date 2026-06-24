@@ -170,7 +170,7 @@ HTTP 인터셉터는 나중에 재사용할 수 있는 값이 있는 성공한, 
 
 ### 캐시 소유권과 reset 범위
 
-`CacheService.reset()`은 관련 없는 애플리케이션 상태가 아니라 설정된 store가 소유한 엔트리만 삭제합니다. 또한 진행 중인 `remember(...)` bookkeeping을 제거하므로 reset 전에 시작된 loader가 reset 완료 후 stale 엔트리를 다시 채우지 못합니다. 내장 메모리 저장소에서는 해당 store 인스턴스가 보유한 in-process 엔트리를 의미합니다. Redis에서는 설정된 `keyPrefix` namespace가 소유권 경계입니다. 공유 Redis 배포에서는 기본 `fluo:cache:`를 유지하거나 `myapp:cache:`처럼 전용 prefix를 선택하세요.
+`CacheService.reset()`은 관련 없는 애플리케이션 상태가 아니라 설정된 store가 소유한 엔트리만 삭제합니다. 또한 reset 경계에서 store read/write를 직렬화하고 진행 중인 `remember(...)` loader를 무효화하므로, reset 전에 시작된 loader가 reset 완료 후 stale 엔트리를 다시 채우지 못합니다. 내장 메모리 저장소에서는 해당 store 인스턴스가 보유한 in-process 엔트리를 의미합니다. Redis에서는 설정된 `keyPrefix` namespace가 소유권 경계입니다. 공유 Redis 배포에서는 기본 `fluo:cache:`를 유지하거나 `myapp:cache:`처럼 전용 prefix를 선택하세요.
 
 ```typescript
 CacheModule.forRoot({
@@ -181,7 +181,7 @@ CacheModule.forRoot({
 
 Redis cache prefix를 cache가 아닌 데이터와 공유하지 마세요. `del(key)`은 이 패키지가 해석한 정확한 캐시 키를 삭제하고, `reset()`은 위에서 설명한 store 소유 캐시 namespace만 삭제합니다.
 
-애플리케이션이 종료될 때 `CacheService`는 `close()` 또는 `dispose()`를 노출하는 custom store로 shutdown을 전달합니다. store가 socket, pool, timer 또는 기타 외부 리소스를 소유한다면 이 optional hook 중 하나를 사용하세요.
+애플리케이션이 종료될 때 `CacheService`는 새 store read/write를 중단하고 이미 시작된 store 작업을 기다린 뒤, `close()` 또는 `dispose()`를 노출하는 custom store로 shutdown을 전달합니다. store가 socket, pool, timer 또는 기타 외부 리소스를 소유한다면 이 optional hook 중 하나를 사용하세요.
 
 `CacheStore` 계약을 구현한 custom store는 `store` 옵션에 직접 전달할 수 있습니다. in-process LRU store, Redis 외 원격 캐시, 또는 cache operation을 관찰해야 하는 테스트 더블에 적합합니다.
 
