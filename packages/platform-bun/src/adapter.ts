@@ -234,8 +234,13 @@ const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 const DEFAULT_FORCE_EXIT_TIMEOUT_MS = 30_000;
 const MINIMUM_BUN_NATIVE_ROUTES_VERSION = '1.2.3';
 const EMPTY_NATIVE_ROUTE_PARAMS: Readonly<Record<string, string>> = Object.freeze({});
+const BUN_ADAPTER_CLOSE_TIMEOUT_MS = Symbol('fluo.bunAdapterCloseTimeoutMs');
 const BUN_WEBSOCKET_SUPPORT_REASON =
   'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.';
+
+type BunAdapterInternalOptions = BunAdapterOptions & {
+  [BUN_ADAPTER_CLOSE_TIMEOUT_MS]?: number;
+};
 
 /** HTTP application adapter backed by native `Bun.serve()`. */
 export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost {
@@ -246,13 +251,18 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
   private server?: BunServerLike;
   private realtimeBinding?: BunWebSocketBinding<unknown>;
   private readonly options: BunAdapterOptions;
+  private readonly shutdownTimeoutMs: number;
   private readonly webRequestResponseFactory;
 
   constructor(options: BunAdapterOptions = {}) {
+    const internalOptions = options as BunAdapterInternalOptions;
+
     validateNonNegativeIntegerOption('idleTimeout', options.idleTimeout);
     validateNonNegativeIntegerOption('maxBodySize', options.maxBodySize);
+    validateNonNegativeIntegerOption('shutdownTimeoutMs', internalOptions[BUN_ADAPTER_CLOSE_TIMEOUT_MS]);
     validatePortOption(options.port);
     this.options = options;
+    this.shutdownTimeoutMs = internalOptions[BUN_ADAPTER_CLOSE_TIMEOUT_MS] ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
     this.webRequestResponseFactory = createWebRequestResponseFactory({
       consumeOriginalBody: true,
       maxBodySize: options.maxBodySize,
@@ -350,7 +360,7 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
   /** Stops ingress, waits for in-flight HTTP handlers, and releases adapter state. */
   async close(): Promise<void> {
     if (this.closeInFlight) {
-      await waitForCloseWithTimeout(this.closeInFlight, DEFAULT_SHUTDOWN_TIMEOUT_MS);
+      await waitForCloseWithTimeout(this.closeInFlight, this.shutdownTimeoutMs);
       return;
     }
 
@@ -377,7 +387,7 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
     this.closeInFlight = closeInFlight;
     void closeInFlight.catch(() => {});
 
-    await waitForCloseWithTimeout(closeInFlight, DEFAULT_SHUTDOWN_TIMEOUT_MS);
+    await waitForCloseWithTimeout(closeInFlight, this.shutdownTimeoutMs);
   }
 
   private async dispatchHttpRequest(request: Request): Promise<Response> {
@@ -517,7 +527,7 @@ export async function runBunApplication(
   validateNonNegativeIntegerOption('forceExitTimeoutMs', options.forceExitTimeoutMs);
 
   const logger = createDefaultApplicationLogger();
-  const adapter = createBunAdapter({
+  const adapterOptions: BunAdapterInternalOptions = {
     development: options.development,
     hostname: options.hostname,
     idleTimeout: options.idleTimeout,
@@ -527,7 +537,9 @@ export async function runBunApplication(
     rawBody: options.rawBody,
     stopActiveConnections: options.stopActiveConnections,
     tls: options.tls,
-  }) as BunHttpApplicationAdapter;
+    [BUN_ADAPTER_CLOSE_TIMEOUT_MS]: options.forceExitTimeoutMs ?? DEFAULT_FORCE_EXIT_TIMEOUT_MS,
+  };
+  const adapter = new BunHttpApplicationAdapter(adapterOptions);
 
   return runHttpAdapterApplication(rootModule, {
     ...options,
