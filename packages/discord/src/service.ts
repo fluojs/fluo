@@ -2,7 +2,7 @@ import { Inject } from '@fluojs/core';
 import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
 import { DiscordMessageValidationError, DiscordTransportError } from './errors.js';
-import { createDiscordPlatformStatusSnapshot } from './status.js';
+import { createDiscordPlatformStatusSnapshot, type DiscordStatusAdapterInput } from './status.js';
 import { DISCORD_OPTIONS } from './tokens.js';
 import type {
   Discord,
@@ -29,8 +29,17 @@ function createStoppedTransportError(): DiscordTransportError {
   return new DiscordTransportError('Discord transport is shutting down or already stopped.');
 }
 
-function createLifecycleReadinessError(lifecycleState: DiscordServiceLifecycleState): DiscordTransportError {
+type DiscordServiceLifecycleFailurePhase = NonNullable<DiscordStatusAdapterInput['lifecycleFailurePhase']>;
+
+function createLifecycleReadinessError(
+  lifecycleState: DiscordServiceLifecycleState,
+  lifecycleFailurePhase: DiscordServiceLifecycleFailurePhase | undefined,
+): DiscordTransportError {
   if (lifecycleState === 'failed') {
+    if (lifecycleFailurePhase === 'shutdown-cleanup') {
+      return new DiscordTransportError('Discord transport failed during shutdown cleanup.');
+    }
+
     return new DiscordTransportError('Discord transport failed to initialize.');
   }
 
@@ -74,6 +83,7 @@ type DiscordServiceLifecycleState = 'created' | 'starting' | 'ready' | 'stopping
  */
 @Inject(DISCORD_OPTIONS)
 export class DiscordService implements Discord, OnModuleInit, OnApplicationShutdown {
+  private lifecycleFailurePhase: DiscordServiceLifecycleFailurePhase | undefined;
   private lifecycleState: DiscordServiceLifecycleState = 'created';
   private resolvedTransport: DiscordTransport | undefined;
   private shutdownPromise: Promise<void> | undefined;
@@ -91,6 +101,7 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     }
 
     this.lifecycleState = 'stopping';
+    this.lifecycleFailurePhase = undefined;
 
     this.shutdownPromise = this.closeOwnedTransport();
 
@@ -106,8 +117,10 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
       }
 
       this.lifecycleState = 'stopped';
+      this.lifecycleFailurePhase = undefined;
     } catch (error) {
       this.lifecycleState = 'failed';
+      this.lifecycleFailurePhase = 'shutdown-cleanup';
       throw new Error('Discord transport failed to close cleanly.', { cause: error });
     }
   }
@@ -118,6 +131,7 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     }
 
     this.lifecycleState = 'starting';
+    this.lifecycleFailurePhase = undefined;
 
     try {
       const transport = await this.ensureTransport();
@@ -135,12 +149,14 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
       }
 
       this.lifecycleState = 'ready';
+      this.lifecycleFailurePhase = undefined;
     } catch (error) {
       if (isShutdownLifecycleState(this.lifecycleState)) {
         throw error;
       }
 
       this.lifecycleState = 'failed';
+      this.lifecycleFailurePhase = 'initialization';
       throw new Error('Discord transport failed to initialize.', { cause: error });
     }
   }
@@ -154,6 +170,7 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     return createDiscordPlatformStatusSnapshot({
       channelName: this.options.notifications.channel,
       defaultThreadConfigured: this.options.defaultThreadId !== undefined,
+      lifecycleFailurePhase: this.lifecycleFailurePhase,
       lifecycleState: this.lifecycleState,
       ownsTransportResources: this.options.transport.ownsResources,
       transportKind: this.options.transport.kind,
@@ -303,7 +320,7 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     }
 
     if (this.lifecycleState === 'failed') {
-      throw createLifecycleReadinessError(this.lifecycleState);
+      throw createLifecycleReadinessError(this.lifecycleState, this.lifecycleFailurePhase);
     }
 
     if (this.resolvedTransport) {
@@ -326,7 +343,7 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     }
 
     if (this.lifecycleState !== 'ready') {
-      throw createLifecycleReadinessError(this.lifecycleState);
+      throw createLifecycleReadinessError(this.lifecycleState, this.lifecycleFailurePhase);
     }
   }
 

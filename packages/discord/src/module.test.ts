@@ -1,6 +1,6 @@
-import type { Constructor, Token } from '@fluojs/core';
-import { getModuleMetadata } from '@fluojs/core/internal';
+import { type Constructor, getModuleMetadata, type Token } from '@fluojs/core';
 import { Container, type Provider } from '@fluojs/di';
+import type { NotificationChannel } from '@fluojs/notifications';
 import { NOTIFICATION_CHANNELS, NotificationsModule, NotificationsService } from '@fluojs/notifications';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -95,6 +95,17 @@ class DeferredCloseTransport extends PassiveTransport {
 
   finishClose(): void {
     this.resolveClose?.();
+  }
+}
+
+class FailingCloseTransport extends PassiveTransport {
+  constructor(private readonly closeFailure: Error) {
+    super();
+  }
+
+  async close(): Promise<void> {
+    this.closeCalls += 1;
+    throw this.closeFailure;
   }
 }
 
@@ -287,7 +298,7 @@ describe('DiscordModule', () => {
 
     const notifications = await container.resolve(NotificationsService);
     const service = await container.resolve(DiscordService);
-    const channels = await container.resolve(NOTIFICATION_CHANNELS);
+    const channels = await container.resolve<readonly NotificationChannel[]>(NOTIFICATION_CHANNELS);
     await service.onModuleInit();
 
     const result = await notifications.dispatch({
@@ -1000,6 +1011,47 @@ describe('DiscordModule', () => {
     await expect(service.send({ content: 'After failed bootstrap' })).rejects.toThrowError(
       new DiscordTransportError('Discord transport failed to initialize.'),
     );
+  });
+
+  it('reports shutdown cleanup failures separately from failed bootstrap diagnostics', async () => {
+    const closeFailure = new Error('webhook close failed');
+    const transport = new FailingCloseTransport(closeFailure);
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      transport: {
+        create: async () => transport,
+        kind: 'failing-close-factory',
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    await expect(service.onApplicationShutdown()).rejects.toMatchObject({
+      cause: closeFailure,
+      message: 'Discord transport failed to close cleanly.',
+    });
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        lifecycleFailurePhase: 'shutdown-cleanup',
+        lifecycleState: 'failed',
+      },
+      health: {
+        reason: 'Discord transport failed during shutdown cleanup.',
+        status: 'unhealthy',
+      },
+      readiness: {
+        reason: 'Discord transport failed during shutdown cleanup.',
+        status: 'not-ready',
+      },
+    });
+    await expect(service.send({ content: 'After failed shutdown cleanup' })).rejects.toThrowError(
+      new DiscordTransportError('Discord transport failed during shutdown cleanup.'),
+    );
+    expect(transport.closeCalls).toBe(1);
+    expect(transport.sent).toEqual([]);
   });
 
   it('rejects aborted notification sends before rendering templates', async () => {
