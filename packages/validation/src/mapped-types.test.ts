@@ -4,7 +4,7 @@ import {
   defineDtoFieldBindingMetadata,
   getDtoBindingSchema,
   getDtoFieldBindingMetadata,
-} from '@fluojs/core/internal';
+} from '@fluojs/core/request-pipeline';
 
 import { IsEmail, IsString, ValidateClass } from './decorators.js';
 import { IntersectionType, OmitType, PartialType, PickType } from './mapped-types.js';

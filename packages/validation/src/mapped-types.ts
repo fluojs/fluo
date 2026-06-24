@@ -1,7 +1,4 @@
-import {
-  type Constructor,
-  type MetadataPropertyKey,
-} from '@fluojs/core';
+import type { Constructor, MetadataPropertyKey } from '@fluojs/core';
 import {
   appendClassValidationRule,
   appendDtoFieldValidationRule,
@@ -9,7 +6,7 @@ import {
   getClassValidationRules,
   getDtoBindingSchema,
   getDtoValidationSchema,
-} from '@fluojs/core/internal';
+} from '@fluojs/core/request-pipeline';
 
 type DtoConstructor<T = object> = Constructor<T>;
 
