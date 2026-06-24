@@ -101,7 +101,7 @@ class AppModule {}
 
 `distributed.lockTtlMs`는 `1_000ms` 이상이어야 합니다. fluo는 최소 지원 경계인 `1_000ms`를 포함해 TTL이 만료되기 전에 Redis 락을 갱신합니다.
 
-각 scheduler instance는 platform-neutral 기본 `distributed.ownerId`를 사용합니다. 배포 환경에 더 강한 stable-owner 규칙이 있을 때만 `distributed.ownerId`를 명시적으로 지정하세요. Lock release는 task 실행 뒤 `finally` 경로에서 수행됩니다. Redis release가 실패하면 fluo는 status snapshot의 local ownership을 유지하고 shutdown 중 다시 release를 시도합니다. Redis가 다른 owner의 key라고 응답하면 fencing이 이미 다른 곳으로 이동한 것이므로 local ownership을 정리합니다. Redis TTL과 renewal timing은 drift 영향을 받는 coordination primitive이지 강한 fencing token 자체는 아니므로, stale work가 위험한 long-running job은 idempotent하게 작성하고 application-level fencing을 함께 사용해야 합니다.
+각 scheduler instance는 platform-neutral 기본 `distributed.ownerId`를 사용합니다. 배포 환경에 더 강한 stable-owner 규칙이 있을 때만 `distributed.ownerId`를 명시적으로 지정하세요. Lock release는 task 실행 뒤 `finally` 경로에서 수행됩니다. Distributed tick이 이미 실행 중인 상태에서 bootstrap이 나중에 실패하면 startup rollback은 해당 active task가 drain되어 락을 release할 수 있을 때까지 Redis lock client를 유지합니다. Redis release가 실패하면 fluo는 status snapshot의 local ownership을 유지하고 shutdown 중 다시 release를 시도합니다. Redis가 다른 owner의 key라고 응답하면 fencing이 이미 다른 곳으로 이동한 것이므로 local ownership을 정리합니다. Redis TTL과 renewal timing은 drift 영향을 받는 coordination primitive이지 강한 fencing token 자체는 아니므로, stale work가 위험한 long-running job은 idempotent하게 작성하고 application-level fencing을 함께 사용해야 합니다.
 
 ```typescript
 @Module({
