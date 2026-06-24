@@ -369,18 +369,18 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
   }
 
   private resolveNotificationChannel(notification: SlackNotificationDispatchRequest): string | undefined {
-    const payloadChannel = normalizeOptionalString(notification.payload.channel);
-
-    if (payloadChannel) {
-      return payloadChannel;
-    }
-
     const recipients = notification.recipients?.map((entry) => entry.trim()).filter((entry) => entry.length > 0) ?? [];
 
     if (recipients.length > 1) {
       throw new SlackMessageValidationError(
         'Slack notifications accept exactly one target channel per dispatch. Use `sendMany(...)` for fan-out delivery.',
       );
+    }
+
+    const payloadChannel = normalizeOptionalString(notification.payload.channel);
+
+    if (payloadChannel) {
+      return payloadChannel;
     }
 
     return recipients[0] ?? this.options.defaultChannel;

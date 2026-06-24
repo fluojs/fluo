@@ -678,6 +678,29 @@ describe('SlackModule', () => {
     );
   });
 
+  it('rejects multi-recipient notification fan-out even when payload channel is set', async () => {
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      transport: createRecordingTransportFactory(),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+
+    await expect(
+      service.sendNotification({
+        channel: 'slack',
+        payload: { channel: '#ops', text: 'Fan-out not allowed' },
+        recipients: ['#eng', '#platform'],
+      }),
+    ).rejects.toThrowError(
+      new SlackMessageValidationError(
+        'Slack notifications accept exactly one target channel per dispatch. Use `sendMany(...)` for fan-out delivery.',
+      ),
+    );
+    expect(transportState.sent).toHaveLength(0);
+  });
+
   it('surfaces an unsuccessful transport receipt as a notifications channel failure', async () => {
     const container = new Container();
     const moduleType = SlackModule.forRoot({
