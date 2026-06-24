@@ -35,7 +35,34 @@ describe('createDiscordPlatformStatusSnapshot', () => {
     });
 
     expect(snapshot.readiness.status).toBe('not-ready');
+    expect(snapshot.readiness.reason).toBe('Discord transport failed to initialize.');
     expect(snapshot.health.status).toBe('unhealthy');
     expect(snapshot.ownership.externallyManaged).toBe(true);
+  });
+
+  it('distinguishes shutdown cleanup failures from bootstrap initialization failures', () => {
+    const snapshot = createDiscordPlatformStatusSnapshot({
+      channelName: 'discord',
+      defaultThreadConfigured: false,
+      lifecycleFailurePhase: 'shutdown-cleanup',
+      lifecycleState: 'failed',
+      ownsTransportResources: true,
+      transportKind: 'owned-factory',
+      verifiedOnModuleInit: true,
+    });
+
+    expect(snapshot.details).toMatchObject({
+      lifecycleFailurePhase: 'shutdown-cleanup',
+      lifecycleState: 'failed',
+    });
+    expect(snapshot.readiness).toEqual({
+      critical: true,
+      reason: 'Discord transport failed during shutdown cleanup.',
+      status: 'not-ready',
+    });
+    expect(snapshot.health).toEqual({
+      reason: 'Discord transport failed during shutdown cleanup.',
+      status: 'unhealthy',
+    });
   });
 });

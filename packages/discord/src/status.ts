@@ -7,6 +7,7 @@ export type DiscordLifecycleState = 'created' | 'starting' | 'ready' | 'stopping
 export interface DiscordStatusAdapterInput {
   channelName: string;
   defaultThreadConfigured: boolean;
+  lifecycleFailurePhase?: 'initialization' | 'shutdown-cleanup';
   lifecycleState: DiscordLifecycleState;
   ownsTransportResources: boolean;
   transportKind: string;
@@ -48,7 +49,10 @@ function createReadiness(input: DiscordStatusAdapterInput): PlatformReadinessRep
   if (input.lifecycleState === 'failed') {
     return {
       critical: true,
-      reason: 'Discord transport failed to initialize.',
+      reason:
+        input.lifecycleFailurePhase === 'shutdown-cleanup'
+          ? 'Discord transport failed during shutdown cleanup.'
+          : 'Discord transport failed to initialize.',
       status: 'not-ready',
     };
   }
@@ -63,7 +67,10 @@ function createReadiness(input: DiscordStatusAdapterInput): PlatformReadinessRep
 function createHealth(input: DiscordStatusAdapterInput): PlatformHealthReport {
   if (input.lifecycleState === 'failed' || input.lifecycleState === 'stopped') {
     return {
-      reason: 'Discord transport is unavailable.',
+      reason:
+        input.lifecycleState === 'failed' && input.lifecycleFailurePhase === 'shutdown-cleanup'
+          ? 'Discord transport failed during shutdown cleanup.'
+          : 'Discord transport is unavailable.',
       status: 'unhealthy',
     };
   }
@@ -92,6 +99,7 @@ export function createDiscordPlatformStatusSnapshot(input: DiscordStatusAdapterI
       channelName: input.channelName,
       defaultThreadConfigured: input.defaultThreadConfigured,
       dependencies: ['notifications.channel', 'discord.transport'],
+      ...(input.lifecycleFailurePhase ? { lifecycleFailurePhase: input.lifecycleFailurePhase } : {}),
       lifecycleState: input.lifecycleState,
       transportKind: input.transportKind,
       verifiedOnModuleInit: input.verifiedOnModuleInit,
