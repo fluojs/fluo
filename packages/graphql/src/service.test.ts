@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
 
 import type { HttpApplicationAdapter } from '@fluojs/http';
 import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
@@ -26,6 +27,20 @@ function createService(options: GraphqlModuleOptions): GraphqlLifecycleService {
     adapter,
     options,
   );
+}
+
+function createPortableSchema(): GraphQLSchema {
+  return new GraphQLSchema({
+    query: new GraphQLObjectType({
+      fields: {
+        ping: {
+          resolve: () => 'pong',
+          type: GraphQLString,
+        },
+      },
+      name: 'Query',
+    }),
+  });
 }
 
 function resolveGraphiqlEnabled(service: GraphqlLifecycleService): boolean {
@@ -67,6 +82,25 @@ function resolveWebSocketLimits(service: GraphqlLifecycleService): {
 }
 
 describe('GraphqlLifecycleService graphiql defaults', () => {
+  afterEach(() => {
+    vi.doUnmock('node:module');
+  });
+
+  it('bootstraps portable HTTP and SSE paths without Node createRequire', async () => {
+    vi.doMock('node:module', () => ({
+      createRequire() {
+        throw new Error('portable GraphQL HTTP/SSE bootstrap must not call createRequire.');
+      },
+    }));
+
+    const service = createService({
+      schema: createPortableSchema(),
+    });
+
+    await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
+    await service.onApplicationShutdown();
+  });
+
   it('defaults to false when graphiql option is not set', () => {
     const service = createService({});
 
