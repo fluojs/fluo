@@ -4,13 +4,13 @@ import type { Duplex } from 'node:stream';
 import type { FrameworkRequest, HttpApplicationAdapter } from '@fluojs/http';
 import type {
   ExecutionArgs,
-  GraphQLError as GraphQLErrorType,
   execute as executeGraphql,
+  GraphQLError as GraphQLErrorType,
   subscribe as subscribeGraphql,
 } from 'graphql';
-import { handleProtocols, type CompleteMessage, type Context as GraphqlWsServerContext, type SubscribeMessage } from 'graphql-ws';
-import { useServer, type Extra as GraphqlWsExtra } from 'graphql-ws/lib/use/ws';
-import { WebSocketServer, type WebSocket } from 'ws';
+import { type CompleteMessage, type Context as GraphqlWsServerContext, handleProtocols, type SubscribeMessage } from 'graphql-ws';
+import { type Extra as GraphqlWsExtra, useServer } from 'graphql-ws/lib/use/ws';
+import { type WebSocket, WebSocketServer } from 'ws';
 
 import { isGraphqlPath } from '../transport/transport.js';
 
@@ -184,12 +184,27 @@ export async function createNodeGraphqlWebSocketTransport(
   options: GraphqlNodeWebSocketTransportOptions,
 ): Promise<GraphqlNodeWebSocketTransport> {
   const upgradeServer = resolveUpgradeServer(options.adapter);
+  const disconnectErrors: unknown[] = [];
+  const pendingDisconnects = new Set<Promise<void>>();
   const websocketServer = new WebSocketServer({
     handleProtocols: (protocols: Set<string>) => handleProtocols(protocols),
     maxPayload: options.limits?.maxPayloadBytes ?? 0,
     noServer: true,
   });
   const upgradeListener = createUpgradeListener(websocketServer, options.limits);
+  const trackDisconnect = (socketKey: object) => {
+    const pendingDisconnect = Promise.resolve(options.onDisconnect(socketKey))
+      .catch((error: unknown) => {
+        disconnectErrors.push(error);
+      })
+      .finally(() => {
+        pendingDisconnects.delete(pendingDisconnect);
+      });
+    pendingDisconnects.add(pendingDisconnect);
+  };
+  const trackConnection = (websocket: WebSocket) => {
+    websocket.once('close', () => trackDisconnect(websocket));
+  };
   const websocketDisposable = useServer(
     {
       connectionInitWaitTimeout: options.connectionInitWaitTimeoutMs,
@@ -208,16 +223,28 @@ export async function createNodeGraphqlWebSocketTransport(
     options.keepAliveMs,
   );
 
+  websocketServer.on('connection', trackConnection);
   upgradeServer.on('upgrade', upgradeListener);
 
   return {
     async dispose() {
       let disposeError: unknown;
 
+      websocketServer.off('connection', trackConnection);
       upgradeServer.off('upgrade', upgradeListener);
 
       for (const client of websocketServer.clients) {
         client.terminate();
+      }
+
+      const disconnectResults = await Promise.allSettled(pendingDisconnects);
+      for (const error of disconnectErrors) {
+        disposeError ??= error;
+      }
+      for (const result of disconnectResults) {
+        if (result.status === 'rejected') {
+          disposeError ??= result.reason;
+        }
       }
 
       try {
