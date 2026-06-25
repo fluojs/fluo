@@ -1,15 +1,13 @@
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
-
-import { describe, expect, it } from 'vitest';
-import { WebSocket } from 'ws';
-
 import { Inject, Scope } from '@fluojs/core';
 import type { MiddlewareContext, Next } from '@fluojs/http';
-import { IsInt, MinLength } from '@fluojs/validation';
 import { defineModule } from '@fluojs/runtime';
 import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { IsInt, MinLength } from '@fluojs/validation';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString, GraphQLUnionType } from 'graphql';
+import { describe, expect, it } from 'vitest';
+import { WebSocket } from 'ws';
 
 import { Arg, Mutation, Query, Resolver, Subscription } from './decorators.js';
 import { GraphqlModule } from './module.js';
@@ -246,6 +244,20 @@ async function readGraphqlWebSocketMessages(socket: WebSocket, count: number): P
     socket.on('error', handleError);
     socket.on('message', handleMessage);
   });
+}
+
+async function waitForGraphqlRuntimeEffect(predicate: () => boolean, description: string): Promise<void> {
+  const timeoutAt = Date.now() + 1_000;
+
+  while (Date.now() < timeoutAt) {
+    if (predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error(`Timed out waiting for GraphQL runtime effect: ${description}`);
 }
 
 @Inject()
@@ -840,6 +852,36 @@ describe('@fluojs/graphql', () => {
     await app.close();
   });
 
+  it('allows selected operations to exceed request budgets when limits are explicitly disabled', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        GraphqlModule.forRoot({
+          limits: false,
+          schema: createGuardrailSchema(),
+        }),
+      ],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    await expect(postGraphql(port, 'query WideOp { a: greeting b: greeting c: greeting }')).resolves.toEqual({
+      data: {
+        a: 'hello',
+        b: 'hello',
+        c: 'hello',
+      },
+    });
+
+    await app.close();
+  });
+
   it('supports named object output types for root query/mutation/subscription', async () => {
     class AppModule {}
     defineModule(AppModule, {
@@ -1351,6 +1393,166 @@ describe('@fluojs/graphql', () => {
     releaseOperation?.();
     socket.close();
     await onceWebSocketClosed(socket);
+    await app.close();
+  });
+
+  it('allows concurrent websocket operations when websocket limits are explicitly disabled', async () => {
+    let releaseOperation: (() => void) | undefined;
+    const waitForRelease = new Promise<void>((resolve) => {
+      releaseOperation = resolve;
+    });
+
+    @Inject()
+    @Resolver('UnboundedSubscriptionResolver')
+    class UnboundedSubscriptionResolver {
+      @Subscription()
+      async *slowStream(): AsyncGenerator<string, void, void> {
+        yield 'tick';
+        await waitForRelease;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        GraphqlModule.forRoot({
+          resolvers: [UnboundedSubscriptionResolver],
+          subscriptions: {
+            websocket: {
+              enabled: true,
+              limits: false,
+            },
+          },
+        }),
+      ],
+      providers: [UnboundedSubscriptionResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
+    await app.listen();
+
+    const socket = await connectGraphqlWebSocket(port);
+    socket.send(JSON.stringify({
+      id: 'sub-1',
+      payload: {
+        query: 'subscription { slowStream }',
+      },
+      type: 'subscribe',
+    }));
+    socket.send(JSON.stringify({
+      id: 'sub-2',
+      payload: {
+        query: 'subscription { slowStream }',
+      },
+      type: 'subscribe',
+    }));
+
+    await expect(readGraphqlWebSocketMessages(socket, 2)).resolves.toEqual([
+      {
+        id: 'sub-1',
+        payload: {
+          data: {
+            slowStream: 'tick',
+          },
+        },
+        type: 'next',
+      },
+      {
+        id: 'sub-2',
+        payload: {
+          data: {
+            slowStream: 'tick',
+          },
+        },
+        type: 'next',
+      },
+    ]);
+
+    releaseOperation?.();
+    socket.close();
+    await onceWebSocketClosed(socket);
+    await app.close();
+  });
+
+  it('disposes websocket operation-scoped providers when the client disconnects before completion', async () => {
+    const lifecycleEvents: string[] = [];
+    let releaseOperation: (() => void) | undefined;
+    const waitForRelease = new Promise<void>((resolve) => {
+      releaseOperation = resolve;
+    });
+
+    @Inject()
+    @Scope('request')
+    class WebSocketOperationState {
+      onDestroy(): void {
+        lifecycleEvents.push('state:destroy');
+      }
+    }
+
+    @Inject(WebSocketOperationState)
+    @Scope('request')
+    @Resolver('DisconnectLifecycleResolver')
+    class DisconnectLifecycleResolver {
+      constructor(private readonly state: WebSocketOperationState) {}
+
+      @Subscription()
+      async *disconnectStream(): AsyncGenerator<string, void, void> {
+        lifecycleEvents.push(this.state instanceof WebSocketOperationState ? 'resolver:started' : 'resolver:missing-state');
+        yield 'tick';
+        await waitForRelease;
+      }
+
+      onDestroy(): void {
+        lifecycleEvents.push('resolver:destroy');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        GraphqlModule.forRoot({
+          resolvers: [DisconnectLifecycleResolver],
+          subscriptions: {
+            websocket: {
+              enabled: true,
+            },
+          },
+        }),
+      ],
+      providers: [WebSocketOperationState, DisconnectLifecycleResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
+    await app.listen();
+
+    const socket = await connectGraphqlWebSocket(port);
+    socket.send(JSON.stringify({
+      id: 'sub-1',
+      payload: {
+        query: 'subscription { disconnectStream }',
+      },
+      type: 'subscribe',
+    }));
+
+    await expect(onceGraphqlWebSocketMessage(socket)).resolves.toEqual({
+      id: 'sub-1',
+      payload: {
+        data: {
+          disconnectStream: 'tick',
+        },
+      },
+      type: 'next',
+    });
+
+    socket.close();
+    await onceWebSocketClosed(socket);
+    await waitForGraphqlRuntimeEffect(() => lifecycleEvents.includes('state:destroy'), 'websocket operation container disposal');
+
+    expect(lifecycleEvents).toEqual(expect.arrayContaining(['resolver:started', 'resolver:destroy', 'state:destroy']));
+
+    releaseOperation?.();
     await app.close();
   });
 
