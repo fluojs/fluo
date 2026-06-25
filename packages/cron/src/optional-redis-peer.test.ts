@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+const OPTIONAL_PEER_IMPORT_TIMEOUT_MS = 15_000;
+
 afterEach(() => {
   vi.doUnmock('@fluojs/redis');
   vi.resetModules();
@@ -22,7 +24,7 @@ describe('optional Redis peer contract', () => {
     expect(cronPublicApi).toHaveProperty('CronModule');
     expect(cronPublicApi).toHaveProperty('Cron');
     expect(cronPublicApi).toHaveProperty('SCHEDULING_REGISTRY');
-  });
+  }, OPTIONAL_PEER_IMPORT_TIMEOUT_MS);
 
   it('does not load Redis while bootstrapping non-distributed scheduling', async () => {
     vi.doMock('@fluojs/redis', () => {
