@@ -23,6 +23,11 @@ interface DiscoveryCandidate {
   token: Token;
 }
 
+interface ProviderDiscoveryCandidate {
+  moduleName: string;
+  provider: Provider;
+}
+
 interface ResolvedPublishOptions {
   signal: AbortSignal | undefined;
   timeoutMs: number | undefined;
@@ -76,6 +81,10 @@ function methodKeyToName(methodKey: MetadataPropertyKey): string {
 
 function isClassProvider(provider: Provider): provider is Extract<Provider, { provide: Token; useClass: Function }> {
   return typeof provider === 'object' && provider !== null && 'useClass' in provider;
+}
+
+function isFactoryOrValueProvider(provider: Provider): provider is Extract<Provider, { useFactory: unknown } | { useValue: unknown }> {
+  return typeof provider === 'object' && provider !== null && ('useFactory' in provider || 'useValue' in provider);
 }
 
 /**
@@ -359,7 +368,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
 
   private async discoverHandlers(): Promise<void> {
     try {
-      this.descriptors = this.discoverHandlerDescriptors();
+      this.descriptors = await this.discoverHandlerDescriptors();
       this.handlerInstances.clear();
       await this.preloadHandlerInstances(this.descriptors);
       this.discovered = true;
@@ -729,11 +738,11 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     };
   }
 
-  private discoverHandlerDescriptors(): EventHandlerDescriptor[] {
+  private async discoverHandlerDescriptors(): Promise<EventHandlerDescriptor[]> {
     const seen = new Map<Token, Map<MetadataPropertyKey, Set<EventType>>>();
     const descriptors: EventHandlerDescriptor[] = [];
 
-    for (const candidate of this.discoveryCandidates()) {
+    for (const candidate of await this.discoveryCandidates()) {
       const entries = getEventHandlerMetadataEntries(candidate.targetType.prototype);
 
       if (this.shouldSkipNonSingletonCandidate(candidate, entries.length)) {
@@ -812,8 +821,9 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     };
   }
 
-  private discoveryCandidates(): DiscoveryCandidate[] {
+  private async discoveryCandidates(): Promise<DiscoveryCandidate[]> {
     const candidates: DiscoveryCandidate[] = [];
+    const providerCandidates: ProviderDiscoveryCandidate[] = [];
 
     for (const compiledModule of this.compiledModules) {
       for (const provider of compiledModule.definition.providers ?? []) {
@@ -834,6 +844,11 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
             targetType: provider.useClass,
             token: provider.provide,
           });
+          continue;
+        }
+
+        if (isFactoryOrValueProvider(provider)) {
+          providerCandidates.push({ moduleName: compiledModule.type.name, provider });
         }
       }
 
@@ -847,7 +862,75 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
       }
     }
 
+    for (const candidate of providerCandidates) {
+      const resolvedCandidate = await this.resolveProviderDiscoveryCandidate(candidate);
+
+      if (resolvedCandidate) {
+        candidates.push(resolvedCandidate);
+      }
+    }
+
     return candidates;
+  }
+
+  private async resolveProviderDiscoveryCandidate(candidate: ProviderDiscoveryCandidate): Promise<DiscoveryCandidate | undefined> {
+    const provider = candidate.provider;
+
+    if (!('provide' in provider)) {
+      return undefined;
+    }
+
+    const scope = scopeFromProvider(provider);
+    const token = provider.provide;
+
+    if (scope !== 'singleton') {
+      return this.createUnresolvedProviderDiscoveryCandidate(candidate.moduleName, token, scope);
+    }
+
+    const instance = await this.resolveHandlerInstance({
+      eventType: Object,
+      methodKey: 'constructor',
+      methodName: 'constructor',
+      moduleName: candidate.moduleName,
+      targetName: 'EventHandlerProvider',
+      token,
+    });
+
+    if (typeof instance !== 'object' || instance === null) {
+      return undefined;
+    }
+
+    const targetType = instance.constructor;
+
+    if (typeof targetType !== 'function') {
+      return undefined;
+    }
+
+    return {
+      moduleName: candidate.moduleName,
+      scope,
+      targetType,
+      token,
+    };
+  }
+
+  private createUnresolvedProviderDiscoveryCandidate(
+    moduleName: string,
+    token: Token,
+    scope: 'request' | 'transient',
+  ): DiscoveryCandidate | undefined {
+    const tokenType = typeof token === 'function' ? token : undefined;
+
+    if (!tokenType) {
+      return undefined;
+    }
+
+    return {
+      moduleName,
+      scope,
+      targetType: tokenType,
+      token,
+    };
   }
 
   private async invokeHandler(descriptor: EventHandlerDescriptor, event: object): Promise<void> {
