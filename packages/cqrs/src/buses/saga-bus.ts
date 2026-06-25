@@ -3,6 +3,11 @@ import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runt
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { CqrsBusBase } from '../discovery.js';
+import {
+  createInternalCqrsDispatchContext,
+  type InternalCqrsDispatchContext,
+  isInternalCqrsDispatchContext,
+} from '../dispatch-context.js';
 import { SagaExecutionError, SagaTopologyError } from '../errors.js';
 import { createIsolatedEvent } from '../event-clone.js';
 import { getSagaMetadata } from '../metadata.js';
@@ -12,7 +17,6 @@ import type { CqrsDispatchContext, CqrsEventType, IEvent, ISaga, SagaDescriptor 
 
 const MAX_NESTED_SAGA_DEPTH = 32;
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
-const cqrsDispatchContextStateBrand: unique symbol = Symbol('fluo.cqrs.dispatchContextState');
 
 interface SagaDispatchOptions {
   readonly allowDuringShutdown?: boolean;
@@ -23,8 +27,7 @@ interface CqrsDispatchRoute {
   readonly token: Token;
 }
 
-interface CqrsDispatchContextState extends CqrsDispatchContext {
-  readonly [cqrsDispatchContextStateBrand]: true;
+interface CqrsDispatchContextState extends InternalCqrsDispatchContext {
   readonly activeRoutes: readonly CqrsDispatchRoute[];
   readonly depth: number;
   readonly path: readonly string[];
@@ -47,11 +50,13 @@ function toErrorMessage(error: unknown): string {
 }
 
 function isCqrsDispatchContextState(context: CqrsDispatchContext | undefined): context is CqrsDispatchContextState {
-  if (typeof context !== 'object' || context === null) {
+  if (!isInternalCqrsDispatchContext(context)) {
     return false;
   }
 
-  return (context as { readonly [cqrsDispatchContextStateBrand]?: unknown })[cqrsDispatchContextStateBrand] === true;
+  const state = context as Partial<CqrsDispatchContextState>;
+
+  return Array.isArray(state.activeRoutes) && typeof state.depth === 'number' && Array.isArray(state.path);
 }
 
 /**
@@ -167,6 +172,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   }
 
   private async dispatchWithOrdering<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent, activeContext?: CqrsDispatchContext): Promise<void> {
+    const internalContext = isInternalCqrsDispatchContext(activeContext) ? activeContext : undefined;
     const activeState = isCqrsDispatchContextState(activeContext) ? activeContext : undefined;
     const routeLabel = `${descriptor.targetType.name}(${descriptor.eventType.name})`;
     const isActiveRoute = activeState?.activeRoutes.some(
@@ -189,13 +195,13 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     }
 
     if (isActiveToken) {
-      await this.invokeSaga(descriptor, event, this.createDispatchContext(activeState, descriptor, routeLabel));
+      await this.invokeSaga(descriptor, event, this.createDispatchContext(internalContext, activeState, descriptor, routeLabel));
       return;
     }
 
     const previous = this.executionChains.get(descriptor.token) ?? Promise.resolve();
     const current = previous.then(async () => {
-      await this.invokeSaga(descriptor, event, this.createDispatchContext(activeState, descriptor, routeLabel));
+      await this.invokeSaga(descriptor, event, this.createDispatchContext(internalContext, activeState, descriptor, routeLabel));
     });
 
     this.executionChains.set(descriptor.token, current.catch(() => undefined));
@@ -255,16 +261,17 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   }
 
   private createDispatchContext(
+    internalContext: InternalCqrsDispatchContext | undefined,
     activeContext: CqrsDispatchContextState | undefined,
     descriptor: SagaDescriptor,
     routeLabel: string,
   ): CqrsDispatchContextState {
-    return {
-      [cqrsDispatchContextStateBrand]: true,
+    return createInternalCqrsDispatchContext({
+      ...internalContext,
       activeRoutes: [...(activeContext?.activeRoutes ?? []), { eventType: descriptor.eventType, token: descriptor.token }],
       depth: (activeContext?.depth ?? 0) + 1,
       path: [...(activeContext?.path ?? []), routeLabel],
-    };
+    });
   }
 
   private async invokeSaga<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent, context: CqrsDispatchContextState): Promise<void> {

@@ -1233,9 +1233,21 @@ describe('@fluojs/cqrs', () => {
 
   it('rejects new CQRS event publishes after shutdown starts while draining active work', async () => {
     const releaseHandler = createDeferred<void>();
+    let capturedContext: CqrsDispatchContext | undefined;
 
     class GuardedShutdownEvent implements IEvent {
       constructor(public readonly id: string) {}
+    }
+
+    class CapturedContextEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    @EventHandler(CapturedContextEvent)
+    class CapturedContextEventHandler implements IEventHandler<CapturedContextEvent> {
+      handle(_event: CapturedContextEvent, context?: CqrsDispatchContext): void {
+        capturedContext = context;
+      }
     }
 
     @EventHandler(GuardedShutdownEvent)
@@ -1248,12 +1260,16 @@ describe('@fluojs/cqrs', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [CqrsModule.forRoot()],
-      providers: [GuardedShutdownEventHandler],
+      providers: [CapturedContextEventHandler, GuardedShutdownEventHandler],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const eventBusService = await app.container.resolve(CqrsEventBusService);
+
+    await eventBus.publish(new CapturedContextEvent('captured'));
+    expect(capturedContext).toBeDefined();
+
     const publishPromise = eventBus.publish(new GuardedShutdownEvent('active'));
 
     await Promise.resolve();
@@ -1265,6 +1281,7 @@ describe('@fluojs/cqrs', () => {
     });
 
     await expect(eventBus.publish(new GuardedShutdownEvent('late'))).rejects.toBeInstanceOf(InvariantError);
+    await expect(eventBus.publish(new GuardedShutdownEvent('stale-context'), capturedContext)).rejects.toBeInstanceOf(InvariantError);
     await expect(eventBus.publishAll([new GuardedShutdownEvent('late-batch')])).rejects.toBeInstanceOf(InvariantError);
 
     releaseHandler.resolve();
@@ -1273,6 +1290,156 @@ describe('@fluojs/cqrs', () => {
     await closePromise;
 
     await expect(eventBus.publish(new GuardedShutdownEvent('stopped'))).rejects.toBeInstanceOf(InvariantError);
+  });
+
+  it('allows nested CQRS event publishes from an active handler context during shutdown drain', async () => {
+    const handlerStarted = createDeferred<void>();
+    const releaseNestedPublish = createDeferred<void>();
+
+    class ParentShutdownEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    class NestedShutdownEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    class ShutdownStore {
+      seen: string[] = [];
+    }
+
+    @Inject(EVENT_BUS, ShutdownStore)
+    @EventHandler(ParentShutdownEvent)
+    class ParentShutdownEventHandler implements IEventHandler<ParentShutdownEvent> {
+      constructor(
+        private readonly eventBus: CqrsEventBus,
+        private readonly store: ShutdownStore,
+      ) {}
+
+      async handle(event: ParentShutdownEvent, context?: CqrsDispatchContext): Promise<void> {
+        this.store.seen.push(`parent:start:${event.id}`);
+        handlerStarted.resolve();
+        await releaseNestedPublish.promise;
+        await this.eventBus.publish(new NestedShutdownEvent(event.id), context);
+        this.store.seen.push(`parent:end:${event.id}`);
+      }
+    }
+
+    @Inject(ShutdownStore)
+    @EventHandler(NestedShutdownEvent)
+    class NestedShutdownEventHandler implements IEventHandler<NestedShutdownEvent> {
+      constructor(private readonly store: ShutdownStore) {}
+
+      handle(event: NestedShutdownEvent): void {
+        this.store.seen.push(`nested:${event.id}`);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [ShutdownStore, ParentShutdownEventHandler, NestedShutdownEventHandler],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBusService = await app.container.resolve(CqrsEventBusService);
+    const store = await app.container.resolve(ShutdownStore);
+
+    const publishPromise = eventBus.publish(new ParentShutdownEvent('parent'));
+    await handlerStarted.promise;
+
+    const closePromise = app.close();
+
+    await vi.waitFor(() => {
+      expect(eventBusService.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopping');
+    });
+
+    releaseNestedPublish.resolve();
+
+    await publishPromise;
+    await closePromise;
+
+    expect(store.seen).toEqual(['parent:start:parent', 'nested:parent', 'parent:end:parent']);
+  });
+
+  it('allows nested CQRS publishAll from an active saga context during shutdown drain', async () => {
+    const sagaStarted = createDeferred<void>();
+    const releaseNestedPublish = createDeferred<void>();
+
+    class SagaParentShutdownEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    class SagaNestedShutdownEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    class ShutdownStore {
+      seen: string[] = [];
+    }
+
+    @Inject(EVENT_BUS, ShutdownStore)
+    @Saga(SagaParentShutdownEvent)
+    class NestedPublishingSaga implements ISaga<SagaParentShutdownEvent> {
+      constructor(
+        private readonly eventBus: CqrsEventBus,
+        private readonly store: ShutdownStore,
+      ) {}
+
+      async handle(event: SagaParentShutdownEvent, context?: CqrsDispatchContext): Promise<void> {
+        this.store.seen.push(`saga:start:${event.id}`);
+        sagaStarted.resolve();
+        await releaseNestedPublish.promise;
+        await this.eventBus.publishAll([
+          new SagaNestedShutdownEvent(`${event.id}:first`),
+          new SagaNestedShutdownEvent(`${event.id}:second`),
+        ], context);
+        this.store.seen.push(`saga:end:${event.id}`);
+      }
+    }
+
+    @Inject(ShutdownStore)
+    @EventHandler(SagaNestedShutdownEvent)
+    class SagaNestedShutdownEventHandler implements IEventHandler<SagaNestedShutdownEvent> {
+      constructor(private readonly store: ShutdownStore) {}
+
+      handle(event: SagaNestedShutdownEvent): void {
+        this.store.seen.push(`nested:${event.id}`);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [ShutdownStore, NestedPublishingSaga, SagaNestedShutdownEventHandler],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBusService = await app.container.resolve(CqrsEventBusService);
+    const store = await app.container.resolve(ShutdownStore);
+
+    const publishPromise = eventBus.publish(new SagaParentShutdownEvent('parent'));
+    await sagaStarted.promise;
+
+    const closePromise = app.close();
+
+    await vi.waitFor(() => {
+      expect(eventBusService.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopping');
+    });
+
+    releaseNestedPublish.resolve();
+
+    await publishPromise;
+    await closePromise;
+
+    expect(store.seen).toEqual([
+      'saga:start:parent',
+      'nested:parent:first',
+      'nested:parent:second',
+      'saga:end:parent',
+    ]);
   });
 
   it('rejects direct saga dispatch after shutdown starts', async () => {
