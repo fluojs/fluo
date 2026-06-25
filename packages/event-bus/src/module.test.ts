@@ -1,9 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
 import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata } from '@fluojs/core/internal';
 import { Container } from '@fluojs/di';
-import { bootstrapApplication, defineModule, type ApplicationLogger } from '@fluojs/runtime';
+import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { OnEvent } from './decorators.js';
 import { getEventHandlerMetadataEntries } from './metadata.js';
@@ -774,6 +773,87 @@ describe('@fluojs/event-bus', () => {
     await eventBus.publish(new UserCreatedEvent('user-7'));
 
     expect(SharedHandler.calls).toBe(1);
+
+    await app.close();
+  });
+
+  it('discovers handlers from singleton factory and value provider instances', async () => {
+    const VALUE_HANDLER = Symbol('value-handler');
+    const FACTORY_HANDLER = Symbol('factory-handler');
+    const calls: string[] = [];
+
+    class ValueProviderHandler {
+      @OnEvent(UserCreatedEvent)
+      onUserCreated(event: UserCreatedEvent) {
+        calls.push(`value:${event.userId}`);
+      }
+    }
+
+    class FactoryProviderHandler {
+      @OnEvent(UserCreatedEvent)
+      onUserCreated(event: UserCreatedEvent) {
+        calls.push(`factory:${event.userId}`);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [EventBusModule.forRoot()],
+      providers: [
+        { provide: VALUE_HANDLER, useValue: new ValueProviderHandler() },
+        { provide: FACTORY_HANDLER, useFactory: () => new FactoryProviderHandler() },
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+
+    await eventBus.publish(new UserCreatedEvent('user-factory-value'));
+
+    expect(calls).toEqual(['value:user-factory-value', 'factory:user-factory-value']);
+
+    await app.close();
+  });
+
+  it('keeps non-singleton factory provider handlers out of event discovery', async () => {
+    const loggerEvents: string[] = [];
+    const calls: string[] = [];
+
+    class RequestFactoryHandler {
+      @OnEvent(UserCreatedEvent)
+      onUserCreated(event: UserCreatedEvent) {
+        calls.push(event.userId);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [EventBusModule.forRoot()],
+      providers: [
+        {
+          provide: RequestFactoryHandler,
+          scope: 'request',
+          useFactory: () => new RequestFactoryHandler(),
+        },
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      rootModule: AppModule,
+    });
+    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+
+    await eventBus.publish(new UserCreatedEvent('user-request-factory'));
+
+    expect(calls).toEqual([]);
+    expect(
+      loggerEvents.some((event) =>
+        event.includes(
+          'warn:EventBusLifecycleService:RequestFactoryHandler in module AppModule declares @OnEvent() methods but is registered with request scope.',
+        ),
+      ),
+    ).toBe(true);
 
     await app.close();
   });
