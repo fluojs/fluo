@@ -385,7 +385,10 @@ describe('serialize', () => {
     }
 
     class DerivedView extends BaseView {
-      @Transform((value) => String(value).toUpperCase())
+      @Transform((value) => {
+        const label = String(value);
+        return label.startsWith('[') && label.endsWith(']') ? label : `[${label}]`;
+      })
       override label: string;
 
       constructor(label: string) {
@@ -394,7 +397,7 @@ describe('serialize', () => {
       }
     }
 
-    expect(serialize(new DerivedView('  fluo  '))).toEqual({ label: 'FLUO' });
+    expect(serialize(new DerivedView('  fluo  '))).toEqual({ label: '[fluo]' });
   });
 
   it('does not emit undecorated undefined fields when excludeExtraneous is enabled', () => {
