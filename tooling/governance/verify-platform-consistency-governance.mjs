@@ -996,16 +996,24 @@ function enforceCanonicalRuntimeMatrixReferences() {
       packageSurface.includes('runtime limits') &&
       docsContext.includes('packages/socket.io/README.md') &&
       docsContext.includes('SocketIoHandshakeRequest') &&
+      docsContext.includes('guard acceptance for `true` / `undefined` / no return') &&
+      docsContext.includes('Node.js 20+ server-backed') &&
+      docsContext.includes('Bun static CORS plus no-`serverBacked` gateway caveats') &&
+      docsContext.includes('explicit ACK callback handling') &&
       docsContext.includes('force-disconnect/retry semantics'),
-    'docs/CONTEXT.md must keep Socket.IO runtime limits, public guard request typing, and shutdown retry guidance discoverable when package-surface.md documents them.',
+    'docs/CONTEXT.md must keep Socket.IO runtime limits, public guard request typing, ACK, guard, Bun caveat, and shutdown retry guidance discoverable when package-surface.md documents them.',
   );
   assert(
     packageSurfaceKo.includes('@fluojs/socket.io') &&
       packageSurfaceKo.includes('런타임 제한') &&
       docsContextKo.includes('packages/socket.io/README.ko.md') &&
       docsContextKo.includes('SocketIoHandshakeRequest') &&
+      docsContextKo.includes('return 없음은 허용') &&
+      docsContextKo.includes('Node.js 20+ server-backed') &&
+      docsContextKo.includes('Bun static CORS') &&
+      docsContextKo.includes('명시적 ACK callback') &&
       docsContextKo.includes('force-disconnect/retry semantic'),
-    'docs/CONTEXT.ko.md must keep Socket.IO runtime limits, public guard request typing, and shutdown retry guidance discoverable when package-surface.ko.md documents them.',
+    'docs/CONTEXT.ko.md must keep Socket.IO runtime limits, public guard request typing, ACK, guard, Bun caveat, and shutdown retry guidance discoverable when package-surface.ko.md documents them.',
   );
   assert(
     packageSurface.includes('@fluojs/websockets/bun') &&
