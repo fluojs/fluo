@@ -1,10 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import { getModuleMetadata, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
-import { Controller, Get, Post, UseGuards, UseInterceptors, Version, VersioningType, type RequestContext } from '@fluojs/http';
 import type { CallHandler, Dispatcher, Guard, Interceptor, InterceptorContext, Middleware, RequestObserver } from '@fluojs/http';
+import { Controller, Get, Post, type RequestContext, UseGuards, UseInterceptors, Version, VersioningType } from '@fluojs/http';
 import type { ExceptionFilterHandler } from '@fluojs/runtime';
-
+import { describe, expect, it, vi } from 'vitest';
+import { makeRequest } from './http.js';
 import {
   createTestApp,
   createTestingModule,
@@ -13,7 +12,6 @@ import {
   extractModuleProviders,
   Test,
 } from './index.js';
-import { makeRequest } from './http.js';
 import { asMock, createDeepMock, createMock, mockToken } from './mock.js';
 
 @Controller('/users')
@@ -1323,6 +1321,60 @@ describe('overrideFilter', () => {
     const filter = await testingModule.resolve<typeof fakeFilter>(FILTER_TOKEN);
 
     expect(filter).toBe(fakeFilter);
+  });
+
+  it('pairs filter token overrides with request-level runtime app coverage', async () => {
+    const FILTER_TOKEN = Symbol('RuntimeErrorFilter');
+    const caughtErrors: unknown[] = [];
+
+    @Controller('/runtime-filtered')
+    class RuntimeFilteredController {
+      @Get('/boom')
+      boom() {
+        throw new Error('handled by overridden filter');
+      }
+    }
+
+    const originalFilter: ExceptionFilterHandler = {
+      catch() {
+        throw new Error('original filter should be replaced');
+      },
+    };
+
+    const fakeFilter: ExceptionFilterHandler = {
+      async catch(error, context) {
+        caughtErrors.push(error);
+        context.response.setStatus(409);
+        await context.response.send({ handled: true, source: 'override-filter' });
+
+        return true;
+      },
+    };
+
+    @Module({
+      controllers: [RuntimeFilteredController],
+      providers: [{ provide: FILTER_TOKEN, useValue: originalFilter }],
+    })
+    class RuntimeFilteredModule {}
+
+    const testingModule = await createTestingModule({ rootModule: RuntimeFilteredModule })
+      .overrideFilter(FILTER_TOKEN, fakeFilter)
+      .compile();
+    const filter = await testingModule.resolve<ExceptionFilterHandler>(FILTER_TOKEN);
+    const app = await createTestApp({
+      rootModule: RuntimeFilteredModule,
+      filters: [filter],
+    });
+
+    try {
+      const response = await app.request('GET', '/runtime-filtered/boom').send();
+
+      expect(response.status).toBe(409);
+      expect(response.body).toEqual({ handled: true, source: 'override-filter' });
+      expect(caughtErrors).toHaveLength(1);
+    } finally {
+      await app.close();
+    }
   });
 });
 
