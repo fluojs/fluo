@@ -1,4 +1,6 @@
 type TransactionalPrismaService<TOptions = unknown> = {
+  createPlatformStatusSnapshot(): unknown;
+  current(): unknown;
   transaction<T>(fn: () => Promise<T>, options?: TOptions): Promise<T>;
 };
 
@@ -9,9 +11,13 @@ type TransactionMethod<THost, TArgs extends unknown[], TResult> = (
   ...args: TArgs
 ) => Promise<TResult>;
 
-function hasTransaction(value: unknown): value is TransactionalPrismaService {
+function isPrismaServiceLike(value: unknown): value is TransactionalPrismaService {
   return typeof value === 'object'
     && value !== null
+    && 'createPlatformStatusSnapshot' in value
+    && typeof value.createPlatformStatusSnapshot === 'function'
+    && 'current' in value
+    && typeof value.current === 'function'
     && 'transaction' in value
     && typeof value.transaction === 'function';
 }
@@ -27,22 +33,22 @@ function readProperty(value: unknown, property: PropertyKey): unknown {
 function resolveDefaultPrismaService(self: unknown): TransactionalPrismaService {
   const directPrisma = readProperty(self, 'prisma');
 
-  if (hasTransaction(directPrisma)) {
+  if (isPrismaServiceLike(directPrisma)) {
     return directPrisma;
   }
 
-  if (hasTransaction(self)) {
+  if (isPrismaServiceLike(self)) {
     return self;
   }
 
   for (const value of Object.values(Object(self) as Record<string, unknown>)) {
-    if (hasTransaction(value)) {
+    if (isPrismaServiceLike(value)) {
       return value;
     }
 
     const nestedPrisma = readProperty(value, 'prisma');
 
-    if (hasTransaction(nestedPrisma)) {
+    if (isPrismaServiceLike(nestedPrisma)) {
       return nestedPrisma;
     }
   }
