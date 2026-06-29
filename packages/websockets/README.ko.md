@@ -135,13 +135,13 @@ Handler return value는 반환된 promise가 settle된 뒤 무시됩니다. Raw 
 - `@OnDisconnect()`: 연결 해제 핸들러를 위한 데코레이터입니다.
 - `WebSocketModule`: WebSocket 통합을 위한 루트 모듈입니다.
 - `WebSocketModule.forRoot({ upgrade, limits, backpressure, buffer, heartbeat, shutdown })`: pre-upgrade guard와 bounded runtime default를 구성합니다.
-- `WebSocketGatewayLifecycleService`: 기본 Node.js 기반 lifecycle service token을 위한 루트 alias입니다.
+- `WebSocketGatewayLifecycleService`: 기본 Node.js 기반 lifecycle service token인 `NodeWebSocketGatewayLifecycleService`의 루트 alias입니다.
 - `WebSocketRoomService`: websocket room join, leave, broadcast, 조회를 위해 runtime lifecycle service가 구현하는 Room management contract입니다.
 - Metadata helper와 symbol: `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, `webSocketHandlerMetadataSymbol`.
 
 ## 런타임별 서브패스
 
-기본 루트 Node.js alias 대신 런타임을 명시적으로 고정하고 싶다면 런타임별 서브패스를 사용하세요. 루트 `@fluojs/websockets` 진입점은 Node.js 기본 module과 lifecycle-service export name을 유지하지만, 단순 root package import는 concrete Node implementation을 lazy runtime provider resolution 뒤에 둡니다. Fetch-style 애플리케이션은 선택한 런타임 서브패스에서 gateway decorator와 metadata helper를 import해 authoring code가 root Node.js-backed module boundary에 의존하지 않게 해야 합니다.
+기본 루트 Node.js alias 대신 런타임을 명시적으로 고정하고 싶다면 런타임별 서브패스를 사용하세요. 루트 `@fluojs/websockets` 진입점은 Node.js 기본 module export name을 유지하고 `WebSocketGatewayLifecycleService`를 `NodeWebSocketGatewayLifecycleService`와 같은 DI token으로 alias하지만, 단순 root package import는 concrete Node implementation을 lazy runtime provider resolution 뒤에 둡니다. Fetch-style 애플리케이션은 선택한 런타임 서브패스에서 gateway decorator와 metadata helper를 import해 authoring code가 root Node.js-backed module boundary에 의존하지 않게 해야 합니다.
 
 Package manifest의 `engines.node >=20.0.0` 선언은 published package와 기본 Node.js entrypoint 기준입니다. Bun, Deno, Cloudflare Workers 지원은 아래 전용 fetch-style subpath를 통해 노출되며, 해당 subpath는 request/handler type을 web-standard로 유지하고 application code가 root Node.js lifecycle-service alias에 의존하지 않게 합니다.
 
