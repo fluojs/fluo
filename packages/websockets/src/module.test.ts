@@ -27,7 +27,8 @@ import {
   getWebSocketHandlerMetadataEntries,
 } from './metadata.js';
 import { WebSocketModule } from './module.js';
-import { NodeWebSocketGatewayLifecycleService } from './node/node-service.js';
+import { NodeWebSocketGatewayLifecycleServiceImplementation } from './node/node-service.js';
+import { NodeWebSocketGatewayLifecycleService } from './node/node-service-token.js';
 import type { WebSocketModuleOptions } from './node/node-types.js';
 import { WebSocketGatewayLifecycleService } from './service.js';
 
@@ -75,7 +76,7 @@ async function getApplicationPort(app: { container: { resolve<T>(token: unknown)
   return getBoundPort(adapter.getServer?.());
 }
 
-function getOwnedGatewayPort(service: NodeWebSocketGatewayLifecycleService): number {
+function getOwnedGatewayPort(service: NodeWebSocketGatewayLifecycleServiceImplementation): number {
   const registrations = Reflect.get(service, 'ownedUpgradeServers') as Array<{ port: number }>;
   const port = registrations[0]?.port;
 
@@ -235,7 +236,7 @@ function createDeferred<T = void>() {
 function createTestLifecycleService(
   options: WebSocketModuleOptions = {},
   loggerEvents: string[] = [],
-): NodeWebSocketGatewayLifecycleService {
+): NodeWebSocketGatewayLifecycleServiceImplementation {
   const adapter: HttpApplicationAdapter = {
     async close() {},
     getRealtimeCapability() {
@@ -251,7 +252,7 @@ function createTestLifecycleService(
     async listen() {},
   };
 
-  return new NodeWebSocketGatewayLifecycleService(new Container(), [], createLogger(loggerEvents), adapter, options);
+  return new NodeWebSocketGatewayLifecycleServiceImplementation(new Container(), [], createLogger(loggerEvents), adapter, options);
 }
 
 type MockSocketListeners = {
@@ -366,6 +367,7 @@ describe('@fluojs/websockets', () => {
 
     expect(lifecycleProvider).toBeDefined();
     expect(lifecycleProvider).toHaveProperty('useFactory');
+    expect(WebSocketGatewayLifecycleService).toBe(NodeWebSocketGatewayLifecycleService);
     expect(optionsProvider).toBeDefined();
     expect(optionsProvider).toHaveProperty('useValue', options);
   });
@@ -825,7 +827,7 @@ describe('@fluojs/websockets', () => {
         port: 0,
       });
       const state = await app.container.resolve(GatewayState);
-      const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleService;
+    const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
 
       await app.listen();
       const appPort = await getApplicationPort(app);
@@ -2034,7 +2036,7 @@ describe('@fluojs/websockets', () => {
       port: 0,
       shutdownTimeoutMs: 200,
     });
-    const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleService;
+    const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
 
     await app.listen();
     const port = await getApplicationPort(app);
@@ -2085,7 +2087,7 @@ describe('@fluojs/websockets', () => {
 
     await app.listen();
     const port = await getApplicationPort(app);
-    const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleService;
+      const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
 
     const responsePromise = readUpgradeResponse(port, createUpgradeRequest('/shutdown-guard-race'));
     await waitForAssertion(() => {

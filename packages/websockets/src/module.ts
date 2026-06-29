@@ -48,9 +48,9 @@ export class WebSocketModule {
               HttpApplicationAdapter,
               WebSocketModuleOptions,
             ];
-            const { NodeWebSocketGatewayLifecycleService } = await import('./node/node-service.js');
+            const { NodeWebSocketGatewayLifecycleServiceImplementation } = await import('./node/node-service.js');
 
-            return new NodeWebSocketGatewayLifecycleService(
+            return new NodeWebSocketGatewayLifecycleServiceImplementation(
               runtimeContainer,
               compiledModules,
               logger,

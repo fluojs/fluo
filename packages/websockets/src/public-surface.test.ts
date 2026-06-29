@@ -68,6 +68,10 @@ describe('@fluojs/websockets public surface', () => {
     }).toMatchSnapshot('runtime-subpaths');
   });
 
+  it('preserves the root and explicit Node lifecycle-service token identity', () => {
+    expect(websockets.WebSocketGatewayLifecycleService).toBe(node.NodeWebSocketGatewayLifecycleService);
+  });
+
   it('exposes gateway authoring primitives from every runtime subpath', () => {
     const runtimeSubpaths = [bun, deno, node, workers];
 
