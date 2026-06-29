@@ -7,7 +7,7 @@
 | surface | contract | version / notes |
 | --- | --- | --- |
 | **TypeScript** | `v6.0+` | `strict: true`, `experimentalDecorators: false`, `module: esnext`, generated configs avoid deprecated `baseUrl` aliasing |
-| **Babel** | `v7.26+` | Root workspace pins `@babel/core` `^7.26.10` and `@babel/plugin-proposal-decorators` `^7.28.0` with `{ version: '2023-11' }`. |
+| **Babel** | `v7.26+` | Root workspace pins `@babel/core` `^7.26.10`, `@babel/plugin-proposal-decorators` `^7.28.0` with `{ version: '2023-11' }`, and `@babel/preset-typescript` `^7.27.0`. |
 | **Vite** | `v6.2+` | Root workspace pins `vite` `^6.2.1` for dev bundling and build orchestration. |
 | **@fluojs/vite** | `v1.0+` | Generated non-Deno `vite.config.ts` files import `fluoDecoratorsPlugin()` from `@fluojs/vite`; the plugin owns Vite application-file decorator transforms and lazy Babel peer diagnostics. |
 | **Vitest** | `v3.0+` | Root workspace pins `vitest` `^3.0.8`; package-local configs commonly use `^3.2.4`. |
@@ -62,7 +62,7 @@
 | stage | tool | contract |
 | --- | --- | --- |
 | **Transform** | Babel | Applies the Stage 3 decorator transform through `@babel/plugin-proposal-decorators` with `{ version: '2023-11' }`. |
-| **Vite app transform** | `@fluojs/vite` | Generated `vite.config.ts` applies `fluoDecoratorsPlugin()` to application `.ts` files, skips tests/declarations/dependencies/non-TypeScript files, and reports missing Babel peers from the transform hook. |
+| **Vite app transform** | `@fluojs/vite` | Generated `vite.config.ts` applies `fluoDecoratorsPlugin()` to application `.ts` files, skips tests/declarations/dependencies/non-TypeScript files, runs `@babel/plugin-proposal-decorators` plus `@babel/preset-typescript`, and reports missing Babel peers from the transform hook. |
 | **Bundle** | Vite | Bundles generated applications for the selected runtime. |
 | **Validate** | `@fluojs/testing/vitest` + Vitest | Generated `vitest.config.ts` keeps `*.test.ts` and `*.spec.ts` files on the testing-specific Babel decorator transform instead of the Vite application transform. |
 | **Constraint** | Replacement tools | Replacing this chain, for example with direct `esbuild` decorator handling, is outside the documented support contract. |
