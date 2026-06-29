@@ -96,7 +96,7 @@ export class UserRepository {
 
 ### 여러 클라이언트를 위한 이름 있는 등록
 
-하나의 애플리케이션 컨테이너 안에서 여러 Prisma Client가 필요하다면 각 등록에 명시적인 `name`을 부여하고 `getPrismaServiceToken(name)`으로 대응되는 토큰을 주입하세요. 이름 있는 클라이언트를 사용할 때는 `@Transaction()`에 해당 서비스로 접근할 수 있는 accessor를 전달하세요.
+하나의 애플리케이션 컨테이너 안에서 여러 Prisma Client가 필요하다면 각 등록에 명시적인 `name`을 부여하고 `getPrismaServiceToken(name)`으로 대응되는 토큰을 주입하세요. 이름 있는 클라이언트를 사용할 때는 `@Transaction()`에 해당 서비스로 접근할 수 있는 accessor를 전달하세요. 기본 `@Transaction()` 해석은 Prisma service/facade 형태의 속성만 선택합니다. 다른 persistence 통합의 transaction-like 객체는 무시되므로 모호한 host에서는 명시적 accessor를 사용해야 합니다.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -158,7 +158,7 @@ await this.prisma.transaction(async () => {
 
 ### 종료와 status 계약
 
-`PrismaService.requestTransaction(...)`은 정상 serving 전과 중에는 사용할 수 있지만, 애플리케이션 shutdown이 시작된 뒤에는 새 요청 범위 트랜잭션을 거부합니다. 종료 중에는 열린 요청 트랜잭션을 abort하고, 가장 바깥 transaction boundary가 settle될 때까지 추적한 다음 `$disconnect()` 실행 전에 drain합니다. 기존 수동 `transaction(...)` boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 동일합니다. 해당 호출은 ambient Prisma transaction client를 재사용하고, 바깥 boundary가 끝날 때까지 `details.activeRequestTransactions`에 표시되며, 두 번째 Prisma transaction을 열지 않습니다.
+`PrismaService.requestTransaction(...)`은 정상 serving 전과 중에는 사용할 수 있지만, 애플리케이션 shutdown이 시작된 뒤에는 새 요청 범위 트랜잭션을 거부합니다. 종료 중에는 열린 요청 트랜잭션을 abort하고, 가장 바깥 transaction boundary가 settle될 때까지 추적한 다음 `$disconnect()` 실행 전에 drain합니다. 서비스 계층 및 수동 `transaction(...)` boundary도 `$disconnect()` 전에 drain되므로 shutdown이 활성 Prisma transaction과 경합하지 않습니다. 기존 수동 `transaction(...)` boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 동일합니다. 해당 호출은 ambient Prisma transaction client를 재사용하고, 바깥 boundary가 끝날 때까지 `details.activeRequestTransactions`에 표시되며, 두 번째 Prisma transaction을 열지 않습니다.
 
 `createPrismaPlatformStatusSnapshot(...)`와 `PrismaService.createPlatformStatusSnapshot()`은 같은 라이프사이클 계약을 진단 surface에 노출합니다.
 
@@ -233,7 +233,7 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 
 ### `Transaction`
 
-- 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 기본적으로 ambient `PrismaService`를 resolve하고, 이름 있는 client에는 accessor를 받을 수 있으며, 외부 경계에는 Prisma transaction option을 전달할 수 있습니다.
+- 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 기본적으로 Prisma service/facade 형태의 속성을 resolve하고, 이름 있는 client나 모호한 host에는 accessor를 받을 수 있으며, 외부 경계에는 Prisma transaction option을 전달할 수 있습니다.
 
 ### `PRISMA_CLIENT` (Token)
 
