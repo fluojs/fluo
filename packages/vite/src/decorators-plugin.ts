@@ -105,7 +105,7 @@ function shouldRequestBabelSourceMaps(config: Pick<ResolvedConfig, 'build' | 'co
  */
 function createFluoDecoratorsPlugin(importBabelCoreModule: BabelCoreImporter): Plugin {
   let shouldGenerateSourceMaps = false;
-  let babelCorePromise: Promise<BabelCoreModule> | undefined;
+  let babelCore: BabelCoreModule | undefined;
 
   return {
     name: 'fluo-babel-decorators',
@@ -118,10 +118,10 @@ function createFluoDecoratorsPlugin(importBabelCoreModule: BabelCoreImporter): P
       }
 
       const filePath = readViteFilePath(id);
-      babelCorePromise ??= loadBabelCore(filePath, importBabelCoreModule);
+      const loadedBabelCore = babelCore ?? (await loadBabelCore(filePath, importBabelCoreModule));
+      babelCore = loadedBabelCore;
 
-      const babelCore = await babelCorePromise;
-      const result = await babelCore
+      const result = await loadedBabelCore
         .transformAsync(code, {
           babelrc: false,
           configFile: false,
@@ -143,6 +143,12 @@ function createFluoDecoratorsPlugin(importBabelCoreModule: BabelCoreImporter): P
   };
 }
 
+/**
+ * Creates the Vite plugin used by generated fluo starter projects to transform
+ * TypeScript application files that contain TC39 standard decorators.
+ *
+ * @returns A Vite plugin that lazily loads Babel for eligible application `.ts` files.
+ */
 export function fluoDecoratorsPlugin(): Plugin {
   return createFluoDecoratorsPlugin(importBabelCore);
 }
