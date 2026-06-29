@@ -78,6 +78,13 @@ function isMongooseCreateOptionsCandidate(value: unknown): boolean {
     return false;
   }
 
+  if (
+    'session' in value &&
+    (value.session === null || value.session === undefined || isObjectLike(value.session))
+  ) {
+    return true;
+  }
+
   for (const key of MONGOOSE_CREATE_OPTION_KEYS) {
     if (key !== 'session' && key in value) {
       return true;

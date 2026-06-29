@@ -793,6 +793,56 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       await app.close();
     });
 
+    it('throws when model.create(doc, { session: null }) uses session-only single-document options', async () => {
+      const mongoosePackage = await import('./index.js');
+      const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(ExportedTransaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async create(name: string) {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.create({ name }, { session: null });
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @Transaction()
+        async create(name: string) {
+          return this.repo.create(name);
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      try {
+        await expect(service.create('Ada')).rejects.toThrow(
+          'Explicit session: null conflicts with ambient transaction session',
+        );
+        expect(events).not.toContain('model:User:create:session=set');
+      } finally {
+        await app.close();
+      }
+    });
+
     it('throws when model.find() receives { session: null } as the third options argument', async () => {
       const mongoosePackage = await import('./index.js');
       const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
@@ -888,6 +938,57 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       await expect(service.create('Ada')).rejects.toThrow('Explicit session conflicts with ambient transaction session');
 
       await app.close();
+    });
+
+    it('throws when model.create(doc, { session }) uses different session-only single-document options', async () => {
+      const mongoosePackage = await import('./index.js');
+      const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(ExportedTransaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+      const differentSession = createFakeSession([]);
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async create(name: string) {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.create({ name }, { session: differentSession });
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @Transaction()
+        async create(name: string) {
+          return this.repo.create(name);
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      try {
+        await expect(service.create('Ada')).rejects.toThrow(
+          'Explicit session conflicts with ambient transaction session',
+        );
+        expect(events).not.toContain('model:User:create:session=set');
+      } finally {
+        await app.close();
+      }
     });
 
     it('allows passing the same ambient session explicitly inside an active @Transaction() boundary', async () => {
