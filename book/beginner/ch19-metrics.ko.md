@@ -128,7 +128,7 @@ MetricsModule.forRoot({
 ```
 
 ### 19.4.1 Bucket Tuning for Latency
-히스토그램은 "버킷(buckets)"을 사용하여 서로 다른 시간 범위(예: <100ms, <500ms, <1s)에 얼마나 많은 요청이 속하는지 계산합니다. Fluo는 합리적인 기본값을 제공하지만, 초저지연 API의 경우 커스텀 버킷을 정의하고 싶을 수 있습니다. 예를 들어 목표가 50ms 미만 응답이라면 0-100ms 범위에서 더 세분화된 버킷을 갖도록 설정할 수 있습니다. 이러한 정밀함을 통해 성능 저하가 정확히 어디에서 발생하는지 확인할 수 있습니다.
+히스토그램은 "버킷(buckets)"을 사용하여 서로 다른 시간 범위(예: <100ms, <500ms, <1s)에 얼마나 많은 요청이 속하는지 계산합니다. 현재 내장 HTTP 히스토그램은 패키지 기본값을 사용하며 `MetricsModule.forRoot(...)` bucket option을 노출하지 않습니다. 초저지연 API에서 custom bucket boundary가 필요하다면 `MetricsService.histogram(...)`으로 애플리케이션 전용 히스토그램을 만들거나 별도 middleware가 소유하는 히스토그램을 추가해 custom bucket 계약을 명시적으로 유지하세요.
 
 ### 19.4.2 Response Size Tracking
 지연 시간 외에 응답 크기까지 보고 싶을 때가 많지만, 현재 기본 HTTP 메트릭 계약은 `http_requests_total`, `http_errors_total`, `http_request_duration_seconds`에 한정됩니다. 응답 크기 분포를 추적하고 싶다면 애플리케이션 전용 커스텀 메트릭이나 별도 미들웨어 계층으로 추가하는 편이 맞습니다.

@@ -128,7 +128,7 @@ MetricsModule.forRoot({
 ```
 
 ### 19.4.1 Bucket Tuning for Latency
-Histograms use buckets to count how many requests fall into different time ranges, for example, <100ms, <500ms, and <1s. Fluo provides reasonable defaults, but for ultra-low-latency APIs, you may want to define custom buckets. For example, if your target response time is under 50ms, you can configure more granular buckets in the 0-100ms range. This precision lets you see exactly where performance degradation occurs.
+Histograms use buckets to count how many requests fall into different time ranges, for example, <100ms, <500ms, and <1s. The built-in HTTP histogram currently uses the package defaults and does not expose a `MetricsModule.forRoot(...)` bucket option. For ultra-low-latency APIs that need custom bucket boundaries, create an application-specific `MetricsService.histogram(...)` or a dedicated middleware-owned histogram so the custom bucket contract stays explicit.
 
 ### 19.4.2 Response Size Tracking
 In addition to latency, you often want to see response size, but the current default HTTP metrics contract is limited to `http_requests_total`, `http_errors_total`, and `http_request_duration_seconds`. If you want to track response size distribution, it is better to add it as an application-specific custom metric or through a separate Middleware layer.

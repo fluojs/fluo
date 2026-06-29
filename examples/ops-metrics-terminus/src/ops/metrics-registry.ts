@@ -1,9 +1,23 @@
-import { PrometheusMeterProvider, Registry } from '@fluojs/metrics';
+import { ForbiddenException, type MiddlewareContext, type Next } from '@fluojs/http';
+import { MetricsModule, Registry } from '@fluojs/metrics';
+
+class MetricsTokenMiddleware {
+  async handle(context: MiddlewareContext, next: Next): Promise<void> {
+    if (context.request.headers['x-metrics-token'] !== 'secret-token') {
+      throw new ForbiddenException('Metrics endpoint requires x-metrics-token.');
+    }
+
+    await next();
+  }
+}
 
 export const sharedRegistry = new Registry();
-const meter = new PrometheusMeterProvider(sharedRegistry);
 
-export const exampleJobsTriggeredCounter = meter.createCounter(
-  'example_ops_jobs_triggered_total',
-  'Total number of example ops job trigger requests.',
-);
+export const opsMetricsModule = MetricsModule.forRoot({
+  endpointMiddleware: [MetricsTokenMiddleware],
+  http: {
+    pathLabelMode: 'template',
+    unknownPathLabel: 'UNKNOWN',
+  },
+  registry: sharedRegistry,
+});
