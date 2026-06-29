@@ -214,7 +214,7 @@ In this chapter, we explored data integrity, Fluo's transaction model, and the p
 - **Durability** guarantees that data remains safe after a system crash.
 - **ALS (AsyncLocalStorage)** lets repositories handle transactions transparently through `.current()`.
 - **Manual blocks** are used when a service needs precise control over a specific atomic operation.
-- **Interceptors** automatically keep an entire request consistent with the Unit of Work pattern.
+- **Request transaction boundaries** use `PrismaService.requestTransaction(...)` only when a rare request-wide transaction is truly needed.
 - **Service-Repository separation** keeps business rules, transactions, separate from query logic, SQL/Prisma.
 
 ### Persistence: Beyond Just Atomicity
@@ -225,7 +225,7 @@ When you use Fluo and Prisma, you build systems on a foundation that takes ACID 
 You should also think about how transaction integrity affects system scalability. A system that preserves high data quality through strict transactions is much easier to scale and understand than one full of partial writes and inconsistent states. As the system grows, these early architecture decisions return major value by reducing technical debt and production incidents.
 
 ### Advanced Transaction Patterns
-Beyond the basic block pattern and Interceptor pattern, Fluo also supports more advanced scenarios:
+Beyond the basic service-layer and request-transaction patterns, Fluo also supports more advanced scenarios:
 1. **Parallel transactions**: Running independent operations concurrently when they do not share the same resource dependencies.
 2. **Selective rollback**: Using finer-grained error handling to decide whether to roll back the whole block or handle the error gracefully without affecting the outer context.
 3. **Transaction hooks**: Running logic immediately before or after commit or rollback, useful for synchronization with external caches or message brokers.
@@ -240,7 +240,7 @@ Keep transactions concise, keep repositories independent of transactions, and le
 ### Transaction Logging and Auditing
 In production, knowing that a transaction happened is often not enough. You need to know *what* changed and *who* changed it. By integrating Fluo middleware with Prisma middleware or extensions, you can implement a transparent audit system that records every row-level change made inside a transaction. This "Audit Log" becomes a critical tool for debugging, security investigation, and regulatory compliance.
 
-You should also consider the role transaction timeouts play in keeping the system available. A long-running transaction that holds a lock on an important table can effectively freeze the whole application. In `fluo`, it is recommended to enforce strict timeouts at the application level through Interceptors and at the database level through DB settings so one abnormal request cannot monopolize resources.
+You should also consider the role transaction timeouts play in keeping the system available. A long-running transaction that holds a lock on an important table can effectively freeze the whole application. In `fluo`, keep service transactions short, pass explicit timeout/cancellation policy through application code when a request-wide `requestTransaction(...)` boundary is required, and set database-level timeouts so one abnormal request cannot monopolize resources.
 
 ### Distributed Transactions and Sagas
 When you move from a monolithic Fluo application to a microservices architecture, the idea of a "transaction" expands with it. You can no longer rely only on the ACID properties of a single database to coordinate changes across services. Instead, you need to adopt patterns such as the **Saga Pattern**, which uses a chain of local transactions and compensating actions to preserve data integrity across service boundaries. `fluo` provides building blocks for these advanced patterns, but your view of consistency has to change. You need to embrace "eventual consistency" rather than "immediate consistency."
