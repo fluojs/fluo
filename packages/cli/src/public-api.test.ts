@@ -6,22 +6,30 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
-  inspectUsage,
-  newUsage,
-  runCli,
-  runGenerateCommand,
-  runInspectCommand,
-  runNewCommand,
   type CliRuntimeOptions,
   type GeneratePlanAction,
   type GeneratePlanEntry,
   type GenerateResult,
   type InspectCommandRuntimeOptions,
+  inspectUsage,
   type ModuleRegistration,
   type NewCommandRuntimeOptions,
+  newUsage,
+  runCli,
+  runGenerateCommand,
+  runInspectCommand,
+  runNewCommand,
 } from './index.js';
 
 const tempDirectories: string[] = [];
+
+function expectNoEagerCommandLink(source: string, commandName: 'generate' | 'inspect' | 'new'): void {
+  const eagerCommandLink = new RegExp(
+    String.raw`(?:^|\n)\s*(?:import\s+(?!type\b)[^;]+from|export\s+\{[^}]*\}\s+from)\s+['"]\./commands/${commandName}\.js['"]`,
+  );
+
+  expect(source).not.toMatch(eagerCommandLink);
+}
 
 afterEach(() => {
   for (const directory of tempDirectories.splice(0)) {
@@ -45,6 +53,21 @@ describe('public CLI package API', () => {
     expect(rootEntrypoint).not.toContain("from './commands/inspect.js'");
     expect(rootEntrypoint).not.toContain("from './commands/new.js'");
     expect(runCliFacade).toContain("await import('./cli.js')");
+  });
+
+  it('keeps root public command facades from eagerly linking command implementations', () => {
+    const sourceRoot = dirname(fileURLToPath(import.meta.url));
+    const rootEntrypoint = readFileSync(join(sourceRoot, 'index.ts'), 'utf8');
+    const publicFacades = [
+      ['generate', readFileSync(join(sourceRoot, 'public-generate.ts'), 'utf8')],
+      ['inspect', readFileSync(join(sourceRoot, 'public-inspect.ts'), 'utf8')],
+      ['new', readFileSync(join(sourceRoot, 'public-new.ts'), 'utf8')],
+    ] as const;
+
+    for (const [commandName, facadeSource] of publicFacades) {
+      expect(rootEntrypoint).toContain(`from './public-${commandName}.js'`);
+      expectNoEagerCommandLink(facadeSource, commandName);
+    }
   });
 
   it('exports the documented generator and inspect programmatic surface from the root entrypoint', () => {

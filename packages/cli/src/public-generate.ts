@@ -1,1 +1,1 @@
-export { runGenerateCommand, type GeneratePlanAction, type GeneratePlanEntry, type GenerateResult } from './commands/generate.js';
+export { type GeneratePlanAction, type GeneratePlanEntry, type GenerateResult, runGenerateCommand } from './generate-command.js';

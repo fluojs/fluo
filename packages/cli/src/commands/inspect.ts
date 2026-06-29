@@ -15,8 +15,8 @@ import {
 } from '@fluojs/runtime';
 import { tsImport } from 'tsx/esm/api';
 
-import { renderAliasList, renderHelpTable } from '../help.js';
 import { CliPromptCancelledError, isCliPromptCancelledError } from '../prompt-cancel.js';
+import { inspectUsage } from '../usage.js';
 
 type CliStream = {
   write(message: string): unknown;
@@ -83,50 +83,6 @@ type InspectReport = {
   version: 1;
 };
 
-type InspectOptionHelpEntry = {
-  aliases: string[];
-  description: string;
-  option: string;
-};
-
-const INSPECT_OPTION_HELP: InspectOptionHelpEntry[] = [
-  {
-    aliases: [],
-    description: 'Emit the runtime platform snapshot/diagnostics payload as JSON (default when no output mode is selected).',
-    option: '--json',
-  },
-  {
-    aliases: [],
-    description: 'Emit a Mermaid graph through the optional @fluojs/studio rendering contract.',
-    option: '--mermaid',
-  },
-  {
-    aliases: [],
-    description: 'Include bootstrap timing diagnostics next to JSON inspect output.',
-    option: '--timing',
-  },
-  {
-    aliases: [],
-    description: 'Emit a CI-friendly JSON report with summary, snapshot, diagnostics, and timing.',
-    option: '--report',
-  },
-  {
-    aliases: [],
-    description: 'Write the selected inspect payload to a file instead of stdout.',
-    option: '--output <path>',
-  },
-  {
-    aliases: [],
-    description: 'Select the exported module symbol name (default: AppModule).',
-    option: '--export <name>',
-  },
-  {
-    aliases: ['-h'],
-    description: 'Show help for the inspect command.',
-    option: '--help',
-  },
-];
-
 const STUDIO_CONTRACT_ENTRYPOINT = '@fluojs/studio/contracts';
 const TYPESCRIPT_MODULE_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
 const STUDIO_MISSING_MESSAGE = [
@@ -136,26 +92,6 @@ const STUDIO_MISSING_MESSAGE = [
 
 function isHelpFlag(value: string | undefined): boolean {
   return value === '--help' || value === '-h';
-}
-
-/**
- * Returns the usage information string for the inspect command.
- *
- * @returns Formatted help text including usage and options.
- */
-export function inspectUsage(): string {
-  return [
-    'Usage: fluo inspect <module-path> [options]',
-    '',
-    'Options',
-    renderHelpTable(INSPECT_OPTION_HELP, [
-      { header: 'Option', render: (entry) => entry.option },
-      { header: 'Aliases', render: (entry) => renderAliasList(entry.aliases) },
-      { header: 'Description', render: (entry) => entry.description },
-    ]),
-    '',
-    'Docs: https://github.com/fluojs/fluo/tree/main/docs/getting-started/quick-start.md',
-  ].join('\n');
 }
 
 function parseInspectArgs(argv: string[]): ParsedInspectArgs {
