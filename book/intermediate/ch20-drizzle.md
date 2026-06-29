@@ -139,7 +139,7 @@ class ReportingService {
 }
 ```
 
-If you are migrating a NestJS controller/interceptor transaction pattern, do not look for a Drizzle transaction interceptor. Keep normal business atomicity on services. Use `requestTransaction(...)` at the controller or request orchestration boundary only when the whole request must share one transaction, and pass the request `AbortSignal` when your adapter exposes one.
+If you are migrating a NestJS controller/interceptor transaction pattern, do not look for a Drizzle transaction interceptor. Keep normal business atomicity on services. Use `requestTransaction(...)` at the controller or request orchestration boundary only when the whole request must share one transaction, and pass the request `AbortSignal` when your adapter exposes one. Controller-level `@Transaction()` is kept only as a compatibility path for controllers that own an explicit `DrizzleDatabase` target; prefer `requestTransaction(...)` for request-wide work because its cancellation input is explicit.
 
 ### Manual Transactions
 In fluo, the recommended way to handle transactions is using the `@Transaction()` decorator on service methods. For manual control, use the block pattern:
@@ -186,7 +186,7 @@ Using `DrizzleDatabaseFacade` lets repositories coordinate complex multi-table i
 
 The injected `DrizzleDatabase` wrapper exposes a snapshot method that matches the same public status contract used by diagnostics surfaces.
 During shutdown, active request transactions are aborted and drained before the configured dispose hook runs. Nested request transactions reuse the active Drizzle transaction handle; when they are opened inside a manual transaction, `activeRequestTransactions` reflects the nested request callback while it is still running and drops as soon as that callback settles.
-Open manual `transaction(...)` boundaries are also tracked during shutdown, so the dispose hook waits for their underlying Drizzle transaction runner to finish committing, rolling back, or cleaning up. New manual or request-scoped transaction boundaries are rejected after shutdown starts.
+Open manual `transaction(...)` boundaries are also tracked during shutdown, so the dispose hook waits for their underlying Drizzle transaction runner to finish committing, rolling back, or cleaning up. If `strictTransactions` is `false` and no `database.transaction(...)` runner exists, the fail-open direct-execution callback is tracked the same way and must settle before dispose runs. New manual or request-scoped transaction boundaries are rejected after shutdown starts.
 
 ```typescript
 import { Inject } from '@fluojs/core';

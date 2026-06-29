@@ -139,7 +139,7 @@ class ReportingService {
 }
 ```
 
-NestJS controller/interceptor transaction 패턴을 마이그레이션한다면 Drizzle transaction interceptor를 찾지 마세요. 일반적인 비즈니스 원자성은 서비스에 둡니다. 전체 request가 하나의 transaction을 공유해야 할 때만 controller 또는 request orchestration 경계에서 `requestTransaction(...)`을 사용하고, adapter가 제공한다면 request `AbortSignal`을 전달하세요.
+NestJS controller/interceptor transaction 패턴을 마이그레이션한다면 Drizzle transaction interceptor를 찾지 마세요. 일반적인 비즈니스 원자성은 서비스에 둡니다. 전체 request가 하나의 transaction을 공유해야 할 때만 controller 또는 request orchestration 경계에서 `requestTransaction(...)`을 사용하고, adapter가 제공한다면 request `AbortSignal`을 전달하세요. Controller-level `@Transaction()`은 controller가 명시적 `DrizzleDatabase` 대상을 소유하는 경우의 호환성 경로로만 유지됩니다. 요청 전체 작업에는 취소 입력이 명시적인 `requestTransaction(...)`을 우선 사용하세요.
 
 ### Manual Transactions
 fluo에서 권장되는 트랜잭션 처리 방식은 서비스 메서드에 `@Transaction()` 데코레이터를 사용하는 것입니다. 수동 제어가 필요한 경우 블록 패턴을 사용하십시오:
@@ -184,7 +184,7 @@ export const orders = pgTable('orders', {
 
 주입된 `DrizzleDatabase` 래퍼는 진단 surface와 같은 공개 상태 계약을 따르는 스냅샷 메서드를 제공합니다. 데이터베이스 풀이 끊기거나 지연이 커지는 상황을 애플리케이션 상태와 함께 확인할 수 있어 운영 판단이 빨라집니다.
 종료 중에는 활성 request transaction을 abort하고 drain한 뒤 설정된 dispose hook을 실행합니다. 중첩 request transaction은 활성 Drizzle transaction handle을 재사용하며, 수동 transaction 안에서 열렸다면 `activeRequestTransactions`는 해당 중첩 request callback이 실행 중인 동안만 반영되고 callback이 settle되는 즉시 감소합니다.
-열린 수동 `transaction(...)` boundary도 종료 중 tracking되므로, dispose hook은 underlying Drizzle transaction runner가 commit, rollback, cleanup을 마칠 때까지 기다립니다. 종료가 시작된 뒤에는 새 수동 또는 요청 스코프 transaction boundary가 거부됩니다.
+열린 수동 `transaction(...)` boundary도 종료 중 tracking되므로, dispose hook은 underlying Drizzle transaction runner가 commit, rollback, cleanup을 마칠 때까지 기다립니다. `strictTransactions`가 `false`이고 `database.transaction(...)` runner가 없다면 fail-open 직접 실행 callback도 같은 방식으로 tracking되어 dispose 전에 settle되어야 합니다. 종료가 시작된 뒤에는 새 수동 또는 요청 스코프 transaction boundary가 거부됩니다.
 
 ```typescript
 import { Inject } from '@fluojs/core';
