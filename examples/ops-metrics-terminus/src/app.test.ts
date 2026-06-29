@@ -50,4 +50,26 @@ describe('AppModule e2e', () => {
       await app.close();
     }
   });
+
+  it('reuses the shared custom counter across repeated app bootstraps', async () => {
+    const firstApp = await createTestApp({ rootModule: AppModule });
+
+    try {
+      await expect(firstApp.request('GET', '/ops/jobs/trigger').send()).resolves.toMatchObject({
+        status: 200,
+      });
+    } finally {
+      await firstApp.close();
+    }
+
+    const secondApp = await createTestApp({ rootModule: AppModule });
+
+    try {
+      await expect(secondApp.request('GET', '/metrics').header('x-metrics-token', 'secret-token').send()).resolves.toMatchObject({
+        status: 200,
+      });
+    } finally {
+      await secondApp.close();
+    }
+  });
 });
