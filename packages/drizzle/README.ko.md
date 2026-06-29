@@ -182,11 +182,11 @@ export class CheckoutController {
 }
 ```
 
-import할 수 있는 Drizzle `*TransactionInterceptor` export는 없습니다. 기존 NestJS interceptor 설계는 대부분의 transaction boundary를 서비스로 옮기고, 전체 request 작업이 서비스 메서드 하나가 아니라 같은 boundary를 공유해야 하는 드문 controller-level 호환성 사례에만 명시적 `requestTransaction(...)`을 남기세요.
+import할 수 있는 Drizzle `*TransactionInterceptor` export는 없습니다. 기존 NestJS interceptor 설계는 대부분의 transaction boundary를 서비스로 옮기고, 전체 request 작업이 서비스 메서드 하나가 아니라 같은 boundary를 공유해야 하는 드문 controller-level 호환성 사례에만 명시적 `requestTransaction(...)`을 남기세요. controller가 명시적 `DrizzleDatabase` 대상을 소유한다면 controller method에 `@Transaction()`을 붙이는 방식도 호환성 경로로 유지되지만, request `AbortSignal`을 직접 받을 수 있는 `requestTransaction(...)`이 더 명확한 request-wide API입니다.
 
 ### 종료와 상태 계약
 
-애플리케이션 종료 중에는 `DrizzleDatabase`가 아직 활성 상태인 요청 트랜잭션을 abort하고, 열린 요청 및 수동 transaction callback이 settle되거나 rollback될 때까지 기다린 뒤 선택적 `dispose(database)` hook을 실행합니다. 이 순서는 pool이나 외부 관리 리소스를 닫기 전에 driver가 commit/rollback/cleanup 작업을 끝낼 수 있게 보장합니다.
+애플리케이션 종료 중에는 `DrizzleDatabase`가 아직 활성 상태인 요청 트랜잭션을 abort하고, 열린 요청 및 수동 transaction callback이 settle되거나 rollback될 때까지 기다린 뒤 선택적 `dispose(database)` hook을 실행합니다. 여기에는 `database.transaction(...)`을 사용할 수 없고 `strictTransactions`가 `false`일 때의 fail-open 수동 `transaction(...)` callback도 포함되므로, 직접 실행 fallback도 pool이나 외부 관리 리소스를 닫기 전에 drain됩니다.
 기존 요청 boundary 안에서 열린 중첩 `requestTransaction(...)` 호출은 활성 Drizzle transaction을 재사용하면서도 ambient request abort signal을 관찰합니다. 기존 수동 transaction boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 두 번째 Drizzle transaction을 열지 않고 shutdown settlement tracking에 참여하며, 해당 settlement handle은 바깥 수동 transaction이 settle될 때까지 tracking에 남아 shutdown이 `dispose(database)`를 실행하기 전에 그 바깥 경계까지 drain하게 합니다. 단, platform status activity count는 더 짧게 유지됩니다. 중첩 request callback이 settle되는 즉시, 바깥 수동 transaction이 계속 실행 중이어도 `details.activeRequestTransactions`는 감소합니다.
 종료가 시작된 뒤 새 `transaction(...)` 및 `requestTransaction(...)` 호출은 거부되므로, 종료 boundary를 지난 뒤 시작되는 늦은 트랜잭션보다 dispose가 먼저 실행되는 상황을 방지합니다.
 요청 callback이 완료된 뒤 underlying Drizzle transaction runner가 commit 또는 rollback을 끝내기 전에 request signal이 abort되면, `requestTransaction(...)`은 먼저 해당 runner가 settle될 때까지 기다린 다음 abort reason으로 reject합니다. 이 동작은 Drizzle cleanup을 request cancellation과 직렬화하면서, 완료된 callback 결과를 반환하는 대신 늦은 request abort를 caller에게 드러냅니다.
