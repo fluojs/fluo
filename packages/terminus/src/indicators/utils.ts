@@ -6,6 +6,31 @@ export interface IndicatorTimeoutOptions {
   timeoutMs?: number;
 }
 
+function normalizePositiveFiniteTimeoutMs(timeoutMs: number, indicatorName: string): number {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error(`${indicatorName} health indicator timeoutMs must be a positive finite number.`);
+  }
+
+  return Math.max(1, Math.floor(timeoutMs));
+}
+
+/**
+ * Resolve an indicator timeout budget before it reaches timeout scheduling.
+ *
+ * @param timeoutMs Caller-provided timeout budget in milliseconds.
+ * @param defaultTimeoutMs Default timeout budget used when `timeoutMs` is omitted.
+ * @param indicatorName Indicator name used in timeout validation errors.
+ * @returns A positive integer timeout budget in milliseconds.
+ * @throws {Error} When the resolved timeout is zero, negative, `NaN`, or infinite.
+ */
+export function resolveIndicatorTimeoutMs(
+  timeoutMs: number | undefined,
+  defaultTimeoutMs: number,
+  indicatorName: string,
+): number {
+  return normalizePositiveFiniteTimeoutMs(timeoutMs ?? defaultTimeoutMs, indicatorName);
+}
+
 /**
  * Create an `up` indicator result payload.
  *
@@ -57,10 +82,18 @@ export function withIndicatorTimeout<T>(
   timeoutMs: number,
   indicatorName: string,
 ): Promise<T> {
+  let normalizedTimeoutMs: number;
+
+  try {
+    normalizedTimeoutMs = normalizePositiveFiniteTimeoutMs(timeoutMs, indicatorName);
+  } catch (error: unknown) {
+    return Promise.reject(error);
+  }
+
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new Error(`${indicatorName} health indicator timed out after ${String(timeoutMs)}ms.`));
-    }, timeoutMs);
+      reject(new Error(`${indicatorName} health indicator timed out after ${String(normalizedTimeoutMs)}ms.`));
+    }, normalizedTimeoutMs);
 
     promise.then(
       (value) => {
