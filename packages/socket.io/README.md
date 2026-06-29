@@ -20,9 +20,11 @@ Socket.IO v4 gateway adapter for the fluo runtime.
 npm install @fluojs/core @fluojs/socket.io @fluojs/websockets socket.io
 ```
 
+`@fluojs/socket.io` declares a Node.js 20+ package floor for Node-backed adapters. Install the `@fluojs/websockets` companion as well: Socket.IO gateway authoring reuses `@WebSocketGateway`, `@OnMessage`, and lifecycle decorators from that package.
+
 ## When to Use
 
-Use this package when you need advanced real-time features like rooms, namespaces, broadcasting, and automatic reconnection provided by [Socket.IO](https://socket.io/). This adapter integrates Socket.IO v4 into fluo's decorator-based architecture, sharing the same `@WebSocketGateway` core as raw websockets.
+Use this package when you need advanced real-time features like rooms, namespaces, broadcasting, and automatic reconnection provided by [Socket.IO](https://socket.io/). This adapter integrates Socket.IO v4 into fluo's decorator-based architecture, sharing the same `@WebSocketGateway` core as raw websockets. It targets Node.js 20+ server-backed adapters and the official Bun engine path; Deno and Workers are not supported by this Socket.IO adapter.
 
 ## Quick Start
 
@@ -141,7 +143,7 @@ During application shutdown, Socket.IO owns cleanup for connected Socket.IO clie
 
 ### Guard contracts
 
-`auth.connection` receives `SocketIoConnectionGuardContext` before namespace connect handlers run. `auth.message` receives `SocketIoMessageGuardContext` before message handlers run. Guards can return `true`, `false`, or a `SocketIoGuardRejection` with `message`, optional `data`, and optional `disconnect`; message rejections use ACK payloads shaped as `{ error, data }`.
+`auth.connection` receives `SocketIoConnectionGuardContext` before namespace connect handlers run. `auth.message` receives `SocketIoMessageGuardContext` before message handlers run. Guards accept by returning `true`, `undefined`, or no value. They reject by returning `false` or a `SocketIoGuardRejection` with `message`, optional `data`, and optional `disconnect`; message rejections use ACK payloads shaped as `{ error, data }`. `SocketIoHandshakeRequest` stays runtime-neutral at the root export: Node-backed adapters provide a structurally typed HTTP handshake request and Bun provides a Web-standard `Request`.
 
 ### Bun-specific notes
 
@@ -162,14 +164,14 @@ Register Socket.IO through module imports in the owning module so namespace/mess
 - `SocketIoLifecycleService`: Lifecycle-backed implementation behind the server and room-service tokens; application code should usually inject `SOCKETIO_SERVER` or `SOCKETIO_ROOM_SERVICE` instead.
 - Types: `SocketIoModuleOptions`, `SocketIoHandshakeRequest`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
 
-`SocketIoModuleOptions` covers `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, and `transports`. `global` defaults to `true`, which keeps `SOCKETIO_SERVER` and `SOCKETIO_ROOM_SERVICE` visible across the app; set it to `false` when you want module-local provider visibility. A supported Node.js server-backed runtime adapter or the official Bun engine host is required; unsupported/noop adapters fail fast during bootstrap.
+`SocketIoModuleOptions` covers `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, and `transports`. `global` defaults to `true`, which keeps `SOCKETIO_SERVER` and `SOCKETIO_ROOM_SERVICE` visible across the app; set it to `false` when you want module-local provider visibility. A supported Node.js 20+ server-backed runtime adapter or the official Bun engine host is required; unsupported/noop adapters fail fast during bootstrap. Bun requires static CORS shapes and does not support `@WebSocketGateway({ serverBacked })`.
 
 ## Supported Platforms
 
 | Platform | Support | Note |
 | --- | --- | --- |
-| Node.js (Raw/Express/Fastify) | ✅ Full | Server-backed mode |
-| Bun | ✅ Full | Via `@socket.io/bun-engine` |
+| Node.js (Raw/Express/Fastify) | ✅ Full | Node.js 20+ server-backed mode |
+| Bun | ✅ Full | Via `@socket.io/bun-engine`; static CORS only, no `serverBacked` gateways |
 | Deno | ❌ None | Not currently supported |
 | Workers | ❌ None | Not currently supported |
 

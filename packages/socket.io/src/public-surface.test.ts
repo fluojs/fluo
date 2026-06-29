@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import type { IncomingMessage } from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { WebSocketRoomService } from '@fluojs/websockets';
@@ -68,8 +69,13 @@ describe('@fluojs/socket.io public surface', () => {
     expectTypeOf<Parameters<SocketIoRoomService['broadcastToRoom']>[0]>().toEqualTypeOf<string>();
   });
 
-  it('documents the exported handshake request type used by guard contexts', () => {
-    expectTypeOf<SocketIoHandshakeRequest>().toEqualTypeOf<import('node:http').IncomingMessage | Request>();
+  it('keeps the root handshake request type runtime-neutral while accepting Node and Bun request shapes', () => {
+    const typesSource = readFileSync(resolve(sourceDir, 'types.ts'), 'utf8');
+
+    expect(typesSource).not.toContain("from 'node:http'");
+    expect(typesSource).not.toContain('import(\'node:http\')');
+    expectTypeOf<IncomingMessage>().toMatchTypeOf<SocketIoHandshakeRequest>();
+    expectTypeOf<Request>().toMatchTypeOf<SocketIoHandshakeRequest>();
     expectTypeOf<RootSocketIoHandshakeRequest>().toEqualTypeOf<SocketIoHandshakeRequest>();
     expectTypeOf<SocketIoConnectionGuardContext['request']>().toEqualTypeOf<SocketIoHandshakeRequest>();
     expectTypeOf<SocketIoMessageGuardContext['request']>().toEqualTypeOf<SocketIoHandshakeRequest>();

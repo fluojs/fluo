@@ -31,7 +31,7 @@ import { SocketIoLifecycleService } from './adapter.js';
 import * as publicApi from './index.js';
 import { SocketIoModule } from './module.js';
 import { SOCKETIO_ROOM_SERVICE, SOCKETIO_SERVER } from './tokens.js';
-import type { SocketIoModuleOptions, SocketIoRoomService } from './types.js';
+import type { SocketIoHandshakeRequest, SocketIoModuleOptions, SocketIoRoomService } from './types.js';
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -830,6 +830,61 @@ describe('@fluojs/socket.io', () => {
     expect(acknowledgements).toEqual([]);
   });
 
+  it('delivers handler-level acknowledgement callbacks explicitly', async () => {
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/ack-callback' })
+    class AckGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('ping')
+      onPing(
+        payload: unknown,
+        _socket: Socket,
+        _request: SocketIoHandshakeRequest,
+        acknowledgement?: (response: { event: string; payload: unknown }) => void,
+      ) {
+        this.state.messages.push(payload);
+        acknowledgement?.({ event: 'pong', payload });
+        return { ignored: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
+      providers: [GatewayState, AckGateway],
+    });
+
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+    let socket: ClientSocket | undefined;
+
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
+      const activeSocket = createClient(`http://127.0.0.1:${String(port)}/ack-callback`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      socket = activeSocket;
+      await onceConnected(activeSocket);
+
+      const acknowledgement = await new Promise<unknown>((resolve) => {
+        activeSocket.emit('ping', { id: 'ack-1' }, (response: unknown) => resolve(response));
+      });
+
+      expect(acknowledgement).toEqual({ event: 'pong', payload: { id: 'ack-1' } });
+      expect(state.messages).toEqual([{ id: 'ack-1' }]);
+    } finally {
+      socket?.close();
+      await app.close();
+    }
+  });
+
   it('rejects incomplete server-like bridge objects before constructing Socket.IO', () => {
     const service = new SocketIoLifecycleService(
       {} as never,
@@ -1025,6 +1080,73 @@ describe('@fluojs/socket.io', () => {
       expect(error.message).toBe('Socket.IO connection rejected.');
       expect(error.data).toBeUndefined();
       expect(state.connectCount).toBe(0);
+    } finally {
+      socket?.close();
+      await app.close();
+    }
+  });
+
+  it('accepts connection and message guards that return undefined', async () => {
+    const guardCalls: string[] = [];
+
+    class GatewayState {
+      connectCount = 0;
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/guard-undefined' })
+    class GuardedGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      onConnect() {
+        this.state.connectCount += 1;
+      }
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({
+        auth: {
+          connection() {
+            guardCalls.push('connection');
+          },
+          message({ payload }) {
+            guardCalls.push(`message:${String(payload)}`);
+          },
+        },
+        transports: ['websocket'],
+      })],
+      providers: [GatewayState, GuardedGateway],
+    });
+
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+    let socket: ClientSocket | undefined;
+
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
+      const activeSocket = createClient(`http://127.0.0.1:${String(port)}/guard-undefined`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      socket = activeSocket;
+      await onceConnected(activeSocket);
+
+      activeSocket.emit('ping', 'accepted');
+      await waitForExpectation(() => {
+        expect(state.messages).toEqual(['accepted']);
+      });
+
+      expect(state.connectCount).toBe(1);
+      expect(guardCalls).toEqual(['connection', 'message:accepted']);
     } finally {
       socket?.close();
       await app.close();
@@ -1845,6 +1967,16 @@ describe('@fluojs/socket.io', () => {
         this.state.adminMessages.push(payload);
         this.rooms.broadcastToRoom('shared-room', 'admin:broadcast', payload);
       }
+
+      @OnMessage('probe')
+      onProbe(
+        _payload: unknown,
+        _socket: Socket,
+        _request: SocketIoHandshakeRequest,
+        acknowledgement?: (response: string) => void,
+      ) {
+        acknowledgement?.('admin-probe-complete');
+      }
     }
 
     class AppModule {}
@@ -1863,36 +1995,41 @@ describe('@fluojs/socket.io', () => {
         await app.listen();
         const port = getBoundPortFromAdapter(adapter);
 
-        chatSocket = createClient(`http://127.0.0.1:${String(port)}/chat`, {
+        const activeChatSocket = createClient(`http://127.0.0.1:${String(port)}/chat`, {
           reconnection: false,
           transports: ['websocket'],
         });
-        adminSocket = createClient(`http://127.0.0.1:${String(port)}/admin`, {
+        const activeAdminSocket = createClient(`http://127.0.0.1:${String(port)}/admin`, {
           reconnection: false,
           transports: ['websocket'],
         });
+        chatSocket = activeChatSocket;
+        adminSocket = activeAdminSocket;
 
-        await Promise.all([onceConnected(chatSocket), onceConnected(adminSocket)]);
+        await Promise.all([onceConnected(activeChatSocket), onceConnected(activeAdminSocket)]);
 
-        const chatBroadcast = onceEvent<string>(chatSocket, 'chat:broadcast');
-        let adminReceivedChatBroadcast = false;
-        adminSocket.once('chat:broadcast', () => {
-          adminReceivedChatBroadcast = true;
+        const chatBroadcast = onceEvent<string>(activeChatSocket, 'chat:broadcast');
+        const unexpectedAdminChatBroadcasts: unknown[] = [];
+        activeAdminSocket.on('chat:broadcast', (payload: unknown) => {
+          unexpectedAdminChatBroadcasts.push(payload);
         });
 
-        chatSocket.emit('ping', 'chat-message');
+        activeChatSocket.emit('ping', 'chat-message');
 
         expect(await chatBroadcast).toBe('chat-message');
-        await new Promise((resolve) => setTimeout(resolve, 25));
+        const adminProbe = await new Promise<unknown>((resolve) => {
+          activeAdminSocket.emit('probe', 'after-chat-broadcast', (response: unknown) => resolve(response));
+        });
 
-        expect(adminReceivedChatBroadcast).toBe(false);
+        expect(adminProbe).toBe('admin-probe-complete');
+        expect(unexpectedAdminChatBroadcasts).toEqual([]);
         expect(state.chatMessages).toEqual(['chat-message']);
         expect(state.adminMessages).toEqual([]);
 
-        const chatDisconnected = onceDisconnected(chatSocket);
-        const adminDisconnected = onceDisconnected(adminSocket);
-        chatSocket.disconnect();
-        adminSocket.disconnect();
+        const chatDisconnected = onceDisconnected(activeChatSocket);
+        const adminDisconnected = onceDisconnected(activeAdminSocket);
+        activeChatSocket.disconnect();
+        activeAdminSocket.disconnect();
         await Promise.all([chatDisconnected, adminDisconnected]);
       } finally {
         chatSocket?.close();

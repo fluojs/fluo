@@ -38,7 +38,7 @@
 
 ### adapters
 - **`platform-*`**: 저장소 정책상 `PlatformAdapter`라고 부르는 접점을 구현합니다. HTTP 런타임 패키지는 `@fluojs/http`의 `HttpApplicationAdapter`로 이를 충족합니다. 추상 HTTP 호출을 런타임별 리스너에 연결합니다.
-- **`@fluojs/socket.io`**: Socket.IO v4를 fluo gateway와 통합하는 전용 전송 브랜드 어댑터입니다. 패키지 수준 런타임 제한을 함께 보존합니다. Node.js server-backed adapter와 공식 Bun engine path를 지원하고, Deno와 Workers는 지원하지 않으며, Bun에서는 static CORS shape가 필요합니다. Socket.IO shutdown 중 adapter-owned/shared HTTP listener의 소유권은 platform adapter에 남고, 명시적인 numeric payload/buffer/shutdown option이 잘못되면 빠르게 실패합니다.
+- **`@fluojs/socket.io`**: Socket.IO v4를 fluo gateway와 통합하는 전용 전송 브랜드 어댑터입니다. 패키지 수준 런타임 제한을 함께 보존합니다. Node.js 20+ server-backed adapter와 공식 Bun engine path를 지원하고, Deno와 Workers는 지원하지 않으며, Bun에서는 static CORS shape가 필요하고 `@WebSocketGateway({ serverBacked })`를 거부합니다. Socket.IO shutdown 중 adapter-owned/shared HTTP listener의 소유권은 platform adapter에 남고, 명시적인 numeric payload/buffer/shutdown option이 잘못되면 빠르게 실패합니다.
 
 ### features
 - **`@fluojs/http`**: 라우팅, 가드, 인터셉터, 예외 처리.
