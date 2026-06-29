@@ -37,6 +37,15 @@ type ActiveRequestTransactionHandle = {
   settle(): void;
 };
 
+type ActiveTransactionBoundary = {
+  settled: Promise<void>;
+};
+
+type ActiveTransactionBoundaryHandle = {
+  active: ActiveTransactionBoundary;
+  settle(): void;
+};
+
 type TransactionAbortSignalSupport = 'unknown' | 'supported' | 'unsupported';
 
 type TransactionContext<TTransactionClient> = {
@@ -151,6 +160,7 @@ export class PrismaService<
 {
   private readonly transactions = createTransactionContextStore<TTransactionClient>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
+  private readonly activeTransactionBoundaries = new Set<ActiveTransactionBoundary>();
   private transactionAbortSignalSupport: TransactionAbortSignalSupport = 'unknown';
   private lifecycleState: 'created' | 'ready' | 'shutting-down' | 'stopped' = 'created';
 
@@ -234,28 +244,34 @@ export class PrismaService<
       return fn();
     }
 
-    if (typeof this.client.$transaction !== 'function') {
-      if (this.serviceOptions.strictTransactions) {
-        throw new Error('Transaction not supported: Prisma client does not implement $transaction.');
-      }
-
-      return fn();
-    }
-
-    this.assertTransactionContextAvailable();
-
-    const deferredRequestTransactionHandles = new Set<ActiveRequestTransactionHandle>();
+    const activeTransaction = this.trackActiveTransactionBoundary();
 
     try {
-      return await run(
-        (transactionClient) =>
-          this.transactions.run({ client: transactionClient, deferredRequestTransactionHandles }, fn),
-        options,
-      );
-    } finally {
-      for (const handle of deferredRequestTransactionHandles) {
-        this.untrackActiveRequestTransaction(handle);
+      if (typeof this.client.$transaction !== 'function') {
+        if (this.serviceOptions.strictTransactions) {
+          throw new Error('Transaction not supported: Prisma client does not implement $transaction.');
+        }
+
+        return await fn();
       }
+
+      this.assertTransactionContextAvailable();
+
+      const deferredRequestTransactionHandles = new Set<ActiveRequestTransactionHandle>();
+
+      try {
+        return await run(
+          (transactionClient) =>
+            this.transactions.run({ client: transactionClient, deferredRequestTransactionHandles }, fn),
+          options,
+        );
+      } finally {
+        for (const handle of deferredRequestTransactionHandles) {
+          this.untrackActiveRequestTransaction(handle);
+        }
+      }
+    } finally {
+      this.untrackActiveTransactionBoundary(activeTransaction);
     }
   }
 
@@ -275,6 +291,7 @@ export class PrismaService<
     }
 
     await Promise.allSettled(Array.from(this.activeRequestTransactions, (transaction) => transaction.settled));
+    await Promise.allSettled(Array.from(this.activeTransactionBoundaries, (transaction) => transaction.settled));
 
     if (typeof this.client.$disconnect === 'function') {
       await this.client.$disconnect();
@@ -544,6 +561,24 @@ export class PrismaService<
 
   private untrackActiveRequestTransaction(handle: ActiveRequestTransactionHandle): void {
     untrackActiveRequestTransaction(this.activeRequestTransactions, handle);
+  }
+
+  private trackActiveTransactionBoundary(): ActiveTransactionBoundaryHandle {
+    let settle!: () => void;
+    const active: ActiveTransactionBoundary = {
+      settled: new Promise<void>((resolve) => {
+        settle = resolve;
+      }),
+    };
+
+    this.activeTransactionBoundaries.add(active);
+
+    return { active, settle };
+  }
+
+  private untrackActiveTransactionBoundary(handle: ActiveTransactionBoundaryHandle): void {
+    this.activeTransactionBoundaries.delete(handle.active);
+    handle.settle();
   }
 }
 

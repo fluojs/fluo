@@ -130,24 +130,27 @@ describe('@fluojs/prisma', () => {
     const app = await bootstrapApplication({
       rootModule: AppModule,
     });
-    const service = await app.container.resolve(UserService);
 
-    expect(events).toEqual(['connect']);
-    await expect(service.findById('user-1')).resolves.toEqual({ id: 'user-1' });
-    await expect(service.create('ada@example.com')).resolves.toEqual({
-      email: 'ada@example.com',
-      id: 'tx-user',
-    });
+    try {
+      const service = await app.container.resolve(UserService);
 
-    expect(events).toEqual([
-      'connect',
-      'root:find:user-1',
-      'transaction:start',
-      'tx:create:ada@example.com',
-      'transaction:end',
-    ]);
+      expect(events).toEqual(['connect']);
+      await expect(service.findById('user-1')).resolves.toEqual({ id: 'user-1' });
+      await expect(service.create('ada@example.com')).resolves.toEqual({
+        email: 'ada@example.com',
+        id: 'tx-user',
+      });
 
-    await app.close();
+      expect(events).toEqual([
+        'connect',
+        'root:find:user-1',
+        'transaction:start',
+        'tx:create:ada@example.com',
+        'transaction:end',
+      ]);
+    } finally {
+      await app.close();
+    }
 
     expect(events).toEqual([
       'connect',
@@ -186,18 +189,21 @@ describe('@fluojs/prisma', () => {
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const prisma = await app.container.resolve(PrismaService<typeof client>);
-    const prismaByToken = await app.container.resolve(getPrismaServiceToken());
-    const rawClient = await app.container.resolve(PRISMA_CLIENT);
-    const moduleOptions = await app.container.resolve(PRISMA_OPTIONS);
 
-    expect(prisma).toBeInstanceOf(PrismaService);
-    expect(prismaByToken).toBe(prisma);
-    expect(rawClient).toBe(client);
-    expect(moduleOptions).toEqual({ strictTransactions: false });
-    expect(events).toEqual(['connect']);
+    try {
+      const prisma = await app.container.resolve(PrismaService<typeof client>);
+      const prismaByToken = await app.container.resolve(getPrismaServiceToken());
+      const rawClient = await app.container.resolve(PRISMA_CLIENT);
+      const moduleOptions = await app.container.resolve(PRISMA_OPTIONS);
 
-    await app.close();
+      expect(prisma).toBeInstanceOf(PrismaService);
+      expect(prismaByToken).toBe(prisma);
+      expect(rawClient).toBe(client);
+      expect(moduleOptions).toEqual({ strictTransactions: false });
+      expect(events).toEqual(['connect']);
+    } finally {
+      await app.close();
+    }
 
     expect(events).toEqual(['connect', 'disconnect']);
   });
@@ -865,34 +871,98 @@ describe('@fluojs/prisma', () => {
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
-    const outerTransaction = prisma.transaction(async () =>
-      prisma.requestTransaction(async () => new Promise<never>(() => undefined)),
-    );
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 1 });
+    try {
+      const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
+      const outerTransaction = prisma.transaction(async () =>
+        prisma.requestTransaction(async () => new Promise<never>(() => undefined)),
+      );
 
-    const shutdown = app.close();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 1 });
 
-    expect(events).toContain('transaction:rollback:pending');
-    expect(events).not.toContain('disconnect');
+      const shutdown = app.close();
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-    releaseRollback();
+      expect(events).toContain('transaction:rollback:pending');
+      expect(events).not.toContain('disconnect');
 
-    await expect(outerTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
-    await shutdown;
+      releaseRollback();
 
-    expect(events).toEqual([
-      'connect',
-      'transaction:start',
-      'transaction:rollback:pending',
-      'transaction:rollback:done',
-      'transaction:end',
-      'disconnect',
-    ]);
-    expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 0 });
+      await expect(outerTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+      await shutdown;
+
+      expect(events).toEqual([
+        'connect',
+        'transaction:start',
+        'transaction:rollback:pending',
+        'transaction:rollback:done',
+        'transaction:end',
+        'disconnect',
+      ]);
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 0 });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('waits for service transaction boundaries before disconnecting on shutdown', async () => {
+    const events: string[] = [];
+    let releaseTransaction!: () => void;
+    const transactionBarrier = new Promise<void>((resolve) => {
+      releaseTransaction = resolve;
+    });
+    const transactionClient = {
+      kind: 'transaction' as const,
+    };
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+
+        try {
+          return await callback(transactionClient);
+        } finally {
+          events.push('transaction:end');
+        }
+      },
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot<typeof client, typeof transactionClient>({ client })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
+      const openTransaction = prisma.transaction(async () => {
+        await transactionBarrier;
+        return 'settled';
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const shutdown = app.close();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(events).toEqual(['connect', 'transaction:start']);
+
+      releaseTransaction();
+
+      await expect(openTransaction).resolves.toBe('settled');
+      await shutdown;
+
+      expect(events).toEqual(['connect', 'transaction:start', 'transaction:end', 'disconnect']);
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects new request transactions while shutdown is draining or stopped', async () => {
