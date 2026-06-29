@@ -18,6 +18,26 @@ describe('DrizzleHealthIndicator', () => {
     expect(execute).toHaveBeenCalledWith('select 1');
   });
 
+  it('rejects invalid timeoutMs before starting the Drizzle probe', async () => {
+    const execute = vi.fn(async (_query: unknown) => undefined);
+    const indicator = createDrizzleHealthIndicator({
+      database: { execute },
+      timeoutMs: Number.POSITIVE_INFINITY,
+    });
+
+    await expect(indicator.check('drizzle')).rejects.toMatchObject({
+      causes: {
+        drizzle: {
+          message: 'drizzle health indicator timeoutMs must be a positive finite number.',
+          status: 'down',
+        },
+      },
+      message: 'Drizzle health check failed.',
+      name: 'HealthCheckError',
+    } satisfies Partial<HealthCheckError>);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it('maps Drizzle lifecycle readiness before pinging', async () => {
     const execute = vi.fn(async (_query: unknown) => undefined);
     const indicator = createDrizzleHealthIndicator({
