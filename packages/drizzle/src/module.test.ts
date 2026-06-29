@@ -377,6 +377,8 @@ describe('@fluojs/drizzle', () => {
       rootModule: AppModule,
     });
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database>);
+    let transactionReleased = false;
+    let shutdownPromise: Promise<void> | undefined;
 
     const openTransaction = drizzle.transaction(async () => {
       events.push('fallback:start');
@@ -385,20 +387,33 @@ describe('@fluojs/drizzle', () => {
       return 'fallback-result';
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const shutdownPromise = app.close();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+      shutdownPromise = app.close();
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(events).toEqual(['fallback:start']);
-    expect(events).not.toContain('dispose');
+      expect(events).toEqual(['fallback:start']);
+      expect(events).not.toContain('dispose');
 
-    releaseTransaction();
+      transactionReleased = true;
+      releaseTransaction();
 
-    await expect(openTransaction).resolves.toBe('fallback-result');
-    await shutdownPromise;
+      await expect(openTransaction).resolves.toBe('fallback-result');
+      await shutdownPromise;
 
-    expect(events).toEqual(['fallback:start', 'fallback:end', 'dispose']);
+      expect(events).toEqual(['fallback:start', 'fallback:end', 'dispose']);
+    } finally {
+      if (!transactionReleased) {
+        transactionReleased = true;
+        releaseTransaction();
+      }
+
+      await Promise.allSettled([
+        openTransaction,
+        shutdownPromise ?? app.close(),
+      ]);
+    }
   });
 
   it('rejects new manual transactions once shutdown begins', async () => {

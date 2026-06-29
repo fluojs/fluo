@@ -318,6 +318,68 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
 });
 
 describe('@fluojs/drizzle Transaction decorator — named/accessor contract', () => {
+  it('selects default @Transaction() targets in documented priority order when multiple candidates exist', async () => {
+    const events: string[] = [];
+
+    const primaryDatabase = {
+      async transaction<T>(callback: () => Promise<T>): Promise<T> {
+        events.push('primary:transaction:start');
+        const result = await callback();
+        events.push('primary:transaction:end');
+        return result;
+      },
+    };
+    const directDatabase = {
+      async transaction<T>(callback: () => Promise<T>): Promise<T> {
+        events.push('direct:transaction:start');
+        const result = await callback();
+        events.push('direct:transaction:end');
+        return result;
+      },
+    };
+    const nestedDatabase = {
+      async transaction<T>(callback: () => Promise<T>): Promise<T> {
+        events.push('nested:transaction:start');
+        const result = await callback();
+        events.push('nested:transaction:end');
+        return result;
+      },
+    };
+
+    class DbFirstService {
+      readonly db = primaryDatabase;
+      readonly directDb = directDatabase;
+      readonly repository = { db: nestedDatabase };
+
+      @Transaction()
+      async run() {
+        events.push('db-first:work');
+      }
+    }
+
+    class DirectBeforeNestedService {
+      readonly directDb = directDatabase;
+      readonly repository = { db: nestedDatabase };
+
+      @Transaction()
+      async run() {
+        events.push('direct-before-nested:work');
+      }
+    }
+
+    await new DbFirstService().run();
+    await new DirectBeforeNestedService().run();
+
+    expect(events).toEqual([
+      'primary:transaction:start',
+      'db-first:work',
+      'primary:transaction:end',
+      'direct:transaction:start',
+      'direct-before-nested:work',
+      'direct:transaction:end',
+    ]);
+  });
+
   it('uses explicit accessor to select a specific DrizzleDatabase', async () => {
       const drizzlePackage = await import('./index.js');
     const ExportedTransaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
