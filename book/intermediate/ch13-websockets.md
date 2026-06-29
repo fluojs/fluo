@@ -87,9 +87,7 @@ WebSocketModule.forRoot({
   upgrade: {
     guard(request) {
       // Handshake-level security
-      const token = request instanceof Request
-        ? request.headers.get('authorization')
-        : request.headers.authorization;
+      const token = request.headers.authorization;
 
       if (!isValid(token)) throw new UnauthorizedException();
     }
@@ -98,6 +96,8 @@ WebSocketModule.forRoot({
 ```
 
 The `upgrade.guard` is especially important. This Guard runs before the WebSocket handshake completes, which makes it the right place for checks such as authentication or origin validation that must happen before the connection is accepted.
+
+The root `WebSocketModule` and `@fluojs/websockets/node` use Node's `IncomingMessage`, so header access follows the Node request shape. Fetch-style subpaths such as `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers` receive a Web-standard `Request`; reusable option objects for those runtimes should read headers with `request.headers.get('authorization')` and import the subpath-specific `WebSocketModuleOptions` type.
 
 If the Guard fails, the connection is rejected immediately. It is a boundary that stops the server from allocating resources for unauthenticated clients.
 
@@ -166,6 +166,8 @@ fluo is designed around portability. The default `WebSocketModule` targets Node.
 When you import from the correct subpath, the backend adapter can change to match the host environment while the gateway logic stays the same. In other words, portability is expressed through package boundaries and import choices, not only through a broad architectural promise.
 
 The root and Node entrypoints type upgrade guards with Node's `IncomingMessage`. Bun, Deno, and Cloudflare Workers subpaths use Web-standard `Request` guards. Text frames are delivered as strings unless they parse as JSON event envelopes, and binary frames are decoded as UTF-8 before the same dispatch step, so payload handling stays consistent across supported runtimes.
+
+Raw WebSocket handler return values are awaited and then ignored. Send client replies explicitly with the runtime socket argument, for example `socket.send(JSON.stringify({ event: 'pong', data }))`, instead of returning a value from `@OnMessage()`.
 
 ## 13.7 Heartbeats and connection health
 
