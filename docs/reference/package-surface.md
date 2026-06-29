@@ -38,7 +38,7 @@
 
 ### adapters
 - **`platform-*`**: Implement the repository policy seam named `PlatformAdapter`; HTTP runtime packages do so through `HttpApplicationAdapter` from `@fluojs/http`. They bridge abstract HTTP calls to runtime-specific listeners.
-- **`@fluojs/socket.io`**: A dedicated transport-brand adapter that integrates Socket.IO v4 with fluo gateways while preserving package-level runtime limits: Node.js server-backed adapters and the official Bun engine path are supported, Deno and Workers are not supported, Bun requires static CORS shapes, adapter-owned/shared HTTP listeners remain owned by the platform adapter during Socket.IO shutdown, and explicit numeric payload/buffer/shutdown options fail fast when invalid.
+- **`@fluojs/socket.io`**: A dedicated transport-brand adapter that integrates Socket.IO v4 with fluo gateways while preserving package-level runtime limits: Node.js 20+ server-backed adapters and the official Bun engine path are supported, Deno and Workers are not supported, Bun requires static CORS shapes and rejects `@WebSocketGateway({ serverBacked })`, adapter-owned/shared HTTP listeners remain owned by the platform adapter during Socket.IO shutdown, and explicit numeric payload/buffer/shutdown options fail fast when invalid.
 
 ### features
 - **`@fluojs/http`**: Routing, guards, interceptors, and exception handling.
