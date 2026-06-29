@@ -97,7 +97,6 @@ my-fluo-app/
         ├── greeting.module.ts
         ├── greeting.repo.ts
         ├── greeting.repo.test.ts
-        ├── greeting.repo.slice.test.ts
         ├── greeting.response.dto.ts
         ├── greeting.service.ts
         ├── greeting.service.test.ts
@@ -109,6 +108,20 @@ my-fluo-app/
 기준 스타터 매트릭스: [fluo new 지원 매트릭스](../reference/fluo-new-support-matrix.ko.md).
 
 interactive terminal에서 `fluo new` wizard를 실행할 경우, 파일을 쓰기 전에 동일한 유지보수 대상 스타터 매트릭스를 기준으로 선택지가 해석됩니다.
+
+### 대상 디렉터리 선택
+
+기본적으로 `fluo new my-fluo-app`은 `./my-fluo-app`에 파일을 씁니다. 프로젝트 이름과 파일시스템 대상이 달라야 하거나 자동화에서 명시적인 출력 경로가 필요하면 `--target-directory`를 사용하세요:
+
+```bash
+fluo new my-fluo-app --target-directory ./apps/api
+```
+
+대상 디렉터리는 기본적으로 비어 있거나 존재하지 않아야 합니다. 기존 대상의 충돌하는 생성 파일을 의도적으로 덮어쓰려는 경우에만 `--force`를 추가하세요:
+
+```bash
+fluo new my-fluo-app --target-directory ./apps/api --force
+```
 
 ### Previewing a starter plan
 

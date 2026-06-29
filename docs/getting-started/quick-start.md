@@ -97,7 +97,6 @@ my-fluo-app/
         ├── greeting.module.ts
         ├── greeting.repo.ts
         ├── greeting.repo.test.ts
-        ├── greeting.repo.slice.test.ts
         ├── greeting.response.dto.ts
         ├── greeting.service.ts
         ├── greeting.service.test.ts
@@ -109,6 +108,20 @@ The tree above describes the default Node.js + Fastify application starter. The 
 Authoritative starter matrix: [fluo new support matrix](../reference/fluo-new-support-matrix.md).
 
 In an interactive terminal, the `fluo new` wizard resolves the same maintained starter matrix before writing files.
+
+### Choosing a destination
+
+By default, `fluo new my-fluo-app` writes into `./my-fluo-app`. Use `--target-directory` when the project name and filesystem destination should differ, or when automation needs an explicit output path:
+
+```bash
+fluo new my-fluo-app --target-directory ./apps/api
+```
+
+The target directory must be empty or absent by default. Add `--force` only when you intentionally want the scaffold to overwrite conflicting generated files in an existing target:
+
+```bash
+fluo new my-fluo-app --target-directory ./apps/api --force
+```
 
 ### Previewing a starter plan
 

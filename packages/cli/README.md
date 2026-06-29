@@ -122,6 +122,18 @@ fluo new my-mixed-app --shape mixed --transport tcp --runtime node --platform fa
 
 When `fluo new` runs in an interactive TTY, the wizard uses the same flags/config model. It asks for the project name, shape-first branch (`application` -> runtime + HTTP platform, `microservice` -> transport), the maintained tooling preset, package-manager choice, whether to install dependencies immediately, and whether to initialize a git repository. Non-interactive flags and programmatic `runNewCommand(...)` calls use the same resolved defaults.
 
+By default, `fluo new my-app` writes to `./my-app`. Use `--target-directory <path>` when the project name and destination path should differ, or when automation should write to an explicit directory:
+
+```bash
+fluo new my-app --target-directory ./apps/api
+```
+
+Scaffolding refuses to overwrite conflicting files in a non-empty target by default. Add `--force` only when you intentionally want generated files with different contents to be overwritten:
+
+```bash
+fluo new my-app --target-directory ./apps/api --force
+```
+
 Use `--print-plan` when you want to preview the fully resolved starter without side effects:
 
 ```bash
@@ -302,7 +314,7 @@ The package can be used programmatically to trigger CLI actions from within othe
 | `CliRuntimeOptions` | Type for `runCli(...)` runtime overrides such as streams, cwd, environment, registry metadata, and update-check hooks. |
 | `newUsage()` | Returns the current `fluo new` usage text for help surfaces and tests. |
 | `runNewCommand(argv, options?)` | Programmatic access to the project scaffolding logic. |
-| `NewCommandRuntimeOptions` | Type for `runNewCommand(...)` runtime overrides such as prompts, filesystem writes, dependency installation, and git initialization. |
+| `NewCommandRuntimeOptions` | Type for `runNewCommand(...)` runtime overrides such as prompts, filesystem writes, dependency installation, and git initialization; `runCli(...)` also accepts these overrides when it dispatches `new` or `create`. |
 | `CliPromptCancelledError` | Stable sentinel that caller-supplied prompt hooks can throw to report normal cancellation. |
 | `runGenerateCommand(kind, name, baseDirectory, options?)` | Programmatic access to the built-in schematic generator and module auto-registration planner. |
 | `GenerateOptions` | Type for programmatic generator options. |
