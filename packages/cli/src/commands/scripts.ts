@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStudioDevtoolsNodeImport } from '../studio/runtime-config.js';
-import { startStudioSidecar, type StudioSidecar, type StudioSidecarRuntime } from '../studio/sidecar.js';
+import type { startStudioSidecar, StudioSidecar, StudioSidecarRuntime } from '../studio/sidecar.js';
 import { SUPPORTED_PACKAGE_MANAGERS } from './package-manager.js';
 
 type CliStream = {
@@ -32,6 +32,8 @@ type ScriptRuntimeOptions = {
   stderr?: CliStream;
   stdout?: CliStream;
 };
+
+type StartStudioSidecar = typeof startStudioSidecar;
 
 type JsonRecord = Record<string, unknown>;
 type ScriptCommand = 'build' | 'dev' | 'start';
@@ -163,6 +165,11 @@ function defaultSpawnCommand(command: string, args: string[], options: SpawnComm
     child.on('error', reject);
     child.on('close', (code) => resolveExitCode(code ?? 1));
   });
+}
+
+async function loadDefaultStudioSidecarFactory(): Promise<StartStudioSidecar> {
+  const { startStudioSidecar: startStudioSidecarImplementation } = await import('../studio/sidecar.js');
+  return startStudioSidecarImplementation;
 }
 
 function buildNativeNodeWatchStep(passThrough: string[]): ProjectRunnerStep {
@@ -708,7 +715,7 @@ export async function runScriptCommand(command: ScriptCommand, argv: string[], r
   }
 
   if (command === 'dev' && parsed.studio && !parsed.dryRun) {
-    const studioSidecarFactory = runtime.startStudioSidecar ?? startStudioSidecar;
+    const studioSidecarFactory = runtime.startStudioSidecar ?? await loadDefaultStudioSidecarFactory();
     const studioSidecar = await studioSidecarFactory({
       appId: projectDisplayName(project),
       port: parsed.studioPort,
