@@ -1024,18 +1024,24 @@ function enforceCanonicalRuntimeMatrixReferences() {
   assert(
     packageSurface.includes('legacy standalone timing diagnostics') &&
       packageSurface.includes('rejecting body-like fields') &&
+      packageSurface.includes('`body`, `headers`, `payload`, `rawBody`, `requestBody`, and `responseBody`') &&
       docsContext.includes('legacy standalone timing diagnostics') &&
       docsContext.includes('live request event privacy validation') &&
+      docsContext.includes('`body`, `headers`, `payload`, `rawBody`, `requestBody`, and `responseBody`') &&
       studioReadme.includes('body-like payload fields') &&
+      studioReadme.includes('`body`, `headers`, `payload`, `rawBody`, `requestBody`, and `responseBody`') &&
       studioReadme.includes('Node-based package entrypoint'),
     'Studio package-surface, docs/CONTEXT.md, and README.md must keep timing diagnostics, request privacy, and packaged viewer fallback guidance discoverable together.',
   );
   assert(
     packageSurfaceKo.includes('legacy standalone timing diagnostics') &&
       packageSurfaceKo.includes('body-like field') &&
+      packageSurfaceKo.includes('`body`, `headers`, `payload`, `rawBody`, `requestBody`, `responseBody`') &&
       docsContextKo.includes('legacy standalone timing diagnostics') &&
       docsContextKo.includes('live request event privacy validation') &&
+      docsContextKo.includes('`body`, `headers`, `payload`, `rawBody`, `requestBody`, `responseBody`') &&
       studioReadmeKo.includes('body-like payload field') &&
+      studioReadmeKo.includes('`body`, `headers`, `payload`, `rawBody`, `requestBody`, `responseBody`') &&
       studioReadmeKo.includes('Node 기반 package entrypoint'),
     'Studio package-surface.ko.md, docs/CONTEXT.ko.md, and README.ko.md must keep timing diagnostics, request privacy, and packaged viewer fallback guidance discoverable together.',
   );
