@@ -1,9 +1,7 @@
-import type { Mock } from 'vitest';
-
 import type { MaybePromise, Token } from '@fluojs/core';
 import type { ClassType, Container, ForwardRefFn, OptionalToken, Provider } from '@fluojs/di';
-import type { BootstrapApplicationOptions, BootstrapResult, BootstrapModuleOptions, ModuleType } from '@fluojs/runtime';
 import type { Guard, Interceptor } from '@fluojs/http';
+import type { BootstrapApplicationOptions, BootstrapModuleOptions, BootstrapResult, ModuleType } from '@fluojs/runtime';
 import type { RequestBuilder, TestPrincipal, TestRequest, TestRequestWithOptions, TestResponse } from './http.js';
 
 /**
@@ -85,12 +83,3 @@ export interface TestApp {
   dispatch(request: TestRequestWithOptions): Promise<TestResponse>;
   close(): Promise<void>;
 }
-
-/**
- * Shallow method-mocked version of a type where function properties become `vitest` mocks.
- */
-export type DeepMocked<T> = {
-  [K in keyof T]: T[K] extends (...args: infer A) => infer R
-    ? Mock<(...args: A) => R> & T[K]
-    : T[K];
-};

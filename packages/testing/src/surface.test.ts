@@ -1,20 +1,19 @@
-import { existsSync, readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
-
-import * as testing from './index.js';
+import * as fetchStyleWebsocket from './conformance/fetch-style-websocket-conformance.js';
+import * as conformance from './conformance/platform-conformance.js';
 import * as http from './http.js';
+import * as testing from './index.js';
 import * as mock from './mock.js';
 import * as portability from './portability/http-adapter-portability.js';
 import * as webPortability from './portability/web-runtime-adapter-portability.js';
-import * as conformance from './conformance/platform-conformance.js';
-import * as fetchStyleWebsocket from './conformance/fetch-style-websocket-conformance.js';
-import * as vitestEntry from './vitest.js';
 import * as vitestTooling from './vitest/tooling.js';
+import * as vitestEntry from './vitest.js';
 
 const packageRoot = new URL('..', import.meta.url);
 const packageRootPath = fileURLToPath(packageRoot);
@@ -179,6 +178,12 @@ describe('@fluojs/testing surface', () => {
       expect(existsSync(resolve(packageRootPath, entry.import)), `${subpath} import output is missing`).toBe(true);
       expect(existsSync(resolve(packageRootPath, entry.types)), `${subpath} types output is missing`).toBe(true);
     }
+
+    for (const declarationFile of ['dist/app.d.ts', 'dist/module.d.ts', 'dist/types.d.ts']) {
+      expect(readFileSync(resolve(packageRootPath, declarationFile), 'utf8')).not.toContain('vitest');
+    }
+
+    expect(readFileSync(resolve(packageRootPath, 'dist/mock.d.ts'), 'utf8')).toContain('./mock-types.js');
   }, 300_000);
 
   it('imports every public package subpath through the published export map', async () => {
