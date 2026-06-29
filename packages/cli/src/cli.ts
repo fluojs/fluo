@@ -1,20 +1,21 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { diagnosticsUsage, runAnalyzeCommand, runDoctorCommand, runInfoCommand } from './commands/diagnostics.js';
 import { runGenerateCommand } from './commands/generate.js';
-import { type InspectCommandRuntimeOptions, inspectUsage, runInspectCommand } from './commands/inspect.js';
+import { type InspectCommandRuntimeOptions, runInspectCommand } from './commands/inspect.js';
 import { migrateUsage, runMigrateCommand } from './commands/migrate.js';
-import { type NewCommandRuntimeOptions, newUsage, runNewCommand } from './commands/new.js';
+import { type NewCommandRuntimeOptions, runNewCommand } from './commands/new.js';
 import { addUsage, runAddCommand, runUpgradeCommand, upgradeUsage } from './commands/package-workflow.js';
 import { runScriptCommand, scriptUsage } from './commands/scripts.js';
 import { type DevRunnerRuntime, runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
-import type { startStudioSidecar } from './studio/sidecar.js';
 import { builtInGeneratorCollection, generatorManifest, generatorOptionSchemas, resolveGeneratorKind } from './generators/manifest.js';
 import { renderAliasList, renderHelpTable } from './help.js';
+import type { startStudioSidecar } from './studio/sidecar.js';
 import type { GenerateOptions, GeneratorKind } from './types.js';
 import { type CliUpdateCheckRuntimeOptions, removeUpdateCheckFlags, runCliUpdateCheck } from './update-check.js';
+import { inspectUsage, newUsage } from './usage.js';
 
 type CliStream = {
   isTTY?: boolean;

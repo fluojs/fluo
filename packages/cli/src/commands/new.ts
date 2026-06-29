@@ -1,11 +1,9 @@
 import { resolve } from 'node:path';
 
-import { spinner as clackSpinner, log as clackLog } from '@clack/prompts';
+import { log as clackLog, spinner as clackSpinner } from '@clack/prompts';
 
-import { renderAliasList, renderHelpTable } from '../help.js';
-import { isCliPromptCancelledError } from '../prompt-cancel.js';
 import { installDependencies } from '../new/install.js';
-import { collectBootstrapAnswers, type BootstrapPrompter } from '../new/prompt.js';
+import { type BootstrapPrompter, collectBootstrapAnswers } from '../new/prompt.js';
 import { resolveBootstrapPlan } from '../new/resolver.js';
 import { scaffoldBootstrapApp } from '../new/scaffold.js';
 import {
@@ -17,6 +15,8 @@ import {
   SUPPORTED_BOOTSTRAP_TRANSPORTS,
 } from '../new/starter-profiles.js';
 import type { BootstrapAnswers, NewCommandOptions } from '../new/types.js';
+import { isCliPromptCancelledError } from '../prompt-cancel.js';
+import { newUsage } from '../usage.js';
 
 type CliStream = {
   write(message: string): unknown;
@@ -55,95 +55,6 @@ export interface NewCommandRuntimeOptions extends NewCommandOptions {
   stdout?: CliStream;
   userAgent?: string;
 }
-
-type NewOptionHelpEntry = {
-  aliases: string[];
-  description: string;
-  option: string;
-};
-
-const NEW_OPTION_HELP: NewOptionHelpEntry[] = [
-  {
-    aliases: [],
-    description: 'Provide the project name without using the positional argument.',
-    option: '--name <project-name>',
-  },
-  {
-    aliases: [],
-    description: 'Select the scaffold shape explicitly (application for HTTP, microservice for the transport-driven starter path, mixed for the API + microservice starter).',
-    option: '--shape <application|microservice|mixed>',
-  },
-  {
-    aliases: [],
-    description: 'Select the transport path explicitly (http for applications, tcp for the runnable microservice starter, plus shipped microservice starter transports).',
-    option: '--transport <http|tcp|redis-streams|nats|kafka|rabbitmq|mqtt|grpc>',
-  },
-  {
-    aliases: [],
-    description: 'Select the runtime explicitly (node, bun, deno, or cloudflare-workers for application starters; node for microservice and mixed starters).',
-    option: '--runtime <node|bun|deno|cloudflare-workers>',
-  },
-  {
-    aliases: [],
-    description: 'Select the platform adapter explicitly (fastify, express, or nodejs on node; bun/deno/cloudflare-workers on their native runtimes; none for microservices).',
-    option: '--platform <fastify|express|nodejs|bun|deno|cloudflare-workers|none>',
-  },
-  {
-    aliases: [],
-    description: 'Select the starter tooling preset explicitly (currently only standard).',
-    option: '--tooling <standard>',
-  },
-  {
-    aliases: [],
-    description: 'Select the starter topology mode explicitly (currently only single-package).',
-    option: '--topology <single-package>',
-  },
-  {
-    aliases: [],
-    description: 'Choose which package manager installs the starter dependencies.',
-    option: '--package-manager <pnpm|npm|yarn|bun>',
-  },
-  {
-    aliases: [],
-    description: 'Write the new app to a custom target directory (always overrides positional name path).',
-    option: '--target-directory <path>',
-  },
-  {
-    aliases: [],
-    description: 'Overwrite files in a non-empty target directory without prompting.',
-    option: '--force',
-  },
-  {
-    aliases: [],
-    description: 'Install starter dependencies after writing files.',
-    option: '--install',
-  },
-  {
-    aliases: [],
-    description: 'Skip starter dependency installation.',
-    option: '--no-install',
-  },
-  {
-    aliases: [],
-    description: 'Initialize a git repository in the generated starter.',
-    option: '--git',
-  },
-  {
-    aliases: [],
-    description: 'Skip git repository initialization in the generated starter.',
-    option: '--no-git',
-  },
-  {
-    aliases: [],
-    description: 'Print the resolved scaffold plan without writing files, installing dependencies, or initializing git.',
-    option: '--print-plan',
-  },
-  {
-    aliases: ['-h'],
-    description: 'Show help for the new command.',
-    option: '--help',
-  },
-];
 
 const SUPPORTED_PACKAGE_MANAGERS = new Set<BootstrapAnswers['packageManager']>(['bun', 'npm', 'pnpm', 'yarn']);
 const SUPPORTED_SHAPES = new Set<BootstrapAnswers['shape']>(SUPPORTED_BOOTSTRAP_SHAPES);
@@ -381,39 +292,6 @@ function renderScaffoldPlanPreview(answers: BootstrapAnswers, resolvedTargetDire
     `  dev: ${renderDependencyList(bootstrapPlan.dependencies.devDependencies)}`,
     '',
     'Side effects: none. Preview mode does not create files, install dependencies, or initialize git.',
-  ].join('\n');
-}
-
-/**
- * Renders CLI help text for `fluo new`.
- *
- * @returns Stable help output for the scaffolding command.
- */
-export function newUsage(): string {
-  return [
-    'Usage: fluo new|create [project-name] [options]',
-    '',
-    'Options',
-    renderHelpTable(NEW_OPTION_HELP, [
-      {
-        header: 'Option',
-        render: (entry) => entry.option,
-      },
-      {
-        header: 'Aliases',
-        render: (entry) => renderAliasList(entry.aliases),
-      },
-      {
-        header: 'Description',
-        render: (entry) => entry.description,
-      },
-    ]),
-    '',
-    'Next steps:',
-    '  cd <app-name>',
-    '  pnpm dev  # runs fluo dev from the generated package.json script',
-    '',
-    'Docs: https://github.com/fluojs/fluo/tree/main/docs/getting-started/quick-start.md',
   ].join('\n');
 }
 
