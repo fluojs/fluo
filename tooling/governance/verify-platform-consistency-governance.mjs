@@ -1086,6 +1086,33 @@ function enforceRemovedRuntimeFactoryNamesNotUsedInDocs() {
   );
 }
 
+function enforceViteToolingDiscoverability() {
+  const englishContext = read('docs/CONTEXT.md');
+  const englishChooser = read('docs/reference/package-chooser.md');
+  const englishToolchainMatrix = read('docs/reference/toolchain-contract-matrix.md');
+  const englishViteReadme = read('packages/vite/README.md');
+  const koreanContext = read('docs/CONTEXT.ko.md');
+  const koreanChooser = read('docs/reference/package-chooser.ko.md');
+  const koreanToolchainMatrix = read('docs/reference/toolchain-contract-matrix.ko.md');
+  const koreanViteReadme = read('packages/vite/README.ko.md');
+
+  for (const markdown of [
+    englishContext,
+    englishChooser,
+    englishToolchainMatrix,
+    englishViteReadme,
+    koreanContext,
+    koreanChooser,
+    koreanToolchainMatrix,
+    koreanViteReadme,
+  ]) {
+    assert(
+      markdown.includes('@babel/preset-typescript'),
+      'Vite tooling docs must keep the @babel/preset-typescript peer discoverable across README, context, chooser, and toolchain matrix surfaces.',
+    );
+  }
+}
+
 export function main() {
   const changedFiles = changedFilesFromGit();
 
@@ -1098,6 +1125,7 @@ export function main() {
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
   enforceNoDirectProcessEnvInOrdinaryPackageSource();
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
+  enforceViteToolingDiscoverability();
   enforceContractCompanionUpdates(changedFiles);
   enforceAlignmentClaimsBackedByHarness(changedFiles);
 
