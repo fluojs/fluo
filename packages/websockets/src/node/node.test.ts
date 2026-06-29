@@ -8,8 +8,7 @@ import { WebSocket } from 'ws';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as nodePublicApi from './node.js';
-import { NodeWebSocketModule } from './node.js';
-import { NodeWebSocketGatewayLifecycleService } from './node-service.js';
+import { NodeWebSocketGatewayLifecycleService, NodeWebSocketModule } from './node.js';
 import type { WebSocketModuleOptions } from './node-types.js';
 
 function getBoundPort(server: unknown): number {
@@ -94,8 +93,16 @@ describe('@fluojs/websockets/node', () => {
     const optionsProvider = providers.find(
       (provider: unknown) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
     );
+    const lifecycleProvider = providers.find(
+      (provider: unknown) =>
+        typeof provider === 'object'
+        && provider !== null
+        && 'provide' in provider
+        && provider.provide === NodeWebSocketGatewayLifecycleService,
+    );
 
-    expect(providers).toContain(NodeWebSocketGatewayLifecycleService);
+    expect(lifecycleProvider).toBeDefined();
+    expect(lifecycleProvider).toHaveProperty('useClass');
     expect(optionsProvider).toBeDefined();
     expect(optionsProvider).toHaveProperty('useValue', options);
   });

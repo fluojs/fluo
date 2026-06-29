@@ -2,7 +2,8 @@ import type { Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
-import { NodeWebSocketGatewayLifecycleService } from './node-service.js';
+import { NodeWebSocketGatewayLifecycleServiceImplementation } from './node-service.js';
+import { NodeWebSocketGatewayLifecycleService } from './node-service-token.js';
 import type { WebSocketModuleOptions } from './node-types.js';
 
 function createNodeWebSocketProviders(options: WebSocketModuleOptions = {}): Provider[] {
@@ -11,7 +12,10 @@ function createNodeWebSocketProviders(options: WebSocketModuleOptions = {}): Pro
       provide: WEBSOCKET_OPTIONS_INTERNAL,
       useValue: options,
     },
-    NodeWebSocketGatewayLifecycleService,
+    {
+      provide: NodeWebSocketGatewayLifecycleService,
+      useClass: NodeWebSocketGatewayLifecycleServiceImplementation,
+    },
   ];
 }
 
