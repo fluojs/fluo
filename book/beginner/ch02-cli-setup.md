@@ -226,8 +226,10 @@ fluo-blog/
     ├── app.test.ts           # App dispatch test
     ├── greeting/             # Default greeting feature slice
     │   ├── greeting.controller.ts      # Default HTTP route
+    │   ├── greeting.controller.test.ts # Controller unit test
     │   ├── greeting.module.ts          # Feature assembly
     │   ├── greeting.repo.ts            # Response payload source
+    │   ├── greeting.repo.test.ts       # Repository unit test
     │   ├── greeting.response.dto.ts    # Response DTO
     │   ├── greeting.service.ts         # Route logic
     │   ├── greeting.service.test.ts    # Fast unit test
