@@ -5,6 +5,12 @@ import { Transaction } from './transaction.js';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeMockPrismaService() {
   return {
+    createPlatformStatusSnapshot() {
+      return {};
+    },
+    current() {
+      return {};
+    },
     async transaction<T>(fn: () => Promise<T>): Promise<T> {
       return fn();
     },

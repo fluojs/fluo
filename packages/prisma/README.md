@@ -96,7 +96,7 @@ Calls to `@Transaction()` methods are reentrant. If a decorated method calls ano
 
 ### Named Registrations for Multiple Clients
 
-When one application container needs more than one Prisma client, register each client with an explicit `name` and inject the matching token with `getPrismaServiceToken(name)`. For named clients, pass an accessor to `@Transaction()` to target the correct service.
+When one application container needs more than one Prisma client, register each client with an explicit `name` and inject the matching token with `getPrismaServiceToken(name)`. For named clients, pass an accessor to `@Transaction()` to target the correct service. Default `@Transaction()` resolution only selects Prisma service/facade-shaped properties; transaction-like objects from other persistence integrations are ignored so ambiguous hosts must use an explicit accessor.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -159,7 +159,7 @@ When `transaction()` is called while a transaction context is already active, `P
 
 ### Shutdown and Status Contracts
 
-`PrismaService.requestTransaction(...)` is available before and during normal serving, but new request-scoped transactions are rejected once application shutdown has started. During shutdown, open request transactions are aborted, tracked until their outer transaction boundary has settled, and drained before `$disconnect()` runs. This includes nested `requestTransaction(...)` calls opened inside an existing manual `transaction(...)` boundary: they reuse the ambient Prisma transaction client, stay visible in `details.activeRequestTransactions` until the outer boundary finishes, and do not open a second Prisma transaction.
+`PrismaService.requestTransaction(...)` is available before and during normal serving, but new request-scoped transactions are rejected once application shutdown has started. During shutdown, open request transactions are aborted, tracked until their outer transaction boundary has settled, and drained before `$disconnect()` runs. Service-layer and manual `transaction(...)` boundaries are also drained before `$disconnect()` so shutdown does not race an active Prisma transaction. This includes nested `requestTransaction(...)` calls opened inside an existing manual `transaction(...)` boundary: they reuse the ambient Prisma transaction client, stay visible in `details.activeRequestTransactions` until the outer boundary finishes, and do not open a second Prisma transaction.
 
 `createPrismaPlatformStatusSnapshot(...)` and `PrismaService.createPlatformStatusSnapshot()` expose the same lifecycle contract to diagnostics surfaces:
 
@@ -234,7 +234,7 @@ Use `PrismaService<TClient>` when a provider only needs wrapper methods such as 
 
 ### `Transaction`
 
-- Standard TC39 method decorator for service-layer transaction boundaries. It resolves the ambient `PrismaService` by default, accepts an accessor for named clients, and can forward Prisma transaction options to the outer boundary.
+- Standard TC39 method decorator for service-layer transaction boundaries. It resolves a Prisma service/facade-shaped property by default, accepts an accessor for named clients or ambiguous hosts, and can forward Prisma transaction options to the outer boundary.
 
 ### `PRISMA_CLIENT` (Token)
 

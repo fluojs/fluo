@@ -1,4 +1,6 @@
 type TransactionalPrismaService<TOptions = unknown> = {
+  createPlatformStatusSnapshot(): unknown;
+  current(): unknown;
   transaction<T>(fn: () => Promise<T>, options?: TOptions): Promise<T>;
 };
 
@@ -9,9 +11,13 @@ type TransactionMethod<THost, TArgs extends unknown[], TResult> = (
   ...args: TArgs
 ) => Promise<TResult>;
 
-function hasTransaction(value: unknown): value is TransactionalPrismaService {
+function isPrismaServiceLike(value: unknown): value is TransactionalPrismaService {
   return typeof value === 'object'
     && value !== null
+    && 'createPlatformStatusSnapshot' in value
+    && typeof value.createPlatformStatusSnapshot === 'function'
+    && 'current' in value
+    && typeof value.current === 'function'
     && 'transaction' in value
     && typeof value.transaction === 'function';
 }
@@ -24,27 +30,37 @@ function readProperty(value: unknown, property: PropertyKey): unknown {
   return Reflect.get(value, property);
 }
 
+function addPrismaServiceCandidate(
+  candidates: TransactionalPrismaService[],
+  value: unknown,
+): void {
+  if (!isPrismaServiceLike(value) || candidates.includes(value)) {
+    return;
+  }
+
+  candidates.push(value);
+}
+
 function resolveDefaultPrismaService(self: unknown): TransactionalPrismaService {
+  const candidates: TransactionalPrismaService[] = [];
   const directPrisma = readProperty(self, 'prisma');
 
-  if (hasTransaction(directPrisma)) {
-    return directPrisma;
-  }
-
-  if (hasTransaction(self)) {
-    return self;
-  }
+  addPrismaServiceCandidate(candidates, directPrisma);
+  addPrismaServiceCandidate(candidates, self);
 
   for (const value of Object.values(Object(self) as Record<string, unknown>)) {
-    if (hasTransaction(value)) {
-      return value;
-    }
+    addPrismaServiceCandidate(candidates, value);
 
     const nestedPrisma = readProperty(value, 'prisma');
+    addPrismaServiceCandidate(candidates, nestedPrisma);
+  }
 
-    if (hasTransaction(nestedPrisma)) {
-      return nestedPrisma;
-    }
+  if (candidates.length === 1) {
+    return candidates[0];
+  }
+
+  if (candidates.length > 1) {
+    throw new Error('Ambiguous PrismaService resolution for @Transaction(). Provide an explicit accessor function.');
   }
 
   throw new Error('Unable to resolve PrismaService for @Transaction(). Provide an accessor function.');

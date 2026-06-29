@@ -1,4 +1,5 @@
 import { Inject } from '@fluojs/core';
+import type { Token } from '@fluojs/core';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
@@ -481,5 +482,164 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
     expect(usersEvents).not.toContain('users:transaction:start');
 
     await app.close();
+  });
+
+  it('ignores non-Prisma transaction-like host properties during default resolution', async () => {
+    const events: string[] = [];
+    const transactionClient = {
+      user: {
+        async create(input: { data: { email: string } }) {
+          events.push(`tx:create:${input.data.email}`);
+          return { email: input.data.email, id: 'tx-user' };
+        },
+      },
+    };
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        events.push('prisma:transaction:start');
+        const result = await callback(transactionClient);
+        events.push('prisma:transaction:end');
+        return result;
+      },
+      user: {
+        async create(input: { data: { email: string } }) {
+          events.push(`root:create:${input.data.email}`);
+          return { email: input.data.email, id: 'root-user' };
+        },
+      },
+    };
+    const misleadingPersistence = {
+      async transaction<T>(callback: () => Promise<T>): Promise<T> {
+        events.push('wrong:transaction:start');
+        const result = await callback();
+        events.push('wrong:transaction:end');
+        return result;
+      },
+    };
+    const MISLEADING_PERSISTENCE = Symbol('MISLEADING_PERSISTENCE') as Token<typeof misleadingPersistence>;
+
+    @Inject(PrismaService)
+    class UserRepository {
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client, typeof transactionClient>) {}
+
+      async create(email: string) {
+        return this.prisma.user.create({ data: { email } });
+      }
+    }
+
+    @Inject(MISLEADING_PERSISTENCE, UserRepository)
+    class UserService {
+      constructor(
+        private readonly misleading: typeof misleadingPersistence,
+        private readonly repo: UserRepository,
+      ) {}
+
+      @Transaction()
+      async create(email: string) {
+        void this.misleading;
+
+        return this.repo.create(email);
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot({ client })],
+      providers: [
+        { provide: MISLEADING_PERSISTENCE, useValue: misleadingPersistence },
+        UserRepository,
+        UserService,
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const service = await app.container.resolve(UserService);
+
+      await expect(service.create('ada@example.com')).resolves.toEqual({
+        email: 'ada@example.com',
+        id: 'tx-user',
+      });
+
+      expect(events).toEqual(['connect', 'prisma:transaction:start', 'tx:create:ada@example.com', 'prisma:transaction:end']);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects bare @Transaction() when multiple Prisma-like hosts require an explicit accessor', async () => {
+    const usersEvents: string[] = [];
+    const analyticsEvents: string[] = [];
+
+    const usersClient = {
+      async $connect() { usersEvents.push('users:connect'); },
+      async $disconnect() { usersEvents.push('users:disconnect'); },
+      async $transaction<T>(callback: (value: object) => Promise<T>): Promise<T> {
+        usersEvents.push('users:transaction:start');
+        const result = await callback({});
+        usersEvents.push('users:transaction:end');
+        return result;
+      },
+    };
+
+    const analyticsClient = {
+      async $connect() { analyticsEvents.push('analytics:connect'); },
+      async $disconnect() { analyticsEvents.push('analytics:disconnect'); },
+      async $transaction<T>(callback: (value: object) => Promise<T>): Promise<T> {
+        analyticsEvents.push('analytics:transaction:start');
+        const result = await callback({});
+        analyticsEvents.push('analytics:transaction:end');
+        return result;
+      },
+    };
+
+    @Inject(
+      getPrismaServiceToken('users'),
+      getPrismaServiceToken('analytics'),
+    )
+    class AmbiguousClientService {
+      constructor(
+        private readonly usersPrisma: PrismaService<typeof usersClient>,
+        private readonly analyticsPrisma: PrismaService<typeof analyticsClient>,
+      ) {}
+
+      @Transaction()
+      async write() {
+        void this.usersPrisma;
+        void this.analyticsPrisma;
+
+        return 'unreachable';
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        PrismaModule.forRoot({ name: 'users', client: usersClient }),
+        PrismaModule.forRoot({ name: 'analytics', client: analyticsClient }),
+      ],
+      providers: [AmbiguousClientService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const service = await app.container.resolve(AmbiguousClientService);
+
+      await expect(service.write()).rejects.toThrow(/explicit accessor/i);
+      expect(usersEvents).toEqual(['users:connect']);
+      expect(analyticsEvents).toEqual(['analytics:connect']);
+    } finally {
+      await app.close();
+    }
   });
 });

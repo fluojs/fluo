@@ -554,7 +554,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // such discoverability updates should stay coupled to this governance rule so
   // future contract-boundary edits do not silently bypass the companion checks.
   // Updating this script is the CI/tooling companion for branches that extend
-  // the contract-governing documentation surface.
+  // the contract-governing documentation surface, including package-surface
+  // transaction boundary updates that must stay paired with runtime tests.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
