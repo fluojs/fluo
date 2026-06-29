@@ -1,10 +1,9 @@
-import { describe, expect, it } from 'vitest';
-
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import type { HttpApplicationAdapter } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
+import { describe, expect, it } from 'vitest';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as workerPublicApi from './cloudflare-workers.js';
@@ -326,36 +325,44 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     });
     const state = await app.container.resolve<GatewayState>(GatewayState);
 
-    await app.listen();
+    try {
+      await app.listen();
 
-    const server = adapter.getServer();
-    const upgradeResponse = await server?.fetch(new Request('https://worker.test/chat', {
-      headers: { upgrade: 'websocket' },
-    }));
+      const server = adapter.getServer();
+      const upgradeResponse = await server?.fetch(new Request('https://worker.test/chat', {
+        headers: { upgrade: 'websocket' },
+      }));
 
-    await flushAsyncWork();
+      await flushAsyncWork();
 
-    const socket = server?.lastSocket;
-    expect(upgradeResponse?.status).toBe(200);
-    expect(socket).toBeDefined();
-    expect(socket?.accepted).toBe(true);
+      const socket = server?.lastSocket;
+      expect(upgradeResponse?.status).toBe(200);
+      expect(socket).toBeDefined();
+      expect(socket?.accepted).toBe(true);
 
-    if (!socket) {
-      throw new Error('Expected Worker test socket to be available after websocket upgrade.');
+      if (!socket) {
+        throw new Error('Expected Worker test socket to be available after websocket upgrade.');
+      }
+
+      try {
+        socket.emitMessage('{"event":"ping","data":{"value":"hello"}}');
+        await flushAsyncWork();
+
+        socket.close(1000, 'done');
+        await flushAsyncWork();
+
+        expect(state.connectCount).toBe(1);
+        expect(state.messages).toEqual([{ value: 'hello' }]);
+        expect(socket.sentMessages).toEqual(['{"event":"pong","data":{"value":"hello"}}']);
+        expect(state.disconnectCount).toBe(1);
+      } finally {
+        if (socket.readyState === WEBSOCKET_OPEN_READY_STATE) {
+          socket.close(1000, 'test cleanup');
+        }
+      }
+    } finally {
+      await app.close();
     }
-
-    socket.emitMessage('{"event":"ping","data":{"value":"hello"}}');
-    await flushAsyncWork();
-
-    socket.close(1000, 'done');
-    await flushAsyncWork();
-
-    expect(state.connectCount).toBe(1);
-    expect(state.messages).toEqual([{ value: 'hello' }]);
-    expect(socket.sentMessages).toEqual(['{"event":"pong","data":{"value":"hello"}}']);
-    expect(state.disconnectCount).toBe(1);
-
-    await app.close();
   });
 
   it('rejects anonymous upgrade requests before the Worker websocket upgrade completes', async () => {
@@ -382,16 +389,18 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     });
 
     const app = await bootstrapApplication({ adapter, rootModule: AppModule });
-    await app.listen();
+    try {
+      await app.listen();
 
-    const response = await adapter.getServer()?.fetch(new Request('https://worker.test/guarded', {
-      headers: { upgrade: 'websocket' },
-    }));
+      const response = await adapter.getServer()?.fetch(new Request('https://worker.test/guarded', {
+        headers: { upgrade: 'websocket' },
+      }));
 
-    expect(response?.status).toBe(401);
-    expect(await response?.text()).toBe('Authentication required.');
-
-    await app.close();
+      expect(response?.status).toBe(401);
+      expect(await response?.text()).toBe('Authentication required.');
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects Worker upgrades that exceed the configured connection limit', async () => {
@@ -414,20 +423,22 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     });
 
     const app = await bootstrapApplication({ adapter, rootModule: AppModule });
-    await app.listen();
+    try {
+      await app.listen();
 
-    const server = adapter.getServer();
-    const firstUpgrade = await server?.fetch(new Request('https://worker.test/limited', {
-      headers: { upgrade: 'websocket' },
-    }));
-    const secondUpgrade = await server?.fetch(new Request('https://worker.test/limited', {
-      headers: { upgrade: 'websocket' },
-    }));
+      const server = adapter.getServer();
+      const firstUpgrade = await server?.fetch(new Request('https://worker.test/limited', {
+        headers: { upgrade: 'websocket' },
+      }));
+      const secondUpgrade = await server?.fetch(new Request('https://worker.test/limited', {
+        headers: { upgrade: 'websocket' },
+      }));
 
-    expect(firstUpgrade?.status).toBe(200);
-    expect(secondUpgrade?.status).toBe(429);
-
-    await app.close();
+      expect(firstUpgrade?.status).toBe(200);
+      expect(secondUpgrade?.status).toBe(429);
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects concurrent Worker upgrades once one pending upgrade already reserved the last slot', async () => {
@@ -995,6 +1006,120 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
 
       expect(socket.readyState).toBe(WEBSOCKET_OPEN_READY_STATE);
       expect(state.messages).toEqual(['\x01\x02\x03\x04']);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('receives ArrayBuffer and Blob binary event envelopes under the configured limit', async () => {
+    const adapter = new TestWorkerAdapter();
+
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/binary-event-ok' })
+    class BinaryEventGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CloudflareWorkersWebSocketModule.forRoot({
+        limits: {
+          maxPayloadBytes: 128,
+        },
+      })],
+      providers: [GatewayState, BinaryEventGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+
+    try {
+      const state = await app.container.resolve<GatewayState>(GatewayState);
+      await app.listen();
+
+      const server = adapter.getServer();
+      await server?.fetch(new Request('https://worker.test/binary-event-ok', {
+        headers: { upgrade: 'websocket' },
+      }));
+      await flushAsyncWork();
+
+      const socket = server?.lastSocket;
+
+      if (!socket) {
+        throw new Error('Expected Worker test socket to be available after websocket upgrade.');
+      }
+
+      socket.emitMessage(new TextEncoder().encode(JSON.stringify({ event: 'ping', data: { value: 'arraybuffer' } })).buffer);
+      socket.emitMessage(new Blob([JSON.stringify({ event: 'ping', data: { value: 'blob' } })]));
+      await flushAsyncWork();
+
+      expect(socket.readyState).toBe(WEBSOCKET_OPEN_READY_STATE);
+      expect(state.messages).toEqual([{ value: 'arraybuffer' }, { value: 'blob' }]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('closes Worker sockets when Blob payloads exceed the configured limit', async () => {
+    const adapter = new TestWorkerAdapter();
+
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/blob-payload' })
+    class BlobPayloadGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CloudflareWorkersWebSocketModule.forRoot({
+        limits: {
+          maxPayloadBytes: 4,
+        },
+      })],
+      providers: [GatewayState, BlobPayloadGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+
+    try {
+      const state = await app.container.resolve<GatewayState>(GatewayState);
+      await app.listen();
+
+      const server = adapter.getServer();
+      await server?.fetch(new Request('https://worker.test/blob-payload', {
+        headers: { upgrade: 'websocket' },
+      }));
+      await flushAsyncWork();
+
+      const socket = server?.lastSocket;
+
+      if (!socket) {
+        throw new Error('Expected Worker test socket to be available after websocket upgrade.');
+      }
+
+      socket.emitMessage(new Blob(['hello']));
+      await flushAsyncWork();
+
+      expect(socket.closeCalls).toEqual([{ code: 1009, reason: 'Payload too large' }]);
+      expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
+      expect(state.messages).toEqual([]);
     } finally {
       await app.close();
     }
