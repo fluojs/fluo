@@ -149,6 +149,7 @@ export class MetricsModule {
 
     defineModule(MetricsRuntimeModule, {
       controllers,
+      exports: [MetricsService, METER_PROVIDER],
       middleware,
       providers,
     });
@@ -177,14 +178,20 @@ type RuntimeTelemetryComponent = {
   health: PlatformHealthStatus;
   readiness: PlatformReadinessStatus;
 };
+type ComponentStatusMap<TStatus extends string> = Map<string, Map<string, TStatus>>;
+type ComponentStatusEntry<TStatus extends string> = {
+  componentId: string;
+  componentKind: string;
+  status: TStatus;
+};
+type ContainerPresenceProbe = RequestContext['container'] & { has?: (token: Token) => boolean };
 
 const PLATFORM_COMPONENT_LABELS = ['component_id', 'component_kind', 'operation', 'result', 'env', 'instance'] as const;
 const REGISTRY_MODE_LABELS = ['mode'] as const;
 const FRAMEWORK_PLATFORM_GAUGES = new WeakSet<Gauge<string>>();
 const HEALTH_STATUSES = ['healthy', 'unhealthy', 'degraded'] as const satisfies readonly PlatformHealthStatus[];
 const READINESS_STATUSES = ['ready', 'not-ready', 'degraded'] as const satisfies readonly PlatformReadinessStatus[];
-const PLATFORM_SHELL_TOKEN_NAME = 'PLATFORM_SHELL';
-const PLATFORM_SHELL_TOKEN_NAMES = new Set([PLATFORM_SHELL_TOKEN_NAME, String(PLATFORM_SHELL)]);
+const PLATFORM_SHELL_TOKEN_NAMES = new Set([String(PLATFORM_SHELL)]);
 
 function createHttpMetricsMiddleware(
   registryToken: Token<Registry>,
@@ -274,8 +281,8 @@ class RuntimePlatformTelemetry {
   private readonly readinessGauge: Gauge<string>;
   private readonly healthGauge: Gauge<string>;
   private readonly registryModeGauge: Gauge<string>;
-  private readonly lastHealthStatuses = new Map<string, PlatformHealthStatus>();
-  private readonly lastReadinessStatuses = new Map<string, PlatformReadinessStatus>();
+  private readonly lastHealthStatuses: ComponentStatusMap<PlatformHealthStatus> = new Map();
+  private readonly lastReadinessStatuses: ComponentStatusMap<PlatformReadinessStatus> = new Map();
   private scrapeChain: Promise<unknown> = Promise.resolve();
 
   constructor(
@@ -343,7 +350,7 @@ class RuntimePlatformTelemetry {
     ];
 
     this.syncGaugeStatuses({
-      currentStatuses: new Map(components.map((component) => [this.toComponentKey(component.id, component.kind), component.health])),
+      currentStatuses: this.toComponentStatusMap(components, (component) => component.health),
       env,
       gauge: this.healthGauge,
       instance,
@@ -353,7 +360,7 @@ class RuntimePlatformTelemetry {
       toMetricValue: toHealthValue,
     });
     this.syncGaugeStatuses({
-      currentStatuses: new Map(components.map((component) => [this.toComponentKey(component.id, component.kind), component.readiness])),
+      currentStatuses: this.toComponentStatusMap(components, (component) => component.readiness),
       env,
       gauge: this.readinessGauge,
       instance,
@@ -394,13 +401,11 @@ class RuntimePlatformTelemetry {
     env: string;
     gauge: Gauge<string>;
     instance: string;
-    lastStatuses: Map<string, TStatus>;
+    lastStatuses: ComponentStatusMap<TStatus>;
     operation: 'health' | 'readiness';
     statuses: readonly TStatus[];
   }): void {
-    for (const componentKey of lastStatuses.keys()) {
-      const [componentId, componentKind] = this.fromComponentKey(componentKey);
-
+    for (const { componentId, componentKind } of this.componentStatusEntries(lastStatuses)) {
       for (const status of statuses) {
         gauge.remove(componentId, componentKind, operation, status, env, instance);
       }
@@ -419,22 +424,21 @@ class RuntimePlatformTelemetry {
     statuses,
     toMetricValue,
   }: {
-    currentStatuses: Map<string, TStatus>;
+    currentStatuses: ComponentStatusMap<TStatus>;
     env: string;
     gauge: Gauge<string>;
     instance: string;
-    lastStatuses: Map<string, TStatus>;
+    lastStatuses: ComponentStatusMap<TStatus>;
     operation: 'health' | 'readiness';
     statuses: readonly TStatus[];
     toMetricValue(status: TStatus): number;
   }): void {
-    for (const [componentKey, previousStatus] of lastStatuses) {
-      const nextStatus = currentStatuses.get(componentKey);
+    for (const { componentId, componentKind, status: previousStatus } of this.componentStatusEntries(lastStatuses)) {
+      const nextStatus = this.getComponentStatus(currentStatuses, componentId, componentKind);
       if (nextStatus === previousStatus) {
         continue;
       }
 
-      const [componentId, componentKind] = this.fromComponentKey(componentKey);
       for (const status of statuses) {
         if (status !== previousStatus) {
           continue;
@@ -444,37 +448,88 @@ class RuntimePlatformTelemetry {
       }
     }
 
-    for (const [componentKey, currentStatus] of currentStatuses) {
-      const [componentId, componentKind] = this.fromComponentKey(componentKey);
+    for (const { componentId, componentKind, status: currentStatus } of this.componentStatusEntries(currentStatuses)) {
       gauge.labels(componentId, componentKind, operation, currentStatus, env, instance).set(toMetricValue(currentStatus));
     }
 
     lastStatuses.clear();
-    for (const [componentKey, currentStatus] of currentStatuses) {
-      lastStatuses.set(componentKey, currentStatus);
+    for (const { componentId, componentKind, status: currentStatus } of this.componentStatusEntries(currentStatuses)) {
+      this.setComponentStatus(lastStatuses, componentId, componentKind, currentStatus);
     }
   }
 
-  private fromComponentKey(componentKey: string): [string, string] {
-    const separatorIndex = componentKey.indexOf('::');
-    return [componentKey.slice(0, separatorIndex), componentKey.slice(separatorIndex + 2)];
+  private toComponentStatusMap<TStatus extends string>(
+    components: readonly RuntimeTelemetryComponent[],
+    getStatus: (component: RuntimeTelemetryComponent) => TStatus,
+  ): ComponentStatusMap<TStatus> {
+    const statuses: ComponentStatusMap<TStatus> = new Map();
+
+    for (const component of components) {
+      this.setComponentStatus(statuses, component.id, component.kind, getStatus(component));
+    }
+
+    return statuses;
   }
 
-  private toComponentKey(componentId: string, componentKind: string): string {
-    return `${componentId}::${componentKind}`;
+  private setComponentStatus<TStatus extends string>(
+    statuses: ComponentStatusMap<TStatus>,
+    componentId: string,
+    componentKind: string,
+    status: TStatus,
+  ): void {
+    let statusByKind = statuses.get(componentId);
+    if (!statusByKind) {
+      statusByKind = new Map();
+      statuses.set(componentId, statusByKind);
+    }
+
+    statusByKind.set(componentKind, status);
+  }
+
+  private getComponentStatus<TStatus extends string>(
+    statuses: ComponentStatusMap<TStatus>,
+    componentId: string,
+    componentKind: string,
+  ): TStatus | undefined {
+    return statuses.get(componentId)?.get(componentKind);
+  }
+
+  private *componentStatusEntries<TStatus extends string>(
+    statuses: ComponentStatusMap<TStatus>,
+  ): Iterable<ComponentStatusEntry<TStatus>> {
+    for (const [componentId, statusByKind] of statuses) {
+      for (const [componentKind, status] of statusByKind) {
+        yield { componentId, componentKind, status };
+      }
+    }
   }
 
   private async resolvePlatformShell(ctx: RequestContext): Promise<{ snapshot(): Promise<PlatformShellSnapshot> } | undefined> {
+    const hasPlatformShell = hasContainerToken(ctx.container, PLATFORM_SHELL);
+    if (hasPlatformShell === false) {
+      return undefined;
+    }
+
     try {
       return await ctx.container.resolve(PLATFORM_SHELL);
     } catch (error) {
-      if (isMissingPlatformShellResolutionError(error)) {
+      if (hasPlatformShell !== true && isMissingPlatformShellResolutionError(error)) {
         return undefined;
       }
 
       throw error;
     }
   }
+}
+
+function hasContainerToken(container: RequestContext['container'], token: Token): boolean | undefined {
+  const has = (container as ContainerPresenceProbe).has;
+
+  if (typeof has !== 'function') {
+    return undefined;
+  }
+
+  return has.call(container, token);
 }
 
 function isMissingPlatformShellResolutionError(error: unknown): error is ContainerResolutionError {
@@ -484,11 +539,8 @@ function isMissingPlatformShellResolutionError(error: unknown): error is Contain
 
   const containerError = error as ContainerResolutionError & { meta?: Record<string, unknown> };
   const token = typeof containerError.meta?.token === 'string' ? containerError.meta.token : undefined;
-  const hint = typeof containerError.meta?.hint === 'string' ? containerError.meta.hint : undefined;
 
-  return token !== undefined
-    && PLATFORM_SHELL_TOKEN_NAMES.has(token)
-    && hint === 'Ensure the provider is registered in a module\'s providers array, or that the module exporting it is imported by the consuming module.';
+  return token !== undefined && PLATFORM_SHELL_TOKEN_NAMES.has(token);
 }
 
 function resolveHttpOptions(http: MetricsModuleOptions['http']): HttpMetricsMiddlewareOptions | undefined {
