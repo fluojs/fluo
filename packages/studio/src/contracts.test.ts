@@ -7,11 +7,11 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { PlatformShellSnapshot } from '@fluojs/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { applyFilters, isStudioLiveEvent, parseStudioLiveEvent, parseStudioPayload, renderMermaid } from './contracts.js';
-import * as studio from './index.js';
 import { bootstrapStudioApp } from './app/bootstrap.js';
-import { inspectComponentConnections, renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './shared/lib/viewer-rendering.js';
+import { applyFilters, isStudioLiveEvent, parseStudioLiveEvent, parseStudioPayload, renderMermaid } from './contracts.js';
 import { initialStudioState, selectSelectedStaticComponent } from './entities/studio/model.js';
+import * as studio from './index.js';
+import { inspectComponentConnections, renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './shared/lib/viewer-rendering.js';
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageCommandTimeoutMs = 120_000;
@@ -731,6 +731,8 @@ describe('parseStudioPayload', () => {
     expect(readme).toContain('pnpm --dir packages/studio dev');
     expect(readme).toContain('preserve focus');
     expect(readme).toContain('intended public publish surface');
+    expect(readme).toContain('body-like payload fields');
+    expect(readme).toContain('`body`, `headers`, `payload`, `rawBody`, `requestBody`, and `responseBody`');
     expect(readmeKo).toContain('pnpm add @fluojs/studio');
     expect(readmeKo).toContain('@fluojs/studio/contracts');
     expect(readmeKo).toContain('@fluojs/studio/viewer');
@@ -739,6 +741,8 @@ describe('parseStudioPayload', () => {
     expect(readmeKo).toContain('pnpm --dir packages/studio dev');
     expect(readmeKo).toContain('focus를 유지');
     expect(readmeKo).toContain('공개 배포 패키지');
+    expect(readmeKo).toContain('body-like payload field');
+    expect(readmeKo).toContain('`body`, `headers`, `payload`, `rawBody`, `requestBody`, `responseBody`');
   });
 
   it('keeps viewer filter controls focused across search, readiness, and severity rerenders', async () => {
@@ -942,6 +946,17 @@ describe('parseStudioPayload', () => {
       );
       cpSync(resolve(outputDirectory, 'index.js'), resolve(packageInstallRoot, 'dist/index.js'));
       cpSync(resolve(outputDirectory, 'contracts.js'), resolve(packageInstallRoot, 'dist/contracts.js'));
+      cpSync(resolve(outputDirectory, 'index.html'), resolve(packageInstallRoot, 'dist/index.html'));
+
+      const packagedViewerResolve = spawnSync(
+        process.execPath,
+        [
+          '--eval',
+          "const resolved = require.resolve('@fluojs/studio/viewer'); if (!resolved.endsWith('/node_modules/@fluojs/studio/dist/index.html')) { console.error(resolved); process.exit(1); }",
+        ],
+        { cwd: consumerRoot, encoding: 'utf8' },
+      );
+      expect(packagedViewerResolve.status, [packagedViewerResolve.stdout, packagedViewerResolve.stderr].filter(Boolean).join('\n')).toBe(0);
 
       const directSubpathImport = spawnSync(
         process.execPath,

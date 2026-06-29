@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isStudioLiveEvent, parseStudioLiveEvent, type StudioLiveEvent } from './contracts.js';
+import { isStudioLiveEvent, parseStudioLiveEvent, parseStudioPayload, type StudioLiveEvent } from './contracts.js';
 import { initialStudioState } from './entities/studio/model.js';
 import { studioReducer } from './features/live-connection/model/reducer.js';
 
@@ -117,5 +117,43 @@ describe('Studio live event contracts', () => {
     const disconnected = studioReducer(restarted, { event: liveEvents[6], type: 'live-event' });
     expect(disconnected.connection.status).toBe('disconnected');
     expect(disconnected.connection.message).toBe('dev server closed');
+  });
+
+  it('clears stale live session state when static/report loading takes over', () => {
+    const liveState = studioReducer(initialStudioState, { event: liveEvents[0], type: 'live-event' });
+    expect(liveState.mode).toBe('live');
+    expect(liveState.liveSnapshot).toBeDefined();
+    expect(liveState.selectedGraphNodeId).toBe('module:app');
+
+    const staticState = studioReducer(liveState, {
+      message: 'Diagnostics file loaded successfully.',
+      parsed: parseStudioPayload(
+        JSON.stringify({
+          components: [],
+          diagnostics: [],
+          generatedAt: '2026-05-28T00:00:03.000Z',
+          health: { status: 'healthy' },
+          readiness: { critical: true, status: 'ready' },
+        }),
+      ),
+      type: 'static-payload',
+    });
+
+    expect(staticState.mode).toBe('static');
+    expect(staticState.liveSnapshot).toBeUndefined();
+    expect(staticState.events).toEqual([]);
+    expect(staticState.selectedGraphNodeId).toBeUndefined();
+    expect(staticState.selectedRequestId).toBeUndefined();
+    expect(staticState.selectedRouteId).toBeUndefined();
+  });
+
+  it('keeps static/report mode when static clipboard feedback reports an error', () => {
+    const staticState = studioReducer(initialStudioState, {
+      connection: { message: 'Clipboard API is unavailable.', status: 'error' },
+      type: 'connection',
+    });
+
+    expect(staticState.mode).toBe('static');
+    expect(staticState.connection.status).toBe('error');
   });
 });

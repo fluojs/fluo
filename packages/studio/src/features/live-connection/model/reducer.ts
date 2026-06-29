@@ -1,5 +1,6 @@
+import type { StudioConnectionStatus } from '../../../contracts.js';
 import type { StudioAction } from '../../../entities/studio/actions.js';
-import type { StudioDashboardState } from '../../../entities/studio/model.js';
+import type { StudioDashboardState, StudioMode } from '../../../entities/studio/model.js';
 import {
   filterStaticSnapshot,
   retainRecentEvents,
@@ -9,6 +10,31 @@ import {
 
 function toggleValue<T extends string>(values: T[], value: T): T[] {
   return values.includes(value) ? values.filter((entry) => entry !== value) : [...values, value];
+}
+
+function modeForConnectionStatus(currentMode: StudioMode, status: StudioConnectionStatus): StudioMode {
+  if (status === 'static') {
+    return 'static';
+  }
+
+  if (status === 'error') {
+    return currentMode;
+  }
+
+  return 'live';
+}
+
+function withoutLiveSession(state: StudioDashboardState): StudioDashboardState {
+  return {
+    ...state,
+    appId: undefined,
+    epoch: undefined,
+    events: [],
+    liveSnapshot: undefined,
+    selectedGraphNodeId: undefined,
+    selectedRequestId: undefined,
+    selectedRouteId: undefined,
+  };
 }
 
 /**
@@ -27,12 +53,12 @@ export function studioReducer(state: StudioDashboardState, action: StudioAction)
           ...action.connection,
           lastEventAt: action.connection.lastEventAt ?? state.connection.lastEventAt,
         },
-        mode: action.connection.status === 'static' ? state.mode : 'live',
+        mode: modeForConnectionStatus(state.mode, action.connection.status),
       };
 
     case 'file-error':
       return {
-        ...state,
+        ...withoutLiveSession(state),
         connection: { message: action.message, status: 'static' },
         message: action.message,
         mode: 'static',
@@ -48,7 +74,7 @@ export function studioReducer(state: StudioDashboardState, action: StudioAction)
       };
 
       return {
-        ...state,
+        ...withoutLiveSession(state),
         connection: {
           message: 'Static/report compatibility mode is active.',
           status: 'static',
