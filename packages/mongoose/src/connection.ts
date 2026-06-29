@@ -33,7 +33,13 @@ type ActiveSessionScope = {
 };
 
 type ActiveSessionScopeHandle = {
+  retainRequestTransaction(handle: ActiveRequestTransactionHandle): void;
   settle(): void;
+};
+
+type AmbientSessionScope = {
+  activeSession: ActiveSessionScopeHandle;
+  session: MongooseSessionLike;
 };
 
 type MongooseRuntimeOptions = {
@@ -63,12 +69,14 @@ const MONGOOSE_CREATE_OPTION_KEYS = new Set<PropertyKey>([
   'writeConcern',
   'wtimeout',
 ]);
-function hasExplicitSessionOption(value: unknown): boolean {
-  return value !== null && typeof value === 'object' && 'session' in value;
-}
-
 function isObjectLike(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
+}
+
+function hasOnlyMongooseCreateOptionKeys(value: object): boolean {
+  const keys = Reflect.ownKeys(value);
+
+  return keys.length > 0 && keys.every((key) => MONGOOSE_CREATE_OPTION_KEYS.has(key));
 }
 
 function isMongooseCreateOptionsCandidate(value: unknown): boolean {
@@ -76,8 +84,16 @@ function isMongooseCreateOptionsCandidate(value: unknown): boolean {
     return false;
   }
 
+  if (
+    'session' in value &&
+    hasOnlyMongooseCreateOptionKeys(value) &&
+    (value.session === null || value.session === undefined || isObjectLike(value.session))
+  ) {
+    return true;
+  }
+
   for (const key of MONGOOSE_CREATE_OPTION_KEYS) {
-    if (key in value) {
+    if (key !== 'session' && key in value) {
       return true;
     }
   }
@@ -90,19 +106,19 @@ function isEmptyCreateOptionsCandidate(value: unknown): boolean {
 }
 
 function resolveCreateOptionsIndex(operationArgs: unknown[]): number {
-  if (
-    operationArgs.length >= 2 &&
-    isMongooseCreateOptionsCandidate(operationArgs[operationArgs.length - 1])
-  ) {
-    return operationArgs.length - 1;
-  }
-
   if (operationArgs.length === 2 && Array.isArray(operationArgs[0])) {
     return 1;
   }
 
   if (operationArgs.length === 2 && isEmptyCreateOptionsCandidate(operationArgs[1])) {
     return 1;
+  }
+
+  if (
+    operationArgs.length >= 2 &&
+    isMongooseCreateOptionsCandidate(operationArgs[operationArgs.length - 1])
+  ) {
+    return operationArgs.length - 1;
   }
 
   return operationArgs.length;
@@ -119,10 +135,6 @@ function resolveOptionsIndex(operation: PropertyKey, operationArgs: unknown[]): 
 
   if (operationArgs.length >= 3) {
     return 2;
-  }
-
-  if (operationArgs.length === 2 && hasExplicitSessionOption(operationArgs[1])) {
-    return 1;
   }
 
   if (operationArgs.length <= 1) {
@@ -202,7 +214,7 @@ async function executeSessionTransaction<T>(session: MongooseSessionLike, fn: ()
 export class MongooseConnection<TConnection extends MongooseConnectionLike = MongooseConnectionLike>
   implements MongooseHandleProvider<TConnection>, OnApplicationShutdown
 {
-  private readonly sessions = new AsyncLocalStorage<MongooseSessionLike>();
+  private readonly sessions = new AsyncLocalStorage<AmbientSessionScope>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
   private readonly activeSessions = new Set<ActiveSessionScope>();
   private lifecycleState: 'ready' | 'shutting-down' | 'stopped' = 'ready';
@@ -238,7 +250,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
    * @returns The ambient session inside a transaction boundary, or `undefined` outside one.
    */
   currentSession(): MongooseSessionLike | undefined {
-    return this.sessions.getStore();
+    return this.sessions.getStore()?.session;
   }
 
   /**
@@ -340,8 +352,8 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
    * @returns The callback result after the request transaction finishes or the direct-execution fallback completes.
    */
   async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-    const currentSession = this.sessions.getStore();
-    if (currentSession) {
+    const currentScope = this.sessions.getStore();
+    if (currentScope) {
       this.assertRequestTransactionsAvailable();
 
       const abortContext = createRequestAbortContext(signal);
@@ -351,7 +363,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
         return await raceWithAbort(fn, abortContext.signal);
       } finally {
         abortContext.cleanup();
-        this.untrackActiveRequestTransaction(active);
+        currentScope.activeSession.retainRequestTransaction(active);
       }
     }
 
@@ -402,7 +414,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     const activeSession = this.trackActiveSession();
 
     try {
-      return await this.sessions.run(session, () => executeSessionTransaction(session, fn));
+      return await this.sessions.run({ activeSession, session }, () => executeSessionTransaction(session, fn));
     } finally {
       try {
         await session.endSession();
@@ -448,7 +460,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
         throw new Error('Mongoose connection transaction resolver initialization failed.');
       }
 
-      return await this.connection.transaction((session) => this.sessions.run(session, fn));
+      return await this.connection.transaction((session) => this.sessions.run({ activeSession, session }, fn));
     } finally {
       activeSession.settle();
     }
@@ -461,11 +473,20 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
         settle = resolve;
       }),
     };
+    const retainedRequestTransactions = new Set<ActiveRequestTransactionHandle>();
 
     this.activeSessions.add(active);
 
     return {
+      retainRequestTransaction: (handle) => {
+        retainedRequestTransactions.add(handle);
+      },
       settle: () => {
+        for (const handle of retainedRequestTransactions) {
+          this.untrackActiveRequestTransaction(handle);
+        }
+
+        retainedRequestTransactions.clear();
         this.activeSessions.delete(active);
         settle();
       },

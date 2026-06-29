@@ -81,20 +81,22 @@ describe('@fluojs/mongoose', () => {
     });
     const service = await app.container.resolve(UserService);
 
-    await expect(service.findById('user-1')).resolves.toEqual({ id: 'user-1' });
-    await expect(service.create('ada@example.com')).resolves.toEqual({ connection: true, email: 'ada@example.com' });
+    try {
+      await expect(service.findById('user-1')).resolves.toEqual({ id: 'user-1' });
+      await expect(service.create('ada@example.com')).resolves.toEqual({ connection: true, email: 'ada@example.com' });
 
-    expect(events).toEqual([
-      'root:find:user-1',
-      'connection:startSession',
-      'transaction:start',
-      'tx:create:ada@example.com',
-      'session:true',
-      'transaction:commit',
-      'session:end',
-    ]);
-
-    await app.close();
+      expect(events).toEqual([
+        'root:find:user-1',
+        'connection:startSession',
+        'transaction:start',
+        'tx:create:ada@example.com',
+        'session:true',
+        'transaction:commit',
+        'session:end',
+      ]);
+    } finally {
+      await app.close();
+    }
 
     expect(events).toEqual([
       'root:find:user-1',
@@ -798,6 +800,68 @@ describe('@fluojs/mongoose', () => {
     ]);
   });
 
+  it('keeps completed nested request transactions visible until the outer manual transaction settles', async () => {
+    const events: string[] = [];
+    let releaseTransaction!: () => void;
+    const transactionReleased = new Promise<void>((resolve) => {
+      releaseTransaction = resolve;
+    });
+    const session = createFakeSession(events);
+
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return session;
+      },
+    };
+
+    const mongoose = new MongooseConnection<typeof connection>(connection);
+
+    const outerTransaction = mongoose.transaction(async () => {
+      await mongoose.requestTransaction(async () => {
+        events.push('request:done');
+        return 'request-result';
+      });
+
+      expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+        details: {
+          activeRequestTransactions: 1,
+          activeSessions: 1,
+        },
+      });
+
+      await transactionReleased;
+      return 'outer-result';
+    });
+
+    await vi.waitFor(() => {
+      expect(events).toContain('request:done');
+    });
+    expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        activeRequestTransactions: 1,
+        activeSessions: 1,
+      },
+    });
+
+    releaseTransaction();
+
+    await expect(outerTransaction).resolves.toBe('outer-result');
+    expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        activeRequestTransactions: 0,
+        activeSessions: 0,
+      },
+    });
+    expect(events).toEqual([
+      'connection:startSession',
+      'transaction:start',
+      'request:done',
+      'transaction:commit',
+      'session:end',
+    ]);
+  });
+
   it('uses Mongoose connection.transaction when available without overriding explicit session flow', async () => {
     const events: string[] = [];
     const session = createFakeSession(events);
@@ -840,10 +904,18 @@ describe('@fluojs/mongoose', () => {
     const events: string[] = [];
     const controller = new AbortController();
     let resolveSession!: () => void;
+    let resolveSessionEnded!: () => void;
     const sessionReady = new Promise<void>((resolve) => {
       resolveSession = resolve;
     });
+    const sessionEnded = new Promise<void>((resolve) => {
+      resolveSessionEnded = resolve;
+    });
     const session = createFakeSession(events);
+    session.endSession = () => {
+      events.push('session:end');
+      resolveSessionEnded();
+    };
 
     const connection: MongooseConnectionLike = {
       async startSession() {
@@ -866,9 +938,7 @@ describe('@fluojs/mongoose', () => {
     expect(events).toEqual(['connection:startSession:start']);
 
     resolveSession();
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 0);
-    });
+    await sessionEnded;
 
     expect(events).toEqual(['connection:startSession:start', 'connection:startSession:end', 'session:end']);
   });
@@ -910,6 +980,7 @@ describe('@fluojs/mongoose', () => {
     let resolveTransaction!: () => void;
     let resolveEndSessionStarted!: () => void;
     let resolveEndSession!: () => void;
+    let resolveEndSessionDone!: () => void;
     const transactionReady = new Promise<void>((resolve) => {
       resolveTransaction = resolve;
     });
@@ -918,6 +989,9 @@ describe('@fluojs/mongoose', () => {
     });
     const endSessionDeferred = new Promise<void>((resolve) => {
       resolveEndSession = resolve;
+    });
+    const endSessionDone = new Promise<void>((resolve) => {
+      resolveEndSessionDone = resolve;
     });
     const session: MongooseSessionLike = {
       abortTransaction() {
@@ -931,6 +1005,7 @@ describe('@fluojs/mongoose', () => {
         resolveEndSessionStarted();
         await endSessionDeferred;
         events.push('session:end:done');
+        resolveEndSessionDone();
       },
       startTransaction() {
         events.push('transaction:start');
@@ -986,9 +1061,7 @@ describe('@fluojs/mongoose', () => {
     ]);
 
     resolveEndSession();
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 0);
-    });
+    await endSessionDone;
 
     expect(events).toEqual([
       'connection:transaction:start',
@@ -998,11 +1071,14 @@ describe('@fluojs/mongoose', () => {
       'session:end:done',
     ]);
     expect(events).not.toContain('request:work');
-    expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
-      details: {
-        activeRequestTransactions: 0,
-        activeSessions: 0,
-      },
+
+    await vi.waitFor(() => {
+      expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+        details: {
+          activeRequestTransactions: 0,
+          activeSessions: 0,
+        },
+      });
     });
   });
 
@@ -1106,8 +1182,14 @@ describe('@fluojs/mongoose', () => {
 
     await transactionStarted;
     const closePromise = app.close();
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 0);
+
+    await vi.waitFor(() => {
+      expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+        details: {
+          activeSessions: 1,
+          lifecycleState: 'shutting-down',
+        },
+      });
     });
 
     expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({

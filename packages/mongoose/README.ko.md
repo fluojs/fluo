@@ -28,7 +28,10 @@ pnpm add mongoose
 
 - Mongoose를 나머지 애플리케이션과 같은 DI 및 라이프사이클 모델에 연결하고 싶을 때.
 - 모든 서비스에서 MongoDB 세션과 트랜잭션을 임시 배관 코드 없이 하나의 wrapper로 다루고 싶을 때.
+- 요청 단위 트랜잭션에 명시적 `requestTransaction(...)` 경계가 필요할 때.
 - 애플리케이션이 이미 concrete Mongoose connection을 생성·구성하고 있고, fluo가 그 ownership을 대체하지 않고 관측하기를 원할 때.
+
+Root `@fluojs/mongoose` wrapper는 ambient transaction context에 Node.js `node:async_hooks`를 사용하며, package manifest의 `engines.node >=20.0.0`과 동일하게 Node.js 20 이상을 지원합니다. 비 Node 런타임에서는 runtime-specific transaction-context adapter가 문서화되기 전까지 root wrapper를 import하지 말고 raw Mongoose-compatible handle을 애플리케이션 소유 provider 뒤에 등록하세요.
 
 ## 빠른 시작
 

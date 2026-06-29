@@ -31,6 +31,8 @@ pnpm add mongoose
 - when request-scoped transactions need explicit `requestTransaction(...)` boundaries
 - when an application already creates and configures its concrete Mongoose connection and wants fluo to observe, not replace, that ownership
 
+The root `@fluojs/mongoose` wrapper uses Node.js `node:async_hooks` for ambient transaction context and supports Node.js 20 or newer, matching the package manifest `engines.node >=20.0.0`. For non-Node runtimes, register raw Mongoose-compatible handles behind application-owned providers instead of importing the root wrapper until a runtime-specific transaction-context adapter is documented.
+
 ## Quick Start
 
 ```ts

@@ -1,18 +1,17 @@
-import { describe, expect, it } from 'vitest';
-
 import { Inject } from '@fluojs/core';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import {
   Controller,
-  FromBody,
-  Post,
-  RequestDto,
-  HttpCode,
   type FrameworkRequest,
   type FrameworkResponse,
+  FromBody,
+  HttpCode,
+  Post,
+  RequestDto,
 } from '@fluojs/http';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { describe, expect, it } from 'vitest';
 
-import { MongooseModule, MongooseConnection, Transaction } from './index.js';
+import { MongooseConnection, MongooseModule, Transaction } from './index.js';
 import type { MongooseSessionLike } from './types.js';
 
 function createResponse(events?: string[]): FrameworkResponse & { body?: unknown } {
@@ -170,24 +169,26 @@ describe('@fluojs/mongoose service boundary primary flow', () => {
     const app = await bootstrapApplication({ rootModule: AppModule });
     const response = createResponse(events);
 
-    await app.dispatch(
-      createRequest('/service-boundary/users', 'POST', { email: 'ada@example.com', name: 'Ada' }),
-      response,
-    );
+    try {
+      await app.dispatch(
+        createRequest('/service-boundary/users', 'POST', { email: 'ada@example.com', name: 'Ada' }),
+        response,
+      );
 
-    expect(response.statusCode).toBe(201);
-    expect(response.body).toEqual({ email: 'ada@example.com', id: 'user-1', name: 'Ada' });
-    expect(createSessions[0]).toBe(startedSessions[0]);
-    expect(events).toEqual([
-      'connection:startSession',
-      'session:tx:start',
-      'model:create:ada@example.com',
-      'session:tx:commit',
-      'session:end',
-      'response:send',
-    ]);
-
-    await app.close();
+      expect(response.statusCode).toBe(201);
+      expect(response.body).toEqual({ email: 'ada@example.com', id: 'user-1', name: 'Ada' });
+      expect(createSessions[0]).toBe(startedSessions[0]);
+      expect(events).toEqual([
+        'connection:startSession',
+        'session:tx:start',
+        'model:create:ada@example.com',
+        'session:tx:commit',
+        'session:end',
+        'response:send',
+      ]);
+    } finally {
+      await app.close();
+    }
   });
 
   it('keeps controller-level method decoration as a compatibility path only', async () => {
