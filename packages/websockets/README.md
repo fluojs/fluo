@@ -135,13 +135,13 @@ Handler return values are ignored after any returned promise settles. Send repli
 - `@OnDisconnect()`: Decorator for disconnection handlers.
 - `WebSocketModule`: Root module for WebSocket integration.
 - `WebSocketModule.forRoot({ upgrade, limits, backpressure, buffer, heartbeat, shutdown })`: Configures pre-upgrade guards and bounded runtime defaults.
-- `WebSocketGatewayLifecycleService`: Root alias for the default Node.js-backed lifecycle service token.
+- `WebSocketGatewayLifecycleService`: Root alias for `NodeWebSocketGatewayLifecycleService`, the default Node.js-backed lifecycle service token.
 - `WebSocketRoomService`: Room management contract implemented by runtime lifecycle services for joining, leaving, broadcasting to, and inspecting websocket rooms.
 - Metadata helpers and symbols: `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, `webSocketHandlerMetadataSymbol`.
 
 ## Runtime-Specific Subpaths
 
-Use the runtime subpaths when you want an explicit runtime binding instead of the default root Node.js alias. The root `@fluojs/websockets` entrypoint preserves the Node.js default module and lifecycle-service export names, but plain root-package imports keep the concrete Node implementation behind lazy runtime provider resolution. Fetch-style applications should still import gateway decorators and metadata helpers from their selected runtime subpath so authoring code does not rely on the root Node.js-backed module boundary.
+Use the runtime subpaths when you want an explicit runtime binding instead of the default root Node.js alias. The root `@fluojs/websockets` entrypoint preserves the Node.js default module export name and aliases `WebSocketGatewayLifecycleService` to the same DI token as `NodeWebSocketGatewayLifecycleService`, but plain root-package imports keep the concrete Node implementation behind lazy runtime provider resolution. Fetch-style applications should still import gateway decorators and metadata helpers from their selected runtime subpath so authoring code does not rely on the root Node.js-backed module boundary.
 
 The package manifest declares `engines.node >=20.0.0` for the published package and default Node.js entrypoint. Bun, Deno, and Cloudflare Workers support is exposed through the dedicated fetch-style subpaths listed below; those subpaths keep request/handler types web-standard and avoid the root Node.js lifecycle-service alias in application code.
 
