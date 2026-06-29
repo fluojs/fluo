@@ -101,7 +101,7 @@ Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타
 - Runtime ingestion과 browser state/SSE API는 실행마다 생성되는 token을 요구합니다.
 - Sidecar는 기본적으로 CORS를 활성화하지 않습니다.
 - Request body는 기본적으로 수집하지 않습니다. Live request event는 method/path/url/request id/route/handler/status/duration/error metadata만 포함합니다.
-- Live request event validation은 Studio UI state가 값을 보관하기 전에 `body`, `rawBody`, `requestBody`, `responseBody` 같은 body-like payload field를 거부합니다.
+- Live request event validation은 Studio UI state가 값을 보관하기 전에 privacy-sensitive `body`, `headers`, `payload`, `rawBody`, `requestBody`, `responseBody`를 포함한 body-like payload field를 거부합니다.
 - Runtime Studio instrumentation은 CLI가 제공한 명시적 Studio config가 있을 때만 활성화됩니다. Runtime package source는 `process.env`를 직접 읽지 않으며, 유효한 injected config가 없으면 runtime 동작은 no-op입니다.
 
 ## 런타임 지원 매트릭스

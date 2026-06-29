@@ -101,7 +101,7 @@ This file-first path is the compatibility and migration fallback for CI, support
 - Runtime ingestion and browser state/SSE APIs require generated per-run tokens.
 - The sidecar does not enable CORS by default.
 - Request bodies are not captured by default. Live request events include method/path/url/request id/route/handler/status/duration/error metadata only.
-- Live request event validation rejects body-like payload fields such as `body`, `rawBody`, `requestBody`, and `responseBody` before Studio UI state can retain them.
+- Live request event validation rejects body-like payload fields, including privacy-sensitive `body`, `headers`, `payload`, `rawBody`, `requestBody`, and `responseBody`, before Studio UI state can retain them.
 - Runtime Studio instrumentation is activated only by explicit CLI-provided Studio config. Runtime package source does not read `process.env` directly; without valid injected config, runtime behavior is a no-op.
 
 ## Runtime Support Matrix
