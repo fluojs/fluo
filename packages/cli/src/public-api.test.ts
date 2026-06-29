@@ -41,6 +41,9 @@ describe('public CLI package API', () => {
     expect(typeof runCli).toBe('function');
     expect(runtimeOptions.ci).toBe(true);
     expect(rootEntrypoint).not.toContain("from './cli.js'");
+    expect(rootEntrypoint).not.toContain("from './commands/generate.js'");
+    expect(rootEntrypoint).not.toContain("from './commands/inspect.js'");
+    expect(rootEntrypoint).not.toContain("from './commands/new.js'");
     expect(runCliFacade).toContain("await import('./cli.js')");
   });
 
