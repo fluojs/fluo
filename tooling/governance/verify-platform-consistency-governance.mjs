@@ -555,7 +555,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // future contract-boundary edits do not silently bypass the companion checks.
   // Updating this script is the CI/tooling companion for branches that extend
   // the contract-governing documentation surface, including package-surface
-  // transaction boundary updates that must stay paired with runtime tests.
+  // transaction boundary updates that must stay paired with runtime tests,
+  // such as Drizzle shutdown-drain coverage for fail-open manual transactions.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
