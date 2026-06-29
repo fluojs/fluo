@@ -71,8 +71,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    // src 내부와 모든 __tests__ 디렉토리의 테스트를 포함합니다
-    include: ['src/**/*.test.ts', 'src/**/*.spec.ts'],
+    // src 아래 unit/slice 테스트와 test 아래 app-level e2e 스타일 suite를 포함합니다.
+    include: ['src/**/*.test.ts', 'src/**/*.spec.ts', 'test/**/*.test.ts'],
   },
 });
 ```
@@ -230,24 +230,19 @@ import { createTestApp } from '@fluojs/testing';
 import { AppModule } from './app.module';
 
 describe('PostController (E2E-style HTTP)', () => {
-  let app: any;
-
-  beforeAll(async () => {
-    // 테스트 스위트를 위해 앱을 한 번만 초기화합니다
-    app = await createTestApp({ rootModule: AppModule });
-  });
-
-  afterAll(async () => {
-    await app.close();
-  });
-
   it('GET /posts should return a list of posts', async () => {
-    const response = await app
-      .request('GET', '/posts')
-      .send();
+    const app = await createTestApp({ rootModule: AppModule });
 
-    expect(response.status).toBe(200);
-    expect(Array.isArray(response.body)).toBe(true);
+    try {
+      const response = await app
+        .request('GET', '/posts')
+        .send();
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
+    } finally {
+      await app.close();
+    }
   });
 });
 ```

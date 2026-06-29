@@ -1,10 +1,11 @@
-import { vi } from 'vitest';
-import type { Mock } from 'vitest';
-
 import type { Token } from '@fluojs/core';
 import type { ValueProvider } from '@fluojs/di';
+import type { Mock } from 'vitest';
+import { vi } from 'vitest';
 
-import type { DeepMocked } from './types.js';
+import type { DeepMocked } from './mock-types.js';
+
+export type { DeepMocked } from './mock-types.js';
 
 /**
  * Defines the mocked methods type.

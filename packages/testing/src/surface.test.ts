@@ -1,20 +1,43 @@
-import { existsSync, readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import type { Mock } from 'vitest';
 import { describe, expect, it } from 'vitest';
-
-import * as testing from './index.js';
+import * as fetchStyleWebsocket from './conformance/fetch-style-websocket-conformance.js';
+import * as conformance from './conformance/platform-conformance.js';
 import * as http from './http.js';
+import * as testing from './index.js';
 import * as mock from './mock.js';
 import * as portability from './portability/http-adapter-portability.js';
 import * as webPortability from './portability/web-runtime-adapter-portability.js';
-import * as conformance from './conformance/platform-conformance.js';
-import * as fetchStyleWebsocket from './conformance/fetch-style-websocket-conformance.js';
-import * as vitestEntry from './vitest.js';
+import type { DeepMocked } from './types.js';
 import * as vitestTooling from './vitest/tooling.js';
+import * as vitestEntry from './vitest.js';
+
+type Assert<T extends true> = T;
+type IsAssignable<From, To> = [From] extends [To] ? true : false;
+
+interface LegacyDeepMockedConsumerService {
+  findById(id: string): Promise<{ id: string }>;
+  count(): number;
+  readonly name: string;
+}
+
+type _DeepMockedAsyncMethodPreservesVitestMockCompatibility = Assert<
+  IsAssignable<DeepMocked<LegacyDeepMockedConsumerService>['findById'], Mock<(id: string) => Promise<{ id: string }>>>
+>;
+type _DeepMockedSyncMethodPreservesVitestMockCompatibility = Assert<
+  IsAssignable<DeepMocked<LegacyDeepMockedConsumerService>['count'], Mock<() => number>>
+>;
+type _DeepMockedPropertiesRemainUnchanged = Assert<
+  IsAssignable<DeepMocked<LegacyDeepMockedConsumerService>['name'], string>
+>;
+type _DeepMockedMockContextPreservesCallTuples = Assert<
+  IsAssignable<DeepMocked<LegacyDeepMockedConsumerService>['findById']['mock']['calls'], [id: string][]>
+>;
 
 const packageRoot = new URL('..', import.meta.url);
 const packageRootPath = fileURLToPath(packageRoot);
@@ -179,6 +202,13 @@ describe('@fluojs/testing surface', () => {
       expect(existsSync(resolve(packageRootPath, entry.import)), `${subpath} import output is missing`).toBe(true);
       expect(existsSync(resolve(packageRootPath, entry.types)), `${subpath} types output is missing`).toBe(true);
     }
+
+    for (const declarationFile of ['dist/app.d.ts', 'dist/module.d.ts', 'dist/types.d.ts']) {
+      expect(readFileSync(resolve(packageRootPath, declarationFile), 'utf8')).not.toContain('vitest');
+    }
+
+    expect(readFileSync(resolve(packageRootPath, 'dist/types.d.ts'), 'utf8')).toContain('type DeepMocked<T>');
+    expect(readFileSync(resolve(packageRootPath, 'dist/mock.d.ts'), 'utf8')).toContain('./mock-types.js');
   }, 300_000);
 
   it('imports every public package subpath through the published export map', async () => {
@@ -227,6 +257,7 @@ describe('@fluojs/testing surface', () => {
       });
     });
 
-    await expect(import('@fluojs/testing/mock')).resolves.toBeTypeOf('object');
+    const mockSubpath = '@fluojs/testing/mock' as string;
+    await expect(import(mockSubpath)).resolves.toBeTypeOf('object');
   }, 300_000);
 });

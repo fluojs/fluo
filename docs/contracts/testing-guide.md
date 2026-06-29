@@ -50,7 +50,7 @@ Keep manual `FrameworkRequest`/`FrameworkResponse` stubs, `makeRequest(...)`, ra
 
 `@fluojs/testing/vitest` is the supported Vitest entrypoint for `fluoBabelDecoratorsPlugin()`. Keep it in package export-map and build-surface checks whenever testing package exports change.
 
-`@fluojs/testing` declares `engines.node >=20.0.0`. Its mock helpers and shared `DeepMocked<T>` type intentionally use Vitest's mock type boundary; consumers that do not run Vitest should prefer non-mock entrypoints such as `@fluojs/testing/app`, `@fluojs/testing/module`, or harness subpaths.
+`@fluojs/testing` declares `engines.node >=20.0.0`. Its mock helpers and `@fluojs/testing/mock` `DeepMocked<T>` type intentionally use Vitest's mock type boundary; consumers that do not run Vitest should prefer non-mock entrypoints such as `@fluojs/testing/app`, `@fluojs/testing/module`, or harness subpaths.
 
 ## Commands
 
