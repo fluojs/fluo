@@ -16,6 +16,8 @@ import { MetricsService } from './metrics-service.js';
 import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
+type TestPlatformHealthStatus = 'healthy' | 'unhealthy' | 'degraded';
+type TestPlatformReadinessStatus = 'ready' | 'not-ready' | 'degraded';
 
 function createRequest(path: string, headers: FrameworkRequest['headers'] = {}): FrameworkRequest {
   return {
@@ -57,6 +59,50 @@ function createResponse(): TestResponse {
   };
 }
 
+function createPlatformComponent({
+  health = 'healthy',
+  id,
+  kind,
+  readiness = 'ready',
+}: {
+  health?: TestPlatformHealthStatus;
+  id: string;
+  kind: string;
+  readiness?: TestPlatformReadinessStatus;
+}): PlatformComponent {
+  return {
+    async health() {
+      return { status: health };
+    },
+    id,
+    kind,
+    async ready() {
+      return { critical: false, status: readiness };
+    },
+    snapshot() {
+      return {
+        dependencies: [],
+        details: {},
+        health: { status: health },
+        id,
+        kind,
+        ownership: { externallyManaged: false, ownsResources: true },
+        readiness: { critical: false, status: readiness },
+        state: readiness === 'ready' ? 'ready' : 'starting',
+        telemetry: { namespace: kind, tags: {} },
+      };
+    },
+    async start() {},
+    state() {
+      return readiness === 'ready' ? 'ready' : 'starting';
+    },
+    async stop() {},
+    async validate() {
+      return { issues: [], ok: health !== 'unhealthy' };
+    },
+  };
+}
+
 describe('MetricsModule', () => {
   it('can disable the scrape endpoint explicitly', async () => {
     class AppModule {}
@@ -69,12 +115,14 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const response = createResponse();
-    await app.dispatch(createRequest('/metrics'), response);
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/metrics'), response);
 
-    expect(response.statusCode).toBe(404);
-
-    await app.close();
+      expect(response.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
   });
 
   it('supports route-scoped endpoint middleware for scrape protection', async () => {
@@ -103,17 +151,19 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const forbiddenResponse = createResponse();
-    await app.dispatch(createRequest('/metrics'), forbiddenResponse);
-    expect(forbiddenResponse.statusCode).toBe(403);
+    try {
+      const forbiddenResponse = createResponse();
+      await app.dispatch(createRequest('/metrics'), forbiddenResponse);
+      expect(forbiddenResponse.statusCode).toBe(403);
 
-    const metricsResponse = createResponse();
-    await app.dispatch(createRequest('/metrics', { 'x-metrics-token': 'secret-token' }), metricsResponse);
+      const metricsResponse = createResponse();
+      await app.dispatch(createRequest('/metrics', { 'x-metrics-token': 'secret-token' }), metricsResponse);
 
-    expect(metricsResponse.statusCode).toBe(200);
-    expect(String(metricsResponse.body)).toContain('fluo_metrics_registry_mode{mode="isolated"} 1');
-
-    await app.close();
+      expect(metricsResponse.statusCode).toBe(200);
+      expect(String(metricsResponse.body)).toContain('fluo_metrics_registry_mode{mode="isolated"} 1');
+    } finally {
+      await app.close();
+    }
   });
 
   it('binds endpoint middleware when the scrape endpoint path is empty', async () => {
@@ -314,19 +364,22 @@ describe('MetricsModule', () => {
     const app = await bootstrapApplication({
       rootModule: AppModule,
     });
-    const response = createResponse();
 
-    await app.dispatch(createRequest('/metrics'), response);
+    try {
+      const response = createResponse();
 
-    expect(response.statusCode).toBe(200);
-    expect(response.headers['content-type']).toBe(Registry.PROMETHEUS_CONTENT_TYPE);
-    expect(response.body).toEqual(expect.stringContaining('fluo_metrics_registry_mode{mode="isolated"} 1'));
-    expect(response.body).toEqual(expect.stringContaining('fluo_component_ready{component_id="runtime.shell",component_kind="runtime",operation="readiness",result="ready",env="unknown",instance="local"} 1'));
-    expect(response.body).toEqual(expect.stringContaining('fluo_component_health{component_id="runtime.shell",component_kind="runtime",operation="health",result="healthy",env="unknown",instance="local"} 1'));
-    expect(response.body).toEqual(expect.stringContaining('process_cpu_seconds_total'));
-    expect(response.body).toEqual(expect.stringContaining('nodejs_heap_size_total_bytes'));
+      await app.dispatch(createRequest('/metrics'), response);
 
-    await app.close();
+      expect(response.statusCode).toBe(200);
+      expect(response.headers['content-type']).toBe(Registry.PROMETHEUS_CONTENT_TYPE);
+      expect(response.body).toEqual(expect.stringContaining('fluo_metrics_registry_mode{mode="isolated"} 1'));
+      expect(response.body).toEqual(expect.stringContaining('fluo_component_ready{component_id="runtime.shell",component_kind="runtime",operation="readiness",result="ready",env="unknown",instance="local"} 1'));
+      expect(response.body).toEqual(expect.stringContaining('fluo_component_health{component_id="runtime.shell",component_kind="runtime",operation="health",result="healthy",env="unknown",instance="local"} 1'));
+      expect(response.body).toEqual(expect.stringContaining('process_cpu_seconds_total'));
+      expect(response.body).toEqual(expect.stringContaining('nodejs_heap_size_total_bytes'));
+    } finally {
+      await app.close();
+    }
   });
 
   it('omits Prometheus default collectors when defaultMetrics is false', async () => {
@@ -853,36 +906,70 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const response = createResponse();
-    await app.dispatch(createRequest('/metrics'), response);
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/metrics'), response);
 
-    const metricsText = String(response.body);
-    expect(response.statusCode).toBe(200);
-    expect(metricsText).toContain('fluo_component_ready{component_id="cache.default",component_kind="cache",operation="readiness",result="degraded"');
-    expect(metricsText).toContain('fluo_component_health{component_id="cache.default",component_kind="cache",operation="health",result="degraded"');
-
-    await app.close();
+      const metricsText = String(response.body);
+      expect(response.statusCode).toBe(200);
+      expect(metricsText).toContain('fluo_component_ready{component_id="cache.default",component_kind="cache",operation="readiness",result="degraded"');
+      expect(metricsText).toContain('fluo_component_health{component_id="cache.default",component_kind="cache",operation="health",result="degraded"');
+    } finally {
+      await app.close();
+    }
   });
 
-  it('suppresses only missing platform shell registration errors during scrape refresh', async () => {
-    const missingPlatformShellError = new ContainerResolutionError(
-      'Structured missing provider context should not depend on message wording.',
-      {
-        hint: 'Ensure the provider is registered in a module\'s providers array, or that the module exporting it is imported by the consuming module.',
-        token: PLATFORM_SHELL,
-      },
-    );
+  it('preserves platform telemetry components whose ids and kinds contain key separators', async () => {
+    const firstComponent = createPlatformComponent({
+      id: 'cache::default',
+      kind: 'redis',
+    });
+    const secondComponent = createPlatformComponent({
+      health: 'degraded',
+      id: 'cache',
+      kind: 'default::redis',
+      readiness: 'degraded',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
+    });
+
+    const app = await bootstrapApplication({
+      platform: { components: [firstComponent, secondComponent] },
+      rootModule: AppModule,
+    });
+
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/metrics'), response);
+
+      const metricsText = String(response.body);
+      expect(response.statusCode).toBe(200);
+      expect(metricsText).toContain('fluo_component_ready{component_id="cache::default",component_kind="redis",operation="readiness",result="ready"');
+      expect(metricsText).toContain('fluo_component_health{component_id="cache::default",component_kind="redis",operation="health",result="healthy"');
+      expect(metricsText).toContain('fluo_component_ready{component_id="cache",component_kind="default::redis",operation="readiness",result="degraded"');
+      expect(metricsText).toContain('fluo_component_health{component_id="cache",component_kind="default::redis",operation="health",result="degraded"');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('omits platform telemetry when the platform shell token is absent during scrape refresh', async () => {
     const missingPlatformShellMiddleware = {
       async handle(context: MiddlewareContext, next: Next): Promise<void> {
-        const originalResolve = context.requestContext.container.resolve.bind(context.requestContext.container);
+        const container = context.requestContext.container as typeof context.requestContext.container & { has?: (token: unknown) => boolean };
+        const originalHas = container.has?.bind(container);
 
-        context.requestContext.container.resolve = (async (token: Parameters<typeof originalResolve>[0]) => {
+        container.has = (token: unknown) => {
           if (token === PLATFORM_SHELL) {
-            throw missingPlatformShellError;
+            return false;
           }
 
-          return await originalResolve(token);
-        }) as typeof context.requestContext.container.resolve;
+          return originalHas?.(token) ?? true;
+        };
 
         await next();
       },
@@ -898,39 +985,35 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const response = createResponse();
-    await app.dispatch(createRequest('/metrics'), response);
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/metrics'), response);
 
-    const metricsText = String(response.body);
+      const metricsText = String(response.body);
 
-    expect(response.statusCode).toBe(200);
-    expect(metricsText).toContain('fluo_metrics_registry_mode{mode="isolated"} 1');
-    expect(metricsText).not.toContain('fluo_component_ready{');
-    expect(metricsText).not.toContain('fluo_component_health{');
-
-    await app.close();
+      expect(response.statusCode).toBe(200);
+      expect(metricsText).toContain('fluo_metrics_registry_mode{mode="isolated"} 1');
+      expect(metricsText).not.toContain('fluo_component_ready{');
+      expect(metricsText).not.toContain('fluo_component_health{');
+    } finally {
+      await app.close();
+    }
   });
 
   it('clears stale platform telemetry series when the platform shell becomes unavailable', async () => {
-    const missingPlatformShellError = new ContainerResolutionError(
-      `No provider registered for token ${String(PLATFORM_SHELL)}.`,
-      {
-        hint: 'Ensure the provider is registered in a module\'s providers array, or that the module exporting it is imported by the consuming module.',
-        token: PLATFORM_SHELL,
-      },
-    );
     let platformShellAvailable = true;
     const intermittentPlatformShellMiddleware = {
       async handle(context: MiddlewareContext, next: Next): Promise<void> {
-        const originalResolve = context.requestContext.container.resolve.bind(context.requestContext.container);
+        const container = context.requestContext.container as typeof context.requestContext.container & { has?: (token: unknown) => boolean };
+        const originalHas = container.has?.bind(container);
 
-        context.requestContext.container.resolve = (async (token: Parameters<typeof originalResolve>[0]) => {
-          if (token === PLATFORM_SHELL && !platformShellAvailable) {
-            throw missingPlatformShellError;
+        container.has = (token: unknown) => {
+          if (token === PLATFORM_SHELL) {
+            return platformShellAvailable;
           }
 
-          return await originalResolve(token);
-        }) as typeof context.requestContext.container.resolve;
+          return originalHas?.(token) ?? true;
+        };
 
         await next();
       },
@@ -946,35 +1029,40 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const initialResponse = createResponse();
-    await app.dispatch(createRequest('/metrics'), initialResponse);
-    expect(String(initialResponse.body)).toContain('fluo_component_ready{');
-    expect(String(initialResponse.body)).toContain('fluo_component_health{');
+    try {
+      const initialResponse = createResponse();
+      await app.dispatch(createRequest('/metrics'), initialResponse);
+      expect(String(initialResponse.body)).toContain('fluo_component_ready{');
+      expect(String(initialResponse.body)).toContain('fluo_component_health{');
 
-    platformShellAvailable = false;
-    const missingShellResponse = createResponse();
-    await app.dispatch(createRequest('/metrics'), missingShellResponse);
+      platformShellAvailable = false;
+      const missingShellResponse = createResponse();
+      await app.dispatch(createRequest('/metrics'), missingShellResponse);
 
-    const metricsText = String(missingShellResponse.body);
-    expect(missingShellResponse.statusCode).toBe(200);
-    expect(metricsText).toContain('fluo_metrics_registry_mode{mode="isolated"} 1');
-    expect(metricsText).not.toContain('fluo_component_ready{');
-    expect(metricsText).not.toContain('fluo_component_health{');
-
-    await app.close();
+      const metricsText = String(missingShellResponse.body);
+      expect(missingShellResponse.statusCode).toBe(200);
+      expect(metricsText).toContain('fluo_metrics_registry_mode{mode="isolated"} 1');
+      expect(metricsText).not.toContain('fluo_component_ready{');
+      expect(metricsText).not.toContain('fluo_component_health{');
+    } finally {
+      await app.close();
+    }
   });
 
-  it('surfaces unexpected platform shell resolution failures during scrape refresh', async () => {
+  it('surfaces platform shell resolution failures even when diagnostics use a missing-provider hint', async () => {
     const resolutionFailure = new ContainerResolutionError(
-      `Failed to resolve token ${String(PLATFORM_SHELL)} because the provider factory threw an unexpected error.`,
+      'Structured missing provider context should not be treated as absence when the token is registered.',
       {
-        hint: 'Inspect the PLATFORM_SHELL provider registration and its factory dependencies.',
+        hint: 'Ensure the provider is registered in a module\'s providers array, or that the module exporting it is imported by the consuming module.',
         token: PLATFORM_SHELL,
       },
     );
     const unexpectedPlatformShellMiddleware = {
       async handle(context: MiddlewareContext, next: Next): Promise<void> {
+        const container = context.requestContext.container as typeof context.requestContext.container & { has?: (token: unknown) => boolean };
         const originalResolve = context.requestContext.container.resolve.bind(context.requestContext.container);
+
+        container.has = (token: unknown) => token === PLATFORM_SHELL;
 
         context.requestContext.container.resolve = (async (token: Parameters<typeof originalResolve>[0]) => {
           if (token === PLATFORM_SHELL) {
@@ -998,20 +1086,22 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const response = createResponse();
-    await app.dispatch(createRequest('/metrics'), response);
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/metrics'), response);
 
-    expect(response.statusCode).toBe(500);
-    expect(response.body).toEqual(
-      expect.objectContaining({
-        error: expect.objectContaining({
-          message: 'Internal server error.',
-          status: 500,
+      expect(response.statusCode).toBe(500);
+      expect(response.body).toEqual(
+        expect.objectContaining({
+          error: expect.objectContaining({
+            message: 'Internal server error.',
+            status: 500,
+          }),
         }),
-      }),
-    );
-
-    await app.close();
+      );
+    } finally {
+      await app.close();
+    }
   });
 
   it('serializes overlapping scrapes and removes stale platform status series', async () => {

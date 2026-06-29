@@ -6,16 +6,17 @@
 
 ## 이 예제가 보여주는 것
 
-- `MetricsModule.forRoot()`를 통한 `/metrics`
+- HTTP 계측과 endpoint middleware를 포함한 `MetricsModule.forRoot(...)` 기반 `/metrics`
 - `TerminusModule.forRoot(...)`를 통한 `/health`, `/ready`
-- `MetricsModule`이 scrape하는 의도적으로 shared Registry에 등록한 custom Prometheus counter 하나
+- 의도적으로 shared Registry 위에서 application-facing `MetricsService`를 통해 등록한 custom Prometheus counter 하나
+- Template-normalized HTTP request label과 token-protected metrics scraping
 - terminus와 metrics에 함께 노출되는 runtime-aligned health/readiness semantics
 - `@fluojs/testing`을 사용한 unit / integration / e2e 스타일 검증
 
 ## 라우트
 
 - `GET /ops/jobs/trigger` — 예제용 custom counter 증가
-- `GET /metrics` — Prometheus scrape endpoint
+- `GET /metrics` — 이 runnable 예제에서 `x-metrics-token: secret-token`으로 보호되는 Prometheus scrape endpoint
 - `GET /health`
 - `GET /ready`
 
@@ -47,9 +48,9 @@ examples/ops-metrics-terminus/
 
 ## 권장 읽기 순서
 
-1. `src/app.ts` — metrics + terminus 등록
-2. `src/ops/metrics-registry.ts` — shared Registry와 custom metric 등록
-3. `src/ops/ops-metrics.service.ts` — counter를 증가시키는 비즈니스 액션
+1. `src/app.ts` — metrics + terminus 등록, HTTP 계측, scrape endpoint 보호
+2. `src/ops/metrics-registry.ts` — `MetricsModule.forRoot({ registry })`에 전달하는 shared Registry ownership
+3. `src/ops/ops-metrics.service.ts` — application-facing `MetricsService` custom counter 등록과 재사용
 4. `src/ops/ops.controller.ts` — metrics 상태를 바꾸는 라우트
 5. `src/app.test.ts` — `createTestApp(...).request(...).send()` 기반 `/health`, `/ready`, `/metrics`, custom route 검증
 

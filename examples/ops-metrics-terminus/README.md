@@ -6,16 +6,17 @@ Runnable fluo operations example focused on `@fluojs/metrics` and `@fluojs/termi
 
 ## what this example demonstrates
 
-- `/metrics` via `MetricsModule.forRoot()`
+- `/metrics` via `MetricsModule.forRoot(...)` with HTTP instrumentation and endpoint middleware
 - `/health` and `/ready` via `TerminusModule.forRoot(...)`
-- one custom Prometheus counter registered on an intentionally shared Registry that is scraped through `MetricsModule`
+- one custom Prometheus counter registered through the application-facing `MetricsService` on an intentionally shared Registry
+- template-normalized HTTP request labels and token-protected metrics scraping
 - runtime-aligned health/readiness semantics exposed through terminus and metrics
 - unit, integration, and e2e-style verification with `@fluojs/testing`
 
 ## routes
 
 - `GET /ops/jobs/trigger` — increments the example custom counter
-- `GET /metrics` — Prometheus scrape endpoint
+- `GET /metrics` — Prometheus scrape endpoint protected by `x-metrics-token: secret-token` in this runnable example
 - `GET /health`
 - `GET /ready`
 
@@ -47,9 +48,9 @@ examples/ops-metrics-terminus/
 
 ## recommended reading order
 
-1. `src/app.ts` — metrics + terminus registration
-2. `src/ops/metrics-registry.ts` — shared Registry and custom metric registration
-3. `src/ops/ops-metrics.service.ts` — business action that increments the counter
+1. `src/app.ts` — metrics + terminus registration, HTTP instrumentation, and scrape endpoint protection
+2. `src/ops/metrics-registry.ts` — shared Registry ownership passed into `MetricsModule.forRoot({ registry })`
+3. `src/ops/ops-metrics.service.ts` — application-facing `MetricsService` custom counter registration and reuse
 4. `src/ops/ops.controller.ts` — route that mutates metrics state
 5. `src/app.test.ts` — `/health`, `/ready`, `/metrics`, and custom route verification through `createTestApp(...).request(...).send()`
 

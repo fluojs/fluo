@@ -179,7 +179,8 @@ Open the printed `dist/index.html` path and drag a snapshot file into the viewer
 
 - `GET /metrics` through `MetricsModule.forRoot()`
 - `GET /health` and `GET /ready` through `TerminusModule.forRoot(...)`
-- one custom Prometheus counter registered on a shared `Registry`
+- HTTP request instrumentation with template-normalized labels and route-scoped scrape endpoint middleware
+- one custom Prometheus counter registered through `MetricsService` on a shared `Registry`
 - runtime-aligned health/readiness semantics
 - tests through `createTestApp(...).request(...).send()`
 
