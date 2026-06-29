@@ -85,19 +85,52 @@ export interface TestApp {
 }
 
 /**
- * Vitest-compatible mock function shape used to preserve root `DeepMocked<T>` type imports
+ * Result entry recorded by a Vitest-compatible testing mock.
+ */
+export type TestingMockResult<Return> =
+  | { type: 'return'; value: Return }
+  | { type: 'throw'; value: unknown }
+  | { type: 'incomplete'; value: undefined };
+
+/**
+ * Settled async result entry recorded by a Vitest-compatible testing mock.
+ */
+export type TestingMockSettledResult<Return> =
+  | { type: 'fulfilled'; value: Awaited<Return> }
+  | { type: 'rejected'; value: unknown };
+
+/**
+ * Context snapshot exposed from a Vitest-compatible testing mock.
+ */
+export interface TestingMockContext<Args extends unknown[] = unknown[], Return = unknown> {
+  calls: Args[];
+  instances: Return[];
+  contexts: unknown[];
+  invocationCallOrder: number[];
+  results: Array<TestingMockResult<Return>>;
+  settledResults: Array<TestingMockSettledResult<Return>>;
+  lastCall: Args | undefined;
+}
+
+/**
+ * Vitest `Mock<T>`-compatible function shape used to preserve root `DeepMocked<T>` type imports
  * without importing Vitest peer declarations through non-mock entrypoints.
  */
 export interface TestingMockFunction<Args extends unknown[] = unknown[], Return = unknown> {
+  new (...args: Args): Return;
   (...args: Args): Return;
-  mock: unknown;
+  [Symbol.dispose](): void;
+  mock: TestingMockContext<Args, Return>;
   getMockName(): string;
+  getMockImplementation(): ((...args: Args) => Return) | undefined;
   mockClear(): this;
   mockName(name: string): this;
   mockReset(): this;
   mockRestore(): void;
   mockImplementation(fn: (...args: Args) => Return): this;
   mockImplementationOnce(fn: (...args: Args) => Return): this;
+  withImplementation<T>(fn: (...args: Args) => Return, callback: () => T): T extends Promise<unknown> ? Promise<this> : this;
+  mockReturnThis(): this;
   mockReturnValue(value: Return): this;
   mockReturnValueOnce(value: Return): this;
   mockResolvedValue(value: Awaited<Return>): this;

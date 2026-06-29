@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import type { Mock } from 'vitest';
 import { describe, expect, it } from 'vitest';
 import * as fetchStyleWebsocket from './conformance/fetch-style-websocket-conformance.js';
 import * as conformance from './conformance/platform-conformance.js';
@@ -12,8 +13,31 @@ import * as testing from './index.js';
 import * as mock from './mock.js';
 import * as portability from './portability/http-adapter-portability.js';
 import * as webPortability from './portability/web-runtime-adapter-portability.js';
+import type { DeepMocked } from './types.js';
 import * as vitestTooling from './vitest/tooling.js';
 import * as vitestEntry from './vitest.js';
+
+type Assert<T extends true> = T;
+type IsAssignable<From, To> = [From] extends [To] ? true : false;
+
+interface LegacyDeepMockedConsumerService {
+  findById(id: string): Promise<{ id: string }>;
+  count(): number;
+  readonly name: string;
+}
+
+type _DeepMockedAsyncMethodPreservesVitestMockCompatibility = Assert<
+  IsAssignable<DeepMocked<LegacyDeepMockedConsumerService>['findById'], Mock<(id: string) => Promise<{ id: string }>>>
+>;
+type _DeepMockedSyncMethodPreservesVitestMockCompatibility = Assert<
+  IsAssignable<DeepMocked<LegacyDeepMockedConsumerService>['count'], Mock<() => number>>
+>;
+type _DeepMockedPropertiesRemainUnchanged = Assert<
+  IsAssignable<DeepMocked<LegacyDeepMockedConsumerService>['name'], string>
+>;
+type _DeepMockedMockContextPreservesCallTuples = Assert<
+  IsAssignable<DeepMocked<LegacyDeepMockedConsumerService>['findById']['mock']['calls'], [id: string][]>
+>;
 
 const packageRoot = new URL('..', import.meta.url);
 const packageRootPath = fileURLToPath(packageRoot);
