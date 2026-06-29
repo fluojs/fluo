@@ -93,23 +93,25 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const service = await app.container.resolve(UserService);
+    try {
+      const service = await app.container.resolve(UserService);
 
-    await expect(service.create('ada@example.com')).resolves.toEqual({
-      email: 'ada@example.com',
-      id: 'tx-user',
-    });
+      await expect(service.create('ada@example.com')).resolves.toEqual({
+        email: 'ada@example.com',
+        id: 'tx-user',
+      });
 
-    expect(events).toEqual([
-      'transaction:start',
-      'tx:select',
-      'tx:from:users',
-      'tx:insert:users',
-      'tx:values:ada@example.com',
-      'transaction:end',
-    ]);
-
-    await app.close();
+      expect(events).toEqual([
+        'transaction:start',
+        'tx:select',
+        'tx:from:users',
+        'tx:insert:users',
+        'tx:values:ada@example.com',
+        'transaction:end',
+      ]);
+    } finally {
+      await app.close();
+    }
   });
 
   it('reuses an active transaction for nested @Transaction() calls', async () => {
