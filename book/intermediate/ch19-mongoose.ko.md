@@ -20,7 +20,7 @@
 
 ## 19.1 Why Mongoose in fluo?
 
-Mongoose는 Node.js 생태계에서 MongoDB를 다룰 때 널리 쓰이는 모델링 계층입니다. fluo 전용 통합 패키지를 사용하면 다음과 같은 이점을 얻을 수 있습니다.
+Mongoose는 Node.js 생태계에서 MongoDB를 다룰 때 널리 쓰이는 모델링 계층입니다. Root `@fluojs/mongoose` 통합은 ambient transaction context에 Node.js `node:async_hooks`를 사용하며 Node.js 20 이상을 지원합니다. fluo 전용 통합 패키지를 사용하면 다음과 같은 이점을 얻을 수 있습니다.
 
 - **수명 주기 관리**: 제공된 연결을 애플리케이션 라이프사이클에 등록하고, `dispose(connection)`을 제공한 경우 종료 중 요청 단위 트랜잭션이 drain된 뒤에만 정리를 실행합니다.
 - **세션 인지(Session Awareness)**: `MongooseConnection` 서비스가 콜 스택 전체에서 MongoDB 세션을 추적합니다.
@@ -73,12 +73,13 @@ import { Inject } from '@fluojs/core';
 export class ProductRepository {
   constructor(private readonly conn: MongooseConnection) {}
 
-  async findById(id: string) {
-    // 기본 흐름: 모델을 직접 호출합니다.
+  async findOneById(id: string) {
+    // 기본 흐름: 지원되는 facade 메서드를 사용합니다.
     const Product = this.conn.model('Product');
-    return Product.findById(id);
+    return Product.findOne({ _id: id });
   }
 }
+```
 
 `MongooseConnection` 서비스는 컨텍스트 인지 프록시 역할을 합니다. `this.conn.model('Product')`를 호출하면, 활성 트랜잭션이 있을 때 자동으로 그 트랜잭션에 참여하는 버전의 모델을 반환합니다.
 

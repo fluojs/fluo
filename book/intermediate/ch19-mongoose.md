@@ -20,7 +20,7 @@ This chapter covers how to integrate FluoShop's document-oriented data model int
 
 ## 19.1 Why Mongoose in fluo?
 
-Mongoose is a widely used modeling layer for working with MongoDB in the Node.js ecosystem. Using the fluo-specific integration package gives you these benefits.
+Mongoose is a widely used modeling layer for working with MongoDB in the Node.js ecosystem. The root `@fluojs/mongoose` integration uses Node.js `node:async_hooks` for ambient transaction context and supports Node.js 20 or newer. Using the fluo-specific integration package gives you these benefits.
 
 - **Lifecycle Management**: It registers the provided connection in the application lifecycle and, when you supply `dispose(connection)`, runs that cleanup only after request-scoped transactions have drained during shutdown.
 - **Session Awareness**: The `MongooseConnection` service tracks MongoDB sessions across the call stack.
@@ -73,12 +73,13 @@ import { Inject } from '@fluojs/core';
 export class ProductRepository {
   constructor(private readonly conn: MongooseConnection) {}
 
-  async findById(id: string) {
-    // Primary flow: call the model directly.
+  async findOneById(id: string) {
+    // Primary flow: use a supported facade method.
     const Product = this.conn.model('Product');
-    return Product.findById(id);
+    return Product.findOne({ _id: id });
   }
 }
+```
 
 The `MongooseConnection` service acts as a context-aware proxy. When you call `this.conn.model('Product')`, it returns a version of the model that automatically participates in the ambient transaction if one is active.
 
