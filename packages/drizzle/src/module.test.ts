@@ -81,19 +81,21 @@ describe('@fluojs/drizzle', () => {
     const app = await bootstrapApplication({
       rootModule: AppModule,
     });
-    const service = await app.container.resolve(UserService);
+    try {
+      const service = await app.container.resolve(UserService);
 
-    await expect(service.findById('user-1')).resolves.toEqual({ id: 'user-1' });
-    await expect(service.create('ada@example.com')).resolves.toEqual({ email: 'ada@example.com' });
+      await expect(service.findById('user-1')).resolves.toEqual({ id: 'user-1' });
+      await expect(service.create('ada@example.com')).resolves.toEqual({ email: 'ada@example.com' });
 
-    expect(events).toEqual([
-      'root:find:user-1',
-      'transaction:start',
-      'tx:insert:ada@example.com',
-      'transaction:end',
-    ]);
-
-    await app.close();
+      expect(events).toEqual([
+        'root:find:user-1',
+        'transaction:start',
+        'tx:insert:ada@example.com',
+        'transaction:end',
+      ]);
+    } finally {
+      await app.close();
+    }
 
     expect(events).toEqual([
       'root:find:user-1',
@@ -348,6 +350,55 @@ describe('@fluojs/drizzle', () => {
       'transaction:settle:done',
       'dispose',
     ]);
+  });
+
+  it('waits for fail-open manual transaction fallback before dispose on shutdown', async () => {
+    const events: string[] = [];
+    let releaseTransaction!: () => void;
+    const transactionBarrier = new Promise<void>((resolve) => {
+      releaseTransaction = resolve;
+    });
+    const database = {};
+
+    const drizzleModule = DrizzleModule.forRoot<typeof database>({
+      database,
+      dispose() {
+        events.push('dispose');
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [drizzleModule],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+    const drizzle = await app.container.resolve(DrizzleDatabase<typeof database>);
+
+    const openTransaction = drizzle.transaction(async () => {
+      events.push('fallback:start');
+      await transactionBarrier;
+      events.push('fallback:end');
+      return 'fallback-result';
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const shutdownPromise = app.close();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(events).toEqual(['fallback:start']);
+    expect(events).not.toContain('dispose');
+
+    releaseTransaction();
+
+    await expect(openTransaction).resolves.toBe('fallback-result');
+    await shutdownPromise;
+
+    expect(events).toEqual(['fallback:start', 'fallback:end', 'dispose']);
   });
 
   it('rejects new manual transactions once shutdown begins', async () => {
@@ -657,6 +708,26 @@ describe('@fluojs/drizzle', () => {
     await expect(
       drizzle.requestTransaction(async () => 'never', controller.signal),
     ).rejects.toThrow('request aborted before fallback');
+  });
+
+  it('aborts unsupported requestTransaction fallback during direct execution', async () => {
+    const events: string[] = [];
+    const database = {};
+    const drizzle = new DrizzleDatabase<typeof database>(database, undefined, {
+      strictTransactions: false,
+    });
+    const controller = new AbortController();
+
+    const requestTransaction = drizzle.requestTransaction(async () => {
+      events.push('fallback:start');
+      controller.abort(new Error('request aborted during fallback'));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      events.push('fallback:end');
+      return 'unreachable';
+    }, controller.signal);
+
+    await expect(requestTransaction).rejects.toThrow('request aborted during fallback');
+    expect(events).toEqual(['fallback:start']);
   });
 
   it('aborts unsupported requestTransaction fallback on shutdown before dispose', async () => {
