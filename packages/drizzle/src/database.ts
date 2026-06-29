@@ -276,41 +276,46 @@ export class DrizzleDatabase<
     }
 
     if (!requestScoped) {
-      this.assertTransactionsAvailable();
+      return this.executeManualRootTransaction(fn, options);
     }
 
     const transactionRunner = this.resolveTransactionRunner();
     if (!transactionRunner) {
-      if (requestScoped) {
-        return this.executeRequestFallback(fn, signal);
-      }
-
-      return fn();
-    }
-
-    if (!requestScoped) {
-      const deferredRequestTransactionSettlements = new Set<ActiveRequestTransactionHandle>();
-      const activeTransactionScope = this.trackActiveTransactionScope();
-
-      try {
-        return await transactionRunner(
-          (transactionDatabase) =>
-            this.transactions.run(
-              { database: transactionDatabase, deferredRequestTransactionSettlements },
-              fn,
-            ),
-          options,
-        );
-      } finally {
-        for (const handle of deferredRequestTransactionSettlements) {
-          this.untrackActiveRequestTransaction(handle);
-        }
-
-        activeTransactionScope.settle();
-      }
+      return this.executeRequestFallback(fn, signal);
     }
 
     return this.executeRequestTransaction(transactionRunner, fn, options, signal);
+  }
+
+  private async executeManualRootTransaction<T>(
+    fn: () => Promise<T>,
+    options: TTransactionOptions | undefined,
+  ): Promise<T> {
+    const deferredRequestTransactionSettlements = new Set<ActiveRequestTransactionHandle>();
+    const activeTransactionScope = this.trackAvailableTransactionScope();
+
+    try {
+      const transactionRunner = this.resolveTransactionRunner();
+
+      if (!transactionRunner) {
+        return await fn();
+      }
+
+      return await transactionRunner(
+        (transactionDatabase) =>
+          this.transactions.run(
+            { database: transactionDatabase, deferredRequestTransactionSettlements },
+            fn,
+          ),
+        options,
+      );
+    } finally {
+      for (const handle of deferredRequestTransactionSettlements) {
+        this.untrackActiveRequestTransaction(handle);
+      }
+
+      activeTransactionScope.settle();
+    }
   }
 
   private async executeRequestTransaction<T>(
@@ -459,6 +464,12 @@ export class DrizzleDatabase<
         settle();
       },
     };
+  }
+
+  private trackAvailableTransactionScope(): ActiveTransactionScopeHandle {
+    this.assertTransactionsAvailable();
+
+    return this.trackActiveTransactionScope();
   }
 
   private resolveTransactionRunner(): DrizzleTransactionRunner<TTransactionDatabase, TTransactionOptions> | undefined {

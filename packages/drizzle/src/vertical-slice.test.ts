@@ -154,18 +154,20 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const response = createResponse(events);
+    try {
+      const response = createResponse(events);
 
-    await app.dispatch(
-      createRequest('/service-boundary/users', 'POST', { email: 'ada@example.com', name: 'Ada' }),
-      response,
-    );
+      await app.dispatch(
+        createRequest('/service-boundary/users', 'POST', { email: 'ada@example.com', name: 'Ada' }),
+        response,
+      );
 
-    expect(response.statusCode).toBe(201);
-    expect(response.body).toEqual({ email: 'ada@example.com', id: 'user-1', name: 'Ada' });
-    expect(events).toEqual(['transaction:start', 'tx:insert:ada@example.com', 'transaction:commit', 'response:send']);
-
-    await app.close();
+      expect(response.statusCode).toBe(201);
+      expect(response.body).toEqual({ email: 'ada@example.com', id: 'user-1', name: 'Ada' });
+      expect(events).toEqual(['transaction:start', 'tx:insert:ada@example.com', 'transaction:commit', 'response:send']);
+    } finally {
+      await app.close();
+    }
   });
 
   it('keeps controller-level method decoration as a compatibility path only', async () => {

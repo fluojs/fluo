@@ -160,17 +160,31 @@ Bun runtime features are worth reviewing for data paths beyond HTTP as well.
 
 ### 22.8.1 Bun SQL with Drizzle
 
-If you use Drizzle (covered in Chapter 20), you can evaluate `bun:sqlite` or native SQL drivers by wrapping them as separate Providers.
+If you use Drizzle (covered in Chapter 20), evaluate `bun:sqlite` or native SQL drivers by wrapping the raw Drizzle handle as an application-owned Provider. Do not import the root `@fluojs/drizzle` wrapper in Bun code; its transaction context currently depends on Node's `node:async_hooks`.
 
 ```typescript
+import { Module } from '@fluojs/core';
 import { Database } from 'bun:sqlite';
 import { drizzle } from 'drizzle-orm/bun-sqlite';
 
+export const DATABASE = Symbol('DATABASE');
+
 const sqlite = new Database('fluoshop.db');
 const db = drizzle(sqlite);
+
+@Module({
+  providers: [
+    {
+      provide: DATABASE,
+      useValue: db,
+    },
+  ],
+  exports: [DATABASE],
+})
+export class BunDatabaseModule {}
 ```
 
-Injecting this driver into a fluo Provider lets you keep type safety and repository boundaries while using Bun's SQLite implementation.
+Injecting the `DATABASE` token into repositories lets you keep type safety and repository boundaries while using Bun's SQLite implementation.
 
 ### 22.8.2 Environment-Specific Providers
 
