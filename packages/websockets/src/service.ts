@@ -1,8 +1,31 @@
+import type { WebSocketRoomService } from './types.js';
+
 /**
- * Root export alias for the default Node.js-backed websocket lifecycle service.
+ * Root lifecycle-service token for the default Node.js-backed websocket runtime.
  *
  * @remarks
- * Import this alias from `@fluojs/websockets` when you need the shared lifecycle service token without reaching
- * into runtime-specific subpaths.
+ * `WebSocketModule.forRoot()` binds this token to the Node.js lifecycle implementation lazily during runtime
+ * provider resolution. Importing the root package therefore preserves the public token name without eagerly
+ * loading Node-only `node:*` or `ws` implementation modules.
  */
-export { NodeWebSocketGatewayLifecycleService as WebSocketGatewayLifecycleService } from './node/node-service.js';
+export class WebSocketGatewayLifecycleService implements WebSocketRoomService {
+  /** @inheritdoc */
+  joinRoom(): void {
+    throw new Error('WebSocketGatewayLifecycleService is a runtime provider token and must be resolved from DI.');
+  }
+
+  /** @inheritdoc */
+  leaveRoom(): void {
+    throw new Error('WebSocketGatewayLifecycleService is a runtime provider token and must be resolved from DI.');
+  }
+
+  /** @inheritdoc */
+  broadcastToRoom(): void {
+    throw new Error('WebSocketGatewayLifecycleService is a runtime provider token and must be resolved from DI.');
+  }
+
+  /** @inheritdoc */
+  getRooms(): ReadonlySet<string> {
+    throw new Error('WebSocketGatewayLifecycleService is a runtime provider token and must be resolved from DI.');
+  }
+}

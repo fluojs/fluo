@@ -1,23 +1,35 @@
+import { readFileSync } from 'node:fs';
 import type { IncomingMessage } from 'node:http';
 
 import { describe, expect, expectTypeOf, it } from 'vitest';
-
-import * as bun from './bun.js';
-import * as workers from './cloudflare-workers.js';
-import * as deno from './deno.js';
-import * as websockets from './index.js';
-import * as node from './node.js';
 import type { WebSocketModuleOptions as BunWebSocketModuleOptions } from './bun.js';
+import * as bun from './bun.js';
 import type { WebSocketModuleOptions as CloudflareWorkersWebSocketModuleOptions } from './cloudflare-workers.js';
+import * as workers from './cloudflare-workers.js';
 import type { WebSocketModuleOptions as DenoWebSocketModuleOptions } from './deno.js';
-import type { WebSocketModuleOptions as NodeWebSocketModuleOptions } from './node.js';
+import * as deno from './deno.js';
 import type { WebSocketModuleOptions as RootWebSocketModuleOptions } from './index.js';
+import * as websockets from './index.js';
+import type { WebSocketModuleOptions as NodeWebSocketModuleOptions } from './node.js';
+import * as node from './node.js';
 
 type UpgradeGuardRequest<TOptions> = TOptions extends { upgrade?: { guard?: (request: infer TRequest, ...args: never[]) => unknown } }
   ? TRequest
   : never;
 
 describe('@fluojs/websockets public surface', () => {
+  it('keeps root package imports behind runtime-neutral source boundaries', () => {
+    const rootEntrypoint = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+    const rootModule = readFileSync(new URL('./module.ts', import.meta.url), 'utf8');
+    const rootService = readFileSync(new URL('./service.ts', import.meta.url), 'utf8');
+
+    expect(rootEntrypoint).not.toContain('./node.js');
+    expect(rootModule).not.toContain("from './node.js'");
+    expect(rootModule).not.toContain("from './node/node-service.js'");
+    expect(rootService).not.toContain("from './node/node-service.js'");
+    expect(rootModule).toContain("await import('./node/node-service.js')");
+  });
+
   it('keeps the documented root barrel focused on module-first registration', () => {
     expect(websockets).toHaveProperty('WebSocketModule');
     expect((websockets as { WebSocketModule: { forRoot: unknown } }).WebSocketModule).toHaveProperty('forRoot');
