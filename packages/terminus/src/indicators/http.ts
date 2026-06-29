@@ -1,6 +1,6 @@
 import type { Provider } from '@fluojs/di';
 
-import { createDownResult, createUpResult, resolveIndicatorKey, throwHealthCheckError } from './utils.js';
+import { createDownResult, createUpResult, resolveIndicatorKey, resolveIndicatorTimeoutMs, throwHealthCheckError } from './utils.js';
 import { HealthCheckError } from '../errors.js';
 import type { HealthIndicator, HealthIndicatorResult } from '../types.js';
 
@@ -30,6 +30,16 @@ function isExpectedStatus(status: number, expected?: HttpHealthIndicatorOptions[
   }
 
   return status >= 200 && status < 300;
+}
+
+function cancelResponseBody(response: Response): void {
+  const body = response.body;
+
+  if (!body) {
+    return;
+  }
+
+  void body.cancel().catch(() => undefined);
 }
 
 /**
@@ -67,36 +77,44 @@ export class HttpHealthIndicator implements HealthIndicator {
 
   async check(key: string): Promise<HealthIndicatorResult> {
     const indicatorKey = resolveIndicatorKey('http', this.options.key ?? key);
-    const timeoutMs = this.options.timeoutMs ?? DEFAULT_HTTP_TIMEOUT_MS;
     const method = this.options.method ?? 'GET';
 
-    const abortController = new AbortController();
-    const startedAt = Date.now();
-    const timeout = setTimeout(() => {
-      abortController.abort(new Error(`HTTP health check timed out after ${String(timeoutMs)}ms.`));
-    }, timeoutMs);
-
     try {
-      const response = await fetch(this.options.url, {
-        headers: this.options.headers,
-        method,
-        signal: abortController.signal,
-      });
-      const responseTimeMs = Date.now() - startedAt;
+      const timeoutMs = resolveIndicatorTimeoutMs(this.options.timeoutMs, DEFAULT_HTTP_TIMEOUT_MS, indicatorKey);
+      const abortController = new AbortController();
+      const startedAt = Date.now();
+      const timeout = setTimeout(() => {
+        abortController.abort(new Error(`HTTP health check timed out after ${String(timeoutMs)}ms.`));
+      }, timeoutMs);
 
-      if (!isExpectedStatus(response.status, this.options.expectedStatus)) {
-        throwHealthCheckError('HTTP health check failed.', createDownResult(indicatorKey, `Unexpected status code ${String(response.status)} from ${this.options.url}.`, {
-          responseTimeMs,
-          statusCode: response.status,
-          url: this.options.url,
-        }));
+      try {
+        const response = await fetch(this.options.url, {
+          headers: this.options.headers,
+          method,
+          signal: abortController.signal,
+        });
+        const responseTimeMs = Date.now() - startedAt;
+
+        try {
+          if (!isExpectedStatus(response.status, this.options.expectedStatus)) {
+            throwHealthCheckError('HTTP health check failed.', createDownResult(indicatorKey, `Unexpected status code ${String(response.status)} from ${this.options.url}.`, {
+              responseTimeMs,
+              statusCode: response.status,
+              url: this.options.url,
+            }));
+          }
+
+          return createUpResult(indicatorKey, {
+            responseTimeMs,
+            statusCode: response.status,
+            url: this.options.url,
+          });
+        } finally {
+          cancelResponseBody(response);
+        }
+      } finally {
+        clearTimeout(timeout);
       }
-
-      return createUpResult(indicatorKey, {
-        responseTimeMs,
-        statusCode: response.status,
-        url: this.options.url,
-      });
     } catch (error: unknown) {
       if (error instanceof HealthCheckError) {
         throw error;
@@ -106,8 +124,6 @@ export class HttpHealthIndicator implements HealthIndicator {
         indicatorKey,
         error instanceof Error ? error.message : `HTTP health check failed for ${this.options.url}.`,
       ));
-    } finally {
-      clearTimeout(timeout);
     }
   }
 }
