@@ -1,6 +1,6 @@
 import { optional, type Provider } from '@fluojs/di';
 
-import { createDownResult, createUpResult, resolveIndicatorKey, throwHealthCheckError, withIndicatorTimeout } from './utils.js';
+import { createDownResult, createUpResult, resolveIndicatorKey, resolveIndicatorTimeoutMs, throwHealthCheckError, withIndicatorTimeout } from './utils.js';
 import type { HealthIndicator, HealthIndicatorResult } from '../types.js';
 
 const DRIZZLE_DATABASE = Symbol.for('fluo.drizzle.database');
@@ -143,9 +143,9 @@ export class DrizzleHealthIndicator implements HealthIndicator {
 
   async check(key: string): Promise<HealthIndicatorResult> {
     const indicatorKey = resolveIndicatorKey('drizzle', this.options.key ?? key);
-    const timeoutMs = this.options.timeoutMs ?? DEFAULT_DRIZZLE_TIMEOUT_MS;
 
     try {
+      const timeoutMs = resolveIndicatorTimeoutMs(this.options.timeoutMs, DEFAULT_DRIZZLE_TIMEOUT_MS, indicatorKey);
       const snapshot = createDrizzleLifecycleSnapshot(this.options.handleProvider);
       const lifecycleDownResult = snapshot
         ? createDrizzleLifecycleDownResult(indicatorKey, snapshot)

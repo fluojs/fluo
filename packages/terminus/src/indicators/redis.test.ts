@@ -1,9 +1,47 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { getRedisClientToken } from '@fluojs/redis';
+import { getRedisClientToken, type RedisStatusAdapterInput } from '@fluojs/redis';
 
 import type { HealthCheckError } from '../errors.js';
 import { createRedisHealthIndicator, createRedisHealthIndicatorProvider, RedisHealthIndicator } from './redis.js';
+
+const unavailableRedisStates = [
+  {
+    healthStatus: 'degraded',
+    message: 'Redis client is still in lazyConnect wait state.',
+    readinessStatus: 'not-ready',
+    status: 'wait',
+  },
+  {
+    healthStatus: 'degraded',
+    message: 'Redis client is connecting.',
+    readinessStatus: 'degraded',
+    status: 'connecting',
+  },
+  {
+    healthStatus: 'degraded',
+    message: 'Redis client is reconnecting.',
+    readinessStatus: 'degraded',
+    status: 'reconnecting',
+  },
+  {
+    healthStatus: 'unhealthy',
+    message: 'Redis client is close.',
+    readinessStatus: 'not-ready',
+    status: 'close',
+  },
+  {
+    healthStatus: 'unhealthy',
+    message: 'Redis client is end.',
+    readinessStatus: 'not-ready',
+    status: 'end',
+  },
+] satisfies ReadonlyArray<{
+  healthStatus: 'degraded' | 'unhealthy';
+  message: string;
+  readinessStatus: 'degraded' | 'not-ready';
+  status: RedisStatusAdapterInput['status'];
+}>;
 
 describe('RedisHealthIndicator', () => {
   it('uses redis ping methods when present', async () => {
@@ -27,23 +65,45 @@ describe('RedisHealthIndicator', () => {
     expect(ping).toHaveBeenCalledTimes(1);
   });
 
-  it('maps Redis lifecycle readiness before pinging', async () => {
+  for (const state of unavailableRedisStates) {
+    it(`maps Redis ${state.status} lifecycle readiness before pinging`, async () => {
+      const ping = vi.fn(async () => 'PONG');
+      const indicator = createRedisHealthIndicator({
+        client: { ping, status: state.status },
+      });
+
+      await expect(indicator.check('redis')).rejects.toMatchObject({
+        causes: {
+          redis: {
+            details: {
+              componentId: 'redis.default',
+              connectionState: state.status,
+              lazyConnect: true,
+            },
+            healthStatus: state.healthStatus,
+            message: state.message,
+            readinessStatus: state.readinessStatus,
+            status: 'down',
+          },
+        },
+        message: 'Redis health check failed.',
+        name: 'HealthCheckError',
+      } satisfies Partial<HealthCheckError>);
+      expect(ping).not.toHaveBeenCalled();
+    });
+  }
+
+  it('rejects invalid timeoutMs before starting the Redis probe', async () => {
     const ping = vi.fn(async () => 'PONG');
     const indicator = createRedisHealthIndicator({
-      client: { ping, status: 'end' },
+      client: { ping, status: 'ready' },
+      timeoutMs: Number.NaN,
     });
 
     await expect(indicator.check('redis')).rejects.toMatchObject({
       causes: {
         redis: {
-          details: {
-            componentId: 'redis.default',
-            connectionState: 'end',
-            lazyConnect: true,
-          },
-          healthStatus: 'unhealthy',
-          message: 'Redis client is end.',
-          readinessStatus: 'not-ready',
+          message: 'redis health indicator timeoutMs must be a positive finite number.',
           status: 'down',
         },
       },

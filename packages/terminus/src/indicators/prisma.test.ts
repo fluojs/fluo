@@ -48,4 +48,24 @@ describe('PrismaHealthIndicator', () => {
       name: 'HealthCheckError',
     } satisfies Partial<HealthCheckError>);
   });
+
+  it('rejects invalid timeoutMs before starting the Prisma probe', async () => {
+    const ping = vi.fn(async () => undefined);
+    const indicator = createPrismaHealthIndicator({
+      ping,
+      timeoutMs: -1,
+    });
+
+    await expect(indicator.check('prisma')).rejects.toMatchObject({
+      causes: {
+        prisma: {
+          message: 'prisma health indicator timeoutMs must be a positive finite number.',
+          status: 'down',
+        },
+      },
+      message: 'Prisma health check failed.',
+      name: 'HealthCheckError',
+    } satisfies Partial<HealthCheckError>);
+    expect(ping).not.toHaveBeenCalled();
+  });
 });

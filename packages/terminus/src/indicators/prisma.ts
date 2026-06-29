@@ -1,6 +1,6 @@
 import type { Provider } from '@fluojs/di';
 
-import { createDownResult, createUpResult, resolveIndicatorKey, throwHealthCheckError, withIndicatorTimeout } from './utils.js';
+import { createDownResult, createUpResult, resolveIndicatorKey, resolveIndicatorTimeoutMs, throwHealthCheckError, withIndicatorTimeout } from './utils.js';
 import type { HealthIndicator, HealthIndicatorResult } from '../types.js';
 
 const PRISMA_CLIENT = Symbol.for('fluo.prisma.client');
@@ -93,9 +93,10 @@ export class PrismaHealthIndicator implements HealthIndicator {
 
   async check(key: string): Promise<HealthIndicatorResult> {
     const indicatorKey = resolveIndicatorKey('prisma', this.options.key ?? key);
-    const timeoutMs = this.options.timeoutMs ?? DEFAULT_PRISMA_TIMEOUT_MS;
 
     try {
+      const timeoutMs = resolveIndicatorTimeoutMs(this.options.timeoutMs, DEFAULT_PRISMA_TIMEOUT_MS, indicatorKey);
+
       await withIndicatorTimeout(runPrismaPing(this.options), timeoutMs, indicatorKey);
       return createUpResult(indicatorKey);
     } catch (error: unknown) {

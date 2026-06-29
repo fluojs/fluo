@@ -3,6 +3,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HealthCheckError } from '../errors.js';
 import { createHttpHealthIndicator, HttpHealthIndicator } from './http.js';
 
+function createTrackedBodyResponse(status: number) {
+  const cancel = vi.fn();
+  const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      cancel();
+    },
+  });
+
+  return {
+    cancel,
+    response: new Response(body, { status }),
+  };
+}
+
 describe('HttpHealthIndicator', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -25,6 +39,23 @@ describe('HttpHealthIndicator', () => {
         url: 'https://example.com/health',
       },
     });
+  });
+
+  it('cancels successful response bodies after checking status', async () => {
+    const { cancel, response } = createTrackedBodyResponse(200);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
+
+    const indicator = new HttpHealthIndicator({
+      url: 'https://example.com/health',
+    });
+
+    await expect(indicator.check('upstream')).resolves.toMatchObject({
+      upstream: {
+        status: 'up',
+        statusCode: 200,
+      },
+    });
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 
   it('throws HealthCheckError for unexpected codes and transport failures', async () => {
@@ -58,6 +89,25 @@ describe('HttpHealthIndicator', () => {
       message: 'HTTP health check failed.',
       name: 'HealthCheckError',
     } satisfies Partial<HealthCheckError>);
+  });
+
+  it('cancels unexpected-status response bodies before reporting down', async () => {
+    const { cancel, response } = createTrackedBodyResponse(500);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
+
+    const indicator = createHttpHealthIndicator({ url: 'https://example.com/health' });
+
+    await expect(indicator.check('upstream')).rejects.toMatchObject({
+      causes: {
+        upstream: {
+          message: 'Unexpected status code 500 from https://example.com/health.',
+          status: 'down',
+        },
+      },
+      message: 'HTTP health check failed.',
+      name: 'HealthCheckError',
+    } satisfies Partial<HealthCheckError>);
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 
   it('aborts timed out HTTP probes and reports the timeout as down', async () => {
@@ -94,5 +144,25 @@ describe('HttpHealthIndicator', () => {
     }));
     expect(observedSignal?.aborted).toBe(true);
     expect(observedSignal?.reason).toEqual(new Error('HTTP health check timed out after 5ms.'));
+  });
+
+  it('rejects invalid timeoutMs before starting fetch', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    const indicator = new HttpHealthIndicator({
+      timeoutMs: 0,
+      url: 'https://example.com/health',
+    });
+
+    await expect(indicator.check('upstream')).rejects.toMatchObject({
+      causes: {
+        upstream: {
+          message: 'upstream health indicator timeoutMs must be a positive finite number.',
+          status: 'down',
+        },
+      },
+      message: 'HTTP health check failed.',
+      name: 'HealthCheckError',
+    } satisfies Partial<HealthCheckError>);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,7 @@
 import type { Provider } from '@fluojs/di';
 import { createRedisPlatformStatusSnapshot, getRedisClientToken, getRedisComponentId, type RedisStatusAdapterInput } from '@fluojs/redis';
 
-import { createDownResult, createUpResult, resolveIndicatorKey, throwHealthCheckError, withIndicatorTimeout } from './utils.js';
+import { createDownResult, createUpResult, resolveIndicatorKey, resolveIndicatorTimeoutMs, throwHealthCheckError, withIndicatorTimeout } from './utils.js';
 import type { HealthIndicator, HealthIndicatorResult } from '../types.js';
 
 interface RedisClientLike {
@@ -136,9 +136,9 @@ export class RedisHealthIndicator implements HealthIndicator {
 
   async check(key: string): Promise<HealthIndicatorResult> {
     const indicatorKey = resolveIndicatorKey('redis', this.options.key ?? key);
-    const timeoutMs = this.options.timeoutMs ?? DEFAULT_REDIS_TIMEOUT_MS;
 
     try {
+      const timeoutMs = resolveIndicatorTimeoutMs(this.options.timeoutMs, DEFAULT_REDIS_TIMEOUT_MS, indicatorKey);
       const lifecycleDownResult = createRedisLifecycleDownResult(indicatorKey, this.options);
 
       if (lifecycleDownResult) {
