@@ -349,6 +349,111 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       }
     });
 
+    it('model.create(docA, docB) treats a null document session field as data, not operation options', async () => {
+      const mongoosePackage = await import('./index.js');
+      const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(ExportedTransaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async createMany() {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.create({ name: 'Ada' }, { name: 'Grace', session: null });
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @Transaction()
+        async createMany() {
+          return this.repo.createMany();
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      try {
+        await expect(service.createMany()).resolves.toEqual([
+          { name: 'Ada' },
+          { name: 'Grace', session: null },
+        ]);
+        expect(events).toContain('model:User:create:session=set');
+        expect(events).toContain('model:User:create:docs=2');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('model.create(docA, docB) treats an object document session field as data, not operation options', async () => {
+      const mongoosePackage = await import('./index.js');
+      const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(ExportedTransaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+      const domainSession = { status: 'invited' };
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async createMany() {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.create({ name: 'Ada' }, { name: 'Grace', session: domainSession });
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @Transaction()
+        async createMany() {
+          return this.repo.createMany();
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      try {
+        await expect(service.createMany()).resolves.toEqual([
+          { name: 'Ada' },
+          { name: 'Grace', session: domainSession },
+        ]);
+        expect(events).toContain('model:User:create:session=set');
+        expect(events).toContain('model:User:create:docs=2');
+      } finally {
+        await app.close();
+      }
+    });
+
     it('model.create(doc, options) merges the ambient session into existing single-document options', async () => {
       const mongoosePackage = await import('./index.js');
       const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;

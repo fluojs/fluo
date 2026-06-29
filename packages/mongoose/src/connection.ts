@@ -73,6 +73,12 @@ function isObjectLike(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
 }
 
+function hasOnlyMongooseCreateOptionKeys(value: object): boolean {
+  const keys = Reflect.ownKeys(value);
+
+  return keys.length > 0 && keys.every((key) => MONGOOSE_CREATE_OPTION_KEYS.has(key));
+}
+
 function isMongooseCreateOptionsCandidate(value: unknown): boolean {
   if (!isObjectLike(value)) {
     return false;
@@ -80,6 +86,7 @@ function isMongooseCreateOptionsCandidate(value: unknown): boolean {
 
   if (
     'session' in value &&
+    hasOnlyMongooseCreateOptionKeys(value) &&
     (value.session === null || value.session === undefined || isObjectLike(value.session))
   ) {
     return true;
