@@ -297,6 +297,58 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       await app.close();
     });
 
+    it('model.create(docA, docB) treats a document session field as data, not operation options', async () => {
+      const mongoosePackage = await import('./index.js');
+      const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(ExportedTransaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async createMany() {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.create({ name: 'Ada' }, { name: 'Grace', session: 'domain-field' });
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @Transaction()
+        async createMany() {
+          return this.repo.createMany();
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      try {
+        await expect(service.createMany()).resolves.toEqual([
+          { name: 'Ada' },
+          { name: 'Grace', session: 'domain-field' },
+        ]);
+        expect(events).toContain('model:User:create:session=set');
+        expect(events).toContain('model:User:create:docs=2');
+      } finally {
+        await app.close();
+      }
+    });
+
     it('model.create(doc, options) merges the ambient session into existing single-document options', async () => {
       const mongoosePackage = await import('./index.js');
       const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
@@ -337,12 +389,14 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       const app = await bootstrapApplication({ rootModule: AppModule });
       const service = await app.container.resolve(UserService);
 
-      await expect(service.createOne()).resolves.toEqual([{ name: 'Ada' }]);
-      expect(events).toContain('model:User:create:session=set');
-      expect(events).toContain('model:User:create:docs=1');
-      expect(events).toContain('model:User:create:timestamps=false');
-
-      await app.close();
+      try {
+        await expect(service.createOne()).resolves.toEqual([{ name: 'Ada' }]);
+        expect(events).toContain('model:User:create:session=set');
+        expect(events).toContain('model:User:create:docs=1');
+        expect(events).toContain('model:User:create:timestamps=false');
+      } finally {
+        await app.close();
+      }
     });
 
     it('model.create(doc, {}) treats an empty second argument as single-document options', async () => {
@@ -441,6 +495,55 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       await app.close();
     });
 
+    it('model.find() preserves projection objects that contain a session field', async () => {
+      const mongoosePackage = await import('./index.js');
+      const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(ExportedTransaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async findWithDomainProjection() {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.find({ status: 'active' }, { name: 1, session: 1 });
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @Transaction()
+        async findWithDomainProjection() {
+          return this.repo.findWithDomainProjection();
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      try {
+        await service.findWithDomainProjection();
+        expect(events).toContain('model:User:find:projection-session=set');
+        expect(events).toContain('model:User:find:session=set');
+      } finally {
+        await app.close();
+      }
+    });
+
     it('model.findOne() receives the ambient session inside @Transaction()', async () => {
       // TODO: RED - will pass after Task 9 implementation
       const mongoosePackage = await import('./index.js');
@@ -488,6 +591,55 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       expect(events).not.toContain('model:User:findOne:projection-session=set');
 
       await app.close();
+    });
+
+    it('model.findOne() preserves projection objects that contain a session field', async () => {
+      const mongoosePackage = await import('./index.js');
+      const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(ExportedTransaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async findOneWithDomainProjection() {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.findOne({ _id: 'user-1' }, { name: 1, session: 1 });
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @Transaction()
+        async findOneWithDomainProjection() {
+          return this.repo.findOneWithDomainProjection();
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      try {
+        await service.findOneWithDomainProjection();
+        expect(events).toContain('model:User:findOne:projection-session=set');
+        expect(events).toContain('model:User:findOne:session=set');
+      } finally {
+        await app.close();
+      }
     });
 
     it('model.aggregate() receives the ambient session inside @Transaction()', async () => {
@@ -636,7 +788,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       const app = await bootstrapApplication({ rootModule: AppModule });
       const service = await app.container.resolve(UserService);
 
-      await expect(service.create('Ada')).rejects.toThrow();
+      await expect(service.create('Ada')).rejects.toThrow('Explicit session: null conflicts with ambient transaction session');
 
       await app.close();
     });
@@ -733,7 +885,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       const app = await bootstrapApplication({ rootModule: AppModule });
       const service = await app.container.resolve(UserService);
 
-      await expect(service.create('Ada')).rejects.toThrow();
+      await expect(service.create('Ada')).rejects.toThrow('Explicit session conflicts with ambient transaction session');
 
       await app.close();
     });
