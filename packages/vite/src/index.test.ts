@@ -126,8 +126,10 @@ describe('fluoDecoratorsPlugin', () => {
 
     await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/app.spec.ts')).resolves.toBeNull();
     await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/app.test.ts?import')).resolves.toBeNull();
+    await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/app.test.ts#hash')).resolves.toBeNull();
     await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/types.d.ts')).resolves.toBeNull();
     await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/types.d.ts?raw')).resolves.toBeNull();
+    await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/types.d.ts#hash')).resolves.toBeNull();
     await expect(
       runTransform(plugin, 'export const value: number = 1;', '/app/node_modules/dependency/index.ts'),
     ).resolves.toBeNull();
@@ -135,12 +137,19 @@ describe('fluoDecoratorsPlugin', () => {
       runTransform(plugin, 'export const value: number = 1;', '/app/node_modules/dependency/index.ts?v=1'),
     ).resolves.toBeNull();
     await expect(
+      runTransform(plugin, 'export const value: number = 1;', '/app/node_modules/dependency/index.ts#hash'),
+    ).resolves.toBeNull();
+    await expect(
       runTransform(plugin, 'export const value: number = 1;', 'C:\\app\\node_modules\\dependency\\index.ts'),
     ).resolves.toBeNull();
     await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/component.tsx')).resolves.toBeNull();
     await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/component.tsx?import')).resolves.toBeNull();
+    await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/component.tsx#hash')).resolves.toBeNull();
 
     await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/component.ts?import')).resolves.toEqual(
+      expect.objectContaining({ code: expect.any(String) }),
+    );
+    await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/component.ts#hash')).resolves.toEqual(
       expect.objectContaining({ code: expect.any(String) }),
     );
   });
@@ -241,6 +250,19 @@ export { Example };
 
     await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/component.ts')).rejects.toThrow(
       `[fluo-babel-decorators] Failed to resolve a Babel peer dependency while transforming /app/src/component.ts. Install @babel/core, @babel/plugin-proposal-decorators, and @babel/preset-typescript in the Vite project. Original error: Cannot find package '@babel/core' imported from vite.config.ts`,
+    );
+  });
+
+  it('does not cache failed lazy Babel imports across source file diagnostics', async () => {
+    const plugin = createFluoDecoratorsPluginForTesting(async () => {
+      throw createMissingPeerError('@babel/core', 'ERR_MODULE_NOT_FOUND');
+    });
+
+    await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/first.ts')).rejects.toThrow(
+      `[fluo-babel-decorators] Failed to resolve a Babel peer dependency while transforming /app/src/first.ts. Install @babel/core, @babel/plugin-proposal-decorators, and @babel/preset-typescript in the Vite project. Original error: Cannot find package '@babel/core' imported from vite.config.ts`,
+    );
+    await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/second.ts')).rejects.toThrow(
+      `[fluo-babel-decorators] Failed to resolve a Babel peer dependency while transforming /app/src/second.ts. Install @babel/core, @babel/plugin-proposal-decorators, and @babel/preset-typescript in the Vite project. Original error: Cannot find package '@babel/core' imported from vite.config.ts`,
     );
   });
 });

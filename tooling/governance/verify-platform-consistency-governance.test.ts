@@ -1075,6 +1075,19 @@ describe('Vite decorator tooling discoverability', () => {
       expect(markdown).toContain('vitest.config.ts');
     }
 
+    for (const markdown of [
+      englishContext,
+      englishChooser,
+      englishToolchainMatrix,
+      englishViteReadme,
+      koreanContext,
+      koreanChooser,
+      koreanToolchainMatrix,
+      koreanViteReadme,
+    ]) {
+      expect(markdown).toContain('@babel/preset-typescript');
+    }
+
     for (const markdown of [englishContext, englishChooser, englishToolchainMatrix, englishViteReadme]) {
       expect(markdown).toMatch(/lazy|lazily/u);
     }
