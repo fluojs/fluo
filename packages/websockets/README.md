@@ -21,7 +21,7 @@ Decorator-based WebSocket gateway authoring for the fluo runtime.
 npm install @fluojs/websockets
 ```
 
-The root Node.js entrypoint uses the package-owned `ws` dependency. Applications do not need to install `ws` separately unless they use it directly in their own code.
+The root Node.js module path uses the package-owned `ws` dependency only when `WebSocketModule.forRoot()` is resolved at runtime. Applications do not need to install `ws` separately unless they use it directly in their own code.
 
 ## When to Use
 
@@ -125,6 +125,8 @@ class OrderStatusPublisher {
 
 Gateway `@OnMessage()` handlers receive one normalized payload contract across supported runtimes. Text frames are parsed as JSON when possible and otherwise delivered as strings. Binary frames are decoded as UTF-8 before the same JSON/event dispatch step, whether the runtime surfaces them as Node `Buffer`/typed arrays, Bun `ArrayBuffer`/views, Deno `ArrayBuffer`/views/`Blob`, or Cloudflare Workers `ArrayBuffer`/views/`Blob`. The `limits.maxPayloadBytes` check uses byte length for every representation and closes oversized accepted sockets with close code `1009`.
 
+Handler return values are ignored after any returned promise settles. Send replies explicitly through the runtime socket argument, for example `socket.send(JSON.stringify({ event: 'pong', data }))`, instead of returning an event object from a raw WebSocket handler.
+
 ## Public API Overview
 
 - `@WebSocketGateway(options)`: Marks a class as a WebSocket gateway.
@@ -139,7 +141,7 @@ Gateway `@OnMessage()` handlers receive one normalized payload contract across s
 
 ## Runtime-Specific Subpaths
 
-Use the runtime subpaths when you want an explicit runtime binding instead of the default root Node.js alias. The root `@fluojs/websockets` entrypoint preserves the Node.js default module and lifecycle-service aliases. Fetch-style applications can import gateway decorators and metadata helpers from their selected runtime subpath so authoring code does not need to load the root Node.js-backed entrypoint.
+Use the runtime subpaths when you want an explicit runtime binding instead of the default root Node.js alias. The root `@fluojs/websockets` entrypoint preserves the Node.js default module and lifecycle-service export names, but plain root-package imports keep the concrete Node implementation behind lazy runtime provider resolution. Fetch-style applications should still import gateway decorators and metadata helpers from their selected runtime subpath so authoring code does not rely on the root Node.js-backed module boundary.
 
 The package manifest declares `engines.node >=20.0.0` for the published package and default Node.js entrypoint. Bun, Deno, and Cloudflare Workers support is exposed through the dedicated fetch-style subpaths listed below; those subpaths keep request/handler types web-standard and avoid the root Node.js lifecycle-service alias in application code.
 

@@ -21,7 +21,7 @@ fluo 런타임을 위한 데코레이터 기반 WebSocket 게이트웨이 작성
 npm install @fluojs/websockets
 ```
 
-Root Node.js entrypoint는 패키지가 직접 소유한 `ws` dependency를 사용합니다. 애플리케이션 코드에서 `ws`를 직접 사용하지 않는 한 별도 설치가 필요하지 않습니다.
+Root Node.js module path는 `WebSocketModule.forRoot()`가 runtime에서 해석될 때만 패키지가 직접 소유한 `ws` dependency를 사용합니다. 애플리케이션 코드에서 `ws`를 직접 사용하지 않는 한 별도 설치가 필요하지 않습니다.
 
 ## 사용 시점
 
@@ -125,6 +125,8 @@ class OrderStatusPublisher {
 
 Gateway `@OnMessage()` handler는 지원 런타임 전반에서 하나의 정규화된 payload contract를 받습니다. Text frame은 가능한 경우 JSON으로 파싱하고, 그렇지 않으면 string으로 전달합니다. Binary frame은 런타임이 Node `Buffer`/typed array, Bun `ArrayBuffer`/view, Deno `ArrayBuffer`/view/`Blob`, Cloudflare Workers `ArrayBuffer`/view/`Blob` 중 어떤 형태로 노출하더라도 UTF-8로 디코딩한 뒤 동일한 JSON/event dispatch 단계를 거칩니다. `limits.maxPayloadBytes` 검사는 모든 표현에 byte length를 사용하며, 허용된 socket에서 oversized payload가 들어오면 close code `1009`로 닫습니다.
 
+Handler return value는 반환된 promise가 settle된 뒤 무시됩니다. Raw WebSocket handler에서 event object를 반환하지 말고, `socket.send(JSON.stringify({ event: 'pong', data }))`처럼 runtime socket argument를 통해 명시적으로 reply를 보내세요.
+
 ## 공개 API 개요
 
 - `@WebSocketGateway(options)`: 클래스를 WebSocket 게이트웨이로 표시합니다.
@@ -139,7 +141,7 @@ Gateway `@OnMessage()` handler는 지원 런타임 전반에서 하나의 정규
 
 ## 런타임별 서브패스
 
-기본 루트 Node.js alias 대신 런타임을 명시적으로 고정하고 싶다면 런타임별 서브패스를 사용하세요. 루트 `@fluojs/websockets` 진입점은 Node.js 기본 module과 lifecycle-service alias를 유지합니다. Fetch-style 애플리케이션은 게이트웨이 데코레이터와 metadata helper를 선택한 런타임 서브패스에서 import할 수 있으므로 authoring code가 루트 Node.js 기반 진입점을 로드할 필요가 없습니다.
+기본 루트 Node.js alias 대신 런타임을 명시적으로 고정하고 싶다면 런타임별 서브패스를 사용하세요. 루트 `@fluojs/websockets` 진입점은 Node.js 기본 module과 lifecycle-service export name을 유지하지만, 단순 root package import는 concrete Node implementation을 lazy runtime provider resolution 뒤에 둡니다. Fetch-style 애플리케이션은 선택한 런타임 서브패스에서 gateway decorator와 metadata helper를 import해 authoring code가 root Node.js-backed module boundary에 의존하지 않게 해야 합니다.
 
 Package manifest의 `engines.node >=20.0.0` 선언은 published package와 기본 Node.js entrypoint 기준입니다. Bun, Deno, Cloudflare Workers 지원은 아래 전용 fetch-style subpath를 통해 노출되며, 해당 subpath는 request/handler type을 web-standard로 유지하고 application code가 root Node.js lifecycle-service alias에 의존하지 않게 합니다.
 
