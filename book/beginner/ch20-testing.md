@@ -71,8 +71,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    // Include tests inside src and every __tests__ directory.
-    include: ['src/**/*.test.ts', 'src/**/*.spec.ts'],
+    // Include unit/slice tests under src and app-level e2e-style suites under test.
+    include: ['src/**/*.test.ts', 'src/**/*.spec.ts', 'test/**/*.test.ts'],
   },
 });
 ```
@@ -230,24 +230,19 @@ import { createTestApp } from '@fluojs/testing';
 import { AppModule } from './app.module';
 
 describe('PostController (E2E-style HTTP)', () => {
-  let app: any;
-
-  beforeAll(async () => {
-    // Initialize the app once for the test suite.
-    app = await createTestApp({ rootModule: AppModule });
-  });
-
-  afterAll(async () => {
-    await app.close();
-  });
-
   it('GET /posts should return a list of posts', async () => {
-    const response = await app
-      .request('GET', '/posts')
-      .send();
+    const app = await createTestApp({ rootModule: AppModule });
 
-    expect(response.status).toBe(200);
-    expect(Array.isArray(response.body)).toBe(true);
+    try {
+      const response = await app
+        .request('GET', '/posts')
+        .send();
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
+    } finally {
+      await app.close();
+    }
   });
 });
 ```
