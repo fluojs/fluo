@@ -1,9 +1,19 @@
-import type { IncomingMessage } from 'node:http';
 import type { WebSocketRoomService } from '@fluojs/websockets';
 import type { ServerOptions, Socket } from 'socket.io';
 
-/** Runtime-specific Socket.IO handshake request surfaced to guard callbacks. */
-export type SocketIoHandshakeRequest = IncomingMessage | Request;
+interface SocketIoNodeLikeHandshakeRequest {
+  readonly headers: Readonly<Record<string, string | readonly string[] | undefined>>;
+  readonly method?: string;
+  readonly socket?: unknown;
+  readonly url?: string;
+}
+
+/**
+ * Runtime-specific Socket.IO handshake request surfaced to guard callbacks.
+ *
+ * Node-backed adapters pass a structurally typed HTTP handshake request while Bun passes a Web-standard `Request`.
+ */
+export type SocketIoHandshakeRequest = SocketIoNodeLikeHandshakeRequest | Request;
 
 /**
  * Room management contract exposed by `@fluojs/socket.io` gateways.
@@ -81,6 +91,9 @@ export interface SocketIoConnectionGuardContext {
 
 /**
  * Guard function that can reject one Socket.IO namespace connection before gateway lifecycle hooks run.
+ *
+ * Returning `true`, `undefined`, or no value accepts the connection. Returning `false` or a
+ * {@link SocketIoGuardRejection} rejects it.
  */
 export type SocketIoConnectionGuard = (
   context: SocketIoConnectionGuardContext,
@@ -115,6 +128,9 @@ export interface SocketIoMessageGuardContext {
 
 /**
  * Guard function that can reject one inbound Socket.IO event before gateway message handlers execute.
+ *
+ * Returning `true`, `undefined`, or no value accepts the event. Returning `false` or a
+ * {@link SocketIoGuardRejection} rejects it.
  */
 export type SocketIoMessageGuard = (
   context: SocketIoMessageGuardContext,
