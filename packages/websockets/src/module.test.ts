@@ -1,18 +1,9 @@
-import { type AddressInfo, createConnection } from 'node:net';
 import type { IncomingMessage } from 'node:http';
+import { type AddressInfo, createConnection } from 'node:net';
 import type { Duplex } from 'node:stream';
-
-import { describe, expect, it, vi } from 'vitest';
-import { WebSocket } from 'ws';
-
 import { Inject, Scope } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container } from '@fluojs/di';
-import { bootstrapExpressApplication } from '@fluojs/platform-express';
-import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
-import { bootstrapApplication, defineModule, type ApplicationLogger } from '@fluojs/runtime';
-import { bootstrapNodeApplication, createNodeHttpAdapter } from '@fluojs/runtime/node';
-import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
 import {
   Controller,
   createNoopHttpApplicationAdapter,
@@ -20,6 +11,13 @@ import {
   Get,
   type HttpApplicationAdapter,
 } from '@fluojs/http';
+import { bootstrapExpressApplication } from '@fluojs/platform-express';
+import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
+import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
+import { bootstrapNodeApplication, createNodeHttpAdapter } from '@fluojs/runtime/node';
+import { describe, expect, it, vi } from 'vitest';
+import { WebSocket } from 'ws';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from './decorators.js';
 import * as publicApi from './index.js';
@@ -29,8 +27,10 @@ import {
   getWebSocketHandlerMetadataEntries,
 } from './metadata.js';
 import { WebSocketModule } from './module.js';
-import { WebSocketGatewayLifecycleService } from './service.js';
+import { NodeWebSocketGatewayLifecycleServiceImplementation } from './node/node-service.js';
+import { NodeWebSocketGatewayLifecycleService } from './node/node-service-token.js';
 import type { WebSocketModuleOptions } from './node/node-types.js';
+import { WebSocketGatewayLifecycleService } from './service.js';
 
 function createLogger(events: string[]): ApplicationLogger {
   return {
@@ -76,7 +76,7 @@ async function getApplicationPort(app: { container: { resolve<T>(token: unknown)
   return getBoundPort(adapter.getServer?.());
 }
 
-function getOwnedGatewayPort(service: WebSocketGatewayLifecycleService): number {
+function getOwnedGatewayPort(service: NodeWebSocketGatewayLifecycleServiceImplementation): number {
   const registrations = Reflect.get(service, 'ownedUpgradeServers') as Array<{ port: number }>;
   const port = registrations[0]?.port;
 
@@ -236,7 +236,7 @@ function createDeferred<T = void>() {
 function createTestLifecycleService(
   options: WebSocketModuleOptions = {},
   loggerEvents: string[] = [],
-): WebSocketGatewayLifecycleService {
+): NodeWebSocketGatewayLifecycleServiceImplementation {
   const adapter: HttpApplicationAdapter = {
     async close() {},
     getRealtimeCapability() {
@@ -252,7 +252,7 @@ function createTestLifecycleService(
     async listen() {},
   };
 
-  return new WebSocketGatewayLifecycleService(new Container(), [], createLogger(loggerEvents), adapter, options);
+  return new NodeWebSocketGatewayLifecycleServiceImplementation(new Container(), [], createLogger(loggerEvents), adapter, options);
 }
 
 type MockSocketListeners = {
@@ -349,7 +349,7 @@ describe('@fluojs/websockets', () => {
     expect(publicApi).not.toHaveProperty('WEBSOCKET_OPTIONS');
   });
 
-  it('wires lifecycle service with a direct class provider', () => {
+  it('wires lifecycle service with a lazy root provider', () => {
     const options: WebSocketModuleOptions = {
       shutdown: { timeoutMs: 1234 },
     };
@@ -357,8 +357,17 @@ describe('@fluojs/websockets', () => {
     const optionsProvider = providers.find(
       (provider: unknown) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
     );
+    const lifecycleProvider = providers.find(
+      (provider: unknown) =>
+        typeof provider === 'object'
+        && provider !== null
+        && 'provide' in provider
+        && provider.provide === WebSocketGatewayLifecycleService,
+    );
 
-    expect(providers).toContain(WebSocketGatewayLifecycleService);
+    expect(lifecycleProvider).toBeDefined();
+    expect(lifecycleProvider).toHaveProperty('useFactory');
+    expect(WebSocketGatewayLifecycleService).toBe(NodeWebSocketGatewayLifecycleService);
     expect(optionsProvider).toBeDefined();
     expect(optionsProvider).toHaveProperty('useValue', options);
   });
@@ -818,7 +827,7 @@ describe('@fluojs/websockets', () => {
         port: 0,
       });
       const state = await app.container.resolve(GatewayState);
-      const service = await app.container.resolve(WebSocketGatewayLifecycleService);
+    const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
 
       await app.listen();
       const appPort = await getApplicationPort(app);
@@ -1049,21 +1058,27 @@ describe('@fluojs/websockets', () => {
     });
     const state = await app.container.resolve(GatewayState);
 
-    await app.listen();
-    const port = await getApplicationPort(app);
+    try {
+      await app.listen();
+      const port = await getApplicationPort(app);
 
-    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/payload-limit`);
-    await onceOpen(socket);
-    const closed = onceCloseDetails(socket);
+      const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/payload-limit`);
+      try {
+        await onceOpen(socket);
+        const closed = onceCloseDetails(socket);
 
-    socket.send('hello world');
+        socket.send('hello world');
 
-    const { code } = await closed;
+        const { code } = await closed;
 
-    expect(code).toBe(1009);
-    expect(state.messages).toEqual([]);
-
-    await app.close();
+        expect(code).toBe(1009);
+        expect(state.messages).toEqual([]);
+      } finally {
+        await closeWebSocket(socket);
+      }
+    } finally {
+      await app.close();
+    }
   });
 
   it('closes websocket connections when binary payloads exceed the configured limit', async () => {
@@ -1098,21 +1113,27 @@ describe('@fluojs/websockets', () => {
     });
     const state = await app.container.resolve(GatewayState);
 
-    await app.listen();
-    const port = await getApplicationPort(app);
+    try {
+      await app.listen();
+      const port = await getApplicationPort(app);
 
-    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/binary-limit`);
-    await onceOpen(socket);
-    const closed = onceCloseDetails(socket);
+      const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/binary-limit`);
+      try {
+        await onceOpen(socket);
+        const closed = onceCloseDetails(socket);
 
-    socket.send(new Uint8Array([1, 2, 3, 4, 5]));
+        socket.send(new Uint8Array([1, 2, 3, 4, 5]));
 
-    const { code } = await closed;
+        const { code } = await closed;
 
-    expect(code).toBe(1009);
-    expect(state.messages).toEqual([]);
-
-    await app.close();
+        expect(code).toBe(1009);
+        expect(state.messages).toEqual([]);
+      } finally {
+        await closeWebSocket(socket);
+      }
+    } finally {
+      await app.close();
+    }
   });
 
   it('receives binary payloads under the configured limit', async () => {
@@ -1147,21 +1168,74 @@ describe('@fluojs/websockets', () => {
     });
     const state = await app.container.resolve(GatewayState);
 
-    await app.listen();
-    const port = await getApplicationPort(app);
+    try {
+      await app.listen();
+      const port = await getApplicationPort(app);
 
-    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/binary-ok`);
-    await onceOpen(socket);
+      const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/binary-ok`);
+      try {
+        await onceOpen(socket);
 
-    socket.send(new Uint8Array([1, 2, 3, 4]));
+        socket.send(new Uint8Array([1, 2, 3, 4]));
 
-    await waitForAssertion(() => {
-      expect(state.messages).toEqual(['\x01\x02\x03\x04']);
+        await waitForAssertion(() => {
+          expect(state.messages).toEqual(['\x01\x02\x03\x04']);
+        });
+      } finally {
+        await closeWebSocket(socket);
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('receives Node Buffer binary event envelopes through the root module', async () => {
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/buffer-event-ok' })
+    class BufferPayloadGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [WebSocketModule.forRoot()],
+      providers: [GatewayState, BufferPayloadGateway],
     });
 
-    socket.close();
-    await onceCloseDetails(socket);
-    await app.close();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port: 0,
+    });
+    const state = await app.container.resolve(GatewayState);
+
+    try {
+      await app.listen();
+      const port = await getApplicationPort(app);
+
+      const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/buffer-event-ok`);
+      try {
+        await onceOpen(socket);
+
+        socket.send(Buffer.from(JSON.stringify({ event: 'ping', data: { value: 'buffer-root' } })));
+
+        await waitForAssertion(() => {
+          expect(state.messages).toEqual([{ value: 'buffer-root' }]);
+        });
+      } finally {
+        await closeWebSocket(socket);
+      }
+    } finally {
+      await app.close();
+    }
   });
 
   it('receives plain text payloads under the configured limit', async () => {
@@ -1678,6 +1752,26 @@ describe('@fluojs/websockets', () => {
     expect(Array.from(service.getRooms('socket-2'))).toEqual(['room-b']);
   });
 
+  it('removes stale room membership when a tracked socket is unregistered before later broadcasts', () => {
+    const service = createTestLifecycleService();
+    const first = createMockSocket();
+    const second = createMockSocket();
+    const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
+    const unregisterSocket = Reflect.get(service, 'unregisterSocket') as (socketId: string) => void;
+
+    socketRegistry.set('socket-1', first.socket);
+    socketRegistry.set('socket-2', second.socket);
+    service.joinRoom('socket-1', 'room-a');
+    service.joinRoom('socket-2', 'room-a');
+
+    unregisterSocket.call(service, 'socket-1');
+    service.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_3' });
+
+    expect(first.send).not.toHaveBeenCalled();
+    expect(second.send).toHaveBeenCalledWith(JSON.stringify({ data: { orderId: 'ord_3' }, event: 'order.updated' }));
+    expect(Array.from(service.getRooms('socket-1'))).toEqual([]);
+  });
+
   it('terminates sockets on backpressure when policy is close', async () => {
     const service = createTestLifecycleService({
       backpressure: {
@@ -1942,7 +2036,7 @@ describe('@fluojs/websockets', () => {
       port: 0,
       shutdownTimeoutMs: 200,
     });
-    const service = await app.container.resolve(WebSocketGatewayLifecycleService);
+    const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
 
     await app.listen();
     const port = await getApplicationPort(app);
@@ -1993,7 +2087,7 @@ describe('@fluojs/websockets', () => {
 
     await app.listen();
     const port = await getApplicationPort(app);
-    const service = await app.container.resolve(WebSocketGatewayLifecycleService);
+      const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
 
     const responsePromise = readUpgradeResponse(port, createUpgradeRequest('/shutdown-guard-race'));
     await waitForAssertion(() => {

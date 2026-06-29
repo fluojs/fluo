@@ -28,6 +28,7 @@ import type {
   WebSocketUpgradeRejection,
   WebSocketRoomService,
 } from '../types.js';
+import { NodeWebSocketGatewayLifecycleService } from './node-service-token.js';
 import type { WebSocketModuleOptions } from './node-types.js';
 
 interface GatewayAttachment {
@@ -260,7 +261,8 @@ function createCompletionSignal(): { promise: Promise<void>; resolve: () => void
  * listeners, buffered pre-ready events, heartbeat handling, and graceful shutdown.
  */
 @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, WEBSOCKET_OPTIONS_INTERNAL)
-export class NodeWebSocketGatewayLifecycleService
+export class NodeWebSocketGatewayLifecycleServiceImplementation
+  extends NodeWebSocketGatewayLifecycleService
   implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, WebSocketRoomService
 {
   private attachments: GatewayAttachment[] = [];
@@ -285,7 +287,9 @@ export class NodeWebSocketGatewayLifecycleService
     private readonly logger: ApplicationLogger,
     private readonly adapter: HttpApplicationAdapter,
     private readonly moduleOptions: WebSocketModuleOptions,
-  ) {}
+  ) {
+    super();
+  }
 
   /**
    * Discovers gateway classes and attaches their WebSocket servers once per application lifecycle.

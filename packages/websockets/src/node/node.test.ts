@@ -1,17 +1,14 @@
 import type { AddressInfo } from 'node:net';
-
-import { describe, expect, it } from 'vitest';
-import { WebSocket } from 'ws';
-
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { createNodeHttpAdapter } from '@fluojs/runtime/node';
+import { describe, expect, it } from 'vitest';
+import { WebSocket } from 'ws';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as nodePublicApi from './node.js';
-import { NodeWebSocketModule } from './node.js';
-import { NodeWebSocketGatewayLifecycleService } from './node-service.js';
+import { NodeWebSocketGatewayLifecycleService, NodeWebSocketModule } from './node.js';
 import type { WebSocketModuleOptions } from './node-types.js';
 
 function getBoundPort(server: unknown): number {
@@ -96,8 +93,16 @@ describe('@fluojs/websockets/node', () => {
     const optionsProvider = providers.find(
       (provider: unknown) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
     );
+    const lifecycleProvider = providers.find(
+      (provider: unknown) =>
+        typeof provider === 'object'
+        && provider !== null
+        && 'provide' in provider
+        && provider.provide === NodeWebSocketGatewayLifecycleService,
+    );
 
-    expect(providers).toContain(NodeWebSocketGatewayLifecycleService);
+    expect(lifecycleProvider).toBeDefined();
+    expect(lifecycleProvider).toHaveProperty('useClass');
     expect(optionsProvider).toBeDefined();
     expect(optionsProvider).toHaveProperty('useValue', options);
   });
@@ -175,6 +180,57 @@ describe('@fluojs/websockets/node', () => {
     }
   });
 
+  it('receives Node Buffer binary event envelopes through the explicit node seam', async () => {
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/buffer-event' })
+    class BufferGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [NodeWebSocketModule.forRoot()],
+      providers: [GatewayState, BufferGateway],
+    });
+
+    const adapter = createNodeHttpAdapter({ port: 0 });
+    const app = await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    });
+    const state = await app.container.resolve(GatewayState);
+
+    try {
+      await app.listen();
+      const port = getAdapterPort(adapter);
+
+      const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/buffer-event`);
+      try {
+        await onceOpen(socket);
+        socket.send(Buffer.from(JSON.stringify({ event: 'ping', data: { value: 'buffer-node' } })));
+
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+        expect(state.messages).toEqual([{ value: 'buffer-node' }]);
+      } finally {
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+          socket.close();
+        }
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
   it('waits for disconnect cleanup when a socket closes during shutdown drain', async () => {
     const disconnectStarted = createDeferred<void>();
     const disconnectRelease = createDeferred<void>();
@@ -200,26 +256,37 @@ describe('@fluojs/websockets/node', () => {
       rootModule: AppModule,
     });
 
-    await app.listen();
-    const port = getAdapterPort(adapter);
+    try {
+      await app.listen();
+      const port = getAdapterPort(adapter);
 
-    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/shutdown`);
-    await onceOpen(socket);
+      const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/shutdown`);
+      try {
+        await onceOpen(socket);
 
-    const closed = onceClosed(socket);
-    socket.close();
-    await disconnectStarted.promise;
+        const closed = onceClosed(socket);
+        socket.close();
+        await disconnectStarted.promise;
 
-    let appCloseSettled = false;
-    const appClose = app.close().then(() => {
-      appCloseSettled = true;
-    });
+        let appCloseSettled = false;
+        const appClose = app.close().then(() => {
+          appCloseSettled = true;
+        });
 
-    await new Promise((resolve) => setTimeout(resolve, 25));
+        await new Promise((resolve) => setTimeout(resolve, 25));
 
-    expect(appCloseSettled).toBe(false);
+        expect(appCloseSettled).toBe(false);
 
-    disconnectRelease.resolve();
-    await Promise.all([closed, appClose]);
+        disconnectRelease.resolve();
+        await Promise.all([closed, appClose]);
+      } finally {
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+          socket.close();
+        }
+      }
+    } finally {
+      disconnectRelease.resolve();
+      await app.close();
+    }
   });
 });

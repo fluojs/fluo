@@ -51,16 +51,34 @@ describe('@fluojs/websockets tutorial API alignment', () => {
     expect(workersKo).toContain('CloudflareWorkersWebSocketModule.forRoot()');
   });
 
-  it('documents portable pre-upgrade guard header access', () => {
+  it('documents root and fetch-style pre-upgrade guards at their runtime import boundaries', () => {
     const chapter = readTutorial('../../../book/intermediate/ch13-websockets.md');
     const chapterKo = readTutorial('../../../book/intermediate/ch13-websockets.ko.md');
 
-    expect(chapter).toContain('request instanceof Request');
-    expect(chapter).toContain("request.headers.get('authorization')");
+    expect(chapter).not.toContain('request instanceof Request');
     expect(chapter).toContain('request.headers.authorization');
-    expect(chapterKo).toContain('request instanceof Request');
-    expect(chapterKo).toContain("request.headers.get('authorization')");
+    expect(chapter).toContain("Fetch-style subpaths such as `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers` receive a Web-standard `Request`");
+    expect(chapter).toContain("request.headers.get('authorization')");
+
+    expect(chapterKo).not.toContain('request instanceof Request');
     expect(chapterKo).toContain('request.headers.authorization');
+    expect(chapterKo).toContain('`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers` 같은 fetch-style subpath는 Web standard `Request`를 받습니다');
+    expect(chapterKo).toContain("request.headers.get('authorization')");
+  });
+
+  it('documents websocket runtime subpath boundaries and ignored raw handler returns in migration docs', () => {
+    const migration = readTutorial('../../../docs/getting-started/migrate-from-nestjs.md');
+    const migrationKo = readTutorial('../../../docs/getting-started/migrate-from-nestjs.ko.md');
+
+    expect(migration).toContain('@fluojs/websockets/bun');
+    expect(migration).toContain('@fluojs/websockets/deno');
+    expect(migration).toContain('@fluojs/websockets/cloudflare-workers');
+    expect(migration).toContain('Raw WebSocket gateway return values are awaited and then ignored');
+
+    expect(migrationKo).toContain('@fluojs/websockets/bun');
+    expect(migrationKo).toContain('@fluojs/websockets/deno');
+    expect(migrationKo).toContain('@fluojs/websockets/cloudflare-workers');
+    expect(migrationKo).toContain('Raw WebSocket gateway 반환값은 await된 뒤 무시됩니다');
   });
 
   it('documents Deno websocket replies through explicit socket sends instead of ignored return values', () => {
