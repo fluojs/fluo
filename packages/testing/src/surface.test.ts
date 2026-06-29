@@ -183,6 +183,7 @@ describe('@fluojs/testing surface', () => {
       expect(readFileSync(resolve(packageRootPath, declarationFile), 'utf8')).not.toContain('vitest');
     }
 
+    expect(readFileSync(resolve(packageRootPath, 'dist/types.d.ts'), 'utf8')).toContain('type DeepMocked<T>');
     expect(readFileSync(resolve(packageRootPath, 'dist/mock.d.ts'), 'utf8')).toContain('./mock-types.js');
   }, 300_000);
 
@@ -232,6 +233,7 @@ describe('@fluojs/testing surface', () => {
       });
     });
 
-    await expect(import('@fluojs/testing/mock')).resolves.toBeTypeOf('object');
+    const mockSubpath = '@fluojs/testing/mock' as string;
+    await expect(import(mockSubpath)).resolves.toBeTypeOf('object');
   }, 300_000);
 });

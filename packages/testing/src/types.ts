@@ -83,3 +83,32 @@ export interface TestApp {
   dispatch(request: TestRequestWithOptions): Promise<TestResponse>;
   close(): Promise<void>;
 }
+
+/**
+ * Vitest-compatible mock function shape used to preserve root `DeepMocked<T>` type imports
+ * without importing Vitest peer declarations through non-mock entrypoints.
+ */
+export interface TestingMockFunction<Args extends unknown[] = unknown[], Return = unknown> {
+  (...args: Args): Return;
+  mock: unknown;
+  getMockName(): string;
+  mockClear(): this;
+  mockName(name: string): this;
+  mockReset(): this;
+  mockRestore(): void;
+  mockImplementation(fn: (...args: Args) => Return): this;
+  mockImplementationOnce(fn: (...args: Args) => Return): this;
+  mockReturnValue(value: Return): this;
+  mockReturnValueOnce(value: Return): this;
+  mockResolvedValue(value: Awaited<Return>): this;
+  mockResolvedValueOnce(value: Awaited<Return>): this;
+  mockRejectedValue(error: unknown): this;
+  mockRejectedValueOnce(error: unknown): this;
+}
+
+/**
+ * Shallow method-mocked version of a type where function properties become mock functions.
+ */
+export type DeepMocked<T> = {
+  [K in keyof T]: T[K] extends (...args: infer A) => infer R ? TestingMockFunction<A, R> & T[K] : T[K];
+};
