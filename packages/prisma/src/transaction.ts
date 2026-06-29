@@ -30,27 +30,37 @@ function readProperty(value: unknown, property: PropertyKey): unknown {
   return Reflect.get(value, property);
 }
 
+function addPrismaServiceCandidate(
+  candidates: TransactionalPrismaService[],
+  value: unknown,
+): void {
+  if (!isPrismaServiceLike(value) || candidates.includes(value)) {
+    return;
+  }
+
+  candidates.push(value);
+}
+
 function resolveDefaultPrismaService(self: unknown): TransactionalPrismaService {
+  const candidates: TransactionalPrismaService[] = [];
   const directPrisma = readProperty(self, 'prisma');
 
-  if (isPrismaServiceLike(directPrisma)) {
-    return directPrisma;
-  }
-
-  if (isPrismaServiceLike(self)) {
-    return self;
-  }
+  addPrismaServiceCandidate(candidates, directPrisma);
+  addPrismaServiceCandidate(candidates, self);
 
   for (const value of Object.values(Object(self) as Record<string, unknown>)) {
-    if (isPrismaServiceLike(value)) {
-      return value;
-    }
+    addPrismaServiceCandidate(candidates, value);
 
     const nestedPrisma = readProperty(value, 'prisma');
+    addPrismaServiceCandidate(candidates, nestedPrisma);
+  }
 
-    if (isPrismaServiceLike(nestedPrisma)) {
-      return nestedPrisma;
-    }
+  if (candidates.length === 1) {
+    return candidates[0];
+  }
+
+  if (candidates.length > 1) {
+    throw new Error('Ambiguous PrismaService resolution for @Transaction(). Provide an explicit accessor function.');
   }
 
   throw new Error('Unable to resolve PrismaService for @Transaction(). Provide an accessor function.');

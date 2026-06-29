@@ -574,4 +574,72 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
       await app.close();
     }
   });
+
+  it('rejects bare @Transaction() when multiple Prisma-like hosts require an explicit accessor', async () => {
+    const usersEvents: string[] = [];
+    const analyticsEvents: string[] = [];
+
+    const usersClient = {
+      async $connect() { usersEvents.push('users:connect'); },
+      async $disconnect() { usersEvents.push('users:disconnect'); },
+      async $transaction<T>(callback: (value: object) => Promise<T>): Promise<T> {
+        usersEvents.push('users:transaction:start');
+        const result = await callback({});
+        usersEvents.push('users:transaction:end');
+        return result;
+      },
+    };
+
+    const analyticsClient = {
+      async $connect() { analyticsEvents.push('analytics:connect'); },
+      async $disconnect() { analyticsEvents.push('analytics:disconnect'); },
+      async $transaction<T>(callback: (value: object) => Promise<T>): Promise<T> {
+        analyticsEvents.push('analytics:transaction:start');
+        const result = await callback({});
+        analyticsEvents.push('analytics:transaction:end');
+        return result;
+      },
+    };
+
+    @Inject(
+      getPrismaServiceToken('users'),
+      getPrismaServiceToken('analytics'),
+    )
+    class AmbiguousClientService {
+      constructor(
+        private readonly usersPrisma: PrismaService<typeof usersClient>,
+        private readonly analyticsPrisma: PrismaService<typeof analyticsClient>,
+      ) {}
+
+      @Transaction()
+      async write() {
+        void this.usersPrisma;
+        void this.analyticsPrisma;
+
+        return 'unreachable';
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        PrismaModule.forRoot({ name: 'users', client: usersClient }),
+        PrismaModule.forRoot({ name: 'analytics', client: analyticsClient }),
+      ],
+      providers: [AmbiguousClientService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const service = await app.container.resolve(AmbiguousClientService);
+
+      await expect(service.write()).rejects.toThrow(/explicit accessor/i);
+      expect(usersEvents).toEqual(['users:connect']);
+      expect(analyticsEvents).toEqual(['analytics:connect']);
+    } finally {
+      await app.close();
+    }
+  });
 });
