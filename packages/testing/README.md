@@ -130,7 +130,7 @@ const repo = createMock<UserRepository>({ findById: vi.fn() });
 const mailer = createDeepMock(MailService);
 ```
 
-`asMock(value)` narrows an existing value to a mock-friendly type, and `mockToken(token, value)` creates a provider override tuple for token-based dependencies. `createMock(..., { strict: true })` rejects access to unspecified members. `DeepMocked<T>` is exposed from the shared testing types for compatibility and intentionally reflects the Vitest mock type boundary; consumers that do not use Vitest should import only non-mock helpers from `@fluojs/testing/app`, `@fluojs/testing/module`, or the harness subpaths.
+`asMock(value)` narrows an existing value to a mock-friendly type, and `mockToken(token, value)` creates a provider override tuple for token-based dependencies. `createMock(..., { strict: true })` rejects access to unspecified members. `DeepMocked<T>` is exposed from `@fluojs/testing/mock` and intentionally reflects the Vitest mock type boundary; consumers that do not use Vitest should import only non-mock helpers from `@fluojs/testing/app`, `@fluojs/testing/module`, or the harness subpaths.
 
 Install `vitest` in the consuming workspace before using the mock helpers so the published runtime import resolves consistently.
 
@@ -168,7 +168,7 @@ fluo differs from NestJS by requiring tests to name an explicit `rootModule`. Th
 ## Public API
 
 - **Root package**: `createTestingModule(...)`, `Test.createTestingModule(...)`, `createTestApp(...)`, module introspection helpers, shared testing types
-- **Subpaths**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock`, `@fluojs/testing/types`, `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
+- **Subpaths**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock` (including `DeepMocked<T>`), `@fluojs/testing/types`, `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
 - **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`
 - **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` and `@fluojs/testing/vitest/tooling` with Vitest workspace config helpers (requires `vitest` and `@babel/core` in the consuming workspace)
 

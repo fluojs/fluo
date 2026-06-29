@@ -50,7 +50,7 @@ fluo의 테스트 설정은 런타임 모델과 같습니다. 표준 decorator, 
 
 `@fluojs/testing/vitest`는 `fluoBabelDecoratorsPlugin()`을 위한 지원 Vitest 엔트리포인트입니다. testing package export가 바뀔 때는 package export-map과 build surface 검증에 이 엔트리포인트를 계속 포함하세요.
 
-`@fluojs/testing`은 `engines.node >=20.0.0`을 선언합니다. Mock helper와 공유 `DeepMocked<T>` type은 Vitest의 mock type boundary를 의도적으로 사용합니다. Vitest를 실행하지 않는 소비자는 `@fluojs/testing/app`, `@fluojs/testing/module`, harness subpath 같은 non-mock entrypoint를 우선 사용하세요.
+`@fluojs/testing`은 `engines.node >=20.0.0`을 선언합니다. Mock helper와 `@fluojs/testing/mock`의 `DeepMocked<T>` type은 Vitest의 mock type boundary를 의도적으로 사용합니다. Vitest를 실행하지 않는 소비자는 `@fluojs/testing/app`, `@fluojs/testing/module`, harness subpath 같은 non-mock entrypoint를 우선 사용하세요.
 
 ## 명령어 (Commands)
 
