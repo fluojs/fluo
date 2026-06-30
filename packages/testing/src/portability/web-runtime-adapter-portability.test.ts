@@ -78,6 +78,36 @@ describe('web runtime portability cleanup reporting', () => {
       expect(error.errors[1]).toBe(closeError);
     }
   });
+
+  it('preserves dispatch rejection failures when close also fails', async () => {
+    const closeError = new Error('close exploded');
+    const dispatchError = new Error('dispatch exploded');
+    const harness = createWebRuntimeHttpAdapterPortabilityHarness({
+      async bootstrap() {
+        return {
+          async close() {
+            throw closeError;
+          },
+          async dispatch() {
+            throw dispatchError;
+          },
+        };
+      },
+      name: 'dispatch-and-cleanup',
+    });
+
+    try {
+      await harness.assertPreservesQueryArraysAndDecoding();
+      throw new Error('Expected aggregate failure to be reported.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      if (!(error instanceof AggregateError)) {
+        throw error;
+      }
+      expect(error.message).toContain('assertion failed and app.close() also failed');
+      expect(error.errors).toEqual([dispatchError, closeError]);
+    }
+  });
 });
 
 type MockBunServer = BunServerLike & {

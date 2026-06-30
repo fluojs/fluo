@@ -1,6 +1,6 @@
 import { getModuleMetadata, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
-import type { CallHandler, Dispatcher, Guard, Interceptor, InterceptorContext, Middleware, RequestObserver } from '@fluojs/http';
-import { Controller, Get, Post, type RequestContext, UseGuards, UseInterceptors, Version, VersioningType } from '@fluojs/http';
+import type { CallHandler, Converter, Dispatcher, Guard, Interceptor, InterceptorContext, Middleware, RequestObserver } from '@fluojs/http';
+import { Controller, FromQuery, Get, Post, type RequestContext, RequestDto, UseGuards, UseInterceptors, Version, VersioningType } from '@fluojs/http';
 import type { ExceptionFilterHandler } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 import { makeRequest } from './http.js';
@@ -966,6 +966,46 @@ describe('createTestApp', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ wrapped: { message: 'forwarded-provider' } });
       expect(observerEvents).toEqual(['start', 'interceptor', 'success']);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('forwards converters and diagnostics bootstrap options to the runtime app', async () => {
+    class QueryNumberConverter implements Converter {
+      convert(value: unknown) {
+        return typeof value === 'string' ? Number(value) : value;
+      }
+    }
+
+    class SearchRequest {
+      @FromQuery('page')
+      page = 0;
+    }
+
+    @Controller('/converted')
+    class ConvertedController {
+      @Get('/')
+      @RequestDto(SearchRequest)
+      read(input: SearchRequest) {
+        return { page: input.page };
+      }
+    }
+
+    @Module({ controllers: [ConvertedController] })
+    class ConvertedModule {}
+
+    const app = await createTestApp({
+      rootModule: ConvertedModule,
+      converters: [new QueryNumberConverter()],
+      diagnostics: { timing: true },
+    });
+
+    try {
+      const response = await app.request('GET', '/converted').query('page', '42').send();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ page: 42 });
     } finally {
       await app.close();
     }
