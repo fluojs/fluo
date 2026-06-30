@@ -1,6 +1,6 @@
 import { Inject, Module } from '@fluojs/core';
 import { getModuleMetadata, metadataSymbol } from '@fluojs/core/internal';
-import type { GuardContext, HandlerDescriptor, RequestContext } from '@fluojs/http';
+import type { GuardContext, HandlerDescriptor, Middleware, MiddlewareContext, Next, RequestContext } from '@fluojs/http';
 import { Controller, Get, UseGuards } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { createTestApp } from '@fluojs/testing';
@@ -97,6 +97,27 @@ function createGuardContext(
       },
     },
     requestContext,
+  };
+}
+
+function createRemoteAddressMiddleware(): Middleware {
+  return {
+    async handle(context: MiddlewareContext, next: Next) {
+      const remoteAddressHeader = context.request.headers['x-test-remote-address'];
+      const remoteAddress = Array.isArray(remoteAddressHeader) ? remoteAddressHeader[0] : remoteAddressHeader;
+
+      if (remoteAddress) {
+        const raw = typeof context.request.raw === 'object' && context.request.raw !== null ? context.request.raw : {};
+        context.request.raw = {
+          ...raw,
+          socket: {
+            remoteAddress,
+          },
+        };
+      }
+
+      await next();
+    },
   };
 }
 
@@ -815,6 +836,223 @@ describe('ThrottlerGuard — in-memory store', () => {
 });
 
 describe('ThrottlerGuard — HTTP request pipeline', () => {
+  it('applies class-level policy and method-level override through createTestApp requests', async () => {
+    @Controller('/request-precedence')
+    @Throttle({ limit: 1, ttl: 60 })
+    class RequestPrecedenceController {
+      @Get('/class')
+      @UseGuards(ThrottlerGuard)
+      classLimited() {
+        return { route: 'class' };
+      }
+
+      @Get('/method')
+      @Throttle({ limit: 2, ttl: 60 })
+      @UseGuards(ThrottlerGuard)
+      methodLimited() {
+        return { route: 'method' };
+      }
+    }
+
+    @Module({
+      controllers: [RequestPrecedenceController],
+      imports: [ThrottlerModule.forRoot({ limit: 3, ttl: 60, trustProxyHeaders: true })],
+    })
+    class RequestPrecedenceAppModule {}
+
+    const app = await createTestApp({ rootModule: RequestPrecedenceAppModule });
+
+    try {
+      const classFirstResponse = await app
+        .request('GET', '/request-precedence/class')
+        .header('x-real-ip', '198.51.100.20')
+        .send();
+      const classSecondResponse = await app
+        .request('GET', '/request-precedence/class')
+        .header('x-real-ip', '198.51.100.20')
+        .send();
+      const methodFirstResponse = await app
+        .request('GET', '/request-precedence/method')
+        .header('x-real-ip', '198.51.100.20')
+        .send();
+      const methodSecondResponse = await app
+        .request('GET', '/request-precedence/method')
+        .header('x-real-ip', '198.51.100.20')
+        .send();
+      const methodThirdResponse = await app
+        .request('GET', '/request-precedence/method')
+        .header('x-real-ip', '198.51.100.20')
+        .send();
+
+      expect(classFirstResponse.status).toBe(200);
+      expect(classFirstResponse.body).toEqual({ route: 'class' });
+      expect(classSecondResponse.status).toBe(429);
+      expect(classSecondResponse.headers['Retry-After']).toBe('60');
+      expect(methodFirstResponse.status).toBe(200);
+      expect(methodSecondResponse.status).toBe(200);
+      expect(methodThirdResponse.status).toBe(429);
+      expect(methodThirdResponse.headers['Retry-After']).toBe('60');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('bypasses class and method throttling when @SkipThrottle is present in the request pipeline', async () => {
+    @Controller('/request-skip-method')
+    @Throttle({ limit: 1, ttl: 60 })
+    class RequestMethodSkipController {
+      @Get('/public')
+      @SkipThrottle()
+      @UseGuards(ThrottlerGuard)
+      publicRoute() {
+        return { route: 'method-skip' };
+      }
+    }
+
+    @Controller('/request-skip-class')
+    @SkipThrottle()
+    class RequestClassSkipController {
+      @Get('/public')
+      @Throttle({ limit: 1, ttl: 60 })
+      @UseGuards(ThrottlerGuard)
+      publicRoute() {
+        return { route: 'class-skip' };
+      }
+    }
+
+    @Module({
+      controllers: [RequestMethodSkipController, RequestClassSkipController],
+      imports: [ThrottlerModule.forRoot({ limit: 1, ttl: 60, trustProxyHeaders: true })],
+    })
+    class RequestSkipAppModule {}
+
+    const app = await createTestApp({ rootModule: RequestSkipAppModule });
+
+    try {
+      const methodFirstResponse = await app
+        .request('GET', '/request-skip-method/public')
+        .header('x-real-ip', '198.51.100.30')
+        .send();
+      const methodSecondResponse = await app
+        .request('GET', '/request-skip-method/public')
+        .header('x-real-ip', '198.51.100.30')
+        .send();
+      const classFirstResponse = await app
+        .request('GET', '/request-skip-class/public')
+        .header('x-real-ip', '198.51.100.30')
+        .send();
+      const classSecondResponse = await app
+        .request('GET', '/request-skip-class/public')
+        .header('x-real-ip', '198.51.100.30')
+        .send();
+
+      expect(methodFirstResponse.status).toBe(200);
+      expect(methodFirstResponse.body).toEqual({ route: 'method-skip' });
+      expect(methodSecondResponse.status).toBe(200);
+      expect(methodSecondResponse.body).toEqual({ route: 'method-skip' });
+      expect(classFirstResponse.status).toBe(200);
+      expect(classFirstResponse.body).toEqual({ route: 'class-skip' });
+      expect(classSecondResponse.status).toBe(200);
+      expect(classSecondResponse.body).toEqual({ route: 'class-skip' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('uses trusted proxy headers before raw socket identity through createTestApp requests', async () => {
+    @Controller('/request-proxy')
+    class RequestProxyController {
+      @Get('/limited')
+      @UseGuards(ThrottlerGuard)
+      limited() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      controllers: [RequestProxyController],
+      imports: [ThrottlerModule.forRoot({ limit: 1, ttl: 60, trustProxyHeaders: true })],
+    })
+    class RequestProxyAppModule {}
+
+    const app = await createTestApp({
+      rootModule: RequestProxyAppModule,
+      middleware: [createRemoteAddressMiddleware()],
+    });
+
+    try {
+      const firstForwardedClientResponse = await app
+        .request('GET', '/request-proxy/limited')
+        .header('x-forwarded-for', '198.51.100.40, 10.0.0.10')
+        .header('x-test-remote-address', '10.0.0.1')
+        .send();
+      const secondForwardedClientResponse = await app
+        .request('GET', '/request-proxy/limited')
+        .header('x-forwarded-for', '198.51.100.41, 10.0.0.10')
+        .header('x-test-remote-address', '10.0.0.1')
+        .send();
+      const repeatedForwardedClientResponse = await app
+        .request('GET', '/request-proxy/limited')
+        .header('x-forwarded-for', '198.51.100.40, 10.0.0.10')
+        .header('x-test-remote-address', '10.0.0.1')
+        .send();
+
+      expect(firstForwardedClientResponse.status).toBe(200);
+      expect(secondForwardedClientResponse.status).toBe(200);
+      expect(repeatedForwardedClientResponse.status).toBe(429);
+      expect(repeatedForwardedClientResponse.headers['Retry-After']).toBe('60');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('falls back to raw socket identity and ignores spoofed proxy headers by default', async () => {
+    @Controller('/request-socket')
+    class RequestSocketController {
+      @Get('/limited')
+      @UseGuards(ThrottlerGuard)
+      limited() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      controllers: [RequestSocketController],
+      imports: [ThrottlerModule.forRoot({ limit: 1, ttl: 60 })],
+    })
+    class RequestSocketAppModule {}
+
+    const app = await createTestApp({
+      rootModule: RequestSocketAppModule,
+      middleware: [createRemoteAddressMiddleware()],
+    });
+
+    try {
+      const firstSocketClientResponse = await app
+        .request('GET', '/request-socket/limited')
+        .header('x-forwarded-for', '198.51.100.50')
+        .header('x-test-remote-address', '10.0.0.1')
+        .send();
+      const spoofedHeaderResponse = await app
+        .request('GET', '/request-socket/limited')
+        .header('x-forwarded-for', '198.51.100.51')
+        .header('x-test-remote-address', '10.0.0.1')
+        .send();
+      const secondSocketClientResponse = await app
+        .request('GET', '/request-socket/limited')
+        .header('x-forwarded-for', '198.51.100.50')
+        .header('x-test-remote-address', '10.0.0.2')
+        .send();
+
+      expect(firstSocketClientResponse.status).toBe(200);
+      expect(spoofedHeaderResponse.status).toBe(429);
+      expect(spoofedHeaderResponse.headers['Retry-After']).toBe('60');
+      expect(secondSocketClientResponse.status).toBe(200);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('enforces @UseGuards(ThrottlerGuard) through createTestApp requests', async () => {
     @Controller('/throttled')
     class ThrottledController {
