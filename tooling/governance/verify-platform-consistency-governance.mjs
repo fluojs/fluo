@@ -555,11 +555,13 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // future contract-boundary edits do not silently bypass the companion checks.
   // Updating this script is the CI/tooling companion for branches that extend
   // the contract-governing documentation surface, including package-surface
-  // transaction boundary updates that must stay paired with runtime tests,
-  // such as Prisma branded transaction target resolution and ALS host lookup
-  // fail-closed coverage, Drizzle shutdown-drain coverage for fail-open manual
-  // transactions, Drizzle decorated-instance transaction target fallback discoverability,
-  // and Mongoose ALS session/request tracking plus runtime-boundary docs.
+  // transaction boundary and observability ownership updates that must stay
+  // paired with runtime tests, such as Prisma branded transaction target
+  // resolution and ALS host lookup fail-closed coverage, Drizzle shutdown-drain
+  // coverage for fail-open manual transactions, Drizzle decorated-instance
+  // transaction target fallback discoverability, Mongoose ALS session/request
+  // tracking plus runtime-boundary docs, and metrics shared-registry HTTP
+  // collector or platform telemetry stale-series ownership docs.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
