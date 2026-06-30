@@ -19,7 +19,11 @@ export class SlackMessageValidationError extends Error {
 }
 
 /**
- * Thrown when Slack delivery is requested after the service lifecycle has started shutting down.
+ * Thrown when Slack delivery, transport initialization, verification, or cleanup is blocked by lifecycle state.
+ *
+ * @remarks
+ * Direct and notification-backed delivery require a ready service. Calls made before module initialization finishes,
+ * after initialization fails, or after shutdown starts surface this error instead of lazily creating or reusing a transport.
  */
 export class SlackLifecycleError extends Error {
   constructor(message: string, options?: ErrorOptions) {

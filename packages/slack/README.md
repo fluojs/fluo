@@ -138,7 +138,8 @@ Behavioral contract notes:
 - `SlackService.sendMany(...)` sends messages sequentially and supports `continueOnError` when callers need a batch result instead of fail-fast behavior.
 - `SlackService.send(...)`, `SlackService.sendMany(...)`, and `SlackService.sendNotification(...)` honor already-aborted signals before provider handoff, and the same signal is propagated to transport calls.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
-- Once shutdown starts, `SlackService.send(...)` and `SlackService.sendNotification(...)` fail with `SlackLifecycleError` instead of reusing or lazily creating transports; any in-flight factory-owned transport creation is awaited and closed by shutdown.
+- Direct and notification-backed delivery require the lifecycle to be `ready`; calls before `onModuleInit()` finishes, after initialization failure, or during shutdown fail with `SlackLifecycleError` instead of lazily creating or reusing transports.
+- Shutdown awaits any in-flight factory-owned transport creation and closes it before completion.
 - `SlackService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
@@ -388,7 +389,7 @@ These limitations are part of the package contract so runtime choice, provider c
 - `SlackLifecycleState`
 - `SlackStatusAdapterInput`
 - `SlackConfigurationError`
-- `SlackLifecycleError`: thrown by lifecycle-gated delivery, transport initialization, and owned-resource shutdown failures. Catch this error when sends can race with application teardown.
+- `SlackLifecycleError`: thrown by lifecycle-gated delivery before readiness, after initialization failure, or during shutdown, plus transport initialization and owned-resource shutdown failures. Catch this error when sends can race with bootstrap or application teardown.
 - `SlackMessageValidationError`
 - `SlackTransportError`
 

@@ -221,13 +221,23 @@ export interface SlackSendManyOptions extends SlackSendOptions {
 /** Module options accepted by {@link SlackModule.forRoot} and `forRootAsync`. */
 export interface SlackModuleOptions {
   defaultChannel?: string;
-  /** Whether Slack providers should be visible globally. Defaults to `true`. */
+  /**
+   * Controls whether Slack providers are visible through the whole module graph.
+   *
+   * @remarks
+   * Defaults to `true` for Nest-like root registration. Set `false` when migrated code needs `SlackService`,
+   * `SlackChannel`, `SLACK`, and `SLACK_CHANNEL` to stay visible only to modules that explicitly import the returned
+   * module definition.
+   */
   global?: boolean;
   notifications?: {
     channel?: string;
   };
   renderer?: SlackTemplateRenderer;
   transport: SlackTransport | SlackTransportFactory;
+  /**
+   * Verifies the configured transport during `onModuleInit()` before the service becomes ready for delivery.
+   */
   verifyOnModuleInit?: boolean;
 }
 
@@ -257,6 +267,7 @@ export interface Slack {
    * @param message Caller-supplied Slack message with text and/or block content.
    * @param options Optional abort signal propagated to the transport.
    * @returns A normalized delivery receipt describing the transport response.
+   * @throws {SlackLifecycleError} When delivery is requested before readiness, after initialization failure, or during shutdown.
    */
   send(message: SlackMessage, options?: SlackSendOptions): Promise<SlackSendResult>;
 
@@ -266,6 +277,7 @@ export interface Slack {
    * @param messages Ordered message list to deliver through the configured transport.
    * @param options Optional tolerant batch controls such as `continueOnError`.
    * @returns A batch summary containing successes and any captured failures.
+   * @throws {SlackLifecycleError} When delivery is requested before readiness, after initialization failure, or during shutdown.
    */
   sendMany(messages: readonly SlackMessage[], options?: SlackSendManyOptions): Promise<SlackSendBatchResult>;
 
@@ -275,6 +287,7 @@ export interface Slack {
    * @param notification Shared notification envelope interpreted by the Slack package.
    * @param options Optional abort signal propagated to rendering and transport work.
    * @returns A normalized delivery receipt for the resulting Slack message.
+   * @throws {SlackLifecycleError} When delivery is requested before readiness, after initialization failure, or during shutdown.
    */
   sendNotification(
     notification: SlackNotificationDispatchRequest,
