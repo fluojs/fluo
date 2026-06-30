@@ -29,13 +29,6 @@ import {
 } from '@fluojs/runtime/internal/http-adapter';
 import { createWebRequestResponseFactory, dispatchWebRequest } from '@fluojs/runtime/web';
 
-declare module '@fluojs/http' {
-  interface FrameworkRequest {
-    files?: UploadedFile[];
-    rawBody?: Uint8Array;
-  }
-}
-
 type BunGlobal = {
   serve(options: BunServeOptions): BunServerLike;
   version?: string;

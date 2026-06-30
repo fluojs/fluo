@@ -55,13 +55,6 @@ import {
   registerShutdownSignals,
 } from './internal-node-shutdown.js';
 
-declare module '@fluojs/http' {
-  interface FrameworkRequest {
-    files?: UploadedFile[];
-    rawBody?: Uint8Array;
-  }
-}
-
 /**
  * Describes the node http adapter options contract.
  */
