@@ -15,7 +15,9 @@
 - `defaultMetrics` defaults to `true`, so Prometheus default process and Node.js collectors are registered once per registry unless `defaultMetrics: false` is set.
 - Route-scoped protection for the scrape endpoint is supported through `endpointMiddleware`, which binds class-based middleware only to the configured metrics route and is skipped when `path: false` disables that route.
 - Module-level `middleware` is distinct from `endpointMiddleware`: it participates in the module middleware chain after framework HTTP metrics and endpoint-scoped middleware, and it is not the route-scoped protection contract.
+- Shared-registry reuse keeps framework-owned HTTP collectors compatible by requiring the same label schema and path-label configuration (`pathLabelMode`, exact `pathLabelNormalizer` reference, and `unknownPathLabel`) before reusing the built-in collector set.
 - Platform telemetry refreshes on each scrape by resolving `PLATFORM_SHELL` and reading its snapshot. If `PLATFORM_SHELL` is missing, the scrape succeeds without platform telemetry series. Non-missing resolution failures fail the scrape.
+- Platform telemetry state is tracked per reused registry, so a later module instance refresh removes stale module-owned component readiness and health series that are no longer present in the active platform snapshot.
 
 ## Health Checks
 
