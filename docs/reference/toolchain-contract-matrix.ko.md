@@ -9,7 +9,7 @@
 | **TypeScript** | `v6.0+` | `strict: true`, `experimentalDecorators: false`, `module: esnext`, 생성 config는 deprecated `baseUrl` aliasing을 피함 |
 | **Babel** | `v7.26+` | 루트 워크스페이스는 `@babel/core` `^7.26.10`, `{ version: '2023-11' }` 구성을 쓰는 `@babel/plugin-proposal-decorators` `^7.28.0`, `@babel/preset-typescript` `^7.27.0`을 고정합니다. |
 | **Vite** | `v6.2+` | 루트 워크스페이스는 개발 번들링 및 빌드 오케스트레이션용 `vite` `^6.2.1`을 고정합니다. |
-| **@fluojs/vite** | `v1.0+` | 생성된 non-Deno `vite.config.ts` 파일은 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import합니다. 이 플러그인은 Vite 애플리케이션 파일 데코레이터 변환과 lazy Babel peer 진단을 소유합니다. |
+| **@fluojs/vite** | `v1.0+`; Node.js `>=20.0.0` | 생성된 non-Deno `vite.config.ts` 파일은 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import합니다. 이 플러그인은 Vite 애플리케이션 파일 데코레이터 변환을 소유하고, Vite `>=6.2.0`을 요구하며, eligible transform이 실행될 때까지 Babel peer loading을 lazy하게 유지합니다. |
 | **Vitest** | `v3.0+` | 루트 워크스페이스는 `vitest` `^3.0.8`을 고정하며, 패키지 로컬 설정은 주로 `^3.2.4`를 사용합니다. |
 | **Node.js** | `v20+` | 루트 워크스페이스와 배포 패키지 매니페스트(manifest)가 선언하는 Node 기반 어댑터의 최소 지원 런타임 기준선. Bun, Deno, Cloudflare Workers 어댑터는 패키지 메타데이터가 비-Node 런타임 계약과 일치하도록 `engines.node`를 의도적으로 생략합니다. |
 
@@ -62,7 +62,7 @@
 | 단계 | 도구 | 계약 |
 | --- | --- | --- |
 | **변환** | Babel | `@babel/plugin-proposal-decorators`와 `{ version: '2023-11' }` 구성으로 Stage 3 데코레이터 변환을 적용합니다. |
-| **Vite 앱 변환** | `@fluojs/vite` | 생성된 `vite.config.ts`는 `fluoDecoratorsPlugin()`을 애플리케이션 `.ts` 파일에 적용하고, 테스트/declaration/dependency/non-TypeScript 파일을 건너뛰며, `@babel/plugin-proposal-decorators`와 `@babel/preset-typescript`를 실행하고, 누락된 Babel peer를 transform hook에서 진단합니다. |
+| **Vite 앱 변환** | `@fluojs/vite` | 생성된 `vite.config.ts`는 `fluoDecoratorsPlugin()`을 애플리케이션 `.ts` 파일에 적용하고, 테스트/declaration/dependency/non-TypeScript 파일을 건너뛰며, `@babel/plugin-proposal-decorators`와 `@babel/preset-typescript`를 실행하고, 누락된 Babel peer를 transform hook에서 진단합니다. `@fluojs/vite`를 import하거나 plugin을 생성해도 `@babel/core`를 로드하지 않습니다. |
 | **번들링** | Vite | 선택한 런타임 대상에 맞게 생성된 애플리케이션을 번들링합니다. |
 | **검증** | `@fluojs/testing/vitest` + Vitest | 생성된 `vitest.config.ts`는 `*.test.ts`와 `*.spec.ts` 파일을 Vite 애플리케이션 transform 대신 testing-specific Babel decorator transform 경로에 둡니다. |
 | **제약** | 대체 도구 | direct `esbuild` decorator handling 같은 대체 체인은 문서화된 지원 계약 밖에 있습니다. |

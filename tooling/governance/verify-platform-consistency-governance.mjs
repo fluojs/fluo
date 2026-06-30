@@ -1110,10 +1110,13 @@ function enforceRemovedRuntimeFactoryNamesNotUsedInDocs() {
 function enforceViteToolingDiscoverability() {
   const englishContext = read('docs/CONTEXT.md');
   const englishChooser = read('docs/reference/package-chooser.md');
+  const englishPackageSurface = read('docs/reference/package-surface.md');
   const englishToolchainMatrix = read('docs/reference/toolchain-contract-matrix.md');
   const englishViteReadme = read('packages/vite/README.md');
+  const vitePackageJson = JSON.parse(read('packages/vite/package.json'));
   const koreanContext = read('docs/CONTEXT.ko.md');
   const koreanChooser = read('docs/reference/package-chooser.ko.md');
+  const koreanPackageSurface = read('docs/reference/package-surface.ko.md');
   const koreanToolchainMatrix = read('docs/reference/toolchain-contract-matrix.ko.md');
   const koreanViteReadme = read('packages/vite/README.ko.md');
 
@@ -1130,6 +1133,41 @@ function enforceViteToolingDiscoverability() {
     assert(
       markdown.includes('@babel/preset-typescript'),
       'Vite tooling docs must keep the @babel/preset-typescript peer discoverable across README, context, chooser, and toolchain matrix surfaces.',
+    );
+  }
+
+  assert(
+    vitePackageJson.engines?.node === '>=20.0.0',
+    'packages/vite/package.json must keep the documented Node.js >=20.0.0 engine floor.',
+  );
+
+  for (const markdown of [englishContext, englishPackageSurface, englishToolchainMatrix, englishViteReadme]) {
+    assert(
+      markdown.includes('Node.js') && markdown.includes('>=20.0.0'),
+      'English Vite tooling docs must keep the @fluojs/vite Node.js >=20.0.0 engine floor discoverable.',
+    );
+    assert(
+      markdown.includes('Vite `>=6.2.0`'),
+      'English Vite tooling docs must keep the @fluojs/vite Vite >=6.2.0 peer boundary discoverable.',
+    );
+    assert(
+      markdown.includes('lazy') || markdown.includes('lazily'),
+      'English Vite tooling docs must keep the lazy Babel loading boundary discoverable.',
+    );
+  }
+
+  for (const markdown of [koreanContext, koreanPackageSurface, koreanToolchainMatrix, koreanViteReadme]) {
+    assert(
+      markdown.includes('Node.js') && markdown.includes('>=20.0.0'),
+      'Korean Vite tooling docs must keep the @fluojs/vite Node.js >=20.0.0 engine floor discoverable.',
+    );
+    assert(
+      markdown.includes('Vite `>=6.2.0`'),
+      'Korean Vite tooling docs must keep the @fluojs/vite Vite >=6.2.0 peer boundary discoverable.',
+    );
+    assert(
+      markdown.includes('lazy'),
+      'Korean Vite tooling docs must keep the lazy Babel loading boundary discoverable.',
     );
   }
 }
