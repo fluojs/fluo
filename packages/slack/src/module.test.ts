@@ -546,6 +546,96 @@ describe('SlackModule', () => {
     expect(factoryCalls).toEqual(['#release']);
   });
 
+  it('resolves async options per container when a module definition is reused', async () => {
+    const SLACK_CONFIG = Symbol('isolated-slack-config');
+    const factoryCalls: string[] = [];
+    const moduleType = SlackModule.forRootAsync({
+      inject: [SLACK_CONFIG],
+      useFactory: async (...deps: unknown[]) => {
+        const [defaultChannel] = deps;
+
+        if (typeof defaultChannel !== 'string') {
+          throw new Error('default channel must be a string');
+        }
+
+        factoryCalls.push(defaultChannel);
+
+        return {
+          defaultChannel,
+          transport: createRecordingTransportFactory({ responsePrefix: defaultChannel.slice(1) }),
+        };
+      },
+    });
+    const firstContainer = new Container();
+    const secondContainer = new Container();
+
+    firstContainer.register(
+      { provide: SLACK_CONFIG as Token<string>, useValue: '#first' },
+      ...moduleProviders(moduleType),
+    );
+    secondContainer.register(
+      { provide: SLACK_CONFIG as Token<string>, useValue: '#second' },
+      ...moduleProviders(moduleType),
+    );
+
+    const firstService = await initializeSlackService(firstContainer);
+    const secondService = await initializeSlackService(secondContainer);
+
+    await expect(firstService.send({ text: 'first app' })).resolves.toMatchObject({ channel: '#first' });
+    await expect(secondService.send({ text: 'second app' })).resolves.toMatchObject({ channel: '#second' });
+    expect(factoryCalls).toEqual(['#first', '#second']);
+    expect(transportState.sent).toMatchObject([
+      { channel: '#first', text: 'first app' },
+      { channel: '#second', text: 'second app' },
+    ]);
+  });
+
+  it('does not reuse rejected async options across containers for one module definition', async () => {
+    const SLACK_CONFIG = Symbol('recoverable-slack-config');
+    const configurationFailure = new SlackConfigurationError('Slack config source is unavailable.');
+    const factoryCalls: string[] = [];
+    const moduleType = SlackModule.forRootAsync({
+      inject: [SLACK_CONFIG],
+      useFactory: async (...deps: unknown[]) => {
+        const [defaultChannel] = deps;
+
+        if (typeof defaultChannel !== 'string') {
+          throw new Error('default channel must be a string');
+        }
+
+        factoryCalls.push(defaultChannel);
+
+        if (defaultChannel === '#broken') {
+          throw configurationFailure;
+        }
+
+        return {
+          defaultChannel,
+          transport: createRecordingTransportFactory({ responsePrefix: 'recovered' }),
+        };
+      },
+    });
+    const failingContainer = new Container();
+    const recoveredContainer = new Container();
+
+    failingContainer.register(
+      { provide: SLACK_CONFIG as Token<string>, useValue: '#broken' },
+      ...moduleProviders(moduleType),
+    );
+    recoveredContainer.register(
+      { provide: SLACK_CONFIG as Token<string>, useValue: '#recovered' },
+      ...moduleProviders(moduleType),
+    );
+
+    await expect(initializeSlackService(failingContainer)).rejects.toThrowError(configurationFailure);
+
+    const recoveredService = await initializeSlackService(recoveredContainer);
+
+    await expect(recoveredService.send({ text: 'recovered app' })).resolves.toMatchObject({ channel: '#recovered' });
+    expect(factoryCalls).toEqual(['#broken', '#recovered']);
+    expect(transportState.sent[0]).toMatchObject({ channel: '#recovered', text: 'recovered app' });
+  });
+
   it('wires module-first async Slack and notifications registration through SLACK_CHANNEL', async () => {
     const SLACK_CONFIG = Symbol('slack-config');
     const container = new Container();
