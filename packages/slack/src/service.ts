@@ -166,6 +166,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
    * @param options Optional abort signal propagated to the transport.
    * @returns A normalized delivery receipt describing the transport response.
    * @throws {SlackMessageValidationError} When the resolved message does not include Slack-visible content.
+   * @throws {SlackLifecycleError} When delivery is requested before readiness, after initialization failure, or during shutdown.
    *
    * @example
    * ```ts
@@ -203,6 +204,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
    * @param messages Ordered message list to deliver through the configured transport.
    * @param options Optional tolerant batch controls such as `continueOnError`.
    * @returns A batch summary containing successes and any captured failures.
+   * @throws {SlackLifecycleError} When delivery is requested before readiness, after initialization failure, or during shutdown.
    *
    * @example
    * ```ts
@@ -212,6 +214,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
    */
   async sendMany(messages: readonly SlackMessage[], options: SlackSendManyOptions = {}): Promise<SlackSendBatchResult> {
     assertNotAborted(options.signal);
+    this.assertCanDeliver();
 
     const results: SlackSendResult[] = [];
     const failures: SlackSendFailure[] = [];
@@ -248,6 +251,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
    * @param options Optional abort signal propagated to rendering and transport work.
    * @returns A normalized delivery receipt for the resulting Slack message.
    * @throws {SlackMessageValidationError} When the notification cannot resolve one target channel or any Slack-visible content.
+   * @throws {SlackLifecycleError} When delivery is requested before readiness, after initialization failure, or during shutdown.
    *
    * @example
    * ```ts
@@ -347,7 +351,9 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
   }
 
   private assertCanDeliver(): void {
-    this.assertCanCreateOrUseTransport();
+    if (this.lifecycleState !== 'ready') {
+      throw createDeliveryLifecycleError(this.lifecycleState);
+    }
   }
 
   private normalizeMessage(message: SlackMessage): NormalizedSlackMessage {

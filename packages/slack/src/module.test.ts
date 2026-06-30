@@ -1,7 +1,8 @@
-import type { Constructor, Token } from '@fluojs/core';
+import { Inject, type Constructor, type Token } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
 import { NOTIFICATION_CHANNELS, NotificationsModule, NotificationsService } from '@fluojs/notifications';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SlackChannel } from './channel.js';
@@ -172,6 +173,13 @@ function providerToken(provider: Provider): unknown {
   return typeof provider === 'function' ? provider : provider.provide;
 }
 
+async function initializeSlackService(container: Container): Promise<SlackService> {
+  const service = await container.resolve(SlackService);
+  await service.onModuleInit();
+
+  return service;
+}
+
 describe('SlackModule', () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
@@ -190,8 +198,7 @@ describe('SlackModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
-    const service = await container.resolve(SlackService);
-    await service.onModuleInit();
+    const service = await initializeSlackService(container);
 
     const result = await service.send({
       text: 'Deploy finished.',
@@ -280,6 +287,135 @@ describe('SlackModule', () => {
     expect(moduleChannelToken).toBe(moduleChannel);
     expect(helperChannel.channel).toBe('slack');
     expect(helperChannelToken).toBe(helperChannel);
+  });
+
+  it('exposes default-global Slack providers across a real module graph for notifications', async () => {
+    @Inject(SlackService)
+    class SlackVisibilityConsumer {
+      constructor(readonly slack: SlackService) {}
+    }
+
+    class SlackOwnerModule {}
+    defineModule(SlackOwnerModule, {
+      imports: [
+        SlackModule.forRoot({
+          defaultChannel: '#ops',
+          notifications: { channel: 'alerts' },
+          transport: createRecordingTransportFactory({ responsePrefix: 'graph' }),
+        }),
+      ],
+    });
+
+    class NotificationsOwnerModule {}
+    defineModule(NotificationsOwnerModule, {
+      imports: [
+        NotificationsModule.forRootAsync({
+          inject: [SLACK_CHANNEL],
+          useFactory: (channel: unknown) => ({
+            channels: [channel as SlackChannel],
+          }),
+        }),
+      ],
+      providers: [SlackVisibilityConsumer],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SlackOwnerModule, NotificationsOwnerModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const consumer = await app.container.resolve(SlackVisibilityConsumer);
+      const notifications = await app.container.resolve(NotificationsService);
+      const result = await notifications.dispatch({
+        channel: 'alerts',
+        payload: { text: 'Global graph delivery' },
+        recipients: ['#release'],
+      });
+
+      expect(consumer.slack).toBeInstanceOf(SlackService);
+      expect(result).toMatchObject({
+        channel: 'alerts',
+        deliveryId: 'graph-1',
+        queued: false,
+        status: 'delivered',
+      });
+      expect(transportState.sent[0]).toMatchObject({
+        channel: '#release',
+        text: 'Global graph delivery',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps global=false Slack providers local to explicit importers in a real module graph', async () => {
+    @Inject(SlackService)
+    class LocalSlackConsumer {
+      constructor(readonly slack: SlackService) {}
+    }
+
+    class LocalSlackFeatureModule {}
+    defineModule(LocalSlackFeatureModule, {
+      imports: [
+        SlackModule.forRoot({
+          defaultChannel: '#local',
+          global: false,
+          transport: createRecordingTransportFactory({ responsePrefix: 'local-graph' }),
+        }),
+      ],
+      providers: [LocalSlackConsumer],
+    });
+
+    class LocalAppModule {}
+    defineModule(LocalAppModule, {
+      imports: [LocalSlackFeatureModule],
+    });
+
+    const localApp = await bootstrapApplication({ rootModule: LocalAppModule });
+
+    try {
+      const consumer = await localApp.container.resolve(LocalSlackConsumer);
+
+      expect(consumer.slack).toBeInstanceOf(SlackService);
+      await expect(consumer.slack.send({ text: 'Local graph delivery' })).resolves.toMatchObject({
+        channel: '#local',
+      });
+    } finally {
+      await localApp.close();
+    }
+
+    @Inject(SlackService)
+    class HiddenSlackConsumer {
+      constructor(readonly slack: SlackService) {}
+    }
+
+    class HiddenSlackOwnerModule {}
+    defineModule(HiddenSlackOwnerModule, {
+      imports: [
+        SlackModule.forRoot({
+          defaultChannel: '#hidden',
+          global: false,
+          transport: createRecordingTransportFactory({ responsePrefix: 'hidden-graph' }),
+        }),
+      ],
+    });
+
+    class HiddenConsumerModule {}
+    defineModule(HiddenConsumerModule, {
+      providers: [HiddenSlackConsumer],
+    });
+
+    class HiddenAppModule {}
+    defineModule(HiddenAppModule, {
+      imports: [HiddenSlackOwnerModule, HiddenConsumerModule],
+    });
+
+    await expect(bootstrapApplication({ rootModule: HiddenAppModule })).rejects.toThrow(
+      /not visible through a global module|SlackService/,
+    );
   });
 
   it('rejects helper-based registration without an explicit transport contract', () => {
@@ -400,6 +536,7 @@ describe('SlackModule', () => {
 
     container.register({ provide: SLACK_CONFIG as Token<string>, useValue: '#release' }, ...moduleProviders(moduleType));
 
+    await initializeSlackService(container);
     const facade = await container.resolve<Slack>(SLACK);
     const channel = await container.resolve(SlackChannel);
     const result = await facade.send({ text: 'Shipped' });
@@ -445,6 +582,7 @@ describe('SlackModule', () => {
       ...moduleProviders(notificationsModuleType),
     );
 
+    await initializeSlackService(container);
     const notifications = await container.resolve(NotificationsService);
     const channels = await container.resolve(NOTIFICATION_CHANNELS);
     const result = await notifications.dispatch({
@@ -488,6 +626,7 @@ describe('SlackModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
+    await initializeSlackService(container);
     const channel = await container.resolve(SlackChannel);
 
     const result = await channel.send(
@@ -513,6 +652,65 @@ describe('SlackModule', () => {
       text: 'Fallback Welcome',
     });
     expect(transportState.sent[0]?.blocks).toHaveLength(1);
+  });
+
+  it('applies Slack notification payload precedence over rendered template fields and metadata collisions', async () => {
+    const container = new Container();
+    const payloadBlocks = [{ type: 'section', text: { text: 'payload block', type: 'mrkdwn' } }];
+    const payloadAttachments = [{ color: '#2eb67d', fallback: 'payload attachment' }];
+    const moduleType = SlackModule.forRoot({
+      renderer: {
+        async render() {
+          return {
+            attachments: [{ color: '#d00000', fallback: 'rendered attachment' }],
+            blocks: [{ type: 'section', text: { text: 'rendered block', type: 'mrkdwn' } }],
+            text: 'Rendered fallback',
+          };
+        },
+      },
+      transport: createRecordingTransportFactory({ responsePrefix: 'template' }),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await initializeSlackService(container);
+
+    await service.sendNotification({
+      channel: 'slack',
+      metadata: {
+        requestId: 'dispatch-request',
+        source: 'dispatch',
+        subject: 'dispatch-subject-metadata',
+        template: 'dispatch-template-metadata',
+      },
+      payload: {
+        attachments: payloadAttachments,
+        blocks: payloadBlocks,
+        metadata: {
+          owner: 'payload',
+          requestId: 'payload-request',
+          source: 'payload',
+          subject: 'payload-subject-metadata',
+          template: 'payload-template-metadata',
+        },
+        text: 'Payload text wins',
+      },
+      recipients: ['#ops'],
+      subject: 'Dispatch subject wins',
+      template: 'deploy.finished',
+    });
+
+    expect(transportState.sent[0]).toMatchObject({
+      attachments: payloadAttachments,
+      blocks: payloadBlocks,
+      metadata: {
+        owner: 'payload',
+        requestId: 'dispatch-request',
+        source: 'dispatch',
+        subject: 'Dispatch subject wins',
+        template: 'deploy.finished',
+      },
+      text: 'Payload text wins',
+    });
   });
 
   it('creates a webhook-first transport with an explicit fetch-compatible boundary', async () => {
@@ -663,7 +861,7 @@ describe('SlackModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
-    const service = await container.resolve(SlackService);
+    const service = await initializeSlackService(container);
 
     await expect(
       service.sendNotification({
@@ -685,7 +883,7 @@ describe('SlackModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
-    const service = await container.resolve(SlackService);
+    const service = await initializeSlackService(container);
 
     await expect(
       service.sendNotification({
@@ -701,6 +899,29 @@ describe('SlackModule', () => {
     expect(transportState.sent).toHaveLength(0);
   });
 
+  it('prefers payload channel over recipients and default channel for notification routing', async () => {
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      defaultChannel: '#default',
+      transport: createRecordingTransportFactory({ responsePrefix: 'route' }),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await initializeSlackService(container);
+
+    const result = await service.sendNotification({
+      channel: 'slack',
+      payload: { channel: ' #payload ', text: 'Route precedence' },
+      recipients: ['#recipient'],
+    });
+
+    expect(result).toMatchObject({ channel: '#payload', messageTs: 'route-1' });
+    expect(transportState.sent[0]).toMatchObject({
+      channel: '#payload',
+      text: 'Route precedence',
+    });
+  });
+
   it('surfaces an unsuccessful transport receipt as a notifications channel failure', async () => {
     const container = new Container();
     const moduleType = SlackModule.forRoot({
@@ -708,6 +929,7 @@ describe('SlackModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
+    await initializeSlackService(container);
     const channel = await container.resolve(SlackChannel);
 
     await expect(
@@ -730,7 +952,7 @@ describe('SlackModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
-    const service = await container.resolve(SlackService);
+    const service = await initializeSlackService(container);
 
     const result = await service.sendMany([{ text: 'one' }, { text: 'two' }, { text: 'three' }]);
 
@@ -748,7 +970,7 @@ describe('SlackModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
-    const service = await container.resolve(SlackService);
+    const service = await initializeSlackService(container);
 
     await expect(service.sendMany([{ text: 'ok-1' }, { text: 'fail-2' }, { text: 'ok-3' }])).rejects.toThrowError(
       'provider rejected fail-2',
@@ -765,7 +987,7 @@ describe('SlackModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
-    const service = await container.resolve(SlackService);
+    const service = await initializeSlackService(container);
 
     const result = await service.sendMany([{ text: 'ok-1' }, { text: 'fail-2' }, { text: 'ok-3' }], {
       continueOnError: true,
@@ -800,7 +1022,7 @@ describe('SlackModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
-    const service = await container.resolve(SlackService);
+    const service = await initializeSlackService(container);
 
     const result = await service.sendMany([{ text: 'first' }, { text: 'second' }], {
       continueOnError: true,
@@ -1022,7 +1244,76 @@ describe('SlackModule', () => {
     expect(fetchLike).toHaveBeenCalledTimes(1);
   });
 
-  it('accepts custom provider-backed transports without bootstrap verification', async () => {
+  it('requires module readiness before direct or notification-backed delivery', async () => {
+    const create = vi.fn(async () => new PassiveTransport());
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      transport: {
+        create,
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+
+    await expect(service.send({ text: 'Before readiness' })).rejects.toThrowError(
+      new SlackLifecycleError('Slack delivery cannot start while the service lifecycle is created.'),
+    );
+    await expect(
+      service.sendNotification({
+        channel: 'slack',
+        payload: { text: 'Before readiness' },
+        recipients: ['#ops'],
+      }),
+    ).rejects.toThrowError(new SlackLifecycleError('Slack delivery cannot start while the service lifecycle is created.'));
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('blocks delivery while bootstrap verification is still pending', async () => {
+    let resolveVerify!: () => void;
+    let resolveVerifyStarted!: () => void;
+    const verifyDelay = new Promise<void>((resolve) => {
+      resolveVerify = resolve;
+    });
+    const verifyStarted = new Promise<void>((resolve) => {
+      resolveVerifyStarted = resolve;
+    });
+    const transport = new DelayedLifecycleTransport(verifyDelay);
+    const verify = vi.spyOn(transport, 'verify').mockImplementation(async () => {
+      transport.verifyCalls += 1;
+      resolveVerifyStarted();
+      await verifyDelay;
+    });
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport: {
+        create: async () => transport,
+        ownsResources: true,
+      },
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+    const bootstrap = service.onModuleInit();
+    await verifyStarted;
+
+    await expect(service.send({ text: 'During verification' })).rejects.toThrowError(
+      new SlackLifecycleError('Slack delivery cannot start while the service lifecycle is starting.'),
+    );
+    expect(transport.sendCalls).toBe(0);
+
+    resolveVerify();
+    await bootstrap;
+
+    await expect(service.send({ text: 'After readiness' })).resolves.toMatchObject({ channel: '#ops' });
+    expect(transport.sendCalls).toBe(1);
+    expect(verify).toHaveBeenCalledOnce();
+  });
+
+  it('accepts custom provider-backed transports after bootstrap without verification', async () => {
     const transport = new PassiveTransport();
     const container = new Container();
     const moduleType = SlackModule.forRoot({
@@ -1031,6 +1322,7 @@ describe('SlackModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
+    await initializeSlackService(container);
     const facade = await container.resolve<Slack>(SLACK);
     const result = await facade.send({ text: 'Provider transport' });
 
@@ -1049,9 +1341,7 @@ describe('SlackModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
-    const service = await container.resolve(SlackService);
-
-    await service.onModuleInit();
+    const service = await initializeSlackService(container);
     expect(service.createPlatformStatusSnapshot()).toMatchObject({
       details: {
         lifecycleState: 'ready',
@@ -1103,14 +1393,12 @@ describe('SlackModule', () => {
 
     container.register(...moduleProviders(moduleType));
     const service = await container.resolve(SlackService);
-    const sendDuringCreate = service.send({ text: 'Shutdown race' });
+    const bootstrap = service.onModuleInit();
     const shutdown = service.onApplicationShutdown();
 
     resolveTransport(createdTransport);
 
-    await expect(sendDuringCreate).rejects.toThrowError(
-      new SlackLifecycleError('Slack delivery cannot start while the service lifecycle is stopped.'),
-    );
+    await bootstrap;
     await shutdown;
     await expect(service.send({ text: 'After shutdown' })).rejects.toThrowError(
       new SlackLifecycleError('Slack delivery cannot start while the service lifecycle is stopped.'),
@@ -1127,8 +1415,7 @@ describe('SlackModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
-    const service = await container.resolve(SlackService);
-    await service.onModuleInit();
+    const service = await initializeSlackService(container);
     await service.onApplicationShutdown();
     await service.onApplicationShutdown();
 
@@ -1146,8 +1433,7 @@ describe('SlackModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
-    const service = await container.resolve(SlackService);
-    await service.onModuleInit();
+    const service = await initializeSlackService(container);
     await Promise.all([service.onApplicationShutdown(), service.onApplicationShutdown()]);
 
     expect(transport.closeCalls).toBe(1);
@@ -1177,8 +1463,7 @@ describe('SlackModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
-    const service = await container.resolve(SlackService);
-    await service.onModuleInit();
+    const service = await initializeSlackService(container);
 
     await expect(service.onApplicationShutdown()).rejects.toThrowError(
       new SlackLifecycleError('Slack transport failed to close cleanly.', { cause: closeError }),
