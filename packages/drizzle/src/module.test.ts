@@ -11,6 +11,17 @@ import {
   DrizzleModule,
 } from './index.js';
 
+function createDeferred() {
+  let resolve!: () => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<void>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+
+  return { promise, reject, resolve };
+}
+
 describe('@fluojs/drizzle', () => {
   it('exposes current database handles, transaction callbacks, and optional disposal', async () => {
     const events: string[] = [];
@@ -160,10 +171,8 @@ describe('@fluojs/drizzle', () => {
   it('waits for delayed request transaction settlement before dispose on shutdown', async () => {
     const events: string[] = [];
     const transactionDatabase = {};
-    let releaseRollback!: () => void;
-    const rollbackBarrier = new Promise<void>((resolve) => {
-      releaseRollback = resolve;
-    });
+    const rollbackBarrier = createDeferred();
+    const rollbackPending = createDeferred();
     const database = {
       async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
         events.push('transaction:start');
@@ -172,7 +181,8 @@ describe('@fluojs/drizzle', () => {
           return await callback(transactionDatabase);
         } catch (error) {
           events.push('transaction:rollback:pending');
-          await rollbackBarrier;
+          rollbackPending.resolve();
+          await rollbackBarrier.promise;
           events.push('transaction:rollback:done');
           throw error;
         } finally {
@@ -203,37 +213,48 @@ describe('@fluojs/drizzle', () => {
       async () => new Promise<never>(() => undefined),
       requestAbortController.signal,
     );
+    let rollbackReleased = false;
+    let shutdownPromise: Promise<void> | undefined;
 
-    requestAbortController.abort(new Error('request aborted'));
-    await Promise.resolve();
+    try {
+      requestAbortController.abort(new Error('request aborted'));
+      await rollbackPending.promise;
 
-    const shutdownPromise = app.close();
+      shutdownPromise = app.close();
+      expect(events).toContain('transaction:rollback:pending');
+      expect(events).not.toContain('dispose');
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(events).toContain('transaction:rollback:pending');
-    expect(events).not.toContain('dispose');
+      rollbackReleased = true;
+      rollbackBarrier.resolve();
 
-    releaseRollback();
+      await expect(openTransaction).rejects.toThrow();
+      await shutdownPromise;
 
-    await expect(openTransaction).rejects.toThrow();
-    await shutdownPromise;
+      expect(events).toEqual([
+        'transaction:start',
+        'transaction:rollback:pending',
+        'transaction:rollback:done',
+        'transaction:end',
+        'dispose',
+      ]);
+    } finally {
+      if (!rollbackReleased) {
+        rollbackReleased = true;
+        rollbackBarrier.resolve();
+      }
 
-    expect(events).toEqual([
-      'transaction:start',
-      'transaction:rollback:pending',
-      'transaction:rollback:done',
-      'transaction:end',
-      'dispose',
-    ]);
+      await Promise.allSettled([
+        openTransaction,
+        shutdownPromise ?? app.close(),
+      ]);
+    }
   });
 
   it('rejects new request transactions once shutdown begins', async () => {
     const events: string[] = [];
     const transactionDatabase = {};
-    let releaseRollback!: () => void;
-    const rollbackBarrier = new Promise<void>((resolve) => {
-      releaseRollback = resolve;
-    });
+    const rollbackBarrier = createDeferred();
+    const rollbackPending = createDeferred();
     const database = {
       async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
         events.push('transaction:start');
@@ -242,7 +263,8 @@ describe('@fluojs/drizzle', () => {
           return await callback(transactionDatabase);
         } catch (error) {
           events.push('transaction:rollback:pending');
-          await rollbackBarrier;
+          rollbackPending.resolve();
+          await rollbackBarrier.promise;
           events.push('transaction:rollback:done');
           throw error;
         } finally {
@@ -269,36 +291,45 @@ describe('@fluojs/drizzle', () => {
     });
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
     const openTransaction = drizzle.requestTransaction(async () => new Promise<never>(() => undefined));
+    let rollbackReleased = false;
     const shutdownPromise = app.close();
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(events).toContain('transaction:rollback:pending');
+    try {
+      await rollbackPending.promise;
+      expect(events).toContain('transaction:rollback:pending');
 
-    await expect(drizzle.requestTransaction(async () => 'late-request')).rejects.toThrow(
-      'Drizzle request transactions are not available during shutdown.',
-    );
+      await expect(drizzle.requestTransaction(async () => 'late-request')).rejects.toThrow(
+        'Drizzle request transactions are not available during shutdown.',
+      );
 
-    releaseRollback();
+      rollbackReleased = true;
+      rollbackBarrier.resolve();
 
-    await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
-    await shutdownPromise;
+      await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+      await shutdownPromise;
 
-    expect(events).toEqual([
-      'transaction:start',
-      'transaction:rollback:pending',
-      'transaction:rollback:done',
-      'transaction:end',
-      'dispose',
-    ]);
+      expect(events).toEqual([
+        'transaction:start',
+        'transaction:rollback:pending',
+        'transaction:rollback:done',
+        'transaction:end',
+        'dispose',
+      ]);
+    } finally {
+      if (!rollbackReleased) {
+        rollbackReleased = true;
+        rollbackBarrier.resolve();
+      }
+
+      await Promise.allSettled([openTransaction, shutdownPromise]);
+    }
   });
 
   it('waits for open manual transaction settlement before dispose on shutdown', async () => {
     const events: string[] = [];
     const transactionDatabase = {};
-    let releaseTransaction!: () => void;
-    const transactionBarrier = new Promise<void>((resolve) => {
-      releaseTransaction = resolve;
-    });
+    const transactionBarrier = createDeferred();
+    const transactionSettling = createDeferred();
     const database = {
       async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
         events.push('transaction:start');
@@ -306,7 +337,8 @@ describe('@fluojs/drizzle', () => {
           return await callback(transactionDatabase);
         } finally {
           events.push('transaction:settle:pending');
-          await transactionBarrier;
+          transactionSettling.resolve();
+          await transactionBarrier.promise;
           events.push('transaction:settle:done');
         }
       },
@@ -331,33 +363,45 @@ describe('@fluojs/drizzle', () => {
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
 
     const openTransaction = drizzle.transaction(async () => 'manual-result');
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    let transactionReleased = false;
+    let shutdownPromise: Promise<void> | undefined;
 
-    const shutdownPromise = app.close();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
+      await transactionSettling.promise;
+      shutdownPromise = app.close();
 
-    expect(events).toEqual(['transaction:start', 'transaction:settle:pending']);
-    expect(events).not.toContain('dispose');
+      expect(events).toEqual(['transaction:start', 'transaction:settle:pending']);
+      expect(events).not.toContain('dispose');
 
-    releaseTransaction();
+      transactionReleased = true;
+      transactionBarrier.resolve();
 
-    await expect(openTransaction).resolves.toBe('manual-result');
-    await shutdownPromise;
+      await expect(openTransaction).resolves.toBe('manual-result');
+      await shutdownPromise;
 
-    expect(events).toEqual([
-      'transaction:start',
-      'transaction:settle:pending',
-      'transaction:settle:done',
-      'dispose',
-    ]);
+      expect(events).toEqual([
+        'transaction:start',
+        'transaction:settle:pending',
+        'transaction:settle:done',
+        'dispose',
+      ]);
+    } finally {
+      if (!transactionReleased) {
+        transactionReleased = true;
+        transactionBarrier.resolve();
+      }
+
+      await Promise.allSettled([
+        openTransaction,
+        shutdownPromise ?? app.close(),
+      ]);
+    }
   });
 
   it('waits for fail-open manual transaction fallback before dispose on shutdown', async () => {
     const events: string[] = [];
-    let releaseTransaction!: () => void;
-    const transactionBarrier = new Promise<void>((resolve) => {
-      releaseTransaction = resolve;
-    });
+    const transactionBarrier = createDeferred();
+    const fallbackStarted = createDeferred();
     const database = {};
 
     const drizzleModule = DrizzleModule.forRoot<typeof database>({
@@ -382,22 +426,22 @@ describe('@fluojs/drizzle', () => {
 
     const openTransaction = drizzle.transaction(async () => {
       events.push('fallback:start');
-      await transactionBarrier;
+      fallbackStarted.resolve();
+      await transactionBarrier.promise;
       events.push('fallback:end');
       return 'fallback-result';
     });
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await fallbackStarted.promise;
 
       shutdownPromise = app.close();
-      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(events).toEqual(['fallback:start']);
       expect(events).not.toContain('dispose');
 
       transactionReleased = true;
-      releaseTransaction();
+      transactionBarrier.resolve();
 
       await expect(openTransaction).resolves.toBe('fallback-result');
       await shutdownPromise;
@@ -406,7 +450,7 @@ describe('@fluojs/drizzle', () => {
     } finally {
       if (!transactionReleased) {
         transactionReleased = true;
-        releaseTransaction();
+        transactionBarrier.resolve();
       }
 
       await Promise.allSettled([
@@ -418,10 +462,8 @@ describe('@fluojs/drizzle', () => {
 
   it('rejects new manual transactions once shutdown begins', async () => {
     const events: string[] = [];
-    let releaseDispose!: () => void;
-    const disposeBarrier = new Promise<void>((resolve) => {
-      releaseDispose = resolve;
-    });
+    const disposeBarrier = createDeferred();
+    const disposeStarted = createDeferred();
     const database = {
       async transaction<T>(callback: (value: Record<string, never>) => Promise<T>): Promise<T> {
         events.push('transaction:start');
@@ -433,7 +475,8 @@ describe('@fluojs/drizzle', () => {
       database,
       async dispose() {
         events.push('dispose:start');
-        await disposeBarrier;
+        disposeStarted.resolve();
+        await disposeBarrier.promise;
         events.push('dispose:end');
       },
     });
@@ -450,23 +493,33 @@ describe('@fluojs/drizzle', () => {
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, Record<string, never>>);
 
     const shutdownPromise = app.close();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    let disposeReleased = false;
 
-    await expect(drizzle.transaction(async () => 'late-manual')).rejects.toThrow(
-      'Drizzle transactions are not available during application shutdown.',
-    );
-    expect(events).toEqual(['dispose:start']);
+    try {
+      await disposeStarted.promise;
 
-    releaseDispose();
-    await shutdownPromise;
-    expect(events).toEqual(['dispose:start', 'dispose:end']);
+      await expect(drizzle.transaction(async () => 'late-manual')).rejects.toThrow(
+        'Drizzle transactions are not available during application shutdown.',
+      );
+      expect(events).toEqual(['dispose:start']);
+
+      disposeReleased = true;
+      disposeBarrier.resolve();
+      await shutdownPromise;
+      expect(events).toEqual(['dispose:start', 'dispose:end']);
+    } finally {
+      if (!disposeReleased) {
+        disposeReleased = true;
+        disposeBarrier.resolve();
+      }
+
+      await shutdownPromise;
+    }
   });
 
   it('rejects nested manual transactions once shutdown begins', async () => {
-    let releaseNestedAttempt!: () => void;
-    const nestedAttemptBarrier = new Promise<void>((resolve) => {
-      releaseNestedAttempt = resolve;
-    });
+    const nestedAttemptBarrier = createDeferred();
+    const outerWaiting = createDeferred();
     let transactionCalls = 0;
     const transactionDatabase = {};
     const database = {
@@ -478,7 +531,8 @@ describe('@fluojs/drizzle', () => {
     const drizzle = new DrizzleDatabase<typeof database, typeof transactionDatabase>(database);
 
     const outerTransaction = drizzle.transaction(async () => {
-      await nestedAttemptBarrier;
+      outerWaiting.resolve();
+      await nestedAttemptBarrier.promise;
 
       await expect(drizzle.transaction(async () => 'late-nested')).rejects.toThrow(
         'Drizzle transactions are not available during application shutdown.',
@@ -486,33 +540,46 @@ describe('@fluojs/drizzle', () => {
 
       return 'outer-complete';
     });
+    let nestedAttemptReleased = false;
+    let shutdown: Promise<void> | undefined;
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(transactionCalls).toBe(1);
+    try {
+      await outerWaiting.promise;
+      expect(transactionCalls).toBe(1);
 
-    const shutdown = drizzle.onApplicationShutdown();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+      shutdown = drizzle.onApplicationShutdown();
 
-    releaseNestedAttempt();
+      nestedAttemptReleased = true;
+      nestedAttemptBarrier.resolve();
 
-    await expect(outerTransaction).resolves.toBe('outer-complete');
-    await shutdown;
-    expect(transactionCalls).toBe(1);
+      await expect(outerTransaction).resolves.toBe('outer-complete');
+      await shutdown;
+      expect(transactionCalls).toBe(1);
+    } finally {
+      if (!nestedAttemptReleased) {
+        nestedAttemptReleased = true;
+        nestedAttemptBarrier.resolve();
+      }
+
+      await Promise.allSettled([
+        outerTransaction,
+        shutdown ?? drizzle.onApplicationShutdown(),
+      ]);
+    }
   });
 
   it('waits for transaction runner settlement before reporting late request aborts', async () => {
     const events: string[] = [];
     const transactionDatabase = {};
-    let releaseCommit!: () => void;
-    const commitBarrier = new Promise<void>((resolve) => {
-      releaseCommit = resolve;
-    });
+    const commitBarrier = createDeferred();
+    const commitPending = createDeferred();
     const database = {
       async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
         events.push('transaction:start');
         const result = await callback(transactionDatabase);
         events.push('transaction:commit:pending');
-        await commitBarrier;
+        commitPending.resolve();
+        await commitBarrier.promise;
         events.push('transaction:commit:done');
         return result;
       },
@@ -527,24 +594,35 @@ describe('@fluojs/drizzle', () => {
       },
       controller.signal,
     );
+    let commitReleased = false;
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(events).toEqual(['transaction:start', 'request:done', 'transaction:commit:pending']);
+    try {
+      await commitPending.promise;
+      expect(events).toEqual(['transaction:start', 'request:done', 'transaction:commit:pending']);
 
-    controller.abort(new Error('client aborted during transaction settlement'));
+      controller.abort(new Error('client aborted during transaction settlement'));
 
-    await Promise.resolve();
-    expect(events).not.toContain('transaction:commit:done');
+      await Promise.resolve();
+      expect(events).not.toContain('transaction:commit:done');
 
-    releaseCommit();
+      commitReleased = true;
+      commitBarrier.resolve();
 
-    await expect(requestTransaction).rejects.toThrow('client aborted during transaction settlement');
-    expect(events).toEqual([
-      'transaction:start',
-      'request:done',
-      'transaction:commit:pending',
-      'transaction:commit:done',
-    ]);
+      await expect(requestTransaction).rejects.toThrow('client aborted during transaction settlement');
+      expect(events).toEqual([
+        'transaction:start',
+        'request:done',
+        'transaction:commit:pending',
+        'transaction:commit:done',
+      ]);
+    } finally {
+      if (!commitReleased) {
+        commitReleased = true;
+        commitBarrier.resolve();
+      }
+
+      await Promise.allSettled([requestTransaction]);
+    }
   });
 
   it('enforces strictTransactions for sync and async module builders', async () => {
@@ -732,17 +810,23 @@ describe('@fluojs/drizzle', () => {
       strictTransactions: false,
     });
     const controller = new AbortController();
+    const fallbackBarrier = createDeferred();
 
     const requestTransaction = drizzle.requestTransaction(async () => {
       events.push('fallback:start');
       controller.abort(new Error('request aborted during fallback'));
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await fallbackBarrier.promise;
       events.push('fallback:end');
       return 'unreachable';
     }, controller.signal);
 
-    await expect(requestTransaction).rejects.toThrow('request aborted during fallback');
-    expect(events).toEqual(['fallback:start']);
+    try {
+      await expect(requestTransaction).rejects.toThrow('request aborted during fallback');
+      expect(events).toEqual(['fallback:start']);
+    } finally {
+      fallbackBarrier.resolve();
+      await Promise.allSettled([requestTransaction]);
+    }
   });
 
   it('aborts unsupported requestTransaction fallback on shutdown before dispose', async () => {
@@ -839,31 +923,42 @@ describe('@fluojs/drizzle', () => {
       rootModule: AppModule,
     });
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
+    const nestedStarted = createDeferred();
 
     const openTransaction = drizzle.transaction(async () =>
-      drizzle.requestTransaction(async () => new Promise<never>(() => undefined)),
+      drizzle.requestTransaction(async () => {
+        nestedStarted.resolve();
+        return new Promise<never>(() => undefined);
+      }),
     );
+    let shutdownPromise: Promise<void> | undefined;
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(1);
+    try {
+      await nestedStarted.promise;
+      expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(1);
 
-    await app.close();
+      shutdownPromise = app.close();
 
-    await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
-    expect(events).toEqual([
-      'transaction:start',
-      'transaction:rollback',
-      'transaction:end',
-      'dispose',
-    ]);
+      await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+      await shutdownPromise;
+      expect(events).toEqual([
+        'transaction:start',
+        'transaction:rollback',
+        'transaction:end',
+        'dispose',
+      ]);
+    } finally {
+      await Promise.allSettled([
+        openTransaction,
+        shutdownPromise ?? app.close(),
+      ]);
+    }
   });
 
   it('drains nested request transaction rollback before dispose during shutdown', async () => {
     const events: string[] = [];
-    let releaseRollback!: () => void;
-    const rollbackBarrier = new Promise<void>((resolve) => {
-      releaseRollback = resolve;
-    });
+    const rollbackBarrier = createDeferred();
+    const rollbackPending = createDeferred();
     const transactionDatabase = {};
     const database = {
       async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
@@ -873,7 +968,8 @@ describe('@fluojs/drizzle', () => {
           return await callback(transactionDatabase);
         } catch (error) {
           events.push('transaction:rollback:pending');
-          await rollbackBarrier;
+          rollbackPending.resolve();
+          await rollbackBarrier.promise;
           events.push('transaction:rollback:done');
           throw error;
         } finally {
@@ -897,40 +993,57 @@ describe('@fluojs/drizzle', () => {
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
+    const nestedStarted = createDeferred();
     const outerTransaction = drizzle.transaction(async () =>
-      drizzle.requestTransaction(async () => new Promise<never>(() => undefined)),
+      drizzle.requestTransaction(async () => {
+        nestedStarted.resolve();
+        return new Promise<never>(() => undefined);
+      }),
     );
+    let rollbackReleased = false;
+    let shutdown: Promise<void> | undefined;
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(1);
+    try {
+      await nestedStarted.promise;
+      expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(1);
 
-    const shutdown = app.close();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+      shutdown = app.close();
+      await rollbackPending.promise;
 
-    expect(events).toContain('transaction:rollback:pending');
-    expect(events).not.toContain('dispose');
+      expect(events).toContain('transaction:rollback:pending');
+      expect(events).not.toContain('dispose');
 
-    releaseRollback();
+      rollbackReleased = true;
+      rollbackBarrier.resolve();
 
-    await expect(outerTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
-    await shutdown;
+      await expect(outerTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+      await shutdown;
 
-    expect(events).toEqual([
-      'transaction:start',
-      'transaction:rollback:pending',
-      'transaction:rollback:done',
-      'transaction:end',
-      'dispose',
-    ]);
-    expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(0);
+      expect(events).toEqual([
+        'transaction:start',
+        'transaction:rollback:pending',
+        'transaction:rollback:done',
+        'transaction:end',
+        'dispose',
+      ]);
+      expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(0);
+    } finally {
+      if (!rollbackReleased) {
+        rollbackReleased = true;
+        rollbackBarrier.resolve();
+      }
+
+      await Promise.allSettled([
+        outerTransaction,
+        shutdown ?? app.close(),
+      ]);
+    }
   });
 
   it('removes completed nested request transactions from active status before the outer transaction settles', async () => {
     const transactionDatabase = {};
-    let releaseOuterTransaction!: () => void;
-    const outerTransactionBarrier = new Promise<void>((resolve) => {
-      releaseOuterTransaction = resolve;
-    });
+    const outerTransactionBarrier = createDeferred();
+    const nestedCompleted = createDeferred();
     const database = {
       async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
         return callback(transactionDatabase);
@@ -940,17 +1053,29 @@ describe('@fluojs/drizzle', () => {
 
     const outerTransaction = drizzle.transaction(async () => {
       await expect(drizzle.requestTransaction(async () => 'nested-complete')).resolves.toBe('nested-complete');
-      await outerTransactionBarrier;
+      nestedCompleted.resolve();
+      await outerTransactionBarrier.promise;
       return 'outer-complete';
     });
+    let outerReleased = false;
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
+      await nestedCompleted.promise;
 
-    expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(0);
+      expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(0);
 
-    releaseOuterTransaction();
+      outerReleased = true;
+      outerTransactionBarrier.resolve();
 
-    await expect(outerTransaction).resolves.toBe('outer-complete');
+      await expect(outerTransaction).resolves.toBe('outer-complete');
+    } finally {
+      if (!outerReleased) {
+        outerReleased = true;
+        outerTransactionBarrier.resolve();
+      }
+
+      await Promise.allSettled([outerTransaction]);
+    }
   });
 
   it('links nested request fast paths to the ambient request abort signal', async () => {
@@ -964,19 +1089,25 @@ describe('@fluojs/drizzle', () => {
     };
     const drizzle = new DrizzleDatabase<typeof database, typeof transactionDatabase>(database);
     const controller = new AbortController();
+    const nestedBarrier = createDeferred();
 
     const requestTransaction = drizzle.requestTransaction(
       async () =>
         drizzle.requestTransaction(async () => {
           controller.abort(new Error('ambient request aborted'));
-          await new Promise((resolve) => setTimeout(resolve, 10));
+          await nestedBarrier.promise;
           return 'unreachable';
         }),
       controller.signal,
     );
 
-    await expect(requestTransaction).rejects.toThrow('ambient request aborted');
-    expect(transactionCalls).toBe(1);
+    try {
+      await expect(requestTransaction).rejects.toThrow('ambient request aborted');
+      expect(transactionCalls).toBe(1);
+    } finally {
+      nestedBarrier.resolve();
+      await Promise.allSettled([requestTransaction]);
+    }
   });
 
   it('forwards transaction options for explicit and request-scoped transactions', async () => {
@@ -1039,6 +1170,71 @@ describe('@fluojs/drizzle', () => {
         async () => drizzle.requestTransaction(async () => new Promise<never>(() => undefined), controller.signal),
       ),
     ).rejects.toThrow('nested request aborted');
+  });
+
+  it('binds facade lifecycle methods to the lifecycle owner', async () => {
+    const database = {};
+    const facade = DrizzleDatabase.createFacade<typeof database>(database);
+    const shutdown = facade.onApplicationShutdown;
+    const snapshot = facade.createPlatformStatusSnapshot;
+
+    expect(snapshot().details.lifecycleState).toBe('ready');
+
+    await expect(shutdown()).resolves.toBeUndefined();
+    expect(snapshot().details.lifecycleState).toBe('stopped');
+  });
+
+  it('reports live createPlatformStatusSnapshot lifecycle transitions through the module facade', async () => {
+    const database = {};
+    const disposeStarted = createDeferred();
+    const disposeBarrier = createDeferred();
+
+    const drizzleModule = DrizzleModule.forRoot<typeof database>({
+      database,
+      async dispose() {
+        disposeStarted.resolve();
+        await disposeBarrier.promise;
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [drizzleModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const drizzle = await app.container.resolve(DrizzleDatabase<typeof database>);
+    let disposeReleased = false;
+    let shutdownPromise: Promise<void> | undefined;
+
+    try {
+      expect(drizzle.createPlatformStatusSnapshot().details.lifecycleState).toBe('ready');
+      expect(drizzle.createPlatformStatusSnapshot().readiness.status).toBe('ready');
+
+      shutdownPromise = app.close();
+      await disposeStarted.promise;
+
+      const shuttingDownSnapshot = drizzle.createPlatformStatusSnapshot();
+      expect(shuttingDownSnapshot.details.lifecycleState).toBe('shutting-down');
+      expect(shuttingDownSnapshot.readiness.status).toBe('not-ready');
+      expect(shuttingDownSnapshot.health.status).toBe('degraded');
+
+      disposeReleased = true;
+      disposeBarrier.resolve();
+      await shutdownPromise;
+
+      const stoppedSnapshot = drizzle.createPlatformStatusSnapshot();
+      expect(stoppedSnapshot.details.lifecycleState).toBe('stopped');
+      expect(stoppedSnapshot.health.status).toBe('unhealthy');
+    } finally {
+      if (!disposeReleased) {
+        disposeReleased = true;
+        disposeBarrier.resolve();
+      }
+
+      await (shutdownPromise ?? app.close());
+    }
   });
 
   it('reports ownership/readiness/health semantics in platform snapshot shape', () => {
@@ -1118,6 +1314,46 @@ describe('DrizzleModule.forRootAsync', () => {
     };
     return { database, events, transactionDatabase };
   }
+
+  it('makes forRootAsync({ global: true }) providers visible to sibling modules', async () => {
+    const { database, transactionDatabase } = makeFakeDatabase();
+
+    @Inject(DrizzleDatabase)
+    class ConsumerService {
+      constructor(readonly drizzle: DrizzleDatabase<typeof database, typeof transactionDatabase>) {}
+
+      currentDatabase() {
+        return this.drizzle.current();
+      }
+    }
+
+    class FeatureModule {}
+    defineModule(FeatureModule, {
+      exports: [ConsumerService],
+      providers: [ConsumerService],
+    });
+
+    const drizzleModule = DrizzleModule.forRootAsync<typeof database, typeof transactionDatabase>({
+      global: true,
+      useFactory: () => ({ database }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [drizzleModule, FeatureModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const consumer = await app.container.resolve(ConsumerService);
+
+      expect(consumer.currentDatabase()).toBe(database);
+    } finally {
+      await app.close();
+    }
+  });
 
   it('factory receives injected token and resolves DrizzleDatabase', async () => {
     const { database, events, transactionDatabase } = makeFakeDatabase();
