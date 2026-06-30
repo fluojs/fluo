@@ -1,3 +1,5 @@
+import { Inject } from '@fluojs/core';
+import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 import {
   createAbortError,
   createRequestAbortContext,
@@ -5,9 +7,8 @@ import {
   trackActiveRequestTransaction,
   untrackActiveRequestTransaction,
 } from '@fluojs/runtime';
-import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
-import { Inject } from '@fluojs/core';
 
+import { PRISMA_SERVICE_BRAND } from './prisma-service-brand.js';
 import { createPrismaPlatformStatusSnapshot } from './status.js';
 import { PRISMA_CLIENT, PRISMA_OPTIONS } from './tokens.js';
 import type {
@@ -130,7 +131,11 @@ function resolveAsyncLocalStorageConstructor(
     return host.AsyncLocalStorage;
   }
 
-  return host.process?.getBuiltinModule?.('node:async_hooks').AsyncLocalStorage;
+  try {
+    return host.process?.getBuiltinModule?.('node:async_hooks')?.AsyncLocalStorage;
+  } catch {
+    return undefined;
+  }
 }
 
 function createTransactionContextStore<TTransactionClient>(): TransactionContextStore<TTransactionClient> {
@@ -158,6 +163,8 @@ export class PrismaService<
 >
   implements PrismaHandleProvider<TClient, TTransactionClient, TTransactionOptions>, OnModuleInit, OnApplicationShutdown
 {
+  readonly [PRISMA_SERVICE_BRAND] = true;
+
   private readonly transactions = createTransactionContextStore<TTransactionClient>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
   private readonly activeTransactionBoundaries = new Set<ActiveTransactionBoundary>();

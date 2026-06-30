@@ -445,6 +445,51 @@ describe('@fluojs/prisma', () => {
     }
   });
 
+  it('treats throwing AsyncLocalStorage host lookup as unavailable transaction context', async () => {
+    const host = globalThis as typeof globalThis & { AsyncLocalStorage?: unknown };
+    const originalAsyncLocalStorage = host.AsyncLocalStorage;
+    const getBuiltinModuleSpy = vi.spyOn(process, 'getBuiltinModule').mockImplementation(((id: string) => {
+      if (id === 'node:async_hooks') {
+        throw new Error('builtin lookup blocked');
+      }
+
+      return undefined;
+    }) as typeof process.getBuiltinModule);
+    const transactionClient = { kind: 'transaction' as const };
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        return callback(transactionClient);
+      },
+    };
+
+    host.AsyncLocalStorage = undefined;
+
+    try {
+      const prisma = new PrismaService<typeof client, typeof transactionClient>(client);
+      await prisma.onModuleInit();
+
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ transactionContext: 'unavailable' });
+      expect(prisma.createPlatformStatusSnapshot().readiness).toEqual({
+        critical: true,
+        reason: 'Prisma transaction context requires AsyncLocalStorage support from the host runtime.',
+        status: 'not-ready',
+      });
+      await expect(prisma.transaction(async () => prisma.current())).rejects.toThrow(
+        'Prisma transaction context requires AsyncLocalStorage support from the host runtime.',
+      );
+    } finally {
+      if (originalAsyncLocalStorage === undefined) {
+        delete host.AsyncLocalStorage;
+      } else {
+        host.AsyncLocalStorage = originalAsyncLocalStorage;
+      }
+
+      getBuiltinModuleSpy.mockRestore();
+    }
+  });
+
   it('rolls back open request transactions before disconnect on shutdown', async () => {
     const events: string[] = [];
     const transactionClient = {};
@@ -874,15 +919,22 @@ describe('@fluojs/prisma', () => {
 
     try {
       const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
+      let requestTransactionStarted!: () => void;
+      const requestTransactionReady = new Promise<void>((resolve) => {
+        requestTransactionStarted = resolve;
+      });
       const outerTransaction = prisma.transaction(async () =>
-        prisma.requestTransaction(async () => new Promise<never>(() => undefined)),
+        prisma.requestTransaction(async () => {
+          requestTransactionStarted();
+          return new Promise<never>(() => undefined);
+        }),
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await requestTransactionReady;
       expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 1 });
 
       const shutdown = app.close();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await vi.waitFor(() => expect(events).toContain('transaction:rollback:pending'));
 
       expect(events).toContain('transaction:rollback:pending');
       expect(events).not.toContain('disconnect');
@@ -943,14 +995,19 @@ describe('@fluojs/prisma', () => {
 
     try {
       const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
+      let transactionStarted!: () => void;
+      const transactionReady = new Promise<void>((resolve) => {
+        transactionStarted = resolve;
+      });
       const openTransaction = prisma.transaction(async () => {
+        transactionStarted();
         await transactionBarrier;
         return 'settled';
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await transactionReady;
       const shutdown = app.close();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await vi.waitFor(() => expect(events).toEqual(['connect', 'transaction:start']));
 
       expect(events).toEqual(['connect', 'transaction:start']);
 

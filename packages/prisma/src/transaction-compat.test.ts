@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import { PRISMA_SERVICE_BRAND } from './prisma-service-brand.js';
 import { Transaction } from './transaction.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeMockPrismaService() {
   return {
+    [PRISMA_SERVICE_BRAND]: true,
     createPlatformStatusSnapshot() {
       return {};
     },
@@ -24,7 +26,7 @@ describe('Transaction decorator method semantics', () => {
     class UserService {
       prisma = prisma;
 
-      @Transaction()
+      @Transaction((self) => self.prisma)
       async getValue(): Promise<number> {
         return 42;
       }
@@ -40,7 +42,7 @@ describe('Transaction decorator method semantics', () => {
     class UserService {
       prisma = prisma;
 
-      @Transaction()
+      @Transaction((self) => self.prisma)
       async failSync(): Promise<never> {
         throw new Error('boom');
       }
@@ -56,7 +58,7 @@ describe('Transaction decorator method semantics', () => {
     class UserService {
       prisma = prisma;
 
-      @Transaction()
+      @Transaction((self) => self.prisma)
       async failAsync(): Promise<never> {
         return Promise.reject(new Error('async-boom'));
       }
@@ -73,7 +75,7 @@ describe('Transaction decorator method semantics', () => {
       prisma = prisma;
       label = 'hello';
 
-      @Transaction()
+      @Transaction((self) => self.prisma)
       async getLabel(): Promise<string> {
         return this.label;
       }
