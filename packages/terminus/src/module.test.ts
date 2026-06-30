@@ -5,6 +5,8 @@ import { defineModule, type PlatformComponent } from '@fluojs/runtime';
 import { createTestApp, createTestingModule } from '@fluojs/testing';
 import { describe, expect, it, vi } from 'vitest';
 
+import { TerminusHealthService } from './health-check.js';
+import { createDiskHealthIndicatorProvider } from './indicators/disk.js';
 import { createHttpHealthIndicatorProvider } from './indicators/http.js';
 import { createMemoryHealthIndicatorProvider, MemoryHealthIndicator } from './indicators/memory.js';
 import { createPrismaHealthIndicatorProvider } from './indicators/prisma.js';
@@ -387,6 +389,69 @@ describe('TerminusModule.forRoot', () => {
     }
   });
 
+  it('resolves TerminusHealthService from compiled modules for direct check and isHealthy calls', async () => {
+    let dependencyUp = true;
+    const indicators: HealthIndicator[] = [
+      {
+        key: 'database',
+        check: async (key: string) => ({
+          [key]: dependencyUp
+            ? { latencyMs: 4, status: 'up' }
+            : { message: 'database unavailable', status: 'down' },
+        }),
+      },
+    ];
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [TerminusModule.forRoot({ indicators })],
+    });
+
+    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+
+    try {
+      const healthService = await testingModule.resolve<TerminusHealthService>(TerminusHealthService);
+      const healthyReport = await healthService.check();
+
+      expect(healthyReport).toMatchObject({
+        contributors: {
+          down: [],
+          up: ['database'],
+        },
+        details: {
+          database: {
+            latencyMs: 4,
+            status: 'up',
+          },
+        },
+        status: 'ok',
+      });
+      await expect(healthService.isHealthy()).resolves.toBe(true);
+
+      dependencyUp = false;
+
+      await expect(healthService.isHealthy()).resolves.toBe(false);
+      const unhealthyReport = await healthService.check();
+
+      expect(unhealthyReport).toMatchObject({
+        contributors: {
+          down: ['database'],
+          up: [],
+        },
+        error: {
+          database: {
+            message: 'database unavailable',
+            status: 'down',
+          },
+        },
+        status: 'error',
+      });
+    } finally {
+      await testingModule.container.dispose();
+    }
+  });
+
   it('supports default and named redis indicator providers without token collisions', async () => {
     const namedRedisToken = getRedisClientToken('cache');
 
@@ -607,6 +672,68 @@ describe('TerminusModule.forRoot', () => {
       expect(readyResponse.body).toEqual({ status: 'ready' });
     } finally {
       await app.close();
+    }
+  });
+
+  it('wires node disk indicator providers through TerminusModule indicatorProviders', async () => {
+    const statfs = vi.fn(async (_path: string) => ({
+      bavail: 500,
+      blocks: 1_000,
+      bsize: 4_096,
+    }));
+    vi.doMock('node:fs/promises', () => ({ statfs }));
+
+    try {
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [
+          TerminusModule.forRoot({
+            indicatorProviders: [
+              createDiskHealthIndicatorProvider({
+                key: 'disk',
+                minFreeBytes: 100_000,
+                minFreeRatio: 0.1,
+                path: '/data',
+              }),
+            ],
+          }),
+        ],
+      });
+
+      const app = await createTestApp({ rootModule: AppModule });
+
+      try {
+        const healthResponse = await app.request('GET', '/health').send();
+
+        expect(healthResponse.status).toBe(200);
+        expect(healthResponse.body).toMatchObject({
+          contributors: {
+            down: [],
+            up: ['disk'],
+          },
+          details: {
+            disk: {
+              freeBytes: 2_048_000,
+              freeRatio: 0.5,
+              path: '/data',
+              status: 'up',
+              totalBytes: 4_096_000,
+            },
+          },
+          status: 'ok',
+        });
+
+        const readyResponse = await app.request('GET', '/ready').send();
+
+        expect(readyResponse.status).toBe(200);
+        expect(readyResponse.body).toEqual({ status: 'ready' });
+        expect(statfs).toHaveBeenCalledWith('/data');
+      } finally {
+        await app.close();
+      }
+    } finally {
+      vi.doUnmock('node:fs/promises');
     }
   });
 
