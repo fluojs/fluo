@@ -126,7 +126,7 @@ export class SlackModule {
    * Registers Slack providers using static options.
    *
    * @param options Static Slack module options including transport wiring and optional template rendering behavior.
-   * @returns A global module definition that exports {@link SlackService}, {@link SlackChannel}, and compatibility tokens.
+   * @returns A module definition that exports {@link SlackService}, {@link SlackChannel}, and compatibility tokens.
    *
    * @example
    * ```ts
@@ -146,7 +146,7 @@ export class SlackModule {
    * Registers Slack providers from an async DI factory.
    *
    * @param options Async module options that resolve Slack transport and renderer configuration through DI.
-   * @returns A global module definition that memoizes async option resolution per module instance.
+   * @returns A module definition that memoizes async option resolution per module instance.
    *
    * @example
    * ```ts

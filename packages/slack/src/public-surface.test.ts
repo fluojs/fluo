@@ -28,6 +28,7 @@ describe('@fluojs/slack public API surface', () => {
     expect(slackPublicApi).toHaveProperty('SLACK_CHANNEL');
     expect(slackPublicApi).toHaveProperty('createSlackPlatformStatusSnapshot');
     expect(slackPublicApi).toHaveProperty('SlackConfigurationError');
+    expect(slackPublicApi).toHaveProperty('SlackLifecycleError');
     expect(slackPublicApi).toHaveProperty('SlackMessageValidationError');
     expect(slackPublicApi).toHaveProperty('SlackTransportError');
   });
