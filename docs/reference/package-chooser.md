@@ -49,7 +49,7 @@
 
 | condition | package choice | notes |
 | --- | --- | --- |
-| Need Prisma-based relational access | `@fluojs/prisma` | Use for Prisma ORM integration. |
+| Need Prisma-based relational access on Node.js | `@fluojs/prisma` | Use for Node.js 20+ Prisma ORM integration. The root wrapper uses host `AsyncLocalStorage` for transaction context and `engines.node >=20.0.0`; runtimes without a compatible ALS boundary should register raw Prisma-compatible handles behind application-owned providers until a runtime-specific transaction-context adapter is documented. |
 | Need Drizzle-based relational access on Node.js | `@fluojs/drizzle` | Use for Node.js 20+ Drizzle ORM integration. The root wrapper uses Node's `node:async_hooks` transaction context and `engines.node >=20.0.0`; Drizzle's Bun SQL, Cloudflare D1, and other non-Node drivers are outside the current fluo wrapper until a non-Node context adapter is documented. For those runtimes, register the raw Drizzle driver handle behind runtime-specific fluo providers (`useFactory` or `useValue`) instead of importing this wrapper. |
 | Need document database access on Node.js | `@fluojs/mongoose` | Use for Node.js 20+ Mongoose integration. The root wrapper uses Node's `node:async_hooks` transaction context and `engines.node >=20.0.0`; non-Node runtimes should register raw Mongoose-compatible handles behind application-owned providers until a runtime-specific transaction-context adapter is documented. |
 | Need cache abstraction | `@fluojs/cache-manager` | Use for cache-backed reads and writes. |

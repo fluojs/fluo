@@ -1,3 +1,5 @@
+import { isPrismaServiceHandle } from './prisma-service-brand.js';
+
 type TransactionalPrismaService<TOptions = unknown> = {
   createPlatformStatusSnapshot(): unknown;
   current(): unknown;
@@ -14,6 +16,7 @@ type TransactionMethod<THost, TArgs extends unknown[], TResult> = (
 function isPrismaServiceLike(value: unknown): value is TransactionalPrismaService {
   return typeof value === 'object'
     && value !== null
+    && isPrismaServiceHandle(value)
     && 'createPlatformStatusSnapshot' in value
     && typeof value.createPlatformStatusSnapshot === 'function'
     && 'current' in value

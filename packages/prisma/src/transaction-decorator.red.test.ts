@@ -1,9 +1,9 @@
-import { Inject } from '@fluojs/core';
 import type { Token } from '@fluojs/core';
+import { Inject } from '@fluojs/core';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
-import { PrismaModule, PrismaService, Transaction, getPrismaServiceToken, type PrismaServiceFacade } from './index.js';
+import { getPrismaServiceToken, PrismaModule, PrismaService, type PrismaServiceFacade, Transaction } from './index.js';
 
 describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 impl)', () => {
   it('exports Transaction and opens a transaction for current-less repository calls', async () => {
@@ -308,6 +308,95 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
     await expect(service.outer('linus@example.com')).rejects.toThrow();
 
     expect(events).toEqual(['connect', 'transaction:start']);
+
+    await app.close();
+  });
+
+  it('ignores unbranded transaction-like persistence facades during default target resolution', async () => {
+    const events: string[] = [];
+    const transactionClient = {
+      user: {
+        async create(input: { data: { email: string } }) {
+          events.push(`tx:create:${input.data.email}`);
+          return { email: input.data.email, id: 'tx-user' };
+        },
+      },
+    };
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        events.push('prisma:transaction:start');
+        const result = await callback(transactionClient);
+        events.push('prisma:transaction:end');
+        return result;
+      },
+      user: {
+        async create(input: { data: { email: string } }) {
+          events.push(`root:create:${input.data.email}`);
+          return { email: input.data.email, id: 'root-user' };
+        },
+      },
+    };
+    const unbrandedPersistenceFacade = {
+      createPlatformStatusSnapshot() {
+        return {};
+      },
+      current() {
+        events.push('other:current');
+        return {};
+      },
+      async transaction<T>(fn: () => Promise<T>): Promise<T> {
+        events.push('other:transaction');
+        return fn();
+      },
+    };
+
+    @Inject(PrismaService)
+    class UserRepository {
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client, typeof transactionClient>) {}
+
+      async create(email: string) {
+        return this.prisma.user.create({ data: { email } });
+      }
+    }
+
+    @Inject(UserRepository)
+    class UserService {
+      readonly otherPersistence = unbrandedPersistenceFacade;
+
+      constructor(private readonly repo: UserRepository) {}
+
+      @Transaction()
+      async create(email: string) {
+        return this.repo.create(email);
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot({ client })],
+      providers: [UserRepository, UserService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const service = await app.container.resolve(UserService);
+
+    await expect(service.create('lin@example.com')).resolves.toEqual({
+      email: 'lin@example.com',
+      id: 'tx-user',
+    });
+    expect(events).toEqual([
+      'connect',
+      'prisma:transaction:start',
+      'tx:create:lin@example.com',
+      'prisma:transaction:end',
+    ]);
 
     await app.close();
   });

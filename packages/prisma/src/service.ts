@@ -1,3 +1,5 @@
+import { Inject } from '@fluojs/core';
+import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 import {
   createAbortError,
   createRequestAbortContext,
@@ -5,9 +7,8 @@ import {
   trackActiveRequestTransaction,
   untrackActiveRequestTransaction,
 } from '@fluojs/runtime';
-import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
-import { Inject } from '@fluojs/core';
 
+import { markPrismaServiceHandle } from './prisma-service-brand.js';
 import { createPrismaPlatformStatusSnapshot } from './status.js';
 import { PRISMA_CLIENT, PRISMA_OPTIONS } from './tokens.js';
 import type {
@@ -79,7 +80,9 @@ type AsyncLocalStorageResolutionHost = typeof globalThis & {
 };
 
 function createCurrentClientPrismaFacade<TTarget extends { current(): unknown }>(target: TTarget): TTarget {
-  return new Proxy(target, {
+  markPrismaServiceHandle(target);
+
+  return markPrismaServiceHandle(new Proxy(target, {
     get(service, prop, receiver) {
       if (prop in service) {
         return Reflect.get(service, prop, receiver);
@@ -90,7 +93,7 @@ function createCurrentClientPrismaFacade<TTarget extends { current(): unknown }>
 
       return typeof value === 'function' ? value.bind(currentClient) : value;
     },
-  });
+  }));
 }
 
 class AsyncLocalStorageTransactionContextStore<TTransactionClient> implements TransactionContextStore<TTransactionClient> {
@@ -130,7 +133,11 @@ function resolveAsyncLocalStorageConstructor(
     return host.AsyncLocalStorage;
   }
 
-  return host.process?.getBuiltinModule?.('node:async_hooks').AsyncLocalStorage;
+  try {
+    return host.process?.getBuiltinModule?.('node:async_hooks')?.AsyncLocalStorage;
+  } catch {
+    return undefined;
+  }
 }
 
 function createTransactionContextStore<TTransactionClient>(): TransactionContextStore<TTransactionClient> {
@@ -168,6 +175,7 @@ export class PrismaService<
     private readonly client: TClient,
     private readonly serviceOptions: PrismaServiceOptions = { strictTransactions: false },
   ) {
+    markPrismaServiceHandle(this);
     this.installCurrentClientFacade();
   }
 

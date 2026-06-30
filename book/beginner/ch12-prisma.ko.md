@@ -50,7 +50,7 @@ Prisma의 강점 중 하나는 인트로스펙션입니다. 이미 운영 중인
 Prisma를 사용하면 작성하는 쿼리가 기본적으로 타입 안전합니다. 존재하지 않는 필드를 선택하려 하거나 숫자형 컬럼에 문자열을 전달하려고 하면, 코드를 실행하기 전에 TypeScript 컴파일러가 에러를 잡아냅니다. 이 안전성은 `fluo`가 추구하는 명시성과 잘 맞고, 기존 Node.js 애플리케이션에서 자주 보던 런타임 에러를 줄여 줍니다. 데이터베이스 계층을 추측이 아니라 타입으로 다루게 되는 셈입니다.
 
 ## 12.2 Setting up the Environment
-목표가 분명해졌으니, 먼저 프로젝트 환경부터 준비하겠습니다. 필요한 패키지를 설치해야 합니다.
+목표가 분명해졌으니, 먼저 프로젝트 환경부터 준비하겠습니다. `@fluojs/prisma`는 transaction context가 host `AsyncLocalStorage`에 의존하므로 Node.js 20+용 Prisma 통합 경로입니다. 필요한 패키지를 설치해야 합니다.
 
 ```bash
 pnpm add @fluojs/prisma @prisma/client
