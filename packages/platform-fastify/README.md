@@ -20,8 +20,10 @@ Fastify-backed HTTP adapter for the fluo runtime.
 ## Installation
 
 ```bash
-npm install @fluojs/platform-fastify fastify
+npm install @fluojs/platform-fastify
 ```
+
+`fastify`, `@fastify/multipart`, and raw-body support are bundled as runtime dependencies of this adapter package, so application projects do not need a separate `fastify` dependency unless they use Fastify APIs directly outside fluo.
 
 ## When to Use
 
@@ -46,7 +48,7 @@ await app.listen();
 ## Common Patterns
 
 ### Multipart and Raw Body
-The Fastify adapter includes built-in support for multipart form-data and raw body parsing via internal Fastify plugins, exposed through the standard fluo request interface. When `rawBody: true` is enabled, `FrameworkRequest.rawBody` preserves the original request bytes for non-multipart requests so webhook signature verification and other byte-sensitive flows can replay the exact payload. When you construct the adapter directly, pass multipart limits as the second argument. `bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same multipart settings under `options.multipart`.
+The Fastify adapter includes built-in support for multipart form-data and raw body parsing via internal Fastify plugins, exposed through the standard fluo request interface. Multipart files are attached to the runtime-neutral `FrameworkRequest.files` seam as adapter-provided values; Fastify requests populate it with fluo `UploadedFile` objects after body materialization. When `rawBody: true` is enabled, `FrameworkRequest.rawBody` preserves the original request bytes for non-multipart requests so webhook signature verification and other byte-sensitive flows can replay the exact payload. When you construct the adapter directly, pass multipart limits as the second argument. `bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same multipart settings under `options.multipart`.
 
 Raw-body capture is skipped for multipart requests, including mixed-case `Content-Type` media values such as `Multipart/Form-Data`. When `multipart.maxTotalSize` is omitted, it defaults to `maxBodySize` so size limits stay portable across HTTP adapters.
 
@@ -128,7 +130,9 @@ When fluo route metadata can be translated directly, the adapter registers Fasti
 
 When multiple routes share the same method and normalized param shape (for example `/:id` and `/:slug`), use `@All(...)`, depend on non-URI versioning, or arrive through duplicate-slash / trailing-slash variants, the adapter intentionally leaves those requests on the wildcard fallback path so Fastify registration cannot boot-fail or narrow fluo's matching semantics. If app middleware rewrites the framework request method or path after a native handoff was attached, the dispatcher ignores that stale handoff and rematches the rewritten request.
 
-The adapter keeps a wildcard fallback route for unmatched paths and portability-sensitive cases, and enables Fastify trailing-slash / duplicate-slash normalization so native selection stays aligned with fluo's documented route path contract. CORS handling remains owned by fluo's shared middleware path rather than Fastify plugins, and unsupported methods such as `OPTIONS` continue through the fallback dispatcher path unless a fluo route explicitly owns them.
+The adapter keeps a wildcard fallback route for unmatched paths and portability-sensitive cases, including multipart requests that must preserve the shared body/materialization path, and enables Fastify trailing-slash / duplicate-slash normalization so native selection stays aligned with fluo's documented route path contract. CORS handling remains owned by fluo's shared middleware path rather than Fastify plugins, and unsupported methods such as `OPTIONS` continue through the fallback dispatcher path unless a fluo route explicitly owns them.
+
+Calling `close()` while startup is retrying a busy port cancels the retry loop and waits for it to settle before reporting shutdown completion, so a closed adapter cannot bind later after the caller believes shutdown finished. If an adapter instance is listened again after close, native route handlers refresh their dispatcher descriptors before serving traffic so request handoff metadata cannot point at a previous application graph.
 
 ## Performance
 
@@ -145,7 +149,7 @@ fluo's Fastify adapter significantly outperforms the raw Node.js adapter in high
 
 `packages/platform-fastify/src/adapter.test.ts` is the package-local regression target for the documented Fastify adapter contract. It runs the shared `createHttpAdapterPortabilityHarness(...)` checks for malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
 
-The same file also covers Fastify-specific native route registration with wildcard fallback, duplicate shape route fallback, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, case-insensitive multipart detection, and multipart limit handling. Keep README example pointers aligned with that test file and the custom adapter book chapter when changing startup, routing, or adapter portability behavior.
+The same file also covers Fastify-specific native route registration with wildcard fallback, duplicate shape route fallback, startup retry cancellation during shutdown, native descriptor refresh on adapter reuse, explicit `OPTIONS` route ownership, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, zero-valued body/shutdown limits, case-insensitive multipart detection, and multipart limit handling. Keep README example pointers aligned with that test file and the custom adapter book chapter when changing startup, routing, or adapter portability behavior.
 
 ## Public API Overview
 

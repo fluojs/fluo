@@ -116,7 +116,7 @@ export class FastifyAdapter implements HttpApplicationAdapter {
 }
 ```
 
-Fastify는 networking, plugin execution, 그리고 명시적 route에 대한 안전한 path selection을 담당합니다. 하지만 route handoff 이후의 framework pipeline, 즉 middleware, guards, interceptors, observers, body semantics, streaming, errors, 최종 dispatch behavior는 여전히 공유 dispatcher contract 안에서 Fluo가 소유합니다. 어댑터는 매칭되지 않은 path, `@All(...)`, version-sensitive route, 중복 parameter shape, multipart request, duplicate-slash 또는 trailing-slash variant, native registration이 Fluo의 route ordering semantics를 좁힐 수 있는 모든 경우를 위해 `all('*')` fallback을 유지합니다.
+Fastify는 networking, plugin execution, 그리고 명시적 route에 대한 안전한 path selection을 담당합니다. 하지만 route handoff 이후의 framework pipeline, 즉 middleware, guards, interceptors, observers, body semantics, streaming, errors, 최종 dispatch behavior는 여전히 공유 dispatcher contract 안에서 Fluo가 소유합니다. 어댑터는 매칭되지 않은 path, `@All(...)`, version-sensitive route, 중복 parameter shape, 공유 materialization semantics를 보존해야 하는 multipart request, explicit `OPTIONS` route, duplicate-slash 또는 trailing-slash variant, native registration이 Fluo의 route ordering semantics를 좁힐 수 있는 모든 경우를 위해 `all('*')` fallback을 유지합니다.
 
 이 분리는 `packages/platform-fastify/src/adapter.test.ts`의 공유 `createHttpAdapterPortabilityHarness(...)` 검사로 커버됩니다. 여기에는 malformed cookie, raw-body byte preservation, multipart raw-body exclusion, SSE framing, HTTPS startup, shutdown signal cleanup이 포함됩니다. Fastify의 raw-body pre-parsing hook도 byte를 복사하는 동안 Fastify의 encoded-length accounting을 유지하므로, capture stream 때문에 `maxBodySize` enforcement가 우회되지 않고 adapter가 계속 소유합니다.
 
