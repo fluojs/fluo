@@ -44,7 +44,7 @@ Any new ORM integration package added to the fluo ecosystem must export a `@Tran
 | Nested boundary reuse | If a transaction is already active, `@Transaction()` reuses the existing boundary instead of opening a new one. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
 | Nested options restriction | Prisma and Drizzle reject nested transaction options while an ambient transaction is already active. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
 | Strict mode | Integration packages can be configured to throw when the registered client/connection does not support transactions. Without strict mode, transaction helpers fall back to direct execution. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
-| Drizzle decorator target selection | Drizzle `@Transaction()` checks the decorated host for `this.db`, then direct properties, then nested `.db` properties that expose `transaction(...)`; use an explicit accessor such as `@Transaction((self) => self.ordersDb)` when more than one target is possible. | `packages/drizzle/src/transaction.ts` |
+| Drizzle decorator target selection | Drizzle `@Transaction()` checks the decorated host for `this.db`, then direct properties, then nested `.db` properties that expose `transaction(...)`, and falls back to the decorated instance itself when none match; use an explicit accessor such as `@Transaction((self) => self.ordersDb)` when more than one target is possible. | `packages/drizzle/src/transaction.ts` |
 
 ## Boundary Semantics
 

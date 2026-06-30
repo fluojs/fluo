@@ -558,7 +558,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // transaction boundary updates that must stay paired with runtime tests,
   // such as Prisma branded transaction target resolution and ALS host lookup
   // fail-closed coverage, Drizzle shutdown-drain coverage for fail-open manual
-  // transactions, and Mongoose ALS session/request tracking plus runtime-boundary docs.
+  // transactions, Drizzle decorated-instance transaction target fallback discoverability,
+  // and Mongoose ALS session/request tracking plus runtime-boundary docs.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
