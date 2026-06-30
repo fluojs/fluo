@@ -82,4 +82,12 @@ describe('@fluojs/slack public API surface', () => {
     expect(slackPublicApi).not.toHaveProperty('SLACK_OPTIONS');
     expect(slackPublicApi).not.toHaveProperty('NormalizedSlackModuleOptions');
   });
+
+  it('keeps named-client migration helpers outside the singleton root barrel', () => {
+    expect(slackPublicApi.SlackModule).not.toHaveProperty('forFeature');
+    expect(slackPublicApi).not.toHaveProperty('createSlackClientToken');
+    expect(slackPublicApi).not.toHaveProperty('getSlackClientToken');
+    expect(slackPublicApi).not.toHaveProperty('SLACK_CLIENTS');
+    expect(slackPublicApi).not.toHaveProperty('SlackClientRegistry');
+  });
 });
