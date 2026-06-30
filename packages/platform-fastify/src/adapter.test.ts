@@ -355,10 +355,18 @@ describe('@fluojs/platform-fastify', () => {
         path: '/zero/body',
         port,
       });
+      const chunkedOneByteResponse = await requestHttp({
+        body: 'x',
+        headers: { 'content-type': 'text/plain' },
+        method: 'POST',
+        path: '/zero/body',
+        port,
+      });
 
       expect(emptyResponse.statusCode).toBe(201);
       expect(JSON.parse(emptyResponse.body)).toEqual({ body: null });
       expect(nonEmptyResponse.statusCode).toBe(413);
+      expect(chunkedOneByteResponse.statusCode).toBe(413);
     } finally {
       await app.close();
     }

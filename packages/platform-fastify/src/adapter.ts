@@ -419,6 +419,8 @@ function createNativeFastFrameworkRequest(
     throw new PayloadTooLargeException('Request body exceeds the size limit.');
   }
 
+  assertBodyWithinMaxBodySize(request.body, maxBodySize);
+
   const frameworkRequest = createDeferredFrameworkRequestShell({
     cookieHeader: cloneHeaderValue(request.headers.cookie),
     headersFactory: () => normalizeHeaders(cloneRequestHeaders(request.headers)),
@@ -900,6 +902,7 @@ function createDeferredFrameworkRequest(
       const rawBodyValue = (request as FastifyRequest & { rawBody?: Buffer }).rawBody;
 
       if (rawBodyValue !== undefined) {
+        assertBodyWithinMaxBodySize(rawBodyValue, maxBodySize);
         frameworkRequest.rawBody = rawBodyValue;
       }
     }
@@ -920,6 +923,7 @@ function createDeferredFrameworkRequest(
   }) as FastifyFrameworkRequest;
 
   if (!needsDeferredBodyMaterialization) {
+    assertBodyWithinMaxBodySize(request.body, maxBodySize);
     frameworkRequest.body = request.body;
   }
 
@@ -968,6 +972,32 @@ function hasNativeRouteParamSeparators(params: Readonly<Record<string, string>>)
   }
 
   return false;
+}
+
+function assertBodyWithinMaxBodySize(body: unknown, maxBodySize: number): void {
+  if (resolveFastifyBodySize(body) > maxBodySize) {
+    throw new PayloadTooLargeException('Request body exceeds the size limit.');
+  }
+}
+
+function resolveFastifyBodySize(body: unknown): number {
+  if (body === undefined || body === null) {
+    return 0;
+  }
+
+  if (typeof body === 'string') {
+    return Buffer.byteLength(body, 'utf8');
+  }
+
+  if (Buffer.isBuffer(body)) {
+    return body.byteLength;
+  }
+
+  if (body instanceof Uint8Array) {
+    return body.byteLength;
+  }
+
+  return 1;
 }
 
 function collectVersionSensitiveRouteKeys(descriptors: readonly HandlerDescriptor[]): Set<string> {
