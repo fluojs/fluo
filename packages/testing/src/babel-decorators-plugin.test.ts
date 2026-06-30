@@ -88,4 +88,19 @@ describe('fluoBabelDecoratorsPlugin', () => {
       expect(resolveNearestBabelConfigFile(`${filePath}?v=123#decorators`)).toBe(join(root, configFileName));
     },
   );
+
+  it('fails clearly when no Babel root config can be found', async () => {
+    mockedTransformAsync.mockClear();
+    const root = mkdtempSync(join(tmpdir(), 'fluo-testing-babel-missing-'));
+    tempWorkspaceRoots.add(root);
+    const sourceDirectory = join(root, 'src');
+    mkdirSync(sourceDirectory, { recursive: true });
+    const filePath = join(sourceDirectory, 'app.ts');
+    const plugin = createFluoBabelDecoratorsPlugin(resolveNearestBabelConfigFile);
+
+    await expect(plugin.transform('@Module({}) class AppModule {}', filePath)).rejects.toThrow(
+      'Unable to locate a Babel root config',
+    );
+    expect(mockedTransformAsync).not.toHaveBeenCalled();
+  });
 });

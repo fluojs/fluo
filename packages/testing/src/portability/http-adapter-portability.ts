@@ -1,5 +1,3 @@
-import { request as httpsRequest } from 'node:https';
-
 import { Controller, Get, Post, type RequestContext, SseResponse } from '@fluojs/http';
 import { type ApplicationLogger, defineModule, type ModuleType } from '@fluojs/runtime';
 
@@ -107,6 +105,11 @@ function resolveListeningUrl(app: AppLike, adapterName: string): string {
 }
 
 async function requestHttps(url: string): Promise<{ body: string; statusCode: number }> {
+  const [{ Buffer }, { request: httpsRequest }] = await Promise.all([
+    import('node:buffer'),
+    import('node:https'),
+  ]);
+
   return await new Promise((resolve, reject) => {
     const request = httpsRequest(url, { rejectUnauthorized: false }, (response) => {
       const chunks: Buffer[] = [];
