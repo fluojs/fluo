@@ -296,7 +296,7 @@ Prometheus가 `/metrics` 엔드포인트를 스크랩하기 시작하면, Grafan
 ### 19.8.3 Sharing Dashboards: Monitoring as Code
 현대적인 엔지니어링 팀에서 대시보드는 종종 "코드(Code)"로 취급됩니다. Grafana 대시보드를 JSON 파일로 내보내고 Fluo 코드와 함께 버전 관리 시스템(Git)에 저장할 수 있습니다. 이렇게 하면 팀의 모든 개발자가 동일한 시각화 도구에 접근할 수 있고, 모니터링 로직의 변경 사항도 애플리케이션 코드처럼 검토하고 감사할 수 있습니다.
 
-Fluo는 공통적인 사용 사례(예: "API 개요", "데이터베이스 성능")에 대한 **참조 대시보드 템플릿(Reference Dashboard Templates)** 세트를 제공합니다. 이러한 템플릿을 Grafana 인스턴스로 가져와 특정 요구 사항에 맞게 커스터마이징하면, 관측성 스택을 일관된 기준에서 시작할 수 있습니다.
+현재 Fluo 저장소는 Grafana로 가져올 수 있는 대시보드 템플릿 JSON 파일을 배포하지 않습니다. 대시보드는 애플리케이션이 소유하는 모니터링 코드로 다루세요. `@fluojs/metrics`가 노출하는 Prometheus series, operations 예제, 그리고 자체 infrastructure signal을 출발점으로 삼고, 내보낸 Grafana JSON은 애플리케이션과 함께 저장하여 나머지 시스템 변경처럼 검토하고 발전시킬 수 있게 하세요.
 
 ### 19.8.4 Continuous Improvement via Metrics
 모니터링의 장기 목표는 **지속적인 개선(Continuous Improvement)**입니다. 메트릭을 사용하여 팀의 성능 목표를 설정하십시오(예: "다음 분기까지 p99 지연 시간을 20% 단축"). 성능을 가시화하고 측정 가능하게 만들면, 최적화 논의가 추측보다 데이터에 기반하게 됩니다.
