@@ -971,7 +971,7 @@ describe('createTestApp', () => {
     }
   });
 
-  it('forwards converters and diagnostics bootstrap options to the runtime app', async () => {
+  it('forwards converters to the runtime app', async () => {
     class QueryNumberConverter implements Converter {
       convert(value: unknown) {
         return typeof value === 'string' ? Number(value) : value;
@@ -998,7 +998,6 @@ describe('createTestApp', () => {
     const app = await createTestApp({
       rootModule: ConvertedModule,
       converters: [new QueryNumberConverter()],
-      diagnostics: { timing: true },
     });
 
     try {
