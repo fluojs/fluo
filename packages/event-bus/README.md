@@ -10,7 +10,7 @@ In-process event publishing and subscription for fluo. It features decorator-bas
 - [When to use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
-- [Public API](#public-api)
+- [Public API Overview](#public-api-overview)
 - [Runtime-Specific and Integration Subpaths](#runtime-specific-and-integration-subpaths)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -52,7 +52,7 @@ export class NotificationService {
 
 Import `EventBusModule` and inject `EventBusLifecycleService` to publish events.
 
-Use `EventBusModule.forRoot(...)` to wire the in-process event bus.
+Use `EventBusModule.forRoot(...)` to wire the in-process event bus. Event-bus providers are global by default (`global: true`), so `EventBusLifecycleService` and the `EVENT_BUS` compatibility token are visible to modules that import the root graph. Pass `EventBusModule.forRoot({ global: false })` when you need module-local visibility instead.
 
 ```typescript
 import { Module, Inject } from '@fluojs/core';
@@ -149,7 +149,7 @@ Handlers are discovered from singleton providers and controllers across imported
 ## Public API Overview
 
 ### Core
-- `EventBusModule.forRoot(...)`: Main entry point for event bus registration.
+- `EventBusModule.forRoot({ global?, publish?, shutdown?, transport? })`: Main entry point for event bus registration. `global` defaults to `true`; set `global: false` to keep event-bus providers visible only through the module that imports the event-bus module.
 - `EventBusLifecycleService`: Primary service for publishing events (`publish(event, options?)`) and creating platform status snapshots.
 - `@OnEvent(EventClass)`: Decorator to mark a method as an event handler.
 - `EVENT_BUS`: Compatibility injection token for the publish facade.

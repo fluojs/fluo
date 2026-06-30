@@ -1025,6 +1025,27 @@ describe('package surface CQRS responsibility discoverability', () => {
   });
 });
 
+describe('package surface event-bus responsibility discoverability', () => {
+  it('documents event-bus visibility defaults and Redis transport subpath in both locales', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const englishReadme = readFileSync(join(repoRoot, 'packages/event-bus/README.md'), 'utf8');
+    const koreanReadme = readFileSync(join(repoRoot, 'packages/event-bus/README.ko.md'), 'utf8');
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface, englishReadme, koreanReadme]) {
+      expect(markdown).toContain('@fluojs/event-bus');
+      expect(markdown).toContain('EventBusModule.forRoot({ global?');
+      expect(markdown).toContain('@fluojs/event-bus/redis');
+    }
+
+    for (const markdown of [englishContext, koreanContext, englishReadme, koreanReadme]) {
+      expect(markdown).toContain('global: false');
+    }
+  });
+});
+
 describe('runtime subpath surface discoverability', () => {
   it('distinguishes application-facing helpers from internal package-integration seams in both locales', () => {
     const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');

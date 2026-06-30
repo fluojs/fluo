@@ -52,7 +52,7 @@ export class NotificationService {
 
 `EventBusModule`을 등록하고 `EventBusLifecycleService`를 주입받아 이벤트를 발행합니다.
 
-인프로세스 이벤트 버스 등록은 `EventBusModule.forRoot(...)`로 구성합니다.
+인프로세스 이벤트 버스 등록은 `EventBusModule.forRoot(...)`로 구성합니다. Event-bus provider는 기본적으로 global(`global: true`)이므로 root graph를 import하는 모듈에서 `EventBusLifecycleService`와 `EVENT_BUS` 호환성 토큰을 사용할 수 있습니다. 모듈-local visibility가 필요하면 `EventBusModule.forRoot({ global: false })`를 전달하세요.
 
 ```typescript
 import { Module, Inject } from '@fluojs/core';
@@ -149,7 +149,7 @@ class UserRegisteredEvent {
 ## 공개 API 개요
 
 ### 핵심 구성 요소
-- `EventBusModule.forRoot(...)`: 이벤트 버스 등록을 위한 기본 진입점입니다.
+- `EventBusModule.forRoot({ global?, publish?, shutdown?, transport? })`: 이벤트 버스 등록을 위한 기본 진입점입니다. `global`의 기본값은 `true`이며, event-bus provider를 event-bus 모듈을 import한 모듈을 통해서만 보이게 하려면 `global: false`를 설정하세요.
 - `EventBusLifecycleService`: 이벤트 발행(`publish(event, options?)`)과 platform status snapshot 생성을 위한 기본 서비스입니다.
 - `@OnEvent(EventClass)`: 특정 메서드를 이벤트 핸들러로 지정하는 데코레이터입니다.
 - `EVENT_BUS`: 발행 facade를 위한 호환성 주입 토큰입니다.
