@@ -123,7 +123,7 @@ export class CheckoutService {
 }
 ```
 
-accessor가 없으면 Drizzle `@Transaction()`은 데코레이터가 붙은 host에서 `this.db`, 직접 property, 중첩 `.db` property 순서로 `transaction(...)`을 노출하는 대상을 찾습니다. 이 heuristic은 작은 서비스에는 잘 맞지만, Drizzle client가 여러 개인 서비스는 명시적으로 선택해야 합니다.
+accessor가 없으면 Drizzle `@Transaction()`은 데코레이터가 붙은 host에서 `this.db`, 직접 property, 중첩 `.db` property 순서로 `transaction(...)`을 노출하는 대상을 찾습니다. 이 후보가 없으면 데코레이터가 붙은 인스턴스 자체를 transaction 대상으로 사용합니다. 이 heuristic은 작은 서비스와 자체 facade host에는 잘 맞지만, Drizzle client가 여러 개인 서비스는 명시적으로 선택해야 합니다.
 
 ```typescript
 class ReportingService {

@@ -123,7 +123,7 @@ export class CheckoutService {
 }
 ```
 
-Without an accessor, Drizzle `@Transaction()` looks for a transaction target on the decorated host by checking `this.db`, then direct properties, then nested `.db` properties that expose `transaction(...)`. That heuristic matches small services, but a service with multiple Drizzle clients should choose explicitly:
+Without an accessor, Drizzle `@Transaction()` looks for a transaction target on the decorated host by checking `this.db`, then direct properties, then nested `.db` properties that expose `transaction(...)`. If none of those candidates match, it treats the decorated instance itself as the transaction target. That heuristic matches small services and self-contained facade hosts, but a service with multiple Drizzle clients should choose explicitly:
 
 ```typescript
 class ReportingService {
