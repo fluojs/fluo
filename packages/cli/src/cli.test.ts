@@ -60,18 +60,22 @@ function createMockChild(closeOnKillCode = 0): ChildProcess {
 
 function createManualRestartScheduler(): {
   clear(handle: ReturnType<typeof setTimeout> | number): void;
+  clearCalls: Array<ReturnType<typeof setTimeout> | number>;
   flush(): void;
   set(callback: () => void, delayMs: number): ReturnType<typeof setTimeout> | number;
 } {
   const callbacks = new Map<number, () => void>();
-  let nextHandle = 0;
+  const clearCalls: Array<ReturnType<typeof setTimeout> | number> = [];
+  let nextHandle = -1;
 
   return {
     clear(handle) {
+      clearCalls.push(handle);
       if (typeof handle === 'number') {
         callbacks.delete(handle);
       }
     },
+    clearCalls,
     flush() {
       const pendingCallbacks = [...callbacks.values()];
       callbacks.clear();
@@ -2285,6 +2289,48 @@ void bootstrap();
     expect(children).toHaveLength(2);
 
     children.at(-1)?.kill();
+    await expect(runPromise).resolves.toBe(0);
+  });
+
+  it('clears zero-valued restart scheduler handles before rescheduling', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    mkdirSync(sourceDirectory, { recursive: true });
+    const sourceFile = join(sourceDirectory, 'main.ts');
+    writeFileSync(sourceFile, 'console.log("one");\n');
+    const children: ChildProcess[] = [];
+    const restartScheduler = createManualRestartScheduler();
+    const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+
+    const runPromise = runNodeRestartRunner({
+      debounceMs: 1,
+      env: {},
+      projectDirectory: workspaceDirectory,
+      restartScheduler,
+      signalTarget: createSignalTarget().target,
+      spawnChild: () => {
+        const child = createMockChild();
+        children.push(child);
+        return child;
+      },
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+      watchTarget: (_target, optionsOrListener, listener) => {
+        watchListeners.push(typeof optionsOrListener === 'function' ? optionsOrListener : listener ?? (() => undefined));
+        return { close: () => undefined } as never;
+      },
+    });
+
+    writeFileSync(sourceFile, 'console.log("two");\n');
+    for (const listener of watchListeners) {
+      listener('change', 'main.ts');
+      listener('change', 'main.ts');
+    }
+
+    expect(restartScheduler.clearCalls).toContain(0);
+
+    children[0]?.emit('close', 0);
     await expect(runPromise).resolves.toBe(0);
   });
 

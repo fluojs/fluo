@@ -464,7 +464,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   const scheduleRestart = (filePath: string, resolveExitCode: (code: number) => void, cleanup: () => void) => {
     pendingRestartPaths.add(filePath);
 
-    if (restartTimer) {
+    if (restartTimer !== undefined) {
       restartScheduler.clear(restartTimer);
     }
 
@@ -564,7 +564,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
         return;
       }
       cleanedUp = true;
-      if (restartTimer) {
+      if (restartTimer !== undefined) {
         restartScheduler.clear(restartTimer);
         restartTimer = undefined;
       }
