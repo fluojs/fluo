@@ -29,6 +29,8 @@ export interface FrameworkRequest {
   cookies: Readonly<Record<string, string | undefined>>;
   params: Readonly<Record<string, string>>;
   body?: unknown;
+  /** Adapter-provided multipart files exposed through the runtime-neutral request seam. */
+  files?: readonly FrameworkRequestFile[];
   /** Adapter-snapshotted inbound request id used without forcing header normalization. */
   requestId?: string;
   rawBody?: Uint8Array;
@@ -36,6 +38,20 @@ export interface FrameworkRequest {
   /** Adapter-owned abort probe used by internal fast paths without forcing AbortSignal allocation. */
   isAborted?: () => boolean;
   signal?: AbortSignal;
+}
+
+/** Runtime-neutral multipart file shape attached by adapters that parse uploads. */
+export interface FrameworkRequestFile {
+  /** Multipart form field name that carried this file. */
+  fieldname: string;
+  /** Client-provided original filename. */
+  originalname: string;
+  /** Media type reported for the uploaded file. */
+  mimetype: string;
+  /** Buffered file bytes. */
+  buffer: Uint8Array;
+  /** File size in bytes. */
+  size: number;
 }
 
 /**

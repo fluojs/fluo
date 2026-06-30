@@ -20,8 +20,10 @@ fluo 런타임을 위한 Fastify 기반 HTTP 어댑터 패키지입니다.
 ## 설치
 
 ```bash
-npm install @fluojs/platform-fastify fastify
+npm install @fluojs/platform-fastify
 ```
+
+`fastify`, `@fastify/multipart`, raw-body 지원은 이 adapter package의 runtime dependency로 포함되어 있으므로, 애플리케이션이 fluo 밖에서 Fastify API를 직접 사용하지 않는 한 별도의 `fastify` dependency를 추가할 필요가 없습니다.
 
 ## 사용 시점
 
@@ -46,7 +48,7 @@ await app.listen();
 ## 주요 패턴
 
 ### 멀티파트 및 Raw Body
-Fastify 어댑터는 내부 Fastify 플러그인을 통해 멀티파트 form-data 및 raw body 파싱을 기본적으로 지원하며, 이는 표준 fluo 요청 인터페이스를 통해 노출됩니다. `rawBody: true`를 활성화하면 멀티파트가 아닌 요청에서 `FrameworkRequest.rawBody`가 원본 요청 바이트를 그대로 보존하므로 webhook 서명 검증이나 기타 바이트 민감한 흐름에서 정확한 payload를 다시 사용할 수 있습니다. 어댑터를 직접 생성할 때는 멀티파트 제한을 두 번째 인자로 전달하고, `bootstrapFastifyApplication(...)` 및 `runFastifyApplication(...)`에서는 같은 설정을 `options.multipart` 아래에 전달하면 됩니다.
+Fastify 어댑터는 내부 Fastify 플러그인을 통해 멀티파트 form-data 및 raw body 파싱을 기본적으로 지원하며, 이는 표준 fluo 요청 인터페이스를 통해 노출됩니다. Multipart file은 runtime-neutral `FrameworkRequest.files` seam에 adapter-provided value로 붙으며, Fastify 요청에서는 body materialization 이후 fluo `UploadedFile` 객체로 채워집니다. `rawBody: true`를 활성화하면 멀티파트가 아닌 요청에서 `FrameworkRequest.rawBody`가 원본 요청 바이트를 그대로 보존하므로 webhook 서명 검증이나 기타 바이트 민감한 흐름에서 정확한 payload를 다시 사용할 수 있습니다. 어댑터를 직접 생성할 때는 멀티파트 제한을 두 번째 인자로 전달하고, `bootstrapFastifyApplication(...)` 및 `runFastifyApplication(...)`에서는 같은 설정을 `options.multipart` 아래에 전달하면 됩니다.
 
 Multipart request에서는 `Multipart/Form-Data`처럼 대소문자가 섞인 `Content-Type` media 값도 포함해 raw-body capture를 건너뜁니다. `multipart.maxTotalSize`를 생략하면 `maxBodySize`가 기본값이 되어 HTTP adapter 간 size limit이 portable하게 유지됩니다.
 
@@ -128,7 +130,9 @@ fluo 라우트 메타데이터를 Fastify 경로로 그대로 옮길 수 있는 
 
 여러 라우트가 같은 method와 정규화된 param shape를 공유하는 경우(예: `/:id` 와 `/:slug`), `@All(...)`을 사용하는 경우, non-URI versioning에 의존하는 경우, 또는 duplicate slash / trailing slash 변형으로 들어온 경우에는 어댑터가 해당 요청을 의도적으로 와일드카드 fallback 경로에 남겨 둡니다. 이렇게 해서 Fastify 등록 단계에서 부팅 실패가 나거나 fluo의 등록 순서 기반 매칭 의미론이 좁아지지 않도록 보장합니다. app middleware가 native handoff 이후 framework request의 method 또는 path를 rewrite하면 dispatcher는 stale handoff를 무시하고 rewrite된 요청을 다시 매칭합니다.
 
-어댑터는 매칭되지 않은 경로와 이식성에 민감한 경우를 위해 와일드카드 fallback 라우트를 계속 유지하며, Fastify의 trailing slash / duplicate slash 정규화를 켜서 네이티브 선택 경로도 fluo의 문서화된 route path 계약과 맞추어 동작하도록 합니다. CORS 처리는 Fastify 플러그인이 아니라 fluo의 공유 middleware 경로가 계속 소유하고, `OPTIONS` 같은 미지원 메서드는 fluo route가 명시적으로 소유하지 않는 한 fallback dispatcher 경로로 흐릅니다.
+어댑터는 매칭되지 않은 경로와 이식성에 민감한 경우, 그리고 공유 body/materialization 경로를 보존해야 하는 multipart request를 위해 와일드카드 fallback 라우트를 계속 유지하며, Fastify의 trailing slash / duplicate slash 정규화를 켜서 네이티브 선택 경로도 fluo의 문서화된 route path 계약과 맞추어 동작하도록 합니다. CORS 처리는 Fastify 플러그인이 아니라 fluo의 공유 middleware 경로가 계속 소유하고, `OPTIONS` 같은 미지원 메서드는 fluo route가 명시적으로 소유하지 않는 한 fallback dispatcher 경로로 흐릅니다.
+
+바쁜 port 때문에 startup retry 중인 상태에서 `close()`를 호출하면 retry loop를 취소하고 해당 작업이 settle될 때까지 기다린 뒤 shutdown 완료를 보고하므로, caller가 shutdown이 끝났다고 믿은 뒤 닫힌 adapter가 나중에 bind되는 일이 없습니다. Adapter instance를 close 이후 다시 listen하면 native route handler가 traffic을 처리하기 전에 dispatcher descriptor를 새로 반영하므로 request handoff metadata가 이전 application graph를 가리키지 않습니다.
 
 ## 성능
 
@@ -145,7 +149,7 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 
 `packages/platform-fastify/src/adapter.test.ts`는 문서화된 Fastify 어댑터 계약을 위한 package-local regression target입니다. 이 파일은 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body 제외, multipart total-size 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 확인합니다.
 
-같은 파일은 Fastify 전용 native route registration과 wildcard fallback, duplicate shape route fallback, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, 대소문자 구분 없는 multipart detection, multipart limit handling도 함께 다룹니다. startup, routing, adapter portability behavior를 변경할 때는 README 예제 포인터를 이 테스트 파일 및 custom adapter book chapter와 맞추어 유지하세요.
+같은 파일은 Fastify 전용 native route registration과 wildcard fallback, duplicate shape route fallback, shutdown 중 startup retry cancellation, adapter reuse 시 native descriptor refresh, explicit `OPTIONS` route ownership, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, zero-valued body/shutdown limit, 대소문자 구분 없는 multipart detection, multipart limit handling도 함께 다룹니다. startup, routing, adapter portability behavior를 변경할 때는 README 예제 포인터를 이 테스트 파일 및 custom adapter book chapter와 맞추어 유지하세요.
 
 ## 공개 API 개요
 

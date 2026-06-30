@@ -1,14 +1,7 @@
 import { request as httpsRequest } from 'node:https';
 
 import { Controller, Get, Post, type RequestContext, SseResponse } from '@fluojs/http';
-import { type ApplicationLogger, defineModule, type ModuleType, type UploadedFile } from '@fluojs/runtime';
-
-declare module '@fluojs/http' {
-  interface FrameworkRequest {
-    files?: UploadedFile[];
-    rawBody?: Uint8Array;
-  }
-}
+import { type ApplicationLogger, defineModule, type ModuleType } from '@fluojs/runtime';
 
 type AppLike = {
   close(): Promise<void>;

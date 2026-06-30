@@ -72,13 +72,6 @@ import express, {
   type Response as ExpressResponse,
 } from 'express';
 
-declare module '@fluojs/http' {
-  interface FrameworkRequest {
-    files?: UploadedFile[];
-    rawBody?: Uint8Array;
-  }
-}
-
 /**
  * Describes the express adapter options contract.
  */

@@ -58,13 +58,6 @@ import {
 } from '@fluojs/runtime/node';
 import fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 
-declare module '@fluojs/http' {
-  interface FrameworkRequest {
-    files?: UploadedFile[];
-    rawBody?: Uint8Array;
-  }
-}
-
 /**
  * Transport-level knobs for the standalone Fastify HTTP adapter factory.
  */
@@ -165,8 +158,12 @@ type FastifyMultipartLikeError = Error & {
 export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
   private closeInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
+  private appClosed = false;
+  private listenAbortController?: AbortController;
+  private listenInFlight?: Promise<void>;
+  private readonly nativeRouteDescriptors = new Map<string, HandlerDescriptor>();
   private pluginsReady = false;
-  private readonly app: ReturnType<typeof fastify>;
+  private app: ReturnType<typeof fastify>;
   private readonly requestResponseFactory: RequestResponseFactory<
     FastifyRequest,
     FastifyReply,
@@ -210,9 +207,30 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   async listen(dispatcher: Dispatcher): Promise<void> {
+    if (this.appClosed) {
+      this.app = createFastifyApp(this.httpsOptions, this.maxBodySize);
+      this.appClosed = false;
+      this.pluginsReady = false;
+    }
+
     this.dispatcher = dispatcher;
+    this.configureNativeRouteDescriptors(dispatcher);
     await this.registerPluginsAndRoutes(dispatcher);
-    await this.listenWithRetry();
+
+    const abortController = new AbortController();
+    this.listenAbortController = abortController;
+    const listenInFlight = this.listenWithRetry(abortController.signal).finally(() => {
+      if (this.listenInFlight === listenInFlight) {
+        this.listenInFlight = undefined;
+      }
+
+      if (this.listenAbortController === abortController) {
+        this.listenAbortController = undefined;
+      }
+    });
+    this.listenInFlight = listenInFlight;
+
+    await listenInFlight;
   }
 
   async close(): Promise<void> {
@@ -221,15 +239,23 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
       return;
     }
 
+    if (this.listenInFlight) {
+      this.listenAbortController?.abort();
+      await waitForCloseWithTimeout(ignoreCancelledListen(this.listenInFlight), this.shutdownTimeoutMs);
+    }
+
     if (!this.app.server.listening) {
       this.dispatcher = undefined;
+      this.nativeRouteDescriptors.clear();
       return;
     }
 
     const closePromise = this.app.close();
     const closeInFlight = closePromise.finally(() => {
+      this.appClosed = true;
       this.closeInFlight = undefined;
       this.dispatcher = undefined;
+      this.nativeRouteDescriptors.clear();
     });
     this.closeInFlight = closeInFlight;
     void closeInFlight.catch(() => {});
@@ -254,15 +280,24 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     this.pluginsReady = true;
   }
 
+  private configureNativeRouteDescriptors(dispatcher: Dispatcher): void {
+    this.nativeRouteDescriptors.clear();
+
+    for (const route of createFastifyNativeRoutes(resolveDispatcherRouteDescriptors(dispatcher))) {
+      this.nativeRouteDescriptors.set(route.routeKey, route.descriptor);
+    }
+  }
+
   private registerNativeRoutes(descriptors: readonly HandlerDescriptor[]): void {
     for (const route of createFastifyNativeRoutes(descriptors)) {
       this.app.route({
         handler: async (request: FastifyRequest, reply: FastifyReply) => {
           const urlParts = splitRawRequestUrl(request.raw.url ?? '/');
           const params = normalizeNativeRouteParams(request.params);
+          const descriptor = this.nativeRouteDescriptors.get(route.routeKey);
 
-          if (!isRoutePathNormalizationSensitive(urlParts.path) && !hasNativeRouteParamSeparators(params)) {
-            await this.handleNativeRouteRequest(route.descriptor, params, urlParts, request, reply);
+          if (descriptor && !isRoutePathNormalizationSensitive(urlParts.path) && !hasNativeRouteParamSeparators(params)) {
+            await this.handleNativeRouteRequest(descriptor, params, urlParts, request, reply);
             return;
           }
 
@@ -280,20 +315,23 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     });
   }
 
-  private async listenWithRetry(): Promise<void> {
+  private async listenWithRetry(signal: AbortSignal): Promise<void> {
     for (let attempt = 0; ; attempt++) {
+      throwIfListenCancelled(signal);
+
       try {
         await this.app.listen({
           host: this.host,
           port: this.port,
         });
+        throwIfListenCancelled(signal);
         return;
       } catch (error: unknown) {
         if (!isAddressInUseError(error) || attempt >= this.retryLimit) {
           throw error;
         }
 
-        await delay(this.retryDelayMs);
+        await delay(this.retryDelayMs, signal);
       }
     }
   }
@@ -380,6 +418,8 @@ function createNativeFastFrameworkRequest(
   if (Number.isFinite(contentLength) && contentLength > maxBodySize) {
     throw new PayloadTooLargeException('Request body exceeds the size limit.');
   }
+
+  assertBodyWithinMaxBodySize(request.body, maxBodySize);
 
   const frameworkRequest = createDeferredFrameworkRequestShell({
     cookieHeader: cloneHeaderValue(request.headers.cookie),
@@ -506,6 +546,7 @@ interface FastifyNativeRouteDefinition {
   descriptor: HandlerDescriptor;
   method: FastifyNativeRouteMethod;
   path: string;
+  routeKey: string;
 }
 
 interface FastifyNativeRouteUrlParts {
@@ -537,7 +578,7 @@ function createFastifyNativeRoutes(descriptors: readonly HandlerDescriptor[]): F
 
   return [...candidates.values()]
     .filter((candidate) => shapePaths.get(candidate.shapeKey)?.size === 1)
-    .map(({ descriptor, method, path }) => ({ descriptor, method, path }));
+    .map(({ descriptor, method, path, routeKey }) => ({ descriptor, method, path, routeKey }));
 }
 
 function isFastifyNativeRouteDescriptor(descriptor: HandlerDescriptor): descriptor is HandlerDescriptor & {
@@ -565,6 +606,7 @@ function registerFastifyNativeRouteCandidate(
       descriptor,
       method,
       path,
+      routeKey,
       shapeKey,
     });
   }
@@ -860,6 +902,7 @@ function createDeferredFrameworkRequest(
       const rawBodyValue = (request as FastifyRequest & { rawBody?: Buffer }).rawBody;
 
       if (rawBodyValue !== undefined) {
+        assertBodyWithinMaxBodySize(rawBodyValue, maxBodySize);
         frameworkRequest.rawBody = rawBodyValue;
       }
     }
@@ -880,6 +923,7 @@ function createDeferredFrameworkRequest(
   }) as FastifyFrameworkRequest;
 
   if (!needsDeferredBodyMaterialization) {
+    assertBodyWithinMaxBodySize(request.body, maxBodySize);
     frameworkRequest.body = request.body;
   }
 
@@ -928,6 +972,32 @@ function hasNativeRouteParamSeparators(params: Readonly<Record<string, string>>)
   }
 
   return false;
+}
+
+function assertBodyWithinMaxBodySize(body: unknown, maxBodySize: number): void {
+  if (resolveFastifyBodySize(body) > maxBodySize) {
+    throw new PayloadTooLargeException('Request body exceeds the size limit.');
+  }
+}
+
+function resolveFastifyBodySize(body: unknown): number {
+  if (body === undefined || body === null) {
+    return 0;
+  }
+
+  if (typeof body === 'string') {
+    return Buffer.byteLength(body, 'utf8');
+  }
+
+  if (Buffer.isBuffer(body)) {
+    return body.byteLength;
+  }
+
+  if (body instanceof Uint8Array) {
+    return body.byteLength;
+  }
+
+  return 1;
 }
 
 function collectVersionSensitiveRouteKeys(descriptors: readonly HandlerDescriptor[]): Set<string> {
@@ -1117,7 +1187,7 @@ function createFastifyApp(
 ): ReturnType<typeof fastify> {
   if (httpsOptions) {
     return fastify({
-      bodyLimit: maxBodySize,
+      bodyLimit: resolveFastifyBodyLimit(maxBodySize),
       exposeHeadRoutes: false,
       https: httpsOptions,
       logger: false,
@@ -1129,7 +1199,7 @@ function createFastifyApp(
   }
 
   return fastify({
-    bodyLimit: maxBodySize,
+    bodyLimit: resolveFastifyBodyLimit(maxBodySize),
     exposeHeadRoutes: false,
     logger: false,
     routerOptions: {
@@ -1137,6 +1207,10 @@ function createFastifyApp(
       ignoreTrailingSlash: true,
     },
   });
+}
+
+function resolveFastifyBodyLimit(maxBodySize: number): number {
+  return Math.max(maxBodySize, 1);
 }
 
 function captureRawBodyPreParsingHook(
@@ -1271,9 +1345,51 @@ function isAddressInUseError(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === 'EADDRINUSE';
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
+class FastifyListenCancelledError extends Error {
+  constructor() {
+    super('Fastify adapter startup was cancelled during shutdown.');
+  }
+}
+
+function throwIfListenCancelled(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw new FastifyListenCancelledError();
+  }
+}
+
+function isFastifyListenCancelledError(error: unknown): boolean {
+  return error instanceof FastifyListenCancelledError;
+}
+
+async function ignoreCancelledListen(listenPromise: Promise<void>): Promise<void> {
+  try {
+    await listenPromise;
+  } catch (error: unknown) {
+    if (isFastifyListenCancelledError(error)) {
+      return;
+    }
+
+    throw error;
+  }
+}
+
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new FastifyListenCancelledError());
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(new FastifyListenCancelledError());
+    };
+
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
 

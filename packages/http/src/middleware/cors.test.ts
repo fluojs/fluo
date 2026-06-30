@@ -3,11 +3,15 @@ import { describe, expect, it } from 'vitest';
 import type { FrameworkRequest, FrameworkResponse } from '../types.js';
 import { createCorsMiddleware } from './cors.js';
 
-function createRequest(method: FrameworkRequest['method'], origin?: string): FrameworkRequest {
+function createRequest(
+  method: FrameworkRequest['method'],
+  origin?: string,
+  headers: FrameworkRequest['headers'] = {},
+): FrameworkRequest {
   return {
     body: undefined,
     cookies: {},
-    headers: origin ? { origin } : {},
+    headers: origin ? { ...headers, origin } : headers,
     method,
     params: {},
     path: '/users',
@@ -79,7 +83,9 @@ describe('createCorsMiddleware', () => {
 
     await middleware.handle(
       {
-        request: createRequest('OPTIONS', 'https://app.example.com'),
+        request: createRequest('OPTIONS', 'https://app.example.com', {
+          'access-control-request-method': 'GET',
+        }),
         requestContext: {} as never,
         response,
       },
@@ -91,6 +97,29 @@ describe('createCorsMiddleware', () => {
     expect(reachedNext).toBe(false);
     expect(response.statusCode).toBe(204);
     expect(response.headers['Access-Control-Allow-Origin']).toBe('*');
+  });
+
+  it('lets non-preflight OPTIONS requests continue to explicit route handlers', async () => {
+    const middleware = createCorsMiddleware({
+      allowOrigin: 'https://app.example.com',
+    });
+    const response = createResponse();
+    let reachedNext = false;
+
+    await middleware.handle(
+      {
+        request: createRequest('OPTIONS', 'https://app.example.com'),
+        requestContext: {} as never,
+        response,
+      },
+      async () => {
+        reachedNext = true;
+      },
+    );
+
+    expect(reachedNext).toBe(true);
+    expect(response.committed).toBe(false);
+    expect(response.headers['Access-Control-Allow-Origin']).toBe('https://app.example.com');
   });
 
   it('throws at config time when allowCredentials is true and allowOrigin is "*"', () => {

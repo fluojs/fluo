@@ -93,7 +93,12 @@ export function createCorsMiddleware(options: CorsOptions = {}): Middleware {
         context.response.setHeader('Vary', varyValues.join(', '));
       }
 
-      if (context.request.method === 'OPTIONS') {
+      const requestedPreflightMethod = context.request.headers['access-control-request-method'];
+      const hasPreflightMethod = Array.isArray(requestedPreflightMethod)
+        ? requestedPreflightMethod.length > 0
+        : requestedPreflightMethod !== undefined;
+
+      if (context.request.method === 'OPTIONS' && hasPreflightMethod) {
         context.response.setStatus(204);
         await context.response.send(undefined);
         return;

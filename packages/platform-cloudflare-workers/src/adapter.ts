@@ -10,7 +10,6 @@ import {
 import type {
   Application,
   ModuleType,
-  UploadedFile,
 } from '@fluojs/runtime';
 import {
   createWebRequestResponseFactory,
@@ -23,8 +22,6 @@ import type { RequestResponseFactory } from '@fluojs/runtime/internal/request-re
 declare module '@fluojs/http' {
   interface FrameworkRequest {
     cloudflare?: CloudflareWorkerRequestContext;
-    files?: UploadedFile[];
-    rawBody?: Uint8Array;
   }
 }
 

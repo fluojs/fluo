@@ -1193,7 +1193,10 @@ describe('@fluojs/platform-bun', () => {
       });
 
       const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4325/cors', {
-        headers: { origin: 'https://client.test' },
+        headers: {
+          'access-control-request-method': 'GET',
+          origin: 'https://client.test',
+        },
         method: 'OPTIONS',
       }));
 

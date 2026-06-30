@@ -1,12 +1,5 @@
 import { Controller, Get, Post, SseResponse, type RequestContext } from '@fluojs/http';
-import { defineModule, type ModuleType, type UploadedFile } from '@fluojs/runtime';
-
-declare module '@fluojs/http' {
-  interface FrameworkRequest {
-    files?: UploadedFile[];
-    rawBody?: Uint8Array;
-  }
-}
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 type WebRuntimePortabilityAppLike = {
   close(): Promise<void>;

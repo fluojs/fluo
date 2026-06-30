@@ -23,13 +23,6 @@ import {
   type RequestResponseFactory,
 } from './adapters/request-response-factory.js';
 
-declare module '@fluojs/http' {
-  interface FrameworkRequest {
-    files?: UploadedFile[];
-    rawBody?: Uint8Array;
-  }
-}
-
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
