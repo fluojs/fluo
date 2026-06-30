@@ -36,7 +36,7 @@ This distinction matters even in early projects. Login routes can receive repeat
 In modern cloud environments, many services are billed by request count or consumed resources. An unthrottled API is like a blank check that lets an attacker, or a bug, drain a company's bank account. By applying strict limits, you create a predictable cost structure for your infrastructure. This is especially important when an API call triggers expensive downstream work, such as third-party AI model inference, complex cryptographic signing, or intensive data processing.
 
 ## 16.2 Introduction to @fluojs/throttler
-Fluo provides the `@fluojs/throttler` package, which integrates with the `fluo` request lifecycle. The package uses an asynchronous design to provide the protection you need while keeping request overhead low. Because it is designed to work across different runtimes, rate limiting logic stays portable like the rest of your `fluo` application code.
+Fluo provides the `@fluojs/throttler` package, which integrates with the `fluo` request lifecycle. The package uses an asynchronous design to provide the protection you need while keeping request overhead low. Model keys, limits, stores, and guard placement as application-level policy so that your rate limiting design stays portable when you adapt the rest of your `fluo` code. That policy portability does not mean the root package can be imported on every runtime today: the published root `@fluojs/throttler` package currently targets Node.js 20+.
 
 `fluo` provides the `@fluojs/throttler` package for decorator-based rate limiting. This lets you place limiting rules near the routes that need them without changing your application structure.
 
