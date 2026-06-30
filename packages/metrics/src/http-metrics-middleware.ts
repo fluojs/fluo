@@ -17,8 +17,15 @@ type MetricHistogramLike = {
   observe(labels: Record<string, string>, value: number): void;
 };
 
+type HttpMetricsCollectorConfiguration = {
+  pathLabelMode: HttpMetricsPathLabelMode;
+  pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
+  unknownPathLabel: string;
+};
+
 const FRAMEWORK_HTTP_COUNTERS = new WeakSet<Counter<string>>();
 const FRAMEWORK_HTTP_HISTOGRAMS = new WeakSet<Histogram<string>>();
+const FRAMEWORK_HTTP_COLLECTOR_CONFIGURATION = new WeakMap<Counter<string> | Histogram<string>, HttpMetricsCollectorConfiguration>();
 
 /** Strategy used to label request paths in emitted HTTP metrics. */
 export type HttpMetricsPathLabelMode = 'raw' | 'template';
@@ -74,30 +81,26 @@ export class HttpMetricsMiddleware implements Middleware {
   private readonly unknownPathLabel: string;
 
   constructor(registry: Registry, options: HttpMetricsMiddlewareOptions = {}) {
-    if (options.pathLabelMode === 'raw' && options.allowUnsafeRawPathLabelMode !== true) {
-      throw new Error(
-        'HttpMetricsMiddleware pathLabelMode "raw" is disabled by default. Pass allowUnsafeRawPathLabelMode: true only when you have bounded path cardinality.',
-      );
-    }
+    const collectorConfiguration = resolveHttpMetricsCollectorConfiguration(options);
 
-    this.pathLabelMode = options.pathLabelMode ?? 'template';
-    this.pathLabelNormalizer = options.pathLabelNormalizer;
-    this.unknownPathLabel = options.unknownPathLabel ?? 'UNKNOWN';
+    this.pathLabelMode = collectorConfiguration.pathLabelMode;
+    this.pathLabelNormalizer = collectorConfiguration.pathLabelNormalizer;
+    this.unknownPathLabel = collectorConfiguration.unknownPathLabel;
     this.requestsTotal = getOrCreateHttpCounter(registry, {
       help: 'Total number of HTTP requests',
       labelNames: ['method', 'path', 'status'],
       name: 'http_requests_total',
-    });
+    }, collectorConfiguration);
     this.errorsTotal = getOrCreateHttpCounter(registry, {
       help: 'Total number of HTTP error responses (4xx/5xx)',
       labelNames: ['method', 'path', 'status'],
       name: 'http_errors_total',
-    });
+    }, collectorConfiguration);
     this.requestDuration = getOrCreateHttpHistogram(registry, {
       help: 'HTTP request duration in seconds',
       labelNames: ['method', 'path', 'status'],
       name: 'http_request_duration_seconds',
-    });
+    }, collectorConfiguration);
   }
 
   private resolvePathLabel(request: FrameworkRequest): string {
@@ -180,6 +183,7 @@ function getOrCreateHttpCounter(
     labelNames: readonly string[];
     name: string;
   },
+  collectorConfiguration: HttpMetricsCollectorConfiguration,
 ): Counter<string> {
   const existing = registry.getSingleMetric(config.name);
 
@@ -191,6 +195,7 @@ function getOrCreateHttpCounter(
     }
 
     assertHttpMetricLabelSchema(existing, config);
+    assertHttpMetricConfiguration(existing, config.name, collectorConfiguration);
     return existing;
   }
 
@@ -200,6 +205,7 @@ function getOrCreateHttpCounter(
     name: config.name,
   });
   FRAMEWORK_HTTP_COUNTERS.add(counter);
+  FRAMEWORK_HTTP_COLLECTOR_CONFIGURATION.set(counter, collectorConfiguration);
   return counter;
 }
 
@@ -210,6 +216,7 @@ function getOrCreateHttpHistogram(
     labelNames: readonly string[];
     name: string;
   },
+  collectorConfiguration: HttpMetricsCollectorConfiguration,
 ): Histogram<string> {
   const existing = registry.getSingleMetric(config.name);
 
@@ -221,6 +228,7 @@ function getOrCreateHttpHistogram(
     }
 
     assertHttpMetricLabelSchema(existing, config);
+    assertHttpMetricConfiguration(existing, config.name, collectorConfiguration);
     return existing;
   }
 
@@ -230,6 +238,7 @@ function getOrCreateHttpHistogram(
     name: config.name,
   });
   FRAMEWORK_HTTP_HISTOGRAMS.add(histogram);
+  FRAMEWORK_HTTP_COLLECTOR_CONFIGURATION.set(histogram, collectorConfiguration);
   return histogram;
 }
 
@@ -248,6 +257,55 @@ function assertHttpMetricLabelSchema(
       `Metric name "${config.name}" is already registered with labels [${registeredLabels}]. Built-in HTTP metrics require labels [${expectedLabels}].`,
     );
   }
+}
+
+function resolveHttpMetricsCollectorConfiguration(options: HttpMetricsMiddlewareOptions): HttpMetricsCollectorConfiguration {
+  if (options.pathLabelMode === 'raw' && options.allowUnsafeRawPathLabelMode !== true) {
+    throw new Error(
+      'HttpMetricsMiddleware pathLabelMode "raw" is disabled by default. Pass allowUnsafeRawPathLabelMode: true only when you have bounded path cardinality.',
+    );
+  }
+
+  return {
+    pathLabelMode: options.pathLabelMode ?? 'template',
+    pathLabelNormalizer: options.pathLabelNormalizer,
+    unknownPathLabel: options.unknownPathLabel ?? 'UNKNOWN',
+  };
+}
+
+function assertHttpMetricConfiguration(
+  metric: Counter<string> | Histogram<string>,
+  metricName: string,
+  expected: HttpMetricsCollectorConfiguration,
+): void {
+  const registered = FRAMEWORK_HTTP_COLLECTOR_CONFIGURATION.get(metric);
+
+  if (!registered) {
+    throw new Error(
+      `Metric name "${metricName}" is already registered as a framework-owned HTTP collector without path-label configuration metadata. Built-in HTTP metrics require matching path-label configuration before reuse.`,
+    );
+  }
+
+  if (hasSameHttpMetricConfiguration(registered, expected)) {
+    return;
+  }
+
+  throw new Error(
+    `Metric name "${metricName}" is already registered with framework HTTP path-label configuration ${describeHttpMetricConfiguration(registered)}. Built-in HTTP metrics require matching path-label configuration before reuse; received ${describeHttpMetricConfiguration(expected)}.`,
+  );
+}
+
+function hasSameHttpMetricConfiguration(
+  left: HttpMetricsCollectorConfiguration,
+  right: HttpMetricsCollectorConfiguration,
+): boolean {
+  return left.pathLabelMode === right.pathLabelMode
+    && left.pathLabelNormalizer === right.pathLabelNormalizer
+    && left.unknownPathLabel === right.unknownPathLabel;
+}
+
+function describeHttpMetricConfiguration(configuration: HttpMetricsCollectorConfiguration): string {
+  return `pathLabelMode="${configuration.pathLabelMode}", pathLabelNormalizer=${configuration.pathLabelNormalizer ? 'custom' : 'none'}, unknownPathLabel="${configuration.unknownPathLabel}"`;
 }
 
 function normalizePathToTemplate(path: string, params: Readonly<Record<string, string>>): string {

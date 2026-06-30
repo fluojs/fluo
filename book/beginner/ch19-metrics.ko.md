@@ -90,7 +90,7 @@ export class AppModule {}
 중요한 고려 사항 중 하나는 Prometheus가 얼마나 자주 애플리케이션을 스크랩해야 하는가입니다. 전형적인 간격은 15초 또는 30초입니다. 간격이 짧을수록 더 고해상도의 데이터를 얻을 수 있지만 서버 부하가 늘어납니다. 간격이 길면 가볍지만 짧은 트래픽 폭주(micro-bursts)를 놓칠 수 있습니다. Fluo의 메트릭은 "스레드 안전"하고 "비차단(Non-Blocking)" 방식으로 설계되어 있으므로, 운영자는 정확도와 비용 사이의 균형을 기준으로 간격을 정하면 됩니다.
 
 ### 19.3.3 Choosing a Registry Model
-기본 모델은 격리된 Registry ownership입니다. 하나의 `MetricsModule.forRoot()` 인스턴스가 자신이 소유한 collector를 등록하고 스크레이프합니다. framework metric과 application metric을 하나의 scrape surface에서 공유해야 한다면 직접 `Registry`를 만들고 제한된 custom metric을 등록한 뒤 `MetricsModule.forRoot({ registry })`에 전달하세요. 내장 HTTP collector와 플랫폼 텔레메트리 Gauge는 의도적으로 공유된 모듈 인스턴스 사이에서도 framework-owned이고 예상 label schema를 가진 경우에만 재사용되며, 애플리케이션이 직접 정의한 중복 메트릭 이름은 계속 빠르게 실패합니다.
+기본 모델은 격리된 Registry ownership입니다. 하나의 `MetricsModule.forRoot()` 인스턴스가 자신이 소유한 collector를 등록하고 스크레이프합니다. framework metric과 application metric을 하나의 scrape surface에서 공유해야 한다면 직접 `Registry`를 만들고 제한된 custom metric을 등록한 뒤 `MetricsModule.forRoot({ registry })`에 전달하세요. 내장 HTTP collector는 의도적으로 공유된 모듈 인스턴스 사이에서도 framework-owned이고 예상 label schema 및 같은 path-label configuration을 가진 경우에만 재사용됩니다. 플랫폼 텔레메트리 Gauge는 framework-owned이고 예상 label schema를 가진 경우에 재사용되며, Registry-scoped telemetry state는 이전 module instance가 남긴 stale component readiness/health series를 제거합니다. 애플리케이션이 직접 정의한 중복 메트릭 이름은 계속 빠르게 실패합니다.
 
 ### 19.3.4 Public Responsibility Boundaries
 `MetricsModule.forRoot(...)`는 module option wiring을 소유합니다. 여기에는 scrape `path`, `provider`, `defaultMetrics`, optional HTTP collector, platform telemetry label, endpoint-scoped `endpointMiddleware`, module-level `middleware`, registry 선택이 포함됩니다. `provider`는 현재 `'prometheus'`만 지원하며, `path: false`는 scrape endpoint를 끄고 endpoint-scoped middleware도 건너뜁니다.

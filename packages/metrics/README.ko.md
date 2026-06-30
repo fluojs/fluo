@@ -158,7 +158,7 @@ new Counter({
 class AppModule {}
 ```
 
-여러 `MetricsModule` 인스턴스가 같은 Registry를 의도적으로 공유하는 경우, 내장 HTTP 메트릭은 기존 `http_requests_total`, `http_errors_total`, `http_request_duration_seconds` collector를 재사용합니다. 내장 플랫폼 텔레메트리 Gauge도 같은 ownership 규칙을 따릅니다. 모듈이 만든 `fluo_component_ready`, `fluo_component_health`, `fluo_metrics_registry_mode` Gauge는 framework ownership과 label schema가 일치할 때만 재사용합니다. 애플리케이션이 직접 등록한 중복 메트릭 이름은 Prometheus Registry 규칙대로 계속 빠르게 실패합니다.
+여러 `MetricsModule` 인스턴스가 같은 Registry를 의도적으로 공유하는 경우, 내장 HTTP 메트릭은 framework ownership, label schema, effective path-label configuration이 모두 일치할 때만 기존 `http_requests_total`, `http_errors_total`, `http_request_duration_seconds` collector를 재사용합니다. Path-label compatibility 검사는 `pathLabelMode`, 정확히 같은 `pathLabelNormalizer` 함수 참조, `unknownPathLabel` fallback 의미론을 포함하므로 서로 다른 HTTP series policy를 하나의 collector set에 섞는 module instance는 빠르게 실패합니다. 내장 플랫폼 텔레메트리 Gauge도 같은 ownership 규칙을 따릅니다. 모듈이 만든 `fluo_component_ready`, `fluo_component_health`, `fluo_metrics_registry_mode` Gauge는 framework ownership과 label schema가 일치할 때만 재사용합니다. 플랫폼 텔레메트리 상태는 재사용된 Registry별로 추적되므로, 이후 스크레이프는 이전 module instance가 남긴 stale component readiness/health series를 제거한 뒤 메트릭을 반환합니다. 애플리케이션이 직접 등록한 중복 메트릭 이름은 Prometheus Registry 규칙대로 계속 빠르게 실패합니다.
 
 ### 중복 메트릭 이름은 계속 빠르게 실패합니다
 
@@ -188,7 +188,7 @@ MetricsModule.forRoot({
 플랫폼 텔레메트리는 매 `/metrics` 스크레이프마다 `PLATFORM_SHELL`을 resolve하여 `fluo_component_ready`와 `fluo_component_health`를 갱신합니다.
 
 - `PLATFORM_SHELL` 등록 자체가 빠진 경우에는 스크레이프가 계속 성공하고 플랫폼 텔레메트리 시리즈만 생략됩니다.
-- 직전 성공 스크레이프에서 플랫폼 텔레메트리를 노출한 뒤 `PLATFORM_SHELL`을 사용할 수 없게 되면, stale `fluo_component_ready` 및 `fluo_component_health` 시리즈를 제거한 뒤 메트릭을 반환합니다.
+- 직전 성공 스크레이프에서 플랫폼 텔레메트리를 노출한 뒤 `PLATFORM_SHELL`을 사용할 수 없게 되거나 이후 module instance가 재사용된 Registry를 다른 플랫폼 snapshot으로 갱신하면, stale `fluo_component_ready` 및 `fluo_component_health` 시리즈를 제거한 뒤 메트릭을 반환합니다.
 - 그 외의 `PLATFORM_SHELL` resolve 실패는 조용히 삼키지 않고 스크레이프 실패로 그대로 드러납니다.
 
 ### 기본 프로세스/Node 메트릭 비활성화
@@ -220,10 +220,10 @@ MetricsModule.forRoot({
 - `defaultMetrics`의 기본값은 `true`이며, `defaultMetrics: false`로 해당 Registry의 Prometheus 기본 프로세스/Node.js collector를 끌 수 있습니다.
 - `endpointMiddleware`는 class-based route-scoped middleware를 스크레이프 엔드포인트에만 바인딩합니다. HTTP 계측이 활성화된 경우 endpoint middleware 실패는 내장 HTTP collector에 집계됩니다.
 - HTTP 메트릭은 `http: true` 또는 `http` 옵션 객체를 전달한 경우에만 설치되며, 설치된 뒤에는 기본적으로 템플릿 기반 경로 라벨 정규화를 사용합니다.
-- 내장 HTTP collector와 플랫폼 텔레메트리 Gauge는 같은 Registry를 공유하는 모듈 인스턴스 사이에서 framework-owned이고 예상 label schema를 가진 경우에만 재사용되며, 커스텀 애플리케이션 메트릭 이름 충돌은 Prometheus의 중복 이름 실패 동작을 유지합니다.
+- 내장 HTTP collector는 같은 Registry를 공유하는 모듈 인스턴스 사이에서 framework-owned이고 예상 label schema 및 일치하는 path-label configuration을 가진 경우에만 재사용됩니다. 플랫폼 텔레메트리 Gauge는 framework-owned이고 예상 label schema를 가진 경우에만 재사용되며, 커스텀 애플리케이션 메트릭 이름 충돌은 Prometheus의 중복 이름 실패 동작을 유지합니다.
 - raw path 라벨은 `allowUnsafeRawPathLabelMode: true`를 명시한 bounded internal route에서만 사용해야 합니다.
 - 플랫폼 텔레메트리는 `PLATFORM_SHELL`이 실제로 누락된 경우에만 생략되며, 그 외 resolve 실패는 스크레이프를 실패시킵니다.
-- 직전 성공 스크레이프에서 노출된 플랫폼 텔레메트리 시리즈는 `PLATFORM_SHELL`을 사용할 수 없게 된 스크레이프에서 제거됩니다.
+- 직전 성공 스크레이프에서 노출된 플랫폼 텔레메트리 시리즈는 `PLATFORM_SHELL`을 사용할 수 없게 된 스크레이프 또는 이후 module instance가 재사용된 Registry를 다른 플랫폼 snapshot으로 갱신한 스크레이프에서 제거됩니다.
 
 ## 관련 패키지
 

@@ -132,6 +132,41 @@ describe('HttpMetricsMiddleware', () => {
     expect(metricsText).toContain('http_requests_total{method="GET",path="/users/123/orders/88",status="200"} 1');
   });
 
+  it('rejects shared framework HTTP collector reuse with a different path label mode', () => {
+    const registry = new Registry();
+
+    new HttpMetricsMiddleware(registry);
+
+    expect(() => {
+      new HttpMetricsMiddleware(registry, {
+        allowUnsafeRawPathLabelMode: true,
+        pathLabelMode: 'raw',
+      });
+    }).toThrow(
+      'Metric name "http_requests_total" is already registered with framework HTTP path-label configuration pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="UNKNOWN". Built-in HTTP metrics require matching path-label configuration before reuse; received pathLabelMode="raw", pathLabelNormalizer=none, unknownPathLabel="UNKNOWN".',
+    );
+  });
+
+  it('requires the same custom path normalizer reference when reusing framework HTTP collectors', () => {
+    const registry = new Registry();
+    const normalizeUsers = ({ path }: { path: string }) => (path.startsWith('/users/') ? '/users/:id' : '/other');
+
+    new HttpMetricsMiddleware(registry, {
+      pathLabelNormalizer: normalizeUsers,
+    });
+
+    expect(() => {
+      new HttpMetricsMiddleware(registry, {
+        pathLabelNormalizer: normalizeUsers,
+      });
+    }).not.toThrow();
+    expect(() => {
+      new HttpMetricsMiddleware(registry, {
+        pathLabelNormalizer: ({ path }) => (path.startsWith('/users/') ? '/users/:id' : '/other'),
+      });
+    }).toThrow('Built-in HTTP metrics require matching path-label configuration before reuse');
+  });
+
   it('records non-throwing 4xx and 5xx responses as request errors', async () => {
     const registry = new Registry();
     const middleware = new HttpMetricsMiddleware(registry);

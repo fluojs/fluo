@@ -15,7 +15,9 @@
 - `defaultMetrics` 기본값은 `true`이므로 `defaultMetrics: false`를 주지 않으면 Prometheus 기본 process 및 Node.js collector가 레지스트리당 한 번 등록된다.
 - 스크레이프 엔드포인트의 route-scoped 보호는 `endpointMiddleware`로 지원되며, class-based middleware를 설정된 메트릭 경로에만 바인딩하고 `path: false`로 해당 경로가 꺼지면 건너뛴다.
 - Module-level `middleware`는 `endpointMiddleware`와 다르다. Framework HTTP metrics 및 endpoint-scoped middleware 뒤의 module middleware chain에 참여하며, route-scoped 보호 계약이 아니다.
+- Shared-registry 재사용은 내장 collector set을 재사용하기 전에 framework-owned HTTP collector의 label schema와 path-label configuration(`pathLabelMode`, 정확히 같은 `pathLabelNormalizer` 참조, `unknownPathLabel`)이 일치하도록 요구한다.
 - 플랫폼 텔레메트리는 스크레이프마다 `PLATFORM_SHELL`을 resolve하고 snapshot을 읽어 갱신된다. `PLATFORM_SHELL`이 없으면 스크레이프는 성공하지만 플랫폼 텔레메트리 시계열은 빠진다. 토큰이 있는데 해석이 실패하면 스크레이프가 실패한다.
+- 플랫폼 텔레메트리 상태는 재사용된 Registry별로 추적되므로, 이후 module instance의 refresh는 active platform snapshot에 더 이상 없는 stale module-owned component readiness/health series를 제거한다.
 
 ## Health Checks (헬스 체크)
 
