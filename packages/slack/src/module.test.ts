@@ -14,6 +14,8 @@ import type {
   NormalizedSlackMessage,
   Slack,
   SlackFetchLike,
+  SlackTemplateRenderer,
+  SlackTemplateRenderInput,
   SlackTransport,
   SlackTransportFactory,
 } from './types.js';
@@ -418,6 +420,148 @@ describe('SlackModule', () => {
     );
   });
 
+  it('exposes default-global async Slack providers across a real module graph for notifications', async () => {
+    const factoryCalls: string[] = [];
+
+    @Inject(SlackService)
+    class AsyncSlackVisibilityConsumer {
+      constructor(readonly slack: SlackService) {}
+    }
+
+    class AsyncSlackOwnerModule {}
+    defineModule(AsyncSlackOwnerModule, {
+      imports: [
+        SlackModule.forRootAsync({
+          useFactory: async () => {
+            factoryCalls.push('async-default-global');
+
+            return {
+              defaultChannel: '#async-ops',
+              notifications: { channel: 'async-alerts' },
+              transport: createRecordingTransportFactory({ responsePrefix: 'async-graph' }),
+            };
+          },
+        }),
+      ],
+    });
+
+    class AsyncNotificationsOwnerModule {}
+    defineModule(AsyncNotificationsOwnerModule, {
+      imports: [
+        NotificationsModule.forRootAsync({
+          inject: [SLACK_CHANNEL],
+          useFactory: (channel: unknown) => ({
+            channels: [channel as SlackChannel],
+          }),
+        }),
+      ],
+      providers: [AsyncSlackVisibilityConsumer],
+    });
+
+    class AsyncAppModule {}
+    defineModule(AsyncAppModule, {
+      imports: [AsyncSlackOwnerModule, AsyncNotificationsOwnerModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AsyncAppModule });
+
+    try {
+      const consumer = await app.container.resolve(AsyncSlackVisibilityConsumer);
+      const notifications = await app.container.resolve(NotificationsService);
+      const result = await notifications.dispatch({
+        channel: 'async-alerts',
+        payload: { text: 'Async global graph delivery' },
+        recipients: ['#async-release'],
+      });
+
+      expect(consumer.slack).toBeInstanceOf(SlackService);
+      expect(result).toMatchObject({
+        channel: 'async-alerts',
+        deliveryId: 'async-graph-1',
+        queued: false,
+        status: 'delivered',
+      });
+      expect(factoryCalls).toEqual(['async-default-global']);
+      expect(transportState.sent[0]).toMatchObject({
+        channel: '#async-release',
+        text: 'Async global graph delivery',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps global=false async Slack providers local to explicit importers in a real module graph', async () => {
+    @Inject(SlackService)
+    class LocalAsyncSlackConsumer {
+      constructor(readonly slack: SlackService) {}
+    }
+
+    class LocalAsyncSlackFeatureModule {}
+    defineModule(LocalAsyncSlackFeatureModule, {
+      imports: [
+        SlackModule.forRootAsync({
+          global: false,
+          useFactory: async () => ({
+            defaultChannel: '#local-async',
+            transport: createRecordingTransportFactory({ responsePrefix: 'local-async-graph' }),
+          }),
+        }),
+      ],
+      providers: [LocalAsyncSlackConsumer],
+    });
+
+    class LocalAsyncAppModule {}
+    defineModule(LocalAsyncAppModule, {
+      imports: [LocalAsyncSlackFeatureModule],
+    });
+
+    const localApp = await bootstrapApplication({ rootModule: LocalAsyncAppModule });
+
+    try {
+      const consumer = await localApp.container.resolve(LocalAsyncSlackConsumer);
+
+      expect(consumer.slack).toBeInstanceOf(SlackService);
+      await expect(consumer.slack.send({ text: 'Local async graph delivery' })).resolves.toMatchObject({
+        channel: '#local-async',
+      });
+    } finally {
+      await localApp.close();
+    }
+
+    @Inject(SlackService)
+    class HiddenAsyncSlackConsumer {
+      constructor(readonly slack: SlackService) {}
+    }
+
+    class HiddenAsyncSlackOwnerModule {}
+    defineModule(HiddenAsyncSlackOwnerModule, {
+      imports: [
+        SlackModule.forRootAsync({
+          global: false,
+          useFactory: async () => ({
+            defaultChannel: '#hidden-async',
+            transport: createRecordingTransportFactory({ responsePrefix: 'hidden-async-graph' }),
+          }),
+        }),
+      ],
+    });
+
+    class HiddenAsyncConsumerModule {}
+    defineModule(HiddenAsyncConsumerModule, {
+      providers: [HiddenAsyncSlackConsumer],
+    });
+
+    class HiddenAsyncAppModule {}
+    defineModule(HiddenAsyncAppModule, {
+      imports: [HiddenAsyncSlackOwnerModule, HiddenAsyncConsumerModule],
+    });
+
+    await expect(bootstrapApplication({ rootModule: HiddenAsyncAppModule })).rejects.toThrow(
+      /not visible through a global module|SlackService/,
+    );
+  });
+
   it('rejects helper-based registration without an explicit transport contract', () => {
     expect(() =>
       createSlackProviders({
@@ -801,6 +945,116 @@ describe('SlackModule', () => {
       },
       text: 'Payload text wins',
     });
+  });
+
+  it('keeps README template merge precedence exact across payload, rendered, and subject fallbacks', async () => {
+    const container = new Container();
+    const payloadBlocks = [{ type: 'section', text: { text: 'payload block', type: 'mrkdwn' } }];
+    const payloadAttachments = [{ color: '#2eb67d', fallback: 'payload attachment' }];
+    const renderedBlocks = [{ type: 'section', text: { text: 'rendered block', type: 'mrkdwn' } }];
+    const renderedAttachments = [{ color: '#d00000', fallback: 'rendered attachment' }];
+    const renderInputs: SlackTemplateRenderInput[] = [];
+    const renderer: SlackTemplateRenderer = {
+      async render(input) {
+        renderInputs.push(input);
+
+        if (input.template === 'deploy.subject-fallback') {
+          return {};
+        }
+
+        return {
+          attachments: renderedAttachments,
+          blocks: renderedBlocks,
+          text: `Rendered ${input.subject ?? input.template}`,
+        };
+      },
+    };
+    const moduleType = SlackModule.forRoot({
+      renderer,
+      transport: createRecordingTransportFactory({ responsePrefix: 'merge' }),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await initializeSlackService(container);
+
+    await service.sendNotification({
+      channel: 'slack',
+      locale: 'en',
+      metadata: {
+        requestId: 'dispatch-request',
+        source: 'dispatch',
+        subject: 'dispatch-subject-metadata',
+        template: 'dispatch-template-metadata',
+      },
+      payload: {
+        attachments: payloadAttachments,
+        blocks: payloadBlocks,
+        metadata: {
+          owner: 'payload',
+          requestId: 'payload-request',
+          source: 'payload',
+          subject: 'payload-subject-metadata',
+          template: 'payload-template-metadata',
+        },
+        text: 'Payload text wins',
+      },
+      recipients: ['#ops'],
+      subject: 'Payload subject marker wins',
+      template: 'deploy.payload-wins',
+    });
+    await service.sendNotification({
+      channel: 'slack',
+      metadata: { source: 'dispatch' },
+      payload: {
+        metadata: { source: 'payload' },
+      },
+      recipients: ['#ops'],
+      subject: 'Rendered fallback subject',
+      template: 'deploy.rendered-fallback',
+    });
+    await service.sendNotification({
+      channel: 'slack',
+      payload: {},
+      recipients: ['#ops'],
+      subject: 'Subject fallback text',
+      template: 'deploy.subject-fallback',
+    });
+
+    expect(renderInputs).toHaveLength(3);
+    expect(renderInputs[0]).toMatchObject({
+      locale: 'en',
+      metadata: {
+        requestId: 'dispatch-request',
+        source: 'dispatch',
+        subject: 'dispatch-subject-metadata',
+        template: 'dispatch-template-metadata',
+      },
+      subject: 'Payload subject marker wins',
+      template: 'deploy.payload-wins',
+    });
+    expect(transportState.sent[0]?.attachments).toBe(payloadAttachments);
+    expect(transportState.sent[0]?.blocks).toBe(payloadBlocks);
+    expect(transportState.sent[0]?.metadata).toEqual({
+      owner: 'payload',
+      requestId: 'dispatch-request',
+      source: 'dispatch',
+      subject: 'Payload subject marker wins',
+      template: 'deploy.payload-wins',
+    });
+    expect(transportState.sent[0]?.text).toBe('Payload text wins');
+    expect(transportState.sent[1]?.attachments).toBe(renderedAttachments);
+    expect(transportState.sent[1]?.blocks).toBe(renderedBlocks);
+    expect(transportState.sent[1]?.metadata).toEqual({
+      source: 'dispatch',
+      subject: 'Rendered fallback subject',
+      template: 'deploy.rendered-fallback',
+    });
+    expect(transportState.sent[1]?.text).toBe('Rendered Rendered fallback subject');
+    expect(transportState.sent[2]?.metadata).toEqual({
+      subject: 'Subject fallback text',
+      template: 'deploy.subject-fallback',
+    });
+    expect(transportState.sent[2]?.text).toBe('Subject fallback text');
   });
 
   it('creates a webhook-first transport with an explicit fetch-compatible boundary', async () => {
