@@ -24,6 +24,8 @@ function createFakeSession(events: string[]): MongooseSessionLike & { id: string
 }
 
 type TestMongooseOperationOptions = {
+  allowDiskUse?: boolean;
+  ordered?: boolean;
   session?: MongooseSessionLike | null;
   timestamps?: boolean;
 };
@@ -86,12 +88,18 @@ function createFakeConnection(
           events.push(
             `model:${name}:aggregate:session=${opts?.session != null ? 'set' : 'unset'}`,
           );
+          if (opts && 'allowDiskUse' in opts) {
+            events.push(`model:${name}:aggregate:allowDiskUse=${String(opts.allowDiskUse)}`);
+          }
           return [];
         },
         async bulkWrite(_ops: unknown[], opts?: TestMongooseOperationOptions) {
           events.push(
             `model:${name}:bulkWrite:session=${opts?.session != null ? 'set' : 'unset'}`,
           );
+          if (opts && 'ordered' in opts) {
+            events.push(`model:${name}:bulkWrite:ordered=${String(opts.ordered)}`);
+          }
           return { ok: true };
         },
       };
@@ -592,12 +600,14 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       const app = await bootstrapApplication({ rootModule: AppModule });
       const service = await app.container.resolve(UserService);
 
-      await service.findAll();
+      try {
+        await service.findAll();
 
-      expect(events).toContain('model:User:find:session=set');
-      expect(events).not.toContain('model:User:find:projection-session=set');
-
-      await app.close();
+        expect(events).toContain('model:User:find:session=set');
+        expect(events).not.toContain('model:User:find:projection-session=set');
+      } finally {
+        await app.close();
+      }
     });
 
     it('model.find() preserves projection objects that contain a session field', async () => {
@@ -690,12 +700,14 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       const app = await bootstrapApplication({ rootModule: AppModule });
       const service = await app.container.resolve(UserService);
 
-      await service.findOne('user-1');
+      try {
+        await service.findOne('user-1');
 
-      expect(events).toContain('model:User:findOne:session=set');
-      expect(events).not.toContain('model:User:findOne:projection-session=set');
-
-      await app.close();
+        expect(events).toContain('model:User:findOne:session=set');
+        expect(events).not.toContain('model:User:findOne:projection-session=set');
+      } finally {
+        await app.close();
+      }
     });
 
     it('model.findOne() preserves projection objects that contain a session field', async () => {
@@ -788,11 +800,63 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       const app = await bootstrapApplication({ rootModule: AppModule });
       const service = await app.container.resolve(UserService);
 
-      await service.aggregate([{ $match: {} }]);
+      try {
+        await service.aggregate([{ $match: {} }]);
 
-      expect(events).toContain('model:User:aggregate:session=set');
+        expect(events).toContain('model:User:aggregate:session=set');
+      } finally {
+        await app.close();
+      }
+    });
 
-      await app.close();
+    it('model.aggregate() preserves operation options while adding the ambient session', async () => {
+      const mongoosePackage = await import('./index.js');
+      const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(ExportedTransaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async aggregate(pipeline: unknown[]) {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.aggregate(pipeline, { allowDiskUse: true });
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @Transaction()
+        async aggregate(pipeline: unknown[]) {
+          return this.repo.aggregate(pipeline);
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      try {
+        await service.aggregate([{ $match: { active: true } }]);
+
+        expect(events).toContain('model:User:aggregate:session=set');
+        expect(events).toContain('model:User:aggregate:allowDiskUse=true');
+      } finally {
+        await app.close();
+      }
     });
 
     it('model.bulkWrite() receives the ambient session inside @Transaction()', async () => {
@@ -836,11 +900,63 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       const app = await bootstrapApplication({ rootModule: AppModule });
       const service = await app.container.resolve(UserService);
 
-      await service.bulkWrite([{ insertOne: { document: { name: 'Ada' } } }]);
+      try {
+        await service.bulkWrite([{ insertOne: { document: { name: 'Ada' } } }]);
 
-      expect(events).toContain('model:User:bulkWrite:session=set');
+        expect(events).toContain('model:User:bulkWrite:session=set');
+      } finally {
+        await app.close();
+      }
+    });
 
-      await app.close();
+    it('model.bulkWrite() preserves operation options while adding the ambient session', async () => {
+      const mongoosePackage = await import('./index.js');
+      const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(ExportedTransaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async bulkWrite(ops: unknown[]) {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.bulkWrite(ops, { ordered: false });
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @Transaction()
+        async bulkWrite(ops: unknown[]) {
+          return this.repo.bulkWrite(ops);
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      try {
+        await service.bulkWrite([{ insertOne: { document: { name: 'Ada' } } }]);
+
+        expect(events).toContain('model:User:bulkWrite:session=set');
+        expect(events).toContain('model:User:bulkWrite:ordered=false');
+      } finally {
+        await app.close();
+      }
     });
 
     // v1: doc.save() auto-session is NOT in scope
@@ -992,6 +1108,210 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       expect(events).not.toContain('model:User:find:projection-session=set');
 
       await app.close();
+    });
+
+    it('throws when model.aggregate() receives { session: null } as operation options', async () => {
+      const mongoosePackage = await import('./index.js');
+      const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(ExportedTransaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async aggregate() {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.aggregate([{ $match: { active: true } }], { session: null });
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @Transaction()
+        async aggregate() {
+          return this.repo.aggregate();
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      try {
+        await expect(service.aggregate()).rejects.toThrow(
+          'Explicit session: null conflicts with ambient transaction session',
+        );
+        expect(events).not.toContain('model:User:aggregate:session=set');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('throws when model.bulkWrite() receives { session: null } as operation options', async () => {
+      const mongoosePackage = await import('./index.js');
+      const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(ExportedTransaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async bulkWrite() {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.bulkWrite([{ insertOne: { document: { name: 'Ada' } } }], { session: null });
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @Transaction()
+        async bulkWrite() {
+          return this.repo.bulkWrite();
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      try {
+        await expect(service.bulkWrite()).rejects.toThrow(
+          'Explicit session: null conflicts with ambient transaction session',
+        );
+        expect(events).not.toContain('model:User:bulkWrite:session=set');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('throws when model.aggregate() receives a different explicit session inside an active @Transaction() boundary', async () => {
+      const mongoosePackage = await import('./index.js');
+      const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(ExportedTransaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+      const differentSession = createFakeSession([]);
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async aggregate() {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.aggregate([{ $match: { active: true } }], { session: differentSession });
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @Transaction()
+        async aggregate() {
+          return this.repo.aggregate();
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      try {
+        await expect(service.aggregate()).rejects.toThrow(
+          'Explicit session conflicts with ambient transaction session',
+        );
+        expect(events).not.toContain('model:User:aggregate:session=set');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('throws when model.bulkWrite() receives a different explicit session inside an active @Transaction() boundary', async () => {
+      const mongoosePackage = await import('./index.js');
+      const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
+
+      expect(ExportedTransaction).toBeTypeOf('function');
+
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+      const differentSession = createFakeSession([]);
+
+      @Inject(MongooseConnection)
+      class UserRepository {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        async bulkWrite() {
+          const User = this.conn.model('User') as ReturnType<typeof connection.model>;
+          return User.bulkWrite([{ insertOne: { document: { name: 'Ada' } } }], {
+            session: differentSession,
+          });
+        }
+      }
+
+      @Inject(UserRepository)
+      class UserService {
+        constructor(private readonly repo: UserRepository) {}
+
+        @Transaction()
+        async bulkWrite() {
+          return this.repo.bulkWrite();
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserRepository, UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      try {
+        await expect(service.bulkWrite()).rejects.toThrow(
+          'Explicit session conflicts with ambient transaction session',
+        );
+        expect(events).not.toContain('model:User:bulkWrite:session=set');
+      } finally {
+        await app.close();
+      }
     });
 
     it('throws when a different explicit session is passed inside an active @Transaction() boundary', async () => {
@@ -1191,15 +1511,17 @@ describe('@fluojs/mongoose Transaction decorator — named/accessor contract', (
     const app = await bootstrapApplication({ rootModule: AppModule });
     const service = await app.container.resolve(MultiConnectionService);
 
-    const result = await service.loadAnalytics();
+    try {
+      const result = await service.loadAnalytics();
 
-    expect(analyticsEvents).toContain('analytics:transaction:start');
-    expect(analyticsEvents).toContain('analytics:transaction:end');
-    expect(analyticsEvents).toContain('service:loadAnalytics');
-    expect(primaryEvents).not.toContain('connection:startSession');
-    expect(result).toEqual({ ok: true });
-
-    await app.close();
+      expect(analyticsEvents).toContain('analytics:transaction:start');
+      expect(analyticsEvents).toContain('analytics:transaction:end');
+      expect(analyticsEvents).toContain('service:loadAnalytics');
+      expect(primaryEvents).not.toContain('connection:startSession');
+      expect(result).toEqual({ ok: true });
+    } finally {
+      await app.close();
+    }
   });
 
   it('does not confuse two connections when only one accessor is decorated', async () => {
