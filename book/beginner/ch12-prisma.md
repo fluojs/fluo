@@ -50,7 +50,7 @@ One of Prisma's strengths is introspection. If you already have a production dat
 With Prisma, the queries you write are type-safe by default. If you try to select a field that does not exist, or pass a string to a numeric column, the TypeScript compiler catches the error before the code runs. This safety matches the explicitness that `fluo` aims for and reduces the runtime errors often seen in traditional Node.js applications. You work with the database layer through types, not guesswork.
 
 ## 12.2 Setting up the Environment
-Now that the goal is clear, let's prepare the project environment first. We need to install the required packages.
+Now that the goal is clear, let's prepare the project environment first. `@fluojs/prisma` is the Node.js 20+ Prisma integration path because its transaction context depends on host `AsyncLocalStorage`. We need to install the required packages.
 
 ```bash
 pnpm add @fluojs/prisma @prisma/client
