@@ -58,10 +58,42 @@ const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_HEARTBEAT_MS = 15_000;
 const MAX_EVENT_REPLAY = 1_000;
 const MAX_REQUEST_BYTES = 1_048_576;
+const BODY_LIKE_PAYLOAD_FIELDS = new Set(['body', 'headers', 'payload', 'rawBody', 'requestBody', 'responseBody']);
 const require = createRequire(import.meta.url);
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null;
+}
+
+function findBodyLikePayloadField(value: unknown, path = 'payload'): string | undefined {
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      const match = findBodyLikePayloadField(item, `${path}[${String(index)}]`);
+      if (match) {
+        return match;
+      }
+    }
+
+    return undefined;
+  }
+
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  for (const [key, nestedValue] of Object.entries(value)) {
+    const nestedPath = `${path}.${key}`;
+    if (BODY_LIKE_PAYLOAD_FIELDS.has(key)) {
+      return nestedPath;
+    }
+
+    const match = findBodyLikePayloadField(nestedValue, nestedPath);
+    if (match) {
+      return match;
+    }
+  }
+
+  return undefined;
 }
 
 function isRestartEpochBoundary(incoming: { payload?: unknown; type?: unknown }): boolean {
@@ -415,6 +447,12 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
         const parsed = body ? JSON.parse(body) as unknown : {};
         if (!isRecord(parsed)) {
           writeJson(response, 400, { error: 'Studio runtime event must be a JSON object.' });
+          return;
+        }
+
+        const bodyLikeField = findBodyLikePayloadField(parsed.payload);
+        if (bodyLikeField) {
+          writeJson(response, 400, { error: `Studio runtime event payload must not include body-like field ${bodyLikeField}.` });
           return;
         }
 
