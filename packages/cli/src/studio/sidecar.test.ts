@@ -45,6 +45,14 @@ describe('Studio sidecar', () => {
     expect(unauthorizedEvents.status).toBe(401);
     await expect(unauthorizedEvents.json()).resolves.toMatchObject({ error: 'Unauthorized Studio sidecar request.' });
 
+    const unauthorizedRuntimeEvents = await fetch(`${sidecar.url}/api/runtime/events`, {
+      body: JSON.stringify({ payload: { ok: true }, source: { appId: 'test-app', runtime: 'node' }, type: 'snapshot', version: 1 }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+    expect(unauthorizedRuntimeEvents.status).toBe(401);
+    await expect(unauthorizedRuntimeEvents.json()).resolves.toMatchObject({ error: 'Unauthorized Studio sidecar request.' });
+
     const accepted = await fetch(`${sidecar.url}/api/runtime/events`, {
       body: JSON.stringify({ payload: { ok: true }, source: { appId: 'test-app', runtime: 'node' }, type: 'snapshot', version: 1 }),
       headers: {
@@ -83,6 +91,54 @@ describe('Studio sidecar', () => {
     expect(events.headers.get('access-control-allow-origin')).toBeNull();
     expect(events.headers.get('access-control-allow-credentials')).toBeNull();
     await events.body?.cancel();
+  });
+
+  it('rejects body-like runtime event payload fields before state or SSE replay can retain them', async () => {
+    const sidecar = await startTestSidecar();
+    const safe = await fetch(`${sidecar.url}/api/runtime/events`, {
+      body: JSON.stringify({ payload: { graph: { nodes: [] } }, source: { appId: 'test-app', runtime: 'node' }, type: 'snapshot', version: 1 }),
+      headers: {
+        authorization: `Bearer ${sidecar.token}`,
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    });
+    expect(safe.status).toBe(202);
+
+    const rejected = await fetch(`${sidecar.url}/api/runtime/events`, {
+      body: JSON.stringify({
+        payload: {
+          durationMs: 12,
+          requestId: 'request-1',
+          requestBody: 'super-secret-body',
+        },
+        source: { appId: 'test-app', runtime: 'node' },
+        type: 'request',
+        version: 1,
+      }),
+      headers: {
+        authorization: `Bearer ${sidecar.token}`,
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    });
+    expect(rejected.status).toBe(400);
+    await expect(rejected.json()).resolves.toMatchObject({ error: 'Studio runtime event payload must not include body-like field payload.requestBody.' });
+
+    const state = await fetch(`${sidecar.url}/api/state?token=${encodeURIComponent(sidecar.token)}`);
+    const stateText = JSON.stringify(await state.json());
+    expect(stateText).not.toContain('super-secret-body');
+    expect(stateText).not.toContain('requestBody');
+
+    const events = await fetch(`${sidecar.url}/api/events?token=${encodeURIComponent(sidecar.token)}`);
+    expect(events.status).toBe(200);
+    const reader = events.body?.getReader();
+    expect(reader).toBeDefined();
+    const chunk = await reader!.read();
+    await reader!.cancel();
+    const text = new TextDecoder().decode(chunk.value);
+    expect(text).not.toContain('super-secret-body');
+    expect(text).not.toContain('requestBody');
   });
 
   it('replays accepted events over SSE with epoch and sequence ids', async () => {
