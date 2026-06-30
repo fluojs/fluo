@@ -1,6 +1,8 @@
-import { type Constructor, Inject, type Token } from '@fluojs/core';
+import { type Constructor, Inject, Module, type Token } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
+import { FluoFactory } from '@fluojs/runtime';
+import { createTestingModule } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
 import { NotificationChannelNotFoundError, NotificationQueueNotConfiguredError } from './errors.js';
@@ -65,6 +67,42 @@ class RecordingQueueAdapter implements NotificationsQueueAdapter {
   }
 }
 
+class LifecycleAwareQueueAdapter extends RecordingQueueAdapter {
+  constructor(private readonly lifecycleCalls: string[]) {
+    super();
+  }
+
+  async close(): Promise<void> {
+    this.lifecycleCalls.push('queue.close');
+  }
+
+  async drain(): Promise<void> {
+    this.lifecycleCalls.push('queue.drain');
+  }
+
+  onDestroy(): void {
+    this.lifecycleCalls.push('queue.onDestroy');
+  }
+}
+
+class LifecycleAwarePublisher extends RecordingPublisher {
+  constructor(private readonly lifecycleCalls: string[]) {
+    super();
+  }
+
+  async close(): Promise<void> {
+    this.lifecycleCalls.push('publisher.close');
+  }
+
+  async drain(): Promise<void> {
+    this.lifecycleCalls.push('publisher.drain');
+  }
+
+  onDestroy(): void {
+    this.lifecycleCalls.push('publisher.onDestroy');
+  }
+}
+
 class MalformedEnqueueManyQueueAdapter implements NotificationsQueueAdapter {
   readonly jobs: NotificationsQueueJob[] = [];
 
@@ -109,6 +147,145 @@ class FailingEnqueueOnlyQueueAdapter implements NotificationsQueueAdapter {
 }
 
 describe('NotificationsModule', () => {
+  it('makes default global providers visible through a real testing module graph', async () => {
+    const deliveries: string[] = [];
+
+    @Inject(NotificationsService)
+    class RootNotificationsProbe {
+      constructor(private readonly notifications: NotificationsService) {}
+
+      send(): Promise<NotificationDispatchResult> {
+        return this.notifications.dispatch({ channel: 'email', payload: { template: 'global-visible' } });
+      }
+    }
+
+    @Module({
+      imports: [
+        NotificationsModule.forRoot({
+          channels: [
+            {
+              channel: 'email',
+              async send(notification: NotificationDispatchRequest) {
+                deliveries.push(String(notification.payload.template));
+
+                return { externalId: 'global-delivery' };
+              },
+            },
+          ],
+        }),
+      ],
+    })
+    class NotificationsOwnerModule {}
+
+    @Module({
+      imports: [NotificationsOwnerModule],
+      providers: [RootNotificationsProbe],
+    })
+    class AppModule {}
+
+    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+
+    try {
+      const probe = await testingModule.resolve<RootNotificationsProbe>(RootNotificationsProbe);
+
+      await expect(probe.send()).resolves.toMatchObject({
+        deliveryId: 'global-delivery',
+        queued: false,
+        status: 'delivered',
+      });
+      expect(deliveries).toEqual(['global-visible']);
+    } finally {
+      await testingModule.container.dispose();
+    }
+  });
+
+  it('keeps providers usable inside the importing module when global visibility is disabled', async () => {
+    const deliveries: string[] = [];
+
+    @Inject(NotificationsService)
+    class LocalNotificationsProbe {
+      constructor(private readonly notifications: NotificationsService) {}
+
+      send(): Promise<NotificationDispatchResult> {
+        return this.notifications.dispatch({ channel: 'email', payload: { template: 'local-visible' } });
+      }
+    }
+
+    @Module({
+      imports: [
+        NotificationsModule.forRoot({
+          channels: [
+            {
+              channel: 'email',
+              async send(notification: NotificationDispatchRequest) {
+                deliveries.push(String(notification.payload.template));
+
+                return { externalId: 'local-delivery' };
+              },
+            },
+          ],
+          global: false,
+        }),
+      ],
+      providers: [LocalNotificationsProbe],
+    })
+    class NotificationsOwnerModule {}
+
+    @Module({
+      imports: [NotificationsOwnerModule],
+    })
+    class AppModule {}
+
+    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+
+    try {
+      const probe = await testingModule.resolve<LocalNotificationsProbe>(LocalNotificationsProbe);
+
+      await expect(probe.send()).resolves.toMatchObject({
+        deliveryId: 'local-delivery',
+        queued: false,
+        status: 'delivered',
+      });
+      expect(deliveries).toEqual(['local-visible']);
+    } finally {
+      await testingModule.container.dispose();
+    }
+  });
+
+  it('does not expose module-local providers to sibling/root providers in a real testing module graph', async () => {
+    @Inject(NotificationsService)
+    class RootNotificationsProbe {
+      constructor(readonly notifications: NotificationsService) {}
+    }
+
+    @Module({
+      imports: [
+        NotificationsModule.forRoot({
+          channels: [
+            {
+              channel: 'email',
+              async send() {
+                return { externalId: 'local-only' };
+              },
+            },
+          ],
+          global: false,
+        }),
+      ],
+    })
+    class NotificationsOwnerModule {}
+
+    @Module({
+      imports: [NotificationsOwnerModule],
+      providers: [RootNotificationsProbe],
+    })
+    class AppModule {}
+
+    await expect(createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrow(
+      /not visible through a global module|NotificationsService/,
+    );
+  });
+
   it('registers sync providers and dispatches through a configured channel', async () => {
     const deliveries: Array<{ payload: Record<string, unknown>; recipients?: readonly string[] }> = [];
     const container = new Container();
@@ -249,9 +426,9 @@ describe('NotificationsModule', () => {
 
     expect(result).toMatchObject({ deliveryId: 'queued:1', queued: true, status: 'queued' });
     expect(queue.jobs).toHaveLength(1);
+    expect(queue.jobs[0]?.id).toMatch(/^notification:email:[a-z0-9]{7}$/);
     expect(queue.jobs[0]).toMatchObject({
       channel: 'email',
-      id: 'notification:email:1qpsje2',
       notification: { channel: 'email', payload: { template: 'single' } },
     });
   });
@@ -311,11 +488,79 @@ describe('NotificationsModule', () => {
     await service.dispatch(request, { queue: true });
     await service.dispatch({ ...request, id: 'caller-job-id' }, { queue: true });
 
-    expect(queue.jobs.map((job) => job.id)).toEqual([
-      'notification:email:05en8lg',
-      'notification:email:05en8lg',
-      'caller-job-id',
+    const [firstJob, repeatedJob, callerJob] = queue.jobs;
+
+    expect(firstJob?.id).toMatch(/^notification:email:[a-z0-9]{7}$/);
+    expect(repeatedJob?.id).toBe(firstJob?.id);
+    expect(callerJob?.id).toBe('caller-job-id');
+  });
+
+  it('does not close or drain application-owned queue and event publisher resources during runtime app close', async () => {
+    const resourceLifecycleCalls: string[] = [];
+    const runtimeShutdownCalls: string[] = [];
+    const queue = new LifecycleAwareQueueAdapter(resourceLifecycleCalls);
+    const publisher = new LifecycleAwarePublisher(resourceLifecycleCalls);
+
+    class RuntimeShutdownProbe {
+      onModuleDestroy(): void {
+        runtimeShutdownCalls.push('app.onModuleDestroy');
+      }
+
+      onApplicationShutdown(signal?: string): void {
+        runtimeShutdownCalls.push(`app.onApplicationShutdown:${signal ?? 'none'}`);
+      }
+    }
+
+    @Module({
+      imports: [
+        NotificationsModule.forRoot({
+          channels: [
+            {
+              channel: 'email',
+              async send() {
+                throw new Error('direct delivery should not run when queue is explicitly requested');
+              },
+            },
+          ],
+          events: {
+            publisher,
+          },
+          queue: {
+            adapter: queue,
+            bulkThreshold: 1,
+          },
+        }),
+      ],
+      providers: [RuntimeShutdownProbe],
+    })
+    class AppModule {}
+
+    const app = await FluoFactory.createApplicationContext(AppModule);
+
+    try {
+      const service = await app.get<NotificationsService>(NotificationsService);
+
+      await expect(
+        service.dispatch({ channel: 'email', payload: { template: 'queued-owned-by-app' } }, { queue: true }),
+      ).resolves.toMatchObject({
+        deliveryId: 'queued:1',
+        queued: true,
+        status: 'queued',
+      });
+      expect(queue.jobs).toHaveLength(1);
+      expect(publisher.events.map((event) => event.name)).toEqual([
+        'notification.dispatch.requested',
+        'notification.dispatch.queued',
+      ]);
+    } finally {
+      await app.close('notifications-shutdown-test');
+    }
+
+    expect(runtimeShutdownCalls).toEqual([
+      'app.onModuleDestroy',
+      'app.onApplicationShutdown:notifications-shutdown-test',
     ]);
+    expect(resourceLifecycleCalls).toEqual([]);
   });
 
   it('publishes a failed lifecycle event when explicit queue dispatch enqueue fails', async () => {

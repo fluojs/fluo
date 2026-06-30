@@ -305,15 +305,20 @@ These limitations keep the orchestration layer stable even when the underlying t
 
 ### Services and Tokens
 - `NotificationsService`: The primary API for `dispatch(...)`, `dispatchMany(...)`, and `createPlatformStatusSnapshot()`.
+- `Notifications`: Compatibility facade interface implemented by the `NOTIFICATIONS` token value.
 - `NOTIFICATIONS`: Compatibility facade token exposing `dispatch(...)` and `dispatchMany(...)`.
 - `NOTIFICATION_CHANNELS`: Token for the normalized channel list.
 
 ### Dispatch and Channel Contracts
 - `NotificationChannel`: Contract for a new delivery Provider.
+- `NotificationChannelContext`: Per-dispatch channel context including cancellation signal forwarding.
+- `NotificationChannelDelivery`: Channel return contract for external ids, status, and provider metadata.
+- `NotificationPayload`: Opaque payload shape passed through to channel providers.
 - `NotificationDispatchRequest`: Schema for a dispatch attempt.
 - `NotificationDispatchOptions`: Single-dispatch controls for queue preference, abort signal, and lifecycle publication.
 - `NotificationDispatchManyOptions`: Batch controls, including `continueOnError`.
 - `NotificationDispatchResult`: Normalized result for one direct or queued notification.
+- `NotificationDispatchStatus`: Delivery status union for direct and queue-backed paths.
 - `NotificationDispatchBatchResult`: Summary returned by `dispatchMany(...)`.
 - `NotificationDispatchFailure`: Failure entry returned by tolerant batch operations.
 

@@ -305,15 +305,20 @@ async onOrderPlaced(event: OrderPlacedEvent) {
 
 ### Services and Tokens
 - `NotificationsService`: `dispatch(...)`, `dispatchMany(...)`, `createPlatformStatusSnapshot()`을 위한 기본 API.
+- `Notifications`: `NOTIFICATIONS` token 값이 구현하는 compatibility facade interface.
 - `NOTIFICATIONS`: `dispatch(...)`와 `dispatchMany(...)`를 노출하는 compatibility facade token.
 - `NOTIFICATION_CHANNELS`: 정규화된 channel list를 위한 token.
 
 ### Dispatch and Channel Contracts
 - `NotificationChannel`: 새로운 delivery Provider를 위한 계약.
+- `NotificationChannelContext`: cancellation signal forwarding을 포함하는 dispatch별 channel context.
+- `NotificationChannelDelivery`: external id, status, provider metadata를 위한 channel return contract.
+- `NotificationPayload`: channel provider로 그대로 전달되는 opaque payload shape.
 - `NotificationDispatchRequest`: dispatch 시도를 위한 스키마.
 - `NotificationDispatchOptions`: queue preference, abort signal, lifecycle publication을 위한 단건 dispatch control.
 - `NotificationDispatchManyOptions`: `continueOnError`를 포함한 batch control.
 - `NotificationDispatchResult`: 직접 또는 queued notification 하나에 대한 정규화된 결과.
+- `NotificationDispatchStatus`: direct 및 queue-backed path의 delivery status union.
 - `NotificationDispatchBatchResult`: `dispatchMany(...)`가 반환하는 요약.
 - `NotificationDispatchFailure`: tolerant batch operation이 반환하는 실패 entry.
 
