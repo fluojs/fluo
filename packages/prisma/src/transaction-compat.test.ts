@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { PRISMA_SERVICE_BRAND } from './prisma-service-brand.js';
 import { Transaction } from './transaction.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeMockPrismaService() {
   return {
-    [PRISMA_SERVICE_BRAND]: true,
     createPlatformStatusSnapshot() {
       return {};
     },

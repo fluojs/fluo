@@ -8,7 +8,7 @@ import {
   untrackActiveRequestTransaction,
 } from '@fluojs/runtime';
 
-import { PRISMA_SERVICE_BRAND } from './prisma-service-brand.js';
+import { markPrismaServiceHandle } from './prisma-service-brand.js';
 import { createPrismaPlatformStatusSnapshot } from './status.js';
 import { PRISMA_CLIENT, PRISMA_OPTIONS } from './tokens.js';
 import type {
@@ -80,7 +80,9 @@ type AsyncLocalStorageResolutionHost = typeof globalThis & {
 };
 
 function createCurrentClientPrismaFacade<TTarget extends { current(): unknown }>(target: TTarget): TTarget {
-  return new Proxy(target, {
+  markPrismaServiceHandle(target);
+
+  return markPrismaServiceHandle(new Proxy(target, {
     get(service, prop, receiver) {
       if (prop in service) {
         return Reflect.get(service, prop, receiver);
@@ -91,7 +93,7 @@ function createCurrentClientPrismaFacade<TTarget extends { current(): unknown }>
 
       return typeof value === 'function' ? value.bind(currentClient) : value;
     },
-  });
+  }));
 }
 
 class AsyncLocalStorageTransactionContextStore<TTransactionClient> implements TransactionContextStore<TTransactionClient> {
@@ -163,8 +165,6 @@ export class PrismaService<
 >
   implements PrismaHandleProvider<TClient, TTransactionClient, TTransactionOptions>, OnModuleInit, OnApplicationShutdown
 {
-  readonly [PRISMA_SERVICE_BRAND] = true;
-
   private readonly transactions = createTransactionContextStore<TTransactionClient>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
   private readonly activeTransactionBoundaries = new Set<ActiveTransactionBoundary>();
@@ -175,6 +175,7 @@ export class PrismaService<
     private readonly client: TClient,
     private readonly serviceOptions: PrismaServiceOptions = { strictTransactions: false },
   ) {
+    markPrismaServiceHandle(this);
     this.installCurrentClientFacade();
   }
 

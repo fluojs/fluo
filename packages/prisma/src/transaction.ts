@@ -1,10 +1,10 @@
-import { type BrandedPrismaServiceHandle, PRISMA_SERVICE_BRAND } from './prisma-service-brand.js';
+import { isPrismaServiceHandle } from './prisma-service-brand.js';
 
 type TransactionalPrismaService<TOptions = unknown> = {
   createPlatformStatusSnapshot(): unknown;
   current(): unknown;
   transaction<T>(fn: () => Promise<T>, options?: TOptions): Promise<T>;
-} & BrandedPrismaServiceHandle;
+};
 
 type TransactionAccessor<THost, TOptions> = (self: THost) => TransactionalPrismaService<TOptions>;
 
@@ -16,7 +16,7 @@ type TransactionMethod<THost, TArgs extends unknown[], TResult> = (
 function isPrismaServiceLike(value: unknown): value is TransactionalPrismaService {
   return typeof value === 'object'
     && value !== null
-    && Reflect.get(value, PRISMA_SERVICE_BRAND) === true
+    && isPrismaServiceHandle(value)
     && 'createPlatformStatusSnapshot' in value
     && typeof value.createPlatformStatusSnapshot === 'function'
     && 'current' in value

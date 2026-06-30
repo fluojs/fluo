@@ -1,15 +1,25 @@
-/**
- * Internal marker used to distinguish Prisma service/facade handles from other persistence transaction facades.
- *
- * @internal
- */
-export const PRISMA_SERVICE_BRAND: unique symbol = Symbol('@fluojs/prisma/service');
+const brandedPrismaServiceHandles = new WeakSet<object>();
 
 /**
- * Internal shape implemented by Prisma service handles that can back the default `@Transaction()` target resolution.
+ * Marks an internal Prisma service or facade handle for default `@Transaction()` resolution.
  *
  * @internal
  */
-export type BrandedPrismaServiceHandle = {
-  readonly [PRISMA_SERVICE_BRAND]: true;
-};
+export function markPrismaServiceHandle<THandle extends object>(handle: THandle): THandle {
+  brandedPrismaServiceHandles.add(handle);
+
+  return handle;
+}
+
+/**
+ * Checks whether a value is an internally marked Prisma service or facade handle.
+ *
+ * @internal
+ */
+export function isPrismaServiceHandle(value: unknown): value is object {
+  if ((typeof value !== 'object' && typeof value !== 'function') || value === null) {
+    return false;
+  }
+
+  return brandedPrismaServiceHandles.has(value);
+}
