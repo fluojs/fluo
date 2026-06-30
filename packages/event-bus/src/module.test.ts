@@ -345,6 +345,44 @@ describe('@fluojs/event-bus', () => {
     await closeApplication(app);
   });
 
+  it('allows a per-call publish timeout to bound local handler work', async () => {
+    vi.useFakeTimers();
+    const loggerEvents: string[] = [];
+    const gate = createDeferred<void>();
+    const started = createDeferred<void>();
+
+    class SlowHandler {
+      @OnEvent(UserCreatedEvent)
+      async onUserCreated(_event: UserCreatedEvent) {
+        started.resolve();
+        await gate.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [EventBusModule.forRoot()],
+      providers: [SlowHandler],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      rootModule: AppModule,
+    });
+    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+
+    const publishPromise = eventBus.publish(new UserCreatedEvent('user-per-call-timeout'), { timeoutMs: 12 });
+
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(12);
+    await expect(publishPromise).resolves.toBeUndefined();
+
+    expect(loggerEvents.some((event) => event.includes('exceeded publish timeout of 12ms.'))).toBe(true);
+
+    gate.resolve();
+    await closeApplication(app);
+  });
+
   it('drains timed-out local handler work before closing the transport', async () => {
     vi.useFakeTimers();
     const gate = createDeferred<void>();
@@ -1353,10 +1391,50 @@ describe('@fluojs/event-bus', () => {
         providers: [HandlerA, HandlerB, HandlerC],
       });
 
-      await bootstrapApplication({ rootModule: AppModule });
+      const app = await bootstrapApplication({ rootModule: AppModule });
 
       const subscribedChannels = transport.subscribed.map((s) => s.channel).sort();
       expect(subscribedChannels).toEqual(['PasswordResetEvent', 'UserCreatedEvent']);
+
+      await closeApplication(app);
+    });
+
+    it('subscribes once when different event types share an explicit eventKey', async () => {
+      const transport = createMockTransport();
+
+      class FirstSharedChannelEvent {
+        static readonly eventKey = 'shared.audit.v1';
+
+        constructor(public readonly id: string) {}
+      }
+
+      class SecondSharedChannelEvent {
+        static readonly eventKey = 'shared.audit.v1';
+
+        constructor(public readonly id: string) {}
+      }
+
+      class FirstHandler {
+        @OnEvent(FirstSharedChannelEvent)
+        onFirst(_event: FirstSharedChannelEvent) {}
+      }
+
+      class SecondHandler {
+        @OnEvent(SecondSharedChannelEvent)
+        onSecond(_event: SecondSharedChannelEvent) {}
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [EventBusModule.forRoot({ transport })],
+        providers: [FirstHandler, SecondHandler],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+
+      expect(transport.subscribed.map((entry) => entry.channel)).toEqual(['shared.audit.v1']);
+
+      await closeApplication(app);
     });
 
     it('fails bootstrap when transport subscription wiring fails', async () => {
