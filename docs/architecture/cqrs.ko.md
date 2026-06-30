@@ -17,9 +17,10 @@
 
 | 규칙 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
-| 모듈 진입점 | 애플리케이션은 `CqrsModule.forRoot(...)`로 CQRS를 등록합니다. 이 모듈은 global이며 lifecycle service와 `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS` 호환 토큰을 export합니다. Low-level provider assembly는 모듈 구현 내부에 유지됩니다. | `packages/cqrs/src/module.ts` |
+| 모듈 진입점 | 애플리케이션은 `CqrsModule.forRoot(...)`로 CQRS를 등록합니다. 이 모듈은 기본적으로 global이며 lifecycle service와 `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS` 호환 토큰을 export합니다. Bus provider visibility를 module-local로 유지하려면 `global: false`를 전달합니다. Low-level provider assembly는 모듈 구현 내부에 유지됩니다. | `packages/cqrs/src/module.ts` |
 | 데코레이터 메타데이터 | `@CommandHandler(...)`, `@QueryHandler(...)`, `@EventHandler(...)`, `@Saga(...)`는 표준 데코레이터 메타데이터를 대상 클래스에 저장합니다. | `packages/cqrs/src/decorators.ts`, `packages/cqrs/src/metadata.ts` |
 | 선택적 eager 등록 | `CqrsModule.forRoot({ commandHandlers, queryHandlers, eventHandlers, sagas })`는 해당 클래스를 프로바이더 목록에 추가하지만, 탐색은 동일한 핸들러 메타데이터를 읽습니다. | `packages/cqrs/src/module.ts` |
+| 탐색 후보 경계 | CQRS discovery는 provider registration만 스캔합니다. Module controller는 HTTP/request boundary class이며 CQRS handler decorator를 가지고 있어도 무시됩니다. | `packages/cqrs/src/discovery.ts` |
 | singleton 전용 탐색 | Command 핸들러, Query 핸들러, Event 핸들러, saga는 프로바이더 스코프가 `singleton`일 때만 등록됩니다. singleton이 아닌 후보는 logger 경고와 함께 건너뜁니다. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
 | 핸들러 형태 | Command/Query 핸들러는 `execute(...)`를 구현해야 합니다. Event 핸들러와 saga는 `handle(...)`을 구현해야 합니다. 이를 위반하면 디스패치 시 `InvariantError`가 발생합니다. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
 | 중복 등록 | 중복 singleton Command/Query 핸들러는 해당 bus가 point-to-point이므로 discovery error입니다. 중복 singleton Event 핸들러는 충돌이 아니며, 일치하는 모든 `@EventHandler(...)` provider가 유지되고 discovery 순서대로 한 번씩 호출됩니다. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/errors.ts` |
@@ -29,11 +30,11 @@
 
 | 표면 | 현재 동작 | 소스 기준 |
 | --- | --- | --- |
-| Command 버스 | 핸들러를 한 번 탐색하고, 핸들러 인스턴스를 preload한 뒤, 하나의 Command를 하나의 핸들러에 디스패치합니다. | `packages/cqrs/src/buses/command-bus.ts` |
-| Query 버스 | 핸들러를 한 번 탐색하고, 핸들러 인스턴스를 preload한 뒤, 하나의 Query를 하나의 핸들러에 디스패치합니다. | `packages/cqrs/src/buses/query-bus.ts` |
+| Command 버스 | 핸들러를 한 번 탐색하고, 핸들러 인스턴스를 preload한 뒤, 하나의 Command를 하나의 핸들러에 디스패치합니다. Shutdown이 시작되면 새로운 `execute(...)` 호출을 거부하고 preload된 handler cache를 정리합니다. | `packages/cqrs/src/buses/command-bus.ts` |
+| Query 버스 | 핸들러를 한 번 탐색하고, 핸들러 인스턴스를 preload한 뒤, 하나의 Query를 하나의 핸들러에 디스패치합니다. Shutdown이 시작되면 새로운 `execute(...)` 호출을 거부하고 preload된 handler cache를 정리합니다. | `packages/cqrs/src/buses/query-bus.ts` |
 | CQRS 이벤트 버스 | 매칭되는 로컬 Event 핸들러에 게시한 뒤, saga lifecycle service로 전달하고, 마지막으로 공유 `@fluojs/event-bus` 전송 계층으로 위임합니다. `publishAll(...)`은 다음 Event를 발행하기 전에 각 Event의 전체 CQRS pipeline을 기다리므로 입력 순서를 보존합니다. | `packages/cqrs/src/buses/event-bus.ts` |
 | saga 런타임 | saga 토큰별 실행을 직렬화하고, Node.js async-local API 없이 opaque `CqrsDispatchContext`를 nested CQRS 호출로 전달하며, 진단용 런타임 스냅샷 데이터를 제공합니다. | `packages/cqrs/src/buses/saga-bus.ts` |
-| 종료 동작 | CQRS 이벤트 버스는 진행 중인 `publish(...)` pipeline과 `publishAll(...)` sequence가 settle될 때까지 기다린 뒤 stopped 상태로 전환합니다. CQRS가 제공한 `CqrsDispatchContext`를 전달하는 nested `publish(...)`와 `publishAll(...)` 호출은 활성 drain의 일부로 유지되며, shutdown 시작 후 brand-new external publish는 계속 거부됩니다. saga 런타임도 종료 시 진행 중인 디스패치를 기다린 뒤 descriptor와 캐시된 핸들러 인스턴스를 정리합니다. | `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
+| 종료 동작 | CQRS 이벤트 버스는 진행 중인 `publish(...)` pipeline과 `publishAll(...)` sequence가 settle될 때까지 기다린 뒤 stopped 상태로 전환합니다. CQRS가 제공한 `CqrsDispatchContext`를 전달하는 nested `publish(...)`와 `publishAll(...)` 호출은 활성 drain의 일부로 유지되며, shutdown 시작 후 brand-new external publish는 계속 거부됩니다. Command bus와 query bus는 shutdown 이후 `execute(...)` 호출을 거부하고 cached handler instance를 정리합니다. saga 런타임도 종료 시 진행 중인 디스패치를 기다린 뒤 descriptor와 캐시된 핸들러 인스턴스를 정리합니다. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
 
 ## 제약 사항
 
