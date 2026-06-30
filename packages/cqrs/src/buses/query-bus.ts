@@ -1,6 +1,7 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import type {
   OnApplicationBootstrap,
+  OnApplicationShutdown,
 } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { CqrsBusBase, createDuplicateHandlerMessage, isSameHandlerRegistration } from '../discovery.js';
@@ -30,13 +31,31 @@ function isQueryHandler(value: unknown): value is IQueryHandler<IQuery<unknown>,
  * and preserves the one-query-to-one-handler contract used by the CQRS surface.
  */
 @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
-export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, OnApplicationBootstrap {
+export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors = new Map<QueryType, QueryHandlerDescriptor>();
   private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
+  private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.ensureDiscovered();
+    this.lifecycleState = 'discovering';
+
+    try {
+      await this.ensureDiscovered();
+      this.lifecycleState = 'ready';
+    } catch (error) {
+      this.lifecycleState = 'failed';
+      throw error;
+    }
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    this.lifecycleState = 'stopping';
+    this.descriptors.clear();
+    this.handlerInstances.clear();
+    this.discovered = false;
+    this.discoveryPromise = undefined;
+    this.lifecycleState = 'stopped';
   }
 
   /**
@@ -50,6 +69,7 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
    * @throws {InvariantError} When the resolved provider does not implement `execute(query)`.
    */
   async execute<TQuery extends IQuery<TResult>, TResult = unknown>(query: TQuery, context?: CqrsDispatchContext): Promise<TResult> {
+    this.assertAcceptingNewWork('execute');
     await this.ensureDiscovered();
 
     const queryType = query.constructor as QueryType<TResult, TQuery>;
@@ -66,6 +86,12 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
     }
 
     return await instance.execute(query, context) as TResult;
+  }
+
+  private assertAcceptingNewWork(operation: 'execute'): void {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      throw new InvariantError(`CQRS query bus cannot ${operation} after shutdown has started.`);
+    }
   }
 
   private async ensureDiscovered(): Promise<void> {

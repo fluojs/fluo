@@ -1,5 +1,5 @@
 import { Inject, InvariantError } from '@fluojs/core';
-import type { OnApplicationBootstrap } from '@fluojs/runtime';
+import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { CqrsBusBase, createDuplicateHandlerMessage, isSameHandlerRegistration } from '../discovery.js';
 import { CommandHandlerNotFoundException, DuplicateCommandHandlerError } from '../errors.js';
@@ -28,13 +28,31 @@ function isCommandHandler(value: unknown): value is ICommandHandler<ICommand, un
  * and throws explicit contract errors when no handler or multiple handlers exist.
  */
 @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
-export class CommandBusLifecycleService extends CqrsBusBase implements CommandBus, OnApplicationBootstrap {
+export class CommandBusLifecycleService extends CqrsBusBase implements CommandBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors = new Map<CommandType, CommandHandlerDescriptor>();
   private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
+  private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.ensureDiscovered();
+    this.lifecycleState = 'discovering';
+
+    try {
+      await this.ensureDiscovered();
+      this.lifecycleState = 'ready';
+    } catch (error) {
+      this.lifecycleState = 'failed';
+      throw error;
+    }
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    this.lifecycleState = 'stopping';
+    this.descriptors.clear();
+    this.handlerInstances.clear();
+    this.discovered = false;
+    this.discoveryPromise = undefined;
+    this.lifecycleState = 'stopped';
   }
 
   /**
@@ -48,6 +66,7 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
    * @throws {InvariantError} When the resolved provider does not implement `execute(command)`.
    */
   async execute<TCommand extends ICommand, TResult = void>(command: TCommand, context?: CqrsDispatchContext): Promise<TResult> {
+    this.assertAcceptingNewWork('execute');
     await this.ensureDiscovered();
 
     const commandType = command.constructor as CommandType<TCommand>;
@@ -64,6 +83,12 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
     }
 
     return await instance.execute(command, context) as TResult;
+  }
+
+  private assertAcceptingNewWork(operation: 'execute'): void {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      throw new InvariantError(`CQRS command bus cannot ${operation} after shutdown has started.`);
+    }
   }
 
   private async ensureDiscovered(): Promise<void> {

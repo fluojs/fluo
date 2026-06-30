@@ -72,6 +72,16 @@ function createDeferred<T = void>() {
   };
 }
 
+function getPreloadedHandlerCount(service: object): number {
+  const handlerInstances = Reflect.get(service, 'handlerInstances');
+
+  if (!(handlerInstances instanceof Map)) {
+    throw new Error('Expected CQRS service to expose a handlerInstances cache for package-internal tests.');
+  }
+
+  return handlerInstances.size;
+}
+
 class CreateUserCommand implements ICommand {
   constructor(public readonly name: string) {}
 }
@@ -172,6 +182,130 @@ describe('@fluojs/cqrs', () => {
 
     expect(created).toBe('created:alice');
     expect(found).toEqual({ id: '1', name: 'alice' });
+
+    await app.close();
+  });
+
+  it('ignores CQRS decorators on module controllers during handler discovery', async () => {
+    const seen: string[] = [];
+
+    @CommandHandler(CreateUserCommand)
+    class ControllerCreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
+      execute(command: CreateUserCommand): string {
+        return `controller-command:${command.name}`;
+      }
+    }
+
+    @QueryHandler(GetUserQuery)
+    class ControllerGetUserHandler implements IQueryHandler<GetUserQuery, { id: string; name: string | undefined }> {
+      execute(query: GetUserQuery): { id: string; name: string | undefined } {
+        return { id: query.id, name: 'controller-query' };
+      }
+    }
+
+    @EventHandler(UserCreatedEvent)
+    class ControllerEventHandler implements IEventHandler<UserCreatedEvent> {
+      handle(event: UserCreatedEvent): void {
+        seen.push(`controller-event:${event.name}`);
+      }
+    }
+
+    @Saga(UserCreatedEvent)
+    class ControllerSaga implements ISaga<UserCreatedEvent> {
+      handle(event: UserCreatedEvent): void {
+        seen.push(`controller-saga:${event.name}`);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [
+        ControllerCreateUserHandler,
+        ControllerGetUserHandler,
+        ControllerEventHandler,
+        ControllerSaga,
+      ],
+      imports: [CqrsModule.forRoot()],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
+    const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    await expect(commandBus.execute(new CreateUserCommand('alice'))).rejects.toBeInstanceOf(CommandHandlerNotFoundException);
+    await expect(queryBus.execute(new GetUserQuery('u-1'))).rejects.toBeInstanceOf(QueryHandlerNotFoundException);
+    await eventBus.publish(new UserCreatedEvent('alice'));
+
+    expect(seen).toEqual([]);
+
+    await app.close();
+  });
+
+  it('skips non-singleton CQRS handlers and sagas with warnings', async () => {
+    const loggerEvents: string[] = [];
+    const seen: string[] = [];
+    const COMMAND_HANDLER_TOKEN = Symbol('COMMAND_HANDLER_TOKEN');
+    const QUERY_HANDLER_TOKEN = Symbol('QUERY_HANDLER_TOKEN');
+    const EVENT_HANDLER_TOKEN = Symbol('EVENT_HANDLER_TOKEN');
+    const SAGA_TOKEN = Symbol('SAGA_TOKEN');
+
+    @CommandHandler(CreateUserCommand)
+    class TransientCreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
+      execute(command: CreateUserCommand): string {
+        return `transient-command:${command.name}`;
+      }
+    }
+
+    @QueryHandler(GetUserQuery)
+    class RequestGetUserHandler implements IQueryHandler<GetUserQuery, { id: string; name: string | undefined }> {
+      execute(query: GetUserQuery): { id: string; name: string | undefined } {
+        return { id: query.id, name: 'request-query' };
+      }
+    }
+
+    @EventHandler(UserCreatedEvent)
+    class TransientEventHandler implements IEventHandler<UserCreatedEvent> {
+      handle(event: UserCreatedEvent): void {
+        seen.push(`transient-event:${event.name}`);
+      }
+    }
+
+    @Saga(UserCreatedEvent)
+    class RequestSaga implements ISaga<UserCreatedEvent> {
+      handle(event: UserCreatedEvent): void {
+        seen.push(`request-saga:${event.name}`);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [
+        { provide: COMMAND_HANDLER_TOKEN, scope: 'transient', useClass: TransientCreateUserHandler },
+        { provide: QUERY_HANDLER_TOKEN, scope: 'request', useClass: RequestGetUserHandler },
+        { provide: EVENT_HANDLER_TOKEN, scope: 'transient', useClass: TransientEventHandler },
+        { provide: SAGA_TOKEN, scope: 'request', useClass: RequestSaga },
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      rootModule: AppModule,
+    });
+    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
+    const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    await expect(commandBus.execute(new CreateUserCommand('alice'))).rejects.toBeInstanceOf(CommandHandlerNotFoundException);
+    await expect(queryBus.execute(new GetUserQuery('u-1'))).rejects.toBeInstanceOf(QueryHandlerNotFoundException);
+    await eventBus.publish(new UserCreatedEvent('alice'));
+
+    expect(seen).toEqual([]);
+    expect(loggerEvents.some((event) => event.includes('Command handlers are registered only for singleton providers'))).toBe(true);
+    expect(loggerEvents.some((event) => event.includes('Query handlers are registered only for singleton providers'))).toBe(true);
+    expect(loggerEvents.some((event) => event.includes('Event handlers are registered only for singleton providers'))).toBe(true);
+    expect(loggerEvents.some((event) => event.includes('Sagas are registered only for singleton providers'))).toBe(true);
 
     await app.close();
   });
@@ -419,6 +553,58 @@ describe('@fluojs/cqrs', () => {
     expect(receivedNames).toEqual(['alice']);
 
     await app.close();
+  });
+
+  it('rejects command and query dispatch after shutdown starts and clears preloaded handler caches', async () => {
+    class ShutdownCommand implements ICommand {
+      constructor(public readonly id: string) {}
+    }
+
+    class ShutdownQuery implements IQuery<string> {
+      readonly __queryResultType__?: string;
+
+      constructor(public readonly id: string) {}
+    }
+
+    @CommandHandler(ShutdownCommand)
+    class ShutdownCommandHandler implements ICommandHandler<ShutdownCommand, string> {
+      execute(command: ShutdownCommand): string {
+        return `command:${command.id}`;
+      }
+    }
+
+    @QueryHandler(ShutdownQuery)
+    class ShutdownQueryHandler implements IQueryHandler<ShutdownQuery, string> {
+      execute(query: ShutdownQuery): string {
+        return `query:${query.id}`;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [ShutdownCommandHandler, ShutdownQueryHandler],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
+    const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
+    const commandBusService = await app.container.resolve(CommandBusLifecycleService);
+    const queryBusService = await app.container.resolve(QueryBusLifecycleService);
+
+    expect(getPreloadedHandlerCount(commandBusService)).toBe(1);
+    expect(getPreloadedHandlerCount(queryBusService)).toBe(1);
+
+    expect(await commandBus.execute<ShutdownCommand, string>(new ShutdownCommand('active'))).toBe('command:active');
+    expect(await queryBus.execute<ShutdownQuery, string>(new ShutdownQuery('active'))).toBe('query:active');
+
+    await app.close();
+
+    await expect(commandBus.execute(new ShutdownCommand('late'))).rejects.toBeInstanceOf(InvariantError);
+    await expect(queryBus.execute(new ShutdownQuery('late'))).rejects.toBeInstanceOf(InvariantError);
+
+    expect(getPreloadedHandlerCount(commandBusService)).toBe(0);
+    expect(getPreloadedHandlerCount(queryBusService)).toBe(0);
   });
 
   it('orchestrates follow-up commands across multiple events over time with sagas', async () => {
@@ -830,6 +1016,52 @@ describe('@fluojs/cqrs', () => {
     await eventBus.publish(new UserCreatedEvent('alice'));
 
     expect(seen).toEqual(['first:alice', 'second:alice']);
+
+    await app.close();
+  });
+
+  it('matches inherited event instances for event handlers and sagas', async () => {
+    const seen: string[] = [];
+
+    class BaseAuditEvent implements IEvent {
+      constructor(public readonly auditId: string) {}
+    }
+
+    class DetailedAuditEvent extends BaseAuditEvent {
+      constructor(
+        auditId: string,
+        public readonly detail: string,
+      ) {
+        super(auditId);
+      }
+    }
+
+    @EventHandler(BaseAuditEvent)
+    class BaseAuditEventHandler implements IEventHandler<BaseAuditEvent> {
+      handle(event: BaseAuditEvent): void {
+        seen.push(`handler:${event.auditId}:${event instanceof BaseAuditEvent}`);
+      }
+    }
+
+    @Saga(BaseAuditEvent)
+    class BaseAuditSaga implements ISaga<BaseAuditEvent> {
+      handle(event: BaseAuditEvent): void {
+        seen.push(`saga:${event.auditId}:${event instanceof BaseAuditEvent}`);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [BaseAuditEventHandler, BaseAuditSaga],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    await eventBus.publish(new DetailedAuditEvent('audit-1', 'full-detail'));
+
+    expect(seen).toEqual(['handler:audit-1:true', 'saga:audit-1:true']);
 
     await app.close();
   });
