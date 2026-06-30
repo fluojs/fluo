@@ -296,7 +296,7 @@ Be careful not to make alerts too sensitive. If an alert fires every time traffi
 ### 19.8.3 Sharing Dashboards: Monitoring as Code
 In modern engineering teams, dashboards are often treated as code. You can export Grafana dashboards as JSON files and store them in version control, Git, alongside Fluo code. This gives every developer on the team access to the same visualization tools, and changes to monitoring logic can be reviewed and audited just like application code.
 
-Fluo provides a set of **reference dashboard templates** for common use cases, such as "API overview" and "database performance." You can import these templates into a Grafana instance and customize them for your specific needs, giving your observability stack a consistent baseline.
+The current Fluo repository does not publish Grafana dashboard template JSON files for import. Treat dashboards as application-owned monitoring code: start from the Prometheus series exposed by `@fluojs/metrics`, the operations example, and your own infrastructure signals, then store any exported Grafana JSON alongside your application so it can be reviewed and evolved with the rest of your system.
 
 ### 19.8.4 Continuous Improvement via Metrics
 The long-term goal of monitoring is **continuous improvement**. Use metrics to set team performance goals, for example, "reduce p99 latency by 20% by next quarter." Making performance visible and measurable grounds optimization discussions in data rather than guesses.
