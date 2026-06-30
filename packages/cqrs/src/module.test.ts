@@ -1,7 +1,7 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import { Container } from '@fluojs/di';
 import { type EventBusTransport, OnEvent } from '@fluojs/event-bus';
-import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { type ApplicationLogger, bootstrapApplication, defineModule, type OnApplicationShutdown } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 import { CommandBusLifecycleService } from './buses/command-bus.js';
 import { CqrsEventBusService } from './buses/event-bus.js';
@@ -602,6 +602,73 @@ describe('@fluojs/cqrs', () => {
 
     await expect(commandBus.execute(new ShutdownCommand('late'))).rejects.toBeInstanceOf(InvariantError);
     await expect(queryBus.execute(new ShutdownQuery('late'))).rejects.toBeInstanceOf(InvariantError);
+
+    expect(getPreloadedHandlerCount(commandBusService)).toBe(0);
+    expect(getPreloadedHandlerCount(queryBusService)).toBe(0);
+  });
+
+  it('rejects command and query dispatch as soon as application shutdown begins before their own shutdown hooks run', async () => {
+    const shutdownStarted = createDeferred<void>();
+    const releaseShutdown = createDeferred<void>();
+
+    class ShutdownCommand implements ICommand {
+      constructor(public readonly id: string) {}
+    }
+
+    class ShutdownQuery implements IQuery<string> {
+      readonly __queryResultType__?: string;
+
+      constructor(public readonly id: string) {}
+    }
+
+    @CommandHandler(ShutdownCommand)
+    class ShutdownCommandHandler implements ICommandHandler<ShutdownCommand, string> {
+      execute(command: ShutdownCommand): string {
+        return `command:${command.id}`;
+      }
+    }
+
+    @QueryHandler(ShutdownQuery)
+    class ShutdownQueryHandler implements IQueryHandler<ShutdownQuery, string> {
+      execute(query: ShutdownQuery): string {
+        return `query:${query.id}`;
+      }
+    }
+
+    class ShutdownBlocker implements OnApplicationShutdown {
+      async onApplicationShutdown(): Promise<void> {
+        shutdownStarted.resolve();
+        await releaseShutdown.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [ShutdownCommandHandler, ShutdownQueryHandler, ShutdownBlocker],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
+    const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
+    const commandBusService = await app.container.resolve(CommandBusLifecycleService);
+    const queryBusService = await app.container.resolve(QueryBusLifecycleService);
+
+    expect(getPreloadedHandlerCount(commandBusService)).toBe(1);
+    expect(getPreloadedHandlerCount(queryBusService)).toBe(1);
+    expect(await commandBus.execute<ShutdownCommand, string>(new ShutdownCommand('active'))).toBe('command:active');
+    expect(await queryBus.execute<ShutdownQuery, string>(new ShutdownQuery('active'))).toBe('query:active');
+
+    const closePromise = app.close();
+    await shutdownStarted.promise;
+
+    expect(getPreloadedHandlerCount(commandBusService)).toBe(1);
+    expect(getPreloadedHandlerCount(queryBusService)).toBe(1);
+    await expect(commandBus.execute(new ShutdownCommand('late'))).rejects.toBeInstanceOf(InvariantError);
+    await expect(queryBus.execute(new ShutdownQuery('late'))).rejects.toBeInstanceOf(InvariantError);
+
+    releaseShutdown.resolve();
+    await closePromise;
 
     expect(getPreloadedHandlerCount(commandBusService)).toBe(0);
     expect(getPreloadedHandlerCount(queryBusService)).toBe(0);

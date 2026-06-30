@@ -1,6 +1,7 @@
 import { Inject, InvariantError } from '@fluojs/core';
-import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
+import type { Container } from '@fluojs/di';
+import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, RuntimeCleanupRegistration } from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { CqrsBusBase, createDuplicateHandlerMessage, isSameHandlerRegistration } from '../discovery.js';
 import { CommandHandlerNotFoundException, DuplicateCommandHandlerError } from '../errors.js';
 import { getCommandHandlerMetadata } from '../metadata.js';
@@ -27,12 +28,26 @@ function isCommandHandler(value: unknown): value is ICommandHandler<ICommand, un
  * The command bus resolves singleton handlers only, warns on unsupported scopes,
  * and throws explicit contract errors when no handler or multiple handlers exist.
  */
-@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
+@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, RUNTIME_CLEANUP_REGISTRATION)
 export class CommandBusLifecycleService extends CqrsBusBase implements CommandBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors = new Map<CommandType, CommandHandlerDescriptor>();
   private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
   private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
+  private unregisterShutdownStartCleanup: (() => void) | undefined;
+
+  constructor(
+    runtimeContainer: Container,
+    compiledModules: readonly CompiledModule[],
+    logger: ApplicationLogger,
+    registerRuntimeCleanup: RuntimeCleanupRegistration = () => () => undefined,
+  ) {
+    super(runtimeContainer, compiledModules, logger);
+
+    this.unregisterShutdownStartCleanup = registerRuntimeCleanup(() => {
+      this.markApplicationShutdownStarted();
+    });
+  }
 
   async onApplicationBootstrap(): Promise<void> {
     this.lifecycleState = 'discovering';
@@ -47,7 +62,9 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
   }
 
   async onApplicationShutdown(): Promise<void> {
-    this.lifecycleState = 'stopping';
+    this.markApplicationShutdownStarted();
+    this.unregisterShutdownStartCleanup?.();
+    this.unregisterShutdownStartCleanup = undefined;
     this.descriptors.clear();
     this.handlerInstances.clear();
     this.discovered = false;
@@ -88,6 +105,12 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
   private assertAcceptingNewWork(operation: 'execute'): void {
     if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
       throw new InvariantError(`CQRS command bus cannot ${operation} after shutdown has started.`);
+    }
+  }
+
+  private markApplicationShutdownStarted(): void {
+    if (this.lifecycleState !== 'stopped') {
+      this.lifecycleState = 'stopping';
     }
   }
 
