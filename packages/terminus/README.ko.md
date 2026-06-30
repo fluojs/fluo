@@ -101,13 +101,15 @@ TerminusModule.forRoot({
 
 Drizzle의 경우 `createDrizzleHealthIndicatorProvider()`는 `@fluojs/drizzle`이 노출하는 lifecycle-aware `DrizzleDatabase` wrapper를 우선 사용합니다. Drizzle이 종료 중이거나 중지되었거나 `DrizzleDatabase.createPlatformStatusSnapshot()` 기준으로 준비되지 않은 상태이면 SQL probe를 실행하기 전에 해당 indicator를 `down`으로 보고합니다. legacy raw `DRIZZLE_DATABASE` handle만 등록된 경우에는 기존 lightweight SQL probe 동작을 유지합니다.
 
+Prisma의 경우 `createPrismaHealthIndicatorProvider()`는 `@fluojs/prisma`가 노출하는 lifecycle-aware `PrismaService` / `PrismaServiceFacade` token을 우선 사용하고, probe 전에 `createPlatformStatusSnapshot()`을 확인한 뒤 `current()`를 호출해 ambient transaction/lifecycle seam이 health probe에 보이도록 합니다. 기본 Prisma registration을 대상으로 하려면 `name`을 생략하고, `PrismaModule.forRoot({ name })`으로 등록한 named registration을 대상으로 하려면 `name`을 전달하세요. 수동 provider graph에서는 명시적인 `serviceToken` / `clientToken` 값을 전달할 수 있습니다. raw Prisma client token만 등록된 경우에는 root package에서 optional Prisma peer를 import하지 않으면서 기존 lightweight query probe 동작을 유지합니다.
+
 Provider factory는 반복 등록할 수 있습니다. 각 인스턴스가 서로 다른 indicator key나 dependency option을 사용한다면 같은 factory가 만든 provider 여러 개를 하나의 `indicatorProviders` 배열에 등록할 수 있으며, Terminus는 나중에 등록된 같은 타입 provider가 앞선 provider를 덮어쓰지 않도록 각 provider 인스턴스를 별도 DI token으로 보관합니다.
 
 ### 실행 가드레일
 
 커스텀 인디케이터가 멈추거나 느린 하위 서비스에 의존할 수 있다면 `execution.indicatorTimeoutMs`를 사용하세요. probe가 설정된 시간을 넘기면 Terminus는 무기한 대기하지 않고 해당 인디케이터를 `down`으로 표시합니다.
 
-Terminus는 같은 indicator instance에 대한 check도 직렬화합니다. Timeout된 probe나 느린 probe가 아직 실행 중일 때 다른 `/health` 또는 `/ready` 요청이 들어오면, Terminus는 같은 downstream에 겹치는 probe를 새로 시작하지 않고 해당 indicator를 새 요청에서 `down`으로 보고합니다. Built-in HTTP indicator는 자체 timeout이 만료되면 `fetch` 요청을 abort하지만, 다른 driver와 custom callback은 cancellation을 노출하지 않을 수 있으므로 원래 promise가 settle될 때까지 overlap을 막는 방식으로 보호합니다.
+Terminus는 각 `TerminusHealthService` / application container 안에서 같은 indicator instance에 대한 check도 직렬화합니다. Timeout된 probe나 느린 probe가 아직 실행 중일 때 같은 container의 다른 `/health` 또는 `/ready` 요청이 들어오면, Terminus는 같은 downstream에 겹치는 probe를 새로 시작하지 않고 해당 indicator를 새 요청에서 `down`으로 보고합니다. 테스트나 multi-app process가 같은 indicator object를 재사용하더라도 별도 application container는 독립적인 in-flight state를 유지합니다. Built-in HTTP indicator는 자체 timeout이 만료되면 `fetch` 요청을 abort하지만, 다른 driver와 custom callback은 cancellation을 노출하지 않을 수 있으므로 원래 promise가 settle될 때까지 overlap을 막는 방식으로 보호합니다.
 
 ```typescript
 TerminusModule.forRoot({
@@ -135,6 +137,7 @@ TerminusModule.forRoot({
 - 같은 실행에서 이미 보고된 key를 다른 인디케이터가 다시 사용하면, Terminus는 먼저 기록된 entry를 유지하고 데이터를 조용히 덮어쓰는 대신 결정적인 `*-duplicate-key-error` contributor를 추가합니다.
 - 플랫폼 health/readiness 실패는 `/health` 응답에서 결정적인 `fluo-platform-health`, `fluo-platform-readiness` contributor로 노출됩니다. 이 key들은 platform diagnostic용으로 예약되어 있으며, platform failure 중 user indicator가 같은 key를 반환하면 Terminus는 platform payload를 예약 key 아래에 유지하고 runtime state를 떨어뜨리지 않도록 결정적인 `*-user-key-collision` diagnostic을 추가합니다.
 - Runtime diagnostics가 있으면 `/health` response에 platform health/readiness detail을 담은 `platform` block이 포함될 수 있습니다.
+- DI provider로 생성한 Prisma indicator는 query보다 먼저 `@fluojs/prisma` service lifecycle readiness/health state를 반영하므로, raw client handle이 아직 호출 가능하더라도 종료 중이거나 중지되었거나 아직 연결되지 않은 통합은 `/health`와 `/ready`를 unavailable로 표시합니다.
 - DI provider로 생성한 Drizzle indicator는 SQL probe보다 먼저 Drizzle lifecycle readiness/health state를 반영하므로, underlying driver가 raw ping을 아직 받을 수 있어도 종료 중이거나 중지된 통합은 `/health`와 `/ready`를 unavailable로 표시합니다.
 - Redis subpath로 생성한 Redis indicator는 `PING` 전에 `@fluojs/redis` client lifecycle state를 반영하므로, 종료 중이거나 연결이 끊긴 Redis client는 command 실행 전에도 `/health`와 `/ready`를 unavailable로 표시합니다.
 
@@ -164,7 +167,7 @@ Runtime-specific indicator는 subpath별로 분리되어 있습니다. Node.js m
 ### 직접 helper와 token
 
 - `runHealthCheck(...)`, `assertHealthCheck(...)`: 직접 aggregation/testing helper입니다.
-- `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: 등록된 indicator와 provider token을 위한 DI token입니다.
+- `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: 등록된 indicator와 provider token을 위한 DI token입니다. `TerminusModule.forRoot(...)`는 두 token을 모두 export하므로 downstream module은 Terminus 내부를 재구성하지 않고도 구성된 indicator/provider-token set을 확인할 수 있습니다.
 - Built-in indicator는 `create*HealthIndicator()` 및 `create*HealthIndicatorProvider()` helper도 노출합니다. Provider helper는 `indicatorProviders`를 위한 의도적인 DI composition 예외이며, 애플리케이션 등록은 계속 `TerminusModule.forRoot(...)`를 사용해야 합니다.
 
 ### `@fluojs/terminus/redis`

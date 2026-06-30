@@ -264,7 +264,7 @@ function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): Modul
   class TerminusRuntimeModule {}
 
   return defineModule(TerminusRuntimeModule, {
-    exports: [TERMINUS_HEALTH_INDICATORS, TerminusHealthService],
+    exports: [TERMINUS_HEALTH_INDICATORS, TERMINUS_INDICATOR_PROVIDER_TOKENS, TerminusHealthService],
     imports: [healthModule],
     providers: [
       ...createTerminusProviders({
