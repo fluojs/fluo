@@ -290,22 +290,24 @@ describe('@fluojs/mongoose service boundary primary flow', () => {
     const app = await bootstrapApplication({ rootModule: AppModule });
     const response = createResponse(events);
 
-    await app.dispatch(
-      createRequest('/controller-compat/users', 'POST', { email: 'grace@example.com', name: 'Grace' }),
-      response,
-    );
+    try {
+      await app.dispatch(
+        createRequest('/controller-compat/users', 'POST', { email: 'grace@example.com', name: 'Grace' }),
+        response,
+      );
 
-    expect(response.body).toEqual({ email: 'grace@example.com', id: 'controller-tx-user', name: 'Grace' });
-    expect(createSessions[0]).toBe(startedSessions[0]);
-    expect(events).toEqual([
-      'connection:startSession',
-      'session:tx:start',
-      'model:create:grace@example.com',
-      'session:tx:commit',
-      'session:end',
-      'response:send',
-    ]);
-
-    await app.close();
+      expect(response.body).toEqual({ email: 'grace@example.com', id: 'controller-tx-user', name: 'Grace' });
+      expect(createSessions[0]).toBe(startedSessions[0]);
+      expect(events).toEqual([
+        'connection:startSession',
+        'session:tx:start',
+        'model:create:grace@example.com',
+        'session:tx:commit',
+        'session:end',
+        'response:send',
+      ]);
+    } finally {
+      await app.close();
+    }
   });
 });
