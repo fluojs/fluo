@@ -139,7 +139,7 @@ class GetOrderSummaryHandler
 }
 ```
 
-`CqrsModule.forRoot(...)`를 import하는 애플리케이션 모듈에 projection handler, query handler, projection store를 singleton provider로 등록하세요. `CqrsEventBusService.publish(new OrderPlacedEvent(...))`는 일치하는 `@EventHandler(...)` provider를 saga와 위임 `@fluojs/event-bus` 발행보다 먼저 실행하므로, read model은 문서화된 CQRS event pipeline을 통해 write-side fact를 관찰합니다. Event replay, retry, 외부 transport가 같은 business fact를 두 번 이상 전달할 수 있으므로 projection handler는 idempotent하게 유지하세요.
+`CqrsModule.forRoot(...)`를 import하는 애플리케이션 모듈에 projection handler, query handler, projection store를 singleton provider로 등록하세요. CQRS handler discovery는 provider registration만 검사합니다. HTTP controller는 request boundary에 남으며 controller class가 실수로 CQRS handler decorator를 가지고 있어도 무시됩니다. `CqrsModule.forRoot(...)`는 기본적으로 bus를 global로 export하며, `CqrsModule.forRoot({ global: false })`는 해당 CQRS module을 import한 module을 통해서만 bus provider가 보이도록 유지합니다. `CqrsEventBusService.publish(new OrderPlacedEvent(...))`는 일치하는 `@EventHandler(...)` provider를 saga와 위임 `@fluojs/event-bus` 발행보다 먼저 실행하므로, read model은 문서화된 CQRS event pipeline을 통해 write-side fact를 관찰합니다. Event replay, retry, 외부 transport가 같은 business fact를 두 번 이상 전달할 수 있으므로 projection handler는 idempotent하게 유지하세요.
 
 ### Saga 프로세스 매니저
 
@@ -174,7 +174,7 @@ Saga, command handler, query handler, event handler 안에서 다시 CQRS `execu
 
 ### Event 발행 계약
 
-`CqrsEventBusService.publish(event)`는 CQRS event pipeline을 고정된 순서로 실행합니다. 먼저 일치하는 `@EventHandler(...)` provider를 실행하고, 그다음 일치하는 `@Saga(...)` provider를 실행한 뒤, 마지막으로 `@fluojs/event-bus`로 위임 발행합니다. `publishAll(events)`는 각 event의 CQRS handler, saga, 위임 발행 호출을 기다린 뒤 다음 event를 발행하므로 입력 순서를 보존합니다. 애플리케이션 shutdown 중에는 CQRS event bus가 진행 중인 `publish(...)` pipeline, `publishAll(...)` sequence, saga execution chain이 settle될 때까지 기다린 뒤 stopped 상태로 전환합니다. Shutdown이 시작되면 brand-new external `publish(...)`, `publishAll(...)`, direct saga dispatch 호출은 거부됩니다. 이미 활성화된 handler나 saga에서 호출되는 nested `publish(...)` 또는 `publishAll(...)`은 CQRS가 제공한 `CqrsDispatchContext`를 그대로 전달할 때만 계속 진행할 수 있습니다. 이렇게 하면 drain 작업은 활성 pipeline 안에 머무르고 관련 없는 caller는 계속 거부됩니다. 이미 진행 중인 publish와 saga 작업은 bounded shutdown window 안에서 계속 drain됩니다. Shutdown drain은 기본값이 5000ms인 `CqrsModule.forRoot({ shutdown: { drainTimeoutMs } })`로 제한됩니다. CQRS handler, saga 또는 위임 publish chain이 이 bound 이후에도 멈춰 있으면 CQRS는 degraded status diagnostic을 기록하고 경고를 남긴 뒤 애플리케이션 close를 무기한 hang시키지 않고 계속 진행합니다. `CqrsModule.forRoot({ eventBus: { publish: { waitForHandlers: false } } })`로 설정한 경우 위임 발행 호출은 일치하는 `@OnEvent(...)` subscriber가 완료되기 전에 resolve될 수 있으므로, 이 모드에서 `publish(...)`, `publishAll(...)`, shutdown drain 완료는 subscriber 완료를 의미하지 않습니다.
+`CqrsEventBusService.publish(event)`는 CQRS event pipeline을 고정된 순서로 실행합니다. 먼저 일치하는 `@EventHandler(...)` provider를 실행하고, 그다음 일치하는 `@Saga(...)` provider를 실행한 뒤, 마지막으로 `@fluojs/event-bus`로 위임 발행합니다. `publishAll(events)`는 각 event의 CQRS handler, saga, 위임 발행 호출을 기다린 뒤 다음 event를 발행하므로 입력 순서를 보존합니다. 애플리케이션 shutdown 중에는 CQRS event bus가 진행 중인 `publish(...)` pipeline, `publishAll(...)` sequence, saga execution chain이 settle될 때까지 기다린 뒤 stopped 상태로 전환합니다. Command bus와 query bus는 shutdown이 시작되면 새로운 `execute(...)` 호출을 거부하고 shutdown 중 preload된 handler cache를 정리하므로, close 이후 dispatch가 오래된 provider instance를 재사용할 수 없습니다. Shutdown이 시작되면 brand-new external `publish(...)`, `publishAll(...)`, direct saga dispatch 호출은 거부됩니다. 이미 활성화된 handler나 saga에서 호출되는 nested `publish(...)` 또는 `publishAll(...)`은 CQRS가 제공한 `CqrsDispatchContext`를 그대로 전달할 때만 계속 진행할 수 있습니다. 이렇게 하면 drain 작업은 활성 pipeline 안에 머무르고 관련 없는 caller는 계속 거부됩니다. 이미 진행 중인 publish와 saga 작업은 bounded shutdown window 안에서 계속 drain됩니다. Shutdown drain은 기본값이 5000ms인 `CqrsModule.forRoot({ shutdown: { drainTimeoutMs } })`로 제한됩니다. CQRS handler, saga 또는 위임 publish chain이 이 bound 이후에도 멈춰 있으면 CQRS는 degraded status diagnostic을 기록하고 경고를 남긴 뒤 애플리케이션 close를 무기한 hang시키지 않고 계속 진행합니다. `CqrsModule.forRoot({ eventBus: { publish: { waitForHandlers: false } } })`로 설정한 경우 위임 발행 호출은 일치하는 `@OnEvent(...)` subscriber가 완료되기 전에 resolve될 수 있으므로, 이 모드에서 `publish(...)`, `publishAll(...)`, shutdown drain 완료는 subscriber 완료를 의미하지 않습니다.
 
 각 CQRS event handler와 saga는 매칭된 event prototype이 복원된 격리 event 복사본을 받습니다. 이 복사본을 mutate해도 변경은 현재 handler 또는 saga route 안에만 머물며, 다른 CQRS handler, saga, 원본 event 객체, 또는 위임된 `@fluojs/event-bus` subscriber에는 보이지 않습니다. 위임된 event-bus 발행은 CQRS side effect가 끝난 뒤 원본 event를 받으므로, `@OnEvent(...)` projection과 transport는 CQRS handler가 mutate한 복사본이 아니라 호출자가 소유한 payload를 관찰합니다.
 
@@ -199,7 +199,7 @@ class TokenInjectedService {
 ## 공개 API 개요
 
 ### 모듈 및 프로바이더
-- `CqrsModule.forRoot(options)`: 메인 진입점입니다. 버스를 등록하고 탐색을 시작합니다.
+- `CqrsModule.forRoot(options)`: 메인 진입점입니다. 버스를 등록하고 provider-only discovery를 시작합니다. Bus provider는 기본적으로 global이며 module-local visibility가 필요하면 `global: false`를 전달합니다.
 - Module option은 명시적인 `commandHandlers`, `queryHandlers`, `eventHandlers`, `sagas`, 위임 `eventBus` option을 받을 수 있습니다.
 - `CommandBusLifecycleService`: Command 실행을 위한 기본 서비스입니다.
 - `QueryBusLifecycleService`: Query 실행을 위한 기본 서비스입니다.
