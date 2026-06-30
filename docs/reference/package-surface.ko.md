@@ -21,7 +21,7 @@
 | 런타임 대상 | 어댑터 패키지 | 비고 |
 | --- | --- | --- |
 | **Node.js (기본)** | `@fluojs/platform-fastify` | Node.js에서 고성능을 위한 권장 시작 경로. |
-| **Node.js (Bare)** | `@fluojs/platform-nodejs` | Node HTTP 리스너를 직접 제어해야 할 때 사용. |
+| **Node.js (Bare)** | `@fluojs/platform-nodejs` | Node HTTP 리스너를 직접 제어해야 할 때 사용. 이 패키지는 Node.js 20+를 대상으로 하며 `engines.node >=20.0.0`을 선언합니다. |
 | **Node.js (Express)** | `@fluojs/platform-express` | 기존 Express hosting 또는 server integration을 platform boundary에 유지해야 할 때 사용합니다. Application-level middleware는 여전히 fluo `Middleware` 계약을 사용하며, native Express/Connect `(req, res, next)` function은 portable fluo middleware가 아닙니다. |
 | **Bun** | `@fluojs/platform-bun` | 공식 Bun 네이티브 fetch-style 시작 경로. |
 | **Deno** | `@fluojs/platform-deno` | 공식 `Deno.serve()` 시작 경로. |
