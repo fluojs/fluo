@@ -560,8 +560,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // resolution and ALS host lookup fail-closed coverage, Drizzle shutdown-drain
   // coverage for fail-open manual transactions, Drizzle decorated-instance
   // transaction target fallback discoverability, Mongoose ALS session/request
-  // tracking plus runtime-boundary docs, and metrics shared-registry HTTP
-  // collector or platform telemetry stale-series ownership docs.
+  // tracking plus runtime-boundary docs, microservices transport ownership,
+  // root/subpath export exception, lazy-load, payload clone, and port:0
+  // regression docs, and metrics shared-registry HTTP collector or platform
+  // telemetry stale-series ownership docs.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
