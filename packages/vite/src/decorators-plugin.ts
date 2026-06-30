@@ -153,6 +153,12 @@ export function fluoDecoratorsPlugin(): Plugin {
   return createFluoDecoratorsPlugin(importBabelCore);
 }
 
+/**
+ * Creates the fluo Vite decorators plugin with an injected Babel importer for regression tests.
+ *
+ * @param importBabelCoreModule - Async loader used instead of the production `@babel/core` dynamic import.
+ * @returns A Vite plugin that preserves the production transform boundary while allowing tests to control Babel loading.
+ */
 export function createFluoDecoratorsPluginForTesting(importBabelCoreModule: BabelCoreImporter): Plugin {
   return createFluoDecoratorsPlugin(importBabelCoreModule);
 }
