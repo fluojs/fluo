@@ -1141,6 +1141,52 @@ describe('@fluojs/event-bus', () => {
       await closeApplication(app);
     });
 
+    it('allows a per-call publish timeout to bound awaited transport publish work', async () => {
+      vi.useFakeTimers();
+      const loggerEvents: string[] = [];
+      const gate = createDeferred<void>();
+      const transport = {
+        publishStarted: false,
+        async publish(_channel: string, _payload: unknown) {
+          this.publishStarted = true;
+          await gate.promise;
+        },
+        async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {},
+        async close() {},
+      } satisfies EventBusTransport & { publishStarted: boolean };
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [EventBusModule.forRoot({ publish: { timeoutMs: 120 }, transport })],
+      });
+
+      const app = await bootstrapApplication({
+        logger: createLogger(loggerEvents),
+        rootModule: AppModule,
+      });
+      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+
+      const publishPromise = eventBus.publish(new UserCreatedEvent('transport-user-per-call-timeout'), {
+        timeoutMs: 12,
+      });
+
+      await flushAsyncWork();
+      expect(transport.publishStarted).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(12);
+      await expect(publishPromise).resolves.toBeUndefined();
+
+      expect(
+        loggerEvents.some((event) =>
+          event.includes('EventBusTransport publish to channel "UserCreatedEvent" exceeded publish timeout of 12ms.'),
+        ),
+      ).toBe(true);
+      expect(loggerEvents.some((event) => event.includes('exceeded publish timeout of 120ms.'))).toBe(false);
+
+      gate.resolve();
+      await closeApplication(app);
+    });
+
     it('applies timeout bounds to awaited transport publish calls', async () => {
       vi.useFakeTimers();
       const loggerEvents: string[] = [];
