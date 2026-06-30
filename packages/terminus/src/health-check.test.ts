@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { HealthCheckError } from './errors.js';
-import { assertHealthCheck, runHealthCheck } from './health-check.js';
+import { assertHealthCheck, runHealthCheck, TerminusHealthService } from './health-check.js';
 import type { HealthIndicator } from './types.js';
 
 type TestHealthIndicatorResult = Awaited<ReturnType<HealthIndicator['check']>>;
@@ -264,8 +264,9 @@ describe('runHealthCheck', () => {
       },
     };
 
-    const timedOutReport = await runHealthCheck([indicator], { indicatorTimeoutMs: 5 });
-    const overlappingReport = await runHealthCheck([indicator], { indicatorTimeoutMs: 5 });
+    const service = new TerminusHealthService([indicator], { indicatorTimeoutMs: 5 });
+    const timedOutReport = await service.check();
+    const overlappingReport = await service.check();
 
     expect(starts).toBe(1);
     expect(timedOutReport.error.database).toEqual({
@@ -279,10 +280,45 @@ describe('runHealthCheck', () => {
 
     releaseProbe?.();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const recoveredReport = await runHealthCheck([indicator], { indicatorTimeoutMs: 5 });
+    const recoveredReport = await service.check();
 
     expect(starts).toBe(2);
     expect(recoveredReport.info.database).toEqual({ status: 'up' });
+  });
+
+  it('scopes in-flight serialization to each TerminusHealthService instance', async () => {
+    let starts = 0;
+    let releaseProbe: (() => void) | undefined;
+    const indicator: HealthIndicator = {
+      key: 'database',
+      check: async (key: string) => {
+        starts += 1;
+
+        if (starts > 1) {
+          return { [key]: { status: 'up' } };
+        }
+
+        return new Promise<TestHealthIndicatorResult>((resolve) => {
+          releaseProbe = () => {
+            resolve({ [key]: { status: 'up' } });
+          };
+        });
+      },
+    };
+    const firstService = new TerminusHealthService([indicator], { indicatorTimeoutMs: 5 });
+    const secondService = new TerminusHealthService([indicator], { indicatorTimeoutMs: 5 });
+
+    const firstReport = await firstService.check();
+    const secondReport = await secondService.check();
+
+    expect(starts).toBe(2);
+    expect(firstReport.error.database).toEqual({
+      message: 'Health indicator timed out after 5ms.',
+      status: 'down',
+    });
+    expect(secondReport.info.database).toEqual({ status: 'up' });
+
+    releaseProbe?.();
   });
 
   it('fails deterministically when a later indicator reuses an existing result key', async () => {

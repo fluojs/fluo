@@ -1,12 +1,16 @@
+import { Inject } from '@fluojs/core';
+import { getPrismaClientToken, getPrismaServiceToken } from '@fluojs/prisma';
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
 import { defineModule, type PlatformComponent } from '@fluojs/runtime';
-import { createTestApp } from '@fluojs/testing';
+import { createTestApp, createTestingModule } from '@fluojs/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createHttpHealthIndicatorProvider } from './indicators/http.js';
 import { createMemoryHealthIndicatorProvider, MemoryHealthIndicator } from './indicators/memory.js';
+import { createPrismaHealthIndicatorProvider } from './indicators/prisma.js';
 import { createRedisHealthIndicatorProvider, RedisHealthIndicator } from './indicators/redis.js';
 import { TerminusModule } from './module.js';
+import { TERMINUS_INDICATOR_PROVIDER_TOKENS } from './tokens.js';
 import type { HealthIndicator } from './types.js';
 
 interface Deferred<T> {
@@ -354,6 +358,35 @@ describe('TerminusModule.forRoot', () => {
     }
   });
 
+  it('exports indicator provider token lists to downstream DI consumers', async () => {
+    @Inject(TERMINUS_INDICATOR_PROVIDER_TOKENS)
+    class ProviderTokenConsumer {
+      constructor(readonly tokens: readonly unknown[]) {}
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        TerminusModule.forRoot({
+          indicatorProviders: [createMemoryHealthIndicatorProvider({ key: 'memory' })],
+        }),
+      ],
+      providers: [ProviderTokenConsumer],
+    });
+
+    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+
+    try {
+      const consumer = await testingModule.resolve<ProviderTokenConsumer>(ProviderTokenConsumer);
+
+      expect(consumer.tokens).toHaveLength(1);
+      expect(typeof consumer.tokens[0]).toBe('symbol');
+    } finally {
+      await testingModule.container.dispose();
+    }
+  });
+
   it('supports default and named redis indicator providers without token collisions', async () => {
     const namedRedisToken = getRedisClientToken('cache');
 
@@ -419,6 +452,112 @@ describe('TerminusModule.forRoot', () => {
       const readyResponse = await app.request('GET', '/ready').send();
       expect(readyResponse.status).toBe(200);
       expect(readyResponse.body).toEqual({ status: 'ready' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('prefers name-aware Prisma service providers while retaining raw client fallback', async () => {
+    const defaultServiceQuery = vi.fn(async (_query: string) => undefined);
+    const namedServiceQuery = vi.fn(async (_query: string) => undefined);
+    const rawDefaultQuery = vi.fn(async (_query: string) => {
+      throw new Error('raw default client should not be probed when the Prisma service is present');
+    });
+    const rawNamedQuery = vi.fn(async (_query: string) => undefined);
+    const namedServiceToken = getPrismaServiceToken('analytics');
+    const namedClientToken = getPrismaClientToken('analytics');
+
+    class PrismaIndicatorModule {}
+    defineModule(PrismaIndicatorModule, {
+      exports: [getPrismaServiceToken(), getPrismaClientToken(), namedServiceToken, namedClientToken],
+      global: true,
+      providers: [
+        {
+          provide: getPrismaServiceToken(),
+          useValue: {
+            createPlatformStatusSnapshot: () => ({
+              details: { lifecycleState: 'ready' },
+              health: { status: 'healthy' },
+              readiness: { status: 'ready' },
+            }),
+            current: () => ({
+              $queryRawUnsafe: defaultServiceQuery,
+            }),
+          },
+        },
+        {
+          provide: getPrismaClientToken(),
+          useValue: {
+            $queryRawUnsafe: rawDefaultQuery,
+          },
+        },
+        {
+          provide: namedServiceToken,
+          useValue: {
+            createPlatformStatusSnapshot: () => ({
+              details: { lifecycleState: 'ready', name: 'analytics' },
+              health: { status: 'healthy' },
+              readiness: { status: 'ready' },
+            }),
+            current: () => ({
+              $queryRawUnsafe: namedServiceQuery,
+            }),
+          },
+        },
+        {
+          provide: namedClientToken,
+          useValue: {
+            $queryRawUnsafe: rawNamedQuery,
+          },
+        },
+      ],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        PrismaIndicatorModule,
+        TerminusModule.forRoot({
+          indicatorProviders: [
+            createPrismaHealthIndicatorProvider({ key: 'prisma' }),
+            createPrismaHealthIndicatorProvider({ key: 'analytics-prisma', name: 'analytics' }),
+            createPrismaHealthIndicatorProvider({ clientToken: namedClientToken, key: 'analytics-raw-prisma' }),
+          ],
+        }),
+      ],
+    });
+
+    const app = await createTestApp({ rootModule: AppModule });
+
+    try {
+      const healthResponse = await app.request('GET', '/health').send();
+
+      expect(healthResponse.status).toBe(200);
+      expect(healthResponse.body).toMatchObject({
+        details: {
+          'analytics-prisma': {
+            details: { lifecycleState: 'ready', name: 'analytics' },
+            healthStatus: 'healthy',
+            readinessStatus: 'ready',
+            status: 'up',
+          },
+          'analytics-raw-prisma': {
+            status: 'up',
+          },
+          prisma: {
+            details: { lifecycleState: 'ready' },
+            healthStatus: 'healthy',
+            readinessStatus: 'ready',
+            status: 'up',
+          },
+        },
+        status: 'ok',
+      });
+      expect(defaultServiceQuery).toHaveBeenCalledWith('SELECT 1');
+      expect(namedServiceQuery).toHaveBeenCalledWith('SELECT 1');
+      expect(rawDefaultQuery).not.toHaveBeenCalled();
+      expect(rawNamedQuery).toHaveBeenCalledWith('SELECT 1');
     } finally {
       await app.close();
     }
