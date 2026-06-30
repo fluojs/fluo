@@ -190,6 +190,9 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
         }
 
         client.off?.('message', this.messageListener);
+        this.handler = undefined;
+        this.listening = false;
+        await this.disposeOwnedClientAfterListenFailure(client);
 
         throw error;
       }
@@ -369,7 +372,11 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
       let closeError: unknown;
 
       if (this.listenPromise) {
-        await this.listenPromise;
+        try {
+          await this.listenPromise;
+        } catch (error) {
+          closeError = error;
+        }
       }
 
       try {
@@ -622,6 +629,22 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
         resolve();
       });
     });
+  }
+
+  private async disposeOwnedClientAfterListenFailure(client: MqttClientLike): Promise<void> {
+    if (!this.internallyOwnedClient) {
+      return;
+    }
+
+    try {
+      await this.endClient(client);
+    } catch {
+      // Preserve the original startup failure for callers; shutdown errors are best-effort here.
+    } finally {
+      if (this.client === client) {
+        this.client = undefined;
+      }
+    }
   }
 
   private logEventHandlerFailure(error: unknown): void {
