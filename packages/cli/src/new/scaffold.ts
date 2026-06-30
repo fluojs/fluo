@@ -1215,11 +1215,14 @@ const codec = JSONCodec();
 
 class LazyNatsTransport implements MicroserviceTransport {
   private connection: NatsConnection | undefined;
+  private initializing: Promise<NatsMicroserviceTransport> | undefined;
   private transport: NatsMicroserviceTransport | undefined;
 
   async close() {
-    await this.transport?.close();
+    const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
+    await transport?.close();
     await this.connection?.close();
+    this.initializing = undefined;
     this.transport = undefined;
     this.connection = undefined;
   }
@@ -1237,6 +1240,19 @@ class LazyNatsTransport implements MicroserviceTransport {
   }
 
   private async getTransport() {
+    if (this.transport) {
+      return this.transport;
+    }
+
+    this.initializing ??= this.createTransport();
+    try {
+      return await this.initializing;
+    } finally {
+      this.initializing = undefined;
+    }
+  }
+
+  private async createTransport() {
     if (this.transport) {
       return this.transport;
     }
@@ -1314,15 +1330,18 @@ const responseTopic = process.env.KAFKA_RESPONSE_TOPIC ?? 'fluo.microservices.re
 
 class LazyKafkaTransport implements MicroserviceTransport {
   private consumer: Consumer | undefined;
+  private initializing: Promise<KafkaMicroserviceTransport> | undefined;
   private producer: Producer | undefined;
   private transport: KafkaMicroserviceTransport | undefined;
 
   async close() {
-    await this.transport?.close();
+    const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
+    await transport?.close();
     await Promise.all([
       this.consumer?.disconnect().catch(() => undefined),
       this.producer?.disconnect().catch(() => undefined),
     ]);
+    this.initializing = undefined;
     this.consumer = undefined;
     this.producer = undefined;
     this.transport = undefined;
@@ -1341,6 +1360,19 @@ class LazyKafkaTransport implements MicroserviceTransport {
   }
 
   private async getTransport() {
+    if (this.transport) {
+      return this.transport;
+    }
+
+    this.initializing ??= this.createTransport();
+    try {
+      return await this.initializing;
+    } finally {
+      this.initializing = undefined;
+    }
+  }
+
+  private async createTransport() {
     if (this.transport) {
       return this.transport;
     }
@@ -1442,12 +1474,15 @@ const responseQueue = process.env.RABBITMQ_RESPONSE_QUEUE ?? 'fluo.microservices
 class LazyRabbitMqTransport implements MicroserviceTransport {
   private channel: Awaited<ReturnType<Awaited<ReturnType<typeof connect>>['createConfirmChannel']>> | undefined;
   private connection: Awaited<ReturnType<typeof connect>> | undefined;
+  private initializing: Promise<RabbitMqMicroserviceTransport> | undefined;
   private transport: RabbitMqMicroserviceTransport | undefined;
 
   async close() {
-    await this.transport?.close();
+    const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
+    await transport?.close();
     await this.channel?.close().catch(() => undefined);
     await this.connection?.close().catch(() => undefined);
+    this.initializing = undefined;
     this.channel = undefined;
     this.connection = undefined;
     this.transport = undefined;
@@ -1466,6 +1501,19 @@ class LazyRabbitMqTransport implements MicroserviceTransport {
   }
 
   private async getTransport() {
+    if (this.transport) {
+      return this.transport;
+    }
+
+    this.initializing ??= this.createTransport();
+    try {
+      return await this.initializing;
+    } finally {
+      this.initializing = undefined;
+    }
+  }
+
+  private async createTransport() {
     if (this.transport) {
       return this.transport;
     }

@@ -312,6 +312,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(packageJson.scripts?.start).toBe('fluo start');
     expect(packageJson.scripts?.['test:cov']).toBe('vitest run --coverage');
     expect(packageJson.scripts?.['test:e2e']).toBe('vitest run test/**/*.e2e.test.ts');
+    expect(packageJson.scripts?.['test:watch']).toBe('vitest');
     expect(tsconfig).not.toContain('baseUrl');
     expect(tsconfigBuild).not.toContain('baseUrl');
     expect(appFile).toContain("import { HealthModule } from '@fluojs/runtime';");
@@ -766,6 +767,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(packageJson.scripts?.build).toBe('fluo build');
     expect(packageJson.scripts?.dev).toBe('fluo dev');
     expect(packageJson.scripts?.start).toBe('fluo start');
+    expect(packageJson.scripts?.['test:watch']).toBe('vitest');
     expect(readme).toContain('Shape: `microservice`');
     expect(readme).toContain('Transport: `tcp` is the generated runnable starter contract for this project');
     expect(envFile).toContain('MICROSERVICE_PORT=4000');
@@ -939,6 +941,8 @@ describe('scaffoldBootstrapApp', () => {
     expect(appFile).toContain("import { JSONCodec, connect, type NatsConnection } from 'nats';");
     expect(appFile).toContain('new NatsMicroserviceTransport({');
     expect(appFile).toContain('class LazyNatsTransport implements MicroserviceTransport');
+    expect(appFile).toContain('private initializing: Promise<NatsMicroserviceTransport> | undefined;');
+    expect(appFile).toContain('this.initializing ??= this.createTransport();');
     expect(appFile).toContain("name: 'fluo-microservice-starter'");
   });
 
@@ -980,6 +984,8 @@ describe('scaffoldBootstrapApp', () => {
     expect(appFile).toContain("import { Kafka, logLevel, type Consumer, type Producer } from 'kafkajs';");
     expect(appFile).toContain('new KafkaMicroserviceTransport({');
     expect(appFile).toContain('class LazyKafkaTransport implements MicroserviceTransport');
+    expect(appFile).toContain('private initializing: Promise<KafkaMicroserviceTransport> | undefined;');
+    expect(appFile).toContain('this.initializing ??= this.createTransport();');
     expect(appFile).toContain('await Promise.all([producer.connect(), consumer.connect()]);');
   });
 
@@ -1025,6 +1031,8 @@ describe('scaffoldBootstrapApp', () => {
     expect(appFile).toContain("import { connect } from 'amqplib';");
     expect(appFile).toContain('new RabbitMqMicroserviceTransport({');
     expect(appFile).toContain('class LazyRabbitMqTransport implements MicroserviceTransport');
+    expect(appFile).toContain('private initializing: Promise<RabbitMqMicroserviceTransport> | undefined;');
+    expect(appFile).toContain('this.initializing ??= this.createTransport();');
     expect(appFile).toContain('createConfirmChannel()');
   });
 
