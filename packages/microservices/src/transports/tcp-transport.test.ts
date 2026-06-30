@@ -1,4 +1,4 @@
-import { createServer, Socket } from 'node:net';
+import { Socket } from 'node:net';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,11 +25,11 @@ describe('TcpMicroserviceTransport', () => {
   });
 
   it('closes sockets that exceed the inbound frame buffer cap', async () => {
-    const port = await reserveTcpPort();
     const handler = vi.fn(async () => undefined);
-    const transport = createTransport({ port, requestTimeoutMs: 1_000 });
+    const transport = createTransport({ port: 0, requestTimeoutMs: 1_000 });
 
     await transport.listen(handler);
+    const port = readTcpBoundPort(transport);
 
     const socket = new Socket();
 
@@ -39,6 +39,26 @@ describe('TcpMicroserviceTransport', () => {
 
     expect(handler).not.toHaveBeenCalled();
 
+  });
+
+  it('routes outbound send and emit through the OS-assigned port when configured with port 0', async () => {
+    const events: string[] = [];
+    const transport = createTransport({ port: 0, requestTimeoutMs: 1_000 });
+
+    await transport.listen(async (packet) => {
+      if (packet.kind === 'event') {
+        events.push((packet.payload as { value: string }).value);
+        return undefined;
+      }
+
+      const input = packet.payload as { value: number };
+      return input.value * 2;
+    });
+
+    await expect(transport.send('calc.double', { value: 3 })).resolves.toBe(6);
+    await expect(transport.emit('audit.event', { value: 'ok' })).resolves.toBeUndefined();
+    await waitForCondition(() => events.length === 1);
+    expect(events).toEqual(['ok']);
   });
 
   it('removes abort listener after a request completes normally', async () => {
@@ -128,36 +148,13 @@ describe('TcpMicroserviceTransport', () => {
   });
 });
 
-async function reserveTcpPort(): Promise<number> {
-  const server = createServer();
+function readTcpBoundPort(transport: TcpMicroserviceTransport): number {
+  const descriptor = Object.getOwnPropertyDescriptor(transport, 'boundPort');
+  const port = descriptor?.value;
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      server.off('error', reject);
-      resolve();
-    });
-  });
-
-  const address = server.address();
-
-  if (!address || typeof address !== 'object') {
-    server.close();
-    throw new Error('Expected an ephemeral TCP port from the reservation server.');
+  if (typeof port !== 'number') {
+    throw new Error('Expected TCP transport to expose a numeric boundPort after listen().');
   }
-
-  const port = address.port;
-
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-
-      resolve();
-    });
-  });
 
   return port;
 }
@@ -184,15 +181,29 @@ async function expectSocketTermination(socket: Socket, reason: string): Promise<
         ),
       );
     }, 5_000);
+    const ignoreLateError = () => undefined;
 
     const settle = () => {
       clearTimeout(timeout);
       socket.removeAllListeners('close');
-      socket.removeAllListeners('error');
+      socket.removeListener('error', settle);
       resolve();
     };
 
+    socket.on('error', ignoreLateError);
     socket.once('close', settle);
     socket.once('error', settle);
   });
+}
+
+async function waitForCondition(condition: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (condition()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  throw new Error('Timed out waiting for TCP test condition.');
 }
