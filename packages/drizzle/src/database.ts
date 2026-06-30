@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-
+import { Inject } from '@fluojs/core';
+import type { OnApplicationShutdown } from '@fluojs/runtime';
 import {
   createAbortError,
   createRequestAbortContext,
@@ -7,11 +8,8 @@ import {
   trackActiveRequestTransaction,
   untrackActiveRequestTransaction,
 } from '@fluojs/runtime';
-import type { OnApplicationShutdown } from '@fluojs/runtime';
-import { Inject } from '@fluojs/core';
-
-import { DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS } from './tokens.js';
 import { createDrizzlePlatformStatusSnapshot } from './status.js';
+import { DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS } from './tokens.js';
 import type {
   DrizzleDatabaseLike,
   DrizzleHandleProvider,
@@ -66,9 +64,15 @@ function createCurrentlessDrizzleFacade<TTarget extends { current(): unknown }>(
   target: TTarget,
 ): TTarget {
   return new Proxy(target, {
-    get(database, prop, receiver) {
+    get(database, prop) {
       if (prop in database) {
-        return Reflect.get(database, prop, receiver);
+        const value = Reflect.get(database, prop, database);
+
+        if (typeof value === 'function') {
+          return value.bind(database);
+        }
+
+        return value;
       }
 
       const currentDatabase = database.current() as Record<PropertyKey, unknown>;
@@ -148,7 +152,8 @@ export class DrizzleDatabase<
    * @remarks
    * This compatibility helper is used by `DrizzleModule` provider wiring. Application code should prefer
    * `DrizzleModule.forRoot(...)` or `DrizzleModule.forRootAsync(...)`, then type injected repository handles as
-   * `DrizzleDatabaseFacade<TDatabase>` when direct Drizzle methods are needed.
+   * `DrizzleDatabaseFacade<TDatabase>` when direct Drizzle methods are needed. Wrapper and lifecycle methods remain
+   * bound to the lifecycle owner while unknown Drizzle query properties forward to the ambient `current()` handle.
    *
    * @param database Root Drizzle database handle registered in the module.
    * @param dispose Optional shutdown hook used to close pools or driver resources.

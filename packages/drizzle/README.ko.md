@@ -114,7 +114,7 @@ export class UserRepository {
 
 `@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 Drizzle 트랜잭션 안에서 실행됩니다.
 
-기본적으로 `@Transaction()`은 작은 host-object heuristic으로 대상을 고릅니다. 먼저 `this.db`를 확인하고, 그다음 데코레이터가 붙은 인스턴스의 직접 property, 마지막으로 그 값들의 중첩 `.db` property 중 `transaction(...)` 메서드를 노출하는 첫 값을 사용합니다. 이 덕분에 `constructor(private readonly db: DrizzleDatabase<...>)` 같은 일반 서비스는 간결하게 유지할 수 있지만, 하나의 서비스가 Drizzle wrapper를 둘 이상 소유한다면 property 순서에 의존하지 마세요. 데코레이터가 붙은 host가 여러 transaction-capable client를 갖거나 `.db`를 노출하는 repository를 감싸는 경우에는 `@Transaction((self) => self.ordersDb)` 또는 `@Transaction((self) => self.analyticsDb, options)`처럼 명시적 accessor를 전달하세요.
+기본적으로 `@Transaction()`은 작은 host-object heuristic으로 대상을 고릅니다. 먼저 `this.db`를 확인하고, 그다음 데코레이터가 붙은 인스턴스의 직접 property, 마지막으로 그 값들의 중첩 `.db` property 중 `transaction(...)` 메서드를 노출하는 첫 값을 사용합니다. 이 후보들이 모두 맞지 않으면 데코레이터가 붙은 인스턴스 자체를 transaction 대상으로 사용합니다. 이 덕분에 `constructor(private readonly db: DrizzleDatabase<...>)` 같은 일반 서비스와 자체 facade host는 간결하게 유지할 수 있지만, 하나의 서비스가 Drizzle wrapper를 둘 이상 소유한다면 property 순서에 의존하지 마세요. 데코레이터가 붙은 host가 여러 transaction-capable client를 갖거나 `.db`를 노출하는 repository를 감싸는 경우에는 `@Transaction((self) => self.ordersDb)` 또는 `@Transaction((self) => self.analyticsDb, options)`처럼 명시적 accessor를 전달하세요.
 
 ### 수동 트랜잭션과 current()
 
@@ -235,7 +235,7 @@ defineModule(ManualDrizzleModule, {
 
 provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createPlatformStatusSnapshot()` 같은 wrapper 메서드만 필요로 하면 `DrizzleDatabase<TDatabase>`를 사용하세요. 리포지토리 주입에서 Drizzle query 메서드를 직접 호출해야 한다면 `DrizzleDatabaseFacade<TDatabase>`를 사용합니다. 이 facade는 활성 트랜잭션 handle이 있으면 그 handle로, 없으면 root handle로 호출을 전달합니다. `DrizzleDatabase.createFacade(...)`는 module provider wiring을 위한 low-level compatibility helper로 유지됩니다. 애플리케이션 코드는 `DrizzleModule.forRoot(...)` / `forRootAsync(...)`를 우선 사용하세요.
 
-`Transaction`은 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 데코레이터가 붙은 host에서 `this.db`, 직접 property, 중첩 `.db` property 순서로 transaction-capable 대상을 resolve하고, 명시적 client 선택에는 accessor를 받을 수 있으며, 외부 경계에는 Drizzle transaction option을 전달할 수 있습니다.
+`Transaction`은 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 데코레이터가 붙은 host에서 `this.db`, 직접 property, 중첩 `.db` property 순서로 transaction-capable 대상을 resolve한 뒤, 후보가 없으면 데코레이터가 붙은 인스턴스 자체로 fallback합니다. 명시적 client 선택에는 accessor를 받을 수 있으며, 외부 경계에는 Drizzle transaction option을 전달할 수 있습니다.
 
 ### `DrizzleModule`
 

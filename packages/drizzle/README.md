@@ -114,7 +114,7 @@ export class UserRepository {
 
 Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying Drizzle transaction.
 
-By default, `@Transaction()` selects its target with a small host-object heuristic: it first checks `this.db`, then direct properties on the decorated instance, then a nested `.db` property on those values, and uses the first value that exposes a `transaction(...)` method. This keeps common `constructor(private readonly db: DrizzleDatabase<...>)` services concise, but services with more than one Drizzle wrapper should not rely on property order. Pass an explicit accessor such as `@Transaction((self) => self.ordersDb)` or `@Transaction((self) => self.analyticsDb, options)` whenever the decorated host owns multiple transaction-capable clients or wraps a repository that also exposes `.db`.
+By default, `@Transaction()` selects its target with a small host-object heuristic: it first checks `this.db`, then direct properties on the decorated instance, then a nested `.db` property on those values, and uses the first value that exposes a `transaction(...)` method. If none of those candidates match, the decorated instance itself becomes the transaction target. This keeps common `constructor(private readonly db: DrizzleDatabase<...>)` services and self-contained facade hosts concise, but services with more than one Drizzle wrapper should not rely on property order. Pass an explicit accessor such as `@Transaction((self) => self.ordersDb)` or `@Transaction((self) => self.analyticsDb, options)` whenever the decorated host owns multiple transaction-capable clients or wraps a repository that also exposes `.db`.
 
 ### Manual Transactions and current()
 
@@ -235,7 +235,7 @@ defineModule(ManualDrizzleModule, {
 
 Use `DrizzleDatabase<TDatabase>` when a provider only needs wrapper methods such as `current()`, `transaction(...)`, `requestTransaction(...)`, or `createPlatformStatusSnapshot()`. Use `DrizzleDatabaseFacade<TDatabase>` for repository injections that call Drizzle query methods directly; the facade forwards those calls to the active transaction handle when one exists and to the root handle otherwise. `DrizzleDatabase.createFacade(...)` is retained as a low-level compatibility helper for module-provider wiring; application code should prefer `DrizzleModule.forRoot(...)` / `forRootAsync(...)`.
 
-`Transaction` is a standard TC39 method decorator for service-layer transaction boundaries. It resolves a transaction-capable target from the decorated host by checking `this.db`, then direct properties, then nested `.db` properties, accepts an accessor for explicit client selection, and can forward Drizzle transaction options to the outer boundary.
+`Transaction` is a standard TC39 method decorator for service-layer transaction boundaries. It resolves a transaction-capable target from the decorated host by checking `this.db`, then direct properties, then nested `.db` properties, then falling back to the decorated instance itself; it also accepts an accessor for explicit client selection and can forward Drizzle transaction options to the outer boundary.
 
 ### `DrizzleModule`
 
