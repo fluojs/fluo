@@ -1,6 +1,7 @@
 import { type Constructor, Inject, Module, type Token } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
+import { FluoFactory } from '@fluojs/runtime';
 import { createTestingModule } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
@@ -494,10 +495,21 @@ describe('NotificationsModule', () => {
     expect(callerJob?.id).toBe('caller-job-id');
   });
 
-  it('does not close or drain application-owned queue and event publisher resources during testing module disposal', async () => {
-    const lifecycleCalls: string[] = [];
-    const queue = new LifecycleAwareQueueAdapter(lifecycleCalls);
-    const publisher = new LifecycleAwarePublisher(lifecycleCalls);
+  it('does not close or drain application-owned queue and event publisher resources during runtime app close', async () => {
+    const resourceLifecycleCalls: string[] = [];
+    const runtimeShutdownCalls: string[] = [];
+    const queue = new LifecycleAwareQueueAdapter(resourceLifecycleCalls);
+    const publisher = new LifecycleAwarePublisher(resourceLifecycleCalls);
+
+    class RuntimeShutdownProbe {
+      onModuleDestroy(): void {
+        runtimeShutdownCalls.push('app.onModuleDestroy');
+      }
+
+      onApplicationShutdown(signal?: string): void {
+        runtimeShutdownCalls.push(`app.onApplicationShutdown:${signal ?? 'none'}`);
+      }
+    }
 
     @Module({
       imports: [
@@ -519,13 +531,14 @@ describe('NotificationsModule', () => {
           },
         }),
       ],
+      providers: [RuntimeShutdownProbe],
     })
     class AppModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const app = await FluoFactory.createApplicationContext(AppModule);
 
     try {
-      const service = await testingModule.resolve<NotificationsService>(NotificationsService);
+      const service = await app.get<NotificationsService>(NotificationsService);
 
       await expect(
         service.dispatch({ channel: 'email', payload: { template: 'queued-owned-by-app' } }, { queue: true }),
@@ -540,10 +553,14 @@ describe('NotificationsModule', () => {
         'notification.dispatch.queued',
       ]);
     } finally {
-      await testingModule.container.dispose();
+      await app.close('notifications-shutdown-test');
     }
 
-    expect(lifecycleCalls).toEqual([]);
+    expect(runtimeShutdownCalls).toEqual([
+      'app.onModuleDestroy',
+      'app.onApplicationShutdown:notifications-shutdown-test',
+    ]);
+    expect(resourceLifecycleCalls).toEqual([]);
   });
 
   it('publishes a failed lifecycle event when explicit queue dispatch enqueue fails', async () => {
