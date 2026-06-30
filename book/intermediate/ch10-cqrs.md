@@ -156,7 +156,7 @@ This is the minimal CQRS read path: `OrderPlacedEvent` records the write-side fa
 
 ## 10.5 CQRS wiring in fluo
 
-The package README documents `CqrsModule.forRoot(...)` as the supported root entrypoint. This Module registers the command, query, and event buses and performs discovery during bootstrap.
+The package README documents `CqrsModule.forRoot(...)` as the supported root entrypoint. This Module registers the command, query, and event buses and performs provider-only discovery during bootstrap. The bus providers are global by default, so feature modules can inject them without re-importing CQRS; pass `CqrsModule.forRoot({ global: false })` only when those providers should stay visible through the importing module boundary.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -175,13 +175,13 @@ import { CqrsModule } from '@fluojs/cqrs';
 export class CommerceApplicationModule {}
 ```
 
-This keeps the entrypoint concise. As with earlier fluo packages, lifecycle and discovery happen through Module registration instead of manually assembling buses in each feature.
+This keeps the entrypoint concise. As with earlier fluo packages, lifecycle and discovery happen through Module registration instead of manually assembling buses in each feature. CQRS intentionally ignores module controllers during handler discovery: controllers remain HTTP boundary classes, while command, query, event, and saga handlers must be singleton providers.
 
 ## 10.6 Event publishing from CQRS
 
 The concept docs draw a clear boundary. `@fluojs/cqrs` is the orchestrator. `@fluojs/event-bus` is the engine underneath it that handles event distribution. This layering matters. CQRS does not replace the event bus. It structures how the application uses the event bus. In FluoShop, after a command handler stores a write, it can publish a domain event through the CQRS event bus service. That event can fan out to every matching `@EventHandler(...)` provider in discovery order, then matching Sagas, then delegated `@fluojs/event-bus` subscribers. The write side stays explicit, and the reaction side stays decoupled.
 
-The CQRS event bus also has a lifecycle contract. `publishAll(...)` awaits each event's CQRS pipeline before moving to the next event, so input order is preserved. During application shutdown, active `publish(...)` pipelines and `publishAll(...)` sequences are drained before the CQRS event bus reaches `stopped`. If an application configures delegated event-bus publishing with `waitForHandlers: false`, that drain only proves the delegated publication call resolved; `@OnEvent(...)` subscribers may still be running behind the event-bus boundary.
+The CQRS event bus also has a lifecycle contract. `publishAll(...)` awaits each event's CQRS pipeline before moving to the next event, so input order is preserved. During application shutdown, active `publish(...)` pipelines and `publishAll(...)` sequences are drained before the CQRS event bus reaches `stopped`. Command and query buses reject new `execute(...)` calls from the application shutdown start window, even before their own shutdown hooks run, and then clear preloaded handler caches in those hooks so post-close dispatch cannot reuse stale handler instances. The bounded shutdown window is configured with `CqrsModule.forRoot({ shutdown: { drainTimeoutMs } })`; `shutdown.drainTimeoutMs` defaults to `5000ms`. If a CQRS handler, saga, or delegated publish chain is still running after that bound, CQRS records degraded diagnostics, logs a warning, and lets application close continue rather than hang indefinitely. If an application configures delegated event-bus publishing with `waitForHandlers: false`, that drain only proves the delegated publication call resolved; `@OnEvent(...)` subscribers may still be running behind the event-bus boundary.
 
 ## 10.7 Saga flow for long-running fulfillment
 
@@ -257,7 +257,9 @@ At this stage, FluoShop has moved beyond simply publishing domain events after w
 - Matching `@EventHandler(...)` providers fan out; duplicate event handlers are valid unlike duplicate command or query handlers.
 - A Saga listens to events and dispatches the next command in a long-running workflow.
 - `CqrsEventBusService` delegates event distribution through `@fluojs/event-bus`, so CQRS is built on top of the event bus instead of replacing it.
-- CQRS shutdown drains active publish pipelines, but `waitForHandlers: false` means delegated `@OnEvent(...)` subscriber completion is outside that guarantee.
+- CQRS discovers handlers from singleton providers, not controllers, and `CqrsModule.forRoot({ global: false })` is the opt-out when bus providers should not be globally visible.
+- CQRS shutdown drains active publish pipelines within the `shutdown.drainTimeoutMs` bounded window, which defaults to `5000ms`; timeout fallback records degraded diagnostics, logs a warning, and lets close continue.
+- Command and query buses reject dispatch from the application shutdown start window and clear preloaded handler caches during their own shutdown hooks.
 - `SagaTopologyError` is a design warning that cyclic or overly deep in-process saga graphs need another boundary such as a queue or scheduler.
 
 The key lesson is practical. CQRS is useful in FluoShop not because the acronym is fashionable. It is useful because the platform now needs explicit ownership for writes, explicit shaping for reads, and explicit orchestration between the two.
