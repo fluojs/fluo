@@ -18,6 +18,7 @@ import {
   HttpCode,
   type InterceptorContext,
   type MiddlewareContext,
+  Options,
   Post,
   Redirect,
   type RequestContext,
@@ -316,6 +317,51 @@ describe('@fluojs/platform-fastify', () => {
     expect(() => new FastifyHttpApplicationAdapter(3000, undefined, 150, 1.5, undefined)).toThrow(/retryLimit/i);
     expect(() => new FastifyHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, -1)).toThrow(/maxBodySize/i);
     expect(() => new FastifyHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, Number.NaN)).toThrow(/shutdownTimeoutMs/i);
+  });
+
+  it('honors zero-valued body and shutdown limits as explicit boundaries', async () => {
+    @Controller('/zero')
+    class ZeroController {
+      @Post('/body')
+      readBody(_input: undefined, context: RequestContext) {
+        return { body: context.request.body ?? null };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [ZeroController] });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      maxBodySize: 0,
+      port,
+      shutdownTimeoutMs: 0,
+    });
+
+    await app.listen();
+
+    try {
+      const emptyResponse = await requestHttp({
+        body: '',
+        method: 'POST',
+        path: '/zero/body',
+        port,
+      });
+      const nonEmptyResponse = await requestHttp({
+        body: '{}',
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+        path: '/zero/body',
+        port,
+      });
+
+      expect(emptyResponse.statusCode).toBe(201);
+      expect(JSON.parse(emptyResponse.body)).toEqual({ body: null });
+      expect(nonEmptyResponse.statusCode).toBe(413);
+    } finally {
+      await app.close();
+    }
   });
 
   it('exposes a server-backed realtime capability on the Fastify adapter', async () => {
@@ -1440,25 +1486,66 @@ describe('@fluojs/platform-fastify', () => {
 
     await app.listen();
 
-    const [response, corsPreflight] = await Promise.all([
-      fetch(`http://127.0.0.1:${String(port)}/ping`, {
+    try {
+      const [response, corsPreflight] = await Promise.all([
+        fetch(`http://127.0.0.1:${String(port)}/ping`, {
+          headers: { origin: 'https://example.com' },
+        }),
+        fetch(`http://127.0.0.1:${String(port)}/ping`, {
+          headers: {
+            'access-control-request-method': 'GET',
+            origin: 'https://example.com',
+          },
+          method: 'OPTIONS',
+        }),
+      ]);
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('access-control-allow-origin')).toBeNull();
+      expect(corsPreflight.status).toBe(404);
+      expect(corsPreflight.headers.get('access-control-allow-origin')).toBeNull();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('lets explicit fluo OPTIONS routes own fallback dispatch under CORS', async () => {
+    @Controller('/cors-owned')
+    class CorsOwnedController {
+      @Get('/resource')
+      getResource() {
+        return { ok: true };
+      }
+
+      @Options('/resource')
+      optionsResource() {
+        return { route: 'explicit-options' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [CorsOwnedController] });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: 'https://example.com',
+      port,
+    });
+
+    await app.listen();
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${String(port)}/cors-owned/resource`, {
         headers: { origin: 'https://example.com' },
-      }),
-      fetch(`http://127.0.0.1:${String(port)}/ping`, {
-        headers: {
-          'access-control-request-method': 'GET',
-          origin: 'https://example.com',
-        },
         method: 'OPTIONS',
-      }),
-    ]);
+      });
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get('access-control-allow-origin')).toBeNull();
-    expect(corsPreflight.status).toBe(404);
-    expect(corsPreflight.headers.get('access-control-allow-origin')).toBeNull();
-
-    await app.close();
+      expect(response.status).toBe(200);
+      expect(response.headers.get('access-control-allow-origin')).toBe('https://example.com');
+      await expect(response.json()).resolves.toEqual({ route: 'explicit-options' });
+    } finally {
+      await app.close();
+    }
   });
 
   it('reports the configured host in startup logs', async () => {
@@ -1486,16 +1573,18 @@ describe('@fluojs/platform-fastify', () => {
       port,
     });
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/health`);
+    try {
+      const response = await fetch(`http://127.0.0.1:${String(port)}/health`);
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on http://127.0.0.1:${String(port)}`))).toBe(true);
-    expect(log.mock.calls.some(([message]) => String(message).includes('\u001b['))).toBe(true);
-
-    await app.close();
-    Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: stdoutIsTTY });
-    log.mockRestore();
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ok: true });
+      expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on http://127.0.0.1:${String(port)}`))).toBe(true);
+      expect(log.mock.calls.some(([message]) => String(message).includes('\u001b['))).toBe(true);
+    } finally {
+      await app.close();
+      Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: stdoutIsTTY });
+      log.mockRestore();
+    }
   });
 
   it('removes registered shutdown signal listeners after close', async () => {
@@ -1650,6 +1739,69 @@ describe('@fluojs/platform-fastify', () => {
 
       expect(response.statusCode).toBe(200);
       expect(JSON.parse(response.body)).toEqual({ id: '123' });
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('refreshes native route descriptors when the adapter is reused after close', async () => {
+    @Controller('/reuse')
+    class FirstController {
+      @Get('/:id')
+      getFirst(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'first' };
+      }
+    }
+
+    @Controller('/reuse')
+    class SecondController {
+      @Get('/:id')
+      getSecond(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'second' };
+      }
+    }
+
+    const firstRoot = new Container().register(FirstController);
+    const firstMapping = createHandlerMapping([{ controllerToken: FirstController }]);
+    const firstDispatcher = createDispatcher({
+      handlerMapping: firstMapping,
+      rootContainer: firstRoot,
+    });
+    const secondRoot = new Container().register(SecondController);
+    const secondMapping = createHandlerMapping([{ controllerToken: SecondController }]);
+    const secondDispatcher = createDispatcher({
+      handlerMapping: secondMapping,
+      rootContainer: secondRoot,
+    });
+    const port = await findAvailablePort();
+    const adapter = createFastifyAdapter({ port }) as FastifyHttpApplicationAdapter;
+
+    await adapter.listen(firstDispatcher);
+
+    try {
+      const firstResponse = await requestHttp({
+        method: 'GET',
+        path: '/reuse/one',
+        port,
+      });
+
+      expect(firstResponse.statusCode).toBe(200);
+      expect(JSON.parse(firstResponse.body)).toEqual({ id: 'one', route: 'first' });
+    } finally {
+      await adapter.close();
+    }
+
+    await adapter.listen(secondDispatcher);
+
+    try {
+      const secondResponse = await requestHttp({
+        method: 'GET',
+        path: '/reuse/two',
+        port,
+      });
+
+      expect(secondResponse.statusCode).toBe(200);
+      expect(JSON.parse(secondResponse.body)).toEqual({ id: 'two', route: 'second' });
     } finally {
       await adapter.close();
     }
@@ -2034,6 +2186,53 @@ describe('@fluojs/platform-fastify', () => {
     await closeInFlight;
 
     expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
+  });
+
+  it('cancels retrying startup during close before a later port bind can occur', async () => {
+    const blocker = createServer();
+    await new Promise<void>((resolve, reject) => {
+      blocker.once('error', reject);
+      blocker.listen(0, '127.0.0.1', () => {
+        blocker.removeListener('error', reject);
+        resolve();
+      });
+    });
+    const address = blocker.address();
+
+    if (!address || typeof address === 'string') {
+      blocker.close();
+      throw new Error('Failed to bind startup retry blocker.');
+    }
+
+    const adapter = new FastifyHttpApplicationAdapter(address.port, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
+    const dispatcher = { async dispatch() {} };
+    const listenResult = adapter.listen(dispatcher).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await expect(adapter.close()).resolves.toBeUndefined();
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        blocker.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    }
+
+    const result = await listenResult;
+    expect(result).toBeInstanceOf(Error);
+    expect(String(result instanceof Error ? result.message : result)).toContain('startup was cancelled');
+
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect((adapter.getServer() as { listening?: boolean }).listening).toBe(false);
   });
 
   it('clears the fastify shutdown timer once close settles', async () => {
