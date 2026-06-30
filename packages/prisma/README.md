@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Prisma lifecycle and ALS-backed transaction context for fluo applications. Connects a `PrismaClient` to the module system with automatic connection management and request-scoped transactions.
+Node.js 20+ Prisma lifecycle and ALS-backed transaction context for fluo applications. Connects a `PrismaClient` to the module system with automatic connection management and request-scoped transactions.
 
 ## Table of Contents
 
@@ -30,7 +30,7 @@ pnpm add @prisma/client
 
 ## When to Use
 
-- When using Prisma as your ORM and you want it integrated with fluo's dependency injection and lifecycle hooks.
+- When using Prisma as your ORM on Node.js 20+ and you want it integrated with fluo's dependency injection and lifecycle hooks.
 - When you need a reliable way to share a transaction context across multiple services and repositories without passing a `tx` object everywhere.
 - When you want automatic `$connect` on startup and `$disconnect` on shutdown.
 
@@ -188,7 +188,7 @@ PrismaModule.forRootAsync({
 
 Within one compiled application, downstream providers share the same resolved `PrismaService`, ALS transaction context, and lifecycle-managed client. Separate application containers receive independent factory results, so `$connect` / `$disconnect` ownership and request transaction state remain isolated.
 
-Transaction boundaries require host-provided `AsyncLocalStorage` support. `@fluojs/prisma` resolves it through `globalThis.AsyncLocalStorage` when a runtime exposes one, or through the host's `process.getBuiltinModule('node:async_hooks')` boundary on Node.js. If neither path is available, `transaction()` and `requestTransaction()` reject before opening a Prisma transaction instead of using a synchronous stack fallback that would lose `current()` across async boundaries; `createPlatformStatusSnapshot().details.transactionContext` reports `unavailable` in that state.
+Transaction boundaries require host-provided `AsyncLocalStorage` support. The package manifest declares `engines.node >=20.0.0`, and the root wrapper is the documented Node.js 20+ Prisma integration path. `@fluojs/prisma` resolves ALS through `globalThis.AsyncLocalStorage` when a runtime exposes one, or through the host's `process.getBuiltinModule('node:async_hooks')` boundary on Node.js. If neither path is available or the host builtin lookup fails, `transaction()` and `requestTransaction()` reject before opening a Prisma transaction instead of using a synchronous stack fallback that would lose `current()` across async boundaries; `createPlatformStatusSnapshot().details.transactionContext` reports `unavailable` in that state.
 
 ### Manual Module Composition
 
