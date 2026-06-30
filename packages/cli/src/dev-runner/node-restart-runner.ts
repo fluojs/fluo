@@ -23,6 +23,13 @@ type RestartSignalTarget = {
 
 type RestartWatcherFactory = (target: string, optionsOrListener: { recursive: boolean } | ((event: string, filename: string | Buffer | null) => void), listener?: (event: string, filename: string | Buffer | null) => void) => FSWatcher;
 
+type RestartSchedulerHandle = ReturnType<typeof setTimeout> | number;
+
+type RestartScheduler = {
+  clear(handle: RestartSchedulerHandle): void;
+  set(callback: () => void, delayMs: number): RestartSchedulerHandle;
+};
+
 type ContentChangeGate = {
   commitBaseline(paths: Iterable<string>): void;
   hasMeaningfulChange(paths: Iterable<string>): boolean;
@@ -38,6 +45,7 @@ export type NodeRestartRunnerOptions = {
   signalTarget?: RestartSignalTarget;
   spawnChild?: RestartChildSpawner;
   stderr?: RestartRunnerStream;
+  restartScheduler?: RestartScheduler;
   stdout?: RestartRunnerStream;
   watchTarget?: RestartWatcherFactory;
 };
@@ -387,6 +395,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   const spawnChild = options.spawnChild ?? spawn;
   const stdout = options.stdout ?? process.stdout;
   const stderr = options.stderr ?? process.stderr;
+  const restartScheduler = options.restartScheduler ?? { clear: clearTimeout, set: setTimeout };
   const watchTarget = options.watchTarget ?? watch;
   const appArgs = options.appArgs ?? [];
   const debounceMs = options.debounceMs ?? Number(env.FLUO_DEV_RELOAD_DEBOUNCE_MS ?? DEFAULT_DEBOUNCE_MS);
@@ -397,7 +406,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   let child: ChildProcess | undefined;
   const pendingRestartPaths = new Set<string>();
   const restartAfterClosePaths = new Set<string>();
-  let restartTimer: NodeJS.Timeout | undefined;
+  let restartTimer: RestartSchedulerHandle | undefined;
   let restarting = false;
   let stopping = false;
 
@@ -456,10 +465,10 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
     pendingRestartPaths.add(filePath);
 
     if (restartTimer) {
-      clearTimeout(restartTimer);
+      restartScheduler.clear(restartTimer);
     }
 
-    restartTimer = setTimeout(() => {
+    restartTimer = restartScheduler.set(() => {
       const restartPaths = [...pendingRestartPaths];
       pendingRestartPaths.clear();
       restartTimer = undefined;
@@ -556,7 +565,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
       }
       cleanedUp = true;
       if (restartTimer) {
-        clearTimeout(restartTimer);
+        restartScheduler.clear(restartTimer);
         restartTimer = undefined;
       }
       pendingRestartPaths.clear();

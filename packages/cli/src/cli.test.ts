@@ -58,6 +58,39 @@ function createMockChild(closeOnKillCode = 0): ChildProcess {
   return child;
 }
 
+function createManualRestartScheduler(): {
+  clear(handle: ReturnType<typeof setTimeout> | number): void;
+  flush(): void;
+  set(callback: () => void, delayMs: number): ReturnType<typeof setTimeout> | number;
+} {
+  const callbacks = new Map<number, () => void>();
+  let nextHandle = 0;
+
+  return {
+    clear(handle) {
+      if (typeof handle === 'number') {
+        callbacks.delete(handle);
+      }
+    },
+    flush() {
+      const pendingCallbacks = [...callbacks.values()];
+      callbacks.clear();
+      for (const callback of pendingCallbacks) {
+        callback();
+      }
+    },
+    set(callback, _delayMs) {
+      nextHandle += 1;
+      callbacks.set(nextHandle, callback);
+      return nextHandle;
+    },
+  };
+}
+
+function flushMicrotasks(): Promise<void> {
+  return new Promise((resolve) => queueMicrotask(resolve));
+}
+
 async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
   const startedAt = Date.now();
 
@@ -2208,12 +2241,14 @@ void bootstrap();
     writeFileSync(sourceFile, 'console.log("hello");\n');
     writeFileSync(ignoredFile, 'console.log("ignored");\n');
     const children: ChildProcess[] = [];
+    const restartScheduler = createManualRestartScheduler();
     const watchedTargets: Array<{ listener: (event: string, filename: string | Buffer | null) => void; target: string }> = [];
 
     const runPromise = runNodeRestartRunner({
       debounceMs: 5,
       env: { FLUO_DEV_WATCH_IGNORE: 'generated' },
       projectDirectory: workspaceDirectory,
+      restartScheduler,
       spawnChild: () => {
         const child = createMockChild();
         children.push(child);
@@ -2233,18 +2268,21 @@ void bootstrap();
       },
     });
 
-    await waitForCondition(() => children.length === 1 && watchedTargets.length > 0);
+    expect(children).toHaveLength(1);
+    expect(watchedTargets.length).toBeGreaterThan(0);
     const sourceWatcher = watchedTargets.find((entry) => entry.target === sourceDirectory);
     expect(sourceWatcher).toBeDefined();
 
     writeFileSync(ignoredFile, 'console.log("ignored changed");\n');
     sourceWatcher?.listener('change', join('generated', 'schema.ts'));
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    restartScheduler.flush();
     expect(children).toHaveLength(1);
 
     writeFileSync(sourceFile, 'console.log("hello changed");\n');
     sourceWatcher?.listener('change', 'main.ts');
-    await waitForCondition(() => children.length === 2);
+    restartScheduler.flush();
+    await flushMicrotasks();
+    expect(children).toHaveLength(2);
 
     children.at(-1)?.kill();
     await expect(runPromise).resolves.toBe(0);
@@ -2468,6 +2506,7 @@ void bootstrap();
     writeFileSync(sourceFile, 'console.log("one");\n');
     const signalTarget = createSignalTarget();
     const children: ChildProcess[] = [];
+    const restartScheduler = createManualRestartScheduler();
     const stdoutBuffer: string[] = [];
     const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
 
@@ -2475,6 +2514,7 @@ void bootstrap();
       debounceMs: 1,
       env: { FLUO_DEV_SHOW_RESTART_NOTICE: '1' },
       projectDirectory: workspaceDirectory,
+      restartScheduler,
       signalTarget: signalTarget.target,
       spawnChild: () => {
         const child = createMockChild();
@@ -2498,24 +2538,27 @@ void bootstrap();
     for (const listener of watchListeners) {
       listener('change', 'main.ts');
     }
+    restartScheduler.flush();
 
-    await waitForCondition(() => children[0]?.killed === true && stdoutBuffer.length === 1);
+    expect(children[0]?.killed).toBe(true);
+    expect(stdoutBuffer).toHaveLength(1);
     expect(children).toHaveLength(1);
 
     for (const listener of watchListeners) {
       listener('change', 'main.ts');
     }
+    restartScheduler.flush();
 
-    await waitForCondition(() => stdoutBuffer.length === 2);
+    expect(stdoutBuffer).toHaveLength(2);
     expect(children).toHaveLength(1);
 
     children[0]?.emit('close', 0);
-    await waitForCondition(() => children.length === 2);
+    expect(children).toHaveLength(2);
 
     for (const listener of watchListeners) {
       listener('change', 'main.ts');
     }
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    restartScheduler.flush();
 
     expect(stdoutBuffer.filter((message) => message.startsWith('[fluo] restarting after content change:'))).toHaveLength(2);
 
@@ -4550,6 +4593,7 @@ exit 7
     expect(packageJson.scripts?.test).toBeDefined();
     expect(packageJson.scripts?.['test:cov']).toBe('vitest run --coverage');
     expect(packageJson.scripts?.['test:e2e']).toBe('vitest run test/**/*.e2e.test.ts');
+    expect(packageJson.scripts?.['test:watch']).toBe('vitest');
     expect(readFileSync(join(projectDirectory, '.gitignore'), 'utf8')).toContain('.env');
     expect(readFileSync(join(projectDirectory, '.env'), 'utf8')).toContain('PORT=3000');
     expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');

@@ -77,7 +77,10 @@ describe('CLI generators', () => {
     expect(content).toContain("import { createTestApp } from '@fluojs/testing';");
     expect(content).toContain("import { AppModule } from '../src/app';");
     expect(content).toContain('createTestApp({ rootModule: AppModule })');
+    expect(content).toContain('try {');
     expect(content).toContain("app.request('GET', '/users').send()");
+    expect(content).toContain('finally {');
+    expect(content).toContain('await app.close();');
   });
 
   it('emits generic repository examples without ORM-specific access', () => {

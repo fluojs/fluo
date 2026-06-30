@@ -363,6 +363,9 @@ export { PostModule };
     expect(result.generatedFiles).toEqual([e2ePath]);
     expect(e2eContent).toContain("import { AppModule } from '../src/app';");
     expect(e2eContent).toContain('createTestApp({ rootModule: AppModule })');
+    expect(e2eContent).toContain('try {');
+    expect(e2eContent).toContain('finally {');
+    expect(e2eContent).toContain('await app.close();');
   });
 
   it('preserves explicit e2e root module import overrides', () => {
