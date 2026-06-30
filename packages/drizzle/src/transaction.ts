@@ -53,9 +53,10 @@ function resolveDefaultTransactionTarget<THost, TTransactionOptions>(
  * Standard TC39 method decorator that runs a service method inside a Drizzle transaction boundary.
  *
  * @remarks
- * `@Transaction()` uses `this.db` when present and otherwise treats the decorated instance itself as the
- * transaction-capable `DrizzleDatabase`. Pass an accessor such as `@Transaction((self) => self.analyticsDb)` to select
- * another Drizzle wrapper explicitly. Non-function factory input is forwarded as Drizzle transaction options.
+ * `@Transaction()` selects the first transaction-capable target by checking `this.db`, then direct host properties,
+ * then nested `.db` properties on those values. If none of those candidates exposes `transaction(...)`, the decorated
+ * instance itself is used as the transaction target. Pass an accessor such as `@Transaction((self) => self.analyticsDb)`
+ * to select another Drizzle wrapper explicitly. Non-function factory input is forwarded as Drizzle transaction options.
  *
  * @param accessorOrOptions Optional target accessor, or Drizzle transaction options.
  * @param options Optional Drizzle transaction options when an accessor is supplied.
@@ -70,10 +71,10 @@ export function Transaction<THost, TTransactionOptions = unknown>(
     : undefined;
   const transactionOptions = accessor ? options : accessorOrOptions as TTransactionOptions | undefined;
 
-  return function <TArgs extends unknown[], TResult>(
+  return <TArgs extends unknown[], TResult>(
     value: TransactionMethod<THost, TArgs, TResult>,
     context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TResult>>,
-  ): TransactionMethod<THost, TArgs, TResult> {
+  ): TransactionMethod<THost, TArgs, TResult> => {
     if (context.kind !== 'method') {
       throw new Error('@Transaction() can only decorate methods.');
     }
