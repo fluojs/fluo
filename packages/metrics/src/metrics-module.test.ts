@@ -781,6 +781,49 @@ describe('MetricsModule', () => {
     );
   });
 
+  it('rejects shared-registry HTTP collector reuse with incompatible path-label configuration', async () => {
+    const sharedRegistry = new Registry();
+
+    class FirstAppModule {}
+
+    defineModule(FirstAppModule, {
+      imports: [
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          http: {
+            unknownPathLabel: 'FIRST_UNKNOWN',
+          },
+          path: '/metrics-a',
+          registry: sharedRegistry,
+        }),
+      ],
+    });
+
+    const firstApp = await bootstrapApplication({
+      rootModule: FirstAppModule,
+    });
+    await firstApp.close();
+
+    class SecondAppModule {}
+
+    defineModule(SecondAppModule, {
+      imports: [
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          http: {
+            unknownPathLabel: 'SECOND_UNKNOWN',
+          },
+          path: '/metrics-b',
+          registry: sharedRegistry,
+        }),
+      ],
+    });
+
+    await expect(bootstrapApplication({ rootModule: SecondAppModule })).rejects.toThrow(
+      'Metric name "http_requests_total" is already registered with framework HTTP path-label configuration pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="FIRST_UNKNOWN". Built-in HTTP metrics require matching path-label configuration before reuse; received pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="SECOND_UNKNOWN".',
+    );
+  });
+
   it('reuses framework-owned platform telemetry gauges when module instances share one registry', async () => {
     const sharedRegistry = new Registry();
 
@@ -811,6 +854,62 @@ describe('MetricsModule', () => {
     expect(metricsText).toContain('fluo_component_health{component_id="runtime.shell"');
 
     await app.close();
+  });
+
+  it('replaces stale platform telemetry series when a shared registry is reused by a later module instance', async () => {
+    const sharedRegistry = new Registry();
+    const staleComponent = createPlatformComponent({
+      id: 'cache.previous',
+      kind: 'cache',
+    });
+    const currentComponent = createPlatformComponent({
+      health: 'degraded',
+      id: 'queue.current',
+      kind: 'queue',
+      readiness: 'degraded',
+    });
+
+    class FirstAppModule {}
+
+    defineModule(FirstAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, registry: sharedRegistry })],
+    });
+
+    const firstApp = await bootstrapApplication({
+      platform: { components: [staleComponent] },
+      rootModule: FirstAppModule,
+    });
+
+    const firstResponse = createResponse();
+    await firstApp.dispatch(createRequest('/metrics'), firstResponse);
+    expect(String(firstResponse.body)).toContain('component_id="cache.previous"');
+
+    await firstApp.close();
+
+    class SecondAppModule {}
+
+    defineModule(SecondAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, registry: sharedRegistry })],
+    });
+
+    const secondApp = await bootstrapApplication({
+      platform: { components: [currentComponent] },
+      rootModule: SecondAppModule,
+    });
+
+    try {
+      const secondResponse = createResponse();
+      await secondApp.dispatch(createRequest('/metrics'), secondResponse);
+
+      const metricsText = String(secondResponse.body);
+
+      expect(secondResponse.statusCode).toBe(200);
+      expect(metricsText).not.toContain('component_id="cache.previous"');
+      expect(metricsText).toContain('fluo_component_ready{component_id="queue.current",component_kind="queue",operation="readiness",result="degraded"');
+      expect(metricsText).toContain('fluo_component_health{component_id="queue.current",component_kind="queue",operation="health",result="degraded"');
+    } finally {
+      await secondApp.close();
+    }
   });
 
   it('throws when an app predefines a built-in platform telemetry gauge name', async () => {

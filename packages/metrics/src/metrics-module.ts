@@ -178,17 +178,25 @@ type RuntimeTelemetryComponent = {
   health: PlatformHealthStatus;
   readiness: PlatformReadinessStatus;
 };
-type ComponentStatusMap<TStatus extends string> = Map<string, Map<string, TStatus>>;
+type ComponentStatusMap<TStatus extends string> = Map<string, Map<string, Map<string, Map<string, TStatus>>>>;
 type ComponentStatusEntry<TStatus extends string> = {
+  env: string;
+  instance: string;
   componentId: string;
   componentKind: string;
   status: TStatus;
+};
+type RuntimePlatformTelemetryRegistryState = {
+  lastHealthStatuses: ComponentStatusMap<PlatformHealthStatus>;
+  lastReadinessStatuses: ComponentStatusMap<PlatformReadinessStatus>;
+  scrapeChain: Promise<unknown>;
 };
 type ContainerPresenceProbe = RequestContext['container'] & { has?: (token: Token) => boolean };
 
 const PLATFORM_COMPONENT_LABELS = ['component_id', 'component_kind', 'operation', 'result', 'env', 'instance'] as const;
 const REGISTRY_MODE_LABELS = ['mode'] as const;
 const FRAMEWORK_PLATFORM_GAUGES = new WeakSet<Gauge<string>>();
+const PLATFORM_TELEMETRY_REGISTRY_STATES = new WeakMap<Registry, RuntimePlatformTelemetryRegistryState>();
 const HEALTH_STATUSES = ['healthy', 'unhealthy', 'degraded'] as const satisfies readonly PlatformHealthStatus[];
 const READINESS_STATUSES = ['ready', 'not-ready', 'degraded'] as const satisfies readonly PlatformReadinessStatus[];
 const PLATFORM_SHELL_TOKEN_NAMES = new Set([String(PLATFORM_SHELL)]);
@@ -219,6 +227,21 @@ function assertPrometheusRegistry(value: unknown): Registry {
   }
 
   return value;
+}
+
+function getRuntimePlatformTelemetryRegistryState(registry: Registry): RuntimePlatformTelemetryRegistryState {
+  const existing = PLATFORM_TELEMETRY_REGISTRY_STATES.get(registry);
+  if (existing) {
+    return existing;
+  }
+
+  const state: RuntimePlatformTelemetryRegistryState = {
+    lastHealthStatuses: new Map(),
+    lastReadinessStatuses: new Map(),
+    scrapeChain: Promise.resolve(),
+  };
+  PLATFORM_TELEMETRY_REGISTRY_STATES.set(registry, state);
+  return state;
 }
 
 function toReadinessValue(status: PlatformShellSnapshot['readiness']['status']): number {
@@ -281,15 +304,14 @@ class RuntimePlatformTelemetry {
   private readonly readinessGauge: Gauge<string>;
   private readonly healthGauge: Gauge<string>;
   private readonly registryModeGauge: Gauge<string>;
-  private readonly lastHealthStatuses: ComponentStatusMap<PlatformHealthStatus> = new Map();
-  private readonly lastReadinessStatuses: ComponentStatusMap<PlatformReadinessStatus> = new Map();
-  private scrapeChain: Promise<unknown> = Promise.resolve();
+  private readonly telemetryState: RuntimePlatformTelemetryRegistryState;
 
   constructor(
     registry: Registry,
     private readonly registryMode: RegistryMode,
     private readonly labels: MetricsModuleOptions['platformTelemetry'] = {},
   ) {
+    this.telemetryState = getRuntimePlatformTelemetryRegistryState(registry);
     this.readinessGauge = getOrCreateGauge(registry, {
       help: 'Runtime platform component readiness from shared platform snapshot semantics.',
       labelNames: PLATFORM_COMPONENT_LABELS,
@@ -310,12 +332,12 @@ class RuntimePlatformTelemetry {
   }
 
   async collectMetrics(ctx: RequestContext, registry: Registry): Promise<string> {
-    const collect = this.scrapeChain.then(async () => {
+    const collect = this.telemetryState.scrapeChain.then(async () => {
       await this.refresh(ctx);
       return registry.metrics();
     });
 
-    this.scrapeChain = collect.then(
+    this.telemetryState.scrapeChain = collect.then(
       () => undefined,
       () => undefined,
     );
@@ -350,21 +372,17 @@ class RuntimePlatformTelemetry {
     ];
 
     this.syncGaugeStatuses({
-      currentStatuses: this.toComponentStatusMap(components, (component) => component.health),
-      env,
+      currentStatuses: this.toComponentStatusMap(components, env, instance, (component) => component.health),
       gauge: this.healthGauge,
-      instance,
-      lastStatuses: this.lastHealthStatuses,
+      lastStatuses: this.telemetryState.lastHealthStatuses,
       operation: 'health',
       statuses: HEALTH_STATUSES,
       toMetricValue: toHealthValue,
     });
     this.syncGaugeStatuses({
-      currentStatuses: this.toComponentStatusMap(components, (component) => component.readiness),
-      env,
+      currentStatuses: this.toComponentStatusMap(components, env, instance, (component) => component.readiness),
       gauge: this.readinessGauge,
-      instance,
-      lastStatuses: this.lastReadinessStatuses,
+      lastStatuses: this.telemetryState.lastReadinessStatuses,
       operation: 'readiness',
       statuses: READINESS_STATUSES,
       toMetricValue: toReadinessValue,
@@ -373,39 +391,31 @@ class RuntimePlatformTelemetry {
 
   private clearPlatformTelemetry(): void {
     this.clearGaugeStatuses({
-      env: this.labels?.env ?? 'unknown',
       gauge: this.healthGauge,
-      instance: this.labels?.instance ?? 'local',
-      lastStatuses: this.lastHealthStatuses,
+      lastStatuses: this.telemetryState.lastHealthStatuses,
       operation: 'health',
       statuses: HEALTH_STATUSES,
     });
     this.clearGaugeStatuses({
-      env: this.labels?.env ?? 'unknown',
       gauge: this.readinessGauge,
-      instance: this.labels?.instance ?? 'local',
-      lastStatuses: this.lastReadinessStatuses,
+      lastStatuses: this.telemetryState.lastReadinessStatuses,
       operation: 'readiness',
       statuses: READINESS_STATUSES,
     });
   }
 
   private clearGaugeStatuses<TStatus extends string>({
-    env,
     gauge,
-    instance,
     lastStatuses,
     operation,
     statuses,
   }: {
-    env: string;
     gauge: Gauge<string>;
-    instance: string;
     lastStatuses: ComponentStatusMap<TStatus>;
     operation: 'health' | 'readiness';
     statuses: readonly TStatus[];
   }): void {
-    for (const { componentId, componentKind } of this.componentStatusEntries(lastStatuses)) {
+    for (const { componentId, componentKind, env, instance } of this.componentStatusEntries(lastStatuses)) {
       for (const status of statuses) {
         gauge.remove(componentId, componentKind, operation, status, env, instance);
       }
@@ -416,25 +426,21 @@ class RuntimePlatformTelemetry {
 
   private syncGaugeStatuses<TStatus extends string>({
     currentStatuses,
-    env,
     gauge,
-    instance,
     lastStatuses,
     operation,
     statuses,
     toMetricValue,
   }: {
     currentStatuses: ComponentStatusMap<TStatus>;
-    env: string;
     gauge: Gauge<string>;
-    instance: string;
     lastStatuses: ComponentStatusMap<TStatus>;
     operation: 'health' | 'readiness';
     statuses: readonly TStatus[];
     toMetricValue(status: TStatus): number;
   }): void {
-    for (const { componentId, componentKind, status: previousStatus } of this.componentStatusEntries(lastStatuses)) {
-      const nextStatus = this.getComponentStatus(currentStatuses, componentId, componentKind);
+    for (const { componentId, componentKind, env, instance, status: previousStatus } of this.componentStatusEntries(lastStatuses)) {
+      const nextStatus = this.getComponentStatus(currentStatuses, env, instance, componentId, componentKind);
       if (nextStatus === previousStatus) {
         continue;
       }
@@ -448,24 +454,26 @@ class RuntimePlatformTelemetry {
       }
     }
 
-    for (const { componentId, componentKind, status: currentStatus } of this.componentStatusEntries(currentStatuses)) {
+    for (const { componentId, componentKind, env, instance, status: currentStatus } of this.componentStatusEntries(currentStatuses)) {
       gauge.labels(componentId, componentKind, operation, currentStatus, env, instance).set(toMetricValue(currentStatus));
     }
 
     lastStatuses.clear();
-    for (const { componentId, componentKind, status: currentStatus } of this.componentStatusEntries(currentStatuses)) {
-      this.setComponentStatus(lastStatuses, componentId, componentKind, currentStatus);
+    for (const { componentId, componentKind, env, instance, status: currentStatus } of this.componentStatusEntries(currentStatuses)) {
+      this.setComponentStatus(lastStatuses, env, instance, componentId, componentKind, currentStatus);
     }
   }
 
   private toComponentStatusMap<TStatus extends string>(
     components: readonly RuntimeTelemetryComponent[],
+    env: string,
+    instance: string,
     getStatus: (component: RuntimeTelemetryComponent) => TStatus,
   ): ComponentStatusMap<TStatus> {
     const statuses: ComponentStatusMap<TStatus> = new Map();
 
     for (const component of components) {
-      this.setComponentStatus(statuses, component.id, component.kind, getStatus(component));
+      this.setComponentStatus(statuses, env, instance, component.id, component.kind, getStatus(component));
     }
 
     return statuses;
@@ -473,14 +481,28 @@ class RuntimePlatformTelemetry {
 
   private setComponentStatus<TStatus extends string>(
     statuses: ComponentStatusMap<TStatus>,
+    env: string,
+    instance: string,
     componentId: string,
     componentKind: string,
     status: TStatus,
   ): void {
-    let statusByKind = statuses.get(componentId);
+    let statusByInstance = statuses.get(env);
+    if (!statusByInstance) {
+      statusByInstance = new Map();
+      statuses.set(env, statusByInstance);
+    }
+
+    let statusByComponent = statusByInstance.get(instance);
+    if (!statusByComponent) {
+      statusByComponent = new Map();
+      statusByInstance.set(instance, statusByComponent);
+    }
+
+    let statusByKind = statusByComponent.get(componentId);
     if (!statusByKind) {
       statusByKind = new Map();
-      statuses.set(componentId, statusByKind);
+      statusByComponent.set(componentId, statusByKind);
     }
 
     statusByKind.set(componentKind, status);
@@ -488,18 +510,24 @@ class RuntimePlatformTelemetry {
 
   private getComponentStatus<TStatus extends string>(
     statuses: ComponentStatusMap<TStatus>,
+    env: string,
+    instance: string,
     componentId: string,
     componentKind: string,
   ): TStatus | undefined {
-    return statuses.get(componentId)?.get(componentKind);
+    return statuses.get(env)?.get(instance)?.get(componentId)?.get(componentKind);
   }
 
   private *componentStatusEntries<TStatus extends string>(
     statuses: ComponentStatusMap<TStatus>,
   ): Iterable<ComponentStatusEntry<TStatus>> {
-    for (const [componentId, statusByKind] of statuses) {
-      for (const [componentKind, status] of statusByKind) {
-        yield { componentId, componentKind, status };
+    for (const [env, statusByInstance] of statuses) {
+      for (const [instance, statusByComponent] of statusByInstance) {
+        for (const [componentId, statusByKind] of statusByComponent) {
+          for (const [componentKind, status] of statusByKind) {
+            yield { componentId, componentKind, env, instance, status };
+          }
+        }
       }
     }
   }
