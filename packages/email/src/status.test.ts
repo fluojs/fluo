@@ -9,7 +9,6 @@ describe('createEmailPlatformStatusSnapshot', () => {
       defaultFromConfigured: true,
       lifecycleState: 'ready',
       ownsTransportResources: true,
-      queueWorkerJobName: 'fluo.email.notification',
       transportKind: 'resend-http',
       verifiedOnModuleInit: true,
     });
@@ -22,6 +21,7 @@ describe('createEmailPlatformStatusSnapshot', () => {
       transportKind: 'resend-http',
       verifiedOnModuleInit: true,
     });
+    expect(snapshot.details).not.toHaveProperty('queueWorkerJobName');
   });
 
   it('marks failed transport startup as not-ready and unhealthy', () => {
@@ -30,7 +30,6 @@ describe('createEmailPlatformStatusSnapshot', () => {
       defaultFromConfigured: false,
       lifecycleState: 'failed',
       ownsTransportResources: false,
-      queueWorkerJobName: 'fluo.email.notification',
       transportKind: 'custom-instance',
       verifiedOnModuleInit: false,
     });
@@ -38,5 +37,22 @@ describe('createEmailPlatformStatusSnapshot', () => {
     expect(snapshot.readiness.status).toBe('not-ready');
     expect(snapshot.health.status).toBe('unhealthy');
     expect(snapshot.ownership.externallyManaged).toBe(true);
+  });
+
+  it('surfaces queue metadata only when the caller provides it explicitly', () => {
+    const snapshot = createEmailPlatformStatusSnapshot({
+      channelName: 'email',
+      defaultFromConfigured: true,
+      lifecycleState: 'ready',
+      ownsTransportResources: true,
+      queueWorkerJobName: 'custom.email.queue.job',
+      transportKind: 'resend-http',
+      verifiedOnModuleInit: false,
+    });
+
+    expect(snapshot.details).toMatchObject({
+      queueWorkerJobName: 'custom.email.queue.job',
+      transportKind: 'resend-http',
+    });
   });
 });

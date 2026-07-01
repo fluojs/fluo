@@ -1,7 +1,6 @@
 import { Inject } from '@fluojs/core';
 import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
-import { DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS } from './constants.js';
 import { EmailLifecycleError, EmailMessageValidationError } from './errors.js';
 import { createEmailPlatformStatusSnapshot } from './status.js';
 import { EMAIL_OPTIONS } from './tokens.js';
@@ -199,7 +198,6 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
       defaultFromConfigured: this.options.defaultFrom !== undefined,
       lifecycleState: this.lifecycleState,
       ownsTransportResources: this.options.transport.ownsResources,
-      queueWorkerJobName: DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS.jobName,
       transportKind: this.options.transport.kind,
       verifiedOnModuleInit: this.options.verifyOnModuleInit,
     });
