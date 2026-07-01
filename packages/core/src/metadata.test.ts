@@ -1,6 +1,16 @@
-import { describe, expect, it } from 'vitest';
-
+import { describe, expect, it, vi } from 'vitest';
 import {
+  getOwnStandardConstructorMetadataBag,
+  getStandardConstructorMetadataBag,
+  getStandardConstructorMetadataMap,
+  getStandardConstructorMetadataRecord,
+  getStandardMetadataBag,
+  metadataSymbol,
+  type StandardMetadataBag,
+  standardMetadataKeys,
+} from './metadata/shared.js';
+import {
+  appendClassValidationRule,
   appendDtoFieldValidationRule,
   defineClassDiMetadata,
   defineControllerMetadata,
@@ -10,28 +20,18 @@ import {
   defineRouteMetadata,
   ensureMetadataSymbol,
   getClassDiMetadata,
+  getClassDiMetadataVersion,
   getControllerMetadata,
   getDtoBindingSchema,
-  getDtoValidationSchema,
   getDtoFieldBindingMetadata,
+  getDtoValidationSchema,
   getInheritedClassDiMetadata,
   getInjectionSchema,
   getModuleMetadata,
   getModuleMetadataVersion,
   getOwnClassDiMetadata,
   getRouteMetadata,
-  getClassDiMetadataVersion,
 } from './metadata.js';
-import {
-  getOwnStandardConstructorMetadataBag,
-  getStandardConstructorMetadataBag,
-  getStandardConstructorMetadataMap,
-  getStandardConstructorMetadataRecord,
-  getStandardMetadataBag,
-  metadataSymbol,
-  standardMetadataKeys,
-  type StandardMetadataBag,
-} from './metadata/shared.js';
 import type { Token } from './types.js';
 
 type MutableForwardRefToken<T = unknown> = {
@@ -45,6 +45,97 @@ type MutableOptionalInjectToken<T = unknown> = {
 };
 
 describe('metadata helpers', () => {
+  it('shares explicit metadata across duplicate package instances in one process', async () => {
+    class ExampleModule {}
+    class ExampleController {
+      getUser() {
+        return { ok: true };
+      }
+    }
+    class ExampleDto {
+      id = '';
+    }
+    const validateClass = () => true;
+
+    defineModuleMetadata(ExampleModule, {
+      controllers: [ExampleController],
+      providers: ['LoggerProvider'],
+    });
+    defineClassDiMetadata(ExampleController, {
+      inject: ['LoggerProvider'],
+    });
+    defineControllerMetadata(ExampleController, {
+      basePath: '/users',
+    });
+    defineRouteMetadata(ExampleController.prototype, 'getUser', {
+      method: 'GET',
+      path: '/:id',
+    });
+    defineInjectionMetadata(ExampleController.prototype, 'service', {
+      optional: true,
+      token: 'LoggerProvider',
+    });
+    defineDtoFieldBindingMetadata(ExampleDto.prototype, 'id', {
+      key: 'id',
+      source: 'path',
+    });
+    appendDtoFieldValidationRule(ExampleDto.prototype, 'id', {
+      kind: 'notEmpty',
+      message: 'id is required',
+    });
+    appendClassValidationRule(ExampleDto, {
+      code: 'valid-dto',
+      validate: validateClass,
+    });
+
+    vi.resetModules();
+    const freshMetadata = await import('./metadata.js');
+
+    expect(freshMetadata.getModuleMetadata(ExampleModule)).toMatchObject({
+      controllers: [ExampleController],
+      providers: ['LoggerProvider'],
+    });
+    expect(freshMetadata.getClassDiMetadata(ExampleController)).toEqual({
+      inject: ['LoggerProvider'],
+      scope: undefined,
+    });
+    expect(freshMetadata.getControllerMetadata(ExampleController)).toEqual({
+      basePath: '/users',
+      guards: undefined,
+      interceptors: undefined,
+      version: undefined,
+    });
+    expect(freshMetadata.getRouteMetadata(ExampleController.prototype, 'getUser')).toEqual({
+      method: 'GET',
+      path: '/:id',
+    });
+    expect(freshMetadata.getInjectionSchema(ExampleController.prototype)).toEqual([{
+      metadata: {
+        optional: true,
+        token: 'LoggerProvider',
+      },
+      propertyKey: 'service',
+    }]);
+    expect(freshMetadata.getDtoBindingSchema(ExampleDto)).toEqual([{
+      metadata: {
+        key: 'id',
+        source: 'path',
+      },
+      propertyKey: 'id',
+    }]);
+    expect(freshMetadata.getDtoValidationSchema(ExampleDto)).toEqual([{
+      propertyKey: 'id',
+      rules: [{
+        kind: 'notEmpty',
+        message: 'id is required',
+      }],
+    }]);
+    expect(freshMetadata.getClassValidationRules(ExampleDto)).toEqual([{
+      code: 'valid-dto',
+      validate: validateClass,
+    }]);
+  });
+
   it('round-trips module metadata', () => {
     class ExampleModule {}
 

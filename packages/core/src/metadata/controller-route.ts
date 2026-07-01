@@ -1,18 +1,23 @@
+import type { MetadataPropertyKey } from '../types.js';
 import {
-  cloneMutableValue,
   cloneCollection,
+  cloneMutableValue,
+  getGlobalMetadataWeakMap,
   getOrCreatePropertyMap,
   getStandardConstructorMetadataMap,
   getStandardMetadataBag,
   mergeUnique,
+  metadataKeys,
   standardMetadataKeys,
 } from './shared.js';
 import { createClonedWeakMapStore } from './store.js';
 import type { ControllerMetadata, RouteMetadata, StandardRouteMetadataRecord } from './types.js';
-import type { MetadataPropertyKey } from '../types.js';
 
-const controllerMetadataStore = createClonedWeakMapStore<Function, ControllerMetadata>(cloneControllerMetadata);
-const routeMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, RouteMetadata>>();
+const controllerMetadataStore = createClonedWeakMapStore<Function, ControllerMetadata>(
+  cloneControllerMetadata,
+  getGlobalMetadataWeakMap<Function, ControllerMetadata>(metadataKeys.controller),
+);
+const routeMetadataStore = getGlobalMetadataWeakMap<object, Map<MetadataPropertyKey, RouteMetadata>>(metadataKeys.route);
 
 function cloneRouteHeaders(headers: RouteMetadata['headers']): RouteMetadata['headers'] {
   return headers?.map((header) => ({ ...header }));
