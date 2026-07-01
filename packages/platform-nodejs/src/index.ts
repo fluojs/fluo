@@ -84,9 +84,9 @@ export const bootstrapNodejsApplication: typeof bootstrapNodeApplication = boots
  * ```
  */
 export function createNodejsAdapter(
-  options: NodeHttpAdapterOptions = {},
-): NodeHttpApplicationAdapter {
-  return createNodeHttpAdapter(options) as NodeHttpApplicationAdapter;
+  options: NodejsAdapterOptions = {},
+): NodejsHttpApplicationAdapter {
+  return createNodeHttpAdapter(options) as NodejsHttpApplicationAdapter;
 }
 
 /**

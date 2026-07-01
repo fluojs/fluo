@@ -21,7 +21,7 @@
 | runtime target | adapter package | notes |
 | --- | --- | --- |
 | **Node.js (Default)** | `@fluojs/platform-fastify` | Recommended starter path for high performance on Node.js. |
-| **Node.js (Bare)** | `@fluojs/platform-nodejs` | Use when you need direct control over the Node HTTP listener. |
+| **Node.js (Bare)** | `@fluojs/platform-nodejs` | Use when you need direct control over the Node HTTP listener. The package targets Node.js 20+ and declares `engines.node >=20.0.0`. |
 | **Node.js (Express)** | `@fluojs/platform-express` | Use when existing Express hosting or server integrations must remain at the platform boundary. Application-level middleware still uses fluo's `Middleware` contract; native Express/Connect `(req, res, next)` functions are not portable fluo middleware. |
 | **Bun** | `@fluojs/platform-bun` | Official Bun-native fetch-style startup path. |
 | **Deno** | `@fluojs/platform-deno` | Official `Deno.serve()` startup path. |

@@ -83,6 +83,8 @@ For long-term portability, prefer middleware written to the fluo contract or reg
 
 When you need to minimize footprint as much as possible, or when you need to design operational boundaries directly on top of the Node.js standard library, `@fluojs/platform-nodejs` is the right fit. This adapter provides an HTTP/HTTPS bridge with the framework layer kept minimal.
 
+`@fluojs/platform-nodejs` targets Node.js 20 or newer. Its package manifest declares `engines.node >=20.0.0`, so use one of the fetch-style runtime adapters instead when the host is Bun, Deno, or Cloudflare Workers.
+
 ### 21.2.1 Why Go Raw?
 
 - **Zero Overhead**: It does not add a separate routing layer or request/response wrapping beyond the boundaries fluo requires.

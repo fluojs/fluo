@@ -83,6 +83,8 @@ const app = await fluoFactory.create(AppModule, {
 
 풋프린트를 최대한 줄이거나 Node.js 표준 라이브러리 위에서 직접 운영 경계를 설계해야 할 때는 `@fluojs/platform-nodejs`가 적합합니다. 이 어댑터는 프레임워크 계층을 최소화한 HTTP/HTTPS 브리지를 제공합니다.
 
+`@fluojs/platform-nodejs`는 Node.js 20 이상을 대상으로 합니다. Package manifest는 `engines.node >=20.0.0`을 선언하므로, host가 Bun, Deno, Cloudflare Workers라면 대신 fetch-style runtime adapter 중 하나를 사용하세요.
+
 ### 21.2.1 Why Go Raw?
 
 - **Zero Overhead**: fluo가 필요로 하는 경계 외에는 별도의 라우팅 계층이나 요청, 응답 래핑을 추가하지 않습니다.
