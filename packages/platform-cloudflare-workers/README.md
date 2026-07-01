@@ -27,7 +27,7 @@ This package is intended to run on Cloudflare Workers. The published manifest in
 
 Use this package when deploying fluo applications to [Cloudflare Workers](https://workers.cloudflare.com/). It is designed for the serverless edge environment, providing a lightweight `fetch`-based adapter that respects Worker isolate constraints and native Web APIs.
 
-The adapter binds each request lifecycle to `executionContext.waitUntil(...)` after the dispatcher is bound and keeps in-flight dispatches and SSE (`text/event-stream`) response bodies alive during `close()` so Worker shutdown does not drop active work mid-request.
+The adapter binds each request lifecycle to `executionContext.waitUntil(...)` after the dispatcher is bound and keeps in-flight dispatches, WebSocket upgrades, and SSE (`text/event-stream`) response bodies alive during `close()` so Worker shutdown does not drop active work mid-request.
 
 During application shutdown, the adapter stops accepting new ingress immediately and gives active HTTP handlers a bounded 10-second drain window before `close()` fails with a timeout instead of hanging indefinitely. While that drain is still in progress, a concurrent `listen()` call rejects with `Cloudflare Workers adapter cannot listen while shutdown is still draining.` instead of reopening the Worker. Once closed, follow-up HTTP and WebSocket upgrade requests receive the same JSON `503` shutdown response until the adapter is explicitly listened again. Lazy entrypoints keep returning shutdown responses while a timed-out close is still draining, but they clear that temporary gate once the underlying close eventually settles so a later request can bootstrap a fresh Worker application.
 
@@ -68,7 +68,7 @@ export default {
 ## Common Patterns
 
 ### Working with WebSocketPairs
-The adapter supports Cloudflare's native `WebSocketPair` for real-time communication via the `@fluojs/websockets/cloudflare-workers` binding. Upgrade handling is opt-in through that binding, and `createWebSocketPair` can be injected for non-hosted runtime tests. Configure the binding before `listen()` starts the Worker dispatch boundary; replacing a live defined binding is rejected so upgrade ownership cannot change underneath active requests.
+The adapter supports Cloudflare's native `WebSocketPair` for real-time communication via the `@fluojs/websockets/cloudflare-workers` binding. Upgrade handling is opt-in through that binding, and `createWebSocketPair` can be injected for non-hosted runtime tests. Configure the binding before `listen()` starts the Worker dispatch boundary; replacing or clearing a live defined binding is rejected so upgrade ownership cannot change underneath active requests.
 
 ```typescript
 @WebSocketGateway({ path: '/ws' })
@@ -89,14 +89,14 @@ const worker = createCloudflareWorkerEntrypoint(AppModule, {
 
 - `fetch()` registers active work with `executionContext.waitUntil(...)` after `listen()` or the lazy entrypoint binds the dispatcher; SSE (`text/event-stream`) responses keep that lifecycle and the close drain open until the body finishes or is canceled. Before that lifecycle boundary, upgrade requests and HTTP dispatch do not reach application handlers.
 - Adapter options such as `maxBodySize` are validated when the Worker adapter is created; bootstrap-only options such as `globalPrefix`, `cors`, `middleware`, and `securityHeaders` belong on Worker bootstrap helpers rather than `createCloudflareWorkerAdapter(...)`.
-- WebSocket upgrades are owned by the same listen boundary as HTTP dispatch; upgrade requests before `listen()` do not reach the configured binding, and attempts to replace a defined binding after `listen()` starts fail fast instead of mutating live upgrade ownership.
+- WebSocket upgrades are owned by the same listen boundary as HTTP dispatch; upgrade requests before `listen()` do not reach the configured binding, and attempts to replace or clear a defined binding after `listen()` starts fail fast instead of mutating live upgrade ownership.
 - `close()` returns JSON `503` responses for new HTTP and WebSocket upgrade requests during and after shutdown and times out after 10 seconds if active requests never settle. Calling `listen()` while that close drain is still active rejects with the Cloudflare Workers adapter shutdown-draining error. Lazy entrypoints do not permanently cache that timeout once the adapter's underlying drain later finishes.
 - Multipart requests do not preserve `rawBody`.
 - The Worker `env` object is attached to each `FrameworkRequest` as `request.cloudflare.env`, with the Worker execution context available as `request.cloudflare.executionContext`; package-level config resolution remains application-owned, so map bindings into explicit providers or `@fluojs/config` at the application boundary.
 
 ## Conformance Coverage
 
-`packages/platform-cloudflare-workers/src/adapter.test.ts` is the package-local regression target for the documented Worker contract. It covers shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE (`text/event-stream`) body tracking, websocket upgrade binding, pre-listen HTTP and websocket lifecycle guards, live websocket binding replacement rejection, lazy entrypoint reuse and timeout recovery, shutdown gating, drain-time `listen()` rejection, JSON `503` responses while closing and after close for both HTTP and websocket upgrades, reliable fake-timer cleanup, and the bounded 10-second close timeout.
+`packages/platform-cloudflare-workers/src/adapter.test.ts` is the package-local regression target for the documented Worker contract. It covers shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE (`text/event-stream`) body tracking, websocket upgrade binding, pre-listen HTTP and websocket lifecycle guards, live websocket binding mutation rejection, lazy entrypoint reuse and timeout recovery, shutdown gating, drain-time `listen()` rejection, JSON `503` responses while closing and after close for both HTTP and websocket upgrades, reliable fake-timer cleanup, and the bounded 10-second close timeout.
 
 The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Cloudflare Workers beside Bun and Deno for malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The README parity assertion in the package test keeps these documented edge-runtime coverage claims synchronized with the Korean mirror.
 

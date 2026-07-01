@@ -301,7 +301,7 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     }
   });
 
-  it('rejects live Worker websocket binding replacement after listen starts', async () => {
+  it('rejects live Worker websocket binding mutations after listen starts', async () => {
     const adapter = new CloudflareWorkerHttpApplicationAdapter({
       createWebSocketPair: createWebSocketPairStub(),
     });
@@ -321,6 +321,9 @@ describe('@fluojs/platform-cloudflare-workers', () => {
 
     try {
       expect(() => adapter.configureWebSocketBinding(replacementBinding)).toThrow(
+        'Cloudflare Workers websocket binding must be configured before listen() starts accepting Worker requests.',
+      );
+      expect(() => adapter.configureWebSocketBinding(undefined)).toThrow(
         'Cloudflare Workers websocket binding must be configured before listen() starts accepting Worker requests.',
       );
       expect(() => adapter.configureWebSocketBinding(initialBinding)).not.toThrow();

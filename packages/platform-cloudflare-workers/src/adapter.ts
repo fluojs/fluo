@@ -171,7 +171,7 @@ export class CloudflareWorkerHttpApplicationAdapter
   }
 
   configureWebSocketBinding(binding: CloudflareWorkerWebSocketBinding | undefined): void {
-    if (this.dispatcher && binding !== undefined && binding !== this.websocketBinding) {
+    if (this.dispatcher && binding !== this.websocketBinding) {
       throw new Error(WEBSOCKET_BINDING_RECONFIGURATION_MESSAGE);
     }
 
