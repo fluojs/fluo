@@ -561,10 +561,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // coverage for fail-open manual transactions, Drizzle decorated-instance
   // transaction target fallback discoverability, Mongoose ALS session/request
   // tracking plus runtime-boundary docs, raw Node.js adapter type/runtime-floor
-  // and retry/body-limit/shutdown regression coverage, microservices transport
-  // ownership, root/subpath export exception, lazy-load, payload clone, and
-  // port:0 regression docs, and metrics shared-registry HTTP collector or
-  // platform telemetry stale-series ownership docs.
+  // and retry/body-limit/shutdown regression coverage, and metrics shared-registry
+  // HTTP collector or platform telemetry stale-series ownership docs.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
@@ -579,6 +577,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
     includesAny(changedFiles, (path) => path.endsWith('.test.ts') || path.endsWith('.spec.ts')),
     'contract-governing doc updates must include regression test updates for the changed contract surface.',
   );
+
+  // Microservices transport ownership, root/subpath export exceptions, lazy-load,
+  // payload clone, and port:0 regression docs are also covered by this companion
+  // enforcement path when changed files touch `@fluojs/microservices` contracts.
 }
 
 function enforceAlignmentClaimsBackedByHarness(changedFiles) {
