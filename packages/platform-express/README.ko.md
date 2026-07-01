@@ -51,10 +51,12 @@ Express 어댑터는 공유 `SseResponse` 유틸리티를 통해 Server-Sent Eve
 Express 기반 응답 스트림은 공유 fluo 백프레셔 계약도 따릅니다. `response.stream.waitForDrain()`은 `drain`, `close`, `error` 중 어느 쪽이 먼저 와도 완료되므로, 백프레셔가 풀리기 전에 클라이언트가 연결을 끊어도 스트리밍 작성기가 멈추지 않습니다.
 
 ```typescript
-@Get('events')
-async streamEvents(@Res() res: FrameworkResponse) {
-  const events = new SseResponse();
-  events.send({ data: 'hello' });
+import { Sse, SseResponse, type RequestContext } from '@fluojs/http';
+
+@Sse('events')
+async streamEvents(_input: undefined, ctx: RequestContext) {
+  const events = new SseResponse(ctx);
+  events.send({ data: 'hello' }, { event: 'ready' });
   return events;
 }
 ```
@@ -114,7 +116,7 @@ const app = await fluoFactory.create(AppModule, {
 - **버저닝 parity**: Express Router가 최초 path match를 하더라도 header/media-type/custom version 선택은 계속 dispatcher가 최종 결정합니다.
 - **Middleware rewrite parity**: App middleware가 method/path를 rewrite하면 native handoff는 무효화되고 rewrite된 요청을 기준으로 다시 매칭합니다.
 - **응답 serialization parity**: String response는 기본적으로 `text/plain`, object/array는 JSON, binary payload는 `application/octet-stream`으로 serialize되며 `set-cookie` 값은 병합됩니다.
-- **Startup과 shutdown**: 어댑터는 HTTP/HTTPS startup, retry option에 따른 `EADDRINUSE` 재시도, close 시 socket drain, 동시에 들어온 `close()` 호출의 단일 in-flight close lifecycle 재사용, shutdown timeout 이후 force-close를 지원하며, `shutdownTimeoutMs`가 `0`이면 즉시 force-close합니다.
+- **Startup과 shutdown**: 어댑터는 HTTP/HTTPS startup, `retryLimit` 소진 전까지 retry option에 따른 `EADDRINUSE` 재시도, 이미 시작된 adapter에 대한 중복 `listen()` 호출의 idempotent 처리와 live dispatcher 보존, 정상 close 시 idle keep-alive socket drain, 동시에 들어온 `close()` 호출의 단일 in-flight close lifecycle 재사용, shutdown timeout 이후 force-close를 지원하며, `shutdownTimeoutMs`가 `0`이면 즉시 force-close합니다.
 
 ## 공개 API 개요
 
@@ -122,7 +124,7 @@ const app = await fluoFactory.create(AppModule, {
 - `bootstrapExpressApplication(module, options)`: 수동 제어를 위한 고급 부트스트랩 헬퍼입니다.
 - `runExpressApplication(module, options)`: 시그널 연결을 포함한 빠른 시작을 위한 호환 헬퍼입니다. timeout/실패 시에는 해당 상태를 로그와 `process.exitCode`로 보고하고, 최종 프로세스 종료는 주변 호스트에 맡깁니다.
 - `isExpressMultipartTooLargeError(error)`: adapter error shape 전반에서 multipart limit 감지를 정규화합니다.
-- `ExpressHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다. `getServer()`는 좁은 platform integration을 위해 underlying Node HTTP/HTTPS server를 노출하고, `getRealtimeCapability()`는 realtime package가 사용하는 server-backed capability를 반환합니다. 두 helper 모두 일반 애플리케이션 코드에 native server object를 퍼뜨리기보다 infrastructure boundary에만 두세요.
+- `ExpressHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다. `getServer()`는 좁은 platform integration을 위해 underlying Node HTTP/HTTPS server를 노출하고, `getListenTarget()`은 startup 이후 resolved bind target과 public URL을 보고하며, `getRealtimeCapability()`는 realtime package가 사용하는 server-backed capability를 반환합니다. 이러한 helper는 모두 일반 애플리케이션 코드에 native server object를 퍼뜨리기보다 infrastructure boundary에만 두세요.
 - Option type: `ExpressAdapterOptions`, `BootstrapExpressApplicationOptions`, `RunExpressApplicationOptions`, `CorsInput`, `ExpressApplicationSignal`.
 
 `createExpressAdapter(options, multipartOptions?)`는 `host`, `https`, `maxBodySize`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`를 지원합니다. `ExpressHttpApplicationAdapter`를 직접 생성하는 경우에도 factory와 같은 numeric validation이 적용됩니다. `bootstrapExpressApplication(...)`과 `runExpressApplication(...)`은 `cors`, `globalPrefix`, `globalPrefixExclude`, `middleware`, `multipart`, `securityHeaders`, `forceExitTimeoutMs`, `shutdownSignals`, `logger`도 받습니다. startup/shutdown diagnostics에는 framework console logger를 기본으로 사용하며, `logger`가 제공되면 주입된 `ApplicationLogger`를 따릅니다.
@@ -136,4 +138,4 @@ const app = await fluoFactory.create(AppModule, {
 ## 예제 소스
 
 - `packages/platform-express/src/adapter.test.ts`
-- 이 패키지는 아직 전용 `examples/platform-express` 앱을 제공하지 않습니다. Express bootstrap 형태는 이 README의 빠른 시작을 사용하고, 실행 가능한 Express adapter coverage는 `packages/platform-express/src/adapter.test.ts`를 사용하세요. `examples/minimal/src/main.ts`는 Fastify 기반이므로 Express 예제 소스로 취급하지 않아야 합니다.
+- 이 패키지는 아직 전용 `examples/platform-express` 앱을 제공하지 않습니다. Express bootstrap 형태는 이 README의 빠른 시작을 사용하고, SSE framing, native-route fallback parity, duplicate listen idempotency, retry exhaustion, idle keep-alive drain, forced shutdown을 포함한 실행 가능한 Express adapter coverage는 `packages/platform-express/src/adapter.test.ts`를 사용하세요. `examples/minimal/src/main.ts`는 Fastify 기반이므로 Express 예제 소스로 취급하지 않아야 합니다.
