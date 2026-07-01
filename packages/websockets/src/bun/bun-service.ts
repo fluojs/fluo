@@ -22,11 +22,12 @@ import type {
   WebSocketUpgradeRejection,
 } from '../types.js';
 import type {
-  BunServerLike,
   BunServerWebSocket,
   BunWebSocketBinding,
   BunWebSocketBindingHost,
-  BunWebSocketMessage,WebSocketModuleOptions 
+  BunWebSocketMessage,
+  BunWebSocketUpgradeHost,
+  WebSocketModuleOptions,
 } from './bun-types.js';
 
 interface BufferedDisconnectEvent {
@@ -213,7 +214,7 @@ export class BunWebSocketGatewayLifecycleService
 
   private async handleUpgradeRequest(
     request: Request,
-    server: BunServerLike,
+    server: BunWebSocketUpgradeHost,
     descriptorsByPath: ReadonlyMap<string, readonly WebSocketGatewayDescriptor[]>,
   ): Promise<Response | undefined> {
     let targetPath: string;
