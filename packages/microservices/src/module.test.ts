@@ -1,16 +1,15 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata, defineModuleMetadata } from '@fluojs/core/internal';
 import type { Provider } from '@fluojs/di';
-import { bootstrapApplication, FluoFactory } from '@fluojs/runtime';
 import type { CompiledModule } from '@fluojs/runtime';
+import { bootstrapApplication, FluoFactory } from '@fluojs/runtime';
+import { describe, expect, it, vi } from 'vitest';
 
 import { BidiStreamPattern, ClientStreamPattern, EventPattern, MessagePattern, ServerStreamPattern } from './decorators.js';
-import { KafkaMicroserviceTransport } from './transports/kafka-transport.js';
-import { MicroservicesModule, createMicroservicesProviders } from './module.js';
+import { createMicroservicesProviders, MicroservicesModule } from './module.js';
 import { MicroserviceLifecycleService } from './service.js';
 import { MICROSERVICE, MICROSERVICE_OPTIONS } from './tokens.js';
+import { KafkaMicroserviceTransport } from './transports/kafka-transport.js';
 import { RedisPubSubMicroserviceTransport } from './transports/redis-transport.js';
 import { TcpMicroserviceTransport } from './transports/tcp-transport.js';
 import type {
@@ -615,6 +614,46 @@ describe('@fluojs/microservices', () => {
     const store = await microservice.get(Store);
     expect(store.firstSeen).toBe('original');
     expect(store.secondSeen).toBe('original');
+    expect(payload.meta.role).toBe('original');
+
+    await microservice.close();
+  });
+
+  it('isolates request/reply payload mutations from caller payloads', async () => {
+    class Store {
+      seen = '';
+    }
+
+    @Inject(Store)
+    class RequestHandler {
+      constructor(private readonly store: Store) {}
+
+      @MessagePattern('audit.request.mutation')
+      onAudit(input: { meta: { role: string } }) {
+        this.store.seen = input.meta.role;
+        input.meta.role = 'changed';
+        return { acceptedRole: input.meta.role };
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [MicroservicesModule.forRoot({ transport })],
+      providers: [Store, RequestHandler],
+    });
+
+    const microservice = await FluoFactory.createMicroservice(AppModule, {
+    });
+    const payload = { meta: { role: 'original' } };
+
+    await microservice.listen();
+
+    await expect(microservice.send('audit.request.mutation', payload)).resolves.toEqual({ acceptedRole: 'changed' });
+
+    const store = await microservice.get(Store);
+    expect(store.seen).toBe('original');
     expect(payload.meta.role).toBe('original');
 
     await microservice.close();

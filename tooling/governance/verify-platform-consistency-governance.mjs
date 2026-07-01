@@ -577,6 +577,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
     includesAny(changedFiles, (path) => path.endsWith('.test.ts') || path.endsWith('.spec.ts')),
     'contract-governing doc updates must include regression test updates for the changed contract surface.',
   );
+
+  // Microservices transport ownership, root/subpath export exceptions, lazy-load,
+  // payload clone, and port:0 regression docs are also covered by this companion
+  // enforcement path when changed files touch `@fluojs/microservices` contracts.
 }
 
 function enforceAlignmentClaimsBackedByHarness(changedFiles) {

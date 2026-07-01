@@ -9,6 +9,7 @@ const netMockState = vi.hoisted(() => ({
 describe('@fluojs/microservices root import runtime safety', () => {
   it('does not load node:net until TCP listen or outbound construction paths run', async () => {
     vi.resetModules();
+    netMockState.loads = 0;
     vi.doMock('node:net', () => {
       netMockState.loads += 1;
 
@@ -35,6 +36,33 @@ describe('@fluojs/microservices root import runtime safety', () => {
         'node:net should be loaded lazily by TCP runtime paths only',
       );
       expect(netMockState.loads).toBe(1);
+    } finally {
+      vi.doUnmock('node:net');
+    }
+  });
+
+  it('keeps outbound send rejection lazy before TCP starts listening', async () => {
+    vi.resetModules();
+    netMockState.loads = 0;
+    vi.doMock('node:net', () => {
+      netMockState.loads += 1;
+
+      return {
+        Socket: class MockSocket {},
+        createServer: () => {
+          throw new Error('node:net should not load for pre-listen outbound rejection');
+        },
+      };
+    });
+
+    try {
+      const { TcpMicroserviceTransport } = await import('./index.js');
+      const transport = new TcpMicroserviceTransport({ port: 0 });
+
+      await expect(transport.send('lazy.outbound', {})).rejects.toThrow(
+        'TcpMicroserviceTransport is not listening. Call listen() before send().',
+      );
+      expect(netMockState.loads).toBe(0);
     } finally {
       vi.doUnmock('node:net');
     }

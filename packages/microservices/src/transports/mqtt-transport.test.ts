@@ -359,6 +359,64 @@ describe('MqttMicroserviceTransport', () => {
     expect(client.unsubscribeCalls).toBe(1);
   });
 
+  it('ends internally-created clients when subscribe setup fails during listen()', async () => {
+    const broker = new InMemoryMqttBroker();
+    const ownedClient = new InMemoryMqttClient(broker);
+    ownedClient.failSubscribeAtCall = 2;
+    const transport = new MqttMicroserviceTransport({
+      mqtt: {
+        connect() {
+          return ownedClient;
+        },
+      },
+      url: 'mqtt://localhost:1883',
+    });
+
+    await expect(transport.listen(async () => undefined)).rejects.toThrow('subscribe failed');
+
+    expect(ownedClient.unsubscribeCalls).toBe(1);
+    expect(ownedClient.endCalled).toBe(true);
+  });
+
+  it('preserves listen errors while close() unwinds internally-created clients', async () => {
+    const broker = new InMemoryMqttBroker();
+    const ownedClient = new InMemoryMqttClient(broker);
+    let releaseSubscribeFailure: (() => void) | undefined;
+    const subscribeFailureGate = new Promise<void>((resolve) => {
+      releaseSubscribeFailure = resolve;
+    });
+    const originalSubscribe = ownedClient.subscribe.bind(ownedClient);
+
+    ownedClient.subscribe = (topic, options, callback) => {
+      if (ownedClient.subscribeCalls === 0) {
+        originalSubscribe(topic, options, callback);
+        return;
+      }
+
+      ownedClient.subscribeCalls += 1;
+      void subscribeFailureGate.then(() => callback?.(new Error('subscribe failed')));
+    };
+    const transport = new MqttMicroserviceTransport({
+      mqtt: {
+        connect() {
+          return ownedClient;
+        },
+      },
+      url: 'mqtt://localhost:1883',
+    });
+
+    const listening = transport.listen(async () => undefined);
+    await waitForCondition(() => ownedClient.subscribeCalls === 2);
+
+    const closing = transport.close();
+    releaseSubscribeFailure?.();
+
+    await expect(listening).rejects.toThrow('subscribe failed');
+    await expect(closing).rejects.toThrow('subscribe failed');
+    expect(ownedClient.unsubscribeCalls).toBe(1);
+    expect(ownedClient.endCalled).toBe(true);
+  });
+
   it('supports reconnect/listen re-entry after close()', async () => {
     const broker = new InMemoryMqttBroker();
     const client = new InMemoryMqttClient(broker);
@@ -463,3 +521,15 @@ describe('MqttMicroserviceTransport', () => {
     );
   });
 });
+
+async function waitForCondition(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  throw new Error('Timed out waiting for MQTT test condition.');
+}

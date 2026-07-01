@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { GrpcMicroserviceTransport } from './grpc-transport.js';
 import type { ServerStreamWriter } from '../types.js';
+import { GrpcMicroserviceTransport } from './grpc-transport.js';
 
 class FakeGrpcMetadata {
   private readonly values = new Map<string, unknown[]>();
@@ -41,6 +41,7 @@ type BidiStreamImplementation = (
 type ServiceImplementation = UnaryImplementation | ServerStreamImplementation | ClientStreamImplementation | BidiStreamImplementation;
 
 class FakeGrpcServer {
+  forceShutdownCount = 0;
   readonly services = new Map<string, Record<string, ServiceImplementation>>();
   bindError: Error | undefined;
   shutdownError: Error | undefined;
@@ -79,7 +80,7 @@ class FakeGrpcServer {
     return;
   }
 
-  tryShutdown(callback: (error?: Error) => void): void {
+  tryShutdown: ((callback: (error?: Error) => void) => void) | undefined = (callback) => {
     this.shutdownCount += 1;
     if (this.runtime.shutdownGate) {
       void this.runtime.shutdownGate.then(() => callback(this.shutdownError));
@@ -87,6 +88,10 @@ class FakeGrpcServer {
     }
 
     callback(this.shutdownError);
+  };
+
+  forceShutdown(): void {
+    this.forceShutdownCount += 1;
   }
 
   resolveImplementation(serviceDefinition: Record<string, FakeGrpcMethodDefinition>, methodName: string): ServiceImplementation | undefined {
@@ -206,6 +211,7 @@ class FakeGrpcRuntime {
     },
   };
 
+  readonly createdServers: FakeGrpcServer[] = [];
   readonly Metadata = FakeGrpcMetadata;
   readonly Server: new () => FakeGrpcServer;
   shutdownGate: Promise<void> | undefined;
@@ -217,6 +223,7 @@ class FakeGrpcRuntime {
     this.Server = class extends FakeGrpcServer {
       constructor() {
         super(runtimeRef);
+        runtimeRef.createdServers.push(this);
       }
     };
 
@@ -610,6 +617,36 @@ describe('GrpcMicroserviceTransport', () => {
     await transport.close();
 
     expect(server?.shutdownCount).toBe(0);
+  });
+
+  it('uses tryShutdown() for internally-created gRPC servers during close()', async () => {
+    const { runtime, transport } = createGrpcTransport();
+
+    expect(transport.ownsResources).toBe(true);
+
+    await transport.listen(async () => undefined);
+    await transport.close();
+
+    expect(runtime.createdServers).toHaveLength(1);
+    expect(runtime.createdServers[0]?.shutdownCount).toBe(1);
+    expect(runtime.createdServers[0]?.forceShutdownCount).toBe(0);
+  });
+
+  it('falls back to forceShutdown() when internally-created gRPC servers lack tryShutdown()', async () => {
+    const { runtime, transport } = createGrpcTransport();
+
+    await transport.listen(async () => undefined);
+    const server = runtime.createdServers[0];
+
+    if (!server) {
+      throw new Error('Expected internally-created gRPC server.');
+    }
+
+    server.tryShutdown = undefined;
+    await transport.close();
+
+    expect(server.shutdownCount).toBe(0);
+    expect(server.forceShutdownCount).toBe(1);
   });
 
   it('preserves handler failure messages from unary RPCs', async () => {

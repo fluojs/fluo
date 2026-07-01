@@ -95,6 +95,7 @@ await microservice.listen();
 - TCP는 테스트와 ephemeral listener를 위해 `port: 0`을 허용하고, listen 중에는 OS가 할당한 포트로 outbound `send()`/`emit()`을 라우팅합니다.
 - Platform status snapshot은 transport resource ownership을 보고합니다. TCP와 internally-created gRPC server는 framework-owned listener/client resource로 보고하고, MQTT는 client를 직접 생성한 경우에만 framework ownership을 보고하며, caller-supplied gRPC server와 caller-owned broker collaborator transport는 externally managed로 남습니다.
 - gRPC shutdown은 transport가 server를 직접 생성한 경우 server-level `tryShutdown()`을 사용하고, graceful shutdown을 제공하지 않는 런타임에서만 `forceShutdown()`으로 fallback합니다. Caller-supplied `GrpcMicroserviceTransportOptions.server` 인스턴스는 `close()` 중에도 caller-owned로 유지되며, fluo는 cached outbound client만 닫고 해당 server는 shutdown하지 않습니다. Active unary/streaming call의 AbortSignal 취소는 call-level `cancel()` 또는 stream end 경로를 사용하며, stream이 end/error/early return으로 끝나면 abort listener를 제거합니다.
+- MQTT는 `listen()` 중 subscription setup이 실패하거나 `close()`가 실패한 in-flight listen 시도를 unwinding할 때 internally-created client를 닫고, 호출자에게는 원래 startup error를 보존해 전달합니다. Caller-supplied MQTT client는 계속 caller-owned로 남습니다.
 - transport logger를 통해 이벤트 핸들러 실패를 기록하는 경로(`RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `MqttMicroserviceTransport`, gRPC event emit)는 끝까지 logger-driven observability를 유지합니다. transport logger를 주입하지 않으면 fluo는 해당 실패를 raw `console.error` fallback으로 복제하지 않습니다.
 
 ## 공통 패턴
