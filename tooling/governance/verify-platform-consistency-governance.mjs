@@ -685,8 +685,12 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const drizzleReadmeKo = readFileSync(join(repoRoot, 'packages/drizzle/README.ko.md'), 'utf8');
   const expressReadme = readFileSync(join(repoRoot, 'packages/platform-express/README.md'), 'utf8');
   const expressReadmeKo = readFileSync(join(repoRoot, 'packages/platform-express/README.ko.md'), 'utf8');
+  const terminusReadme = readFileSync(join(repoRoot, 'packages/terminus/README.md'), 'utf8');
+  const terminusReadmeKo = readFileSync(join(repoRoot, 'packages/terminus/README.ko.md'), 'utf8');
   const cacheManagerReadme = readFileSync(join(repoRoot, 'packages/cache-manager/README.md'), 'utf8');
   const cacheManagerReadmeKo = readFileSync(join(repoRoot, 'packages/cache-manager/README.ko.md'), 'utf8');
+  const healthChapter = readFileSync(join(repoRoot, 'book/beginner/ch18-health.md'), 'utf8');
+  const healthChapterKo = readFileSync(join(repoRoot, 'book/beginner/ch18-health.ko.md'), 'utf8');
   const notificationsReadme = readFileSync(join(repoRoot, 'packages/notifications/README.md'), 'utf8');
   const notificationsReadmeKo = readFileSync(join(repoRoot, 'packages/notifications/README.ko.md'), 'utf8');
   const notificationsChapter = readFileSync(join(repoRoot, 'book/intermediate/ch15-notifications.md'), 'utf8');
@@ -875,6 +879,44 @@ function enforceCanonicalRuntimeMatrixReferences() {
   assert(
     packageChooserKo.includes('execution.indicatorTimeoutMs') && docsContextKo.includes('execution.indicatorTimeoutMs'),
     'docs/CONTEXT.ko.md must mention Terminus slow-indicator timeout guardrails when documented.',
+  );
+  assert(
+    terminusReadme.includes('TERMINUS_INDICATOR_PROVIDER_TOKENS') &&
+      packageSurface.includes('exported indicator/provider DI tokens') &&
+      docsContext.includes('exported indicator/provider DI tokens'),
+    'Terminus DI provider token exports must stay discoverable across README, package-surface, and docs/CONTEXT.md.',
+  );
+  assert(
+    terminusReadmeKo.includes('TERMINUS_INDICATOR_PROVIDER_TOKENS') &&
+      packageSurfaceKo.includes('indicator/provider DI token') &&
+      docsContextKo.includes('indicator/provider DI token'),
+    'Korean Terminus DI provider token exports must stay discoverable across README.ko, package-surface.ko, and docs/CONTEXT.ko.md.',
+  );
+  assert(
+    terminusReadme.includes('Separate application containers keep independent in-flight state') &&
+      packageSurface.includes('service-scoped in-flight indicator serialization') &&
+      docsContext.includes('service-scoped in-flight indicator serialization'),
+    'Terminus in-flight indicator serialization scope must stay discoverable across README, package-surface, and docs/CONTEXT.md.',
+  );
+  assert(
+    terminusReadmeKo.includes('별도 application container는 독립적인 in-flight state') &&
+      packageSurfaceKo.includes('service-scoped in-flight indicator serialization') &&
+      docsContextKo.includes('service-scoped in-flight indicator serialization'),
+    'Korean Terminus in-flight indicator serialization scope must stay discoverable across README.ko, package-surface.ko, and docs/CONTEXT.ko.md.',
+  );
+  assert(
+    terminusReadme.includes('optional Prisma peer') &&
+      packageSurface.includes('optional Redis or Prisma peers') &&
+      healthChapter.includes('optional Redis or Prisma peers') &&
+      docsContext.includes('Prisma named service/client provider seams'),
+    'Terminus optional-peer-safe Prisma provider diagnostics must stay discoverable across README, package-surface, beginner book, and docs/CONTEXT.md.',
+  );
+  assert(
+    terminusReadmeKo.includes('optional Prisma peer') &&
+      packageSurfaceKo.includes('optional Redis 또는 Prisma peer') &&
+      healthChapterKo.includes('선택적 Redis 또는 Prisma peer') &&
+      docsContextKo.includes('Prisma named service/client provider seam'),
+    'Korean Terminus optional-peer-safe Prisma provider diagnostics must stay discoverable across README.ko, package-surface.ko, beginner book, and docs/CONTEXT.ko.md.',
   );
   assert(
     packageSurface.includes('lifecycle-owned connect/quit timeout guardrails') &&
@@ -1113,10 +1155,13 @@ function enforceRemovedRuntimeFactoryNamesNotUsedInDocs() {
 function enforceViteToolingDiscoverability() {
   const englishContext = read('docs/CONTEXT.md');
   const englishChooser = read('docs/reference/package-chooser.md');
+  const englishPackageSurface = read('docs/reference/package-surface.md');
   const englishToolchainMatrix = read('docs/reference/toolchain-contract-matrix.md');
   const englishViteReadme = read('packages/vite/README.md');
+  const vitePackageJson = JSON.parse(read('packages/vite/package.json'));
   const koreanContext = read('docs/CONTEXT.ko.md');
   const koreanChooser = read('docs/reference/package-chooser.ko.md');
+  const koreanPackageSurface = read('docs/reference/package-surface.ko.md');
   const koreanToolchainMatrix = read('docs/reference/toolchain-contract-matrix.ko.md');
   const koreanViteReadme = read('packages/vite/README.ko.md');
 
@@ -1133,6 +1178,41 @@ function enforceViteToolingDiscoverability() {
     assert(
       markdown.includes('@babel/preset-typescript'),
       'Vite tooling docs must keep the @babel/preset-typescript peer discoverable across README, context, chooser, and toolchain matrix surfaces.',
+    );
+  }
+
+  assert(
+    vitePackageJson.engines?.node === '>=20.0.0',
+    'packages/vite/package.json must keep the documented Node.js >=20.0.0 engine floor.',
+  );
+
+  for (const markdown of [englishContext, englishPackageSurface, englishToolchainMatrix, englishViteReadme]) {
+    assert(
+      markdown.includes('Node.js') && markdown.includes('>=20.0.0'),
+      'English Vite tooling docs must keep the @fluojs/vite Node.js >=20.0.0 engine floor discoverable.',
+    );
+    assert(
+      markdown.includes('Vite `>=6.2.0`'),
+      'English Vite tooling docs must keep the @fluojs/vite Vite >=6.2.0 peer boundary discoverable.',
+    );
+    assert(
+      markdown.includes('lazy') || markdown.includes('lazily'),
+      'English Vite tooling docs must keep the lazy Babel loading boundary discoverable.',
+    );
+  }
+
+  for (const markdown of [koreanContext, koreanPackageSurface, koreanToolchainMatrix, koreanViteReadme]) {
+    assert(
+      markdown.includes('Node.js') && markdown.includes('>=20.0.0'),
+      'Korean Vite tooling docs must keep the @fluojs/vite Node.js >=20.0.0 engine floor discoverable.',
+    );
+    assert(
+      markdown.includes('Vite `>=6.2.0`'),
+      'Korean Vite tooling docs must keep the @fluojs/vite Vite >=6.2.0 peer boundary discoverable.',
+    );
+    assert(
+      markdown.includes('lazy'),
+      'Korean Vite tooling docs must keep the lazy Babel loading boundary discoverable.',
     );
   }
 }
