@@ -29,7 +29,7 @@ fluo 애플리케이션을 [Cloudflare Workers](https://workers.cloudflare.com/)
 
 이 어댑터는 dispatcher가 binding된 뒤 각 요청 수명주기를 `executionContext.waitUntil(...)`에 연결하고, `close()` 중에도 진행 중인 디스패치와 SSE(`text/event-stream`) response body를 유지하여 Worker 종료 도중 활성 작업이 중간에 잘리지 않도록 보장합니다.
 
-애플리케이션 종료 중에는 즉시 새 ingress 수락을 중단하고, 활성 HTTP 핸들러가 정리될 수 있도록 최대 10초의 bounded drain window를 제공합니다. 이 시간을 넘기면 `close()`는 무기한 대기하지 않고 timeout 오류로 종료됩니다. 해당 drain이 아직 진행 중일 때 동시에 `listen()`을 호출하면 Worker를 다시 열지 않고 `Cloudflare Workers adapter cannot listen while shutdown is still draining.` 오류로 reject됩니다. 닫힌 뒤에는 어댑터가 명시적으로 다시 `listen()`될 때까지 후속 HTTP 및 WebSocket upgrade request가 동일한 JSON `503` shutdown response를 받습니다.
+애플리케이션 종료 중에는 즉시 새 ingress 수락을 중단하고, 활성 HTTP 핸들러가 정리될 수 있도록 최대 10초의 bounded drain window를 제공합니다. 이 시간을 넘기면 `close()`는 무기한 대기하지 않고 timeout 오류로 종료됩니다. 해당 drain이 아직 진행 중일 때 동시에 `listen()`을 호출하면 Worker를 다시 열지 않고 `Cloudflare Workers adapter cannot listen while shutdown is still draining.` 오류로 reject됩니다. 닫힌 뒤에는 어댑터가 명시적으로 다시 `listen()`될 때까지 후속 HTTP 및 WebSocket upgrade request가 동일한 JSON `503` shutdown response를 받습니다. Lazy entrypoint는 timed-out close가 아직 drain 중인 동안 shutdown response를 계속 반환하지만, underlying close가 나중에 settle되면 해당 임시 gate를 해제하여 이후 request가 새 Worker application을 bootstrap할 수 있게 합니다.
 
 ## 빠른 시작
 
@@ -68,7 +68,7 @@ export default {
 ## 주요 패턴
 
 ### WebSocketPair 활용
-어댑터는 `@fluojs/websockets/cloudflare-workers` 바인딩을 통해 실시간 통신을 위한 Cloudflare의 네이티브 `WebSocketPair`를 지원합니다. Upgrade handling은 해당 binding을 통한 opt-in이며, non-hosted runtime test에서는 `createWebSocketPair`를 주입할 수 있습니다.
+어댑터는 `@fluojs/websockets/cloudflare-workers` 바인딩을 통해 실시간 통신을 위한 Cloudflare의 네이티브 `WebSocketPair`를 지원합니다. Upgrade handling은 해당 binding을 통한 opt-in이며, non-hosted runtime test에서는 `createWebSocketPair`를 주입할 수 있습니다. Binding은 `listen()`이 Worker dispatch boundary를 시작하기 전에 설정하세요. 활성 request 아래에서 upgrade ownership이 바뀌지 않도록, 이미 실행 중인 defined binding을 다른 binding으로 교체하려는 시도는 reject됩니다.
 
 ```typescript
 @WebSocketGateway({ path: '/ws' })
@@ -89,14 +89,14 @@ const worker = createCloudflareWorkerEntrypoint(AppModule, {
 
 - `fetch()`는 `listen()` 또는 lazy entrypoint가 dispatcher를 binding한 뒤 active work를 `executionContext.waitUntil(...)`에 등록합니다. SSE(`text/event-stream`) response는 body가 끝나거나 cancel될 때까지 해당 lifecycle과 close drain을 유지합니다. 그 lifecycle boundary 전에는 upgrade request와 HTTP dispatch가 application handler에 도달하지 않습니다.
 - `maxBodySize` 같은 adapter option은 Worker adapter 생성 시 검증됩니다. `globalPrefix`, `cors`, `middleware`, `securityHeaders` 같은 bootstrap 전용 옵션은 `createCloudflareWorkerAdapter(...)`가 아니라 Worker bootstrap helper에 전달해야 합니다.
-- WebSocket upgrade는 HTTP dispatch와 같은 listen boundary가 소유합니다. `listen()` 전의 upgrade request는 설정된 binding에 도달하지 않습니다.
-- `close()`는 shutdown 중 및 shutdown 이후 새 요청에 JSON `503` response를 반환하고, active request가 끝나지 않으면 10초 뒤 timeout됩니다. 해당 close drain이 아직 활성 상태일 때 `listen()`을 호출하면 Cloudflare Workers adapter shutdown-draining 오류로 reject됩니다.
+- WebSocket upgrade는 HTTP dispatch와 같은 listen boundary가 소유합니다. `listen()` 전의 upgrade request는 설정된 binding에 도달하지 않으며, `listen()`이 시작된 뒤 defined binding을 교체하려는 시도는 live upgrade ownership을 바꾸는 대신 빠르게 실패합니다.
+- `close()`는 shutdown 중 및 shutdown 이후 새 HTTP 및 WebSocket upgrade request에 JSON `503` response를 반환하고, active request가 끝나지 않으면 10초 뒤 timeout됩니다. 해당 close drain이 아직 활성 상태일 때 `listen()`을 호출하면 Cloudflare Workers adapter shutdown-draining 오류로 reject됩니다. Lazy entrypoint는 adapter의 underlying drain이 나중에 끝나면 이 timeout을 영구적으로 캐시하지 않습니다.
 - Multipart request는 `rawBody`를 보존하지 않습니다.
 - Worker `env` 객체는 각 `FrameworkRequest`에 `request.cloudflare.env`로 연결되고 Worker execution context는 `request.cloudflare.executionContext`로 제공됩니다. Package-level config resolution은 application이 소유하므로, binding은 application boundary에서 명시적 provider 또는 `@fluojs/config`로 매핑하세요.
 
 ## Conformance 커버리지
 
-`packages/platform-cloudflare-workers/src/adapter.test.ts`는 문서화된 Worker 계약을 검증하는 package-local regression 대상입니다. 이 파일은 shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE(`text/event-stream`) body tracking, websocket upgrade binding, listen-bound upgrade ownership, lazy entrypoint 재사용, shutdown gating, drain 중 `listen()` rejection, close 중 및 close 이후 JSON `503` response, bounded 10초 close timeout을 검증합니다.
+`packages/platform-cloudflare-workers/src/adapter.test.ts`는 문서화된 Worker 계약을 검증하는 package-local regression 대상입니다. 이 파일은 shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE(`text/event-stream`) body tracking, websocket upgrade binding, pre-listen HTTP 및 websocket lifecycle guard, live websocket binding replacement rejection, lazy entrypoint 재사용 및 timeout recovery, shutdown gating, drain 중 `listen()` rejection, HTTP와 websocket upgrade 모두에 대한 close 중 및 close 이후 JSON `503` response, reliable fake-timer cleanup, bounded 10초 close timeout을 검증합니다.
 
 공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Cloudflare Workers를 Bun 및 Deno와 함께 실행해 malformed cookie 보존, query decoding, JSON/text raw-body capture, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트의 README parity assertion은 이 edge-runtime 커버리지 문서가 한국어 mirror와 계속 동기화되도록 확인합니다.
 
