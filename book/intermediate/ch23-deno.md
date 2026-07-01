@@ -10,7 +10,7 @@ This chapter explains how to move FluoShop to the Deno runtime and work with its
 - Learn how to run an application with `@fluojs/platform-deno` and `runDenoApplication`.
 - Learn how to interpret Deno permission flags in relation to FluoShop operational requirements.
 - Review the Web-standard `Request` and `Response` based dispatch flow.
-- Confirm how Deno-native WebSockets integrate with fluo gateways.
+- Confirm how Deno-native WebSockets integrate with fluo gateways after the `@fluojs/websockets/deno` binding is configured.
 - Summarize import rules, permissions, and driver compatibility checks for a Deno port.
 
 ## Prerequisites
@@ -245,7 +245,7 @@ Porting FluoShop to Deno gives you an operational model that manages permissions
 - Deno has stronger default security and native TypeScript support, so complex toolchains are not required.
 - `@fluojs/platform-deno` uses `Deno.serve` and supports Web standards across the stack.
 - Run the application with explicit permissions through `--allow-*` flags to follow the principle of least privilege.
-- Native Deno WebSockets are automatically supported through fluo's gateway system.
+- Native Deno WebSockets require the explicit `@fluojs/websockets/deno` binding; without it, upgrade requests stay on normal HTTP dispatch.
 - Top-level `await` and `npm:` imports simplify dependency management and bootstrap.
 - Deno KV and other native APIs are safer to integrate behind Provider boundaries in fluo services.
 - Porting to Deno is an important step toward making FluoShop a modern, standards-compliant application.
