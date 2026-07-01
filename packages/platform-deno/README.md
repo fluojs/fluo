@@ -60,7 +60,7 @@ await app.listen();
 const response = await adapter.handle(new Request('http://localhost:3000/health'));
 ```
 
-### Deno-Native WebSocket Support
+### Opt-in Deno WebSocket Binding
 The adapter supports Deno's native `Deno.upgradeWebSocket` after the application imports and configures the `@fluojs/websockets/deno` binding. Without that binding, websocket upgrade requests continue through normal HTTP dispatch instead of being upgraded implicitly.
 
 ```typescript
@@ -95,11 +95,11 @@ await runDenoApplication(AppModule, {
 
 `hostname` remains the Deno-native option name. The adapter also accepts `host` as a portability alias for shared HTTP adapter tests and cross-runtime configuration helpers; when both are provided, `hostname` wins for the `Deno.serve(...)` bind target and reported listen URL.
 
-Advanced options include injectable `serve` and `upgradeWebSocket` seams for tests or non-hosted runtimes, `rawBody`, `maxBodySize`, `multipart`, and `shutdownSignals`. When a seam is not injected, the adapter falls back to `globalThis.Deno.serve` and `globalThis.Deno.upgradeWebSocket` at listen/upgrade time. `runDenoApplication(...)` wires `SIGINT`/`SIGTERM` by default, `shutdownSignals: false` disables signal registration, and failed multi-signal registration rolls back listeners that were already attached. Close waits up to 10 seconds for active requests to drain before aborting the Deno serve signal. `handle(...)` returns a JSON `500` before `listen()` binds the dispatcher and a JSON `503` while shutdown is in progress.
+Advanced options include injectable `serve` and `upgradeWebSocket` seams for tests or non-hosted runtimes, `rawBody`, `maxBodySize`, `multipart`, and `shutdownSignals`. When a seam is not injected, the adapter falls back to `globalThis.Deno.serve` and `globalThis.Deno.upgradeWebSocket` at listen/upgrade time. `runDenoApplication(...)` wires `SIGINT`/`SIGTERM` by default, `shutdownSignals: false` disables signal registration, and failed multi-signal registration rolls back listeners that were already attached. Duplicate `listen(...)` calls on an already-running adapter are no-ops that preserve the original dispatcher pipeline. Close waits up to 10 seconds for active requests to drain before aborting the Deno serve signal. `handle(...)` returns a JSON `500` before `listen()` binds the dispatcher, including websocket upgrade requests, and a JSON `503` while shutdown is in progress.
 
 ## Conformance Coverage
 
-`packages/platform-deno/src/adapter.test.ts` is the package-local regression target for the documented Deno contract. It covers shared Web dispatch delegation, HTTPS startup forwarding, `host` alias and `hostname` precedence listen-target handling, default `SIGINT`/`SIGTERM` signal listener registration, `shutdownSignals: false`, listener rollback after partial signal-registration failure, websocket upgrade binding and no-binding HTTP fallback, global Deno serve/upgrade fallback seams, pre-listen `500` handling, shutdown `503` handling, in-flight request drain before serve-signal abort, and the bounded 10-second close timeout.
+`packages/platform-deno/src/adapter.test.ts` is the package-local regression target for the documented Deno contract. It covers shared Web dispatch delegation, HTTPS startup forwarding, `host` alias and `hostname` precedence for the `Deno.serve(...)` bind target and startup log, duplicate `listen(...)` no-op dispatcher preservation, default `SIGINT`/`SIGTERM` signal listener registration, `shutdownSignals: false`, listener rollback after partial signal-registration failure, websocket upgrade binding and no-binding HTTP fallback, websocket pre-listen bootstrap gating, global Deno serve/upgrade fallback seams, pre-listen `500` handling, shutdown `503` handling, in-flight request drain before serve-signal abort, and the bounded 10-second close timeout.
 
 The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Deno beside Bun and Cloudflare Workers for malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The README parity assertion in the package test keeps these documented edge-runtime coverage claims synchronized with the Korean mirror.
 

@@ -186,6 +186,15 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
     const release = this.trackInFlightRequest();
 
     try {
+      if (!this.dispatcher) {
+        return await dispatchWebRequest({
+          dispatcher: this.dispatcher,
+          dispatcherNotReadyMessage: 'Deno adapter received a request before dispatcher binding completed.',
+          factory: this.webRequestResponseFactory,
+          request,
+        });
+      }
+
       if (this.websocketBinding && isWebSocketUpgradeRequest(request)) {
         const upgradeWebSocket = resolveUpgradeWebSocket(this.options.upgradeWebSocket);
 
@@ -206,11 +215,11 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   async listen(dispatcher: Dispatcher): Promise<void> {
-    this.dispatcher = dispatcher;
-
     if (this.server) {
       return;
     }
+
+    this.dispatcher = dispatcher;
 
     const abortController = new AbortController();
     const serve = resolveServe(this.options.serve);
