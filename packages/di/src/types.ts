@@ -140,7 +140,7 @@ export interface NormalizedProvider<T = unknown> {
  * ```
  */
 export function forwardRef<T = unknown>(fn: () => Token<T>): ForwardRefFn<T> {
-  return { __forwardRef__: true, forwardRef: fn };
+  return Object.freeze<ForwardRefFn<T>>({ __forwardRef__: true, forwardRef: fn });
 }
 
 /**
@@ -160,7 +160,7 @@ export function isForwardRef(value: unknown): value is ForwardRefFn {
  * @returns An optional-token wrapper understood by container resolution.
  */
 export function optional<T = unknown>(token: Token<T>): OptionalToken<T> {
-  return { __optional__: true, token };
+  return Object.freeze<OptionalToken<T>>({ __optional__: true, token });
 }
 
 /**

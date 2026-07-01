@@ -33,6 +33,9 @@ type ProviderObjectInput = {
 
 type ValidatedProviderObject = ProviderObjectInput & { readonly provide: Token };
 
+/**
+ * Factory provider resolution mode recorded after a factory returns either synchronously or through a promise.
+ */
 export type FactoryResolutionKind = 'async' | 'sync';
 
 interface CachedResolutionPlan<T> {
@@ -78,38 +81,42 @@ export interface ContainerResolutionState {
 }
 
 class ReadonlyMapView<K, V> implements ReadonlyMap<K, V> {
+  readonly #source: ReadonlyMap<K, V>;
+
   readonly [Symbol.toStringTag] = 'Map';
 
-  constructor(private readonly source: ReadonlyMap<K, V>) {}
+  constructor(source: ReadonlyMap<K, V>) {
+    this.#source = source;
+  }
 
   get size(): number {
-    return this.source.size;
+    return this.#source.size;
   }
 
   entries(): IterableIterator<[K, V]> {
-    return this.source.entries();
+    return this.#source.entries();
   }
 
   forEach(callbackfn: (value: V, key: K, map: ReadonlyMap<K, V>) => void, thisArg?: unknown): void {
-    for (const [key, value] of this.source) {
+    for (const [key, value] of this.#source) {
       callbackfn.call(thisArg, value, key, this);
     }
   }
 
   get(key: K): V | undefined {
-    return this.source.get(key);
+    return this.#source.get(key);
   }
 
   has(key: K): boolean {
-    return this.source.has(key);
+    return this.#source.has(key);
   }
 
   keys(): IterableIterator<K> {
-    return this.source.keys();
+    return this.#source.keys();
   }
 
   values(): IterableIterator<V> {
-    return this.source.values();
+    return this.#source.values();
   }
 
   [Symbol.iterator](): IterableIterator<[K, V]> {
@@ -118,16 +125,20 @@ class ReadonlyMapView<K, V> implements ReadonlyMap<K, V> {
 }
 
 class ReadonlyMultiRegistrationMapView implements ReadonlyMap<Token, readonly NormalizedProvider[]> {
+  readonly #source: ReadonlyMap<Token, readonly NormalizedProvider[]>;
+
   readonly [Symbol.toStringTag] = 'Map';
 
-  constructor(private readonly source: ReadonlyMap<Token, readonly NormalizedProvider[]>) {}
+  constructor(source: ReadonlyMap<Token, readonly NormalizedProvider[]>) {
+    this.#source = source;
+  }
 
   get size(): number {
-    return this.source.size;
+    return this.#source.size;
   }
 
   *entries(): IterableIterator<[Token, readonly NormalizedProvider[]]> {
-    for (const [token, providers] of this.source) {
+    for (const [token, providers] of this.#source) {
       yield [token, Object.freeze([...providers])];
     }
   }
@@ -139,20 +150,20 @@ class ReadonlyMultiRegistrationMapView implements ReadonlyMap<Token, readonly No
   }
 
   get(key: Token): readonly NormalizedProvider[] | undefined {
-    const providers = this.source.get(key);
+    const providers = this.#source.get(key);
     return providers ? Object.freeze([...providers]) : undefined;
   }
 
   has(key: Token): boolean {
-    return this.source.has(key);
+    return this.#source.has(key);
   }
 
   keys(): IterableIterator<Token> {
-    return this.source.keys();
+    return this.#source.keys();
   }
 
   *values(): IterableIterator<readonly NormalizedProvider[]> {
-    for (const providers of this.source.values()) {
+    for (const providers of this.#source.values()) {
       yield Object.freeze([...providers]);
     }
   }
@@ -208,6 +219,20 @@ function assertObjectProvider(provider: ProviderObjectInput): asserts provider i
 function normalizeInjectToken(token: Token | ForwardRefFn | OptionalToken): Token | ForwardRefFn | OptionalToken {
   if (token == null) {
     throw new InvalidProviderError('Inject token must not be null or undefined. Check that all tokens in @Inject(...) are defined at the point of decoration (forward-reference cycles require forwardRef()).');
+  }
+
+  if (isForwardRef(token)) {
+    return Object.freeze<ForwardRefFn>({
+      __forwardRef__: true,
+      forwardRef: token.forwardRef,
+    });
+  }
+
+  if (isOptionalToken(token)) {
+    return Object.freeze<OptionalToken>({
+      __optional__: true,
+      token: token.token,
+    });
   }
 
   return token;

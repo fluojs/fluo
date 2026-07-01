@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Inject, Scope as ScopeDecorator } from '@fluojs/core';
+import { Inject, Scope as ScopeDecorator, type Token } from '@fluojs/core';
 
 import { Container } from './container.js';
 import { CircularDependencyError, ContainerResolutionError, DuplicateProviderError, InvalidProviderError, RequestScopeResolutionError, ScopeMismatchError } from './errors.js';
@@ -877,6 +877,90 @@ describe('Container', () => {
     });
   });
 
+  describe('inject wrapper immutability', () => {
+    it('returns frozen forwardRef and optional wrapper tokens', () => {
+      class Logger {}
+      class MutatedLogger {}
+
+      const forwardLogger = forwardRef(() => Logger);
+      const optionalLogger = optional(Logger);
+
+      expect(Object.isFrozen(forwardLogger)).toBe(true);
+      expect(Object.isFrozen(optionalLogger)).toBe(true);
+      expect(Reflect.set(forwardLogger, 'forwardRef', () => MutatedLogger)).toBe(false);
+      expect(Reflect.set(optionalLogger, 'token', MutatedLogger)).toBe(false);
+      expect(forwardLogger.forwardRef()).toBe(Logger);
+      expect(optionalLogger.token).toBe(Logger);
+    });
+
+    it('snapshots and freezes provider inject wrappers before caller mutations can affect resolution', async () => {
+      type MutableForwardRefToken<T = unknown> = {
+        __forwardRef__: true;
+        forwardRef: () => Token<T>;
+      };
+      type MutableOptionalInjectToken<T = unknown> = {
+        __optional__: true;
+        token: Token<T>;
+      };
+
+      class Logger {}
+      class MutatedLogger {}
+      const CONSUMER = Symbol('Consumer');
+      const resolveLogger = () => Logger;
+      const forwardLogger: MutableForwardRefToken<Logger | MutatedLogger> = {
+        __forwardRef__: true,
+        forwardRef: resolveLogger,
+      };
+      const optionalLogger: MutableOptionalInjectToken<Logger | MutatedLogger> = {
+        __optional__: true,
+        token: Logger,
+      };
+
+      const container = new Container().register(
+        Logger,
+        {
+          provide: CONSUMER,
+          useFactory: (forwardDependency, optionalDependency) => [forwardDependency, optionalDependency],
+          inject: [forwardLogger, optionalLogger],
+        },
+      );
+
+      forwardLogger.forwardRef = () => MutatedLogger;
+      optionalLogger.token = MutatedLogger;
+
+      const provider = container.inspectResolutionState().registrations.get(CONSUMER);
+
+      if (!provider) {
+        expect.unreachable('expected introspection state to expose the normalized provider');
+      }
+
+      const storedForwardToken = provider.inject[0];
+      const storedOptionalToken = provider.inject[1];
+
+      expect(storedForwardToken).not.toBe(forwardLogger);
+      expect(storedOptionalToken).not.toBe(optionalLogger);
+      expect(Object.isFrozen(storedForwardToken)).toBe(true);
+      expect(Object.isFrozen(storedOptionalToken)).toBe(true);
+
+      if (typeof storedForwardToken !== 'object' || storedForwardToken === null || !('__forwardRef__' in storedForwardToken)) {
+        expect.unreachable('expected the first normalized inject entry to be a forwardRef wrapper');
+      }
+      if (typeof storedOptionalToken !== 'object' || storedOptionalToken === null || !('__optional__' in storedOptionalToken)) {
+        expect.unreachable('expected the second normalized inject entry to be an optional wrapper');
+      }
+
+      expect(Reflect.set(storedForwardToken, 'forwardRef', () => MutatedLogger)).toBe(false);
+      expect(Reflect.set(storedOptionalToken, 'token', MutatedLogger)).toBe(false);
+      expect(storedForwardToken.forwardRef()).toBe(Logger);
+      expect(storedOptionalToken.token).toBe(Logger);
+
+      const resolvedDependencies = await container.resolve<unknown[]>(CONSUMER);
+
+      expect(resolvedDependencies[0]).toBeInstanceOf(Logger);
+      expect(resolvedDependencies[1]).toBeInstanceOf(Logger);
+    });
+  });
+
   describe('optional injection', () => {
     it('injects undefined when an optional token is not registered', async () => {
       const LOGGER = Symbol('Logger');
@@ -1488,9 +1572,17 @@ describe('Container', () => {
       expect(Object.isFrozen(provider.inject)).toBe(true);
       expect(Object.isFrozen(multiProviders)).toBe(true);
       expect(Reflect.get(state.registrations, 'set')).toBeUndefined();
+      expect(Reflect.get(state.registrations, 'source')).toBeUndefined();
       expect(Reflect.get(state.multiRegistrations, 'clear')).toBeUndefined();
+      expect(Reflect.get(state.multiRegistrations, 'source')).toBeUndefined();
       expect(Reflect.get(state.singletonCache, 'delete')).toBeUndefined();
+      expect(Reflect.get(state.singletonCache, 'source')).toBeUndefined();
       expect(Reflect.get(state.multiSingletonCache, 'set')).toBeUndefined();
+      expect(Reflect.get(state.multiSingletonCache, 'source')).toBeUndefined();
+      expect(Reflect.ownKeys(state.registrations).map((key) => Reflect.get(state.registrations, key)).some((value) => value instanceof Map)).toBe(false);
+      expect(Reflect.ownKeys(state.multiRegistrations).map((key) => Reflect.get(state.multiRegistrations, key)).some((value) => value instanceof Map)).toBe(false);
+      expect(Reflect.ownKeys(state.singletonCache).map((key) => Reflect.get(state.singletonCache, key)).some((value) => value instanceof Map)).toBe(false);
+      expect(Reflect.ownKeys(state.multiSingletonCache).map((key) => Reflect.get(state.multiSingletonCache, key)).some((value) => value instanceof Map)).toBe(false);
       await expect(container.resolve(token)).resolves.toBe('value');
       await expect(container.resolve<string[]>(plugins)).resolves.toEqual(['plugin']);
     });
