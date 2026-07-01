@@ -1,8 +1,8 @@
 import type { Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
-import { CronLifecycleService } from './service.js';
 import { defaultCronScheduler } from './scheduler.js';
+import { CronLifecycleService } from './service.js';
 import { CRON_OPTIONS, SCHEDULING_REGISTRY } from './tokens.js';
 import type { CronModuleOptions, NormalizedCronModuleOptions } from './types.js';
 
@@ -16,6 +16,20 @@ function randomId(): string {
   }
 
   return `cron-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeRedisClientName(clientName: string | undefined): string | undefined {
+  if (clientName === undefined) {
+    return undefined;
+  }
+
+  const normalizedClientName = clientName.trim();
+
+  if (normalizedClientName.length === 0) {
+    throw new Error('Cron distributed clientName must be a non-empty string when provided.');
+  }
+
+  return normalizedClientName;
 }
 
 function normalizeDistributedOptions(distributed: CronModuleOptions['distributed']): NormalizedCronModuleOptions['distributed'] {
@@ -40,7 +54,7 @@ function normalizeDistributedOptions(distributed: CronModuleOptions['distributed
   }
 
   return {
-    clientName: distributed.clientName,
+    clientName: normalizeRedisClientName(distributed.clientName),
     enabled: distributed.enabled ?? true,
     keyPrefix: distributed.keyPrefix ?? 'fluo:cron:lock',
     lockTtlMs: distributed.lockTtlMs ?? 30_000,

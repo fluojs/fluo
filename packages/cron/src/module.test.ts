@@ -386,6 +386,95 @@ describe('@fluojs/cron', () => {
     }).toThrow('@Timeout() cannot be used on private methods.');
   });
 
+  it('rejects private and static methods for @Cron()', () => {
+    expect(() => {
+      class InvalidPrivateCronTask {
+        @Cron(CronExpression.EVERY_SECOND)
+        // biome-ignore lint/correctness/noUnusedPrivateClassMembers: private decorator targets are the validation fixture under test.
+        #run() {}
+      }
+
+      return InvalidPrivateCronTask;
+    }).toThrow('@Cron() cannot be used on private methods.');
+
+    expect(() => {
+      class InvalidStaticCronTask {
+        @Cron(CronExpression.EVERY_SECOND)
+        static run() {}
+      }
+
+      return InvalidStaticCronTask;
+    }).toThrow('@Cron() cannot be used on static methods.');
+  });
+
+  it('rejects static methods for @Interval() and @Timeout()', () => {
+    expect(() => {
+      class InvalidStaticIntervalTask {
+        @Interval(1_000)
+        static run() {}
+      }
+
+      return InvalidStaticIntervalTask;
+    }).toThrow('@Interval() cannot be used on static methods.');
+
+    expect(() => {
+      class InvalidStaticTimeoutTask {
+        @Timeout(1_000)
+        static run() {}
+      }
+
+      return InvalidStaticTimeoutTask;
+    }).toThrow('@Timeout() cannot be used on static methods.');
+  });
+
+  it('rejects blank decorator task names during discovery before scheduling', async () => {
+    const scheduled = createManualScheduler();
+
+    class BlankCronNameTask {
+      @Cron(CronExpression.EVERY_SECOND, { name: '   ' })
+      run() {}
+    }
+
+    class BlankIntervalNameTask {
+      @Interval(1_000, { name: '' })
+      run() {}
+    }
+
+    class BlankTimeoutNameTask {
+      @Timeout(1_000, { name: '\t' })
+      run() {}
+    }
+
+    class CronAppModule {}
+    defineModule(CronAppModule, {
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
+      providers: [BlankCronNameTask],
+    });
+
+    class IntervalAppModule {}
+    defineModule(IntervalAppModule, {
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
+      providers: [BlankIntervalNameTask],
+    });
+
+    class TimeoutAppModule {}
+    defineModule(TimeoutAppModule, {
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
+      providers: [BlankTimeoutNameTask],
+    });
+
+    await expect(bootstrapApplication({ rootModule: CronAppModule })).rejects.toThrow(
+      'Scheduling task name must be a non-empty string.',
+    );
+    await expect(bootstrapApplication({ rootModule: IntervalAppModule })).rejects.toThrow(
+      'Scheduling task name must be a non-empty string.',
+    );
+    await expect(bootstrapApplication({ rootModule: TimeoutAppModule })).rejects.toThrow(
+      'Scheduling task name must be a non-empty string.',
+    );
+    expect(scheduled.records).toHaveLength(0);
+  });
+
   it('discovers cron tasks across imported modules and resolves DI-backed instances', async () => {
     const scheduled = createManualScheduler();
 
@@ -865,6 +954,61 @@ describe('@fluojs/cron', () => {
       'Cron distributed mode requires the configured Redis client to be registered.',
     );
     expect(scheduler.records).toHaveLength(0);
+  });
+
+  it('normalizes distributed clientName before Redis lookup and status dependency reporting', async () => {
+    const scheduled = createManualScheduler();
+    const redis = new InMemoryLockRedisClient();
+
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, { name: 'client-name-normalized' })
+      run() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            clientName: ' locks ',
+            enabled: true,
+            keyPrefix: 'cron-client-name-normalized',
+            lockTtlMs: 60_000,
+          },
+          scheduler: scheduled.scheduler,
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: getRedisClientToken('locks'), useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    try {
+      const registry = await app.container.resolve(SCHEDULING_REGISTRY);
+      const statusService = registry as CronLifecycleService;
+      const snapshot = statusService.createPlatformStatusSnapshot();
+
+      expect(snapshot.details.dependencies).toEqual(['redis.locks']);
+      expect(snapshot.details.redisDependencyResolved).toBe(true);
+      expect(snapshot.readiness.status).toBe('ready');
+      expect(scheduled.records[0]?.options.name).toBe('client-name-normalized');
+    } finally {
+      await closeApplication(app);
+    }
+  });
+
+  it('rejects blank distributed clientName during module option normalization', () => {
+    expect(() =>
+      normalizeCronModuleOptions({
+        distributed: {
+          clientName: '   ',
+          enabled: true,
+        },
+      }),
+    ).toThrow('Cron distributed clientName must be a non-empty string when provided.');
   });
 
   it('fails bootstrap before scheduling jobs when the configured Redis client cannot perform lock operations', async () => {
@@ -1834,20 +1978,23 @@ describe('@fluojs/cron', () => {
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const store = await app.container.resolve(TickStore);
 
-    await vi.advanceTimersByTimeAsync(100);
-    expect(store.intervalCount).toBe(1);
-    expect(store.timeoutCount).toBe(0);
+    try {
+      const store = await app.container.resolve(TickStore);
 
-    await vi.advanceTimersByTimeAsync(150);
-    expect(store.intervalCount).toBe(2);
-    expect(store.timeoutCount).toBe(1);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(store.intervalCount).toBe(1);
+      expect(store.timeoutCount).toBe(0);
 
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(store.timeoutCount).toBe(1);
+      await vi.advanceTimersByTimeAsync(150);
+      expect(store.intervalCount).toBe(2);
+      expect(store.timeoutCount).toBe(1);
 
-    await closeApplication(app);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(store.timeoutCount).toBe(1);
+    } finally {
+      await closeApplication(app);
+    }
   });
 
   it('fails bootstrap on duplicate task names across cron/interval/timeout decorators', async () => {

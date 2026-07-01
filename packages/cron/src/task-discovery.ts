@@ -1,4 +1,4 @@
-import { type MetadataPropertyKey, type Token } from '@fluojs/core';
+import type { MetadataPropertyKey, Token } from '@fluojs/core';
 import { getClassDiMetadata } from '@fluojs/core/internal';
 import type { Provider } from '@fluojs/di';
 import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
@@ -33,6 +33,35 @@ export function buildDefaultTaskName(targetName: string, methodName: string): st
  */
 export function createLockKey(prefix: string, taskName: string): string {
   return `${prefix}:${taskName}`;
+}
+
+/**
+ * Asserts that a scheduling task name can be used as a registry key.
+ *
+ * @param name Scheduling task name supplied by a decorator or registry call.
+ */
+export function assertValidSchedulingTaskName(name: string): void {
+  if (name.trim().length === 0) {
+    throw new Error('Scheduling task name must be a non-empty string.');
+  }
+}
+
+/**
+ * Resolves the effective scheduling task name while preserving authored names.
+ *
+ * @param defaultName Name derived from the decorated target or registry argument.
+ * @param optionName Optional name override supplied in scheduling options.
+ * @returns The effective task name used by the scheduler registry.
+ */
+export function resolveSchedulingTaskName(defaultName: string, optionName?: string): string {
+  assertValidSchedulingTaskName(defaultName);
+
+  if (optionName !== undefined) {
+    assertValidSchedulingTaskName(optionName);
+    return optionName;
+  }
+
+  return defaultName;
 }
 
 /**
@@ -77,7 +106,10 @@ export function discoverCronTaskDescriptors(
 
     for (const entry of entries) {
       const methodName = methodKeyToName(entry.propertyKey);
-      const taskName = entry.metadata.options.name ?? buildDefaultTaskName(candidate.targetType.name, methodName);
+      const taskName = resolveSchedulingTaskName(
+        buildDefaultTaskName(candidate.targetType.name, methodName),
+        entry.metadata.options.name,
+      );
       const seenMethods = seen.get(candidate.targetType) ?? new Set<string>();
       const lockTtlMs = entry.metadata.options.lockTtlMs ?? options.distributed.lockTtlMs;
 

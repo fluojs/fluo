@@ -46,6 +46,46 @@ describe('optional Redis peer contract', () => {
     await app.close();
   });
 
+  it('does not load Redis while creating non-distributed status snapshots', async () => {
+    vi.doMock('@fluojs/redis', () => {
+      throw createMissingRedisPeerError();
+    });
+
+    const [
+      { bootstrapApplication, defineModule },
+      { CronModule },
+      { CronLifecycleService },
+      { SCHEDULING_REGISTRY },
+    ] = await Promise.all([
+      import('@fluojs/runtime'),
+      import('./module.js'),
+      import('./service.js'),
+      import('./tokens.js'),
+    ]);
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot({ distributed: { enabled: false } })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const registry = await app.container.resolve(SCHEDULING_REGISTRY);
+
+      if (!(registry instanceof CronLifecycleService)) {
+        throw new Error('Expected the scheduling registry to expose cron status snapshots.');
+      }
+
+      const snapshot = registry.createPlatformStatusSnapshot();
+
+      expect(snapshot.details.distributedEnabled).toBe(false);
+      expect(snapshot.details.dependencies).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('loads Redis only when distributed scheduling is enabled', async () => {
     const redisTokenRequests: string[] = [];
 
