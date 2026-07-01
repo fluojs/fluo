@@ -101,13 +101,15 @@ Redis indicators created through `@fluojs/terminus/redis` are lifecycle-aware wh
 
 For Drizzle, `createDrizzleHealthIndicatorProvider()` prefers the lifecycle-aware `DrizzleDatabase` wrapper exported by `@fluojs/drizzle`. The indicator reports `down` before probing SQL whenever Drizzle is shutting down, stopped, or otherwise not ready according to `DrizzleDatabase.createPlatformStatusSnapshot()`. If only the legacy raw `DRIZZLE_DATABASE` handle is registered, the provider keeps the previous lightweight SQL probe behavior.
 
+For Prisma, `createPrismaHealthIndicatorProvider()` prefers the lifecycle-aware `PrismaService` / `PrismaServiceFacade` token exported by `@fluojs/prisma`, checks `createPlatformStatusSnapshot()` before probing, and then calls `current()` so ambient transaction/lifecycle seams stay visible to the health probe. Omit `name` to target the default Prisma registration, pass `name` to target `PrismaModule.forRoot({ name })`, or pass explicit `serviceToken` / `clientToken` values for manual provider graphs. If only a raw Prisma client token is registered, the provider keeps the previous lightweight query probe behavior without importing the optional Prisma peer from the root package.
+
 Provider factories are repeatable. You may register multiple providers created by the same factory in one `indicatorProviders` array when each instance uses a distinct indicator key or dependency option; Terminus keeps every provider instance under its own DI token instead of letting later same-type providers overwrite earlier ones.
 
 ### Execution Guardrails
 
 Use `execution.indicatorTimeoutMs` when custom indicators might hang or depend on slow downstreams. When a probe exceeds the configured timeout, Terminus marks that indicator as `down` instead of waiting forever.
 
-Terminus also serializes checks per indicator instance. If a timed-out or otherwise slow probe is still running when another `/health` or `/ready` request arrives, Terminus reports that indicator as `down` for the new request instead of starting an overlapping probe against the same downstream. Built-in HTTP indicators abort their `fetch` request when their own timeout expires; other drivers and custom callbacks may not expose cancellation, so they are protected from overlap until the original promise settles.
+Terminus also serializes checks per indicator instance inside each `TerminusHealthService` / application container. If a timed-out or otherwise slow probe is still running when another `/health` or `/ready` request arrives for the same container, Terminus reports that indicator as `down` for the new request instead of starting an overlapping probe against the same downstream. Separate application containers keep independent in-flight state even when tests or multi-app processes reuse the same indicator object. Built-in HTTP indicators abort their `fetch` request when their own timeout expires; other drivers and custom callbacks may not expose cancellation, so they are protected from overlap until the original promise settles.
 
 ```typescript
 TerminusModule.forRoot({
@@ -135,6 +137,7 @@ When an indicator returns a `down` result or throws a `HealthCheckError`, the `T
 - If an indicator reuses a key that was already reported earlier in the same run, Terminus keeps the first entry and adds a deterministic `*-duplicate-key-error` contributor instead of silently overwriting data.
 - Platform health/readiness failures are surfaced as deterministic `fluo-platform-health` and `fluo-platform-readiness` contributors in `/health` responses. These keys are reserved for platform diagnostics; if a user indicator returns one of them during a platform failure, Terminus keeps the platform payload under the reserved key and adds a deterministic `*-user-key-collision` diagnostic instead of dropping runtime state.
 - `/health` responses may include a `platform` block with platform health/readiness details when runtime diagnostics are available.
+- Prisma indicators created through the DI provider map `@fluojs/prisma` service lifecycle readiness/health state before querying, so shutdown, stopped, or not-yet-connected integrations mark `/health` and `/ready` unavailable even when the raw client handle is still callable.
 - Drizzle indicators created through the DI provider map Drizzle lifecycle readiness/health state before SQL probing, so shutdown or stopped integrations mark `/health` and `/ready` as unavailable even if the underlying driver still accepts a raw ping.
 - Redis indicators created through the Redis subpath map `@fluojs/redis` client lifecycle state before `PING`, so shutdown or disconnected Redis clients mark `/health` and `/ready` as unavailable even before command execution.
 
@@ -164,7 +167,7 @@ Runtime-specific indicators are split by subpath. Use `@fluojs/terminus/node` fo
 ### Direct helpers and tokens
 
 - `runHealthCheck(...)`, `assertHealthCheck(...)`: Direct aggregation/testing helpers.
-- `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: DI tokens for registered indicators and provider tokens.
+- `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: DI tokens for registered indicators and provider tokens. `TerminusModule.forRoot(...)` exports both tokens so downstream modules can inspect the composed indicator/provider-token set without rebuilding Terminus internals.
 - Built-in indicators also expose `create*HealthIndicator()` and `create*HealthIndicatorProvider()` helpers. Provider helpers are intentional DI-composition exceptions for `indicatorProviders`, while application registration should still go through `TerminusModule.forRoot(...)`.
 
 ### `@fluojs/terminus/redis`

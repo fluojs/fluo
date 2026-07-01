@@ -136,7 +136,7 @@ return report;
 ### 18.4.4 Disk Space and I/O Monitoring
 파일 업로드를 처리하거나 집중적인 로깅을 수행하는 애플리케이션에서 **디스크 공간**은 매우 중요한 리소스입니다. 디스크가 가득 차면 메모리 누수와 마찬가지로 애플리케이션이 충돌하거나 응답하지 않게 될 수 있습니다. Terminus는 최소 free bytes 또는 최소 free ratio 같은 여유 공간 임계값을 점검하는 Node disk indicator를 제공합니다. 이 신호를 사용하면 프로덕션 비상 사태가 발생하기 전에 임시 파일 정리나 스토리지 확장과 같은 조치를 취할 수 있습니다. I/O latency나 throughput 모니터링도 필요하다면, 이를 Terminus disk indicator 출력으로 간주하지 말고 metrics 또는 host observability stack에서 수집하세요.
 
-Node.js resource indicator는 `@fluojs/terminus/node`에서 import하는 것을 권장하고, Redis indicator는 `@fluojs/terminus/redis`에서 import합니다. Node memory/disk indicator는 호환성을 위해 root에서도 계속 export되지만, subpath는 마이그레이션 경계를 명확히 합니다. Node probe는 runtime-specific이고 Redis lifecycle-aware probe는 Redis subpath를 통한 opt-in이며, root `@fluojs/terminus` import는 선택적 Redis peer 없이도 안전하게 유지됩니다.
+Node.js resource indicator는 `@fluojs/terminus/node`에서 import하는 것을 권장하고, Redis indicator는 `@fluojs/terminus/redis`에서 import합니다. Node memory/disk indicator는 호환성을 위해 root에서도 계속 export되지만, subpath는 마이그레이션 경계를 명확히 합니다. Node probe는 runtime-specific이고 Redis lifecycle-aware probe는 Redis subpath를 통한 opt-in이며, root `@fluojs/terminus` import는 선택적 Redis 또는 Prisma peer 없이도 안전하게 유지됩니다. `createPrismaHealthIndicatorProvider(...)`로 등록한 Prisma indicator는 해당 provider가 있을 때 named registration을 포함한 `@fluojs/prisma` service lifecycle status를 계속 사용합니다.
 
 FluoBlog에서는 이미지 업로드가 처리되는 `/tmp` 디렉토리와 메인 로그 디렉토리를 모니터링합니다. 이를 통해 스토리지 소진으로 인해 사용자 데이터나 중요한 로그 이벤트를 잃지 않도록 보장합니다. 리소스 레벨의 헬스와 서비스 레벨의 헬스를 통합하면 애플리케이션의 운영 상태에 대한 종합적인 360도 뷰를 확보할 수 있습니다.
 
