@@ -12,7 +12,12 @@ import { Cron as CronValidator } from 'croner';
 
 import { CronDistributedLockManager } from './distributed-lock-manager.js';
 import { createCronPlatformStatusSnapshot } from './status.js';
-import { createLockKey, discoverCronTaskDescriptors } from './task-discovery.js';
+import {
+  assertValidSchedulingTaskName,
+  createLockKey,
+  discoverCronTaskDescriptors,
+  resolveSchedulingTaskName,
+} from './task-discovery.js';
 import { CronTaskRunner } from './task-runner.js';
 import { CRON_OPTIONS } from './tokens.js';
 import type {
@@ -44,21 +49,8 @@ function assertValidLockTtlMs(lockTtlMs: number): void {
   }
 }
 
-function assertValidTaskName(name: string): void {
-  if (name.trim().length === 0) {
-    throw new Error('Scheduling task name must be a non-empty string.');
-  }
-}
-
 function resolveDynamicTaskName(name: string, optionName?: string): string {
-  assertValidTaskName(name);
-
-  if (optionName !== undefined) {
-    assertValidTaskName(optionName);
-    return optionName;
-  }
-
-  return name;
+  return resolveSchedulingTaskName(name, optionName);
 }
 
 function assertValidMs(ms: number, context: string): void {
@@ -569,6 +561,7 @@ export class CronLifecycleService
   }
 
   private registerTask(descriptor: CronTaskDescriptor, source: 'decorator' | 'dynamic'): void {
+    assertValidSchedulingTaskName(descriptor.taskName);
     this.assertTaskNameAvailable(descriptor.taskName);
 
     if (descriptor.distributed) {

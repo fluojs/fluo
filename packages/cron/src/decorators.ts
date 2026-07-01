@@ -48,6 +48,10 @@ function assertMethodIsPublic(context: ClassMethodDecoratorContext, decoratorNam
   if (context.private) {
     throw new Error(`${decoratorName}() cannot be used on private methods.`);
   }
+
+  if (context.static) {
+    throw new Error(`${decoratorName}() cannot be used on static methods.`);
+  }
 }
 
 /**

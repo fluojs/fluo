@@ -41,7 +41,7 @@ Register the `CronModule` and use decorators to schedule your methods.
 Use `CronModule.forRoot(...)` to register scheduling for an application module.
 Cron expressions may use either five fields (`minute hour day month weekday`) or six fields (`second minute hour day month weekday`). The built-in `CronExpression` presets use six-field expressions when sub-minute precision is needed. Cron tasks start only after application bootstrap, dynamically registered cron tasks start when added to a started registry, and fluo forwards `timezone` plus no-overlap protection to the scheduler so one task instance does not overlap itself.
 
-Scheduling decorators apply to public instance methods only. Do not migrate NestJS private scheduled methods, static helpers, or method names that are hidden behind legacy decorator metadata assumptions as-is; expose a public provider/controller method and keep any private implementation details behind that method.
+Scheduling decorators apply to public instance methods only. Do not migrate NestJS private scheduled methods, static helpers, or method names that are hidden behind legacy decorator metadata assumptions as-is; expose a public provider/controller method and keep any private implementation details behind that method. Explicit decorator `name` values must be non-empty strings, matching the dynamic registry validation contract.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -97,7 +97,7 @@ import { RedisModule } from '@fluojs/redis';
 class AppModule {}
 ```
 
-Leave `distributed.clientName` unset to keep using the default Redis registration above. To use a non-default Redis connection for distributed locks, set `distributed.clientName` to the name registered through `RedisModule.forRoot({ name, ... })`.
+Leave `distributed.clientName` unset to keep using the default Redis registration above. To use a non-default Redis connection for distributed locks, set `distributed.clientName` to the name registered through `RedisModule.forRoot({ name, ... })`. fluo trims the configured client name during module option normalization and rejects blank values before lifecycle or status reporting uses the Redis dependency name.
 
 `distributed.lockTtlMs` must stay at or above `1_000ms`. fluo renews the Redis lock before that TTL expires, including the minimum supported `1_000ms` boundary.
 
@@ -149,7 +149,7 @@ class TaskManager {
 }
 ```
 
-The registry exposes `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, `updateCronExpression`, and `updateIntervalMs`. The first `name` argument is the default registry key; passing `options.name` overrides the actual registry key, scheduler metadata name, and default distributed lock key for dynamic tasks so dynamic registration matches decorator naming semantics. `get` and `getAll` return read-only `SchedulingTaskDescriptor` values, not live `CronJob` handles. Timeout tasks run once, then disable themselves while remaining in the registry so they can be re-enabled deliberately.
+The registry exposes `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, `updateCronExpression`, and `updateIntervalMs`. The first `name` argument is the default registry key; passing `options.name` overrides the actual registry key, scheduler metadata name, and default distributed lock key for dynamic tasks so dynamic registration matches decorator naming semantics. Registry and decorator task names must be non-empty strings. `get` and `getAll` return read-only `SchedulingTaskDescriptor` values, not live `CronJob` handles. Timeout tasks run once, then disable themselves while remaining in the registry so they can be re-enabled deliberately.
 
 Dynamic cron registration is atomic with scheduler startup: if the scheduler rejects a new cron job, the registry does not retain a half-registered task. Updating a running cron expression or interval cadence is also rollback-safe. If rescheduling fails, the previous expression or interval milliseconds and scheduled handle remain active. Cron tasks use both scheduler-level no-overlap protection and fluo's in-process running guard, so the same task instance will not run overlapping ticks.
 
