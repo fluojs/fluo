@@ -1,9 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
 import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata } from '@fluojs/core/internal';
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
-import { bootstrapApplication, defineModule, type ApplicationLogger } from '@fluojs/runtime';
+import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface MockQueueConnection {
   closeCalls: number;
@@ -542,17 +541,19 @@ describe('@fluojs/queue', () => {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
-    const userService = await app.container.resolve(UserService);
-    const workerStore = await app.container.resolve(WorkerStore);
-    await waitForApplicationQueueWorkers(app);
+    try {
+      const userService = await app.container.resolve(UserService);
+      const workerStore = await app.container.resolve(WorkerStore);
+      await waitForApplicationQueueWorkers(app);
 
-    const jobId = await userService.register('user-1');
+      const jobId = await userService.register('user-1');
 
-    expect(jobId).toBe('1');
-    expect(workerStore.isPrototypeRehydrated).toBe(true);
-    expect(workerStore.subject).toBe('welcome:user-1');
-
-    await app.close();
+      expect(jobId).toBe('1');
+      expect(workerStore.isPrototypeRehydrated).toBe(true);
+      expect(workerStore.subject).toBe('welcome:user-1');
+    } finally {
+      await app.close();
+    }
   });
 
   it('resolves a named Redis client when clientName is configured', async () => {
@@ -818,35 +819,37 @@ describe('@fluojs/queue', () => {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
-    const queue = await app.container.resolve<Queue>(QUEUE);
-    await waitForApplicationQueueWorkers(app);
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+      await waitForApplicationQueueWorkers(app);
 
-    const jobId = await queue.enqueue(new FailingJob('invoice-1'));
+      const jobId = await queue.enqueue(new FailingJob('invoice-1'));
 
-    expect(jobId).toBe('1');
-    const queueJobs = bullmqState.queues.get('failing-job')?.jobs ?? [];
+      expect(jobId).toBe('1');
+      const queueJobs = bullmqState.queues.get('failing-job')?.jobs ?? [];
 
-    expect(queueJobs).toHaveLength(1);
-    expect(queueJobs[0]?.opts.attempts).toBe(2);
-    expect(queueJobs[0]?.opts.backoff).toEqual({
-      delay: 250,
-      type: 'exponential',
-    });
-    expect(bullmqState.workers.get('failing-job')?.failures).toBe(2);
+      expect(queueJobs).toHaveLength(1);
+      expect(queueJobs[0]?.opts.attempts).toBe(2);
+      expect(queueJobs[0]?.opts.backoff).toEqual({
+        delay: 250,
+        type: 'exponential',
+      });
+      expect(bullmqState.workers.get('failing-job')?.failures).toBe(2);
 
-    const deadLetters = redis.deadLetters.get('fluo:queue:dead-letter:failing-job') ?? [];
+      const deadLetters = redis.deadLetters.get('fluo:queue:dead-letter:failing-job') ?? [];
 
-    expect(deadLetters).toHaveLength(1);
-    expect(JSON.parse(deadLetters[0]!)).toMatchObject({
-      attemptsMade: 2,
-      errorMessage: 'failed on purpose',
-      jobId: '1',
-      jobName: 'failing-job',
-      payload: { target: 'invoice-1' },
-    });
-    expect(loggerEvents.some((event) => event.includes('Failed to append dead-letter record'))).toBe(false);
-
-    await app.close();
+      expect(deadLetters).toHaveLength(1);
+      expect(JSON.parse(deadLetters[0]!)).toMatchObject({
+        attemptsMade: 2,
+        errorMessage: 'failed on purpose',
+        jobId: '1',
+        jobName: 'failing-job',
+        payload: { target: 'invoice-1' },
+      });
+      expect(loggerEvents.some((event) => event.includes('Failed to append dead-letter record'))).toBe(false);
+    } finally {
+      await app.close();
+    }
   });
 
   it('keeps dead-letter payload immutable when worker mutates nested payload fields', async () => {
@@ -932,6 +935,47 @@ describe('@fluojs/queue', () => {
     await app.close();
   });
 
+  it('keeps the public QueueModule.forRoot() dead-letter retention default at 1_000 entries', async () => {
+    class DefaultRetentionDeadLetterJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(DefaultRetentionDeadLetterJob, { attempts: 1, jobName: 'default-retention-dead-letter-job' })
+    class DefaultRetentionDeadLetterWorker {
+      async handle(_job: DefaultRetentionDeadLetterJob): Promise<void> {
+        throw new Error('retain by default');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [DefaultRetentionDeadLetterWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+      await waitForApplicationQueueWorkers(app);
+
+      for (let index = 1; index <= 1_001; index += 1) {
+        await queue.enqueue(new DefaultRetentionDeadLetterJob(`job-${index}`));
+      }
+
+      const deadLetters = redis.deadLetters.get('fluo:queue:dead-letter:default-retention-dead-letter-job') ?? [];
+
+      expect(deadLetters).toHaveLength(1_000);
+      expect(JSON.parse(deadLetters[0]!).payload.id).toBe('job-2');
+      expect(JSON.parse(deadLetters[deadLetters.length - 1]!).payload.id).toBe('job-1001');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('allows opting out of dead-letter trimming with defaultDeadLetterMaxEntries: false', async () => {
     class UnboundedDeadLetterJob {
       constructor(public readonly id: string) {}
@@ -1014,13 +1058,15 @@ describe('@fluojs/queue', () => {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
-    const workerStore = await app.container.resolve(WorkerStore);
+    try {
+      const workerStore = await app.container.resolve(WorkerStore);
 
-    await waitForApplicationQueueWorkers(app);
-    expect(workerStore.received).toEqual(['bootstrapped']);
-    expect(workerStore.receivedDuringBootstrap).toBe(false);
-
-    await app.close();
+      await waitForApplicationQueueWorkers(app);
+      expect(workerStore.received).toEqual(['bootstrapped']);
+      expect(workerStore.receivedDuringBootstrap).toBe(false);
+    } finally {
+      await app.close();
+    }
   });
 
   it('keeps workers stopped while later async onApplicationBootstrap hooks are still pending', async () => {
@@ -1745,6 +1791,63 @@ describe('@fluojs/queue', () => {
     expect(loggerEvents.some((event) => event.includes('Failed to close queue worker within shutdown timeout.'))).toBe(true);
   });
 
+  it('keeps the public QueueModule.forRoot() worker shutdown timeout default at 30_000ms', async () => {
+    vi.useFakeTimers();
+    const loggerEvents: string[] = [];
+
+    class DefaultShutdownTimeoutJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(DefaultShutdownTimeoutJob, { jobName: 'default-shutdown-timeout-job' })
+    class DefaultShutdownTimeoutWorker {
+      async handle(_job: DefaultShutdownTimeoutJob): Promise<void> {
+        await new Promise<void>(() => undefined);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [DefaultShutdownTimeoutWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+      const service = await app.container.resolve(QueueLifecycleService);
+      await vi.advanceTimersByTimeAsync(0);
+
+      void queue.enqueue(new DefaultShutdownTimeoutJob('job-1'));
+      await Promise.resolve();
+
+      const closePromise = app.close();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(service.createPlatformStatusSnapshot().details).toMatchObject({ lifecycleState: 'stopping' });
+
+      const worker = bullmqState.workers.get('default-shutdown-timeout-job');
+      expect(worker?.closeCalls).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(worker?.closeCalls).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await closePromise;
+
+      expect(worker?.closeCalls).toBe(2);
+      expect(loggerEvents.some((event) => event.includes('Failed to close queue worker within shutdown timeout.'))).toBe(true);
+    } finally {
+      const shutdown = app.close();
+      await vi.advanceTimersByTimeAsync(30_001);
+      await shutdown;
+    }
+  });
+
   it('rejects enqueue payloads that do not serialize to JSON objects', async () => {
     class ArrayPayloadJob {
       toJSON(): unknown[] {
@@ -1962,25 +2065,30 @@ describe('@fluojs/queue', () => {
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
-    const queue = await app.container.resolve<Queue>(QUEUE);
-    await waitForApplicationQueueWorkers(app);
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+      await waitForApplicationQueueWorkers(app);
 
-    await queue.enqueue(new DefaultedJob('ok'));
+      await queue.enqueue(new DefaultedJob('ok'));
 
-    const worker = bullmqState.workers.get('DefaultedJob');
-    const queueJobs = bullmqState.queues.get('DefaultedJob')?.jobs ?? [];
+      const worker = bullmqState.workers.get('DefaultedJob');
+      const queueJobs = bullmqState.queues.get('DefaultedJob')?.jobs ?? [];
 
-    expect(worker?.workerOpts.concurrency).toBe(3);
-    expect(queueJobs[0]?.opts.attempts).toBe(4);
-    expect(queueJobs[0]?.opts.backoff).toEqual({
-      delay: 600,
-      type: 'fixed',
-    });
+      expect(worker?.workerOpts.concurrency).toBe(3);
+      expect(queueJobs[0]?.opts.attempts).toBe(4);
+      expect(queueJobs[0]?.opts.backoff).toEqual({
+        delay: 600,
+        type: 'fixed',
+      });
 
-    await app.close();
+      await app.close();
+      await app.close();
 
-    expect(worker?.closeCalls).toBe(1);
-    expect(bullmqState.queues.get('DefaultedJob')?.closeCalls).toBe(1);
-    expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+      expect(worker?.closeCalls).toBe(1);
+      expect(bullmqState.queues.get('DefaultedJob')?.closeCalls).toBe(1);
+      expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+    } finally {
+      await app.close();
+    }
   });
 });
