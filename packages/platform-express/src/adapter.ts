@@ -232,6 +232,10 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   async listen(dispatcher: Dispatcher): Promise<void> {
+    if (this.server.listening) {
+      return;
+    }
+
     this.dispatcher = dispatcher;
     this.registerNativeRoutes(dispatcher);
     await this.listenWithRetry();
