@@ -51,10 +51,12 @@ The Express adapter supports Server-Sent Events (SSE) via the shared `SseRespons
 Express-backed response streams also honor the shared fluo backpressure contract: `response.stream.waitForDrain()` settles on `drain`, `close`, or `error`, so streaming writers do not hang when clients disconnect before backpressure clears.
 
 ```typescript
-@Get('events')
-async streamEvents(@Res() res: FrameworkResponse) {
-  const events = new SseResponse();
-  events.send({ data: 'hello' });
+import { Sse, SseResponse, type RequestContext } from '@fluojs/http';
+
+@Sse('events')
+async streamEvents(_input: undefined, ctx: RequestContext) {
+  const events = new SseResponse(ctx);
+  events.send({ data: 'hello' }, { event: 'ready' });
   return events;
 }
 ```
@@ -114,7 +116,7 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 - **Versioning parity**: Header/media-type/custom version selection remains dispatcher-owned even when Express Router handles the initial path match.
 - **Middleware rewrite parity**: App middleware that rewrites method or path invalidates native handoff and rematches the rewritten request.
 - **Response serialization parity**: String responses default to `text/plain`, objects/arrays serialize as JSON, binary payloads default to `application/octet-stream`, and `set-cookie` values are merged.
-- **Startup and shutdown**: The adapter supports HTTP/HTTPS startup, retries `EADDRINUSE` according to retry options, drains sockets on close, reuses one in-flight close lifecycle for concurrent `close()` calls, and can force-close connections after shutdown timeout, including immediate force-close when `shutdownTimeoutMs` is `0`.
+- **Startup and shutdown**: The adapter supports HTTP/HTTPS startup, retries `EADDRINUSE` according to retry options until `retryLimit` is exhausted, treats duplicate `listen()` calls on an already-started adapter as idempotent without replacing the live dispatcher, drains idle keep-alive sockets on normal close, reuses one in-flight close lifecycle for concurrent `close()` calls, and can force-close connections after shutdown timeout, including immediate force-close when `shutdownTimeoutMs` is `0`.
 
 ## Public API Overview
 
@@ -122,7 +124,7 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 - `bootstrapExpressApplication(module, options)`: Advanced bootstrap helper for manual control.
 - `runExpressApplication(module, options)`: Compatibility helper for quick startup with signal wiring. On timeout/failure it reports the condition through logging and `process.exitCode`, while leaving final process termination to the surrounding host.
 - `isExpressMultipartTooLargeError(error)`: Normalizes multipart limit detection across adapter error shapes.
-- `ExpressHttpApplicationAdapter`: The core adapter implementation class. `getServer()` exposes the underlying Node HTTP/HTTPS server for narrow platform integrations, and `getRealtimeCapability()` returns the server-backed capability used by realtime packages. Keep both helpers at infrastructure boundaries instead of threading native server objects through ordinary application code.
+- `ExpressHttpApplicationAdapter`: The core adapter implementation class. `getServer()` exposes the underlying Node HTTP/HTTPS server for narrow platform integrations, `getListenTarget()` reports the resolved bind target and public URL after startup, and `getRealtimeCapability()` returns the server-backed capability used by realtime packages. Keep these helpers at infrastructure boundaries instead of threading native server objects through ordinary application code.
 - Option types: `ExpressAdapterOptions`, `BootstrapExpressApplicationOptions`, `RunExpressApplicationOptions`, `CorsInput`, `ExpressApplicationSignal`.
 
 `createExpressAdapter(options, multipartOptions?)` supports `host`, `https`, `maxBodySize`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs`. Direct `ExpressHttpApplicationAdapter` construction applies the same numeric validation as the factory. `bootstrapExpressApplication(...)` and `runExpressApplication(...)` also accept `cors`, `globalPrefix`, `globalPrefixExclude`, `middleware`, `multipart`, `securityHeaders`, `forceExitTimeoutMs`, `shutdownSignals`, and `logger`; they use the framework console logger by default for startup and shutdown diagnostics and honor an injected `ApplicationLogger` when provided.
@@ -136,4 +138,4 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 ## Example Sources
 
 - `packages/platform-express/src/adapter.test.ts`
-- This package does not currently ship a dedicated `examples/platform-express` app. Use the Quick Start in this README for Express bootstrap shape and `packages/platform-express/src/adapter.test.ts` for executable Express adapter coverage. `examples/minimal/src/main.ts` is Fastify-based and should not be treated as an Express example source.
+- This package does not currently ship a dedicated `examples/platform-express` app. Use the Quick Start in this README for Express bootstrap shape and `packages/platform-express/src/adapter.test.ts` for executable Express adapter coverage, including SSE framing, native-route fallback parity, duplicate listen idempotency, retry exhaustion, idle keep-alive drain, and forced shutdown. `examples/minimal/src/main.ts` is Fastify-based and should not be treated as an Express example source.
