@@ -1,7 +1,8 @@
-import { type Constructor, getModuleMetadata, type Token } from '@fluojs/core';
+import { type Constructor, getModuleMetadata, Inject, type Token } from '@fluojs/core';
 import { Container, type Provider } from '@fluojs/di';
 import type { NotificationChannel } from '@fluojs/notifications';
 import { NOTIFICATION_CHANNELS, NotificationsModule, NotificationsService } from '@fluojs/notifications';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DiscordChannel } from './channel.js';
@@ -189,6 +190,135 @@ describe('DiscordModule', () => {
     transportState.sent.length = 0;
     transportState.sequence = 0;
     transportState.verifyCalls = 0;
+  });
+
+  it('exposes default-global Discord providers across a real module graph for notifications', async () => {
+    @Inject(DiscordService)
+    class DiscordVisibilityConsumer {
+      constructor(readonly discord: DiscordService) {}
+    }
+
+    class DiscordOwnerModule {}
+    defineModule(DiscordOwnerModule, {
+      imports: [
+        DiscordModule.forRoot({
+          defaultThreadId: 'thread-ops',
+          notifications: { channel: 'alerts' },
+          transport: createRecordingTransportFactory({ responsePrefix: 'graph' }),
+        }),
+      ],
+    });
+
+    class NotificationsOwnerModule {}
+    defineModule(NotificationsOwnerModule, {
+      imports: [
+        NotificationsModule.forRootAsync({
+          inject: [DISCORD_CHANNEL],
+          useFactory: (channel: unknown) => ({
+            channels: [channel as DiscordChannel],
+          }),
+        }),
+      ],
+      providers: [DiscordVisibilityConsumer],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [DiscordOwnerModule, NotificationsOwnerModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const consumer = await app.container.resolve(DiscordVisibilityConsumer);
+      const notifications = await app.container.resolve(NotificationsService);
+      const result = await notifications.dispatch({
+        channel: 'alerts',
+        payload: { content: 'Global graph delivery' },
+        recipients: ['thread-release'],
+      });
+
+      expect(consumer.discord).toBeInstanceOf(DiscordService);
+      expect(result).toMatchObject({
+        channel: 'alerts',
+        deliveryId: 'graph-1',
+        queued: false,
+        status: 'delivered',
+      });
+      expect(transportState.sent[0]).toMatchObject({
+        content: 'Global graph delivery',
+        threadId: 'thread-release',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps global=false Discord providers local to explicit importers in a real module graph', async () => {
+    @Inject(DiscordService)
+    class LocalDiscordConsumer {
+      constructor(readonly discord: DiscordService) {}
+    }
+
+    class LocalDiscordFeatureModule {}
+    defineModule(LocalDiscordFeatureModule, {
+      imports: [
+        DiscordModule.forRoot({
+          defaultThreadId: 'thread-local',
+          global: false,
+          transport: createRecordingTransportFactory({ responsePrefix: 'local-graph' }),
+        }),
+      ],
+      providers: [LocalDiscordConsumer],
+    });
+
+    class LocalAppModule {}
+    defineModule(LocalAppModule, {
+      imports: [LocalDiscordFeatureModule],
+    });
+
+    const localApp = await bootstrapApplication({ rootModule: LocalAppModule });
+
+    try {
+      const consumer = await localApp.container.resolve(LocalDiscordConsumer);
+
+      expect(consumer.discord).toBeInstanceOf(DiscordService);
+      await expect(consumer.discord.send({ content: 'Local graph delivery' })).resolves.toMatchObject({
+        threadId: 'thread-local',
+      });
+    } finally {
+      await localApp.close();
+    }
+
+    @Inject(DiscordService)
+    class HiddenDiscordConsumer {
+      constructor(readonly discord: DiscordService) {}
+    }
+
+    class HiddenDiscordOwnerModule {}
+    defineModule(HiddenDiscordOwnerModule, {
+      imports: [
+        DiscordModule.forRoot({
+          defaultThreadId: 'thread-hidden',
+          global: false,
+          transport: createRecordingTransportFactory({ responsePrefix: 'hidden-graph' }),
+        }),
+      ],
+    });
+
+    class HiddenConsumerModule {}
+    defineModule(HiddenConsumerModule, {
+      providers: [HiddenDiscordConsumer],
+    });
+
+    class HiddenAppModule {}
+    defineModule(HiddenAppModule, {
+      imports: [HiddenDiscordOwnerModule, HiddenConsumerModule],
+    });
+
+    await expect(bootstrapApplication({ rootModule: HiddenAppModule })).rejects.toThrow(
+      /not visible through a global module|DiscordService/,
+    );
   });
 
   it('registers sync providers and delivers Discord messages through an injected transport factory', async () => {
@@ -488,6 +618,45 @@ describe('DiscordModule', () => {
     expect(transportState.sent).toEqual([]);
   });
 
+  it('rejects sends while module bootstrap is still resolving the transport', async () => {
+    const transport = new PassiveTransport();
+    let resolveTransport: (transport: DiscordTransport) => void = () => {};
+    const transportPromise = new Promise<DiscordTransport>((resolve) => {
+      resolveTransport = resolve;
+    });
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      transport: {
+        create: () => transportPromise,
+        kind: 'deferred-startup-factory',
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    const startup = service.onModuleInit();
+
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'starting' },
+      readiness: {
+        reason: 'Discord transport is still starting.',
+        status: 'degraded',
+      },
+    });
+    await expect(service.send({ content: 'During startup' })).rejects.toThrowError(
+      new DiscordTransportError('Discord transport is not ready for delivery.'),
+    );
+    expect(transport.sent).toEqual([]);
+
+    resolveTransport(transport);
+    await startup;
+    await service.onApplicationShutdown();
+
+    expect(transport.closeCalls).toBe(1);
+    expect(transport.sent).toEqual([]);
+  });
+
   it('accepts poll-only Discord payloads documented by the notifications contract', async () => {
     const container = new Container();
     const moduleType = DiscordModule.forRoot({
@@ -680,6 +849,50 @@ describe('DiscordModule', () => {
 
       await expect(pending).resolves.toMatchObject({ messageId: 'msg-1', ok: true, statusCode: 200, threadId: 'thread-ops' });
       expect(fetchLike).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries HTTP 408 webhook responses before succeeding', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fetchLike = vi
+        .fn<DiscordFetchLike>()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 408,
+          statusText: 'Request Timeout',
+          async text() {
+            return 'request timed out';
+          },
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({ id: 'msg-timeout', thread_id: 'thread-ops' });
+          },
+        });
+      const transport = createDiscordWebhookTransport({
+        fetch: fetchLike,
+        webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+      });
+
+      const pending = transport.send(
+        { attachments: [], components: [], content: 'Retry timeout path', embeds: [], threadId: 'thread-ops' },
+        {},
+      );
+      await vi.runAllTimersAsync();
+
+      await expect(pending).resolves.toMatchObject({
+        messageId: 'msg-timeout',
+        ok: true,
+        statusCode: 200,
+        threadId: 'thread-ops',
+      });
+      expect(fetchLike).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
     }
