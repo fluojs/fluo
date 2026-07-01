@@ -12,7 +12,9 @@ Migration boundary: the module API is intentionally Nest-like but not a NestJS d
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+  - [Module visibility and migration boundaries](#module-visibility-and-migration-boundaries)
   - [Standalone delivery with `DiscordService`](#standalone-delivery-with-discordservice)
+  - [Bootstrap verification with `verifyOnModuleInit`](#bootstrap-verification-with-verifyonmoduleinit)
   - [Integration with `@fluojs/notifications`](#integration-with-fluojs-notifications)
   - [Webhook-first delivery with explicit fetch injection](#webhook-first-delivery-with-explicit-fetch-injection)
   - [Intentional limitations](#intentional-limitations)
@@ -77,6 +79,12 @@ export class DeployNotifier {
 
 ## Common Patterns
 
+### Module visibility and migration boundaries
+
+`DiscordModule.forRoot(...)` and `DiscordModule.forRootAsync(...)` return a global module by default. The module exports `DiscordService`, `DiscordChannel`, `DISCORD`, and `DISCORD_CHANNEL`; pass `global: false` only when migrated code needs those providers to remain visible only to modules that explicitly import the returned module. The option is `global?: boolean`, not NestJS `isGlobal`.
+
+The package-level registration surface is intentionally singleton-oriented. `DISCORD` and `DISCORD_CHANNEL` are compatibility tokens for the one configured Discord service and notifications channel. Applications that need multiple Discord clients should compose app-owned modules/providers around distinct `DiscordTransport` instances or expose app-owned facades instead of importing private provider helpers.
+
 ### Standalone delivery with `DiscordService`
 
 Use `DiscordService` when your application wants direct Discord delivery without routing through the notifications foundation.
@@ -107,6 +115,24 @@ Behavioral contract notes:
 - `DiscordService.createPlatformStatusSnapshot()` exposes the same status contract as `createDiscordPlatformStatusSnapshot(...)`: lifecycle/readiness, health, transport kind and ownership, default thread configuration, bootstrap verification state, distinct bootstrap initialization versus shutdown cleanup failure diagnostics, and notifications channel dependency details, so callers can observe Discord wiring without reaching into internal options.
 - Blank `defaultThreadId` and `notifications.channel` values are trimmed and ignored; the notifications channel defaults to `discord`.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
+
+### Bootstrap verification with `verifyOnModuleInit`
+
+Set `DiscordModuleOptions.verifyOnModuleInit?: boolean` to `true` when the selected transport can verify its own readiness during application bootstrap. `DiscordService.onModuleInit()` always resolves the configured transport first; if `verifyOnModuleInit` is enabled **and** the resolved transport exposes an optional `verify()` method, the service awaits `transport.verify()` before marking the Discord provider ready. Transports that do not implement `verify` are still valid and simply skip the verification step.
+
+```typescript
+DiscordModule.forRoot({
+  transport: customDiscordTransport,
+  verifyOnModuleInit: true,
+});
+```
+
+Behavioral contract notes:
+
+- `verifyOnModuleInit` is optional and defaults to `false`.
+- Verification is capability-based: only transports that expose `verify()` are called, so webhook-only or app-owned transports do not have to add a no-op verifier.
+- If `transport.verify()` rejects, bootstrap fails with the initialization failure, the service lifecycle moves to `failed`, and readiness/status snapshots report the provider as not ready.
+- `DiscordService.createPlatformStatusSnapshot()` includes `verifiedOnModuleInit` and bootstrap verification state so health/readiness tooling can tell whether bootstrap verification was requested without reaching into internal options.
 
 ### Integration with `@fluojs/notifications`
 

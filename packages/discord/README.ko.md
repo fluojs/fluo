@@ -12,7 +12,9 @@ fluo를 위한 webhook-first, transport-agnostic Discord 전달 코어 패키지
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [일반적인 패턴](#일반적인-패턴)
+  - [모듈 visibility와 migration 경계](#모듈-visibility와-migration-경계)
   - [`DiscordService`를 이용한 standalone 전달](#discordservice를-이용한-standalone-전달)
+  - [`verifyOnModuleInit` bootstrap verification](#verifyonmoduleinit-bootstrap-verification)
   - [`@fluojs/notifications`와의 통합](#fluojs-notifications와의-통합)
   - [명시적 fetch 주입을 사용하는 webhook-first 전달](#명시적-fetch-주입을-사용하는-webhook-first-전달)
   - [의도적인 제한 사항](#의도적인-제한-사항)
@@ -77,6 +79,12 @@ export class DeployNotifier {
 
 ## 일반적인 패턴
 
+### 모듈 visibility와 migration 경계
+
+`DiscordModule.forRoot(...)`와 `DiscordModule.forRootAsync(...)`는 기본적으로 global module을 반환합니다. 이 모듈은 `DiscordService`, `DiscordChannel`, `DISCORD`, `DISCORD_CHANNEL`을 export합니다. 반환된 모듈을 명시적으로 import한 모듈에서만 이 provider들을 보이게 해야 하는 migrated code가 있을 때만 `global: false`를 전달하세요. 이 옵션은 NestJS `isGlobal`이 아니라 `global?: boolean`입니다.
+
+패키지 수준 registration surface는 의도적으로 singleton 중심입니다. `DISCORD`와 `DISCORD_CHANNEL`은 하나의 구성된 Discord service와 notifications channel을 위한 compatibility token입니다. 여러 Discord client가 필요한 애플리케이션은 private provider helper를 import하지 말고 서로 다른 `DiscordTransport` 인스턴스를 감싼 app-owned module/provider 또는 app-owned facade를 구성해야 합니다.
+
 ### `DiscordService`를 이용한 standalone 전달
 
 notifications foundation을 거치지 않고 직접 Discord 전달을 하고 싶다면 `DiscordService`를 사용합니다.
@@ -107,6 +115,24 @@ Behavioral contract 메모:
 - `DiscordService.createPlatformStatusSnapshot()`은 `createDiscordPlatformStatusSnapshot(...)`과 같은 status 계약을 노출합니다. 여기에는 lifecycle/readiness, health, transport kind와 ownership, 기본 thread 구성, bootstrap verification 상태, bootstrap initialization 실패와 shutdown cleanup 실패를 구분하는 diagnostics, notifications channel dependency details가 포함되어, 호출자가 내부 옵션에 접근하지 않고도 Discord wiring을 관찰할 수 있습니다.
 - 빈 `defaultThreadId`와 `notifications.channel` 값은 trim 후 무시됩니다. notifications channel은 기본적으로 `discord`입니다.
 - 이 패키지는 절대로 `process.env`를 직접 읽지 않습니다. 모든 설정은 명시적인 옵션 또는 DI를 통해 들어와야 합니다.
+
+### `verifyOnModuleInit` bootstrap verification
+
+선택한 transport가 애플리케이션 bootstrap 중 자체 readiness를 검증할 수 있다면 `DiscordModuleOptions.verifyOnModuleInit?: boolean`을 `true`로 설정하세요. `DiscordService.onModuleInit()`은 항상 구성된 transport를 먼저 해석합니다. `verifyOnModuleInit`이 켜져 있고 해석된 transport가 optional `verify()` 메서드를 노출하면, 서비스는 Discord provider를 ready로 표시하기 전에 `transport.verify()`를 await합니다. `verify`를 구현하지 않은 transport도 유효하며 verification 단계를 건너뜁니다.
+
+```typescript
+DiscordModule.forRoot({
+  transport: customDiscordTransport,
+  verifyOnModuleInit: true,
+});
+```
+
+Behavioral contract 메모:
+
+- `verifyOnModuleInit`은 optional이며 기본값은 `false`입니다.
+- Verification은 capability 기반입니다. `verify()`를 노출한 transport만 호출하므로 webhook-only 또는 app-owned transport가 no-op verifier를 추가할 필요는 없습니다.
+- `transport.verify()`가 reject하면 bootstrap은 initialization failure로 실패하고, service lifecycle은 `failed`로 이동하며, readiness/status snapshot은 provider를 not ready로 보고합니다.
+- `DiscordService.createPlatformStatusSnapshot()`은 `verifiedOnModuleInit`과 bootstrap verification 상태를 포함하므로 health/readiness tooling이 내부 옵션에 접근하지 않고도 bootstrap verification 요청 여부를 확인할 수 있습니다.
 
 ### `@fluojs/notifications`와의 통합
 
