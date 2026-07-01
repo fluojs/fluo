@@ -8,6 +8,7 @@ fluo 프로젝트를 위한 Vite 플러그인과 빌드 유틸리티입니다.
 
 - [설치](#설치)
 - [사용 시점](#사용-시점)
+- [런타임 및 peer 계약](#런타임-및-peer-계약)
 - [빠른 시작](#빠른-시작)
 - [데코레이터 변환 경계](#데코레이터-변환-경계)
 - [공개 API](#공개-api)
@@ -27,6 +28,12 @@ npm install --save-dev @fluojs/vite vite @babel/core @babel/plugin-proposal-deco
 - fluo 애플리케이션이 TC39 표준 데코레이터가 포함된 TypeScript를 Vite로 빌드할 때
 - starter 프로젝트가 Babel 설정을 inline으로 복사하지 않고 유지보수되는 decorator transform을 import해야 할 때
 - 향후 Vite 대상 fluo 빌드 유틸리티에 독립적인 public package 경계가 필요할 때
+
+## 런타임 및 peer 계약
+
+`@fluojs/vite`는 `engines.node` 하한을 `>=20.0.0`으로 두는 Node.js 패키지입니다. 생성된 non-Deno starter는 이 Node 기준선과 Vite `>=6.2.0`, 그리고 위에 나열한 Babel peer를 함께 사용합니다.
+
+패키지 root는 Babel이 설치되거나 해석되기 전에 import해도 안전합니다. `@fluojs/vite`를 import하거나 `fluoDecoratorsPlugin()`을 생성해도 `@babel/core`를 로드하지 않습니다. Babel은 eligible 애플리케이션 `.ts` 파일에 대한 Vite `transform` hook에서만 lazy load되며, 누락된 Babel peer도 plugin 생성 시점이 아니라 이 transform 경계에서 보고됩니다.
 
 ## 빠른 시작
 
