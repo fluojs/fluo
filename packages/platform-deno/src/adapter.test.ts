@@ -654,6 +654,37 @@ describe('@fluojs/platform-deno', () => {
     });
   });
 
+  it('uses hostname over host for the Deno.serve bind target and startup log', async () => {
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const server = createServeStub();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let app: Application | undefined;
+
+    try {
+      app = await runDenoApplication(AppModule, {
+        host: '0.0.0.0',
+        hostname: '127.0.0.1',
+        port: 4567,
+        serve: server.serve,
+        shutdownSignals: false,
+      });
+
+      expect(server.options).toMatchObject({
+        hostname: '127.0.0.1',
+        port: 4567,
+      });
+      expect(log.mock.calls.some(([message]) => String(message).includes('Listening on http://127.0.0.1:4567'))).toBe(true);
+    } finally {
+      try {
+        await app?.close();
+      } finally {
+        log.mockRestore();
+      }
+    }
+  });
+
   it('registers and removes Deno shutdown signal listeners through the run helper', async () => {
     const signals = installDenoSignalMock();
 
@@ -1084,6 +1115,40 @@ describe('@fluojs/platform-deno', () => {
     }
   });
 
+  it('keeps duplicate listen calls from mutating the running dispatcher pipeline', async () => {
+    const server = createServeStub();
+    const adapter = new DenoHttpApplicationAdapter({
+      hostname: '0.0.0.0',
+      port: 3000,
+      serve: server.serve,
+    });
+    const firstDispatcher = {
+      dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
+        response.setStatus(200);
+        await response.send({ dispatcher: 'first' });
+      }),
+    };
+    const secondDispatcher = {
+      dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
+        response.setStatus(200);
+        await response.send({ dispatcher: 'second' });
+      }),
+    };
+
+    await adapter.listen(firstDispatcher);
+    await adapter.listen(secondDispatcher);
+
+    const response = await server.handler?.(new Request('https://runtime.test/duplicate-listen'));
+
+    expect(server.serve).toHaveBeenCalledTimes(1);
+    expect(response?.status).toBe(200);
+    await expect(response?.json()).resolves.toEqual({ dispatcher: 'first' });
+    expect(firstDispatcher.dispatch).toHaveBeenCalledTimes(1);
+    expect(secondDispatcher.dispatch).not.toHaveBeenCalled();
+
+    await adapter.close();
+  });
+
   it('clears the Deno shutdown timer once close settles', async () => {
     vi.useFakeTimers();
 
@@ -1134,6 +1199,35 @@ describe('@fluojs/platform-deno', () => {
         status: 500,
       },
     });
+  });
+
+  it('keeps websocket upgrades behind the bootstrap dispatcher readiness gate before listen()', async () => {
+    const upgraded = createUpgradeWebSocketStub();
+    const adapter = new DenoHttpApplicationAdapter({
+      hostname: '0.0.0.0',
+      port: 3000,
+      upgradeWebSocket: upgraded.upgrade,
+    });
+    const bindingFetch = vi.fn<DenoWebSocketBinding['fetch']>(async (request, host) => host.upgrade(request).response);
+
+    adapter.configureWebSocketBinding({
+      fetch: bindingFetch,
+    });
+
+    const response = await adapter.handle(new Request('https://runtime.test/chat', {
+      headers: { upgrade: 'websocket' },
+    }));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Internal server error.',
+        status: 500,
+      },
+    });
+    expect(bindingFetch).not.toHaveBeenCalled();
+    expect(upgraded.upgrade).not.toHaveBeenCalled();
   });
 
   it('falls back to global Deno.serve when no injectable serve seam is provided', async () => {
@@ -1204,6 +1298,7 @@ describe('@fluojs/platform-deno', () => {
     expect(upgradeResponse?.status).toBe(200);
     expect(bindingFetch).toHaveBeenCalledTimes(1);
     expect(upgraded.upgrade).toHaveBeenCalledTimes(1);
+    expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
     expect(httpResponse?.status).toBe(200);
   });
 
