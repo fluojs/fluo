@@ -9,7 +9,7 @@ export interface EmailStatusAdapterInput {
   defaultFromConfigured: boolean;
   lifecycleState: EmailLifecycleState;
   ownsTransportResources: boolean;
-  queueWorkerJobName: string;
+  queueWorkerJobName?: string;
   transportKind: string;
   verifiedOnModuleInit: boolean;
 }
@@ -94,7 +94,7 @@ export function createEmailPlatformStatusSnapshot(input: EmailStatusAdapterInput
       defaultFromConfigured: input.defaultFromConfigured,
       dependencies: ['notifications.channel', 'email.transport'],
       lifecycleState: input.lifecycleState,
-      queueWorkerJobName: input.queueWorkerJobName,
+      ...(input.queueWorkerJobName !== undefined ? { queueWorkerJobName: input.queueWorkerJobName } : {}),
       transportKind: input.transportKind,
       verifiedOnModuleInit: input.verifiedOnModuleInit,
     },

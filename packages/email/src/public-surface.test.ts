@@ -25,6 +25,7 @@ describe('@fluojs/email public API surface', () => {
     expect(emailPublicApi).toHaveProperty('EMAIL_CHANNEL');
     expect(emailPublicApi).toHaveProperty('createEmailPlatformStatusSnapshot');
     expect(emailPublicApi).toHaveProperty('EmailConfigurationError');
+    expect(emailPublicApi).toHaveProperty('EmailLifecycleError');
     expect(emailPublicApi).toHaveProperty('EmailMessageValidationError');
   });
 

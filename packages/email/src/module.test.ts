@@ -629,6 +629,52 @@ describe('EmailModule', () => {
     });
   });
 
+  it('forwards notification email fields and lets them override configured sender defaults', async () => {
+    const attachment = {
+      content: new Uint8Array([1, 2, 3]),
+      contentType: 'application/octet-stream',
+      filename: 'invoice.bin',
+    };
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'default@example.com',
+      defaultReplyTo: 'default-reply@example.com',
+      transport: createRecordingTransportFactory({ messagePrefix: 'notification-fields' }),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    await service.sendNotification({
+      channel: 'email',
+      payload: {
+        attachments: [attachment],
+        bcc: ['blind@example.com'],
+        cc: [{ address: 'copy@example.com', name: 'Copy' }],
+        from: { address: 'payload-from@example.com', name: 'Payload Sender' },
+        headers: { 'x-fluo-notification': 'welcome' },
+        replyTo: ['payload-reply@example.com'],
+        text: 'Payload body',
+        to: ['payload-recipient@example.com'],
+      },
+      recipients: ['fallback-recipient@example.com'],
+      subject: 'Payload precedence',
+    });
+
+    expect(transportState.sent[0]).toMatchObject({
+      attachments: [attachment],
+      bcc: [{ address: 'blind@example.com' }],
+      cc: [{ address: 'copy@example.com', name: 'Copy' }],
+      from: { address: 'payload-from@example.com', name: 'Payload Sender' },
+      headers: { 'x-fluo-notification': 'welcome' },
+      metadata: {},
+      replyTo: [{ address: 'payload-reply@example.com' }],
+      subject: 'Payload precedence',
+      text: 'Payload body',
+      to: [{ address: 'payload-recipient@example.com' }],
+    });
+  });
+
   it('preserves accepted, pending, and rejected recipients for direct sends', async () => {
     const container = new Container();
     const moduleType = EmailModule.forRoot({
@@ -1085,6 +1131,45 @@ describe('EmailModule', () => {
       message: 'Email transport failed to close cleanly.',
     });
     expect(closeTransport.closeCalls).toBe(1);
+  });
+
+  it('leaves caller-owned direct transport instances open during shutdown', async () => {
+    const transport = new RecordingTransport('caller-owned-instance');
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    await service.send({ subject: 'Caller-owned instance', text: 'hello', to: ['user@example.com'] });
+    await service.onApplicationShutdown();
+
+    expect(transportState.closeCalls).toBe(0);
+    expect(transportState.sent).toHaveLength(1);
+  });
+
+  it('leaves caller-owned factory transports open during shutdown', async () => {
+    const transport = new RecordingTransport('caller-owned-factory');
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: {
+        create: async () => transport,
+        ownsResources: false,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+
+    await service.send({ subject: 'Caller-owned factory', text: 'hello', to: ['user@example.com'] });
+    await service.onApplicationShutdown();
+
+    expect(transportState.closeCalls).toBe(0);
+    expect(transportState.sent).toHaveLength(1);
   });
 
   it('normalizes lazy transport factory rejections and clears rejected state before shutdown', async () => {

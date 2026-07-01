@@ -561,8 +561,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // coverage for fail-open manual transactions, Drizzle decorated-instance
   // transaction target fallback discoverability, Mongoose ALS session/request
   // tracking plus runtime-boundary docs, raw Node.js adapter type/runtime-floor
-  // and retry/body-limit/shutdown regression coverage, and metrics shared-registry
-  // HTTP collector or platform telemetry stale-series ownership docs.
+  // and retry/body-limit/shutdown regression coverage, metrics shared-registry
+  // HTTP collector or platform telemetry stale-series ownership docs, and email
+  // transport-agnostic status snapshots plus caller-owned shutdown boundaries.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
