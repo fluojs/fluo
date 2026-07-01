@@ -42,4 +42,4 @@ See [docs/architecture/platform-consistency-design.md](docs/architecture/platfor
 
 - [ ] SSOT English/Korean mirror structure remains synchronized for changed governance docs.
 - [ ] If platform contract docs changed, companion updates include discoverability/docs index, tooling or CI enforcement, and regression-test evidence.
-- [ ] Any package README alignment/conformance claims are backed by `createPlatformConformanceHarness(...)` tests.
+- [ ] Any package README alignment/conformance claims are backed by the applicable platform harness tests, such as `createPlatformConformanceHarness(...)` for platform component contracts or `createHttpAdapterPortabilityHarness(...)` for HTTP adapter portability contracts.

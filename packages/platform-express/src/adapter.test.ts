@@ -1593,6 +1593,78 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
+  it('keeps duplicate listen() idempotent without replacing the live dispatcher', async () => {
+    const firstDispatcher = {
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        response.setStatus(200);
+        await response.send({ dispatcher: 'first' });
+      },
+    };
+    const secondDispatcher = {
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        response.setStatus(200);
+        await response.send({ dispatcher: 'second' });
+      },
+    };
+    const port = await findAvailablePort();
+    const adapter = createExpressAdapter({ port }) as ExpressHttpApplicationAdapter;
+
+    await adapter.listen(firstDispatcher);
+
+    try {
+      await adapter.listen(secondDispatcher);
+
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/duplicate-listen',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ dispatcher: 'first' });
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('keeps normalization-sensitive native route requests on the full dispatcher path', async () => {
+    @Controller('/normalization')
+    class NormalizationController {
+      @Get('/:id')
+      getById(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id };
+      }
+    }
+
+    const root = new Container().register(NormalizationController);
+    const baseMapping = createHandlerMapping([{ controllerToken: NormalizationController }]);
+    const match = vi.spyOn(baseMapping, 'match');
+    const dispatcher = createDispatcher({
+      handlerMapping: baseMapping,
+      rootContainer: root,
+    });
+    const nativeDispatch = vi.spyOn(dispatcher, 'dispatchNativeRoute');
+    const port = await findAvailablePort();
+    const adapter = createExpressAdapter({ port }) as ExpressHttpApplicationAdapter;
+
+    await adapter.listen(dispatcher);
+
+    try {
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/normalization///123/',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ id: '123' });
+      expect(nativeDispatch).not.toHaveBeenCalled();
+      expect(match).toHaveBeenCalled();
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it('falls back to full dispatch when native Express routes are not fast-path executable', async () => {
     @Controller('/native-fallback')
     class NativeFallbackController {
@@ -1978,6 +2050,29 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
+  it('drains idle keep-alive connections during normal shutdown without force-closing active sockets', async () => {
+    const adapter = new ExpressHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, 20);
+    const closeIdleConnections = vi.fn();
+    const closeAllConnections = vi.fn();
+    const server = {
+      close(callback: (error?: Error | null) => void) {
+        callback(undefined);
+        return this;
+      },
+      closeAllConnections,
+      closeIdleConnections,
+      listening: true,
+    } as unknown as ReturnType<typeof createHttpServer>;
+
+    Reflect.set(adapter, 'server', server);
+    Reflect.set(adapter, 'dispatcher', { async dispatch() {} });
+
+    await adapter.close();
+
+    expect(closeIdleConnections).toHaveBeenCalledTimes(1);
+    expect(closeAllConnections).not.toHaveBeenCalled();
+  });
+
   it('treats shutdownTimeoutMs zero as an immediate force-close timeout', async () => {
     vi.useFakeTimers();
 
@@ -2092,6 +2187,48 @@ describe('@fluojs/platform-express', () => {
 
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({ ok: true });
+    } finally {
+      await adapter.close();
+      await closeBlocker();
+    }
+  });
+
+  it('fails startup with EADDRINUSE when retryLimit is exhausted', async () => {
+    const blocker = createHttpServer((_request, response) => {
+      response.statusCode = 200;
+      response.end('blocked');
+    });
+    const port = await findAvailablePort();
+
+    await new Promise<void>((resolve, reject) => {
+      blocker.once('error', reject);
+      blocker.listen({ host: '127.0.0.1', port }, () => {
+        resolve();
+      });
+    });
+
+    const closeBlocker = async (): Promise<void> => {
+      if (!blocker.listening) {
+        return;
+      }
+
+      await new Promise<void>((resolve) => {
+        blocker.close(() => {
+          resolve();
+        });
+      });
+    };
+
+    const adapter = new ExpressHttpApplicationAdapter(port, '127.0.0.1', 0, 0, undefined, undefined, 1024, false, 1_000);
+    const dispatcher = {
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        response.setStatus(200);
+        await response.send({ ok: true });
+      },
+    };
+
+    try {
+      await expect(adapter.listen(dispatcher)).rejects.toMatchObject({ code: 'EADDRINUSE' });
     } finally {
       await adapter.close();
       await closeBlocker();
