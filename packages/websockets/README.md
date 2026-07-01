@@ -145,7 +145,7 @@ Use the runtime subpaths when you want an explicit runtime binding instead of th
 
 The package manifest declares `engines.node >=20.0.0` for the published package and default Node.js entrypoint. Bun, Deno, and Cloudflare Workers support is exposed through the dedicated fetch-style subpaths listed below; those subpaths keep request/handler types web-standard and avoid the root Node.js lifecycle-service alias in application code.
 
-Each subpath exposes its `*WebSocketModule.forRoot(...)` entrypoint, the matching runtime lifecycle service export, and the shared gateway authoring primitives: `WebSocketGateway`, `OnConnect`, `OnMessage`, `OnDisconnect`, `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, and `webSocketHandlerMetadataSymbol`.
+Each subpath exposes its `*WebSocketModule.forRoot(...)` entrypoint, the matching runtime lifecycle service export, and the shared gateway authoring primitives: `WebSocketGateway`, `OnConnect`, `OnMessage`, `OnDisconnect`, `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, and `webSocketHandlerMetadataSymbol`. The Bun subpath's low-level binding receives a `BunWebSocketUpgradeHost` with only `upgrade(...)`; adapter-owned listener shutdown and raw HTTP fetch control stay with `@fluojs/platform-bun`.
 
 | Runtime | Subpath | Module | Lifecycle service |
 | --- | --- | --- | --- |

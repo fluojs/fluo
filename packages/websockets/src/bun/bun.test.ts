@@ -16,6 +16,7 @@ import {
   type BunWebSocketBinding,
   type BunWebSocketBindingHost,
   type BunWebSocketMessage,
+  type BunWebSocketUpgradeHost,
 } from './bun.js';
 
 type MockSocket = BunServerWebSocket<unknown> & {
@@ -76,7 +77,11 @@ class TestBunServer implements BunServerLike {
       return new Response(null, { status: 404 });
     }
 
-    return await this.binding.fetch(request, this);
+    const upgradeHost: BunWebSocketUpgradeHost = {
+      upgrade: (upgradeRequest, options) => this.upgrade(upgradeRequest, options),
+    };
+
+    return await this.binding.fetch(request, upgradeHost);
   }
 
   stop(): void {}

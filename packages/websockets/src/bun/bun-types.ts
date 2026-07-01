@@ -28,7 +28,7 @@ export interface BunServerWebSocket<TData = unknown> {
 }
 
 /**
- * Describes the bun server like contract.
+ * Describes the complete Bun server handle used by Bun-specific tests and host doubles.
  */
 export interface BunServerLike {
   fetch?(request: Request): Response | Promise<Response> | undefined | Promise<Response | undefined>;
@@ -43,6 +43,19 @@ export interface BunServerLike {
     },
   ): boolean;
   url?: URL;
+}
+
+/**
+ * Describes the upgrade-only Bun host exposed to websocket bindings.
+ */
+export interface BunWebSocketUpgradeHost {
+  upgrade<TData = unknown>(
+    request: Request,
+    options?: {
+      data?: TData;
+      headers?: HeadersInit;
+    },
+  ): boolean;
 }
 
 /**
@@ -73,7 +86,7 @@ export interface BunWebSocketHandler<TData = unknown> {
  * Describes the bun web socket binding contract.
  */
 export interface BunWebSocketBinding<TData = unknown> {
-  fetch(request: Request, server: BunServerLike): Response | Promise<Response> | undefined | Promise<Response | undefined>;
+  fetch(request: Request, server: BunWebSocketUpgradeHost): Response | Promise<Response> | undefined | Promise<Response | undefined>;
   websocket: BunWebSocketHandler<TData>;
 }
 

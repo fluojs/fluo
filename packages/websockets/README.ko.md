@@ -145,7 +145,7 @@ Handler return value는 반환된 promise가 settle된 뒤 무시됩니다. Raw 
 
 Package manifest의 `engines.node >=20.0.0` 선언은 published package와 기본 Node.js entrypoint 기준입니다. Bun, Deno, Cloudflare Workers 지원은 아래 전용 fetch-style subpath를 통해 노출되며, 해당 subpath는 request/handler type을 web-standard로 유지하고 application code가 root Node.js lifecycle-service alias에 의존하지 않게 합니다.
 
-각 서브패스는 해당 `*WebSocketModule.forRoot(...)` 진입점, 일치하는 런타임 lifecycle service export, 그리고 공유 gateway authoring primitive인 `WebSocketGateway`, `OnConnect`, `OnMessage`, `OnDisconnect`, `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, `webSocketHandlerMetadataSymbol`을 제공합니다.
+각 서브패스는 해당 `*WebSocketModule.forRoot(...)` 진입점, 일치하는 런타임 lifecycle service export, 그리고 공유 gateway authoring primitive인 `WebSocketGateway`, `OnConnect`, `OnMessage`, `OnDisconnect`, `defineWebSocketGatewayMetadata`, `getWebSocketGatewayMetadata`, `defineWebSocketHandlerMetadata`, `getWebSocketHandlerMetadata`, `getWebSocketHandlerMetadataEntries`, `webSocketGatewayMetadataSymbol`, `webSocketHandlerMetadataSymbol`을 제공합니다. Bun 서브패스의 low-level binding은 `upgrade(...)`만 가진 `BunWebSocketUpgradeHost`를 받으며, adapter-owned listener shutdown과 raw HTTP fetch 제어는 `@fluojs/platform-bun`에 남습니다.
 
 | 런타임 | 서브패스 | 모듈 | Lifecycle service |
 | --- | --- | --- | --- |

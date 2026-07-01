@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { All, Controller, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Redirect, type RequestContext, SseResponse, Version, VersioningType } from '@fluojs/http';
+import { All, Controller, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Redirect, type RequestContext, SseResponse, Version, VersioningType } from '@fluojs/http';
 import { defineModule } from '@fluojs/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -591,6 +591,43 @@ describe('@fluojs/platform-bun', () => {
     expect(response.status).toBe(204);
   });
 
+  it('parses multipart files for custom fetch handlers without exposing rawBody', async () => {
+    const fetch = createBunFetchHandler({
+      dispatcher: {
+        async dispatch(request: FrameworkRequest, response: FrameworkResponse) {
+          expect(request.body).toEqual({ name: 'Ada' });
+          expect(request.rawBody).toBeUndefined();
+          expect(request.files?.map((file: FrameworkRequestFile) => ({
+            fieldname: file.fieldname,
+            mimetype: file.mimetype,
+            originalname: file.originalname,
+            size: file.size,
+          }))).toEqual([
+            {
+              fieldname: 'payload',
+              mimetype: 'text/plain',
+              originalname: 'payload.txt',
+              size: 5,
+            },
+          ]);
+
+          response.setStatus(204);
+        },
+      },
+      rawBody: true,
+    });
+    const form = new FormData();
+    form.set('name', 'Ada');
+    form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
+
+    const response = await fetch(new Request('https://runtime.test/hooks/upload', {
+      body: form,
+      method: 'POST',
+    }));
+
+    expect(response.status).toBe(204);
+  });
+
   it('preserves response parity for simple JSON and non-fast-path responses', async () => {
     @Controller('/responses')
     class ResponsesController {
@@ -998,6 +1035,66 @@ describe('@fluojs/platform-bun', () => {
       expect(response?.status).toBe(200);
       expect(handlerMapping.match).toHaveBeenCalledTimes(1);
       await expect(response?.json()).resolves.toEqual({ id: '456', route: 'rewritten' });
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('rematches stale Bun native route handoffs after app middleware rewrites the request method', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/native-method')
+    class NativeMethodController {
+      @Get('/:id')
+      getNative(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, method: 'GET' };
+      }
+
+      @Post('/:id')
+      postNative(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, method: 'POST' };
+      }
+    }
+
+    const baseMapping = createHandlerMapping([{ controllerToken: NativeMethodController }]);
+    const handlerMapping = {
+      descriptors: baseMapping.descriptors,
+      match: vi.fn(baseMapping.match),
+    };
+    const dispatcher = createDispatcher({
+      appMiddleware: [
+        {
+          async handle(context: MiddlewareContext, next: Next) {
+            context.request.method = 'POST';
+            await next();
+          },
+        } satisfies Middleware,
+      ],
+      handlerMapping,
+      rootContainer: {
+        createRequestScope() {
+          return {
+            async dispose() {},
+            resolve() {
+              return new NativeMethodController();
+            },
+          };
+        },
+      } as never,
+    });
+    const adapter = createBunAdapter({
+      hostname: '127.0.0.1',
+      port: 4327,
+    }) as BunHttpApplicationAdapter;
+
+    await adapter.listen(dispatcher);
+
+    try {
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4327/native-method/123'));
+
+      expect(response?.status).toBe(201);
+      expect(handlerMapping.match).toHaveBeenCalledTimes(1);
+      await expect(response?.json()).resolves.toEqual({ id: '123', method: 'POST' });
     } finally {
       await adapter.close();
     }
@@ -1463,6 +1560,41 @@ describe('@fluojs/platform-bun', () => {
     }
   });
 
+  it('logs signal-driven Bun close rejection and leaves process termination to the host', async () => {
+    installMockBun();
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const originalExitCode = process.exitCode;
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined as never) as typeof process.exit);
+    const app = await runBunApplication(AppModule, {
+      forceExitTimeoutMs: 100,
+      hostname: '127.0.0.1',
+      port: 4328,
+      shutdownSignals: ['SIGTERM'],
+    });
+    const originalClose = app.close.bind(app);
+    app.close = () => Promise.reject(new Error('close rejected from signal'));
+
+    try {
+      process.emit('SIGTERM', 'SIGTERM');
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+      expect(errorLog.mock.calls.some(([message]) => String(message).includes('Failed to shut down the application cleanly.'))).toBe(true);
+    } finally {
+      app.close = originalClose;
+      await app.close();
+      exitSpy.mockRestore();
+      errorLog.mockRestore();
+      process.exitCode = originalExitCode;
+    }
+  });
+
   it('uses forceExitTimeoutMs as the signal-driven Bun close drain budget', async () => {
     vi.useFakeTimers();
 
@@ -1793,6 +1925,43 @@ describe('@fluojs/platform-bun', () => {
       expect(mockBun.lastServer?.upgrade).not.toHaveBeenCalled();
       expect(bindingFetch).toHaveBeenCalledTimes(1);
       expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('short-circuits HTTP dispatch when a websocket binding returns a Response', async () => {
+    const mockBun = installMockBun();
+    const adapter = new BunHttpApplicationAdapter();
+    const dispatcher = {
+      dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
+        response.setStatus(200);
+        await response.send({ fallback: 'http' });
+      }),
+      describeRoutes: () => [createMockDispatcherRoute('/chat')],
+    };
+    const bindingFetch = vi.fn<BunWebSocketBinding['fetch']>(async (_request, server) => {
+      expect(Object.keys(server)).toEqual(['upgrade']);
+      return new Response('handled by websocket binding', { status: 418 });
+    });
+
+    adapter.configureWebSocketBinding({
+      fetch: bindingFetch,
+      websocket: {},
+    });
+
+    await adapter.listen(dispatcher);
+
+    try {
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/chat', {
+        headers: { upgrade: 'websocket' },
+      }));
+
+      expect(response?.status).toBe(418);
+      await expect(response?.text()).resolves.toBe('handled by websocket binding');
+      expect(mockBun.lastServer?.upgrade).not.toHaveBeenCalled();
+      expect(bindingFetch).toHaveBeenCalledTimes(1);
+      expect(dispatcher.dispatch).not.toHaveBeenCalled();
     } finally {
       await adapter.close();
     }
