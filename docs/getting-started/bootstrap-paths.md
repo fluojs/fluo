@@ -38,7 +38,7 @@
 2. `runShutdownHooks(...)` walks lifecycle instances in reverse order.
 3. Every `onModuleDestroy()` hook runs before any `onApplicationShutdown(signal)` hook.
 4. The platform shell stops through a lifecycle cleanup entry that is appended during bootstrap.
-5. Adapter specific `close()` logic drains or rejects ingress according to the runtime contract, for example Fastify waits for server close completion and Cloudflare Workers drains in flight requests before releasing the dispatcher.
+5. Adapter specific `close()` logic drains or rejects ingress according to the runtime contract, for example Fastify waits for server close completion and Cloudflare Workers rejects new HTTP/WebSocket ingress with `503` while draining in flight requests before releasing the dispatcher.
 6. Container disposal runs after shutdown hooks when bootstrap fails before the application is fully returned.
 
 ## Error States
