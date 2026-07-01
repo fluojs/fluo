@@ -1,6 +1,6 @@
 # HTTP runtime benchmark
 
-Runs a small HTTP throughput/latency comparison between the latest published fluo npm beta packages and NestJS v11 across three targets:
+Runs a small HTTP throughput/latency comparison between the current fluo workspace packages and NestJS v11 across three targets:
 
 - `Nest+Fastify`
 - `fluo+Fastify`
@@ -21,17 +21,18 @@ pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace install --froze
 pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
 ```
 
-This benchmark has its own lockfile and is intentionally excluded from the root pnpm workspace. The fluo dependencies intentionally resolve from the published npm beta surface instead of `../../../packages/*`, so the suite measures the package versions users can install from npm.
+This benchmark has its own lockfile and is intentionally excluded from the root pnpm workspace. The fluo dependencies resolve through `link:../../../packages/*`, so the suite measures the current worktree package builds while keeping the benchmark's external dependency graph isolated.
 
 The runner starts an isolated server set for each scenario, so each workload registers only the routes it needs. It warms every target for each scenario, then measures with `autocannon` at 100 connections for 40 seconds over five runs by default. Measurement order rotates by scenario/run to avoid always giving one framework the same position. The mixed REST scenario uses a deterministic request cycle so every target sees the same GET/POST sequence.
 
-For quick directional runs, override the defaults with environment variables:
+For quick directional runs, override the defaults with environment variables. Use `BENCH_TARGETS` to build and run only selected targets:
 
 ```bash
 BENCH_RUNS=1 BENCH_WARMUP_SEC=1 BENCH_MEASURE_SEC=3 BENCH_CONNECTIONS=8 BENCH_OUTPUT_JSON=benchmark-results-smoke.json pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
+BENCH_TARGETS=fluo-bun BENCH_RUNS=1 BENCH_WARMUP_SEC=1 BENCH_MEASURE_SEC=3 BENCH_CONNECTIONS=8 BENCH_OUTPUT_JSON=benchmark-results-bun-smoke.json pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace bench
 ```
 
-Local worktree experiments should use an explicit local dependency setup and label their output as local-worktree results. The default commands above are reserved for published npm beta measurements so lockfile installs include the same external dependency graph consumers receive.
+`BENCH_TARGETS` accepts a comma-separated subset of `nestjs-fastify`, `fluo-fastify`, and `fluo-bun`.
 
 To collect a repeat-average for specific scenarios, set `BENCH_RUNS` and a comma-separated `BENCH_SCENARIOS` list. The console report includes the sample count and req/s standard deviation, and `BENCH_OUTPUT_JSON` controls where raw per-run metrics plus averages are written:
 
@@ -54,7 +55,7 @@ The report prints those counters with throughput, latency, sample count, and req
 
 ## Scope and caveats
 
-- This measures the released npm beta surface, not uncommitted local worktree package builds.
+- This measures the current workspace package builds through linked fluo dependencies, not the released npm beta surface.
 - fluo uses TC39 standard decorators without `emitDecoratorMetadata`; NestJS uses legacy decorators with `emitDecoratorMetadata` through `nestjs/tsconfig.json`.
 - `fluo+Bun` is a runtime comparison, not a same-adapter comparison. Treat it as “same fluo app graph on Bun’s native server” versus the Node.js adapter targets.
 - The suite covers routing, request binding, local deterministic service work, and JSON serialization. It does not measure validation plugins, serialization plugins, guards, pipes, database access, or production middleware.
