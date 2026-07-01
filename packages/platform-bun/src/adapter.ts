@@ -18,7 +18,6 @@ import type {
   CreateApplicationOptions,
   ModuleType,
   MultipartOptions,
-  UploadedFile,
 } from '@fluojs/runtime';
 import {
   bootstrapHttpAdapterApplication,
@@ -97,10 +96,21 @@ export interface BunWebSocketHandler<TData = unknown> {
 
 /** Fetch-style websocket binding consumed before normal HTTP dispatch. */
 export interface BunWebSocketBinding<TData = unknown> {
-  fetch(request: Request, server: BunServerLike): Response | Promise<Response> | undefined | Promise<Response | undefined>;
+  fetch(request: Request, server: BunWebSocketUpgradeHost): Response | Promise<Response> | undefined | Promise<Response | undefined>;
   idleTimeout?: number;
   maxRequestBodySize?: number;
   websocket: BunWebSocketHandler<TData>;
+}
+
+/** Upgrade-only Bun host exposed to websocket bindings before normal HTTP dispatch. */
+export interface BunWebSocketUpgradeHost {
+  upgrade<TData = unknown>(
+    request: Request,
+    options?: {
+      data?: TData;
+      headers?: HeadersInit;
+    },
+  ): boolean;
 }
 
 /** Host contract exposed by Bun adapters that can install a realtime binding. */
@@ -653,20 +663,15 @@ async function dispatchRealtimeBindingRequest(
   server: BunServerLike,
 ): Promise<{ handled: Response | undefined; upgraded: boolean }> {
   let upgraded = false;
-  const trackedServer: BunServerLike = {
-    fetch: server.fetch ? (trackedRequest) => server.fetch?.(trackedRequest) : undefined,
-    hostname: server.hostname,
-    port: server.port,
-    stop: (closeActiveConnections) => server.stop(closeActiveConnections),
+  const upgradeHost: BunWebSocketUpgradeHost = {
     upgrade<TData = unknown>(upgradeRequest: Request, options?: { data?: TData; headers?: HeadersInit }): boolean {
       const didUpgrade = server.upgrade(upgradeRequest, options);
       upgraded ||= didUpgrade;
       return didUpgrade;
     },
-    url: server.url,
   };
 
-  const handled = await binding.fetch(request, trackedServer);
+  const handled = await binding.fetch(request, upgradeHost);
 
   return { handled, upgraded };
 }
