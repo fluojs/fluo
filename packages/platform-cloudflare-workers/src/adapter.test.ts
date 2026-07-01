@@ -10,7 +10,7 @@ import {
   type FrameworkResponse,
   type RequestContext,
 } from '@fluojs/http';
-import { defineModule } from '@fluojs/runtime';
+import { defineModule, fluoFactory } from '@fluojs/runtime';
 import * as runtimeWeb from '@fluojs/runtime/web';
 
 import {
@@ -89,6 +89,7 @@ function createWebSocketPairStub() {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -257,6 +258,78 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     });
     expect(bindingFetch).not.toHaveBeenCalled();
     expect(createWebSocketPair).not.toHaveBeenCalled();
+  });
+
+  it('keeps pre-listen HTTP requests behind the dispatcher lifecycle boundary', async () => {
+    let handlerCalls = 0;
+
+    @Controller('/guarded')
+    class GuardedController {
+      @Get('/')
+      getGuarded() {
+        handlerCalls += 1;
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [GuardedController],
+    });
+
+    const adapter = createCloudflareWorkerAdapter();
+    const app = await fluoFactory.create(AppModule, {
+      adapter,
+    });
+
+    try {
+      const response = await adapter.fetch(
+        new Request('https://worker.test/guarded'),
+        {},
+        createExecutionContext(),
+      );
+
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          message: 'Internal server error.',
+        },
+      });
+      expect(handlerCalls).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects live Worker websocket binding mutations after listen starts', async () => {
+    const adapter = new CloudflareWorkerHttpApplicationAdapter({
+      createWebSocketPair: createWebSocketPairStub(),
+    });
+    const initialBinding = {
+      fetch: vi.fn<CloudflareWorkerWebSocketBinding['fetch']>(async () => new Response(null, { status: 426 })),
+    };
+    const replacementBinding = {
+      fetch: vi.fn<CloudflareWorkerWebSocketBinding['fetch']>(async () => new Response(null, { status: 426 })),
+    };
+
+    adapter.configureWebSocketBinding(initialBinding);
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        response.setStatus(204);
+      },
+    });
+
+    try {
+      expect(() => adapter.configureWebSocketBinding(replacementBinding)).toThrow(
+        'Cloudflare Workers websocket binding must be configured before listen() starts accepting Worker requests.',
+      );
+      expect(() => adapter.configureWebSocketBinding(undefined)).toThrow(
+        'Cloudflare Workers websocket binding must be configured before listen() starts accepting Worker requests.',
+      );
+      expect(() => adapter.configureWebSocketBinding(initialBinding)).not.toThrow();
+    } finally {
+      await adapter.close();
+    }
   });
 
   it('boots a Worker application that reuses shared runtime middleware and Web request handling', async () => {
@@ -565,6 +638,59 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     expect(createWebSocketPair).not.toHaveBeenCalled();
   });
 
+  it('returns shutdown JSON instead of upgrading WebSocket requests while close is draining', async () => {
+    const createWebSocketPair = createWebSocketPairStub();
+    const adapter = new CloudflareWorkerHttpApplicationAdapter({
+      createWebSocketPair,
+    });
+    const deferred = createDeferred<void>();
+    const bindingFetch = vi.fn<CloudflareWorkerWebSocketBinding['fetch']>(async (request, host) => {
+      const upgraded = host.upgrade(request);
+
+      expect(upgraded.serverSocket).toBeDefined();
+      return upgraded.response;
+    });
+
+    adapter.configureWebSocketBinding({
+      fetch: bindingFetch,
+    });
+
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        await deferred.promise;
+        response.setStatus(200);
+        await response.send({ ok: true });
+      },
+    });
+
+    const inFlightResponse = adapter.fetch(new Request('https://worker.test/drain'), {}, createExecutionContext());
+
+    await Promise.resolve();
+
+    const closePromise = adapter.close();
+    const response = await adapter.fetch(
+      new Request('https://worker.test/chat', {
+        headers: { upgrade: 'websocket' },
+      }),
+      {},
+      createExecutionContext(),
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'SERVICE_UNAVAILABLE',
+      },
+    });
+    expect(bindingFetch).not.toHaveBeenCalled();
+    expect(createWebSocketPair).not.toHaveBeenCalled();
+
+    deferred.resolve();
+
+    await inFlightResponse;
+    await closePromise;
+  });
+
   it('bounds Worker close() while preserving shutdown responses for new requests', async () => {
     vi.useFakeTimers();
 
@@ -703,63 +829,92 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     }
   });
 
-  it('keeps lazy Worker entrypoint shutdown gating after close times out', async () => {
+  it('keeps lazy Worker entrypoint shutdown gating until timed-out close eventually settles', async () => {
     vi.useFakeTimers();
 
-    let bootstrapCount = 0;
-    const neverSettles = new Promise<void>(() => {});
+    const deferred = createDeferred<void>();
+    let entrypoint: ReturnType<typeof createCloudflareWorkerEntrypoint> | undefined;
 
-    class StartupProbe {
-      onApplicationBootstrap() {
-        bootstrapCount += 1;
+    try {
+      let bootstrapCount = 0;
+
+      class StartupProbe {
+        onApplicationBootstrap() {
+          bootstrapCount += 1;
+        }
       }
-    }
 
-    @Controller('/slow')
-    class SlowController {
-      @Get('/')
-      async getSlow() {
-        await neverSettles;
-        return { ok: true };
+      @Controller('/slow')
+      class SlowController {
+        @Get('/')
+        async getSlow() {
+          await deferred.promise;
+          return { ok: true };
+        }
       }
+
+      @Controller('/health')
+      class HealthController {
+        @Get('/')
+        getHealth() {
+          return { ok: true };
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        controllers: [HealthController, SlowController],
+        providers: [StartupProbe],
+      });
+
+      entrypoint = createCloudflareWorkerEntrypoint(AppModule, {
+        cors: false,
+      });
+
+      await entrypoint.ready();
+
+      const firstFetch = entrypoint.fetch(new Request('https://worker.test/slow'), {}, createExecutionContext());
+      await Promise.resolve();
+
+      const closePromise = entrypoint.close();
+      const closeAssertion = expect(closePromise).rejects.toThrow(
+        'Cloudflare Workers adapter shutdown timeout exceeded 10000ms.',
+      );
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      await closeAssertion;
+
+      const followUpResponse = await entrypoint.fetch(
+        new Request('https://worker.test/health'),
+        {},
+        createExecutionContext(),
+      );
+
+      expect(followUpResponse.status).toBe(503);
+      expect(bootstrapCount).toBe(1);
+
+      deferred.resolve();
+
+      const firstResponse = await firstFetch;
+      expect(firstResponse.status).toBe(200);
+      await expect(firstResponse.json()).resolves.toEqual({ ok: true });
+
+      await entrypoint.ready();
+      expect(bootstrapCount).toBe(2);
+
+      const recoveredResponse = await entrypoint.fetch(
+        new Request('https://worker.test/health'),
+        {},
+        createExecutionContext(),
+      );
+
+      expect(recoveredResponse.status).toBe(200);
+      await expect(recoveredResponse.json()).resolves.toEqual({ ok: true });
+    } finally {
+      deferred.resolve();
+      await entrypoint?.close();
+      vi.useRealTimers();
     }
-
-    class AppModule {}
-    defineModule(AppModule, {
-      controllers: [SlowController],
-      providers: [StartupProbe],
-    });
-
-    const entrypoint = createCloudflareWorkerEntrypoint(AppModule, {
-      cors: false,
-    });
-
-    await entrypoint.ready();
-
-    void entrypoint.fetch(new Request('https://worker.test/slow'), {}, createExecutionContext());
-    await Promise.resolve();
-
-    const closePromise = entrypoint.close();
-    const closeAssertion = expect(closePromise).rejects.toThrow(
-      'Cloudflare Workers adapter shutdown timeout exceeded 10000ms.',
-    );
-
-    await vi.advanceTimersByTimeAsync(10_000);
-    await closeAssertion;
-
-    const followUpResponse = await entrypoint.fetch(
-      new Request('https://worker.test/slow'),
-      {},
-      createExecutionContext(),
-    );
-
-    expect(followUpResponse.status).toBe(503);
-    expect(bootstrapCount).toBe(1);
-    await expect(entrypoint.ready()).rejects.toThrow(
-      'Cloudflare Workers adapter shutdown timeout exceeded 10000ms.',
-    );
-
-    vi.useRealTimers();
   });
 });
 

@@ -28,6 +28,9 @@ declare module '@fluojs/http' {
 const WORKER_DISPATCHER_NOT_READY_MESSAGE =
   'Cloudflare Workers adapter received a request before dispatcher binding completed.';
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const ADAPTER_CLOSE_SETTLED = Symbol('CloudflareWorkerAdapterCloseSettled');
+const WEBSOCKET_BINDING_RECONFIGURATION_MESSAGE =
+  'Cloudflare Workers websocket binding must be configured before listen() starts accepting Worker requests.';
 
 /** Minimal Worker execution context surface used by the adapter. */
 export interface CloudflareWorkerExecutionContext {
@@ -168,7 +171,15 @@ export class CloudflareWorkerHttpApplicationAdapter
   }
 
   configureWebSocketBinding(binding: CloudflareWorkerWebSocketBinding | undefined): void {
+    if (this.dispatcher && binding !== this.websocketBinding) {
+      throw new Error(WEBSOCKET_BINDING_RECONFIGURATION_MESSAGE);
+    }
+
     this.websocketBinding = binding;
+  }
+
+  [ADAPTER_CLOSE_SETTLED](): Promise<void> {
+    return this.closeInFlight ?? Promise.resolve();
   }
 
   async fetch<Env = unknown>(
@@ -340,9 +351,14 @@ export function createCloudflareWorkerEntrypoint<Env = unknown>(
 ): CloudflareWorkerEntrypoint<Env> {
   let closeError: unknown;
   let closeInFlight: Promise<void> | undefined;
+  let closeRecovery: Promise<void> | undefined;
   let runningApplication: Promise<CloudflareWorkerApplication<Env>> | undefined;
 
   const ready = async (): Promise<CloudflareWorkerApplication<Env>> => {
+    if (closeRecovery) {
+      await closeRecovery;
+    }
+
     if (closeError) {
       throw closeError;
     }
@@ -361,6 +377,10 @@ export function createCloudflareWorkerEntrypoint<Env = unknown>(
         return;
       }
 
+      if (closeRecovery) {
+        await closeRecovery;
+      }
+
       if (closeError) {
         throw closeError;
       }
@@ -372,14 +392,34 @@ export function createCloudflareWorkerEntrypoint<Env = unknown>(
       }
 
       const closing = (async () => {
+        let currentApplication: CloudflareWorkerApplication<Env> | undefined;
+
         try {
-          await (await application).close(signal);
+          currentApplication = await application;
+          await currentApplication.close(signal);
 
           if (runningApplication === application) {
             runningApplication = undefined;
           }
         } catch (error) {
-          closeError = error;
+          if (currentApplication && isShutdownTimeoutError(error)) {
+            closeRecovery = watchTimedOutCloseRecovery(currentApplication, {
+              clearRunningApplication() {
+                if (runningApplication === application) {
+                  runningApplication = undefined;
+                }
+              },
+              setCloseError(error) {
+                closeError = error;
+              },
+              setCloseRecovery(recovery) {
+                closeRecovery = recovery;
+              },
+            });
+          } else {
+            closeError = error;
+          }
+
           throw error;
         } finally {
           closeInFlight = undefined;
@@ -390,7 +430,7 @@ export function createCloudflareWorkerEntrypoint<Env = unknown>(
       await closing;
     },
     async fetch(request: Request, env: Env, executionContext: CloudflareWorkerExecutionContext) {
-      if (closeError || closeInFlight) {
+      if (closeError || closeInFlight || closeRecovery) {
         return createShutdownResponse();
       }
 
@@ -465,6 +505,40 @@ function createDeferred<T>(): Deferred<T> {
   });
 
   return { promise, reject, resolve };
+}
+
+function watchTimedOutCloseRecovery<Env>(
+  currentApplication: CloudflareWorkerApplication<Env>,
+  callbacks: {
+    clearRunningApplication(): void;
+    setCloseError(error: unknown): void;
+    setCloseRecovery(recovery: Promise<void> | undefined): void;
+  },
+): Promise<void> {
+  const recovery = currentApplication.adapter[ADAPTER_CLOSE_SETTLED]().then(
+    () => {
+      callbacks.clearRunningApplication();
+    },
+    (error: unknown) => {
+      callbacks.setCloseError(error);
+      throw error;
+    },
+  );
+  const recoveryWithCleanup = recovery.finally(() => {
+    callbacks.setCloseRecovery(undefined);
+  });
+
+  void recoveryWithCleanup.catch(() => undefined);
+
+  return recoveryWithCleanup;
+}
+
+function createShutdownTimeoutMessage(timeoutMs: number): string {
+  return `Cloudflare Workers adapter shutdown timeout exceeded ${String(timeoutMs)}ms.`;
+}
+
+function isShutdownTimeoutError(error: unknown): boolean {
+  return error instanceof Error && error.message === createShutdownTimeoutMessage(DEFAULT_SHUTDOWN_TIMEOUT_MS);
 }
 
 function createShutdownResponse(): Response {
@@ -542,7 +616,7 @@ function isLifecycleTrackedStreamingResponse(response: Response): boolean {
 function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const timeoutHandle = setTimeout(() => {
-      reject(new Error(`Cloudflare Workers adapter shutdown timeout exceeded ${String(timeoutMs)}ms.`));
+      reject(new Error(createShutdownTimeoutMessage(timeoutMs)));
     }, timeoutMs);
 
     void closePromise.then(

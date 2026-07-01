@@ -1,9 +1,14 @@
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
-import type { HttpApplicationAdapter } from '@fluojs/http';
+import { Controller, Get, type HttpApplicationAdapter } from '@fluojs/http';
+import {
+  CloudflareWorkerHttpApplicationAdapter,
+  type CloudflareWorkerExecutionContext,
+  type CloudflareWorkerWebSocketPair,
+} from '@fluojs/platform-cloudflare-workers';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as workerPublicApi from './cloudflare-workers.js';
@@ -226,6 +231,19 @@ function createDeferred<T = void>() {
   });
 
   return { promise, reject, resolve };
+}
+
+function createExecutionContext(): CloudflareWorkerExecutionContext {
+  return {
+    waitUntil() {},
+  };
+}
+
+function createWebSocketPairStub() {
+  return vi.fn<() => CloudflareWorkerWebSocketPair>(() => ({
+    0: new MockWorkerSocket(),
+    1: new MockWorkerSocket(),
+  }));
 }
 
 describe('@fluojs/websockets/cloudflare-workers', () => {
@@ -530,10 +548,94 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     const response = await upgradePromise;
 
     expect(response?.status).toBe(503);
-    expect(await response?.text()).toBe('WebSocket server is shutting down.');
+    await expect(response?.json()).resolves.toMatchObject({
+      error: {
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'Server is shutting down.',
+        status: 503,
+      },
+    });
     expect(server?.lastSocket).toBeUndefined();
 
     await closePromise;
+  });
+
+  it('keeps real Worker adapter websocket upgrades on shutdown JSON during application shutdown', async () => {
+    const createWebSocketPair = createWebSocketPairStub();
+    const adapter = new CloudflareWorkerHttpApplicationAdapter({
+      createWebSocketPair,
+    });
+    const disconnectStarted = createDeferred<void>();
+    const releaseDisconnect = createDeferred<void>();
+    let httpDispatchCalls = 0;
+
+    @WebSocketGateway({ path: '/chat' })
+    class ChatGateway {
+      @OnDisconnect()
+      async onDisconnect() {
+        disconnectStarted.resolve();
+        await releaseDisconnect.promise;
+      }
+    }
+
+    @Controller('/chat')
+    class ChatFallbackController {
+      @Get('/')
+      getChatFallback() {
+        httpDispatchCalls += 1;
+        return { fallback: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [ChatFallbackController],
+      imports: [CloudflareWorkersWebSocketModule.forRoot({ shutdown: { timeoutMs: 200 } })],
+      providers: [ChatGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    let closePromise: Promise<void> | undefined;
+
+    try {
+      await app.listen();
+
+      const acceptedResponse = await adapter.fetch(
+        new Request('https://worker.test/chat', {
+          headers: { upgrade: 'websocket' },
+        }),
+        {},
+        createExecutionContext(),
+      );
+
+      expect(acceptedResponse.status).toBe(101);
+
+      closePromise = app.close();
+      await disconnectStarted.promise;
+
+      const shutdownResponse = await adapter.fetch(
+        new Request('https://worker.test/chat', {
+          headers: { upgrade: 'websocket' },
+        }),
+        {},
+        createExecutionContext(),
+      );
+
+      expect(shutdownResponse.status).toBe(503);
+      await expect(shutdownResponse.json()).resolves.toMatchObject({
+        error: {
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'Server is shutting down.',
+          status: 503,
+        },
+      });
+      expect(httpDispatchCalls).toBe(0);
+      expect(createWebSocketPair).toHaveBeenCalledTimes(1);
+    } finally {
+      releaseDisconnect.resolve();
+      await closePromise;
+      await app.close();
+    }
   });
 
   it('closes Worker sockets and runs disconnect cleanup during application shutdown', async () => {

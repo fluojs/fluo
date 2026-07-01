@@ -83,6 +83,7 @@
   },
   "devDependencies": {
     "@fluojs/platform-bun": "workspace:^",
+    "@fluojs/platform-cloudflare-workers": "workspace:^",
     "@fluojs/platform-express": "workspace:^",
     "@fluojs/platform-fastify": "workspace:^",
     "@fluojs/testing": "workspace:^",

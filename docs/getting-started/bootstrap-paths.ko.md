@@ -38,7 +38,7 @@
 2. `runShutdownHooks(...)`는 라이프사이클 인스턴스를 역순으로 순회합니다.
 3. 모든 `onModuleDestroy()` 훅이 실행된 뒤에야 `onApplicationShutdown(signal)` 훅이 실행됩니다.
 4. platform shell은 부트스트랩 중 추가된 라이프사이클 cleanup 항목을 통해 중지됩니다.
-5. 어댑터별 `close()` 로직은 런타임 계약에 따라 ingress를 drain하거나 거부합니다. 예를 들어 Fastify는 서버 close 완료를 기다리고, Cloudflare Workers는 dispatcher를 해제하기 전에 진행 중 요청을 drain합니다.
+5. 어댑터별 `close()` 로직은 런타임 계약에 따라 ingress를 drain하거나 거부합니다. 예를 들어 Fastify는 서버 close 완료를 기다리고, Cloudflare Workers는 dispatcher를 해제하기 전 진행 중 요청을 drain하는 동안 새 HTTP/WebSocket ingress를 `503`으로 거부합니다.
 6. 부트스트랩이 애플리케이션 반환 전에 실패한 경우에는 shutdown hook 이후 container dispose가 실행됩니다.
 
 ## Error States

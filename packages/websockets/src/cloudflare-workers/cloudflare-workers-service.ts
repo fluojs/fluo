@@ -184,6 +184,10 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
       return new Response(null, { status: 404 });
     }
 
+    if (this.isShuttingDown) {
+      return createCloudflareWorkersWebSocketShutdownResponse();
+    }
+
     const rejection = await this.resolveUpgradeRejection(request, targetPath);
 
     if (rejection) {
@@ -195,7 +199,7 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
 
     if (this.isShuttingDown) {
       this.releaseUpgradeReservation();
-      return new Response('WebSocket server is shutting down.', { status: 503 });
+      return createCloudflareWorkersWebSocketShutdownResponse();
     }
 
     let response: Response;
@@ -622,13 +626,6 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
     request: Request,
     path: string,
   ): Promise<WebSocketUpgradeRejection | undefined> {
-    if (this.isShuttingDown) {
-      return {
-        body: 'WebSocket server is shutting down.',
-        status: 503,
-      };
-    }
-
     if (!this.tryReserveUpgradeSlot()) {
       return {
         body: 'WebSocket connection limit exceeded.',
@@ -756,10 +753,6 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
 
   private async runShutdownLifecycle(): Promise<void> {
     this.isShuttingDown = true;
-
-    if (hasCloudflareWorkerWebSocketBindingHost(this.adapter)) {
-      this.adapter.configureWebSocketBinding(undefined);
-    }
 
     const shutdownTimeoutMs = this.resolveShutdownTimeoutMs();
 
@@ -1004,4 +997,19 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
       this.socketRooms.delete(socketId);
     }
   }
+}
+
+function createCloudflareWorkersWebSocketShutdownResponse(): Response {
+  return new Response(JSON.stringify({
+    error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Server is shutting down.',
+      status: 503,
+    },
+  }), {
+    headers: {
+      'content-type': 'application/json',
+    },
+    status: 503,
+  });
 }

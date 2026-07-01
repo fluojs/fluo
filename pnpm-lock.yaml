@@ -1085,6 +1085,9 @@ importers:
       '@fluojs/platform-bun':
         specifier: workspace:^
         version: link:../platform-bun
+      '@fluojs/platform-cloudflare-workers':
+        specifier: workspace:^
+        version: link:../platform-cloudflare-workers
       '@fluojs/platform-express':
         specifier: workspace:^
         version: link:../platform-express
