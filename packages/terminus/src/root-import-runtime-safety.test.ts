@@ -21,6 +21,22 @@ describe('@fluojs/terminus root import runtime safety', () => {
     }
   });
 
+  it('does not load the optional Prisma peer from the root entrypoint', async () => {
+    vi.resetModules();
+    vi.doMock('@fluojs/prisma', () => {
+      throw new Error('optional Prisma peer should not load through @fluojs/terminus');
+    });
+
+    try {
+      const terminus = await import('./index.js');
+
+      expect(terminus).toHaveProperty('TerminusModule');
+      expect(terminus).toHaveProperty('PrismaHealthIndicator');
+    } finally {
+      vi.doUnmock('@fluojs/prisma');
+    }
+  });
+
   it('does not load Node filesystem modules until disk checks run', async () => {
     vi.resetModules();
     vi.doMock('node:fs/promises', () => {

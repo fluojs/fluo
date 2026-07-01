@@ -6,6 +6,7 @@ import { createFluoDecoratorsPluginForTesting } from './decorators-plugin.js';
 import { fluoDecoratorsPlugin } from './index.js';
 
 type BabelTransformAsync = typeof import('@babel/core').transformAsync;
+type BabelCoreForTesting = Pick<typeof import('@babel/core'), 'transformAsync'>;
 
 const babelCoreMockState = vi.hoisted(() => ({
   loadCount: 0,
@@ -104,6 +105,79 @@ describe('fluoDecoratorsPlugin', () => {
       expect.objectContaining({ code: expect.any(String) }),
     );
     expect(babelCoreMockState.loadCount).toBe(initialBabelLoadCount + 1);
+  });
+
+  it('does not load Babel for bare plugin import or creation', () => {
+    const initialBabelLoadCount = babelCoreMockState.loadCount;
+    const plugin = fluoDecoratorsPlugin();
+
+    expect(plugin.name).toBe('fluo-babel-decorators');
+    expect(babelCoreMockState.loadCount).toBe(initialBabelLoadCount);
+
+    let testImporterCallCount = 0;
+    createFluoDecoratorsPluginForTesting(async () => {
+      testImporterCallCount += 1;
+
+      return { transformAsync: transformAsyncMock };
+    });
+
+    expect(testImporterCallCount).toBe(0);
+  });
+
+  it('reuses a successfully loaded Babel module after the first eligible transform', async () => {
+    const transformAsync = vi.fn<BabelTransformAsync>().mockResolvedValue({ code: 'export const transformed = true;', map: null });
+    let importerCallCount = 0;
+    const plugin = createFluoDecoratorsPluginForTesting(async () => {
+      importerCallCount += 1;
+
+      return { transformAsync };
+    });
+
+    await expect(runTransform(plugin, 'export const first: number = 1;', '/app/src/first.ts')).resolves.toEqual({
+      code: 'export const transformed = true;',
+      map: null,
+    });
+    await expect(runTransform(plugin, 'export const second: number = 2;', '/app/src/second.ts')).resolves.toEqual({
+      code: 'export const transformed = true;',
+      map: null,
+    });
+
+    expect(importerCallCount).toBe(1);
+    expect(transformAsync).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps concurrent first eligible transforms on the lazy Babel transform path', async () => {
+    const importedBabelModules: BabelCoreForTesting[] = [];
+    const createBabelModule = (code: string): BabelCoreForTesting => ({
+      transformAsync: vi.fn<BabelTransformAsync>().mockResolvedValue({ code, map: null }),
+    });
+    const plugin = createFluoDecoratorsPluginForTesting(async () => {
+      const module = createBabelModule(`export const transformed${importedBabelModules.length + 1} = true;`);
+      importedBabelModules.push(module);
+
+      return module;
+    });
+
+    await expect(
+      Promise.all([
+        runTransform(plugin, 'export const first: number = 1;', '/app/src/first.ts'),
+        runTransform(plugin, 'export const second: number = 2;', '/app/src/second.ts'),
+      ]),
+    ).resolves.toEqual([
+      { code: 'export const transformed1 = true;', map: null },
+      { code: 'export const transformed2 = true;', map: null },
+    ]);
+
+    expect(importedBabelModules).toHaveLength(2);
+    expect(importedBabelModules[0]?.transformAsync).toHaveBeenCalledTimes(1);
+    expect(importedBabelModules[1]?.transformAsync).toHaveBeenCalledTimes(1);
+
+    await expect(runTransform(plugin, 'export const third: number = 3;', '/app/src/third.ts')).resolves.toEqual({
+      code: 'export const transformed2 = true;',
+      map: null,
+    });
+    expect(importedBabelModules).toHaveLength(2);
+    expect(importedBabelModules[1]?.transformAsync).toHaveBeenCalledTimes(2);
   });
 
   it('skips generated test files', async () => {

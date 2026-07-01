@@ -103,6 +103,10 @@ class LifecycleAwarePublisher extends RecordingPublisher {
   }
 }
 
+function expectGeneratedQueueJobId(value: string | undefined): void {
+  expect(value).toMatch(/^notification:email:[a-z0-9]{7}$/);
+}
+
 class MalformedEnqueueManyQueueAdapter implements NotificationsQueueAdapter {
   readonly jobs: NotificationsQueueJob[] = [];
 
@@ -286,6 +290,109 @@ describe('NotificationsModule', () => {
     );
   });
 
+  it('makes async default global providers and tokens visible through a real testing module graph', async () => {
+    const deliveries: string[] = [];
+
+    @Inject(NOTIFICATIONS, NOTIFICATION_CHANNELS)
+    class RootNotificationsTokenProbe {
+      constructor(
+        private readonly notifications: Notifications,
+        private readonly channels: readonly NotificationChannel[],
+      ) {}
+
+      async send(): Promise<{ channelNames: readonly string[]; result: NotificationDispatchResult }> {
+        const result = await this.notifications.dispatch({
+          channel: 'email',
+          payload: { template: 'async-global-visible' },
+        });
+
+        return {
+          channelNames: this.channels.map((channel) => channel.channel),
+          result,
+        };
+      }
+    }
+
+    @Module({
+      imports: [
+        NotificationsModule.forRootAsync({
+          useFactory: async () => ({
+            channels: [
+              {
+                channel: 'email',
+                async send(notification: NotificationDispatchRequest) {
+                  deliveries.push(String(notification.payload.template));
+
+                  return { externalId: 'async-global-delivery' };
+                },
+              },
+            ],
+          }),
+        }),
+      ],
+    })
+    class NotificationsOwnerModule {}
+
+    @Module({
+      imports: [NotificationsOwnerModule],
+      providers: [RootNotificationsTokenProbe],
+    })
+    class AppModule {}
+
+    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+
+    try {
+      const probe = await testingModule.resolve<RootNotificationsTokenProbe>(RootNotificationsTokenProbe);
+      const dispatch = await probe.send();
+
+      expect(dispatch.channelNames).toEqual(['email']);
+      expect(dispatch.result).toMatchObject({
+        deliveryId: 'async-global-delivery',
+        queued: false,
+        status: 'delivered',
+      });
+      expect(deliveries).toEqual(['async-global-visible']);
+    } finally {
+      await testingModule.container.dispose();
+    }
+  });
+
+  it('keeps async module-local providers hidden from sibling/root providers in a real testing module graph', async () => {
+    @Inject(NOTIFICATIONS)
+    class RootNotificationsTokenProbe {
+      constructor(readonly notifications: Notifications) {}
+    }
+
+    @Module({
+      imports: [
+        NotificationsModule.forRootAsync({
+          global: false,
+          useFactory: async () => ({
+            channels: [
+              {
+                channel: 'email',
+                async send() {
+                  return { externalId: 'async-local-only' };
+                },
+              },
+            ],
+          }),
+        }),
+      ],
+    })
+    class NotificationsOwnerModule {}
+
+    @Module({
+      imports: [NotificationsOwnerModule],
+      providers: [RootNotificationsTokenProbe],
+    })
+    class AppModule {}
+
+    await expect(createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrow(
+      /not visible through a global module|NOTIFICATIONS/,
+    );
+  });
+
   it('registers sync providers and dispatches through a configured channel', async () => {
     const deliveries: Array<{ payload: Record<string, unknown>; recipients?: readonly string[] }> = [];
     const container = new Container();
@@ -426,7 +533,7 @@ describe('NotificationsModule', () => {
 
     expect(result).toMatchObject({ deliveryId: 'queued:1', queued: true, status: 'queued' });
     expect(queue.jobs).toHaveLength(1);
-    expect(queue.jobs[0]?.id).toMatch(/^notification:email:[a-z0-9]{7}$/);
+    expectGeneratedQueueJobId(queue.jobs[0]?.id);
     expect(queue.jobs[0]).toMatchObject({
       channel: 'email',
       notification: { channel: 'email', payload: { template: 'single' } },
@@ -490,9 +597,53 @@ describe('NotificationsModule', () => {
 
     const [firstJob, repeatedJob, callerJob] = queue.jobs;
 
-    expect(firstJob?.id).toMatch(/^notification:email:[a-z0-9]{7}$/);
+    expectGeneratedQueueJobId(firstJob?.id);
     expect(repeatedJob?.id).toBe(firstJob?.id);
     expect(callerJob?.id).toBe('caller-job-id');
+  });
+
+  it('derives queue job ids from canonical notification content without pinning opaque hash literals', async () => {
+    const queue = new RecordingQueueAdapter();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not run when queue is explicitly requested');
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 50,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await service.dispatch(
+      {
+        channel: 'email',
+        payload: { template: 'digest', userId: 'u1' },
+        recipients: ['user@example.com'],
+      },
+      { queue: true },
+    );
+    await service.dispatch(
+      {
+        recipients: ['user@example.com'],
+        payload: { userId: 'u1', template: 'digest' },
+        channel: 'email',
+      },
+      { queue: true },
+    );
+
+    const [canonicalJob, reorderedJob] = queue.jobs;
+
+    expectGeneratedQueueJobId(canonicalJob?.id);
+    expect(reorderedJob?.id).toBe(canonicalJob?.id);
   });
 
   it('does not close or drain application-owned queue and event publisher resources during runtime app close', async () => {
@@ -560,6 +711,58 @@ describe('NotificationsModule', () => {
       'app.onModuleDestroy',
       'app.onApplicationShutdown:notifications-shutdown-test',
     ]);
+    expect(resourceLifecycleCalls).toEqual([]);
+  });
+
+  it('does not close or drain application-owned queue and event publisher resources during testing module disposal', async () => {
+    const resourceLifecycleCalls: string[] = [];
+    const queue = new LifecycleAwareQueueAdapter(resourceLifecycleCalls);
+    const publisher = new LifecycleAwarePublisher(resourceLifecycleCalls);
+
+    @Module({
+      imports: [
+        NotificationsModule.forRoot({
+          channels: [
+            {
+              channel: 'email',
+              async send() {
+                throw new Error('direct delivery should not run when queue is explicitly requested');
+              },
+            },
+          ],
+          events: {
+            publisher,
+          },
+          queue: {
+            adapter: queue,
+            bulkThreshold: 1,
+          },
+        }),
+      ],
+    })
+    class AppModule {}
+
+    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+
+    try {
+      const service = await testingModule.resolve<NotificationsService>(NotificationsService);
+
+      await expect(
+        service.dispatch({ channel: 'email', payload: { template: 'queued-owned-by-app' } }, { queue: true }),
+      ).resolves.toMatchObject({
+        deliveryId: 'queued:1',
+        queued: true,
+        status: 'queued',
+      });
+      expect(queue.jobs).toHaveLength(1);
+      expect(publisher.events.map((event) => event.name)).toEqual([
+        'notification.dispatch.requested',
+        'notification.dispatch.queued',
+      ]);
+    } finally {
+      await testingModule.container.dispose();
+    }
+
     expect(resourceLifecycleCalls).toEqual([]);
   });
 

@@ -34,31 +34,6 @@ function getBoundPort(server: { address(): AddressInfo | string | null }): numbe
   return address.port;
 }
 
-async function findAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
-
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to resolve an available port.'));
-        return;
-      }
-
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve(address.port);
-      });
-    });
-  });
-}
-
 type MultipartRequestWithFiles = RequestContext['request'] & {
   files?: Array<{
     fieldname: string;
@@ -67,6 +42,22 @@ type MultipartRequestWithFiles = RequestContext['request'] & {
     size: number;
   }>;
 };
+
+type AppWithAdapter = Awaited<ReturnType<typeof bootstrapNodejsApplication>> & {
+  adapter?: {
+    getListenTarget?: () => { url: string };
+  };
+};
+
+function resolveListeningUrl(app: AppWithAdapter): string {
+  const target = app.adapter?.getListenTarget?.();
+
+  if (!target?.url) {
+    throw new Error('Failed to resolve the Node.js adapter listener URL after binding port 0.');
+  }
+
+  return target.url;
+}
 
 const TEST_TLS_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDBbj6DdMPNvDMr
@@ -294,6 +285,42 @@ describe('@fluojs/platform-nodejs', () => {
     }
   });
 
+  it('rejects listen through the package adapter after retryLimit is exhausted', async () => {
+    const blocker = createServer();
+    await new Promise<void>((resolve) => {
+      blocker.listen(0, '127.0.0.1', resolve);
+    });
+    const address = blocker.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Failed to bind a retry exhaustion test port.');
+    }
+    const dispatcher: Dispatcher = {
+      async dispatch() {},
+    };
+    const adapter = createNodejsAdapter({
+      host: '127.0.0.1',
+      port: address.port,
+      retryDelayMs: 0,
+      retryLimit: 1,
+    });
+
+    try {
+      await expect(adapter.listen(dispatcher)).rejects.toMatchObject({ code: 'EADDRINUSE' });
+    } finally {
+      await adapter.close();
+      await new Promise<void>((resolve, reject) => {
+        blocker.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    }
+  });
+
   it('closes idle keep-alive connections during package adapter shutdown', async () => {
     const adapter = createNodejsAdapter({ port: 0 });
     const server = adapter.getServer();
@@ -425,9 +452,8 @@ describe('@fluojs/platform-nodejs', () => {
         failureLogged();
       }
     });
-    const port = await findAvailablePort();
     const app = await runNodejsApplication(AppModule, {
-      port,
+      port: 0,
       shutdownSignals: [signal],
     });
 
@@ -473,10 +499,9 @@ describe('@fluojs/platform-nodejs', () => {
         timeoutLogged();
       }
     });
-    const port = await findAvailablePort();
     const app = await runNodejsApplication(AppModule, {
       forceExitTimeoutMs: 1,
-      port,
+      port: 0,
       shutdownSignals: [signal],
     });
 
@@ -699,6 +724,86 @@ describe('@fluojs/platform-nodejs', () => {
           requestId: 'request-platform-nodejs-error',
           status: 413,
         },
+      });
+
+      const correlationOnlyResponse = await fetch(`http://127.0.0.1:${String(port)}/echo`, {
+        body: 'oversized',
+        headers: {
+          'content-type': 'text/plain',
+          'x-correlation-id': 'correlation-platform-nodejs-only-error',
+        },
+        method: 'POST',
+      });
+
+      expect(correlationOnlyResponse.status).toBe(413);
+      await expect(correlationOnlyResponse.json()).resolves.toMatchObject({
+        error: {
+          code: 'PAYLOAD_TOO_LARGE',
+          message: 'Request body exceeds the size limit.',
+          requestId: 'correlation-platform-nodejs-only-error',
+          status: 413,
+        },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('honors explicit multipart.maxTotalSize overrides through the platform bootstrap helper', async () => {
+    @Controller('/uploads')
+    class UploadController {
+      @Post('/')
+      upload(_input: undefined, ctx: RequestContext) {
+        const request = ctx.request as MultipartRequestWithFiles;
+
+        return {
+          body: ctx.request.body,
+          files: request.files?.map((file: NonNullable<MultipartRequestWithFiles['files']>[number]) => ({
+            fieldname: file.fieldname,
+            originalname: file.originalname,
+            size: file.size,
+          })) ?? [],
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [UploadController] });
+
+    const app = await bootstrapNodejsApplication(AppModule, {
+      maxBodySize: 8,
+      multipart: { maxTotalSize: 1024 },
+      port: 0,
+    }) as AppWithAdapter;
+
+    try {
+      await app.listen();
+      const form = new FormData();
+      form.append('name', 'Ada');
+      form.append('payload', new Blob(['hello multipart'], { type: 'text/plain' }), 'payload.txt');
+
+      const request = new Request(`${resolveListeningUrl(app)}/uploads`, {
+        body: form,
+        method: 'POST',
+      });
+      const response = await fetch(request.url, {
+        body: await request.arrayBuffer(),
+        headers: {
+          'content-type': request.headers.get('content-type') ?? '',
+        },
+        method: request.method,
+      });
+
+      expect(response.status).toBe(201);
+      await expect(response.json()).resolves.toEqual({
+        body: { name: 'Ada' },
+        files: [
+          {
+            fieldname: 'payload',
+            originalname: 'payload.txt',
+            size: 15,
+          },
+        ],
       });
     } finally {
       await app.close();

@@ -98,15 +98,6 @@ function buildSlackModuleAsync(options: SlackAsyncModuleOptions): ModuleType {
   class SlackAsyncModuleDefinition {}
 
   const factory = options.useFactory as (...args: unknown[]) => MaybePromise<SlackModuleOptions>;
-  let cachedResult: Promise<NormalizedSlackModuleOptions> | undefined;
-
-  const memoizedFactory = (...deps: unknown[]): Promise<NormalizedSlackModuleOptions> => {
-    if (!cachedResult) {
-      cachedResult = Promise.resolve(factory(...deps)).then((resolved) => normalizeSlackModuleOptions(resolved));
-    }
-
-    return cachedResult;
-  };
 
   return defineModule(SlackAsyncModuleDefinition, {
     exports: [SlackService, SlackChannel, SLACK, SLACK_CHANNEL],
@@ -115,7 +106,8 @@ function buildSlackModuleAsync(options: SlackAsyncModuleOptions): ModuleType {
       inject: options.inject,
       provide: SLACK_OPTIONS,
       scope: 'singleton',
-      useFactory: (...deps: unknown[]) => memoizedFactory(...deps),
+      useFactory: (...deps: unknown[]) =>
+        Promise.resolve(factory(...deps)).then((resolved) => normalizeSlackModuleOptions(resolved)),
     }),
   });
 }
@@ -146,7 +138,7 @@ export class SlackModule {
    * Registers Slack providers from an async DI factory.
    *
    * @param options Async module options that resolve Slack transport and renderer configuration through DI.
-   * @returns A module definition that memoizes async option resolution per module instance.
+   * @returns A module definition that resolves async options through each active application container.
    *
    * @example
    * ```ts

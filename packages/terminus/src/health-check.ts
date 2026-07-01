@@ -14,7 +14,7 @@ type ExecutedIndicatorResult = {
   indicatorKey: string;
 };
 
-const runningIndicatorChecks = new WeakMap<HealthIndicator, Promise<HealthIndicatorResult>>();
+type RunningIndicatorChecks = WeakMap<HealthIndicator, Promise<HealthIndicatorResult>>;
 
 function normalizeIndicatorTimeoutMs(value: number | undefined): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
@@ -37,7 +37,11 @@ function createInFlightResult(key: string): HealthIndicatorResult {
   };
 }
 
-function startSerializedIndicatorCheck(indicator: HealthIndicator, key: string): Promise<HealthIndicatorResult> | undefined {
+function startSerializedIndicatorCheck(
+  indicator: HealthIndicator,
+  key: string,
+  runningIndicatorChecks: RunningIndicatorChecks,
+): Promise<HealthIndicatorResult> | undefined {
   const runningCheck = runningIndicatorChecks.get(indicator);
 
   if (runningCheck) {
@@ -249,10 +253,11 @@ async function runIndicator(
   indicator: HealthIndicator,
   index: number,
   executionOptions: HealthCheckExecutionOptions,
+  runningIndicatorChecks: RunningIndicatorChecks,
 ): Promise<ExecutedIndicatorResult> {
   const key = inferIndicatorKey(indicator, index);
   const indicatorTimeoutMs = normalizeIndicatorTimeoutMs(executionOptions.indicatorTimeoutMs);
-  const runningCheck = startSerializedIndicatorCheck(indicator, key);
+  const runningCheck = startSerializedIndicatorCheck(indicator, key, runningIndicatorChecks);
 
   if (!runningCheck) {
     return {
@@ -314,19 +319,15 @@ function aggregateIndicatorEntries(checks: readonly ExecutedIndicatorResult[]): 
   return aggregatedEntries;
 }
 
-/**
- * Run every registered health indicator and aggregate their results.
- *
- * @param indicators Indicator instances to execute for the current health probe.
- * @param executionOptions Optional timeout guardrails for indicator execution.
- * @returns A structured report containing `info`, `error`, and full `details` maps.
- */
-export async function runHealthCheck(
+async function executeHealthCheck(
   indicators: readonly HealthIndicator[],
   executionOptions: HealthCheckExecutionOptions = {},
+  runningIndicatorChecks: RunningIndicatorChecks,
 ): Promise<HealthCheckReport> {
   const checks = aggregateIndicatorEntries(
-    await Promise.all(indicators.map((indicator, index) => runIndicator(indicator, index, executionOptions))),
+    await Promise.all(
+      indicators.map((indicator, index) => runIndicator(indicator, index, executionOptions, runningIndicatorChecks)),
+    ),
   );
 
   const details = Object.fromEntries(checks);
@@ -347,6 +348,25 @@ export async function runHealthCheck(
 }
 
 /**
+ * Run every registered health indicator and aggregate their results.
+ *
+ * @remarks
+ * Direct helper calls receive an isolated execution scope. Use `TerminusHealthService`
+ * when repeated checks should serialize overlapping probes for a container-owned
+ * indicator set.
+ *
+ * @param indicators Indicator instances to execute for the current health probe.
+ * @param executionOptions Optional timeout guardrails for indicator execution.
+ * @returns A structured report containing `info`, `error`, and full `details` maps.
+ */
+export async function runHealthCheck(
+  indicators: readonly HealthIndicator[],
+  executionOptions: HealthCheckExecutionOptions = {},
+): Promise<HealthCheckReport> {
+  return executeHealthCheck(indicators, executionOptions, new WeakMap());
+}
+
+/**
  * Assert that an aggregated health report is fully healthy.
  *
  * @param report Health report returned by `runHealthCheck(...)` or `TerminusHealthService.check()`.
@@ -364,6 +384,8 @@ export function assertHealthCheck(report: HealthCheckReport, message = 'Health c
 
 /** Service facade that resolves and runs the health indicators registered in Terminus. */
 export class TerminusHealthService {
+  private readonly runningIndicatorChecks: RunningIndicatorChecks = new WeakMap();
+
   constructor(
     private readonly indicators: readonly HealthIndicator[],
     private readonly executionOptions: HealthCheckExecutionOptions = {},
@@ -375,7 +397,7 @@ export class TerminusHealthService {
    * @returns The aggregated health report for this check cycle.
    */
   async check(): Promise<HealthCheckReport> {
-    return runHealthCheck(this.indicators, this.executionOptions);
+    return executeHealthCheck(this.indicators, this.executionOptions, this.runningIndicatorChecks);
   }
 
   /**

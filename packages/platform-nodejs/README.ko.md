@@ -22,6 +22,8 @@ fluo 런타임을 위한 raw Node.js HTTP 어댑터 패키지입니다.
 npm install @fluojs/platform-nodejs
 ```
 
+이 패키지는 Node.js 20 이상을 대상으로 합니다. 게시된 package manifest는 `engines.node >=20.0.0`을 선언하며, raw 어댑터는 비 Node fetch-style host가 아니라 Node.js `http`/`https` server primitive에 의존합니다.
+
 ## 사용 시점
 
 Express나 Fastify와 같은 중간 프레임워크의 오버헤드 없이 Node.js 내장 `http` 또는 `https` 모듈에서 직접 fluo 애플리케이션을 실행하려는 경우에 사용합니다. 최소한의 리소스 사용, 저수준 최적화 또는 표준 Node API가 선호되는 환경에 이상적입니다.
