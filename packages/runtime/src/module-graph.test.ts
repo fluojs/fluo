@@ -194,11 +194,18 @@ describe('module graph cache-key prerequisites', () => {
       expect.unreachable('expected a factory provider with explicit inject metadata');
     }
 
+    const poisonedReplacement = forwardRef(() => MissingDependency);
+    expect(Object.isFrozen(poisonedReplacement)).toBe(true);
+    expect(Reflect.set(poisonedReplacement, 'forwardRef', () => Logger)).toBe(false);
+    expect(poisonedReplacement.forwardRef()).toBe(MissingDependency);
+
     factoryProvider.provide = POISONED_TOKEN;
-    factoryProvider.inject.splice(0, factoryProvider.inject.length, forwardRef(() => MissingDependency));
+    factoryProvider.inject.splice(0, factoryProvider.inject.length, poisonedReplacement);
     const poisonedWrapper = factoryProvider.inject[0];
     if (isMutableRuntimeForwardRef(poisonedWrapper)) {
-      poisonedWrapper.forwardRef = () => MissingDependency;
+      expect(Object.isFrozen(poisonedWrapper)).toBe(true);
+      expect(Reflect.set(poisonedWrapper, 'forwardRef', () => Logger)).toBe(false);
+      expect(poisonedWrapper.forwardRef()).toBe(MissingDependency);
     }
 
     const secondCompile = compileModuleGraph(AppModule, { moduleGraphCache: true });
