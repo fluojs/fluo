@@ -15,9 +15,8 @@ export interface ClonedWeakMapStore<TKey extends object, TValue> {
  */
 export function createClonedWeakMapStore<TKey extends object, TValue>(
   cloneValue: (value: TValue) => TValue,
+  store: WeakMap<TKey, TValue> = new WeakMap<TKey, TValue>(),
 ): ClonedWeakMapStore<TKey, TValue> {
-  const store = new WeakMap<TKey, TValue>();
-
   return {
     read(target: TKey): TValue | undefined {
       const value = store.get(target);

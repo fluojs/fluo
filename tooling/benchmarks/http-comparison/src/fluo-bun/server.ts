@@ -3,7 +3,7 @@ import { Controller, Get, Post, type RequestContext } from '@fluojs/http';
 import { createBunAdapter } from '@fluojs/platform-bun';
 import { FluoFactory } from '@fluojs/runtime';
 
-import { jsonCommandLocal, QUOTE_REQUEST, readSearchLocal, restRouteMixLocal, type QuoteInput, type QuoteItem } from '../shared/workloads';
+import { jsonCommandLocal, QUOTE_REQUEST, type QuoteInput, type QuoteItem, readSearchLocal, restRouteMixLocal } from '../shared/workloads';
 
 ensureMetadataSymbol();
 
@@ -52,7 +52,7 @@ class ProjectService {
 class ReadSearchController {
   constructor(private readonly service: UsersReadService) {}
 
-  @Get('/')
+  @Get('')
   search(_input: undefined, context: RequestContext) {
     return this.service.search(context);
   }
@@ -63,7 +63,7 @@ class ReadSearchController {
 class QuoteController {
   constructor(private readonly service: QuoteService) {}
 
-  @Post('/')
+  @Post('')
   quote(_input: undefined, context: RequestContext) {
     return this.service.quote(toQuoteInput(context.request.body));
   }
@@ -141,16 +141,15 @@ function resolveAppModule(shape: AppShape) {
 }
 
 function readAppShape(): AppShape {
-  const raw = process.env['BENCH_APP_SHAPE'] ?? 'read-search-local';
+  const raw = process.env.BENCH_APP_SHAPE ?? 'read-search-local';
   if (raw === 'read-search-local' || raw === 'json-command-local' || raw === 'rest-route-mix-local') return raw;
   throw new Error(`Unsupported BENCH_APP_SHAPE: ${raw}`);
 }
 
 async function main(): Promise<void> {
-  const port = Number(process.env['PORT'] ?? 3003);
+  const port = Number(process.env.PORT ?? 3003);
   const app = await FluoFactory.create(resolveAppModule(readAppShape()), {
     adapter: createBunAdapter({ port }),
-    logger: { debug() {}, error() {}, log() {}, warn() {} },
   });
 
   await app.listen();
