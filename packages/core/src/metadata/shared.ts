@@ -148,6 +148,80 @@ export const metadataKeys = {
   classValidation: Symbol.for('fluo.metadata.class-validation'),
 } as const;
 
+interface MetadataCounter {
+  value: number;
+}
+
+interface GlobalMetadataRegistry {
+  counters: Map<symbol, MetadataCounter>;
+  weakMaps: Map<symbol, WeakMap<object, unknown>>;
+}
+
+const metadataRegistryKey = Symbol.for('fluo.metadata.registry');
+
+function getGlobalMetadataRegistry(): GlobalMetadataRegistry {
+  const globalScope = globalThis as typeof globalThis & {
+    [metadataRegistryKey]?: GlobalMetadataRegistry;
+  };
+  const existing = globalScope[metadataRegistryKey];
+
+  if (existing) {
+    return existing;
+  }
+
+  const registry: GlobalMetadataRegistry = {
+    counters: new Map(),
+    weakMaps: new Map(),
+  };
+
+  Object.defineProperty(globalScope, metadataRegistryKey, {
+    configurable: false,
+    enumerable: false,
+    value: registry,
+    writable: false,
+  });
+
+  return registry;
+}
+
+/**
+ * Resolves a process-global WeakMap for explicit Fluo metadata stores.
+ *
+ * @param key Symbol key that identifies the metadata store.
+ * @returns The process-global WeakMap for the provided metadata key.
+ */
+export function getGlobalMetadataWeakMap<TKey extends object, TValue>(key: symbol): WeakMap<TKey, TValue> {
+  const registry = getGlobalMetadataRegistry();
+  const existing = registry.weakMaps.get(key);
+
+  if (existing) {
+    return existing as WeakMap<TKey, TValue>;
+  }
+
+  const store = new WeakMap<TKey, TValue>();
+  registry.weakMaps.set(key, store as WeakMap<object, unknown>);
+  return store;
+}
+
+/**
+ * Resolves a process-global counter for metadata cache invalidation.
+ *
+ * @param key Symbol key that identifies the counter.
+ * @returns The process-global counter for the provided metadata key.
+ */
+export function getGlobalMetadataCounter(key: symbol): MetadataCounter {
+  const registry = getGlobalMetadataRegistry();
+  const existing = registry.counters.get(key);
+
+  if (existing) {
+    return existing;
+  }
+
+  const counter = { value: 0 };
+  registry.counters.set(key, counter);
+  return counter;
+}
+
 /**
  * Clones a readonly collection into a mutable array for defensive metadata reads and writes.
  *
