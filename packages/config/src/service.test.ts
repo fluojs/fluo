@@ -27,6 +27,21 @@ describe('ConfigService – get() isolation (issue #451)', () => {
     expect(service.get('app.options')).toEqual({ retries: 3 });
   });
 
+  it('returns a detached object clone through getOrThrow', () => {
+    const service = new ConfigService({ app: { flags: ['alpha'], options: { retries: 3 } } });
+
+    const options = service.getOrThrow('app') as {
+      flags: string[];
+      options: { retries: number };
+    };
+    expect(options).toEqual({ flags: ['alpha'], options: { retries: 3 } });
+
+    options.flags.push('beta');
+    options.options.retries = 999;
+
+    expect(service.getOrThrow('app')).toEqual({ flags: ['alpha'], options: { retries: 3 } });
+  });
+
   it('returns scalar values directly without cloning', () => {
     const service = new ConfigService({ port: 3000, name: 'app' });
 
