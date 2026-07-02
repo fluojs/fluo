@@ -75,7 +75,7 @@ fluo DI supports four provider shapes:
 - **Request**: Instance is created once per `createRequestScope()` call.
 - **Transient**: A new instance is created every time it is resolved.
 
-During disposal, the root container first tears down live request-scope children and then continues with root-owned singleton cleanup even if one or more child disposals fail. When multiple child/root disposals fail, `dispose()` reports an `AggregateError` so callers can inspect every shutdown failure without losing cleanup progress.
+During disposal, each container first recursively tears down live request-scope children it owns, so disposing a non-root request scope also closes nested request scopes before its own request cache. Root disposal then continues with root-owned singleton cleanup even if one or more child disposals fail. When multiple child/root disposals fail, `dispose()` reports an `AggregateError` so callers can inspect every shutdown failure without losing cleanup progress.
 
 ### Provider Overrides
 
@@ -163,7 +163,7 @@ Ensure all required providers are registered in the container. If you use `creat
 | `register(...providers)` | Registers one or more providers. |
 | `override(...providers)` | Replaces existing providers, invalidates cached instances, and disposes stale instances. |
 | `resolve<T>(token)` | Asynchronously resolves a token to an instance. |
-| `inspectResolutionState()` | Exposes the supported framework-owned container introspection seam for testing/tooling helpers that must preserve cache ownership. Prefer `has(...)` and `resolve(...)` for application code. |
+| `inspectResolutionState()` | Exposes the supported framework-owned container introspection seam for testing/tooling helpers that must preserve cache ownership through read-only map views, frozen provider records, and controlled cache adoption. Prefer `has(...)` and `resolve(...)` for application code. |
 | `createRequestScope()` | Creates a child container for request-scoped dependencies. |
 | `has(token)` | Checks if a token is registered in the container or its parents. |
 | `hasRequestScopedDependency(token)` | Checks whether resolving a token may require a request-scope container because its provider graph contains request-scoped dependencies or is cyclic. |
@@ -176,7 +176,7 @@ Ensure all required providers are registered in the container. If you use `creat
 | Provider types | `Provider`, `ClassProvider`, `FactoryProvider`, `ValueProvider`, and `ExistingProvider` describe the public registration shapes accepted by `register(...)` and `override(...)`. |
 | Token wrapper types | `ForwardRefFn` and `OptionalToken` describe the wrapper values returned by `forwardRef(...)` and `optional(...)`. |
 | Container helper types | `ClassType`, `Disposable`, and `RequestScopeContainer` support typed provider declarations, teardown hooks, and request-scope helper boundaries. |
-| `ContainerResolutionState` | Public introspection record returned by `inspectResolutionState()` for framework testing/tooling integrations. |
+| Container introspection helper types | `ContainerResolutionState`, `ContainerResolutionCacheOwner`, and `ContainerFactoryResolutionState` describe the read-only graph/cache views and controlled cache adoption helpers returned by `inspectResolutionState()`. |
 | `NormalizedProvider` | Compatibility-only public type for the container's validated provider record shape. Prefer authoring providers with `Provider` or the specific provider interfaces; the container owns normalized record construction. |
 | `DiErrorContext` | Structured context attached to DI errors so logs and tests can inspect tokens, scopes, modules, dependency chains, and hints. |
 | Error classes | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |

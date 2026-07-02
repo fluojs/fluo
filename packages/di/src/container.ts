@@ -11,19 +11,32 @@ import {
 } from './errors.js';
 import type {
   ClassType,
-  ClassProvider,
   Disposable,
-  ExistingProvider,
-  FactoryProvider,
   ForwardRefFn,
   NormalizedProvider,
   OptionalToken,
   Provider,
-  ValueProvider,
 } from './types.js';
 import { Scope, isForwardRef, isOptionalToken } from './types.js';
 
-type ObjectProvider = ClassProvider | ExistingProvider | FactoryProvider | ValueProvider;
+type ProviderObjectInput = {
+  readonly inject?: readonly (Token | ForwardRefFn | OptionalToken)[];
+  readonly multi?: boolean;
+  readonly provide?: Token | null;
+  readonly resolverClass?: ClassType;
+  readonly scope?: Scope;
+  readonly useClass?: unknown;
+  readonly useExisting?: Token | null;
+  readonly useFactory?: unknown;
+  readonly useValue?: unknown;
+};
+
+type ValidatedProviderObject = ProviderObjectInput & { readonly provide: Token };
+
+/**
+ * Factory provider resolution mode recorded after a factory returns either synchronously or through a promise.
+ */
+export type FactoryResolutionKind = 'async' | 'sync';
 
 interface CachedResolutionPlan<T> {
   readonly lineageRevision: string;
@@ -31,46 +44,166 @@ interface CachedResolutionPlan<T> {
 }
 
 /**
- * Public read/write seam for framework-owned testing and tooling that need to
+ * Controlled cache adoption seam for framework-owned testing and tooling that
+ * need synchronous helpers to preserve container-owned singleton disposal.
+ */
+export interface ContainerResolutionCacheOwner {
+  readonly deleteMultiSingleton: (provider: NormalizedProvider) => void;
+  readonly deleteSingleton: (token: Token) => void;
+  readonly recordFactoryResolution: (provider: NormalizedProvider, kind: FactoryResolutionKind) => void;
+  readonly setMultiSingleton: (provider: NormalizedProvider, promise: Promise<unknown>) => void;
+  readonly setSingleton: (token: Token, promise: Promise<unknown>) => void;
+}
+
+/**
+ * Read-only factory resolution diagnostics recorded by container-owned factory
+ * instantiation paths.
+ */
+export interface ContainerFactoryResolutionState {
+  readonly get: (provider: NormalizedProvider) => FactoryResolutionKind | undefined;
+  readonly has: (provider: NormalizedProvider) => boolean;
+}
+
+/**
+ * Public read-only seam for framework-owned testing and tooling that need to
  * inspect a container's resolved provider graph without depending on private
  * field names or structural casts.
  */
 export interface ContainerResolutionState {
+  readonly cacheOwner: ContainerResolutionCacheOwner;
+  readonly factoryResolutionKinds: ContainerFactoryResolutionState;
   readonly parent?: ContainerResolutionState;
-  readonly registrations: Map<Token, NormalizedProvider>;
-  readonly multiRegistrations: Map<Token, NormalizedProvider[]>;
-  readonly multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>;
+  readonly registrations: ReadonlyMap<Token, NormalizedProvider>;
+  readonly multiRegistrations: ReadonlyMap<Token, readonly NormalizedProvider[]>;
+  readonly multiSingletonCache: ReadonlyMap<NormalizedProvider, Promise<unknown>>;
   readonly requestScopeEnabled: boolean;
-  readonly singletonCache: Map<Token, Promise<unknown>>;
+  readonly singletonCache: ReadonlyMap<Token, Promise<unknown>>;
+}
+
+class ReadonlyMapView<K, V> implements ReadonlyMap<K, V> {
+  readonly #source: ReadonlyMap<K, V>;
+
+  readonly [Symbol.toStringTag] = 'Map';
+
+  constructor(source: ReadonlyMap<K, V>) {
+    this.#source = source;
+  }
+
+  get size(): number {
+    return this.#source.size;
+  }
+
+  entries(): IterableIterator<[K, V]> {
+    return this.#source.entries();
+  }
+
+  forEach(callbackfn: (value: V, key: K, map: ReadonlyMap<K, V>) => void, thisArg?: unknown): void {
+    for (const [key, value] of this.#source) {
+      callbackfn.call(thisArg, value, key, this);
+    }
+  }
+
+  get(key: K): V | undefined {
+    return this.#source.get(key);
+  }
+
+  has(key: K): boolean {
+    return this.#source.has(key);
+  }
+
+  keys(): IterableIterator<K> {
+    return this.#source.keys();
+  }
+
+  values(): IterableIterator<V> {
+    return this.#source.values();
+  }
+
+  [Symbol.iterator](): IterableIterator<[K, V]> {
+    return this.entries();
+  }
+}
+
+class ReadonlyMultiRegistrationMapView implements ReadonlyMap<Token, readonly NormalizedProvider[]> {
+  readonly #source: ReadonlyMap<Token, readonly NormalizedProvider[]>;
+
+  readonly [Symbol.toStringTag] = 'Map';
+
+  constructor(source: ReadonlyMap<Token, readonly NormalizedProvider[]>) {
+    this.#source = source;
+  }
+
+  get size(): number {
+    return this.#source.size;
+  }
+
+  *entries(): IterableIterator<[Token, readonly NormalizedProvider[]]> {
+    for (const [token, providers] of this.#source) {
+      yield [token, Object.freeze([...providers])];
+    }
+  }
+
+  forEach(callbackfn: (value: readonly NormalizedProvider[], key: Token, map: ReadonlyMap<Token, readonly NormalizedProvider[]>) => void, thisArg?: unknown): void {
+    for (const [key, value] of this.entries()) {
+      callbackfn.call(thisArg, value, key, this);
+    }
+  }
+
+  get(key: Token): readonly NormalizedProvider[] | undefined {
+    const providers = this.#source.get(key);
+    return providers ? Object.freeze([...providers]) : undefined;
+  }
+
+  has(key: Token): boolean {
+    return this.#source.has(key);
+  }
+
+  keys(): IterableIterator<Token> {
+    return this.#source.keys();
+  }
+
+  *values(): IterableIterator<readonly NormalizedProvider[]> {
+    for (const providers of this.#source.values()) {
+      yield Object.freeze([...providers]);
+    }
+  }
+
+  [Symbol.iterator](): IterableIterator<[Token, readonly NormalizedProvider[]]> {
+    return this.entries();
+  }
 }
 
 function isClassConstructor(value: Provider): value is ClassType {
   return typeof value === 'function';
 }
 
-function isValueProvider(value: Provider): value is ValueProvider {
-  return typeof value === 'object' && value !== null && 'useValue' in value;
+function isProviderObject(value: unknown): value is ProviderObjectInput {
+  return typeof value === 'object' && value !== null;
 }
 
-function isFactoryProvider(value: Provider): value is FactoryProvider {
-  return typeof value === 'object' && value !== null && 'useFactory' in value;
+function isClassType(value: unknown): value is ClassType {
+  return typeof value === 'function';
 }
 
-function isClassProvider(value: Provider): value is ClassProvider {
-  return typeof value === 'object' && value !== null && 'useClass' in value;
+function isFactoryFunction(value: unknown): value is (...deps: unknown[]) => unknown {
+  return typeof value === 'function';
 }
 
-function isExistingProvider(value: Provider): value is ExistingProvider {
-  return typeof value === 'object' && value !== null && 'useExisting' in value;
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    (typeof value === 'object' || typeof value === 'function') &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === 'function'
+  );
 }
 
-function assertProviderToken(provider: ObjectProvider): void {
+function assertProviderToken(provider: ProviderObjectInput): asserts provider is ValidatedProviderObject {
   if (!('provide' in provider) || provider.provide == null) {
     throw new InvalidProviderError('Provider object must include a non-null provide token.');
   }
 }
 
-function assertProviderStrategy(provider: ObjectProvider): void {
+function assertProviderStrategy(provider: ProviderObjectInput): void {
   const strategyCount = Number('useValue' in provider) + Number('useFactory' in provider) + Number('useClass' in provider) + Number('useExisting' in provider);
 
   if (strategyCount !== 1) {
@@ -78,7 +211,7 @@ function assertProviderStrategy(provider: ObjectProvider): void {
   }
 }
 
-function assertObjectProvider(provider: ObjectProvider): void {
+function assertObjectProvider(provider: ProviderObjectInput): asserts provider is ValidatedProviderObject {
   assertProviderToken(provider);
   assertProviderStrategy(provider);
 }
@@ -88,90 +221,110 @@ function normalizeInjectToken(token: Token | ForwardRefFn | OptionalToken): Toke
     throw new InvalidProviderError('Inject token must not be null or undefined. Check that all tokens in @Inject(...) are defined at the point of decoration (forward-reference cycles require forwardRef()).');
   }
 
+  if (isForwardRef(token)) {
+    return Object.freeze<ForwardRefFn>({
+      __forwardRef__: true,
+      forwardRef: token.forwardRef,
+    });
+  }
+
+  if (isOptionalToken(token)) {
+    return Object.freeze<OptionalToken>({
+      __optional__: true,
+      token: token.token,
+    });
+  }
+
   return token;
+}
+
+function freezeNormalizedProvider<T>(provider: NormalizedProvider<T>): NormalizedProvider<T> {
+  return Object.freeze({
+    ...provider,
+    inject: Object.freeze([...provider.inject]),
+  });
 }
 
 function normalizeProvider(provider: Provider): NormalizedProvider {
   if (isClassConstructor(provider)) {
     const metadata = getClassDiMetadata(provider);
 
-    return {
+    return freezeNormalizedProvider({
       inject: (metadata?.inject ?? []).map(normalizeInjectToken),
       provide: provider,
       scope: metadata?.scope ?? Scope.DEFAULT,
       type: 'class',
       useClass: provider,
-    };
+    });
   }
 
-  if (isValueProvider(provider)) {
-    assertObjectProvider(provider);
+  if (!isProviderObject(provider)) {
+    throw new InvalidProviderError('Unsupported provider type.');
+  }
 
-    return {
+  const objectProvider: ProviderObjectInput = provider;
+  assertObjectProvider(objectProvider);
+
+  if ('useValue' in objectProvider) {
+    return freezeNormalizedProvider({
       inject: [],
-      multi: provider.multi,
-      provide: provider.provide,
+      multi: objectProvider.multi,
+      provide: objectProvider.provide,
       scope: Scope.DEFAULT,
       type: 'value',
-      useValue: provider.useValue,
-    };
+      useValue: objectProvider.useValue,
+    });
   }
 
-  if (isFactoryProvider(provider)) {
-    assertObjectProvider(provider);
-
-    if (typeof provider.useFactory !== 'function') {
-      throw new InvalidProviderError('Factory provider useFactory must be a function.', { token: provider.provide });
+  if ('useFactory' in objectProvider) {
+    if (!isFactoryFunction(objectProvider.useFactory)) {
+      throw new InvalidProviderError('Factory provider useFactory must be a function.', { token: objectProvider.provide });
     }
 
-    const metadata = provider.resolverClass ? getClassDiMetadata(provider.resolverClass) : undefined;
+    const metadata = objectProvider.resolverClass ? getClassDiMetadata(objectProvider.resolverClass) : undefined;
 
-    return {
-      inject: (provider.inject ?? []).map(normalizeInjectToken),
-      multi: provider.multi,
-      provide: provider.provide,
-      scope: provider.scope ?? metadata?.scope ?? Scope.DEFAULT,
+    return freezeNormalizedProvider({
+      inject: (objectProvider.inject ?? []).map(normalizeInjectToken),
+      multi: objectProvider.multi,
+      provide: objectProvider.provide,
+      scope: objectProvider.scope ?? metadata?.scope ?? Scope.DEFAULT,
       type: 'factory',
-      useFactory: provider.useFactory,
-    };
+      useFactory: objectProvider.useFactory,
+    });
   }
 
-  if (isClassProvider(provider)) {
-    assertObjectProvider(provider);
-
-    if (typeof provider.useClass !== 'function') {
-      throw new InvalidProviderError('Class provider useClass must be a constructor.', { token: provider.provide });
+  if ('useClass' in objectProvider) {
+    if (!isClassType(objectProvider.useClass)) {
+      throw new InvalidProviderError('Class provider useClass must be a constructor.', { token: objectProvider.provide });
     }
 
-    const metadata = getClassDiMetadata(provider.useClass);
+    const metadata = getClassDiMetadata(objectProvider.useClass);
 
-    return {
-      inject: (provider.inject ?? metadata?.inject ?? []).map(normalizeInjectToken),
-      multi: provider.multi,
-      provide: provider.provide,
-      scope: provider.scope ?? metadata?.scope ?? Scope.DEFAULT,
+    return freezeNormalizedProvider({
+      inject: (objectProvider.inject ?? metadata?.inject ?? []).map(normalizeInjectToken),
+      multi: objectProvider.multi,
+      provide: objectProvider.provide,
+      scope: objectProvider.scope ?? metadata?.scope ?? Scope.DEFAULT,
       type: 'class',
-      useClass: provider.useClass,
-    };
+      useClass: objectProvider.useClass,
+    });
   }
 
-  if (isExistingProvider(provider)) {
-    assertObjectProvider(provider);
-
-    if (provider.useExisting == null) {
-      throw new InvalidProviderError('Alias provider useExisting must be a non-null token.', { token: provider.provide });
+  if ('useExisting' in objectProvider) {
+    if (objectProvider.useExisting == null) {
+      throw new InvalidProviderError('Alias provider useExisting must be a non-null token.', { token: objectProvider.provide });
     }
 
-    return {
+    return freezeNormalizedProvider({
       inject: [],
-      provide: provider.provide,
+      provide: objectProvider.provide,
       scope: Scope.DEFAULT,
       type: 'existing',
-      useExisting: provider.useExisting,
-    };
+      useExisting: objectProvider.useExisting,
+    });
   }
 
-  throw new InvalidProviderError('Unsupported provider type.');
+  throw new InvalidProviderError('Provider object must declare exactly one of useValue, useFactory, useClass, or useExisting.');
 }
 
 /**
@@ -188,6 +341,7 @@ export class Container {
   private readonly staleDisposalErrors: unknown[] = [];
   private readonly singletonCache: Map<Token, Promise<unknown>>;
   private readonly forwardRefTokenCache = new WeakMap<ForwardRefFn, Token>();
+  private readonly factoryResolutionKinds = new WeakMap<NormalizedProvider, FactoryResolutionKind>();
   private readonly providerLookupPlanCache = new Map<Token, CachedResolutionPlan<NormalizedProvider | undefined>>();
   private readonly multiProviderPlanCache = new Map<Token, CachedResolutionPlan<readonly NormalizedProvider[]>>();
   private readonly requestScopeVerdictPlanCache = new Map<Token, CachedResolutionPlan<boolean>>();
@@ -195,7 +349,7 @@ export class Container {
   private childScopes: Set<Container> | undefined;
   private disposePromise: Promise<void> | undefined;
   private disposed = false;
-  private trackedByRoot = false;
+  private trackedByParent = false;
   private graphRevision = 0;
 
   constructor(
@@ -347,20 +501,53 @@ export class Container {
    *
    * This method is the supported introspection seam for packages such as
    * `@fluojs/testing`; callers should prefer ordinary `has(...)` and
-   * `resolve(...)` unless they need to preserve container cache ownership while
-   * implementing a framework-level helper.
+   * `resolve(...)` unless they need read-only graph/cache visibility while
+   * implementing a framework-level helper. Cache adoption for synchronous
+   * helpers goes through `cacheOwner`; the returned maps are not mutable
+   * container internals.
    *
-   * @returns Provider registrations and resolution caches for this container scope.
+   * @returns Read-only provider registrations and resolution caches for this container scope.
    */
   inspectResolutionState(): ContainerResolutionState {
     return {
+      cacheOwner: this.createCacheOwner(),
+      factoryResolutionKinds: this.createFactoryResolutionState(),
       parent: this.parent?.inspectResolutionState(),
-      registrations: this.registrations,
-      multiRegistrations: this.multiRegistrations,
-      multiSingletonCache: this.multiSingletonCache,
+      registrations: new ReadonlyMapView(this.registrations),
+      multiRegistrations: new ReadonlyMultiRegistrationMapView(this.multiRegistrations),
+      multiSingletonCache: new ReadonlyMapView(this.multiSingletonCache),
       requestScopeEnabled: this.requestScopeEnabled,
-      singletonCache: this.singletonCache,
+      singletonCache: new ReadonlyMapView(this.singletonCache),
     };
+  }
+
+  private createCacheOwner(): ContainerResolutionCacheOwner {
+    return Object.freeze({
+      deleteMultiSingleton: (provider: NormalizedProvider) => {
+        this.multiSingletonCache.delete(provider);
+      },
+      deleteSingleton: (token: Token) => {
+        this.singletonCache.delete(token);
+      },
+      recordFactoryResolution: (provider: NormalizedProvider, kind: FactoryResolutionKind) => {
+        this.root().factoryResolutionKinds.set(provider, kind);
+      },
+      setMultiSingleton: (provider: NormalizedProvider, promise: Promise<unknown>) => {
+        this.multiSingletonCache.set(provider, promise);
+      },
+      setSingleton: (token: Token, promise: Promise<unknown>) => {
+        this.singletonCache.set(token, promise);
+      },
+    });
+  }
+
+  private createFactoryResolutionState(): ContainerFactoryResolutionState {
+    const root = this.root();
+
+    return Object.freeze({
+      get: (provider: NormalizedProvider) => root.factoryResolutionKinds.get(provider),
+      has: (provider: NormalizedProvider) => root.factoryResolutionKinds.has(provider),
+    });
   }
 
   /**
@@ -449,8 +636,8 @@ export class Container {
     const errors: unknown[] = [];
 
     try {
-      // Dispose all live request-scope children first (root only)
-      if (!this.parent && this.childScopes && this.childScopes.size > 0) {
+      // Dispose all live request-scope children before tearing down this scope's cache.
+      if (this.childScopes && this.childScopes.size > 0) {
         const childResults = await Promise.allSettled(Array.from(this.childScopes).map((child) => child.dispose()));
 
         for (const result of childResults) {
@@ -470,9 +657,9 @@ export class Container {
 
       this.throwDisposalErrors(errors);
     } finally {
-      if (this.parent && this.trackedByRoot) {
-        this.root().childScopes?.delete(this);
-        this.trackedByRoot = false;
+      if (this.parent && this.trackedByParent) {
+        this.parent.childScopes?.delete(this);
+        this.trackedByParent = false;
       }
     }
   }
@@ -591,7 +778,7 @@ export class Container {
       return true;
     }
 
-    return (metadata?.inject ?? []).some((depEntry) => this.dependencyEntryRequiresRequestScope(depEntry, visited));
+    return (metadata?.inject ?? []).some((depEntry: Token | ForwardRefFn | OptionalToken) => this.dependencyEntryRequiresRequestScope(depEntry, visited));
   }
 
   private normalizedProviderRequiresRequestScope(provider: NormalizedProvider, visited: Set<Token>): boolean {
@@ -852,14 +1039,14 @@ export class Container {
   }
 
   private ensureTrackedRequestScope(): void {
-    if (!this.requestScopeEnabled || !this.parent || this.trackedByRoot) {
+    if (!this.requestScopeEnabled || !this.parent || this.trackedByParent) {
       return;
     }
 
-    const root = this.root();
-    root.childScopes ??= new Set<Container>();
-    root.childScopes.add(this);
-    this.trackedByRoot = true;
+    this.parent.ensureTrackedRequestScope();
+    this.parent.childScopes ??= new Set<Container>();
+    this.parent.childScopes.add(this);
+    this.trackedByParent = true;
   }
 
   private requestCacheForWrite(): Map<Token, Promise<unknown>> {
@@ -1131,9 +1318,11 @@ export class Container {
           throw new InvariantError('Factory provider is missing useFactory.');
         }
 
-          const deps = await this.resolveProviderDeps(provider, chain, activeTokens);
+        const deps = await this.resolveProviderDeps(provider, chain, activeTokens);
+        const value = provider.useFactory(...deps);
+        this.root().factoryResolutionKinds.set(provider, isPromiseLike(value) ? 'async' : 'sync');
 
-        return provider.useFactory(...deps);
+        return value as T;
       }
       case 'class': {
         if (!provider.useClass) {
@@ -1305,31 +1494,9 @@ export class Container {
   private invalidateAffectedCachedEntriesInHierarchy(token: Token): void {
     this.invalidateAffectedCachedEntries(token);
 
-    const childScopes = this.root().childScopes;
-
-    if (!childScopes) {
-      return;
+    for (const childScope of this.childScopes ?? []) {
+      childScope.invalidateAffectedCachedEntriesInHierarchy(token);
     }
-
-    for (const childScope of childScopes) {
-      if (this.isAncestorOf(childScope)) {
-        childScope.invalidateAffectedCachedEntries(token);
-      }
-    }
-  }
-
-  private isAncestorOf(container: Container): boolean {
-    let current = container.parent;
-
-    while (current) {
-      if (current === this) {
-        return true;
-      }
-
-      current = current.parent;
-    }
-
-    return false;
   }
 
   private invalidateAffectedCachedEntries(token: Token): void {

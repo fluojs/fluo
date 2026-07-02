@@ -151,11 +151,12 @@ function isPromiseLike<T>(value: unknown): value is PromiseLike<T> {
 }
 
 interface SyncResolverState {
-  factoryResolutionKinds: WeakMap<NormalizedProvider, 'async' | 'sync'>;
+  cacheOwner: ContainerResolutionState['cacheOwner'];
+  factoryResolutionKinds: ContainerResolutionState['factoryResolutionKinds'];
   introspection: ContainerIntrospection;
-  multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>;
+  multiSingletonCache: ReadonlyMap<NormalizedProvider, Promise<unknown>>;
   resolutionChain: Set<Token>;
-  singletonCache: Map<Token, Promise<unknown>>;
+  singletonCache: ReadonlyMap<Token, Promise<unknown>>;
   syncMultiSingletonValues: Map<NormalizedProvider, unknown>;
   syncSingletonValues: Map<Token, unknown>;
 }
@@ -235,19 +236,19 @@ async function resolveMultiLifecycleProvider(
   bootstrapped: BootstrapResult,
   introspection: ContainerIntrospection,
 ): Promise<unknown> {
-  const cache = rootContainerIntrospection(introspection).multiSingletonCache;
-  const cached = cache.get(provider);
+  const rootIntrospection = rootContainerIntrospection(introspection);
+  const cached = rootIntrospection.multiSingletonCache.get(provider);
 
   if (cached) {
     return cached;
   }
 
   const instance = instantiateLifecycleProvider(provider, bootstrapped, introspection).catch((error: unknown) => {
-    cache.delete(provider);
+    rootIntrospection.cacheOwner.deleteMultiSingleton(provider);
     throw error;
   });
 
-  cache.set(provider, instance);
+  rootIntrospection.cacheOwner.setMultiSingleton(provider, instance);
   return instance;
 }
 
@@ -363,41 +364,6 @@ function dependencyToken(entry: Token | ForwardRefFn | OptionalToken): Token {
   return entry as Token;
 }
 
-function trackFactoryResolutionKind(
-  provider: NormalizedProvider,
-  factoryResolutionKinds: WeakMap<NormalizedProvider, 'async' | 'sync'>,
-): void {
-  if (provider.type !== 'factory' || !provider.useFactory) {
-    return;
-  }
-
-  const originalFactory = provider.useFactory;
-  provider.useFactory = (...deps: unknown[]) => {
-    const value = originalFactory(...deps);
-    factoryResolutionKinds.set(provider, isPromiseLike(value) ? 'async' : 'sync');
-    return value;
-  };
-}
-
-function installFactoryResolutionTracking(
-  target: ContainerIntrospection,
-  factoryResolutionKinds: WeakMap<NormalizedProvider, 'async' | 'sync'>,
-): void {
-  if (target.parent) {
-    installFactoryResolutionTracking(target.parent, factoryResolutionKinds);
-  }
-
-  for (const provider of target.registrations.values()) {
-    trackFactoryResolutionKind(provider, factoryResolutionKinds);
-  }
-
-  for (const providers of target.multiRegistrations.values()) {
-    for (const provider of providers) {
-      trackFactoryResolutionKind(provider, factoryResolutionKinds);
-    }
-  }
-}
-
 function providerGraphIsSyncResolvable(state: SyncResolverState, token: Token, visited = new Set<Token>()): boolean {
   if (visited.has(token)) {
     return true;
@@ -502,6 +468,7 @@ function instantiateSyncProvider(provider: NormalizedProvider, state: SyncResolv
         );
       }
 
+      state.cacheOwner.recordFactoryResolution(provider, 'sync');
       return value;
     }
     case 'class': {
@@ -539,7 +506,7 @@ function resolveSyncProvider(provider: NormalizedProvider, state: SyncResolverSt
 
   const instance = instantiateSyncProvider(provider, state);
   state.syncSingletonValues.set(provider.provide, instance);
-  state.singletonCache.set(provider.provide, Promise.resolve(instance));
+  state.cacheOwner.setSingleton(provider.provide, Promise.resolve(instance));
   return instance;
 }
 
@@ -564,7 +531,7 @@ function resolveSyncMultiProvider(provider: NormalizedProvider, state: SyncResol
 
   const instance = instantiateSyncProvider(provider, state);
   state.syncMultiSingletonValues.set(provider, instance);
-  state.multiSingletonCache.set(provider, Promise.resolve(instance));
+  state.cacheOwner.setMultiSingleton(provider, Promise.resolve(instance));
   return instance;
 }
 
@@ -596,16 +563,15 @@ function resolveSyncToken(token: Token, state: SyncResolverState): unknown {
 
 function createSyncResolver(container: BootstrapResult['container']): SyncResolver {
   const introspection = toContainerIntrospection(container);
-  const factoryResolutionKinds = new WeakMap<NormalizedProvider, 'async' | 'sync'>();
-
-  installFactoryResolutionTracking(introspection, factoryResolutionKinds);
+  const rootIntrospection = rootContainerIntrospection(introspection);
 
   const state: SyncResolverState = {
-    factoryResolutionKinds,
+    cacheOwner: rootIntrospection.cacheOwner,
+    factoryResolutionKinds: rootIntrospection.factoryResolutionKinds,
     introspection,
-    multiSingletonCache: rootContainerIntrospection(introspection).multiSingletonCache,
+    multiSingletonCache: rootIntrospection.multiSingletonCache,
     resolutionChain: new Set<Token>(),
-    singletonCache: rootContainerIntrospection(introspection).singletonCache,
+    singletonCache: rootIntrospection.singletonCache,
     syncMultiSingletonValues: new Map<NormalizedProvider, unknown>(),
     syncSingletonValues: new Map<Token, unknown>(),
   };
@@ -746,8 +712,8 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
       ...bootstrapped,
       has: (token) => bootstrapped.container.has(token),
       get: (token) => syncResolver.get(token),
-      resolve: async (token) => {
-        const value = await bootstrapped.container.resolve(token);
+      resolve: async <T>(token: Token<T>) => {
+        const value = await bootstrapped.container.resolve<T>(token);
         await syncResolver.syncFromContainer();
         return value;
       },

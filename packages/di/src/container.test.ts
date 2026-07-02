@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Inject, Scope as ScopeDecorator } from '@fluojs/core';
+import { Inject, Scope as ScopeDecorator, type Token } from '@fluojs/core';
 
 import { Container } from './container.js';
 import { CircularDependencyError, ContainerResolutionError, DuplicateProviderError, InvalidProviderError, RequestScopeResolutionError, ScopeMismatchError } from './errors.js';
@@ -666,6 +666,31 @@ describe('Container', () => {
       expect(afterOverride).not.toBe(beforeOverride);
     });
 
+    it('invalidates nested request-scope descendants when an ancestor dependency is overridden', async () => {
+      const CONFIG = Symbol('NestedConfig');
+
+      class RequestConsumer {
+        constructor(readonly config: string) {}
+      }
+
+      const root = new Container().register(
+        { provide: CONFIG, useValue: 'before-override' },
+        { provide: RequestConsumer, scope: Scope.REQUEST, useClass: RequestConsumer, inject: [CONFIG] },
+      );
+      const parentScope = root.createRequestScope();
+      const descendantScope = parentScope.createRequestScope();
+
+      const beforeOverride = await descendantScope.resolve<RequestConsumer>(RequestConsumer);
+
+      root.override({ provide: CONFIG, useValue: 'after-override' });
+
+      const afterOverride = await descendantScope.resolve<RequestConsumer>(RequestConsumer);
+
+      expect(beforeOverride.config).toBe('before-override');
+      expect(afterOverride.config).toBe('after-override');
+      expect(afterOverride).not.toBe(beforeOverride);
+    });
+
     it('replaces existing multi providers when overriding a token', async () => {
       const token = Symbol('plugins');
       const container = new Container().register(
@@ -805,6 +830,20 @@ describe('Container', () => {
       expect(() => new Container().register(provider)).toThrow('provide token');
     });
 
+    it('throws InvalidProviderError when an object provider uses null provide', () => {
+      const provider = { provide: null, useValue: 'missing-token' } as unknown as Provider;
+
+      expect(() => new Container().register(provider)).toThrow(InvalidProviderError);
+      expect(() => new Container().register(provider)).toThrow('provide token');
+    });
+
+    it('throws InvalidProviderError when an object provider has no strategy', () => {
+      const provider = { provide: Symbol('strategy-less-provider') } as unknown as Provider;
+
+      expect(() => new Container().register(provider)).toThrow(InvalidProviderError);
+      expect(() => new Container().register(provider)).toThrow('exactly one');
+    });
+
     it('throws InvalidProviderError when an object provider has more than one strategy', () => {
       const token = Symbol('ambiguous-provider');
       const provider = { provide: token, useValue: 'value', useFactory: () => 'factory' } as unknown as Provider;
@@ -835,6 +874,90 @@ describe('Container', () => {
 
       expect(() => new Container().register(provider)).toThrow(InvalidProviderError);
       expect(() => new Container().register(provider)).toThrow('useExisting');
+    });
+  });
+
+  describe('inject wrapper immutability', () => {
+    it('returns frozen forwardRef and optional wrapper tokens', () => {
+      class Logger {}
+      class MutatedLogger {}
+
+      const forwardLogger = forwardRef(() => Logger);
+      const optionalLogger = optional(Logger);
+
+      expect(Object.isFrozen(forwardLogger)).toBe(true);
+      expect(Object.isFrozen(optionalLogger)).toBe(true);
+      expect(Reflect.set(forwardLogger, 'forwardRef', () => MutatedLogger)).toBe(false);
+      expect(Reflect.set(optionalLogger, 'token', MutatedLogger)).toBe(false);
+      expect(forwardLogger.forwardRef()).toBe(Logger);
+      expect(optionalLogger.token).toBe(Logger);
+    });
+
+    it('snapshots and freezes provider inject wrappers before caller mutations can affect resolution', async () => {
+      type MutableForwardRefToken<T = unknown> = {
+        __forwardRef__: true;
+        forwardRef: () => Token<T>;
+      };
+      type MutableOptionalInjectToken<T = unknown> = {
+        __optional__: true;
+        token: Token<T>;
+      };
+
+      class Logger {}
+      class MutatedLogger {}
+      const CONSUMER = Symbol('Consumer');
+      const resolveLogger = () => Logger;
+      const forwardLogger: MutableForwardRefToken<Logger | MutatedLogger> = {
+        __forwardRef__: true,
+        forwardRef: resolveLogger,
+      };
+      const optionalLogger: MutableOptionalInjectToken<Logger | MutatedLogger> = {
+        __optional__: true,
+        token: Logger,
+      };
+
+      const container = new Container().register(
+        Logger,
+        {
+          provide: CONSUMER,
+          useFactory: (forwardDependency, optionalDependency) => [forwardDependency, optionalDependency],
+          inject: [forwardLogger, optionalLogger],
+        },
+      );
+
+      forwardLogger.forwardRef = () => MutatedLogger;
+      optionalLogger.token = MutatedLogger;
+
+      const provider = container.inspectResolutionState().registrations.get(CONSUMER);
+
+      if (!provider) {
+        expect.unreachable('expected introspection state to expose the normalized provider');
+      }
+
+      const storedForwardToken = provider.inject[0];
+      const storedOptionalToken = provider.inject[1];
+
+      expect(storedForwardToken).not.toBe(forwardLogger);
+      expect(storedOptionalToken).not.toBe(optionalLogger);
+      expect(Object.isFrozen(storedForwardToken)).toBe(true);
+      expect(Object.isFrozen(storedOptionalToken)).toBe(true);
+
+      if (typeof storedForwardToken !== 'object' || storedForwardToken === null || !('__forwardRef__' in storedForwardToken)) {
+        expect.unreachable('expected the first normalized inject entry to be a forwardRef wrapper');
+      }
+      if (typeof storedOptionalToken !== 'object' || storedOptionalToken === null || !('__optional__' in storedOptionalToken)) {
+        expect.unreachable('expected the second normalized inject entry to be an optional wrapper');
+      }
+
+      expect(Reflect.set(storedForwardToken, 'forwardRef', () => MutatedLogger)).toBe(false);
+      expect(Reflect.set(storedOptionalToken, 'token', MutatedLogger)).toBe(false);
+      expect(storedForwardToken.forwardRef()).toBe(Logger);
+      expect(storedOptionalToken.token).toBe(Logger);
+
+      const resolvedDependencies = await container.resolve<unknown[]>(CONSUMER);
+
+      expect(resolvedDependencies[0]).toBeInstanceOf(Logger);
+      expect(resolvedDependencies[1]).toBeInstanceOf(Logger);
     });
   });
 
@@ -1425,6 +1548,46 @@ describe('Container', () => {
     });
   });
 
+  describe('resolution introspection', () => {
+    it('returns read-only map views and frozen provider records', async () => {
+      const token = Symbol('introspection-token');
+      const plugins = Symbol('introspection-plugins');
+      const container = new Container().register(
+        { provide: token, useValue: 'value' },
+        { provide: plugins, useValue: 'plugin', multi: true },
+      );
+
+      await container.resolve(token);
+      await container.resolve(plugins);
+
+      const state = container.inspectResolutionState();
+      const provider = state.registrations.get(token);
+      const multiProviders = state.multiRegistrations.get(plugins);
+
+      if (!provider || !multiProviders) {
+        expect.unreachable('expected introspection state to expose registered providers');
+      }
+
+      expect(Object.isFrozen(provider)).toBe(true);
+      expect(Object.isFrozen(provider.inject)).toBe(true);
+      expect(Object.isFrozen(multiProviders)).toBe(true);
+      expect(Reflect.get(state.registrations, 'set')).toBeUndefined();
+      expect(Reflect.get(state.registrations, 'source')).toBeUndefined();
+      expect(Reflect.get(state.multiRegistrations, 'clear')).toBeUndefined();
+      expect(Reflect.get(state.multiRegistrations, 'source')).toBeUndefined();
+      expect(Reflect.get(state.singletonCache, 'delete')).toBeUndefined();
+      expect(Reflect.get(state.singletonCache, 'source')).toBeUndefined();
+      expect(Reflect.get(state.multiSingletonCache, 'set')).toBeUndefined();
+      expect(Reflect.get(state.multiSingletonCache, 'source')).toBeUndefined();
+      expect(Reflect.ownKeys(state.registrations).map((key) => Reflect.get(state.registrations, key)).some((value) => value instanceof Map)).toBe(false);
+      expect(Reflect.ownKeys(state.multiRegistrations).map((key) => Reflect.get(state.multiRegistrations, key)).some((value) => value instanceof Map)).toBe(false);
+      expect(Reflect.ownKeys(state.singletonCache).map((key) => Reflect.get(state.singletonCache, key)).some((value) => value instanceof Map)).toBe(false);
+      expect(Reflect.ownKeys(state.multiSingletonCache).map((key) => Reflect.get(state.multiSingletonCache, key)).some((value) => value instanceof Map)).toBe(false);
+      await expect(container.resolve(token)).resolves.toBe('value');
+      await expect(container.resolve<string[]>(plugins)).resolves.toEqual(['plugin']);
+    });
+  });
+
   describe('dispose', () => {
     it('calls onDestroy for resolved singleton instances in reverse creation order', async () => {
       const events: string[] = [];
@@ -1481,6 +1644,40 @@ describe('Container', () => {
       await root.dispose();
 
       expect(events).toEqual(['request', 'singleton']);
+    });
+
+    it('recursively disposes nested request scopes when a non-root request scope is disposed', async () => {
+      const events: string[] = [];
+
+      class ParentRequestService {
+        onDestroy() {
+          events.push('parent');
+        }
+      }
+
+      class ChildRequestService {
+        onDestroy() {
+          events.push('child');
+        }
+      }
+
+      const root = new Container().register(
+        { provide: ParentRequestService, scope: Scope.REQUEST, useClass: ParentRequestService },
+        { provide: ChildRequestService, scope: Scope.REQUEST, useClass: ChildRequestService },
+      );
+      const parentScope = root.createRequestScope();
+      const childScope = parentScope.createRequestScope();
+
+      await parentScope.resolve(ParentRequestService);
+      await childScope.resolve(ChildRequestService);
+
+      await parentScope.dispose();
+
+      expect(events).toEqual(['child', 'parent']);
+
+      await root.dispose();
+
+      expect(events).toEqual(['child', 'parent']);
     });
 
     it('removes materialized request scopes from the root child scope registry on dispose', async () => {
@@ -1703,6 +1900,39 @@ describe('Container', () => {
       await Promise.resolve();
       await container.resolve(Consumer);
       await container.dispose();
+
+      expect(events).toEqual(['consumer:before-override', 'consumer:after-override']);
+    });
+
+    it('disposes stale nested request-scope consumers invalidated by ancestor overrides exactly once', async () => {
+      const events: string[] = [];
+      const CONFIG = Symbol('NestedDisposableConsumerConfig');
+
+      class RequestConsumer {
+        constructor(readonly config: string) {}
+
+        onDestroy() {
+          events.push(`consumer:${this.config}`);
+        }
+      }
+
+      const root = new Container().register(
+        { provide: CONFIG, useValue: 'before-override' },
+        { provide: RequestConsumer, scope: Scope.REQUEST, useClass: RequestConsumer, inject: [CONFIG] },
+      );
+      const parentScope = root.createRequestScope();
+      const descendantScope = parentScope.createRequestScope();
+
+      await descendantScope.resolve(RequestConsumer);
+
+      root.override({ provide: CONFIG, useValue: 'after-override' });
+      await Promise.resolve();
+
+      expect(events).toEqual(['consumer:before-override']);
+
+      await descendantScope.resolve(RequestConsumer);
+      await parentScope.dispose();
+      await root.dispose();
 
       expect(events).toEqual(['consumer:before-override', 'consumer:after-override']);
     });
