@@ -1,14 +1,109 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, watch, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ConfigModule } from './module.js';
 import { CONFIG_RELOADER, ConfigReloadManager, ConfigReloadModule } from './reload-module.js';
 import { ConfigService } from './service.js';
 import type { ConfigDictionary, ConfigLoadOptions, ConfigReloader } from './types.js';
+
+const watchCallbacks = vi.hoisted(() => new Set<() => void>());
+
+type ProcessWithGetBuiltinModule = typeof process & {
+  getBuiltinModule?: typeof process.getBuiltinModule;
+};
+
+const processWithGetBuiltinModule = process as ProcessWithGetBuiltinModule;
+const originalGetBuiltinModule = processWithGetBuiltinModule.getBuiltinModule?.bind(process);
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+
+  return {
+    ...actual,
+    watch: vi.fn((_filename, _options, listener) => {
+      const callback = () => listener('change', null);
+      watchCallbacks.add(callback);
+
+      return {
+        close: vi.fn(() => {
+          watchCallbacks.delete(callback);
+        }),
+      };
+    }),
+  };
+});
+
+function emitWatchChange(): void {
+  for (const callback of [...watchCallbacks]) {
+    callback();
+  }
+}
+
+function spyOnGetBuiltinModule(implementation: typeof process.getBuiltinModule): void {
+  if (!processWithGetBuiltinModule.getBuiltinModule) {
+    Object.defineProperty(processWithGetBuiltinModule, 'getBuiltinModule', {
+      configurable: true,
+      value: implementation,
+      writable: true,
+    });
+  }
+
+  vi.spyOn(processWithGetBuiltinModule as typeof process & { getBuiltinModule: typeof process.getBuiltinModule }, 'getBuiltinModule').mockImplementation(implementation);
+}
+
+function installNodeBuiltinMock(): void {
+  spyOnGetBuiltinModule(((id: string) => {
+    if (id === 'node:crypto') {
+      return { createHash };
+    }
+
+    if (id === 'node:fs') {
+      return {
+        existsSync,
+        readFileSync,
+        watch,
+      };
+    }
+
+    if (id === 'node:path') {
+      return {
+        basename,
+        dirname,
+        join,
+      };
+    }
+
+    return originalGetBuiltinModule?.(id as Parameters<typeof process.getBuiltinModule>[0]);
+  }) as typeof process.getBuiltinModule);
+}
+
+async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+
+  throw new Error('Timed out waiting for condition.');
+}
+
+beforeEach(() => {
+  watchCallbacks.clear();
+  installNodeBuiltinMock();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function extractProviders(moduleRef: new () => unknown): Provider[] {
   return (getModuleMetadata(moduleRef)?.providers ?? []) as Provider[];
@@ -174,6 +269,55 @@ describe('ConfigReloadManager', () => {
       expect(service.get('PORT')).toBe('4300');
       expect(manager.current()['PORT']).toBe('4300');
       expect(updates).toEqual(['4200', '4300']);
+    } finally {
+      manager.close();
+    }
+  });
+
+  it('starts watch reloads on application bootstrap and closes watchers during module shutdown', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-reload-module-watch-lifecycle-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const service = new ConfigService<ConfigDictionary>({ PORT: '4000' });
+    const manager = new ConfigReloadManager(service, {
+      cwd,
+      envFile: envPath,
+      processEnv: {},
+      watch: true,
+    });
+
+    try {
+      const updates: string[] = [];
+      manager.subscribe((snapshot, reason) => {
+        if (reason !== 'watch') {
+          return;
+        }
+
+        const port = snapshot['PORT'];
+        if (typeof port === 'string') {
+          updates.push(port);
+        }
+      });
+
+      manager.onApplicationBootstrap();
+      expect(watchCallbacks.size).toBe(1);
+
+      writeFileSync(envPath, 'PORT=4100\n');
+      emitWatchChange();
+      await waitForCondition(() => updates.includes('4100'));
+
+      expect(service.get('PORT')).toBe('4100');
+
+      manager.onModuleDestroy();
+      expect(watchCallbacks.size).toBe(0);
+
+      writeFileSync(envPath, 'PORT=4200\n');
+      emitWatchChange();
+
+      expect(updates).toEqual(['4100']);
+      expect(service.get('PORT')).toBe('4100');
     } finally {
       manager.close();
     }
