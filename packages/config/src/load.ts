@@ -524,7 +524,7 @@ function readConfigSchemaResult(result: unknown): ConfigDictionary {
     throw createInvalidConfigError(new Error('Standard Schema config validator returned a malformed result.'));
   }
 
-  return result.value;
+  return cloneConfigDictionary(result.value);
 }
 
 function validateConfig(options: NormalizedLoadOptions, merged: ConfigDictionary): ConfigDictionary {

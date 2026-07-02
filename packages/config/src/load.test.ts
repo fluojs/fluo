@@ -342,6 +342,31 @@ describe('loadConfig', () => {
     });
   });
 
+  it('replaces arrays from higher-precedence sources instead of merging them', () => {
+    const loaded = loadConfig({
+      defaults: {
+        featureFlags: ['default-alpha', 'default-beta'],
+        nested: {
+          endpoints: ['https://default.example.test'],
+        },
+      },
+      processEnv: {},
+      runtimeOverrides: {
+        featureFlags: ['runtime-only'],
+        nested: {
+          endpoints: ['https://runtime.example.test'],
+        },
+      },
+    });
+
+    expect(loaded).toEqual({
+      featureFlags: ['runtime-only'],
+      nested: {
+        endpoints: ['https://runtime.example.test'],
+      },
+    });
+  });
+
   it('uses a Standard Schema value as the final config snapshot', () => {
     const loaded = loadConfig({
       defaults: { PORT: '3000' },
@@ -349,6 +374,26 @@ describe('loadConfig', () => {
     });
 
     expect(loaded.PORT).toBe(3000);
+  });
+
+  it('detaches Standard Schema values before storing reloader snapshots', () => {
+    const schemaValue = { nested: { value: 'validated' } };
+    const schema: ConfigSchema = {
+      '~standard': {
+        validate: () => ({ value: schemaValue }),
+        vendor: 'test',
+        version: 1,
+      },
+    };
+
+    const reloader = createConfigReloader({ schema });
+    schemaValue.nested.value = 'mutated-after-validation';
+
+    try {
+      expect(reloader.current()).toEqual({ nested: { value: 'validated' } });
+    } finally {
+      reloader.close();
+    }
   });
 
   it('fails with INVALID_CONFIG when Standard Schema reports issues', () => {
@@ -607,6 +652,10 @@ describe('loadConfig', () => {
         version: 1,
       },
     };
+    Object.defineProperty(schema['~standard'], 'validate', {
+      configurable: true,
+      value: () => ({ value: { FEATURE: 'nested-schema-mutated', PORT: 9400 } }),
+    });
 
     try {
       const updates: Array<{ feature: unknown; port: unknown; reason: string }> = [];
@@ -1378,14 +1427,27 @@ describe('ConfigModule', () => {
   });
 
   it('snapshots caller-owned options during ConfigModule registration', () => {
+    const schema = createPortSchema();
     const options: ConfigModuleOptions = {
       defaults: { nested: { value: 'registered' }, PORT: '4000' },
       processEnv: { PORT: '4100' },
+      schema,
     };
     const moduleRef = ConfigModule.forRoot(options);
 
     options.defaults = { nested: { value: 'mutated' }, PORT: '5000' };
     options.processEnv = { PORT: '5100' };
+    options.schema = {
+      '~standard': {
+        validate: () => ({ value: { nested: { value: 'replaced-schema' }, PORT: 5200 } }),
+        vendor: 'test',
+        version: 1,
+      },
+    };
+    Object.defineProperty(schema['~standard'], 'validate', {
+      configurable: true,
+      value: () => ({ value: { nested: { value: 'nested-schema-mutated' }, PORT: 5300 } }),
+    });
 
     const providers = getModuleMetadata(moduleRef)?.providers as
       | Array<{ provide?: unknown; useFactory?: () => unknown }>
@@ -1393,7 +1455,7 @@ describe('ConfigModule', () => {
     const configProvider = providers?.find((provider) => provider.provide === ConfigService);
     const service = configProvider?.useFactory?.() as ConfigService | undefined;
 
-    expect(service?.get('PORT')).toBe('4100');
+    expect(service?.get('PORT')).toBe(4100);
     expect(service?.get('nested.value' as never)).toBe('registered');
   });
 
