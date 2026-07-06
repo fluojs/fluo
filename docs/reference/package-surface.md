@@ -20,7 +20,7 @@
 
 | runtime target | adapter package | notes |
 | --- | --- | --- |
-| **Node.js (Default)** | `@fluojs/platform-fastify` | Recommended starter path for high performance on Node.js. |
+| **Node.js (Default)** | `@fluojs/platform-fastify` | Recommended starter path for high performance on Node.js 20+. The package declares `engines.node >=20.0.0`, owns the Fastify-backed Node `http`/`https` listener, and accepts Node.js `https` server options through the adapter/bootstrap startup surface when the process terminates TLS directly. |
 | **Node.js (Bare)** | `@fluojs/platform-nodejs` | Use when you need direct control over the Node HTTP listener. The package targets Node.js 20+ and declares `engines.node >=20.0.0`. |
 | **Node.js (Express)** | `@fluojs/platform-express` | Use when existing Express hosting or server integrations must remain at the platform boundary. Application-level middleware still uses fluo's `Middleware` contract; native Express/Connect `(req, res, next)` functions are not portable fluo middleware. |
 | **Bun** | `@fluojs/platform-bun` | Official Bun-native fetch-style startup path. |

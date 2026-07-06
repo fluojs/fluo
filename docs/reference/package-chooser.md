@@ -11,7 +11,8 @@
 | Need the base application stack | `@fluojs/core`, `@fluojs/di`, `@fluojs/runtime` | Start here for any Node.js web API. |
 | Need HTTP routing | `@fluojs/http` | Required for controller and route execution. |
 | Need GraphQL endpoints | `@fluojs/graphql` | Add on top of the HTTP stack. |
-| Need the default Node.js adapter | `@fluojs/platform-fastify` | Recommended starter path for most projects. |
+| Need the default Node.js adapter | `@fluojs/platform-fastify` | Recommended starter path for most Node.js 20+ projects; the package declares `engines.node >=20.0.0`. |
+| Need Fastify-owned HTTPS/TLS startup | `@fluojs/platform-fastify` | Pass Node.js `https` server options on the adapter/bootstrap startup surface when the process owns TLS directly. If TLS terminates at a load balancer, ingress, or gateway, keep the adapter on plain HTTP behind that boundary. |
 | Need Express host compatibility | `@fluojs/platform-express` | Also available as a first-class `fluo new` application starter on Node.js. Use fluo `Middleware` for the application pipeline; keep native Express/Connect middleware in platform-specific integration code or wrap it behind the fluo contract. |
 | Need direct Node.js HTTP control | `@fluojs/platform-nodejs` | Also available as a first-class `fluo new` application starter on Node.js. |
 | Need request validation | `@fluojs/validation` | Add when DTO binding and validation are required. |
