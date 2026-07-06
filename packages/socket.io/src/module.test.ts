@@ -624,6 +624,7 @@ describe('@fluojs/socket.io', () => {
 
   it('passes Node-backed handshake request objects to connection and message guards at runtime', async () => {
     let connectionRequest: SocketIoHandshakeRequest | undefined;
+    let handlerRequest: SocketIoHandshakeRequest | undefined;
     let messageRequest: SocketIoHandshakeRequest | undefined;
 
     @WebSocketGateway({ path: '/node-request-shape' })
@@ -632,9 +633,10 @@ describe('@fluojs/socket.io', () => {
       onPing(
         _payload: unknown,
         _socket: Socket,
-        _request: SocketIoHandshakeRequest,
+        request: SocketIoHandshakeRequest,
         acknowledgement?: (response: string) => void,
       ) {
+        handlerRequest = request;
         acknowledgement?.('ok');
       }
     }
@@ -676,15 +678,18 @@ describe('@fluojs/socket.io', () => {
 
       expect(acknowledgement).toBe('ok');
       const observedConnectionRequest = expectDefined(connectionRequest, 'Expected connection guard request to be captured.');
+      const observedHandlerRequest = expectDefined(handlerRequest, 'Expected handler request to be captured.');
       const observedMessageRequest = expectDefined(messageRequest, 'Expected message guard request to be captured.');
 
       expect(observedConnectionRequest).not.toBeInstanceOf(Request);
+      expect(observedHandlerRequest).not.toBeInstanceOf(Request);
       expect(observedMessageRequest).not.toBeInstanceOf(Request);
-      if (observedConnectionRequest instanceof Request || observedMessageRequest instanceof Request) {
-        throw new Error('Expected Node-backed guards to receive Node-like handshake requests.');
+      if (observedConnectionRequest instanceof Request || observedHandlerRequest instanceof Request || observedMessageRequest instanceof Request) {
+        throw new Error('Expected Node-backed guards and handlers to receive Node-like handshake requests.');
       }
       expect(observedConnectionRequest.method).toBe('GET');
       expect(observedConnectionRequest.headers.host).toContain('127.0.0.1');
+      expect(observedHandlerRequest).toBe(observedConnectionRequest);
       expect(observedMessageRequest).toBe(observedConnectionRequest);
     } finally {
       socket?.close();
@@ -695,6 +700,7 @@ describe('@fluojs/socket.io', () => {
   it('passes Bun Request handshake objects to connection and message guards at runtime', async () => {
     const adapter = new TestBunSocketIoAdapter(0);
     let connectionRequest: SocketIoHandshakeRequest | undefined;
+    let handlerRequest: SocketIoHandshakeRequest | undefined;
     let messageRequest: SocketIoHandshakeRequest | undefined;
 
     @WebSocketGateway({ path: '/bun-request-shape' })
@@ -703,9 +709,10 @@ describe('@fluojs/socket.io', () => {
       onPing(
         _payload: unknown,
         _socket: Socket,
-        _request: SocketIoHandshakeRequest,
+        request: SocketIoHandshakeRequest,
         acknowledgement?: (response: string) => void,
       ) {
+        handlerRequest = request;
         acknowledgement?.('ok');
       }
     }
@@ -750,14 +757,18 @@ describe('@fluojs/socket.io', () => {
 
       expect(acknowledgement).toBe('ok');
       const observedConnectionRequest = expectDefined(connectionRequest, 'Expected connection guard request to be captured.');
+      const observedHandlerRequest = expectDefined(handlerRequest, 'Expected handler request to be captured.');
       const observedMessageRequest = expectDefined(messageRequest, 'Expected message guard request to be captured.');
 
       expect(observedConnectionRequest).toBeInstanceOf(Request);
+      expect(observedHandlerRequest).toBeInstanceOf(Request);
       expect(observedMessageRequest).toBeInstanceOf(Request);
-      if (!(observedConnectionRequest instanceof Request) || !(observedMessageRequest instanceof Request)) {
-        throw new Error('Expected Bun guards to receive Web-standard Request instances.');
+      if (!(observedConnectionRequest instanceof Request) || !(observedHandlerRequest instanceof Request) || !(observedMessageRequest instanceof Request)) {
+        throw new Error('Expected Bun guards and handlers to receive Web-standard Request instances.');
       }
       expect(new URL(observedConnectionRequest.url).pathname).toBe('/socket.io/');
+      expect(observedHandlerRequest.url).toBe(observedConnectionRequest.url);
+      expect(observedHandlerRequest.headers.get('host')).toBe(observedConnectionRequest.headers.get('host'));
       expect(observedMessageRequest.url).toBe(observedConnectionRequest.url);
       expect(observedMessageRequest.headers.get('host')).toBe(observedConnectionRequest.headers.get('host'));
     } finally {
