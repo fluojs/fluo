@@ -105,7 +105,7 @@ export class MyService {
 
 ## 24.5 Edge-Native WebSockets
 
-Cloudflare supports `WebSocketPair` for server-side WebSockets. fluo's WebSocket module provides bindings for this environment, so you can review FluoShop realtime features within edge constraints. Configure that binding before the Worker adapter's `listen()` boundary; after the Worker is accepting requests, replacing the defined binding is rejected and shutdown-time upgrade attempts receive the adapter's JSON `503` response instead of changing ownership under a live isolate.
+Cloudflare supports `WebSocketPair` for server-side WebSockets. fluo's WebSocket module provides bindings for this environment, so you can review FluoShop realtime features within edge constraints. Configure that binding before the Worker adapter's `listen()` boundary; after the Worker is accepting requests, replacing the defined binding is rejected and shutdown-time upgrade attempts receive the adapter's JSON `503` response instead of changing ownership under a live isolate. Worker upgrade guards receive Web-standard `Request` values and can reject before `WebSocketPair` acceptance with `false`, a structured `WebSocketUpgradeRejection`, or a thrown HTTP exception. Gateway return values are awaited and ignored, so edge replies must still use explicit socket sends.
 
 ```typescript
 // When the adapter is active, gateways automatically use Cloudflare's WebSocketPair.
