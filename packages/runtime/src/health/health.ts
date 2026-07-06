@@ -41,7 +41,18 @@ export interface HealthModuleOptions {
  */
 export type ReadinessCheck = (ctx: import('@fluojs/http').RequestContext) => boolean | Promise<boolean>;
 
-function createRuntimeHealthModule(options: HealthModuleOptions = {}): ModuleType {
+/** Runtime-owned health module class returned by `HealthModule.forRoot(...)`. */
+export interface RuntimeHealthModule extends ModuleType {
+  readonly name: string;
+  /** Register an additional readiness predicate for the module-owned `/ready` route. */
+  addReadinessCheck(fn: ReadinessCheck): void;
+  /** Mark the module-owned `/ready` route as ready after bootstrap completes. */
+  markReady(): void;
+  /** Mark the module-owned `/ready` route as starting before or during shutdown. */
+  markStarting(): void;
+}
+
+function createRuntimeHealthModule(options: HealthModuleOptions = {}): RuntimeHealthModule {
   const basePath = options.path ?? '';
   const readinessChecks: ReadinessCheck[] = [];
   let ready = false;
@@ -131,7 +142,7 @@ export class HealthModule {
    * @param options Runtime health endpoint options.
    * @returns A module class that can be imported into an application module.
    */
-  static forRoot(options: HealthModuleOptions = {}): ModuleType {
+  static forRoot(options: HealthModuleOptions = {}): RuntimeHealthModule {
     return createRuntimeHealthModule(options);
   }
 }
@@ -143,6 +154,6 @@ export class HealthModule {
  * @param options Runtime health endpoint options.
  * @returns A module class that can be imported into an application module.
  */
-export function createHealthModule(options: HealthModuleOptions = {}): ModuleType {
+export function createHealthModule(options: HealthModuleOptions = {}): RuntimeHealthModule {
   return HealthModule.forRoot(options);
 }

@@ -4,15 +4,10 @@ import type { FrameworkRequest, FrameworkResponse, RequestContext } from '@fluoj
 
 import { bootstrapApplication, defineModule } from '../bootstrap.js';
 import type { ModuleType } from '../types.js';
-import { HealthModule } from './health.js';
+import { HealthModule, type RuntimeHealthModule } from './health.js';
 import * as healthModuleExports from './health.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
-type ReadinessManagedModule = ModuleType & {
-  addReadinessCheck(fn: (ctx: RequestContext) => boolean | Promise<boolean>): void;
-  markReady(): void;
-  markStarting(): void;
-};
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -79,7 +74,7 @@ describe('createHealthModule', () => {
   });
 
   it('exposes the application-facing HealthModule.forRoot facade', async () => {
-    const healthModule = HealthModule.forRoot() as ReadinessManagedModule;
+    const healthModule: RuntimeHealthModule = HealthModule.forRoot();
 
     class AppModule {}
 
@@ -100,7 +95,7 @@ describe('createHealthModule', () => {
   });
 
   it('returns a starting readiness status until the runtime marks the module ready', async () => {
-    const healthModule = HealthModule.forRoot() as ReadinessManagedModule;
+    const healthModule: RuntimeHealthModule = HealthModule.forRoot();
 
     class AppModule {}
 
@@ -130,7 +125,7 @@ describe('createHealthModule', () => {
   });
 
   it('keeps liveness unchanged and respects failing readiness checks after bootstrap', async () => {
-    const healthModule = HealthModule.forRoot() as ReadinessManagedModule;
+    const healthModule: RuntimeHealthModule = HealthModule.forRoot();
     healthModule.addReadinessCheck(() => false);
 
     class AppModule {}
@@ -157,8 +152,8 @@ describe('createHealthModule', () => {
   });
 
   it('passes the request context into readiness checks', async () => {
-    const healthModule = HealthModule.forRoot() as ReadinessManagedModule;
-    healthModule.addReadinessCheck((ctx) => ctx.request.path === '/ready');
+    const healthModule: RuntimeHealthModule = HealthModule.forRoot();
+    healthModule.addReadinessCheck((ctx: RequestContext) => ctx.request.path === '/ready');
 
     class AppModule {}
 
@@ -179,12 +174,12 @@ describe('createHealthModule', () => {
   });
 
   it('supports custom health responses while preserving readiness behavior', async () => {
-    const healthModule = HealthModule.forRoot({
+    const healthModule: RuntimeHealthModule = HealthModule.forRoot({
       healthCheck: async () => ({
         body: { status: 'unavailable', subsystem: 'cache' },
         statusCode: 503,
       }),
-    }) as ReadinessManagedModule;
+    });
 
     class AppModule {}
 
@@ -210,7 +205,7 @@ describe('createHealthModule', () => {
   });
 
   it('marks readiness as starting as soon as application close begins', async () => {
-    const healthModule = HealthModule.forRoot() as ReadinessManagedModule;
+    const healthModule: RuntimeHealthModule = HealthModule.forRoot();
     const shutdownBlocker = createDeferred<void>();
     const shutdownStarted = createDeferred<void>();
 
@@ -250,7 +245,7 @@ describe('createHealthModule', () => {
   });
 
   it('keeps readiness out of rotation when shutdown hooks fail', async () => {
-    const healthModule = HealthModule.forRoot() as ReadinessManagedModule;
+    const healthModule: RuntimeHealthModule = HealthModule.forRoot();
     const shutdownBlocker = createDeferred<void>();
     const shutdownStarted = createDeferred<void>();
 
