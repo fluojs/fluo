@@ -36,6 +36,7 @@ function assertPositiveInteger(value: number, label: string): void {
  */
 export class JwksClient {
   private readonly cache = new Map<string, { expiresAt: number; key: KeyObject }>();
+  private readonly activeFetchControllers = new Set<AbortController>();
   private lifecycleGeneration = 0;
 
   constructor(
@@ -58,6 +59,12 @@ export class JwksClient {
   dispose(): void {
     this.lifecycleGeneration += 1;
     this.cache.clear();
+
+    for (const controller of this.activeFetchControllers) {
+      controller.abort();
+    }
+
+    this.activeFetchControllers.clear();
   }
 
   private isAbortError(error: unknown): boolean {
@@ -128,41 +135,59 @@ export class JwksClient {
   }
 
   private async fetchKeys(): Promise<Jwk[]> {
-    let response: Response;
+    const fetchGeneration = this.lifecycleGeneration;
     const controller = new AbortController();
+    this.activeFetchControllers.add(controller);
+    let timedOut = false;
     const timeout = setTimeout(() => {
+      timedOut = true;
       controller.abort();
     }, this.requestTimeoutMs);
     timeout.unref?.();
 
     try {
-      response = await fetch(this.uri, { signal: controller.signal });
+      const response = await fetch(this.uri, { signal: controller.signal });
+
+      if (!response.ok) {
+        throw new JwtConfigurationError(`JWKS endpoint returned HTTP ${response.status}.`);
+      }
+
+      let body: JwksResponse;
+
+      try {
+        body = (await response.json()) as JwksResponse;
+      } catch (error) {
+        if (this.isAbortError(error)) {
+          throw error;
+        }
+
+        throw new JwtConfigurationError('JWKS endpoint did not return valid JSON.');
+      }
+
+      if (!Array.isArray(body.keys)) {
+        throw new JwtConfigurationError('JWKS endpoint did not return a keys array.');
+      }
+
+      return body.keys;
     } catch (error) {
+      if (error instanceof JwtConfigurationError) {
+        throw error;
+      }
+
       if (this.isAbortError(error)) {
-        throw new JwtConfigurationError(`JWKS fetch timed out after ${String(this.requestTimeoutMs)}ms.`);
+        if (timedOut) {
+          throw new JwtConfigurationError(`JWKS fetch timed out after ${String(this.requestTimeoutMs)}ms.`);
+        }
+
+        if (fetchGeneration !== this.lifecycleGeneration) {
+          throw new JwtConfigurationError('JWKS client was disposed while fetching keys.');
+        }
       }
 
       throw new JwtConfigurationError(`Failed to fetch JWKS from "${this.uri}".`);
     } finally {
       clearTimeout(timeout);
+      this.activeFetchControllers.delete(controller);
     }
-
-    if (!response.ok) {
-      throw new JwtConfigurationError(`JWKS endpoint returned HTTP ${response.status}.`);
-    }
-
-    let body: JwksResponse;
-
-    try {
-      body = (await response.json()) as JwksResponse;
-    } catch {
-      throw new JwtConfigurationError('JWKS endpoint did not return valid JSON.');
-    }
-
-    if (!Array.isArray(body.keys)) {
-      throw new JwtConfigurationError('JWKS endpoint did not return a keys array.');
-    }
-
-    return body.keys;
   }
 }
