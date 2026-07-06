@@ -30,7 +30,7 @@ Framework-agnostic internationalization core surface for fluo applications.
 npm install @fluojs/i18n
 ```
 
-The root entry point depends only on `@fluojs/core`. Optional subpaths keep their integration dependencies as optional peers: install `intl-messageformat` for `@fluojs/i18n/icu`, `@fluojs/http` for `@fluojs/i18n/http`, and `@fluojs/validation` for `@fluojs/i18n/validation` when you opt into those surfaces. Existing subpath users should add those peer dependencies to their application or package manifest before upgrading to the release that includes this dependency boundary change.
+The root entry point depends only on `@fluojs/core`, does not declare a Node.js engine floor, and is safe to import in framework-agnostic bundles. Optional subpaths keep their integration dependencies as optional peers: install `intl-messageformat` for `@fluojs/i18n/icu`, `@fluojs/http` for `@fluojs/i18n/http`, and `@fluojs/validation` for `@fluojs/i18n/validation` when you opt into those surfaces. Existing subpath users should add those peer dependencies to their application or package manifest before upgrading to the release that includes this dependency boundary change.
 
 ## When to Use
 
@@ -67,6 +67,8 @@ import { I18nModule } from '@fluojs/i18n';
 })
 class AppModule {}
 ```
+
+`I18nModule.forRoot(...)` exports `I18nService` as a global provider by default so sibling modules can inject the shared service after the root package is imported once. Pass `global: false` when the service should stay visible only to the module that imports the i18n module.
 
 ## Core Translation
 
@@ -419,7 +421,7 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 
 | Export | Description |
 |---|---|
-| `I18nModule` | Module facade for registering the core i18n service surface. |
+| `I18nModule` | Module facade for registering the core i18n service surface; providers are global by default and can be kept module-local with `global: false`. |
 | `I18nService` | Core service that owns detached options/catalog snapshots, resolves translations, and exposes explicit-locale `Intl` formatting helpers (`formatDateTime`, `formatNumber`, `formatCurrency`, `formatPercent`, `formatList`, `formatRelativeTime`). |
 | `createI18n(options)` | Creates a standalone `I18nService` without module registration. |
 | `I18nError` | Base i18n package error with a stable error code. |
