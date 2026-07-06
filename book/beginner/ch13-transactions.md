@@ -225,10 +225,10 @@ When you use Fluo and Prisma, you build systems on a foundation that takes ACID 
 You should also think about how transaction integrity affects system scalability. A system that preserves high data quality through strict transactions is much easier to scale and understand than one full of partial writes and inconsistent states. As the system grows, these early architecture decisions return major value by reducing technical debt and production incidents.
 
 ### Advanced Transaction Patterns
-Beyond the basic service-layer and request-transaction patterns, Fluo also supports more advanced scenarios:
-1. **Parallel transactions**: Running independent operations concurrently when they do not share the same resource dependencies.
-2. **Selective rollback**: Using finer-grained error handling to decide whether to roll back the whole block or handle the error gracefully without affecting the outer context.
-3. **Transaction hooks**: Running logic immediately before or after commit or rollback, useful for synchronization with external caches or message brokers.
+Beyond the basic service-layer and request-transaction patterns, you may encounter more advanced application-level scenarios:
+1. **Parallel transaction blocks**: Running independent `transaction(...)` calls concurrently when they do not share the same resource dependencies.
+2. **Selective rollback policy**: Keeping error handling inside the transaction callback explicit so the block either throws and rolls back or returns a deliberate result.
+3. **Post-commit side effects**: Running cache or message-broker synchronization after the `transaction(...)` promise resolves, rather than looking for built-in transaction hook APIs.
 
 Once you master these patterns, you can apply the same rules you used in small projects consistently to more demanding enterprise requirements.
 
