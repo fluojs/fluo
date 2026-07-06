@@ -354,6 +354,28 @@ describe('@fluojs/testing', () => {
     expect(disposed).toEqual(['b', 'a']);
   });
 
+  it('cleans up sync singleton instances materialized through get() when the container is disposed', async () => {
+    const disposed: string[] = [];
+
+    class SingletonService {
+      onDestroy() {
+        disposed.push('singleton');
+      }
+    }
+
+    @Module({ providers: [SingletonService] })
+    class SingletonCleanupModule {}
+
+    const testingModule = await createTestingModule({ rootModule: SingletonCleanupModule }).compile();
+    const service = testingModule.get<SingletonService>(SingletonService);
+
+    expect(service).toBeInstanceOf(SingletonService);
+
+    await testingModule.container.dispose();
+
+    expect(disposed).toEqual(['singleton']);
+  });
+
   it('overrides providers before resolution', async () => {
     class Logger {
       readonly name = 'logger';
@@ -1177,6 +1199,41 @@ describe('createTestApp', () => {
       await app.close();
     }
   });
+
+  it('isolates request-scoped providers for request builder sends and direct app dispatch', async () => {
+    let created = 0;
+
+    @ScopeDecorator('request')
+    class RequestCounter {
+      readonly id = ++created;
+    }
+
+    @Controller('/request-scope')
+    class RequestScopeController {
+      @Get('/')
+      async read(_input: undefined, context: RequestContext) {
+        const counter = await context.container.resolve(RequestCounter);
+        return { id: counter.id };
+      }
+    }
+
+    @Module({ controllers: [RequestScopeController], providers: [RequestCounter] })
+    class RequestScopeModule {}
+
+    const app = await createTestApp({ rootModule: RequestScopeModule });
+
+    try {
+      const requestResponse = await app.request('GET', '/request-scope').send();
+      const dispatchResponse = await app.dispatch({ method: 'GET', path: '/request-scope' });
+
+      expect(requestResponse.status).toBe(200);
+      expect(dispatchResponse.status).toBe(200);
+      expect(requestResponse.body).toEqual({ id: 1 });
+      expect(dispatchResponse.body).toEqual({ id: 2 });
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 describe('TestingModuleRef.dispatch', () => {
@@ -1304,6 +1361,37 @@ describe('TestingModuleRef.dispatch', () => {
     expect(second.status).toBe(200);
     expect(second.body).toEqual({ count: 2 });
     expect(service.count).toBe(2);
+  });
+
+  it('isolates request-scoped providers for each module dispatch call', async () => {
+    let created = 0;
+
+    @ScopeDecorator('request')
+    class RequestCounter {
+      readonly id = ++created;
+    }
+
+    @Controller('/module-request-scope')
+    class ModuleRequestScopeController {
+      @Get('/')
+      async read(_input: undefined, context: RequestContext) {
+        const counter = await context.container.resolve(RequestCounter);
+        return { id: counter.id };
+      }
+    }
+
+    @Module({ controllers: [ModuleRequestScopeController], providers: [RequestCounter] })
+    class ModuleRequestScopeModule {}
+
+    const testingModule = await createTestingModule({ rootModule: ModuleRequestScopeModule }).compile();
+
+    const first = await testingModule.dispatch({ method: 'GET', path: '/module-request-scope' });
+    const second = await testingModule.dispatch({ method: 'GET', path: '/module-request-scope' });
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(first.body).toEqual({ id: 1 });
+    expect(second.body).toEqual({ id: 2 });
   });
 });
 

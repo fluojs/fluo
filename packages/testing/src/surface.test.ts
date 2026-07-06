@@ -13,6 +13,7 @@ import * as testing from './index.js';
 import * as mock from './mock.js';
 import * as portability from './portability/http-adapter-portability.js';
 import * as webPortability from './portability/web-runtime-adapter-portability.js';
+import type { DeepMocked as RootDeepMocked } from './index.js';
 import type { DeepMocked } from './types.js';
 import * as vitestTooling from './vitest/tooling.js';
 import * as vitestEntry from './vitest.js';
@@ -37,6 +38,9 @@ type _DeepMockedPropertiesRemainUnchanged = Assert<
 >;
 type _DeepMockedMockContextPreservesCallTuples = Assert<
   IsAssignable<DeepMocked<LegacyDeepMockedConsumerService>['findById']['mock']['calls'], [id: string][]>
+>;
+type _RootDeepMockedPreservesVitestMockCompatibility = Assert<
+  IsAssignable<RootDeepMocked<LegacyDeepMockedConsumerService>['findById'], Mock<(id: string) => Promise<{ id: string }>>>
 >;
 
 const packageRoot = new URL('..', import.meta.url);
@@ -209,6 +213,7 @@ describe('@fluojs/testing surface', () => {
 
     expect(readFileSync(resolve(packageRootPath, 'dist/types.d.ts'), 'utf8')).toContain('type DeepMocked<T>');
     expect(readFileSync(resolve(packageRootPath, 'dist/mock.d.ts'), 'utf8')).toContain('./mock-types.js');
+    expect(readFileSync(resolve(packageRootPath, 'dist/index.d.ts'), 'utf8')).not.toContain('TestingMockFunction');
   }, 300_000);
 
   it('imports every public package subpath through the published export map', async () => {

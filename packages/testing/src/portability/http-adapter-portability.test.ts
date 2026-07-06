@@ -325,6 +325,9 @@ registerPortabilitySuite(
     name: 'node',
     run: runNodeApplication,
   }),
+  {
+    streamDrainCloseEdge: true,
+  },
 );
 
 registerPortabilitySuite(
@@ -334,6 +337,9 @@ registerPortabilitySuite(
     name: 'nodejs-platform',
     run: runNodejsApplication,
   }),
+  {
+    streamDrainCloseEdge: true,
+  },
 );
 
 registerPortabilitySuite(
@@ -343,6 +349,9 @@ registerPortabilitySuite(
     name: 'express',
     run: runExpressApplication,
   }),
+  {
+    streamDrainCloseEdge: true,
+  },
 );
 
 const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness({

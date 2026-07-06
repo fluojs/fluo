@@ -1447,6 +1447,29 @@ describe('HTTP adapter raw-body portability discoverability', () => {
   });
 });
 
+describe('Testing request-scope and surface discoverability', () => {
+  const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+  const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const englishReadme = readFileSync(join(repoRoot, 'packages/testing/README.md'), 'utf8');
+  const koreanReadme = readFileSync(join(repoRoot, 'packages/testing/README.ko.md'), 'utf8');
+  const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+  const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+
+  it('keeps request-scoped DI isolation and public helper subpaths discoverable from the context hub', () => {
+    for (const content of [englishContext, koreanContext, englishReadme, koreanReadme]) {
+      expect(content).toContain('@fluojs/testing/http');
+      expect(content).toContain('app.request(...).send()');
+      expect(content).toContain('request-scoped');
+      expect(content).toContain('DeepMocked<T>');
+    }
+
+    for (const content of [englishSurface, koreanSurface]) {
+      expect(content).toContain('@fluojs/testing/http');
+      expect(content).toContain('request-scoped DI isolation');
+    }
+  });
+});
+
 describe('Socket.IO runtime limitation discoverability', () => {
   const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
   const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');

@@ -8,6 +8,7 @@ import {
   type NormalizedProvider,
   type OptionalToken,
   type Provider,
+  RequestScopeResolutionError,
   Scope,
 } from '@fluojs/di';
 import type {
@@ -303,7 +304,7 @@ async function resolveTestingLifecycleInstances(bootstrapped: BootstrapResult, o
 
         instances.push(await bootstrapped.container.resolve(token));
       } catch (error) {
-        if (error instanceof Error && error.message.includes('Request-scoped provider')) {
+        if (error instanceof RequestScopeResolutionError) {
           continue;
         }
 
