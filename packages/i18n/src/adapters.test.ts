@@ -280,6 +280,8 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
     const store = createWeakMapLocaleStore<TransportContext>();
     const contextA: TransportContext = { query: { locale: 'ko' } };
     const contextB: TransportContext = { query: { locale: 'en' } };
+    const contextAKeys = Object.keys(contextA);
+    const contextBKeys = Object.keys(contextB);
 
     const resolvedA = bindLocale(contextA, {
       defaultLocale: 'en',
@@ -292,6 +294,10 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
     expect(resolvedA).toEqual({ locale: 'ko', source: 'query' });
     expect(getAdapterLocale(store, contextA)).toEqual({ locale: 'ko', source: 'query' });
     expect(getAdapterLocale(store, contextB)).toEqual({ locale: 'en', source: 'manual' });
+    expect(Object.keys(contextA)).toEqual(contextAKeys);
+    expect(Object.keys(contextB)).toEqual(contextBKeys);
+    expect(contextA).toEqual({ query: { locale: 'ko' } });
+    expect(contextB).toEqual({ query: { locale: 'en' } });
   });
 
   it('preserves current HTTP helper behavior while sharing locale validation semantics', () => {

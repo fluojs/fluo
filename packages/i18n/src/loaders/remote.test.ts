@@ -251,7 +251,9 @@ describe('@fluojs/i18n/loaders/remote', () => {
     expectI18nThrow(() => new RemoteI18nLoader({ provider: undefined } as unknown as { readonly provider: () => unknown }), 'I18N_INVALID_LOADER_OPTIONS');
     expectI18nThrow(() => new RemoteI18nLoader({ provider: () => ({}), timeoutMs: 0 }), 'I18N_INVALID_LOADER_OPTIONS');
     await expectI18nRejection(() => loader.load('../en', 'common'), 'I18N_INVALID_LOADER_OPTIONS');
+    await expectI18nRejection(() => loader.load('en', '.'), 'I18N_INVALID_LOADER_OPTIONS');
     await expectI18nRejection(() => loader.load('en', 'common.json'), 'I18N_INVALID_LOADER_OPTIONS');
+    await expectI18nRejection(() => loader.load('en', 'admin//common'), 'I18N_INVALID_LOADER_OPTIONS');
     await expectI18nRejection(() => loader.load('en', '../secrets'), 'I18N_INVALID_LOADER_OPTIONS');
     expect(providerCalls).toBe(0);
   });

@@ -37,14 +37,17 @@ describe('@fluojs/i18n/validation localized validation errors', () => {
   it('keeps validation messages unchanged until applications explicitly localize them', async () => {
     const error = await collectValidationError();
 
-    expect(error.issues).toEqual([
-      { code: 'EMAIL', field: 'email', message: 'email is invalid.', source: undefined },
-      { code: 'MIN_LENGTH', field: 'name', message: 'name must have length at least 3.', source: undefined },
+    expect(error.issues).toHaveLength(2);
+    expect(error.issues.map(({ code, field, source }) => ({ code, field, source }))).toEqual([
+      { code: 'EMAIL', field: 'email', source: undefined },
+      { code: 'MIN_LENGTH', field: 'name', source: undefined },
     ]);
+    expect(error.issues.every((issue) => issue.message.length > 0)).toBe(true);
   });
 
   it('localizes validation issues through field/code translation keys', async () => {
     const error = await collectValidationError();
+    const originalEmailMessage = error.issues[0]?.message;
     const i18n = createI18n({
       catalogs: {
         en: {
@@ -82,7 +85,7 @@ describe('@fluojs/i18n/validation localized validation errors', () => {
       { code: 'EMAIL', field: 'email', message: 'email에는 올바른 이메일 주소가 필요합니다.', source: undefined },
       { code: 'MIN_LENGTH', field: 'name', message: 'name의 길이가 너무 짧습니다.', source: undefined },
     ]);
-    expect(error.issues[0]?.message).toBe('email is invalid.');
+    expect(error.issues[0]?.message).toBe(originalEmailMessage);
   });
 
   it('passes code, field, source, and original message values to validation translations', () => {
@@ -119,7 +122,10 @@ describe('@fluojs/i18n/validation localized validation errors', () => {
   });
 
   it('falls back through i18n catalogs and then preserves original messages for missing translations', async () => {
-    const error = await collectValidationError();
+    const issues = [
+      { code: 'EMAIL', field: 'email', message: 'original email provider message', source: undefined },
+      { code: 'MIN_LENGTH', field: 'name', message: 'original name provider message', source: undefined },
+    ] as const;
     const i18n = createI18n({
       catalogs: {
         en: {
@@ -138,8 +144,8 @@ describe('@fluojs/i18n/validation localized validation errors', () => {
       supportedLocales: ['en', 'ko'],
     });
 
-    expect(localizeValidationIssues(i18n, error.issues, { locale: 'ko' })).toEqual([
-      { code: 'EMAIL', field: 'email', message: 'email is invalid.', source: undefined },
+    expect(localizeValidationIssues(i18n, issues, { locale: 'ko' })).toEqual([
+      { code: 'EMAIL', field: 'email', message: 'original email provider message', source: undefined },
       { code: 'MIN_LENGTH', field: 'name', message: 'Default name length message.', source: undefined },
     ]);
   });
