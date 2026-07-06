@@ -1,20 +1,19 @@
-import { describe, expect, it } from 'vitest';
-
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
-import type { HttpApplicationAdapter } from '@fluojs/http';
+import { type HttpApplicationAdapter, UnauthorizedException } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
+import { describe, expect, it } from 'vitest';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as denoPublicApi from './deno.js';
 import {
-  DenoWebSocketGatewayLifecycleService,
-  DenoWebSocketModule,
   type DenoServerWebSocket,
   type DenoWebSocketBinding,
   type DenoWebSocketBindingHost,
+  DenoWebSocketGatewayLifecycleService,
   type DenoWebSocketMessage,
+  DenoWebSocketModule,
   type DenoWebSocketUpgradeResult,
 } from './deno.js';
 
@@ -364,35 +363,106 @@ describe('@fluojs/websockets/deno', () => {
     });
     const state = await app.container.resolve<GatewayState>(GatewayState);
 
-    await app.listen();
+    try {
+      await app.listen();
 
-    const server = adapter.getServer();
-    const upgradeResponse = await server?.fetch(new Request('https://runtime.test/chat', {
-      headers: { upgrade: 'websocket' },
-    }));
+      const server = adapter.getServer();
+      const upgradeResponse = await server?.fetch(new Request('https://runtime.test/chat', {
+        headers: { upgrade: 'websocket' },
+      }));
 
-    await flushAsyncWork();
+      await flushAsyncWork();
 
-    const socket = server?.lastSocket;
-    expect(upgradeResponse?.status).toBe(200);
-    expect(socket).toBeDefined();
+      const socket = server?.lastSocket;
+      expect(upgradeResponse?.status).toBe(200);
+      expect(socket).toBeDefined();
 
-    if (!socket) {
-      throw new Error('Expected Deno test socket to be available after websocket upgrade.');
+      if (!socket) {
+        throw new Error('Expected Deno test socket to be available after websocket upgrade.');
+      }
+
+      socket.emitMessage('{"event":"ping","data":{"value":"hello"}}');
+      await flushAsyncWork();
+
+      socket.close(1000, 'done');
+      await flushAsyncWork();
+
+      expect(state.connectCount).toBe(1);
+      expect(state.messages).toEqual([{ value: 'hello' }]);
+      expect(socket.sentMessages).toEqual(['{"event":"pong","data":{"value":"hello"}}']);
+      expect(state.disconnectCount).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('awaits raw Deno handler return promises before ignoring returned values', async () => {
+    const adapter = new TestDenoAdapter();
+    const handlerGate = createDeferred<void>();
+
+    class GatewayState {
+      messages: unknown[] = [];
     }
 
-    socket.emitMessage('{"event":"ping","data":{"value":"hello"}}');
-    await flushAsyncWork();
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/ignored-return' })
+    class ReturnOnlyGateway {
+      constructor(private readonly state: GatewayState) {}
 
-    socket.close(1000, 'done');
-    await flushAsyncWork();
+      @OnMessage('first')
+      async onFirst(payload: unknown) {
+        await handlerGate.promise;
+        this.state.messages.push(payload);
+        return { event: 'pong', data: payload };
+      }
 
-    expect(state.connectCount).toBe(1);
-    expect(state.messages).toEqual([{ value: 'hello' }]);
-    expect(socket.sentMessages).toEqual(['{"event":"pong","data":{"value":"hello"}}']);
-    expect(state.disconnectCount).toBe(1);
+      @OnMessage('second')
+      onSecond(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
 
-    await app.close();
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [DenoWebSocketModule.forRoot()],
+      providers: [GatewayState, ReturnOnlyGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+
+    try {
+      await app.listen();
+
+      const server = adapter.getServer();
+      const upgradeResponse = await server?.fetch(new Request('https://runtime.test/ignored-return', {
+        headers: { upgrade: 'websocket' },
+      }));
+      await flushAsyncWork();
+
+      const socket = server?.lastSocket;
+      expect(upgradeResponse?.status).toBe(200);
+      expect(socket).toBeDefined();
+
+      if (!socket) {
+        throw new Error('Expected Deno test socket to be available after websocket upgrade.');
+      }
+
+      socket.emitMessage('{"event":"first","data":{"value":"ignored"}}');
+      socket.emitMessage('{"event":"second","data":{"value":"after"}}');
+      await flushAsyncWork();
+
+      expect(state.messages).toEqual([]);
+      expect(socket.sentMessages).toEqual([]);
+
+      handlerGate.resolve();
+      await flushAsyncWork();
+
+      expect(state.messages).toEqual([{ value: 'ignored' }, { value: 'after' }]);
+      expect(socket.sentMessages).toEqual([]);
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects anonymous upgrade requests before the Deno websocket upgrade completes', async () => {
@@ -419,16 +489,54 @@ describe('@fluojs/websockets/deno', () => {
     });
 
     const app = await bootstrapApplication({ adapter, rootModule: AppModule });
-    await app.listen();
+    try {
+      await app.listen();
 
-    const response = await adapter.getServer()?.fetch(new Request('https://runtime.test/guarded', {
-      headers: { upgrade: 'websocket' },
-    }));
+      const response = await adapter.getServer()?.fetch(new Request('https://runtime.test/guarded', {
+        headers: { upgrade: 'websocket' },
+      }));
 
-    expect(response?.status).toBe(401);
-    expect(await response?.text()).toBe('Authentication required.');
+      expect(response?.status).toBe(401);
+      expect(await response?.text()).toBe('Authentication required.');
+    } finally {
+      await app.close();
+    }
+  });
 
-    await app.close();
+  it('maps thrown Deno guard exceptions to rejected websocket upgrades', async () => {
+    const adapter = new TestDenoAdapter();
+
+    @WebSocketGateway({ path: '/thrown-guard' })
+    class GuardedGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [DenoWebSocketModule.forRoot({
+        upgrade: {
+          guard() {
+            throw new UnauthorizedException('Authentication required.');
+          },
+        },
+      })],
+      providers: [GuardedGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    try {
+      await app.listen();
+
+      const response = await adapter.getServer()?.fetch(new Request('https://runtime.test/thrown-guard', {
+        headers: { upgrade: 'websocket' },
+      }));
+
+      expect(response?.status).toBe(401);
+      expect(await response?.text()).toBe('Authentication required.');
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects Deno upgrades that exceed the configured connection limit', async () => {

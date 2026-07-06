@@ -66,6 +66,27 @@ function onceClosed(socket: WebSocket): Promise<void> {
   });
 }
 
+async function waitForAssertion(assertion: () => void | Promise<void>): Promise<void> {
+  const timeoutMs = 500;
+  const intervalMs = 5;
+  const startedAt = Date.now();
+
+  while (true) {
+    try {
+      await assertion();
+      return;
+    } catch (error) {
+      if (Date.now() - startedAt >= timeoutMs) {
+        throw error;
+      }
+
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, intervalMs);
+      });
+    }
+  }
+}
+
 function createDeferred<T = void>(): {
   promise: Promise<T>;
   resolve: (value: T | PromiseLike<T>) => void;
@@ -218,9 +239,9 @@ describe('@fluojs/websockets/node', () => {
         await onceOpen(socket);
         socket.send(Buffer.from(JSON.stringify({ event: 'ping', data: { value: 'buffer-node' } })));
 
-        await new Promise((resolve) => setTimeout(resolve, 10));
-
-        expect(state.messages).toEqual([{ value: 'buffer-node' }]);
+        await waitForAssertion(() => {
+          expect(state.messages).toEqual([{ value: 'buffer-node' }]);
+        });
       } finally {
         if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
           socket.close();

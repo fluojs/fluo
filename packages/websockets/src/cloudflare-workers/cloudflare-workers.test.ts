@@ -1,9 +1,9 @@
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
-import { Controller, Get, type HttpApplicationAdapter } from '@fluojs/http';
+import { Controller, Get, type HttpApplicationAdapter, UnauthorizedException } from '@fluojs/http';
 import {
-  CloudflareWorkerHttpApplicationAdapter,
   type CloudflareWorkerExecutionContext,
+  CloudflareWorkerHttpApplicationAdapter,
   type CloudflareWorkerWebSocketPair,
 } from '@fluojs/platform-cloudflare-workers';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
@@ -416,6 +416,112 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
 
       expect(response?.status).toBe(401);
       expect(await response?.text()).toBe('Authentication required.');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('maps thrown Worker guard exceptions to rejected websocket upgrades', async () => {
+    const adapter = new TestWorkerAdapter();
+
+    @WebSocketGateway({ path: '/thrown-guard' })
+    class GuardedGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CloudflareWorkersWebSocketModule.forRoot({
+        upgrade: {
+          guard() {
+            throw new UnauthorizedException('Authentication required.');
+          },
+        },
+      })],
+      providers: [GuardedGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    try {
+      await app.listen();
+
+      const response = await adapter.getServer()?.fetch(new Request('https://worker.test/thrown-guard', {
+        headers: { upgrade: 'websocket' },
+      }));
+
+      expect(response?.status).toBe(401);
+      expect(await response?.text()).toBe('Authentication required.');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('awaits raw Worker handler return promises before ignoring returned values', async () => {
+    const adapter = new TestWorkerAdapter();
+    const handlerGate = createDeferred<void>();
+
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/ignored-return' })
+    class ReturnOnlyGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('first')
+      async onFirst(payload: unknown) {
+        await handlerGate.promise;
+        this.state.messages.push(payload);
+        return { event: 'pong', data: payload };
+      }
+
+      @OnMessage('second')
+      onSecond(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CloudflareWorkersWebSocketModule.forRoot()],
+      providers: [GatewayState, ReturnOnlyGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+
+    try {
+      await app.listen();
+
+      const server = adapter.getServer();
+      const upgradeResponse = await server?.fetch(new Request('https://worker.test/ignored-return', {
+        headers: { upgrade: 'websocket' },
+      }));
+      await flushAsyncWork();
+
+      const socket = server?.lastSocket;
+      expect(upgradeResponse?.status).toBe(200);
+      expect(socket).toBeDefined();
+      expect(socket?.accepted).toBe(true);
+
+      if (!socket) {
+        throw new Error('Expected Worker test socket to be available after websocket upgrade.');
+      }
+
+      socket.emitMessage('{"event":"first","data":{"value":"ignored"}}');
+      socket.emitMessage('{"event":"second","data":{"value":"after"}}');
+      await flushAsyncWork();
+
+      expect(state.messages).toEqual([]);
+      expect(socket.sentMessages).toEqual([]);
+
+      handlerGate.resolve();
+      await flushAsyncWork();
+
+      expect(state.messages).toEqual([{ value: 'ignored' }, { value: 'after' }]);
+      expect(socket.sentMessages).toEqual([]);
     } finally {
       await app.close();
     }

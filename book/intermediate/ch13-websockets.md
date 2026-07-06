@@ -165,9 +165,11 @@ fluo is designed around portability. The default `WebSocketModule` targets Node.
 
 When you import from the correct subpath, the backend adapter can change to match the host environment while the gateway logic stays the same. In other words, portability is expressed through package boundaries and import choices, not only through a broad architectural promise.
 
-The root and Node entrypoints type upgrade guards with Node's `IncomingMessage`. Bun, Deno, and Cloudflare Workers subpaths use Web-standard `Request` guards. Text frames are delivered as strings unless they parse as JSON event envelopes, and binary frames are decoded as UTF-8 before the same dispatch step, so payload handling stays consistent across supported runtimes.
+The root and Node entrypoints type upgrade guards with Node's `IncomingMessage`. Bun, Deno, and Cloudflare Workers subpaths use Web-standard `Request` guards. Guards can allow upgrades with `true` or no return, reject with `false` or a structured `WebSocketUpgradeRejection`, or throw an HTTP exception such as `UnauthorizedException`; fluo converts these failures into pre-handshake rejection responses before accepting the socket. Text frames are delivered as strings unless they parse as JSON event envelopes, and binary frames are decoded as UTF-8 before the same dispatch step, so payload handling stays consistent across supported runtimes.
 
 Raw WebSocket handler return values are awaited and then ignored. Send client replies explicitly with the runtime socket argument, for example `socket.send(JSON.stringify({ event: 'pong', data }))`, instead of returning a value from `@OnMessage()`.
+
+For low-level integrations, keep the public seam names visible in code reviews: `WebSocketUpgradeContext`, `WebSocketUpgradeGuard`, `WebSocketUpgradeRejection`, gateway descriptor types, and runtime socket/binding types belong to the package or runtime subpath you import from. The root `WebSocketGatewayLifecycleService` name is a DI token alias for the lazy Node implementation, so application code resolves it from the container rather than constructing it directly.
 
 ## 13.7 Heartbeats and connection health
 

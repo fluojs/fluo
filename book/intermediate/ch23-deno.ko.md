@@ -111,7 +111,7 @@ export class MyGateway {
 export class RealtimeModule {}
 ```
 
-게이트웨이 반환값은 WebSocket dispatcher에서 무시됩니다. 위 예시처럼 handler에 전달되는 런타임 socket을 통해 명시적으로 응답을 전송하세요.
+Gateway return value는 WebSocket dispatcher가 await한 뒤 무시합니다. 위 예시처럼 handler에 전달되는 runtime socket으로 reply를 명시적으로 보내세요. Deno upgrade guard는 Web-standard `Request` 값을 받으며, `Deno.upgradeWebSocket(...)`이 socket을 accept하기 전에 `false`, structured `WebSocketUpgradeRejection`, 또는 throw된 HTTP exception으로 거절할 수 있습니다.
 
 `DenoWebSocketModule.forRoot()`를 설정하지 않았다면 `Upgrade: websocket`을 포함한 HTTP 요청도 암묵적으로 upgrade되지 않습니다. 해당 요청은 일반 HTTP dispatch 경로를 계속 따르므로, gateway 활성화는 명시적인 opt-in으로 유지되고 애플리케이션이 Deno websocket binding을 선택하기 전에 플랫폼 네이티브 websocket 동작이 나타나지 않습니다.
 

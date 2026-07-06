@@ -10,6 +10,7 @@ import {
   createServerBackedHttpAdapterRealtimeCapability,
   Get,
   type HttpApplicationAdapter,
+  UnauthorizedException,
 } from '@fluojs/http';
 import { bootstrapExpressApplication } from '@fluojs/platform-express';
 import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
@@ -200,6 +201,17 @@ function onceCloseDetails(socket: WebSocket): Promise<{ code: number; reason: Bu
   return new Promise((resolve) => {
     socket.once('close', (code: number, reason: Buffer) => resolve({ code, reason }));
   });
+}
+
+async function expectNoWebSocketMessage(socket: WebSocket): Promise<void> {
+  const message = await Promise.race([
+    onceMessage(socket),
+    new Promise<undefined>((resolve) => {
+      setTimeout(() => resolve(undefined), 25);
+    }),
+  ]);
+
+  expect(message).toBeUndefined();
 }
 
 type ServerBackedGatewayScenario = {
@@ -647,6 +659,73 @@ describe('@fluojs/websockets', () => {
     }
   });
 
+  it('awaits raw Node handler return promises before ignoring returned values', async () => {
+    const handlerGate = createDeferred<void>();
+
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/ignored-return' })
+    class ReturnOnlyGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('first')
+      async onFirst(payload: unknown) {
+        await handlerGate.promise;
+        this.state.messages.push(payload);
+        return { event: 'pong', data: payload };
+      }
+
+      @OnMessage('second')
+      onSecond(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [WebSocketModule.forRoot()],
+      providers: [GatewayState, ReturnOnlyGateway],
+    });
+
+    const adapter = createNodeHttpAdapter({ port: 0 });
+    const app = await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    });
+    const state = await app.container.resolve(GatewayState);
+
+    try {
+      await app.listen();
+      const port = getBoundPort((adapter as { getServer(): unknown }).getServer());
+
+      const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/ignored-return`);
+      try {
+        await onceOpen(socket);
+        socket.send(JSON.stringify({ event: 'first', data: { value: 'ignored' } }));
+        socket.send(JSON.stringify({ event: 'second', data: { value: 'after' } }));
+
+        await expectNoWebSocketMessage(socket);
+        expect(state.messages).toEqual([]);
+
+        handlerGate.resolve();
+
+        await waitForAssertion(() => {
+          expect(state.messages).toEqual([{ value: 'ignored' }, { value: 'after' }]);
+        });
+        await expectNoWebSocketMessage(socket);
+      } finally {
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+          socket.close();
+        }
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
   it('boots a Fastify app, connects websocket client, handles message, and disconnects', async () => {
     class GatewayState {
       connectCount = 0;
@@ -949,15 +1028,54 @@ describe('@fluojs/websockets', () => {
       port: 0,
     });
 
-    await app.listen();
-    const port = await getApplicationPort(app);
+    try {
+      await app.listen();
+      const port = await getApplicationPort(app);
 
-    const response = await readUpgradeResponse(port, createUpgradeRequest('/guarded'));
+      const response = await readUpgradeResponse(port, createUpgradeRequest('/guarded'));
 
-    expect(response).toContain('HTTP/1.1 401 Unauthorized');
-    expect(response).toContain('Authentication required.');
+      expect(response).toContain('HTTP/1.1 401 Unauthorized');
+      expect(response).toContain('Authentication required.');
+    } finally {
+      await app.close();
+    }
+  });
 
-    await app.close();
+  it('maps thrown Node guard exceptions to rejected websocket upgrades', async () => {
+    @WebSocketGateway({ path: '/thrown-guard' })
+    class GuardedGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [WebSocketModule.forRoot({
+        upgrade: {
+          guard() {
+            throw new UnauthorizedException('Authentication required.');
+          },
+        },
+      })],
+      providers: [GuardedGateway],
+    });
+
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port: 0,
+    });
+
+    try {
+      await app.listen();
+      const port = await getApplicationPort(app);
+
+      const response = await readUpgradeResponse(port, createUpgradeRequest('/thrown-guard'));
+
+      expect(response).toContain('HTTP/1.1 401 Unauthorized');
+      expect(response).toContain('Authentication required.');
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects websocket upgrades that exceed the configured connection limit', async () => {

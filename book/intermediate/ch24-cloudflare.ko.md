@@ -105,7 +105,7 @@ export class MyService {
 
 ## 24.5 Edge-Native WebSockets
 
-Cloudflare는 서버 측 WebSockets를 위해 `WebSocketPair`를 지원합니다. fluo의 WebSocket 모듈은 이 환경을 위한 바인딩을 제공하므로, FluoShop의 실시간 기능을 엣지 제약 안에서 검토할 수 있습니다. 이 binding은 Worker adapter의 `listen()` boundary 전에 설정하세요. Worker가 request를 수락한 뒤에는 defined binding 교체가 reject되고, shutdown 중 upgrade 시도는 live isolate 아래의 ownership을 바꾸지 않고 adapter의 JSON `503` response를 받습니다.
+Cloudflare는 서버 측 WebSockets를 위해 `WebSocketPair`를 지원합니다. fluo의 WebSocket 모듈은 이 환경을 위한 바인딩을 제공하므로, FluoShop의 실시간 기능을 엣지 제약 안에서 검토할 수 있습니다. 이 binding은 Worker adapter의 `listen()` boundary 전에 설정하세요. Worker가 request를 수락한 뒤에는 defined binding 교체가 reject되고, shutdown 중 upgrade 시도는 live isolate 아래의 ownership을 바꾸지 않고 adapter의 JSON `503` response를 받습니다. Worker upgrade guard는 Web-standard `Request` 값을 받으며, `WebSocketPair` accept 전에 `false`, structured `WebSocketUpgradeRejection`, 또는 throw된 HTTP exception으로 거절할 수 있습니다. Gateway return value는 await된 뒤 무시되므로 edge reply도 명시적인 socket send를 사용해야 합니다.
 
 ```typescript
 // 어댑터가 활성화된 경우 게이트웨이가 자동으로 Cloudflare의 WebSocketPair를 사용합니다.
