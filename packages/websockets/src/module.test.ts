@@ -659,7 +659,9 @@ describe('@fluojs/websockets', () => {
     }
   });
 
-  it('awaits and ignores raw Node handler return values', async () => {
+  it('awaits raw Node handler return promises before ignoring returned values', async () => {
+    const handlerGate = createDeferred<void>();
+
     class GatewayState {
       messages: unknown[] = [];
     }
@@ -669,10 +671,16 @@ describe('@fluojs/websockets', () => {
     class ReturnOnlyGateway {
       constructor(private readonly state: GatewayState) {}
 
-      @OnMessage('ping')
-      async onPing(payload: unknown) {
+      @OnMessage('first')
+      async onFirst(payload: unknown) {
+        await handlerGate.promise;
         this.state.messages.push(payload);
         return { event: 'pong', data: payload };
+      }
+
+      @OnMessage('second')
+      onSecond(payload: unknown) {
+        this.state.messages.push(payload);
       }
     }
 
@@ -696,10 +704,16 @@ describe('@fluojs/websockets', () => {
       const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/ignored-return`);
       try {
         await onceOpen(socket);
-        socket.send(JSON.stringify({ event: 'ping', data: { value: 'ignored' } }));
+        socket.send(JSON.stringify({ event: 'first', data: { value: 'ignored' } }));
+        socket.send(JSON.stringify({ event: 'second', data: { value: 'after' } }));
+
+        await expectNoWebSocketMessage(socket);
+        expect(state.messages).toEqual([]);
+
+        handlerGate.resolve();
 
         await waitForAssertion(() => {
-          expect(state.messages).toEqual([{ value: 'ignored' }]);
+          expect(state.messages).toEqual([{ value: 'ignored' }, { value: 'after' }]);
         });
         await expectNoWebSocketMessage(socket);
       } finally {
