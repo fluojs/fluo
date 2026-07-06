@@ -64,7 +64,7 @@ class AppModule {}
 종료 절차는 트랜잭션 정리 순서를 보존하고, 종료가 시작된 뒤에는 새로운 수동 또는 요청 단위 트랜잭션 경계를 거부합니다.
 
 1. 열린 요청 단위 트랜잭션은 `Application shutdown interrupted an open request transaction.`으로 abort됩니다.
-2. 활성 ambient session은 transaction callback과 session cleanup이 settle될 때까지 추적됩니다.
+2. 활성 ambient session과 fail-open 직접 실행 transaction callback은 작업이 settle될 때까지 추적됩니다.
 3. 해당 Mongoose 세션은 `abortTransaction()`과 `endSession()` 정리를 끝냅니다.
 4. 설정한 `dispose(connection)` 훅은 활성 요청 트랜잭션과 ambient session scope가 모두 settled된 뒤에만 실행됩니다.
 
@@ -140,7 +140,7 @@ await this.conn.transaction(async () => {
 });
 ```
 
-래핑된 연결이 `connection.transaction(...)`을 구현하고 있다면 fluo는 이를 엄격한 트랜잭션 경계로 취급합니다. 그렇지 않고 `startSession()`이 없는 경우 트랜잭션은 기본값(`strictTransactions: false`)에서 callback 직접 실행으로 fail-open합니다. 이 모드는 local fake나 staged migration에는 유용하지만 rollback 원자성은 제공하지 않습니다. MongoDB transaction 보장이 필요한 production 흐름에서는 `strictTransactions: true`를 설정하세요. 그러면 transaction 지원 누락이 readiness `not-ready`와 helper 예외로 드러납니다.
+래핑된 연결이 `connection.transaction(...)`을 구현하고 있다면 fluo는 이를 엄격한 트랜잭션 경계로 취급합니다. 그렇지 않고 `startSession()`이 없는 경우 트랜잭션은 기본값(`strictTransactions: false`)에서 callback 직접 실행으로 fail-open합니다. 이 모드는 local fake나 staged migration에는 유용하지만 rollback 원자성은 제공하지 않습니다. 열린 fail-open 수동 `transaction(...)` callback도 종료 중에 drain되므로 `dispose(connection)`은 해당 callback이 settle된 뒤 실행됩니다. MongoDB transaction 보장이 필요한 production 흐름에서는 `strictTransactions: true`를 설정하세요. 그러면 transaction 지원 누락이 readiness `not-ready`와 helper 예외로 드러납니다.
 
 지원되는 facade 메서드에서 fluo는 기존 Mongoose 작업 옵션을 보존하고 올바른 options 인자에 ambient `{ session }`만 병합합니다. 활성 트랜잭션 내부에서 명시적으로 `{ session: null }`을 전달하거나 다른 세션 객체를 사용하면, 의도치 않은 트랜잭션 탈출을 방지하기 위해 세션 충돌 에러를 발생시킵니다.
 
