@@ -1093,18 +1093,30 @@ function enforceCanonicalRuntimeMatrixReferences() {
   assert(
     packageSurface.includes('@fluojs/websockets/bun') &&
       packageSurface.includes('shared decorator and metadata authoring primitives') &&
+      packageSurface.includes('ignored raw handler return values') &&
+      packageSurface.includes('thrown HTTP exceptions') &&
+      packageSurface.includes('token-only root `WebSocketGatewayLifecycleService`') &&
       docsContext.includes('packages/websockets/README.md') &&
       docsContext.includes('@fluojs/websockets/cloudflare-workers') &&
-      docsContext.includes('metadata authoring primitives'),
-    'docs/CONTEXT.md must keep WebSockets runtime subpaths and shared authoring primitives discoverable when package-surface.md documents them.',
+      docsContext.includes('metadata authoring primitives') &&
+      docsContext.includes('thrown HTTP exceptions') &&
+      docsContext.includes('ignored raw WebSocket handler return values') &&
+      docsContext.includes('token-only `WebSocketGatewayLifecycleService`'),
+    'docs/CONTEXT.md must keep WebSockets runtime subpaths, shared authoring primitives, guard rejection modes, ignored returns, and token-only lifecycle service discoverable when package-surface.md documents them.',
   );
   assert(
     packageSurfaceKo.includes('@fluojs/websockets/bun') &&
       packageSurfaceKo.includes('metadata authoring primitive') &&
+      packageSurfaceKo.includes('await 완료 뒤 무시되는 raw handler return value') &&
+      packageSurfaceKo.includes('throw된 HTTP exception') &&
+      packageSurfaceKo.includes('token-only root `WebSocketGatewayLifecycleService`') &&
       docsContextKo.includes('packages/websockets/README.ko.md') &&
       docsContextKo.includes('@fluojs/websockets/cloudflare-workers') &&
-      docsContextKo.includes('metadata authoring primitive'),
-    'docs/CONTEXT.ko.md must keep WebSockets runtime subpaths and shared authoring primitives discoverable when package-surface.ko.md documents them.',
+      docsContextKo.includes('metadata authoring primitive') &&
+      docsContextKo.includes('throw된 HTTP exception') &&
+      docsContextKo.includes('raw WebSocket handler return value') &&
+      docsContextKo.includes('token-only `WebSocketGatewayLifecycleService`'),
+    'docs/CONTEXT.ko.md must keep WebSockets runtime subpaths, shared authoring primitives, guard rejection modes, ignored returns, and token-only lifecycle service discoverable when package-surface.ko.md documents them.',
   );
   assert(
     packageSurface.includes('legacy standalone timing diagnostics') &&
