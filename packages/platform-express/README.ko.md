@@ -106,6 +106,9 @@ const app = await fluoFactory.create(AppModule, {
 
 문서화된 fluo semantics를 바꾸지 않기 위해 `/:id` 와 `/:slug`처럼 shape가 겹치는 파라미터 라우트, `@All(...)` 핸들러, `OPTIONS` 소유권, non-URI versioning, 그리고 duplicate slash/trailing slash 정규화에 의존하는 요청은 catch-all fallback 경로에 남겨둡니다.
 
+### Startup Retry와 Shutdown
+`listen()`은 adapter가 열린 상태인 동안에만 `retryDelayMs` 및 `retryLimit`에 따라 `EADDRINUSE`를 재시도합니다. Startup이 retry loop에서 대기 중일 때 `close()`가 호출되면, underlying Node server가 아직 listening 상태에 도달하지 않았더라도 adapter는 in-flight listen attempt를 abort하고 그 작업이 settle될 때까지 기다린 뒤 `close()`를 완료합니다. `close()`가 resolve된 뒤 막혀 있던 port를 해제해도 adapter가 나중에 bind되지 않으며, 다시 시작하려면 호출자가 명시적으로 `listen()`을 다시 호출해야 합니다.
+
 ## 어댑터 계약
 
 - **공유 dispatcher 소유권 유지**: Native Express Router 매치 이후에도 실제 요청은 공유 fluo dispatcher가 처리하므로 middleware, guards, interceptors, observers, params, error envelope 계약은 그대로 유지됩니다.
@@ -116,7 +119,7 @@ const app = await fluoFactory.create(AppModule, {
 - **버저닝 parity**: Express Router가 최초 path match를 하더라도 header/media-type/custom version 선택은 계속 dispatcher가 최종 결정합니다.
 - **Middleware rewrite parity**: App middleware가 method/path를 rewrite하면 native handoff는 무효화되고 rewrite된 요청을 기준으로 다시 매칭합니다.
 - **응답 serialization parity**: String response는 기본적으로 `text/plain`, object/array는 JSON, binary payload는 `application/octet-stream`으로 serialize되며 `set-cookie` 값은 병합됩니다.
-- **Startup과 shutdown**: 어댑터는 HTTP/HTTPS startup, `retryLimit` 소진 전까지 retry option에 따른 `EADDRINUSE` 재시도, 이미 시작된 adapter에 대한 중복 `listen()` 호출의 idempotent 처리와 live dispatcher 보존, 정상 close 시 idle keep-alive socket drain, 동시에 들어온 `close()` 호출의 단일 in-flight close lifecycle 재사용, shutdown timeout 이후 force-close를 지원하며, `shutdownTimeoutMs`가 `0`이면 즉시 force-close합니다.
+- **Startup과 shutdown**: 어댑터는 HTTP/HTTPS startup, adapter가 열린 상태에서 `retryLimit` 소진 전까지 retry option에 따른 `EADDRINUSE` 재시도, `close()` 중 in-flight listen retry loop를 abort 및 join한 뒤 shutdown 완료 보고, 이미 시작된 adapter에 대한 중복 `listen()` 호출의 idempotent 처리와 live dispatcher 보존, 정상 close 시 idle keep-alive socket drain, 동시에 들어온 `close()` 호출의 단일 in-flight close lifecycle 재사용, shutdown timeout 이후 force-close를 지원하며, `shutdownTimeoutMs`가 `0`이면 즉시 force-close합니다.
 
 ## 공개 API 개요
 
@@ -138,4 +141,4 @@ const app = await fluoFactory.create(AppModule, {
 ## 예제 소스
 
 - `packages/platform-express/src/adapter.test.ts`
-- 이 패키지는 아직 전용 `examples/platform-express` 앱을 제공하지 않습니다. Express bootstrap 형태는 이 README의 빠른 시작을 사용하고, SSE framing, native-route fallback parity, duplicate listen idempotency, retry exhaustion, idle keep-alive drain, forced shutdown을 포함한 실행 가능한 Express adapter coverage는 `packages/platform-express/src/adapter.test.ts`를 사용하세요. `examples/minimal/src/main.ts`는 Fastify 기반이므로 Express 예제 소스로 취급하지 않아야 합니다.
+- 이 패키지는 아직 전용 `examples/platform-express` 앱을 제공하지 않습니다. Express bootstrap 형태는 이 README의 빠른 시작을 사용하고, SSE framing, native-route fallback parity, duplicate listen idempotency, retry exhaustion, shutdown 중 startup retry cancellation, idle keep-alive drain, forced shutdown을 포함한 실행 가능한 Express adapter coverage는 `packages/platform-express/src/adapter.test.ts`를 사용하세요. `examples/minimal/src/main.ts`는 Fastify 기반이므로 Express 예제 소스로 취급하지 않아야 합니다.
