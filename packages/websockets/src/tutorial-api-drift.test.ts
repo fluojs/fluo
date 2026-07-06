@@ -87,12 +87,12 @@ describe('@fluojs/websockets tutorial API alignment', () => {
 
     expect(deno).toContain('handlePing(_payload: unknown, socket: DenoServerWebSocket)');
     expect(deno).toContain("socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));");
-    expect(deno).toContain('Gateway return values are ignored');
+    expect(deno).toContain('Gateway return values are awaited and ignored');
     expect(deno).not.toContain("return { event: 'pong', data: 'hello from deno' };");
 
     expect(denoKo).toContain('handlePing(_payload: unknown, socket: DenoServerWebSocket)');
     expect(denoKo).toContain("socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));");
-    expect(denoKo).toContain('게이트웨이 반환값은 WebSocket dispatcher에서 무시됩니다');
+    expect(denoKo).toContain('Gateway return value는 WebSocket dispatcher가 await한 뒤 무시합니다');
     expect(denoKo).not.toContain("return { event: 'pong', data: 'hello from deno' };");
   });
 
