@@ -4,7 +4,8 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "outDir": "dist",
-    "noEmit": false
+    "noEmit": false,
+    "stripInternal": true
   },
   "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts"]
 }
