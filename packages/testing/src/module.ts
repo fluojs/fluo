@@ -564,7 +564,6 @@ function resolveSyncToken(token: Token, state: SyncResolverState): unknown {
 function createSyncResolver(container: BootstrapResult['container']): SyncResolver {
   const introspection = toContainerIntrospection(container);
   const rootIntrospection = rootContainerIntrospection(introspection);
-
   const state: SyncResolverState = {
     cacheOwner: rootIntrospection.cacheOwner,
     factoryResolutionKinds: rootIntrospection.factoryResolutionKinds,
@@ -576,9 +575,25 @@ function createSyncResolver(container: BootstrapResult['container']): SyncResolv
     syncSingletonValues: new Map<Token, unknown>(),
   };
 
+  const refreshState = (): void => {
+    const freshIntrospection = toContainerIntrospection(container);
+    const freshRootIntrospection = rootContainerIntrospection(freshIntrospection);
+
+    state.cacheOwner = freshRootIntrospection.cacheOwner;
+    state.factoryResolutionKinds = freshRootIntrospection.factoryResolutionKinds;
+    state.introspection = freshIntrospection;
+    state.multiSingletonCache = freshRootIntrospection.multiSingletonCache;
+    state.singletonCache = freshRootIntrospection.singletonCache;
+  };
+
   return {
-    get: <T>(token: Token<T>): T => resolveSyncToken(token, state) as T,
+    get: <T>(token: Token<T>): T => {
+      refreshState();
+      return resolveSyncToken(token, state) as T;
+    },
     syncFromContainer: async (): Promise<void> => {
+      refreshState();
+
       for (const [token, promise] of state.singletonCache) {
         if (!canPromoteCachedSingleton(state, token)) {
           continue;
