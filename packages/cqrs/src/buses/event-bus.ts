@@ -1,7 +1,7 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import { type EventBus, EVENT_BUS as FLUO_EVENT_BUS } from '@fluojs/event-bus';
-import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
+import type { OnApplicationBootstrap, OnApplicationShutdown, RuntimeCleanupRegistration } from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { CqrsBusBase } from '../discovery.js';
 import {
@@ -38,7 +38,15 @@ function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
  * This service keeps CQRS event handlers singleton-only, fans events into saga orchestration,
  * and delegates the final publication step to `@fluojs/event-bus`.
  */
-@Inject(FLUO_EVENT_BUS, CqrsSagaLifecycleService, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, CQRS_MODULE_OPTIONS)
+@Inject(
+  FLUO_EVENT_BUS,
+  CqrsSagaLifecycleService,
+  RUNTIME_CONTAINER,
+  COMPILED_MODULES,
+  APPLICATION_LOGGER,
+  CQRS_MODULE_OPTIONS,
+  RUNTIME_CLEANUP_REGISTRATION,
+)
 export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors: EventHandlerDescriptor[] = [];
   private discoveryPromise: Promise<void> | undefined;
@@ -47,6 +55,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   private readonly activePublishDrainContexts = new Map<symbol, number>();
   private shutdownDrainTimeouts = 0;
   private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
+  private unregisterShutdownStartCleanup: (() => void) | undefined;
 
   constructor(
     private readonly eventBus: EventBus,
@@ -55,8 +64,13 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     compiledModules: ConstructorParameters<typeof CqrsBusBase>[1],
     logger: ConstructorParameters<typeof CqrsBusBase>[2],
     private readonly moduleOptions: CqrsModuleOptions = {},
+    registerRuntimeCleanup: RuntimeCleanupRegistration = () => () => undefined,
   ) {
     super(runtimeContainer, compiledModules, logger);
+
+    this.unregisterShutdownStartCleanup = registerRuntimeCleanup(() => {
+      this.markApplicationShutdownStarted();
+    });
   }
 
   async onApplicationBootstrap(): Promise<void> {
@@ -72,7 +86,9 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   }
 
   async onApplicationShutdown(): Promise<void> {
-    this.lifecycleState = 'stopping';
+    this.markApplicationShutdownStarted();
+    this.unregisterShutdownStartCleanup?.();
+    this.unregisterShutdownStartCleanup = undefined;
 
     if (this.activePublishPipelines.size > 0) {
       await this.drainActivePublishPipelines();
@@ -159,6 +175,12 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
 
     if (this.lifecycleState === 'stopping' && !this.isActivePublishDrainContext(context)) {
       throw new InvariantError(`CQRS event bus cannot ${operation} after shutdown has started.`);
+    }
+  }
+
+  private markApplicationShutdownStarted(): void {
+    if (this.lifecycleState !== 'stopped') {
+      this.lifecycleState = 'stopping';
     }
   }
 
