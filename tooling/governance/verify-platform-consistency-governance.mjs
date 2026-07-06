@@ -690,6 +690,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const i18nReadmeKo = readFileSync(join(repoRoot, 'packages/i18n/README.ko.md'), 'utf8');
   const drizzleReadme = readFileSync(join(repoRoot, 'packages/drizzle/README.md'), 'utf8');
   const drizzleReadmeKo = readFileSync(join(repoRoot, 'packages/drizzle/README.ko.md'), 'utf8');
+  const fastifyReadme = readFileSync(join(repoRoot, 'packages/platform-fastify/README.md'), 'utf8');
+  const fastifyReadmeKo = readFileSync(join(repoRoot, 'packages/platform-fastify/README.ko.md'), 'utf8');
   const expressReadme = readFileSync(join(repoRoot, 'packages/platform-express/README.md'), 'utf8');
   const expressReadmeKo = readFileSync(join(repoRoot, 'packages/platform-express/README.ko.md'), 'utf8');
   const terminusReadme = readFileSync(join(repoRoot, 'packages/terminus/README.md'), 'utf8');
@@ -706,6 +708,12 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const cliReadmeKo = readFileSync(join(repoRoot, 'packages/cli/README.ko.md'), 'utf8');
   const studioReadme = readFileSync(join(repoRoot, 'packages/studio/README.md'), 'utf8');
   const studioReadmeKo = readFileSync(join(repoRoot, 'packages/studio/README.ko.md'), 'utf8');
+  const beginnerIntro = readFileSync(join(repoRoot, 'book/beginner/ch00-introduction.md'), 'utf8');
+  const beginnerIntroKo = readFileSync(join(repoRoot, 'book/beginner/ch00-introduction.ko.md'), 'utf8');
+  const beginnerCliSetup = readFileSync(join(repoRoot, 'book/beginner/ch02-cli-setup.md'), 'utf8');
+  const beginnerCliSetupKo = readFileSync(join(repoRoot, 'book/beginner/ch02-cli-setup.ko.md'), 'utf8');
+  const beginnerProduction = readFileSync(join(repoRoot, 'book/beginner/ch21-production.md'), 'utf8');
+  const beginnerProductionKo = readFileSync(join(repoRoot, 'book/beginner/ch21-production.ko.md'), 'utf8');
   const viteReadme = readFileSync(join(repoRoot, 'packages/vite/README.md'), 'utf8');
   const viteReadmeKo = readFileSync(join(repoRoot, 'packages/vite/README.ko.md'), 'utf8');
   const quickStart = readFileSync(join(repoRoot, 'docs/getting-started/quick-start.md'), 'utf8');
@@ -864,6 +872,38 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContextKo.includes('getServer()') &&
       docsContextKo.includes('getRealtimeCapability()'),
     'Korean Express platform docs must keep host compatibility, native middleware limits, and infrastructure helper boundaries discoverable together.',
+  );
+  assert(
+    fastifyReadme.includes('engines.node >=20.0.0') &&
+      fastifyReadme.includes('Node.js `https.ServerOptions`') &&
+      fastifyReadme.includes('createFastifyAdapter(...)') &&
+      fastifyReadme.includes('bootstrapFastifyApplication(...)') &&
+      fastifyReadme.includes('runFastifyApplication(...)') &&
+      packageSurface.includes('Fastify-backed Node `http`/`https` listener') &&
+      packageChooser.includes('Need Fastify-owned HTTPS/TLS startup') &&
+      packageChooser.includes('plain HTTP behind that boundary') &&
+      docsContext.includes('Fastify adapter discoverability') &&
+      docsContext.includes('engines.node >=20.0.0') &&
+      beginnerIntro.includes('Node.js version 20 or newer') &&
+      beginnerCliSetup.includes('plain HTTP for local development') &&
+      beginnerProduction.includes('Fastify adapter `https` option'),
+    'Fastify README, package-surface, package-chooser, docs/CONTEXT.md, and beginner docs must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
+  );
+  assert(
+    fastifyReadmeKo.includes('engines.node >=20.0.0') &&
+      fastifyReadmeKo.includes('Node.js `https.ServerOptions`') &&
+      fastifyReadmeKo.includes('createFastifyAdapter(...)') &&
+      fastifyReadmeKo.includes('bootstrapFastifyApplication(...)') &&
+      fastifyReadmeKo.includes('runFastifyApplication(...)') &&
+      packageSurfaceKo.includes('Fastify 기반 Node `http`/`https` listener') &&
+      packageChooserKo.includes('Fastify가 HTTPS/TLS 시작을 직접 소유해야 함') &&
+      packageChooserKo.includes('일반 HTTP로 유지하세요') &&
+      docsContextKo.includes('Fastify adapter discoverability') &&
+      docsContextKo.includes('engines.node >=20.0.0') &&
+      beginnerIntroKo.includes('Node.js 20 버전 이상') &&
+      beginnerCliSetupKo.includes('일반 HTTP로 실행') &&
+      beginnerProductionKo.includes('Fastify adapter `https` option'),
+    'Korean Fastify README, package-surface, package-chooser, docs/CONTEXT.ko.md, and beginner docs must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
   );
   assert(
     docsContext.includes('docs/reference/package-chooser.md') && docsContext.includes('@fluojs/i18n'),

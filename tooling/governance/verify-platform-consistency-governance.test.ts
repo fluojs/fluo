@@ -624,6 +624,49 @@ describe('enforceContractCompanionUpdates', () => {
 });
 
 describe('repository governance contracts', () => {
+  it('keeps Fastify runtime floor and HTTPS startup docs discoverable across governed docs', () => {
+    const docsContext = readFileSync(resolve(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const docsContextKo = readFileSync(resolve(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const packageSurface = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const packageSurfaceKo = readFileSync(resolve(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const packageChooser = readFileSync(resolve(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
+    const packageChooserKo = readFileSync(resolve(repoRoot, 'docs/reference/package-chooser.ko.md'), 'utf8');
+    const beginnerIntro = readFileSync(resolve(repoRoot, 'book/beginner/ch00-introduction.md'), 'utf8');
+    const beginnerIntroKo = readFileSync(resolve(repoRoot, 'book/beginner/ch00-introduction.ko.md'), 'utf8');
+    const beginnerCliSetup = readFileSync(resolve(repoRoot, 'book/beginner/ch02-cli-setup.md'), 'utf8');
+    const beginnerCliSetupKo = readFileSync(resolve(repoRoot, 'book/beginner/ch02-cli-setup.ko.md'), 'utf8');
+    const beginnerProduction = readFileSync(resolve(repoRoot, 'book/beginner/ch21-production.md'), 'utf8');
+    const beginnerProductionKo = readFileSync(resolve(repoRoot, 'book/beginner/ch21-production.ko.md'), 'utf8');
+    const fastifyReadme = readFileSync(resolve(repoRoot, 'packages/platform-fastify/README.md'), 'utf8');
+    const fastifyReadmeKo = readFileSync(resolve(repoRoot, 'packages/platform-fastify/README.ko.md'), 'utf8');
+
+    for (const source of [docsContext, packageSurface, packageChooser, beginnerIntro, beginnerCliSetup, beginnerProduction, fastifyReadme]) {
+      expect(source).toContain('Node.js 20');
+      expect(source).toContain('engines.node >=20.0.0');
+    }
+
+    for (const source of [docsContextKo, packageSurfaceKo, packageChooserKo, beginnerIntroKo, beginnerCliSetupKo, beginnerProductionKo, fastifyReadmeKo]) {
+      expect(source).toContain('Node.js 20');
+      expect(source).toContain('engines.node >=20.0.0');
+    }
+
+    for (const source of [docsContext, packageSurface, packageChooser, beginnerCliSetup, beginnerProduction, fastifyReadme]) {
+      expect(source).toContain('https');
+      expect(source).toMatch(/TLS|plain HTTP/u);
+    }
+
+    for (const source of [docsContextKo, packageSurfaceKo, packageChooserKo, beginnerCliSetupKo, beginnerProductionKo, fastifyReadmeKo]) {
+      expect(source).toContain('https');
+      expect(source).toMatch(/TLS|일반 HTTP/u);
+    }
+
+    for (const source of [docsContext, beginnerProduction, fastifyReadme, docsContextKo, beginnerProductionKo, fastifyReadmeKo]) {
+      expect(source).toContain('createFastifyAdapter(...)');
+      expect(source).toContain('bootstrapFastifyApplication(...)');
+      expect(source).toContain('runFastifyApplication(...)');
+    }
+  });
+
   it('keeps Throttler guard activation and backing-store clock docs discoverable across governed docs', () => {
     const docsContext = readFileSync(resolve(repoRoot, 'docs/CONTEXT.md'), 'utf8');
     const docsContextKo = readFileSync(resolve(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
