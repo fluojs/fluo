@@ -1,20 +1,17 @@
 import type {
   CallHandler,
-  FrameworkRequest,
   FrameworkResponse,
   InterceptorContext,
   RequestContext,
+  RequestObserver,
 } from '@fluojs/http';
-import {
-  Controller,
-  createDispatcher,
-  createHandlerMapping,
-  Get,
-  UseInterceptors,
-} from '@fluojs/http';
+import { Module } from '@fluojs/core';
+import { Controller, Get, UseInterceptors } from '@fluojs/http';
+import { createTestApp } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
 import { Exclude } from './decorators/exclude.js';
+import { Expose } from './decorators/expose.js';
 import { SerializerInterceptor } from './serializer-interceptor.js';
 
 function createInterceptorContext(response: Partial<FrameworkResponse> = {}): InterceptorContext {
@@ -31,60 +28,6 @@ function createInterceptorContext(response: Partial<FrameworkResponse> = {}): In
       } as FrameworkResponse,
     } as RequestContext,
   } as InterceptorContext;
-}
-
-function createRequest(path: string): FrameworkRequest {
-  return {
-    body: undefined,
-    cookies: {},
-    headers: {},
-    method: 'GET',
-    params: {},
-    path,
-    query: {},
-    raw: {},
-    url: path,
-  };
-}
-
-function createResponse(): FrameworkResponse & { body?: unknown } {
-  return {
-    committed: false,
-    headers: {},
-    redirect(status: number, location: string) {
-      this.setStatus(status);
-      this.setHeader('Location', location);
-      this.committed = true;
-    },
-    send(body: unknown) {
-      this.body = body;
-      this.committed = true;
-    },
-    setHeader(name: string, value: string) {
-      this.headers[name] = value;
-    },
-    setStatus(code: number) {
-      this.statusCode = code;
-    },
-    statusCode: undefined,
-  };
-}
-
-function createTestContainer() {
-  return {
-    createRequestScope() {
-      return this;
-    },
-    async dispose() {
-      return undefined;
-    },
-    hasRequestScopedDependency() {
-      return false;
-    },
-    async resolve<T>(token: new (...args: never[]) => T): Promise<T> {
-      return new token();
-    },
-  };
 }
 
 describe('SerializerInterceptor', () => {
@@ -157,18 +100,55 @@ describe('SerializerInterceptor', () => {
     await expect(interceptor.intercept(context, next)).resolves.toBe(owner);
   });
 
-  it('preserves handler-owned responses committed through RequestContext.response in the real HTTP request pipeline', async () => {
+  it('serializes exposed class instances through createTestApp request helpers', async () => {
+    @Expose({ excludeExtraneous: true })
+    class UserView {
+      @Expose()
+      id = 'u-1';
+
+      @Expose()
+      username = 'fluo';
+
+      passwordHash = 'secret';
+    }
+
+    @Controller('/users')
+    @UseInterceptors(SerializerInterceptor)
+    class UsersController {
+      @Get('/one')
+      getOne() {
+        return new UserView();
+      }
+    }
+
+    @Module({ controllers: [UsersController], providers: [SerializerInterceptor] })
+    class UsersModule {}
+
+    const app = await createTestApp({ rootModule: UsersModule });
+
+    try {
+      const response = await app.request('GET', '/users/one').send();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ id: 'u-1', username: 'fluo' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('bypasses serialization for handler-owned committed responses through createTestApp request helpers', async () => {
+    @Expose({ excludeExtraneous: true })
     class StreamOwner {
+      @Expose()
       id = 'stream-1';
 
-      @Exclude()
       internalState = 'owned-by-handler';
     }
 
     const owner = new StreamOwner();
     let observedSuccess: unknown;
-    const observer = {
-      onRequestSuccess(_context: unknown, value: unknown) {
+    const observer: RequestObserver = {
+      onRequestSuccess(_context, value) {
         observedSuccess = value;
       },
     };
@@ -183,45 +163,22 @@ describe('SerializerInterceptor', () => {
       }
     }
 
-    const dispatcher = createDispatcher({
-      handlerMapping: createHandlerMapping([{ controllerToken: StreamsController }]),
+    @Module({ controllers: [StreamsController], providers: [SerializerInterceptor] })
+    class StreamsModule {}
+
+    const app = await createTestApp({
       observers: [observer],
-      rootContainer: createTestContainer() as never,
+      rootModule: StreamsModule,
     });
-    const response = createResponse();
 
-    await dispatcher.dispatch(createRequest('/streams/owned'), response);
+    try {
+      const response = await app.request('GET', '/streams/owned').send();
 
-    expect(response.committed).toBe(true);
-    expect(response.body).toBe(owner);
-    expect(observedSuccess).toBe(owner);
-  });
-
-  it('serializes responses through the real HTTP request pipeline', async () => {
-    class UserView {
-      id = 'u-1';
-
-      @Exclude()
-      password = 'secret';
+      expect(response.status).toBe(200);
+      expect(response.body).toBe(owner);
+      expect(observedSuccess).toBe(owner);
+    } finally {
+      await app.close();
     }
-
-    @Controller('/users')
-    @UseInterceptors(SerializerInterceptor)
-    class UsersController {
-      @Get('/one')
-      getOne() {
-        return new UserView();
-      }
-    }
-
-    const dispatcher = createDispatcher({
-      handlerMapping: createHandlerMapping([{ controllerToken: UsersController }]),
-      rootContainer: createTestContainer() as never,
-    });
-    const response = createResponse();
-
-    await dispatcher.dispatch(createRequest('/users/one'), response);
-
-    expect(response.body).toEqual({ id: 'u-1' });
   });
 });
