@@ -159,7 +159,7 @@ When `transaction()` is called while a transaction context is already active, `P
 
 ### Shutdown and Status Contracts
 
-`PrismaService.requestTransaction(...)` is available before and during normal serving, but new request-scoped transactions are rejected once application shutdown has started. During shutdown, open request transactions are aborted, tracked until their outer transaction boundary has settled, and drained before `$disconnect()` runs. Service-layer and manual `transaction(...)` boundaries are also drained before `$disconnect()` so shutdown does not race an active Prisma transaction. This includes nested `requestTransaction(...)` calls opened inside an existing manual `transaction(...)` boundary: they reuse the ambient Prisma transaction client, stay visible in `details.activeRequestTransactions` until the outer boundary finishes, and do not open a second Prisma transaction.
+`PrismaService.requestTransaction(...)` is available before and during normal serving, but new request-scoped transactions are rejected once application shutdown has started. New outer manual `transaction(...)` and service `@Transaction()` boundaries are also rejected after shutdown begins; boundaries that were already open are drained before `$disconnect()` so shutdown does not race an active Prisma transaction. During shutdown, open request transactions are aborted, tracked until their outer transaction boundary has settled, and drained before `$disconnect()` runs. This includes nested `requestTransaction(...)` calls opened inside an existing manual `transaction(...)` boundary: they reuse the ambient Prisma transaction client, stay visible in `details.activeRequestTransactions` until the outer boundary finishes, and do not open a second Prisma transaction.
 
 `createPrismaPlatformStatusSnapshot(...)` and `PrismaService.createPlatformStatusSnapshot()` expose the same lifecycle contract to diagnostics surfaces:
 
@@ -213,7 +213,7 @@ defineModule(ManualPrismaModule, {
 ### `PrismaModule`
 
 - `PrismaModule.forRoot(options)` / `PrismaModule.forRootAsync(options)`
-- `forRoot(...)` and `forRootAsync(...)` also accept `name` for named/scoped registrations.
+- `forRoot(...)` and `forRootAsync(...)` also accept `name` for named/scoped registrations, and `global?: boolean` for unnamed registrations that should export their providers globally.
 - `forRootAsync(...)` accepts DI-aware Prisma options whose factory returns the client and transaction settings; pass `name` or `global` on the top-level async registration so module identity and visibility are decided before the factory runs.
 - `forRootAsync(...)` resolves options once per application container, preserving client lifecycle and request transaction isolation across separate bootstraps.
 - Supports `strictTransactions: true` to throw if transaction support is missing.
@@ -226,7 +226,7 @@ defineModule(ManualPrismaModule, {
 - `current(): TClient | PrismaTransactionClient<TClient>`
   - Returns the ambient transaction client or the root client.
 - `transaction(fn, options?): Promise<T>`
-  - Runs a function within an interactive transaction. If a transaction context is already active, the callback reuses that context; nested transaction options are rejected because no new Prisma transaction boundary is opened.
+  - Runs a function within an interactive transaction. If a transaction context is already active, the callback reuses that context; nested transaction options are rejected because no new Prisma transaction boundary is opened. New outer transaction boundaries are rejected once shutdown starts.
 - `requestTransaction(fn, signal?, options?): Promise<T>`
   - Specialized transaction boundary for HTTP request lifecycles. It is abort-aware, drains during shutdown before disconnect, and retries without `signal` when a Prisma client rejects that option. Like `transaction()`, nested calls reuse the active transaction context and reject nested options to avoid silently ignoring transaction settings.
 

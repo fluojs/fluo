@@ -1,18 +1,17 @@
-import { describe, expect, it } from 'vitest';
-
 import { Inject } from '@fluojs/core';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import {
   Controller,
-  FromBody,
-  Post,
-  RequestDto,
-  HttpCode,
   type FrameworkRequest,
   type FrameworkResponse,
+  FromBody,
+  HttpCode,
+  Post,
+  RequestDto,
 } from '@fluojs/http';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { describe, expect, it } from 'vitest';
 
-import { PrismaModule, PrismaService, Transaction, type PrismaServiceFacade } from './index.js';
+import { PrismaModule, PrismaService, type PrismaServiceFacade, Transaction } from './index.js';
 
 function createResponse(events?: string[]): FrameworkResponse & { body?: unknown } {
   return {
@@ -272,22 +271,25 @@ describe('@fluojs/prisma service boundary primary flow', () => {
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const response = createResponse(events);
 
-    await app.dispatch(
-      createRequest('/controller-compat/users', 'POST', { email: 'grace@example.com', name: 'Grace' }),
-      response,
-    );
+    try {
+      const response = createResponse(events);
 
-    expect(response.body).toEqual({ email: 'grace@example.com', id: 'controller-tx-user', name: 'Grace' });
-    expect(events).toEqual([
-      'connect',
-      'transaction:start',
-      'tx:create:grace@example.com',
-      'transaction:commit',
-      'response:send',
-    ]);
+      await app.dispatch(
+        createRequest('/controller-compat/users', 'POST', { email: 'grace@example.com', name: 'Grace' }),
+        response,
+      );
 
-    await app.close();
+      expect(response.body).toEqual({ email: 'grace@example.com', id: 'controller-tx-user', name: 'Grace' });
+      expect(events).toEqual([
+        'connect',
+        'transaction:start',
+        'tx:create:grace@example.com',
+        'transaction:commit',
+        'response:send',
+      ]);
+    } finally {
+      await app.close();
+    }
   });
 });
