@@ -120,6 +120,8 @@ Root Node.js alias 대신 명시적인 runtime binding이 필요할 때 runtime 
 | Deno | `@fluojs/websockets/deno` | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
 | Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` | `CloudflareWorkersWebSocketGatewayLifecycleService` |
 
+Bun에서는 runtime-specific module이 `@fluojs/platform-bun`에 pre-listen binding을 설치합니다. Adapter는 해당 binding에 `upgrade(...)` host만 노출하므로 adapter-owned shutdown과 raw fetch 제어는 realtime seam이 아니라 managed Bun adapter에 남습니다.
+
 ## Socket.IO gateways
 
 Room, namespace, broadcasting, Socket.IO client compatibility가 필요할 때 `@fluojs/socket.io`를 사용합니다.
