@@ -383,6 +383,20 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('keeps HTTP DTO binding migration guidance present in governed docs', () => {
+    const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+    const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+
+    for (const document of [englishMigration, koreanMigration, englishContext, koreanContext]) {
+      expect(document).toContain('RequestDto');
+      expect(document).toContain('ValidationPipe');
+      expect(document).toContain('Convert');
+      expect(document).toContain('DTO');
+    }
+  });
+
   it('accepts Email async-registration migration guidance when context, package, and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
