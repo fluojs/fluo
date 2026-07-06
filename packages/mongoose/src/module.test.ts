@@ -141,19 +141,21 @@ describe('@fluojs/mongoose', () => {
     const rawConnection = await app.container.resolve(MONGOOSE_CONNECTION);
     const moduleOptions = await app.container.resolve<{ strictTransactions: boolean }>(MONGOOSE_OPTIONS);
 
-    expect(mongoose).toBeInstanceOf(MongooseConnection);
-    expect(rawConnection).toBe(connection);
-    expect(moduleOptions).toEqual({ strictTransactions: false });
+    try {
+      expect(mongoose).toBeInstanceOf(MongooseConnection);
+      expect(rawConnection).toBe(connection);
+      expect(moduleOptions).toEqual({ strictTransactions: false });
 
-    await expect(mongoose.transaction(async () => 'ok')).resolves.toBe('ok');
-    expect(events).toEqual([
-      'connection:startSession',
-      'transaction:start',
-      'transaction:commit',
-      'session:end',
-    ]);
-
-    await app.close();
+      await expect(mongoose.transaction(async () => 'ok')).resolves.toBe('ok');
+      expect(events).toEqual([
+        'connection:startSession',
+        'transaction:start',
+        'transaction:commit',
+        'session:end',
+      ]);
+    } finally {
+      await app.close();
+    }
   });
 
   it('scopes ambient model facades to MongooseConnection.model without mutating the raw connection', async () => {
@@ -1451,6 +1453,63 @@ describe('@fluojs/mongoose', () => {
     expect(events).toEqual(['tx:work']);
   });
 
+  it('waits for fail-open manual transaction callbacks before dispose on shutdown', async () => {
+    const events: string[] = [];
+    let releaseTransaction!: () => void;
+    const transactionReleased = new Promise<void>((resolve) => {
+      releaseTransaction = resolve;
+    });
+
+    const connection = {
+      model() {
+        return {};
+      },
+    } as MongooseConnectionLike;
+
+    const mongooseModule = MongooseModule.forRoot<typeof connection>({
+      connection,
+      dispose() {
+        events.push('dispose');
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [mongooseModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
+
+    const transaction = mongoose.transaction(async () => {
+      events.push('tx:start');
+      await transactionReleased;
+      events.push('tx:end');
+      return 'ok';
+    });
+
+    const closePromise = app.close();
+
+    await vi.waitFor(() => {
+      expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+        details: {
+          activeSessions: 0,
+          lifecycleState: 'shutting-down',
+          sessionStrategy: 'none',
+        },
+      });
+    });
+    expect(events).not.toContain('dispose');
+
+    releaseTransaction();
+
+    await expect(transaction).resolves.toBe('ok');
+    await closePromise;
+
+    expect(events).toEqual(['tx:start', 'tx:end', 'dispose']);
+  });
+
   it('reports ownership/readiness/health semantics in platform snapshot shape', () => {
     const snapshot = createMongoosePlatformStatusSnapshot({
       activeRequestTransactions: 1,
@@ -1550,9 +1609,11 @@ describe('MongooseModule.forRootAsync', () => {
     const app = await bootstrapApplication({ rootModule: AppModule });
     const consumer = await app.container.resolve(ConsumerService);
 
-    expect(consumer.currentConnection()).toBe(connection);
-
-    await app.close();
+    try {
+      expect(consumer.currentConnection()).toBe(connection);
+    } finally {
+      await app.close();
+    }
   });
 
   it('factory receives injected token and resolves MongooseConnection', async () => {
@@ -1582,13 +1643,15 @@ describe('MongooseModule.forRootAsync', () => {
     const app = await bootstrapApplication({ rootModule: AppModule });
     const conn = await app.container.resolve(MongooseConnection);
 
-    expect(factory).toHaveBeenCalledOnce();
-    expect(factory.mock.calls[0][0]).toBeInstanceOf(ConfigService);
+    try {
+      expect(factory).toHaveBeenCalledOnce();
+      expect(factory.mock.calls[0][0]).toBeInstanceOf(ConfigService);
 
-    void conn;
-    void events;
-
-    await app.close();
+      void conn;
+      void events;
+    } finally {
+      await app.close();
+    }
   });
 
   it('factory returning a promise resolves the connection correctly', async () => {
@@ -1605,9 +1668,11 @@ describe('MongooseModule.forRootAsync', () => {
     const app = await bootstrapApplication({ rootModule: AppModule });
     const conn = await app.container.resolve(MongooseConnection);
 
-    expect(conn).toBeInstanceOf(MongooseConnection);
-
-    await app.close();
+    try {
+      expect(conn).toBeInstanceOf(MongooseConnection);
+    } finally {
+      await app.close();
+    }
   });
 
   it('resolves async options independently for each application container', async () => {

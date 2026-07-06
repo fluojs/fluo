@@ -1,10 +1,11 @@
 import type { MaybePromise } from '@fluojs/core';
 
 /**
- * Minimal Mongoose connection seam that optionally supports session creation.
+ * Minimal Mongoose connection seam that optionally supports session transaction APIs.
  *
  * @remarks
- * Fluo only requires `startSession()` to expose transaction helpers; plain connection usage still works without it.
+ * Fluo can open transaction helpers through either `connection.transaction(...)` or `startSession()`;
+ * plain connection usage still works without either API.
  */
 export interface MongooseConnectionLike {
   startSession?(): Promise<MongooseSessionLike>;
@@ -34,7 +35,8 @@ export interface MongooseModuleOptions<TConnection extends MongooseConnectionLik
   /** Whether Mongoose providers should be visible globally. Defaults to `false`. */
   global?: boolean;
   /**
-   * Throws when transaction helpers are used against a connection that does not implement `startSession()`.
+   * Throws when transaction helpers are used against a connection that implements neither `connection.transaction(...)` nor
+   * `startSession()`.
    *
    * @remarks
    * Leave this disabled when `transaction()` / `requestTransaction()` should fall back to direct execution.

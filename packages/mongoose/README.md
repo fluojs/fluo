@@ -62,7 +62,7 @@ class AppModule {}
 Shutdown preserves transaction cleanup order and rejects new manual or request-scoped transaction boundaries once shutdown begins:
 
 1. Open request-scoped transactions are aborted with `Application shutdown interrupted an open request transaction.`
-2. Active ambient sessions are tracked until their transaction callback and session cleanup settle.
+2. Active ambient sessions and fail-open direct-execution transaction callbacks are tracked until their work settles.
 3. Their Mongoose sessions finish `abortTransaction()` and `endSession()` cleanup.
 4. The configured `dispose(connection)` hook runs only after active request transactions and ambient session scopes have settled.
 
@@ -137,7 +137,7 @@ await this.conn.transaction(async () => {
 });
 ```
 
-If the wrapped connection implements `connection.transaction(...)`, fluo treats that as the strict transaction boundary. Otherwise, when the connection does not implement `startSession()`, transactions use fail-open direct callback execution by default (`strictTransactions: false`), which is useful for local fakes and staged migrations but provides no rollback atomicity. Set `strictTransactions: true` for production flows that require MongoDB transaction guarantees; missing transaction support then makes readiness `not-ready` and causes transaction helpers to throw.
+If the wrapped connection implements `connection.transaction(...)`, fluo treats that as the strict transaction boundary. Otherwise, when the connection does not implement `startSession()`, transactions use fail-open direct callback execution by default (`strictTransactions: false`), which is useful for local fakes and staged migrations but provides no rollback atomicity. Open fail-open manual `transaction(...)` callbacks still drain during shutdown before `dispose(connection)` runs. Set `strictTransactions: true` for production flows that require MongoDB transaction guarantees; missing transaction support then makes readiness `not-ready` and causes transaction helpers to throw.
 
 For supported facade methods, fluo preserves existing Mongoose operation options and only merges the ambient `{ session }` into the correct options argument. If a model call passes an explicit `{ session: null }` or a different session object inside an ambient transaction, fluo throws a session conflict error to prevent accidental transaction escapes.
 

@@ -32,6 +32,14 @@ type ActiveSessionScope = {
   settled: Promise<void>;
 };
 
+type ActiveTransactionCallback = {
+  settled: Promise<void>;
+};
+
+type ActiveTransactionCallbackHandle = {
+  settle(): void;
+};
+
 type ActiveSessionScopeHandle = {
   retainRequestTransaction(handle: ActiveRequestTransactionHandle): void;
   settle(): void;
@@ -217,6 +225,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
   private readonly sessions = new AsyncLocalStorage<AmbientSessionScope>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
   private readonly activeSessions = new Set<ActiveSessionScope>();
+  private readonly activeTransactionCallbacks = new Set<ActiveTransactionCallback>();
   private lifecycleState: 'ready' | 'shutting-down' | 'stopped' = 'ready';
 
   constructor(
@@ -284,6 +293,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     await Promise.allSettled([
       ...Array.from(this.activeRequestTransactions, (transaction) => transaction.settled),
       ...Array.from(this.activeSessions, (session) => session.settled),
+      ...Array.from(this.activeTransactionCallbacks, (callback) => callback.settled),
     ]);
 
     if (this.dispose) {
@@ -331,10 +341,21 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       return this.runConnectionTransaction(fn);
     }
 
-    const session = await this.resolveSession();
-    if (!session) {
-      return fn();
+    const activeCallback = this.trackActiveTransactionCallback();
+    let session: MongooseSessionLike | undefined;
+
+    try {
+      session = await this.resolveSession();
+    } catch (error) {
+      activeCallback.settle();
+      throw error;
     }
+
+    if (!session) {
+      return this.runDirectTransaction(fn, activeCallback);
+    }
+
+    activeCallback.settle();
 
     return this.runManualSessionTransaction(session, fn);
   }
@@ -424,6 +445,14 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     }
   }
 
+  private async runDirectTransaction<T>(fn: () => Promise<T>, activeCallback: ActiveTransactionCallbackHandle): Promise<T> {
+    try {
+      return await fn();
+    } finally {
+      activeCallback.settle();
+    }
+  }
+
   private async resolveSessionForRequest(
     signal: AbortSignal,
     active: ActiveRequestTransactionHandle,
@@ -488,6 +517,24 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
 
         retainedRequestTransactions.clear();
         this.activeSessions.delete(active);
+        settle();
+      },
+    };
+  }
+
+  private trackActiveTransactionCallback(): ActiveTransactionCallbackHandle {
+    let settle!: () => void;
+    const active: ActiveTransactionCallback = {
+      settled: new Promise<void>((resolve) => {
+        settle = resolve;
+      }),
+    };
+
+    this.activeTransactionCallbacks.add(active);
+
+    return {
+      settle: () => {
+        this.activeTransactionCallbacks.delete(active);
         settle();
       },
     };
