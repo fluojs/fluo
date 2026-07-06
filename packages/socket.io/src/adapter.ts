@@ -120,6 +120,15 @@ interface BunEngineOptions {
   path: string;
 }
 
+interface BunHandshakeRequestReference {
+  readonly _query: Readonly<Record<string, string>>;
+  readonly connection: {
+    readonly encrypted: boolean;
+  };
+  readonly headers: Readonly<Record<string, string>>;
+  readonly url: string;
+}
+
 interface BunRealtimeBindingHost {
   configureRealtimeBinding(binding: BunRealtimeBinding | undefined): void;
 }
@@ -275,6 +284,28 @@ function isFetchStyleRealtimeCapability(
   capability: HttpAdapterRealtimeCapability,
 ): capability is FetchStyleRealtimeCapability {
   return capability.kind === 'fetch-style' && capability.contract === 'raw-websocket-expansion';
+}
+
+function isBunHandshakeRequestReference(value: unknown): value is BunHandshakeRequestReference {
+  if (value instanceof Request || typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const candidate = value as Partial<BunHandshakeRequestReference>;
+  return typeof candidate.url === 'string'
+    && typeof candidate.headers === 'object'
+    && candidate.headers !== null
+    && typeof candidate._query === 'object'
+    && candidate._query !== null
+    && typeof candidate.connection === 'object'
+    && candidate.connection !== null;
+}
+
+function toBunHandshakeRequest(reference: BunHandshakeRequestReference): Request {
+  return new Request(reference.url, {
+    headers: reference.headers,
+    method: 'GET',
+  });
 }
 
 function resolveSocketIoBootstrapRuntime(
@@ -750,11 +781,12 @@ export class SocketIoLifecycleService
       return;
     }
 
+    const request = this.resolveHandshakeRequest(socket);
     const rejection = normalizeGuardRejection(
       await guard({
         activeConnectionCount: this.socketRegistry.size,
         namespacePath: path,
-        request: socket.request as SocketIoHandshakeRequest,
+        request,
         socket,
       }),
       'Socket.IO connection rejected.',
@@ -766,7 +798,7 @@ export class SocketIoLifecycleService
   }
 
   private async bindConnectionHandlers(descriptors: WebSocketGatewayDescriptor[], socket: Socket): Promise<void> {
-    const request = socket.request as SocketIoHandshakeRequest;
+    const request = this.resolveHandshakeRequest(socket);
     const resolved = await this.resolveConnectionGateways(descriptors);
     const state = this.createConnectionHandlerState();
 
@@ -775,6 +807,16 @@ export class SocketIoLifecycleService
     await this.runConnectHandlers(resolved, socket, request);
     state.handlersReady = true;
     await this.replayBufferedConnectionEvents(state, resolved, socket, request);
+  }
+
+  private resolveHandshakeRequest(socket: Socket): SocketIoHandshakeRequest {
+    const request = socket.request as unknown;
+
+    if (this.bunEngine && isBunHandshakeRequestReference(request)) {
+      return toBunHandshakeRequest(request);
+    }
+
+    return request as SocketIoHandshakeRequest;
   }
 
   private createConnectionHandlerState(): ConnectionHandlerState {
@@ -841,7 +883,6 @@ export class SocketIoLifecycleService
     });
 
     socket.on('error', (error: Error) => {
-      this.socketRegistry.delete(socket.id);
       this.logger.error('Socket.IO gateway socket emitted an error.', error, 'SocketIoLifecycleService');
     });
 

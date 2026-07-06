@@ -144,6 +144,10 @@ export class ScalingService {
 
 이 경계는 fluo가 decorator-based surface를 제공하면서도, 하부 라이브러리의 확장 지점을 막지 않도록 합니다. 평소에는 fluo의 선언적 gateway를 쓰고, 운영상 필요한 예외만 raw server 경계로 모을 수 있습니다.
 
+애플리케이션 종료 중 Socket.IO client 정리는 Socket.IO가 소유합니다. underlying HTTP server는 이를 제공한 platform adapter 또는 shared HTTP server 통합이 계속 소유하므로, fluo는 `io.close(...)` 전에 해당 server reference를 분리하고 HTTP listener shutdown은 platform owner에게 남깁니다.
+
+Graceful Socket.IO close가 설정된 shutdown timeout을 넘으면 fluo는 lifecycle state를 정리하기 전에 managed Socket.IO client를 force-disconnect합니다. 해당 forced cleanup도 실패하면 이후 shutdown retry가 같은 Socket.IO instance에서 동작할 수 있도록 managed server reference와 socket/namespace registry를 보존하며, active bookkeeping을 잃지 않습니다.
+
 Handler return value는 reply channel이 아닙니다. fluo는 thrown error를 로깅하고 handler ordering을 결정적으로 유지하기 위해 Socket.IO gateway handler를 await하지만, 반환값은 무시합니다. NestJS `@SubscribeMessage()` handler가 `return { ... }`로 ACK payload를 보내던 경우에는 acknowledgement callback을 positional argument로 받고 명시적으로 호출하세요. Native Socket.IO fan-out, `.volatile`, 고급 ACK orchestration은 `SOCKETIO_SERVER`를 주입하는 서비스에 둡니다.
 
 ```typescript

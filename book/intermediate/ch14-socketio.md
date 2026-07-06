@@ -146,6 +146,8 @@ This boundary lets fluo provide a decorator based surface without blocking the e
 
 During shutdown, Socket.IO owns cleanup for connected Socket.IO clients. The underlying HTTP server still belongs to the platform adapter or shared HTTP server integration that supplied it, so fluo detaches that server reference before `io.close(...)` and leaves HTTP listener shutdown to the platform owner.
 
+If graceful Socket.IO close exceeds the configured shutdown timeout, fluo force-disconnects managed Socket.IO clients before clearing lifecycle state. When that forced cleanup also fails, the managed server reference and socket/namespace registries are retained so a later shutdown retry can operate on the same Socket.IO instance instead of losing active bookkeeping.
+
 Handler return values are not a reply channel. fluo awaits a Socket.IO gateway handler so thrown errors can be logged and handler ordering stays deterministic, but the returned value is ignored. If a migrated NestJS `@SubscribeMessage()` handler used `return { ... }` as an ACK payload, accept the acknowledgement callback positionally and call it explicitly. For native Socket.IO fan-out, `.volatile`, or advanced ACK orchestration, keep that logic in a service that injects `SOCKETIO_SERVER`.
 
 ```typescript
