@@ -1,7 +1,8 @@
 import { Inject, type Token } from '@fluojs/core';
-import { ContainerResolutionError, type Provider } from '@fluojs/di';
+import { ContainerResolutionError, type Container, type Provider } from '@fluojs/di';
 import { Controller, Get, forRoutes, type Middleware, type MiddlewareLike, type RequestContext } from '@fluojs/http';
 import { defineModule, type ModuleType, PLATFORM_SHELL, type PlatformShellSnapshot } from '@fluojs/runtime';
+import { RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { collectDefaultMetrics, Gauge, Registry as PrometheusRegistry, type Registry } from 'prom-client';
 
 import {
@@ -103,7 +104,7 @@ export class MetricsModule {
       },
       {
         provide: MetricsService,
-        inject: [registryToken],
+        inject: [registryToken, platformTelemetryToken],
         useFactory: (registry: unknown) => new MetricsService(assertPrometheusRegistry(registry)),
       },
       {
@@ -113,9 +114,10 @@ export class MetricsModule {
       },
       {
         provide: platformTelemetryToken,
-        inject: [registryToken],
-        useFactory: (registry: unknown) => new RuntimePlatformTelemetry(
+        inject: [registryToken, RUNTIME_CONTAINER],
+        useFactory: (registry: unknown, container: unknown) => new RuntimePlatformTelemetry(
           assertPrometheusRegistry(registry),
+          assertRuntimeContainer(container),
           options.registry ? 'shared' : 'isolated',
           options.platformTelemetry,
         ),
@@ -138,7 +140,7 @@ export class MetricsModule {
         @Get(metricsRoutePath)
         async getMetrics(_input: undefined, ctx: RequestContext): Promise<string> {
           ctx.response.setHeader('content-type', this.registry.contentType);
-          return this.platformTelemetry.collectMetrics(ctx, this.registry);
+          return this.platformTelemetry.collectMetrics(this.registry);
         }
       }
 
@@ -150,6 +152,7 @@ export class MetricsModule {
     defineModule(MetricsRuntimeModule, {
       controllers,
       exports: [MetricsService, METER_PROVIDER],
+      global: true,
       middleware,
       providers,
     });
@@ -189,6 +192,8 @@ type ComponentStatusEntry<TStatus extends string> = {
 type RuntimePlatformTelemetryRegistryState = {
   lastHealthStatuses: ComponentStatusMap<PlatformHealthStatus>;
   lastReadinessStatuses: ComponentStatusMap<PlatformReadinessStatus>;
+  originalMetrics?: Registry['metrics'];
+  refresh?: () => Promise<void>;
   scrapeChain: Promise<unknown>;
 };
 type ContainerPresenceProbe = RequestContext['container'] & { has?: (token: Token) => boolean };
@@ -227,6 +232,18 @@ function assertPrometheusRegistry(value: unknown): Registry {
   }
 
   return value;
+}
+
+function assertRuntimeContainer(value: unknown): Container {
+  if (!isRuntimeContainer(value)) {
+    throw new Error('MetricsModule runtime container provider resolved an invalid container.');
+  }
+
+  return value;
+}
+
+function isRuntimeContainer(value: unknown): value is Container {
+  return typeof value === 'object' && value !== null && 'resolve' in value && typeof value.resolve === 'function';
 }
 
 function getRuntimePlatformTelemetryRegistryState(registry: Registry): RuntimePlatformTelemetryRegistryState {
@@ -308,10 +325,12 @@ class RuntimePlatformTelemetry {
 
   constructor(
     registry: Registry,
+    private readonly container: Container,
     private readonly registryMode: RegistryMode,
     private readonly labels: MetricsModuleOptions['platformTelemetry'] = {},
   ) {
     this.telemetryState = getRuntimePlatformTelemetryRegistryState(registry);
+    this.installRegistryRefresh(registry);
     this.readinessGauge = getOrCreateGauge(registry, {
       help: 'Runtime platform component readiness from shared platform snapshot semantics.',
       labelNames: PLATFORM_COMPONENT_LABELS,
@@ -331,10 +350,34 @@ class RuntimePlatformTelemetry {
     this.registryModeGauge.labels(this.registryMode).set(1);
   }
 
-  async collectMetrics(ctx: RequestContext, registry: Registry): Promise<string> {
+  collectMetrics(registry: Registry): Promise<string> {
+    return registry.metrics();
+  }
+
+  private installRegistryRefresh(registry: Registry): void {
+    this.telemetryState.refresh = () => this.refresh();
+    if (this.telemetryState.originalMetrics) {
+      return;
+    }
+
+    const originalMetrics = registry.metrics.bind(registry);
+    this.telemetryState.originalMetrics = originalMetrics;
+    registry.metrics = async () => {
+      await this.telemetryState.refresh?.();
+      return await originalMetrics();
+    };
+  }
+
+  async refresh(): Promise<void> {
     const collect = this.telemetryState.scrapeChain.then(async () => {
-      await this.refresh(ctx);
-      return registry.metrics();
+      const platformShell = await this.resolvePlatformShell();
+      if (!platformShell) {
+        this.clearPlatformTelemetry();
+        return;
+      }
+
+      const snapshot = await platformShell.snapshot();
+      this.syncSnapshot(snapshot);
     });
 
     this.telemetryState.scrapeChain = collect.then(
@@ -342,17 +385,10 @@ class RuntimePlatformTelemetry {
       () => undefined,
     );
 
-    return collect;
+    await collect;
   }
 
-  async refresh(ctx: RequestContext): Promise<void> {
-    const platformShell = await this.resolvePlatformShell(ctx);
-    if (!platformShell) {
-      this.clearPlatformTelemetry();
-      return;
-    }
-
-    const snapshot = await platformShell.snapshot();
+  private syncSnapshot(snapshot: PlatformShellSnapshot): void {
     const env = this.labels?.env ?? 'unknown';
     const instance = this.labels?.instance ?? 'local';
 
@@ -532,14 +568,14 @@ class RuntimePlatformTelemetry {
     }
   }
 
-  private async resolvePlatformShell(ctx: RequestContext): Promise<{ snapshot(): Promise<PlatformShellSnapshot> } | undefined> {
-    const hasPlatformShell = hasContainerToken(ctx.container, PLATFORM_SHELL);
+  private async resolvePlatformShell(): Promise<{ snapshot(): Promise<PlatformShellSnapshot> } | undefined> {
+    const hasPlatformShell = hasContainerToken(this.container, PLATFORM_SHELL);
     if (hasPlatformShell === false) {
       return undefined;
     }
 
     try {
-      return await ctx.container.resolve(PLATFORM_SHELL);
+      return await this.container.resolve(PLATFORM_SHELL);
     } catch (error) {
       if (hasPlatformShell !== true && isMissingPlatformShellResolutionError(error)) {
         return undefined;
