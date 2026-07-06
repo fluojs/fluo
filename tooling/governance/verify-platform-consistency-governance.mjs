@@ -564,7 +564,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // and retry/body-limit/shutdown regression coverage, metrics shared-registry
   // HTTP collector or platform telemetry stale-series ownership docs, and email
   // transport-agnostic status snapshots plus caller-owned shutdown boundaries,
-  // and validation mapped-type/nested-materialization contract discoverability.
+  // validation mapped-type/nested-materialization contract discoverability, and
+  // serialization class options plus request-boundary interceptor coverage.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
