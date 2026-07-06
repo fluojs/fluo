@@ -699,6 +699,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const terminusReadmeKo = readFileSync(join(repoRoot, 'packages/terminus/README.ko.md'), 'utf8');
   const cacheManagerReadme = readFileSync(join(repoRoot, 'packages/cache-manager/README.md'), 'utf8');
   const cacheManagerReadmeKo = readFileSync(join(repoRoot, 'packages/cache-manager/README.ko.md'), 'utf8');
+  const testingReadme = readFileSync(join(repoRoot, 'packages/testing/README.md'), 'utf8');
+  const testingReadmeKo = readFileSync(join(repoRoot, 'packages/testing/README.ko.md'), 'utf8');
   const healthChapter = readFileSync(join(repoRoot, 'book/beginner/ch18-health.md'), 'utf8');
   const healthChapterKo = readFileSync(join(repoRoot, 'book/beginner/ch18-health.ko.md'), 'utf8');
   const notificationsReadme = readFileSync(join(repoRoot, 'packages/notifications/README.md'), 'utf8');
@@ -814,6 +816,29 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContextKo.includes('lazy') &&
       viteReadmeKo.includes('Babel을 lazy load'),
     'Korean Vite decorator tooling docs must preserve lazy Babel loading discoverability.',
+  );
+
+  assert(
+    testingReadme.includes('request-scoped provider isolation') &&
+      testingReadme.includes('app.request(...).send()') &&
+      testingReadme.includes('@fluojs/testing/http') &&
+      testingReadme.includes('DeepMocked<T>') &&
+      packageSurface.includes('@fluojs/testing/http') &&
+      packageSurface.includes('request-scoped DI isolation') &&
+      docsContext.includes('@fluojs/testing/http') &&
+      docsContext.includes('request-scoped DI'),
+    'Testing README, package-surface, and docs/CONTEXT.md must keep request helper subpaths, request-scoped DI isolation, and root mock typing discoverable together.',
+  );
+  assert(
+    testingReadmeKo.includes('request-scoped provider isolation') &&
+      testingReadmeKo.includes('app.request(...).send()') &&
+      testingReadmeKo.includes('@fluojs/testing/http') &&
+      testingReadmeKo.includes('DeepMocked<T>') &&
+      packageSurfaceKo.includes('@fluojs/testing/http') &&
+      packageSurfaceKo.includes('request-scoped DI isolation') &&
+      docsContextKo.includes('@fluojs/testing/http') &&
+      docsContextKo.includes('request-scoped DI'),
+    'Korean testing README, package-surface.ko.md, and docs/CONTEXT.ko.md must keep request helper subpaths, request-scoped DI isolation, and root mock typing discoverable together.',
   );
 
   assert(
