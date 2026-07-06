@@ -53,8 +53,12 @@ function buildStoreKey(encodedHandlerKey: string, clientKey: string): string {
 
 function buildHandlerKey(handler: GuardContext['handler']): string {
   const version = handler.route.version ?? handler.metadata.effectiveVersion ?? 'unversioned';
+  const moduleName = handler.metadata.moduleType?.name || '<moduleless>';
+  const controllerName = handler.controllerToken.name || '<anonymous-controller>';
 
   return [
+    `module:${encodeURIComponent(moduleName)}`,
+    `controller:${encodeURIComponent(controllerName)}`,
     `method:${handler.route.method}`,
     `path:${encodeURIComponent(handler.route.path)}`,
     `version:${encodeURIComponent(version)}`,
@@ -100,7 +104,14 @@ export class ThrottlerGuard implements Guard {
     }
 
     const version = handler.route.version ?? handler.metadata.effectiveVersion ?? 'unversioned';
-    const cacheKey = [handler.methodName, handler.route.method, handler.route.path, version].join('\u0000');
+    const cacheKey = [
+      handler.metadata.moduleType?.name || '<moduleless>',
+      handler.controllerToken.name || '<anonymous-controller>',
+      handler.methodName,
+      handler.route.method,
+      handler.route.path,
+      version,
+    ].join('\u0000');
     const cachedPolicy = controllerPolicies.get(cacheKey);
 
     if (cachedPolicy) {
