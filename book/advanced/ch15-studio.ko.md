@@ -77,13 +77,13 @@ fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 fluo inspect ./src/app.module.ts --mermaid --output artifacts/module-graph.mmd
 ```
 
-Mermaid 렌더링은 `renderMermaid(snapshot)` 계약을 통해 `@fluojs/studio`에 위임됩니다. 이 출력이 필요하면 CLI Studio/viewer 명령을 실행하는 프로젝트에 Studio를 개발 전용 의존성으로 설치합니다.
+Mermaid 렌더링은 `renderMermaid(snapshot)` 계약을 통해 `@fluojs/studio`에 위임됩니다. 이 출력이 필요하면 CLI Studio/viewer 명령을 실행하는 Node.js `>=20.0.0` 프로젝트에 Studio를 개발 전용 의존성으로 설치합니다.
 
 ```bash
 pnpm add -D @fluojs/studio
 ```
 
-배포 패키지나 runtime automation이 실행 중에 `@fluojs/studio` 또는 `@fluojs/studio/contracts`를 import하는 경우에만 일반 dependency를 사용합니다. 비대화형 실행에서는 Studio dependency가 없을 때 install guidance와 함께 빠르게 실패합니다. 대화형 실행은 확인을 물을 수 있지만, `fluo inspect`는 패키지를 조용히 설치하지 않습니다.
+배포 패키지나 runtime automation이 실행 중에 `@fluojs/studio` 또는 `@fluojs/studio/contracts`를 import하는 경우에만 일반 dependency를 사용합니다. 패키징된 `@fluojs/studio/viewer` entrypoint는 검사 대상 앱에 bundle하는 runtime module이 아니라 Node package resolution으로 해석되는 HTML asset입니다. 비대화형 실행에서는 Studio dependency가 없을 때 install guidance와 함께 빠르게 실패합니다. 대화형 실행은 확인을 물을 수 있지만, `fluo inspect`는 패키지를 조용히 설치하지 않습니다.
 
 ## 15.4 Snapshot과 리포트 shape 이해하기
 

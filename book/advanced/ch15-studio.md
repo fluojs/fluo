@@ -77,13 +77,13 @@ Use `--mermaid` when you need a text diagram for documentation or review.
 fluo inspect ./src/app.module.ts --mermaid --output artifacts/module-graph.mmd
 ```
 
-Mermaid rendering is delegated to `@fluojs/studio` through the `renderMermaid(snapshot)` contract. Install Studio as a development-only dependency in the project that runs CLI Studio/viewer commands when you need this output.
+Mermaid rendering is delegated to `@fluojs/studio` through the `renderMermaid(snapshot)` contract. Install Studio as a development-only dependency in the Node.js `>=20.0.0` project that runs CLI Studio/viewer commands when you need this output.
 
 ```bash
 pnpm add -D @fluojs/studio
 ```
 
-Use a normal dependency instead only when a published package or runtime automation imports `@fluojs/studio` or `@fluojs/studio/contracts` at runtime. In non-interactive runs, a missing Studio dependency fails fast with install guidance. Interactive runs may ask for confirmation, but `fluo inspect` does not silently install packages.
+Use a normal dependency instead only when a published package or runtime automation imports `@fluojs/studio` or `@fluojs/studio/contracts` at runtime. The packaged `@fluojs/studio/viewer` entrypoint is an HTML asset resolved by Node package resolution, not a runtime module to bundle into the inspected app. In non-interactive runs, a missing Studio dependency fails fast with install guidance. Interactive runs may ask for confirmation, but `fluo inspect` does not silently install packages.
 
 ## 15.4 Understanding the Snapshot and Report Shapes
 

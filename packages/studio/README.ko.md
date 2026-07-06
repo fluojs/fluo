@@ -21,6 +21,8 @@ fluo 진단을 위한 CLI sidecar 및 React viewer workflow입니다. Node dev-r
 
 대부분의 애플리케이션 프로젝트는 Studio를 개발 전용 의존성으로 설치합니다. CLI가 `fluo dev --studio`, `fluo inspect --mermaid`, 패키징된 viewer 접근을 위해 Studio를 해석하며, 애플리케이션 런타임 자체는 Studio를 직접 import하지 않습니다.
 
+Studio는 Node.js tooling package이며 배포 package의 `engines.node` field와 동일하게 Node.js `>=20.0.0`을 요구합니다. 패키징된 viewer subpath는 Bun, Deno, Cloudflare Workers fallback workflow가 만든 artifact를 표시하는 경우에도 Node package resolution으로 해석합니다.
+
 ```bash
 pnpm add -D @fluojs/studio
 ```

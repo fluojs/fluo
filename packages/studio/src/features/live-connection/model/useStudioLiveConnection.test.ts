@@ -96,6 +96,19 @@ function liveDisconnectEvent(): StudioLiveEvent {
   };
 }
 
+function liveHeartbeatEvent(sequence: number): StudioLiveEvent {
+  return {
+    emittedAt: `2026-05-28T00:00:${String(sequence).padStart(2, '0')}.000Z`,
+    epoch: 'epoch-1',
+    eventId: `epoch-1:heartbeat-${String(sequence)}`,
+    payload: { uptimeMs: sequence * 1_000 },
+    sequence,
+    source: { appId: 'app-test', runtime: 'node' },
+    type: 'heartbeat',
+    version: 1,
+  };
+}
+
 describe('useStudioLiveConnection', () => {
   afterEach(() => {
     delete (window as typeof window & { __FLUO_STUDIO__?: unknown }).__FLUO_STUDIO__;
@@ -187,6 +200,16 @@ describe('useStudioLiveConnection', () => {
     vi.advanceTimersByTime(25_001);
     await vi.waitFor(() => {
       expect(observedStatuses).toContain('stale');
+    });
+
+    source?.emit('heartbeat', liveHeartbeatEvent(5));
+    await vi.waitFor(() => {
+      expect(observedStatuses.at(-1)).toBe('connected');
+    });
+
+    vi.advanceTimersByTime(25_001);
+    await vi.waitFor(() => {
+      expect(observedStatuses.at(-1)).toBe('stale');
     });
 
     source?.onerror?.(new Event('error'));
