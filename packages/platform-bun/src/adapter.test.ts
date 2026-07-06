@@ -304,6 +304,41 @@ function registerBunWebRuntimePortabilitySuite(): void {
       }
     });
 
+    it('preserves query arrays and malformed query decoding', async () => {
+      const mockBun = installMockBun();
+
+      @Controller('/query')
+      class QueryController {
+        @Get('/')
+        readQuery(_input: undefined, context: RequestContext) {
+          return context.request.query;
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, { controllers: [QueryController] });
+
+      const app = await bootstrapAndListenBunApplication(AppModule, { cors: false });
+
+      try {
+        const response = await dispatchMockBunRequest(
+          mockBun,
+          new Request('https://runtime.test/query?tag=one&tag=two&empty=&flag&encoded=hello+world&bad=%E0%A4%A'),
+        );
+
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({
+          bad: '�%A',
+          empty: '',
+          encoded: 'hello world',
+          flag: '',
+          tag: ['one', 'two'],
+        });
+      } finally {
+        await app.close();
+      }
+    });
+
     it('preserves raw body for JSON and text requests when enabled', async () => {
       const mockBun = installMockBun();
 
@@ -1567,24 +1602,29 @@ describe('@fluojs/platform-bun', () => {
     defineModule(AppModule, {});
 
     const originalExitCode = process.exitCode;
+    const signal = 'SIGTERM' as const;
+    const listenersBefore = process.listeners(signal).length;
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined as never) as typeof process.exit);
     const app = await runBunApplication(AppModule, {
       forceExitTimeoutMs: 100,
       hostname: '127.0.0.1',
       port: 4328,
-      shutdownSignals: ['SIGTERM'],
+      shutdownSignals: [signal],
     });
     const originalClose = app.close.bind(app);
     app.close = () => Promise.reject(new Error('close rejected from signal'));
 
     try {
-      process.emit('SIGTERM', 'SIGTERM');
+      expect(process.listeners(signal).length).toBe(listenersBefore + 1);
+
+      process.emit(signal, signal);
       await Promise.resolve();
       await Promise.resolve();
 
       expect(exitSpy).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
+      expect(process.listeners(signal).length).toBe(listenersBefore);
       expect(errorLog.mock.calls.some(([message]) => String(message).includes('Failed to shut down the application cleanly.'))).toBe(true);
     } finally {
       app.close = originalClose;
@@ -1602,6 +1642,8 @@ describe('@fluojs/platform-bun', () => {
     const mockBun = installMockBun();
     const deferred = createDeferred<void>();
     const originalExitCode = process.exitCode;
+    const signal = 'SIGTERM' as const;
+    const listenersBefore = process.listeners(signal).length;
     let app: Awaited<ReturnType<typeof runBunApplication>> | undefined;
 
     @Controller('/drain')
@@ -1621,16 +1663,19 @@ describe('@fluojs/platform-bun', () => {
         forceExitTimeoutMs: 20_000,
         hostname: '127.0.0.1',
         port: 4315,
-        shutdownSignals: ['SIGTERM'],
+        shutdownSignals: [signal],
       });
 
       const responsePromise = mockBun.lastServer!.fetch(new Request('http://127.0.0.1:4315/drain'));
       await Promise.resolve();
 
-      process.emit('SIGTERM', 'SIGTERM');
+      expect(process.listeners(signal).length).toBe(listenersBefore + 1);
+
+      process.emit(signal, signal);
       await vi.advanceTimersByTimeAsync(10_001);
 
       expect(process.exitCode).toBe(originalExitCode);
+      expect(process.listeners(signal).length).toBe(listenersBefore);
       expect(errorLog.mock.calls.some(([message]) => String(message).includes('Failed to shut down the application cleanly.'))).toBe(false);
       expect(errorLog.mock.calls.some(([message]) => String(message).includes('Shutdown timeout exceeded after 20000ms'))).toBe(false);
 
