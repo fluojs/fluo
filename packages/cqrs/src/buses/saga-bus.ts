@@ -1,6 +1,6 @@
 import { FluoError, Inject, InvariantError, type Token } from '@fluojs/core';
-import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
+import type { OnApplicationBootstrap, OnApplicationShutdown, RuntimeCleanupRegistration } from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { CqrsBusBase } from '../discovery.js';
 import {
@@ -65,7 +65,7 @@ function isCqrsDispatchContextState(context: CqrsDispatchContext | undefined): c
  * The service prevents re-entrant dispatch loops within the same explicit dispatch context and waits for
  * in-flight saga chains during shutdown so lifecycle guarantees remain predictable.
  */
-@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, CQRS_MODULE_OPTIONS)
+@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, CQRS_MODULE_OPTIONS, RUNTIME_CLEANUP_REGISTRATION)
 export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicationBootstrap, OnApplicationShutdown {
   private descriptorsByEvent = new Map<CqrsEventType, SagaDescriptor[]>();
   private discoveryPromise: Promise<void> | undefined;
@@ -74,14 +74,20 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
   private readonly pendingDispatches = new Set<Promise<void>>();
   private shutdownDrainTimeouts = 0;
+  private unregisterShutdownStartCleanup: (() => void) | undefined;
 
   constructor(
     runtimeContainer: ConstructorParameters<typeof CqrsBusBase>[0],
     compiledModules: ConstructorParameters<typeof CqrsBusBase>[1],
     logger: ConstructorParameters<typeof CqrsBusBase>[2],
     private readonly moduleOptions: CqrsModuleOptions = {},
+    registerRuntimeCleanup: RuntimeCleanupRegistration = () => () => undefined,
   ) {
     super(runtimeContainer, compiledModules, logger);
+
+    this.unregisterShutdownStartCleanup = registerRuntimeCleanup(() => {
+      this.markApplicationShutdownStarted();
+    });
   }
 
   async onApplicationBootstrap(): Promise<void> {
@@ -97,7 +103,9 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   }
 
   async onApplicationShutdown(): Promise<void> {
-    this.lifecycleState = 'stopping';
+    this.markApplicationShutdownStarted();
+    this.unregisterShutdownStartCleanup?.();
+    this.unregisterShutdownStartCleanup = undefined;
 
     await this.drainActiveSagaWork();
 
@@ -159,6 +167,12 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     }
   }
 
+  private markApplicationShutdownStarted(): void {
+    if (this.lifecycleState !== 'stopped') {
+      this.lifecycleState = 'stopping';
+    }
+  }
+
   private matchSagaDescriptors(event: IEvent): SagaDescriptor[] {
     const descriptors: SagaDescriptor[] = [];
 
@@ -215,22 +229,33 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   }
 
   private async drainActiveSagaWork(): Promise<void> {
-    const activeWork = [...this.pendingDispatches, ...this.executionChains.values()];
-
-    if (activeWork.length === 0) {
-      return;
-    }
-
     const timeoutMs = this.resolveShutdownDrainTimeoutMs();
-    const drained = await this.awaitShutdownDrain(activeWork, timeoutMs);
+    const deadline = Date.now() + timeoutMs;
 
-    if (!drained) {
-      this.shutdownDrainTimeouts += 1;
-      this.logger.warn(
-        `CQRS saga shutdown drain exceeded ${String(timeoutMs)}ms with ${String(activeWork.length)} active saga task(s); continuing shutdown.`,
-        'CqrsSagaLifecycleService',
-      );
+    while (this.pendingDispatches.size > 0) {
+      const activeWork = [...this.pendingDispatches];
+      const remainingTimeoutMs = deadline - Date.now();
+
+      if (remainingTimeoutMs <= 0) {
+        this.reportShutdownDrainTimeout(timeoutMs, activeWork.length);
+        return;
+      }
+
+      const drained = await this.awaitShutdownDrain(activeWork, remainingTimeoutMs);
+
+      if (!drained) {
+        this.reportShutdownDrainTimeout(timeoutMs, activeWork.length);
+        return;
+      }
     }
+  }
+
+  private reportShutdownDrainTimeout(timeoutMs: number, activeWorkCount: number): void {
+    this.shutdownDrainTimeouts += 1;
+    this.logger.warn(
+      `CQRS saga shutdown drain exceeded ${String(timeoutMs)}ms with ${String(activeWorkCount)} active saga task(s); continuing shutdown.`,
+      'CqrsSagaLifecycleService',
+    );
   }
 
   private async awaitShutdownDrain(activeWork: Promise<void>[], timeoutMs: number): Promise<boolean> {

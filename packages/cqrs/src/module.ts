@@ -55,6 +55,15 @@ function collectOptionHandlerProviders(options: CqrsModuleOptions): Provider[] {
   return providers;
 }
 
+function resolveDelegatedEventBusOptions(options: CqrsModuleOptions): EventBusModuleOptions {
+  const eventBusOptions = options.eventBus ?? {};
+
+  return {
+    ...eventBusOptions,
+    global: eventBusOptions.global ?? options.global ?? true,
+  };
+}
+
 function assertCommandBusService(service: unknown): asserts service is CommandBusLifecycleService {
   if (!(service instanceof CommandBusLifecycleService)) {
     throw new TypeError('CQRS command bus alias expected CommandBusLifecycleService.');
@@ -148,7 +157,7 @@ export class CqrsModule {
         EVENT_BUS,
       ],
       global: options.global ?? true,
-      imports: [EventBusModule.forRoot(options.eventBus)],
+      imports: [EventBusModule.forRoot(resolveDelegatedEventBusOptions(options))],
       providers: createCqrsProviders(options),
     });
   }

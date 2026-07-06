@@ -1,7 +1,7 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import { Container } from '@fluojs/di';
-import { type EventBusTransport, OnEvent } from '@fluojs/event-bus';
-import { type ApplicationLogger, bootstrapApplication, defineModule, type OnApplicationShutdown } from '@fluojs/runtime';
+import { type EventBus, EVENT_BUS as FLUO_EVENT_BUS, type EventBusTransport, OnEvent } from '@fluojs/event-bus';
+import { type ApplicationLogger, bootstrapApplication, defineModule, type OnApplicationShutdown, type RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 import { CommandBusLifecycleService } from './buses/command-bus.js';
 import { CqrsEventBusService } from './buses/event-bus.js';
@@ -80,6 +80,30 @@ function getPreloadedHandlerCount(service: object): number {
   }
 
   return handlerInstances.size;
+}
+
+function getPendingSagaDispatches(service: object): Set<Promise<void>> {
+  const pendingDispatches = Reflect.get(service, 'pendingDispatches');
+
+  if (!(pendingDispatches instanceof Set)) {
+    throw new Error('Expected CQRS saga service to expose pendingDispatches for package-internal tests.');
+  }
+
+  return pendingDispatches;
+}
+
+function createRuntimeCleanupRegistry(callbacks: Array<() => void>): RuntimeCleanupRegistration {
+  return (cleanup: () => void) => {
+    callbacks.push(cleanup);
+
+    return () => {
+      const index = callbacks.indexOf(cleanup);
+
+      if (index >= 0) {
+        callbacks.splice(index, 1);
+      }
+    };
+  };
 }
 
 class CreateUserCommand implements ICommand {
@@ -503,6 +527,59 @@ describe('@fluojs/cqrs', () => {
     await app.close();
   });
 
+  it('keeps delegated event-bus providers module-local when CQRS global is false', async () => {
+    @Inject(FLUO_EVENT_BUS)
+    class SiblingEventBusConsumer {
+      constructor(readonly eventBus: EventBus) {}
+    }
+
+    class CqrsHostModule {}
+    defineModule(CqrsHostModule, {
+      imports: [CqrsModule.forRoot({ global: false })],
+    });
+
+    class SiblingModule {}
+    defineModule(SiblingModule, {
+      providers: [SiblingEventBusConsumer],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsHostModule, SiblingModule],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow();
+  });
+
+  it('honors an explicit delegated event-bus global override when CQRS global is false', async () => {
+    @Inject(FLUO_EVENT_BUS)
+    class SiblingEventBusConsumer {
+      constructor(readonly eventBus: EventBus) {}
+    }
+
+    class CqrsHostModule {}
+    defineModule(CqrsHostModule, {
+      imports: [CqrsModule.forRoot({ eventBus: { global: true }, global: false })],
+    });
+
+    class SiblingModule {}
+    defineModule(SiblingModule, {
+      providers: [SiblingEventBusConsumer],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsHostModule, SiblingModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const consumer = await app.container.resolve(SiblingEventBusConsumer);
+
+    expect(typeof consumer.eventBus.publish).toBe('function');
+
+    await app.close();
+  });
+
   it('accepts CqrsModule.forRoot handler option arrays and registers those classes', async () => {
     @CommandHandler(CreateUserCommand)
     class OptionCreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
@@ -672,6 +749,98 @@ describe('@fluojs/cqrs', () => {
 
     expect(getPreloadedHandlerCount(commandBusService)).toBe(0);
     expect(getPreloadedHandlerCount(queryBusService)).toBe(0);
+  });
+
+  it('rejects CQRS event publishes as soon as runtime shutdown-start cleanup runs', async () => {
+    const cleanupCallbacks: Array<() => void> = [];
+    const loggerEvents: string[] = [];
+    const container = new Container();
+    const registerRuntimeCleanup = createRuntimeCleanupRegistry(cleanupCallbacks);
+    const sagaBus = new CqrsSagaLifecycleService(container, [], createLogger(loggerEvents), {}, registerRuntimeCleanup);
+    const delegatedEventBus = { publish: vi.fn(async () => undefined) } satisfies EventBus;
+    const cqrsEventBus = new CqrsEventBusService(
+      delegatedEventBus,
+      sagaBus,
+      container,
+      [],
+      createLogger(loggerEvents),
+      {},
+      registerRuntimeCleanup,
+    );
+
+    await sagaBus.onApplicationBootstrap();
+    await cqrsEventBus.onApplicationBootstrap();
+    for (const cleanup of cleanupCallbacks) {
+      cleanup();
+    }
+
+    await expect(cqrsEventBus.publish(new UserCreatedEvent('late'))).rejects.toBeInstanceOf(InvariantError);
+    expect(delegatedEventBus.publish).not.toHaveBeenCalled();
+  });
+
+  it('rejects direct saga dispatch as soon as runtime shutdown-start cleanup runs', async () => {
+    const cleanupCallbacks: Array<() => void> = [];
+    const loggerEvents: string[] = [];
+    const container = new Container();
+    const sagaBus = new CqrsSagaLifecycleService(
+      container,
+      [],
+      createLogger(loggerEvents),
+      {},
+      createRuntimeCleanupRegistry(cleanupCallbacks),
+    );
+
+    await sagaBus.onApplicationBootstrap();
+    for (const cleanup of cleanupCallbacks) {
+      cleanup();
+    }
+
+    await expect(sagaBus.dispatch(new UserCreatedEvent('late'))).rejects.toBeInstanceOf(InvariantError);
+  });
+
+  it('continues saga shutdown drain until late nested saga work is quiescent', async () => {
+    const firstWorkRelease = createDeferred<void>();
+    const secondWorkRelease = createDeferred<void>();
+    const loggerEvents: string[] = [];
+    const sagaBus = new CqrsSagaLifecycleService(
+      new Container(),
+      [],
+      createLogger(loggerEvents),
+      { shutdown: { drainTimeoutMs: 1000 } },
+    );
+    const pendingDispatches = getPendingSagaDispatches(sagaBus);
+    let shutdownCompleted = false;
+    let firstWork!: Promise<void>;
+    let secondWork!: Promise<void>;
+
+    secondWork = secondWorkRelease.promise.then(() => {
+      pendingDispatches.delete(secondWork);
+    });
+    firstWork = firstWorkRelease.promise.then(() => {
+      pendingDispatches.delete(firstWork);
+      pendingDispatches.add(secondWork);
+    });
+    pendingDispatches.add(firstWork);
+
+    const shutdownPromise = sagaBus.onApplicationShutdown().then(() => {
+      shutdownCompleted = true;
+    });
+    await Promise.resolve();
+
+    expect(shutdownCompleted).toBe(false);
+
+    firstWorkRelease.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(shutdownCompleted).toBe(false);
+
+    secondWorkRelease.resolve();
+    await shutdownPromise;
+
+    expect(shutdownCompleted).toBe(true);
+    expect(sagaBus.getRuntimeSnapshot().shutdownDrainTimeouts).toBe(0);
+    expect(loggerEvents).toEqual([]);
   });
 
   it('orchestrates follow-up commands across multiple events over time with sagas', async () => {

@@ -139,7 +139,7 @@ class GetOrderSummaryHandler
 }
 ```
 
-`CqrsModule.forRoot(...)`를 import하는 애플리케이션 모듈에 projection handler, query handler, projection store를 singleton provider로 등록하세요. CQRS handler discovery는 provider registration만 검사합니다. HTTP controller는 request boundary에 남으며 controller class가 실수로 CQRS handler decorator를 가지고 있어도 무시됩니다. `CqrsModule.forRoot(...)`는 기본적으로 bus를 global로 export하며, `CqrsModule.forRoot({ global: false })`는 해당 CQRS module을 import한 module을 통해서만 bus provider가 보이도록 유지합니다. `CqrsEventBusService.publish(new OrderPlacedEvent(...))`는 일치하는 `@EventHandler(...)` provider를 saga와 위임 `@fluojs/event-bus` 발행보다 먼저 실행하므로, read model은 문서화된 CQRS event pipeline을 통해 write-side fact를 관찰합니다. Event replay, retry, 외부 transport가 같은 business fact를 두 번 이상 전달할 수 있으므로 projection handler는 idempotent하게 유지하세요.
+`CqrsModule.forRoot(...)`를 import하는 애플리케이션 모듈에 projection handler, query handler, projection store를 singleton provider로 등록하세요. CQRS handler discovery는 provider registration만 검사합니다. HTTP controller는 request boundary에 남으며 controller class가 실수로 CQRS handler decorator를 가지고 있어도 무시됩니다. `CqrsModule.forRoot(...)`는 기본적으로 bus를 global로 export하며, `CqrsModule.forRoot({ global: false })`는 `eventBus.global`을 명시적으로 override하지 않는 한 해당 CQRS module을 import한 module을 통해서만 bus provider와 위임 `@fluojs/event-bus` provider가 보이도록 유지합니다. `CqrsEventBusService.publish(new OrderPlacedEvent(...))`는 일치하는 `@EventHandler(...)` provider를 saga와 위임 `@fluojs/event-bus` 발행보다 먼저 실행하므로, read model은 문서화된 CQRS event pipeline을 통해 write-side fact를 관찰합니다. Event replay, retry, 외부 transport가 같은 business fact를 두 번 이상 전달할 수 있으므로 projection handler는 idempotent하게 유지하세요.
 
 ### Saga 프로세스 매니저
 
