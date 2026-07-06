@@ -52,7 +52,7 @@ Each chapter adds one concrete feature to FluoBlog. This approach is close to a 
 To follow this book, you will need the following.
 
 - **Basic JavaScript/TypeScript knowledge**: You should be comfortable with classes, `async/await`, and basic type declarations.
-- **Node.js installed**: fluo supports many runtimes, but we will use Node.js version 18 or newer and `pnpm` as the default development environment.
+- **Node.js installed**: fluo supports many runtimes, but we will use Node.js version 20 or newer and `pnpm` as the default development environment. The beginner Node.js path uses the Fastify adapter, whose package declares `engines.node >=20.0.0`.
 - **A terminal and code editor**: We recommend VS Code with the TypeScript extension installed.
 
 Prior experience with NestJS, Express, or another backend framework is **not required**. If you have used another framework, fluo's explicitness may stand out more clearly. This book explains concepts assuming no backend experience beyond basic knowledge of how the web works.
@@ -157,7 +157,7 @@ Before turning the page, check that your development environment is ready. It is
 node --version
 ```
 
-If it shows version 18 or newer, you are ready. Let's begin.
+If it shows version 20 or newer, you are ready. Let's begin.
 
 ## Let's Begin
 
