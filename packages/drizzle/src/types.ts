@@ -1,4 +1,5 @@
 import type { MaybePromise } from '@fluojs/core';
+import type { PersistencePlatformStatusSnapshot } from '@fluojs/runtime';
 
 type DrizzleTransactionCallback<TTransactionDatabase, TResult> = (database: TTransactionDatabase) => Promise<TResult>;
 
@@ -48,6 +49,8 @@ export interface DrizzleModuleOptions<TDatabase extends DrizzleDatabaseLike<TTra
  * @typeParam TTransactionOptions Options forwarded to `database.transaction(...)`.
  */
 export interface DrizzleHandleProvider<TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>, TTransactionDatabase = TDatabase, TTransactionOptions = unknown> {
+  /** Produces the platform diagnostics snapshot for health and readiness integrations. */
+  createPlatformStatusSnapshot(): PersistencePlatformStatusSnapshot;
   /** Returns the ambient transaction database when present, or the root Drizzle handle otherwise. */
   current(): TDatabase | TTransactionDatabase;
   /**
