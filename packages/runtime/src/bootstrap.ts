@@ -1199,10 +1199,17 @@ async function runShutdownHooks(instances: readonly unknown[], signal?: string):
 }
 
 function createHandlerSources(modules: CompiledModule[]): HandlerSource[] {
+  const globalModules = modules.filter((compiledModule) => compiledModule.definition.global);
+
   return modules.flatMap((compiledModule) =>
     (compiledModule.definition.controllers ?? []).map((controllerToken) => ({
       controllerToken,
-      moduleMiddleware: compiledModule.definition.middleware ?? [],
+      moduleMiddleware: [
+        ...globalModules
+          .filter((globalModule) => globalModule !== compiledModule)
+          .flatMap((globalModule) => globalModule.definition.middleware ?? []),
+        ...(compiledModule.definition.middleware ?? []),
+      ],
       moduleType: compiledModule.type,
     })),
   );

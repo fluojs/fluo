@@ -268,7 +268,7 @@ This is especially useful during traffic spikes when the server is already under
 
 - `fluo_component_ready`: Records `1` when a platform component is ready and `0` otherwise, using labels from the `PLATFORM_SHELL` snapshot.
 - `fluo_component_health`: Records `1` when a platform component is healthy and `0` otherwise, using labels from the `PLATFORM_SHELL` snapshot.
-- `fluo_metrics_registry_mode`: Exposes which mode the current metrics registry is operating in.
+- `fluo_metrics_registry_mode`: Exposes which mode the current metrics registry is operating in as a gauge value of `1` labeled with `mode="isolated"` or `mode="shared"`.
 
 ### 19.7.1 Built-in Platform Telemetry Boundaries
 You may want to see more detailed operational numbers beyond a simple "healthy/unhealthy" state, but the current built-in platform telemetry exposure focuses on framework-level signals such as readiness, health, and registry mode. For more granular dependency internals, such as database pool size, active connection count, and queued request count, it is more accurate to treat them as custom metrics exposed separately by the relevant library or application, rather than assuming they are part of this chapter's basic built-in metrics contract.

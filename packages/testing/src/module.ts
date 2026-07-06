@@ -81,10 +81,17 @@ export function extractModuleImports(moduleType: ModuleType): ModuleType[] {
 }
 
 function createHandlerSources(bootstrappedModules: BootstrapResult['modules']): HandlerSource[] {
+  const globalModules = bootstrappedModules.filter((compiledModule) => compiledModule.definition.global);
+
   return bootstrappedModules.flatMap((compiledModule) =>
     (compiledModule.definition.controllers ?? []).map((controllerToken) => ({
       controllerToken,
-      moduleMiddleware: compiledModule.definition.middleware ?? [],
+      moduleMiddleware: [
+        ...globalModules
+          .filter((globalModule) => globalModule !== compiledModule)
+          .flatMap((globalModule) => globalModule.definition.middleware ?? []),
+        ...(compiledModule.definition.middleware ?? []),
+      ],
       moduleType: compiledModule.type,
     })),
   );

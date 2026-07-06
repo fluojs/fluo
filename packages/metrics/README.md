@@ -170,9 +170,9 @@ The module emits fluo-specific gauges that mirror the platform shell and registe
 
 - `fluo_component_ready`: `1` when a component is ready, otherwise `0`.
 - `fluo_component_health`: `1` when a component is healthy, otherwise `0`.
-- `fluo_metrics_registry_mode`: `isolated` or `shared` for the active registry mode.
+- `fluo_metrics_registry_mode`: gauge value `1` with a `mode="isolated"` or `mode="shared"` label for the active registry mode.
 
-The platform snapshot is refreshed during each scrape, and you can attach environment labels up front.
+The platform snapshot is refreshed during each registry scrape, including advanced `MetricsService.getRegistry().metrics()` scrape paths, and you can attach environment labels up front.
 
 ```ts
 MetricsModule.forRoot({
@@ -185,7 +185,7 @@ MetricsModule.forRoot({
 
 ### Runtime platform telemetry scrape contract
 
-Platform telemetry refreshes `fluo_component_ready` and `fluo_component_health` on each `/metrics` scrape by resolving `PLATFORM_SHELL`.
+Platform telemetry refreshes `fluo_component_ready` and `fluo_component_health` on each active registry scrape by resolving `PLATFORM_SHELL`, whether the scrape flows through the built-in `/metrics` controller or an advanced custom scraper using `MetricsService.getRegistry()`.
 
 - If `PLATFORM_SHELL` is not registered, the scrape still succeeds and omits the platform telemetry series.
 - If `PLATFORM_SHELL` becomes unavailable after the last successful scrape, stale `fluo_component_ready` and `fluo_component_health` series are removed before metrics are returned.

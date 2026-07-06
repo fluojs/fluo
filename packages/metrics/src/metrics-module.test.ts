@@ -1,9 +1,11 @@
-import { getModuleMetadata } from '@fluojs/core';
+import { getModuleMetadata, Inject } from '@fluojs/core';
 import { ContainerResolutionError } from '@fluojs/di';
 import {
+  Controller,
   ForbiddenException,
   type FrameworkRequest,
   type FrameworkResponse,
+  Get,
   type MiddlewareContext,
   type Next,
 } from '@fluojs/http';
@@ -193,17 +195,19 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const forbiddenResponse = createResponse();
-    await app.dispatch(createRequest(''), forbiddenResponse);
-    expect(forbiddenResponse.statusCode).toBe(403);
+    try {
+      const forbiddenResponse = createResponse();
+      await app.dispatch(createRequest(''), forbiddenResponse);
+      expect(forbiddenResponse.statusCode).toBe(403);
 
-    const metricsResponse = createResponse();
-    await app.dispatch(createRequest('', { 'x-metrics-token': 'secret-token' }), metricsResponse);
+      const metricsResponse = createResponse();
+      await app.dispatch(createRequest('', { 'x-metrics-token': 'secret-token' }), metricsResponse);
 
-    expect(metricsResponse.statusCode).toBe(200);
-    expect(String(metricsResponse.body)).toContain('fluo_metrics_registry_mode{mode="isolated"} 1');
-
-    await app.close();
+      expect(metricsResponse.statusCode).toBe(200);
+      expect(String(metricsResponse.body)).toContain('fluo_metrics_registry_mode{mode="isolated"} 1');
+    } finally {
+      await app.close();
+    }
   });
 
   it('records endpoint middleware failures when HTTP instrumentation is enabled', async () => {
@@ -233,21 +237,23 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const forbiddenResponse = createResponse();
-    await app.dispatch(createRequest('/metrics'), forbiddenResponse);
-    expect(forbiddenResponse.statusCode).toBe(403);
+    try {
+      const forbiddenResponse = createResponse();
+      await app.dispatch(createRequest('/metrics'), forbiddenResponse);
+      expect(forbiddenResponse.statusCode).toBe(403);
 
-    const metricsResponse = createResponse();
-    await app.dispatch(createRequest('/metrics', { 'x-metrics-token': 'secret-token' }), metricsResponse);
+      const metricsResponse = createResponse();
+      await app.dispatch(createRequest('/metrics', { 'x-metrics-token': 'secret-token' }), metricsResponse);
 
-    const metricsText = String(metricsResponse.body);
+      const metricsText = String(metricsResponse.body);
 
-    expect(metricsResponse.statusCode).toBe(200);
-    expect(metricsText).toContain('http_requests_total{method="GET",path="/metrics",status="403"} 1');
-    expect(metricsText).toContain('http_errors_total{method="GET",path="/metrics",status="403"} 1');
-    expect(metricsText).toContain('http_request_duration_seconds_count{method="GET",path="/metrics",status="403"} 1');
-
-    await app.close();
+      expect(metricsResponse.statusCode).toBe(200);
+      expect(metricsText).toContain('http_requests_total{method="GET",path="/metrics",status="403"} 1');
+      expect(metricsText).toContain('http_errors_total{method="GET",path="/metrics",status="403"} 1');
+      expect(metricsText).toContain('http_request_duration_seconds_count{method="GET",path="/metrics",status="403"} 1');
+    } finally {
+      await app.close();
+    }
   });
 
   it('keeps endpoint middleware route-scoped while module-level middleware remains unfiltered', () => {
@@ -314,13 +320,15 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const response = createResponse();
-    await app.dispatch(createRequest('/metrics'), response);
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/metrics'), response);
 
-    expect(response.statusCode).toBe(200);
-    expect(calls).toEqual(['endpoint:before', 'module:before', 'module:after', 'endpoint:after']);
-
-    await app.close();
+      expect(response.statusCode).toBe(200);
+      expect(calls).toEqual(['endpoint:before', 'module:before', 'module:after', 'endpoint:after']);
+    } finally {
+      await app.close();
+    }
   });
 
   it('does not bind endpoint middleware when the scrape endpoint is disabled', async () => {
@@ -392,16 +400,18 @@ describe('MetricsModule', () => {
     const app = await bootstrapApplication({
       rootModule: AppModule,
     });
-    const response = createResponse();
 
-    await app.dispatch(createRequest('/metrics'), response);
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/metrics'), response);
 
-    const metricsText = String(response.body);
-    expect(response.statusCode).toBe(200);
-    expect(metricsText).not.toContain('process_cpu_seconds_total');
-    expect(metricsText).not.toContain('nodejs_heap_size_total_bytes');
-
-    await app.close();
+      const metricsText = String(response.body);
+      expect(response.statusCode).toBe(200);
+      expect(metricsText).not.toContain('process_cpu_seconds_total');
+      expect(metricsText).not.toContain('nodejs_heap_size_total_bytes');
+    } finally {
+      await app.close();
+    }
   });
 
   it('does not install HTTP collectors until HTTP instrumentation is opted in', async () => {
@@ -414,17 +424,19 @@ describe('MetricsModule', () => {
     const app = await bootstrapApplication({
       rootModule: AppModule,
     });
-    const response = createResponse();
 
-    await app.dispatch(createRequest('/metrics'), response);
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/metrics'), response);
 
-    const metricsText = String(response.body);
-    expect(response.statusCode).toBe(200);
-    expect(metricsText).not.toContain('http_requests_total');
-    expect(metricsText).not.toContain('http_errors_total');
-    expect(metricsText).not.toContain('http_request_duration_seconds');
-
-    await app.close();
+      const metricsText = String(response.body);
+      expect(response.statusCode).toBe(200);
+      expect(metricsText).not.toContain('http_requests_total');
+      expect(metricsText).not.toContain('http_errors_total');
+      expect(metricsText).not.toContain('http_request_duration_seconds');
+    } finally {
+      await app.close();
+    }
   });
 
   it('keeps default metrics registration once per shared registry', async () => {
@@ -542,20 +554,22 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const errorResponse = createResponse();
-    await app.dispatch(createRequest('/metrics'), errorResponse);
-    expect(errorResponse.statusCode).toBe(500);
+    try {
+      const errorResponse = createResponse();
+      await app.dispatch(createRequest('/metrics'), errorResponse);
+      expect(errorResponse.statusCode).toBe(500);
 
-    const metricsResponse = createResponse();
-    await app.dispatch(createRequest('/metrics'), metricsResponse);
+      const metricsResponse = createResponse();
+      await app.dispatch(createRequest('/metrics'), metricsResponse);
 
-    const metricsText = String(metricsResponse.body);
+      const metricsText = String(metricsResponse.body);
 
-    expect(metricsResponse.statusCode).toBe(200);
-    expect(metricsText).toContain('http_requests_total{method="GET",path="/metrics",status="500"} 1');
-    expect(metricsText).toContain('http_errors_total{method="GET",path="/metrics",status="500"} 1');
-
-    await app.close();
+      expect(metricsResponse.statusCode).toBe(200);
+      expect(metricsText).toContain('http_requests_total{method="GET",path="/metrics",status="500"} 1');
+      expect(metricsText).toContain('http_errors_total{method="GET",path="/metrics",status="500"} 1');
+    } finally {
+      await app.close();
+    }
   });
 
   it('normalizes HTTP metric path labels through module-level http options', async () => {
@@ -575,19 +589,80 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const firstResponse = createResponse();
-    await app.dispatch(createRequest('/metrics/123'), firstResponse);
-    expect(firstResponse.statusCode).toBe(200);
+    try {
+      const firstResponse = createResponse();
+      await app.dispatch(createRequest('/metrics/123'), firstResponse);
+      expect(firstResponse.statusCode).toBe(200);
 
-    const secondResponse = createResponse();
-    await app.dispatch(createRequest('/metrics/456'), secondResponse);
+      const secondResponse = createResponse();
+      await app.dispatch(createRequest('/metrics/456'), secondResponse);
 
-    const metricsText = String(secondResponse.body);
+      const metricsText = String(secondResponse.body);
 
-    expect(secondResponse.statusCode).toBe(200);
-    expect(metricsText).toContain('http_requests_total{method="GET",path="/metrics/:resourceId",status="200"} 1');
+      expect(secondResponse.statusCode).toBe(200);
+      expect(metricsText).toContain('http_requests_total{method="GET",path="/metrics/:resourceId",status="200"} 1');
+    } finally {
+      await app.close();
+    }
+  });
 
-    await app.close();
+  it('records ordinary application routes when HTTP instrumentation is enabled', async () => {
+    @Controller('/orders')
+    class OrdersController {
+      @Get('/:orderId')
+      getOrder(): { id: string } {
+        return { id: '123' };
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [OrdersController],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true })],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    try {
+      const routeResponse = createResponse();
+      await app.dispatch(createRequest('/orders/123'), routeResponse);
+      expect(routeResponse.statusCode).toBe(200);
+
+      const metricsResponse = createResponse();
+      await app.dispatch(createRequest('/metrics'), metricsResponse);
+
+      const metricsText = String(metricsResponse.body);
+      expect(metricsResponse.statusCode).toBe(200);
+      expect(metricsText).toContain('http_requests_total{method="GET",path="/orders/:orderId",status="200"} 1');
+      expect(metricsText).toContain('http_request_duration_seconds_count{method="GET",path="/orders/:orderId",status="200"} 1');
+      expect(metricsText).not.toContain('http_errors_total{method="GET",path="/orders/:orderId",status="200"}');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('does not make metrics providers visible to sibling modules', async () => {
+    @Inject(MetricsService)
+    class SiblingService {
+      constructor(readonly metrics: MetricsService) {}
+    }
+
+    class SiblingModule {}
+
+    defineModule(SiblingModule, {
+      providers: [SiblingService],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true }), SiblingModule],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('not visible through a global module');
   });
 
   it('binds prometheus provider by default and for explicit provider option', async () => {
@@ -678,19 +753,53 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
-    const resolvedRegistry = metricsService.getRegistry();
+    try {
+      const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
+      const resolvedRegistry = metricsService.getRegistry();
 
-    expect(resolvedRegistry).toBe(sharedRegistry);
+      expect(resolvedRegistry).toBe(sharedRegistry);
 
-    const response = createResponse();
-    await app.dispatch(createRequest('/metrics'), response);
+      const response = createResponse();
+      await app.dispatch(createRequest('/metrics'), response);
 
-    expect(response.statusCode).toBe(200);
-    expect(String(response.body)).toContain('app_custom_requests_total{endpoint="/api"} 1');
-    expect(String(response.body)).toContain('fluo_metrics_registry_mode{mode="shared"} 1');
+      expect(response.statusCode).toBe(200);
+      expect(String(response.body)).toContain('app_custom_requests_total{endpoint="/api"} 1');
+      expect(String(response.body)).toContain('fluo_metrics_registry_mode{mode="shared"} 1');
+    } finally {
+      await app.close();
+    }
+  });
 
-    await app.close();
+  it('refreshes platform telemetry when the shared registry is scraped directly', async () => {
+    const sharedRegistry = new Registry();
+    const component = createPlatformComponent({
+      health: 'degraded',
+      id: 'queue.direct',
+      kind: 'queue',
+      readiness: 'degraded',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+
+    const app = await bootstrapApplication({
+      platform: { components: [component] },
+      rootModule: AppModule,
+    });
+
+    try {
+      const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
+      const metricsText = await metricsService.getRegistry().metrics();
+
+      expect(metricsText).toContain('fluo_metrics_registry_mode{mode="shared"} 1');
+      expect(metricsText).toContain('fluo_component_ready{component_id="queue.direct",component_kind="queue",operation="readiness",result="degraded"');
+      expect(metricsText).toContain('fluo_component_health{component_id="queue.direct",component_kind="queue",operation="health",result="degraded"');
+    } finally {
+      await app.close();
+    }
   });
 
   it('reuses built-in HTTP metrics when multiple module instances share one registry', async () => {
@@ -1057,27 +1166,10 @@ describe('MetricsModule', () => {
   });
 
   it('omits platform telemetry when the platform shell token is absent during scrape refresh', async () => {
-    const missingPlatformShellMiddleware = {
-      async handle(context: MiddlewareContext, next: Next): Promise<void> {
-        const container = context.requestContext.container as typeof context.requestContext.container & { has?: (token: unknown) => boolean };
-        const originalHas = container.has?.bind(container);
-
-        container.has = (token: unknown) => {
-          if (token === PLATFORM_SHELL) {
-            return false;
-          }
-
-          return originalHas?.(token) ?? true;
-        };
-
-        await next();
-      },
-    };
-
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, middleware: [missingPlatformShellMiddleware] })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
     });
 
     const app = await bootstrapApplication({
@@ -1085,6 +1177,10 @@ describe('MetricsModule', () => {
     });
 
     try {
+      const container = app.container as typeof app.container & { has: (token: unknown) => boolean };
+      const originalHas = container.has.bind(container);
+      container.has = (token: unknown) => token !== PLATFORM_SHELL && originalHas(token as Parameters<typeof originalHas>[0]);
+
       const response = createResponse();
       await app.dispatch(createRequest('/metrics'), response);
 
@@ -1101,27 +1197,11 @@ describe('MetricsModule', () => {
 
   it('clears stale platform telemetry series when the platform shell becomes unavailable', async () => {
     let platformShellAvailable = true;
-    const intermittentPlatformShellMiddleware = {
-      async handle(context: MiddlewareContext, next: Next): Promise<void> {
-        const container = context.requestContext.container as typeof context.requestContext.container & { has?: (token: unknown) => boolean };
-        const originalHas = container.has?.bind(container);
-
-        container.has = (token: unknown) => {
-          if (token === PLATFORM_SHELL) {
-            return platformShellAvailable;
-          }
-
-          return originalHas?.(token) ?? true;
-        };
-
-        await next();
-      },
-    };
 
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, middleware: [intermittentPlatformShellMiddleware] })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
     });
 
     const app = await bootstrapApplication({
@@ -1129,6 +1209,16 @@ describe('MetricsModule', () => {
     });
 
     try {
+      const container = app.container as typeof app.container & { has: (token: unknown) => boolean };
+      const originalHas = container.has.bind(container);
+      container.has = (token: unknown) => {
+        if (token === PLATFORM_SHELL) {
+          return platformShellAvailable;
+        }
+
+        return originalHas(token as Parameters<typeof originalHas>[0]);
+      };
+
       const initialResponse = createResponse();
       await app.dispatch(createRequest('/metrics'), initialResponse);
       expect(String(initialResponse.body)).toContain('fluo_component_ready{');
@@ -1156,29 +1246,10 @@ describe('MetricsModule', () => {
         token: PLATFORM_SHELL,
       },
     );
-    const unexpectedPlatformShellMiddleware = {
-      async handle(context: MiddlewareContext, next: Next): Promise<void> {
-        const container = context.requestContext.container as typeof context.requestContext.container & { has?: (token: unknown) => boolean };
-        const originalResolve = context.requestContext.container.resolve.bind(context.requestContext.container);
-
-        container.has = (token: unknown) => token === PLATFORM_SHELL;
-
-        context.requestContext.container.resolve = (async (token: Parameters<typeof originalResolve>[0]) => {
-          if (token === PLATFORM_SHELL) {
-            throw resolutionFailure;
-          }
-
-          return await originalResolve(token);
-        }) as typeof context.requestContext.container.resolve;
-
-        await next();
-      },
-    };
-
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, middleware: [unexpectedPlatformShellMiddleware] })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
     });
 
     const app = await bootstrapApplication({
@@ -1186,6 +1257,17 @@ describe('MetricsModule', () => {
     });
 
     try {
+      const container = app.container as typeof app.container & { has: (token: unknown) => boolean };
+      const originalResolve = app.container.resolve.bind(app.container);
+      container.has = (token: unknown) => token === PLATFORM_SHELL;
+      app.container.resolve = (async (token: Parameters<typeof originalResolve>[0]) => {
+        if (token === PLATFORM_SHELL) {
+          throw resolutionFailure;
+        }
+
+        return await originalResolve(token);
+      }) as typeof app.container.resolve;
+
       const response = createResponse();
       await app.dispatch(createRequest('/metrics'), response);
 
@@ -1274,43 +1356,45 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const firstResponse = createResponse();
-    const secondResponse = createResponse();
+    try {
+      const firstResponse = createResponse();
+      const secondResponse = createResponse();
 
-    const firstDispatch = app.dispatch(createRequest('/metrics'), firstResponse);
-    await firstProbeStarted;
+      const firstDispatch = app.dispatch(createRequest('/metrics'), firstResponse);
+      await firstProbeStarted;
 
-    currentReadiness = 'degraded';
-    currentHealth = 'degraded';
+      currentReadiness = 'degraded';
+      currentHealth = 'degraded';
 
-    const secondDispatch = app.dispatch(createRequest('/metrics'), secondResponse);
-    releaseFirstProbe?.();
+      const secondDispatch = app.dispatch(createRequest('/metrics'), secondResponse);
+      releaseFirstProbe?.();
 
-    await Promise.all([firstDispatch, secondDispatch]);
+      await Promise.all([firstDispatch, secondDispatch]);
 
-    const firstMetrics = String(firstResponse.body);
-    const secondMetrics = String(secondResponse.body);
+      const firstMetrics = String(firstResponse.body);
+      const secondMetrics = String(secondResponse.body);
 
-    expect(firstResponse.statusCode).toBe(200);
-    expect(firstMetrics).toContain(
-      'fluo_component_ready{component_id="cache.default",component_kind="cache",operation="readiness",result="ready",env="unknown",instance="local"} 1',
-    );
-    expect(firstMetrics).toContain(
-      'fluo_component_health{component_id="cache.default",component_kind="cache",operation="health",result="healthy",env="unknown",instance="local"} 1',
-    );
-    expect(firstMetrics).not.toContain('result="degraded"');
+      expect(firstResponse.statusCode).toBe(200);
+      expect(firstMetrics).toContain(
+        'fluo_component_ready{component_id="cache.default",component_kind="cache",operation="readiness",result="ready",env="unknown",instance="local"} 1',
+      );
+      expect(firstMetrics).toContain(
+        'fluo_component_health{component_id="cache.default",component_kind="cache",operation="health",result="healthy",env="unknown",instance="local"} 1',
+      );
+      expect(firstMetrics).not.toContain('result="degraded"');
 
-    expect(secondResponse.statusCode).toBe(200);
-    expect(secondMetrics).toContain(
-      'fluo_component_ready{component_id="cache.default",component_kind="cache",operation="readiness",result="degraded",env="unknown",instance="local"} 0',
-    );
-    expect(secondMetrics).toContain(
-      'fluo_component_health{component_id="cache.default",component_kind="cache",operation="health",result="degraded",env="unknown",instance="local"} 0',
-    );
-    expect(secondMetrics).not.toContain('result="ready"');
-    expect(secondMetrics).not.toContain('result="healthy"');
-
-    await app.close();
+      expect(secondResponse.statusCode).toBe(200);
+      expect(secondMetrics).toContain(
+        'fluo_component_ready{component_id="cache.default",component_kind="cache",operation="readiness",result="degraded",env="unknown",instance="local"} 0',
+      );
+      expect(secondMetrics).toContain(
+        'fluo_component_health{component_id="cache.default",component_kind="cache",operation="health",result="degraded",env="unknown",instance="local"} 0',
+      );
+      expect(secondMetrics).not.toContain('result="ready"');
+      expect(secondMetrics).not.toContain('result="healthy"');
+    } finally {
+      await app.close();
+    }
   });
 
   it('emits both framework and custom metrics from shared registry', async () => {

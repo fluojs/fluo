@@ -1,5 +1,5 @@
 import { getModuleMetadata, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
-import type { CallHandler, Converter, Dispatcher, Guard, Interceptor, InterceptorContext, Middleware, RequestObserver } from '@fluojs/http';
+import type { CallHandler, Converter, Dispatcher, Guard, Interceptor, InterceptorContext, Middleware, MiddlewareContext, Next, RequestObserver } from '@fluojs/http';
 import { Controller, FromQuery, Get, Post, type RequestContext, RequestDto, UseGuards, UseInterceptors, Version, VersioningType } from '@fluojs/http';
 import type { ExceptionFilterHandler } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
@@ -1198,6 +1198,50 @@ describe('TestingModuleRef.dispatch', () => {
         id: 'dispatch-user',
       },
     });
+  });
+
+  it('applies global middleware to controllers declared by other global modules during dispatch', async () => {
+    const calls: string[] = [];
+
+    const firstGlobalMiddleware = {
+      async handle(_context: MiddlewareContext, next: Next): Promise<void> {
+        calls.push('first:before');
+        await next();
+        calls.push('first:after');
+      },
+    };
+
+    const secondGlobalMiddleware = {
+      async handle(_context: MiddlewareContext, next: Next): Promise<void> {
+        calls.push('second:before');
+        await next();
+        calls.push('second:after');
+      },
+    };
+
+    @Module({ global: true, middleware: [firstGlobalMiddleware] })
+    class FirstGlobalModule {}
+
+    @Controller('/global')
+    class GlobalController {
+      @Get('/middleware')
+      getValue(): { ok: true } {
+        calls.push('controller');
+        return { ok: true };
+      }
+    }
+
+    @Module({ controllers: [GlobalController], global: true, middleware: [secondGlobalMiddleware] })
+    class SecondGlobalModule {}
+
+    @Module({ imports: [FirstGlobalModule, SecondGlobalModule] })
+    class RootModule {}
+
+    const testingModule = await createTestingModule({ rootModule: RootModule }).compile();
+    const response = await testingModule.dispatch({ method: 'GET', path: '/global/middleware' });
+
+    expect(response.status).toBe(200);
+    expect(calls).toEqual(['first:before', 'second:before', 'controller', 'second:after', 'first:after']);
   });
 
   it('supports POST body, headers, and query with module-level dispatch', async () => {
