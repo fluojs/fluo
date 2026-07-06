@@ -106,6 +106,9 @@ If app middleware rewrites the framework request method or path after the adapte
 
 To avoid changing documented fluo semantics, overlapping same-shape param routes such as `/:id` and `/:slug`, `@All(...)` handlers, `OPTIONS` ownership, non-URI versioning, and requests that rely on fluo's duplicate-slash/trailing-slash normalization stay on the catch-all fallback path.
 
+### Startup Retry and Shutdown
+`listen()` retries `EADDRINUSE` according to `retryDelayMs` and `retryLimit` only while the adapter remains open. If `close()` is called while startup is waiting in that retry loop, the adapter aborts the in-flight listen attempt and waits for it to settle before `close()` resolves, even when the underlying Node server has not reached the listening state yet. Releasing the blocked port after `close()` resolves cannot make the adapter bind later; callers must invoke `listen()` again explicitly to start it.
+
 ## Adapter Contract
 
 - **Shared dispatcher ownership**: Native Express Router matches still hand off to the shared fluo dispatcher, so middleware, guards, interceptors, observers, params, and error envelopes remain framework-defined.
@@ -116,7 +119,7 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 - **Versioning parity**: Header/media-type/custom version selection remains dispatcher-owned even when Express Router handles the initial path match.
 - **Middleware rewrite parity**: App middleware that rewrites method or path invalidates native handoff and rematches the rewritten request.
 - **Response serialization parity**: String responses default to `text/plain`, objects/arrays serialize as JSON, binary payloads default to `application/octet-stream`, and `set-cookie` values are merged.
-- **Startup and shutdown**: The adapter supports HTTP/HTTPS startup, retries `EADDRINUSE` according to retry options until `retryLimit` is exhausted, treats duplicate `listen()` calls on an already-started adapter as idempotent without replacing the live dispatcher, drains idle keep-alive sockets on normal close, reuses one in-flight close lifecycle for concurrent `close()` calls, and can force-close connections after shutdown timeout, including immediate force-close when `shutdownTimeoutMs` is `0`.
+- **Startup and shutdown**: The adapter supports HTTP/HTTPS startup, retries `EADDRINUSE` according to retry options until `retryLimit` is exhausted while the adapter is open, aborts and joins an in-flight listen retry loop during `close()` before shutdown completion is reported, treats duplicate `listen()` calls on an already-started adapter as idempotent without replacing the live dispatcher, drains idle keep-alive sockets on normal close, reuses one in-flight close lifecycle for concurrent `close()` calls, and can force-close connections after shutdown timeout, including immediate force-close when `shutdownTimeoutMs` is `0`.
 
 ## Public API Overview
 
@@ -138,4 +141,4 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 ## Example Sources
 
 - `packages/platform-express/src/adapter.test.ts`
-- This package does not currently ship a dedicated `examples/platform-express` app. Use the Quick Start in this README for Express bootstrap shape and `packages/platform-express/src/adapter.test.ts` for executable Express adapter coverage, including SSE framing, native-route fallback parity, duplicate listen idempotency, retry exhaustion, idle keep-alive drain, and forced shutdown. `examples/minimal/src/main.ts` is Fastify-based and should not be treated as an Express example source.
+- This package does not currently ship a dedicated `examples/platform-express` app. Use the Quick Start in this README for Express bootstrap shape and `packages/platform-express/src/adapter.test.ts` for executable Express adapter coverage, including SSE framing, native-route fallback parity, duplicate listen idempotency, retry exhaustion, startup retry cancellation during shutdown, idle keep-alive drain, and forced shutdown. `examples/minimal/src/main.ts` is Fastify-based and should not be treated as an Express example source.
