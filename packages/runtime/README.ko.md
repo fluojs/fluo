@@ -163,8 +163,9 @@ class UsersModule {}
 - `Application`: `ApplicationContext`를 확장하며 `listen()`, `dispatch()`, `state`를 포함합니다.
 - `ApplicationContext`: `get<T>(token)`, `close()` 기능을 제공하며 `container`, `modules`, bootstrap diagnostics에 접근할 수 있습니다.
 - `LifecycleHooks`: `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`를 묶는 편의 union 타입입니다.
-- `HealthModule.forRoot(options)`: bootstrap 및 shutdown 라이프사이클 전이에 맞춰 readiness marker를 관리하는 런타임 소유 `/health`, `/ready` 모듈 파사드입니다.
+- `HealthModule.forRoot(options)`: bootstrap 및 shutdown 라이프사이클 전이에 맞춰 readiness marker를 관리하는 런타임 소유 `/health`, `/ready` 모듈 파사드입니다. `RuntimeHealthModule`을 반환하므로 first-party runtime-aware package가 internal runtime seam을 import하지 않고 `ReadinessCheck` function을 등록할 수 있습니다.
 - `createHealthModule(options)`: 같은 런타임 health module 계약을 위한 deprecated compatibility helper입니다. 애플리케이션-facing module import에서는 `HealthModule.forRoot(...)`를 우선 사용하세요.
+- `RuntimeHealthModule`: `HealthModule.forRoot(...)`가 반환하는 module class contract이며 `addReadinessCheck(...)`, `markReady()`, `markStarting()`을 포함합니다.
 - `ReadinessCheck`: runtime health module이 사용하는 function type입니다. Check는 `/ready` request context를 받고 boolean 또는 promise를 반환합니다.
 - `defineModule(cls, metadata)`: 프로그래밍 방식의 모듈 정의 헬퍼입니다.
 - `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다.

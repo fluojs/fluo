@@ -163,8 +163,9 @@ class UsersModule {}
 - `Application`: Extends `ApplicationContext` with `listen()`, `dispatch()`, and `state`.
 - `ApplicationContext`: Provides `get<T>(token)`, `close()`, and access to `container`, `modules`, and bootstrap diagnostics.
 - `LifecycleHooks`: Convenience union covering `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, and `OnApplicationShutdown`.
-- `HealthModule.forRoot(options)`: Runtime-owned `/health` and `/ready` module facade whose readiness marker follows bootstrap and shutdown lifecycle transitions.
+- `HealthModule.forRoot(options)`: Runtime-owned `/health` and `/ready` module facade whose readiness marker follows bootstrap and shutdown lifecycle transitions. It returns a `RuntimeHealthModule` so first-party runtime-aware packages can register `ReadinessCheck` functions without importing internal runtime seams.
 - `createHealthModule(options)`: Deprecated compatibility helper for the same runtime health module contract; prefer `HealthModule.forRoot(...)` in application-facing module imports.
+- `RuntimeHealthModule`: Module class contract returned by `HealthModule.forRoot(...)`, including `addReadinessCheck(...)`, `markReady()`, and `markStarting()`.
 - `ReadinessCheck`: Function type used by runtime health modules. Checks receive the `/ready` request context and return a boolean or promise.
 - `defineModule(cls, metadata)`: Programmatic module definition helper.
 - `bootstrapApplication(options)`: Lower-level async bootstrap function.
