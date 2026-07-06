@@ -59,10 +59,8 @@ export interface BootstrapAnswers extends BootstrapSchema {
 
 /** Programmatic overrides for `runNewCommand(...)`. */
 export interface NewCommandOptions {
-  dependencySource?: DependencySource;
   force?: boolean;
   initializeGit?: boolean;
   installDependencies?: boolean;
-  repoRoot?: string;
   skipInstall?: boolean;
 }

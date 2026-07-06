@@ -22,6 +22,11 @@ import {
 } from './index.js';
 
 const tempDirectories: string[] = [];
+const inspectFixtureModulePath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  'fixtures',
+  'inspect-app.module.mjs',
+);
 
 function expectNoEagerCommandLink(source: string, commandName: 'generate' | 'inspect' | 'new'): void {
   const eagerCommandLink = new RegExp(
@@ -124,5 +129,40 @@ describe('public CLI package API', () => {
     expect(stdoutBuffer.join('')).toContain('Project name: starter-app');
     expect(stdoutBuffer.join('')).toContain('Side effects: none.');
     expect(existsSync(join(workspaceDirectory, 'starter-app'))).toBe(false);
+  });
+
+  it('keeps monorepo-local scaffold overrides out of the documented new runtime type', () => {
+    const sourceRoot = dirname(fileURLToPath(import.meta.url));
+    const newTypesSource = readFileSync(join(sourceRoot, 'new', 'types.ts'), 'utf8');
+    const publicNewSource = readFileSync(join(sourceRoot, 'public-new.ts'), 'utf8');
+    const newCommandOptionsBlock = newTypesSource.match(/export interface NewCommandOptions \{[\s\S]*?\n\}/)?.[0] ?? '';
+
+    expect(newCommandOptionsBlock).not.toContain('dependencySource');
+    expect(newCommandOptionsBlock).not.toContain('repoRoot');
+    expect(publicNewSource).not.toContain('dependencySource');
+    expect(publicNewSource).not.toContain('repoRoot');
+  });
+
+  it('executes runInspectCommand directly through the public facade', async () => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runInspectCommand([inspectFixtureModulePath, '--json'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const payload = JSON.parse(stdoutBuffer.join('')) as {
+      diagnostics: unknown[];
+      health: { status: string };
+      readiness: { status: string };
+    };
+
+    expect(exitCode).toBe(0);
+    expect(stderrBuffer.join('')).toBe('');
+    expect(payload.diagnostics).toEqual([]);
+    expect(payload.readiness.status).toBe('ready');
+    expect(payload.health.status).toBe('healthy');
   });
 });

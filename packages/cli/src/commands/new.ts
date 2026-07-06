@@ -14,7 +14,7 @@ import {
   SUPPORTED_BOOTSTRAP_TOPOLOGY_MODES,
   SUPPORTED_BOOTSTRAP_TRANSPORTS,
 } from '../new/starter-profiles.js';
-import type { BootstrapAnswers, NewCommandOptions } from '../new/types.js';
+import type { BootstrapAnswers, BootstrapOptions, NewCommandOptions } from '../new/types.js';
 import { isCliPromptCancelledError } from '../prompt-cancel.js';
 import { newUsage } from '../usage.js';
 
@@ -41,6 +41,16 @@ function extractDependencyInstallationOutput(error: unknown): string | undefined
 
 function isHelpFlag(value: string | undefined): boolean {
   return value === '--help' || value === '-h';
+}
+
+function readInternalScaffoldOverrides(runtime: NewCommandRuntimeOptions): Pick<BootstrapOptions, 'dependencySource' | 'repoRoot'> {
+  const dependencySource = 'dependencySource' in runtime ? runtime.dependencySource : undefined;
+  const repoRoot = 'repoRoot' in runtime ? runtime.repoRoot : undefined;
+
+  return {
+    dependencySource: dependencySource === 'local' || dependencySource === 'published' ? dependencySource : undefined,
+    repoRoot: typeof repoRoot === 'string' ? repoRoot : undefined,
+  };
 }
 
 /**
@@ -348,13 +358,14 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
       return 0;
     }
 
+    const internalScaffoldOverrides = readInternalScaffoldOverrides(runtime);
     const options = {
       ...answers,
-      dependencySource: runtime.dependencySource,
+      dependencySource: internalScaffoldOverrides.dependencySource,
       force: parsed.force ?? runtime.force,
       initializeGit: answers.initializeGit,
       installDependencies: false,
-      repoRoot: runtime.repoRoot,
+      repoRoot: internalScaffoldOverrides.repoRoot,
       skipInstall: true,
       targetDirectory,
     };
