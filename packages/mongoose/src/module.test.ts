@@ -141,19 +141,21 @@ describe('@fluojs/mongoose', () => {
     const rawConnection = await app.container.resolve(MONGOOSE_CONNECTION);
     const moduleOptions = await app.container.resolve<{ strictTransactions: boolean }>(MONGOOSE_OPTIONS);
 
-    expect(mongoose).toBeInstanceOf(MongooseConnection);
-    expect(rawConnection).toBe(connection);
-    expect(moduleOptions).toEqual({ strictTransactions: false });
+    try {
+      expect(mongoose).toBeInstanceOf(MongooseConnection);
+      expect(rawConnection).toBe(connection);
+      expect(moduleOptions).toEqual({ strictTransactions: false });
 
-    await expect(mongoose.transaction(async () => 'ok')).resolves.toBe('ok');
-    expect(events).toEqual([
-      'connection:startSession',
-      'transaction:start',
-      'transaction:commit',
-      'session:end',
-    ]);
-
-    await app.close();
+      await expect(mongoose.transaction(async () => 'ok')).resolves.toBe('ok');
+      expect(events).toEqual([
+        'connection:startSession',
+        'transaction:start',
+        'transaction:commit',
+        'session:end',
+      ]);
+    } finally {
+      await app.close();
+    }
   });
 
   it('scopes ambient model facades to MongooseConnection.model without mutating the raw connection', async () => {
@@ -1453,11 +1455,7 @@ describe('@fluojs/mongoose', () => {
 
   it('waits for fail-open manual transaction callbacks before dispose on shutdown', async () => {
     const events: string[] = [];
-    let resolveTransactionStarted!: () => void;
     let releaseTransaction!: () => void;
-    const transactionStarted = new Promise<void>((resolve) => {
-      resolveTransactionStarted = resolve;
-    });
     const transactionReleased = new Promise<void>((resolve) => {
       releaseTransaction = resolve;
     });
@@ -1486,13 +1484,11 @@ describe('@fluojs/mongoose', () => {
 
     const transaction = mongoose.transaction(async () => {
       events.push('tx:start');
-      resolveTransactionStarted();
       await transactionReleased;
       events.push('tx:end');
       return 'ok';
     });
 
-    await transactionStarted;
     const closePromise = app.close();
 
     await vi.waitFor(() => {
@@ -1504,7 +1500,7 @@ describe('@fluojs/mongoose', () => {
         },
       });
     });
-    expect(events).toEqual(['tx:start']);
+    expect(events).not.toContain('dispose');
 
     releaseTransaction();
 
