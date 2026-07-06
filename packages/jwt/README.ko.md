@@ -150,7 +150,7 @@ const verifier = new DefaultJwtVerifier({
 
 `jwksRequestTimeoutMs`의 기본값은 `5_000`이며, 예산을 넘기면 진행 중인 JWKS fetch를 abort합니다.
 
-JWKS key는 `jwksCacheTtl` 밀리초 동안 cache되며 기본값은 `600_000`입니다. in-memory cache는 `jwksCacheMaxEntries`로 제한되고 기본값은 `100`입니다. lookup 전 만료된 entry를 정리하고, 제한을 넘으면 가장 오래 보관된 key를 제거합니다. `JwtModule`은 관리 중인 `DefaultJwtVerifier` shutdown hook을 호출하므로 module teardown 중 보관 중인 remote key material이 정리됩니다. 수동으로 생성한 verifier나 client는 수동 shutdown 또는 identity-provider 재설정 시 여전히 `JwksClient.dispose()` / `DefaultJwtVerifier.dispose()`를 호출해야 합니다. `jwksCacheTtl`을 `0`으로 설정하면 bounded fetch timeout은 유지하면서 key 보관만 비활성화합니다.
+JWKS key는 `jwksCacheTtl` 밀리초 동안 cache되며 기본값은 `600_000`입니다. in-memory cache는 `jwksCacheMaxEntries`로 제한되고 기본값은 `100`입니다. lookup 전 만료된 entry를 정리하고, 제한을 넘으면 가장 오래 보관된 key를 제거합니다. `JwtModule`은 관리 중인 `DefaultJwtVerifier` shutdown hook을 호출하므로 module teardown 중 보관 중인 remote key material이 정리됩니다. 수동으로 생성한 verifier나 client는 수동 shutdown 또는 identity-provider 재설정 시 여전히 `JwksClient.dispose()` / `DefaultJwtVerifier.dispose()`를 호출해야 합니다. 이 dispose method들은 보관 중인 JWKS key material을 정리하고 진행 중인 JWKS fetch를 abort합니다. `jwksCacheTtl`을 `0`으로 설정하면 bounded fetch timeout은 유지하면서 key 보관만 비활성화합니다.
 
 `JwtService.verify(token, options)`는 호출 단위의 알고리즘/클레임 정책 재정의(`issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`)를 적용하더라도, 내부 JWKS client나 정적 key-resolution cache를 다시 만들지 않습니다. 호출 단위 검증은 `jwksUri`, `keys[]`, `publicKey`, `secret`, `secretOrKeyProvider` 같은 구성된 key source 자체를 교체하지는 않습니다.
 

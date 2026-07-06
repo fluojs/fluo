@@ -145,13 +145,20 @@ describe('JwksClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('prevents in-flight JWKS fetches from repopulating cache after dispose', async () => {
+  it('aborts in-flight JWKS fetches when disposed', async () => {
     const { publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
     const jwk = publicKey.export({ format: 'jwk' });
+    let capturedSignal: AbortSignal | null | undefined;
     let resolveFetch: (response: Response) => void = () => {};
+    let resolveFetchStarted: () => void = () => {};
+    const fetchStarted = new Promise<void>((resolve) => {
+      resolveFetchStarted = resolve;
+    });
     const fetchMock = vi.fn(
-      () =>
+      (_input: RequestInfo | URL, init?: RequestInit) =>
         new Promise<Response>((resolve) => {
+          capturedSignal = init?.signal;
+          resolveFetchStarted();
           resolveFetch = resolve;
         }),
     );
@@ -160,7 +167,11 @@ describe('JwksClient', () => {
     const client = new JwksClient('https://example.test/.well-known/jwks.json', 30_000);
     const pendingKey = client.getSigningKey('key-1');
 
+    await fetchStarted;
+
     client.dispose();
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal?.aborted).toBe(true);
     resolveFetch(
       new Response(JSON.stringify({ keys: [{ ...jwk, kid: 'key-1' }] }), {
         headers: { 'content-type': 'application/json' },
@@ -181,6 +192,59 @@ describe('JwksClient', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts in-flight JWKS response body reads when disposed', async () => {
+    class AbortAwareResponse extends Response {
+      constructor(
+        private readonly abortSignal: AbortSignal,
+        private readonly onJsonStarted: () => void,
+      ) {
+        super('', { headers: { 'content-type': 'application/json' }, status: 200 });
+      }
+
+      override json(): Promise<unknown> {
+        this.onJsonStarted();
+
+        return new Promise((_, reject) => {
+          this.abortSignal.addEventListener(
+            'abort',
+            () => {
+              reject(Object.assign(new Error('The operation was aborted.'), { name: 'AbortError' }));
+            },
+            { once: true },
+          );
+        });
+      }
+    }
+
+    let capturedSignal: AbortSignal | null | undefined;
+    let resolveJsonStarted: () => void = () => {};
+    const jsonStarted = new Promise<void>((resolve) => {
+      resolveJsonStarted = resolve;
+    });
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      const signal = init?.signal;
+
+      if (!signal) {
+        throw new Error('Expected JWKS fetch to receive an AbortSignal.');
+      }
+
+      capturedSignal = signal;
+
+      return Promise.resolve(new AbortAwareResponse(signal, resolveJsonStarted));
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const client = new JwksClient('https://example.test/.well-known/jwks.json', 30_000);
+    const pendingKey = client.getSigningKey('key-1');
+
+    await jsonStarted;
+
+    client.dispose();
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal?.aborted).toBe(true);
+    await expect(pendingKey).rejects.toThrow('JWKS client was disposed while fetching keys.');
   });
 
   it('rejects invalid JWKS lifecycle budgets during client construction', () => {
@@ -258,6 +322,49 @@ describe('DefaultJwtVerifier with jwksUri', () => {
     await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
       subject: 'jwks-user',
     });
+  });
+
+  it('aborts in-flight JWKS fetches when verifier is disposed during access-token verification', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const jwk = publicKey.export({ format: 'jwk' });
+    const token = createRs256Token(privateKey, 'key-1');
+    let capturedSignal: AbortSignal | null | undefined;
+    let resolveFetch: (response: Response) => void = () => {};
+    let resolveFetchStarted: () => void = () => {};
+    const fetchStarted = new Promise<void>((resolve) => {
+      resolveFetchStarted = resolve;
+    });
+
+    globalThis.fetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedSignal = init?.signal;
+      resolveFetchStarted();
+
+      return new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      });
+    }) as typeof fetch;
+
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['RS256'],
+      jwksUri: 'https://example.test/.well-known/jwks.json',
+    });
+
+    const verification = verifier.verifyAccessToken(token);
+
+    await fetchStarted;
+
+    verifier.dispose();
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal?.aborted).toBe(true);
+
+    resolveFetch(
+      new Response(JSON.stringify({ keys: [{ ...jwk, kid: 'key-1' }] }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    );
+
+    await expect(verification).rejects.toThrow('JWKS client was disposed while fetching keys.');
   });
 
   it('passes the jwks request timeout through verifier options', async () => {
