@@ -218,11 +218,11 @@ If an error occurs anywhere in the pipeline, `handleDispatchError` is called and
 3. If a global `onError` hook exists, it runs. It is called asynchronously in `dispatcher.ts:L304` and can perform application-level custom error logging.
 4. If nobody handled the error, `writeErrorResponse` sends a standard HTTP error envelope to the client. `packages/http/src/dispatch/dispatcher.test.ts:L541-L619` tests that various business errors are converted to the correct HTTP status codes.
 
-## 11.9 Performance Optimization, Metadata Caching with WeakMap
+## 11.9 Performance Optimization, Dispatcher Plans and Binding Caches
 
-The Dispatcher does not repeat complex work on every route match. Inside `packages/http/src/dispatch/dispatch-routing-policy.ts`, it uses a `WeakMap` to cache Controller classes and the route metadata for those classes. Because this is a `WeakMap`, the cached data is removed as well when the Controller class becomes eligible for garbage collection.
+The Dispatcher does not repeat complex work on every route match, but the cache is not controller metadata stored inside `packages/http/src/dispatch/dispatch-routing-policy.ts`. That policy file only asks the `HandlerMapping` for the current request match and writes the resolved route params back onto the dispatch request.
 
-The Dispatcher also precomputes configuration at creation time through `resolveContentNegotiation`, reducing per-request overhead. The integration tests at the level of `packages/http/src/public-api.test.ts:L39-L52` verify that routing latency stays consistent even in large applications. These optimizations let Fluo keep high throughput by keeping singleton-only routes on the root-container fast path while still promoting to isolated request scopes when the pipeline needs request-scoped providers.
+The current hot-path work is prepared in the dispatcher and binding-plan paths. `createDispatcher(...)` compiles handler execution plans for every `HandlerDescriptor`, stores them in the dispatcher-local `handlerExecutionPlans` `WeakMap`, records fast-path eligibility on each handler, and keeps a dispatcher-local `fastPathRuntimeCache` for controller/method handles used by native fast routes. DTO binding has its own plan cache in `packages/http/src/adapters/dto-binding-plan.ts`, where `getCompiledDtoBindingPlan(...)` stores field readers, bound property keys, converter presence, and validation filtering in a `WeakMap` keyed by DTO constructor. Content negotiation is also precomputed once during dispatcher creation through `resolveContentNegotiation(...)`, which deduplicates formatters, chooses the default formatter, and keeps normalized media types for request-time `Accept` matching. These optimizations keep singleton-only routes on the root-container fast path while still promoting to isolated request scopes when the pipeline needs request-scoped providers.
 
 ## 11.10 Resource Cleanup, DI Scope Disposal
 

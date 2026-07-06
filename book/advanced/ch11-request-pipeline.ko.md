@@ -218,11 +218,11 @@ interface DispatchPhaseContext {
 3. 전역 `onError` 훅이 있다면 실행합니다. `dispatcher.ts:L304`에서 비동기로 호출되며 애플리케이션 수준의 커스텀 에러 로깅을 수행할 수 있습니다.
 4. 아무도 처리하지 않았다면 `writeErrorResponse`를 통해 표준 HTTP 오류 봉투(Envelope)를 클라이언트에 전송합니다. `packages/http/src/dispatch/dispatcher.test.ts:L541-L619`에서는 다양한 비즈니스 에러가 올바른 HTTP 상태 코드로 변환되는지 테스트합니다.
 
-## 11.9 성능 최적화: WeakMap을 활용한 메타데이터 캐싱
+## 11.9 성능 최적화: 디스패처 계획과 바인딩 캐시
 
-디스패처는 라우트 매칭 시 매번 복잡한 연산을 수행하지 않습니다. `packages/http/src/dispatch/dispatch-routing-policy.ts` 내부에서는 `WeakMap`을 사용하여 컨트롤러 클래스와 해당 클래스의 라우트 메타데이터를 캐싱합니다. `WeakMap`을 사용하기 때문에 컨트롤러 클래스가 가비지 컬렉션 대상이 되었을 때 캐시 데이터도 함께 제거됩니다.
+디스패처는 라우트 매칭 시 매번 복잡한 연산을 반복하지 않습니다. 다만 현재 캐시는 `packages/http/src/dispatch/dispatch-routing-policy.ts` 안에 저장된 controller metadata가 아닙니다. 이 policy 파일은 현재 요청에 맞는 handler를 `HandlerMapping`에 질의하고, 해석된 route params를 dispatch request에 다시 기록하는 역할만 합니다.
 
-또한 디스패처 생성 시점에 `resolveContentNegotiation`을 통해 설정을 미리 계산해 두어 요청당 오버헤드를 줄입니다. `packages/http/src/public-api.test.ts:L39-L52` 수준의 통합 테스트는 대규모 애플리케이션에서도 일관된 라우팅 지연 시간(Latency)을 유지하는지 확인합니다. 이런 최적화 덕분에 Fluo는 singleton-only route를 root-container fast path에 유지하면서도, 파이프라인이 request-scoped provider를 필요로 할 때는 isolated request scope로 승격해 높은 처리량(Throughput)을 유지할 수 있습니다.
+현재 hot path 작업은 dispatcher와 binding-plan 경로에서 준비됩니다. `createDispatcher(...)`는 모든 `HandlerDescriptor`에 대한 handler execution plan을 컴파일해 dispatcher-local `handlerExecutionPlans` `WeakMap`에 저장하고, 각 handler에 fast-path eligibility를 기록하며, native fast route에서 사용하는 controller/method handle을 위해 dispatcher-local `fastPathRuntimeCache`를 유지합니다. DTO binding은 `packages/http/src/adapters/dto-binding-plan.ts`에 별도 plan cache를 두고, `getCompiledDtoBindingPlan(...)`이 field reader, bound property key, converter 존재 여부, validation filtering을 DTO constructor를 key로 하는 `WeakMap`에 저장합니다. Content negotiation도 dispatcher 생성 시 `resolveContentNegotiation(...)`으로 한 번 미리 계산되어 formatter를 중복 제거하고 default formatter를 선택하며, request-time `Accept` matching에 사용할 normalized media type을 보관합니다. 이런 최적화 덕분에 Fluo는 singleton-only route를 root-container fast path에 유지하면서도, 파이프라인이 request-scoped provider를 필요로 할 때는 isolated request scope로 승격해 높은 처리량(Throughput)을 유지할 수 있습니다.
 
 ## 11.10 리소스 정리: DI 스코프 소멸
 
