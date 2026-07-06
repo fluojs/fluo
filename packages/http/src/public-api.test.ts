@@ -2,8 +2,17 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
+import type { ResponseFormatter } from './index.js';
 import * as httpPublicApi from './index.js';
 import * as httpInternalApi from './internal.js';
+
+type TypeEquals<Left, Right> = (<Value>() => Value extends Left ? 1 : 2) extends (<Value>() => Value extends Right ? 1 : 2)
+  ? (<Value>() => Value extends Right ? 1 : 2) extends (<Value>() => Value extends Left ? 1 : 2)
+    ? true
+    : false
+  : false;
+
+type AssertTrue<Condition extends true> = Condition;
 
 describe('@fluojs/http public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
@@ -49,6 +58,14 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).toHaveProperty('encodeSseComment');
     expect(httpPublicApi).toHaveProperty('encodeSseMessage');
     expect(httpPublicApi).toHaveProperty('isSseMessage');
+  });
+
+  it('keeps ResponseFormatter return bytes runtime-neutral', () => {
+    const formatterReturnTypeContract: AssertTrue<
+      TypeEquals<ReturnType<ResponseFormatter['format']>, string | Uint8Array>
+    > = true;
+
+    expect(formatterReturnTypeContract).toBe(true);
   });
 
   it('does not expose internal pipeline runners or implementation classes', () => {
