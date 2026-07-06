@@ -142,6 +142,8 @@ fluo new fluo-blog --shape application --runtime node --platform fastify --print
 
 Plan preview 모드는 실제 스캐폴딩과 같은 프로젝트 이름, shape, runtime, platform, package manager, install 선택, git 선택을 해석합니다. 그런 다음 선택된 recipe를 출력하고, 파일 생성, 의존성 설치, git 초기화 없이 종료합니다.
 
+명시적인 `--platform fastify` 경로는 `@fluojs/platform-fastify`를 선택하므로 해당 패키지의 Node.js 20+ runtime floor(`engines.node >=20.0.0`)를 그대로 따릅니다. Starter는 로컬 개발을 위해 일반 HTTP로 실행됩니다. Node 프로세스가 HTTPS/TLS를 직접 소유해야 한다면 Chapter 21에서처럼 bootstrap boundary에 `https` option을 명시적으로 전달하세요.
+
 이 책에서는 `--print-plan`을 안전한 리허설로 생각해도 됩니다. 선택지를 이해하고 싶다면 한 번 실행해 보고, 준비가 되면 `fluo new fluo-blog`로 실제 프로젝트를 생성하세요.
 
 ### What happens under the hood?
@@ -385,6 +387,8 @@ fluo restart runner가 process boundary를 소유할 때 `fluo dev`는 `fluo sta
 ```
 
 이 로그는 중요한 사실을 알려 줍니다. 프레임워크가 루트 모듈을 로드했고, 부트스트랩을 마쳤으며, HTTP 서버를 바인딩했다는 뜻입니다.
+
+로컬 starter는 의도적으로 일반 HTTP를 사용합니다. HTTPS/TLS는 프로덕션 startup 선택입니다. Load balancer나 gateway가 TLS를 종료한다면 adapter는 그 뒤에서 일반 HTTP로 유지하고, Fastify 프로세스가 TLS를 소유한다면 adapter `https` option을 명시적으로 설정하세요.
 
 ### Verifying the Response
 

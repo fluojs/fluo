@@ -7,6 +7,7 @@ fluo 런타임을 위한 Fastify 기반 HTTP 어댑터 패키지입니다.
 ## 목차
 
 - [설치](#설치)
+- [런타임 요구 사항](#런타임-요구-사항)
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
@@ -24,6 +25,12 @@ npm install @fluojs/platform-fastify
 ```
 
 `fastify`, `@fastify/multipart`, raw-body 지원은 이 adapter package의 runtime dependency로 포함되어 있으므로, 애플리케이션이 fluo 밖에서 Fastify API를 직접 사용하지 않는 한 별도의 `fastify` dependency를 추가할 필요가 없습니다.
+
+## 런타임 요구 사항
+
+`@fluojs/platform-fastify`는 Node.js HTTP adapter이며 `engines.node >=20.0.0`을 선언합니다. 이 패키지가 HTTP 서버를 소유하는 로컬 개발, CI, 컨테이너, 프로덕션 호스트는 Node.js 20 이상에서 실행해야 합니다. 비 Node 런타임에서는 이 Node 전용 adapter를 import하지 말고 `@fluojs/platform-bun`, `@fluojs/platform-deno`, 또는 `@fluojs/platform-cloudflare-workers`를 사용하세요.
+
+어댑터는 Fastify 기반 Node `http` 또는 `https` listener를 소유합니다. 포트, 인증서 material, hostname 같은 process-specific value는 애플리케이션 경계에 두고, 최종 option만 adapter에 명시적으로 전달하세요.
 
 ## 사용 시점
 
@@ -46,6 +53,39 @@ await app.listen();
 `createFastifyAdapter()`는 기본 port로 `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs` 같은 잘못된 explicit numeric option은 adapter setup 중 throw됩니다. `maxBodySize`와 `shutdownTimeoutMs`는 음수가 아닌 정수 byte/time limit이므로 `0`도 유효합니다. `maxBodySize: 0`은 빈 request body만 허용하고, `shutdownTimeoutMs: 0`은 다음 timer turn에 Fastify close가 timeout되도록 요청합니다.
 
 ## 주요 패턴
+
+### HTTPS/TLS 시작
+Fastify 프로세스가 TLS를 직접 소유할 때는 Node.js `https.ServerOptions`를 `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, 또는 `runFastifyApplication(...)`의 `https` option으로 전달하세요. Adapter는 Fastify를 HTTPS listener로 시작하며 startup log는 `https://host:port` URL을 보고합니다.
+
+```typescript
+const app = await fluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '0.0.0.0',
+    port: 3443,
+    https: {
+      cert: tlsCertificate,
+      key: tlsPrivateKey,
+    },
+  }),
+});
+
+await app.listen();
+```
+
+Adapter를 만들기 전에 certificate는 애플리케이션 configuration 또는 secret-management boundary에서 로드하세요. 이 패키지는 certificate file, `process.env`, `PORT`를 직접 읽지 않습니다. Load balancer, ingress, API gateway가 TLS를 종료한다면 `https`를 설정하지 말고 해당 infrastructure 뒤에서 Fastify adapter를 일반 HTTP로 실행하세요.
+
+`bootstrapFastifyApplication(...)`과 `runFastifyApplication(...)`도 같은 `https`, `host`, `port` option을 받습니다.
+
+```typescript
+await runFastifyApplication(AppModule, {
+  host: '127.0.0.1',
+  https: {
+    cert: tlsCertificate,
+    key: tlsPrivateKey,
+  },
+  port: 3443,
+});
+```
 
 ### 멀티파트 및 Raw Body
 Fastify 어댑터는 내부 Fastify 플러그인을 통해 멀티파트 form-data 및 raw body 파싱을 기본적으로 지원하며, 이는 표준 fluo 요청 인터페이스를 통해 노출됩니다. Multipart file은 runtime-neutral `FrameworkRequest.files` seam에 adapter-provided value로 붙으며, Fastify 요청에서는 body materialization 이후 fluo `UploadedFile` 객체로 채워집니다. `rawBody: true`를 활성화하면 멀티파트가 아닌 요청에서 `FrameworkRequest.rawBody`가 원본 요청 바이트를 그대로 보존하므로 webhook 서명 검증이나 기타 바이트 민감한 흐름에서 정확한 payload를 다시 사용할 수 있습니다. 어댑터를 직접 생성할 때는 멀티파트 제한을 두 번째 인자로 전달하고, `bootstrapFastifyApplication(...)` 및 `runFastifyApplication(...)`에서는 같은 설정을 `options.multipart` 아래에 전달하면 됩니다.
@@ -153,9 +193,9 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 
 ## 공개 API 개요
 
-- `createFastifyAdapter(options, multipartOptions?)`: Fastify 어댑터를 위한 권장 팩토리입니다. 선택적 두 번째 인자는 직접 어댑터를 생성할 때 `maxFileSize`, `maxFiles`, `maxTotalSize` 같은 multipart 제한을 설정합니다.
-- `bootstrapFastifyApplication(module, options)`: 암시적 리스닝 없이 수행하는 고급 부트스트랩입니다.
-- `runFastifyApplication(module, options)`: 생명주기 관리를 포함한 빠른 시작 헬퍼입니다. timeout/실패 시에는 해당 상태를 로그와 `process.exitCode`로 보고하고, 최종 프로세스 종료는 주변 호스트에 맡깁니다.
+- `createFastifyAdapter(options, multipartOptions?)`: Fastify 어댑터를 위한 권장 팩토리입니다. `options`에는 `host`, `port`, Node.js `https` server option 같은 transport startup knob이 포함됩니다. 선택적 두 번째 인자는 직접 어댑터를 생성할 때 `maxFileSize`, `maxFiles`, `maxTotalSize` 같은 multipart 제한을 설정합니다.
+- `bootstrapFastifyApplication(module, options)`: 암시적 리스닝 없이 수행하는 고급 부트스트랩입니다. Host가 bind 전에 앱을 구성해야 할 때 `https`를 포함한 같은 Fastify startup option을 받습니다.
+- `runFastifyApplication(module, options)`: 생명주기 관리를 포함한 빠른 시작 헬퍼이며 같은 `https` startup surface를 제공합니다. timeout/실패 시에는 해당 상태를 로그와 `process.exitCode`로 보고하고, 최종 프로세스 종료는 주변 호스트에 맡깁니다.
 - `isFastifyMultipartTooLargeError(error)`: Fastify error shape 전반에서 multipart limit error를 감지합니다.
 - `FastifyHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다.
 - Option type: `FastifyAdapterOptions`, `BootstrapFastifyApplicationOptions`, `RunFastifyApplicationOptions`, `CorsInput`, `FastifyApplicationSignal`.
@@ -167,6 +207,7 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 - **로깅 (Logging)**: 로그 스트림 중복을 방지하기 위해 Fastify의 네이티브 로거가 비활성화됩니다. `runFastifyApplication`과 `bootstrapFastifyApplication`은 framework console logger를 기본으로 선택하며, host나 test가 주입된 `ApplicationLogger`를 사용해야 할 때 `logger`를 받습니다.
 - **글로벌 접두사 (Global Prefix)**: 내부 경로 또는 헬스 체크 엔드포인트에 접두사가 붙지 않도록 `globalPrefixExclude`를 적절히 설정하세요.
 - **Malformed Cookie**: 잘못된 cookie header는 request 실패로 이어지지 않고 보존됩니다.
+- **HTTPS 시작**: Fastify 프로세스가 TLS를 소유한다면 Node.js 20 이상에서 adapter `https` option 아래에 certificate material을 전달하세요. Infrastructure가 TLS를 종료한다면 해당 경계 뒤에서 adapter를 일반 HTTP로 유지하세요.
 
 ## 관련 패키지
 

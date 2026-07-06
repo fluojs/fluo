@@ -34,7 +34,7 @@ Before exposing an application to the internet, make sure the following security
 
 - **Enable CORS**: Restrict which domains can access your API. Use the `@fluojs/http` configuration so only the production frontend domain is allowed.
 - **Set security headers**: Use helmet-style headers to protect against common attacks such as XSS, Cross-Site Scripting, and clickjacking. These headers instruct the browser to choose safer behavior when it interacts with the API.
-- **Enforce HTTPS**: Do not serve production traffic over plain HTTP. Configure your load balancer or gateway to handle SSL/TLS.
+- **Enforce HTTPS**: Do not serve production traffic over plain HTTP. Configure your load balancer or gateway to handle SSL/TLS, or pass certificate material through the Fastify adapter `https` option when the Node.js process owns TLS directly.
 - **Rate Limiting**: Register `ThrottlerModule` for policy/providers and activate `ThrottlerGuard` on the routes that need protection. This explicit guard-stage setup helps prevent brute-force and DDoS attacks without implying that module registration alone throttles every route.
 - **Secrets Management**: Never commit `.env` files or hardcoded keys. Use environment variables or a dedicated secrets manager, such as AWS Secrets Manager or HashiCorp Vault, to inject sensitive data at runtime.
 - **Authentication**: Check once more that every sensitive route is protected by `AuthGuard` or `JwtGuard`.
@@ -78,6 +78,8 @@ EXPOSE 3000
 USER node
 CMD ["node", "dist/main.js"]
 ```
+
+Keep the base image on Node.js 20 or newer. The default Fastify adapter path uses `@fluojs/platform-fastify`, whose package manifest declares `engines.node >=20.0.0`.
 
 ### Docker Compose
 For local production simulation or a small deployment:
@@ -127,6 +129,27 @@ const app = await FluoFactory.create(AppModule, {
 
 await app.listen();
 ```
+
+If the Fastify process, rather than an ingress or load balancer, owns TLS directly, pass the same certificate material through the adapter's `https` startup surface. Load certificate and private-key values through your application configuration or secret manager first, then hand the final values to `createFastifyAdapter(...)`.
+
+```typescript
+const tlsOptions = {
+  cert: tlsCertificateFromSecretManager,
+  key: tlsPrivateKeyFromSecretManager,
+};
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({
+    host: '0.0.0.0',
+    https: tlsOptions,
+    port: 3443,
+  }),
+});
+
+await app.listen();
+```
+
+`bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same `https` option. If TLS terminates before the Node.js process, leave `https` unset and keep the adapter on plain HTTP behind that trusted boundary.
 
 ## 21.6 Deep Dive: CI/CD Pipeline
 Production configuration becomes more reliable when it runs through an automated pipeline. Continuous Integration (CI) and Continuous Deployment (CD) make sure every change is tested and deployed through a consistent process.

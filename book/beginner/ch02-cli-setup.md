@@ -142,6 +142,8 @@ fluo new fluo-blog --shape application --runtime node --platform fastify --print
 
 Plan preview mode resolves the same project name, shape, runtime, platform, package manager, install choice, and git choice as a real scaffold. Then it prints the selected recipe and exits without creating files, installing dependencies, or initializing git.
 
+The explicit `--platform fastify` path selects `@fluojs/platform-fastify`, so it inherits that package's Node.js 20+ runtime floor (`engines.node >=20.0.0`). The starter runs plain HTTP for local development; when the Node process should own HTTPS/TLS directly, pass `https` options at the bootstrap boundary as shown in Chapter 21.
+
 For this book, you can treat `--print-plan` as a safe rehearsal. Run it once if you want to understand the choices, then run `fluo new fluo-blog` when you are ready to create the project.
 
 ### What happens under the hood?
@@ -385,6 +387,8 @@ On the first run, the default CLI reporter forwards application stdout and stder
 ```
 
 These logs tell you something important. The framework loaded the root Module, completed Bootstrap, and bound the HTTP server.
+
+The local starter intentionally uses plain HTTP. HTTPS/TLS is a production startup choice: if a load balancer or gateway terminates TLS, keep the adapter behind it as plain HTTP; if the Fastify process owns TLS, configure the adapter `https` option explicitly.
 
 ### Verifying the Response
 
