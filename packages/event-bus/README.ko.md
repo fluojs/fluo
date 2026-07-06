@@ -144,7 +144,7 @@ class UserRegisteredEvent {
 }
 ```
 
-핸들러는 imported module의 singleton provider와 controller에서 발견됩니다. Discovery는 여러 provider가 같은 구현 class를 공유하더라도 서로 다른 singleton provider identity를 유지하며, 같은 provider token과 handler method가 중복 등록된 경우에는 한 번만 호출합니다. 각 핸들러는 격리된 clone payload를 받으며, class inheritance는 `instanceof` 매칭으로 지원됩니다. 외부 트랜스포트를 구성하면 subclass event publish는 publisher process에 해당 타입의 local handler가 없더라도 subclass channel과 prototype chain의 모든 inherited event channel로 fan-out됩니다. Subclass가 직접 `static eventKey`를 선언한 경우에만 그 값을 사용하며, 그렇지 않으면 subclass channel은 class name을 유지하고 base class는 자신의 stable key를 유지합니다.
+핸들러는 imported module의 singleton provider와 controller에서 발견됩니다. Discovery는 여러 provider가 같은 구현 class를 공유하더라도 서로 다른 singleton provider identity를 유지하며, 같은 provider token과 handler method가 중복 등록된 경우에는 한 번만 호출합니다. Event-bus bootstrap은 ready 상태를 보고하기 전에 발견된 모든 handler target을 resolve하며, 실제 handler target resolution이 실패하면 handler를 조용히 건너뛰고 ready를 보고하는 대신 bootstrap을 실패시킵니다. Discovery는 이미 handler metadata를 가진 singleton `useValue` instance와 provider token 자체가 `@OnEvent(...)` metadata를 가진 handler class인 singleton `useFactory` provider만 검사하므로, event-bus bootstrap 중 관련 없는 factory provider는 호출되지 않습니다. 각 핸들러는 격리된 clone payload를 받으며, class inheritance는 `instanceof` 매칭으로 지원됩니다. 외부 트랜스포트를 구성하면 subclass event publish는 publisher process에 해당 타입의 local handler가 없더라도 subclass channel과 prototype chain의 모든 inherited event channel로 fan-out됩니다. Subclass가 직접 `static eventKey`를 선언한 경우에만 그 값을 사용하며, 그렇지 않으면 subclass channel은 class name을 유지하고 base class는 자신의 stable key를 유지합니다.
 
 ## 공개 API 개요
 

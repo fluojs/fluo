@@ -87,6 +87,10 @@ function isFactoryOrValueProvider(provider: Provider): provider is Extract<Provi
   return typeof provider === 'object' && provider !== null && ('useFactory' in provider || 'useValue' in provider);
 }
 
+function hasEventHandlerMetadata(targetType: Function): boolean {
+  return getEventHandlerMetadataEntries(targetType.prototype).length > 0;
+}
+
 /**
  * Lifecycle-managed in-process event bus with optional external transport fan-out.
  *
@@ -873,7 +877,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     return candidates;
   }
 
-  private async resolveProviderDiscoveryCandidate(candidate: ProviderDiscoveryCandidate): Promise<DiscoveryCandidate | undefined> {
+  private resolveProviderDiscoveryCandidate(candidate: ProviderDiscoveryCandidate): DiscoveryCandidate | undefined {
     const provider = candidate.provider;
 
     if (!('provide' in provider)) {
@@ -887,29 +891,35 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
       return this.createUnresolvedProviderDiscoveryCandidate(candidate.moduleName, token, scope);
     }
 
-    const instance = await this.resolveHandlerInstance({
-      eventType: Object,
-      methodKey: 'constructor',
-      methodName: 'constructor',
-      moduleName: candidate.moduleName,
-      targetName: 'EventHandlerProvider',
-      token,
-    });
+    if ('useValue' in provider) {
+      const instance = provider.useValue;
 
-    if (typeof instance !== 'object' || instance === null) {
-      return undefined;
+      if (typeof instance !== 'object' || instance === null) {
+        return undefined;
+      }
+
+      const targetType = instance.constructor;
+
+      if (typeof targetType !== 'function' || !hasEventHandlerMetadata(targetType)) {
+        return undefined;
+      }
+
+      return {
+        moduleName: candidate.moduleName,
+        scope,
+        targetType,
+        token,
+      };
     }
 
-    const targetType = instance.constructor;
-
-    if (typeof targetType !== 'function') {
+    if (typeof token !== 'function' || !hasEventHandlerMetadata(token)) {
       return undefined;
     }
 
     return {
       moduleName: candidate.moduleName,
       scope,
-      targetType,
+      targetType: token,
       token,
     };
   }
@@ -936,10 +946,6 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   private async invokeHandler(descriptor: EventHandlerDescriptor, event: object): Promise<void> {
     const instance = await this.resolveHandlerInstance(descriptor);
 
-    if (instance === undefined) {
-      return;
-    }
-
     const value = (instance as Record<MetadataPropertyKey, unknown>)[descriptor.methodKey];
 
     if (typeof value !== 'function') {
@@ -961,7 +967,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     }
   }
 
-  private async resolveHandlerInstance(descriptor: EventHandlerDescriptor): Promise<unknown | undefined> {
+  private async resolveHandlerInstance(descriptor: EventHandlerDescriptor): Promise<unknown> {
     const cached = this.handlerInstances.get(descriptor.token);
 
     if (cached) {
@@ -980,7 +986,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
         error,
         'EventBusLifecycleService',
       );
-      return undefined;
+      throw error;
     }
   }
 }
