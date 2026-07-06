@@ -1171,6 +1171,29 @@ describe('i18n subpath discoverability', () => {
     expect(koreanContext).toContain('docs/reference/i18n-ecosystem-bridges.ko.md');
     expect(koreanContext).toContain('i18n ecosystem bridge compatibility');
   });
+
+  it('keeps the i18n root runtime boundary and provider visibility contract discoverable', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const englishReadme = readFileSync(join(repoRoot, 'packages/i18n/README.md'), 'utf8');
+    const koreanReadme = readFileSync(join(repoRoot, 'packages/i18n/README.ko.md'), 'utf8');
+
+    expect(englishReadme).toContain('does not declare a Node.js engine floor');
+    expect(englishReadme).toContain('global provider by default');
+    expect(englishSurface).toContain('does not declare a Node.js engine floor');
+    expect(englishSurface).toContain('exposes `I18nService` globally by default');
+    expect(englishContext).toContain('has no Node.js engine floor');
+    expect(englishContext).toContain('registers `I18nService` globally by default');
+
+    expect(koreanReadme).toContain('Node.js engine floor를 선언하지 않으며');
+    expect(koreanReadme).toContain('기본적으로 `I18nService`를 global provider로 export');
+    expect(koreanSurface).toContain('Node.js engine floor를 선언하지 않는');
+    expect(koreanSurface).toContain('기본적으로 `I18nService`를 global로 노출');
+    expect(koreanContext).toContain('Node.js engine floor가 없으며');
+    expect(koreanContext).toContain('`I18nService`를 기본 global provider로 등록');
+  });
 });
 
 describe('serialization package discoverability', () => {
