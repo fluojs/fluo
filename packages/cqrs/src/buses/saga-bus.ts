@@ -229,22 +229,33 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   }
 
   private async drainActiveSagaWork(): Promise<void> {
-    const activeWork = [...this.pendingDispatches, ...this.executionChains.values()];
-
-    if (activeWork.length === 0) {
-      return;
-    }
-
     const timeoutMs = this.resolveShutdownDrainTimeoutMs();
-    const drained = await this.awaitShutdownDrain(activeWork, timeoutMs);
+    const deadline = Date.now() + timeoutMs;
 
-    if (!drained) {
-      this.shutdownDrainTimeouts += 1;
-      this.logger.warn(
-        `CQRS saga shutdown drain exceeded ${String(timeoutMs)}ms with ${String(activeWork.length)} active saga task(s); continuing shutdown.`,
-        'CqrsSagaLifecycleService',
-      );
+    while (this.pendingDispatches.size > 0) {
+      const activeWork = [...this.pendingDispatches];
+      const remainingTimeoutMs = deadline - Date.now();
+
+      if (remainingTimeoutMs <= 0) {
+        this.reportShutdownDrainTimeout(timeoutMs, activeWork.length);
+        return;
+      }
+
+      const drained = await this.awaitShutdownDrain(activeWork, remainingTimeoutMs);
+
+      if (!drained) {
+        this.reportShutdownDrainTimeout(timeoutMs, activeWork.length);
+        return;
+      }
     }
+  }
+
+  private reportShutdownDrainTimeout(timeoutMs: number, activeWorkCount: number): void {
+    this.shutdownDrainTimeouts += 1;
+    this.logger.warn(
+      `CQRS saga shutdown drain exceeded ${String(timeoutMs)}ms with ${String(activeWorkCount)} active saga task(s); continuing shutdown.`,
+      'CqrsSagaLifecycleService',
+    );
   }
 
   private async awaitShutdownDrain(activeWork: Promise<void>[], timeoutMs: number): Promise<boolean> {

@@ -82,6 +82,16 @@ function getPreloadedHandlerCount(service: object): number {
   return handlerInstances.size;
 }
 
+function getPendingSagaDispatches(service: object): Set<Promise<void>> {
+  const pendingDispatches = Reflect.get(service, 'pendingDispatches');
+
+  if (!(pendingDispatches instanceof Set)) {
+    throw new Error('Expected CQRS saga service to expose pendingDispatches for package-internal tests.');
+  }
+
+  return pendingDispatches;
+}
+
 function createRuntimeCleanupRegistry(callbacks: Array<() => void>): RuntimeCleanupRegistration {
   return (cleanup: () => void) => {
     callbacks.push(cleanup);
@@ -786,6 +796,51 @@ describe('@fluojs/cqrs', () => {
     }
 
     await expect(sagaBus.dispatch(new UserCreatedEvent('late'))).rejects.toBeInstanceOf(InvariantError);
+  });
+
+  it('continues saga shutdown drain until late nested saga work is quiescent', async () => {
+    const firstWorkRelease = createDeferred<void>();
+    const secondWorkRelease = createDeferred<void>();
+    const loggerEvents: string[] = [];
+    const sagaBus = new CqrsSagaLifecycleService(
+      new Container(),
+      [],
+      createLogger(loggerEvents),
+      { shutdown: { drainTimeoutMs: 1000 } },
+    );
+    const pendingDispatches = getPendingSagaDispatches(sagaBus);
+    let shutdownCompleted = false;
+    let firstWork!: Promise<void>;
+    let secondWork!: Promise<void>;
+
+    secondWork = secondWorkRelease.promise.then(() => {
+      pendingDispatches.delete(secondWork);
+    });
+    firstWork = firstWorkRelease.promise.then(() => {
+      pendingDispatches.delete(firstWork);
+      pendingDispatches.add(secondWork);
+    });
+    pendingDispatches.add(firstWork);
+
+    const shutdownPromise = sagaBus.onApplicationShutdown().then(() => {
+      shutdownCompleted = true;
+    });
+    await Promise.resolve();
+
+    expect(shutdownCompleted).toBe(false);
+
+    firstWorkRelease.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(shutdownCompleted).toBe(false);
+
+    secondWorkRelease.resolve();
+    await shutdownPromise;
+
+    expect(shutdownCompleted).toBe(true);
+    expect(sagaBus.getRuntimeSnapshot().shutdownDrainTimeouts).toBe(0);
+    expect(loggerEvents).toEqual([]);
   });
 
   it('orchestrates follow-up commands across multiple events over time with sagas', async () => {
