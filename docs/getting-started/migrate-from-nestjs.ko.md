@@ -18,6 +18,7 @@
 | `@Injectable()` 프로바이더 마커 | `@Module(...).providers`에 등록된 프로바이더 클래스 또는 provider definition | fluo는 필수 프로바이더 등록 단계로 `@Injectable()`을 사용하지 않는다. |
 | `emitDecoratorMetadata`를 통한 생성자 타입 리플렉션 | `@fluojs/core`의 `@Inject(TokenA, TokenB)` | 생성자 의존성은 데코레이터 인자 순서대로 명시한다. |
 | `class-validator` / 데코레이터 중심 DTO 검증 | Standard Schema를 지원하는 `@fluojs/validation` | 현재 검증 방향은 Zod, Valibot 등을 포함한 Standard Schema 기반이다. |
+| `Pipe`, `ValidationPipe`, 또는 parameter-level transformation | `@fluojs/http`의 `@RequestDto(...)`와 field-level `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)`, `@FromHeader(...)`, `@FromCookie(...)`, `@Convert(...)` | fluo는 controller parameter에 적용하는 NestJS-style public Pipe 단계를 노출하지 않는다. 하나의 request DTO를 바인딩하고, 각 field source를 선언하며, number/boolean/date/domain conversion에는 `@Convert(...)`를 사용한 뒤 materialized DTO를 validation package로 검증한다. |
 | `createApplicationContext()` 단독 부트스트랩 | `FluoFactory.createApplicationContext(AppModule)` | `@fluojs/runtime`에 standalone application context가 존재한다. |
 | `Test.createTestingModule({ imports: [...] }).overrideModule(...)` | `@fluojs/testing`의 `createTestingModule({ rootModule }).overrideModule(...)` | fluo testing은 명시적 `rootModule`과 replacement compile seam을 사용하므로 전역 module metadata를 mutate하지 않고 authored module identity를 보존한다. |
 | NestJS 요청 transaction interceptor | 영속성 패키지의 서비스 `@Transaction()` 또는 controller/request 경계의 명시적 `requestTransaction(...)` | fluo는 Drizzle 또는 Mongoose `*TransactionInterceptor` export를 제공하지 않는다. 비즈니스 transaction은 서비스에 두고, 전체 요청이 하나의 경계를 공유해야 할 때만 `DrizzleDatabase.requestTransaction(...)` 또는 `MongooseConnection.requestTransaction(...)`을 사용한다. |
@@ -41,6 +42,7 @@
 - 의존성 주입은 생성자 타입에서 절대 추론되지 않는다. fluo는 생성자 의존성에 대해 명시적 `@Inject(...)` 선언을 요구한다.
 - 부트스트랩은 adapter-first 방식이다. `FluoFactory.create(...)`는 HTTP 플랫폼을 암묵적으로 고르는 대신 `adapter` 옵션을 반드시 받아야 한다.
 - 검증은 `class-validator` 우선 계약을 유지하지 않고 Standard Schema 방향으로 반드시 옮겨야 한다.
+- NestJS Pipe와 `ValidationPipe` migration은 parameter-pipe 치환이 아니다. Request input shaping은 `@RequestDto(...)`, field-level source decorator, `@Convert(...)`로 옮긴다. 검증은 public controller-parameter Pipe stage가 아니라 DTO materialization 이후에 실행된다.
 - 컨트롤러 데코레이터는 반드시 `@fluojs/http`에서 가져오고, `@Module` 같은 구조 데코레이터는 `@fluojs/core`에서 가져온다.
 - Observable을 반환하는 NestJS `@Sse()` 핸들러는 반드시 `SseResponse`를 만들거나 `AsyncIterable`을 반환하도록 재작성해야 한다. 수동 `SseResponse` stream은 `send(...)` 또는 `comment(...)`를 호출하고 request abort 또는 application cleanup 경로에서 닫아야 하며, managed async iterable은 request abort 또는 response stream close 시 dispatcher가 닫는다.
 - Drizzle transaction migration은 interceptor-for-interceptor 치환이 아니다. `@fluojs/drizzle`은 서비스 `@Transaction()`을 기본 경계로 사용하고, 드문 controller/request-wide 호환성 사례에만 명시적 `DrizzleDatabase.requestTransaction(...)`을 사용한다.
