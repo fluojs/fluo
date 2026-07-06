@@ -29,9 +29,13 @@ describe('@fluojs/event-bus public API surface', () => {
       waitForHandlers?: boolean;
     }>();
     expectTypeOf<EventBusModuleOptions>().toMatchTypeOf<{
+      global?: boolean;
       publish?: {
         timeoutMs?: number;
         waitForHandlers?: boolean;
+      };
+      shutdown?: {
+        drainTimeoutMs?: number;
       };
       transport?: EventBusTransport;
     }>();

@@ -1,7 +1,7 @@
 import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata } from '@fluojs/core/internal';
 import { Container } from '@fluojs/di';
-import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { type ApplicationLogger, bootstrapApplication, type CompiledModule, defineModule } from '@fluojs/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { OnEvent } from './decorators.js';
@@ -815,9 +815,8 @@ describe('@fluojs/event-bus', () => {
     await app.close();
   });
 
-  it('discovers handlers from singleton factory and value provider instances', async () => {
+  it('discovers handlers from singleton value providers and class-token factory providers', async () => {
     const VALUE_HANDLER = Symbol('value-handler');
-    const FACTORY_HANDLER = Symbol('factory-handler');
     const calls: string[] = [];
 
     class ValueProviderHandler {
@@ -839,7 +838,7 @@ describe('@fluojs/event-bus', () => {
       imports: [EventBusModule.forRoot()],
       providers: [
         { provide: VALUE_HANDLER, useValue: new ValueProviderHandler() },
-        { provide: FACTORY_HANDLER, useFactory: () => new FactoryProviderHandler() },
+        { provide: FactoryProviderHandler, useFactory: () => new FactoryProviderHandler() },
       ],
     });
 
@@ -851,6 +850,83 @@ describe('@fluojs/event-bus', () => {
     expect(calls).toEqual(['value:user-factory-value', 'factory:user-factory-value']);
 
     await app.close();
+  });
+
+  it('does not resolve unrelated singleton factory providers during handler discovery', async () => {
+    const calls: string[] = [];
+    let unrelatedFactoryCalls = 0;
+    const loggerEvents: string[] = [];
+    const container = new Container();
+    const UNRELATED_FACTORY = Symbol('unrelated-factory');
+
+    class FactoryProviderHandler {
+      @OnEvent(UserCreatedEvent)
+      onUserCreated(event: UserCreatedEvent) {
+        calls.push(event.userId);
+      }
+    }
+
+    const eventBusProviders = [
+      { provide: FactoryProviderHandler, useFactory: () => new FactoryProviderHandler() },
+      {
+        provide: UNRELATED_FACTORY,
+        useFactory: () => {
+          unrelatedFactoryCalls += 1;
+          return { ready: true };
+        },
+      },
+    ];
+
+    class AppModule {}
+    const compiledModule = {
+      accessibleTokens: new Set(),
+      definition: { providers: eventBusProviders },
+      exportedTokens: new Set(),
+      importedExportedTokens: new Set(),
+      providerTokens: new Set(),
+      type: AppModule,
+    } satisfies CompiledModule;
+
+    container.register(...eventBusProviders);
+    const service = new EventBusLifecycleService(container, [compiledModule], createLogger(loggerEvents), {});
+
+    await service.onApplicationBootstrap();
+    await service.publish(new UserCreatedEvent('user-no-side-effect'));
+
+    expect(calls).toEqual(['user-no-side-effect']);
+    expect(unrelatedFactoryCalls).toBe(0);
+  });
+
+  it('fails bootstrap when a discovered event handler target cannot be resolved', async () => {
+    const loggerEvents: string[] = [];
+    const container = new Container();
+
+    @Inject(Symbol('missing-dependency'))
+    class BrokenHandler {
+      @OnEvent(UserCreatedEvent)
+      onUserCreated(_event: UserCreatedEvent) {}
+    }
+
+    class AppModule {}
+    const compiledModule = {
+      accessibleTokens: new Set(),
+      definition: { providers: [BrokenHandler] },
+      exportedTokens: new Set(),
+      importedExportedTokens: new Set(),
+      providerTokens: new Set(),
+      type: AppModule,
+    } satisfies CompiledModule;
+
+    container.register(BrokenHandler);
+    const service = new EventBusLifecycleService(container, [compiledModule], createLogger(loggerEvents), {});
+
+    await expect(service.onApplicationBootstrap()).rejects.toThrow();
+
+    expect(
+      loggerEvents.some((event) =>
+        event.includes('Failed to resolve event handler target BrokenHandler from module AppModule.'),
+      ),
+    ).toBe(true);
   });
 
   it('keeps non-singleton factory provider handlers out of event discovery', async () => {
@@ -959,6 +1035,59 @@ describe('@fluojs/event-bus', () => {
         e.includes('called before onApplicationBootstrap'),
       ),
     ).toBe(true);
+  });
+
+  it('makes event-bus providers globally visible by default', async () => {
+    @Inject(EVENT_BUS)
+    class SiblingPublisher {
+      constructor(readonly eventBus: EventBus) {}
+    }
+
+    class EventBusHostModule {}
+    defineModule(EventBusHostModule, {
+      imports: [EventBusModule.forRoot()],
+    });
+
+    class SiblingModule {}
+    defineModule(SiblingModule, {
+      providers: [SiblingPublisher],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [EventBusHostModule, SiblingModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const publisher = await app.container.resolve(SiblingPublisher);
+
+    expect(typeof publisher.eventBus.publish).toBe('function');
+
+    await app.close();
+  });
+
+  it('keeps event-bus providers module-local when global is false', async () => {
+    @Inject(EVENT_BUS)
+    class SiblingPublisher {
+      constructor(readonly eventBus: EventBus) {}
+    }
+
+    class EventBusHostModule {}
+    defineModule(EventBusHostModule, {
+      imports: [EventBusModule.forRoot({ global: false })],
+    });
+
+    class SiblingModule {}
+    defineModule(SiblingModule, {
+      providers: [SiblingPublisher],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [EventBusHostModule, SiblingModule],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow();
   });
 
   it('keeps distinct singleton provider identities when the same handler class is registered under two tokens', async () => {
@@ -1370,6 +1499,24 @@ describe('@fluojs/event-bus', () => {
       gate.resolve();
       await publishPromise;
       await settleEventBusTeardown();
+    });
+
+    it('uses a 5000ms shutdown drain timeout by default', async () => {
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [EventBusModule.forRoot()],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(EventBusLifecycleService);
+
+      expect(service.createPlatformStatusSnapshot()).toMatchObject({
+        details: {
+          shutdownDrainTimeoutMs: 5000,
+        },
+      });
+
+      await app.close();
     });
 
     it('ignores publish calls after shutdown without dispatching handlers or transport work', async () => {
