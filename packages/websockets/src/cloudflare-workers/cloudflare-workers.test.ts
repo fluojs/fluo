@@ -457,8 +457,9 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     }
   });
 
-  it('awaits and ignores raw Worker handler return values', async () => {
+  it('awaits raw Worker handler return promises before ignoring returned values', async () => {
     const adapter = new TestWorkerAdapter();
+    const handlerGate = createDeferred<void>();
 
     class GatewayState {
       messages: unknown[] = [];
@@ -469,10 +470,16 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     class ReturnOnlyGateway {
       constructor(private readonly state: GatewayState) {}
 
-      @OnMessage('ping')
-      async onPing(payload: unknown) {
+      @OnMessage('first')
+      async onFirst(payload: unknown) {
+        await handlerGate.promise;
         this.state.messages.push(payload);
         return { event: 'pong', data: payload };
+      }
+
+      @OnMessage('second')
+      onSecond(payload: unknown) {
+        this.state.messages.push(payload);
       }
     }
 
@@ -503,10 +510,17 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
         throw new Error('Expected Worker test socket to be available after websocket upgrade.');
       }
 
-      socket.emitMessage('{"event":"ping","data":{"value":"ignored"}}');
+      socket.emitMessage('{"event":"first","data":{"value":"ignored"}}');
+      socket.emitMessage('{"event":"second","data":{"value":"after"}}');
       await flushAsyncWork();
 
-      expect(state.messages).toEqual([{ value: 'ignored' }]);
+      expect(state.messages).toEqual([]);
+      expect(socket.sentMessages).toEqual([]);
+
+      handlerGate.resolve();
+      await flushAsyncWork();
+
+      expect(state.messages).toEqual([{ value: 'ignored' }, { value: 'after' }]);
       expect(socket.sentMessages).toEqual([]);
     } finally {
       await app.close();

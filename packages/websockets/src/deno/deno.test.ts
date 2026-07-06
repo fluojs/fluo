@@ -396,8 +396,9 @@ describe('@fluojs/websockets/deno', () => {
     }
   });
 
-  it('awaits and ignores raw Deno handler return values', async () => {
+  it('awaits raw Deno handler return promises before ignoring returned values', async () => {
     const adapter = new TestDenoAdapter();
+    const handlerGate = createDeferred<void>();
 
     class GatewayState {
       messages: unknown[] = [];
@@ -408,10 +409,16 @@ describe('@fluojs/websockets/deno', () => {
     class ReturnOnlyGateway {
       constructor(private readonly state: GatewayState) {}
 
-      @OnMessage('ping')
-      async onPing(payload: unknown) {
+      @OnMessage('first')
+      async onFirst(payload: unknown) {
+        await handlerGate.promise;
         this.state.messages.push(payload);
         return { event: 'pong', data: payload };
+      }
+
+      @OnMessage('second')
+      onSecond(payload: unknown) {
+        this.state.messages.push(payload);
       }
     }
 
@@ -441,10 +448,17 @@ describe('@fluojs/websockets/deno', () => {
         throw new Error('Expected Deno test socket to be available after websocket upgrade.');
       }
 
-      socket.emitMessage('{"event":"ping","data":{"value":"ignored"}}');
+      socket.emitMessage('{"event":"first","data":{"value":"ignored"}}');
+      socket.emitMessage('{"event":"second","data":{"value":"after"}}');
       await flushAsyncWork();
 
-      expect(state.messages).toEqual([{ value: 'ignored' }]);
+      expect(state.messages).toEqual([]);
+      expect(socket.sentMessages).toEqual([]);
+
+      handlerGate.resolve();
+      await flushAsyncWork();
+
+      expect(state.messages).toEqual([{ value: 'ignored' }, { value: 'after' }]);
       expect(socket.sentMessages).toEqual([]);
     } finally {
       await app.close();

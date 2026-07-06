@@ -325,8 +325,9 @@ describe('@fluojs/websockets/bun', () => {
     }
   });
 
-  it('awaits and ignores raw Bun handler return values', async () => {
+  it('awaits raw Bun handler return promises before ignoring returned values', async () => {
     const adapter = new TestBunAdapter();
+    const handlerGate = createDeferred<void>();
 
     class GatewayState {
       messages: unknown[] = [];
@@ -337,10 +338,16 @@ describe('@fluojs/websockets/bun', () => {
     class ReturnOnlyGateway {
       constructor(private readonly state: GatewayState) {}
 
-      @OnMessage('ping')
-      async onPing(payload: unknown) {
+      @OnMessage('first')
+      async onFirst(payload: unknown) {
+        await handlerGate.promise;
         this.state.messages.push(payload);
         return { event: 'pong', data: payload };
+      }
+
+      @OnMessage('second')
+      onSecond(payload: unknown) {
+        this.state.messages.push(payload);
       }
     }
 
@@ -370,10 +377,17 @@ describe('@fluojs/websockets/bun', () => {
         throw new Error('Expected Bun test server and socket to be available after websocket upgrade.');
       }
 
-      await server.emitMessage(JSON.stringify({ event: 'ping', data: { value: 'ignored' } }));
+      await server.emitMessage(JSON.stringify({ event: 'first', data: { value: 'ignored' } }));
+      await server.emitMessage(JSON.stringify({ event: 'second', data: { value: 'after' } }));
       await flushAsyncWork();
 
-      expect(state.messages).toEqual([{ value: 'ignored' }]);
+      expect(state.messages).toEqual([]);
+      expect(socket.sentMessages).toEqual([]);
+
+      handlerGate.resolve();
+      await flushAsyncWork();
+
+      expect(state.messages).toEqual([{ value: 'ignored' }, { value: 'after' }]);
       expect(socket.sentMessages).toEqual([]);
     } finally {
       await app.close();
