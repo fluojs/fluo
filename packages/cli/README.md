@@ -31,6 +31,7 @@ pnpm dlx @fluojs/cli new my-app
 ## Release Contract
 
 - `@fluojs/cli` is a public package in the intended publish surface.
+- `@fluojs/cli` requires Node.js `>=20.0.0`; generated Bun, Deno, and Cloudflare Workers starters may target non-Node runtimes, but the CLI process itself runs on Node.js.
 - The supported install paths are the global package (`npm install -g @fluojs/cli`, `pnpm add -g @fluojs/cli`, `bun add -g @fluojs/cli`, or `yarn global add @fluojs/cli`) and the no-install runner (`pnpm dlx @fluojs/cli ...`).
 - The published `fluo` bin is the `./bin/fluo.mjs` wrapper declared in `package.json`; that wrapper loads the dist-built CLI entrypoint at `../dist/cli.js`.
 
@@ -314,7 +315,7 @@ The package can be used programmatically to trigger CLI actions from within othe
 | `CliRuntimeOptions` | Type for `runCli(...)` runtime overrides such as streams, cwd, environment, registry metadata, and update-check hooks. |
 | `newUsage()` | Returns the current `fluo new` usage text for help surfaces and tests. |
 | `runNewCommand(argv, options?)` | Programmatic access to the project scaffolding logic. |
-| `NewCommandRuntimeOptions` | Type for `runNewCommand(...)` runtime overrides such as prompts, filesystem writes, dependency installation, and git initialization; `runCli(...)` also accepts these overrides when it dispatches `new` or `create`. |
+| `NewCommandRuntimeOptions` | Type for `runNewCommand(...)` runtime overrides such as prompts, filesystem writes, dependency installation, and git initialization; `runCli(...)` also accepts these overrides when it dispatches `new` or `create`. Monorepo-local starter dependency overrides are internal sandbox harness details, not part of this public type. |
 | `CliPromptCancelledError` | Stable sentinel that caller-supplied prompt hooks can throw to report normal cancellation. |
 | `runGenerateCommand(kind, name, baseDirectory, options?)` | Programmatic access to the built-in schematic generator and module auto-registration planner. |
 | `GenerateOptions` | Type for programmatic generator options. |

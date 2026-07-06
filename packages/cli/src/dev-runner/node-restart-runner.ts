@@ -177,7 +177,7 @@ function parseIgnorePatterns(env: NodeJS.ProcessEnv): string[] {
 }
 
 function matchesSegmentPattern(segment: string, pattern: string): boolean {
-  if (pattern.startsWith('*.')) {
+  if (pattern.startsWith('*')) {
     return segment.endsWith(pattern.slice(1));
   }
 

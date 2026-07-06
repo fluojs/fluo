@@ -1835,6 +1835,25 @@ void bootstrap();
     expect(output).toContain('FLUO_STUDIO_URL: http://127.0.0.1:<auto>');
   });
 
+  it('prints explicit Studio sidecar ports in dev dry-runs without starting a server', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['dev', '--dry-run', '--studio', '--studio-port', '51234'], {
+      cwd: workspaceDirectory,
+      env: {},
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const output = stdoutBuffer.join('');
+    expect(exitCode).toBe(0);
+    expect(output).toContain('Studio: enabled (sidecar binds 127.0.0.1 at runtime)');
+    expect(output).toContain('FLUO_STUDIO_URL: http://127.0.0.1:51234');
+  });
+
   it('starts a token-protected Studio sidecar and injects env into dev child processes', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
@@ -2232,6 +2251,43 @@ void bootstrap();
     gate.commitBaseline([sourceFile]);
     expect(gate.hasMeaningfulChange([sourceFile])).toBe(false);
     expect(gate.hasMeaningfulChange([ignoredFile])).toBe(false);
+  });
+
+  it('ignores default dev-runner output, cache, VCS, dependency, coverage, and editor paths', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceFile = join(workspaceDirectory, 'src', 'main.ts');
+    const ignoredFiles = [
+      join(workspaceDirectory, 'node_modules', '@fluojs', 'cli', 'index.js'),
+      join(workspaceDirectory, 'dist', 'main.js'),
+      join(workspaceDirectory, '.git', 'index'),
+      join(workspaceDirectory, '.fluo', 'state.json'),
+      join(workspaceDirectory, '.cache', 'vite', 'chunk.js'),
+      join(workspaceDirectory, '.turbo', 'cache.json'),
+      join(workspaceDirectory, 'coverage', 'coverage-final.json'),
+      join(workspaceDirectory, 'src', '.#main.ts'),
+      join(workspaceDirectory, 'src', 'main.ts~'),
+      join(workspaceDirectory, 'src', 'main.ts.swp'),
+      join(workspaceDirectory, 'src', 'main.ts.swo'),
+    ];
+
+    mkdirSync(dirname(sourceFile), { recursive: true });
+    writeFileSync(sourceFile, 'console.log("hello");\n');
+    for (const ignoredFilePath of ignoredFiles) {
+      mkdirSync(dirname(ignoredFilePath), { recursive: true });
+      writeFileSync(ignoredFilePath, 'ignored\n');
+    }
+
+    const gate = createContentChangeGate(workspaceDirectory);
+    gate.commitBaseline([workspaceDirectory]);
+
+    for (const ignoredFilePath of ignoredFiles) {
+      writeFileSync(ignoredFilePath, 'ignored changed\n');
+      expect(gate.hasMeaningfulChange([ignoredFilePath])).toBe(false);
+    }
+
+    writeFileSync(sourceFile, 'console.log("hello changed");\n');
+    expect(gate.hasMeaningfulChange([sourceFile])).toBe(true);
   });
 
   it('honors FLUO_DEV_WATCH_IGNORE before restarting the fluo Node child', async () => {
@@ -4674,7 +4730,9 @@ exit 7
   it('keeps the local sandbox outside the repo workspace', () => {
     const repoRoot = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
     const scriptPath = join(repoRoot, 'packages', 'cli', 'scripts', 'local-test-env.mjs');
-    const fallbackRoot = join(tmpdir(), 'fluo-cli-sandbox');
+    const fallbackTmpRoot = mkdtempSync(join(tmpdir(), 'fluo-cli-sandbox-test-'));
+    createdDirectories.push(fallbackTmpRoot);
+    const fallbackRoot = join(fallbackTmpRoot, 'fluo-cli-sandbox');
     const internalOverrideRoot = join(repoRoot, '.sandbox-internal-test');
     const externalOverrideRoot = join(tmpdir(), `fluo-cli-external-${process.pid}`);
     const fallbackProjectName = `workspace-fallback-${process.pid}`;
@@ -4686,6 +4744,7 @@ exit 7
       env: {
         ...process.env,
         FLUO_CLI_SANDBOX_ROOT: internalOverrideRoot,
+        TMPDIR: fallbackTmpRoot,
       },
       stdio: 'pipe',
     });
