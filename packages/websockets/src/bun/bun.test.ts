@@ -1,21 +1,20 @@
-import { describe, expect, it } from 'vitest';
-
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
-import type { HttpApplicationAdapter } from '@fluojs/http';
+import { type HttpApplicationAdapter, UnauthorizedException } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
+import { describe, expect, it } from 'vitest';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as bunPublicApi from './bun.js';
 import {
-  BunWebSocketGatewayLifecycleService,
-  BunWebSocketModule,
   type BunServerLike,
   type BunServerWebSocket,
   type BunWebSocketBinding,
   type BunWebSocketBindingHost,
+  BunWebSocketGatewayLifecycleService,
   type BunWebSocketMessage,
+  BunWebSocketModule,
   type BunWebSocketUpgradeHost,
 } from './bun.js';
 
@@ -293,35 +292,92 @@ describe('@fluojs/websockets/bun', () => {
     });
     const state = await app.container.resolve<GatewayState>(GatewayState);
 
-    await app.listen();
+    try {
+      await app.listen();
 
-    const server = adapter.getServer();
-    const upgradeResponse = await server?.fetch(new Request('http://127.0.0.1:3000/chat', {
-      headers: { upgrade: 'websocket' },
-    }));
+      const server = adapter.getServer();
+      const upgradeResponse = await server?.fetch(new Request('http://127.0.0.1:3000/chat', {
+        headers: { upgrade: 'websocket' },
+      }));
 
-    await flushAsyncWork();
+      await flushAsyncWork();
 
-    const socket = server?.lastSocket;
-    expect(upgradeResponse).toBeUndefined();
-    expect(socket).toBeDefined();
+      const socket = server?.lastSocket;
+      expect(upgradeResponse).toBeUndefined();
+      expect(socket).toBeDefined();
 
-    if (!server || !socket) {
-      throw new Error('Expected Bun test server and socket to be available after websocket upgrade.');
+      if (!server || !socket) {
+        throw new Error('Expected Bun test server and socket to be available after websocket upgrade.');
+      }
+
+      await server.emitMessage(JSON.stringify({ event: 'ping', data: { value: 'hello' } }));
+      await flushAsyncWork();
+
+      await server.emitClose(1000, 'done');
+      await flushAsyncWork();
+
+      expect(state.connectCount).toBe(1);
+      expect(state.messages).toEqual([{ value: 'hello' }]);
+      expect(socket?.sentMessages).toEqual(['{"event":"pong","data":{"value":"hello"}}']);
+      expect(state.disconnectCount).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('awaits and ignores raw Bun handler return values', async () => {
+    const adapter = new TestBunAdapter();
+
+    class GatewayState {
+      messages: unknown[] = [];
     }
 
-    await server.emitMessage(JSON.stringify({ event: 'ping', data: { value: 'hello' } }));
-    await flushAsyncWork();
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/ignored-return' })
+    class ReturnOnlyGateway {
+      constructor(private readonly state: GatewayState) {}
 
-    await server.emitClose(1000, 'done');
-    await flushAsyncWork();
+      @OnMessage('ping')
+      async onPing(payload: unknown) {
+        this.state.messages.push(payload);
+        return { event: 'pong', data: payload };
+      }
+    }
 
-    expect(state.connectCount).toBe(1);
-    expect(state.messages).toEqual([{ value: 'hello' }]);
-    expect(socket?.sentMessages).toEqual(['{"event":"pong","data":{"value":"hello"}}']);
-    expect(state.disconnectCount).toBe(1);
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot()],
+      providers: [GatewayState, ReturnOnlyGateway],
+    });
 
-    await app.close();
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+
+    try {
+      await app.listen();
+
+      const server = adapter.getServer();
+      const upgradeResponse = await server?.fetch(new Request('http://127.0.0.1:3000/ignored-return', {
+        headers: { upgrade: 'websocket' },
+      }));
+      await flushAsyncWork();
+
+      const socket = server?.lastSocket;
+      expect(upgradeResponse).toBeUndefined();
+      expect(socket).toBeDefined();
+
+      if (!server || !socket) {
+        throw new Error('Expected Bun test server and socket to be available after websocket upgrade.');
+      }
+
+      await server.emitMessage(JSON.stringify({ event: 'ping', data: { value: 'ignored' } }));
+      await flushAsyncWork();
+
+      expect(state.messages).toEqual([{ value: 'ignored' }]);
+      expect(socket.sentMessages).toEqual([]);
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects anonymous upgrade requests before the Bun websocket upgrade completes', async () => {
@@ -348,16 +404,54 @@ describe('@fluojs/websockets/bun', () => {
     });
 
     const app = await bootstrapApplication({ adapter, rootModule: AppModule });
-    await app.listen();
+    try {
+      await app.listen();
 
-    const response = await adapter.getServer()?.fetch(new Request('http://127.0.0.1:3000/guarded', {
-      headers: { upgrade: 'websocket' },
-    }));
+      const response = await adapter.getServer()?.fetch(new Request('http://127.0.0.1:3000/guarded', {
+        headers: { upgrade: 'websocket' },
+      }));
 
-    expect(response?.status).toBe(401);
-    expect(await response?.text()).toBe('Authentication required.');
+      expect(response?.status).toBe(401);
+      expect(await response?.text()).toBe('Authentication required.');
+    } finally {
+      await app.close();
+    }
+  });
 
-    await app.close();
+  it('maps thrown Bun guard exceptions to rejected websocket upgrades', async () => {
+    const adapter = new TestBunAdapter();
+
+    @WebSocketGateway({ path: '/thrown-guard' })
+    class GuardedGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({
+        upgrade: {
+          guard() {
+            throw new UnauthorizedException('Authentication required.');
+          },
+        },
+      })],
+      providers: [GuardedGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    try {
+      await app.listen();
+
+      const response = await adapter.getServer()?.fetch(new Request('http://127.0.0.1:3000/thrown-guard', {
+        headers: { upgrade: 'websocket' },
+      }));
+
+      expect(response?.status).toBe(401);
+      expect(await response?.text()).toBe('Authentication required.');
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects Bun upgrades that exceed the configured connection limit', async () => {
