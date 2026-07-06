@@ -184,16 +184,18 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const service = await app.container.resolve(UserService);
+    try {
+      const service = await app.container.resolve(UserService);
 
-    await expect(service.outer('grace@example.com')).resolves.toEqual({
-      email: 'grace@example.com',
-      id: 'tx-user',
-    });
+      await expect(service.outer('grace@example.com')).resolves.toEqual({
+        email: 'grace@example.com',
+        id: 'tx-user',
+      });
 
-    expect(events).toEqual(['transaction:start', 'tx:insert:users', 'tx:values:grace@example.com', 'transaction:end']);
-
-    await app.close();
+      expect(events).toEqual(['transaction:start', 'tx:insert:users', 'tx:values:grace@example.com', 'transaction:end']);
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects nested @Transaction() calls with options while a context is already active', async () => {
@@ -268,13 +270,15 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const service = await app.container.resolve(UserService);
+    try {
+      const service = await app.container.resolve(UserService);
 
-    await expect(service.outer('linus@example.com')).rejects.toThrow();
+      await expect(service.outer('linus@example.com')).rejects.toThrow();
 
-    expect(events).toEqual(['transaction:start']);
-
-    await app.close();
+      expect(events).toEqual(['transaction:start']);
+    } finally {
+      await app.close();
+    }
   });
 
   it('forwards @Transaction(...) options to the outer transaction boundary', async () => {
@@ -308,12 +312,14 @@ describe('@fluojs/drizzle Transaction decorator contract (RED - pending Task 8 i
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const service = await app.container.resolve(UserService);
+    try {
+      const service = await app.container.resolve(UserService);
 
-    await expect(service.create()).resolves.toBe(transactionDatabase);
-    expect(optionsCalls).toEqual([{ isolationLevel: 'Serializable' }]);
-
-    await app.close();
+      await expect(service.create()).resolves.toBe(transactionDatabase);
+      expect(optionsCalls).toEqual([{ isolationLevel: 'Serializable' }]);
+    } finally {
+      await app.close();
+    }
   });
 });
 
@@ -367,8 +373,23 @@ describe('@fluojs/drizzle Transaction decorator — named/accessor contract', ()
       }
     }
 
+    class SelfFallbackService {
+      async transaction<T>(callback: () => Promise<T>): Promise<T> {
+        events.push('self:transaction:start');
+        const result = await callback();
+        events.push('self:transaction:end');
+        return result;
+      }
+
+      @Transaction()
+      async run() {
+        events.push('self-fallback:work');
+      }
+    }
+
     await new DbFirstService().run();
     await new DirectBeforeNestedService().run();
+    await new SelfFallbackService().run();
 
     expect(events).toEqual([
       'primary:transaction:start',
@@ -377,6 +398,9 @@ describe('@fluojs/drizzle Transaction decorator — named/accessor contract', ()
       'direct:transaction:start',
       'direct-before-nested:work',
       'direct:transaction:end',
+      'self:transaction:start',
+      'self-fallback:work',
+      'self:transaction:end',
     ]);
   });
 

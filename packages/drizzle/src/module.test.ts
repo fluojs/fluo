@@ -1,7 +1,7 @@
 import { Global, Inject, Module } from '@fluojs/core';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
-
+import type { DrizzleHandleProvider } from './index.js';
 import {
   createDrizzlePlatformStatusSnapshot,
   DRIZZLE_DATABASE,
@@ -642,13 +642,15 @@ describe('@fluojs/drizzle', () => {
     const syncApp = await bootstrapApplication({
       rootModule: StrictSyncAppModule,
     });
-    const syncDrizzle = await syncApp.container.resolve(DrizzleDatabase<typeof database>);
+    try {
+      const syncDrizzle = await syncApp.container.resolve(DrizzleDatabase<typeof database>);
 
-    await expect(syncDrizzle.transaction(async () => 'ok')).rejects.toThrow(
-      'Transaction not supported: Drizzle database does not implement transaction.',
-    );
-
-    await syncApp.close();
+      await expect(syncDrizzle.transaction(async () => 'ok')).rejects.toThrow(
+        'Transaction not supported: Drizzle database does not implement transaction.',
+      );
+    } finally {
+      await syncApp.close();
+    }
 
     const StrictAsyncModule = DrizzleModule.forRootAsync({
       useFactory: () => ({
@@ -666,13 +668,15 @@ describe('@fluojs/drizzle', () => {
     const asyncApp = await bootstrapApplication({
       rootModule: StrictAsyncAppModule,
     });
-    const asyncDrizzle = await asyncApp.container.resolve(DrizzleDatabase<typeof database>);
+    try {
+      const asyncDrizzle = await asyncApp.container.resolve(DrizzleDatabase<typeof database>);
 
-    await expect(asyncDrizzle.requestTransaction(async () => 'ok')).rejects.toThrow(
-      'Transaction not supported: Drizzle database does not implement transaction.',
-    );
-
-    await asyncApp.close();
+      await expect(asyncDrizzle.requestTransaction(async () => 'ok')).rejects.toThrow(
+        'Transaction not supported: Drizzle database does not implement transaction.',
+      );
+    } finally {
+      await asyncApp.close();
+    }
   });
 
   it('defaults strictTransactions to false for sync and async module entrypoints', async () => {
@@ -1184,6 +1188,33 @@ describe('@fluojs/drizzle', () => {
     expect(snapshot().details.lifecycleState).toBe('stopped');
   });
 
+  it('forwards facade query methods to the root handle outside transactions and ambient handle inside transactions', async () => {
+    const events: string[] = [];
+    const transactionDatabase = {
+      query() {
+        events.push('tx:query');
+        return 'tx-result';
+      },
+    };
+    const database = {
+      query() {
+        events.push('root:query');
+        return 'root-result';
+      },
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+        const result = await callback(transactionDatabase);
+        events.push('transaction:end');
+        return result;
+      },
+    };
+    const facade = DrizzleDatabase.createFacade<typeof database, typeof transactionDatabase>(database);
+
+    expect(facade.query()).toBe('root-result');
+    await expect(facade.transaction(async () => facade.query())).resolves.toBe('tx-result');
+    expect(events).toEqual(['root:query', 'transaction:start', 'tx:query', 'transaction:end']);
+  });
+
   it('reports live createPlatformStatusSnapshot lifecycle transitions through the module facade', async () => {
     const database = {};
     const disposeStarted = createDeferred();
@@ -1402,14 +1433,16 @@ describe('DrizzleModule.forRootAsync', () => {
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const drizzle = await app.container.resolve(DrizzleDatabase);
-    const handleProvider = await app.container.resolve(DRIZZLE_HANDLE_PROVIDER);
+    try {
+      const handleProvider = await app.container.resolve<DrizzleHandleProvider<typeof database, typeof transactionDatabase>>(
+        DRIZZLE_HANDLE_PROVIDER,
+      );
 
-    expect(handleProvider).toBe(drizzle);
-    expect((handleProvider as DrizzleDatabase<typeof database, typeof transactionDatabase>).createPlatformStatusSnapshot()).toEqual(
-      drizzle.createPlatformStatusSnapshot(),
-    );
-
-    await app.close();
+      expect(handleProvider).toBe(drizzle);
+      expect(handleProvider.createPlatformStatusSnapshot()).toEqual(drizzle.createPlatformStatusSnapshot());
+    } finally {
+      await app.close();
+    }
   });
 
   it('factory returning a promise resolves the database correctly', async () => {
@@ -1424,11 +1457,13 @@ describe('DrizzleModule.forRootAsync', () => {
     defineModule(AppModule, { imports: [drizzleModule] });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const db = await app.container.resolve(DrizzleDatabase);
+    try {
+      const db = await app.container.resolve(DrizzleDatabase);
 
-    expect(db).toBeInstanceOf(DrizzleDatabase);
-
-    await app.close();
+      expect(db).toBeInstanceOf(DrizzleDatabase);
+    } finally {
+      await app.close();
+    }
   });
 
   it('resolves async options independently for each application container', async () => {
