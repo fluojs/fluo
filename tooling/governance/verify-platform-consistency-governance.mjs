@@ -565,8 +565,11 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // HTTP collector or platform telemetry stale-series ownership docs, and email
   // transport-agnostic status snapshots plus caller-owned shutdown boundaries,
   // validation mapped-type/nested-materialization contract discoverability,
-  // serialization class options plus request-boundary interceptor coverage, and
-  // CLI public runtime type boundaries plus the documented Node.js runtime floor.
+  // serialization class options plus request-boundary interceptor coverage, CLI
+  // public runtime type boundaries plus the documented Node.js runtime floor,
+  // and Studio live helper contracts such as deterministic Mermaid rendering,
+  // route-id graph correlation, viewer dependency classification, and Node.js
+  // tooling runtime-floor discoverability.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),

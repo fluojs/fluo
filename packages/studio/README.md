@@ -21,6 +21,8 @@ CLI sidecar and React viewer workflow for fluo diagnostics, with a Node dev-runn
 
 Most application projects install Studio as a development-only dependency. The CLI resolves it for `fluo dev --studio`, `fluo inspect --mermaid`, and packaged viewer access, while the application runtime itself does not import Studio.
 
+Studio is a Node.js tooling package and requires Node.js `>=20.0.0`, matching the published package `engines.node` field. The packaged viewer subpath is resolved by Node package resolution even when it displays artifacts produced by Bun, Deno, or Cloudflare Workers fallback workflows.
+
 ```bash
 pnpm add -D @fluojs/studio
 ```
