@@ -158,7 +158,7 @@ await this.prisma.transaction(async () => {
 
 ### 종료와 status 계약
 
-`PrismaService.requestTransaction(...)`은 정상 serving 전과 중에는 사용할 수 있지만, 애플리케이션 shutdown이 시작된 뒤에는 새 요청 범위 트랜잭션을 거부합니다. 종료 중에는 열린 요청 트랜잭션을 abort하고, 가장 바깥 transaction boundary가 settle될 때까지 추적한 다음 `$disconnect()` 실행 전에 drain합니다. 서비스 계층 및 수동 `transaction(...)` boundary도 `$disconnect()` 전에 drain되므로 shutdown이 활성 Prisma transaction과 경합하지 않습니다. 기존 수동 `transaction(...)` boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 동일합니다. 해당 호출은 ambient Prisma transaction client를 재사용하고, 바깥 boundary가 끝날 때까지 `details.activeRequestTransactions`에 표시되며, 두 번째 Prisma transaction을 열지 않습니다.
+`PrismaService.requestTransaction(...)`은 정상 serving 전과 중에는 사용할 수 있지만, 애플리케이션 shutdown이 시작된 뒤에는 새 요청 범위 트랜잭션을 거부합니다. 새 outer 수동 `transaction(...)` 및 서비스 `@Transaction()` boundary도 shutdown 시작 후에는 거부됩니다. 이미 열린 boundary는 `$disconnect()` 전에 drain되므로 shutdown이 활성 Prisma transaction과 경합하지 않습니다. 종료 중에는 열린 요청 트랜잭션을 abort하고, 가장 바깥 transaction boundary가 settle될 때까지 추적한 다음 `$disconnect()` 실행 전에 drain합니다. 기존 수동 `transaction(...)` boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 동일합니다. 해당 호출은 ambient Prisma transaction client를 재사용하고, 바깥 boundary가 끝날 때까지 `details.activeRequestTransactions`에 표시되며, 두 번째 Prisma transaction을 열지 않습니다.
 
 `createPrismaPlatformStatusSnapshot(...)`와 `PrismaService.createPlatformStatusSnapshot()`은 같은 라이프사이클 계약을 진단 surface에 노출합니다.
 
@@ -212,7 +212,7 @@ defineModule(ManualPrismaModule, {
 ### `PrismaModule`
 
 - `PrismaModule.forRoot(options)` / `PrismaModule.forRootAsync(options)`
-- `forRoot(...)`와 `forRootAsync(...)`도 이름 있는/scoped 등록을 위해 `name`을 받을 수 있습니다.
+- `forRoot(...)`와 `forRootAsync(...)`도 이름 있는/scoped 등록을 위해 `name`을 받을 수 있으며, 이름 없는 등록을 전역 provider로 export해야 할 때 `global?: boolean`을 받을 수 있습니다.
 - `forRootAsync(...)`는 client와 transaction 설정을 factory에서 반환하는 DI-aware Prisma 옵션을 받습니다. 모듈 identity와 visibility가 factory 실행 전에 결정되도록 `name` 또는 `global`은 최상위 async 등록 옵션에 전달하세요.
 - `forRootAsync(...)`는 애플리케이션 컨테이너마다 옵션을 한 번 resolve하여, 별도 bootstrap 사이에서 클라이언트 라이프사이클과 요청 트랜잭션 격리를 보존합니다.
 - `strictTransactions: true` 설정 시 트랜잭션 미지원 환경에서 즉시 예외를 발생시킵니다.
@@ -225,7 +225,7 @@ defineModule(ManualPrismaModule, {
 - `current(): TClient | PrismaTransactionClient<TClient>`
   - 현재 컨텍스트에 맞는 트랜잭션 클라이언트 또는 루트 클라이언트를 반환합니다.
 - `transaction(fn, options?): Promise<T>`
-  - 대화형 트랜잭션 내에서 함수를 실행합니다. 이미 트랜잭션 컨텍스트가 활성화되어 있으면 callback은 그 컨텍스트를 재사용하며, 새 Prisma 트랜잭션 경계가 열리지 않기 때문에 중첩 트랜잭션 옵션은 거부됩니다.
+  - 대화형 트랜잭션 내에서 함수를 실행합니다. 이미 트랜잭션 컨텍스트가 활성화되어 있으면 callback은 그 컨텍스트를 재사용하며, 새 Prisma 트랜잭션 경계가 열리지 않기 때문에 중첩 트랜잭션 옵션은 거부됩니다. shutdown이 시작된 뒤에는 새 outer transaction boundary를 거부합니다.
 - `requestTransaction(fn, signal?, options?): Promise<T>`
   - HTTP 요청 라이프사이클에 특화된 트랜잭션 경계를 실행합니다. Abort를 인식하고, shutdown 중에는 disconnect 전에 열린 요청 트랜잭션을 drain하며, Prisma client가 `signal` 옵션을 거부하면 해당 옵션 없이 재시도합니다. `transaction()`과 마찬가지로 중첩 호출은 활성 트랜잭션 컨텍스트를 재사용하고, 트랜잭션 설정을 조용히 무시하지 않도록 중첩 옵션을 거부합니다.
 
