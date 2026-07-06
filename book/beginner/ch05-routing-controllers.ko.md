@@ -252,7 +252,7 @@ search(input: SearchLimitDto) {
 
 ### Type Safety in Binding
 
-전송 계층은 항상 문자열을 다루지만, fluo의 바인딩 시스템은 파이프(Pipe) 기반의 변환과 함께 작동하도록 설계되었습니다. 즉, 파라미터를 `number`로 선언하고 파이프를 적용하면 URL의 문자열 ID를 적절한 TypeScript 숫자로 자동 변환할 수 있습니다. 이에 대해서는 7장에서 더 자세히 다루겠지만, 지금은 메서드 시그니처가 안전한 데이터 파이프라인의 시작점이라는 것을 기억하세요.
+전송 계층은 path param, query string, header, cookie를 항상 문자열 형태의 값으로 받습니다. fluo는 컨트롤러 파라미터에 적용하는 NestJS-style public Pipe 단계를 노출하지 않습니다. 대신 핸들러가 `@RequestDto(...)`로 하나의 DTO를 선택하고, 각 필드는 `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)`, `@FromHeader(...)`, `@FromCookie(...)`로 출처를 선언하며, 값이 number, boolean, date 또는 도메인 전용 타입으로 바뀌어야 할 때는 `@Convert(...)`로 필드 변환을 선언합니다. 이후 검증은 materialized DTO를 대상으로 실행되므로, DTO 클래스가 바인딩과 안전성의 눈에 보이는 경계가 됩니다.
 
 ### A Route Path Contract to Remember
 
