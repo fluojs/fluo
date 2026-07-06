@@ -440,7 +440,9 @@ function assertStudioSupport(command: ScriptCommand, studio: boolean, projectRun
   }
 }
 
-function withStudioDryRunEnv(env: NodeJS.ProcessEnv, project: { directory: string; manifest: JsonRecord }, projectRuntime: ProjectRuntime): NodeJS.ProcessEnv {
+function withStudioDryRunEnv(env: NodeJS.ProcessEnv, project: { directory: string; manifest: JsonRecord }, projectRuntime: ProjectRuntime, studioPort: number | undefined): NodeJS.ProcessEnv {
+  const portLabel = studioPort === undefined ? '<auto>' : String(studioPort);
+
   return {
     ...env,
     FLUO_STUDIO: '1',
@@ -448,7 +450,7 @@ function withStudioDryRunEnv(env: NodeJS.ProcessEnv, project: { directory: strin
     FLUO_STUDIO_EPOCH: '<generated-at-runtime>',
     FLUO_STUDIO_RUNTIME: projectRuntimeToStudioRuntime(projectRuntime),
     FLUO_STUDIO_TOKEN: '<generated-at-runtime>',
-    FLUO_STUDIO_URL: 'http://127.0.0.1:<auto>',
+    FLUO_STUDIO_URL: `http://127.0.0.1:${portLabel}`,
   };
 }
 
@@ -711,7 +713,7 @@ export async function runScriptCommand(command: ScriptCommand, argv: string[], r
   let childEnv = withPipedReporterColorEnv(withProjectLocalBin(withDefaultNodeEnv(env, defaultNodeEnv), project.directory), reporterMode, stdout, stderr);
 
   if (parsed.studio && parsed.dryRun) {
-    childEnv = withStudioDryRunEnv(childEnv, project, projectRuntime);
+    childEnv = withStudioDryRunEnv(childEnv, project, projectRuntime, parsed.studioPort);
   }
 
   if (command === 'dev' && parsed.studio && !parsed.dryRun) {
