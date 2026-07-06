@@ -57,6 +57,7 @@ export interface MetricsModuleOptions {
 /** Module entry point that exposes `/metrics` and optional HTTP/runtime telemetry. */
 export class MetricsModule {
   private static registeredRegistries = new WeakSet<Registry>();
+  private static httpInstrumentationRegistrations = new WeakMap<Registry, HttpInstrumentationRegistration>();
 
   /**
    * Register framework metrics, optional HTTP middleware, and a scrape endpoint.
@@ -81,9 +82,9 @@ export class MetricsModule {
     const httpOptions = resolveHttpOptions(options.http);
     const metricsPath = options.path === undefined ? '/metrics' : options.path;
 
-    const registryToken: Token<Registry> = Symbol('MetricsModule.registry');
+    let registryToken: Token<Registry> = Symbol('MetricsModule.registry');
     const platformTelemetryToken: Token<RuntimePlatformTelemetry> = Symbol('MetricsModule.platformTelemetry');
-    const httpMetricsMiddleware = httpOptions
+    let httpMetricsMiddleware = httpOptions
       ? createHttpMetricsMiddleware(registryToken, httpOptions)
       : undefined;
 
@@ -91,17 +92,54 @@ export class MetricsModule {
       ? (options.endpointMiddleware ?? []).map((middlewareClass) => forRoutes(middlewareClass, metricsPath))
       : [];
     const middleware = [
-      ...(httpMetricsMiddleware ? [httpMetricsMiddleware] : []),
       ...endpointMiddleware,
       ...(options.middleware ?? []),
     ];
 
+    const registryProvider: Provider = {
+      provide: registryToken,
+      useFactory: () => MetricsModule.createRegistry(options),
+    };
+    const imports: ModuleType[] = [];
+    const validationProviders: Provider[] = [];
+    let includeRuntimeRegistryProvider = httpMetricsMiddleware === undefined;
+
+    if (httpOptions && httpMetricsMiddleware) {
+      const existingRegistration = options.registry
+        ? MetricsModule.httpInstrumentationRegistrations.get(options.registry)
+        : undefined;
+
+      if (existingRegistration) {
+        registryToken = existingRegistration.registryToken;
+        httpMetricsMiddleware = undefined;
+        validationProviders.push(createHttpCollectorValidationProvider(registryToken, httpOptions));
+        imports.push(existingRegistration.moduleType);
+      } else {
+        includeRuntimeRegistryProvider = false;
+
+        class MetricsHttpInstrumentationModule {}
+
+        defineModule(MetricsHttpInstrumentationModule, {
+          exports: [registryToken],
+          global: true,
+          middleware: [httpMetricsMiddleware],
+          providers: [registryProvider, httpMetricsMiddleware],
+        });
+
+        if (options.registry) {
+          MetricsModule.httpInstrumentationRegistrations.set(options.registry, {
+            moduleType: MetricsHttpInstrumentationModule,
+            registryToken,
+          });
+        }
+
+        imports.push(MetricsHttpInstrumentationModule);
+      }
+    }
+
     const providers: Provider[] = [
-      ...(httpMetricsMiddleware ? [httpMetricsMiddleware] : []),
-      {
-        provide: registryToken,
-        useFactory: () => MetricsModule.createRegistry(options),
-      },
+      ...(includeRuntimeRegistryProvider ? [registryProvider] : []),
+      ...validationProviders,
       {
         provide: MetricsService,
         inject: [registryToken, platformTelemetryToken],
@@ -152,7 +190,7 @@ export class MetricsModule {
     defineModule(MetricsRuntimeModule, {
       controllers,
       exports: [MetricsService, METER_PROVIDER],
-      global: true,
+      imports,
       middleware,
       providers,
     });
@@ -196,6 +234,10 @@ type RuntimePlatformTelemetryRegistryState = {
   refresh?: () => Promise<void>;
   scrapeChain: Promise<unknown>;
 };
+type HttpInstrumentationRegistration = {
+  moduleType: ModuleType;
+  registryToken: Token<Registry>;
+};
 type ContainerPresenceProbe = RequestContext['container'] & { has?: (token: Token) => boolean };
 
 const PLATFORM_COMPONENT_LABELS = ['component_id', 'component_kind', 'operation', 'result', 'env', 'instance'] as const;
@@ -224,6 +266,17 @@ function createHttpMetricsMiddleware(
   }
 
   return MetricsHttpMiddleware;
+}
+
+function createHttpCollectorValidationProvider(
+  registryToken: Token<Registry>,
+  httpOptions: HttpMetricsMiddlewareOptions,
+): Provider {
+  return {
+    provide: Symbol('MetricsModule.httpCollectorValidation'),
+    inject: [registryToken],
+    useFactory: (registry: unknown) => new HttpMetricsMiddleware(assertPrometheusRegistry(registry), httpOptions),
+  };
 }
 
 function assertPrometheusRegistry(value: unknown): Registry {

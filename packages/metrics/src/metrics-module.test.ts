@@ -1,4 +1,4 @@
-import { getModuleMetadata } from '@fluojs/core';
+import { getModuleMetadata, Inject } from '@fluojs/core';
 import { ContainerResolutionError } from '@fluojs/di';
 import {
   Controller,
@@ -642,6 +642,27 @@ describe('MetricsModule', () => {
     } finally {
       await app.close();
     }
+  });
+
+  it('does not make metrics providers visible to sibling modules', async () => {
+    @Inject(MetricsService)
+    class SiblingService {
+      constructor(readonly metrics: MetricsService) {}
+    }
+
+    class SiblingModule {}
+
+    defineModule(SiblingModule, {
+      providers: [SiblingService],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true }), SiblingModule],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('not visible through a global module');
   });
 
   it('binds prometheus provider by default and for explicit provider option', async () => {
