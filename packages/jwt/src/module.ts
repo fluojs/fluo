@@ -91,7 +91,7 @@ export class JwtModule {
       provide: JWT_OPTIONS,
       scope: 'singleton',
       useValue: options,
-    }, Boolean(options.refreshToken), Boolean(options.refreshToken), 'singleton', false, options.global ?? false);
+    }, true, true, options.refreshToken ? 'singleton' : 'transient', false, options.global ?? false);
   }
 
   static forRootAsync(options: AsyncModuleOptions<JwtVerifierOptions> & { global?: boolean }): ModuleType {
