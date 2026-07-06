@@ -136,7 +136,7 @@
   - [11.6 파이프라인 시각화 다이어그램](ch11-request-pipeline.ko.md#116-파이프라인-시각화-다이어그램)
   - [11.7 DispatchPhaseContext: 단계별 상태 공유](ch11-request-pipeline.ko.md#117-dispatchphasecontext-단계별-상태-공유)
   - [11.8 오류 처리 정책](ch11-request-pipeline.ko.md#118-오류-처리-정책-error-policy)
-  - [11.9 성능 최적화: WeakMap을 활용한 메타데이터 캐싱](ch11-request-pipeline.ko.md#119-성능-최적화-weakmap을-활용한-메타데이터-캐싱)
+  - [11.9 성능 최적화: 디스패처 계획과 바인딩 캐시](ch11-request-pipeline.ko.md#119-성능-최적화-디스패처-계획과-바인딩-캐시)
   - [11.10 리소스 정리: DI 스코프 소멸](ch11-request-pipeline.ko.md#1110-리소스-정리-di-스코프-소멸)
   - [요약](ch11-request-pipeline.ko.md#요약)
   - [다음 챕터 예고](ch11-request-pipeline.ko.md#다음-챕터-예고)

@@ -252,7 +252,7 @@ This approach keeps the input DTO as a single contract while leaving the default
 
 ### Type Safety in Binding
 
-The transport layer always deals with strings, but fluo's binding system is designed to work with Pipe-based transformation. That means if you declare a parameter as a `number` and apply a Pipe, the string ID from the URL can be converted automatically into the appropriate TypeScript number. We will cover this in more detail in Chapter 7, but for now, remember that method signatures are the starting point of a safe data pipeline.
+The transport layer always receives path params, query strings, headers, and cookies as string-shaped values. fluo does not expose a NestJS-style public Pipe stage for controller parameters; instead, the handler opts into one DTO with `@RequestDto(...)`, each field declares its source with `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)`, `@FromHeader(...)`, or `@FromCookie(...)`, and field conversion is declared with `@Convert(...)` when a value must become a number, boolean, date, or domain-specific type before the handler runs. Validation then runs against the materialized DTO, so the DTO class remains the visible boundary for both binding and safety.
 
 ### A Route Path Contract to Remember
 

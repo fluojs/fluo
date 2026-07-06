@@ -136,7 +136,7 @@
   - [11.6 Pipeline Visualization Diagram](ch11-request-pipeline.md#116-pipeline-visualization-diagram)
   - [11.7 DispatchPhaseContext: Sharing State Across Stages](ch11-request-pipeline.md#117-dispatchphasecontext-sharing-state-across-stages)
   - [11.8 Error Handling Policy](ch11-request-pipeline.md#118-error-handling-policy)
-  - [11.9 Performance Optimization: Metadata Caching with WeakMap](ch11-request-pipeline.md#119-performance-optimization-metadata-caching-with-weakmap)
+  - [11.9 Performance Optimization, Dispatcher Plans and Binding Caches](ch11-request-pipeline.md#119-performance-optimization-dispatcher-plans-and-binding-caches)
   - [11.10 Resource Cleanup: Disposing the DI Scope](ch11-request-pipeline.md#1110-resource-cleanup-disposing-the-di-scope)
   - [Summary](ch11-request-pipeline.md#summary)
   - [Next Chapter Preview](ch11-request-pipeline.md#next-chapter-preview)
