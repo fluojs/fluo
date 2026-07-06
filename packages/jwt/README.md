@@ -188,6 +188,7 @@ The root `@fluojs/jwt` import surface is safe to load before selecting a runtime
 - `SignOptions` and `VerifyOptions`: Per-call signing and verification overrides.
 - `JwtClaims`, `JwtSigner`, `JwtVerifier`, `JwtKeyEntry`, `JwtAlgorithm`: Public signing and verification contracts.
 - `RefreshTokenOptions`, `RefreshTokenStore`, `RefreshTokenRecord`, `RefreshTokenConsumeInput`, `RefreshTokenRotateInput`, and `RefreshTokenConsumeResult`: Refresh-token storage, rotation, and replay-detection contracts.
+- `JwtPlatformStatusSnapshot` and `JwtStatusAdapterInput`: Status snapshot and adapter input types exported with the platform diagnostic helpers.
 
 ### Errors and diagnostics
 - `JwtVerificationError`, `JwtInvalidTokenError`, `JwtExpiredTokenError`, `JwtConfigurationError`: Typed JWT failures.
