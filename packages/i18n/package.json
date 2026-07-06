@@ -16,9 +16,6 @@
     "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/i18n"
   },
-  "engines": {
-    "node": ">=20.0.0"
-  },
   "publishConfig": {
     "access": "public"
   },
