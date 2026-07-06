@@ -1,5 +1,5 @@
 import { Global, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
-import { Controller, Convert, type FrameworkRequest, type FrameworkResponse, FromQuery, Get, RequestDto } from '@fluojs/http';
+import { Controller, Convert, type FrameworkRequest, type FrameworkResponse, FromQuery, Get, type MiddlewareContext, type Next, RequestDto } from '@fluojs/http';
 import { describe, expect, it, vi } from 'vitest';
 
 import { bootstrapApplication, bootstrapModule, FluoFactory } from './bootstrap.js';
@@ -302,6 +302,65 @@ describe('bootstrapModule', () => {
     });
 
     expect(() => bootstrapModule(AppModule)).not.toThrow();
+  });
+
+  it('applies global middleware to controllers declared by other global modules', async () => {
+    const calls: string[] = [];
+
+    const firstGlobalMiddleware = {
+      async handle(_context: MiddlewareContext, next: Next): Promise<void> {
+        calls.push('first:before');
+        await next();
+        calls.push('first:after');
+      },
+    };
+
+    const secondGlobalMiddleware = {
+      async handle(_context: MiddlewareContext, next: Next): Promise<void> {
+        calls.push('second:before');
+        await next();
+        calls.push('second:after');
+      },
+    };
+
+    class FirstGlobalModule {}
+    defineRuntimeModuleMetadata(FirstGlobalModule, {
+      global: true,
+      middleware: [firstGlobalMiddleware],
+    });
+
+    @Controller('/global')
+    class GlobalController {
+      @Get('/middleware')
+      getValue(): { ok: true } {
+        calls.push('controller');
+        return { ok: true };
+      }
+    }
+
+    class SecondGlobalModule {}
+    defineRuntimeModuleMetadata(SecondGlobalModule, {
+      controllers: [GlobalController],
+      global: true,
+      middleware: [secondGlobalMiddleware],
+    });
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      imports: [FirstGlobalModule, SecondGlobalModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/global/middleware'), response);
+
+      expect(response.statusCode).toBe(200);
+      expect(calls).toEqual(['first:before', 'second:before', 'controller', 'second:after', 'first:after']);
+    } finally {
+      await app.close();
+    }
   });
 });
 
