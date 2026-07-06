@@ -324,6 +324,21 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts OpenAPI package-surface guidance when context and package regression tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/reference/package-surface.md',
+        'docs/reference/package-surface.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/openapi/src/openapi-module.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('accepts cron package-surface guidance when context discoverability and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 

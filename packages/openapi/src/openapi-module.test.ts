@@ -28,6 +28,7 @@ import {
 } from './decorators.js';
 import * as openApiPublicApi from './index.js';
 import { OpenApiModule } from './openapi-module.js';
+import type { OpenApiDocument } from './schema-builder.js';
 
 type TestFrameworkResponse = FrameworkResponse & { body?: unknown };
 
@@ -36,14 +37,27 @@ type TestCloseable = {
 };
 
 const teardownCallbacks: Array<() => Promise<void>> = [];
+const explicitlyClosedApps = new WeakSet<TestCloseable>();
+
+async function runTeardownCallbacks(): Promise<void> {
+  while (teardownCallbacks.length > 0) {
+    await teardownCallbacks.pop()?.();
+  }
+}
+
+async function closeRegisteredApp<T extends TestCloseable>(app: T): Promise<void> {
+  await app.close();
+  explicitlyClosedApps.add(app);
+}
 
 function registerAppForCleanup<T extends TestCloseable>(app: T): T {
   teardownCallbacks.push(async () => {
-    try {
-      await app.close();
-    } catch {
-      // Cleanup is best-effort because some tests may already close the app while asserting error paths.
+    if (explicitlyClosedApps.has(app)) {
+      return;
     }
+
+    await app.close();
+    explicitlyClosedApps.add(app);
   });
 
   return app;
@@ -51,11 +65,11 @@ function registerAppForCleanup<T extends TestCloseable>(app: T): T {
 
 function registerResponseForCleanup<T extends Response>(response: T): T {
   teardownCallbacks.push(async () => {
-    try {
-      await response.body?.cancel();
-    } catch {
-      // Cleanup is best-effort because some response bodies are already consumed by assertions.
+    if (!response.body || response.bodyUsed) {
+      return;
     }
+
+    await response.body.cancel();
   });
 
   return response;
@@ -65,11 +79,7 @@ async function fetchForTest(...args: Parameters<typeof fetch>): Promise<Response
   return registerResponseForCleanup(await fetch(...args));
 }
 
-afterEach(async () => {
-  while (teardownCallbacks.length > 0) {
-    await teardownCallbacks.pop()?.();
-  }
-});
+afterEach(runTeardownCallbacks);
 
 function createRequest(method: string, path: string): FrameworkRequest {
   return {
@@ -180,6 +190,47 @@ function resolveAssignedPort(adapter: { getServer?: () => unknown }): number {
 }
 
 describe('OpenApiModule', () => {
+  it('surfaces app cleanup failures unless the app was explicitly closed', async () => {
+    const closingError = new Error('close failed');
+    let closeCalls = 0;
+
+    registerAppForCleanup({
+      async close() {
+        throw closingError;
+      },
+    });
+
+    await expect(runTeardownCallbacks()).rejects.toThrow(closingError);
+
+    const explicitlyClosedApp = registerAppForCleanup({
+      async close() {
+        closeCalls += 1;
+      },
+    });
+
+    await closeRegisteredApp(explicitlyClosedApp);
+    await runTeardownCallbacks();
+
+    expect(closeCalls).toBe(1);
+  });
+
+  it('surfaces response body cleanup failures unless the response was consumed', async () => {
+    const cancelError = new Error('cancel failed');
+    registerResponseForCleanup(new Response(new ReadableStream({
+      cancel() {
+        throw cancelError;
+      },
+    })));
+
+    await expect(runTeardownCallbacks()).rejects.toThrow(cancelError);
+
+    const consumedResponse = registerResponseForCleanup(new Response('already consumed'));
+    await consumedResponse.text();
+    await runTeardownCallbacks();
+
+    expect(consumedResponse.bodyUsed).toBe(true);
+  });
+
   it('serves an augmented OpenAPI 3.1 document with DTO schemas at /openapi.json', async () => {
     class AddressDto {
       @FromBody('city')
@@ -615,7 +666,7 @@ describe('OpenApiModule', () => {
     expect(specResponse.status).toBe(200);
     expect(unprefixedSpecResponse.status).toBe(404);
 
-    await app.close();
+    await closeRegisteredApp(app);
   });
 
   it('documents cookie parameters and optional-only request bodies accurately', async () => {
@@ -1381,6 +1432,18 @@ describe('OpenApiModule', () => {
       @IsString()
       id = '';
 
+      @FromQuery('expand')
+      @IsString()
+      expand = '';
+
+      @FromHeader('x-request-id')
+      @IsString()
+      requestId = '';
+
+      @FromCookie('session')
+      @IsString()
+      session = '';
+
       @FromBody('name')
       @IsString()
       name = '';
@@ -1391,9 +1454,21 @@ describe('OpenApiModule', () => {
       @Post('/:id')
       @RequestDto(UpdateUserRequest)
       @ApiParam('id', { description: 'Numeric user id', schema: { type: 'integer' } })
-      @ApiQuery('expand', { schema: { enum: ['profile'], type: 'string' } })
-      @ApiHeader('x-request-id', { required: true, schema: { type: 'string' } })
-      @ApiCookie('session', { schema: { type: 'string' } })
+      @ApiQuery('expand', {
+        description: 'Documented expand override',
+        required: false,
+        schema: { enum: ['profile'], type: 'string' },
+      })
+      @ApiHeader('x-request-id', {
+        description: 'Documented request id override',
+        required: false,
+        schema: { pattern: '^req_', type: 'string' },
+      })
+      @ApiCookie('session', {
+        description: 'Documented session override',
+        required: false,
+        schema: { pattern: '^session_', type: 'string' },
+      })
       @ApiBody({
         description: 'Explicitly documented body',
         required: true,
@@ -1433,37 +1508,61 @@ describe('OpenApiModule', () => {
     expect(response.statusCode).toBe(200);
 
     const document = response.body as {
-      paths: Record<string, { post?: { parameters?: unknown[]; requestBody?: unknown } }>;
+      paths: Record<
+        string,
+        {
+          post?: {
+            parameters?: Array<{
+              description?: string;
+              in: string;
+              name: string;
+              required?: boolean;
+              schema?: unknown;
+            }>;
+            requestBody?: unknown;
+          };
+        }
+      >;
     };
     const operation = document.paths['/users/{id}']?.post;
+    const parameters = operation?.parameters ?? [];
 
-    expect(operation?.parameters).toEqual(
-      expect.arrayContaining([
-        {
-          description: 'Numeric user id',
-          in: 'path',
-          name: 'id',
-          required: true,
-          schema: { type: 'integer' },
-        },
-        {
-          in: 'query',
-          name: 'expand',
-          schema: { enum: ['profile'], type: 'string' },
-        },
-        {
-          in: 'header',
-          name: 'x-request-id',
-          required: true,
-          schema: { type: 'string' },
-        },
-        {
-          in: 'cookie',
-          name: 'session',
-          schema: { type: 'string' },
-        },
-      ]),
-    );
+    expect(parameters.filter((parameter) => parameter.in === 'path' && parameter.name === 'id')).toEqual([
+      {
+        description: 'Numeric user id',
+        in: 'path',
+        name: 'id',
+        required: true,
+        schema: { type: 'integer' },
+      },
+    ]);
+    expect(parameters.filter((parameter) => parameter.in === 'query' && parameter.name === 'expand')).toEqual([
+      {
+        description: 'Documented expand override',
+        in: 'query',
+        name: 'expand',
+        required: false,
+        schema: { enum: ['profile'], type: 'string' },
+      },
+    ]);
+    expect(parameters.filter((parameter) => parameter.in === 'header' && parameter.name === 'x-request-id')).toEqual([
+      {
+        description: 'Documented request id override',
+        in: 'header',
+        name: 'x-request-id',
+        required: false,
+        schema: { pattern: '^req_', type: 'string' },
+      },
+    ]);
+    expect(parameters.filter((parameter) => parameter.in === 'cookie' && parameter.name === 'session')).toEqual([
+      {
+        description: 'Documented session override',
+        in: 'cookie',
+        name: 'session',
+        required: false,
+        schema: { pattern: '^session_', type: 'string' },
+      },
+    ]);
     expect(operation?.requestBody).toEqual({
       content: {
         'application/json': {
@@ -2380,6 +2479,61 @@ describe('OpenApiModule', () => {
     expect(docsResponse.body).toEqual(expect.stringContaining('https://assets.example.test/async-original.css'));
     expect(docsResponse.body).not.toEqual(expect.stringContaining('Async Mutated API'));
     expect(docsResponse.body).not.toEqual(expect.stringContaining('https://assets.example.test/async-mutated.css'));
+  });
+
+  it('forRootAsync applies documentTransform and default error response policy from resolved options', async () => {
+    @Controller('/async-policy')
+    class AsyncPolicyController {
+      @Get('/')
+      getPolicy() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRootAsync({
+      useFactory: async () => ({
+        defaultErrorResponsesPolicy: 'omit',
+        documentTransform: (document: OpenApiDocument) => ({
+          ...document,
+          info: {
+            ...document.info,
+            title: `${document.info.title} (Async Transformed)`,
+          },
+        }),
+        sources: [{ controllerToken: AsyncPolicyController }],
+        title: 'Async Policy API',
+        version: '1.0.0',
+      }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [AsyncPolicyController],
+      imports: [openApiModule],
+    });
+
+    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+
+    const document = response.body as {
+      components?: { schemas?: Record<string, unknown> };
+      info: { title: string; version: string };
+      paths: Record<string, { get?: { responses?: Record<string, unknown> } }>;
+    };
+
+    expect(document.info).toEqual({
+      title: 'Async Policy API (Async Transformed)',
+      version: '1.0.0',
+    });
+    expect(document.paths['/async-policy']?.get?.responses).toEqual({
+      '200': { description: 'OK' },
+    });
+    expect(document.components?.schemas?.ErrorResponse).toBeUndefined();
   });
 
   it('README quick start stays executable when sources are provided explicitly', async () => {
