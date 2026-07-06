@@ -10,8 +10,14 @@ interface RoutesPanelProps {
   state: StudioDashboardState;
 }
 
+function routeNodeId(route: StudioRouteDescriptor): string {
+  const slug = route.id.replaceAll(/[^a-zA-Z0-9_.:-]/g, '_') || 'anonymous';
+  return `route:${slug}`;
+}
+
 function routeGraphNodeId(route: StudioRouteDescriptor, state: StudioDashboardState): string | undefined {
-  return state.liveSnapshot?.graph.nodes.find((node) => node.kind === 'route' && node.label === `${route.method} ${route.path}`)?.id;
+  const expectedNodeId = routeNodeId(route);
+  return state.liveSnapshot?.graph.nodes.find((node) => node.kind === 'route' && node.id === expectedNodeId)?.id;
 }
 
 /**
