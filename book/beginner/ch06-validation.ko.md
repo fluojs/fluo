@@ -178,7 +178,7 @@ export class PostsController {
 
 ### Why Mapped DTO Helpers Matter
 
-처음에는 비슷한 DTO를 손으로 반복해서 작성하기 쉽고, 실제로 초반에는 그 방법도 동작합니다. 하지만 빠르게 반복적이고 실수하기 쉬운 코드가 됩니다. `PartialType`, `PickType`, `OmitType` 같은 helper는 중복을 줄이면서도 검증 메타데이터를 보존하므로, 하나의 기준 DTO에서 파생된 계약을 안전하게 만들 수 있습니다.
+처음에는 비슷한 DTO를 손으로 반복해서 작성하기 쉽고, 실제로 초반에는 그 방법도 동작합니다. 하지만 빠르게 반복적이고 실수하기 쉬운 코드가 됩니다. `PartialType`, `PickType`, `OmitType` 같은 helper는 중복을 줄이면서도 field-level validation metadata를 보존하므로, 하나의 기준 DTO에서 파생된 계약을 안전하게 만들 수 있습니다. Class-level validator는 의도적으로 제외되었거나 optional이 된 필드에 의존할 수 있으므로 subset 또는 partial DTO로 복사되지 않습니다.
 
 ### Creating Specific DTO Variations
 

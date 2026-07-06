@@ -4,7 +4,7 @@ import { email, object, pipe, string } from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { ArrayContains, ArrayMaxSize, ArrayMinSize, ArrayNotContains, ArrayNotEmpty, ArrayUnique, Contains, Equals, IsArray, IsAscii, IsBase64, IsBoolean, IsBooleanString, IsCurrency, IsDate, IsDateString, IsDecimal, IsDivisibleBy, IsEmail, IsEmpty, IsEnum, IsFQDN, IsHexadecimal, IsHexColor, IsIn, IsInt, IsIP, IsISO8601, IsJSON, IsJWT, IsLatitude, IsLatLong, IsLocale, IsLongitude, IsLowercase, IsMagnetURI, IsMimeType, IsMongoId, IsNegative, IsNotEmpty, IsNotIn, IsNumber, IsNumberString, IsObject, IsPort, IsPositive, IsPostalCode, IsRFC3339, IsRgbColor, IsSemVer, IsString, IsUppercase, IsUrl, IsUUID, Length, Matches, Max, MaxDate, MaxLength, Min, MinDate, MinLength, NotContains, NotEquals, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
+import { ArrayContains, ArrayMaxSize, ArrayMinSize, ArrayNotContains, ArrayNotEmpty, ArrayUnique, Contains, Equals, IsAlphanumeric, IsAlpha, IsArray, IsAscii, IsBase64, IsBoolean, IsBooleanString, IsCurrency, IsDataURI, IsDate, IsDateString, IsDecimal, IsDefined, IsDivisibleBy, IsEmail, IsEmpty, IsEnum, IsFQDN, IsHexadecimal, IsHexColor, IsIn, IsInt, IsIP, IsISBN, IsISO8601, IsISSN, IsJSON, IsJWT, IsLatitude, IsLatLong, IsLocale, IsLongitude, IsLowercase, IsMagnetURI, IsMimeType, IsMobilePhone, IsMongoId, IsNegative, IsNotEmpty, IsNotIn, IsNumber, IsNumberString, IsObject, IsOptional, IsPort, IsPositive, IsPostalCode, IsRFC3339, IsRgbColor, IsSemVer, IsString, IsUppercase, IsUrl, IsUUID, Length, Matches, Max, MaxDate, MaxLength, Min, MinDate, MinLength, NotContains, NotEquals, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
 import { DtoValidationError } from './errors.js';
 import type { StandardSchemaV1Like } from './index.js';
 import { DefaultValidator } from './validation.js';
@@ -513,6 +513,69 @@ describe('DefaultValidator', () => {
     });
   });
 
+  it('covers documented presence and identity validators with pass and fail contracts', async () => {
+    class AdditionalDocumentedValidatorsDto {
+      @IsDefined({ message: 'requiredField must be defined' })
+      requiredField: string | undefined = 'present';
+
+      @IsOptional()
+      @IsAlpha({ message: 'optionalAlpha must contain letters only' })
+      optionalAlpha?: string;
+
+      @IsAlphanumeric({ message: 'code must be alphanumeric' })
+      code = 'fluo2026';
+
+      @IsDataURI({ message: 'dataUri must be a data URI' })
+      dataUri = 'data:text/plain;base64,SGVsbG8=';
+
+      @IsISBN(13, { message: 'isbn must be ISBN-13' })
+      isbn = '978-3-16-148410-0';
+
+      @IsISSN({ message: 'issn must be valid' })
+      issn = '0378-5955';
+
+      @IsMobilePhone('en-US', { message: 'mobilePhone must be valid' })
+      mobilePhone = '+14155552671';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(validator.validate(new AdditionalDocumentedValidatorsDto(), AdditionalDocumentedValidatorsDto)).resolves.toBeUndefined();
+    await expect(
+      validator.validate(
+        Object.assign(new AdditionalDocumentedValidatorsDto(), {
+          optionalAlpha: undefined,
+        }),
+        AdditionalDocumentedValidatorsDto,
+      ),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      validator.validate(
+        Object.assign(new AdditionalDocumentedValidatorsDto(), {
+          code: 'fluo-2026',
+          dataUri: 'not data uri',
+          isbn: 'not isbn',
+          issn: 'not issn',
+          mobilePhone: 'not mobile phone',
+          optionalAlpha: 'fluo1',
+          requiredField: undefined,
+        }),
+        AdditionalDocumentedValidatorsDto,
+      ),
+    ).rejects.toMatchObject({
+      issues: expect.arrayContaining([
+        expect.objectContaining({ field: 'requiredField', message: 'requiredField must be defined' }),
+        expect.objectContaining({ field: 'optionalAlpha', message: 'optionalAlpha must contain letters only' }),
+        expect.objectContaining({ field: 'code', message: 'code must be alphanumeric' }),
+        expect.objectContaining({ field: 'dataUri', message: 'dataUri must be a data URI' }),
+        expect.objectContaining({ field: 'isbn', message: 'isbn must be ISBN-13' }),
+        expect.objectContaining({ field: 'issn', message: 'issn must be valid' }),
+        expect.objectContaining({ field: 'mobilePhone', message: 'mobilePhone must be valid' }),
+      ]),
+    });
+  });
+
   it('validate rejects malformed roots with deterministic validation issues', async () => {
     let conditionRuns = 0;
 
@@ -623,6 +686,35 @@ describe('DefaultValidator', () => {
     expect(result.currentAddress).toBe(existingAddress);
     expect(result.previousAddresses[0]).toBe(existingAddress);
     expect(result.previousAddresses[1]).toBeInstanceOf(AddressDto);
+  });
+
+  it('materialize copies only safe own enumerable payload properties', async () => {
+    const traceKey = Symbol('traceKey');
+
+    class OwnEnumerableDto {
+      @IsString()
+      name = '';
+
+      hidden = 'default-hidden';
+
+      [traceKey] = 'default-trace';
+    }
+
+    const payload: Record<PropertyKey, unknown> = {
+      [traceKey]: 'copied-trace',
+      name: 'fluo',
+    };
+    Object.defineProperty(payload, 'hidden', {
+      enumerable: false,
+      value: 'non-enumerable-hidden',
+    });
+
+    const validator = new DefaultValidator();
+    const result = await validator.materialize<OwnEnumerableDto>(payload, OwnEnumerableDto);
+
+    expect(result.name).toBe('fluo');
+    expect(result.hidden).toBe('default-hidden');
+    expect(result[traceKey]).toBe('copied-trace');
   });
 
   it('materialize recursively hydrates nested Set and Map DTO collections', async () => {
@@ -761,6 +853,43 @@ describe('DefaultValidator', () => {
         { code: 'INVALID_NESTED', field: 'childMap[0]', message: 'childMap[0] contains invalid nested data.' },
       ],
     });
+  });
+
+  it('validates plain nested Set and Map payloads through temporary materialization without replacing source entries', async () => {
+    class ChildDto {
+      @MinLength(2, { message: 'child name must have length at least 2' })
+      name = '';
+    }
+
+    class ParentDto {
+      @ValidateNested(() => ChildDto, { each: true })
+      childSet = new Set<ChildDto | { name: string }>();
+
+      @ValidateNested(() => ChildDto, { each: true })
+      childMap = new Map<string, ChildDto | { name: string }>();
+    }
+
+    const invalidSetEntry = { name: 'x' };
+    const invalidMapEntry = { name: '' };
+    const parent = Object.assign(new ParentDto(), {
+      childMap: new Map<string, ChildDto | { name: string }>([
+        ['valid', { name: 'ok' }],
+        ['invalid', invalidMapEntry],
+      ]),
+      childSet: new Set<ChildDto | { name: string }>([{ name: 'ok' }, invalidSetEntry]),
+    });
+    const validator = new DefaultValidator();
+
+    await expect(validator.validate(parent, ParentDto)).rejects.toMatchObject({
+      issues: [
+        { field: 'childSet[1].name', message: 'child name must have length at least 2' },
+        { field: 'childMap[1].name', message: 'child name must have length at least 2' },
+      ],
+    });
+
+    expect(Array.from(parent.childSet)[1]).toBe(invalidSetEntry);
+    expect(parent.childMap.get('invalid')).toBe(invalidMapEntry);
+    expect(parent.childMap.get('invalid')).not.toBeInstanceOf(ChildDto);
   });
 
   it('ignores dangerous keys when materializing nested DTO instances', async () => {

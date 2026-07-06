@@ -18,7 +18,11 @@ export interface ValidationIssue {
  * Validation engine contract used by HTTP binding and app-level validation flows.
  */
 export interface Validator {
-  /** Validates an existing instance without materializing nested objects. */
+  /**
+   * Validates an existing root DTO or plain object.
+   * Plain nested values may be temporarily materialized for nested DTO rules
+   * without replacing the caller's properties.
+   */
   validate(value: unknown, target: Constructor): MaybePromise<void>;
   /** Materializes and validates a value into a typed DTO instance. */
   materialize<T>(value: unknown, target: Constructor<T>): MaybePromise<T>;
