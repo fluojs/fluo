@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | Prometheus scrape endpoint | `@fluojs/metrics`의 `MetricsModule.forRoot(...)` | `GET /metrics`는 활성 레지스트리의 content type으로 Prometheus 텍스트를 반환한다. | `path` 기본값은 `'/metrics'`다. `path: false`는 스크레이프 엔드포인트를 비활성화한다. 문자열을 주면 해당 경로에 엔드포인트가 마운트된다. |
 | HTTP request metrics | `@fluojs/metrics` 내부 `HttpMetricsMiddleware` | `method`, `path`, `status` 레이블로 `http_requests_total`, `http_errors_total`, `http_request_duration_seconds`를 기록한다. | `http` 옵션이 truthy로 해석되면 HTTP 메트릭이 활성화된다. `pathLabelMode` 기본값은 `'template'`다. |
-| Runtime platform telemetry | `@fluojs/metrics` 내부 `RuntimePlatformTelemetry` | 스크레이프는 `fluo_component_ready`, `fluo_component_health`, `fluo_metrics_registry_mode`도 함께 노출한다. | `platformTelemetry.env`, `platformTelemetry.instance`는 플랫폼 gauge 시계열에 고정 레이블을 추가한다. |
+| Runtime platform telemetry | `@fluojs/metrics` 내부 `RuntimePlatformTelemetry` | Active Registry 스크레이프는 `fluo_component_ready`, `fluo_component_health`, `fluo_metrics_registry_mode`를 노출하며, `fluo_metrics_registry_mode`는 `mode` label과 value `1`을 가진 gauge다. | `platformTelemetry.env`, `platformTelemetry.instance`는 플랫폼 gauge 시계열에 고정 레이블을 추가한다. |
 | Custom application metrics | `MetricsService` 또는 공유 Prometheus `Registry` | 커스텀 counter, gauge, histogram은 스크레이프 엔드포인트가 노출하는 동일 레지스트리를 공유할 수 있다. `MetricsService.getRegistry()`는 DI로 받은 서비스에서 동일한 active Registry에 접근해야 하는 고급 integration용 escape hatch다. | `registry`를 지정하면 모듈은 새 격리 레지스트리 대신 shared-registry 모드로 동작한다. |
 | Package integration meters | `@fluojs/metrics` 내부 `METER_PROVIDER` / `PrometheusMeterProvider` 및 `MeterProvider`, `MeterCounter`, `MeterGauge`, `MeterHistogram` type | First-party integration은 같은 active Registry를 사용하는 provider bridge와 backend-neutral meter abstraction type을 사용할 수 있다. | Application code는 `MetricsService`를 우선 사용해야 하며, provider token은 low-level package-integration seam이다. |
 
@@ -16,7 +16,7 @@
 - 스크레이프 엔드포인트의 route-scoped 보호는 `endpointMiddleware`로 지원되며, class-based middleware를 설정된 메트릭 경로에만 바인딩하고 `path: false`로 해당 경로가 꺼지면 건너뛴다.
 - Module-level `middleware`는 `endpointMiddleware`와 다르다. Framework HTTP metrics 및 endpoint-scoped middleware 뒤의 module middleware chain에 참여하며, route-scoped 보호 계약이 아니다.
 - Shared-registry 재사용은 내장 collector set을 재사용하기 전에 framework-owned HTTP collector의 label schema와 path-label configuration(`pathLabelMode`, 정확히 같은 `pathLabelNormalizer` 참조, `unknownPathLabel`)이 일치하도록 요구한다.
-- 플랫폼 텔레메트리는 스크레이프마다 `PLATFORM_SHELL`을 resolve하고 snapshot을 읽어 갱신된다. `PLATFORM_SHELL`이 없으면 스크레이프는 성공하지만 플랫폼 텔레메트리 시계열은 빠진다. 토큰이 있는데 해석이 실패하면 스크레이프가 실패한다.
+- 플랫폼 텔레메트리는 `MetricsService.getRegistry().metrics()`를 통한 advanced custom scrape를 포함해 active Registry 스크레이프마다 `PLATFORM_SHELL`을 resolve하고 snapshot을 읽어 갱신된다. `PLATFORM_SHELL`이 없으면 스크레이프는 성공하지만 플랫폼 텔레메트리 시계열은 빠진다. 토큰이 있는데 해석이 실패하면 스크레이프가 실패한다.
 - 플랫폼 텔레메트리 상태는 재사용된 Registry별로 추적되므로, 이후 module instance의 refresh는 active platform snapshot에 더 이상 없는 stale module-owned component readiness/health series를 제거한다.
 
 ## Health Checks (헬스 체크)
