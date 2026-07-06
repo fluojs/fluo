@@ -13,7 +13,7 @@ import { AuthGuard } from './guard.js';
 import { PassportModule } from './module.js';
 import { createPassportJsStrategyBridge } from './adapters/passport-js.js';
 import { REFRESH_TOKEN_SERVICE, RefreshTokenStrategy, type RefreshTokenService } from './refresh/refresh-token.js';
-import type { AuthStrategy } from './types.js';
+import type { AuthStrategy, AuthStrategyResult } from './types.js';
 
 function createPassportModuleProviders(
   options: Parameters<typeof PassportModule.forRoot>[0],
@@ -948,6 +948,102 @@ describe('AuthGuard', () => {
     await dispatcher.dispatch(createRequest('/protected', { 'x-request-id': 'req-handled-bypass' }), response);
 
     expect(response.statusCode).toBe(401);
+  });
+
+  it('treats handled:true with a committed response and principal as terminal', async () => {
+    let handlerCalled = false;
+
+    class CommittedHandledStrategy implements AuthStrategy {
+      async authenticate(context: GuardContext): Promise<AuthStrategyResult> {
+        context.requestContext.response.setStatus(202);
+        context.requestContext.response.send({ outcome: 'strategy' });
+
+        return {
+          handled: true,
+          principal: {
+            claims: { source: 'handled' },
+            scopes: ['profile:read'],
+            subject: 'handled-user',
+          },
+        };
+      }
+    }
+
+    @Controller('/protected')
+    class ProtectedController {
+      @Get('/')
+      @UseAuth('handled')
+      @RequireScopes('profile:read')
+      getResource() {
+        handlerCalled = true;
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      CommittedHandledStrategy,
+      ...createPassportModuleProviders({ defaultStrategy: 'handled' }, [{ name: 'handled', token: CommittedHandledStrategy }]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/protected'), response);
+
+    expect(handlerCalled).toBe(false);
+    expect(response.statusCode).toBe(202);
+    expect(response.body).toEqual({ outcome: 'strategy' });
+  });
+
+  it('rejects handled:true with a principal when the strategy does not commit a response', async () => {
+    class BrokenHandledStrategy implements AuthStrategy {
+      async authenticate(): Promise<AuthStrategyResult> {
+        return {
+          handled: true,
+          principal: {
+            claims: { source: 'handled' },
+            subject: 'handled-user',
+          },
+        };
+      }
+    }
+
+    @Controller('/protected')
+    class ProtectedController {
+      @Get('/')
+      @UseAuth('broken')
+      getResource() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      BrokenHandledStrategy,
+      ...createPassportModuleProviders({ defaultStrategy: 'broken' }, [{ name: 'broken', token: BrokenHandledStrategy }]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/protected', { 'x-request-id': 'req-handled-principal-no-commit' }), response);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({
+      error: {
+        code: 'UNAUTHORIZED',
+        details: undefined,
+        message: 'Authentication required.',
+        meta: undefined,
+        requestId: 'req-handled-principal-no-commit',
+        status: 401,
+      },
+    });
   });
 
   it('supports Passport.js redirect flow without executing the protected handler', async () => {

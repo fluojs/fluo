@@ -120,7 +120,7 @@ export class AuthModule {}
 
 This bridge helper is the official exception to the module-facade rule for Passport.js adapters because third-party strategy instances must be bound as providers before `AuthGuard` can execute them. It does not replace `PassportModule`, `@UseAuth(...)`, or `AuthGuard` as the application-facing authentication surface.
 
-The bridge settles each Passport.js strategy execution exactly once. A strategy must call one of the bound Passport actions (`success`, `fail`, `redirect`, `pass`, or `error`); promise rejections, promise completion without an action, and callback-style executions that exceed the bounded action timeout become authentication failures instead of leaving the request unresolved. Custom `mapPrincipal` functions must return a valid fluo `Principal` with a non-empty `subject` and object `claims`.
+The bridge settles each Passport.js strategy execution exactly once. A strategy must call one of the bound Passport actions (`success`, `fail`, `redirect`, `pass`, or `error`); promise rejections, promise completion without an action, and callback-style executions that exceed the bounded action timeout become authentication failures instead of leaving the request unresolved. Any `AuthStrategyResult` with `handled: true` is fully terminal after the strategy commits a response, even if it also includes a `principal`; `AuthGuard` skips principal validation, scope checks, `requestContext.principal` assignment, and the protected handler. Custom `mapPrincipal` functions must return a valid fluo `Principal` with a non-empty `subject` and object `claims`.
 
 ### Cookie Auth Preset
 
@@ -279,7 +279,7 @@ Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` 
 - `createPassportPlatformDiagnosticIssues(...)`: Emits diagnostic issues for empty registries, missing default strategies, cookie preset readiness, and refresh-token backing store readiness.
 - `PassportPlatformStatusSnapshot`, `PassportStatusAdapterInput`: Status helper input/output contracts.
 
-`UseOptionalAuth` only bypasses missing credentials when no scopes are required; scoped routes still need a principal. Passport.js bridge `redirect()` commits the response and skips the protected handler, while `pass()` and strategy completion without a Passport action are authentication failures. Refresh-token backing store status and diagnostic surfaces redact secret-like reason strings before exposing readiness, health, details, or diagnostic causes.
+`UseOptionalAuth` only bypasses missing credentials when no scopes are required; scoped routes still need a principal. `AuthHandledResult` with `handled: true` is terminal only after the strategy commits the response, including results that also carry a `principal`. Passport.js bridge `redirect()` commits the response and skips the protected handler, while `pass()` and strategy completion without a Passport action are authentication failures. Refresh-token backing store status and diagnostic surfaces redact secret-like reason strings before exposing readiness, health, details, or diagnostic causes.
 
 ## Related Packages
 
