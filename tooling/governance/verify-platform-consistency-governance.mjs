@@ -884,7 +884,7 @@ function enforceCanonicalRuntimeMatrixReferences() {
       packageChooser.includes('plain HTTP behind that boundary') &&
       docsContext.includes('Fastify adapter discoverability') &&
       docsContext.includes('engines.node >=20.0.0') &&
-      beginnerIntro.includes('Node.js version 20 or newer') &&
+      beginnerIntro.includes('Node.js 20 or newer') &&
       beginnerCliSetup.includes('plain HTTP for local development') &&
       beginnerProduction.includes('Fastify adapter `https` option'),
     'Fastify README, package-surface, package-chooser, docs/CONTEXT.md, and beginner docs must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
