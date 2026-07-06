@@ -1009,9 +1009,13 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       const app = await bootstrapApplication({ rootModule: AppModule });
       const service = await app.container.resolve(UserService);
 
-      await expect(service.create('Ada')).rejects.toThrow('Explicit session: null conflicts with ambient transaction session');
-
-      await app.close();
+      try {
+        await expect(service.create('Ada')).rejects.toThrow(
+          'Explicit session: null conflicts with ambient transaction session',
+        );
+      } finally {
+        await app.close();
+      }
     });
 
     it('throws when model.create(doc, { session: null }) uses session-only single-document options', async () => {
@@ -1104,10 +1108,14 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       const app = await bootstrapApplication({ rootModule: AppModule });
       const service = await app.container.resolve(UserService);
 
-      await expect(service.findAll()).rejects.toThrow('Explicit session: null conflicts with ambient transaction session');
-      expect(events).not.toContain('model:User:find:projection-session=set');
-
-      await app.close();
+      try {
+        await expect(service.findAll()).rejects.toThrow(
+          'Explicit session: null conflicts with ambient transaction session',
+        );
+        expect(events).not.toContain('model:User:find:projection-session=set');
+      } finally {
+        await app.close();
+      }
     });
 
     it('throws when model.aggregate() receives { session: null } as operation options', async () => {
