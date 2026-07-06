@@ -60,5 +60,5 @@
 - origin을 반영하는 CORS 응답은 캐시가 서로 다른 origin 정책을 합치지 않도록 `Vary: Origin`을 포함해야 합니다.
 - 내장 HTTP rate-limit 미들웨어는 기본적으로 프로세스 로컬 메모리를 사용합니다. 다중 인스턴스 배포에서는 이를 공유 quota 메커니즘으로 취급하면 안 됩니다.
 - 프록시 기반 client identity는 기본적으로 비활성화되어 있습니다. `trustProxyHeaders: true`는 어댑터가 `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 재작성하는 신뢰 가능한 프록시 뒤에 있을 때만 활성화해야 합니다.
-- `@fluojs/throttler`의 handler 단위 throttling은 해석된 라우트 시그니처와 client identity를 저장소 키로 사용하므로, 하나의 전역 버킷이 아니라 route-handler 경계마다 제한을 적용합니다.
+- `@fluojs/throttler`의 handler 단위 throttling은 해석된 라우트 시그니처, controller/handler identity, client identity를 저장소 키로 사용하므로, 하나의 전역 버킷이 아니라 route-handler 경계마다 제한을 적용합니다.
 - `@Throttle({ ttl, limit })`와 `@SkipThrottle()`는 guard 단계의 throttling 정책만 바꿉니다. app 레벨 HTTP 미들웨어 동작은 바꾸지 않습니다.

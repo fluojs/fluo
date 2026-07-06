@@ -97,7 +97,7 @@ You can also pass any object that implements the `ThrottlerStore` contract throu
 
 By default, the throttler resolves client identity from the raw socket `remoteAddress` only. If your deployment sits behind a trusted reverse proxy that rewrites `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, opt in with `trustProxyHeaders: true`. If no trusted socket or proxy identity is available, it throws instead of collapsing unrelated callers into a shared bucket. You can also customize this to use API keys, user IDs, or other identifiers.
 
-Counters are scoped by route identity and client identity. The route portion includes method, path, version, and handler identity so different handlers do not share buckets accidentally. When a request is rejected, `ThrottlerGuard` returns `429` and sets `Retry-After`.
+Counters are scoped by route identity and client identity. The route portion includes module, controller, method, path, version, and handler identity so different route-handler boundaries do not share buckets accidentally. When a request is rejected, `ThrottlerGuard` returns `429` and sets `Retry-After`.
 
 ```typescript
 ThrottlerModule.forRoot({
@@ -137,6 +137,7 @@ When migrating from `@nestjs/throttler`, treat `@fluojs/throttler` as an explici
 
 ### Modules
 - `ThrottlerModule.forRoot(options)`: Provides validated throttler options and `ThrottlerGuard` to the module graph.
+- `ThrottlerModuleOptions`: Public options shape accepted by `ThrottlerModule.forRoot(...)`.
 - Package-level registration is supported through `ThrottlerModule.forRoot(options)`. Internal provider-composition helpers and DI tokens are not part of the public contract.
 
 `ttl` and `limit` must be positive finite integers. `global` defaults to `true`; set `global: false` when the throttler providers should stay scoped to the importing module. `trustProxyHeaders` and `keyGenerator` customize client identity; `keyGenerator`, when provided, must be a function. Module options are validated and captured by value when the guard is wired so later mutation of the caller's options object does not change live throttling policy. If no `store` option is supplied, each `ThrottlerGuard` instance owns its own in-memory store; pass a `ThrottlerStore` implementation such as `RedisThrottlerStore` when storage must be shared or externally managed.

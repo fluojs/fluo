@@ -60,5 +60,5 @@ Middleware-specific ordering rules:
 - Reflected-origin CORS responses MUST include `Vary: Origin` so caches do not collapse distinct origin policies.
 - The built-in HTTP rate-limit middleware uses process-local memory by default. Multi-instance deployments should not treat it as a shared quota mechanism.
 - Proxy-derived client identity is disabled by default. `trustProxyHeaders: true` should be enabled only when the adapter is behind a trusted proxy that rewrites `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`.
-- Handler-level throttling in `@fluojs/throttler` uses the resolved route signature plus client identity as the storage key, so it enforces limits per route-handler boundary rather than one global bucket.
+- Handler-level throttling in `@fluojs/throttler` uses the resolved route signature, controller/handler identity, and client identity as the storage key, so it enforces limits per route-handler boundary rather than one global bucket.
 - `@Throttle({ ttl, limit })` and `@SkipThrottle()` modify the guard-stage throttling policy only. They do not change the behavior of app-level HTTP middleware.
