@@ -333,39 +333,41 @@ describe('Studio live contracts', () => {
       stateUrl: '/api/state?token=test-token',
     };
     document.body.innerHTML = '<div id="app"></div>';
+    const root = bootstrapStudioApp();
 
-    await import('./main.js');
+    try {
+      await vi.waitFor(() => {
+        expect(FakeEventSource.instances).toHaveLength(1);
+      });
+      const source = FakeEventSource.instances[0];
+      expect(source?.url).toBe('/api/events?token=test-token&after=7');
+      source?.onopen?.(new Event('open'));
+      source?.emit('snapshot', {
+        emittedAt: '2026-05-28T00:00:02.000Z',
+        epoch: 'epoch-1',
+        eventId: 'epoch-1:1',
+        payload: liveSnapshot,
+        sequence: 1,
+        source: {
+          appId: 'app-test',
+          runtime: 'node',
+        },
+        type: 'snapshot',
+        version: 1,
+      });
 
-    await vi.waitFor(() => {
-      expect(FakeEventSource.instances).toHaveLength(1);
-    });
-    const source = FakeEventSource.instances[0];
-    expect(source?.url).toBe('/api/events?token=test-token&after=7');
-    source?.onopen?.(new Event('open'));
-    source?.emit('snapshot', {
-      emittedAt: '2026-05-28T00:00:02.000Z',
-      epoch: 'epoch-1',
-      eventId: 'epoch-1:1',
-      payload: liveSnapshot,
-      sequence: 1,
-      source: {
-        appId: 'app-test',
-        runtime: 'node',
-      },
-      type: 'snapshot',
-      version: 1,
-    });
-
-    await vi.waitFor(() => {
-      expect(document.body.textContent).toContain('Runtime-connected live devtool');
-      expect(document.body.textContent).toContain('HealthController');
-      expect(document.body.textContent).toContain('GET /health');
-      expect(document.body.textContent).toContain('Live bootstrap timing');
-      expect(document.body.textContent).toContain('BOOTSTRAP_DEGRADED');
-    });
-
-    delete (window as typeof window & { __FLUO_STUDIO__?: unknown }).__FLUO_STUDIO__;
-    vi.unstubAllGlobals();
+      await vi.waitFor(() => {
+        expect(document.body.textContent).toContain('Runtime-connected live devtool');
+        expect(document.body.textContent).toContain('HealthController');
+        expect(document.body.textContent).toContain('GET /health');
+        expect(document.body.textContent).toContain('Live bootstrap timing');
+        expect(document.body.textContent).toContain('BOOTSTRAP_DEGRADED');
+      });
+    } finally {
+      root.unmount();
+      delete (window as typeof window & { __FLUO_STUDIO__?: unknown }).__FLUO_STUDIO__;
+      vi.unstubAllGlobals();
+    }
   });
 
   it('unmounts the packaged viewer and cleans up live sidecar listeners', async () => {
@@ -1011,7 +1013,7 @@ describe('applyFilters', () => {
     expect(filteredByBlocker.diagnostics.map((issue: { componentId: string }) => issue.componentId)).toEqual(['queue.default']);
   });
 
-  it('preserves hidden internal component identity when static filters remove a dependency node', () => {
+  it('renders filtered Mermaid graphs deterministically after snapshot serialization', () => {
     const snapshotWithHiddenInternalDependency: PlatformShellSnapshot = {
       ...snapshotFixture,
       components: [
@@ -1036,12 +1038,14 @@ describe('applyFilters', () => {
       severities: [],
     });
     const mermaid = renderMermaid(filtered);
+    const serializedMermaid = renderMermaid(JSON.parse(JSON.stringify(filtered)) as PlatformShellSnapshot);
     const graphSvg = renderGraphSvg(filtered, 'api.gateway', snapshotWithHiddenInternalDependency.components);
     const summary = inspectComponentConnections(filtered, 'api.gateway', snapshotWithHiddenInternalDependency.components);
 
-    expect(filtered.components.map((component) => component.id)).toEqual(['redis.default', 'api.gateway']);
-    expect(mermaid).not.toContain('["queue.default"]');
-    expect(mermaid).not.toMatch(/C\d+ --> EXT_queue_default_/);
+    expect(filtered.components.map((component: { id: string }) => component.id)).toEqual(['redis.default', 'api.gateway']);
+    expect(mermaid).toBe(serializedMermaid);
+    expect(mermaid).toContain('["queue.default"]');
+    expect(mermaid).toMatch(/C\d+ --> EXT_queue_default_/);
     expect(mermaid).toContain('aws.lambda.orders');
     expect(graphSvg).not.toContain('component-external">\n   <text x="');
     expect(graphSvg).not.toContain('>queue.default</text>');
@@ -1083,7 +1087,7 @@ describe('applyFilters', () => {
       },
     });
 
-    expect(filtered.components.map((component) => component.id)).toEqual(['redis.default', 'api.gateway']);
+    expect(filtered.components.map((component: { id: string }) => component.id)).toEqual(['redis.default', 'api.gateway']);
     expect(selected?.id).toBe('queue.default');
   });
 

@@ -220,12 +220,6 @@ export interface ParsedPayload {
   rawJson: string;
 }
 
-const originalComponentsByFilteredSnapshot = new WeakMap<PlatformShellSnapshot, readonly PlatformSnapshot[]>();
-
-function internalComponentIdsFor(snapshot: PlatformShellSnapshot): Set<string> {
-  return new Set((originalComponentsByFilteredSnapshot.get(snapshot) ?? snapshot.components).map((component) => component.id));
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -929,15 +923,11 @@ export function applyFilters(snapshot: PlatformShellSnapshot, filter: FilterStat
       || (issue.dependsOn?.some((dependency: string) => dependency.toLowerCase().includes(query)) ?? false);
   });
 
-  const filteredSnapshot = {
+  return {
     ...snapshot,
     components,
     diagnostics,
   };
-
-  originalComponentsByFilteredSnapshot.set(filteredSnapshot, snapshot.components);
-
-  return filteredSnapshot;
 }
 
 function escapeMermaidText(value: string): string {
@@ -983,7 +973,7 @@ export function renderMermaid(snapshot: PlatformShellSnapshot): string {
   const lines: string[] = ['graph TD'];
   const nodeByComponent = new Map<string, string>();
   const externalNodeByDependency = new Map<string, string>();
-  const internalComponentIds = internalComponentIdsFor(snapshot);
+  const internalComponentIds = new Set(snapshot.components.map((component) => component.id));
 
   if (snapshot.components.length === 0) {
     lines.push('  EMPTY["No registered platform components"]');
