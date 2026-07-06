@@ -1057,6 +1057,41 @@ describe('@fluojs/prisma', () => {
     );
   });
 
+  it('rejects new manual transactions while shutdown is draining or stopped', async () => {
+    let releaseDisconnect!: () => void;
+    const disconnectReady = new Promise<void>((resolve) => {
+      releaseDisconnect = resolve;
+    });
+    const transactionClient = {
+      kind: 'transaction' as const,
+    };
+    const client = {
+      async $connect() {},
+      async $disconnect() {
+        await disconnectReady;
+      },
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        return callback(transactionClient);
+      },
+    };
+
+    const prisma = new PrismaService<typeof client, typeof transactionClient>(client);
+    await prisma.onModuleInit();
+
+    const shutdown = prisma.onApplicationShutdown();
+
+    await expect(prisma.transaction(async () => 'during-shutdown')).rejects.toThrow(
+      'Prisma transaction boundaries are not available during shutdown.',
+    );
+
+    releaseDisconnect();
+    await shutdown;
+
+    await expect(prisma.transaction(async () => 'after-stop')).rejects.toThrow(
+      'Prisma transaction boundaries are not available during shutdown.',
+    );
+  });
+
   it('falls back when transaction client is unsupported and strictTransactions is false', async () => {
     const client = {
       async $connect() {},

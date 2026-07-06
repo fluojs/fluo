@@ -1,7 +1,7 @@
 import type { Token } from '@fluojs/core';
 import { Inject } from '@fluojs/core';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { getPrismaServiceToken, PrismaModule, PrismaService, type PrismaServiceFacade, Transaction } from './index.js';
 
@@ -728,6 +728,91 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
       expect(usersEvents).toEqual(['users:connect']);
       expect(analyticsEvents).toEqual(['analytics:connect']);
     } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects new service @Transaction() boundaries once shutdown starts', async () => {
+    const events: string[] = [];
+    let releaseDisconnect!: () => void;
+    const disconnectReady = new Promise<void>((resolve) => {
+      releaseDisconnect = resolve;
+    });
+    const transactionClient = {
+      user: {
+        async create(input: { data: { email: string } }) {
+          events.push(`tx:create:${input.data.email}`);
+          return { email: input.data.email, id: 'tx-user' };
+        },
+      },
+    };
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect:pending');
+        await disconnectReady;
+        events.push('disconnect:done');
+      },
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+        const result = await callback(transactionClient);
+        events.push('transaction:end');
+        return result;
+      },
+      user: {
+        async create(input: { data: { email: string } }) {
+          events.push(`root:create:${input.data.email}`);
+          return { email: input.data.email, id: 'root-user' };
+        },
+      },
+    };
+
+    @Inject(PrismaService)
+    class UserRepository {
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client, typeof transactionClient>) {}
+
+      async create(email: string) {
+        return this.prisma.user.create({ data: { email } });
+      }
+    }
+
+    @Inject(UserRepository)
+    class UserService {
+      constructor(private readonly repo: UserRepository) {}
+
+      @Transaction()
+      async create(email: string) {
+        return this.repo.create(email);
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot({ client })],
+      providers: [UserRepository, UserService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const service = await app.container.resolve(UserService);
+      const shutdown = app.close();
+
+      await vi.waitFor(() => expect(events).toContain('disconnect:pending'));
+
+      await expect(service.create('late@example.com')).rejects.toThrow(
+        'Prisma transaction boundaries are not available during shutdown.',
+      );
+
+      releaseDisconnect();
+      await shutdown;
+
+      expect(events).toEqual(['connect', 'disconnect:pending', 'disconnect:done']);
+    } finally {
+      releaseDisconnect();
       await app.close();
     }
   });

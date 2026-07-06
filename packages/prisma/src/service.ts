@@ -21,6 +21,7 @@ import type {
 const NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR =
   'Nested Prisma transaction options are not supported because the active transaction context is reused.';
 const REQUEST_TRANSACTION_UNAVAILABLE_ERROR = 'Prisma request transactions are not available during shutdown.';
+const TRANSACTION_BOUNDARY_UNAVAILABLE_ERROR = 'Prisma transaction boundaries are not available during shutdown.';
 const TRANSACTION_CONTEXT_UNAVAILABLE_ERROR =
   'Prisma transaction context requires AsyncLocalStorage support from the host runtime.';
 
@@ -252,6 +253,8 @@ export class PrismaService<
       return fn();
     }
 
+    this.assertTransactionBoundariesAvailable();
+
     const activeTransaction = this.trackActiveTransactionBoundary();
 
     try {
@@ -470,6 +473,12 @@ export class PrismaService<
   private assertRequestTransactionsAvailable(): void {
     if (this.lifecycleState === 'shutting-down' || this.lifecycleState === 'stopped') {
       throw new Error(REQUEST_TRANSACTION_UNAVAILABLE_ERROR);
+    }
+  }
+
+  private assertTransactionBoundariesAvailable(): void {
+    if (this.lifecycleState === 'shutting-down' || this.lifecycleState === 'stopped') {
+      throw new Error(TRANSACTION_BOUNDARY_UNAVAILABLE_ERROR);
     }
   }
 
