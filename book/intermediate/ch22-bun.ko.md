@@ -97,7 +97,7 @@ export class NotificationGateway {
 export class RealtimeModule {}
 ```
 
-내부적으로 Bun 전용 websocket binding은 어댑터에 구성된 realtime seam을 통해 Bun의 `server.upgrade(request)` 호출을 처리합니다. 애플리케이션 코드는 게이트웨이 계약에 머물고, 업그레이드 세부 사항은 어댑터 경계에 남습니다. Binding이 네이티브 업그레이드를 거절하거나 완료하지 못하면, 어댑터는 그 요청을 처리 완료로 간주하지 않고 일반 HTTP dispatch fallback 경로로 유지합니다.
+내부적으로 Bun 전용 websocket binding은 어댑터에 구성된 realtime seam을 통해 Bun의 `server.upgrade(request)` 호출을 처리합니다. 애플리케이션 코드는 게이트웨이 계약에 머물고, 업그레이드 세부 사항은 어댑터 경계에 남습니다. Bun upgrade guard는 Web-standard `Request`를 받으며 Bun이 socket을 accept하기 전에 `false`, structured `WebSocketUpgradeRejection`, 또는 throw된 HTTP exception으로 거절할 수 있습니다. Binding이 네이티브 업그레이드를 거절하거나 완료하지 못하면, 어댑터는 그 요청을 처리 완료로 간주하지 않고 일반 HTTP dispatch fallback 경로로 유지합니다. Raw gateway return value는 await된 뒤 무시되므로 reply는 여전히 명시적인 `socket.send(...)` 호출이 필요합니다.
 
 ## 22.4 Manual Fetch Handling
 
