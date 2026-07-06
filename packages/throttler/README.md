@@ -137,6 +137,7 @@ When migrating from `@nestjs/throttler`, treat `@fluojs/throttler` as an explici
 
 ### Modules
 - `ThrottlerModule.forRoot(options)`: Provides validated throttler options and `ThrottlerGuard` to the module graph.
+- `ThrottlerModuleOptions`: Public options shape accepted by `ThrottlerModule.forRoot(...)`.
 - Package-level registration is supported through `ThrottlerModule.forRoot(options)`. Internal provider-composition helpers and DI tokens are not part of the public contract.
 
 `ttl` and `limit` must be positive finite integers. `global` defaults to `true`; set `global: false` when the throttler providers should stay scoped to the importing module. `trustProxyHeaders` and `keyGenerator` customize client identity; `keyGenerator`, when provided, must be a function. Module options are validated and captured by value when the guard is wired so later mutation of the caller's options object does not change live throttling policy. If no `store` option is supplied, each `ThrottlerGuard` instance owns its own in-memory store; pass a `ThrottlerStore` implementation such as `RedisThrottlerStore` when storage must be shared or externally managed.
