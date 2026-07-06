@@ -122,7 +122,10 @@ describe('@fluojs/i18n/loaders/fs', () => {
     const loader = new FileSystemI18nLoader({ rootDir });
 
     await expectI18nRejection(() => loader.load('en', ''), 'I18N_INVALID_LOADER_OPTIONS');
+    await expectI18nRejection(() => loader.load('en', '.'), 'I18N_INVALID_LOADER_OPTIONS');
     await expectI18nRejection(() => loader.load('en', 'common.json'), 'I18N_INVALID_LOADER_OPTIONS');
+    await expectI18nRejection(() => loader.load('en', 'admin//common'), 'I18N_INVALID_LOADER_OPTIONS');
+    await expectI18nRejection(() => loader.load('en', 'admin/common/'), 'I18N_INVALID_LOADER_OPTIONS');
   });
 
   it('rejects namespace traversal attempts before resolving files', async () => {

@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
-import { Module } from '@fluojs/core';
+import { Inject, Module, getModuleMetadata } from '@fluojs/core';
 import { createTestingModule } from '@fluojs/testing';
 
 import { I18nError, I18nModule, createI18n } from './index.js';
@@ -26,11 +28,37 @@ function expectI18nCode(action: () => unknown, code: I18nErrorCode): void {
   throw new Error(`Expected action to fail with ${code}.`);
 }
 
+function readPackageJson(): {
+  readonly dependencies?: Readonly<Record<string, string>>;
+  readonly engines?: Readonly<Record<string, string>>;
+  readonly peerDependencies?: Readonly<Record<string, string>>;
+  readonly peerDependenciesMeta?: Readonly<Record<string, { readonly optional?: boolean }>>;
+} {
+  return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+}
+
 describe('@fluojs/i18n root public surface', () => {
   it('keeps the root value exports intentionally small', async () => {
     const root = await import('./index.js');
 
     expect(Object.keys(root).sort()).toEqual(['I18nError', 'I18nModule', 'I18nService', 'createI18n']);
+  });
+
+  it('keeps root package metadata free of optional peer and Node engine requirements', () => {
+    const packageJson = readPackageJson();
+
+    expect(packageJson.engines?.node).toBeUndefined();
+    expect(packageJson.dependencies).toEqual({ '@fluojs/core': 'workspace:^' });
+    expect(packageJson.peerDependencies).toEqual({
+      '@fluojs/http': 'workspace:^',
+      '@fluojs/validation': 'workspace:^',
+      'intl-messageformat': '^11.2.4',
+    });
+    expect(packageJson.peerDependenciesMeta).toEqual({
+      '@fluojs/http': { optional: true },
+      '@fluojs/validation': { optional: true },
+      'intl-messageformat': { optional: true },
+    });
   });
 
   it('exposes the module, service, factory, and stable error surface', () => {
@@ -75,6 +103,42 @@ describe('@fluojs/i18n root public surface', () => {
     expect(service.translate('app.title', { locale: 'ko', values: { name: 'fluo' } })).toBe('안녕하세요 fluo');
     expect(service.resolveLocales('ko')).toEqual(['ko', 'en']);
     expect(testingModule.get(I18nService)).toBe(service);
+  });
+
+  it('exposes I18nModule providers globally by default and honors global false opt-out', async () => {
+    @Inject(I18nService)
+    class SiblingConsumer {
+      constructor(readonly i18n: I18nService) {}
+
+      title(): string {
+        return this.i18n.translate('app.title', { locale: 'en' });
+      }
+    }
+
+    @Module({ providers: [SiblingConsumer] })
+    class SiblingModule {}
+
+    @Module({
+      imports: [I18nModule.forRoot({ catalogs: { en: { app: { title: 'Global i18n' } } }, defaultLocale: 'en' }), SiblingModule],
+    })
+    class DefaultGlobalAppModule {}
+
+    const testingModule = await createTestingModule({ rootModule: DefaultGlobalAppModule }).compile();
+
+    try {
+      expect(getModuleMetadata(I18nModule.forRoot())).toMatchObject({ global: true });
+      expect(getModuleMetadata(I18nModule.forRoot({ global: false }))).toMatchObject({ global: false });
+      expect((await testingModule.resolve(SiblingConsumer)).title()).toBe('Global i18n');
+    } finally {
+      await testingModule.container.dispose();
+    }
+
+    @Module({
+      imports: [I18nModule.forRoot({ catalogs: { en: { app: { title: 'Local i18n' } } }, defaultLocale: 'en', global: false }), SiblingModule],
+    })
+    class LocalAppModule {}
+
+    await expect(createTestingModule({ rootModule: LocalAppModule }).compile()).rejects.toThrow(/not visible through a global module|I18nService/);
   });
 
   it('resolves nested keys and namespace-prefixed keys with explicit locales', () => {
@@ -243,14 +307,26 @@ describe('@fluojs/i18n root public surface', () => {
       supportedLocales: ['en-US', 'de-DE', 'ko-KR'],
     });
 
-    expect(service.formatDateTime(new Date('2026-05-11T00:00:00.000Z'), { format: 'short', locale: 'en-US' })).toBe(
-      'May 11, 2026',
+    const date = new Date('2026-05-11T00:00:00.000Z');
+
+    expect(service.formatDateTime(date, { format: 'short', locale: 'en-US' })).toBe(
+      new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' }).format(date),
     );
-    expect(service.formatNumber(1234.5, { format: 'precise', locale: 'de-DE' })).toBe('1.234,50');
-    expect(service.formatCurrency(12.5, { currency: 'EUR', locale: 'de-DE' })).toBe('12,50 €');
-    expect(service.formatPercent(0.125, { locale: 'en-US', options: { maximumFractionDigits: 1 } })).toBe('12.5%');
-    expect(service.formatList(['red', 'green', 'blue'], { format: 'conjunction', locale: 'en-US' })).toBe('red, green, and blue');
-    expect(service.formatRelativeTime(-1, 'day', { format: 'narrow', locale: 'en-US' })).toBe('yesterday');
+    expect(service.formatNumber(1234.5, { format: 'precise', locale: 'de-DE' })).toBe(
+      new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2, minimumFractionDigits: 2 }).format(1234.5),
+    );
+    expect(service.formatCurrency(12.5, { currency: 'EUR', locale: 'de-DE' })).toBe(
+      new Intl.NumberFormat('de-DE', { currency: 'EUR', style: 'currency' }).format(12.5),
+    );
+    expect(service.formatPercent(0.125, { locale: 'en-US', options: { maximumFractionDigits: 1 } })).toBe(
+      new Intl.NumberFormat('en-US', { maximumFractionDigits: 1, style: 'percent' }).format(0.125),
+    );
+    expect(service.formatList(['red', 'green', 'blue'], { format: 'conjunction', locale: 'en-US' })).toBe(
+      new Intl.ListFormat('en-US', { style: 'long', type: 'conjunction' }).format(['red', 'green', 'blue']),
+    );
+    expect(service.formatRelativeTime(-1, 'day', { format: 'narrow', locale: 'en-US' })).toBe(
+      new Intl.RelativeTimeFormat('en-US', { numeric: 'auto', style: 'narrow' }).format(-1, 'day'),
+    );
   });
 
   it('normalizes named format options into immutable service-owned snapshots', () => {

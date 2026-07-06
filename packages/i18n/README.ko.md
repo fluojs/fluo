@@ -30,7 +30,7 @@ fluo 애플리케이션을 위한 프레임워크 비종속 국제화 코어 표
 npm install @fluojs/i18n
 ```
 
-Root entry point는 `@fluojs/core`에만 의존합니다. Optional subpath는 integration dependency를 optional peer로 유지합니다. `@fluojs/i18n/icu`를 opt-in하면 `intl-messageformat`, `@fluojs/i18n/http`를 opt-in하면 `@fluojs/http`, `@fluojs/i18n/validation`을 opt-in하면 `@fluojs/validation`을 함께 설치하세요. 기존 subpath 사용자는 이 dependency boundary 변경이 포함된 릴리스로 업그레이드하기 전에 해당 peer dependency를 application 또는 package manifest에 추가해야 합니다.
+Root entry point는 `@fluojs/core`에만 의존하고 Node.js engine floor를 선언하지 않으며 framework-agnostic bundle에서 안전하게 import할 수 있습니다. Optional subpath는 integration dependency를 optional peer로 유지합니다. `@fluojs/i18n/icu`를 opt-in하면 `intl-messageformat`, `@fluojs/i18n/http`를 opt-in하면 `@fluojs/http`, `@fluojs/i18n/validation`을 opt-in하면 `@fluojs/validation`을 함께 설치하세요. 기존 subpath 사용자는 이 dependency boundary 변경이 포함된 릴리스로 업그레이드하기 전에 해당 peer dependency를 application 또는 package manifest에 추가해야 합니다.
 
 ## 사용 시점
 
@@ -67,6 +67,8 @@ import { I18nModule } from '@fluojs/i18n';
 })
 class AppModule {}
 ```
+
+`I18nModule.forRoot(...)`는 기본적으로 `I18nService`를 global provider로 export하므로 root package를 한 번 import한 뒤 sibling module에서도 shared service를 inject할 수 있습니다. Service를 i18n module을 import한 module 안에만 보이게 하려면 `global: false`를 전달하세요.
 
 ## 코어 번역
 
@@ -419,7 +421,7 @@ typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en'
 
 | Export | 설명 |
 |---|---|
-| `I18nModule` | DI 등록을 위한 모듈입니다. |
+| `I18nModule` | Core i18n service surface를 등록하는 모듈 facade입니다. Provider는 기본적으로 global이며 `global: false`로 module-local로 유지할 수 있습니다. |
 | `I18nService` | Detached option/catalog snapshot을 소유하고 translation을 resolve하며 explicit-locale `Intl` formatting helper(`formatDateTime`, `formatNumber`, `formatCurrency`, `formatPercent`, `formatList`, `formatRelativeTime`)를 제공하는 core service입니다. |
 | `createI18n` | 독립형 서비스를 생성하기 위한 헬퍼입니다. |
 | `I18nError` | 안정적인 에러 코드를 포함하는 기본 i18n 패키지 에러입니다. |

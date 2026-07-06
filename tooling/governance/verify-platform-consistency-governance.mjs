@@ -684,6 +684,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const rootReadmeKo = readFileSync(join(repoRoot, 'README.ko.md'), 'utf8');
   const coreReadme = readFileSync(join(repoRoot, 'packages/core/README.md'), 'utf8');
   const coreReadmeKo = readFileSync(join(repoRoot, 'packages/core/README.ko.md'), 'utf8');
+  const i18nReadme = readFileSync(join(repoRoot, 'packages/i18n/README.md'), 'utf8');
+  const i18nReadmeKo = readFileSync(join(repoRoot, 'packages/i18n/README.ko.md'), 'utf8');
   const drizzleReadme = readFileSync(join(repoRoot, 'packages/drizzle/README.md'), 'utf8');
   const drizzleReadmeKo = readFileSync(join(repoRoot, 'packages/drizzle/README.ko.md'), 'utf8');
   const expressReadme = readFileSync(join(repoRoot, 'packages/platform-express/README.md'), 'utf8');
@@ -741,6 +743,15 @@ function enforceCanonicalRuntimeMatrixReferences() {
     'docs/reference package-surface and package-chooser must keep @fluojs/i18n/typegen typed helper declarations discoverable.',
   );
   assert(
+    i18nReadme.includes('does not declare a Node.js engine floor') &&
+      packageSurface.includes('does not declare a Node.js engine floor') &&
+      docsContext.includes('has no Node.js engine floor') &&
+      i18nReadme.includes('global provider by default') &&
+      packageSurface.includes('exposes `I18nService` globally by default') &&
+      docsContext.includes('registers `I18nService` globally by default'),
+    'i18n README, package-surface, and docs/CONTEXT.md must keep the root runtime boundary and provider visibility contract discoverable together.',
+  );
+  assert(
     packageChooserKo.includes('@fluojs/i18n') && packageChooserKo.includes('localization'),
     'docs/reference/package-chooser.ko.md must keep @fluojs/i18n discoverable for localization tasks.',
   );
@@ -751,6 +762,15 @@ function enforceCanonicalRuntimeMatrixReferences() {
   assert(
     packageSurfaceKo.includes('typed translation helper declaration') && packageChooserKo.includes('typed translation helper declaration'),
     'docs/reference package-surface.ko.md and package-chooser.ko.md must keep @fluojs/i18n/typegen typed helper declarations discoverable.',
+  );
+  assert(
+    i18nReadmeKo.includes('Node.js engine floor를 선언하지 않으며') &&
+      packageSurfaceKo.includes('Node.js engine floor를 선언하지 않는') &&
+      docsContextKo.includes('Node.js engine floor가 없으며') &&
+      i18nReadmeKo.includes('기본적으로 `I18nService`를 global provider로 export') &&
+      packageSurfaceKo.includes('기본적으로 `I18nService`를 global로 노출') &&
+      docsContextKo.includes('`I18nService`를 기본 global provider로 등록'),
+    'Korean i18n README, package-surface, and docs/CONTEXT.ko.md must keep the root runtime boundary and provider visibility contract discoverable together.',
   );
 
   for (const markdown of [packageChooser, toolchainMatrix, docsContext, viteReadme, quickStart, migrateFromNestjs]) {
