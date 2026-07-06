@@ -2193,6 +2193,82 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
+  it('cancels retrying startup during close before a later Express bind can occur', async () => {
+    const blocker = createHttpServer((_request, response) => {
+      response.statusCode = 200;
+      response.end('blocked');
+    });
+    const port = await findAvailablePort();
+
+    await new Promise<void>((resolve, reject) => {
+      blocker.once('error', reject);
+      blocker.listen({ host: '127.0.0.1', port }, () => {
+        blocker.removeListener('error', reject);
+        resolve();
+      });
+    });
+
+    const closeBlocker = async (): Promise<void> => {
+      if (!blocker.listening) {
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        blocker.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    };
+
+    const adapter = new ExpressHttpApplicationAdapter(port, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
+    const dispatcher = {
+      async dispatch() {},
+    };
+    const listenResult = adapter.listen(dispatcher).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+
+    try {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 10);
+      });
+      await expect(adapter.close()).resolves.toBeUndefined();
+      await closeBlocker();
+
+      const result = await listenResult;
+      expect(result).toBeInstanceOf(Error);
+      expect(String(result instanceof Error ? result.message : result)).toContain('startup was cancelled');
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, 60);
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        const probe = createHttpServer();
+        probe.once('error', reject);
+        probe.listen({ host: '127.0.0.1', port }, () => {
+          probe.close((error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve();
+          });
+        });
+      });
+    } finally {
+      await adapter.close();
+      await closeBlocker();
+    }
+  });
+
   it('fails startup with EADDRINUSE when retryLimit is exhausted', async () => {
     const blocker = createHttpServer((_request, response) => {
       response.statusCode = 200;

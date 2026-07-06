@@ -154,6 +154,13 @@ interface ExpressNativeRouteCandidate {
   shapeKey: string;
 }
 
+interface ExpressListenServerInput {
+  readonly host: string | undefined;
+  readonly port: number;
+  readonly server: ExpressServer;
+  readonly signal: AbortSignal;
+}
+
 type ExpressFrameworkResponse = FrameworkResponse & {
   raw: ExpressResponse;
   sendSimpleJson(body: Record<string, unknown> | unknown[]): ReturnType<FrameworkResponse['send']>;
@@ -173,6 +180,8 @@ type ExpressMultipartLikeError = Error & {
 export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
   private closeInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
+  private listenAbortController?: AbortController;
+  private listenInFlight?: Promise<void>;
   private readonly app: Express;
   private nativeRoutesReady = false;
   private readonly requestResponseFactory: RequestResponseFactory<
@@ -238,13 +247,32 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
 
     this.dispatcher = dispatcher;
     this.registerNativeRoutes(dispatcher);
-    await this.listenWithRetry();
+
+    const abortController = new AbortController();
+    this.listenAbortController = abortController;
+    const listenInFlight = this.listenWithRetry(abortController.signal).finally(() => {
+      if (this.listenInFlight === listenInFlight) {
+        this.listenInFlight = undefined;
+      }
+
+      if (this.listenAbortController === abortController) {
+        this.listenAbortController = undefined;
+      }
+    });
+    this.listenInFlight = listenInFlight;
+
+    await listenInFlight;
   }
 
   async close(): Promise<void> {
     if (this.closeInFlight) {
       await waitForCloseWithTimeout(this.closeInFlight, this.shutdownTimeoutMs);
       return;
+    }
+
+    if (this.listenInFlight) {
+      this.listenAbortController?.abort();
+      await waitForCloseWithTimeout(ignoreCancelledListen(this.listenInFlight), this.shutdownTimeoutMs);
     }
 
     if (!this.server.listening) {
@@ -263,10 +291,23 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
     await waitForCloseWithTimeout(closeInFlight, this.shutdownTimeoutMs);
   }
 
-  private async listenWithRetry(): Promise<void> {
+  private async listenWithRetry(signal: AbortSignal): Promise<void> {
     for (let attempt = 0; ; attempt++) {
+      throwIfListenCancelled(signal);
+
       try {
-        await listenServer(this.server, this.port, this.host);
+        await listenServer({
+          host: this.host,
+          port: this.port,
+          server: this.server,
+          signal,
+        });
+
+        if (signal.aborted) {
+          await closeServerBestEffort(this.server);
+          throw new ExpressListenCancelledError();
+        }
+
         return;
       } catch (error: unknown) {
         if (!isAddressInUseError(error) || attempt >= this.retryLimit) {
@@ -274,7 +315,7 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
         }
 
         await closeServerSilently(this.server);
-        await delay(this.retryDelayMs);
+        await delay(this.retryDelayMs, signal);
       }
     }
   }
@@ -911,32 +952,75 @@ function resolveNonNegativeIntegerOption(name: string, value: number | undefined
   return resolved;
 }
 
-async function listenServer(server: ExpressServer, port: number, host: string | undefined): Promise<void> {
+async function listenServer(input: ExpressListenServerInput): Promise<void> {
+  const { host, port, server, signal } = input;
+
   await new Promise<void>((resolve, reject) => {
-    const onError = (error: NodeJS.ErrnoException) => {
-      cleanup();
-      reject(error);
-    };
+    if (signal.aborted) {
+      reject(new ExpressListenCancelledError());
+      return;
+    }
 
-    const onListening = () => {
-      cleanup();
-      resolve();
-    };
+    let settled = false;
 
-    const cleanup = () => {
+    function onError(error: NodeJS.ErrnoException): void {
+      finishReject(error);
+    }
+
+    function onListening(): void {
+      finishResolve();
+    }
+
+    function onAbort(): void {
+      cleanup();
+      void closeServerBestEffort(server).then(() => {
+        finishReject(new ExpressListenCancelledError());
+      });
+    }
+
+    function cleanup(): void {
       server.off('error', onError);
       server.off('listening', onListening);
-    };
+      signal.removeEventListener('abort', onAbort);
+    }
+
+    function finishResolve(): void {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+      resolve();
+    }
+
+    function finishReject(error: unknown): void {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+      reject(error);
+    }
 
     server.once('error', onError);
     server.once('listening', onListening);
+    signal.addEventListener('abort', onAbort, { once: true });
 
     try {
       server.listen({ host, port });
     } catch (error) {
-      cleanup();
-      reject(error);
+      finishReject(error);
     }
+  });
+}
+
+function closeServerBestEffort(server: ExpressServer): Promise<void> {
+  return new Promise((resolve) => {
+    server.close(() => {
+      resolve();
+    });
   });
 }
 
@@ -1020,9 +1104,53 @@ function isAddressInUseError(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === 'EADDRINUSE';
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
+class ExpressListenCancelledError extends Error {
+  readonly name = 'ExpressListenCancelledError';
+
+  constructor() {
+    super('Express adapter startup was cancelled during shutdown.');
+  }
+}
+
+function throwIfListenCancelled(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw new ExpressListenCancelledError();
+  }
+}
+
+function isExpressListenCancelledError(error: unknown): boolean {
+  return error instanceof ExpressListenCancelledError;
+}
+
+async function ignoreCancelledListen(listenPromise: Promise<void>): Promise<void> {
+  try {
+    await listenPromise;
+  } catch (error: unknown) {
+    if (isExpressListenCancelledError(error)) {
+      return;
+    }
+
+    throw error;
+  }
+}
+
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new ExpressListenCancelledError());
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(new ExpressListenCancelledError());
+    };
+
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
 
