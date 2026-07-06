@@ -170,17 +170,18 @@ export class AuthGuard implements AuthGuardContract {
 
     try {
       const result = await strategy.authenticate(context);
-      const principal = resolvePrincipal(result);
 
-      if (isAuthHandledResult(result) && !principal) {
+      if (isAuthHandledResult(result)) {
         if (!context.requestContext.response.committed) {
           throw new AuthenticationFailedError(
-            'Auth strategy returned handled:true without a principal but did not commit a response.',
+            'Auth strategy returned handled:true but did not commit a response.',
           );
         }
 
-       return true;
+        return true;
       }
+
+      const principal = resolvePrincipal(result);
 
       if (!principal) {
         if (isAuthOptionalResult(result) && requirement?.optional && !requirement.scopes?.length) {
