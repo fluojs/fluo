@@ -16,7 +16,9 @@ import {
   Post,
   type RequestContext,
   RequestDto,
+  type RequestObserver,
   SseResponse,
+  UseInterceptors,
   Version,
   VersioningType,
 } from '@fluojs/http';
@@ -2127,6 +2129,150 @@ describe('bootstrapApplication', () => {
 
     expect(responseOne.body).toEqual({ id: 'u-1' });
     expect(responseTwo.body).toEqual([{ id: 'u-2' }]);
+  });
+
+  it('serializes exposed class instances through the runtime request pipeline', async () => {
+    @Expose({ excludeExtraneous: true })
+    class UserView {
+      @Expose()
+      id = 'u-1';
+
+      @Expose()
+      username = 'fluo';
+
+      passwordHash = 'secret';
+    }
+
+    @Controller('/users')
+    @UseInterceptors(SerializerInterceptor)
+    class UsersController {
+      @Get('/one')
+      getOne() {
+        return new UserView();
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UsersController],
+      providers: [SerializerInterceptor],
+    });
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      rootModule: AppModule,
+    }));
+    const request: FrameworkRequest = {
+      body: undefined,
+      cookies: {},
+      headers: {},
+      method: 'GET',
+      params: {},
+      path: '/users/one',
+      query: {},
+      raw: {},
+      url: '/users/one',
+    };
+    const response: FrameworkResponse & { body?: unknown } = {
+      committed: false,
+      headers: {},
+      redirect(status, location) {
+        this.setStatus(status);
+        this.setHeader('Location', location);
+        this.committed = true;
+      },
+      send(body) {
+        this.body = body;
+        this.committed = true;
+      },
+      setHeader(name, value) {
+        this.headers[name] = value;
+      },
+      setStatus(code) {
+        this.statusCode = code;
+      },
+      statusCode: 200,
+    };
+
+    await app.dispatch(request, response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ id: 'u-1', username: 'fluo' });
+  });
+
+  it('bypasses serialization for handler-owned committed responses through the runtime request pipeline', async () => {
+    @Expose({ excludeExtraneous: true })
+    class StreamOwner {
+      @Expose()
+      id = 'stream-1';
+
+      internalState = 'owned-by-handler';
+    }
+
+    const owner = new StreamOwner();
+    let observedSuccess: unknown;
+    const observer: RequestObserver = {
+      onRequestSuccess(_context, value) {
+        observedSuccess = value;
+      },
+    };
+
+    @Controller('/streams')
+    @UseInterceptors(SerializerInterceptor)
+    class StreamsController {
+      @Get('/owned')
+      async getOwned(_input: undefined, context: RequestContext) {
+        await context.response.send(owner);
+        return owner;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [StreamsController],
+      providers: [SerializerInterceptor],
+    });
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      observers: [observer],
+      rootModule: AppModule,
+    }));
+    const request: FrameworkRequest = {
+      body: undefined,
+      cookies: {},
+      headers: {},
+      method: 'GET',
+      params: {},
+      path: '/streams/owned',
+      query: {},
+      raw: {},
+      url: '/streams/owned',
+    };
+    const response: FrameworkResponse & { body?: unknown } = {
+      committed: false,
+      headers: {},
+      redirect(status, location) {
+        this.setStatus(status);
+        this.setHeader('Location', location);
+        this.committed = true;
+      },
+      send(body) {
+        this.body = body;
+        this.committed = true;
+      },
+      setHeader(name, value) {
+        this.headers[name] = value;
+      },
+      setStatus(code) {
+        this.statusCode = code;
+      },
+      statusCode: 200,
+    };
+
+    await app.dispatch(request, response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBe(owner);
+    expect(observedSuccess).toBe(owner);
   });
 
   it('unwinds initialized providers when bootstrap hooks fail', async () => {
