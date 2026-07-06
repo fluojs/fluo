@@ -837,6 +837,13 @@ describe('Container', () => {
       expect(() => new Container().register(provider)).toThrow('provide token');
     });
 
+    it('throws InvalidProviderError when an object provider uses undefined provide', () => {
+      const provider = { provide: undefined, useValue: 'missing-token' } as unknown as Provider;
+
+      expect(() => new Container().register(provider)).toThrow(InvalidProviderError);
+      expect(() => new Container().register(provider)).toThrow('provide token');
+    });
+
     it('throws InvalidProviderError when an object provider has no strategy', () => {
       const provider = { provide: Symbol('strategy-less-provider') } as unknown as Provider;
 
@@ -1586,6 +1593,33 @@ describe('Container', () => {
       await expect(container.resolve(token)).resolves.toBe('value');
       await expect(container.resolve<string[]>(plugins)).resolves.toEqual(['plugin']);
     });
+
+    it('returns snapshots that do not reflect later registration or cache mutation', async () => {
+      const firstToken = Symbol('first-introspection-token');
+      const secondToken = Symbol('second-introspection-token');
+      const plugins = Symbol('snapshot-plugins');
+      const container = new Container().register(
+        { provide: firstToken, useValue: 'first' },
+        { provide: plugins, useValue: 'plugin-a', multi: true },
+      );
+
+      await container.resolve(firstToken);
+      await container.resolve(plugins);
+
+      const state = container.inspectResolutionState();
+      const singletonCacheSize = state.singletonCache.size;
+      const multiSingletonCacheSize = state.multiSingletonCache.size;
+
+      container.register({ provide: secondToken, useValue: 'second' });
+      container.override({ provide: plugins, useValue: 'plugin-b', multi: true });
+      await container.resolve(secondToken);
+      await container.resolve(plugins);
+
+      expect(state.registrations.has(secondToken)).toBe(false);
+      expect(state.multiRegistrations.get(plugins)?.map((provider) => provider.useValue)).toEqual(['plugin-a']);
+      expect(state.singletonCache.size).toBe(singletonCacheSize);
+      expect(state.multiSingletonCache.size).toBe(multiSingletonCacheSize);
+    });
   });
 
   describe('dispose', () => {
@@ -1848,6 +1882,52 @@ describe('Container', () => {
       expect(events).toEqual(['request', 'root']);
     });
 
+    it('aggregates failures from multiple request-scope children before root disposal failures', async () => {
+      class RootService {
+        onDestroy() {
+          throw new Error('root failed');
+        }
+      }
+
+      class RequestService {
+        constructor(readonly name: string) {}
+
+        onDestroy() {
+          throw new Error(`${this.name} failed`);
+        }
+      }
+
+      const token = Symbol('multi-child-request-service');
+      const root = new Container().register(
+        RootService,
+        {
+          provide: token,
+          scope: Scope.REQUEST,
+          useFactory: () => new RequestService('first child'),
+        },
+      );
+      const firstRequestScope = root.createRequestScope();
+      const secondRequestScope = root.createRequestScope();
+
+      await root.resolve(RootService);
+      await firstRequestScope.resolve(token);
+      root.override({
+        provide: token,
+        scope: Scope.REQUEST,
+        useFactory: () => new RequestService('second child'),
+      });
+      await secondRequestScope.resolve(token);
+
+      const error = await root.dispose().catch((value: unknown) => value);
+
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors.map((failure) => (failure as Error).message)).toEqual([
+        'first child failed',
+        'second child failed',
+        'root failed',
+      ]);
+    });
+
     it('disposes stale overridden singleton instances immediately and exactly once', async () => {
       const events: string[] = [];
 
@@ -1875,6 +1955,65 @@ describe('Container', () => {
       await container.dispose();
 
       expect(events).toEqual(['first', 'second']);
+    });
+
+    it('waits for stale async singleton disposal before resolving replacements', async () => {
+      const events: string[] = [];
+      let releaseStaleDisposal!: () => void;
+      const staleDisposal = new Promise<void>((resolve) => {
+        releaseStaleDisposal = resolve;
+      });
+
+      class FirstService {
+        async onDestroy() {
+          events.push('first:start');
+          await staleDisposal;
+          events.push('first:end');
+        }
+      }
+
+      class SecondService {
+        onDestroy() {
+          events.push('second');
+        }
+      }
+
+      const token = Symbol('async-stale-disposal-token');
+      const container = new Container().register({ provide: token, useClass: FirstService });
+
+      await container.resolve(token);
+      container.override({ provide: token, useClass: SecondService });
+
+      const replacement = container.resolve(token).then(() => events.push('resolved'));
+      await Promise.resolve();
+
+      expect(events).toEqual(['first:start']);
+
+      releaseStaleDisposal();
+      await replacement;
+      await container.dispose();
+
+      expect(events).toEqual(['first:start', 'first:end', 'resolved', 'second']);
+    });
+
+    it('surfaces stale disposal failures before resolving replacements', async () => {
+      class FirstService {
+        onDestroy() {
+          throw new Error('stale failed');
+        }
+      }
+
+      class SecondService {}
+
+      const token = Symbol('failing-stale-disposal-token');
+      const container = new Container().register({ provide: token, useClass: FirstService });
+
+      await container.resolve(token);
+      container.override({ provide: token, useClass: SecondService });
+
+      await expect(container.resolve(token)).rejects.toThrow('stale failed');
+      await expect(container.resolve(token)).resolves.toBeInstanceOf(SecondService);
+      await container.dispose();
     });
 
     it('disposes stale singleton consumers invalidated by dependency overrides exactly once', async () => {
@@ -1935,6 +2074,52 @@ describe('Container', () => {
       await root.dispose();
 
       expect(events).toEqual(['consumer:before-override', 'consumer:after-override']);
+    });
+
+    it('disposes stale request-scope descendants before resolving replacements', async () => {
+      const events: string[] = [];
+      const CONFIG = Symbol('RequestDescendantConfig');
+      let releaseStaleDisposal!: () => void;
+      const staleDisposal = new Promise<void>((resolve) => {
+        releaseStaleDisposal = resolve;
+      });
+
+      class RequestConsumer {
+        constructor(readonly config: string) {}
+
+        async onDestroy() {
+          events.push(`destroy:start:${this.config}`);
+          await staleDisposal;
+          events.push(`destroy:end:${this.config}`);
+        }
+      }
+
+      const root = new Container().register(
+        { provide: CONFIG, useValue: 'before-override' },
+        { provide: RequestConsumer, scope: Scope.REQUEST, useClass: RequestConsumer, inject: [CONFIG] },
+      );
+      const requestScope = root.createRequestScope();
+
+      await requestScope.resolve(RequestConsumer);
+      root.override({ provide: CONFIG, useValue: 'after-override' });
+
+      const replacement = requestScope.resolve<RequestConsumer>(RequestConsumer).then((consumer) => events.push(`resolved:${consumer.config}`));
+      await Promise.resolve();
+
+      expect(events).toEqual(['destroy:start:before-override']);
+
+      releaseStaleDisposal();
+      await replacement;
+      await requestScope.dispose();
+      await root.dispose();
+
+      expect(events).toEqual([
+        'destroy:start:before-override',
+        'destroy:end:before-override',
+        'resolved:after-override',
+        'destroy:start:after-override',
+        'destroy:end:after-override',
+      ]);
     });
 
     it('disposes stale overridden multi singleton instances immediately and exactly once', async () => {
