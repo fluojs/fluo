@@ -140,6 +140,24 @@ describe('DrizzleHealthIndicator', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it('provider factory falls back to the raw Drizzle database token when no lifecycle wrapper is registered', async () => {
+    const execute = vi.fn(async (_query: unknown) => undefined);
+    const provider = createDrizzleHealthIndicatorProvider({ key: 'raw-drizzle' });
+
+    if (typeof provider === 'function' || !('useFactory' in provider)) {
+      throw new Error('Expected Drizzle health indicator provider factory.');
+    }
+
+    const indicator = provider.useFactory(undefined, { execute }) as DrizzleHealthIndicator;
+
+    await expect(indicator.check('drizzle')).resolves.toEqual({
+      'raw-drizzle': {
+        status: 'up',
+      },
+    });
+    expect(execute).toHaveBeenCalledWith('select 1');
+  });
+
   it('supports ping callbacks and throws HealthCheckError for unsupported handles', async () => {
     const callbackIndicator = createDrizzleHealthIndicator({
       ping: vi.fn(async () => undefined),
