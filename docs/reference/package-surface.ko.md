@@ -43,6 +43,7 @@
 ### features
 - **`@fluojs/http`**: 라우팅, 가드, 인터셉터, 예외 처리.
 - **`@fluojs/graphql`**: HTTP 추상화 위에서 동작하는 GraphQL 스키마 노출, 리졸버 실행, 구독 지원.
+- **`@fluojs/openapi`**: HTTP 컨트롤러를 위한 decorator-based OpenAPI 3.1.0 문서 생성 패키지입니다. 애플리케이션 등록은 `OpenApiModule.forRoot(...)` 또는 `forRootAsync(...)`로 수행하며, 명시적인 `sources`, 미리 만든 `descriptors`, 또는 둘 다를 사용합니다. 결정적인 Swagger UI 제공, descriptor/source collision precedence, request DTO schema extraction, 명시적 `ApiParam` / `ApiQuery` / `ApiHeader` / `ApiCookie` / `ApiBody` override behavior, 기본 error response policy 주입 또는 생략, 그리고 제공되는 문서가 snapshot되기 전의 `documentTransform` hook을 담당합니다.
 - **`@fluojs/jwt`**: HTTP 비종속 JWT 서명, 검증, principal 정규화.
 - **`@fluojs/passport`**: 전략 비종속 인증 가드, optional auth 및 scope decorator, `PassportModule` strategy registry wiring, Passport.js manual bridge provider bundle, cookie-auth 및 refresh-token preset, account-linking policy helper, 공개 auth metadata helper, auth readiness를 위한 platform status/diagnostic helper.
 - **`@fluojs/microservices`**: TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC를 위한 패턴 매칭 전송 추상화. 애플리케이션 등록은 `MicroservicesModule.forRoot(...)`에 남겨 두며, `createMicroservicesProviders(...)`는 provider array를 직접 조립해야 하는 호출자를 위한 compatibility/manual-composition helper입니다. Transport-specific subpath는 TCP, Redis Pub/Sub, NATS, Kafka, RabbitMQ, MQTT, gRPC adapter를 노출하고, `RedisStreamsMicroserviceTransport`는 전용 `@fluojs/microservices/redis-streams` export가 생기기 전까지 문서화된 root-barrel-only 예외로 남습니다.
