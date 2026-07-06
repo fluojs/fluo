@@ -120,7 +120,7 @@ export class AuthModule {}
 
 이 bridge helper는 third-party Passport.js strategy instance를 `AuthGuard`가 실행하기 전에 provider로 바인딩해야 하므로 Passport.js adapter에 대해 공식적으로 허용되는 module-facade 예외입니다. 애플리케이션-facing 인증 표면은 계속 `PassportModule`, `@UseAuth(...)`, `AuthGuard`이며, 이 helper가 이를 대체하지 않습니다.
 
-브릿지는 각 Passport.js 전략 실행을 정확히 한 번만 정착(settle)시킵니다. 전략은 바인딩된 Passport 액션(`success`, `fail`, `redirect`, `pass`, `error`) 중 하나를 호출해야 하며, promise rejection, 액션 없이 완료된 promise, 그리고 제한된 action timeout을 초과한 callback-style 실행은 요청을 미해결 상태로 두지 않고 인증 실패로 처리됩니다. 커스텀 `mapPrincipal` 함수는 비어 있지 않은 `subject`와 객체 형태의 `claims`를 포함한 유효한 fluo `Principal`을 반환해야 합니다.
+브릿지는 각 Passport.js 전략 실행을 정확히 한 번만 정착(settle)시킵니다. 전략은 바인딩된 Passport 액션(`success`, `fail`, `redirect`, `pass`, `error`) 중 하나를 호출해야 하며, promise rejection, 액션 없이 완료된 promise, 그리고 제한된 action timeout을 초과한 callback-style 실행은 요청을 미해결 상태로 두지 않고 인증 실패로 처리됩니다. `handled: true`를 포함한 모든 `AuthStrategyResult`는 전략이 response를 commit한 뒤에는 `principal`을 함께 포함하더라도 완전히 terminal입니다. 이때 `AuthGuard`는 principal validation, scope check, `requestContext.principal` 할당, protected handler 실행을 모두 건너뜁니다. 커스텀 `mapPrincipal` 함수는 비어 있지 않은 `subject`와 객체 형태의 `claims`를 포함한 유효한 fluo `Principal`을 반환해야 합니다.
 
 ### 쿠키 인증 프리셋
 
@@ -279,7 +279,7 @@ Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(
 - `createPassportPlatformDiagnosticIssues(...)`: Empty registry, 누락된 default strategy, cookie preset readiness, refresh-token backing store readiness 문제에 대한 diagnostic issue를 생성합니다.
 - `PassportPlatformStatusSnapshot`, `PassportStatusAdapterInput`: Status helper input/output 계약입니다.
 
-`UseOptionalAuth`는 scope가 필요 없는 route에서만 credential 누락을 우회합니다. Scoped route에는 여전히 principal이 필요합니다. Passport.js bridge의 `redirect()`는 response를 commit하고 protected handler를 건너뛰며, `pass()`와 Passport action 없이 완료된 strategy는 인증 실패입니다. Refresh-token backing store status 및 diagnostic surface는 readiness, health, details, diagnostic cause를 노출하기 전에 secret처럼 보이는 reason 문자열을 redact합니다.
+`UseOptionalAuth`는 scope가 필요 없는 route에서만 credential 누락을 우회합니다. Scoped route에는 여전히 principal이 필요합니다. `handled: true`를 포함한 `AuthHandledResult`는 strategy가 response를 commit한 뒤에만 terminal이며, `principal`을 함께 포함한 결과도 여기에 포함됩니다. Passport.js bridge의 `redirect()`는 response를 commit하고 protected handler를 건너뛰며, `pass()`와 Passport action 없이 완료된 strategy는 인증 실패입니다. Refresh-token backing store status 및 diagnostic surface는 readiness, health, details, diagnostic cause를 노출하기 전에 secret처럼 보이는 reason 문자열을 redact합니다.
 
 ## 관련 패키지
 
