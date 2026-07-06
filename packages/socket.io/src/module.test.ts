@@ -91,6 +91,14 @@ function getBoundPortFromAdapter(adapter: HttpApplicationAdapter): number {
   return getBoundPort(server);
 }
 
+function expectDefined<T>(value: T | undefined, message: string): T {
+  if (value === undefined) {
+    throw new Error(message);
+  }
+
+  return value;
+}
+
 async function readRequestBody(request: IncomingMessage): Promise<string | undefined> {
   const chunks: Buffer[] = [];
 
@@ -285,23 +293,6 @@ function onceDisconnected(socket: ClientSocket): Promise<string> {
   return new Promise((resolve) => {
     socket.once('disconnect', (reason: string) => resolve(reason));
   });
-}
-
-async function waitForExpectation(assertion: () => void, timeoutMs = 250): Promise<void> {
-  const startedAt = Date.now();
-
-  while (true) {
-    try {
-      assertion();
-      return;
-    } catch (error) {
-      if (Date.now() - startedAt >= timeoutMs) {
-        throw error;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-  }
 }
 
 interface SupportedSocketIoAdapterScenario {
@@ -514,6 +505,7 @@ describe('@fluojs/socket.io', () => {
 
   it('boots a Bun-style Socket.IO app through the official Bun engine path', async () => {
     const adapter = new TestBunSocketIoAdapter(0);
+    const disconnectHandled = createDeferred<void>();
 
     class GatewayState {
       connectCount = 0;
@@ -546,6 +538,7 @@ describe('@fluojs/socket.io', () => {
       onDisconnect(_socket: Socket, reason: string) {
         this.state.disconnectCount += 1;
         this.state.disconnectReason = reason;
+        disconnectHandled.resolve();
       }
     }
 
@@ -584,10 +577,9 @@ describe('@fluojs/socket.io', () => {
       socket.disconnect();
 
       expect(await disconnected).toBe('io client disconnect');
-      await waitForExpectation(() => {
-        expect(state.disconnectCount).toBe(1);
-        expect(state.disconnectReason).toBe('client namespace disconnect');
-      });
+      await disconnectHandled.promise;
+      expect(state.disconnectCount).toBe(1);
+      expect(state.disconnectReason).toBe('client namespace disconnect');
     } finally {
       socket?.close();
       await app.close();
@@ -624,6 +616,150 @@ describe('@fluojs/socket.io', () => {
       });
 
       expect(await onceEvent<string>(socket, 'raw:ready')).toBe('ok');
+    } finally {
+      socket?.close();
+      await app.close();
+    }
+  });
+
+  it('passes Node-backed handshake request objects to connection and message guards at runtime', async () => {
+    let connectionRequest: SocketIoHandshakeRequest | undefined;
+    let messageRequest: SocketIoHandshakeRequest | undefined;
+
+    @WebSocketGateway({ path: '/node-request-shape' })
+    class RequestShapeGateway {
+      @OnMessage('ping')
+      onPing(
+        _payload: unknown,
+        _socket: Socket,
+        _request: SocketIoHandshakeRequest,
+        acknowledgement?: (response: string) => void,
+      ) {
+        acknowledgement?.('ok');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({
+        auth: {
+          connection({ request }) {
+            connectionRequest = request;
+            return true;
+          },
+          message({ request }) {
+            messageRequest = request;
+            return true;
+          },
+        },
+        transports: ['websocket'],
+      })],
+      providers: [RequestShapeGateway],
+    });
+
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
+    let socket: ClientSocket | undefined;
+
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
+
+      socket = createClient(`http://127.0.0.1:${String(port)}/node-request-shape`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      await onceConnected(socket);
+
+      const acknowledgement = await new Promise<unknown>((resolve) => {
+        socket?.emit('ping', 'payload', (response: unknown) => resolve(response));
+      });
+
+      expect(acknowledgement).toBe('ok');
+      const observedConnectionRequest = expectDefined(connectionRequest, 'Expected connection guard request to be captured.');
+      const observedMessageRequest = expectDefined(messageRequest, 'Expected message guard request to be captured.');
+
+      expect(observedConnectionRequest).not.toBeInstanceOf(Request);
+      expect(observedMessageRequest).not.toBeInstanceOf(Request);
+      if (observedConnectionRequest instanceof Request || observedMessageRequest instanceof Request) {
+        throw new Error('Expected Node-backed guards to receive Node-like handshake requests.');
+      }
+      expect(observedConnectionRequest.method).toBe('GET');
+      expect(observedConnectionRequest.headers.host).toContain('127.0.0.1');
+      expect(observedMessageRequest).toBe(observedConnectionRequest);
+    } finally {
+      socket?.close();
+      await app.close();
+    }
+  });
+
+  it('passes Bun Request handshake objects to connection and message guards at runtime', async () => {
+    const adapter = new TestBunSocketIoAdapter(0);
+    let connectionRequest: SocketIoHandshakeRequest | undefined;
+    let messageRequest: SocketIoHandshakeRequest | undefined;
+
+    @WebSocketGateway({ path: '/bun-request-shape' })
+    class RequestShapeGateway {
+      @OnMessage('ping')
+      onPing(
+        _payload: unknown,
+        _socket: Socket,
+        _request: SocketIoHandshakeRequest,
+        acknowledgement?: (response: string) => void,
+      ) {
+        acknowledgement?.('ok');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({
+        auth: {
+          connection({ request }) {
+            connectionRequest = request;
+            return true;
+          },
+          message({ request }) {
+            messageRequest = request;
+            return true;
+          },
+        },
+        transports: ['polling'],
+      })],
+      providers: [RequestShapeGateway],
+    });
+
+    const app = await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    });
+    let socket: ClientSocket | undefined;
+
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
+
+      socket = createClient(`http://127.0.0.1:${String(port)}/bun-request-shape`, {
+        reconnection: false,
+        transports: ['polling'],
+      });
+      await onceConnected(socket);
+
+      const acknowledgement = await new Promise<unknown>((resolve) => {
+        socket?.emit('ping', 'payload', (response: unknown) => resolve(response));
+      });
+
+      expect(acknowledgement).toBe('ok');
+      const observedConnectionRequest = expectDefined(connectionRequest, 'Expected connection guard request to be captured.');
+      const observedMessageRequest = expectDefined(messageRequest, 'Expected message guard request to be captured.');
+
+      expect(observedConnectionRequest).toBeInstanceOf(Request);
+      expect(observedMessageRequest).toBeInstanceOf(Request);
+      if (!(observedConnectionRequest instanceof Request) || !(observedMessageRequest instanceof Request)) {
+        throw new Error('Expected Bun guards to receive Web-standard Request instances.');
+      }
+      expect(new URL(observedConnectionRequest.url).pathname).toBe('/socket.io/');
+      expect(observedMessageRequest.url).toBe(observedConnectionRequest.url);
+      expect(observedMessageRequest.headers.get('host')).toBe(observedConnectionRequest.headers.get('host'));
     } finally {
       socket?.close();
       await app.close();
@@ -956,6 +1092,8 @@ describe('@fluojs/socket.io', () => {
   });
 
   it('rejects anonymous namespace connections before gateway handlers execute', async () => {
+    const messageHandled = createDeferred<void>();
+
     class GatewayState {
       connectCount = 0;
       messages: unknown[] = [];
@@ -974,6 +1112,7 @@ describe('@fluojs/socket.io', () => {
       @OnMessage('ping')
       onPing(payload: unknown) {
         this.state.messages.push(payload);
+        messageHandled.resolve();
       }
     }
 
@@ -1022,9 +1161,8 @@ describe('@fluojs/socket.io', () => {
       await onceConnected(allowedSocket);
 
       allowedSocket.emit('ping', 'allowed');
-      await waitForExpectation(() => {
-        expect(state.messages).toEqual(['allowed']);
-      });
+      await messageHandled.promise;
+      expect(state.messages).toEqual(['allowed']);
 
       expect(state.connectCount).toBe(1);
     } finally {
@@ -1088,6 +1226,7 @@ describe('@fluojs/socket.io', () => {
 
   it('accepts connection and message guards that return undefined', async () => {
     const guardCalls: string[] = [];
+    const messageHandled = createDeferred<void>();
 
     class GatewayState {
       connectCount = 0;
@@ -1107,6 +1246,7 @@ describe('@fluojs/socket.io', () => {
       @OnMessage('ping')
       onPing(payload: unknown) {
         this.state.messages.push(payload);
+        messageHandled.resolve();
       }
     }
 
@@ -1141,9 +1281,8 @@ describe('@fluojs/socket.io', () => {
       await onceConnected(activeSocket);
 
       activeSocket.emit('ping', 'accepted');
-      await waitForExpectation(() => {
-        expect(state.messages).toEqual(['accepted']);
-      });
+      await messageHandled.promise;
+      expect(state.messages).toEqual(['accepted']);
 
       expect(state.connectCount).toBe(1);
       expect(guardCalls).toEqual(['connection', 'message:accepted']);
@@ -1154,6 +1293,8 @@ describe('@fluojs/socket.io', () => {
   });
 
   it('rejects guarded message events without invoking gateway handlers', async () => {
+    const messageHandled = createDeferred<void>();
+
     class GatewayState {
       messages: unknown[] = [];
     }
@@ -1166,6 +1307,7 @@ describe('@fluojs/socket.io', () => {
       @OnMessage('ping')
       onPing(payload: unknown) {
         this.state.messages.push(payload);
+        messageHandled.resolve();
       }
     }
 
@@ -1223,9 +1365,8 @@ describe('@fluojs/socket.io', () => {
       expect(state.messages).toEqual([]);
 
       activeSocket.emit('ping', 'allowed');
-      await waitForExpectation(() => {
-        expect(state.messages).toEqual(['allowed']);
-      });
+      await messageHandled.promise;
+      expect(state.messages).toEqual(['allowed']);
 
 
       const disconnected = new Promise((resolve) => activeSocket.once('disconnect', resolve));
@@ -1243,6 +1384,7 @@ describe('@fluojs/socket.io', () => {
 
   it('contains async message-guard rejections inside adapter reporting flow', async () => {
     const loggerEvents: string[] = [];
+    const errorLogged = createDeferred<void>();
     const unhandledRejections: unknown[] = [];
     const onUnhandledRejection = (reason: unknown) => {
       unhandledRejections.push(reason);
@@ -1284,6 +1426,9 @@ describe('@fluojs/socket.io', () => {
 
     const errorLog = vi.spyOn(console, 'error').mockImplementation((message: unknown, error?: unknown) => {
       loggerEvents.push(`${String(message)}:${error instanceof Error ? error.message : 'none'}`);
+      if (stripAnsi(String(message)).includes('[SocketIoLifecycleService] Socket.IO message guard for event ping on socket')) {
+        errorLogged.resolve();
+      }
     });
     const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
     const state = await app.container.resolve<GatewayState>(GatewayState);
@@ -1307,14 +1452,13 @@ describe('@fluojs/socket.io', () => {
       expect(rejectedAck).toEqual({ data: { code: 'AUTH_REQUIRED' }, error: 'Forbidden event.' });
       expect(state.messages).toEqual([]);
       expect(unhandledRejections).toEqual([]);
-      await waitForExpectation(() => {
-        expect(
-          loggerEvents.some((event) =>
-            stripAnsi(event).includes('[SocketIoLifecycleService] Socket.IO message guard for event ping on socket'),
-          ),
-        ).toBe(true);
-        expect(loggerEvents.some((event) => event.includes('Forbidden event.'))).toBe(true);
-      });
+      await errorLogged.promise;
+      expect(
+        loggerEvents.some((event) =>
+          stripAnsi(event).includes('[SocketIoLifecycleService] Socket.IO message guard for event ping on socket'),
+        ),
+      ).toBe(true);
+      expect(loggerEvents.some((event) => event.includes('Forbidden event.'))).toBe(true);
     } finally {
       errorLog.mockRestore();
       process.off('unhandledRejection', onUnhandledRejection);
@@ -1439,6 +1583,8 @@ describe('@fluojs/socket.io', () => {
 
   for (const scenario of supportedSocketIoAdapterScenarios) {
     it(`boots a real ${scenario.name} app and handles connect, message, room broadcast, and disconnect`, async () => {
+    const disconnectHandled = createDeferred<void>();
+
     class GatewayState {
       connectCount = 0;
       disconnectCount = 0;
@@ -1472,6 +1618,7 @@ describe('@fluojs/socket.io', () => {
       onDisconnect(_socket: Socket, reason: string) {
         this.state.disconnectCount += 1;
         this.state.disconnectReason = reason;
+        disconnectHandled.resolve();
       }
     }
 
@@ -1516,10 +1663,9 @@ describe('@fluojs/socket.io', () => {
 
         expect(await disconnected).toBe('io client disconnect');
 
-        await waitForExpectation(() => {
-          expect(state.disconnectCount).toBe(1);
-          expect(state.disconnectReason).toBe('client namespace disconnect');
-        });
+        await disconnectHandled.promise;
+        expect(state.disconnectCount).toBe(1);
+        expect(state.disconnectReason).toBe('client namespace disconnect');
       } finally {
         socket?.close();
         await app.close();
@@ -1565,6 +1711,7 @@ describe('@fluojs/socket.io', () => {
 
   it('buffers messages and disconnects until async connect handlers complete', async () => {
     const connected = createDeferred<void>();
+    const disconnectHandled = createDeferred<void>();
 
     class GatewayState {
       disconnects = 0;
@@ -1589,6 +1736,7 @@ describe('@fluojs/socket.io', () => {
       @OnDisconnect()
       onDisconnect() {
         this.state.disconnects += 1;
+        disconnectHandled.resolve();
       }
     }
 
@@ -1619,10 +1767,9 @@ describe('@fluojs/socket.io', () => {
       await disconnected;
 
       connected.resolve();
-      await waitForExpectation(() => {
-        expect(state.messages).toEqual(['early']);
-        expect(state.disconnects).toBe(1);
-      });
+      await disconnectHandled.promise;
+      expect(state.messages).toEqual(['early']);
+      expect(state.disconnects).toBe(1);
 
     } finally {
       socket?.close();
@@ -1633,6 +1780,7 @@ describe('@fluojs/socket.io', () => {
 
   it('runs message guards for buffered pre-connect events before replaying handlers', async () => {
     const connected = createDeferred<void>();
+    const messageHandled = createDeferred<void>();
 
     class GatewayState {
       messages: unknown[] = [];
@@ -1651,6 +1799,7 @@ describe('@fluojs/socket.io', () => {
       @OnMessage('ping')
       onPing(payload: unknown) {
         this.state.messages.push(payload);
+        messageHandled.resolve();
       }
     }
 
@@ -1691,9 +1840,8 @@ describe('@fluojs/socket.io', () => {
       activeSocket.emit('ping', 'allowed');
 
       connected.resolve();
-      await waitForExpectation(() => {
-        expect(state.messages).toEqual(['allowed']);
-      });
+      await messageHandled.promise;
+      expect(state.messages).toEqual(['allowed']);
 
       expect(await rejectedAck).toEqual({ data: { code: 'BUFFERED_REJECTED' }, error: 'Buffered event rejected.' });
     } finally {
@@ -1703,7 +1851,7 @@ describe('@fluojs/socket.io', () => {
     }
   });
 
-  it('drops oldest pre-connect socket.io messages once the pending buffer limit is reached', () => {
+  it('drops oldest pre-connect socket.io messages by default once the pending buffer limit is reached', () => {
     const loggerEvents: string[] = [];
     const service = new SocketIoLifecycleService(
       {} as never,
@@ -1718,7 +1866,6 @@ describe('@fluojs/socket.io', () => {
       {
         buffer: {
           maxPendingMessagesPerSocket: 2,
-          overflowPolicy: 'drop-oldest',
         },
         transports: ['websocket'],
       },
@@ -1753,7 +1900,7 @@ describe('@fluojs/socket.io', () => {
     expect(loggerEvents.some((event) => event.includes('dropped the oldest pending message'))).toBe(true);
   });
 
-  it('removes errored sockets from the registry and logs the error', () => {
+  it('keeps recoverable errored sockets in the registry and logs the error', () => {
     const loggerEvents: string[] = [];
     const service = new SocketIoLifecycleService(
       {} as never,
@@ -1798,7 +1945,7 @@ describe('@fluojs/socket.io', () => {
 
     listeners.error?.(new Error('socket exploded'));
 
-    expect(socketRegistry.has(socket.id)).toBe(false);
+    expect(socketRegistry.has(socket.id)).toBe(true);
     expect(loggerEvents).toContain('error:SocketIoLifecycleService:Socket.IO gateway socket emitted an error.:socket exploded');
   });
 

@@ -39,14 +39,20 @@ describe('SocketIoLifecycleService shutdown state retention', () => {
         throw new Error('force disconnect failed');
       },
     };
+    const retainedSocket = { id: 'socket-1' };
+    const retainedAttachment = { path: '/chat' };
 
     Reflect.set(service, 'io', io);
+    Reflect.set(service, 'attachments', [retainedAttachment]);
+    (Reflect.get(service, 'socketRegistry') as Map<string, unknown>).set('socket-1', retainedSocket);
 
     const closePromise = service.onApplicationShutdown();
     await vi.advanceTimersByTimeAsync(25);
     await closePromise;
 
     expect(Reflect.get(service, 'io')).toBe(io);
+    expect(Reflect.get(service, 'attachments')).toEqual([retainedAttachment]);
+    expect(Reflect.get(service, 'socketRegistry')).toEqual(new Map([['socket-1', retainedSocket]]));
     expect(loggerEvents).toEqual([
       'Failed to close Socket.IO server within 25ms; retaining managed Socket.IO state for shutdown retry.',
     ]);
@@ -82,14 +88,18 @@ describe('SocketIoLifecycleService shutdown state retention', () => {
         }
       },
     };
+    const retainedSocket = { id: 'socket-1' };
 
     Reflect.set(service, 'io', io);
+    Reflect.set(service, 'attachments', [{ path: '/chat' }]);
+    (Reflect.get(service, 'socketRegistry') as Map<string, unknown>).set('socket-1', retainedSocket);
 
     const firstClose = service.onApplicationShutdown();
     await vi.advanceTimersByTimeAsync(25);
     await firstClose;
 
     expect(Reflect.get(service, 'io')).toBe(io);
+    expect(Reflect.get(service, 'socketRegistry')).toEqual(new Map([['socket-1', retainedSocket]]));
 
     const secondClose = service.onApplicationShutdown();
     expect(closeCallbacks).toHaveLength(2);
@@ -102,6 +112,8 @@ describe('SocketIoLifecycleService shutdown state retention', () => {
     await secondClose;
 
     expect(Reflect.get(service, 'io')).toBeUndefined();
+    expect(Reflect.get(service, 'attachments')).toEqual([]);
+    expect(Reflect.get(service, 'socketRegistry')).toEqual(new Map());
     expect(loggerEvents).toEqual([
       'Failed to close Socket.IO server within 25ms; retaining managed Socket.IO state for shutdown retry.',
     ]);
