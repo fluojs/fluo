@@ -102,7 +102,7 @@ export interface FrameworkResponseStream {
 /** Serializer used during response content negotiation. */
 export interface ResponseFormatter {
   readonly mediaType: string;
-  format(body: unknown): string | Buffer;
+  format(body: unknown): string | Uint8Array;
 }
 
 /** Response negotiation settings applied to one route or dispatcher instance. */
