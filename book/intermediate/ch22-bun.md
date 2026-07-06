@@ -69,6 +69,8 @@ async function bootstrap() {
 bootstrap();
 ```
 
+For a terminal-style entrypoint, `runBunApplication(...)` combines bootstrap, `listen()`, startup logging, and optional `SIGINT`/`SIGTERM` wiring. Signal-driven shutdown reports timeout or close failures through the application logger and `process.exitCode`; the surrounding Bun host still owns final process termination.
+
 ## 22.3 Native WebSockets
 
 Bun provides a WebSocket implementation built into the runtime. When the Bun adapter is active, fluo's WebSocket module provides runtime-specific bindings so it can use this native path.
@@ -233,6 +235,6 @@ Bun provides high compatibility with Node.js, but differences can appear around 
 
 1. **Top-Level Await**: Bun supports this natively, but when mixing it with old CommonJS modules, you must verify initialization order.
 2. **Buffer vs Uint8Array**: Bun prefers `Uint8Array` for performance. It supports `Buffer` for compatibility, but using the Web-standard `Uint8Array` where possible can give fluo handlers better performance.
-3. **Signal Handling**: Bun's `process.on('SIGINT', ...)` works, but make sure shutdown handlers can finish asynchronous cleanup.
+3. **Signal Handling**: Bun's signal APIs work, but prefer `runBunApplication(...)` when you want fluo-managed `SIGINT`/`SIGTERM` listener cleanup and bounded shutdown reporting. If you host `createBunFetchHandler(...)` in your own `Bun.serve(...)`, that host owns shutdown and signal wiring.
 
 Checking these differences in advance makes a Bun deployment a stable operational option rather than just a performance experiment.
