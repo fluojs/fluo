@@ -312,6 +312,73 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
     await app.close();
   });
 
+  it('forwards @Transaction() options to the outer Prisma transaction boundary', async () => {
+    const optionCalls: Array<{ isolationLevel: 'Serializable' } | undefined> = [];
+    const transactionClient = {
+      user: {
+        async create(input: { data: { email: string } }) {
+          return { email: input.data.email, id: 'tx-user' };
+        },
+      },
+    };
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(
+        callback: (value: typeof transactionClient) => Promise<T>,
+        options?: { isolationLevel: 'Serializable' },
+      ): Promise<T> {
+        optionCalls.push(options);
+        return callback(transactionClient);
+      },
+      user: {
+        async create(input: { data: { email: string } }) {
+          return { email: input.data.email, id: 'root-user' };
+        },
+      },
+    };
+
+    @Inject(PrismaService)
+    class UserRepository {
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client, typeof transactionClient>) {}
+
+      async create(email: string) {
+        return this.prisma.user.create({ data: { email } });
+      }
+    }
+
+    @Inject(UserRepository)
+    class UserService {
+      constructor(private readonly repo: UserRepository) {}
+
+      @Transaction({ isolationLevel: 'Serializable' })
+      async create(email: string) {
+        return this.repo.create(email);
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot({ client })],
+      providers: [UserRepository, UserService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const service = await app.container.resolve(UserService);
+
+      await expect(service.create('ada@example.com')).resolves.toEqual({
+        email: 'ada@example.com',
+        id: 'tx-user',
+      });
+      expect(optionCalls).toEqual([{ isolationLevel: 'Serializable' }]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('ignores unbranded transaction-like persistence facades during default target resolution', async () => {
     const events: string[] = [];
     const transactionClient = {

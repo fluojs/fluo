@@ -239,15 +239,18 @@ describe('@fluojs/prisma', () => {
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const probe = await app.container.resolve(MultiClientProbe);
 
-    expect(probe.users).not.toBe(probe.analytics);
-    expect(await app.container.resolve(getPrismaClientToken('users'))).toBe(usersClient);
-    expect(await app.container.resolve(getPrismaClientToken('analytics'))).toBe(analyticsClient);
-    expect(await app.container.resolve(getPrismaOptionsToken('users'))).toEqual({ strictTransactions: false });
-    expect(await app.container.resolve(getPrismaOptionsToken('analytics'))).toEqual({ strictTransactions: false });
+    try {
+      const probe = await app.container.resolve(MultiClientProbe);
 
-    await app.close();
+      expect(probe.users).not.toBe(probe.analytics);
+      expect(await app.container.resolve(getPrismaClientToken('users'))).toBe(usersClient);
+      expect(await app.container.resolve(getPrismaClientToken('analytics'))).toBe(analyticsClient);
+      expect(await app.container.resolve(getPrismaOptionsToken('users'))).toEqual({ strictTransactions: false });
+      expect(await app.container.resolve(getPrismaOptionsToken('analytics'))).toEqual({ strictTransactions: false });
+    } finally {
+      await app.close();
+    }
   });
 
   it('normalizes Prisma registration names before creating public tokens', async () => {
@@ -264,10 +267,12 @@ describe('@fluojs/prisma', () => {
 
     const app = await bootstrapApplication({ rootModule: AppModule });
 
-    expect(await app.container.resolve(getPrismaClientToken('users'))).toBe(client);
-    expect(await app.container.resolve(getPrismaOptionsToken(' users '))).toEqual({ strictTransactions: false });
-
-    await app.close();
+    try {
+      expect(await app.container.resolve(getPrismaClientToken('users'))).toBe(client);
+      expect(await app.container.resolve(getPrismaOptionsToken(' users '))).toEqual({ strictTransactions: false });
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects blank names and missing Prisma clients at registration', () => {
@@ -314,9 +319,11 @@ describe('@fluojs/prisma', () => {
 
     const app = await bootstrapApplication({ rootModule: AppModule });
 
-    expect(events).toEqual(['users:connect', 'analytics:connect']);
-
-    await app.close();
+    try {
+      expect(events).toEqual(['users:connect', 'analytics:connect']);
+    } finally {
+      await app.close();
+    }
 
     expect(events.slice(0, 2)).toEqual(['users:connect', 'analytics:connect']);
     expect(events.slice(2).sort()).toEqual(['analytics:disconnect', 'users:disconnect']);
@@ -376,20 +383,59 @@ describe('@fluojs/prisma', () => {
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const transactions = await app.container.resolve(MultiClientTransactions);
-    const [usersCurrent, analyticsCurrent] = await transactions.run();
 
-    expect(usersCurrent).toBe(usersTransactionClient);
-    expect(analyticsCurrent).toBe(analyticsTransactionClient);
-    expect(usersCurrent).not.toBe(analyticsCurrent);
-    expect(events).toEqual([
-      'users:transaction:start',
-      'analytics:transaction:start',
-      'users:transaction:end',
-      'analytics:transaction:end',
-    ]);
+    try {
+      const transactions = await app.container.resolve(MultiClientTransactions);
+      const [usersCurrent, analyticsCurrent] = await transactions.run();
 
-    await app.close();
+      expect(usersCurrent).toBe(usersTransactionClient);
+      expect(analyticsCurrent).toBe(analyticsTransactionClient);
+      expect(usersCurrent).not.toBe(analyticsCurrent);
+      expect(events).toEqual([
+        'users:transaction:start',
+        'analytics:transaction:start',
+        'users:transaction:end',
+        'analytics:transaction:end',
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('resolves AsyncLocalStorage through process.getBuiltinModule when globalThis does not expose it', async () => {
+    const host = globalThis as typeof globalThis & { AsyncLocalStorage?: unknown };
+    const originalAsyncLocalStorage = host.AsyncLocalStorage;
+    const originalGetBuiltinModule = process.getBuiltinModule.bind(process);
+    const getBuiltinModuleSpy = vi.spyOn(process, 'getBuiltinModule').mockImplementation(((id: string) => {
+      return originalGetBuiltinModule(id as never);
+    }) as typeof process.getBuiltinModule);
+    const transactionClient = { kind: 'transaction' as const };
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        return callback(transactionClient);
+      },
+    };
+
+    host.AsyncLocalStorage = undefined;
+
+    try {
+      const prisma = new PrismaService<typeof client, typeof transactionClient>(client);
+      await prisma.onModuleInit();
+
+      await expect(prisma.transaction(async () => prisma.current())).resolves.toBe(transactionClient);
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ transactionContext: 'als' });
+      expect(getBuiltinModuleSpy).toHaveBeenCalledWith('node:async_hooks');
+    } finally {
+      if (originalAsyncLocalStorage === undefined) {
+        delete host.AsyncLocalStorage;
+      } else {
+        host.AsyncLocalStorage = originalAsyncLocalStorage;
+      }
+
+      getBuiltinModuleSpy.mockRestore();
+    }
   });
 
   it('rejects transaction boundaries instead of using a synchronous context fallback when ALS is unavailable', async () => {
