@@ -1,4 +1,4 @@
-import { Inject, type Constructor, type Token } from '@fluojs/core';
+import { type Constructor, Inject, type Token } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
 import { NOTIFICATION_CHANNELS, NotificationsModule, NotificationsService } from '@fluojs/notifications';
@@ -1657,6 +1657,89 @@ describe('SlackModule', () => {
     expect(verify).toHaveBeenCalledOnce();
   });
 
+  it('skips bootstrap verification by default and when explicitly disabled', async () => {
+    const defaultTransport = new DelayedLifecycleTransport();
+    const disabledTransport = new DelayedLifecycleTransport();
+    const defaultContainer = new Container();
+    const disabledContainer = new Container();
+
+    defaultContainer.register(
+      ...moduleProviders(
+        SlackModule.forRoot({
+          defaultChannel: '#default',
+          transport: {
+            create: async () => defaultTransport,
+            ownsResources: true,
+          },
+        }),
+      ),
+    );
+    disabledContainer.register(
+      ...moduleProviders(
+        SlackModule.forRoot({
+          defaultChannel: '#disabled',
+          transport: {
+            create: async () => disabledTransport,
+            ownsResources: true,
+          },
+          verifyOnModuleInit: false,
+        }),
+      ),
+    );
+
+    const defaultService = await initializeSlackService(defaultContainer);
+    const disabledService = await initializeSlackService(disabledContainer);
+
+    await expect(defaultService.send({ text: 'Default verification flag' })).resolves.toMatchObject({
+      channel: '#default',
+      ok: true,
+    });
+    await expect(disabledService.send({ text: 'Explicitly disabled verification' })).resolves.toMatchObject({
+      channel: '#disabled',
+      ok: true,
+    });
+    expect(defaultTransport.verifyCalls).toBe(0);
+    expect(disabledTransport.verifyCalls).toBe(0);
+    expect(defaultService.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'ready', verifiedOnModuleInit: false },
+    });
+    expect(disabledService.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'ready', verifiedOnModuleInit: false },
+    });
+  });
+
+  it('forwards live AbortSignal objects to custom transports', async () => {
+    const controller = new AbortController();
+    let observedSignal: AbortSignal | undefined;
+    const transport: SlackTransport = {
+      async send(message, context) {
+        observedSignal = context.signal;
+
+        return {
+          channel: message.channel,
+          ok: true,
+          response: 'ok',
+          statusCode: 200,
+          warnings: [],
+        };
+      },
+    };
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await initializeSlackService(container);
+
+    await expect(service.send({ text: 'Signal forwarding' }, { signal: controller.signal })).resolves.toMatchObject({
+      channel: '#ops',
+      ok: true,
+    });
+    expect(observedSignal).toBe(controller.signal);
+  });
+
   it('accepts custom provider-backed transports after bootstrap without verification', async () => {
     const transport = new PassiveTransport();
     const container = new Container();
@@ -1901,6 +1984,96 @@ describe('SlackModule', () => {
     expect(transport.verifyCalls).toBe(1);
     expect(transport.closeCalls).toBe(1);
     expect(transport.sent).toEqual([]);
+  });
+
+  it('serializes init-failure cleanup with app shutdown so owned transport closes once', async () => {
+    let rejectVerify = (_reason: Error): void => {
+      throw new Error('Verification reject callback was not initialized.');
+    };
+    let resolveClose = (): void => {
+      throw new Error('Close resolver was not initialized.');
+    };
+    let resolveCloseStarted = (): void => {
+      throw new Error('Close-start resolver was not initialized.');
+    };
+    const verificationError = new Error('slack auth failed while shutdown starts');
+    const verifyDelay = new Promise<void>((_resolve, reject) => {
+      rejectVerify = reject;
+    });
+    const closeDelay = new Promise<void>((resolve) => {
+      resolveClose = resolve;
+    });
+    const closeStarted = new Promise<void>((resolve) => {
+      resolveCloseStarted = resolve;
+    });
+    const transport = new DelayedLifecycleTransport(verifyDelay);
+    const close = vi.spyOn(transport, 'close').mockImplementation(async () => {
+      transport.closeCalls += 1;
+      resolveCloseStarted();
+      await closeDelay;
+    });
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport: {
+        create: async () => transport,
+        ownsResources: true,
+      },
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+    const bootstrap = service.onModuleInit();
+    rejectVerify(verificationError);
+    await closeStarted;
+    const shutdown = service.onApplicationShutdown();
+
+    resolveClose();
+    await expect(bootstrap).rejects.toThrowError(
+      new SlackLifecycleError('Slack transport failed to initialize.', { cause: verificationError }),
+    );
+    await shutdown;
+
+    expect(close).toHaveBeenCalledOnce();
+    expect(transport.closeCalls).toBe(1);
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'stopped' },
+      readiness: { status: 'not-ready' },
+    });
+  });
+
+  it('cleans up rejected factory create attempts without closing or recreating transports', async () => {
+    const createError = new Error('slack transport factory unavailable');
+    const create = vi.fn(async (): Promise<SlackTransport> => {
+      throw createError;
+    });
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      transport: {
+        create,
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+
+    await expect(service.onModuleInit()).rejects.toThrowError(
+      new SlackLifecycleError('Slack transport failed to initialize.', { cause: createError }),
+    );
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'failed' },
+      readiness: { status: 'not-ready' },
+    });
+
+    await service.onApplicationShutdown();
+    await service.onApplicationShutdown();
+
+    expect(create).toHaveBeenCalledOnce();
+    await expect(service.send({ text: 'After rejected create' })).rejects.toThrowError(
+      new SlackLifecycleError('Slack delivery cannot start while the service lifecycle is stopped.'),
+    );
   });
 
   it('checks notification lifecycle before renderer or validation errors after shutdown', async () => {

@@ -121,14 +121,12 @@ export interface SlackFetchResponse {
 }
 
 /** Minimal fetch-compatible function signature used by the built-in webhook transport helper. */
-export interface SlackFetchLike {
-  (input: string, init?: {
+export type SlackFetchLike = (input: string, init?: {
     body?: string;
     headers?: Readonly<Record<string, string>>;
     method?: string;
     signal?: AbortSignal;
-  }): MaybePromise<SlackFetchResponse>;
-}
+  }) => MaybePromise<SlackFetchResponse>;
 
 /** Options accepted by {@link createSlackWebhookTransport}. */
 export interface SlackWebhookTransportOptions {
@@ -267,6 +265,7 @@ export interface Slack {
    * @param message Caller-supplied Slack message with text and/or block content.
    * @param options Optional abort signal propagated to the transport.
    * @returns A normalized delivery receipt describing the transport response.
+   * @throws {SlackMessageValidationError} When the resolved message has no Slack-visible `text`, `blocks`, or `attachments`.
    * @throws {SlackLifecycleError} When delivery is requested before readiness, after initialization failure, or during shutdown.
    */
   send(message: SlackMessage, options?: SlackSendOptions): Promise<SlackSendResult>;
@@ -287,6 +286,7 @@ export interface Slack {
    * @param notification Shared notification envelope interpreted by the Slack package.
    * @param options Optional abort signal propagated to rendering and transport work.
    * @returns A normalized delivery receipt for the resulting Slack message.
+   * @throws {SlackMessageValidationError} When the notification resolves multiple Slack recipients or no Slack-visible content.
    * @throws {SlackLifecycleError} When delivery is requested before readiness, after initialization failure, or during shutdown.
    */
   sendNotification(

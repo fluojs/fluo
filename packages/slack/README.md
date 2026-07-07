@@ -83,11 +83,11 @@ export class DeployNotifier {
 
 `SlackModule.forRoot(...)` and `SlackModule.forRootAsync(...)` return a global module by default. The module exports `SlackService`, `SlackChannel`, `SLACK`, and `SLACK_CHANNEL`; pass `global: false` only when migrated code needs those providers to remain visible only to modules that explicitly import the returned module. The option is `global?: boolean`, not NestJS `isGlobal`.
 
-The package-level registration surface is intentionally singleton-oriented. `SLACK` and `SLACK_CHANNEL` are compatibility tokens for the one configured Slack service and notifications channel; `@fluojs/slack` does not expose `forFeature(...)`, named registration, named client token factories, or per-client custom token surfaces. Applications that need multiple Slack clients should compose their own modules/providers around distinct `SlackTransport` instances or expose app-owned facades, instead of assuming package-level named multi-client registration.
+The package-level registration surface is intentionally singleton-oriented. `SLACK` and `SLACK_CHANNEL` are compatibility tokens for the one configured Slack service and notifications channel, and `createSlackProviders(...)` mirrors that same singleton wiring for manual module composition. Applications that need multiple Slack clients should compose their own modules/providers around distinct `SlackTransport` instances or expose app-owned facades instead of expecting a package-level multi-client registry.
 
 ### Manual provider composition with `createSlackProviders`
 
-`createSlackProviders(...)` is the supported manual-composition helper when applications need the same provider normalization outside `SlackModule.forRoot(...)`.
+`createSlackProviders(...)` is the supported manual-composition helper when applications need the same singleton provider normalization outside `SlackModule.forRoot(...)`.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -140,6 +140,7 @@ Behavioral contract notes:
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
 - Direct and notification-backed delivery require the lifecycle to be `ready`; calls before `onModuleInit()` finishes, after initialization failure, or during shutdown fail with `SlackLifecycleError` instead of lazily creating or reusing transports.
 - Shutdown awaits any in-flight factory-owned transport creation and closes it before completion.
+- Factory-owned transport cleanup is serialized across bootstrap-failure cleanup and application shutdown, so the same owned transport is closed at most once even when those paths race.
 - `SlackService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
@@ -205,7 +206,7 @@ Behavioral contract notes:
 
 - `verifyOnModuleInit` is optional and defaults to `false`.
 - Verification is capability-based: only transports that expose `verify()` are called, so webhook-only or app-owned transports do not have to add a no-op verifier.
-- If `transport.verify()` rejects, bootstrap fails with `SlackLifecycleError` wrapping the initialization failure, the service lifecycle moves to `failed`, readiness/status snapshots report the provider as not ready, and factory-owned transports that were already resolved are closed before the error is rethrown.
+- If `transport.verify()` rejects, bootstrap fails with `SlackLifecycleError` wrapping the initialization failure, the service lifecycle moves to `failed`, readiness/status snapshots report the provider as not ready, and factory-owned transports that were already resolved are closed before the error is rethrown. If shutdown starts while that cleanup is still in progress, both callers await the same close work.
 - `SlackService.createPlatformStatusSnapshot()` includes `verifiedOnModuleInit` so health/readiness tooling can tell whether bootstrap verification was requested.
 
 ### Integration with `@fluojs/notifications`
@@ -331,7 +332,7 @@ The Slack package intentionally does **not**:
 - read credentials or webhook URLs from `process.env`
 - ship a Node-only Slack SDK inside the shared root package boundary
 - force one provider strategy beyond the webhook-first helper and exported transport contract
-- provide `forFeature(...)`, named Slack client registration, named client token factories, or per-client custom token surfaces
+- provide a package-level multi-client registry beyond the singleton module/helper surface
 - translate one notification into multi-channel fan-out inside a single dispatch call
 
 These limitations are part of the package contract so runtime choice, provider capability, and rollout strategy stay explicit at the application boundary.
@@ -389,8 +390,8 @@ These limitations are part of the package contract so runtime choice, provider c
 - `SlackLifecycleState`
 - `SlackStatusAdapterInput`
 - `SlackConfigurationError`
-- `SlackLifecycleError`: thrown by lifecycle-gated delivery before readiness, after initialization failure, or during shutdown, plus transport initialization and owned-resource shutdown failures. Catch this error when sends can race with bootstrap or application teardown.
-- `SlackMessageValidationError`
+- `SlackLifecycleError`: thrown by lifecycle-gated delivery before readiness, after initialization failure, or during shutdown, plus transport factory, verification, and owned-resource cleanup failures. Catch this error when sends can race with bootstrap or application teardown.
+- `SlackMessageValidationError`: thrown when a direct message has no Slack-visible `text`, `blocks`, or `attachments`, or when one notification dispatch resolves multiple Slack recipients and should be split with `sendMany(...)`.
 - `SlackTransportError`
 
 ## Related Packages
