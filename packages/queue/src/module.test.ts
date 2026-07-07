@@ -274,8 +274,14 @@ class MockRedisClient {
   failConnectOnDuplicate: number | undefined;
 
   readonly deadLetters = new Map<string, string[]>();
+  readonly disconnectCalls: string[] = [];
   readonly duplicateOptions: MockRedisDuplicateOptions[] = [];
   readonly duplicates: MockRedisConnection[] = [];
+  readonly quitCalls: string[] = [];
+
+  disconnect(): void {
+    this.disconnectCalls.push('shared');
+  }
 
   duplicate(options: MockRedisDuplicateOptions = {}): MockRedisConnection {
     this.duplicateSequence += 1;
@@ -339,6 +345,11 @@ class MockRedisClient {
     }
 
     this.deadLetters.set(key, entries.slice(startIndex, stopIndex + 1));
+    return 'OK';
+  }
+
+  async quit(): Promise<'OK'> {
+    this.quitCalls.push('shared');
     return 'OK';
   }
 }
@@ -567,6 +578,12 @@ describe('@fluojs/queue', () => {
       handled: string[] = [];
     }
 
+    class WorkerStoreModule {}
+    defineModule(WorkerStoreModule, {
+      exports: [WorkerStore],
+      providers: [WorkerStore],
+    });
+
     @Inject(WorkerStore)
     @QueueWorker(NamedJob)
     class NamedWorker {
@@ -665,6 +682,121 @@ describe('@fluojs/queue', () => {
     await app.close();
 
     expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+    expect(redis.quitCalls).toEqual([]);
+    expect(redis.disconnectCalls).toEqual([]);
+  });
+
+  it('keeps non-global queue registrations from discovering workers owned by another scoped queue module', async () => {
+    class FirstScopedJob {
+      constructor(public readonly id: string) {}
+    }
+
+    class SecondScopedJob {
+      constructor(public readonly id: string) {}
+    }
+
+    class WorkerStore {
+      handled: string[] = [];
+    }
+
+    class ScopedWorkerStoreModule {}
+    defineModule(ScopedWorkerStoreModule, {
+      exports: [WorkerStore],
+      providers: [WorkerStore],
+    });
+
+    @Inject(WorkerStore)
+    @QueueWorker(FirstScopedJob)
+    class FirstScopedWorker {
+      constructor(private readonly store: WorkerStore) {}
+
+      async handle(job: FirstScopedJob): Promise<void> {
+        this.store.handled.push(`first:${job.id}`);
+      }
+    }
+
+    @Inject(WorkerStore)
+    @QueueWorker(SecondScopedJob)
+    class SecondScopedWorker {
+      constructor(private readonly store: WorkerStore) {}
+
+      async handle(job: SecondScopedJob): Promise<void> {
+        this.store.handled.push(`second:${job.id}`);
+      }
+    }
+
+    class FirstQueueFeatureModule {}
+    defineModule(FirstQueueFeatureModule, {
+      imports: [QueueModule.forRoot({ global: false }), ScopedWorkerStoreModule],
+      providers: [FirstScopedWorker],
+    });
+
+    class SecondQueueFeatureModule {}
+    defineModule(SecondQueueFeatureModule, {
+      imports: [QueueModule.forRoot({ global: false }), ScopedWorkerStoreModule],
+      providers: [SecondScopedWorker],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [FirstQueueFeatureModule, SecondQueueFeatureModule, ScopedWorkerStoreModule],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+      const service = await app.container.resolve(QueueLifecycleService);
+      const workerStore = await app.container.resolve(WorkerStore);
+      await waitForApplicationQueueWorkers(app);
+
+      await expect(queue.enqueue(new FirstScopedJob('1'))).rejects.toThrow(
+        'No @QueueWorker() registered for job type FirstScopedJob.',
+      );
+      await expect(queue.enqueue(new SecondScopedJob('2'))).resolves.toBe('1');
+      expect(workerStore.handled).toEqual(['second:2']);
+      expect(service.createPlatformStatusSnapshot().details).toMatchObject({
+        queuesReady: 1,
+        workersDiscovered: 1,
+        workersReady: 1,
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('requires scoped queue modules to import the Redis client provider explicitly', async () => {
+    class ScopedRedisJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(ScopedRedisJob)
+    class ScopedRedisWorker {
+      async handle(_job: ScopedRedisJob): Promise<void> {}
+    }
+
+    class RedisTestModule {}
+    defineModule(RedisTestModule, {
+      exports: [REDIS_CLIENT],
+      providers: [{ provide: REDIS_CLIENT, useValue: new MockRedisClient() }],
+    });
+
+    class QueueFeatureModule {}
+    defineModule(QueueFeatureModule, {
+      imports: [QueueModule.forRoot({ global: false })],
+      providers: [ScopedRedisWorker],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [RedisTestModule, QueueFeatureModule],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('cannot access token Symbol(fluo.redis.client)');
   });
 
   it('restricts non-global queue worker discovery to modules that can see the queue provider', async () => {
@@ -1164,6 +1296,7 @@ describe('@fluojs/queue', () => {
         global: true,
         workerShutdownTimeoutMs: 30_000,
       },
+      redis,
       container as never,
       [
         {
@@ -1435,6 +1568,7 @@ describe('@fluojs/queue', () => {
         global: true,
         workerShutdownTimeoutMs: 30_000,
       },
+      redis,
       container as never,
       [
         {
@@ -1569,6 +1703,7 @@ describe('@fluojs/queue', () => {
         global: true,
         workerShutdownTimeoutMs: 30_000,
       },
+      redis,
       container as never,
       [
         {
@@ -1643,6 +1778,7 @@ describe('@fluojs/queue', () => {
         global: true,
         workerShutdownTimeoutMs: 30_000,
       },
+      redis,
       container as never,
       [
         {

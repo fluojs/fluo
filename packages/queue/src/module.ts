@@ -1,10 +1,44 @@
 import type { Provider } from '@fluojs/di';
-import { defineModule, type ModuleType } from '@fluojs/runtime';
+import type { Container } from '@fluojs/di';
+import { getRedisClientToken } from '@fluojs/redis';
+import { defineModule, type ApplicationLogger, type CompiledModule, type ModuleType } from '@fluojs/runtime';
+import {
+  APPLICATION_LOGGER,
+  BOOTSTRAP_READY_SIGNAL,
+  COMPILED_MODULES,
+  RUNTIME_CONTAINER,
+} from '@fluojs/runtime/internal';
+import type { BootstrapReadySignal } from '@fluojs/runtime/internal';
 
 import { normalizePositiveInteger, normalizePositiveIntegerOrFalse, normalizeRateLimiter } from './helpers.js';
 import { QueueLifecycleService } from './service.js';
-import { QUEUE, QUEUE_OPTIONS } from './tokens.js';
+import { QUEUE, QUEUE_MODULE_CONTEXT, QUEUE_OPTIONS } from './tokens.js';
+import type { QueueModuleContext } from './tokens.js';
 import type { NormalizedQueueModuleOptions, QueueModuleOptions } from './types.js';
+
+interface QueueModuleRedisClient {
+  duplicate(options?: { maxRetriesPerRequest: null }): QueueModuleRedisConnection;
+  ltrim(key: string, start: number, stop: number): Promise<unknown>;
+  rpush(key: string, value: string): Promise<unknown>;
+}
+
+interface QueueModuleRedisConnection {
+  connect(): Promise<unknown>;
+  disconnect(): void;
+  quit(): Promise<unknown>;
+  maxRetriesPerRequest?: number | null;
+  status?: string;
+}
+
+type QueueLifecycleServiceFactoryDeps = [
+  NormalizedQueueModuleOptions,
+  QueueModuleRedisClient,
+  Container,
+  readonly CompiledModule[],
+  ApplicationLogger,
+  BootstrapReadySignal,
+  QueueModuleContext,
+];
 
 function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): NormalizedQueueModuleOptions {
   const defaultRateLimiter = normalizeRateLimiter(options.defaultRateLimiter);
@@ -26,13 +60,35 @@ function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): Normaliz
   };
 }
 
-function createQueueProviders(options: QueueModuleOptions = {}): Provider[] {
+function createQueueProviders(options: QueueModuleOptions = {}, moduleType: ModuleType): Provider[] {
+  const redisToken = getRedisClientToken(options.clientName);
+
   return [
     {
       provide: QUEUE_OPTIONS,
       useValue: normalizeQueueModuleOptions(options),
     },
-    QueueLifecycleService,
+    {
+      provide: QUEUE_MODULE_CONTEXT,
+      useValue: { moduleType } satisfies QueueModuleContext,
+    },
+    {
+      inject: [
+        QUEUE_OPTIONS,
+        redisToken,
+        RUNTIME_CONTAINER,
+        COMPILED_MODULES,
+        APPLICATION_LOGGER,
+        BOOTSTRAP_READY_SIGNAL,
+        QUEUE_MODULE_CONTEXT,
+      ],
+      provide: QueueLifecycleService,
+      useFactory: (...deps: unknown[]) => {
+        const typedDeps = deps as QueueLifecycleServiceFactoryDeps;
+
+        return new QueueLifecycleService(...typedDeps);
+      },
+    },
     {
       inject: [QueueLifecycleService],
       provide: QUEUE,
@@ -74,7 +130,7 @@ export class QueueModule {
     return defineModule(QueueModuleDefinition, {
       exports: [QueueLifecycleService, QUEUE],
       global: options.global ?? true,
-      providers: createQueueProviders(options),
+      providers: createQueueProviders(options, QueueModuleDefinition),
     });
   }
 }

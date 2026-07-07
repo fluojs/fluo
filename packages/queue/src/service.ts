@@ -1,21 +1,15 @@
-import { Inject } from '@fluojs/core';
 import { cloneWithFallback } from '@fluojs/core/internal';
 import type { Container } from '@fluojs/di';
-import { getRedisClientToken, getRedisComponentId } from '@fluojs/redis';
+import { getRedisComponentId } from '@fluojs/redis';
 import type {
   ApplicationLogger,
   CompiledModule,
+  ModuleType,
   OnApplicationBootstrap,
   OnApplicationShutdown,
   OnModuleDestroy,
 } from '@fluojs/runtime';
-import {
-  APPLICATION_LOGGER,
-  BOOTSTRAP_READY_SIGNAL,
-  COMPILED_MODULES,
-  RUNTIME_CONTAINER,
-  type BootstrapReadySignal,
-} from '@fluojs/runtime/internal';
+import { type BootstrapReadySignal } from '@fluojs/runtime/internal';
 import { Queue as BullQueue, Worker as BullWorker, type ConnectionOptions, type JobsOptions, type Job as BullJob } from 'bullmq';
 
 import { QueueDeadLetterManager, type QueueRedisDeadLetterClient } from './dead-letter-manager.js';
@@ -25,7 +19,8 @@ import {
   type QueueLifecycleState,
   type QueuePlatformStatusSnapshot,
 } from './status.js';
-import { QUEUE, QUEUE_OPTIONS } from './tokens.js';
+import { QUEUE } from './tokens.js';
+import type { QueueModuleContext } from './tokens.js';
 import { discoverQueueWorkerDescriptors } from './worker-discovery.js';
 import type {
   NormalizedQueueModuleOptions,
@@ -165,7 +160,6 @@ async function closeConnection(connection: QueueOwnedConnection): Promise<void> 
  * The service discovers `@QueueWorker()` providers during bootstrap, creates the
  * BullMQ queues/workers they require, and shuts them down with the application.
  */
-@Inject(QUEUE_OPTIONS, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, BOOTSTRAP_READY_SIGNAL)
 export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy {
   private readonly descriptorsByJobType = new Map<QueueJobType, QueueWorkerDescriptor>();
   private readonly queuesByJobName = new Map<string, QueueInstance>();
@@ -176,19 +170,22 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   private readonly runningWorkerJobNames = new Set<string>();
   private readonly failedWorkerJobNames = new Set<string>();
   private readonly workerStartFailures: WorkerStartFailure[] = [];
+  private readonly compiledModulesByType: ReadonlyMap<ModuleType, CompiledModule>;
   private lifecycleState: QueueLifecycleState = 'idle';
-  private redisClient: QueueRedisClient | undefined;
   private startPromise: Promise<void> | undefined;
   private shutdownPromise: Promise<void> | undefined;
   private startupFailureRollbackPromise: Promise<void> | undefined;
 
   constructor(
     private readonly options: NormalizedQueueModuleOptions,
+    private readonly redisClient: QueueRedisClient,
     private readonly runtimeContainer: Container,
     private readonly compiledModules: readonly CompiledModule[],
     private readonly logger: ApplicationLogger,
     private readonly bootstrapReadySignal: BootstrapReadySignal = IMMEDIATE_BOOTSTRAP_READY_SIGNAL,
+    private readonly moduleContext: QueueModuleContext = { moduleType: QueueLifecycleService },
   ) {
+    this.compiledModulesByType = new Map(this.compiledModules.map((compiledModule) => [compiledModule.type, compiledModule]));
     this.deadLetterManager = new QueueDeadLetterManager(this.options, this.logger, () => this.getRedisClient());
   }
 
@@ -285,8 +282,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   }
 
   private async startLifecycle(): Promise<void> {
-    const redis = await this.resolveRedisClient();
-    this.redisClient = redis;
+    const redis = this.resolveRedisClient();
     this.descriptorsByJobType.clear();
 
     for (const [jobType, descriptor] of discoverQueueWorkerDescriptors(
@@ -310,7 +306,36 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       return true;
     }
 
-    return compiledModule.accessibleTokens.has(QueueLifecycleService) || compiledModule.accessibleTokens.has(QUEUE);
+    return this.canReachQueueRegistration(compiledModule);
+  }
+
+  private canReachQueueRegistration(compiledModule: CompiledModule, visited = new Set<ModuleType>()): boolean {
+    if (visited.has(compiledModule.type)) {
+      return false;
+    }
+
+    visited.add(compiledModule.type);
+
+    for (const importedModuleType of compiledModule.definition.imports ?? []) {
+      if (importedModuleType === this.moduleContext.moduleType) {
+        return true;
+      }
+
+      const importedModule = this.compiledModulesByType.get(importedModuleType);
+      if (!importedModule || !this.exportsQueueRegistration(importedModule)) {
+        continue;
+      }
+
+      if (this.canReachQueueRegistration(importedModule, visited)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private exportsQueueRegistration(compiledModule: CompiledModule): boolean {
+    return compiledModule.exportedTokens.has(QueueLifecycleService) || compiledModule.exportedTokens.has(QUEUE);
   }
 
   private async handleStartupFailure(): Promise<void> {
@@ -319,31 +344,18 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     if (this.lifecycleState === 'starting') {
       this.lifecycleState = 'idle';
     }
-    this.redisClient = undefined;
     this.startPromise = undefined;
   }
 
-  private async resolveRedisClient(): Promise<QueueRedisClient> {
-    const redisToken = getRedisClientToken(this.options.clientName);
-
-    if (!this.runtimeContainer.has(redisToken)) {
-      throw new Error('@fluojs/queue requires a registered Redis client with duplicate(), rpush(), and ltrim() methods.');
-    }
-
-    const redisClient = await this.runtimeContainer.resolve(redisToken);
-
-    if (!hasQueueRedisClient(redisClient)) {
+  private resolveRedisClient(): QueueRedisClient {
+    if (!hasQueueRedisClient(this.redisClient)) {
       throw new Error('@fluojs/queue requires a Redis client with duplicate(), rpush(), and ltrim() methods.');
     }
 
-    return redisClient;
+    return this.redisClient;
   }
 
   private getRedisClient(): QueueRedisClient {
-    if (!this.redisClient) {
-      throw new Error('@fluojs/queue Redis client is not initialized.');
-    }
-
     return this.redisClient;
   }
 
@@ -572,7 +584,6 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       this.startupFailureRollbackPromise = (async () => {
         await this.closeInitializedResources();
         await this.deadLetterManager.drainPendingWrites();
-        this.redisClient = undefined;
       })()
         .catch((rollbackError: unknown) => {
           this.logger.error(
@@ -682,7 +693,6 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       await this.closeInitializedResources();
       await this.deadLetterManager.drainPendingWrites();
       this.lifecycleState = 'stopped';
-      this.redisClient = undefined;
       this.startPromise = undefined;
     })();
 
