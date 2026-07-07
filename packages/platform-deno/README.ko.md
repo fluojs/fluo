@@ -57,19 +57,32 @@ const app = await fluoFactory.create(AppModule, { adapter });
 
 await app.listen();
 
-const response = await adapter.handle(new Request('http://localhost:3000/health'));
+try {
+  const response = await adapter.handle(new Request('http://localhost:3000/health'));
+  console.log(await response.json());
+} finally {
+  await app.close();
+}
 ```
+
+### 직접 어댑터 생성
+애플리케이션 코드는 보통 `createDenoAdapter(options)`, `bootstrapDenoApplication(...)`, `runDenoApplication(...)`을 사용해 adapter setup 경계를 명확히 유지하는 편을 권장합니다. 커스텀 orchestration이나 테스트에서는 `new DenoHttpApplicationAdapter(options)`를 직접 사용할 수 있으며, constructor는 factory와 같은 public `DenoAdapterOptions`를 받아 기본 port를 적용하고, portable `host` alias보다 `hostname`을 우선하며, 잘못된 `port` 또는 `maxBodySize` 값은 setup 시점에 거절합니다.
 
 ### Opt-in Deno WebSocket 바인딩
 어댑터는 애플리케이션이 `@fluojs/websockets/deno` 바인딩을 import하고 설정한 뒤에 Deno의 네이티브 `Deno.upgradeWebSocket`을 지원합니다. 해당 바인딩이 없으면 websocket upgrade 요청은 암묵적으로 upgrade되지 않고 일반 HTTP dispatch 경로를 계속 따릅니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { WebSocketGateway } from '@fluojs/websockets';
-import { DenoWebSocketModule } from '@fluojs/websockets/deno';
+import { DenoWebSocketModule, OnMessage, WebSocketGateway } from '@fluojs/websockets/deno';
+import type { DenoServerWebSocket } from '@fluojs/websockets/deno';
 
 @WebSocketGateway({ path: '/ws' })
-export class MyGateway {}
+export class MyGateway {
+  @OnMessage('ping')
+  handlePing(_payload: unknown, socket: DenoServerWebSocket) {
+    socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));
+  }
+}
 
 @Module({
   imports: [DenoWebSocketModule.forRoot()],
@@ -99,17 +112,23 @@ Advanced option에는 test 또는 non-hosted runtime을 위한 injectable `serve
 
 ## Conformance 커버리지
 
-`packages/platform-deno/src/adapter.test.ts`는 문서화된 Deno 계약을 검증하는 package-local regression 대상입니다. 이 파일은 shared Web dispatch delegation, HTTPS startup forwarding, `Deno.serve(...)` bind target과 startup log에 대한 `host` alias 및 `hostname` 우선순위, 중복 `listen(...)` no-op dispatcher 보존, 기본 `SIGINT`/`SIGTERM` signal listener 등록, `shutdownSignals: false`, partial signal-registration failure 이후 listener rollback, websocket upgrade binding 및 no-binding HTTP fallback, websocket listen 전 bootstrap gating, global Deno serve/upgrade fallback seam, listen 전 `500` 처리, shutdown 중 `503` 처리, serve-signal abort 전 in-flight request drain, bounded 10초 close timeout을 검증합니다.
+`packages/platform-deno/src/adapter.test.ts`는 문서화된 Deno 계약을 검증하는 package-local regression 대상입니다. 이 파일은 shared Web dispatch delegation, `listen(dispatcher)` 이후 direct `adapter.handle(...)` success-path dispatch, 직접 constructor/factory option normalization, HTTPS startup forwarding, `Deno.serve(...)` bind target과 startup log에 대한 `host` alias 및 `hostname` 우선순위, 중복 `listen(...)` no-op dispatcher 보존, 기본 `SIGINT`/`SIGTERM` signal listener 등록, `shutdownSignals: false`, partial signal-registration failure 이후 listener rollback, websocket upgrade binding 및 no-binding HTTP fallback, websocket listen 전 bootstrap gating, global Deno serve/upgrade fallback seam, listen 전 `500` 처리, shutdown 중 `503` 처리, serve-signal abort 전 in-flight request drain, bounded 10초 close timeout을 검증합니다.
 
 공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Deno를 Bun 및 Cloudflare Workers와 함께 실행해 malformed cookie 보존, query decoding, JSON/text raw-body capture, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트의 README parity assertion은 이 edge-runtime 커버리지 문서가 한국어 mirror와 계속 동기화되도록 확인합니다.
 
 ## 공개 API 개요
 
-- `createDenoAdapter(options)`: Deno HTTP 어댑터를 위한 팩토리입니다.
+- `createDenoAdapter(options)`: Deno HTTP 어댑터를 위한 팩토리이며, 직접 생성과 같은 validation 및 normalization을 공유합니다.
 - `bootstrapDenoApplication(module, options)`: 커스텀 오케스트레이션을 위한 고급 부트스트랩입니다.
 - `runDenoApplication(module, options)`: Deno를 위한 권장 빠른 시작 헬퍼입니다.
-- `DenoHttpApplicationAdapter`: `handle(...)`, `getListenTarget()`, `getRealtimeCapability()`, `getServer()`, `configureWebSocketBinding(...)`를 제공하는 핵심 adapter 구현체입니다.
-- `handle(request)`: 수동 `Request` to `Response` 디스패처입니다.
+- `DenoHttpApplicationAdapter(options)`: 핵심 adapter 구현체입니다. Direct `new DenoHttpApplicationAdapter(options)`는 `createDenoAdapter(options)`와 같은 기본 port, `host` alias 처리, `hostname` 우선순위, 숫자 option validation을 적용합니다.
+- `listen(dispatcher)`: fluo HTTP dispatcher를 bind하고 `Deno.serve`를 시작합니다. 중복 호출은 원래 dispatcher를 보존하는 no-op입니다.
+- `close()`: 새 유입을 중단하고 active request를 최대 10초 drain한 뒤, shutdown이 끝나지 않으면 Deno serve signal을 abort합니다.
+- `handle(request)`: 수동 `Request` to `Response` 디스패처입니다. `listen(dispatcher)`가 runtime dispatcher를 bind한 뒤에는 성공 경로를 실행하고, bind 전에는 JSON `500`, shutdown 중에는 JSON `503`을 반환합니다.
+- `getListenTarget()`: Deno `hostname` 또는 portable `host` alias를 사용해 bind target과 public URL을 보고합니다.
+- `getRealtimeCapability()`: runtime integration을 위한 fetch-style Deno websocket upgrade capability를 보고합니다.
+- `getServer()`: adapter가 listen 중일 때 active `Deno.serve` controller를 반환합니다.
+- `configureWebSocketBinding(...)`: `listen(dispatcher)`가 server를 시작하기 전에 `@fluojs/websockets/deno` binding을 설치합니다.
 - `https: { cert, key }`: `Deno.serve`로 전달되고 보고되는 listen URL에 반영되는 HTTPS 시작 옵션입니다.
 - Option 및 seam type: `DenoServeOptions`, `DenoServeController`, `DenoServerWebSocket`, websocket binding interface, bootstrap/run option, listen-target helper.
 
