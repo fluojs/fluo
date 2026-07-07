@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createMemoryRateLimitStore, createRateLimitMiddleware } from './rate-limit.js';
 import type { MiddlewareContext } from '../types.js';
@@ -54,6 +54,10 @@ describe('createRateLimitMiddleware', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-17T00:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('returns 429 with Retry-After after the limit is exceeded', async () => {

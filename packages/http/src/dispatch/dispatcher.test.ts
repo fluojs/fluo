@@ -1116,6 +1116,63 @@ describe('dispatcher runtime', () => {
     expect(response.simpleJsonBody).toBeUndefined();
   });
 
+  it('short-circuits already-aborted signal requests before handler execution', async () => {
+    const controller = new AbortController();
+    const handler = vi.fn(() => ({ ok: true }));
+
+    controller.abort();
+
+    @Controller('/already-aborted-signal')
+    class AlreadyAbortedSignalController {
+      @Get('/')
+      getValue() {
+        return handler();
+      }
+    }
+
+    const root = new Container().register(AlreadyAbortedSignalController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: AlreadyAbortedSignalController }]),
+      rootContainer: root,
+    });
+    const request = createRequest('/already-aborted-signal');
+    request.signal = controller.signal;
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(request, response);
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(response.committed).toBe(false);
+    expect(response.simpleJsonBody).toBeUndefined();
+  });
+
+  it('short-circuits already-aborted probe requests before handler execution', async () => {
+    const handler = vi.fn(() => ({ ok: true }));
+
+    @Controller('/already-aborted-probe')
+    class AlreadyAbortedProbeController {
+      @Get('/')
+      getValue() {
+        return handler();
+      }
+    }
+
+    const root = new Container().register(AlreadyAbortedProbeController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: AlreadyAbortedProbeController }]),
+      rootContainer: root,
+    });
+    const request = createRequest('/already-aborted-probe');
+    request.isAborted = () => true;
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(request, response);
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(response.committed).toBe(false);
+    expect(response.simpleJsonBody).toBeUndefined();
+  });
+
   it('preserves adapter abort probes on cloned dispatch requests', async () => {
     let aborted = false;
 
