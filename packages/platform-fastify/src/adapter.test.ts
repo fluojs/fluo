@@ -845,20 +845,22 @@ describe('@fluojs/platform-fastify', () => {
       signal: abortController.signal,
     });
 
-    await expect(Promise.race([
-      observedMultipartRequest.promise,
-      new Promise<void>((_resolve, reject) => {
-        setTimeout(() => {
-          reject(new Error('Multipart request never reached Fastify preHandler hook.'));
-        }, 2_000);
-      }),
-    ])).resolves.toBeUndefined();
+    try {
+      await expect(Promise.race([
+        observedMultipartRequest.promise,
+        new Promise<void>((_resolve, reject) => {
+          setTimeout(() => {
+            reject(new Error('Multipart request never reached Fastify preHandler hook.'));
+          }, 2_000);
+        }),
+      ])).resolves.toBeUndefined();
 
-    abortController.abort();
-    await multipartRequest.catch(() => undefined);
-    expect(observedMultipartRawBodyStates).toEqual([false]);
-
-    await app.close();
+      expect(observedMultipartRawBodyStates).toEqual([false]);
+    } finally {
+      abortController.abort();
+      await multipartRequest.catch(() => undefined);
+      await app.close();
+    }
   });
 
   it('treats multipart content-type values case-insensitively before raw-body capture', async () => {
@@ -921,20 +923,22 @@ describe('@fluojs/platform-fastify', () => {
       signal: abortController.signal,
     });
 
-    await expect(Promise.race([
-      observedMultipartRequest.promise,
-      new Promise<void>((_resolve, reject) => {
-        setTimeout(() => {
-          reject(new Error('Mixed-case multipart request never reached Fastify preHandler hook.'));
-        }, 2_000);
-      }),
-    ])).resolves.toBeUndefined();
+    try {
+      await expect(Promise.race([
+        observedMultipartRequest.promise,
+        new Promise<void>((_resolve, reject) => {
+          setTimeout(() => {
+            reject(new Error('Mixed-case multipart request never reached Fastify preHandler hook.'));
+          }, 2_000);
+        }),
+      ])).resolves.toBeUndefined();
 
-    abortController.abort();
-    await multipartRequest.catch(() => undefined);
-    expect(observedMultipartRawBodyStates).toEqual([false]);
-
-    await app.close();
+      expect(observedMultipartRawBodyStates).toEqual([false]);
+    } finally {
+      abortController.abort();
+      await multipartRequest.catch(() => undefined);
+      await app.close();
+    }
   });
 
   it('supports SSE streaming', async () => {
@@ -1328,23 +1332,25 @@ describe('@fluojs/platform-fastify', () => {
 
     await app.listen();
 
-    const form = new FormData();
-    form.set('name', 'Ada');
-    form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
+    try {
+      const form = new FormData();
+      form.set('name', 'Ada');
+      form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/uploads`, {
-      body: form,
-      method: 'POST',
-    });
+      const response = await fetch(`http://127.0.0.1:${String(port)}/uploads`, {
+        body: form,
+        method: 'POST',
+      });
 
-    expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toEqual({
-      body: { name: 'Ada' },
-      fileCount: 1,
-      hasRawBody: false,
-    });
-
-    await app.close();
+      expect(response.status).toBe(201);
+      await expect(response.json()).resolves.toEqual({
+        body: { name: 'Ada' },
+        fileCount: 1,
+        hasRawBody: false,
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects multipart payloads once the cumulative body size exceeds multipart.maxTotalSize', async () => {
@@ -1376,23 +1382,73 @@ describe('@fluojs/platform-fastify', () => {
 
     await app.listen();
 
-    const form = new FormData();
-    form.set('name', 'Ada');
-    form.set('payload', new Blob(['1234567890'], { type: 'text/plain' }), 'payload.txt');
+    try {
+      const form = new FormData();
+      form.set('name', 'Ada');
+      form.set('payload', new Blob(['1234567890'], { type: 'text/plain' }), 'payload.txt');
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/uploads`, {
-      body: form,
-      method: 'POST',
+      const response = await fetch(`http://127.0.0.1:${String(port)}/uploads`, {
+        body: form,
+        method: 'POST',
+      });
+
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: 'PAYLOAD_TOO_LARGE',
+        },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('honors direct createFastifyAdapter multipart options', async () => {
+    @Controller('/uploads')
+    class UploadController {
+      @Post('/')
+      upload(_input: undefined, context: RequestContext) {
+        return {
+          body: context.request.body,
+          fileCount: context.request.files?.length ?? 0,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UploadController],
     });
 
-    expect(response.status).toBe(413);
-    await expect(response.json()).resolves.toMatchObject({
-      error: {
-        code: 'PAYLOAD_TOO_LARGE',
-      },
+    const port = await findAvailablePort();
+    const app = await fluoFactory.create(AppModule, {
+      adapter: createFastifyAdapter({ port }, {
+        maxFileSize: 1024,
+        maxTotalSize: 10,
+      }),
     });
 
-    await app.close();
+    await app.listen();
+
+    try {
+      const form = new FormData();
+      form.set('name', 'Ada');
+      form.set('payload', new Blob(['1234567890'], { type: 'text/plain' }), 'payload.txt');
+
+      const response = await fetch(`http://127.0.0.1:${String(port)}/uploads`, {
+        body: form,
+        method: 'POST',
+      });
+
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: 'PAYLOAD_TOO_LARGE',
+        },
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('defaults multipart.maxTotalSize to maxBodySize when no explicit multipart total is provided', async () => {
@@ -1698,19 +1754,65 @@ describe('@fluojs/platform-fastify', () => {
 
     await app.listen();
 
-    const [prefixedApp, prefixedHealth, health] = await Promise.all([
-      fetch(`http://127.0.0.1:${String(port)}/api/app/info`),
-      fetch(`http://127.0.0.1:${String(port)}/api/health`),
-      fetch(`http://127.0.0.1:${String(port)}/health`),
-    ]);
+    try {
+      const [prefixedApp, prefixedHealth, health] = await Promise.all([
+        fetch(`http://127.0.0.1:${String(port)}/api/app/info`),
+        fetch(`http://127.0.0.1:${String(port)}/api/health`),
+        fetch(`http://127.0.0.1:${String(port)}/health`),
+      ]);
 
-    expect(prefixedApp.status).toBe(200);
-    await expect(prefixedApp.json()).resolves.toEqual({ ok: true, route: 'app-info' });
-    expect(prefixedHealth.status).toBe(200);
-    await expect(prefixedHealth.json()).resolves.toEqual({ status: 'ok' });
-    expect(health.status).toBe(404);
+      expect(prefixedApp.status).toBe(200);
+      await expect(prefixedApp.json()).resolves.toEqual({ ok: true, route: 'app-info' });
+      expect(prefixedHealth.status).toBe(200);
+      await expect(prefixedHealth.json()).resolves.toEqual({ status: 'ok' });
+      expect(health.status).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
 
-    await app.close();
+  it('excludes configured paths from the global prefix', async () => {
+    const HealthModule = createHealthModule();
+
+    @Controller('/app')
+    class AppController {
+      @Get('/info')
+      getInfo() {
+        return { ok: true, route: 'app-info' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [AppController],
+      imports: [HealthModule],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      globalPrefix: '/api',
+      globalPrefixExclude: ['/health'],
+      port,
+    });
+
+    await app.listen();
+
+    try {
+      const [prefixedApp, prefixedHealth, health] = await Promise.all([
+        fetch(`http://127.0.0.1:${String(port)}/api/app/info`),
+        fetch(`http://127.0.0.1:${String(port)}/api/health`),
+        fetch(`http://127.0.0.1:${String(port)}/health`),
+      ]);
+
+      expect(prefixedApp.status).toBe(200);
+      await expect(prefixedApp.json()).resolves.toEqual({ ok: true, route: 'app-info' });
+      expect(prefixedHealth.status).toBe(404);
+      expect(health.status).toBe(200);
+      await expect(health.json()).resolves.toEqual({ status: 'ok' });
+    } finally {
+      await app.close();
+    }
   });
 
   it('hands safe native Fastify routes to the dispatcher without rematching', async () => {
@@ -2056,24 +2158,33 @@ describe('@fluojs/platform-fastify', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await runFastifyApplication(AppModule, {
-      cors: false,
-      host: '127.0.0.1',
-      https: {
-        cert: TEST_TLS_CERTIFICATE,
-        key: TEST_TLS_PRIVATE_KEY,
-      },
-      port,
-    });
+    let app: Application | undefined;
 
-    const response = await requestHttps(`https://127.0.0.1:${String(port)}/health`);
+    try {
+      app = await runFastifyApplication(AppModule, {
+        cors: false,
+        host: '127.0.0.1',
+        https: {
+          cert: TEST_TLS_CERTIFICATE,
+          key: TEST_TLS_PRIVATE_KEY,
+        },
+        port,
+      });
 
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toEqual({ ok: true });
-    expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on https://127.0.0.1:${String(port)}`))).toBe(true);
+      const response = await requestHttps(`https://127.0.0.1:${String(port)}/health`);
 
-    await app.close();
-    log.mockRestore();
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ ok: true });
+      expect(log.mock.calls.some(([message]) => String(message).includes(`Listening on https://127.0.0.1:${String(port)}`))).toBe(true);
+    } finally {
+      try {
+        if (app) {
+          await app.close();
+        }
+      } finally {
+        log.mockRestore();
+      }
+    }
   });
 
   it('keeps dispatcher until fastify close settles even when close() times out', async () => {
