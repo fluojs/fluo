@@ -120,6 +120,8 @@ Use runtime subpaths when you want an explicit runtime binding instead of the ro
 | Deno | `@fluojs/websockets/deno` | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
 | Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` | `CloudflareWorkersWebSocketGatewayLifecycleService` |
 
+On Bun, the runtime-specific module installs a pre-listen binding on `@fluojs/platform-bun`. The adapter exposes only an `upgrade(...)` host to that binding, so adapter-owned shutdown and raw fetch control stay on the managed Bun adapter instead of the realtime seam.
+
 ## Socket.IO gateways
 
 Use `@fluojs/socket.io` when you need rooms, namespaces, broadcasting, or Socket.IO client compatibility.

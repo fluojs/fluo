@@ -40,7 +40,13 @@ const contractGateTriggers = new Set([
   'docs/contracts/deployment.ko.md',
   'docs/contracts/nestjs-parity-gaps.md',
   'docs/contracts/nestjs-parity-gaps.ko.md',
-  // Includes Bun fetch-style lifecycle, WebSocket runtime-subpath/return-value, and metadata migration boundaries.
+  // Includes Bun fetch-style lifecycle, synchronous manual fetch-host ownership,
+  // pre-listen realtime binding, WebSocket runtime-subpath/return-value, and
+  // metadata migration boundaries.
+  'apps/docs/content/docs/guides/realtime.mdx',
+  'apps/docs/content/docs/guides/realtime.ko.mdx',
+  'apps/docs/content/docs/guides/runtime-adapters.mdx',
+  'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
   'docs/architecture/transactions.md',
@@ -696,6 +702,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const drizzleReadmeKo = readFileSync(join(repoRoot, 'packages/drizzle/README.ko.md'), 'utf8');
   const fastifyReadme = readFileSync(join(repoRoot, 'packages/platform-fastify/README.md'), 'utf8');
   const fastifyReadmeKo = readFileSync(join(repoRoot, 'packages/platform-fastify/README.ko.md'), 'utf8');
+  const platformBunReadme = readFileSync(join(repoRoot, 'packages/platform-bun/README.md'), 'utf8');
+  const platformBunReadmeKo = readFileSync(join(repoRoot, 'packages/platform-bun/README.ko.md'), 'utf8');
   const expressReadme = readFileSync(join(repoRoot, 'packages/platform-express/README.md'), 'utf8');
   const expressReadmeKo = readFileSync(join(repoRoot, 'packages/platform-express/README.ko.md'), 'utf8');
   const terminusReadme = readFileSync(join(repoRoot, 'packages/terminus/README.md'), 'utf8');
@@ -720,6 +728,12 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const beginnerCliSetupKo = readFileSync(join(repoRoot, 'book/beginner/ch02-cli-setup.ko.md'), 'utf8');
   const beginnerProduction = readFileSync(join(repoRoot, 'book/beginner/ch21-production.md'), 'utf8');
   const beginnerProductionKo = readFileSync(join(repoRoot, 'book/beginner/ch21-production.ko.md'), 'utf8');
+  const bunChapter = readFileSync(join(repoRoot, 'book/intermediate/ch22-bun.md'), 'utf8');
+  const bunChapterKo = readFileSync(join(repoRoot, 'book/intermediate/ch22-bun.ko.md'), 'utf8');
+  const runtimeAdaptersGuide = readFileSync(join(repoRoot, 'apps/docs/content/docs/guides/runtime-adapters.mdx'), 'utf8');
+  const runtimeAdaptersGuideKo = readFileSync(join(repoRoot, 'apps/docs/content/docs/guides/runtime-adapters.ko.mdx'), 'utf8');
+  const realtimeGuide = readFileSync(join(repoRoot, 'apps/docs/content/docs/guides/realtime.mdx'), 'utf8');
+  const realtimeGuideKo = readFileSync(join(repoRoot, 'apps/docs/content/docs/guides/realtime.ko.mdx'), 'utf8');
   const viteReadme = readFileSync(join(repoRoot, 'packages/vite/README.md'), 'utf8');
   const viteReadmeKo = readFileSync(join(repoRoot, 'packages/vite/README.ko.md'), 'utf8');
   const quickStart = readFileSync(join(repoRoot, 'docs/getting-started/quick-start.md'), 'utf8');
@@ -933,6 +947,32 @@ function enforceCanonicalRuntimeMatrixReferences() {
       beginnerCliSetupKo.includes('일반 HTTP로 실행') &&
       beginnerProductionKo.includes('Fastify adapter `https` option'),
     'Korean Fastify README, package-surface, package-chooser, docs/CONTEXT.ko.md, and beginner docs must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
+  );
+  assert(
+    platformBunReadme.includes('synchronously creates the fetch bridge') &&
+      platformBunReadme.includes('Bun websocket bindings must be configured before `listen()` starts') &&
+      platformBunReadme.includes('logging and `process.exitCode`') &&
+      bunChapter.includes('`runBunApplication(...)` combines bootstrap') &&
+      runtimeAdaptersGuide.includes('const handler = createBunFetchHandler({') &&
+      !runtimeAdaptersGuide.includes('await createBunFetchHandler') &&
+      runtimeAdaptersGuide.includes('manual `Bun.serve(...)` call') &&
+      realtimeGuide.includes('adapter exposes only an `upgrade(...)` host') &&
+      migrateFromNestjs.includes('manual hosts own shutdown, websocket upgrades, and native `routes` acceleration') &&
+      docsContext.includes('synchronous `createBunFetchHandler(...)` usage'),
+    'Bun adapter docs must keep synchronous manual fetch hosting, pre-listen realtime binding, and signal-driven shutdown ownership discoverable together.',
+  );
+  assert(
+    platformBunReadmeKo.includes('동기적으로 fetch bridge') &&
+      platformBunReadmeKo.includes('Bun websocket binding은 서버를 시작하는 `listen()` 전에 구성해야 합니다') &&
+      platformBunReadmeKo.includes('로그와 `process.exitCode`') &&
+      bunChapterKo.includes('`runBunApplication(...)`이 bootstrap') &&
+      runtimeAdaptersGuideKo.includes('const handler = createBunFetchHandler({') &&
+      !runtimeAdaptersGuideKo.includes('await createBunFetchHandler') &&
+      runtimeAdaptersGuideKo.includes('수동 `Bun.serve(...)` 호출') &&
+      realtimeGuideKo.includes('`upgrade(...)` host만 노출') &&
+      migrateFromNestjsKo.includes('manual host는 shutdown, websocket upgrade, native `routes` acceleration을 직접 소유') &&
+      docsContextKo.includes('동기 `createBunFetchHandler(...)` 사용법'),
+    'Korean Bun adapter docs must keep synchronous manual fetch hosting, pre-listen realtime binding, and signal-driven shutdown ownership discoverable together.',
   );
   assert(
     docsContext.includes('docs/reference/package-chooser.md') && docsContext.includes('@fluojs/i18n'),

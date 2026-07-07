@@ -177,7 +177,7 @@ await app.listen();
 ```ts
 import { createBunFetchHandler } from '@fluojs/platform-bun';
 
-const handler = await createBunFetchHandler({
+const handler = createBunFetchHandler({
   dispatcher: app.getHttpDispatcher(),
 });
 
@@ -186,6 +186,8 @@ Bun.serve({
   port: 3000,
 });
 ```
+
+`createBunFetchHandler(...)`는 동기적으로 fetch bridge만 생성합니다. 이를 수동 `Bun.serve(...)` 호출에 넣는 경우 주변 Bun host가 shutdown, websocket upgrade, native `routes` acceleration을 소유합니다. fluo가 해당 lifecycle seam을 소유해야 한다면 managed Bun adapter 경로를 사용하세요.
 
 Bun `>=1.2.3`에서는 semantically safe static/parameterized fluo route가 `Bun.serve({ routes })`로 등록될 수 있지만, matched request는 여전히 shared dispatcher로 돌아갑니다. Versioned route, `ALL` handler, same-shape conflict, normalization-sensitive path, `OPTIONS`/CORS preflight는 shared fetch path에 남습니다.
 

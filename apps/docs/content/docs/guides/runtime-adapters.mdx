@@ -177,7 +177,7 @@ If you manage `Bun.serve()` yourself, create a fetch handler directly.
 ```ts
 import { createBunFetchHandler } from '@fluojs/platform-bun';
 
-const handler = await createBunFetchHandler({
+const handler = createBunFetchHandler({
   dispatcher: app.getHttpDispatcher(),
 });
 
@@ -186,6 +186,8 @@ Bun.serve({
   port: 3000,
 });
 ```
+
+`createBunFetchHandler(...)` is synchronous and only creates the fetch bridge. When you host it in a manual `Bun.serve(...)` call, the surrounding Bun host owns shutdown, websocket upgrades, and native `routes` acceleration; use the managed Bun adapter path when you want fluo to own those lifecycle seams.
 
 On Bun `>=1.2.3`, safe static and parameterized fluo routes may be registered through `Bun.serve({ routes })` while matched requests still return to the shared dispatcher. Versioned routes, `ALL` handlers, same-shape conflicts, normalization-sensitive paths, and `OPTIONS`/CORS preflight remain on the shared fetch path.
 
