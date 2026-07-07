@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import * as coreInternalApi from './internal.js';
-import * as corePublicApi from './index.js';
 import * as coreRequestPipelineApi from './request-pipeline.js';
 import type {
   AsyncModuleOptions,
@@ -40,6 +39,8 @@ import type {
   ValidationIssueMetadata,
   ValidationRuleResult,
 } from './internal.js';
+
+type SymbolConstructorWithMetadata = typeof Symbol & { metadata?: symbol };
 
 type RootBarrelTypeExports = {
   asyncModuleOptions: AsyncModuleOptions<unknown>;
@@ -126,7 +127,28 @@ const documentedInternalRuntimeExports = [
 ] as const;
 
 describe('@fluojs/core public API surface', () => {
-  it('keeps documented root-barrel exports for application code', () => {
+  it('keeps root-barrel import side-effect free for Symbol.metadata', async () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+
+    delete (Symbol as SymbolConstructorWithMetadata).metadata;
+
+    try {
+      const corePublicApi = await import('./index.js');
+
+      expect((Symbol as SymbolConstructorWithMetadata).metadata).toBeUndefined();
+      expect(corePublicApi).toHaveProperty('ensureMetadataSymbol');
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(Symbol, 'metadata', originalDescriptor);
+      } else {
+        delete (Symbol as SymbolConstructorWithMetadata).metadata;
+      }
+    }
+  });
+
+  it('keeps documented root-barrel exports for application code', async () => {
+    const corePublicApi = await import('./index.js');
+
     for (const exportName of documentedRootRuntimeExports) {
       expect(corePublicApi).toHaveProperty(exportName);
     }
@@ -138,7 +160,9 @@ describe('@fluojs/core public API surface', () => {
     expect(rootTypeExport).toBe('asyncModuleOptions');
   });
 
-  it('does not expose internal metadata writers or non-module readers on the root barrel', () => {
+  it('does not expose internal metadata writers or non-module readers on the root barrel', async () => {
+    const corePublicApi = await import('./index.js');
+
     expect(corePublicApi).not.toHaveProperty('defineModuleMetadata');
     expect(corePublicApi).not.toHaveProperty('getModuleMetadataVersion');
     expect(corePublicApi).not.toHaveProperty('defineControllerMetadata');
@@ -170,6 +194,7 @@ describe('@fluojs/core public API surface', () => {
     expect(coreRequestPipelineApi).toHaveProperty('getRequestPipelineMetadataBag');
     expect(coreRequestPipelineApi).toHaveProperty('getOwnConstructorRequestPipelineMetadataBag');
     expect(coreRequestPipelineApi).toHaveProperty('defineDtoFieldBindingMetadata');
+    expect(coreRequestPipelineApi).toHaveProperty('getDtoFieldBindingMetadata');
     expect(coreRequestPipelineApi).toHaveProperty('getDtoBindingSchema');
     expect(coreRequestPipelineApi).toHaveProperty('getDtoValidationSchema');
     expect(coreRequestPipelineApi).not.toHaveProperty('defineModuleMetadata');
