@@ -90,6 +90,8 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 `@fluojs/queue`는 애플리케이션 부트스트랩 중 해당 Redis 클라이언트를 조회한 뒤 BullMQ용으로 큐가 소유하는 duplicate 연결을 만듭니다. 공유 `@fluojs/redis` 클라이언트의 소유권은 `RedisModule`에 남아 있으며, Queue는 자신이 만든 BullMQ duplicate 연결만 닫습니다. 이 duplicate 연결은 BullMQ Worker가 요구하는 `maxRetriesPerRequest: null` 설정으로 구성되어 시작 동작이 BullMQ의 실제 런타임 제약과 일치합니다.
 
+`QueueModule.forRoot({ global: false })`를 사용하면 각 queue 등록은 해당 `QueueModule.forRoot(...)` 호출을 가져온 동일한 module tree에서 도달할 수 있는 worker만 탐색합니다. 서로 다른 scoped queue feature module은 서로 분리된 상태를 유지하며, Redis client provider도 같은 module tree 안에서 도달 가능해야 합니다.
+
 ### 부트스트랩 및 종료 수명 주기
 
 Queue는 애플리케이션 부트스트랩 중 worker를 탐색하고 Queue가 소유하는 BullMQ 리소스를 만들지만, BullMQ worker processor는 runtime이 전체 애플리케이션 bootstrap/readiness sequence 완료를 표시한 뒤에만 시작합니다. 다른 `onApplicationBootstrap()` hook에서 enqueue한 job은 Queue 서비스가 초기화된 뒤에는 받을 수 있으며, processor는 뒤에 실행되는 async bootstrap hook이나 애플리케이션 readiness보다 앞서 실행되지 않고 bootstrap-ready handoff 이후 실행됩니다. Queue status는 해당 BullMQ processor가 실제로 시작될 때까지 degraded readiness를 보고합니다. Processor 시작에 실패하면 lifecycle이 `failed`로 이동하고, status snapshot은 worker를 ready로 숨기지 않고 실패를 노출합니다.

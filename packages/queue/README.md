@@ -90,6 +90,8 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 `@fluojs/queue` resolves that Redis client during application bootstrap, then creates queue-owned duplicate connections for BullMQ. The shared `@fluojs/redis` client remains owned by `RedisModule`; Queue closes only the duplicate BullMQ connections it creates. Those duplicate connections are configured with BullMQ's required `maxRetriesPerRequest: null` worker setting so startup behavior matches BullMQ's runtime constraints.
 
+When `QueueModule.forRoot({ global: false })` is used, each queue registration only discovers workers that are reachable from the same module tree that imported that specific `QueueModule.forRoot(...)` call. Separate scoped queue feature modules stay isolated from one another, and the Redis client provider must be reachable from that same module tree.
+
 ### Bootstrap and Shutdown Lifecycle
 
 Queue discovers workers and creates queue-owned BullMQ resources during application bootstrap, but BullMQ worker processors are started only after the runtime marks the full application bootstrap/readiness sequence complete. Jobs enqueued by other `onApplicationBootstrap()` hooks can be accepted once the Queue service is initialized, and their processors run after the bootstrap-ready handoff instead of racing ahead of later async bootstrap hooks or application readiness. Queue status reports degraded readiness until those BullMQ processors have actually started; if a processor fails to start, the lifecycle moves to `failed` and status snapshots expose the failure instead of reporting the workers as ready.
