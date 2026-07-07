@@ -584,6 +584,18 @@ function createSyncResolver(container: BootstrapResult['container']): SyncResolv
     state.introspection = freshIntrospection;
     state.multiSingletonCache = freshRootIntrospection.multiSingletonCache;
     state.singletonCache = freshRootIntrospection.singletonCache;
+
+    for (const token of state.syncSingletonValues.keys()) {
+      if (!state.singletonCache.has(token)) {
+        state.syncSingletonValues.delete(token);
+      }
+    }
+
+    for (const provider of state.syncMultiSingletonValues.keys()) {
+      if (!state.multiSingletonCache.has(provider)) {
+        state.syncMultiSingletonValues.delete(provider);
+      }
+    }
   };
 
   return {
