@@ -489,6 +489,35 @@ describe('RabbitMqMicroserviceTransport', () => {
     await transport.close();
   });
 
+  it('removes AbortSignal listener when a request resolves', async () => {
+    const bus = new InMemoryQueueBus();
+    const transport = new RabbitMqMicroserviceTransport({
+      consumer: {
+        async cancel(queue) {
+          await bus.unsubscribe(queue);
+        },
+        async consume(queue, handler) {
+          await bus.subscribe(queue, handler);
+        },
+      },
+      publisher: {
+        async publish(queue, message) {
+          await bus.publish(queue, message);
+        },
+      },
+    });
+
+    await transport.listen(async () => 'ok');
+
+    const controller = new AbortController();
+    const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+
+    await expect(transport.send('cleanup.resolve', {}, controller.signal)).resolves.toBe('ok');
+    expect(removeEventListenerSpy).toHaveBeenCalledWith('abort', expect.any(Function));
+
+    await transport.close();
+  });
+
   it('does not publish request frames once close() starts', async () => {
     const bus = new InMemoryQueueBus();
     const published: string[] = [];
