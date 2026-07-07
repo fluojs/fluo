@@ -118,11 +118,11 @@ NotificationsModule.forRoot({
 
 Behavioral contract notes:
 
-- Bulk queue delegation starts when the notification count reaches `bulkThreshold`.
+- Bulk queue delegation starts when the notification count reaches `bulkThreshold`, and `dispatchMany(..., { queue: true })` explicitly forces queue-backed delivery even when the batch is below that threshold.
 - `dispatch()` stays direct by default even when a queue adapter is configured. Use `dispatch(..., { queue: true })` to opt one single notification into queue-backed delivery.
 - Use `dispatch(..., { queue: false })` to force direct delivery even when a queue adapter exists.
-- Queue-backed delivery is opt-in for single dispatch and threshold-driven for `dispatchMany(...)`.
-- Queue jobs include a deterministic `id` idempotency key derived from `notification.id` when present, otherwise from the notification envelope. Queue adapters should pass this value to backing queues that support deduplication.
+- Queue-backed delivery is opt-in for single dispatch and threshold-driven for `dispatchMany(...)` unless the caller explicitly passes `{ queue: true }`.
+- Queue jobs include a deterministic fallback `id` idempotency key derived from `notification.id` when present, otherwise from a runtime-neutral serialization of the notification envelope. Queue adapters should pass this value to backing queues that support deduplication. The generated fallback key is deterministic for equivalent supported inputs, including cyclic opaque payloads, but it is not a durable cross-release identity contract; set `notification.id` when callers need stable identity across application or package upgrades.
 - `dispatchMany(..., { continueOnError: true })` collects failures instead of throwing on the first failed direct delivery or sequential queue fallback enqueue.
 - When queue enqueue fails, the service emits deterministic `notification.dispatch.failed` lifecycle events before rethrowing the enqueue error to the caller. Queued bulk dispatch also publishes a terminal `queued` or `failed` event for every notification that already emitted `requested`, including queue-missing, channel-resolution, and provider/adapter failure paths.
 - If `enqueueMany(...)` is unavailable, bulk queue delivery falls back to enqueueing each job individually in input order. With `continueOnError: true`, successful enqueues remain visible in `results` while failed enqueues are returned in `failures`; without it, the first enqueue failure is rethrown after the remaining requested fallback jobs receive `failed` lifecycle events.
@@ -153,7 +153,7 @@ Published event names:
 - `notification.dispatch.delivered`
 - `notification.dispatch.failed`
 
-If `events.publisher` is configured, lifecycle event publication defaults to on unless `publishLifecycleEvents: false` is set. Channel deliveries that omit `externalId` receive a deterministic fallback delivery id derived from the notification envelope so dispatch results remain stable for callers without relying on time or random data. Channel resolution failures publish `requested` and then `failed` events before throwing `NotificationChannelNotFoundError`; treat those failures as permanent configuration errors. Queue enqueue and provider delivery failures also publish `failed` events, but callers should classify their retry behavior from the underlying adapter/provider error. Publication failures for success-path lifecycle events remain best-effort so a delivered notification is not converted into an application failure. Publication failures for `notification.dispatch.failed` are caller-visible as `AggregateError` values that include both the original dispatch error and the publisher error so failed-event guarantees are not silently weakened.
+If `events.publisher` is configured, lifecycle event publication defaults to on unless `publishLifecycleEvents: false` is set. Channel deliveries that omit `externalId` receive a deterministic fallback delivery id so dispatch results remain stable for callers without relying on time or random data. Generated fallback ids are runtime-neutral keys for the current envelope shape, not a documented full-payload hash contract; set `notification.id` when callers need durable identity across releases. Channel resolution failures publish `requested` and then `failed` events before throwing `NotificationChannelNotFoundError`; treat those failures as permanent configuration errors. Queue enqueue and provider delivery failures also publish `failed` events, but callers should classify their retry behavior from the underlying adapter/provider error. Publication failures for success-path lifecycle events remain best-effort so a delivered notification is not converted into an application failure. Publication failures for `notification.dispatch.failed` are caller-visible as `AggregateError` values that include both the original dispatch error and the publisher error so failed-event guarantees are not silently weakened.
 
 ### Intentional limitations
 
@@ -210,8 +210,8 @@ These limitations are part of the package contract so leaf packages can evolve i
 - `NotificationChannelNotFoundError`
 - `NotificationQueueNotConfiguredError`
 
-Status snapshots include `operationMode`, dependency diagnostics, ownership, readiness, and health fields for platform diagnostics.
-When a queue adapter is configured, `details.dependencies` includes `notifications.queue-adapter`; when lifecycle events are published through an event publisher, it includes `notifications.event-publisher`. Those optional integrations mark `ownership.externallyManaged: true` while the foundation package still reports `ownsResources: false` because it does not create, close, or drain concrete queue or event-bus resources.
+Status snapshots include `readiness`, `health`, `ownership`, and a `details` object for platform diagnostics.
+`operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, and `eventPublisherConfigured` live under `details`; they are not top-level snapshot fields. When a queue adapter is configured, `details.dependencies` includes `notifications.queue-adapter`; when lifecycle events are published through an event publisher, it includes `notifications.event-publisher`. Those optional integrations mark `ownership.externallyManaged: true` while the foundation package still reports `ownsResources: false` because it does not create, close, or drain concrete queue or event-bus resources.
 
 ## Related Packages
 

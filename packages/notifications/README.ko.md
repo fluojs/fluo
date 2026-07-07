@@ -118,11 +118,11 @@ NotificationsModule.forRoot({
 
 Behavioral contract 메모:
 
-- 알림 개수가 `bulkThreshold` 이상이면 대량 큐 위임이 시작됩니다.
+- 알림 개수가 `bulkThreshold` 이상이면 대량 큐 위임이 시작되며, `dispatchMany(..., { queue: true })`는 batch가 threshold보다 작아도 queue-backed delivery를 명시적으로 강제합니다.
 - `dispatch()`는 queue adapter가 구성되어 있어도 기본적으로 직접 전달을 유지합니다. 단건 알림을 큐로 보내려면 `dispatch(..., { queue: true })`를 사용합니다.
 - queue adapter가 있어도 직접 전달을 강제하려면 `dispatch(..., { queue: false })`를 사용합니다.
-- 큐 기반 전달은 단건 dispatch에서는 opt-in이고, `dispatchMany(...)`에서는 threshold 기반으로 동작합니다.
-- Queue job에는 `notification.id`가 있으면 그 값을, 없으면 notification envelope에서 파생한 deterministic `id` idempotency key가 포함됩니다. Queue adapter는 deduplication을 지원하는 backing queue에 이 값을 전달해야 합니다.
+- 큐 기반 전달은 단건 dispatch에서는 opt-in이고, `dispatchMany(...)`에서는 caller가 `{ queue: true }`를 명시하지 않는 한 threshold 기반으로 동작합니다.
+- Queue job에는 `notification.id`가 있으면 그 값을, 없으면 notification envelope의 runtime-neutral serialization에서 파생한 deterministic fallback `id` idempotency key가 포함됩니다. Queue adapter는 deduplication을 지원하는 backing queue에 이 값을 전달해야 합니다. 생성된 fallback key는 cyclic opaque payload를 포함해 동등한 지원 입력에 대해 deterministic하지만, cross-release durable identity 계약은 아닙니다. 애플리케이션 또는 package upgrade를 넘어 안정적인 identity가 필요하면 `notification.id`를 설정하세요.
 - `dispatchMany(..., { continueOnError: true })`는 direct delivery 또는 순차 queue fallback enqueue에서 첫 실패를 던지는 대신 실패들을 수집합니다.
 - queue enqueue가 실패하면 서비스는 enqueue 에러를 다시 던지기 전에 결정적인 `notification.dispatch.failed` 라이프사이클 이벤트를 발행합니다. queued bulk dispatch는 queue 미구성, channel 해석, provider/adapter failure 경로를 포함해 이미 `requested`를 발행한 모든 notification에 대해 terminal `queued` 또는 `failed` 이벤트도 발행합니다.
 - `enqueueMany(...)`가 없으면 대량 queue delivery는 input order대로 각 job을 개별 enqueue하는 방식으로 fallback합니다. `continueOnError: true`이면 성공한 enqueue는 `results`에 남고 실패한 enqueue는 `failures`로 반환됩니다. 그렇지 않으면 첫 enqueue failure를 다시 던지기 전에 아직 terminal 상태가 없는 나머지 requested fallback job에 `failed` 라이프사이클 이벤트를 발행합니다.
@@ -153,7 +153,7 @@ NotificationsModule.forRoot({
 - `notification.dispatch.delivered`
 - `notification.dispatch.failed`
 
-`events.publisher`가 구성되어 있으면 `publishLifecycleEvents: false`를 설정하지 않는 한 lifecycle event publication은 기본으로 켜집니다. 채널 delivery가 `externalId`를 생략하면 시간이나 난수에 의존하지 않고 notification envelope에서 파생한 deterministic fallback delivery id가 부여되어 dispatch result가 호출자에게 안정적으로 유지됩니다. 채널 해석 실패는 `NotificationChannelNotFoundError`를 던지기 전에 `requested` 이후 `failed` 이벤트를 발행하며, 이는 영구적인 구성 오류로 취급해야 합니다. Queue enqueue와 provider delivery 실패도 `failed` 이벤트를 발행하지만, retry 여부는 underlying adapter/provider error를 기준으로 분류해야 합니다. 성공 경로 lifecycle event의 publication failure는 이미 전달된 알림을 애플리케이션 실패로 바꾸지 않도록 best-effort로 유지됩니다. `notification.dispatch.failed` publication failure는 원래 dispatch error와 publisher error를 모두 포함하는 `AggregateError`로 호출자에게 드러나므로 failed-event 보장이 조용히 약해지지 않습니다.
+`events.publisher`가 구성되어 있으면 `publishLifecycleEvents: false`를 설정하지 않는 한 lifecycle event publication은 기본으로 켜집니다. 채널 delivery가 `externalId`를 생략하면 시간이나 난수에 의존하지 않는 deterministic fallback delivery id가 부여되어 dispatch result가 호출자에게 안정적으로 유지됩니다. 생성된 fallback id는 현재 envelope shape를 위한 runtime-neutral key이지, 문서화된 full-payload hash 계약이 아닙니다. release를 넘어 durable identity가 필요하면 `notification.id`를 설정하세요. 채널 해석 실패는 `NotificationChannelNotFoundError`를 던지기 전에 `requested` 이후 `failed` 이벤트를 발행하며, 이는 영구적인 구성 오류로 취급해야 합니다. Queue enqueue와 provider delivery 실패도 `failed` 이벤트를 발행하지만, retry 여부는 underlying adapter/provider error를 기준으로 분류해야 합니다. 성공 경로 lifecycle event의 publication failure는 이미 전달된 알림을 애플리케이션 실패로 바꾸지 않도록 best-effort로 유지됩니다. `notification.dispatch.failed` publication failure는 원래 dispatch error와 publisher error를 모두 포함하는 `AggregateError`로 호출자에게 드러나므로 failed-event 보장이 조용히 약해지지 않습니다.
 
 ### 의도적인 제한 사항
 
@@ -210,8 +210,8 @@ foundation 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `NotificationChannelNotFoundError`
 - `NotificationQueueNotConfiguredError`
 
-상태 snapshot은 platform diagnostics를 위해 `operationMode`, dependency diagnostics, ownership, readiness, health 필드를 포함합니다.
-Queue adapter가 구성되면 `details.dependencies`에 `notifications.queue-adapter`가 포함되고, lifecycle event가 event publisher를 통해 발행되면 `notifications.event-publisher`가 포함됩니다. 이러한 선택적 통합은 `ownership.externallyManaged: true`로 표시되지만, foundation 패키지가 concrete queue 또는 event-bus 리소스를 create/close/drain하지 않으므로 `ownsResources: false`를 유지합니다.
+상태 snapshot은 platform diagnostics를 위해 `readiness`, `health`, `ownership`, 그리고 `details` object를 포함합니다.
+`operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, `eventPublisherConfigured`는 `details` 아래에 있으며 top-level snapshot field가 아닙니다. Queue adapter가 구성되면 `details.dependencies`에 `notifications.queue-adapter`가 포함되고, lifecycle event가 event publisher를 통해 발행되면 `notifications.event-publisher`가 포함됩니다. 이러한 선택적 통합은 `ownership.externallyManaged: true`로 표시되지만, foundation 패키지가 concrete queue 또는 event-bus 리소스를 create/close/drain하지 않으므로 `ownsResources: false`를 유지합니다.
 
 ## 관련 패키지
 
