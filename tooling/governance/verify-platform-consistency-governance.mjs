@@ -43,6 +43,10 @@ const contractGateTriggers = new Set([
   // Includes Bun fetch-style lifecycle, synchronous manual fetch-host ownership,
   // pre-listen realtime binding, WebSocket runtime-subpath/return-value, and
   // metadata migration boundaries.
+  'apps/docs/content/docs/guides/realtime.mdx',
+  'apps/docs/content/docs/guides/realtime.ko.mdx',
+  'apps/docs/content/docs/guides/runtime-adapters.mdx',
+  'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
   'docs/architecture/transactions.md',
