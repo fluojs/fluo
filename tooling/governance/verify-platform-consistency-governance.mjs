@@ -582,7 +582,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // bounded shutdown lock-release I/O, timeout ownership retention, dynamic
   // blank-name rejection, immutable registry descriptor snapshots, and
   // microservices facade shutdown signal forwarding plus transport-owned
-  // cancellation cleanup docs/tests.
+  // cancellation cleanup docs/tests, and notifications queue opt-in, status
+  // details, and generated identity diagnostics contracts.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
