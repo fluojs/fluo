@@ -342,6 +342,28 @@ describe('http decorators', () => {
 
       return InvalidMixedSegmentController;
     }).toThrow(InvalidRoutePathError);
+
+    expect(() => {
+      class InvalidQuestionRouteController {
+        @Get('/files?')
+        getFile() {
+          return { ok: true };
+        }
+      }
+
+      return InvalidQuestionRouteController;
+    }).toThrow(InvalidRoutePathError);
+
+    expect(() => {
+      class InvalidRegexRouteController {
+        @Get('/(.*)')
+        getFile() {
+          return { ok: true };
+        }
+      }
+
+      return InvalidRegexRouteController;
+    }).toThrow(InvalidRoutePathError);
   });
 
   it('preserves binding and validator metadata for PickType, OmitType, and IntersectionType', () => {
