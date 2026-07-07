@@ -116,11 +116,11 @@ v2.1.0에서 distributed cron flow는 다음과 같습니다.
 
 이 패턴은 설명하기 쉽습니다. 이는 좋은 신호입니다. 분산 coordination은 incident 상황에서도 운영자가 추론할 수 있을 만큼 명시적이어야 합니다.
 
-Lock release는 task execution 뒤 `finally` 경로에서 실행됩니다. Redis가 release 시점에 일시적으로 사용할 수 없으면 fluo는 shutdown 중 재시도할 수 있도록 local ownership을 계속 드러냅니다. 그래도 Redis TTL과 renewal은 drift 영향을 받는 coordination primitive이지 완전한 fencing system이 아닙니다. Stale write가 위험하다면 job body에 application-level idempotency 또는 fencing check를 포함해야 합니다.
+Lock release는 task execution 뒤 `finally` 경로에서 실행됩니다. Redis가 release 시점에 일시적으로 사용할 수 없으면 fluo는 shutdown 중 재시도할 수 있도록 local ownership을 계속 드러냅니다. Shutdown은 같은 configured timeout으로 Redis owned-lock release I/O도 제한하며, release timeout이 나면 lock을 지운 것처럼 처리하지 않고 local ownership을 보존합니다. 그래도 Redis TTL과 renewal은 drift 영향을 받는 coordination primitive이지 완전한 fencing system이 아닙니다. Stale write가 위험하다면 job body에 application-level idempotency 또는 fencing check를 포함해야 합니다.
 
 ## 12.5 Lock TTL and named Redis clients
 
-README는 중요한 경계를 설정합니다. `distributed.lockTtlMs`는 `1_000ms` 이상이어야 합니다. fluo는 최소 경계를 검증하고, TTL이 만료되기 전에 lock을 갱신합니다. 이 조건은 FluoShop 팀에 두 가지를 알려 줍니다. 첫째, lock duration은 실제 운영 파라미터입니다. 둘째, 지나치게 작은 값은 영리한 최적화가 아니라 신뢰성 위험입니다. 패키지는 non-default Redis connection을 위한 `distributed.clientName`도 지원합니다. lock traffic을 cache나 queue traffic과 분리해야 할 때 필요한 옵션입니다.
+README는 중요한 경계를 설정합니다. `distributed.lockTtlMs`는 `1_000ms` 이상이어야 합니다. Distributed locking이 활성화되면 fluo는 Redis를 load, resolve, probe하기 전에 이 최소 경계를 검증하고, TTL이 만료되기 전에 lock을 갱신합니다. Distributed mode가 비활성화된 경우 사용되지 않는 unsafe TTL은 Redis를 로드하거나 그 자체로 실패를 일으키지 않습니다. 이 조건은 FluoShop 팀에 두 가지를 알려 줍니다. 첫째, lock duration은 실제 운영 파라미터입니다. 둘째, 지나치게 작은 값은 영리한 최적화가 아니라 신뢰성 위험입니다. 패키지는 non-default Redis connection을 위한 `distributed.clientName`도 지원합니다. lock traffic을 cache나 queue traffic과 분리해야 할 때 필요한 옵션입니다.
 
 ## 12.6 Dynamic scheduling at runtime
 
@@ -146,11 +146,11 @@ export class CampaignWindowService {
 }
 ```
 
-이 기능은 강력한 만큼 신중하게 써야 합니다. Dynamic schedule은 비즈니스 타이밍이 실제로 runtime에 바뀔 때 가장 적합합니다. 평범한 static maintenance task를 registry call 뒤에 숨기라는 뜻은 아닙니다. Registry는 descriptor 기반입니다. `get()`과 `getAll()`은 live scheduler handle을 반환하지 않고 `SchedulingTaskDescriptor` 값으로 task를 설명합니다. `updateCronExpression()`은 cron timing을 바꾸고, `updateIntervalMs()`는 같은 rollback-safe reschedule contract로 fixed-interval cadence를 바꿉니다. Scheduler가 새 cadence를 거부하면 이전 descriptor와 scheduled handle이 계속 active 상태로 남습니다. 이를 통해 runtime control은 명시적으로 유지하면서 애플리케이션 코드가 scheduler engine 내부에 의존하지 않게 합니다.
+이 기능은 강력한 만큼 신중하게 써야 합니다. Dynamic schedule은 비즈니스 타이밍이 실제로 runtime에 바뀔 때 가장 적합합니다. 평범한 static maintenance task를 registry call 뒤에 숨기라는 뜻은 아닙니다. Dynamic `options.name` override는 decorator name과 같은 non-empty name 규칙을 따르며, scheduler 또는 registry state를 남기기 전에 거부됩니다. Registry는 descriptor 기반입니다. `get()`과 `getAll()`은 live scheduler handle이나 mutable internal state를 반환하지 않고 immutable `SchedulingTaskDescriptor` snapshot으로 task를 설명합니다. `updateCronExpression()`은 cron timing을 바꾸고, `updateIntervalMs()`는 같은 rollback-safe reschedule contract로 fixed-interval cadence를 바꿉니다. Scheduler가 새 cadence를 거부하면 이전 descriptor와 scheduled handle이 계속 active 상태로 남습니다. 이를 통해 runtime control은 명시적으로 유지하면서 애플리케이션 코드가 scheduler engine 내부에 의존하지 않게 합니다.
 
 ## 12.7 Bounded shutdown
 
-README에서 가장 실용적인 내용 중 하나는 shutdown에 관한 부분입니다. `CronModule`은 애플리케이션 shutdown 중 active task execution을 drain하지만, bounded timeout까지만 기다립니다. 문서화된 기본값은 `10_000ms`입니다. 그 이후에는 fluo가 warning을 남기고 shutdown을 계속 진행합니다. 이는 운영적으로 성숙한 선택입니다. 하나의 hung scheduler task가 process termination을 영원히 막아서는 안 되기 때문입니다.
+README에서 가장 실용적인 내용 중 하나는 shutdown에 관한 부분입니다. `CronModule`은 애플리케이션 shutdown 중 active task execution을 drain하지만, bounded timeout까지만 기다립니다. 문서화된 기본값은 `10_000ms`입니다. 같은 timeout은 shutdown 중 Redis owned-lock release I/O도 제한합니다. 그 이후에는 fluo가 warning을 남기고, release를 확인하지 못한 lock의 local ownership을 보존한 채 shutdown을 계속 진행합니다. 이는 운영적으로 성숙한 선택입니다. 하나의 hung scheduler task나 stuck Redis release가 process termination을 영원히 막아서는 안 되기 때문입니다.
 
 ### 12.7.1 Why this matters in FluoShop
 
@@ -181,8 +181,8 @@ v2.1.0에서 reservation expiry path는 이제 다음과 같습니다.
 
 - `@fluojs/cron`은 decorator-based scheduling을 통해 FluoShop에 cron expression, interval, timeout을 제공합니다.
 - Redis-backed distributed locking은 multi-instance deployment에서 scheduled task를 한 인스턴스만 실행하도록 보장합니다.
-- `distributed.lockTtlMs`와 optional named Redis client는 신뢰성을 좌우하는 운영 설정입니다.
+- `distributed.lockTtlMs`와 optional named Redis client는 신뢰성을 좌우하는 운영 설정이며, enabled TTL은 Redis I/O 전에 검증됩니다.
 - `SCHEDULING_REGISTRY`를 통한 dynamic scheduling은 비즈니스가 실제로 runtime-created task를 필요로 할 때 지원됩니다.
-- bounded shutdown은 hung scheduled task 하나가 process termination을 영원히 막지 못하게 합니다.
+- bounded shutdown은 hung scheduled task나 Redis lock-release operation 하나가 process termination을 영원히 막지 못하게 합니다.
 
 실무적 교훈은 scheduling이 시작하기는 쉽지만 잘 운영하기는 어렵다는 점입니다. fluo는 developer-friendly decorator에 명시적인 distributed-lock 및 shutdown behavior를 결합해 production에서도 다룰 수 있는 형태로 만듭니다.

@@ -439,7 +439,7 @@ export class CronLifecycleService
   }
 
   private toSchedulingTaskDescriptor(task: RuntimeTaskState): SchedulingTaskDescriptor {
-    return {
+    return Object.freeze({
       distributed: task.descriptor.distributed,
       enabled: task.enabled,
       expression: task.descriptor.expression,
@@ -453,7 +453,7 @@ export class CronLifecycleService
       source: task.source,
       targetName: task.descriptor.targetName,
       timezone: task.descriptor.timezone,
-    };
+    });
   }
 
   private async shutdown(): Promise<void> {
@@ -473,12 +473,12 @@ export class CronLifecycleService
       return;
     }
 
-    await this.distributedLocks.releaseOwnedLocks();
+    await this.distributedLocks.releaseOwnedLocks(new Set(), this.options.shutdown.timeoutMs);
   }
 
   private async startLifecycle(): Promise<void> {
-    await this.distributedLocks.resolveClient();
     this.validateDistributedLockConfiguration();
+    await this.distributedLocks.resolveClient();
     this.registerDecoratorTasks();
     this.started = true;
     this.scheduleEnabledTasks();
@@ -506,6 +506,7 @@ export class CronLifecycleService
 
     await this.distributedLocks.releaseOwnedLocks(
       startupRollbackTimedOut ? this.getRunningDistributedLockKeys() : new Set(),
+      this.options.shutdown.timeoutMs,
     );
     this.tasks.clear();
 
@@ -519,7 +520,7 @@ export class CronLifecycleService
 
   private async completeStartupFailureCleanupAfterActiveTasks(): Promise<void> {
     await this.drainActiveTasks();
-    await this.distributedLocks.releaseOwnedLocks();
+    await this.distributedLocks.releaseOwnedLocks(new Set(), this.options.shutdown.timeoutMs);
     this.resetDistributedLocksAfterStartupFailure();
   }
 
@@ -544,6 +545,7 @@ export class CronLifecycleService
 
     await this.distributedLocks.releaseOwnedLocks(
       shutdownTimedOut ? this.getRunningDistributedLockKeys() : new Set(),
+      this.options.shutdown.timeoutMs,
     );
     this.lifecycleState = 'stopped';
   }
@@ -741,7 +743,7 @@ export class CronLifecycleService
       const released = await this.distributedLocks.releaseLock(descriptor);
 
       if (!released && this.lifecycleState === 'stopped') {
-        await this.distributedLocks.releaseOwnedLocks();
+        await this.distributedLocks.releaseOwnedLocks(new Set(), this.options.shutdown.timeoutMs);
       }
     }
   }

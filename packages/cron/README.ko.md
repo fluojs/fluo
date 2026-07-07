@@ -99,7 +99,7 @@ class AppModule {}
 
 `distributed.clientName`을 생략하면 위의 기본 Redis 등록을 계속 사용합니다. 분산 락에 기본 Redis가 아닌 다른 연결을 쓰려면 `RedisModule.forRoot({ name, ... })`로 등록한 이름을 `distributed.clientName`에 지정하세요. fluo는 module option normalization 중 configured client name을 trim하고, lifecycle 또는 status reporting이 Redis dependency name을 사용하기 전에 blank 값을 거부합니다.
 
-`distributed.lockTtlMs`는 `1_000ms` 이상이어야 합니다. fluo는 최소 지원 경계인 `1_000ms`를 포함해 TTL이 만료되기 전에 Redis 락을 갱신합니다.
+`distributed.lockTtlMs`는 `1_000ms` 이상이어야 합니다. Distributed locking이 활성화된 경우 fluo는 Redis를 load, resolve, probe하기 전에 module option normalization 중 module-level TTL을 검증합니다. Distributed mode가 비활성화되어 있으면 Redis는 로드되지 않고, 사용되지 않는 TTL이 distributed 최소값보다 낮다는 이유만으로 실패하지 않습니다. fluo는 활성 TTL이 만료되기 전에 Redis 락을 갱신하며, 최소 지원 경계인 `1_000ms`도 포함됩니다.
 
 각 scheduler instance는 platform-neutral 기본 `distributed.ownerId`를 사용합니다. 배포 환경에 더 강한 stable-owner 규칙이 있을 때만 `distributed.ownerId`를 명시적으로 지정하세요. Lock release는 task 실행 뒤 `finally` 경로에서 수행됩니다. Distributed tick이 이미 실행 중인 상태에서 bootstrap이 나중에 실패하면 startup rollback은 해당 active task가 drain되어 락을 release할 수 있을 때까지 Redis lock client를 유지합니다. Redis release가 실패하면 fluo는 status snapshot의 local ownership을 유지하고 shutdown 중 다시 release를 시도합니다. Redis가 다른 owner의 key라고 응답하면 fencing이 이미 다른 곳으로 이동한 것이므로 local ownership을 정리합니다. Redis TTL과 renewal timing은 drift 영향을 받는 coordination primitive이지 강한 fencing token 자체는 아니므로, stale work가 위험한 long-running job은 idempotent하게 작성하고 application-level fencing을 함께 사용해야 합니다.
 
@@ -149,7 +149,7 @@ class TaskManager {
 }
 ```
 
-Registry는 `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, `updateCronExpression`, `updateIntervalMs`를 제공합니다. 첫 번째 `name` 인자는 기본 registry key이며, `options.name`을 전달하면 dynamic task의 실제 registry key, scheduler metadata name, 기본 distributed lock key가 이를 사용해 decorator naming semantics와 일치합니다. Registry와 decorator task name은 non-empty string이어야 합니다. `get`과 `getAll`은 live `CronJob` handle이 아니라 read-only `SchedulingTaskDescriptor` 값을 반환합니다. Timeout task는 한 번 실행된 뒤 비활성화되지만 registry에는 남아 있어 의도적으로 다시 활성화할 수 있습니다.
+Registry는 `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, `updateCronExpression`, `updateIntervalMs`를 제공합니다. 첫 번째 `name` 인자는 기본 registry key이며, `options.name`을 전달하면 dynamic task의 실제 registry key, scheduler metadata name, 기본 distributed lock key가 이를 사용해 decorator naming semantics와 일치합니다. Registry, decorator, dynamic `options.name` task name은 non-empty string이어야 합니다. Blank dynamic override name은 scheduler 또는 registry state를 남기기 전에 거부됩니다. `get`과 `getAll`은 live `CronJob` handle이나 mutable registry state가 아니라 immutable `SchedulingTaskDescriptor` snapshot을 반환합니다. Timeout task는 한 번 실행된 뒤 비활성화되지만 registry에는 남아 있어 의도적으로 다시 활성화할 수 있습니다.
 
 Dynamic cron 등록은 scheduler startup과 원자적으로 처리됩니다. Scheduler가 새 cron job을 거부하면 registry는 half-registered task를 남기지 않습니다. 실행 중인 cron expression 또는 interval cadence update도 rollback-safe합니다. Rescheduling이 실패하면 이전 expression 또는 interval milliseconds와 scheduled handle이 그대로 유지됩니다. Cron task는 scheduler-level no-overlap protection과 fluo의 in-process running guard를 함께 사용하므로 같은 task instance가 overlapping tick으로 실행되지 않습니다.
 
@@ -157,7 +157,7 @@ Dynamic cron 등록은 scheduler startup과 원자적으로 처리됩니다. Sch
 
 `CronModule`은 애플리케이션 종료 시 실행 중인 작업을 제한된 타임아웃 안에서 drain합니다. 따라서 하나의 hung task 때문에 프로세스 종료가 영원히 막히지 않습니다.
 
-기본적으로 shutdown drain은 최대 `10_000ms` 동안 기다립니다. 이 시간이 지나면 스케줄러는 경고 로그를 남기고 hung task가 끝나기를 더 기다리지 않은 채 종료를 계속합니다. 분산 락을 사용하는 경우 아직 실행 중인 작업이 보유한 락은 timeout 시점에 즉시 해제하지 않습니다. 해당 작업이 정상적으로 끝날 때까지 락 소유권을 유지하거나, 프로세스가 종료된 뒤 Redis TTL로 만료되게 두어 원래 작업이 아직 실행 중인데 다른 노드가 같은 작업을 시작하지 않도록 합니다.
+기본적으로 shutdown drain은 최대 `10_000ms` 동안 기다립니다. 이 시간이 지나면 스케줄러는 경고 로그를 남기고 hung task가 끝나기를 더 기다리지 않은 채 종료를 계속합니다. 같은 `shutdown.timeoutMs` 경계는 shutdown 중 Redis owned-lock release I/O에도 적용되므로, 멈춘 Redis release가 process termination을 무기한 막지 못합니다. 분산 락을 사용하는 경우 아직 실행 중인 작업이 보유한 락은 timeout 시점에 즉시 해제하지 않습니다. 해당 작업이 정상적으로 끝날 때까지 락 소유권을 유지하거나, 프로세스가 종료된 뒤 Redis TTL로 만료되게 둡니다. Release I/O 자체가 timeout되면 fluo는 Redis가 release를 확인하거나 다른 owner가 key를 보유한다고 응답할 때까지 local owned-lock visibility/status를 보존하고 ownership을 지우지 않습니다. 이렇게 원래 작업이 아직 실행 중인데 다른 노드가 같은 작업을 시작하지 않도록 합니다.
 
 ```typescript
 @Module({
