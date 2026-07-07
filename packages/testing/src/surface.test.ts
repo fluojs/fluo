@@ -89,7 +89,11 @@ async function runBuild(): Promise<void> {
     });
 
     void once(childEvents, 'exit').then(([code, signal]) => {
-      expect(code, [stdout, stderr, signal ? `signal: ${signal}` : ''].filter(Boolean).join('\n')).toBe(0);
+      if (code !== 0 || signal) {
+        reject(new Error([stdout, stderr, signal ? `signal: ${signal}` : ''].filter(Boolean).join('\n')));
+        return;
+      }
+
       resolvePromise();
     });
   });

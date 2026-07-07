@@ -128,10 +128,14 @@ const documentedInternalRuntimeExports = [
 
 const packageRoot = new URL('..', import.meta.url);
 const packageRootPath = fileURLToPath(packageRoot);
+const repoRootPath = fileURLToPath(new URL('../../..', import.meta.url));
+const workspaceBuildClosurePath = fileURLToPath(
+  new URL('../../../tooling/scripts/run-workspace-build-closure.mjs', import.meta.url),
+);
 
 function buildCorePackage(): void {
-  const result = spawnSync(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['run', 'build'], {
-    cwd: packageRootPath,
+  const result = spawnSync(process.execPath, [workspaceBuildClosurePath, '@fluojs/core'], {
+    cwd: repoRootPath,
     encoding: 'utf8',
   });
 
