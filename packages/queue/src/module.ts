@@ -201,10 +201,10 @@ function createQueueProviders(normalizedOptions: NormalizedQueueModuleOptions, m
  */
 export class QueueModule {
   /**
-   * Registers queue providers globally using canonical `forRoot(...)` semantics.
+   * Registers queue providers using canonical `forRoot(...)` semantics.
    *
    * @param options Queue runtime defaults used by discovered workers and enqueued jobs.
-   * @returns A module definition that exports `QueueLifecycleService` and the compatibility token `QUEUE`.
+   * @returns A module definition that exports default queue tokens when `scope` is omitted, or scoped queue tokens when `scope` is set.
    *
    * @example
    * ```ts
