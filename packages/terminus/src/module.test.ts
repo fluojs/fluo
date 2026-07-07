@@ -12,7 +12,7 @@ import { createMemoryHealthIndicatorProvider, MemoryHealthIndicator } from './in
 import { createPrismaHealthIndicatorProvider } from './indicators/prisma.js';
 import { createRedisHealthIndicatorProvider, RedisHealthIndicator } from './indicators/redis.js';
 import { TerminusModule } from './module.js';
-import { TERMINUS_INDICATOR_PROVIDER_TOKENS } from './tokens.js';
+import { TERMINUS_HEALTH_INDICATORS, TERMINUS_INDICATOR_PROVIDER_TOKENS } from './tokens.js';
 import type { HealthIndicator } from './types.js';
 
 interface Deferred<T> {
@@ -361,6 +361,16 @@ describe('TerminusModule.forRoot', () => {
   });
 
   it('exports indicator provider token lists to downstream DI consumers', async () => {
+    const directIndicator: HealthIndicator = {
+      key: 'direct-memory',
+      check: async (key: string) => ({ [key]: { status: 'up' } }),
+    };
+
+    @Inject(TERMINUS_HEALTH_INDICATORS)
+    class HealthIndicatorsConsumer {
+      constructor(readonly indicators: readonly HealthIndicator[]) {}
+    }
+
     @Inject(TERMINUS_INDICATOR_PROVIDER_TOKENS)
     class ProviderTokenConsumer {
       constructor(readonly tokens: readonly unknown[]) {}
@@ -371,21 +381,81 @@ describe('TerminusModule.forRoot', () => {
     defineModule(AppModule, {
       imports: [
         TerminusModule.forRoot({
+          indicators: [directIndicator],
           indicatorProviders: [createMemoryHealthIndicatorProvider({ key: 'memory' })],
         }),
       ],
-      providers: [ProviderTokenConsumer],
+      providers: [HealthIndicatorsConsumer, ProviderTokenConsumer],
     });
 
     const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
 
     try {
       const consumer = await testingModule.resolve<ProviderTokenConsumer>(ProviderTokenConsumer);
+      const healthConsumer = await testingModule.resolve<HealthIndicatorsConsumer>(HealthIndicatorsConsumer);
 
       expect(consumer.tokens).toHaveLength(1);
       expect(typeof consumer.tokens[0]).toBe('symbol');
+      expect(healthConsumer.indicators).toHaveLength(2);
+      expect(healthConsumer.indicators.map((indicator: HealthIndicator) => indicator.key)).toEqual([
+        'direct-memory',
+        'memory',
+      ]);
     } finally {
       await testingModule.container.dispose();
+    }
+  });
+
+  it('reports mixed /health and /ready overlap through request-facing routes without starting another probe', async () => {
+    const probeStarted = createDeferred<void>();
+    const releaseProbe = createDeferred<void>();
+    let starts = 0;
+    const indicators: HealthIndicator[] = [
+      {
+        key: 'database',
+        check: async (key: string) => {
+          starts += 1;
+          probeStarted.resolve();
+          await releaseProbe.promise;
+
+          return { [key]: { status: 'up' } };
+        },
+      },
+    ];
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [TerminusModule.forRoot({ indicators })],
+    });
+
+    const app = await createTestApp({ rootModule: AppModule });
+    const healthPromise = app.request('GET', '/health').send();
+
+    try {
+      await probeStarted.promise;
+
+      const readyResponse = await app.request('GET', '/ready').send();
+
+      expect(starts).toBe(1);
+      expect(readyResponse.status).toBe(503);
+      expect(readyResponse.body).toEqual({ status: 'unavailable' });
+
+      releaseProbe.resolve();
+      const healthResponse = await healthPromise;
+
+      expect(healthResponse.status).toBe(200);
+      expect(healthResponse.body).toMatchObject({
+        contributors: {
+          down: [],
+          up: ['database'],
+        },
+        status: 'ok',
+      });
+    } finally {
+      releaseProbe.resolve();
+      await healthPromise.catch(() => undefined);
+      await app.close();
     }
   });
 

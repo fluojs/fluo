@@ -8,6 +8,7 @@ import {
   PLATFORM_SHELL,
   type PlatformHealthReport,
   type PlatformReadinessReport,
+  type PlatformShell,
 } from '@fluojs/runtime';
 
 import { TerminusHealthService } from './health-check.js';
@@ -15,10 +16,6 @@ import { TERMINUS_HEALTH_INDICATORS, TERMINUS_INDICATOR_PROVIDER_TOKENS } from '
 import type { HealthCheckReport, HealthIndicator, HealthIndicatorState, TerminusModuleOptions } from './types.js';
 
 const TERMINUS_OPTIONS = Symbol.for('fluo.terminus.options');
-
-type ReadinessManagedModule = ReturnType<typeof HealthModule.forRoot> & {
-  addReadinessCheck(fn: (ctx: RequestContext) => boolean | Promise<boolean>): void;
-};
 
 function copyIndicators(indicators: readonly HealthIndicator[] | undefined): HealthIndicator[] {
   return [...(indicators ?? [])];
@@ -238,8 +235,8 @@ function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): Modul
   const readinessChecks = [...(options.readinessChecks ?? [])];
   const healthModule = HealthModule.forRoot({
     healthCheck: async (ctx: RequestContext) => {
-      const healthService = await ctx.container.resolve(TerminusHealthService);
-      const platformShell = await ctx.container.resolve(PLATFORM_SHELL);
+      const healthService = await ctx.container.resolve<TerminusHealthService>(TerminusHealthService);
+      const platformShell = await ctx.container.resolve<PlatformShell>(PLATFORM_SHELL);
       const [report, readiness, health] = await Promise.all([
         healthService.check(),
         platformShell.ready(),
@@ -253,7 +250,7 @@ function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): Modul
       };
     },
     path: options.path,
-  }) as ReadinessManagedModule;
+  });
 
   for (const check of readinessChecks) {
     healthModule.addReadinessCheck(check);
@@ -285,7 +282,7 @@ function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): Modul
           return {
             onApplicationBootstrap(): void {
               healthModule.addReadinessCheck(async (ctx: RequestContext) => {
-                const platformShell = await ctx.container.resolve(PLATFORM_SHELL);
+                const platformShell = await ctx.container.resolve<PlatformShell>(PLATFORM_SHELL);
                 const [indicatorHealthy, readiness] = await Promise.all([
                   healthService.isHealthy(),
                   platformShell.ready(),

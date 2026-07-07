@@ -25,10 +25,12 @@ Health indicator toolkit for fluo applications. `@fluojs/terminus` layers on top
 pnpm add @fluojs/terminus
 ```
 
-Install the optional peer only when you use the Redis indicator subpath:
+Install optional peers only for the indicator provider seams you enable:
 
 ```bash
 pnpm add @fluojs/redis ioredis
+pnpm add @fluojs/prisma @prisma/client
+pnpm add @fluojs/drizzle drizzle-orm
 ```
 
 ## When to Use
@@ -147,7 +149,7 @@ When migrating from `@nestjs/terminus`, treat `TerminusModule.forRoot(...)` as t
 
 Terminus also does not create a separate process-only liveness route by default. The default route model remains `GET /health` for aggregated health and `GET /ready` for readiness. If your deployment requires a narrow process liveness probe, define that probe at the application or deployment layer instead of assuming Terminus will add a NestJS-style extra route.
 
-Runtime-specific indicators are split by subpath. Use `@fluojs/terminus/node` for Node.js memory and disk checks, and use `@fluojs/terminus/redis` for Redis checks. The root package keeps Redis optional-peer imports out of the root entrypoint and keeps Node disk filesystem access lazy so applications opt into runtime-specific probes explicitly.
+Runtime-specific indicators are split by subpath. Use `@fluojs/terminus/node` for Node.js memory and disk checks, and use `@fluojs/terminus/redis` for Redis checks. Prisma and Drizzle provider helpers resolve token-only DI seams so the root package stays import-safe when those optional peers are absent, and Node disk filesystem access stays lazy so applications opt into runtime-specific probes explicitly.
 
 ## Public API Overview
 
