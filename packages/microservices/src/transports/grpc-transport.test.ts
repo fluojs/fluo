@@ -736,6 +736,22 @@ describe('GrpcMicroserviceTransport', () => {
     await transport.close();
   });
 
+  it('removes unary AbortSignal listener when the response resolves', async () => {
+    const { transport } = createGrpcTransport();
+    await transport.listen(async (packet) => {
+      const input = packet.payload as { a: number; b: number };
+      return input.a + input.b;
+    });
+
+    const controller = new AbortController();
+    const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+
+    await expect(transport.send('MathService.Sum', { a: 2, b: 3 }, controller.signal)).resolves.toBe(5);
+    expect(removeEventListenerSpy).toHaveBeenCalledWith('abort', expect.any(Function));
+
+    await transport.close();
+  });
+
   it('keeps concurrent unary requests correlated', async () => {
     const { transport } = createGrpcTransport();
     await transport.listen(async (packet) => {

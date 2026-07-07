@@ -228,6 +228,22 @@ class SignalRecordingTransport implements MicroserviceTransport {
   }
 }
 
+class CloseRecordingTransport implements MicroserviceTransport {
+  closeCallCount = 0;
+
+  async listen(): Promise<void> {}
+
+  async close(): Promise<void> {
+    this.closeCallCount += 1;
+  }
+
+  async send(): Promise<unknown> {
+    return 'ok';
+  }
+
+  async emit(): Promise<void> {}
+}
+
 function createNoopWriter(): ServerStreamWriter {
   return {
     end() {},
@@ -322,6 +338,65 @@ describe('@fluojs/microservices', () => {
     expect(transport.serverStreamSignal).toBe(controller.signal);
     expect(transport.clientStreamSignal).toBe(controller.signal);
     expect(transport.bidiStreamSignal).toBe(controller.signal);
+
+    await app.close();
+  });
+
+  it('forwards shutdown signals from MICROSERVICE close() to the lifecycle service', async () => {
+    const transport = new CloseRecordingTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [MicroservicesModule.forRoot({ transport })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const lifecycleService = await app.container.resolve(MicroserviceLifecycleService);
+    const microservice = await app.container.resolve<{ close(signal?: string): Promise<void> }>(MICROSERVICE);
+    const closeSpy = vi.spyOn(lifecycleService, 'close');
+
+    await microservice.close('SIGTERM');
+
+    expect(closeSpy).toHaveBeenCalledWith('SIGTERM');
+    expect(transport.closeCallCount).toBe(1);
+
+    await app.close();
+  });
+
+  it('keeps MicroserviceLifecycleService close(signal) compatible with no-argument transports', async () => {
+    const transport = new CloseRecordingTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [MicroservicesModule.forRoot({ transport })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const lifecycleService = await app.container.resolve(MicroserviceLifecycleService);
+
+    await lifecycleService.close('SIGTERM');
+
+    expect(transport.closeCallCount).toBe(1);
+
+    await app.close();
+  });
+
+  it('forwards runtime shutdown hook signals through the lifecycle service close contract', async () => {
+    const transport = new CloseRecordingTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [MicroservicesModule.forRoot({ transport })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const lifecycleService = await app.container.resolve(MicroserviceLifecycleService);
+    const closeSpy = vi.spyOn(lifecycleService, 'close');
+
+    await lifecycleService.onApplicationShutdown('SIGTERM');
+
+    expect(closeSpy).toHaveBeenCalledWith('SIGTERM');
+    expect(transport.closeCallCount).toBe(1);
 
     await app.close();
   });

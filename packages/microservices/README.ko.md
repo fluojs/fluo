@@ -91,6 +91,7 @@ await microservice.listen();
 - RabbitMQ 요청-응답은 기본적으로 인스턴스별 response queue를 사용합니다. 공유 reply topology를 의도적으로 운영할 때만 `responseQueue`를 명시적으로 지정하세요.
 - caller-owned broker collaborator는 shutdown 중에도 caller-owned로 유지됩니다. NATS, Kafka, RabbitMQ transport는 subscription/consumer를 분리하고 in-flight 요청을 reject하지만, 애플리케이션이 넘긴 client, producer, consumer, publisher, 외부 connection 객체를 close/disconnect하지 않습니다.
 - `AbortSignal`을 받는 요청-응답 transport는 이미 abort된 send를 publish 전에 reject하고, deferred broker/RPC dispatch 직전 cancellation을 다시 확인하며, 나중에 abort된 in-flight send도 reject합니다. `close()`가 시작된 뒤에는 shutdown 중인 lifecycle에 새 작업을 publish하지 않고 `send()`/`emit()`을 reject하며, 동시 `listen()` 호출은 아직 진행 중인 shutdown 상태를 reset할 수 없습니다.
+- Programmatic `Microservice` facade는 런타임 shutdown hook이 종료를 시작한 signal을 전달할 수 있도록 `close(signal?: string)`을 받습니다. `MicroserviceLifecycleService.close(signal)`은 이 lifecycle-compatible facade 계약을 유지하면서도 현재 설정된 transport에는 기존 `close(): Promise<void>` 계약으로 호출합니다. 각 transport는 자체 문서가 signal-aware shutdown을 명시하지 않는 한 계속 인자를 받지 않는 shutdown adapter입니다.
 - Root `@fluojs/microservices` barrel import와 `TcpMicroserviceTransport` 생성은 `node:net`을 load하지 않습니다. TCP는 `listen()`이 server를 시작하거나 outbound `send()`/`emit()`이 socket을 생성하는 경로에서만 Node networking을 lazy-load합니다. `close()`가 in-flight listen 시도를 기다리는 중 startup이 실패해도 microservice shutdown은 캡처한 listen error를 다시 surface하기 전에 transport cleanup을 시도합니다.
 - TCP는 테스트와 ephemeral listener를 위해 `port: 0`을 허용하고, listen 중에는 OS가 할당한 포트로 outbound `send()`/`emit()`을 라우팅합니다.
 - Platform status snapshot은 transport resource ownership을 보고합니다. TCP와 internally-created gRPC server는 framework-owned listener/client resource로 보고하고, MQTT는 client를 직접 생성한 경우에만 framework ownership을 보고하며, caller-supplied gRPC server와 caller-owned broker collaborator transport는 externally managed로 남습니다.
@@ -160,7 +161,7 @@ class ManualMicroserviceProvidersModule {}
 
 ### Programmatic runtime
 
-`MicroserviceLifecycleService`는 programmatic runtime access를 위해 `listen()`, `close()`, `send()`, `emit()`, `serverStream()`, `clientStream()`, `bidiStream()`, `createPlatformStatusSnapshot()`을 제공합니다.
+`MicroserviceLifecycleService`는 programmatic runtime access를 위해 `listen()`, `close(signal?: string)`, `send()`, `emit()`, `serverStream()`, `clientStream()`, `bidiStream()`, `createPlatformStatusSnapshot()`을 제공합니다. `MICROSERVICE` 토큰은 raw transport instance가 아니라 같은 programmatic `Microservice` facade로 resolve됩니다.
 
 ### Type export
 
@@ -182,9 +183,12 @@ Payload는 dispatch 전에 clone되고, 동시 `listen()` 호출은 dedupe되며
 
 `RedisStreamsMicroserviceTransport`는 현재 루트 배럴에서만 지원하며, `@fluojs/microservices/redis-streams` 전용 export는 없습니다.
 
+정식 transport 학습 자료는 [TCP](../../book/intermediate/ch02-tcp.ko.md), [RabbitMQ](../../book/intermediate/ch04-rabbitmq.ko.md), [gRPC](../../book/intermediate/ch08-grpc.ko.md) 책 장에 있으며, 이 README는 패키지 수준 동작 계약 기준으로 남습니다.
+
 ## 관련 패키지
 
 - `@fluojs/core`: 모듈과 DI 메타데이터의 기반 패키지입니다.
+- `@fluojs/core/internal`: 이 패키지가 데코레이터 메타데이터와 clone helper를 위해 사용하는 first-party package-integration seam입니다. 애플리케이션-facing import surface가 아닙니다.
 - `@fluojs/runtime`: 마이크로서비스 부트스트랩과 팩토리 API를 제공합니다.
 - `@fluojs/di`: 핸들러와 provider를 resolve하는 DI 엔진입니다.
 

@@ -133,9 +133,12 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
   /**
    * Closes the configured transport and stops accepting microservice traffic.
    *
+   * @param signal Optional shutdown signal reported by the runtime lifecycle hook.
    * @returns A promise that resolves once shutdown completes.
    */
-  async close(): Promise<void> {
+  async close(signal?: string): Promise<void> {
+    void signal;
+
     let listenError: unknown;
 
     if (this.listenPromise) {
@@ -166,8 +169,8 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     }
   }
 
-  async onApplicationShutdown(): Promise<void> {
-    await this.close();
+  async onApplicationShutdown(signal?: string): Promise<void> {
+    await this.close(signal);
   }
 
   /**

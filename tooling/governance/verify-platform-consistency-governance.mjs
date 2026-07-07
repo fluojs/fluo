@@ -580,7 +580,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // tooling runtime-floor discoverability, plus Cron distributed-lock
   // lifecycle contracts such as enabled TTL validation before Redis I/O,
   // bounded shutdown lock-release I/O, timeout ownership retention, dynamic
-  // blank-name rejection, and immutable registry descriptor snapshots.
+  // blank-name rejection, immutable registry descriptor snapshots, and
+  // microservices facade shutdown signal forwarding plus transport-owned
+  // cancellation cleanup docs/tests.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),

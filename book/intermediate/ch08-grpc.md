@@ -5,6 +5,8 @@
 
 This chapter extends the transport choices from Part 1 to gRPC and sets the criteria for introducing schema-first RPC and streaming contracts into FluoShop. Chapter 7 covered physical edge input. Here, we shift the focus to service boundaries that need explicit proto contracts and low-latency streaming.
 
+Package-level gRPC transport contracts, including server ownership, signal-compatible facade shutdown, and AbortSignal listener cleanup, are canonical in [`packages/microservices/README.md`](../../packages/microservices/README.md).
+
 ## Learning Objectives
 - Understand why gRPC provides point-to-point contracts that differ from broker-based transports.
 - Learn how to configure the gRPC transport with core options such as protoPath, packageName, and services.

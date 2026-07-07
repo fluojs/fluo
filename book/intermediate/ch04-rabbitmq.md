@@ -5,6 +5,8 @@
 
 This chapter introduces RabbitMQ so FluoShop can move its post-payment handoff to a work queue centered model. Chapter 3 used durable streams to gain resilience. Now we look at a transport that fits fulfillment flows where queue ownership and the competing consumer model matter.
 
+Package-level RabbitMQ transport contracts, including caller-owned collaborator shutdown and request cancellation cleanup, are canonical in [`packages/microservices/README.md`](../../packages/microservices/README.md).
+
 ## Learning Objectives
 - Understand why RabbitMQ fits work queue centered workflows.
 - Learn how to wire the RabbitMQ transport with a caller-owned publisher and consumer collaborator.
