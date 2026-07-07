@@ -60,7 +60,7 @@ To call a TCP-based service from another part of the system, such as the API Gat
 
 ### 2.2.1 Injecting the Client
 
-The `MICROSERVICE` token gives you access to the transport instance configured in the Module.
+The `MICROSERVICE` token gives you access to the programmatic `Microservice` facade configured by the Module, not the raw transport instance. The facade exposes `send()`, `emit()`, streaming helpers where supported, and lifecycle-compatible `close(signal?: string)` while the underlying TCP transport keeps its own transport-specific shutdown contract.
 
 ```typescript
 import { Inject } from '@fluojs/core';
