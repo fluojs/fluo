@@ -84,14 +84,14 @@ So when a custom Decorator writes a value to `context.metadata`, it uses the sam
 
 This isolation is central to building an extensible, modular ecosystem. In Fluo, we recommend using domain-specific metadata. For example, if you build a caching library for Fluo, you can create a `@Cacheable()` Decorator that stores configuration under a `CACHE_METADATA_KEY` symbol. This lets the library participate in the same unified metadata model while remaining independent from the framework core's DI or routing logic.
 
-Metadata-driven logic also improves testability. Instead of mocking complex internal state, you can simply inspect the metadata attached to a class or method to confirm that a Decorator was applied correctly. Fluo provides internal utilities, available through `@fluojs/core/internal`, that help read and validate this metadata during unit and integration tests.
+Metadata-driven logic also improves testability. Instead of mocking complex internal state, you can inspect the metadata attached to a class or method to confirm that a Decorator was applied correctly. Application-level decorators should prefer package-owned metadata keys and public readers; first-party request-pipeline integrations can use `@fluojs/core/request-pipeline` for DTO binding, validation, and standard metadata-bag access. The broader `@fluojs/core/internal` utilities are reserved for fluo-owned packages and framework tests, not consumer custom code.
 
 ## 3.3 Implementation: @CurrentUser()
 The `@CurrentUser()` Decorator is a classic example of a parameter Decorator used to simplify Controller logic. In an HTTP request context, it identifies which parameter should receive the authenticated user object.
 
-To implement it, you use the `defineInjectionMetadata` utility at `path:packages/core/src/metadata/injection.ts:11-17`. This function is a low-level primitive that records how a specific parameter or property should be satisfied by the framework runtime.
+Inside fluo's HTTP package, a decorator like this is implemented with a package-owned metadata writer that records how a specific parameter should be satisfied by the request runtime. The low-level `defineInjectionMetadata` primitive at `path:packages/core/src/metadata/injection.ts:11-17` is part of the internal metadata model and is not an application extension API.
 
-The key point in this chapter is not the name `@CurrentUser()` itself, but the structure from Decorator factory to metadata writer. You can see the same structure in the public `@Inject()` Decorator.
+The key point in this chapter is not the name `@CurrentUser()` itself, but the structure from Decorator factory to metadata writer. The public `@Inject()` Decorator demonstrates the same record-now/read-later principle for one specific public contract: class-level constructor dependency metadata.
 
 `path:packages/core/src/decorators.ts:69-76`
 ```typescript
@@ -106,7 +106,7 @@ export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecora
 }
 ```
 
-This `defineInjectionMetadata` call, see `path:packages/core/src/metadata/injection.ts:14-16`, essentially records a requirement for that parameter. The public `@Inject()` excerpt above shows the same principle. The Decorator doesn't create runtime objects when it runs. It only leaves static requirements as metadata for the container to read later. This is a strong example of how Fluo bridges the gap between static Decorator execution and dynamic runtime resolution.
+The internal parameter metadata writer records a requirement for that parameter, while the public `@Inject()` excerpt above records constructor tokens on the decorated class. Do not place `@Inject(...)` on constructor parameters or properties; use it only as a standard class decorator. In both cases, the Decorator doesn't create runtime objects when it runs. It only leaves static requirements as metadata for the relevant runtime to read later. This is a strong example of how Fluo bridges the gap between static Decorator execution and dynamic runtime resolution without exposing every low-level writer to application code.
 
 At runtime, Fluo's HTTP pipeline reads this metadata. Right before a Controller method is invoked, the framework finds the `user` object in the current request context and injects it into the argument list at the specified index. This pattern removes the need to manually extract the user in every Controller method, leading to much cleaner and more testable code.
 
