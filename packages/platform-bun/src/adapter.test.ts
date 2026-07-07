@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { All, Controller, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Redirect, type RequestContext, SseResponse, Version, VersioningType } from '@fluojs/http';
-import { defineModule } from '@fluojs/runtime';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
+import { createWebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -275,225 +276,46 @@ function isMockBunRouteMethodSupported(value: NonNullable<BunServeOptions['route
 }
 
 function registerBunWebRuntimePortabilitySuite(): void {
+  const bunPortabilityHarness = createWebRuntimeHttpAdapterPortabilityHarness<BootstrapBunApplicationOptions>({
+    async bootstrap(rootModule: ModuleType, options: BootstrapBunApplicationOptions) {
+      const mockBun = installMockBun();
+      const app = await bootstrapAndListenBunApplication(rootModule, options);
+
+      return {
+        async close() {
+          await app.close();
+        },
+        async dispatch(request: Request) {
+          return await dispatchMockBunRequest(mockBun, request);
+        },
+      };
+    },
+    name: 'Bun',
+  });
+
   describe('Bun web-runtime portability conformance', () => {
-    it('preserves malformed cookie values', async () => {
-      const mockBun = installMockBun();
-
-      @Controller('/cookies')
-      class CookieController {
-        @Get('/')
-        readCookies(_input: undefined, context: RequestContext) {
-          return context.request.cookies;
-        }
-      }
-
-      class AppModule {}
-      defineModule(AppModule, { controllers: [CookieController] });
-
-      const app = await bootstrapAndListenBunApplication(AppModule, { cors: false });
-
-      try {
-        const response = await dispatchMockBunRequest(mockBun, new Request('https://runtime.test/cookies', {
-          headers: { cookie: 'good=hello%20world; bad=%E0%A4%A' },
-        }));
-
-        expect(response.status).toBe(200);
-        await expect(response.json()).resolves.toEqual({ bad: '%E0%A4%A', good: 'hello world' });
-      } finally {
-        await app.close();
-      }
+    it('preserves malformed cookie values through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertPreservesMalformedCookieValues();
     });
 
-    it('preserves query arrays and malformed query decoding', async () => {
-      const mockBun = installMockBun();
-
-      @Controller('/query')
-      class QueryController {
-        @Get('/')
-        readQuery(_input: undefined, context: RequestContext) {
-          return context.request.query;
-        }
-      }
-
-      class AppModule {}
-      defineModule(AppModule, { controllers: [QueryController] });
-
-      const app = await bootstrapAndListenBunApplication(AppModule, { cors: false });
-
-      try {
-        const response = await dispatchMockBunRequest(
-          mockBun,
-          new Request('https://runtime.test/query?tag=one&tag=two&empty=&flag&encoded=hello+world&bad=%E0%A4%A'),
-        );
-
-        expect(response.status).toBe(200);
-        await expect(response.json()).resolves.toEqual({
-          bad: '�%A',
-          empty: '',
-          encoded: 'hello world',
-          flag: '',
-          tag: ['one', 'two'],
-        });
-      } finally {
-        await app.close();
-      }
+    it('preserves query arrays and malformed query decoding through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertPreservesQueryArraysAndDecoding();
     });
 
-    it('preserves raw body for JSON and text requests when enabled', async () => {
-      const mockBun = installMockBun();
-
-      @Controller('/webhooks')
-      class WebhookController {
-        @Post('/json')
-        handleJson(_input: undefined, context: RequestContext) {
-          return {
-            parsed: context.request.body,
-            raw: decodeUtf8(context.request.rawBody),
-          };
-        }
-
-        @Post('/text')
-        handleText(_input: undefined, context: RequestContext) {
-          return {
-            parsed: context.request.body,
-            raw: decodeUtf8(context.request.rawBody),
-          };
-        }
-      }
-
-      class AppModule {}
-      defineModule(AppModule, { controllers: [WebhookController] });
-
-      const app = await bootstrapAndListenBunApplication(AppModule, { cors: false, rawBody: true });
-
-      try {
-        const [jsonResponse, textResponse] = await Promise.all([
-          dispatchMockBunRequest(mockBun, new Request('https://runtime.test/webhooks/json', {
-            body: JSON.stringify({ provider: 'stripe' }),
-            headers: { 'content-type': 'application/json' },
-            method: 'POST',
-          })),
-          dispatchMockBunRequest(mockBun, new Request('https://runtime.test/webhooks/text', {
-            body: 'ping=1',
-            headers: { 'content-type': 'text/plain; charset=utf-8' },
-            method: 'POST',
-          })),
-        ]);
-
-        expect(jsonResponse.status).toBe(201);
-        expect(textResponse.status).toBe(201);
-        await expect(jsonResponse.json()).resolves.toEqual({ parsed: { provider: 'stripe' }, raw: '{"provider":"stripe"}' });
-        await expect(textResponse.json()).resolves.toEqual({ parsed: 'ping=1', raw: 'ping=1' });
-      } finally {
-        await app.close();
-      }
+    it('preserves raw body for JSON and text requests through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertPreservesRawBodyForJsonAndText();
     });
 
-    it('preserves byte-exact rawBody values for byte-sensitive text payloads', async () => {
-      const mockBun = installMockBun();
-      const bytes = Uint8Array.from([0, 10, 13, 195, 40, 255]);
-
-      @Controller('/byte-sensitive')
-      class ByteSensitiveController {
-        @Post('/')
-        handle(_input: undefined, context: RequestContext) {
-          return {
-            raw: Array.from(context.request.rawBody ?? new Uint8Array()),
-          };
-        }
-      }
-
-      class AppModule {}
-      defineModule(AppModule, { controllers: [ByteSensitiveController] });
-
-      const app = await bootstrapAndListenBunApplication(AppModule, { cors: false, rawBody: true });
-
-      try {
-        const response = await dispatchMockBunRequest(mockBun, new Request('https://runtime.test/byte-sensitive', {
-          body: bytes,
-          headers: { 'content-type': 'text/plain; charset=utf-8' },
-          method: 'POST',
-        }));
-
-        expect(response.status).toBe(201);
-        await expect(response.json()).resolves.toEqual({ raw: [0, 10, 13, 195, 40, 255] });
-      } finally {
-        await app.close();
-      }
+    it('preserves byte-exact rawBody values through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertPreservesExactRawBodyBytesForByteSensitivePayloads();
     });
 
-    it('does not preserve rawBody for multipart requests', async () => {
-      const mockBun = installMockBun();
-
-      @Controller('/uploads')
-      class UploadController {
-        @Post('/')
-        upload(_input: undefined, context: RequestContext) {
-          return {
-            body: context.request.body,
-            fileCount: context.request.files?.length ?? 0,
-            hasRawBody: context.request.rawBody !== undefined,
-          };
-        }
-      }
-
-      class AppModule {}
-      defineModule(AppModule, { controllers: [UploadController] });
-
-      const app = await bootstrapAndListenBunApplication(AppModule, { cors: false, rawBody: true });
-
-      try {
-        const form = new FormData();
-        form.set('name', 'Ada');
-        form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
-
-        const response = await dispatchMockBunRequest(mockBun, new Request('https://runtime.test/uploads', {
-          body: form,
-          method: 'POST',
-        }));
-
-        expect(response.status).toBe(201);
-        await expect(response.json()).resolves.toEqual({ body: { name: 'Ada' }, fileCount: 1, hasRawBody: false });
-      } finally {
-        await app.close();
-      }
+    it('excludes rawBody for multipart requests through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertExcludesRawBodyForMultipart();
     });
 
-    it('supports SSE streaming', async () => {
-      const mockBun = installMockBun();
-
-      @Controller('/events')
-      class EventsController {
-        @Get('/')
-        stream(_input: undefined, context: RequestContext) {
-          const stream = new SseResponse(context);
-
-          stream.comment('connected');
-          stream.send({ ready: true }, { event: 'ready', id: 'evt-1' });
-          stream.close();
-
-          return stream;
-        }
-      }
-
-      class AppModule {}
-      defineModule(AppModule, { controllers: [EventsController] });
-
-      const app = await bootstrapAndListenBunApplication(AppModule, { cors: false });
-
-      try {
-        const response = await dispatchMockBunRequest(mockBun, new Request('https://runtime.test/events', {
-          headers: { accept: 'text/event-stream' },
-        }));
-        const body = await response.text();
-
-        expect(response.status).toBe(200);
-        expect(response.headers.get('content-type')).toContain('text/event-stream');
-        expect(body).toContain('event: ready');
-        expect(body).toContain('data: {"ready":true}');
-      } finally {
-        await app.close();
-      }
+    it('supports SSE streaming through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertSupportsSseStreaming();
     });
   });
 }
@@ -507,10 +329,6 @@ async function bootstrapAndListenBunApplication(rootModule: Parameters<typeof bo
 
 async function dispatchMockBunRequest(mockBun: MockBun, request: Request): Promise<Response> {
   return await mockBun.lastServer!.fetch(request) ?? new Response(null, { status: 404 });
-}
-
-function decodeUtf8(input: Uint8Array | undefined): string {
-  return new TextDecoder().decode(input ?? new Uint8Array());
 }
 
 describe('@fluojs/platform-bun', () => {
