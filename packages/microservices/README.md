@@ -88,6 +88,7 @@ Microservice handlers fully support fluo's DI scopes. Request-scoped providers a
 - RabbitMQ request/reply uses an instance-scoped response queue by default. Pass `responseQueue` explicitly only when you intentionally own and coordinate a shared reply topology.
 - Caller-owned broker collaborators stay caller-owned during shutdown. NATS, Kafka, and RabbitMQ transports detach their subscriptions/consumers and reject in-flight requests, but they do not close or disconnect the client, producer, consumer, publisher, or external connection objects supplied by the application.
 - Request-response transports that accept `AbortSignal` reject already-aborted sends before publishing, re-check cancellation immediately before deferred broker/RPC dispatch, and reject in-flight sends on later abort. Once `close()` starts, transports reject new `send()`/`emit()` calls instead of publishing work into a shutting-down lifecycle, and concurrent `listen()` calls cannot reset a shutdown that is still in progress.
+- The programmatic `Microservice` facade accepts `close(signal?: string)` so runtime shutdown hooks can report the signal that initiated shutdown. `MicroserviceLifecycleService.close(signal)` preserves that lifecycle-compatible facade contract while continuing to call the configured transport's current `close(): Promise<void>` contract; individual transports remain no-argument shutdown adapters unless their own documentation explicitly says they consume a shutdown signal.
 - Importing the root `@fluojs/microservices` barrel and constructing `TcpMicroserviceTransport` do not load `node:net`; TCP loads Node networking only when `listen()` starts a server or an outbound `send()`/`emit()` constructs a socket. If startup fails while `close()` is waiting on an in-flight listen attempt, microservice shutdown still attempts transport cleanup before surfacing the captured listen error.
 - TCP accepts `port: 0` for tests and ephemeral listeners, then routes outbound `send()`/`emit()` calls through the OS-assigned port while the transport is listening.
 - Platform status snapshots report transport resource ownership: TCP and internally-created gRPC servers report framework-owned listener/client resources, MQTT reports framework ownership only when it creates the client, caller-supplied gRPC servers report caller ownership, and caller-owned broker collaborator transports remain externally managed.
@@ -157,7 +158,7 @@ class ManualMicroserviceProvidersModule {}
 
 ### Programmatic runtime
 
-`MicroserviceLifecycleService` exposes `listen()`, `close()`, `send()`, `emit()`, `serverStream()`, `clientStream()`, `bidiStream()`, and `createPlatformStatusSnapshot()` for programmatic runtime access.
+`MicroserviceLifecycleService` exposes `listen()`, `close(signal?: string)`, `send()`, `emit()`, `serverStream()`, `clientStream()`, `bidiStream()`, and `createPlatformStatusSnapshot()` for programmatic runtime access. The `MICROSERVICE` token resolves to the same programmatic `Microservice` facade rather than the raw transport instance.
 
 ### Type exports
 
@@ -179,9 +180,12 @@ Payloads are cloned before dispatch, concurrent `listen()` calls are deduped, re
 
 `RedisStreamsMicroserviceTransport` is currently supported from the root barrel only; there is no dedicated `@fluojs/microservices/redis-streams` export.
 
+Canonical transport learning material lives in the book chapters for [TCP](../../book/intermediate/ch02-tcp.md), [RabbitMQ](../../book/intermediate/ch04-rabbitmq.md), and [gRPC](../../book/intermediate/ch08-grpc.md), while this README remains the package-level behavioral contract reference.
+
 ## Related Packages
 
 - `@fluojs/core`: Core DI and module system.
+- `@fluojs/core/internal`: First-party package-integration seam used by this package for decorator metadata and clone helpers; it is not an application-facing import surface.
 - `@fluojs/runtime`: Microservice bootstrap and factory.
 - `@fluojs/di`: Underlying dependency injection engine.
 
