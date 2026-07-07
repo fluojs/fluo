@@ -12,7 +12,7 @@ import type { BootstrapReadySignal } from '@fluojs/runtime/internal';
 
 import { normalizePositiveInteger, normalizePositiveIntegerOrFalse, normalizeRateLimiter } from './helpers.js';
 import { QueueLifecycleService } from './service.js';
-import { QUEUE, QUEUE_MODULE_CONTEXT, QUEUE_OPTIONS } from './tokens.js';
+import { QUEUE, QUEUE_MODULE_CONTEXT, QUEUE_OPTIONS, QUEUE_REDIS_CLIENT } from './tokens.js';
 import type { QueueModuleContext } from './tokens.js';
 import type { NormalizedQueueModuleOptions, QueueModuleOptions } from './types.js';
 
@@ -28,6 +28,16 @@ interface QueueModuleRedisConnection {
   quit(): Promise<unknown>;
   maxRetriesPerRequest?: number | null;
   status?: string;
+}
+
+function hasQueueRedisClient(value: unknown): value is QueueModuleRedisClient {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const client = value as { duplicate?: unknown; ltrim?: unknown; rpush?: unknown };
+
+  return typeof client.duplicate === 'function' && typeof client.rpush === 'function' && typeof client.ltrim === 'function';
 }
 
 type QueueLifecycleServiceFactoryDeps = [
@@ -61,8 +71,6 @@ function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): Normaliz
 }
 
 function createQueueProviders(options: QueueModuleOptions = {}, moduleType: ModuleType): Provider[] {
-  const redisToken = getRedisClientToken(options.clientName);
-
   return [
     {
       provide: QUEUE_OPTIONS,
@@ -73,9 +81,29 @@ function createQueueProviders(options: QueueModuleOptions = {}, moduleType: Modu
       useValue: { moduleType } satisfies QueueModuleContext,
     },
     {
+      inject: [QUEUE_OPTIONS, RUNTIME_CONTAINER],
+      provide: QUEUE_REDIS_CLIENT,
+      useFactory: async (...deps: unknown[]) => {
+        const [normalizedOptions, runtimeContainer] = deps as [NormalizedQueueModuleOptions, Container];
+        const redisToken = getRedisClientToken(normalizedOptions.clientName);
+
+        if (!runtimeContainer.has(redisToken)) {
+          throw new Error('@fluojs/queue requires a registered Redis client with duplicate(), rpush(), and ltrim() methods.');
+        }
+
+        const redisClient = await runtimeContainer.resolve(redisToken);
+
+        if (!hasQueueRedisClient(redisClient)) {
+          throw new Error('@fluojs/queue requires a Redis client with duplicate(), rpush(), and ltrim() methods.');
+        }
+
+        return redisClient;
+      },
+    },
+    {
       inject: [
         QUEUE_OPTIONS,
-        redisToken,
+        QUEUE_REDIS_CLIENT,
         RUNTIME_CONTAINER,
         COMPILED_MODULES,
         APPLICATION_LOGGER,

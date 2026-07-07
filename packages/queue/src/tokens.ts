@@ -7,6 +7,7 @@ export interface QueueModuleContext {
   readonly moduleType: ModuleType;
 }
 
+export const QUEUE_REDIS_CLIENT: Token<unknown> = Symbol.for('fluo.queue.redis-client');
 /** Compatibility injection token for the queue facade returned by {@link QueueModule.forRoot}. */
 export const QUEUE: Token<Queue> = Symbol.for('fluo.queue');
 /** Injection token for normalized module defaults consumed by {@link QueueLifecycleService}. */

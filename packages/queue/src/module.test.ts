@@ -1,6 +1,6 @@
 import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata } from '@fluojs/core/internal';
-import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
+import { getRedisClientToken, REDIS_CLIENT, RedisModule } from '@fluojs/redis';
 import { type ApplicationLogger, bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -769,34 +769,66 @@ describe('@fluojs/queue', () => {
     }
   });
 
-  it('requires scoped queue modules to import the Redis client provider explicitly', async () => {
+  it('resolves a named Redis client through sibling Redis and Queue module imports', async () => {
     class ScopedRedisJob {
       constructor(public readonly id: string) {}
     }
 
-    @QueueWorker(ScopedRedisJob)
-    class ScopedRedisWorker {
-      async handle(_job: ScopedRedisJob): Promise<void> {}
+    class ScopedRedisWorkerStore {
+      handled: string[] = [];
     }
 
-    class RedisTestModule {}
-    defineModule(RedisTestModule, {
-      exports: [REDIS_CLIENT],
-      providers: [{ provide: REDIS_CLIENT, useValue: new MockRedisClient() }],
+    @Inject(ScopedRedisWorkerStore)
+    @QueueWorker(ScopedRedisJob)
+    class ScopedRedisWorker {
+      constructor(private readonly store: ScopedRedisWorkerStore) {}
+
+      async handle(job: ScopedRedisJob): Promise<void> {
+        this.store.handled.push(job.id);
+      }
+    }
+
+    @Inject(QUEUE)
+    class ScopedRedisUserService {
+      constructor(private readonly queue: Queue) {}
+
+      async enqueue(id: string): Promise<string> {
+        return this.queue.enqueue(new ScopedRedisJob(id));
+      }
+    }
+
+    class RedisFeatureModule {}
+    defineModule(RedisFeatureModule, {
+      imports: [RedisModule.forRoot({ name: 'jobs' })],
     });
 
     class QueueFeatureModule {}
     defineModule(QueueFeatureModule, {
-      imports: [QueueModule.forRoot({ global: false })],
-      providers: [ScopedRedisWorker],
+      imports: [QueueModule.forRoot({ clientName: 'jobs', global: false })],
+      providers: [ScopedRedisWorker, ScopedRedisUserService, ScopedRedisWorkerStore],
     });
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [RedisTestModule, QueueFeatureModule],
+      imports: [RedisFeatureModule, QueueFeatureModule],
     });
 
-    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('cannot access token Symbol(fluo.redis.client)');
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: getRedisClientToken('jobs'), useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    try {
+      const service = await app.container.resolve(ScopedRedisUserService);
+      const store = await app.container.resolve(ScopedRedisWorkerStore);
+      await waitForApplicationQueueWorkers(app);
+
+      await expect(service.enqueue('named-1')).resolves.toBe('1');
+      expect(store.handled).toEqual(['named-1']);
+    } finally {
+      await app.close();
+    }
   });
 
   it('restricts non-global queue worker discovery to modules that can see the queue provider', async () => {
