@@ -1600,13 +1600,13 @@ describe('Slack delivery discoverability', () => {
       expect(content).toContain('SLACK');
       expect(content).toContain('SLACK_CHANNEL');
       expect(content).toContain('global: false');
-      expect(content).toContain('forFeature(...)');
+      expect(content).toContain('singleton');
     }
 
     for (const content of [englishReadme, koreanReadme, englishBook, koreanBook, englishMigration, koreanMigration]) {
       expect(content).toContain('global?: boolean');
       expect(content).toContain('isGlobal');
-      expect(content).toContain('named');
+      expect(content).toContain('multi-client registry');
     }
   });
 });
