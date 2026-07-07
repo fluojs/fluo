@@ -90,6 +90,33 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 `@fluojs/queue`는 애플리케이션 부트스트랩 중 해당 Redis 클라이언트를 조회한 뒤 BullMQ용으로 큐가 소유하는 duplicate 연결을 만듭니다. 공유 `@fluojs/redis` 클라이언트의 소유권은 `RedisModule`에 남아 있으며, Queue는 자신이 만든 BullMQ duplicate 연결만 닫습니다. 이 duplicate 연결은 BullMQ Worker가 요구하는 `maxRetriesPerRequest: null` 설정으로 구성되어 시작 동작이 BullMQ의 실제 런타임 제약과 일치합니다.
 
+`QueueModule.forRoot({ global: false })`를 사용하면 각 queue 등록은 해당 `QueueModule.forRoot(...)` 호출을 가져온 동일한 module tree에서 도달할 수 있는 worker만 탐색합니다. 서로 다른 scoped queue feature module은 서로 분리된 상태를 유지하며, Redis client provider도 같은 module tree 안에서 도달 가능해야 합니다.
+
+### 범위가 지정된 Queue 등록
+
+애플리케이션이 non-global queue 등록을 둘 이상 가져오면 명시적인 `scope`를 사용하세요. Scope 이름은 trim되며, 비어 있으면 안 되고, 컴파일된 module graph 안에서 고유해야 합니다. `QueueModule.forRoot({ global: false })`를 두 번 가져오는 duplicate default scoped registration이나 `QueueModule.forRoot({ global: false, scope: 'jobs' })`를 두 번 가져오는 duplicate explicit scope는 bootstrap 중 결정적인 오류로 실패합니다.
+
+```typescript
+import { Inject, Module } from '@fluojs/core';
+import { getQueueLifecycleServiceToken, getQueueToken, QueueModule, type Queue } from '@fluojs/queue';
+
+const EMAIL_QUEUE = getQueueToken('email');
+const EMAIL_QUEUE_LIFECYCLE = getQueueLifecycleServiceToken('email');
+
+@Inject(EMAIL_QUEUE)
+export class EmailPublisher {
+  constructor(private readonly queue: Queue) {}
+}
+
+@Module({
+  imports: [QueueModule.forRoot({ global: false, scope: 'email' })],
+  providers: [EmailPublisher, EmailWorker],
+})
+export class EmailQueueModule {}
+```
+
+애플리케이션에 기본 queue 등록이 하나뿐이고 compatibility `QUEUE` 토큰이나 `QueueLifecycleService` 클래스를 직접 주입할 때만 `scope`를 생략하세요. Scoped registration에서는 각 feature module이 기본 compatibility token 대신 자신의 queue instance를 resolve하도록 `getQueueToken(scope)` 또는 `getQueueLifecycleServiceToken(scope)`를 주입하세요.
+
 ### 부트스트랩 및 종료 수명 주기
 
 Queue는 애플리케이션 부트스트랩 중 worker를 탐색하고 Queue가 소유하는 BullMQ 리소스를 만들지만, BullMQ worker processor는 runtime이 전체 애플리케이션 bootstrap/readiness sequence 완료를 표시한 뒤에만 시작합니다. 다른 `onApplicationBootstrap()` hook에서 enqueue한 job은 Queue 서비스가 초기화된 뒤에는 받을 수 있으며, processor는 뒤에 실행되는 async bootstrap hook이나 애플리케이션 readiness보다 앞서 실행되지 않고 bootstrap-ready handoff 이후 실행됩니다. Queue status는 해당 BullMQ processor가 실제로 시작될 때까지 degraded readiness를 보고합니다. Processor 시작에 실패하면 lifecycle이 `failed`로 이동하고, status snapshot은 worker를 ready로 숨기지 않고 실패를 노출합니다.
@@ -125,6 +152,8 @@ Job은 JSON으로 직렬화 가능한 plain object여야 합니다. Queue는 enq
 - `QueueLifecycleService`: 작업을 큐에 추가하고 lifecycle/status snapshot을 생성(`enqueue(job)`, `createPlatformStatusSnapshot()`)하기 위한 기본 서비스입니다.
 - `@QueueWorker(JobClass, options?)`: 특정 작업을 처리할 핸들러를 지정하는 데코레이터입니다.
 - `QUEUE`: queue facade를 위한 호환성 주입 토큰입니다.
+- `getQueueToken(scope?)`: Queue facade token helper입니다. `scope`를 생략하면 기본 `QUEUE` token을 반환하고, 비어 있지 않은 scope는 해당 scoped registration의 facade token을 반환합니다.
+- `getQueueLifecycleServiceToken(scope?)`: Scoped queue registration을 위한 lifecycle service token helper입니다.
 - `createQueuePlatformStatusSnapshot(...)`: lifecycle/readiness diagnostics를 위한 status snapshot helper입니다.
 
 
@@ -145,6 +174,7 @@ Job은 JSON으로 직렬화 가능한 plain object여야 합니다. Queue는 enq
 `QueueModuleOptions` 수명 주기/status 설정:
 
 - `global`: queue module 등록을 global로 만들지 여부입니다. 기본값은 `true`이며, queue provider를 importing module graph 안에만 scope하고 싶으면 `false`를 지정합니다.
+- `scope`: 고유한 non-empty queue registration scope입니다. 하나의 앱에 non-global queue registration이 여러 개 있으면 필요합니다.
 - `workerShutdownTimeoutMs`: 종료 중 active worker processor를 기다리는 최대 시간입니다. 시간이 지나면 BullMQ worker를 force-close합니다. 기본값은 `30_000`입니다.
 - `defaultDeadLetterMaxEntries`: job별로 유지할 dead-letter record의 최대 개수이며, trimming을 끄려면 `false`를 지정합니다. 기본값은 `1_000`입니다.
 
