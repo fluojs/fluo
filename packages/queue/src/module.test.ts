@@ -494,9 +494,11 @@ describe('@fluojs/queue', () => {
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const queueByClass = await app.container.resolve(QueueLifecycleService);
+    const queueByHelperToken = await app.container.resolve<QueueLifecycleService>(getQueueLifecycleServiceToken());
     const queueByToken = await app.container.resolve<Queue>(QUEUE);
 
     expect(queueByClass).toBeInstanceOf(QueueLifecycleService);
+    expect(queueByHelperToken).toBe(queueByClass);
     expect(typeof queueByToken.enqueue).toBe('function');
 
     await app.close();

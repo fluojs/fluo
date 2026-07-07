@@ -228,7 +228,7 @@ export class QueueModule {
 
     return defineModule(QueueModuleDefinition, {
       exports: normalizedOptions.scope === undefined
-        ? [QueueLifecycleService, QUEUE]
+        ? [QueueLifecycleService, tokens.lifecycleServiceToken, QUEUE]
         : [tokens.lifecycleServiceToken, tokens.queueToken],
       global: normalizedOptions.global,
       providers: createQueueProviders(normalizedOptions, QueueModuleDefinition),
