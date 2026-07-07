@@ -33,6 +33,8 @@ import {
   runDenoApplication,
 } from './adapter.js';
 
+// allow: SIZE_OK — Package-local Deno adapter contract regressions share serve, dispatch, signal, websocket, and README fixtures.
+
 const TEST_TLS_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDBbj6DdMPNvDMr
 yNUM0dreceSBINfH+VDV750R3X57mdoqebUgjKOXjbjR7JRkloJ4PEgAic+840rq
@@ -375,6 +377,8 @@ describe('@fluojs/platform-deno', () => {
   it('rejects invalid explicit numeric adapter options during setup', () => {
     expect(() => createDenoAdapter({ maxBodySize: -1 })).toThrow(/maxBodySize/i);
     expect(() => createDenoAdapter({ port: 1.5 })).toThrow(/port/i);
+    expect(() => new DenoHttpApplicationAdapter({ maxBodySize: -1 })).toThrow(/maxBodySize/i);
+    expect(() => new DenoHttpApplicationAdapter({ port: 1.5 })).toThrow(/port/i);
   });
 
   it('uses the transport-neutral application logger by default for terminal Deno startup helpers', async () => {
@@ -409,14 +413,30 @@ describe('@fluojs/platform-deno', () => {
   it('keeps edge runtime README conformance coverage aligned across English and Korean docs', () => {
     const englishReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
     const koreanReadme = readFileSync(new URL('../README.ko.md', import.meta.url), 'utf8');
+    const sharedReadmeClaims = [
+      'Deno.serve',
+      'SIGINT',
+      'SIGTERM',
+      '10',
+      'packages/platform-deno/src/adapter.test.ts',
+      'packages/testing/src/portability/web-runtime-adapter-portability.test.ts',
+      'new DenoHttpApplicationAdapter',
+      'createDenoAdapter(options)',
+      'DenoWebSocketModule, OnMessage, WebSocketGateway',
+      'DenoServerWebSocket',
+      'listen(dispatcher)',
+      'close()',
+      'handle(request)',
+      'getListenTarget()',
+      'getRealtimeCapability()',
+      'getServer()',
+      'configureWebSocketBinding(...)',
+    ] as const;
 
     for (const readme of [englishReadme, koreanReadme]) {
-      expect(readme).toContain('Deno.serve');
-      expect(readme).toContain('SIGINT');
-      expect(readme).toContain('SIGTERM');
-      expect(readme).toContain('10');
-      expect(readme).toContain('packages/platform-deno/src/adapter.test.ts');
-      expect(readme).toContain('packages/testing/src/portability/web-runtime-adapter-portability.test.ts');
+      for (const claim of sharedReadmeClaims) {
+        expect(readme).toContain(claim);
+      }
     }
   });
 
@@ -443,45 +463,78 @@ describe('@fluojs/platform-deno', () => {
     });
 
     const server = createServeStub();
-    const app = await bootstrapDenoApplication(AppModule, {
-      port: 4567,
-      rawBody: true,
-      serve: server.serve,
-    });
+    let app: Application | undefined;
 
-    await app.listen();
+    try {
+      app = await bootstrapDenoApplication(AppModule, {
+        port: 4567,
+        rawBody: true,
+        serve: server.serve,
+      });
 
-    expect(server.options).toMatchObject({
-      hostname: '0.0.0.0',
-      port: 4567,
-    });
-    expect(server.options?.signal?.aborted).toBe(false);
+      await app.listen();
 
-    const response = await server.handler?.(new Request('https://runtime.test/hooks/stripe?tag=one&tag=two', {
-      body: JSON.stringify({ provider: 'stripe' }),
-      headers: {
-        cookie: 'session=abc%20123; bad=%E0%A4%A',
-        'content-type': 'application/json',
-      },
-      method: 'POST',
-    }));
+      expect(server.options).toMatchObject({
+        hostname: '0.0.0.0',
+        port: 4567,
+      });
+      expect(server.options?.signal?.aborted).toBe(false);
 
-    expect(response).toBeInstanceOf(Response);
-    expect(response?.status).toBe(201);
-    await expect(response?.json()).resolves.toEqual({
-      cookies: { bad: '%E0%A4%A', session: 'abc 123' },
-      method: 'POST',
-      parsed: { provider: 'stripe' },
-      path: '/hooks/stripe',
-      query: { tag: ['one', 'two'] },
-      raw: '{"provider":"stripe"}',
-      url: '/hooks/stripe?tag=one&tag=two',
-    });
+      const response = await server.handler?.(new Request('https://runtime.test/hooks/stripe?tag=one&tag=two', {
+        body: JSON.stringify({ provider: 'stripe' }),
+        headers: {
+          cookie: 'session=abc%20123; bad=%E0%A4%A',
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+      }));
 
-    await app.close();
+      expect(response).toBeInstanceOf(Response);
+      expect(response?.status).toBe(201);
+      await expect(response?.json()).resolves.toEqual({
+        cookies: { bad: '%E0%A4%A', session: 'abc 123' },
+        method: 'POST',
+        parsed: { provider: 'stripe' },
+        path: '/hooks/stripe',
+        query: { tag: ['one', 'two'] },
+        raw: '{"provider":"stripe"}',
+        url: '/hooks/stripe?tag=one&tag=two',
+      });
+    } finally {
+      await app?.close();
+    }
 
     expect(server.shutdown).toHaveBeenCalledTimes(1);
     expect(server.options?.signal?.aborted).toBe(true);
+  });
+
+  it('dispatches successful requests through adapter.handle after listen binds the dispatcher', async () => {
+    const server = createServeStub();
+    const adapter = createDenoAdapter({
+      serve: server.serve,
+    });
+
+    try {
+      await adapter.listen({
+        async dispatch(request: FrameworkRequest, response: FrameworkResponse) {
+          response.setStatus(202);
+          await response.send({
+            method: request.method,
+            path: request.path,
+          });
+        },
+      });
+
+      const response = await adapter.handle(new Request('https://runtime.test/manual-dispatch'));
+
+      expect(response.status).toBe(202);
+      await expect(response.json()).resolves.toEqual({
+        method: 'GET',
+        path: '/manual-dispatch',
+      });
+    } finally {
+      await adapter.close();
+    }
   });
 
   it('supports SSE streaming over the shared Web response bridge', async () => {
@@ -505,25 +558,29 @@ describe('@fluojs/platform-deno', () => {
     });
 
     const server = createServeStub();
-    const app = await bootstrapDenoApplication(AppModule, {
-      serve: server.serve,
-    });
+    let app: Application | undefined;
 
-    await app.listen();
+    try {
+      app = await bootstrapDenoApplication(AppModule, {
+        serve: server.serve,
+      });
 
-    const response = await server.handler?.(new Request('https://runtime.test/events', {
-      headers: {
-        accept: 'text/event-stream',
-      },
-    }));
-    const body = await response?.text();
+      await app.listen();
 
-    expect(response?.status).toBe(200);
-    expect(response?.headers.get('content-type')).toContain('text/event-stream');
-    expect(body).toContain('event: ready');
-    expect(body).toContain('data: {"ready":true}');
+      const response = await server.handler?.(new Request('https://runtime.test/events', {
+        headers: {
+          accept: 'text/event-stream',
+        },
+      }));
+      const body = await response?.text();
 
-    await app.close();
+      expect(response?.status).toBe(200);
+      expect(response?.headers.get('content-type')).toContain('text/event-stream');
+      expect(body).toContain('event: ready');
+      expect(body).toContain('data: {"ready":true}');
+    } finally {
+      await app?.close();
+    }
   });
 
   it('logs the listen target through the run helper', async () => {
@@ -651,6 +708,17 @@ describe('@fluojs/platform-deno', () => {
     expect(adapter.getListenTarget()).toEqual({
       bindTarget: '127.0.0.1:3000',
       url: 'http://127.0.0.1:3000',
+    });
+  });
+
+  it('normalizes direct constructor options through the same public factory semantics', () => {
+    const adapter = new DenoHttpApplicationAdapter({
+      host: '0.0.0.0',
+    });
+
+    expect(adapter.getListenTarget()).toEqual({
+      bindTarget: '0.0.0.0:3000',
+      url: 'http://localhost:3000',
     });
   });
 

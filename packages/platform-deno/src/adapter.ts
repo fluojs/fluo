@@ -127,7 +127,11 @@ declare global {
 
 /**
  * Deno-backed HTTP adapter that preserves request draining and websocket binding seams.
+ *
+ * Direct construction accepts the same public options as `createDenoAdapter(...)` and applies the
+ * same default port, `host` alias, `hostname` precedence, and numeric option validation.
  */
+// allow: SIZE_OK — Deno serve, websocket, signal, and shutdown state form one adapter lifecycle state machine.
 export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
   private abortController?: AbortController;
   private closeInFlight?: Promise<void>;
@@ -140,12 +144,19 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
   private readonly options: Required<Pick<DenoAdapterOptions, 'hostname' | 'port'>> & DenoAdapterOptions;
   private readonly webRequestResponseFactory;
 
-  constructor(options: Required<Pick<DenoAdapterOptions, 'hostname' | 'port'>> & DenoAdapterOptions) {
-    this.options = options;
+  /**
+   * Create a Deno adapter with the same normalization rules as `createDenoAdapter(...)`.
+   *
+   * @param options Transport, parsing, and websocket-host configuration for the Deno runtime.
+   */
+  constructor(options: DenoAdapterOptions = {}) {
+    const resolvedOptions = normalizeDenoAdapterOptions(options);
+
+    this.options = resolvedOptions;
     this.webRequestResponseFactory = createWebRequestResponseFactory({
-      maxBodySize: options.maxBodySize,
-      multipart: options.multipart,
-      rawBody: options.rawBody,
+      maxBodySize: resolvedOptions.maxBodySize,
+      multipart: resolvedOptions.multipart,
+      rawBody: resolvedOptions.rawBody,
     });
   }
 
@@ -322,13 +333,19 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
  * @returns A Deno-backed `HttpApplicationAdapter`.
  */
 export function createDenoAdapter(options: DenoAdapterOptions = {}): DenoHttpApplicationAdapter {
+  return new DenoHttpApplicationAdapter(options);
+}
+
+function normalizeDenoAdapterOptions(
+  options: DenoAdapterOptions,
+): Required<Pick<DenoAdapterOptions, 'hostname' | 'port'>> & DenoAdapterOptions {
   validateNonNegativeIntegerOption('maxBodySize', options.maxBodySize);
 
-  return new DenoHttpApplicationAdapter({
+  return {
     ...options,
     hostname: options.hostname ?? options.host ?? DEFAULT_HOSTNAME,
     port: resolveDenoPort(options.port),
-  });
+  };
 }
 
 /**
