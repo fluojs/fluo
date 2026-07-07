@@ -204,7 +204,7 @@ NotificationsModule.forRoot({
 });
 ```
 
-`dispatchMany(...)`가 `bulkThreshold`에 도달하거나 옵션에서 `{ queue: true }`를 명시하면, service는 직접 전송 대신 queue adapter를 사용합니다. 각 queued job은 안정적인 idempotency key를 포함합니다. `notification.id`가 있으면 그 값을 보존하고, 없으면 notification envelope에서 key를 파생하므로 idempotent enqueue를 지원하는 queue backend가 반복 요청을 중복 제거할 수 있습니다. Adapter가 `enqueueMany(...)`를 구현하지 않으면 fluo는 input order대로 job을 하나씩 enqueue합니다. 이때 `continueOnError: true`이면 성공한 queued result를 보존하고 실패한 enqueue 시도는 batch failures 목록으로 반환합니다. Queue delivery가 요청되었지만 queue adapter가 등록되어 있지 않으면 `NotificationQueueNotConfiguredError`가 발생합니다.
+`dispatchMany(...)`가 `bulkThreshold`에 도달하거나 옵션에서 `{ queue: true }`를 명시하면, service는 직접 전송 대신 queue adapter를 사용합니다. 명시적 `{ queue: true }` 옵션은 batch가 `bulkThreshold`보다 작아도 queue-backed batch delivery를 강제합니다. 각 queued job은 안정적인 idempotency key를 포함합니다. `notification.id`가 있으면 그 값을 보존하고, 없으면 현재 notification envelope의 runtime-neutral serialization에서 deterministic fallback key를 만들기 때문에 idempotent enqueue를 지원하는 queue backend가 반복 요청을 중복 제거할 수 있습니다. 생성된 fallback key는 문서화된 recursive full-payload hash 계약이 아니므로 release를 넘어 durable identity가 필요한 caller는 `notification.id`를 제공해야 합니다. Adapter가 `enqueueMany(...)`를 구현하지 않으면 fluo는 input order대로 job을 하나씩 enqueue합니다. 이때 `continueOnError: true`이면 성공한 queued result를 보존하고 실패한 enqueue 시도는 batch failures 목록으로 반환합니다. Queue delivery가 요청되었지만 queue adapter가 등록되어 있지 않으면 `NotificationQueueNotConfiguredError`가 발생합니다.
 
 ## 15.7 Lifecycle Events
 
@@ -231,7 +231,7 @@ NotificationsModule.forRoot({
 - `notification.dispatch.delivered`: 채널이 성공적인 direct delivery를 확인했을 때.
 - `notification.dispatch.failed`: 채널 해석, queue enqueue, provider delivery가 실패했을 때.
 
-`events.publisher`가 구성되어 있으면 module registration 또는 dispatch 시점에 `publishLifecycleEvents: false`를 설정하지 않는 한 lifecycle publication은 기본으로 켜집니다. 채널 해석 실패는 영구적인 구성 오류입니다. 서비스는 `requested` 다음 `failed`를 발행하고, queue에 넣거나 provider를 호출하지 않은 채 `NotificationChannelNotFoundError`를 던집니다. Queue enqueue와 provider delivery 실패도 `failed`를 발행하지만, retry 정책은 underlying queue/provider error를 기준으로 판단해야 합니다. Queued bulk dispatch는 queue 미구성, channel 해석, 순차 fallback enqueue 실패를 포함해 `requested`를 발행한 모든 notification에 terminal `queued` 또는 `failed` 이벤트를 발행합니다. 채널이 `externalId`를 생략하면 서비스는 시간이나 난수가 아니라 notification envelope에서 deterministic fallback delivery id를 만듭니다.
+`events.publisher`가 구성되어 있으면 module registration 또는 dispatch 시점에 `publishLifecycleEvents: false`를 설정하지 않는 한 lifecycle publication은 기본으로 켜집니다. 채널 해석 실패는 영구적인 구성 오류입니다. 서비스는 `requested` 다음 `failed`를 발행하고, queue에 넣거나 provider를 호출하지 않은 채 `NotificationChannelNotFoundError`를 던집니다. Queue enqueue와 provider delivery 실패도 `failed`를 발행하지만, retry 정책은 underlying queue/provider error를 기준으로 판단해야 합니다. Queued bulk dispatch는 queue 미구성, channel 해석, 순차 fallback enqueue 실패를 포함해 `requested`를 발행한 모든 notification에 terminal `queued` 또는 `failed` 이벤트를 발행합니다. 채널이 `externalId`를 생략하면 서비스는 시간이나 난수가 아니라 deterministic fallback delivery id를 만듭니다. 생성된 fallback id는 현재 envelope shape를 위한 runtime-neutral key이지 recursive full-payload hash value가 아닙니다. release를 넘어 durable identity가 중요하면 `notification.id`를 제공하세요.
 
 성공 이벤트 publication failure는 이미 완료된 delivery를 애플리케이션 실패로 바꾸지 않도록 best-effort입니다. 반면 `notification.dispatch.failed` publication failure는 다르게 처리됩니다. 호출자는 원래 dispatch error와 publisher error를 모두 담은 `AggregateError`를 받으므로 실패 알림 reporting이 조용히 누락되지 않습니다.
 
@@ -263,7 +263,7 @@ const standaloneStatus = createNotificationsPlatformStatusSnapshot({
 });
 ```
 
-`NotificationsService.createPlatformStatusSnapshot()`은 active module wiring을 읽습니다. `createNotificationsPlatformStatusSnapshot(...)`은 caller가 이미 count와 integration flag를 갖고 있을 때 사용할 수 있는 value-level helper입니다. Snapshot은 `readiness`, `health`, `ownership`, `operationMode`, `notifications.queue-adapter`와 `notifications.event-publisher` 같은 dependency diagnostics, 해당 seam이 구성된 경우의 `ownership.externallyManaged: true`, 그리고 foundation 패키지가 concrete queue 또는 event-bus resource를 create/close/drain하지 않음을 나타내는 `ownsResources: false`를 포함합니다.
+`NotificationsService.createPlatformStatusSnapshot()`은 active module wiring을 읽습니다. `createNotificationsPlatformStatusSnapshot(...)`은 caller가 이미 count와 integration flag를 갖고 있을 때 사용할 수 있는 value-level helper입니다. Snapshot은 top-level `readiness`, `health`, `ownership`을 포함합니다. `operationMode`, `dependencies`, `bulkQueueThreshold`, `queueConfigured`, `eventPublisherConfigured` 같은 diagnostics는 `details` 아래에 있으며, `notifications.queue-adapter`와 `notifications.event-publisher` 같은 dependency entry도 여기에 포함됩니다. 선택적 seam이 구성되면 `ownership.externallyManaged: true`가 설정되고, foundation 패키지가 concrete queue 또는 event-bus resource를 create/close/drain하지 않음을 나타내는 `ownsResources: false`는 `ownership` 아래에 유지됩니다.
 
 ## 15.9 FluoShop Context: Order Success Flow
 
