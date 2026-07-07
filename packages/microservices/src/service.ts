@@ -169,8 +169,8 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     }
   }
 
-  async onApplicationShutdown(): Promise<void> {
-    await this.close();
+  async onApplicationShutdown(signal?: string): Promise<void> {
+    await this.close(signal);
   }
 
   /**

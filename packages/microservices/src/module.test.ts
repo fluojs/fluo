@@ -381,6 +381,26 @@ describe('@fluojs/microservices', () => {
     await app.close();
   });
 
+  it('forwards runtime shutdown hook signals through the lifecycle service close contract', async () => {
+    const transport = new CloseRecordingTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [MicroservicesModule.forRoot({ transport })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const lifecycleService = await app.container.resolve(MicroserviceLifecycleService);
+    const closeSpy = vi.spyOn(lifecycleService, 'close');
+
+    await lifecycleService.onApplicationShutdown('SIGTERM');
+
+    expect(closeSpy).toHaveBeenCalledWith('SIGTERM');
+    expect(transport.closeCallCount).toBe(1);
+
+    await app.close();
+  });
+
   it('supports module-first custom registration through MicroservicesModule.forRoot module overrides', async () => {
     const transport = new InMemoryLoopbackTransport();
     const customProvider: Provider = {
