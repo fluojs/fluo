@@ -50,6 +50,7 @@ export interface FactoryProvider<T = unknown> {
   inject?: InjectionToken[];
   scope?: Scope;
   multi?: boolean;
+  /** Class metadata source used when the factory should inherit `@Scope(...)` metadata. */
   resolverClass?: ClassType;
 }
 

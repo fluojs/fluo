@@ -509,34 +509,48 @@ export class Container {
    * @returns Read-only provider registrations and resolution caches for this container scope.
    */
   inspectResolutionState(): ContainerResolutionState {
+    const registrations = new Map(this.registrations);
+    const multiRegistrations = new Map(
+      Array.from(this.multiRegistrations, ([token, providers]) => [token, Object.freeze([...providers])] as const),
+    );
+    const multiSingletonCache = new Map(this.multiSingletonCache);
+    const singletonCache = new Map(this.singletonCache);
+
     return {
-      cacheOwner: this.createCacheOwner(),
+      cacheOwner: this.createCacheOwner(singletonCache, multiSingletonCache),
       factoryResolutionKinds: this.createFactoryResolutionState(),
       parent: this.parent?.inspectResolutionState(),
-      registrations: new ReadonlyMapView(this.registrations),
-      multiRegistrations: new ReadonlyMultiRegistrationMapView(this.multiRegistrations),
-      multiSingletonCache: new ReadonlyMapView(this.multiSingletonCache),
+      registrations: new ReadonlyMapView(registrations),
+      multiRegistrations: new ReadonlyMultiRegistrationMapView(multiRegistrations),
+      multiSingletonCache: new ReadonlyMapView(multiSingletonCache),
       requestScopeEnabled: this.requestScopeEnabled,
-      singletonCache: new ReadonlyMapView(this.singletonCache),
+      singletonCache: new ReadonlyMapView(singletonCache),
     };
   }
 
-  private createCacheOwner(): ContainerResolutionCacheOwner {
+  private createCacheOwner(
+    singletonCacheSnapshot: Map<Token, Promise<unknown>>,
+    multiSingletonCacheSnapshot: Map<NormalizedProvider, Promise<unknown>>,
+  ): ContainerResolutionCacheOwner {
     return Object.freeze({
       deleteMultiSingleton: (provider: NormalizedProvider) => {
         this.multiSingletonCache.delete(provider);
+        multiSingletonCacheSnapshot.delete(provider);
       },
       deleteSingleton: (token: Token) => {
         this.singletonCache.delete(token);
+        singletonCacheSnapshot.delete(token);
       },
       recordFactoryResolution: (provider: NormalizedProvider, kind: FactoryResolutionKind) => {
         this.root().factoryResolutionKinds.set(provider, kind);
       },
       setMultiSingleton: (provider: NormalizedProvider, promise: Promise<unknown>) => {
         this.multiSingletonCache.set(provider, promise);
+        multiSingletonCacheSnapshot.set(provider, promise);
       },
       setSingleton: (token: Token, promise: Promise<unknown>) => {
         this.singletonCache.set(token, promise);
+        singletonCacheSnapshot.set(token, promise);
       },
     });
   }
@@ -604,6 +618,8 @@ export class Container {
         { token, hint: 'Ensure all resolves complete before calling container.dispose().' },
       );
     }
+
+    await this.assertStaleDisposalsSettled();
 
     return this.resolveWithChain(token, [], new Set<Token>());
   }
@@ -1260,6 +1276,13 @@ export class Container {
     while (this.staleDisposalTasks.size > 0) {
       await Promise.all(Array.from(this.staleDisposalTasks));
     }
+  }
+
+  private async assertStaleDisposalsSettled(): Promise<void> {
+    await this.waitForStaleDisposalTasks();
+
+    const errors = this.staleDisposalErrors.splice(0, this.staleDisposalErrors.length);
+    this.throwDisposalErrors(errors);
   }
 
   private scheduleStaleDisposal(instancePromise: Promise<unknown>): void {

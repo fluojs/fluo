@@ -67,7 +67,7 @@ const service = await container.resolve(UserService);
 
 - **클래스 provider**: `container.register(MyService)` 또는 `{ provide, useClass }`
 - **값 provider**: `{ provide: 'API_URL', useValue: 'https://api.example.com' }`
-- **팩토리 provider**: `{ provide, useFactory, inject }`
+- **팩토리 provider**: `{ provide, useFactory, inject }`. 팩토리가 참조 클래스의 `@Scope(...)` 같은 DI metadata를 상속해야 하고 provider `scope`를 명시하지 않았다면 `resolverClass`를 함께 지정합니다.
 - **별칭(Alias) provider**: `{ provide: ILogger, useExisting: PinoLogger }`를 사용하여 하나의 토큰을 기존에 등록된 다른 provider로 매핑할 수 있습니다.
 
 ### scope-aware 수명 주기 관리
@@ -80,7 +80,7 @@ dispose 중에는 각 컨테이너가 자신이 소유한 살아 있는 request 
 
 ### provider override
 
-테스트나 request-local 경계에서 기존 등록을 의도적으로 교체해야 할 때는 `override(...providers)`를 사용합니다. override는 각 토큰의 현재 provider set을 교체하고 현재 컨테이너와 이미 materialize된 request-scope 자식의 cached instance를 무효화하며, 오래된 instance를 즉시 dispose합니다. multi provider override는 해당 토큰의 전체 multi-provider set을 교체하므로 필요한 replacement provider를 한 번에 모두 전달하세요. 같은 토큰에 single replacement와 multi replacement를 한 override 호출에서 섞으면 모호한 교체로 보고 거부합니다.
+테스트나 request-local 경계에서 기존 등록을 의도적으로 교체해야 할 때는 `override(...providers)`를 사용합니다. override는 각 토큰의 현재 provider set을 교체하고 현재 컨테이너와 이미 materialize된 request-scope 자식의 cached instance를 무효화하며, 다음 replacement resolution이 계속되기 전에 오래된 instance의 dispose가 끝나도록 보장합니다. multi provider override는 해당 토큰의 전체 multi-provider set을 교체하므로 필요한 replacement provider를 한 번에 모두 전달하세요. 같은 토큰에 single replacement와 multi replacement를 한 override 호출에서 섞으면 모호한 교체로 보고 거부합니다.
 
 ### request scope 분리
 
@@ -157,17 +157,17 @@ const service = await container.resolve(DataService);
 
 ## 공개 API
 
-| Export | 설명 |
-|---|---|
-| `Container` | 메인 DI 컨테이너 클래스입니다. |
-| `register(...providers)` | 하나 이상의 프로바이더를 등록합니다. |
-| `override(...providers)` | 기존 provider를 교체하고 cached instance를 무효화하며 오래된 instance를 dispose합니다. |
-| `resolve<T>(token)` | 토큰을 인스턴스로 비동기 해석합니다. |
-| `inspectResolutionState()` | read-only map view, frozen provider record, controlled cache adoption을 통해 cache ownership을 보존해야 하는 testing/tooling helper를 위한 지원 대상 framework-owned container introspection seam을 노출합니다. 애플리케이션 코드는 `has(...)`와 `resolve(...)`를 우선 사용하세요. |
-| `createRequestScope()` | 요청 스코프 의존성을 위한 자식 컨테이너를 생성합니다. |
-| `has(token)` | 컨테이너나 부모에 토큰이 등록되어 있는지 확인합니다. |
-| `hasRequestScopedDependency(token)` | 토큰 해석 시 provider 그래프에 request-scoped 의존성이나 순환이 있어 request-scope 컨테이너가 필요할 수 있는지 확인합니다. |
-| `dispose()` | request child와 루트가 소유한 singleton instance를 정리합니다. |
+| Surface | 종류 | 설명 |
+|---|---|---|
+| `Container` | Root export | 메인 DI 컨테이너 클래스입니다. |
+| `container.register(...providers)` | `Container` instance method | 하나 이상의 프로바이더를 등록합니다. |
+| `container.override(...providers)` | `Container` instance method | 기존 provider를 교체하고 cached instance를 무효화하며 다음 replacement resolution이 계속되기 전에 오래된 instance dispose가 settle되도록 보장합니다. |
+| `container.resolve<T>(token)` | `Container` instance method | 토큰을 인스턴스로 비동기 해석합니다. |
+| `container.inspectResolutionState()` | `Container` instance method | snapshot read-only map view, frozen provider record, controlled cache adoption을 통해 cache ownership을 보존해야 하는 testing/tooling helper를 위한 지원 대상 framework-owned container introspection seam을 노출합니다. 애플리케이션 코드는 `has(...)`와 `resolve(...)`를 우선 사용하세요. |
+| `container.createRequestScope()` | `Container` instance method | 요청 스코프 의존성을 위한 자식 컨테이너를 생성합니다. |
+| `container.has(token)` | `Container` instance method | 컨테이너나 부모에 토큰이 등록되어 있는지 확인합니다. |
+| `container.hasRequestScopedDependency(token)` | `Container` instance method | 토큰 해석 시 provider 그래프에 request-scoped 의존성이나 순환이 있어 request-scope 컨테이너가 필요할 수 있는지 확인합니다. |
+| `container.dispose()` | `Container` instance method | request child와 루트가 소유한 singleton instance를 정리합니다. |
 | `forwardRef(fn)` | 선언 순서 문제를 위해 조회를 지연하는 토큰 래퍼를 반환합니다. 실제 생성자 순환을 해석 가능하게 만들지는 않습니다. |
 | `isForwardRef(value)` | `forwardRef(...)`가 만든 값인지 확인하는 type guard입니다. 커스텀 provider tooling이 DI token wrapper와 통합될 때 사용할 수 있습니다. |
 | `optional(token)` | 하나의 의존성을 optional로 표시하는 토큰 래퍼를 반환합니다. 누락된 optional dependency는 `undefined`로 해석됩니다. |
