@@ -1,4 +1,6 @@
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
@@ -39,8 +41,6 @@ import type {
   ValidationIssueMetadata,
   ValidationRuleResult,
 } from './internal.js';
-
-type SymbolConstructorWithMetadata = typeof Symbol & { metadata?: symbol };
 
 type RootBarrelTypeExports = {
   asyncModuleOptions: AsyncModuleOptions<unknown>;
@@ -126,25 +126,65 @@ const documentedInternalRuntimeExports = [
   'metadataSymbol',
 ] as const;
 
-describe('@fluojs/core public API surface', () => {
-  it('keeps root-barrel import side-effect free for Symbol.metadata', async () => {
-    const originalDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+const packageRoot = new URL('..', import.meta.url);
+const packageRootPath = fileURLToPath(packageRoot);
 
-    delete (Symbol as SymbolConstructorWithMetadata).metadata;
-
-    try {
-      const corePublicApi = await import('./index.js');
-
-      expect((Symbol as SymbolConstructorWithMetadata).metadata).toBeUndefined();
-      expect(corePublicApi).toHaveProperty('ensureMetadataSymbol');
-    } finally {
-      if (originalDescriptor) {
-        Object.defineProperty(Symbol, 'metadata', originalDescriptor);
-      } else {
-        delete (Symbol as SymbolConstructorWithMetadata).metadata;
-      }
-    }
+function buildCorePackage(): void {
+  const result = spawnSync(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['run', 'build'], {
+    cwd: packageRootPath,
+    encoding: 'utf8',
   });
+
+  expect(result.status, [result.stdout, result.stderr].filter(Boolean).join('\n')).toBe(0);
+}
+
+function probeRootImportSymbolMetadata(): void {
+  const script = `
+    const describeDescriptor = (descriptor) => descriptor
+      ? JSON.stringify({
+          configurable: descriptor.configurable,
+          enumerable: descriptor.enumerable,
+          hasGetter: typeof descriptor.get === 'function',
+          hasSetter: typeof descriptor.set === 'function',
+          writable: Object.hasOwn(descriptor, 'writable') ? descriptor.writable : null,
+        })
+      : 'missing';
+    const beforeDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+    const beforeMetadata = Symbol.metadata;
+    const corePublicApi = await import('@fluojs/core');
+    const afterDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+    const afterMetadata = Symbol.metadata;
+    const failures = [];
+
+    if (typeof corePublicApi.ensureMetadataSymbol !== 'function') {
+      failures.push('root package did not expose ensureMetadataSymbol');
+    }
+    if (describeDescriptor(afterDescriptor) !== describeDescriptor(beforeDescriptor)) {
+      failures.push('root package import changed the Symbol.metadata descriptor');
+    }
+    if (beforeMetadata !== afterMetadata) {
+      failures.push('root package import changed the Symbol.metadata value');
+    }
+
+    if (failures.length > 0) {
+      console.error(failures.join('\\n'));
+      process.exit(1);
+    }
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+    cwd: packageRootPath,
+    encoding: 'utf8',
+  });
+
+  expect(result.status, [result.stdout, result.stderr].filter(Boolean).join('\n')).toBe(0);
+}
+
+describe('@fluojs/core public API surface', () => {
+  it('keeps cold root-package import side-effect free for Symbol.metadata', () => {
+    buildCorePackage();
+
+    probeRootImportSymbolMetadata();
+  }, 300_000);
 
   it('keeps documented root-barrel exports for application code', async () => {
     const corePublicApi = await import('./index.js');
