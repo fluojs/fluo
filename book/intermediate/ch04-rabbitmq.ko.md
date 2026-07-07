@@ -5,6 +5,8 @@
 
 이 장은 FluoShop의 결제 이후 handoff를 작업 큐 중심 모델로 옮기기 위해 RabbitMQ를 도입합니다. Chapter 3에서 durable stream으로 복원력을 확보했다면, 이제는 큐 소유권과 competing consumer 모델이 중요한 fulfillment 흐름에 맞는 트랜스포트를 살펴봅니다.
 
+Caller-owned collaborator shutdown과 request cancellation cleanup을 포함한 패키지 수준 RabbitMQ transport 계약은 [`packages/microservices/README.ko.md`](../../packages/microservices/README.ko.md)에 정식으로 기록되어 있습니다.
+
 ## Learning Objectives
 - RabbitMQ가 작업 큐 중심 워크플로에 적합한 이유를 이해합니다.
 - caller-owned publisher와 consumer collaborator로 RabbitMQ 트랜스포트를 배선하는 방법을 익힙니다.

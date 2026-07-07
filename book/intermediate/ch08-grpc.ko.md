@@ -5,6 +5,8 @@
 
 이 장에서는 Part 1의 transport 선택을 gRPC까지 확장하고, FluoShop에 schema-first RPC와 스트리밍 계약을 도입하는 기준을 정리합니다. Chapter 7이 physical edge 입력을 다뤘다면, 여기서는 명시적 proto 계약과 저지연 스트리밍이 필요한 서비스 경계로 초점을 옮깁니다.
 
+Server ownership, signal-compatible facade shutdown, AbortSignal listener cleanup을 포함한 패키지 수준 gRPC transport 계약은 [`packages/microservices/README.ko.md`](../../packages/microservices/README.ko.md)에 정식으로 기록되어 있습니다.
+
 ## Learning Objectives
 - gRPC가 브로커 기반 transport와 다른 지점 간 계약을 제공하는 이유를 이해합니다.
 - protoPath, packageName, services 같은 핵심 옵션으로 gRPC 트랜스포트를 구성하는 방법을 익힙니다.
