@@ -27,7 +27,7 @@ export function createMicroservicesProviders(options: MicroserviceModuleOptions)
         return {
           bidiStream: runtime.bidiStream ? (pattern: string, signal?: AbortSignal) => runtime.bidiStream!(pattern, signal) : undefined,
           clientStream: runtime.clientStream ? (pattern: string, signal?: AbortSignal) => runtime.clientStream!(pattern, signal) : undefined,
-          close: (_signal?: string) => runtime.close(),
+          close: (signal?: string) => runtime.close(signal),
           emit: (pattern: string, payload: unknown) => runtime.emit(pattern, payload),
           listen: () => runtime.listen(),
           send: (pattern: string, payload: unknown, signal?: AbortSignal) => runtime.send(pattern, payload, signal),
