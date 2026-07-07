@@ -540,6 +540,27 @@ describe('NotificationsModule', () => {
     });
   });
 
+  it('throws when single dispatch explicitly requests queue delivery without a queue adapter', async () => {
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not run when queue is explicitly requested');
+          },
+        },
+      ],
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await expect(
+      service.dispatch({ channel: 'email', payload: { template: 'single-missing-queue' } }, { queue: true }),
+    ).rejects.toBeInstanceOf(NotificationQueueNotConfiguredError);
+  });
+
   it('forces single dispatch through direct delivery when queue is explicitly disabled', async () => {
     const queue = new RecordingQueueAdapter();
     const deliveries: string[] = [];
@@ -1082,6 +1103,50 @@ describe('NotificationsModule', () => {
     ]);
   });
 
+  it('exposes configured service status diagnostics under details only', async () => {
+    const queue = new RecordingQueueAdapter();
+    const publisher = new RecordingPublisher();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            return { externalId: 'status-delivery' };
+          },
+        },
+      ],
+      events: {
+        publisher,
+      },
+      queue: {
+        adapter: queue,
+        bulkThreshold: 7,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const snapshot = service.createPlatformStatusSnapshot();
+
+    expect(snapshot).toMatchObject({
+      details: {
+        bulkQueueThreshold: 7,
+        dependencies: ['notifications.queue-adapter', 'notifications.event-publisher'],
+        eventPublisherConfigured: true,
+        operationMode: 'queue-backed-with-events',
+        queueConfigured: true,
+      },
+      health: { status: 'healthy' },
+      readiness: { critical: true, status: 'ready' },
+    });
+    expect(Object.hasOwn(snapshot, 'operationMode')).toBe(false);
+    expect(Object.hasOwn(snapshot, 'dependencies')).toBe(false);
+    expect(Object.hasOwn(snapshot, 'bulkQueueThreshold')).toBe(false);
+    expect(Object.hasOwn(snapshot, 'queueConfigured')).toBe(false);
+    expect(Object.hasOwn(snapshot, 'eventPublisherConfigured')).toBe(false);
+  });
+
   it('uses the optional queue seam for bulk delivery when the threshold is met', async () => {
     const queue = new RecordingQueueAdapter();
     const publisher = new RecordingPublisher();
@@ -1143,6 +1208,43 @@ describe('NotificationsModule', () => {
         name: 'notification.dispatch.queued',
       },
     ]);
+  });
+
+  it('lets explicit bulk queue opt-in override the configured threshold', async () => {
+    const queue = new RecordingQueueAdapter();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for explicit queued bulk dispatch');
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 50,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    const result = await service.dispatchMany(
+      [
+        { channel: 'email', payload: { template: 'below-threshold', userId: 'u1' } },
+        { channel: 'email', payload: { template: 'below-threshold', userId: 'u2' } },
+      ],
+      { queue: true },
+    );
+
+    expect(queue.jobs).toHaveLength(2);
+    expect(result).toMatchObject({
+      failed: 0,
+      queued: 2,
+      succeeded: 2,
+    });
+    expect(result.results.map((entry: NotificationDispatchResult) => entry.deliveryId)).toEqual(['queued:1', 'queued:2']);
   });
 
   it('rejects malformed enqueueMany results without fabricating queued successes', async () => {
@@ -1753,6 +1855,66 @@ describe('NotificationsModule', () => {
     expect(first.deliveryId).toMatch(/^fallback:email:/);
     expect(repeated.deliveryId).toBe(first.deliveryId);
     expect(different.deliveryId).not.toBe(first.deliveryId);
+  });
+
+  it('keeps generated queue and fallback ids deterministic for cyclic opaque payloads', async () => {
+    const queue = new RecordingQueueAdapter();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            return {};
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 50,
+      },
+    });
+
+    const cyclicPayload: Record<string, unknown> = { template: 'cyclic' };
+    cyclicPayload.self = cyclicPayload;
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+    await service.dispatch({ channel: 'email', payload: cyclicPayload }, { queue: true });
+    await service.dispatch({ channel: 'email', payload: cyclicPayload }, { queue: true });
+    const firstFallback = await service.dispatch({ channel: 'email', payload: cyclicPayload });
+    const repeatedFallback = await service.dispatch({ channel: 'email', payload: cyclicPayload });
+
+    expectGeneratedQueueJobId(queue.jobs[0]?.id);
+    expect(queue.jobs[1]?.id).toBe(queue.jobs[0]?.id);
+    expect(firstFallback.deliveryId).toMatch(/^fallback:email:[a-z0-9]{7}$/);
+    expect(repeatedFallback.deliveryId).toBe(firstFallback.deliveryId);
+  });
+
+  it('preserves caller-supplied notification ids as queue job ids', async () => {
+    const queue = new RecordingQueueAdapter();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not run when queue is explicitly requested');
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 50,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await service.dispatch({ channel: 'email', id: 'caller-supplied-job-id', payload: { template: 'explicit-id' } }, { queue: true });
+
+    expect(queue.jobs.map((job) => job.id)).toEqual(['caller-supplied-job-id']);
   });
 
   it('keeps deterministic ids distinct for non-plain payload values', async () => {

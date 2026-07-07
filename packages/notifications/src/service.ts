@@ -540,7 +540,7 @@ function createLifecyclePublicationFailureError(dispatchError: unknown, ...publi
 
 function stableNotificationHash(notification: NotificationDispatchRequest): string {
   let hash = 0x811c9dc5;
-  const input = stableStringify(notification);
+  const input = stableStringify(notification, createStableStringifyContext());
 
   for (let index = 0; index < input.length; index += 1) {
     hash ^= input.charCodeAt(index);
@@ -550,45 +550,103 @@ function stableNotificationHash(notification: NotificationDispatchRequest): stri
   return hash.toString(36).padStart(7, '0');
 }
 
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== 'object') {
+interface StableStringifyContext {
+  nextReferenceId: number;
+  readonly seen: WeakMap<object, number>;
+}
+
+function createStableStringifyContext(): StableStringifyContext {
+  return {
+    nextReferenceId: 0,
+    seen: new WeakMap<object, number>(),
+  };
+}
+
+function enterStableObject(value: object, context: StableStringifyContext): number | undefined {
+  const existingReferenceId = context.seen.get(value);
+
+  if (existingReferenceId !== undefined) {
+    return existingReferenceId;
+  }
+
+  context.nextReferenceId += 1;
+  context.seen.set(value, context.nextReferenceId);
+
+  return undefined;
+}
+
+function stableStringify(value: unknown, context: StableStringifyContext): string {
+  if (value === null) {
+    return 'null';
+  }
+
+  if (typeof value !== 'object') {
+    if (typeof value === 'bigint') {
+      return `BigInt:${value.toString()}`;
+    }
+
     return JSON.stringify(value) ?? String(value);
   }
 
+  const circularReferenceId = enterStableObject(value, context);
+
+  if (circularReferenceId !== undefined) {
+    return `Circular:${circularReferenceId}`;
+  }
+
   if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? 'Date:Invalid' : `Date:${JSON.stringify(value.toISOString())}`;
+    const serialized = Number.isNaN(value.getTime()) ? 'Date:Invalid' : `Date:${JSON.stringify(value.toISOString())}`;
+    context.seen.delete(value);
+
+    return serialized;
   }
 
   if (value instanceof URL) {
-    return `URL:${JSON.stringify(value.href)}`;
+    const serialized = `URL:${JSON.stringify(value.href)}`;
+    context.seen.delete(value);
+
+    return serialized;
   }
 
   if (value instanceof URLSearchParams) {
-    return `URLSearchParams:${JSON.stringify(value.toString())}`;
+    const serialized = `URLSearchParams:${JSON.stringify(value.toString())}`;
+    context.seen.delete(value);
+
+    return serialized;
   }
 
   if (value instanceof RegExp) {
-    return `RegExp:${JSON.stringify(value.source)}/${value.flags}`;
+    const serialized = `RegExp:${JSON.stringify(value.source)}/${value.flags}`;
+    context.seen.delete(value);
+
+    return serialized;
   }
 
   if (value instanceof Map) {
     const entries = Array.from(value.entries())
-      .map(([key, entry]) => `[${stableStringify(key)},${stableStringify(entry)}]`)
+      .map(([key, entry]) => `[${stableStringify(key, context)},${stableStringify(entry, context)}]`)
       .sort();
+
+    context.seen.delete(value);
 
     return `Map:{${entries.join(',')}}`;
   }
 
   if (value instanceof Set) {
     const entries = Array.from(value.values())
-      .map((entry) => stableStringify(entry))
+      .map((entry) => stableStringify(entry, context))
       .sort();
+
+    context.seen.delete(value);
 
     return `Set:[${entries.join(',')}]`;
   }
 
   if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableStringify(entry)).join(',')}]`;
+    const serialized = `[${value.map((entry) => stableStringify(entry, context)).join(',')}]`;
+    context.seen.delete(value);
+
+    return serialized;
   }
 
   const prototype = Object.getPrototypeOf(value);
@@ -597,5 +655,8 @@ function stableStringify(value: unknown): string {
     .filter(([, entry]) => entry !== undefined)
     .sort(([left], [right]) => left.localeCompare(right));
 
-  return `${objectTag}{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`).join(',')}}`;
+  const serialized = `${objectTag}{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry, context)}`).join(',')}}`;
+  context.seen.delete(value);
+
+  return serialized;
 }
