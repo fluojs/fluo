@@ -36,14 +36,36 @@ describe('collectWorkspaceAliases', () => {
   it('uses manifest package names instead of package directory names', () => {
     const repoRoot = mkdtempSync(join(tmpdir(), 'fluo-vitest-alias-'));
 
-    writePackage(repoRoot, 'websocket', '@fluojs/websockets', {
-      'index.ts': 'export {}\n',
-      'node.ts': 'export {}\n',
-    });
-    writePackage(repoRoot, 'platform-socket.io', '@fluojs/socket.io', {
-      'index.ts': 'export {}\n',
-      'module.ts': 'export {}\n',
-    });
+    writePackage(
+      repoRoot,
+      'websocket',
+      '@fluojs/websockets',
+      {
+        'index.ts': 'export {}\n',
+        'node.ts': 'export {}\n',
+      },
+      {
+        exports: {
+          '.': './dist/index.js',
+          './node': './dist/node.js',
+        },
+      },
+    );
+    writePackage(
+      repoRoot,
+      'platform-socket.io',
+      '@fluojs/socket.io',
+      {
+        'index.ts': 'export {}\n',
+        'module.ts': 'export {}\n',
+      },
+      {
+        exports: {
+          '.': './dist/index.js',
+          './module': './dist/module.js',
+        },
+      },
+    );
     writePackage(repoRoot, 'runtime', '@fluojs/runtime', {
       'index.ts': 'export {}\n',
       'internal-http-adapter.ts': 'export {}\n',
@@ -70,6 +92,7 @@ describe('collectWorkspaceAliases', () => {
       {
         'index.ts': 'export {}\n',
         'portability/web-runtime-adapter-portability.ts': 'export {}\n',
+        'portability/private-test-helper.ts': 'export {}\n',
       },
       {
         exports: {
@@ -96,6 +119,7 @@ describe('collectWorkspaceAliases', () => {
     expect(aliases['@fluojs/testing/web-runtime-adapter-portability']).toBe(
       join(repoRoot, 'packages', 'testing', 'src', 'portability', 'web-runtime-adapter-portability.ts'),
     );
+    expect(aliases).not.toHaveProperty('@fluojs/testing/portability/private-test-helper');
   });
 });
 
