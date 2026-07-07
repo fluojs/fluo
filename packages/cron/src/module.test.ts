@@ -182,6 +182,34 @@ class ReleaseErrorOnceRedisClient extends InMemoryLockRedisClient {
   }
 }
 
+class HangingShutdownReleaseRedisClient extends InMemoryLockRedisClient {
+  releaseAttempts = 0;
+  private readonly hangingRelease = new Promise<number>(() => {});
+
+  override async eval(script: string, keysLength: number, key: string, owner: string, ttl?: string): Promise<number> {
+    if (script.includes('DEL') && !key.includes('__probe')) {
+      this.releaseAttempts += 1;
+
+      if (this.releaseAttempts === 1) {
+        throw new Error('release failed before shutdown');
+      }
+
+      return await this.hangingRelease;
+    }
+
+    return await super.eval(script, keysLength, key, owner, ttl);
+  }
+}
+
+class RedisResolutionProbeClient extends InMemoryLockRedisClient {
+  setAttempts = 0;
+
+  override async set(key: string, value: string, mode: 'PX', ttl: number, existence: 'NX'): Promise<'OK' | null> {
+    this.setAttempts += 1;
+    return await super.set(key, value, mode, ttl, existence);
+  }
+}
+
 class AcquireFailureAfterProbeRedisClient extends InMemoryLockRedisClient {
   lockAcquireAttempts = 0;
   failNextAcquire = true;
@@ -1278,27 +1306,55 @@ describe('@fluojs/cron', () => {
     }
 
     class AppModule {}
+
+    expect(() => {
+      defineModule(AppModule, {
+        imports: [
+          CronModule.forRoot({
+            distributed: {
+              enabled: true,
+              keyPrefix: 'cron-invalid-ttl',
+              lockTtlMs: 500,
+            },
+            scheduler: scheduler.scheduler,
+          }),
+        ],
+        providers: [DistributedTaskService],
+      });
+    }).toThrow(/lockTtlMs/i);
+    expect(scheduler.records).toHaveLength(0);
+  });
+
+  it('validates enabled module distributed lock TTL before Redis resolution or probe I/O', async () => {
+    const redis = new RedisResolutionProbeClient();
+
+    expect(() => {
+      CronModule.forRoot({
+        distributed: {
+          enabled: true,
+          lockTtlMs: 500,
+        },
+      });
+    }).toThrow(/lockTtlMs/i);
+    expect(redis.setAttempts).toBe(0);
+  });
+
+  it('preserves disabled distributed mode when an inactive TTL is below the distributed minimum', async () => {
+    class AppModule {}
     defineModule(AppModule, {
       imports: [
         CronModule.forRoot({
           distributed: {
-            enabled: true,
-            keyPrefix: 'cron-invalid-ttl',
+            enabled: false,
             lockTtlMs: 500,
           },
-          scheduler: scheduler.scheduler,
         }),
       ],
-      providers: [DistributedTaskService],
     });
 
-    await expect(
-      bootstrapApplication({
-        providers: [{ provide: REDIS_CLIENT, useValue: new InMemoryLockRedisClient() }],
-        rootModule: AppModule,
-      }),
-    ).rejects.toThrow(/lockTtlMs/i);
-    expect(scheduler.records).toHaveLength(0);
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    await closeApplication(app);
   });
 
   it('runs lifecycle hooks around successful cron execution', async () => {
@@ -2234,6 +2290,64 @@ describe('@fluojs/cron', () => {
     await closeApplication(app);
   });
 
+  it('rejects blank dynamic task option names without retaining registry state', async () => {
+    const scheduled = createManualScheduler();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    expect(() => registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {}, { name: '   ' })).toThrow(
+      /non-empty string/i,
+    );
+    expect(() => registry.addInterval('dynamic-interval', 1_000, () => {}, { name: '   ' })).toThrow(
+      /non-empty string/i,
+    );
+    expect(() => registry.addTimeout('dynamic-timeout', 1_000, () => {}, { name: '   ' })).toThrow(
+      /non-empty string/i,
+    );
+
+    expect(registry.getAll()).toHaveLength(0);
+    expect(scheduled.records).toHaveLength(0);
+
+    await closeApplication(app);
+  });
+
+  it('returns immutable scheduling descriptor snapshots from get and getAll', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot()],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    registry.addInterval('immutable-descriptor', 1_000, () => {});
+
+    const descriptor = registry.get('immutable-descriptor');
+    const listedDescriptor = registry.getAll()[0];
+
+    expect(descriptor).toBeDefined();
+    expect(listedDescriptor).toBeDefined();
+
+    if (descriptor === undefined || listedDescriptor === undefined) {
+      throw new Error('expected descriptor snapshots to exist');
+    }
+
+    expect(Object.isFrozen(descriptor)).toBe(true);
+    expect(Object.isFrozen(listedDescriptor)).toBe(true);
+    expect(() => {
+      Object.defineProperty(descriptor, 'name', { value: 'mutated-descriptor' });
+    }).toThrow();
+    expect(registry.get('immutable-descriptor')?.name).toBe('immutable-descriptor');
+
+    await closeApplication(app);
+  });
+
   it('rolls back dynamic cron registration when the scheduler rejects it', async () => {
     const scheduler: CronScheduler = () => {
       throw new Error('dynamic scheduler boom');
@@ -2453,6 +2567,8 @@ describe('@fluojs/cron', () => {
       closeResolved = true;
     });
 
+    await Promise.resolve();
+
     await vi.advanceTimersByTimeAsync(49);
     expect(closeResolved).toBe(false);
 
@@ -2611,6 +2727,70 @@ describe('@fluojs/cron', () => {
 
     expect(redis.releaseAttempts).toBe(2);
     expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(0);
+  });
+
+  it('bounds shutdown distributed lock release I/O and preserves local ownership on timeout', async () => {
+    vi.useFakeTimers();
+
+    const scheduled = createManualScheduler();
+    const redis = new HangingShutdownReleaseRedisClient();
+    const loggerEvents: string[] = [];
+
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, { name: 'distributed-release-io-timeout' })
+      async run() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-release-io-timeout',
+            lockTtlMs: 60_000,
+          },
+          scheduler: scheduled.scheduler,
+          shutdown: {
+            timeoutMs: 50,
+          },
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const registry = await app.container.resolve(SCHEDULING_REGISTRY);
+    const statusService = registry as CronLifecycleService;
+
+    await scheduled.records[0]!.tick();
+    expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(1);
+
+    let closeResolved = false;
+    const closePromise = app.close().then(() => {
+      closeResolved = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(49);
+    expect(closeResolved).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(50);
+    await closePromise;
+
+    expect(closeResolved).toBe(true);
+    expect(redis.releaseAttempts).toBe(3);
+    expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(1);
+    expect(
+      loggerEvents.some((event) =>
+        event.includes('Failed to release distributed cron lock for cron-release-io-timeout:distributed-release-io-timeout.'),
+      ),
+    ).toBe(true);
   });
 
   it('preserves active dynamic distributed locks after remove when bounded shutdown times out', async () => {

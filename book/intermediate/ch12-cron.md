@@ -116,11 +116,11 @@ In v2.1.0, the distributed cron flow works like this:
 
 This pattern is easy to explain. That is a good sign. Distributed coordination should be explicit enough for operators to reason about during incidents.
 
-Lock release runs after task execution in a `finally` path. If Redis is temporarily unavailable during release, fluo keeps local ownership visible so shutdown can retry and operators can still see the pending lock. Teams should still treat Redis TTL and renewal as drift-sensitive coordination rather than a complete fencing system. When stale writes would be unsafe, the job body should include application-level idempotency or fencing checks.
+Lock release runs after task execution in a `finally` path. If Redis is temporarily unavailable during release, fluo keeps local ownership visible so shutdown can retry and operators can still see the pending lock. Shutdown uses the same configured timeout to bound Redis owned-lock release I/O, and a release timeout preserves local ownership instead of pretending the lock was cleared. Teams should still treat Redis TTL and renewal as drift-sensitive coordination rather than a complete fencing system. When stale writes would be unsafe, the job body should include application-level idempotency or fencing checks.
 
 ## 12.5 Lock TTL and named Redis clients
 
-The README sets an important boundary. `distributed.lockTtlMs` must be at least `1_000ms`. fluo validates that minimum boundary and renews the lock before the TTL expires. This tells the FluoShop team two things. First, lock duration is a real operational parameter. Second, values that are too small are not clever optimizations. They are reliability risks. The package also supports `distributed.clientName` for non-default Redis connections. That option is needed when lock traffic should be separated from cache or queue traffic.
+The README sets an important boundary. `distributed.lockTtlMs` must be at least `1_000ms`. When distributed locking is enabled, fluo validates that minimum boundary before it loads, resolves, or probes Redis, then renews the lock before the TTL expires. If distributed mode is disabled, an inactive unsafe TTL does not load Redis or fail by itself. This tells the FluoShop team two things. First, lock duration is a real operational parameter. Second, values that are too small are not clever optimizations. They are reliability risks. The package also supports `distributed.clientName` for non-default Redis connections. That option is needed when lock traffic should be separated from cache or queue traffic.
 
 ## 12.6 Dynamic scheduling at runtime
 
@@ -146,11 +146,11 @@ export class CampaignWindowService {
 }
 ```
 
-This feature is powerful, so it should be used with care. A dynamic schedule is the right fit when business timing truly changes at runtime. It does not mean ordinary static maintenance tasks should be hidden behind registry calls. The registry is descriptor-based: `get()` and `getAll()` describe tasks through `SchedulingTaskDescriptor` values instead of returning live scheduler handles. `updateCronExpression()` changes cron timing, and `updateIntervalMs()` changes fixed-interval cadence with the same rollback-safe reschedule contract: if the scheduler rejects the new cadence, the previous descriptor and scheduled handle stay active. That keeps runtime controls explicit while preventing application code from depending on scheduler-engine internals.
+This feature is powerful, so it should be used with care. A dynamic schedule is the right fit when business timing truly changes at runtime. It does not mean ordinary static maintenance tasks should be hidden behind registry calls. Dynamic `options.name` overrides follow the same non-empty name rule as decorator names and are rejected before scheduler or registry state is retained. The registry is descriptor-based: `get()` and `getAll()` describe tasks through immutable `SchedulingTaskDescriptor` snapshots instead of returning live scheduler handles or mutable internal state. `updateCronExpression()` changes cron timing, and `updateIntervalMs()` changes fixed-interval cadence with the same rollback-safe reschedule contract: if the scheduler rejects the new cadence, the previous descriptor and scheduled handle stay active. That keeps runtime controls explicit while preventing application code from depending on scheduler-engine internals.
 
 ## 12.7 Bounded shutdown
 
-One of the most practical parts of the README is its shutdown behavior. `CronModule` drains active task executions during application shutdown, but only up to a bounded timeout. The documented default is `10_000ms`. After that, fluo leaves a warning and continues shutdown. This is an operationally mature choice because one hung scheduler task must not block process termination forever.
+One of the most practical parts of the README is its shutdown behavior. `CronModule` drains active task executions during application shutdown, but only up to a bounded timeout. The documented default is `10_000ms`. The same timeout also bounds Redis owned-lock release I/O during shutdown. After that, fluo leaves a warning and continues shutdown while preserving local ownership for locks whose release could not be confirmed. This is an operationally mature choice because one hung scheduler task or stuck Redis release must not block process termination forever.
 
 ### 12.7.1 Why this matters in FluoShop
 
@@ -181,8 +181,8 @@ By the end of this chapter, FluoShop can react both to business facts and to tim
 
 - `@fluojs/cron` gives FluoShop cron expressions, intervals, and timeouts through decorator-based scheduling.
 - Redis-backed distributed locking ensures that only one instance runs a scheduled task in multi-instance deployments.
-- `distributed.lockTtlMs` and optional named Redis clients are operational settings that determine reliability.
+- `distributed.lockTtlMs` and optional named Redis clients are operational settings that determine reliability, and enabled TTLs are validated before Redis I/O.
 - Dynamic scheduling through `SCHEDULING_REGISTRY` is supported when the business truly needs runtime-created tasks.
-- Bounded shutdown prevents one hung scheduled task from blocking process termination forever.
+- Bounded shutdown prevents one hung scheduled task or Redis lock-release operation from blocking process termination forever.
 
 The practical lesson is that scheduling is easy to start but hard to operate well. fluo combines developer-friendly decorators with explicit distributed-lock and shutdown behavior so scheduling remains manageable in production.

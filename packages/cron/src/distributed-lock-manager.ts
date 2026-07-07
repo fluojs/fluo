@@ -53,6 +53,33 @@ function createRedisBootstrapError(): Error {
   );
 }
 
+function createLockReleaseTimeoutError(timeoutMs: number): Error {
+  return new Error(`Distributed cron lock release timed out after ${String(timeoutMs)}ms.`);
+}
+
+async function withTimeout<T>(operation: Promise<T>, timeoutMs: number | undefined): Promise<T> {
+  if (timeoutMs === undefined) {
+    return await operation;
+  }
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>((_resolve, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(createLockReleaseTimeoutError(timeoutMs));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
+
 async function resolveRedisPeerModule(): Promise<RedisPeerModule> {
   try {
     return await loadRedisPeerModule();
@@ -198,7 +225,7 @@ export class CronDistributedLockManager {
     return await this.releaseLockKey(descriptor.lockKey, descriptor.taskName);
   }
 
-  async releaseOwnedLocks(excludedLockKeys: ReadonlySet<string> = new Set()): Promise<void> {
+  async releaseOwnedLocks(excludedLockKeys: ReadonlySet<string> = new Set(), timeoutMs?: number): Promise<void> {
     if (!this.redisClient || this.ownedLockKeys.size === 0) {
       return;
     }
@@ -211,7 +238,7 @@ export class CronDistributedLockManager {
 
     await Promise.all(
       lockKeys.map(async (lockKey) => {
-        await this.releaseLockKey(lockKey, lockKey);
+        await this.releaseLockKey(lockKey, lockKey, timeoutMs);
       }),
     );
   }
@@ -318,7 +345,7 @@ export class CronDistributedLockManager {
     }
   }
 
-  private async releaseLockKey(lockKey: string, taskName: string): Promise<boolean> {
+  private async releaseLockKey(lockKey: string, taskName: string, timeoutMs?: number): Promise<boolean> {
     const redis = this.redisClient;
 
     if (!redis) {
@@ -326,7 +353,10 @@ export class CronDistributedLockManager {
     }
 
     try {
-      const result = await redis.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, this.options.distributed.ownerId);
+      const result = await withTimeout(
+        redis.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, this.options.distributed.ownerId),
+        timeoutMs,
+      );
 
       if (typeof result === 'number' && result <= 0) {
         this.markLockIoAvailable();

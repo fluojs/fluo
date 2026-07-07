@@ -32,6 +32,12 @@ function normalizeRedisClientName(clientName: string | undefined): string | unde
   return normalizedClientName;
 }
 
+function assertValidDistributedLockTtlMs(lockTtlMs: number): void {
+  if (!Number.isFinite(lockTtlMs) || !Number.isInteger(lockTtlMs) || lockTtlMs < 1_000) {
+    throw new Error('Cron distributed lockTtlMs must be a positive integer greater than or equal to 1000ms.');
+  }
+}
+
 function normalizeDistributedOptions(distributed: CronModuleOptions['distributed']): NormalizedCronModuleOptions['distributed'] {
   if (distributed === undefined || distributed === false) {
     return {
@@ -53,13 +59,19 @@ function normalizeDistributedOptions(distributed: CronModuleOptions['distributed
     };
   }
 
-  return {
+  const normalizedDistributed = {
     clientName: normalizeRedisClientName(distributed.clientName),
     enabled: distributed.enabled ?? true,
     keyPrefix: distributed.keyPrefix ?? 'fluo:cron:lock',
     lockTtlMs: distributed.lockTtlMs ?? 30_000,
     ownerId: distributed.ownerId ?? randomId(),
   };
+
+  if (normalizedDistributed.enabled) {
+    assertValidDistributedLockTtlMs(normalizedDistributed.lockTtlMs);
+  }
+
+  return normalizedDistributed;
 }
 
 function normalizeShutdownOptions(shutdown: CronModuleOptions['shutdown']): NormalizedCronModuleOptions['shutdown'] {

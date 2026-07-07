@@ -577,7 +577,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // public runtime type boundaries plus the documented Node.js runtime floor,
   // and Studio live helper contracts such as deterministic Mermaid rendering,
   // route-id graph correlation, viewer dependency classification, and Node.js
-  // tooling runtime-floor discoverability.
+  // tooling runtime-floor discoverability, plus Cron distributed-lock
+  // lifecycle contracts such as enabled TTL validation before Redis I/O,
+  // bounded shutdown lock-release I/O, timeout ownership retention, dynamic
+  // blank-name rejection, and immutable registry descriptor snapshots.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
