@@ -10,6 +10,7 @@ Cloudflare Workers HTTP adapter for the fluo runtime, optimized for the edge.
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Lifecycle and Public Seam Notes](#lifecycle-and-public-seam-notes)
 - [Conformance Coverage](#conformance-coverage)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
@@ -68,7 +69,7 @@ export default {
 ## Common Patterns
 
 ### Working with WebSocketPairs
-The adapter supports Cloudflare's native `WebSocketPair` for real-time communication via the `@fluojs/websockets/cloudflare-workers` binding. Upgrade handling is opt-in through that binding, and `createWebSocketPair` can be injected for non-hosted runtime tests. Configure the binding before `listen()` starts the Worker dispatch boundary; replacing or clearing a live defined binding is rejected so upgrade ownership cannot change underneath active requests.
+The adapter supports Cloudflare's native `WebSocketPair` for real-time communication via the `@fluojs/websockets/cloudflare-workers` binding. Upgrade handling is opt-in through that binding, and `createWebSocketPair` can be injected for non-hosted runtime tests. Configure the binding before `listen()` starts the Worker dispatch boundary; once `listen()` has run, the binding identity is frozen for that adapter instance. Replacing or clearing it is rejected even after `close()`, so upgrade ownership cannot change underneath an isolate that has already crossed the public listen boundary.
 
 ```typescript
 @WebSocketGateway({ path: '/ws' })
@@ -89,14 +90,20 @@ const worker = createCloudflareWorkerEntrypoint(AppModule, {
 
 - `fetch()` registers active work with `executionContext.waitUntil(...)` after `listen()` or the lazy entrypoint binds the dispatcher; SSE (`text/event-stream`) responses keep that lifecycle and the close drain open until the body finishes or is canceled. Before that lifecycle boundary, upgrade requests and HTTP dispatch do not reach application handlers.
 - Adapter options such as `maxBodySize` are validated when the Worker adapter is created; bootstrap-only options such as `globalPrefix`, `cors`, `middleware`, and `securityHeaders` belong on Worker bootstrap helpers rather than `createCloudflareWorkerAdapter(...)`.
-- WebSocket upgrades are owned by the same listen boundary as HTTP dispatch; upgrade requests before `listen()` do not reach the configured binding, and attempts to replace or clear a defined binding after `listen()` starts fail fast instead of mutating live upgrade ownership.
+- WebSocket upgrades are owned by the same listen boundary as HTTP dispatch; upgrade requests before `listen()` do not reach the configured binding, and attempts to replace or clear a defined binding after the adapter has ever listened fail fast instead of mutating Worker upgrade ownership. Create a new adapter when a host needs a different websocket binding.
 - `close()` returns JSON `503` responses for new HTTP and WebSocket upgrade requests during and after shutdown and times out after 10 seconds if active requests never settle. Calling `listen()` while that close drain is still active rejects with the Cloudflare Workers adapter shutdown-draining error. Lazy entrypoints do not permanently cache that timeout once the adapter's underlying drain later finishes.
 - Multipart requests do not preserve `rawBody`.
 - The Worker `env` object is attached to each `FrameworkRequest` as `request.cloudflare.env`, with the Worker execution context available as `request.cloudflare.executionContext`; package-level config resolution remains application-owned, so map bindings into explicit providers or `@fluojs/config` at the application boundary.
 
+## Lifecycle and Public Seam Notes
+
+The root `@fluojs/platform-cloudflare-workers` export owns the Worker public seam for application code and first-party Worker websocket integrations. Worker-specific public types such as `CloudflareWorkerExecutionContext`, `CloudflareWorkerRequestContext`, `CloudflareWorkerWebSocketBinding`, `CloudflareWorkerWebSocketPair`, `CloudflareWorkerWebSocketPairFactory`, `CloudflareWorkerWebSocketUpgradeHost`, and `CloudflareWorkerWebSocketUpgradeResult` are exported from this package instead of asking consumers to import `@fluojs/http/internal` or `@fluojs/runtime/internal*` subpaths.
+
+The listen, shutdown, SSE drain, and websocket binding rules above are public lifecycle behavior. Changes to those public seam types or lifecycle semantics are release-governed for `@fluojs/platform-cloudflare-workers`; user-impacting updates must be tracked with Changesets alongside the implementation, docs, and tests.
+
 ## Conformance Coverage
 
-`packages/platform-cloudflare-workers/src/adapter.test.ts` is the package-local regression target for the documented Worker contract. It covers shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE (`text/event-stream`) body tracking, websocket upgrade binding, pre-listen HTTP and websocket lifecycle guards, live websocket binding mutation rejection, lazy entrypoint reuse and timeout recovery, shutdown gating, drain-time `listen()` rejection, JSON `503` responses while closing and after close for both HTTP and websocket upgrades, reliable fake-timer cleanup, and the bounded 10-second close timeout.
+`packages/platform-cloudflare-workers/src/adapter.test.ts` and `packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts` are the package-local regression targets for the documented Worker contract. They cover shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE (`text/event-stream`) body tracking and body-cancellation drains, websocket upgrade binding, pre-listen HTTP and websocket lifecycle guards, websocket binding freeze after the listen boundary, lazy entrypoint reuse and timeout recovery, shutdown gating, drain-time `listen()` rejection, JSON `503` responses while closing and after close for both HTTP and websocket upgrades, in-flight websocket upgrade drain behavior, reliable fake-timer cleanup, public seam source imports, README parity, and the bounded 10-second close timeout.
 
 The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Cloudflare Workers beside Bun and Deno for malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The README parity assertion in the package test keeps these documented edge-runtime coverage claims synchronized with the Korean mirror.
 
@@ -109,7 +116,7 @@ The shared edge portability suite in `packages/testing/src/portability/web-runti
 - `CloudflareWorkerHandler`: Fetch handler interface shared by Worker application wrappers and lazy entrypoints.
 - `CloudflareWorkerApplication`: Fully bootstrapped Worker application wrapper with `adapter`, `app`, `fetch(...)`, and `close(...)`.
 - `CloudflareWorkerEntrypoint`: Lazy entrypoint with `fetch`, `ready()`, and `close()` lifecycle methods.
-- Options and types: `CloudflareWorkerAdapterOptions`, `BootstrapCloudflareWorkerApplicationOptions`, `CloudflareWorkerExecutionContext`, `CloudflareWorkerRequestContext`, `CloudflareWorkerWebSocketBinding`, and Worker websocket pair/upgrade types.
+- Options and types: `CloudflareWorkerAdapterOptions`, `BootstrapCloudflareWorkerApplicationOptions`, `CloudflareWorkerExecutionContext`, `CloudflareWorkerRequestContext`, `CloudflareWorkerWebSocketBinding`, `CloudflareWorkerWebSocketBindingHost`, `CloudflareWorkerWebSocket`, `CloudflareWorkerWebSocketMessage`, `CloudflareWorkerWebSocketPair`, `CloudflareWorkerWebSocketPairFactory`, `CloudflareWorkerWebSocketUpgradeHost`, and `CloudflareWorkerWebSocketUpgradeResult`.
 
 ## Related Packages
 

@@ -10,6 +10,7 @@
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
+- [Lifecycle 및 public seam 참고](#lifecycle-및-public-seam-참고)
 - [Conformance 커버리지](#conformance-커버리지)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
@@ -68,7 +69,7 @@ export default {
 ## 주요 패턴
 
 ### WebSocketPair 활용
-어댑터는 `@fluojs/websockets/cloudflare-workers` 바인딩을 통해 실시간 통신을 위한 Cloudflare의 네이티브 `WebSocketPair`를 지원합니다. Upgrade handling은 해당 binding을 통한 opt-in이며, non-hosted runtime test에서는 `createWebSocketPair`를 주입할 수 있습니다. Binding은 `listen()`이 Worker dispatch boundary를 시작하기 전에 설정하세요. 활성 request 아래에서 upgrade ownership이 바뀌지 않도록, 이미 실행 중인 defined binding을 다른 binding으로 교체하거나 해제하려는 시도는 reject됩니다.
+어댑터는 `@fluojs/websockets/cloudflare-workers` 바인딩을 통해 실시간 통신을 위한 Cloudflare의 네이티브 `WebSocketPair`를 지원합니다. Upgrade handling은 해당 binding을 통한 opt-in이며, non-hosted runtime test에서는 `createWebSocketPair`를 주입할 수 있습니다. Binding은 `listen()`이 Worker dispatch boundary를 시작하기 전에 설정하세요. `listen()`이 한 번 실행된 뒤에는 해당 adapter instance의 binding identity가 frozen됩니다. 이미 public listen boundary를 지난 isolate 아래에서 upgrade ownership이 바뀌지 않도록, `close()` 이후에도 binding을 교체하거나 해제하려는 시도는 reject됩니다.
 
 ```typescript
 @WebSocketGateway({ path: '/ws' })
@@ -89,14 +90,20 @@ const worker = createCloudflareWorkerEntrypoint(AppModule, {
 
 - `fetch()`는 `listen()` 또는 lazy entrypoint가 dispatcher를 binding한 뒤 active work를 `executionContext.waitUntil(...)`에 등록합니다. SSE(`text/event-stream`) response는 body가 끝나거나 cancel될 때까지 해당 lifecycle과 close drain을 유지합니다. 그 lifecycle boundary 전에는 upgrade request와 HTTP dispatch가 application handler에 도달하지 않습니다.
 - `maxBodySize` 같은 adapter option은 Worker adapter 생성 시 검증됩니다. `globalPrefix`, `cors`, `middleware`, `securityHeaders` 같은 bootstrap 전용 옵션은 `createCloudflareWorkerAdapter(...)`가 아니라 Worker bootstrap helper에 전달해야 합니다.
-- WebSocket upgrade는 HTTP dispatch와 같은 listen boundary가 소유합니다. `listen()` 전의 upgrade request는 설정된 binding에 도달하지 않으며, `listen()`이 시작된 뒤 defined binding을 교체하거나 해제하려는 시도는 live upgrade ownership을 바꾸는 대신 빠르게 실패합니다.
+- WebSocket upgrade는 HTTP dispatch와 같은 listen boundary가 소유합니다. `listen()` 전의 upgrade request는 설정된 binding에 도달하지 않으며, adapter가 한 번이라도 listen한 뒤 defined binding을 교체하거나 해제하려는 시도는 Worker upgrade ownership을 바꾸는 대신 빠르게 실패합니다. 다른 websocket binding이 필요하면 새 adapter를 생성하세요.
 - `close()`는 shutdown 중 및 shutdown 이후 새 HTTP 및 WebSocket upgrade request에 JSON `503` response를 반환하고, active request가 끝나지 않으면 10초 뒤 timeout됩니다. 해당 close drain이 아직 활성 상태일 때 `listen()`을 호출하면 Cloudflare Workers adapter shutdown-draining 오류로 reject됩니다. Lazy entrypoint는 adapter의 underlying drain이 나중에 끝나면 이 timeout을 영구적으로 캐시하지 않습니다.
 - Multipart request는 `rawBody`를 보존하지 않습니다.
 - Worker `env` 객체는 각 `FrameworkRequest`에 `request.cloudflare.env`로 연결되고 Worker execution context는 `request.cloudflare.executionContext`로 제공됩니다. Package-level config resolution은 application이 소유하므로, binding은 application boundary에서 명시적 provider 또는 `@fluojs/config`로 매핑하세요.
 
+## Lifecycle 및 public seam 참고
+
+Root `@fluojs/platform-cloudflare-workers` export는 application code와 first-party Worker websocket integration이 사용하는 Worker public seam을 소유합니다. `CloudflareWorkerExecutionContext`, `CloudflareWorkerRequestContext`, `CloudflareWorkerWebSocketBinding`, `CloudflareWorkerWebSocketPair`, `CloudflareWorkerWebSocketPairFactory`, `CloudflareWorkerWebSocketUpgradeHost`, `CloudflareWorkerWebSocketUpgradeResult` 같은 Worker-specific public type은 consumer가 `@fluojs/http/internal` 또는 `@fluojs/runtime/internal*` subpath를 import하지 않아도 되도록 이 패키지에서 export됩니다.
+
+위의 listen, shutdown, SSE drain, websocket binding 규칙은 public lifecycle behavior입니다. 이러한 public seam type 또는 lifecycle semantic을 바꾸는 변경은 `@fluojs/platform-cloudflare-workers` release governance 대상이며, user-impacting update는 implementation, docs, tests와 함께 Changesets로 추적해야 합니다.
+
 ## Conformance 커버리지
 
-`packages/platform-cloudflare-workers/src/adapter.test.ts`는 문서화된 Worker 계약을 검증하는 package-local regression 대상입니다. 이 파일은 shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE(`text/event-stream`) body tracking, websocket upgrade binding, pre-listen HTTP 및 websocket lifecycle guard, live websocket binding mutation rejection, lazy entrypoint 재사용 및 timeout recovery, shutdown gating, drain 중 `listen()` rejection, HTTP와 websocket upgrade 모두에 대한 close 중 및 close 이후 JSON `503` response, reliable fake-timer cleanup, bounded 10초 close timeout을 검증합니다.
+`packages/platform-cloudflare-workers/src/adapter.test.ts`와 `packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts`는 문서화된 Worker 계약을 검증하는 package-local regression 대상입니다. 이 파일들은 shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE(`text/event-stream`) body tracking 및 body-cancellation drain, websocket upgrade binding, pre-listen HTTP 및 websocket lifecycle guard, listen boundary 이후 websocket binding freeze, lazy entrypoint 재사용 및 timeout recovery, shutdown gating, drain 중 `listen()` rejection, HTTP와 websocket upgrade 모두에 대한 close 중 및 close 이후 JSON `503` response, in-flight websocket upgrade drain behavior, reliable fake-timer cleanup, public seam source import, README parity, bounded 10초 close timeout을 검증합니다.
 
 공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Cloudflare Workers를 Bun 및 Deno와 함께 실행해 malformed cookie 보존, query decoding, JSON/text raw-body capture, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트의 README parity assertion은 이 edge-runtime 커버리지 문서가 한국어 mirror와 계속 동기화되도록 확인합니다.
 
@@ -109,7 +116,7 @@ const worker = createCloudflareWorkerEntrypoint(AppModule, {
 - `CloudflareWorkerHandler`: Worker application wrapper와 lazy entrypoint가 공유하는 fetch handler interface입니다.
 - `CloudflareWorkerApplication`: `adapter`, `app`, `fetch(...)`, `close(...)`를 제공하는 fully bootstrapped Worker application wrapper입니다.
 - `CloudflareWorkerEntrypoint`: `fetch`, `ready()`, `close()` lifecycle method를 제공하는 lazy entrypoint입니다.
-- Option 및 type: `CloudflareWorkerAdapterOptions`, `BootstrapCloudflareWorkerApplicationOptions`, `CloudflareWorkerExecutionContext`, `CloudflareWorkerRequestContext`, `CloudflareWorkerWebSocketBinding`, Worker websocket pair/upgrade type.
+- Option 및 type: `CloudflareWorkerAdapterOptions`, `BootstrapCloudflareWorkerApplicationOptions`, `CloudflareWorkerExecutionContext`, `CloudflareWorkerRequestContext`, `CloudflareWorkerWebSocketBinding`, `CloudflareWorkerWebSocketBindingHost`, `CloudflareWorkerWebSocket`, `CloudflareWorkerWebSocketMessage`, `CloudflareWorkerWebSocketPair`, `CloudflareWorkerWebSocketPairFactory`, `CloudflareWorkerWebSocketUpgradeHost`, `CloudflareWorkerWebSocketUpgradeResult`.
 
 ## 관련 패키지
 
