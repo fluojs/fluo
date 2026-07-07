@@ -92,6 +92,31 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 When `QueueModule.forRoot({ global: false })` is used, each queue registration only discovers workers that are reachable from the same module tree that imported that specific `QueueModule.forRoot(...)` call. Separate scoped queue feature modules stay isolated from one another, and the Redis client provider must be reachable from that same module tree.
 
+### Scoped Queue Registrations
+
+Use an explicit `scope` when an application imports more than one non-global queue registration. Scope names are trimmed, must be non-empty, and must be unique per compiled module graph. Duplicate default scoped registrations such as two `QueueModule.forRoot({ global: false })` imports, or duplicate explicit scopes such as two `QueueModule.forRoot({ global: false, scope: 'jobs' })` imports, fail deterministically during bootstrap.
+
+```typescript
+import { Inject, Module } from '@fluojs/core';
+import { getQueueLifecycleServiceToken, getQueueToken, QueueModule, type Queue } from '@fluojs/queue';
+
+const EMAIL_QUEUE = getQueueToken('email');
+const EMAIL_QUEUE_LIFECYCLE = getQueueLifecycleServiceToken('email');
+
+@Inject(EMAIL_QUEUE)
+export class EmailPublisher {
+  constructor(private readonly queue: Queue) {}
+}
+
+@Module({
+  imports: [QueueModule.forRoot({ global: false, scope: 'email' })],
+  providers: [EmailPublisher, EmailWorker],
+})
+export class EmailQueueModule {}
+```
+
+Omit `scope` only when the application has a single default queue registration and injects the compatibility `QUEUE` token or `QueueLifecycleService` class directly. For scoped registrations, inject `getQueueToken(scope)` or `getQueueLifecycleServiceToken(scope)` so each feature module resolves its own queue instance instead of the default compatibility token.
+
 ### Bootstrap and Shutdown Lifecycle
 
 Queue discovers workers and creates queue-owned BullMQ resources during application bootstrap, but BullMQ worker processors are started only after the runtime marks the full application bootstrap/readiness sequence complete. Jobs enqueued by other `onApplicationBootstrap()` hooks can be accepted once the Queue service is initialized, and their processors run after the bootstrap-ready handoff instead of racing ahead of later async bootstrap hooks or application readiness. Queue status reports degraded readiness until those BullMQ processors have actually started; if a processor fails to start, the lifecycle moves to `failed` and status snapshots expose the failure instead of reporting the workers as ready.
@@ -127,6 +152,8 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 - `QueueLifecycleService`: Primary service for enqueuing jobs and creating lifecycle/status snapshots (`enqueue(job)`, `createPlatformStatusSnapshot()`).
 - `@QueueWorker(JobClass, options?)`: Decorator to mark a class as a job handler.
 - `QUEUE`: Compatibility injection token for the queue facade.
+- `getQueueToken(scope?)`: Queue facade token helper. Omitting `scope` returns the default `QUEUE` token; a non-empty scope returns that scoped registration's facade token.
+- `getQueueLifecycleServiceToken(scope?)`: Lifecycle service token helper for scoped queue registrations.
 - `createQueuePlatformStatusSnapshot(...)`: Status snapshot helper for lifecycle/readiness diagnostics.
 
 
@@ -147,6 +174,7 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 `QueueModuleOptions` lifecycle/status controls:
 
 - `global`: whether the queue module registration is global. Defaults to `true`; set `false` when queue providers should stay scoped to the importing module graph.
+- `scope`: unique non-empty queue registration scope. Required when multiple non-global queue registrations exist in one app.
 - `workerShutdownTimeoutMs`: maximum time to wait for active worker processors during shutdown before force-closing the BullMQ worker. Defaults to `30_000`.
 - `defaultDeadLetterMaxEntries`: maximum retained dead-letter records per job, or `false` to disable trimming. Defaults to `1_000`.
 

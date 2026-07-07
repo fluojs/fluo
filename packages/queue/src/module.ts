@@ -1,3 +1,4 @@
+import type { Token } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 import type { Container } from '@fluojs/di';
 import { getRedisClientToken } from '@fluojs/redis';
@@ -12,7 +13,15 @@ import type { BootstrapReadySignal } from '@fluojs/runtime/internal';
 
 import { normalizePositiveInteger, normalizePositiveIntegerOrFalse, normalizeRateLimiter } from './helpers.js';
 import { QueueLifecycleService } from './service.js';
-import { QUEUE, QUEUE_MODULE_CONTEXT, QUEUE_OPTIONS, QUEUE_REDIS_CLIENT } from './tokens.js';
+import {
+  getQueueLifecycleServiceToken,
+  getQueueModuleContextToken,
+  getQueueOptionsToken,
+  getQueueRedisClientToken as getQueueScopedRedisClientToken,
+  getQueueToken,
+  normalizeQueueScope,
+  QUEUE,
+} from './tokens.js';
 import type { QueueModuleContext } from './tokens.js';
 import type { NormalizedQueueModuleOptions, QueueModuleOptions } from './types.js';
 
@@ -50,11 +59,21 @@ type QueueLifecycleServiceFactoryDeps = [
   QueueModuleContext,
 ];
 
+interface QueueProviderTokens {
+  readonly lifecycleServiceToken: Token;
+  readonly moduleContextToken: Token;
+  readonly optionsToken: Token;
+  readonly queueRedisClientToken: Token;
+  readonly queueToken: Token;
+}
+
 function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): NormalizedQueueModuleOptions {
   const defaultRateLimiter = normalizeRateLimiter(options.defaultRateLimiter);
+  const scope = normalizeQueueScope(options.scope);
 
   return {
     clientName: options.clientName,
+    ...(scope ? { scope } : {}),
     defaultAttempts: normalizePositiveInteger(options.defaultAttempts, 1),
     defaultBackoff: options.defaultBackoff
       ? {
@@ -70,22 +89,63 @@ function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): Normaliz
   };
 }
 
-function createQueueProviders(options: QueueModuleOptions = {}, moduleType: ModuleType): Provider[] {
-  return [
+function getQueueProviderTokens(scope?: string): QueueProviderTokens {
+  return {
+    lifecycleServiceToken: getQueueLifecycleServiceToken(scope),
+    moduleContextToken: getQueueModuleContextToken(scope),
+    optionsToken: getQueueOptionsToken(scope),
+    queueRedisClientToken: getQueueScopedRedisClientToken(scope),
+    queueToken: getQueueToken(scope),
+  };
+}
+
+function moduleCanAccessQueueRegistration(compiledModule: CompiledModule, moduleType: ModuleType): boolean {
+  return compiledModule.type === moduleType || (compiledModule.definition.imports ?? []).includes(moduleType);
+}
+
+function canAccessRedisClient(
+  compiledModules: readonly CompiledModule[],
+  moduleContext: QueueModuleContext,
+  redisToken: Token,
+): boolean {
+  return compiledModules.some(
+    (compiledModule) =>
+      moduleCanAccessQueueRegistration(compiledModule, moduleContext.moduleType) && compiledModule.accessibleTokens.has(redisToken),
+  );
+}
+
+function formatQueueScope(scope: string | undefined): string {
+  return scope ?? 'default';
+}
+
+function createQueueProviders(normalizedOptions: NormalizedQueueModuleOptions, moduleType: ModuleType): Provider[] {
+  const tokens = getQueueProviderTokens(normalizedOptions.scope);
+  const providers: Provider[] = [
     {
-      provide: QUEUE_OPTIONS,
-      useValue: normalizeQueueModuleOptions(options),
+      provide: tokens.optionsToken,
+      useValue: normalizedOptions,
     },
     {
-      provide: QUEUE_MODULE_CONTEXT,
-      useValue: { moduleType } satisfies QueueModuleContext,
+      provide: tokens.moduleContextToken,
+      useValue: { moduleType, scope: formatQueueScope(normalizedOptions.scope) } satisfies QueueModuleContext,
     },
     {
-      inject: [QUEUE_OPTIONS, RUNTIME_CONTAINER],
-      provide: QUEUE_REDIS_CLIENT,
+      inject: [tokens.optionsToken, RUNTIME_CONTAINER, COMPILED_MODULES, tokens.moduleContextToken],
+      provide: tokens.queueRedisClientToken,
       useFactory: async (...deps: unknown[]) => {
-        const [normalizedOptions, runtimeContainer] = deps as [NormalizedQueueModuleOptions, Container];
-        const redisToken = getRedisClientToken(normalizedOptions.clientName);
+        const [resolvedOptions, runtimeContainer, compiledModules, moduleContext] = deps as [
+          NormalizedQueueModuleOptions,
+          Container,
+          readonly CompiledModule[],
+          QueueModuleContext,
+        ];
+        const redisToken = getRedisClientToken(resolvedOptions.clientName);
+
+        if (!canAccessRedisClient(compiledModules, moduleContext, redisToken)) {
+          throw new Error(
+            `@fluojs/queue cannot access Redis client token ${String(redisToken)} from queue scope "${moduleContext.scope}". Import and export the matching RedisModule.forRoot(...) registration through the same module graph.`,
+          );
+        }
 
         if (!runtimeContainer.has(redisToken)) {
           throw new Error('@fluojs/queue requires a registered Redis client with duplicate(), rpush(), and ltrim() methods.');
@@ -102,15 +162,15 @@ function createQueueProviders(options: QueueModuleOptions = {}, moduleType: Modu
     },
     {
       inject: [
-        QUEUE_OPTIONS,
-        QUEUE_REDIS_CLIENT,
+        tokens.optionsToken,
+        tokens.queueRedisClientToken,
         RUNTIME_CONTAINER,
         COMPILED_MODULES,
         APPLICATION_LOGGER,
         BOOTSTRAP_READY_SIGNAL,
-        QUEUE_MODULE_CONTEXT,
+        tokens.moduleContextToken,
       ],
-      provide: QueueLifecycleService,
+      provide: tokens.lifecycleServiceToken,
       useFactory: (...deps: unknown[]) => {
         const typedDeps = deps as QueueLifecycleServiceFactoryDeps;
 
@@ -118,13 +178,22 @@ function createQueueProviders(options: QueueModuleOptions = {}, moduleType: Modu
       },
     },
     {
-      inject: [QueueLifecycleService],
-      provide: QUEUE,
+      inject: [tokens.lifecycleServiceToken],
+      provide: tokens.queueToken,
       useFactory: (service: unknown) => ({
         enqueue: (job: object) => (service as QueueLifecycleService).enqueue(job),
       }),
     },
   ];
+
+  if (normalizedOptions.scope === undefined) {
+    providers.push({
+      provide: QueueLifecycleService,
+      useExisting: tokens.lifecycleServiceToken,
+    });
+  }
+
+  return providers;
 }
 
 /**
@@ -153,12 +222,16 @@ export class QueueModule {
    * ```
    */
   static forRoot(options: QueueModuleOptions = {}): ModuleType {
+    const normalizedOptions = normalizeQueueModuleOptions(options);
+    const tokens = getQueueProviderTokens(normalizedOptions.scope);
     class QueueModuleDefinition {}
 
     return defineModule(QueueModuleDefinition, {
-      exports: [QueueLifecycleService, QUEUE],
-      global: options.global ?? true,
-      providers: createQueueProviders(options, QueueModuleDefinition),
+      exports: normalizedOptions.scope === undefined
+        ? [QueueLifecycleService, QUEUE]
+        : [tokens.lifecycleServiceToken, tokens.queueToken],
+      global: normalizedOptions.global,
+      providers: createQueueProviders(normalizedOptions, QueueModuleDefinition),
     });
   }
 }

@@ -19,7 +19,7 @@ import {
   type QueueLifecycleState,
   type QueuePlatformStatusSnapshot,
 } from './status.js';
-import { QUEUE } from './tokens.js';
+import { getQueueLifecycleServiceToken, getQueueToken, QUEUE } from './tokens.js';
 import type { QueueModuleContext } from './tokens.js';
 import { discoverQueueWorkerDescriptors } from './worker-discovery.js';
 import type {
@@ -138,6 +138,34 @@ function toBullBackoff(backoff: QueueBackoffOptions | undefined): JobsOptions['b
   };
 }
 
+function isQueueModuleContext(value: unknown): value is QueueModuleContext {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const context = value as { moduleType?: unknown; scope?: unknown };
+
+  return typeof context.moduleType === 'function' && typeof context.scope === 'string';
+}
+
+function collectQueueModuleScopeCount(compiledModules: readonly CompiledModule[], scope: string): number {
+  let count = 0;
+
+  for (const compiledModule of compiledModules) {
+    for (const provider of compiledModule.definition.providers ?? []) {
+      if (typeof provider !== 'object' || provider === null || !('useValue' in provider)) {
+        continue;
+      }
+
+      if (isQueueModuleContext(provider.useValue) && provider.useValue.scope === scope) {
+        count += 1;
+      }
+    }
+  }
+
+  return count;
+}
+
 async function closeConnection(connection: QueueOwnedConnection): Promise<void> {
   if (connection.status === 'end') {
     return;
@@ -183,10 +211,11 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     private readonly compiledModules: readonly CompiledModule[],
     private readonly logger: ApplicationLogger,
     private readonly bootstrapReadySignal: BootstrapReadySignal = IMMEDIATE_BOOTSTRAP_READY_SIGNAL,
-    private readonly moduleContext: QueueModuleContext = { moduleType: QueueLifecycleService },
+    private readonly moduleContext: QueueModuleContext = { moduleType: QueueLifecycleService, scope: 'default' },
   ) {
     this.compiledModulesByType = new Map(this.compiledModules.map((compiledModule) => [compiledModule.type, compiledModule]));
     this.deadLetterManager = new QueueDeadLetterManager(this.options, this.logger, () => this.getRedisClient());
+    this.assertUniqueQueueScope();
   }
 
   async onApplicationBootstrap(): Promise<void> {
@@ -335,7 +364,22 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   }
 
   private exportsQueueRegistration(compiledModule: CompiledModule): boolean {
-    return compiledModule.exportedTokens.has(QueueLifecycleService) || compiledModule.exportedTokens.has(QUEUE);
+    return (
+      compiledModule.exportedTokens.has(QueueLifecycleService) ||
+      compiledModule.exportedTokens.has(QUEUE) ||
+      compiledModule.exportedTokens.has(getQueueLifecycleServiceToken(this.options.scope)) ||
+      compiledModule.exportedTokens.has(getQueueToken(this.options.scope))
+    );
+  }
+
+  private assertUniqueQueueScope(): void {
+    const scopeCount = collectQueueModuleScopeCount(this.compiledModules, this.moduleContext.scope);
+
+    if (scopeCount > 1) {
+      throw new Error(
+        `Duplicate @fluojs/queue scope "${this.moduleContext.scope}" registered. Provide a unique QueueModule.forRoot({ scope }) value for each scoped queue registration.`,
+      );
+    }
   }
 
   private async handleStartupFailure(): Promise<void> {

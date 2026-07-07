@@ -37,6 +37,8 @@ export interface QueueWorkerOptions {
 /** Module-wide defaults used when individual workers omit execution settings. */
 export interface QueueModuleOptions {
   clientName?: string;
+  /** Unique registration scope for non-global queue modules that need isolated providers. */
+  scope?: string;
   /** Whether queue providers should be visible globally. Defaults to `true`. */
   global?: boolean;
   defaultAttempts?: number;
@@ -51,6 +53,7 @@ export interface QueueModuleOptions {
 /** Normalized queue options resolved once during module registration. */
 export interface NormalizedQueueModuleOptions {
   clientName?: string;
+  scope?: string;
   defaultAttempts: number;
   defaultBackoff?: QueueBackoffOptions;
   defaultConcurrency: number;
