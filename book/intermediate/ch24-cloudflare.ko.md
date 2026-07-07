@@ -9,6 +9,7 @@
 - Cloudflare Workers가 fluo 애플리케이션에 적합한 이유를 이해합니다.
 - `@fluojs/platform-cloudflare-workers`로 Worker 진입점을 구성하는 방법을 배웁니다.
 - `fetch` 기반 실행 모델과 지연 부트스트랩 패턴을 구분해 설명합니다.
+- Worker `listen()` boundary, shutdown drain, SSE body lifecycle, WebSocket binding 규칙을 이해합니다.
 - 파일 시스템 부재, 실행 시간 제한, 메모리 한계 같은 엣지 제약을 정리합니다.
 - Worker `env`, KV, D1, WebSocketPair 같은 네이티브 기능을 fluo와 연결하는 방법을 살펴봅니다.
 - Wrangler 배포 흐름과 FluoShop의 엣지 운영 체크포인트를 확인합니다.
@@ -76,6 +77,12 @@ export default {
   fetch: worker.fetch,
 };
 ```
+
+### 24.3.1 Lifecycle and Shutdown Boundaries
+
+Cloudflare Workers는 장기 실행 server socket을 노출하지 않지만, `app.listen()`은 Worker handler가 traffic을 받기 전에 dispatcher를 binding하는 fluo lifecycle boundary입니다. Worker WebSocket binding은 이 boundary 전에 설정하세요. Adapter instance가 한 번 listen한 뒤에는 binding identity가 frozen되며, 다른 binding이 필요하면 새 adapter instance를 만들어야 합니다.
+
+Shutdown 중에는 adapter가 새 ingress 수락을 중단하고 HTTP 및 WebSocket upgrade request 모두에 같은 JSON `503` shutdown response를 반환합니다. Active HTTP handler, in-flight WebSocket upgrade binding work, SSE(`text/event-stream`) response는 close drain이 진행되는 동안 `ctx.waitUntil()`에 등록된 상태로 유지됩니다. SSE의 경우 drain은 body가 끝나거나 client가 cancel할 때까지 body lifecycle을 따르므로, cancellation은 generic stream detail이 아니라 shutdown contract의 일부입니다. Active work가 끝나지 않으면 `close()`는 bounded 10초 window 이후 timeout되고, shutdown이 아직 drain 중인 동안 concurrent `listen()` call은 isolate를 다시 여는 대신 reject됩니다.
 
 ## 24.4 Handling Edge Constraints
 

@@ -25,7 +25,7 @@
 | **Node.js (Express)** | `@fluojs/platform-express` | 기존 Express hosting 또는 server integration을 platform boundary에 유지해야 할 때 사용합니다. Application-level middleware는 여전히 fluo `Middleware` 계약을 사용하며, native Express/Connect `(req, res, next)` function은 portable fluo middleware가 아닙니다. |
 | **Bun** | `@fluojs/platform-bun` | 공식 Bun 네이티브 fetch-style 시작 경로. |
 | **Deno** | `@fluojs/platform-deno` | 공식 `Deno.serve()` 시작 경로. |
-| **Cloudflare Workers** | `@fluojs/platform-cloudflare-workers` | fetch-style 어댑터 심(seam) 위에 구축된 stateless isolate 라이프사이클. |
+| **Cloudflare Workers** | `@fluojs/platform-cloudflare-workers` | fetch-style adapter seam 위에 구축된 stateless isolate lifecycle입니다. `listen()`은 socket을 열지 않고 dispatcher를 binding하며, Worker `fetch()`는 active work를 `executionContext.waitUntil(...)`에 등록합니다. SSE(`text/event-stream`) drain은 response body가 완료되거나 cancel될 때까지 유지되고, WebSocket upgrade는 첫 listen boundary 전에 frozen된 binding을 사용하며, shutdown은 bounded close window 동안 active work를 drain하면서 새 HTTP/WebSocket ingress에 JSON `503`을 반환합니다. |
 
 ## 패키지 책임
 

@@ -25,7 +25,7 @@
 | **Node.js (Express)** | `@fluojs/platform-express` | Use when existing Express hosting or server integrations must remain at the platform boundary. Application-level middleware still uses fluo's `Middleware` contract; native Express/Connect `(req, res, next)` functions are not portable fluo middleware. |
 | **Bun** | `@fluojs/platform-bun` | Official Bun-native fetch-style startup path. |
 | **Deno** | `@fluojs/platform-deno` | Official `Deno.serve()` startup path. |
-| **Cloudflare Workers** | `@fluojs/platform-cloudflare-workers` | Stateless isolate lifecycle built on the fetch-style adapter seam. |
+| **Cloudflare Workers** | `@fluojs/platform-cloudflare-workers` | Stateless isolate lifecycle built on the fetch-style adapter seam. `listen()` binds the dispatcher without opening a socket, Worker `fetch()` registers active work with `executionContext.waitUntil(...)`, SSE (`text/event-stream`) drains follow the response body until completion or cancellation, WebSocket upgrades use a binding frozen before the first listen boundary, and shutdown returns JSON `503` for new HTTP/WebSocket ingress while active work drains for the bounded close window. |
 
 ## package responsibilities
 
