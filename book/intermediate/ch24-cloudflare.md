@@ -9,6 +9,7 @@ This chapter explains how to deploy FluoShop to Cloudflare Workers and handle th
 - Understand why Cloudflare Workers are a good fit for fluo applications.
 - Learn how to configure a Worker entrypoint with `@fluojs/platform-cloudflare-workers`.
 - Explain the difference between the `fetch`-based execution model and the lazy bootstrap pattern.
+- Understand the Worker `listen()` boundary, shutdown drain, SSE body lifecycle, and WebSocket binding rules.
 - Summarize edge constraints such as no filesystem, execution time limits, and memory limits.
 - Review how to connect native features such as Worker `env`, KV, D1, and WebSocketPair to fluo.
 - Confirm the Wrangler deployment flow and FluoShop edge operation checkpoints.
@@ -76,6 +77,12 @@ export default {
   fetch: worker.fetch,
 };
 ```
+
+### 24.3.1 Lifecycle and Shutdown Boundaries
+
+Cloudflare Workers do not expose a long-running server socket, but `app.listen()` is still the fluo lifecycle boundary that binds the dispatcher before the Worker handler accepts traffic. Configure the Worker WebSocket binding before that boundary; once an adapter instance has listened, its binding identity is frozen and a different binding requires a new adapter instance.
+
+During shutdown, the adapter stops accepting new ingress and returns the same JSON `503` shutdown response for both HTTP and WebSocket upgrade requests. Active HTTP handlers, in-flight WebSocket upgrade binding work, and SSE (`text/event-stream`) responses stay registered with `ctx.waitUntil()` while the close drain runs. For SSE, the drain follows the body lifecycle until the body finishes or the client cancels it, so cancellation is part of the shutdown contract rather than a generic stream detail. If active work never settles, `close()` times out after the bounded 10-second window, and a concurrent `listen()` call rejects instead of reopening the isolate while shutdown is still draining.
 
 ## 24.4 Handling Edge Constraints
 
