@@ -1891,6 +1891,52 @@ describe('NotificationsModule', () => {
     expect(repeatedFallback.deliveryId).toBe(firstFallback.deliveryId);
   });
 
+  it('keeps generated ids deterministic for reordered cyclic Map and Set payloads', async () => {
+    function createPayload(order: readonly [string, 'alpha' | 'beta'][]): Record<string, unknown> {
+      const payload: Record<string, unknown> = { template: 'cyclic-collections' };
+      const valuesByName = {
+        alpha: { label: 'alpha' } as Record<string, unknown>,
+        beta: { label: 'beta' } as Record<string, unknown>,
+      };
+      valuesByName.alpha.self = valuesByName.alpha;
+      valuesByName.beta.self = valuesByName.beta;
+
+      payload.map = new Map(order.map(([key, valueName]) => [key, valuesByName[valueName]]));
+      payload.set = new Set(order.map(([, valueName]) => valuesByName[valueName]));
+
+      return payload;
+    }
+
+    const queue = new RecordingQueueAdapter();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            return {};
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 50,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await service.dispatch({ channel: 'email', payload: createPayload([['a', 'alpha'], ['b', 'beta']]) }, { queue: true });
+    await service.dispatch({ channel: 'email', payload: createPayload([['b', 'beta'], ['a', 'alpha']]) }, { queue: true });
+    const firstFallback = await service.dispatch({ channel: 'email', payload: createPayload([['a', 'alpha'], ['b', 'beta']]) });
+    const reorderedFallback = await service.dispatch({ channel: 'email', payload: createPayload([['b', 'beta'], ['a', 'alpha']]) });
+
+    expectGeneratedQueueJobId(queue.jobs[0]?.id);
+    expect(queue.jobs[1]?.id).toBe(queue.jobs[0]?.id);
+    expect(reorderedFallback.deliveryId).toBe(firstFallback.deliveryId);
+  });
+
   it('preserves caller-supplied notification ids as queue job ids', async () => {
     const queue = new RecordingQueueAdapter();
     const container = new Container();

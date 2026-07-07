@@ -575,6 +575,30 @@ function enterStableObject(value: object, context: StableStringifyContext): numb
   return undefined;
 }
 
+function createCollectionSortContext(parent: object): StableStringifyContext {
+  const context = createStableStringifyContext();
+  context.nextReferenceId = 1;
+  context.seen.set(parent, 1);
+
+  return context;
+}
+
+function stableCollectionSortKey(value: unknown, parent: object): string {
+  return stableStringify(value, createCollectionSortContext(parent));
+}
+
+function compareStableString(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+
+  if (left > right) {
+    return 1;
+  }
+
+  return 0;
+}
+
 function stableStringify(value: unknown, context: StableStringifyContext): string {
   if (value === null) {
     return 'null';
@@ -624,8 +648,13 @@ function stableStringify(value: unknown, context: StableStringifyContext): strin
 
   if (value instanceof Map) {
     const entries = Array.from(value.entries())
-      .map(([key, entry]) => `[${stableStringify(key, context)},${stableStringify(entry, context)}]`)
-      .sort();
+      .map(([key, entry]) => ({
+        entry,
+        key,
+        sortKey: `[${stableCollectionSortKey(key, value)},${stableCollectionSortKey(entry, value)}]`,
+      }))
+      .sort((left, right) => compareStableString(left.sortKey, right.sortKey))
+      .map(({ key, entry }) => `[${stableStringify(key, context)},${stableStringify(entry, context)}]`);
 
     context.seen.delete(value);
 
@@ -634,8 +663,12 @@ function stableStringify(value: unknown, context: StableStringifyContext): strin
 
   if (value instanceof Set) {
     const entries = Array.from(value.values())
-      .map((entry) => stableStringify(entry, context))
-      .sort();
+      .map((entry) => ({
+        entry,
+        sortKey: stableCollectionSortKey(entry, value),
+      }))
+      .sort((left, right) => compareStableString(left.sortKey, right.sortKey))
+      .map(({ entry }) => stableStringify(entry, context));
 
     context.seen.delete(value);
 
