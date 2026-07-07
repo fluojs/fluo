@@ -1,23 +1,27 @@
 import {
   createFetchStyleHttpAdapterRealtimeCapability,
-  type Dispatcher,
-  type HttpApplicationAdapter,
 } from '@fluojs/http/internal';
 import {
   bootstrapHttpAdapterApplication,
-  type BootstrapHttpAdapterApplicationOptions,
 } from '@fluojs/runtime/internal/http-adapter';
 import type {
+  CorsOptions,
+  Dispatcher,
+  HttpApplicationAdapter,
+  MiddlewareLike,
+  SecurityHeadersOptions,
+} from '@fluojs/http';
+import type {
   Application,
+  CreateApplicationOptions,
   ModuleType,
 } from '@fluojs/runtime';
 import {
   createWebRequestResponseFactory,
   dispatchWebRequest,
   type CreateWebRequestResponseFactoryOptions,
-  type WebFrameworkResponse,
+  type DispatchWebRequestOptions,
 } from '@fluojs/runtime/web';
-import type { RequestResponseFactory } from '@fluojs/runtime/internal/request-response-factory';
 
 declare module '@fluojs/http' {
   interface FrameworkRequest {
@@ -31,6 +35,16 @@ const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 const ADAPTER_CLOSE_SETTLED = Symbol('CloudflareWorkerAdapterCloseSettled');
 const WEBSOCKET_BINDING_RECONFIGURATION_MESSAGE =
   'Cloudflare Workers websocket binding must be configured before listen() starts accepting Worker requests.';
+type CloudflareWorkerCorsInput = false | string | string[] | CorsOptions;
+type WebRequestResponseFactory = NonNullable<DispatchWebRequestOptions['factory']>;
+
+interface CloudflareWorkerMiddlewareOptions {
+  cors?: CloudflareWorkerCorsInput;
+  globalPrefix?: string;
+  globalPrefixExclude?: readonly string[];
+  middleware?: MiddlewareLike[];
+  securityHeaders?: false | SecurityHeadersOptions;
+}
 
 /** Minimal Worker execution context surface used by the adapter. */
 export interface CloudflareWorkerExecutionContext {
@@ -91,7 +105,8 @@ export interface CloudflareWorkerAdapterOptions extends CreateWebRequestResponse
 
 /** Bootstrap options for constructing a Cloudflare Worker application shell. */
 export interface BootstrapCloudflareWorkerApplicationOptions
-  extends BootstrapHttpAdapterApplicationOptions,
+  extends Omit<CreateApplicationOptions, 'adapter' | 'middleware'>,
+    CloudflareWorkerMiddlewareOptions,
     CloudflareWorkerAdapterOptions {}
 
 /** Fetch handler shape exposed by Worker-backed application entrypoints. */
@@ -129,6 +144,7 @@ export class CloudflareWorkerHttpApplicationAdapter
   private inFlightDrain?: Deferred<void>;
   private inFlightRequestCount = 0;
   private isClosed = false;
+  private isWebSocketBindingFrozen = false;
   private websocketBinding?: CloudflareWorkerWebSocketBinding;
   private readonly options: CloudflareWorkerAdapterOptions;
   private readonly webRequestResponseFactory;
@@ -171,7 +187,7 @@ export class CloudflareWorkerHttpApplicationAdapter
   }
 
   configureWebSocketBinding(binding: CloudflareWorkerWebSocketBinding | undefined): void {
-    if (this.dispatcher && binding !== this.websocketBinding) {
+    if (this.isWebSocketBindingFrozen && binding !== this.websocketBinding) {
       throw new Error(WEBSOCKET_BINDING_RECONFIGURATION_MESSAGE);
     }
 
@@ -239,6 +255,7 @@ export class CloudflareWorkerHttpApplicationAdapter
     }
 
     this.isClosed = false;
+    this.isWebSocketBindingFrozen = true;
     this.dispatcher = dispatcher;
   }
 
@@ -285,7 +302,7 @@ export class CloudflareWorkerHttpApplicationAdapter
   private createRequestResponseFactory<Env>(
     env: Env | undefined,
     executionContext: CloudflareWorkerExecutionContext | undefined,
-  ): RequestResponseFactory<Request, AbortSignal | undefined, WebFrameworkResponse> {
+  ): WebRequestResponseFactory {
     const baseFactory = this.webRequestResponseFactory;
 
     return {

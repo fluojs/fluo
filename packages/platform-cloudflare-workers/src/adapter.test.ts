@@ -117,7 +117,8 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     const source = readFileSync(new URL('./adapter.ts', import.meta.url), 'utf8');
 
     expect(source).toContain("from '@fluojs/http/internal'");
-    expect(source).not.toContain("} from '@fluojs/http';");
+    expect(source).toMatch(/import type \{[\s\S]*\} from '@fluojs\/http';/);
+    expect(source).not.toMatch(/^import \{(?:\n(?!import ).*)*\n\} from '@fluojs\/http';/m);
   });
 
   it('keeps Worker bootstrap on the transport-neutral default logger', async () => {
