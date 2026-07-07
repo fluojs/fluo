@@ -157,8 +157,13 @@ interface SyncResolverState {
   multiSingletonCache: ReadonlyMap<NormalizedProvider, Promise<unknown>>;
   resolutionChain: Set<Token>;
   singletonCache: ReadonlyMap<Token, Promise<unknown>>;
-  syncMultiSingletonValues: Map<NormalizedProvider, unknown>;
-  syncSingletonValues: Map<Token, unknown>;
+  syncMultiSingletonValues: Map<NormalizedProvider, SyncSingletonMemo>;
+  syncSingletonValues: Map<Token, SyncSingletonMemo>;
+}
+
+interface SyncSingletonMemo {
+  readonly cacheEntry: Promise<unknown>;
+  readonly value: unknown;
 }
 
 interface SyncResolver {
@@ -494,8 +499,10 @@ function resolveSyncProvider(provider: NormalizedProvider, state: SyncResolverSt
     return instantiateSyncProvider(provider, state);
   }
 
-  if (state.syncSingletonValues.has(provider.provide)) {
-    return state.syncSingletonValues.get(provider.provide);
+  const memo = state.syncSingletonValues.get(provider.provide);
+
+  if (memo) {
+    return memo.value;
   }
 
   if (state.singletonCache.has(provider.provide)) {
@@ -505,8 +512,9 @@ function resolveSyncProvider(provider: NormalizedProvider, state: SyncResolverSt
   }
 
   const instance = instantiateSyncProvider(provider, state);
-  state.syncSingletonValues.set(provider.provide, instance);
-  state.cacheOwner.setSingleton(provider.provide, Promise.resolve(instance));
+  const cacheEntry = Promise.resolve(instance);
+  state.syncSingletonValues.set(provider.provide, { cacheEntry, value: instance });
+  state.cacheOwner.setSingleton(provider.provide, cacheEntry);
   return instance;
 }
 
@@ -519,8 +527,10 @@ function resolveSyncMultiProvider(provider: NormalizedProvider, state: SyncResol
     return instantiateSyncProvider(provider, state);
   }
 
-  if (state.syncMultiSingletonValues.has(provider)) {
-    return state.syncMultiSingletonValues.get(provider);
+  const memo = state.syncMultiSingletonValues.get(provider);
+
+  if (memo) {
+    return memo.value;
   }
 
   if (state.multiSingletonCache.has(provider)) {
@@ -530,8 +540,9 @@ function resolveSyncMultiProvider(provider: NormalizedProvider, state: SyncResol
   }
 
   const instance = instantiateSyncProvider(provider, state);
-  state.syncMultiSingletonValues.set(provider, instance);
-  state.cacheOwner.setMultiSingleton(provider, Promise.resolve(instance));
+  const cacheEntry = Promise.resolve(instance);
+  state.syncMultiSingletonValues.set(provider, { cacheEntry, value: instance });
+  state.cacheOwner.setMultiSingleton(provider, cacheEntry);
   return instance;
 }
 
@@ -571,8 +582,8 @@ function createSyncResolver(container: BootstrapResult['container']): SyncResolv
     multiSingletonCache: rootIntrospection.multiSingletonCache,
     resolutionChain: new Set<Token>(),
     singletonCache: rootIntrospection.singletonCache,
-    syncMultiSingletonValues: new Map<NormalizedProvider, unknown>(),
-    syncSingletonValues: new Map<Token, unknown>(),
+    syncMultiSingletonValues: new Map<NormalizedProvider, SyncSingletonMemo>(),
+    syncSingletonValues: new Map<Token, SyncSingletonMemo>(),
   };
 
   const refreshState = (): void => {
@@ -585,14 +596,14 @@ function createSyncResolver(container: BootstrapResult['container']): SyncResolv
     state.multiSingletonCache = freshRootIntrospection.multiSingletonCache;
     state.singletonCache = freshRootIntrospection.singletonCache;
 
-    for (const token of state.syncSingletonValues.keys()) {
-      if (!state.singletonCache.has(token)) {
+    for (const [token, memo] of state.syncSingletonValues) {
+      if (state.singletonCache.get(token) !== memo.cacheEntry) {
         state.syncSingletonValues.delete(token);
       }
     }
 
-    for (const provider of state.syncMultiSingletonValues.keys()) {
-      if (!state.multiSingletonCache.has(provider)) {
+    for (const [provider, memo] of state.syncMultiSingletonValues) {
+      if (state.multiSingletonCache.get(provider) !== memo.cacheEntry) {
         state.syncMultiSingletonValues.delete(provider);
       }
     }
@@ -611,7 +622,7 @@ function createSyncResolver(container: BootstrapResult['container']): SyncResolv
           continue;
         }
 
-        state.syncSingletonValues.set(token, await promise);
+        state.syncSingletonValues.set(token, { cacheEntry: promise, value: await promise });
       }
 
       for (const [provider, promise] of state.multiSingletonCache) {
@@ -619,7 +630,7 @@ function createSyncResolver(container: BootstrapResult['container']): SyncResolv
           continue;
         }
 
-        state.syncMultiSingletonValues.set(provider, await promise);
+        state.syncMultiSingletonValues.set(provider, { cacheEntry: promise, value: await promise });
       }
     },
   };
@@ -715,6 +726,13 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
     await runTestingBootstrapLifecycle(bootstrapped, this.overrides);
     await syncResolver.syncFromContainer();
 
+    const resolve = bootstrapped.container.resolve.bind(bootstrapped.container);
+    bootstrapped.container.resolve = async <T>(token: Token<T>): Promise<T> => {
+      const value = await resolve<T>(token);
+      await syncResolver.syncFromContainer();
+      return value;
+    };
+
     return this.createTestingModuleRef(bootstrapped, syncResolver);
   }
 
@@ -739,11 +757,7 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
       ...bootstrapped,
       has: (token) => bootstrapped.container.has(token),
       get: (token) => syncResolver.get(token),
-      resolve: async <T>(token: Token<T>) => {
-        const value = await bootstrapped.container.resolve<T>(token);
-        await syncResolver.syncFromContainer();
-        return value;
-      },
+      resolve: <T>(token: Token<T>) => bootstrapped.container.resolve<T>(token),
       resolveAll: async <T>(tokens: Token<T>[]): Promise<T[]> => {
         const results: T[] = [];
         const errors: Array<{ token: Token; error: unknown }> = [];
@@ -763,8 +777,6 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
 
           throw new Error(`Failed to resolve ${errors.length} of ${tokens.length} tokens:\n${summary}`);
         }
-
-        await syncResolver.syncFromContainer();
 
         return results;
       },
