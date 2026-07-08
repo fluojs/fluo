@@ -1,2 +1,9 @@
+export {
+  Path,
+  Router,
+  getReactPathMetadata,
+  getReactRouterMetadata,
+} from './decorators.js';
+export type { ReactPathMetadata, ReactPathOptions, ReactRouterMetadata } from './decorators.js';
 export { ReactModule } from './module.js';
 export type { ReactScaffoldPhase } from './types.js';
