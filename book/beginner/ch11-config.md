@@ -338,9 +338,9 @@ Configuration is also the foundation for feature toggles, or feature flags. By u
 fluo's explicit configuration system makes feature toggles simple to implement. When combined with the metrics from Chapter 19, you can also roll out new features gradually while tracking performance and usage in real time. This data-driven approach to feature delivery is how the world's best engineering teams build and ship software.
 
 ### Managing Configuration for Serverless
-Configuration management has unique constraints when running in serverless environments such as AWS Lambda or Cloudflare Workers. Cold start time matters, so configuration loading logic should be as fast as possible. fluo's lightweight `@fluojs/config` package is optimized for these environments, helping functions start quickly and efficiently.
+Configuration management has unique constraints when running in serverless environments such as AWS Lambda or Cloudflare Workers. Cold start time matters, and each host exposes configuration through its own boundary. The portable fluo pattern is to read those host-provided values at the application entrypoint and pass an explicit in-memory map to `ConfigModule.forRoot(...)` through `processEnv` or `runtimeOverrides`.
 
-Many serverless platforms also have their own ways of injecting environment variables. fluo's precedence rules apply to those platform-injected values only after you map them into `ConfigModule.forRoot(...)` through an explicit `processEnv` snapshot or `runtimeOverrides`; once mapped, they take priority over `.env` input and let serverless functions adapt cleanly to the host environment without code changes.
+Do not treat env-file loading, default `.env` loading, or `watch: true` as portable serverless support from `@fluojs/config`. Those paths are governed by the package README's Node.js 20.16.0+ contract. Once serverless values are explicitly mapped into `processEnv` or `runtimeOverrides`, fluo's precedence rules apply to that in-memory input without relying on ambient host environment lookup.
 
 ### Final Thoughts on Configuration
 Skilled configuration management is the difference between fragile scripts and solid backend systems. By adopting fluo's explicit, verifiable, and layered approach, you build a foundation that can support your application from the first prototype to global production deployment.

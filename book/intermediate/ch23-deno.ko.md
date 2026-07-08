@@ -140,14 +140,14 @@ Deno에서 마이크로서비스를 구축할 때는 최소 권한의 원칙을 
 - **`--allow-read=./config,./static`**: 설정 파일이나 정적 자산이 포함된 특정 디렉터리로 파일 접근을 제한합니다.
 - **`--allow-env=PORT,DATABASE_URL`**: 애플리케이션에 필요한 환경 변수 키에 대해서만 접근을 제한합니다.
 
-Fluo의 `ConfigModule`은 권한이 부여된 경우 Deno의 환경 변수 접근과 함께 동작합니다. 중요한 점은 환경 변수 접근 자체도 배포 명령의 권한 목록에 드러난다는 것입니다. 설정을 읽는 행위가 권한 계약에 포함되므로, 운영자는 애플리케이션이 어떤 환경 값에 의존하는지 배포 명령에서 바로 확인할 수 있습니다.
+`@fluojs/config`를 사용할 때는 Deno 환경 읽기를 애플리케이션 entrypoint에 두세요. 필요한 `--allow-env` key를 허용한 뒤에만 `Deno.env.get(...)`을 호출하고, 그 결과를 `processEnv` 또는 `runtimeOverrides`를 통해 명시적인 map으로 `ConfigModule.forRoot(...)`에 전달합니다. 이 패키지의 env-file, 기본 `.env`, watch 경로는 Node.js 20.16.0+ 계약을 따르므로, Deno 배포 명령은 entrypoint가 in-memory config input으로 매핑할 수 있는 host 값만 문서화합니다.
 
 ## 23.6 Porting Checklist for Deno
 
 1. **Imports**: 모든 로컬 임포트에 파일 확장자를 포함하세요(예: `./user.service.ts`). Deno는 확장자 없는 임포트를 허용하지 않습니다.
 2. **NPM Compatibility**: 대부분의 npm 패키지는 `npm:` 임포트를 통해 작동하지만, Deno의 Node 호환 계층에서 아직 지원되지 않을 수 있는 복잡한 Node 네이티브 C++ API에 의존하는 패키지는 확인이 필요합니다.
 3. **Async Initialization**: Deno는 `fluoFactory.create()`와 잘 맞는 최상위 `await`를 선호합니다.
-4. **Environment Variables**: 직접 접근이 필요한 경우 `Deno.env.get()`을 사용하되, 이식성을 위해 `ConfigService`를 권장합니다.
+4. **Environment Variables**: `Deno.env.get()`은 Deno entrypoint에서만 사용하고, 선택한 값을 `ConfigModule.forRoot({ processEnv })` 또는 `runtimeOverrides`로 매핑하세요. Package와 service code는 직접 Deno environment에 접근하지 말고 `ConfigService`를 유지합니다.
 
 ## 23.7 Conclusion
 
