@@ -11,10 +11,16 @@ const forbiddenRootImports = [
 ] as const;
 
 describe('@fluojs/react root package scaffold', () => {
-  it('exposes only the implemented runtime scaffold export from the root import', async () => {
+  it('exposes the implemented runtime React package exports from the root import', async () => {
     const react = await import('./index.js');
 
-    expect(Object.keys(react).sort()).toEqual(['ReactModule']);
+    expect(Object.keys(react).sort()).toEqual([
+      'Path',
+      'ReactModule',
+      'Router',
+      'getReactPathMetadata',
+      'getReactRouterMetadata',
+    ]);
   });
 
   it('does not load Node, Vite, SSR, or RSC modules from the root import', async () => {
@@ -29,7 +35,9 @@ describe('@fluojs/react root package scaffold', () => {
     try {
       const react = await import('./index.js');
 
+      expect(react).toHaveProperty('Path');
       expect(react).toHaveProperty('ReactModule');
+      expect(react).toHaveProperty('Router');
     } finally {
       for (const [moduleId] of forbiddenRootImports) {
         vi.doUnmock(moduleId);
@@ -42,6 +50,7 @@ describe('@fluojs/react root package scaffold', () => {
     const rootEntrypoint = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
 
     expect(rootEntrypoint).toContain("from './module.js'");
+    expect(rootEntrypoint).toContain("from './decorators.js'");
     expect(rootEntrypoint).not.toContain('./server-entry.js');
     expect(rootEntrypoint).not.toContain('./render.js');
     expect(rootEntrypoint).not.toContain('./vite.js');

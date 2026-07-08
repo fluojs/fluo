@@ -39,7 +39,8 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@fluojs/core": "workspace:^"
+    "@fluojs/core": "workspace:^",
+    "@fluojs/http": "workspace:^"
   },
   "peerDependencies": {
     "react": "^18.3.0 || ^19.0.0",
