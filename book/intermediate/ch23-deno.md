@@ -140,14 +140,14 @@ When building microservices on Deno, follow the principle of least privilege. Sp
 - **`--allow-read=./config,./static`**: Restricts file access to specific directories that contain configuration files or static assets.
 - **`--allow-env=PORT,DATABASE_URL`**: Restricts access to only the environment variable keys the application needs.
 
-Fluo's `ConfigModule` works with Deno environment variable access when permission is granted. The important point is that environment variable access itself appears in the deployment command's permission list. Because reading configuration is part of the permission contract, operators can see which environment values the application depends on directly in the deploy command.
+For `@fluojs/config`, keep Deno environment reads at the application entrypoint: call `Deno.env.get(...)` only after granting the required `--allow-env` keys, then pass the resulting explicit map through `processEnv` or `runtimeOverrides` to `ConfigModule.forRoot(...)`. The package's env-file, default `.env`, and watch paths remain governed by the Node.js 20.16.0+ contract, so the Deno deployment command documents only the host values your entrypoint is allowed to map into in-memory config input.
 
 ## 23.6 Porting Checklist for Deno
 
 1. **Imports**: Include file extensions in all local imports, for example `./user.service.ts`. Deno does not allow extensionless imports.
 2. **NPM Compatibility**: Most npm packages work through `npm:` imports, but packages that depend on complex Node-native C++ APIs that Deno's Node compatibility layer may not support yet require verification.
 3. **Async Initialization**: Deno favors top-level `await`, which fits well with `fluoFactory.create()`.
-4. **Environment Variables**: Use `Deno.env.get()` if direct access is required, but `ConfigService` is recommended for portability.
+4. **Environment Variables**: Use `Deno.env.get()` only at the Deno entrypoint, then map the selected values into `ConfigModule.forRoot({ processEnv })` or `runtimeOverrides`. Keep package and service code on `ConfigService` instead of direct Deno environment access.
 
 ## 23.7 Conclusion
 
