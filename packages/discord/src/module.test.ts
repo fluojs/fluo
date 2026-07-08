@@ -352,6 +352,49 @@ describe('DiscordModule', () => {
     expect(transportState.closeCalls).toBe(1);
   });
 
+  it('skips bootstrap verification when verifyOnModuleInit is true but the transport has no verifier', async () => {
+    const sent: NormalizedDiscordMessage[] = [];
+    const transport = {
+      async send(message: NormalizedDiscordMessage) {
+        sent.push(message);
+
+        return {
+          messageId: 'no-verify-1',
+          ok: true,
+          response: 'ok',
+          statusCode: 200,
+          threadId: message.threadId,
+          warnings: [],
+        };
+      },
+    } satisfies DiscordTransport;
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      defaultThreadId: 'thread-no-verify',
+      transport,
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    const result = await service.send({ content: 'Capability-based verification' });
+
+    expect(result).toMatchObject({
+      messageId: 'no-verify-1',
+      ok: true,
+      threadId: 'thread-no-verify',
+    });
+    expect('verify' in transport).toBe(false);
+    expect(sent).toEqual([
+      expect.objectContaining({
+        content: 'Capability-based verification',
+        threadId: 'thread-no-verify',
+      }),
+    ]);
+  });
+
   it('resolves async options once and exposes the compatibility facade and channel token', async () => {
     const DISCORD_CONFIG = Symbol('discord-config');
     const factoryCalls: string[] = [];
@@ -495,8 +538,54 @@ describe('DiscordModule', () => {
     expect(transportState.sent[0]?.embeds).toHaveLength(1);
   });
 
+  it('merges notification metadata with dispatch and subject-template marker precedence', async () => {
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      renderer: {
+        async render() {
+          return { content: 'Rendered deployment notice' };
+        },
+      },
+      transport: createRecordingTransportFactory({ responsePrefix: 'metadata' }),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    const result = await service.sendNotification({
+      channel: 'discord',
+      metadata: {
+        dispatchOnly: 'dispatch',
+        shared: 'dispatch',
+        subject: 'dispatch-subject',
+        template: 'dispatch-template',
+      },
+      payload: {
+        metadata: {
+          payloadOnly: 'payload',
+          shared: 'payload',
+          subject: 'payload-subject',
+          template: 'payload-template',
+        },
+      },
+      subject: 'Release subject',
+      template: 'release-template',
+    });
+
+    expect(result.messageId).toBe('metadata-1');
+    expect(transportState.sent[0]?.metadata).toEqual({
+      dispatchOnly: 'dispatch',
+      payloadOnly: 'payload',
+      shared: 'dispatch',
+      subject: 'Release subject',
+      template: 'release-template',
+    });
+  });
+
   it('creates a webhook-first transport with an explicit fetch-compatible boundary', async () => {
     const calls: Array<{ body?: string; input: string; method?: string }> = [];
+    const rawResponseBody = '{ "channel_id": "chan-1", "guild_id": "guild-1", "id": "msg-1" }';
     const fetchLike: DiscordFetchLike = async (input, init) => {
       calls.push({ body: init?.body, input, method: init?.method });
 
@@ -504,7 +593,7 @@ describe('DiscordModule', () => {
         ok: true,
         status: 200,
         async text() {
-          return JSON.stringify({ channel_id: 'chan-1', guild_id: 'guild-1', id: 'msg-1' });
+          return rawResponseBody;
         },
       };
     };
@@ -525,6 +614,7 @@ describe('DiscordModule', () => {
     );
 
     expect(result).toMatchObject({ messageId: 'msg-1', ok: true, statusCode: 200, threadId: 'thread-ops' });
+    expect(result.response).toBe(rawResponseBody);
     expect(calls).toEqual([
       {
         body: JSON.stringify({ content: 'Webhook path' }),
@@ -815,6 +905,7 @@ describe('DiscordModule', () => {
     vi.useFakeTimers();
 
     try {
+      const rawResponseBody = '{ "channel_id": "chan-1", "guild_id": "guild-1", "id": "msg-1" }';
       const fetchLike = vi
         .fn<DiscordFetchLike>()
         .mockResolvedValueOnce({
@@ -836,7 +927,7 @@ describe('DiscordModule', () => {
           ok: true,
           status: 200,
           async text() {
-            return JSON.stringify({ channel_id: 'chan-1', guild_id: 'guild-1', id: 'msg-1' });
+            return rawResponseBody;
           },
         });
       const transport = createDiscordWebhookTransport({
@@ -847,7 +938,10 @@ describe('DiscordModule', () => {
       const pending = transport.send({ attachments: [], components: [], content: 'Retry path', embeds: [], threadId: 'thread-ops' }, {});
       await vi.runAllTimersAsync();
 
-      await expect(pending).resolves.toMatchObject({ messageId: 'msg-1', ok: true, statusCode: 200, threadId: 'thread-ops' });
+      const result = await pending;
+
+      expect(result).toMatchObject({ messageId: 'msg-1', ok: true, statusCode: 200, threadId: 'thread-ops' });
+      expect(result.response).toBe(rawResponseBody);
       expect(fetchLike).toHaveBeenCalledTimes(3);
     } finally {
       vi.useRealTimers();

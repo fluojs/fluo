@@ -176,7 +176,7 @@ Behavioral contract 메모:
 
 - 하나의 notification dispatch는 정확히 하나의 Discord thread 경로로 매핑됩니다. `payload.threadId` 또는 `recipients`의 단일 항목을 사용해야 합니다.
 - `payload.threadId`가 없으면 `DiscordService.sendNotification(...)`는 첫 번째 `recipients` 항목을 사용하고, 그것도 없으면 `defaultThreadId`로 폴백합니다.
-- notification metadata는 payload metadata, dispatch metadata, template/subject marker를 합쳐 구성됩니다. `template`은 renderer가 구성된 경우에만 렌더링됩니다.
+- notification metadata는 payload metadata, dispatch metadata, template/subject marker를 합쳐 구성됩니다. 중복 key에서는 dispatch metadata가 payload metadata를 덮어쓰고, 최종 `subject` / `template` marker가 둘 모두를 덮어씁니다. `template`은 renderer가 구성된 경우에만 렌더링됩니다.
 - 여러 Discord thread로 fan-out이 필요한 notification workflow라면 thread별 concrete Discord message를 만들어 `DiscordService.sendMany(...)`로 보내거나 별도 notification dispatch를 실행해야 합니다. 하나의 notification dispatch는 multi-recipient fan-out을 암묵적으로 확장하지 않습니다.
 
 ### 명시적 fetch 주입을 사용하는 webhook-first 전달
