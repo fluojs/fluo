@@ -49,17 +49,17 @@ Standard Decorators also operate within a well-defined `kind` system, `class`, `
 Another advantage of the standard approach is the `context.addInitializer` method. It lets custom Decorators perform setup work that runs exactly once per class or per instance, such as registering a class in a central registry or setting up a database connection. This provides a cleaner, integrated alternative to the global state management often required by legacy decorator implementations.
 
 ## 3.2 Metadata-driven custom logic
-The core value of a custom Decorator often lies in its ability to record metadata that will later be consumed by Guards, Interceptors, or custom Providers. Fluo's internal metadata helpers let you create Decorators that attach specific configuration payloads to classes, methods, or properties. This metadata-driven approach keeps business logic clean and declarative while moving infrastructure concerns into specialized framework hooks.
+The core value of a custom Decorator often lies in its ability to record metadata that will later be consumed by Guards, Interceptors, or custom Providers. Fluo's standard metadata model lets extension packages attach specific configuration payloads to classes, methods, or properties without depending on reserved framework storage. This metadata-driven approach keeps business logic clean and declarative while moving infrastructure concerns into specialized framework hooks.
 
 Fluo's metadata system is designed to be accessible to custom Decorators. By interacting with the `context.metadata` object, which maps to the TC39 metadata bag, you can store data under your own private symbols. This ensures your custom metadata won't collide with Fluo's internal metadata, even when attached to the same class or method.
 
 This metadata bag approach is clear in how Fluo handles cross-cutting concerns. For example, the `@Controller()` Decorator defined at `path:packages/http/src/decorators.ts:181-189` records its configuration directly in class metadata. This removes the need for a global reflection registry and keeps configuration local to the decorated element.
 
-Going further, Fluo uses `Symbol.metadata` as a unified bus for this information. At `path:packages/core/src/metadata/shared.ts:13-34`, you can see how Fluo ensures that this symbol exists across different runtimes. When you write to `context.metadata` inside a custom Decorator, you are participating directly in this low-level language feature. That makes the Decorator compatible with other tools that respect the TC39 metadata specification, and it provides a standards-based way to extend the framework.
+Going further, Fluo uses `Symbol.metadata` as a unified bus for this information. At `path:packages/core/src/metadata/shared.ts:15-34`, you can see how Fluo tracks the active metadata symbol and exposes `ensureMetadataSymbol()` for runtimes that need the fallback installed before custom standard decorators are evaluated. When you write to `context.metadata` inside a custom Decorator, you are participating directly in this low-level language feature. That makes the Decorator compatible with other tools that respect the TC39 metadata specification, and it provides a standards-based way to extend the framework.
 
-The `Symbol.metadata` connection is guaranteed once as shown below, and later helpers read the standard metadata bag through that same symbol.
+The `Symbol.metadata` connection is opt-in at the test or bootstrap boundary when a runtime lacks native support; importing `@fluojs/core` does not install a global polyfill. Later helpers read the standard metadata bag through the active symbol.
 
-`path:packages/core/src/metadata/shared.ts:13-34`
+`path:packages/core/src/metadata/shared.ts:15-34`
 ```typescript
 export let metadataSymbol = symbolWithMetadata.metadata ?? Symbol.for('fluo.symbol.metadata');
 
@@ -76,11 +76,9 @@ export function ensureMetadataSymbol(): symbol {
 
   return metadataSymbol;
 }
-
-void ensureMetadataSymbol();
 ```
 
-So when a custom Decorator writes a value to `context.metadata`, it uses the same bus as the standard metadata path read by Fluo's internal helpers. This shared symbol lets extension packages and core packages share the same object model.
+So when a custom Decorator writes a value to `context.metadata`, it uses the same standard bus that public or package-owned readers can inspect later. This shared symbol lets extension packages and core packages share the same object model without implying that application code should import `@fluojs/core/internal`.
 
 This isolation is central to building an extensible, modular ecosystem. In Fluo, we recommend using domain-specific metadata. For example, if you build a caching library for Fluo, you can create a `@Cacheable()` Decorator that stores configuration under a `CACHE_METADATA_KEY` symbol. This lets the library participate in the same unified metadata model while remaining independent from the framework core's DI or routing logic.
 
@@ -201,7 +199,7 @@ export function Debug(tag: string): StandardClassDecoratorFn {
 }
 ```
 
-This simple Decorator gives you a window into when the transformation is applied and when the class is initialized. You can also use Fluo's internal metadata readers to confirm that custom metadata is being recorded correctly. Because Fluo uses standard Decorators, you can also use standard JavaScript debugging tools, such as a `debugger` statement, directly inside the Decorator function.
+This simple Decorator gives you a window into when the transformation is applied and when the class is initialized. You can also use your package-owned readers, public root helpers, or the documented request-pipeline seam to confirm that custom metadata is being recorded correctly. Because Fluo uses standard Decorators, you can also use standard JavaScript debugging tools, such as a `debugger` statement, directly inside the Decorator function.
 
 ## 3.8 Best Practices for Custom Decorators
 Keep these best practices in mind when building custom Decorators for Fluo.
@@ -216,10 +214,10 @@ Following these best practices lets you create custom Decorators that are sturdy
 
 ## 3.9 Summary: Mastering Extensibility
 - **Standard signatures**: Always follow the TC39 `(value, context)` signature for maximum compatibility and type safety.
-- **Metadata storage**: Use `context.metadata` for class-level configuration, and use Fluo's internal stores for parameter and property injection.
+- **Metadata storage**: Use private symbols with `context.metadata` for custom class or method configuration; first-party request-pipeline packages should use the documented `@fluojs/core/request-pipeline` seam for DTO binding and validation metadata.
 - **Practical patterns**: Use common patterns such as `@CurrentUser()`, `@Roles()`, and `@ApiDoc()` to build clean, declarative APIs.
 - **Composition**: Use `applyDecorators` to create powerful reusable abstractions and reduce boilerplate.
-- **Validation**: Use internal metadata readers and debugging hooks to verify that custom logic behaves as intended.
+- **Validation**: Use package-owned/public readers and debugging hooks to verify that custom logic behaves as intended.
 
 ## 3.10 Case Study: Building a Custom @Loggable() Decorator
 To bring all of these concepts together, let's look at how to build a `@Loggable()` Decorator that automatically logs method execution time and arguments. This Decorator will use the standard method Decorator signature and will rely on `context.addInitializer` to perform setup.
