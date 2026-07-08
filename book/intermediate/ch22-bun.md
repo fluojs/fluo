@@ -128,7 +128,7 @@ When moving from Node.js to Bun, check these items first.
 
 1. **Native Dependencies**: Bun supports many Node.js packages, but low-level packages that use C++ bindings require separate verification.
 2. **FileSystem**: For paths where platform-specific optimization matters, review whether `Bun.file()` can be used. It is safer to keep shared service code behind fluo abstractions whenever possible.
-3. **Environment Variables**: Bun loads `.env` files automatically, so you can keep `ConfigModule` configuration simpler.
+3. **Environment Variables**: Do not rely on Bun's ambient `.env` loading as a portable `@fluojs/config` env-file/watch contract. Read required Bun or host values at the Bun entrypoint and pass an explicit `processEnv` snapshot or `runtimeOverrides` map into `ConfigModule.forRoot(...)`.
 4. **Testing**: You can use Bun's built-in test runner (`bun test`), but you must confirm that existing fluo contract tests preserve the same meaning.
 
 ## 22.6 FluoShop on Bun: Performance Review
