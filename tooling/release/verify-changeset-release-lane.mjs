@@ -228,6 +228,16 @@ function collectPackageVersionDeltas(baseRef, dependencies = {}) {
     .sort();
 
   return packageJsonPaths.flatMap((packageJsonPath) => {
+    try {
+      git(['cat-file', '-e', `${baseRef}:${packageJsonPath}`]);
+    } catch (error) {
+      if (!(error instanceof Error)) {
+        throw error;
+      }
+
+      return [];
+    }
+
     const previousContents = git(['show', `${baseRef}:${packageJsonPath}`]);
     const previous = parsePackageManifestVersion(previousContents, `${baseRef}:${packageJsonPath}`);
     const next = parsePackageManifestVersion(readFile(join(repoRoot, packageJsonPath), 'utf8'), packageJsonPath);

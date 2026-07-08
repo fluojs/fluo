@@ -77,6 +77,33 @@ describe('verifyChangesetReleaseLane', () => {
     expect(result.checkedVersionDeltas).toMatchObject([{ bump: 'patch' }, { bump: 'minor' }, { bump: 'major' }]);
   });
 
+  it('skips package manifests added after the base ref instead of treating them as version deltas', () => {
+    const directory = createChangesetDirectory();
+    writeChangeset(directory, 'react-scaffold.md', '"@fluojs/react": minor');
+
+    const result = verifyChangesetReleaseLane(
+      { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+      {
+        runGit: (args: string[]) => {
+          const command = args.join(' ');
+
+          if (command === 'diff --name-only origin/main -- packages/*/package.json') {
+            return 'packages/react/package.json\n';
+          }
+
+          if (command === 'cat-file -e origin/main:packages/react/package.json') {
+            throw new Error("fatal: path 'packages/react/package.json' exists on disk, but not in 'origin/main'");
+          }
+
+          throw new Error(`unexpected git command: ${command}`);
+        },
+      },
+    );
+
+    expect(result.checkedIntents).toMatchObject([{ bump: 'minor', packageName: '@fluojs/react' }]);
+    expect(result.checkedVersionDeltas).toEqual([]);
+  });
+
   it('rejects major package version deltas without major changelog evidence', () => {
     const directory = createChangesetDirectory();
     writePackageChangelog(
