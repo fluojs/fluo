@@ -1,9 +1,10 @@
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
 import * as coreInternalApi from './internal.js';
-import * as corePublicApi from './index.js';
 import * as coreRequestPipelineApi from './request-pipeline.js';
 import type {
   AsyncModuleOptions,
@@ -125,8 +126,73 @@ const documentedInternalRuntimeExports = [
   'metadataSymbol',
 ] as const;
 
+const packageRoot = new URL('..', import.meta.url);
+const packageRootPath = fileURLToPath(packageRoot);
+const repoRootPath = fileURLToPath(new URL('../../..', import.meta.url));
+const workspaceBuildClosurePath = fileURLToPath(
+  new URL('../../../tooling/scripts/run-workspace-build-closure.mjs', import.meta.url),
+);
+
+function buildCorePackage(): void {
+  const result = spawnSync(process.execPath, [workspaceBuildClosurePath, '@fluojs/core'], {
+    cwd: repoRootPath,
+    encoding: 'utf8',
+  });
+
+  expect(result.status, [result.stdout, result.stderr].filter(Boolean).join('\n')).toBe(0);
+}
+
+function probeRootImportSymbolMetadata(): void {
+  const script = `
+    const describeDescriptor = (descriptor) => descriptor
+      ? JSON.stringify({
+          configurable: descriptor.configurable,
+          enumerable: descriptor.enumerable,
+          hasGetter: typeof descriptor.get === 'function',
+          hasSetter: typeof descriptor.set === 'function',
+          writable: Object.hasOwn(descriptor, 'writable') ? descriptor.writable : null,
+        })
+      : 'missing';
+    const beforeDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+    const beforeMetadata = Symbol.metadata;
+    const corePublicApi = await import('@fluojs/core');
+    const afterDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+    const afterMetadata = Symbol.metadata;
+    const failures = [];
+
+    if (typeof corePublicApi.ensureMetadataSymbol !== 'function') {
+      failures.push('root package did not expose ensureMetadataSymbol');
+    }
+    if (describeDescriptor(afterDescriptor) !== describeDescriptor(beforeDescriptor)) {
+      failures.push('root package import changed the Symbol.metadata descriptor');
+    }
+    if (beforeMetadata !== afterMetadata) {
+      failures.push('root package import changed the Symbol.metadata value');
+    }
+
+    if (failures.length > 0) {
+      console.error(failures.join('\\n'));
+      process.exit(1);
+    }
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+    cwd: packageRootPath,
+    encoding: 'utf8',
+  });
+
+  expect(result.status, [result.stdout, result.stderr].filter(Boolean).join('\n')).toBe(0);
+}
+
 describe('@fluojs/core public API surface', () => {
-  it('keeps documented root-barrel exports for application code', () => {
+  it('keeps cold root-package import side-effect free for Symbol.metadata', () => {
+    buildCorePackage();
+
+    probeRootImportSymbolMetadata();
+  }, 300_000);
+
+  it('keeps documented root-barrel exports for application code', async () => {
+    const corePublicApi = await import('./index.js');
+
     for (const exportName of documentedRootRuntimeExports) {
       expect(corePublicApi).toHaveProperty(exportName);
     }
@@ -138,7 +204,9 @@ describe('@fluojs/core public API surface', () => {
     expect(rootTypeExport).toBe('asyncModuleOptions');
   });
 
-  it('does not expose internal metadata writers or non-module readers on the root barrel', () => {
+  it('does not expose internal metadata writers or non-module readers on the root barrel', async () => {
+    const corePublicApi = await import('./index.js');
+
     expect(corePublicApi).not.toHaveProperty('defineModuleMetadata');
     expect(corePublicApi).not.toHaveProperty('getModuleMetadataVersion');
     expect(corePublicApi).not.toHaveProperty('defineControllerMetadata');
@@ -170,6 +238,7 @@ describe('@fluojs/core public API surface', () => {
     expect(coreRequestPipelineApi).toHaveProperty('getRequestPipelineMetadataBag');
     expect(coreRequestPipelineApi).toHaveProperty('getOwnConstructorRequestPipelineMetadataBag');
     expect(coreRequestPipelineApi).toHaveProperty('defineDtoFieldBindingMetadata');
+    expect(coreRequestPipelineApi).toHaveProperty('getDtoFieldBindingMetadata');
     expect(coreRequestPipelineApi).toHaveProperty('getDtoBindingSchema');
     expect(coreRequestPipelineApi).toHaveProperty('getDtoValidationSchema');
     expect(coreRequestPipelineApi).not.toHaveProperty('defineModuleMetadata');

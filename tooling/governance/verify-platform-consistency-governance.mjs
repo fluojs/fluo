@@ -3,6 +3,10 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
+
+export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
+
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
 const directProcessEnvPattern = /\bprocess\s*(?:\?\.|\.)\s*env\b/g;
@@ -1385,6 +1389,7 @@ export function main() {
   enforceNoDirectProcessEnvInOrdinaryPackageSource();
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
+  enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
   enforceContractCompanionUpdates(changedFiles);
   enforceAlignmentClaimsBackedByHarness(changedFiles);
 

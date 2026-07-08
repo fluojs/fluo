@@ -65,6 +65,7 @@ function requireWorkflowStepIndex(workflow: string, stepName: string): number {
 async function loadGovernanceInternals() {
   return (await import('./verify-platform-consistency-governance.mjs')) as unknown as {
     changedFilesFromGit: (runCommand?: RunCommand, env?: { GITHUB_BASE_REF?: string }) => string[];
+    enforceAdvancedBookCoreBoundaryCompanions: (changedFiles: string[]) => void;
     enforceContractCompanionUpdates: (changedFiles: string[]) => void;
   };
 }
@@ -263,6 +264,44 @@ describe('changedFilesFromGit', () => {
       ['diff', '--name-only', '--cached'],
       ['ls-files', '--others', '--exclude-standard'],
     ]);
+  });
+});
+
+describe('enforceAdvancedBookCoreBoundaryCompanions', () => {
+  it('requires advanced metadata chapter EN/KO companions to change together', async () => {
+    const { enforceAdvancedBookCoreBoundaryCompanions } = await loadGovernanceInternals();
+
+    expect(() => enforceAdvancedBookCoreBoundaryCompanions(['book/advanced/ch02-metadata.md'])).toThrowError(
+      /book\/advanced\/ch02-metadata\.md and book\/advanced\/ch02-metadata\.ko\.md/,
+    );
+  });
+
+  it('requires executable regression evidence for advanced core boundary book guidance', async () => {
+    const { enforceAdvancedBookCoreBoundaryCompanions } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceAdvancedBookCoreBoundaryCompanions([
+        'book/advanced/ch02-metadata.md',
+        'book/advanced/ch02-metadata.ko.md',
+        'book/advanced/ch03-custom-decorators.md',
+        'book/advanced/ch03-custom-decorators.ko.md',
+      ]),
+    ).toThrowError(/executable regression evidence/);
+  });
+
+  it('accepts the advanced core boundary book range when package or governance regression tests change', async () => {
+    const { enforceAdvancedBookCoreBoundaryCompanions } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceAdvancedBookCoreBoundaryCompanions([
+        'book/advanced/ch02-metadata.md',
+        'book/advanced/ch02-metadata.ko.md',
+        'book/advanced/ch03-custom-decorators.md',
+        'book/advanced/ch03-custom-decorators.ko.md',
+        'packages/core/src/public-api.test.ts',
+        'packages/core/src/request-pipeline-public-api.test.ts',
+      ]),
+    ).not.toThrow();
   });
 });
 
