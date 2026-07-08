@@ -40,7 +40,9 @@
   },
   "dependencies": {
     "@fluojs/core": "workspace:^",
-    "@fluojs/http": "workspace:^"
+    "@fluojs/di": "workspace:^",
+    "@fluojs/http": "workspace:^",
+    "@fluojs/runtime": "workspace:^"
   },
   "peerDependencies": {
     "react": "^18.3.0 || ^19.0.0",

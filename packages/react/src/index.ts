@@ -6,4 +6,5 @@ export {
 } from './decorators.js';
 export type { ReactPathMetadata, ReactPathOptions, ReactRouterMetadata } from './decorators.js';
 export { ReactModule } from './module.js';
+export type { ReactModuleOptions } from './module.js';
 export type { ReactScaffoldPhase } from './types.js';

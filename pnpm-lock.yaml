@@ -782,9 +782,15 @@ importers:
       '@fluojs/core':
         specifier: workspace:^
         version: link:../core
+      '@fluojs/di':
+        specifier: workspace:^
+        version: link:../di
       '@fluojs/http':
         specifier: workspace:^
         version: link:../http
+      '@fluojs/runtime':
+        specifier: workspace:^
+        version: link:../runtime
       react:
         specifier: ^18.3.0 || ^19.0.0
         version: 19.2.6
