@@ -163,7 +163,7 @@ describe('platform consistency governance docs', () => {
     expect(koreanPackageSurface.length).toBeGreaterThan(0);
     expect(englishPackageSurface).toEqual(intendedPublishSurface);
     expect(koreanPackageSurface).toEqual(englishPackageSurface);
-    expect(englishPackageSurface).toEqual(expect.arrayContaining(['@fluojs/notifications', '@fluojs/email', '@fluojs/slack', '@fluojs/discord']));
+    expect(englishPackageSurface).toEqual(expect.arrayContaining(['@fluojs/notifications', '@fluojs/email', '@fluojs/slack', '@fluojs/discord', '@fluojs/react']));
     expect(englishPackageSurface).not.toContain('@fluojs/email/node');
   });
 
