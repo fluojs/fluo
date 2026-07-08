@@ -176,7 +176,7 @@ Behavioral contract notes:
 
 - One notification dispatch maps to exactly one Discord thread route. Use `payload.threadId` or a single entry in `recipients`.
 - If `payload.threadId` is omitted, `DiscordService.sendNotification(...)` uses the first `recipients` entry or falls back to `defaultThreadId`.
-- Notification metadata is merged from payload metadata, dispatch metadata, and template/subject markers. `template` is rendered only when a renderer is configured.
+- Notification metadata is merged from payload metadata, dispatch metadata, and template/subject markers. On duplicate keys, dispatch metadata overrides payload metadata, and final `subject` / `template` markers override both. `template` is rendered only when a renderer is configured.
 - If a notification workflow needs fan-out across multiple Discord threads, create one concrete Discord message per thread with `DiscordService.sendMany(...)` or issue separate notification dispatches; a single notification dispatch never expands multi-recipient fan-out implicitly.
 
 ### Webhook-first delivery with explicit fetch injection
