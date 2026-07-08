@@ -78,6 +78,7 @@ function assertMessageContent(message: NormalizedSlackMessage): void {
 @Inject(SLACK_OPTIONS)
 export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown {
   private lifecycleState: SlackServiceLifecycleState = 'created';
+  private ownedTransportCleanupPromise: Promise<void> | undefined;
   private resolvedTransport: SlackTransport | undefined;
   private shutdownPromise: Promise<void> | undefined;
   private transportPromise: Promise<SlackTransport> | undefined;
@@ -102,17 +103,47 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
 
   private async closeOwnedTransport(): Promise<void> {
     try {
-      const transport = this.resolvedTransport ?? (this.transportPromise ? await this.transportPromise : undefined);
-
-      if (transport && this.options.transport.ownsResources && transport.close) {
-        await transport.close();
-      }
-
+      await this.closeOwnedTransportResources();
       this.lifecycleState = 'stopped';
     } catch (error) {
       this.lifecycleState = 'failed';
       throw createLifecycleError('Slack transport failed to close cleanly.', error);
     }
+  }
+
+  private closeOwnedTransportResources(): Promise<void> {
+    if (!this.ownedTransportCleanupPromise) {
+      this.ownedTransportCleanupPromise = this.closeOwnedTransportResourcesOnce();
+    }
+
+    return this.ownedTransportCleanupPromise;
+  }
+
+  private async closeOwnedTransportResourcesOnce(): Promise<void> {
+    try {
+      const transport = await this.resolveTransportForCleanup();
+
+      if (transport && this.options.transport.ownsResources && transport.close) {
+        await transport.close();
+      }
+    } finally {
+      this.clearResolvedTransport();
+    }
+  }
+
+  private async resolveTransportForCleanup(): Promise<SlackTransport | undefined> {
+    if (this.resolvedTransport) {
+      return this.resolvedTransport;
+    }
+
+    if (!this.transportPromise) {
+      return undefined;
+    }
+
+    return this.transportPromise.then(
+      (transport) => transport,
+      () => undefined,
+    );
   }
 
   async onModuleInit(): Promise<void> {
@@ -165,7 +196,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
    * @param message Caller-supplied Slack message with text and/or block content.
    * @param options Optional abort signal propagated to the transport.
    * @returns A normalized delivery receipt describing the transport response.
-   * @throws {SlackMessageValidationError} When the resolved message does not include Slack-visible content.
+   * @throws {SlackMessageValidationError} When the resolved message has no Slack-visible `text`, `blocks`, or `attachments`.
    * @throws {SlackLifecycleError} When delivery is requested before readiness, after initialization failure, or during shutdown.
    *
    * @example
@@ -250,7 +281,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
    * @param notification Shared notification envelope interpreted by the Slack package.
    * @param options Optional abort signal propagated to rendering and transport work.
    * @returns A normalized delivery receipt for the resulting Slack message.
-   * @throws {SlackMessageValidationError} When the notification cannot resolve one target channel or any Slack-visible content.
+   * @throws {SlackMessageValidationError} When the notification resolves multiple Slack recipients or no Slack-visible content.
    * @throws {SlackLifecycleError} When delivery is requested before readiness, after initialization failure, or during shutdown.
    *
    * @example
@@ -322,24 +353,23 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
   }
 
   private async handleTransportInitializationFailure(error: unknown): Promise<never> {
-    if (isShutdownLifecycleState(this.lifecycleState)) {
-      throw error;
-    }
+    const interruptedByShutdown = isShutdownLifecycleState(this.lifecycleState);
 
-    this.lifecycleState = 'failed';
+    if (!interruptedByShutdown) {
+      this.lifecycleState = 'failed';
+    }
 
     let cause: unknown = error;
-    const transport = this.resolvedTransport;
 
-    if (transport && this.options.transport.ownsResources && transport.close) {
-      try {
-        await transport.close();
-      } catch (cleanupError) {
-        cause = createCleanupFailureCause(error, cleanupError);
-      }
+    try {
+      await this.closeOwnedTransportResources();
+    } catch (cleanupError) {
+      cause = createCleanupFailureCause(error, cleanupError);
     }
 
-    this.clearResolvedTransport();
+    if (!interruptedByShutdown && !isShutdownLifecycleState(this.lifecycleState)) {
+      this.lifecycleState = 'failed';
+    }
 
     throw createLifecycleError('Slack transport failed to initialize.', cause);
   }

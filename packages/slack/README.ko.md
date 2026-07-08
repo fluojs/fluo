@@ -83,11 +83,11 @@ export class DeployNotifier {
 
 `SlackModule.forRoot(...)`와 `SlackModule.forRootAsync(...)`는 기본적으로 global module을 반환합니다. 이 module은 `SlackService`, `SlackChannel`, `SLACK`, `SLACK_CHANNEL`을 export하며, migrated code에서 해당 provider를 반환된 module을 명시적으로 import한 module에만 보이게 해야 할 때만 `global: false`를 전달합니다. 옵션 이름은 NestJS `isGlobal`이 아니라 `global?: boolean`입니다.
 
-패키지 수준 registration surface는 의도적으로 singleton 중심입니다. `SLACK`과 `SLACK_CHANNEL`은 하나의 설정된 Slack service와 notifications channel을 위한 compatibility token이며, `@fluojs/slack`은 `forFeature(...)`, named registration, named client token factory, per-client custom token surface를 노출하지 않습니다. 여러 Slack client가 필요한 애플리케이션은 package-level named multi-client registration을 가정하지 말고, 서로 다른 `SlackTransport` 인스턴스를 감싸는 자체 module/provider를 조합하거나 app-owned facade를 노출해야 합니다.
+패키지 수준 registration surface는 의도적으로 singleton 중심입니다. `SLACK`과 `SLACK_CHANNEL`은 하나의 설정된 Slack service와 notifications channel을 위한 compatibility token이며, `createSlackProviders(...)`는 수동 module composition에서도 같은 singleton wiring을 재사용합니다. 여러 Slack client가 필요한 애플리케이션은 package-level multi-client registry를 기대하지 말고, 서로 다른 `SlackTransport` 인스턴스를 감싸는 자체 module/provider를 조합하거나 app-owned facade를 노출해야 합니다.
 
 ### `createSlackProviders`를 이용한 수동 provider 조합
 
-`createSlackProviders(...)`는 애플리케이션이 `SlackModule.forRoot(...)` 밖에서 동일한 provider 정규화 구성을 재사용해야 할 때 지원되는 manual-composition helper입니다.
+`createSlackProviders(...)`는 애플리케이션이 `SlackModule.forRoot(...)` 밖에서 동일한 singleton provider 정규화 구성을 재사용해야 할 때 지원되는 manual-composition helper입니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -140,6 +140,7 @@ Behavioral contract 메모:
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
 - 직접 전달과 notifications 기반 전달은 lifecycle이 `ready`일 때만 허용됩니다. `onModuleInit()`이 끝나기 전, 초기화 실패 뒤, 또는 shutdown 중 호출하면 transport를 lazy 생성하거나 재사용하지 않고 `SlackLifecycleError`로 실패합니다.
 - shutdown은 진행 중인 factory 소유 transport 생성을 기다린 뒤 닫고 완료됩니다.
+- factory 소유 transport cleanup은 bootstrap 실패 cleanup과 application shutdown 사이에서 직렬화되므로, 두 경로가 경합해도 같은 owned transport는 최대 한 번만 닫힙니다.
 - `SlackService.createPlatformStatusSnapshot()`은 호출자가 내부 옵션에 접근하지 않아도 lifecycle, readiness, transport 소유권을 보고합니다.
 - 이 패키지는 절대로 `process.env`를 직접 읽지 않습니다. 모든 설정은 명시적인 옵션 또는 DI를 통해 들어와야 합니다.
 
@@ -205,7 +206,7 @@ Behavioral contract 메모:
 
 - `verifyOnModuleInit`은 선택 사항이며 기본값은 `false`입니다.
 - 검증은 capability 기반입니다. `verify()`를 노출하는 transport만 호출하므로 webhook-only 또는 애플리케이션이 소유한 transport가 no-op verifier를 추가할 필요는 없습니다.
-- `transport.verify()`가 reject되면 bootstrap은 초기화 실패를 감싼 `SlackLifecycleError`로 실패하고, service lifecycle은 `failed`로 이동하며, readiness/status snapshot은 provider를 not ready로 보고하고, 이미 해석된 factory 소유 transport는 오류를 다시 던지기 전에 닫습니다.
+- `transport.verify()`가 reject되면 bootstrap은 초기화 실패를 감싼 `SlackLifecycleError`로 실패하고, service lifecycle은 `failed`로 이동하며, readiness/status snapshot은 provider를 not ready로 보고하고, 이미 해석된 factory 소유 transport는 오류를 다시 던지기 전에 닫습니다. 그 cleanup이 진행 중일 때 shutdown이 시작되면 두 호출자는 같은 close 작업을 기다립니다.
 - `SlackService.createPlatformStatusSnapshot()`은 bootstrap 검증 요청 여부를 health/readiness tooling이 확인할 수 있도록 `verifiedOnModuleInit`을 포함합니다.
 
 ### `@fluojs/notifications`와의 통합
@@ -331,7 +332,7 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - 자격 증명이나 webhook URL을 `process.env`에서 직접 읽는 동작
 - 공유 루트 패키지 경계에 Node 전용 Slack SDK를 내장하는 것
 - webhook helper와 export된 transport 계약 이상으로 하나의 provider 전략을 강제하는 것
-- `forFeature(...)`, named Slack client registration, named client token factory, per-client custom token surface를 제공하는 것
+- singleton module/helper surface를 넘어서는 package-level multi-client registry를 제공하는 것
 - 하나의 dispatch 호출 안에서 multi-channel fan-out을 자동 변환하는 것
 
 이 제한 사항은 런타임 선택, provider capability, rollout 전략이 애플리케이션 경계에서 명시적으로 결정되도록 하기 위한 package contract의 일부입니다.
@@ -389,8 +390,8 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `SlackLifecycleState`
 - `SlackStatusAdapterInput`
 - `SlackConfigurationError`
-- `SlackLifecycleError`: readiness 전, 초기화 실패 뒤, 또는 shutdown 중 lifecycle로 차단된 전달과 transport 초기화, 소유 리소스 shutdown 실패에서 발생합니다. bootstrap 또는 애플리케이션 teardown과 전송이 경합할 수 있다면 이 에러를 catch하세요.
-- `SlackMessageValidationError`
+- `SlackLifecycleError`: readiness 전, 초기화 실패 뒤, 또는 shutdown 중 lifecycle로 차단된 전달과 transport factory, verification, 소유 리소스 cleanup 실패에서 발생합니다. bootstrap 또는 애플리케이션 teardown과 전송이 경합할 수 있다면 이 에러를 catch하세요.
+- `SlackMessageValidationError`: 직접 메시지에 Slack에서 보이는 `text`, `blocks`, `attachments`가 없거나, 하나의 notification dispatch가 여러 Slack recipient로 해석되어 `sendMany(...)`로 분리해야 할 때 발생합니다.
 - `SlackTransportError`
 
 ## 관련 패키지

@@ -2,8 +2,8 @@ import type { MaybePromise } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
-import { SlackConfigurationError } from './errors.js';
 import { SlackChannel } from './channel.js';
+import { SlackConfigurationError } from './errors.js';
 import { SlackService } from './service.js';
 import { SLACK, SLACK_CHANNEL, SLACK_OPTIONS } from './tokens.js';
 import type {
@@ -72,10 +72,10 @@ function createSlackRuntimeProviders(optionsProvider: Provider): Provider[] {
 }
 
 /**
- * Creates Slack providers for manual module composition.
+ * Creates the singleton Slack providers for manual module composition.
  *
- * @param options Static Slack module options including explicit transport wiring.
- * @returns Provider definitions equivalent to {@link SlackModule.forRoot} wiring.
+ * @param options Static singleton Slack module options including explicit transport wiring.
+ * @returns Provider definitions equivalent to {@link SlackModule.forRoot} wiring for `SlackService`, `SlackChannel`, `SLACK`, and `SLACK_CHANNEL`.
  */
 export function createSlackProviders(options: SlackModuleOptions): Provider[] {
   return createSlackRuntimeProviders({
