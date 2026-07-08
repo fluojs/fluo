@@ -7,7 +7,7 @@ This chapter builds on the standard Decorators and metadata engine covered in th
 
 ## Learning Objectives
 - Understand how custom Decorators in Fluo sit on top of standard signatures.
-- Learn patterns that use `context.metadata` and internal metadata helpers.
+- Learn patterns that use `context.metadata` with package-owned or public metadata readers.
 - Analyze practical Decorator structures such as `@CurrentUser()`, `@Roles()`, and `@ApiDoc()`.
 - Explain Decorator composition and metadata merge strategies.
 - Outline the basic procedure for debugging and validating custom Decorators.
@@ -292,9 +292,9 @@ The real power of custom Decorators in Fluo comes from integration with Guards a
 2.  **Guard/Interceptor**: Reads that intent at runtime and acts on it.
 This decoupling ensures that business logic, such as Controllers, does not need to know about Guard or Interceptor implementation details. The business logic only declares its intent through Decorators.
 
-When a custom Decorator doesn't work as expected, the first step is to verify that metadata is being recorded correctly. As discussed in Chapter 2, you can use helpers such as `getModuleMetadata` or `getClassDiMetadata` in unit tests to inspect the metadata bag of a decorated class. If the metadata exists, the problem is likely in the component that should read it, such as a Guard, Interceptor, or DI container. Tracing execution from the metadata lookup point is the fastest way to identify the bottleneck.
+When a custom Decorator doesn't work as expected, the first step is to verify that metadata is being recorded correctly. Application tests should inspect their own private metadata symbols through package-owned readers or, for module metadata, the public `getModuleMetadata()` helper. First-party request-pipeline integrations should use the documented `@fluojs/core/request-pipeline` seam. If the metadata exists, the problem is likely in the component that should read it, such as a Guard, Interceptor, or DI container. Tracing execution from the metadata lookup point is the fastest way to identify the bottleneck.
 
-DI metadata reads directly defined values separately from inherited values. Knowing this difference helps you quickly narrow down whether a value recorded by a Decorator disappeared, or whether it looks different because of inheritance merge rules.
+The following framework-internal DI excerpt is useful for understanding how fluo-owned packages reason about directly defined values separately from inherited values. Application custom Decorators should apply the same debugging principle through their own readers instead of importing reserved internal DI readers.
 
 `path:packages/core/src/metadata/class-di.ts:56-83`
 ```typescript
