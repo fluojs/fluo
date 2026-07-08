@@ -104,6 +104,32 @@ describe('verifyChangesetReleaseLane', () => {
     expect(result.checkedVersionDeltas).toEqual([]);
   });
 
+  it('fails closed when base-ref package manifest probing fails for an unexpected git error', () => {
+    const directory = createChangesetDirectory();
+    writeChangeset(directory, 'react-scaffold.md', '"@fluojs/react": minor');
+
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/missing', changesetDirectory: directory, lane: 'stable' },
+        {
+          runGit: (args: string[]) => {
+            const command = args.join(' ');
+
+            if (command === 'diff --name-only origin/missing -- packages/*/package.json') {
+              return 'packages/react/package.json\n';
+            }
+
+            if (command === 'cat-file -e origin/missing:packages/react/package.json') {
+              throw new Error("fatal: invalid object name 'origin/missing'.");
+            }
+
+            throw new Error(`unexpected git command: ${command}`);
+          },
+        },
+      ),
+    ).toThrow(/invalid object name 'origin\/missing'/u);
+  });
+
   it('rejects major package version deltas without major changelog evidence', () => {
     const directory = createChangesetDirectory();
     writePackageChangelog(

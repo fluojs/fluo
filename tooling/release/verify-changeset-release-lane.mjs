@@ -214,6 +214,19 @@ function semverDelta(previousVersion, nextVersion) {
   return null;
 }
 
+function isMissingPathAtBaseRefError(error, baseRef, filePath) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const missingPathPattern = new RegExp(
+    `path '${escapeRegexLiteral(filePath)}'.*(?:does not exist in|exists on disk, but not in) '${escapeRegexLiteral(baseRef)}'`,
+    'u',
+  );
+
+  return missingPathPattern.test(error.message);
+}
+
 function collectPackageVersionDeltas(baseRef, dependencies = {}) {
   if (typeof baseRef !== 'string' || baseRef.length === 0 || isAllZeroGitSha(baseRef)) {
     return [];
@@ -231,11 +244,11 @@ function collectPackageVersionDeltas(baseRef, dependencies = {}) {
     try {
       git(['cat-file', '-e', `${baseRef}:${packageJsonPath}`]);
     } catch (error) {
-      if (!(error instanceof Error)) {
-        throw error;
+      if (isMissingPathAtBaseRefError(error, baseRef, packageJsonPath)) {
+        return [];
       }
 
-      return [];
+      throw error;
     }
 
     const previousContents = git(['show', `${baseRef}:${packageJsonPath}`]);
