@@ -92,6 +92,7 @@ Prerelease workflow uses Changesets prerelease mode (`changeset pre enter <tag>`
 - `@fluojs/platform-nodejs`
 - `@fluojs/prisma`
 - `@fluojs/queue`
+- `@fluojs/react`
 - `@fluojs/redis`
 - `@fluojs/runtime`
 - `@fluojs/serialization`

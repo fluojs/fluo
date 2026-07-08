@@ -14,6 +14,7 @@
 | **Persistence** | Database and cache. | `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose`, `@fluojs/redis`, `@fluojs/cache-manager` |
 | **Patterns** | Messaging and architecture. | `@fluojs/microservices`, `@fluojs/cqrs`, `@fluojs/event-bus`, `@fluojs/cron`, `@fluojs/queue`, `@fluojs/notifications`, `@fluojs/email`, `@fluojs/slack`, `@fluojs/discord` |
 | **Operations** | Health and monitoring. | `@fluojs/metrics`, `@fluojs/terminus`, `@fluojs/throttler` |
+| **UI** | React integration. | `@fluojs/react` |
 | **Tooling** | CLI inspection export, CLI-launched Studio sidecar/viewer diagnostics, inspect artifact rendering, testing diagnostics, and Vite build integration. | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
 ## canonical runtime package matrix
@@ -44,6 +45,7 @@
 - **`@fluojs/http`**: Routing, guards, interceptors, and exception handling.
 - **`@fluojs/graphql`**: GraphQL schema exposure, resolver execution, and subscriptions on top of the HTTP abstraction.
 - **`@fluojs/openapi`**: Decorator-based OpenAPI 3.1.0 document generation for HTTP controllers, registered through `OpenApiModule.forRoot(...)` or `forRootAsync(...)` with explicit `sources`, prebuilt `descriptors`, or both. It owns deterministic Swagger UI serving, descriptor/source collision precedence, request DTO schema extraction, explicit `ApiParam` / `ApiQuery` / `ApiHeader` / `ApiCookie` / `ApiBody` override behavior, default error response policy injection or omission, and `documentTransform` hooks before served documents are snapshotted.
+- **`@fluojs/react`**: Runtime-neutral React integration scaffold for the planned `0.1.0` surface. The root package currently exposes only `ReactModule` plus type-only scaffold metadata, declares React and React DOM peer ownership for consuming applications, and intentionally does not expose SSR rendering, Vite integration, React Server Components, Server Functions, `@Router`, or `@Path` behavior.
 - **`@fluojs/jwt`**: HTTP-agnostic JWT signing, verification, principal normalization, refresh-token rotation contracts, and platform status/diagnostic helpers with exported status snapshot and adapter input types.
 - **`@fluojs/passport`**: Strategy-agnostic authentication guards, optional auth and scope decorators, `PassportModule` strategy registry wiring, Passport.js manual bridge provider bundles, cookie-auth and refresh-token presets, account-linking policy helpers, public auth metadata helpers, and platform status/diagnostic helpers for auth readiness.
 - **`@fluojs/microservices`**: Pattern-matching transport abstraction for TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC. Application registration stays on `MicroservicesModule.forRoot(...)`; `createMicroservicesProviders(...)` is a compatibility/manual-composition helper for callers that must assemble provider arrays directly. Transport-specific subpaths expose TCP, Redis Pub/Sub, NATS, Kafka, RabbitMQ, MQTT, and gRPC adapters, while `RedisStreamsMicroserviceTransport` remains a documented root-barrel-only exception until a dedicated `@fluojs/microservices/redis-streams` export exists.
