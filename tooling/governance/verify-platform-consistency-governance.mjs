@@ -589,7 +589,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // cancellation cleanup docs/tests, notifications queue opt-in, status
   // details, and generated identity diagnostics contracts, plus Slack singleton
   // provider discoverability and owned transport cleanup serialization docs/tests,
-  // plus React Router/Path facade-over-HTTP metadata contract discoverability.
+  // plus React Router/Path facade-over-HTTP metadata and ReactModule.forRoot
+  // registration contract discoverability.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
