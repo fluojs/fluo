@@ -235,7 +235,7 @@ export class AppModule {}
 Supported notification payload fields:
 
 - `to`, `cc`, `bcc`, `from`, `replyTo`
-- `text`, `html`, `attachments`, `headers`
+- `text`, `html`, `attachments`, `headers`, `metadata`
 - `templateData` when a renderer is configured on the module
 
 Behavioral contract notes:

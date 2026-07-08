@@ -235,7 +235,7 @@ export class AppModule {}
 지원하는 notification payload 필드:
 
 - `to`, `cc`, `bcc`, `from`, `replyTo`
-- `text`, `html`, `attachments`, `headers`
+- `text`, `html`, `attachments`, `headers`, `metadata`
 - 모듈에 renderer가 구성된 경우 `templateData`
 
 Behavioral contract 메모:

@@ -370,6 +370,15 @@ describe('EmailModule', () => {
         transport: createRecordingTransportFactory(),
       }),
     );
+    const asyncDefaultMetadata = getModuleMetadata(
+      EmailModule.forRootAsync({
+        inject: [],
+        useFactory: () => ({
+          defaultFrom: 'async-global@example.com',
+          transport: createRecordingTransportFactory({ messagePrefix: 'async-global' }),
+        }),
+      }),
+    );
     const asyncMetadata = getModuleMetadata(
       EmailModule.forRootAsync({
         global: false,
@@ -382,6 +391,7 @@ describe('EmailModule', () => {
     );
 
     expect(syncMetadata?.global).toBe(true);
+    expect(asyncDefaultMetadata?.global).toBe(true);
     expect(asyncMetadata?.global).toBe(false);
   });
 
@@ -841,6 +851,32 @@ describe('EmailModule', () => {
           },
           '2026-04-27T00:00:00.000Z',
         ),
+      ),
+    ).rejects.toMatchObject({
+      message: 'Email transport reported an incomplete delivery (accepted=0, pending=0, rejected=0).',
+      name: 'EmailDeliveryError',
+    });
+  });
+
+  it('fails direct notification channel sends when the transport accepts zero recipients', async () => {
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: new ZeroAcceptedTransport(),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const channel = await container.resolve(EmailChannel);
+
+    await expect(
+      channel.send(
+        {
+          channel: 'email',
+          payload: { text: 'Hello' },
+          recipients: ['user@example.com'],
+          subject: 'Subject',
+        },
+        {},
       ),
     ).rejects.toMatchObject({
       message: 'Email transport reported an incomplete delivery (accepted=0, pending=0, rejected=0).',
