@@ -20,7 +20,8 @@ const legacyPathMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, Rea
  *
  * @remarks
  * These options are intentionally runtime-neutral. They are recorded for diagnostics and
- * later rendering integration without changing HTTP route matching or request dispatch.
+ * later rendering integration without changing HTTP route matching, route grammar, DTO
+ * binding, validation, or request dispatch.
  */
 export type ReactPathOptions = Readonly<Record<string, unknown>>;
 
@@ -187,6 +188,12 @@ function getStandardReactPathMetadata(
 /**
  * Marks a class as a React router while writing equivalent HTTP controller metadata.
  *
+ * @remarks
+ * `@Router(...)` is a lexical React facade over `@fluojs/http` `@Controller(...)`
+ * metadata. URL matching, route grammar, duplicate-route detection, guards,
+ * interceptors, middleware, DTO binding, and request lifecycle remain owned by
+ * the HTTP runtime.
+ *
  * @param basePath Base path shared by React page handlers declared on the class.
  * @returns A class decorator that writes HTTP controller metadata plus React router marker metadata.
  */
@@ -210,6 +217,12 @@ export function Router(basePath = ''): ClassDecoratorLike {
 
 /**
  * Marks a method as a React page route while writing equivalent HTTP `GET` route metadata.
+ *
+ * @remarks
+ * `@Path(...)` is a lexical React facade over `@fluojs/http` `@Get(...)` metadata.
+ * React page paths inherit the HTTP route grammar: literal segments and full-segment
+ * `:param` placeholders only. The optional `options` value is metadata for future
+ * render integrations; it does not create a React-owned matcher or `routes: []` table.
  *
  * @param path Route path relative to the containing `@Router(...)` base path.
  * @param options Optional render-facing metadata for the future React rendering layer.

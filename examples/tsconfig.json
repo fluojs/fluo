@@ -3,7 +3,15 @@
   "compilerOptions": {
     "noEmit": true,
     "paths": {
+      "@fluojs/core/internal": ["../packages/core/src/internal.ts"],
+      "@fluojs/core/request-pipeline": ["../packages/core/src/request-pipeline.ts"],
+      "@fluojs/http/internal": ["../packages/http/src/internal.ts"],
       "@fluojs/terminus/node": ["../packages/terminus/src/node.ts"],
+      "@fluojs/runtime/internal": ["../packages/runtime/src/internal.ts"],
+      "@fluojs/runtime/internal/http-adapter": ["../packages/runtime/src/internal-http-adapter.ts"],
+      "@fluojs/runtime/internal/request-response-factory": ["../packages/runtime/src/internal-request-response-factory.ts"],
+      "@fluojs/runtime/internal-node": ["../packages/runtime/src/internal-node.ts"],
+      "@fluojs/runtime/node": ["../packages/runtime/src/node.ts"],
       "@fluojs/*": ["../packages/*/src/index.ts"]
     },
     "types": ["node"]

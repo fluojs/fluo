@@ -8,7 +8,9 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 
 - [설치](#설치)
 - [사용 시점](#사용-시점)
+- [Stable SSR Mental Model](#stable-ssr-mental-model)
 - [런타임 및 피어 계약](#런타임-및-피어-계약)
+- [Phase Boundaries](#phase-boundaries)
 - [ReactModule Registration](#reactmodule-registration)
 - [Router 및 Path Decorators](#router-및-path-decorators)
 - [Web Streams SSR](#web-streams-ssr)
@@ -37,6 +39,21 @@ router를 일반 module controller metadata에 배치하고, `@Router(...)`와 `
 controller 및 `GET` route metadata 위의 React facade이므로 request DTO binding, versioning,
 guards, interceptors, headers, route validation, matching, dispatch는 계속 HTTP runtime contract를 사용합니다.
 
+## Stable SSR Mental Model
+
+안정 `0.1.0` 모델은 HTTP-first React SSR입니다. `@Router(...)`와 `@Path(...)`는
+`@fluojs/http` metadata 위의 lexical React facade입니다. 즉 class와 method를 readability 및
+diagnostics를 위한 React page surface로 표시한 뒤, HTTP runtime이 이미 이해하는 controller와 `GET`
+route metadata를 기록합니다. URL matching은 React가 아니라 `@fluojs/http`가 계속 소유하므로 React
+page path는 HTTP route grammar, conflict detection, versioning, DTO materialization, validation,
+guards, interceptors, headers, module middleware, request scope, request lifecycle을 그대로 상속합니다.
+
+따라서 이 패키지는 Next.js App Router clone, React Server Components framework, TanStack route tree,
+Angular `Routes[]` table, file-route scanner, primary React-owned `routes: []` configuration model이
+**아닙니다**. React router는 page 형태를 가진 HTTP handler로 이해하세요. Route discovery와 dispatch는
+기존 fluo module/controller pipeline에 남아 있고, page handler는 일반 값을 반환하거나 streamed HTML이
+필요할 때 `createReactServerEntry(...)`를 반환합니다.
+
 ## 런타임 및 피어 계약
 
 루트 `@fluojs/react` import는 런타임 중립입니다. import 시점에 Node.js built-in, Vite,
@@ -45,6 +62,22 @@ guards, interceptors, headers, route validation, matching, dispatch는 계속 HT
 `react`와 `react-dom`은 애플리케이션이 React 런타임 버전을 소유하도록 peer dependencies로 선언합니다.
 패키지 루트는 SSR helper를 노출하지만 React server entry를 렌더링할 때만 `react-dom/server`를 lazy
 resolve합니다.
+
+## Phase Boundaries
+
+`@fluojs/react`는 안정 root가 작고 runtime-neutral 상태로 남도록 명시적인 subpath boundary를 사용합니다.
+
+- **root `@fluojs/react`** — 안정 `0.1.0` SSR MVP 계약입니다. `ReactModule.forRoot(...)`,
+  `@Router(...)`, `@Path(...)`, metadata reader, `createReactServerEntry(...)`,
+  `renderReactResponse(...)`, Web Streams SSR, 명시적인 hydration asset option을 포함합니다.
+- **future `@fluojs/react/vite`** — build-time asset manifest discovery, stylesheet ordering, Vite
+  integration을 위한 경계입니다. 현재 root package는 명시적인 asset option을 받지만 manifest를 발견하거나
+  scan하지 않습니다.
+- **future `@fluojs/react/client`** — browser navigation 및 client hydration helper를 위한 경계입니다.
+  Root package는 client bundle을 생성하거나 client-side route transition을 소유하지 않습니다.
+- **future `@fluojs/react/experimental/rsc`** — React Server Components 및 Server Functions 실험을 위한
+  경계입니다. RSC와 Server Functions는 stable root contract 밖이며 `@fluojs/react`에서 제공되는 것으로
+  문서화하면 안 됩니다.
 
 ## ReactModule Registration
 
@@ -214,7 +247,11 @@ filesystem을 scan하거나, client bundle을 생성하거나, 신뢰할 수 없
 현재 이 패키지가 제공하지 않는 것은 다음입니다.
 
 - `@fluojs/react/vite`
+- `@fluojs/react/client`
+- `@fluojs/react/experimental/rsc`
 - React Server Components 또는 Server Functions 통합
+- Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, React-owned
+  `routes: []` table
 - 자동 client bundle 생성
 - 자동 Vite manifest discovery 또는 filesystem scanning
 - `bootstrapScriptContent`로 임의 data를 자동 serialize하는 기능
@@ -260,6 +297,10 @@ filesystem을 scan하거나, client bundle을 생성하거나, 신뢰할 수 없
 - `packages/react/src/module.ts`
 - `packages/react/src/render.test.ts`
 - `packages/react/src/dispatcher-ssr.test.ts`
+- `packages/react/src/hydration-assets.test.ts`
+- `packages/react/src/lifecycle-pipeline.test.ts`
 - `packages/react/src/module.test.ts`
 - `packages/react/src/decorators.test.ts`
 - `packages/react/src/index.test.ts`
+- `examples/react-stable-ssr/README.ko.md`
+- `examples/react-stable-ssr/src/app.test.ts`

@@ -168,6 +168,12 @@ function cloneNodeAssetMapProp(
 /**
  * Creates a runtime-neutral React server entry for streamed HTML rendering.
  *
+ * @remarks
+ * The entry is the stable root SSR handoff for page handlers registered through
+ * `@Router(...)` and `@Path(...)`. It forwards explicit React DOM hydration asset
+ * options only; Vite manifest discovery, client bundle generation, RSC, and Server
+ * Functions remain outside the root `@fluojs/react` contract.
+ *
  * @param node React node tree returned by a page handler.
  * @param options Optional status, headers, and recoverable error hook for the render.
  * @returns A defensive React server entry snapshot suitable for `renderReactResponse(...)`.
