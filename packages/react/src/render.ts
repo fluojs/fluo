@@ -85,7 +85,19 @@ function reportRecoverableError(
   requestContext: ReactRenderContext,
   event: PendingRecoverableError,
 ): void {
-  entry.onRecoverableError?.(event.error, createRecoverableErrorContext(event.errorInfo, requestContext));
+  const hook = entry.onRecoverableError;
+
+  if (!hook) {
+    return;
+  }
+
+  try {
+    hook(event.error, createRecoverableErrorContext(event.errorInfo, requestContext));
+  } catch (error) {
+    if (error instanceof Error) {
+      return;
+    }
+  }
 }
 
 function reportRecoverableErrors(
