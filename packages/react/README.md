@@ -12,6 +12,7 @@ Runtime-neutral React integration for fluo applications.
 - [ReactModule Registration](#reactmodule-registration)
 - [Router and Path Decorators](#router-and-path-decorators)
 - [Web Streams SSR](#web-streams-ssr)
+- [Hydration Asset Contract](#hydration-asset-contract)
 - [Current Limitations](#current-limitations)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
@@ -171,14 +172,55 @@ Recoverable Suspense errors are reported through `onRecoverableError` and do not
 committed status. Call `renderReactResponse(entry, requestContext)` directly only when a custom
 handler needs to finalize the response itself instead of returning the entry to the dispatcher.
 
+## Hydration Asset Contract
+
+`createReactServerEntry(...)` accepts explicit React DOM hydration asset options and forwards them to
+the Web Streams renderer:
+
+- `bootstrapScripts` emits classic bootstrap `<script>` tags. Duplicate entries with the same `src`
+  are removed before React DOM receives the option.
+- `bootstrapModules` emits module bootstrap `<script type="module">` tags with the same duplicate
+  removal rule.
+- `bootstrapScriptContent` emits trusted inline script content exactly as provided. fluo does not
+  serialize arbitrary values into this string; only use it for trusted build-time data or content that
+  your application has escaped through an approved safety contract.
+- `nonce` applies the CSP nonce that React DOM attaches to emitted bootstrap scripts.
+- `identifierPrefix` is forwarded to React DOM so server-rendered `useId()` output and client
+  hydration share the same prefix.
+- `assetMap` is a defensive snapshot of trusted build-produced logical asset names to public URLs.
+  fluo passes the snapshot to custom renderers and expects applications to pass the same data to the
+  server root component and client `hydrateRoot(...)` call when it affects markup.
+
+```tsx
+const assetMap = {
+  'main.js': '/assets/main.123.js',
+  'styles.css': '/assets/styles.123.css',
+} as const;
+
+return createReactServerEntry(<App assetMap={assetMap} />, {
+  assetMap,
+  bootstrapModules: [assetMap['main.js']],
+  bootstrapScriptContent: 'window.__FLUO_ASSET_MAP__ = {"main.js":"/assets/main.123.js"};',
+  identifierPrefix: 'fluo-',
+  nonce: cspNonce,
+});
+```
+
+CSS/JS ordering is caller-owned in this phase. Future Vite manifest integration should preserve
+manifest stylesheet order in the app-rendered document head before hydration scripts, then preserve
+the caller order of `bootstrapScripts` and `bootstrapModules` after duplicate removal. This package
+does not discover Vite manifests, scan the filesystem, generate client bundles, or serialize
+untrusted user data into inline scripts.
+
 ## Current Limitations
 
 This package currently does **not** provide:
 
 - `@fluojs/react/vite`
 - React Server Components or Server Functions integration
-- client bundle generation or hydration script emission
-- hydration asset injection
+- automatic client bundle generation
+- automatic Vite manifest discovery or filesystem scanning
+- automatic serialization of arbitrary data into `bootstrapScriptContent`
 - Node-only `react-dom/server` pipeable stream root APIs such as `renderToPipeableStream(...)`
 
 ## Public API
@@ -193,12 +235,14 @@ This package currently does **not** provide:
   for Web Streams SSR.
 - `renderReactResponse` — renders one React server entry to a fluo HTML response with lazy
   `react-dom/server` loading.
+- `ReactAssetMap`, `ReactBootstrapAsset`, and `ReactBootstrapScriptDescriptor` — type-only contracts
+  for build-produced asset maps and React DOM bootstrap script/module entries.
 - `ReactModuleOptions` — options accepted by `ReactModule.forRoot(...)`, including `controllers`,
   `imports`, `providers`, `exports`, and module-level `middleware`.
 - `ReactServerEntry`, `ReactServerEntryOptions`, `ReactServerEntryHeaders`,
   `ReactRecoverableErrorHandler`, `ReactRecoverableErrorContext`, `ReactRenderContext`,
   `ReactReadableStream`, `ReactReadableStreamRenderer`, `ReactReadableStreamRenderOptions`, and
-  `RenderReactResponseOptions` — type-only contracts for streamed React SSR.
+  `RenderReactResponseOptions` — type-only contracts for streamed React SSR and hydration assets.
 - `ReactScaffoldPhase` — type-only planning marker for the `0.1.0` scaffold surface.
 - `ReactRouterMetadata`, `ReactPathMetadata`, `ReactPathOptions` — type-only metadata contracts for
   diagnostics and future rendering integration.
