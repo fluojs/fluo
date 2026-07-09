@@ -25,6 +25,14 @@ permission:
     'grep *': allow
     'awk *': allow
     'wc *': allow
+    'pwd *': allow
+    'git status *': allow
+    'git log *': allow
+    'git branch': allow
+    'git branch --show-current': allow
+    'git branch --list*': allow
+    'git branch -a*': allow
+    'git branch -r*': allow
     'git *': allow
     'GIT_MASTER=1 git *': allow
     'git push*': deny
