@@ -209,4 +209,45 @@ describe('React hydration asset contract', () => {
     expect(response.chunks.join('')).not.toContain('window.');
     expect(response.chunks.join('')).toContain('/assets/main.123.js');
   });
+
+  it('keeps documented App assetMap props aligned with the entry snapshot after caller mutation', async () => {
+    type AssetMapAppProps = {
+      readonly assetMap: ReactAssetMap;
+    };
+
+    function AssetMapApp({ assetMap }: AssetMapAppProps) {
+      return createElement('main', { 'data-client-entry': assetMap['main.js'] }, 'Assets');
+    }
+
+    const response = createBufferedResponse();
+    const context = createTestContext(response);
+    const mutableAssetMap: Record<string, string> = {
+      'main.js': '/assets/main.123.js',
+      'styles.css': '/assets/styles.123.css',
+    };
+    let receivedAssetMap: ReactAssetMap | undefined;
+    const renderToReadableStream = vi.fn<ReactReadableStreamRenderer>(async (node, options) => {
+      receivedAssetMap = options.assetMap;
+      const { renderToReadableStream } = await import('react-dom/server');
+
+      return renderToReadableStream(node, {
+        ...(options.onError !== undefined ? { onError: options.onError } : {}),
+        ...(options.signal !== undefined ? { signal: options.signal } : {}),
+      });
+    });
+
+    const entry = createReactServerEntry(createElement(AssetMapApp, { assetMap: mutableAssetMap }), {
+      assetMap: mutableAssetMap,
+    });
+    mutableAssetMap['main.js'] = '/assets/main.changed.js';
+
+    await renderReactResponse(entry, context, { renderToReadableStream });
+
+    expect(receivedAssetMap).toEqual({
+      'main.js': '/assets/main.123.js',
+      'styles.css': '/assets/styles.123.css',
+    });
+    expect(response.chunks.join('')).toContain('/assets/main.123.js');
+    expect(response.chunks.join('')).not.toContain('/assets/main.changed.js');
+  });
 });

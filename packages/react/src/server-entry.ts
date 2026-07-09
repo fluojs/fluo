@@ -1,5 +1,5 @@
 import type { FrameworkRequest } from '@fluojs/http';
-import type { ReactNode } from 'react';
+import { cloneElement, isValidElement, type ReactNode } from 'react';
 
 import type { ReactRenderContext } from './render.js';
 
@@ -8,6 +8,10 @@ const responseWriterKey = Symbol.for('fluo.http.responseWriter');
 type ReactResponseWriterContext = {
   readonly applySuccessResponseMetadata: () => void;
   readonly requestContext: ReactRenderContext;
+};
+
+type ReactAssetMapElementProps = {
+  readonly assetMap?: ReactAssetMap;
 };
 
 /** Header values applied before a React server entry starts streaming. */
@@ -145,6 +149,22 @@ function cloneHeaders(headers: ReactServerEntryHeaders | undefined): ReactServer
   return cloned;
 }
 
+function cloneNodeAssetMapProp(
+  node: ReactNode,
+  originalAssetMap: ReactAssetMap | undefined,
+  assetMapSnapshot: ReactAssetMap,
+): ReactNode {
+  if (originalAssetMap === undefined || !isValidElement<ReactAssetMapElementProps>(node)) {
+    return node;
+  }
+
+  if (node.props.assetMap !== originalAssetMap) {
+    return node;
+  }
+
+  return cloneElement(node, { assetMap: assetMapSnapshot });
+}
+
 /**
  * Creates a runtime-neutral React server entry for streamed HTML rendering.
  *
@@ -156,14 +176,15 @@ export function createReactServerEntry(
   node: ReactNode,
   options: ReactServerEntryOptions = {},
 ): ReactServerEntry {
+  const assetMap = cloneAssetMap(options.assetMap);
   const entry: ReactServerEntry = {
-    assetMap: cloneAssetMap(options.assetMap),
+    assetMap,
     bootstrapModules: cloneUniqueBootstrapAssets(options.bootstrapModules),
     ...(options.bootstrapScriptContent !== undefined ? { bootstrapScriptContent: options.bootstrapScriptContent } : {}),
     bootstrapScripts: cloneUniqueBootstrapAssets(options.bootstrapScripts),
     headers: cloneHeaders(options.headers),
     ...(options.identifierPrefix !== undefined ? { identifierPrefix: options.identifierPrefix } : {}),
-    node,
+    node: cloneNodeAssetMapProp(node, options.assetMap, assetMap),
     ...(options.nonce !== undefined ? { nonce: options.nonce } : {}),
     ...(options.onRecoverableError !== undefined ? { onRecoverableError: options.onRecoverableError } : {}),
     ...(options.status !== undefined ? { status: options.status } : {}),
