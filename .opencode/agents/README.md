@@ -36,6 +36,14 @@ permission:
     '*': ask
     'find *': deny
     'xargs *': deny
+    'base64 *': allow
+    'nl *': allow
+    'sed *': allow
+    'rg *': allow
+    'git show *': allow
+    'grep *': allow
+    'awk *': allow
+    'wc *': allow
     # OpenCode applies the last matching rule, so broad allows must stay before specific denies.
     'git *': allow
     'GIT_MASTER=1 git *': allow
@@ -153,6 +161,14 @@ permission:
     '*': ask
     'find *': deny
     'xargs *': deny
+    'base64 *': allow
+    'nl *': allow
+    'sed *': allow
+    'rg *': allow
+    'git show *': allow
+    'grep *': allow
+    'awk *': allow
+    'wc *': allow
     # OpenCode applies the last matching rule, so broad allows must stay before specific denies.
     'git *': allow
     'GIT_MASTER=1 git *': allow

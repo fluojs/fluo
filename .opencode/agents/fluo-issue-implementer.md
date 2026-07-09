@@ -17,6 +17,14 @@ permission:
     '*': ask
     'find *': deny
     'xargs *': deny
+    'base64 *': allow
+    'nl *': allow
+    'sed *': allow
+    'rg *': allow
+    'git show *': allow
+    'grep *': allow
+    'awk *': allow
+    'wc *': allow
     'git *': allow
     'GIT_MASTER=1 git *': allow
     'sort*': allow
