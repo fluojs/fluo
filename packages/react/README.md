@@ -2,13 +2,14 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Runtime-neutral React integration scaffold for fluo applications.
+Runtime-neutral React integration for fluo applications.
 
 ## Table of Contents
 
 - [Installation](#installation)
 - [When to Use](#when-to-use)
 - [Runtime and Peer Contract](#runtime-and-peer-contract)
+- [ReactModule Registration](#reactmodule-registration)
 - [Router and Path Decorators](#router-and-path-decorators)
 - [Current Limitations](#current-limitations)
 - [Public API](#public-api)
@@ -30,10 +31,11 @@ npm install @fluojs/react react react-dom
 ## When to Use
 
 Use this package when React page handlers need a lexical distinction from API controllers while
-still participating in fluo's HTTP metadata pipeline. `@Router(...)` and `@Path(...)` are React
-facades over `@fluojs/http` controller and `GET` route metadata, so request DTO binding,
-versioning, guards, interceptors, headers, and route validation continue to use the HTTP runtime
-contracts.
+still participating in fluo's module graph and HTTP metadata pipeline. `ReactModule.forRoot(...)`
+places React routers into ordinary module controller metadata, and `@Router(...)` plus
+`@Path(...)` are React facades over `@fluojs/http` controller and `GET` route metadata, so request
+DTO binding, versioning, guards, interceptors, headers, route validation, matching, and dispatch
+continue to use the HTTP runtime contracts.
 
 ## Runtime and Peer Contract
 
@@ -42,6 +44,50 @@ built-ins, Vite, `react-dom/server`, React Server Components packages, or Server
 
 `react` and `react-dom` are declared as peer dependencies so applications own the React runtime
 version. The package root does not import those peers for decorator metadata.
+
+## ReactModule Registration
+
+Use `ReactModule.forRoot({ controllers: [...] })` inside an ordinary fluo module import to register
+React routers. The returned module is a normal fluo module definition: it may include `imports`,
+`providers`, `exports`, and `middleware`, and those fields keep the same visibility and lifecycle
+rules as `@Module(...)` metadata.
+
+```tsx
+import { Module, Inject } from '@fluojs/core';
+import { ReactModule, Router, Path } from '@fluojs/react';
+
+class DashboardPresenter {
+  render() {
+    return { page: 'dashboard' };
+  }
+}
+
+@Inject(DashboardPresenter)
+@Router('/dashboard')
+class DashboardRouter {
+  constructor(private readonly presenter: DashboardPresenter) {}
+
+  @Path('/')
+  index() {
+    return this.presenter.render();
+  }
+}
+
+@Module({
+  imports: [
+    ReactModule.forRoot({
+      controllers: [DashboardRouter],
+      providers: [DashboardPresenter],
+    }),
+  ],
+})
+class AppModule {}
+```
+
+`ReactModule` does not own URL matching. Routers registered through it become ordinary HTTP handler
+sources, so `createHandlerMapping(...)` and `Dispatcher` still detect duplicate routes, apply
+module-level middleware, create request scopes, run guards and interceptors, and resolve route
+versioning.
 
 ## Router and Path Decorators
 
@@ -89,7 +135,7 @@ This package currently does **not** provide:
 - SSR rendering or streaming
 - `@fluojs/react/vite`
 - React Server Components or Server Functions integration
-- ReactModule-driven route registration beyond the HTTP metadata written by the decorators
+- hydration asset injection
 
 ## Public API
 
@@ -97,7 +143,10 @@ This package currently does **not** provide:
 - `Path` — method decorator that writes HTTP `GET` route metadata plus React render metadata.
 - `getReactRouterMetadata` — reads React router marker metadata from a router class.
 - `getReactPathMetadata` — reads React render metadata from a router method.
-- `ReactModule` — runtime-neutral module marker for future React integration work.
+- `ReactModule` — runtime-neutral module facade whose `forRoot(...)` registers React routers through
+  the existing fluo module/controller metadata path.
+- `ReactModuleOptions` — options accepted by `ReactModule.forRoot(...)`, including `controllers`,
+  `imports`, `providers`, `exports`, and module-level `middleware`.
 - `ReactScaffoldPhase` — type-only planning marker for the `0.1.0` scaffold surface.
 - `ReactRouterMetadata`, `ReactPathMetadata`, `ReactPathOptions` — type-only metadata contracts for
   diagnostics and future rendering integration.
@@ -115,5 +164,6 @@ This package currently does **not** provide:
 - `packages/react/src/index.ts`
 - `packages/react/src/decorators.ts`
 - `packages/react/src/module.ts`
+- `packages/react/src/module.test.ts`
 - `packages/react/src/decorators.test.ts`
 - `packages/react/src/index.test.ts`
