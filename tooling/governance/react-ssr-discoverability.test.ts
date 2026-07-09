@@ -10,7 +10,7 @@ function read(relativePath: string): string {
 }
 
 describe('React Web Streams SSR discoverability', () => {
-  it('keeps SSR core docs aligned across README, package surface, and context docs', () => {
+  it('keeps SSR and hydration asset docs aligned across README, package surface, and context docs', () => {
     const englishDocs = [
       read('packages/react/README.md'),
       read('docs/reference/package-surface.md'),
@@ -28,6 +28,10 @@ describe('React Web Streams SSR discoverability', () => {
       expect(source).toContain('renderReactResponse(...)');
       expect(source).toContain('react-dom/server');
       expect(source).toContain('renderToReadableStream(...)');
+      expect(source).toContain('bootstrapScripts');
+      expect(source).toContain('bootstrapModules');
+      expect(source).toContain('bootstrapScriptContent');
+      expect(source).toContain('assetMap');
     }
 
     for (const source of koreanDocs) {
@@ -36,9 +40,15 @@ describe('React Web Streams SSR discoverability', () => {
       expect(source).toContain('renderReactResponse(...)');
       expect(source).toContain('react-dom/server');
       expect(source).toContain('renderToReadableStream(...)');
+      expect(source).toContain('bootstrapScripts');
+      expect(source).toContain('bootstrapModules');
+      expect(source).toContain('bootstrapScriptContent');
+      expect(source).toContain('assetMap');
     }
 
-    expect(englishDocs.join('\n')).toContain('hydration asset injection');
-    expect(koreanDocs.join('\n')).toContain('hydration asset injection');
+    expect(englishDocs.join('\n')).toContain('automatic Vite manifest discovery');
+    expect(englishDocs.join('\n')).toContain('arbitrary inline serialization');
+    expect(koreanDocs.join('\n')).toContain('자동 Vite manifest discovery');
+    expect(koreanDocs.join('\n')).toContain('임의 inline serialization');
   });
 });

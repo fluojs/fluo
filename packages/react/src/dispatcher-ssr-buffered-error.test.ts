@@ -85,6 +85,9 @@ describe('React SSR buffered error handling', () => {
       },
     });
     const entry: ReactServerEntry = {
+      assetMap: {},
+      bootstrapModules: [],
+      bootstrapScripts: [],
       headers: { 'x-react-entry': 'buffered' },
       node: createElement('main', null, 'Buffered dashboard'),
     };

@@ -17,6 +17,9 @@ export type {
 } from './render.js';
 export { createReactServerEntry } from './server-entry.js';
 export type {
+  ReactAssetMap,
+  ReactBootstrapAsset,
+  ReactBootstrapScriptDescriptor,
   ReactRecoverableErrorContext,
   ReactRecoverableErrorHandler,
   ReactServerEntry,
