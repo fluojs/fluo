@@ -20,6 +20,13 @@
 | Need typed configuration access | `@fluojs/config` | Use instead of direct `process.env` access inside packages. |
 | Need localization or i18n services | `@fluojs/i18n` | Use for framework-agnostic internationalization module registration, standalone service creation, shared option/error types, `@fluojs/i18n/icu` ICU MessageFormat plural/select support, `@fluojs/i18n/http` HTTP locale helpers and opt-in `Accept-Language` policies, `@fluojs/i18n/adapters` opt-in non-HTTP locale resolution and header policies, `@fluojs/i18n/validation` validation localization, `@fluojs/i18n/loaders/fs` and `@fluojs/i18n/loaders/remote` catalog loading with opt-in remote cache wrappers, and `@fluojs/i18n/typegen` catalog key plus typed translation helper declarations. For NestJS i18n, i18next, next-intl, or request/validation convenience parity decisions, start with the [i18n ecosystem bridge decision record](./i18n-ecosystem-bridges.md). |
 
+## render React pages with stable SSR
+
+| condition | package choice | notes |
+| --- | --- | --- |
+| Need HTTP-owned React page handlers with Web Streams SSR | `@fluojs/react` + `@fluojs/http` | Use the root `@fluojs/react` package when pages should stay in fluo's existing module/controller pipeline. `@Router(...)` and `@Path(...)` are lexical React facades over HTTP metadata; URL matching, route grammar, DTO-bound path/search params, validation, guards, interceptors, middleware, headers, and request lifecycle remain owned by `@fluojs/http`. This is not a Next.js App Router, TanStack route tree, Angular `Routes[]`, file routing, RSC, Server Functions, or React-owned `routes: []` model. |
+| Need hydration assets for stable SSR | `@fluojs/react` | Pass explicit `bootstrapScripts`, `bootstrapModules`, trusted `bootstrapScriptContent`, `nonce`, `identifierPrefix`, and trusted `assetMap` snapshots to `createReactServerEntry(...)`. Manifest discovery belongs to future `@fluojs/react/vite`; browser navigation belongs to future `@fluojs/react/client`; RSC and Server Functions belong to future `@fluojs/react/experimental/rsc`. |
+
 ## deploy to edge / modern runtimes
 
 | condition | package choice | notes |

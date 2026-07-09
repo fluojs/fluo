@@ -8,7 +8,9 @@ Runtime-neutral React integration for fluo applications.
 
 - [Installation](#installation)
 - [When to Use](#when-to-use)
+- [Stable SSR Mental Model](#stable-ssr-mental-model)
 - [Runtime and Peer Contract](#runtime-and-peer-contract)
+- [Phase Boundaries](#phase-boundaries)
 - [ReactModule Registration](#reactmodule-registration)
 - [Router and Path Decorators](#router-and-path-decorators)
 - [Web Streams SSR](#web-streams-ssr)
@@ -39,6 +41,21 @@ places React routers into ordinary module controller metadata, and `@Router(...)
 DTO binding, versioning, guards, interceptors, headers, route validation, matching, and dispatch
 continue to use the HTTP runtime contracts.
 
+## Stable SSR Mental Model
+
+The stable `0.1.0` model is HTTP-first React SSR. `@Router(...)` and `@Path(...)` are lexical
+React facades over `@fluojs/http` metadata: they mark classes and methods as React page surfaces for
+readability and diagnostics, then write the same controller and `GET` route metadata that the HTTP
+runtime already understands. URL matching remains owned by `@fluojs/http`, not React, so React page
+paths inherit the HTTP route grammar, conflict detection, versioning, DTO materialization,
+validation, guards, interceptors, headers, module middleware, request scopes, and request lifecycle.
+
+This package is therefore **not** a Next.js App Router clone, React Server Components framework,
+TanStack route tree, Angular `Routes[]` table, file-route scanner, or primary React-owned
+`routes: []` configuration model. Treat React routers as page-shaped HTTP handlers. Route discovery
+and dispatch stay in the existing fluo module/controller pipeline, and page handlers return either
+ordinary values or `createReactServerEntry(...)` when they want streamed HTML.
+
 ## Runtime and Peer Contract
 
 The root `@fluojs/react` import is runtime-neutral. Importing it must not eagerly load Node.js
@@ -47,6 +64,22 @@ built-ins, Vite, `react-dom/server`, React Server Components packages, or Server
 `react` and `react-dom` are declared as peer dependencies so applications own the React runtime
 version. The package root exposes SSR helpers but resolves `react-dom/server` lazily only when a
 React server entry is rendered.
+
+## Phase Boundaries
+
+`@fluojs/react` uses explicit subpath boundaries so the stable root stays small and runtime-neutral:
+
+- **root `@fluojs/react`** — stable `0.1.0` SSR MVP contracts: `ReactModule.forRoot(...)`,
+  `@Router(...)`, `@Path(...)`, metadata readers, `createReactServerEntry(...)`,
+  `renderReactResponse(...)`, Web Streams SSR, and explicit hydration asset options.
+- **future `@fluojs/react/vite`** — build-time asset manifest discovery, stylesheet ordering, and
+  Vite integration. The root package accepts explicit asset options today but does not discover or
+  scan manifests.
+- **future `@fluojs/react/client`** — browser navigation and client hydration helpers. The root
+  package does not generate client bundles or own client-side route transitions.
+- **future `@fluojs/react/experimental/rsc`** — React Server Components and Server Functions
+  experiments. RSC and Server Functions are outside the stable root contract and should not be
+  documented as available from `@fluojs/react`.
 
 ## ReactModule Registration
 
@@ -217,7 +250,11 @@ untrusted user data into inline scripts.
 This package currently does **not** provide:
 
 - `@fluojs/react/vite`
+- `@fluojs/react/client`
+- `@fluojs/react/experimental/rsc`
 - React Server Components or Server Functions integration
+- a Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, or React-owned
+  `routes: []` table
 - automatic client bundle generation
 - automatic Vite manifest discovery or filesystem scanning
 - automatic serialization of arbitrary data into `bootstrapScriptContent`
@@ -264,6 +301,10 @@ This package currently does **not** provide:
 - `packages/react/src/module.ts`
 - `packages/react/src/render.test.ts`
 - `packages/react/src/dispatcher-ssr.test.ts`
+- `packages/react/src/hydration-assets.test.ts`
+- `packages/react/src/lifecycle-pipeline.test.ts`
 - `packages/react/src/module.test.ts`
 - `packages/react/src/decorators.test.ts`
 - `packages/react/src/index.test.ts`
+- `examples/react-stable-ssr/README.md`
+- `examples/react-stable-ssr/src/app.test.ts`

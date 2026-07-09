@@ -154,6 +154,40 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
 
+  examples/react-stable-ssr:
+    dependencies:
+      '@fluojs/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@fluojs/http':
+        specifier: workspace:*
+        version: link:../../packages/http
+      '@fluojs/platform-fastify':
+        specifier: workspace:*
+        version: link:../../packages/platform-fastify
+      '@fluojs/react':
+        specifier: workspace:*
+        version: link:../../packages/react
+      '@fluojs/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^19.2.6
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.2.6
+        version: 19.2.6(react@19.2.6)
+    devDependencies:
+      '@fluojs/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/react':
+        specifier: ^19.2.14
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.14)
+
   examples/realworld-api:
     dependencies:
       '@fluojs/config':

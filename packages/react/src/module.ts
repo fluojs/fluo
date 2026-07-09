@@ -26,7 +26,9 @@ export type ReactModuleOptions = {
  * `ReactModule.forRoot(...)` registers React routers through the same module/controller
  * metadata consumed by `@fluojs/runtime` and `@fluojs/http`. It does not install a
  * React-owned matcher, renderer, Vite integration, React Server Components hooks, or
- * server functions.
+ * server functions. The stable root package owns runtime-neutral SSR contracts; future
+ * `@fluojs/react/vite`, `@fluojs/react/client`, and `@fluojs/react/experimental/rsc`
+ * subpaths own build assets, browser navigation, and RSC/server-function experiments.
  */
 @Module({})
 export class ReactModule {

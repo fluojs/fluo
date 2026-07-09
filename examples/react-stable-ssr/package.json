@@ -1,0 +1,27 @@
+{
+  "name": "@fluojs/example-react-stable-ssr",
+  "description": "Stable @fluojs/react SSR MVP example with HTTP-owned routes, DTO binding, and hydration assets.",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ../tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fluojs/core": "workspace:*",
+    "@fluojs/http": "workspace:*",
+    "@fluojs/platform-fastify": "workspace:*",
+    "@fluojs/react": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@fluojs/testing": "workspace:*",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
+  }
+}

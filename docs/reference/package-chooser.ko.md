@@ -20,6 +20,13 @@
 | 타입 안전 설정 접근이 필요함 | `@fluojs/config` | 패키지 내부의 직접 `process.env` 접근 대신 사용합니다. |
 | localization 또는 i18n service가 필요함 | `@fluojs/i18n` | framework-agnostic internationalization module registration, standalone service 생성, 공유 option/error type, `@fluojs/i18n/icu` ICU MessageFormat plural/select 지원, `@fluojs/i18n/http` HTTP locale helper 및 opt-in `Accept-Language` policy, `@fluojs/i18n/adapters` opt-in non-HTTP locale resolution 및 header policy, `@fluojs/i18n/validation` validation localization, `@fluojs/i18n/loaders/fs`와 `@fluojs/i18n/loaders/remote` catalog loading 및 opt-in remote cache wrapper, `@fluojs/i18n/typegen` catalog key 및 typed translation helper declaration에 사용합니다. NestJS i18n, i18next, next-intl, request/validation convenience parity 결정은 [i18n ecosystem bridge decision record](./i18n-ecosystem-bridges.ko.md)에서 시작하세요. |
 
+## React page를 stable SSR로 렌더링
+
+| 조건 | 패키지 선택 | 비고 |
+| --- | --- | --- |
+| HTTP가 소유하는 React page handler와 Web Streams SSR이 필요함 | `@fluojs/react` + `@fluojs/http` | Page를 기존 fluo module/controller pipeline에 유지해야 할 때 root `@fluojs/react` package를 사용합니다. `@Router(...)`와 `@Path(...)`는 HTTP metadata 위의 lexical React facade입니다. URL matching, route grammar, DTO-bound path/search param, validation, guard, interceptor, middleware, header, request lifecycle은 `@fluojs/http`가 계속 소유합니다. 이것은 Next.js App Router, TanStack route tree, Angular `Routes[]`, file routing, RSC, Server Functions, React-owned `routes: []` model이 아닙니다. |
+| Stable SSR용 hydration asset이 필요함 | `@fluojs/react` | `createReactServerEntry(...)`에 명시적인 `bootstrapScripts`, `bootstrapModules`, 신뢰된 `bootstrapScriptContent`, `nonce`, `identifierPrefix`, 신뢰된 `assetMap` snapshot을 전달합니다. Manifest discovery는 future `@fluojs/react/vite`, browser navigation은 future `@fluojs/react/client`, RSC와 Server Functions는 future `@fluojs/react/experimental/rsc`의 책임입니다. |
+
 ## 엣지 / 모던 런타임에 배포
 
 | 조건 | 패키지 선택 | 비고 |

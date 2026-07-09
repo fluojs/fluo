@@ -12,6 +12,8 @@
 - `./realworld-api/` — config, DTO validation, explicit DI, CRUD를 포함한 보다 현실적인 다중 모듈 HTTP API
 - `./auth-jwt-passport/` — JWT 발급과 passport core 기반 보호 라우트를 보여주는 bearer-token auth 예제
 - `./ops-metrics-terminus/` — `/metrics`, `/health`, `/ready`에 초점을 둔 운영 예제
+- `./react-stable-ssr/` — HTTP-owned route, DTO-bound params/search, lifecycle middleware, 명시적인
+  hydration asset을 포함한 안정 `@fluojs/react` SSR MVP 예제
 
 ## 권장 읽기 순서
 
@@ -21,8 +23,9 @@
 2. `./realworld-api/README.ko.md` — 첫 실제 도메인 모듈과 DTO 경계
 3. `./auth-jwt-passport/README.ko.md` — auth, JWT 발급, 보호 라우트 경로
 4. `./ops-metrics-terminus/README.ko.md` — metrics와 health/readiness 경로
-5. `../book/beginner/ch02-cli-setup.ko.md` — CLI를 통한 첫 로컬 프로젝트 설정
-6. `../book/beginner/ch03-modules-providers.ko.md` — 첫 module/provider wiring과 package mental model
+5. `./react-stable-ssr/README.ko.md` — HTTP-owned handler로서의 안정 React SSR page
+6. `../book/beginner/ch02-cli-setup.ko.md` — CLI를 통한 첫 로컬 프로젝트 설정
+7. `../book/beginner/ch03-modules-providers.ko.md` — 첫 module/provider wiring과 package mental model
 
 ## 예제가 문서에서 맡는 역할
 
@@ -30,6 +33,10 @@
 - `realworld-api`는 그 HTTP 스타터 기준선 이후 첫 실전 module/DTO/test 경로를 보여줍니다
 - `auth-jwt-passport`는 현재 공식 bearer-token auth 경로를 증명합니다
 - `ops-metrics-terminus`는 현재 markdown-first observability/health 경로를 증명합니다
+- `react-stable-ssr`은 안정 `@fluojs/react` root contract를 증명합니다. `@Router`/`@Path`는
+  `@fluojs/http` 위의 lexical facade이고, URL matching과 route grammar는 HTTP-owned 상태로 남으며,
+  DTO validation과 request lifecycle은 보존되고, hydration asset은 명시적이며, RSC/server functions는
+  stable root 밖에 남습니다.
 
 예제는 `../docs/contracts/testing-guide.ko.md`의 canonical fluo TDD ladder도 고정합니다. 빠른 unit 테스트는 `src/**` 가까이에 작성하고, DI wiring이나 provider override가 중요할 때는 `createTestingModule({ rootModule })` 기반 slice/module 테스트를 추가하며, app-level e2e 스타일 request-pipeline 점검에는 `createTestApp({ rootModule })`와 `app.request(...).send()`를 사용합니다. `minimal/src/app.test.ts`, `auth-jwt-passport/src/app.test.ts`, `ops-metrics-terminus/src/app.test.ts` 같은 기존 파일은 그 ladder의 app-level 끝단을 보여줍니다.
 
@@ -48,6 +55,7 @@ pnpm vitest run examples/minimal
 pnpm vitest run examples/realworld-api
 pnpm vitest run examples/auth-jwt-passport
 pnpm vitest run examples/ops-metrics-terminus
+pnpm vitest run examples/react-stable-ssr
 ```
 
 ## 관련 문서
