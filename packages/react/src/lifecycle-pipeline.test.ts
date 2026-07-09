@@ -156,6 +156,7 @@ describe('React page HTTP lifecycle pipeline', () => {
   it('keeps request-scoped React page providers isolated across concurrent requests', async () => {
     const firstRequestGate = createDeferred();
     const firstHandlerStarted = createDeferred();
+    const secondHandlerStarted = createDeferred();
 
     class ScopedPageRequest {
       @FromPath('label')
@@ -180,6 +181,10 @@ describe('React page HTTP lifecycle pipeline', () => {
       async show(input: ScopedPageRequest) {
         this.store.labels.push(input.label);
 
+        if (input.label === 'second') {
+          secondHandlerStarted.resolve();
+        }
+
         if (input.label === 'first') {
           firstHandlerStarted.resolve();
           await firstRequestGate.promise;
@@ -203,6 +208,7 @@ describe('React page HTTP lifecycle pipeline', () => {
       await firstHandlerStarted.promise;
       const secondResponse = createResponse();
       const secondDispatch = app.dispatch(createRequest('/scope/second'), secondResponse);
+      await secondHandlerStarted.promise;
 
       // When: both in-flight dispatches settle.
       firstRequestGate.resolve();
