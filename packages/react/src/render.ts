@@ -46,6 +46,14 @@ type AbortWait = {
   readonly promise: Promise<'aborted'>;
 };
 
+type ReactStreamWritePlan = {
+  readonly applySuccessMetadata: () => void;
+  readonly entry: ReactServerEntry;
+  readonly pendingRecoverableErrors: readonly PendingRecoverableError[];
+  readonly requestContext: ReactRenderContext;
+  readonly stream: ReactReadableStream;
+};
+
 function createAbortWait(signal: AbortSignal | undefined): AbortWait | undefined {
   if (!signal) {
     return undefined;
@@ -219,21 +227,19 @@ async function pipeReadableStream(
   }
 }
 
-async function writeReactStream(
-  entry: ReactServerEntry,
-  requestContext: ReactRenderContext,
-  stream: ReactReadableStream,
-  pendingRecoverableErrors: readonly PendingRecoverableError[],
-): Promise<void> {
+async function writeReactStream(plan: ReactStreamWritePlan): Promise<void> {
+  const { applySuccessMetadata, entry, pendingRecoverableErrors, requestContext, stream } = plan;
   const responseStream = requestContext.response.stream;
 
   if (!responseStream) {
     const body = await collectReadableStream(stream, requestContext.request.signal);
+    applySuccessMetadata();
     reportRecoverableErrors(entry, requestContext, pendingRecoverableErrors);
     await requestContext.response.send(body);
     return;
   }
 
+  applySuccessMetadata();
   requestContext.response.committed = true;
   responseStream.flush?.();
   reportRecoverableErrors(entry, requestContext, pendingRecoverableErrors);
@@ -281,8 +287,11 @@ export async function renderReactResponse(
   });
 
   shellReady = true;
-  options.applySuccessResponseMetadata?.();
-  applyEntryStatus(entry, requestContext);
-  applyEntryHeaders(entry, requestContext);
-  await writeReactStream(entry, requestContext, stream, pendingRecoverableErrors);
+  const applySuccessMetadata = () => {
+    options.applySuccessResponseMetadata?.();
+    applyEntryStatus(entry, requestContext);
+    applyEntryHeaders(entry, requestContext);
+  };
+
+  await writeReactStream({ applySuccessMetadata, entry, pendingRecoverableErrors, requestContext, stream });
 }
