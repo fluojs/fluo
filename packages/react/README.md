@@ -11,6 +11,7 @@ Runtime-neutral React integration for fluo applications.
 - [Runtime and Peer Contract](#runtime-and-peer-contract)
 - [ReactModule Registration](#reactmodule-registration)
 - [Router and Path Decorators](#router-and-path-decorators)
+- [Web Streams SSR](#web-streams-ssr)
 - [Current Limitations](#current-limitations)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
@@ -43,7 +44,8 @@ The root `@fluojs/react` import is runtime-neutral. Importing it must not eagerl
 built-ins, Vite, `react-dom/server`, React Server Components packages, or Server Functions code.
 
 `react` and `react-dom` are declared as peer dependencies so applications own the React runtime
-version. The package root does not import those peers for decorator metadata.
+version. The package root exposes SSR helpers but resolves `react-dom/server` lazily only when a
+React server entry is rendered.
 
 ## ReactModule Registration
 
@@ -128,14 +130,56 @@ React page paths use the exact `@fluojs/http` route grammar: literal segments an
 mixed literal/parameter segments such as `user-:id`, and suffix params such as `:id.json` are not
 supported.
 
+## Web Streams SSR
+
+Return `createReactServerEntry(...)` from a React page handler to stream HTML through the existing
+fluo HTTP dispatcher. Guards, interceptors, module middleware, route headers, `@HttpCode(...)`, DTO
+binding, request scopes, and duplicate route detection all run before `renderReactResponse(...)`
+finalizes the HTML response.
+
+```tsx
+import { HttpCode, RequestDto, FromPath } from '@fluojs/http';
+import { Router, Path, createReactServerEntry } from '@fluojs/react';
+
+class DashboardRequest {
+  @FromPath('id')
+  id = '';
+}
+
+@Router('/dashboard')
+class DashboardRouter {
+  @HttpCode(206)
+  @Path('/:id')
+  @RequestDto(DashboardRequest)
+  show(input: DashboardRequest) {
+    return createReactServerEntry(<main>Dashboard {input.id}</main>, {
+      headers: { 'x-react-page': 'dashboard' },
+      onRecoverableError(error, context) {
+        // Report through your application logger; the response status is already committed.
+        void error;
+        void context;
+      },
+    });
+  }
+}
+```
+
+The renderer uses `react-dom/server` `renderToReadableStream(...)` by default, preserves Suspense
+streaming, writes `Content-Type: text/html; charset=utf-8`, forwards `RequestContext.request.signal`
+when an adapter provides one, and throws shell render failures before response bytes are committed.
+Recoverable Suspense errors are reported through `onRecoverableError` and do not rewrite an already
+committed status. Call `renderReactResponse(entry, requestContext)` directly only when a custom
+handler needs to finalize the response itself instead of returning the entry to the dispatcher.
+
 ## Current Limitations
 
 This package currently does **not** provide:
 
-- SSR rendering or streaming
 - `@fluojs/react/vite`
 - React Server Components or Server Functions integration
+- client bundle generation or hydration script emission
 - hydration asset injection
+- Node-only `react-dom/server` pipeable stream root APIs such as `renderToPipeableStream(...)`
 
 ## Public API
 
@@ -145,8 +189,16 @@ This package currently does **not** provide:
 - `getReactPathMetadata` — reads React render metadata from a router method.
 - `ReactModule` — runtime-neutral module facade whose `forRoot(...)` registers React routers through
   the existing fluo module/controller metadata path.
+- `createReactServerEntry` — creates a runtime-neutral React server entry returned by page handlers
+  for Web Streams SSR.
+- `renderReactResponse` — renders one React server entry to a fluo HTML response with lazy
+  `react-dom/server` loading.
 - `ReactModuleOptions` — options accepted by `ReactModule.forRoot(...)`, including `controllers`,
   `imports`, `providers`, `exports`, and module-level `middleware`.
+- `ReactServerEntry`, `ReactServerEntryOptions`, `ReactServerEntryHeaders`,
+  `ReactRecoverableErrorHandler`, `ReactRecoverableErrorContext`, `ReactRenderContext`,
+  `ReactReadableStream`, `ReactReadableStreamRenderer`, `ReactReadableStreamRenderOptions`, and
+  `RenderReactResponseOptions` — type-only contracts for streamed React SSR.
 - `ReactScaffoldPhase` — type-only planning marker for the `0.1.0` scaffold surface.
 - `ReactRouterMetadata`, `ReactPathMetadata`, `ReactPathOptions` — type-only metadata contracts for
   diagnostics and future rendering integration.
@@ -163,7 +215,11 @@ This package currently does **not** provide:
 
 - `packages/react/src/index.ts`
 - `packages/react/src/decorators.ts`
+- `packages/react/src/server-entry.ts`
+- `packages/react/src/render.ts`
 - `packages/react/src/module.ts`
+- `packages/react/src/render.test.ts`
+- `packages/react/src/dispatcher-ssr.test.ts`
 - `packages/react/src/module.test.ts`
 - `packages/react/src/decorators.test.ts`
 - `packages/react/src/index.test.ts`

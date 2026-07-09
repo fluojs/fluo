@@ -1,19 +1,39 @@
-import {
-  resolveContentNegotiation,
-  selectResponseFormatter,
-  type ResolvedContentNegotiation,
-} from './dispatch-content-negotiation.js';
-import { writeErrorResponse } from './dispatch-error-policy.js';
 import type {
   FrameworkRequest,
   FrameworkResponse,
   HandlerDescriptor,
+  RequestContext,
+  ResponseFormatter,
 } from '../types.js';
+import {
+  type ResolvedContentNegotiation,
+  resolveContentNegotiation,
+  selectResponseFormatter,
+} from './dispatch-content-negotiation.js';
+import { writeErrorResponse } from './dispatch-error-policy.js';
 
 type SimpleJsonResponseBody = Record<string, unknown> | unknown[];
+const responseWriterKey = Symbol.for('fluo.http.responseWriter');
+
+type FrameworkResponseWriterContext = {
+  readonly applySuccessResponseMetadata: () => void;
+  readonly handler: HandlerDescriptor;
+  readonly request: FrameworkRequest;
+  readonly requestContext: RequestContext;
+  readonly response: FrameworkResponse;
+};
+
+type FrameworkResponseWriter = (context: FrameworkResponseWriterContext) => ReturnType<FrameworkResponse['send']> | void;
 
 type SimpleJsonFrameworkResponse = FrameworkResponse & {
   sendSimpleJson(body: SimpleJsonResponseBody): ReturnType<FrameworkResponse['send']>;
+};
+
+type SuccessResponseMetadataContext = {
+  readonly formatter: ResponseFormatter | undefined;
+  readonly handler: HandlerDescriptor;
+  readonly response: FrameworkResponse;
+  readonly value: unknown;
 };
 
 function resolveDefaultSuccessStatus(handler: HandlerDescriptor, value: unknown): number {
@@ -51,6 +71,16 @@ function isSimpleJsonResponseBody(value: unknown): value is SimpleJsonResponseBo
     && Object.getPrototypeOf(value) === Object.prototype;
 }
 
+function readFrameworkResponseWriter(value: unknown): FrameworkResponseWriter | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+
+  const writer = Reflect.get(value, responseWriterKey);
+
+  return typeof writer === 'function' ? writer : undefined;
+}
+
 function isResponseBodyForbidden(status: number | undefined): boolean {
   return status === 204 || status === 205 || status === 304;
 }
@@ -72,40 +102,9 @@ function isJsonContentType(contentType: string): boolean {
   return contentType.toLowerCase().includes('application/json') || contentType.toLowerCase().endsWith('+json');
 }
 
-/**
- * Write success response.
- *
- * @param handler The handler.
- * @param request The request.
- * @param response The response.
- * @param value The value.
- * @param contentNegotiation The content negotiation.
- * @returns The write success response result.
- */
-export function writeSuccessResponse(
-  handler: HandlerDescriptor,
-  request: FrameworkRequest,
-  response: FrameworkResponse,
-  value: unknown,
-  contentNegotiation: ResolvedContentNegotiation | undefined,
-): ReturnType<FrameworkResponse['send']> | void {
-  if (response.committed) {
-    return;
-  }
+function applySuccessResponseMetadata(context: SuccessResponseMetadataContext): void {
+  const { formatter, handler, response, value } = context;
 
-  if (handler.route.redirect) {
-    const { url, statusCode = 302 } = handler.route.redirect;
-    response.redirect(statusCode, url);
-    return;
-  }
-
-  const formatter = contentNegotiation
-    ? selectResponseFormatter(handler, request, contentNegotiation)
-    : undefined;
-
-  // Write route-level headers only after successful formatter negotiation so
-  // that a negotiation failure does not leak success-only headers onto the
-  // error response.
   for (const header of handler.route.headers ?? []) {
     response.setHeader(header.name, header.value);
   }
@@ -119,6 +118,64 @@ export function writeSuccessResponse(
   } else if (response.statusSet !== true) {
     response.setStatus(resolveDefaultSuccessStatus(handler, value));
   }
+}
+
+/**
+ * Write success response.
+ *
+ * @param handler The handler.
+ * @param request The request.
+ * @param response The response.
+ * @param value The value.
+ * @param contentNegotiation The content negotiation.
+ * @param requestContext The active request context passed to custom response writers.
+ * @returns The write success response result.
+ */
+export function writeSuccessResponse(
+  handler: HandlerDescriptor,
+  request: FrameworkRequest,
+  response: FrameworkResponse,
+  value: unknown,
+  contentNegotiation: ResolvedContentNegotiation | undefined,
+  requestContext: RequestContext,
+): ReturnType<FrameworkResponse['send']> | void {
+  if (response.committed) {
+    return;
+  }
+
+  if (handler.route.redirect) {
+    const { url, statusCode = 302 } = handler.route.redirect;
+    response.redirect(statusCode, url);
+    return;
+  }
+
+  const responseWriter = readFrameworkResponseWriter(value);
+
+  if (responseWriter) {
+    let successResponseMetadataApplied = false;
+    const applyWriterSuccessResponseMetadata = (): void => {
+      if (successResponseMetadataApplied) {
+        return;
+      }
+
+      successResponseMetadataApplied = true;
+      applySuccessResponseMetadata({ formatter: undefined, handler, response, value });
+    };
+
+    return responseWriter({
+      applySuccessResponseMetadata: applyWriterSuccessResponseMetadata,
+      handler,
+      request,
+      requestContext,
+      response,
+    });
+  }
+
+  const formatter = contentNegotiation
+    ? selectResponseFormatter(handler, request, contentNegotiation)
+    : undefined;
+
+  applySuccessResponseMetadata({ formatter, handler, response, value });
 
   if (!formatter && hasSimpleJsonResponseWriter(response) && canUseSimpleJsonFastPath(response, value)) {
     return response.sendSimpleJson(value);
@@ -130,5 +187,5 @@ export function writeSuccessResponse(
   return response.send(responseBody);
 }
 
-export { resolveContentNegotiation, writeErrorResponse };
 export type { ResolvedContentNegotiation };
+export { resolveContentNegotiation, writeErrorResponse };
