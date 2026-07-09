@@ -149,10 +149,6 @@ export function writeSuccessResponse(
     return;
   }
 
-  const formatter = contentNegotiation
-    ? selectResponseFormatter(handler, request, contentNegotiation)
-    : undefined;
-
   const responseWriter = readFrameworkResponseWriter(value);
 
   if (responseWriter) {
@@ -163,7 +159,7 @@ export function writeSuccessResponse(
       }
 
       successResponseMetadataApplied = true;
-      applySuccessResponseMetadata({ formatter, handler, response, value });
+      applySuccessResponseMetadata({ formatter: undefined, handler, response, value });
     };
 
     return responseWriter({
@@ -174,6 +170,10 @@ export function writeSuccessResponse(
       response,
     });
   }
+
+  const formatter = contentNegotiation
+    ? selectResponseFormatter(handler, request, contentNegotiation)
+    : undefined;
 
   applySuccessResponseMetadata({ formatter, handler, response, value });
 
