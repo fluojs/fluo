@@ -35,6 +35,12 @@ interface ExecuteFastPathOptions {
   response: FrameworkResponse;
 }
 
+/**
+ * Execute one handler through the compiled fast-path dispatcher plan.
+ *
+ * @param options Fast-path execution inputs for binding, handler invocation, and response writing.
+ * @returns The fast-path execution result, including a fallback error when the route cannot be executed safely.
+ */
 export async function executeFastPath(
   options: ExecuteFastPathOptions,
 ): Promise<FastPathExecutionResult> {
@@ -78,7 +84,7 @@ export async function executeFastPath(
     }
 
     if (!(result instanceof SseResponse) && !response.committed) {
-      const writeResult = writeSuccessResponse(handler, request, response, result, contentNegotiation);
+      const writeResult = writeSuccessResponse(handler, request, response, result, contentNegotiation, requestContext);
 
       if (isThenable(writeResult)) {
         await writeResult;
@@ -98,6 +104,13 @@ function isThenable<T>(value: T | Thenable<T>): value is Thenable<T> {
     && typeof value.then === 'function';
 }
 
+/**
+ * Determine whether a request may use the precompiled fast-path execution plan.
+ *
+ * @param eligibility The handler fast-path eligibility state computed during dispatcher setup.
+ * @param request The active request whose abort state can disable fast-path execution.
+ * @returns `true` when the request can use the fast-path executor.
+ */
 export function shouldUseFastPathForRequest(
   eligibility: { executionPath: 'fast' | 'full' } | undefined,
   request: FrameworkRequest,

@@ -18,8 +18,10 @@ describe('@fluojs/react root package scaffold', () => {
       'Path',
       'ReactModule',
       'Router',
+      'createReactServerEntry',
       'getReactPathMetadata',
       'getReactRouterMetadata',
+      'renderReactResponse',
     ]);
   });
 
@@ -38,6 +40,8 @@ describe('@fluojs/react root package scaffold', () => {
       expect(react).toHaveProperty('Path');
       expect(react).toHaveProperty('ReactModule');
       expect(react).toHaveProperty('Router');
+      expect(react).toHaveProperty('createReactServerEntry');
+      expect(react).toHaveProperty('renderReactResponse');
     } finally {
       for (const [moduleId] of forbiddenRootImports) {
         vi.doUnmock(moduleId);
@@ -46,13 +50,17 @@ describe('@fluojs/react root package scaffold', () => {
     }
   });
 
-  it('keeps future server, render, Vite, and RSC files out of the root runtime barrel', () => {
+  it('keeps SSR exports on the lazy Web Streams boundary without root-only runtime imports', () => {
     const rootEntrypoint = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+    const renderEntrypoint = readFileSync(new URL('./render.ts', import.meta.url), 'utf8');
 
     expect(rootEntrypoint).toContain("from './module.js'");
     expect(rootEntrypoint).toContain("from './decorators.js'");
-    expect(rootEntrypoint).not.toContain('./server-entry.js');
-    expect(rootEntrypoint).not.toContain('./render.js');
+    expect(rootEntrypoint).toContain("from './server-entry.js'");
+    expect(rootEntrypoint).toContain("from './render.js'");
+    expect(rootEntrypoint).not.toContain('react-dom/server');
+    expect(renderEntrypoint).toContain("import('react-dom/server')");
+    expect(renderEntrypoint).not.toContain("from 'react-dom/server'");
     expect(rootEntrypoint).not.toContain('./vite.js');
     expect(rootEntrypoint).not.toContain('./rsc.js');
   });
