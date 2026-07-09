@@ -11,6 +11,7 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 - [런타임 및 피어 계약](#런타임-및-피어-계약)
 - [ReactModule Registration](#reactmodule-registration)
 - [Router 및 Path Decorators](#router-및-path-decorators)
+- [Web Streams SSR](#web-streams-ssr)
 - [현재 제한 사항](#현재-제한-사항)
 - [Public API](#public-api)
 - [관련 패키지](#관련-패키지)
@@ -41,7 +42,8 @@ guards, interceptors, headers, route validation, matching, dispatch는 계속 HT
 `react-dom/server`, React Server Components 패키지, Server Functions 코드를 eager load하면 안 됩니다.
 
 `react`와 `react-dom`은 애플리케이션이 React 런타임 버전을 소유하도록 peer dependencies로 선언합니다.
-Decorator metadata를 위해 패키지 루트가 해당 peer를 import하지 않습니다.
+패키지 루트는 SSR helper를 노출하지만 React server entry를 렌더링할 때만 `react-dom/server`를 lazy
+resolve합니다.
 
 ## ReactModule Registration
 
@@ -125,11 +127,51 @@ segment와 full-segment `:param` placeholder뿐입니다. wildcard, catch-all ro
 regex-like token, `user-:id` 같은 mixed literal/parameter segment, `:id.json` 같은 suffix param은
 지원하지 않습니다.
 
+## Web Streams SSR
+
+React page handler에서 `createReactServerEntry(...)`를 반환하면 기존 fluo HTTP dispatcher를 통해 HTML을
+streaming합니다. Guard, interceptor, module middleware, route header, `@HttpCode(...)`, DTO binding,
+request scope, duplicate route detection은 모두 `renderReactResponse(...)`가 HTML response를 finalize하기
+전에 실행됩니다.
+
+```tsx
+import { HttpCode, RequestDto, FromPath } from '@fluojs/http';
+import { Router, Path, createReactServerEntry } from '@fluojs/react';
+
+class DashboardRequest {
+  @FromPath('id')
+  id = '';
+}
+
+@Router('/dashboard')
+class DashboardRouter {
+  @HttpCode(206)
+  @Path('/:id')
+  @RequestDto(DashboardRequest)
+  show(input: DashboardRequest) {
+    return createReactServerEntry(<main>Dashboard {input.id}</main>, {
+      headers: { 'x-react-page': 'dashboard' },
+      onRecoverableError(error, context) {
+        // 애플리케이션 logger로 보고하세요. response status는 이미 committed 상태입니다.
+        void error;
+        void context;
+      },
+    });
+  }
+}
+```
+
+Renderer는 기본적으로 `react-dom/server`의 `renderToReadableStream(...)`을 사용하고, Suspense streaming을
+보존하며, `Content-Type: text/html; charset=utf-8`을 기록합니다. Adapter가 제공한
+`RequestContext.request.signal`을 전달하고, shell render failure는 response byte가 commit되기 전에
+throw합니다. Recoverable Suspense error는 `onRecoverableError`로 보고되며 이미 committed된 status를 다시
+쓰지 않습니다. Handler가 entry를 dispatcher에 반환하지 않고 직접 response를 finalize해야 할 때만
+`renderReactResponse(entry, requestContext)`를 호출하세요.
+
 ## 현재 제한 사항
 
 현재 이 패키지가 제공하지 않는 것은 다음입니다.
 
-- SSR rendering 또는 streaming
 - `@fluojs/react/vite`
 - React Server Components 또는 Server Functions 통합
 - hydration asset injection
@@ -142,8 +184,16 @@ regex-like token, `user-:id` 같은 mixed literal/parameter segment, `:id.json` 
 - `getReactPathMetadata` — router method에서 React render metadata를 읽습니다.
 - `ReactModule` — `forRoot(...)`가 기존 fluo module/controller metadata path를 통해 React router를
   등록하는 런타임 중립 module facade입니다.
+- `createReactServerEntry` — page handler가 Web Streams SSR을 위해 반환하는 runtime-neutral React server
+  entry를 생성합니다.
+- `renderReactResponse` — lazy `react-dom/server` loading으로 React server entry 하나를 fluo HTML
+  response에 렌더링합니다.
 - `ReactModuleOptions` — `controllers`, `imports`, `providers`, `exports`, module-level `middleware`를 포함하는
   `ReactModule.forRoot(...)` option입니다.
+- `ReactServerEntry`, `ReactServerEntryOptions`, `ReactServerEntryHeaders`,
+  `ReactRecoverableErrorHandler`, `ReactRecoverableErrorContext`, `ReactRenderContext`,
+  `ReactReadableStream`, `ReactReadableStreamRenderer`, `ReactReadableStreamRenderOptions`,
+  `RenderReactResponseOptions` — streamed React SSR을 위한 type-only contract입니다.
 - `ReactScaffoldPhase` — `0.1.0` scaffold surface를 위한 type-only planning marker입니다.
 - `ReactRouterMetadata`, `ReactPathMetadata`, `ReactPathOptions` — diagnostics 및 향후 rendering
   integration을 위한 type-only metadata contract입니다.
@@ -159,7 +209,11 @@ regex-like token, `user-:id` 같은 mixed literal/parameter segment, `:id.json` 
 
 - `packages/react/src/index.ts`
 - `packages/react/src/decorators.ts`
+- `packages/react/src/server-entry.ts`
+- `packages/react/src/render.ts`
 - `packages/react/src/module.ts`
+- `packages/react/src/render.test.ts`
+- `packages/react/src/dispatcher-ssr.test.ts`
 - `packages/react/src/module.test.ts`
 - `packages/react/src/decorators.test.ts`
 - `packages/react/src/index.test.ts`

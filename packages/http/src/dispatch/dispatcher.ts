@@ -751,7 +751,7 @@ async function dispatchMatchedHandler(
   if (isAsyncIterable(result) && await writeManagedSseIterable(handler, requestContext, result)) {
     // Managed SSE streams are already committed and closed by writeManagedSseIterable.
   } else if (!(result instanceof SseResponse) && !requestContext.response.committed) {
-    await writeSuccessResponse(handler, requestContext.request, requestContext.response, result, contentNegotiation);
+    await writeSuccessResponse(handler, requestContext.request, requestContext.response, result, contentNegotiation, requestContext);
   }
 
   await notifyObserversSafely(

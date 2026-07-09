@@ -8,9 +8,20 @@ import type {
   FrameworkRequest,
   FrameworkResponse,
   HandlerDescriptor,
+  RequestContext,
 } from '../types.js';
 
 type SimpleJsonResponseBody = Record<string, unknown> | unknown[];
+const responseWriterKey = Symbol.for('fluo.http.responseWriter');
+
+type FrameworkResponseWriterContext = {
+  readonly handler: HandlerDescriptor;
+  readonly request: FrameworkRequest;
+  readonly requestContext: RequestContext;
+  readonly response: FrameworkResponse;
+};
+
+type FrameworkResponseWriter = (context: FrameworkResponseWriterContext) => ReturnType<FrameworkResponse['send']> | void;
 
 type SimpleJsonFrameworkResponse = FrameworkResponse & {
   sendSimpleJson(body: SimpleJsonResponseBody): ReturnType<FrameworkResponse['send']>;
@@ -51,6 +62,16 @@ function isSimpleJsonResponseBody(value: unknown): value is SimpleJsonResponseBo
     && Object.getPrototypeOf(value) === Object.prototype;
 }
 
+function readFrameworkResponseWriter(value: unknown): FrameworkResponseWriter | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+
+  const writer = Reflect.get(value, responseWriterKey);
+
+  return typeof writer === 'function' ? writer : undefined;
+}
+
 function isResponseBodyForbidden(status: number | undefined): boolean {
   return status === 204 || status === 205 || status === 304;
 }
@@ -80,6 +101,7 @@ function isJsonContentType(contentType: string): boolean {
  * @param response The response.
  * @param value The value.
  * @param contentNegotiation The content negotiation.
+ * @param requestContext The active request context passed to custom response writers.
  * @returns The write success response result.
  */
 export function writeSuccessResponse(
@@ -88,6 +110,7 @@ export function writeSuccessResponse(
   response: FrameworkResponse,
   value: unknown,
   contentNegotiation: ResolvedContentNegotiation | undefined,
+  requestContext: RequestContext,
 ): ReturnType<FrameworkResponse['send']> | void {
   if (response.committed) {
     return;
@@ -118,6 +141,17 @@ export function writeSuccessResponse(
     response.setStatus(handler.route.successStatus);
   } else if (response.statusSet !== true) {
     response.setStatus(resolveDefaultSuccessStatus(handler, value));
+  }
+
+  const responseWriter = readFrameworkResponseWriter(value);
+
+  if (responseWriter) {
+    return responseWriter({
+      handler,
+      request,
+      requestContext,
+      response,
+    });
   }
 
   if (!formatter && hasSimpleJsonResponseWriter(response) && canUseSimpleJsonFastPath(response, value)) {
