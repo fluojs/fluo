@@ -177,7 +177,9 @@ This package currently does **not** provide:
 
 - `@fluojs/react/vite`
 - React Server Components or Server Functions integration
+- client bundle generation or hydration script emission
 - hydration asset injection
+- Node-only `react-dom/server` pipeable stream root APIs such as `renderToPipeableStream(...)`
 
 ## Public API
 

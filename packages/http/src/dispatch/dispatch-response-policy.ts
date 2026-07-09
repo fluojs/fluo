@@ -1,20 +1,22 @@
-import {
-  resolveContentNegotiation,
-  selectResponseFormatter,
-  type ResolvedContentNegotiation,
-} from './dispatch-content-negotiation.js';
-import { writeErrorResponse } from './dispatch-error-policy.js';
 import type {
   FrameworkRequest,
   FrameworkResponse,
   HandlerDescriptor,
   RequestContext,
+  ResponseFormatter,
 } from '../types.js';
+import {
+  type ResolvedContentNegotiation,
+  resolveContentNegotiation,
+  selectResponseFormatter,
+} from './dispatch-content-negotiation.js';
+import { writeErrorResponse } from './dispatch-error-policy.js';
 
 type SimpleJsonResponseBody = Record<string, unknown> | unknown[];
 const responseWriterKey = Symbol.for('fluo.http.responseWriter');
 
 type FrameworkResponseWriterContext = {
+  readonly applySuccessResponseMetadata: () => void;
   readonly handler: HandlerDescriptor;
   readonly request: FrameworkRequest;
   readonly requestContext: RequestContext;
@@ -25,6 +27,13 @@ type FrameworkResponseWriter = (context: FrameworkResponseWriterContext) => Retu
 
 type SimpleJsonFrameworkResponse = FrameworkResponse & {
   sendSimpleJson(body: SimpleJsonResponseBody): ReturnType<FrameworkResponse['send']>;
+};
+
+type SuccessResponseMetadataContext = {
+  readonly formatter: ResponseFormatter | undefined;
+  readonly handler: HandlerDescriptor;
+  readonly response: FrameworkResponse;
+  readonly value: unknown;
 };
 
 function resolveDefaultSuccessStatus(handler: HandlerDescriptor, value: unknown): number {
@@ -93,6 +102,24 @@ function isJsonContentType(contentType: string): boolean {
   return contentType.toLowerCase().includes('application/json') || contentType.toLowerCase().endsWith('+json');
 }
 
+function applySuccessResponseMetadata(context: SuccessResponseMetadataContext): void {
+  const { formatter, handler, response, value } = context;
+
+  for (const header of handler.route.headers ?? []) {
+    response.setHeader(header.name, header.value);
+  }
+
+  if (formatter) {
+    response.setHeader('Content-Type', formatter.mediaType);
+  }
+
+  if (handler.route.successStatus !== undefined) {
+    response.setStatus(handler.route.successStatus);
+  } else if (response.statusSet !== true) {
+    response.setStatus(resolveDefaultSuccessStatus(handler, value));
+  }
+}
+
 /**
  * Write success response.
  *
@@ -126,33 +153,29 @@ export function writeSuccessResponse(
     ? selectResponseFormatter(handler, request, contentNegotiation)
     : undefined;
 
-  // Write route-level headers only after successful formatter negotiation so
-  // that a negotiation failure does not leak success-only headers onto the
-  // error response.
-  for (const header of handler.route.headers ?? []) {
-    response.setHeader(header.name, header.value);
-  }
-
-  if (formatter) {
-    response.setHeader('Content-Type', formatter.mediaType);
-  }
-
-  if (handler.route.successStatus !== undefined) {
-    response.setStatus(handler.route.successStatus);
-  } else if (response.statusSet !== true) {
-    response.setStatus(resolveDefaultSuccessStatus(handler, value));
-  }
-
   const responseWriter = readFrameworkResponseWriter(value);
 
   if (responseWriter) {
+    let successResponseMetadataApplied = false;
+    const applyWriterSuccessResponseMetadata = (): void => {
+      if (successResponseMetadataApplied) {
+        return;
+      }
+
+      successResponseMetadataApplied = true;
+      applySuccessResponseMetadata({ formatter, handler, response, value });
+    };
+
     return responseWriter({
+      applySuccessResponseMetadata: applyWriterSuccessResponseMetadata,
       handler,
       request,
       requestContext,
       response,
     });
   }
+
+  applySuccessResponseMetadata({ formatter, handler, response, value });
 
   if (!formatter && hasSimpleJsonResponseWriter(response) && canUseSimpleJsonFastPath(response, value)) {
     return response.sendSimpleJson(value);
@@ -164,5 +187,5 @@ export function writeSuccessResponse(
   return response.send(responseBody);
 }
 
-export { resolveContentNegotiation, writeErrorResponse };
 export type { ResolvedContentNegotiation };
+export { resolveContentNegotiation, writeErrorResponse };

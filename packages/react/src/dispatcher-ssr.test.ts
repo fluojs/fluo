@@ -1,19 +1,19 @@
 import { Inject, Module, Scope } from '@fluojs/core';
 import {
-  FromPath,
-  Header,
-  HttpCode,
-  RequestDto,
-  UseGuards,
-  UseInterceptors,
   type CallHandler,
   type FrameworkRequest,
   type FrameworkResponse,
   type FrameworkResponseStream,
+  FromPath,
   type GuardContext,
+  Header,
+  HttpCode,
   type InterceptorContext,
   type MiddlewareContext,
   type Next,
+  RequestDto,
+  UseGuards,
+  UseInterceptors,
 } from '@fluojs/http';
 import { bootstrapApplication } from '@fluojs/runtime';
 import { createElement } from 'react';
@@ -192,6 +192,56 @@ describe('React SSR dispatcher integration', () => {
       expect(firstResponse.closed).toBe(true);
       expect(firstResponse.chunks.join('')).toContain('Dashboard 42 request 1');
       expect(secondResponse.chunks.join('')).toContain('Dashboard 42 request 2');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('does not leak route success headers when React shell rendering fails before commit', async () => {
+    class ReactShellRenderError extends Error {
+      readonly name = 'ReactShellRenderError';
+
+      constructor() {
+        super('React shell render failed before commit.');
+      }
+    }
+
+    function BrokenShell(): never {
+      throw new ReactShellRenderError();
+    }
+
+    @Router('/broken')
+    class BrokenRouter {
+      @Header('x-react-route', 'broken')
+      @HttpCode(206)
+      @Path('/')
+      show() {
+        return createReactServerEntry(createElement(BrokenShell));
+      }
+    }
+
+    @Module({
+      imports: [
+        ReactModule.forRoot({
+          controllers: [BrokenRouter],
+        }),
+      ],
+    })
+    class AppModule {}
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      // Given: a React page route declares success-only HTTP metadata.
+      const response = createStreamedResponse();
+
+      // When: the React shell render fails before response bytes commit.
+      await app.dispatch(createRequest('/broken'), response);
+
+      // Then: the dispatcher writes the JSON error envelope without stale success headers.
+      expect(response.statusCode).toBe(500);
+      expect(response.headers['x-react-route']).toBeUndefined();
+      expect(response.chunks.join('')).toContain('INTERNAL_SERVER_ERROR');
     } finally {
       await app.close();
     }

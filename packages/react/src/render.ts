@@ -27,6 +27,8 @@ export type ReactReadableStreamRenderer = (
 
 /** Options for rendering a React entry into one fluo response. */
 export type RenderReactResponseOptions = {
+  /** Applies dispatcher-owned success metadata after shell creation and before response commit. */
+  readonly applySuccessResponseMetadata?: () => void;
   /** Test or custom renderer override. Defaults to lazy `react-dom/server` Web Streams rendering. */
   readonly renderToReadableStream?: ReactReadableStreamRenderer;
 };
@@ -279,6 +281,7 @@ export async function renderReactResponse(
   });
 
   shellReady = true;
+  options.applySuccessResponseMetadata?.();
   applyEntryStatus(entry, requestContext);
   applyEntryHeaders(entry, requestContext);
   await writeReactStream(entry, requestContext, stream, pendingRecoverableErrors);

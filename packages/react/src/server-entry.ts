@@ -6,6 +6,7 @@ import type { ReactRenderContext } from './render.js';
 const responseWriterKey = Symbol.for('fluo.http.responseWriter');
 
 type ReactResponseWriterContext = {
+  readonly applySuccessResponseMetadata: () => void;
   readonly requestContext: ReactRenderContext;
 };
 
@@ -82,7 +83,9 @@ export function createReactServerEntry(
     enumerable: false,
     value: async (context: ReactResponseWriterContext): Promise<void> => {
       const { renderReactResponse } = await import('./render.js');
-      await renderReactResponse(entry, context.requestContext);
+      await renderReactResponse(entry, context.requestContext, {
+        applySuccessResponseMetadata: context.applySuccessResponseMetadata,
+      });
     },
   });
 
