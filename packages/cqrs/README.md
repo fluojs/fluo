@@ -139,7 +139,7 @@ class GetOrderSummaryHandler
 }
 ```
 
-Register the projection handler, query handler, and projection store as singleton providers in the same application module that imports `CqrsModule.forRoot(...)`. CQRS handler discovery inspects provider registrations only; HTTP controllers stay on the request boundary and are ignored even when a controller class accidentally carries a CQRS handler decorator. `CqrsModule.forRoot(...)` exports the buses globally by default, and `CqrsModule.forRoot({ global: false })` keeps those bus providers and the delegated `@fluojs/event-bus` providers visible only through modules that import the CQRS module unless `eventBus.global` is explicitly overridden. `CqrsEventBusService.publish(new OrderPlacedEvent(...))` runs matching `@EventHandler(...)` providers before sagas and delegated `@fluojs/event-bus` publication, so the read model observes the write-side fact through the documented CQRS event pipeline. Keep projection handlers idempotent because event replay, retries, or external transports can deliver the same business fact more than once.
+Register the projection handler, query handler, and projection store as singleton providers in the same application module that imports `CqrsModule.forRoot(...)`. CQRS handler discovery inspects provider registrations only; HTTP controllers stay on the request boundary and are ignored even when a controller class accidentally carries a CQRS handler decorator. `CqrsModule.forRoot(...)` exports the buses globally by default, and `CqrsModule.forRoot({ global: false })` keeps those bus providers and the delegated `@fluojs/event-bus` providers visible only through modules that import the CQRS module unless `eventBus.global` is explicitly overridden. `CqrsEventBusService.publish(new OrderPlacedEvent(...))` runs matching `@EventHandler(...)` providers before sagas and delegated `@fluojs/event-bus` publication, so the read model observes the write-side fact through the documented CQRS event pipeline. Fan-out identity follows the singleton provider token: registering one decorated handler class under two distinct tokens intentionally invokes both registrations, while repeated discovery of the same token and event route is deduplicated. Keep projection handlers idempotent because event replay, retries, or external transports can deliver the same business fact more than once.
 
 ### Saga Process Managers
 
@@ -168,9 +168,9 @@ class UserSaga implements ISaga<UserCreatedEvent> {
 }
 ```
 
-Saga execution fails fast with `SagaTopologyError` when an in-process publish chain re-enters the same saga route cyclically or exceeds 32 nested saga hops. Multi-stage sagas may still react to different event types in sequence, but in-process saga graphs must stay acyclic overall; move intentionally cyclic or long-running feedback loops behind an external transport, scheduler, or other bounded boundary.
+Saga execution fails fast with `SagaTopologyError` when an in-process publish chain re-enters the same provider-token/event route cyclically or exceeds 32 nested saga hops. Distinct singleton tokens that use the same decorated saga class remain distinct fan-out routes. Multi-stage sagas may still react to different event types in sequence, but in-process saga graphs must stay acyclic overall; move intentionally cyclic or long-running feedback loops behind an external transport, scheduler, or other bounded boundary.
 
-When a saga, command handler, query handler, or event handler performs another CQRS `execute(...)`, `publish(...)`, or `publishAll(...)` call, pass the optional `CqrsDispatchContext` argument through unchanged. CQRS uses this explicit runtime-agnostic context to keep saga topology checks intact across nested dispatch without relying on Node.js async-local APIs. The context is opaque: do not construct it, inspect it, or depend on topology fields because those fields are internal runtime state.
+When a saga, command handler, query handler, or event handler performs another CQRS `execute(...)`, `publish(...)`, or `publishAll(...)` call, pass the optional `CqrsDispatchContext` argument through unchanged. CQRS uses this explicit runtime-agnostic context to keep saga topology checks intact across nested dispatch without relying on Node.js async-local APIs. The context is an opaque, frozen fieldless pass-through value; trusted topology and shutdown-drain state remains private to CQRS. Do not construct, clone, inspect, or mutate it because caller-shaped objects and copied values do not carry trusted runtime state.
 
 ### Event Publishing Contracts
 
@@ -180,7 +180,7 @@ Each CQRS event handler and saga receives an isolated event copy with the matche
 
 Event classes should keep their payload state cloneable and enumerable. String-keyed and symbol-keyed enumerable payload fields are preserved by the shared core clone fallback, while intentionally non-cloneable resources such as open sockets, functions, or process-local handles should be represented by IDs or other serializable boundaries before publishing.
 
-CQRS handlers, event handlers, and sagas are discovered only on singleton providers. Non-singleton registrations are skipped with warnings.
+CQRS handlers, event handlers, and sagas are discovered only on singleton providers. Non-singleton registrations are skipped with warnings. Event-handler and saga fan-out is keyed by singleton provider token, so distinct tokens remain distinct routes even when they use the same decorated class.
 
 ### Symbol Tokens
 

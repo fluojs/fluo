@@ -139,7 +139,7 @@ class GetOrderSummaryHandler
 }
 ```
 
-`CqrsModule.forRoot(...)`를 import하는 애플리케이션 모듈에 projection handler, query handler, projection store를 singleton provider로 등록하세요. CQRS handler discovery는 provider registration만 검사합니다. HTTP controller는 request boundary에 남으며 controller class가 실수로 CQRS handler decorator를 가지고 있어도 무시됩니다. `CqrsModule.forRoot(...)`는 기본적으로 bus를 global로 export하며, `CqrsModule.forRoot({ global: false })`는 `eventBus.global`을 명시적으로 override하지 않는 한 해당 CQRS module을 import한 module을 통해서만 bus provider와 위임 `@fluojs/event-bus` provider가 보이도록 유지합니다. `CqrsEventBusService.publish(new OrderPlacedEvent(...))`는 일치하는 `@EventHandler(...)` provider를 saga와 위임 `@fluojs/event-bus` 발행보다 먼저 실행하므로, read model은 문서화된 CQRS event pipeline을 통해 write-side fact를 관찰합니다. Event replay, retry, 외부 transport가 같은 business fact를 두 번 이상 전달할 수 있으므로 projection handler는 idempotent하게 유지하세요.
+`CqrsModule.forRoot(...)`를 import하는 애플리케이션 모듈에 projection handler, query handler, projection store를 singleton provider로 등록하세요. CQRS handler discovery는 provider registration만 검사합니다. HTTP controller는 request boundary에 남으며 controller class가 실수로 CQRS handler decorator를 가지고 있어도 무시됩니다. `CqrsModule.forRoot(...)`는 기본적으로 bus를 global로 export하며, `CqrsModule.forRoot({ global: false })`는 `eventBus.global`을 명시적으로 override하지 않는 한 해당 CQRS module을 import한 module을 통해서만 bus provider와 위임 `@fluojs/event-bus` provider가 보이도록 유지합니다. `CqrsEventBusService.publish(new OrderPlacedEvent(...))`는 일치하는 `@EventHandler(...)` provider를 saga와 위임 `@fluojs/event-bus` 발행보다 먼저 실행하므로, read model은 문서화된 CQRS event pipeline을 통해 write-side fact를 관찰합니다. Fan-out identity는 singleton provider token을 따릅니다. Decorated handler class 하나를 서로 다른 두 token으로 등록하면 두 registration이 모두 의도적으로 호출되고, 같은 token과 event route가 반복 discovery될 때만 deduplicate됩니다. Event replay, retry, 외부 transport가 같은 business fact를 두 번 이상 전달할 수 있으므로 projection handler는 idempotent하게 유지하세요.
 
 ### Saga 프로세스 매니저
 
@@ -168,9 +168,9 @@ class UserSaga implements ISaga<UserCreatedEvent> {
 }
 ```
 
-Saga 실행은 같은 프로세스 안에서 동일 saga route로 순환 재진입하거나 중첩 hop 수가 32를 넘으면 `SagaTopologyError`로 즉시 실패합니다. 서로 다른 이벤트 단계를 순차 처리하는 multi-stage saga는 계속 허용되지만, in-process saga graph 전체는 비순환(acyclic) 구조를 유지해야 하며, 의도적인 순환/피드백 루프나 더 긴 체인은 외부 transport, scheduler, 또는 다른 bounded boundary 뒤로 이동해야 합니다.
+Saga 실행은 같은 프로세스 안에서 동일 provider-token/event route로 순환 재진입하거나 중첩 hop 수가 32를 넘으면 `SagaTopologyError`로 즉시 실패합니다. 같은 decorated saga class를 사용하는 서로 다른 singleton token은 별도의 fan-out route로 유지됩니다. 서로 다른 이벤트 단계를 순차 처리하는 multi-stage saga는 계속 허용되지만, in-process saga graph 전체는 비순환(acyclic) 구조를 유지해야 하며, 의도적인 순환/피드백 루프나 더 긴 체인은 외부 transport, scheduler, 또는 다른 bounded boundary 뒤로 이동해야 합니다.
 
-Saga, command handler, query handler, event handler 안에서 다시 CQRS `execute(...)`, `publish(...)`, `publishAll(...)`를 호출할 때는 optional `CqrsDispatchContext` 인자를 그대로 전달하세요. CQRS는 이 명시적인 runtime-agnostic context로 Node.js async-local API에 의존하지 않고 nested dispatch 전반의 saga topology check를 유지합니다. 이 context는 opaque입니다. 직접 생성하거나 검사하거나 topology field에 의존하지 마세요. 해당 field는 내부 runtime state입니다.
+Saga, command handler, query handler, event handler 안에서 다시 CQRS `execute(...)`, `publish(...)`, `publishAll(...)`를 호출할 때는 optional `CqrsDispatchContext` 인자를 그대로 전달하세요. CQRS는 이 명시적인 runtime-agnostic context로 Node.js async-local API에 의존하지 않고 nested dispatch 전반의 saga topology check를 유지합니다. 이 context는 opaque, frozen fieldless pass-through value이며, 신뢰하는 topology와 shutdown-drain state는 CQRS 내부에 비공개로 유지됩니다. Caller-shaped object와 복사된 값은 신뢰된 runtime state를 운반하지 않으므로 context를 직접 생성, 복제, 검사, mutate하지 마세요.
 
 ### Event 발행 계약
 
@@ -180,7 +180,7 @@ Saga, command handler, query handler, event handler 안에서 다시 CQRS `execu
 
 Event class는 payload state를 clone 가능하고 enumerable하게 유지해야 합니다. 문자열 key와 symbol key를 가진 enumerable payload field는 shared core clone fallback으로 보존되지만, 열린 socket, function, process-local handle처럼 의도적으로 clone할 수 없는 resource는 발행 전에 ID나 다른 serializable boundary로 표현해야 합니다.
 
-CQRS handler, event handler, saga는 singleton provider에서만 discovery됩니다. Non-singleton registration은 경고와 함께 건너뜁니다.
+CQRS handler, event handler, saga는 singleton provider에서만 discovery됩니다. Non-singleton registration은 경고와 함께 건너뜁니다. Event handler와 saga fan-out은 singleton provider token으로 구분되므로 같은 decorated class를 사용해도 서로 다른 token은 별도 route로 유지됩니다.
 
 ### 심볼 토큰
 
