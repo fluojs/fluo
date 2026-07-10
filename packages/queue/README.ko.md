@@ -121,7 +121,7 @@ export class EmailQueueModule {}
 
 Queue는 애플리케이션 부트스트랩 중 worker를 탐색하고 Queue가 소유하는 BullMQ 리소스를 만들지만, BullMQ worker processor는 runtime이 전체 애플리케이션 bootstrap/readiness sequence 완료를 표시한 뒤에만 시작합니다. 다른 `onApplicationBootstrap()` hook에서 enqueue한 job은 Queue 서비스가 초기화된 뒤에는 받을 수 있으며, processor는 뒤에 실행되는 async bootstrap hook이나 애플리케이션 readiness보다 앞서 실행되지 않고 bootstrap-ready handoff 이후 실행됩니다. Queue status는 해당 BullMQ processor가 실제로 시작될 때까지 degraded readiness를 보고합니다. Processor 시작에 실패하면 lifecycle이 `failed`로 이동하고, status snapshot은 worker를 ready로 숨기지 않고 실패를 노출합니다.
 
-애플리케이션 종료가 시작되면 Queue는 상태를 `stopping`으로 바꾸고 새 enqueue를 거부한 다음 Queue 소유 worker/queue/connection을 닫고 pending dead-letter write를 drain합니다. Worker 종료는 `workerShutdownTimeoutMs`로 bounded wait를 적용하므로 끝나지 않는 active processor가 애플리케이션 종료를 무기한 막을 수 없습니다. Timeout이 지나면 Queue는 로그를 남기고 BullMQ worker에 force-close를 요청한 뒤 나머지 리소스 정리를 계속합니다.
+애플리케이션 종료가 시작되면 Queue는 상태를 `stopping`으로 바꾸고 새 enqueue를 거부한 다음 Queue 소유 worker/queue/connection을 닫고 pending dead-letter write의 drain을 시도합니다. Queue가 각 pending dead-letter write를 기다리는 시간은 최대 `5_000ms`입니다. 이 대기가 timeout되면 Queue는 timeout을 기록하고 해당 write를 pending count에서 제외한 뒤, record가 Redis에 도달했다는 보장 없이 종료를 계속합니다. Worker 종료에는 별도로 `workerShutdownTimeoutMs` bounded wait가 적용되므로 끝나지 않는 active processor가 애플리케이션 종료를 무기한 막을 수 없습니다. 이 timeout이 지나면 Queue는 로그를 남기고 BullMQ worker에 force-close를 요청한 뒤 나머지 리소스 정리를 계속합니다.
 
 ### 분산 재시도 (Distributed Retries)
 
@@ -193,7 +193,7 @@ Job은 JSON으로 직렬화 가능한 plain object여야 합니다. Queue는 enq
 - `workerShutdownTimeoutMs`: 종료 중 active worker processor를 기다리는 최대 시간입니다. 시간이 지나면 BullMQ worker를 force-close합니다. 기본값은 `30_000`입니다.
 - `defaultDeadLetterMaxEntries`: job별로 유지할 dead-letter record의 최대 개수이며, trimming을 끄려면 `false`를 지정합니다. 기본값은 `1_000`입니다.
 
-`QueueLifecycleService.createPlatformStatusSnapshot()`은 `createQueuePlatformStatusSnapshot(...)`과 같은 공개 snapshot 계약을 사용합니다. Queue가 `started`에 도달하고 탐색된 모든 BullMQ worker processor가 시작된 뒤에만 readiness를 `ready`로 보고합니다. Processor가 아직 pending인 `started` resource와 `starting`은 degraded readiness, `stopping`/`stopped`는 not-ready, worker-start failure는 `workerStartFailures`와 `lastWorkerStartFailure` details를 포함해 not-ready/unhealthy로 보고합니다. Snapshot details에는 Redis dependency id, lifecycle state, ready/discovered worker 수, pending dead-letter write 수, dead-letter drain timeout, `workerShutdownTimeoutMs`가 포함됩니다.
+`QueueLifecycleService.createPlatformStatusSnapshot()`은 `createQueuePlatformStatusSnapshot(...)`과 같은 공개 snapshot 계약을 사용합니다. Queue가 `started`에 도달하고 탐색된 모든 BullMQ worker processor가 시작된 뒤에만 readiness를 `ready`로 보고합니다. 이 조건이 유지되는 동안 pending dead-letter write가 있어도 readiness는 `ready`를 유지하지만, pending count가 0으로 돌아올 때까지 health는 degraded입니다. Processor가 아직 pending인 `started` resource와 `starting`은 degraded readiness, `stopping`은 not-ready/degraded, `stopped`는 not-ready/unhealthy, worker-start failure는 `workerStartFailures`와 `lastWorkerStartFailure` details를 포함해 not-ready/unhealthy로 보고합니다. Snapshot details에는 Redis dependency id, lifecycle state, ready/discovered worker 수, pending dead-letter write 수, `5_000ms` dead-letter drain timeout, `workerShutdownTimeoutMs`가 포함됩니다.
 
 singleton `@QueueWorker()` provider/controller만 등록됩니다. request/transient worker는 discovery 중 건너뜁니다.
 
