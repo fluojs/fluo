@@ -1,7 +1,7 @@
 ---
 description: fluo-verification-reviewer reviews a PR's CI status, test/build/typecheck diagnostics, and regression evidence read-only and reports only real risk
 mode: subagent
-model: openai/gpt-5.4
+model: openai/gpt-5.6-sol-pro
 options:
   reasoningEffort: high
   reasoningSummary: auto
