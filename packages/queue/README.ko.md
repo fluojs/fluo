@@ -150,7 +150,7 @@ for (const record of inspection.records) {
 }
 ```
 
-Inspection은 read-only이며 유효한 record를 최신순으로 반환합니다. Redis를 worker lifecycle과 독립적으로 읽으므로 inspection이 worker를 시작하지 않으며 Queue가 `idle`, `failed`, `stopping`, `stopped` 상태여도 사용할 수 있습니다. Limit은 기본적으로 저장된 entry `100`개이며 최대 `1_000`개로 제한되고, 잘못된 limit은 기본값으로 대체됩니다. Malformed stored value는 결과에서 제외되고 해당 inspection window의 `malformedRecordCount`에 집계됩니다. `payload`는 `unknown`으로 유지되므로 애플리케이션 코드가 자신의 job data를 직접 narrow해야 합니다. Inspection은 job이나 dead-letter record를 삭제, replay 또는 mutate하지 않습니다.
+Inspection은 read-only이며 유효한 record를 최신순으로 반환합니다. Redis read를 worker lifecycle state로 gate하지 않으므로 inspection이 worker를 시작하지 않으며, backing Redis client에 접근 가능한 동안에는 Queue가 `idle`이거나 worker startup이 `failed`에 도달한 뒤에도 사용할 수 있습니다. Queue는 shared Redis client를 소유하지 않습니다. `RedisModule`이 해당 client를 종료한 뒤에는 post-shutdown availability를 보장하지 않고 backing Redis operation error를 그대로 전달합니다. Limit은 기본적으로 저장된 entry `100`개이며 최대 `1_000`개로 제한되고, 잘못된 limit은 기본값으로 대체됩니다. Malformed stored value는 결과에서 제외되고 해당 inspection window의 `malformedRecordCount`에 집계됩니다. `payload`는 `unknown`으로 유지되므로 애플리케이션 코드가 자신의 job data를 직접 narrow해야 합니다. Inspection은 job이나 dead-letter record를 삭제, replay 또는 mutate하지 않습니다.
 
 Job은 JSON으로 직렬화 가능한 plain object여야 합니다. Queue는 enqueue 전에 job payload를 직렬화하고, worker 측에서 job prototype을 다시 입힙니다.
 

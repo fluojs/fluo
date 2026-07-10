@@ -275,11 +275,13 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   /**
    * Reads a bounded snapshot of dead-letter records for one queue job name.
    *
-   * Inspection reads Redis directly without starting workers or depending on the worker lifecycle state.
+   * Inspection reads Redis without starting workers or lifecycle-gating the read. The backing Redis client must
+   * remain reachable; `RedisModule` owns that shared client's shutdown.
    *
    * @param jobName Queue worker job name whose dead letters should be inspected.
    * @param options Optional bounded inspection settings.
    * @returns Valid records in newest-first order plus the malformed count for the inspected window.
+   * @throws The backing Redis read error when that client is unavailable or already shut down.
    */
   async inspectDeadLetters(
     jobName: string,

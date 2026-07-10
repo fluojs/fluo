@@ -53,6 +53,11 @@ vi.mock('bullmq', () => ({
 class InspectionRedisFake {
   readonly records = new Map<string, string[]>();
   duplicateCalls = 0;
+  private reachable = true;
+
+  close(): void {
+    this.reachable = false;
+  }
 
   duplicate() {
     this.duplicateCalls += 1;
@@ -73,6 +78,10 @@ class InspectionRedisFake {
   }
 
   async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    if (!this.reachable) {
+      throw new Error('Redis connection is closed.');
+    }
+
     const entries = this.records.get(key) ?? [];
     const startIndex = start < 0 ? Math.max(entries.length + start, 0) : start;
     const stopIndex = stop < 0 ? entries.length + stop : stop;
@@ -215,18 +224,19 @@ describe('QueueLifecycleService dead-letter inspection lifecycle', () => {
     }
   });
 
-  it('keeps inspection available after shutdown without restarting workers', async () => {
+  it('propagates the backing Redis error after owner shutdown without restarting workers', async () => {
     // Given
     const redis = new InspectionRedisFake();
     redis.setRecord('stopped-inspection');
     const service = createService(redis, []);
     await service.onApplicationShutdown();
+    redis.close();
 
     // When
-    const result = await service.inspectDeadLetters('stopped-inspection');
+    const inspection = service.inspectDeadLetters('stopped-inspection');
 
     // Then
-    expect(result.records.map((record) => record.jobId)).toEqual(['job-1']);
+    await expect(inspection).rejects.toThrow('Redis connection is closed.');
     expect(service.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopped');
     expect(redis.duplicateCalls).toBe(0);
     expect(bullmqState.queueConstructions).toBe(0);
