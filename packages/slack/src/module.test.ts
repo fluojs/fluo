@@ -1907,6 +1907,45 @@ describe('SlackModule', () => {
     expect(transport.closeCalls).toBe(1);
   });
 
+  it('tracks deliveries before synchronous transport callbacks can start shutdown', async () => {
+    let resolveSend!: () => void;
+    let service: SlackService | undefined;
+    let shutdown = Promise.resolve();
+    const sendDelay = new Promise<void>((resolve) => {
+      resolveSend = resolve;
+    });
+    const transport = new DelayedLifecycleTransport(undefined, sendDelay, () => {
+      if (!service) {
+        throw new Error('Slack service must be ready before delivery starts.');
+      }
+
+      shutdown = service.onApplicationShutdown();
+    });
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      transport: {
+        create: async () => transport,
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    service = await initializeSlackService(container);
+    const delivery = service.send({ text: 'Reentrant shutdown delivery' });
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(transport.sendCalls).toBe(1);
+    expect(transport.closeCalls).toBe(0);
+
+    resolveSend();
+
+    await expect(delivery).resolves.toMatchObject({ ok: true });
+    await shutdown;
+    expect(transport.closeCalls).toBe(1);
+  });
+
   it('wraps owned transport shutdown failures as lifecycle errors', async () => {
     const closeError = new Error('close failed');
     const container = new Container();

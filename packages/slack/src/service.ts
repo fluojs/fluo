@@ -218,7 +218,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
     assertMessageContent(normalized);
     assertNotAborted(options.signal);
     this.assertCanDeliver();
-    const result = await this.trackInFlightDelivery(Promise.resolve(transport.send(normalized, options)));
+    const result = await this.trackInFlightDelivery(() => transport.send(normalized, options));
 
     return {
       channel: result.channel ?? normalized.channel,
@@ -382,7 +382,8 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
     }
   }
 
-  private async trackInFlightDelivery<T>(delivery: Promise<T>): Promise<T> {
+  private async trackInFlightDelivery<T>(start: () => Promise<T>): Promise<T> {
+    const delivery = Promise.resolve().then(start);
     this.inFlightDeliveries.add(delivery);
 
     try {
