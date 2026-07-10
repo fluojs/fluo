@@ -127,7 +127,11 @@ class DelayedLifecycleTransport implements SlackTransport {
   sendCalls = 0;
   verifyCalls = 0;
 
-  constructor(private readonly verifyDelay: Promise<void> | undefined = undefined) {}
+  constructor(
+    private readonly verifyDelay: Promise<void> | undefined = undefined,
+    private readonly sendDelay: Promise<void> | undefined = undefined,
+    private readonly onSendStarted: (() => void) | undefined = undefined,
+  ) {}
 
   async close(): Promise<void> {
     this.closeCalls += 1;
@@ -135,6 +139,8 @@ class DelayedLifecycleTransport implements SlackTransport {
 
   async send(message: NormalizedSlackMessage) {
     this.sendCalls += 1;
+    this.onSendStarted?.();
+    await this.sendDelay;
 
     return {
       channel: message.channel,
@@ -1863,6 +1869,41 @@ describe('SlackModule', () => {
     const service = await initializeSlackService(container);
     await Promise.all([service.onApplicationShutdown(), service.onApplicationShutdown()]);
 
+    expect(transport.closeCalls).toBe(1);
+  });
+
+  it('drains in-flight deliveries before closing owned transports during shutdown', async () => {
+    let resolveSend!: () => void;
+    let resolveSendStarted!: () => void;
+    const sendDelay = new Promise<void>((resolve) => {
+      resolveSend = resolve;
+    });
+    const sendStarted = new Promise<void>((resolve) => {
+      resolveSendStarted = resolve;
+    });
+    const transport = new DelayedLifecycleTransport(undefined, sendDelay, resolveSendStarted);
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      transport: {
+        create: async () => transport,
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await initializeSlackService(container);
+    const delivery = service.send({ text: 'Drain delivery' });
+    await sendStarted;
+    const shutdown = service.onApplicationShutdown();
+    await Promise.resolve();
+
+    expect(transport.sendCalls).toBe(1);
+    expect(transport.closeCalls).toBe(0);
+
+    resolveSend();
+
+    await expect(delivery).resolves.toMatchObject({ ok: true });
+    await shutdown;
     expect(transport.closeCalls).toBe(1);
   });
 

@@ -88,7 +88,7 @@ SlackModule.forRoot({
 });
 ```
 
-Status snapshots include `verifiedOnModuleInit` so your readiness dashboard can show whether this startup gate was requested. If `verify()` fails, the Slack lifecycle moves to `failed` and readiness remains not ready instead of deferring discovery to the first production alert.
+Status snapshots include `verifiedOnModuleInit` so your readiness dashboard can show whether this startup gate was requested. If `verify()` fails, the Slack lifecycle moves to `failed` and readiness remains not ready instead of deferring discovery to the first production alert. During shutdown, Slack rejects new deliveries, waits for active deliveries to settle, and only then closes factory-owned transports.
 
 ### Discord Registration
 ```typescript

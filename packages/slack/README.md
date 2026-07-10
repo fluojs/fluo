@@ -139,7 +139,7 @@ Behavioral contract notes:
 - `SlackService.send(...)`, `SlackService.sendMany(...)`, and `SlackService.sendNotification(...)` honor already-aborted signals before provider handoff, and the same signal is propagated to transport calls.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
 - Direct and notification-backed delivery require the lifecycle to be `ready`; calls before `onModuleInit()` finishes, after initialization failure, or during shutdown fail with `SlackLifecycleError` instead of lazily creating or reusing transports.
-- Shutdown awaits any in-flight factory-owned transport creation and closes it before completion.
+- Shutdown rejects new deliveries, waits for active deliveries and any in-flight factory-owned transport creation to settle, and then closes the owned transport before completion.
 - Factory-owned transport cleanup is serialized across bootstrap-failure cleanup and application shutdown, so the same owned transport is closed at most once even when those paths race.
 - `SlackService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
