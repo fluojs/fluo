@@ -299,6 +299,7 @@ Behavioral contract notes:
 
 - Queue support is opt-in. The root `@fluojs/email` entrypoint and `EmailModule` do not import `@fluojs/queue`, register `EmailNotificationsQueueWorker`, or require queue peer installation.
 - `EmailNotificationsQueueWorker` is exported from `@fluojs/email/queue` and must be registered by applications that enable queue-backed delivery.
+- Before transport handoff, the worker requires the queued notification channel to exactly match the configured `EmailChannel.channel`. A mismatch fails with `EmailMessageValidationError`, so non-email work cannot reach the email transport.
 - The worker reuses `EmailChannel` delivery semantics, so a queued job fails when the underlying transport reports zero accepted recipients or any `pending`/`rejected` recipients. This lets `@fluojs/queue` retry and dead-letter incomplete deliveries instead of acknowledging them as successful jobs.
 
 ### Intentional limitations
