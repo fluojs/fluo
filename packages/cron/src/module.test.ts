@@ -1366,6 +1366,37 @@ describe('@fluojs/cron', () => {
     await closeApplication(app);
   });
 
+  it('allows an inactive task lock TTL when only module distributed mode is enabled', async () => {
+    class LocalTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        distributed: false,
+        lockTtlMs: 500,
+        name: 'local-task-with-disabled-distributed-lock',
+      })
+      async run() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            lockTtlMs: 1_000,
+          },
+        }),
+      ],
+      providers: [LocalTaskService],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: new InMemoryLockRedisClient() }],
+      rootModule: AppModule,
+    });
+
+    await closeApplication(app);
+  });
+
   it('rejects an active task lock TTL below the distributed minimum', async () => {
     class DistributedTaskService {
       @Cron(CronExpression.EVERY_SECOND, {
