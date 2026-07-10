@@ -82,7 +82,7 @@ export class CacheRepository {
 - Fluo always forces `lazyConnect: true`, even if callers cast options manually, so sockets open during application bootstrap instead of import time.
 - During bootstrap, the lifecycle service only calls `connect()` while the client is still in ioredis `wait` state.
 - Lifecycle-owned `connect()` and `quit()` calls are bounded by package timeouts (`10_000` ms by default) so bootstrap and shutdown do not wait forever on a stalled Redis command. Override them with `lifecycle.connectTimeoutMs` and `lifecycle.quitTimeoutMs`; pass `0` only when the host process intentionally owns an unbounded wait.
-- During shutdown, ready/connecting clients attempt `quit()` first for graceful teardown, while wait/closed-transition states use `disconnect()` directly.
+- During shutdown, ready/connecting clients attempt `quit()` first for graceful teardown, while monitoring, wait, and closed-transition states use `disconnect()` directly.
 - If `quit()` fails, Fluo falls back to `disconnect()` and only rethrows when the client still remains open afterward.
 
 ### Named Clients

@@ -82,7 +82,7 @@ export class CacheRepository {
 - 호출자가 옵션을 강제로 캐스팅하더라도 Fluo는 항상 `lazyConnect: true`를 강제하므로, 소켓은 import 시점이 아니라 애플리케이션 bootstrap 중에 열립니다.
 - bootstrap 단계에서는 클라이언트가 ioredis `wait` 상태일 때만 lifecycle service가 `connect()`를 호출합니다.
 - lifecycle이 소유한 `connect()`와 `quit()` 호출은 package timeout(기본 `10_000` ms)으로 제한되어, Redis 명령이 멈춰도 bootstrap/shutdown이 무기한 대기하지 않습니다. `lifecycle.connectTimeoutMs`와 `lifecycle.quitTimeoutMs`로 재정의할 수 있으며, host process가 의도적으로 무제한 대기를 소유하는 경우에만 `0`을 전달하세요.
-- shutdown 단계에서는 ready/connecting 계열 상태에 `quit()`를 우선 시도해 정상 종료를 노리고, wait/종료 전이 상태에서는 `disconnect()`를 직접 사용합니다.
+- shutdown 단계에서는 ready/connecting 계열 상태에 `quit()`를 우선 시도해 정상 종료를 노리고, monitoring, wait/종료 전이 상태에서는 `disconnect()`를 직접 사용합니다.
 - `quit()`가 실패하면 Fluo는 `disconnect()`로 fallback하고, 그 뒤에도 클라이언트가 닫히지 않은 경우에만 에러를 다시 던집니다.
 
 ### 이름 있는 클라이언트
