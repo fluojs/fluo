@@ -140,6 +140,18 @@ When a worker exhausts its retry attempts, Queue appends a dead-letter record to
 
 `QueueModule.forRoot()` keeps the most recent `1_000` dead-letter entries per job by default. Set `defaultDeadLetterMaxEntries: false` to opt out, or provide a smaller positive number when operators need a tighter retention budget.
 
+Use `QueueLifecycleService.inspectDeadLetters(jobName, { limit })` or the same method on an injected `Queue` facade to inspect records without reading Queue's Redis keys directly:
+
+```typescript
+const inspection = await queue.inspectDeadLetters('ProcessOrderJob', { limit: 25 });
+
+for (const record of inspection.records) {
+  console.log(record.jobId, record.failedAt, record.errorMessage);
+}
+```
+
+Inspection is read-only and returns valid records in newest-first order. It reads Redis without lifecycle-gating the operation, so inspection does not start workers and remains usable while Queue is `idle` or after worker startup reaches `failed`, as long as the backing Redis client is reachable. Queue does not own the shared Redis client; after `RedisModule` shuts that client down, inspection propagates the backing Redis operation error instead of promising post-shutdown availability. The limit defaults to `100` stored entries and is capped at `1_000`; invalid limits fall back to the default. Malformed stored values are omitted and counted in `malformedRecordCount` for the inspected window, and `payload` remains `unknown` so application code must narrow its own job data. Inspection does not delete, replay, or mutate jobs or dead-letter records.
+
 Jobs must be JSON-serializable plain objects. Queue serializes the job payload before enqueueing and rehydrates the job prototype on the worker side.
 
 Treat low-level provider assembly as an internal implementation detail: low-level provider helpers are not part of the documented root-barrel contract.
@@ -149,7 +161,7 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 ### Core
 - `QueueModule`: Main entry point for queue registration.
 - `QueueModule.forRoot(options)`: Registers queue support for an application module.
-- `QueueLifecycleService`: Primary service for enqueuing jobs and creating lifecycle/status snapshots (`enqueue(job)`, `createPlatformStatusSnapshot()`).
+- `QueueLifecycleService`: Primary service for enqueuing jobs, read-only dead-letter inspection, and lifecycle/status snapshots (`enqueue(job)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`).
 - `@QueueWorker(JobClass, options?)`: Decorator to mark a class as a job handler.
 - `QUEUE`: Compatibility injection token for the queue facade.
 - `getQueueToken(scope?)`: Queue facade token helper. Omitting `scope` returns the default `QUEUE` token; a non-empty scope returns that scoped registration's facade token.
@@ -158,7 +170,10 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 
 
 ### Types
-- `Queue`: Compatibility facade with `enqueue(job)` for application code and the `QUEUE` token.
+- `Queue`: Application facade with `enqueue(job)` and read-only `inspectDeadLetters(jobName, options?)` for application code and the `QUEUE` token.
+- `QueueDeadLetterInspectionOptions`: Bounded dead-letter inspection settings (`limit`).
+- `QueueDeadLetterInspectionResult`: Newest-first valid records plus `malformedRecordCount` for the inspected window.
+- `QueueDeadLetterRecord`: Typed dead-letter metadata with an `unknown` application payload.
 - `QueueJobType`: Constructor type used to identify and rehydrate a job payload class.
 - `QueueModuleOptions`: Global queue settings (`global`, clientName, default attempts, `defaultBackoff`, concurrency, rate limiting, dead-letter retention).
 - `QueueWorkerOptions`: Per-job settings (attempts, backoff, concurrency, jobName, rate limiting).

@@ -140,6 +140,18 @@ Queue는 애플리케이션 부트스트랩 중 worker를 탐색하고 Queue가 
 
 `QueueModule.forRoot()`는 기본적으로 작업별 최근 데드 레터 엔트리 `1_000`개만 유지합니다. 무제한 보관이 꼭 필요하면 `defaultDeadLetterMaxEntries: false`로 opt-out 하고, 더 엄격한 운영 예산이 필요하면 더 작은 양의 정수를 지정하세요.
 
+Queue의 Redis key를 직접 읽지 않고 record를 확인하려면 `QueueLifecycleService.inspectDeadLetters(jobName, { limit })` 또는 주입한 `Queue` facade의 같은 메서드를 사용하세요.
+
+```typescript
+const inspection = await queue.inspectDeadLetters('ProcessOrderJob', { limit: 25 });
+
+for (const record of inspection.records) {
+  console.log(record.jobId, record.failedAt, record.errorMessage);
+}
+```
+
+Inspection은 read-only이며 유효한 record를 최신순으로 반환합니다. Redis read를 worker lifecycle state로 gate하지 않으므로 inspection이 worker를 시작하지 않으며, backing Redis client에 접근 가능한 동안에는 Queue가 `idle`이거나 worker startup이 `failed`에 도달한 뒤에도 사용할 수 있습니다. Queue는 shared Redis client를 소유하지 않습니다. `RedisModule`이 해당 client를 종료한 뒤에는 post-shutdown availability를 보장하지 않고 backing Redis operation error를 그대로 전달합니다. Limit은 기본적으로 저장된 entry `100`개이며 최대 `1_000`개로 제한되고, 잘못된 limit은 기본값으로 대체됩니다. Malformed stored value는 결과에서 제외되고 해당 inspection window의 `malformedRecordCount`에 집계됩니다. `payload`는 `unknown`으로 유지되므로 애플리케이션 코드가 자신의 job data를 직접 narrow해야 합니다. Inspection은 job이나 dead-letter record를 삭제, replay 또는 mutate하지 않습니다.
+
 Job은 JSON으로 직렬화 가능한 plain object여야 합니다. Queue는 enqueue 전에 job payload를 직렬화하고, worker 측에서 job prototype을 다시 입힙니다.
 
 저수준 provider 조합을 루트 barrel API의 일부가 아니라 내부 구현 세부사항으로 취급해야 합니다. 저수준 provider helper는 문서화된 루트 barrel 계약에 포함되지 않습니다.
@@ -149,7 +161,7 @@ Job은 JSON으로 직렬화 가능한 plain object여야 합니다. Queue는 enq
 ### 핵심 구성 요소
 - `QueueModule`: 큐 기능을 위한 기본 모듈입니다.
 - `QueueModule.forRoot(options)`: 애플리케이션 수준 큐 등록을 구성합니다.
-- `QueueLifecycleService`: 작업을 큐에 추가하고 lifecycle/status snapshot을 생성(`enqueue(job)`, `createPlatformStatusSnapshot()`)하기 위한 기본 서비스입니다.
+- `QueueLifecycleService`: 작업 enqueue, read-only dead-letter inspection, lifecycle/status snapshot 생성(`enqueue(job)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`)을 위한 기본 서비스입니다.
 - `@QueueWorker(JobClass, options?)`: 특정 작업을 처리할 핸들러를 지정하는 데코레이터입니다.
 - `QUEUE`: queue facade를 위한 호환성 주입 토큰입니다.
 - `getQueueToken(scope?)`: Queue facade token helper입니다. `scope`를 생략하면 기본 `QUEUE` token을 반환하고, 비어 있지 않은 scope는 해당 scoped registration의 facade token을 반환합니다.
@@ -158,7 +170,10 @@ Job은 JSON으로 직렬화 가능한 plain object여야 합니다. Queue는 enq
 
 
 ### 타입
-- `Queue`: 애플리케이션 코드와 `QUEUE` 토큰에서 사용하는 `enqueue(job)` 호환성 facade입니다.
+- `Queue`: 애플리케이션 코드와 `QUEUE` 토큰에서 사용하는 `enqueue(job)` 및 read-only `inspectDeadLetters(jobName, options?)` facade입니다.
+- `QueueDeadLetterInspectionOptions`: Bounded dead-letter inspection 설정(`limit`) 타입입니다.
+- `QueueDeadLetterInspectionResult`: 최신순의 유효 record와 inspection window의 `malformedRecordCount`를 제공하는 결과 타입입니다.
+- `QueueDeadLetterRecord`: `unknown` 애플리케이션 payload를 포함하는 typed dead-letter metadata입니다.
 - `QueueJobType`: job payload class를 식별하고 rehydrate하는 데 사용하는 constructor 타입입니다.
 - `QueueModuleOptions`: 전역 큐 설정(`global`, clientName, 기본 시도 횟수, `defaultBackoff`, 동시성, 전송률 제한, dead-letter retention 등)을 위한 타입입니다.
 - `QueueWorkerOptions`: 개별 작업 설정(시도 횟수, 백오프, 동시성, jobName, 전송률 제한 등)을 위한 타입입니다.

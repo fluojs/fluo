@@ -115,6 +115,14 @@ Some jobs still fail after every retry attempt. Those failures must not disappea
 
 In v2.0.0, dead letters matter most for integration-heavy work. Failed invoice renders, failed marketplace syncs, and failed bulk notification exports are representative examples. Operators need enough job payload context to diagnose failures safely. At the same time, job bodies must not contain secrets or unnecessary personal data. A dead letter is operational evidence. It should be useful, but its scope should stay limited.
 
+Operators can use the read-only public inspection surface instead of depending on Queue's Redis key format:
+
+```typescript
+const inspection = await queue.inspectDeadLetters('GenerateInvoiceJob', { limit: 50 });
+```
+
+`inspection.records` is newest-first and bounded to at most `1_000` stored entries per call. Malformed stored values are omitted and reported through `malformedRecordCount`; payloads remain `unknown` until FluoShop narrows them to its own job shape. Inspection never deletes or replays a job, so recovery stays an explicit application or operator workflow.
+
 ## 11.6 Named Redis clients and workload isolation
 
 The README describes `clientName` support for non-default Redis registration. This option is needed in deployments where queue traffic should not compete with other Redis-backed features. FluoShop can keep the default Redis client for cache and lightweight coordination, then dedicate a separate named Redis client to background jobs.
@@ -163,7 +171,7 @@ As FluoShop moves to v2.0.0, it no longer stops at being event-aware. It recogni
 - `@fluojs/queue` gives FluoShop Redis-backed background job processing with worker discovery and lifecycle-managed enqueueing.
 - A job is a durable handoff for slow or failure-prone work such as invoice generation, email batches, and catalog syncs.
 - Retry attempts and backoff strategies should be chosen per workload rather than copied uncritically.
-- The dead-letter list preserves repeatedly failed jobs under a bounded retention policy so operators can inspect them.
+- The dead-letter list preserves repeatedly failed jobs under a bounded retention policy, and the read-only inspection API returns newest-first typed metadata without exposing Queue's Redis key format.
 - Queue starts processors after the bootstrap-ready handoff and uses `workerShutdownTimeoutMs` to bound shutdown waiting for stuck processors.
 - FluoShop v2.0.0 now moves expensive post-order work behind a queue boundary instead of extending the customer request path.
 
