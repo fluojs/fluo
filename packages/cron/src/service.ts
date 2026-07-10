@@ -566,7 +566,7 @@ export class CronLifecycleService
     assertValidSchedulingTaskName(descriptor.taskName);
     this.assertTaskNameAvailable(descriptor.taskName);
 
-    if (descriptor.distributed) {
+    if (this.options.distributed.enabled && descriptor.distributed) {
       assertValidLockTtlMs(descriptor.lockTtlMs);
     }
 
