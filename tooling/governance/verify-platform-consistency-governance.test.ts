@@ -1149,7 +1149,9 @@ describe('package surface CQRS responsibility discoverability', () => {
 
     for (const markdown of [englishArchitecture, koreanArchitecture]) {
       expect(markdown).not.toContain('AsyncLocalStorage');
-      expect(markdown).toContain('branded');
+      expect(markdown).toContain('frozen fieldless');
+      expect(markdown).toContain('private state');
+      expect(markdown).toContain('provider token');
     }
   });
 });
