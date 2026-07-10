@@ -46,6 +46,7 @@ const mockRedisState = vi.hoisted(() => ({
   events: [] as string[],
   getError: undefined as Error | undefined,
   instances: [] as MockRedisInstance[],
+  initialStatus: 'wait',
   disconnectStatus: undefined as string | undefined,
   quitError: undefined as Error | undefined,
   quitDeferred: undefined as Deferred<'OK'> | undefined,
@@ -57,7 +58,7 @@ const mockRedisState = vi.hoisted(() => ({
 vi.mock('ioredis', () => ({
   default: class MockRedis {
     readonly options: Record<string, unknown>;
-    status = 'wait';
+    status = mockRedisState.initialStatus;
     private readonly storage = new Map<string, string>();
 
     constructor(options: Record<string, unknown> = {}) {
@@ -164,6 +165,7 @@ describe('@fluojs/redis', () => {
     mockRedisState.events.length = 0;
     mockRedisState.getError = undefined;
     mockRedisState.instances.length = 0;
+    mockRedisState.initialStatus = 'wait';
     mockRedisState.disconnectStatus = undefined;
     mockRedisState.quitError = undefined;
     mockRedisState.quitDeferred = undefined;
@@ -511,6 +513,22 @@ describe('@fluojs/redis', () => {
     await expect(app.close()).resolves.toBeUndefined();
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
     expect(mockRedisState.instances[0]?.status).toBe('close');
+  });
+
+  it('disconnects a monitoring client during shutdown', async () => {
+    mockRedisState.initialStatus = 'monitoring';
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    await app.close();
+
+    expect(mockRedisState.events).toEqual(['disconnect']);
+    expect(mockRedisState.instances[0]?.status).toBe('end');
   });
 
   it('falls back to disconnect for each named client when quit fails after bootstrap', async () => {

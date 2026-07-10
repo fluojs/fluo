@@ -7,7 +7,7 @@ import { getRedisComponentId, REDIS_CLIENT } from './tokens.js';
 import type { RedisLifecycleOptions } from './types.js';
 
 const QUITTABLE_STATUSES = new Set(['connect', 'connecting', 'ready', 'reconnecting']);
-const DISCONNECTABLE_STATUSES = new Set(['close', 'connect', 'connecting', 'ready', 'reconnecting', 'wait']);
+const DISCONNECTABLE_STATUSES = new Set(['close', 'connect', 'connecting', 'monitoring', 'ready', 'reconnecting', 'wait']);
 const DEFAULT_REDIS_LIFECYCLE_TIMEOUT_MS = 10_000;
 
 function isClosed(status: string): boolean {
