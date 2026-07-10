@@ -70,7 +70,9 @@ base branch 기본값은 `main`이다.
 2. 기본값은 `authority_scope.pr_merge: true`다.
 3. PR merge method는 항상 `pr_merge_method: "squash"`로 기록한다.
 4. `developer-final` 정책을 명시적으로 선택한 경우에만 사람의 최종 확인 gate를 추가하며, 이때도 ledger의 기본 merge authority를 `false`로 낮추지 않는다.
-5. cleanup, root main sync, publish 권한은 PR merge authority와 별개이며 기본값은 `false`다.
+5. cleanup과 root main sync 권한은 PR merge authority와 별개이며 기본값은 각각 `authority_scope.cleanup_command_worktrees: true`, `authority_scope.root_main_sync_ff_only: true`다.
+6. publish 권한은 별도 authority로 유지하며 기본값은 `authority_scope.publish_via_github_actions: false`다.
+7. 기본값이 `true`여도 두 authority는 lane plan review gate에 명시해 사용자 승인을 받아야 하며, `create-lane` 자체는 cleanup이나 root main sync를 실행하지 않는다.
 
 ## Lane planning rules
 
@@ -125,8 +127,8 @@ base branch 기본값은 `main`이다.
     "issue_creation": false,
     "pr_creation": true,
     "pr_merge": true,
-    "cleanup_command_worktrees": false,
-    "root_main_sync_ff_only": false,
+    "cleanup_command_worktrees": true,
+    "root_main_sync_ff_only": true,
     "publish_via_github_actions": false
   },
   "confirmed_issues": [123],
