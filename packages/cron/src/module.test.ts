@@ -1339,7 +1339,15 @@ describe('@fluojs/cron', () => {
     expect(redis.setAttempts).toBe(0);
   });
 
-  it('preserves disabled distributed mode when an inactive TTL is below the distributed minimum', async () => {
+  it('preserves disabled distributed mode when inactive module and task TTLs are below the minimum', async () => {
+    class LocalTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        lockTtlMs: 500,
+        name: 'local-task-with-inactive-lock-ttl',
+      })
+      async run() {}
+    }
+
     class AppModule {}
     defineModule(AppModule, {
       imports: [
@@ -1350,11 +1358,43 @@ describe('@fluojs/cron', () => {
           },
         }),
       ],
+      providers: [LocalTaskService],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
 
     await closeApplication(app);
+  });
+
+  it('rejects an active task lock TTL below the distributed minimum', async () => {
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        distributed: true,
+        lockTtlMs: 500,
+        name: 'distributed-task-with-invalid-lock-ttl',
+      })
+      async run() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            lockTtlMs: 1_000,
+          },
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    await expect(
+      bootstrapApplication({
+        providers: [{ provide: REDIS_CLIENT, useValue: new InMemoryLockRedisClient() }],
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow(/lockTtlMs/i);
   });
 
   it('runs lifecycle hooks around successful cron execution', async () => {
@@ -2668,6 +2708,81 @@ describe('@fluojs/cron', () => {
     expect(secondStore.count).toBe(1);
 
     await appTwo.close();
+  });
+
+  it('unrefs and eventually clears lock renewal timers across bounded shutdown timeout', async () => {
+    const scheduled = createManualScheduler();
+    const redis = new InMemoryLockRedisClient();
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, { name: 'distributed-renewal-timer-timeout' })
+      async run() {
+        started.resolve();
+        await release.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-renewal-timer-timeout',
+            lockTtlMs: 60_000,
+          },
+          scheduler: scheduled.scheduler,
+          shutdown: {
+            timeoutMs: 0,
+          },
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const scheduledTask = scheduled.records[0];
+
+    if (!scheduledTask) {
+      throw new Error('Expected the distributed renewal timer task to be scheduled.');
+    }
+
+    const tickPromise = scheduledTask.tick();
+
+    try {
+      await started.promise;
+      await app.close();
+
+      const renewalTimer: unknown = setIntervalSpy.mock.results.at(-1)?.value;
+
+      if (
+        typeof renewalTimer !== 'object' ||
+        renewalTimer === null ||
+        !('hasRef' in renewalTimer) ||
+        typeof renewalTimer.hasRef !== 'function'
+      ) {
+        throw new Error('Expected the Node.js lock renewal timer handle.');
+      }
+
+      expect(renewalTimer.hasRef()).toBe(false);
+
+      release.resolve();
+      await tickPromise;
+
+      expect(clearIntervalSpy).toHaveBeenCalledWith(renewalTimer);
+    } finally {
+      release.resolve();
+      await tickPromise;
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+    }
   });
 
   it('retries distributed lock release on a later shutdown call after a timed-out task settles', async () => {
