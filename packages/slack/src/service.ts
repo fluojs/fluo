@@ -218,7 +218,10 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
     assertMessageContent(normalized);
     assertNotAborted(options.signal);
     this.assertCanDeliver();
-    const result = await this.trackInFlightDelivery(() => transport.send(normalized, options));
+    const result = await this.trackInFlightDelivery(() => {
+      assertNotAborted(options.signal);
+      return transport.send(normalized, options);
+    });
 
     return {
       channel: result.channel ?? normalized.channel,

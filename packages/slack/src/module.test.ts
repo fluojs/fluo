@@ -594,6 +594,23 @@ describe('SlackModule', () => {
     expect(transport.sent).toEqual([]);
   });
 
+  it('honors a signal aborted between delivery tracking and provider handoff', async () => {
+    const controller = new AbortController();
+    const transport = new PassiveTransport();
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await initializeSlackService(container);
+    const delivery = service.send({ text: 'Abort before handoff' }, { signal: controller.signal });
+    queueMicrotask(() => controller.abort());
+
+    await expect(delivery).rejects.toMatchObject({ name: 'AbortError' });
+    expect(transport.sent).toEqual([]);
+  });
+
   it('honors an already-aborted signal before notification rendering or provider handoff', async () => {
     const controller = new AbortController();
     const render = vi.fn(async () => ({ text: 'rendered' }));
