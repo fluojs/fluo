@@ -299,6 +299,7 @@ Behavioral contract 메모:
 
 - Queue 지원은 opt-in입니다. 루트 `@fluojs/email` 엔트리포인트와 `EmailModule`은 `@fluojs/queue`를 import하거나 `EmailNotificationsQueueWorker`를 등록하거나 queue peer 설치를 요구하지 않습니다.
 - `EmailNotificationsQueueWorker`는 `@fluojs/email/queue`에서 export되며, queue 기반 전달을 활성화하는 애플리케이션이 직접 등록해야 합니다.
+- worker는 transport handoff 전에 queued notification channel이 구성된 `EmailChannel.channel`과 정확히 일치하는지 확인합니다. 일치하지 않으면 `EmailMessageValidationError`로 실패하므로 non-email 작업이 email transport에 도달하지 않습니다.
 - worker는 `EmailChannel` 전달 semantics를 재사용하므로 transport가 수락된 수신자 0명 또는 `pending`/`rejected` 수신자를 보고하면 queued job이 실패합니다. 따라서 incomplete delivery는 성공한 job으로 승인되지 않고 `@fluojs/queue`의 retry/dead-letter 흐름으로 넘어갑니다.
 
 ### 의도적인 제한 사항

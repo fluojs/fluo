@@ -4,6 +4,7 @@ import { QueueWorker, type QueueLifecycleService, type QueueWorkerOptions } from
 
 import { DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS } from './constants.js';
 import { EmailChannel } from './channel.js';
+import { EmailMessageValidationError } from './errors.js';
 import type { EmailNotificationDispatchRequest } from './types.js';
 
 /** Queue worker execution defaults used by the built-in notifications queue integration. */
@@ -46,12 +47,10 @@ export class EmailNotificationQueueJob {
 export function createEmailNotificationsQueueAdapter(queue: QueueLifecycleService): NotificationsQueueAdapter {
   return {
     enqueue(job: NotificationsQueueJob): Promise<string> {
-      return queue.enqueue(new EmailNotificationQueueJob(job.notification as EmailNotificationDispatchRequest, job.queuedAt));
+      return queue.enqueue(new EmailNotificationQueueJob(job.notification, job.queuedAt));
     },
     enqueueMany(jobs: readonly NotificationsQueueJob[]): Promise<readonly string[]> {
-      return Promise.all(
-        jobs.map((job) => queue.enqueue(new EmailNotificationQueueJob(job.notification as EmailNotificationDispatchRequest, job.queuedAt))),
-      );
+      return Promise.all(jobs.map((job) => queue.enqueue(new EmailNotificationQueueJob(job.notification, job.queuedAt))));
     },
   };
 }
@@ -67,8 +66,17 @@ export class EmailNotificationsQueueWorker {
    *
    * @param job Queued notification payload created by `createEmailNotificationsQueueAdapter(...)`.
    * @returns A promise that resolves only when email delivery is accepted by the channel contract.
+   * @throws {EmailMessageValidationError} When the queued notification targets another configured channel.
    */
   async handle(job: EmailNotificationQueueJob): Promise<void> {
+    const expectedChannel = this.channel.channel;
+
+    if (job.notification.channel !== expectedChannel) {
+      throw new EmailMessageValidationError(
+        `Queued notification channel "${job.notification.channel}" does not match configured email channel "${expectedChannel}".`,
+      );
+    }
+
     await this.channel.send(job.notification, {});
   }
 }
