@@ -1,7 +1,7 @@
 ---
 description: fluo-package-issue-registration-reviewer reviews drafted package audit issues read-only and decides register, defer, or reject before the command harness creates GitHub issues.
 mode: subagent
-model: openai/gpt-5.4
+model: openai/gpt-5.6-terra-pro
 options:
   reasoningEffort: high
   reasoningSummary: auto

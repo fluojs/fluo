@@ -1,7 +1,7 @@
 ---
 description: fluo-package-docs-book-reviewer audits a single package's README, docs, book, and examples synchronization read-only and returns schema-compliant findings only.
 mode: subagent
-model: openai/gpt-5.4
+model: openai/gpt-5.6-terra-pro
 options:
   reasoningEffort: high
   reasoningSummary: auto
