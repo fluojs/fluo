@@ -10,7 +10,7 @@ import type {
   OnModuleDestroy,
 } from '@fluojs/runtime';
 import type { BootstrapReadySignal } from '@fluojs/runtime/internal';
-import { Queue as BullQueue, Worker as BullWorker, type ConnectionOptions, type JobsOptions, type Job as BullJob } from 'bullmq';
+import { type Job as BullJob, Queue as BullQueue, Worker as BullWorker, type ConnectionOptions, type JobsOptions } from 'bullmq';
 
 import { QueueDeadLetterManager, type QueueRedisDeadLetterClient } from './dead-letter-manager.js';
 import { normalizePositiveInteger, withTimeout } from './helpers.js';
@@ -19,9 +19,8 @@ import {
   type QueueLifecycleState,
   type QueuePlatformStatusSnapshot,
 } from './status.js';
-import { getQueueLifecycleServiceToken, getQueueToken, QUEUE } from './tokens.js';
 import type { QueueModuleContext } from './tokens.js';
-import { discoverQueueWorkerDescriptors } from './worker-discovery.js';
+import { getQueueLifecycleServiceToken, getQueueToken, QUEUE } from './tokens.js';
 import type {
   NormalizedQueueModuleOptions,
   Queue,
@@ -31,6 +30,7 @@ import type {
   QueueJobType,
   QueueWorkerDescriptor,
 } from './types.js';
+import { discoverQueueWorkerDescriptors } from './worker-discovery.js';
 
 type QueuePayload = Record<string, unknown>;
 type QueueInstance = BullQueue;
@@ -275,6 +275,8 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   /**
    * Reads a bounded snapshot of dead-letter records for one queue job name.
    *
+   * Inspection reads Redis directly without starting workers or depending on the worker lifecycle state.
+   *
    * @param jobName Queue worker job name whose dead letters should be inspected.
    * @param options Optional bounded inspection settings.
    * @returns Valid records in newest-first order plus the malformed count for the inspected window.
@@ -283,12 +285,6 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     jobName: string,
     options?: QueueDeadLetterInspectionOptions,
   ): Promise<QueueDeadLetterInspectionResult> {
-    await this.ensureStarted();
-
-    if (this.lifecycleState !== 'started') {
-      throw new Error(`Queue lifecycle state is ${this.lifecycleState}.`);
-    }
-
     return this.deadLetterManager.inspect(jobName, options);
   }
 
