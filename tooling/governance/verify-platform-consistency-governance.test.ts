@@ -378,6 +378,26 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts Queue dead-letter inspection guidance with bilingual docs and package regression coverage', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/queue/README.md',
+        'packages/queue/README.ko.md',
+        'docs/reference/package-surface.md',
+        'docs/reference/package-surface.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'book/intermediate/ch11-queue.md',
+        'book/intermediate/ch11-queue.ko.md',
+        'packages/queue/src/dead-letter-manager.test.ts',
+        'packages/queue/src/module.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('accepts JWT package-surface guidance when context and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 

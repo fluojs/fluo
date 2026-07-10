@@ -33,6 +33,8 @@ describe('@fluojs/queue root barrel public surface', () => {
     expect(readme).toContain('Duplicate default scoped registrations such as two `QueueModule.forRoot({ global: false })` imports');
     expect(readme).toContain('`QueueLifecycleService.createPlatformStatusSnapshot()` uses the same public snapshot contract');
     expect(readme).toContain('worker-start failures report not-ready/unhealthy with `workerStartFailures`');
+    expect(readme).toContain('`QueueLifecycleService.inspectDeadLetters(jobName, { limit })`');
+    expect(readme).toContain('Inspection does not delete, replay, or mutate jobs or dead-letter records.');
     expect(koreanReadme).toContain(
       '`QueueModule.forRoot(...)`는 애플리케이션 수준 큐 등록을 위한 지원되는 루트 엔트리포인트입니다.',
     );
@@ -42,6 +44,8 @@ describe('@fluojs/queue root barrel public surface', () => {
     expect(koreanReadme).toContain('`QueueModule.forRoot({ global: false })`를 두 번 가져오는 duplicate default scoped registration');
     expect(koreanReadme).toContain('`QueueLifecycleService.createPlatformStatusSnapshot()`은 `createQueuePlatformStatusSnapshot(...)`과 같은 공개 snapshot 계약');
     expect(koreanReadme).toContain('worker-start failure는 `workerStartFailures`와 `lastWorkerStartFailure` details를 포함해 not-ready/unhealthy');
+    expect(koreanReadme).toContain('`QueueLifecycleService.inspectDeadLetters(jobName, { limit })`');
+    expect(koreanReadme).toContain('Inspection은 job이나 dead-letter record를 삭제, replay 또는 mutate하지 않습니다.');
   });
 
   it('keeps the README worker options aligned with the supported public contract', () => {

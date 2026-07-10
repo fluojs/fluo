@@ -9,7 +9,7 @@ import type {
   OnApplicationShutdown,
   OnModuleDestroy,
 } from '@fluojs/runtime';
-import { type BootstrapReadySignal } from '@fluojs/runtime/internal';
+import type { BootstrapReadySignal } from '@fluojs/runtime/internal';
 import { Queue as BullQueue, Worker as BullWorker, type ConnectionOptions, type JobsOptions, type Job as BullJob } from 'bullmq';
 
 import { QueueDeadLetterManager, type QueueRedisDeadLetterClient } from './dead-letter-manager.js';
@@ -26,6 +26,8 @@ import type {
   NormalizedQueueModuleOptions,
   Queue,
   QueueBackoffOptions,
+  QueueDeadLetterInspectionOptions,
+  QueueDeadLetterInspectionResult,
   QueueJobType,
   QueueWorkerDescriptor,
 } from './types.js';
@@ -104,9 +106,14 @@ function hasQueueRedisClient(value: unknown): value is QueueRedisClient {
     return false;
   }
 
-  const client = value as { duplicate?: unknown; ltrim?: unknown; rpush?: unknown };
+  const client = value as { duplicate?: unknown; lrange?: unknown; ltrim?: unknown; rpush?: unknown };
 
-  return typeof client.duplicate === 'function' && typeof client.rpush === 'function' && typeof client.ltrim === 'function';
+  return (
+    typeof client.duplicate === 'function' &&
+    typeof client.lrange === 'function' &&
+    typeof client.rpush === 'function' &&
+    typeof client.ltrim === 'function'
+  );
 }
 
 function isQueuePayload(value: unknown): value is QueuePayload {
@@ -266,6 +273,26 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   }
 
   /**
+   * Reads a bounded snapshot of dead-letter records for one queue job name.
+   *
+   * @param jobName Queue worker job name whose dead letters should be inspected.
+   * @param options Optional bounded inspection settings.
+   * @returns Valid records in newest-first order plus the malformed count for the inspected window.
+   */
+  async inspectDeadLetters(
+    jobName: string,
+    options?: QueueDeadLetterInspectionOptions,
+  ): Promise<QueueDeadLetterInspectionResult> {
+    await this.ensureStarted();
+
+    if (this.lifecycleState !== 'started') {
+      throw new Error(`Queue lifecycle state is ${this.lifecycleState}.`);
+    }
+
+    return this.deadLetterManager.inspect(jobName, options);
+  }
+
+  /**
    * Creates a platform status snapshot for health checks and diagnostics.
    *
    * @returns A structured snapshot describing lifecycle state, discovered workers, and pending dead-letter writes.
@@ -393,7 +420,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
 
   private resolveRedisClient(): QueueRedisClient {
     if (!hasQueueRedisClient(this.redisClient)) {
-      throw new Error('@fluojs/queue requires a Redis client with duplicate(), rpush(), and ltrim() methods.');
+      throw new Error('@fluojs/queue requires a Redis client with duplicate(), lrange(), rpush(), and ltrim() methods.');
     }
 
     return this.redisClient;

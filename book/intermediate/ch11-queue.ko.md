@@ -115,6 +115,14 @@ fixed backoff는 예측하기 쉽습니다. exponential backoff는 부하를 받
 
 v2.0.0에서 dead letter는 integration-heavy work에서 특히 중요합니다. failed invoice render, failed marketplace sync, failed bulk notification export가 대표적인 예입니다. 운영자는 실패를 안전하게 진단할 만큼의 job payload context를 확보해야 합니다. 동시에 job body에 secret이나 불필요한 personal data를 넣어서는 안 됩니다. Dead letter는 operational evidence입니다. 유용해야 하지만, 범위는 제한되어야 합니다.
 
+운영자는 Queue의 Redis key 형식에 의존하지 않고 read-only public inspection surface를 사용할 수 있습니다.
+
+```typescript
+const inspection = await queue.inspectDeadLetters('GenerateInvoiceJob', { limit: 50 });
+```
+
+`inspection.records`는 최신순이며 호출당 저장된 entry 최대 `1_000`개로 제한됩니다. Malformed stored value는 결과에서 제외되고 `malformedRecordCount`로 보고되며, FluoShop이 자신의 job shape로 narrow하기 전까지 payload는 `unknown`으로 유지됩니다. Inspection은 job을 삭제하거나 replay하지 않으므로 recovery는 명시적인 application 또는 operator workflow로 남습니다.
+
 ## 11.6 Named Redis clients and workload isolation
 
 README는 non-default Redis registration을 위한 `clientName` 지원을 설명합니다. queue traffic이 다른 Redis 기반 기능과 경쟁하면 안 되는 배포에서 필요한 옵션입니다. FluoShop은 cache와 가벼운 coordination을 위해 기본 Redis client를 유지하고, background job에는 별도의 named Redis client를 전용으로 둘 수 있습니다.
@@ -163,7 +171,7 @@ v2.0.0으로 넘어가면서 FluoShop은 더 이상 event-aware 수준에 머무
 - `@fluojs/queue`는 FluoShop에 worker discovery와 lifecycle-managed enqueueing을 갖춘 Redis-backed background job processing을 제공합니다.
 - job은 invoice generation, email batch, catalog sync처럼 느리거나 failure-prone한 작업을 위한 durable handoff입니다.
 - retry attempt와 backoff strategy는 무비판적으로 복사하지 말고 workload별로 선택해야 합니다.
-- dead-letter list는 bounded retention policy 아래에서 반복 실패 job을 보존하므로 운영자가 inspect할 수 있습니다.
+- dead-letter list는 bounded retention policy 아래에서 반복 실패 job을 보존하며, read-only inspection API는 Queue의 Redis key 형식을 노출하지 않고 최신순 typed metadata를 반환합니다.
 - Queue는 bootstrap-ready handoff 이후 processor를 시작하고, `workerShutdownTimeoutMs`로 stuck processor를 기다리는 종료 시간을 제한합니다.
 - FluoShop v2.0.0은 이제 post-order의 expensive work를 customer request path를 늘리는 대신 queue boundary 뒤로 이동시킵니다.
 
