@@ -1761,6 +1761,40 @@ describe('@fluojs/queue', () => {
     });
   });
 
+  it('closes Queue-owned Redis duplicates without closing the shared client when duplicate connect fails', async () => {
+    // Given
+    class DuplicateConnectFailureJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(DuplicateConnectFailureJob)
+    class DuplicateConnectFailureWorker {
+      async handle(_job: DuplicateConnectFailureJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [DuplicateConnectFailureWorker],
+    });
+
+    const redis = new MockRedisClient();
+    redis.failConnectOnDuplicate = 2;
+
+    // When
+    const bootstrap = bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    // Then
+    await expect(bootstrap).rejects.toThrow('connect fail:dup-2');
+    expect(redis.duplicates).toHaveLength(2);
+    expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+    expect(redis.quitCalls).toEqual([]);
+    expect(redis.disconnectCalls).toEqual([]);
+  });
+
   it('rolls back partially initialized workers, queues, and connections when startup fails', async () => {
     class StartupFirstJob {
       constructor(public readonly id: string) {}
@@ -2076,6 +2110,11 @@ describe('@fluojs/queue', () => {
 
     const worker = bullmqState.workers.get('hanging-processor-job');
     expect(worker?.closeCalls).toBe(2);
+    expect(bullmqState.queues.get('hanging-processor-job')?.closeCalls).toBe(1);
+    expect(redis.duplicates).toHaveLength(2);
+    expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+    expect(redis.quitCalls).toEqual([]);
+    expect(redis.disconnectCalls).toEqual([]);
     expect(loggerEvents.some((event) => event.includes('Failed to close queue worker within shutdown timeout.'))).toBe(true);
   });
 
