@@ -150,9 +150,9 @@ This boundary is operationally better than generating the PDF inline. The custom
 
 ### 11.7.1 Bootstrap readiness and bounded shutdown
 
-Queue lifecycle behavior is part of the operational contract. During application bootstrap, Queue can create the BullMQ queues, workers, and Redis duplicate connections it owns, but worker processors are started only after Queue reaches its bootstrap-ready handoff. That prevents background processors from racing ahead of providers that are still running `onApplicationBootstrap()`.
+Queue lifecycle behavior is part of the operational contract. During application bootstrap, Queue can create the BullMQ queues, workers, and Redis duplicate connections it owns, but worker processors are started only after Queue reaches its bootstrap-ready handoff. That prevents background processors from racing ahead of providers that are still running `onApplicationBootstrap()`. Once Queue is `started` and all discovered processors are ready, pending dead-letter writes do not make readiness fail: readiness stays `ready`, while health is `degraded` until those writes leave the pending set.
 
-Shutdown follows the opposite rule. Once shutdown begins, Queue reports `stopping`, rejects new enqueue attempts, closes queue-owned resources, and drains pending dead-letter writes. `workerShutdownTimeoutMs` bounds how long Queue waits for active processors before it logs the timeout and force-closes the BullMQ worker. This keeps a stuck background job from blocking the whole application shutdown forever.
+Shutdown follows the opposite rule. Once shutdown begins, Queue reports `stopping`, so readiness is `not-ready` and health is `degraded`; it rejects new enqueue attempts, closes queue-owned resources, and then attempts to drain pending dead-letter writes. Each pending write gets at most `5_000ms` to settle. On timeout, Queue logs the failure, stops counting that write as pending, and continues shutdown without guaranteeing that the dead-letter record reached Redis. `workerShutdownTimeoutMs` separately bounds how long Queue waits for active processors before it logs the timeout and force-closes the BullMQ worker. These two bounded waits keep a stuck processor or Redis write from blocking application shutdown forever.
 
 ## 11.8 Queue workers are not a second hidden application
 
@@ -172,7 +172,7 @@ As FluoShop moves to v2.0.0, it no longer stops at being event-aware. It recogni
 - A job is a durable handoff for slow or failure-prone work such as invoice generation, email batches, and catalog syncs.
 - Retry attempts and backoff strategies should be chosen per workload rather than copied uncritically.
 - The dead-letter list preserves repeatedly failed jobs under a bounded retention policy, and the read-only inspection API returns newest-first typed metadata without exposing Queue's Redis key format.
-- Queue starts processors after the bootstrap-ready handoff and uses `workerShutdownTimeoutMs` to bound shutdown waiting for stuck processors.
+- Queue starts processors after the bootstrap-ready handoff. Only while Queue is `started` and all discovered processors are ready do pending dead-letter writes leave readiness `ready` while health is `degraded`; `stopping` is not-ready/degraded and `stopped` is not-ready/unhealthy. Shutdown is bounded by a `5_000ms` per-write drain plus `workerShutdownTimeoutMs` for stuck processors.
 - FluoShop v2.0.0 now moves expensive post-order work behind a queue boundary instead of extending the customer request path.
 
 The practical standard is clear. If work is slow, retryable, and operationally distinct, a queue is likely a better fit than another synchronous callback in the main flow.

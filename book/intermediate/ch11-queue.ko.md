@@ -150,9 +150,9 @@ v2.0.0에서 대표적인 background flow는 다음과 같습니다.
 
 ### 11.7.1 Bootstrap readiness and bounded shutdown
 
-Queue lifecycle 동작은 운영 계약의 일부입니다. 애플리케이션 부트스트랩 중 Queue는 자신이 소유하는 BullMQ queue, worker, Redis duplicate connection을 만들 수 있지만, worker processor는 Queue가 bootstrap-ready handoff에 도달한 뒤에만 시작합니다. 따라서 background processor가 아직 `onApplicationBootstrap()`을 실행 중인 provider보다 앞서 실행되는 race를 피합니다.
+Queue lifecycle 동작은 운영 계약의 일부입니다. 애플리케이션 부트스트랩 중 Queue는 자신이 소유하는 BullMQ queue, worker, Redis duplicate connection을 만들 수 있지만, worker processor는 Queue가 bootstrap-ready handoff에 도달한 뒤에만 시작합니다. 따라서 background processor가 아직 `onApplicationBootstrap()`을 실행 중인 provider보다 앞서 실행되는 race를 피합니다. Queue가 `started`이고 탐색된 모든 processor가 ready인 상태에서는 pending dead-letter write가 있어도 readiness가 실패하지 않습니다. Readiness는 `ready`를 유지하고, 해당 write가 pending set에서 빠질 때까지 health만 `degraded`가 됩니다.
 
-Shutdown은 반대 규칙을 따릅니다. 종료가 시작되면 Queue는 `stopping`을 보고하고, 새 enqueue를 거부하며, Queue 소유 리소스를 닫고 pending dead-letter write를 drain합니다. `workerShutdownTimeoutMs`는 active processor를 기다리는 시간을 제한하며, 시간이 지나면 Queue가 timeout을 기록하고 BullMQ worker를 force-close합니다. 이 덕분에 멈춘 background job이 전체 애플리케이션 종료를 영원히 막지 못합니다.
+Shutdown은 반대 규칙을 따릅니다. 종료가 시작되면 Queue는 `stopping`을 보고하므로 readiness는 `not-ready`, health는 `degraded`가 됩니다. 그다음 새 enqueue를 거부하고 Queue 소유 리소스를 닫은 뒤 pending dead-letter write의 drain을 시도합니다. 각 pending write가 settle할 수 있는 시간은 최대 `5_000ms`입니다. Timeout되면 Queue는 실패를 기록하고 해당 write를 pending count에서 제외한 뒤, dead-letter record가 Redis에 도달했다는 보장 없이 종료를 계속합니다. `workerShutdownTimeoutMs`는 별도로 active processor를 기다리는 시간을 제한하며, 시간이 지나면 Queue가 timeout을 기록하고 BullMQ worker를 force-close합니다. 이 두 bounded wait 덕분에 멈춘 processor나 Redis write가 전체 애플리케이션 종료를 영원히 막지 못합니다.
 
 ## 11.8 Queue workers are not a second hidden application
 
@@ -172,7 +172,7 @@ v2.0.0으로 넘어가면서 FluoShop은 더 이상 event-aware 수준에 머무
 - job은 invoice generation, email batch, catalog sync처럼 느리거나 failure-prone한 작업을 위한 durable handoff입니다.
 - retry attempt와 backoff strategy는 무비판적으로 복사하지 말고 workload별로 선택해야 합니다.
 - dead-letter list는 bounded retention policy 아래에서 반복 실패 job을 보존하며, read-only inspection API는 Queue의 Redis key 형식을 노출하지 않고 최신순 typed metadata를 반환합니다.
-- Queue는 bootstrap-ready handoff 이후 processor를 시작하고, `workerShutdownTimeoutMs`로 stuck processor를 기다리는 종료 시간을 제한합니다.
+- Queue는 bootstrap-ready handoff 이후 processor를 시작합니다. Queue가 `started`이고 탐색된 모든 processor가 ready인 동안에만 pending dead-letter write가 readiness를 `ready`로 유지하고 health를 `degraded`로 만들며, `stopping`은 not-ready/degraded, `stopped`는 not-ready/unhealthy입니다. 종료는 각 write의 `5_000ms` drain과 stuck processor를 위한 `workerShutdownTimeoutMs`로 제한됩니다.
 - FluoShop v2.0.0은 이제 post-order의 expensive work를 customer request path를 늘리는 대신 queue boundary 뒤로 이동시킵니다.
 
 실무적 기준은 분명합니다. 작업이 느리고, retry 가능하며, 운영적으로 구별되어야 한다면, 메인 플로의 또 다른 synchronous callback보다 queue가 더 적합할 가능성이 큽니다.
