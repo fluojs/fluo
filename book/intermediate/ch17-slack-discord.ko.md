@@ -88,7 +88,7 @@ SlackModule.forRoot({
 });
 ```
 
-상태 스냅샷은 `verifiedOnModuleInit`을 포함하므로 readiness dashboard에서 이 startup gate가 요청되었는지 확인할 수 있습니다. `verify()`가 실패하면 Slack lifecycle은 `failed`로 이동하고 readiness는 not ready로 남아, 첫 운영 알림이 실패한 뒤에야 문제를 발견하는 상황을 줄입니다.
+상태 스냅샷은 `verifiedOnModuleInit`을 포함하므로 readiness dashboard에서 이 startup gate가 요청되었는지 확인할 수 있습니다. `verify()`가 실패하면 Slack lifecycle은 `failed`로 이동하고 readiness는 not ready로 남아, 첫 운영 알림이 실패한 뒤에야 문제를 발견하는 상황을 줄입니다. shutdown 중에는 Slack이 새 전달을 거부하고 활성 전달이 settle될 때까지 기다린 뒤에만 factory-owned transport를 닫습니다.
 
 ### Discord Registration
 ```typescript

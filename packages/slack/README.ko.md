@@ -139,7 +139,7 @@ Behavioral contract 메모:
 - `SlackService.send(...)`, `SlackService.sendMany(...)`, `SlackService.sendNotification(...)`은 provider handoff 전에 이미 abort된 signal을 존중하며, 같은 signal을 transport 호출로 전달합니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
 - 직접 전달과 notifications 기반 전달은 lifecycle이 `ready`일 때만 허용됩니다. `onModuleInit()`이 끝나기 전, 초기화 실패 뒤, 또는 shutdown 중 호출하면 transport를 lazy 생성하거나 재사용하지 않고 `SlackLifecycleError`로 실패합니다.
-- shutdown은 진행 중인 factory 소유 transport 생성을 기다린 뒤 닫고 완료됩니다.
+- shutdown은 새 전달을 거부하고, 활성 전달과 진행 중인 factory 소유 transport 생성을 모두 settle한 뒤 소유한 transport를 닫고 완료됩니다.
 - factory 소유 transport cleanup은 bootstrap 실패 cleanup과 application shutdown 사이에서 직렬화되므로, 두 경로가 경합해도 같은 owned transport는 최대 한 번만 닫힙니다.
 - `SlackService.createPlatformStatusSnapshot()`은 호출자가 내부 옵션에 접근하지 않아도 lifecycle, readiness, transport 소유권을 보고합니다.
 - 이 패키지는 절대로 `process.env`를 직접 읽지 않습니다. 모든 설정은 명시적인 옵션 또는 DI를 통해 들어와야 합니다.

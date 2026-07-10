@@ -77,6 +77,7 @@ function assertMessageContent(message: NormalizedSlackMessage): void {
  */
 @Inject(SLACK_OPTIONS)
 export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown {
+  private readonly inFlightDeliveries = new Set<Promise<unknown>>();
   private lifecycleState: SlackServiceLifecycleState = 'created';
   private ownedTransportCleanupPromise: Promise<void> | undefined;
   private resolvedTransport: SlackTransport | undefined;
@@ -103,6 +104,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
 
   private async closeOwnedTransport(): Promise<void> {
     try {
+      await this.drainInFlightDeliveries();
       await this.closeOwnedTransportResources();
       this.lifecycleState = 'stopped';
     } catch (error) {
@@ -216,7 +218,10 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
     assertMessageContent(normalized);
     assertNotAborted(options.signal);
     this.assertCanDeliver();
-    const result = await transport.send(normalized, options);
+    const result = await this.trackInFlightDelivery(() => {
+      assertNotAborted(options.signal);
+      return transport.send(normalized, options);
+    });
 
     return {
       channel: result.channel ?? normalized.channel,
@@ -372,6 +377,23 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
     }
 
     throw createLifecycleError('Slack transport failed to initialize.', cause);
+  }
+
+  private async drainInFlightDeliveries(): Promise<void> {
+    while (this.inFlightDeliveries.size > 0) {
+      await Promise.allSettled(Array.from(this.inFlightDeliveries));
+    }
+  }
+
+  private async trackInFlightDelivery<T>(start: () => Promise<T>): Promise<T> {
+    const delivery = Promise.resolve().then(start);
+    this.inFlightDeliveries.add(delivery);
+
+    try {
+      return await delivery;
+    } finally {
+      this.inFlightDeliveries.delete(delivery);
+    }
   }
 
   private assertCanCreateOrUseTransport(): void {
