@@ -172,7 +172,7 @@ v2.0.0으로 넘어가면서 FluoShop은 더 이상 event-aware 수준에 머무
 - job은 invoice generation, email batch, catalog sync처럼 느리거나 failure-prone한 작업을 위한 durable handoff입니다.
 - retry attempt와 backoff strategy는 무비판적으로 복사하지 말고 workload별로 선택해야 합니다.
 - dead-letter list는 bounded retention policy 아래에서 반복 실패 job을 보존하며, read-only inspection API는 Queue의 Redis key 형식을 노출하지 않고 최신순 typed metadata를 반환합니다.
-- Queue는 bootstrap-ready handoff 이후 processor를 시작하고, dead-letter write가 pending인 동안 readiness는 `ready`, health는 `degraded`로 유지하며, 각 write의 `5_000ms` drain과 `workerShutdownTimeoutMs`로 stuck processor 종료 대기를 제한합니다.
+- Queue는 bootstrap-ready handoff 이후 processor를 시작합니다. Queue가 `started`이고 탐색된 모든 processor가 ready인 동안에만 pending dead-letter write가 readiness를 `ready`로 유지하고 health를 `degraded`로 만들며, `stopping`은 not-ready/degraded, `stopped`는 not-ready/unhealthy입니다. 종료는 각 write의 `5_000ms` drain과 stuck processor를 위한 `workerShutdownTimeoutMs`로 제한됩니다.
 - FluoShop v2.0.0은 이제 post-order의 expensive work를 customer request path를 늘리는 대신 queue boundary 뒤로 이동시킵니다.
 
 실무적 기준은 분명합니다. 작업이 느리고, retry 가능하며, 운영적으로 구별되어야 한다면, 메인 플로의 또 다른 synchronous callback보다 queue가 더 적합할 가능성이 큽니다.

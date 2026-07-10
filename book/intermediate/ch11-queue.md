@@ -172,7 +172,7 @@ As FluoShop moves to v2.0.0, it no longer stops at being event-aware. It recogni
 - A job is a durable handoff for slow or failure-prone work such as invoice generation, email batches, and catalog syncs.
 - Retry attempts and backoff strategies should be chosen per workload rather than copied uncritically.
 - The dead-letter list preserves repeatedly failed jobs under a bounded retention policy, and the read-only inspection API returns newest-first typed metadata without exposing Queue's Redis key format.
-- Queue starts processors after the bootstrap-ready handoff, keeps readiness `ready` but health `degraded` while dead-letter writes are pending, and bounds shutdown with a `5_000ms` per-write drain plus `workerShutdownTimeoutMs` for stuck processors.
+- Queue starts processors after the bootstrap-ready handoff. Only while Queue is `started` and all discovered processors are ready do pending dead-letter writes leave readiness `ready` while health is `degraded`; `stopping` is not-ready/degraded and `stopped` is not-ready/unhealthy. Shutdown is bounded by a `5_000ms` per-write drain plus `workerShutdownTimeoutMs` for stuck processors.
 - FluoShop v2.0.0 now moves expensive post-order work behind a queue boundary instead of extending the customer request path.
 
 The practical standard is clear. If work is slow, retryable, and operationally distinct, a queue is likely a better fit than another synchronous callback in the main flow.
