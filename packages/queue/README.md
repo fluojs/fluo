@@ -9,6 +9,7 @@ Redis-backed distributed job processing for fluo. It features decorator-based wo
 - [Installation](#installation)
 - [When to use](#when-to-use)
 - [Quick Start](#quick-start)
+- [Migrating from NestJS Queue Workers](#migrating-from-nestjs-queue-workers)
 - [Common Patterns](#common-patterns)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
@@ -79,6 +80,18 @@ export class OrderService {
 })
 export class AppModule {}
 ```
+
+## Migrating from NestJS Queue Workers
+
+Consumers moving from NestJS queue integrations must replace metadata-driven processor discovery with fluo's explicit module and worker contract. This is a source migration, not a compatibility mode:
+
+1. Register the backing Redis client with `RedisModule.forRoot(...)`, then import `QueueModule.forRoot(...)` from the module graph that owns the queue. Do not copy NestJS async-module shapes or expect Queue to read environment configuration implicitly.
+2. Replace `@Processor(...)`, `@Process(...)`, or other NestJS/Bull provider metadata with the TC39 standard class decorator `@QueueWorker(JobClass, options?)`. Each worker must expose a callable `handle(job)` method.
+3. Add the decorated worker class to `@Module({ providers: [...] })` as a singleton. Queue scans compiled provider/controller registrations; it does not scan `@Injectable()` metadata, emitted constructor types, or arbitrary imported classes. Declare constructor dependencies explicitly with `@Inject(...)`.
+4. Keep the worker reachable from the queue registration. The default global `QueueModule.forRoot()` can discover singleton workers across the compiled application graph. With `global: false`, discovery is limited to modules that can reach that specific registration through their authored imports/exports, and the matching Redis provider must be reachable from the same module tree.
+5. Remove worker-owned start/stop hooks that duplicate Queue lifecycle ownership. Queue creates resources during application bootstrap, starts BullMQ processors only after the application bootstrap-ready handoff, rejects new enqueue calls after shutdown starts, and bounds active processor shutdown with `workerShutdownTimeoutMs` before requesting a force-close.
+
+Before cutover, verify every persisted queue's `jobName`, serialized payload shape, retry/backoff settings, and shutdown budget. `@fluojs/queue` does not interpret NestJS decorator metadata or promise automatic compatibility with existing Bull/BullMQ queue names and payloads. Set `jobName` explicitly when continuity is required, and deploy producers and workers in an order that preserves the application-owned payload contract.
 
 ## Common Patterns
 

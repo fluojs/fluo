@@ -107,6 +107,18 @@ export class BillingProjectionHandler {
 
 domain flow는 명시적으로 남고, 느린 작업만 out of band로 이동합니다.
 
+### 11.3.3 Migration checkpoint: NestJS worker discovery 교체
+
+NestJS/Bull worker class를 import하기만 해서는 fluo worker가 되지 않습니다. 기존 processor를 FluoShop으로 옮길 때 다음 checklist를 적용하세요.
+
+1. 소유하는 module graph에 `RedisModule.forRoot(...)`와 `QueueModule.forRoot(...)`를 등록합니다.
+2. `@Processor(...)`, `@Process(...)`, emit된 provider metadata를 TC39 표준 `@QueueWorker(GenerateInvoiceJob, options)` class decorator와 `handle(job)` 메서드로 바꿉니다.
+3. Worker를 singleton scope로 `@Module({ providers: [...] })`에 넣고 constructor dependency를 `@Inject(...)`로 선언합니다. Queue는 compiled singleton provider/controller registration을 scan하며, request/transient worker와 import만 된 class는 등록하지 않습니다.
+4. Worker와 Redis provider가 queue registration에서 도달 가능하도록 유지합니다. 이는 discovery가 해당 registration에 도달할 수 있는 authored imports/exports graph 안에 머무는 `QueueModule.forRoot({ global: false })`에서 특히 중요합니다.
+5. Queue lifecycle ownership과 경쟁하는 processor start/stop hook을 제거합니다. Queue는 application bootstrap-ready handoff 이후 processor를 시작하고, stuck worker에 BullMQ force-close를 요청하기 전에 `workerShutdownTimeoutMs`로 shutdown을 제한합니다.
+
+기존 Bull/BullMQ data에는 애플리케이션이 소유하는 cutover plan이 필요합니다. fluo는 NestJS metadata를 소비하지 않고 기존 queue name과 serialized payload가 자동으로 일치한다고 약속하지 않습니다. Queue identity를 안정적으로 유지해야 하면 `jobName`을 명시적으로 설정하고, payload class shape, retry policy, shutdown budget을 검증한 뒤 producer와 worker 양쪽이 일치하도록 배포 순서를 정하세요.
+
 ## 11.4 Retry and backoff strategy
 
 queue README는 distributed retry와 backoff를 first-class feature로 강조합니다. 이는 실제 운영 요구와 직접 맞닿아 있습니다. FluoShop은 모든 원격 의존성이 안정적이라고 가정할 수 없습니다. 이메일 제공자는 일시적으로 실패하고, 스토리지 시스템은 짧은 outage를 겪으며, Marketplace API는 예고 없이 throttle할 수 있습니다. retry는 이런 조건에서 시스템이 자동으로 회복할 여지를 만들고, backoff는 outage가 즉시 retry storm으로 번지는 것을 막습니다.
@@ -177,6 +189,7 @@ v2.0.0으로 넘어가면서 FluoShop은 더 이상 event-aware 수준에 머무
 ## 11.11 Summary
 
 - `@fluojs/queue`는 FluoShop에 worker discovery와 lifecycle-managed enqueueing을 갖춘 Redis-backed background job processing을 제공합니다.
+- NestJS migration에는 `handle(job)`을 가진 명시적 singleton `@QueueWorker(JobClass)` provider, module-graph reachability, 애플리케이션이 검증한 `jobName`/payload cutover가 필요하며 legacy processor metadata는 compatibility surface가 아닙니다.
 - job은 invoice generation, email batch, catalog sync처럼 느리거나 failure-prone한 작업을 위한 durable handoff입니다.
 - retry attempt와 backoff strategy는 무비판적으로 복사하지 말고 workload별로 선택해야 합니다.
 - dead-letter list는 bounded retention policy 아래에서 반복 실패 job을 보존하며, read-only inspection API는 Queue의 Redis key 형식을 노출하지 않고 최신순 typed metadata를 반환합니다.

@@ -1377,7 +1377,7 @@ describe('Terminus chooser discoverability', () => {
   });
 });
 
-describe('Queue lifecycle discoverability', () => {
+describe('Queue lifecycle and migration discoverability', () => {
   function extractNodeEngineRange(manifest: string): string {
     const range = /"engines"\s*:\s*\{\s*"node"\s*:\s*"([^"]+)"/u.exec(manifest)?.[1];
     if (range === undefined) {
@@ -1404,14 +1404,20 @@ describe('Queue lifecycle discoverability', () => {
   const koreanReadme = readFileSync(join(repoRoot, 'packages/queue/README.ko.md'), 'utf8');
   const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch11-queue.md'), 'utf8');
   const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch11-queue.ko.md'), 'utf8');
+  const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+  const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+  const governanceSource = readFileSync(
+    join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+    'utf8',
+  );
   const packageManifest = readFileSync(join(repoRoot, 'packages/queue/package.json'), 'utf8');
 
   it('keeps the package manifest Node.js runtime floor discoverable across governed Queue docs', () => {
     const nodeEngineRange = extractNodeEngineRange(packageManifest);
 
     for (const queueRuntimeEntry of [
-      extractMarkdownLine(englishContext, 'Queue lifecycle discoverability'),
-      extractMarkdownLine(koreanContext, 'Queue lifecycle discoverability'),
+      extractMarkdownLine(englishContext, 'Queue lifecycle'),
+      extractMarkdownLine(koreanContext, 'Queue lifecycle'),
       extractMarkdownLine(englishSurface, '- **`@fluojs/queue`**:'),
       extractMarkdownLine(koreanSurface, '- **`@fluojs/queue`**:'),
       extractMarkdownLine(englishReadme, '`@fluojs/queue` requires Node.js'),
@@ -1429,6 +1435,27 @@ describe('Queue lifecycle discoverability', () => {
       expect(content).toContain('bootstrap-ready');
       expect(content).toContain('workerShutdownTimeoutMs');
     }
+  });
+
+  it('keeps explicit NestJS worker migration and cutover limits discoverable across Queue docs', () => {
+    for (const content of [
+      englishContext,
+      koreanContext,
+      englishReadme,
+      koreanReadme,
+      englishChapter,
+      koreanChapter,
+      englishMigration,
+      koreanMigration,
+    ]) {
+      expect(content).toContain('QueueModule.forRoot');
+      expect(content).toContain('@QueueWorker(JobClass');
+      expect(content).toContain('singleton');
+      expect(content).toContain('jobName');
+      expect(content).toContain('workerShutdownTimeoutMs');
+    }
+
+    expect(governanceSource).toContain('Queue migration from NestJS/Bull processor metadata');
   });
 });
 
