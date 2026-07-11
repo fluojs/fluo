@@ -302,6 +302,7 @@ export class CronLifecycleService
    *
    * @param name Name of the cron task to update.
    * @param expression New cron expression to validate and schedule.
+   * @throws When validation, replacement scheduling, or previous-handle shutdown fails.
    */
   updateCronExpression(name: string, expression: string): void {
     assertValidCronExpression(expression);
@@ -323,17 +324,23 @@ export class CronLifecycleService
 
     const previousExpression = task.descriptor.expression;
     const previousHandle = task.scheduledHandle;
+    let nextHandle: RuntimeScheduledTask | undefined;
 
     task.descriptor.expression = expression;
 
     try {
-      const nextHandle = this.createScheduledHandle(task);
-      task.scheduledHandle = nextHandle;
+      nextHandle = this.createScheduledHandle(task);
 
       if (previousHandle) {
-        this.stopScheduledHandle(previousHandle);
+        previousHandle.stop();
       }
+
+      task.scheduledHandle = nextHandle;
     } catch (error) {
+      if (nextHandle) {
+        this.stopScheduledHandle(nextHandle);
+      }
+
       task.descriptor.expression = previousExpression;
       task.scheduledHandle = previousHandle;
       throw error;
@@ -345,6 +352,7 @@ export class CronLifecycleService
    *
    * @param name Name of the interval task to update.
    * @param ms New positive interval in milliseconds.
+   * @throws When validation, replacement scheduling, or previous-handle shutdown fails.
    */
   updateIntervalMs(name: string, ms: number): void {
     assertValidMs(ms, 'scheduling registry');
@@ -366,17 +374,23 @@ export class CronLifecycleService
 
     const previousMs = task.descriptor.ms;
     const previousHandle = task.scheduledHandle;
+    let nextHandle: RuntimeScheduledTask | undefined;
 
     task.descriptor.ms = ms;
 
     try {
-      const nextHandle = this.createScheduledHandle(task);
-      task.scheduledHandle = nextHandle;
+      nextHandle = this.createScheduledHandle(task);
 
       if (previousHandle) {
-        this.stopScheduledHandle(previousHandle);
+        previousHandle.stop();
       }
+
+      task.scheduledHandle = nextHandle;
     } catch (error) {
+      if (nextHandle) {
+        this.stopScheduledHandle(nextHandle);
+      }
+
       task.descriptor.ms = previousMs;
       task.scheduledHandle = previousHandle;
       throw error;

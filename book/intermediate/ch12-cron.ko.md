@@ -146,7 +146,7 @@ export class CampaignWindowService {
 }
 ```
 
-이 기능은 강력한 만큼 신중하게 써야 합니다. Dynamic schedule은 비즈니스 타이밍이 실제로 runtime에 바뀔 때 가장 적합합니다. 평범한 static maintenance task를 registry call 뒤에 숨기라는 뜻은 아닙니다. Dynamic `options.name` override는 decorator name과 같은 non-empty name 규칙을 따르며, scheduler 또는 registry state를 남기기 전에 거부됩니다. Registry는 descriptor 기반입니다. `get()`과 `getAll()`은 live scheduler handle이나 mutable internal state를 반환하지 않고 immutable `SchedulingTaskDescriptor` snapshot으로 task를 설명합니다. `updateCronExpression()`은 cron timing을 바꾸고, `updateIntervalMs()`는 같은 rollback-safe reschedule contract로 fixed-interval cadence를 바꿉니다. Scheduler가 새 cadence를 거부하면 이전 descriptor와 scheduled handle이 계속 active 상태로 남습니다. 이를 통해 runtime control은 명시적으로 유지하면서 애플리케이션 코드가 scheduler engine 내부에 의존하지 않게 합니다.
+이 기능은 강력한 만큼 신중하게 써야 합니다. Dynamic schedule은 비즈니스 타이밍이 실제로 runtime에 바뀔 때 가장 적합합니다. 평범한 static maintenance task를 registry call 뒤에 숨기라는 뜻은 아닙니다. Dynamic `options.name` override는 decorator name과 같은 non-empty name 규칙을 따르며, scheduler 또는 registry state를 남기기 전에 거부됩니다. Registry는 descriptor 기반입니다. `get()`과 `getAll()`은 live scheduler handle이나 mutable internal state를 반환하지 않고 immutable `SchedulingTaskDescriptor` snapshot으로 task를 설명합니다. `updateCronExpression()`은 cron timing을 바꾸고, `updateIntervalMs()`는 같은 rollback-safe reschedule contract로 fixed-interval cadence를 바꿉니다. fluo는 이전 handle의 stop이 성공한 뒤에만 replacement를 commit합니다. Scheduler가 새 cadence를 거부하거나 이전 handle을 stop할 수 없으면 provisional replacement를 정리하고 이전 descriptor와 handle을 복원한 뒤 failure를 다시 throw합니다. 이를 통해 runtime control은 명시적으로 유지하면서 애플리케이션 코드가 scheduler engine 내부에 의존하거나 실패한 update 뒤에 duplicate schedule을 남기지 않게 합니다.
 
 ## 12.7 Bounded shutdown
 

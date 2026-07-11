@@ -2245,6 +2245,40 @@ describe('@fluojs/cron', () => {
     await closeApplication(app);
   });
 
+  it('rolls back interval reschedules when the previous handle cannot be stopped', async () => {
+    vi.useFakeTimers();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot()],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+    const events: string[] = [];
+
+    registry.addInterval('dynamic-interval', 1_000, () => {
+      events.push('interval');
+    });
+
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+    clearIntervalSpy.mockImplementationOnce(() => {
+      throw new Error('previous interval stop failed');
+    });
+
+    try {
+      expect(() => registry.updateIntervalMs('dynamic-interval', 250)).toThrow('previous interval stop failed');
+      expect(registry.get('dynamic-interval')?.ms).toBe(1_000);
+      expect(clearIntervalSpy).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(events).toEqual(['interval']);
+    } finally {
+      clearIntervalSpy.mockRestore();
+      await closeApplication(app);
+    }
+  });
+
   it('stops and resumes dynamic cron execution while cleaning up old scheduler handles', async () => {
     const scheduled = createManualScheduler();
     const events: string[] = [];
@@ -2482,6 +2516,57 @@ describe('@fluojs/cron', () => {
 
     await closeApplication(app);
     expect(firstStop).toHaveBeenCalledTimes(1);
+  });
+
+  it('rolls back cron expression updates when the previous handle cannot be stopped', async () => {
+    const scheduled = createManualScheduler();
+    const events: string[] = [];
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {
+      events.push('cron');
+    });
+
+    const previousRecord = scheduled.records[0];
+    expect(previousRecord).toBeDefined();
+
+    if (!previousRecord) {
+      throw new Error('expected previous cron handle to exist');
+    }
+
+    previousRecord.stop.mockImplementationOnce(() => {
+      throw new Error('previous cron stop failed');
+    });
+
+    try {
+      expect(() => registry.updateCronExpression('dynamic-cron', CronExpression.EVERY_5_SECONDS)).toThrow(
+        'previous cron stop failed',
+      );
+      expect(registry.get('dynamic-cron')?.expression).toBe(CronExpression.EVERY_SECOND);
+
+      const nextRecord = scheduled.records[1];
+      expect(nextRecord).toBeDefined();
+
+      if (!nextRecord) {
+        throw new Error('expected replacement cron handle to exist');
+      }
+
+      expect(previousRecord.stop).toHaveBeenCalledTimes(1);
+      expect(nextRecord.stop).toHaveBeenCalledTimes(1);
+
+      await previousRecord.tick();
+      await nextRecord.tick();
+      expect(events).toEqual(['cron']);
+    } finally {
+      await closeApplication(app);
+    }
   });
 
   it('prevents overlapping dynamic cron ticks while forwarding no-overlap scheduler protection', async () => {
