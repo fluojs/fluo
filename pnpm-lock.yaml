@@ -401,6 +401,9 @@ importers:
       '@fluojs/queue':
         specifier: workspace:^
         version: link:../queue
+      '@fluojs/testing':
+        specifier: workspace:^
+        version: link:../testing
       '@types/nodemailer':
         specifier: ^8.0.0
         version: 8.0.0
