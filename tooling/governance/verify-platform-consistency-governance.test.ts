@@ -547,6 +547,28 @@ describe('enforceContractCompanionUpdates', () => {
     }
   });
 
+  it('keeps Slack injected-factory migration limits discoverable across package, migration, context, and book docs', () => {
+    const documents = [
+      readFileSync(join(repoRoot, 'packages/slack/README.md'), 'utf8'),
+      readFileSync(join(repoRoot, 'packages/slack/README.ko.md'), 'utf8'),
+      readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8'),
+      readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8'),
+      readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8'),
+      readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8'),
+      readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.md'), 'utf8'),
+      readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.ko.md'), 'utf8'),
+    ];
+
+    for (const document of documents) {
+      expect(document).toContain('SlackModule.forRootAsync');
+      expect(document).toContain('inject');
+      expect(document).toContain('useFactory');
+      expect(document).toContain('imports');
+      expect(document).toContain('useClass');
+      expect(document).toContain('useExisting');
+    }
+  });
+
   it('accepts Cron lifecycle and NestJS migration guidance when context and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
