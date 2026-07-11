@@ -2423,6 +2423,7 @@ describe('@fluojs/cron', () => {
   });
 
   it('rejects blank required dynamic task names without changing registry or scheduler state', async () => {
+    vi.useFakeTimers();
     const scheduled = createManualScheduler();
 
     class AppModule {}
@@ -2436,10 +2437,13 @@ describe('@fluojs/cron', () => {
     registry.addCron('existing-cron', CronExpression.EVERY_SECOND, () => {});
     const registryState = registry.getAll();
     const schedulerState = [...scheduled.records];
+    const timerCount = vi.getTimerCount();
 
     expect(() => registry.addCron('   ', CronExpression.EVERY_SECOND, () => {})).toThrow(/non-empty string/i);
     expect(() => registry.addInterval('   ', 1_000, () => {})).toThrow(/non-empty string/i);
+    expect(vi.getTimerCount()).toBe(timerCount);
     expect(() => registry.addTimeout('   ', 1_000, () => {})).toThrow(/non-empty string/i);
+    expect(vi.getTimerCount()).toBe(timerCount);
 
     expect(registry.getAll()).toEqual(registryState);
     expect(scheduled.records).toEqual(schedulerState);
