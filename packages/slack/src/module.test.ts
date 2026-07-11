@@ -1479,7 +1479,7 @@ describe('SlackModule', () => {
     expect(sent).toEqual(['first']);
   });
 
-  it('retries transient webhook failures with exponential backoff before succeeding', async () => {
+  it('consumes transient webhook responses before retrying with exponential backoff', async () => {
     vi.useFakeTimers();
 
     try {
@@ -1514,15 +1514,15 @@ describe('SlackModule', () => {
 
       await expect(pending).resolves.toMatchObject({ ok: true, response: 'ok', statusCode: 200 });
       expect(fetchLike).toHaveBeenCalledTimes(3);
-      expect(rateLimitedText).not.toHaveBeenCalled();
-      expect(outageText).not.toHaveBeenCalled();
+      expect(rateLimitedText).toHaveBeenCalledOnce();
+      expect(outageText).toHaveBeenCalledOnce();
       expect(successText).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('retries request-timeout webhook failures before succeeding', async () => {
+  it('consumes request-timeout webhook responses before retrying', async () => {
     vi.useFakeTimers();
 
     try {
@@ -1551,7 +1551,45 @@ describe('SlackModule', () => {
 
       await expect(pending).resolves.toMatchObject({ ok: true, response: 'ok', statusCode: 200 });
       expect(fetchLike).toHaveBeenCalledTimes(2);
-      expect(requestTimeoutText).not.toHaveBeenCalled();
+      expect(requestTimeoutText).toHaveBeenCalledOnce();
+      expect(successText).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('continues retrying when consuming a transient webhook response fails', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const responseReadFailure = new Error('response stream failed');
+      const transientText = vi.fn(async () => {
+        throw responseReadFailure;
+      });
+      const successText = vi.fn(async () => 'ok');
+      const fetchLike = vi
+        .fn<SlackFetchLike>()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          text: transientText,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: successText,
+        });
+      const transport = createSlackWebhookTransport({
+        fetch: fetchLike,
+        webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+      });
+
+      const pending = transport.send({ attachments: [], blocks: [], channel: '#ops', text: 'Response read retry path' }, {});
+      await vi.runAllTimersAsync();
+
+      await expect(pending).resolves.toMatchObject({ ok: true, response: 'ok', statusCode: 200 });
+      expect(fetchLike).toHaveBeenCalledTimes(2);
+      expect(transientText).toHaveBeenCalledOnce();
       expect(successText).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();

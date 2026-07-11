@@ -135,6 +135,7 @@ export function createSlackWebhookTransport(options: SlackWebhookTransportOption
             method: 'POST',
             signal: context.signal,
           });
+          const body = await readResponseBody(response);
 
           if (!response.ok) {
             if (attempt < DEFAULT_RETRY_ATTEMPTS && isTransientStatus(response.status)) {
@@ -142,11 +143,8 @@ export function createSlackWebhookTransport(options: SlackWebhookTransportOption
               continue;
             }
 
-            await readResponseBody(response);
             throw new SlackTransportError(createStatusFailureMessage(response, attempt));
           }
-
-          const body = await readResponseBody(response);
 
           return {
             channel: message.channel,
