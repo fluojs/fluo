@@ -31,6 +31,10 @@ function assertNotAborted(signal: AbortSignal | undefined): void {
   }
 }
 
+function isAbortError(error: Error): boolean {
+  return error.name === 'AbortError';
+}
+
 type SlackServiceLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';
 
 function createLifecycleError(message: string, cause: unknown): SlackLifecycleError {
@@ -264,7 +268,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
           message,
         };
 
-        if (!(options.continueOnError ?? false)) {
+        if (options.signal?.aborted || isAbortError(failure.error) || !(options.continueOnError ?? false)) {
           throw failure.error;
         }
 

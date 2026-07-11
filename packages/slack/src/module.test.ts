@@ -868,6 +868,45 @@ describe('SlackModule', () => {
     });
   });
 
+  it('forwards notification dispatch signals through SlackChannel to the transport', async () => {
+    const controller = new AbortController();
+    let observedSignal: AbortSignal | undefined;
+    const container = new Container();
+    const slackModuleType = SlackModule.forRoot({
+      transport: {
+        async send(message, context) {
+          observedSignal = context.signal;
+
+          return {
+            channel: message.channel,
+            ok: true,
+            response: 'ok',
+            statusCode: 200,
+            warnings: [],
+          };
+        },
+      },
+    });
+    container.register(...moduleProviders(slackModuleType));
+    const channel = await container.resolve(SlackChannel);
+    const notificationsModuleType = NotificationsModule.forRoot({ channels: [channel] });
+    container.register(...moduleProviders(notificationsModuleType));
+
+    await initializeSlackService(container);
+    const notifications = await container.resolve(NotificationsService);
+
+    await expect(
+      notifications.dispatch(
+        {
+          channel: 'slack',
+          payload: { text: 'Signal forwarding through notifications' },
+        },
+        { signal: controller.signal },
+      ),
+    ).resolves.toMatchObject({ channel: 'slack', status: 'delivered' });
+    expect(observedSignal).toBe(controller.signal);
+  });
+
   it('renders notification templates and adapts them through SlackChannel', async () => {
     const container = new Container();
     const moduleType = SlackModule.forRoot({
@@ -1366,7 +1405,7 @@ describe('SlackModule', () => {
     expect(transport.sent).toEqual(['ok-1', 'fail-2', 'ok-3']);
   });
 
-  it('propagates sendMany abort signals between sequential deliveries', async () => {
+  it('rethrows signal aborts between sendMany deliveries even when continueOnError is enabled', async () => {
     const controller = new AbortController();
     const container = new Container();
     const moduleType = SlackModule.forRoot({
@@ -1391,14 +1430,37 @@ describe('SlackModule', () => {
     container.register(...moduleProviders(moduleType));
     const service = await initializeSlackService(container);
 
-    const result = await service.sendMany([{ text: 'first' }, { text: 'second' }], {
-      continueOnError: true,
-      signal: controller.signal,
+    await expect(
+      service.sendMany([{ text: 'first' }, { text: 'second' }], {
+        continueOnError: true,
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(transportState.sent.map((entry) => entry.text)).toEqual(['first']);
+  });
+
+  it('rethrows transport AbortErrors from sendMany even when continueOnError is enabled', async () => {
+    const sent: string[] = [];
+    const abortError = new Error('Slack transport aborted delivery.');
+    abortError.name = 'AbortError';
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport: {
+        async send(message) {
+          sent.push(message.text ?? '');
+          throw abortError;
+        },
+      },
     });
 
-    expect(result).toMatchObject({ failed: 1, succeeded: 1 });
-    expect(result.failures[0]?.error).toMatchObject({ name: 'AbortError' });
-    expect(transportState.sent.map((entry) => entry.text)).toEqual(['first']);
+    container.register(...moduleProviders(moduleType));
+    const service = await initializeSlackService(container);
+
+    await expect(
+      service.sendMany([{ text: 'first' }, { text: 'second' }], { continueOnError: true }),
+    ).rejects.toBe(abortError);
+    expect(sent).toEqual(['first']);
   });
 
   it('retries transient webhook failures with exponential backoff before succeeding', async () => {

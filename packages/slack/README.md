@@ -135,8 +135,8 @@ SlackModule.forRootAsync({
 Behavioral contract notes:
 
 - `SlackService.send(...)` resolves `defaultChannel` before delivery.
-- `SlackService.sendMany(...)` sends messages sequentially and supports `continueOnError` when callers need a batch result instead of fail-fast behavior.
-- `SlackService.send(...)`, `SlackService.sendMany(...)`, and `SlackService.sendNotification(...)` honor already-aborted signals before provider handoff, and the same signal is propagated to transport calls.
+- `SlackService.sendMany(...)` sends messages sequentially and supports `continueOnError` when callers need a batch result instead of fail-fast behavior; it collects ordinary provider failures only, while caller cancellation always rejects the batch.
+- `SlackService.send(...)`, `SlackService.sendMany(...)`, and `SlackService.sendNotification(...)` honor already-aborted signals before provider handoff. An aborted signal or a transport `AbortError` takes precedence over `continueOnError`, and the same signal is propagated through notification channels to transport calls.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
 - Direct and notification-backed delivery require the lifecycle to be `ready`; calls before `onModuleInit()` finishes, after initialization failure, or during shutdown fail with `SlackLifecycleError` instead of lazily creating or reusing transports.
 - Shutdown rejects new deliveries, waits for active deliveries and any in-flight factory-owned transport creation to settle, and then closes the owned transport before completion.
