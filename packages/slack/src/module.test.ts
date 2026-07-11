@@ -2083,6 +2083,29 @@ describe('SlackModule', () => {
     expect(transport.sent).toEqual([]);
   });
 
+  it('preserves app-owned closeable transports when bootstrap verification fails', async () => {
+    const verificationError = new Error('app-owned slack auth failed');
+    const transport = new FailingVerificationTransport(verificationError);
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport,
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+
+    await expect(service.onModuleInit()).rejects.toThrowError(
+      new SlackLifecycleError('Slack transport failed to initialize.', { cause: verificationError }),
+    );
+    await service.onApplicationShutdown();
+
+    expect(transport.verifyCalls).toBe(1);
+    expect(transport.closeCalls).toBe(0);
+    expect(transport.sent).toEqual([]);
+  });
+
   it('serializes init-failure cleanup with app shutdown so owned transport closes once', async () => {
     let rejectVerify = (_reason: Error): void => {
       throw new Error('Verification reject callback was not initialized.');
