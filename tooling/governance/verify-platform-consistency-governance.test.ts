@@ -1378,10 +1378,51 @@ describe('Terminus chooser discoverability', () => {
 });
 
 describe('Queue lifecycle discoverability', () => {
+  function extractNodeEngineRange(manifest: string): string {
+    const range = /"engines"\s*:\s*\{\s*"node"\s*:\s*"([^"]+)"/u.exec(manifest)?.[1];
+    if (range === undefined) {
+      throw new TypeError('Expected the Queue package manifest to declare engines.node.');
+    }
+
+    return range;
+  }
+
+  function extractMarkdownLine(markdown: string, marker: string): string {
+    const line = markdown.split('\n').find((candidate) => candidate.includes(marker));
+    if (line === undefined) {
+      throw new TypeError(`Expected Queue documentation line containing "${marker}".`);
+    }
+
+    return line;
+  }
+
   const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
   const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+  const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
   const englishReadme = readFileSync(join(repoRoot, 'packages/queue/README.md'), 'utf8');
   const koreanReadme = readFileSync(join(repoRoot, 'packages/queue/README.ko.md'), 'utf8');
+  const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch11-queue.md'), 'utf8');
+  const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch11-queue.ko.md'), 'utf8');
+  const packageManifest = readFileSync(join(repoRoot, 'packages/queue/package.json'), 'utf8');
+
+  it('keeps the package manifest Node.js runtime floor discoverable across governed Queue docs', () => {
+    const nodeEngineRange = extractNodeEngineRange(packageManifest);
+
+    for (const queueRuntimeEntry of [
+      extractMarkdownLine(englishContext, 'Queue lifecycle discoverability'),
+      extractMarkdownLine(koreanContext, 'Queue lifecycle discoverability'),
+      extractMarkdownLine(englishSurface, '- **`@fluojs/queue`**:'),
+      extractMarkdownLine(koreanSurface, '- **`@fluojs/queue`**:'),
+      extractMarkdownLine(englishReadme, '`@fluojs/queue` requires Node.js'),
+      extractMarkdownLine(koreanReadme, '`@fluojs/queue`는 package manifest'),
+      extractMarkdownLine(englishChapter, '`@fluojs/queue` is a Node.js'),
+      extractMarkdownLine(koreanChapter, '`@fluojs/queue`는 `engines.node'),
+    ]) {
+      expect(queueRuntimeEntry).toContain('Node.js');
+      expect(queueRuntimeEntry).toContain(nodeEngineRange);
+    }
+  });
 
   it('keeps bootstrap-ready and bounded-shutdown lifecycle docs discoverable from the context hub', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme]) {

@@ -15,6 +15,7 @@ This chapter explains how to place a queue boundary on top of FluoShop's event-d
 
 ## Prerequisites
 - Completed Chapter 1, Chapter 2, Chapter 3, Chapter 4, Chapter 5, Chapter 6, Chapter 7, Chapter 8, Chapter 9, and Chapter 10.
+- A Node.js `>=20.0.0` application runtime, matching the `@fluojs/queue` package manifest.
 - Basic understanding of Redis-based transport and background processing concepts.
 - Basic intuition for retryable asynchronous work and operational failure response.
 
@@ -33,6 +34,8 @@ These tasks can be slow, may depend on unstable remote systems, and may need sev
 ## 11.2 Queue wiring in fluo
 
 The README documents `QueueModule.forRoot(...)` as the supported root entrypoint. The Queue package depends on Redis for persistence and coordination. So FluoShop first connects `@fluojs/redis`, then registers queue support.
+
+`@fluojs/queue` is a Node.js 20+ package and declares `engines.node >=20.0.0`. The Queue path in this chapter therefore keeps that package-specific runtime requirement even though other fluo APIs may be portable across runtimes.
 
 ```typescript
 import { Module } from '@fluojs/core';
