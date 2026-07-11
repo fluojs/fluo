@@ -195,7 +195,7 @@ Behavioral contract notes:
 - `EmailService.createPlatformStatusSnapshot()` exposes lifecycle, readiness, health, and transport ownership details for diagnostics.
 - The service initializes the configured transport during module bootstrap and, when `verifyOnModuleInit: true`, delivery waits until bootstrap verification has completed successfully before transport handoff.
 - Rejected `forRootAsync(...)` option factories are not memoized permanently; the next provider resolution can retry configuration lookup.
-- Once shutdown starts, `EmailService.send(...)` and `EmailService.sendNotification(...)` fail with `EmailLifecycleError` instead of reusing or lazily creating transports; any in-flight factory-owned transport creation is awaited, active transport `verify()` / `send()` calls are drained, and then owned transports are closed by shutdown.
+- Once shutdown starts, `EmailService.send(...)` and `EmailService.sendNotification(...)` fail with `EmailLifecycleError` instead of reusing or lazily creating transports; any in-flight factory-owned transport creation is awaited, active transport `verify()` / `send()` calls are drained, and then owned transports are closed by shutdown. Concurrent and repeated shutdown calls share the same completion promise, so an owned transport is closed at most once.
 - Transport `verify()` and `close()` provider errors are preserved as the `cause` of lifecycle failures for diagnostics.
 - Module options are trimmed and normalized before provider wiring, including sender defaults, notification channel names, and transport factory ownership.
 - `EmailModule.forRoot(...)` and `EmailModule.forRootAsync(...)` are global by default. Use `global: false` to opt into module-local visibility.
