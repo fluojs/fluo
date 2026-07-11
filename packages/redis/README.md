@@ -91,6 +91,7 @@ Use `RedisModule.forRoot({ name, ...options })` when one application needs more 
 
 - Omit `name` when you want the default aliases: `REDIS_CLIENT` / `RedisService`.
 - Pass `name` when you want the named helpers: `getRedisClientToken(name)` / `getRedisServiceToken(name)`.
+- `name` identifies the Fluo registration only. For an ioredis Sentinel master name, pass `sentinelName`; Fluo forwards it to ioredis as its constructor `name` option without changing the registration tokens.
 - Named clients follow the same bootstrap/shutdown contract as the default client; only the default registration exports the `REDIS_CLIENT` / `RedisService` aliases.
 - Names are trimmed, and blank or whitespace-only names are rejected by token/component helpers.
 
@@ -111,6 +112,7 @@ const ANALYTICS_REDIS_CLIENT = getRedisClientToken('analytics');
   imports: [
     RedisModule.forRoot({ host: 'localhost', port: 6379 }),
     RedisModule.forRoot({ name: 'analytics', host: 'localhost', port: 6380 }),
+    RedisModule.forRoot({ name: 'sentinel-cache', sentinelName: 'mymaster', sentinels: [{ host: 'localhost', port: 26379 }] }),
   ],
 })
 export class AppModule {}
@@ -200,7 +202,7 @@ export class PubSubTransportFactory {
 ### Types
 - `DefaultRedisModuleOptions`: Options accepted by the unnamed default Redis registration, including optional global alias visibility and lifecycle timeout controls.
 - `NamedRedisModuleOptions`: Options accepted by additional named Redis registrations, including required `name` and scoped lifecycle timeout controls.
-- `RedisModuleOptions`: Configuration options passed to the `ioredis` constructor after Fluo removes module-only `name`, `global`, and `lifecycle` fields.
+- `RedisModuleOptions`: Configuration options passed to the `ioredis` constructor after Fluo removes module-only `name`, `global`, `lifecycle`, and `sentinelName` fields. `sentinelName` is forwarded as the ioredis Sentinel master `name`, while `name` remains the Fluo registration identifier.
 - `RedisClientOptions`: Redis constructor options after Fluo removes module-only fields and before it forces `lazyConnect: true` internally.
 - `RedisLifecycleOptions`: Optional timeout controls for Fluo-owned `connect()` and `quit()` lifecycle commands.
 - `PersistencePlatformStatusSnapshot`, `RedisStatusAdapterInput`: Status snapshot input/output types.
