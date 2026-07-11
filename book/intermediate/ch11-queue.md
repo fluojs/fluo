@@ -47,7 +47,7 @@ import { QueueModule } from '@fluojs/queue';
     RedisModule.forRoot({ host: 'localhost', port: 6379 }),
     QueueModule.forRoot(),
   ],
-  providers: [InvoiceWorker, EmailWorker, CatalogSyncWorker],
+  providers: [InvoiceService, InvoiceWorker, EmailWorker, CatalogSyncWorker],
 })
 export class BackgroundJobsModule {}
 ```
@@ -63,7 +63,9 @@ A job is a serialized unit of work. A worker owns how that job is processed. Thi
 Invoice PDF generation is a typical queue task. It takes too long to run inside the checkout confirmation path. It may also fail for temporary reasons such as file storage or rendering outages.
 
 ```typescript
+import { Inject } from '@fluojs/core';
 import { QueueWorker } from '@fluojs/queue';
+import { InvoiceService } from './invoice.service.js';
 
 export class GenerateInvoiceJob {
   constructor(public readonly orderId: string) {}
@@ -73,8 +75,11 @@ export class GenerateInvoiceJob {
   attempts: 5,
   backoff: { type: 'exponential', delayMs: 1_000 },
 })
+@Inject(InvoiceService)
 export class InvoiceWorker {
-  async handle(job: GenerateInvoiceJob) {
+  constructor(private readonly invoices: InvoiceService) {}
+
+  async handle(job: GenerateInvoiceJob): Promise<void> {
     await this.invoices.renderAndStore(job.orderId);
   }
 }
