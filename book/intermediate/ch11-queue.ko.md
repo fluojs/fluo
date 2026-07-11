@@ -15,6 +15,7 @@
 
 ## Prerequisites
 - Chapter 1, Chapter 2, Chapter 3, Chapter 4, Chapter 5, Chapter 6, Chapter 7, Chapter 8, Chapter 9, Chapter 10 완료.
+- `@fluojs/queue` package manifest와 일치하는 Node.js `>=20.0.0` 애플리케이션 런타임.
 - Redis 기반 transport와 background processing 개념에 대한 기초 이해.
 - retry 가능한 비동기 작업과 운영 실패 대응에 대한 기본 감각.
 
@@ -33,6 +34,8 @@ v2.0.0 시점의 FluoShop은 이미 domain event를 publish하고 multi-step wor
 ## 11.2 Queue wiring in fluo
 
 README는 `QueueModule.forRoot(...)`를 지원되는 root entrypoint로 문서화합니다. Queue 패키지는 persistence와 coordination을 위해 Redis에 의존합니다. 따라서 FluoShop은 먼저 `@fluojs/redis`를 연결하고, 그 다음 queue support를 등록합니다.
+
+`@fluojs/queue`는 `engines.node >=20.0.0`을 선언하는 Node.js 20+ 패키지입니다. 따라서 다른 fluo API가 여러 런타임에서 portable할 수 있더라도 이 장의 Queue 경로에는 이 패키지별 런타임 요구사항이 그대로 적용됩니다.
 
 ```typescript
 import { Module } from '@fluojs/core';

@@ -1380,8 +1380,31 @@ describe('Terminus chooser discoverability', () => {
 describe('Queue lifecycle discoverability', () => {
   const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
   const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+  const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
   const englishReadme = readFileSync(join(repoRoot, 'packages/queue/README.md'), 'utf8');
   const koreanReadme = readFileSync(join(repoRoot, 'packages/queue/README.ko.md'), 'utf8');
+  const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch11-queue.md'), 'utf8');
+  const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch11-queue.ko.md'), 'utf8');
+  const packageManifest = readFileSync(join(repoRoot, 'packages/queue/package.json'), 'utf8');
+
+  it('keeps the package manifest Node.js runtime floor discoverable across governed Queue docs', () => {
+    expect(packageManifest).toContain('"node": ">=20.0.0"');
+
+    for (const content of [
+      englishContext,
+      koreanContext,
+      englishSurface,
+      koreanSurface,
+      englishReadme,
+      koreanReadme,
+      englishChapter,
+      koreanChapter,
+    ]) {
+      expect(content).toContain('Node.js');
+      expect(content).toContain('>=20.0.0');
+    }
+  });
 
   it('keeps bootstrap-ready and bounded-shutdown lifecycle docs discoverable from the context hub', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme]) {

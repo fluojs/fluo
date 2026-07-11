@@ -586,7 +586,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // bounded shutdown lock-release I/O, timeout ownership retention, dynamic
   // blank-name rejection, immutable registry descriptor snapshots, and
   // microservices facade shutdown signal forwarding plus transport-owned
-  // cancellation cleanup docs/tests, notifications queue opt-in, status
+  // cancellation cleanup docs/tests, Queue's package-level Node.js runtime
+  // floor discoverability, notifications queue opt-in, status
   // details, and generated identity diagnostics contracts, plus Slack singleton
   // provider discoverability and owned transport cleanup serialization docs/tests,
   // plus React Router/Path facade-over-HTTP metadata, ReactModule.forRoot
