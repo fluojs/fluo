@@ -127,14 +127,22 @@ export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdow
   }
 
   private async connectWithDisconnectFallback(): Promise<void> {
+    const connectPromise = this.client.connect();
+
     try {
       await withLifecycleTimeout(
-        this.client.connect(),
+        connectPromise,
         normalizeTimeoutMs(this.lifecycleOptions.connectTimeoutMs),
         `Redis client ${this.describeClient()} connect timed out after ${String(normalizeTimeoutMs(this.lifecycleOptions.connectTimeoutMs))}ms.`,
       );
     } catch (error: unknown) {
       this.disconnectIfPossible(this.client.status);
+      void connectPromise.then(
+        () => {
+          this.disconnectIfPossible(this.client.status);
+        },
+        () => undefined,
+      );
 
       throw error;
     }

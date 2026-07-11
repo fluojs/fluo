@@ -283,6 +283,30 @@ describe('@fluojs/redis', () => {
     expect(mockRedisState.instances[0]?.status).toBe('end');
   });
 
+  it('disconnects a late default connect after the lifecycle timeout expires', async () => {
+    vi.useFakeTimers();
+    const connectDeferred = createDeferred<void>();
+    mockRedisState.connectDeferred = connectDeferred;
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
+    });
+
+    const bootstrapPromise = bootstrapApplication({ rootModule: AppModule });
+    const bootstrapAssertion = expect(bootstrapPromise).rejects.toThrow(
+      'Redis client default connect timed out after 10000ms.',
+    );
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await bootstrapAssertion;
+    connectDeferred.resolve(undefined);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mockRedisState.events).toEqual(['connect', 'disconnect', 'disconnect']);
+    expect(mockRedisState.instances[0]?.status).toBe('end');
+  });
+
   it('fails bootstrap when a named lifecycle-owned connect exceeds the configured timeout', async () => {
     vi.useFakeTimers();
     mockRedisState.connectHangs = true;
@@ -613,6 +637,24 @@ describe('@fluojs/redis', () => {
     const closePromise = app.close();
     const closeAssertion = expect(closePromise).resolves.toBeUndefined();
     await vi.advanceTimersByTimeAsync(25);
+
+    await closeAssertion;
+    expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
+  });
+
+  it('forces disconnect when lifecycle-owned quit exceeds the default timeout', async () => {
+    vi.useFakeTimers();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    mockRedisState.quitHangs = true;
+    const closePromise = app.close();
+    const closeAssertion = expect(closePromise).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(10_000);
 
     await closeAssertion;
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
