@@ -1378,6 +1378,24 @@ describe('Terminus chooser discoverability', () => {
 });
 
 describe('Queue lifecycle discoverability', () => {
+  function extractNodeEngineRange(manifest: string): string {
+    const range = /"engines"\s*:\s*\{\s*"node"\s*:\s*"([^"]+)"/u.exec(manifest)?.[1];
+    if (range === undefined) {
+      throw new TypeError('Expected the Queue package manifest to declare engines.node.');
+    }
+
+    return range;
+  }
+
+  function extractMarkdownLine(markdown: string, marker: string): string {
+    const line = markdown.split('\n').find((candidate) => candidate.includes(marker));
+    if (line === undefined) {
+      throw new TypeError(`Expected Queue documentation line containing "${marker}".`);
+    }
+
+    return line;
+  }
+
   const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
   const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
   const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
@@ -1389,20 +1407,20 @@ describe('Queue lifecycle discoverability', () => {
   const packageManifest = readFileSync(join(repoRoot, 'packages/queue/package.json'), 'utf8');
 
   it('keeps the package manifest Node.js runtime floor discoverable across governed Queue docs', () => {
-    expect(packageManifest).toContain('"node": ">=20.0.0"');
+    const nodeEngineRange = extractNodeEngineRange(packageManifest);
 
-    for (const content of [
-      englishContext,
-      koreanContext,
-      englishSurface,
-      koreanSurface,
-      englishReadme,
-      koreanReadme,
-      englishChapter,
-      koreanChapter,
+    for (const queueRuntimeEntry of [
+      extractMarkdownLine(englishContext, 'Queue lifecycle discoverability'),
+      extractMarkdownLine(koreanContext, 'Queue lifecycle discoverability'),
+      extractMarkdownLine(englishSurface, '- **`@fluojs/queue`**:'),
+      extractMarkdownLine(koreanSurface, '- **`@fluojs/queue`**:'),
+      extractMarkdownLine(englishReadme, '`@fluojs/queue` requires Node.js'),
+      extractMarkdownLine(koreanReadme, '`@fluojs/queue`는 package manifest'),
+      extractMarkdownLine(englishChapter, '`@fluojs/queue` is a Node.js'),
+      extractMarkdownLine(koreanChapter, '`@fluojs/queue`는 `engines.node'),
     ]) {
-      expect(content).toContain('Node.js');
-      expect(content).toContain('>=20.0.0');
+      expect(queueRuntimeEntry).toContain('Node.js');
+      expect(queueRuntimeEntry).toContain(nodeEngineRange);
     }
   });
 
