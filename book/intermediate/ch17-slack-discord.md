@@ -231,7 +231,7 @@ await this.notifications.dispatch({
 });
 ```
 
-`sendNotification(...)` only calls the renderer when both `notification.template` and `renderer` are present. Explicit payload fields win over rendered fields for `attachments`, `blocks`, and `text`; text falls back from payload text to rendered text and then to `subject`. Metadata is merged from payload metadata, dispatch metadata, a subject marker, and a template marker in that order, so the final Slack message preserves the operational routing context.
+`sendNotification(...)` only calls the renderer when both `notification.template` and `renderer` are present. Explicit payload fields win over rendered fields for `attachments` and `blocks`, while non-blank payload text wins over rendered text; empty or whitespace-only text is treated as unspecified, so text falls back to non-blank rendered text and then to a non-blank `subject`. Metadata is merged from payload metadata, dispatch metadata, a subject marker, and a template marker in that order, so the final Slack message preserves the operational routing context.
 
 ## 17.5 Rich Formatting: Blocks and Embeds
 
