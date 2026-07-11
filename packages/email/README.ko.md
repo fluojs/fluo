@@ -14,6 +14,7 @@ fluo를 위한 transport-agnostic 이메일 코어 패키지입니다. Nest-like
   - [`@fluojs/email/node`를 이용한 Node 전용 SMTP](#fluojs-email-node를-이용한-node-전용-smtp)
   - [`EmailService`를 이용한 standalone 전달](#emailservice를-이용한-standalone-전달)
   - [`@fluojs/notifications`와의 통합](#fluojs-notifications와의-통합)
+  - [Template renderer 설정](#template-renderer-설정)
   - [큐 기반 대량 전달](#큐-기반-대량-전달)
   - [의도적인 제한 사항](#의도적인-제한-사항)
 - [공개 API 개요](#공개-api-개요)
@@ -243,6 +244,90 @@ Behavioral contract 메모:
 - `EmailChannel`은 수락된 수신자가 0명인 경우(`accepted.length === 0`) 또는 `pending`/`rejected` 수신자가 하나라도 있으면 전달을 성공으로 보고하지 않고 notification dispatch를 실패로 처리합니다.
 - `EmailService.sendNotification(...)`은 렌더링된 template output을 payload 및 notification metadata와 병합합니다. payload 필드는 notification fallback보다 우선합니다.
 - Template rendering에는 notification `payload`, `metadata`, `locale`, `subject`, `template`이 전달되며, payload `text`, `html`과 notification `subject`가 렌더링된 fallback보다 우선합니다.
+
+### Template renderer 설정
+
+`EmailModule`을 등록할 때 필수 transport와 함께 `EmailTemplateRenderer`를 전달합니다. 아래의 완전한 Node.js 예제는 1st-party SMTP factory를 사용합니다. 다른 런타임에서는 renderer를 그대로 두고 `transport`만 애플리케이션이 소유한 `EmailTransport` 또는 `EmailTransportFactory`로 교체하세요.
+
+```typescript
+import { Module } from '@fluojs/core';
+import { EmailModule, type EmailTemplateRenderer } from '@fluojs/email';
+import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+
+const renderer: EmailTemplateRenderer = {
+  render({ payload, template }) {
+    const name = payload.templateData?.name;
+    const displayName = typeof name === 'string' ? name : 'customer';
+
+    return {
+      html: '<h1>Welcome</h1>',
+      subject: template === 'welcome' ? `Welcome, ${displayName}` : template,
+      text: `Hello, ${displayName}`,
+    };
+  },
+};
+
+@Module({
+  imports: [
+    EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      renderer,
+      transport: createNodemailerEmailTransportFactory({
+        smtp: {
+          auth: {
+            pass: 'smtp-password',
+            user: 'smtp-user',
+          },
+          host: 'smtp.example.com',
+          port: 587,
+          secure: false,
+        },
+      }),
+      verifyOnModuleInit: true,
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+`EmailService.sendNotification(...)`을 호출할 때 template key를 전달하고 renderer 전용 값은 `payload.templateData` 아래에 둡니다. 위에서 설명한 대로 `EMAIL_CHANNEL`을 등록한 뒤에는 같은 request shape를 `NotificationsService.dispatch(...)`에서도 사용할 수 있습니다.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { EmailService } from '@fluojs/email';
+
+@Inject(EmailService)
+export class WelcomeEmailService {
+  constructor(private readonly email: EmailService) {}
+
+  async sendRenderedWelcome(address: string, name: string) {
+    await this.email.sendNotification({
+      channel: 'email',
+      recipients: [address],
+      template: 'welcome',
+      payload: {
+        templateData: { name },
+      },
+    });
+  }
+
+  async sendWelcomeWithOverrides(address: string, name: string) {
+    await this.email.sendNotification({
+      channel: 'email',
+      recipients: [address],
+      subject: 'Your account is ready',
+      template: 'welcome',
+      payload: {
+        html: '<p>Your account is ready.</p>',
+        templateData: { name },
+        text: 'Use this exact welcome message.',
+      },
+    });
+  }
+}
+```
+
+`template`과 `renderer`가 모두 있을 때만 renderer가 실행됩니다. Renderer가 반환하는 `subject`, `text`, `html`은 fallback입니다. 명시적인 notification `subject`는 렌더링된 subject보다 우선하고, 명시적인 `payload.text`와 `payload.html`은 렌더링된 body보다 우선합니다. `payload.to`도 notification `recipients` fallback보다 우선합니다. `templateData`는 opaque payload 안에 그대로 남아 renderer에서 `payload.templateData`로 사용할 수 있으며, email 패키지는 내부 key를 해석하지 않습니다.
 
 ### 큐 기반 대량 전달
 
