@@ -83,6 +83,8 @@ export class DeployNotifier {
 
 `SlackModule.forRoot(...)` and `SlackModule.forRootAsync(...)` return a global module by default. The module exports `SlackService`, `SlackChannel`, `SLACK`, and `SLACK_CHANNEL`; pass `global: false` only when migrated code needs those providers to remain visible only to modules that explicitly import the returned module. The option is `global?: boolean`, not NestJS `isGlobal`.
 
+Async registration supports the injected factory shape only: `SlackModule.forRootAsync({ inject, useFactory, global? })`. It consumes `inject` and `useFactory`, not NestJS `imports`, `useClass`, or `useExisting`. Register dependencies in the application module graph first, list their tokens in `inject`, then return the final Slack options from `useFactory`.
+
 The package-level registration surface is intentionally singleton-oriented. `SLACK` and `SLACK_CHANNEL` are compatibility tokens for the one configured Slack service and notifications channel, and `createSlackProviders(...)` mirrors that same singleton wiring for manual module composition. Applications that need multiple Slack clients should compose their own modules/providers around distinct `SlackTransport` instances or expose app-owned facades instead of expecting a package-level multi-client registry.
 
 ### Manual provider composition with `createSlackProviders`
