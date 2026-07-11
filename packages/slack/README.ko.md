@@ -295,8 +295,8 @@ await notifications.dispatch({
 
 Merge precedence는 결정적입니다.
 
-- `payload.attachments`, `payload.blocks`, `payload.text`가 정의되어 있으면 rendered `attachments`, `blocks`, `text`보다 우선합니다.
-- Text는 `payload.text`에서 rendered `text`, 그리고 `notification.subject` 순서로 fallback합니다.
+- `payload.attachments`, `payload.blocks`가 정의되어 있으면 rendered `attachments`, `blocks`보다 우선합니다. 비공백 `payload.text`는 rendered `text`보다 우선합니다.
+- Text는 비공백 `payload.text`에서 비공백 rendered `text`, 그리고 비공백 `notification.subject` 순서로 fallback합니다. 빈 문자열 또는 공백 전용 text 값은 미지정으로 취급합니다.
 - Metadata는 payload metadata, dispatch metadata, subject marker, template marker 순서로 merge됩니다. 중복 키는 뒤쪽 값이 이기므로, 최종 메시지는 존재하는 dispatch `subject`와 `template` marker를 기록합니다.
 - `template`이 없거나 renderer가 등록되지 않았다면 template rendering은 실행되지 않습니다. 이 경우 notification은 payload와 subject만으로 Slack 메시지로 변환됩니다.
 
