@@ -1,5 +1,5 @@
 ---
-"@fluojs/email": patch
+"@fluojs/email": minor
 ---
 
-Keep root email status snapshots transport-agnostic by omitting queue worker metadata unless callers provide it explicitly, and add regression coverage for caller-owned shutdown, notification payload forwarding, and lifecycle public exports.
+Expose root email lifecycle status APIs for diagnostics, keep status snapshots transport-agnostic by omitting queue worker metadata unless callers provide it explicitly, and cover caller-owned shutdown and notification payload forwarding regressions.
