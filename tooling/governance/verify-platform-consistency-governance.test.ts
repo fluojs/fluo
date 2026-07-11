@@ -548,24 +548,44 @@ describe('enforceContractCompanionUpdates', () => {
   });
 
   it('keeps Slack injected-factory migration limits discoverable across package, migration, context, and book docs', () => {
-    const documents = [
-      readFileSync(join(repoRoot, 'packages/slack/README.md'), 'utf8'),
-      readFileSync(join(repoRoot, 'packages/slack/README.ko.md'), 'utf8'),
-      readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8'),
-      readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8'),
-      readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8'),
-      readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8'),
-      readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.md'), 'utf8'),
-      readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.ko.md'), 'utf8'),
+    const slackReadme = readFileSync(join(repoRoot, 'packages/slack/README.md'), 'utf8');
+    const slackReadmeKo = readFileSync(join(repoRoot, 'packages/slack/README.ko.md'), 'utf8');
+    const nestjsMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+    const nestjsMigrationKo = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+    const docsContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const docsContextKo = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const slackBookChapter = readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.md'), 'utf8');
+    const slackBookChapterKo = readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.ko.md'), 'utf8');
+
+    const asyncRegistrationParagraphs = [
+      slackReadme.split('\n\n').find((paragraph) => paragraph.startsWith('Async registration supports')) ?? '',
+      slackReadmeKo.split('\n\n').find((paragraph) => paragraph.startsWith('Async registration은')) ?? '',
+      slackBookChapter.split('\n\n').find((paragraph) => paragraph.startsWith('Async registration supports')) ?? '',
+      slackBookChapterKo.split('\n\n').find((paragraph) => paragraph.startsWith('Async registration은')) ?? '',
+    ];
+    const migrationRows = [
+      nestjsMigration.split('\n').find((line) => line.includes('NestJS Slack modules')) ?? '',
+      nestjsMigrationKo.split('\n').find((line) => line.includes('NestJS Slack module')) ?? '',
+    ];
+    const contextParagraphs = [
+      docsContext.split('\n\n').find((paragraph) => paragraph.startsWith('Slack discoverability')) ?? '',
+      docsContextKo.split('\n\n').find((paragraph) => paragraph.startsWith('Slack discoverability')) ?? '',
     ];
 
-    for (const document of documents) {
-      expect(document).toContain('SlackModule.forRootAsync');
-      expect(document).toContain('inject');
-      expect(document).toContain('useFactory');
-      expect(document).toContain('imports');
-      expect(document).toContain('useClass');
-      expect(document).toContain('useExisting');
+    for (const section of [...asyncRegistrationParagraphs, ...migrationRows]) {
+      expect(section).toContain('SlackModule.forRootAsync({ inject, useFactory, global? })');
+      expect(section).toContain('imports');
+      expect(section).toContain('useClass');
+      expect(section).toContain('useExisting');
+    }
+
+    for (const section of contextParagraphs) {
+      expect(section).toContain('SlackModule.forRoot(...)` / `forRootAsync(...)');
+      expect(section).toContain('inject');
+      expect(section).toContain('useFactory');
+      expect(section).toContain('imports');
+      expect(section).toContain('useClass');
+      expect(section).toContain('useExisting');
     }
   });
 
