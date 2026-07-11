@@ -460,6 +460,22 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('keeps Redis client creation and raw Pub/Sub shutdown ownership discoverable', () => {
+    const englishReadme = readFileSync(join(repoRoot, 'packages/redis/README.md'), 'utf8');
+    const koreanReadme = readFileSync(join(repoRoot, 'packages/redis/README.ko.md'), 'utf8');
+    const englishBook = readFileSync(join(repoRoot, 'book/intermediate/ch03-redis-transport.md'), 'utf8');
+    const koreanBook = readFileSync(join(repoRoot, 'book/intermediate/ch03-redis-transport.ko.md'), 'utf8');
+    const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+    const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+
+    expect(englishReadme).toContain('does not adopt an externally constructed client');
+    expect(koreanReadme).toContain('외부에서 만든 client instance를 채택하지는 않습니다');
+    expect(englishBook).toContain('does not close the raw publisher or duplicate subscriber');
+    expect(koreanBook).toContain('raw publisher나 duplicate subscriber를 닫지 않습니다');
+    expect(englishMigration).toContain('creates a new lifecycle-managed client rather than adopting');
+    expect(koreanMigration).toContain('새 lifecycle-managed client를 생성한다');
+  });
+
   it('keeps HTTP DTO binding migration guidance present in governed docs', () => {
     const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
     const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
