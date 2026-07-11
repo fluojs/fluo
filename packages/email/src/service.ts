@@ -112,13 +112,19 @@ function assertMessageContent(message: NormalizedEmailMessage): void {
 export class EmailService implements Email, OnModuleInit, OnApplicationShutdown {
   private lifecycleState: EmailServiceLifecycleState = 'created';
   private bootstrapPromise: Promise<void> | undefined;
+  private shutdownPromise: Promise<void> | undefined;
   private readonly inFlightOperations = new Set<Promise<unknown>>();
   private resolvedTransport: EmailTransport | undefined;
   private transportPromise: Promise<EmailTransport> | undefined;
 
   constructor(private readonly options: NormalizedEmailModuleOptions) {}
 
-  async onApplicationShutdown(): Promise<void> {
+  onApplicationShutdown(): Promise<void> {
+    this.shutdownPromise ??= this.shutdown();
+    return this.shutdownPromise;
+  }
+
+  private async shutdown(): Promise<void> {
     this.lifecycleState = 'stopping';
 
     let transport: EmailTransport | undefined;
