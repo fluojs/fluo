@@ -389,6 +389,52 @@ describe('@fluojs/redis', () => {
     await app.close();
   });
 
+  it('keeps a named registration separate from the ioredis Sentinel master name', async () => {
+    const CACHE_REDIS_CLIENT = getRedisClientToken('cache');
+    const CACHE_REDIS_SERVICE = getRedisServiceToken('cache');
+
+    @Inject(CACHE_REDIS_CLIENT)
+    class CacheClientConsumer {
+      constructor(readonly redis: MockRedisInstance) {}
+    }
+
+    @Inject(CACHE_REDIS_SERVICE)
+    class CacheServiceConsumer {
+      constructor(readonly redis: RedisService) {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        RedisModule.forRoot({
+          host: '127.0.0.1',
+          name: 'cache',
+          port: 26379,
+          sentinelName: 'mymaster',
+          sentinels: [{ host: '127.0.0.1', port: 26379 }],
+        }),
+      ],
+      providers: [CacheClientConsumer, CacheServiceConsumer],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const clientConsumer = await app.container.resolve(CacheClientConsumer);
+    const serviceConsumer = await app.container.resolve(CacheServiceConsumer);
+
+    expect(mockRedisState.instances[0]?.options).toMatchObject({
+      host: '127.0.0.1',
+      lazyConnect: true,
+      name: 'mymaster',
+      port: 26379,
+      sentinels: [{ host: '127.0.0.1', port: 26379 }],
+    });
+    expect(mockRedisState.instances[0]?.options).not.toHaveProperty('sentinelName');
+    expect(clientConsumer.redis).toBe(mockRedisState.instances[0]);
+    expect(serviceConsumer.redis.getRawClient()).toBe(clientConsumer.redis);
+
+    await app.close();
+  });
+
   it.each([
     ['connectTimeoutMs', -1],
     ['connectTimeoutMs', Number.NaN],
