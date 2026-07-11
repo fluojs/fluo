@@ -36,6 +36,14 @@ permission:
     '*': ask
     'find *': deny
     'xargs *': deny
+    'ls *': allow
+    'test *': allow
+    'true *': allow
+    'exit *': allow
+    'printf *': allow
+    'command -v *': allow
+    'pnpm *': allow
+    'pnpm publish*': deny
     'base64 *': allow
     'nl *': allow
     'sed *': allow
@@ -102,6 +110,9 @@ permission:
     'GIT_MASTER=1 git branch --delete *': deny
     'GIT_MASTER=1 git worktree remove*': deny
     'sort*': allow
+    'gh search issues *': allow
+    'gh repo view *': allow
+    'gh release view *': allow
     'gh pr *': allow
     'gh issue *': allow
     'gh label *': allow
@@ -169,6 +180,13 @@ permission:
     '*': ask
     'find *': deny
     'xargs *': deny
+    'ls *': allow
+    'test *': allow
+    'true *': allow
+    'exit *': allow
+    'printf *': allow
+    'command -v *': allow
+    'pnpm *': allow
     'base64 *': allow
     'nl *': allow
     'sed *': allow
@@ -231,16 +249,9 @@ permission:
     'GIT_MASTER=1 git commit*': allow
     'GIT_MASTER=1 git fetch*': allow
     'GIT_MASTER=1 git push*': allow
-    'pnpm install*': allow
-    'pnpm exec*': allow
-    'pnpm --filter*': allow
-    'pnpm --dir*': allow
-    'pnpm test*': allow
-    'pnpm typecheck*': allow
-    'pnpm build*': allow
-    'pnpm verify*': allow
-    'pnpm lint*': allow
-    'pnpm changeset*': allow
+    'gh search issues *': allow
+    'gh repo view *': allow
+    'gh release view *': allow
     'gh issue view*': allow
     'gh issue list*': allow
     'gh label list*': allow
