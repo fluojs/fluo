@@ -30,26 +30,34 @@ import { Module } from '@fluojs/core';
 import { MicroservicesModule, RedisPubSubMicroserviceTransport } from '@fluojs/microservices';
 import Redis from 'ioredis';
 
-const redisClient = new Redis({ host: 'localhost', port: 6379 });
+const publisher = new Redis({ host: 'localhost', port: 6379 });
+const subscriber = publisher.duplicate();
+const transport = new RedisPubSubMicroserviceTransport({
+  publishClient: publisher,
+  subscribeClient: subscriber,
+});
 
 @Module({
   imports: [
     MicroservicesModule.forRoot({
-      transport: new RedisPubSubMicroserviceTransport({
-        publishClient: redisClient,
-        subscribeClient: redisClient.duplicate(),
-      }),
+      transport,
     }),
   ],
 })
 export class NotificationModule {}
+
+export async function closeNotificationTransport(): Promise<void> {
+  await transport.close();
+  await subscriber.quit();
+  await publisher.quit();
+}
 ```
 
 Redis requires a dedicated connection for subscribe mode. For that reason, subscribers are usually separated with `duplicate()` instead of sharing the publisher client directly. Redis Pub/Sub does not support acknowledgments or response messages, so this transport is effectively suited to `emit()`-centered workflows. That constraint actually makes the semantic boundary clearer. If you need a durable request/response contract, you should not assume Pub/Sub can fill that role.
 
 If the same app also registers `@fluojs/redis`, keep that package's shared `REDIS_CLIENT` for ordinary commands such as cache reads, pipelines, Lua scripts, and queue helpers. Do not reuse it as the Pub/Sub subscriber connection: a subscribed Redis connection enters subscribe mode and can no longer safely serve normal command traffic. Give the Pub/Sub transport a dedicated subscriber via `duplicate()` or a separate named Redis registration, and let `@fluojs/redis` own connect/quit timeouts for the clients it creates.
 
-The ownership boundary depends on how you create the subscriber. A `redisClient.duplicate()` subscriber is not automatically tracked by `RedisModule`; the application that duplicated it must connect it, pass it to the transport, and close it during shutdown. If you want fluo's Redis lifecycle options to cover both the command client and the subscriber, register a named client and inject it with `getRedisClientToken(name)`:
+The ownership boundary depends on how you create the subscriber. A `publisher.duplicate()` subscriber is not automatically tracked by `RedisModule`; the application that created the raw publisher and subscriber must connect them, pass them to the transport, and invoke `closeNotificationTransport()` from its shutdown path. Closing the transport only unsubscribes the subscriber; the application must also close both raw clients. If you want fluo's Redis lifecycle options to cover both the command client and the subscriber, register a named client and inject it with `getRedisClientToken(name)`:
 
 ```typescript
 import { Inject, Module } from '@fluojs/core';
