@@ -2422,6 +2422,36 @@ describe('@fluojs/cron', () => {
     await closeApplication(app);
   });
 
+  it('rejects blank required dynamic task names without changing registry or scheduler state', async () => {
+    vi.useFakeTimers();
+    const scheduled = createManualScheduler();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    registry.addCron('existing-cron', CronExpression.EVERY_SECOND, () => {});
+    const registryState = registry.getAll();
+    const schedulerState = [...scheduled.records];
+    const timerCount = vi.getTimerCount();
+
+    expect(() => registry.addCron('   ', CronExpression.EVERY_SECOND, () => {})).toThrow(/non-empty string/i);
+    expect(() => registry.addInterval('   ', 1_000, () => {})).toThrow(/non-empty string/i);
+    expect(vi.getTimerCount()).toBe(timerCount);
+    expect(() => registry.addTimeout('   ', 1_000, () => {})).toThrow(/non-empty string/i);
+    expect(vi.getTimerCount()).toBe(timerCount);
+
+    expect(registry.getAll()).toEqual(registryState);
+    expect(scheduled.records).toEqual(schedulerState);
+    expect(schedulerState[0]?.stop).not.toHaveBeenCalled();
+
+    await closeApplication(app);
+  });
+
   it('returns immutable scheduling descriptor snapshots from get and getAll', async () => {
     class AppModule {}
     defineModule(AppModule, {
@@ -2681,6 +2711,57 @@ describe('@fluojs/cron', () => {
     expect(store.intervalCount).toBe(1);
     expect(store.timeoutCount).toBe(0);
     expect(scheduled.records[0]?.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the default 10_000ms timeout when shutdown drains a hung cron task', async () => {
+    vi.useFakeTimers();
+    const scheduled = createManualScheduler();
+    const loggerEvents: string[] = [];
+    const started = createDeferred<void>();
+
+    class TaskService {
+      @Cron(CronExpression.EVERY_SECOND, { name: 'default-timeout-hung-cron' })
+      async run(): Promise<void> {
+        started.resolve();
+        await new Promise(() => {});
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
+      providers: [TaskService],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      rootModule: AppModule,
+    });
+
+    void scheduled.records[0]?.tick();
+    await started.promise;
+
+    let closeResolved = false;
+    const closePromise = app.close().then(() => {
+      closeResolved = true;
+    });
+
+    await Promise.resolve();
+
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(closeResolved).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await closePromise;
+    await settleCronTeardown();
+
+    expect(closeResolved).toBe(true);
+    expect(scheduled.records[0]?.stop).toHaveBeenCalledTimes(1);
+    expect(
+      loggerEvents.some((event) =>
+        event.includes('Cron shutdown timed out after 10000ms with 1 active task(s) still pending.'),
+      ),
+    ).toBe(true);
   });
 
   it('bounds shutdown when an active cron task never settles', async () => {
