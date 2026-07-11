@@ -547,19 +547,19 @@ describe('enforceContractCompanionUpdates', () => {
     }
   });
 
-  it('accepts Cron lifecycle and NestJS migration guidance when context and governance tests change together', async () => {
+  it('accepts Cron NestJS option migration guidance when bilingual docs and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
     expect(() =>
       enforceContractCompanionUpdates([
-        'docs/architecture/lifecycle-and-shutdown.md',
-        'docs/architecture/lifecycle-and-shutdown.ko.md',
+        'packages/cron/README.md',
+        'packages/cron/README.ko.md',
         'docs/getting-started/migrate-from-nestjs.md',
         'docs/getting-started/migrate-from-nestjs.ko.md',
-        'docs/contracts/nestjs-parity-gaps.md',
-        'docs/contracts/nestjs-parity-gaps.ko.md',
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
+        'book/intermediate/ch12-cron.md',
+        'book/intermediate/ch12-cron.ko.md',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -1490,6 +1490,8 @@ describe('Cron scheduling discoverability', () => {
   const koreanPackageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
   const englishReadme = readFileSync(join(repoRoot, 'packages/cron/README.md'), 'utf8');
   const koreanReadme = readFileSync(join(repoRoot, 'packages/cron/README.ko.md'), 'utf8');
+  const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+  const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
   const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch12-cron.md'), 'utf8');
   const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch12-cron.ko.md'), 'utf8');
 
@@ -1528,6 +1530,30 @@ describe('Cron scheduling discoverability', () => {
     for (const content of [englishChapter, koreanChapter]) {
       expect(content).toContain('Redis peer');
       expect(content).toContain('distributed-lock');
+    }
+  });
+
+  it('keeps Cron NestJS option and overlap migration boundaries discoverable across bilingual surfaces', () => {
+    for (const content of [englishContext, englishReadme, englishMigration, englishChapter]) {
+      expect(content).toContain('timeZone');
+      expect(content).toContain('timezone');
+      expect(content).toContain('waitForCompletion');
+      expect(content).toMatch(/does not expose|has no .*option|no direct fluo option/u);
+      expect(content).toMatch(/skip(?:s|ped)?[^.]*?(?:not queued|rather than queue(?:d|ing)|instead of queueing)/u);
+      expect(content).toMatch(/application-owned queue|application-owned.*worker/u);
+      expect(content).toContain('Redis');
+      expect(content).toMatch(/distributed lock/u);
+    }
+
+    for (const content of [koreanContext, koreanReadme, koreanMigration, koreanChapter]) {
+      expect(content).toContain('timeZone');
+      expect(content).toContain('timezone');
+      expect(content).toContain('waitForCompletion');
+      expect(content).toMatch(/옵션이 없|option이 없|옵션을 .*노출하지 않/u);
+      expect(content).toMatch(/(?:queue하지 않고|queue되지 않고).*건너/u);
+      expect(content).toMatch(/application-owned queue|application-owned.*worker/u);
+      expect(content).toContain('Redis');
+      expect(content).toMatch(/distributed lock/u);
     }
   });
 });
