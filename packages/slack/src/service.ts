@@ -329,7 +329,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
         },
         mrkdwn: payload.mrkdwn,
         replyBroadcast: payload.replyBroadcast,
-        text: payload.text ?? rendered?.text ?? notification.subject,
+        text: normalizeOptionalString(payload.text) ?? normalizeOptionalString(rendered?.text) ?? normalizeOptionalString(notification.subject),
         threadTs: payload.threadTs,
         unfurlLinks: payload.unfurlLinks,
         unfurlMedia: payload.unfurlMedia,
