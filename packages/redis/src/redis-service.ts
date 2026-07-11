@@ -72,16 +72,22 @@ export class RedisService {
    *
    * @param key Redis key to write.
    * @param value Serializable value stored as JSON.
-   * @param ttlSeconds Optional TTL in seconds. Omit or pass a non-positive value for a persistent key.
+   * @param ttlSeconds Optional TTL in seconds. Finite positive integers use `EX`; finite positive fractions use `PX` rounded up to milliseconds. Omit or pass a non-positive or non-finite value for a persistent key.
    * @returns A promise that resolves after Redis acknowledges the write.
    */
   async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
     const serialized = JSON.stringify(value);
-    if (ttlSeconds !== undefined && ttlSeconds > 0) {
-      await this.client.set(key, serialized, 'EX', ttlSeconds);
-    } else {
-      await this.client.set(key, serialized);
+    if (ttlSeconds !== undefined && Number.isFinite(ttlSeconds) && ttlSeconds > 0) {
+      if (Number.isInteger(ttlSeconds)) {
+        await this.client.set(key, serialized, 'EX', ttlSeconds);
+        return;
+      }
+
+      await this.client.set(key, serialized, 'PX', Math.ceil(ttlSeconds * 1000));
+      return;
     }
+
+    await this.client.set(key, serialized);
   }
 
   /**

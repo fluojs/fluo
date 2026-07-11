@@ -820,9 +820,13 @@ describe('@fluojs/redis', () => {
 
   it.each([
     ['positive TTL', 60, ['EX', 60]],
-    ['fractional positive TTL', 0.5, ['EX', 0.5]],
+    ['fractional positive TTL', 0.5, ['PX', 500]],
+    ['fractional TTL with sub-millisecond precision', 1.2345, ['PX', 1235]],
     ['zero TTL', 0, []],
     ['negative TTL', -1, []],
+    ['infinite TTL', Number.POSITIVE_INFINITY, []],
+    ['negative infinite TTL', Number.NEGATIVE_INFINITY, []],
+    ['NaN TTL', Number.NaN, []],
     ['omitted TTL', undefined, []],
   ])('serializes values and forwards %s using the documented RedisService.set args', async (_caseName, ttlSeconds, expectedArgs) => {
     @Inject(RedisService)

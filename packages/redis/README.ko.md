@@ -53,7 +53,7 @@ export class AppModule {}
 
 `RedisService`를 주입받아 고수준 작업을 수행하거나, `REDIS_CLIENT`를 통해 원시 `ioredis` 인스턴스를 직접 사용할 수 있습니다.
 
-`RedisService.get()`은 JSON parse를 시도하고 실패하면 raw string을 반환합니다. 누락된 key는 `null`을 반환합니다. `RedisService.set()`은 값을 `JSON.stringify()`로 직렬화하고 양수 TTL에만 `EX`를 사용합니다.
+`RedisService.get()`은 JSON parse를 시도하고 실패하면 raw string을 반환합니다. 누락된 key는 `null`을 반환합니다. `RedisService.set()`은 값을 `JSON.stringify()`로 직렬화하며, 유한한 양의 정수 TTL에는 Redis `EX`를 사용하고 유한한 양의 소수 TTL에는 올림한 밀리초 값으로 `PX`를 사용합니다. TTL을 생략하거나 0 이하 또는 유한하지 않은 값을 전달하면 persistent key를 저장합니다.
 
 ```typescript
 import { Inject } from '@fluojs/core';
