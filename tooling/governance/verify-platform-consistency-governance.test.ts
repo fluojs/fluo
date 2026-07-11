@@ -565,6 +565,24 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts Cron NestJS option migration guidance when bilingual docs and governance tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/cron/README.md',
+        'packages/cron/README.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'book/intermediate/ch12-cron.md',
+        'book/intermediate/ch12-cron.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('treats Cron lifecycle and NestJS migration docs as contract-governing updates', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const cronLifecycleTriggers = [
@@ -1484,12 +1502,40 @@ describe('Notifications discoverability', () => {
 });
 
 describe('Cron scheduling discoverability', () => {
+  function extractMarkdownSection(markdown: string, heading: string): string {
+    const sectionStart = markdown.indexOf(`${heading}\n`);
+    const headingLevel = /^#+/u.exec(heading)?.[0].length;
+    if (sectionStart === -1 || headingLevel === undefined) {
+      throw new TypeError(`Expected Cron documentation section "${heading}".`);
+    }
+
+    const sectionBodyStart = sectionStart + heading.length + 1;
+    const remainingMarkdown = markdown.slice(sectionBodyStart);
+    const nextHeading = new RegExp(`^#{1,${headingLevel}}\\s`, 'mu').exec(remainingMarkdown);
+    const sectionBodyEnd = sectionBodyStart + (nextHeading?.index ?? remainingMarkdown.length);
+
+    return markdown.slice(sectionStart, sectionBodyEnd);
+  }
+
+  function extractMarkdownLines(markdown: string, markers: readonly string[]): string {
+    return markers.map((marker) => {
+      const line = markdown.split('\n').find((candidate) => candidate.includes(marker));
+      if (line === undefined) {
+        throw new TypeError(`Expected Cron documentation line containing "${marker}".`);
+      }
+
+      return line;
+    }).join('\n');
+  }
+
   const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
   const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
   const englishPackageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
   const koreanPackageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
   const englishReadme = readFileSync(join(repoRoot, 'packages/cron/README.md'), 'utf8');
   const koreanReadme = readFileSync(join(repoRoot, 'packages/cron/README.ko.md'), 'utf8');
+  const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+  const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
   const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch12-cron.md'), 'utf8');
   const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch12-cron.ko.md'), 'utf8');
 
@@ -1528,6 +1574,55 @@ describe('Cron scheduling discoverability', () => {
     for (const content of [englishChapter, koreanChapter]) {
       expect(content).toContain('Redis peer');
       expect(content).toContain('distributed-lock');
+    }
+  });
+
+  it('keeps Cron NestJS option and overlap migration boundaries discoverable across bilingual surfaces', () => {
+    const englishCronRegions = [
+      extractMarkdownSection(englishContext, '## Cron Migration Option Boundary'),
+      [
+        extractMarkdownSection(englishReadme, '### Migrating NestJS Cron Options'),
+        extractMarkdownSection(englishReadme, '### Distributed Locking'),
+      ].join('\n'),
+      extractMarkdownLines(englishMigration, ['| `@nestjs/schedule`', '- NestJS cron options']),
+      [
+        extractMarkdownSection(englishChapter, '### 12.3.2 Migrating NestJS cron options'),
+        extractMarkdownSection(englishChapter, '## 12.4 Distributed locking across multiple instances'),
+      ].join('\n'),
+    ];
+    const koreanCronRegions = [
+      extractMarkdownSection(koreanContext, '## Cron Migration Option Boundary'),
+      [
+        extractMarkdownSection(koreanReadme, '### NestJS Cron 옵션 마이그레이션'),
+        extractMarkdownSection(koreanReadme, '### 분산 락 사용하기'),
+      ].join('\n'),
+      extractMarkdownLines(koreanMigration, ['| `@nestjs/schedule`', '- NestJS cron option']),
+      [
+        extractMarkdownSection(koreanChapter, '### 12.3.2 Migrating NestJS cron options'),
+        extractMarkdownSection(koreanChapter, '## 12.4 Distributed locking across multiple instances'),
+      ].join('\n'),
+    ];
+
+    for (const cronRegion of englishCronRegions) {
+      expect(cronRegion).toContain('timeZone');
+      expect(cronRegion).toContain('timezone');
+      expect(cronRegion).toContain('waitForCompletion');
+      expect(cronRegion).toMatch(/does not expose|has no .*option|no direct fluo option/u);
+      expect(cronRegion).toMatch(/skip(?:s|ped)?[^.]*?(?:not queued|rather than queue(?:d|ing)|instead of queueing)/u);
+      expect(cronRegion).toMatch(/application-owned queue|application-owned.*worker/u);
+      expect(cronRegion).toContain('Redis');
+      expect(cronRegion).toMatch(/distributed lock/u);
+    }
+
+    for (const cronRegion of koreanCronRegions) {
+      expect(cronRegion).toContain('timeZone');
+      expect(cronRegion).toContain('timezone');
+      expect(cronRegion).toContain('waitForCompletion');
+      expect(cronRegion).toMatch(/옵션이 없|option이 없|옵션을 .*노출하지 않/u);
+      expect(cronRegion).toMatch(/(?:queue하지 않고|queue되지 않고).*건너/u);
+      expect(cronRegion).toMatch(/application-owned queue|application-owned.*worker/u);
+      expect(cronRegion).toContain('Redis');
+      expect(cronRegion).toMatch(/distributed lock/u);
     }
   });
 });
