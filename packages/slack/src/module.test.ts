@@ -1020,7 +1020,7 @@ describe('SlackModule', () => {
       async render(input) {
         renderInputs.push(input);
 
-        if (input.template === 'deploy.subject-fallback') {
+        if (input.template === 'deploy.subject-fallback' || input.template === 'deploy.blank-payload-subject-fallback') {
           return {};
         }
 
@@ -1081,8 +1081,22 @@ describe('SlackModule', () => {
       subject: 'Subject fallback text',
       template: 'deploy.subject-fallback',
     });
+    await service.sendNotification({
+      channel: 'slack',
+      payload: { text: '   ' },
+      recipients: ['#ops'],
+      subject: 'Blank payload text fallback',
+      template: 'deploy.blank-payload-text',
+    });
+    await service.sendNotification({
+      channel: 'slack',
+      payload: { text: '   ' },
+      recipients: ['#ops'],
+      subject: 'Blank payload subject fallback',
+      template: 'deploy.blank-payload-subject-fallback',
+    });
 
-    expect(renderInputs).toHaveLength(3);
+    expect(renderInputs).toHaveLength(5);
     expect(renderInputs[0]).toMatchObject({
       locale: 'en',
       metadata: {
@@ -1117,6 +1131,8 @@ describe('SlackModule', () => {
       template: 'deploy.subject-fallback',
     });
     expect(transportState.sent[2]?.text).toBe('Subject fallback text');
+    expect(transportState.sent[3]?.text).toBe('Rendered Blank payload text fallback');
+    expect(transportState.sent[4]?.text).toBe('Blank payload subject fallback');
   });
 
   it('creates a webhook-first transport with an explicit fetch-compatible boundary', async () => {

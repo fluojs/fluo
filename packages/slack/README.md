@@ -295,8 +295,8 @@ await notifications.dispatch({
 
 Merge precedence is deterministic:
 
-- `payload.attachments`, `payload.blocks`, and `payload.text` win over rendered `attachments`, `blocks`, and `text` when those payload fields are defined.
-- Text falls back from `payload.text` to rendered `text`, then to `notification.subject`.
+- `payload.attachments` and `payload.blocks` win over rendered `attachments` and `blocks` when those payload fields are defined. Non-blank `payload.text` wins over rendered `text`.
+- Text falls back from non-blank `payload.text` to non-blank rendered `text`, then to non-blank `notification.subject`. Empty or whitespace-only text values are treated as unspecified.
 - Metadata is merged as payload metadata, dispatch metadata, subject marker, then template marker. Later entries win on duplicate keys, so the final message records the dispatch `subject` and `template` markers when present.
 - If no `template` is set or no renderer is registered, no template rendering occurs; the notification is adapted from its payload and subject only.
 

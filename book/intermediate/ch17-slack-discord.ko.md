@@ -231,7 +231,7 @@ await this.notifications.dispatch({
 });
 ```
 
-`sendNotification(...)`은 `notification.template`과 `renderer`가 모두 있을 때에만 renderer를 호출합니다. 명시적인 payload 필드는 `attachments`, `blocks`, `text`에서 rendered 필드보다 우선하며, text는 payload text에서 rendered text, 그리고 `subject` 순서로 fallback합니다. Metadata는 payload metadata, dispatch metadata, subject marker, template marker 순서로 merge되므로 최종 Slack 메시지는 운영 routing context를 보존합니다.
+`sendNotification(...)`은 `notification.template`과 `renderer`가 모두 있을 때에만 renderer를 호출합니다. 명시적인 payload 필드는 `attachments`, `blocks`에서 rendered 필드보다 우선하고, 비공백 payload text는 rendered text보다 우선합니다. 빈 문자열 또는 공백 전용 text는 미지정으로 취급하므로 text는 비공백 rendered text, 그리고 비공백 `subject` 순서로 fallback합니다. Metadata는 payload metadata, dispatch metadata, subject marker, template marker 순서로 merge되므로 최종 Slack 메시지는 운영 routing context를 보존합니다.
 
 ## 17.5 Rich Formatting: Blocks and Embeds
 
