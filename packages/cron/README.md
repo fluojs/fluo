@@ -20,10 +20,10 @@ Decorator-based scheduling for fluo applications with lifecycle-managed startup/
 ## Installation
 
 ```bash
-npm install @fluojs/cron croner
+npm install @fluojs/cron
 ```
 
-`croner` is the scheduler engine used by `@fluojs/cron`. Install it alongside the package so lockfiles make the runtime scheduler dependency explicit for applications and deployment audits.
+`@fluojs/cron` owns `croner` as a runtime dependency, so consumers do not need to install the scheduler engine directly.
 
 `@fluojs/redis` is needed only when Redis distributed locking is enabled. Non-distributed scheduling paths do not load the Redis integration during package import, module registration, bootstrap, or status snapshot creation.
 
