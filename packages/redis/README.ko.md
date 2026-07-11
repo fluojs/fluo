@@ -32,7 +32,7 @@ npm install @fluojs/redis ioredis
 
 `RedisModule.forRoot(options)`는 기본 Redis 클라이언트와 `RedisService` 파사드를 등록하는 지원되는 root entrypoint입니다.
 
-`RedisModule.forRoot(...)`는 의도적으로 동기 방식입니다. NestJS의 `forRootAsync(...)` 같은 async dynamic module에서 마이그레이션할 때는 secret, 환경별 host, 외부에서 만든 client를 애플리케이션 경계에서 먼저 해석한 뒤 최종 Redis 옵션을 `forRoot(...)`에 전달하세요. fluo는 Redis module wiring을 module graph 안의 숨겨진 async factory로 미루지 않습니다.
+`RedisModule.forRoot(...)`는 의도적으로 동기 방식입니다. NestJS의 `forRootAsync(...)` 같은 async dynamic module에서 마이그레이션할 때는 secret, 환경별 host, TLS 설정, 기타 Redis option을 애플리케이션 경계에서 먼저 해석한 뒤 최종 option을 `forRoot(...)`에 전달하세요. `forRoot(...)`를 호출할 때마다 새 lifecycle-managed `ioredis` client를 생성하며, 외부에서 만든 client instance를 채택하지는 않습니다. 외부에서 만든 client는 애플리케이션 소유 integration과 shutdown 경로에 두거나, fluo가 client를 소유해야 할 때 named registration을 사용하세요. fluo는 Redis module wiring을 module graph 안의 숨겨진 async factory로 미루지 않습니다.
 
 ```typescript
 import { Module } from '@fluojs/core';

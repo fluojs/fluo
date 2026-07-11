@@ -32,7 +32,7 @@ npm install @fluojs/redis ioredis
 
 Use `RedisModule.forRoot(options)` to register the default Redis client and `RedisService` facade.
 
-`RedisModule.forRoot(...)` is intentionally synchronous. When migrating from NestJS async dynamic modules such as `forRootAsync(...)`, resolve secrets, environment-specific hosts, or externally constructed clients at the application boundary first, then pass the final Redis options into `forRoot(...)`. fluo does not defer Redis module wiring to an async factory hidden inside the module graph.
+`RedisModule.forRoot(...)` is intentionally synchronous. When migrating from NestJS async dynamic modules such as `forRootAsync(...)`, resolve secrets, environment-specific hosts, TLS settings, or other Redis options at the application boundary first, then pass the final options into `forRoot(...)`. Each `forRoot(...)` call constructs a new lifecycle-managed `ioredis` client; it does not adopt an externally constructed client instance. Keep an externally constructed client on an application-owned integration and shutdown path, or use a named registration when fluo should own the client. fluo does not defer Redis module wiring to an async factory hidden inside the module graph.
 
 ```typescript
 import { Module } from '@fluojs/core';
