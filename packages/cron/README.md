@@ -10,6 +10,7 @@ Decorator-based scheduling for fluo applications with lifecycle-managed startup/
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+  - [Migrating NestJS Cron Options](#migrating-nestjs-cron-options)
   - [Distributed Locking](#distributed-locking)
   - [Dynamic Scheduling](#dynamic-scheduling)
   - [Bounded Shutdown](#bounded-shutdown)
@@ -20,10 +21,10 @@ Decorator-based scheduling for fluo applications with lifecycle-managed startup/
 ## Installation
 
 ```bash
-npm install @fluojs/cron croner
+npm install @fluojs/cron
 ```
 
-`croner` is the scheduler engine used by `@fluojs/cron`. Install it alongside the package so lockfiles make the runtime scheduler dependency explicit for applications and deployment audits.
+`@fluojs/cron` owns `croner` as a runtime dependency, so consumers do not need to install the scheduler engine directly.
 
 `@fluojs/redis` is needed only when Redis distributed locking is enabled. Non-distributed scheduling paths do not load the Redis integration during package import, module registration, bootstrap, or status snapshot creation.
 
@@ -72,6 +73,22 @@ class AppModule {}
 ```
 
 ## Common Patterns
+
+### Migrating NestJS Cron Options
+
+NestJS `@Cron()` options are not a drop-in `CronTaskOptions` object. Rename NestJS `timeZone` to fluo `timezone`:
+
+```typescript
+// NestJS
+@Cron('0 9 * * *', { timeZone: 'Asia/Seoul', waitForCompletion: true })
+
+// fluo
+@Cron('0 9 * * *', { timezone: 'Asia/Seoul' })
+```
+
+Do not copy `waitForCompletion` or invent an overlap flag. fluo does not expose either option: every cron task uses scheduler-level no-overlap protection plus an in-process running guard. If another tick arrives while the same task instance is still running, fluo skips that tick instead of queueing another run. A NestJS task with `waitForCompletion: true` therefore omits the option when migrated. If the NestJS task left `waitForCompletion` unset or set it to `false` and intentionally depended on overlapping runs, redesign that work behind an application-owned queue or worker rather than expecting fluo to enable overlap.
+
+This guard covers one task instance in one application process. Use [Distributed Locking](#distributed-locking) when multiple application instances must not run the same task concurrently.
 
 ### Distributed Locking
 

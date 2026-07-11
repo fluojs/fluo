@@ -1,6 +1,6 @@
 import type { RedisOptions } from 'ioredis';
 
-type RedisConnectionOptions = Omit<RedisOptions, 'lazyConnect'>;
+type RedisConnectionOptions = Omit<RedisOptions, 'lazyConnect' | 'name'>;
 
 /** Lifecycle timeout controls for Redis connections owned by Fluo. */
 export interface RedisLifecycleOptions {
@@ -17,6 +17,8 @@ export type DefaultRedisModuleOptions = RedisConnectionOptions & {
   /** Timeout controls for lifecycle-owned `connect()` and `quit()` calls. */
   lifecycle?: RedisLifecycleOptions;
   name?: undefined;
+  /** ioredis Sentinel master name forwarded as the Redis constructor `name` option. */
+  sentinelName?: string;
 };
 
 /** Options accepted by an additional named Redis registration. */
@@ -25,6 +27,8 @@ export type NamedRedisModuleOptions = RedisConnectionOptions & {
   lifecycle?: RedisLifecycleOptions;
   /** Registration name used to derive named raw-client and facade tokens. */
   name: string;
+  /** ioredis Sentinel master name forwarded as the Redis constructor `name` option. */
+  sentinelName?: string;
   /** Named Redis registrations remain scoped to their importing module. */
   global?: false;
 };
@@ -38,4 +42,4 @@ export type NamedRedisModuleOptions = RedisConnectionOptions & {
 export type RedisModuleOptions = DefaultRedisModuleOptions | NamedRedisModuleOptions;
 
 /** Redis constructor options after Fluo module-only fields are removed. */
-export type RedisClientOptions = RedisConnectionOptions;
+export type RedisClientOptions = RedisConnectionOptions & Pick<RedisOptions, 'name'>;

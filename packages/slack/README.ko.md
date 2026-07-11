@@ -83,6 +83,8 @@ export class DeployNotifier {
 
 `SlackModule.forRoot(...)`와 `SlackModule.forRootAsync(...)`는 기본적으로 global module을 반환합니다. 이 module은 `SlackService`, `SlackChannel`, `SLACK`, `SLACK_CHANNEL`을 export하며, migrated code에서 해당 provider를 반환된 module을 명시적으로 import한 module에만 보이게 해야 할 때만 `global: false`를 전달합니다. 옵션 이름은 NestJS `isGlobal`이 아니라 `global?: boolean`입니다.
 
+Async registration은 injected factory 형태인 `SlackModule.forRootAsync({ inject, useFactory, global? })`만 지원합니다. `inject`와 `useFactory`만 소비하며 NestJS `imports`, `useClass`, `useExisting`은 소비하지 않습니다. 필요한 의존성은 application module graph에 먼저 등록하고 token을 `inject`에 나열한 뒤, `useFactory`에서 최종 Slack option을 반환하세요.
+
 패키지 수준 registration surface는 의도적으로 singleton 중심입니다. `SLACK`과 `SLACK_CHANNEL`은 하나의 설정된 Slack service와 notifications channel을 위한 compatibility token이며, `createSlackProviders(...)`는 수동 module composition에서도 같은 singleton wiring을 재사용합니다. 여러 Slack client가 필요한 애플리케이션은 package-level multi-client registry를 기대하지 말고, 서로 다른 `SlackTransport` 인스턴스를 감싸는 자체 module/provider를 조합하거나 app-owned facade를 노출해야 합니다.
 
 ### `createSlackProviders`를 이용한 수동 provider 조합
@@ -321,7 +323,7 @@ await slack.send({
 Behavioral contract 메모:
 
 - `fetch`를 명시적으로 전달하는 방식이 portable path이며 모든 지원 런타임에서 권장됩니다. 하위 호환성을 위해 `fetch`를 생략하면 ambient runtime API인 `globalThis.fetch`가 있을 때 이를 폴백으로 사용합니다. `globalThis.fetch`가 없는 런타임에서는 `SlackConfigurationError`로 빠르게 실패합니다.
-- 내장 webhook transport는 `408`, `429`, `5xx` 같은 일시적 실패를 호출자에게 에러를 노출하기 전에 bounded exponential backoff로 재시도합니다.
+- 내장 webhook transport는 `408`, `429`, `5xx` 같은 일시적 실패 응답의 본문을 소비한 뒤 bounded exponential backoff로 재시도하고, 재시도가 모두 소진된 뒤에만 호출자에게 에러를 노출합니다.
 - Abort signal은 주입된 `fetch` 경계로 전달되며, retry backoff를 취소할 때 `AbortError`를 `SlackTransportError`로 감싸지 않습니다.
 - 호출자에게 보이는 `SlackTransportError` 메시지는 기본적으로 raw upstream response body를 포함하지 않습니다.
 

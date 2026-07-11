@@ -283,6 +283,30 @@ describe('@fluojs/redis', () => {
     expect(mockRedisState.instances[0]?.status).toBe('end');
   });
 
+  it('disconnects a late default connect after the lifecycle timeout expires', async () => {
+    vi.useFakeTimers();
+    const connectDeferred = createDeferred<void>();
+    mockRedisState.connectDeferred = connectDeferred;
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
+    });
+
+    const bootstrapPromise = bootstrapApplication({ rootModule: AppModule });
+    const bootstrapAssertion = expect(bootstrapPromise).rejects.toThrow(
+      'Redis client default connect timed out after 10000ms.',
+    );
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await bootstrapAssertion;
+    connectDeferred.resolve(undefined);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mockRedisState.events).toEqual(['connect', 'disconnect', 'disconnect']);
+    expect(mockRedisState.instances[0]?.status).toBe('end');
+  });
+
   it('fails bootstrap when a named lifecycle-owned connect exceeds the configured timeout', async () => {
     vi.useFakeTimers();
     mockRedisState.connectHangs = true;
@@ -385,6 +409,52 @@ describe('@fluojs/redis', () => {
     expect(mockRedisState.instances[0]?.options).not.toHaveProperty('name');
     expect(mockRedisState.instances[0]?.options).not.toHaveProperty('global');
     expect(mockRedisState.instances[0]?.options).not.toHaveProperty('lifecycle');
+
+    await app.close();
+  });
+
+  it('keeps a named registration separate from the ioredis Sentinel master name', async () => {
+    const CACHE_REDIS_CLIENT = getRedisClientToken('cache');
+    const CACHE_REDIS_SERVICE = getRedisServiceToken('cache');
+
+    @Inject(CACHE_REDIS_CLIENT)
+    class CacheClientConsumer {
+      constructor(readonly redis: MockRedisInstance) {}
+    }
+
+    @Inject(CACHE_REDIS_SERVICE)
+    class CacheServiceConsumer {
+      constructor(readonly redis: RedisService) {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        RedisModule.forRoot({
+          host: '127.0.0.1',
+          name: 'cache',
+          port: 26379,
+          sentinelName: 'mymaster',
+          sentinels: [{ host: '127.0.0.1', port: 26379 }],
+        }),
+      ],
+      providers: [CacheClientConsumer, CacheServiceConsumer],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const clientConsumer = await app.container.resolve(CacheClientConsumer);
+    const serviceConsumer = await app.container.resolve(CacheServiceConsumer);
+
+    expect(mockRedisState.instances[0]?.options).toMatchObject({
+      host: '127.0.0.1',
+      lazyConnect: true,
+      name: 'mymaster',
+      port: 26379,
+      sentinels: [{ host: '127.0.0.1', port: 26379 }],
+    });
+    expect(mockRedisState.instances[0]?.options).not.toHaveProperty('sentinelName');
+    expect(clientConsumer.redis).toBe(mockRedisState.instances[0]);
+    expect(serviceConsumer.redis.getRawClient()).toBe(clientConsumer.redis);
 
     await app.close();
   });
@@ -567,6 +637,24 @@ describe('@fluojs/redis', () => {
     const closePromise = app.close();
     const closeAssertion = expect(closePromise).resolves.toBeUndefined();
     await vi.advanceTimersByTimeAsync(25);
+
+    await closeAssertion;
+    expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
+  });
+
+  it('forces disconnect when lifecycle-owned quit exceeds the default timeout', async () => {
+    vi.useFakeTimers();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    mockRedisState.quitHangs = true;
+    const closePromise = app.close();
+    const closeAssertion = expect(closePromise).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(10_000);
 
     await closeAssertion;
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);

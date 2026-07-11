@@ -91,6 +91,7 @@ export class CacheRepository {
 
 - `name`을 생략하면 기본 별칭인 `REDIS_CLIENT` / `RedisService`를 사용합니다.
 - `name`을 지정하면 `getRedisClientToken(name)` / `getRedisServiceToken(name)`으로 이름 있는 바인딩을 가져옵니다.
+- `name`은 Fluo 등록만 식별합니다. ioredis Sentinel master name은 `sentinelName`으로 전달하세요. Fluo는 등록 토큰을 바꾸지 않고 이를 ioredis 생성자 `name` 옵션으로 전달합니다.
 - 이름 있는 클라이언트도 기본 클라이언트와 동일한 bootstrap/shutdown 계약을 따르며, `REDIS_CLIENT` / `RedisService` 별칭은 기본 등록에서만 export됩니다.
 - 이름은 trim되며, blank 또는 whitespace-only name은 token/component helper에서 거부됩니다.
 
@@ -111,6 +112,7 @@ const ANALYTICS_REDIS_CLIENT = getRedisClientToken('analytics');
   imports: [
     RedisModule.forRoot({ host: 'localhost', port: 6379 }),
     RedisModule.forRoot({ name: 'analytics', host: 'localhost', port: 6380 }),
+    RedisModule.forRoot({ name: 'sentinel-cache', sentinelName: 'mymaster', sentinels: [{ host: 'localhost', port: 26379 }] }),
   ],
 })
 export class AppModule {}
@@ -200,7 +202,7 @@ export class PubSubTransportFactory {
 ### 타입
 - `DefaultRedisModuleOptions`: 이름 없는 기본 Redis 등록이 받는 옵션입니다. 선택적 global alias visibility와 lifecycle timeout control을 포함합니다.
 - `NamedRedisModuleOptions`: 추가 이름 있는 Redis 등록이 받는 옵션입니다. 필수 `name`과 scoped lifecycle timeout control을 포함합니다.
-- `RedisModuleOptions`: Fluo가 module-only `name`, `global`, `lifecycle` 필드를 제거한 뒤 `ioredis` 생성자에 전달하는 설정 옵션입니다.
+- `RedisModuleOptions`: Fluo가 module-only `name`, `global`, `lifecycle`, `sentinelName` 필드를 제거한 뒤 `ioredis` 생성자에 전달하는 설정 옵션입니다. `sentinelName`은 ioredis Sentinel master `name`으로 전달되고, `name`은 Fluo 등록 식별자로 유지됩니다.
 - `RedisClientOptions`: Fluo가 module-only field를 제거하고 내부에서 `lazyConnect: true`를 강제하기 전의 Redis constructor option입니다.
 - `RedisLifecycleOptions`: Fluo가 소유한 `connect()`와 `quit()` lifecycle command의 timeout을 조정하는 선택적 옵션입니다.
 - `PersistencePlatformStatusSnapshot`, `RedisStatusAdapterInput`: status snapshot input/output type입니다.

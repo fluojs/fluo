@@ -91,7 +91,9 @@ NestJS queue integration에서 이동하는 consumer는 metadata 기반 processo
 4. Worker가 queue registration에서 도달 가능하도록 유지합니다. 기본 global `QueueModule.forRoot()`는 compiled application graph 전체의 singleton worker를 discovery할 수 있습니다. `global: false`에서는 authored imports/exports를 통해 해당 registration에 도달할 수 있는 module로 discovery가 제한되며, 일치하는 Redis provider도 같은 module tree에서 도달 가능해야 합니다.
 5. Queue lifecycle ownership과 중복되는 worker 소유 start/stop hook을 제거합니다. Queue는 application bootstrap 중 resource를 만들고 application bootstrap-ready handoff 이후에만 BullMQ processor를 시작하며, shutdown이 시작된 뒤에는 새 enqueue를 거부하고 active processor shutdown을 `workerShutdownTimeoutMs`로 제한한 다음 force-close를 요청합니다.
 
-Cutover 전에는 persisted queue마다 `jobName`, serialized payload shape, retry/backoff 설정, shutdown budget을 검증하세요. `@fluojs/queue`는 NestJS decorator metadata를 해석하지 않으며 기존 Bull/BullMQ queue name이나 payload에 대한 자동 호환성을 약속하지 않습니다. 연속성이 필요하면 `jobName`을 명시적으로 설정하고, 애플리케이션이 소유하는 payload 계약을 보존하도록 producer와 worker의 배포 순서를 계획하세요.
+Cutover 전에는 persistence identity 차이를 반영하세요. NestJS Bull/BullMQ는 하나의 `queueName` 아래 여러 named job 값을 영속화할 수 있습니다. 반면 fluo는 job type마다 queue/worker pair 하나를 만들면서 worker의 `jobName`을 BullMQ queue name과 named job 양쪽에 사용합니다. 따라서 `jobName`만 설정해서는 여러 named job이 하나의 `queueName`을 공유하는 legacy topology를 보존할 수 없고, `@fluojs/queue`는 NestJS decorator metadata를 해석하거나 기존 serialized payload를 자동 변환하지 않습니다.
+
+애플리케이션이 persisted-job cutover 방식을 선택해야 합니다. Producer를 전환하기 전에 기존 worker로 legacy queue를 drain하거나, 호환 payload를 변환해 fluo의 job별 queue로 다시 enqueue하거나, legacy worker가 이전 작업을 drain하는 동안 fluo에 별도 queue name을 사용하세요. 어떤 경로든 payload class shape, retry/backoff 설정, shutdown budget을 검증한 뒤 producer와 singleton `@QueueWorker(JobClass)` provider를 같은 `QueueModule.forRoot(...)` graph에 배포해야 합니다. `global: false`에서는 worker와 Redis reachability를 보존하고, 처리는 bootstrap-ready handoff 이후에만 시작하며 shutdown은 `workerShutdownTimeoutMs`로 제한된다는 점을 기억하세요.
 
 ## 일반적인 패턴
 
