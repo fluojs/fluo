@@ -53,7 +53,7 @@ export class AppModule {}
 
 Inject `RedisService` for high-level operations or `REDIS_CLIENT` for the raw `ioredis` instance.
 
-`RedisService.get()` attempts JSON parsing and falls back to the raw string; missing keys return `null`. `RedisService.set()` serializes values with `JSON.stringify()` and uses `EX` only for positive TTL values.
+`RedisService.get()` attempts JSON parsing and falls back to the raw string; missing keys return `null`. `RedisService.set()` serializes values with `JSON.stringify()`: finite positive integer TTLs use Redis `EX`, while finite positive fractional TTLs use `PX` with milliseconds rounded up. Omit the TTL or pass a non-positive or non-finite value for a persistent key.
 
 ```typescript
 import { Inject } from '@fluojs/core';
