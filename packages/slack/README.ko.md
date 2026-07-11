@@ -135,8 +135,8 @@ SlackModule.forRootAsync({
 Behavioral contract 메모:
 
 - `SlackService.send(...)`는 전달 전에 `defaultChannel`을 해석합니다.
-- `SlackService.sendMany(...)`는 메시지를 순차적으로 보내며, fail-fast 대신 batch result가 필요한 호출자를 위해 `continueOnError`를 지원합니다.
-- `SlackService.send(...)`, `SlackService.sendMany(...)`, `SlackService.sendNotification(...)`은 provider handoff 전에 이미 abort된 signal을 존중하며, 같은 signal을 transport 호출로 전달합니다.
+- `SlackService.sendMany(...)`는 메시지를 순차적으로 보내며, fail-fast 대신 batch result가 필요한 호출자를 위해 `continueOnError`를 지원합니다. 다만 일반 provider 실패만 수집하며 caller 취소는 항상 batch를 reject합니다.
+- `SlackService.send(...)`, `SlackService.sendMany(...)`, `SlackService.sendNotification(...)`은 provider handoff 전에 이미 abort된 signal을 존중합니다. Abort된 signal 또는 transport의 `AbortError`는 `continueOnError`보다 우선하며, 같은 signal은 notification channel을 거쳐 transport 호출까지 전달됩니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
 - 직접 전달과 notifications 기반 전달은 lifecycle이 `ready`일 때만 허용됩니다. `onModuleInit()`이 끝나기 전, 초기화 실패 뒤, 또는 shutdown 중 호출하면 transport를 lazy 생성하거나 재사용하지 않고 `SlackLifecycleError`로 실패합니다.
 - shutdown은 새 전달을 거부하고, 활성 전달과 진행 중인 factory 소유 transport 생성을 모두 settle한 뒤 소유한 transport를 닫고 완료됩니다.
