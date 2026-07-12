@@ -1942,6 +1942,8 @@ describe('@fluojs/platform-fastify', () => {
     };
 
     await adapter.listen(firstDispatcher);
+    const firstPort = getBoundPort(adapter.getServer());
+    const firstResponse = await requestHttp({ method: 'GET', path: '/', port: firstPort });
     const closePromise = adapter.close();
     await closeStarted.promise;
     const relistenPromise = adapter.listen(secondDispatcher);
@@ -1957,6 +1959,9 @@ describe('@fluojs/platform-fastify', () => {
       releaseClose.resolve();
       await closePromise;
       await observedRelisten;
+
+      expect(firstResponse.statusCode).toBe(200);
+      expect(JSON.parse(firstResponse.body)).toEqual({ dispatcher: 'first' });
 
       const port = getBoundPort(adapter.getServer());
       const secondResponse = await requestHttp({ method: 'GET', path: '/', port });
