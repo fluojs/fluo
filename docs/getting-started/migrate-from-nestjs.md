@@ -19,6 +19,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | constructor type reflection via `emitDecoratorMetadata` | `@Inject(TokenA, TokenB)` from `@fluojs/core` | Constructor dependencies are declared explicitly in decorator argument order. |
 | `class-validator` / decorator-driven DTO validation | `@fluojs/validation` with Standard Schema support, including Zod and Valibot | This is a fluo-native validation surface, not class-validator compatibility. Ordinary validators skip `null` / `undefined`, requiredness uses `@IsDefined()`, plain-object materialization retains safe own enumerable extra properties, and validation groups are unsupported. |
 | `SwaggerModule.createDocument(...)` and `SwaggerModule.setup(...)` | `OpenApiModule.forRoot({ title, version, sources, descriptors, ui, swaggerUiAssets })` from `@fluojs/openapi` | OpenAPI adoption is explicit: list every documented controller in `sources`, pass prebuilt HTTP handler mappings in `descriptors`, or use both. fluo does not scan the application module graph for controllers. `/openapi.json` remains available independently, while Swagger UI serves at `/docs` only when `ui: true`; `swaggerUiAssets` can replace the default CSS and JavaScript URLs. |
+| `@nestjs/graphql` resolver discovery, reflected return types, and `forRootAsync(...)` | `GraphqlModule.forRoot(...)`, module providers/controllers, `@Resolver`, `@Query`, `@Mutation`, `@Subscription`, and `listOf(...)` from `@fluojs/graphql` | Register resolver classes as providers or controllers in compiled modules. The `resolvers` option is an optional allowlist/filter over those discoverable classes; omitting it or passing an empty list allows every decorated registered candidate. fluo does not infer providers or GraphQL output types from metadata. Object results require `outputType`, arrays require `outputType: listOf(ItemType)`, and omitted output types use GraphQL `String`. There is no `forRootAsync(...)`, object field resolver, or `@Subscription({ topics })` contract. Optional WebSocket subscriptions require a server-backed Node HTTP/S adapter. |
 | Controller parameter decorators such as `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, and `@Res()`, plus `Pipe` / `ValidationPipe` transformation | `@RequestDto(...)` with field-level `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)`, `@FromHeader(...)`, `@FromCookie(...)`, and `@Convert(...)` from `@fluojs/http`; a `RequestContext` handler parameter for advanced request/response access | fluo does not expose NestJS-style controller parameter decorators or a public parameter Pipe stage. Bind one request DTO, declare each field source, use `@Convert(...)` for number/boolean/date/domain conversion, then validate the materialized DTO with the validation package. |
 | `createApplicationContext()` standalone bootstrap | `FluoFactory.createApplicationContext(AppModule)` | Standalone application context exists in `@fluojs/runtime`. |
 | `Test.createTestingModule({ imports: [...] }).overrideModule(...)` | `createTestingModule({ rootModule }).overrideModule(...)` from `@fluojs/testing` | fluo testing uses an explicit `rootModule` and replacement compile seam so tests preserve authored module identity without mutating module metadata globally. |
@@ -91,6 +92,45 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - `NotificationsModule` is global by default for `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS`; use `global: false` when migrated code requires module-local visibility.
 - Slack migration is not a NestJS async dynamic-module or package-level multi-client registry clone. `SlackModule.forRootAsync(...)` accepts `inject` plus `useFactory`; it does not consume `imports`, `useClass`, or `useExisting`. Register dependencies in the application module graph before listing their tokens in `inject`, then return final Slack options from `useFactory`. `@fluojs/slack` exposes singleton compatibility tokens `SLACK` and `SLACK_CHANNEL`, mirrors that singleton wiring through `createSlackProviders(...)`, and uses `global?: boolean` with default global visibility instead of NestJS `isGlobal`.
 - Discord migration is not a NestJS async dynamic-module or custom-provider clone. `DiscordModule.forRootAsync(...)` accepts `inject` plus `useFactory`; it does not consume `imports`, `useClass`, or `useExisting`. `@fluojs/discord` exposes singleton compatibility tokens `DISCORD` and `DISCORD_CHANNEL`, uses `global?: boolean` with default global visibility instead of NestJS `isGlobal`, and keeps internal provider helpers such as `createDiscordProviders(...)`, `DISCORD_OPTIONS`, and `NormalizedDiscordModuleOptions` private.
+
+### GraphQL Resolver Migration
+
+GraphQL migration keeps schema and discovery wiring explicit. Register each resolver class as a provider or controller in an authored module so it is discoverable from the compiled module graph. `GraphqlModule.forRoot({ resolvers: [...] })` does not register those classes; when supplied, `resolvers` filters discovery to that allowlist. Omit `resolvers` or pass an empty list to discover every decorated resolver class already registered as a provider or controller. Neither TypeScript return types nor NestJS design metadata register providers or build output types. The current runtime supports root operations only, exposes no `GraphqlModule.forRootAsync(...)`, rejects `@Subscription({ topics })`, and requires subscription methods to return an `AsyncIterable`. HTTP and SSE use the portable HTTP path, while optional WebSocket subscriptions require a server-backed Node HTTP/S adapter with upgrade listeners.
+
+Declare object and list outputs directly so they do not fall back to GraphQL `String`:
+
+```typescript
+import { GraphQLObjectType, GraphQLString } from 'graphql';
+import { Module } from '@fluojs/core';
+import { GraphqlModule, listOf, Query, Resolver } from '@fluojs/graphql';
+
+const ProductType = new GraphQLObjectType({
+  name: 'Product',
+  fields: {
+    id: { type: GraphQLString },
+    name: { type: GraphQLString },
+  },
+});
+
+@Resolver()
+class ProductResolver {
+  @Query({ outputType: ProductType })
+  async product() {
+    return productService.findFeatured();
+  }
+
+  @Query({ outputType: listOf(ProductType) })
+  async products() {
+    return productService.findAll();
+  }
+}
+
+@Module({
+  imports: [GraphqlModule.forRoot()],
+  providers: [ProductResolver],
+})
+class AppModule {}
+```
 
 ## Removed Concepts
 

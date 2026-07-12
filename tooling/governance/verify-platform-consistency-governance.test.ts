@@ -388,6 +388,26 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts GraphQL contract guidance when bilingual surfaces and regression enforcement change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/graphql/README.md',
+        'packages/graphql/README.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'book/intermediate/ch18-graphql.md',
+        'book/intermediate/ch18-graphql.ko.md',
+        'packages/graphql/src/pipeline/input-pipeline.test.ts',
+        'packages/graphql/src/schema/schema.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('accepts Queue dead-letter inspection guidance with bilingual docs and package regression coverage', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
