@@ -10,6 +10,8 @@ import {
 } from '@fluojs/runtime/internal/http-adapter';
 import { createWebRequestResponseFactory, dispatchWebRequest } from '@fluojs/runtime/web';
 
+import { validateNonNegativeIntegerOption } from './options.js';
+
 /** Listen target metadata reported by `Deno.serve(...)` callbacks. */
 export interface DenoServeOnListenInfo {
   hostname: string;
@@ -480,16 +482,6 @@ function resolveDenoPort(value: number | undefined): number {
   }
 
   return port;
-}
-
-function validateNonNegativeIntegerOption(name: string, value: number | undefined): void {
-  if (value === undefined) {
-    return;
-  }
-
-  if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`Invalid ${name} value: ${String(value)}. Expected a non-negative integer.`);
-  }
 }
 
 function formatHostForAuthority(hostname: string): string {

@@ -65,25 +65,24 @@ deno run --allow-net --allow-read --allow-env main.ts
 
 ## 23.3 Web Standards and Request Dispatching
 
-Deno는 웹 표준을 기반으로 구축되었기 때문에 fluo의 내부 디스패처와 자연스럽게 맞물립니다. 프레임워크는 생명주기 전반에서 네이티브 `Request` 및 `Response` 객체를 다루며, 어댑터의 `handle()` 메서드로 요청을 수동 처리할 수도 있습니다. 이 방식은 테스트나 서버리스 스타일 실행을 구성할 때 유용합니다.
+Deno는 웹 표준을 기반으로 구축되었기 때문에 fluo의 내부 디스패처와 자연스럽게 맞물립니다. FluoShop이 커스텀 routing 또는 다른 fetch handler와 host-owned `Deno.serve(...)` process를 공유해야 한다면 `app.listen()` 없이 application을 bootstrap하고 public dispatcher에서 handler를 생성하세요.
 
 ```typescript
-import { createDenoAdapter } from '@fluojs/platform-deno';
+import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
 import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module.ts';
 
-const adapter = createDenoAdapter({ port: 3000 });
+const adapter = createDenoAdapter();
 const app = await fluoFactory.create(AppModule, { adapter });
+const handler = createDenoFetchHandler({
+  dispatcher: app.dispatcher,
+  rawBody: true,
+});
 
-await app.listen();
-
-// 테스트나 커스텀 로직을 위해 요청을 수동으로 디스패치
-const request = new Request('http://localhost:3000/api/v1/products');
-const response = await adapter.handle(request);
-console.log(await response.json());
+Deno.serve({ port: 3000 }, handler);
 ```
 
-웹 표준과의 일치는 Deno에서 실행되는 fluo 앱의 런타임 경계를 읽기 쉽게 만듭니다.
+`createDenoFetchHandler(...)`는 `Deno.serve(...)`를 호출하지 않습니다. Shared cookie/query, raw-body, multipart, SSE 동작을 보존하고 주변 host가 server shutdown, process signal, websocket upgrade를 소유합니다. fluo가 Deno server lifecycle을 소유해야 한다면 `runDenoApplication(...)` 또는 `app.listen()`을 사용하세요.
 
 ## 23.4 Native Deno WebSockets
 

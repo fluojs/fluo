@@ -38,8 +38,14 @@ describe('@fluojs/platform-deno declaration surface', () => {
     expect(readFileSync(resolve(packageRootPath, 'dist/index.d.ts'), 'utf8')).toContain(
       "export * from './adapter.js';",
     );
+    expect(readFileSync(resolve(packageRootPath, 'dist/index.d.ts'), 'utf8')).toContain(
+      "export * from './fetch-handler.js';",
+    );
     expect(readFileSync(resolve(packageRootPath, 'dist/adapter.d.ts'), 'utf8')).toContain(
       'constructor(options?: DenoAdapterOptions);',
+    );
+    expect(readFileSync(resolve(packageRootPath, 'dist/fetch-handler.d.ts'), 'utf8')).toContain(
+      'export declare function createDenoFetchHandler',
     );
   }, 300_000);
 });
